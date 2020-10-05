@@ -15,7 +15,9 @@ set(WINML_TEST_INC_DIR
   ${CMAKE_CURRENT_BINARY_DIR}
   ${CMAKE_CURRENT_BINARY_DIR}/winml_api
   ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated
-  ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include)
+  ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include
+  ${CMAKE_CURRENT_BINARY_DIR}/winml_api_experimental/comp_generated
+)
 
 function(set_winml_target_properties target)
   set_target_properties(${target} PROPERTIES
@@ -41,6 +43,7 @@ function(add_winml_test)
   endif()
 
   add_executable(${_UT_TARGET} ${_UT_SOURCES})
+  onnxruntime_add_include_to_target(${_UT_TARGET} onnx_proto)
   source_group(TREE ${WINML_TEST_SRC_DIR} FILES ${_UT_SOURCES})
   set_winml_target_properties(${_UT_TARGET})
   target_compile_definitions(${_UT_TARGET} PRIVATE BUILD_GOOGLE_TEST)
@@ -50,6 +53,7 @@ function(add_winml_test)
     add_dependencies(${_UT_TARGET} ${_UT_DEPENDS})
   endif()
   target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest winml_google_test_lib ${onnxruntime_EXTERNAL_LIBRARIES} winml_lib_common onnxruntime windowsapp.lib)
+  target_compile_options(${_UT_TARGET} PRIVATE /wd5205)  # workaround cppwinrt SDK bug https://github.com/microsoft/cppwinrt/issues/584
 
   add_test(NAME ${_UT_TARGET}
     COMMAND ${_UT_TARGET}
@@ -148,12 +152,13 @@ file(GLOB winml_test_common_src CONFIGURE_DEPENDS
     "${WINML_TEST_SRC_DIR}/common/*.h"
     "${WINML_TEST_SRC_DIR}/common/*.cpp")
 add_library(winml_test_common STATIC ${winml_test_common_src})
+target_compile_options(winml_test_common PRIVATE /wd5205)  # workaround cppwinrt SDK bug https://github.com/microsoft/cppwinrt/issues/584
 add_dependencies(winml_test_common
   onnx
   winml_api
   winml_dll
 )
-
+onnxruntime_add_include_to_target(winml_test_common onnx_proto)
 add_library(winml_google_test_lib STATIC ${WINML_TEST_SRC_DIR}/common/googletest/main.cpp)
 set_winml_target_properties(winml_google_test_lib)
 
@@ -202,7 +207,9 @@ add_winml_test(
   LIBS winml_test_common ${winml_test_image_libs}
 )
 target_precompiled_header(winml_test_image testPch.h)
-
+if(onnxruntime_RUN_MODELTEST_IN_DEBUG_MODE)
+  target_compile_definitions(winml_test_image PUBLIC -DRUN_MODELTEST_IN_DEBUG_MODE)
+endif()
 target_delayload(winml_test_image d3d12.dll api-ms-win-core-file-l1-2-2.dll api-ms-win-core-synch-l1-2-1.dll)
 if (EXISTS ${dxcore_header})
   target_delayload(winml_test_image ext-ms-win-dxcore-l1-*.dll)
@@ -240,7 +247,7 @@ target_include_directories(winml_test_adapter PRIVATE ${winml_lib_common_dir}/in
 target_include_directories(winml_test_adapter PRIVATE ${ONNXRUNTIME_INCLUDE_DIR})
 target_include_directories(winml_test_adapter PRIVATE ${ONNXRUNTIME_ROOT})
 
-onnxruntime_add_include_to_target(winml_test_adapter onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
+onnxruntime_add_include_to_target(winml_test_adapter onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf flatbuffers)
 target_include_directories(winml_test_adapter PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS})
 add_dependencies(winml_test_adapter ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(winml_test_adapter PRIVATE ${winml_adapter_dir})

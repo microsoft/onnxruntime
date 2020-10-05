@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 
 #include <pybind11/iostream.h>
 #include <pybind11/pybind11.h>
@@ -27,6 +28,8 @@ MLDataType NumpyTypeToOnnxRuntimeType(int numpy_type);
 void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, const AllocatorPtr& alloc, const std::string& name_input,
                           py::object& value, OrtValue* p_mlvalue);
 
+void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj, const DataTransferManager* data_transfer_manager = nullptr);
+
 template <class T>
 struct DecRefFn {
   void operator()(T* pyobject) const {
@@ -36,5 +39,6 @@ struct DecRefFn {
 
 template <class T>
 using UniqueDecRefPtr = std::unique_ptr<T, DecRefFn<T>>;
+
 }  // namespace python
 }  // namespace onnxruntime

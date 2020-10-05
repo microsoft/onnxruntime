@@ -8,20 +8,24 @@
 * [Supported architectures and build environments](#supported-architectures-and-build-environments)
 * [Common Build Instructions](#common-build-instructions)
 * Additional Build Instructions - complete list: `./build.sh (or .\build.bat) --help`
+  * [Reduced Operator Kernel Build](#Reduced-Operator-Kernel-Build)
+  * [ONNX Runtime for Mobile Platforms](#ONNX-Runtime-for-Mobile-Platforms)
   * [ONNX Runtime Server (Linux)](#Build-ONNX-Runtime-Server-on-Linux)
   * Execution Providers
     * [NVIDIA CUDA](#CUDA)
     * [NVIDIA TensorRT](#TensorRT)
+    * [NVIDIA Jetson TX1/TX2/Nano/Xavier](#nvidia-jetson-tx1tx2nanoxavier)
     * [Intel DNNL/MKL-ML](#DNNL-and-MKLML)
     * [Intel nGraph](#nGraph)
     * [Intel OpenVINO](#openvino)
-    * [Android NNAPI](#Android-NNAPI)
+    * [Android NNAPI](#Android-NNAPI-Execution-Provider)
     * [Nuphar Model Compiler](#Nuphar)
     * [DirectML](#DirectML)
     * [ARM Compute Library](#ARM-Compute-Library)
     * [ArmNN](#ArmNN)
     * [Rockchip RKNPU](#RKNPU)
     * [Xilinx Vitis-AI](#Vitis-AI)
+    * [AMD MIGraphX](#AMD-MIGraphX)
   * Options
     * [OpenMP](#OpenMP)
     * [OpenBLAS](#OpenBLAS)
@@ -30,6 +34,7 @@
     * [x86](#x86)
     * [ARM](#ARM)
     * [Android](#Android)
+    * [iOS](#iOS)
 
 **[Training](#Training)**
 
@@ -55,12 +60,24 @@ Open Developer Command Prompt for Visual Studio version you are going to use. Th
 The default Windows CMake Generator is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to `.\build.bat`
 
 
-#### Linux/Mac OS X
+#### Linux/macOS
 ```
 ./build.sh --config RelWithDebInfo --build_shared_lib --parallel
 ```
-By default, ORT is configured to be built for a minimum target Mac OS X version of 10.12. 
-The shared library in the release Nuget(s) and the Python wheel may be installed on Mac OS X versions of 10.12+. 
+##### macOS
+By default, ORT is configured to be built for a minimum target macOS version of 10.12.
+The shared library in the release Nuget(s) and the Python wheel may be installed on macOS versions of 10.12+.
+
+If you would like to use [Xcode](https://developer.apple.com/xcode/) to build the onnxruntime for x86_64 macOS, use
+* With Xcode 11
+   ```
+   ./build.sh --config RelWithDebInfo --build_shared_lib --parallel --use_xcode
+   ```
+* With Xcode 12
+   ```
+   ./build.sh --config RelWithDebInfo --build_shared_lib --parallel --use_xcode \
+              --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=x86_64
+   ```
 
 #### Notes
 
@@ -86,7 +103,7 @@ The shared library in the release Nuget(s) and the Python wheel may be installed
 |-----------|:------------:|:------------:|:------------:|:------------:|
 |Windows    | YES          | YES          |  YES         | YES          |
 |Linux      | YES          | YES          |  YES         | YES          |
-|Mac OS X   | NO           | YES          |  NO          | NO           |
+|macOS      | NO           | YES          |  NO          | NO           |
 
 ### Environments
 
@@ -95,7 +112,7 @@ The shared library in the release Nuget(s) and the Python wheel may be installed
 |Windows 10   | YES          | YES         | VS2019 through the latest VS2015 are supported |
 |Windows 10 <br/> Subsystem for Linux | YES         | NO        |         |
 |Ubuntu 16.x  | YES          | YES         | Also supported on ARM32v7 (experimental) |
-|Mac OS X  | YES          | NO         |    |
+|macOS        | YES          | NO         |    |
 
 GCC 4.x and below are not supported.
 
@@ -105,7 +122,7 @@ GCC 4.x and below are not supported.
 |-------------|:------------:|:----------------:|:----------------:|
 |Windows 10   | YES          | Not tested       | Not tested       |
 |Linux        | NO           | YES(gcc>=4.8)    | Not tested       |
-|Mac OS X     | NO           | Not tested       | YES (Minimum version required not ascertained)|
+|macOS        | NO           | Not tested       | YES (Minimum version required not ascertained)|
 
 
 ---
@@ -122,17 +139,42 @@ GCC 4.x and below are not supported.
 |API|Command|Additional details|
 |-----------|-----------|-----------|
 |**Python**|--build_wheel||
-|**C# and C packages**|--build_csharp||
+|**C# and C packages**|--build_nuget|Builds C# bindings and creates nuget package. Currently supported on Windows and Linux only. Implies `--build_shared_lib` <br> Detailed instructions can be found [below](./BUILD.md#build-nuget-packages).|
 |**WindowsML**|--use_winml<br>--use_dml<br>--build_shared_lib|WindowsML depends on DirectML and the OnnxRuntime shared library|
 |**Java**|--build_java|Creates an onnxruntime4j.jar in the build directory, implies `--build_shared_lib`<br>Compiling the Java API requires [gradle](https://gradle.org) v6.1+ to be installed in addition to the usual requirements.|
 |**Node.js**|--build_nodejs|Build Node.js binding. Implies `--build_shared_lib`|
 
 ---
+## Reduced Operator Kernel Build
+Reduced Operator Kernel builds allow you to customize the kernels in the build to provide smaller binary sizes - [see instructions](./docs/Reduced_Operator_Kernel_build.md).
+
+## ONNX Runtime for Mobile Platforms
+For builds compatible with mobile platforms, see more details in [ONNX_Runtime_for_Mobile_Platforms.md](./docs/ONNX_Runtime_for_Mobile_Platforms.md). Android and iOS build instructions can be found below on this page - [Android](#Android), [iOS](#iOS)
 
 ## Build ONNX Runtime Server on Linux
 Read more about ONNX Runtime Server [here](./docs/ONNX_Runtime_Server_Usage.md).
 
 Build instructions are [here](./docs/Server.md)
+
+## Build Nuget packages
+Currently only supported on Windows and Linux.
+### Prerequisites
+* dotnet is required for building csharp bindings and creating managed nuget package. Follow the instructions [here](https://dotnet.microsoft.com/download) to download dotnet. Tested with versions 2.1 and 3.1.
+* nuget.exe. Follow the instructions [here](https://docs.microsoft.com/en-us/nuget/install-nuget-client-tools#nugetexe-cli) to download nuget
+  * On Windows, downloading nuget is straightforward and simply following the instructions above should work.
+  * On Linux, nuget relies on Mono runtime and therefore this needs to be setup too. Above link has all the information to setup Mono and nuget. The instructions can directly be found [here](https://www.mono-project.com/docs/getting-started/install/). In some cases it is required to run `sudo apt-get install mono-complete` after installing mono.
+
+### Build Instructions
+#### Windows
+```
+.\build.bat --build_nuget
+```
+
+#### Linux
+```
+./build.sh --build_nuget
+```
+Nuget packages are created under <native_build_dir>\nuget-artifacts
 
 ---
 
@@ -141,10 +183,10 @@ Build instructions are [here](./docs/Server.md)
 ### CUDA
 #### Prerequisites
 * Install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn)
-  * ONNX Runtime is built and tested with CUDA 10.1 and cuDNN 7.6 using the Visual Studio 2019 14.12 toolset (i.e. Visual Studio 2019 v16.5).
-    ONNX Runtime can also be built with CUDA versions from 9.1 up to 10.1, and cuDNN versions from 7.1 up to 7.4.
-  * The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home parameter`
-  * The path to the cuDNN installation (include the `cuda` folder in the path) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home parameter`. The cuDNN path should contain `bin`, `include` and `lib` directories.
+  * ONNX Runtime is built and tested with CUDA 10.2 and cuDNN 8.0.3 using Visual Studio 2019 version 16.7.
+    ONNX Runtime can also be built with CUDA versions from 10.1 up to 11.0, and cuDNN versions from 7.6 up to 8.0.
+  * The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home` parameter
+  * The path to the cuDNN installation (include the `cuda` folder in the path) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home` parameter. The cuDNN path should contain `bin`, `include` and `lib` directories.
   * The path to the cuDNN bin directory must be added to the PATH environment variable so that cudnn64_7.dll is found.
 
 #### Build Instructions
@@ -159,7 +201,7 @@ Build instructions are [here](./docs/Server.md)
 ./build.sh --use_cuda --cudnn_home <cudnn home path> --cuda_home <cuda home path>
 ```
 
-A Dockerfile is available [here](./dockerfiles#cuda). 
+A Dockerfile is available [here](./dockerfiles#cuda).
 
 
 #### Notes
@@ -185,13 +227,13 @@ See more information on the TensorRT Execution Provider [here](./docs/execution_
 
 #### Prerequisites
 * Install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn)
-   * The TensorRT execution provider for ONNX Runtime is built and tested with CUDA 10.2 and cuDNN 7.6.5.
-   * The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home parameter`. The CUDA path should contain `bin`, `include` and `lib` directories.
+   * The TensorRT execution provider for ONNX Runtime is built and tested with CUDA 11.0 and cuDNN 8.0.
+   * The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home` parameter. The CUDA path should contain `bin`, `include` and `lib` directories.
    * The path to the CUDA `bin` directory must be added to the PATH environment variable so that `nvcc` is found.
-   * The path to the cuDNN installation (path to folder that contains libcudnn.so) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home parameter`.
+   * The path to the cuDNN installation (path to folder that contains libcudnn.so) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home` parameter.
  * Install [TensorRT](https://developer.nvidia.com/nvidia-tensorrt-download)
-   * The TensorRT execution provider for ONNX Runtime is built on TensorRT 7.x and is tested with TensorRT 7.0.0.11.
-   * The path to TensorRT installation must be provided via the `--tensorrt_home parameter`.
+   * The TensorRT execution provider for ONNX Runtime is built on TensorRT 7.1 and is tested with TensorRT 7.1.3.4.
+   * The path to TensorRT installation must be provided via the `--tensorrt_home` parameter.
 
 #### Build Instructions
 ##### Windows
@@ -207,35 +249,49 @@ See more information on the TensorRT Execution Provider [here](./docs/execution_
 
 Dockerfile instructions are available [here](./dockerfiles#tensorrt)
 
+---
 
-#### Jetson TX1/TX2/Nano (ARM64 Builds)
+#### NVIDIA Jetson TX1/TX2/Nano/Xavier
 
-1. ONNX Runtime v1.2.0 or higher requires TensorRT 7 support, at this moment, the compatible TensorRT and CUDA libraries in [JetPack](https://docs.nvidia.com/jetson/jetpack/release-notes/) 4.4 is still under developer preview stage. Therefore, we suggest using ONNX Runtime v1.1.2 with JetPack 4.3 which has been validated. 
-```
-git clone --single-branch --recursive --branch v1.1.2 https://github.com/Microsoft/onnxruntime
-```
-2. Indicate CUDA compiler. It's optional, cmake can automatically find the correct cuda. 
-```
-export CUDACXX="/usr/local/cuda/bin/nvcc"
-```
-3. Modify  tools/ci_build/build.py
-```
-- "-Donnxruntime_DEV_MODE=" + ("OFF" if args.android else "ON"),
-+ "-Donnxruntime_DEV_MODE=" + ("OFF" if args.android else "OFF"),
-```
-4. Modify cmake/CMakeLists.txt
-```
--  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_50,code=sm_50") # M series
-+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_53,code=sm_53") # Jetson TX1/Nano 
-+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_62,code=sm_62") # Jetson TX2
-```
-5. Build onnxruntime with --use_tensorrt flag 
-```
-./build.sh --config Release --update --build --build_wheel --use_tensorrt --cuda_home /usr/local/cuda --cudnn_home /usr/lib/aarch64-linux-gnu --tensorrt_home /usr/lib/aarch64-linux-gnu
+These instructions are for JetPack SDK 4.4.
 
-```
+1. Clone the ONNX Runtime repo on the Jetson host
 
-See [instructions](https://github.com/microsoft/onnxruntime/issues/2684#issuecomment-568548387) for additional information and tips.
+    ```bash
+    git clone --recursive https://github.com/microsoft/onnxruntime
+    ```
+
+2. Specify the CUDA compiler, or add its location to the PATH.
+
+   Cmake can't automatically find the correct nvcc if it's not in the PATH.
+
+    ```bash
+    export CUDACXX="/usr/local/cuda/bin/nvcc"
+
+    ```
+
+    or:
+
+    ```bash
+    export PATH="/usr/local/cuda/bin:${PATH}"
+    ```
+
+3. Install the ONNX Runtime build dependencies on the Jetpack 4.4 host:
+
+    ```bash
+    sudo apt install -y --no-install-recommends \
+      build-essential software-properties-common cmake libopenblas-dev \
+      libpython3.6-dev python3-pip python3-dev
+    ```
+
+4. Build the ONNX Runtime Python wheel:
+
+    ```bash
+    ./build.sh --update --config Release --build --build_wheel \
+    --use_cuda --cuda_home /usr/local/cuda --cudnn_home /usr/lib/aarch64-linux-gnu
+    ```
+
+    Note: You may add --use_tensorrt and --tensorrt_home options if you wish to use NVIDIA TensorRT (support is experimental), as well as any other options supported by build.sh script.
 
 ---
 
@@ -251,6 +307,18 @@ DNNL: `./build.sh --use_dnnl`
 
 
 ### nGraph
+
+#### Deprecation Notice
+
+| | |
+| --- | --- |
+| Deprecation Begins	| June 1, 2020 |
+| Removal Date |	December 1, 2020 |
+
+Starting with the OpenVINO™ toolkit 2020.2 release, all of the features previously available through nGraph have been merged into the OpenVINO™ toolkit. As a result, all the features previously available through ONNX RT Execution Provider for nGraph have been merged with ONNX RT Execution Provider for OpenVINO™ toolkit.
+
+Therefore, ONNX RT Execution Provider for **nGraph** will be deprecated starting June 1, 2020 and will be completely removed on December 1, 2020. Users are recommended to migrate to the ONNX RT Execution Provider for OpenVINO™ toolkit as the unified solution for all AI inferencing on Intel® hardware.
+
 See more information on the nGraph Execution Provider [here](./docs/execution_providers/nGraph-ExecutionProvider.md).
 
 #### Build Instructions
@@ -270,17 +338,20 @@ See more information on the nGraph Execution Provider [here](./docs/execution_pr
 See more information on the OpenVINO Execution Provider [here](./docs/execution_providers/OpenVINO-ExecutionProvider.md).
 
 #### Prerequisites
-1. Install the Intel<sup>®</sup> Distribution of OpenVINO<sup>TM</sup> Toolkit **Release 2020.2** for the appropriate OS and target hardware :
+1. Install the Intel<sup>®</sup> Distribution of OpenVINO<sup>TM</sup> Toolkit **Release 2020.4** for the appropriate OS and target hardware :
    * [Linux - CPU, GPU, VPU, VAD-M](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-linux)
    * [Linux - FPGA](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-linux-fpga)
    * [Windows - CPU, GPU, VPU, VAD-M](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-windows).
 
-   Follow [documentation](https://docs.openvinotoolkit.org/2020.2/index.html) for detailed instructions.
+   Follow [documentation](https://docs.openvinotoolkit.org/2020.4/index.html) for detailed instructions.
+
+  *2020.4 is the recommended OpenVINO version. [OpenVINO 2020.2](https://docs.openvinotoolkit.org/2020.2/index.html) is minimal OpenVINO version requirement.*
+
 2. Configure the target hardware with specific follow on instructions:
-   * To configure Intel<sup>®</sup> Processor Graphics(GPU) please follow these instructions: [Windows](https://docs.openvinotoolkit.org/2020.2/_docs_install_guides_installing_openvino_windows.html#Install-GPU), [Linux](https://docs.openvinotoolkit.org/2020.2/_docs_install_guides_installing_openvino_linux.html#additional-GPU-steps)
-   * To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow this getting started guide: [Linux](https://docs.openvinotoolkit.org/2020.2/_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps)
-   * To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow this configuration guide: [Windows](https://docs.openvinotoolkit.org/2020.2/_docs_install_guides_installing_openvino_windows.html#hddl-myriad), [Linux](https://docs.openvinotoolkit.org/2020.2/_docs_install_guides_installing_openvino_linux.html#install-VPU)
-   * To configure Intel<sup>®</sup> Vision Accelerator Design with an Intel<sup>®</sup> Arria<sup>®</sup> 10 FPGA, please follow this configuration guide: [Linux](https://docs.openvinotoolkit.org/2020.2/_docs_install_guides_installing_openvino_linux_fpga.html)
+   * To configure Intel<sup>®</sup> Processor Graphics(GPU) please follow these instructions: [Windows](https://docs.openvinotoolkit.org/2020.4/openvino_docs_install_guides_installing_openvino_windows.html#Install-GPU), [Linux](https://docs.openvinotoolkit.org/2020.4/openvino_docs_install_guides_installing_openvino_linux.html#additional-GPU-steps)
+   * To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow this getting started guide: [Linux](https://docs.openvinotoolkit.org/2020.4/openvino_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps)
+   * To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow this configuration guide: [Windows](https://docs.openvinotoolkit.org/2020.4/openvino_docs_install_guides_installing_openvino_windows.html#hddl-myriad), [Linux](https://docs.openvinotoolkit.org/2020.4/openvino_docs_install_guides_installing_openvino_linux.html#install-VPU). Follow steps 3 and 4 to complete the configuration.
+   * To configure Intel<sup>®</sup> Vision Accelerator Design with an Intel<sup>®</sup> Arria<sup>®</sup> 10 FPGA, please follow this configuration guide: [Linux](https://docs.openvinotoolkit.org/2020.4/openvino_docs_install_guides_installing_openvino_linux_fpga.html)
 
 3. Initialize the OpenVINO environment by running the setupvars script as shown below:
    * For Linux run:
@@ -291,6 +362,12 @@ See more information on the OpenVINO Execution Provider [here](./docs/execution_
    ```
       C:\ <openvino_install_directory>\bin\setupvars.bat
    ```
+
+4. Extra configuration step for Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs:
+   * After setting the environment using setupvars script, follow these steps to change the default scheduler of VAD-M to Bypass:
+      * Edit the hddl_service.config file from $HDDL_INSTALL_DIR/config/hddl_service.config and change the field "bypass_device_number" to 8.
+      * Restart the hddl daemon for the changes to take effect.
+      * Note that if OpenVINO was installed with root permissions, this file has to be changed with the same permissions.
 
 
 #### Build Instructions
@@ -320,31 +397,6 @@ See more information on the OpenVINO Execution Provider [here](./docs/execution_
 
 For more information on OpenVINO Execution Provider&#39;s ONNX Layer support, Topology support, and Intel hardware enabled, please refer to the document [OpenVINO-ExecutionProvider.md](./docs/execution_providers/OpenVINO-ExecutionProvider.md) in <code>$onnxruntime_root/docs/execution_providers</code>
 
----
-
-### Android NNAPI
-
-See more information on the NNAPI Execution Provider [here](./docs/execution_providers/NNAPI-ExecutionProvider.md).
-
-#### Prerequisites
-
-To build ONNX Runtime with the NN API EP, first install Android NDK (see [Android Build instructions](#android))
-
-#### Build Instructions
-
-The basic build commands are below. There are also some other parameters for building the Android version. See [Android Build instructions](#android) for more details.
-
-##### Cross compiling on Windows
-
-```bash
-./build.bat --android --android_sdk_path <android sdk path> --android_ndk_path <android ndk path> --use_dnnlibrary
-```
-
-##### Cross compiling on Linux
-
-```bash
-./build.sh --android --android_sdk_path <android sdk path> --android_ndk_path <android ndk path> --use_dnnlibrary
-```
 ---
 
 ### NUPHAR
@@ -408,14 +460,14 @@ index 7dfa97c..6d99e71 100644
 #### Build Instructions
 ##### Windows
 ```
-.\build.bat --use_tvm --use_llvm --llvm_path=\llvm\install\path\lib\cmake\llvm --use_mklml --use_nuphar --build_shared_lib --build_csharp --enable_pybind --config=Release
+.\build.bat --llvm_path=\llvm\install\path\lib\cmake\llvm --use_mklml --use_nuphar --build_shared_lib --build_csharp --enable_pybind --config=Release
 ```
 
 * These instructions build the release flavor. The Debug build of LLVM would be needed to build with the Debug flavor of ONNX Runtime.
 
 ##### Linux:
 ```
-./build.sh --use_tvm --use_llvm --llvm_path=/llvm/install/path/lib/cmake/llvm --use_mklml --use_nuphar --build_shared_lib --build_csharp --enable_pybind --config=Release
+./build.sh --llvm_path=/llvm/install/path/lib/cmake/llvm --use_mklml --use_nuphar --build_shared_lib --build_csharp --enable_pybind --config=Release
 ```
 
 Dockerfile instructions are available [here](./dockerfiles#nuphar).
@@ -455,7 +507,7 @@ alias cmake="/usr/bin/cmake -DCMAKE_TOOLCHAIN_FILE=$OECORE_NATIVE_SYSROOT/usr/sh
 cmake ../onnxruntime-arm-upstream/cmake -DONNX_CUSTOM_PROTOC_EXECUTABLE=/usr/bin/protoc -Donnxruntime_RUN_ONNX_TESTS=OFF -Donnxruntime_GENERATE_TEST_REPORTS=ON -Donnxruntime_DEV_MODE=ON -DPYTHON_EXECUTABLE=/usr/bin/python3 -Donnxruntime_USE_CUDA=OFF -Donnxruntime_USE_NSYNC=OFF -Donnxruntime_CUDNN_HOME= -Donnxruntime_USE_JEMALLOC=OFF -Donnxruntime_ENABLE_PYTHON=OFF -Donnxruntime_BUILD_CSHARP=OFF -Donnxruntime_BUILD_SHARED_LIB=ON -Donnxruntime_USE_EIGEN_FOR_BLAS=ON -Donnxruntime_USE_OPENBLAS=OFF -Donnxruntime_USE_ACL=ON -Donnxruntime_USE_DNNL=OFF -Donnxruntime_USE_MKLML=OFF -Donnxruntime_USE_OPENMP=ON -Donnxruntime_USE_TVM=OFF -Donnxruntime_USE_LLVM=OFF -Donnxruntime_ENABLE_MICROSOFT_INTERNAL=OFF -Donnxruntime_USE_BRAINSLICE=OFF -Donnxruntime_USE_NUPHAR=OFF -Donnxruntime_USE_EIGEN_THREADPOOL=OFF -Donnxruntime_BUILD_UNIT_TESTS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo
 ```
 The ```-Donnxruntime_USE_ACL=ON``` option will use, by default, the 19.05 version of the Arm Compute Library. To set the right version you can use:
-```-Donnxruntime_USE_ACL_1902=ON```, ```-Donnxruntime_USE_ACL_1905=ON``` or ```-Donnxruntime_USE_ACL_1908=ON```;
+```-Donnxruntime_USE_ACL_1902=ON```, ```-Donnxruntime_USE_ACL_1905=ON```, ```-Donnxruntime_USE_ACL_1908=ON``` or ```-Donnxruntime_USE_ACL_2002=ON```;
 
 2. Build ONNX Runtime library, test and performance application:
 ```
@@ -514,6 +566,10 @@ The Relu operator is set by default to use the CPU execution provider for better
 ```
 ./build.sh --use_armnn --armnn_relu
 ```
+The Batch Normalization operator is set by default to use the CPU execution provider. To use the ArmNN implementation build with --armnn_bn flag
+```
+./build.sh --use_armnn --armnn_bn
+```
 
 ---
 
@@ -568,7 +624,7 @@ The Vitis-AI execution provider is only supported on Linux.
 .\build.bat --use_openmp
 ```
 
-##### Linux
+##### Linux/macOS
 ```
 ./build.sh --use_openmp
 
@@ -599,26 +655,35 @@ The Vitis-AI execution provider is only supported on Linux.
 OnnxRuntime supports build options for enabling debugging of intermediate tensor shapes and data.
 
 #### Build Instructions
-Set onnxruntime_DEBUG_NODE_INPUTS_OUTPUT to one of the values below.
+Set onnxruntime_DEBUG_NODE_INPUTS_OUTPUT to build with this enabled.
 
-**Linux** 
+**Linux**
 ```
-./build.sh --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=VALUE
+./build.sh --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1
 ```
 
 **Windows**
 ```
-.\build.bat --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=VALUE
+.\build.bat --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1
 ```
 
-Values:
-* **0**: Disables this functionality if previously enabled; alternatively, delete CMakeCache.txt instead of setting this to 0
-* **1**: Dump tensor input/output shapes for all nodes to stdout
-* **2**: Dump tensor input/output shapes and output data for all nodes to stdout
+#### Configuration
+The debug dump behavior can be controlled with several environment variables.
+See [onnxruntime/core/framework/debug_node_inputs_outputs_utils.h](./onnxruntime/core/framework/debug_node_inputs_outputs_utils.h) for details.
 
+##### Examples
 
+To specify that node output data should be dumped (to stdout by default), set this environment variable:
+```
+ORT_DEBUG_NODE_IO_DUMP_OUTPUT_DATA=1
+```
 
-
+To specify that node output data should be dumped to files for nodes with name "Foo" or "Bar", set these environment variables:
+```
+ORT_DEBUG_NODE_IO_DUMP_OUTPUT_DATA=1
+ORT_DEBUG_NODE_IO_NODE_NAME_FILTER="Foo;Bar"
+ORT_DEBUG_NODE_IO_DUMP_DATA_TO_FILES=1
+```
 
 ---
 
@@ -657,7 +722,7 @@ The build process can take hours.
 
 This option is very fast and allows the package to be built in minutes, but is challenging to setup. If you have a large code base (e.g. you are adding a new execution provider to onnxruntime), this may be the only feasible method.
 
-##### 1. Get the corresponding toolchain. 
+##### 1. Get the corresponding toolchain.
 TLDR; Go to https://www.linaro.org/downloads/, get "64-bit Armv8 Cortex-A, little-endian" and "Linux Targeted", not "Bare-Metal Targeted". Extract it to your build machine and add the bin folder to your $PATH env. Then skip this part.
 
 You can use [GCC](https://gcc.gnu.org/) or [Clang](http://clang.llvm.org/). Both work, but instructions here are based on GCC.
@@ -682,7 +747,7 @@ Thread model: single
 gcc version 9.2.1 20190827 (Red Hat Cross 9.2.1-3) (GCC)
 ```
 
-Check the value of `--build`, `--host`, `--target`, and if it has special args like `--with-arch=armv8-a`, `--with-arch=armv6`, `--with-tune=arm1176jz-s`, `--with-fpu=vfp`, `--with-float=hard`. 
+Check the value of `--build`, `--host`, `--target`, and if it has special args like `--with-arch=armv8-a`, `--with-arch=armv6`, `--with-tune=arm1176jz-s`, `--with-fpu=vfp`, `--with-float=hard`.
 
 You must also know what kind of flags your target hardware need, which can differ greatly. For example, if you just get the normal ARMv7 compiler and use it for Raspberry Pi V1 directly, it won't work because Raspberry Pi only has ARMv6. Generally every hardware vendor will provide a toolchain; check how that one was built.
 
@@ -694,33 +759,33 @@ A target env is identifed by:
 * ABI: ARM has mutilple ABIs like eabi, eabihf...
 
 You can get all these information from the previous output, please be sure they are all correct.
-    
-##### 2. Get a pre-compiled protoc:    
+
+##### 2. Get a pre-compiled protoc:
    Get this from https://github.com/protocolbuffers/protobuf/releases/download/v3.11.2/protoc-3.11.2-linux-x86_64.zip and unzip after downloading.
    The version must match the one onnxruntime is using. Currently we are using 3.11.2.
-   
+
 ##### 3. (Optional) Setup sysroot to enable python extension. *Skip if not using Python.*
-   
+
    Dump the root file system of the target operating system to your build machine. We'll call that folder "sysroot" and use it for build onnxruntime python extension. Before doing that, you should install python3 dev package(which contains the C header files) and numpy python package on the target machine first.
-   
+
    Below are some examples.
-   
+
    If the target OS is raspbian-buster, please download the RAW image from [their website](https://www.raspberrypi.org/downloads/raspbian/) then run:
-```bash   
-$ fdisk -l 2020-02-13-raspbian-buster.img   
-```   
-Disk 2020-02-13-raspbian-buster.img: 3.54 GiB, 3787456512 bytes, 7397376 sectors    
-Units: sectors of 1 * 512 = 512 bytes    
-Sector size (logical/physical): 512 bytes / 512 bytes    
-I/O size (minimum/optimal): 512 bytes / 512 bytes    
-Disklabel type: dos    
-Disk identifier: 0xea7d04d6    
-  
+```bash
+$ fdisk -l 2020-02-13-raspbian-buster.img
+```
+Disk 2020-02-13-raspbian-buster.img: 3.54 GiB, 3787456512 bytes, 7397376 sectors
+Units: sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+Disklabel type: dos
+Disk identifier: 0xea7d04d6
+
 | Device                          | Boot | Start  | End     | Sectors | Size | Id | Type            |
 |---------------------------------|------|--------|---------|---------|------|----|-----------------|
 | 2020-02-13-raspbian-buster.img1 |      | 8192   | 532479  | 524288  | 256M | c  | W95 FAT32 (LBA) |
 | 2020-02-13-raspbian-buster.img2 |      | 532480 | 7397375 | 6864896 | 3.3G | 83 | Linux           |
-    
+
 You'll find the the root partition starts at the 532480 sector, which is 532480 \* 512=272629760 bytes from the beginning.
 
 Then run:
@@ -784,17 +849,17 @@ docker export 5a796e98db05 -o manylinux2014_aarch64.tar
 
 ##### 4. Generate CMake toolchain file
    Save the following content as tool.cmake
-   
+
 ```cmake
-    SET(CMAKE_SYSTEM_NAME Linux)    
-    SET(CMAKE_SYSTEM_VERSION 1)    
-    SET(CMAKE_C_COMPILER aarch64-linux-gnu-gcc)    
-    SET(CMAKE_CXX_COMPILER aarch64-linux-gnu-g++)            
-    SET(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)    
-    SET(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)    
-    SET(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)    
-    SET(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)    
-    SET(CMAKE_FIND_ROOT_PATH /mnt/pi)    
+    SET(CMAKE_SYSTEM_NAME Linux)
+    SET(CMAKE_SYSTEM_VERSION 1)
+    SET(CMAKE_C_COMPILER aarch64-linux-gnu-gcc)
+    SET(CMAKE_CXX_COMPILER aarch64-linux-gnu-g++)
+    SET(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+    SET(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+    SET(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+    SET(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
+    SET(CMAKE_FIND_ROOT_PATH /mnt/pi)
 ```
 If you don't have a sysroot, you can delete the last line.
 
@@ -850,10 +915,10 @@ pip3 install numpy
 # Build the latest cmake
 mkdir /code
 cd /code
-wget https://cmake.org/files/v3.13/cmake-3.13.5.tar.gz;
-tar zxf cmake-3.13.5.tar.gz
+wget https://cmake.org/files/v3.13/cmake-3.16.1.tar.gz;
+tar zxf cmake-3.16.1.tar.gz
 
-cd /code/cmake-3.13.5
+cd /code/cmake-3.16.1
 ./configure --system-curl
 make
 sudo make install
@@ -890,54 +955,54 @@ ls -l /code/onnxruntime/build/Linux/MinSizeRel/dist/*.whl
 
 #### Prerequisites
 
-The SDK and NDK packages can be installed via Android Studio or the sdkmanager command line tool. 
-Android Studio is more convenient but a larger installation. 
+The SDK and NDK packages can be installed via Android Studio or the sdkmanager command line tool.
+Android Studio is more convenient but a larger installation.
 The command line tools are smaller and usage can be scripted, but are  a little more complicated to setup. They also require a Java runtime environment to be available.
 
-General Info:  
+General Info:
   - API levels: https://developer.android.com/guide/topics/manifest/uses-sdk-element.html
   - Android ABIs: https://developer.android.com/ndk/guides/abis
   - System Images: https://developer.android.com/topic/generic-system-image
 
 ##### Android Studio
 
-Install Android Studio from https://developer.android.com/studio 
+Install Android Studio from https://developer.android.com/studio
 
 Install any additional SDK Platforms if necessary
   - File->Settings->Appearance & Behavior->System Settings->Android SDK to see what is currently installed
-    - Note that the SDK path you need to use as --android_sdk_path when building ORT is also on this configuration page 
+    - Note that the SDK path you need to use as --android_sdk_path when building ORT is also on this configuration page
     - Most likely you don't require additional SDK Platform packages as the latest platform can target earlier API levels.
 
 Install an NDK version
   - File->Settings->Appearance & Behavior->System Settings->Android SDK
     - 'SDK Tools' tab
-      - Select 'Show package details' checkbox at the bottom to see specific versions. 
+      - Select 'Show package details' checkbox at the bottom to see specific versions.
         By default the latest will be installed which should be fine.
   - The NDK path will be the 'ndk/{version}' subdirectory of the SDK path shown
     - e.g. if 21.1.6352462 is installed it will be {SDK path}/ndk/21.1.6352462
 
-##### sdkmanager from command line tools 
+##### sdkmanager from command line tools
   - If necessary install the Java Runtime Environment and set the JAVA_HOME environment variable to point to it
     - https://www.java.com/en/download/
     - Windows note: You MUST install the 64-bit version (https://www.java.com/en/download/manual.jsp) otherwise sdkmanager will only list x86 packages
-      and the latest NDK is x64 only. 
-  - For sdkmanager to work it needs a certain directory structure. 
+      and the latest NDK is x64 only.
+  - For sdkmanager to work it needs a certain directory structure.
     First create the top level directory for the Android infrastructure.
     - in our example we'll call that `.../Android/`
-  - Download the command line tools from the 'Command line tools only' section towards the bottom 
+  - Download the command line tools from the 'Command line tools only' section towards the bottom
     of https://developer.android.com/studio
   - Create a directory called 'cmdline-tools' under your top level directory
     - giving `.../Android/cmdline-tools`
   - extract the 'tools' directory from the command line tools zip file into this directory
     - giving `.../Android/cmdline-tools/tools`
-    - Windows note: preferably extract using 7-zip. 
-      If using the built in Windows zip extract tool you will need to fix the directory structure 
-      by moving the jar files from `tools\lib\_` up to `tools\lib` 
+    - Windows note: preferably extract using 7-zip.
+      If using the built in Windows zip extract tool you will need to fix the directory structure
+      by moving the jar files from `tools\lib\_` up to `tools\lib`
       - See https://stackoverflow.com/questions/27364963/could-not-find-or-load-main-class-com-android-sdkmanager-main
   - you should now be able to run Android/cmdline-tools/bin/sdkmanager[.bat] successfully
-    - if you see an error about it being unable to save settings and the sdkmanager help text, 
+    - if you see an error about it being unable to save settings and the sdkmanager help text,
       your directory structure is incorrect.
-      - see the final steps in this answer to double check: https://stackoverflow.com/a/61176718 
+      - see the final steps in this answer to double check: https://stackoverflow.com/a/61176718
 
   - Run `.../Android/cmdline-tools/bin/sdkmanager --list` to see the packages available
 
@@ -946,7 +1011,7 @@ Install an NDK version
       - e.g. `sdkmanager --install "platforms;android-29"`
     - This will install into the 'platforms' directory of our top level directory
       - so the 'Android' directory in our example
-    - The SDK path to use as --android_sdk_path when building is this top level directory 
+    - The SDK path to use as --android_sdk_path when building is this top level directory
 
   - Install the NDK
     - Find the available NDK versions by running `sdkmanager --list`
@@ -956,11 +1021,11 @@ Install an NDK version
         - NDK path in our example with this install would be `.../Android/ndk/21.1.6352462`
       - NOTE: If you install the ndk-bundle package the path will be `.../Android/ndk-bundle` as there's no version number
 
-#### Build Instructions
+#### Android Build Instructions
 
 ##### Cross compiling on Windows
 
-The [Ninja](https://ninja-build.org/) generator needs to be used to build on Windows as the Visual Studio generator doesn't support Android. 
+The [Ninja](https://ninja-build.org/) generator needs to be used to build on Windows as the Visual Studio generator doesn't support Android.
 
 ```
 ./build.bat --android --android_sdk_path <android sdk path> --android_ndk_path <android ndk path> --android_abi <android abi, e.g., arm64-v8a (default) or armeabi-v7a> --android_api <android api level, e.g., 27 (default)> --cmake_generator Ninja
@@ -971,14 +1036,90 @@ e.g. using the paths from our example
 ./build.bat --android --android_sdk_path .../Android --android_ndk_path .../Android/ndk/21.1.6352462 --android_abi arm64-v8a --android_api 27 --cmake_generator Ninja
 ```
 
-##### Cross compiling on Linux
+##### Cross compiling on Linux and macOS
 
 ```
 ./build.sh --android --android_sdk_path <android sdk path> --android_ndk_path <android ndk path> --android_abi <android abi, e.g., arm64-v8a (default) or armeabi-v7a> --android_api <android api level, e.g., 27 (default)>
 ```
-Android Archive (AAR) files, which can be imported directly in Android Studio, will be generated in your_build_dir/java/build/outputs/aar.
 
-If you want to use NNAPI Execution Provider on Android, see [docs/execution_providers/NNAPI-ExecutionProvider.md](/docs/execution_providers/NNAPI-ExecutionProvider.md).
+##### Build Android Archive (AAR)
+
+Android Archive (AAR) files, which can be imported directly in Android Studio, will be generated in your_build_dir/java/build/outputs/aar, by using the above building commands with `--build_java`
+
+#### Android NNAPI Execution Provider
+
+If you want to use NNAPI Execution Provider on Android, see [NNAPI Execution Provider](/docs/execution_providers/NNAPI-ExecutionProvider.md).
+
+##### Build Instructions
+
+Android NNAPI Execution Provider can be built using building commands in [Android Build instructions](#android-build-instructions) with `--use_nnapi`
+
+---
+
+### iOS
+
+#### Prerequisites
+* A Mac computer with latest macOS
+* Xcode, https://developer.apple.com/xcode/
+* CMake, https://cmake.org/download/
+* Python 3, https://www.python.org/downloads/mac-osx/
+
+#### General Info:
+* iOS Platforms
+
+   The following two platforms are supported
+   * iOS device (iPhone, iPad) with arm64 architecture
+   * iOS simulator with x86_64 architecture
+
+   armv7, armv7s and i386 architectures are not currently supported.
+
+   tvOS and watchOS platforms are not currently supported.
+* apple_deploy_target
+
+   Specify the minimum version of the target platform (iOS) on which the target binaries are to be deployed.
+* Code Signing
+
+   If the development team ID which has a valid code signing certificate is specified, Xcode will code sign the onnxruntime library in the building process, otherwise, the onnxruntime will be built without code signing. It may be required or desired to code sign the library for iOS devices. For more information, see [Code Signing](https://developer.apple.com/support/code-signing/).
+
+#### Build Instructions
+Run one of the following build scripts from the ONNX Runtime repository root,
+##### Cross build for iOS simulator
+```
+./build.sh --config <Release|Debug|RelWithDebInfo|MinSizeRel> --use_xcode \
+           --ios --ios_sysroot iphonesimulator --osx_arch x86_64 --apple_deploy_target <minimal iOS version>
+```
+##### Cross build for iOS device
+```
+./build.sh --config <Release|Debug|RelWithDebInfo|MinSizeRel> --use_xcode \
+           --ios --ios_sysroot iphoneos --osx_arch arm64 --apple_deploy_target <minimal iOS version>
+```
+##### Cross build for iOS device and code sign the library
+```
+./build.sh --config <Release|Debug|RelWithDebInfo|MinSizeRel> --use_xcode \
+           --ios --ios_sysroot iphoneos --osx_arch arm64 --apple_deploy_target <minimal iOS version> \
+           --xcode_code_signing_team_id <Your Apple developmemt team ID>
+```
+---
+
+### AMD MIGraphX
+
+See more information on the MIGraphX Execution Provider [here](./docs/execution_providers/MIGraphX-ExecutionProvider.md).
+
+#### Prerequisites
+* Install [ROCM](https://rocmdocs.amd.com/en/latest/Installation_Guide/Installation-Guide.html)
+   * The MIGraphX execution provider for ONNX Runtime is built and tested with ROCM3.3
+* Install [MIGraphX](https://github.com/ROCmSoftwarePlatform/AMDMIGraphX)
+   * The path to MIGraphX installation must be provided via the `--migraphx_home parameter`.
+
+#### Build Instructions
+
+##### Linux
+
+```
+./build.sh --config <Release|Debug|RelWithDebInfo> --use_migraphx --migraphx_home <path to MIGraphX home>
+```
+
+Dockerfile instructions are available [here](./dockerfiles#migraphx)
 
 ***
 
@@ -987,19 +1128,14 @@ If you want to use NNAPI Execution Provider on Android, see [docs/execution_prov
 
 The default NVIDIA GPU build requires CUDA runtime libraries installed on the system:
 
-* CUDA 10.1
-* cuDNN 7.6.2
-* NCCL v2.4.8 (download v2.4.8 from the Legacy downloads page)
-* OpenMPI 4.0.0.0
-```
-wget https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.0.tar.gz
-tar zxf openmpi-4.0.0.tar.gz
-cd openmpi-4.0.0
-./configure --enable-orterun-prefix-by-default
-make -j $(nproc) all
-sudo make install
-sudo ldconfig
-```
+* [CUDA](https://developer.nvidia.com/cuda-toolkit) 10.2
+* [cuDNN](https://developer.nvidia.com/cudnn) 8.0
+* [NCCL](https://developer.nvidia.com/nccl) 2.7
+* [OpenMPI](https://www.open-mpi.org/) 4.0.4
+  * See [install_openmpi.sh](./tools/ci_build/github/linux/docker/scripts/install_openmpi.sh)
+
+These dependency versions should reflect what is in [Dockerfile.training](./dockerfiles/Dockerfile.training).
+
 ## Build instructions
 
 1. Checkout this code repo with `git clone https://github.com/microsoft/onnxruntime`

@@ -54,9 +54,16 @@ enum class ArenaExtendStrategy : int32_t {
 // all requests to allocate memory go through this interface.
 class BFCArena : public IArenaAllocator {
  public:
-  BFCArena(std::unique_ptr<IDeviceAllocator> resource_allocator,
+  static const ArenaExtendStrategy DEFAULT_ARENA_EXTEND_STRATEGY = ArenaExtendStrategy::kNextPowerOfTwo;
+  static const int DEFAULT_INITIAL_CHUNK_SIZE_BYTES = 1048576;
+  static const int DEFAULT_MAX_DEAD_BYTES_PER_CHUNK = 128 * 1024 * 1024;
+  static const size_t DEFAULT_MAX_MEM = std::numeric_limits<size_t>::max();
+
+  BFCArena(std::unique_ptr<IAllocator> resource_allocator,
            size_t total_memory,
-           ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo);
+           ArenaExtendStrategy arena_extend_strategy = DEFAULT_ARENA_EXTEND_STRATEGY,
+           int initial_chunk_size_bytes = DEFAULT_INITIAL_CHUNK_SIZE_BYTES,
+           int max_dead_bytes_per_chunk = DEFAULT_MAX_DEAD_BYTES_PER_CHUNK);
 
   ~BFCArena() override;
 
@@ -76,10 +83,6 @@ class BFCArena : public IArenaAllocator {
 
   size_t Max() const override {
     return memory_limit_;
-  }
-
-  const OrtMemoryInfo& Info() const override {
-    return info_;
   }
 
   FencePtr CreateFence(const SessionState* session_state) override {
@@ -430,7 +433,7 @@ class BFCArena : public IArenaAllocator {
   // The size of the current region allocation.
   SafeInt<size_t> curr_region_allocation_bytes_;
 
-  std::unique_ptr<IDeviceAllocator> device_allocator_;
+  std::unique_ptr<IAllocator> device_allocator_;
 
   mutable OrtMutex lock_;
 
@@ -445,9 +448,10 @@ class BFCArena : public IArenaAllocator {
 
   AllocatorStats stats_;
 
-  OrtMemoryInfo info_;
-
   std::unordered_map<void*, size_t> reserved_chunks_;
+
+  const int initial_chunk_size_bytes_;
+  const int max_dead_bytes_per_chunk_;
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(BFCArena);
 };

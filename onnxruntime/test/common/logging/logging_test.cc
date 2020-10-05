@@ -123,9 +123,9 @@ TEST_F(LoggingTestsFixture, TestLoggerFiltering) {
   MockSink* sink_ptr = new MockSink();
 
   int num_expected_calls = 2;
-#ifndef NDEBUG
-  ++num_expected_calls;  // VLOG output enabled in DEBUG
-#endif
+  if (logging::vlog_enabled) {
+    ++num_expected_calls;
+  }
   EXPECT_CALL(*sink_ptr, SendImpl(testing::_, HasSubstr(logid), testing::_))  // Property(&Capture::Severity, Ge(min_log_level))))
       .Times(num_expected_calls)
       .WillRepeatedly(PrintArgs());
@@ -145,18 +145,20 @@ TEST_F(LoggingTestsFixture, TestLoggerFiltering) {
 /// <summary>
 /// Tests that the logging manager constructor validates its usage correctly.
 /// </summary>
+#if !defined(ORT_NO_EXCEPTIONS)
 TEST_F(LoggingTestsFixture, TestLoggingManagerCtor) {
   // throw if sink is null
   EXPECT_THROW((LoggingManager{std::unique_ptr<ISink>{nullptr}, Severity::kINFO, false,
                                InstanceType::Temporal}),
-               std::logic_error);
+               ::onnxruntime::OnnxRuntimeException);
 
   // can't have two logging managers with InstanceType of Default.
   // this should clash with LoggingTestsFixture::default_logging_manager_
   EXPECT_THROW((LoggingManager{std::unique_ptr<ISink>{new MockSink{}}, Severity::kINFO, false,
                                InstanceType::Default}),
-               std::logic_error);
+               ::onnxruntime::OnnxRuntimeException);
 }
+#endif
 
 /// <summary>
 /// Tests that the conditional logging macros work correctly.

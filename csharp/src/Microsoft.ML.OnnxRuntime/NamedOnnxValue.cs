@@ -1,17 +1,18 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-using System;
-using System.Collections.Generic;
-using System.Text;
 using Microsoft.ML.OnnxRuntime.Tensors;
+using System;
 using System.Buffers;
-using System.Collections;
-using System.Diagnostics;
-using System.Runtime.InteropServices;
+using System.Collections.Generic;
+using System.Runtime.InteropServices.ComTypes;
 
 namespace Microsoft.ML.OnnxRuntime
 {
+    /// <summary>
+    /// The name of the class is a misnomer, it does not hold any
+    /// Onnx values
+    /// </summary>
     public class NamedOnnxValue
     {
         protected Object _value;
@@ -69,13 +70,9 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="onnxValue"></param>
         /// <param name="pinnedMemoryHandle"></param>
         /// <param name="disposeOnnxValueAfterUse"></param>
-        internal virtual void ToNativeOnnxValue(
-            out IntPtr onnxValue,
-            out MemoryHandle pinnedMemoryHandle,
-            out bool disposeOnnxValueAfterUse)
+        internal virtual OrtValue ToOrtValue(out MemoryHandle? pinnedMemoryHandle)
         {
-            NativeOnnxValueHelper.CreateNativeOnnxValue(_value, out onnxValue, out pinnedMemoryHandle, out OnnxValueType onnxValueType, out TensorElementType elementType);
-            disposeOnnxValueAfterUse = true;
+            return OrtValue.CreateFromTensorObject(_value, out pinnedMemoryHandle, out TensorElementType elementType);
         }
 
         // may expose different types of getters in future

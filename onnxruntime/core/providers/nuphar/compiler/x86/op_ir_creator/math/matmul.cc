@@ -134,6 +134,7 @@ static bool MatMulF32ExternCPU(
   const std::vector<int32_t>* p_permute_B = nullptr;
   tvm::Tensor root_A = find_transposed_input(A, permute_A);
   tvm::Tensor root_B = find_transposed_input(B, permute_B);
+  bool transA = false;
   if (A->shape.size() == B->shape.size() && A->shape.size() >= 2) {
     // currently only fuse Transpose into MatMul when rank(A) == rank(B)
     // make sure no broadcasting in MatMul
@@ -146,6 +147,8 @@ static bool MatMulF32ExternCPU(
     }
     if (no_broadcast) {
       if (CanPermuteBeFusedInMatMul(permute_A)) {
+        if (A != root_A)
+          transA = true;
         A = root_A;
         p_permute_A = &permute_A;
       }
@@ -161,7 +164,7 @@ static bool MatMulF32ExternCPU(
     // matmul with initializer, using transpose weights
     auto layout_key = tvm_codegen::WeightLayoutTranspose2D::GetKey(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
     auto actual_B = ctx_nuphar->ApplyWeightLayout(layout_key, B_name, B, true);
-    return nuphar::GemmExternCpu(A, actual_B, Y, false, true, B_name);
+    return nuphar::GemmExternCpu(A, actual_B, Y, transA, true, B_name);
   } else {
     return nuphar::MatMulExternCpu(A, B, Y, p_permute_A, p_permute_B, node.Name() + "_matmul_extern");
   }

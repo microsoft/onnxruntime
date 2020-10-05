@@ -1,0 +1,122 @@
+# This CI has 4 major steps
+# 1. Build full ORT, install the full ORT python wheel and use it to generate ort format test models
+#    and include ops config file for step 3
+# 2. Build minimal ORT including all the kernels and disable exceptions.
+#    This step is build only to safe-guard the --disable_exceptions option.
+# 3. Build minimal ORT include only the kernels using the include ops config file from step 1,
+#    and the models from <repo root>/onnxruntime/test/testdata/, run UT, and use onnx_test_runner to
+#    test the ort format models generated in step 1.
+#    Exceptions are enabled in this step to help debugging in case of CI failure.
+# 4. Build baseline minimal ORT for Android arm64-v8a including no kernels and disable exceptions
+#    This step is to report the baseline binary size for Android
+jobs:
+- job: Linux_CPU_Minimal_Build_E2E
+  timeoutInMinutes: 120
+  workspace:
+    clean: all
+  pool: Linux-CPU
+  steps:
+  - checkout: self
+    clean: true
+    submodules: recursive
+
+  - task: Docker@2
+    displayName: login
+    inputs:
+      containerRegistry: onnxruntimeregistry
+      command: login
+      addPipelineData: false
+  - task: CmdLine@2
+    displayName: Build full onnxruntime and generate ORT format test files
+    inputs:
+      script: |
+        # Create a folder for all test data
+        mkdir -p $HOME/.test_data
+        docker run --rm \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --volume $HOME/.test_data:/home/onnxruntimedev/.test_data \
+          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
+          -e NIGHTLY_BUILD \
+          -e BUILD_BUILDNUMBER \
+          onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecentoscpubuild:ch5g \
+            /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_full_ort_and_create_ort_files.sh
+      workingDirectory: $(Build.SourcesDirectory)
+  - task: CmdLine@2
+    displayName: Build minimal onnxruntime and disable exception
+    inputs:
+      script: |
+        # We will try to build the ORT minimal with exception disabled
+        # Only the building process is verified here, no test will be performed
+        docker run --rm \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
+          -e NIGHTLY_BUILD \
+          -e BUILD_BUILDNUMBER \
+          onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecentoscpubuild:ch5g \
+            python3 /onnxruntime_src/tools/ci_build/build.py \
+              --build_dir /build --cmake_generator Ninja \
+              --config Debug\
+              --skip_submodule_sync \
+              --build_shared_lib \
+              --parallel \
+              --skip_tests \
+              --minimal_build \
+              --disable_exceptions
+      workingDirectory: $(Build.SourcesDirectory)
+  - task: CmdLine@2
+    displayName: Build minimal onnxruntime and run tests, exception enabled
+    inputs:
+      script: |
+        docker run --rm \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --volume $HOME/.test_data:/home/onnxruntimedev/.test_data \
+          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
+          -e NIGHTLY_BUILD \
+          -e BUILD_BUILDNUMBER \
+          onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecentoscpubuild:ch5g \
+            /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_and_run_tests.sh
+      workingDirectory: $(Build.SourcesDirectory)
+  - task: CmdLine@2
+    displayName: Build onnxruntime minimal baseline for Android arm64-v8a and report binary size
+    inputs:
+      script: |
+        # Create a folder for all test data
+        mkdir -p $HOME/.test_data
+        docker run --rm \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --volume $ANDROID_HOME:/android_home \
+          --volume $HOME/.test_data:/home/onnxruntimedev/.test_data \
+          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
+          -e NIGHTLY_BUILD \
+          -e BUILD_BUILDNUMBER \
+          -e BUILD_SOURCEVERSION=$(Build.SourceVersion) \
+          -e BUILD_ID=$(Build.BuildId) \
+          -e DASHBOARD_MYSQL_ORT_PASSWORD=$(dashboard-mysql-ort-password) \
+          onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecentoscpubuild:ch5g \
+            /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_android_baseline_and_report_bin_size.sh
+      workingDirectory: $(Build.SourcesDirectory)
+  - task: Docker@2
+    displayName: logout
+    inputs:
+      containerRegistry: onnxruntimeregistry
+      command: logout
+      addPipelineData: false
+  - task: PublishTestResults@2
+    displayName: 'Publish unit test results'
+    inputs:
+      testResultsFiles: '**/*.results.xml'
+      searchFolder: '$(Build.BinariesDirectory)'
+      testRunTitle: 'Unit Test Run'
+    condition: succeededOrFailed()
+
+  - template: templates/component-governance-component-detection-steps.yml
+    parameters:
+      condition: 'succeeded'
+
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()

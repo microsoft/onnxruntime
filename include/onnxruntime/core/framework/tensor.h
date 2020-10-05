@@ -178,6 +178,10 @@ class Tensor final {
     return static_cast<char*>(p_data_) + byte_offset_;
   }
 
+  bool OwnsBuffer() const noexcept {
+    return buffer_deleter_ != nullptr;
+  }
+
   /**
    * Resizes the tensor without touching underlying storage.
    * This requires the total size of the tensor to remains constant.

@@ -5,20 +5,12 @@
 
 #include "MLOperatorAuthorImpl.h"
 #include "FusedGraphKernel.h"
+#include "GraphKernelHelper.h"
 
 using namespace Windows::AI::MachineLearning::Adapter;
 
 namespace Dml
 {
-    template <typename T>
-    static T AlignToPow2(T offset, T alignment)
-    {
-        static_assert(std::is_unsigned_v<T>);
-        assert(alignment != 0);
-        assert((alignment & (alignment - 1)) == 0);
-        return (offset + alignment - 1) & ~(alignment - 1);
-    }
-
     class FusedGraphKernel : public onnxruntime::OpKernel
     {
     public:
@@ -73,42 +65,16 @@ namespace Dml
 
             const uint32_t graphInputCount = kernelInfo.GetInputCount();
 
-            auto gpuGraphInputConstnessGetter = [&kernelInfo, &fusedNodeInputDefs, &transferredInitializerMap](uint32_t index)
-            {
-                // Transferred initializers are uploaded to GPU memory
-                auto iter = transferredInitializerMap.find(fusedNodeInputDefs[index]->Name());
-                if (iter != transferredInitializerMap.end())
-                {
-                    return true;
-                }
-
-                // If an initializer wasn't transferred, the constant input may be available from ORT
-                const onnxruntime::Tensor* inputTensor = nullptr;
-                if (!kernelInfo.TryGetConstantInput(index, &inputTensor) || inputTensor == nullptr)
-                {
-                    return false;
-                }
-
-                // Check that the constant ORT input is in GPU memory
-                if (!strcmp(inputTensor->Location().name, onnxruntime::CPU) ||
-                    inputTensor->Location().mem_type == ::OrtMemType::OrtMemTypeCPUOutput ||
-                    inputTensor->Location().mem_type == ::OrtMemType::OrtMemTypeCPUInput)
-                {
-                    return false;
-                }
-
-                return true;
-            };
-
             m_inputsConstant.resize(graphInputCount);
             for (uint32_t i = 0; i < graphInputCount; ++i)
             {
-                m_inputsConstant[i] = gpuGraphInputConstnessGetter(i);
+              m_inputsConstant[i] = GraphKernelHelper::GetGraphInputConstness(i, kernelInfo, fusedNodeInputDefs, transferredInitializerMap);
             }
 
             GraphDescBuilder::GraphDesc graphDesc = GraphDescBuilder::BuildGraphDesc(
                 kernelInfo,
-                m_inputsConstant,
+                m_inputsConstant.data(),
+                m_inputsConstant.size(),
                 transferredInitializerMap,
                 graph,
                 fusedNodeInputDefs,
@@ -117,116 +83,28 @@ namespace Dml
                 device.Get(),
                 m_executionHandle);
 
-            // Determine the last input which uses an initializer, so initializers can be freed incrementally
-            // while processing each input in order.
-            std::map<const onnx::TensorProto*, uint32_t> initializerToLastInputIndexMap;
-            for (uint32_t i = 0; i < graphInputCount; i++)
-            {
-                auto iter = transferredInitializerMap.find(fusedNodeInputDefs[i]->Name());
-                if (iter != transferredInitializerMap.end())
-                {
-                    initializerToLastInputIndexMap[&iter->second] = i;
-                }
-		    }
-
-            // Walk through each graph edge and mark used inputs
-            m_inputsUsed.assign(graphInputCount, false);
-            for (const DML_INPUT_GRAPH_EDGE_DESC& edge : graphDesc.inputEdges)
-            {
-                m_inputsUsed[edge.GraphInputIndex] = true;
-            }
-
             // Populate input bindings for operator initialization
-            std::vector<ComPtr<ID3D12Resource>> initInputResources; // For lifetime control
+            std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> initInputResources;  // For lifetime control
             std::vector<DML_BUFFER_BINDING> initInputBindings(graphInputCount);
             m_nonOwnedGraphInputsFromInitializers.resize(graphInputCount);
-            std::vector<ComPtr<ID3D12Resource>> initializeResourceRefs;
+            std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> initializeResourceRefs;
+            
+            GraphKernelHelper::ProcessInputData(
+                m_provider.Get(),
+                m_winmlProvider.Get(),
+                m_inputsConstant,
+                kernelInfo,
+                graphDesc,
+                fusedNodeInputDefs,
+                m_inputsUsed,
+                initInputBindings,
+                initInputResources,
+                m_nonOwnedGraphInputsFromInitializers,
+                initializeResourceRefs,
+                nullptr,
+                transferredInitializerMap);
 
-            for (uint32_t i = 0; i < initInputBindings.size(); i++)
-            {
-                // If the input isn't actually used by the graph, nothing ever needs to be bound (either for
-                // initialization or execution). So just throw away the transferred initializer and skip this input.
-                if (!m_inputsUsed[i])
-                {
-                    transferredInitializerMap.erase(fusedNodeInputDefs[i]->Name());
-                    continue;
-                }
-
-                // Look for the initializer among those transferred from the graph during partitioning
-                auto iter = transferredInitializerMap.find(fusedNodeInputDefs[i]->Name());
-                if (iter != transferredInitializerMap.end())
-                {
-                    std::byte* tensorPtr = nullptr;
-                    size_t tensorByteSize = 0;
-                    std::unique_ptr<std::byte[]> unpackedTensor;
-
-                    auto& initializer = iter->second;
-
-                    // The tensor may be stored as raw data or in typed fields.
-                    if (initializer.has_raw_data())
-                    {
-                        tensorPtr = (std::byte*)(initializer.raw_data().c_str());
-                        tensorByteSize = initializer.raw_data().size();
-                    }
-                    else
-                    {
-                        std::tie(unpackedTensor, tensorByteSize) = UnpackTensor(initializer);
-                        tensorPtr = unpackedTensor.get(); 
-                    }
-
-                    // Tensor sizes in DML must be a multiple of 4 bytes large.
-                    tensorByteSize = AlignToPow2<size_t>(tensorByteSize, 4);
-
-                    if (!m_inputsConstant[i])
-                    {
-                        // Store the resource to use during execution
-                        ComPtr<ID3D12Resource> defaultBuffer = CreateResource(tensorPtr, tensorByteSize);
-                        m_nonOwnedGraphInputsFromInitializers[i] = defaultBuffer;
-                        initializeResourceRefs.push_back(std::move(defaultBuffer));
-                    }
-                    else
-                    {
-                        ComPtr<ID3D12Resource> initializeInputBuffer;
-
-                        // D3D_FEATURE_LEVEL_1_0_CORE doesn't support Custom heaps
-                        if (m_provider->IsMcdmDevice())
-                        {
-                            initializeInputBuffer = CreateResource(tensorPtr, tensorByteSize);
-                        }
-                        else
-                        {
-                            initializeInputBuffer = CreateCpuResource(tensorPtr, tensorByteSize);
-                        }
-
-                        // Set the binding for operator initialization to the buffer
-                        initInputBindings[i].Buffer = initializeInputBuffer.Get();
-                        initInputBindings[i].SizeInBytes = tensorByteSize;
-                        initializeResourceRefs.push_back(std::move(initializeInputBuffer));
-                    }
-
-                    // Free the initializer if this is the last usage of it.
-                    if (initializerToLastInputIndexMap[&initializer] == i)
-                    {
-                        transferredInitializerMap.erase(iter);
-                    }
-                }
-                else if (m_inputsConstant[i])
-                {                
-                    const onnxruntime::Tensor* inputTensor = nullptr;
-                    THROW_HR_IF(E_UNEXPECTED, !kernelInfo.TryGetConstantInput(i, &inputTensor));
-
-                    uint64_t allocId;
-                    UnwrapTensor(inputTensor, &initInputBindings[i].Buffer, &allocId);
-                    initInputBindings[i].SizeInBytes = initInputBindings[i].Buffer->GetDesc().Width;
-
-                    initInputBindings[i].Buffer->Release(); // Avoid holding an additional reference
-                    initInputResources.push_back(initInputBindings[i].Buffer);
-                }
-            }
-
-            // All initializers should have been consumed and freed above
-            assert(transferredInitializerMap.empty());
-
+            DML_GRAPH_DESC dmlGraphDesc = {};
             std::vector<DML_OPERATOR_GRAPH_NODE_DESC> dmlOperatorGraphNodes(graphDesc.nodes.size());
             std::vector<DML_GRAPH_NODE_DESC> dmlGraphNodes(graphDesc.nodes.size());
 
@@ -234,38 +112,15 @@ namespace Dml
             std::vector<DML_GRAPH_EDGE_DESC> dmlOutputEdges(graphDesc.outputEdges.size());
             std::vector<DML_GRAPH_EDGE_DESC> dmlIntermediateEdges(graphDesc.intermediateEdges.size());
 
-            for (size_t i = 0; i < graphDesc.nodes.size(); ++i)
-            {
-                dmlOperatorGraphNodes[i] = DML_OPERATOR_GRAPH_NODE_DESC{ graphDesc.nodes[i].op.Get() };
-                dmlGraphNodes[i] = DML_GRAPH_NODE_DESC{ DML_GRAPH_NODE_TYPE_OPERATOR, &dmlOperatorGraphNodes[i] };
-            }
-
-            for (size_t i = 0; i < graphDesc.inputEdges.size(); ++i)
-            {
-                dmlInputEdges[i] = DML_GRAPH_EDGE_DESC{ DML_GRAPH_EDGE_TYPE_INPUT, &graphDesc.inputEdges[i] };
-            }
-
-            for (size_t i = 0; i < graphDesc.outputEdges.size(); ++i)
-            {
-                dmlOutputEdges[i] = DML_GRAPH_EDGE_DESC{ DML_GRAPH_EDGE_TYPE_OUTPUT, &graphDesc.outputEdges[i] };
-            }
-
-            for (size_t i = 0; i < graphDesc.intermediateEdges.size(); ++i)
-            {
-                dmlIntermediateEdges[i] = DML_GRAPH_EDGE_DESC{ DML_GRAPH_EDGE_TYPE_INTERMEDIATE, &graphDesc.intermediateEdges[i] };
-            }
-
-            DML_GRAPH_DESC dmlGraphDesc = {};
-            dmlGraphDesc.InputCount = graphInputCount;
-            dmlGraphDesc.OutputCount = kernelInfo.GetOutputCount();
-            dmlGraphDesc.NodeCount = gsl::narrow_cast<uint32_t>(dmlGraphNodes.size());
-            dmlGraphDesc.Nodes = dmlGraphNodes.data();
-            dmlGraphDesc.InputEdgeCount = gsl::narrow_cast<uint32_t>(dmlInputEdges.size());
-            dmlGraphDesc.InputEdges = dmlInputEdges.data();
-            dmlGraphDesc.OutputEdgeCount = gsl::narrow_cast<uint32_t>(dmlOutputEdges.size());
-            dmlGraphDesc.OutputEdges = dmlOutputEdges.data();
-            dmlGraphDesc.IntermediateEdgeCount = gsl::narrow_cast<uint32_t>(dmlIntermediateEdges.size());
-            dmlGraphDesc.IntermediateEdges = dmlIntermediateEdges.data();
+            GraphKernelHelper::ConvertGraphDesc(
+                graphDesc, 
+                dmlGraphDesc, 
+                kernelInfo,
+                dmlOperatorGraphNodes,
+                dmlGraphNodes,
+                dmlInputEdges,
+                dmlOutputEdges,
+                dmlIntermediateEdges);
 
             DML_EXECUTION_FLAGS executionFlags = DML_EXECUTION_FLAG_NONE;
             if (graphDesc.reuseCommandList)
@@ -533,10 +388,10 @@ namespace Dml
                         const onnxruntime::Tensor* tensor = kernelContext->Input<onnxruntime::Tensor>(i);
 
                         uint64_t allocId;
-                        UnwrapTensor(tensor, &inputBindings[i].Buffer, &allocId);
+                        GraphKernelHelper::UnwrapTensor(m_winmlProvider.Get(), tensor, &inputBindings[i].Buffer, &allocId);
                         inputBindingsChanged = inputBindingsChanged || (!allocId || m_inputBindingAllocIds[i] != allocId);
                         inputBindings[i].Buffer->Release(); // Avoid holding an additional reference
-                        inputBindings[i].SizeInBytes = AlignToPow2<size_t>(tensor->SizeInBytes(), 4);
+                        inputBindings[i].SizeInBytes = GraphKernelHelper::AlignToPow2<size_t>(tensor->SizeInBytes(), 4);
                         inputBindingDescs[i] = {DML_BINDING_TYPE_BUFFER, &inputBindings[i]};
                         m_inputBindingAllocIds[i] = allocId;
                     }
@@ -570,10 +425,10 @@ namespace Dml
                     );
 
                 uint64_t allocId;
-                UnwrapTensor(tensor, &outputBindings[i].Buffer, &allocId);
+                GraphKernelHelper::UnwrapTensor(m_winmlProvider.Get(), tensor, &outputBindings[i].Buffer, &allocId);
                 outputBindingsChanged = outputBindingsChanged || (!allocId || m_outputBindingAllocIds[i] != allocId);
                 outputBindings[i].Buffer->Release(); // Avoid holding an additional reference
-                outputBindings[i].SizeInBytes = AlignToPow2<size_t>(tensor->SizeInBytes(), 4);
+                outputBindings[i].SizeInBytes = GraphKernelHelper::AlignToPow2<size_t>(tensor->SizeInBytes(), 4);
                 outputBindingDescs[i] = {DML_BINDING_TYPE_BUFFER, &outputBindings[i]};
                 m_outputBindingAllocIds[i] = allocId;
             }
@@ -621,106 +476,6 @@ namespace Dml
             m_winmlProvider->QueueReference(m_heap.Get());
             m_winmlProvider->QueueReference(m_bindingTable.Get());
             m_winmlProvider->QueueReference(m_persistentResourceAllocatorUnk.Get());
-        }
-
-        void UnwrapTensor(const onnxruntime::Tensor* tensor, ID3D12Resource** resource, uint64_t* allocId) const
-        {
-            IUnknown* allocationUnk = static_cast<IUnknown*>(const_cast<void*>(tensor->DataRaw()));
-            ComPtr<IUnknown> resourceUnk;
-            m_winmlProvider->GetABIDataInterface(false, allocationUnk, &resourceUnk);
-
-            *allocId = m_winmlProvider->TryGetPooledAllocationId(allocationUnk, 0);
-
-            THROW_IF_FAILED(resourceUnk->QueryInterface(resource));
-        }
-
-        ComPtr<ID3D12Resource> CreateResource(const std::byte* tensorPtr, size_t tensorByteSize) const
-        {
-            ComPtr<ID3D12Resource> buffer;
-
-            D3D12_HEAP_PROPERTIES heapProperties = {
-                D3D12_HEAP_TYPE_DEFAULT,
-                D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
-                D3D12_MEMORY_POOL_UNKNOWN,
-                0,
-                0
-            };
-
-            D3D12_RESOURCE_DESC resourceDesc = {
-                D3D12_RESOURCE_DIMENSION_BUFFER,
-                0,
-                static_cast<uint64_t>((tensorByteSize + 3) & ~3),
-                1,
-                1,
-                1,
-                DXGI_FORMAT_UNKNOWN,
-                { 1, 0 },
-                D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
-                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
-            };
-
-            ComPtr<ID3D12Device> d3dDevice;
-            THROW_IF_FAILED(m_provider->GetD3DDevice(d3dDevice.GetAddressOf()));
-
-            THROW_IF_FAILED(d3dDevice->CreateCommittedResource(
-                &heapProperties,
-                D3D12_HEAP_FLAG_NONE,
-                &resourceDesc,
-                D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-                nullptr,
-                IID_PPV_ARGS(buffer.GetAddressOf())
-            ));
-
-            THROW_IF_FAILED(m_provider->UploadToResource(buffer.Get(), tensorPtr, tensorByteSize));
-
-            return buffer;
-        }
-
-        ComPtr<ID3D12Resource> CreateCpuResource(const std::byte* tensorPtr, size_t tensorByteSize) const
-        {
-            ComPtr<ID3D12Resource> buffer;
-
-            D3D12_HEAP_PROPERTIES heapProperties = {
-                D3D12_HEAP_TYPE_CUSTOM,
-                D3D12_CPU_PAGE_PROPERTY_WRITE_COMBINE,
-                D3D12_MEMORY_POOL_L0,
-                0,
-                0
-            };
-
-            D3D12_RESOURCE_DESC resourceDesc = {
-                D3D12_RESOURCE_DIMENSION_BUFFER,
-                0,
-                static_cast<uint64_t>((tensorByteSize + 3) & ~3),
-                1,
-                1,
-                1,
-                DXGI_FORMAT_UNKNOWN,
-                { 1, 0 },
-                D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
-                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
-            };
-
-            ComPtr<ID3D12Device> d3dDevice;
-            THROW_IF_FAILED(m_provider->GetD3DDevice(d3dDevice.GetAddressOf()));
-
-            THROW_IF_FAILED(d3dDevice->CreateCommittedResource(
-                &heapProperties,
-                D3D12_HEAP_FLAG_NONE,
-                &resourceDesc,
-                D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-                nullptr,
-                IID_PPV_ARGS(buffer.GetAddressOf())
-            ));
-
-            // Map the buffer and copy the data
-            void* bufferData = nullptr;
-            D3D12_RANGE range = {0, tensorByteSize};
-            THROW_IF_FAILED(buffer->Map(0, &range, &bufferData));
-            memcpy(bufferData, tensorPtr, tensorByteSize);
-            buffer->Unmap(0, &range);
-
-            return buffer;
         }
 
         ComPtr<IDMLCompiledOperator> m_compiledExecutionPlanOperator;

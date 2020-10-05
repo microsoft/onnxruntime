@@ -5,6 +5,7 @@
 
 #include "gtest/gtest.h"
 
+#include "core/common/optional.h"
 #include "test/util/include/asserts.h"
 
 namespace onnxruntime {
@@ -54,33 +55,33 @@ TEST(PathTest, Parse) {
 }
 
 TEST(PathTest, ParseFailure) {
-    auto check_parse_failure =
-        [](const std::string& path_string) {
+  auto check_parse_failure =
+      [](const std::string& path_string) {
         Path p{};
         EXPECT_FALSE(Path::Parse(ToPathString(path_string), p).IsOK());
       };
 
 #ifdef _WIN32
-    check_parse_failure(R"(\\server_name_no_separator)");
-    check_parse_failure(R"(\\server_name_no_share_name\)");
-    check_parse_failure(R"(\\server_name\share_name_no_root_dir)");
+  check_parse_failure(R"(\\server_name_no_separator)");
+  check_parse_failure(R"(\\server_name_no_share_name\)");
+  check_parse_failure(R"(\\server_name\share_name_no_root_dir)");
 #else  // POSIX
-    check_parse_failure("//root_name_no_root_dir");
+  check_parse_failure("//root_name_no_root_dir");
 #endif
 }
 
 TEST(PathTest, IsEmpty) {
-    auto check_empty =
-        [](const std::string& path_string, bool is_empty) {
+  auto check_empty =
+      [](const std::string& path_string, bool is_empty) {
         Path p{};
         ASSERT_STATUS_OK(Path::Parse(ToPathString(path_string), p));
 
         EXPECT_EQ(p.IsEmpty(), is_empty);
       };
 
-    check_empty("", true);
-    check_empty(".", false);
-    check_empty("/", false);
+  check_empty("", true);
+  check_empty(".", false);
+  check_empty("/", false);
 }
 
 TEST(PathTest, IsAbsoluteOrRelative) {
@@ -221,6 +222,35 @@ TEST(PathTest, RelativePathFailure) {
   check_relative_failure("//root_0/a", "//root_1/a");
 #endif
 }
+
+#if !defined(ORT_NO_EXCEPTIONS)
+TEST(PathTest, Concat) {
+  auto check_concat =
+      [](const optional<std::string>& a, const std::string& b, const std::string& expected_a, bool expect_throw = false) {
+        Path p_a{}, p_expected_a{};
+        if (a.has_value()) {
+          ASSERT_STATUS_OK(Path::Parse(ToPathString(a.value()), p_a));
+        }
+        ASSERT_STATUS_OK(Path::Parse(ToPathString(expected_a), p_expected_a));
+
+        if (expect_throw) {
+          EXPECT_THROW(p_a.Concat(ToPathString(b)).ToPathString(), OnnxRuntimeException);
+        } else {
+          EXPECT_EQ(p_a.Concat(ToPathString(b)).ToPathString(), p_expected_a.ToPathString());
+        }
+      };
+
+  check_concat({"/a/b"}, "c", "/a/bc");
+  check_concat({"a/b"}, "cd", "a/bcd");
+  check_concat({""}, "cd", "cd");
+  check_concat({}, "c", "c");
+#ifdef _WIN32
+  check_concat({"a/b"}, R"(c\d)", "", true /* expect_throw */);
+#else
+  check_concat({"a/b"}, "c/d", "", true /* expect_throw */);
+#endif
+}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

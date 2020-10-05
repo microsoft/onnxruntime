@@ -5,6 +5,8 @@
 [![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/Linux%20CPU%20CI%20Pipeline?label=Linux+CPU)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=11)
 [![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/Linux%20GPU%20CI%20Pipeline?label=Linux+GPU)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=12)
 [![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/MacOS%20CI%20Pipeline?label=MacOS+CPU)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=13)
+[![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/orttraining-linux-ci-pipeline?label=Linux+CPU+Training)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=86)
+[![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/orttraining-linux-gpu-ci-pipeline?label=Linux+GPU+Training)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=84)
 
 **ONNX Runtime** is a cross-platform **inferencing and training accelerator** compatible with many popular ML/DNN frameworks, including PyTorch, TensorFlow/Keras, scikit-learn, and more. **[aka.ms/onnxruntime](https://aka.ms/onnxruntime)**
 
@@ -69,7 +71,7 @@ ONNX Runtime is up to date and backwards compatible with all operators (both DNN
 
 ### Binaries
 
-Official builds are available on PyPi (Python) and Nuget (C#/C/C++):
+Official builds are available on PyPi (Python), Nuget (C#/C/C++), Maven Central (Java), and npm (node.js).
 
 * Default CPU Provider (Eigen + MLAS)
 * GPU Provider - NVIDIA CUDA
@@ -78,9 +80,14 @@ Official builds are available on PyPi (Python) and Nuget (C#/C/C++):
 
 Dev builds created from the master branch are available for testing newer changes between official releases. Please use these at your own risk. We strongly advise against deploying these to production workloads as support is limited for dev builds.
 
-|Pypi (Python)|Nuget (C#/C/C++)|Other package repositories|
-|---|---|---|
-*If using pip, run `pip install --upgrade pip` prior to downloading.*<br><br>CPU: [**onnxruntime**](https://pypi.org/project/onnxruntime) / [ort-nightly (dev)](https://test.pypi.org/project/ort-nightly)<br><br>GPU: [**onnxruntime-gpu**](https://pypi.org/project/onnxruntime-gpu) / [ort-gpu-nightly (dev)](https://test.pypi.org/project/ort-gpu-nightly) | CPU: [**Microsoft.ML.OnnxRuntime**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime) / [ort-nightly (dev)](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly) <br><br>GPU: [**Microsoft.ML.OnnxRuntime.Gpu**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.gpu) / [ort-nightly (dev)](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly)</li></ul>|[Contributed non-official packages](https://docs.microsoft.com/en-us/windows/ai/windows-ml/get-started-uwp) (including Homebrew, Linuxbrew, and nixpkgs)<br><br>*These are not maintained by the core ONNX Runtime team and may have limited support; use at your discretion.*|
+|Repository|Details|
+|---|---|
+|Pypi (Python)|*If using pip, run `pip install --upgrade pip` prior to downloading.*<br>CPU: [**onnxruntime**](https://pypi.org/project/onnxruntime) / [ort-nightly (dev)](https://test.pypi.org/project/ort-nightly)<br>GPU: [**onnxruntime-gpu**](https://pypi.org/project/onnxruntime-gpu) / [ort-gpu-nightly (dev)](https://test.pypi.org/project/ort-gpu-nightly)|
+|Nuget (C#/C/C++)|CPU: [**Microsoft.ML.OnnxRuntime**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime) / [ort-nightly (dev)](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly) <br>GPU: [**Microsoft.ML.OnnxRuntime.Gpu**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.gpu) / [ort-nightly (dev)](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly)</li></ul>|
+|Maven Central (Java)|CPU: [**com.microsoft.onnxruntime/onnxruntime**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime)<br>GPU: [**com.microsoft.onnxruntime/onnxruntime_gpu**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu)|
+|npm (node.js)|CPU: [**onnxruntime**](https://www.npmjs.com/package/onnxruntime)|
+|Other|[Contributed non-official packages](https://docs.microsoft.com/en-us/windows/ai/windows-ml/get-started-uwp) (including Homebrew, Linuxbrew, and nixpkgs)<br>*These are not maintained by the core ONNX Runtime team and may have limited support; use at your discretion.*|
+
 
 #### System Requirements
 
@@ -101,10 +108,11 @@ The following are required for usage of the official published packages.
     * For Windows, **OpenMP** support comes as part of VC runtime. It is also available as redist packages:
       [vc_redist.x64.exe](https://aka.ms/vs/16/release/vc_redist.x64.exe) and [vc_redist.x86.exe](https://aka.ms/vs/16/release/vc_redist.x86.exe)
     * For Linux, the system must have **libgomp.so.1** which can be installed using `apt-get install libgomp1`.
+    * For Mac OS X, the system must have **libomp.dylib** which can be installed using `brew install libomp`.
 
 * Default GPU (CUDA)
   * The default GPU build requires CUDA runtime libraries being installed on the system:
-    * Version: **CUDA 10.1** and **cuDNN 7.6.5**
+    * Version: **CUDA 10.2** and **cuDNN 8.0.3**
   * Version dependencies from older ONNX Runtime releases can be found in [prior release notes](https://github.com/microsoft/onnxruntime/releases).
 
 ### Build from Source
@@ -122,12 +130,12 @@ For production scenarios, it's strongly recommended to build only from an [offic
 
 |API|Supported Versions|Samples|
 |---|---|---|
-[Python](https://aka.ms/onnxruntime-python)| 3.5, 3.6, 3.7<br>[Python Dev Notes](./docs/Python_Dev_Notes.md)| [Samples](./samples#python)|
+[Python](https://aka.ms/onnxruntime-python)| 3.5, 3.6, 3.7, 3.8 (3.8 excludes Win GPU and Linux ARM)<br>[Python Dev Notes](./docs/Python_Dev_Notes.md)| [Samples](./samples#python)|
 |[C#](docs/CSharp_API.md)| | [Samples](./samples#C)|
 |[C++](./include/onnxruntime/core/session/onnxruntime_cxx_api.h)| |[Samples](./samples#CC)|
 |[C](docs/C_API.md)| | [Samples](./samples#CC)|
 |[WinRT](docs/WinRT_API.md) | [Windows.AI.MachineLearning](https://docs.microsoft.com/en-us/windows/ai/windows-ml/api-reference)| [Samples](https://github.com/microsoft/windows-Machine-Learning)|
-|[Java](docs/Java_API.md)|8-13|[Samples](./samples#Java)| 
+|[Java](docs/Java_API.md)|8+|[Samples](./samples#Java)| 
 [Ruby](https://github.com/ankane/onnxruntime) (external project)| 2.4-2.7| [Samples](https://ankane.org/tensorflow-ruby)|
 |[Javascript (node.js)](./nodejs) |12.x | [Samples](./nodejs/examples/README.md) |
 
@@ -137,7 +145,7 @@ For production scenarios, it's strongly recommended to build only from an [offic
 
 |CPU|GPU|IoT/Edge/Mobile|Other|
 |---|---|---|---|
-|<ul><li>Default CPU - *MLAS (Microsoft Linear Algebra Subprograms) + Eigen*</li><li>[Intel DNNL](./docs/execution_providers/DNNL-ExecutionProvider.md)</li><li>[Intel nGraph](./docs/execution_providers/nGraph-ExecutionProvider.md)</li><li>Intel MKL-ML *(build option)*</li></ul>|<ul><li>NVIDIA CUDA</li><li>[NVIDIA TensorRT](./docs/execution_providers/TensorRT-ExecutionProvider.md)</li><li>[DirectML](./docs/execution_providers/DirectML-ExecutionProvider.md)</li></ul>|<ul><li>[Intel OpenVINO](./docs/execution_providers/OpenVINO-ExecutionProvider.md)</li><li>[ARM Compute Library](./docs/execution_providers/ACL-ExecutionProvider.md) (*preview*)</li><li>[Android Neural Networks API](./docs/execution_providers/NNAPI-ExecutionProvider.md) (*preview*)</li></ul>|<ul><li>[Nuphar Model Compiler](./docs/execution_providers/Nuphar-ExecutionProvider.md) - (*preview*)</li><li>[Rockchip NPU](./docs/execution_providers/RKNPU-ExecutionProvider.md) (*preview*)</li><li>[Xilinx Vitis-AI](./docs/execution_providers/Vitis-AI-ExecutionProvider.md) (*preview*)</li></ul>| 
+|<ul><li>Default CPU - *MLAS (Microsoft Linear Algebra Subprograms) + Eigen*</li><li>[Intel DNNL](./docs/execution_providers/DNNL-ExecutionProvider.md)</li><li>[Intel nGraph](./docs/execution_providers/nGraph-ExecutionProvider.md)</li><li>Intel MKL-ML *(build option)*</li></ul>|<ul><li>NVIDIA CUDA</li><li>[NVIDIA TensorRT](./docs/execution_providers/TensorRT-ExecutionProvider.md)</li><li>[DirectML](./docs/execution_providers/DirectML-ExecutionProvider.md)</li><li>[AMD MIGraphX](./docs/execution_providers/MIGraphX-ExecutionProvider.md) (*preview*)</li></ul>|<ul><li>[Intel OpenVINO](./docs/execution_providers/OpenVINO-ExecutionProvider.md)</li><li>[ARM Compute Library](./docs/execution_providers/ACL-ExecutionProvider.md) (*preview*)</li><li>[Android Neural Networks API](./docs/execution_providers/NNAPI-ExecutionProvider.md) (*preview*)</li><li>[ARM-NN](./docs/execution_providers/ArmNN-ExecutionProvider.md) (*preview*)</li><li>[Rockchip NPU](./docs/execution_providers/RKNPU-ExecutionProvider.md) (*preview*)</li></ul>|<ul><li>[Nuphar Model Compiler](./docs/execution_providers/Nuphar-ExecutionProvider.md) - (*preview*)</li><li>[Xilinx Vitis-AI](./docs/execution_providers/Vitis-AI-ExecutionProvider.md) (*preview*)</li></ul>| 
 
 * [Roadmap: Upcoming accelerators](./docs/Roadmap.md#accelerators-and-execution-providers)
 * [Extensibility: Add an execution provider](docs/AddingExecutionProvider.md)

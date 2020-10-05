@@ -88,7 +88,7 @@ NupharExecutionProvider::NupharExecutionProvider(const NupharExecutionProviderIn
         (target_str == "avx2" && !cpu_id_info.HasAVX2()) ||
         (target_str == "avx" && !cpu_id_info.HasAVX())) {
       LOGS_DEFAULT(WARNING) << "NUPHAR_CODEGEN_TARGET is not compatible with host machine."
-                               "Target code will be generated, but exectuion will fail!";
+                               "Target code will be generated, but execution will fail!";
     }
     // For CPU, use target as host since the tvm_host_target_ is the one used to generate code in TVM
     tvm_target_ = tvm::Target::create(codegen_target_->GetTargetName());
@@ -103,12 +103,13 @@ NupharExecutionProvider::NupharExecutionProvider(const NupharExecutionProviderIn
 
   whole_graph_shape_infer_ = std::make_shared<ShapeExprContext>();
 
-  DeviceAllocatorRegistrationInfo memory_info(
-      {OrtMemTypeDefault,
-       [](int /*id*/) { return onnxruntime::make_unique<CPUAllocator>(onnxruntime::make_unique<OrtMemoryInfo>("Nuphar", OrtAllocatorType::OrtDeviceAllocator)); },
-       std::numeric_limits<size_t>::max()});
+  AllocatorCreationInfo memory_info(
+      [](int /*id*/) {
+        return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo("Nuphar", OrtAllocatorType::OrtDeviceAllocator));
+      },
+      static_cast<OrtDevice::DeviceId>(tvm_ctx_.device_id));
 
-  InsertAllocator(CreateAllocator(memory_info, tvm_ctx_.device_id));
+  InsertAllocator(CreateAllocator(memory_info));
 
   // TODO add multi-target support
   tvm_codegen_manager_ = onnxruntime::make_unique<TVMCodeGenManager>();

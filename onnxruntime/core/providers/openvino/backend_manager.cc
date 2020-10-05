@@ -21,10 +21,8 @@ GlobalContext& BackendManager::GetGlobalContext() {
   return global_context;
 }
 
-BackendManager::BackendManager(const onnxruntime::Node* fused_node, const logging::Logger& logger,
-                               std::string dev_id, std::string prec_str) {
-  subgraph_context_.device_id = dev_id;
-  subgraph_context_.precision_str = prec_str;
+BackendManager::BackendManager(const onnxruntime::Node* fused_node, const logging::Logger& logger) {
+  auto prec_str = GetGlobalContext().precision_str; 
   if (prec_str == "FP32") {
     subgraph_context_.precision = InferenceEngine::Precision::FP32;
   } else if (prec_str == "FP16") {
@@ -35,17 +33,23 @@ BackendManager::BackendManager(const onnxruntime::Node* fused_node, const loggin
 
   // Save the indexes of graph inputs among fused_node's inputDefs
   // (which also contains initializers).
-  std::map<std::string, int> inputdef_index_map;
+  #if (defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
+    std::map<std::string, int> inputdef_index_map;
+  #endif
   auto node_input_defs = fused_node->InputDefs();
   int i = 0;
   for (auto idef : node_input_defs) {
+    #if (defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
     inputdef_index_map.insert({idef->Name(), i});
+    #else
+    subgraph_context_.input_names.insert({idef->Name(), i});
+    #endif
     i++;
   }
 
   auto graph_inputs = fused_node->GetFunctionBody()->Body().GetInputs();
   for (auto input : graph_inputs) {
-    if(subgraph_context_.device_id == "MYRIAD"){
+    if(GetGlobalContext().device_type == "MYRIAD"){
       auto shape = input->Shape();
       if(shape != nullptr){
         if(shape->dim_size() != 4){
@@ -53,6 +57,7 @@ BackendManager::BackendManager(const onnxruntime::Node* fused_node, const loggin
         }
       }
     }
+    #if (defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
     auto it = inputdef_index_map.find(input->Name());
     if (it == inputdef_index_map.end()) {
       ORT_THROW("Input not found in the input defs list");
@@ -60,6 +65,7 @@ BackendManager::BackendManager(const onnxruntime::Node* fused_node, const loggin
 
     int index = it->second;
     subgraph_context_.input_indexes.push_back(index);
+    #endif
   }
 
   auto graph_outputs_defs = fused_node->OutputDefs();
@@ -73,7 +79,7 @@ BackendManager::BackendManager(const onnxruntime::Node* fused_node, const loggin
 
   if (ModelHasBatchedInputs(model_proto_) &&
       GetGlobalContext().is_wholly_supported_graph &&
-      subgraph_context_.device_id == "HDDL") {
+      GetGlobalContext().device_type == "HDDL") {
     subgraph_context_.enable_batching = true;
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model can be Batch inferenced \n";
     auto model_copy = ReWriteBatchDimWithOne(model_proto_);
@@ -93,8 +99,16 @@ BackendManager::BackendManager(const onnxruntime::Node* fused_node, const loggin
 
 bool BackendManager::ModelHasBatchedInputs(const ONNX_NAMESPACE::ModelProto& model_proto) const {
   bool has_batched_inputs = true;
+  
+  #if (defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
   for (int i = 0; i < (int)subgraph_context_.input_indexes.size(); i++) {
     auto input = model_proto.graph().input(subgraph_context_.input_indexes[i]);
+  #else
+  for (auto input_info_iter = subgraph_context_.input_names.begin();
+       input_info_iter != subgraph_context_.input_names.end(); ++input_info_iter) {
+    auto input = model_proto.graph().input(input_info_iter->second);
+  #endif
+
     // Batch-process only raw image inputs (NCHW or NHWC layouts)
     auto shape = input.type().tensor_type().shape();
     if (shape.dim_size() != 4) {
@@ -196,9 +210,9 @@ std::vector<std::vector<int64_t>> GetInputTensorShapes(Ort::CustomOpApi& api,
 }
 
 std::string MakeMapKeyString(std::vector<std::vector<int64_t>>& shapes,
-                             std::string& device_id) {
+                             std::string& device_type) {
   std::string key;
-  key += device_id;
+  key += device_type;
   key += "|";  //separator
   for (auto shape : shapes) {
     for (auto dim : shape) {
@@ -251,7 +265,22 @@ BackendManager::ReWriteBatchDimWithOne(const ONNX_NAMESPACE::ModelProto& model_p
 void BackendManager::Compute(Ort::CustomOpApi api, OrtKernelContext* context) {
   if (subgraph_context_.has_dynamic_input_shape) {
     std::vector<std::vector<int64_t>> tensor_shapes = GetInputTensorShapes(api, context);
-    auto key = MakeMapKeyString(tensor_shapes, subgraph_context_.device_id);
+    auto key = MakeMapKeyString(tensor_shapes, GetGlobalContext().device_type);
+
+    if(GetGlobalContext().device_type == "MYRIAD"){
+      
+      #if (defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
+      for(size_t i = 0; i < subgraph_context_.input_indexes.size(); i++){
+        if(tensor_shapes[i].size() != 4)
+      #else
+      for (auto input_info_iter = subgraph_context_.input_names.begin();
+          input_info_iter  != subgraph_context_.input_names.end(); ++input_info_iter) {
+        if(tensor_shapes[input_info_iter->second].size() != 4)
+      #endif
+
+          subgraph_context_.set_vpu_config = true;
+      }
+    }
 
     std::shared_ptr<IBackend> dynamic_backend;
     auto search = backend_map_.find(key);

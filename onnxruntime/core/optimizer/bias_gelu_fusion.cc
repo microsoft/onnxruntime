@@ -11,7 +11,7 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
-Status BiasGelu::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
+Status BiasGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
@@ -24,7 +24,7 @@ Status BiasGelu::ApplyImpl(Graph& graph, bool& modified, int graph_level, const 
 
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Add", {7}) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Add", {7, 13}) ||
         !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) ||
         !optimizer_utils::CheckOutputEdges(graph, node, 1)) {
       continue;

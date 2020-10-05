@@ -21,8 +21,10 @@ void HIPAllocator::CheckDevice() const {
   // check device to match at debug build
   // if it's expected to change, call hipSetDevice instead of the check
   int current_device;
-  hipGetDevice(&current_device);
-  ORT_ENFORCE(current_device == info_.id);
+  auto hip_err = hipGetDevice(&current_device);
+  if (hip_err == hipSuccess) {
+    ORT_ENFORCE(current_device == Info().id);
+  }
 #endif
 }
 
@@ -40,10 +42,6 @@ void HIPAllocator::Free(void* p) {
   hipFree(p);  // do not throw error since it's OK for hipFree to fail during shutdown
 }
 
-const OrtMemoryInfo& HIPAllocator::Info() const {
-  return info_;
-}
-
 FencePtr HIPAllocator::CreateFence(const SessionState* session_state) {
  return std::make_shared<HIPFence>(GetGPUDataTransfer(session_state));
 }
@@ -58,10 +56,6 @@ void* HIPPinnedAllocator::Alloc(size_t size) {
 
 void HIPPinnedAllocator::Free(void* p) {
   hipHostFree(p);
-}
-
-const OrtMemoryInfo& HIPPinnedAllocator::Info() const {
-  return info_;
 }
 
 FencePtr HIPPinnedAllocator::CreateFence(const SessionState* session_state) {

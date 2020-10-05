@@ -34,11 +34,13 @@ MLDataType DataTypeImpl::GetType<Tensor>() {
 
 namespace onnxruntime {
 
+#if !defined(ORT_MINIMAL_BUILD)
 // Return the MLDataType used for a generic SparseTensor
 template <>
 MLDataType DataTypeImpl::GetType<SparseTensor>() {
   return SparseTensorTypeBase::Type();
 }
+#endif
 
 template <>
 MLDataType DataTypeImpl::GetType<TensorSeq>() {
@@ -57,12 +59,19 @@ struct TensorElementTypeSetter<T> {
   static void SetTensorElementType(ONNX_NAMESPACE::TypeProto& proto) {
     proto.mutable_tensor_type()->set_elem_type(utils::ToTensorProtoElementType<T>());
   }
+
+#if !defined(ORT_MINIMAL_BUILD)
   static void SetSparseTensorElementType(ONNX_NAMESPACE::TypeProto& proto) {
     proto.mutable_sparse_tensor_type()->set_elem_type(utils::ToTensorProtoElementType<T>());
   }
+#endif
+
+#if !defined(DISABLE_ML_OPS)
   static void SetMapKeyType(ONNX_NAMESPACE::TypeProto& proto) {
     proto.mutable_map_type()->set_key_type(utils::ToTensorProtoElementType<T>());
   }
+#endif
+
   constexpr static int32_t GetElementType() {
     return utils::ToTensorProtoElementType<T>();
   }
@@ -98,10 +107,12 @@ template struct
 template struct
     TensorElementTypeSetter<BFloat16>;
 
+#if !defined(DISABLE_ML_OPS)
 void CopyMutableMapValue(const ONNX_NAMESPACE::TypeProto& value_proto,
                          ONNX_NAMESPACE::TypeProto& map_proto) {
   map_proto.mutable_map_type()->mutable_value_type()->CopyFrom(value_proto);
 }
+#endif
 
 void CopyMutableSeqElement(const ONNX_NAMESPACE::TypeProto& elem_proto,
                            ONNX_NAMESPACE::TypeProto& proto) {
@@ -118,11 +129,15 @@ void AssignOpaqueDomainName(const char* domain, const char* name,
 bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Tensor& tensor_proto,
                   const ONNX_NAMESPACE::TypeProto_Tensor& type_proto);
 
+#if !defined(ORT_MINIMAL_BUILD)
 bool IsCompatible(const ONNX_NAMESPACE::TypeProto_SparseTensor& tensor_proto,
                   const ONNX_NAMESPACE::TypeProto_SparseTensor& type_proto);
+#endif
 
+#if !defined(DISABLE_ML_OPS)
 bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Map& map_proto,
                   const ONNX_NAMESPACE::TypeProto_Map& type_proto);
+#endif
 
 bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Sequence& sequence_proto,
                   const ONNX_NAMESPACE::TypeProto_Sequence& type_proto);
@@ -139,6 +154,7 @@ bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Tensor& tensor_proto,
      */
 }
 
+#if !defined(DISABLE_ML_OPS)
 bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Map& map_proto,
                   const ONNX_NAMESPACE::TypeProto_Map& type_proto) {
   const auto& lhs = map_proto;
@@ -159,9 +175,11 @@ bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Map& map_proto,
       case TypeProto::ValueCase::kOpaqueType:
         result = IsCompatible(lhs.value_type().opaque_type(), rhs.value_type().opaque_type());
         break;
+#if !defined(ORT_MINIMAL_BUILD)
       case TypeProto::ValueCase::kSparseTensorType:
         result = IsCompatible(lhs.value_type().sparse_tensor_type(), rhs.value_type().sparse_tensor_type());
         break;
+#endif
       default:
         ORT_ENFORCE(false);
         break;
@@ -171,6 +189,7 @@ bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Map& map_proto,
   }
   return result;
 }
+#endif
 
 bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Sequence& sequence_proto,
                   const ONNX_NAMESPACE::TypeProto_Sequence& type_proto) {
@@ -185,15 +204,19 @@ bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Sequence& sequence_proto,
       case TypeProto::ValueCase::kSequenceType:
         result = IsCompatible(lhs.elem_type().sequence_type(), rhs.elem_type().sequence_type());
         break;
+#if !defined(DISABLE_ML_OPS)
       case TypeProto::ValueCase::kMapType:
         result = IsCompatible(lhs.elem_type().map_type(), rhs.elem_type().map_type());
         break;
+#endif
       case TypeProto::ValueCase::kOpaqueType:
         result = IsCompatible(lhs.elem_type().opaque_type(), rhs.elem_type().opaque_type());
         break;
+#if !defined(ORT_MINIMAL_BUILD)
       case TypeProto::ValueCase::kSparseTensorType:
         result = IsCompatible(lhs.elem_type().sparse_tensor_type(), rhs.elem_type().sparse_tensor_type());
         break;
+#endif
       default:
         ORT_ENFORCE(false);
         break;
@@ -203,7 +226,9 @@ bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Sequence& sequence_proto,
   }
   return result;
 }
-bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Opaque& opaque_proto, const ONNX_NAMESPACE::TypeProto_Opaque& type_proto) {
+
+bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Opaque& opaque_proto,
+                  const ONNX_NAMESPACE::TypeProto_Opaque& type_proto) {
   const auto& lhs = opaque_proto;
   const auto& rhs = type_proto;
   bool lhs_domain = utils::HasDomain(lhs);
@@ -221,10 +246,12 @@ bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Opaque& opaque_proto, const ON
            (lhs_name && rhs_name && lhs.name() != rhs.name()));
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 bool IsCompatible(const ONNX_NAMESPACE::TypeProto_SparseTensor& tensor_proto,
                   const ONNX_NAMESPACE::TypeProto_SparseTensor& type_proto) {
   return type_proto.elem_type() == tensor_proto.elem_type();
 }
+#endif
 
 void RegisterAllProtos(const std::function<void(MLDataType)>& /*reg_fn*/);
 
@@ -343,6 +370,8 @@ MLDataType TensorTypeBase::Type() {
   return &tensor_base;
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
+
 /// SparseTensor
 
 struct SparseTensorTypeBase::Impl : public data_types_internal::TypeProtoImpl {
@@ -388,6 +417,7 @@ MLDataType SparseTensorTypeBase::Type() {
   static SparseTensorTypeBase sparse_tensor_base;
   return &sparse_tensor_base;
 }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 ///// SequenceTensorTypeBase
 
@@ -454,6 +484,7 @@ const ONNX_NAMESPACE::TypeProto* NonTensorTypeBase::GetTypeProto() const {
   return impl_->GetProto();
 }
 
+#if !defined(DISABLE_ML_OPS)
 bool NonTensorTypeBase::IsMapCompatible(const ONNX_NAMESPACE::TypeProto& type_proto) const {
   const auto* thisProto = impl_->GetProto();
   if (&type_proto == thisProto) {
@@ -467,6 +498,7 @@ bool NonTensorTypeBase::IsMapCompatible(const ONNX_NAMESPACE::TypeProto& type_pr
   ORT_ENFORCE(utils::HasKeyType(thisProto->map_type()));
   return data_types_internal::IsCompatible(thisProto->map_type(), type_proto.map_type());
 }
+#endif
 
 bool NonTensorTypeBase::IsSequenceCompatible(const ONNX_NAMESPACE::TypeProto& type_proto) const {
   const auto* thisProto = impl_->GetProto();
@@ -517,6 +549,7 @@ ORT_REGISTER_TENSOR_TYPE(uint64_t);
 ORT_REGISTER_TENSOR_TYPE(MLFloat16);
 ORT_REGISTER_TENSOR_TYPE(BFloat16);
 
+#if !defined(ORT_MINIMAL_BUILD)
 ORT_REGISTER_SPARSE_TENSOR_TYPE(int32_t);
 ORT_REGISTER_SPARSE_TENSOR_TYPE(float);
 ORT_REGISTER_SPARSE_TENSOR_TYPE(bool);
@@ -531,7 +564,9 @@ ORT_REGISTER_SPARSE_TENSOR_TYPE(uint32_t);
 ORT_REGISTER_SPARSE_TENSOR_TYPE(uint64_t);
 ORT_REGISTER_SPARSE_TENSOR_TYPE(MLFloat16);
 ORT_REGISTER_SPARSE_TENSOR_TYPE(BFloat16);
+#endif
 
+#if !defined(DISABLE_ML_OPS)
 ORT_REGISTER_MAP(MapStringToString);
 ORT_REGISTER_MAP(MapStringToInt64);
 ORT_REGISTER_MAP(MapStringToFloat);
@@ -540,6 +575,7 @@ ORT_REGISTER_MAP(MapInt64ToString);
 ORT_REGISTER_MAP(MapInt64ToInt64);
 ORT_REGISTER_MAP(MapInt64ToFloat);
 ORT_REGISTER_MAP(MapInt64ToDouble);
+#endif
 
 ORT_REGISTER_SEQ_TENSOR_TYPE(float);
 ORT_REGISTER_SEQ_TENSOR_TYPE(double);
@@ -556,8 +592,10 @@ ORT_REGISTER_SEQ_TENSOR_TYPE(std::string);
 ORT_REGISTER_SEQ_TENSOR_TYPE(MLFloat16);
 ORT_REGISTER_SEQ_TENSOR_TYPE(BFloat16);
 
+#if !defined(DISABLE_ML_OPS)
 ORT_REGISTER_SEQ(VectorMapStringToFloat);
 ORT_REGISTER_SEQ(VectorMapInt64ToFloat);
+#endif
 
 // Used for Tensor Proto registrations
 #define REGISTER_TENSOR_PROTO(TYPE, reg_fn)                  \
@@ -572,11 +610,13 @@ ORT_REGISTER_SEQ(VectorMapInt64ToFloat);
     reg_fn(mltype);                                                  \
   }
 
+#if !defined(ORT_MINIMAL_BUILD)
 #define REGISTER_SPARSE_TENSOR_PROTO(TYPE, reg_fn)                 \
   {                                                                \
     MLDataType mltype = DataTypeImpl::GetSparseTensorType<TYPE>(); \
     reg_fn(mltype);                                                \
   }
+#endif
 
 #define REGISTER_ONNX_PROTO(TYPE, reg_fn)              \
   {                                                    \
@@ -602,6 +642,7 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
   REGISTER_TENSOR_PROTO(MLFloat16, reg_fn);
   REGISTER_TENSOR_PROTO(BFloat16, reg_fn);
 
+#if !defined(ORT_MINIMAL_BUILD)
   REGISTER_SPARSE_TENSOR_PROTO(int32_t, reg_fn);
   REGISTER_SPARSE_TENSOR_PROTO(float, reg_fn);
   REGISTER_SPARSE_TENSOR_PROTO(bool, reg_fn);
@@ -616,7 +657,9 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
   REGISTER_SPARSE_TENSOR_PROTO(uint64_t, reg_fn);
   REGISTER_SPARSE_TENSOR_PROTO(MLFloat16, reg_fn);
   REGISTER_SPARSE_TENSOR_PROTO(BFloat16, reg_fn);
+#endif
 
+#if !defined(DISABLE_ML_OPS)
   REGISTER_ONNX_PROTO(MapStringToString, reg_fn);
   REGISTER_ONNX_PROTO(MapStringToInt64, reg_fn);
   REGISTER_ONNX_PROTO(MapStringToFloat, reg_fn);
@@ -625,6 +668,7 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
   REGISTER_ONNX_PROTO(MapInt64ToInt64, reg_fn);
   REGISTER_ONNX_PROTO(MapInt64ToFloat, reg_fn);
   REGISTER_ONNX_PROTO(MapInt64ToDouble, reg_fn);
+#endif
 
   REGISTER_SEQ_TENSOR_PROTO(int32_t, reg_fn);
   REGISTER_SEQ_TENSOR_PROTO(float, reg_fn);
@@ -641,8 +685,10 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
   REGISTER_SEQ_TENSOR_PROTO(MLFloat16, reg_fn);
   REGISTER_SEQ_TENSOR_PROTO(BFloat16, reg_fn);
 
+#if !defined(DISABLE_ML_OPS)
   REGISTER_ONNX_PROTO(VectorMapStringToFloat, reg_fn);
   REGISTER_ONNX_PROTO(VectorMapInt64ToFloat, reg_fn);
+#endif
 }
 }  // namespace data_types_internal
 
@@ -697,7 +743,11 @@ const char* DataTypeImpl::ToString(MLDataType type) {
   if (type_proto != nullptr) {
     return ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(*type_proto)->c_str();
   }
+#ifdef ORT_NO_RTTI
+  return "(unknown type)";
+#else
   return typeid(*type).name();
+#endif
 }
 
 const TensorTypeBase* DataTypeImpl::TensorTypeFromONNXEnum(int type) {
@@ -770,6 +820,7 @@ const NonTensorTypeBase* DataTypeImpl::SequenceTensorTypeFromONNXEnum(int type) 
   }
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 const SparseTensorTypeBase* DataTypeImpl::SparseTensorTypeFromONNXEnum(int type) {
   switch (type) {
     case TensorProto_DataType_FLOAT:
@@ -804,6 +855,7 @@ const SparseTensorTypeBase* DataTypeImpl::SparseTensorTypeFromONNXEnum(int type)
       ORT_NOT_IMPLEMENTED("sparse tensor type ", type, " is not supported");
   }
 }
+#endif
 
 MLDataType DataTypeImpl::TypeFromProto(const ONNX_NAMESPACE::TypeProto& proto) {
   const auto& registry = data_types_internal::DataTypeRegistry::instance();
@@ -951,7 +1003,11 @@ std::ostream& operator<<(std::ostream& out, const DataTypeImpl* data_type) {
   if (data_type == nullptr)
     return out << "(null)";
 
+#ifdef ORT_NO_RTTI
+  return out << "(unknown type)";
+#else
   return out << typeid(*data_type).name();
+#endif
 }
 
 namespace utils {
@@ -974,18 +1030,20 @@ ContainerChecker::ContainerChecker(MLDataType ml_type) {
           types_.emplace_back(ContainerType::kTensor, type_proto->tensor_type().elem_type());
           type_proto = nullptr;
           break;
-        case TypeProto::ValueCase::kMapType:
-          {
+
+#if !defined(DISABLE_ML_OPS)
+        case TypeProto::ValueCase::kMapType: {
           const auto& map_type = type_proto->map_type();
           types_.emplace_back(ContainerType::kMap, map_type.key_type());
           // Move on handling the value
           type_proto = &map_type.value_type();
-          }
-          break;
+        } break;
+#endif
         case TypeProto::ValueCase::kSequenceType:
-            types_.emplace_back(ContainerType::kSequence, TensorProto_DataType_UNDEFINED);
-            type_proto = &type_proto->sequence_type().elem_type();
-            break;
+          types_.emplace_back(ContainerType::kSequence, TensorProto_DataType_UNDEFINED);
+          type_proto = &type_proto->sequence_type().elem_type();
+          break;
+
         case TypeProto::ValueCase::kOpaqueType:
           // We do not handle this and terminate here
           types_.emplace_back(ContainerType::kOpaque,

@@ -15,7 +15,7 @@
 #include "core/framework/op_kernel_context_internal.h"
 
 #if defined DEBUG_NODE_INPUTS_OUTPUTS
-#include "core/framework/utils.h"
+#include "core/framework/debug_node_inputs_outputs_utils.h"
 #endif
 
 #ifdef ENABLE_NVTX_PROFILE
@@ -75,7 +75,6 @@ static void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context
       total_output_sizes += tensor_size;
     }
   }
-
 }
 
 static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_context,
@@ -140,13 +139,19 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   }
 
   ExecutionFrame frame{feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state};
+  const std::unordered_set<NodeIndex>* to_be_executed_nodes = nullptr;
 
-  const std::unordered_set<NodeIndex>* to_be_executed_nodes = session_state.GetToBeExecutedNodes(fetch_mlvalue_idxs);
+#if !defined(ORT_MINIMAL_BUILD)
+  to_be_executed_nodes = session_state.GetToBeExecutedNodes(fetch_mlvalue_idxs);
   const bool only_execute_path_to_fetches = only_execute_path_to_fetches_ && (to_be_executed_nodes != nullptr);
 
   if (only_execute_path_to_fetches) {
     VLOGS(logger, 1) << to_be_executed_nodes->size() << " nodes to be executed\n";
   }
+#else
+  ORT_UNUSED_PARAMETER(only_execute_path_to_fetches_);
+  const bool only_execute_path_to_fetches = false;
+#endif
 
   LOGS(logger, INFO) << "Begin execution";
   const SequentialExecutionPlan& seq_exec_plan = *session_state.GetExecutionPlan();
@@ -158,7 +163,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   std::cout << std::make_pair(&seq_exec_plan, &session_state) << std::endl;
 #endif
 
-  const auto* graph_viewer = session_state.GetGraphViewer();
+  const auto& graph_viewer = session_state.GetGraphViewer();
 
 #ifdef CONCURRENCY_VISUALIZER
   // need unique name for the series. number of nodes should be good enough for a subgraph
@@ -175,11 +180,11 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   auto& profile_context = profile::Context::GetInstance();
   const auto tag = profile_context.GetThreadTagOrDefault(std::this_thread::get_id());
   profile::NvtxRangeCreator forward_range(
-    "forward-" + tag,
-    profile::Color::White);
+      "Batch-" + tag + " Forward",
+      profile::Color::White);
   profile::NvtxRangeCreator backward_range(
-    "backward-" + tag,
-    profile::Color::Black);
+      "Batch-" + tag + " Backward",
+      profile::Color::Black);
 #endif
 
   for (const auto& node_exec_plan : exec_plan_vec) {
@@ -195,7 +200,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       continue;
     }
 
-    const auto& node = *graph_viewer->GetNode(node_exec_plan.node_index);
+    const auto& node = *graph_viewer.GetNode(node_exec_plan.node_index);
 
 #ifdef CONCURRENCY_VISUALIZER
     series.write_flag(node.Name().c_str());
@@ -205,7 +210,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     if (node.Description() != "Backward pass" && !forward_range.IsBeginCalled()) {
       // Start timing forward pass when encountering the first forward node.
       forward_range.Begin();
-    } else if (node.Description() == "Backward pass" && !backward_range.IsBeginCalled()) {
+    } else if (node.Description() == "Backward pass" && !backward_range.IsBeginCalled() && forward_range.IsBeginCalled()) {
       // Start timing backward pass when encountering the first backward node.
       // In the meanwhile, forward range ends.
       forward_range.End();
@@ -264,8 +269,8 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
         }
       }
     }
-#if defined DEBUG_NODE_INPUTS_OUTPUTS
-    utils::DumpNodeInputs(op_kernel_context, p_op_kernel->Node());
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
+    utils::DumpNodeInputs(op_kernel_context, p_op_kernel->Node(), session_state);
 #endif
 
     const std::string node_name_for_profiling = [&]() -> std::string {
@@ -287,7 +292,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
       // Calculate total input sizes for this operation.
       CalculateTotalInputSizes(&op_kernel_context, p_op_kernel,
-                               input_activation_sizes,input_parameter_sizes, node_name_for_profiling);
+                               input_activation_sizes, input_parameter_sizes, node_name_for_profiling);
     }
 
 #ifdef CONCURRENCY_VISUALIZER
@@ -296,10 +301,13 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 #endif
       Status compute_status;
 
-      try {
+      ORT_TRY {
         compute_status = p_op_kernel->Compute(&op_kernel_context);
-      } catch (const std::exception& ex) {
-        compute_status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, ex.what());
+      }
+      ORT_CATCH(const std::exception& ex) {
+        ORT_HANDLE_EXCEPTION([&]() {
+          compute_status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, ex.what());
+        });
       }
 
       if (!compute_status.IsOK()) {
@@ -392,7 +400,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                                                      {{"op_name", p_op_kernel->KernelDef().OpName()}});
     }
 
-#if defined(DEBUG_NODE_INPUTS_OUTPUTS)
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
     utils::DumpNodeOutputs(op_kernel_context, p_op_kernel->Node(), session_state);
 #endif
 
@@ -446,12 +454,12 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     session_state.Profiler().EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", tp);
   }
 
-  for (auto i: frame.GetStaticMemorySizeInfo()) {
+  for (auto i : frame.GetStaticMemorySizeInfo()) {
     LOGS(logger, INFO) << "[Memory] ExecutionFrame statically allocates "
                        << i.second << " bytes for " << i.first << std::endl;
   }
 
-  for (auto i: frame.GetDynamicMemorySizeInfo()) {
+  for (auto i : frame.GetDynamicMemorySizeInfo()) {
     LOGS(logger, INFO) << "[Memory] ExecutionFrame dynamically allocates "
                        << i.second << " bytes for " << i.first << std::endl;
   }

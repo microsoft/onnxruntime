@@ -31,10 +31,16 @@ namespace Dml
 
         void Initialize(
             const MLOperatorKernelCreationContext& kernelInfo,
+            uint32_t minDimensionCount
+            );
+
+        void Initialize(
+            const MLOperatorKernelCreationContext& kernelInfo,
             const std::optional<const std::vector<std::optional<uint32_t>>>& kernelInputIndices = std::nullopt,
             const std::optional<const std::vector<std::optional<uint32_t>>>& kernelOutputIndices = std::nullopt,
             const std::optional<gsl::span<const uint32_t>> inputShape = std::nullopt,
-            const std::optional<gsl::span<const uint32_t>> outputShape = std::nullopt
+            const std::optional<gsl::span<const uint32_t>> outputShape = std::nullopt,
+            uint32_t minDimensionCount = NchwDimensionCount
             );
 
         bool AllowHalfPrecisionComputation() const;
@@ -73,9 +79,16 @@ namespace Dml
         // will read the full 64-bit values. This means it is necessary to zero out the memory to ensure there
         // are no uninitialized values in the upper 32-bit portion of the tensor memory.
         //
+        // It returns nullptr if there is no work to do (0 bytes).
+        //
         ComPtr<IDMLCompiledOperator> InitializeZeroInt64Tensor(uint64_t tensorSizeInBytes);
 
         void ExecuteZeroInt64Tensor(IDMLCompiledOperator* compiledOperator, IMLOperatorTensor* tensor);
+
+        // Remap 64-bit data types to 32-bit via doubled strides.
+        // These should be called before GetDmlInputDescs or GetDmlOutputDescs.
+        void Remap64bitDmlDataTypesTo32bit();
+        void Remap64bitDmlDataTypesTo32bitIfNeeded();
 
         TensorDesc CreateTensorDescFromInput(
             const MLOperatorKernelCreationContext& kernelInfo,

@@ -17,6 +17,8 @@ set(mlas_common_srcs
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/erf.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/compute.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/quantize.cpp
+  ${ONNXRUNTIME_ROOT}/core/mlas/lib/qladd.cpp
+  ${ONNXRUNTIME_ROOT}/core/mlas/lib/qlmul.cpp
 )
 
 if(MSVC)
@@ -46,7 +48,24 @@ if(MSVC)
   elseif(onnxruntime_target_platform STREQUAL "x64")
     enable_language(ASM_MASM)
 
+    set(mlas_platform_srcs_avx
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/intrinsics/avx/min_max_elements.cpp
+    )
+    set_source_files_properties(${mlas_platform_srcs_avx} PROPERTIES COMPILE_FLAGS "/arch:AVX")
+
+    set(mlas_platform_srcs_avx2
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/intrinsics/avx2/qladd_avx2.cpp
+    )
+    set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "/arch:AVX2")
+
+    if (onnxruntime_MINIMAL_BUILD)
+      # exclude AVX512 in minimal build
+      set_source_files_properties(${mlas_common_srcs} PROPERTIES COMPILE_FLAGS "-DMLAS_AVX512F_UNSUPPORTED")
+    endif()
+
     set(mlas_platform_srcs
+      ${mlas_platform_srcs_avx}
+      ${mlas_platform_srcs_avx2}
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/QgemmU8S8KernelAvx2.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/QgemvU8S8KernelAvx2.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/QgemmU8S8KernelAvx512Core.asm
@@ -141,6 +160,7 @@ else()
     enable_language(ASM)
     set(mlas_platform_srcs
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/aarch64/SgemmKernelNeon.S
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/aarch64/SgemvKernelNeon.S
     )
   elseif(POWER)
     set(mlas_platform_srcs
@@ -156,7 +176,11 @@ else()
     set(mlas_platform_srcs_avx
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86/SgemmKernelAvx.S
     )
-    set_source_files_properties(${mlas_platform_srcs_avx} PROPERTIES COMPILE_FLAGS "-mavx")
+    if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+      set_source_files_properties(${mlas_platform_srcs_avx} PROPERTIES COMPILE_FLAGS "-mavx -fno-integrated-as")
+    else()
+      set_source_files_properties(${mlas_platform_srcs_avx} PROPERTIES COMPILE_FLAGS "-mavx")
+    endif()
 
     set(mlas_platform_srcs
       ${mlas_platform_srcs_sse2}
@@ -168,7 +192,6 @@ else()
     # Forward the flags for the minimum target platform version from the C
     # compiler to the assembler. This works around CMakeASMCompiler.cmake.in
     # not including the logic to set this flag for the assembler.
-
     set(CMAKE_ASM${ASM_DIALECT}_OSX_DEPLOYMENT_TARGET_FLAG "${CMAKE_C_OSX_DEPLOYMENT_TARGET_FLAG}")
 
     # The LLVM assembler does not support the .arch directive to enable instruction
@@ -194,6 +217,7 @@ else()
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SconvKernelAvx.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SpoolKernelAvx.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SoftmaxKernelAvx.S
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/intrinsics/avx/min_max_elements.cpp
     )
     set_source_files_properties(${mlas_platform_srcs_avx} PROPERTIES COMPILE_FLAGS "-mavx")
 
@@ -208,6 +232,7 @@ else()
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/LogisticKernelFma3.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/TanhKernelFma3.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/ErfKernelFma3.S
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/intrinsics/avx2/qladd_avx2.cpp
     )
     set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "-mavx2 -mfma")
 
@@ -228,7 +253,7 @@ else()
       COMPILES_AVX512F
     )
 
-    if(COMPILES_AVX512F)
+    if(COMPILES_AVX512F AND NOT onnxruntime_MINIMAL_BUILD)
       set(mlas_platform_srcs_avx512f
         ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/DgemmKernelAvx512F.S
         ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SgemmKernelAvx512F.S

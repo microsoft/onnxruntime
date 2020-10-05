@@ -132,6 +132,23 @@ void
 MLASCALL
 MlasGemm(
     CBLAS_TRANSPOSE TransA,
+    size_t M,
+    size_t N,
+    size_t K,
+    float alpha,
+    const float* A,
+    size_t lda,
+    const void* PackedB,
+    float beta,
+    float* C,
+    size_t ldc,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+void
+MLASCALL
+MlasGemm(
+    CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t M,
     size_t N,
@@ -147,42 +164,119 @@ MlasGemm(
     MLAS_THREADPOOL* ThreadPool
     );
 
-template<typename AType, typename BType>
 void
 MLASCALL
 MlasGemm(
     size_t M,
     size_t N,
     size_t K,
-    const AType* A,
+    const uint8_t* A,
     size_t lda,
-    AType offa,
-    const BType* B,
+    uint8_t offa,
+    const uint8_t* B,
     size_t ldb,
-    BType offb,
+    uint8_t offb,
+    bool BIsSigned,
     int32_t* C,
     size_t ldc,
     MLAS_THREADPOOL* ThreadPool
     );
 
-template<typename AType, typename BType>
 void
 MLASCALL
 MlasGemm(
     size_t M,
     size_t N,
     size_t K,
-    const AType* A,
+    const uint8_t* A,
     size_t lda,
-    AType offa,
-    const BType* B,
+    uint8_t offa,
+    const uint8_t* B,
     size_t ldb,
-    BType offb,
+    uint8_t offb,
+    bool BIsSigned,
     float* C,
     size_t ldc,
     const float* Scale,
     const float* Bias,
     MLAS_THREADPOOL* ThreadPool
+    );
+
+void
+MLASCALL
+MlasGemm(
+    size_t M,
+    size_t N,
+    size_t K,
+    const uint8_t* A,
+    size_t lda,
+    uint8_t offa,
+    const void* PackedB,
+    uint8_t offb,
+    bool BIsSigned,
+    int32_t* C,
+    size_t ldc,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+void
+MLASCALL
+MlasGemm(
+    size_t M,
+    size_t N,
+    size_t K,
+    const uint8_t* A,
+    size_t lda,
+    uint8_t offa,
+    const void* PackedB,
+    uint8_t offb,
+    bool BIsSigned,
+    float* C,
+    size_t ldc,
+    const float* Scale,
+    const float* Bias,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+//
+// Buffer packing routines.
+//
+
+size_t
+MLASCALL
+MlasGemmPackBSize(
+    size_t N,
+    size_t K
+    );
+
+void
+MLASCALL
+MlasGemmPackB(
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K,
+    const float* B,
+    size_t ldb,
+    void* PackedB
+    );
+
+size_t
+MLASCALL
+MlasGemmPackBSize(
+    size_t N,
+    size_t K,
+    bool BIsSigned
+    );
+
+void
+MLASCALL
+MlasGemmPackB(
+    size_t N,
+    size_t K,
+    const uint8_t* B,
+    size_t ldb,
+    bool BIsSigned,
+    void* PackedB
     );
 
 //
@@ -464,4 +558,51 @@ MlasRequantizeOutput(
     size_t N,
     float Scale,
     uint8_t ZeroPoint
+    );
+
+void
+MLASCALL
+MlasFindMinMaxElement(
+    const float* Input,
+    float* Min,
+    float* Max,
+    size_t N
+    );
+
+//
+// InputA is of size N,
+// Input B is of size 1 if IsScalarB == true, otherwise it is of size N
+//
+template<typename DataType>
+void
+MLASCALL
+MlasQLinearAdd(
+    const DataType* InputA,
+    float ScaleA,
+    int32_t ZeroPointA,
+    const DataType* InputB,
+    float ScaleB,
+    int32_t ZeroPointB,
+    float ScaleC,
+    int32_t ZeroPointC,
+    DataType* OutputC,
+    size_t N,
+    bool IsScalarB
+    );
+
+template<typename DataType>
+void
+MLASCALL
+MlasQLinearMul(
+    const DataType* InputA,
+    float ScaleA,
+    int32_t ZeroPointA,
+    const DataType* InputB,
+    float ScaleB,
+    int32_t ZeroPointB,
+    float ScaleC,
+    int32_t ZeroPointC,
+    DataType* OutputC,
+    size_t N,
+    bool IsScalarB
     );

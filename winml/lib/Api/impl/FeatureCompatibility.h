@@ -54,9 +54,10 @@ static std::string ToString(wfc::IVectorView<int64_t> shape) {
 static std::string ToString(
     winml::TensorKind kind,
     wfc::IVectorView<int64_t> shape) {
-  FAIL_FAST_IF_MSG(kind == winml::TensorKind::Complex128, "Unexpected TensorKind Complex128.");
-  FAIL_FAST_IF_MSG(kind == winml::TensorKind::Complex64, "Unexpected TensorKind Complex64.");
-  FAIL_FAST_IF_MSG(kind == winml::TensorKind::Undefined, "Unexpected TensorKind Undefined.");
+  // Any unrecognized data type is considered "Undefined".
+  if (static_cast<uint32_t>(kind) >= std::size(SzTensorKind)) {
+    kind = winml::TensorKind::Undefined;
+  }
 
   std::ostringstream stream;
   stream << SzTensorKind[static_cast<uint32_t>(kind)] << ToString(shape);
@@ -73,9 +74,10 @@ static std::string ToString(winml::ITensor value) {
 
 static std::string ToString(winml::IMapFeatureDescriptor descriptor) {
   auto keyKind = descriptor.KeyKind();
-  FAIL_FAST_IF_MSG(keyKind == winml::TensorKind::Complex128, "Unexpected TensorKind Complex128.");
-  FAIL_FAST_IF_MSG(keyKind == winml::TensorKind::Complex64, "Unexpected TensorKind Complex64.");
-  FAIL_FAST_IF_MSG(keyKind == winml::TensorKind::Undefined, "Unexpected TensorKind Undefined.");
+  // Any unrecognized data type is considered "Undefined".
+  if (static_cast<uint32_t>(keyKind) >= std::size(SzTensorKind)) {
+    keyKind = winml::TensorKind::Undefined;
+  }
 
   auto valueDescriptor = descriptor.ValueDescriptor();
   std::ostringstream stream;
@@ -86,9 +88,10 @@ static std::string ToString(winml::IMapFeatureDescriptor descriptor) {
 static std::string ToString(winrt::com_ptr<_winml::IMapFeatureValue> value) {
   winml::TensorKind keyKind;
   FAIL_FAST_IF_FAILED(value->get_KeyKind(&keyKind));
-  FAIL_FAST_IF_MSG(keyKind == winml::TensorKind::Complex128, "Unexpected TensorKind Complex128.");
-  FAIL_FAST_IF_MSG(keyKind == winml::TensorKind::Complex64, "Unexpected TensorKind Complex64.");
-  FAIL_FAST_IF_MSG(keyKind == winml::TensorKind::Undefined, "Unexpected TensorKind Undefined.");
+  // Any unrecognized data type is considered "Undefined".
+  if (static_cast<uint32_t>(keyKind) >= std::size(SzTensorKind)) {
+    keyKind = winml::TensorKind::Undefined;
+  }
 
   winml::ILearningModelFeatureDescriptor valueDescriptor;
   FAIL_FAST_IF_FAILED(value->get_ValueDescriptor(&valueDescriptor));

@@ -24,7 +24,7 @@ namespace cuda {
       LayerNorm<T, U>);
 
 REGISTER_KERNEL_TYPED(float, float)
-REGISTER_KERNEL_TYPED(double, float)
+REGISTER_KERNEL_TYPED(double, double)
 REGISTER_KERNEL_TYPED(MLFloat16, float)
 
 template <typename T, typename U>

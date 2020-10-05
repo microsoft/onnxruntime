@@ -22,13 +22,21 @@ class KernelRegistryManager;
 /**
    Logical device representation.
 */
-typedef std::map<int, AllocatorPtr> AllocatorMap;
+using AllocatorMap = std::map<int, AllocatorPtr>;
+using MemoryInfoSet = std::set<OrtMemoryInfo>;
 
 // if we are export the fused function to dll, the function will still in the same binary as onnxruntime
 // use std function to give execution provider some chance to capture some state.
 using CreateFunctionStateFunc = std::function<int(ComputeContext*, FunctionState*)>;
 using ComputeFunc = std::function<Status(FunctionState, const OrtApi*, OrtKernelContext*)>;
 using DestroyFunctionStateFunc = std::function<void(FunctionState)>;
+
+//unordered maps
+using UnorderedMapStringToString = std::unordered_map<std::string, std::string>;
+
+//data types for execution provider options
+using ProviderOptionsVector = std::vector<UnorderedMapStringToString>;
+using ProviderOptionsMap = std::unordered_map<std::string, UnorderedMapStringToString>;
 
 struct NodeComputeInfo {
   CreateFunctionStateFunc create_state_func;
@@ -46,7 +54,7 @@ class IExecutionProvider {
   /**
      Get all IAllocators for <*this> execution provider.
   */
-  const std::vector<gsl::not_null<const IAllocator*>>& GetAllocators() const {
+  const std::vector<AllocatorPtr>& GetAllocators() const {
     return allocator_list_;
   }
 
@@ -99,6 +107,18 @@ class IExecutionProvider {
   virtual int GetDeviceId() const { return -1; };
 
   /**
+     Get execution provider's configurations. 
+   */
+  const UnorderedMapStringToString& GetProviderOptions() const { return provider_options_; }
+
+  /**
+     Store execution provider's configurations. 
+   */
+  void SetProviderOptions(UnorderedMapStringToString& options) {
+    provider_options_ = options;
+  }
+
+  /**
      Returns an opaque handle whose exact type varies based on the provider
      and is interpreted accordingly by the corresponding kernel implementation.
      For Direct3D operator kernels, this may return an IUnknown supporting
@@ -146,6 +166,7 @@ class IExecutionProvider {
   virtual common::Status OnSessionInitializationEnd();
 
   void InsertAllocator(AllocatorPtr allocator);
+  void ReplaceAllocator(AllocatorPtr allocator);
 
   /**
   Given a list of fused_node, return create_state/compute/release_state func for each node.
@@ -174,10 +195,13 @@ class IExecutionProvider {
  private:
   const std::string type_;
   AllocatorMap allocators_;
+  MemoryInfoSet mem_info_set_;  // to ensure only allocators with unique OrtMemoryInfo are registered in the provider.
   //It will be set when this object is registered to a session
   const logging::Logger* logger_ = nullptr;
   // convenience list of the allocators so GetAllocatorList doesn't have to build a new vector each time
   // contains the same instances as allocators_
-  std::vector<gsl::not_null<const IAllocator*>> allocator_list_;
+  std::vector<AllocatorPtr> allocator_list_;
+  // It will be set when constructor is being called
+  UnorderedMapStringToString provider_options_;
 };
 }  // namespace onnxruntime

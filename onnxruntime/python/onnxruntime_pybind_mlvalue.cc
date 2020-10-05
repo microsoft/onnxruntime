@@ -143,20 +143,21 @@ TensorShape GetArrayShape(PyArrayObject* pyObject) {
 // buffer pointer and will own references to underlying objects.
 class OrtPybindSingleUseAllocator : public IAllocator {
  public:
-   // This constructor is used when we create numpy array from python list
+  // This constructor is used when we create numpy array from python list
   OrtPybindSingleUseAllocator(PyArrayObject* pyObject, const std::string& value_name, const OrtMemoryInfo& mem_info)
-      : pyObject_(pyObject, DecRefFn<PyArrayObject>()),
-        pyObjectContiguous_(PyArray_GETCONTIGUOUS(pyObject), DecRefFn<PyArrayObject>()),
-        mem_info_(mem_info) {
+      : IAllocator(mem_info),
+        pyObject_(pyObject, DecRefFn<PyArrayObject>()),
+        pyObjectContiguous_(PyArray_GETCONTIGUOUS(pyObject), DecRefFn<PyArrayObject>()) {
     ORT_ENFORCE(pyObjectContiguous_ != nullptr, "The object must be a contiguous array for input :", value_name);
   }
 
   // Constructor to use when a contiguous array had to be copied. Instead of creating yet another copy
   // we are still able to use it directly for primitive types
-  OrtPybindSingleUseAllocator(UniqueDecRefPtr<PyArrayObject>&& pyContiguous, const std::string& value_name, const OrtMemoryInfo& mem_info) 
-    : pyObject_(nullptr, DecRefFn<PyArrayObject>()),
-      pyObjectContiguous_(std::move(pyContiguous)),
-      mem_info_(mem_info){
+  OrtPybindSingleUseAllocator(UniqueDecRefPtr<PyArrayObject>&& pyContiguous, const std::string& value_name,
+                              const OrtMemoryInfo& mem_info)
+      : IAllocator(mem_info),
+        pyObject_(nullptr, DecRefFn<PyArrayObject>()),
+        pyObjectContiguous_(std::move(pyContiguous)) {
     ORT_ENFORCE(pyObjectContiguous_ != nullptr, "Expecting a valid contiguous array:", value_name);
   }
 
@@ -178,10 +179,6 @@ class OrtPybindSingleUseAllocator : public IAllocator {
     pyObject_.reset();
   }
 
-  const OrtMemoryInfo& Info() const override {
-    return mem_info_;
-  }
-
   PyArrayObject* GetContiguous() const {
     return pyObjectContiguous_.get();
   }
@@ -189,7 +186,6 @@ class OrtPybindSingleUseAllocator : public IAllocator {
  private:
   UniqueDecRefPtr<PyArrayObject> pyObject_;
   UniqueDecRefPtr<PyArrayObject> pyObjectContiguous_;
-  OrtMemoryInfo mem_info_;
 };
 
 using OrtPybindSingleUseAllocatorPtr = std::shared_ptr<OrtPybindSingleUseAllocator>;
@@ -391,6 +387,7 @@ std::string _get_type_name(std::string&) {
   return std::string("string");
 }
 
+#if !defined(DISABLE_ML_OPS)
 template <typename KeyType, typename ValueType, typename KeyGetterType, typename ValueGetterType>
 void CreateMapMLValue_LoopIntoMap(Py_ssize_t& pos, PyObject*& key, const std::string& name_input, PyObject*& value,
                                   PyObject* item, std::map<KeyType, ValueType>& current,
@@ -553,6 +550,7 @@ void CreateMapMLValue_AgnosticVectorMap(PyObject* iterator, PyObject* item, Allo
     throw std::runtime_error("Size of dictionary is empty, unable to run the prediction.");
   }
 }
+#endif
 
 void CreateGenericIterableMLValue(PyObject* iterator, AllocatorPtr alloc, const std::string& name_input,
                                   OrtValue* p_mlvalue) {
@@ -577,7 +575,13 @@ void CreateGenericIterableMLValue(PyObject* iterator, AllocatorPtr alloc, const 
       throw std::runtime_error("Input must be a list of dictionaries or a single numpy array for input '" +
                                name_input + std::string("'."));
     }
+#if !defined(DISABLE_ML_OPS)
     CreateMapMLValue_AgnosticVectorMap(iterator, item, alloc, name_input, p_mlvalue);
+#else
+    ORT_UNUSED_PARAMETER(alloc);
+    ORT_UNUSED_PARAMETER(p_mlvalue);
+    throw std::runtime_error("Map type is not supported in this build.");
+#endif
   }
 }
 
@@ -614,7 +618,13 @@ void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, const
     auto* seq_tensors = reinterpret_cast<PyObject*>(value.ptr());
     CreateSequenceOfTensors(alloc, name_input, input_def_list, seq_tensors, p_mlvalue);
   } else if (PyDict_Check(value.ptr())) {
+#if !defined(DISABLE_ML_OPS)
     CreateMapMLValue_AgnosticVectorMap((PyObject*)NULL, value.ptr(), alloc, name_input, p_mlvalue);
+#else
+    ORT_UNUSED_PARAMETER(p_mlvalue);
+    throw std::runtime_error("Map type is not supported in this build.");
+#endif
+
   } else {
     auto iterator = PyObject_GetIter(value.ptr());
     if (iterator == NULL) {

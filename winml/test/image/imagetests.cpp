@@ -347,6 +347,7 @@ INSTANTIATE_TEST_SUITE_P(MnistInputOutput, MnistImageTest,
         std::make_pair(L"RGB_5.png", 5)
     ));
 
+#if defined(NDEBUG) || defined(RUN_MODELTEST_IN_DEBUG_MODE)
 typedef std::tuple<std::tuple<std::wstring, ModelInputOutputType, std::wstring>, std::wstring, std::wstring, InputImageSource, EvaluationStrategy, OutputBindingStrategy, LearningModelDeviceKind> ImageTestParamTuple;
 struct ImageTestParam {
     std::wstring model_file_name, model_pixel_format, image_file_name, input_pixel_format;
@@ -422,6 +423,7 @@ INSTANTIATE_TEST_SUITE_P(ImageTest, ImageTest,
         testing::Values(Bound, Unbound),
         testing::Values(LearningModelDeviceKind::DirectX, LearningModelDeviceKind::Cpu)
     ));
+
 
 typedef std::tuple<std::tuple<std::wstring, ModelInputOutputType, std::vector<std::wstring>, int, bool>, OutputBindingStrategy, EvaluationStrategy, VideoFrameSource, VideoFrameSource, LearningModelDeviceKind> BatchTestParamTuple;
 struct BatchTestParam {
@@ -550,6 +552,8 @@ INSTANTIATE_TEST_SUITE_P(BatchTest, BatchTest,
         testing::Values(FromSoftwareBitmap, FromDirect3DSurface, FromUnsupportedD3DSurface),
         testing::Values(LearningModelDeviceKind::DirectX, LearningModelDeviceKind::Cpu)
     ));
+#endif
+
 TEST_F(ImageTests, LoadBindEvalModelWithoutImageMetadata) {
     GPUTEST;
 
@@ -616,12 +620,12 @@ TEST_F(ImageTests, ImageMetaDataTest) {
     // supported image metadata
     ValidateOutputImageMetaData(L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_255.onnx", BitmapAlphaMode::Premultiplied, BitmapPixelFormat::Bgra8, true);
     ValidateOutputImageMetaData(L"Add_ImageNet1920WithImageMetadataRgb8_SRGB_0_255.onnx", BitmapAlphaMode::Premultiplied, BitmapPixelFormat::Rgba8, true);
+    ValidateOutputImageMetaData(L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_1.onnx",   BitmapAlphaMode::Premultiplied, BitmapPixelFormat::Bgra8, true);
+    ValidateOutputImageMetaData(L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_1_1.onnx",   BitmapAlphaMode::Premultiplied, BitmapPixelFormat::Bgra8, true);
 
     // unsupported image metadata
     ValidateOutputImageMetaData(L"Add_ImageNet1920WithImageMetadataBgra8_SRGB_0_255.onnx", BitmapAlphaMode::Straight, BitmapPixelFormat::Bgra8, false);
     ValidateOutputImageMetaData(L"Add_ImageNet1920WithImageMetadataRgba8_SRGB_0_255.onnx", BitmapAlphaMode::Straight, BitmapPixelFormat::Rgba8, false);
-    ValidateOutputImageMetaData(L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_1.onnx", BitmapAlphaMode::Straight, BitmapPixelFormat::Bgra8, false);
-    ValidateOutputImageMetaData(L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_1_1.onnx", BitmapAlphaMode::Straight, BitmapPixelFormat::Bgra8, false);
     ValidateOutputImageMetaData(L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_16_235.onnx", BitmapAlphaMode::Straight, BitmapPixelFormat::Bgra8, false);
     ValidateOutputImageMetaData(L"Add_ImageNet1920WithImageMetadataBgr8_LINEAR_0_255.onnx", BitmapAlphaMode::Straight, BitmapPixelFormat::Bgra8, false);
 }

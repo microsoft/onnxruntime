@@ -22,6 +22,7 @@ void TestBatchNorm(const unordered_map<string, vector<T>>& input_data_map,
                    optional<float> epsilon,
                    const std::initializer_list<T>& expected_output,
                    const vector<int64_t>& expected_output_shape,
+                   bool all_input_except_x_are_initializers = false,
                    int64_t spatial_mode = 1,
                    OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
                    const std::string& err_str = "",
@@ -34,10 +35,10 @@ void TestBatchNorm(const unordered_map<string, vector<T>>& input_data_map,
     test.AddAttribute("spatial", spatial_mode);
   }
   test.AddInput<T>("X", input_shapes_map.at("X"), input_data_map.at("X"));
-  test.AddInput<T>("scale", input_shapes_map.at("scale"), input_data_map.at("scale"));
-  test.AddInput<T>("B", input_shapes_map.at("B"), input_data_map.at("B"));
-  test.AddInput<T>("mean", input_shapes_map.at("mean"), input_data_map.at("mean"));
-  test.AddInput<T>("var", input_shapes_map.at("var"), input_data_map.at("var"));
+  test.AddInput<T>("scale", input_shapes_map.at("scale"), input_data_map.at("scale"), all_input_except_x_are_initializers);
+  test.AddInput<T>("B", input_shapes_map.at("B"), input_data_map.at("B"), all_input_except_x_are_initializers);
+  test.AddInput<T>("mean", input_shapes_map.at("mean"), input_data_map.at("mean"), all_input_except_x_are_initializers);
+  test.AddInput<T>("var", input_shapes_map.at("var"), input_data_map.at("var"), all_input_except_x_are_initializers);
   test.AddOutput<T>("output", expected_output_shape, expected_output);
   // Weight as input is not supported by TensorRT and spatial == 0 is not supported by Nuphar
   std::unordered_set<std::string> excluded_eps = {kTensorrtExecutionProvider};
@@ -47,7 +48,7 @@ void TestBatchNorm(const unordered_map<string, vector<T>>& input_data_map,
   }
 
   // OpenVINO: Disabled due to software limitations
-  #if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
+  #if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M) || defined(OPENVINO_CONFIG_CPU_FP32)
     excluded_eps.insert(kOpenVINOExecutionProvider);
   #endif
   test.Run(expect_result, err_str, excluded_eps);
@@ -202,6 +203,9 @@ TEST(BatchNormTest, BatchNorm1d_3d_Pytorch) {
                           0.0586101f, -0.0839879f, 0.018984f, 0.00415736f, 0.108476f};
   float epsilon = 1e-05f;
   TestBatchNorm(input_data_map, input_shapes_map, epsilon, expected_output, input_shape);
+
+  // NNAPI EP will need all inputs except X be initializers
+  TestBatchNorm(input_data_map, input_shapes_map, epsilon, expected_output, input_shape, true);
 }
 
 TEST(BatchNormTest, BatchNorm2d_Pytorch) {
@@ -279,6 +283,9 @@ TEST(BatchNormTest, BatchNorm2d_Pytorch) {
                           -0.0989828f, -0.160014f, 0.362077f, 0.0649763f, -0.371465f, 0.727401f, 0.0320011f};
   float epsilon = 1e-05f;
   TestBatchNorm(input_data_map, input_shapes_map, epsilon, expected_output, input_shape);
+
+  // NNAPI EP will need all inputs except X be initializers
+  TestBatchNorm(input_data_map, input_shapes_map, epsilon, expected_output, input_shape, true);
 }
 
 TEST(BatchNormTest, BatchNorm3d_Pytorch) {
@@ -434,7 +441,7 @@ TEST(BatchNormTest, InvalidScaleDim) {
                 input_shapes_map,
                 epsilon,
                 expected_output,
-                expected_output_shape, 1,
+                expected_output_shape, false, 1,
                 OpTester::ExpectResult::kExpectFailure,
                 "Invalid input scale");
 }
@@ -476,7 +483,7 @@ TEST(BatchNormTest, InvalidBDim) {
                 input_shapes_map,
                 epsilon,
                 expected_output,
-                expected_output_shape, 1,
+                expected_output_shape, false, 1,
                 OpTester::ExpectResult::kExpectFailure,
                 "Invalid input B");
 }
@@ -518,7 +525,7 @@ TEST(BatchNormTest, InvalidMeanDim) {
                 input_shapes_map,
                 epsilon,
                 expected_output,
-                expected_output_shape, 1,
+                expected_output_shape, false, 1,
                 OpTester::ExpectResult::kExpectFailure,
                 "Invalid input mean");
 }
@@ -560,7 +567,7 @@ TEST(BatchNormTest, InvalidVarDim) {
                 input_shapes_map,
                 epsilon,
                 expected_output,
-                expected_output_shape, 1,
+                expected_output_shape, false, 1,
                 OpTester::ExpectResult::kExpectFailure,
                 "Invalid input var");
 }
@@ -594,6 +601,7 @@ TEST(BatchNormTest, NonSpatial_Simple) {
                 epsilon,
                 expected_output,
                 expected_output_shape,
+                false,
                 0,
                 OpTester::ExpectResult::kExpectSuccess,
                 "",
@@ -629,6 +637,7 @@ TEST(BatchNormTest, NonSpatial_Complicated) {
                 epsilon,
                 expected_output,
                 expected_output_shape,
+                false,
                 0,
                 OpTester::ExpectResult::kExpectSuccess,
                 "",
