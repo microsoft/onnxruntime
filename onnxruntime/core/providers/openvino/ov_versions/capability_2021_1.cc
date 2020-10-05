@@ -245,6 +245,11 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     if (attributes["auto_pad"].s() == "") {
       return true;
     }
+  } else if (optype == "TopK") {
+      // K as input is currently not suppported on CPU.
+      if (device_id != "MYRIAD") {
+        return node->InputDefs().size() > 1;
+      }
   } else if (optype == "ReduceMin") {
     //Only FP32, INT32 and U8 data types are supported
     const bool data_is_float = node->InputDefs()[0]->Type()->find("float") != std::string::npos;
@@ -790,7 +795,7 @@ GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, std::string d
         const auto& node = graph_viewer.GetNode(index);
         if (node->OpType() == "Mul" || node->OpType() == "Transpose" || node->OpType() == "Unsqueeze" ||
             node->OpType() == "Cast" || node->OpType() == "Concat" || node->OpType() == "Gather"
-            || node->OpType() == "Div" || node->OpType() == "Sub"){
+            || node->OpType() == "Div" || node->OpType() == "Sub") {
 
             if((node->OpType() == "Div" || node->OpType() == "Sub") && device_id != "MYRIAD")
               continue;
@@ -803,6 +808,16 @@ GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, std::string d
               }
             }
         }
+
+        if(node->OpType() == "Cast") {
+          auto output_name = node->OutputDefs()[0]->Name();
+          auto it = find(cluster_outputs.begin(), cluster_outputs.end(), output_name);
+          if(it != cluster_outputs.end() && node->GetOutputEdgesCount() != 0){
+            omit_subgraph = true;
+            break;
+          }
+        }
+
         if(node->OpType() == "Conv"){
           auto output_name = node->OutputDefs()[0]->Name();
           auto it = find(cluster_outputs.begin(), cluster_outputs.end(), output_name);
