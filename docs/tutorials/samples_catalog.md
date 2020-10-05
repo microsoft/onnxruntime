@@ -36,7 +36,7 @@ This page catalogs code samples for ONNX Runtime, running locally, and on Azure,
 * [EfficientNet(Keras)](https://github.com/onnx/keras-onnx/blob/master/tutorial/TensorFlow_Keras_EfficientNet.ipynb)
 * [MNIST (Keras)](https://github.com/onnx/keras-onnx/blob/master/tutorial/TensorFlow_Keras_MNIST.ipynb)
 * [BERT Quantization on CPU](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/quantization/notebooks/Bert-GLUE_OnnxRuntime_quantization.ipynb)
-* [Get started with training](https://github.com/microsoft/onnxruntime-training-examples/tree/master/get-started)
+* [Get started with training](https://github.com/microsoft/onnxruntime-training-examples/tree/master/getting-started)
 * [Train NVIDIA BERT transformer model](https://github.com/microsoft/onnxruntime-training-examples/tree/master/nvidia-bert)
 * [Train HuggingFace GPT-2 model](https://github.com/microsoft/onnxruntime-training-examples/tree/master/huggingface-gpt2)
 
