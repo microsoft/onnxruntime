@@ -23,7 +23,7 @@ void ResizeImpl(
     TArray<int64_t>& input_strides,
     TArray<fast_divmod>& output_div_pitches,
     TArray<float>& scales_vals,
-    TArray<float>& roi,
+    TArray<float, 10>& roi,
     const T* input_data,
     T* output_data,
     const size_t N,

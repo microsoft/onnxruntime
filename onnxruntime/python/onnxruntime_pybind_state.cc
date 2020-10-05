@@ -937,6 +937,10 @@ void addObjectMethods(py::module& m, Environment& env) {
       .value("ORT_SEQUENTIAL", ExecutionMode::ORT_SEQUENTIAL)
       .value("ORT_PARALLEL", ExecutionMode::ORT_PARALLEL);
 
+  py::enum_<ExecutionOrder>(m, "ExecutionOrder")
+      .value("DEFAULT", ExecutionOrder::DEFAULT)
+      .value("PRIORITY_BASED", ExecutionOrder::PRIORITY_BASED);
+
   py::class_<OrtDevice> device(m, "OrtDevice", R"pbdoc(ONNXRuntime device informaion.)pbdoc");
   device.def(py::init<OrtDevice::DeviceType, OrtDevice::MemoryType, OrtDevice::DeviceId>())
       .def("device_id", &OrtDevice::Id, R"pbdoc(Device Id.)pbdoc")
@@ -1089,7 +1093,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
           R"pbdoc(Sets the number of threads used to parallelize the execution of the graph (across nodes). Default is 0 to let onnxruntime choose.)pbdoc")
       .def_readwrite("execution_mode", &PySessionOptions::execution_mode,
                      R"pbdoc(Sets the execution mode. Default is sequential.)pbdoc")
-      .def_readwrite("execution_order",  &SessionOptions::execution_order,
+      .def_readwrite("execution_order",  &PySessionOptions::execution_order,
                      R"pbdoc(Sets the execution order. Default is basic topological order.)pbdoc")
       .def_property(
           "graph_optimization_level",
