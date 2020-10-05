@@ -6,7 +6,6 @@ nav_order: 5
 ---
 
 # Windows Machine Learning WinRT API
-{: .no_toc }
 
 New in the ONNX Runtime Nuget package is the ability to use the full [WinML API](https://docs.microsoft.com/en-us/windows/ai/windows-ml/api-reference).
 
@@ -20,9 +19,6 @@ With our [layered architecture](../../resources/high-level-design.md#the-onnx-ru
 
 ## Contents
 {: .no_toc }
-
-* TOC placeholder
-{:toc}
 
 ## NuGet Package
 
@@ -46,5 +42,6 @@ If the OS does not have the runtime you need you can switch to use the redist bi
 |Windows OS 1909| 2|
 |ORT release 1.2| 3|
 |ORT release 1.3| 3|
+|ORT release 1.4| 3|
 
 See [here](https://docs.microsoft.com/en-us/windows/ai/windows-ml/onnx-versions) for more about opsets and ONNX version details in Windows OS distributions.

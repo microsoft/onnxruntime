@@ -9,18 +9,9 @@ nav_order: 4
 
 The Python Operator provides the capability to easily invoke any custom Python code within a single node of an ONNX graph using ONNX Runtime. This can be useful for quicker experimentation when a model requires operators that are not officially supported in ONNX and ONNX Runtime, particularly if there is already a Python implementation for the required functionality. This should be used with discretion in production scenarios, and all security or other risks should be considered beforehand.
 
-## Contents
-{: .no_toc }
-
-* TOC placeholder
-{:toc}
-
 ## Design Overview
-
-The feature can be in [language_interop_ops](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/core/language_interop_ops).
-
+The feature can be found under [onnxruntime/core/language_interop_ops](../onnxruntime/core/language_interop_ops).
 Here is a chart of calling sequence:
-
 <pre>
 onnxruntime                        python capi                         script
      |                                  |                                 |
@@ -34,15 +25,11 @@ onnxruntime                        python capi                         script
 </pre>
 
 ## How to Use
-
 ### Step 1
-
 Build onnxruntime with `--config Release --enable_language_interop_ops --build_wheel` and pip install the latest wheel file. 
 
 ### Step 2
-
 Create an onnx model containing Python operator nodes:
-
 ```python
 ad1_node = helper.make_node('Add', ['A','B'], ['S'])
 mul_node = helper.make_node('Mul', ['C','D'], ['P'])
@@ -66,11 +53,8 @@ graph = helper.make_graph([ad1_node,mul_node,py1_node,ad2_node,py2_node,sub_node
 model = helper.make_model(graph, producer_name = 'pyop_model')
 onnx.save(model, './model.onnx')
 ```
-
 ### Step 3
-
 Implement mymodule.py:
-
 ```python
 class Multi_1:
     def __init__(self, W1, W2, W3):
@@ -84,13 +68,10 @@ class Multi_2:
     def compute(self, *kwargs):
         return sum(kwargs[0:-1]), sum(kwargs[1:])
 ```
-
 ### Step 4
-
 Copy mymodule.py into Python sys.path, then run the model with onnxruntime python API. On Windows, please set PYTHONHOME beforehand. It should point to directory where the python is installed, such as C:\Python37 or C:\ProgramData\Anaconda3\envs\myconda1 if it is in conda.
 
 ## Supported Data Types
-
 * TensorProto.BOOL
 * TensorProto.UINT8
 * TensorProto.UINT16
@@ -101,14 +82,11 @@ Copy mymodule.py into Python sys.path, then run the model with onnxruntime pytho
 * TensorProto.DOUBLE
 
 ## Limitations
-
 * Inferencing and compiling environments must be installed with same version of python.
-
 * On Windows, `--config Debug` has known issues. Please build with `--config RelWithDebInfo` if debugging symbols are needed.
 * Due to Python C API restrictions, multi-threading is disabled so Python operators will run sequentially.
 
 ## Test Coverage
-
 The operator has been tested on multiple platforms, with or without conda:
 
 Platform | Python 3.5 | Python 3.6 | Python 3.7
@@ -118,9 +96,7 @@ Linux | (conda) passed | (conda) passed | passed
 Mac |  (conda) passed | (conda) passed | (conda) passed
 
 ## Example
-
 Developers could resort to PyOp during model conversion for missing operators:
-
 ```python
 import os
 import numpy as np
@@ -151,9 +127,7 @@ onx = convert_sklearn(nmf, '', initial_types, '', None, custom_conversion_functi
 with th open("model.onnx", "wb") as f:
     f.write(onx.SerializeToString())
 ```
-
 mymodule.py:
-
 ```python
 import numpy as np
 class MyNmf:
