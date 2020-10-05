@@ -66,8 +66,6 @@ MlasGemmU8X8ScaleSumBuffer(
     int32_t Scale
     )
 {
-    N = (N + 3) & ~3; // align up
-
     for (size_t n = 0; n < N; n++) {
         Output[n] = Input[n] * Scale;
     }
@@ -1479,10 +1477,10 @@ Return Value:
 
 --*/
 {
-    uint8_t PaddedMatrixAData[16] = { 0 };
+    uint8_t PaddedMatrixAData[16];
 
     //
-    // Process up to four rows of matrix A in a loop.
+    // Process four rows of matrix A in a loop.
     //
     // The buffer is packed as a series of 16 byte vectors where four rows are
     // interleaved with the following pattern:
@@ -1495,21 +1493,13 @@ Return Value:
     // If CountK is not aligned to a multiple of four, then the vector is padded
     // with zeroes.
     //
-    // If CountM is not aligned to a multiple of four, then the last matrix row
-    // is repeated until alignment is reached. The kernel overwrites the output
-    // matrix multiple times using these recomputed values to reduce code size.
-    //
 
-    while (CountM > 0) {
+    while (CountM >= 4) {
 
         const uint8_t* a0 = A;
-        const uint8_t* a1 = (CountM >= 2) ? a0 + lda : a0;
-        const uint8_t* a2 = (CountM >= 3) ? a1 + lda : a1;
-        const uint8_t* a3 = (CountM >= 4) ? a2 + lda : a2;
-
-        //
-        // Gather four bytes from each of the rows and write to the packed buffer.
-        //
+        const uint8_t* a1 = a0 + lda;
+        const uint8_t* a2 = a1 + lda;
+        const uint8_t* a3 = a2 + lda;
 
         size_t k = CountK;
         uint32x4_t RowSums = vmovq_n_u32(0);
@@ -1534,10 +1524,10 @@ Return Value:
             v2 = vzip1q_u32(z1, z3);
             v3 = vzip2q_u32(z1, z3);
 
-            vst1q_u8(D, vreinterpretq_u8_u32(v0));
-            vst1q_u8(D+16, vreinterpretq_u8_u32(v1));
-            vst1q_u8(D+32, vreinterpretq_u8_u32(v2));
-            vst1q_u8(D+48, vreinterpretq_u8_u32(v3));
+            vst1q_u8(&D[0], vreinterpretq_u8_u32(v0));
+            vst1q_u8(&D[16], vreinterpretq_u8_u32(v1));
+            vst1q_u8(&D[32], vreinterpretq_u8_u32(v2));
+            vst1q_u8(&D[48], vreinterpretq_u8_u32(v3));
 
             RowSums = vpadalq_u16(RowSums, vpaddlq_u8(vreinterpretq_u8_u32(v0)));
             RowSums = vpadalq_u16(RowSums, vpaddlq_u8(vreinterpretq_u8_u32(v1)));
@@ -1578,6 +1568,8 @@ Return Value:
 
             uint8_t* d = PaddedMatrixAData;
 
+            vst1q_u8(PaddedMatrixAData, vmovq_n_u8(0));
+
             while (k > 0) {
 
                 d[0] = *a0++;
@@ -1601,7 +1593,135 @@ Return Value:
         RowSumBuffer += 4;
 
         A = A + lda * 4;
-        CountM -= std::min(CountM, size_t(4));
+        CountM -= 4;
+    }
+
+    //
+    // Process two rows of matrix A.
+    //
+    // The buffer is packed as a series of 8 byte vectors where two rows are
+    // interleaved with the following pattern:
+    //
+    //      [ A0 A1 A2 A3 B0 B1 B2 B3 ]
+    //      [ A4 A5 A6 A7 B4 B5 B6 B7 ]
+    //
+    // This pattern is repeated (CountK / 4) times.
+    //
+    // If CountK is not aligned to a multiple of four, then the vector is padded
+    // with zeroes.
+    //
+
+    if ((CountM & 2) != 0) {
+
+        const uint8_t* a0 = A;
+        const uint8_t* a1 = a0 + lda;
+
+        size_t k = CountK;
+        uint32x2_t RowSums = vmov_n_u32(0);
+        uint32x2_t GatherVector = vmov_n_u32(0);
+
+        while (k >= 4) {
+
+            GatherVector = vld1_lane_u32(reinterpret_cast<const uint32_t*>(a0), GatherVector, 0);
+            a0 += 4;
+            GatherVector = vld1_lane_u32(reinterpret_cast<const uint32_t*>(a1), GatherVector, 1);
+            a1 += 4;
+
+            uint8x8_t PackedVector = vreinterpret_u8_u32(GatherVector);
+            vst1_u8(D, PackedVector);
+
+            RowSums = vpadal_u16(RowSums, vpaddl_u8(PackedVector));
+
+            D += 8;
+            k -= 4;
+        }
+
+        if (k > 0) {
+
+            //
+            // Copy the remaining bytes to the zero padded stack buffer.
+            //
+
+            uint8_t* d = PaddedMatrixAData;
+
+            vst1q_u8(PaddedMatrixAData, vmovq_n_u8(0));
+
+            while (k > 0) {
+
+                d[0] = *a0++;
+                d[4] = *a1++;
+
+                d += 1;
+                k -= 1;
+            }
+
+            uint8x8_t PackedVector = vld1_u8(PaddedMatrixAData);
+            vst1_u8(D, PackedVector);
+
+            RowSums = vpadal_u16(RowSums, vpaddl_u8(PackedVector));
+
+            D += 8;
+        }
+
+        vst1_s32(RowSumBuffer, vreinterpret_s32_u32(RowSums));
+        RowSumBuffer += 2;
+
+        A = A + lda * 2;
+        CountM -= 2;
+    }
+
+    //
+    // Process two rows of matrix A.
+    //
+    // The buffer is packed as a series of 4 byte with the following pattern:
+    //
+    //      [ A0 A1 A2 A3 ]
+    //      [ A4 A5 A6 A7 ]
+    //
+    // This pattern is repeated (CountK / 4) times.
+    //
+    // If CountK is not aligned to a multiple of four, then the vector is padded
+    // with zeroes.
+    //
+
+    if ((CountM & 1) != 0) {
+
+        const uint8_t* a = A;
+        size_t k = CountK;
+        uint32x4_t RowSums = vmovq_n_u32(0);
+
+        while (k >= 16) {
+
+            uint8x16_t v = vld1q_u8(a);
+            a += 16;
+
+            vst1q_u8(D, v);
+
+            RowSums = vpadalq_u16(RowSums, vpaddlq_u8(v));
+
+            D += 16;
+            k -= 16;
+        }
+
+        if (k > 0) {
+
+            //
+            // Copy the remaining bytes to the zero padded stack buffer.
+            //
+
+            vst1q_u8(PaddedMatrixAData, vmovq_n_u8(0));
+
+            for (size_t kk = 0; kk < k; kk++) {
+                PaddedMatrixAData[kk] = a[kk];
+            }
+
+            uint8x16_t v = vld1q_u8(PaddedMatrixAData);
+            vst1q_u8(D, v);
+
+            RowSums = vpadalq_u16(RowSums, vpaddlq_u8(v));
+        }
+
+        *RowSumBuffer = int32_t(vaddvq_u32(RowSums));
     }
 }
 

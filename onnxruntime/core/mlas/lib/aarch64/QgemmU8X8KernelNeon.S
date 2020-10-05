@@ -88,11 +88,19 @@ Return Value:
         mov     x15,x3
         add     v27.4s,v27.4s,v0.4s         // broadcast add DepthValue
         dup     v24.4s,v27.s[0]             // broadcast row fixups
+        cmp     x4,#1                       // CountM == 1?
+        beq     .LGemmU8X8.M1.ProcessNextColumnLoop
         dup     v25.4s,v27.s[1]
+        cmp     x4,#4                       // CountM < 4?
+        blo     .LGemmU8X8.M2.ProcessNextColumnLoop
         dup     v26.4s,v27.s[2]
         dup     v27.4s,v27.s[3]
 
-.LGemmU8X8.ProcessNextColumnLoop:
+//
+// Process 4 rows of the matrices.
+//
+
+.LGemmU8X8.M4.ProcessNextColumnLoop:
         ld1     {v0.8b},[x1],#8             // load packed B0
         mov     x0,x14                      // reload matrix A
         ld1     {v2.4s},[x8],#16            // load ColumnSumBuffer0
@@ -110,7 +118,7 @@ Return Value:
         add     v22.4s,v2.4s,v27.4s
         add     v23.4s,v3.4s,v27.4s
 
-.LGemmU8X8.ComputeBlockLoop:
+.LGemmU8X8.M4.ComputeBlockLoop:
         uxtl    v2.8h,v4.8b
         uxtl    v3.8h,v5.8b
         ld1     {v1.8b},[x1],#8             // load packed B1
@@ -135,7 +143,7 @@ Return Value:
         umlal2  v23.4s,v1.8h,v3.h[5]
         ld1     {v1.8b},[x1],#8             // load packed B3
         sub     x3,x3,#1
-        cbz     x3,.LGemmU8X8.ComputeBlockLoopFinish
+        cbz     x3,.LGemmU8X8.M4.ComputeBlockLoopFinish
         umlal   v16.4s,v0.4h,v2.h[2]
         umlal2  v17.4s,v0.8h,v2.h[2]
         umlal   v18.4s,v0.4h,v2.h[6]
@@ -157,37 +165,32 @@ Return Value:
         umlal2  v21.4s,v1.8h,v3.h[3]
         umlal   v22.4s,v1.4h,v3.h[7]
         umlal2  v23.4s,v1.8h,v3.h[7]
-        b       .LGemmU8X8.ComputeBlockLoop
+        b       .LGemmU8X8.M4.ComputeBlockLoop
 
-.LGemmU8X8.ComputeBlockLoopFinish:
-        cmp     x4,#2
+.LGemmU8X8.M4.ComputeBlockLoopFinish:
         umlal   v16.4s,v0.4h,v2.h[2]        // finish computing tail vectors
         umlal2  v17.4s,v0.8h,v2.h[2]
-        add     x10,x2,x6,lsl #2
+        add     x10,x2,x6,lsl #2            // compute output row 2
         umlal   v18.4s,v0.4h,v2.h[6]
         umlal2  v19.4s,v0.8h,v2.h[6]
         uxtl    v1.8h,v1.8b
         umlal   v20.4s,v0.4h,v3.h[2]
         umlal2  v21.4s,v0.8h,v3.h[2]
-        csel    x10,x2,x10,lo               // select output row 2
         umlal   v22.4s,v0.4h,v3.h[6]
         umlal2  v23.4s,v0.8h,v3.h[6]
-        add     x11,x10,x6,lsl #2
+        add     x11,x10,x6,lsl #2           // compute output row 3
         umlal   v16.4s,v1.4h,v2.h[3]
         umlal2  v17.4s,v1.8h,v2.h[3]
-        csel    x11,x10,x11,ls              // select output row 3
         umlal   v18.4s,v1.4h,v2.h[7]
         umlal2  v19.4s,v1.8h,v2.h[7]
-        cmp     x4,#3
         umlal   v20.4s,v1.4h,v3.h[3]
         umlal2  v21.4s,v1.8h,v3.h[3]
-        add     x12,x11,x6,lsl #2
+        add     x12,x11,x6,lsl #2           // compute output row 4
         umlal   v22.4s,v1.4h,v3.h[7]
         umlal2  v23.4s,v1.8h,v3.h[7]
-        csel    x12,x11,x12,ls              // select output row 4
         subs    x5,x5,#8                    // adjust CountN remaining
-        blo     .LGemmU8X8.StoreOutputPartial
-        cbnz    x13,.LGemmU8X8.SkipAccumulateOutput
+        blo     .LGemmU8X8.M4.StoreOutputPartial
+        cbnz    x13,.LGemmU8X8.M4.SkipAccumulateOutput
         ldp     q0,q1,[x2]
         ldp     q2,q3,[x10]
         add     v16.4s,v16.4s,v0.4s
@@ -201,17 +204,15 @@ Return Value:
         add     v22.4s,v22.4s,v6.4s
         add     v23.4s,v23.4s,v7.4s
 
-.LGemmU8X8.SkipAccumulateOutput:
+.LGemmU8X8.M4.SkipAccumulateOutput:
         stp     q16,q17,[x2],#32
         stp     q18,q19,[x10]
         stp     q20,q21,[x11]
         stp     q22,q23,[x12]
-        cbnz    x5,.LGemmU8X8.ProcessNextColumnLoop
+        cbnz    x5,.LGemmU8X8.M4.ProcessNextColumnLoop
 
-.LGemmU8X8.ExitKernel:
-        mov     x0,#4
-        cmp     x4,x0
-        csel    x0,x4,x0,ls                 // return min(CountM, 4) handled
+.LGemmU8X8.M4.ExitKernel:
+        mov     x0,#4                       // return number of rows handled
         ret
 
 //
@@ -219,11 +220,11 @@ Return Value:
 // accumulating into the existing contents of the output matrix.
 //
 
-.LGemmU8X8.StoreOutputPartial:
-        cbz     x13,.LGemmU8X8.StoreOutputPartial.AddMode
+.LGemmU8X8.M4.StoreOutputPartial:
+        cbz     x13,.LGemmU8X8.M4.StoreOutputPartial.AddMode
 
-.LGemmU8X8.StoreOutputPartial.ZeroMode:
-        tbz     x5,#2,.LGemmU8X8.StoreOutputPartial2.ZeroMode
+.LGemmU8X8.M4.StoreOutputPartial.ZeroMode:
+        tbz     x5,#2,.LGemmU8X8.M4.StoreOutputPartial2.ZeroMode
         st1     {v16.4s},[x2],#16
         mov     v16.16b,v17.16b             // shift remaining elements down
         st1     {v18.4s},[x10],#16
@@ -233,8 +234,8 @@ Return Value:
         st1     {v22.4s},[x12],#16
         mov     v22.16b,v23.16b
 
-.LGemmU8X8.StoreOutputPartial2.ZeroMode:
-        tbz     x5,#1,.LGemmU8X8.StoreOutputPartial1.ZeroMode
+.LGemmU8X8.M4.StoreOutputPartial2.ZeroMode:
+        tbz     x5,#1,.LGemmU8X8.M4.StoreOutputPartial1.ZeroMode
         st1     {v16.2s},[x2],#8
         dup     v16.4s,v16.s[2]             // shift remaining elements down
         st1     {v18.2s},[x10],#8
@@ -244,16 +245,16 @@ Return Value:
         st1     {v22.2s},[x12],#8
         dup     v22.4s,v22.s[2]
 
-.LGemmU8X8.StoreOutputPartial1.ZeroMode:
-        tbz     x5,#0,.LGemmU8X8.ExitKernel
+.LGemmU8X8.M4.StoreOutputPartial1.ZeroMode:
+        tbz     x5,#0,.LGemmU8X8.M4.ExitKernel
         st1     {v16.s}[0],[x2]
         st1     {v18.s}[0],[x10]
         st1     {v20.s}[0],[x11]
         st1     {v22.s}[0],[x12]
-        b       .LGemmU8X8.ExitKernel
+        b       .LGemmU8X8.M4.ExitKernel
 
-.LGemmU8X8.StoreOutputPartial.AddMode:
-        tbz     x5,#2,.LGemmU8X8.StoreOutputPartial2.AddMode
+.LGemmU8X8.M4.StoreOutputPartial.AddMode:
+        tbz     x5,#2,.LGemmU8X8.M4.StoreOutputPartial2.AddMode
         ld1     {v0.4s},[x2]
         ld1     {v1.4s},[x10]
         ld1     {v2.4s},[x11]
@@ -271,8 +272,8 @@ Return Value:
         st1     {v22.4s},[x12],#16
         mov     v22.16b,v23.16b
 
-.LGemmU8X8.StoreOutputPartial2.AddMode:
-        tbz     x5,#1,.LGemmU8X8.StoreOutputPartial1.AddMode
+.LGemmU8X8.M4.StoreOutputPartial2.AddMode:
+        tbz     x5,#1,.LGemmU8X8.M4.StoreOutputPartial1.AddMode
         ld1     {v0.2s},[x2]
         ld1     {v1.2s},[x10]
         ld1     {v2.2s},[x11]
@@ -290,8 +291,8 @@ Return Value:
         st1     {v22.2s},[x12],#8
         dup     v22.4s,v22.s[2]
 
-.LGemmU8X8.StoreOutputPartial1.AddMode:
-        tbz     x5,#0,.LGemmU8X8.ExitKernel
+.LGemmU8X8.M4.StoreOutputPartial1.AddMode:
+        tbz     x5,#0,.LGemmU8X8.M4.ExitKernel
         ld1     {v0.s}[0],[x2]
         ld1     {v1.s}[0],[x10]
         add     v16.4s,v16.4s,v0.4s
@@ -304,6 +305,247 @@ Return Value:
         add     v22.4s,v22.4s,v3.4s
         st1     {v20.s}[0],[x11]
         st1     {v22.s}[0],[x12]
-        b       .LGemmU8X8.ExitKernel
+        b       .LGemmU8X8.M4.ExitKernel
+
+//
+// Process 2 rows of the matrices.
+//
+
+.LGemmU8X8.M2.ProcessNextColumnLoop:
+        ld1     {v0.8b},[x1],#8             // load packed B0
+        mov     x0,x14                      // reload matrix A
+        ld1     {v2.4s},[x8],#16            // load ColumnSumBuffer0
+        mov     x3,x15                      // reload PackedCountK
+        ld1     {v3.4s},[x8],#16            // load ColumnSumBuffer1
+        uxtl    v0.8h,v0.8b
+        ld1     {v4.8b},[x0],#8             // load first packed A0
+        add     v16.4s,v2.4s,v24.4s
+        add     v17.4s,v3.4s,v24.4s
+        add     v18.4s,v2.4s,v25.4s
+        add     v19.4s,v3.4s,v25.4s
+
+.LGemmU8X8.M2.ComputeBlockLoop:
+        uxtl    v2.8h,v4.8b
+        ld1     {v1.8b},[x1],#8             // load packed B1
+        umlal   v16.4s,v0.4h,v2.h[0]
+        umlal2  v17.4s,v0.8h,v2.h[0]
+        umlal   v18.4s,v0.4h,v2.h[4]
+        umlal2  v19.4s,v0.8h,v2.h[4]
+        uxtl    v1.8h,v1.8b
+        ld1     {v0.8b},[x1],#8             // load packed B2
+        umlal   v16.4s,v1.4h,v2.h[1]
+        umlal2  v17.4s,v1.8h,v2.h[1]
+        umlal   v18.4s,v1.4h,v2.h[5]
+        umlal2  v19.4s,v1.8h,v2.h[5]
+        uxtl    v0.8h,v0.8b
+        ld1     {v1.8b},[x1],#8             // load packed B3
+        sub     x3,x3,#1
+        cbz     x3,.LGemmU8X8.M2.ComputeBlockLoopFinish
+        umlal   v16.4s,v0.4h,v2.h[2]
+        umlal2  v17.4s,v0.8h,v2.h[2]
+        umlal   v18.4s,v0.4h,v2.h[6]
+        umlal2  v19.4s,v0.8h,v2.h[6]
+        uxtl    v1.8h,v1.8b
+        ld1     {v4.8b},[x0],#8             // load next packed A0
+        ld1     {v0.8b},[x1],#8             // load packed B0
+        umlal   v16.4s,v1.4h,v2.h[3]
+        umlal2  v17.4s,v1.8h,v2.h[3]
+        umlal   v18.4s,v1.4h,v2.h[7]
+        umlal2  v19.4s,v1.8h,v2.h[7]
+        uxtl    v0.8h,v0.8b
+        b       .LGemmU8X8.M2.ComputeBlockLoop
+
+.LGemmU8X8.M2.ComputeBlockLoopFinish:
+        umlal   v16.4s,v0.4h,v2.h[2]        // finish computing tail vectors
+        umlal2  v17.4s,v0.8h,v2.h[2]
+        add     x10,x2,x6,lsl #2            // compute output row 2
+        umlal   v18.4s,v0.4h,v2.h[6]
+        umlal2  v19.4s,v0.8h,v2.h[6]
+        uxtl    v1.8h,v1.8b
+        umlal   v16.4s,v1.4h,v2.h[3]
+        umlal2  v17.4s,v1.8h,v2.h[3]
+        umlal   v18.4s,v1.4h,v2.h[7]
+        umlal2  v19.4s,v1.8h,v2.h[7]
+        subs    x5,x5,#8                    // adjust CountN remaining
+        blo     .LGemmU8X8.M2.StoreOutputPartial
+        cbnz    x13,.LGemmU8X8.M2.SkipAccumulateOutput
+        ldp     q0,q1,[x2]
+        ldp     q2,q3,[x10]
+        add     v16.4s,v16.4s,v0.4s
+        add     v17.4s,v17.4s,v1.4s
+        add     v18.4s,v18.4s,v2.4s
+        add     v19.4s,v19.4s,v3.4s
+
+.LGemmU8X8.M2.SkipAccumulateOutput:
+        stp     q16,q17,[x2],#32
+        stp     q18,q19,[x10]
+        cbnz    x5,.LGemmU8X8.M2.ProcessNextColumnLoop
+
+.LGemmU8X8.M2.ExitKernel:
+        mov     x0,#2                       // return number of rows handled
+        ret
+
+//
+// Store the partial 1 to 7 columns either overwriting the output matrix or
+// accumulating into the existing contents of the output matrix.
+//
+
+.LGemmU8X8.M2.StoreOutputPartial:
+        cbz     x13,.LGemmU8X8.M2.StoreOutputPartial.AddMode
+
+.LGemmU8X8.M2.StoreOutputPartial.ZeroMode:
+        tbz     x5,#2,.LGemmU8X8.M2.StoreOutputPartial2.ZeroMode
+        st1     {v16.4s},[x2],#16
+        mov     v16.16b,v17.16b             // shift remaining elements down
+        st1     {v18.4s},[x10],#16
+        mov     v18.16b,v19.16b
+
+.LGemmU8X8.M2.StoreOutputPartial2.ZeroMode:
+        tbz     x5,#1,.LGemmU8X8.M2.StoreOutputPartial1.ZeroMode
+        st1     {v16.2s},[x2],#8
+        dup     v16.4s,v16.s[2]             // shift remaining elements down
+        st1     {v18.2s},[x10],#8
+        dup     v18.4s,v18.s[2]
+
+.LGemmU8X8.M2.StoreOutputPartial1.ZeroMode:
+        tbz     x5,#0,.LGemmU8X8.M2.ExitKernel
+        st1     {v16.s}[0],[x2]
+        st1     {v18.s}[0],[x10]
+        b       .LGemmU8X8.M2.ExitKernel
+
+.LGemmU8X8.M2.StoreOutputPartial.AddMode:
+        tbz     x5,#2,.LGemmU8X8.M2.StoreOutputPartial2.AddMode
+        ld1     {v0.4s},[x2]
+        ld1     {v1.4s},[x10]
+        add     v16.4s,v16.4s,v0.4s
+        add     v18.4s,v18.4s,v1.4s
+        st1     {v16.4s},[x2],#16
+        mov     v16.16b,v17.16b             // shift remaining elements down
+        st1     {v18.4s},[x10],#16
+        mov     v18.16b,v19.16b
+
+.LGemmU8X8.M2.StoreOutputPartial2.AddMode:
+        tbz     x5,#1,.LGemmU8X8.M2.StoreOutputPartial1.AddMode
+        ld1     {v0.2s},[x2]
+        ld1     {v1.2s},[x10]
+        add     v16.4s,v16.4s,v0.4s
+        add     v18.4s,v18.4s,v1.4s
+        st1     {v16.2s},[x2],#8
+        dup     v16.4s,v16.s[2]             // shift remaining elements down
+        st1     {v18.2s},[x10],#8
+        dup     v18.4s,v18.s[2]
+
+.LGemmU8X8.M2.StoreOutputPartial1.AddMode:
+        tbz     x5,#0,.LGemmU8X8.M2.ExitKernel
+        ld1     {v0.s}[0],[x2]
+        ld1     {v1.s}[0],[x10]
+        add     v16.4s,v16.4s,v0.4s
+        add     v18.4s,v18.4s,v1.4s
+        st1     {v16.s}[0],[x2]
+        st1     {v18.s}[0],[x10]
+        b       .LGemmU8X8.M2.ExitKernel
+
+//
+// Process 1 row of the matrices.
+//
+
+.LGemmU8X8.M1.ProcessNextColumnLoop:
+        ld1     {v0.8b},[x1],#8             // load packed B0
+        mov     x0,x14                      // reload matrix A
+        ld1     {v2.4s},[x8],#16            // load ColumnSumBuffer0
+        mov     x3,x15                      // reload PackedCountK
+        ld1     {v3.4s},[x8],#16            // load ColumnSumBuffer1
+        uxtl    v0.8h,v0.8b
+        ldr     s4,[x0],#4                  // load first packed A0
+        add     v16.4s,v2.4s,v24.4s
+        add     v17.4s,v3.4s,v24.4s
+
+.LGemmU8X8.M1.ComputeBlockLoop:
+        uxtl    v2.8h,v4.8b
+        ld1     {v1.8b},[x1],#8             // load packed B1
+        umlal   v16.4s,v0.4h,v2.h[0]
+        umlal2  v17.4s,v0.8h,v2.h[0]
+        uxtl    v1.8h,v1.8b
+        ld1     {v0.8b},[x1],#8             // load packed B2
+        umlal   v16.4s,v1.4h,v2.h[1]
+        umlal2  v17.4s,v1.8h,v2.h[1]
+        uxtl    v0.8h,v0.8b
+        ld1     {v1.8b},[x1],#8             // load packed B3
+        sub     x3,x3,#1
+        cbz     x3,.LGemmU8X8.M1.ComputeBlockLoopFinish
+        umlal   v16.4s,v0.4h,v2.h[2]
+        umlal2  v17.4s,v0.8h,v2.h[2]
+        uxtl    v1.8h,v1.8b
+        ldr     s4,[x0],#4                  // load first packed A0
+        ld1     {v0.8b},[x1],#8             // load packed B0
+        umlal   v16.4s,v1.4h,v2.h[3]
+        umlal2  v17.4s,v1.8h,v2.h[3]
+        uxtl    v0.8h,v0.8b
+        b       .LGemmU8X8.M1.ComputeBlockLoop
+
+.LGemmU8X8.M1.ComputeBlockLoopFinish:
+        umlal   v16.4s,v0.4h,v2.h[2]        // finish computing tail vectors
+        umlal2  v17.4s,v0.8h,v2.h[2]
+        uxtl    v1.8h,v1.8b
+        umlal   v16.4s,v1.4h,v2.h[3]
+        umlal2  v17.4s,v1.8h,v2.h[3]
+        subs    x5,x5,#8                    // adjust CountN remaining
+        blo     .LGemmU8X8.M1.StoreOutputPartial
+        cbnz    x13,.LGemmU8X8.M1.SkipAccumulateOutput
+        ldp     q0,q1,[x2]
+        add     v16.4s,v16.4s,v0.4s
+        add     v17.4s,v17.4s,v1.4s
+
+.LGemmU8X8.M1.SkipAccumulateOutput:
+        stp     q16,q17,[x2],#32
+        cbnz    x5,.LGemmU8X8.M1.ProcessNextColumnLoop
+
+.LGemmU8X8.M1.ExitKernel:
+        mov     x0,#1                       // return number of rows handled
+        ret
+
+//
+// Store the partial 1 to 7 columns either overwriting the output matrix or
+// accumulating into the existing contents of the output matrix.
+//
+
+.LGemmU8X8.M1.StoreOutputPartial:
+        cbz     x13,.LGemmU8X8.M1.StoreOutputPartial.AddMode
+
+.LGemmU8X8.M1.StoreOutputPartial.ZeroMode:
+        tbz     x5,#2,.LGemmU8X8.M1.StoreOutputPartial2.ZeroMode
+        st1     {v16.4s},[x2],#16
+        mov     v16.16b,v17.16b             // shift remaining elements down
+
+.LGemmU8X8.M1.StoreOutputPartial2.ZeroMode:
+        tbz     x5,#1,.LGemmU8X8.M1.StoreOutputPartial1.ZeroMode
+        st1     {v16.2s},[x2],#8
+        dup     v16.4s,v16.s[2]             // shift remaining elements down
+
+.LGemmU8X8.M1.StoreOutputPartial1.ZeroMode:
+        tbz     x5,#0,.LGemmU8X8.M1.ExitKernel
+        st1     {v16.s}[0],[x2]
+        b       .LGemmU8X8.M1.ExitKernel
+
+.LGemmU8X8.M1.StoreOutputPartial.AddMode:
+        tbz     x5,#2,.LGemmU8X8.M1.StoreOutputPartial2.AddMode
+        ld1     {v0.4s},[x2]
+        add     v16.4s,v16.4s,v0.4s
+        st1     {v16.4s},[x2],#16
+        mov     v16.16b,v17.16b             // shift remaining elements down
+
+.LGemmU8X8.M1.StoreOutputPartial2.AddMode:
+        tbz     x5,#1,.LGemmU8X8.M1.StoreOutputPartial1.AddMode
+        ld1     {v0.2s},[x2]
+        add     v16.4s,v16.4s,v0.4s
+        st1     {v16.2s},[x2],#8
+        dup     v16.4s,v16.s[2]             // shift remaining elements down
+
+.LGemmU8X8.M1.StoreOutputPartial1.AddMode:
+        tbz     x5,#0,.LGemmU8X8.M1.ExitKernel
+        ld1     {v0.s}[0],[x2]
+        add     v16.4s,v16.4s,v0.4s
+        st1     {v16.s}[0],[x2]
+        b       .LGemmU8X8.M1.ExitKernel
 
         .end
