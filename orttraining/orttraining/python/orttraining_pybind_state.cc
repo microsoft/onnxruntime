@@ -142,10 +142,13 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   std::cout << "[ConfigureSessionForTraining] pipeline_config" << std::endl;
   training::TrainingSession::TrainingConfiguration::PipelineConfiguration pipeline_config;
   pipeline_config.do_partition = true;
-  training::TrainingSession::TrainingConfiguration::CutEdge cut_edge0("208");
-  training::TrainingSession::TrainingConfiguration::CutEdge cut_edge1("426");
-  training::TrainingSession::TrainingConfiguration::CutEdge cut_edge2("89", {"501"});
-  training::TrainingSession::TrainingConfiguration::CutInfo cut_info{cut_edge0, cut_edge1, cut_edge2};
+  // The following cut may fail because a non-differentiable path is cut. 
+  //training::TrainingSession::TrainingConfiguration::CutEdge cut_edge0("208");
+  //training::TrainingSession::TrainingConfiguration::CutEdge cut_edge1("426");
+  //training::TrainingSession::TrainingConfiguration::CutEdge cut_edge2("89", {"501"});
+  //training::TrainingSession::TrainingConfiguration::CutInfo cut_info{cut_edge0, cut_edge1, cut_edge2};
+  training::TrainingSession::TrainingConfiguration::CutEdge cut_edge0("534");
+  training::TrainingSession::TrainingConfiguration::CutInfo cut_info{cut_edge0};
   pipeline_config.cut_list.push_back(cut_info);
   config.pipeline_config = pipeline_config;
 
@@ -277,6 +280,8 @@ void addObjectMethodsForTraining(py::module& m) {
       .def("read_bytes", [](PyTrainingSession* sess, const py::bytes& serialized_model, TrainingParameters& parameters) {
         std::istringstream buffer(serialized_model);
         OrtPybindThrowIfError(sess->GetSessionHandle()->Load(buffer));
+        std::cout << "[orttraining_pybind_state.cc, read_bytes] MPI_Init" << std::endl;
+        MPI_Init(nullptr, nullptr);
 
 #if defined(USE_NCCL)
         bool use_nccl = parameters.allreduce_post_accumulation;

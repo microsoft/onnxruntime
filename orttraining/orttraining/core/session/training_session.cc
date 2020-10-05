@@ -474,10 +474,10 @@ Status TrainingSession::ConfigureForTraining(
   }
   std::cout << "[training_session.cc] Save final model @ rank " << config.distributed_config.world_rank << " done" << std::endl;
 
-  bool gdb_flag = true;
-  while (gdb_flag) {
-    gdb_flag = gdb_flag;
-  }
+  //bool gdb_flag = true;
+  //while (gdb_flag) {
+  //  gdb_flag = gdb_flag;
+  //}
 
   if (config.model_with_training_graph_path.has_value())
     this->model_output_path = config.model_with_training_graph_path.value();
@@ -957,6 +957,7 @@ common::Status TrainingSession::Run(const RunOptions& run_options, IOBinding& io
     gdb_flag = gdb_flag;
   }
   */
+
   // Override initializers in eval mode.
   if (!run_options.training_mode) {
     std::vector<std::pair<std::string, OrtValue>> new_feeds;
@@ -997,6 +998,29 @@ common::Status TrainingSession::Run(const RunOptions& run_options, IOBinding& io
     };
 
     std::cout << "[training_session.cc] Add event feeds" << std::endl;
+    config_result_.pipeline_config_result.value().pipeline_tensor_names.ForEachEventName(create_dummy_event_values);
+
+    for (auto& new_feed : new_feeds) {
+      // Bind new feed to graph input.
+      ORT_RETURN_IF_ERROR(io_binding.BindInput(new_feed.first, new_feed.second));
+    }
+  } else {
+    std::vector<std::pair<std::string, OrtValue>> new_feeds;
+
+    // Create a local function to append non-empty name to fetch_names list.
+    auto create_dummy_event_values = [&] (const std::string& name) {
+      if (name.empty()) {
+        return;
+      }
+      const auto* cpu_ep = GetSessionState().GetExecutionProviders().Get(onnxruntime::kCpuExecutionProvider);
+      const auto cpu_allocator = cpu_ep->GetAllocator(0, OrtMemTypeDefault);
+      int64_t event = -1;
+      OrtValue event_value = onnxruntime::MakeScalarMLValue<int64_t>(cpu_allocator, event, false);
+      std::cout << "[training_session.cc] Add feed name: " << name << ", value: " << event << std::endl;
+      new_feeds.emplace_back(name, event_value);
+    };
+
+    std::cout << "[training_session.cc] Start adding event feeds." << std::endl;
     config_result_.pipeline_config_result.value().pipeline_tensor_names.ForEachEventName(create_dummy_event_values);
 
     for (auto& new_feed : new_feeds) {
