@@ -37,6 +37,11 @@ from onnxruntime.training.optim import PolyWarmupLRScheduler, LinearWarmupLRSche
 # issues are understood and solved.
 import onnxruntime.capi.pt_patch
 
+# we cannot make full convergence run in nightly pipeling because of its timeout limit,
+# max_steps is still needed to calculate learning rate. force_to_stop_max_steps is used to
+# terminate the training before the pipeline run hit its timeout.
+force_to_stop_max_steps = 2500
+
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
                     datefmt='%m/%d/%Y %H:%M:%S',
                     level=logging.INFO)
@@ -446,7 +451,7 @@ def do_pretrain(args):
                         
                         print("Step:{} Average Loss = {}".format(global_step, average_loss / divisor))
 
-                    if global_step >= args.max_steps:
+                    if global_step >= args.max_steps or global_step >= force_to_stop_max_steps:
                         if tb_writer:
                             tb_writer.close()
 
