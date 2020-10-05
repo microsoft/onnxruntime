@@ -248,6 +248,9 @@ class ORTTrainerOptions(object):
         _internal_use.enable_onnx_contrib_ops (bool, default is True)
             enable PyTorch to export nodes as contrib ops in ONNX.
             This flag may be removed anytime in the future.
+        _internal_use.enable_gelu_approximation (bool, default is False)
+            enable approximation on gelu activations for speed up.
+            This flag may be removed anytime in the future.
 
     Example:
         .. code-block:: python
