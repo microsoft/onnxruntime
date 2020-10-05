@@ -43,6 +43,7 @@ class MemoryInfo {
   void RecordActivationPatternInfo(const MemoryPatternGroup& mem_patterns);
   void SetDynamicAllocation(const OrtValueIndex idx);
   void RecordTensorDeviceAllocInfo(const OrtValueIndex idx, const OrtValue& value);
+  void RecordInputMemoryInfo(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds);
 
   void PrintMemoryInfoForLocation(const logging::Logger& /*logger*/, const OrtDevice::DeviceType location);
 

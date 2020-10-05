@@ -558,6 +558,11 @@ class PlannerImpl {
   // Should only be used after ProcessDef()
   Status ComputeReusePlan() {
     std::vector<SequentialExecutionPlan::NodeExecutionPlan>& execution_plan(plan_.execution_plan);
+    //copy the usecounts to an vector, before computing reuse
+    std::vector<int> ort_value_usecount;
+    for (size_t i = 0; i < ort_value_info_.size(); ++i) {
+      ort_value_usecount.push_back(ort_value_info_[i].usecount);
+    }
 
     // Identify allocation/deallocation plan for every ml-value
 
@@ -672,6 +677,10 @@ class PlannerImpl {
           auto original = Buffer(Index(sym));
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
           // See comments in the OrtValueInfo definition.
+          // Compute lifetime
+          if((current != -1) && (0 == --ort_value_usecount[current])){
+               AllocPlan(current).life_interval.second = program_counter;
+          }
           if (original != current) {
             if ((original != -1) && (0 == DecrementUseCount(current))) {
               AllocPlan(current).life_interval.second = program_counter;

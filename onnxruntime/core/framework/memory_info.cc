@@ -41,16 +41,15 @@ void MemoryInfo::RecordDeviceAllocInfo(const std::unordered_map<int, OrtValue>& 
 }
 
 //Comment: Need to add in the memory information for input
-//void MemoryInfo::RecordInputMemoryInfo(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds) {
-//  for (auto value_idx : feed_mlvalue_idxs) {
-//    ORT_ENFORCE(tensor_memoryinfo_map_.find(value_idx) != tensor_memoryinfo_map_.end());
-//    const OrtValue& feed = feeds[value_idx];
-//    auto& tensor = feed.Get<Tensor>();
-//    auto sizeinbytes = tensor.SizeInBytes() % 256 ? tensor.SizeInBytes() + 256 - tensor.SizeInBytes() % 256 : tensor.SizeInBytes();
-//    tensor_memoryinfo_map_[value_idx].block.offset_ = size_t(tensor.DataRaw());
-//    tensor_memoryinfo_map_[value_idx].block.size_ = sizeinbytes;
-//  }
-//}
+void MemoryInfo::RecordInputMemoryInfo(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds) {
+  ORT_ENFORCE(feed_mlvalue_idxs.size() == feeds.size());
+  for (size_t i = 0; i < feed_mlvalue_idxs.size(); ++i) {
+    OrtValueIndex value_idx = feed_mlvalue_idxs[i];
+    ORT_ENFORCE(tensor_memoryinfo_map_.find(value_idx) != tensor_memoryinfo_map_.end());
+    const OrtValue& feed = feeds[i];
+    RecordTensorDeviceAllocInfo(value_idx, feed);
+  }
+}
 
 //Record the planned memory information
 void MemoryInfo::RecordActivationPatternInfo(const MemoryPatternGroup& mem_patterns) {
