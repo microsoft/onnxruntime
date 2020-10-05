@@ -23,7 +23,6 @@ void MemoryInfo::GenerateMemoryMap(const SequentialExecutionPlan* execution_plan
   return;
 }
 
-//TODO: Certain tensors are not dynamically allocated, but I cannot find the planned allocation.  Need to investigate why.
 void MemoryInfo::RecordMemoryPatternInfo(const MemoryPatternGroup& mem_patterns) {
   for (const auto& location : mem_patterns.locations) {
     for (const auto& p : mem_patterns.GetPatterns(location)->GetPatternsMap()) {
