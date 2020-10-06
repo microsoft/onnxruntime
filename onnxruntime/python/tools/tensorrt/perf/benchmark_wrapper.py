@@ -21,10 +21,8 @@ def main():
 
     models = {}
     if ".json" in args.model_source:
-        # logger.info("Parsing model information from json file ...\n")
         parse_models_info_from_file(args.model_source, models)
     else:
-        # logger.info("Parsing model information from specified directory ...\n")
         parse_models_info_from_directory(args.model_source, models)
 
     fail_results = []
@@ -42,7 +40,7 @@ def main():
 
         model_info["model_name"] = model 
         
-        model_list_file = os.path.join(os.path.getcwd(), model +'.json')
+        model_list_file = os.path.join(os.getcwd(), model +'.json')
         write_model_info_to_file([model_info], model_list_file)
 
 
@@ -95,9 +93,9 @@ def main():
             csv_filename = os.path.join(path, benchmark_fail_csv)
             output_fail(fail_results, csv_filename)
     elif args.running_mode == "benchmark":
-        latency_comparison_map = read_map_from_file(LATENCY_FILE)
-        add_improvement_information(latency_comparison_map)
-        output_latency(latency_comparison_map, os.path.join(path, benchmark_latency_csv))
+        model_to_latency = read_map_from_file(LATENCY_FILE)
+        add_improvement_information(model_to_latency)
+        output_latency(model_to_latency, os.path.join(path, benchmark_latency_csv))
 
     get_system_info()
 

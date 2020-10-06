@@ -210,65 +210,6 @@ def inference_ort_and_get_prediction(name, session, ort_inputs):
 
     return ort_outputs
 
-# not use for this script yet
-def inference_ort_with_io_binding(model, ort_inputs, result_template, repeat_times, batch_size, device='cuda'):
-    runtimes = []
-
-    session = model.get_session()
-
-    # Bind inputs and outputs to onnxruntime session
-    io_binding = session.io_binding()
-
-    for ort_input in ort_inputs:
-
-        # Bind inputs to device
-        if model.get_model_name() == 'BERT-Squad':
-            name = session.get_inputs()[0].name
-            print(name)
-            np_input = torch.from_numpy(ort_input[0]).to(device)
-            io_binding.bind_input(name, np_input.device.type, 0, numpy.longlong, np_input.shape, np_input.data_ptr())
-            name = session.get_inputs()[1].name
-            print(name)
-            np_input = torch.from_numpy(ort_input[1][0:1]).to(device)
-            io_binding.bind_input(name, np_input.device.type, 0, numpy.longlong, np_input.shape, np_input.data_ptr())
-            name = session.get_inputs()[2].name
-            print(name)
-            np_input = torch.from_numpy(ort_input[2][0:1]).to(device)
-            io_binding.bind_input(name, np_input.device.type, 0, numpy.longlong, np_input.shape, np_input.data_ptr())
-            name = session.get_inputs()[3].name
-            print(name)
-            np_input = torch.from_numpy(ort_input[3][0:1]).to(device)
-            io_binding.bind_input(name, np_input.device.type, 0, numpy.longlong, np_input.shape, np_input.data_ptr())
-        else:
-            name = session.get_inputs()[0].name
-            print(ort_input[0])
-            np_input = torch.from_numpy(ort_input[0]).to(device)
-            io_binding.bind_input(name, np_input.device.type, 0, numpy.float32, np_input.shape, np_input.data_ptr())
-
-        name_o = session.get_outputs()[0].name
-        io_binding.bind_output(name_o)
-
-        # name = session.get_inputs()[0].name
-        # np_input = torch.from_numpy(numpy.asarray(ort_inputs[0][0])).to(device)
-        # io_binding.bind_input(name, np_input.device.type, 0, numpy.float32, np_input.shape, np_input.data_ptr())
-        # name_o = session.get_outputs()[0].name
-        # io_binding.bind_output(name_o, 'cpu', 0, numpy.float32, session.get_outputs()[0].shape, None)
-
-        try:
-            runtimes = runtimes + timeit.repeat(lambda: session.run_with_iobinding(io_binding), number=1, repeat=repeat_times)
-        except Exception as e:
-            logger.error(e)
-            return None
-
-    print(runtimes)
-
-    result = {}
-    result.update(result_template)
-    result.update({"io_binding": True})
-    result.update(get_latency_result(runtimes, batch_size))
-    return result
-
-
 def get_cuda_version():
     from pathlib import Path
     home = str(Path.home())
@@ -1491,7 +1432,6 @@ def main():
         logger.info("\n===========================================")
         logger.info("=========== System information  ===========")
         logger.info("===========================================")
-        # info = {}
         info = get_system_info()
         pp.pprint(info)
         csv_filename = args.benchmark_fail_csv if args.benchmark_fail_csv else f"system_info_csv{time_stamp}.csv"
