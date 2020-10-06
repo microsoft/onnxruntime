@@ -20,6 +20,7 @@
 
 namespace onnxruntime {
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id,
+                                                                               OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE,
                                                                                size_t cuda_mem_limit = std::numeric_limits<size_t>::max(),
                                                                                onnxruntime::ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo);
 }
@@ -568,7 +569,8 @@ void setup_training_params(BertParameters& params) {
   size_t cuda_mem_limit = std::numeric_limits<size_t>::max();
   if (params.cuda_mem_limit_in_gb > 0)
     cuda_mem_limit = static_cast<size_t>(params.cuda_mem_limit_in_gb * 1024 * 1024 * 1024);
-  params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(device_id, cuda_mem_limit));
+  params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(device_id, OrtCudnnConvAlgoSearch::EXHAUSTIVE,
+                                                                                       cuda_mem_limit));
   params.input_allocator = std::make_shared<CUDAPinnedAllocator>(device_id, CUDA_PINNED);
 #endif
 
