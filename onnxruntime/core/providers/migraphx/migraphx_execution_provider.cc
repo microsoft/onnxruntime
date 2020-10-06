@@ -68,7 +68,7 @@ static void RegisterMIGraphXKernels(KernelRegistry& kernel_registry) {
   };
 
   for (auto& function_table_entry : function_table) {
-    kernel_registry.Register(function_table_entry());
+    ORT_ENFORCE(kernel_registry.Register(function_table_entry()).IsOK());
   }
 }
 
@@ -191,6 +191,7 @@ static bool get_migraphx_type(ONNXTensorElementDataType type,
       break;
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT64:
       mgx_type = migraphx_shape_uint64_type;
+      break;
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL:
       mgx_type = migraphx_shape_bool_type;
       break;

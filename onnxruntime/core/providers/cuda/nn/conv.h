@@ -160,8 +160,8 @@ class Conv : public CudaKernel {
 
  private:
   ConvAttributes conv_attrs_;
-
   mutable CudnnConvState<cudnnConvolutionFwdAlgoPerf_t> s_;
+  constexpr static auto kDefaultConvAlgo = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM;
 };
 
 }  // namespace cuda

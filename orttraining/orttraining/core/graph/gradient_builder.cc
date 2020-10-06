@@ -342,7 +342,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
     if (IsGradientRequiredForSrcNodeInput(0)) {
       ArgDef pre_reduce_grad_0 = IA("PreReduceGrad0");
       result.push_back(
-          NodeDef(OpDef{"TransposeMatMul", kMSDomain, 1},
+          NodeDef(OpDef{"FusedMatMul", kMSDomain, 1},
                   {GO(0), B},
                   {pre_reduce_grad_0},
                   {{"transB", MakeAttribute("transB", int64_t(1))}}));
