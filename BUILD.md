@@ -8,6 +8,8 @@
 * [Supported architectures and build environments](#supported-architectures-and-build-environments)
 * [Common Build Instructions](#common-build-instructions)
 * Additional Build Instructions - complete list: `./build.sh (or .\build.bat) --help`
+  * [Reduced Operator Kernel Build](#Reduced-Operator-Kernel-Build)
+  * [ONNX Runtime for Mobile Platforms](#ONNX-Runtime-for-Mobile-Platforms)
   * [ONNX Runtime Server (Linux)](#Build-ONNX-Runtime-Server-on-Linux)
   * Execution Providers
     * [NVIDIA CUDA](#CUDA)
@@ -58,12 +60,24 @@ Open Developer Command Prompt for Visual Studio version you are going to use. Th
 The default Windows CMake Generator is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to `.\build.bat`
 
 
-#### Linux/Mac OS X
+#### Linux/macOS
 ```
 ./build.sh --config RelWithDebInfo --build_shared_lib --parallel
 ```
-By default, ORT is configured to be built for a minimum target Mac OS X version of 10.12.
-The shared library in the release Nuget(s) and the Python wheel may be installed on Mac OS X versions of 10.12+.
+##### macOS
+By default, ORT is configured to be built for a minimum target macOS version of 10.12.
+The shared library in the release Nuget(s) and the Python wheel may be installed on macOS versions of 10.12+.
+
+If you would like to use [Xcode](https://developer.apple.com/xcode/) to build the onnxruntime for x86_64 macOS, use
+* With Xcode 11
+   ```
+   ./build.sh --config RelWithDebInfo --build_shared_lib --parallel --use_xcode
+   ```
+* With Xcode 12
+   ```
+   ./build.sh --config RelWithDebInfo --build_shared_lib --parallel --use_xcode \
+              --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=x86_64
+   ```
 
 #### Notes
 
@@ -89,7 +103,7 @@ The shared library in the release Nuget(s) and the Python wheel may be installed
 |-----------|:------------:|:------------:|:------------:|:------------:|
 |Windows    | YES          | YES          |  YES         | YES          |
 |Linux      | YES          | YES          |  YES         | YES          |
-|Mac OS X   | NO           | YES          |  NO          | NO           |
+|macOS      | NO           | YES          |  NO          | NO           |
 
 ### Environments
 
@@ -98,7 +112,7 @@ The shared library in the release Nuget(s) and the Python wheel may be installed
 |Windows 10   | YES          | YES         | VS2019 through the latest VS2015 are supported |
 |Windows 10 <br/> Subsystem for Linux | YES         | NO        |         |
 |Ubuntu 16.x  | YES          | YES         | Also supported on ARM32v7 (experimental) |
-|Mac OS X  | YES          | NO         |    |
+|macOS        | YES          | NO         |    |
 
 GCC 4.x and below are not supported.
 
@@ -108,7 +122,7 @@ GCC 4.x and below are not supported.
 |-------------|:------------:|:----------------:|:----------------:|
 |Windows 10   | YES          | Not tested       | Not tested       |
 |Linux        | NO           | YES(gcc>=4.8)    | Not tested       |
-|Mac OS X     | NO           | Not tested       | YES (Minimum version required not ascertained)|
+|macOS        | NO           | Not tested       | YES (Minimum version required not ascertained)|
 
 
 ---
@@ -131,6 +145,11 @@ GCC 4.x and below are not supported.
 |**Node.js**|--build_nodejs|Build Node.js binding. Implies `--build_shared_lib`|
 
 ---
+## Reduced Operator Kernel Build
+Reduced Operator Kernel builds allow you to customize the kernels in the build to provide smaller binary sizes - [see instructions](./docs/Reduced_Operator_Kernel_build.md).
+
+## ONNX Runtime for Mobile Platforms
+For builds compatible with mobile platforms, see more details in [ONNX_Runtime_for_Mobile_Platforms.md](./docs/ONNX_Runtime_for_Mobile_Platforms.md). Android and iOS build instructions can be found below on this page - [Android](#Android), [iOS](#iOS)
 
 ## Build ONNX Runtime Server on Linux
 Read more about ONNX Runtime Server [here](./docs/ONNX_Runtime_Server_Usage.md).
@@ -605,7 +624,7 @@ The Vitis-AI execution provider is only supported on Linux.
 .\build.bat --use_openmp
 ```
 
-##### Linux/Mac OS X
+##### Linux/macOS
 ```
 ./build.sh --use_openmp
 
@@ -1109,19 +1128,14 @@ Dockerfile instructions are available [here](./dockerfiles#migraphx)
 
 The default NVIDIA GPU build requires CUDA runtime libraries installed on the system:
 
-* CUDA 10.1
-* cuDNN 7.6.2
-* NCCL v2.4.8 (download v2.4.8 from the Legacy downloads page)
-* OpenMPI 4.0.0.0
-```
-wget https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.0.tar.gz
-tar zxf openmpi-4.0.0.tar.gz
-cd openmpi-4.0.0
-./configure --enable-orterun-prefix-by-default
-make -j $(nproc) all
-sudo make install
-sudo ldconfig
-```
+* [CUDA](https://developer.nvidia.com/cuda-toolkit) 10.2
+* [cuDNN](https://developer.nvidia.com/cudnn) 8.0
+* [NCCL](https://developer.nvidia.com/nccl) 2.7
+* [OpenMPI](https://www.open-mpi.org/) 4.0.4
+  * See [install_openmpi.sh](./tools/ci_build/github/linux/docker/scripts/install_openmpi.sh)
+
+These dependency versions should reflect what is in [Dockerfile.training](./dockerfiles/Dockerfile.training).
+
 ## Build instructions
 
 1. Checkout this code repo with `git clone https://github.com/microsoft/onnxruntime`

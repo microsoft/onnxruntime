@@ -131,10 +131,10 @@ void ProcessInputs(const std::vector<int64_t>& input_dims, const std::vector<T>&
 }
 
 template <typename T>
-void RunTransposeMatMulTest(int32_t opset_version = 7, bool transa = false, bool transb = false, float alpha = 1.0f) {
+void RunFusedMatMulTest(const char* op_name, int32_t opset_version = 7, bool transa = false, bool transb = false, float alpha = 1.0f, bool is_b_constant = false) {
   std::vector<T> common_input_vals{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
   for (auto t : GenerateSimpleTestCases<T>()) {
-    OpTester test("TransposeMatMul", opset_version, onnxruntime::kMSDomain);
+    OpTester test(op_name, opset_version, onnxruntime::kMSDomain);
 
     std::vector<int64_t> input0_dims(t.input0_dims);
     std::vector<T> input0_vals;
@@ -146,7 +146,7 @@ void RunTransposeMatMulTest(int32_t opset_version = 7, bool transa = false, bool
 
     test.AddInput<T>("A", input0_dims, input0_vals);
 
-    test.AddInput<T>("B", input1_dims, input1_vals);
+    test.AddInput<T>("B", input1_dims, input1_vals, is_b_constant);
 
     test.AddAttribute("transA", (int64_t)transa);
     test.AddAttribute("transB", (int64_t)transb);
@@ -165,33 +165,76 @@ void RunTransposeMatMulTest(int32_t opset_version = 7, bool transa = false, bool
   }
 }
 
-TEST(TransposeMatMulOpTest, FloatTypeNoTranspose) {
-  RunTransposeMatMulTest<float>(1);
+TEST(FusedMatMulOpTest, FloatTypeNoTranspose) {
+  RunFusedMatMulTest<float>("FusedMatMul", 1);
 }
 
 #ifdef USE_CUDA  // double support only implemented in CUDA kernel
 TEST(TransposeMatMulOpTest, DoubleTypeNoTranspose) {
-  RunTransposeMatMulTest<double>(1);
+  RunFusedMatMulTest<double>("TransposeMatMul", 1);
+}
+
+TEST(FusedMatMulOpTest, DoubleTypeNoTranspose) {
+  RunFusedMatMulTest<double>("FusedMatMul", 1);
 }
 #endif
 
-TEST(TransposeMatMulOpTest, FloatTypeTransposeA) {
-  RunTransposeMatMulTest<float>(1, true, false);
+TEST(FusedMatMulOpTest, FloatTypeTransposeA) {
+  RunFusedMatMulTest<float>("FusedMatMul", 1, true, false);
 }
 
-TEST(TransposeMatMulOpTest, FloatTypeTransposeB) {
-  RunTransposeMatMulTest<float>(1, false, true);
+TEST(FusedMatMulOpTest, FloatTypeTransposeB) {
+  RunFusedMatMulTest<float>("FusedMatMul", 1, false, true);
+  // b is constant. This tests weight packing logic
+  RunFusedMatMulTest<float>("FusedMatMul", 1, false, true, 1.0f, true);
 }
 
-TEST(TransposeMatMulOpTest, FloatTypeTransposeAB) {
-  RunTransposeMatMulTest<float>(1, true, true);
+TEST(FusedMatMulOpTest, FloatTypeTransposeAB) {
+  RunFusedMatMulTest<float>("FusedMatMul", 1, true, true);
+
+  // b is constant. This tests weight packing logic
+  RunFusedMatMulTest<float>("FusedMatMul", 1, true, true, 1.0f, true);
+}
+
+TEST(FusedMatMulOpTest, FloatTypeScale) {
+  RunFusedMatMulTest<float>("FusedMatMul", 1, false, false, 0.5f);
+  RunFusedMatMulTest<float>("FusedMatMul", 1, true, false, 2.0f);
+  RunFusedMatMulTest<float>("FusedMatMul", 1, true, true, 4.0f);
+
+  // now run tests with b constant.
+  RunFusedMatMulTest<float>("FusedMatMul", 1, false, false, 0.5f, true);
+  RunFusedMatMulTest<float>("FusedMatMul", 1, true, false, 2.0f, true);
+  RunFusedMatMulTest<float>("FusedMatMul", 1, true, true, 4.0f, true);
 }
 
 TEST(TransposeMatMulOpTest, FloatTypeScale) {
-  RunTransposeMatMulTest<float>(1, false, false, 0.5f);
-  RunTransposeMatMulTest<float>(1, true, false, 2.0f);
-  RunTransposeMatMulTest<float>(1, true, true, 4.0f);
+  RunFusedMatMulTest<float>("TransposeMatMul", 1, false, false, 0.5f);
+  RunFusedMatMulTest<float>("TransposeMatMul", 1, true, false, 2.0f);
+  RunFusedMatMulTest<float>("TransposeMatMul", 1, true, true, 4.0f);
+
+  // now run tests with b constant.
+  RunFusedMatMulTest<float>("TransposeMatMul", 1, false, false, 0.5f, true);
+  RunFusedMatMulTest<float>("TransposeMatMul", 1, true, false, 2.0f, true);
+  RunFusedMatMulTest<float>("TransposeMatMul", 1, true, true, 4.0f, true);
 }
+
+TEST(TransposeMatMulOpTest, DeprecatedSchema) {
+  OpTester test("TransposeMatMul", 2, onnxruntime::kMSDomain);
+
+  std::vector<int64_t> input0_dims{3, 4};
+  std::vector<float> input0_vals{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
+
+  std::vector<int64_t> input1_dims{4, 3};
+  std::vector<float> input1_vals{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
+
+  test.AddInput<float>("A", input0_dims, input0_vals);
+  test.AddInput<float>("B", input1_dims, input1_vals);
+  test.AddOutput<float>("Y", {3, 3}, {42, 48, 54, 114, 136, 158, 186, 224, 262});
+
+  // TransposeMatMul is deprecated from version 2 onwards of ms domain.
+  test.Run(OpTester::ExpectResult::kExpectFailure);
+}
+
 
 }  // namespace transpose_matmul
 }  // namespace test

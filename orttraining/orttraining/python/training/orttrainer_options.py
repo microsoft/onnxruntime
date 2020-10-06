@@ -116,6 +116,30 @@ class ORTTrainerOptions(object):
                         }
                     }
                 },
+                'graph_transformer': {
+                    'type': 'dict',
+                    'required': False,
+                    'default': {},
+                    'schema': {
+                        'attn_dropout_recompute': {
+                            'type': 'boolean',
+                            'default': False
+                        },
+                        'gelu_recompute': {
+                            'type': 'boolean',
+                            'default': False
+                        },
+                        'transformer_layer_recompute': {
+                            'type': 'boolean',
+                            'default': False
+                        }, 
+                        'number_recompute_layers': {
+                            'type': 'integer',
+                            'min': 0,
+                            'default': 0
+                        }
+                    }
+                },
                 'utils' : {
                     'type' : 'dict',
                     'required': False,
@@ -130,6 +154,10 @@ class ORTTrainerOptions(object):
                             'default' : True
                         },
                         'invertible_layer_norm_gradient' : {
+                            'type' : 'boolean',
+                            'default' : False
+                        },
+                        'run_symbolic_shape_infer' : {
                             'type' : 'boolean',
                             'default' : False
                         }
@@ -217,6 +245,17 @@ class ORTTrainerOptions(object):
             Users can also instantiate :py:class:`.DynamicLossScaler` and
             override its parameters. Lastly, a completely new implementation
             can be specified by extending :py:class:`.LossScaler` class from scratch
+        graph_transformer (dict):
+            graph transformer related configurations
+        attn_dropout_recompute (bool, default is False):
+            enable recomputing attention dropout to save memory
+        gelu_recompute (bool, default is False):
+            enable recomputing Gelu activation output to save memory
+        transformer_layer_recompute (bool, default is False):
+            enable recomputing transformer layerwise to save memory
+        number_recompute_layers (int, default is 0)
+            number of layers to apply transformer_layer_recompute, by default system will
+            apply recompute to all the layers, except for the last one
         utils (dict):
             miscellaneous options
         utils.frozen_weights (list of str, []):
@@ -225,6 +264,8 @@ class ORTTrainerOptions(object):
             enables gradient norm clipping for 'AdamOptimizer' and 'LambOptimizer'
         utils.invertible_layer_norm_gradient (bool, default is False):
             enables use of invertible layer norm gradients
+        utils.run_symbolic_shape_infer (bool, default is False):
+            runs symbolic shape inference on the model
         debug (dict):
             debug options
         debug.deterministic_compute (bool, default is False)
@@ -429,6 +470,30 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
             }
         }
     },
+    'graph_transformer': {
+        'type': 'dict',
+        'default_setter': lambda _: {},
+        'required': False,
+        'schema': {
+            'attn_dropout_recompute': {
+                'type': 'boolean',
+                'default': False
+            },
+            'gelu_recompute': {
+                'type': 'boolean',
+                'default': False
+            },
+            'transformer_layer_recompute': {
+                'type': 'boolean',
+                'default': False
+            }, 
+            'number_recompute_layers': {
+                'type': 'integer',
+                'min': 0,
+                'default': 0
+            }
+        }
+    },
     'utils': {
         'type': 'dict',
         'default_setter': lambda _: {},
@@ -443,6 +508,10 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                 'default': True
             },
             'invertible_layer_norm_gradient' : {
+                'type': 'boolean',
+                'default': False
+            },
+            'run_symbolic_shape_infer' : {
                 'type': 'boolean',
                 'default': False
             }

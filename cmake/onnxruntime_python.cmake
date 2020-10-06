@@ -107,6 +107,7 @@ set(onnxruntime_pybind11_state_libs
     onnxruntime_graph
     onnxruntime_common
     onnxruntime_mlas
+    onnxruntime_flatbuffers
     ${pybind11_lib}
 )
 

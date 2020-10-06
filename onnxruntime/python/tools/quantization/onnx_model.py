@@ -127,7 +127,7 @@ class ONNXModel:
                     nodes.append(node)
         return nodes
     
-     def save_model_to_file(self, output_path, use_external_data_format=False):
+    def save_model_to_file(self, output_path, use_external_data_format=False):
         '''
         Save model to external data, which is needed for model size > 2GB
         '''

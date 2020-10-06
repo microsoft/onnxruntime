@@ -7,12 +7,12 @@ ONNX Runtime is a performance-focused scoring engine for Open Neural Network Exc
 For more information on ONNX Runtime, please see `aka.ms/onnxruntime <https://aka.ms/onnxruntime/>`_
 or the `Github project <https://github.com/microsoft/onnxruntime/>`_.
 """
-__version__ = "1.5.0"
+__version__ = "1.5.1"
 __author__ = "Microsoft"
 
 from onnxruntime.capi._pybind_state import get_all_providers, get_available_providers, get_device, set_seed, \
     RunOptions, SessionOptions, set_default_logger_severity, NodeArg, ModelMetadata, GraphOptimizationLevel, \
-    ExecutionMode, OrtDevice, SessionIOBinding
+    ExecutionMode, ExecutionOrder, OrtDevice, SessionIOBinding
 
 try:
     from onnxruntime.capi._pybind_state import set_cuda_mem_limit, set_cuda_device_id
