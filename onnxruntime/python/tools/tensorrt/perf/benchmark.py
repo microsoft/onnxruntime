@@ -31,6 +31,9 @@ ep_to_provider_list = {
     "TensorrtExecutionProvider_fp16": ["TensorrtExecutionProvider", "CUDAExecutionProvider"],
 }
 
+FAIL_MODEL_FILE = ".fail_model_map"
+LATENCY_FILE = ".latency_map"
+
 
 def run_trt_standalone(trtexec, model_path, ort_inputs, all_inputs_shape, fp16):
     model_path = "--onnx=" + model_path
@@ -531,15 +534,15 @@ def update_fail_report(fail_results, model, ep, e_type, e):
     fail_results.append(result)
 
 
-def update_fail_model_ori(model_ep_fail_map, fail_results, model_name, ep, e_type, e):
+def update_fail_model_map_ori(model_to_fail_ep, fail_results, model_name, ep, e_type, e):
 
-    if model_name in model_ep_fail_map and ep in model_ep_fail_map[model_name]:
+    if model_name in model_to_fail_ep and ep in model_to_fail_ep[model_name]:
         return
 
-    if model_name not in model_ep_fail_map:
-        model_ep_fail_map[model_name] = [] 
+    if model_name not in model_to_fail_ep:
+        model_to_fail_ep[model_name] = [] 
     
-    model_ep_fail_map[model_name].append(ep)
+    model_to_fail_ep[model_name].append(ep)
     update_fail_report(fail_results, model_name, ep, e_type, e)
 
     # If TRT fails, TRT FP16 should fail as well
@@ -547,17 +550,17 @@ def update_fail_model_ori(model_ep_fail_map, fail_results, model_name, ep, e_typ
         ep_ = "TensorrtExecutionProvider_fp16"
         error_message_ = "skip benchmarking since TRT failed already."
         update_fail_report(fail_results, model_name, ep_, e_type, error_message_)
-        model_ep_fail_map[model_name].append(ep_)
+        model_to_fail_ep[model_name].append(ep_)
 
-def update_fail_model(model_ep_fail_map, fail_results, model_name, ep, e_type, e):
+def update_fail_model_map(model_to_fail_ep, fail_results, model_name, ep, e_type, e):
 
-    if model_name in model_ep_fail_map and ep in model_ep_fail_map[model_name]:
+    if model_name in model_to_fail_ep and ep in model_to_fail_ep[model_name]:
         return
 
-    if model_name not in model_ep_fail_map:
-        model_ep_fail_map[model_name] = {} 
+    if model_name not in model_to_fail_ep:
+        model_to_fail_ep[model_name] = {} 
     
-    model_ep_fail_map[model_name][ep] = e_type
+    model_to_fail_ep[model_name][ep] = e_type
     update_fail_report(fail_results, model_name, ep, e_type, e)
 
     # If TRT fails, TRT FP16 should fail as well
@@ -565,21 +568,21 @@ def update_fail_model(model_ep_fail_map, fail_results, model_name, ep, e_type, e
         ep_ = "TensorrtExecutionProvider_fp16"
         error_message_ = "skip benchmarking since TRT failed already."
         update_fail_report(fail_results, model_name, ep_, e_type, error_message_)
-        model_ep_fail_map[model_name][ep_] = e_type
+        model_to_fail_ep[model_name][ep_] = e_type
 
 
 
-def skip_ep(model_name, ep, model_ep_fail_map):
+def skip_ep(model_name, ep, model_to_fail_ep):
 
     # List the models that known to cause script to quit or core dump
     # skip_models = ["mlperf_ssd_mobilenet_300_opset10", "mlperf_ssd_resnet34_1200_opset10"]
 
-    if model_name not in model_ep_fail_map:
+    if model_name not in model_to_fail_ep:
         return False
 
-    ep_fail_list = model_ep_fail_map[model_name]
+    fail_ep_list = model_to_fail_ep[model_name]
 
-    if ep in ep_fail_list and ep_fail_list[ep] == "runtime error":
+    if ep in fail_ep_list and fail_ep_list[ep] == "runtime error":
         logger.info("Skip testing " + model_name + " using " + ep + " since it has some issues.")
         return True
 
@@ -594,19 +597,19 @@ def read_map_from_file(map_file):
 
     return data
 
-def write_map_to_file(model_ep_fail_map, file_name):
-    existed_model_ep_fail_map = {}
+def write_map_to_file(model_to_fail_ep, file_name):
+    existed_model_to_fail_ep = {}
     if os.path.exists(file_name):
-        existed_model_ep_fail_map = read_map_from_file(file_name)
+        existed_model_to_fail_ep = read_map_from_file(file_name)
     
-    for model, ep_list in model_ep_fail_map.items():
-        if model in existed_model_ep_fail_map:
-            existed_model_ep_fail_map[model] = {** existed_model_ep_fail_map[model], ** model_ep_fail_map[model]} 
+    for model, ep_list in model_to_fail_ep.items():
+        if model in existed_model_to_fail_ep:
+            existed_model_to_fail_ep[model] = {** existed_model_to_fail_ep[model], ** model_to_fail_ep[model]} 
         else:
-            existed_model_ep_fail_map[model] = model_ep_fail_map[model]
+            existed_model_to_fail_ep[model] = model_to_fail_ep[model]
 
     with open(file_name, 'w') as file:
-        file.write(json.dumps(existed_model_ep_fail_map)) # use `json.loads` to do the reverse
+        file.write(json.dumps(existed_model_to_fail_ep)) # use `json.loads` to do the reverse
 
 
 def get_system_info():
@@ -675,7 +678,18 @@ def find_model_path(path):
     if model_path == ['']:
         return None
 
-    return model_path[0]
+    target_model_path = []
+    for m in model_path:
+        if "by_trt_perf" in m:
+            continue
+        target_model_path.append(m)
+
+    logger.info(target_model_path)
+    if len(target_model_path) > 1:
+        logger.error("We expect to find only one model in " + path)
+        raise
+
+    return target_model_path[0]
 
 def find_model_directory(path):
     p1 = subprocess.Popen(["find", path, "-maxdepth", "1", "-mindepth", "1", "-name", "*", "-type", "d"], stdout=subprocess.PIPE)
@@ -800,39 +814,50 @@ def convert_model_from_float_to_float16(model_path):
 
     onnx_model = load_model(model_path)
     new_onnx_model = convert_float_to_float16(onnx_model)
-    save_model(new_onnx_model, 'new_fp16_model.onnx')
+    save_model(new_onnx_model, 'new_fp16_model_by_trt_perf.onnx')
 
-    return os.path.join(os.getcwd(), "new_fp16_model.onnx")
+    return os.path.join(os.getcwd(), "new_fp16_model_by_trt_perf.onnx")
+
+def get_test_data(fp16, test_data_dir, all_inputs_shape):
+    inputs = []
+    ref_outputs = []
+
+    # read input/output of test data
+    if fp16:
+        inputs, ref_outputs = load_onnx_model_zoo_test_data(test_data_dir, all_inputs_shape, "fp16")
+    else:
+        inputs, ref_outputs = load_onnx_model_zoo_test_data(test_data_dir, all_inputs_shape)
+
+    return inputs, ref_outputs
 
 def create_session(model_path, providers, session_options):
+
     logger.info(model_path)
     try:
         session = onnxruntime.InferenceSession(model_path, providers=providers, sess_options=session_options)
+
         return session
     except:
         logger.info("Use symbolic_shape_infer.py")
 
-    try:
-        new_model_path = model_path[:].replace(".onnx", "_new.onnx")
 
-        exec = os.environ["SYMBOLIC_SHAPE_INFER"]
+    new_model_path = model_path[:].replace(".onnx", "_new_by_trt_perf.onnx")
+    exec = os.environ["SYMBOLIC_SHAPE_INFER"]
+    logger.info(exec)
 
-        logger.info(exec)
-        if not os.path.exists(new_model_path):
-            subprocess.run("python3 " + exec +" --input " + model_path + " --output " + new_model_path + " --auto_merge", shell=True, check=True)
-        session = onnxruntime.InferenceSession(new_model_path, providers=providers, sess_options=session_options)
-        return session
-    except Exception as e:
-        logger.info(e)
-        raise
+    if not os.path.exists(new_model_path):
+        subprocess.run("python3 " + exec +" --input " + model_path + " --output " + new_model_path + " --auto_merge", shell=True, check=True)
+    session = onnxruntime.InferenceSession(new_model_path, providers=providers, sess_options=session_options)
+
+    return session
 
 def run_onnxruntime(args, models):
 
     success_results = []
     fail_results = []
-    latency_comparison_map = {} # model -> CUDA/TRT latency
-    profile_metrics_map = {} # model -> metrics from profiling file
-    model_ep_fail_map = {} # model -> failing ep
+    model_to_latency = {} # model -> cuda and tensorrt latency
+    model_to_metrics = {} # model -> metrics from profiling file
+    model_to_fail_ep = {} # model -> failing ep
 
     ep_list = []
     if args.ep:
@@ -847,25 +872,14 @@ def run_onnxruntime(args, models):
 
     # when doing benchmark, read in failing ep information generated by validation phase if file exists
     if args.running_mode == 'benchmark':
-        if os.path.exists('.model_ep_fail_map.json'):
-            model_ep_fail_map = read_model_ep_fail_map_from_file('.model_ep_fail_map.json')
-
-    # read in information of previously known failing model and skip it
-    if args.skip_model:
-        known_failing_models = {}
-        parse_models_info_from_file(args.skip_model, known_failing_models)
-
-        for key, value in known_failing_models.items():
-            if 'ep' in value:
-                update_fail_model(model_ep_fail_map, fail_results, key, ep["ep"], value["error_type"], value["error_message"])
-            else:
-                for ep_ in ep_list:
-                    update_fail_model(model_ep_fail_map, fail_results, key, ep_, value["error_type"], value["error_message"])
+        if os.path.exists('.model_to_fail_ep.json'):
+            model_to_fail_ep = read_model_to_fail_ep_from_file('.model_to_fail_ep.json')
 
     #######################
     # iterate model
     #######################
     for name, model_info in models.items():
+        logger.info(model_info)
         latency_result = {}
         path = model_info["working_directory"]
 
@@ -881,12 +895,8 @@ def run_onnxruntime(args, models):
 
         inputs = []
         ref_outputs = []
-        inputs_fp32 = []
-        ref_outputs_fp32 = []
-        inputs_fp16 = []
-        ref_outputs_fp16 = []
         all_inputs_shape = [] # use for standalone trt
-        ep_to_ep_op_map = {} # ep -> { ep -> operator }
+        ep_to_operator = {} # ep -> { operator -> count }
         profile_already_parsed = set()
 
 
@@ -895,7 +905,7 @@ def run_onnxruntime(args, models):
         #######################
         for ep in ep_list:
 
-            if skip_ep(name, ep, model_ep_fail_map):
+            if skip_ep(name, ep, model_to_fail_ep):
                 continue
 
             ep_ = ep_to_provider_list[ep][0]
@@ -906,52 +916,46 @@ def run_onnxruntime(args, models):
             model_path = model_info["model_path"]
             test_data_dir = model_info["test_data_path"]
 
-            if "fp16" in ep:
-                logger.info("Initializing {} with float16 enabled to run on {} ...".format(name, ep))
-
+            if ep == "CUDAExecutionProvider_fp16":
+                logger.info("[Initialize]  model = {}, ep = {} ,FP16 = True ...".format(name, ep))
                 fp16 = True
                 os.environ["ORT_TENSORRT_FP16_ENABLE"] = "1"
 
-                
-                # We need to convert FP32 model to FP16 inputs as well as input data when using CUDA EP to run FP16 data.
-                if ep == "CUDAExecutionProvider_fp16":
-                    if "model_path_fp16" in model_info:
-                        model_path = model_info["model_path_fp16"]
+                # handle model
+                if "model_path_fp16" in model_info:
+                    model_path = model_info["model_path_fp16"]
 
-                    else:
-                        try:
-                            model_path = convert_model_from_float_to_float16(model_path)
+                else:
+                    try:
+                        model_path = convert_model_from_float_to_float16(model_path)
 
-                        except Exception as e:
-                            logger.error(e)
-                            update_fail_model(model_ep_fail_map, fail_results, name, ep, 'script error', e)
-                            continue
+                    except Exception as e:
+                        logger.error(e)
+                        update_fail_model_map(model_to_fail_ep, fail_results, name, ep, 'script error', e)
+                        continue
 
-                    if "test_data_path_fp16" in model_info:
-                        test_data_dir = model_info["test_data_path_fp16"]
+                # handle test data
+                if "test_data_path_fp16" in model_info:
+                    test_data_dir = model_info["test_data_dir"]
+                    inputs, ref_outputs = get_test_data(False, test_data_dir, all_inputs_shape)
+                else:
+                    inputs, ref_outputs = get_test_data(True, test_data_dir, all_inputs_shape)
+            
+            elif ep == "TensorrtExecutionProvider_fp16":
+                logger.info("[Initialize]  model = {}, ep = {} ,FP16 = True ...".format(name, ep))
+                fp16 = True
+                os.environ["ORT_TENSORRT_FP16_ENABLE"] = "1"
 
+                inputs, ref_outputs = get_test_data(False, test_data_dir, all_inputs_shape)
             else:
-                logger.info("Initializing {} to run on {} ...".format(name, ep))
-
+                logger.info("[Initialize]  model = {}, ep = {} ,FP16 = False ...".format(name, ep))
                 fp16 = False
                 os.environ["ORT_TENSORRT_FP16_ENABLE"] = "0"
 
-
-            # read input/output of test data
-            if fp16 and ep == "CUDAExecutionProvider_fp16" and "test_data_path_fp16" not in model_info:
-                if not inputs_fp16 or not ref_outputs_fp16:
-                    inputs_fp16, ref_outputs_fp16 = load_onnx_model_zoo_test_data(test_data_dir, all_inputs_shape, "fp16")
-
-                inputs = inputs_fp16
-                ref_outputs = ref_outputs_fp16
-            else:
-                if not inputs_fp32 or not ref_outputs_fp32:
-                    inputs_fp32, ref_outputs_fp32 = load_onnx_model_zoo_test_data(test_data_dir, all_inputs_shape)
-
-                inputs = inputs_fp32
-                ref_outputs = ref_outputs_fp32
+                inputs, ref_outputs = get_test_data(False, test_data_dir, all_inputs_shape)
 
 
+            # generate random input data
             if args.input_data == "random":
                 inputs = generate_onnx_model_random_input(args.test_times+1, inputs[0])
 
@@ -959,9 +963,7 @@ def run_onnxruntime(args, models):
             # benchmark or validation
             #######################################
             if args.running_mode == 'benchmark':
-                logger.info("===========================")
-                logger.info("======== benchmark ========")
-                logger.info("===========================")
+                logger.info("=========================== benchmark ===========================")
 
                 options = onnxruntime.SessionOptions()
                 options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
@@ -972,10 +974,9 @@ def run_onnxruntime(args, models):
 
                 except Exception as e:
                     logger.error(e)
-                    # update_fail_model(model_ep_fail_map, fail_results, name, ep, e)
                     continue
 
-                logger.info("[start] Begin to inference {} with {} ...".format(name, ep))
+                logger.info("start to inference {} with {} ...".format(name, ep))
                 logger.info(sess.get_providers())
 
                 if sess:
@@ -1018,14 +1019,14 @@ def run_onnxruntime(args, models):
                             else:
                                 latency_result["Standalone_TRT"] = result
 
-                    latency_comparison_map[name] = copy.deepcopy(latency_result)
+                    model_to_latency[name] = copy.deepcopy(latency_result)
+
+                logger.info("=========================== benchmark [end] ===========================")
 
 
 
             elif args.running_mode == 'validate':
-                logger.info("==========================")
-                logger.info("======== validate ========")
-                logger.info("==========================")
+                logger.info("=========================== validate ===========================")
 
                 # enable profiling to generate profiling file for analysis
                 options = onnxruntime.SessionOptions()
@@ -1039,12 +1040,12 @@ def run_onnxruntime(args, models):
 
                 except Exception as e:
                     logger.error(e)
-                    update_fail_model(model_ep_fail_map, fail_results, name, ep, 'runtime error', e)
+                    update_fail_model_map(model_to_fail_ep, fail_results, name, ep, 'runtime error', e)
                     continue
 
                 sess.disable_fallback()
 
-                logger.info("[start] Begin to inference {} with {} ...".format(name, ep))
+                logger.info("start to inference {} with {} ...".format(name, ep))
                 logger.info(sess.get_providers())
 
                 if sess:
@@ -1065,11 +1066,11 @@ def run_onnxruntime(args, models):
                         decimal = 0
                         status = validate(ref_outputs, ort_outputs, decimal)
                         if not status[0]:
-                            update_fail_model(model_ep_fail_map, fail_results, name, ep, 'result accuracy issue', status[1])
+                            update_fail_model_map(model_to_fail_ep, fail_results, name, ep, 'result accuracy issue', status[1])
                             continue
                     except Exception as e:
                         logger.error(e)
-                        update_fail_model(model_ep_fail_map, fail_results, name, ep, 'runtime error', e)
+                        update_fail_model_map(model_to_fail_ep, fail_results, name, ep, 'runtime error', e)
                         continue
 
                     # Run inference again. the reason is that some ep like tensorrt
@@ -1086,7 +1087,9 @@ def run_onnxruntime(args, models):
                 metrics = get_profile_metrics(path, profile_already_parsed, logger)
                 if metrics:
                     logger.info(ep)
-                    ep_to_ep_op_map[ep] = metrics
+                    ep_to_operator[ep] = metrics
+
+                logger.info("=========================== validate [end] ===========================")
 
         ####################
         # end of iterate ep
@@ -1094,13 +1097,13 @@ def run_onnxruntime(args, models):
 
 
         # get percentage of execution time and operators in TRT
-        if len(ep_to_ep_op_map) > 0:
+        if len(ep_to_operator) > 0:
             trt_op_map = None
             trt_fp16_op_map = None
             cuda_op_map = None
             cuda_fp16_op_map = None
 
-            for ep, op_map in ep_to_ep_op_map.items():
+            for ep, op_map in ep_to_operator.items():
                 if ep == "CUDAExecutionProvider":
                     cuda_op_map = op_map
                 elif ep == "CUDAExecutionProvider_fp16":
@@ -1110,34 +1113,34 @@ def run_onnxruntime(args, models):
                 elif ep == "TensorrtExecutionProvider_fp16":
                     trt_fp16_op_map = op_map
 
-            profile_metrics_map[name] = {}
+            model_to_metrics[name] = {}
 
             if cuda_op_map:
-                profile_metrics_map[name]['ratio_of_ops_in_cuda_not_fallback_cpu'] = calculate_cuda_op_percentage(cuda_op_map) 
+                model_to_metrics[name]['ratio_of_ops_in_cuda_not_fallback_cpu'] = calculate_cuda_op_percentage(cuda_op_map) 
 
             if trt_op_map:
                 total_trt_execution_time, total_execution_time, ratio_of_execution_time_in_trt = calculate_trt_latency_percentage(trt_op_map)
-                profile_metrics_map[name]['total_trt_execution_time'] = total_trt_execution_time
-                profile_metrics_map[name]['total_execution_time'] = total_execution_time
-                profile_metrics_map[name]['ratio_of_execution_time_in_trt'] = ratio_of_execution_time_in_trt
+                model_to_metrics[name]['total_trt_execution_time'] = total_trt_execution_time
+                model_to_metrics[name]['total_execution_time'] = total_execution_time
+                model_to_metrics[name]['ratio_of_execution_time_in_trt'] = ratio_of_execution_time_in_trt
                 if cuda_op_map:
                     total_ops_in_trt, total_ops, ratio_of_ops_in_trt = calculate_trt_op_percentage(trt_op_map, cuda_op_map)
-                    profile_metrics_map[name]['total_ops_in_trt'] = total_ops_in_trt
-                    profile_metrics_map[name]['total_ops'] = total_ops
-                    profile_metrics_map[name]['ratio_of_ops_in_trt'] = ratio_of_ops_in_trt
+                    model_to_metrics[name]['total_ops_in_trt'] = total_ops_in_trt
+                    model_to_metrics[name]['total_ops'] = total_ops
+                    model_to_metrics[name]['ratio_of_ops_in_trt'] = ratio_of_ops_in_trt
 
             if trt_fp16_op_map:
                 total_trt_execution_time, total_execution_time, ratio_of_execution_time_in_trt = calculate_trt_latency_percentage(trt_fp16_op_map)
                 name_ = name + " (FP16)"
-                profile_metrics_map[name_] = {}
-                profile_metrics_map[name_]['total_trt_execution_time'] = total_trt_execution_time
-                profile_metrics_map[name_]['total_execution_time'] = total_execution_time
-                profile_metrics_map[name_]['ratio_of_execution_time_in_trt'] = ratio_of_execution_time_in_trt
+                model_to_metrics[name_] = {}
+                model_to_metrics[name_]['total_trt_execution_time'] = total_trt_execution_time
+                model_to_metrics[name_]['total_execution_time'] = total_execution_time
+                model_to_metrics[name_]['ratio_of_execution_time_in_trt'] = ratio_of_execution_time_in_trt
                 if cuda_fp16_op_map:
                     total_ops_in_trt, total_ops, ratio_of_ops_in_trt = calculate_trt_op_percentage(trt_fp16_op_map, cuda_op_map)
-                    profile_metrics_map[name_]['total_ops_in_trt'] = total_ops_in_trt
-                    profile_metrics_map[name_]['total_ops'] = total_ops
-                    profile_metrics_map[name_]['ratio_of_ops_in_trt'] = ratio_of_ops_in_trt
+                    model_to_metrics[name_]['total_ops_in_trt'] = total_ops_in_trt
+                    model_to_metrics[name_]['total_ops'] = total_ops
+                    model_to_metrics[name_]['ratio_of_ops_in_trt'] = ratio_of_ops_in_trt
 
             if debug:
                 pp = pprint.PrettyPrinter(indent=4)
@@ -1155,10 +1158,10 @@ def run_onnxruntime(args, models):
 
         # end of model
 
-    return success_results, fail_results, latency_comparison_map, model_ep_fail_map, profile_metrics_map
+    return success_results, fail_results, model_to_latency, model_to_fail_ep, model_to_metrics
 
-def add_improvement_information(latency_comparison_map):
-    for key, value in latency_comparison_map.items():
+def add_improvement_information(model_to_latency):
+    for key, value in model_to_latency.items():
         if not ('TensorrtExecutionProvider' in value and 'CUDAExecutionProvider' in value):
             continue
 
@@ -1368,8 +1371,6 @@ def parse_arguments():
 
     parser.add_argument("-m", "--model_source", required=False, default="model_list.json", help="Model source: (1) model list file (2) model directory.")
 
-    parser.add_argument("-e", "--skip_model", required=False, default=None, help="List of already known failing models for skipping test.")
-
     parser.add_argument("-s", "--symbolic_shape_infer", required=False, default=None, help="Path for symbolic_shape_infer.py")
 
     parser.add_argument("-r", "--running_mode", required=False, default="benchmark", choices=["validate", "benchmark"], help="Testing mode.")
@@ -1413,15 +1414,15 @@ def main():
     setup_logger(False)
     pp = pprint.PrettyPrinter(indent=4)
 
+    logger.info("\n\nStart perf run ...\n")
+
     models = {}
 
-    logger.info("\nstart perf run ...\n")
-
     if ".json" in args.model_source:
-        logger.info("Parsing model information from json file ...")
+        logger.info("Parsing model information from file ...")
         parse_models_info_from_file(args.model_source, models)
     else:
-        logger.info("Parsing model information from specified directory ...")
+        logger.info("Parsing model information from directory ...")
         parse_models_info_from_directory(args.model_source, models)
 
     if args.symbolic_shape_infer:
@@ -1430,15 +1431,21 @@ def main():
         os.environ["SYMBOLIC_SHAPE_INFER"] = os.path.join(os.getcwd(), "symbolic_shape_infer.py")
 
     perf_start_time = datetime.now()
-    success_results, fail_results, latency_comparison_map, model_ep_fail_map, profile_metrics_map = run_onnxruntime(args, models)
+    success_results, fail_results, model_to_latency, model_to_fail_ep, model_to_metrics = run_onnxruntime(args, models)
     perf_end_time = datetime.now()
 
+
+    logger.info("Done running the perf.")
     logger.info("\nTotal time for benchmarking all models: {}".format(perf_end_time - perf_start_time))
     logger.info(list(models.keys()))
 
     logger.info("\nTotal models: {}".format(len(models)))
-    logger.info("Fail models: {}".format(len(model_ep_fail_map)))
-    logger.info("Models FAIL/SUCCESS: {}/{}".format(len(model_ep_fail_map), len(models) - len(model_ep_fail_map)))
+    
+    fail_model_cnt = 0
+    for key, value in models.items():
+        if key in model_to_fail_ep: fail_model_cnt += 1
+    logger.info("Fail models: {}".format(fail_model_cnt))
+    logger.info("Success models: {}".format(len(models) - fail_model_cnt ))
 
     path = os.path.join(os.getcwd(), args.perf_result_path)
     if not os.path.exists(path):
@@ -1447,37 +1454,37 @@ def main():
 
     time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 
-    if len(model_ep_fail_map) > 0:
-        logger.info("\n======================================================")
+    if len(model_to_fail_ep) > 0:
+        logger.info("\n==========================================================")
         logger.info("========== Failing Models/EPs (accumulated) ==============")
         logger.info("==========================================================")
-        logger.info(model_ep_fail_map)
-        write_map_to_file(model_ep_fail_map, ".model_ep_fail_map")
+        logger.info(model_to_fail_ep)
+        write_map_to_file(model_to_fail_ep, FAIL_MODEL_FILE)
 
-    if latency_comparison_map:
+    if model_to_latency:
         logger.info("\n=========================================")
         logger.info("=========== CUDA/TRT latency  ===========")
         logger.info("=========================================")
-        add_improvement_information(latency_comparison_map)
-        pp.pprint(latency_comparison_map)
+        add_improvement_information(model_to_latency)
+        pp.pprint(model_to_latency)
 
-        write_map_to_file(latency_comparison_map, ".benchmark_latency_map")
+        write_map_to_file(model_to_latency, LATENCY_FILE)
 
         if args.need_write_result:
             csv_filename = args.benchmark_latency_csv if args.benchmark_latency_csv else f"benchmark_latency_{time_stamp}.csv"
             csv_filename = os.path.join(path, csv_filename)
-            output_latency(latency_comparison_map, csv_filename)
+            output_latency(model_to_latency, csv_filename)
 
-    if len(profile_metrics_map) > 0:
+    if len(model_to_metrics) > 0:
         logger.info("\n========================================")
         logger.info("========== TRT detail metrics ==========")
         logger.info("========================================")
-        pp.pprint(profile_metrics_map)
+        pp.pprint(model_to_metrics)
 
         if args.need_write_result:
             csv_filename = args.benchmark_ratio_csv if args.benchmark_ratio_csv else f"benchmark_ratio_{time_stamp}.csv"
             csv_filename = os.path.join(path, csv_filename)
-            output_ratio(profile_metrics_map, csv_filename)
+            output_ratio(model_to_metrics, csv_filename)
 
 
     if False:
