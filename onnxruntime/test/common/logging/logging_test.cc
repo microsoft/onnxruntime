@@ -123,9 +123,9 @@ TEST_F(LoggingTestsFixture, TestLoggerFiltering) {
   MockSink* sink_ptr = new MockSink();
 
   int num_expected_calls = 2;
-#ifndef NDEBUG
-  ++num_expected_calls;  // VLOG output enabled in DEBUG
-#endif
+  if (logging::vlog_enabled) {
+    ++num_expected_calls;
+  }
   EXPECT_CALL(*sink_ptr, SendImpl(testing::_, HasSubstr(logid), testing::_))  // Property(&Capture::Severity, Ge(min_log_level))))
       .Times(num_expected_calls)
       .WillRepeatedly(PrintArgs());

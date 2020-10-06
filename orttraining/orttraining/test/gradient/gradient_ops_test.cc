@@ -289,7 +289,8 @@ TEST(GradientCheckerTest, SubGrad) {
   TestBroadcastableBinaryOpGrad("Sub");
 }
 
-TEST(GradientCheckerTest, MulGrad) {
+//flaky
+TEST(GradientCheckerTest, DISABLED_MulGrad) {
   TestBroadcastableBinaryOpGrad("Mul");
 }
 

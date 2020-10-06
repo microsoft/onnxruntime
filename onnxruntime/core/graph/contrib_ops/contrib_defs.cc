@@ -198,6 +198,115 @@ void ValidateTypeAndShapeForScaleAndZP(ONNX_NAMESPACE::InferenceContext& ctx, in
   }
 }
 
+void FusedMatMulShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
+  propagateElemTypeFromInputToOutput(ctx, 0, 0);
+  auto transAAttr = ctx.getAttribute("transA");
+  bool transa = transAAttr ? static_cast<int>(transAAttr->i()) != 0 : false;
+  auto transBAttr = ctx.getAttribute("transB");
+  bool transb = transBAttr ? static_cast<int>(transBAttr->i()) != 0 : false;
+  int input1Idx = 0;
+  int input2Idx = 1;
+  if (!hasInputShape(ctx, input1Idx) || !hasInputShape(ctx, input2Idx)) {
+    return;
+  }
+
+  const auto shape0_raw = getInputShape(ctx, input1Idx);
+  const auto shape1_raw = getInputShape(ctx, input2Idx);
+
+  if (shape0_raw.dim_size() == 0 || shape1_raw.dim_size() == 0) {
+    fail_shape_inference("Input tensors of wrong rank (0).");
+  }
+
+  // numpy transpose on a vector does not change anything.
+  if (shape0_raw.dim_size() == 1) {
+    transa = false;
+  }
+  if (shape1_raw.dim_size() == 1) {
+    transb = false;
+  }
+
+  ONNX_NAMESPACE::TensorShapeProto shape0, shape1;
+  auto rank0 = shape0_raw.dim_size();
+  if (rank0 == 1) {
+    // for vector input, transa does not make impact on the dim.
+    shape0 = shape0_raw;
+  } else {
+    for (int i = 0; i < rank0 - 2; ++i) {
+      *shape0.add_dim() = shape0_raw.dim(i);
+    }
+    *shape0.add_dim() = shape0_raw.dim(transa ? rank0 - 1 : rank0 - 2);
+    *shape0.add_dim() = shape0_raw.dim(transa ? rank0 - 2 : rank0 - 1);
+  }
+
+  auto rank1 = shape1_raw.dim_size();
+  if (rank1 == 1) {
+    // for vector input, transb does not make impact on the dim.
+    shape1 = shape1_raw;
+  } else {
+    for (int i = 0; i < rank1 - 2; ++i) {
+      *shape1.add_dim() = shape1_raw.dim(i);
+    }
+    *shape1.add_dim() = shape1_raw.dim(transb ? rank1 - 1 : rank1 - 2);
+    *shape1.add_dim() = shape1_raw.dim(transb ? rank1 - 2 : rank1 - 1);
+  }
+
+  ONNX_NAMESPACE::TensorShapeProto shapeL, shapeR;
+
+  // First promote each shape to at least rank-2. This logic is
+  // specific to matmul, not generic broadcasting.
+  {
+    if (shape0.dim_size() == 1) {
+      shapeL.add_dim()->set_dim_value(1);
+      *shapeL.add_dim() = shape0.dim(0);
+    } else {
+      *shapeL.mutable_dim() = shape0.dim();
+    }
+    if (shape1.dim_size() == 1) {
+      *shapeR.add_dim() = shape1.dim(0);
+      shapeR.add_dim()->set_dim_value(1);
+    } else {
+      *shapeR.mutable_dim() = shape1.dim();
+    }
+  }
+
+  // Check for compatible matrix multiply dimensions
+  {
+    auto dimL = shapeL.dim(shapeL.dim_size() - 1);
+    auto dimR = shapeR.dim(shapeR.dim_size() - 2);
+    if (dimL.has_dim_value() && dimR.has_dim_value() &&
+        dimL.dim_value() != dimR.dim_value()) {
+      fail_shape_inference("Incompatible dimensions for matrix multiplication");
+    }
+  }
+
+  ONNX_NAMESPACE::TensorShapeProto resultShape;
+
+  // Now call out to generic multidimensional broadcasting for
+  // the broadcastable prefixes.
+  {
+    ONNX_NAMESPACE::TensorShapeProto prefixShapeL, prefixShapeR;
+    for (int i = 0; i < shapeL.dim_size() - 2; ++i) {
+      *prefixShapeL.add_dim() = shapeL.dim(i);
+    }
+    for (int i = 0; i < shapeR.dim_size() - 2; ++i) {
+      *prefixShapeR.add_dim() = shapeR.dim(i);
+    }
+    bidirectionalBroadcastShapeInference(
+        prefixShapeL, prefixShapeR, resultShape);
+  }
+
+  // Back to matmul-specific. Add the trailing dimensions back in.
+  {
+    if (shape0.dim_size() != 1) {
+      *resultShape.add_dim() = shapeL.dim(shapeL.dim_size() - 2);
+    }
+    if (shape1.dim_size() != 1) {
+      *resultShape.add_dim() = shapeR.dim(shapeR.dim_size() - 1);
+    }
+  }
+  updateOutputShape(ctx, 0, resultShape);
+}
+
 std::function<void(OpSchema&)> QLinearMathDocGenerator(const char* name, const char* additionalDocumentation) {
   return [=](OpSchema& schema) {
     std::string doc = R"DOC(
@@ -303,7 +412,6 @@ and present state are optional. Present state could appear in output even when p
   ONNX_CONTRIB_OPERATOR_SCHEMA(Attention)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc(Attention_ver1_doc)
       .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
       .Attr("unidirectional",
@@ -361,7 +469,6 @@ and present state are optional. Present state could appear in output even when p
   ONNX_CONTRIB_OPERATOR_SCHEMA(QAttention)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("Quantization of Multi-Head Self Attention.")
       .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
       .Attr("unidirectional",
@@ -457,7 +564,6 @@ will be calculated.)DOC";
   ONNX_CONTRIB_OPERATOR_SCHEMA(EmbedLayerNormalization)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc(EmbedLayerNormalization_ver1_doc)
       .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, kDefaultEmbedLayerNormEpsilon)
       .Input(0, "input_ids", "2D words IDs with shape (batch_size, sequence_length)", "T1")
@@ -519,7 +625,6 @@ GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.03
   ONNX_CONTRIB_OPERATOR_SCHEMA(FastGelu)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc(FastGelu_ver1_doc)
       .Input(0, "X", "input tensor", "T")
       .Input(1, "bias", "bias tensor", "T", OpSchema::Optional)
@@ -530,7 +635,6 @@ GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.03
   ONNX_CONTRIB_OPERATOR_SCHEMA(SkipLayerNormalization)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("Skip and Layer Normalization Fusion")
       .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, kDefaultSkipLayerNormEpsilon)
       .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
@@ -1775,13 +1879,17 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
       });
 
   static const char* TransposeMatMul_doc = R"DOC(
+Deprecated. Going forward FusedMatMul should be used. This OP will be supported for backward compatibility. 
+Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html
+)DOC";
+
+  static const char* FusedMatMul_doc = R"DOC(
 Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html
 )DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(TransposeMatMul)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetDoc("TransposeMatMul")
       .Input(0, "A", "N-dimensional matrix A", "T")
       .Input(1, "B", "N-dimensional matrix B", "T")
       .Attr(
@@ -1806,112 +1914,68 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
           "Constrain input and output types to float tensors.")
       .SetDoc(TransposeMatMul_doc)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        propagateElemTypeFromInputToOutput(ctx, 0, 0);
-        auto transAAttr = ctx.getAttribute("transA");
-        bool transa = transAAttr ? static_cast<int>(transAAttr->i()) != 0 : false;
-        auto transBAttr = ctx.getAttribute("transB");
-        bool transb = transBAttr ? static_cast<int>(transBAttr->i()) != 0 : false;
-        int input1Idx = 0;
-        int input2Idx = 1;
-        if (!hasInputShape(ctx, input1Idx) || !hasInputShape(ctx, input2Idx)) {
-          return;
-        }
+        FusedMatMulShapeInference(ctx);
+      });
 
-        const auto shape0_raw = getInputShape(ctx, input1Idx);
-        const auto shape1_raw = getInputShape(ctx, input2Idx);
+  ONNX_CONTRIB_OPERATOR_SCHEMA(TransposeMatMul)
+      .SetDomain(kMSDomain)
+      .SinceVersion(2)
+      .Deprecate()
+      .Input(0, "A", "N-dimensional matrix A", "T")
+      .Input(1, "B", "N-dimensional matrix B", "T")
+      .Attr(
+          "alpha",
+          "Scalar multiplier for the product of the input tensors.",
+          AttributeProto::FLOAT,
+          1.0f)
+      .Attr(
+          "transA",
+          "Whether A should be transposed on the last two dimensions before doing multiplication",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Attr(
+          "transB",
+          "Whether B should be transposed on the last two dimensions before doing multiplication",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Output(0, "Y", "Matrix multiply results", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain input and output types to float tensors.")
+      .SetDoc(TransposeMatMul_doc)
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        FusedMatMulShapeInference(ctx);
+      });
 
-        if (shape0_raw.dim_size() == 0 || shape1_raw.dim_size() == 0) {
-          fail_shape_inference("Input tensors of wrong rank (0).");
-        }
-
-        // numpy transpose on a vector does not change anything.
-        if (shape0_raw.dim_size() == 1) {
-          transa = false;
-        }
-        if (shape1_raw.dim_size() == 1) {
-          transb = false;
-        }
-
-        ONNX_NAMESPACE::TensorShapeProto shape0, shape1;
-        auto rank0 = shape0_raw.dim_size();
-        if (rank0 == 1) {
-          // for vector input, transa does not make impact on the dim.
-          shape0 = shape0_raw;
-        } else {
-          for (int i = 0; i < rank0 - 2; ++i) {
-            *shape0.add_dim() = shape0_raw.dim(i);
-          }
-          *shape0.add_dim() = shape0_raw.dim(transa ? rank0 - 1 : rank0 - 2);
-          *shape0.add_dim() = shape0_raw.dim(transa ? rank0 - 2 : rank0 - 1);
-        }
-
-        auto rank1 = shape1_raw.dim_size();
-        if (rank1 == 1) {
-          // for vector input, transb does not make impact on the dim.
-          shape1 = shape1_raw;
-        } else {
-          for (int i = 0; i < rank1 - 2; ++i) {
-            *shape1.add_dim() = shape1_raw.dim(i);
-          }
-          *shape1.add_dim() = shape1_raw.dim(transb ? rank1 - 1 : rank1 - 2);
-          *shape1.add_dim() = shape1_raw.dim(transb ? rank1 - 2 : rank1 - 1);
-        }
-
-        ONNX_NAMESPACE::TensorShapeProto shapeL, shapeR;
-
-        // First promote each shape to at least rank-2. This logic is
-        // specific to matmul, not generic broadcasting.
-        {
-          if (shape0.dim_size() == 1) {
-            shapeL.add_dim()->set_dim_value(1);
-            *shapeL.add_dim() = shape0.dim(0);
-          } else {
-            *shapeL.mutable_dim() = shape0.dim();
-          }
-          if (shape1.dim_size() == 1) {
-            *shapeR.add_dim() = shape1.dim(0);
-            shapeR.add_dim()->set_dim_value(1);
-          } else {
-            *shapeR.mutable_dim() = shape1.dim();
-          }
-        }
-
-        // Check for compatible matrix multiply dimensions
-        {
-          auto dimL = shapeL.dim(shapeL.dim_size() - 1);
-          auto dimR = shapeR.dim(shapeR.dim_size() - 2);
-          if (dimL.has_dim_value() && dimR.has_dim_value() &&
-              dimL.dim_value() != dimR.dim_value()) {
-            fail_shape_inference("Incompatible dimensions for matrix multiplication");
-          }
-        }
-
-        ONNX_NAMESPACE::TensorShapeProto resultShape;
-
-        // Now call out to generic multidimensional broadcasting for
-        // the broadcastable prefixes.
-        {
-          ONNX_NAMESPACE::TensorShapeProto prefixShapeL, prefixShapeR;
-          for (int i = 0; i < shapeL.dim_size() - 2; ++i) {
-            *prefixShapeL.add_dim() = shapeL.dim(i);
-          }
-          for (int i = 0; i < shapeR.dim_size() - 2; ++i) {
-            *prefixShapeR.add_dim() = shapeR.dim(i);
-          }
-          bidirectionalBroadcastShapeInference(
-              prefixShapeL, prefixShapeR, resultShape);
-        }
-
-        // Back to matmul-specific. Add the trailing dimensions back in.
-        {
-          if (shape0.dim_size() != 1) {
-            *resultShape.add_dim() = shapeL.dim(shapeL.dim_size() - 2);
-          }
-          if (shape1.dim_size() != 1) {
-            *resultShape.add_dim() = shapeR.dim(shapeR.dim_size() - 1);
-          }
-        }
-        updateOutputShape(ctx, 0, resultShape);
+  ONNX_CONTRIB_OPERATOR_SCHEMA(FusedMatMul)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "A", "N-dimensional matrix A", "T")
+      .Input(1, "B", "N-dimensional matrix B", "T")
+      .Attr(
+          "alpha",
+          "Scalar multiplier for the product of the input tensors.",
+          AttributeProto::FLOAT,
+          1.0f)
+      .Attr(
+          "transA",
+          "Whether A should be transposed on the last two dimensions before doing multiplication",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Attr(
+          "transB",
+          "Whether B should be transposed on the last two dimensions before doing multiplication",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Output(0, "Y", "Matrix multiply results", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain input and output types to float tensors.")
+      .SetDoc(FusedMatMul_doc)
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        FusedMatMulShapeInference(ctx);
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ReduceSumInteger)
@@ -2755,11 +2819,11 @@ Example 4:
         propagateShapeAndTypeFromFirstInput(ctx);
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
         auto type = ctx.getAttribute("stash_type")->i();
-        if (ctx.getNumOutputs() > 1){
+        if (ctx.getNumOutputs() > 1) {
           auto output_type = ctx.getOutputType(1);
           output_type->mutable_tensor_type()->set_elem_type(static_cast<int32_t>(type));
         }
-        if (ctx.getNumOutputs() > 2){
+        if (ctx.getNumOutputs() > 2) {
           auto output_type = ctx.getOutputType(2);
           output_type->mutable_tensor_type()->set_elem_type(static_cast<int32_t>(type));
         }
@@ -2805,7 +2869,6 @@ inputs by their magnitude, rather than gates inputs by their sign as in ReLUs.)D
   ONNX_CONTRIB_OPERATOR_SCHEMA(Gelu)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc(Gelu_ver1_doc)
       .Input(0, "X", "The input data as Tensor.", "T")
       .Output(0, "Y", "The output.", "T")
@@ -2821,7 +2884,6 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
   ONNX_CONTRIB_OPERATOR_SCHEMA(BiasGelu)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc(BiasGelu_ver1_doc)
       .Input(0, "A", "The normal input data.", "T")
       .Input(1, "B", "The bias input data that is a 1D tensor.", "T")
@@ -2847,7 +2909,6 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
   ONNX_CONTRIB_OPERATOR_SCHEMA(Inverse)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .Input(0, "X", "Input tensor. Every matrix in the batch must be invertible.", "T")
       .Output(0, "Y", "Output tensor of the same type and shape as the input tensor.", "T")
       .TypeConstraint(
@@ -2905,7 +2966,6 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc(Trilu_ver1_doc)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .Attr("upper",
             "Boolean. Indicates whether upper or lower part of matrix is retained. Default is true.",
             AttributeProto::INT,
@@ -2961,7 +3021,6 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
   ONNX_CONTRIB_OPERATOR_SCHEMA(BiasSoftmax)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc(
           "Y = softmax(scores + bias)) with simple broadcast on bias. "
           "Intended to specialize softmax(scores + additive_mask) commonly found in transformer models.")

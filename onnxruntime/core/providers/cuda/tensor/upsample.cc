@@ -74,7 +74,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
   if (is_resize_) {
     TArray<int64_t> input_shape(X_dims);
     TArray<int64_t> output_shape(output_dims);
-    TArray<float> roi_vals(roi);
+    TArray<float, 10> roi_vals(roi);
     TArray<float> scales_vals(scales);
 
     size_t temp_buffer_size = CalcResizeBufferSize(mode_, output_dims);

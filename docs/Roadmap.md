@@ -46,10 +46,9 @@ Supported
 * Windows 7+
 * Linux (various)
 * Mac OS X
-* Android (community contribution, Preview)
+* Android (Preview)
+* iOS (Preview)
 
-*Future*
-* *iOS*
 
 #### Languages
 Supported languages are listed in [API Documentation](../README.md#api-documentation). The core team is not actively working on other language bindings at this time. If there is a missing API, please file a request in [Issues](https://github.com/microsoft/onnxruntime/issues). Community contributions are welcome for other languages.
@@ -58,10 +57,7 @@ Supported languages are listed in [API Documentation](../README.md#api-documenta
 #### New EPs
 To achieve the best performance on a growing set of compute targets across cloud and the intelligent edge, we invest in and partner with hardware partners and community members to add new execution providers. The flexible pluggability of ONNX Runtime is critical to support a broad range of scenarios and compute options.
 
-Supported
-
-Supported EPs are listed [here](../README.md#supported-accelerators). Upcoming EPs include:
-* Xilinx FPGA
+Supported EPs are listed [here](../README.md#supported-accelerators).
 
 
 #### CUDA operator coverage
@@ -74,7 +70,6 @@ In addition to new execution providers, we aim to make it easy for community par
 Performance is a key focus for ONNX Runtime. From latency to memory utilization to CPU usage, we are constantly seeking strategies to deliver the best performance. Although DNNs are rapidly driving research areas for innovation, we acknowledge that in practice, many companies and developers are still using traditional ML frameworks for reasons ranging from expertise to privacy to legality. As such, ONNX Runtime is focused on improvements and support for both DNNs and traditional ML. 
 
 #### Examples of projects the team is working on:
-* Improvements to batch processing for scikit-learn models
 * More quantization support
 * Improved multithreading (e.g. smarter work sharding, user supplied thread pools, etc)
 * Graph optimizations
