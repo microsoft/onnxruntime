@@ -17,6 +17,7 @@ static const std::string kFP16Enable = "ORT_TENSORRT_FP16_ENABLE";
 static const std::string kDumpSubgraphs = "ORT_TENSORRT_DUMP_SUBGRAPHS";
 static const std::string kEngineCacheEnable = "ORT_TENSORRT_ENGINE_CACHE_ENABLE";
 static const std::string kEngineCachePath = "ORT_TENSORRT_ENGINE_CACHE_PATH";
+static const std::string kEngineCacheAlwaysLoad = "ORT_TENSORRT_ENGINE_CACHE_ALWAYS_LOAD_ENABLE";
 }  // namespace tensorrt_env_vars
 
 class TensorrtLogger : public nvinfer1::ILogger {
@@ -63,11 +64,11 @@ struct TensorrtFuncState {
   AllocateFunc test_allocate_func = nullptr;
   DestroyFunc test_release_func = nullptr;
   AllocatorHandle allocator = nullptr;
-  nvonnxparser::IParser* parser = nullptr;
+  tensorrt_ptr::unique_pointer<nvonnxparser::IParser>* parser = nullptr;
   tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>* engine = nullptr;
   tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>* context = nullptr;
-  nvinfer1::IBuilder* builder = nullptr;
-  nvinfer1::INetworkDefinition* network = nullptr;
+  tensorrt_ptr::unique_pointer<nvinfer1::IBuilder>* builder = nullptr;
+  tensorrt_ptr::unique_pointer<nvinfer1::INetworkDefinition>* network = nullptr;
   std::vector<std::unordered_map<std::string, int>> input_info;
   std::vector<std::unordered_map<std::string, int>> output_info;
   std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>> input_shape_ranges;
@@ -78,6 +79,7 @@ struct TensorrtFuncState {
   bool engine_cache_enable;
   std::string engine_cache_path;
   nvinfer1::IRuntime* runtime = nullptr;
+  bool engine_cache_always_load_enble;
 };
 
 // Logical device representation.
@@ -109,6 +111,7 @@ class TensorrtExecutionProvider : public Provider_IExecutionProvider {
   bool engine_cache_enable_ = false;
   std::string engine_cache_path_;
   nvinfer1::IRuntime* runtime_ = nullptr;
+  bool engine_cache_always_load_enble_ = false;
 
   OrtMutex tensorrt_mu_;
   int device_id_;
@@ -141,3 +144,4 @@ class TensorrtExecutionProvider : public Provider_IExecutionProvider {
 };
 
 }  // namespace onnxruntime
+

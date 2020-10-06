@@ -46,6 +46,56 @@ std::string GetEnginePath(const ::std::string& root, const std::string& name) {
   }
 }
 
+std::string GetProfilePath(const ::std::string& root, const std::string& name) {
+  if (root.empty()) {
+    return name + ".profile";
+  } else {
+    fs::path path = root;
+    path.append(name + ".profile");
+    return path.string();
+  }
+}
+
+void WriteProfile(const ::std::string& file_name, std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>>& shape_ranges) {
+  std::ofstream file(file_name);
+  for (auto outer_it = shape_ranges.begin(); outer_it != shape_ranges.end(); ++outer_it) {
+    file << outer_it->first << ' ';
+    for (auto inner_it = outer_it->second.begin(); inner_it != outer_it->second.end(); ++inner_it) {
+      file << inner_it->first << ' ';
+      file << inner_it->second.first << ' ';
+      if (std::next(inner_it, 1) == outer_it->second.end()) {
+        file << inner_it->second.second;
+      } else {
+        file << inner_it->second.second << ' ';
+      }
+    }
+    file << '\n';
+  }
+  file.close();
+}
+
+std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>> ReadProfile(const std::string& file_name) {
+  std::ifstream file(file_name);
+  std::string line;
+  std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>> shape_ranges;
+  while (std::getline(file, line)) {
+    std::stringstream linestream(line);
+    std::string tensor_name;
+    std::getline(linestream, tensor_name, ' ');
+    std::unordered_map<int, std::pair<int64_t, int64_t>> inner_map;
+    std::string dimension;
+    while (std::getline(linestream, dimension, ' ')) {
+      std::string space, min_range, max_range;
+      std::getline(linestream, min_range, ' ');
+      std::getline(linestream, max_range, ' ');
+      inner_map[std::stoi(dimension)] = std::make_pair(stoi(min_range), stoi(max_range));
+    }
+    shape_ranges[tensor_name] = inner_map;
+  }
+  file.close();
+  return shape_ranges;
+}
+
 std::string GetVecHash(const ::std::vector<int>& vec) {
   std::size_t ret = vec.size();
   for (auto i : vec) {
@@ -215,6 +265,10 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   }
 
   if (engine_cache_enable_) {
+    const std::string engine_cache_always_load_enble_env_ = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEngineCacheAlwaysLoad);
+    if (!engine_cache_always_load_enble_env_.empty()) {
+      engine_cache_always_load_enble_ = (std::stoi(engine_cache_always_load_enble_env_) == 0 ? false : true);
+    }
     engine_cache_path_ = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEngineCachePath);
     if (!engine_cache_path_.empty() && !fs::is_directory(engine_cache_path_)) {
       if (!fs::create_directory(engine_cache_path_)) {
@@ -763,7 +817,6 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
 
     // Initialize shape range for dynamic shape tensors
     bool has_dynamic_shape = false;
-    std::vector<int> input_shapes;
     for (unsigned int i = 0, end = num_inputs; i < end; ++i) {
       auto input = trt_network->getInput(i);
       const std::string& input_name = input->getName();
@@ -773,12 +826,9 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
         // Shape tensor
         input_shape_ranges[input_name][0] = std::make_pair(INT_MAX, INT_MIN);
         has_dynamic_shape = true;
-        for (int i = 0; i < nb_dims; i++)
-          input_shapes.push_back(1);  // dummy value
       } else {
         // Execution tensor
         for (int j = 0, end = nb_dims; j < end; ++j) {
-          input_shapes.push_back(dims.d[j]);  // could be neg.
           if (dims.d[j] == -1) {
             input_shape_ranges[input_name][j] = std::make_pair(INT_MAX, INT_MIN);
             has_dynamic_shape = true;
@@ -799,10 +849,12 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
     tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine> trt_engine;
     tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext> trt_context;
     if (!has_dynamic_shape) {
-      std::string trt_node_name_with_precision_shape = trt_node_name_with_precision + "_" + GetVecHash(input_shapes);
-      std::string cached_path = GetEnginePath(engine_cache_path_, trt_node_name_with_precision_shape);
+      //std::string trt_node_name_with_precision_shape = trt_node_name_with_precision + "_" + GetVecHash(input_shapes);
+      std::string profile_path = GetProfilePath(engine_cache_path_, trt_node_name_with_precision);
+      std::ifstream profile_file(profile_path, std::ios::binary | std::ios::in);
+      std::string cached_path = GetEnginePath(engine_cache_path_, trt_node_name_with_precision);
       std::ifstream plan_file(cached_path, std::ios::binary | std::ios::in);
-      if (plan_file && engine_cache_enable_) {
+      if (profile_file && plan_file && engine_cache_enable_) {
         plan_file.seekg(0, std::ios::end);
         int engine_size = plan_file.tellg();
         plan_file.seekg(0, std::ios::beg);
@@ -817,6 +869,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
                                  "TensorRT EP could not build engine for fused node: " + fused_node->Name());
         }
         if (engine_cache_enable_) {
+          WriteProfile(profile_path, input_shape_ranges);
           nvinfer1::IHostMemory* serializedModel = trt_engine->serialize();
           std::ofstream file(cached_path, std::ios::binary | std::ios::out);
           file.write(reinterpret_cast<char*>(serializedModel->data()), serializedModel->size());
@@ -869,11 +922,13 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
     NodeComputeInfo compute_info;
     compute_info.create_state_func = [=](ComputeContext* context, FunctionState* state) {
       std::unique_ptr<TensorrtFuncState> p = onnxruntime::make_unique<TensorrtFuncState>();
-      *p = {context->allocate_func, context->release_func, context->allocator_handle, parsers_[context->node_name].get(),
-            &engines_[context->node_name], &contexts_[context->node_name], builders_[context->node_name].get(),
-            networks_[context->node_name].get(), input_info_[context->node_name], output_info_[context->node_name],
+      *p = {context->allocate_func, context->release_func, context->allocator_handle, &parsers_[context->node_name],
+            &engines_[context->node_name], &contexts_[context->node_name], &builders_[context->node_name],
+            &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
             input_shape_ranges_[context->node_name], &tensorrt_mu_, &fp16_enable_,
-            &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, engine_cache_path_, runtime_};
+            &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, engine_cache_path_, runtime_, engine_cache_always_load_enble_};
+
+
       *state = p.release();
       return 0;
     };
@@ -893,7 +948,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
       const std::unordered_map<std::string, int>& output_indexes = (trt_state->output_info)[0];
       const std::unordered_map<std::string, int>& output_types = (trt_state->output_info)[1];
       auto& shape_ranges = trt_state->input_shape_ranges;
-      auto trt_builder = trt_state->builder;
+      auto trt_builder = trt_state->builder->get();
       auto trt_engine = trt_state->engine->get();
       auto trt_context = trt_state->context->get();
       int num_inputs = input_indexes.size();
@@ -902,9 +957,42 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
       std::unordered_map<std::string, bool> dimension_update;
       std::unordered_map<std::string, std::vector<int32_t>> tensor_shape_values;
       nvinfer1::IOptimizationProfile* trt_profile = nullptr;
-      std::vector<int> input_shapes;
+
+      // Load serialized engine from file
+      //std::string trt_node_name_with_precision_shape = trt_state->trt_node_name_with_precision + "_" + GetVecHash(input_shapes);
+      std::string profile_path = GetProfilePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
+      std::ifstream profile_file(profile_path, std::ios::binary | std::ios::in);
+      std::string cached_path = GetEnginePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
+      std::ifstream plan_file(cached_path, std::ios::binary | std::ios::in);
+      if (profile_file && plan_file && (trt_state->engine_cache_always_load_enble || (trt_engine == nullptr && trt_state->engine_cache_enable))) {  //if engine file exists, always load engine from file (no matter trt_engine is nullptr or not)
+        shape_ranges = ReadProfile(profile_path);
+        trt_state->context->reset();
+        trt_state->engine->reset();
+        //load engine from file
+        plan_file.seekg(0, std::ios::end);
+        int engine_size = plan_file.tellg();
+        plan_file.seekg(0, std::ios::beg);
+        std::unique_ptr<char[]> engine_buf{new char[engine_size]};
+        plan_file.read((char*)engine_buf.get(), engine_size);
+        auto runtime_ = trt_state->runtime;
+        *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(
+            runtime_->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
+        if (trt_state->engine->get() == nullptr) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
+        }
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + cached_path;
+        trt_engine = trt_state->engine->get();
+
+        *(trt_state->context) = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(
+            trt_state->engine->get()->createExecutionContext());
+        if (trt_state->context->get() == nullptr) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to create context.");
+        }
+        trt_context = trt_state->context->get();
+      }
+
       for (int i = 0, end = num_inputs; i < end; ++i) {
-        auto input = trt_state->network->getInput(i);
+        auto input = trt_state->network->get()->getInput(i);
         const std::string& input_name = input->getName();
         nvinfer1::Dims dims = input->getDimensions();
         int nb_dims = dims.nbDims;
@@ -934,7 +1022,6 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
                 int32_t* input = new int32_t[shape_size];
                 CUDA_RETURN_IF_ERROR(cudaMemcpy(input, ort.GetTensorData<int32_t>(input_tensor), shape_size * sizeof(int32_t), cudaMemcpyDeviceToHost));
                 for (int j = 0; j < shape_size; ++j) {
-                  input_shapes.push_back(input[j]);
                   tensor_shape_values[input_name][j] = input[j];
                 }
                 delete[] input;
@@ -944,7 +1031,6 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
                 int64_t* input = new int64_t[shape_size];
                 CUDA_RETURN_IF_ERROR(cudaMemcpy(input, ort.GetTensorData<int64_t>(input_tensor), shape_size * sizeof(int64_t), cudaMemcpyDeviceToHost));
                 for (int j = 0; j < shape_size; ++j) {
-                  input_shapes.push_back(input[j]);
                   tensor_shape_values[input_name][j] = static_cast<int32_t>(input[j]);
                 }
                 delete[] input;
@@ -1001,11 +1087,10 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
             trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, &shapes_min[0], shape_size);
             trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt[0], shape_size);
             trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_max[0], shape_size);
-          } else {  // execution tensor
+          } else {// execution tensor
             nvinfer1::Dims dims_min(dims), dims_opt(dims), dims_max(dims);
             for (int j = 0, end = nb_dims; j < end; ++j) {
               const auto& tensor_shape = tensor_shapes[j];
-              input_shapes.push_back(tensor_shape);
               if (shape_range.find(j) != shape_range.end()) {
                 dims_min.d[j] = shape_range[j].first;
                 dims_opt.d[j] = shape_range[j].second;
@@ -1046,47 +1131,31 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
       // Regenerate engine
       // Only one profile is generated, so no need to explicitly set optimization profile
       if (engine_update) {
-        std::string trt_node_name_with_precision_shape = trt_state->trt_node_name_with_precision + "_" + GetVecHash(input_shapes);
-        std::string cached_path = GetEnginePath(trt_state->engine_cache_path, trt_node_name_with_precision_shape);
         std::ifstream plan_file(cached_path, std::ios::binary | std::ios::in);
         trt_state->context->reset();
         trt_state->engine->reset();
-        if (plan_file && trt_state->engine_cache_enable) {
-          plan_file.seekg(0, std::ios::end);
-          int engine_size = plan_file.tellg();
-          plan_file.seekg(0, std::ios::beg);
-          std::unique_ptr<char[]> engine_buf{new char[engine_size]};
-          plan_file.read((char*)engine_buf.get(), engine_size);
-          auto runtime_ = trt_state->runtime;
-          *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(
-              runtime_->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
-          if (trt_state->engine->get() == nullptr) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
-          }
-          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + cached_path;
-          trt_engine = trt_state->engine->get();
-        } else {
-          auto trt_config = tensorrt_ptr::unique_pointer<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
-          trt_config->setMaxWorkspaceSize(*(trt_state->max_workspace_size_ptr));
-          trt_config->addOptimizationProfile(trt_profile);
-          if (*(trt_state->fp16_enable_ptr) && trt_builder->platformHasFastFp16()) {
-            trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
-          }
-          *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(
-              trt_builder->buildEngineWithConfig(*trt_state->network, *trt_config));
-
-          if (trt_state->engine->get() == nullptr) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
-          }
-          trt_engine = trt_state->engine->get();
-          if (trt_state->engine_cache_enable) {
-            nvinfer1::IHostMemory* serializedModel = trt_engine->serialize();
-            std::ofstream file(cached_path, std::ios::binary | std::ios::out);
-            file.write(reinterpret_cast<char*>(serializedModel->data()), serializedModel->size());
-            serializedModel->destroy();
-            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + cached_path;
-          }
+        auto trt_config = tensorrt_ptr::unique_pointer<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
+        trt_config->setMaxWorkspaceSize(*(trt_state->max_workspace_size_ptr));
+        trt_config->addOptimizationProfile(trt_profile);
+        if (*(trt_state->fp16_enable_ptr) && trt_builder->platformHasFastFp16()) {
+          trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
         }
+        *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(
+            trt_builder->buildEngineWithConfig(*trt_state->network->get(), *trt_config));
+
+        if (trt_state->engine->get() == nullptr) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
+        }
+        trt_engine = trt_state->engine->get();
+        if (trt_state->engine_cache_enable) {
+          WriteProfile(profile_path, shape_ranges);
+          nvinfer1::IHostMemory* serializedModel = trt_engine->serialize();
+          std::ofstream file(cached_path, std::ios::binary | std::ios::out);
+          file.write(reinterpret_cast<char*>(serializedModel->data()), serializedModel->size());
+          serializedModel->destroy();
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + cached_path;
+        }
+
         *(trt_state->context) = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(
             trt_state->engine->get()->createExecutionContext());
         if (trt_state->context->get() == nullptr) {
@@ -1337,6 +1406,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
         }
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "TensorRT EP execution context enqueue failed.");
       }
+      cudaDeviceSynchronize();
 
       // Cast INT64 input to INT32 because TensorRT doesn't fully support INT64
       for (int i = 0, end = output_binding_names.size(); i < end; ++i) {
@@ -1355,9 +1425,13 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
         }
       }
 
-      cudaDeviceSynchronize();
       for (const auto& binding_index : binding_buffers_to_freeup) {
         cudaFree(buffers[binding_index]);
+      }
+
+      if (trt_state->engine_cache_always_load_enble) {
+        trt_state->context->reset();
+        trt_state->engine->reset();
       }
 
       return Status::OK();
@@ -1365,7 +1439,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
 
     node_compute_funcs.push_back(compute_info);
   }
-
   return Status::OK();
 }
 }  // namespace onnxruntime
+
