@@ -258,7 +258,11 @@ def load_pt_model(model_name, model_class, cache_dir):
 def load_tf_model(model_name, model_class, cache_dir):
     config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
 
-    model = load_pretrained_model(model_name, config=config, cache_dir=cache_dir, custom_model_class=model_class, is_tf_model=True)
+    model = load_pretrained_model(model_name,
+                                  config=config,
+                                  cache_dir=cache_dir,
+                                  custom_model_class=model_class,
+                                  is_tf_model=True)
 
     return config, model
 

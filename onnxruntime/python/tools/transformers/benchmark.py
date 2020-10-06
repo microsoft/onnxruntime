@@ -93,14 +93,14 @@ def run_onnxruntime(use_gpu, model_names, model_class, precision, batch_sizes, s
             if 'pt' in model_source:
                 with torch.no_grad():
                     onnx_model_file, is_valid_onnx_model, vocab_size, max_sequence_length = export_onnx_model_from_pt(
-                        model_name, MODELS[model_name][1], MODELS[model_name][2], MODELS[model_name][3], model_class, cache_dir,
-                        onnx_dir, input_names, use_gpu, precision, optimize_onnx, validate_onnx, use_raw_attention_mask, overwrite,
-                        model_fusion_statistics)
+                        model_name, MODELS[model_name][1], MODELS[model_name][2], MODELS[model_name][3], model_class,
+                        cache_dir, onnx_dir, input_names, use_gpu, precision, optimize_onnx, validate_onnx,
+                        use_raw_attention_mask, overwrite, model_fusion_statistics)
             if 'tf' in model_source:
                 onnx_model_file, is_valid_onnx_model, vocab_size, max_sequence_length = export_onnx_model_from_tf(
-                    model_name, MODELS[model_name][1], MODELS[model_name][2], MODELS[model_name][3], model_class, cache_dir,
-                    onnx_dir, input_names, use_gpu, precision, optimize_onnx, validate_onnx, use_raw_attention_mask, overwrite,
-                    model_fusion_statistics)
+                    model_name, MODELS[model_name][1], MODELS[model_name][2], MODELS[model_name][3], model_class,
+                    cache_dir, onnx_dir, input_names, use_gpu, precision, optimize_onnx, validate_onnx,
+                    use_raw_attention_mask, overwrite, model_fusion_statistics)
 
             if not is_valid_onnx_model:
                 continue
@@ -128,7 +128,8 @@ def run_onnxruntime(use_gpu, model_names, model_class, precision, batch_sizes, s
                         continue
 
                     input_value_type = numpy.int64 if 'pt' in model_source else numpy.int32
-                    ort_inputs = create_onnxruntime_input(vocab_size, batch_size, sequence_length, input_names, input_value_type)
+                    ort_inputs = create_onnxruntime_input(vocab_size, batch_size, sequence_length, input_names,
+                                                          input_value_type)
 
                     result_template = {
                         "engine": "onnxruntime",
@@ -157,8 +158,9 @@ def run_onnxruntime(use_gpu, model_names, model_class, precision, batch_sizes, s
 
                         data_type = numpy.longlong if 'pt' in model_source else numpy.int32
                         result = inference_ort_with_io_binding(ort_session, ort_inputs, result_template, repeat_times,
-                                                               ort_output_names, ort_outputs, output_buffers, max_last_state_size,
-                                                               max_pooler_size, batch_size, device, data_type)
+                                                               ort_output_names, ort_outputs, output_buffers,
+                                                               max_last_state_size, max_pooler_size, batch_size, device,
+                                                               data_type)
                         logger.info(result)
                         results.append(result)
 
@@ -240,6 +242,7 @@ def run_pytorch(use_gpu, model_names, model_class, precision, batch_sizes, seque
 def run_with_tf_optimizations(do_eager_mode: bool, use_xla: bool):
     import tensorflow as tf
     from functools import wraps
+
     def run_func(func):
         @wraps(func)
         def run_in_eager_mode(*args, **kwargs):
@@ -261,8 +264,8 @@ def run_with_tf_optimizations(do_eager_mode: bool, use_xla: bool):
     return run_func
 
 
-def run_tensorflow(use_gpu, model_names, model_class, precision, batch_sizes, sequence_lengths, repeat_times, thread_n, cache_dir,
-                   verbose):
+def run_tensorflow(use_gpu, model_names, model_class, precision, batch_sizes, sequence_lengths, repeat_times, thread_n,
+                   cache_dir, verbose):
     results = []
 
     import tensorflow as tf
@@ -275,7 +278,7 @@ def run_tensorflow(use_gpu, model_names, model_class, precision, batch_sizes, se
         logger.error("Please install Tensorflow-gpu, and use a machine with GPU for testing gpu performance.")
         return results
 
-    if use_gpu: # Restrict TensorFlow to only use the first GPU
+    if use_gpu:  # Restrict TensorFlow to only use the first GPU
         physical_devices = tf.config.list_physical_devices('GPU')
         try:
             tf.config.set_visible_devices(physical_devices[0], 'GPU')
@@ -290,11 +293,16 @@ def run_tensorflow(use_gpu, model_names, model_class, precision, batch_sizes, se
     for model_name in model_names:
         config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
 
-        model = load_pretrained_model(model_name, config=config, cache_dir=cache_dir, custom_model_class=model_class, is_tf_model=True)
+        model = load_pretrained_model(model_name,
+                                      config=config,
+                                      cache_dir=cache_dir,
+                                      custom_model_class=model_class,
+                                      is_tf_model=True)
 
         tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
 
-        max_input_size = tokenizer.max_model_input_sizes[model_name] if model_name in tokenizer.max_model_input_sizes else 1024
+        max_input_size = tokenizer.max_model_input_sizes[
+            model_name] if model_name in tokenizer.max_model_input_sizes else 1024
 
         for batch_size in batch_sizes:
             if batch_size <= 0:
@@ -304,7 +312,8 @@ def run_tensorflow(use_gpu, model_names, model_class, precision, batch_sizes, se
                 if max_input_size is not None and sequence_length > max_input_size:
                     continue
 
-                logger.info("Run Tensorflow on {} with input shape {}".format(model_name, [batch_size, sequence_length]))
+                logger.info("Run Tensorflow on {} with input shape {}".format(model_name,
+                                                                              [batch_size, sequence_length]))
 
                 import random
                 rng = random.Random()
@@ -313,11 +322,11 @@ def run_tensorflow(use_gpu, model_names, model_class, precision, batch_sizes, se
 
                 try:
                     # Disable both for better inference perf
-                    @run_with_tf_optimizations(do_eager_mode = False, use_xla = False)
+                    @run_with_tf_optimizations(do_eager_mode=False, use_xla=False)
                     def encoder_forward():
                         return model(input_ids, training=False)
 
-                    @run_with_tf_optimizations(do_eager_mode = False, use_xla = False)
+                    @run_with_tf_optimizations(do_eager_mode=False, use_xla=False)
                     def encoder_decoder_forward():
                         return model(input_ids, decoder_input_ids=input_ids, training=False)
 
@@ -511,8 +520,8 @@ def main():
                                    args.sequence_lengths, args.test_times, False, args.cache_dir, args.verbose)
 
     if enable_tensorflow:
-        results += run_tensorflow(args.use_gpu, args.models, args.model_class, args.precision, args.batch_sizes, args.sequence_lengths,
-                                  args.test_times, thread_n, args.cache_dir, args.verbose)
+        results += run_tensorflow(args.use_gpu, args.models, args.model_class, args.precision, args.batch_sizes,
+                                  args.sequence_lengths, args.test_times, thread_n, args.cache_dir, args.verbose)
 
     model_fusion_statistics = {}
     if enable_onnxruntime:

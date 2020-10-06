@@ -157,7 +157,8 @@ class FusionEmbedLayerNoMask(Fusion):
                         if position_embedding_path is not None:
                             position_embedding_weight_node, position_embedding_node_before_gather = position_embedding_path
                         else:
-                            position_embedding_path = self.model.match_parent_path(add_node, ['Gather', 'Slice'], [1, 1])
+                            position_embedding_path = self.model.match_parent_path(add_node, ['Gather', 'Slice'],
+                                                                                   [1, 1])
                             if position_embedding_path is not None:
                                 position_embedding_weight_node, position_embedding_node_before_gather = position_embedding_path
                             else:
