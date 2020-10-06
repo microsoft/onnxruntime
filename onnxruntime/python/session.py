@@ -192,9 +192,25 @@ class InferenceSession(Session):
         self._enable_fallback = True
         self._read_config_from_model = os.environ.get('ORT_LOAD_CONFIG_FROM_MODEL') == '1'
 
-        self._create_inference_session(providers, provider_options)
+        try:
+            self._create_inference_session(providers, provider_options)
+        except RuntimeError:
+            if self._enable_fallback:
+                print("EP Error using {}".format(self._providers))
+                print("Falling back to {} and retrying.".format(self._fallback_providers))
+                self._create_inference_session(self._fallback_providers)
+                # Fallback only once.
+                self.disable_fallback()
+            else:
+                raise
 
     def _create_inference_session(self, providers, provider_options):
+        # Tensorrt can fall back to CUDA. All others fall back to CPU.
+        if 'TensorrtExecutionProvider' in C.get_available_providers():
+            self._fallback_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+        else:
+            self._fallback_providers = ['CPUExecutionProvider']
+
         session_options = self._sess_options if self._sess_options else C.get_default_session_options()
         if self._model_path:
             sess = C.InferenceSession(session_options, self._model_path, True, self._read_config_from_model)
@@ -212,12 +228,6 @@ class InferenceSession(Session):
         self._model_meta = self._sess.model_meta
         self._providers = self._sess.get_providers()
         self._provider_options = self._sess.get_provider_options()
-
-        # Tensorrt can fall back to CUDA. All others fall back to CPU.
-        if 'TensorrtExecutionProvider' in C.get_available_providers():
-            self._fallback_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
-        else:
-            self._fallback_providers = ['CPUExecutionProvider']
 
     def _reset_session(self, providers, provider_options):
         "release underlying session object."
