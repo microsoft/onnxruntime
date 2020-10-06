@@ -442,8 +442,6 @@ namespace Microsoft.ML.OnnxRuntime
         }
         private ExecutionMode _executionMode = ExecutionMode.ORT_SEQUENTIAL;
 
-        #endregion
-
         #region Private Methods
 
 

@@ -99,7 +99,7 @@ endif()
 
 onnxruntime_add_include_to_target(onnxruntime_common date_interface wil)
 target_include_directories(onnxruntime_common
-    PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS}
+    PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${CPUINFO_INCLUDE_DIR}
     # safeint is part of onnxruntime_common public interface, so we want to propagate its includes
     PUBLIC $<TARGET_PROPERTY:safeint_interface,INTERFACE_INCLUDE_DIRECTORIES>)
 

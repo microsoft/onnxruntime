@@ -145,4 +145,16 @@ void ParseSessionOptions(const Napi::Object options, Ort::SessionOptions &sessio
 
     sessionOptions.SetLogSeverityLevel(static_cast<int>(logLevelNumber));
   }
+
+  // set denormal as zero
+  if (options.Has("enableDenormalAsZero")) {
+    auto setDenormalAsZeroValue = options.Get("enableDenormalAsZero");
+    ORT_NAPI_THROW_TYPEERROR_IF(!setDenormalAsZeroValue.IsBoolean(), options.Env(),
+                                "Invalid argument: sessionOptions.enableDenormalAsZero must be a boolean value.");
+    if (setDenormalAsZeroValue.As<Napi::Boolean>().Value()) {
+      sessionOptions.EnableDenormalAsZero();
+    } else {
+      sessionOptions.DisableDenormalAsZero();
+    }
+  }
 }

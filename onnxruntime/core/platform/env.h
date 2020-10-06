@@ -65,6 +65,9 @@ struct ThreadOptions {
   // its process can run on. NOTE: When hyperthreading is enabled, for example, on a 4 cores 8 physical threads CPU,
   // processor group [0,1,2,3] may only contain half of the physical cores.
   std::vector<size_t> affinity;
+
+  // Set or unset denormal as zero.
+  bool set_denormal_as_zero = false;
 };
 /// \brief An interface used by the onnxruntime implementation to
 /// access operating system functionality like the filesystem etc.

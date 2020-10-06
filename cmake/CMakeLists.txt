@@ -605,6 +605,15 @@ if(NOT TARGET re2::re2)
   set(RE2_INCLUDE_DIR ${REPO_ROOT}/cmake/external/re2)
 endif()
 
+if (NOT TARGET cpuinfo)
+  add_subdirectory(external/cpuinfo EXCLUDE_FROM_ALL)
+  set(CPUINFO_INCLUDE_DIR ${REPO_ROOT}/cmake/external/cpuinfo/include)
+  set(CPUINFO_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+  set(CPUINFO_BUILD_UNIT_TESTS OFF CACHE BOOL "" FORCE)
+  set(CPUINFO_BUILD_MOCK_TESTS OFF CACHE BOOL "" FORCE)
+  set(CPUINFO_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
+endif()
+
 # bounds checking behavior.
 # throw instead of calling terminate if there's a bounds checking violation.
 # we make it through via a handler so CUDA does not complain
@@ -625,7 +634,7 @@ include(eigen)
 #onnxruntime_EXTERNAL_LIBRARIES could contain onnx, onnx_proto,libprotobuf, cuda/cudnn, jemalloc,
 # dnnl/mklml, openblas, onnxruntime_codegen_tvm, tvm, nnvm_compiler and pthread
 # pthread is always at the last
-set(onnxruntime_EXTERNAL_LIBRARIES onnx onnx_proto ${PROTOBUF_LIB} re2::re2)
+set(onnxruntime_EXTERNAL_LIBRARIES onnx onnx_proto ${PROTOBUF_LIB} re2::re2 cpuinfo)
 
 function(onnxruntime_add_include_to_target dst_target)
     foreach(src_target ${ARGN})

@@ -46,14 +46,15 @@ namespace perftest {
       "\t-y [inter_op_num_threads]: Sets the number of threads used to parallelize the execution of the graph (across nodes), A value of 0 means ORT will pick a default. Must >=0.\n"
       "\t-P: Use parallel executor instead of sequential executor.\n"
       "\t-o [optimization level]: Default is 1. Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
-      "\t\tPlease see onnxruntime_c_api.h (enum GraphOptimizationLevel) for the full list of all optimization levels. \n"
+      "\t\tPlease see onnxruntime_c_api.h (enum GraphOptimizationLevel) for the full list of all optimization levels.\n"
       "\t-u [optimized_model_path]: Specify the optimized model path for saving.\n"
+      "\t-z: Set denormal as zero. When tuning on this option reduces latency dramatically, a model may have denormals.\n"
       "\t-h: help\n");
 }
 
 /*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:y:c:o:u:AMPIvhs"))) != -1) {
+  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:y:c:o:u:AMPIvhsz"))) != -1) {
     switch (ch) {
       case 'm':
         if (!CompareCString(optarg, ORT_TSTR("duration"))) {
@@ -176,6 +177,9 @@ namespace perftest {
         break;
       case 'I':
         test_config.run_config.generate_model_input_binding = true;
+        break;
+      case 'z':
+        test_config.run_config.set_denormal_as_zero = true;
         break;
       case '?':
       case 'h':

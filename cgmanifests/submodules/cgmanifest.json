@@ -45,6 +45,16 @@
       "component": {
         "type": "git",
         "git": {
+          "commitHash": "63b254577ed77a8004a9be6ac707f3dccc4e1fd9",
+          "repositoryUrl": "https://github.com/pytorch/cpuinfo.git"
+        },
+        "comments": "git submodule at cmake/external/cpuinfo"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
           "commitHash": "c3cceac115c072fb63df1836ff46d8c60d9eb304",
           "repositoryUrl": "https://github.com/NVlabs/cub.git"
         },
@@ -385,7 +395,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "088554a5fbee9ba183c05c09c1abe986034e9208",
+          "commitHash": "fbebb144744b3be8defecd8478d74940056df305",
           "repositoryUrl": "https://github.com/onnx/onnx-tensorrt.git"
         },
         "comments": "git submodule at cmake/external/onnx-tensorrt"

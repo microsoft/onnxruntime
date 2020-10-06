@@ -2028,6 +2028,7 @@ static constexpr OrtApi ort_api_1_to_6 = {
     // Version 6 - In development, feel free to add/remove/rearrange here
     &OrtApis::AddInitializer,
     &OrtApis::CreateEnvWithCustomLoggerAndGlobalThreadPools,
+    &OrtApis::SetGlobalDenormalAsZero,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
