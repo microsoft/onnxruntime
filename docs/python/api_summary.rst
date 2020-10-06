@@ -11,7 +11,7 @@ in *ONNX Runtime*.
 
 OrtValue
 =========
-*ONNX Runtime* works with native Python data structures which are mapped into ONNX structures :
+*ONNX Runtime* works with native Python data structures which are mapped into ONNX ONNX data formats :
 Numpy arrays (tensors), dictionaries (maps), and a list of Numpy arrays (sequences).
 The data backing these are on CPU.
 
@@ -20,7 +20,8 @@ to place the data backing these on a device, for example, on a CUDA supported de
 interesting *IOBinding* scenarios (discussed below). In addition, *ONNX Runtime* supports directly
 working with *OrtValue*(s) while inferencing a model if provided as part of the input feed.
 
-Creating an *OrtValue* from a Numpy array while placing its backing memory on a CUDA device
+Below is an example showing creation of an *OrtValue* from a Numpy array while placing its backing memory
+on a CUDA device:
 
 .. code-block:: python
 
@@ -33,7 +34,7 @@ Creating an *OrtValue* from a Numpy array while placing its backing memory on a 
 	np.array_equal(ortvalue.numpy(), X)  # 'True'
 
 	#ortvalue can be provided as part of the input feed to a model
-	session = onnxruntime.InferenceSession('model.onnx')
+	ses = onnxruntime.InferenceSession('model.onnx')
 	res = sess.run(["Y"], {"X": ortvalue})
 
 IOBinding
