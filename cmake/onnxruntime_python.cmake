@@ -74,6 +74,15 @@ if (onnxruntime_ENABLE_TRAINING)
   target_include_directories(onnxruntime_pybind11_state PRIVATE ${ORTTRAINING_ROOT})
 endif()
 
+# Disable pybind11 warning on macOS
+# TODO, remove this after switch to pybind11 2.6.0+
+if(APPLE)
+  # https://github.com/pybind/pybind11/pull/2522
+  target_compile_options(onnxruntime_pybind11_state PRIVATE "-Wno-range-loop-analysis")
+  # https://github.com/pybind/pybind11/pull/2294
+  target_compile_options(onnxruntime_pybind11_state PRIVATE "-Wno-unused-value")
+endif()
+
 if(APPLE)
   set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker -exported_symbols_list ${ONNXRUNTIME_ROOT}/python/exported_symbols.lst")
 elseif(UNIX)

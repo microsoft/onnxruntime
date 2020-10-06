@@ -470,15 +470,6 @@ def is_sudo():
     return 'SUDO_UID' in os.environ.keys()
 
 
-def is_using_xcode_12():
-    try:
-        cmd_output = subprocess.check_output(['xcodebuild', '-version'])
-        return cmd_output.startswith(b'Xcode 12')
-    except Exception as e:
-        log.warning('Error trying execute xcodebuild, ' + str(e))
-        return False
-
-
 def install_apt_package(package):
     have = package in str(run_subprocess(
         ["apt", "list", "--installed", package], capture=True).stdout)
@@ -579,16 +570,12 @@ def setup_test_data(build_dir, configs):
 
 
 def use_dev_mode(args):
-    if args.use_acl or args.use_armnn:
+    if args.use_acl:
         return 'OFF'
-    if is_macOS():
-        if args.ios:
-            return 'OFF'
-        if args.enable_pybind and is_using_xcode_12():
-            # pybind11 warning if use AppleClang 12 to compile
-            # https://github.com/pybind/pybind11/pull/2522
-            # TODO, remove this after switch to pybind11 2.6.0+
-            return 'OFF'
+    if args.use_armnn:
+        return 'OFF'
+    if args.ios and is_macOS():
+        return 'OFF'
     return 'ON'
 
 
