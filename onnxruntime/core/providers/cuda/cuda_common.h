@@ -63,6 +63,9 @@ class CudaKernel : public OpKernel {
   }
 
   Status Compute(OpKernelContext* p_op_kernel_context) const override {
+    // use mutex to make sure memory allocation/usage within a kernel is not mixed with another kernel
+    std::lock_guard<std::mutex> lock(provider_->GetKernelMutex());
+
     auto s = ComputeInternal(p_op_kernel_context);
     // use this to precisely locate the node where CUDA failure comes from
     //  if (cudaSuccess != cudaDeviceSynchronize())
@@ -221,7 +224,7 @@ inline bool CalculateFdmStrides(gsl::span<fast_divmod> p, const std::vector<int6
 
 class CublasMathModeSetter {
  public:
-  CublasMathModeSetter(const cudaDeviceProp& prop,cublasHandle_t handle, cublasMath_t mode) : prop_(prop), handle_(handle) {
+  CublasMathModeSetter(const cudaDeviceProp& prop, cublasHandle_t handle, cublasMath_t mode) : prop_(prop), handle_(handle) {
     cublasGetMathMode(handle, &mode_);
 #if defined(CUDA_VERSION) && CUDA_VERSION < 11000
     if (prop.major >= 7 && mode == CUBLAS_TENSOR_OP_MATH) {
