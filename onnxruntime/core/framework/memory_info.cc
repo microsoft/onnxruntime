@@ -2,6 +2,8 @@
 #include "core/framework/mem_pattern.h"
 #include "core/framework/ml_value.h"
 
+#include <fstream>
+
 namespace onnxruntime {
 void MemoryInfo::GenerateMemoryMap(const SequentialExecutionPlan* execution_plan, const OrtValueNameIdxMap& value_name_idx_map) {
   if (!tensor_memoryinfo_map_.empty()) {
@@ -99,6 +101,135 @@ void MemoryInfo::PrintMemoryInfoForLocation(const logging::Logger& /*logger*/, c
       std::cout << item.second;
     }
   }
+}
+
+static std::string CreateMetadataEvent(const std::string& process_name, size_t process_id) {
+  std::stringstream evt;
+  evt << "{";
+  evt << "\"ph\":\"M\",";
+  evt << "\"name\":\"process_name\",";
+  evt << "\"pid\":" << process_id << ",";
+  evt << "\"args\":{\"name\":\"" << process_name << "\"}";
+  evt << "}";
+  evt << "," << std::endl;
+  evt << "{";
+  evt << "\"ph\":\"M\",";
+  evt << "\"name\":\"process_sort_index\",";
+  evt << "\"pid\":" << process_id << ",";
+  evt << "\"args\":{\"sort_index\":\"" << process_id << "\"}";
+  evt << "}";
+  return evt.str();
+}
+
+static std::string CreateMemoryEvent(size_t pid, size_t tid, const std::string& name, size_t offset, size_t size, const std::string& color_name) {
+  std::stringstream evt;
+  evt << "{";
+  evt << "\"ph\":\"X\",";
+  evt << "\"pid\":" << pid << ",";
+  evt << "\"tid\":" << tid++ << ",";
+  evt << "\"ts\":" << offset << ",";
+  evt << "\"dur\":" << size << ",";
+  evt << "\"name\":\"" << name << "\",";
+  evt << "\"cname\":\"" << color_name << "\",";
+  evt << "\"args\":{";
+  evt << "\"name\":\"" << name << "\",";
+  evt << "\"offset\":" << offset << ",";
+  evt << "\"size\":" << size;
+  evt << "}";
+  evt << "}";
+  return evt.str();
+}
+
+// Data needed for each tensor:
+// - name
+// - type (initializer, statically allocated activation, dynamically allocated activation)
+// - allocation offset (zero-based within it's type)
+// - allocation size (in bytes)
+// - for activations: lifetime (start and end execution step)
+//   - memory blocks/lifetime should not overlap when tensors are the same type
+//
+// TODO: the data should be organized in the following way
+//
+// [1] initializers:  tensors that exist for the lifetime of the graph/session.
+//       AllocKind=kAllocateStatically.  Need zero-based offset + size.
+//       Initializers can be reused.  We need some indication that it's reusing a static initializer.
+//       Currently, I use the alloc lifetime to infer this (start=0, end=max int)
+// [2] activations (static):  tensors that exist during execution steps, and their allocations are statically planned.
+//       Generally, these are AllocKind=kAllocate,kReuse
+//       Need zero-based offset + size, lifetime (first step it's used, last step it's used).
+//       Need an indication of tensors that were statically planned (offset+size) but ended up dynamically allocated outside the BFC arena (offset+size).
+//       For reused tensors, the lifetime should not overlap with other reuses/original allocation.
+// [3] activations (dynamic):  tensors that exist during execution steps, and their allocations are dynamically allocated outside a memory plan.
+//       Generally, these are AllocKind=kAllocate,kReuse
+//       Need zero-based offset + size (based on the addresses from all other dynamic allocations only), lifetime (first step it's used, last step it's used).
+//       Need an indication of tensors that were statically planned (offset+size) but ended up dynamically allocated outside the BFC arena (offset+size).
+//       For reused tensors, the lifetime should not overlap with other reuses/original allocation.
+void MemoryInfo::GenerateMemoryProfile() {
+  std::vector<std::string> color_names = {
+    "good", "bad", "terrible", "yellow", "olive", "generic_work",
+    "background_memory_dump", "light_memory_dump", "detailed_memory_dump",
+    "thread_state_uninterruptible", "thread_state_iowait", "thread_state_running",
+    "thread_state_runnable", "thread_state_unknown",
+    "cq_build_running", "cq_build_passed", "cq_build_failed", "cq_build_abandoned",
+    "cq_build_attempt_runnig", "cq_build_attempt_passed", "cq_build_attempt_failed",
+  };
+
+  size_t base_offset = std::numeric_limits<size_t>::max();
+  for (const auto& item : tensor_memoryinfo_map_) {
+    const auto& info = item.second;
+    const AllocKind alloc_kind = info.alloc_plan.alloc_kind;
+    if (info.alloc_plan.location.device.Type() != OrtDevice::GPU) continue;
+    if (alloc_kind == AllocKind::kAllocate) {
+      base_offset = std::min(base_offset, info.allocated_block.offset_);
+    }
+  }
+
+  std::vector<std::string> events;
+
+  // Metadata.
+  const size_t initializers_pid = 0;
+  const size_t activations_pid = 1;
+  events.push_back(CreateMetadataEvent("GPU (initializers)", initializers_pid));
+  events.push_back(CreateMetadataEvent("GPU (activations)", activations_pid));
+
+  // Allocations.
+  for (const auto& item : tensor_memoryinfo_map_) {
+    const auto& info = item.second;
+    if (info.alloc_plan.location.device.Type() != OrtDevice::GPU) continue;
+
+    const std::string& name = info.mlvalue_name;
+    const std::string cname = color_names[events.size() % color_names.size()];
+    const AllocKind alloc_kind = info.alloc_plan.alloc_kind;
+
+    // Skip initializers that are reused.
+    if (alloc_kind == AllocKind::kReuse && info.alloc_plan.allocate_interval.first == 0 && info.alloc_plan.allocate_interval.second == 4294967295) continue;
+    // Initializers.
+    if (alloc_kind == AllocKind::kAllocateStatically) {
+      size_t offset = info.planned_block.offset_;
+      size_t size = info.planned_block.size_;
+      events.push_back(CreateMemoryEvent(initializers_pid, 0, name, offset, size, cname));
+    }
+    // Activations.
+    if (alloc_kind == AllocKind::kAllocate || alloc_kind == AllocKind::kReuse) {
+      size_t offset = info.allocated_block.offset_ - base_offset;
+      size_t size = info.allocated_block.size_;
+      size_t alloc_step = alloc_kind == AllocKind::kReuse ? info.alloc_plan.life_interval.first + 1 : info.alloc_plan.life_interval.first;
+      size_t dealloc_step = info.alloc_plan.life_interval.second;
+      for (size_t tid = alloc_step; tid <= dealloc_step; tid++) {
+        events.push_back(CreateMemoryEvent(activations_pid, tid, name, offset, size, cname));
+      }
+    }
+  }
+
+  // Write memory profile .json
+  std::ofstream memory_profile("memory_profile.json", std::ios::trunc);
+  memory_profile << "[" << std::endl;
+  for (size_t i = 0; i < events.size(); i++) {
+    memory_profile << "  " << events[i];
+    if (i < events.size() - 1) memory_profile << ",";
+    memory_profile << std::endl;
+  }
+  memory_profile << "]" << std::endl;
 }
 
 }  // namespace onnxruntime

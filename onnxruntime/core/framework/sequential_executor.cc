@@ -432,6 +432,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   VLOGS(logger, 1) << "Done with execution.";
 
   session_state.GetMutableMemoryInfo().PrintMemoryInfoForLocation(session_state.Logger(), OrtDevice::GPU);
+  session_state.GetMutableMemoryInfo().GenerateMemoryProfile();
 
   if (frame.HasMemoryPatternPlanner()) {
     std::vector<std::reference_wrapper<const TensorShape>> input_shapes;
