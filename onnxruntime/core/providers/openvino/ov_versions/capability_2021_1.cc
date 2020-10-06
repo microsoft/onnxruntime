@@ -245,11 +245,6 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     if (attributes["auto_pad"].s() == "") {
       return true;
     }
-  } else if (optype == "TopK") {
-      // K as input is currently not suppported on CPU.
-      if (device_id != "MYRIAD") {
-        return node->InputDefs().size() > 1;
-      }
   } else if (optype == "ReduceMin") {
     //Only FP32, INT32 and U8 data types are supported
     const bool data_is_float = node->InputDefs()[0]->Type()->find("float") != std::string::npos;
@@ -768,17 +763,9 @@ GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, std::string d
         break;
       }
       std::vector<std::string> cluster_graph_inputs, cluster_inputs, const_inputs, cluster_outputs;
-      //If subgraph only has Identity node, EyeLike or Dropout, OpenVINO EP doesn't support it.
-      if (this_cluster.size() == 1) {
-        const auto& node = graph_viewer.GetNode(this_cluster[0]);
-        if(IsOpSupportedOnlyInModel(node->OpType()))
-          continue;
-        //If reshape is not an intermediate node, shape needs to be an initializer
-        if(node->OpType() == "Reshape"){
-          const auto& shape_arg = node->InputDefs()[1];
-          if(ng_required_initializers.find(shape_arg->Name()) == ng_required_initializers.end())
-            continue;
-        }
+      //If subgraph has less then three nodes we do not support it
+      if (this_cluster.size() < 3) {
+        continue;
       }
       for(auto it = this_cluster.begin(); it != this_cluster.end(); it++){
         const auto& node = graph_viewer.GetNode(*it);
