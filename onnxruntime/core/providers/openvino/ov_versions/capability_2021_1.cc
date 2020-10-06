@@ -763,17 +763,9 @@ GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, std::string d
         break;
       }
       std::vector<std::string> cluster_graph_inputs, cluster_inputs, const_inputs, cluster_outputs;
-      //If subgraph only has Identity node, EyeLike or Dropout, OpenVINO EP doesn't support it.
-      if (this_cluster.size() == 1) {
-        const auto& node = graph_viewer.GetNode(this_cluster[0]);
-        if(IsOpSupportedOnlyInModel(node->OpType()))
-          continue;
-        //If reshape is not an intermediate node, shape needs to be an initializer
-        if(node->OpType() == "Reshape"){
-          const auto& shape_arg = node->InputDefs()[1];
-          if(ng_required_initializers.find(shape_arg->Name()) == ng_required_initializers.end())
-            continue;
-        }
+      //If subgraph has less then three nodes we do not support it
+      if (this_cluster.size() < 3) {
+        continue;
       }
       for(auto it = this_cluster.begin(); it != this_cluster.end(); it++){
         const auto& node = graph_viewer.GetNode(*it);
@@ -790,7 +782,7 @@ GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, std::string d
         const auto& node = graph_viewer.GetNode(index);
         if (node->OpType() == "Mul" || node->OpType() == "Transpose" || node->OpType() == "Unsqueeze" ||
             node->OpType() == "Cast" || node->OpType() == "Concat" || node->OpType() == "Gather"
-            || node->OpType() == "Div" || node->OpType() == "Sub"){
+            || node->OpType() == "Div" || node->OpType() == "Sub") {
 
             if((node->OpType() == "Div" || node->OpType() == "Sub") && device_id != "MYRIAD")
               continue;
@@ -803,7 +795,8 @@ GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, std::string d
               }
             }
         }
-        if(node->OpType() == "Conv"){
+
+        if(node->OpType() == "Conv" || node->OpType() == "Cast") {
           auto output_name = node->OutputDefs()[0]->Name();
           auto it = find(cluster_outputs.begin(), cluster_outputs.end(), output_name);
           if(it != cluster_outputs.end() && node->GetOutputEdgesCount() != 0){
@@ -811,6 +804,7 @@ GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, std::string d
             break;
           }
         }
+
         if(node->OpType() == "Slice"){
           auto input = node->InputDefs()[0];
           auto input_name = input->Name();
