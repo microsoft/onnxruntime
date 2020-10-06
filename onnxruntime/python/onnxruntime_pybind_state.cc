@@ -138,9 +138,8 @@ struct OrtStatus {
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
-#include "core/providers/cuda/cuda_provider_options.h"
-#include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
+#include "core/providers/cuda/cuda_allocator.h"
 
 OrtDevice::DeviceId cuda_device_id = 0;
 OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE;
