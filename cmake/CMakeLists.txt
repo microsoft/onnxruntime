@@ -1043,8 +1043,9 @@ if (onnxruntime_USE_CUDA)
     link_directories(${onnxruntime_CUDNN_HOME}/lib/x64)
 
     # delayload causes crash on exit, so disable for now
+    # please update cudaDelayLoadedLibs in Microsoft.ML.OnnxRuntime/SessionOptions.cs if you change delayload
     #file(GLOB cuda_dll_paths "${onnxruntime_CUDA_HOME}/bin/cublas64_*" "${onnxruntime_CUDA_HOME}/bin/cudart64_*" "${onnxruntime_CUDA_HOME}/bin/curand64_*" "${onnxruntime_CUDA_HOME}/bin/cufft64_*")
-    #set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:cudnn64_7.dll")
+    #set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:cudnn64_8.dll")
     #foreach(cuda_dll_path ${cuda_dll_paths})
     #    get_filename_component(cuda_dll_file_name ${cuda_dll_path} NAME)
     #    set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:${cuda_dll_file_name}")

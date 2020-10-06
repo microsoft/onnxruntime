@@ -36,7 +36,8 @@ namespace Microsoft.ML.OnnxRuntime
     /// </summary>
     public class SessionOptions : SafeHandle
     {
-        private static string[] cudaDelayLoadedLibs = { "cublas64_10.dll", "cudnn64_7.dll", "curand64_10.dll" };
+        // Delayloaded CUDA or cuDNN DLLs. Currently, delayload is disabled. See cmake/CMakeLists.txt for more information.
+        private static string[] cudaDelayLoadedLibs = { };
 
         #region Constructor and Factory methods
 
