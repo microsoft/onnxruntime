@@ -187,6 +187,7 @@ Status TrainingRunner::Initialize() {
     gt_config.attn_dropout_recompute = params_.attn_dropout_recompute;
     gt_config.gelu_recompute = params_.gelu_recompute;
     gt_config.transformer_layer_recompute = params_.transformer_layer_recompute;
+    gt_config.number_recompute_layers = params_.number_recompute_layers;
 
     config.graph_transformer_config = gt_config;
   }
@@ -531,58 +532,76 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
                                    VectorString& fetch_names,
                                    std::vector<MLValue>& feeds,
                                    std::vector<MLValue>& fetches) {
-  // Cyclically pick up a worker ID.
-  const size_t worker_id = step_ % params_.pipeline_parallel_size;
+  if (params_.pipeline_parallel_size > 1) {
+    // Cyclically pick up a worker ID.
+    const size_t worker_id = step_ % params_.pipeline_parallel_size;
 
-  // Wait for the previous work to finish its job.
-  // Its resource cannot be overrided when it's still working.
-  pipeline_worker_pool_.Join(worker_id);
-  CheckWorkerException(pipeline_worker_pool_.worker_states[worker_id].execution_exception);
+    // Wait for the previous work to finish its job.
+    // Its resource cannot be overrided when it's still working.
+    pipeline_worker_pool_.Join(worker_id);
+    CheckWorkerException(pipeline_worker_pool_.worker_states[worker_id].execution_exception);
 
-  // Copy thread-used variable to thread-specific buffer to maintain their life.
-  pipeline_worker_pool_.worker_states[worker_id].feed_names = feed_names;
-  pipeline_worker_pool_.worker_states[worker_id].feeds = feeds;
-  pipeline_worker_pool_.worker_states[worker_id].fetch_names = fetch_names;
-  pipeline_worker_pool_.worker_states[worker_id].fetches = std::vector<MLValue>();
+    // Copy thread-used variable to thread-specific buffer to maintain their life.
+    pipeline_worker_pool_.worker_states[worker_id].feed_names = feed_names;
+    pipeline_worker_pool_.worker_states[worker_id].feeds = feeds;
+    pipeline_worker_pool_.worker_states[worker_id].fetch_names = fetch_names;
+    pipeline_worker_pool_.worker_states[worker_id].fetches = std::vector<MLValue>();
 
-  pipeline_worker_pool_.workers[worker_id] = std::thread([&](const size_t worker_id, const size_t step) {
-    try {
-#ifdef ENABLE_NVTX_PROFILE
-      // Store the tag for the thread which runs session_.Run(...).
-      // It will be used to name range in Nvidia's visual profiler.
-      auto& profile_context = profile::Context::GetInstance();
-      profile_context.SetThreadTag(
-          std::this_thread::get_id(), std::to_string(step));
-#else
-      ORT_UNUSED_PARAMETER(step);
-#endif
-      RunOptions run_options;
-      auto status = session_.Run(
-          run_options,
-          pipeline_worker_pool_.worker_states[worker_id].feed_names,
-          pipeline_worker_pool_.worker_states[worker_id].feeds,
-          pipeline_worker_pool_.worker_states[worker_id].fetch_names,
-          &(pipeline_worker_pool_.worker_states[worker_id].fetches));
+    pipeline_worker_pool_.workers[worker_id] = std::thread([&](const size_t worker_id, const size_t step) {
+      try {
+  #ifdef ENABLE_NVTX_PROFILE
+        // Store the tag for the thread which runs session_.Run(...).
+        // It will be used to name range in Nvidia's visual profiler.
+        auto& profile_context = profile::Context::GetInstance();
+        profile_context.SetThreadTag(
+            std::this_thread::get_id(), std::to_string(step));
+  #else
+        ORT_UNUSED_PARAMETER(step);
+  #endif
+        RunOptions run_options;
+        auto status = session_.Run(
+            run_options,
+            pipeline_worker_pool_.worker_states[worker_id].feed_names,
+            pipeline_worker_pool_.worker_states[worker_id].feeds,
+            pipeline_worker_pool_.worker_states[worker_id].fetch_names,
+            &(pipeline_worker_pool_.worker_states[worker_id].fetches));
 
-      ORT_THROW_IF_ERROR(status);
-    } catch (std::exception&) {
-      // If exception happens during worker execution, propogate the exception to main thread.
-      pipeline_worker_pool_.worker_states[worker_id].execution_exception = std::current_exception();
+        ORT_THROW_IF_ERROR(status);
+      } catch (std::exception&) {
+        // If exception happens during worker execution, propogate the exception to main thread.
+        pipeline_worker_pool_.worker_states[worker_id].execution_exception = std::current_exception();
+      }
+    },
+                                                          worker_id, step_);
+
+    // Wait all workers to finish this round of pipeline parallelism.
+    // The last batch in a pipeline collects gradient and update the model.
+    // We must join here because main thread needs to access thread-produced
+    // fetches and those fetches must be ready.
+    pipeline_worker_pool_.JoinAll();
+    for (auto& status : pipeline_worker_pool_.worker_states) {
+      CheckWorkerException(status.execution_exception);
     }
-  },
-                                                         worker_id, step_);
 
-  // Wait all workers to finish this round of pipeline parallelism.
-  // The last batch in a pipeline collects gradient and update the model.
-  // We must join here because main thread needs to access thread-produced
-  // fetches and those fetches must be ready.
-  pipeline_worker_pool_.JoinAll();
-  for (auto& status : pipeline_worker_pool_.worker_states) {
-    CheckWorkerException(status.execution_exception);
+    fetches = pipeline_worker_pool_.worker_states[worker_id].fetches;
+  } else {
+    // Entering this branch means we will run graph without multi-threading.
+    // This branch is only hit in pipeline parallel.
+#ifdef ENABLE_NVTX_PROFILE
+    // Store the tag for the thread which runs session_.Run(...).
+    // It will be used to name range in Nvidia's visual profiler.
+    auto& profile_context = profile::Context::GetInstance();
+    profile_context.SetThreadTag(
+        std::this_thread::get_id(), std::to_string(step_));
+#endif
+    auto status = session_.Run(
+        RunOptions(),
+        feed_names,
+        feeds,
+        fetch_names,
+        &fetches);
+    ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
   }
-
-  // Copy back from thread-specific buffer to main thread's memory.
-  fetches = pipeline_worker_pool_.worker_states[worker_id].fetches;
 
   if (loss_scaler_) {
     auto it = std::find(fetch_names.begin(), fetch_names.end(), opt_graph_outputs_[OptimizerOutputKey::GradientAllIsFinite]);
@@ -630,48 +649,75 @@ void TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
                                       VectorString& fetch_names,
                                       std::vector<MLValue>& feeds,
                                       size_t& gradient_accumulation_step_count) {
-  // Cyclically pick up a worker ID.
-  const size_t worker_id = step_ % params_.pipeline_parallel_size;
+  if (params_.pipeline_parallel_size > 1) {
+    // Launch the graph using other threads when pipeline parallel is enabled.
 
-  // Wait for the previous work to finish its job.
-  // Its resource cannot be overrided when it's still working.
-  pipeline_worker_pool_.Join(worker_id);
-  CheckWorkerException(pipeline_worker_pool_.worker_states[worker_id].execution_exception);
+    // Cyclically pick up a worker ID.
+    const size_t worker_id = step_ % params_.pipeline_parallel_size;
 
-  // Prepare async launch of session.
-  // All used variables have to be copied to a buffer object to maintain their lifetime.
-  pipeline_worker_pool_.worker_states[worker_id].feeds = feeds;
-  pipeline_worker_pool_.worker_states[worker_id].feed_names = feed_names;
-  pipeline_worker_pool_.worker_states[worker_id].fetch_names = fetch_names;
-  pipeline_worker_pool_.worker_states[worker_id].fetches = std::vector<MLValue>();
+    // Wait for the previous work to finish its job.
+    // Its resource cannot be overrided when it's still working.
+    pipeline_worker_pool_.Join(worker_id);
+    CheckWorkerException(pipeline_worker_pool_.worker_states[worker_id].execution_exception);
 
-  // Async launch of a session.
-  pipeline_worker_pool_.workers[worker_id] = std::thread([&](const size_t worker_id, const size_t step) {
-    try {
+    // Prepare async launch of session.
+    // All used variables have to be copied to a buffer object to maintain their lifetime.
+    pipeline_worker_pool_.worker_states[worker_id].feeds = feeds;
+    pipeline_worker_pool_.worker_states[worker_id].feed_names = feed_names;
+    pipeline_worker_pool_.worker_states[worker_id].fetch_names = fetch_names;
+    pipeline_worker_pool_.worker_states[worker_id].fetches = std::vector<MLValue>();
+
+    // Async launch of a session.
+    pipeline_worker_pool_.workers[worker_id] = std::thread([&](const size_t worker_id, const size_t step) {
+      try {
+  #ifdef ENABLE_NVTX_PROFILE
+        // Store the tag for the thread which runs session_.Run(...).
+        // It will be used to name range in Nvidia's visual profiler.
+        auto& profile_context = profile::Context::GetInstance();
+        profile_context.SetThreadTag(
+            std::this_thread::get_id(), std::to_string(step));
+  #else
+        ORT_UNUSED_PARAMETER(step);
+  #endif
+        RunOptions run_options;
+        run_options.only_execute_path_to_fetches = true;
+        run_options.training_mode = true;
+        auto status = session_.Run(
+            run_options,
+            pipeline_worker_pool_.worker_states[worker_id].feed_names,
+            pipeline_worker_pool_.worker_states[worker_id].feeds,
+            pipeline_worker_pool_.worker_states[worker_id].fetch_names,
+            &(pipeline_worker_pool_.worker_states[worker_id].fetches));
+        ORT_THROW_IF_ERROR(status);
+      } catch (std::exception&) {
+        pipeline_worker_pool_.worker_states[worker_id].execution_exception = std::current_exception();
+      }
+    },
+                                                          worker_id, step_);
+  } else {
+    // Pipeline is not enabled, so we run session using the main thread.
 #ifdef ENABLE_NVTX_PROFILE
-      // Store the tag for the thread which runs session_.Run(...).
-      // It will be used to name range in Nvidia's visual profiler.
-      auto& profile_context = profile::Context::GetInstance();
-      profile_context.SetThreadTag(
-          std::this_thread::get_id(), std::to_string(step));
-#else
-      ORT_UNUSED_PARAMETER(step);
+    // Store the tag for the thread which runs session_.Run(...).
+    // It will be used to name range in Nvidia's visual profiler.
+    auto& profile_context = profile::Context::GetInstance();
+    profile_context.SetThreadTag(
+        std::this_thread::get_id(), std::to_string(step_));
 #endif
-      RunOptions run_options;
-      run_options.only_execute_path_to_fetches = true;
-      run_options.training_mode = true;
-      auto status = session_.Run(
-          run_options,
-          pipeline_worker_pool_.worker_states[worker_id].feed_names,
-          pipeline_worker_pool_.worker_states[worker_id].feeds,
-          pipeline_worker_pool_.worker_states[worker_id].fetch_names,
-          &(pipeline_worker_pool_.worker_states[worker_id].fetches));
-      ORT_THROW_IF_ERROR(status);
-    } catch (std::exception&) {
-      pipeline_worker_pool_.worker_states[worker_id].execution_exception = std::current_exception();
-    }
-  },
-                                                         worker_id, step_);
+
+    RunOptions run_options;
+    run_options.only_execute_path_to_fetches = true;
+    std::vector<MLValue> fetches;
+    auto status = session_.Run(
+        run_options,
+        feed_names,
+        feeds,
+        fetch_names,
+        &fetches);
+    ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
+  }
+
+  // The following variables are only read and changed by the main thread, so
+  // no thread-sync is needed.
 
   // Add one after process one batch.
   ++step_;
