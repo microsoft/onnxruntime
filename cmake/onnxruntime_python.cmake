@@ -74,9 +74,9 @@ if (onnxruntime_ENABLE_TRAINING)
   target_include_directories(onnxruntime_pybind11_state PRIVATE ${ORTTRAINING_ROOT})
 endif()
 
-# Disable pybind11 warning on macOS
+# Disable certain pybind11 warnings while building using AppleClang 12 on macOS
 # TODO, remove this after switch to pybind11 2.6.0+
-if(APPLE)
+if(APPLE AND ${CMAKE_CXX_COMPILER_ID} STREQUAL "AppleClang" AND ${CMAKE_CXX_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.0)
   # https://github.com/pybind/pybind11/pull/2522
   target_compile_options(onnxruntime_pybind11_state PRIVATE "-Wno-range-loop-analysis")
   # https://github.com/pybind/pybind11/pull/2294
