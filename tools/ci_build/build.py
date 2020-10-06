@@ -1115,19 +1115,25 @@ def run_training_python_frontend_e2e_tests(cwd):
     import torch
     ngpus = torch.cuda.device_count()
     if ngpus > 1:
-        log.debug('RUN: {} -m torch.distributed.launch --nproc_per_node {} \
-            orttraining_run_bert_pretrain.py ORTBertPretrainTest.test_pretrain_throughput'.format(
-            sys.executable, ngpus))
+        bert_pretrain_script = 'orttraining_run_bert_pretrain.py'
+        log.debug('RUN: mpirun -n {} ''-x' 'NCCL_DEBUG=INFO'' {} {} {}'.format(
+            ngpus, sys.executable, bert_pretrain_script, 'ORTBertPretrainTest.test_pretrain_throughput'))
         run_subprocess([
-            sys.executable, '-m', 'torch.distributed.launch', '--nproc_per_node', str(ngpus),
-            'orttraining_run_bert_pretrain.py', 'ORTBertPretrainTest.test_pretrain_throughput'], cwd=cwd)
+            'mpirun', '-n', str(ngpus), '-x', 'NCCL_DEBUG=INFO', sys.executable,
+            bert_pretrain_script, 'ORTBertPretrainTest.test_pretrain_throughput'], cwd=cwd)
 
-        log.debug('RUN: {} -m torch.distributed.launch --nproc_per_node {} \
-            orttraining_run_bert_pretrain.py ORTBertPretrainTest.test_pretrain_convergence'.format(
-            sys.executable, ngpus))
+        log.debug('RUN: mpirun -n {} ''-x' 'NCCL_DEBUG=INFO'' {} {} {}'.format(
+            ngpus, sys.executable, bert_pretrain_script, 'ORTBertPretrainTest.test_pretrain_convergence'))
         run_subprocess([
-            sys.executable, '-m', 'torch.distributed.launch', '--nproc_per_node', str(ngpus),
-            'orttraining_run_bert_pretrain.py', 'ORTBertPretrainTest.test_pretrain_convergence'], cwd=cwd)
+            'mpirun', '-n', str(ngpus), '-x', 'NCCL_DEBUG=INFO', sys.executable,
+            bert_pretrain_script, 'ORTBertPretrainTest.test_pretrain_convergence'], cwd=cwd)
+
+        # a long run
+        log.debug('RUN: mpirun -n {} ''-x' 'NCCL_DEBUG=INFO'' {} {}'.format(
+            ngpus, sys.executable, bert_pretrain_script))
+        run_subprocess([
+            'mpirun', '-n', str(ngpus), '-x', 'NCCL_DEBUG=INFO', sys.executable,
+            bert_pretrain_script], cwd=cwd)
 
         log.debug('RUN: mpirun -n {} {} orttraining_run_glue.py'.format(ngpus, sys.executable))
         run_subprocess([
