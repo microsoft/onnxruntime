@@ -14,15 +14,29 @@
 namespace onnxruntime {
 
 template <typename TA, typename TB, typename TY>
-void QGemmWithEigen(const TA* A_data, const TB* B_data, TY* Y_data, int M, int N, int K, TA a_offset, TB b_offset) {
-  auto A = ConstEigenMatrixMapRowMajor<TA>(A_data, M, K);
-  auto B = ConstEigenMatrixMapRowMajor<TB>(B_data, K, N);
+void QGemmWithEigen(
+    const TA* A_data,
+    const TB* B_data,
+    TY* Y_data,
+    int M,
+    int N,
+    int K,
+    int lda,
+    int ldb,
+    int ldc,
+    TA a_offset,
+    TB b_offset) {
+  auto A = ConstEigenMatrixMapRowMajorOuterStride<TA>(A_data, M, K, Eigen::OuterStride<>(lda));
+  auto B = ConstEigenMatrixMapRowMajorOuterStride<TB>(B_data, K, N, Eigen::OuterStride<>(ldb));
 
   auto A_row_sum = (A.template cast<TY>().rowwise().sum()) * static_cast<TY>(b_offset);
   auto B_col_sum = (B.template cast<TY>().colwise().sum()) * static_cast<TY>(a_offset);
-  EigenMatrixMapRowMajor<TY>(Y_data, M, N) = A.template cast<TY>() * B.template cast<TY>() + static_cast<TY>(K * a_offset * b_offset) * ConstEigenMatrixMapRowMajor<TY>::Ones(M, N);
-  EigenMatrixMapRowMajor<TY>(Y_data, M, N).colwise() -= A_row_sum;
-  EigenMatrixMapRowMajor<TY>(Y_data, M, N).rowwise() -= B_col_sum;
+  EigenMatrixMapRowMajorOuterStride<TY>(Y_data, M, N, Eigen::OuterStride<>(ldc)) =
+      A.template cast<TY>() * B.template cast<TY>() +
+      static_cast<TY>(K * a_offset * b_offset) * ConstEigenMatrixMapRowMajor<TY>::Ones(M, N);
+
+  EigenMatrixMapRowMajorOuterStride<TY>(Y_data, M, N, Eigen::OuterStride<>(ldc)).colwise() -= A_row_sum;
+  EigenMatrixMapRowMajorOuterStride<TY>(Y_data, M, N, Eigen::OuterStride<>(ldc)).rowwise() -= B_col_sum;
 }
 
 void QGemm(
@@ -42,12 +56,14 @@ void QGemm(
 #ifdef MLAS_SUPPORTS_GEMM_U8X8
   MlasGemm(M, N, K, lhs_data, lda, lhs_offset, rhs_data, ldb, rhs_offset, rhs_signed, result_data, ldc, thread_pool);
 #else
-  ORT_ENFORCE(lda == K && ldb == N && ldc == N, "Only RowMajor*RowMajor=RowMajor format is supported");
-
   if (rhs_signed) {
-    QGemmWithEigen<uint8_t, int8_t, int32_t>(lhs_data, reinterpret_cast<const int8_t*>(rhs_data), result_data, M, N, K, lhs_offset, static_cast<int8_t>(rhs_offset));
+    QGemmWithEigen<uint8_t, int8_t, int32_t>(lhs_data, reinterpret_cast<const int8_t*>(rhs_data), result_data,
+                                             M, N, K, lda, ldb, ldc,
+                                             lhs_offset, static_cast<int8_t>(rhs_offset));
   } else {
-    GemmlowpMultiplyu8u8_s32(lhs_data, rhs_data, result_data, lhs_offset, rhs_offset, M, N, K, thread_pool);
+    GemmlowpMultiplyu8u8_s32(lhs_data, rhs_data, result_data,
+                             lhs_offset, rhs_offset,
+                             M, N, K, lda, ldb, ldc, thread_pool);
   }
 #endif
 }
