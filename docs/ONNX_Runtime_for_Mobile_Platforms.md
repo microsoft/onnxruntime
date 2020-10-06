@@ -130,3 +130,5 @@ A minimal build has the following limitations currently:
     - Execution providers that dynamically compile nodes in the graph into custom kernels at runtime are not supported
   - No support for custom operators
 
+We do not currently offer backwards compatibility guarantees for ORT format models, as we will be expanding the capabilities in the short term and may need to update the internal format in an incompatible manner to accommodate these changes. You may need to regenerate the ORT format models to use with a future version of ONNX Runtime. Once the feature set stabilizes we will provide backwards compatibility guarantees.
+

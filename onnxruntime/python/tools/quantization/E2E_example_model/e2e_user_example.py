@@ -29,7 +29,7 @@ class ResNet50DataReader(CalibrationDataReader):
             nhwc_data_list = preprocess_func(self.image_folder, height, width, size_limit=0)
             input_name = session.get_inputs()[0].name
             self.datasize = len(nhwc_data_list)
-            self.enum_data_dicts = iter([{input_name: nhwc_data_list[i]} for i in range(self.datasize)])
+            self.enum_data_dicts = iter([{input_name: nhwc_data} for nhwc_data in nhwc_data_list])
         return next(self.enum_data_dicts, None)
 
 

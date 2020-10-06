@@ -33,6 +33,9 @@
 #include "abi_session_options_impl.h"
 #include "core/framework/TensorSeq.h"
 #include "core/platform/ort_mutex.h"
+#ifdef USE_CUDA
+#include "core/providers/cuda/cuda_provider_factory.h"
+#endif
 
 using namespace onnxruntime::logging;
 using onnxruntime::BFloat16;
@@ -2029,6 +2032,9 @@ static constexpr OrtApi ort_api_1_to_6 = {
     &OrtApis::AddInitializer,
     &OrtApis::CreateEnvWithCustomLoggerAndGlobalThreadPools,
     &OrtApis::SetGlobalDenormalAsZero,
+#ifdef USE_CUDA
+    &OrtApis::OrtSessionOptionsAppendExecutionProvider_CUDA,
+#endif
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)

@@ -82,10 +82,18 @@ def create_test_dir(model_path, root_path, test_name,
     model_path = os.path.abspath(model_path)
     root_path = os.path.abspath(root_path)
     test_dir = os.path.join(root_path, test_name)
-    test_data_dir = os.path.join(test_dir, "test_data_set_0")
+    if not os.path.exists(test_dir):
+        os.makedirs(test_dir)
 
-    if not os.path.exists(test_dir) or not os.path.exists(test_data_dir):
-        os.makedirs(test_data_dir)
+    # add to existing test data sets if present
+    test_num = 0
+    while True:
+        test_data_dir = os.path.join(test_dir, "test_data_set_" + str(test_num))
+        if not os.path.exists(test_data_dir):
+            os.mkdir(test_data_dir)
+            break
+
+        test_num += 1
 
     model_filename = os.path.split(model_path)[-1]
     test_model_filename = os.path.join(test_dir, model_filename)
@@ -228,5 +236,7 @@ def run_test_dir(model_or_dir):
                     if not np.equal(expected, actual).all():
                         print('Mismatch for {}:\nExpected:{}\nGot:{}'.format(output_names[idx], expected, actual))
                         failed = True
-
-        print('FAILED' if failed else 'PASS')
+        if failed:
+            raise ValueError('FAILED due to output mismatch.')
+        else:
+            print('PASS')
