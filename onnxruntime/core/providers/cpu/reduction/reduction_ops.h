@@ -19,7 +19,9 @@ bool NeedsTransposeForReduce(const Tensor* input_tensor_ptr,
                              const TensorShape* input_shape_override);
 
 void ExperimentalPrepareForReduceSum(const Tensor& input, const std::vector<int64_t>& reduced_axes,
-                                     std::vector<int64_t>& projected_index, std::vector<int64_t>& unprojected_index,
+                                     std::vector<int64_t>& projected_index,
+                                     int64_t& last_loop_red_size, int64_t& last_loop_red_inc,
+                                     std::vector<int64_t>& unprojected_index,
                                      int64_t& last_loop_size, int64_t& last_loop_int);
 
 template <typename T>

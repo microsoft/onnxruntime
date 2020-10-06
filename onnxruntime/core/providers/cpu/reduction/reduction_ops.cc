@@ -654,6 +654,7 @@ Tensor ReduceSum<T>::Impl(const Tensor& input, const std::vector<int64_t>& reduc
 
 void ExperimentalPrepareForReduceSum(const Tensor& input, const std::vector<int64_t>& reduced_axes,
                                      FastAllocVector<int64_t>& projected_index,
+                                     int64_t& last_loop_red_size, int64_t& last_loop_red_inc,
                                      FastAllocVector<int64_t>& unprojected_index,
                                      int64_t& last_loop_size, int64_t& last_loop_inc) {
   auto input_shape = input.Shape();
@@ -669,27 +670,47 @@ void ExperimentalPrepareForReduceSum(const Tensor& input, const std::vector<int6
     projection_size *= input_shape[a];
   }
 
+  int last_reduced_axis = static_cast<int>(reduced_axes.size()) - 1;
+  int loop_reduced_axis = 1;
+  last_loop_red_size = input_shape[reduced_axes[last_reduced_axis]];
+  last_loop_red_inc = cumulative_shape[reduced_axes[last_reduced_axis]];
+  projection_size /= input_shape[reduced_axes[last_reduced_axis]];
+  --last_reduced_axis;
+  while (last_reduced_axis >= 0) {
+    if (reduced_axes[last_reduced_axis] != reduced_axes[last_reduced_axis + 1] - 1)
+      break;
+    last_loop_red_size *= input_shape[reduced_axes[last_reduced_axis]];
+    projection_size /= input_shape[reduced_axes[last_reduced_axis]];
+    --last_reduced_axis;
+    ++loop_reduced_axis;
+  }
+
   // Builds the list of indices projected into the same sum.
-  projected_index.resize(projection_size);
-  std::vector<int64_t> projected_indices(reduced_axes.size(), 0);
-  int64_t current_index = 0;
-  size_t current_pos = 0;
-  int j;
-  for (current_pos = 0; current_pos < projected_index.size(); ++current_pos) {
-    projected_index[current_pos] = current_index;
-    ++projected_indices[projected_indices.size() - 1];
-    current_index += cumulative_shape[reduced_axes[reduced_axes.size() - 1]];
-    for (j = static_cast<int>(reduced_axes.size()) - 1; j > 0; --j) {
-      if (projected_indices[j] < input_shape[reduced_axes[j]])
-        break;
-      projected_indices[j] -= input_shape[reduced_axes[j]];
-      current_index -= input_shape[reduced_axes[j]] * cumulative_shape[reduced_axes[j]];
-      ++projected_indices[j - 1];
-      current_index += cumulative_shape[reduced_axes[j - 1]];
+  int reduced_axes_size = static_cast<int>(reduced_axes.size()) - loop_reduced_axis;
+  if (reduced_axes_size == 0) {
+    projected_index.resize(1, 0);
+  } else {
+    projected_index.resize(projection_size);
+    std::vector<int64_t> projected_indices(reduced_axes_size, 0);
+    int64_t current_index = 0;
+    size_t current_pos = 0;
+    int j;
+    for (current_pos = 0; current_pos < projected_index.size(); ++current_pos) {
+      projected_index[current_pos] = current_index;
+      ++projected_indices[projected_indices.size() - 1];
+      current_index += cumulative_shape[reduced_axes[reduced_axes_size - 1]];
+      for (j = reduced_axes_size - 1; j > 0; --j) {
+        if (projected_indices[j] < input_shape[reduced_axes[j]])
+          break;
+        projected_indices[j] -= input_shape[reduced_axes[j]];
+        current_index -= input_shape[reduced_axes[j]] * cumulative_shape[reduced_axes[j]];
+        ++projected_indices[j - 1];
+        current_index += cumulative_shape[reduced_axes[j - 1]];
+      }
     }
   }
 
-  // Builds the list of indices for the projected sum.
+  // Builds the list of indices for the unprojected sum.
   std::vector<int64_t> unreduced_axes;
   for (int64_t i = 0; i < static_cast<int64_t>(cumulative_shape.size()); ++i) {
     if (std::find(reduced_axes.begin(), reduced_axes.end(), i) != reduced_axes.end())
@@ -703,7 +724,7 @@ void ExperimentalPrepareForReduceSum(const Tensor& input, const std::vector<int6
   std::vector<int64_t> unprojected_indices(unreduced_axes.size(), 0);
 
   // The last index is usually an image size.
-  // We differently process the last dimension.
+  // We differently process the last unprojected dimension.
   last_loop_size = input_shape[unreduced_axes[unreduced_axes.size() - 1]];
   int64_t unprojection_size_before_last = unprojection_size / last_loop_size;
   unprojected_index.reserve(unprojection_size_before_last);
@@ -711,7 +732,8 @@ void ExperimentalPrepareForReduceSum(const Tensor& input, const std::vector<int6
   if (unprojected_indices.size() <= 1) {
     unprojected_index.push_back(0);
   } else {
-    current_index = 0;
+    int64_t current_index = 0;
+    int j;
     for (int64_t pos = 0; pos < unprojection_size_before_last; ++pos) {
       unprojected_index.push_back(current_index);
       ++unprojected_indices[unprojected_indices.size() - 2];
@@ -736,29 +758,41 @@ void ExperimentalReduceSum(Tensor* output, const Tensor& input, const std::vecto
   T* to_data = output->template MutableData<T>();
   int64_t count = output_shape.Size();
 
+  if (reduced_axes.size() == 0 || reduced_axes.size() == input.Shape().NumDimensions()) {
+    ORT_ENFORCE(count == 1, "Reduction on all axes, output size should be 1.");
+    int64_t input_size = input.Shape().Size();
+    to_data[0] = Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, input_size).sum();
+    return;
+  }
+
   FastAllocVector<int64_t> projected_index(GetAllocator<int64_t>(*ctx));
   FastAllocVector<int64_t> unprojected_index(GetAllocator<int64_t>(*ctx));
+  int64_t last_loop_red_size, last_loop_red_inc;
   int64_t last_loop_size, last_loop_inc;
-  ExperimentalPrepareForReduceSum(input, reduced_axes, projected_index, unprojected_index, last_loop_size, last_loop_inc);
+  ExperimentalPrepareForReduceSum(input, reduced_axes,
+                                  projected_index, last_loop_red_size, last_loop_red_inc,
+                                  unprojected_index, last_loop_size, last_loop_inc);
 
   auto fn = [&](std::ptrdiff_t first, std::ptrdiff_t end) {
-    int64_t loop;
+    int64_t loop, loop_red;
     int64_t current_index = first * last_loop_size;
     for (int64_t main_index = first; main_index < end; ++main_index) {
       for (loop = 0; loop < last_loop_size; ++loop, ++current_index) {
         T accumulator = 0;
         int64_t origin = unprojected_index[main_index] + loop * last_loop_inc;
         for (auto it = projected_index.begin(); it != projected_index.end(); ++it) {
-          accumulator += from_data[origin + *it];
+          for (loop_red = 0; loop_red < last_loop_red_size; ++loop_red) {
+            accumulator += from_data[origin + *it + loop_red * last_loop_red_inc];
+          }
         }
         to_data[current_index] = accumulator;
       }
     }
   };
 
-  auto cost = TensorOpCost{(double)(projected_index.size() * sizeof(T) * last_loop_size),
-                           (double)last_loop_size,
-                           (double)projected_index.size() * last_loop_size };
+  auto cost = TensorOpCost{(double)(projected_index.size() * sizeof(T) * last_loop_size * last_loop_red_size),
+                           (double)last_loop_size * last_loop_red_size,
+                           (double)projected_index.size() * last_loop_size * last_loop_red_size};
   concurrency::ThreadPool::TryParallelFor(ctx->GetOperatorThreadPool(), count / last_loop_size, cost, fn);
 }
 
@@ -767,29 +801,32 @@ Status ReduceSum<T>::Compute(OpKernelContext* ctx) const {
   const Tensor* input = ctx->Input<Tensor>(0);
 
   std::vector<int64_t> axes;
-  if (NeedsTransposeForReduce(input, axes_, axes, nullptr)) {
-    auto reduced_dims = input->Shape().GetDims();
-    for (auto i : axes) {
-      reduced_dims[i] = 1;
-    }
-    Tensor* output;
-    if (keepdims_) {
-      output = ctx->Output(0, reduced_dims);
-    } else {
-      auto dropped_dims = input->Shape().GetDims();
-      std::vector<int64_t> dropped_dims2;
-      for (auto i : axes) {
-        dropped_dims[i] = -1;
-      }
-      for (auto it = dropped_dims.begin(); it != dropped_dims.end(); ++it) {
-        if (*it != -1) {
-          dropped_dims2.push_back(*it);
-        }
-      }
-      output = ctx->Output(0, dropped_dims2);
-    }
-    ExperimentalReduceSum<T>(output, *input, axes, ctx);
+  /*bool no_transpose_ = */
+  NeedsTransposeForReduce(input, axes_, axes, nullptr);
+  /*if (no_transpose_) {*/
+  auto reduced_dims = input->Shape().GetDims();
+  for (auto i : axes) {
+    reduced_dims[i] = 1;
+  }
+  Tensor* output;
+  if (keepdims_) {
+    output = ctx->Output(0, reduced_dims);
   } else {
+    auto dropped_dims = input->Shape().GetDims();
+    std::vector<int64_t> dropped_dims2;
+    for (auto i : axes) {
+      dropped_dims[i] = -1;
+    }
+    for (auto it = dropped_dims.begin(); it != dropped_dims.end(); ++it) {
+      if (*it != -1) {
+        dropped_dims2.push_back(*it);
+      }
+    }
+    output = ctx->Output(0, dropped_dims2);
+  }
+  ExperimentalReduceSum<T>(output, *input, axes, ctx);
+  /*
+  }else {
     int64_t block_size;
     int64_t blocks;
     FastAllocVector<T> transposed_input_data(GetAllocator<T>(*ctx));
@@ -801,6 +838,7 @@ Status ReduceSum<T>::Compute(OpKernelContext* ctx) const {
     ReduceSumCore(input->template Data<T>(), output->template MutableData<T>(),
                   no_transpose, blocks, block_size, transposed_input_data, ctx->GetOperatorThreadPool());
   }
+  */
   return Status::OK();
 }
 
