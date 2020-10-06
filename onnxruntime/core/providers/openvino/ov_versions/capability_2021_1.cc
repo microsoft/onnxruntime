@@ -796,7 +796,7 @@ GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, std::string d
             }
         }
 
-        if(node->OpType() == "Cast") {
+        if(node->OpType() == "Conv" || node->OpType() == "Cast") {
           auto output_name = node->OutputDefs()[0]->Name();
           auto it = find(cluster_outputs.begin(), cluster_outputs.end(), output_name);
           if(it != cluster_outputs.end() && node->GetOutputEdgesCount() != 0){
@@ -805,14 +805,6 @@ GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, std::string d
           }
         }
 
-        if(node->OpType() == "Conv"){
-          auto output_name = node->OutputDefs()[0]->Name();
-          auto it = find(cluster_outputs.begin(), cluster_outputs.end(), output_name);
-          if(it != cluster_outputs.end() && node->GetOutputEdgesCount() != 0){
-            omit_subgraph = true;
-            break;
-          }
-        }
         if(node->OpType() == "Slice"){
           auto input = node->InputDefs()[0];
           auto input_name = input->Name();
