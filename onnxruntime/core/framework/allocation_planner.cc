@@ -534,6 +534,7 @@ class PlannerImpl {
       ORT_RETURN_IF_ERROR(status);
     }
     for (size_t i = 0; i != locations.size(); ++i) {
+      size_t max_pc = plan_.execution_plan.size();
       const std::vector<OrtMemoryInfo>& loc = locations[i];
       if (loc.empty()) continue;
       plan_.allocation_plan[i].alloc_kind = AllocKind::kAllocateStatically;
@@ -542,8 +543,8 @@ class PlannerImpl {
       auto node_arg = graph_viewer_.GetNodeArg(node_arg_name);
       plan_.allocation_plan[i].value_type = utils::GetMLDataType(*node_arg);
       plan_.allocation_plan[i].location = loc[0];
-      plan_.allocation_plan[i].life_interval = std::make_pair<size_t, size_t>(0, INFINITE);
-      plan_.allocation_plan[i].allocate_interval = std::make_pair<size_t, size_t>(0, INFINITE);
+      plan_.allocation_plan[i].life_interval = std::pair<size_t, size_t>(0, max_pc);
+      plan_.allocation_plan[i].allocate_interval = std::pair<size_t, size_t>(0, max_pc);
       for (size_t j = 0; j != loc.size(); ++j) {
         if (loc[j] != loc[0]) {
           // set the location to CPU
@@ -567,12 +568,13 @@ class PlannerImpl {
     // Identify allocation/deallocation plan for every ml-value
 
     auto setup_preexisting = [this](const NodeArg* node_arg) {
+      size_t max_pc = plan_.execution_plan.size();
       auto input_index = Index(node_arg->Name());
       AllocPlanPerValue& thisplan = AllocPlan(input_index);
       thisplan.alloc_kind = AllocKind::kPreExisting;
       thisplan.value_type = utils::GetMLDataType(*node_arg);
-      thisplan.allocate_interval = std::make_pair<size_t, size_t>(0, INFINITE);
-      thisplan.life_interval = std::make_pair<size_t, size_t>(0, INFINITE);
+      thisplan.allocate_interval = std::pair<size_t, size_t>(0, max_pc);
+      thisplan.life_interval = std::pair<size_t, size_t>(0, max_pc);
     };
 
     // inputs of the graph:

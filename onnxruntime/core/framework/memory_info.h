@@ -8,6 +8,8 @@
 #include "core/framework/tensor.h"
 #include "core/framework/ort_value_name_idx_map.h"
 
+#include <iomanip>
+
 namespace onnxruntime {
 using IntervalT = std::pair<size_t, size_t>;
 using OrtValueIndex = int;
@@ -15,6 +17,7 @@ using OrtValueName = std::string;
 //TODO: need to extend this enum to include finner-grained decomposition
 enum MLValueTensorType {
   WEIGHT = 0,
+  FWD_ACTIVATION,
   GRADIENT,
   Unknown,
 };
@@ -36,7 +39,14 @@ struct MemoryInfoPerTensor {
 
 class MemoryInfo {
  public:
-  MemoryInfo() = default;
+  MemoryInfo() : iteration_(0) {
+    time_t now_c = std::time(0);
+    struct tm timeinfo;
+    localtime_s(&timeinfo, &now_c);
+    char buffer[80];
+    asctime_s(buffer, &timeinfo);
+    memory_info_file = "memory_info_file_" + std::string(buffer);
+  }
   void GenerateMemoryMap(const SequentialExecutionPlan* execution_plan, const OrtValueNameIdxMap& value_name_idx_map);
   void RecordMemoryPatternInfo(const MemoryPatternGroup& mem_patterns);
   void RecordDeviceAllocInfo(const std::unordered_map<int, OrtValue>& tensor_map);
@@ -46,11 +56,17 @@ class MemoryInfo {
   void RecordInputMemoryInfo(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds);
 
   void PrintMemoryInfoForLocation(const logging::Logger& /*logger*/, const OrtDevice::DeviceType location);
+  void MemoryInfo::WriteMemoryInfoToFile();
+  void SetIteration(size_t iteration) {
+    iteration_ = iteration;
+  }
 
  private:
   std::unordered_map<OrtValueIndex, MemoryInfoPerTensor> tensor_memoryinfo_map_;
   //TODO: The dynamic and statically planned alignments may not be the same, need to check
   static const int alignment = 256;
+  size_t iteration_ = 0;
+  std::string memory_info_file;
 };
 
 }  // namespace onnxruntime

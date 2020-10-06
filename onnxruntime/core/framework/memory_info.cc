@@ -2,6 +2,8 @@
 #include "core/framework/mem_pattern.h"
 #include "core/framework/ml_value.h"
 
+#include <fstream>
+
 namespace onnxruntime {
 void MemoryInfo::GenerateMemoryMap(const SequentialExecutionPlan* execution_plan, const OrtValueNameIdxMap& value_name_idx_map) {
   if (!tensor_memoryinfo_map_.empty()) {
@@ -100,5 +102,74 @@ void MemoryInfo::PrintMemoryInfoForLocation(const logging::Logger& /*logger*/, c
     }
   }
 }
+
+void MemoryInfo::WriteMemoryInfoToFile() {
+  std::ofstream f;
+  f.open(memory_info_file, std::ios_base::app);
+  if (f.is_open()) {
+    f << "iteration, name, index, type, alloc_type, location, lifetime_start, \
+        lifetime_end, alloctime_start, alloctime_end, plan_block_start, plan_block_size, alloc_block_start, alloc_block_size, is_dynamic";
+    for (const auto& item : tensor_memoryinfo_map_) {
+      auto mt = item.second;
+      f << iteration_ << ", ";
+      f << mt.mlvalue_name << ", ";
+      f << mt.mlvalue_index << ", ";
+      f << mt.tensor_type << ", ";
+      f << mt.alloc_plan.alloc_kind << ", ";
+      f << mt.alloc_plan.location.name << ", ";
+      f << mt.alloc_plan.life_interval.first << ", ";
+      f << mt.alloc_plan.life_interval.second << ", ";
+      f << mt.alloc_plan.allocate_interval.first << ", ";
+      f << mt.alloc_plan.allocate_interval.second << ", ";
+      f << mt.planned_block.offset_ << ", ";
+      f << mt.planned_block.size_ << ", ";
+      f << mt.allocated_block.offset_ << ", ";
+      f << mt.allocated_block.size_ << ", ";
+      f << mt.dynamic_allocation;
+    }
+  }
+  f.close();
+}
+
+//In the mem pattern, a certain memory is allocated but notused.
+//void MemoryInfo::ComputeFragmentation() {
+//  std::map<const MemoryBlock*, std::vector<OrtValueIndex> > reuse_memory_map;
+//  for (const auto& item : tensor_memoryinfo_map_) {
+//    if (item.second.dynamic_allocation)
+//      continue;
+//    if (item.second.alloc_plan.alloc_kind == AllocKind::kReuse) {
+//      if (reuse_memory_map[&item.second.planned_block].empty()) {
+//        reuse_memory_map[&item.second.planned_block].push_back(item.second.alloc_plan.reused_buffer);
+//      }
+//      reuse_memory_map[&item.second.planned_block].push_back(item.first);
+//    }
+//  }
+//  for (auto& item : reuse_memory_map) {
+//    std::sort(item.second.begin(), item.second.end(), [this](const OrtValueIndex& first, const OrtValueIndex& second) -> bool {
+//      auto a = tensor_memoryinfo_map_[first].alloc_plan.life_interval.first;
+//      auto b = tensor_memoryinfo_map_[second].alloc_plan.life_interval.first;
+//      return (a < b);
+//    });
+//  }
+//}
+
+//void MemoryInfo::CollectMemoryOccupation() {
+//  std::map<const MemoryBlock*, std::vector<OrtValueIndex> > memory_tensorid_map_;
+//  for (const auto& item : tensor_memoryinfo_map_) {
+//    memory_tensorid_map_[&item.second.allocated_block].push_back(item.first);
+//  }
+//  PrintMemoryOccupation(memory_tensorid_map_);
+//}
+//
+//void MemoryInfo::PrintMemoryOccupation(const OrtDevice::DeviceType location, const std::map<const MemoryBlock*, std::vector<OrtValueIndex> >& memory_tensorid_map_) {
+//  std::ofstream f;
+//  f.open("test.txt", std::ios_base::app);
+//  for (auto& item : memory_tensorid_map_) {
+//    auto id = item.second[0];
+//    if (tensor_memoryinfo_map_[id].alloc_plan.location.device.Type() != location)
+//      continue;
+//  }
+//  f.close();
+//}
 
 }  // namespace onnxruntime
