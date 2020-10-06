@@ -126,6 +126,7 @@ void DNNLExecutionProvider::CreateOrUpdateDnnlNode(const Node* node,
   const auto& node_inputs = node->InputDefs();
   sub_var.outputs.push_back(node->OutputDefs()[0]->Name());
 
+
   if (!fused) {
     ort_dnnl::DnnlNode dnnl_node;
     dnnl_node.name = node->OpType();
@@ -153,6 +154,7 @@ void DNNLExecutionProvider::CreateOrUpdateDnnlNode(const Node* node,
         dnnl_node.output_names.push_back(n->Name());
       }
     }
+
     if (node->OpType() == "Conv") {
       dnnl_node.weight_name = node->InputDefs()[1]->Name();
     }
@@ -263,6 +265,10 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
           fused = true;
         }
       }
+#endif
+	  //TODO: Support this in training phase so that a valid entry would be added to the forward kernel map for this fusion. Without this, it would error out 
+	  //in the respective backward pass
+#ifndef ENABLE_TRAINING
       if (sub_var.subgraph_node_indexes.size() > 1 && node->OpType() == "Relu") {
         if (subgraph_ptr->dnnl_nodes.back().name == "Conv-BatchNormalization" || subgraph_ptr->dnnl_nodes.back().name == "BatchNormalization" || subgraph_ptr->dnnl_nodes.back().name == "Conv") {
           subgraph_ptr->dnnl_nodes.back().name += "-Relu";

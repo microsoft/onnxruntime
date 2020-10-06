@@ -37,7 +37,7 @@ using namespace onnxruntime::training::tensorboard;
 using namespace std;
 
 const static int NUM_CLASS = 10;
-const static vector<int64_t> IMAGE_DIMS = {784};  //{1, 28, 28} for mnist_conv
+const static vector<int64_t> IMAGE_DIMS = {1, 28, 28};  //{1, 28, 28} for mnist_conv
 const static vector<int64_t> LABEL_DIMS = {10};
 
 Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params) {

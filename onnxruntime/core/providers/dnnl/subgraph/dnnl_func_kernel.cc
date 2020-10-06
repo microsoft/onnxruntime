@@ -17,6 +17,7 @@
 #include "core/providers/dnnl/subgraph/dnnl_pool.h"
 #include "core/providers/dnnl/subgraph/dnnl_sum.h"
 #include "core/providers/dnnl/subgraph/dnnl_lrn.h"
+#include "core/providers/dnnl/subgraph/dnnl_maxpoolgrad.h"
 
 
 namespace onnxruntime {
@@ -131,7 +132,7 @@ class SubgraphPrimitive : public PrimitiveBase {
         for (auto iter = dnnl_node.input_nodes.begin(); iter != dnnl_node.input_nodes.end(); ++iter) {
           if (iter->op_type == "Relu") {
             auto fwd_kernel = params.provider->GetForwardKernal(iter->index);
-            kernel->AddForwardDnnlKernel(std::dynamic_pointer_cast< DnnlRelu<T>>(fwd_kernel));
+            kernel->AddForwardDnnlKernel(std::dynamic_pointer_cast<DnnlRelu<T>>(fwd_kernel));
           }
         }
 
@@ -182,6 +183,25 @@ class SubgraphPrimitive : public PrimitiveBase {
         os << "MaxPool-" << dnnl_node.node_index << "-";
         std::shared_ptr<DnnlPool<T>> kernel;
         kernel = std::make_shared<DnnlPool<T>>(dnnl_node, params.provider, *params.attributes, os.str());
+        params.provider->SetForwardKernel(dnnl_node.onnx_index, kernel);
+        for (auto index : dnnl_node.parent_nodes) {
+          kernel->parents_.push_back(context_.kernels[index]);
+        }
+        params.provider->SetForwardKernel(dnnl_node.onnx_index, kernel);
+        context_.kernels.push_back(kernel);
+      } else if (dnnl_node.name == "MaxPoolGrad") {
+        std::ostringstream os;
+        os << "MaxPoolGrad-" << dnnl_node.node_index << "-";
+        std::shared_ptr<DnnlMaxPoolGrad<T>> kernel;
+        kernel = std::make_shared<DnnlMaxPoolGrad<T>>(dnnl_node, params.provider, *params.attributes, os.str());
+
+        for (auto iter = dnnl_node.input_nodes.begin(); iter != dnnl_node.input_nodes.end(); ++iter) {
+          if (iter->op_type == "MaxPool") {
+            auto fwd_kernel = params.provider->GetForwardKernal(iter->index);
+            kernel->AddForwardDnnlKernel(std::dynamic_pointer_cast<DnnlPool<T>>(fwd_kernel));
+          }
+        }
+
         for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
         }
@@ -271,7 +291,11 @@ class SubgraphPrimitivePool : public PrimitivePool<T> {
     std::string dims_str;
     for (auto i = 0; i < params.subgraph->dnnl_nodes[0].num_inputs; i++) {
       const OrtValue* input_tensor = ort.KernelContext_GetInput(context, i);
-      auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
+
+	  if (i>0)
+        continue;
+      
+	  auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
       auto tensor_shape = ort.GetTensorShape(tensor_info);
       ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
 

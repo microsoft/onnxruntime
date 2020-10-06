@@ -13,6 +13,7 @@
 #include "core/providers/dnnl/subgraph/subgraph.h"
 #include "core/platform/ort_mutex.h"
 
+
 namespace dnnl {
 struct memory;
 };
@@ -160,12 +161,13 @@ class DNNLExecutionProvider : public IExecutionProvider {
     }
     if (node->OpType().find("Pool") != std::string::npos) {
       auto node_inputs = node->InputDefs();
-      if (node_inputs[0]->Shape() != nullptr && node_inputs[0]->Shape()->dim_size() <= 3) {
+      if (node_inputs[0]->Shape() != nullptr && node_inputs[0]->Shape()->dim_size() < 3) {
         supported = false;
       }
 
-      if (node->OutputDefs().size() > 1)
+      if (node->OutputDefs().size() > 2)
         supported = false;
+
     }
     return supported;
   }
@@ -192,8 +194,8 @@ class DNNLExecutionProvider : public IExecutionProvider {
 
  private:
   // supported Dnnl Operators
-  std::set<std::string> dnnl_ops_ = {"Conv", "ConvGrad", "BatchNormalization", "Relu", "ReluGrad", "Sum",
-                                     "AveragePool", "GlobalMaxPool", "GlobalAveragePool", "MaxPool", "LRN"};
+  std::set<std::string> dnnl_ops_ = {/*"Conv", "ConvGrad",*/ "BatchNormalization", "Relu", "ReluGrad", "Sum",
+                                     "AveragePool", "GlobalMaxPool", "GlobalAveragePool", "MaxPool", "MaxPoolGrad", "LRN"};
 
   mutable std::unordered_map<std::string, std::shared_ptr<ort_dnnl::Subgraph>> mkl_subgraphs_;
 };
