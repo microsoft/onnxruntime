@@ -958,17 +958,18 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
       std::unordered_map<std::string, std::vector<int32_t>> tensor_shape_values;
       nvinfer1::IOptimizationProfile* trt_profile = nullptr;
 
-      // Load serialized engine from file
+      // Load engine from file
       //std::string trt_node_name_with_precision_shape = trt_state->trt_node_name_with_precision + "_" + GetVecHash(input_shapes);
       std::string profile_path = GetProfilePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
       std::ifstream profile_file(profile_path, std::ios::binary | std::ios::in);
       std::string cached_path = GetEnginePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
       std::ifstream plan_file(cached_path, std::ios::binary | std::ios::in);
-      if (profile_file && plan_file && (trt_state->engine_cache_always_load_enble || (trt_engine == nullptr && trt_state->engine_cache_enable))) {  //if engine file exists, always load engine from file (no matter trt_engine is nullptr or not)
+      if (profile_file && plan_file && (trt_state->engine_cache_always_load_enble || (trt_engine == nullptr && trt_state->engine_cache_enable))) {
+        // Load engine profile from file
         shape_ranges = ReadProfile(profile_path);
         trt_state->context->reset();
         trt_state->engine->reset();
-        //load engine from file
+        // Load engine from file
         plan_file.seekg(0, std::ios::end);
         int engine_size = plan_file.tellg();
         plan_file.seekg(0, std::ios::beg);
@@ -1148,7 +1149,9 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
         }
         trt_engine = trt_state->engine->get();
         if (trt_state->engine_cache_enable) {
+          // Save engine profile to file
           WriteProfile(profile_path, shape_ranges);
+          // Save engine to file
           nvinfer1::IHostMemory* serializedModel = trt_engine->serialize();
           std::ofstream file(cached_path, std::ios::binary | std::ios::out);
           file.write(reinterpret_cast<char*>(serializedModel->data()), serializedModel->size());
