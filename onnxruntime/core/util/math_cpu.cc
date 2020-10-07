@@ -86,7 +86,7 @@ void Gemm<float, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE
   MlasGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, N, threadpool);
 }
 
-#if defined(_M_AMD64) || defined(__x86_64__)
+#ifdef MLAS_SUPPORTS_GEMM_DOUBLE
 template <>
 void Gemm<double, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
                               const int64_t N, const int64_t K, double alpha, const double* A, const double* B, double beta,
@@ -146,7 +146,7 @@ void MatMul<float>(int M, int N, int K, const float* A, const float* B, float* C
   MlasGemm(CblasNoTrans, CblasNoTrans, M, N, K, 1.f, A, K, B, N, 0.f, C, N, threadpool);
 }
 
-#if defined(_M_AMD64) || defined(__x86_64__)
+#ifdef MLAS_SUPPORTS_GEMM_DOUBLE
 template <>
 void MatMul<double>(int M, int N, int K, const double* A, const double* B, double* C, ThreadPool* threadpool) {
   MlasGemm(CblasNoTrans, CblasNoTrans, M, N, K, 1.f, A, K, B, N, 0.f, C, N, threadpool);
