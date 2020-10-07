@@ -139,6 +139,8 @@ struct OrtStatus {
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
+#include "core/providers/cuda/cuda_allocator.h"
+
 OrtDevice::DeviceId cuda_device_id = 0;
 OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE;
 size_t cuda_mem_limit = std::numeric_limits<size_t>::max();
@@ -176,6 +178,12 @@ std::string nuphar_settings;
 
 #define PYBIND_UNREFERENCED_PARAMETER(parameter) ((void)(parameter))
 
+// Explicitly provide a definition for the static const var 'GPU' in the OrtDevice struct,
+// GCC 4.x doesn't seem to define this and it breaks the pipelines based on CentOS as it uses
+// GCC 4.x.
+// (This static var is referenced in GetCudaToHostMemCpyFunction())
+const OrtDevice::DeviceType OrtDevice::GPU;
+
 namespace onnxruntime {
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id,
@@ -186,9 +194,9 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensor
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_NGraph(const char* ng_backend_type);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* device_type, 
-                                                                                    bool enable_vpu_fast_compile,
-                                                                                    const char* device_id);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* device_type,
+                                                                                   bool enable_vpu_fast_compile,
+                                                                                   const char* device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VITISAI(const char* backend_type, int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena);
@@ -265,11 +273,17 @@ void CustomOpLibrary::UnloadLibrary() {
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 template <typename T>
-void AddNonTensor(const OrtValue& val, std::vector<py::object>& pyobjs, const DataTransferManager* /*data_transfer_manager*/) {
+static void AddNonTensor(const OrtValue& val, std::vector<py::object>& pyobjs,
+                         const DataTransferManager* /*data_transfer_manager*/,
+                         const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* /*mem_cpy_to_host_functions*/) {
   pyobjs.push_back(py::cast(val.Get<T>()));
 }
 
-void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj, const DataTransferManager* data_transfer_manager) {
+// In all cases, we may not have access to a DataTransferManager, hence the user may specify functions that
+// pretty much does what a DataTransferManager does - copy data from device(s) to the host
+void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj,
+                        const DataTransferManager* data_transfer_manager,
+                        const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
   std::vector<npy_intp> npy_dims;
   const TensorShape& shape = rtensor.Shape();
 
@@ -282,25 +296,44 @@ void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj, const DataTransf
   obj = py::reinterpret_steal<py::object>(PyArray_SimpleNew(
       shape.NumDimensions(), npy_dims.data(), numpy_type));
 
-  void* outPtr = static_cast<void*>(
+  void* out_ptr = static_cast<void*>(
       PyArray_DATA(reinterpret_cast<PyArrayObject*>(obj.ptr())));
 
   if (numpy_type != NPY_OBJECT) {
     //if it is not cpu tensor, need to copy to host
-    if (rtensor.Location().device.Type() != OrtDevice::CPU) {
-      if (!data_transfer_manager)
-        throw std::runtime_error("GetPyObjFromTensor: data transfer manager is needed to convert non-CPU tensor to numpy array");
+    auto device_type = rtensor.Location().device.Type();
+    if (device_type != OrtDevice::CPU) {
+      if (!data_transfer_manager && !mem_cpy_to_host_functions)
+        throw std::runtime_error(
+            "GetPyObjFromTensor: Either data transfer manager or a "
+            "function to copy data to the host is needed to convert non-CPU tensor to numpy array");
       static const OrtMemoryInfo cpu_alloc_info{onnxruntime::CPU, OrtDeviceAllocator};
-      std::vector<char> tensor_data_buffer{};
-      tensor_data_buffer.resize(rtensor.SizeInBytes());
-      ORT_THROW_IF_ERROR(CopyTensorDataToByteSpan(
-          *data_transfer_manager, rtensor, cpu_alloc_info, gsl::make_span(tensor_data_buffer)));
-      memcpy(outPtr, tensor_data_buffer.data(), dtype->Size() * shape.Size());
+
+      // Prefer DataTransferManager if available
+      if (data_transfer_manager) {
+        auto span = gsl::make_span<char>(reinterpret_cast<char*>(out_ptr), dtype->Size() * shape.Size());
+        ORT_THROW_IF_ERROR(CopyTensorDataToByteSpan(
+            *data_transfer_manager, rtensor, cpu_alloc_info, span));
+      } else {
+        auto mem_cpy_to_host = mem_cpy_to_host_functions->find(device_type);
+
+        ORT_ENFORCE(mem_cpy_to_host != mem_cpy_to_host_functions->end(),
+                    "Unable to locate a function that can copy data to the host from the device");
+
+        ORT_ENFORCE(mem_cpy_to_host->second != 0,
+                    "No function that can copy data to the host from the device provided");
+
+        mem_cpy_to_host->second(out_ptr, rtensor.DataRaw(), dtype->Size() * shape.Size());
+      }
+
     } else
-      memcpy(outPtr, rtensor.DataRaw(dtype), dtype->Size() * shape.Size());
+      memcpy(out_ptr, rtensor.DataRaw(dtype), dtype->Size() * shape.Size());
   } else {
     // Handle string type.
-    py::object* outObj = static_cast<py::object*>(outPtr);
+    // Copying strings to cpu from device is currently not supported
+    ORT_ENFORCE(rtensor.Location().device.Type() == OrtDevice::CPU,
+                "Copying string tensors located on another device to the host is currently not supported");
+    py::object* outObj = static_cast<py::object*>(out_ptr);
     const std::string* src = rtensor.template Data<std::string>();
     for (int i = 0; i < rtensor.Shape().Size(); i++, src++) {
       outObj[i] = py::cast(*src);
@@ -322,49 +355,53 @@ static const char* GetDeviceName(const OrtDevice& device) {
 }
 
 template <>
-void AddNonTensor<TensorSeq>(const OrtValue& val, std::vector<py::object>& pyobjs, const DataTransferManager* data_transfer_manager) {
+void AddNonTensor<TensorSeq>(const OrtValue& val, std::vector<py::object>& pyobjs,
+                             const DataTransferManager* data_transfer_manager,
+                             const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
   const auto& seq_tensors = val.Get<TensorSeq>();
   py::list py_list;
   for (const auto& rtensor : seq_tensors) {
     py::object obj;
-    GetPyObjFromTensor(rtensor, obj, data_transfer_manager);
+    GetPyObjFromTensor(rtensor, obj, data_transfer_manager, mem_cpy_to_host_functions);
     py_list.append(obj);
   }
   pyobjs.push_back(py_list);
 }
 
-void AddNonTensorAsPyObj(const OrtValue& val, std::vector<py::object>& pyobjs, const DataTransferManager* data_transfer_manager) {
+static void AddNonTensorAsPyObj(const OrtValue& val, std::vector<py::object>& pyobjs,
+                                const DataTransferManager* data_transfer_manager,
+                                const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
   // Should be in sync with core/framework/datatypes.h
   auto val_type = val.Type();
   if (val_type->IsTensorSequenceType()) {
-    AddNonTensor<TensorSeq>(val, pyobjs, data_transfer_manager);
+    AddNonTensor<TensorSeq>(val, pyobjs, data_transfer_manager, mem_cpy_to_host_functions);
   } else {
 #if !defined(DISABLE_ML_OPS)
     utils::ContainerChecker c_checker(val_type);
     if (c_checker.IsMap()) {
       if (c_checker.IsMapOf<std::string, std::string>()) {
-        AddNonTensor<MapStringToString>(val, pyobjs, data_transfer_manager);
+        AddNonTensor<MapStringToString>(val, pyobjs, data_transfer_manager, mem_cpy_to_host_functions);
       } else if (c_checker.IsMapOf<std::string, int64_t>()) {
-        AddNonTensor<MapStringToInt64>(val, pyobjs, data_transfer_manager);
+        AddNonTensor<MapStringToInt64>(val, pyobjs, data_transfer_manager, mem_cpy_to_host_functions);
       } else if (c_checker.IsMapOf<std::string, float>()) {
-        AddNonTensor<MapStringToFloat>(val, pyobjs, data_transfer_manager);
+        AddNonTensor<MapStringToFloat>(val, pyobjs, data_transfer_manager, mem_cpy_to_host_functions);
       } else if (c_checker.IsMapOf<std::string, double>()) {
-        AddNonTensor<MapStringToDouble>(val, pyobjs, data_transfer_manager);
+        AddNonTensor<MapStringToDouble>(val, pyobjs, data_transfer_manager, mem_cpy_to_host_functions);
       } else if (c_checker.IsMapOf<int64_t, std::string>()) {
-        AddNonTensor<MapInt64ToString>(val, pyobjs, data_transfer_manager);
+        AddNonTensor<MapInt64ToString>(val, pyobjs, data_transfer_manager, mem_cpy_to_host_functions);
       } else if (c_checker.IsMapOf<int64_t, int64_t>()) {
-        AddNonTensor<MapInt64ToInt64>(val, pyobjs, data_transfer_manager);
+        AddNonTensor<MapInt64ToInt64>(val, pyobjs, data_transfer_manager, mem_cpy_to_host_functions);
       } else if (c_checker.IsMapOf<int64_t, float>()) {
-        AddNonTensor<MapInt64ToFloat>(val, pyobjs, data_transfer_manager);
+        AddNonTensor<MapInt64ToFloat>(val, pyobjs, data_transfer_manager, mem_cpy_to_host_functions);
       } else if (c_checker.IsMapOf<int64_t, double>()) {
-        AddNonTensor<MapInt64ToDouble>(val, pyobjs, data_transfer_manager);
+        AddNonTensor<MapInt64ToDouble>(val, pyobjs, data_transfer_manager, mem_cpy_to_host_functions);
       }
 
     } else {
       if (c_checker.IsSequenceOf<std::map<std::string, float>>()) {
-        AddNonTensor<VectorMapStringToFloat>(val, pyobjs, data_transfer_manager);
+        AddNonTensor<VectorMapStringToFloat>(val, pyobjs, data_transfer_manager, mem_cpy_to_host_functions);
       } else if (c_checker.IsSequenceOf<std::map<int64_t, float>>()) {
-        AddNonTensor<VectorMapInt64ToFloat>(val, pyobjs, data_transfer_manager);
+        AddNonTensor<VectorMapInt64ToFloat>(val, pyobjs, data_transfer_manager, mem_cpy_to_host_functions);
       } else {
         throw std::runtime_error("Output is a non-tensor type which is not supported.");
       }
@@ -375,20 +412,22 @@ void AddNonTensorAsPyObj(const OrtValue& val, std::vector<py::object>& pyobjs, c
   }
 }
 
-void AddTensorAsPyObj(const OrtValue& val, std::vector<py::object>& pyobjs, const DataTransferManager* data_transfer_manager) {
+static void AddTensorAsPyObj(const OrtValue& val, std::vector<py::object>& pyobjs,
+                             const DataTransferManager* data_transfer_manager,
+                             const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
   const Tensor& rtensor = val.Get<Tensor>();
   py::object obj;
-  GetPyObjFromTensor(rtensor, obj, data_transfer_manager);
+  GetPyObjFromTensor(rtensor, obj, data_transfer_manager, mem_cpy_to_host_functions);
   pyobjs.push_back(obj);
 }
 
-inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime::IExecutionProviderFactory& f) {
+static inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime::IExecutionProviderFactory& f) {
   auto p = f.CreateProvider();
   OrtPybindThrowIfError(sess->RegisterExecutionProvider(std::move(p)));
 }
 
 // ordered by default priority from highest to lowest. kCpuExecutionProvider should always be last.
-const std::vector<std::string>& GetAllProviders() {
+static const std::vector<std::string>& GetAllProviders() {
   static std::vector<std::string> all_providers = {kTensorrtExecutionProvider, kCudaExecutionProvider, kMIGraphXExecutionProvider,
                                                    kNGraphExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider,
                                                    kNupharExecutionProvider, kVitisAIExecutionProvider, kArmNNExecutionProvider,
@@ -396,7 +435,7 @@ const std::vector<std::string>& GetAllProviders() {
   return all_providers;
 }
 
-const std::vector<std::string>& GetAvailableProviders() {
+static const std::vector<std::string>& GetAvailableProviders() {
   auto InitializeProviders = []() {
     std::vector<std::string> available_providers(std::begin(providers_available), std::end(providers_available));
     return available_providers;
@@ -413,7 +452,7 @@ const std::vector<std::string>& GetAvailableProviders() {
  * (-1234, 43.21, +43.21 ... are not valid,
  *  1234, +4321, 12 ... are valid)
  */
-bool IsPositiveInteger(const std::string& s) {
+static bool IsPositiveInteger(const std::string& s) {
   if (s.length() == 0) {
     return false;
   }
@@ -431,25 +470,25 @@ bool IsPositiveInteger(const std::string& s) {
   return true;
 }
 
-bool IsCudaDeviceIdValid(InferenceSession* sess, int id) {
+static bool IsCudaDeviceIdValid(const onnxruntime::logging::Logger& logger, int id) {
   int num_devices = 0;
   CUDA_CALL_THROW(cudaGetDeviceCount(&num_devices));
 
   if (0 == num_devices) {
-    LOGS(*(sess->GetLogger()), WARNING) << "your system does not have a CUDA capable device.";
+    LOGS(logger, WARNING) << "your system does not have a CUDA capable device.";
     return false;
   }
 
   if (id < 0 || id >= num_devices) {
-    LOGS(*(sess->GetLogger()), WARNING) << "cuda_device=" << id << " is invalid, must choose device ID between 0 and " << num_devices - 1;
+    LOGS(logger, WARNING) << "cuda_device=" << id << " is invalid, must choose device ID between 0 and " << num_devices - 1;
     return false;
   }
 
   return true;
 }
 
-void UpdateCudaProviderOptions(InferenceSession* sess, onnxruntime::CUDAExecutionProviderInfo& options,
-                               std::unordered_map<std::string, std::string> options_map) {
+static void UpdateCudaProviderOptions(InferenceSession* sess, onnxruntime::CUDAExecutionProviderInfo& options,
+                                      std::unordered_map<std::string, std::string> options_map) {
   std::unordered_map<std::string, std::string>::iterator it;
 
   it = options_map.find("device_id");
@@ -462,7 +501,7 @@ void UpdateCudaProviderOptions(InferenceSession* sess, onnxruntime::CUDAExecutio
       throw std::runtime_error("Please provide device id with integer.");
     }
 
-    if (!IsCudaDeviceIdValid(sess, device_id)) {
+    if (!IsCudaDeviceIdValid(*sess->GetLogger(), device_id)) {
       throw std::runtime_error("Please provide available device id.");
     }
     options.device_id = device_id;
@@ -511,6 +550,47 @@ void UpdateCudaProviderOptions(InferenceSession* sess, onnxruntime::CUDAExecutio
     LOGS(*(sess->GetLogger()), INFO) << "cuda arean extend strategy is set to " << it->second;
   }
 }
+
+static AllocatorPtr GetCudaAllocator(OrtDevice::DeviceId id) {
+  // Current approach is not thread-safe, but there are some bigger infra pieces to put together in order to make
+  // multi-threaded CUDA allocation work we need to maintain a per-thread CUDA allocator
+  static std::unordered_map<OrtDevice::DeviceId, AllocatorPtr> id_to_allocator_map;
+
+  if (id_to_allocator_map.find(id) == id_to_allocator_map.end()) {
+    // Use arena-based allocator
+    AllocatorCreationInfo default_memory_info(
+        [](OrtDevice::DeviceId id) {
+          return onnxruntime::make_unique<CUDAAllocator>(id, CUDA);
+        },
+        id,
+        true,
+        {cuda_mem_limit,
+         static_cast<int>(arena_extend_strategy),
+         -1, -1});
+
+    auto allocator = CreateAllocator(default_memory_info);
+
+    id_to_allocator_map.insert({id, allocator});
+  }
+
+  return id_to_allocator_map[id];
+}
+
+static void CpuToCudaMemCpy(void* dst, const void* src, size_t num_bytes) {
+  CUDA_CALL_THROW(cudaMemcpy(dst, src, num_bytes, cudaMemcpyHostToDevice));
+}
+
+static void CudaToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
+  CUDA_CALL_THROW(cudaMemcpy(dst, src, num_bytes, cudaMemcpyDeviceToHost));
+}
+
+static const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetCudaToHostMemCpyFunction() {
+  static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
+      {OrtDevice::GPU, CudaToCpuMemCpy}};
+
+  return &map;
+}
+
 #endif
 
 /*
@@ -518,8 +598,8 @@ void UpdateCudaProviderOptions(InferenceSession* sess, onnxruntime::CUDAExecutio
  *
  * (note: currently only cuda EP supports this feature and rest of EPs use default options)
  */
-void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::string>& provider_types,
-                                ProviderOptionsMap& provider_options_map) {
+static void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::string>& provider_types,
+                                       ProviderOptionsMap& provider_options_map) {
   PYBIND_UNREFERENCED_PARAMETER(provider_options_map);
 
   for (const std::string& type : provider_types) {
@@ -569,11 +649,12 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
       bool enable_vpu_fast_compile = false;
       std::string openvino_device_id;
       auto it = provider_options_map.find(type);
-      if(it != provider_options_map.end()) {
-        for(auto option : it->second) {
-          if(option.first == "device_type") openvino_device_type = option.second;
+      if (it != provider_options_map.end()) {
+        for (auto option : it->second) {
+          if (option.first == "device_type")
+            openvino_device_type = option.second;
           else if (option.first == "enable_vpu_fast_compile") {
-            if(option.second == "True") {
+            if (option.second == "True") {
               enable_vpu_fast_compile = true;
             } else if (option.second == "False") {
               enable_vpu_fast_compile = false;
@@ -581,8 +662,8 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
               ORT_THROW("Invalid value passed for enable_vpu_fast_compile: ", option.second);
             }
 
-          }
-          else if (option.first == "device_id")  openvino_device_id = option.second;
+          } else if (option.first == "device_id")
+            openvino_device_id = option.second;
           else {
             ORT_THROW("Invalid OpenVINO EP option: ", option.first);
           }
@@ -636,9 +717,9 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
  *        {'ep1' -> option1, 'ep2' -> option2 ...}
  *
  */
-void GenerateProviderOptionsMap(const std::vector<std::string>& providers,
-                                const ProviderOptionsVector& provider_options_vector,
-                                ProviderOptionsMap& provider_options_map) {
+static void GenerateProviderOptionsMap(const std::vector<std::string>& providers,
+                                       const ProviderOptionsVector& provider_options_vector,
+                                       ProviderOptionsMap& provider_options_map) {
   if (provider_options_vector.empty() || providers.empty()) {
     return;
   }
@@ -655,7 +736,7 @@ void GenerateProviderOptionsMap(const std::vector<std::string>& providers,
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
-void RegisterCustomOpDomainsAndLibraries(PyInferenceSession* sess, const PySessionOptions& so) {
+static void RegisterCustomOpDomainsAndLibraries(PyInferenceSession* sess, const PySessionOptions& so) {
   if (!so.custom_op_domains_.empty()) {
     // Register all custom op domains that will be needed for the session
     std::vector<OrtCustomOpDomain*> custom_op_domains;
@@ -683,6 +764,25 @@ void InitializeSession(InferenceSession* sess, const std::vector<std::string>& p
     RegisterExecutionProviders(sess, provider_types, provider_options_map);
   }
   OrtPybindThrowIfError(sess->Initialize());
+}
+
+static bool CheckIfTensor(const std::vector<const NodeArg*>& def_list,
+                          const std::string& name,
+                          /*out*/ onnx::TypeProto& type_proto) {
+  auto ret_it = std::find_if(std::begin(def_list), std::end(def_list),
+                             [&name](const NodeArg* node_arg) { return name == node_arg->Name(); });
+  if (ret_it == std::end(def_list)) {
+    throw std::runtime_error("Failed to find NodeArg with name: " + name + " in the def list");
+  }
+
+  const auto* temp = (*ret_it)->TypeAsProto();
+  if (!temp) {
+    throw std::runtime_error("Corresponding type_proto is null");
+  } else {
+    type_proto = *temp;
+  }
+
+  return type_proto.has_tensor_type();
 }
 
 void addGlobalMethods(py::module& m, const Environment& env) {
@@ -727,7 +827,7 @@ void addGlobalMethods(py::module& m, const Environment& env) {
         return ie_core.GetAvailableDevices();
       },
       "Lists all OpenVINO device ids available.");
-/*
+  /*
 * The following APIs to set config options are deprecated. Use Session.set_providers() instead.
 */
   m.def(
@@ -762,25 +862,25 @@ void addGlobalMethods(py::module& m, const Environment& env) {
             onnxruntime::CreateExecutionProviderFactory_NGraph("CPU"),
 #endif
 #ifdef USE_OPENVINO
-            onnxruntime::CreateExecutionProviderFactory_OpenVINO(openvino_device_type, false, "");
+            onnxruntime::CreateExecutionProviderFactory_OpenVINO(openvino_device_type, false, ""),
 #endif
 #ifdef USE_TENSORRT
             onnxruntime::CreateExecutionProviderFactory_Tensorrt(0),
 #endif
 #ifdef USE_MIGRAPHX
-            onnxruntime::CreateExecutionProviderFactory_MIGraphX(0)
+            onnxruntime::CreateExecutionProviderFactory_MIGraphX(0),
 #endif
 #ifdef USE_VITISAI
-                onnxruntime::CreateExecutionProviderFactory_VitisAI("DPU", 0),
+            onnxruntime::CreateExecutionProviderFactory_VitisAI("DPU", 0),
 #endif
 #ifdef USE_ACL
-            onnxruntime::CreateExecutionProviderFactory_ACL(0)
+            onnxruntime::CreateExecutionProviderFactory_ACL(0),
 #endif
 #ifdef USE_ARMNN
-                onnxruntime::CreateExecutionProviderFactory_ArmNN(0)
+            onnxruntime::CreateExecutionProviderFactory_ArmNN(0),
 #endif
 #ifdef USE_DML
-                    onnxruntime::CreateExecutionProviderFactory_DML(0)
+            onnxruntime::CreateExecutionProviderFactory_DML(0)
 #endif
         };
 
@@ -954,89 +1054,268 @@ void addObjectMethods(py::module& m, Environment& env) {
       .def_static("cuda", []() { return OrtDevice::GPU; })
       .def_static("default_memory", []() { return OrtDevice::MemType::DEFAULT; });
 
-  py::class_<SessionIOBinding> binding(m, "SessionIOBinding");
-  binding
+  py::class_<OrtValue> ortvalue_binding(m, "OrtValue");
+  ortvalue_binding
+      // Factory method to create an OrtValue (Tensor) from the given Numpy object
+      // The Tensor allocates and manages its own memory (on the specified device) and copies data from the Numpy data buffer
+      .def_static("ortvalue_from_numpy", [](py::object& array_on_cpu, OrtDevice& device) {
+        if (!IsNumericNumpyArray(array_on_cpu)) {
+          throw std::runtime_error("Creation of OrtValues is currently only supported from non-string numpy arrays");
+        }
+
+        auto ml_value = onnxruntime::make_unique<OrtValue>();
+
+        // The tensor's memory is allocated on the CPU
+        if (GetDeviceName(device) == CPU) {
+          // InputDeflist is null because OrtValue creation is not tied to a specific model
+          // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
+
+          CreateGenericMLValue(nullptr, GetAllocator(), "", array_on_cpu, ml_value.get(), true);
+        } else if (GetDeviceName(device) == CUDA) {
+      // The tensor's memory is allocated on CUDA
+
+#ifdef USE_CUDA
+          if (!IsCudaDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
+            throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
+          }
+
+          // InputDeflist is null because OrtValue creation is not tied to a specific model
+          // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
+          // TODO: Add check to ensure that string arrays are not passed - we currently don't support string tensors in CUDA
+          CreateGenericMLValue(nullptr, GetCudaAllocator(device.Id()), "", array_on_cpu, ml_value.get(), true, false, CpuToCudaMemCpy);
+
+#else
+        throw std::runtime_error(
+            "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
+            "Please use the CUDA package of OnnxRuntime to use this feature.");
+#endif
+        } else {
+          throw std::runtime_error("Unsupported device: Cannot place the OrtValue on this device");
+        }
+
+        return ml_value;
+      })
+
+      // Factory method to create an OrtValue (Tensor) from the given shape and element type with memory on the specified device
+      // The memory is left uninitialized
+      .def_static("ortvalue_from_shape_and_type", [](std::vector<int64_t>& shape, py::object& element_type, OrtDevice& device) {
+        PyArray_Descr* dtype;
+        if (!PyArray_DescrConverter(element_type.ptr(), &dtype)) {
+          throw std::runtime_error("Not a valid numpy type");
+        }
+
+        int type_num = dtype->type_num;
+        Py_DECREF(dtype);
+
+        if (!IsNumericNumpyType(type_num)) {
+          throw std::runtime_error("Creation of OrtValues is currently only supported from non-string numpy arrays");
+        }
+
+        auto ml_value = onnxruntime::make_unique<OrtValue>();
+
+        std::unique_ptr<Tensor> tensor;
+        // The tensor's memory is allocated on the CPU
+        if (GetDeviceName(device) == CPU) {
+          tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, GetAllocator());
+        } else if (GetDeviceName(device) == CUDA) {
+      // The tensor's memory is allocated on CUDA
+#ifdef USE_CUDA
+          if (!IsCudaDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
+            throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
+          }
+
+          tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, GetCudaAllocator(device.Id()));
+#else
+        throw std::runtime_error(
+            "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
+            "Please use the CUDA package of OnnxRuntime to use this feature.");
+#endif
+        } else {
+          throw std::runtime_error("Unsupported device: Cannot place the OrtValue on this device");
+        }
+
+        auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+        ml_value->Init(tensor.release(),
+                       ml_tensor,
+                       ml_tensor->GetDeleteFunc());
+
+        return ml_value;
+      })
+      .def("data_ptr", [](OrtValue* ml_value) -> int64_t {
+        // TODO: Assumes that the OrtValue is a Tensor, make this generic to handle non-Tensors
+        ORT_ENFORCE(ml_value->IsTensor(), "Only OrtValues that are Tensors are currently supported");
+
+        auto* tensor = ml_value->GetMutable<Tensor>();
+
+        if (tensor->Shape().Size() == 0) {
+          return 0;
+        }
+
+        // Should cover x86 and x64 platforms
+        return reinterpret_cast<int64_t>(tensor->MutableDataRaw());
+      })
+      .def("device_name", [](OrtValue* ml_value) -> std::string {
+        // TODO: Assumes that the OrtValue is a Tensor, make this generic to handle non-Tensors
+        ORT_ENFORCE(ml_value->IsTensor(), "Only OrtValues that are Tensors are currently supported");
+
+        return std::string(GetDeviceName(ml_value->Get<Tensor>().Location().device));
+      })
+      .def("shape", [](OrtValue* ml_value) -> py::list {
+        // TODO: Assumes that the OrtValue is a Tensor, make this generic to handle non-Tensors
+        ORT_ENFORCE(ml_value->IsTensor(), "Only OrtValues that are Tensors are currently supported");
+
+        py::list shape_arr;
+        const auto& dims = ml_value->Get<Tensor>().Shape().GetDims();
+
+        for (auto dim : dims) {
+          // For sequence tensors - we would append a list of dims to the outermost list
+          // For now only tensors are supported in OrtValue
+          shape_arr.append(dim);
+        }
+
+        return shape_arr;
+      })
+      .def("data_type", [](OrtValue* ml_value) -> std::string {
+        // TODO: Assumes that the OrtValue is a Tensor, make this generic to handle non-Tensors
+        ORT_ENFORCE(ml_value->IsTensor(), "Only OrtValues that are Tensors are currently supported");
+
+        return DataTypeImpl::ToString(ml_value->Get<Tensor>().DataType());
+      })
+      .def("is_tensor", [](OrtValue* ml_value) -> bool {
+        return ml_value->IsTensor();
+      })
+      .def("numpy", [](OrtValue* ml_value) -> py::object {
+        ORT_ENFORCE(ml_value->IsTensor(), "Only OrtValues that are Tensors are convertible to Numpy objects");
+
+        py::object obj;
+
+#ifdef USE_CUDA
+        GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, GetCudaToHostMemCpyFunction());
+#else
+        GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, nullptr);
+#endif
+        return obj;
+      });
+
+  py::class_<SessionIOBinding> session_io_binding(m, "SessionIOBinding");
+  session_io_binding
       .def(py::init([](PyInferenceSession* sess) {
         auto sess_io_binding = onnxruntime::make_unique<SessionIOBinding>(sess->GetSessionHandle());
         return sess_io_binding;
       }))
-      .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, py::object arr_on_cpu) -> void {
-        OrtValue mlvalue;
-
+      .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, py::object& arr_on_cpu) -> void {
         InferenceSession* sess = io_binding->GetInferenceSession();
         auto px = sess->GetModelInputs();
         if (!px.first.IsOK() || !px.second) {
           throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
         }
 
-        //Check if input is sequence of tensors
-        onnx::TypeProto type_proto;
+        // For now, limit binding support to only non-string Tensors
+        // TODO: Support non-tensors
         const auto& def_list = *px.second;
-        auto ret_it = std::find_if(std::begin(def_list), std::end(def_list),
-                                   [&name](const NodeArg* node_arg) { return name == node_arg->Name(); });
-        if (ret_it == std::end(def_list)) {
-          throw std::runtime_error("Failed to find input with name: " + name + " in the model input def list");
-        }
-        const auto* temp = (*ret_it)->TypeAsProto();
-        if (!temp) {
-          throw std::runtime_error("Corresponding type_proto is null");
-        } else {
-          type_proto = *temp;
-        }
-        if (type_proto.has_sequence_type()) {
-          throw std::runtime_error("Cannot bind input to sequence of tensors");
+        onnx::TypeProto type_proto;
+        if (!CheckIfTensor(def_list, name, type_proto)) {
+          throw std::runtime_error("Only binding Tensors is currently supported");
         }
 
-        if (PyDict_Check(arr_on_cpu.ptr())) {
-          throw std::runtime_error("Cannot bind input to dictionary type of values");
+        ORT_ENFORCE(type_proto.tensor_type().has_elem_type());
+        if (type_proto.tensor_type().elem_type() == onnx::TensorProto::STRING) {
+          throw std::runtime_error("Only binding non-string Tensors is currently supported");
         }
 
-        CreateGenericMLValue(px.second, GetAllocator(), name, arr_on_cpu, &mlvalue);
-        auto status = io_binding->Get()->BindInput(name, mlvalue);
-        if (!status.IsOK())
+        OrtValue ml_value;
+        // Set the parameter `accept_only_numpy_array` to `true` (we only support binding Tensors)
+        CreateGenericMLValue(px.second, GetAllocator(), name, arr_on_cpu, &ml_value, true);
+
+        auto status = io_binding->Get()->BindInput(name, ml_value);
+        if (!status.IsOK()) {
           throw std::runtime_error("Error when bind input: " + status.ErrorMessage());
+        }
       })
-      .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device, py::object element_type, std::vector<int64_t> shape, int64_t data_ptr) -> void {
+      .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device, py::object& element_type, std::vector<int64_t>& shape, int64_t data_ptr) -> void {
+        ORT_ENFORCE(data_ptr != 0, "Pointer to data memory is not valid");
+
         PyArray_Descr* dtype;
-        if (!PyArray_DescrConverter(element_type.ptr(), &dtype))
+        if (!PyArray_DescrConverter(element_type.ptr(), &dtype)) {
           throw std::runtime_error("Not a valid numpy type");
+        }
         int type_num = dtype->type_num;
         Py_DECREF(dtype);
 
         OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device);
-        std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, (void*)data_ptr, info);
-        OrtValue mlvalue;
+        std::unique_ptr<Tensor> p_tensor =
+            onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, reinterpret_cast<void*>(data_ptr), info);
 
-        mlvalue.Init(p_tensor.release(),
-                     DataTypeImpl::GetType<Tensor>(),
-                     DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
-        auto status = io_binding->Get()->BindInput(name, mlvalue);
-        if (!status.IsOK())
-          throw std::runtime_error("Error when bind input: " + status.ErrorMessage());
+        OrtValue ml_value;
+        ml_value.Init(p_tensor.release(),
+                      DataTypeImpl::GetType<Tensor>(),
+                      DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+
+        auto status = io_binding->Get()->BindInput(name, ml_value);
+        if (!status.IsOK()) {
+          throw std::runtime_error("Error when binding input: " + status.ErrorMessage());
+        }
       })
-      .def("bind_output", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device, py::object element_type, std::vector<int64_t> shape, int64_t data_ptr) -> void {
+      .def("bind_ortvalue_input", [](SessionIOBinding* io_binding, const std::string& name, OrtValue& ml_value) -> void {
+        auto status = io_binding->Get()->BindInput(name, ml_value);
+        if (!status.IsOK()) {
+          throw std::runtime_error("Error when binding input: " + status.ErrorMessage());
+        }
+      })
+      .def("bind_output", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device, py::object& element_type, std::vector<int64_t>& shape, int64_t data_ptr) -> void {
+        ORT_ENFORCE(data_ptr != 0, "Pointer to data memory is not valid");
+
+        InferenceSession* sess = io_binding->GetInferenceSession();
+        auto px = sess->GetModelOutputs();
+        if (!px.first.IsOK() || !px.second) {
+          throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
+        }
+
+        // For now, limit binding support to only non-string Tensors
+        // TODO: Support non-tensors
+        const auto& def_list = *px.second;
+        onnx::TypeProto type_proto;
+        if (!CheckIfTensor(def_list, name, type_proto)) {
+          throw std::runtime_error("Only binding Tensors is currently supported");
+        }
+
+        ORT_ENFORCE(type_proto.tensor_type().has_elem_type());
+        if (type_proto.tensor_type().elem_type() == onnx::TensorProto::STRING) {
+          throw std::runtime_error("Only binding non-string Tensors is currently supported");
+        }
+
         PyArray_Descr* dtype;
-        if (!PyArray_DescrConverter(element_type.ptr(), &dtype))
+        if (!PyArray_DescrConverter(element_type.ptr(), &dtype)) {
           throw std::runtime_error("Not a valid numpy type");
+        }
         int type_num = dtype->type_num;
         Py_DECREF(dtype);
 
         OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device);
 
-        std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, (void*)data_ptr, info);
-        OrtValue mlvalue;
-        mlvalue.Init(p_tensor.release(),
-                     DataTypeImpl::GetType<Tensor>(),
-                     DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+        std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, reinterpret_cast<void*>(data_ptr), info);
 
-        auto status = io_binding->Get()->BindOutput(name, mlvalue);
-        if (!status.IsOK())
-          throw std::runtime_error("Error when bind output: " + status.ErrorMessage());
+        OrtValue ml_value;
+        ml_value.Init(p_tensor.release(),
+                      DataTypeImpl::GetType<Tensor>(),
+                      DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+
+        auto status = io_binding->Get()->BindOutput(name, ml_value);
+        if (!status.IsOK()) {
+          throw std::runtime_error("Error when binding output: " + status.ErrorMessage());
+        }
       })
       .def("bind_output", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device) -> void {
         auto status = io_binding->Get()->BindOutput(name, device);
-        if (!status.IsOK())
-          throw std::runtime_error("Error when bind output: " + status.ErrorMessage());
+        if (!status.IsOK()) {
+          throw std::runtime_error("Error when binding output: " + status.ErrorMessage());
+        }
+      })
+      .def("bind_ortvalue_output", [](SessionIOBinding* io_binding, const std::string& name, OrtValue& ml_value) -> void {
+        auto status = io_binding->Get()->BindOutput(name, ml_value);
+        if (!status.IsOK()) {
+          throw std::runtime_error("Error when binding output: " + status.ErrorMessage());
+        }
       })
       .def("clear_binding_inputs", [](SessionIOBinding* io_binding) -> void {
         io_binding->Get()->ClearInputs();
@@ -1044,15 +1323,18 @@ void addObjectMethods(py::module& m, Environment& env) {
       .def("clear_binding_outputs", [](SessionIOBinding* io_binding) -> void {
         io_binding->Get()->ClearOutputs();
       })
+      .def("get_outputs", [](SessionIOBinding* io_binding) -> std::vector<OrtValue>& {
+        return io_binding->Get()->GetOutputs();
+      })
       .def("copy_outputs_to_cpu", [](SessionIOBinding* io_binding) -> std::vector<py::object> {
         const std::vector<OrtValue>& outputs = io_binding->Get()->GetOutputs();
         std::vector<py::object> rfetch;
         rfetch.reserve(outputs.size());
         for (const auto& _ : outputs) {
           if (_.IsTensor()) {
-            AddTensorAsPyObj(_, rfetch, &io_binding->GetInferenceSession()->GetDataTransferManager());
+            AddTensorAsPyObj(_, rfetch, &io_binding->GetInferenceSession()->GetDataTransferManager(), nullptr);
           } else {
-            AddNonTensorAsPyObj(_, rfetch, &io_binding->GetInferenceSession()->GetDataTransferManager());
+            AddNonTensorAsPyObj(_, rfetch, &io_binding->GetInferenceSession()->GetDataTransferManager(), nullptr);
           }
         }
         return rfetch;
@@ -1098,7 +1380,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
           R"pbdoc(Sets the number of threads used to parallelize the execution of the graph (across nodes). Default is 0 to let onnxruntime choose.)pbdoc")
       .def_readwrite("execution_mode", &PySessionOptions::execution_mode,
                      R"pbdoc(Sets the execution mode. Default is sequential.)pbdoc")
-      .def_readwrite("execution_order",  &PySessionOptions::execution_order,
+      .def_readwrite("execution_order", &PySessionOptions::execution_order,
                      R"pbdoc(Sets the execution order. Default is basic topological order.)pbdoc")
       .def_property(
           "graph_optimization_level",
@@ -1383,9 +1665,9 @@ including arg name, arg type (contains both type and shape).)pbdoc")
              rfetch.reserve(fetches.size());
              for (auto _ : fetches) {
                if (_.IsTensor()) {
-                 AddTensorAsPyObj(_, rfetch, nullptr);
+                 AddTensorAsPyObj(_, rfetch, nullptr, nullptr);
                } else {
-                 AddNonTensorAsPyObj(_, rfetch, nullptr);
+                 AddNonTensorAsPyObj(_, rfetch, nullptr, nullptr);
                }
              }
              return rfetch;
