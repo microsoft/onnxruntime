@@ -2,7 +2,7 @@
 
 ## Overview
 
-<img width="100%" align="right" src="images/Mobile.png" alt="Steps to build the reduced binary size."/>
+<img align="left" width=40% src="images/Mobile.png" alt="Steps to build the reduced binary size."/>
 
 ONNX Runtime now supports an internal model format to minimize the build size for usage in mobile and embedded scenarios. An ONNX model can be converted to an internal ONNX Runtime format ('ORT format model') using the below instructions.
 
