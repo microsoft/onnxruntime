@@ -38,11 +38,11 @@ void InitializeWithDenormalAsZero(bool on) {
 #endif
 
 bool SetDenormalAsZero(bool on) {
-// Compile if we have SSE support (GCC), x86-64 (MSVC), or x86 with SSE (MSVC)
 #if defined(__SSE__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 1)
   static std::once_flag once;
   std::call_once(once, cpuinfo_initialize);
 
+  // runtime check for denormal-as-zero support.
   if (cpuinfo_has_x86_daz()) {
     if (on) {
       _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
