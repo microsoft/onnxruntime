@@ -21,6 +21,20 @@
 
 namespace onnxruntime {
 
+bool SetDenormalAsZero(bool on) {
+  if (CPUIDInfo::GetCPUIDInfo().HasSSE3()) {
+    if (on) {
+      _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
+      _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
+    } else {
+      _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_OFF);
+      _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_OFF);
+    }
+    return true;
+  }
+  return false;
+}
+
 #ifdef _OPENMP
 class DenormalAsZeroInitializer {
  public:
@@ -41,19 +55,5 @@ void InitializeWithDenormalAsZero(bool on) {
   }
 }
 #endif
-
-bool SetDenormalAsZero(bool on) {
-  if (CPUIDInfo::GetCPUIDInfo().HasSSE3()) {
-    if (on) {
-      _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
-      _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
-    } else {
-      _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_OFF);
-      _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_OFF);
-    }
-    return true;
-  }
-  return false;
-}
 
 }  // namespace onnxruntime
