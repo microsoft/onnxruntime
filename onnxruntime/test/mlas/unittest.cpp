@@ -37,18 +37,6 @@ Abstract:
 #define _countof(_Array) (sizeof(_Array) / sizeof(_Array[0]))
 #endif
 
-#if defined(_M_AMD64) || defined(__x86_64__)
-#define MLAS_HAS_DGEMM
-#endif
-
-#if defined(_M_IX86) || defined(__i386__) || defined(_M_AMD64) || defined(__x86_64__)
-#define MLAS_HAS_QGEMM_U8X8
-#endif
-
-#if defined(_M_AMD64) || defined(__x86_64__)
-#define MLAS_HAS_PACKED_QGEMM_U8X8
-#endif
-
 MLAS_THREADPOOL* threadpool = nullptr;
 
 template<typename T>
@@ -539,7 +527,7 @@ public:
     }
 };
 
-#ifdef MLAS_HAS_QGEMM_U8X8
+#ifdef MLAS_SUPPORTS_GEMM_U8X8
 
 template<bool Packed>
 class MlasQgemmU8X8U8X8TestBase;
@@ -589,7 +577,7 @@ protected:
     }
 };
 
-#ifdef MLAS_HAS_PACKED_QGEMM_U8X8
+#ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
 
 template<>
 class MlasQgemmU8X8U8X8TestBase<true> : public MlasTestBase
@@ -2777,12 +2765,12 @@ RunThreadedTests(
     onnxruntime::make_unique<MlasFgemmTest<float, false>>()->ExecuteShort();
     printf("SGEMM packed tests.\n");
     onnxruntime::make_unique<MlasFgemmTest<float, true>>()->ExecuteShort();
-#ifdef MLAS_HAS_DGEMM
+#ifdef MLAS_SUPPORTS_GEMM_DOUBLE
     printf("DGEMM tests.\n");
     onnxruntime::make_unique<MlasFgemmTest<double, false>>()->ExecuteShort();
 #endif
 
-#ifdef MLAS_HAS_QGEMM_U8X8
+#ifdef MLAS_SUPPORTS_GEMM_U8X8
     printf("QGEMM U8S8=int32_t tests.\n");
     onnxruntime::make_unique<MlasQgemmU8X8Test<int8_t, int32_t, false>>()->ExecuteShort();
     printf("QGEMM U8S8=float tests.\n");
@@ -2793,7 +2781,7 @@ RunThreadedTests(
     onnxruntime::make_unique<MlasQgemmU8X8Test<uint8_t, float, false>>()->ExecuteShort();
 #endif
 
-#ifdef MLAS_HAS_PACKED_QGEMM_U8X8
+#ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
     if (MlasGemmPackBSize(128, 128, true) > 0) {
         printf("QGEMM U8S8=int32_t packed tests.\n");
         onnxruntime::make_unique<MlasQgemmU8X8Test<int8_t, int32_t, true>>()->ExecuteShort();
