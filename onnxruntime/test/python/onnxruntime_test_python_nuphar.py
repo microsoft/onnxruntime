@@ -363,7 +363,7 @@ class TestNuphar(unittest.TestCase):
         # run onnx_test_runner to verify results
         # use -M to disable memory pattern
         onnx_test_runner = os.path.join(cwd, 'onnx_test_runner')
-        subprocess.run([onnx_test_runner, '-e', 'nuphar', '-M', '-n', 'bidaf', cwd], check=True, cwd=cwd)
+        subprocess.run([onnx_test_runner, '-e', 'nuphar', '-M', '-c', '1', '-j', '1', '-n', 'bidaf', cwd], check=True, cwd=cwd)
 
         # test AOT on the quantized model
         if os.name not in ['nt', 'posix']:
@@ -426,7 +426,7 @@ class TestNuphar(unittest.TestCase):
         bert_squad_dir = os.path.join(cwd, 'download_sample_10')
         bert_squad_model = os.path.join(bert_squad_dir, 'bertsquad10.onnx')
         subprocess.run([
-            sys.executable, '-m', 'onnxruntime.nuphar.symbolic_shape_infer', '--input', bert_squad_model, '--output',
+            sys.executable, '-m', 'onnxruntime.tools.symbolic_shape_infer', '--input', bert_squad_model, '--output',
             bert_squad_model, '--auto_merge', '--int_max=1000000'
         ],
                        check=True,
@@ -667,21 +667,8 @@ class TestNuphar(unittest.TestCase):
             sess = onnxrt.InferenceSession(matmul_model_name)
             actual_y = sess.run([], test_inputs)
 
-            assert np.allclose(expected_y, actual_y)
+            assert np.allclose(expected_y, actual_y, atol=1e-7)
             print("finished " + matmul_model_name)
-
-    def test_symbolic_shape_infer(self):
-        cwd = os.getcwd()
-        test_model_dir = os.path.join(cwd, '..', 'models')
-        for filename in Path(test_model_dir).rglob('*.onnx'):
-            if filename.name.startswith('.'):
-                continue  # skip some bad model files
-            subprocess.run([
-                sys.executable, '-m', 'onnxruntime.nuphar.symbolic_shape_infer', '--input',
-                str(filename), '--auto_merge', '--int_max=100000', '--guess_output_rank'
-            ],
-                           check=True,
-                           cwd=cwd)
 
 
 if __name__ == '__main__':

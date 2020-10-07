@@ -1,0 +1,9 @@
+numpy==1.16.6
+mypy
+pytest
+setuptools>=41.4.0
+wheel
+git+http://github.com/onnx/onnx.git@b71de776d2847b6e0fed54a888a8213a7812ad12#egg=onnx
+protobuf
+sympy==1.1.1
+flake8

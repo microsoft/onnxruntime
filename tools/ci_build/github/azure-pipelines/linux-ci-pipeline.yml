@@ -28,8 +28,8 @@ jobs:
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
-          onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecpubuild:ch36 \
-            /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+          onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecentoscpubuild:ch5g \
+            python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build --cmake_generator Ninja \
               --config Debug Release \
               --skip_submodule_sync \
@@ -38,8 +38,8 @@ jobs:
               --build_wheel \
               --use_openmp \
               --enable_onnx_tests \
-              --use_mklml --enable_pybind --build_java --build_nodejs \
-              --cmake_extra_defines PYTHON_INCLUDE_DIR=/opt/python/cp37-cp37m/include/python3.7m PYTHON_LIBRARY=/usr/lib64/librt.so
+              --enable_symbolic_shape_infer_tests \
+              --use_mklml --enable_pybind --build_java --build_nodejs
       workingDirectory: $(Build.SourcesDirectory)
   - task: Docker@2
     displayName: logout

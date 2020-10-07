@@ -26,7 +26,8 @@ Status TransformGraphForMixedPrecision(Graph& graph,
                                        const std::unordered_set<std::string>& weights_to_train,
                                        bool use_mixed_precision_initializer,
                                        ONNX_NAMESPACE::TensorProto_DataType mixed_precision_type,
-                                       std::unordered_map<std::string, NodeArg*>& fp32_weight_name_to_mixed_precision_node_arg);
+                                       std::unordered_map<std::string, NodeArg*>& fp32_weight_name_to_mixed_precision_node_arg,
+                                       bool layernorm_stash_as_fp32);
 
 /**
  * Checks if a node is an fp32-only node.

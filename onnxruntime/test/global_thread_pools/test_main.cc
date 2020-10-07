@@ -39,8 +39,14 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "gtest/gtest.h"
 #include "test/test_environment.h"
+#include <thread>
 
 std::unique_ptr<Ort::Env> ort_env;
+
+#define ORT_RETURN_IF_NON_NULL_STATUS(arg) \
+  if (arg) {                               \
+    return -1;                             \
+  }
 
 int main(int argc, char** argv) {
   int status = 0;
@@ -48,8 +54,20 @@ int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
     OrtThreadingOptions* tp_options;
-    OrtStatus* st = g_ort->CreateThreadingOptions(&tp_options);
-    if (st != nullptr) return -1;
+    std::unique_ptr<OrtStatus, decltype(OrtApi::ReleaseStatus)> st_ptr(nullptr, g_ort->ReleaseStatus);
+
+    st_ptr.reset(g_ort->CreateThreadingOptions(&tp_options));
+    ORT_RETURN_IF_NON_NULL_STATUS(st_ptr);
+
+    st_ptr.reset(g_ort->SetGlobalSpinControl(tp_options, 0));
+    ORT_RETURN_IF_NON_NULL_STATUS(st_ptr);
+
+    st_ptr.reset(g_ort->SetGlobalIntraOpNumThreads(tp_options, std::thread::hardware_concurrency()));
+    ORT_RETURN_IF_NON_NULL_STATUS(st_ptr);
+
+    st_ptr.reset(g_ort->SetGlobalInterOpNumThreads(tp_options, std::thread::hardware_concurrency()));
+    ORT_RETURN_IF_NON_NULL_STATUS(st_ptr);
+
     ort_env.reset(new Ort::Env(tp_options, ORT_LOGGING_LEVEL_VERBOSE, "Default"));  // this is the only change from test/providers/test_main.cc
     g_ort->ReleaseThreadingOptions(tp_options);
     status = RUN_ALL_TESTS();

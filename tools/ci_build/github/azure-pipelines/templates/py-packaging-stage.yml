@@ -104,7 +104,7 @@ stages:
               --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
-              onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecpubuild:ch36 \
+              onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecpubuild:ch5e \
                 $(python.manylinux.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build --cmake_generator Ninja \
                   --config Release \
@@ -182,7 +182,7 @@ stages:
               --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
-              onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimegpubuild:ch35 \
+              onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimegpubuild:ch5f \
                 $(python.manylinux.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build --cmake_generator Ninja \
                   --config Release \
@@ -394,8 +394,8 @@ stages:
       - task: CopyFiles@2
         displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
         inputs:
-          SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
-          Contents: '**\dist\*.whl'
+          SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\dist'
+          Contents: '*.whl'
           TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
       - script: |
@@ -516,8 +516,8 @@ stages:
       - task: CopyFiles@2
         displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
         inputs:
-          SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
-          Contents: '**\dist\*.whl'
+          SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\dist'
+          Contents: '*.whl'
           TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
       - script: |
@@ -573,15 +573,26 @@ stages:
           versionSpec: $(python.version)
 
       - script: |
-          sudo python -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
+          set -e
+          pushd .
+          cd $(Build.SourcesDirectory)/cmake/external/protobuf
+          cmake ./cmake -DCMAKE_INSTALL_PREFIX=$(Build.BinariesDirectory)/protobuf -DCMAKE_POSITION_INDEPENDENT_CODE=ON -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Relwithdebinfo
+          make -j$(getconf _NPROCESSORS_ONLN)
+          make install
+          popd
+          export PATH=$(Build.BinariesDirectory)/protobuf/bin:$PATH
+          export ONNX_ML=1
+          export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
+          sudo python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
           sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
-          ./build.sh --config Release --skip_submodule_sync --parallel --build_wheel --use_openmp ${{ parameters.build_py_parameters }}
+          brew install libomp
+          python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --use_openmp --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --config Release --build_wheel ${{ parameters.build_py_parameters }}
         displayName: 'Command Line Script'
 
       - task: CopyFiles@2
         displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
         inputs:
-          SourceFolder: '$(Build.SourcesDirectory)/build/Linux/Release/dist'
+          SourceFolder: '$(Build.BinariesDirectory)/Release/dist'
           Contents: '*.whl'
           TargetFolder: '$(Build.ArtifactStagingDirectory)'
 

@@ -70,7 +70,7 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
 
   const float real_multiplier = (a_scale_data * b_scale_data) / y_scale_data;
 
-#ifdef MLAS_SUPPORTS_GEMM_U8X8
+#ifdef MLAS_SUPPORTS_GEMM_U8X8_AND_REQUANTIZE_OUTPUT
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
   auto gemm_output_data = alloc->Alloc(SafeInt<size_t>(sizeof(int32_t)) *
@@ -85,7 +85,7 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
 #endif
 
   for (size_t i = 0; i < helper.OutputOffsets().size(); i++) {
-#ifdef MLAS_SUPPORTS_GEMM_U8X8
+#ifdef MLAS_SUPPORTS_GEMM_U8X8_AND_REQUANTIZE_OUTPUT
     QGemm(static_cast<int>(helper.M()),
           static_cast<int>(helper.N()),
           static_cast<int>(helper.K()),

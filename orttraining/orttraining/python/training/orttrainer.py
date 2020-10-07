@@ -10,6 +10,8 @@ import onnxruntime as ort
 from . import _utils, amp, checkpoint, optim, postprocess, ORTTrainerOptions
 from .model_desc_validation import _ORTTrainerModelDesc
 
+from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
+
 class TrainStepInfo(object):
     r"""Private class used to store runtime information from current train step.
 
@@ -631,9 +633,18 @@ class ORTTrainer(object):
         ort_parameters.optimizer_attributes_map = optimizer_attributes_map
         ort_parameters.optimizer_int_attributes_map = optimizer_int_attributes_map
 
+        ort_parameters.attn_dropout_recompute = self.options.graph_transformer.attn_dropout_recompute
+        ort_parameters.gelu_recompute = self.options.graph_transformer.gelu_recompute
+        ort_parameters.transformer_layer_recompute = self.options.graph_transformer.transformer_layer_recompute
+        ort_parameters.number_recompute_layers = self.options.graph_transformer.number_recompute_layers
+
         # SessionOptions
         session_options = ort.SessionOptions()
         session_options.use_deterministic_compute = self.options.debug.deterministic_compute
+        if (self.options.graph_transformer.attn_dropout_recompute or 
+            self.options.graph_transformer.gelu_recompute or 
+            self.options.graph_transformer.transformer_layer_recompute):
+            session_options.execution_order = ort.ExecutionOrder.PRIORITY_BASED
 
         # TrainingSession
         self._training_session = ort.TrainingSession(self._onnx_model.SerializeToString(),
@@ -670,6 +681,9 @@ class ORTTrainer(object):
     def _init_session(self):
         if self._onnx_model is None:
             return
+
+        if self.options.utils.run_symbolic_shape_infer:
+            self._onnx_model = SymbolicShapeInference.infer_shapes(self._onnx_model, auto_merge=True, guess_output_rank=True)
 
         # Create training session used by train_step
         self._create_ort_training_session()

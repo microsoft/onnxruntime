@@ -5,8 +5,10 @@
 
 from typing import List, Tuple
 import logging
+import os
 import sys
 import argparse
+from pathlib import Path
 import numpy as np
 from collections import deque
 from onnx import ModelProto, TensorProto, numpy_helper, helper, external_data_helper, save_model
@@ -660,6 +662,8 @@ class OnnxModel:
     def save_model_to_file(self, output_path, use_external_data_format=False):
         logger.info(f"Output model to {output_path}")
 
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+
         if output_path.endswith(".json"):  # Output text for testing small model.
             assert isinstance(self.model, ModelProto)
             with open(output_path, "w") as out:
@@ -667,10 +671,12 @@ class OnnxModel:
         else:
             # Save model to external data, which is needed for model size > 2GB
             if use_external_data_format:
-                from pathlib import Path
+                data_file = str(Path(output_path).name + ".data")
+                if os.path.isfile(data_file):
+                    os.remove(data_file)
                 external_data_helper.convert_model_to_external_data(self.model,
                                                                     all_tensors_to_one_file=True,
-                                                                    location=Path(output_path).name + ".data")
+                                                                    location=data_file)
             save_model(self.model, output_path)
 
     def get_graph_inputs_excluding_initializers(self):

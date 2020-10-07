@@ -40,9 +40,19 @@ MakeOutputPipelineWithOutBias(std::int32_t result_offset,
   return std::make_tuple(quantize_down_stage, saturating_cast_stage);
 }
 
-void GemmlowpMultiplyu8u8_u8(const uint8_t* lhs_data, const uint8_t* rhs_data, uint8_t* result_data,
-                        const int lhs_offset, const int rhs_offset, const int result_offset,
-                        int m, int n, int k, int32_t int_multiplier, int32_t right_shift, const int32_t* bias) {
+void GemmlowpMultiplyu8u8_u8(
+    const uint8_t* lhs_data,
+    const uint8_t* rhs_data,
+    uint8_t* result_data,
+    const int lhs_offset,
+    const int rhs_offset,
+    const int result_offset,
+    int m,
+    int n,
+    int k,
+    int32_t int_multiplier,
+    int32_t right_shift,
+    const int32_t* bias) {
   // TODO exp ColMajor order for rhs and result. That may be faster
   const auto matOrder = gemmlowp::MapOrder::RowMajor;
   gemmlowp::MatrixMap<const uint8_t, matOrder> lhs(lhs_data, m, k);
@@ -64,13 +74,23 @@ void GemmlowpMultiplyu8u8_u8(const uint8_t* lhs_data, const uint8_t* rhs_data, u
   }
 }
 
-void GemmlowpMultiplyu8u8_s32(const uint8_t* lhs_data, const uint8_t* rhs_data, int32_t* result_data,
-                                const int lhs_offset, const int rhs_offset, int m, int n, int k, concurrency::ThreadPool* ) {
-
+void GemmlowpMultiplyu8u8_s32(
+    const uint8_t* lhs_data,
+    const uint8_t* rhs_data,
+    int32_t* result_data,
+    const int lhs_offset,
+    const int rhs_offset,
+    int m,
+    int n,
+    int k,
+    int lda,
+    int ldb,
+    int ldc,
+    concurrency::ThreadPool*) {
   const auto matOrder = gemmlowp::MapOrder::RowMajor;
-  gemmlowp::MatrixMap<const uint8_t, matOrder> lhs(lhs_data, m, k);
-  gemmlowp::MatrixMap<const uint8_t, matOrder> rhs(rhs_data, k, n);
-  gemmlowp::MatrixMap<std::int32_t, matOrder> result(result_data, m, n);
+  gemmlowp::MatrixMap<const uint8_t, matOrder> lhs(lhs_data, m, k, lda);
+  gemmlowp::MatrixMap<const uint8_t, matOrder> rhs(rhs_data, k, n, ldb);
+  gemmlowp::MatrixMap<std::int32_t, matOrder> result(result_data, m, n, ldc);
 
   gemmlowp::GemmContext gemm_context;
 
@@ -80,4 +100,4 @@ void GemmlowpMultiplyu8u8_s32(const uint8_t* lhs_data, const uint8_t* rhs_data, 
       &gemm_context, lhs, rhs, &result, -lhs_offset, -rhs_offset, empty_pipeline);
 }
 
-}
+}  // namespace onnxruntime

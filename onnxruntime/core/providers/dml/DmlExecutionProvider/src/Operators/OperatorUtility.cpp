@@ -215,7 +215,7 @@ namespace Dml
                 return std::nullopt;
             }
 
-            // All fused ops just have "Fused" prepended to their name
+            // All fused ops just have "Fused" prepended to their name (e.g. "Conv" -> "FusedConv").
             std::string fusedOpType = std::string("Fused").append(candidateOpType);
 
             return FusedOpProperties{ std::move(fusedOpType), onnxruntime::kMSDmlDomain };

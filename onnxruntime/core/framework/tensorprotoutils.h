@@ -21,6 +21,8 @@ class TensorShapeProto;
 
 /** Test if two TensorShapeProto dimensions are equal. */
 bool operator==(const TensorShapeProto_Dimension& l, const TensorShapeProto_Dimension& r);
+bool operator!=(const TensorShapeProto_Dimension& l, const TensorShapeProto_Dimension& r);
+
 }  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {

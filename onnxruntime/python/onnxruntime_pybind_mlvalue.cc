@@ -23,6 +23,38 @@ namespace python {
 namespace py = pybind11;
 using namespace onnxruntime::logging;
 
+static bool PyObjectCheck_NumpyArray(PyObject* o) {
+  return PyObject_HasAttrString(o, "__array_finalize__");
+}
+
+bool IsNumericNumpyType(int npy_type) {
+  return npy_type < NPY_OBJECT || npy_type == NPY_HALF;
+}
+
+bool IsNumericNumpyArray(py::object& py_object) {
+  if (PyObjectCheck_NumpyArray(py_object.ptr())) {
+    int npy_type = PyArray_TYPE(reinterpret_cast<PyArrayObject*>(py_object.ptr()));
+    return IsNumericNumpyType(npy_type);
+  }
+
+  return false;
+}
+
+static TensorShape GetArrayShape(PyArrayObject* pyObject) {
+  int ndim = PyArray_NDIM(pyObject);
+  const npy_intp* npy_dims = PyArray_DIMS(pyObject);
+  std::vector<int64_t> dims(ndim);
+  for (int i = 0; i < ndim; ++i) {
+    dims[i] = npy_dims[i];
+  }
+  TensorShape shape(std::move(dims));
+  return shape;
+}
+
+void CpuToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
+  memcpy(dst, src, num_bytes);
+}
+
 int OnnxRuntimeTensorToNumpyType(const DataTypeImpl* tensor_type) {
   static std::map<MLDataType, int> type_map{
       {DataTypeImpl::GetType<bool>(), NPY_BOOL},
@@ -118,17 +150,6 @@ const DataTypeImpl* NumpyToOnnxRuntimeTensorType(int numpy_type) {
   }
 }
 
-TensorShape GetArrayShape(PyArrayObject* pyObject) {
-  int ndim = PyArray_NDIM(pyObject);
-  const npy_intp* npy_dims = PyArray_DIMS(pyObject);
-  std::vector<int64_t> dims(ndim);
-  for (int i = 0; i < ndim; ++i) {
-    dims[i] = npy_dims[i];
-  }
-  TensorShape shape(std::move(dims));
-  return shape;
-}
-
 // This is a one time use, ad-hoc allocator that allows Tensors to take ownership of
 // python array objects and use the underlying memory directly and
 // properly deallocated them when they are done.
@@ -190,13 +211,11 @@ class OrtPybindSingleUseAllocator : public IAllocator {
 
 using OrtPybindSingleUseAllocatorPtr = std::shared_ptr<OrtPybindSingleUseAllocator>;
 
-bool PyObjectCheck_Array(PyObject* o) {
-  return PyObject_HasAttrString(o, "__array_finalize__");
-}
-
 // Expects p_tensor properly created
 // Does not manage darray life-cycle
-void CopyDataToTensor(PyArrayObject* darray, int npy_type, std::unique_ptr<Tensor>& p_tensor) {
+
+static void CopyDataToTensor(PyArrayObject* darray, int npy_type, std::unique_ptr<Tensor>& p_tensor,
+                             MemCpyFunc mem_cpy_to_device = CpuToCpuMemCpy) {
   const auto total_items = p_tensor->Shape().Size();
   if (npy_type == NPY_UNICODE) {
     // Copy string data which needs to be done after Tensor is allocated.
@@ -251,11 +270,16 @@ void CopyDataToTensor(PyArrayObject* darray, int npy_type, std::unique_ptr<Tenso
     if (!IAllocator::CalcMemSizeForArray(p_tensor->DataType()->Size(), p_tensor->Shape().Size(), &len)) {
       throw std::runtime_error("length overflow");
     }
-    memcpy(buffer, PyArray_DATA(darray), len);
+    mem_cpy_to_device(buffer, PyArray_DATA(darray), len);
   }
 }
 
-std::unique_ptr<Tensor> CreateTensor(const AllocatorPtr& alloc, const std::string& name_input, PyArrayObject* pyObject) {
+// Setting `use_numpy_data_memory` to `true` will ensure that the underlying numpy array buffer is directly used
+// as the backing data buffer for the ORT Tensor where applicable (for numeric tensors)
+// The numpy object owns the memory and needs to be alive until the corresponding OrtValue is in scope
+static std::unique_ptr<Tensor> CreateTensor(const AllocatorPtr& alloc, const std::string& name_input,
+                                            PyArrayObject* pyObject, bool use_numpy_data_memory = true,
+                                            MemCpyFunc mem_cpy_to_device = CpuToCpuMemCpy) {
   PyArrayObject* darray = PyArray_GETCONTIGUOUS(pyObject);
   ORT_ENFORCE(darray != nullptr, "The object must be a contiguous array for input '", name_input, "'.");
 
@@ -265,8 +289,7 @@ std::unique_ptr<Tensor> CreateTensor(const AllocatorPtr& alloc, const std::strin
   const int npy_type = PyArray_TYPE(darray);
   TensorShape shape = GetArrayShape(darray);
   auto element_type = NumpyToOnnxRuntimeTensorType(npy_type);
-  if (npy_type != NPY_UNICODE && npy_type != NPY_STRING &&
-      npy_type != NPY_VOID && npy_type != NPY_OBJECT) {
+  if (IsNumericNumpyType(npy_type) && use_numpy_data_memory) {
     if (pyObject == darray) {
       // Use the memory of numpy array directly. The ownership belongs to the calling
       // python code. In this case, the incoming pyObject must itself be contiguous (pyObject == darray).
@@ -280,15 +303,15 @@ std::unique_ptr<Tensor> CreateTensor(const AllocatorPtr& alloc, const std::strin
     }
   } else {
     p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, alloc);
-    CopyDataToTensor(darray, npy_type, p_tensor);
+    CopyDataToTensor(darray, npy_type, p_tensor, mem_cpy_to_device);
   }
 
   return p_tensor;
 }
 
-bool CheckIfInputIsSequenceType(const std::string& name_input,
-                                const InputDefList* input_def_list,
-                                /*out*/ onnx::TypeProto& type_proto) {
+static bool CheckIfInputIsSequenceType(const std::string& name_input,
+                                       const InputDefList* input_def_list,
+                                       /*out*/ onnx::TypeProto& type_proto) {
   // get sequence type from the model
   const auto& def_list = *input_def_list;
   auto ret_it = std::find_if(std::begin(def_list), std::end(def_list),
@@ -306,8 +329,8 @@ bool CheckIfInputIsSequenceType(const std::string& name_input,
   return type_proto.has_sequence_type();
 }
 
-void CreateSequenceOfTensors(AllocatorPtr alloc, const std::string& name_input,
-                             const InputDefList* input_def_list, PyObject* pylist_obj, OrtValue* p_mlvalue) {
+static void CreateSequenceOfTensors(AllocatorPtr alloc, const std::string& name_input,
+                                    const InputDefList* input_def_list, PyObject* pylist_obj, OrtValue* p_mlvalue) {
   onnx::TypeProto type_proto;
   if (!CheckIfInputIsSequenceType(name_input, input_def_list, type_proto)) {
     throw std::runtime_error("Input is not of sequence type");
@@ -320,7 +343,7 @@ void CreateSequenceOfTensors(AllocatorPtr alloc, const std::string& name_input,
     tensors.resize(list_size);
     for (Py_ssize_t i = 0; i < list_size; ++i) {
       auto* py_obj = PyList_GetItem(pylist_obj, i);
-      if (!PyObjectCheck_Array(py_obj)) {
+      if (!PyObjectCheck_NumpyArray(py_obj)) {
         throw std::runtime_error("CreateSequenceOfTensors: Input is not a tensor");
       }
       auto p_tensor = CreateTensor(alloc, name_input, reinterpret_cast<PyArrayObject*>(py_obj));
@@ -339,9 +362,12 @@ void CreateSequenceOfTensors(AllocatorPtr alloc, const std::string& name_input,
                   ml_tensor_sequence->GetDeleteFunc());
 }
 
-void CreateTensorMLValue(const AllocatorPtr& alloc, const std::string& name_input, PyArrayObject* pyObject,
-                         OrtValue* p_mlvalue) {
-  auto p_tensor = CreateTensor(alloc, name_input, pyObject);
+// Setting `use_numpy_data_memory` to `true` will ensure that the underlying numpy array buffer is directly used
+// as the backing data buffer for the ORT Tensor where applicable (for numeric tensors)
+// The numpy object owns the memory and needs to be alive until the corresponding OrtValue is in scope
+static void CreateTensorMLValue(const AllocatorPtr& alloc, const std::string& name_input, PyArrayObject* pyObject,
+                                OrtValue* p_mlvalue, bool use_numpy_data_memory = true, MemCpyFunc mem_cpy_to_device = CpuToCpuMemCpy) {
+  auto p_tensor = CreateTensor(alloc, name_input, pyObject, use_numpy_data_memory, mem_cpy_to_device);
 
   auto ml_tensor = DataTypeImpl::GetType<Tensor>();
   p_mlvalue->Init(p_tensor.release(),
@@ -351,7 +377,7 @@ void CreateTensorMLValue(const AllocatorPtr& alloc, const std::string& name_inpu
 
 // This function will create a Tensor that owns the python array memory. This is done to properly
 // release python arrays allocated within the pybind code.
-void CreateTensorMLValueOwned(const OrtPybindSingleUseAllocatorPtr& pybind_alloc, const AllocatorPtr& alloc, OrtValue* p_mlvalue) {
+static void CreateTensorMLValueOwned(const OrtPybindSingleUseAllocatorPtr& pybind_alloc, const AllocatorPtr& alloc, OrtValue* p_mlvalue) {
   auto npy_type = PyArray_TYPE(pybind_alloc->GetContiguous());
   TensorShape shape = GetArrayShape(pybind_alloc->GetContiguous());
   auto element_type = NumpyToOnnxRuntimeTensorType(npy_type);
@@ -389,9 +415,9 @@ std::string _get_type_name(std::string&) {
 
 #if !defined(DISABLE_ML_OPS)
 template <typename KeyType, typename ValueType, typename KeyGetterType, typename ValueGetterType>
-void CreateMapMLValue_LoopIntoMap(Py_ssize_t& pos, PyObject*& key, const std::string& name_input, PyObject*& value,
-                                  PyObject* item, std::map<KeyType, ValueType>& current,
-                                  KeyGetterType keyGetter, ValueGetterType valueGetter) {
+static void CreateMapMLValue_LoopIntoMap(Py_ssize_t& pos, PyObject*& key, const std::string& name_input, PyObject*& value,
+                                         PyObject* item, std::map<KeyType, ValueType>& current,
+                                         KeyGetterType keyGetter, ValueGetterType valueGetter) {
   KeyType ckey;
   ValueType cvalue;
   do {
@@ -427,9 +453,9 @@ void CreateMapMLValue_LoopIntoMap(Py_ssize_t& pos, PyObject*& key, const std::st
 }
 
 template <typename KeyType, typename ValueType, typename KeyGetterType, typename ValueGetterType>
-void CreateMapMLValue_Map(Py_ssize_t& pos, PyObject*& key, const std::string& name_input, PyObject*& value,
-                          PyObject* item, AllocatorPtr /*alloc*/, OrtValue* p_mlvalue, KeyGetterType keyGetter,
-                          ValueGetterType valueGetter) {
+static void CreateMapMLValue_Map(Py_ssize_t& pos, PyObject*& key, const std::string& name_input, PyObject*& value,
+                                 PyObject* item, AllocatorPtr /*alloc*/, OrtValue* p_mlvalue, KeyGetterType keyGetter,
+                                 ValueGetterType valueGetter) {
   std::unique_ptr<std::map<KeyType, ValueType>> dst;
   dst = onnxruntime::make_unique<std::map<KeyType, ValueType>>();
   CreateMapMLValue_LoopIntoMap(pos, key, name_input, value, item, *dst, keyGetter, valueGetter);
@@ -455,8 +481,8 @@ void CreateMapMLValue_VectorMap(Py_ssize_t& pos, PyObject*& key, const std::stri
                   DataTypeImpl::GetType<std::vector<std::map<KeyType, ValueType>>>()->GetDeleteFunc());
 }
 
-void CreateMapMLValue_AgnosticMap(Py_ssize_t& pos, PyObject*& key, const std::string& name_input, PyObject*& value,
-                                  PyObject* iterator, PyObject* item, AllocatorPtr alloc, OrtValue* p_mlvalue) {
+static void CreateMapMLValue_AgnosticMap(Py_ssize_t& pos, PyObject*& key, const std::string& name_input, PyObject*& value,
+                                         PyObject* iterator, PyObject* item, AllocatorPtr alloc, OrtValue* p_mlvalue) {
   // If iterator is NULL, it returns a single Map,
   // if is not NULL, it returns a VectorMap.
   auto int64Getter = [](PyObject* obj, int64_t& value) -> bool {
@@ -526,8 +552,8 @@ void CreateMapMLValue_AgnosticMap(Py_ssize_t& pos, PyObject*& key, const std::st
   }
 }
 
-void CreateMapMLValue_AgnosticVectorMap(PyObject* iterator, PyObject* item, AllocatorPtr alloc,
-                                        const std::string& name_input, OrtValue* p_mlvalue) {
+static void CreateMapMLValue_AgnosticVectorMap(PyObject* iterator, PyObject* item, AllocatorPtr alloc,
+                                               const std::string& name_input, OrtValue* p_mlvalue) {
   // CreateMapMLValue is called by CreateGenericTerableMLValue
   // or CreateGenericMLValue which ensures
   // item is a dictionary, no need to check type again.
@@ -552,15 +578,15 @@ void CreateMapMLValue_AgnosticVectorMap(PyObject* iterator, PyObject* item, Allo
 }
 #endif
 
-void CreateGenericIterableMLValue(PyObject* iterator, AllocatorPtr alloc, const std::string& name_input,
-                                  OrtValue* p_mlvalue) {
+static void CreateGenericIterableMLValue(PyObject* iterator, AllocatorPtr alloc, const std::string& name_input,
+                                         OrtValue* p_mlvalue) {
   PyObject* item;
   OrtValue ml_value;
   item = PyIter_Next(iterator);
   if (item == NULL) {
     throw std::runtime_error("Input '" + name_input + "' must not be empty.");
   }
-  if (PyObjectCheck_Array(item)) {
+  if (PyObjectCheck_NumpyArray(item)) {
     PyObject* pType = PyObject_Type(item);
     PyObject* pStr = PyObject_Str(pType);
     py::str spyType = py::reinterpret_borrow<py::str>(pStr);
@@ -585,14 +611,19 @@ void CreateGenericIterableMLValue(PyObject* iterator, AllocatorPtr alloc, const 
   }
 }
 
+// Setting `use_numpy_data_memory` to `true` will ensure that the underlying numpy array buffer is directly used
+// as the backing data buffer for the ORT Tensor where applicable (for numeric tensors)
+// The numpy object owns the memory and needs to be alive until the corresponding OrtValue is in scope
 void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, const AllocatorPtr& alloc, const std::string& name_input,
-                          py::object& value, OrtValue* p_mlvalue) {
+                          py::object& value, OrtValue* p_mlvalue, bool accept_only_numpy_array,
+                          bool use_numpy_data_memory, MemCpyFunc mem_cpy_to_device) {
   onnx::TypeProto type_proto;
-  if (PyObjectCheck_Array(value.ptr())) {
+  if (PyObjectCheck_NumpyArray(value.ptr())) {
     // The most frequent case: input comes as an array.
     PyArrayObject* arr = reinterpret_cast<PyArrayObject*>(value.ptr());
-    CreateTensorMLValue(alloc, name_input, arr, p_mlvalue);
-  } else if (PyList_Check(value.ptr()) &&
+    CreateTensorMLValue(alloc, name_input, arr, p_mlvalue, use_numpy_data_memory, mem_cpy_to_device);
+  } else if (!accept_only_numpy_array &&
+             PyList_Check(value.ptr()) &&
              !CheckIfInputIsSequenceType(name_input, input_def_list, type_proto)) {
     // This is not a sequence tensor. This is just a regular tensor fed through as a list.
     ORT_ENFORCE(type_proto.tensor_type().has_elem_type(), "The graph is missing type information needed to construct the ORT tensor");
@@ -612,12 +643,12 @@ void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, const
 
     // The allocator will own the array memory and will decrement the reference on Free()
     // or when destroyed
-    auto pybind_allloc = std::make_shared<OrtPybindSingleUseAllocator>(arr, name_input, alloc->Info());
-    CreateTensorMLValueOwned(pybind_allloc, alloc, p_mlvalue);
-  } else if (PyList_Check(value.ptr())) {
+    auto pybind_alloc = std::make_shared<OrtPybindSingleUseAllocator>(arr, name_input, alloc->Info());
+    CreateTensorMLValueOwned(pybind_alloc, alloc, p_mlvalue);
+  } else if (!accept_only_numpy_array && PyList_Check(value.ptr())) {
     auto* seq_tensors = reinterpret_cast<PyObject*>(value.ptr());
     CreateSequenceOfTensors(alloc, name_input, input_def_list, seq_tensors, p_mlvalue);
-  } else if (PyDict_Check(value.ptr())) {
+  } else if (!accept_only_numpy_array && PyDict_Check(value.ptr())) {
 #if !defined(DISABLE_ML_OPS)
     CreateMapMLValue_AgnosticVectorMap((PyObject*)NULL, value.ptr(), alloc, name_input, p_mlvalue);
 #else
@@ -625,7 +656,13 @@ void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, const
     throw std::runtime_error("Map type is not supported in this build.");
 #endif
 
-  } else {
+  } else if (!accept_only_numpy_array && strcmp(Py_TYPE(value.ptr())->tp_name, "OrtValue") == 0) {
+    // This is an OrtValue coming in directly from Python, so assign the underlying native OrtValue handle
+    // to the OrtValue object that we are going to use for Run().
+    // This should just increase the ref counts of the underlying shared_ptrs in the native OrtValue
+    // and the ref count will be decreased when the OrtValue used for Run() is destroyed upon exit.
+    *p_mlvalue = value.attr("_ortvalue").cast<OrtValue>();
+  } else if (!accept_only_numpy_array) {
     auto iterator = PyObject_GetIter(value.ptr());
     if (iterator == NULL) {
       // The pype cannot be handled.
@@ -646,6 +683,8 @@ void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, const
       throw;
     }
     Py_DECREF(iterator);
+  } else {
+    throw std::runtime_error("Unable to create OrtValue from the given python object");
   }
 }
 

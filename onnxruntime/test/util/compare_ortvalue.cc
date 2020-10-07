@@ -40,6 +40,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
+#include <core/session/onnxruntime_cxx_api.h>
 
 using namespace onnxruntime;
 

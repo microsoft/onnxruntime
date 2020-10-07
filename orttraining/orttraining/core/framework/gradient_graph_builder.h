@@ -60,7 +60,6 @@ static std::unordered_map<std::string, std::unordered_set<size_t>>
         {"Where", {0}},
         {"Range", {0, 1, 2}},
         {"Tile", {1}},
-        {"NonZero", {0}},
         {"BroadcastGradientArgs", {0, 1}}};
 
 class GradientGraphBuilder {
@@ -90,6 +89,7 @@ class GradientGraphBuilder {
 
   NodeSet y_nodes_;
   NodeSet x_nodes_;
+  NodeSet reachable_nodes_;
 
   Graph* graph_;
 
@@ -118,14 +118,22 @@ class GradientGraphBuilder {
   @param nodes Starting nodes for ReverseBFS
   @returns All the nodes visited during ReverseBFS
   */
-  NodeSet ReverseBFS(const NodeSet& nodes);
+  NodeSet ReverseBFS(const NodeSet& nodes) const;
 
   /**
   Check if 'x_node_args_' are reachable from 'y_node_args_' for computing the partial derivative
   @param reachable_nodes All the nodes reachable from the 'y_node_args_'
   @returns OK if all 'x_node_args_' are reachable, else an ONNXRUNTIME INVALID_ARGUMENT status
   */
-  Status CheckNodeArgsReachable(const NodeSet& reachable_nodes);
+
+  Status CheckNodeArgsReachable() const;
+
+  /** 
+  Check if node is reachable from the 'y_node_args_'
+   **/
+  bool IsReachable(const Node* node) const {
+    return reachable_nodes_.find(node) != reachable_nodes_.end();
+  }
 };
 
 }  // namespace training

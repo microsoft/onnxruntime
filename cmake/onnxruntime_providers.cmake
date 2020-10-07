@@ -304,7 +304,6 @@ if (onnxruntime_USE_TENSORRT OR onnxruntime_USE_DNNL)
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_shared_cc_srcs})
   add_library(onnxruntime_providers_shared SHARED ${onnxruntime_providers_shared_cc_srcs})
-  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/shared  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_shared PROPERTIES FOLDER "ONNXRuntime")
   set_target_properties(onnxruntime_providers_shared PROPERTIES LINKER_LANGUAGE CXX)
 
@@ -318,6 +317,10 @@ if (onnxruntime_USE_TENSORRT OR onnxruntime_USE_DNNL)
     message(FATAL_ERROR "onnxruntime_providers_shared unknown platform, need to specify shared library exports for it")
   endif()
 
+  install(TARGETS onnxruntime_providers_shared
+          ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+          LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+          RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 
 if (onnxruntime_USE_DNNL)
@@ -354,6 +357,10 @@ if (onnxruntime_USE_DNNL)
     message(FATAL_ERROR "onnxruntime_providers_dnnl unknown platform, need to specify shared library exports for it")
   endif()
 
+  install(TARGETS onnxruntime_providers_dnnl
+          ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+          LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+          RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 
 if (onnxruntime_USE_TENSORRT)
@@ -442,6 +449,11 @@ if (onnxruntime_USE_TENSORRT)
   else()
     message(FATAL_ERROR "onnxruntime_providers_tensorrt unknown platform, need to specify shared library exports for it")
   endif()
+
+  install(TARGETS onnxruntime_providers_tensorrt
+          ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+          LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+          RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 
 if (onnxruntime_USE_NGRAPH)

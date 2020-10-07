@@ -7,11 +7,11 @@ namespace onnxruntime {
 
 /**
  * Fuses MatMul with surrounding scales (multiplies or divides) by a constant
- * scalar into TransposeScaleMatMul.
+ * scalar into FusedMatMul (which supports scaling the product).
  * 
  * For example, given matrices A and B and constant scalars t, u, and v:
  *   Mul(v, MatMul(Mul(t, A), Mul(u, B))
- *     -> TransposeScaleMatMul(A, B, alpha=t*u*v)
+ *     -> FusedMatMul(A, B, alpha=t*u*v)
  *
  * Note: Since both leading and following scales may be fused into a single
  * scale, the order and number of mathematical operations may change. This may

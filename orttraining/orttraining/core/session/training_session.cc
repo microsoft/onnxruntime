@@ -217,11 +217,6 @@ Status TrainingSession::ConfigureForTraining(
     config_result.mixed_precision_config_result = mp_result;
   }
 
-  if (IsRootNode(config) && config.model_with_loss_function_path.has_value()) {
-    ORT_IGNORE_RETURN_VALUE(Save(
-        config.model_with_loss_function_path.value(), SaveOption::NO_RELOAD));
-  }
-
   // We need to get trainable weights to prevent constant folding from them. This works well if trainable weights are passed from config.
   // For case we use GetTrainableModelInitializers to get trainable weights such as C++ frontend, it may get more initializers
   // than trainable weights here as it's before transformers. So the constant folding may miss some nodes we actually can fold.
@@ -238,6 +233,11 @@ Status TrainingSession::ConfigureForTraining(
   }
 
   ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(trainable_initializers, config.graph_transformer_config));
+
+  if (IsRootNode(config) && config.model_with_loss_function_path.has_value()) {
+    ORT_IGNORE_RETURN_VALUE(Save(
+        config.model_with_loss_function_path.value(), SaveOption::NO_RELOAD));
+  }
 
   // derive actual set of weights to train
   std::unordered_set<std::string> weight_names_to_train =
@@ -514,7 +514,7 @@ static Status AddGradientAccumulationNodes(Graph& graph,
 
 Status TrainingSession::ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train,
                                                         const TrainingConfiguration::GraphTransformerConfiguration& config) {
-  GraphTransformerManager graph_transformation_mgr{1};
+  GraphTransformerManager graph_transformation_mgr{2};
   // TODO: ideally we can just reuse the CPU EP registered with the session, but in the training session case
   // the EPs are registered after ConfigureForTraining and before Initialize is called. Hence we don't have access
   // to the registered CPU EP at this stage. Hence creating the EP here again. This is still much better than
@@ -662,7 +662,8 @@ Status TrainingSession::EnableMixedPrecision(
       weights_to_train,
       mixed_precision_config.use_mixed_precision_initializers,
       mixed_precision_config.TensorProtoDataType(),
-      fp32_weight_name_to_mixed_precision_node_arg));
+      fp32_weight_name_to_mixed_precision_node_arg,
+      mixed_precision_config.layernorm_stash_as_fp32));
 
   std::unordered_set<std::string> mixed_precision_weight_initializer_names{};
   std::transform(

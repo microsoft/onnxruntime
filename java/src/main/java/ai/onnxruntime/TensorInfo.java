@@ -251,16 +251,16 @@ public class TensorInfo implements ValueInfo {
 
     long elementCount = OrtUtil.elementCount(shape);
 
-    long bufferCapacity = buffer.capacity();
+    long bufferRemaining = buffer.remaining();
 
-    if (elementCount != bufferCapacity) {
+    if (elementCount != bufferRemaining) {
       throw new OrtException(
           "Shape "
               + Arrays.toString(shape)
               + ", requires "
               + elementCount
               + " elements but the buffer has "
-              + bufferCapacity
+              + bufferRemaining
               + " elements.");
     }
 
