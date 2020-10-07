@@ -29,6 +29,9 @@ void ExperimentalReduceSum(Tensor* output, const Tensor& input, const std::vecto
                            OpKernelContext* ctx);
 
 template <typename T>
+void CommonCompute(OpKernelContext* ctx, const std::vector<int64_t> axes_, int64_t keepdims_);
+
+template <typename T>
 bool PrepareForReduce(const Tensor* input_tensor_ptr,
                       FastAllocVector<T>& transposed_input_data,
                       int64_t& block_size,

@@ -797,13 +797,11 @@ void ExperimentalReduceSum(Tensor* output, const Tensor& input, const std::vecto
 }
 
 template <typename T>
-Status ReduceSum<T>::Compute(OpKernelContext* ctx) const {
+void CommonCompute(OpKernelContext* ctx, const std::vector<int64_t> axes_, int64_t keepdims_) {
   const Tensor* input = ctx->Input<Tensor>(0);
 
   std::vector<int64_t> axes;
-  /*bool no_transpose_ = */
   NeedsTransposeForReduce(input, axes_, axes, nullptr);
-  /*if (no_transpose_) {*/
   auto reduced_dims = input->Shape().GetDims();
   for (auto i : axes) {
     reduced_dims[i] = 1;
@@ -825,20 +823,11 @@ Status ReduceSum<T>::Compute(OpKernelContext* ctx) const {
     output = ctx->Output(0, dropped_dims2);
   }
   ExperimentalReduceSum<T>(output, *input, axes, ctx);
-  /*
-  }else {
-    int64_t block_size;
-    int64_t blocks;
-    FastAllocVector<T> transposed_input_data(GetAllocator<T>(*ctx));
-    std::vector<int64_t> reduced_dims;
-    bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes_, keepdims_, reduced_dims, true);
+}
 
-    auto* output = ctx->Output(0, reduced_dims);
-
-    ReduceSumCore(input->template Data<T>(), output->template MutableData<T>(),
-                  no_transpose, blocks, block_size, transposed_input_data, ctx->GetOperatorThreadPool());
-  }
-  */
+template <typename T>
+Status ReduceSum<T>::Compute(OpKernelContext* ctx) const {
+  CommonCompute<T>(ctx, axes_, keepdims_);
   return Status::OK();
 }
 
