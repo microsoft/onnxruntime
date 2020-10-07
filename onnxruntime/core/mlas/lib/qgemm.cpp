@@ -82,6 +82,123 @@ MlasGemmU8X8ScaleSumBuffer(
     return MlasGemmU8X8ScaleSumBuffer(SumBuffer, SumBuffer, N, Scale);
 }
 
+void
+MlasGemmU8X8OutputFloat(
+    const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock,
+    int32_t* C,
+    size_t StartN,
+    size_t CountM,
+    size_t CountN
+    )
+/*++
+
+Routine Description:
+
+    This routine converts the output matrix to a floating point format using
+    the supplied scale and bias parameters.
+
+Arguments:
+
+    WorkBlock - Supplies the structure containing the GEMM parameters.
+
+    C - Supplies the address of matrix C.
+
+    StartN - Supplies the starting column offset relative to the base of the
+        work block. This is used to offset into column vectors accessed via the
+        work block.
+
+    CountM - Supplies the number of rows of the output matrix to process.
+
+    CountN - Supplies the number of columns of the output matrix to process.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    const size_t ldc = WorkBlock->ldc;
+    const MLAS_FLOAT32X4 ScaleVector = MlasBroadcastFloat32x4(WorkBlock->Scale);
+#if !defined(MLAS_SSE2_INTRINSICS)
+    const float ScaleValue = MlasExtractLaneFloat32x4<0>(ScaleVector);
+#endif
+
+    //
+    // Check if the optional bias vector was supplied.
+    //
+
+    const float* BiasFloat = WorkBlock->BiasFloat;
+
+    if (BiasFloat != nullptr) {
+
+        BiasFloat += WorkBlock->RangeStartN + StartN;
+
+        while (CountM-- > 0) {
+
+            const float* bias = BiasFloat;
+            int32_t* c = C;
+            size_t n = CountN;
+
+            while (n >= 4) {
+
+                MLAS_FLOAT32X4 FloatVector = MlasCastToFloat32x4(MlasLoadInt32x4(c));
+                FloatVector = MlasMultiplyFloat32x4(FloatVector, ScaleVector);
+                FloatVector = MlasAddFloat32x4(FloatVector, MlasLoadFloat32x4(bias));
+                MlasStoreFloat32x4(reinterpret_cast<float*>(c), FloatVector);
+
+                bias += 4;
+                c += 4;
+                n -= 4;
+            }
+
+            for (size_t offset = 0; offset < n; offset++) {
+
+#if defined(MLAS_SSE2_INTRINSICS)
+                __m128 FloatVector = _mm_set_ss(float(c[offset]));
+                FloatVector = _mm_mul_ss(FloatVector, ScaleVector);
+                FloatVector = _mm_add_ss(FloatVector, _mm_load_ss(&bias[offset]));
+                _mm_store_ss(reinterpret_cast<float*>(&c[offset]), FloatVector);
+#else
+                *reinterpret_cast<float*>(&c[offset]) = float(c[offset]) * ScaleValue + bias[offset];
+#endif
+            }
+
+            C += ldc;
+        }
+
+    } else {
+
+        while (CountM-- > 0) {
+
+            int32_t* c = C;
+            size_t n = CountN;
+
+            while (n >= 4) {
+
+                MLAS_FLOAT32X4 FloatVector = MlasCastToFloat32x4(MlasLoadInt32x4(c));
+                FloatVector = MlasMultiplyFloat32x4(FloatVector, ScaleVector);
+                MlasStoreFloat32x4(reinterpret_cast<float*>(c), FloatVector);
+
+                c += 4;
+                n -= 4;
+            }
+
+            for (size_t offset = 0; offset < n; offset++) {
+
+#if defined(MLAS_SSE2_INTRINSICS)
+                __m128 FloatVector = _mm_set_ss((float)c[offset]);
+                FloatVector = _mm_mul_ss(FloatVector, ScaleVector);
+                _mm_store_ss(reinterpret_cast<float*>(&c[offset]), FloatVector);
+#else
+                *reinterpret_cast<float*>(&c[offset]) = float(c[offset]) * ScaleValue;
+#endif
+            }
+
+            C += ldc;
+        }
+    }
+}
+
 template<typename KernelType>
 void
 MLASCALL
@@ -143,11 +260,17 @@ Return Value:
     // signed types and the matrix B data is unsigned.
     //
 
+#if defined(MLAS_SSE2_INTRINSICS)
     if (std::is_signed<typename KernelType::OffsetBType>::value) {
         if (!WorkBlock->BIsSigned) {
             offb = typename KernelType::OffsetBType(offb ^ 0x80);
         }
     }
+#elif defined(MLAS_NEON64_INTRINSICS)
+    if (WorkBlock->BIsSigned) {
+        offb = typename KernelType::OffsetBType(offb ^ 0x80);
+    }
+#endif
 
     //
     // Step through each slice of matrix B along the K dimension.
@@ -222,7 +345,7 @@ Return Value:
                         DepthValue, ZeroMode);
 
                     if (PostProcess && WorkBlock->CIsFloat) {
-                        KernelType::OutputFloat(WorkBlock, c, n, RowsHandled, CountN);
+                        MlasGemmU8X8OutputFloat(WorkBlock, c, n, RowsHandled, CountN);
                     }
 
                     c += ldc * RowsHandled;
@@ -287,11 +410,17 @@ Return Value:
     // signed types and the matrix B data is unsigned.
     //
 
+#if defined(MLAS_SSE2_INTRINSICS)
     if (std::is_signed<typename KernelType::OffsetBType>::value) {
         if (!WorkBlock->BIsSigned) {
             offb = typename KernelType::OffsetBType(offb ^ 0x80);
         }
     }
+#elif defined(MLAS_NEON64_INTRINSICS)
+    if (WorkBlock->BIsSigned) {
+        offb = typename KernelType::OffsetBType(offb ^ 0x80);
+    }
+#endif
 
     //
     // Extract the pointer to the column sum buffer from the packed matrix.
@@ -378,7 +507,7 @@ Return Value:
                         DepthValue, ZeroMode);
 
                     if (PostProcess && WorkBlock->CIsFloat) {
-                        KernelType::OutputFloat(WorkBlock, c, n, RowsHandled, CountN);
+                        MlasGemmU8X8OutputFloat(WorkBlock, c, n, RowsHandled, CountN);
                     }
 
                     c += ldc * RowsHandled;
@@ -394,7 +523,7 @@ Return Value:
     }
 }
 
-#ifdef MLAS_TARGET_AMD64_IX86
+#ifdef MLAS_SSE2_INTRINSICS
 
 void
 MlasGemmU8X8CopyPackASse(
@@ -641,7 +770,6 @@ Return Value:
 
         _mm_storeu_si128((__m128i*)&ColumnSumBuffer[0], ColumnSums[0]);
         _mm_storeu_si128((__m128i*)&ColumnSumBuffer[4], ColumnSums[1]);
-
         ColumnSumBuffer += 8;
 
         B += 8;
@@ -914,112 +1042,6 @@ Return Value:
     }
 }
 
-void
-MlasGemmU8X8OutputFloatSse(
-    const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock,
-    int32_t* C,
-    size_t StartN,
-    size_t CountM,
-    size_t CountN
-    )
-/*++
-
-Routine Description:
-
-    This routine is an inner kernel to compute matrix multiplication for a
-    single row.
-
-Arguments:
-
-    WorkBlock - Supplies the structure containing the GEMM parameters.
-
-    C - Supplies the address of matrix C.
-
-    StartN - Supplies the starting column offset relative to the base of the
-        work block. This is used to offset into column vectors accessed via the
-        work block.
-
-    CountM - Supplies the number of rows of the output matrix to process.
-
-    CountN - Supplies the number of columns of the output matrix to process.
-
-Return Value:
-
-    None.
-
---*/
-{
-    const size_t ldc = WorkBlock->ldc;
-    __m128 ScaleVector = _mm_load_ps1(WorkBlock->Scale);
-
-    //
-    // Check if the optional bias vector was supplied.
-    //
-
-    const float* BiasFloat = WorkBlock->BiasFloat;
-
-    if (BiasFloat != nullptr) {
-
-        BiasFloat += WorkBlock->RangeStartN + StartN;
-
-        while (CountM-- > 0) {
-
-            const float* bias = BiasFloat;
-            int32_t* c = C;
-            size_t n = CountN;
-
-            while (n >= 4) {
-
-                __m128 FloatVector = _mm_cvtepi32_ps(_mm_loadu_si128((__m128i*)c));
-                FloatVector = _mm_mul_ps(FloatVector, ScaleVector);
-                FloatVector = _mm_add_ps(FloatVector, _mm_loadu_ps(bias));
-                _mm_storeu_ps((float*)c, FloatVector);
-
-                bias += 4;
-                c += 4;
-                n -= 4;
-            }
-
-            for (size_t offset = 0; offset < n; offset++) {
-
-                __m128 FloatVector = _mm_set_ss(float(c[offset]));
-                FloatVector = _mm_mul_ss(FloatVector, ScaleVector);
-                FloatVector = _mm_add_ss(FloatVector, _mm_load_ss(&bias[offset]));
-                _mm_store_ss((float*)&c[offset], FloatVector);
-            }
-
-            C += ldc;
-        }
-
-    } else {
-
-        while (CountM-- > 0) {
-
-            int32_t* c = C;
-            size_t n = CountN;
-
-            while (n >= 4) {
-
-                __m128 FloatVector = _mm_cvtepi32_ps(_mm_loadu_si128((__m128i*)c));
-                FloatVector = _mm_mul_ps(FloatVector, ScaleVector);
-                _mm_storeu_ps((float*)c, FloatVector);
-
-                c += 4;
-                n -= 4;
-            }
-
-            for (size_t offset = 0; offset < n; offset++) {
-
-                __m128 FloatVector = _mm_set_ss((float)c[offset]);
-                FloatVector = _mm_mul_ss(FloatVector, ScaleVector);
-                _mm_store_ss((float*)&c[offset], FloatVector);
-            }
-
-            C += ldc;
-        }
-    }
-}
-
 struct MLAS_GEMM_U8X8_KERNEL_SSE
 {
     typedef int16_t PackedAType;
@@ -1109,20 +1131,6 @@ struct MLAS_GEMM_U8X8_KERNEL_SSE
             ColumnSumBuffer, DepthValue, ZeroMode);
 
         return 1;
-    }
-
-    MLAS_FORCEINLINE
-    static
-    void
-    OutputFloat(
-        const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock,
-        int32_t* C,
-        size_t StartN,
-        size_t CountM,
-        size_t CountN
-        )
-    {
-        MlasGemmU8X8OutputFloatSse(WorkBlock, C, StartN, CountM, CountN);
     }
 };
 
@@ -1282,20 +1290,6 @@ struct MLAS_GEMM_U8S8_KERNEL_AVX2
         return MlasPlatform.GemmU8S8Kernel(A, B, C, PackedCountK, CountM, CountN,
             ldc, RowSumBuffer, ColumnSumBuffer, DepthValue, ZeroMode);
     }
-
-    MLAS_FORCEINLINE
-    static
-    void
-    OutputFloat(
-        const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock,
-        int32_t* C,
-        size_t StartN,
-        size_t CountM,
-        size_t CountN
-        )
-    {
-        MlasGemmU8X8OutputFloatSse(WorkBlock, C, StartN, CountM, CountN);
-    }
 };
 
 constexpr size_t MLAS_GEMM_U8S8_KERNEL_AVX2::PackedK;
@@ -1401,20 +1395,6 @@ struct MLAS_GEMM_U8U8_KERNEL_AVX2
         return MlasPlatform.GemmU8U8Kernel(A, B, C, PackedCountK, CountM, CountN,
             ldc, RowSumBuffer, ColumnSumBuffer, DepthValue, ZeroMode);
     }
-
-    MLAS_FORCEINLINE
-    static
-    void
-    OutputFloat(
-        const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock,
-        int32_t* C,
-        size_t StartN,
-        size_t CountM,
-        size_t CountN
-        )
-    {
-        MlasGemmU8X8OutputFloatSse(WorkBlock, C, StartN, CountM, CountN);
-    }
 };
 
 constexpr size_t MLAS_GEMM_U8U8_KERNEL_AVX2::PackedK;
@@ -1436,7 +1416,557 @@ MlasGemmU8X8PackedOperation<MLAS_GEMM_U8U8_KERNEL_AVX2>(
 
 #endif
 
-#ifdef MLAS_TARGET_AMD64_IX86
+#ifdef MLAS_NEON64_INTRINSICS
+
+//
+// Define the prototypes of the NEON routines written in assembly.
+//
+
+extern "C"
+size_t
+MLASCALL
+MlasGemmU8X8KernelNeon(
+    const uint8_t* A,
+    const uint8_t* B,
+    int32_t* C,
+    size_t PackedCountK,
+    size_t CountM,
+    size_t CountN,
+    size_t ldc,
+    const int32_t* RowSumVector,
+    const int32_t* ColumnSumVector,
+    int32_t DepthValue,
+    bool ZeroMode
+    );
+
+void
+MLASCALL
+MlasGemmU8X8CopyPackANeon(
+    uint8_t* D,
+    const uint8_t* A,
+    size_t lda,
+    size_t CountM,
+    size_t CountK,
+    int32_t* RowSumBuffer
+    )
+/*++
+
+Routine Description:
+
+    This routine copies elements from the source matrix to the destination
+    packed buffer.
+
+Arguments:
+
+    D - Supplies the address of the destination packed buffer.
+
+    A - Supplies the address of the source matrix.
+
+    lda - Supplies the number of elements per row of the source matrix.
+
+    CountM - Supplies the number of rows of the source matrix to copy.
+
+    CountK - Supplies the number of columns of the source matrix to copy.
+
+    RowSumBuffer - Supplies the address of the buffer to receive the sums of
+        the elements along each of the rows.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    uint8_t PaddedMatrixAData[16];
+
+    //
+    // Process four rows of matrix A in a loop.
+    //
+    // The buffer is packed as a series of 16 byte vectors where four rows are
+    // interleaved with the following pattern:
+    //
+    //      [ A0 A1 A2 A3 B0 B1 B2 B3 C0 C1 C2 C3 D0 D1 D2 D3 ]
+    //      [ A4 A5 A6 A7 B4 B5 B6 B7 C4 C5 C6 C7 D4 D5 D6 D7 ]
+    //
+    // This pattern is repeated (CountK / 4) times.
+    //
+    // If CountK is not aligned to a multiple of four, then the vector is padded
+    // with zeroes.
+    //
+
+    while (CountM >= 4) {
+
+        const uint8_t* a0 = A;
+        const uint8_t* a1 = a0 + lda;
+        const uint8_t* a2 = a1 + lda;
+        const uint8_t* a3 = a2 + lda;
+
+        size_t k = CountK;
+        uint32x4_t RowSums = vmovq_n_u32(0);
+
+        while (k >= 16) {
+
+            uint32x4_t v0 = vld1q_u32(reinterpret_cast<const uint32_t*>(a0));
+            a0 += 16;
+            uint32x4_t v1 = vld1q_u32(reinterpret_cast<const uint32_t*>(a1));
+            a1 += 16;
+            uint32x4_t v2 = vld1q_u32(reinterpret_cast<const uint32_t*>(a2));
+            a2 += 16;
+            uint32x4_t v3 = vld1q_u32(reinterpret_cast<const uint32_t*>(a3));
+            a3 += 16;
+
+            uint32x4_t z0 = vzip1q_u32(v0, v2);
+            uint32x4_t z1 = vzip2q_u32(v0, v2);
+            uint32x4_t z2 = vzip1q_u32(v1, v3);
+            uint32x4_t z3 = vzip2q_u32(v1, v3);
+            v0 = vzip1q_u32(z0, z2);
+            v1 = vzip2q_u32(z0, z2);
+            v2 = vzip1q_u32(z1, z3);
+            v3 = vzip2q_u32(z1, z3);
+
+            vst1q_u8(&D[0], vreinterpretq_u8_u32(v0));
+            vst1q_u8(&D[16], vreinterpretq_u8_u32(v1));
+            vst1q_u8(&D[32], vreinterpretq_u8_u32(v2));
+            vst1q_u8(&D[48], vreinterpretq_u8_u32(v3));
+
+            RowSums = vpadalq_u16(RowSums, vpaddlq_u8(vreinterpretq_u8_u32(v0)));
+            RowSums = vpadalq_u16(RowSums, vpaddlq_u8(vreinterpretq_u8_u32(v1)));
+            RowSums = vpadalq_u16(RowSums, vpaddlq_u8(vreinterpretq_u8_u32(v2)));
+            RowSums = vpadalq_u16(RowSums, vpaddlq_u8(vreinterpretq_u8_u32(v3)));
+
+            D += 64;
+            k -= 16;
+        }
+
+        uint32x4_t GatherVector = vmovq_n_u32(0);
+
+        while (k >= 4) {
+
+            GatherVector = vld1q_lane_u32(reinterpret_cast<const uint32_t*>(a0), GatherVector, 0);
+            a0 += 4;
+            GatherVector = vld1q_lane_u32(reinterpret_cast<const uint32_t*>(a1), GatherVector, 1);
+            a1 += 4;
+            GatherVector = vld1q_lane_u32(reinterpret_cast<const uint32_t*>(a2), GatherVector, 2);
+            a2 += 4;
+            GatherVector = vld1q_lane_u32(reinterpret_cast<const uint32_t*>(a3), GatherVector, 3);
+            a3 += 4;
+
+            uint8x16_t PackedVector = vreinterpretq_u8_u32(GatherVector);
+            vst1q_u8(D, PackedVector);
+
+            RowSums = vpadalq_u16(RowSums, vpaddlq_u8(PackedVector));
+
+            D += 16;
+            k -= 4;
+        }
+
+        if (k > 0) {
+
+            //
+            // Copy the remaining bytes to the zero padded stack buffer.
+            //
+
+            uint8_t* d = PaddedMatrixAData;
+
+            vst1q_u8(PaddedMatrixAData, vmovq_n_u8(0));
+
+            while (k > 0) {
+
+                d[0] = *a0++;
+                d[4] = *a1++;
+                d[8] = *a2++;
+                d[12] = *a3++;
+
+                d += 1;
+                k -= 1;
+            }
+
+            uint8x16_t PackedVector = vld1q_u8(PaddedMatrixAData);
+            vst1q_u8(D, PackedVector);
+
+            RowSums = vpadalq_u16(RowSums, vpaddlq_u8(PackedVector));
+
+            D += 16;
+        }
+
+        vst1q_s32(RowSumBuffer, vreinterpretq_s32_u32(RowSums));
+        RowSumBuffer += 4;
+
+        A = A + lda * 4;
+        CountM -= 4;
+    }
+
+    //
+    // Process two rows of matrix A.
+    //
+    // The buffer is packed as a series of 8 byte vectors where two rows are
+    // interleaved with the following pattern:
+    //
+    //      [ A0 A1 A2 A3 B0 B1 B2 B3 ]
+    //      [ A4 A5 A6 A7 B4 B5 B6 B7 ]
+    //
+    // This pattern is repeated (CountK / 4) times.
+    //
+    // If CountK is not aligned to a multiple of four, then the vector is padded
+    // with zeroes.
+    //
+
+    if ((CountM & 2) != 0) {
+
+        const uint8_t* a0 = A;
+        const uint8_t* a1 = a0 + lda;
+
+        size_t k = CountK;
+        uint32x2_t RowSums = vmov_n_u32(0);
+        uint32x2_t GatherVector = vmov_n_u32(0);
+
+        while (k >= 4) {
+
+            GatherVector = vld1_lane_u32(reinterpret_cast<const uint32_t*>(a0), GatherVector, 0);
+            a0 += 4;
+            GatherVector = vld1_lane_u32(reinterpret_cast<const uint32_t*>(a1), GatherVector, 1);
+            a1 += 4;
+
+            uint8x8_t PackedVector = vreinterpret_u8_u32(GatherVector);
+            vst1_u8(D, PackedVector);
+
+            RowSums = vpadal_u16(RowSums, vpaddl_u8(PackedVector));
+
+            D += 8;
+            k -= 4;
+        }
+
+        if (k > 0) {
+
+            //
+            // Copy the remaining bytes to the zero padded stack buffer.
+            //
+
+            uint8_t* d = PaddedMatrixAData;
+
+            vst1q_u8(PaddedMatrixAData, vmovq_n_u8(0));
+
+            while (k > 0) {
+
+                d[0] = *a0++;
+                d[4] = *a1++;
+
+                d += 1;
+                k -= 1;
+            }
+
+            uint8x8_t PackedVector = vld1_u8(PaddedMatrixAData);
+            vst1_u8(D, PackedVector);
+
+            RowSums = vpadal_u16(RowSums, vpaddl_u8(PackedVector));
+
+            D += 8;
+        }
+
+        vst1_s32(RowSumBuffer, vreinterpret_s32_u32(RowSums));
+        RowSumBuffer += 2;
+
+        A = A + lda * 2;
+        CountM -= 2;
+    }
+
+    //
+    // Process one row of matrix A.
+    //
+    // The buffer is packed as a series of 4 byte with the following pattern:
+    //
+    //      [ A0 A1 A2 A3 ]
+    //      [ A4 A5 A6 A7 ]
+    //
+    // This pattern is repeated (CountK / 4) times.
+    //
+    // If CountK is not aligned to a multiple of four, then the vector is padded
+    // with zeroes.
+    //
+
+    if ((CountM & 1) != 0) {
+
+        const uint8_t* a = A;
+        size_t k = CountK;
+        uint32x4_t RowSums = vmovq_n_u32(0);
+
+        while (k >= 16) {
+
+            uint8x16_t v = vld1q_u8(a);
+            a += 16;
+
+            vst1q_u8(D, v);
+
+            RowSums = vpadalq_u16(RowSums, vpaddlq_u8(v));
+
+            D += 16;
+            k -= 16;
+        }
+
+        if (k > 0) {
+
+            //
+            // Copy the remaining bytes to the zero padded stack buffer.
+            //
+
+            vst1q_u8(PaddedMatrixAData, vmovq_n_u8(0));
+
+            for (size_t kk = 0; kk < k; kk++) {
+                PaddedMatrixAData[kk] = a[kk];
+            }
+
+            uint8x16_t v = vld1q_u8(PaddedMatrixAData);
+            vst1q_u8(D, v);
+
+            RowSums = vpadalq_u16(RowSums, vpaddlq_u8(v));
+        }
+
+        *RowSumBuffer = int32_t(vaddvq_u32(RowSums));
+    }
+}
+
+MLAS_FORCEINLINE
+void
+MlasGemmU8X8CopyPackBProcessNeon(
+    uint8_t* D,
+    const uint8_t* B,
+    uint8x8_t BitFlipVector,
+    uint32x4_t ColumnSums[2]
+    )
+{
+    uint8x8_t BytesRow = veor_u8(vld1_u8(B), BitFlipVector);
+    vst1_u8(D, BytesRow);
+
+    uint16x8_t WordsRow = vmovl_u8(BytesRow);
+    ColumnSums[0] = vaddq_u32(ColumnSums[0], vmovl_u16(vget_low_u16(WordsRow)));
+    ColumnSums[1] = vaddq_u32(ColumnSums[1], vmovl_high_u16(WordsRow));
+}
+
+void
+MLASCALL
+MlasGemmU8X8CopyPackBNeon(
+    uint8_t* D,
+    const uint8_t* B,
+    size_t ldb,
+    size_t CountN,
+    size_t CountK,
+    int32_t* ColumnSumBuffer,
+    bool BIsSigned
+    )
+/*++
+
+Routine Description:
+
+    This routine copies elements from the source matrix to the destination
+    packed buffer.
+
+Arguments:
+
+    D - Supplies the address of the destination packed buffer.
+
+    B - Supplies the address of the source matrix.
+
+    ldb - Supplies the number of elements per row of the source matrix.
+
+    CountN - Supplies the number of columns of the source matrix to copy.
+
+    CountK - Supplies the number of rows of the source matrix to copy.
+
+    ColumnSumBuffer - Supplies the address of the buffer to receive the sums of
+        the elements along each of the columns.
+
+    BIsSigned - Supplies true if the source matrix is signed data, else false
+        if the source matrix is unsigned data.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    const uint8x8_t BitFlipVector = vdup_n_u8(BIsSigned ? 0x80 : 0);
+    const uint8x8_t ZeroVector = vmov_n_u8(0);
+    const size_t AlignedCountK = (CountK + 3) & ~3;
+
+    //
+    // Process 8 columns of matrix B in a loop.
+    //
+    // Copy columns from matrix B to the packed buffer. Signed buffers are
+    // converted to unsigned buffers in order to share a common kernel.
+    //
+    // If CountK is not aligned to a multiple of four, then the packed buffer
+    // is padded with zero vectors.
+    //
+    // If CountN is not aligned to a multiple of four, then the extra columns
+    // are padded with zeroes.
+    //
+
+    while (CountN >= 8) {
+
+        const uint8_t* b = B;
+        uint32x4_t ColumnSums[2];
+
+        ColumnSums[0] = vmovq_n_u32(0);
+        ColumnSums[1] = vmovq_n_u32(0);
+
+        for (size_t k = CountK; k > 0; k--) {
+
+            MlasGemmU8X8CopyPackBProcessNeon(D, b, BitFlipVector, ColumnSums);
+
+            b += ldb;
+            D += 8;
+        }
+
+        for (size_t k = CountK; k < AlignedCountK; k++) {
+            vst1_u8(D, ZeroVector);
+            D += 8;
+        }
+
+        vst1q_s32(&ColumnSumBuffer[0], vreinterpretq_s32_u32(ColumnSums[0]));
+        vst1q_s32(&ColumnSumBuffer[4], vreinterpretq_s32_u32(ColumnSums[1]));
+        ColumnSumBuffer += 8;
+
+        B += 8;
+        CountN -= 8;
+    }
+
+    //
+    // Process the remaining columns of matrix B.
+    //
+
+    if (CountN > 0) {
+
+        const uint8_t* b = B;
+        uint8_t PaddedMatrixBData[8];
+        uint32x4_t ColumnSums[2];
+
+        vst1_u8(PaddedMatrixBData, ZeroVector);
+
+        ColumnSums[0] = vmovq_n_u32(0);
+        ColumnSums[1] = vmovq_n_u32(0);
+
+        for (size_t k = CountK; k > 0; k--) {
+
+            for (size_t n = 0; n < CountN; n++) {
+                PaddedMatrixBData[n] = b[n];
+            }
+
+            MlasGemmU8X8CopyPackBProcessNeon(D, PaddedMatrixBData, BitFlipVector, ColumnSums);
+
+            b += ldb;
+            D += 8;
+        }
+
+        for (size_t k = CountK; k < AlignedCountK; k++) {
+            vst1_u8(D, ZeroVector);
+            D += 8;
+        }
+
+        vst1q_s32(&ColumnSumBuffer[0], vreinterpretq_s32_u32(ColumnSums[0]));
+        vst1q_s32(&ColumnSumBuffer[4], vreinterpretq_s32_u32(ColumnSums[1]));
+    }
+}
+
+struct MLAS_GEMM_U8X8_KERNEL_NEON
+{
+    typedef uint8_t PackedAType;
+    typedef uint8_t PackedBType;
+    typedef uint8_t OffsetBType;
+
+    static constexpr size_t PackedK = 4;
+    static constexpr MLAS_GEMM_U8X8_STRIDES Strides{24, 128, 256};
+    static constexpr MLAS_GEMM_U8X8_STRIDES PackedStrides{24, 256, 128};
+
+    MLAS_FORCEINLINE
+    static
+    bool
+    TryGemvKernel(
+        const uint8_t* A,
+        const uint8_t* B,
+        size_t ldb,
+        int32_t* C,
+        size_t CountK,
+        size_t CountN,
+        bool BIsSigned
+        )
+    {
+        MLAS_UNREFERENCED_PARAMETER(A);
+        MLAS_UNREFERENCED_PARAMETER(B);
+        MLAS_UNREFERENCED_PARAMETER(ldb);
+        MLAS_UNREFERENCED_PARAMETER(C);
+        MLAS_UNREFERENCED_PARAMETER(CountK);
+        MLAS_UNREFERENCED_PARAMETER(CountN);
+        MLAS_UNREFERENCED_PARAMETER(BIsSigned);
+
+        return false;
+    }
+
+    MLAS_FORCEINLINE
+    static
+    void
+    CopyPackA(
+        PackedAType* D,
+        const uint8_t* A,
+        size_t lda,
+        size_t CountM,
+        size_t CountK,
+        int32_t* RowSumBuffer
+        )
+    {
+        MlasGemmU8X8CopyPackANeon(D, A, lda, CountM, CountK, RowSumBuffer);
+    }
+
+    MLAS_FORCEINLINE
+    static
+    void
+    CopyPackB(
+        PackedBType* D,
+        const uint8_t* B,
+        size_t ldb,
+        size_t CountN,
+        size_t CountK,
+        int32_t* ColumnSumBuffer,
+        bool BIsSigned
+        )
+    {
+        MlasGemmU8X8CopyPackBNeon(D, B, ldb, CountN, CountK, ColumnSumBuffer,
+            BIsSigned);
+    }
+
+    MLAS_FORCEINLINE
+    static
+    size_t
+    GemmKernel(
+        const PackedAType* A,
+        const PackedBType* B,
+        int32_t* C,
+        size_t PackedCountK,
+        size_t CountM,
+        size_t CountN,
+        size_t ldc,
+        const int32_t* RowSumBuffer,
+        const int32_t* ColumnSumBuffer,
+        int32_t DepthValue,
+        bool ZeroMode
+        )
+    {
+        return MlasGemmU8X8KernelNeon(A, B, C, PackedCountK, CountM, CountN, ldc,
+            RowSumBuffer, ColumnSumBuffer, DepthValue, ZeroMode);
+    }
+};
+
+constexpr size_t MLAS_GEMM_U8X8_KERNEL_NEON::PackedK;
+constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8X8_KERNEL_NEON::Strides;
+constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8X8_KERNEL_NEON::PackedStrides;
+
+template
+void
+MLASCALL
+MlasGemmU8X8PackedOperation<MLAS_GEMM_U8X8_KERNEL_NEON>(
+    const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock
+    );
+
+#endif
 
 void
 MlasGemmU8X8Threaded(
@@ -1508,8 +2038,14 @@ Return Value:
     }
 
     GemmU8X8Operation(&WorkBlock);
-#else
+#elif defined(MLAS_SSE2_INTRINSICS)
     MlasGemmU8X8Operation<MLAS_GEMM_U8X8_KERNEL_SSE>(&WorkBlock);
+#elif defined(MLAS_NEON64_INTRINSICS)
+    if (WorkBlock.BIsPacked) {
+        MlasGemmU8X8PackedOperation<MLAS_GEMM_U8X8_KERNEL_NEON>(&WorkBlock);
+    } else {
+        MlasGemmU8X8Operation<MLAS_GEMM_U8X8_KERNEL_NEON>(&WorkBlock);
+    }
 #endif
 }
 
@@ -1785,9 +2321,7 @@ Return Value:
     MlasGemmU8X8Schedule(&WorkBlock, ThreadPool);
 }
 
-#endif
-
-#ifdef MLAS_TARGET_AMD64
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_NEON64_INTRINSICS)
 
 void
 MLASCALL
@@ -2003,17 +2537,14 @@ Return Value:
 --*/
 {
     //
-    // Retrieve the address of the packed operation function for the platform.
-    //
-
-    PMLAS_GEMM_U8X8_OPERATION GemmU8X8Operation = BIsSigned ?
-        MlasPlatform.GemmU8S8PackedOperation : MlasPlatform.GemmU8U8PackedOperation;
-
-    //
     // Retrieve the packing parameters based on the packed operation function.
     //
 
     size_t PackedK;
+
+#if defined(MLAS_TARGET_AMD64)
+    PMLAS_GEMM_U8X8_OPERATION GemmU8X8Operation = BIsSigned ?
+        MlasPlatform.GemmU8S8PackedOperation : MlasPlatform.GemmU8U8PackedOperation;
 
     if (GemmU8X8Operation == &MlasGemmU8X8PackedOperation<MLAS_GEMM_U8S8_KERNEL_AVX2>) {
         PackedK = MLAS_GEMM_U8S8_KERNEL_AVX2::PackedK;
@@ -2022,6 +2553,13 @@ Return Value:
     } else {
         return 0;
     }
+#elif defined(MLAS_NEON64_INTRINSICS)
+    MLAS_UNREFERENCED_PARAMETER(BIsSigned);
+
+    PackedK = MLAS_GEMM_U8X8_KERNEL_NEON::PackedK;
+#else
+#error Unknown architecture.
+#endif
 
     //
     // Compute the number of bytes required to hold the packed buffer.
@@ -2079,18 +2617,15 @@ Return Value:
 --*/
 {
     //
-    // Retrieve the address of the packed operation function for the platform.
-    //
-
-    PMLAS_GEMM_U8X8_OPERATION GemmU8X8Operation = BIsSigned ?
-        MlasPlatform.GemmU8S8PackedOperation : MlasPlatform.GemmU8U8PackedOperation;
-
-    //
     // Retrieve the packing parameters based on the packed operation function.
     //
 
     size_t PackedK;
     size_t StrideK;
+
+#if defined(MLAS_TARGET_AMD64)
+    PMLAS_GEMM_U8X8_OPERATION GemmU8X8Operation = BIsSigned ?
+        MlasPlatform.GemmU8S8PackedOperation : MlasPlatform.GemmU8U8PackedOperation;
 
     if (GemmU8X8Operation == &MlasGemmU8X8PackedOperation<MLAS_GEMM_U8S8_KERNEL_AVX2>) {
         PackedK = MLAS_GEMM_U8S8_KERNEL_AVX2::PackedK;
@@ -2105,6 +2640,12 @@ Return Value:
         throw std::runtime_error("packing unavailable");
 #endif
     }
+#elif defined(MLAS_NEON64_INTRINSICS)
+    PackedK = MLAS_GEMM_U8X8_KERNEL_NEON::PackedK;
+    StrideK = MLAS_GEMM_U8X8_KERNEL_NEON::PackedStrides.K;
+#else
+#error Unknown architecture.
+#endif
 
     //
     // Reserve and initialize storage for the column sum buffer to hold the sums
@@ -2143,11 +2684,17 @@ Return Value:
 
             CountN = std::min(N - n, BatchedN);
 
+#if defined(MLAS_TARGET_AMD64)
             if (GemmU8X8Operation == &MlasGemmU8X8PackedOperation<MLAS_GEMM_U8S8_KERNEL_AVX2>) {
                 MLAS_GEMM_U8S8_KERNEL_AVX2::CopyPackB(pb, B + n, ldb, CountN, CountK, ColumnSumBuffer, BIsSigned);
             } else {
                 MLAS_GEMM_U8U8_KERNEL_AVX2::CopyPackB(pb, B + n, ldb, CountN, CountK, ColumnSumBuffer, BIsSigned);
             }
+#elif defined(MLAS_NEON64_INTRINSICS)
+            MLAS_GEMM_U8X8_KERNEL_NEON::CopyPackB(pb, B + n, ldb, CountN, CountK, ColumnSumBuffer, BIsSigned);
+#else
+#error Unknown architecture.
+#endif
 
             //
             // Accumulate this batch of the column sum buffer into the packed

@@ -211,20 +211,57 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
 
         cudnnConvolutionFwdAlgoPerf_t perf;
         int algo_count = 1;
-        CUDNN_RETURN_IF_ERROR(cudnnFindConvolutionForwardAlgorithmEx(
-            CudnnHandle(),
-            s_.x_tensor,
-            x_data,
-            s_.filter_desc,
-            w_data,
-            s_.conv_desc,
-            s_.y_tensor,
-            y_data,
-            1,
-            &algo_count,
-            &perf,
-            algo_search_workspace.get(),
-            AlgoSearchWorkspaceSize));
+        const CUDAExecutionProvider* cuda_ep = static_cast<const CUDAExecutionProvider*>(this->Info().GetExecutionProvider());
+        int cudnn_conv_algo = cuda_ep->GetCudnnConvAlgo();
+        ORT_ENFORCE(cudnn_conv_algo > -1 && cudnn_conv_algo < 3, "cudnn_conv_algo should be 0, 1 or 2, but got ", cudnn_conv_algo);
+        switch (cudnn_conv_algo) {
+          case 0:
+              CUDNN_RETURN_IF_ERROR(cudnnFindConvolutionForwardAlgorithmEx(
+                  CudnnHandle(),
+                  s_.x_tensor,
+                  x_data,
+                  s_.filter_desc,
+                  w_data,
+                  s_.conv_desc,
+                  s_.y_tensor,
+                  y_data,
+                  1,
+                  &algo_count,
+                  &perf,
+                  algo_search_workspace.get(),
+                  AlgoSearchWorkspaceSize));
+            break;
+
+          case 1:
+              CUDNN_RETURN_IF_ERROR(cudnnGetConvolutionForwardAlgorithm_v7(
+                  CudnnHandle(),
+                  s_.x_tensor,
+                  s_.filter_desc,
+                  s_.conv_desc,
+                  s_.y_tensor,
+                  1,
+                  &algo_count,
+                  &perf));
+            break;
+
+          default:
+            perf.algo = kDefaultConvAlgo;
+            CUDNN_RETURN_IF_ERROR(cudnnGetConvolutionForwardWorkspaceSize(
+                CudnnHandle(),
+                s_.x_tensor,
+                s_.filter_desc,
+                s_.conv_desc,
+                s_.y_tensor,
+                perf.algo,
+                &perf.memory));
+            if (std::is_same<T, MLFloat16>::value) {
+                perf.mathType = CUDNN_TENSOR_OP_MATH;              
+            }
+            else {
+                perf.mathType = CUDNN_DEFAULT_MATH;              
+            }
+        }
+        
         s_.cached_benchmark_results.insert(x_dims_cudnn, {perf.algo, perf.memory, perf.mathType});
       }
 

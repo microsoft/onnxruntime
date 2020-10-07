@@ -7,6 +7,7 @@
 #include <string.h>
 #include "onnxruntime_session_options_config_keys.h"
 
+
 // This value is used in structures passed to ORT so that a newer version of ORT will still work with them
 #define ORT_API_VERSION 5
 
@@ -258,6 +259,19 @@ typedef enum OrtMemType {
   OrtMemTypeCPU = OrtMemTypeCPUOutput,  // temporary CPU accessible memory allocated by non-CPU execution provider, i.e. CUDA_PINNED
   OrtMemTypeDefault = 0,                // the default allocator for execution provider
 } OrtMemType;
+
+typedef enum OrtCudnnConvAlgoSearch {
+  EXHAUSTIVE,   // expensive exhaustive benchmarking using cudnnFindConvolutionForwardAlgorithmEx
+  HEURISTIC,    // lightweight heuristic based search using cudnnGetConvolutionForwardAlgorithm_v7
+  DEFAULT,      // default algorithm using CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM
+} OrtCudnnConvAlgoSearch;
+
+typedef struct OrtCUDAProviderOptions {
+  int device_id;  // cuda device with id=0 as default device.
+  OrtCudnnConvAlgoSearch cudnn_conv_algo_search;  // cudnn conv algo search option
+  size_t cuda_mem_limit;   //  default cuda memory limitation to maximum finite value of size_t.
+  int arena_extend_strategy;    // default area extend strategy to KNextPowerOfTwo.
+} OrtCUDAProviderOptions;
 
 struct OrtApi;
 typedef struct OrtApi OrtApi;
@@ -1032,7 +1046,8 @@ struct OrtApi {
    */
   ORT_API2_STATUS(SessionGetProfilingStartTimeNs, _In_ const OrtSession* sess, _Outptr_ uint64_t* out);
 
-  /**
+
+/**
  * Use this API to configure the global thread pool options to be used in the call to CreateEnvWithGlobalThreadPools.
  * A value of 0 means ORT will pick the default.
  * A value of 1 means the invoking thread will be used; no threads will be created in the thread pool.
@@ -1072,6 +1087,14 @@ struct OrtApi {
    */
   ORT_API2_STATUS(CreateEnvWithCustomLoggerAndGlobalThreadPools, OrtLoggingFunction logging_function, _In_opt_ void* logger_param, OrtLoggingLevel logging_level,
                   _In_ const char* logid, _In_ const struct OrtThreadingOptions* tp_options, _Outptr_ OrtEnv** out);
+
+ #ifdef USE_CUDA
+ /**
+  * Append CUDA execution provider
+  */
+  ORT_API2_STATUS(OrtSessionOptionsAppendExecutionProvider_CUDA,
+                  _In_ OrtSessionOptions* options, _In_ OrtCUDAProviderOptions* cuda_options);
+#endif  // USE_CUDA
 };
 
 /*

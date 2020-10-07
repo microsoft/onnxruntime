@@ -58,7 +58,8 @@ logger = logging.getLogger('')
 
 from huggingface_models import MODELS, MODEL_CLASSES
 
-cpu_count = psutil.cpu_count(logical=True)
+cpu_count = psutil.cpu_count(logical=False)
+
 # Set OMP environment variable before importing onnxruntime or torch.
 if "OMP_NUM_THREADS" not in os.environ:
     os.environ["OMP_NUM_THREADS"] = str(cpu_count)
@@ -67,9 +68,9 @@ import torch
 from transformers import (AutoConfig, AutoTokenizer, AutoModel, GPT2Model)
 
 
-def run_onnxruntime(use_gpu, model_names, model_class, precision, batch_sizes, sequence_lengths, repeat_times,
-                    input_counts, optimize_onnx, validate_onnx, cache_dir, onnx_dir, verbose, overwrite,
-                    disable_ort_io_binding, use_raw_attention_mask, thread_num, model_fusion_statistics, model_source):
+def run_onnxruntime(use_gpu, model_names, model_class, precision, num_threads, batch_sizes, sequence_lengths,
+                    repeat_times, input_counts, optimize_onnx, validate_onnx, cache_dir, onnx_dir, verbose, overwrite,
+                    disable_ort_io_binding, use_raw_attention_mask, model_fusion_statistics, model_source):
     import onnxruntime
 
     results = []
@@ -108,7 +109,8 @@ def run_onnxruntime(use_gpu, model_names, model_class, precision, batch_sizes, s
             ort_session = create_onnxruntime_session(onnx_model_file,
                                                      use_gpu,
                                                      enable_all_optimization=True,
-                                                     num_threads=thread_num)
+                                                     num_threads=num_threads,
+                                                     verbose=verbose)
             if ort_session is None:
                 continue
 
@@ -137,22 +139,20 @@ def run_onnxruntime(use_gpu, model_names, model_class, precision, batch_sizes, s
                         "device": device,
                         "optimizer": optimize_onnx,
                         "precision": precision,
-                        "io_binding": False,
+                        "io_binding": not disable_ort_io_binding,
                         "model_name": model_name,
                         "inputs": num_inputs,
+                        "threads": num_threads,
                         "batch_size": batch_size,
                         "sequence_length": sequence_length,
                         "datetime": str(datetime.now()),
                     }
+
                     logger.info("Run onnxruntime on {} with input shape {}".format(model_name,
                                                                                    [batch_size, sequence_length]))
-                    result = inference_ort(ort_session, ort_inputs, result_template, repeat_times, batch_size)
-                    logger.info(result)
-                    results.append(result)
-
-                    if not disable_ort_io_binding:
-                        logger.info("Run onnxruntime with io binding on {} with input shape {}".format(
-                            model_name, [batch_size, sequence_length]))
+                    if disable_ort_io_binding:
+                        result = inference_ort(ort_session, ort_inputs, result_template, repeat_times, batch_size)
+                    else:
                         # Get output sizes from a dummy ort run
                         ort_outputs = ort_session.run(ort_output_names, ort_inputs)
 
@@ -161,14 +161,14 @@ def run_onnxruntime(use_gpu, model_names, model_class, precision, batch_sizes, s
                                                                ort_output_names, ort_outputs, output_buffers,
                                                                max_last_state_size, max_pooler_size, batch_size, device,
                                                                data_type)
-                        logger.info(result)
-                        results.append(result)
+                    logger.info(result)
+                    results.append(result)
 
     return results
 
 
-def run_pytorch(use_gpu, model_names, model_class, precision, batch_sizes, sequence_lengths, repeat_times, torchscript,
-                cache_dir, verbose):
+def run_pytorch(use_gpu, model_names, model_class, precision, num_threads, batch_sizes, sequence_lengths, repeat_times,
+                torchscript, cache_dir, verbose):
     results = []
     if use_gpu and not torch.cuda.is_available():
         logger.error("Please install PyTorch with Cuda, and use a machine with GPU for testing gpu performance.")
@@ -225,6 +225,7 @@ def run_pytorch(use_gpu, model_names, model_class, precision, batch_sizes, seque
                         "io_binding": "",
                         "model_name": model_name,
                         "inputs": 1,
+                        "threads": num_threads,
                         "batch_size": batch_size,
                         "sequence_length": sequence_length,
                         "datetime": str(datetime.now()),
@@ -264,12 +265,12 @@ def run_with_tf_optimizations(do_eager_mode: bool, use_xla: bool):
     return run_func
 
 
-def run_tensorflow(use_gpu, model_names, model_class, precision, batch_sizes, sequence_lengths, repeat_times, thread_n,
-                   cache_dir, verbose):
+def run_tensorflow(use_gpu, model_names, model_class, precision, num_threads, batch_sizes, sequence_lengths,
+                   repeat_times, cache_dir, verbose):
     results = []
 
     import tensorflow as tf
-    tf.config.threading.set_intra_op_parallelism_threads(thread_n)
+    tf.config.threading.set_intra_op_parallelism_threads(num_threads)
 
     if not use_gpu:
         tf.config.set_visible_devices([], 'GPU')
@@ -345,6 +346,7 @@ def run_tensorflow(use_gpu, model_names, model_class, precision, batch_sizes, se
                         "io_binding": "",
                         "model_name": model_name,
                         "inputs": 1,
+                        "threads": num_threads,
                         "batch_size": batch_size,
                         "sequence_length": sequence_length,
                         "datetime": str(datetime.now()),
@@ -468,7 +470,7 @@ def parse_arguments():
                         help='Disable running ONNX Runtime with binded inputs and outputs. ')
     parser.set_defaults(disable_ort_io_binding=False)
 
-    parser.add_argument("--thread_num", required=False, type=int, default=-1, help="Threads to use")
+    parser.add_argument("-n", "--num_threads", required=False, nargs="+", type=int, default=[0], help="Threads to use")
 
     args = parser.parse_args()
     return args
@@ -487,6 +489,8 @@ def main():
         logger.error("int8 is for CPU only")
         return
 
+    args.num_threads = sorted(set(cpu_count if x <= 0 else x for x in args.num_threads))
+
     logger.info(f"Arguments: {args}")
 
     if not os.path.exists(args.cache_dir):
@@ -502,38 +506,39 @@ def main():
 
     results = []
 
-    thread_n = cpu_count if args.thread_num <= 0 else args.thread_num
-    torch.set_num_threads(thread_n)
+    for num_threads in args.num_threads:
+        torch.set_num_threads(num_threads)
+        logger.debug(torch.__config__.parallel_info())
+        if enable_torch or enable_torchscript:
+            if args.input_counts != [1]:
+                logger.warning("--input_counts is not implemented for torch or torchscript engine.")
 
-    logger.debug(torch.__config__.parallel_info())
+            if enable_torchscript:
+                results += run_pytorch(args.use_gpu, args.models, args.model_class, args.precision, num_threads,
+                                       args.batch_sizes, args.sequence_lengths, args.test_times, True, args.cache_dir,
+                                       args.verbose)
 
-    if enable_torch or enable_torchscript:
-        if args.input_counts != [1]:
-            logger.warning("--input_counts is not implemented for torch or torchscript engine.")
+            if enable_torch:
+                results += run_pytorch(args.use_gpu, args.models, args.model_class, args.precision, num_threads,
+                                       args.batch_sizes, args.sequence_lengths, args.test_times, False, args.cache_dir,
+                                       args.verbose)
 
-        if enable_torchscript:
-            results += run_pytorch(args.use_gpu, args.models, args.model_class, args.precision, args.batch_sizes,
-                                   args.sequence_lengths, args.test_times, True, args.cache_dir, args.verbose)
+        if enable_tensorflow:
+            results += run_tensorflow(args.use_gpu, args.models, args.model_class, args.precision, num_threads,
+                                      args.batch_sizes, args.sequence_lengths, args.test_times, args.cache_dir,
+                                      args.verbose)
 
-        if enable_torch:
-            results += run_pytorch(args.use_gpu, args.models, args.model_class, args.precision, args.batch_sizes,
-                                   args.sequence_lengths, args.test_times, False, args.cache_dir, args.verbose)
-
-    if enable_tensorflow:
-        results += run_tensorflow(args.use_gpu, args.models, args.model_class, args.precision, args.batch_sizes,
-                                  args.sequence_lengths, args.test_times, thread_n, args.cache_dir, args.verbose)
-
-    model_fusion_statistics = {}
-    if enable_onnxruntime:
-        try:
-            use_raw_attention_mask = True
-            results += run_onnxruntime(args.use_gpu, args.models, args.model_class, args.precision, args.batch_sizes,
-                                       args.sequence_lengths, args.test_times, args.input_counts, args.optimize_onnx,
-                                       args.validate_onnx, args.cache_dir, args.onnx_dir, args.verbose, args.overwrite,
-                                       args.disable_ort_io_binding, use_raw_attention_mask, args.thread_num,
-                                       model_fusion_statistics, args.model_source)
-        except:
-            logger.error(f"Exception", exc_info=True)
+        model_fusion_statistics = {}
+        if enable_onnxruntime:
+            try:
+                use_raw_attention_mask = True
+                results += run_onnxruntime(args.use_gpu, args.models, args.model_class, args.precision, num_threads,
+                                           args.batch_sizes, args.sequence_lengths, args.test_times, args.input_counts,
+                                           args.optimize_onnx, args.validate_onnx, args.cache_dir, args.onnx_dir,
+                                           args.verbose, args.overwrite, args.disable_ort_io_binding,
+                                           use_raw_attention_mask, model_fusion_statistics, args.model_source)
+            except:
+                logger.error(f"Exception", exc_info=True)
 
     time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     if model_fusion_statistics:

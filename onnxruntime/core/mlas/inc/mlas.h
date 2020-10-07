@@ -31,6 +31,49 @@ Abstract:
 #endif
 
 //
+// Define the target architecture.
+//
+
+#if defined(_M_AMD64) || defined(__x86_64__)
+#define MLAS_TARGET_AMD64
+#endif
+#if defined(_M_IX86) || defined(__i386__)
+#define MLAS_TARGET_IX86
+#endif
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_IX86)
+#define MLAS_TARGET_AMD64_IX86
+#endif
+#if defined(_M_ARM64) || defined(__aarch64__)
+#define MLAS_TARGET_ARM64
+#endif
+#if defined(_M_ARM) || defined(__arm__)
+#define MLAS_TARGET_ARM
+#endif
+#if defined(__VSX__)
+#define MLAS_TARGET_POWER
+#endif
+
+//
+// Define the support levels for the target architecture.
+//
+
+#if defined(MLAS_TARGET_AMD64)
+#define MLAS_SUPPORTS_GEMM_DOUBLE
+#endif
+
+#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_ARM64)
+#define MLAS_SUPPORTS_GEMM_U8X8
+#endif
+
+#if defined(MLAS_TARGET_AMD64_IX86)
+#define MLAS_SUPPORTS_GEMM_U8X8_AND_REQUANTIZE_OUTPUT
+#endif
+
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_ARM64)
+#define MLAS_SUPPORTS_PACKED_GEMM_U8X8
+#endif
+
+//
 // Basic Linear Algebra Subprograms (BLAS) types.
 //
 
