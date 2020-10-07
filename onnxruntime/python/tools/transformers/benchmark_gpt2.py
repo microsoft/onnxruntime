@@ -150,18 +150,23 @@ def main(args):
                            has_attention_mask=use_padding)
 
     if args.optimize_onnx or args.precision != Precision.FLOAT32:
-        onnx_model_path = onnx_model_paths[str(args.precision)]
+        onnx_model_path = onnx_model_paths[str(args.precision) if args.precision != Precision.INT8 else 'fp32']
         Gpt2Helper.optimize_onnx(onnx_model_paths["raw"], onnx_model_path, args.precision == Precision.FLOAT16,
                                  model.config.num_attention_heads, model.config.hidden_size, use_external_data_format)
 
         if args.precision == Precision.INT8:
             logger.info("quantizing model...")
-            QuantizeHelper.quantize_onnx_model(onnx_model_path, onnx_model_path, use_external_data_format)
+            QuantizeHelper.quantize_onnx_model(onnx_model_path, onnx_model_paths["int8"], use_external_data_format)
             model = QuantizeHelper.quantize_torch_model(model)
             logger.info("finished quantizing model")
+            onnx_model_path = onnx_model_paths["int8"]
 
     if args.torchscript:
-        model = Gpt2Helper.torchscript(model, config, device, has_position_ids, has_attention_mask)
+        model = Gpt2Helper.torchscript(model,
+                                       config,
+                                       device,
+                                       has_position_ids=use_padding,
+                                       has_attention_mask=use_padding)
 
     session = create_onnxruntime_session(onnx_model_path,
                                          args.use_gpu,
