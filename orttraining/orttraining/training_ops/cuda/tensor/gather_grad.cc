@@ -16,7 +16,8 @@ ONNX_OPERATOR_KERNEL_EX(
     KernelDefBuilder()
         .InputMemoryType<OrtMemTypeCPUInput>(0)
         .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
-        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                              DataTypeImpl::GetTensorType<MLFloat16>()})
         .TypeConstraint("Tind", std::vector<MLDataType>{
                                     DataTypeImpl::GetTensorType<int32_t>(),
                                     DataTypeImpl::GetTensorType<int64_t>()}),
