@@ -1,0 +1,46 @@
+name: Docker builds
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  cpu:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Build cpu Docker
+        run: docker build -t onnxruntime-source -f dockerfiles/Dockerfile.source .
+
+  cuda:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Build cuda Docker
+        run: docker build -t onnxruntime-cuda -f dockerfiles/Dockerfile.cuda .
+
+  nGraph:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Build nGraph Docker
+        run: docker build -t onnxruntime-ngraph -f dockerfiles/Dockerfile.ngraph .
+
+  TensorRT:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Build TensorRT Docker
+        run: docker build -t onnxruntime-trt -f dockerfiles/Dockerfile.tensorrt .
