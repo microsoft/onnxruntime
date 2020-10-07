@@ -54,9 +54,12 @@ static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::
 
 VitisAICustomOp::VitisAICustomOp(const ComputeContext* context,
                                  const onnxruntime::Node* fused_node,
-                                 const std::string &backend_type,
+                                 const std::string& backend_type,
+                                 const std::string& export_runtime_module,
+                                 const std::string& load_runtime_module,
                                  const logging::Logger* logger)
-  : backend_type_(backend_type)
+  : backend_type_(backend_type), export_runtime_module_(export_runtime_module),
+    load_runtime_module_(load_runtime_module)
 {
   SetLogger(logger);
 
@@ -66,26 +69,43 @@ VitisAICustomOp::VitisAICustomOp(const ComputeContext* context,
   name_ = context->node_name;
 
   model_proto_ = GetModelProtoFromFusedNode(fused_node, *GetLogger());
-
   std::istringstream model_stream{model_proto_.SerializeAsString()};
-
   xg_ = pyxir::onnx::import_onnx_model(model_stream);
-  pyxir::partition(xg_, std::vector<std::string>{backend_type_}, "");
-
-  auto input_defs = fused_node->InputDefs();
-  for (auto idef : input_defs) {
-    in_tensor_names_.push_back(idef->Name());
-  }
-
-  auto output_defs = fused_node->OutputDefs();
-  for (auto odef : output_defs) {
-    out_tensor_names_.push_back(odef->Name());
-  }
   
-  pyxir::RunOptionsHolder run_options(new pyxir::runtime::RunOptions());
-  run_options->on_the_fly_quantization = true;
-  rt_mod_ = pyxir::build_rt(xg_, backend_type_, in_tensor_names_, out_tensor_names_,
-                            "vai", run_options);
+  // If the `load_runtime_module` provider option is empty we  build a PyXIR
+  // runtime module from scratch. Otherwise, we load the runtime module from
+  // the provided file.   
+  if (load_runtime_module_.empty()) {
+    pyxir::partition(xg_, std::vector<std::string>{backend_type_}, "");
+
+    auto input_defs = fused_node->InputDefs();
+    for (auto idef : input_defs) {
+      in_tensor_names_.push_back(idef->Name());
+    }
+
+    auto output_defs = fused_node->OutputDefs();
+    for (auto odef : output_defs) {
+      out_tensor_names_.push_back(odef->Name());
+    }
+    
+    pyxir::RunOptionsHolder run_options(new pyxir::runtime::RunOptions());
+    run_options->on_the_fly_quantization = true;
+    run_options->export_runtime_module_path = export_runtime_module_;
+    rt_mod_ = pyxir::build_rt(xg_, backend_type_, in_tensor_names_,
+                              out_tensor_names_, "vai", run_options);
+  } else {
+    std::ifstream in_file(load_runtime_module_);
+    std::stringstream buffer;
+    buffer << in_file.rdbuf();
+    std::string serialized_rt_mod = buffer.str();
+    in_file.close();
+
+    std::istringstream sstream(serialized_rt_mod);
+    rt_mod_.reset(new pyxir::runtime::RuntimeModule());
+    rt_mod_->deserialize(sstream);
+    in_tensor_names_ = rt_mod_->get_in_tensor_names();
+    out_tensor_names_ = rt_mod_->get_out_tensor_names();
+  }
 }
 
 VitisAICustomOp::~VitisAICustomOp() {}
