@@ -61,6 +61,7 @@ class MemoryInfo {
   void SetIteration(size_t iteration) {
     iteration_ = iteration;
   }
+  void GenerateMemoryProfile();
 
  private:
   std::unordered_map<OrtValueIndex, MemoryInfoPerTensor> tensor_memoryinfo_map_;
