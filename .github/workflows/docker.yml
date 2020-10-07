@@ -27,15 +27,6 @@ jobs:
       - name: Build cuda Docker
         run: docker build -t onnxruntime-cuda -f dockerfiles/Dockerfile.cuda .
 
-  nGraph:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v2
-
-      - name: Build nGraph Docker
-        run: docker build -t onnxruntime-ngraph -f dockerfiles/Dockerfile.ngraph .
-
   TensorRT:
     runs-on: ubuntu-latest
     steps:
