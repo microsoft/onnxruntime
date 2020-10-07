@@ -5,8 +5,8 @@
 
 namespace onnxruntime {
 
-// Return true if gcc has SSE support or msvc has x86-64 or x86 with SSE support.
-// Return false if flush-to-zero and denormal-as-zero are not supported.
+// Set or unset flush-to-zero and denormal=as-zero if SSE3 instructions are supported.
+// Return true if SSE3 instruction is supported, otherwise return false.
 bool SetDenormalAsZero(bool on);
 
 #ifdef _OPENMP

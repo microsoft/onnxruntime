@@ -205,10 +205,17 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
 
   bool set_denormal_as_zero = session_options_.GetConfigOrDefault(kOrtSessionOptionsConfigSetDenormalAsZero, "0") == "1";
 
+  // The only first session option for flush-to-zero and denormal-as-zero is effective to main thread and OpenMP threads.
+  {
+    static std::once_flag once;
+
+    std::call_once(once, [&] {
 #ifdef _OPENMP
-  InitializeWithDenormalAsZero(set_denormal_as_zero);
+      InitializeWithDenormalAsZero(set_denormal_as_zero);
 #endif
-  SetDenormalAsZero(set_denormal_as_zero);
+      SetDenormalAsZero(set_denormal_as_zero);
+    });
+  }
 
   use_per_session_threads_ = session_options.use_per_session_threads;
 
