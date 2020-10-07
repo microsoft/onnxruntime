@@ -8,7 +8,7 @@ import torch.nn.functional as F
 from torchvision import datasets, transforms
 
 import onnxruntime
-from onnxruntime.experimental import ORTTrainer, ORTTrainerOptions, optim
+from onnxruntime.training import ORTTrainer, ORTTrainerOptions, optim
 
 
 # Pytorch model

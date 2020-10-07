@@ -621,6 +621,8 @@ class ORTTrainer(object):
 
         # TrainingParameters
         ort_parameters = ort.TrainingParameters()
+        ort_parameters.model_with_loss_function_path = '/home/thiagofc/mnist_onnx/mnist_with_loss.onnx'
+        ort_parameters.model_with_training_graph_path = '/home/thiagofc/mnist_onnx/mnist_with_training.onnx'
         ort_parameters.loss_output_name = loss_name
         ort_parameters.use_mixed_precision = self.options.mixed_precision.enabled
         ort_parameters.world_rank = self.options.distributed.world_rank
@@ -629,7 +631,7 @@ class ORTTrainer(object):
         ort_parameters.allreduce_post_accumulation = self.options.distributed.allreduce_post_accumulation
         ort_parameters.deepspeed_zero_stage = self.options.distributed.deepspeed_zero_optimization.stage
         ort_parameters.enable_grad_norm_clip = self.options.utils.grad_norm_clip
-        ort_parameters.set_gradients_as_graph_outputs = False
+        ort_parameters.set_gradients_as_graph_outputs = True
         ort_parameters.use_invertible_layernorm_grad = self.options.utils.invertible_layer_norm_gradient
         ort_parameters.training_optimizer_name = self.optim_config.name
         ort_parameters.lr_params_feed_name = self.model_desc.learning_rate.name
