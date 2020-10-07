@@ -38,7 +38,33 @@ class ORTModule(torch.nn.Module):
             # gradient_graph = ORTModule._build_gradient_graph(original_forward_graph)
             # self.forward_graph, self.backward_graph = ORTModule._split_forward_and_backward(gradient_graph)
             self._onnx_forward = original_forward_graph # TODO: hard-coding for MVP
+            # import pdb; pdb.set_trace()
             self.forward_session = onnxruntime.InferenceSession(self._onnx_forward.SerializeToString())
+
+
+            # TrainingParameters
+            # ort_parameters = onnxruntime.TrainingParameters()
+            # ort_parameters.loss_output_name = "loss"
+            # ort_parameters.use_mixed_precision = False
+            # ort_parameters.world_rank = 0
+            # ort_parameters.world_size = 1
+            # ort_parameters.gradient_accumulation_steps = 1
+            # ort_parameters.allreduce_post_accumulation = False
+            # ort_parameters.deepspeed_zero_stage = 0
+            # ort_parameters.enable_grad_norm_clip = False
+            # ort_parameters.set_gradients_as_graph_outputs = False
+            # ort_parameters.use_invertible_layernorm_grad = False
+            # ort_parameters.training_optimizer_name = "SGDOptimizer"
+            # ort_parameters.lr_params_feed_name = "Learning_Rate"
+            # ort_parameters.weights_to_train = trainable_params
+            # ort_parameters.optimizer_attributes_map = optimizer_attributes_map
+            # ort_parameters.optimizer_int_attributes_map = optimizer_int_attributes_map
+
+            # # SessionOptions
+            # session_options = onnxruntime.SessionOptions()
+            # session_options.use_deterministic_compute = self.options.debug.deterministic_compute
+            # self.forward_session = onnxruntime.TrainingSession(self._onnx_forward.SerializeToString(), ort_parameters, session_options)
+
             self._save_onnx_graph(self._onnx_forward, 'forward_mnist.onnx')
         if not self._onnx_forward_initializers_desc:
             self._onnx_forward_initializers_desc = self._get_initializer_from_graph(self._onnx_forward)
@@ -60,9 +86,15 @@ class ORTModule(torch.nn.Module):
                 # Note: A potential optimization would be to detect which of inputs and weights
                 # require a gradient.
                 # intermediates, outputs = self._run_forward_graph(inputs) # inputs, weights)
+                # import pdb; pdb.set_trace()
                 outputs = self._run_forward_graph(*input, **kwargs) # inputs, weights)
-                # ctx.save_for_backward(*intermediates)
                 outputs = [torch.from_numpy(out).requires_grad_(True) for out in outputs]
+
+                # TODO: Properly save intermediate tensors and remove them from model output
+                ctx.save_for_backward(outputs[1])
+                outputs = [outputs[0]]
+
+                # TODO: Properly support original module output format
                 if len(outputs) == 1:
                     return outputs[0]
                 return tuple(outputs)
@@ -82,6 +114,7 @@ class ORTModule(torch.nn.Module):
         # Dictionary containing both inputs and initializers
         input_with_initializer = {}
 
+        # import pdb; pdb.set_trace()
         # Inputs
         for idx, input_data in enumerate(self.forward_session.get_inputs()):
             input_with_initializer.update({input_data.name : input[idx].cpu().numpy()})
@@ -93,6 +126,7 @@ class ORTModule(torch.nn.Module):
         return input_with_initializer
 
     def _run_forward_graph(self, data_with_initializer): #input, weights):
+        # import pdb; pdb.set_trace()
         return self.forward_session.run(None, data_with_initializer)
 
     def _run_backward_graph(self, grad_output, intermediates):
@@ -102,15 +136,18 @@ class ORTModule(torch.nn.Module):
 
     @staticmethod
     def _get_forward_graph(module, module_input):
+        # TODO: Pytorch module must be exported to ONNX and splitted
+        #       Hard-coding with MNIST stub for MVP
         # Export torch.nn.Module to ONNX with initializers as input
-        f = io.BytesIO()
-        torch.onnx.export(module, module_input, f, verbose=True,
-                          opset_version=ONNX_OPSET_VERSION,
-                          _retain_param_name=True,
-                          training=torch.onnx.TrainingMode.TRAINING,
-                          keep_initializers_as_inputs=True,
-                          export_params=True)
-        return onnx.load_model_from_string(f.getvalue())
+        # f = io.BytesIO()
+        # torch.onnx.export(module, module_input, f, verbose=True,
+        #                   opset_version=ONNX_OPSET_VERSION,
+        #                   _retain_param_name=True,
+        #                   training=torch.onnx.TrainingMode.TRAINING,
+        #                   keep_initializers_as_inputs=True,
+        #                   export_params=True)
+        # return onnx.load_model_from_string(f.getvalue())
+        return onnx.load('/home/thiagofc/mnist_onnx/mnist_with_training_forward_sliced.onnx')
 
     def _get_initializer_from_graph(self, graph):
         # TODO: There is a tradefoo between memory footprint and total model export time
