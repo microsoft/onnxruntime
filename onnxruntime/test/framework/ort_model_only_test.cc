@@ -89,6 +89,8 @@ static void CompareTensors(const OrtValue& left_value, const OrtValue& right_val
   }
 }
 
+// Keep the CompareTypeProtos in case we need debug the difference
+/*
 static void CompareTypeProtos(const TypeProto& left_type_proto, const TypeProto& right_type_proto) {
   ASSERT_EQ(left_type_proto.denotation(), right_type_proto.denotation());
 
@@ -125,12 +127,17 @@ static void CompareTypeProtos(const TypeProto& left_type_proto, const TypeProto&
     FAIL();  // We do not support SparseTensor and Opaque for now
   }
 }
+*/
 
 static void CompareValueInfos(const ValueInfoProto& left, const ValueInfoProto& right) {
-  ASSERT_EQ(left.name(), right.name());
-  ASSERT_EQ(left.doc_string(), right.doc_string());
+  const auto str_left = left.SerializeAsString();
+  const auto str_right = right.SerializeAsString();
+  ASSERT_EQ(str_left, str_right);
 
-  CompareTypeProtos(left.type(), right.type());
+  // Keep the ValueInfoProto content comparison in case we need debug the difference
+  // ASSERT_EQ(left.name(), right.name());
+  // ASSERT_EQ(left.doc_string(), right.doc_string());
+  // CompareTypeProtos(left.type(), right.type());
 }
 
 static void CompareGraphAndSessionState(const InferenceSessionGetGraphWrapper& session_object_1,

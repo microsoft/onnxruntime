@@ -18,6 +18,16 @@ namespace experimental {
 namespace utils {
 
 #if !defined(ORT_MINIMAL_BUILD)
+
+flatbuffers::Offset<flatbuffers::String> SaveStringToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
+                                                               bool has_string, const std::string& src) {
+  if (has_string)
+    return builder.CreateString(src);
+
+  // If the string does not exist, return 0 (the string does not exist in flatbuffer)
+  return 0;
+}
+
 static Status SaveTypeInfoOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                     const TypeProto& type_proto,
                                     flatbuffers::Offset<fbs::TypeInfo>& fbs_type_info);
@@ -25,7 +35,7 @@ static Status SaveTypeInfoOrtFormat(flatbuffers::FlatBufferBuilder& builder,
 static flatbuffers::Offset<fbs::Dimension> SaveTensorDimensionOrtFormat(
     flatbuffers::FlatBufferBuilder& builder,
     const TensorShapeProto_Dimension& tensor_shape_dim) {
-  auto denotation = builder.CreateString(tensor_shape_dim.denotation());
+  auto denotation = SaveStringToOrtFormat(builder, tensor_shape_dim.has_denotation(), tensor_shape_dim.denotation());
   flatbuffers::Offset<fbs::DimensionValue> dim_val;
   if (tensor_shape_dim.has_dim_param()) {
     dim_val = fbs::CreateDimensionValueDirect(builder, fbs::DimensionValueType::PARAM, 0, tensor_shape_dim.dim_param().c_str());
@@ -88,7 +98,7 @@ static Status SaveTensorTypeAndShapeOrtFormat(flatbuffers::FlatBufferBuilder& bu
 static Status SaveTypeInfoOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                     const TypeProto& type_proto,
                                     flatbuffers::Offset<fbs::TypeInfo>& fbs_type_info) {
-  auto denotation = builder.CreateString(type_proto.denotation());
+  auto denotation = SaveStringToOrtFormat(builder, type_proto.has_denotation(), type_proto.denotation());
   auto value_type = fbs::TypeInfoValue::tensor_type;
   flatbuffers::Offset<void> value;
   auto value_case = type_proto.value_case();
@@ -130,7 +140,7 @@ Status SaveValueInfoOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                               const ValueInfoProto& value_info_proto,
                               flatbuffers::Offset<fbs::ValueInfo>& fbs_value_info) {
   auto name = builder.CreateSharedString(value_info_proto.name());
-  auto doc_string = builder.CreateString(value_info_proto.doc_string());
+  auto doc_string = SaveStringToOrtFormat(builder, value_info_proto.has_doc_string(), value_info_proto.doc_string());
   flatbuffers::Offset<fbs::TypeInfo> type_info = 0;  // 0 indicates null
   if (value_info_proto.has_type()) {
     ORT_RETURN_IF_ERROR(
@@ -167,7 +177,7 @@ static Status LoadTypeInfoOrtFormat(const fbs::TypeInfo& fbs_type_info,
 
 static Status LoadTensorDimensionOrtFormat(const fbs::Dimension& fbs_dim,
                                            TensorShapeProto_Dimension& dim) {
-  LoadStringFromOrtFormat(*dim.mutable_denotation(), fbs_dim.denotation());
+  LOAD_STR_FROM_ORT_FORMAT(dim, denotation, fbs_dim.denotation());
   auto fbs_dim_val = fbs_dim.value();
   if (fbs_dim_val) {
     auto type = fbs_dim_val->dim_type();
@@ -225,7 +235,7 @@ static Status LoadMapTypeOrtFormat(const fbs::MapType& fbs_map_type,
 
 static Status LoadTypeInfoOrtFormat(const fbs::TypeInfo& fbs_type_info,
                                     TypeProto& type_proto) {
-  LoadStringFromOrtFormat(*type_proto.mutable_denotation(), fbs_type_info.denotation());
+  LOAD_STR_FROM_ORT_FORMAT(type_proto, denotation, fbs_type_info.denotation());
   auto value_type = fbs_type_info.value_type();
   if (value_type == fbs::TypeInfoValue::tensor_type) {
     auto fbs_tensor_type = fbs_type_info.value_as_tensor_type();
@@ -252,8 +262,8 @@ Status LoadValueInfoOrtFormat(const fbs::ValueInfo& fbs_value_info,
                               ONNX_NAMESPACE::ValueInfoProto& value_info_proto) {
   value_info_proto.Clear();
 
-  LoadStringFromOrtFormat(*value_info_proto.mutable_name(), fbs_value_info.name());
-  LoadStringFromOrtFormat(*value_info_proto.mutable_doc_string(), fbs_value_info.doc_string());
+  LOAD_STR_FROM_ORT_FORMAT(value_info_proto, name, fbs_value_info.name());
+  LOAD_STR_FROM_ORT_FORMAT(value_info_proto, doc_string, fbs_value_info.doc_string());
 
   auto fbs_type_info = fbs_value_info.type();
   if (fbs_type_info == nullptr) {
