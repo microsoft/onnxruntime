@@ -95,6 +95,9 @@ def parse_arguments():
     parser.add_argument('--verbose', required=False, action='store_true')
     parser.set_defaults(verbose=False)
 
+    parser.add_argument('-e', '--use_external_data_format', required=False, action='store_true')
+    parser.set_defaults(use_external_data_format=False)
+
     args = parser.parse_args()
 
     return args
@@ -122,6 +125,9 @@ def main():
     if args.precision == Precision.INT8:
         assert not args.use_gpu, "quantization only supports CPU"
 
+    if args.use_external_data_format:
+        assert not args.output.endswith('.onnx'), "output shall be a directory for --use_external_data_format"
+
     model_class = MODEL_CLASSES[args.model_class][0]
     config = AutoConfig.from_pretrained(args.model_name_or_path, cache_dir=cache_dir)
     model = model_class.from_pretrained(args.model_name_or_path, config=config, cache_dir=cache_dir)
@@ -129,15 +135,15 @@ def main():
     device = torch.device("cuda:0" if args.use_gpu else "cpu")
     model.eval().to(device)
 
-    use_external_data_format = (config.n_layer > 24)  #TODO: find a way to check model size > 2GB
+    if (not args.use_external_data_format) and (config.n_layer > 24):
+        logger.info(f"Try --use_external_data_format when model size > 2GB")
+
     onnx_model_paths = Gpt2Helper.get_onnx_paths(output_dir,
                                                  args.model_name_or_path,
                                                  args.model_class,
-                                                 new_folder=use_external_data_format)
-    raw_onnx_model = args.output if args.output.endswith('.onnx') else onnx_model_paths["raw"]
-    output_path = raw_onnx_model if (
-        args.output.endswith('.onnx') or
-        (args.precision == Precision.FLOAT32 and not args.optimize_onnx)) else onnx_model_paths[str(args.precision)]
+                                                 new_folder=args.use_external_data_format)
+
+    raw_onnx_model = onnx_model_paths["raw"]
 
     logger.info(f"Exporting ONNX model to {raw_onnx_model}")
     use_padding = MODEL_CLASSES[args.model_class][2]
@@ -145,20 +151,33 @@ def main():
                            device,
                            raw_onnx_model,
                            args.verbose,
-                           use_external_data_format,
+                           args.use_external_data_format,
                            has_position_ids=use_padding,
                            has_attention_mask=use_padding)
 
     if args.optimize_onnx or args.precision != Precision.FLOAT32:
+        output_path = onnx_model_paths[str(args.precision) if args.precision != Precision.INT8 else 'fp32']
+
         logger.info(f"Optimizing model to {output_path}")
         Gpt2Helper.optimize_onnx(raw_onnx_model, output_path, args.precision == Precision.FLOAT16,
-                                 model.config.num_attention_heads, model.config.hidden_size)
+                                 model.config.num_attention_heads, model.config.hidden_size,
+                                 args.use_external_data_format)
+    else:
+        output_path = raw_onnx_model
 
     if args.precision == Precision.INT8:
         logger.info("quantizing model...")
-        QuantizeHelper.quantize_onnx_model(output_path, output_path)
+        QuantizeHelper.quantize_onnx_model(output_path, onnx_model_paths['int8'], args.use_external_data_format)
         model = QuantizeHelper.quantize_torch_model(model)
         logger.info("finished quantizing model")
+        output_path = onnx_model_paths['int8']
+
+    if args.output.endswith('.onnx') and output_path != args.output and not args.use_external_data_format:
+        import shutil
+        shutil.move(output_path, args.output)
+        output_path = args.output
+
+    logger.info(f"Output path: {output_path}")
 
     session = create_onnxruntime_session(output_path, args.use_gpu, enable_all_optimization=True, verbose=args.verbose)
     if session is not None:
@@ -177,7 +196,7 @@ def main():
         # Each line of test file is a JSON string like:
         # {"input_ids": [[14698, 257, 1310, 13688, 319, 326]]}
         with open(args.input_test_file) as read_f:
-            for i, line in enumerate(read_f):
+            for _, line in enumerate(read_f):
                 line = line.rstrip()
                 data = json.loads(line)
                 input_ids = torch.from_numpy(numpy.asarray(data["input_ids"], dtype=numpy.int64)).to(device)
