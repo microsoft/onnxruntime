@@ -51,6 +51,7 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
       ("eval_batch_size", "Total batch size for eval.", cxxopts::value<int>()->default_value("100"))
       ("learning_rate", "The initial learning rate for Adam.", cxxopts::value<float>()->default_value("0.01"))
       ("display_loss_steps", "How often to dump loss into tensorboard", cxxopts::value<size_t>()->default_value("10"))
+      ("use_nccl", "Whether to use NCCL for distributed training.", cxxopts::value<bool>()->default_value("false"))
       ("data_parallel_size", "Data parallel group size.", cxxopts::value<int>()->default_value("1"))
       ("horizontal_parallel_size", "Horizontal model parallel group size.", cxxopts::value<int>()->default_value("1"))
       ("pipeline_parallel_size", "Number of pipeline stages.", cxxopts::value<int>()->default_value("1"))
@@ -145,6 +146,7 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
         params.pipeline_partition_cut_list.emplace_back(cut);
       }
     }
+    params.use_nccl = flags["use_nccl"].as<bool>();
 #ifdef USE_CUDA
     bool use_cuda = flags.count("use_cuda") > 0;
     if (use_cuda) {

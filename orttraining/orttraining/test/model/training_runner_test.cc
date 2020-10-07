@@ -61,7 +61,7 @@ TEST(TrainingRunnerTest, Basic) {
 }
 
 // This test verifies a simple pipeline run with 3 partitions.
-// TODO: enable this test after distributed run is not enabled in CI.
+// TODO: enable this test after distributed run is enabled in CI.
 TEST(TrainingRunnerTest, DISABLED_PipelineRun) {
   TrainingRunner::Parameters params{};
   params.model_path = k_original_model_path;

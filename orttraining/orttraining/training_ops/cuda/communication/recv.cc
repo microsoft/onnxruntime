@@ -78,6 +78,7 @@ void Recv::ReceiveData(
     // Find the next aligned offset in the tensor buffer to meet alignment requirement
     tensor_offset_in_bytes = GetAggregatedAlignedAddress(tensor_offset_in_bytes);
 
+    assert(tensor_offset_in_bytes + tensor->SizeInBytes() <= aggregated_aligned_tensor_bytes);
     // Copy data out from buffer.
 #if defined(USE_NCCL) && defined(USE_NCCL_P2P)
     CUDA_CALL(cudaMemcpyAsync(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
@@ -88,6 +89,7 @@ void Recv::ReceiveData(
 #endif
     tensor_offset_in_bytes += tensor->SizeInBytes();
   }
+  assert(tensor_offset_in_bytes == aggregated_aligned_tensor_bytes);
 
 #if defined(USE_NCCL) && defined(USE_NCCL_P2P)
 #else

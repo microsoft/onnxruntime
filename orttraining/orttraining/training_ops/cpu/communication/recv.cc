@@ -36,10 +36,12 @@ void Recv::ReceiveData(
     tensor_offset_in_bytes = GetAggregatedAlignedAddress(tensor_offset_in_bytes);
 
     // Copy data out from buffer.
+    assert(tensor_offset_in_bytes + tensor->SizeInBytes() <= aggregated_aligned_tensor_bytes);
     memcpy(tensor->MutableDataRaw(), buffer.data() + tensor_offset_in_bytes, tensor->SizeInBytes());
 
     tensor_offset_in_bytes += tensor->SizeInBytes();
   }
+  assert(tensor_offset_in_bytes == aggregated_aligned_tensor_bytes);
 }
 
 ONNX_OPERATOR_KERNEL_EX(
