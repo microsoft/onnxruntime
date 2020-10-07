@@ -140,6 +140,15 @@ def calculate_trt_op_percentage(trt_op_map, cuda_op_map):
 
     return ((total_ops - total_cuda_and_cpu_ops), total_ops, ratio_of_ops_in_trt)
 
+def get_total_ops(op_map):
+    total_ops = 0
+
+    for ep in ["CUDAExecutionProvider", "CPUExecutionProvider"]:
+        if ep in op_map:
+            total_ops += len(op_map[ep])
+
+    return total_ops
+
 
 ##########################################
 # Return: total TRT execution time,
