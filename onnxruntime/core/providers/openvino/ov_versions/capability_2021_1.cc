@@ -444,11 +444,10 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
   } else if(optype == "Upsample") {
 
     //check for attributes
-    //Interpolate layer only supports resize on spatial dimensions(depth, height and width)"
     auto upsample_attr = node->GetAttributes();
     auto upsample_arg = upsample_attr["scales"];
     auto float_size = upsample_arg.floats_size();
-    if (float_size > 2 && (upsample_arg.floats(0) != 1.f || upsample_arg.floats(0) != 1.f))
+    if (float_size > 2 && (upsample_arg.floats(0) != 1.f || upsample_arg.floats(1) != 1.f))
       return true;
 
     //check for input dimensions
