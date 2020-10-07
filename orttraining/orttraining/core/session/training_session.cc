@@ -497,7 +497,19 @@ Status TrainingSession::ConfigureForTraining(
     }
   }
 
-  // Add optimizer or gradient accumulation
+  #if 1
+  // TODO: Do not merge this on master
+  //       Saving training model before optimizer nodes are added
+  //       This makes easier to manually edit MNIST model later
+  if ((IsRootNode(config) || (config.pipeline_config.has_value() &&
+                              DistributedRunContext::GroupId(WorkerGroupType::ModelParallel) == 0)) &&
+      config.model_with_training_graph_path.has_value()) {
+    ORT_IGNORE_RETURN_VALUE(Save(
+        config.model_with_training_graph_path.value(), SaveOption::NO_RELOAD));
+  }
+  #endif
+
+  // add optimizer or gradient accumulation
   if (config.optimizer_config.has_value()) {
     OptimizerGraphConfig opt_graph_config{};
     std::unordered_map<std::string, OptimizerNodeConfig> opt_node_configs{};
@@ -562,12 +574,16 @@ Status TrainingSession::ConfigureForTraining(
   // conflict. It is user's responsibility to make sure different rank is passed in with different. Also, to avoid
   // writing conflict, only the ranks in first pipeline group write the partition file out.
   // model_with_training_graph_path value.
+  #if 0
+  // TODO: Do not merge this on master
+  // This is being called above, before optimizers nodes are added
   if ((IsRootNode(config) || (config.pipeline_config.has_value() &&
                               DistributedRunContext::GroupId(WorkerGroupType::PipelineParallel) == 0)) &&
       config.model_with_training_graph_path.has_value()) {
     ORT_IGNORE_RETURN_VALUE(Save(
         config.model_with_training_graph_path.value(), SaveOption::NO_RELOAD));
   }
+  #endif
 
   // After pipeline partition, we need to return the inputs allowed in this partition.
   if (config.pipeline_config.has_value()) {
