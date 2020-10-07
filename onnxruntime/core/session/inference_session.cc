@@ -503,7 +503,7 @@ common::Status InferenceSession::SaveToOrtFormat(const std::basic_string<ORTCHAR
   sb.add_model(model);
   sb.add_session_state(session_state);
   auto session = sb.Finish();
-  builder.Finish(session);
+  builder.Finish(session, fbs::InferenceSessionIdentifier());
 
   // TODO: Do we need to catch any std::exceptions from creating/writing to disk and convert to Status codes?
   {
@@ -956,6 +956,11 @@ Status InferenceSession::LoadOrtModel(std::function<Status()> load_ort_format_mo
   }
 
   ORT_RETURN_IF_ERROR(load_ort_format_model_bytes());
+
+  // Verify the ort_format_model_bytes_ is a valid InferenceSessionBuffer before we access the data
+  flatbuffers::Verifier verifier(ort_format_model_bytes_.data(), ort_format_model_bytes_.size());
+  ORT_RETURN_IF_NOT(fbs::VerifyInferenceSessionBuffer(verifier));
+
   const auto* fbs_session = fbs::GetInferenceSession(ort_format_model_bytes_.data());
   ORT_RETURN_IF(nullptr == fbs_session, "InferenceSession is null. Invalid ORT format model.");
 
@@ -1282,7 +1287,6 @@ common::Status InferenceSession::CheckShapes(const std::string& input_name, cons
     ostr << " Please fix either the inputs or the model.";
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, ostr.str());
   }
-
   return Status::OK();
 }
 

@@ -569,6 +569,16 @@ def setup_test_data(build_dir, configs):
                                 src_model_dir], shell=True)
 
 
+def use_dev_mode(args):
+    if args.use_acl:
+        return 'OFF'
+    if args.use_armnn:
+        return 'OFF'
+    if args.ios and is_macOS():
+        return 'OFF'
+    return 'ON'
+
+
 def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home,
                         mpi_home, nccl_home, tensorrt_home, migraphx_home,
                         path_to_protoc_exe, configs, cmake_extra_defines, args, cmake_extra_args):
@@ -584,9 +594,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_BUILD_WINML_TESTS=" + (
             "OFF" if args.skip_winml_tests else "ON"),
         "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
-        "-Donnxruntime_DEV_MODE=" + (
-            "OFF" if args.use_acl or args.use_armnn or
-            (args.ios and is_macOS()) else "ON"),
+        "-Donnxruntime_DEV_MODE=" + use_dev_mode(args),
         "-DPYTHON_EXECUTABLE=" + sys.executable,
         "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
         "-Donnxruntime_CUDNN_HOME=" + (cudnn_home if args.use_cuda else ""),
@@ -1313,28 +1321,9 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                                cwd=cwd, dll_path=dll_path)
 
             # For CUDA enabled builds test IOBinding feature
-            # Limit testing to Windows non-ARM builds for now
-            iobinding_test = False
-            if args.use_cuda and not (args.arm or args.arm64):
+            if args.use_cuda:
                 # We need to have Torch installed to test the IOBinding feature
                 # which currently uses Torch's allocator to allocate GPU memory for testing
-                iobinding_test = True
-
-                # Try install Torch on Windows
-                if is_windows():
-                    log.info("Attempting to install Torch to test ORT's IOBinding feature")
-                    install_torch()
-
-                try:
-                    import torch  # noqa
-                except ImportError as error:
-                    iobinding_test = False
-                    log.exception(error)
-                    log.warning(
-                        "Torch is not installed. "
-                        "The IOBinding tests will be skipped as it requires Torch.")
-
-            if iobinding_test:
                 log.info("Testing IOBinding feature")
                 run_subprocess([sys.executable, 'onnxruntime_test_python_iobinding.py'], cwd=cwd, dll_path=dll_path)
 

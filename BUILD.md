@@ -187,7 +187,7 @@ Nuget packages are created under <native_build_dir>\nuget-artifacts
     ONNX Runtime can also be built with CUDA versions from 10.1 up to 11.0, and cuDNN versions from 7.6 up to 8.0.
   * The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home` parameter
   * The path to the cuDNN installation (include the `cuda` folder in the path) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home` parameter. The cuDNN path should contain `bin`, `include` and `lib` directories.
-  * The path to the cuDNN bin directory must be added to the PATH environment variable so that cudnn64_7.dll is found.
+  * The path to the cuDNN bin directory must be added to the PATH environment variable so that cudnn64_8.dll is found.
 
 #### Build Instructions
 ##### Windows
