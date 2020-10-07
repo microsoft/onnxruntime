@@ -1321,28 +1321,9 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                                cwd=cwd, dll_path=dll_path)
 
             # For CUDA enabled builds test IOBinding feature
-            # Limit testing to Windows non-ARM builds for now
-            iobinding_test = False
-            if args.use_cuda and not (args.arm or args.arm64):
+            if args.use_cuda:
                 # We need to have Torch installed to test the IOBinding feature
                 # which currently uses Torch's allocator to allocate GPU memory for testing
-                iobinding_test = True
-
-                # Try install Torch on Windows
-                if is_windows():
-                    log.info("Attempting to install Torch to test ORT's IOBinding feature")
-                    install_torch()
-
-                try:
-                    import torch  # noqa
-                except ImportError as error:
-                    iobinding_test = False
-                    log.exception(error)
-                    log.warning(
-                        "Torch is not installed. "
-                        "The IOBinding tests will be skipped as it requires Torch.")
-
-            if iobinding_test:
                 log.info("Testing IOBinding feature")
                 run_subprocess([sys.executable, 'onnxruntime_test_python_iobinding.py'], cwd=cwd, dll_path=dll_path)
 

@@ -19,7 +19,7 @@ try:
 except ImportError:
     pass
 
-from onnxruntime.capi.session import InferenceSession, IOBinding
+from onnxruntime.capi.onnxruntime_inference_collection import InferenceSession, IOBinding, OrtValue
 from onnxruntime.capi import onnxruntime_validation
 
 from onnxruntime.capi.training import *  # noqa: F403
