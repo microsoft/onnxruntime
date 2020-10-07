@@ -168,7 +168,11 @@ void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
     if(it != const_outputs_map.end())
       break;
 #endif
-    auto precision = ConvertPrecisionONNXToOpenVINO(model_proto.graph().output(output_names.at(output_name)).type(), device);
+    auto itr = output_names.find(output_name);
+    if(itr == output_names.end()){
+      ORT_THROW(log_tag + "Output Names Mismatch: " + output_name + " doesn't exist");
+    }
+    auto precision = ConvertPrecisionONNXToOpenVINO(model_proto.graph().output(itr->second).type(), device);
     iter->second->setPrecision(precision);
   }
 }

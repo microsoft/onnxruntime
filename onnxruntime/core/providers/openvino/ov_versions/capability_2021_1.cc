@@ -119,6 +119,7 @@ bool IsOpSupported(std::string name, std::string device) {
       "TopK",
       "Transpose",
       "Unsqueeze",
+      "Upsample"
   };
 
   std::set<std::string> supported_ops_cpu = {
@@ -144,7 +145,8 @@ bool IsOpSupported(std::string name, std::string device) {
     "Sign",
     "Sinh",
     "Softsign",
-    "Tan"
+    "Tan",
+    "NonZero",
   };
 
 
@@ -159,7 +161,6 @@ bool IsOpSupported(std::string name, std::string device) {
     "Not",
     "Selu",
     "Tan",
-    
   };
   std::set<std::string> supported_ops_vpu = {
     "Expand",
@@ -310,16 +311,22 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       return true;
   } else if (optype == "Slice") {
     //start, end, axes need to be a initializer
+    const auto &data_arg = node->InputDefs()[0];
+    auto graph_inputs = graph_viewer.GetInputs();
     bool cond_for_slice = false;
-    if(node->InputDefs().size() > 1){
-    const auto &start_arg = node->InputDefs()[1];
-    const auto &end_arg = node->InputDefs()[2];
-    cond_for_slice |= initializers.find(start_arg->Name()) == initializers.end();
-    cond_for_slice |= initializers.find(end_arg->Name()) == initializers.end();
-    }
-    if (node->InputDefs().size() > 3) {
-      const auto &axes_arg = node->InputDefs()[3];
-      cond_for_slice |= initializers.find(axes_arg->Name()) == initializers.end();
+
+    auto it = find(graph_inputs.begin(), graph_inputs.end(), data_arg);
+    if(it != graph_inputs.end()){
+      if(node->InputDefs().size() > 1){
+        const auto &start_arg = node->InputDefs()[1];
+        const auto &end_arg = node->InputDefs()[2];
+        cond_for_slice |= initializers.find(start_arg->Name()) == initializers.end();
+        cond_for_slice |= initializers.find(end_arg->Name()) == initializers.end();
+      }
+      if (node->InputDefs().size() > 3) {
+        const auto &axes_arg = node->InputDefs()[3];
+        cond_for_slice |= initializers.find(axes_arg->Name()) == initializers.end();
+      }
     }
 
     return cond_for_slice;
@@ -745,7 +752,21 @@ GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, std::string d
     openvino_ep::BackendManager::GetGlobalContext().is_wholly_supported_graph = true;
 
   } else {  // unsupported_nodes_idx.empty()
-    auto ng_clusters = GetPartitionedClusters(graph_viewer.GetNodesInTopologicalOrder(), unsupported_nodes);
+
+    std::vector<NodeIndex> modified_unsupported_nodes;
+    for (const auto& node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
+      if(find(unsupported_nodes.begin(), unsupported_nodes.end(), node_idx) != unsupported_nodes.end()){
+        modified_unsupported_nodes.push_back(node_idx);
+      }
+      else{
+        const auto& node = graph_viewer.GetNode(node_idx);
+        const auto& optype = node->OpType();
+        if(optype == "TopK" || optype == "NonZero"){
+          modified_unsupported_nodes.push_back(node_idx);
+        }
+      }
+    }
+    auto ng_clusters = GetPartitionedClusters(graph_viewer.GetNodesInTopologicalOrder(), modified_unsupported_nodes);
 
     auto connected_clusters = GetConnectedClusters(graph_viewer, ng_clusters);
 
@@ -763,15 +784,9 @@ GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, std::string d
         break;
       }
       std::vector<std::string> cluster_graph_inputs, cluster_inputs, const_inputs, cluster_outputs;
-      //If subgraph has less then three nodes we do not support it
+      //If subgraph has less then three, graph is considered trivial
       if (this_cluster.size() < 3) {
         continue;
-      }
-      for(auto it = this_cluster.begin(); it != this_cluster.end(); it++){
-        const auto& node = graph_viewer.GetNode(*it);
-        if(node->OpType() == "TopK"){
-          this_cluster.erase(it--);
-        }
       }
       GetInputsOutputsOfCluster(graph_viewer, this_cluster, ng_required_initializers, cluster_graph_inputs, cluster_inputs, const_inputs, cluster_outputs);
 
@@ -781,8 +796,8 @@ GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, std::string d
       for (auto index : this_cluster) {
         const auto& node = graph_viewer.GetNode(index);
         if (node->OpType() == "Mul" || node->OpType() == "Transpose" || node->OpType() == "Unsqueeze" ||
-            node->OpType() == "Cast" || node->OpType() == "Concat" || node->OpType() == "Gather"
-            || node->OpType() == "Div" || node->OpType() == "Sub") {
+            node->OpType() == "Cast" || node->OpType() == "Concat" || node->OpType() == "Gather" ||
+            node->OpType() == "Div" || node->OpType() == "Sub") {
 
             if((node->OpType() == "Div" || node->OpType() == "Sub") && device_id != "MYRIAD")
               continue;
@@ -796,7 +811,7 @@ GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, std::string d
             }
         }
 
-        if(node->OpType() == "Conv" || node->OpType() == "Cast") {
+        if(node->OpType() == "Conv"){
           auto output_name = node->OutputDefs()[0]->Name();
           auto it = find(cluster_outputs.begin(), cluster_outputs.end(), output_name);
           if(it != cluster_outputs.end() && node->GetOutputEdgesCount() != 0){
