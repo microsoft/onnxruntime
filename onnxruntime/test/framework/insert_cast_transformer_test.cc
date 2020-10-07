@@ -192,8 +192,8 @@ TEST(TransformerTest, InsertCastNodeTwice) {
   ASSERT_TRUE(status.IsOK()) << status;
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   EXPECT_TRUE(modified) << "Transformer should have added some Cast nodes";
-  EXPECT_TRUE(op_to_count["Cast"] == 5) << "Insert 3 more Cast nodes.";
-  
+  EXPECT_TRUE(op_to_count["Cast"] == 4) << "Insert 7 and remove 5 Cast nodes.";
+
   // Second insert
   modified = false;
   status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
@@ -201,7 +201,7 @@ TEST(TransformerTest, InsertCastNodeTwice) {
   op_to_count = CountOpsInGraph(graph);
   // Same graph without modification; The number of Cast node remains
   EXPECT_TRUE(!modified) << "Transformer should not modify the modfied graph again";
-  EXPECT_TRUE(op_to_count["Cast"] == 5) << "Remain the same number of Cast node";
+  EXPECT_TRUE(op_to_count["Cast"] == 4) << "Remain the same number of Cast node";
 
 }
 

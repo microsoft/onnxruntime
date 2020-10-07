@@ -286,9 +286,17 @@ def run_tensorflow(use_gpu, model_names, model_class, precision, batch_sizes, se
                 input_ids = tf.constant(values, shape=(batch_size, sequence_length), dtype=tf.int32)
 
                 try:
-                    model(input_ids, training=False)
+                    def encoder_forward():
+                        return model(input_ids, training=False)
 
-                    runtimes = timeit.repeat(lambda: model(input_ids, training=False), repeat=repeat_times, number=1)
+                    def encoder_decoder_forward():
+                        return model(input_ids, decoder_input_ids=input_ids, training=False)
+
+                    inference = encoder_decoder_forward if config.is_encoder_decoder else encoder_forward
+
+                    inference()
+
+                    runtimes = timeit.repeat(lambda: inference(), repeat=repeat_times, number=1)
 
                     result = {
                         "engine": "tensorflow",

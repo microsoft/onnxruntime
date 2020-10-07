@@ -63,7 +63,7 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
   reachable_nodes_ = ReverseBFS(y_nodes_);
 
   std::string unreachable_nodes;
-  
+
   // building x_nodes_
   for (const auto& name : x_node_arg_names) {
     const NodeArg* node_arg = graph->GetNodeArg(name);
@@ -89,7 +89,9 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
       }
     }
   }
-  LOGS(logger_, WARNING) << "Following nodes are unreachable for gradient back propagation: " << unreachable_nodes;
+  if (!unreachable_nodes.empty()) {
+    LOGS(logger_, WARNING) << "Following nodes are unreachable for gradient back propagation: " << unreachable_nodes;
+  }
 }
 
 NodeSet GradientGraphBuilder::ReverseBFS(const NodeSet& nodes) const {

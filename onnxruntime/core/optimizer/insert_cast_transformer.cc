@@ -78,6 +78,30 @@ Status ForceSingleNodeCPUFloat16ToFloat32(onnxruntime::Graph& graph) {
   return Status::OK();
 }
 
+enum TypeGroup {
+  Unknown = -1,
+  Bool = 0,
+  Integer = 1,
+  Float = 2,
+};
+
+TypeGroup GetTypeGroup(DataType type) {
+  if (*type == "tensor(bool)") {
+    return Bool;
+  }
+
+  if (*type == "tensor(int16)" || *type == "tensor(int32)" || *type == "tensor(int64)" || *type == "tensor(int8)" ||
+      *type == "tensor(uint16)" || *type == "tensor(uint32)" || *type == "tensor(uint64)" || *type == "tensor(uint8)") {
+    return Integer;
+  }
+  
+  if (*type == "tensor(bfloat16)" || *type == "tensor(double)" || *type == "tensor(float)" || *type == "tensor(float16)") {
+    return Float;
+  }
+
+  return Unknown;
+}
+
 /** Transformer to remove duplicate Cast nodes. */
 class RemoveDuplicateCastTransformer : public GraphTransformer {
  public:
@@ -95,32 +119,64 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
       bool removed = false;
       if (node.OpType() == "Cast") {
         std::vector<std::reference_wrapper<Node>> nodes_to_remove;
+        std::vector<std::reference_wrapper<Node>> cast_nodes_to_keep;
 
-        // if cast's next node is also cast and next cast's output type equal to cast's input type
-        // remove those two cast.
-        // boolean is an exception case for this optimization
+        // if cast's next node is also cast:
+        //     - if the next cast's output type is equal to cast's input type, remove these two casts.
+        //     - otherwise, remove the first cast.
+        // Below are some exception cases for this optimization:
+        //     - it's for non-numeric type casting.
+        //     - if the casts are for (high precision -> low precision -> high precision), since there is actual loss of precision.
+        // Other cases are OK for this optimization, including below two cases, which are not actual loss of precision:
+        //     - (low precision -> high precision ->low precision)
+        //     - (high precision -> low precision -> lower precision)
+        // It's possible that there are more than one casts following the first cast,
+        // the first cast can be removed only when:
+        //     - not providing graph output, and
+        //     - all consumer nodes are cast nodes, and
+        //     - for each consumer cast node, it meets above condition for this optimization.
         auto src_type = node.InputDefs()[0]->Type();
         auto dst_type = node.OutputDefs()[0]->Type();
-        if (*src_type == "tensor(bool)" || *dst_type == "tensor(bool)")
+        TypeGroup src_type_group = GetTypeGroup(src_type);
+        TypeGroup dst_type_group = GetTypeGroup(dst_type);
+        if (src_type_group == Unknown || dst_type_group == Unknown) {
           continue;
+        }
+
+        bool loss_precision_cast = false;
+        if (src_type_group > dst_type_group) {
+          loss_precision_cast = true;
+        }
 
         size_t num_children = node.GetOutputEdgesCount();
 
+        bool inconsistent_casts = false;
         for (auto it = node.OutputNodesBegin(); it != node.OutputNodesEnd(); ++it) {
           const Node& output_node(*it);
           if (output_node.OpType() == "Cast") {
-            // Skip this child node if this child node's output is also an output of the graph
-            if (graph_outputs.find(output_node.OutputDefs()[0]) != graph_outputs.end()) {
-              continue;
-            }
-
             auto src_type1 = output_node.InputDefs()[0]->Type();
             auto dst_type1 = output_node.OutputDefs()[0]->Type();
-            if (src_type == dst_type1 && src_type1 == dst_type) {
+            TypeGroup src_type_group1 = GetTypeGroup(src_type1);
+            TypeGroup dst_type_group1 = GetTypeGroup(dst_type1);
+            if (src_type_group1 == Unknown || dst_type_group1 == Unknown ||
+                (loss_precision_cast && dst_type_group1 > src_type_group1)) {
+              inconsistent_casts = true;
+              break;
+            }
+
+            // Cannot remove node if it's output is also an output of the graph
+            if (graph_outputs.find(output_node.OutputDefs()[0]) == graph_outputs.end() &&
+                src_type == dst_type1 && src_type1 == dst_type) {
               // get a mutable reference to the output node and save it
               nodes_to_remove.push_back(*graph.GetNode(output_node.Index()));
+            } else {
+              cast_nodes_to_keep.push_back(*graph.GetNode(output_node.Index()));
             }
           }
+        }
+
+        if (inconsistent_casts) {
+          continue;
         }
 
         if (!nodes_to_remove.empty()) {
@@ -162,13 +218,19 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
           }
 
           modified = true;
+        }
 
-          // if we removed all the child nodes and we're not providing graph output we can remove this node
-          if (num_children > 0 && nodes_to_remove.size() == num_children &&
-              graph_outputs.find(node.OutputDefs()[0]) == graph_outputs.end()) {
-            graph.RemoveNode(node.Index());
-            removed = true;
+        // If all the child nodes are either removed or another Cast node and we're not providing graph output,
+        // we can remove this node. Connect those remaining child Cast nodes to current Cast node's input.
+        if (num_children > 0 && nodes_to_remove.size() + cast_nodes_to_keep.size() == num_children &&
+            graph_outputs.find(node.OutputDefs()[0]) == graph_outputs.end()) {
+          for (auto& n : cast_nodes_to_keep) {
+            Node& cast_node_to_keep = n;
+            graph.SetNodeArgType(*cast_node_to_keep.MutableInputDefs()[0], *node.InputDefs()[0]->TypeAsProto());
           }
+          
+          removed = graph_utils::RemoveNode(graph, node);
+          modified = true;
         }
       }
 
