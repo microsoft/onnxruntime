@@ -79,7 +79,7 @@ struct TensorrtFuncState {
   bool engine_cache_enable;
   std::string engine_cache_path;
   nvinfer1::IRuntime* runtime = nullptr;
-  bool engine_cache_always_load_enble;
+  bool engine_cache_always_load_enable;
 };
 
 // Logical device representation.
@@ -111,7 +111,7 @@ class TensorrtExecutionProvider : public Provider_IExecutionProvider {
   bool engine_cache_enable_ = false;
   std::string engine_cache_path_;
   nvinfer1::IRuntime* runtime_ = nullptr;
-  bool engine_cache_always_load_enble_ = false;
+  bool engine_cache_always_load_enable_ = false;
 
   OrtMutex tensorrt_mu_;
   int device_id_;

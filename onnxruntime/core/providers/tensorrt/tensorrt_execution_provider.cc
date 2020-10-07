@@ -265,9 +265,9 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   }
 
   if (engine_cache_enable_) {
-    const std::string engine_cache_always_load_enble_env_ = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEngineCacheAlwaysLoad);
-    if (!engine_cache_always_load_enble_env_.empty()) {
-      engine_cache_always_load_enble_ = (std::stoi(engine_cache_always_load_enble_env_) == 0 ? false : true);
+    const std::string engine_cache_always_load_enable_env_ = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEngineCacheAlwaysLoad);
+    if (!engine_cache_always_load_enable_env_.empty()) {
+      engine_cache_always_load_enable_ = (std::stoi(engine_cache_always_load_enable_env_) == 0 ? false : true);
     }
     engine_cache_path_ = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEngineCachePath);
     if (!engine_cache_path_.empty() && !fs::is_directory(engine_cache_path_)) {
@@ -926,7 +926,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
             &engines_[context->node_name], &contexts_[context->node_name], &builders_[context->node_name],
             &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
             input_shape_ranges_[context->node_name], &tensorrt_mu_, &fp16_enable_,
-            &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, engine_cache_path_, runtime_, engine_cache_always_load_enble_};
+            &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, engine_cache_path_, runtime_, engine_cache_always_load_enable_};
 
 
       *state = p.release();
@@ -964,7 +964,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
       std::ifstream profile_file(profile_path, std::ios::binary | std::ios::in);
       std::string cached_path = GetEnginePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
       std::ifstream plan_file(cached_path, std::ios::binary | std::ios::in);
-      if (profile_file && plan_file && (trt_state->engine_cache_always_load_enble || (trt_engine == nullptr && trt_state->engine_cache_enable))) {  //if engine file exists, always load engine from file (no matter trt_engine is nullptr or not)
+      if (profile_file && plan_file && (trt_state->engine_cache_always_load_enable || (trt_engine == nullptr && trt_state->engine_cache_enable))) {  //if engine file exists, always load engine from file (no matter trt_engine is nullptr or not)
         shape_ranges = ReadProfile(profile_path);
         trt_state->context->reset();
         trt_state->engine->reset();
@@ -992,7 +992,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
       }
 
       for (int i = 0, end = num_inputs; i < end; ++i) {
-        auto input = trt_state->network->get()->getInput(i);
+        auto input = trt_state->network->getInput(i);
         const std::string& input_name = input->getName();
         nvinfer1::Dims dims = input->getDimensions();
         int nb_dims = dims.nbDims;
@@ -1131,7 +1131,6 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
       // Regenerate engine
       // Only one profile is generated, so no need to explicitly set optimization profile
       if (engine_update) {
-        std::ifstream plan_file(cached_path, std::ios::binary | std::ios::in);
         trt_state->context->reset();
         trt_state->engine->reset();
         auto trt_config = tensorrt_ptr::unique_pointer<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
@@ -1429,7 +1428,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
         cudaFree(buffers[binding_index]);
       }
 
-      if (trt_state->engine_cache_always_load_enble) {
+      if (trt_state->engine_cache_always_load_enable) {
         trt_state->context->reset();
         trt_state->engine->reset();
       }
