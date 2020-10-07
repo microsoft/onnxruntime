@@ -53,9 +53,10 @@ for iteration, (data, target) in enumerate(train_loader):
 
     data = data.reshape(data.shape[0], -1)
     optimizer.zero_grad()
-    output = model(data)
-    print(f'Output from forward has shape {output[0].size()}: {output[0]}')
-    loss = criterion(output, target)
+    probability = model(data)
+    print(f'Output from forward has shape {probability.size()}: {probability}')
+    # import pdb; pdb.set_trace()
+    loss = criterion(probability, target)
     # loss.backward()
     # optimizer.step()
 
