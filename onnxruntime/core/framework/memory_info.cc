@@ -9,6 +9,7 @@ void MemoryInfo::GenerateMemoryMap(const SequentialExecutionPlan* execution_plan
   if (!tensor_memoryinfo_map_.empty()) {
     return;
   }
+  num_node_size_ = execution_plan->execution_plan.size();
   for (OrtValueIndex value_idx = 0; value_idx < execution_plan->allocation_plan.size(); ++value_idx) {
     //Only store tensor information
     if (!(execution_plan->allocation_plan[value_idx].value_type) || !(execution_plan->allocation_plan[value_idx].value_type->IsTensorType()))
@@ -106,52 +107,65 @@ void MemoryInfo::PrintMemoryInfoForLocation(const logging::Logger& /*logger*/, c
 void MemoryInfo::WriteMemoryInfoToFile() {
   std::ofstream f;
   f.open(memory_info_file, std::ios_base::app);
-  if (f.is_open()) {
-    f << "iteration, name, index, type, alloc_type, location, lifetime_start, \
+  f << "iteration, name, index, type, alloc_type, location, lifetime_start, \
         lifetime_end, alloctime_start, alloctime_end, plan_block_start, plan_block_size, alloc_block_start, alloc_block_size, is_dynamic";
-    for (const auto& item : tensor_memoryinfo_map_) {
-      auto mt = item.second;
-      f << iteration_ << ", ";
-      f << mt.mlvalue_name << ", ";
-      f << mt.mlvalue_index << ", ";
-      f << mt.tensor_type << ", ";
-      f << mt.alloc_plan.alloc_kind << ", ";
-      f << mt.alloc_plan.location.name << ", ";
-      f << mt.alloc_plan.life_interval.first << ", ";
-      f << mt.alloc_plan.life_interval.second << ", ";
-      f << mt.alloc_plan.allocate_interval.first << ", ";
-      f << mt.alloc_plan.allocate_interval.second << ", ";
-      f << mt.planned_block.offset_ << ", ";
-      f << mt.planned_block.size_ << ", ";
-      f << mt.allocated_block.offset_ << ", ";
-      f << mt.allocated_block.size_ << ", ";
-      f << mt.dynamic_allocation;
-    }
+  for (const auto& item : tensor_memoryinfo_map_) {
+    auto mt = item.second;
+    f << iteration_ << ", ";
+    f << mt.mlvalue_name << ", ";
+    f << mt.mlvalue_index << ", ";
+    f << mt.tensor_type << ", ";
+    f << mt.alloc_plan.alloc_kind << ", ";
+    f << mt.alloc_plan.location.name << ", ";
+    f << mt.alloc_plan.life_interval.first << ", ";
+    f << mt.alloc_plan.life_interval.second << ", ";
+    f << mt.alloc_plan.allocate_interval.first << ", ";
+    f << mt.alloc_plan.allocate_interval.second << ", ";
+    f << mt.planned_block.offset_ << ", ";
+    f << mt.planned_block.size_ << ", ";
+    f << mt.allocated_block.offset_ << ", ";
+    f << mt.allocated_block.size_ << ", ";
+    f << mt.dynamic_allocation;
   }
   f.close();
 }
 
 //In the mem pattern, a certain memory is allocated but notused.
-//void MemoryInfo::ComputeFragmentation() {
-//  std::map<const MemoryBlock*, std::vector<OrtValueIndex> > reuse_memory_map;
-//  for (const auto& item : tensor_memoryinfo_map_) {
-//    if (item.second.dynamic_allocation)
-//      continue;
-//    if (item.second.alloc_plan.alloc_kind == AllocKind::kReuse) {
-//      if (reuse_memory_map[&item.second.planned_block].empty()) {
-//        reuse_memory_map[&item.second.planned_block].push_back(item.second.alloc_plan.reused_buffer);
-//      }
-//      reuse_memory_map[&item.second.planned_block].push_back(item.first);
-//    }
-//  }
-//  for (auto& item : reuse_memory_map) {
-//    std::sort(item.second.begin(), item.second.end(), [this](const OrtValueIndex& first, const OrtValueIndex& second) -> bool {
-//      auto a = tensor_memoryinfo_map_[first].alloc_plan.life_interval.first;
-//      auto b = tensor_memoryinfo_map_[second].alloc_plan.life_interval.first;
-//      return (a < b);
-//    });
-//  }
-//}
+void MemoryInfo::ComputeFragmentation() {
+  std::map<const MemoryBlock*, std::vector<OrtValueIndex> > reuse_memory_map;
+  for (const auto& item : tensor_memoryinfo_map_) {
+    if (item.second.dynamic_allocation)
+      continue;
+    if (item.second.alloc_plan.alloc_kind == AllocKind::kReuse) {
+      if (reuse_memory_map[&item.second.planned_block].empty()) {
+        reuse_memory_map[&item.second.planned_block].push_back(item.second.alloc_plan.reused_buffer);
+      }
+      reuse_memory_map[&item.second.planned_block].push_back(item.first);
+    }
+  }
+  for (auto& item : reuse_memory_map) {
+    std::sort(item.second.begin(), item.second.end(), [this](const OrtValueIndex& first, const OrtValueIndex& second) -> bool {
+      auto a = tensor_memoryinfo_map_[first].alloc_plan.life_interval.first;
+      auto b = tensor_memoryinfo_map_[second].alloc_plan.life_interval.first;
+      return (a < b);
+    });
+  }
+  std::vector<size_t> frags;
+  for (size_t i = 0; i < num_node_size_; ++i) {
+    frags.push_back(0);
+  }
+
+  for (auto& item : reuse_memory_map) {
+    for (int i = 0; i < item.second.size() - 1; ++i) {
+      for (int j = int(tensor_memoryinfo_map_[item.second[i]].alloc_plan.life_interval.second); j < int(tensor_memoryinfo_map_[item.second[i + 1]].alloc_plan.life_interval.first); ++j) {
+        frags[j] += item.first->size_;
+      }
+    }
+  }
+  for (size_t i = 0; i < frags.size(); ++i) {
+    std::cout << "step " << i << ": " << frags[i] << "\n";
+  }
+}  // namespace onnxruntime
 
 //void MemoryInfo::CollectMemoryOccupation() {
 //  std::map<const MemoryBlock*, std::vector<OrtValueIndex> > memory_tensorid_map_;

@@ -55,6 +55,7 @@ class MemoryInfo {
   void RecordTensorDeviceAllocInfo(const OrtValueIndex idx, const OrtValue& value);
   void RecordInputMemoryInfo(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds);
 
+  void ComputeFragmentation();
   void PrintMemoryInfoForLocation(const logging::Logger& /*logger*/, const OrtDevice::DeviceType location);
   void MemoryInfo::WriteMemoryInfoToFile();
   void SetIteration(size_t iteration) {
@@ -67,6 +68,7 @@ class MemoryInfo {
   static const int alignment = 256;
   size_t iteration_ = 0;
   std::string memory_info_file;
+  size_t num_node_size_;
 };
 
 }  // namespace onnxruntime
