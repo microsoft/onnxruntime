@@ -155,6 +155,11 @@ def get_ort_session_inputs_and_outptus(name, session, ort_input):
 def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_times, batch_size):
 
     runtimes = []
+    if args.input_data == "random":
+        repeat_times = 1 # warn-up run is included in ort_inputs
+    else:
+        repeat_times += 1 # add warn-up run
+
     for ort_input in ort_inputs:
         sess_inputs, sess_outputs = get_ort_session_inputs_and_outptus(name, session, ort_input)
         if debug:
@@ -164,11 +169,6 @@ def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_t
             logger.info(sess_outputs)
 
         try:
-            if args.input_data == "random":
-                repeat_times = 1 # warn-up run is included in ort_inputs
-            else:
-                repeat_times += 1 # add warn-up run
-
             runtime = timeit.repeat(lambda: session.run(sess_outputs, sess_inputs), number=1, repeat=repeat_times)
             runtimes += runtime
 
@@ -576,7 +576,7 @@ def update_fail_model_map(model_to_fail_ep, model_name, ep, e_type, e):
 
     new_map = {}
     new_map["error_type"] = e_type
-    new_map["error_message"] = str(e)
+    new_map["error_message"] = re.sub('^\n', '', str(e))
     model_to_fail_ep[model_name][ep] = new_map
 
     # If TRT fails, TRT FP16 should fail as well

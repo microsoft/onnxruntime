@@ -5,8 +5,8 @@ SYMBOLIC_SHAPE_INFER="/home/hcsuser/repos/onnxruntime/onnxruntime/python/tools/s
 # many models 
 if [ "$1" == "many-models" ]
 then
-    python3 benchmark_wrapper.py -r validate -m /home/hcsuser/mount/ -s $SYMBOLIC_SHAPE_INFER -o result/"$1"
-    python3 benchmark_wrapper.py -r benchmark -i random -t 10 -m /home/hcsuser/mount -s $SYMBOLIC_SHAPE_INFER -o result/"$1"
+    python3 benchmark_wrapper.py -r validate -m /home/hcsuser/mount/many-models -s $SYMBOLIC_SHAPE_INFER -o result/"$1"
+    python3 benchmark_wrapper.py -r benchmark -i random -t 10 -m /home/hcsuser/mount/many-models -s $SYMBOLIC_SHAPE_INFER -o result/"$1"
 fi
 
 # ONNX model zoo
