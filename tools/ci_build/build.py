@@ -1108,6 +1108,7 @@ def run_orttraining_test_orttrainer_frontend_separately(cwd):
 
         def pytest_collection_modifyitems(self, items):
             for item in items:
+                print('item.name: ', item.name)
                 if item.originalname:
                     self.collected.add(item.originalname)
                 else:
