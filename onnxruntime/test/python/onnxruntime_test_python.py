@@ -673,9 +673,9 @@ class TestInferenceSession(unittest.TestCase):
         # as long as any session that is going to be reliant on it is in scope
         so.add_initializer("W", ortvalue_initializer)
 
-        # Create an InferenceSession and validate that it uses the
+        # Create an InferenceSession that only uses the CPU EP and validate that it uses the
         # initializer provided via the SessionOptions instance (overriding the model initializer)
-        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), so)
+        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), so, ['CPUExecutionProvider'])
         res = sess.run(["Y"], {"X": np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)})
         self.assertTrue(np.array_equal(res[0], np.array([[2.0, 2.0], [12.0, 12.0], [30.0, 30.0]], dtype=np.float32)))
         
