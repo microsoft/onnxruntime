@@ -11,7 +11,7 @@ from keras import backend as K
 from keras import Sequential
 from keras.layers import Layer, Conv2D, MaxPooling2D
 
-
+#test
 class ScaledTanh(Layer):
 
     def __init__(self, alpha=1.0, beta=1.0, **kwargs):
