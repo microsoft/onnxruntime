@@ -437,15 +437,8 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       return false;
   } else if(optype == "Gather") {
 
-    //Uint8 data type is not supported for Gather
-    const auto& input = node->InputDefs()[0];
-    if(device_id == "MYRIAD"){
-      auto input_data_type = input->TypeAsProto()->tensor_type().elem_type();
-      if(input_data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8)
-        return true;
-    }
-
     if(device_id == "GPU"){
+      const auto& input = node->InputDefs()[0];
       auto graph_inputs = graph_viewer.GetInputs();
       auto it = find(graph_inputs.begin(), graph_inputs.end(), input);
       if(it != graph_inputs.end()){
@@ -802,6 +795,14 @@ GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, std::string d
         const auto& optype = node->OpType();
         if(optype == "TopK" || optype == "NonZero"){
           modified_unsupported_nodes.push_back(node_idx);
+        }
+        if(optype == "Gather"){
+          if(device_id == "MYRIAD"){
+            auto input_data_type = node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+            if(input_data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8){
+              modified_unsupported_nodes.push_back(node_idx);
+            }
+          }
         }
       }
     }
