@@ -3,12 +3,9 @@
 
 #include "matmul_integer_base.h"
 
-#include "core/framework/op_kernel.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/util/math_cpuonly.h"
 #include "core/util/qmath.h"
-#include "core/mlas/inc/mlas.h"
-#include "core/providers/common.h"
 
 namespace onnxruntime {
 

@@ -1,14 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/op_kernel.h"
 #include "core/common/safeint.h"
-#include "core/providers/common.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/cpu/math/matmul_integer_base.h"
 #include "core/util/math_cpuonly.h"
 #include "core/util/qmath.h"
-#include "core/mlas/inc/mlas.h"
 
 #include <algorithm>
 
