@@ -7,8 +7,8 @@ o) OPENVINO_VERSION=${OPTARG};;
 esac
 done
 
-OPENVINO_VERSION=${OPENVINO_VERSION:=2020.4}
-export INTEL_OPENVINO_DIR=/data/openvino/openvino_${OPENVINO_VERSION}.287
+OPENVINO_VERSION=${OPENVINO_VERSION:=2021.1}
+export INTEL_OPENVINO_DIR=/data/openvino/openvino_${OPENVINO_VERSION}.110
 export INTEL_OPENVINO_SRC_DIR=/data/openvino/openvino_src
 git clone https://github.com/openvinotoolkit/openvino.git ${INTEL_OPENVINO_SRC_DIR}
 

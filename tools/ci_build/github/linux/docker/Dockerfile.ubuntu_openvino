@@ -2,7 +2,7 @@ ARG OS_VERSION=18.04
 FROM ubuntu:${OS_VERSION}
 
 ARG PYTHON_VERSION=3.5
-ARG OPENVINO_VERSION=2020.4
+ARG OPENVINO_VERSION=2021.1
 
 ADD scripts /tmp/scripts
 RUN /tmp/scripts/install_ubuntu.sh -p $PYTHON_VERSION -d EdgeDevice && \
@@ -16,17 +16,17 @@ RUN /tmp/scripts/install_openvino.sh -o ${OPENVINO_VERSION} && \
 
 WORKDIR /root
 
-ENV INTEL_OPENVINO_DIR /data/openvino/openvino_${OPENVINO_VERSION}.287
+ENV INTEL_OPENVINO_DIR /data/openvino/openvino_${OPENVINO_VERSION}.110
 ENV LD_LIBRARY_PATH $INTEL_OPENVINO_DIR/deployment_tools/inference_engine/lib/intel64:$INTEL_OPENVINO_DIR/deployment_tools/ngraph/lib:$INTEL_OPENVINO_DIR/deployment_tools/inference_engine/external/tbb/lib:/usr/local/openblas/lib:$LD_LIBRARY_PATH
 
 ENV PYTHONPATH $INTEL_OPENVINO_DIR/tools:$PYTHONPATH
 ENV IE_PLUGINS_PATH $INTEL_OPENVINO_DIR/deployment_tools/inference_engine/lib/intel64
 
-RUN wget https://github.com/intel/compute-runtime/releases/download/19.15.12831/intel-gmmlib_19.1.1_amd64.deb && \
-    wget https://github.com/intel/compute-runtime/releases/download/19.15.12831/intel-igc-core_1.0.2-1787_amd64.deb && \
-    wget https://github.com/intel/compute-runtime/releases/download/19.15.12831/intel-igc-opencl_1.0.2-1787_amd64.deb && \
-    wget https://github.com/intel/compute-runtime/releases/download/19.15.12831/intel-opencl_19.15.12831_amd64.deb && \
-    wget https://github.com/intel/compute-runtime/releases/download/19.15.12831/intel-ocloc_19.15.12831_amd64.deb && \
+RUN wget https://github.com/intel/compute-runtime/releases/download/19.41.14441/intel-gmmlib_19.3.2_amd64.deb && \
+    wget https://github.com/intel/compute-runtime/releases/download/19.41.14441/intel-igc-core_1.0.2597_amd64.deb && \
+    wget https://github.com/intel/compute-runtime/releases/download/19.41.14441/intel-igc-opencl_1.0.2597_amd64.deb && \
+    wget https://github.com/intel/compute-runtime/releases/download/19.41.14441/intel-opencl_19.41.14441_amd64.deb && \
+    wget https://github.com/intel/compute-runtime/releases/download/19.41.14441/intel-ocloc_19.41.14441_amd64.deb && \
     sudo dpkg -i *.deb && rm -rf *.deb
 
 ARG BUILD_UID=1000
