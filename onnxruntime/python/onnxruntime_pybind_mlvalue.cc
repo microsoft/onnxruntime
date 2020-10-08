@@ -661,7 +661,7 @@ void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, const
     // to the OrtValue object that we are going to use for Run().
     // This should just increase the ref counts of the underlying shared_ptrs in the native OrtValue
     // and the ref count will be decreased when the OrtValue used for Run() is destroyed upon exit.
-    *p_mlvalue = value.attr(PYTHON_ORTVALUE_NATIVE_OBJECT_ATTR).cast<OrtValue>();
+    *p_mlvalue = *value.attr(PYTHON_ORTVALUE_NATIVE_OBJECT_ATTR).cast<OrtValue*>();
   } else if (!accept_only_numpy_array) {
     auto iterator = PyObject_GetIter(value.ptr());
     if (iterator == NULL) {
