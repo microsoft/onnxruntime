@@ -7,7 +7,7 @@
 
 namespace onnxruntime {
 namespace test {
-TEST(ResizeOpTest, ResizeOpLineartDownSampleTest_tf_crop_and_resize) {
+TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_tf_crop_and_resize) {
   OpTester test("Resize", 11);
   std::vector<float> roi{0.4f, 0.6f, 0.6f, 0.8f};
   std::vector<float> scales{};
@@ -65,7 +65,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_tf_crop_and_resize_with_extrapol
   test.Run();
 }
 
-TEST(ResizeOpTest, ResizeOpLineartDownSampleTest_4DBilinear) {
+TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear) {
   OpTester test("Resize", 11);
   std::vector<float> roi{};
   std::vector<float> scales{1.0f, 1.0f, 0.6f, 0.6f};
@@ -87,7 +87,7 @@ TEST(ResizeOpTest, ResizeOpLineartDownSampleTest_4DBilinear) {
   test.Run();
 }
 
-TEST(ResizeOpTest, ResizeOpLineartDownSampleTest_4DBilinear_align_corners) {
+TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear_align_corners) {
   OpTester test("Resize", 11);
   std::vector<float> roi{};
   std::vector<float> scales{1.0f, 1.0f, 0.6f, 0.6f};
@@ -110,7 +110,7 @@ TEST(ResizeOpTest, ResizeOpLineartDownSampleTest_4DBilinear_align_corners) {
   test.Run();
 }
 
-TEST(ResizeOpTest, ResizeOpLineartDownSampleTest_2DBilinear_pytorch_half_pixel) {
+TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_2DBilinear_pytorch_half_pixel) {
   OpTester test("Resize", 11);
   std::vector<float> roi{};
   std::vector<float> scales{};
@@ -138,7 +138,7 @@ TEST(ResizeOpTest, ResizeOpLineartDownSampleTest_2DBilinear_pytorch_half_pixel) 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: results mismatch
 }
 
-TEST(ResizeOpTest, ResizeOpLineartUpSampleTest_4DBilinear_asymmetric) {
+TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_4DBilinear_asymmetric) {
   OpTester test("Resize", 11);
   std::vector<float> roi{};
   std::vector<float> scales{1.0f, 1.0f, 2.0f, 4.0f};
@@ -172,7 +172,7 @@ TEST(ResizeOpTest, ResizeOpLineartUpSampleTest_4DBilinear_asymmetric) {
   test.Run();
 }
 
-TEST(ResizeOpTest, ResizeOpLineartUpSampleTest_2DBilinear_align_corners) {
+TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_2DBilinear_align_corners) {
   OpTester test("Resize", 11);
   std::vector<float> roi{};
   std::vector<float> scales{2.0f, 4.0f};
@@ -197,7 +197,66 @@ TEST(ResizeOpTest, ResizeOpLineartUpSampleTest_2DBilinear_align_corners) {
   test.Run();
 }
 
-TEST(ResizeOpTest, ResizeOpLineartScalesNoOpTest) {
+TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_3DTrilinear_pytorch_half_pixel) {
+  OpTester test("Resize", 11);
+  std::vector<float> roi{};
+  std::vector<float> scales{};
+  std::vector<int64_t> sizes{1, 3, 1};
+
+  test.AddAttribute("mode", "linear");
+  test.AddAttribute("coordinate_transformation_mode", "pytorch_half_pixel");
+
+  const int64_t D = 2, H = 4, W = 4;
+
+  std::vector<float> X = {
+      1.0f, 2.0f, 3.0f, 4.0f,
+      5.0f, 6.0f, 7.0f, 8.0f,
+      9.0f, 10.0f, 11.0f, 12.0f,
+      13.0f, 14.0f, 15.0f, 16.0f,
+
+      1.0f, 2.0f, 3.0f, 4.0f,
+      5.0f, 6.0f, 7.0f, 8.0f,
+      9.0f, 10.0f, 11.0f, 12.0f,
+      13.0f, 14.0f, 15.0f, 16.0f};
+
+  test.AddInput<float>("X", {D, H, W}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("scales", {0}, scales);
+  test.AddInput<int64_t>("sizes", {3}, sizes);
+
+  std::vector<float> Y = {1.6666666f, 7.0f, 12.333333f};
+
+  test.AddOutput<float>("Y", {sizes[0], sizes[1], sizes[2]}, Y);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: results mismatch
+}
+
+TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_5DTrilinear_pytorch_half_pixel) {
+  OpTester test("Resize", 11);
+  std::vector<float> roi{};
+  std::vector<float> scales{1.0f, 1.0f, 2.0f, 2.0f, 1.0f};
+
+  test.AddAttribute("mode", "linear");
+  test.AddAttribute("coordinate_transformation_mode", "pytorch_half_pixel");
+
+  const int64_t N = 1, C = 2, D = 2, H = 1, W = 2;
+
+  std::vector<float> X = {
+      1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f};
+
+  test.AddInput<float>("X", {N, C, D, H, W}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("scales", {5}, scales);
+
+  std::vector<float> Y = {1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f,
+                          1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f,
+                          1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f,
+                          1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f};
+
+  test.AddOutput<float>("Y", {1, 2, 4, 2, 2}, Y);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: results mismatch
+}
+
+TEST(ResizeOpTest, ResizeOpLinearScalesNoOpTest) {
   OpTester test("Resize", 11);
   std::vector<float> roi{};
   std::vector<float> scales{1.0f, 1.0f, 1.0f, 1.0f};
@@ -856,7 +915,7 @@ TEST(ResizeOpTest, ResizeOpCubicUpSampleTest_tf_half_pixel_for_nn) {
   test.Run();
 }
 
-TEST(ResizeOpTest, ResizeOpLineartDownSampleTest_4DBilinear_Ver10) {
+TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear_Ver10) {
   OpTester test("Resize", 10);
   std::vector<float> scales{1.0f, 1.0f, 0.6f, 0.6f};
 
@@ -876,7 +935,7 @@ TEST(ResizeOpTest, ResizeOpLineartDownSampleTest_4DBilinear_Ver10) {
   test.Run();
 }
 
-TEST(ResizeOpTest, ResizeOpLineartDownSampleTest_2DBilinear_Ver10) {
+TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_2DBilinear_Ver10) {
   OpTester test("Resize", 10);
   std::vector<float> scales{0.6f, 0.6f};
 
@@ -896,7 +955,7 @@ TEST(ResizeOpTest, ResizeOpLineartDownSampleTest_2DBilinear_Ver10) {
   test.Run();
 }
 
-TEST(ResizeOpTest, ResizeOpLineartUpSampleTest_4DBilinear_Ver10) {
+TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_4DBilinear_Ver10) {
   OpTester test("Resize", 10);
   std::vector<float> scales{1.0f, 1.0f, 2.0f, 4.0f};
   test.AddAttribute("mode", "linear");
@@ -926,7 +985,7 @@ TEST(ResizeOpTest, ResizeOpLineartUpSampleTest_4DBilinear_Ver10) {
   test.Run();
 }
 
-TEST(ResizeOpTest, ResizeOpLineartUpSampleTest_2DBilinear_Ver10) {
+TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_2DBilinear_Ver10) {
   OpTester test("Resize", 10);
   std::vector<float> scales{2.0f, 4.0f};
   test.AddAttribute("mode", "linear");
@@ -948,7 +1007,7 @@ TEST(ResizeOpTest, ResizeOpLineartUpSampleTest_2DBilinear_Ver10) {
   test.Run();
 }
 
-TEST(ResizeOpTest, ResizeOpLineartScalesNoOpTest_Ver10) {
+TEST(ResizeOpTest, ResizeOpLinearScalesNoOpTest_Ver10) {
   OpTester test("Resize", 10);
   std::vector<float> scales{1.0f, 1.0f, 1.0f, 1.0f};
   test.AddAttribute("mode", "linear");

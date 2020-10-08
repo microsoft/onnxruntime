@@ -113,8 +113,8 @@ def get_latency_result(runtimes, batch_size):
 def output_details(results, csv_filename):
     with open(csv_filename, mode="a", newline='') as csv_file:
         column_names = [
-            "engine", "version", "device", "precision", "optimizer", "io_binding", "model_name", "inputs", "batch_size",
-            "sequence_length", "datetime", "test_times", "QPS", "average_latency_ms", "latency_variance",
+            "engine", "version", "device", "precision", "optimizer", "io_binding", "model_name", "inputs", "threads",
+            "batch_size", "sequence_length", "datetime", "test_times", "QPS", "average_latency_ms", "latency_variance",
             "latency_90_percentile", "latency_95_percentile", "latency_99_percentile"
         ]
 
@@ -128,7 +128,9 @@ def output_details(results, csv_filename):
 
 def output_summary(results, csv_filename, args):
     with open(csv_filename, mode="a", newline='') as csv_file:
-        header_names = ["model_name", "inputs", "engine", "version", "device", "precision", "optimizer", "io_binding"]
+        header_names = [
+            "model_name", "inputs", "engine", "version", "device", "precision", "optimizer", "io_binding", "threads"
+        ]
         data_names = []
         for batch_size in args.batch_sizes:
             for sequence_length in args.sequence_lengths:
@@ -140,22 +142,24 @@ def output_summary(results, csv_filename, args):
             for input_count in [1, 2, 3]:
                 for engine_name in args.engines:
                     for io_binding in [True, False, ""]:
-                        row = {}
-                        for result in results:
-                            if result["model_name"] == model_name and result["inputs"] == input_count and result[
-                                    "engine"] == engine_name and result["io_binding"] == io_binding:
-                                headers = {k: v for k, v in result.items() if k in header_names}
-                                if not row:
-                                    row.update(headers)
-                                    row.update({k: "" for k in data_names})
-                                else:
-                                    for k in header_names:
-                                        assert row[k] == headers[k]
-                                b = result["batch_size"]
-                                s = result["sequence_length"]
-                                row[f"b{b}_s{s}"] = result["average_latency_ms"]
-                        if row:
-                            csv_writer.writerow(row)
+                        for threads in args.num_threads:
+                            row = {}
+                            for result in results:
+                                if result["model_name"] == model_name and result["inputs"] == input_count and result[
+                                        "engine"] == engine_name and result["io_binding"] == io_binding and result[
+                                            "threads"] == threads:
+                                    headers = {k: v for k, v in result.items() if k in header_names}
+                                    if not row:
+                                        row.update(headers)
+                                        row.update({k: "" for k in data_names})
+                                    else:
+                                        for k in header_names:
+                                            assert row[k] == headers[k]
+                                    b = result["batch_size"]
+                                    s = result["sequence_length"]
+                                    row[f"b{b}_s{s}"] = result["average_latency_ms"]
+                            if row:
+                                csv_writer.writerow(row)
 
     logger.info(f"Summary results are saved to csv file: {csv_filename}")
 
@@ -185,8 +189,18 @@ def inference_ort(ort_session, ort_inputs, result_template, repeat_times, batch_
     return result
 
 
-def inference_ort_with_io_binding(ort_session, ort_inputs, result_template, repeat_times, ort_output_names, ort_outputs,
-                                  output_buffers, max_last_state_size, max_pooler_size, batch_size, device, data_type=numpy.longlong):
+def inference_ort_with_io_binding(ort_session,
+                                  ort_inputs,
+                                  result_template,
+                                  repeat_times,
+                                  ort_output_names,
+                                  ort_outputs,
+                                  output_buffers,
+                                  max_last_state_size,
+                                  max_pooler_size,
+                                  batch_size,
+                                  device,
+                                  data_type=numpy.longlong):
     result = {}
 
     # Bind inputs and outputs to onnxruntime session

@@ -94,6 +94,12 @@ def testORTTrainerOptionsDefaultValues(test_input):
             'enabled': False,
             'loss_scaler': None
         },
+        'graph_transformer': {
+            'attn_dropout_recompute': False,
+            'gelu_recompute': False,
+            'transformer_layer_recompute': False,
+            'number_recompute_layers': 0
+        },
         'utils': {
             'frozen_weights': [],
             'grad_norm_clip': True,
@@ -722,6 +728,61 @@ def testORTTrainerMixedPrecisionLossScaler(seed, device, expected_loss, fetches)
         loss = trainer.eval_step(val_data, val_targets)
         trainer._train_step_info.fetches=[]
     loss, _ = trainer.eval_step(val_data, val_targets)
+
+    # Compare loss to ground truth computed from current ORTTrainer API
+    _test_helpers.assert_model_outputs(expected_loss, actual_loss, True, rtol=rtol)
+    assert trainer._onnx_model is not None
+
+
+def _recompute_data():
+    device_capability_major = torch.cuda.get_device_capability()[0] 
+    if device_capability_major == 7:    # V100 for Dev machine
+        expected_loss = [10.577394, 10.444777, 10.425666, 10.299958, 10.290016]
+        return [
+            (False, False, False, 0, expected_loss),    # no recompute
+            (True, False, False, 0, expected_loss),     # attn_dropout recompute
+            (False, True, False, 0, expected_loss),     # gelu recompute
+            (False, False, True, 0, expected_loss),     # transformer_layer recompute
+            (False, False, True, 1, expected_loss),     # transformer_layer recompute with 1 layer
+        ]
+    elif device_capability_major == 5:  # M60 for CI machines
+        expected_loss = [10.56341 , 10.461096, 10.364473, 10.297504, 10.249142]
+        return [
+            (False, False, False, 0, expected_loss),    # no recompute
+            (True, False, False, 0, expected_loss),     # attn_dropout recompute
+            (False, True, False, 0, expected_loss),     # gelu recompute
+            (False, False, True, 0, expected_loss),     # transformer_layer recompute
+            (False, False, True, 1, expected_loss),     # transformer_layer recompute with 1 layer            
+        ]
+@pytest.mark.parametrize("attn_dropout, gelu, transformer_layer, number_layers, expected_loss", _recompute_data())
+def testORTTrainerRecompute(attn_dropout, gelu, transformer_layer, number_layers, expected_loss):
+    seed = 321
+    device = 'cuda'
+    rtol = 1e-3
+    total_steps = len(expected_loss)
+    torch.manual_seed(seed)
+    set_seed(seed)
+
+    # Setup ORTTrainer
+    loss_scaler = amp.DynamicLossScaler()
+    options = orttrainer.ORTTrainerOptions({'device' : {'id' : device},
+                                            'graph_transformer' : {
+                                                'attn_dropout_recompute': attn_dropout,
+                                                'gelu_recompute': gelu,
+                                                'transformer_layer_recompute': transformer_layer,
+                                                'number_recompute_layers': number_layers
+                                            },
+                                            'debug' : {'deterministic_compute' : True}})
+    model, model_desc, my_loss, batcher_fn, train_data, val_data, _ = _load_pytorch_transformer_model(device)
+    optim_config = optim.LambConfig(lr=0.001)
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=options)
+
+    # Training loop
+    actual_loss = []
+    for i in range(total_steps):
+        data, targets = batcher_fn(train_data, i)
+        loss, _ = trainer.train_step(data, targets)
+        actual_loss.append(loss.cpu())
 
     # Compare loss to ground truth computed from current ORTTrainer API
     _test_helpers.assert_model_outputs(expected_loss, actual_loss, True, rtol=rtol)
