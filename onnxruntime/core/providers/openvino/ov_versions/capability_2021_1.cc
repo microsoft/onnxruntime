@@ -205,6 +205,13 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     }
 
     const auto& attributes = node->GetAttributes();
+
+    const auto ceil_attr = attributes.find("ceil_mode");
+    // default value of ceil_mode (0) is supported.
+    if (ceil_attr != attributes.end() && ceil_attr->second.i() != 0) {
+      return true;
+    }
+
     //auto pad null value is not supported
     const auto auto_attr = attributes.find("auto_pad");
     if (auto_attr->second.s() == "") {
