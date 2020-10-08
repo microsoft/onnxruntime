@@ -85,7 +85,7 @@ TEST_P(ModelTest, Run) {
   WINML_EXPECT_NO_THROW(device = LearningModelDevice(m_deviceKind));
   WINML_EXPECT_NO_THROW(session = LearningModelSession(model, device));
   WINML_EXPECT_NO_THROW(binding = LearningModelBinding(session));
-  for (int i = 0; i < m_testCase->GetDataCount(); i++) {
+  for (size_t i = 0; i < m_testCase->GetDataCount(); i++) {
 
     // Load and bind inputs
     onnxruntime::test::HeapBuffer inputHolder;

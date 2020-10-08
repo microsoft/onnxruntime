@@ -156,7 +156,8 @@ function (get_winml_test_model_src
       "${winml_test_src_path}/model/*.h"
       "${winml_test_src_path}/model/*.cpp")
   set(${output_winml_test_model_src} ${winml_test_model_src} PARENT_SCOPE)
-  set(${winml_test_model_libs} onnx_test_data_proto onnx_test_runner_common onnxruntime_common PARENT_SCOPE)
+  set(${winml_test_model_libs} onnx_test_data_proto onnx_test_runner_common onnxruntime_common onnxruntime_mlas
+    onnxruntime_graph onnxruntime_test_utils onnxruntime_framework onnxruntime_flatbuffers PARENT_SCOPE)
 endfunction()
 
 file(GLOB winml_test_common_src CONFIGURE_DEPENDS
@@ -268,7 +269,7 @@ get_winml_test_model_src(${WINML_TEST_SRC_DIR} winml_test_model_src winml_test_m
 add_winml_test(
   TARGET winml_test_model
   SOURCES ${winml_test_model_src}
-  LIBS winml_test_common ${winml_test_model_libs} ${onnx_test_libs} onnxruntime_mlas onnxruntime_graph onnxruntime_test_utils onnxruntime_framework
+  LIBS winml_test_common ${winml_test_model_libs}
 )
 target_precompiled_header(winml_test_model testPch.h)
 
