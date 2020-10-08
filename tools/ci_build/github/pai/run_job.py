@@ -85,9 +85,11 @@ def main():
     user = os.environ[args.user_env]
     token = os.environ[args.token_env]
 
-    print("Submitting job...")
+    print("Submitting job {} ..".format(args.job_name))
     submit_job(yaml_with_substitutions, token)
-    print("Waiting for job to complete...")
+    print('See https://rr.openpai.org/job-detail.html?username=onnxrt&jobName={}'.format(args.job_name))
+
+    print("Waiting for job to complete ..")
     wait_for_job(args.job_name, user, token)
 
 
