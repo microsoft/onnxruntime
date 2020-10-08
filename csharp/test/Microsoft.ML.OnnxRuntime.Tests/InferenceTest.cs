@@ -1849,60 +1849,62 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var dims = new long[] { 3, 2 };
             var dataBuffer = new float[] { 1.0F, 2.0F, 3.0F, 4.0F, 5.0F, 6.0F };
             var allocator = OrtAllocator.DefaultInstance;
-            var ortAllocationInput = allocator.Allocate((uint)dataBuffer.Length * sizeof(float));
-            unsafe
+            using (var ortAllocationInput = allocator.Allocate((uint)dataBuffer.Length * sizeof(float)))
             {
-                float* p = (float*)ortAllocationInput.DangerousGetHandle();
-                for (int i = 0; i < dataBuffer.Length; ++i)
+                unsafe
                 {
-                    *p++ = dataBuffer[i];
-                }
-            }
-            var dataBufferNumBytes = (uint)dataBuffer.Length * sizeof(float);
-            var sharedInitializer = OrtValue.CreateTensorValueWithData(ortCpuMemInfo, Tensors.TensorElementType.Float,
-            dims, ortAllocationInput.DangerousGetHandle(), dataBufferNumBytes);
-
-            SessionOptions options = new SessionOptions();
-            options.AddInitializer("W", sharedInitializer);
-
-            float[] expectedOutput = { 1.0F, 4.0F, 9.0F, 16.0F, 25.0F, 36.0F };
-            int[] expectedDimensions = { 3, 2 };
-
-            using (var session = new InferenceSession(modelPath, options))
-            using (var session2 = new InferenceSession(modelPath, options))
-            {
-                var inputMeta = session.InputMetadata;
-                var container = new List<NamedOnnxValue>();
-
-                foreach (var name in inputMeta.Keys)
-                {
-                    Assert.Equal(typeof(float), inputMeta[name].ElementType);
-                    Assert.True(inputMeta[name].IsTensor);
-                    var tensor = new DenseTensor<float>(dataBuffer, inputMeta[name].Dimensions);
-                    container.Add(NamedOnnxValue.CreateFromTensor<float>(name, tensor));
-                }
-
-                ReadOnlySpan<int> expectedOutputDimensions = new int[] { 1, 1000, 1, 1 };
-                string[] expectedOutputNames = new string[] { "Y" };
-
-                // Run inference with named inputs and outputs created with in Run()
-                using (var results = session.Run(container))  // results is an IReadOnlyList<NamedOnnxValue> container
-                {
-                    foreach (var r in results)
+                    float* p = (float*)ortAllocationInput.DangerousGetHandle();
+                    for (int i = 0; i < dataBuffer.Length; ++i)
                     {
-                        validateRunResultData(r.AsTensor<float>(), expectedOutput, expectedDimensions);
+                        *p++ = dataBuffer[i];
                     }
                 }
+                var dataBufferNumBytes = (uint)dataBuffer.Length * sizeof(float);
+                var sharedInitializer = OrtValue.CreateTensorValueWithData(ortCpuMemInfo, Tensors.TensorElementType.Float,
+                dims, ortAllocationInput.DangerousGetHandle(), dataBufferNumBytes);
 
-                // Run inference with named inputs and outputs created with in Run()
-                using (var results2 = session2.Run(container))  // results is an IReadOnlyList<NamedOnnxValue> container
+                SessionOptions options = new SessionOptions();
+                options.AddInitializer("W", sharedInitializer);
+
+                float[] expectedOutput = { 1.0F, 4.0F, 9.0F, 16.0F, 25.0F, 36.0F };
+                int[] expectedDimensions = { 3, 2 };
+
+                using (var session = new InferenceSession(modelPath, options))
+                using (var session2 = new InferenceSession(modelPath, options))
                 {
-                    foreach (var r in results2)
+                    var inputMeta = session.InputMetadata;
+                    var container = new List<NamedOnnxValue>();
+
+                    foreach (var name in inputMeta.Keys)
                     {
-                        validateRunResultData(r.AsTensor<float>(), expectedOutput, expectedDimensions);
+                        Assert.Equal(typeof(float), inputMeta[name].ElementType);
+                        Assert.True(inputMeta[name].IsTensor);
+                        var tensor = new DenseTensor<float>(dataBuffer, inputMeta[name].Dimensions);
+                        container.Add(NamedOnnxValue.CreateFromTensor<float>(name, tensor));
+                    }
+
+                    ReadOnlySpan<int> expectedOutputDimensions = new int[] { 1, 1000, 1, 1 };
+                    string[] expectedOutputNames = new string[] { "Y" };
+
+                    // Run inference with named inputs and outputs created with in Run()
+                    using (var results = session.Run(container))  // results is an IReadOnlyList<NamedOnnxValue> container
+                    {
+                        foreach (var r in results)
+                        {
+                            validateRunResultData(r.AsTensor<float>(), expectedOutput, expectedDimensions);
+                        }
+                    }
+
+                    // Run inference with named inputs and outputs created with in Run()
+                    using (var results2 = session2.Run(container))  // results is an IReadOnlyList<NamedOnnxValue> container
+                    {
+                        foreach (var r in results2)
+                        {
+                            validateRunResultData(r.AsTensor<float>(), expectedOutput, expectedDimensions);
+                        }
                     }
                 }
-            }
+            } 
         }
 
         [DllImport("kernel32", SetLastError = true)]

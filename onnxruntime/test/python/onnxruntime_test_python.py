@@ -664,6 +664,19 @@ class TestInferenceSession(unittest.TestCase):
         self.assertTrue(
             'SessionOptions does not have configuration with key: ' + invalide_key in str(context.exception))
 
+    def testSessionOptionsAddInitializer(self):
+        # Create an initializer and add it to a SessionOptions instance
+        so = onnxrt.SessionOptions()
+        # This initializer is different from the actual initializer in the model for "W"
+        ortvalue_initializer = onnxrt.OrtValue.ortvalue_from_numpy(np.array([[2.0, 1.0], [4.0, 3.0], [6.0, 5.0]], dtype=np.float32))
+        so.add_initializer("W", ortvalue_initializer)
+
+        # Create an InferenceSession and validate that it uses the
+        # initializer provided via the SessionOptions instance (overriding the model initializer)
+        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), so)
+        res = sess.run(["Y"], {"X": np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)})
+        self.assertTrue(np.array_equal(res[0], np.array([[2.0, 2.0], [12.0, 12.0], [30.0, 30.0]], dtype=np.float32)))
+        
     def testRegisterCustomOpsLibrary(self):
         if sys.platform.startswith("win"):
             shared_library = 'custom_op_library.dll'
@@ -714,13 +727,13 @@ class TestInferenceSession(unittest.TestCase):
 
     def testOrtValue(self):
 
+        numpy_arr_input = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        numpy_arr_output = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
+
         def test_session_with_ortvalue_input(ortvalue):
             sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
             res = sess.run(["Y"], {"X": ortvalue})
             self.assertTrue(np.array_equal(res[0], numpy_arr_output))
-
-        numpy_arr_input = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
-        numpy_arr_output = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
 
         ortvalue1 = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr_input)
         self.assertEqual(ortvalue1.device_name(), "cpu")
