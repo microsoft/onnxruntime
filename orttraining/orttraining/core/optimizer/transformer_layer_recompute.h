@@ -10,10 +10,14 @@ namespace onnxruntime {
 
 class TransformerLayerRecompute : public GraphTransformer {
  public:
-  TransformerLayerRecompute(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
-      : GraphTransformer("TransformerLayerRecompute", compatible_execution_providers) {}
+  TransformerLayerRecompute(int number_recompute_layers,
+                            const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
+      : GraphTransformer("TransformerLayerRecompute", compatible_execution_providers),
+        number_recompute_layers_(number_recompute_layers) {}
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
+
+  bool ShouldOnlyApplyOnce() const override { return true; }
 
  private:
   Status IdentifyTransformerLayerEdges(const Graph& graph,
@@ -23,6 +27,8 @@ class TransformerLayerRecompute : public GraphTransformer {
   std::vector<const Node*> NodesBetweenEdges(const Graph& graph, const NodeArg* start, const NodeArg* end) const;
 
   void InsertRecomputeNodes(Graph& graph, const std::vector<const Node*>& nodes, int priority) const;
+
+  int number_recompute_layers_;
 };
 
 }  // namespace onnxruntime

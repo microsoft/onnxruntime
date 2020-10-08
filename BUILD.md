@@ -8,6 +8,8 @@
 * [Supported architectures and build environments](#supported-architectures-and-build-environments)
 * [Common Build Instructions](#common-build-instructions)
 * Additional Build Instructions - complete list: `./build.sh (or .\build.bat) --help`
+  * [Reduced Operator Kernel Build](#Reduced-Operator-Kernel-Build)
+  * [ONNX Runtime for Mobile Platforms](#ONNX-Runtime-for-Mobile-Platforms)
   * [ONNX Runtime Server (Linux)](#Build-ONNX-Runtime-Server-on-Linux)
   * Execution Providers
     * [NVIDIA CUDA](#CUDA)
@@ -143,6 +145,11 @@ GCC 4.x and below are not supported.
 |**Node.js**|--build_nodejs|Build Node.js binding. Implies `--build_shared_lib`|
 
 ---
+## Reduced Operator Kernel Build
+Reduced Operator Kernel builds allow you to customize the kernels in the build to provide smaller binary sizes - [see instructions](./docs/Reduced_Operator_Kernel_build.md).
+
+## ONNX Runtime for Mobile Platforms
+For builds compatible with mobile platforms, see more details in [ONNX_Runtime_for_Mobile_Platforms.md](./docs/ONNX_Runtime_for_Mobile_Platforms.md). Android and iOS build instructions can be found below on this page - [Android](#Android), [iOS](#iOS)
 
 ## Build ONNX Runtime Server on Linux
 Read more about ONNX Runtime Server [here](./docs/ONNX_Runtime_Server_Usage.md).
@@ -180,7 +187,7 @@ Nuget packages are created under <native_build_dir>\nuget-artifacts
     ONNX Runtime can also be built with CUDA versions from 10.1 up to 11.0, and cuDNN versions from 7.6 up to 8.0.
   * The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home` parameter
   * The path to the cuDNN installation (include the `cuda` folder in the path) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home` parameter. The cuDNN path should contain `bin`, `include` and `lib` directories.
-  * The path to the cuDNN bin directory must be added to the PATH environment variable so that cudnn64_7.dll is found.
+  * The path to the cuDNN bin directory must be added to the PATH environment variable so that cudnn64_8.dll is found.
 
 #### Build Instructions
 ##### Windows
@@ -1038,6 +1045,17 @@ e.g. using the paths from our example
 ##### Build Android Archive (AAR)
 
 Android Archive (AAR) files, which can be imported directly in Android Studio, will be generated in your_build_dir/java/build/outputs/aar, by using the above building commands with `--build_java`
+
+To build on Windows with `--build_java` enabled you must also:
+  - set JAVA_HOME to the path to your JDK install
+    - this could be the JDK from Android Studio, or a [standalone JDK install](https://www.oracle.com/java/technologies/javase-downloads.html)
+    - e.g. Powershell: `$env:JAVA_HOME="C:\Program Files\Java\jdk-15"`
+           CMD: `set JAVA_HOME=C:\Program Files\Java\jdk-15`
+  - install [Gradle](https://gradle.org/install/) and add the directory to the PATH
+    - e.g. Powershell: `$env:PATH="$env:PATH;C:\Gradle\gradle-6.6.1\bin"`
+           CMD: `set PATH=%PATH%;C:\Gradle\gradle-6.6.1\bin`
+  - run the build from an admin window
+    - the Java build needs permissions to create a symlink, which requires an admin window
 
 #### Android NNAPI Execution Provider
 

@@ -250,8 +250,10 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions& DisablePerSessionThreads();
 
   SessionOptions& AddConfigEntry(const char* config_key, const char* config_value);
-
   SessionOptions& AddInitializer(const char* name, const OrtValue* ort_val);
+#ifdef USE_CUDA
+  OrtStatus* OrtSessionOptionsAppendExecutionProvider_CUDA(OrtSessionOptions* options, OrtCUDAProviderOptions* cuda_options);
+#endif
 };
 
 struct ModelMetadata : Base<OrtModelMetadata> {
