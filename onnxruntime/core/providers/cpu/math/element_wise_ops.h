@@ -446,15 +446,18 @@ struct BroadcastIterator {
   size_t AdvanceBy(size_t delta) {
     size_t index = index_;
 
-    index_ += deltas_[0] * delta;
+    auto it_deltas = deltas_.begin();
+    auto it_counters = counters_.begin();
+    auto it_counts = counts_.begin();
+    index_ += *it_deltas * delta;
     counters_[0] += delta;
-    if (counters_[0] == counts_[0]) {
-      counters_[0] = 0;
-      for (size_t counterIndex = 1; counterIndex < counters_.size(); counterIndex++) {
-        index_ += deltas_[counterIndex];
-        if (++counters_[counterIndex] != counts_[counterIndex])
+    if (*it_counters == *it_counts) {
+      *it_counters = 0;
+      for (++it_counters, ++it_counts, ++it_deltas; it_counts != counts_.end(); ++it_counters, ++it_counts, ++it_deltas) {
+        index_ += *it_deltas;
+        if (++(*it_counters) != *it_counts)
           break;
-        counters_[counterIndex] = 0;
+        *it_counters = 0;
       }
     } else if (counters_[0] > counts_[0]) {  // Keep original logic above so that in most case it is faster
       delta = counters_[0] / counts_[0];
@@ -641,7 +644,9 @@ struct InputBroadcaster {
   }
 
   void AdvanceBy(size_t offset) {
+#ifdef _DEBUG
     ORT_ENFORCE(offset % span_size_ == 0, "InputBroadcaster can only start at span boundary!");
+#endif
     broadcaster_.iterator1_.AdvanceBy(offset);
     broadcaster_.iterator2_.AdvanceBy(offset);
   }
