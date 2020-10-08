@@ -5,7 +5,7 @@
 
 FROM ubuntu:18.04
 
-ARG DEVICE=CPU_FP32
+ARG DEVICE=MYRIAD_FP16
 ARG ONNXRUNTIME_REPO=https://github.com/microsoft/onnxruntime.git
 ARG ONNXRUNTIME_BRANCH=master
 
