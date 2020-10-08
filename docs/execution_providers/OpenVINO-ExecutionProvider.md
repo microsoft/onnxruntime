@@ -71,6 +71,7 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | Equal | Yes | Yes | Yes |
 | Erf | Yes | Yes | Yes |
 | Exp | Yes | Yes | Yes |
+| Expand | No | No | Yes |
 | Flatten | Yes | Yes | Yes |
 | Floor | Yes | Yes | Yes |
 | Gather | Yes | Yes | Yes |
@@ -91,6 +92,8 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | Min | Yes | Yes | Yes |
 | Mul | Yes | Yes | Yes |
 | Neg | Yes | Yes | Yes |
+| NonMaxSuppression | No | No | Yes |
+| NonZero | No | No | Yes |
 | Not | Yes | Yes | No |
 | OneHot | Yes | Yes | Yes |
 | Pad | Yes | Yes | Yes |
@@ -106,7 +109,9 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | ReduceSumSquare | Yes | No | Yes |
 | Relu | Yes | Yes | Yes |
 | Reshape | Yes | Yes | Yes |
-| Resize | Yes | No | No |
+| Resize | Yes | No | Yes |
+| RoiAlign | No | No | Yes |
+| Scatter | No | No | Yes |
 | Selu | Yes | Yes | No |
 | Shape | Yes | Yes | Yes |
 | Sigmoid | Yes | Yes | Yes |
