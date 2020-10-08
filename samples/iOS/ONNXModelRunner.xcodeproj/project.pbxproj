@@ -342,7 +342,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 0.0.2;
 				DEVELOPMENT_TEAM = QBMN2BBW3K;
-				HEADER_SEARCH_PATHS = /Users/wenbingl/Project/lotus/include/onnxruntime;
+				HEADER_SEARCH_PATHS = "$(PROJECT_DIR)/../../include/onnxruntime";
 				INFOPLIST_FILE = "$(SRCROOT)/ModelRunner/Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -364,7 +364,7 @@
 				CURRENT_PROJECT_VERSION = 0.0.2;
 				DEVELOPMENT_TEAM = QBMN2BBW3K;
 				FRAMEWORK_SEARCH_PATHS = "";
-				HEADER_SEARCH_PATHS = /Users/wenbingl/Project/lotus/include/onnxruntime;
+				HEADER_SEARCH_PATHS = "$(PROJECT_DIR)/../../include/onnxruntime";
 				INFOPLIST_FILE = "$(SRCROOT)/ModelRunner/Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
 				LD_RUNPATH_SEARCH_PATHS = (
