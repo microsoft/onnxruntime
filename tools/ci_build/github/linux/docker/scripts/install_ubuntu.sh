@@ -104,7 +104,7 @@ if [ "$SYS_LONG_BIT" = "64" ]; then
   aria2c -q -d /tmp/dotnet https://packages.microsoft.com/config/ubuntu/${OS_VERSION}/packages-microsoft-prod.deb
   dpkg -i /tmp/dotnet/packages-microsoft-prod.deb
   apt-get update
-  apt-get install -y dotnet-sdk-2.2
+  apt-get install -y dotnet-sdk-2.1
   rm -rf /tmp/dotnet
 fi
 

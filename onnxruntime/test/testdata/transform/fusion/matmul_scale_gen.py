@@ -31,7 +31,7 @@ def save(model_path, nodes, inputs, outputs, initializers):
 def gen(model_path,
         use_transpose_matmul,
         scale_input_0, scale_input_1, scale_output):
-    matmul_op = "TransposeMatMul" if use_transpose_matmul else "MatMul"
+    matmul_op = "FusedMatMul" if use_transpose_matmul else "MatMul"
     matmul_domain = "com.microsoft" if use_transpose_matmul else ""
     matmul_attrs = {"alpha": scale_value} if use_transpose_matmul else {}
 

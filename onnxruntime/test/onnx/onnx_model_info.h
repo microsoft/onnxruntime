@@ -5,10 +5,8 @@
 #include "core/graph/onnx_protobuf.h"
 #include "TestCase.h"
 
-// This is a temporary solution to enable onnx_test_runner for ort minimal build and ort file format
-// It is tracked by Product Backlog Item 895235: Re-work onnx_test_runner/perf_test for ort/onnx model
-class BaseModelInfo : public TestModelInfo {
- protected:
+class OnnxModelInfo : public TestModelInfo {
+ private:
   std::string node_name_;
   std::string onnx_commit_tag_;
   std::vector<ONNX_NAMESPACE::ValueInfoProto> input_value_info_;
@@ -16,8 +14,16 @@ class BaseModelInfo : public TestModelInfo {
   std::unordered_map<std::string, int64_t> domain_to_version_;
   const std::basic_string<PATH_CHAR_TYPE> model_url_;
 
+#if !defined(ORT_MINIMAL_BUILD)
+  void InitOnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url);
+#endif
+
+#if defined(ENABLE_ORT_FORMAT_LOAD)
+  void InitOrtModelInfo(_In_ const PATH_CHAR_TYPE* model_url);
+#endif
+
  public:
-  BaseModelInfo(_In_ const PATH_CHAR_TYPE* model_url) : model_url_(model_url) {}
+  OnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url, bool is_ort_model = false);
   bool HasDomain(const std::string& name) const {
     return domain_to_version_.find(name) != domain_to_version_.end();
   }
@@ -39,15 +45,3 @@ class BaseModelInfo : public TestModelInfo {
   const std::string& GetInputName(size_t i) const override { return input_value_info_[i].name(); }
   const std::string& GetOutputName(size_t i) const override { return output_value_info_[i].name(); }
 };
-
-#if !defined(ORT_MINIMAL_BUILD)
-class OnnxModelInfo : public BaseModelInfo {
- public:
-  OnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url);
-};
-#else
-class OrtModelInfo : public BaseModelInfo {
- public:
-  OrtModelInfo(_In_ const PATH_CHAR_TYPE* model_url);
-};
-#endif

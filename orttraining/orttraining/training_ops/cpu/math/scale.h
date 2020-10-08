@@ -3,20 +3,20 @@
 
 #pragma once
 
+#include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 
 namespace onnxruntime {
 namespace contrib {
 
-class TransposeMatMul final : public OpKernel {
+template <typename T, typename ScaleT>
+class Scale final : public OpKernel {
  public:
-  TransposeMatMul(const OpKernelInfo& info);
-
+  Scale(const OpKernelInfo& info);
   Status Compute(OpKernelContext* context) const override;
 
  private:
-  float alpha_attr_;
-  int64_t trans_a_attr_, trans_b_attr_;
+  bool scale_down_;
 };
 
 }  // namespace contrib

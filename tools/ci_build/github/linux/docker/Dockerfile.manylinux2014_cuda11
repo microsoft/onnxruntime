@@ -24,8 +24,8 @@ ENV SSL_CERT_FILE=/opt/_internal/certs.pem
 #Build manylinux2014 docker image end
 
 #Add our own dependencies
-ADD manylinux /tmp/scripts
-RUN cd /tmp/scripts && /tmp/scripts/install_centos.sh && /tmp/scripts/install_deps.sh  && rm -rf /tmp/scripts
+ADD scripts /tmp/scripts
+RUN cd /tmp/scripts && /tmp/scripts/manylinux/install_centos.sh && /tmp/scripts/manylinux/install_deps.sh && rm -rf /tmp/scripts
 
 ARG BUILD_UID=1001
 ARG BUILD_USER=onnxruntimedev

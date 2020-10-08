@@ -10,12 +10,24 @@ This example was adapted from Pytorch's [Sequence-to-Sequence Modeling with nn.T
 
 ## Running PyTorch version
 
-```python
+```bash
 python pt_model.py
 ```
 
 ## Running ONNX Runtime version
 
-```python
+```bash
 python ort_model.py
 ```
+
+## Optional arguments
+
+| Argument          | Description                                             | Default   |
+| :---------------- | :-----------------------------------------------------: | --------: |
+| --batch-size      | input batch size for training                           | 20        |
+| --test-batch-size | input batch size for testing                            | 20        |
+| --epochs          | number of epochs to train                               | 2         |
+| --lr              | learning rate                                           | 0.001     |
+| --no-cuda         | disables CUDA training                                  | False     |
+| --seed            | random seed                                             | 1         |
+| --log-interval    | how many batches to wait before logging training status | 200       |

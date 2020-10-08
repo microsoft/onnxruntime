@@ -23,9 +23,10 @@ set(mlas_common_srcs
 
 if(MSVC)
   if(onnxruntime_target_platform STREQUAL "ARM64")
-    set(asm_filename ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm64/SgemmKernelNeon.asm)
-    set(pre_filename ${CMAKE_CURRENT_BINARY_DIR}/SgemmKernelNeon.i)
-    set(obj_filename ${CMAKE_CURRENT_BINARY_DIR}/SgemmKernelNeon.obj)
+    set(mlas_platform_preprocess_srcs
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm64/QgemmU8X8KernelNeon.asm
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm64/SgemmKernelNeon.asm
+    )
 
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")
       set(ARMASM_FLAGS "-g")
@@ -33,14 +34,22 @@ if(MSVC)
       set(ARMASM_FLAGS "")
     endif()
 
-    add_custom_command(
-      OUTPUT ${obj_filename}
-        COMMAND
-            cl.exe /P ${asm_filename}
-        COMMAND
-            armasm64.exe ${ARMASM_FLAGS} ${pre_filename} ${obj_filename}
-    )
-    set(mlas_platform_srcs ${obj_filename})
+    # Run the C precompiler on each input before the assembler.
+    foreach(asm_filename ${mlas_platform_preprocess_srcs})
+      get_filename_component(asm_filename_base ${asm_filename} NAME_WLE)
+      set(preprocess_filename ${CMAKE_CURRENT_BINARY_DIR}/${asm_filename_base}.i)
+      set(obj_filename ${CMAKE_CURRENT_BINARY_DIR}/${asm_filename_base}.obj)
+      add_custom_command(
+        OUTPUT ${obj_filename}
+          COMMAND
+              cl.exe /P ${asm_filename} /Fi${preprocess_filename}
+          COMMAND
+              armasm64.exe ${ARMASM_FLAGS} ${preprocess_filename} ${obj_filename}
+        DEPENDS ${asm_filename}
+        BYPRODUCTS ${preprocess_filename}
+      )
+      list(APPEND mlas_platform_srcs ${obj_filename})
+    endforeach()
   elseif(onnxruntime_target_platform STREQUAL "ARM")
     set(mlas_platform_srcs
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm/sgemmc.cpp
@@ -159,6 +168,7 @@ else()
   elseif(ARM64)
     enable_language(ASM)
     set(mlas_platform_srcs
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/aarch64/QgemmU8X8KernelNeon.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/aarch64/SgemmKernelNeon.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/aarch64/SgemvKernelNeon.S
     )

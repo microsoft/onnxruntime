@@ -14,7 +14,7 @@ ARG OPENMPI_PATH=/opt/openmpi-${OPENMPI_VERSION}
 ARG COMMIT=master
 
 # cuda development image for building sources
-FROM nvidia/cuda:10.2-cudnn7-devel-ubuntu18.04 as builder
+FROM nvidia/cuda:10.2-cudnn8-devel-ubuntu18.04 as builder
 
 # set location for builds
 WORKDIR /stage
@@ -155,7 +155,7 @@ RUN pip install azureml-defaults transformers==2.11.0 msgpack==1.0.0 tensorboard
 
 # switch to cuda runtime environment
 # note: launch with --gpus all or nvidia-docker
-FROM nvidia/cuda:10.2-cudnn7-runtime-ubuntu18.04
+FROM nvidia/cuda:10.2-cudnn8-runtime-ubuntu18.04
 WORKDIR /stage
 
 # install ucx

@@ -26,7 +26,7 @@ jobs:
       inputs:
         script: |
           mkdir -p $HOME/.onnx
-          docker run --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecpubuild:ch36 /bin/bash -c "/opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --build_java --use_openmp --enable_onnx_tests && cd /build/Release && make install DESTDIR=/build/linux-x64"
+          docker run --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecentoscpubuild:ch5g /bin/bash -c "python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --build_java --use_openmp --enable_onnx_tests && cd /build/Release && make install DESTDIR=/build/linux-x64"
         workingDirectory: $(Build.SourcesDirectory)
         displayName: 'Run build and test'
     - task: Docker@2
@@ -103,7 +103,7 @@ jobs:
 
   steps:
     - template: templates/telemetry-steps.yml
-    
+
     - task: UsePythonVersion@0
       inputs: 
         versionSpec: '3.7' 
@@ -137,7 +137,7 @@ jobs:
       displayName: 'Generate cmake config'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: '--config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --enable_wcos --build_java  --update --cmake_generator "Visual Studio 16 2019" --enable_lto --disable_rtti --use_openmp --build_shared_lib --enable_onnx_tests $(buildparameter)'
+        arguments: '--config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --enable_wcos --build_java  --use_telemetry --update --cmake_generator "Visual Studio 16 2019" --enable_lto --disable_rtti --use_openmp --build_shared_lib --enable_onnx_tests $(buildparameter)'
         workingDirectory: '$(Build.BinariesDirectory)'
 
  

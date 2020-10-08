@@ -135,3 +135,7 @@ if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Linux")
     target_link_libraries(onnxruntime_common rt)
   endif()
 endif()
+
+if (onnxruntime_WINML_NAMESPACE_OVERRIDE STREQUAL "Windows")
+  target_compile_definitions(onnxruntime_common PRIVATE "BUILD_INBOX=1")
+endif()

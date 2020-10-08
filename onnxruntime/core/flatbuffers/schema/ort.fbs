@@ -121,7 +121,7 @@ table ValueInfo {
   type:TypeInfo;
 }
 
-// TODO add support of Sequence/Map/SparseTensor/Opaque
+// TODO add support of SparseTensor/Opaque
 union TypeInfoValue {
   tensor_type:TensorTypeAndShape,
   sequence_type:SequenceType,
