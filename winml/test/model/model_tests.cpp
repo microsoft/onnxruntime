@@ -4,6 +4,7 @@
 #include "test/onnx/heap_buffer.h"
 #include "test/util/include/test/compare_ortvalue.h"
 #include "ort_value_helper.h"
+#include "StringHelpers.h"
 
 #ifndef BUILD_GOOGLE_TEST
 #error Must use googletest for value-parameterized tests
@@ -25,36 +26,38 @@ class ModelTest : public testing::TestWithParam<std::tuple<ITestCase*, winml::Le
     WINML_EXPECT_NO_THROW(m_testCase->GetRelativePerSampleTolerance(&m_relativePerSampleTolerance));
     WINML_EXPECT_NO_THROW(m_testCase->GetPostProcessing(&m_postProcessing));
   }
+  // Called after the last test in this test suite.
+  static void TearDownTestSuite() {
+    ownedTests.clear(); // clear the global vector
+  } 
   winml::LearningModelDeviceKind m_deviceKind;
   ITestCase* m_testCase;
-  std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> m_converter;
   double m_perSampleTolerance = 1e-3;
   double m_relativePerSampleTolerance = 1e-3;
   bool m_postProcessing = false;
 
   void BindInputsFromFeed(LearningModelBinding& binding, std::unordered_map<std::string, Ort::Value>& feed) {
-    for (auto it = feed.begin(); it != feed.end(); it++) {
-      auto bindingName = it->first;
+    for (auto& [name, value] : feed) {
       ITensor bindingValue;
-      WINML_EXPECT_NO_THROW(bindingValue = OrtValueHelpers::LoadTensorFromOrtValue(it->second));
-      WINML_EXPECT_NO_THROW(binding.Bind(m_converter.from_bytes(bindingName), bindingValue));
+      WINML_EXPECT_NO_THROW(bindingValue = OrtValueHelpers::LoadTensorFromOrtValue(value));
+      WINML_EXPECT_NO_THROW(binding.Bind(_winml::Strings::WStringFromString(name), bindingValue));
     }
   }
 
   void CompareEvaluationResults(LearningModelEvaluationResult& results,
                                 std::unordered_map<std::string, Ort::Value>& expectedOutputFeeds) {
-    for (auto it = expectedOutputFeeds.begin(); it != expectedOutputFeeds.end(); it++) {
+    for (auto& [name, value] : expectedOutputFeeds) {
       // Extract the output buffer from the evaluation output
-      std::wstring outputName = m_converter.from_bytes(it->first.c_str());
+      std::wstring outputName = _winml::Strings::WStringFromString(name);
       auto actualOutputTensorValue = results.Outputs().Lookup(outputName).as<ITensorNative>();
-      void* actualData;
+      BYTE* actualData;
       uint32_t actualSizeInBytes;
-      WINML_EXPECT_HRESULT_SUCCEEDED(actualOutputTensorValue->GetBuffer(reinterpret_cast<BYTE**>(&actualData), &actualSizeInBytes));
+      WINML_EXPECT_HRESULT_SUCCEEDED(actualOutputTensorValue->GetBuffer(&actualData, &actualSizeInBytes));
 
       // Create a copy of Ort::Value from evaluation output
       auto expectedShapeAndTensorType = Ort::TensorTypeAndShapeInfo{nullptr};
       auto memoryInfo = Ort::MemoryInfo{nullptr};
-      WINML_EXPECT_NO_THROW(expectedShapeAndTensorType = it->second.GetTensorTypeAndShapeInfo());
+      WINML_EXPECT_NO_THROW(expectedShapeAndTensorType = value.GetTensorTypeAndShapeInfo());
       WINML_EXPECT_NO_THROW(memoryInfo = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault));
       Ort::Value actualOutput = Ort::Value{nullptr};
       WINML_EXPECT_NO_THROW(
@@ -67,7 +70,7 @@ class ModelTest : public testing::TestWithParam<std::tuple<ITestCase*, winml::Le
               expectedShapeAndTensorType.GetElementType()));
 
       // Use the expected and actual OrtValues to compare
-      std::pair<COMPARE_RESULT, std::string> ret = CompareOrtValue(*actualOutput, *it->second, m_perSampleTolerance, m_relativePerSampleTolerance, m_postProcessing);
+      std::pair<COMPARE_RESULT, std::string> ret = CompareOrtValue(*actualOutput, *value, m_perSampleTolerance, m_relativePerSampleTolerance, m_postProcessing);
       WINML_EXPECT_EQUAL(COMPARE_RESULT::SUCCESS, ret.first) << ret.second;
     }
   }
@@ -112,7 +115,7 @@ void SetTestDataPath(char* testDataPath) {
 }
 
 // This function returns the list of all test cases inside model test collateral
-std::vector<ITestCase*> GetAllTestCases() {
+static std::vector<ITestCase*> GetAllTestCases() {
   std::vector<ITestCase*> tests;
   std::vector<std::basic_string<PATH_CHAR_TYPE>> whitelistedTestCases;
   double perSampleTolerance = 1e-3;
@@ -124,7 +127,7 @@ std::vector<ITestCase*> GetAllTestCases() {
 
   for (auto& p : std::filesystem::directory_iterator(testDataPath)) {
     if (p.is_directory()) {
-      dataDirs.push_back(p.path());
+      dataDirs.push_back(std::move(p.path()));
     }
   }
 
@@ -141,15 +144,17 @@ std::vector<ITestCase*> GetAllTestCases() {
 static std::string GetNameOfTest(const testing::TestParamInfo<ModelTest::ParamType>& info) {
   std::string name = "";
   auto modelPath = std::wstring(std::get<0>(info.param)->GetModelUrl());
-  auto modelPathStr = std::string(modelPath.begin(), modelPath.end());
+  auto modelPathStr = _winml::Strings::UTF8FromUnicode(modelPath.c_str(), modelPath.length());
   std::vector<std::string> tokenizedModelPath;
   std::istringstream ss(modelPathStr);
   std::string token;
   while (std::getline(ss, token, '\\')) {
-    tokenizedModelPath.push_back(token);
+    tokenizedModelPath.push_back(std::move(token));
   }
-  name += tokenizedModelPath[tokenizedModelPath.size() - 2] += "_";
-  name += tokenizedModelPath[tokenizedModelPath.size() - 3] += "_";
+  // The model path is structured like this "<opset>/<model_name>/model.onnx
+  // The desired naming of the test is like this <model_name>_<opset>_<CPU/GPU>
+  name += tokenizedModelPath[tokenizedModelPath.size() - 2] += "_"; // model name
+  name += tokenizedModelPath[tokenizedModelPath.size() - 3] += "_"; // opset version
 
   if (std::get<1>(info.param) == winml::LearningModelDeviceKind::Cpu) {
     name += "CPU";
@@ -157,7 +162,7 @@ static std::string GetNameOfTest(const testing::TestParamInfo<ModelTest::ParamTy
     name += "GPU";
   }
 
-  std::replace_if(name.begin(), name.end(), [&name](char c) { return !std::isalnum(c, std::locale()); }, '_');
+  std::replace_if(name.begin(), name.end(), [&name](char c) { return !google::protobuf::ascii_isalnum(c); }, '_');
   return name;
 }
 

@@ -7,7 +7,8 @@ winml::ITensor LoadTensorFromOrtValue(Ort::Value& val);
 
 template <ONNXTensorElementDataType T>
 struct ONNXTensorElementDataTypeToWinMLTensorKind {
-  static_assert(true, "No WinML TensorKind mapped for given ONNX Tensor Element type!");
+  // Invalid ONNXTensorElementDataType to TensorKind
+  static_assert(sizeof(T) == -1, "No WinML TensorKind mapped for given ONNX Tensor Element type!");
 };
 
 template <>
