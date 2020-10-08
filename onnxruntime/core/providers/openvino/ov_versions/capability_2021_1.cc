@@ -441,8 +441,35 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       if (indices_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64)
         return true;
     }
-  }
+  } else if(optype == "Upsample") {
 
+    //check for attributes
+    //Interpolate layer only supports resize on spatial dimensions(depth, height and width)"
+    auto upsample_attr = node->GetAttributes();
+    auto upsample_arg = upsample_attr["scales"];
+    auto float_size = upsample_arg.floats_size();
+    if (float_size > 2 && (upsample_arg.floats(0) != 1.f || upsample_arg.floats(0) != 1.f))
+      return true;
+
+    //check for input dimensions
+    const auto &x_arg = node->InputDefs()[0];
+
+    auto shape = x_arg->Shape();
+    if (shape != nullptr) {
+      //input tensor rank cannot be of one dimension
+      if (shape->dim_size() == 1) {
+         return true;
+      }
+    }
+    // x_arg supports only float, int8 and float16 type
+    if ((x_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) ||
+        (x_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) ||
+        (x_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16)) {
+      return false;
+    } else {
+      return true;
+    }
+  }
   //Op doesn't fall into known any of unsupported modes.
   return false;
 }
