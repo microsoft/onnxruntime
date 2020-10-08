@@ -724,7 +724,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     # nGraph, TensorRT and OpenVINO providers currently only supports
     # full_protobuf option.
     if (args.use_full_protobuf or args.use_ngraph or args.use_tensorrt or
-            args.use_vitisai or args.gen_doc):
+            args.use_openvino or args.use_vitisai or args.gen_doc):
         cmake_args += [
             "-Donnxruntime_USE_FULL_PROTOBUF=ON",
             "-DProtobuf_USE_STATIC_LIBS=ON"
