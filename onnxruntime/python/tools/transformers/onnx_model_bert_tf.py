@@ -295,6 +295,98 @@ class BertOnnxModelTF(BertOnnxModel):
                 self.prune_graph()
                 break
 
+    def check_attention_input(self, matmul_q, matmul_k, matmul_v, parent, output_name_to_node):
+        for x in [matmul_q, matmul_k, matmul_v]:
+            root_input = x.input[0]
+            root_node = output_name_to_node[root_input]
+            if root_node == parent:
+                continue
+            logger.debug(f"Check attention input failed:{root_input}, {parent.output[0]}")
+            return False
+
+        return True
+
+    def fuse_attention(self):
+        output_name_to_node = self.output_name_to_node()
+
+        nodes_to_remove = []
+        attention_count = 0
+
+        skip_layer_norm_nodes = self.get_nodes_by_op_type("SkipLayerNormalization")
+        for normalize_node in skip_layer_norm_nodes:
+            # SkipLayerNormalization has two inputs, and one of them is the root input for attention.
+            parent = self.get_parent(normalize_node, 1)
+            if parent is None or parent.op_type not in ["SkipLayerNormalization", "EmbedLayerNormalization"]:
+                logger.debug("Failed to match parent of normalize_node")
+                continue
+
+            qkv_nodes = self.match_parent_path(normalize_node,
+                                               ['Add', 'MatMul', 'Reshape', 'Transpose', 'MatMul'],
+                                               [0, 0, 0, 0, 0])
+            if qkv_nodes is None:
+                logger.debug("Failed to match qkv nodes")
+                continue
+            (add, matmul, reshape_qkv, transpose_qkv, matmul_qkv) = qkv_nodes
+            v_nodes = self.match_parent_path(matmul_qkv, ['Transpose', 'Reshape', 'Add', 'MatMul'],
+                                             [1, 0, 0, 0])
+            if v_nodes is None:
+                logger.debug("Failed to match v path")
+                continue
+            (transpose_v, reshape_v, add_v, matmul_v) = v_nodes
+            qk_nodes = self.match_parent_path(matmul_qkv, ['Softmax', 'Add', "Mul", 'MatMul'], [0, 0, 0, 0])
+            if qk_nodes is None:
+                logger.debug("Failed to match qk_paths")
+                continue
+            (softmax_qk, add_qk, mul_qk, matmul_qk) = qk_nodes
+            q_nodes = self.match_parent_path(matmul_qk, ['Transpose', 'Reshape', 'Add', 'MatMul'],
+                                                 [0, 0, 0, 0])
+            if q_nodes is None:
+                logger.debug("Failed to match q path")
+                continue
+            (transpose_q, reshape_q, add_q, matmul_q) = q_nodes
+            k_nodes = self.match_parent_path(matmul_qk, ['Transpose', 'Reshape', 'Add', 'MatMul'],
+                                             [1, 0, 0, 0])
+            if k_nodes is None:
+                logger.debug("Failed to match k path")
+                continue
+
+            (transpose_k, reshape_k, add_k, matmul_k) = k_nodes
+
+            mask_nodes = self.match_parent_path(add_qk, ['Mul', 'Sub', 'Unsqueeze'], [1, 0, 1])
+            if mask_nodes is None:
+                logger.debug("Failed to match mask path")
+                continue
+            if not self.has_constant_input(mask_nodes[1], 1):
+                logger.debug("Sub node expected to have an input with constant value 1.0.")
+                continue
+
+            is_same_root = self.check_attention_input(matmul_q, matmul_k, matmul_v, parent,
+                                                                     output_name_to_node)
+            if is_same_root:
+                mask_index = self.attention_mask.process_mask(mask_nodes[-1].input[0])
+                logger.debug("Create an Attention node.")
+                attention_node = self.attention_fusion.create_attention_node(mask_index, matmul_q, matmul_k, matmul_v,
+                                                                             add_q, add_k, add_v, parent.output[0],
+                                                                             reshape_qkv.output[0])
+                if attention_node is None:
+                    continue
+
+                self.add_node(attention_node)
+                attention_count += 1
+
+                nodes_to_remove.extend([reshape_qkv, transpose_qkv, matmul_qkv])
+                nodes_to_remove.extend(qk_nodes)
+                nodes_to_remove.extend(q_nodes)
+                nodes_to_remove.extend(k_nodes)
+                nodes_to_remove.extend(v_nodes)
+                nodes_to_remove.extend(mask_nodes)
+            else:
+                logger.debug("Root node not matched.")
+                continue
+        self.remove_nodes(nodes_to_remove)
+        self.update_graph()
+        logger.info(f"Fused Attention count:{attention_count}")
+
     def preprocess(self):
         self.remove_identity()
         self.process_embedding()
