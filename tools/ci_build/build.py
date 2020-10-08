@@ -1109,13 +1109,11 @@ def run_orttraining_test_orttrainer_frontend_separately(cwd):
         def pytest_collection_modifyitems(self, items):
             for item in items:
                 print('item.name: ', item.name)
-                # to workaround 'AttributeError: 'Function' object has no attribute 'originalname''
-                # proble in the build environment
-                # if item.originalname:
-                if item.name.find('[') >= 0 and item.name.find(']') >= 0:
-                    self.collected.add(item.originalname)
-                else:
-                    self.collected.add(item.name)
+                test_name = item.name
+                start = test_name.find('[')
+                if start > 0:
+                    test_name = test_name[:start]
+                self.collected.add(test_name)
 
     plugin = TestNameCollecterPlugin()
     test_script_filename = os.path.join(cwd, "orttraining_test_orttrainer_frontend.py")
