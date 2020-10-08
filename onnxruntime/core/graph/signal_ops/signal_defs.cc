@@ -14,10 +14,10 @@ using ONNX_NAMESPACE::OpSchema;
 using ONNX_NAMESPACE::OPTIONAL_VALUE;
 
 void RegisterSignalSchemas() {
-  MS_SIGNAL_OPERATOR_SCHEMA(Fft)
+  MS_SIGNAL_OPERATOR_SCHEMA(Dft)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetDoc(R"DOC(FFT)DOC")
+      .SetDoc(R"DOC(DFT)DOC")
       .Attr("signal_ndim",
           "The number of dimension of the input signal."
           "Values can be 1, 2 or 3.",
@@ -38,10 +38,10 @@ void RegisterSignalSchemas() {
           "T")
       .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "");
 
-  MS_SIGNAL_OPERATOR_SCHEMA(Ifft)
+  MS_SIGNAL_OPERATOR_SCHEMA(Idft)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetDoc(R"DOC(FFT)DOC")
+      .SetDoc(R"DOC(IDFT)DOC")
       .Attr("signal_ndim",
             "The number of dimension of the input signal."
             "Values can be 1, 2 or 3.",

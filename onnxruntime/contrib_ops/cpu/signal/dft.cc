@@ -5,7 +5,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/util/math_cpuonly.h"
 #include "Eigen/src/Core/Map.h"
-#include "fft.h"
+#include "dft.h"
 #include <functional>
 
 #include "core/platform/threadpool.h"
@@ -16,21 +16,29 @@ namespace onnxruntime {
 namespace contrib {
 
 ONNX_OPERATOR_KERNEL_EX(
-    Fft,
+    Dft,
     kMSDomain,
     1,
     kCpuExecutionProvider,
     KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", BuildKernelDefConstraints<float, double>()),
-    Fft);
+    Dft);
 
 ONNX_OPERATOR_KERNEL_EX(
-    Ifft,
+    Idft,
     kMSDomain,
     1,
     kCpuExecutionProvider,
     KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", BuildKernelDefConstraints<float, double>()),
-    Ifft);
+    Idft);
 
+bool is_power_of_2(size_t size) {
+  unsigned n_bits = 0;
+  while (size != 0) {
+    n_bits += size & 1;
+    size = size >> 1;
+  }
+  return n_bits == 1;
+}
 
 size_t bit_reverse(size_t num, unsigned significant_bits) {
   unsigned output = 0;
@@ -40,8 +48,18 @@ size_t bit_reverse(size_t num, unsigned significant_bits) {
   return output;
 }
 
+template <typename T>
+static T compute_angular_velocity(size_t number_of_samples, bool inverse) {
+  // Calculate fundamental angular velocity
+  static const T pi = static_cast<T>(3.14159265);
+  static const T tau = 2 * pi;
+  T inverse_switch = inverse ? 1.f : -1.f;
+  T angular_velocity = inverse_switch * tau / number_of_samples;
+  return angular_velocity;
+}
+
 template <typename T, typename U>
-static Status fft(OpKernelContext* ctx, const Tensor* X, Tensor* Y, bool inverse) {
+static Status fft_radix2(OpKernelContext* ctx, const Tensor* X, Tensor* Y, bool inverse) {
   // Get shape and significant bits
   const auto& X_shape = X->Shape();
   size_t number_of_samples = static_cast<size_t>(X_shape[0]);
@@ -51,11 +69,7 @@ static Status fft(OpKernelContext* ctx, const Tensor* X, Tensor* Y, bool inverse
   auto* X_data = const_cast<U*>(reinterpret_cast<const U*>(X->DataRaw()));
   auto* Y_data = reinterpret_cast<std::complex<T>*>(Y->MutableDataRaw());
 
-  // Calculate fundamental angular velocity
-  static const T pi = static_cast<T>(3.14159265);
-  static const T tau = 2 * pi;
-  T inverse_switch = inverse ? 1.f : -1.f;
-  T angular_velocity = inverse_switch * tau / number_of_samples;
+  auto angular_velocity = compute_angular_velocity<T>(number_of_samples, inverse);
 
   // Create vandermonde matrix V ordered with the bit-reversed permutation
   auto V = std::vector<std::complex<T>>(number_of_samples);  // e^(i *2*pi / N * k)
@@ -67,7 +81,7 @@ static Status fft(OpKernelContext* ctx, const Tensor* X, Tensor* Y, bool inverse
     *(Y_data + i) = std::complex<T>(1, 0) * x;
   }
 
-  // Run fft
+  // Run fft_radix2
   unsigned current_significant_bits = 0;
   for (size_t i = 2; i <= number_of_samples; i *= 2) {
     size_t midpoint = i >> 1;
@@ -102,7 +116,7 @@ static Status fft(OpKernelContext* ctx, const Tensor* X, Tensor* Y, bool inverse
     }
   }
 
-  // Scale the output if inverse fft
+  // Scale the output if inverse
   if (inverse) {
     for (int i = 0; i < number_of_samples; i++) {
       std::complex<T>& val = *(Y_data + i);
@@ -113,7 +127,49 @@ static Status fft(OpKernelContext* ctx, const Tensor* X, Tensor* Y, bool inverse
   return Status::OK();
 }
 
-Status Fft::Compute(OpKernelContext* ctx) const {
+template <typename T, typename U>
+static Status dft_naive(OpKernelContext* ctx, const Tensor* X, Tensor* Y, bool inverse) {
+  // Get shape and significant bits
+  const auto& X_shape = X->Shape();
+  size_t number_of_samples = static_cast<size_t>(X_shape[0]);
+
+  // Get data
+  auto* X_data = const_cast<U*>(reinterpret_cast<const U*>(X->DataRaw()));
+  auto* Y_data = reinterpret_cast<std::complex<T>*>(Y->MutableDataRaw());
+
+  auto angular_velocity = compute_angular_velocity<T>(number_of_samples, inverse);
+
+  for (int i = 0; i < number_of_samples; i++) {
+    std::complex<T>& out = *(Y_data + i);
+    out.real(0);
+    out.imag(0);
+
+    for (int j = 0; j < number_of_samples; j++) {  // vectorize over this loop
+      auto exponential = std::complex<T>(cos(i * j * angular_velocity), sin(i * j * angular_velocity));
+      auto element = *(X_data + j);
+      out += exponential * element;
+    }
+  }
+
+  return Status::OK();
+}
+
+
+template <typename T, typename U>
+static Status dft(OpKernelContext* ctx, const Tensor* X, Tensor* Y, bool inverse) {
+  // Get shape and significant bits
+  const auto& X_shape = X->Shape();
+  size_t number_of_samples = static_cast<size_t>(X_shape[0]);
+   
+  // radix 2 fft
+  if (is_power_of_2(number_of_samples)) {
+    return fft_radix2<T, U>(ctx, X, Y, inverse);
+  } else {
+    return dft_naive<T, U>(ctx, X, Y, inverse);
+  }
+}
+
+Status Dft::Compute(OpKernelContext* ctx) const {
   Status status;
   const auto* X = ctx->Input<Tensor>(0);
   const auto& X_shape = X->Shape();
@@ -124,23 +180,23 @@ Status Fft::Compute(OpKernelContext* ctx) const {
   ORT_ENFORCE(X_num_dims >= signal_ndim_, "signal_ndim cannot be greater than the dimension of Input: ", signal_ndim_, " > ", X_num_dims);
 
   int64_t Y_num_dims = static_cast<int64_t>(Y_shape.NumDimensions());
-  ORT_ENFORCE(Y_num_dims == 2, "complex output of fft is returned in a 2D array. But output shape is not 2D.");
+  ORT_ENFORCE(Y_num_dims == 2, "complex output of Dft is returned in a 2D array. But output shape is not 2D.");
 
   MLDataType data_type = X->DataType();
   const auto element_size = data_type->Size();
   switch (element_size) {
     case sizeof(float):
       if (X_shape.NumDimensions() == 1) {
-        status = fft<float, float>(ctx, X, Y, false);
+        status = dft<float, float>(ctx, X, Y, false);
       } else if (X_shape.NumDimensions() == 2 && X_shape[1] == 2) {
-        status = fft<float, std::complex<float>>(ctx, X, Y, false);
+        status = dft<float, std::complex<float>>(ctx, X, Y, false);
       }
       break;
     case sizeof(double):
       if (X_shape.NumDimensions() == 1) {
-        status = fft<double, double>(ctx, X, Y, false);
+        status = dft<double, double>(ctx, X, Y, false);
       } else if (X_shape.NumDimensions() == 2 && X_shape[1] == 2) {
-        status = fft<double, std::complex<double>>(ctx, X, Y, false);
+        status = dft<double, std::complex<double>>(ctx, X, Y, false);
       }
       break;
     default:
@@ -150,7 +206,7 @@ Status Fft::Compute(OpKernelContext* ctx) const {
 }
 
 
-Status Ifft::Compute(OpKernelContext* ctx) const {
+Status Idft::Compute(OpKernelContext* ctx) const {
   Status status;
   const auto* X = ctx->Input<Tensor>(0);
   const auto& X_shape = X->Shape();
@@ -161,23 +217,23 @@ Status Ifft::Compute(OpKernelContext* ctx) const {
   ORT_ENFORCE(X_num_dims >= signal_ndim_, "signal_ndim cannot be greater than the dimension of Input: ", signal_ndim_, " > ", X_num_dims);
 
   int64_t Y_num_dims = static_cast<int64_t>(Y_shape.NumDimensions());
-  ORT_ENFORCE(Y_num_dims == 2, "complex output of fft is returned in a 2D array. But output shape is not 2D.");
+  ORT_ENFORCE(Y_num_dims == 2, "complex output of Dft is returned in a 2D array. But output shape is not 2D.");
 
   MLDataType data_type = X->DataType();
   const auto element_size = data_type->Size();
   switch (element_size) {
     case sizeof(float):
       if (X_shape.NumDimensions() == 1) {
-        status = fft<float, float>(ctx, X, Y, true);
+        status = dft<float, float>(ctx, X, Y, true);
       } else if (X_shape.NumDimensions() == 2 && X_shape[1] == 2) {
-        status = fft<float, std::complex<float>>(ctx, X, Y, true);
+        status = dft<float, std::complex<float>>(ctx, X, Y, true);
       }
       break;
     case sizeof(double):
       if (X_shape.NumDimensions() == 1) {
-        status = fft<double, double>(ctx, X, Y, true);
+        status = dft<double, double>(ctx, X, Y, true);
       } else if (X_shape.NumDimensions() == 2 && X_shape[1] == 2) {
-        status = fft<double, std::complex<double>>(ctx, X, Y, true);
+        status = dft<double, std::complex<double>>(ctx, X, Y, true);
       }
       break;
     default:

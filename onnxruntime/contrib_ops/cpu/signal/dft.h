@@ -4,19 +4,19 @@
 namespace onnxruntime {
 namespace contrib {
 
-class Fft final : public OpKernel {
+class Dft final : public OpKernel {
   int64_t signal_ndim_, normalized_, onesided_;
  public:
 
-  explicit Fft(const OpKernelInfo& info) : OpKernel(info) {
+  explicit Dft(const OpKernelInfo& info) : OpKernel(info) {
   }
   Status Compute(OpKernelContext* ctx) const override;
 };
 
-class Ifft final : public OpKernel {
+class Idft final : public OpKernel {
   int64_t signal_ndim_, normalized_, onesided_;
  public:
-  explicit Ifft(const OpKernelInfo& info) : OpKernel(info) {
+  explicit Idft(const OpKernelInfo& info) : OpKernel(info) {
   }
   Status Compute(OpKernelContext* ctx) const override;
 };

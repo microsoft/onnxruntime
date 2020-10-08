@@ -435,15 +435,15 @@ static void TestModelBuilding() {
             .CreateModel();
     */
 
-    std::vector<int64_t> shape = {32};
+    std::vector<int64_t> shape = {32, 2};
     std::vector<int64_t> output_shape = {32, 2};
     auto model = 
         LearningModelBuilder::Create()
                 .Inputs().Add(TensorFeatureDescriptor(L"Input", L"The input time domain signal", TensorKind::Float, shape))
                 .Outputs().Add(TensorFeatureDescriptor(L"Output", L"The output frequency domain spectra", TensorKind::Float, shape))
-                //.Operators().Add(Operator(L"Fft", L"Fft0", L"com.microsoft").SetInput(L"input", L"Input").SetOutput(L"output", L"Output"))
-                .Operators().Add(Operator(L"Fft", L"Fft0", L"com.microsoft").SetInput(L"input", L"Input").SetOutput(L"output", L"ifft_input"))
-                .Operators().Add(Operator(L"Ifft", L"Ifft0", L"com.microsoft").SetInput(L"input", L"ifft_input").SetOutput(L"output", L"Output"))
+                .Operators().Add(Operator(L"Dft", L"dft0", L"com.microsoft").SetInput(L"input", L"Input").SetOutput(L"output", L"Output"))
+                //.Operators().Add(Operator(L"Dft", L"dft0", L"com.microsoft").SetInput(L"input", L"Input").SetOutput(L"output", L"dft0_output"))
+                //.Operators().Add(Operator(L"Idft", L"idft0", L"com.microsoft").SetInput(L"input", L"dft0_output").SetOutput(L"output", L"Output"))
                 .CreateModel();
         
 
@@ -451,7 +451,10 @@ static void TestModelBuilding() {
     LearningModelBinding binding(session);
 
     // Populate binding
-    std::vector<float> x = {1, 2, 3, 4, 1, 0, 0, 0, 1, 2, 3, 4, 1, 0, 0, 0, 1, 2, 3, 4, 1, 0, 0, 0, 1, 2, 3, 4, 1, 0, 0, 0};
+    std::vector<float> x = {1, 0, 2, 0, 3, 0, 4, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 2, 0, 3, 0, 4, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 2, 0, 3, 0, 4, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 2, 0, 3, 0, 4, 0, 1, 0, 0, 0, 0, 0, 0, 0};
+    //std::vector<float> x = {1, 0, 2, 0, 3, 0, 4, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 2, 0, 3, 0, 4, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 2, 0, 3, 0, 4, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 2, 0, 3, 0, 4, 0, 1, 0, 0, 0, 0, 0, 0, 0};
+    // std::vector<float> x = {1, 2, 3, 4, 1, 0, 0, 0, 1, 2, 3, 4, 1, 0, 0, 0, 1, 2, 3, 4, 1, 0, 0, 0, 1, 2, 3, 4, 1, 0, 0, 0};
+    //std::vector<float> x = {1, 0, 2, 0, 3, 0, 4, 0};
     binding.Bind(L"Input", TensorFloat::CreateFromShapeArrayAndDataArray(shape, x));
 
     // Evaluate
