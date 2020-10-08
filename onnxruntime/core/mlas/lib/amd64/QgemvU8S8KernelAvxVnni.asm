@@ -366,7 +366,7 @@ ProcessColumnLoopSmallKBySmallN:
 
 ComputeOutputSmallKBySmallN:
         vpxor xmm8,xmm8,xmm8
-        vpdpbusds xmm8,xmm0,xmm1        
+        VpdpbusdsXmmXmmXmm xmm8,xmm0,xmm1        
         test    r11,r11                     ; ZeroMode?
         jnz     SkipAccumulateOutputSmallKBySmallN
         vmovd   xmm3,DWORD PTR [r8]

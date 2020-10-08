@@ -135,6 +135,7 @@ ComputeBlock MACRO ColumnCount, RowCount, VectorOffset, BroadcastOffset
 ComputeBlockLoop MACRO ColumnCount, RowCount
 
         LOCAL   ComputeBlockBy1Loop
+
         mov     rsi,r9                      ; reload row length remaining
 
 ComputeBlockBy1Loop:
@@ -166,8 +167,8 @@ ENDIF
 ;
 ;   C (r8) - Supplies the address of matrix C.
 ;
-;   QuadCountK (r9) - Supplies the number of quad columns from matrix A and the
-;       number of quad rows from matrix B to iterate over.
+;   PackedCountK (r9) - Supplies the number of packed columns from matrix A and
+;       the number of packed rows from matrix B to iterate over.
 ;
 ;   CountM - Supplies the maximum number of rows that can be processed for
 ;       matrix A and matrix C. The actual number of rows handled for this
@@ -178,11 +179,11 @@ ENDIF
 ;
 ;   ldc - Supplies the first dimension of matrix C.
 ;
-;   RowSumVector - Supplies the sum of each row from matrix A multiplied by the
+;   RowSumBuffer - Supplies the sum of each row from matrix A multiplied by the
 ;       zero point offset of matrix B. These values are accumulated into every
 ;       row of matrix C.
 ;
-;   ColumnSumVector - Supplies the sum of each column from matrix B multiplied
+;   ColumnSumBuffer - Supplies the sum of each column from matrix B multiplied
 ;       by the zero point offset of matrix A. These values are accumulated into
 ;       every column of matrix C.
 ;
@@ -228,8 +229,8 @@ ENDIF
         shl     r9,2                        ; convert to row length
         movzx   r10,BYTE PTR GemmU8X8KernelFrame.ZeroMode[rsp]
         mov     r11,GemmU8X8KernelFrame.CountM[rsp]
-        mov     r12,GemmU8X8KernelFrame.RowSumVector[rsp]
-        mov     r13,GemmU8X8KernelFrame.ColumnSumVector[rsp]
+        mov     r12,GemmU8X8KernelFrame.RowSumBuffer[rsp]
+        mov     r13,GemmU8X8KernelFrame.ColumnSumBuffer[rsp]
         
 ;
 ; Process CountM rows of the matrices.
