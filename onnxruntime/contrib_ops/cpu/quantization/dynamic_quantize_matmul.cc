@@ -5,7 +5,7 @@
 #include "core/common/safeint.h"
 #include "core/providers/common.h"
 #include "core/providers/cpu/math/matmul_helper.h"
-#include "core/providers/cpu/math/matmul_quant_prepack_base.h"
+#include "core/providers/cpu/math/matmul_integer_base.h"
 #include "core/util/math_cpuonly.h"
 #include "core/util/qmath.h"
 #include "core/mlas/inc/mlas.h"
@@ -15,9 +15,9 @@
 namespace onnxruntime {
 namespace contrib {
 
-class MatMulIntegerToFloatBase : public MatMulQuantPrepackBase {
+class MatMulIntegerToFloatBase : public MatMulIntegerBase {
  public:
-  MatMulIntegerToFloatBase(const OpKernelInfo& info) : MatMulQuantPrepackBase(info) {
+  MatMulIntegerToFloatBase(const OpKernelInfo& info) : MatMulIntegerBase(info) {
   }
 
  protected:

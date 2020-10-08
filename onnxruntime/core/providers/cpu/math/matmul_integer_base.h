@@ -4,13 +4,12 @@
 #include "core/framework/op_kernel.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/providers/common.h"
-#include "core/util/qmath.h"
 
 namespace onnxruntime {
 
-class MatMulQuantPrepackBase : public OpKernel {
+class MatMulIntegerBase : public OpKernel {
  public:
-  MatMulQuantPrepackBase(const OpKernelInfo& info) : OpKernel(info) {}
+  MatMulIntegerBase(const OpKernelInfo& info) : OpKernel(info) {}
 
 #ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
   Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed) override {

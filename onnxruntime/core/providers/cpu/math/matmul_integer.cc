@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "matmul_quant_prepack_base.h"
+#include "matmul_integer_base.h"
 
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/math/matmul_helper.h"
@@ -12,9 +12,9 @@
 
 namespace onnxruntime {
 
-class MatMulInteger final : public MatMulQuantPrepackBase {
+class MatMulInteger final : public MatMulIntegerBase {
  public:
-  MatMulInteger(const OpKernelInfo& info) : MatMulQuantPrepackBase(info) {}
+  MatMulInteger(const OpKernelInfo& info) : MatMulIntegerBase(info) {}
 
   Status Compute(OpKernelContext* context) const override;
 };

@@ -312,7 +312,7 @@ void RunMatMulIntegerU8X8Test(const int M, const int N, const int K, bool non_ze
   }
 }
 
-#define RUN_MATMUL_INTEGER_U8S8(M, N, K)                                                         \
+#define RUN_MATMUL_INTEGER_U8X8(M, N, K)                                                         \
   RunMatMulIntegerU8X8Test<int8_t>(M, N, K, false /*non_zero_zp*/, false /*B_is_initializer*/);  \
   RunMatMulIntegerU8X8Test<int8_t>(M, N, K, false /*non_zero_zp*/, true /*B_is_initializer*/);   \
   RunMatMulIntegerU8X8Test<int8_t>(M, N, K, true /*non_zero_zp*/, false /*B_is_initializer*/);   \
@@ -323,25 +323,25 @@ void RunMatMulIntegerU8X8Test(const int M, const int N, const int K, bool non_ze
   RunMatMulIntegerU8X8Test<uint8_t>(M, N, K, true /*non_zero_zp*/, true /*B_is_initializer*/);
 
 TEST(MatmulIntegerOpTest, MatMulInteger_Uint8_Int8_Scalar) {
-  RUN_MATMUL_INTEGER_U8S8(1, 1, 32);
-  RUN_MATMUL_INTEGER_U8S8(1, 1, 260);
-  RUN_MATMUL_INTEGER_U8S8(1, 1, 288);
+  RUN_MATMUL_INTEGER_U8X8(1, 1, 32);
+  RUN_MATMUL_INTEGER_U8X8(1, 1, 260);
+  RUN_MATMUL_INTEGER_U8X8(1, 1, 288);
 }
 
 TEST(MatmulIntegerOpTest, MatMulInteger_Uint8_Int8_GEMV) {
-  RUN_MATMUL_INTEGER_U8S8(1, 2, 16);
-  RUN_MATMUL_INTEGER_U8S8(1, 2, 64);
-  RUN_MATMUL_INTEGER_U8S8(1, 8, 36);
-  RUN_MATMUL_INTEGER_U8S8(1, 8, 68);
-  RUN_MATMUL_INTEGER_U8S8(1, 8, 400);
-  RUN_MATMUL_INTEGER_U8S8(1, 512, 1024);
+  RUN_MATMUL_INTEGER_U8X8(1, 2, 16);
+  RUN_MATMUL_INTEGER_U8X8(1, 2, 64);
+  RUN_MATMUL_INTEGER_U8X8(1, 8, 36);
+  RUN_MATMUL_INTEGER_U8X8(1, 8, 68);
+  RUN_MATMUL_INTEGER_U8X8(1, 8, 400);
+  RUN_MATMUL_INTEGER_U8X8(1, 512, 1024);
 }
 
 TEST(MatmulIntegerOpTest, MatMulInteger_Uint8_Int8_GEMM) {
-  RUN_MATMUL_INTEGER_U8S8(2, 2, 40);
-  RUN_MATMUL_INTEGER_U8S8(2, 48, 33);
-  RUN_MATMUL_INTEGER_U8S8(2, 51, 40);
-  RUN_MATMUL_INTEGER_U8S8(4, 8, 68);
+  RUN_MATMUL_INTEGER_U8X8(2, 2, 40);
+  RUN_MATMUL_INTEGER_U8X8(2, 48, 33);
+  RUN_MATMUL_INTEGER_U8X8(2, 51, 40);
+  RUN_MATMUL_INTEGER_U8X8(4, 8, 68);
 }
 
 }  // namespace test
