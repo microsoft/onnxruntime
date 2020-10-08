@@ -13,10 +13,10 @@ using namespace onnxruntime::test;
 using namespace winml;
 using namespace onnxruntime;
 
+namespace WinML {
 // Global needed to keep the actual ITestCase alive while the tests are going on. Only ITestCase* are used as test parameters.
 std::vector<std::unique_ptr<ITestCase>> ownedTests;
 
-namespace WinML {
 class ModelTest : public testing::TestWithParam<std::tuple<ITestCase*, winml::LearningModelDeviceKind>> {
  protected:
   void SetUp() override {
