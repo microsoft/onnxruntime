@@ -14,33 +14,37 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Clip_6<float>);
 
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
-    Clip,
-    11,
-    11,
-    KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Clip);
+#define REG_KERNEL_VERSIONED_NONTEMPL(OP_TYPE, START_VER, END_VER, KERNEL_CLASS, ...)                    \
+  ONNX_CPU_OPERATOR_VERSIONED_KERNEL(OP_TYPE,                                                            \
+                                     START_VER,                                                          \
+                                     END_VER,                                                            \
+                                     KernelDefBuilder()                                                  \
+                                         .MayInplace(0, 0)                                               \
+                                         .TypeConstraint("T", BuildKernelDefConstraints<__VA_ARGS__>()), \
+                                     KERNEL_CLASS);
 
 #define REG_KERNEL_NONTEMPL(OP_TYPE, VERSION, KERNEL_CLASS, ...)          \
-  ONNX_CPU_OPERATOR_KERNEL(                                                     \
-      OP_TYPE,                                                                  \
-      VERSION,                                                                  \
-      KernelDefBuilder()                                                        \
-          .MayInplace(0, 0)                                                     \
+  ONNX_CPU_OPERATOR_KERNEL(                                               \
+      OP_TYPE,                                                            \
+      VERSION,                                                            \
+      KernelDefBuilder()                                                  \
+          .MayInplace(0, 0)                                               \
           .TypeConstraint("T", BuildKernelDefConstraints<__VA_ARGS__>()), \
       KERNEL_CLASS);
 
-REG_KERNEL_NONTEMPL(Clip, 12, Clip, float, double, int8_t, uint8_t, int64_t, uint64_t);
+REG_KERNEL_VERSIONED_NONTEMPL(Clip, 11, 11, Clip, float);
+REG_KERNEL_VERSIONED_NONTEMPL(Clip, 12, 12, Clip, float, double, int8_t, uint8_t, int64_t, uint64_t);
+REG_KERNEL_NONTEMPL(Clip, 13, Clip, float, double, int8_t, uint8_t, int64_t, uint64_t);
 
-template<typename T>
+template <typename T>
 Status Clip_6<T>::Compute(OpKernelContext* ctx) const {
-    const auto* X = ctx->Input<Tensor>(0);
-    Tensor* Y = ctx->Output(0, X->Shape());
-    EigenVectorMap<T>(Y->template MutableData<T>(), Y->Shape().Size()) =
-        ConstEigenVectorMap<T>(X->template Data<T>(), X->Shape().Size())
-            .cwiseMax(this->min_)
-            .cwiseMin(this->max_);
-    return Status::OK();
+  const auto* X = ctx->Input<Tensor>(0);
+  Tensor* Y = ctx->Output(0, X->Shape());
+  EigenVectorMap<T>(Y->template MutableData<T>(), Y->Shape().Size()) =
+      ConstEigenVectorMap<T>(X->template Data<T>(), X->Shape().Size())
+          .cwiseMax(this->min_)
+          .cwiseMin(this->max_);
+  return Status::OK();
 }
 
 template <typename T>
