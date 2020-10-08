@@ -669,6 +669,8 @@ class TestInferenceSession(unittest.TestCase):
         so = onnxrt.SessionOptions()
         # This initializer is different from the actual initializer in the model for "W"
         ortvalue_initializer = onnxrt.OrtValue.ortvalue_from_numpy(np.array([[2.0, 1.0], [4.0, 3.0], [6.0, 5.0]], dtype=np.float32))
+        # The user should manage the life cycle of this OrtValue and should keep it in scope
+        # as long as any session that is going to be reliant on it is in scope
         so.add_initializer("W", ortvalue_initializer)
 
         # Create an InferenceSession and validate that it uses the
