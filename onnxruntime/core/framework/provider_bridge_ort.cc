@@ -12,6 +12,7 @@
 #include "core/framework/kernel_registry.h"
 #include "core/graph/model.h"
 #include "core/platform/env.h"
+#include "core/providers/common.h"
 #include "core/session/inference_session.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ort_apis.h"
@@ -303,6 +304,8 @@ struct ProviderHostImpl : ProviderHost {
   void* HeapAllocate(size_t size) override { return new uint8_t[size]; }
   void HeapFree(void* p) override { delete[] reinterpret_cast<uint8_t*>(p); }
 
+  std::vector<std::string> GetStackTrace() override { return onnxruntime::GetStackTrace(); }
+
   bool CPU_HasAVX2() override {
     return CPUIDInfo::GetCPUIDInfo().HasAVX2();
   }
@@ -311,9 +314,24 @@ struct ProviderHostImpl : ProviderHost {
     return CPUIDInfo::GetCPUIDInfo().HasAVX512f();
   }
 
+  AutoPadType StringToAutoPadType(const std::string& str) override { return onnxruntime::StringToAutoPadType(str); }
+
   void LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file, const char* function, uint32_t line) override {
     return ::onnxruntime::LogRuntimeError(session_id, status, file, function, line);
   }
+
+  // logging::Logger
+  bool logging__Logger__OutputIsEnabled(const logging::Logger* p, logging::Severity severity, logging::DataType data_type) override { return p->OutputIsEnabled(severity, data_type); }
+
+  // logging::LoggingManager
+  const logging::Logger& logging__LoggingManager__DefaultLogger() override { return logging::LoggingManager::DefaultLogger(); }
+
+  // logging::Capture
+  std::unique_ptr<logging::Capture> logging__Capture__construct(const logging::Logger& logger, logging::Severity severity, const char* category, logging::DataType dataType, const CodeLocation& location) override {
+    return onnxruntime::make_unique<logging::Capture>(logger, severity, category, dataType, location);
+  }
+  void logging__Capture__operator_delete(logging::Capture* p) noexcept override { delete p; }
+  std::ostream& logging__Capture__Stream(logging::Capture* p) noexcept override { return p->Stream();  }
 
   // Provider_TypeProto_Tensor
   int32_t Provider_TypeProto_Tensor__elem_type(const Provider_TypeProto_Tensor* p) override { return p->elem_type(); }
