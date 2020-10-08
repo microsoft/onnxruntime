@@ -154,6 +154,8 @@ REGISTER_UNARY_ELEMENTWISE_KERNEL(ArgMin, 12);
 bool NeedsTransposeForReduce(const Tensor* input_tensor_ptr,
                              const std::vector<int64_t>& axes_,
                              std::vector<int64_t>& axes,
+                             std::vector<int64_t>& output_shape,
+                             bool& empty_reduce,
                              const TensorShape* input_shape_override) {
   ORT_ENFORCE(input_tensor_ptr != nullptr, "Input to be reduced is null");
 
@@ -165,6 +167,7 @@ bool NeedsTransposeForReduce(const Tensor* input_tensor_ptr,
   const auto& input_shape = input_shape_override ? *input_shape_override : input_tensor_ptr->Shape();
   size_t ndim = input_shape.NumDimensions();
   if (ndim == 0) {
+    empty_reduce = true;
     return false;
   }
 
@@ -188,6 +191,13 @@ bool NeedsTransposeForReduce(const Tensor* input_tensor_ptr,
       axes.front() == static_cast<int64_t>(ndim - axes.size()) &&
       axes.back() == static_cast<int64_t>(ndim) - 1) {
     need_copy = false;
+  }
+
+  empty_reduce = false;
+  output_shape = input_shape.GetDims();
+  for (auto a : axes) {
+    output_shape[a] = input_shape[a] > 0 ? 1 : 0;
+    empty_reduce |= output_shape[a] == 0;
   }
   return need_copy;
 }
@@ -234,8 +244,9 @@ bool PrepareForReduce(const Tensor* input_tensor_ptr,
     return true;
   }
 
-  std::vector<int64_t> axes;
-  bool need_copy = NeedsTransposeForReduce(input_tensor_ptr, axes_, axes, input_shape_override);
+  std::vector<int64_t> axes, output_shape;
+  bool empty_reduce;
+  bool need_copy = NeedsTransposeForReduce(input_tensor_ptr, axes_, axes, output_shape, empty_reduce, input_shape_override);
 
   std::vector<bool> keep_axis(ndim, true);
   for (auto i : axes) {
@@ -450,6 +461,9 @@ void ExperimentalPrepareForReduce(const Tensor& input, const std::vector<int64_t
   for (auto a : unreduced_axes) {
     unprojection_size *= input_shape[a];
   }
+  if (unprojection_size == 0) {
+    return;
+  }
   std::vector<int64_t> unprojected_indices(unreduced_axes.size(), 0);
 
   // The last index is usually an image size.
@@ -481,7 +495,7 @@ void ExperimentalPrepareForReduce(const Tensor& input, const std::vector<int64_t
 
 template <typename T, typename AGG>
 void ExperimentalReduce(Tensor* output, const Tensor& input, const std::vector<int64_t>& reduced_axes,
-                        OpKernelContext* ctx, ResultsExperimentalPrepareForReduce& last_results) {
+                        concurrency::ThreadPool* tp, ResultsExperimentalPrepareForReduce& last_results) {
   auto output_shape = output->Shape();
   const T* from_data = input.template Data<T>();
   T* to_data = output->template MutableData<T>();
@@ -494,10 +508,10 @@ void ExperimentalReduce(Tensor* output, const Tensor& input, const std::vector<i
     return;
   }
 
-  //FastAllocVector<int64_t> projected_index(GetAllocator<int64_t>(*ctx));
-  //FastAllocVector<int64_t> unprojected_index(GetAllocator<int64_t>(*ctx));
   if (!last_results.equal(input.Shape().GetDims(), reduced_axes)) {
     ExperimentalPrepareForReduce(input, reduced_axes, last_results);
+    if (last_results.last_loop_red_size == 0 || last_results.last_loop_size == 0)
+      return;
   }
   int64_t denominator = last_results.last_loop_red_size * last_results.projected_index.size();
 
@@ -525,47 +539,57 @@ void ExperimentalReduce(Tensor* output, const Tensor& input, const std::vector<i
   auto cost = TensorOpCost{(double)(last_results.projected_index.size() * sizeof(T) * last_results.last_loop_size * last_results.last_loop_red_size),
                            (double)last_results.last_loop_size * last_results.last_loop_red_size,
                            (double)last_results.projected_index.size() * last_results.last_loop_size * last_results.last_loop_red_size};
-  concurrency::ThreadPool::TryParallelFor(ctx->GetOperatorThreadPool(), count / last_results.last_loop_size, cost, fn);
+  concurrency::ThreadPool::TryParallelFor(tp, count / last_results.last_loop_size, cost, fn);
+}
+
+void DropDimensions(const std::vector<int64_t>& input_shape, const std::vector<int64_t>& axes, std::vector<int64_t>& dropped_axes) {
+  auto dropped_dims = input_shape;
+  for (auto i : axes) {
+    dropped_dims[i] = -1;
+  }
+  for (auto it = dropped_dims.begin(); it != dropped_dims.end(); ++it) {
+    if (*it != -1) {
+      dropped_axes.push_back(*it);
+    }
+  }
 }
 
 template <typename T, typename AGG>
-void CommonComputeReduce(OpKernelContext* ctx, const std::vector<int64_t> axes_, int64_t keepdims_,
-                         ResultsExperimentalPrepareForReduce& last_results) {
-  const Tensor* input = ctx->Input<Tensor>(0);
-
+void CommonReduce(OpKernelContext* ctx,
+                  const std::vector<int64_t> axes_, int64_t keepdims_,
+                  ResultsExperimentalPrepareForReduce& last_results) {
   std::vector<int64_t> axes;
-  NeedsTransposeForReduce(input, axes_, axes, nullptr);
-  int64_t min_dims = 1;
+  const Tensor* input = ctx->Input<Tensor>(0);
   auto reduced_dims = input->Shape().GetDims();
-  for (auto i : axes) {
-    reduced_dims[i] = reduced_dims[i] > 0 ? 1 : 0;
-    min_dims = ((min_dims == 0) || (reduced_dims[i] > 0)) ? min_dims : 0;
-  }
-  if (min_dims == 0) {
-    if (keepdims_) {
-      ctx->Output(0, reduced_dims);
+  std::vector<int64_t> output_shape;
+  bool empty_reduce;
+  NeedsTransposeForReduce(input, axes_, axes, output_shape, empty_reduce, nullptr);
+
+  if (empty_reduce) {
+    Tensor* output = ctx->Output(0, keepdims_ ? output_shape : std::vector<int64_t>());
+    if (input->Shape().Size() == 1) {
+      ctx->Output(0, std::vector<int64_t>(0));
+      const T* from_data = input->template Data<T>();
+      T* to_data = output->template MutableData<T>();
+      *to_data = *from_data;
     } else {
-      ctx->Output(0, std::vector<int64_t>());
+      ORT_ENFORCE(keepdims_,
+                  "Can't reduce on dim with value of 0 if 'keepdims' is false. "
+                  "Invalid output shape would be produced. input_shape:",
+                  input->Shape());
     }
     return;
   }
+
   Tensor* output;
   if (keepdims_) {
-    output = ctx->Output(0, reduced_dims);
+    output = ctx->Output(0, output_shape);
   } else {
-    auto dropped_dims = input->Shape().GetDims();
-    std::vector<int64_t> dropped_dims2;
-    for (auto i : axes) {
-      dropped_dims[i] = -1;
-    }
-    for (auto it = dropped_dims.begin(); it != dropped_dims.end(); ++it) {
-      if (*it != -1) {
-        dropped_dims2.push_back(*it);
-      }
-    }
-    output = ctx->Output(0, dropped_dims2);
+    std::vector<int64_t> dropped_axes;
+    DropDimensions(output_shape, axes, dropped_axes);
+    output = ctx->Output(0, dropped_axes);
   }
-  ExperimentalReduce<T, AGG>(output, *input, axes, ctx, last_results);
+  ExperimentalReduce<T, AGG>(output, *input, axes, ctx->GetOperatorThreadPool(), last_results);
 }
 
 template <typename T>
@@ -718,31 +742,7 @@ Status ReduceMax<T>::Compute(OpKernelContext* ctx) const {
 
 template <typename T>
 Status ReduceMean<T>::Compute(OpKernelContext* ctx) const {
-  /*
-  FastAllocVector<T> transposed_input_data(GetAllocator<T>(*ctx));
-  int64_t block_size;
-  int64_t blocks;
-  std::vector<int64_t> reduced_dims;
-  const Tensor* input = ctx->Input<Tensor>(0);
-
-  bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes_, keepdims_, reduced_dims, true);
-
-  Tensor* reduced = ctx->Output(0, reduced_dims);
-
-  T* output_data = reduced->template MutableData<T>();
-
-  if (no_transpose) {
-    const T* input_data = ctx->Input<Tensor>(0)->template Data<T>();
-    auto lambda = [input_data, blocks, output_data](ptrdiff_t i) {
-      output_data[i] = ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).mean();
-    };
-    concurrency::ThreadPool::TryBatchParallelFor(ctx->GetOperatorThreadPool(), block_size, lambda, 0);
-  } else {
-    EigenVectorMap<T> out_vec(output_data, block_size);
-    out_vec = ConstEigenMatrixMap<T>(&transposed_input_data[0], block_size, blocks).rowwise().mean();
-  }
-  */
-  CommonComputeReduce<T, ReduceAggregatorMean<T>>(ctx, axes_, keepdims_, last_results_);
+  CommonReduce<T, ReduceAggregatorMean<T>>(ctx, axes_, keepdims_, last_results_);
   return Status::OK();
 }
 
@@ -804,7 +804,7 @@ Status ReduceProd<T>::Compute(OpKernelContext* ctx) const {
 
 template <typename T>
 Status ReduceSum<T>::Compute(OpKernelContext* ctx) const {
-  CommonComputeReduce<T, ReduceAggregatorSum<T>>(ctx, axes_, keepdims_, last_results_);
+  CommonReduce<T, ReduceAggregatorSum<T>>(ctx, axes_, keepdims_, last_results_);
   return Status::OK();
 }
 

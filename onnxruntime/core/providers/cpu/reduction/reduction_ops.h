@@ -50,6 +50,8 @@ class ReduceAggregatorMean : public ReduceAggregator<T> {
 bool NeedsTransposeForReduce(const Tensor* input_tensor_ptr,
                              const std::vector<int64_t>& axes_,
                              std::vector<int64_t>& axes,
+                             std::vector<int64_t>& output_shape,
+                             bool& empty_reduce,
                              const TensorShape* input_shape_override);
 
 class ResultsExperimentalPrepareForReduce {
@@ -86,11 +88,12 @@ void ExperimentalPrepareForReduce(const Tensor& input, const std::vector<int64_t
 
 template <typename T, typename AGG>
 void ExperimentalReduce(Tensor* output, const Tensor& input, const std::vector<int64_t>& reduced_axes,
-                        OpKernelContext* ctx, ResultsExperimentalPrepareForReduce& last_results);
+                        concurrency::ThreadPool* tp, ResultsExperimentalPrepareForReduce& last_results);
 
 template <typename T, typename AGG>
-void CommonComputeReduce(OpKernelContext* ctx, const std::vector<int64_t> axes_, int64_t keepdims_,
-                         ResultsExperimentalPrepareForReduce& last_results);
+void CommonReduce(OpKernelContext* ctx,
+                  const std::vector<int64_t> axes_, int64_t keepdims_,
+                  ResultsExperimentalPrepareForReduce& last_results);
 
 template <typename T>
 bool PrepareForReduce(const Tensor* input_tensor_ptr,
