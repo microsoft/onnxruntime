@@ -436,10 +436,16 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     } else
       return false;
   } else if(optype == "Gather") {
-    const auto &indices_arg = node->InputDefs()[1];
-    if(device_id == "GPU") {
-      if (indices_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64)
-        return true;
+
+    if(device_id == "GPU"){
+      const auto& input = node->InputDefs()[0];
+      auto graph_inputs = graph_viewer.GetInputs();
+      auto it = find(graph_inputs.begin(), graph_inputs.end(), input);
+      if(it != graph_inputs.end()){
+        const auto &indices_arg = node->InputDefs()[1];
+        if (indices_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64)
+          return true;
+      }
     }
   } else if(optype == "Upsample") {
 
@@ -825,7 +831,7 @@ GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, std::string d
             node->OpType() == "Cast" || node->OpType() == "Concat" || node->OpType() == "Gather" ||
             node->OpType() == "Div" || node->OpType() == "Sub") {
 
-            if((node->OpType() == "Div" || node->OpType() == "Sub") && device_id != "MYRIAD")
+            if((node->OpType() == "Div" || node->OpType() == "Sub") && (device_id != "MYRIAD" &&  device_id != "GPU"))
               continue;
             for (const auto& input : node->InputDefs()) {
               auto input_name = input->Name();
