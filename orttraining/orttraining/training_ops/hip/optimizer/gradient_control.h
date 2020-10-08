@@ -6,19 +6,19 @@
 #include "core/providers/hip/hip_common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename T>
-class ZeroGradient final : public HipKernel {
+class ZeroGradient final : public RocmKernel {
  public:
-  ZeroGradient(const OpKernelInfo& info) : HipKernel(info) {}
+  ZeroGradient(const OpKernelInfo& info) : RocmKernel(info) {}
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
 template <typename T, typename T_GRAD>
-class InPlaceAccumulator final : public HipKernel {
+class InPlaceAccumulator final : public RocmKernel {
  public:
-  InPlaceAccumulator(const OpKernelInfo& info) : HipKernel(info) {}
+  InPlaceAccumulator(const OpKernelInfo& info) : RocmKernel(info) {}
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
@@ -30,5 +30,5 @@ void InPlaceAccumulatorImpl(
     T* accumulated_gradient,
     size_t count);
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

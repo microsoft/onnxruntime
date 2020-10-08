@@ -8,13 +8,13 @@
 #include "orttraining/training_ops/hip/activation/bias_gelu_grad_impl.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 ONNX_OPERATOR_KERNEL_EX(
     BiasGeluGrad_dX,
     kMSDomain,
     1,
-    kHipExecutionProvider,
+    kRocmExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", BuildKernelDefConstraints<MLFloat16, float, double>())
         .MayInplace(0, 0),
@@ -24,7 +24,7 @@ ONNX_OPERATOR_KERNEL_EX(
     BiasFastGeluGrad_dX,
     kMSDomain,
     1,
-    kHipExecutionProvider,
+    kRocmExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", BuildKernelDefConstraints<MLFloat16, float, double>())
         .MayInplace(0, 0),
@@ -77,5 +77,5 @@ Status BiasGeluGrad_dX<GeluComputationMode>::ComputeInternal(OpKernelContext* co
   return Status::OK();
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

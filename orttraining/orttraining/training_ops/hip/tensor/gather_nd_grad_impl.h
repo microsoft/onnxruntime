@@ -5,7 +5,7 @@
 #include "core/providers/hip/shared_inc/hip_utils.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename T>
 void GatherNDGradImpl(
@@ -15,5 +15,5 @@ void GatherNDGradImpl(
     const size_t slice_size,
     const int64_t* input_slice_offsets_data);
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

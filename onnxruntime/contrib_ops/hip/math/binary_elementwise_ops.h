@@ -8,11 +8,11 @@
 #include "core/providers/hip/shared_inc/fast_divmod.h"
 #include "core/providers/cpu/tensor/utils.h"
 
-using namespace onnxruntime::hip;
+using namespace onnxruntime::rocm;
 
 namespace onnxruntime {
 namespace contrib {
-namespace hip {
+namespace rocm {
 
 // AddGelu fuse Add + Gelu
 template <typename T>
@@ -24,6 +24,6 @@ class BiasGelu final : public BinaryElementwise<ShouldBroadcast> {
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime

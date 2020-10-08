@@ -6,11 +6,11 @@
 #include "core/providers/hip/hip_common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
-class Expand final : public HipKernel {
+class Expand final : public RocmKernel {
  public:
-  Expand(const OpKernelInfo& info) : HipKernel(info) {}
+  Expand(const OpKernelInfo& info) : RocmKernel(info) {}
 
   Status ComputeInternal(OpKernelContext* context) const override;
 };
@@ -21,5 +21,5 @@ Status ComputeOutputShape(
     const TensorShape& rhs_shape,
     TensorShape& out_shape);
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

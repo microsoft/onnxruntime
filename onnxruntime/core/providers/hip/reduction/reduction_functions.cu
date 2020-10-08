@@ -18,7 +18,7 @@
 #define ONE_MASK 0x00000001
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 std::pair<int, int> compute_block_size(int size) {
   int x = GPU_WARP_SIZE;
@@ -358,5 +358,5 @@ template void reduce_matrix_rows<float, float>(
 template void reduce_matrix_rows<double, double>(
     const double* data, double* output, int m, int n);
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

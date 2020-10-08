@@ -315,10 +315,10 @@ KernelCreateInfo BuildKernelCreateInfo();
 }  // namespace contrib
 
 namespace contrib {
-namespace hip {
+namespace rocm {
 template <typename T>
 KernelCreateInfo BuildKernelCreateInfo();
-}  // namespace hip
+}  // namespace rocm
 }  // namespace contrib
 
 using BuildKernelCreateInfoFn = KernelCreateInfo (*)();

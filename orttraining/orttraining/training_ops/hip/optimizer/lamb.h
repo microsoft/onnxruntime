@@ -7,12 +7,12 @@
 #include "core/providers/hip/multi_tensor/common.cuh"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD_NORM>
-class LambOptimizer final : public HipKernel {
+class LambOptimizer final : public RocmKernel {
  public:
-  LambOptimizer(const OpKernelInfo& info) : HipKernel(info) {
+  LambOptimizer(const OpKernelInfo& info) : RocmKernel(info) {
     alpha_ = info.GetAttrsOrDefault("alpha", std::vector<float>(1024, 0.9f));
     beta_ = info.GetAttrsOrDefault("beta", std::vector<float>(1024, 0.999f));
     lambda_ = info.GetAttrsOrDefault("lambda", std::vector<float>(1024, 0.0f));
@@ -157,5 +157,5 @@ struct LambMultiTensorUpdateFunctor {
       const float ratio_max);
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

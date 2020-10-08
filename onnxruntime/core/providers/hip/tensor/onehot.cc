@@ -5,7 +5,7 @@
 #include "core/providers/cpu/tensor/onehot.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 // T1: indices, T2: depth, T3: values
 #define REGISTER_TYPED_ONE_HOT_OP(in_type, out_type, depth_type)           \
@@ -14,7 +14,7 @@ namespace hip {
       kOnnxDomain,                                                         \
       11,                                                                  \
       in_type##_##out_type##_##depth_type,                                 \
-      kHipExecutionProvider,                                              \
+      kRocmExecutionProvider,                                              \
       KernelDefBuilder()                                                   \
           .InputMemoryType<OrtMemTypeCPUInput>(1) /* Keep depth in CPU */  \
           .InputMemoryType<OrtMemTypeCPUInput>(2) /* Keep values in CPU */ \
@@ -84,5 +84,5 @@ Status OneHotOp<in_type, out_type, depth_type>::ComputeInternal(OpKernelContext*
   return Status::OK();
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

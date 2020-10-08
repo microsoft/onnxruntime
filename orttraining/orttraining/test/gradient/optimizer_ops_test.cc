@@ -239,7 +239,7 @@ TEST(OptimizerTest, AdamWeightDecayMode1WithBiasCorrection) {
   test.Run();
 }
 
-#if defined(USE_CUDA) || defined(USE_HIP)
+#if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(OptimizerTest, AdamOptimizerMixPrecisionTest) {
   OpTester test("AdamOptimizer", 1, onnxruntime::kMSDomain);
   AdamOptimizerInputOutput data;

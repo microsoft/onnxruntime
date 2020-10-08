@@ -7,13 +7,13 @@
 #include "core/providers/cpu/tensor/gather.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
-class Gather final : public HipKernel, public GatherBase {
+class Gather final : public RocmKernel, public GatherBase {
  public:
-  Gather(const OpKernelInfo& info) : HipKernel(info), GatherBase(info) {}
+  Gather(const OpKernelInfo& info) : RocmKernel(info), GatherBase(info) {}
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

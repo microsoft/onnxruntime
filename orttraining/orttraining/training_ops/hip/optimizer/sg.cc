@@ -7,13 +7,13 @@
 #include "sg.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 ONNX_OPERATOR_KERNEL_EX(
     SGDOptimizer,
     kMSDomain,
     1,
-    kHipExecutionProvider,
+    kRocmExecutionProvider,
     KernelDefBuilder()
         .Alias(1, 0)  // Update weights in-place
         .Alias(2, 1)  // Update gradients in-place
@@ -40,5 +40,5 @@ Status SGDOptimizer::ComputeInternal(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

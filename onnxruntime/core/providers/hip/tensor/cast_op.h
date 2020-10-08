@@ -6,12 +6,12 @@
 #include "core/providers/hip/hip_common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename SrcT>
-class Cast final : public HipKernel {
+class Cast final : public RocmKernel {
  public:
-  Cast(const OpKernelInfo& info) : HipKernel(info) {
+  Cast(const OpKernelInfo& info) : RocmKernel(info) {
     int64_t to;
     Status status = info.GetAttr("to", &to);
     ORT_ENFORCE(status.IsOK(), "Attribute to is not set.");
@@ -24,5 +24,5 @@ class Cast final : public HipKernel {
   ONNX_NAMESPACE::TensorProto_DataType to_;
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

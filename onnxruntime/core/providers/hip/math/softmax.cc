@@ -6,7 +6,7 @@
 #include "core/providers/hip/miopen_common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename T, bool is_log_softmax>
 Status SoftMaxComputeHelper(
@@ -61,7 +61,7 @@ SPECIALIZED_SOFTMAX_HELPER_IMPL(MLFloat16)
       kOnnxDomain,                                                              \
       1, 10,                                                                    \
       T,                                                                        \
-      kHipExecutionProvider,                                                   \
+      kRocmExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Softmax<T>);                                                              \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
@@ -69,7 +69,7 @@ SPECIALIZED_SOFTMAX_HELPER_IMPL(MLFloat16)
       kOnnxDomain,                                                              \
       11,                                                                       \
       T,                                                                        \
-      kHipExecutionProvider,                                                   \
+      kRocmExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Softmax<T>);                                                              \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
@@ -77,7 +77,7 @@ SPECIALIZED_SOFTMAX_HELPER_IMPL(MLFloat16)
       kOnnxDomain,                                                              \
       1, 10,                                                                    \
       T,                                                                        \
-      kHipExecutionProvider,                                                   \
+      kRocmExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Softmax<T>);                                                              \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
@@ -85,7 +85,7 @@ SPECIALIZED_SOFTMAX_HELPER_IMPL(MLFloat16)
       kOnnxDomain,                                                              \
       11,                                                                       \
       T,                                                                        \
-      kHipExecutionProvider,                                                   \
+      kRocmExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Softmax<T>);
 
@@ -115,5 +115,5 @@ SPECIALIZED_COMPUTE(float)
 SPECIALIZED_COMPUTE(double)
 SPECIALIZED_COMPUTE(MLFloat16)
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

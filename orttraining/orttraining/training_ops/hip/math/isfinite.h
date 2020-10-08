@@ -14,12 +14,12 @@ constexpr int MAX_TENSOR_COUNT = 128;
 constexpr int MAX_BLOCK_THREAD_COUNT = 512;
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename TSrc>
-class IsFiniteOp final : public HipKernel {
+class IsFiniteOp final : public RocmKernel {
  public:
-  IsFiniteOp(const OpKernelInfo& info) : HipKernel(info) {
+  IsFiniteOp(const OpKernelInfo& info) : RocmKernel(info) {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -29,9 +29,9 @@ template <typename TSrc>
 void IsFinite(const TSrc* input, bool* output, size_t N);
 
 template <typename TSrc>
-class IsAllFiniteOp final : public HipKernel {
+class IsAllFiniteOp final : public RocmKernel {
  public:
-  IsAllFiniteOp(const OpKernelInfo& info) : HipKernel(info) {
+  IsAllFiniteOp(const OpKernelInfo& info) : RocmKernel(info) {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -42,5 +42,5 @@ struct IsAllFiniteFunctor {
   void operator()(ChunkGroup<1> chunks, bool* output); 
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

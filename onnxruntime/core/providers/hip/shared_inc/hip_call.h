@@ -11,29 +11,29 @@ namespace onnxruntime {
 // -----------------------------------------------------------------------
 
 template <typename ERRTYPE, bool THRW>
-bool HipCall(ERRTYPE retCode, const char* exprString, const char* libName, ERRTYPE successCode, const char* msg = "");
+bool RocmCall(ERRTYPE retCode, const char* exprString, const char* libName, ERRTYPE successCode, const char* msg = "");
 
-#define HIP_CALL(expr) (HipCall<hipError_t, false>((expr), #expr, "HIP", hipSuccess))
-#define HIPBLAS_CALL(expr) (HipCall<hipblasStatus_t, false>((expr), #expr, "HIPBLAS", HIPBLAS_STATUS_SUCCESS))
-#define ROCBLAS_CALL(expr) (HipCall<rocblas_status, false>((expr), #expr, "ROCBLAS", rocblas_status_success))
-#define HIPSPARSE_CALL(expr) (HipCall<hipsparseStatus_t, false>((expr), #expr, "HIPSPARSE", HIPSPARSE_STATUS_SUCCESS))
-#define HIPRAND_CALL(expr) (HipCall<hiprandStatus_t, false>((expr), #expr, "HIPRAND", HIPRAND_STATUS_SUCCESS))
-#define MIOPEN_CALL(expr) (HipCall<miopenStatus_t, false>((expr), #expr, "MIOPEN", miopenStatusSuccess))
-#define MIOPEN_CALL2(expr, m) (HipCall<miopenStatus_t, false>((expr), #expr, "MIOPEN", miopenStatusSuccess, m))
-#define HIPFFT_CALL(expr) (HipCall<hipfftResult, false>((expr), #expr, "HIPFFT", HIPFFT_SUCCESS))
+#define HIP_CALL(expr) (RocmCall<hipError_t, false>((expr), #expr, "HIP", hipSuccess))
+#define HIPBLAS_CALL(expr) (RocmCall<hipblasStatus_t, false>((expr), #expr, "HIPBLAS", HIPBLAS_STATUS_SUCCESS))
+#define ROCBLAS_CALL(expr) (RocmCall<rocblas_status, false>((expr), #expr, "ROCBLAS", rocblas_status_success))
+#define HIPSPARSE_CALL(expr) (RocmCall<hipsparseStatus_t, false>((expr), #expr, "HIPSPARSE", HIPSPARSE_STATUS_SUCCESS))
+#define HIPRAND_CALL(expr) (RocmCall<hiprandStatus_t, false>((expr), #expr, "HIPRAND", HIPRAND_STATUS_SUCCESS))
+#define MIOPEN_CALL(expr) (RocmCall<miopenStatus_t, false>((expr), #expr, "MIOPEN", miopenStatusSuccess))
+#define MIOPEN_CALL2(expr, m) (RocmCall<miopenStatus_t, false>((expr), #expr, "MIOPEN", miopenStatusSuccess, m))
+#define HIPFFT_CALL(expr) (RocmCall<hipfftResult, false>((expr), #expr, "HIPFFT", HIPFFT_SUCCESS))
 
-#define HIP_CALL_THROW(expr) (HipCall<hipError_t, true>((expr), #expr, "HIP", hipSuccess))
-#define HIPBLAS_CALL_THROW(expr) (HipCall<hipblasStatus_t, true>((expr), #expr, "HIPBLAS", HIPBLAS_STATUS_SUCCESS))
-#define ROCBLAS_CALL_THROW(expr) (HipCall<rocblas_status, true>((expr), #expr, "ROCBLAS", rocblas_status_success))
-#define HIPSPARSE_CALL_THROW(expr) (HipCall<hipsparseStatus_t, true>((expr), #expr, "HIPSPARSE", HIPSPARSE_STATUS_SUCCESS))
-#define HIPRAND_CALL_THROW(expr) (HipCall<hiprandStatus_t, true>((expr), #expr, "HIPRAND", HIPRAND_STATUS_SUCCESS))
-#define MIOPEN_CALL_THROW(expr) (HipCall<miopenStatus_t, true>((expr), #expr, "MIOPEN", miopenStatusSuccess))
-#define MIOPEN_CALL_THROW2(expr, m) (HipCall<miopenStatus_t, true>((expr), #expr, "MIOPEN", miopenStatusSuccess, m))
-#define HIPFFT_CALL_THROW(expr) (HipCall<hipfftResult, true>((expr), #expr, "HIPFFT", HIPFFT_SUCCESS))
+#define HIP_CALL_THROW(expr) (RocmCall<hipError_t, true>((expr), #expr, "HIP", hipSuccess))
+#define HIPBLAS_CALL_THROW(expr) (RocmCall<hipblasStatus_t, true>((expr), #expr, "HIPBLAS", HIPBLAS_STATUS_SUCCESS))
+#define ROCBLAS_CALL_THROW(expr) (RocmCall<rocblas_status, true>((expr), #expr, "ROCBLAS", rocblas_status_success))
+#define HIPSPARSE_CALL_THROW(expr) (RocmCall<hipsparseStatus_t, true>((expr), #expr, "HIPSPARSE", HIPSPARSE_STATUS_SUCCESS))
+#define HIPRAND_CALL_THROW(expr) (RocmCall<hiprandStatus_t, true>((expr), #expr, "HIPRAND", HIPRAND_STATUS_SUCCESS))
+#define MIOPEN_CALL_THROW(expr) (RocmCall<miopenStatus_t, true>((expr), #expr, "MIOPEN", miopenStatusSuccess))
+#define MIOPEN_CALL_THROW2(expr, m) (RocmCall<miopenStatus_t, true>((expr), #expr, "MIOPEN", miopenStatusSuccess, m))
+#define HIPFFT_CALL_THROW(expr) (RocmCall<hipfftResult, true>((expr), #expr, "HIPFFT", HIPFFT_SUCCESS))
 
 #ifdef USE_NCCL
-#define NCCL_CALL(expr) (HipCall<ncclResult_t, false>((expr), #expr, "NCCL", ncclSuccess))
-#define NCCL_CALL_THROW(expr) (HipCall<ncclResult_t, true>((expr), #expr, "NCCL", ncclSuccess))
+#define NCCL_CALL(expr) (RocmCall<ncclResult_t, false>((expr), #expr, "NCCL", ncclSuccess))
+#define NCCL_CALL_THROW(expr) (RocmCall<ncclResult_t, true>((expr), #expr, "NCCL", ncclSuccess))
 #endif
 
 }  // namespace onnxruntime

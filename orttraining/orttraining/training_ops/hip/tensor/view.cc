@@ -4,7 +4,7 @@
 #include "orttraining/training_ops/hip/tensor/view.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 namespace {
 
@@ -31,7 +31,7 @@ ONNX_OPERATOR_KERNEL_EX(
     View,
     kMSDomain,
     1,
-    kHipExecutionProvider,
+    kRocmExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
         .TypeConstraint("Shape", DataTypeImpl::GetTensorType<int64_t>())
@@ -86,5 +86,5 @@ Status View::ComputeInternal(OpKernelContext* context) const {
   return Status::OK();
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

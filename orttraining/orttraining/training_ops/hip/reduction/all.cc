@@ -4,7 +4,7 @@
 #include "orttraining/training_ops/hip/reduction/all.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 #define REGISTER_ALL_KERNEL_TYPED(T)                                            \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
@@ -12,7 +12,7 @@ namespace hip {
       kMSDomain,                                                                \
       1,                                                                        \
       T,                                                                        \
-      kHipExecutionProvider,                                                   \
+      kRocmExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       All<T>);
 
@@ -35,5 +35,5 @@ Status All<T>::ComputeInternal(OpKernelContext* ctx) const {
 
 REGISTER_ALL_KERNEL_TYPED(bool)
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

@@ -4,11 +4,11 @@
 #include "core/providers/hip/hip_common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
-class GatherGrad final : public HipKernel {
+class GatherGrad final : public RocmKernel {
  public:
-  GatherGrad(const OpKernelInfo& info) : HipKernel(info) {
+  GatherGrad(const OpKernelInfo& info) : RocmKernel(info) {
     ORT_ENFORCE(info.GetAttr<int64_t>("axis", &axis_).IsOK(), "Missing/Invalid 'axis' attribute value");
   }
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -17,5 +17,5 @@ class GatherGrad final : public HipKernel {
   int64_t axis_;
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

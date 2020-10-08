@@ -7,12 +7,12 @@
 #include "core/providers/hip/hip_common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <bool is_dropout>
-class IdentityOp final : public HipKernel {
+class IdentityOp final : public RocmKernel {
  public:
-  IdentityOp(const OpKernelInfo& info) : HipKernel(info) {
+  IdentityOp(const OpKernelInfo& info) : RocmKernel(info) {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override {
@@ -48,5 +48,5 @@ class IdentityOp final : public HipKernel {
   }
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

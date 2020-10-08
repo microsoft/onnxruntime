@@ -26,7 +26,7 @@
 #include <limits>
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 // The softmax_warp_* methods perform softmax forward and backward propagation on samples spanning the fast dimension.
 // Each sample contains element_count scalar elements. element_count can be any integer value <= 1024.

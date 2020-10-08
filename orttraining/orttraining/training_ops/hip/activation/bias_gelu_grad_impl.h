@@ -6,7 +6,7 @@
 #include <cstdint>
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 // assumptions:
 // - dY, X, dX have input_size elements
@@ -17,5 +17,5 @@ void LaunchBiasGeluGradDxKernel(
     int64_t input_size, int64_t bias_size,
     const T* dY, const T* X, const T* B, T* dX);
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

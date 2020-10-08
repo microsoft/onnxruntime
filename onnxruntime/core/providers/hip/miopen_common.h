@@ -10,7 +10,7 @@
 #include <cfloat>
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 class MiopenTensor final {
  public:
@@ -131,5 +131,5 @@ struct Consts<half> {
 //   return epsilon;
 // }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

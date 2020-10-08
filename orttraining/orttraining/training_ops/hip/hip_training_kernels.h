@@ -7,9 +7,9 @@
 #include "core/framework/kernel_registry.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
-Status RegisterHipTrainingKernels(KernelRegistry& kernel_registry);
+Status RegisterRocmTrainingKernels(KernelRegistry& kernel_registry);
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

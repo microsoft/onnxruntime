@@ -7,7 +7,7 @@
 #include "core/providers/hip/hip_common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename in_type, typename out_type>
 void OneHotImpl(
@@ -30,9 +30,9 @@ void OneHotWithZeroOffValueImpl(
     size_t count);
 
 template <typename in_type, typename out_type, typename depth_type>
-class OneHotOp final : public HipKernel {
+class OneHotOp final : public RocmKernel {
  public:
-  explicit OneHotOp(const OpKernelInfo& info) : HipKernel(info) {
+  explicit OneHotOp(const OpKernelInfo& info) : RocmKernel(info) {
     int64_t tmp_axis;
     if (info.GetAttr<int64_t>("axis", &tmp_axis).IsOK()) {
       axis_ = tmp_axis;
@@ -47,5 +47,5 @@ class OneHotOp final : public HipKernel {
   int64_t axis_ = -1;
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

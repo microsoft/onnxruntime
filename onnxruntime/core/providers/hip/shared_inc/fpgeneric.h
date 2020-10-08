@@ -27,7 +27,7 @@ inline hipblasStatus_t hipblasGemmHelper(hipblasHandle_t handle,
                                          const float* B, int ldb,
                                          const float* beta,
                                          float* C, int ldc) {
-  //return hipblasSgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
+  // return hipblasSgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
   return hipblasGemmEx(handle,
                        transa,
                        transb,
@@ -60,7 +60,7 @@ inline hipblasStatus_t hipblasGemmHelper(hipblasHandle_t handle,
                                          const half* B, int ldb,
                                          const half* beta,
                                          half* C, int ldc) {
-  //return hipblasHgemm(handle, transa, transb, m, n, k, (const hipblasHalf*)alpha, (const hipblasHalf*)A, lda, (const hipblasHalf*)B, ldb, (const hipblasHalf*)beta, (hipblasHalf*)C, ldc);
+  // return hipblasHgemm(handle, transa, transb, m, n, k, (const hipblasHalf*)alpha, (const hipblasHalf*)A, lda, (const hipblasHalf*)B, ldb, (const hipblasHalf*)beta, (hipblasHalf*)C, ldc);
   float h_a = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(alpha));
   float h_b = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(beta));
   return hipblasGemmEx(handle,
@@ -87,7 +87,7 @@ inline hipblasStatus_t hipblasGemmBatchedHelper(hipblasHandle_t handle,
                                                 const float* beta,
                                                 float* Carray[], int ldc,
                                                 int batchCount) {
-  //return hipblasSgemmBatched(handle, transa, transb, m, n, k, alpha, Aarray, lda, Barray, ldb, beta, Carray, ldc, batchCount);
+  // return hipblasSgemmBatched(handle, transa, transb, m, n, k, alpha, Aarray, lda, Barray, ldb, beta, Carray, ldc, batchCount);
   return hipblasGemmBatchedEx(handle,
                               transa,
                               transb,
@@ -123,7 +123,7 @@ inline hipblasStatus_t hipblasGemmBatchedHelper(hipblasHandle_t handle,
                                                 const half* beta,
                                                 half* Carray[], int ldc,
                                                 int batchCount) {
-  //return hipblasHgemmBatched(handle, transa, transb, m, n, k, (const hipblasHalf*)alpha, (const hipblasHalf**)Aarray, lda, (const hipblasHalf**)Barray, ldb, (const hipblasHalf*)beta, (hipblasHalf**)Carray, ldc, batchCount);
+  // return hipblasHgemmBatched(handle, transa, transb, m, n, k, (const hipblasHalf*)alpha, (const hipblasHalf**)Aarray, lda, (const hipblasHalf**)Barray, ldb, (const hipblasHalf*)beta, (hipblasHalf**)Carray, ldc, batchCount);
   float h_a = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(alpha));
   float h_b = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(beta));
   return hipblasGemmBatchedEx(handle,
@@ -154,7 +154,7 @@ inline hipblasStatus_t hipblasGemmStridedBatchedHelper(hipblasHandle_t handle,
                                                        float* C, int ldc,
                                                        long long int strideC,
                                                        int batchCount) {
-  //return hipblasSgemmStridedBatched(handle, transa, transb, m, n, k, alpha, A, lda, strideA, B, ldb, strideB, beta, C, ldc, strideC, batchCount);
+  // return hipblasSgemmStridedBatched(handle, transa, transb, m, n, k, alpha, A, lda, strideA, B, ldb, strideB, beta, C, ldc, strideC, batchCount);
   return hipblasGemmStridedBatchedEx(handle,
                                      transa,
                                      transb,
@@ -198,7 +198,7 @@ inline hipblasStatus_t hipblasGemmStridedBatchedHelper(hipblasHandle_t handle,
                                                        __half* C, int ldc,
                                                        long long int strideC,
                                                        int batchCount) {
-  //return hipblasHgemmStridedBatched(handle, transa, transb, m, n, k, (const hipblasHalf*)alpha, (const hipblasHalf*)A, lda, strideA, (const hipblasHalf*)B, ldb, strideB, (const hipblasHalf*)beta, (hipblasHalf*)C, ldc, strideC, batchCount);
+  // return hipblasHgemmStridedBatched(handle, transa, transb, m, n, k, (const hipblasHalf*)alpha, (const hipblasHalf*)A, lda, strideA, (const hipblasHalf*)B, ldb, strideB, (const hipblasHalf*)beta, (hipblasHalf*)C, ldc, strideC, batchCount);
   float h_a = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(alpha));
   float h_b = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(beta));
   return hipblasGemmStridedBatchedEx(handle,

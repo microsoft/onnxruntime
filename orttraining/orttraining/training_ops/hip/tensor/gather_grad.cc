@@ -6,13 +6,13 @@
 #include "core/providers/common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 ONNX_OPERATOR_KERNEL_EX(
     GatherGrad,
     kMSDomain,
     1,
-    kHipExecutionProvider,
+    kRocmExecutionProvider,
     KernelDefBuilder()
         .InputMemoryType<OrtMemTypeCPUInput>(0)
         .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
@@ -25,7 +25,7 @@ ONNX_OPERATOR_KERNEL_EX(
 namespace {
 template <typename T, typename Tin>
 Status CallGatherGradImpl(
-    const HipKernel& hip_kernel,
+    const RocmKernel& hip_kernel,
     int64_t num_weights, int64_t stride, int64_t num_inputs, int64_t param_itrs,
     const Tensor& grad, const Tensor& indices,
     Tensor& output) {
@@ -52,7 +52,7 @@ Status CallGatherGradImpl(
 template <typename T>
 Status DispatchToGatherGradImplByTin(
     MLDataType tin_data_type,
-    const HipKernel& hip_kernel,
+    const RocmKernel& hip_kernel,
     int64_t num_weights, int64_t stride, int64_t num_inputs, int64_t param_itrs,
     const Tensor& grad, const Tensor& indices,
     Tensor& output) {
@@ -69,7 +69,7 @@ Status DispatchToGatherGradImplByTin(
 
 Status DispatchToGatherGradImpl(
     MLDataType t_data_type, MLDataType tin_data_type,
-    const HipKernel& hip_kernel,
+    const RocmKernel& hip_kernel,
     int64_t num_weights, int64_t stride, int64_t num_inputs, int64_t param_itrs,
     const Tensor& grad, const Tensor& indices,
     Tensor& output) {
@@ -108,5 +108,5 @@ Status GatherGrad::ComputeInternal(OpKernelContext* context) const {
       *grad, *indices, *output);
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

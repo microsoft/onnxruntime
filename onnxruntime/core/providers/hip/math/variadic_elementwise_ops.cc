@@ -12,7 +12,7 @@
 #include "core/providers/hip/math/variadic_elementwise_ops_tags.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename VariadicElementwiseOpTag, typename... SupportedElementTypes>
 template <typename T>
@@ -39,7 +39,7 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
 template <typename VariadicElementwiseOpTag, typename... SupportedElementTypes>
 template <typename T>
 Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>::
-    BinaryImplDispatchTarget<T>::operator()(const HipKernel* kernel, const Tensor& lhs, const Tensor& rhs, Tensor& output) const {
+    BinaryImplDispatchTarget<T>::operator()(const RocmKernel* kernel, const Tensor& lhs, const Tensor& rhs, Tensor& output) const {
   using HipT = typename ToHipType<T>::MappedType;
 
   BinaryElementwisePreparation prepare(kernel);
@@ -64,7 +64,7 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
 template <typename VariadicElementwiseOpTag, typename... SupportedElementTypes>
 template <typename T>
 Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>::
-    GeneralImplDispatchTarget<T>::operator()(const HipKernel* kernel, const InputTensorVector& inputs, Tensor& output) const {
+    GeneralImplDispatchTarget<T>::operator()(const RocmKernel* kernel, const InputTensorVector& inputs, Tensor& output) const {
   assert(inputs.size() > 1);
 
   using HipT = typename ToHipType<T>::MappedType;
@@ -220,7 +220,7 @@ const auto k_hfd_datatypes =
       name,                                                   \
       kOnnxDomain,                                            \
       version,                                                \
-      kHipExecutionProvider,                                 \
+      kRocmExecutionProvider,                                 \
       KernelDefBuilder().TypeConstraint("T", datatypes),      \
       impl_class)
 
@@ -229,7 +229,7 @@ const auto k_hfd_datatypes =
       name,                                                                                \
       kOnnxDomain,                                                                         \
       start_version, end_version,                                                          \
-      kHipExecutionProvider,                                                              \
+      kRocmExecutionProvider,                                                              \
       KernelDefBuilder().TypeConstraint("T", datatypes),                                   \
       impl_class)
 
@@ -245,5 +245,5 @@ REGISTER_VERSIONED_KERNEL(Max, MaxOp, 6, 11, k_hfd_datatypes)
 #undef REGISTER_VERSIONED_KERNEL
 #undef REGISTER_KERNEL
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

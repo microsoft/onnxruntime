@@ -6,7 +6,7 @@
 #include "core/providers/cpu/tensor/utils.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 // kernel builder functions
 #define WHERE_TYPED_KERNEL_WITH_TYPE_NAME(T, TName)                 \
@@ -15,7 +15,7 @@ namespace hip {
       kOnnxDomain,                                                  \
       9,                                                            \
       TName,                                                        \
-      kHipExecutionProvider,                                       \
+      kRocmExecutionProvider,                                       \
       KernelDefBuilder()                                            \
           .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>()) \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),   \
@@ -203,5 +203,5 @@ SPECIALIZED_COMPUTE(int32_t)
 SPECIALIZED_COMPUTE(int64_t)
 SPECIALIZED_COMPUTE(float)
 SPECIALIZED_COMPUTE(MLFloat16)
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

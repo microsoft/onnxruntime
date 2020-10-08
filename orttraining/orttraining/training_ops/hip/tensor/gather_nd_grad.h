@@ -9,7 +9,7 @@
 #include "core/providers/hip/tensor/gather_nd.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename Tind>
 class GatherNDGrad final : public GatherNDBase {
@@ -18,5 +18,5 @@ class GatherNDGrad final : public GatherNDBase {
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

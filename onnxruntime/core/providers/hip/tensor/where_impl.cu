@@ -8,7 +8,7 @@
 #include "where_impl.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 // broadcast by computing output coordinate from offset, using fast_divmod
 template <typename T, BroadcastIndexType CondIndexType, BroadcastIndexType XIndexType, BroadcastIndexType YIndexType, int NumThreadsPerBlock, int NumElementsPerThread>
@@ -233,5 +233,5 @@ SPECIALIZED_IMPL(int64_t)
 SPECIALIZED_IMPL(float)
 SPECIALIZED_IMPL(half)
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

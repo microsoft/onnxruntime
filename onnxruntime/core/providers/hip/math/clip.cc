@@ -6,7 +6,7 @@
 #include "core/providers/hip/math/clip_impl.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(
     Clip,
@@ -14,7 +14,7 @@ ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(
     6,
     10,
     float,
-    kHipExecutionProvider,
+    kRocmExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Clip_6<float>);
@@ -23,7 +23,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Clip,
     kOnnxDomain,
     11, 11,
-    kHipExecutionProvider,
+    kRocmExecutionProvider,
     KernelDefBuilder()
         .InputMemoryType<OrtMemTypeCPUInput>(1)
         .InputMemoryType<OrtMemTypeCPUInput>(2)
@@ -34,7 +34,7 @@ ONNX_OPERATOR_KERNEL_EX(
     Clip,
     kOnnxDomain,
     12,
-    kHipExecutionProvider,
+    kRocmExecutionProvider,
     KernelDefBuilder()
         .InputMemoryType<OrtMemTypeCPUInput>(1)
         .InputMemoryType<OrtMemTypeCPUInput>(2)
@@ -117,5 +117,5 @@ Status Clip::ComputeInternal(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

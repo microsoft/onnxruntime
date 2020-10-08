@@ -7,12 +7,12 @@
 #include "core/providers/common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Gather,
     kOnnxDomain,
     1, 10,
-    kHipExecutionProvider,
+    kRocmExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
         .TypeConstraint("Tind", std::vector<MLDataType>{
@@ -25,7 +25,7 @@ ONNX_OPERATOR_KERNEL_EX(
     Gather,
     kOnnxDomain,
     11,
-    kHipExecutionProvider,
+    kRocmExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
         .TypeConstraint("Tind", std::vector<MLDataType>{
@@ -81,5 +81,5 @@ Status Gather::ComputeInternal(OpKernelContext* context) const {
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Type for Tind not supported yet in Gather.");
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

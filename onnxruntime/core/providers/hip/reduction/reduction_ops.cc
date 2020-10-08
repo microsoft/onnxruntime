@@ -12,7 +12,7 @@
 
 using namespace onnxruntime::common;
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 // opset 11 explicitly added support for negative axis. implementation already allowed it.
 #define REGISTER_KERNEL_TYPED(name, T)                                          \
@@ -21,7 +21,7 @@ namespace hip {
       kOnnxDomain,                                                              \
       1, 10,                                                                    \
       T,                                                                        \
-      kHipExecutionProvider,                                                   \
+      kRocmExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       name<T>);                                                                 \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
@@ -29,7 +29,7 @@ namespace hip {
       kOnnxDomain,                                                              \
       11,                                                                       \
       T,                                                                        \
-      kHipExecutionProvider,                                                   \
+      kRocmExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       name<T>);
 
@@ -40,7 +40,7 @@ namespace hip {
       kOnnxDomain,                                                              \
       1, 10,                                                                    \
       T,                                                                        \
-      kHipExecutionProvider,                                                   \
+      kRocmExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       name<T>);                                                                 \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
@@ -48,7 +48,7 @@ namespace hip {
       kOnnxDomain,                                                              \
       11, 11,                                                                   \
       T,                                                                        \
-      kHipExecutionProvider,                                                   \
+      kRocmExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       name<T>);                                                                 \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
@@ -56,7 +56,7 @@ namespace hip {
       kOnnxDomain,                                                              \
       12,                                                                       \
       T,                                                                        \
-      kHipExecutionProvider,                                                   \
+      kRocmExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       name<T>);
 

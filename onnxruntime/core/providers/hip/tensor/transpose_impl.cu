@@ -5,7 +5,7 @@
 #include "core/providers/hip/tensor/transpose_impl.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename T>
 // __global__ void _TransposeKernel(int32_t shape_rank, const TArray<int64_t> input_strides,
@@ -76,5 +76,5 @@ Status TransposeImpl(size_t element_size, int32_t shape_rank, const int64_t* inp
   return Status::OK();
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

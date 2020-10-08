@@ -10,7 +10,7 @@
 
 namespace onnxruntime {
 namespace contrib {
-namespace hip {
+namespace rocm {
 
 #define REGISTER_KERNEL_TYPED(T)                                  \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
@@ -18,7 +18,7 @@ namespace hip {
       kMSDomain,                                                  \
       1,                                                          \
       T,                                                          \
-      kHipExecutionProvider,                                     \
+      kRocmExecutionProvider,                                     \
       KernelDefBuilder()                                          \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       FastGelu<T>);
@@ -29,7 +29,7 @@ REGISTER_KERNEL_TYPED(MLFloat16)
 using namespace ONNX_NAMESPACE;
 
 template <typename T>
-FastGelu<T>::FastGelu(const OpKernelInfo& op_kernel_info) : HipKernel(op_kernel_info) {
+FastGelu<T>::FastGelu(const OpKernelInfo& op_kernel_info) : RocmKernel(op_kernel_info) {
 }
 
 template <typename T>
@@ -57,6 +57,6 @@ Status FastGelu<T>::ComputeInternal(OpKernelContext* context) const {
   return Status::OK();
 }
 
-}  //namespace hip
+}  //namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime

@@ -6,7 +6,7 @@
 #include "core/providers/hip/math/binary_elementwise_ops_impl.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 // define the device functors that perform the computation on scalars
 
@@ -36,5 +36,5 @@ BINARY_OPS2()
 
 #undef OP_FUNCTOR_DEFINITION
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

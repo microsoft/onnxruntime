@@ -4,12 +4,12 @@
 #include "identity_op.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Dropout,
     kOnnxDomain,
     7, 9,
-    kHipExecutionProvider,
+    kRocmExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<MLFloat16>(), 
                               DataTypeImpl::GetTensorType<float>(), 
@@ -22,7 +22,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kOnnxDomain,
     10,
     11,
-    kHipExecutionProvider,
+    kRocmExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<MLFloat16>(),
                               DataTypeImpl::GetTensorType<float>(),
@@ -35,10 +35,10 @@ ONNX_OPERATOR_KERNEL_EX(
     Identity,
     kOnnxDomain,
     1,
-    kHipExecutionProvider,
+    kRocmExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
         .Alias(0, 0),
     IdentityOp<false>);
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

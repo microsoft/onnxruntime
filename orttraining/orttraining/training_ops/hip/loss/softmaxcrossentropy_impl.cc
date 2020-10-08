@@ -6,14 +6,14 @@
 #include "softmaxcrossentropy_impl.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 #define REGISTER_KERNEL_TYPED(Class, T, domain, version)                        \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
       Class,                                                                    \
       domain,                                                                   \
       version,                                                                  \
       T,                                                                        \
-      kHipExecutionProvider,                                                   \
+      kRocmExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Class<T>);
 
@@ -23,7 +23,7 @@ namespace hip {
       domain,                                                           \
       version,                                                          \
       T, Tin,                                                           \
-      kHipExecutionProvider,                                           \
+      kRocmExecutionProvider,                                           \
       KernelDefBuilder()                                                \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
           .TypeConstraint("Tin", DataTypeImpl::GetTensorType<Tin>()),   \
@@ -301,5 +301,5 @@ SPECIALIZED_COMPUTE_SPARSE(SparseSoftmaxCrossEntropy, float, int64_t, kOnnxDomai
 // SPECIALIZED_COMPUTE_SPARSE(SparseSoftmaxCrossEntropyGrad, float, int32_t, kOnnxDomain, 9)
 SPECIALIZED_COMPUTE_SPARSE(SparseSoftmaxCrossEntropyGrad, float, int64_t, kOnnxDomain, 9)
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

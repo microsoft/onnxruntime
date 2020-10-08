@@ -8,7 +8,7 @@
 #include "core/providers/hip/atomic/common.cuh"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename T>
 __global__ void _GatherNDGradKernel(
@@ -42,5 +42,5 @@ SPECIALIZED_GRAD_IMPL(float);
 SPECIALIZED_GRAD_IMPL(half);
 SPECIALIZED_GRAD_IMPL(double);
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

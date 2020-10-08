@@ -8,7 +8,7 @@
 #include "common.cuh"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 // broadcast by computing output coordinate from offset, using fast_divmod
 template <typename T, typename T1, typename T2, typename FuncT,
@@ -289,5 +289,5 @@ void BinaryElementWiseImpl(
   }
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

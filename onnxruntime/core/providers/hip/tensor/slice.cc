@@ -6,14 +6,14 @@
 #include "core/providers/hip/tensor/slice_impl.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 #define REGISTER_VERSIONED_TYPED_SLICE(TIND)                            \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                              \
       Slice,                                                            \
       kOnnxDomain,                                                      \
       1, 9,                                                             \
       TIND,                                                             \
-      kHipExecutionProvider,                                           \
+      kRocmExecutionProvider,                                           \
       KernelDefBuilder()                                                \
           .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()) \
           .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()), \
@@ -29,7 +29,7 @@ REGISTER_VERSIONED_TYPED_SLICE(float)
       kOnnxDomain,                                                      \
       10, 10,                                                           \
       TIND,                                                             \
-      kHipExecutionProvider,                                           \
+      kRocmExecutionProvider,                                           \
       KernelDefBuilder()                                                \
           .InputMemoryType<OrtMemTypeCPUInput>(1)                       \
           .InputMemoryType<OrtMemTypeCPUInput>(2)                       \
@@ -49,7 +49,7 @@ REGISTER_V10_TYPED_SLICE(float)
       kOnnxDomain,                                                      \
       11,                                                               \
       TIND,                                                             \
-      kHipExecutionProvider,                                           \
+      kRocmExecutionProvider,                                           \
       KernelDefBuilder()                                                \
           .InputMemoryType<OrtMemTypeCPUInput>(1)                       \
           .InputMemoryType<OrtMemTypeCPUInput>(2)                       \
@@ -228,5 +228,5 @@ Status Slice<dynamic>::CallSliceImp(size_t element_size, size_t dimension_count,
                       output_shape);
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

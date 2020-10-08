@@ -7,11 +7,11 @@
 #include "core/providers/common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Split,
                                   kOnnxDomain,
                                   2, 10,
-                                  kHipExecutionProvider,
+                                  kRocmExecutionProvider,
                                   KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
                                   Split);
 
@@ -19,7 +19,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Split,
 ONNX_OPERATOR_KERNEL_EX(Split,
                         kOnnxDomain,
                         11,
-                        kHipExecutionProvider,
+                        kRocmExecutionProvider,
                         KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
                         Split);
 
@@ -97,5 +97,5 @@ Status Split::ComputeInternal(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

@@ -7,13 +7,13 @@
 #include "core/providers/cpu/tensor/concat.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
-class Concat final : public HipKernel, public ConcatBase {
+class Concat final : public RocmKernel, public ConcatBase {
  public:
-  Concat(const OpKernelInfo& info) : HipKernel(info), ConcatBase(info) {}
+  Concat(const OpKernelInfo& info) : RocmKernel(info), ConcatBase(info) {}
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

@@ -6,7 +6,7 @@
 #include "core/providers/hip/shared_inc/hip_utils.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 // These macros simplifies coding. To add a new op with following steps:
 // 1. Add a new entry in BINARY_OPS() list
@@ -88,5 +88,5 @@ BINARY_ELEMENTWISE_IMPL_DECLARATION_T1(Pow);
 BINARY_OPS2()
 #undef BINARY_OP_NAME_EXPR2
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

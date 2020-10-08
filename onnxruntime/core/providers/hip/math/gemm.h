@@ -6,13 +6,13 @@
 #include "core/providers/hip/hip_common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 template <typename T>
-class Gemm final : public HipKernel {
-  using Base = HipKernel;
+class Gemm final : public RocmKernel {
+  using Base = RocmKernel;
 
  public:
-  Gemm(const OpKernelInfo& info) : HipKernel(info) {
+  Gemm(const OpKernelInfo& info) : RocmKernel(info) {
     int64_t temp;
     ORT_ENFORCE(info.GetAttr<int64_t>("transA", &temp).IsOK());
     trans_A_ = (temp != 0);
@@ -32,5 +32,5 @@ class Gemm final : public HipKernel {
   float alpha_;
   float beta_;
 };
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

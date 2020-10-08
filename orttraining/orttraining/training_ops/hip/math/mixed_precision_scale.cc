@@ -6,7 +6,7 @@
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 #define REGISTER_MIXEDPRECISIONSCALE_KERNEL_TYPED(SrcT)                     \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                            \
@@ -14,7 +14,7 @@ namespace hip {
       kMSDomain,                                                            \
       1,                                                                    \
       SrcT,                                                                 \
-      kHipExecutionProvider,                                               \
+      kRocmExecutionProvider,                                               \
       KernelDefBuilder()                                                    \
           .TypeConstraint("SrcT", DataTypeImpl::GetTensorType<SrcT>())      \
           .TypeConstraint("ScaleT", DataTypeImpl::GetTensorType<float>())   \
@@ -39,7 +39,7 @@ Status BytesPerElement(ONNX_NAMESPACE::TensorProto_DataType to, size_t& bytes_pe
 }
 
 template <typename SrcT>
-MixedPrecisionScale<SrcT>::MixedPrecisionScale(const OpKernelInfo& info) : HipKernel(info) {
+MixedPrecisionScale<SrcT>::MixedPrecisionScale(const OpKernelInfo& info) : RocmKernel(info) {
   int64_t to;
   Status status = info.GetAttr("to", &to);
   ORT_ENFORCE(status.IsOK(), "Attribute to is not set.");
@@ -117,5 +117,5 @@ REGISTER_MIXEDPRECISIONSCALE_KERNEL_TYPED(float)
 template Status MixedPrecisionScale<MLFloat16>::ComputeInternal(OpKernelContext* context) const;
 template Status MixedPrecisionScale<float>::ComputeInternal(OpKernelContext* context) const;
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

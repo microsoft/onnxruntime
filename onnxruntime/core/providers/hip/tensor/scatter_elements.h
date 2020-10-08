@@ -7,11 +7,11 @@
 #include "core/providers/hip/hip_common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
-class ScatterElements final : public HipKernel {
+class ScatterElements final : public RocmKernel {
  public:
-  ScatterElements(const OpKernelInfo& info) : HipKernel(info) {
+  ScatterElements(const OpKernelInfo& info) : RocmKernel(info) {
     ORT_ENFORCE(info.GetAttr<int64_t>("axis", &axis_).IsOK(),
                 "Missing/Invalid 'axis' attribute value");
   }
@@ -25,5 +25,5 @@ class ScatterElements final : public HipKernel {
   int64_t axis_;
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

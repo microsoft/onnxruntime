@@ -4,7 +4,7 @@
 #include "activations.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 #define REGISTER_ACTIVATION_KERNEL(x, ver, T)                    \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                 \
@@ -12,7 +12,7 @@ namespace hip {
       kOnnxDomain,                                               \
       ver,                                                       \
       T,                                                         \
-      kHipExecutionProvider,                                    \
+      kRocmExecutionProvider,                                    \
       KernelDefBuilder()                                         \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()) \
           .MayInplace(0, 0),                                     \
@@ -52,5 +52,5 @@ UNARY_ACTIVATION_OP_HFD(Softsign, 1);
 UNARY_ACTIVATION_OP_HFD(Tanh, 6);
 UNARY_ACTIVATION_OP_HFD(ThresholdedRelu, 10);
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

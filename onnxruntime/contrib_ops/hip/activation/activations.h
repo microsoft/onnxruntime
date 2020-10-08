@@ -9,11 +9,11 @@
 #include "core/providers/hip/activation/activations.h"
 #include "activations_impl.h"
 
-using namespace onnxruntime::hip;
+using namespace onnxruntime::rocm;
 
 namespace onnxruntime {
 namespace contrib {
-namespace hip {
+namespace rocm {
 
 template <typename T>
 class Affine final : public UnaryElementwise {
@@ -77,6 +77,6 @@ class Gelu final : public UnaryElementwise {
   MAKE_FUNC_CTX_NULL()
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime

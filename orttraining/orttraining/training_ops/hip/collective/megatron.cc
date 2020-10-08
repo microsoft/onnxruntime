@@ -5,13 +5,13 @@
 #include "core/providers/hip/tensor/identity_op.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 ONNX_OPERATOR_KERNEL_EX(
     MegatronF,
     kMSDomain,
     1,
-    kHipExecutionProvider,
+    kRocmExecutionProvider,
     KernelDefBuilder()
         .Alias(0, 0)
         .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
@@ -21,11 +21,11 @@ ONNX_OPERATOR_KERNEL_EX(
     MegatronG,
     kMSDomain,
     1,
-    kHipExecutionProvider,
+    kRocmExecutionProvider,
     KernelDefBuilder()
         .Alias(0, 0)
         .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
     NcclAllReduce);
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

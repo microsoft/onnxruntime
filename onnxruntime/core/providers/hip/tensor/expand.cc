@@ -8,7 +8,7 @@
 using std::vector;
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 // Logically expanded y could just be a view of x.
 static void CalcEffectiveDims(vector<int64_t>& x_dims, vector<int64_t>& y_dims) {
@@ -112,11 +112,11 @@ ONNX_OPERATOR_KERNEL_EX(
     Expand,
     kOnnxDomain,
     8,
-    kHipExecutionProvider,
+    kRocmExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
         .InputMemoryType<OrtMemTypeCPUInput>(1),
     Expand);
 
-}  // namespace hip
+}  // namespace rocm
 };  // namespace onnxruntime

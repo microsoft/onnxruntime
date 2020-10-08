@@ -6,7 +6,7 @@
 #include "core/providers/hip/hip_common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD, typename T_GRAD_NORM>
 void AdamOptimizerImpl(
@@ -32,9 +32,9 @@ void AdamOptimizerImpl(
     size_t count);
 
 template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD, typename T_GRAD_NORM>
-class AdamOptimizer final : public HipKernel {
+class AdamOptimizer final : public RocmKernel {
  public:
-  AdamOptimizer(const OpKernelInfo& info) : HipKernel(info) {
+  AdamOptimizer(const OpKernelInfo& info) : RocmKernel(info) {
     info.GetAttrOrDefault("alpha", &alpha_, 0.9f);
     info.GetAttrOrDefault("beta", &beta_, 0.999f);
     info.GetAttrOrDefault("lambda", &lambda_, 0.0f);
@@ -58,5 +58,5 @@ class AdamOptimizer final : public HipKernel {
   int64_t weight_decay_mode_;
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

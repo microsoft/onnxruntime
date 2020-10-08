@@ -6,12 +6,12 @@
 #include "core/providers/hip/hip_common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename GeluComputationMode>
-class BiasGeluGrad_dX : public HipKernel {
+class BiasGeluGrad_dX : public RocmKernel {
  public:
-  BiasGeluGrad_dX(const OpKernelInfo& info) : HipKernel(info) {}
+  BiasGeluGrad_dX(const OpKernelInfo& info) : RocmKernel(info) {}
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
@@ -24,5 +24,5 @@ class BiasGeluGrad_dX : public HipKernel {
   };
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

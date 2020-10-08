@@ -7,7 +7,7 @@
 #include "core/providers/hip/hip_common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename SrcT, typename DstT>
 void Impl_MixedPrecisionScale(
@@ -17,7 +17,7 @@ void Impl_MixedPrecisionScale(
     size_t count);
 
 template <typename SrcT>
-class MixedPrecisionScale final : public HipKernel {
+class MixedPrecisionScale final : public RocmKernel {
  public:
   MixedPrecisionScale(const OpKernelInfo& info);
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -28,5 +28,5 @@ class MixedPrecisionScale final : public HipKernel {
   bool fuse_outputs_;
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

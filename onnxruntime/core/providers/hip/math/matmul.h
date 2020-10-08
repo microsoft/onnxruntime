@@ -6,14 +6,14 @@
 #include "core/providers/hip/hip_common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 template <typename T>
-class MatMul final : public HipKernel {
-  using Base = HipKernel;
+class MatMul final : public RocmKernel {
+  using Base = RocmKernel;
 
  public:
   MatMul(const OpKernelInfo& info)
-      : HipKernel(info),
+      : RocmKernel(info),
         alpha_{info.GetAttrOrDefault<float>("alpha", 1.0f)},
         trans_A_{info.GetAttrOrDefault<int64_t>("transA", 0) != 0},
         trans_B_{info.GetAttrOrDefault<int64_t>("transB", 0) != 0} {
@@ -26,5 +26,5 @@ class MatMul final : public HipKernel {
   const bool trans_A_;
   const bool trans_B_;
 };
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

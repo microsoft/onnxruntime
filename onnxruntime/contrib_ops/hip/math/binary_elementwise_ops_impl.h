@@ -1,11 +1,11 @@
 #include <stdint.h>
 #include "core/providers/hip/shared_inc/hip_utils.h"
 
-using namespace onnxruntime::hip;
+using namespace onnxruntime::rocm;
 
 namespace onnxruntime {
 namespace contrib {
-namespace hip {
+namespace rocm {
 // These macros simplifies coding. To add a new op with following steps:
 // 1. Add a new entry in CONTRIB_BINARY_OPS() list
 // 2. (optional) Define templated single element operator in binary_elementwise_ops_impl.cu
@@ -34,6 +34,6 @@ namespace hip {
 #define CONTRIB_BINARY_OP_NAME_EXPR(name, expr) CONTRIB_BINARY_ELEMENTWISE_IMPL_DECLARATION(name);
 CONTRIB_BINARY_OPS()
 #undef CONTRIB_BINARY_OP_NAME_EXPR
-}  // namespace hip
+}  // namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime

@@ -23,7 +23,7 @@
 #include <algorithm>
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename T, int NumThreadsPerBlock, int NumElementsPerThread>
 __global__ void DropoutGradientKernel(
@@ -170,5 +170,5 @@ SPECIALIZED_BIAS_DROPOUT_IMPL(double)
 SPECIALIZED_BIAS_DROPOUT_IMPL(half)
 
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

@@ -7,7 +7,7 @@
 
 using namespace onnxruntime::common;
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <>
 Status BinaryElementwise<ShouldNotBroadcast>::Prepare(OpKernelContext* context, BinaryElementwisePreparation* p) const {
@@ -91,7 +91,7 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
       kOnnxDomain,                                                              \
       ver,                                                                      \
       T,                                                                        \
-      kHipExecutionProvider,                                                   \
+      kRocmExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       class_name<T>);
 
@@ -103,7 +103,7 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
       x,                                                                                 \
       kOnnxDomain,                                                                       \
       ver,                                                                               \
-      kHipExecutionProvider,                                                            \
+      kRocmExecutionProvider,                                                            \
       KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraints<>(__VAR_ARGS__)), \
       class_name);
 
@@ -113,7 +113,7 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
       kOnnxDomain,                                                                                                                        \
       ver,                                                                                                                                \
       T,                                                                                                                                  \
-      kHipExecutionProvider,                                                                                                             \
+      kRocmExecutionProvider,                                                                                                             \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()).TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()), \
       x<T>);
 
@@ -124,7 +124,7 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
       startver,                                                                    \
       endver,                                                                      \
       T,                                                                           \
-      kHipExecutionProvider,                                                      \
+      kRocmExecutionProvider,                                                      \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),    \
       x<T>);
 
@@ -135,7 +135,7 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
       startver,                                                                                      \
       endver,                                                                                        \
       T,                                                                                             \
-      kHipExecutionProvider,                                                                        \
+      kRocmExecutionProvider,                                                                        \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),                      \
       class_name<T>);
 
@@ -266,7 +266,7 @@ ONNX_OPERATOR_KERNEL_EX(
     Pow,
     kOnnxDomain,
     12,
-    kHipExecutionProvider,
+    kRocmExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraints<int32_t, int64_t, float, double>()).TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t, float, double>()),
     Pow);
 
@@ -419,5 +419,5 @@ BINARY_OP_REGISTER_VERSIONED_HFD(Greater, 7, 8)
 BINARY_LOGICALOP_REGISTER_UZILHFD(Less, 9)
 BINARY_OP_REGISTER_VERSIONED_HFD(Less, 7, 8)
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

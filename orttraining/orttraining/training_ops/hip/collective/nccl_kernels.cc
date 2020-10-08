@@ -4,7 +4,7 @@
 #include "nccl_kernels.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 NcclAllReduce::NcclAllReduce(const OpKernelInfo& info) : NcclKernel(info) {
 }
@@ -216,7 +216,7 @@ ONNX_OPERATOR_KERNEL_EX(
     NcclAllReduce,
     kMSDomain,
     1,
-    kHipExecutionProvider,
+    kRocmExecutionProvider,
     KernelDefBuilder()
         .Alias(AliasRange(0, 1024))
         .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
@@ -226,7 +226,7 @@ ONNX_OPERATOR_KERNEL_EX(
     NcclAllGather,
     kMSDomain,
     1,
-    kHipExecutionProvider,
+    kRocmExecutionProvider,
     KernelDefBuilder()
         .Alias(AliasRange(0, 1024))
         .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
@@ -236,11 +236,11 @@ ONNX_OPERATOR_KERNEL_EX(
     NcclReduceScatter,
     kMSDomain,
     1,
-    kHipExecutionProvider,
+    kRocmExecutionProvider,
     KernelDefBuilder()
         .Alias(AliasRange(0, 1024))
         .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
     NcclReduceScatter);
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

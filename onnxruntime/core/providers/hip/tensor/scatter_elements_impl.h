@@ -7,7 +7,7 @@
 #include "core/providers/hip/shared_inc/hip_utils.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename T, typename Tin>
 Status ScatterElementsImpl(
@@ -24,5 +24,5 @@ Status ScatterElementsImpl(
     const int axis,
     T* output_data);
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

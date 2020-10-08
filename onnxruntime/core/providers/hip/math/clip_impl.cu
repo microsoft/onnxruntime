@@ -6,7 +6,7 @@
 #include "core/providers/hip/cu_inc/common.cuh"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 template <typename T>
 __global__ void _Clip(const T* input, T* output, T min, T max, size_t N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
@@ -33,5 +33,5 @@ template void ClipImpl<uint8_t>(const uint8_t* input_data, uint8_t* output_data,
 template void ClipImpl<int64_t>(const int64_t* input_data, int64_t* output_data, int64_t min, int64_t max, size_t count);
 template void ClipImpl<uint64_t>(const uint64_t* input_data, uint64_t* output_data, uint64_t min, uint64_t max, size_t count);
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

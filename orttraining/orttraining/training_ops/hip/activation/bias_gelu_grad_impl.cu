@@ -10,7 +10,7 @@
 #include "orttraining/training_ops/hip/activation/gelu_grad_impl_common.cuh"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename T, typename GeluComputationMode, int num_elements_per_thread>
 __global__ void BiasGeluGradDxKernel(int64_t bias_size, const T* dY, const T* X, const T* B, T* dX) {
@@ -89,5 +89,5 @@ SPECIALIZED_BIAS_GELU_GRAD_IMPL(double, gelu_computation_mode::Approximation);
 
 #undef SPECIALIZED_BIAS_GELU_GRAD_IMPL
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

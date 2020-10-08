@@ -7,7 +7,7 @@
 #include "core/providers/hip/atomic/common.cuh"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename TIndex>
 __global__ void _ComputeSliceOffsetsKernel(
@@ -110,5 +110,5 @@ SPECIALIZED_IMPL(int64_t)
 SPECIALIZED_IMPL(half)
 SPECIALIZED_IMPL(double)
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

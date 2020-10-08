@@ -8,7 +8,7 @@
 #include "core/providers/hip/cu_inc/binary_elementwise_impl.cuh"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename T>
 struct OP_GeluGrad : public CtxGeluGrad {
@@ -54,5 +54,5 @@ struct OP_ReluGrad : public CtxReluGrad {
 ACTIVATION_GRAD_OPS()
 #undef ACTIVATION_GRAD_OP_NAME
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

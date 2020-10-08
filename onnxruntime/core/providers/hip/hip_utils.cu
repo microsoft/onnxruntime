@@ -9,7 +9,7 @@
 #include "miopen_common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename T, int NumThreadsPerBlock, int NumElementsPerThread>
 __global__ void _Fill(
@@ -83,5 +83,5 @@ SPECIALIZED_FILL(float)
 SPECIALIZED_FILL(double)
 SPECIALIZED_FILL(__half)
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

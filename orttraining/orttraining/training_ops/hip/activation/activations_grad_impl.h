@@ -5,11 +5,11 @@
 #include "core/providers/hip/activation/activations_impl.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
-typedef onnxruntime::hip::CtxNull CtxGeluGrad;
-typedef onnxruntime::hip::CtxNull CtxFastGeluGrad;
-typedef onnxruntime::hip::CtxNull CtxReluGrad;
+typedef onnxruntime::rocm::CtxNull CtxGeluGrad;
+typedef onnxruntime::rocm::CtxNull CtxFastGeluGrad;
+typedef onnxruntime::rocm::CtxNull CtxReluGrad;
 
 #define ACTIVATION_GRAD_OPS() \
   ACTIVATION_GRAD_OP_NAME(GeluGrad) \
@@ -28,5 +28,5 @@ typedef onnxruntime::hip::CtxNull CtxReluGrad;
 ACTIVATION_GRAD_OPS()
 #undef ACTIVATION_GRAD_OP_NAME
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

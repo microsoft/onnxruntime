@@ -12,7 +12,7 @@
 
 using namespace onnxruntime::common;
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 #define REGISTER_MS_KERNEL_TYPED(name, T)                         \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
@@ -20,7 +20,7 @@ namespace hip {
       kMSDomain,                                                  \
       1,                                                          \
       T,                                                          \
-      kHipExecutionProvider,                                     \
+      kRocmExecutionProvider,                                     \
       KernelDefBuilder()                                          \
           .InputMemoryType<OrtMemTypeCPUInput>(1)                 \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
@@ -68,5 +68,5 @@ Status ReduceKernel<allow_multi_axes>::ComputeImplEx(OpKernelContext* ctx, miope
                               calculate_log_, calculate_sqt_, log_sum_exp_, fast_reduction);
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

@@ -7,11 +7,11 @@
 #include "orttraining/training_ops/hip/nn/dropout_impl.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
-class DropoutGrad final : public HipKernel {
+class DropoutGrad final : public RocmKernel {
  public:
-  DropoutGrad(const OpKernelInfo& info) : HipKernel(info) {
+  DropoutGrad(const OpKernelInfo& info) : RocmKernel(info) {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -20,9 +20,9 @@ class DropoutGrad final : public HipKernel {
   static constexpr float default_ratio_ = 0.5f;
 };
 
-class BiasDropout final : public HipKernel {
+class BiasDropout final : public RocmKernel {
  public:
-  BiasDropout(const OpKernelInfo& info) : HipKernel(info) {
+  BiasDropout(const OpKernelInfo& info) : RocmKernel(info) {
     int64_t seed = 0;
     if (info.GetAttr<int64_t>("seed", &seed).IsOK()) {
       generator_ = onnxruntime::make_unique<PhiloxGenerator>(static_cast<uint64_t>(seed));
@@ -36,5 +36,5 @@ class BiasDropout final : public HipKernel {
   static constexpr float default_ratio_ = 0.5f;
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

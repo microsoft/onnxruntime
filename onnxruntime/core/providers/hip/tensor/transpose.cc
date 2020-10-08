@@ -7,12 +7,12 @@
 #include "core/providers/hip/tensor/transpose_impl.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 ONNX_OPERATOR_KERNEL_EX(Transpose,
                         kOnnxDomain,
                         1,
-                        kHipExecutionProvider,
+                        kRocmExecutionProvider,
                         KernelDefBuilder()
                             .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
                         Transpose);
@@ -151,5 +151,5 @@ Status Transpose::ComputeInternal(OpKernelContext* ctx) const {
   return DoTranspose(*this, *p_perm, X, *Y);
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

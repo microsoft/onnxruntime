@@ -6,7 +6,7 @@
 #include "core/providers/hip/shared_inc/hip_utils.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 Status CheckBatchDimensionsMatch(
     size_t num_batch_dimensions,
@@ -96,7 +96,7 @@ Status GatherNDBase::PrepareCompute(
       kOnnxDomain,                                                        \
       ver,                                                                \
       TIndex,                                                             \
-      kHipExecutionProvider,                                             \
+      kRocmExecutionProvider,                                             \
       KernelDefBuilder()                                                  \
           .TypeConstraint("T",                                            \
                           std::vector<MLDataType>{                        \
@@ -174,5 +174,5 @@ Status GatherND<TIndex>::ComputeInternal(OpKernelContext* context) const {
   return Status::OK();
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

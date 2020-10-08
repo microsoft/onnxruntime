@@ -6,7 +6,7 @@
 #include "gather_impl.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 __host__ __device__ inline int64_t GetIndexValue(const void* index_data, size_t index_element_size, size_t offset) {
   switch (index_element_size) {
@@ -101,5 +101,5 @@ void GatherImpl(
   }
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

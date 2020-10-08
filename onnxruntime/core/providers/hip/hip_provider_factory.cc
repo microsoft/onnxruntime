@@ -30,14 +30,14 @@ struct HIPProviderFactory : IExecutionProviderFactory {
 };
 
 std::unique_ptr<IExecutionProvider> HIPProviderFactory::CreateProvider() {
-  HIPExecutionProviderInfo info;
+  ROCMExecutionProviderInfo info;
   info.device_id = device_id_;
   info.hip_mem_limit = hip_mem_limit_;
   info.arena_extend_strategy = arena_extend_strategy_;
-  return onnxruntime::make_unique<HIPExecutionProvider>(info);
+  return onnxruntime::make_unique<ROCMExecutionProvider>(info);
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_HIP(OrtDevice::DeviceId device_id,
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ROCM(OrtDevice::DeviceId device_id,
                                                                                size_t hip_mem_limit = std::numeric_limits<size_t>::max(),
                                                                                ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo) {
   return std::make_shared<onnxruntime::HIPProviderFactory>(device_id, hip_mem_limit, arena_extend_strategy);
@@ -45,7 +45,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_HIP(Or
 
 }  // namespace onnxruntime
 
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_HIP, _In_ OrtSessionOptions* options, int device_id) {
-  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_HIP(static_cast<OrtDevice::DeviceId>(device_id)));
+ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_ROCM, _In_ OrtSessionOptions* options, int device_id) {
+  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_ROCM(static_cast<OrtDevice::DeviceId>(device_id)));
   return nullptr;
 }

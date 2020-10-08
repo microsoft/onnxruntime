@@ -7,7 +7,7 @@
 #include "core/providers/hip/miopen_common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename T, bool is_log_softmax>
 Status SoftMaxGradComputeHelper(
@@ -64,7 +64,7 @@ Status SoftMaxGradComputeHelper(
       kMSDomain,                                                                \
       1,                                                                        \
       T,                                                                        \
-      kHipExecutionProvider,                                                   \
+      kRocmExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       SoftmaxGrad<T>);                                                          \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
@@ -72,7 +72,7 @@ Status SoftMaxGradComputeHelper(
       kMSDomain,                                                                \
       1,                                                                        \
       T,                                                                        \
-      kHipExecutionProvider,                                                   \
+      kRocmExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       SoftmaxGrad<T>);
 
@@ -104,5 +104,5 @@ SPECIALIZED_GRADIENT(float)
 SPECIALIZED_GRADIENT(double)
 SPECIALIZED_GRADIENT(MLFloat16)
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

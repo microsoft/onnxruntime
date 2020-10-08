@@ -7,7 +7,7 @@
 #include "core/providers/hip/shared_inc/hip_utils.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename T, typename Tin>
 Status GatherElementsGradImpl(
@@ -22,5 +22,5 @@ Status GatherElementsGradImpl(
     const int axis,
     T* output_data);
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

@@ -27,9 +27,9 @@
 #include "core/providers/hip/cu_inc/common.cuh"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
-using namespace onnxruntime::hip;
+using namespace onnxruntime::rocm;
 
 template <typename U>
 __device__ void cuWelfordOnlineSum(
@@ -842,5 +842,5 @@ LAYERNORMGRAD_IMPL(float, float)
 LAYERNORMGRAD_IMPL(double, double)
 LAYERNORMGRAD_IMPL(half, float)
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

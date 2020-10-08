@@ -6,11 +6,11 @@
 #include "core/providers/hip/cu_inc/common.cuh"
 #include "core/providers/hip/cu_inc/unary_elementwise_impl.cuh"
 
-using namespace onnxruntime::hip;
+using namespace onnxruntime::rocm;
 
 namespace onnxruntime {
 namespace contrib {
-namespace hip {
+namespace rocm {
 
 template <typename T>
 struct OP_Affine : public CtxAffine {
@@ -66,6 +66,6 @@ struct OP_Gelu : public CtxGelu {
 UNARY_CONTRIB_ACTIVATION_OPS()
 #undef UNARY_ACTIVATION_OP_NAME
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime

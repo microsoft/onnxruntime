@@ -32,7 +32,7 @@ taskRoles:
         --build_dir ./build
         --build_wheel
         --enable_training
-        --use_hip --hip_home /opt/rocm
+        --use_rocm --rocm_home /opt/rocm
         --mpi_home /usr/mpi/gcc/openmpi-4.0.4rc3
         --nccl_home /opt/rocm
         --update

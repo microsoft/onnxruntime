@@ -7,13 +7,13 @@
 #include "orttraining/training_ops/cpu/tensor/split.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
-class SplitTraining final : public HipKernel, public SplitBase {
+class SplitTraining final : public RocmKernel, public SplitBase {
  public:
-  SplitTraining(const OpKernelInfo& info) : HipKernel(info), SplitBase(info) {}
+  SplitTraining(const OpKernelInfo& info) : RocmKernel(info), SplitBase(info) {}
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

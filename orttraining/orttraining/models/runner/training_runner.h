@@ -129,7 +129,7 @@ class TrainingRunner {
 
     bool UseCuda() const {
       return providers.find(kCudaExecutionProvider) != providers.end() ||
-             providers.find(kHipExecutionProvider) != providers.end();
+             providers.find(kRocmExecutionProvider) != providers.end();
     }
 
     AdasumReductionType GetAdasumReductionType() const {

@@ -9,7 +9,7 @@
 #include "orttraining/training_ops/hip/activation/activations_grad_impl.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename T>
 class GeluGrad final : public BinaryElementwise<ShouldNotBroadcast> {
@@ -44,5 +44,5 @@ class ReluGrad final : public BinaryElementwise<ShouldNotBroadcast> {
   MAKE_FUNC_CTX_NULL()
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

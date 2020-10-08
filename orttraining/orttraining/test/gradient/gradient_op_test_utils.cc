@@ -114,7 +114,7 @@ void GradientOpTester::Run(
     static const std::string all_provider_types[] = {
         kCpuExecutionProvider,
         kCudaExecutionProvider,
-        kHipExecutionProvider,
+        kRocmExecutionProvider,
         kDnnlExecutionProvider,
         kNupharExecutionProvider,
         kTensorrtExecutionProvider,
@@ -133,8 +133,8 @@ void GradientOpTester::Run(
         execution_provider = DefaultNupharExecutionProvider();
       else if (provider_type == onnxruntime::kTensorrtExecutionProvider)
         execution_provider = DefaultTensorrtExecutionProvider();
-      else if (provider_type == onnxruntime::kHipExecutionProvider)
-        execution_provider = DefaultHipExecutionProvider();
+      else if (provider_type == onnxruntime::kRocmExecutionProvider)
+        execution_provider = DefaultRocmExecutionProvider();
       // skip if execution provider is disabled
       if (execution_provider == nullptr)
         continue;

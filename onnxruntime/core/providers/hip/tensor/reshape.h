@@ -10,11 +10,11 @@
 #include "core/providers/cpu/tensor/reshape_helper.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
-class Reshape final : public HipKernel {
+class Reshape final : public RocmKernel {
  public:
-  Reshape(const OpKernelInfo& info) : HipKernel(info) {
+  Reshape(const OpKernelInfo& info) : RocmKernel(info) {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override {
@@ -43,9 +43,9 @@ class Reshape final : public HipKernel {
   }
 };
 
-class Reshape_1 final : public HipKernel {
+class Reshape_1 final : public RocmKernel {
  public:
-  Reshape_1(const OpKernelInfo& info) : HipKernel(info) {
+  Reshape_1(const OpKernelInfo& info) : RocmKernel(info) {
     Status status = info.GetAttrs<int64_t>("shape", shape_);
     ORT_ENFORCE(status.IsOK(), "Attribute shape is not set.");
   }
@@ -72,5 +72,5 @@ class Reshape_1 final : public HipKernel {
   std::vector<int64_t> shape_;
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

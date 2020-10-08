@@ -17,7 +17,7 @@ namespace onnxruntime {
 using namespace common;
 
 template <typename ERRTYPE>
-const char* HipErrString(ERRTYPE x) {
+const char* RocmErrString(ERRTYPE x) {
   ORT_NOT_IMPLEMENTED();
 }
 
@@ -26,13 +26,13 @@ const char* HipErrString(ERRTYPE x) {
     return #x
 
 template <>
-const char* HipErrString<hipError_t>(hipError_t x) {
+const char* RocmErrString<hipError_t>(hipError_t x) {
   hipDeviceSynchronize();
   return hipGetErrorString(x);
 }
 
 template <>
-const char* HipErrString<hipblasStatus_t>(hipblasStatus_t e) {
+const char* RocmErrString<hipblasStatus_t>(hipblasStatus_t e) {
   hipDeviceSynchronize();
 
   switch (e) {
@@ -52,7 +52,7 @@ const char* HipErrString<hipblasStatus_t>(hipblasStatus_t e) {
 }
 
 template <>
-const char* HipErrString<rocblas_status>(rocblas_status e) {
+const char* RocmErrString<rocblas_status>(rocblas_status e) {
   hipDeviceSynchronize();
 
   switch (e) {
@@ -75,19 +75,19 @@ const char* HipErrString<rocblas_status>(rocblas_status e) {
 }
 
 // template <>
-// const char* HipErrString<hiprandStatus_t>(hiprandStatus_t) {
+// const char* RocmErrString<hiprandStatus_t>(hiprandStatus_t) {
 //   hipDeviceSynchronize();
 //   return "(see hiprand.h & look for hiprandStatus_t or HIPRAND_STATUS_xxx)";
 // }
 
 template <>
-const char* HipErrString<miopenStatus_t>(miopenStatus_t e) {
+const char* RocmErrString<miopenStatus_t>(miopenStatus_t e) {
   hipDeviceSynchronize();
   return miopenGetErrorString(e);
 }
 
 template <>
-const char* HipErrString<hipfftResult>(hipfftResult e) {
+const char* RocmErrString<hipfftResult>(hipfftResult e) {
   hipDeviceSynchronize();
   switch (e) {
     CASE_ENUM_TO_STR(HIPFFT_SUCCESS);
@@ -103,14 +103,14 @@ const char* HipErrString<hipfftResult>(hipfftResult e) {
 
 #ifdef USE_NCCL
 template <>
-const char* HipErrString<ncclResult_t>(ncclResult_t e) {
+const char* RocmErrString<ncclResult_t>(ncclResult_t e) {
   hipDeviceSynchronize();
   return ncclGetErrorString(e);
 }
 #endif
 
 template <typename ERRTYPE, bool THRW>
-bool HipCall(ERRTYPE retCode, const char* exprString, const char* libName, ERRTYPE successCode, const char* msg) {
+bool RocmCall(ERRTYPE retCode, const char* exprString, const char* libName, ERRTYPE successCode, const char* msg) {
   if (retCode != successCode) {
     try {
 #ifdef _WIN32
@@ -132,7 +132,7 @@ bool HipCall(ERRTYPE retCode, const char* exprString, const char* libName, ERRTY
       hipGetLastError();  // clear last HIP error
       static char str[1024];
       snprintf(str, 1024, "%s failure %d: %s ; GPU=%d ; hostname=%s ; expr=%s; %s",
-               libName, (int)retCode, HipErrString(retCode), currentHipDevice,
+               libName, (int)retCode, RocmErrString(retCode), currentHipDevice,
                hostname,
                exprString, msg);
       if (THRW) {
@@ -153,20 +153,20 @@ bool HipCall(ERRTYPE retCode, const char* exprString, const char* libName, ERRTY
   return true;
 }
 
-template bool HipCall<hipError_t, false>(hipError_t retCode, const char* exprString, const char* libName, hipError_t successCode, const char* msg);
-template bool HipCall<hipError_t, true>(hipError_t retCode, const char* exprString, const char* libName, hipError_t successCode, const char* msg);
-template bool HipCall<hipblasStatus_t, false>(hipblasStatus_t retCode, const char* exprString, const char* libName, hipblasStatus_t successCode, const char* msg);
-template bool HipCall<hipblasStatus_t, true>(hipblasStatus_t retCode, const char* exprString, const char* libName, hipblasStatus_t successCode, const char* msg);
-template bool HipCall<rocblas_status, false>(rocblas_status retCode, const char* exprString, const char* libName, rocblas_status successCode, const char* msg);
-template bool HipCall<rocblas_status, true>(rocblas_status retCode, const char* exprString, const char* libName, rocblas_status successCode, const char* msg);
-template bool HipCall<miopenStatus_t, false>(miopenStatus_t retCode, const char* exprString, const char* libName, miopenStatus_t successCode, const char* msg);
-template bool HipCall<miopenStatus_t, true>(miopenStatus_t retCode, const char* exprString, const char* libName, miopenStatus_t successCode, const char* msg);
-// template bool HipCall<hiprandStatus_t, false>(hiprandStatus_t retCode, const char* exprString, const char* libName, hiprandStatus_t successCode, const char* msg);
-// template bool HipCall<hiprandStatus_t, true>(hiprandStatus_t retCode, const char* exprString, const char* libName, hiprandStatus_t successCode, const char* msg);
-template bool HipCall<hipfftResult, false>(hipfftResult retCode, const char* exprString, const char* libName, hipfftResult successCode, const char* msg);
-template bool HipCall<hipfftResult, true>(hipfftResult retCode, const char* exprString, const char* libName, hipfftResult successCode, const char* msg);
+template bool RocmCall<hipError_t, false>(hipError_t retCode, const char* exprString, const char* libName, hipError_t successCode, const char* msg);
+template bool RocmCall<hipError_t, true>(hipError_t retCode, const char* exprString, const char* libName, hipError_t successCode, const char* msg);
+template bool RocmCall<hipblasStatus_t, false>(hipblasStatus_t retCode, const char* exprString, const char* libName, hipblasStatus_t successCode, const char* msg);
+template bool RocmCall<hipblasStatus_t, true>(hipblasStatus_t retCode, const char* exprString, const char* libName, hipblasStatus_t successCode, const char* msg);
+template bool RocmCall<rocblas_status, false>(rocblas_status retCode, const char* exprString, const char* libName, rocblas_status successCode, const char* msg);
+template bool RocmCall<rocblas_status, true>(rocblas_status retCode, const char* exprString, const char* libName, rocblas_status successCode, const char* msg);
+template bool RocmCall<miopenStatus_t, false>(miopenStatus_t retCode, const char* exprString, const char* libName, miopenStatus_t successCode, const char* msg);
+template bool RocmCall<miopenStatus_t, true>(miopenStatus_t retCode, const char* exprString, const char* libName, miopenStatus_t successCode, const char* msg);
+// template bool RocmCall<hiprandStatus_t, false>(hiprandStatus_t retCode, const char* exprString, const char* libName, hiprandStatus_t successCode, const char* msg);
+// template bool RocmCall<hiprandStatus_t, true>(hiprandStatus_t retCode, const char* exprString, const char* libName, hiprandStatus_t successCode, const char* msg);
+template bool RocmCall<hipfftResult, false>(hipfftResult retCode, const char* exprString, const char* libName, hipfftResult successCode, const char* msg);
+template bool RocmCall<hipfftResult, true>(hipfftResult retCode, const char* exprString, const char* libName, hipfftResult successCode, const char* msg);
 
 #ifdef USE_NCCL
-template bool HipCall<ncclResult_t, false>(ncclResult_t retCode, const char* exprString, const char* libName, ncclResult_t successCode, const char* msg);
+template bool RocmCall<ncclResult_t, false>(ncclResult_t retCode, const char* exprString, const char* libName, ncclResult_t successCode, const char* msg);
 #endif
 }  // namespace onnxruntime

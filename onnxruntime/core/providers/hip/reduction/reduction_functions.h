@@ -5,7 +5,7 @@
 #include "core/providers/hip/hip_common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 int compute_reduction_buffer_size(int element_size, int size);
 
@@ -24,5 +24,5 @@ void reduce_mean(const TIn* data, TOut* output, int size, TOut* buffer);
 template <typename TIn, typename TOut>
 void reduce_matrix_rows(const TIn* data, TOut* output, int m, int n);
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

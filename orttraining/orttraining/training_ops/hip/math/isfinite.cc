@@ -6,7 +6,7 @@
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 #define REGISTER_ISFINITE_KERNEL_TYPED(T)                             \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                      \
@@ -14,7 +14,7 @@ namespace hip {
       kMSDomain,                                                      \
       1,                                                              \
       T,                                                              \
-      kHipExecutionProvider,                                         \
+      kRocmExecutionProvider,                                         \
       KernelDefBuilder()                                              \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())      \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()), \
@@ -42,7 +42,7 @@ REGISTER_ISFINITE_KERNEL_TYPED(double)
       kMSDomain,                                                     \
       1,                                                             \
       T,                                                             \
-      kHipExecutionProvider,                                        \
+      kRocmExecutionProvider,                                        \
       KernelDefBuilder()                                             \
           .OutputMemoryType<OrtMemTypeCPUOutput>(0)                  \
           .TypeConstraint("V", DataTypeImpl::GetTensorType<T>())     \
@@ -96,5 +96,5 @@ REGISTER_ISALLFINITE_KERNEL_TYPED(MLFloat16)
 REGISTER_ISALLFINITE_KERNEL_TYPED(float)
 REGISTER_ISALLFINITE_KERNEL_TYPED(double)
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

@@ -5,12 +5,12 @@
 #include "core/providers/hip/hip_common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename T>
-class All final : public HipKernel {
+class All final : public RocmKernel {
  public:
-  All(const OpKernelInfo& info) : HipKernel(info) {}
+  All(const OpKernelInfo& info) : RocmKernel(info) {}
 
   Status ComputeInternal(OpKernelContext* context) const override;
 };
@@ -18,5 +18,5 @@ class All final : public HipKernel {
 template<typename T>
 void LaunchAllKernel(const T* data, const int size, bool* output);
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

@@ -384,8 +384,8 @@ def parse_arguments():
     parser.add_argument("--disable_ort_format_load", action='store_true',
                         help='Disable support for loading ORT format models in a non-minimal build.')
 
-    parser.add_argument("--use_hip", action='store_true', help="Build with ROCM")
-    parser.add_argument("--hip_home", help="Path to HIP installation dir")
+    parser.add_argument("--use_rocm", action='store_true', help="Build with ROCm")
+    parser.add_argument("--rocm_home", help="Path to ROCm installation dir")
     return parser.parse_args()
 
 
@@ -583,7 +583,7 @@ def use_dev_mode(args):
     return 'ON'
 
 
-def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, hip_home,
+def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, rocm_home,
                         mpi_home, nccl_home, tensorrt_home, migraphx_home, acl_home, acl_libs, armnn_home, armnn_libs,
                         path_to_protoc_exe, configs, cmake_extra_defines, args, cmake_extra_args):
     log.info("Generating CMake build tree")
@@ -691,8 +691,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "ON" if args.use_horovod else "OFF"),
         "-Donnxruntime_BUILD_BENCHMARKS=" + (
             "ON" if args.build_micro_benchmarks else "OFF"),
-        "-Donnxruntime_USE_HIP=" + ("ON" if args.use_hip else "OFF"),
-        "-Donnxruntime_HIP_HOME=" + (hip_home if args.use_hip else ""),
+        "-Donnxruntime_USE_ROCM=" + ("ON" if args.use_rocm else "OFF"),
+        "-Donnxruntime_ROCM_HOME=" + (rocm_home if args.use_rocm else ""),
     ]
 
     if acl_home and os.path.exists(acl_home):
@@ -1065,19 +1065,19 @@ def setup_dml_build(args, cmake_path, build_dir, configs):
 
 def setup_hip_vars(args):
 
-    hip_home = None
+    rocm_home = None
 
-    if (args.use_hip):
-        print("hip_home = {}".format(args.hip_home))
-        hip_home = args.hip_home or None
+    if (args.use_rocm):
+        print("rocm_home = {}".format(args.rocm_home))
+        rocm_home = args.rocm_home or None
 
-        hip_home_not_valid = (hip_home and not os.path.exists(hip_home))
+        rocm_home_not_valid = (rocm_home and not os.path.exists(rocm_home))
 
-        if (hip_home_not_valid):
-            raise BuildError("hip_home paths must be specified and valid.",
-                             "hip_home='{}' valid={}."
-                             .format(hip_home, hip_home_not_valid))
-    return hip_home or ''
+        if (rocm_home_not_valid):
+            raise BuildError("rocm_home paths must be specified and valid.",
+                             "rocm_home='{}' valid={}."
+                             .format(rocm_home, rocm_home_not_valid))
+    return rocm_home or ''
 
 
 def adb_push(src, dest, **kwargs):
@@ -1815,7 +1815,7 @@ def main():
     migraphx_home = setup_migraphx_vars(args)
 
     # if using hip, setup hip paths
-    hip_home = setup_hip_vars(args)
+    rocm_home = setup_hip_vars(args)
   
     os.makedirs(build_dir, exist_ok=True)
 
@@ -1906,7 +1906,7 @@ def main():
         if args.enable_onnx_tests:
             setup_test_data(build_dir, configs)
         generate_build_tree(
-            cmake_path, source_dir, build_dir, cuda_home, cudnn_home, hip_home, mpi_home, nccl_home,
+            cmake_path, source_dir, build_dir, cuda_home, cudnn_home, rocm_home, mpi_home, nccl_home,
             tensorrt_home, migraphx_home, acl_home, acl_libs, armnn_home, armnn_libs,
             path_to_protoc_exe, configs, cmake_extra_defines, args, cmake_extra_args)
 

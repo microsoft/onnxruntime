@@ -7,7 +7,7 @@
 #include "core/providers/cpu/tensor/utils.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 namespace SliceHip {
 
@@ -20,9 +20,9 @@ Status Impl(const void* input_data,
 }  // namespace SliceHip
 
 template <bool dynamic>
-class Slice : public HipKernel, public SliceBase {
+class Slice : public RocmKernel, public SliceBase {
  public:
-  Slice(const OpKernelInfo& info) : HipKernel(info), SliceBase(info, dynamic) {}
+  Slice(const OpKernelInfo& info) : RocmKernel(info), SliceBase(info, dynamic) {}
 
   Status ComputeInternal(OpKernelContext* ctx) const override;
 
@@ -37,5 +37,5 @@ class Slice : public HipKernel, public SliceBase {
                               const TArray<fast_divmod>& output_strides, OpKernelContext* ctx,
                               const TensorShape& output_shape) const;
 };
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

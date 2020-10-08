@@ -6,7 +6,7 @@
 #include <hip/hip_fp16.h>
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 // ---------------------------------------------------------------------------
 // _ComputeGradScale -- helper to calculate gradient scales based on global norms
@@ -23,5 +23,5 @@ if (g_norm != nullptr && TFinalScale(*g_norm) > scale) {
 }
 return scale;
 }
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

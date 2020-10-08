@@ -7,7 +7,7 @@
 #include "orttraining/core/framework/mpi_context.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 ncclDataType_t GetNcclDataType(onnxruntime::MLDataType type) {
   if (type == DataTypeImpl::GetType<uint8_t>()) {
@@ -115,7 +115,7 @@ NcclContext::~NcclContext() {
   }
 }
 
-NcclKernel::NcclKernel(const OpKernelInfo& info) : HipKernel(info) {
+NcclKernel::NcclKernel(const OpKernelInfo& info) : RocmKernel(info) {
   static NcclContext context;
   nccl_ = &context;
   int64_t group_type;
@@ -123,5 +123,5 @@ NcclKernel::NcclKernel(const OpKernelInfo& info) : HipKernel(info) {
   group_type_ = static_cast<training::WorkerGroupType>(group_type);
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

@@ -749,7 +749,7 @@ void OpTester::Run(
         kAclExecutionProvider,
         kArmNNExecutionProvider,
         kNnapiExecutionProvider,
-        kHipExecutionProvider
+        kRocmExecutionProvider
     };
 
     bool has_run = false;
@@ -817,8 +817,8 @@ void OpTester::Run(
           execution_provider = DefaultAclExecutionProvider();
         else if (provider_type == onnxruntime::kArmNNExecutionProvider)
           execution_provider = DefaultArmNNExecutionProvider();
-        else if (provider_type == onnxruntime::kHipExecutionProvider)
-          execution_provider = DefaultHipExecutionProvider();
+        else if (provider_type == onnxruntime::kRocmExecutionProvider)
+          execution_provider = DefaultRocmExecutionProvider();
         // skip if execution provider is disabled
         if (execution_provider == nullptr)
           continue;

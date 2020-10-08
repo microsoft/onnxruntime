@@ -8,7 +8,7 @@
 #include "core/providers/hip/reduction/reduction_functions.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 enum miopenReduceTensorOp_t {
   MIOPEN_REDUCE_TENSOR_MAX,
@@ -49,12 +49,12 @@ Status ReduceComputeCore(const Tensor& input, PrepareReduceMetadata& prepare_red
                          const TensorShape* input_shape_override = nullptr);
 
 template <bool allow_multi_axes>
-class ReduceKernel : public HipKernel, public ReduceKernelBase<allow_multi_axes> {
+class ReduceKernel : public RocmKernel, public ReduceKernelBase<allow_multi_axes> {
  protected:
   ReduceKernel(
       const OpKernelInfo& info,
       optional<int64_t> keep_dims_override = {})
-      : HipKernel(info),
+      : RocmKernel(info),
         ReduceKernelBase<allow_multi_axes>(info, keep_dims_override),
         calculate_log_(false),
         calculate_sqt_(false),
@@ -217,5 +217,5 @@ class ReduceLogSumExp final : public ReduceKernel<true> {
   }
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

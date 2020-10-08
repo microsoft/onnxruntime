@@ -11,7 +11,7 @@ namespace onnxruntime {
   * Note: This struct is currently for internal use for Python API,
   *       not for C/C++/C#...APIs. 
   */
-struct HipProviderOptions {
+struct RocmProviderOptions {
 
   // use hip device with id=0 as default device.
   OrtDevice::DeviceId device_id = 0;

@@ -7,11 +7,11 @@
 #include "core/providers/common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 ONNX_OPERATOR_KERNEL_EX(SplitTraining,
                         kMSDomain,
                         1,
-                        kHipExecutionProvider,
+                        kRocmExecutionProvider,
                         KernelDefBuilder()
                             .InputMemoryType<OrtMemTypeCPUInput>(1)
                             .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
@@ -97,5 +97,5 @@ Status SplitTraining::ComputeInternal(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

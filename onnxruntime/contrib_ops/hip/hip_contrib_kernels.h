@@ -6,10 +6,10 @@
 
 namespace onnxruntime {
 namespace contrib {
-namespace hip {
+namespace rocm {
 
-Status RegisterHipContribKernels(KernelRegistry& kernel_registry);
+Status RegisterRocmContribKernels(KernelRegistry& kernel_registry);
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime

@@ -8,7 +8,7 @@
 typedef __half half;
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 __device__ __forceinline__ void atomic_add(float *address, float value) {
     atomicAdd(address, value);
@@ -36,5 +36,5 @@ __device__ __forceinline__ void atomic_add(half *address, half value) {
   } while (assumed != old);
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

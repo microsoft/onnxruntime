@@ -27,7 +27,7 @@
 
 namespace onnxruntime {
 namespace contrib {
-namespace hip {
+namespace rocm {
 
 template <typename T, typename U>
 void HostApplyLayerNorm(
@@ -42,6 +42,6 @@ void HostApplyLayerNorm(
     const T* gamma,
     const T* beta);
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime

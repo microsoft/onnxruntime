@@ -7,7 +7,7 @@
 #include "isfinite.cuh"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename TSrc>
 __global__ void _IsFinite(const TSrc* input, bool* output, HIP_LONG N) {
@@ -68,5 +68,5 @@ INSTANTIATE_ISALLFINITE_FUNCTOR(half)
 INSTANTIATE_ISALLFINITE_FUNCTOR(float)
 INSTANTIATE_ISALLFINITE_FUNCTOR(double)
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

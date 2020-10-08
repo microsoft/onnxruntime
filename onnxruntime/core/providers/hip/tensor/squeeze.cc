@@ -4,13 +4,13 @@
 #include "squeeze.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Squeeze,
     kOnnxDomain,
     1, 10,
-    kHipExecutionProvider,
+    kRocmExecutionProvider,
     KernelDefBuilder()
         .Alias(0, 0)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
@@ -21,7 +21,7 @@ ONNX_OPERATOR_KERNEL_EX(
     Squeeze,
     kOnnxDomain,
     11,
-    kHipExecutionProvider,
+    kRocmExecutionProvider,
     KernelDefBuilder()
         .Alias(0, 0)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
@@ -46,5 +46,5 @@ Status Squeeze::ComputeInternal(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

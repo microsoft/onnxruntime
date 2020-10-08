@@ -6,7 +6,7 @@
 #include "core/providers/hip/shared_inc/hip_utils.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <bool is_grad>
 Status SliceImplEx(const size_t element_size,
@@ -38,5 +38,5 @@ Status SliceImplGrad(const size_t element_size,
                      const void* input_data,
                      void* output_data,
                      const size_t N);
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

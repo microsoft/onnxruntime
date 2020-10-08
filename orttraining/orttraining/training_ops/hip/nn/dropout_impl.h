@@ -6,7 +6,7 @@
 #include "core/framework/random_generator.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename T>
 void DropoutGradientKernelImpl(
@@ -29,5 +29,5 @@ void BiasDropoutKernelImpl(
   T* Y_data,
   bool* mask_data);
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

@@ -7,14 +7,14 @@
 #include "core/providers/common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Scatter,
     kOnnxDomain,
     9,
     10,
-    kHipExecutionProvider,
+    kRocmExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
         .TypeConstraint("Tind", std::vector<MLDataType>{
@@ -26,7 +26,7 @@ ONNX_OPERATOR_KERNEL_EX(
     ScatterElements,
     kOnnxDomain,
     11,
-    kHipExecutionProvider,
+    kRocmExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
         .TypeConstraint("Tind", std::vector<MLDataType>{
@@ -155,5 +155,5 @@ Status ScatterElements::ComputeInternal(OpKernelContext* context) const {
                        buffer_indices_dims, fdm_indices_strides, axis);
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

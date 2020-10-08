@@ -7,7 +7,7 @@
 #include "core/providers/hip/cu_inc/unary_elementwise_impl.cuh"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename T>
 struct OP_Elu : public CtxElu {
@@ -105,5 +105,5 @@ struct OP_ThresholdedRelu : public CtxThresholdedRelu {
 UNARY_ACTIVATION_OPS()
 #undef UNARY_ACTIVATION_OP_NAME
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

@@ -23,7 +23,7 @@
 #include <algorithm>
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 constexpr int UNROLL = 4;
 
@@ -101,5 +101,5 @@ SPECIALIZED_DROPOUT_IMPL(float)
 SPECIALIZED_DROPOUT_IMPL(double)
 SPECIALIZED_DROPOUT_IMPL(half)
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

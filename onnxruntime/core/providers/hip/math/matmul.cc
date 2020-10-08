@@ -7,7 +7,7 @@
 #include "core/providers/hip/hip_allocator.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 #define REGISTER_KERNEL_TYPED(T)                                  \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
@@ -15,7 +15,7 @@ namespace hip {
       kOnnxDomain,                                                \
       1, 8,                                                       \
       T,                                                          \
-      kHipExecutionProvider,                                     \
+      kRocmExecutionProvider,                                     \
       KernelDefBuilder()                                          \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       MatMul<T>);                                                 \
@@ -24,7 +24,7 @@ namespace hip {
       kOnnxDomain,                                                \
       9,                                                          \
       T,                                                          \
-      kHipExecutionProvider,                                     \
+      kRocmExecutionProvider,                                     \
       KernelDefBuilder()                                          \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       MatMul<T>);
@@ -228,5 +228,5 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

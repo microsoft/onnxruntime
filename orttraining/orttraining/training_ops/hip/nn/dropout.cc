@@ -8,7 +8,7 @@
 #include "core/providers/common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 // Temporary for backward compatibility, will eventually get rid of TrainableDropout when PyTorch exporter will move to
 // opset-12.
@@ -16,7 +16,7 @@ ONNX_OPERATOR_KERNEL_EX(
     TrainableDropout,
     kOnnxDomain,
     9,
-    kHipExecutionProvider,
+    kRocmExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes())
         .TypeConstraint("T1", DataTypeImpl::AllIEEEFloatTensorTypes())
@@ -28,7 +28,7 @@ ONNX_OPERATOR_KERNEL_EX(
       OpName,                                                            \
       kMSDomain,                                                         \
       1,                                                                 \
-      kHipExecutionProvider,                                            \
+      kRocmExecutionProvider,                                            \
       KernelDefBuilder()                                                 \
           .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes())  \
           .TypeConstraint("T1", DataTypeImpl::AllIEEEFloatTensorTypes()) \
@@ -86,7 +86,7 @@ ONNX_OPERATOR_KERNEL_EX(
     BiasDropout,
     kMSDomain,
     1,
-    kHipExecutionProvider,
+    kRocmExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes())
         .TypeConstraint("T1", DataTypeImpl::AllIEEEFloatTensorTypes())
@@ -186,5 +186,5 @@ Status BiasDropout::ComputeInternal(OpKernelContext* context) const {
   return t_disp.Invoke(GetDeviceProp(), N, fdm_dim, ratio_data, generator, *X, *bias, residual, *Y, mask_data);
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

@@ -5,7 +5,7 @@
 #include "core/providers/hip/shared_inc/hip_utils.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <
     typename T, typename Func,
@@ -73,5 +73,5 @@ void VariadicElementWiseNoBroadcastInputBatchImpl(
   hipLaunchKernelGGL(HIP_KERNEL_NAME(VariadicElementWiseNoBroadcastInputBatchKernel<T, Func, max_input_batch_size, elements_per_thread>), dim3(blocks_per_grid), dim3(threads_per_block), 0, 0, func, N, inputs, output);
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

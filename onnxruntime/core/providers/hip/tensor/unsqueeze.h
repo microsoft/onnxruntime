@@ -7,13 +7,13 @@
 #include "core/providers/cpu/tensor/unsqueeze.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
-class Unsqueeze final : public UnsqueezeBase, public HipKernel {
+class Unsqueeze final : public UnsqueezeBase, public RocmKernel {
  public:
-  Unsqueeze(const OpKernelInfo& info) : UnsqueezeBase(info), HipKernel(info) {}
+  Unsqueeze(const OpKernelInfo& info) : UnsqueezeBase(info), RocmKernel(info) {}
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

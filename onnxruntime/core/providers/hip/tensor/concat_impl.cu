@@ -7,7 +7,7 @@
 #include "concat_impl.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename T>
 __global__ void _ConcatKernel(const fast_divmod block_size_including_axis_dim_div,
@@ -93,5 +93,5 @@ Status ConcatImpl(const size_t element_bytes,
   return Status::OK();
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

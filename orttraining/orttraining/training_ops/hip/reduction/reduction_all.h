@@ -6,12 +6,12 @@
 #include "core/providers/hip/multi_tensor/common.cuh"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename TIn, typename TOut>
-class ReduceAllL2 final : public HipKernel {
+class ReduceAllL2 final : public RocmKernel {
  public:
-  ReduceAllL2(const OpKernelInfo& info) : HipKernel(info) {}
+  ReduceAllL2(const OpKernelInfo& info) : RocmKernel(info) {}
 
   Status ComputeInternal(OpKernelContext* context) const override;
 };
@@ -24,5 +24,5 @@ struct MultiTensorReduceL2 {
 template<typename Tin, typename Tout>
 void ScalarSqrt(Tin* input, Tout* output);
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

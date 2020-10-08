@@ -7,7 +7,7 @@
 #include "core/common/common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 Status SplitImpl(const size_t element_size, 
                  const int block_size_including_axis_dim,
@@ -20,5 +20,5 @@ Status SplitImpl(const size_t element_size,
                  void** output_ptr,
                  const size_t N);
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

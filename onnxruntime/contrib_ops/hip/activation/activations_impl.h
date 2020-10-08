@@ -6,12 +6,12 @@
 
 namespace onnxruntime {
 namespace contrib {
-namespace hip {
+namespace rocm {
 
-typedef onnxruntime::hip::CtxAlphaBeta CtxAffine;
-typedef onnxruntime::hip::CtxAlphaBeta CtxParametricSoftplus;
-typedef onnxruntime::hip::CtxAlphaBeta CtxScaledTanh;
-typedef onnxruntime::hip::CtxNull CtxGelu;
+typedef onnxruntime::rocm::CtxAlphaBeta CtxAffine;
+typedef onnxruntime::rocm::CtxAlphaBeta CtxParametricSoftplus;
+typedef onnxruntime::rocm::CtxAlphaBeta CtxScaledTanh;
+typedef onnxruntime::rocm::CtxNull CtxGelu;
 
 #define UNARY_CONTRIB_ACTIVATION_OPS()         \
   UNARY_ACTIVATION_OP_NAME(ScaledTanh)         \
@@ -31,6 +31,6 @@ typedef onnxruntime::hip::CtxNull CtxGelu;
 UNARY_CONTRIB_ACTIVATION_OPS()
 #undef UNARY_ACTIVATION_OP_NAME
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime

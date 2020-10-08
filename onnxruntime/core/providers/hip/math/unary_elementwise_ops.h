@@ -5,16 +5,16 @@
 #include "core/providers/hip/hip_common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 struct UnaryElementwisePreparation {
   const Tensor* input_tensor = nullptr;
   Tensor* output_tensor = nullptr;
 };
 
-class UnaryElementwise : public HipKernel {
+class UnaryElementwise : public RocmKernel {
  protected:
-  UnaryElementwise(const OpKernelInfo& info) : HipKernel(info) {}
+  UnaryElementwise(const OpKernelInfo& info) : RocmKernel(info) {}
   Status ComputeInternal(OpKernelContext*) const override {
     return Status(common::ONNXRUNTIME, common::FAIL);  // should not reach here
   }
@@ -98,5 +98,5 @@ class Round final : public UnaryElementwise {
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

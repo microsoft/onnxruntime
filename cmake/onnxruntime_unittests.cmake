@@ -276,7 +276,7 @@ if (onnxruntime_ENABLE_TRAINING)
     )
   list(APPEND onnxruntime_test_providers_src ${orttraining_test_trainingops_cpu_src})
 
-  if (onnxruntime_USE_CUDA OR onnxruntime_USE_HIP)
+  if (onnxruntime_USE_CUDA OR onnxruntime_USE_ROCM)
     file(GLOB_RECURSE orttraining_test_trainingops_cuda_src CONFIGURE_DEPENDS
       "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cuda/*"
       )
@@ -420,8 +420,8 @@ if(onnxruntime_USE_MIGRAPHX)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_migraphx)
 endif()
 
-if(onnxruntime_USE_HIP)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_hip)
+if(onnxruntime_USE_ROCM)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_rocm)
 endif()
 
 file(GLOB_RECURSE onnxruntime_test_tvm_src CONFIGURE_DEPENDS
@@ -463,7 +463,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
     ${PROVIDERS_ARMNN}
-    ${PROVIDERS_HIP}
+    ${PROVIDERS_ROCM}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -628,8 +628,8 @@ set(all_dependencies ${onnxruntime_test_providers_dependencies} )
     target_link_libraries(onnxruntime_test_all PRIVATE onnxruntime_language_interop onnxruntime_pyop)
   endif()
 
-  if (onnxruntime_USE_HIP)
-    target_include_directories(onnxruntime_test_all PRIVATE ${onnxruntime_HIP_HOME}/include/hiprand ${onnxruntime_HIP_HOME}/include/rocrand)
+  if (onnxruntime_USE_ROCM)
+    target_include_directories(onnxruntime_test_all PRIVATE ${onnxruntime_ROCM_HOME}/include/hiprand ${onnxruntime_ROCM_HOME}/include/rocrand)
   endif()
 
   set(test_data_target onnxruntime_test_all)

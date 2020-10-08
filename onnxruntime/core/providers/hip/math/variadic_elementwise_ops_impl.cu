@@ -9,7 +9,7 @@
 #include "core/providers/hip/math/variadic_elementwise_ops_tags.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename T, typename VariadicElementwiseOpTag>
 struct VariadicElementwiseOpTraits;
@@ -141,5 +141,5 @@ SPECIALIZE_IMPL_UZILHFD(variadic_elementwise_ops::Max)
 #undef SPECIALIZE_IMPL_HFD
 #undef SPECIALIZE_IMPL
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

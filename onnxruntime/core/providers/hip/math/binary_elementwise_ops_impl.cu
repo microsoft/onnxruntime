@@ -8,7 +8,7 @@
 #include "core/providers/hip/math/binary_elementwise_ops_impl_functors.cuh"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 #define BINARY_ELEMENTWISE_IMPL(name)                      \
   BINARY_ELEMENTWISE_IMPL_DECLARATION(name) {              \
@@ -174,5 +174,5 @@ SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T2(Equal, bool, int64_t, int64_t)
 
 SPECIALIZED_BINARY_ELEMENTWISE_IMPL_UZILHFD2(Less)
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

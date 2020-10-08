@@ -419,14 +419,13 @@ TEST(TransposeOpTest, SingleAxisMovingInwardsBlockCopy) {
   TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);
 }
 
-#if defined(USE_CUDA) || defined(USE_HIP)
-
 #if USE_CUDA
   constexpr const char* kGpuExecutionProvider = kCudaExecutionProvider;
-#elif USE_HIP
-  constexpr const char* kGpuExecutionProvider = kHipExecutionProvider;
+#elif USE_ROCM
+  constexpr const char* kGpuExecutionProvider = kRocmExecutionProvider;
 #endif
 
+#if defined(USE_CUDA) || defined(USE_ROCM)
 static void TestTranspose(
     const std::vector<int64_t>& perm,
     const std::vector<int64_t>& x_dims,

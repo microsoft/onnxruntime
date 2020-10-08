@@ -12,7 +12,7 @@
 #include "core/providers/hip/shared_inc/hip_call.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename T>
 __device__ __inline__ T _Ceil(T a);
@@ -239,5 +239,5 @@ __device__ __forceinline__ T WARP_SHFL_DOWN(T value, unsigned int delta, int wid
 #endif
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

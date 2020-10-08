@@ -9,7 +9,7 @@
 #include "activations_impl.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 #define MAKE_FUNC_CTX_ALPHA()           \
   inline CtxAlpha MakeFuncCtx() const { \
@@ -173,5 +173,5 @@ class ThresholdedRelu final : public UnaryElementwise {
   float alpha_;
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

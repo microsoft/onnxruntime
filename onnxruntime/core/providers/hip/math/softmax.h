@@ -7,7 +7,7 @@
 #include "core/providers/hip/hip_common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename T>
 struct AccumulateType {};
@@ -32,9 +32,9 @@ template <typename input_t, typename output_t, typename acc_t, bool is_log_softm
 void dispatch_softmax_forward(output_t* dst, const input_t* src, int softmax_elements, int softmax_elements_stride, int batch_count);
 
 template <typename T>
-class Softmax final : public HipKernel {
+class Softmax final : public RocmKernel {
  public:
-  Softmax(const OpKernelInfo& info) : HipKernel{info} {
+  Softmax(const OpKernelInfo& info) : RocmKernel{info} {
     info.GetAttrOrDefault("axis", &axis_, static_cast<int64_t>(1));
     log_softmax_ = info.GetKernelDef().OpName() == "LogSoftmax";
   }
@@ -46,5 +46,5 @@ class Softmax final : public HipKernel {
   bool log_softmax_;
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

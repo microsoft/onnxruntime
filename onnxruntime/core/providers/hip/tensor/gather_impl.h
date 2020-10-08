@@ -6,7 +6,7 @@
 #include "core/providers/hip/shared_inc/hip_utils.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 void GatherImpl(
     const int64_t input_block_size,
@@ -20,5 +20,5 @@ void GatherImpl(
     void* output_data,
     const size_t N);
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

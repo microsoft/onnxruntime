@@ -7,7 +7,7 @@
 #include "core/providers/hip/tensor/slice_impl.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <bool is_grad, int DIMS, int NumThreadsPerBlock, int NumElementsPerThread, typename T>
 __global__ void _SliceKernel(const TArray<int64_t> starts,
@@ -135,5 +135,5 @@ Status SliceImplEx(const size_t element_size,
   return Status::OK();
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

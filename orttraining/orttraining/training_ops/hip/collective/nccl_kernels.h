@@ -6,7 +6,7 @@
 #include "nccl_common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 class NcclAllReduce final : public NcclKernel {
  public:
@@ -29,5 +29,5 @@ class NcclReduceScatter final : public NcclKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

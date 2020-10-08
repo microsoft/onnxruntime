@@ -6,12 +6,12 @@
 #include "core/providers/cpu/math/clip.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename T>
-class Clip_6 final : public onnxruntime::clip_internal::Clip_6Base<T>,  public HipKernel {
+class Clip_6 final : public onnxruntime::clip_internal::Clip_6Base<T>,  public RocmKernel {
  public:
-  explicit Clip_6(const OpKernelInfo& info) : onnxruntime::clip_internal::Clip_6Base<T>(info), HipKernel{info} {
+  explicit Clip_6(const OpKernelInfo& info) : onnxruntime::clip_internal::Clip_6Base<T>(info), RocmKernel{info} {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -19,9 +19,9 @@ class Clip_6 final : public onnxruntime::clip_internal::Clip_6Base<T>,  public H
 
 // Since version 11. Min and Max are inputs
 // version 12 adds type support
-class Clip final : public HipKernel {
+class Clip final : public RocmKernel {
  public:
-  explicit Clip(const OpKernelInfo& info) : HipKernel{info} {
+  explicit Clip(const OpKernelInfo& info) : RocmKernel{info} {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -31,5 +31,5 @@ class Clip final : public HipKernel {
   struct ComputeImpl;
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

@@ -9,7 +9,7 @@
 #include "gradient_control.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 template <typename T, typename T_GRAD>
 __global__ void _InPlaceAccumulator(
     const T* gradient_buffer,
@@ -47,5 +47,5 @@ SPECIALIZED_IMPL_InPlaceAccumulator(float, half)
 SPECIALIZED_IMPL_InPlaceAccumulator(half, half)
 SPECIALIZED_IMPL_InPlaceAccumulator(half, float)
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

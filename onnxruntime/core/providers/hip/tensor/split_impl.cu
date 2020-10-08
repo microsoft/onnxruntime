@@ -7,7 +7,7 @@
 #include "split_impl.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename T>
 __global__ void _SplitKernel(const fast_divmod block_size_including_axis_dim_div,
@@ -95,5 +95,5 @@ Status SplitImpl(const size_t element_size,
   return Status::OK();
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

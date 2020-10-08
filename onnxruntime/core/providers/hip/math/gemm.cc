@@ -6,7 +6,7 @@
 #include "core/providers/hip/shared_inc/fpgeneric.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 #define REGISTER_KERNEL_TYPED(T)                                  \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
@@ -15,7 +15,7 @@ namespace hip {
       7,                                                          \
       8,                                                          \
       T,                                                          \
-      kHipExecutionProvider,                                     \
+      kRocmExecutionProvider,                                     \
       KernelDefBuilder()                                          \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Gemm<T>);                                                   \
@@ -25,7 +25,7 @@ namespace hip {
       9,                                                          \
       10,                                                         \
       T,                                                          \
-      kHipExecutionProvider,                                     \
+      kRocmExecutionProvider,                                     \
       KernelDefBuilder()                                          \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Gemm<T>);                                                   \
@@ -34,7 +34,7 @@ namespace hip {
       kOnnxDomain,                                                \
       11,                                                         \
       T,                                                          \
-      kHipExecutionProvider,                                     \
+      kRocmExecutionProvider,                                     \
       KernelDefBuilder()                                          \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Gemm<T>);
@@ -170,5 +170,5 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

@@ -10,7 +10,7 @@
 #endif
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename T, typename Tin, bool OUTERAXIS, typename FuncT>
 __global__ void _ScatterElementsKernel2D(
@@ -319,5 +319,5 @@ GATHER_ELEMENTS_GRAD_SPECIALIZED_SCATTER_ADD_IMPL(double)
 
 #endif
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

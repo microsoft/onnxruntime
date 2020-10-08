@@ -10,7 +10,7 @@
 #include "core/framework/random_seed.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename T>
 struct GetRatioDataImpl {
@@ -39,9 +39,9 @@ struct DropoutComputeImpl {
 };
 
 template <bool trainable_dropout>
-class Dropout final : public HipKernel {
+class Dropout final : public RocmKernel {
  public:
-  Dropout(const OpKernelInfo& info) : HipKernel(info) {
+  Dropout(const OpKernelInfo& info) : RocmKernel(info) {
     int64_t seed = 0;
     if (info.GetAttr<int64_t>("seed", &seed).IsOK()) {
       generator_ = onnxruntime::make_unique<PhiloxGenerator>(static_cast<uint64_t>(seed));
@@ -111,5 +111,5 @@ Status Dropout<trainable_dropout>::ComputeInternal(OpKernelContext* context) con
   return Status::OK();
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

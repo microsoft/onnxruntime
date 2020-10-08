@@ -7,7 +7,7 @@
 #include "core/providers/common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 #define REGISTER_GRADIENT_KERNEL_TYPED(T, U)                      \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
@@ -15,7 +15,7 @@ namespace hip {
       kMSDomain,                                                  \
       1,                                                          \
       T##_##U,                                                    \
-      kHipExecutionProvider,                                     \
+      kRocmExecutionProvider,                                     \
       KernelDefBuilder()                                          \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())  \
           .TypeConstraint("U", DataTypeImpl::GetTensorType<U>()), \
@@ -25,7 +25,7 @@ namespace hip {
       kMSDomain,                                                  \
       1,                                                          \
       T##_##U,                                                    \
-      kHipExecutionProvider,                                     \
+      kRocmExecutionProvider,                                     \
       KernelDefBuilder()                                          \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())  \
           .TypeConstraint("U", DataTypeImpl::GetTensorType<U>()), \
@@ -35,7 +35,7 @@ REGISTER_GRADIENT_KERNEL_TYPED(double, double)
 REGISTER_GRADIENT_KERNEL_TYPED(MLFloat16, float)
 
 template <typename T, typename U>
-LayerNormGrad<T, U>::LayerNormGrad(const OpKernelInfo& op_kernel_info) : HipKernel(op_kernel_info) {
+LayerNormGrad<T, U>::LayerNormGrad(const OpKernelInfo& op_kernel_info) : RocmKernel(op_kernel_info) {
   ORT_ENFORCE(op_kernel_info.GetAttr("axis", &axis_).IsOK());
 }
 
@@ -83,7 +83,7 @@ Status LayerNormGrad<T, U>::ComputeInternal(OpKernelContext* p_op_kernel_context
 }
 
 template <typename T, typename U>
-InvertibleLayerNormGrad<T, U>::InvertibleLayerNormGrad(const OpKernelInfo& op_kernel_info) : HipKernel(op_kernel_info) {
+InvertibleLayerNormGrad<T, U>::InvertibleLayerNormGrad(const OpKernelInfo& op_kernel_info) : RocmKernel(op_kernel_info) {
   ORT_ENFORCE(op_kernel_info.GetAttr("axis", &axis_).IsOK());
 }
 
@@ -131,5 +131,5 @@ Status InvertibleLayerNormGrad<T, U>::ComputeInternal(OpKernelContext* p_op_kern
   return Status::OK();
 }
 
-}  //namespace hip
+}  //namespace rocm
 }  // namespace onnxruntime

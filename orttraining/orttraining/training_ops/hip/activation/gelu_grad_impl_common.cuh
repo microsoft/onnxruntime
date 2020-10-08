@@ -7,7 +7,7 @@
 #include "orttraining/training_ops/cpu/activation/gelu_computation_mode.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename T>
 __device__ __inline__ T ComputeGeluGradScalar(T dY, T X, gelu_computation_mode::Default) {
@@ -34,5 +34,5 @@ __device__ __inline__ T ComputeGeluGradScalar(T dY, T X, gelu_computation_mode::
   return dY * static_cast<T>(dg1 + dg2 + dg3);
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

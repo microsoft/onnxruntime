@@ -9,7 +9,7 @@
 #include "orttraining/training_ops/hip/optimizer/lamb.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 std::vector<std::pair<int, int>> GenerateLambExtraAliasMapping() {
   // Starting index of extra inputs.
@@ -52,7 +52,7 @@ std::vector<std::pair<int, int>> GenerateLambExtraAliasMapping() {
       kMSDomain,                                                                    \
       1,                                                                              \
       T1##_##T2##_##T3##_##T4##_##T_GRAD_NORM,                                        \
-      kHipExecutionProvider,                                                         \
+      kRocmExecutionProvider,                                                         \
       KernelDefBuilder()                                                              \
           .Alias(GenerateLambExtraAliasMapping())                                     \
           .InputMemoryType<OrtMemTypeCPUInput>(0)  /* Keep do_update in CPU */        \
@@ -674,5 +674,5 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM>::ComputeInternal(OpKernelConte
   return Status::OK();
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

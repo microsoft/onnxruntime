@@ -8,15 +8,15 @@
 #include "core/providers/hip/hip_common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 Status CheckBatchDimensionsMatch(
     size_t num_batch_dimensions,
     const std::vector<std::reference_wrapper<TensorShape>>& tensor_shapes);
 
-class GatherNDBase : public HipKernel {
+class GatherNDBase : public RocmKernel {
  public:
-  GatherNDBase(const OpKernelInfo& info) : HipKernel(info) {
+  GatherNDBase(const OpKernelInfo& info) : RocmKernel(info) {
     info.GetAttrOrDefault("batch_dims", &batch_dims_, static_cast<int64_t>(0));
     ORT_ENFORCE(batch_dims_ >= 0);
   }
@@ -42,5 +42,5 @@ class GatherND final : public GatherNDBase {
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

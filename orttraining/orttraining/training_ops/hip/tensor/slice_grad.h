@@ -4,7 +4,7 @@
 #include "core/providers/hip/tensor/slice.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 class SliceGrad final : public Slice<true> {
  public:
@@ -20,5 +20,5 @@ class SliceGrad final : public Slice<true> {
                       const TArray<fast_divmod>& output_strides, OpKernelContext* ctx, const TensorShape& output_shape)
       const override;
 };
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

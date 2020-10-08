@@ -5,7 +5,7 @@
 #include "core/framework/op_kernel.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 #define REGISTER_ACTIVATION_GRAD_KERNEL(x, ver, domain, T)       \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                 \
@@ -13,7 +13,7 @@ namespace hip {
       domain,                                                    \
       ver,                                                       \
       T,                                                         \
-      kHipExecutionProvider,                                    \
+      kRocmExecutionProvider,                                    \
       KernelDefBuilder()                                         \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()) \
           .MayInplace(0, 0),                                     \
@@ -47,5 +47,5 @@ ACTIVATION_GRAD_OP_HFD(GeluGrad, 1, kMSDomain);
 ACTIVATION_GRAD_OP_HFD(FastGeluGrad, 1, kMSDomain);
 ACTIVATION_GRAD_OP_HFD(ReluGrad, 1, kMSDomain);
 
-}  //namespace hip
+}  //namespace rocm
 }  // namespace onnxruntime

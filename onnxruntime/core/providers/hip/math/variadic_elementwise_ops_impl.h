@@ -8,7 +8,7 @@
 #include "core/providers/hip/shared_inc/hip_utils.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename T, typename VariadicElementwiseOpTag>
 void Impl_General(
@@ -34,5 +34,5 @@ void Impl_NoBroadcastInputBatch(
     T* output_data,
     size_t count);
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

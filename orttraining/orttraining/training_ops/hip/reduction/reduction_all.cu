@@ -9,7 +9,7 @@
 #include "core/providers/hip/reduction/reduction_utils.cuh"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template<typename Tin, typename Tout>
 __global__ void _ScalarSqrtImpl(Tin* input, Tout* output) {
@@ -110,5 +110,5 @@ INSTANTIATE_MULTI_TENSOR_REDUCTION_L2_FUNCTOR(half, float)
 INSTANTIATE_MULTI_TENSOR_REDUCTION_L2_FUNCTOR(float, half)
 INSTANTIATE_MULTI_TENSOR_REDUCTION_L2_FUNCTOR(half, half)
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

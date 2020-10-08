@@ -5,7 +5,7 @@
 #include "core/providers/hip/cu_inc/common.cuh"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 __forceinline__ __host__ __device__ int least_pow2_bound(int value) {
   unsigned int value_ = static_cast<unsigned int>(value);
@@ -64,5 +64,5 @@ struct ToBuffer<half> {
   typedef float Type;
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

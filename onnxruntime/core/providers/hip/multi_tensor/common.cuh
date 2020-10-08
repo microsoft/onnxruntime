@@ -10,7 +10,7 @@
 #include <vector>
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 // initial reference from:
 // https://github.com/NVIDIA/apex/blob/5b71d3695bf39efcdcda9dff5be2f70314b8f091/csrc/multi_tensor_apply.cuh#L15
 // further experiment to get the number below. The larger the better, but if too large, it won't fit into GPU stack.
@@ -145,5 +145,5 @@ void launch_multi_tensor_functor(
   }
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

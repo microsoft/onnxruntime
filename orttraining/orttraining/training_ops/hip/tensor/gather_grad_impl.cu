@@ -10,7 +10,7 @@
 
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename T>
 __global__ void _Iota(
@@ -73,7 +73,7 @@ __global__ void _GatherGradImpl(
 
 template <typename T, typename Tin>
 void GatherGradImpl(
-    const HipKernel& hip_kernel,
+    const RocmKernel& hip_kernel,
     const T* grad_data,
     const Tin* indices_data,
     const int64_t num_indices,
@@ -129,7 +129,7 @@ void GatherGradImpl(
 
 #define SPECIALIZED_GRAD_IMPL2(T)           \
   template void GatherGradImpl<T, int64_t>( \
-      const HipKernel& hip_kernel,        \
+      const RocmKernel& hip_kernel,        \
       const T* grad_data,                   \
       const int64_t* indices_data,          \
       const int64_t num_indices,            \
@@ -139,7 +139,7 @@ void GatherGradImpl(
       const int64_t num_inputs,             \
       const int64_t param_itrs);            \
   template void GatherGradImpl<T, int32_t>( \
-      const HipKernel& hip_kernel,        \
+      const RocmKernel& hip_kernel,        \
       const T* grad_data,                   \
       const int32_t* indices_data,          \
       const int64_t num_indices,            \
@@ -152,5 +152,5 @@ void GatherGradImpl(
 SPECIALIZED_GRAD_IMPL2(float)
 SPECIALIZED_GRAD_IMPL2(half)
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

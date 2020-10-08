@@ -123,7 +123,7 @@ RUN git clone --recursive -b wezhan/amdgpu https://github.com/microsoft/onnxrunt
     --parallel \
     --skip_tests \
     --build_wheel \
-    --use_hip --hip_home /opt/rocm \
+    --use_rocm --rocm_home /opt/rocm \
     --mpi_home $OPENMPI_DIR \
     --nccl_home /opt/rocm \
 	--enable_training \

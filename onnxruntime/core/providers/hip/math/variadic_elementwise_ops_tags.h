@@ -4,11 +4,11 @@
 #pragma once
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 namespace variadic_elementwise_ops {
 struct Sum {};
 struct Min {};
 struct Max {};
 }  // namespace variadic_elementwise_ops
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

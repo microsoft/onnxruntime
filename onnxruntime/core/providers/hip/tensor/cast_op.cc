@@ -7,7 +7,7 @@
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 const std::vector<MLDataType> castOpTypeConstraints{
     DataTypeImpl::GetTensorType<MLFloat16>(),
@@ -29,7 +29,7 @@ const std::vector<MLDataType> castOpTypeConstraints{
       kOnnxDomain,                                                \
       6, 8,                                                       \
       T,                                                          \
-      kHipExecutionProvider,                                     \
+      kRocmExecutionProvider,                                     \
       KernelDefBuilder()                                          \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()) \
           .TypeConstraint("T2", castOpTypeConstraints),           \
@@ -39,7 +39,7 @@ const std::vector<MLDataType> castOpTypeConstraints{
       kOnnxDomain,                                                \
       9,                                                          \
       T,                                                          \
-      kHipExecutionProvider,                                     \
+      kRocmExecutionProvider,                                     \
       KernelDefBuilder()                                          \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()) \
           .TypeConstraint("T2", castOpTypeConstraints),           \
@@ -104,5 +104,5 @@ SPECIALIZE_IMPL(uint32_t)
 SPECIALIZE_IMPL(uint64_t)
 SPECIALIZE_IMPL(bool)
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

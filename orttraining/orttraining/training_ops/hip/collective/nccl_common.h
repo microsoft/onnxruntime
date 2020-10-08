@@ -8,7 +8,7 @@
 #include <rccl.h>
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 #define NCCL_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(NCCL_CALL(expr) ? common::Status::OK() : common::Status(common::ONNXRUNTIME, common::FAIL))
 
@@ -35,7 +35,7 @@ class NcclContext final {
 // -----------------------------------------------------------------------
 // Base class for NCCL kernels
 // -----------------------------------------------------------------------
-class NcclKernel : public HipKernel {
+class NcclKernel : public RocmKernel {
  public:
   explicit NcclKernel(const OpKernelInfo& info);
 
@@ -46,5 +46,5 @@ class NcclKernel : public HipKernel {
 
 ncclDataType_t GetNcclDataType(onnxruntime::MLDataType type);
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

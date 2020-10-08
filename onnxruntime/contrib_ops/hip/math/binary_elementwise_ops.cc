@@ -7,7 +7,7 @@
 using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace contrib {
-namespace hip {
+namespace rocm {
 
 #define CONTRIB_BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(x, ver, T)             \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
@@ -15,7 +15,7 @@ namespace hip {
       kMSDomain,                                                                \
       ver,                                                                      \
       T,                                                                        \
-      kHipExecutionProvider,                                                   \
+      kRocmExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       x<T>);
 
@@ -65,6 +65,6 @@ namespace hip {
 
 CONTRIB_BINARY_OP_HFD(BiasGelu, 1)
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime

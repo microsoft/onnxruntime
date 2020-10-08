@@ -3,7 +3,7 @@
 #pragma once
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 struct CtxAlpha {
   float alpha;
@@ -57,5 +57,5 @@ typedef CtxAlpha CtxThresholdedRelu;
 UNARY_ACTIVATION_OPS()
 #undef UNARY_ACTIVATION_OP_NAME
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

@@ -65,9 +65,9 @@ if (onnxruntime_USE_CUDA)
   target_include_directories(onnxruntime_training_runner PUBLIC ${onnxruntime_CUDNN_HOME}/include ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
 endif()
 
-if (onnxruntime_USE_HIP)
-  add_definitions(-DUSE_HIP=1)
-  target_include_directories(onnxruntime_training_runner PUBLIC ${onnxruntime_HIP_HOME}/include)
+if (onnxruntime_USE_ROCM)
+  add_definitions(-DUSE_ROCM=1)
+  target_include_directories(onnxruntime_training_runner PUBLIC ${onnxruntime_ROCM_HOME}/include)
 endif()
 
 if(UNIX AND NOT APPLE)
@@ -76,7 +76,7 @@ if(UNIX AND NOT APPLE)
   endif()
 endif()
 
-if (onnxruntime_USE_HIP)
+if (onnxruntime_USE_ROCM)
   target_compile_options(onnxruntime_training_runner PUBLIC -D__HIP_PLATFORM_HCC__=1)
 endif()
 
@@ -98,7 +98,7 @@ set(ONNXRUNTIME_LIBS
     onnxruntime_session
     ${onnxruntime_libs}
     ${PROVIDERS_CUDA}
-    ${PROVIDERS_HIP}
+    ${PROVIDERS_ROCM}
     ${PROVIDERS_MKLDNN}
     onnxruntime_optimizer
     onnxruntime_providers

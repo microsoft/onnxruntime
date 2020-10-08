@@ -9,7 +9,7 @@
 #include <cmath>
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 ///////////////////uint24///////////////////////////////
 template<typename T>
@@ -73,5 +73,5 @@ struct fast_divmod {
   int d_;  // d above.
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

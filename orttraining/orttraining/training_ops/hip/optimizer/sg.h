@@ -6,7 +6,7 @@
 #include "core/providers/hip/hip_common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename T>
 void SGDOptimizerImpl(
@@ -17,12 +17,12 @@ void SGDOptimizerImpl(
     T* gradients_out,
     size_t count);
 
-class SGDOptimizer final : public HipKernel {
+class SGDOptimizer final : public RocmKernel {
  public:
-  SGDOptimizer(const OpKernelInfo& info) : HipKernel(info) {}
+  SGDOptimizer(const OpKernelInfo& info) : RocmKernel(info) {}
 
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

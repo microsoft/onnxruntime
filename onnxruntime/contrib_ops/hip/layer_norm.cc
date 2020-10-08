@@ -9,7 +9,7 @@
 
 namespace onnxruntime {
 namespace contrib {
-namespace hip {
+namespace rocm {
 
 #define REGISTER_KERNEL_TYPED(T, U)                               \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
@@ -17,7 +17,7 @@ namespace hip {
       kOnnxDomain,                                                \
       1,                                                          \
       T##_##U,                                                    \
-      kHipExecutionProvider,                                     \
+      kRocmExecutionProvider,                                     \
       KernelDefBuilder()                                          \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())  \
           .TypeConstraint("U", DataTypeImpl::GetTensorType<U>()), \
@@ -28,7 +28,7 @@ REGISTER_KERNEL_TYPED(double, double)
 REGISTER_KERNEL_TYPED(MLFloat16, float)
 
 template <typename T, typename U>
-LayerNorm<T, U>::LayerNorm(const OpKernelInfo& op_kernel_info) : HipKernel(op_kernel_info) {
+LayerNorm<T, U>::LayerNorm(const OpKernelInfo& op_kernel_info) : RocmKernel(op_kernel_info) {
   ORT_ENFORCE(op_kernel_info.GetAttr("axis", &axis_).IsOK());
   float tmp_epsilon;
   ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &tmp_epsilon).IsOK());
@@ -85,6 +85,6 @@ Status LayerNorm<T, U>::ComputeInternal(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-}  //namespace hip
+}  //namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime

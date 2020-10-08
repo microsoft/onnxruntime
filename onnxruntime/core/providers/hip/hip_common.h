@@ -14,7 +14,7 @@
 #include "hip_fwd.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 #define HIP_RETURN_IF_ERROR(expr)               \
   ORT_RETURN_IF_ERROR(HIP_CALL(expr)            \
@@ -59,12 +59,12 @@ namespace hip {
 // -----------------------------------------------------------------------
 // Base class for HIP kernels
 // -----------------------------------------------------------------------
-class HipKernel : public OpKernel {
+class RocmKernel : public OpKernel {
  public:
-  explicit HipKernel(const OpKernelInfo& info)
+  explicit RocmKernel(const OpKernelInfo& info)
       : OpKernel(info),
         // Is this OK to have a non-const execution provider?
-        provider_(const_cast<HIPExecutionProvider*>(static_cast<const HIPExecutionProvider*>(info.GetExecutionProvider()))) {
+        provider_(const_cast<ROCMExecutionProvider*>(static_cast<const ROCMExecutionProvider*>(info.GetExecutionProvider()))) {
   }
 
   Status Compute(OpKernelContext* p_op_kernel_context) const override {
@@ -109,13 +109,13 @@ class HipKernel : public OpKernel {
   template <typename T>
   class HipAsyncBuffer {
    public:
-    HipAsyncBuffer(const HipKernel* op_kernel) : gpu_copy_(nullptr), count_(0), op_kernel_(op_kernel) {}
+    HipAsyncBuffer(const RocmKernel* op_kernel) : gpu_copy_(nullptr), count_(0), op_kernel_(op_kernel) {}
 
-    HipAsyncBuffer(const HipKernel* op_kernel, size_t count) : HipAsyncBuffer(op_kernel) {
+    HipAsyncBuffer(const RocmKernel* op_kernel, size_t count) : HipAsyncBuffer(op_kernel) {
       AllocCpuPtr(count);
     }
 
-    HipAsyncBuffer(const HipKernel* op_kernel, const T& value, size_t count)
+    HipAsyncBuffer(const RocmKernel* op_kernel, const T& value, size_t count)
         : HipAsyncBuffer(op_kernel, count) {
       T* p = CpuPtr();
       for (size_t i = 0; i != count; ++i) {
@@ -123,7 +123,7 @@ class HipKernel : public OpKernel {
       }
     }
 
-    HipAsyncBuffer(const HipKernel* op_kernel, const std::vector<T>& vec) : HipAsyncBuffer(op_kernel, vec.size()) {
+    HipAsyncBuffer(const RocmKernel* op_kernel, const std::vector<T>& vec) : HipAsyncBuffer(op_kernel, vec.size()) {
       memcpy(CpuPtr(), vec.data(), vec.size() * sizeof(T));
     }
 
@@ -163,7 +163,7 @@ class HipKernel : public OpKernel {
     IAllocatorUniquePtr<T> gpu_copy_;
     IAllocatorUniquePtr<T> cpu_pinned_copy_;
     size_t count_;
-    const HipKernel* op_kernel_;
+    const RocmKernel* op_kernel_;
   };
 
   inline hipblasHandle_t HipblasHandle() const {
@@ -195,7 +195,7 @@ class HipKernel : public OpKernel {
   inline int GetDeviceId() const { return provider_->GetDeviceId(); }
 
  private:
-  HIPExecutionProvider* provider_;
+  ROCMExecutionProvider* provider_;
 };
 
 // Type mapping for MLFloat16 to half
@@ -247,5 +247,5 @@ inline bool CalculateFdmStrides(gsl::span<fast_divmod> p, const std::vector<int6
 //   hipblasMath_t mode_;
 // };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

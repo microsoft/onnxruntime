@@ -3,9 +3,9 @@
 #include "core/providers/hip/hip_common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 template <typename T, typename U>
-class LayerNorm final : public HipKernel {
+class LayerNorm final : public RocmKernel {
  public:
   LayerNorm(const OpKernelInfo& op_kernel_info);
   Status ComputeInternal(OpKernelContext* ctx) const override;
@@ -16,7 +16,7 @@ class LayerNorm final : public HipKernel {
 };
 
 template <typename T, typename U>
-class LayerNormGrad final : public HipKernel {
+class LayerNormGrad final : public RocmKernel {
  public:
   LayerNormGrad(const OpKernelInfo& op_kernel_info);
   Status ComputeInternal(OpKernelContext* ctx) const override;
@@ -26,7 +26,7 @@ class LayerNormGrad final : public HipKernel {
 };
 
 template <typename T, typename U>
-class InvertibleLayerNormGrad final : public HipKernel {
+class InvertibleLayerNormGrad final : public RocmKernel {
  public:
   InvertibleLayerNormGrad(const OpKernelInfo& op_kernel_info);
   Status ComputeInternal(OpKernelContext* ctx) const override;
@@ -35,5 +35,5 @@ class InvertibleLayerNormGrad final : public HipKernel {
   int64_t axis_;
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

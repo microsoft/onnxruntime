@@ -5,11 +5,11 @@
 #include "core/providers/hip/tensor/concat_impl.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 ONNX_OPERATOR_KERNEL_EX(ConcatTraining,
                         kMSDomain,
                         1,
-                        kHipExecutionProvider,
+                        kRocmExecutionProvider,
                         KernelDefBuilder()
                             .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
                         ConcatTraining);
@@ -75,5 +75,5 @@ Status ConcatTraining::ComputeInternal(OpKernelContext* ctx) const {
 
   return Status::OK();
 }
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

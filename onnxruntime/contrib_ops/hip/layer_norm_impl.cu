@@ -29,9 +29,9 @@
 
 namespace onnxruntime {
 namespace contrib {
-namespace hip {
+namespace rocm {
 
-using namespace onnxruntime::hip;
+using namespace onnxruntime::rocm;
 
 template <typename U>
 __device__ void cuWelfordOnlineSum(
@@ -380,6 +380,6 @@ LAYERNORM_LINEAR_IMPL(half, float)
 LAYERNORM_LINEAR_IMPL(double, double)
 //LAYERNORM_LINEAR_IMPL(half, half)
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime

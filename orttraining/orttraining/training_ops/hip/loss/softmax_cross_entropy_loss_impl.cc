@@ -9,7 +9,7 @@
 #include "orttraining/training_ops/hip/loss/softmax_cross_entropy_loss_impl.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 #define REGISTER_KERNEL_TYPED_TWO_TYPES(Class, T, Tin, domain, version) \
   ONNX_OPERATOR_TWO_TYPED_KERNEL_EX(                                    \
@@ -17,7 +17,7 @@ namespace hip {
       domain,                                                           \
       version,                                                          \
       T, Tin,                                                           \
-      kHipExecutionProvider,                                           \
+      kRocmExecutionProvider,                                           \
       KernelDefBuilder()                                                \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
           .TypeConstraint("Tin", DataTypeImpl::GetTensorType<Tin>()),   \
@@ -75,7 +75,7 @@ Status SoftmaxCrossEntropyLoss<T, Tin>::ComputeInternal(OpKernelContext* ctx) co
     ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
     onnxruntime::contrib::GetPermutationAndShape(true, logit_shape, new_shape, permutations);
     transpose_output = scan::detail::AllocateTensorInMLValue(logit.DataType(), new_shape, alloc);
-    ORT_RETURN_IF_ERROR(hip::Transpose::DoTranspose(hip::Transpose(info), permutations, logit, *transpose_output.GetMutable<Tensor>()));
+    ORT_RETURN_IF_ERROR(rocm::Transpose::DoTranspose(rocm::Transpose(info), permutations, logit, *transpose_output.GetMutable<Tensor>()));
     logit_data = (*transpose_output.GetMutable<Tensor>()).template Data<T>();
   }
 
@@ -134,7 +134,7 @@ Status SoftmaxCrossEntropyLoss<T, Tin>::ComputeInternal(OpKernelContext* ctx) co
     auto* transposed_data = (*transpose_output.GetMutable<Tensor>()).template MutableData<T>();
     transpose_output.GetMutable<Tensor>()->Reshape(log_prob->Shape());
     log_prob->Reshape(log_prob_shape);
-    ORT_RETURN_IF_ERROR(hip::Transpose::DoTranspose(hip::Transpose(info), permutations, *log_prob, *transpose_output.GetMutable<Tensor>()));
+    ORT_RETURN_IF_ERROR(rocm::Transpose::DoTranspose(rocm::Transpose(info), permutations, *log_prob, *transpose_output.GetMutable<Tensor>()));
     hipMemcpyAsync(log_prob_data, transposed_data, sizeof(T) * logit_shape.Size(), hipMemcpyDeviceToDevice);
     log_prob->Reshape(new_shape);
   }
@@ -197,7 +197,7 @@ Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx
     ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
     onnxruntime::contrib::GetPermutationAndShape(true, probability_shape, new_shape, permutations);
     transpose_output = scan::detail::AllocateTensorInMLValue(log_prob.DataType(), new_shape, alloc);
-    ORT_RETURN_IF_ERROR(hip::Transpose::DoTranspose(hip::Transpose(info), permutations, log_prob, *transpose_output.GetMutable<Tensor>()));
+    ORT_RETURN_IF_ERROR(rocm::Transpose::DoTranspose(rocm::Transpose(info), permutations, log_prob, *transpose_output.GetMutable<Tensor>()));
     log_prob_data = (*transpose_output.GetMutable<Tensor>()).template Data<T>();
   }
 
@@ -246,7 +246,7 @@ Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx
     onnxruntime::contrib::GetPermutationAndShape(false, logit_shape, new_shape, permutations);
     transpose_output.GetMutable<Tensor>()->Reshape(d_logit->Shape());
     d_logit->Reshape(logit_shape);
-    ORT_RETURN_IF_ERROR(hip::Transpose::DoTranspose(hip::Transpose(info), permutations, *d_logit, *transpose_output.GetMutable<Tensor>()));
+    ORT_RETURN_IF_ERROR(rocm::Transpose::DoTranspose(rocm::Transpose(info), permutations, *d_logit, *transpose_output.GetMutable<Tensor>()));
     auto* transposed_data = (*transpose_output.GetMutable<Tensor>()).template Data<T>();
     hipMemcpyAsync(d_logit_data, transposed_data, sizeof(T) * probability_shape.Size(), hipMemcpyDeviceToDevice);
     d_logit->Reshape(new_shape);
@@ -262,5 +262,5 @@ Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx
 SPECIALIZED_COMPUTE_SPARSE(SoftmaxCrossEntropyLoss, float, int64_t, kOnnxDomain, 12)
 SPECIALIZED_COMPUTE_SPARSE(SoftmaxCrossEntropyLossGrad, float, int64_t, kMSDomain, 1)
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

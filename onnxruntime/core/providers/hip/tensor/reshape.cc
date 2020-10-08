@@ -4,13 +4,13 @@
 #include "reshape.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 ONNX_OPERATOR_KERNEL_EX(
     Reshape,
     kOnnxDomain,
     5,
-    kHipExecutionProvider,
+    kRocmExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
         .TypeConstraint("shape", DataTypeImpl::GetTensorType<int64_t>())
@@ -23,11 +23,11 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kOnnxDomain,
     1,
     4,
-    kHipExecutionProvider,
+    kRocmExecutionProvider,
     KernelDefBuilder()
         .Alias(0, 0)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Reshape_1);
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

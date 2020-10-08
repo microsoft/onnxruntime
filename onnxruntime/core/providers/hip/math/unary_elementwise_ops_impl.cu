@@ -7,7 +7,7 @@
 #include "core/providers/hip/cu_inc/unary_elementwise_impl.cuh"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 #define OP(name, expr)                                     \
   template <typename T>                                    \
@@ -142,5 +142,5 @@ SPECIALIZED_CAST_FROM(uint32_t)
 SPECIALIZED_CAST_FROM(uint64_t)
 SPECIALIZED_CAST_FROM(bool)
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

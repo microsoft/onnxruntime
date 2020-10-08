@@ -7,7 +7,7 @@
 #include "core/providers/hip/hip_common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename T>
 __global__ void _SoftMaxCrossEntropy(
@@ -260,5 +260,5 @@ void SparseSoftmaxCrossEntropyGradImpl(
 SPECIALIZED_IMPL_SparseSoftMaxEntropyGradImpl(float, int32_t)
 SPECIALIZED_IMPL_SparseSoftMaxEntropyGradImpl(float, int64_t)
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

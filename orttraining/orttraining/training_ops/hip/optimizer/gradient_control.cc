@@ -8,7 +8,7 @@
 #include "gradient_control.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 #define REGISTER_IN_PLACE_TENSOR_ACCUMULATOR_TYPED(T, T_GRAD)                       \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                    \
@@ -16,7 +16,7 @@ namespace hip {
       kMSDomain,                                                                    \
       1,                                                                            \
       T##_##T_GRAD,                                                                 \
-      kHipExecutionProvider,                                                       \
+      kRocmExecutionProvider,                                                       \
       KernelDefBuilder()                                                            \
           .Alias(0, 0)                            /* Accumulate tensors in-place */ \
           .InputMemoryType<OrtMemTypeCPUInput>(2) /* Keep do_update in CPU */       \
@@ -48,7 +48,7 @@ Status ZeroGradient<T>::ComputeInternal(OpKernelContext* ctx) const {
       kMSDomain,                                                  \
       1,                                                          \
       T,                                                          \
-      kHipExecutionProvider,                                     \
+      kRocmExecutionProvider,                                     \
       KernelDefBuilder()                                          \
           .Alias(0, 0) /* Zero out gradients in-place */          \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()) \
@@ -83,5 +83,5 @@ Status InPlaceAccumulator<T, T_GRAD>::ComputeInternal(OpKernelContext* ctx) cons
   return Status::OK();
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

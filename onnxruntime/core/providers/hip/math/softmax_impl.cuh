@@ -20,7 +20,7 @@
 #include "core/providers/hip/cu_inc/common.cuh"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 inline int log2_ceil(int value) {
   int log2_value = 0;
@@ -55,5 +55,5 @@ __device__ __forceinline__ void warp_reduce(acc_t* sum) {
   }
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

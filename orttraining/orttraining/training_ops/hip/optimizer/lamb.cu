@@ -9,7 +9,7 @@
 #include "orttraining/training_ops/hip/optimizer/common.cuh"
 #include "orttraining/training_ops/hip/optimizer/lamb.h"
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 template <typename T1, typename T2, typename T3>
 __device__ __forceinline__ void _LambComputeDirectionRule(
     const T1& g_scale,
@@ -530,5 +530,5 @@ INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(float, half, float, half, float)
 INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(float, half, float, float, float)
 INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(half, half, half, half, float)
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

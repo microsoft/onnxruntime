@@ -4,7 +4,7 @@
 #pragma once
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 // This macro simplifies coding to add a new op with following steps:
 // 1. Add a new entry in UNARY_OPS() list
@@ -43,5 +43,5 @@ void Impl_Cast(
     OutT* output_data,
     size_t count);
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

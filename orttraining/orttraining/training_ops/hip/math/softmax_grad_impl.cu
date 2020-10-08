@@ -25,7 +25,7 @@
 #include "core/providers/hip/math/softmax_impl.cuh"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename input_t, typename output_t, typename acc_t, int log2_elements, bool is_log_softmax>
 __global__ void softmax_warp_backward(output_t* gradInput, const input_t* grad, const input_t* output, int batch_size, int stride, int element_count) {

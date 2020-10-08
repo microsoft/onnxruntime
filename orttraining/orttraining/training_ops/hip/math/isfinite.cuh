@@ -6,7 +6,7 @@
 #include "isfinite.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template<typename T>
 __device__ __forceinline__ bool _IsFiniteScalar(const T value) {
@@ -18,5 +18,5 @@ __device__ __forceinline__ bool _IsFiniteScalar(const half value) {
   return !__hisinf(value) && !__hisnan(value);
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

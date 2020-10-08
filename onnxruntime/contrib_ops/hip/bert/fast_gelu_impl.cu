@@ -27,11 +27,11 @@ limitations under the License.
 #include "core/providers/hip/shared_inc/hip_call.h"
 #include "fast_gelu_impl.h"
 
-using namespace onnxruntime::hip;
+using namespace onnxruntime::rocm;
 
 namespace onnxruntime {
 namespace contrib {
-namespace hip {
+namespace rocm {
 
 // constants for approximating the normal cdf
 constexpr float A = 0.5;
@@ -95,6 +95,6 @@ bool LaunchFastGeluKernel(const hipDeviceProp_t& prop, hipStream_t stream, int i
   return HIP_CALL(hipPeekAtLastError());
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime

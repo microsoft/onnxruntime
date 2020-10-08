@@ -7,7 +7,7 @@
 #include "core/providers/hip/hip_common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename T, int NumThreadsPerBlock, int NumElementsPerThread>
 __global__ void _FillFromDataPtrKernel(T* output_data, const T* input_data, HIP_LONG N) {
@@ -178,5 +178,5 @@ Status ExpandImpl(
   return Status::OK();
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

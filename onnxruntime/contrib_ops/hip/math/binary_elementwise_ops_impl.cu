@@ -8,7 +8,7 @@
 
 namespace onnxruntime {
 namespace contrib {
-namespace hip {
+namespace rocm {
 
 #define OP(name, expr)                                   \
   template <class T>                                     \
@@ -84,6 +84,6 @@ CONTRIB_BINARY_OPS()
 
 CONTRIB_SPECIALIZED_BINARY_ELEMENTWISE_IMPL_HFD(BiasGelu)
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime

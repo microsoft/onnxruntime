@@ -26,7 +26,7 @@
 #include "core/providers/hip/hip_common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename T, typename U>
 void HostApplyLayerNorm(
@@ -59,5 +59,5 @@ void HostLayerNormGradient(
     U* part_grad_gamma,
     U* part_grad_beta,
     const int part_size);
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

@@ -5,18 +5,18 @@
 #include "core/providers/hip/hip_fwd.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 ONNX_OPERATOR_KERNEL_EX(
     Group,
     kMSDomain,
     1,
-    kHipExecutionProvider,
+    kRocmExecutionProvider,
     KernelDefBuilder()
         .OutputMemoryType<OrtMemTypeCPUOutput>(0)
         .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
     onnxruntime::contrib::Group);
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

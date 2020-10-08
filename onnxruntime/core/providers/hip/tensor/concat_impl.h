@@ -7,7 +7,7 @@
 #include "core/common/common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 Status ConcatImpl(const size_t element_bytes,
                   const int block_size_including_axis_dim,
@@ -19,5 +19,5 @@ Status ConcatImpl(const size_t element_bytes,
                   const void** input_ptr,
                   const size_t N);
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

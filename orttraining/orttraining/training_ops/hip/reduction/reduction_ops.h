@@ -8,7 +8,7 @@
 #include "core/providers/hip/reduction/reduction_functions.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename T>
 class ReduceSumTraining final : public ReduceKernel<true> {
@@ -22,5 +22,5 @@ class ReduceSumTraining final : public ReduceKernel<true> {
   }
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

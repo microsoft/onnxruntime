@@ -8,7 +8,7 @@
 #include "core/providers/cpu/tensor/utils.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 struct BinaryElementwisePreparation {
   const Tensor* lhs_tensor = nullptr;
@@ -16,15 +16,15 @@ struct BinaryElementwisePreparation {
   Tensor* output_tensor = nullptr;
   int32_t output_rank_or_simple_broadcast = 0; // for no_broadcast|left_scalar|right_scalar cases, output_rank uses SimpleBroadcast enums
 
-  HipKernel::HipAsyncBuffer<int64_t> lhs_padded_strides;  // for lhs shape == output shape, this is nullptr
-  HipKernel::HipAsyncBuffer<int64_t> rhs_padded_strides;  // for rhs shape == output shape, this is nullptr
-  HipKernel::HipAsyncBuffer<fast_divmod> fdm_output_strides;
+  RocmKernel::HipAsyncBuffer<int64_t> lhs_padded_strides;  // for lhs shape == output shape, this is nullptr
+  RocmKernel::HipAsyncBuffer<int64_t> rhs_padded_strides;  // for rhs shape == output shape, this is nullptr
+  RocmKernel::HipAsyncBuffer<fast_divmod> fdm_output_strides;
 
   // these are for RightPerChannel case
   fast_divmod fdm_H;
   fast_divmod fdm_C;
 
-  BinaryElementwisePreparation(const HipKernel* op_kernel) : lhs_padded_strides(op_kernel),
+  BinaryElementwisePreparation(const RocmKernel* op_kernel) : lhs_padded_strides(op_kernel),
                                                               rhs_padded_strides(op_kernel),
                                                               fdm_output_strides(op_kernel) {}
 
@@ -170,11 +170,11 @@ class ShouldNotBroadcast {
 };
 
 template <typename BroadcastTrait>
-class BinaryElementwise : public HipKernel {
+class BinaryElementwise : public RocmKernel {
  protected:
   typedef BroadcastTrait broadcast_type;
 
-  BinaryElementwise(const OpKernelInfo& info) : HipKernel(info) {}
+  BinaryElementwise(const OpKernelInfo& info) : RocmKernel(info) {}
   Status ComputeInternal(OpKernelContext*) const override {
     return Status(common::ONNXRUNTIME, common::FAIL);  // should not reach here
   }
@@ -296,5 +296,5 @@ class Less final : public CompareFunction<T, typename ToHipType<T>::MappedType> 
 
   Status ComputeInternal(OpKernelContext* context) const override;
 };
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

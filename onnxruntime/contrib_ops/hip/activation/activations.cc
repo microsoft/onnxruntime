@@ -4,11 +4,11 @@
 #include "activations.h"
 #include "core/framework/op_kernel.h"
 
-using namespace onnxruntime::hip;
+using namespace onnxruntime::rocm;
 
 namespace onnxruntime {
 namespace contrib {
-namespace hip {
+namespace rocm {
 
 #define REGISTER_ACTIVATION_KERNEL(x, ver, domain, T)            \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                 \
@@ -16,7 +16,7 @@ namespace hip {
       domain,                                                    \
       ver,                                                       \
       T,                                                         \
-      kHipExecutionProvider,                                    \
+      kRocmExecutionProvider,                                    \
       KernelDefBuilder()                                         \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()) \
           .MayInplace(0, 0),                                     \
@@ -54,6 +54,6 @@ REGISTER_ACTIVATION_KERNEL(ThresholdedRelu, 1, kOnnxDomain, MLFloat16)
 REGISTER_ACTIVATION_KERNEL(ThresholdedRelu, 1, kOnnxDomain, float)
 REGISTER_ACTIVATION_KERNEL(ThresholdedRelu, 1, kOnnxDomain, double)
 
-}  //namespace hip
+}  //namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime

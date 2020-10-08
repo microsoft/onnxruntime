@@ -9,15 +9,15 @@
 #include "core/providers/hip/hip_common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 using InputTensorVector = std::vector<std::reference_wrapper<const Tensor>>;
 
 template <typename VariadicElementwiseOpTag,
           typename... SupportedElementTypes>
-class VariadicElementwiseOp : public HipKernel {
+class VariadicElementwiseOp : public RocmKernel {
  public:
-  VariadicElementwiseOp(const OpKernelInfo& info) : HipKernel(info) {}
+  VariadicElementwiseOp(const OpKernelInfo& info) : RocmKernel(info) {}
 
  private:
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -29,14 +29,14 @@ class VariadicElementwiseOp : public HipKernel {
 
   template <typename T>
   struct BinaryImplDispatchTarget {
-    Status operator()(const HipKernel* kernel, const Tensor& lhs, const Tensor& rhs, Tensor& output) const;
+    Status operator()(const RocmKernel* kernel, const Tensor& lhs, const Tensor& rhs, Tensor& output) const;
   };
 
   template <typename T>
   struct GeneralImplDispatchTarget {
-    Status operator()(const HipKernel* kernel, const InputTensorVector& inputs, Tensor& output) const;
+    Status operator()(const RocmKernel* kernel, const InputTensorVector& inputs, Tensor& output) const;
   };
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

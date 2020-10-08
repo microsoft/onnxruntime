@@ -6,7 +6,7 @@
 #include "core/framework/op_kernel_context_internal.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename T>
 struct AccumulateType {};
@@ -25,7 +25,7 @@ using AccType = typename AccumulateType<T>::type;
       kMSDomain,                                                                                                                                \
       1,                                                                                                                                        \
       TIn##_##TOut,                                                                                                                             \
-      kHipExecutionProvider,                                                                                                                   \
+      kRocmExecutionProvider,                                                                                                                   \
       KernelDefBuilder().TypeConstraint("TIn", DataTypeImpl::GetTensorType<TIn>()).TypeConstraint("TOut", DataTypeImpl::GetTensorType<TOut>()), \
       Name<TIn, TOut>);
 
@@ -114,5 +114,5 @@ REGISTER_REDUCE_ALL_KERNEL_TYPED(ReduceAllL2, MLFloat16, float)
 REGISTER_REDUCE_ALL_KERNEL_TYPED(ReduceAllL2, float, MLFloat16)
 REGISTER_REDUCE_ALL_KERNEL_TYPED(ReduceAllL2, MLFloat16, MLFloat16)
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

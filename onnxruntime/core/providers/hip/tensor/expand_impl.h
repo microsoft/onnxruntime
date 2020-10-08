@@ -9,7 +9,7 @@
 #include "core/providers/hip/hip_common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 Status ExpandImpl(
     const size_t element_size,
@@ -21,5 +21,5 @@ Status ExpandImpl(
     const TArray<int64_t>& input_strides);
 
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

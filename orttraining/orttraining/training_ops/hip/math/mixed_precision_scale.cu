@@ -4,7 +4,7 @@
 #include "mixed_precision_scale.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename SrcT, typename DstT>
 __global__ void _MixedPrecisionScale(
@@ -43,5 +43,5 @@ SPECIALIZE_MIXEDPRECISIONSCALE_IMPL(half, float)
 SPECIALIZE_MIXEDPRECISIONSCALE_IMPL(float, half)
 SPECIALIZE_MIXEDPRECISIONSCALE_IMPL(float, float)
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

@@ -5,7 +5,7 @@
 #include "core/providers/hip/shared_inc/hip_utils.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template<typename TIndex>
 void ComputeSliceOffsetsImpl(
@@ -37,5 +37,5 @@ void GatherNDGradImpl(
     const int64_t* input_slice_offsets_data);
 #endif
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

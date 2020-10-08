@@ -8,9 +8,9 @@
 #include "core/providers/hip/shared_inc/hip_utils.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 template <typename T>
 void ClipImpl(const T* input_data, T* output_data, T min, T max, size_t count);
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

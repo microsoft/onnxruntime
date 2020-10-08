@@ -6,13 +6,13 @@
 #include "core/providers/cpu/tensor/split.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
-class Split final : public HipKernel, public SplitBase {
+class Split final : public RocmKernel, public SplitBase {
  public:
-  Split(const OpKernelInfo& info) : HipKernel(info), SplitBase(info) {}
+  Split(const OpKernelInfo& info) : RocmKernel(info), SplitBase(info) {}
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

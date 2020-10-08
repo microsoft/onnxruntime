@@ -6,7 +6,7 @@
 #include "orttraining/training_ops/cpu/optimizer/common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename T>
 Status CopyIfNotSameBuffer(const Tensor& source_tensor, Tensor& target_tensor) {
@@ -18,5 +18,5 @@ Status CopyIfNotSameBuffer(const Tensor& source_tensor, Tensor& target_tensor) {
   return Status::OK();
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

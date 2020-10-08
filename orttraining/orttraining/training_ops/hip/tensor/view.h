@@ -8,14 +8,14 @@
 #include "core/providers/hip/hip_common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
-class View final : public HipKernel {
+class View final : public RocmKernel {
  public:
-  View(const OpKernelInfo& info) : HipKernel(info) {}
+  View(const OpKernelInfo& info) : RocmKernel(info) {}
 
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

@@ -8,7 +8,7 @@
 #include "orttraining/training_ops/hip/optimizer/adam.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 // TODO: Once Schema is checked in to onnx lets fix this to match that
 #define REGISTER_ADAM_KERNEL_TYPED(T1, T2, T3, T4, T_GRAD, T_GRAD_NORM)               \
@@ -17,7 +17,7 @@ namespace hip {
       kMSDomain,                                                                      \
       1,                                                                              \
       T1##_##T2##_##T3##_##T4##_##T_GRAD##_##T_GRAD_NORM,                             \
-      kHipExecutionProvider,                                                         \
+      kRocmExecutionProvider,                                                         \
       KernelDefBuilder()                                                              \
           .Alias(1, 0)                             /* Update step count in-place */   \
           .Alias(2, 3)                             /* Update weights in-place */      \
@@ -149,5 +149,5 @@ Status AdamOptimizer<T1, T2, T3, T4, T_GRAD, T_GRAD_NORM>::ComputeInternal(OpKer
   return Status::OK();
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

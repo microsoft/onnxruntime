@@ -6,7 +6,7 @@
 #include "core/providers/hip/shared_inc/hip_utils.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 #define REGISTER_KERNEL_TYPED_GATHER_ND_GRAD(TIndex)                                                                        \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                                            \
@@ -14,7 +14,7 @@ namespace hip {
       kMSDomain,                                                                                                            \
       1,                                                                                                                    \
       TIndex,                                                                                                               \
-      kHipExecutionProvider,                                                                                               \
+      kRocmExecutionProvider,                                                                                               \
       KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<MLFloat16>(),                                     \
                                               DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>()}) \
           .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIndex>())                                                    \
@@ -90,5 +90,5 @@ Status GatherNDGrad<TIndex>::ComputeInternal(OpKernelContext* context) const {
   return Status::OK();
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

@@ -7,7 +7,7 @@
 #include "core/providers/hip/reduction/reduction_ops.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename T>
 void SoftMaxCrossEntropyImpl(
@@ -105,5 +105,5 @@ class SparseSoftmaxCrossEntropyGrad final : public LossBase {
 };
 
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

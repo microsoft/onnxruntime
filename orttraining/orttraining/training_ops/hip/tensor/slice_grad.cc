@@ -6,13 +6,13 @@
 #include "core/providers/hip/tensor/slice_impl.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 ONNX_OPERATOR_KERNEL_EX(
     SliceGrad,
     kMSDomain,
     1,
-    kHipExecutionProvider,
+    kRocmExecutionProvider,
     KernelDefBuilder()
         .InputMemoryType<OrtMemTypeCPUInput>(1)
         .InputMemoryType<OrtMemTypeCPUInput>(2)
@@ -64,5 +64,5 @@ Status SliceGrad::CallSliceImp(size_t element_size, size_t dimension_count, cons
                        output_shape.Size());
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

@@ -14,7 +14,7 @@
 #include "core/providers/hip/shared_inc/fast_divmod.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 enum class SimpleBroadcast : int32_t {
   NoBroadcast = (int32_t)-1,
@@ -101,5 +101,5 @@ struct TArray {
   T data_[capacity];
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

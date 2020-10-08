@@ -6,14 +6,14 @@
 #include "core/providers/hip/hip_common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename T>
-class Where final : public HipKernel {
+class Where final : public RocmKernel {
  public:
-  Where(const OpKernelInfo& info) : HipKernel(info) {}
+  Where(const OpKernelInfo& info) : RocmKernel(info) {}
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

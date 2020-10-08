@@ -8,7 +8,7 @@
 #include "sg.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename T>
 __global__ void _SGDOptimizer(
@@ -60,5 +60,5 @@ void SGDOptimizerImpl(
 
 SPECIALIZED_IMPL__SGDOptimizerImpl(float)
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

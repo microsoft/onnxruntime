@@ -4,13 +4,13 @@
 #include "core/providers/hip/nn/dropout.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 ONNX_OPERATOR_KERNEL_EX(
     Dropout,
     kOnnxDomain,
     12,
-    kHipExecutionProvider,
+    kRocmExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes())
         .TypeConstraint("T1", DataTypeImpl::AllIEEEFloatTensorTypes())
@@ -19,5 +19,5 @@ ONNX_OPERATOR_KERNEL_EX(
         .InputMemoryType<OrtMemTypeCPUInput>(2),
     Dropout<false>);
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

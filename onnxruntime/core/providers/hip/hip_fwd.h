@@ -4,7 +4,7 @@
 #pragma once
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 template <typename T>
 KernelCreateInfo BuildKernelCreateInfo();
 }

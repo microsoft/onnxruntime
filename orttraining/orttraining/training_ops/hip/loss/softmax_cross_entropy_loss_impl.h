@@ -8,7 +8,7 @@
 #include "orttraining/training_ops/hip/loss/softmaxcrossentropy_impl.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename T, typename Tin>
 void SoftmaxCrossEntropyLossImpl(
@@ -70,5 +70,5 @@ class SoftmaxCrossEntropyLossGrad final : public LossBase {
   int64_t ignore_index_;
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

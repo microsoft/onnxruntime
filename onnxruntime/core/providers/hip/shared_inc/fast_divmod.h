@@ -12,7 +12,7 @@
 #include "core/common/common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 // The code below is based on section 4 Unsigned division of paper https://gmplib.org/~tege/divcnst-pldi94.pdf
 // In current ORT, fast_divmod is used for calculating the position of a element in tensor,
@@ -57,5 +57,5 @@ struct fast_divmod {
   uint32_t l_;  // l_ = ceil(log2(d_))
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

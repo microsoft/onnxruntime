@@ -8,7 +8,7 @@
 #include "common.cuh"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename InT, typename OutT, typename FuncT, int NumThreadsPerBlock, int NumElementsPerThread>
 __global__ void _UnaryElementWise(
@@ -56,5 +56,5 @@ void UnaryElementWiseImpl(
           N);
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

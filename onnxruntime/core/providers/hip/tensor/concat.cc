@@ -5,11 +5,11 @@
 #include "concat_impl.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Concat,
                                   kOnnxDomain,
                                   4, 10,
-                                  kHipExecutionProvider,
+                                  kRocmExecutionProvider,
                                   KernelDefBuilder()
                                       .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
                                   Concat);
@@ -18,7 +18,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Concat,
 ONNX_OPERATOR_KERNEL_EX(Concat,
                         kOnnxDomain,
                         11,
-                        kHipExecutionProvider,
+                        kRocmExecutionProvider,
                         KernelDefBuilder()
                             .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
                         Concat);
@@ -80,5 +80,5 @@ Status Concat::ComputeInternal(OpKernelContext* ctx) const {
                                  p.output_num_elements));
   return Status::OK();
 }
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

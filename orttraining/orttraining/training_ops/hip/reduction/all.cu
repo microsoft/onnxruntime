@@ -9,7 +9,7 @@
 #include <thrust/execution_policy.h>
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 __global__ void assign_true(bool* ptr) {
   *ptr = true;
@@ -30,5 +30,5 @@ void LaunchAllKernel(const bool* data, const int size, bool* output) {
   }
 }
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

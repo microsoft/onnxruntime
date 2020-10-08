@@ -6,15 +6,15 @@
 #include "core/providers/hip/hip_common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename input_t, typename output_t, typename acc_t, bool is_log_softmax>
 void dispatch_softmax_backward(output_t* grad_input, const input_t* grad, const input_t* output, int softmax_elements, int softmax_elements_stride, int batch_count);
 
 template <typename T>
-class SoftmaxGrad final : public HipKernel {
+class SoftmaxGrad final : public RocmKernel {
  public:
-  SoftmaxGrad(const OpKernelInfo& info) : HipKernel{info} {
+  SoftmaxGrad(const OpKernelInfo& info) : RocmKernel{info} {
     info.GetAttrOrDefault("axis", &axis_, static_cast<int64_t>(1));
     log_softmax_ = info.GetKernelDef().OpName() == "LogSoftmaxGrad";
   }
@@ -26,5 +26,5 @@ class SoftmaxGrad final : public HipKernel {
   bool log_softmax_;
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

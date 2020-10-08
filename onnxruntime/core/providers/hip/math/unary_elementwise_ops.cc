@@ -5,7 +5,7 @@
 #include "unary_elementwise_ops_impl.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 Status UnaryElementwise::Prepare(OpKernelContext* context, UnaryElementwisePreparation* p) const {
   p->input_tensor = context->Input<Tensor>(0);
@@ -19,7 +19,7 @@ Status UnaryElementwise::Prepare(OpKernelContext* context, UnaryElementwisePrepa
       kOnnxDomain,                                                              \
       ver,                                                                      \
       T,                                                                        \
-      kHipExecutionProvider,                                                   \
+      kRocmExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       x<T>);
 
@@ -29,7 +29,7 @@ Status UnaryElementwise::Prepare(OpKernelContext* context, UnaryElementwisePrepa
       kOnnxDomain,                                                                                                                        \
       ver,                                                                                                                                \
       T,                                                                                                                                  \
-      kHipExecutionProvider,                                                                                                             \
+      kRocmExecutionProvider,                                                                                                             \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()).TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()), \
       x<T>);
 
@@ -99,5 +99,5 @@ UNARY_OP_HFD(Erf, 9)
 UNARY_LOGICALOP_TYPED(Not, 1, bool)
 UNARY_OP_HFD(Round, 11)
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

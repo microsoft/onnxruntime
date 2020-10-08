@@ -7,7 +7,7 @@
 #include "core/providers/hip/tensor/onehot.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename in_type, typename out_type>
 __global__ void _OneHotImpl(
@@ -129,5 +129,5 @@ SPECIALIZED_OneHotWithZeroOffValueImpl(int32_t, float)
 SPECIALIZED_OneHotWithZeroOffValueImpl(int64_t, half)
 SPECIALIZED_OneHotWithZeroOffValueImpl(int32_t, half)
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

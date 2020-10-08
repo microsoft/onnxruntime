@@ -10,8 +10,8 @@ namespace test {
 
 #if USE_CUDA
 constexpr const char* kGpuExecutionProvider = kCudaExecutionProvider;
-#elif USE_HIP
-constexpr const char* kGpuExecutionProvider = kHipExecutionProvider;
+#elif USE_ROCM
+constexpr const char* kGpuExecutionProvider = kRocmExecutionProvider;
 #endif
 
 constexpr auto k_epsilon_default = 1e-5f;

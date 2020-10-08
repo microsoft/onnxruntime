@@ -23,7 +23,7 @@ HIPFence::~HIPFence() {
 }
 
 void HIPFence::BeforeUsingAsInput(onnxruntime::ProviderType provider_type, int async_queue_id) {
-  if (provider_type == onnxruntime::kHipExecutionProvider) {
+  if (provider_type == onnxruntime::kRocmExecutionProvider) {
     // sync in GPU, the call is non-blocking on CPU
     HIP_CALL_THROW(hipStreamWaitEvent(data_transfer_->GetStream(async_queue_id), write_event_, 0));
   } else {
@@ -33,7 +33,7 @@ void HIPFence::BeforeUsingAsInput(onnxruntime::ProviderType provider_type, int a
 }
 
 void HIPFence::BeforeUsingAsOutput(onnxruntime::ProviderType provider_type, int queue_id) {
-  if (provider_type == onnxruntime::kHipExecutionProvider) {
+  if (provider_type == onnxruntime::kRocmExecutionProvider) {
     // sync in GPU, the call is non-blocking on CPU
     hipStream_t stream = data_transfer_->GetStream(queue_id);
     HIP_CALL_THROW(hipStreamWaitEvent(stream, read_event_, 0));

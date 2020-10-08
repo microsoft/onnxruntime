@@ -9,7 +9,7 @@
 #include "orttraining/training_ops/hip/optimizer/common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 template <typename T1, typename T3, typename T4, typename T_GRAD, typename T_GRAD_NORM>
 __global__ void _AdamOptimizer_mode0(
     const T1* eta,
@@ -256,5 +256,5 @@ SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, half, float)
 // SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half, half, half)
 // SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half, half, float)
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

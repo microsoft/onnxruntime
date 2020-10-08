@@ -8,12 +8,12 @@
 
 namespace onnxruntime {
 namespace contrib {
-namespace hip {
+namespace rocm {
 
-using namespace onnxruntime::hip;
+using namespace onnxruntime::rocm;
 
 template <typename T, typename U>
-class LayerNorm final : public HipKernel {
+class LayerNorm final : public RocmKernel {
  public:
   LayerNorm(const OpKernelInfo& op_kernel_info);
 
@@ -24,6 +24,6 @@ class LayerNorm final : public HipKernel {
   double epsilon_;
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime

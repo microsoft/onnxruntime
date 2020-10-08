@@ -7,7 +7,7 @@
 #include "core/common/common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 template <typename T>
 void WhereImpl(
@@ -25,5 +25,5 @@ void WhereImpl(
     T* output_data,
     size_t count);
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

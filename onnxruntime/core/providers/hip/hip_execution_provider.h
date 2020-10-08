@@ -20,17 +20,17 @@ namespace onnxruntime {
 const int CPU_ALLOCATOR_DEVICE_ID = 0;
 
 // Information needed to construct HIP execution providers.
-struct HIPExecutionProviderInfo {
+struct ROCMExecutionProviderInfo {
   OrtDevice::DeviceId device_id{0};
   size_t hip_mem_limit{std::numeric_limits<size_t>::max()};
   ArenaExtendStrategy arena_extend_strategy{ArenaExtendStrategy::kNextPowerOfTwo};
 };
 
 // Logical device representation.
-class HIPExecutionProvider : public IExecutionProvider {
+class ROCMExecutionProvider : public IExecutionProvider {
  public:
-  explicit HIPExecutionProvider(const HIPExecutionProviderInfo& info);
-  virtual ~HIPExecutionProvider();
+  explicit ROCMExecutionProvider(const ROCMExecutionProviderInfo& info);
+  virtual ~ROCMExecutionProvider();
 
   AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
 
@@ -130,17 +130,17 @@ class HIPExecutionProvider : public IExecutionProvider {
     const T* GetConstOnes(size_t count) {
       if (std::is_same<T, float>::value) {
         if (!constant_ones_float_) {
-          constant_ones_float_ = hip::CreateConstantOnes<float>();
+          constant_ones_float_ = rocm::CreateConstantOnes<float>();
         }
         return reinterpret_cast<const T*>(constant_ones_float_->GetBuffer(count));
       } else if (std::is_same<T, double>::value) {
         if (!constant_ones_double_) {
-          constant_ones_double_ = hip::CreateConstantOnes<double>();
+          constant_ones_double_ = rocm::CreateConstantOnes<double>();
         }
         return reinterpret_cast<const T*>(constant_ones_double_->GetBuffer(count));
       } else if (std::is_same<T, half>::value) {
         if (!constant_ones_half_) {
-          constant_ones_half_ = hip::CreateConstantOnes<half>();
+          constant_ones_half_ = rocm::CreateConstantOnes<half>();
         }
         return reinterpret_cast<const T*>(constant_ones_half_->GetBuffer(count));
       } else {
@@ -163,14 +163,14 @@ class HIPExecutionProvider : public IExecutionProvider {
     // so the ownership is passed to deferred_release_cpu_ptr_
     hipEvent_t current_deferred_release_event_ = nullptr;
 
-    std::unique_ptr<hip::IConstantBuffer<float>> constant_ones_float_;
-    std::unique_ptr<hip::IConstantBuffer<double>> constant_ones_double_;
-    std::unique_ptr<hip::IConstantBuffer<half>> constant_ones_half_;
+    std::unique_ptr<rocm::IConstantBuffer<float>> constant_ones_float_;
+    std::unique_ptr<rocm::IConstantBuffer<double>> constant_ones_double_;
+    std::unique_ptr<rocm::IConstantBuffer<half>> constant_ones_half_;
 
     AllocatorPtr allocator_;
   };
 
-  using PerThreadContextMap = std::unordered_map<const HIPExecutionProvider*, std::weak_ptr<PerThreadContext>>;
+  using PerThreadContextMap = std::unordered_map<const ROCMExecutionProvider*, std::weak_ptr<PerThreadContext>>;
   // thread local PerThreadContext cache
   static const std::shared_ptr<PerThreadContextMap>& PerThreadContextCache() {
     thread_local const auto per_thread_context_cache = std::make_shared<PerThreadContextMap>();
@@ -182,7 +182,7 @@ class HIPExecutionProvider : public IExecutionProvider {
     std::set<std::shared_ptr<PerThreadContext>, std::owner_less<std::shared_ptr<PerThreadContext>>> active_contexts;
     // contexts available for reuse
     std::vector<std::shared_ptr<PerThreadContext>> retired_context_pool;
-    // weak references to thread local caches from which this HIPExecutionProvider instance's entry should be removed
+    // weak references to thread local caches from which this ROCMExecutionProvider instance's entry should be removed
     // upon destruction
     std::set<std::weak_ptr<PerThreadContextMap>, std::owner_less<std::weak_ptr<PerThreadContextMap>>>
         caches_to_update_on_destruction;

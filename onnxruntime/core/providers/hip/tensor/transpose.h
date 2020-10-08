@@ -10,11 +10,11 @@
 #include "core/providers/hip/hip_common.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
-class Transpose final : public HipKernel, public TransposeBase {
+class Transpose final : public RocmKernel, public TransposeBase {
  public:
-  Transpose(const OpKernelInfo& info) : HipKernel(info), TransposeBase(info) {}
+  Transpose(const OpKernelInfo& info) : RocmKernel(info), TransposeBase(info) {}
 
   Status ComputeInternal(OpKernelContext* context) const override;
 
@@ -22,5 +22,5 @@ class Transpose final : public HipKernel, public TransposeBase {
                             const std::vector<size_t>& permutations, const Tensor& input, Tensor& output);
 };
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime

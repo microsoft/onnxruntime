@@ -7,7 +7,7 @@
 #include "core/providers/cpu/tensor/utils.h"
 
 namespace onnxruntime {
-namespace hip {
+namespace rocm {
 
 MiopenTensor::MiopenTensor()
     : tensor_(nullptr) {
@@ -142,5 +142,5 @@ const float Consts<half>::Zero = 0;
 
 const float Consts<half>::One = 1;
 
-}  // namespace hip
+}  // namespace rocm
 }  // namespace onnxruntime
