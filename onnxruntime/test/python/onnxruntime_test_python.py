@@ -712,6 +712,43 @@ class TestInferenceSession(unittest.TestCase):
         so3.register_custom_ops_library(shared_library)
         sess3 = onnxrt.InferenceSession(custom_op_model, so3)
 
+    def testOrtValue(self):
+
+        def test_session_with_ortvalue_input(ortvalue):
+            sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
+            res = sess.run(["Y"], {"X": ortvalue})
+            self.assertTrue(np.array_equal(res[0], numpy_arr_output))
+
+        numpy_arr_input = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        numpy_arr_output = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
+
+        ortvalue1 = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr_input)
+        self.assertEqual(ortvalue1.device_name(), "cpu")
+        self.assertEqual(ortvalue1.shape(), [3, 2])
+        self.assertEqual(ortvalue1.data_type(), "tensor(float)")
+        self.assertEqual(ortvalue1.is_tensor(), True)
+        self.assertTrue(np.array_equal(ortvalue1.numpy(), numpy_arr_input))
+
+        # Pass in the constructed OrtValue to a session via Run() and check results
+        test_session_with_ortvalue_input(ortvalue1)
+
+        # The constructed OrtValue should still be valid after being used in a session
+        self.assertTrue(np.array_equal(ortvalue1.numpy(), numpy_arr_input))
+
+        if 'CUDAExecutionProvider' in onnxrt.get_available_providers():
+            ortvalue2 = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr_input, 'cuda', 0)
+            self.assertEqual(ortvalue2.device_name(), "cuda")
+            self.assertEqual(ortvalue2.shape(), [3, 2])
+            self.assertEqual(ortvalue2.data_type(), "tensor(float)")
+            self.assertEqual(ortvalue2.is_tensor(), True)
+            self.assertTrue(np.array_equal(ortvalue2.numpy(), numpy_arr_input))
+
+            # Pass in the constructed OrtValue to a session via Run() and check results
+            test_session_with_ortvalue_input(ortvalue2)
+
+            # The constructed OrtValue should still be valid after being used in a session
+            self.assertTrue(np.array_equal(ortvalue2.numpy(), numpy_arr_input))
+
 
 if __name__ == '__main__':
     unittest.main()
