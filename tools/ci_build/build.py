@@ -98,6 +98,8 @@ def parse_arguments():
     parser.add_argument(
         "--use_horovod", action='store_true', help="Enable Horovod.")
     parser.add_argument(
+        "--use_cpu", action='store_true', help="Disable NCCL and only use CPU execution provider.")
+    parser.add_argument(
         "--mpi_home", help="Path to MPI installation dir")
     parser.add_argument(
         "--nccl_home", help="Path to NCCL installation dir")
@@ -728,6 +730,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "ON" if args.enable_training else "OFF"),
         "-Donnxruntime_USE_HOROVOD=" + (
             "ON" if args.use_horovod else "OFF"),
+        "-Donnxruntime_USE_NCCL=" + (
+            "OFF" if args.use_cpu else "ON"),
         "-Donnxruntime_BUILD_BENCHMARKS=" + (
             "ON" if args.build_micro_benchmarks else "OFF"),
         "-Donnxruntime_USE_ROCM=" + ("ON" if args.use_rocm else "OFF"),
