@@ -63,10 +63,10 @@ using Provider_Tensor = Tensor;
 }  // namespace onnxruntime
 
 #define PROVIDER_BRIDGE_ORT
-#include "core/providers/shared_library/provider_interfaces.h"
+#include "core/common/cpuid_info.h"
 #include "onnx/common/stl_backports.h"
 #include "core/common/logging/logging.h"
-#include "core/common/cpuid_info.h"
+#include "core/providers/shared_library/provider_interfaces.h"
 
 #include "core/providers/dnnl/dnnl_provider_factory.h"
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
@@ -306,19 +306,16 @@ struct ProviderHostImpl : ProviderHost {
 
   std::vector<std::string> GetStackTrace() override { return onnxruntime::GetStackTrace(); }
 
-  bool CPU_HasAVX2() override {
-    return CPUIDInfo::GetCPUIDInfo().HasAVX2();
-  }
-
-  bool CPU_HasAVX512f() override {
-    return CPUIDInfo::GetCPUIDInfo().HasAVX512f();
-  }
-
   AutoPadType StringToAutoPadType(const std::string& str) override { return onnxruntime::StringToAutoPadType(str); }
 
   void LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file, const char* function, uint32_t line) override {
     return ::onnxruntime::LogRuntimeError(session_id, status, file, function, line);
   }
+
+  // CPUIDInfo
+  const CPUIDInfo& CPUIDInfo__GetCPUIDInfo() override { return CPUIDInfo::GetCPUIDInfo(); }
+  bool CPUIDInfo__HasAVX2(const CPUIDInfo* p) override { return p->HasAVX2(); }
+  bool CPUIDInfo__HasAVX512f(const CPUIDInfo* p) override { return p->HasAVX512f(); }
 
   // logging::Logger
   bool logging__Logger__OutputIsEnabled(const logging::Logger* p, logging::Severity severity, logging::DataType data_type) override { return p->OutputIsEnabled(severity, data_type); }

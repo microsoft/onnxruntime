@@ -121,20 +121,6 @@ std::string TensorShape::ToString() const {
   return result;
 }
 
-CPUIDInfo g_info;
-
-const CPUIDInfo& CPUIDInfo::GetCPUIDInfo() {
-  return g_info;
-}
-
-bool CPUIDInfo::HasAVX2() const {
-  return g_host->CPU_HasAVX2();
-}
-
-bool CPUIDInfo::HasAVX512f() const {
-  return g_host->CPU_HasAVX512f();
-}
-
 Provider_AllocatorPtr CreateAllocator(Provider_AllocatorCreationInfo info) {
   return g_host->CreateAllocator(info);
 }

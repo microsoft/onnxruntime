@@ -266,8 +266,10 @@ struct ProviderHost {
 
   virtual std::vector<std::string> GetStackTrace() = 0;
 
-  virtual bool CPU_HasAVX2() = 0;
-  virtual bool CPU_HasAVX512f() = 0;
+  // CPUIDInfo
+  virtual const CPUIDInfo& CPUIDInfo__GetCPUIDInfo() = 0;
+  virtual bool CPUIDInfo__HasAVX2(const CPUIDInfo* p) = 0;
+  virtual bool CPUIDInfo__HasAVX512f(const CPUIDInfo* p) = 0;
 
   // logging::Logger
   virtual bool logging__Logger__OutputIsEnabled(const logging::Logger* p, logging::Severity severity, logging::DataType data_type) = 0;
@@ -534,6 +536,15 @@ struct ProviderHost {
 extern ProviderHost* g_host;
 
 #ifndef PROVIDER_BRIDGE_ORT
+
+struct CPUIDInfo {
+  static const CPUIDInfo& GetCPUIDInfo() { return g_host->CPUIDInfo__GetCPUIDInfo(); }
+
+  bool HasAVX2() const { return g_host->CPUIDInfo__HasAVX2(this); }
+  bool HasAVX512f() const { return g_host->CPUIDInfo__HasAVX512f(this); }
+
+PROVIDER_DISALLOW_ALL(CPUIDInfo)
+};
 
 namespace logging {
 

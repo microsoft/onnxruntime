@@ -61,6 +61,7 @@ struct Provider_ValueInfoProto;
 struct Provider_ValueInfoProtos;
 
 // OnnxRuntime Types (all of these are actually just Provider_<type> -> <type>)
+struct CPUIDInfo;
 namespace logging {
 struct Logger;
 struct Capture;
@@ -186,14 +187,6 @@ std::unique_ptr<Provider_IDataTransfer> Provider_CreateGPUDataTransfer();
 std::string GetEnvironmentVar(const std::string& var_name);
 
 inline AutoPadType StringToAutoPadType(const std::string& str) { return g_host->StringToAutoPadType(str); }
-
-class CPUIDInfo {
- public:
-  static const CPUIDInfo& GetCPUIDInfo();
-
-  bool HasAVX2() const;
-  bool HasAVX512f() const;
-};
 
 namespace logging {
 
