@@ -109,6 +109,8 @@ RUN mv $OPENMPI_DIR/bin/mpirun $OPENMPI_DIR/bin/mpirun.real && \
 # install mpi4py (be sure to link existing /opt/openmpi-xxx)
 RUN CC=mpicc MPICC=mpicc pip install mpi4py --no-binary mpi4py
 
+ARG CACHE_DATA=2020-09-22
+
 # ONNX Runtime
 WORKDIR $GITHUB_DIR
 ENV ORT_DIR=$GITHUB_DIR/onnxruntime
@@ -131,8 +133,7 @@ RUN git clone --recursive -b wezhan/amdgpu https://github.com/microsoft/onnxrunt
 
 # ONNX Runtime Training Examples
 WORKDIR $GITHUB_DIR
-# ARG GPT2_DATASET=wikitext-2
-ARG GPT2_DATASET=wikitext-2-raw
+ARG GPT2_DATASET=wikitext-103
 RUN git clone -b wezhan/amdgpu https://github.com/microsoft/onnxruntime-training-examples.git \
   && cd onnxruntime-training-examples \
   # Nvidia BERT
@@ -156,14 +157,15 @@ RUN git clone -b wezhan/amdgpu https://github.com/microsoft/onnxruntime-training
   && cp -r $GITHUB_DIR/onnxruntime-training-examples/huggingface-gpt2/ort_addon/ort_supplement/* ./ \
   && python3 -m pip install --no-cache-dir -e . \
   && python3 -m pip install --no-cache-dir -r examples/requirements.txt \
+  && python3 -m pip install cerberus \
   && cd .. \
   && wget https://s3.amazonaws.com/research.metamind.io/wikitext/${GPT2_DATASET}-v1.zip \
   && unzip ${GPT2_DATASET}-v1.zip
 
 ENV BERT_DIR=${WORKSPACE_DIR}/BERT
 ENV GPT2_DIR=${WORKSPACE_DIR}/GPT2
-ENV TRAIN_FILE=${WORKSPACE_DIR}/GPT2/${GPT2_DATASET}/wiki.train.raw
-ENV TEST_FILE=${WORKSPACE_DIR}/GPT2/${GPT2_DATASET}/wiki.test.raw
+ENV TRAIN_FILE=${WORKSPACE_DIR}/GPT2/${GPT2_DATASET}/wiki.train.tokens
+ENV TEST_FILE=${WORKSPACE_DIR}/GPT2/${GPT2_DATASET}/wiki.test.tokens
 
 # Enable ssh access without password needed
 RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/g' /etc/ssh/sshd_config

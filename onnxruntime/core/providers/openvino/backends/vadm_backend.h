@@ -23,7 +23,7 @@ class VADMBackend : public IBackend {
 
  private:
   void StartAsyncInference(Ort::CustomOpApi& ort,
-                           std::vector<const OrtValue*> input_tensors,
+                           OrtKernelContext* context,
                            size_t batch_slice_idx, size_t infer_req_idx,
                            std::vector<InferenceEngine::InferRequest::Ptr>& infer_requests,
                            std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network);
@@ -34,8 +34,9 @@ class VADMBackend : public IBackend {
                               std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network);
 
   GlobalContext& global_context_;
-  const SubGraphContext& subgraph_context_;
+  SubGraphContext subgraph_context_;
   std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network_;
+  std::map<std::string, std::shared_ptr<ngraph::Node>> const_outputs_map_;
   std::vector<InferenceEngine::InferRequest::Ptr> infer_requests_;
   size_t num_inf_reqs_;
   mutable std::mutex compute_lock_;

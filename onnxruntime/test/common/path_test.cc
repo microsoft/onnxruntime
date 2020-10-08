@@ -55,33 +55,33 @@ TEST(PathTest, Parse) {
 }
 
 TEST(PathTest, ParseFailure) {
-    auto check_parse_failure =
-        [](const std::string& path_string) {
+  auto check_parse_failure =
+      [](const std::string& path_string) {
         Path p{};
         EXPECT_FALSE(Path::Parse(ToPathString(path_string), p).IsOK());
       };
 
 #ifdef _WIN32
-    check_parse_failure(R"(\\server_name_no_separator)");
-    check_parse_failure(R"(\\server_name_no_share_name\)");
-    check_parse_failure(R"(\\server_name\share_name_no_root_dir)");
+  check_parse_failure(R"(\\server_name_no_separator)");
+  check_parse_failure(R"(\\server_name_no_share_name\)");
+  check_parse_failure(R"(\\server_name\share_name_no_root_dir)");
 #else  // POSIX
-    check_parse_failure("//root_name_no_root_dir");
+  check_parse_failure("//root_name_no_root_dir");
 #endif
 }
 
 TEST(PathTest, IsEmpty) {
-    auto check_empty =
-        [](const std::string& path_string, bool is_empty) {
+  auto check_empty =
+      [](const std::string& path_string, bool is_empty) {
         Path p{};
         ASSERT_STATUS_OK(Path::Parse(ToPathString(path_string), p));
 
         EXPECT_EQ(p.IsEmpty(), is_empty);
       };
 
-    check_empty("", true);
-    check_empty(".", false);
-    check_empty("/", false);
+  check_empty("", true);
+  check_empty(".", false);
+  check_empty("/", false);
 }
 
 TEST(PathTest, IsAbsoluteOrRelative) {
@@ -223,6 +223,7 @@ TEST(PathTest, RelativePathFailure) {
 #endif
 }
 
+#if !defined(ORT_NO_EXCEPTIONS)
 TEST(PathTest, Concat) {
   auto check_concat =
       [](const optional<std::string>& a, const std::string& b, const std::string& expected_a, bool expect_throw = false) {
@@ -249,6 +250,7 @@ TEST(PathTest, Concat) {
   check_concat({"a/b"}, "c/d", "", true /* expect_throw */);
 #endif
 }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

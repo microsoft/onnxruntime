@@ -11,6 +11,7 @@
 #include "orttraining/core/graph/optimizer_graph_output_key.h"
 #include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/graph/gradient_config.h"
+#include "orttraining/models/runner/pipeline.h"
 
 namespace onnxruntime {
 namespace training {
@@ -46,9 +47,6 @@ class TrainingSession : public InferenceSession {
     // Gradient graph configuration
     GradientGraphConfiguration gradient_graph_config{};
 
-    // Whether to set the gradients as graph outputs.
-    bool set_gradients_as_graph_outputs{false};
-
     // The number of gradient accumulation steps.
     int gradient_accumulation_steps{1};
 
@@ -67,6 +65,8 @@ class TrainingSession : public InferenceSession {
       int horizontal_parallel_size{1};
       // The number of pipeline stages.
       int pipeline_parallel_size{1};
+
+      int pipeline_stage_id{0};
     };
     // The distributed training configuration.
     DistributedConfiguration distributed_config{};
@@ -74,6 +74,7 @@ class TrainingSession : public InferenceSession {
     struct MixedPrecisionConfiguration {
       // Whether to use FP16 initializers.
       bool use_fp16_initializers{};
+      ONNX_NAMESPACE::TensorProto_DataType fp16_type{ONNX_NAMESPACE::TensorProto_DataType_FLOAT16};
     };
     // The mixed precision configuration.
     // If not provided, mixed precision is disabled.
@@ -166,19 +167,30 @@ class TrainingSession : public InferenceSession {
       // Otherwise, use true to trigger ORT's pipeline partition.
       bool do_partition;
       // Tensors to fetch as specified by the user.
-      // Each pipeline stage should pick up some strings from this field..
+      // Each pipeline stage should pick up some strings from this field.
       std::vector<std::string> fetch_names;
       // cut_list contains the list of CutInfo to make the graph partitions.
       // cut_list[i] contains the CutInfo to make the partition between stage i and stage i+1
       std::vector<CutInfo> cut_list;
+
+      // The base path at which to save the intermediate partitioned input model (forward pass only).
+      optional<PathString> partitioned_model_path{};
     };
 
     // If pipeline is enabled, this field's has_value() returns true.
     // Otherwise, it returns false.
     optional<PipelineConfiguration> pipeline_config{};
 
-    // Whether to enable GELU approximation which is faster but produces different results.
-    bool enable_gelu_approximation{false};
+    struct GraphTransformerConfiguration {
+      // Whether to enable GELU approximation which is faster but produces different results.
+      bool enable_gelu_approximation{false};
+      // Enable checkpointing of attention dropout to save memory
+      bool attn_dropout_checkpoint{false};
+      // Enable checkpointing of Gelu activation output to save memory
+      bool gelu_checkpoint{false};
+    };
+
+    GraphTransformerConfiguration graph_transformer_config{};
   };
 
   /**
@@ -207,21 +219,8 @@ class TrainingSession : public InferenceSession {
       // Index of obtained pipeline stage. The first stage is indexed by 0.
       int pipeline_stage_id;
       // The names of pipeline events in model's input list.
-      // The are defined in order of being called.
-      std::string forward_waited_event_name;
-      std::string forward_waited_event_after_recv_name;
-      std::string forward_recorded_event_before_send_name;
-      std::string forward_recorded_event_name;
-      std::string backward_waited_event_name;
-      std::string backward_waited_event_after_recv_name;
-      std::string backward_recorded_event_before_send_name;
-      std::string backward_recorded_event_name;
-
-      std::string forward_wait_output_name;
-      std::string forward_record_output_name;
-      std::string backward_wait_output_name;
-      std::string backward_record_output_name;
-
+      // This field also includes the first output name of each event operator.
+      pipeline::PipelineTensorNames pipeline_tensor_names;
       // Tensors to feed at this pipeline stage.
       std::vector<std::string> feed_names;
       // Tensors to fetch at this pipeline stage.
@@ -364,8 +363,8 @@ class TrainingSession : public InferenceSession {
   //
   // After this function, the resulted computation is
   //
-  //  WaitEvent --> Recv --> WaitEvent --> Forward --> RecordEvent --> Send --> RecordEvent -->
-  //  WaitEvent --> Recv --> WaitEvent --> Backward --> RecordEvent --> Send --> RecordEvent
+  //  WaitEvent --> Recv --> RecordEvent --> WaitEvent --> Forward --> RecordEvent --> WaitEvent --> Send --> RecordEvent -->
+  //  WaitEvent --> Recv --> RecordEvent --> WaitEvent --> Backward --> RecordEvent --> WaitEvent --> Send --> RecordEvent
   //
   // As you can see, some event operators are inserted. For each event operator, its dependent
   // event tensor name is written to an input references, for example, "forward_waited_event_name".
@@ -377,26 +376,16 @@ class TrainingSession : public InferenceSession {
   //     identify backward nodes.
   //  4. No event operator is inserted by other graph transform.
   common::Status InsertPipelineOps(const std::unordered_set<std::string>& initializer_names_to_preserve,
-                                   std::string& forward_waited_event_name,
-                                   std::string& forward_recorded_event_name,
-                                   std::string& backward_waited_event_name,
-                                   std::string& backward_recorded_event_name,
-                                   std::string& forward_wait_output_name,
-                                   std::string& forward_record_output_name,
-                                   std::string& backward_wait_output_name,
-                                   std::string& backward_record_output_name,
-                                   std::string& forward_waited_event_after_recv_name,
-                                   std::string& forward_recorded_event_before_send_name,
-                                   std::string& backward_waited_event_after_recv_name,
-                                   std::string& backward_recorded_event_before_send_name);
+                                   pipeline::PipelineTensorNames& pipeline_tensor_names);
 
-  common::Status ApplyTransformationsToMainGraph(
-      const std::unordered_set<std::string>& weights_to_train, bool enable_gelu_approximation);
+  common::Status ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train,
+                                                 const TrainingConfiguration::GraphTransformerConfiguration& config);
 
   /** configure initial transformers for training */
-  void AddPreTrainingTransformers(GraphTransformerManager& transformer_manager,
+  void AddPreTrainingTransformers(const IExecutionProvider& execution_provider,  // for constant folding
+                                  GraphTransformerManager& transformer_manager,
                                   const std::unordered_set<std::string>& weights_to_train,
-                                  bool enable_gelu_approximation,
+                                  const TrainingConfiguration::GraphTransformerConfiguration& config,
                                   TransformerLevel graph_optimization_level = TransformerLevel::MaxLevel,
                                   const std::vector<std::string>& custom_list = {});
 
@@ -408,12 +397,11 @@ class TrainingSession : public InferenceSession {
   /** Perform auto-diff to add backward graph into the model.
   @param weights_to_train a set of weights to be training.
   @param loss_function_output_name the name of the loss function's output.
-  @param set_gradient_as_graph_output if it is true, set gradient of trainable weight as graph output
   */
   common::Status BuildGradientGraph(const std::unordered_set<std::string>& weights_to_train,
                                     const std::string& loss_function_output_name,
                                     const GradientGraphConfiguration& gradient_graph_config,
-                                    const bool set_gradient_as_graph_output = false);
+                                    const logging::Logger& logger);
 
   common::Status BuildAccumulationNode(const std::unordered_set<std::string>& weights_to_train);
 
@@ -434,7 +422,8 @@ class TrainingSession : public InferenceSession {
   */
   common::Status EnableMixedPrecision(const std::unordered_set<std::string>& weights_to_train,
                                       bool use_fp16_initializer,
-                                      std::unordered_map<std::string, NodeArg*>& fp32_weight_name_to_fp16_node_arg);
+                                      std::unordered_map<std::string, NodeArg*>& fp32_weight_name_to_fp16_node_arg,
+                                      ONNX_NAMESPACE::TensorProto_DataType fp16_type);
 
   /** Discover all trainable initializers by reverse DFS starting from a given tensor (for example, the loss value)
   @param immutable_weights do not include initializers matching an (op_type, input_index, value) entry from this table

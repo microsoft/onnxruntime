@@ -76,7 +76,6 @@ TEST_F(ONNXModelsTest, future_opset) {
   std::shared_ptr<Model> model;
   common::Status st = Model::Load(ORT_TSTR("./testdata/add_opset_314159.onnx"), model, nullptr, *logger_);
   ASSERT_FALSE(st.IsOK());
-  ASSERT_EQ(st.Code(), common::INVALID_GRAPH);
 }
 
 class ONNXModelsTest1 : public ::testing::TestWithParam<const ORTCHAR_T*> {

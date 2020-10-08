@@ -103,12 +103,12 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     // Test if this is an activation that can be fused and also extract the
     // activation's parameters.
     std::vector<float> activation_params;
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Relu", {6}) &&
-        !graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Sigmoid", {6}) &&
-        !graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Tanh", {6})) {
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Relu", {6, 13}) &&
+        !graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Sigmoid", {6, 13}) &&
+        !graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Tanh", {6, 13})) {
       if (graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "LeakyRelu", {6})) {
         activation_params.push_back(graph_utils::GetNodeAttribute(next_node, "alpha")->f());
-      } else if (graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Clip", {6, 11, 12})) {
+      } else if (graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Clip", {6, 11, 12, 13})) {
         float min, max;
         if (GetClipConstantMinMax(graph, next_node, min, max)) {
           activation_params.push_back(min);

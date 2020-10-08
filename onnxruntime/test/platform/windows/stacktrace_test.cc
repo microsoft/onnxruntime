@@ -15,7 +15,7 @@ namespace test {
 
 using namespace ::testing;
 //TVM is not working with StackTrace now.
-#if !(defined USE_TVM || (defined USE_NGRAPH && defined _WIN32))
+#if !(defined USE_TVM || (defined USE_NGRAPH && defined _WIN32)) && !defined(ORT_NO_EXCEPTIONS)
 TEST(StacktraceTests, BasicTests) {
   auto result = ::onnxruntime::GetStackTrace();
 
@@ -29,18 +29,21 @@ TEST(StacktraceTests, BasicTests) {
     // creates the stack trace
     EXPECT_THAT(result[0], HasSubstr("BasicTests"));
 
-  try {
+  ORT_TRY {
     ORT_THROW("Testing");
-  } catch (const OnnxRuntimeException& ex) {
-    auto msg = ex.what();
-    std::cout << msg;
+  }
+  ORT_CATCH(const OnnxRuntimeException& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      auto msg = ex.what();
+      std::cout << msg;
 
-    if (have_working_stacktrace)
-      // unit tests are run by main() in test_main.cc, so make sure that is present
-      EXPECT_THAT(msg, HasSubstr("test_main.cc"));
-    else
-      // otherwise just make sure we captured where the throw was from
-      EXPECT_THAT(msg, HasSubstr("BasicTests"));
+      if (have_working_stacktrace)
+        // unit tests are run by main() in test_main.cc, so make sure that is present
+        EXPECT_THAT(msg, HasSubstr("test_main.cc"));
+      else
+        // otherwise just make sure we captured where the throw was from
+        EXPECT_THAT(msg, HasSubstr("BasicTests"));
+    });
   }
 }
 #endif

@@ -8,6 +8,7 @@
 #include "core/common/logging/isink.h"
 #include "core/platform/ort_mutex.h"
 #include "core/common/status.h"
+#include "core/framework/allocator.h"
 
 namespace onnxruntime {
 class Environment;
@@ -54,6 +55,12 @@ struct OrtEnv {
 
   onnxruntime::logging::LoggingManager* GetLoggingManager() const;
   void SetLoggingManager(std::unique_ptr<onnxruntime::logging::LoggingManager> logging_manager);
+
+  /**
+   * Registers an allocator for sharing between multiple sessions.
+   * Returns an error if an allocator with the same OrtMemoryInfo is already registered.
+  */
+  onnxruntime::Status RegisterAllocator(onnxruntime::AllocatorPtr allocator);
 
  private:
   static OrtEnv* p_instance_;

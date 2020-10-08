@@ -112,13 +112,26 @@ struct ConvAttributes {
                           std::vector<int64_t>& output_shape,
                           bool force_symmetric_auto_padding = false) const {
     size_t rank = input_shape.NumDimensions();
+
+    // Make sure all "metadata" containers have the right number of elements
+    if (rank > strides_p.size())
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Not enough elements in strides. Expected: ", rank, " Got: ", strides_p.size());
+
+    if (rank > kernel_shape.size())
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Not enough elements in kernel shape. Expected: ", rank, " Got: ", kernel_shape.size());
+
+    if (rank > dilations_p.size())
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Not enough elements in dilations. Expected: ", rank, " Got: ", dilations_p.size());
+
+    if ((2 * rank) > pads_p.size())
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Not enough elements in pads. Expected: ", (2 * rank), " Got: ", pads_p.size());
+
     for (size_t dim = 0; dim < rank; ++dim) {
-      if (dim >= strides_p.size() || dim >= kernel_shape.size() ||
-          dim >= dilations_p.size() || dim >= pads_p.size() ||
-          rank + dim >= pads_p.size()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Out of bound access to array");
-      }
-      int64_t dim_size = 0;
+      int64_t output_dim_size = 0;
       ORT_RETURN_IF_ERROR(ComputePadAndOutputShape(input_shape[dim],
                                                    strides_p[dim],
                                                    kernel_shape[dim],
@@ -126,12 +139,135 @@ struct ConvAttributes {
                                                    auto_pad,
                                                    pads_p.at(dim),
                                                    pads_p.at(input_shape.NumDimensions() + dim),
-                                                   dim_size,
+                                                   output_dim_size,
                                                    force_symmetric_auto_padding));
-      if (dim_size <= 0) {
+      if (output_dim_size <= 0) {
         return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Invalid input shape: " + input_shape.ToString());
       }
-      output_shape.push_back(dim_size);
+      output_shape.push_back(output_dim_size);
+    }
+    return Status::OK();
+  }
+
+  // Use this method when pads are to be made symmetrical (if they are asymmetric)
+  // and to collect metadata regarding the portion of the output (with "adjusted" pads)
+  // to be sliced off to make the output correspond to the "actual" asymmetric paddings
+  Status InferOutputShapeWithAdjustedPads(const TensorShape& input_shape,
+                                          const std::vector<int64_t>& kernel_shape,
+                                          const std::vector<int64_t>& strides_p,
+                                          const std::vector<int64_t>& dilations_p,
+                                          std::vector<int64_t>& pads_p,
+                                          std::vector<int64_t>& output_shape,
+                                          std::vector<int64_t>& output_shape_with_revised_pads,
+                                          bool& post_slicing_needed,
+                                          std::vector<int64_t>& slice_starts,
+                                          std::vector<int64_t>& slice_ends,
+                                          std::vector<int64_t>& slice_axes) const {
+    size_t rank = input_shape.NumDimensions();
+    // Make sure all "metadata" containers have the right number of elements
+    if (rank > strides_p.size())
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Not enough elements in strides. Expected: ", rank, " Got: ", strides_p.size());
+
+    if (rank > kernel_shape.size())
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Not enough elements in kernel shape. Expected: ", rank, " Got: ", kernel_shape.size());
+
+    if (rank > dilations_p.size())
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Not enough elements in dilations. Expected: ", rank, " Got: ", dilations_p.size());
+
+    if ((2 * rank) > pads_p.size())
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Not enough elements in pads. Expected: ", (2 * rank), " Got: ", pads_p.size());
+
+    for (size_t dim = 0; dim < rank; ++dim) {
+      int64_t output_dim_size = 0;
+      ORT_RETURN_IF_ERROR(ComputePadAndOutputShape(input_shape[dim],
+                                                   strides_p[dim],
+                                                   kernel_shape[dim],
+                                                   dilations_p[dim],
+                                                   auto_pad,
+                                                   pads_p[dim],
+                                                   pads_p[rank + dim],
+                                                   output_dim_size));
+      if (output_dim_size <= 0) {
+        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Invalid input shape: " + input_shape.ToString());
+      }
+
+      // This is the "actual" output shape of the Conv op (i.e.) with given pads as is
+      output_shape.push_back(output_dim_size);
+
+      // Deal with asymmetric pads if any and adjust them to be symmetric
+      // Along the way - note down how many values need to be sliced out from the start and end
+      // of each spatial dimension while we over-pad to get symmetric pads
+
+      if (pads_p[dim] == pads_p[rank + dim]) {
+        // symmetric padding - No operation as such
+        // Make note of the dim size of the output (to be used if there are other symmetrically padded dims)
+        output_shape_with_revised_pads.push_back(output_dim_size);
+      } else {
+        // asymmetric padding
+
+        int64_t& pad_head = pads_p[dim];
+        int64_t& pad_tail = pads_p[rank + dim];
+        int64_t stride = strides_p[dim];
+
+        bool head_overpadded = false;
+
+        if (pad_head < pad_tail) {
+          int64_t excess_output_head = 0;
+
+          // pad_head is under-padded, so "adjust" it by adding more padding
+          while (pad_head < pad_tail) {
+            // keep over-padding in multiples of 'strides' so that
+            // the filter slides over correctly
+
+            pad_head += stride;
+            excess_output_head += 1;  // each multiple of stride contributes to 1 excess output value
+          }
+
+          post_slicing_needed = true;
+          slice_axes.push_back(dim + 2);
+          slice_starts.push_back(excess_output_head);
+          slice_ends.push_back(excess_output_head + output_dim_size);                      // we may modify this below
+          output_shape_with_revised_pads.push_back(excess_output_head + output_dim_size);  // we may modify this below
+          head_overpadded = true;
+        }
+
+        // we may enter this section even if the head was initially under-padded,
+        // because we had to over-pad by multiples of 'stride', now `pad_head` might be > `pad_tail`
+        if (pad_tail < pad_head) {
+          pad_tail = pad_head;
+          auto revised_dim_size = ComputeOutputShape(input_shape[dim], strides_p[dim],
+                                                     kernel_shape[dim], dilations_p[dim],
+                                                     pad_head, pad_tail);
+
+          if (head_overpadded) {
+            // Head has already been over-padded
+            // Additional tail pads need not result in additional output
+            // Ensure that the size has changed - otherwise no operation needed.
+            if (revised_dim_size !=
+                output_shape_with_revised_pads[output_shape_with_revised_pads.size() - 1]) {
+              output_shape_with_revised_pads[output_shape_with_revised_pads.size() - 1] = revised_dim_size;
+            }
+          } else {
+            // Additional tail pads need not result in additional output
+            // Ensure that the size has changed - otherwise no operation needed.
+            if (revised_dim_size != output_dim_size) {
+              // Head has not been over-padded. Only tail pads need to be modified.
+              post_slicing_needed = true;
+
+              slice_axes.push_back(dim + 2);
+              slice_starts.push_back(0);
+              slice_ends.push_back(output_dim_size - revised_dim_size);
+            }
+
+            // make note of the shape of this spatial dimension
+            output_shape_with_revised_pads.push_back(revised_dim_size);
+          }
+        }
+      }
     }
     return Status::OK();
   }

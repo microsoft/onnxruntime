@@ -10,11 +10,29 @@ import os
 import torch
 from transformers import AutoConfig, AutoTokenizer, AutoModel
 from benchmark_helper import create_onnxruntime_session, Precision
-from gpt2_helper import GPT2ModelNoPastState
+from gpt2_helper import GPT2ModelNoPastState, PRETRAINED_GPT2_MODELS
 from quantize_helper import QuantizeHelper
 
 logger = logging.getLogger(__name__)
 
+# Walkaround by replacing torch.triu using self-defined op
+# Since torch.triu cannot be exported to ONNX. See https://github.com/pytorch/pytorch/issues/32968
+torch_func = {"triu" : torch.triu}
+
+def triu_onnx(x, diagonal=0, out=None):
+    assert out is None
+    assert len(x.shape) == 2 and x.size(0) == x.size(1)
+
+    torch_triu = torch_func["triu"]
+    template = torch_triu(torch.ones((1024, 1024), dtype=torch.uint8), diagonal)
+    mask = template[:x.size(0),:x.size(1)]
+    return torch.where(mask.bool(), x, torch.zeros_like(x))
+
+def replace_torch_functions():
+    torch.triu = triu_onnx
+
+def restore_torch_functions():
+    torch.triu = torch_func["triu"]
 
 def create_onnxruntime_input(vocab_size, batch_size, sequence_length, input_names):
     input_ids = numpy.random.randint(low=0, high=vocab_size - 1, size=(batch_size, sequence_length), dtype=numpy.int64)
@@ -97,18 +115,24 @@ def validate_onnx_model(onnx_model_path, example_inputs, example_outputs_flatten
 
 def get_onnx_file_path(onnx_dir: str, model_name: str, input_count: int, optimized_by_script: bool, use_gpu: bool,
                        precision: Precision, optimized_by_onnxruntime: bool, use_external_data: bool):
+    from re import sub
+    normalized_model_name = sub(r'[^a-zA-Z0-9_]', '_', model_name)
+
     if not optimized_by_script:
-        filename = f"{model_name}_{input_count}"
+        filename = f"{normalized_model_name}_{input_count}"
     else:
         device = "gpu" if use_gpu else "cpu"
-        filename = f"{model_name}_{input_count}_{precision}_{device}"
+        filename = f"{normalized_model_name}_{input_count}_{precision}_{device}"
 
     if optimized_by_onnxruntime:
         filename += f"_ort"
 
-    directory = os.path.join(onnx_dir, filename) if use_external_data else onnx_dir
-    if not os.path.exists(directory):
-        os.makedirs(directory)
+    directory = onnx_dir
+    # ONNXRuntime will not write external data so the raw and optimized models shall be in same directory.
+    if use_external_data and not optimized_by_onnxruntime:
+        directory = os.path.join(onnx_dir, filename)
+        if not os.path.exists(directory):
+            os.makedirs(directory)
 
     return os.path.join(directory, f"{filename}.onnx")
 
@@ -127,15 +151,16 @@ def optimize_onnx_model_by_ort(onnx_model_path, ort_model_path, use_gpu, overwri
 
 
 def optimize_onnx_model(onnx_model_path, optimized_model_path, model_type, num_attention_heads, hidden_size, use_gpu,
-                        fp16, use_raw_attention_mask, overwrite, model_fusion_statistics):
+                        precision, use_raw_attention_mask, overwrite, model_fusion_statistics):
     if overwrite or not os.path.exists(optimized_model_path):
         from optimizer import optimize_model
         from onnx_model_bert import BertOptimizationOptions
         optimization_options = BertOptimizationOptions(model_type)
-        if use_raw_attention_mask:
-            optimization_options.use_raw_attention_mask()
-        if fp16:
+        optimization_options.use_raw_attention_mask(use_raw_attention_mask)
+        if Precision.FLOAT16 == precision:
             optimization_options.enable_gelu_approximation = True
+        if Precision.INT8 == precision:
+            optimization_options.enable_embed_layer_norm = False
 
         # Use script to optimize model.
         # Use opt_level <= 1 for models to be converted to fp16, because some fused op (like FusedGemm) has only fp32 and no fp16.
@@ -150,7 +175,7 @@ def optimize_onnx_model(onnx_model_path, optimized_model_path, model_type, num_a
                                    only_onnxruntime=False)
         model_fusion_statistics[optimized_model_path] = opt_model.get_fused_operator_statistics()
 
-        if fp16:
+        if Precision.FLOAT16 == precision:
             opt_model.convert_model_float32_to_float16()
         opt_model.save_model_to_file(optimized_model_path)
     else:
@@ -158,7 +183,7 @@ def optimize_onnx_model(onnx_model_path, optimized_model_path, model_type, num_a
 
 
 def load_pretrained_model(model_name, config, cache_dir):
-    if model_name in ["gpt2", "distilgpt2", "gpt2-large"]:
+    if model_name in PRETRAINED_GPT2_MODELS:
         return GPT2ModelNoPastState.from_pretrained(model_name, config=config, cache_dir=cache_dir)
     return AutoModel.from_pretrained(model_name, config=config, cache_dir=cache_dir)
 
@@ -167,8 +192,9 @@ def export_onnx_model(model_name, opset_version, use_external_data_format, model
                       use_gpu, precision, optimize_onnx, validate_onnx, use_raw_attention_mask, overwrite,
                       model_fusion_statistics):
     config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
-    if hasattr(config, 'return_tuple'):
-        config.return_tuple = True
+    if hasattr(config, 'return_dict'):
+        config.return_dict = False
+
     model = load_pretrained_model(model_name, config=config, cache_dir=cache_dir)
     model.cpu()
 
@@ -193,6 +219,7 @@ def export_onnx_model(model_name, opset_version, use_external_data_format, model
 
         dynamic_axes, output_names = build_dynamic_axes(example_inputs, example_outputs_flatten)
 
+        replace_torch_functions()
         torch.onnx.export(model=model,
                           args=tuple(example_inputs.values()),
                           f=onnx_model_path,
@@ -203,6 +230,7 @@ def export_onnx_model(model_name, opset_version, use_external_data_format, model
                           do_constant_folding=True,
                           opset_version=opset_version,
                           use_external_data_format=use_external_data_format)
+        restore_torch_functions()
     else:
         logger.info(f"Skip export since model existed: {onnx_model_path}")
 
@@ -215,8 +243,8 @@ def export_onnx_model(model_name, opset_version, use_external_data_format, model
         optimized_model_path = get_onnx_file_path(onnx_dir, model_name, len(input_names), True, use_gpu, precision,
                                                   False, use_external_data_format)
         optimize_onnx_model(onnx_model_path, optimized_model_path, model_type, config.num_attention_heads,
-                            config.hidden_size, use_gpu, precision == Precision.FLOAT16, use_raw_attention_mask,
-                            overwrite, model_fusion_statistics)
+                            config.hidden_size, use_gpu, precision, use_raw_attention_mask, overwrite,
+                            model_fusion_statistics)
 
         onnx_model_path = optimized_model_path
         if validate_onnx:
@@ -234,4 +262,6 @@ def export_onnx_model(model_name, opset_version, use_external_data_format, model
                                                 use_external_data_format)
             optimize_onnx_model_by_ort(onnx_model_path, ort_model_path, use_gpu, overwrite, model_fusion_statistics)
 
-    return onnx_model_path, is_valid_onnx_model, config.vocab_size, tokenizer.max_model_input_sizes[model_name]
+    max_input_size = tokenizer.max_model_input_sizes[model_name] if model_name in tokenizer.max_model_input_sizes else 1024
+
+    return onnx_model_path, is_valid_onnx_model, config.vocab_size, max_input_size

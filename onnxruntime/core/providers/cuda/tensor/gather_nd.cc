@@ -98,7 +98,13 @@ Status GatherNDBase::PrepareCompute(
       TIndex,                                                             \
       kCudaExecutionProvider,                                             \
       KernelDefBuilder()                                                  \
-          .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes())   \
+          .TypeConstraint("T",                                            \
+                          std::vector<MLDataType>{                        \
+                              DataTypeImpl::GetTensorType<float>(),       \
+                              DataTypeImpl::GetTensorType<double>(),      \
+                              DataTypeImpl::GetTensorType<MLFloat16>(),   \
+                              DataTypeImpl::GetTensorType<int64_t>(),     \
+                          })                                              \
           .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIndex>()), \
       GatherND<TIndex>);
 
@@ -161,7 +167,7 @@ Status GatherND<TIndex>::ComputeInternal(OpKernelContext* context) const {
 
   const void* const kernel_input_data = input_tensor->DataRaw();
   void* const kernel_output_data = output_tensor->MutableDataRaw();
-  utils::MLTypeCallDispatcher<GatherNDComputeImpl, float, MLFloat16, double>
+  utils::MLTypeCallDispatcher<GatherNDComputeImpl, float, MLFloat16, double, int64_t>
       t_disp(input_tensor->GetElementType());
   t_disp.Invoke(num_slices, slice_size, kernel_input_data, kernel_output_data, input_slice_offsets_buffer.get());
 

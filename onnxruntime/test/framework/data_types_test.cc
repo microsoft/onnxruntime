@@ -28,9 +28,11 @@ struct TestMap {
 };
 
 // Try recursive type registration and compatibility tests
-using TestMapToMapInt64ToFloat = TestMap<int64_t, MapInt64ToFloat>;
 using VectorInt64 = std::vector<int64_t>;
+#if !defined(DISABLE_ML_OPS)
+using TestMapToMapInt64ToFloat = TestMap<int64_t, MapInt64ToFloat>;
 using TestMapStringToVectorInt64 = TestMap<std::string, VectorInt64>;
+#endif
 
 // Trial to see if we resolve the setter properly
 // a map with a key that has not been registered in data_types.cc
@@ -66,19 +68,23 @@ struct TestOpaqueNoNames {};
 // use the same cpp runtime types but due to Opaque type domain, name
 // and optional parameters we produce separate MLDataTypes that are NOT
 // compatible with each other.
+#if !defined(DISABLE_ML_OPS)
 using MyOpaqueMapCpp_1 = std::map<int64_t, TestOpaqueType_1>;
 using MyOpaqueMapCpp_2 = std::map<int64_t, TestOpaqueType_2>;
+#endif
 
 // Register Sequence as containing an Opaque type
 using MyOpaqueSeqCpp_1 = std::vector<TestOpaqueType_1>;
 using MyOpaqueSeqCpp_2 = std::vector<TestOpaqueType_2>;
 
+#if !defined(DISABLE_ML_OPS)
 ORT_REGISTER_MAP(MyOpaqueMapCpp_1);
 ORT_REGISTER_MAP(MyOpaqueMapCpp_2);
 
 ORT_REGISTER_MAP(TestMapToMapInt64ToFloat);
 ORT_REGISTER_MAP(TestMapStringToVectorInt64);
 ORT_REGISTER_MAP(TestMapMLFloat16ToFloat);
+#endif
 
 ORT_REGISTER_SEQ(MyOpaqueSeqCpp_1);
 ORT_REGISTER_SEQ(MyOpaqueSeqCpp_2);
@@ -100,12 +106,14 @@ ORT_REGISTER_OPAQUE_TYPE(TestOpaqueNoNames, TestOpaqueEmpty, TestOpaqueEmpty);
   }
 
 void RegisterTestTypes() {
+#if !defined(DISABLE_ML_OPS)
   REGISTER_ONNX_PROTO(MyOpaqueMapCpp_1);
   REGISTER_ONNX_PROTO(MyOpaqueMapCpp_2);
 
   REGISTER_ONNX_PROTO(TestMapToMapInt64ToFloat);
   REGISTER_ONNX_PROTO(TestMapStringToVectorInt64);
   REGISTER_ONNX_PROTO(TestMapMLFloat16ToFloat);
+#endif
 
   REGISTER_ONNX_PROTO(MyOpaqueSeqCpp_1);
   REGISTER_ONNX_PROTO(MyOpaqueSeqCpp_2);
@@ -236,12 +244,15 @@ TEST_F(DataTypeTest, OpaqueRegistrationTest) {
   EXPECT_FALSE(utils::IsOpaqueType(op_ml2, TestOpaqueDomain_1, TestOpaqueName_2));
   EXPECT_FALSE(utils::IsOpaqueType(DataTypeImpl::GetTensorType<float>(), TestOpaqueDomain_1, TestOpaqueName_1));
 
+#if !defined(DISABLE_ML_OPS)
   utils::ContainerChecker c_checker(DataTypeImpl::GetType<MyOpaqueMapCpp_1>());
   EXPECT_TRUE(c_checker.IsMap());
   bool result = c_checker.IsMapOf<int64_t, TestOpaqueType_1>();
   EXPECT_TRUE(result);
+#endif
 }
 
+#if !defined(DISABLE_ML_OPS)
 TEST_F(DataTypeTest, MapStringStringTest) {
   TensorTypeProto<TensorProto_DataType_FLOAT> tensor_type;
   auto ml_str_str = DataTypeImpl::GetType<MapStringToString>();
@@ -251,13 +262,12 @@ TEST_F(DataTypeTest, MapStringStringTest) {
   utils::ContainerChecker c_checker(ml_str_str);
   bool result = c_checker.IsMapOf<std::string, std::string>();
   EXPECT_TRUE(result);
-  result =  c_checker.IsMapOf<std::string, int64_t>();
+  result = c_checker.IsMapOf<std::string, int64_t>();
   EXPECT_FALSE(result);
 
   utils::ContainerChecker c_checker1(DataTypeImpl::GetTensorType<float>());
-  result =  c_checker1.IsMapOf<std::string, int64_t>();
+  result = c_checker1.IsMapOf<std::string, int64_t>();
   EXPECT_FALSE(result);
-
 
   MapTypeProto<TensorProto_DataType_STRING, TensorProto_DataType_STRING> maps2s_type;
   MapTypeProto<TensorProto_DataType_STRING, TensorProto_DataType_INT64> maps2i_type;
@@ -349,6 +359,7 @@ TEST_F(DataTypeTest, RecursiveMapTest) {
   mut_map->mutable_value_type()->CopyFrom(*op2_proto->GetTypeProto());
   EXPECT_TRUE(DataTypeImpl::GetType<MyOpaqueMapCpp_2>()->IsCompatible(unod_map_int64_to_op2));
 }
+#endif  // !defined(DISABLE_ML_OPS)
 
 TEST_F(DataTypeTest, RecursiveVectorTest) {
   TypeProto seq_of_seq_string;
@@ -357,9 +368,12 @@ TEST_F(DataTypeTest, RecursiveVectorTest) {
   mut_seq->mutable_elem_type()->mutable_tensor_type()->set_elem_type(TensorProto_DataType_STRING);
 
   EXPECT_TRUE(DataTypeImpl::GetType<TestSequenceOfSequence>()->IsCompatible(seq_of_seq_string));
+#if !defined(DISABLE_ML_OPS)
   EXPECT_FALSE(DataTypeImpl::GetType<VectorMapStringToFloat>()->IsCompatible(seq_of_seq_string));
+#endif
 }
 
+#if !defined(DISABLE_ML_OPS)
 TEST_F(DataTypeTest, VectorMapStringToFloatTest) {
   TypeProto vector_map_string_to_float;
   vector_map_string_to_float.mutable_sequence_type()->mutable_elem_type()->mutable_map_type()->set_key_type(TensorProto_DataType_STRING);
@@ -374,7 +388,7 @@ TEST_F(DataTypeTest, VectorMapStringToFloatTest) {
   EXPECT_FALSE(DataTypeImpl::GetType<VectorMapStringToFloat>()->IsCompatible(mapi2i_type.proto));
   EXPECT_FALSE(DataTypeImpl::GetType<VectorMapStringToFloat>()->IsCompatible(tensor_type.proto));
   utils::ContainerChecker c_check(DataTypeImpl::GetType<VectorMapStringToFloat>());
-  bool result =  c_check.IsSequenceOf<MapStringToFloat>();
+  bool result = c_check.IsSequenceOf<MapStringToFloat>();
   EXPECT_TRUE(result);
 }
 
@@ -392,6 +406,7 @@ TEST_F(DataTypeTest, VectorMapInt64ToFloatTest) {
   EXPECT_FALSE(DataTypeImpl::GetType<VectorMapInt64ToFloat>()->IsCompatible(mapi2i_type.proto));
   EXPECT_FALSE(DataTypeImpl::GetType<VectorMapInt64ToFloat>()->IsCompatible(tensor_type.proto));
 }
+#endif  // !defined(DISABLE_ML_OPS)
 
 TEST_F(DataTypeTest, BFloat16Test) {
   // Test data type
@@ -508,6 +523,8 @@ TEST_F(DataTypeTest, DataUtilsTest) {
     // Expect internalized strings
     EXPECT_EQ(ten_dt, ten_from_str);
   }
+
+#if !defined(DISABLE_ML_OPS)
   // Test Simple map
   {
     const std::string map_string_string("map(string,tensor(string))");
@@ -522,6 +539,7 @@ TEST_F(DataTypeTest, DataUtilsTest) {
     const auto& from_dt_proto = DataTypeUtils::ToTypeProto(map_dt);
     EXPECT_TRUE(DataTypeImpl::GetType<MapStringToString>()->IsCompatible(from_dt_proto));
   }
+
   // Test map with recursive value
   {
     const std::string map_int_map_int_float("map(int64,map(int64,tensor(float)))");
@@ -536,6 +554,7 @@ TEST_F(DataTypeTest, DataUtilsTest) {
     const auto& from_dt_proto = DataTypeUtils::ToTypeProto(map_dt);
     EXPECT_TRUE(DataTypeImpl::GetType<TestMapToMapInt64ToFloat>()->IsCompatible(from_dt_proto));
   }
+
   {
     const std::string opaque_map_2("map(int64,opaque(test_domain_2,test_name_2))");
     const auto* map_proto = DataTypeImpl::GetType<MyOpaqueMapCpp_2>()->GetTypeProto();
@@ -549,6 +568,7 @@ TEST_F(DataTypeTest, DataUtilsTest) {
     const auto& from_dt_proto = DataTypeUtils::ToTypeProto(map_dt);
     EXPECT_TRUE(DataTypeImpl::GetType<MyOpaqueMapCpp_2>()->IsCompatible(from_dt_proto));
   }
+
   // Test Sequence with recursion
   {
     const std::string seq_map_str_float("seq(map(string,tensor(float)))");
@@ -563,6 +583,8 @@ TEST_F(DataTypeTest, DataUtilsTest) {
     const auto& from_dt_proto = DataTypeUtils::ToTypeProto(seq_dt);
     EXPECT_TRUE(DataTypeImpl::GetType<VectorMapStringToFloat>()->IsCompatible(from_dt_proto));
   }
+#endif
+
   // Test Sequence with opaque_2
   {
     const std::string seq_opaque_2("seq(opaque(test_domain_2,test_name_2))");

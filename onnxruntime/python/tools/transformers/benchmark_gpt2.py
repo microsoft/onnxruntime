@@ -17,24 +17,22 @@ import logging
 import torch
 import onnx
 from transformers import AutoConfig
-from gpt2_helper import Gpt2Helper, MODEL_CLASSES, DEFAULT_TOLERANCE
+from gpt2_helper import Gpt2Helper, MODEL_CLASSES, DEFAULT_TOLERANCE, PRETRAINED_GPT2_MODELS
 from quantize_helper import QuantizeHelper
 from benchmark_helper import create_onnxruntime_session, setup_logger, prepare_environment, Precision
 
 logger = logging.getLogger('')
-
-PRETRAINED_MODELS = ['gpt2', 'distilgpt2']
 
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
 
     parser.add_argument('-m',
-                        '--model_name',
+                        '--model_name_or_path',
                         required=True,
                         type=str,
-                        choices=PRETRAINED_MODELS,
-                        help='Pretrained model selected in the list: ' + ', '.join(PRETRAINED_MODELS))
+                        help='Model path, or pretrained model name selected in the list: ' +
+                        ', '.join(PRETRAINED_GPT2_MODELS))
 
     parser.add_argument('--model_class',
                         required=False,
@@ -97,6 +95,9 @@ def parse_arguments():
 
     parser.add_argument("--thread_num", required=False, type=int, default=-1, help="Threads to use")
 
+    parser.add_argument('--include_copy_output_latency', required=False, action='store_true')
+    parser.set_defaults(include_copy_output_latency=False)
+
     parser.add_argument('--verbose', required=False, action='store_true')
     parser.set_defaults(verbose=False)
 
@@ -125,10 +126,8 @@ def main():
 
     model_class = MODEL_CLASSES[args.model_class][0]
 
-    config = AutoConfig.from_pretrained(args.model_name, torchscript=args.torchscript, cache_dir=cache_dir)
-    if hasattr(config, 'return_tuple'):
-        config.return_tuple = True
-    model = model_class.from_pretrained(args.model_name, config=config, cache_dir=cache_dir)
+    config = AutoConfig.from_pretrained(args.model_name_or_path, torchscript=args.torchscript, cache_dir=cache_dir)
+    model = model_class.from_pretrained(args.model_name_or_path, config=config, cache_dir=cache_dir)
 
     # This scirpt does not support float16 for PyTorch.
     #if args.float16:
@@ -136,25 +135,36 @@ def main():
 
     device = torch.device("cuda:0" if args.use_gpu else "cpu")
     model.to(device)
-
-    onnx_model_paths = Gpt2Helper.get_onnx_paths(output_dir, args.model_name, args.model_class)
+    use_external_data_format = (config.n_layer > 24)  #TODO: find a way to check model size > 2GB
+    onnx_model_paths = Gpt2Helper.get_onnx_paths(output_dir,
+                                                 args.model_name_or_path,
+                                                 args.model_class,
+                                                 has_past=True,
+                                                 new_folder=use_external_data_format)
 
     onnx_model_path = onnx_model_paths["raw"]
-    Gpt2Helper.export_onnx(model, device, onnx_model_path, args.verbose)
+    use_padding = MODEL_CLASSES[args.model_class][2]
+    Gpt2Helper.export_onnx(model,
+                           device,
+                           onnx_model_path,
+                           args.verbose,
+                           use_external_data_format,
+                           has_position_ids=use_padding,
+                           has_attention_mask=use_padding)
 
     if args.optimize_onnx or args.precision != Precision.FLOAT32:
         onnx_model_path = onnx_model_paths[str(args.precision)]
         Gpt2Helper.optimize_onnx(onnx_model_paths["raw"], onnx_model_path, args.precision == Precision.FLOAT16,
-                                 model.config.num_attention_heads, model.config.hidden_size)
+                                 model.config.num_attention_heads, model.config.hidden_size, use_external_data_format)
 
         if args.precision == Precision.INT8:
             logger.info("quantizing model...")
-            QuantizeHelper.quantize_onnx_model(onnx_model_path, onnx_model_path)
+            QuantizeHelper.quantize_onnx_model(onnx_model_path, onnx_model_path, use_external_data_format)
             model = QuantizeHelper.quantize_torch_model(model)
             logger.info("finished quantizing model")
 
     if args.torchscript:
-        model = Gpt2Helper.torchscript(model, config, device)
+        model = Gpt2Helper.torchscript(model, config, device, has_position_ids, has_attention_mask)
 
     session = create_onnxruntime_session(onnx_model_path,
                                          args.use_gpu,
@@ -184,10 +194,17 @@ def main():
         for batch_size in args.batch_sizes:
             for past_sequence_length in args.past_sequence_lengths:
                 logger.debug(f"Running test for batch_size={batch_size} past_sequence_length={past_sequence_length}...")
-                dummy_inputs = Gpt2Helper.get_dummy_inputs(batch_size, past_sequence_length, sequence_length,
-                                                           config.num_attention_heads, config.hidden_size,
-                                                           config.n_layer, config.vocab_size, device,
-                                                           args.precision == Precision.FLOAT16)
+                dummy_inputs = Gpt2Helper.get_dummy_inputs(batch_size,
+                                                           past_sequence_length,
+                                                           sequence_length,
+                                                           config.num_attention_heads,
+                                                           config.hidden_size,
+                                                           config.n_layer,
+                                                           config.vocab_size,
+                                                           device,
+                                                           float16=(args.precision == Precision.FLOAT16),
+                                                           has_position_ids=use_padding,
+                                                           has_attention_mask=use_padding)
                 output_shapes = Gpt2Helper.get_output_shapes(batch_size, past_sequence_length, sequence_length, config,
                                                              args.model_class)
 
@@ -195,7 +212,14 @@ def main():
                     outputs, torch_latency = Gpt2Helper.pytorch_inference(model, dummy_inputs, args.test_times)
                     ort_outputs, ort_latency = Gpt2Helper.onnxruntime_inference(session, dummy_inputs, args.test_times)
                     ort_io_outputs, ort_io_latency = Gpt2Helper.onnxruntime_inference_with_binded_io(
-                        session, dummy_inputs, output_buffers, output_shapes, args.test_times)
+                        session,
+                        dummy_inputs,
+                        output_buffers,
+                        output_shapes,
+                        args.test_times,
+                        return_numpy=False,
+                        include_copy_output_latency=args.include_copy_output_latency)
+
                     if args.validate_onnx:
                         if Gpt2Helper.compare_outputs(outputs,
                                                       ort_outputs,
@@ -204,6 +228,9 @@ def main():
                             logger.info(
                                 f'Pytorch and ONNX Runtime outputs are all close (tolerance={DEFAULT_TOLERANCE[args.precision]}).'
                             )
+
+                        for i in ort_io_outputs:
+                            ort_io_outputs[i] = ort_io_outputs[i].cpu().numpy()
                         if Gpt2Helper.compare_outputs(outputs,
                                                       ort_io_outputs,
                                                       rtol=DEFAULT_TOLERANCE[args.precision],
@@ -217,7 +244,7 @@ def main():
                     )
 
                     row = {
-                        "model_name": args.model_name,
+                        "model_name": args.model_name_or_path,
                         "model_class": args.model_class,
                         "gpu": args.use_gpu,
                         "precision": args.precision,

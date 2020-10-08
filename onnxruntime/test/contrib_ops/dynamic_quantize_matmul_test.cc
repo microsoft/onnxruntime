@@ -24,6 +24,7 @@ template <typename T>
 void TestDynamicQuantizeMatMul(const std::vector<int64_t>& A_dims,
                                std::vector<int64_t> B_dims,
                                const std::string& reference_model,
+                               bool is_matrix_b_constant,
                                bool has_zp = true,
                                bool has_bias = false) {
   // create rand inputs
@@ -44,7 +45,7 @@ void TestDynamicQuantizeMatMul(const std::vector<int64_t>& A_dims,
 
   OpTester test("DynamicQuantizeMatMul", 1, onnxruntime::kMSDomain);
   test.AddInput<float>("A", A_dims, A_data);
-  test.AddInput<T>("B", B_dims, B_data);
+  test.AddInput<T>("B", B_dims, B_data, is_matrix_b_constant);
   test.AddInput<float>("b_scale", {1}, B_scale);
 
   if (has_zp) {
@@ -68,7 +69,15 @@ TEST(DynamicQuantizeMatMul, Int8_test) {
   std::vector<int64_t> B_dims{128, 128};
   std::vector<int64_t> Y_dims{4, 128};
 
-  TestDynamicQuantizeMatMul<int8_t>(A_dims, B_dims, "testdata/dynamic_quantize_matmul_int8.onnx");
+  TestDynamicQuantizeMatMul<int8_t>(A_dims,
+                                    B_dims,
+                                    "testdata/dynamic_quantize_matmul_int8.onnx",
+                                    false /*is_matrix_b_constant*/);
+
+  TestDynamicQuantizeMatMul<int8_t>(A_dims,
+                                    B_dims,
+                                    "testdata/dynamic_quantize_matmul_int8.onnx",
+                                    true /*is_matrix_b_constant*/);
 }
 
 TEST(DynamicQuantizeMatMul, Int8_test_bias) {
@@ -77,7 +86,19 @@ TEST(DynamicQuantizeMatMul, Int8_test_bias) {
   std::vector<int64_t> B_dims{128, 128};
   std::vector<int64_t> Y_dims{4, 128};
 
-  TestDynamicQuantizeMatMul<int8_t>(A_dims, B_dims, "testdata/dynamic_quantize_matmul_int8_bias.onnx", false, true);
+  TestDynamicQuantizeMatMul<int8_t>(A_dims,
+                                    B_dims,
+                                    "testdata/dynamic_quantize_matmul_int8_bias.onnx",
+                                    false /*is_matrix_b_constant*/,
+                                    false, /*has_zp*/
+                                    true /*has_bias*/);
+
+  TestDynamicQuantizeMatMul<int8_t>(A_dims,
+                                    B_dims,
+                                    "testdata/dynamic_quantize_matmul_int8_bias.onnx",
+                                    true /*is_matrix_b_constant*/,
+                                    false, /*has_zp*/
+                                    true /*has_bias*/);
 #endif
 }
 
@@ -86,7 +107,15 @@ TEST(DynamicQuantizeMatMul, UInt8_test) {
   std::vector<int64_t> B_dims{128, 128};
   std::vector<int64_t> Y_dims{4, 128};
 
-  TestDynamicQuantizeMatMul<uint8_t>(A_dims, B_dims, "testdata/dynamic_quantize_matmul_uint8.onnx");
+  TestDynamicQuantizeMatMul<uint8_t>(A_dims,
+                                     B_dims,
+                                     "testdata/dynamic_quantize_matmul_uint8.onnx",
+                                     false /*is_matrix_b_constant*/);
+
+  TestDynamicQuantizeMatMul<uint8_t>(A_dims,
+                                     B_dims,
+                                     "testdata/dynamic_quantize_matmul_uint8.onnx",
+                                     true /*is_matrix_b_constant*/);
 }
 
 TEST(DynamicQuantizeMatMul, UInt8_test_with_empty_input) {
@@ -94,14 +123,34 @@ TEST(DynamicQuantizeMatMul, UInt8_test_with_empty_input) {
   std::vector<int64_t> B_dims{128, 128};
   std::vector<int64_t> Y_dims{0, 128};
 
-  TestDynamicQuantizeMatMul<uint8_t>(A_dims, B_dims, "testdata/dynamic_quantize_matmul_uint8.onnx");
+  TestDynamicQuantizeMatMul<uint8_t>(A_dims,
+                                     B_dims,
+                                     "testdata/dynamic_quantize_matmul_uint8.onnx",
+                                     false /*is_matrix_b_constant*/);
+
+  TestDynamicQuantizeMatMul<uint8_t>(A_dims,
+                                     B_dims,
+                                     "testdata/dynamic_quantize_matmul_uint8.onnx",
+                                     true /*is_matrix_b_constant*/);
 }
 TEST(DynamicQuantizeMatMul, UInt8_test_bias) {
   std::vector<int64_t> A_dims{4, 128};
   std::vector<int64_t> B_dims{128, 128};
   std::vector<int64_t> Y_dims{4, 128};
 
-  TestDynamicQuantizeMatMul<uint8_t>(A_dims, B_dims, "testdata/dynamic_quantize_matmul_uint8_bias.onnx", false, true);
+  TestDynamicQuantizeMatMul<uint8_t>(A_dims,
+                                     B_dims,
+                                     "testdata/dynamic_quantize_matmul_uint8_bias.onnx",
+                                     false /*is_matrix_b_constant*/,
+                                     false, /*has_zp*/
+                                     true /*has_bias*/);
+
+  TestDynamicQuantizeMatMul<uint8_t>(A_dims,
+                                     B_dims,
+                                     "testdata/dynamic_quantize_matmul_uint8_bias.onnx",
+                                     true /*is_matrix_b_constant*/,
+                                     false, /*has_zp*/
+                                     true /*has_bias*/);
 }
 
 }  // namespace test

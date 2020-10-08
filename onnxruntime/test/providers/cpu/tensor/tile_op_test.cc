@@ -18,7 +18,10 @@ void RunTest(std::initializer_list<T> input,
   test.AddInput<T>("input", input_dims, input);
   test.AddInput<int64_t>("repeats", repeat_dims, repeat);
   test.AddOutput<T>("output", output_dims, output);
-  test.Run();
+  if (std::is_same<T, int8_t>::value)
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT reports error: Assertion Error in makePaddedScale: 0 (regionRanges != nullptr)
+  else
+    test.Run();
 }
 
 template <typename T>

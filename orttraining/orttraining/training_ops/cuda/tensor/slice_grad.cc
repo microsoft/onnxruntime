@@ -50,7 +50,7 @@ void SliceGrad::FillInputVectors(OpKernelContext* ctx, std::vector<int64_t>& inp
 Status SliceGrad::CallSliceImp(size_t element_size, size_t dimension_count, const TArray<int64_t>& starts_buffer,
                                const TArray<int64_t>& steps_buffer, const TArray<int64_t>& input_strides,
                                const TArray<fast_divmod>& output_strides, OpKernelContext* ctx,
-                               TensorShape output_shape) const {
+                               const TensorShape& output_shape) const {
   Tensor* gradient_out_tensor = GetOutputGradientTensor(ctx);
   CUDA_RETURN_IF_ERROR(cudaMemset(gradient_out_tensor->MutableDataRaw(), 0, gradient_out_tensor->SizeInBytes()));
   return SliceImplGrad(element_size,

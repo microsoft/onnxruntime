@@ -41,8 +41,9 @@ TEST(GraphTransformerUtilsTests, TestGenerateGraphTransformers) {
   std::string l1_transformer = "ConstantFolding";
   std::string l2_transformer = "ConvActivationFusion";
   std::vector<std::string> custom_list = {l1_rule1, l1_transformer, l2_transformer};
-
-  auto transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level1, {}, custom_list);
+  std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
+      onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  auto transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level1, {}, *cpu_execution_provider.get(), custom_list);
   ASSERT_TRUE(transformers.size() == 2);
 
   auto l1_rule_transformer_name = optimizer_utils::GenerateRuleBasedTransformerName(TransformerLevel::Level1);
@@ -54,7 +55,7 @@ TEST(GraphTransformerUtilsTests, TestGenerateGraphTransformers) {
   }
   ASSERT_TRUE(rule_transformer && rule_transformer->RulesCount() == 1);
 
-  transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, {}, custom_list);
+  transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, {}, *cpu_execution_provider.get(), custom_list);
 #ifndef DISABLE_CONTRIB_OPS
   ASSERT_TRUE(transformers.size() == 1);
 #else
@@ -65,15 +66,17 @@ TEST(GraphTransformerUtilsTests, TestGenerateGraphTransformers) {
 TEST(GraphTransformerUtilsTests, TestCustomOnlyTransformers) {
   // Transformers that are disabled by default. They can only be enabled by custom list.
   std::string l2_transformer = "GeluApproximation";
+  std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
+      onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
 
   std::vector<std::string> default_list = {};
-  auto default_transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, {}, default_list);
+  auto default_transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, {}, *cpu_execution_provider.get(), default_list);
   for (auto& transformer : default_transformers) {
     ASSERT_TRUE(transformer->Name() != l2_transformer);
   }
 
   std::vector<std::string> custom_list = {l2_transformer};
-  auto custom_transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, {}, custom_list);
+  auto custom_transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, {}, *cpu_execution_provider.get(), custom_list);
 #ifndef DISABLE_CONTRIB_OPS
   ASSERT_TRUE(custom_transformers.size() == 1);
   ASSERT_TRUE(custom_transformers[0]->Name() == l2_transformer);

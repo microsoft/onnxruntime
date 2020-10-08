@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "tfidfvectorizer.h"
-#include "onnx/defs/schema.h"
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
 #include "core/platform/threadpool.h"

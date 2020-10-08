@@ -5,7 +5,6 @@
 #include "../framework/test_utils.h"
 #include "core/graph/model.h"
 #include "core/graph/onnx_protobuf.h"
-#include <core/framework/finalize_session_state.h>
 #include "core/framework/execution_providers.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
@@ -52,8 +51,8 @@ TEST(MemcpyTest, copy1) {
   SessionState s(model.MainGraph(), execution_providers, true, &tp, nullptr, dtm,
                  DefaultLoggingManager().DefaultLogger(), profiler);
 
-  s.CreateGraphInfo();
-  ASSERT_STATUS_OK(FinalizeSessionState(s, ORT_TSTR(""), kernel_registry_manager, nullptr));
+  SessionOptions so;
+  ASSERT_STATUS_OK(s.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager, so));
 
   AllocatorPtr allocator =
       execution_providers.Get(onnxruntime::kCpuExecutionProvider)->GetAllocator(0, OrtMemTypeDefault);

@@ -710,7 +710,8 @@ void TestQuantizedAttentionPastState(int64_t batch,
                                      int64_t hidden_size,
                                      int64_t head_number,
                                      int64_t head_size,
-                                     const std::string& reference_model) {
+                                     const std::string& reference_model,
+                                     bool is_weight_constant) {
   // create rand inputs
   RandomValueGenerator random{};
 
@@ -747,7 +748,7 @@ void TestQuantizedAttentionPastState(int64_t batch,
   test.AddAttribute<int64_t>("num_heads", head_number);
   test.AddAttribute<int64_t>("unidirectional", 1);
   test.AddInput<InputT>("input", input_dims, input_data);
-  test.AddInput<WeightT>("weight", weight_dims, weight_data);
+  test.AddInput<WeightT>("weight", weight_dims, weight_data, is_weight_constant);
   test.AddInput<float>("bias", bias_dims, bias_data);
   test.AddInput<float>("input_scale", {1}, input_scale);
   test.AddInput<float>("weight_scale", {1}, weight_scale);
@@ -761,11 +762,23 @@ void TestQuantizedAttentionPastState(int64_t batch,
 }
 
 TEST(QAttentionTest, QAttentionPastState_u8u8) {
-  TestQuantizedAttentionPastState<uint8_t, uint8_t>(2, 5, 15, 768, 12, 64, "testdata/attention_past_state.u8u8.onnx");
+  TestQuantizedAttentionPastState<uint8_t, uint8_t>(2, 5, 15, 768, 12, 64,
+                                                    "testdata/attention_past_state.u8u8.onnx",
+                                                    false /*is_weight_constant*/);
+
+  TestQuantizedAttentionPastState<uint8_t, uint8_t>(2, 5, 15, 768, 12, 64,
+                                                    "testdata/attention_past_state.u8u8.onnx",
+                                                    true /*is_weight_constant*/);
 }
 
 TEST(QAttentionTest, QAttentionPastState_u8s8) {
-  TestQuantizedAttentionPastState<uint8_t, int8_t>(2, 5, 15, 768, 12, 64, "testdata/attention_past_state.u8s8.onnx");
+  TestQuantizedAttentionPastState<uint8_t, int8_t>(2, 5, 15, 768, 12, 64,
+                                                   "testdata/attention_past_state.u8s8.onnx",
+                                                   false /*is_weight_constant*/);
+
+  TestQuantizedAttentionPastState<uint8_t, uint8_t>(2, 5, 15, 768, 12, 64,
+                                                    "testdata/attention_past_state.u8u8.onnx",
+                                                    true /*is_weight_constant*/);
 }
 
 }  // namespace test

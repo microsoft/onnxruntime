@@ -21,11 +21,13 @@ IExecutionProvider* TestCudaExecutionProvider() {
 #endif
 
 #ifdef USE_TENSORRT
+#if 0
 IExecutionProvider* TestTensorrtExecutionProvider() {
   static TensorrtExecutionProviderInfo info;
   static TensorrtExecutionProvider trt_provider(info);
   return &trt_provider;
 }
+#endif
 #endif
 
 #ifdef USE_OPENVINO

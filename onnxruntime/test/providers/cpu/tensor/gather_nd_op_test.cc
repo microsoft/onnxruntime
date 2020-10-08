@@ -299,5 +299,15 @@ TEST(GatherNDOpTest, GatherND_batch_dims_of_2) {
   test.Run();
 }
 
+TEST(GatherNDOpTest, GatherND_slice_int64_t) {
+  OpTester test("GatherND", 12, kOnnxDomain);
+  std::vector<int64_t> data({0LL, 1LL, 2LL, 3LL});
+  std::vector<int64_t> outputs({2LL, 3LL, 0LL, 1LL});
+  test.AddInput<int64_t>("data", {2, 2}, data);
+  test.AddInput<int64_t>("indices", {2, 1}, {1LL, 0LL});
+  test.AddOutput<int64_t>("output", {2, 2}, outputs);
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime

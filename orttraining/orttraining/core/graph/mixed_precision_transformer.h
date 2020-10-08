@@ -24,7 +24,8 @@ namespace training {
 Status TransformGraphForMixedPrecision(Graph& graph,
                                        const std::unordered_set<std::string>& weights_to_train,
                                        bool use_fp16_initializer,
-                                       std::unordered_map<std::string, NodeArg*>& fp32_weight_name_to_fp16_node_arg);
+                                       std::unordered_map<std::string, NodeArg*>& fp32_weight_name_to_fp16_node_arg,
+                                       ONNX_NAMESPACE::TensorProto_DataType fp16_type);
 
 /**
  * Checks if a node is an fp32-only node.

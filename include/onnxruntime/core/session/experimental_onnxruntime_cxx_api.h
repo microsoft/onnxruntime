@@ -22,8 +22,8 @@
 namespace Ort::Experimental {
 
 struct Session : Ort::Session {
-  Session(Env& env, ORTCHAR_T* model_path, SessionOptions& options)
-      : Ort::Session(env, model_path, options){};
+  Session(Env& env, std::basic_string<ORTCHAR_T>& model_path, SessionOptions& options)
+      : Ort::Session(env, model_path.data(), options){};
   Session(Env& env, void* model_data, size_t model_data_length, SessionOptions& options)
       : Ort::Session(env, model_data, model_data_length, options){};
 

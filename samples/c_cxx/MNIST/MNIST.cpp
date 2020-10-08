@@ -6,6 +6,7 @@
 #include <onnxruntime_cxx_api.h>
 #include <array>
 #include <cmath>
+#include <algorithm>
 
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "gdi32.lib")

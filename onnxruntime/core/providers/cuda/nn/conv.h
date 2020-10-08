@@ -88,7 +88,7 @@ class lru_unordered_map {
     lru_list_.clear();
   }
 
-private:
+ private:
   using list_type = std::list<Key, ListAllocator>;
   using iterator_type = typename list_type::iterator;
   struct value_type {
@@ -117,6 +117,7 @@ struct CudnnConvState {
 
   // these would be recomputed if x/w dims change
   std::vector<int64_t> y_dims;
+  std::vector<int64_t> y_dims_with_adjusted_pads;
   size_t workspace_bytes;
   decltype(AlgoPerfType().algo) algo;
   CudnnTensor x_tensor;
@@ -126,12 +127,18 @@ struct CudnnConvState {
   CudnnConvolutionDescriptor conv_desc;
 
   struct PerfResultParams {
-    decltype(AlgoPerfType().algo)     algo;
-    decltype(AlgoPerfType().memory)   memory;
+    decltype(AlgoPerfType().algo) algo;
+    decltype(AlgoPerfType().memory) memory;
     decltype(AlgoPerfType().mathType) mathType;
   };
 
-  lru_unordered_map<std::vector<int64_t>, PerfResultParams, vector_hash<int64_t>> cached_benchmark_results { MAX_CACHED_ALGO_PERF_RESULTS };
+  lru_unordered_map<std::vector<int64_t>, PerfResultParams, vector_hash<int64_t>> cached_benchmark_results{MAX_CACHED_ALGO_PERF_RESULTS};
+
+  // Some properties needed to support asymmetric padded Conv nodes
+  bool post_slicing_required;
+  std::vector<int64_t> slice_starts;
+  std::vector<int64_t> slice_ends;
+  std::vector<int64_t> slice_axes;
 
   // note that conv objects are shared between execution frames, and a lock is needed to avoid multi-thread racing
   OrtMutex mutex;
@@ -147,10 +154,6 @@ class Conv : public CudaKernel {
   Conv(const OpKernelInfo& info) : CudaKernel(info), conv_attrs_(info) {
     auto pads_size = conv_attrs_.pads.size();
     ORT_ENFORCE(pads_size % 2 == 0);
-    auto rank = pads_size / 2;
-    for (size_t i = 0; i < rank; i++) {
-      ORT_ENFORCE(conv_attrs_.pads[i] == conv_attrs_.pads[i + rank], "cudnn only supports symmetric padding");
-    }
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;

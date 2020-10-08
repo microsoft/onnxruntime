@@ -513,29 +513,29 @@ class DnnlConvBatchNorm : public DnnlKernel {
     std::string auto_pad;
     auto attr = attributes.find(attributes_prefix + "auto_pad");
     if (attr != attributes.end() &&
-        attr->second->type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING) {
-      auto_pad = attr->second->s();
+        attr->second().type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING) {
+      auto_pad = attr->second().s();
     }
     auto_pad_ = (auto_pad != "") ? StringToAutoPadType(auto_pad) : AutoPadType::NOTSET;
 
     kernel_shape_specified_ = false;
     attr = attributes.find(attributes_prefix + "kernel_shape");
     if (attr != attributes.end()) {
-      auto& proto = *attr->second;
+      auto& proto = attr->second();
       Status status = GetIntsAttr(proto, kernel_shape_);
       kernel_shape_specified_ = true;
     }
 
     attr = attributes.find(attributes_prefix + "strides");
     if (attr != attributes.end()) {
-      auto& proto = *attr->second;
+      auto& proto = attr->second();
       Status status = GetIntsAttr(proto, strides_);
     }
 
     bool attr_read = false;
     attr = attributes.find(attributes_prefix + "pads");
     if (attr != attributes.end()) {
-      auto& proto = *attr->second;
+      auto& proto = attr->second();
       if (GetIntsAttr(proto, pads_) == Status::OK())
         attr_read = true;
     }
@@ -546,7 +546,7 @@ class DnnlConvBatchNorm : public DnnlKernel {
     attr_read = false;
     attr = attributes.find(attributes_prefix + "dilations");
     if (attr != attributes.end()) {
-      auto& proto = *attr->second;
+      auto& proto = attr->second();
       if (GetIntsAttr(proto, dilations_) == Status::OK())
         attr_read = true;
     }
@@ -557,7 +557,7 @@ class DnnlConvBatchNorm : public DnnlKernel {
     attr_read = false;
     attr = attributes.find(attributes_prefix + "group");
     if (attr != attributes.end()) {
-      auto& proto = *attr->second;
+      auto& proto = attr->second();
       if (GetIntAttr(proto, group_) == Status::OK())
         attr_read = true;
     }
@@ -567,7 +567,7 @@ class DnnlConvBatchNorm : public DnnlKernel {
 
     attr = attributes.find(attributes_prefix + "epsilon");
     if (attr != attributes.end()) {
-      epsilon_ = attr->second->f();
+      epsilon_ = attr->second().f();
     }
   }
 

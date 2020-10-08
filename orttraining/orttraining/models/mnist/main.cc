@@ -143,7 +143,7 @@ void setup_training_params(TrainingRunner::Parameters& params) {
   };
 
   std::shared_ptr<EventWriter> tensorboard;
-  if (!params.log_dir.empty() && params.mpi_context.world_rank == 0)
+  if (!params.log_dir.empty() && MPIContext::GetInstance().GetWorldRank() == 0)
     tensorboard = std::make_shared<EventWriter>(params.log_dir);
 
   params.post_evaluation_callback = [tensorboard](size_t num_samples, size_t step, const std::string /**/) {
@@ -183,12 +183,12 @@ int main(int argc, char* args[]) {
   setup_training_params(params);
 
   // setup data
-  auto device_count = params.mpi_context.world_size;
+  auto device_count = MPIContext::GetInstance().GetWorldSize();
   std::vector<string> feeds{"X", "labels"};
   auto trainingData = std::make_shared<DataSet>(feeds);
   auto testData = std::make_shared<DataSet>(feeds);
   std::string mnist_data_path = ToMBString(params.train_data_dir);
-  PrepareMNISTData(mnist_data_path, IMAGE_DIMS, LABEL_DIMS, *trainingData, *testData, params.mpi_context.world_rank /* shard_to_load */, device_count /* total_shards */);
+  PrepareMNISTData(mnist_data_path, IMAGE_DIMS, LABEL_DIMS, *trainingData, *testData, MPIContext::GetInstance().GetWorldRank() /* shard_to_load */, device_count /* total_shards */);
 
   if (testData->NumSamples() == 0) {
     printf("Warning: No data loaded - run cancelled.\n");

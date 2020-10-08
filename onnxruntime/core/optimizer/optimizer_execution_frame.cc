@@ -19,17 +19,16 @@ namespace onnxruntime {
 
 OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
                                     const InitializedTensorSet& initialized_tensor_set,
-                                    std::unique_ptr<CPUExecutionProvider> cpu_execution_provider) {
-  ORT_ENFORCE(cpu_execution_provider, "Provided CPU execution provider is a nullptr");
-  cpu_execution_provider_ = std::move(cpu_execution_provider);
-
-  allocator_ptr_ = cpu_execution_provider_->GetAllocator(device_id_, mem_type_);
+                                    const Path& model_path,
+                                    const IExecutionProvider& execution_provider)
+    : execution_provider_(execution_provider) {
+  allocator_ptr_ = execution_provider_.GetAllocator(device_id_, mem_type_);
   ORT_ENFORCE(allocator_ptr_, "Failed to get allocator for optimizer");
 
   data_transfer_mgr_.RegisterDataTransfer(onnxruntime::make_unique<CPUDataTransfer>());
 
   // Create MLValues related maps
-  auto initialize_maps = [this, &initialized_tensor_set](const NodeArg& arg, size_t /*index*/) -> Status {
+  auto initialize_maps = [this, &initialized_tensor_set, &model_path](const NodeArg& arg, size_t /*index*/) -> Status {
     int idx = ort_value_name_idx_map_.Add(arg.Name());
     ort_value_idx_nodearg_map_[idx] = &arg;
 
@@ -43,9 +42,12 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
       std::unique_ptr<char[]> data(new char[cpu_tensor_length]);
       std::unique_ptr<Tensor> p_tensor;
       OrtCallback d;
-      ORT_RETURN_IF_ERROR(utils::TensorProtoToMLValue(Env::Default(), nullptr, tensor_proto,
+      ORT_RETURN_IF_ERROR(utils::TensorProtoToMLValue(Env::Default(),
+                                                      model_path.IsEmpty() ? nullptr : model_path.ToPathString().c_str(),
+                                                      tensor_proto,
                                                       MemBuffer(data.get(), cpu_tensor_length, allocator_ptr_->Info()),
-                                                      ort_value, d));
+                                                      ort_value,
+                                                      d));
 
       initializers_[idx] = ort_value;
       buffer_for_initialized_tensors_[idx] = std::move(data);
@@ -67,8 +69,8 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
 
 std::unique_ptr<const OpKernel> OptimizerExecutionFrame::Info::CreateKernel(const Node* node) const {
   std::unique_ptr<OpKernel> op_kernel;
-  std::shared_ptr<KernelRegistry> kernel_registry = cpu_execution_provider_->GetKernelRegistry();
-  auto status = kernel_registry->TryCreateKernel(*node, *cpu_execution_provider_, initializers_,
+  std::shared_ptr<KernelRegistry> kernel_registry = execution_provider_.GetKernelRegistry();
+  auto status = kernel_registry->TryCreateKernel(*node, execution_provider_, initializers_,
                                                  ort_value_name_idx_map_, FuncManager(), data_transfer_mgr_,
                                                  op_kernel);
 

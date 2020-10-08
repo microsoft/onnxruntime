@@ -40,7 +40,9 @@ static const char* c_unsupported_color_spaces[] =
 static const char* c_nominal_range_key = "Image.NominalPixelRange";
 static const char* c_supported_nominal_ranges[] =
     {
-        "NominalRange_0_255"};
+        "NominalRange_0_255",
+        "Normalized_0_1",
+        "Normalized_1_1"};
 
 namespace _winml {
 

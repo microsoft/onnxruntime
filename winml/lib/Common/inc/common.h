@@ -21,6 +21,7 @@
 #include <utility>
 #include <variant>
 #include <vector>
+#include <thread>
 
 // WIL
 #include <wil/cppwinrt.h>

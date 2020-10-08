@@ -12,6 +12,8 @@ from onnxruntime.capi.session import Session, InferenceSession, IOBinding
 
 class TrainingSession(InferenceSession):
     def __init__(self, path_or_bytes, parameters, sess_options=None):
+        Session.__init__(self)
+
         if sess_options:
             self._sess = C.TrainingSession(sess_options)
         else:
@@ -28,8 +30,6 @@ class TrainingSession(InferenceSession):
 
         self._inputs_meta = self._sess.inputs_meta
         self._outputs_meta = self._sess.outputs_meta
-
-        Session.__init__(self, self._sess)
 
     def __del__(self):
         if self._sess:

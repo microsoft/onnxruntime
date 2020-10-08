@@ -13,9 +13,21 @@ __author__ = "Microsoft"
 from onnxruntime.capi._pybind_state import get_all_providers, get_available_providers, get_device, set_seed, \
     RunOptions, SessionOptions, set_default_logger_severity, NodeArg, ModelMetadata, GraphOptimizationLevel, \
     ExecutionMode, OrtDevice, SessionIOBinding
+
+try:
+    from onnxruntime.capi._pybind_state import set_cuda_mem_limit, set_cuda_device_id
+except ImportError:
+    pass
+
 from onnxruntime.capi.session import InferenceSession, IOBinding
 from onnxruntime.capi import onnxruntime_validation
 
 from onnxruntime.capi.training import *  # noqa: F403
+
+# TODO: thiagofc: Temporary experimental namespace for new PyTorch front-end
+try:
+    from . import experimental
+except ImportError:
+    pass
 
 onnxruntime_validation.check_distro_info()

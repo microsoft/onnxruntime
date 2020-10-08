@@ -2,6 +2,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
+import os
 
 from onnxruntime.capi import _pybind_state as C
 
@@ -19,28 +20,11 @@ class Session:
     """
     This is the main class used to run a model.
     """
-    def __init__(self, sess):
-        self._enable_fallback = True
+    def __init__(self):
 
-    def _reset_session(self):
-        "release underlying session object."
-        # meta data references session internal structures
-        # so they must be set to None to decrement _sess reference count.
-        self._inputs_meta = None
-        self._outputs_meta = None
-        self._overridable_initializers = None
-        self._model_meta = None
-        self._providers = None
+        # self._sess is managed by the derived class and relies on bindings from C.InferenceSession
         self._sess = None
-
-        # At this point, _sess object is still referenced by _sess_options,
-        # because of previously _sess_options = _sess.sess_options being executed in _load_model().
-        # Therefore, _sess reference count is not zero and not being released by python gc yet.
-        #
-        # In order to make _sess reference count become 0 and being destroyed by python gc before
-        # creating new session object, we need to reset _sess_options as well.
-        self._sess_options = None
-        self._sess_options = self._sess_options_initial
+        self._enable_fallback = True
 
     def get_session_options(self):
         "Return the session options. See :class:`onnxruntime.SessionOptions`."
@@ -75,7 +59,7 @@ class Session:
         Register the input list of execution providers. The underlying session is re-created.
 
         :param providers: list of execution providers
-        :param provider_options: list of provider options dict
+        :param provider_options: list of provider options dict for each provider, in the same order as 'providers'
 
         The list of providers is ordered by Priority. For example ['CUDAExecutionProvider', 'CPUExecutionProvider']
         means execute a node using CUDAExecutionProvider if capable, otherwise execute using CPUExecutionProvider.
@@ -98,8 +82,8 @@ class Session:
                 for key, val in option.items():
                     option[key] = str(val)
 
-        self._reset_session()
-        self._load_model(providers, provider_options)
+        # recreate the underlying C.InferenceSession
+        self._reset_session(providers, provider_options)
 
     def disable_fallback(self):
         """
@@ -175,40 +159,52 @@ class InferenceSession(Session):
     """
     This is the main class used to run a model.
     """
-    def __init__(self, path_or_bytes, sess_options=None, providers=None):
+    def __init__(self, path_or_bytes, sess_options=None, providers=None, provider_options=None):
         """
-        :param path_or_bytes: filename or serialized model in a byte string
+        :param path_or_bytes: filename or serialized ONNX or ORT format model in a byte string
         :param sess_options: session options
-        :param providers: providers to use for session. If empty, will use
-            all available providers.
+        :param providers: list of providers to use for session. If empty, will use all available providers.
+        :param provider_options: list of provider options dict for each provider, in the same order as 'providers'
+
+        The model type will be inferred unless explicitly set in the SessionOptions.
+        To explicitly set:
+          so = onnxruntime.SessionOptions()
+          so.add_session_config_entry('session.load_model_format', 'ONNX') or
+          so.add_session_config_entry('session.load_model_format', 'ORT') or
+
+        A file extension of '.ort' will be inferred as an ORT format model.
+        All other filenames are assumed to be ONNX format models.
         """
-        self._path_or_bytes = path_or_bytes
+
+        Session.__init__(self)
+
+        if isinstance(path_or_bytes, str):
+            self._model_path = path_or_bytes
+            self._model_bytes = None
+        elif isinstance(path_or_bytes, bytes):
+            self._model_path = None
+            self._model_bytes = path_or_bytes  # TODO: This is bad as we're holding the memory indefinitely
+        else:
+            raise TypeError("Unable to load from type '{0}'".format(type(path_or_bytes)))
+
         self._sess_options = sess_options
         self._sess_options_initial = sess_options
-        self._load_model(providers or [])
         self._enable_fallback = True
-        Session.__init__(self, self._sess)
+        self._read_config_from_model = os.environ.get('ORT_LOAD_CONFIG_FROM_MODEL') == '1'
 
-    def _load_model(self, providers, provider_options=None):
-        if isinstance(self._path_or_bytes, str):
-            self._sess = C.InferenceSession(
-                self._sess_options if self._sess_options else C.get_default_session_options(), self._path_or_bytes,
-                True)
-        elif isinstance(self._path_or_bytes, bytes):
-            self._sess = C.InferenceSession(
-                self._sess_options if self._sess_options else C.get_default_session_options(), self._path_or_bytes,
-                False)
-        # elif isinstance(self._path_or_bytes, tuple):
-        # to remove, hidden trick
-        #   self._sess.load_model_no_init(self._path_or_bytes[0], providers)
+        self._create_inference_session(providers, provider_options)
+
+    def _create_inference_session(self, providers, provider_options):
+        session_options = self._sess_options if self._sess_options else C.get_default_session_options()
+        if self._model_path:
+            sess = C.InferenceSession(session_options, self._model_path, True, self._read_config_from_model)
         else:
-            raise TypeError("Unable to load from type '{0}'".format(type(self._path_or_bytes)))
+            sess = C.InferenceSession(session_options, self._model_bytes, False, self._read_config_from_model)
 
-        if provider_options:
-            self._sess.load_model(providers, provider_options)
-        else:
-            self._sess.load_model(providers)
+        # initialize the C++ InferenceSession
+        sess.initialize_session(providers or [], provider_options or [])
 
+        self._sess = sess
         self._sess_options = self._sess.session_options
         self._inputs_meta = self._sess.inputs_meta
         self._outputs_meta = self._sess.outputs_meta
@@ -222,6 +218,23 @@ class InferenceSession(Session):
             self._fallback_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
         else:
             self._fallback_providers = ['CPUExecutionProvider']
+
+    def _reset_session(self, providers, provider_options):
+        "release underlying session object."
+        # meta data references session internal structures
+        # so they must be set to None to decrement _sess reference count.
+        self._sess_options = None
+        self._inputs_meta = None
+        self._outputs_meta = None
+        self._overridable_initializers = None
+        self._model_meta = None
+        self._providers = None
+        self._provider_options = None
+
+        # create a new C.InferenceSession
+        self._sess = None
+        self._sess_options = self._sess_options_initial
+        self._create_inference_session(providers, provider_options)
 
 
 class IOBinding:

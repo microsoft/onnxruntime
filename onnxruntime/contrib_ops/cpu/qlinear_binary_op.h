@@ -18,5 +18,13 @@ class QLinearAdd final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 };
 
+template <typename T>
+class QLinearMul final : public OpKernel {
+ public:
+  QLinearMul(const OpKernelInfo& info) : OpKernel(info) {}
+
+  Status Compute(OpKernelContext* context) const override;
+};
+
 }  // namespace contrib
 }  // namespace onnxruntime

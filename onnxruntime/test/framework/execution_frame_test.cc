@@ -35,7 +35,7 @@ class ExecutionFrameTest : public ::testing::Test {
 };
 
 TEST_F(ExecutionFrameTest, TensorAllocationTest) {
-  onnxruntime::Model model("test", false, DefaultLoggingManager().DefaultLogger());
+  onnxruntime::Model model("test", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model.MainGraph();
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
@@ -57,19 +57,9 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   SessionState state(graph, execution_providers, true, &tp_, nullptr, dtm,
                      DefaultLoggingManager().DefaultLogger(), profiler);
 
-  state.CreateGraphInfo();
-
-  ASSERT_STATUS_OK(state.CreateKernels(kernel_registry_manager));
-
   node->SetExecutionProviderType(xp_typ);
 
-  std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan;
-  // TODO below line is for testing only. In production use SequentialPlanner::CreatePlan()
-  SequentialPlannerContext context(ExecutionMode::ORT_SEQUENTIAL);
-  ASSERT_STATUS_OK(SequentialPlanner::CreatePlan(nullptr, GraphViewer(graph), {}, execution_providers,
-                                                 kernel_registry_manager, state.GetOrtValueNameIdxMap(), context,
-                                                 p_seq_exec_plan));
-  state.SetExecutionPlan(std::move(p_seq_exec_plan));
+  ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
 
   vector<OrtValue> outputs;
   ExecutionFrame frame({}, {}, {}, outputs, {}, state);
@@ -146,10 +136,8 @@ TEST_F(ExecutionFrameTest, FeedInDataTest) {
   SessionState state(graph, execution_providers, true, &tp_, nullptr, dtm,
                      DefaultLoggingManager().DefaultLogger(), profiler);
 
-  state.CreateGraphInfo();
-
-  ASSERT_STATUS_OK(state.CreateKernels(kernel_registry_manager));
-
+  ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
+  
   const OrtValueNameIdxMap& mlvalue_name_idx_map = state.GetOrtValueNameIdxMap();
   int x_idx = -1, y_idx = -1;
   ASSERT_TRUE(mlvalue_name_idx_map.GetIdx("X", x_idx).IsOK());
@@ -206,9 +194,7 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
   SessionState state(graph, execution_providers, true, &tp_, nullptr, dtm,
                      DefaultLoggingManager().DefaultLogger(), profiler);
 
-  state.CreateGraphInfo();
-
-  ASSERT_STATUS_OK(state.CreateKernels(kernel_registry_manager));
+  ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
 
   const OrtValueNameIdxMap& mlvalue_name_idx_map(state.GetOrtValueNameIdxMap());
 
@@ -234,14 +220,6 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
   CreateMLValue<float>(cpu_allocator,
                        std::vector<int64_t>{2, 3},
                        std::vector<float>(6, 1.0f), &v3);
-
-  std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan = onnxruntime::make_unique<SequentialExecutionPlan>();
-  SequentialPlannerContext context(ExecutionMode::ORT_SEQUENTIAL);
-  ASSERT_STATUS_OK(SequentialPlanner::CreatePlan(nullptr, GraphViewer(graph), {}, execution_providers,
-                                                 kernel_registry_manager, mlvalue_name_idx_map, context,
-                                                 p_seq_exec_plan));
-
-  state.SetExecutionPlan(std::move(p_seq_exec_plan));
 
   vector<OrtValue> outputs;
   ExecutionFrame frame({x1_idx, x2_idx, x3_idx}, {v1, v2, v3}, {t3_idx}, outputs, {}, state);

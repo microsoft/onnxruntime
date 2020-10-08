@@ -1,13 +1,11 @@
 # Python Operator 
-The Python Operator provides the capability to easily invoke any custom Python code within a single node of an ONNX graph using ONNX Runtime. This can be useful for quicker experimentation when a model requires operators that are not officially supported in ONNX and ONNX Runtime, particularly if there is already a Python implementation for the required functionality. This should be used with discretion in production scenarios, and all security or other risks should be considered.
+The Python Operator provides the capability to easily invoke any custom Python code within a single node of an ONNX graph using ONNX Runtime. This can be useful for quicker experimentation when a model requires operators that are not officially supported in ONNX and ONNX Runtime, particularly if there is already a Python implementation for the required functionality. This should be used with discretion in production scenarios, and all security or other risks should be considered beforehand.
 
 ## Design Overview
 The feature can be found under [onnxruntime/core/language_interop_ops](../onnxruntime/core/language_interop_ops).
-All Python C API dependent code are compiled into a dynamic linked library named pywrapper.
-Before calling into Python script, pywrapper will convert onnxruntime tensor(s) to numpy(s), which is converted back when completed.
-<p>Here is a chart illustrating the calling sequence:
+Here is a chart of calling sequence:
 <pre>
-onnxruntime                          pywrapper                          script
+onnxruntime                        python capi                         script
      |                                  |                                 |
      | ------------------------------>  |                                 |
      |       call with tensor(s)        | ------------------------------> |
@@ -20,10 +18,7 @@ onnxruntime                          pywrapper                          script
 
 ## How to Use
 ### Step 1
-Build onnxruntime with `--config Release --enable_language_interop_ops --build_shared_lib` and override the existing onnxruntime binary with the latest. Then, copy onnxruntime_pywrapper.dll, libonnxruntime_pywrapper.so, or libonnxruntime_pywrapper.dylib to the path where the onnxruntime binary is located. 
-**Notes:**
-* It is recommended to compile within the Python environment where inferencing will happen. For example, if inferencing will happen in a conda env named myconda1, please compile the binary within that environment as well
-* If `--numpy_version=...` is specified, the Python operator will build with that version.
+Build onnxruntime with `--config Release --enable_language_interop_ops --build_wheel` and pip install the latest wheel file. 
 
 ### Step 2
 Create an onnx model containing Python operator nodes:
@@ -62,12 +57,11 @@ class Multi_1:
         ret = S + P
         return ret + self.W1, ret + self.W2, ret + self.W3
 class Multi_2:
-    def compute(self, H, N, E):
-        r1, r2 = H + N, N + E
-        return r1, r2
+    def compute(self, *kwargs):
+        return sum(kwargs[0:-1]), sum(kwargs[1:])
 ```
 ### Step 4
-Copy mymodule.py into Python sys.path, then reference with onnxruntime. On Windows, please set PYTHONHOME beforehand. It should point to directory where the python is installed, such as C:\Python37 or C:\ProgramData\Anaconda3\envs\myconda1 if it is in conda.
+Copy mymodule.py into Python sys.path, then run the model with onnxruntime python API. On Windows, please set PYTHONHOME beforehand. It should point to directory where the python is installed, such as C:\Python37 or C:\ProgramData\Anaconda3\envs\myconda1 if it is in conda.
 
 ## Supported Data Types
 * TensorProto.BOOL
@@ -80,6 +74,7 @@ Copy mymodule.py into Python sys.path, then reference with onnxruntime. On Windo
 * TensorProto.DOUBLE
 
 ## Limitations
+* Inferencing and compiling environments must be installed with same version of python.
 * On Windows, `--config Debug` has known issues. Please build with `--config RelWithDebInfo` if debugging symbols are needed.
 * Due to Python C API restrictions, multi-threading is disabled so Python operators will run sequentially.
 

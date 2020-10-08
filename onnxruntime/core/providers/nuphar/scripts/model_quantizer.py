@@ -258,7 +258,7 @@ def convert_matmul_model(input_model, output_model, only_for_scan=False, share_i
 
         out_n = out_mp.graph.node.add()
         out_n.CopyFrom(in_n)
-        if in_n.op_type == 'Scan':
+        if in_n.op_type == 'Scan' or in_n.op_type == 'Loop':
             in_subgraph = NodeFactory.get_attribute(in_n, 'body')
             out_subgraph = NodeFactory.get_attribute(out_n, 'body')
             out_subgraph.ClearField('node')

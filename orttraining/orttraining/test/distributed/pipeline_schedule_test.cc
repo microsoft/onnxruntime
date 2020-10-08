@@ -11,30 +11,41 @@ void TestPipelineScheduler(const int num_batches, const int num_stages, std::vec
   onnxruntime::training::pipeline::PipelineScheduler schedule(num_batches, num_stages);
   for (int s = 0; s < num_stages; ++s) {
     for (int b = 0; b < num_batches; ++b) {
-      const int forward_wait_before_recv = schedule.GetForwardWaitedEventBeforeRecv(b, s);
-      const int forward_wait_after_recv = schedule.GetForwardWaitedEventAfterRecv(b, s);
-      const int forward_record_before_send = schedule.GetForwardRecordedEventBeforeSend(b, s);
-      const int forward_record_after_send = schedule.GetForwardRecordedEventAfterSend(b, s);
-      const int backward_wait_before_recv = schedule.GetBackwardWaitedEventBeforeRecv(b, s);
-      const int backward_wait_after_recv = schedule.GetBackwardWaitedEventAfterRecv(b, s);
-      const int backward_record_before_send = schedule.GetBackwardRecordedEventBeforeSend(b, s);
-      const int backward_record_after_send = schedule.GetBackwardRecordedEventAfterSend(b, s);
+      const auto forward_recv_wait = schedule.GetForwardRecvWaitedEvent(b, s);
+      const auto forward_recv_record = schedule.GetForwardRecvRecordedEvent(b, s);
+      const auto forward_compute_wait = schedule.GetForwardComputeWaitedEvent(b, s);
+      const auto forward_compute_record = schedule.GetForwardComputeRecordedEvent(b, s);
+      const auto forward_send_wait = schedule.GetForwardSendWaitedEvent(b, s);
+      const auto forward_send_record = schedule.GetForwardSendRecordedEvent(b, s);
 
-      EXPECT_EQ(forward_wait_before_recv, baseline_events[2 * s + 0][4 * b + 0]) << " batch " << b << " stage " << s;
-      EXPECT_EQ(forward_wait_after_recv, baseline_events[2 * s + 0][4 * b + 1]) << " batch " << b << " stage " << s;
-      EXPECT_EQ(forward_record_before_send, baseline_events[2 * s + 0][4 * b + 2]) << " batch " << b << " stage " << s;
-      EXPECT_EQ(forward_record_after_send, baseline_events[2 * s + 0][4 * b + 3]) << " batch " << b << " stage " << s;
+      const auto backward_recv_wait = schedule.GetBackwardRecvWaitedEvent(b, s);
+      const auto backward_recv_record = schedule.GetBackwardRecvRecordedEvent(b, s);
+      const auto backward_compute_wait = schedule.GetBackwardComputeWaitedEvent(b, s);
+      const auto backward_compute_record = schedule.GetBackwardComputeRecordedEvent(b, s);
+      const auto backward_send_wait = schedule.GetBackwardSendWaitedEvent(b, s);
+      const auto backward_send_record = schedule.GetBackwardSendRecordedEvent(b, s);
 
-      EXPECT_EQ(backward_wait_before_recv, baseline_events[2 * s + 1][4 * b + 0]) << " batch " << b << " stage " << s;
-      EXPECT_EQ(backward_wait_after_recv, baseline_events[2 * s + 1][4 * b + 1]) << " batch " << b << " stage " << s;
-      EXPECT_EQ(backward_record_before_send, baseline_events[2 * s + 1][4 * b + 2]) << " batch " << b << " stage " << s;
-      EXPECT_EQ(backward_record_after_send, baseline_events[2 * s + 1][4 * b + 3]) << " batch " << b << " stage " << s;
+      const auto batch_stride = 6;
+      const auto stage_stride = 2;
+      EXPECT_EQ(forward_recv_wait, baseline_events[stage_stride * s + 0][batch_stride * b + 0]) << " batch " << b << " stage " << s;
+      EXPECT_EQ(forward_recv_record, baseline_events[stage_stride * s + 0][batch_stride * b + 1]) << " batch " << b << " stage " << s;
+      EXPECT_EQ(forward_compute_wait, baseline_events[stage_stride * s + 0][batch_stride * b + 2]) << " batch " << b << " stage " << s;
+      EXPECT_EQ(forward_compute_record, baseline_events[stage_stride * s + 0][batch_stride * b + 3]) << " batch " << b << " stage " << s;
+      EXPECT_EQ(forward_send_wait, baseline_events[stage_stride * s + 0][batch_stride * b + 4]) << " batch " << b << " stage " << s;
+      EXPECT_EQ(forward_send_record, baseline_events[stage_stride * s + 0][batch_stride * b + 5]) << " batch " << b << " stage " << s;
+
+      EXPECT_EQ(backward_recv_wait, baseline_events[stage_stride * s + 1][batch_stride * b + 0]) << " batch " << b << " stage " << s;
+      EXPECT_EQ(backward_recv_record, baseline_events[stage_stride * s + 1][batch_stride * b + 1]) << " batch " << b << " stage " << s;
+      EXPECT_EQ(backward_compute_wait, baseline_events[stage_stride * s + 1][batch_stride * b + 2]) << " batch " << b << " stage " << s;
+      EXPECT_EQ(backward_compute_record, baseline_events[stage_stride * s + 1][batch_stride * b + 3]) << " batch " << b << " stage " << s;
+      EXPECT_EQ(backward_send_wait, baseline_events[stage_stride * s + 1][batch_stride * b + 4]) << " batch " << b << " stage " << s;
+      EXPECT_EQ(backward_send_record, baseline_events[stage_stride * s + 1][batch_stride * b + 5]) << " batch " << b << " stage " << s;
     }
   }
 }
 
-TEST(Pipeline, ScheduleB8S3) {
-  const int num_batches = 8;
+TEST(Pipeline, ScheduleB5S3) {
+  const int num_batches = 5;
   const int num_stages = 3;
 
   // The event baselines at different stages are the same.
@@ -42,75 +53,54 @@ TEST(Pipeline, ScheduleB8S3) {
   // Similarly, the last 4 events are for the last computation on that stage.
   // Below, we add comments to indicate which computation the events associated with.
 
-  // Format per line below:
-  //   waited event before Recv, waited event after Recv, recorded event before Send, recorded event after Send.
-  // The value "-1" means a NULL event; RecordEvent and WaitEvent do nothing for NULL events.
-  // Note that the computation pattern is
-  //   WaitEvent -> Recv -> WaitEvent -> FW/BW -> RecordEvent -> Send -> RecordEvent.
+  // Each line below sequentially contains waited and recorded events in the following pattern.
+  //   WaitEvent -> Recv -> RecordEvent -> WaitEvent -> FW/BW -> RecordEvent -> WaitEvent -> Send -> RecordEvent.
   std::vector<int> forward_baseline_events_stage0{
-      -1, -1, 0, 1,    // FW00 @ stage 0
-      0, 1, 2, 3,      // FW01
-      2, 3, 4, 5,      // FW02
-      6, 7, 8, 9,      // FW03
-      10, 11, 12, 13,  // FW04
-      14, 15, 16, 17,  // FW05
-      18, 19, 20, 21,  // FW06
-      22, 23, 24, 25,  // FW07
+      -1, -1, -1, 0, 0, 1,     // None -> None -> None -> Wait -> FW00 -> Record -> Wait -> Send -> Record @ stage 0
+      -1, -1, 1, 2, 2, 3,      //                                 FW01
+      -1, -1, 3, 4, 4, 5,      //                                 FW02
+      -1, -1, 7, 8, 8, 9,      //                                 FW03
+      -1, -1, 10, 11, 11, 12,  //                                 FW04
   };
 
   std::vector<int> backward_baseline_events_stage0{
-      4, 5, 6, 7,      // BW00
-      8, 9, 10, 11,    // BW01
-      12, 13, 14, 15,  // BW02
-      16, 17, 18, 19,  // BW03
-      20, 21, 22, 23,  // BW04
-      24, 25, 26, 27,  // BW05
-      26, 27, 28, 29,  // BW06
-      28, 29, 30, 31   // BW07
+      5, 6, 6, 7, -1, -1,      // Wait -> Recv -> Record -> Wait -> BW00 -> Record -> None -> None -> None @ stage 0
+      8, 9, 9, 10, -1, -1,     //                                   BW01
+      11, 12, 12, 13, -1, -1,  //                                   BW02
+      13, 14, 14, 15, -1, -1,  //                                   BW03
+      15, 16, 16, 17, -1, -1   //                                   BW04
   };
 
   std::vector<int> forward_baseline_events_stage1{
-      -1, -1, 0, 1,    // FW00 @ stage 1
-      0, 1, 2, 3,      // FW01
-      2, 3, 4, 5,      // FW02
-      8, 9, 10, 11,    // FW03
-      12, 13, 14, 15,  // FW04
-      16, 17, 18, 19,  // FW05
-      20, 21, 22, 23,  // FW06
-      24, 25, 26, 27,  // FW07
+      -1, 0, 0, 1, 1, 2,       // Wait -> Recv -> Record -> Wait -> FW00 -> Record -> Wait -> Send -> Record @ stage 1
+      1, 2, 2, 3, 5, 6,        //                                   FW01
+      3, 4, 4, 5, 8, 9,        //                                   FW02
+      10, 11, 11, 12, 12, 13,  //                                   FW03
+      14, 15, 15, 16, 16, 17   //                                   FW04
   };
 
   std::vector<int> backward_baseline_events_stage1{
-      4, 5, 6, 7,      // BW00
-      6, 7, 8, 9,      // BW01
-      10, 11, 12, 13,  // BW02
-      14, 15, 16, 17,  // BW03
-      18, 19, 20, 21,  // BW04
-      22, 23, 24, 25,  // BW05
-      26, 27, 28, 29,  // BW06
-      28, 29, 30, 31   // BW07
+      5, 6, 6, 7, 7, 8,        // Wait -> Recv -> Record -> Wait -> BW00 -> Record -> Wait -> Send -> Record @ stage 1
+      8, 9, 9, 10, 10, 11,     //                                   BW01
+      12, 13, 13, 14, 14, 15,  //                                   BW02
+      16, 17, 17, 18, 18, 19,  //                                   BW03
+      19, 20, 20, 21, 21, 22   //                                   BW04
   };
 
   std::vector<int> forward_baseline_events_stage2{
-      -1, -1, 0, 1,    // FW00 @ stage 2
-      2, 3, 4, 5,      // FW01
-      6, 7, 8, 9,      // FW02
-      10, 11, 12, 13,  // FW03
-      14, 15, 16, 17,  // FW04
-      18, 19, 20, 21,  // FW05
-      22, 23, 24, 25,  // FW06
-      26, 27, 28, 29,  // FW07
+      -1, 0, 0, 1, -1, -1,    // Wait -> Recv -> Record -> Wait -> FW00 -> Record -> None -> None -> None @ stage 2
+      2, 3, 3, 4, -1, -1,     //                                   FW01
+      5, 6, 6, 7, -1, -1,     //                                   FW02
+      8, 9, 9, 10, -1, -1,    //                                   FW03
+      11, 12, 12, 13, -1, -1  //                                   FW04
   };
 
   std::vector<int> backward_baseline_events_stage2{
-      0, 1, 2, 3,      // BW00
-      4, 5, 6, 7,      // BW01
-      8, 9, 10, 11,    // BW02
-      12, 13, 14, 15,  // BW03
-      16, 17, 18, 19,  // BW04
-      20, 21, 22, 23,  // BW05
-      24, 25, 26, 27,  // BW06
-      28, 29, 30, 31   // BW07
+      -1, -1, 1, 2, 2, 3,      // None -> None -> None -> Wait -> BW00 -> Record -> Wait -> Send -> Record @ stage 2
+      -1, -1, 4, 5, 5, 6,      //                                 BW01
+      -1, -1, 7, 8, 8, 9,      //                                 BW02
+      -1, -1, 10, 11, 11, 12,  //                                 BW03
+      -1, -1, 13, 14, 14, 15   //                                 BW04
   };
 
   std::vector<std::vector<int>> baseline_events{

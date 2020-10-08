@@ -39,22 +39,18 @@ struct RknpuFuncState {
 
 RknpuExecutionProvider::RknpuExecutionProvider()
     : IExecutionProvider{onnxruntime::kRknpuExecutionProvider} {
-  DeviceAllocatorRegistrationInfo default_memory_info{
-      OrtMemTypeDefault,
+  AllocatorCreationInfo default_memory_info{
       [](int) {
         return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo(RKNPU, OrtAllocatorType::OrtDeviceAllocator));
-      },
-      std::numeric_limits<size_t>::max()};
+      }};
 
   InsertAllocator(CreateAllocator(default_memory_info));
 
-  DeviceAllocatorRegistrationInfo cpu_memory_info{
-      OrtMemTypeCPUOutput,
+  AllocatorCreationInfo cpu_memory_info{
       [](int) {
         return onnxruntime::make_unique<CPUAllocator>(
             OrtMemoryInfo(RKNPU, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput));
-      },
-      std::numeric_limits<size_t>::max()};
+      }};
 
   InsertAllocator(CreateAllocator(cpu_memory_info));
 }
@@ -250,7 +246,7 @@ RknpuExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
       }
 
       meta_def->since_version = 1;
-      sub_graph->SetMetaDef(meta_def);
+      sub_graph->SetMetaDef(std::move(meta_def));
 
       result.push_back(
           onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));

@@ -376,8 +376,9 @@ namespace Dml
     {
         assert(!m_closed);
 
+        const size_t sourceSizeInBytes = ComputeByteSizeFromTensor(*src);
         const size_t dataSizeInBytes = ComputeByteSizeFromTensor(*dst);
-        THROW_HR_IF(E_INVALIDARG, dataSizeInBytes != ComputeByteSizeFromTensor(*src)); // Tensors must be the same size
+        THROW_HR_IF(E_INVALIDARG, dataSizeInBytes != sourceSizeInBytes); // Tensors must be the same size
 
         if (dataSizeInBytes == 0)
         {
@@ -461,7 +462,7 @@ namespace Dml
     }
     CATCH_RETURN();
 
-    uint32_t ExecutionProviderImpl::GetSuppportedDeviceDataTypeMask() const
+    uint32_t ExecutionProviderImpl::GetSupportedDeviceDataTypeMask() const
     {
         // The DML provider registers all supported kernels up-front regardless of actual device capability,
         // but this is problematic later when executing the graph because DirectML will fail to create
@@ -470,26 +471,7 @@ namespace Dml
         // handle them, similar to the fallback in CUDAExecutionProvider::GetCapability for certain RNN/GRU/Conv
         // attributes.
 
-        uint32_t deviceTypeMask = 0u;
-
-        // Form the bitmask of all supported data types.
-        for (uint32_t i = 0; i <= DML_TENSOR_DATA_TYPE_INT8; ++i)
-        {
-            DML_FEATURE_QUERY_TENSOR_DATA_TYPE_SUPPORT dataTypeQuery = { static_cast<DML_TENSOR_DATA_TYPE>(i) };
-            DML_FEATURE_DATA_TENSOR_DATA_TYPE_SUPPORT dataTypeSupport = {};
-
-            THROW_IF_FAILED(m_dmlDevice->CheckFeatureSupport(
-                DML_FEATURE_TENSOR_DATA_TYPE_SUPPORT,
-                sizeof(dataTypeQuery),
-                &dataTypeQuery,
-                sizeof(dataTypeSupport),
-                &dataTypeSupport
-            ));
-
-            deviceTypeMask |= (dataTypeSupport.IsSupported << i);
-        }
-
-        return deviceTypeMask;
+        return Dml::GetSupportedDeviceDataTypeMask(m_dmlDevice.Get());
     }
 
     std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
@@ -498,7 +480,7 @@ namespace Dml
         const std::vector<const onnxruntime::KernelRegistry*>& registries) const
     {
         std::string partitionKernelPrefix = std::to_string(m_partitionKernelPrefixVal++) + "_";
-        uint32_t deviceDataTypeMask = GetSuppportedDeviceDataTypeMask();
+        uint32_t deviceDataTypeMask = GetSupportedDeviceDataTypeMask();
 
         return PartitionGraph(
             graph,

@@ -18,7 +18,6 @@ Abstract:
 
 --*/
 
-#include "../../mlasi.h"
 #include "../../qladd.h"
 
 template <typename DataType>
@@ -30,6 +29,7 @@ MlasShiftRight24Epi32(
     );
 
 template <>
+MLAS_FORCEINLINE
 __m256i
 MlasShiftRight24Epi32<int8_t>(
     __m256i v
@@ -39,6 +39,7 @@ MlasShiftRight24Epi32<int8_t>(
 }
 
 template <>
+MLAS_FORCEINLINE
 __m256i
 MlasShiftRight24Epi32<uint8_t>(
     __m256i v
@@ -57,6 +58,7 @@ MlasPackS16_256(
     );
 
 template <>
+MLAS_FORCEINLINE
 __m256i
 MlasPackS16_256<uint8_t>(
     __m256i a,
@@ -67,6 +69,7 @@ MlasPackS16_256<uint8_t>(
 }
 
 template <>
+MLAS_FORCEINLINE
 __m256i
 MlasPackS16_256<int8_t>(
     __m256i a,

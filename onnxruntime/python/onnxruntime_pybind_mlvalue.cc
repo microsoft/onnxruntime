@@ -387,6 +387,7 @@ std::string _get_type_name(std::string&) {
   return std::string("string");
 }
 
+#if !defined(DISABLE_ML_OPS)
 template <typename KeyType, typename ValueType, typename KeyGetterType, typename ValueGetterType>
 void CreateMapMLValue_LoopIntoMap(Py_ssize_t& pos, PyObject*& key, const std::string& name_input, PyObject*& value,
                                   PyObject* item, std::map<KeyType, ValueType>& current,
@@ -549,6 +550,7 @@ void CreateMapMLValue_AgnosticVectorMap(PyObject* iterator, PyObject* item, Allo
     throw std::runtime_error("Size of dictionary is empty, unable to run the prediction.");
   }
 }
+#endif
 
 void CreateGenericIterableMLValue(PyObject* iterator, AllocatorPtr alloc, const std::string& name_input,
                                   OrtValue* p_mlvalue) {
@@ -573,7 +575,13 @@ void CreateGenericIterableMLValue(PyObject* iterator, AllocatorPtr alloc, const 
       throw std::runtime_error("Input must be a list of dictionaries or a single numpy array for input '" +
                                name_input + std::string("'."));
     }
+#if !defined(DISABLE_ML_OPS)
     CreateMapMLValue_AgnosticVectorMap(iterator, item, alloc, name_input, p_mlvalue);
+#else
+    ORT_UNUSED_PARAMETER(alloc);
+    ORT_UNUSED_PARAMETER(p_mlvalue);
+    throw std::runtime_error("Map type is not supported in this build.");
+#endif
   }
 }
 
@@ -610,7 +618,13 @@ void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, const
     auto* seq_tensors = reinterpret_cast<PyObject*>(value.ptr());
     CreateSequenceOfTensors(alloc, name_input, input_def_list, seq_tensors, p_mlvalue);
   } else if (PyDict_Check(value.ptr())) {
+#if !defined(DISABLE_ML_OPS)
     CreateMapMLValue_AgnosticVectorMap((PyObject*)NULL, value.ptr(), alloc, name_input, p_mlvalue);
+#else
+    ORT_UNUSED_PARAMETER(p_mlvalue);
+    throw std::runtime_error("Map type is not supported in this build.");
+#endif
+
   } else {
     auto iterator = PyObject_GetIter(value.ptr());
     if (iterator == NULL) {

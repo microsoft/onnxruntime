@@ -41,8 +41,8 @@ common::Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_prot
 /** Creates a TensorProto from a Tensor.
     @param[in] tensor the Tensor whose data and shape will be used to create the TensorProto.
     @param[in] tensor_proto_name the name of the TensorProto.
-    @return the TensorProto. 
-    
+    @return the TensorProto.
+
     Note: Method currently requires that data is in little-endian format.
  */
 ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std::string& tensor_proto_name);
@@ -214,6 +214,18 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, /*out*/ T* p_data
              ? UnpackTensor(tensor, tensor.raw_data().data(), tensor.raw_data().size(), p_data, expected_size)
              : UnpackTensor(tensor, nullptr, 0, p_data, expected_size);
 }
+
+/**
+ * Unpack the data from an initializer tensor
+ * Please note, this function does not unpack string_data of an initializer tensor
+ * @param initializer       given initializer tensor
+ * @param unpacked_tensor   the data from the initaizlier in uint8_t* form
+ * @param tensor_byte_size  the byte size of the unpacked_tensor
+ * @returns                 Status::OK() if data is unpacked successfully
+ */
+common::Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
+                                     std::unique_ptr<uint8_t[]>& unpacked_tensor,
+                                     size_t& tensor_byte_size) ORT_MUST_USE_RESULT;
 
 }  // namespace utils
 }  // namespace onnxruntime

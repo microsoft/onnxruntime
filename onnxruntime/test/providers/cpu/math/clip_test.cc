@@ -22,7 +22,7 @@ TEST(MathOpTest, Clip_6) {
                         {10.0f, 4.4f, 10.0f,
                          -1.3f, 3.5f, 10.0f,
                          -5.4f, 9.3f, 10.0f});
-  #if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
+  #if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M) || defined(OPENVINO_CONFIG_CPU_FP32)
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
   #else
     test.Run();
@@ -30,7 +30,7 @@ TEST(MathOpTest, Clip_6) {
 }
 
 TEST(MathOpTest, Clip_Default) {
-  OpTester test("Clip", -1);
+  OpTester test("Clip", 12);
 
   std::vector<int64_t> dims{3, 3};
   test.AddInput<float>("X", dims,
@@ -51,7 +51,7 @@ TEST(MathOpTest, Clip_Default) {
 }
 
 TEST(MathOpTest, Clip_Default_int8) {
-  OpTester test("Clip", -1);
+  OpTester test("Clip", 12);
 
   std::vector<int64_t> dims{3, 3};
   test.AddInput<int8_t>("X", dims,
@@ -68,7 +68,7 @@ TEST(MathOpTest, Clip_Default_int8) {
 }
 
 TEST(MathOpTest, Clip_Default_uint8) {
-  OpTester test("Clip", -1);
+  OpTester test("Clip", 12);
 
   std::vector<int64_t> dims{3, 3};
   test.AddInput<uint8_t>("X", dims,
@@ -85,7 +85,7 @@ TEST(MathOpTest, Clip_Default_uint8) {
 }
 
 TEST(MathOpTest, Clip_Default_int64) {
-  OpTester test("Clip", -1);
+  OpTester test("Clip", 12);
 
   std::vector<int64_t> dims{3, 3};
   test.AddInput<int64_t>("X", dims,
@@ -103,7 +103,7 @@ TEST(MathOpTest, Clip_Default_int64) {
 
 
 TEST(MathOpTest, Clip_Default_uint64) {
-  OpTester test("Clip", -1);
+  OpTester test("Clip", 12);
 
   std::vector<int64_t> dims{3, 3};
   test.AddInput<uint64_t>("X", dims,

@@ -4,7 +4,6 @@
 #pragma once
 
 #include "core/framework/execution_provider.h"
-#include "core/graph/onnx_protobuf.h"
 #include "core/providers/nnapi/nnapi_builtin/model.h"
 
 namespace onnxruntime {

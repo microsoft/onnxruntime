@@ -162,10 +162,11 @@ class PosixThread : public EnvThread {
  private:
   static void* ThreadMain(void* param) {
     std::unique_ptr<Param> p((Param*)param);
-    try {
+    ORT_TRY {
       // Ignore the returned value for now
       p->start_address(p->index, p->param);
-    } catch (std::exception&) {
+    }
+    ORT_CATCH(const std::exception&) {
       p->param->Cancel();
     }
     return nullptr;

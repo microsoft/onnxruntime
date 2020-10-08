@@ -19,7 +19,7 @@ template <typename T>
 thread_local std::map<OpKernel*, armnn::NetworkId> Relu<T>::reluLayers;
 
 template <typename T>
-armnn::IRuntimePtr Relu<T>::run = Relu<T>::initRuntime();
+armnn::IRuntimePtr Relu<T>::run = armnn::IRuntimePtr(nullptr, nullptr);
 
 template <typename T>
 Status Relu<T>::Compute(OpKernelContext* context) const {

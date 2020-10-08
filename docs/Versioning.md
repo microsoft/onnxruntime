@@ -20,22 +20,22 @@ models that are stamped with ONNX opset versions in the range [7-9].
 
 
 ### Version matrix
-Following table summarizes the relationship between the ONNX Runtime version and the ONNX
-opset version implemented in that release. Please note the Backwards and Forward compatibility notes above.
+The following table summarizes the relationship between the ONNX Runtime version and the ONNX opset version implemented in that release. 
+Please note the backward compatibility notes above..
 For more details on ONNX Release versions, see [this page](https://github.com/onnx/onnx/blob/master/docs/Versioning.md).
 
-| ONNX Runtime release version | ONNX release version | ONNX opset version | ONNX ML opset version | Supported ONNX IR version | [WinML compatibility](https://docs.microsoft.com/en-us/windows/ai/windows-ml/)|
+| ONNX Runtime release version | ONNX release version | ONNX opset version | ONNX ML opset version | Supported ONNX IR version | [Windows ML Availability](https://docs.microsoft.com/en-us/windows/ai/windows-ml/release-notes/)|
 |------------------------------|--------------------|--------------------|----------------------|------------------|------------------|
-| 1.4.0 | **1.7** down to 1.2 | 12 | 2 | 6 | -- |
-| 1.3.1 | **1.7** down to 1.2 | 12 | 2 | 6 | -- |
-| 1.3.0 | **1.7** down to 1.2 | 12 | 2 | 6 | -- |
-| 1.2.0<br>1.1.2<br>1.1.1<br>1.1.0 | **1.6** down to 1.2 | 11 | 2 | 6 | -- |
-| 1.0.0 | **1.6** down to 1.2 | 11 | 2 | 6 | -- |
-| 0.5.0 | **1.5** down to 1.2 | 10 | 1 | 5 | -- |
-| 0.4.0 | **1.5** down to 1.2 | 10 | 1 | 5 | -- |
-| 0.3.1<br>0.3.0 | **1.4** down to 1.2 | 9 | 1 | 3 | -- |
-| 0.2.1<br>0.2.0 | **1.3** down to 1.2 | 8 | 1 | 3 | 1903 (19H1)+ |
-| 0.1.5<br>0.1.4 | **1.3** down to 1.2 | 8 | 1 | 3 | 1809 (RS5)+ |
+| 1.4.0 | **1.7** down to 1.2 | 12 | 2 | 6 | Windows AI 1.4+ |
+| 1.3.1 | **1.7** down to 1.2 | 12 | 2 | 6 | Windows AI 1.4+ |
+| 1.3.0 | **1.7** down to 1.2 | 12 | 2 | 6 | Windows AI 1.3+ |
+| 1.2.0<br>1.1.2<br>1.1.1<br>1.1.0 | **1.6** down to 1.2 | 11 | 2 | 6 | Windows AI 1.3+ |
+| 1.0.0 | **1.6** down to 1.2 | 11 | 2 | 6 | Windows AI 1.3+ |
+| 0.5.0 | **1.5** down to 1.2 | 10 | 1 | 5 | Windows AI 1.3+ |
+| 0.4.0 | **1.5** down to 1.2 | 10 | 1 | 5 | Windows AI 1.3+ |
+| 0.3.1<br>0.3.0 | **1.4** down to 1.2 | 9 | 1 | 3 | Windows 10 2004+ |
+| 0.2.1<br>0.2.0 | **1.3** down to 1.2 | 8 | 1 | 3 | Windows 10 1903+ |
+| 0.1.5<br>0.1.4 | **1.3** down to 1.2 | 8 | 1 | 3 | Windows 10 1809+ |
 
 
 ## Tool Compatibility

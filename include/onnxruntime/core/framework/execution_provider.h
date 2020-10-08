@@ -22,7 +22,8 @@ class KernelRegistryManager;
 /**
    Logical device representation.
 */
-typedef std::map<int, AllocatorPtr> AllocatorMap;
+using AllocatorMap = std::map<int, AllocatorPtr>;
+using MemoryInfoSet = std::set<OrtMemoryInfo>;
 
 // if we are export the fused function to dll, the function will still in the same binary as onnxruntime
 // use std function to give execution provider some chance to capture some state.
@@ -34,8 +35,8 @@ using DestroyFunctionStateFunc = std::function<void(FunctionState)>;
 using UnorderedMapStringToString = std::unordered_map<std::string, std::string>;
 
 //data types for execution provider options
-using ProviderOptionsVector = std::vector<UnorderedMapStringToString>;  
-using ProviderOptionsMap = std::unordered_map<std::string, UnorderedMapStringToString>;  
+using ProviderOptionsVector = std::vector<UnorderedMapStringToString>;
+using ProviderOptionsMap = std::unordered_map<std::string, UnorderedMapStringToString>;
 
 struct NodeComputeInfo {
   CreateFunctionStateFunc create_state_func;
@@ -113,7 +114,7 @@ class IExecutionProvider {
   /**
      Store execution provider's configurations. 
    */
-  void SetProviderOptions(UnorderedMapStringToString& options) { 
+  void SetProviderOptions(UnorderedMapStringToString& options) {
     provider_options_ = options;
   }
 
@@ -165,6 +166,7 @@ class IExecutionProvider {
   virtual common::Status OnSessionInitializationEnd();
 
   void InsertAllocator(AllocatorPtr allocator);
+  void ReplaceAllocator(AllocatorPtr allocator);
 
   /**
   Given a list of fused_node, return create_state/compute/release_state func for each node.
@@ -193,6 +195,7 @@ class IExecutionProvider {
  private:
   const std::string type_;
   AllocatorMap allocators_;
+  MemoryInfoSet mem_info_set_;  // to ensure only allocators with unique OrtMemoryInfo are registered in the provider.
   //It will be set when this object is registered to a session
   const logging::Logger* logger_ = nullptr;
   // convenience list of the allocators so GetAllocatorList doesn't have to build a new vector each time

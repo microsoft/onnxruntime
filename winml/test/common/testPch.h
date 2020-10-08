@@ -16,3 +16,5 @@
 #include <wrl/implements.h>
 
 #include "fileHelpers.h"
+
+#include <thread>

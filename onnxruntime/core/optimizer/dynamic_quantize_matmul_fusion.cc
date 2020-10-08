@@ -86,19 +86,19 @@ Status DynamicQuantizeMatMulFusion::ApplyImpl(Graph& graph, bool& modified, int 
 
     ORT_RETURN_IF_ERROR(Recurse(mul_node, modified, graph_level, logger));
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(mul_node, "Mul", {7}) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(mul_node, "Mul", {7, 13}) ||
         !graph_utils::IsSupportedProvider(mul_node, GetCompatibleExecutionProviders())) {
       continue;
     }
 
     // Left Parents path
     std::vector<graph_utils::EdgeEndToMatch> left_parent_path{
-        {0, 0, "Cast", {6, 9}, kOnnxDomain},
+        {0, 0, "Cast", {6, 9, 13}, kOnnxDomain},
         {0, 0, "MatMulInteger", {10}, kOnnxDomain},
         {0, 0, "DynamicQuantizeLinear", {11}, kOnnxDomain}};
 
     std::vector<graph_utils::EdgeEndToMatch> right_parent_path{
-        {0, 1, "Mul", {7}, kOnnxDomain},
+        {0, 1, "Mul", {7, 13}, kOnnxDomain},
         {1, 0, "DynamicQuantizeLinear", {11}, kOnnxDomain}};
 
     std::vector<std::reference_wrapper<Node>> left_nodes;

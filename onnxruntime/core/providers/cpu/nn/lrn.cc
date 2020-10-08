@@ -16,7 +16,7 @@
 /* Modifications Copyright (c) Microsoft. */
 
 #include "core/providers/cpu/nn/lrn.h"
-#include "core/providers/cpu/activation/element_wise_ranged_transform.h"
+#include "core/providers/cpu/element_wise_ranged_transform.h"
 
 #include "core/common/safeint.h"
 #include "core/util/math.h"

@@ -21,8 +21,13 @@ struct SubGraphContext {
   bool has_dynamic_input_shape = false;
   bool enable_batching = false;
   bool set_vpu_config = false;
+  bool is_constant = false;
   std::string subgraph_name;
+  #if (defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
   std::vector<int> input_indexes;
+  #else
+  std::unordered_map<std::string, int> input_names;
+  #endif
   std::unordered_map<std::string, int> output_names;
   std::string device_id;
   InferenceEngine::Precision precision;

@@ -279,6 +279,16 @@ void CopyInputAcrossDevices_DML() {
   ort_api->ReleaseValue(input_tensor);
   ort_api->ReleaseMemoryInfo(memory_info);
 }
+
+void GetNumberOfIntraOpThreads(){
+  const auto session_options = CreateUniqueOrtSessionOptions();
+  uint32_t desired_num_threads = std::thread::hardware_concurrency() / 2;
+  ort_api->SetIntraOpNumThreads(session_options.get(), desired_num_threads);
+  const auto session = CreateUniqueOrtSession(session_options);
+  uint32_t num_threads;
+  winml_adapter_api->SessionGetNumberOfIntraOpThreads(session.get(), &num_threads);
+  WINML_EXPECT_EQUAL(num_threads, desired_num_threads);
+}
 }
 
 const AdapterSessionTestAPI& getapi() {
@@ -299,7 +309,8 @@ const AdapterSessionTestAPI& getapi() {
     LoadAndPurloinModel,
     Profiling,
     CopyInputAcrossDevices,
-    CopyInputAcrossDevices_DML
+    CopyInputAcrossDevices_DML,
+    GetNumberOfIntraOpThreads
   };
 
   if (SkipGpuTests()) {
@@ -308,6 +319,9 @@ const AdapterSessionTestAPI& getapi() {
     api.RegisterGraphTransformers_DML = SkipTest;
     api.RegisterCustomRegistry_DML = SkipTest;
     api.CopyInputAcrossDevices_DML = SkipTest;
+  }
+  if (SkipTestsImpactedByOpenMP()) {
+    api.GetNumberOfIntraOpThreads = SkipTest;
   }
   return api;
 }

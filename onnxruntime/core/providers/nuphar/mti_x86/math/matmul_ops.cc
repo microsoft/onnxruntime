@@ -236,7 +236,7 @@ bool GemmExternCpu(
              trans_a,
              trans_b});
       },
-      name, "", {})[0];
+      name + "_sgemm_cpu", "", {})[0];
 
   return true;
 }
@@ -303,7 +303,7 @@ bool MatMulExternCpu(
         }
         return topi::detail::call_packed(extern_args);
       },
-      name, "", {})[0];
+      name + "_batched_matmul_cpu", "", {})[0];
 
   return true;
 }

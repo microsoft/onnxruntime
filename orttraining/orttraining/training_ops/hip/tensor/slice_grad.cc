@@ -47,10 +47,10 @@ void SliceGrad::FillInputVectors(OpKernelContext* ctx, std::vector<int64_t>& inp
                        ctx->Input<Tensor>(5), input_starts, input_ends, input_axes, input_steps);
 }
 
-Status SliceGrad::CallSliceImp(size_t element_size, size_t dimension_count, const int64_t* starts_buffer,
-                               const int64_t* steps_buffer, const int64_t* input_strides,
-                               const fast_divmod* output_strides, OpKernelContext* ctx,
-                               TensorShape output_shape) const {
+Status SliceGrad::CallSliceImp(size_t element_size, size_t dimension_count, const TArray<int64_t>& starts_buffer,
+                               const TArray<int64_t>& steps_buffer, const TArray<int64_t>& input_strides,
+                               const TArray<fast_divmod>& output_strides, OpKernelContext* ctx,
+                               const TensorShape& output_shape) const {
   Tensor* gradient_out_tensor = GetOutputGradientTensor(ctx);
   HIP_RETURN_IF_ERROR(hipMemset(gradient_out_tensor->MutableDataRaw(), 0, gradient_out_tensor->SizeInBytes()));
   return SliceImplGrad(element_size,

@@ -17,10 +17,11 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
         .Alias(0, 0),
     IdentityOp<true>);
 
-ONNX_OPERATOR_KERNEL_EX(
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Dropout,
     kOnnxDomain,
     10,
+    11,
     kCudaExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<MLFloat16>(),

@@ -26,7 +26,7 @@ Returns true if given tensor is a scalar or 1D tensor of size 1
 **/
 inline bool IsScalarOr1ElementVector(const Tensor* input) {
   if (input->Shape().NumDimensions() == 0 ||
-      (input->Shape().NumDimensions() == 1 && input->Shape().GetDims().size() == 1)) {
+      (input->Shape().NumDimensions() == 1 && input->Shape().Size() == 1)) {
     return true;
   } else {
     return false;

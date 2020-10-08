@@ -5,23 +5,8 @@ Java Native Interface (JNI) is used to allow for seamless calls to ONNX runtime 
 
 ## Usage
 
-TBD: maven distribution
-
-The minimum supported Java Runtime is version 8.
-
-An example implementation is located in
-[src/test/java/sample/ScoreMNIST.java](./src/test/java/sample/ScoreMNIST.java).
-Once compiled the sample code expects the following arguments `ScoreMNIST
-<path-to-mnist-model> <path-to-mnist> <scikit-learn-flag>`.  MNIST is expected
-to be in libsvm format. If the optional scikit-learn flag is supplied the model
-is expected to be produced by skl2onnx (so expects a flat feature vector, and
-produces a structured output), otherwise the model is expected to be a CNN from
-pytorch (expecting a `[1][1][28][28]` input, producing a vector of
-probabilities).  Two example models are provided in [testdata](testdata),
-`cnn_mnist_pytorch.onnx` and `lr_mnist_scikit.onnx`. The first is a LeNet5 style
-CNN trained using PyTorch, the second is a logistic regression trained using scikit-learn.
-
-This project can be built manually using the instructions below.
+This document pertains to developing, building, running, and testing the API itself in your local environment.
+For general purpose usage of the publicly distributed API, please see the [general Java API documentation](../docs/Java_API.md).
 
 ### Building
 
@@ -43,16 +28,7 @@ The build will generate output in `$REPO_ROOT/build/$OS/$CONFIGURATION/java/buil
 
 * `docs/javadoc/` - HTML javadoc
 * `reports/` - detailed test results and other reports
-* `libs/onnxruntime-<version-number>.jar` - JAR with classes, depends on `onnxruntime-<version-number>-jni.jar` and `onnxruntime-<version-number>-lib.jar `
-* `libs/onnxruntime-<version-number>-jni.jar`- JAR with JNI shared library
-* `libs/onnxruntime-<version-number>-lib.jar` - JAR with onnxruntime shared library
-* `libs/onnxruntime-<version-number>-all.jar` - the 3 preceding jars all combined: JAR with classes, JNI shared library, and onnxruntime shared library
-
-The reason the shared libraries are split out like that is that users can mix and match to suit their use case:
-
-* To support a single OS/Architecture without any dependencies, use `libs/onnxruntime-<version-number>-all.jar`.
-* To support cross-platform: bundle a single `libs/onnxruntime-<version-number>.jar` and with all of the respective `libs/onnxruntime-<version-number>-jni.jar` and `libs/onnxruntime-<version-number>-lib.jar` for all of the desired OS/Architectures.
-* To support use case where an onnxruntime shared library will reside in the system's library search path: bundle a single `libs/onnxruntime-<version-number>.jar` and with all of the `libs/onnxruntime-<version-number>-jni.jar`. The onnxruntime shared library should be loaded using one of the other methods described in the "Advanced Loading" section below.
+* `libs/onnxruntime-VERSION.jar` - JAR with compiled classes, platform-specific JNI shared library, and platform-specific onnxruntime shared library.
 
 #### Build System Overview 
 

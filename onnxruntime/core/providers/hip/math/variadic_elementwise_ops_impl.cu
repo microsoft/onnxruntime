@@ -17,7 +17,7 @@ struct VariadicElementwiseOpTraits;
 #define DEFINE_TRAITS(VariadicElementwiseOpTag, ImplName)           \
   template <typename T>                                             \
   struct VariadicElementwiseOpTraits<T, VariadicElementwiseOpTag> { \
-    using ScalarComputeFunctor = OP_##ImplName<T, T>;               \
+    using ScalarComputeFunctor = OP_##ImplName<T, T, T>;            \
                                                                     \
     static void ComputeFn(                                          \
         int32_t output_rank_or_simple_broadcast,                    \

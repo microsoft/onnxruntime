@@ -12,12 +12,10 @@ namespace onnxruntime {
 namespace test {
 TEST(AllocatorTest, CUDAAllocatorTest) {
   OrtDevice::DeviceId cuda_device_id = 0;
-  DeviceAllocatorRegistrationInfo default_memory_info(
-      {OrtMemTypeDefault,
-       [](OrtDevice::DeviceId id) { return onnxruntime::make_unique<CUDAAllocator>(id, CUDA); },
-       std::numeric_limits<size_t>::max()});
+  AllocatorCreationInfo default_memory_info(
+      {[](OrtDevice::DeviceId id) { return onnxruntime::make_unique<CUDAAllocator>(id, CUDA); }, cuda_device_id});
 
-  auto cuda_arena = CreateAllocator(default_memory_info, cuda_device_id);
+  auto cuda_arena = CreateAllocator(default_memory_info);
 
   size_t size = 1024;
 
@@ -30,10 +28,8 @@ TEST(AllocatorTest, CUDAAllocatorTest) {
   auto cuda_addr = cuda_arena->Alloc(size);
   EXPECT_TRUE(cuda_addr);
 
-  DeviceAllocatorRegistrationInfo pinned_memory_info(
-      {OrtMemTypeCPUOutput,
-       [](int) { return onnxruntime::make_unique<CUDAPinnedAllocator>(static_cast<OrtDevice::DeviceId>(0), CUDA_PINNED); },
-       std::numeric_limits<size_t>::max()});
+  AllocatorCreationInfo pinned_memory_info(
+      [](int) { return onnxruntime::make_unique<CUDAPinnedAllocator>(static_cast<OrtDevice::DeviceId>(0), CUDA_PINNED); });
 
   auto pinned_allocator = CreateAllocator(pinned_memory_info);
 
@@ -86,12 +82,11 @@ TEST(AllocatorTest, CUDAAllocatorFallbackTest) {
   // need extra test logic if this ever happens.
   EXPECT_NE(free, total) << "All memory is free. Test logic does not handle this.";
 
-  DeviceAllocatorRegistrationInfo default_memory_info(
-      {OrtMemTypeDefault,
-       [](OrtDevice::DeviceId id) { return onnxruntime::make_unique<CUDAAllocator>(id, CUDA); },
-       std::numeric_limits<size_t>::max()});
+  AllocatorCreationInfo default_memory_info(
+      {[](OrtDevice::DeviceId id) { return onnxruntime::make_unique<CUDAAllocator>(id, CUDA); },
+       cuda_device_id});
 
-  auto cuda_arena = CreateAllocator(default_memory_info, cuda_device_id);
+  auto cuda_arena = CreateAllocator(default_memory_info);
 
   // initial allocation that sets the growth size for the next allocation
   size_t size = total / 2;

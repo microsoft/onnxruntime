@@ -635,7 +635,7 @@ cublasStatus_t inline CublasGemmStridedBatched(
 
 template <typename T>
 bool QkvToContext(
-    cublasHandle_t& cublas, cudaStream_t stream,
+    const cudaDeviceProp& prop, cublasHandle_t& cublas, cudaStream_t stream,
     const int batch_size, const int sequence_length, const int num_heads, const int head_size, const size_t element_size,
     const T* input, T* output, T* workspace,
     const int* mask_index, const std::vector<int64_t>* mask_index_dims,
@@ -661,7 +661,7 @@ bool QkvToContext(
   const T* v = k + total_size;
 
   cublasSetStream(cublas, stream);
-  CublasMathModeSetter helper(cublas, CUBLAS_TENSOR_OP_MATH);
+  CublasMathModeSetter helper(prop, cublas, CUBLAS_TENSOR_OP_MATH);
 
   // Concat past (2xBxNxS'xH) to present (2xBxNxS*xH):
   // past_k (BxNxS'xH) + k (BxNxSxH) => present_k (BxNxS*xH)
@@ -720,6 +720,7 @@ bool QkvToContext(
 }
 
 bool LaunchAttentionKernel(
+    const cudaDeviceProp& prop,
     const void* input,
     const int* mask_index,
     const std::vector<int64_t>* mask_index_dims,
@@ -739,13 +740,13 @@ bool LaunchAttentionKernel(
   const cudaStream_t stream = nullptr;
 
   if (element_size == 2) {
-    return QkvToContext(cublas, stream,
+    return QkvToContext(prop, cublas, stream,
                         batch_size, sequence_length, num_heads, head_size, element_size,
                         reinterpret_cast<const half*>(input), reinterpret_cast<half*>(output), reinterpret_cast<half*>(workspace),
                         mask_index, mask_index_dims, is_unidirectional,
                         past_sequence_length, reinterpret_cast<const half*>(past), reinterpret_cast<half*>(present));
   } else {
-    return QkvToContext(cublas, stream,
+    return QkvToContext(prop, cublas, stream,
                         batch_size, sequence_length, num_heads, head_size, element_size,
                         reinterpret_cast<const float*>(input), reinterpret_cast<float*>(output), reinterpret_cast<float*>(workspace),
                         mask_index, mask_index_dims, is_unidirectional,

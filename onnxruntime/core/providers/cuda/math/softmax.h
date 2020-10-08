@@ -36,12 +36,14 @@ class Softmax final : public CudaKernel {
  public:
   Softmax(const OpKernelInfo& info) : CudaKernel{info} {
     info.GetAttrOrDefault("axis", &axis_, static_cast<int64_t>(1));
+    log_softmax_ = info.GetKernelDef().OpName() == "LogSoftmax";
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
   int64_t axis_;
+  bool log_softmax_;
 };
 
 }  // namespace cuda

@@ -35,6 +35,7 @@ struct PrepareReduceMetadata {
   std::vector<int64_t> output_dims_cudnn;
   int64_t rank;
   int64_t stride;
+  bool contiguous_axes;
 };
 
 template <bool allow_multi_axes>

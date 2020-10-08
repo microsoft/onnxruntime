@@ -4,7 +4,7 @@
 # -*- coding: UTF-8 -*-
 import numpy as np
 import onnx
-from onnx import numpy_helper
+from onnx import helper, numpy_helper
 import onnxruntime as onnxrt
 import os
 from onnxruntime.nuphar.rnn_benchmark import perf_test, generate_model
@@ -16,6 +16,310 @@ import tarfile
 import unittest
 import urllib.request
 
+def reference_gemm(a, b, c, alpha, beta, transA, transB):
+    a = a if transA == 0 else a.T
+    b = b if transB == 0 else b.T
+    y = alpha * np.dot(a, b) + beta * c
+    return y
+
+def set_gemm_node_attrs(attrs, config):
+    if config['alpha'] != 1.0:
+      attrs['alpha'] = config['alpha']
+    if config['beta'] != 1.0:
+      attrs['beta'] = config['beta']
+    if config['transA']:
+      attrs['transA'] = 1
+    if config['transB']:
+      attrs['transB'] = 1
+
+def generate_gemm_inputs_initializers(graph, config, added_inputs_initializers={}, extend=False):
+    M = config['M']
+    K = config['K']
+    N = config['N']
+
+    shape_a = [K, M] if config['transA'] else [M, K]
+    shape_b = [N, K] if config['transB'] else [K, N]
+    shape_c = [M, N]
+
+    # when A/B/C are graph input of the main graph which contains
+    # a Scan node, then they need an extra 'seq' dimension
+    input_shape_a = ['seq'] + shape_a if extend else shape_a
+    input_shape_b = ['seq'] + shape_b if extend else shape_b
+    input_shape_c = ['seq'] + shape_c if extend else shape_c
+
+    a = np.random.ranf(shape_a).astype(np.float32)
+    b = np.random.ranf(shape_b).astype(np.float32)
+    c = np.random.ranf(shape_c).astype(np.float32) if config['withC'] else np.array(0)
+
+    init_a = a if config['initA'] else None
+    init_b = b if config['initB'] else None
+    init_c = c if config['initC'] else None
+
+    A = config['A']
+    B = config['B']
+    C = config['C']
+
+    # A is an initializer
+    if A in added_inputs_initializers:
+        a = added_inputs_initializers[A]
+    else:
+        added_inputs_initializers[A] = a
+        if init_a is not None:
+            graph.initializer.add().CopyFrom(numpy_helper.from_array(init_a, A))
+        else:
+            graph.input.add().CopyFrom(helper.make_tensor_value_info(A,
+                                                                     onnx.TensorProto.FLOAT,
+                                                                     input_shape_a))
+
+    # B is an initializer
+    if B in added_inputs_initializers:
+        b = added_inputs_initializers[B]
+    else:
+        added_inputs_initializers[B] = b
+        if init_b is not None:
+            graph.initializer.add().CopyFrom(numpy_helper.from_array(init_b, B))
+        else:
+            graph.input.add().CopyFrom(helper.make_tensor_value_info(B,
+                                                                     onnx.TensorProto.FLOAT,
+                                                                     input_shape_b))
+
+    if config['withC']:
+        if C in added_inputs_initializers:
+            c = added_inputs_initializers[C]
+        else:
+            added_inputs_initializers[C] = c
+            if init_c is not None:
+                graph.initializer.add().CopyFrom(numpy_helper.from_array(init_c, C))
+            else:
+                graph.input.add().CopyFrom(helper.make_tensor_value_info(C,
+                                                                         onnx.TensorProto.FLOAT,
+                                                                         input_shape_c))
+
+    return (a, b, c)
+
+def generate_gemm_model(model_name, config):
+    model = onnx.ModelProto()
+    model.ir_version = onnx.IR_VERSION
+    opset = model.opset_import.add()
+    opset.version = 11
+
+    added_inputs_initializers = {}
+    (a, b, c) = generate_gemm_inputs_initializers(model.graph, config, added_inputs_initializers)
+
+    node_inputs = [config['A'], config['B']]
+    if config['withC']:
+        node_inputs.append(config['C'])
+
+    attrs = {}
+    set_gemm_node_attrs(attrs, config)
+    node = helper.make_node('Gemm', node_inputs, [config['Y']], config['node_name'], **attrs)
+    model.graph.node.add().CopyFrom(node)
+
+    shape_output = [config['M'], config['N']]
+    model.graph.output.add().CopyFrom(helper.make_tensor_value_info(config['Y'],
+                                                                    onnx.TensorProto.FLOAT,
+                                                                    shape_output))
+
+    # compute reference output
+    y = reference_gemm(a, b, c, config['alpha'], config['beta'], config['transA'], config['transB'])
+
+    onnx.save(model, model_name)
+    return (a, b, c, y)
+
+def generate_gemm_node_subgraph(scan_body, scan_node_inputs, postfix, config, added_inputs):
+    M = config['M']
+    K = config['K']
+    N = config['N']
+
+    shape_a = [K, M] if config['transA'] else [M, K]
+    shape_b = [N, K] if config['transB'] else [K, N]
+
+    A = config['A']
+    B = config['B']
+
+    gemm_node_inputs = []
+    # A comes from the outer graph if it's an initializer
+    if config['initA']:
+        gemm_node_inputs.append(A)
+    else:
+        gemm_node_inputs.append(A + postfix)
+        if A not in added_inputs:
+            added_inputs[A] = 1
+            scan_node_inputs.append(A)
+            scan_body.input.add().CopyFrom(helper.make_tensor_value_info(A + postfix,
+                                                                         onnx.TensorProto.FLOAT,
+                                                                         shape_a))
+
+    # B comes from the outer graph if it's an initializer
+    if config['initB']:
+        gemm_node_inputs.append(B)
+    else:
+        gemm_node_inputs.append(B + postfix)
+        if B not in added_inputs:
+            added_inputs[B] = 1
+            scan_node_inputs.append(B)
+            scan_body.input.add().CopyFrom(helper.make_tensor_value_info(B + postfix,
+                                                                         onnx.TensorProto.FLOAT,
+                                                                         shape_b))
+
+    # C comes from Scan state
+    if config['withC']:
+        gemm_node_inputs.append('in_' + config['C'] + postfix)
+
+    attrs = {}
+    set_gemm_node_attrs(attrs, config)
+    node = helper.make_node('Gemm',
+                            gemm_node_inputs,
+                            [config['Y'] + postfix],
+                            config['node_name'],
+                            **attrs)
+    scan_body.node.add().CopyFrom(node)
+
+def generate_gemm_scan_model(model_name, config1, config2):
+    model = onnx.ModelProto()
+    model.ir_version = onnx.IR_VERSION
+    opset = model.opset_import.add()
+    opset.version = 11
+
+    # Based on the given configs, we would have a model like below:
+    # Main graph, where C is an initializer and passed as the input state for the Scan:
+    #      C  input_1A input_2A
+    #       \     |    /
+    #        \    |   /
+    #           Scan
+    #             |
+    #           output
+    #
+    # Scan's subgraph, where out_C is the output state of the Scan
+    # input_1A  B  C  input_2A B  C
+    #     \     | /       \    | /
+    #      \    |/         \   |/
+    #      Gemm_1           Gemm_2
+    #           \          /
+    #            \        /
+    #               Sub
+    #              /   \
+    #           out_C  output
+    #
+    # config1 and config2 configure alpha/beta/transA/transB for Gemm_1 and Gemm_2, respectively.
+
+    scan_body = onnx.GraphProto()
+    scan_body.name = 'gemm_subgraph'
+
+    shape_c1 = [config1['M'], config1['N']]
+    shape_c2 = [config2['M'], config2['N']]
+    assert shape_c1 == shape_c2
+    C1 = config1['C']
+    C2 = config2['C']
+
+    scan_node_inputs = []
+    postfix = '_subgraph'
+    states_cnt = 0
+    # make sure we create state inputs first
+    if config1['withC']:
+        assert config1['initC']
+        states_cnt = states_cnt + 1
+        scan_node_inputs.append(C1)
+        scan_body.input.add().CopyFrom(helper.make_tensor_value_info('in_' + C1 + postfix,
+                                                                     onnx.TensorProto.FLOAT,
+                                                                     shape_c1))
+    if config2['withC'] and C1 != C2:
+        assert config2['initC']
+        states_cnt = states_cnt + 1
+        scan_node_inputs.append(C2)
+        scan_body.input.add().CopyFrom(helper.make_tensor_value_info('in_' + C2 + postfix,
+                                                                     onnx.TensorProto.FLOAT,
+                                                                     shape_c2))
+
+    added_inputs_subgraph = {}
+    generate_gemm_node_subgraph(scan_body,
+                                scan_node_inputs,
+                                postfix,
+                                config1,
+                                added_inputs_subgraph)
+    generate_gemm_node_subgraph(scan_body,
+                                scan_node_inputs,
+                                postfix,
+                                config2,
+                                added_inputs_subgraph)
+
+    sub_output = 'sub_output' + postfix
+    # create a Sub op instead of Add to break the MatMul-to-Gemm rewriting rule
+    # performed by the ort optimizer
+    sub_node = helper.make_node('Sub',
+                                [config1['Y'] + postfix, config2['Y'] + postfix],
+                                [sub_output],
+                                'sub_node')
+    scan_body.node.add().CopyFrom(sub_node)
+
+    scan_node_outputs = []
+    # create state outputs
+    if config1['withC']:
+        id_node1 = onnx.helper.make_node('Identity',
+                                         [sub_output],
+                                         ['out_' + C1 + postfix],
+                                         'id_node1')
+        scan_body.node.add().CopyFrom(id_node1)
+        scan_body.output.add().CopyFrom(helper.make_tensor_value_info('out_' + C1 + postfix,
+                                                                      onnx.TensorProto.FLOAT,
+                                                                      shape_c1))
+        scan_node_outputs.append('out_' + C1)
+
+    if config2['withC'] and C1 != C2:
+        id_node2 = onnx.helper.make_node('Identity',
+                                         [sub_output],
+                                         ['out_' + C2 + postfix],
+                                         'id_node2')
+        scan_body.node.add().CopyFrom(id_node2)
+        scan_body.output.add().CopyFrom(helper.make_tensor_value_info('out_' + C2 + postfix,
+                                                                      onnx.TensorProto.FLOAT,
+                                                                      shape_c2))
+        scan_node_outputs.append('out_' + C2)
+
+    # scan subgraph output
+    scan_body.output.add().CopyFrom(helper.make_tensor_value_info(sub_output,
+                                                                  onnx.TensorProto.FLOAT,
+                                                                  shape_c1))
+    scan_node_outputs.append('scan_output')
+
+    # create scan node
+    inputs_cnt = len(scan_node_inputs) - states_cnt
+    assert inputs_cnt > 0
+
+    scan_node = onnx.helper.make_node('Scan',
+                                      scan_node_inputs,
+                                      scan_node_outputs,
+                                      'scan_node',
+                                      num_scan_inputs=inputs_cnt,
+                                      body=scan_body)
+    model.graph.node.add().CopyFrom(scan_node)
+
+    added_inputs_initializers = {}
+    # main graph inputs and initializers
+    (a1, b1, c1) = generate_gemm_inputs_initializers(model.graph,
+                                                     config1,
+                                                     added_inputs_initializers,
+                                                     extend=True)
+    (a2, b2, c2) = generate_gemm_inputs_initializers(model.graph,
+                                                     config2,
+                                                     added_inputs_initializers,
+                                                     extend=True)
+
+    shape_output = ['seq', config1['M'], config1['N']]
+    # main graph outputs
+    model.graph.output.add().CopyFrom(helper.make_tensor_value_info('scan_output',
+                                                                    onnx.TensorProto.FLOAT,
+                                                                    shape_output))
+    onnx.save(model, model_name)
+    return (a1, b1, c1, a2, b2, c2)
+
+def set_gemm_model_inputs(config, test_inputs, a, b, c):
+    if not config['initA']:
+        test_inputs[config['A']] = a
+    if not config['initB']:
+        test_inputs[config['B']] = b
+    if config['withC'] and not config['initC']:
+        test_inputs[config['C']] = c
 
 class TestNuphar(unittest.TestCase):
 
@@ -226,6 +530,145 @@ class TestNuphar(unittest.TestCase):
         # run scan_batch with batch size 1 again
         scan_batch_data_output = sess.run([], {'input': data_input[:, 0:1, :], 'seq_len': data_seq_len[0:1]})
         assert np.allclose(first_lstm_data_output, scan_batch_data_output)
+
+    def test_gemm_to_matmul(self):
+        model_cnt = 0
+        gemm_model_name_prefix = "gemm_model"
+        matmul_model_name_prefix = "matmul_model"
+        common_config = {
+            'node_name':'GemmNode',
+            'A':'inputA', 'B':'inputB', 'C':'inputC', 'Y':'output', 'M':2, 'K':3, 'N':4, 'withC':False,
+            'initA':False, 'initB':False, 'initC':False, 'alpha':1.0, 'beta':1.0, 'transA':0, 'transB':0
+        }
+        test_configs = [
+            {},
+            {'transA':1},
+            {'transB':1},
+            {'transA':1, 'transB':1},
+            {'withC':True},
+            {'withC':True, 'initC':True},
+            {'initA':True},
+            {'initB':True},
+            {'initA':True, 'initB':True},
+            {'initA':True, 'transA':1},
+            {'initB':True, 'transB':1},
+            {'initA':True, 'transA':1, 'initB':True, 'transB':1},
+            {'alpha':2.2},
+            {'transA':1, 'alpha':2.2},
+            {'initA':True, 'transA':1, 'alpha':2.2},
+            {'withC':True, 'beta':3.3},
+            {'withC':True, 'initC':True, 'beta':3.3},
+            {'initA':True, 'transA':1, 'alpha':2.2, 'withC':True, 'initC':True, 'beta':3.3},
+            {'transA':1, 'transB':1, 'alpha':2.2, 'withC':True, 'beta':3.3},
+            {'transA':1, 'transB':1, 'alpha':2.2, 'withC':True, 'initC':True, 'beta':3.3}
+        ]
+
+        for i, config in enumerate(test_configs):
+            running_config = common_config.copy()
+            running_config.update(config)
+            gemm_model_name = gemm_model_name_prefix+str(i)+'.onnx'
+            matmul_model_name = matmul_model_name_prefix+str(i)+'.onnx'
+            a, b, c, expected_y = generate_gemm_model(gemm_model_name, running_config)
+            subprocess.run([
+                sys.executable, '-m', 'onnxruntime.nuphar.model_editor',
+                '--input', gemm_model_name,
+                '--output', matmul_model_name, '--mode', 'gemm_to_matmul'
+            ], check=True)
+
+            sess = onnxrt.InferenceSession(matmul_model_name)
+            test_inputs = {}
+            set_gemm_model_inputs(running_config, test_inputs, a, b, c)
+            actual_y = sess.run([], test_inputs)
+            assert np.allclose(expected_y, actual_y)
+
+    def test_gemm_to_matmul_with_scan(self):
+        model_cnt = 0
+        gemm_model_name_prefix = "gemm_scan_model"
+        matmul_model_name_prefix = "matmul_scan_model"
+
+        common_config = {
+            'M':2, 'K':3, 'N':4, 'withC':False, 'initA':False, 'initB':False, 'initC':False,
+            'alpha':1.0, 'beta':1.0, 'transA':0, 'transB':0
+        }
+        common_config1 = common_config.copy()
+        common_config1.update({
+            'node_name':'GemmNode1', 'A':'input1A', 'B':'input1B', 'C':'input1C', 'Y':'output1'
+        })
+        common_config2 = common_config.copy()
+        common_config2.update({
+            'node_name':'GemmNode2', 'A':'input2A', 'B':'input2B', 'C':'input2C', 'Y':'output2'
+        })
+        test_configs = [
+            ({}, {}),
+            ({'transA':1}, {'transB':1}),
+            ({'transA':1, 'transB':1}, {'transA':1, 'transB':1}),
+            ({'alpha':2.2}, {'alpha':3.3}),
+            ({'transA':1, 'transB':1, 'alpha':2.2}, {'transA':1, 'transB':1, 'alpha':3.3}),
+            ({'withC':True, 'initC':True}, {}),
+            ({'withC':True, 'initC':True}, {'withC':True, 'initC':True}),
+            ({'transA':1, 'transB':1, 'alpha':2.2, 'withC':True, 'initC':True, 'beta':1.2},
+             {'transA':1, 'transB':1, 'alpha':3.3, 'withC':True, 'initC':True, 'beta':4.1}),
+            ({'initA':True}, {}),
+            ({'initA':True}, {'initB':True}),
+            # FIXME: enable the test below after we fix some likely issue in graph partitioner
+            #({'initA':True, 'initB':True}, {}),
+            #({'initA':True, 'initB':True, 'transA':1}, {'initA':True, 'transB':1}),
+            #({'initA':True, 'transA':1, 'transB':1, 'alpha':2.2},
+            # {'initB':True, 'transA':1, 'transB':1, 'alpha':3.3}),
+            #({'initA':True, 'transA':1, 'transB':1, 'alpha':2.2, 'withC':True, 'initC':True},
+            # {'initB':True, 'transA':1, 'transB':1, 'alpha':3.3}),
+            #({'initA':True, 'transA':1, 'transB':1, 'alpha':2.2, 'withC':True, 'initC':True, 'beta':1.2},
+            # {'initB':True, 'transA':1, 'transB':1, 'alpha':3.3, 'withC':True, 'initC':True, 'beta':4.2}),
+            ({'A':'inputA', 'initA':True}, {'A':'inputA', 'initA':True}),
+            ({'B':'inputB', 'initB':True}, {'B':'inputB', 'initB':True}),
+            ({'C':'inputC', 'withC':True, 'initC':True}, {'C':'inputC', 'withC':True, 'initC':True}),
+            ({'transA':1, 'alpha':1.2, 'B':'inputB', 'initB':True, 'C':'inputC', 'withC':True, 'initC':True},
+             {'transA':1, 'alpha':2.2, 'B':'inputB', 'initB':True, 'C':'inputC', 'withC':True, 'initC':True}),
+            ({'transB':1, 'alpha':1.2, 'B':'inputB'}, {'transB':1, 'alpha':2.2, 'B':'inputB'}),
+            ({'transA':1, 'alpha':1.2, 'A':'inputA', 'B':'inputB'},
+             {'transA':1, 'alpha':2.2, 'A':'inputA', 'B':'inputB'}),
+            ({'transA':1, 'alpha':1.2, 'A':'inputA', 'B':'inputB', 'C':'inputC1', 'withC':True, 'initC':True},
+             {'transA':1, 'alpha':2.2, 'A':'inputA', 'B':'inputB', 'C':'inputC2', 'withC':True, 'initC':True}),
+        ]
+
+        for i, config in enumerate(test_configs):
+            config1, config2 = config
+            running_config1 = common_config1.copy()
+            running_config1.update(config1)
+            running_config2 = common_config2.copy()
+            running_config2.update(config2)
+
+            gemm_model_name = gemm_model_name_prefix+str(i)+'.onnx'
+            matmul_model_name = matmul_model_name_prefix+str(i)+'.onnx'
+            a1, b1, c1, a2, b2, c2 = generate_gemm_scan_model(gemm_model_name,
+                                                              running_config1,
+                                                              running_config2)
+
+            a1 = a1.reshape((1, ) + a1.shape)
+            b1 = b1.reshape((1, ) + b1.shape)
+            a2 = a2.reshape((1, ) + a2.shape)
+            b2 = b2.reshape((1, ) + b2.shape)
+            sess = onnxrt.InferenceSession(gemm_model_name)
+
+            test_inputs = {}
+            set_gemm_model_inputs(running_config1, test_inputs, a1, b1, c1)
+            set_gemm_model_inputs(running_config2, test_inputs, a2, b2, c2)
+
+            # run before model editing
+            expected_y = sess.run([], test_inputs)
+
+            subprocess.run([
+                sys.executable, '-m', 'onnxruntime.nuphar.model_editor',
+                '--input', gemm_model_name,
+                '--output', matmul_model_name, '--mode', 'gemm_to_matmul'
+            ], check=True)
+
+            # run after model editing
+            sess = onnxrt.InferenceSession(matmul_model_name)
+            actual_y = sess.run([], test_inputs)
+
+            assert np.allclose(expected_y, actual_y)
+            print("finished " + matmul_model_name)
 
     def test_symbolic_shape_infer(self):
         cwd = os.getcwd()

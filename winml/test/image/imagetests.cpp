@@ -616,12 +616,12 @@ TEST_F(ImageTests, ImageMetaDataTest) {
     // supported image metadata
     ValidateOutputImageMetaData(L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_255.onnx", BitmapAlphaMode::Premultiplied, BitmapPixelFormat::Bgra8, true);
     ValidateOutputImageMetaData(L"Add_ImageNet1920WithImageMetadataRgb8_SRGB_0_255.onnx", BitmapAlphaMode::Premultiplied, BitmapPixelFormat::Rgba8, true);
+    ValidateOutputImageMetaData(L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_1.onnx",   BitmapAlphaMode::Premultiplied, BitmapPixelFormat::Bgra8, true);
+    ValidateOutputImageMetaData(L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_1_1.onnx",   BitmapAlphaMode::Premultiplied, BitmapPixelFormat::Bgra8, true);
 
     // unsupported image metadata
     ValidateOutputImageMetaData(L"Add_ImageNet1920WithImageMetadataBgra8_SRGB_0_255.onnx", BitmapAlphaMode::Straight, BitmapPixelFormat::Bgra8, false);
     ValidateOutputImageMetaData(L"Add_ImageNet1920WithImageMetadataRgba8_SRGB_0_255.onnx", BitmapAlphaMode::Straight, BitmapPixelFormat::Rgba8, false);
-    ValidateOutputImageMetaData(L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_1.onnx", BitmapAlphaMode::Straight, BitmapPixelFormat::Bgra8, false);
-    ValidateOutputImageMetaData(L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_1_1.onnx", BitmapAlphaMode::Straight, BitmapPixelFormat::Bgra8, false);
     ValidateOutputImageMetaData(L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_16_235.onnx", BitmapAlphaMode::Straight, BitmapPixelFormat::Bgra8, false);
     ValidateOutputImageMetaData(L"Add_ImageNet1920WithImageMetadataBgr8_LINEAR_0_255.onnx", BitmapAlphaMode::Straight, BitmapPixelFormat::Bgra8, false);
 }

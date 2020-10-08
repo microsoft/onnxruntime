@@ -71,13 +71,16 @@ void* DefaultAlloc(size_t size) {
   size_t alignment = MlasGetPreferredBufferAlignment();
 #if _MSC_VER
   p = _aligned_malloc(size, alignment);
-  if (p == nullptr) throw std::bad_alloc();
+  if (p == nullptr)
+    ORT_THROW_EX(std::bad_alloc);
 #elif defined(_LIBCPP_SGX_CONFIG)
   p = memalign(alignment, size);
-  if (p == nullptr) throw std::bad_alloc();
+  if (p == nullptr)
+    ORT_THROW_EX(std::bad_alloc);
 #else
   int ret = posix_memalign(&p, alignment, size);
-  if (ret != 0) throw std::bad_alloc();
+  if (ret != 0)
+    ORT_THROW_EX(std::bad_alloc);
 #endif
   return p;
 }
@@ -523,145 +526,6 @@ common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFet
                                  execution_mode, terminate_flag, logger);
   return status;
 }
-
-#if defined(DEBUG_NODE_INPUTS_OUTPUTS)
-std::ostream& operator<<(std::ostream& out, const BFloat16& value) {
-  return out << value.ToFloat();
-}
-
-std::ostream& operator<<(std::ostream& out, const MLFloat16& value) {
-  return out << value.val;
-}
-
-template <typename T>
-static void DumpTensor(const Tensor& tensor, const TensorShape& shape) {
-  auto num_items = shape.Size();
-
-  if (num_items == 0) {
-    std::cout << "no data";
-    return;
-  }
-
-  size_t num_dims = shape.NumDimensions();
-  size_t num_rows = 1;
-  if (num_dims > 1) {
-    num_rows = static_cast<size_t>(shape[0]);
-  }
-
-  size_t row_size = num_items / num_rows;
-
-  auto data = tensor.DataAsSpan<T>();
-
-  auto print_val = [](const T& value) {
-    if (std::is_floating_point<T>::value)
-      std::cout << std::setprecision(8) << value;
-    else
-      std::cout << value;
-  };
-
-  for (size_t row = 0; row < num_rows; ++row) {
-    print_val(data[row * row_size]);
-    for (size_t i = 1; i < row_size; ++i) {
-      std::cout << ", ";
-      print_val(data[row * row_size + i]);
-    }
-    std::cout << "\n";
-  }
-
-  std::cout << std::endl;
-}
-
-void DumpNodeInputs(const OpKernelContext& context, const Node& node) {
-  std::cout << "-----------\n";
-  std::cout << node.OpType() << " node: " << node.Name() << "\n";
-
-  const auto& input_defs = node.InputDefs();
-
-  for (auto i = 0, end = context.InputCount(); i < end; ++i) {
-    if (input_defs[i]->Exists()) {
-      std::cout << "Input " << i << " Name: " << input_defs[i]->Name();
-
-      const auto* type = context.InputType(i);
-
-      if (type) {
-        if (type->IsTensorType()) {
-          const auto& tensor = *context.Input<Tensor>(i);
-          const auto& shape = tensor.Shape();
-
-          std::cout << " Shape: " << shape << "\n";
-        } else {
-          std::cout << " is non-tensor type.\n";
-        }
-      } else {
-        // should never happen...
-        std::cout << " was missing data type\n";
-      }
-    } else {
-      std::cout << "Input " << i << " is optional and was not provided.\n";
-    }
-  }
-}
-
-void DumpNodeOutputs(OpKernelContext& context, const Node& node, const SessionState& session_state) {
-  std::cout << "-----------\n";
-  const auto& output_defs = node.OutputDefs();
-
-  for (auto i = 0, end = context.OutputCount(); i < end; ++i) {
-    if (output_defs[i]->Exists()) {
-      std::cout << "Output " << i << " Name: " << output_defs[i]->Name();
-
-      const auto* type = context.OutputType(i);
-      if (type) {
-        if (type->IsTensorType()) {
-          const auto& tensor = *context.Output<Tensor>(i);
-          const auto& shape = tensor.Shape();
-
-          std::cout << " Shape: " << shape << "\n";
-
-          if (DEBUG_NODE_INPUTS_OUTPUTS > 1) {
-            // check tensor is on CPU before dumping it
-            auto& tensor_location = tensor.Location();
-            const auto data_type = tensor.DataType();
-            if (tensor_location.device.Type() == OrtDevice::CPU || tensor_location.mem_type == OrtMemTypeCPUOutput) {
-              DispatchOnTensorType(data_type, DumpTensor, tensor, shape);
-            } else {
-              std::cout << tensor_location << "\n";
-
-#ifdef USE_CUDA
-              // Dumping GPU only when cuda is enabled. Most op has only one output, so put GPU related code here to get best performance.
-              if (tensor_location.device.Type() == OrtDevice::GPU) {
-                const auto& execution_providers = session_state.GetExecutionProviders();
-                const auto* cpu_execution_provider = execution_providers.Get(onnxruntime::kCpuExecutionProvider);
-                auto cpu_allocator = cpu_execution_provider->GetAllocator(0, OrtMemTypeDefault);
-                std::unique_ptr<Tensor> cpu_tensor = onnxruntime::make_unique<Tensor>(data_type, shape, cpu_allocator);
-                const auto& data_transfer_mgr = session_state.GetDataTransferMgr();
-                auto status = data_transfer_mgr.CopyTensor(tensor, *cpu_tensor.get(), 0);
-                if (status == common::Status::OK()) {
-                  DispatchOnTensorType(data_type, DumpTensor, *cpu_tensor.get(), shape);
-                } else {
-                  std::cout << " failed to transfer data to cpu.\n";
-                }
-              }
-#else
-              ORT_UNUSED_PARAMETER(session_state);
-#endif
-            }
-          }
-        } else {
-          std::cout << " is non-tensor type.\n";
-        }
-      } else {
-        // should never happen...
-        std::cout << "missing data type\n";
-      }
-    } else {
-      std::cout << "Output " << i << " is optional and was not produced.\n";
-    }
-
-    std::cout << std::endl;
-  }
-}
-#endif
 
 int32_t ONNXTensorElementDataTypeToProtoTensorType(ONNXTensorElementDataType onnx_enum) {
   switch (onnx_enum) {

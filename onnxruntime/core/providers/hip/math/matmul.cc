@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/hip/hip_allocator.h"
-#include "core/providers/hip/shared_inc/fpgeneric.h"
+#include "matmul.h"
 #include "core/providers/cpu/math/matmul_helper.h"
-#include "core/providers/hip/math/matmul.h"
+#include "core/providers/hip/shared_inc/fpgeneric.h"
+#include "core/providers/hip/hip_allocator.h"
 
 namespace onnxruntime {
 namespace hip {
@@ -49,7 +49,7 @@ static bool CanUseStridedBatchedGemm(const TensorShape& left_shape, const Tensor
   int64_t left_k = transa ? left_shape[left_num_dims - 2] : left_shape[left_num_dims - 1];
 
   if (right_num_dims >= 3) {
-    int64_t right_p = right_shape.SizeToDimension(right_num_dims-2);
+    int64_t right_p = right_shape.SizeToDimension(right_num_dims - 2);
     if (left_p != right_p) {
       return false;
     }
@@ -91,27 +91,47 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   ORT_RETURN_IF_ERROR(helper.Compute(left_X->Shape(), right_X->Shape(), transa, transb));
 
   Tensor* Y = ctx->Output(0, helper.OutputShape());
-  ORT_RETURN_IF_NOT(strcmp(Y->Location().name, CUDA) == 0, "Output should be allocated on CUDA");
 
-  HipT one = ToHipType<T>::FromFloat(1.0f);
-  HipT zero = ToHipType<T>::FromFloat(0.0f);
+  // Bail out early if the output is going to be empty
+  if (Y->Shape().Size() == 0)
+    return Status::OK();
 
-  hipblasOperation_t transA = transa ? HIPBLAS_OP_T : HIPBLAS_OP_N;
-  hipblasOperation_t transB = transb ? HIPBLAS_OP_T : HIPBLAS_OP_N;
+  const HipT alpha = ToHipType<T>::FromFloat(alpha_);
+  const HipT zero = ToHipType<T>::FromFloat(0.0f);
+
+  // hipblasOperation_t transA = transa ? HIPBLAS_OP_T : HIPBLAS_OP_N;
+  // hipblasOperation_t transB = transb ? HIPBLAS_OP_T : HIPBLAS_OP_N;
+  rocblas_operation transA = transa ? rocblas_operation_transpose : rocblas_operation_none;
+  rocblas_operation transB = transb ? rocblas_operation_transpose : rocblas_operation_none;
   const int lda = transa ? static_cast<int>(helper.M()) : static_cast<int>(helper.K());
   const int ldb = transb ? static_cast<int>(helper.K()) : static_cast<int>(helper.N());
   const int ldc = static_cast<int>(helper.N());
   int64_t stride_A, stride_B, stride_C, batch_count;
 
   if (helper.OutputOffsets().size() == 1) {
-    HIPBLAS_RETURN_IF_ERROR(hipblasGemmHelper(
-        Base::HipblasHandle(),
+    // HIPBLAS_RETURN_IF_ERROR(hipblasGemmHelper(
+    //     Base::HipblasHandle(),
+    //     transB,
+    //     transA,
+    //     static_cast<int>(helper.N()),
+    //     static_cast<int>(helper.M()),
+    //     static_cast<int>(helper.K()),
+    //     &one,
+    //     reinterpret_cast<const HipT*>(right_X->template Data<T>()),
+    //     ldb,
+    //     reinterpret_cast<const HipT*>(left_X->template Data<T>()),
+    //     lda,
+    //     &zero,
+    //     reinterpret_cast<HipT*>(Y->template MutableData<T>()),
+    //     ldc));
+    ROCBLAS_RETURN_IF_ERROR(rocblasGemmHelper(
+        Base::RocblasHandle(),
         transB,
         transA,
         static_cast<int>(helper.N()),
         static_cast<int>(helper.M()),
         static_cast<int>(helper.K()),
-        &one,
+        &alpha,
         reinterpret_cast<const HipT*>(right_X->template Data<T>()),
         ldb,
         reinterpret_cast<const HipT*>(left_X->template Data<T>()),
@@ -121,14 +141,32 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         ldc));
     return Status::OK();
   } else if (CanUseStridedBatchedGemm(left_X->Shape(), right_X->Shape(),
-             transa, transb, stride_A, stride_B, stride_C, batch_count)) {
-    HIPBLAS_RETURN_IF_ERROR(hipblasGemmStridedBatchedHelper(Base::HipblasHandle(),
+                                      transa, transb, stride_A, stride_B, stride_C, batch_count)) {
+    // HIPBLAS_RETURN_IF_ERROR(hipblasGemmStridedBatchedHelper(Base::HipblasHandle(),
+    //                                                       transB,
+    //                                                       transA,
+    //                                                       static_cast<int>(helper.N()),
+    //                                                       static_cast<int>(helper.M()),
+    //                                                       static_cast<int>(helper.K()),
+    //                                                       &one,
+    //                                                       reinterpret_cast<const HipT*>(right_X->template Data<T>()),
+    //                                                       ldb,
+    //                                                       stride_B,
+    //                                                       reinterpret_cast<const HipT*>(left_X->template Data<T>()),
+    //                                                       lda,
+    //                                                       stride_A,
+    //                                                       &zero,
+    //                                                       reinterpret_cast<HipT*>(Y->template MutableData<T>()),
+    //                                                       ldc,
+    //                                                       stride_C,
+    //                                                       static_cast<int>(batch_count)));
+    ROCBLAS_RETURN_IF_ERROR(rocblasGemmStridedBatchedHelper(Base::RocblasHandle(),
                                                           transB,
                                                           transA,
                                                           static_cast<int>(helper.N()),
                                                           static_cast<int>(helper.M()),
                                                           static_cast<int>(helper.K()),
-                                                          &one,
+                                                          &alpha,
                                                           reinterpret_cast<const HipT*>(right_X->template Data<T>()),
                                                           ldb,
                                                           stride_B,
@@ -153,16 +191,32 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   ORT_RETURN_IF_ERROR(right_arrays.CopyToGpu());
   ORT_RETURN_IF_ERROR(output_arrays.CopyToGpu());
 
-  // note that onnxruntime OrtValue is row major, while cublas is column major,
+  // note that onnxruntime OrtValue is row major, while hipblas is column major,
   // so swap left/right operands
-  HIPBLAS_RETURN_IF_ERROR(hipblasGemmBatchedHelper(
-      Base::HipblasHandle(),
+  // HIPBLAS_RETURN_IF_ERROR(hipblasGemmBatchedHelper(
+  //     Base::HipblasHandle(),
+  //     transB,
+  //     transA,
+  //     static_cast<int>(helper.N()),
+  //     static_cast<int>(helper.M()),
+  //     static_cast<int>(helper.K()),
+  //     &one,
+  //     right_arrays.GpuPtr(),
+  //     ldb,
+  //     left_arrays.GpuPtr(),
+  //     lda,
+  //     &zero,
+  //     output_arrays.GpuPtr(),
+  //     ldc,
+  //     static_cast<int>(helper.OutputOffsets().size())));
+  ROCBLAS_RETURN_IF_ERROR(rocblasGemmBatchedHelper(
+      Base::RocblasHandle(),
       transB,
       transA,
       static_cast<int>(helper.N()),
       static_cast<int>(helper.M()),
       static_cast<int>(helper.K()),
-      &one,
+      &alpha,
       right_arrays.GpuPtr(),
       ldb,
       left_arrays.GpuPtr(),
@@ -171,7 +225,6 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
       output_arrays.GpuPtr(),
       ldc,
       static_cast<int>(helper.OutputOffsets().size())));
-
   return Status::OK();
 }
 

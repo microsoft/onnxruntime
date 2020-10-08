@@ -17,7 +17,8 @@ void TransposeTest(std::vector<int64_t>& input_shape,
                    std::vector<int64_t>* p_perm,
                    std::vector<int64_t> expected_shape,
                    std::initializer_list<T>& expected_vals,
-                   bool is_tensorrt_supported = true) {
+                   bool is_tensorrt_supported = true,
+                   bool is_openvino_supported = true) {
   OpTester test("Transpose");
   if (nullptr != p_perm)
     test.AddAttribute("perm", *p_perm);
@@ -28,6 +29,9 @@ void TransposeTest(std::vector<int64_t>& input_shape,
   std::unordered_set<std::string> excluded_providers;
   if (!is_tensorrt_supported) {
     excluded_providers.insert(kTensorrtExecutionProvider);
+  }
+  if (!is_openvino_supported) {
+    excluded_providers.insert(kOpenVINOExecutionProvider);
   }
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
@@ -120,7 +124,11 @@ TEST(TransposeOpTest, TwoDim_int16) {
       2, 5,
       3, 6};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals);
+  #if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
+    TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, true, false);
+  #else
+    TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals);
+  #endif
 }
 
 TEST(TransposeOpTest, TwoDim_mlfloat16) {

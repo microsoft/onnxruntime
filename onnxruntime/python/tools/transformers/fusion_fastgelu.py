@@ -192,10 +192,10 @@ class FusionFastGelu(Fusion):
             return
 
         self.nodes_to_remove.extend(subgraph_nodes)
-        fused_node = onnx.helper.make_node('FastGelu',
-                                           inputs=[root_node.output[0]],
-                                           outputs=mul_after_mul_half.output,
-                                           name=self.model.create_node_name('FastGelu'))
+        fused_node = helper.make_node('FastGelu',
+                                      inputs=[root_node.output[0]],
+                                      outputs=mul_after_mul_half.output,
+                                      name=self.model.create_node_name('FastGelu'))
         fused_node.domain = "com.microsoft"
         self.nodes_to_add.append(fused_node)
         return True

@@ -173,9 +173,6 @@ RUN sed -i 's/#StrictModes yes/StrictModes no/g' /etc/ssh/sshd_config
 RUN sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/g' /etc/ssh/sshd_config
 RUN sed -i 's/#PermitEmptyPasswords no/PermitEmptyPasswords yes/g' /etc/ssh/sshd_config
 
-# update existing packages to minimize security vulnerabilities
-RUN unattended-upgrade
-
 # Start or Restart sshd service
 ENTRYPOINT service ssh restart && /bin/bash
 

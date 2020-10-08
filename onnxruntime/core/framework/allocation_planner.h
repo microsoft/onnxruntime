@@ -16,6 +16,7 @@ class TensorShapeProto;
 namespace onnxruntime {
 
 class ExecutionProviders;
+struct KernelCreateInfo;
 class KernelRegistryManager;
 class OrtValueNameIdxMap;
 
@@ -48,11 +49,14 @@ class SequentialPlannerContext : public ISequentialPlannerContext {
 class SequentialPlanner {
  public:
   // This API allows user to provide a custom planner context.
-  static Status CreatePlan(const Node* parent_node, const onnxruntime::GraphViewer& graph,
-                           const std::vector<const NodeArg*>& outer_scope_node_args,
-                           const ExecutionProviders& providers, const KernelRegistryManager& kernel_registry,
-                           const OrtValueNameIdxMap& ort_value_name_idx_map, const ISequentialPlannerContext& context,
-                           std::unique_ptr<SequentialExecutionPlan>& plan);
+  static Status CreatePlan(
+      const Node* parent_node, const onnxruntime::GraphViewer& graph,
+      const std::vector<const NodeArg*>& outer_scope_node_args,
+      const ExecutionProviders& providers,
+      const std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>>& kernel_create_info_map,
+      const OrtValueNameIdxMap& ort_value_name_idx_map,
+      const ISequentialPlannerContext& context,
+      std::unique_ptr<SequentialExecutionPlan>& plan);
 };
 
 }  // namespace onnxruntime

@@ -9,7 +9,7 @@
 #include "core/session/environment.h"
 #include "core/framework/random_seed.h"
 #include "core/providers/cuda/cuda_allocator.h"
-#include "orttraining/core/framework/mpi_setup.h"
+#include "orttraining/core/framework/mpi_context.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/models/runner/constant.h"
@@ -294,15 +294,14 @@ void setup_training_params(GPT2Parameters& params) {
                                             /*label_name*/ "labels"});
 
 #if defined(USE_NCCL) || defined(USE_HOROVOD)
-  params.mpi_context = setup_mpi();
-  ORT_ENFORCE(params.horizontal_parallel_size <= params.mpi_context.world_size);
-  ORT_ENFORCE(params.data_parallel_size <= params.mpi_context.world_size);
-  if (params.mpi_context.world_size % params.horizontal_parallel_size != 0) {
+  ORT_ENFORCE(params.horizontal_parallel_size <= MPIContext::GetInstance().GetWorldSize());
+  ORT_ENFORCE(params.data_parallel_size <= MPIContext::GetInstance().GetWorldSize());
+  if (MPIContext::GetInstance().GetWorldSize() % params.horizontal_parallel_size != 0) {
     LOGS_DEFAULT(ERROR) << "Cannot split horizontal parallel group because world_size is not divisible";
     return;
   }
 
-  auto data_group_size = params.mpi_context.world_size / params.horizontal_parallel_size;
+  auto data_group_size = MPIContext::GetInstance().GetWorldSize() / params.horizontal_parallel_size;
   if (data_group_size != params.data_parallel_size) {
     LOGS_DEFAULT(WARNING) << "WARNING: data_parallel_size is not correct, tuned automatically to "
                           << data_group_size << std::endl;
@@ -341,7 +340,7 @@ void setup_training_params(GPT2Parameters& params) {
   params.model_type = "gpt2";
 
 #ifdef USE_CUDA
-  OrtDevice::DeviceId device_id = static_cast<OrtDevice::DeviceId>(params.mpi_context.local_rank);
+  OrtDevice::DeviceId device_id = static_cast<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
   params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(device_id));
   params.input_allocator = std::make_shared<CUDAPinnedAllocator>(device_id, CUDA_PINNED);
 #endif
@@ -417,7 +416,7 @@ static Status RunTraining(const GPT2Parameters& params, const Environment& env) 
   auto runner = onnxruntime::make_unique<TrainingRunner>(params, env);
   ORT_RETURN_IF_ERROR(runner->Initialize());
 
-  auto rank_in_data_parallel_group = params.mpi_context.world_rank / params.horizontal_parallel_size;
+  auto rank_in_data_parallel_group = MPIContext::GetInstance().GetWorldRank() / params.horizontal_parallel_size;
   auto training_data_loader = onnxruntime::make_unique<DataLoader>(params.input_name_map,
                                                                    params.train_data_dir,
                                                                    max_num_files_preload,
@@ -426,7 +425,7 @@ static Status RunTraining(const GPT2Parameters& params, const Environment& env) 
 
   std::unique_ptr<DataLoader> test_data_loader;
   // Evaluation is only done in device #0
-  if (params.mpi_context.world_rank == 0) {
+  if (MPIContext::GetInstance().GetWorldRank() == 0) {
     test_data_loader = onnxruntime::make_unique<DataLoader>(params.input_name_map,
                                                             params.test_data_dir,
                                                             max_num_files_preload);
@@ -441,7 +440,7 @@ static Status RunTraining(const GPT2Parameters& params, const Environment& env) 
   ORT_RETURN_IF_ERROR(runner->Run(training_data_loader.get(), test_data_loader.get(), mapped_dimensions));
 
   // only test and save trained model on device #0
-  if (params.mpi_context.world_rank == 0) {
+  if (MPIContext::GetInstance().GetWorldRank() == 0) {
     test_data_loader = onnxruntime::make_unique<DataLoader>(params.input_name_map,
                                                             params.test_data_dir,
                                                             max_num_files_preload);
@@ -478,9 +477,13 @@ int main(int argc, char* argv[]) {
     RETURN_IF_FAIL(RunTraining(params, *env));
   }
 
-#if defined(USE_NCCL) || defined(USE_HOROVOD)
-  shutdown_mpi();
+#if defined(USE_NCCL)
+#ifdef _WIN32
+  // https://docs.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-best-practices
+  // shutdown_mpi() is not called within MPIContext destructor because of DllMain's restriction
+  // call shutdown_mpi() here instead.
+  MPIContext::shutdown_mpi();
 #endif
-
+#endif
   return 0;
 }

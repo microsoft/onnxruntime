@@ -294,11 +294,11 @@ bool IsSupportedOptypeVersionAndDomain(const Node& node,
 }
 
 bool MatchesOpSinceVersion(const Node& node, const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion>& versions) {
-  return std::find(versions.begin(), versions.end(), node.Op()->SinceVersion()) != versions.end();
+  return std::find(versions.begin(), versions.end(), node.SinceVersion()) != versions.end();
 }
 
 bool MatchesOpSinceVersion(const Node& node, const std::vector<ONNX_NAMESPACE::OperatorSetVersion>& versions) {
-  return std::find(versions.begin(), versions.end(), node.Op()->SinceVersion()) != versions.end();
+  return std::find(versions.begin(), versions.end(), node.SinceVersion()) != versions.end();
 }
 
 bool MatchesOpSetDomain(const Node& node, const std::string& domain) {
@@ -489,27 +489,7 @@ bool IsGraphInput(const Graph& graph, const NodeArg* input) {
 
 const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const Graph& graph, const std::string& initializer_name,
                                                           bool check_outer_scope) {
-  const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
-  if (graph.GetInitializedTensor(initializer_name, initializer)) {
-    if (graph.CanOverrideInitializer()) {
-      const auto& graph_inputs = graph.GetInputsIncludingInitializers();
-      bool is_constant = std::none_of(graph_inputs.cbegin(), graph_inputs.cend(),
-                                      [&initializer_name](const NodeArg* input) {
-                                        return input->Name() == initializer_name;
-                                      });
-
-      if (!is_constant) {
-        initializer = nullptr;
-      }
-    }
-  } else if (check_outer_scope && graph.IsSubgraph()) {
-    // make sure there's not a local value with the same name. if there is it shadows any initializer in outer scope.
-    if (graph.IsOuterScopeValue(initializer_name)) {
-      initializer = GetConstantInitializer(*graph.ParentGraph(), initializer_name, check_outer_scope);
-    }
-  }
-
-  return initializer;
+  return graph.GetConstantInitializer(initializer_name, check_outer_scope);
 }
 
 bool IsInitializer(const Graph& graph, const std::string& name, bool check_outer_scope) {
@@ -722,7 +702,8 @@ bool FindPath(const Node& node, bool is_input_edge, const std::vector<EdgeEndToM
     for (auto it = edges_begin; it != edges_end; ++it) {
 #ifndef NDEBUG
       LOGS(logger, VERBOSE) << "E:" << it->GetSrcArgIndex() << "," << it->GetDstArgIndex()
-                            << "," << it->GetNode().OpType() << "," << it->GetNode().Domain() << "," << it->GetNode().Op()->SinceVersion();
+                            << "," << it->GetNode().OpType() << "," << it->GetNode().Domain() << ","
+                            << it->GetNode().SinceVersion();
 #endif
       if (edge.dst_arg_index == it->GetDstArgIndex() &&
           edge.src_arg_index == it->GetSrcArgIndex() &&

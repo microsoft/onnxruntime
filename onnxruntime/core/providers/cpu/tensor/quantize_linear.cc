@@ -7,21 +7,60 @@
 
 namespace onnxruntime {
 
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    DequantizeLinear,
-    10,
-    uint8_t,
-    KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<uint8_t>()),
-    DequantizeLinear<uint8_t>);
+static void PrepareForQDQ(const TensorShape& input_shape,
+                          const Tensor& scale,
+                          const Tensor* zero_point_ptr,
+                          int64_t axis,
+                          int64_t& block_count,
+                          int64_t& broadcast_dim,
+                          int64_t& block_size) {
+  if (IsScalarOr1ElementVector(&scale)) {  // per-tensor QuantizeLinear/DequantizeLinear
+    block_count = 1;
+    broadcast_dim = 1;
+    block_size = static_cast<size_t>(input_shape.Size());
 
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    DequantizeLinear,
-    10,
-    int8_t,
-    KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<int8_t>()),
-    DequantizeLinear<int8_t>);
+    // enforce that zero point are scalars
+    ORT_ENFORCE(zero_point_ptr == nullptr || IsScalarOr1ElementVector(zero_point_ptr),
+                "x_zero_point must be null or a scalar or 1D tensor or size 1.");
+  } else {  // per-channel QuantizeLinear/DequantizeLinear
+    const int64_t axis_no_neg = HandleNegativeAxis(axis, input_shape.NumDimensions());
+    block_count = input_shape.SizeToDimension(axis_no_neg);
+    broadcast_dim = input_shape[axis_no_neg];
+    block_size = input_shape.SizeFromDimension(axis_no_neg + 1);
+
+    // if an axis was specified, ensure the scale and zero point are compatible
+    ORT_ENFORCE(scale.Shape().NumDimensions() == 1 && scale.Shape()[0] == broadcast_dim,
+                "scale must be 1D tensor with size ",
+                broadcast_dim);
+    ORT_ENFORCE(zero_point_ptr == nullptr || (zero_point_ptr->Shape().NumDimensions() == 1 && zero_point_ptr->Shape()[0] == broadcast_dim),
+                "x_zero_point must be null or 1D tensor with size ",
+                broadcast_dim);
+  }
+}
+
+#define REGISTER_DEQUANTIZELINEAR(T)                              \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                 \
+      DequantizeLinear,                                           \
+      13,                                                         \
+      T,                                                          \
+      KernelDefBuilder()                                          \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      DequantizeLinear<T>);
+
+#define REGISTER_DEQUANTIZELINEAR_VERSIONED(T)                    \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                       \
+      DequantizeLinear,                                           \
+      10,                                                         \
+      12,                                                         \
+      T,                                                          \
+      KernelDefBuilder()                                          \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      DequantizeLinear<T>);
+
+REGISTER_DEQUANTIZELINEAR(int8_t)
+REGISTER_DEQUANTIZELINEAR(uint8_t)
+REGISTER_DEQUANTIZELINEAR_VERSIONED(int8_t)
+REGISTER_DEQUANTIZELINEAR_VERSIONED(uint8_t)
 
 template <typename T>
 // formula is Y = (X - ZeroPoint) * Scale
@@ -37,28 +76,7 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   int64_t broadcast_dim;
   int64_t block_size;
 
-  if (has_axis_) {  // custom DequantizeLinear only
-    const int64_t axis = HandleNegativeAxis(axis_, x_shape.NumDimensions());
-    N = x_shape.SizeToDimension(axis);
-    broadcast_dim = x_shape[axis];
-    block_size = x_shape.SizeFromDimension(axis + 1);
-
-    // if an axis was specified, ensure the scale and zero point are compatible
-    ORT_ENFORCE(x_scale.Shape().NumDimensions() == 1 && x_scale.Shape().Size() == broadcast_dim,
-                "x_scale must be 1D tensor with size ",
-                broadcast_dim);
-    ORT_ENFORCE(x_zero_point != nullptr && x_zero_point->Shape().NumDimensions() == 1 && x_zero_point->Shape().Size() == broadcast_dim,
-                "x_zero_point must be 1D tensor with size ",
-                broadcast_dim);
-  } else {
-    N = 1;
-    broadcast_dim = 1;
-    block_size = static_cast<size_t>(x_shape.Size());
-
-    // if no axis, enforce that scale and zero point are scalars
-    ORT_ENFORCE(IsScalarOr1ElementVector(&x_scale), "x_scale must be a scalar or 1D tensor or size 1.");
-    ORT_ENFORCE(x_zero_point == nullptr || IsScalarOr1ElementVector(x_zero_point), "x_zero_point must be a scalar or 1D tensor or size 1.");
-  }
+  PrepareForQDQ(x.Shape(), x_scale, x_zero_point, axis_, N, broadcast_dim, block_size);
 
   const T* zero_point = x_zero_point ? x_zero_point->template Data<T>() : nullptr;
   const float* scale = x_scale.template Data<float>();
@@ -79,23 +97,31 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    QuantizeLinear,
-    10,
-    uint8_t,
-    KernelDefBuilder()
-        .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()),
-    QuantizeLinear<uint8_t>);
+#define REGISTER_QUANTIZELINEAR(T)                                    \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                     \
+      QuantizeLinear,                                                 \
+      13,                                                             \
+      T,                                                              \
+      KernelDefBuilder()                                              \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()) \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),    \
+      QuantizeLinear<T>);
 
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    QuantizeLinear,
-    10,
-    int8_t,
-    KernelDefBuilder()
-        .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("T2", DataTypeImpl::GetTensorType<int8_t>()),
-    QuantizeLinear<int8_t>);
+#define REGISTER_QUANTIZELINEAR_VERSIONED(T)                          \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                           \
+      QuantizeLinear,                                                 \
+      10,                                                             \
+      12,                                                             \
+      T,                                                              \
+      KernelDefBuilder()                                              \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()) \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),    \
+      QuantizeLinear<T>);
+
+REGISTER_QUANTIZELINEAR(int8_t)
+REGISTER_QUANTIZELINEAR(uint8_t)
+REGISTER_QUANTIZELINEAR_VERSIONED(int8_t)
+REGISTER_QUANTIZELINEAR_VERSIONED(uint8_t)
 
 template <typename T>
 // formula is Y = X / Scale + ZeroPoint
@@ -109,31 +135,7 @@ Status QuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   int64_t N;
   int64_t broadcast_dim;
   int64_t block_size;
-
-  if (has_axis_) {  // custom QuantizeLinear only
-    const int64_t axis = HandleNegativeAxis(axis_, x_shape.NumDimensions());
-    N = x_shape.SizeToDimension(axis);
-    broadcast_dim = x_shape[axis];
-    block_size = x_shape.SizeFromDimension(axis + 1);
-
-    // if an axis was specified, ensure the scale and zero point are compatible
-    ORT_ENFORCE(y_scale.Shape().NumDimensions() == 1 && y_scale.Shape().Size() == broadcast_dim,
-                "y_scale must be 1D tensor with size ",
-                broadcast_dim);
-    ORT_ENFORCE(y_zero_point != nullptr && y_zero_point->Shape().NumDimensions() == 1 && y_zero_point->Shape().Size() == broadcast_dim,
-                "y_zero_point must be 1D tensor with size ",
-                broadcast_dim);
-  } else {
-    N = 1;
-    broadcast_dim = 1;
-    block_size = x_shape.Size();
-
-    // if no axis, enforce that scale and zero point are scalars
-    ORT_ENFORCE(IsScalarOr1ElementVector(&y_scale),
-                "y_scale must be a scalar or 1D tensor or size 1.");
-    ORT_ENFORCE(y_zero_point == nullptr || IsScalarOr1ElementVector(y_zero_point),
-                "y_zero_point must be a scalar or 1D tensor or size 1.");
-  }
+  PrepareForQDQ(x.Shape(), y_scale, y_zero_point, axis_, N, broadcast_dim, block_size);
 
   const T* zero_point = y_zero_point != nullptr ? y_zero_point->template Data<T>() : nullptr;
   const float* scale = y_scale.template Data<float>();

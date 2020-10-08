@@ -4,6 +4,8 @@
 #pragma once
 #include "core/session/onnxruntime_c_api.h"
 #include "core/framework/allocator.h"
+#include "core/framework/arena.h"
+#include "core/session/device_allocator.h"
 
 namespace onnxruntime {
 class AllocatorWrapper : public IAllocator {
@@ -19,4 +21,5 @@ class AllocatorWrapper : public IAllocator {
  private:
   OrtAllocator* impl_;
 };
+
 }  // namespace onnxruntime

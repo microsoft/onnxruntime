@@ -39,7 +39,7 @@ TEST_F(ActivationOpTest, ParametricSoftplus) {
                             else
                               return alpha * logf(expf(bx) + 1);
                           },
-                          {{"alpha", alpha}, {"beta", beta}});
+                          {{"alpha", alpha}, {"beta", beta}}, false); // Disable TensorRT due to result mismatch
 }
 
 TEST_F(ActivationOpTest, Gelu) {

@@ -370,6 +370,8 @@ class SymbolicShapeInference:
         symbolic_shape_inference = SymbolicShapeInference(self.int_max_, self.auto_merge_, self.guess_output_rank_, self.verbose_)
         all_shapes_inferred = False
         symbolic_shape_inference._preprocess(self.tmp_mp_)
+        # note that after _preprocess, Constant node will be converted to initializer and should be appended to subgraph.initializer
+        subgraph.initializer.extend([i for i in symbolic_shape_inference.out_mp_.graph.initializer if i.name not in subgraph_implicit_input and i.name not in subgraph_inputs])
         symbolic_shape_inference.suggested_merge_ = self.suggested_merge_.copy()
         while symbolic_shape_inference.run_:
             all_shapes_inferred = symbolic_shape_inference._infer_impl(self.tmp_mp_, self.sympy_data_.copy())
@@ -776,10 +778,13 @@ class SymbolicShapeInference:
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0], vi.type.tensor_type.elem_type, [input_rank, nz_len]))
 
     def _infer_OneHot(self, node):
-        shape = self._get_shape(node, 0)
+        sympy_shape = self._get_sympy_shape(node, 0)
+        depth = self._try_get_value(node, 1)
         axis = get_attribute(node, 'axis', -1)
-        axis = handle_negative_axis(axis, len(shape)+1)
-        new_shape = shape[:axis] + [self._new_symbolic_dim_from_output(node)] + shape[axis:]
+        axis = handle_negative_axis(axis, len(sympy_shape) + 1)
+        new_shape = get_shape_from_sympy_shape(
+            sympy_shape[:axis] + [self._new_symbolic_dim_from_output(node) if not is_literal(depth) else depth] +
+            sympy_shape[axis:])
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0], self.known_vi_[node.input[2]].type.tensor_type.elem_type, new_shape))
 

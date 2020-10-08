@@ -5,9 +5,9 @@
 
 #include "core/framework/execution_providers.h"
 #include "core/framework/graph_partitioner.h"
+#include "core/framework/kernel_registry.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
-#include "core/framework/finalize_session_state.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
@@ -27,11 +27,11 @@ class TestOpKernel : public OpKernel {
  public:
   TestOpKernel(const OpKernelInfo& p) : OpKernel(p) {
   }
-  Status Compute(OpKernelContext* context) const {
+  Status Compute(OpKernelContext* context) const override {
     ORT_UNUSED_PARAMETER(context);
     return Status::OK();
   }
-  Status ComputeAsync(OpKernelContext* context, DoneCallback done) const {
+  Status ComputeAsync(OpKernelContext* context, DoneCallback done) const override {
     ORT_UNUSED_PARAMETER(context);
     ORT_UNUSED_PARAMETER(done);
     return Status::OK();
@@ -51,6 +51,10 @@ TEST_P(SessionStateAddGetKernelTest, AddGetKernelTest) {
   auto& graph = model.MainGraph();
 
   ExecutionProviders execution_providers;
+  auto tmp_cpu_execution_provider = onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false));
+  auto* cpu_execution_provider = tmp_cpu_execution_provider.get();
+  ASSERT_STATUS_OK(execution_providers.Add(kCpuExecutionProvider, std::move(tmp_cpu_execution_provider)));
+
   DataTransferManager dtm;
   profiling::Profiler profiler;
   SessionState s(graph, execution_providers, true, tp.get(), nullptr, dtm,
@@ -67,7 +71,6 @@ TEST_P(SessionStateAddGetKernelTest, AddGetKernelTest) {
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK());
   auto kernel_def = KernelDefBuilder().SetName("Variable").Provider(kCpuExecutionProvider).SinceVersion(1, 10).Build();
-  auto cpu_execution_provider = onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false));
 
   OpKernelInfo p_info(node, *kernel_def, *cpu_execution_provider, s.GetConstantInitializedTensors(),
                       s.GetOrtValueNameIdxMap(), s.GetFuncMgr(), s.GetDataTransferMgr());
@@ -76,7 +79,6 @@ TEST_P(SessionStateAddGetKernelTest, AddGetKernelTest) {
   size_t orig_num_outputs = p_kernel->Node().OutputDefs().size();
   std::cout << "node_idx: " << node.Index() << std::endl;
 
-  ASSERT_STATUS_OK(execution_providers.Add(kCpuExecutionProvider, std::move(cpu_execution_provider)));
   KernelRegistryManager kernel_registry_manager;
   status = kernel_registry_manager.RegisterKernels(execution_providers);
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
@@ -85,8 +87,8 @@ TEST_P(SessionStateAddGetKernelTest, AddGetKernelTest) {
   ASSERT_STATUS_OK(kernel_registry->Register(KernelCreateInfo(
       std::move(kernel_def), [](const OpKernelInfo& info) -> OpKernel* { return new TestOpKernel(info); })));
   kernel_registry_manager.RegisterKernelRegistry(kernel_registry);
-  s.CreateGraphInfo();
-  ASSERT_STATUS_OK(s.CreateKernels(kernel_registry_manager));
+  ASSERT_STATUS_OK(s.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
+
   auto test_kernel = s.GetKernel(node.Index());
   std::cout << "orig: " << orig_num_outputs << " new: " << test_kernel->Node().OutputDefs().size() << std::endl;
   EXPECT_EQ(orig_num_outputs, test_kernel->Node().OutputDefs().size());
@@ -140,8 +142,7 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
   status = partitioner.Partition(graph, session_state.ExportDll(), session_state.GetMutableFuncMgr());
   ASSERT_TRUE(status.IsOK()) << status;
 
-  session_state.CreateGraphInfo();
-  ASSERT_STATUS_OK(FinalizeSessionState(session_state, oss.str(), krm, nullptr, ExecutionMode::ORT_SEQUENTIAL));
+  ASSERT_STATUS_OK(session_state.FinalizeSessionState(oss.str(), krm));
 
   const auto& initialized_tensors = session_state.GetInitializedTensors();
   const auto& const_initialized_tensors = session_state.GetConstantInitializedTensors();
@@ -171,5 +172,104 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
 }
 
 INSTANTIATE_TEST_SUITE_P(SessionStateTests, SessionStateTestP, testing::ValuesIn(param_list));
+
+class PrePackingTestOpKernel : public OpKernel {
+ public:
+  PrePackingTestOpKernel(const OpKernelInfo& info) : OpKernel(info) {}
+  Status Compute(OpKernelContext* context) const override {
+    ORT_UNUSED_PARAMETER(context);
+    return Status::OK();
+  }
+
+  Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed) override {
+    ORT_UNUSED_PARAMETER(tensor);
+    ORT_UNUSED_PARAMETER(input_idx);
+    is_packed = true;
+    return Status::OK();
+  }
+};
+
+class SessionStatePrepackingTest : public testing::TestWithParam<bool> {};
+TEST_P(SessionStatePrepackingTest, PrePackingTest) {
+  OrtThreadPoolParams to;
+  auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
+  ONNX_OPERATOR_SCHEMA(PrePackingTest)
+      .SetDoc("Faking Node for PrePacking")
+      .Input(0, "Input_0", "input 0", "tensor(float)")
+      .Input(1, "Input_1", "input 1", "tensor(float)")
+      .Output(0, "output_0", "docstr for output_0.", "tensor(float)");
+
+  onnxruntime::Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
+  // construct graph
+  auto& graph = model.MainGraph();
+
+  // node creation and placement
+  TypeProto type;
+  type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  std::vector<onnxruntime::NodeArg*> inputs;
+  onnxruntime::NodeArg input_0_arg("node_0_input_0", &type);
+  onnxruntime::NodeArg input_1_arg("node_0_input_1", &type);
+  inputs.push_back(&input_0_arg);
+  inputs.push_back(&input_1_arg);
+
+  std::vector<onnxruntime::NodeArg*> outputs;
+  onnxruntime::NodeArg output_arg("node_0_output_0", &type);
+  outputs.push_back(&output_arg);
+
+  onnxruntime::Node& node = graph.AddNode("node_0", "PrePackingTest", "node 0", inputs, outputs);
+  node.SetExecutionProviderType(kCpuExecutionProvider);
+
+  // add an initializer
+  ONNX_NAMESPACE::TensorProto tensor;
+  tensor.add_dims(1);
+  tensor.add_float_data(1.0f);
+  tensor.set_data_type(TensorProto_DataType_FLOAT);
+  tensor.set_name("node_0_input_1");
+  graph.AddInitializedTensor(tensor);
+
+  auto status = graph.Resolve();
+  ASSERT_TRUE(status.IsOK());
+
+  ExecutionProviders execution_providers;
+  auto cpu_execution_provider = onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false));
+  execution_providers.Add(kCpuExecutionProvider, std::move(cpu_execution_provider));
+
+  DataTransferManager dtm;
+  profiling::Profiler profiler;
+  SessionState session_state(graph,
+                             execution_providers,
+                             true, /*enable_mem_pattern*/
+                             tp.get(),
+                             nullptr, /*inter_op_thread_pool*/
+                             dtm,
+                             DefaultLoggingManager().DefaultLogger(),
+                             profiler);
+
+  KernelRegistryManager kernel_registry_manager;
+  status = kernel_registry_manager.RegisterKernels(execution_providers);
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
+  auto kernel_def = KernelDefBuilder().SetName("PrePackingTest").Provider(kCpuExecutionProvider).SinceVersion(1).Build();
+  ASSERT_STATUS_OK(kernel_registry->Register(
+      KernelCreateInfo(std::move(kernel_def),
+                       [](const OpKernelInfo& info) -> OpKernel* { return new PrePackingTestOpKernel(info); })));
+  kernel_registry_manager.RegisterKernelRegistry(kernel_registry);
+
+  SessionOptions sess_options;
+  bool use_prepacking = GetParam();
+  sess_options.session_configurations[ORT_SESSION_OPTIONS_CONFIG_DISABLEPREPACKING] = use_prepacking ? "0" : "1";
+  ASSERT_STATUS_OK(session_state.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(),
+                                                      kernel_registry_manager,
+                                                      sess_options));
+
+  const auto& const_initialized_tensors = session_state.GetConstantInitializedTensors();
+  // check prepacking
+  ASSERT_EQ(const_initialized_tensors.size(), size_t(use_prepacking ? 0 : 1));
+}
+
+INSTANTIATE_TEST_SUITE_P(SessionStateTests, SessionStatePrepackingTest, testing::Values(true, false));
+
 }  // namespace test
 }  // namespace onnxruntime

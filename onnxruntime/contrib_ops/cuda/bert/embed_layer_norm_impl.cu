@@ -1,7 +1,7 @@
 /*
  The implementation of this file is based on embLayerNorm plugin in TensorRT demo:
  https://github.com/NVIDIA/TensorRT/tree/release/5.1/demo/BERT/
- 
+
 Copyright 2019 NVIDIA Corporation
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -121,7 +121,11 @@ __global__ void EmbedLayerNormKernel(
   const int sequence_position = blockIdx.y * gridDim.x + blockIdx.x;
   if (threadIdx.x == 0) {
     word_id = input_ids[sequence_position];
-    segment_id = segment_ids[sequence_position];
+    if (nullptr == segment_ids) {
+      segment_id = 0;
+    } else {
+      segment_id = segment_ids[sequence_position];;
+    }
   }
   __syncthreads();
 
@@ -137,7 +141,9 @@ __global__ void EmbedLayerNormKernel(
 
   for (int it = threadIdx.x; it < hidden_size; it += TPB) {
     const T w(word_embedding[word_offset + it]);
-    const T t(segment_embedding[segment_offset + it]);
+    T t(0);
+    if (nullptr != segment_embedding)
+      t = segment_embedding[segment_offset + it];
     const T p(position_embedding[position_offset + it]);
     const T val = w + t + p;
 
@@ -195,7 +201,7 @@ bool LaunchEmbedLayerNormKernel(
     return EmbedSkipLayerNorm<half>(
         stream, hidden_size, batch_size, sequence_length, input_ids, segment_ids,
         reinterpret_cast<const half*>(beta), reinterpret_cast<const half*>(gamma),
-        reinterpret_cast<const half*>(word_embedding), reinterpret_cast<const half*>(position_embedding), 
+        reinterpret_cast<const half*>(word_embedding), reinterpret_cast<const half*>(position_embedding),
         reinterpret_cast<const half*>(segment_embedding), __float2half_rn(epsilon),
         reinterpret_cast<half*>(output));
   } else {

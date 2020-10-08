@@ -43,54 +43,90 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 
 | **ONNX Layers** | **CPU** | **GPU** | **VPU** |
 | --- | --- | --- | --- |
+| Abs | Yes | Yes | No |
+| Acos | Yes | No | No |
+| Acosh | Yes | No | No |
 | Add | Yes | Yes | Yes |
-| ArgMax | Yes | Yes | Yes |
+| ArgMax | Yes | No | No |
+| ArgMin | Yes | No | No |
+| Asin | Yes | Yes | No |
+| Asinh | Yes | Yes | No |
+| Atan | Yes | Yes | No |
+| Atanh | Yes | No | No |
 | AveragePool | Yes | Yes | Yes |
 | BatchNormalization | Yes | Yes | Yes |
 | Cast | Yes | Yes | Yes |
 | Clip | Yes | Yes | Yes |
 | Concat | Yes | Yes | Yes |
 | Constant | Yes | Yes | Yes |
+| ConstantOfShape | Yes | Yes | Yes |
 | Conv | Yes | Yes | Yes |
 | ConvTranspose | Yes | Yes | Yes |
+| Cos | Yes | No | No |
+| Cosh | Yes | No | No |
+| DepthToSpace | Yes | Yes | Yes |
 | Div | Yes | Yes | Yes |
 | Dropout | Yes | Yes | Yes |
+| Elu | Yes | Yes | Yes |
+| Equal | Yes | Yes | Yes |
+| Erf | Yes | Yes | Yes |
+| Exp | Yes | Yes | Yes |
 | Flatten | Yes | Yes | Yes |
 | Floor | Yes | Yes | Yes |
 | Gather | Yes | Yes | Yes |
-| GatherND | Yes | Yes | Yes |
 | Gemm | Yes | Yes | Yes |
 | GlobalAveragePool | Yes | Yes | Yes |
+| GlobalLpPool | Yes | Yes | No |
+| HardSigmoid | Yes | Yes | No |
 | Identity | Yes | Yes | Yes |
+| InstanceNormalization | Yes | Yes | Yes |
 | LeakyRelu | Yes | Yes | Yes |
+| Less | Yes | Yes | Yes |
 | Log | Yes | Yes | Yes |
 | LRN | Yes | Yes | Yes |
-| LSTM | Yes | Yes | Yes |
 | MatMul | Yes | Yes | Yes |
 | Max | Yes | Yes | Yes |
 | MaxPool | Yes | Yes | Yes |
+| Mean | Yes | Yes | Yes |
 | Min | Yes | Yes | Yes |
 | Mul | Yes | Yes | Yes |
+| Neg | Yes | Yes | Yes |
+| Not | Yes | Yes | No |
+| OneHot | Yes | Yes | Yes |
 | Pad | Yes | Yes | Yes |
 | Pow | Yes | Yes | Yes |
 | PRelu | Yes | Yes | Yes |
+| Reciprocal | Yes | Yes | Yes |
+| ReduceLogSum | Yes | No | Yes |
 | ReduceMax | Yes | Yes | Yes |
 | ReduceMean | Yes | Yes | Yes |
 | ReduceMin | Yes | Yes | Yes |
+| ReduceProd | Yes | No | No |
 | ReduceSum | Yes | Yes | Yes |
+| ReduceSumSquare | Yes | No | Yes |
 | Relu | Yes | Yes | Yes |
 | Reshape | Yes | Yes | Yes |
+| Resize | Yes | No | No |
+| Selu | Yes | Yes | No |
+| Shape | Yes | Yes | Yes |
 | Sigmoid | Yes | Yes | Yes |
+| Sign | Yes | No | No |
+| SinFloat | No | No | Yes |
+| Sinh | Yes | No | No |
 | Slice | Yes | Yes | Yes |
 | Softmax | Yes | Yes | Yes |
+| Softsign | Yes | No | No |
+| SpaceToDepth | Yes | Yes | Yes |
+| Split | Yes | Yes | Yes |
+| Sqrt | Yes | Yes | Yes |
 | Squeeze | Yes | Yes | Yes |
 | Sub | Yes | Yes | Yes |
 | Sum | Yes | Yes | Yes |
+| Tan | Yes | Yes | No |
 | Tanh | Yes | Yes | Yes |
 | TopK | Yes | Yes | Yes |
 | Transpose | Yes | Yes | Yes |
 | Unsqueeze | Yes | Yes | Yes |
-
 
 ## Topology Support
 
@@ -137,3 +173,38 @@ Below topologies from ONNX open model zoo are fully supported on OpenVINO Execut
 | tiny_yolov2 | Yes | Yes | Yes | Yes* |
 
 *FPGA only runs in HETERO mode wherein the layers that are not supported on FPGA fall back to OpenVINO CPU.
+
+## CSharp API
+
+To use csharp api for openvino execution provider create a custom nuget package. Two nuget packages will be created
+Microsoft.ML.OnnxRuntime.Managed and Microsoft.ML.OnnxRuntime.Openvino.
+
+1. Windows
+
+Build a custom nuget package for windows.
+```
+.\build.bat --config Debug --build --use_openvino $Device --build_csharp
+msbuild csharp\OnnxRuntime.CSharp.proj /p:OrtPackageId=Microsoft.ML.OnnxRuntime.Openvino /p:Configuration=Debug /t:CreatePackage
+```
+The msbuild log will show the paths of the nuget packages created. 
+
+2. Linux
+
+We currently do not have a process to build directly in Linux. But we can
+copy shared library <ORT linux repo>/build/Linux/<config>/libonnxruntime.so
+to onnxruntime source repository in windows and execute the same commands 
+above to get custom nuget package for linux. Two nuget packages will be 
+created Microsoft.ML.OnnxRuntime.Managed and Microsoft.ML.OnnxRuntime.Openvino.
+
+On Linux Machine
+```
+./build.sh --config Debug --build_shared_lib --use_openvino $Device 
+```
+
+On Windows Machine
+```
+cp libonnxruntime.so onnxruntime/ 
+.\build.bat --config Debug --build --use_openvino $Device --build_csharp
+msbuild csharp\OnnxRuntime.CSharp.proj /p:OrtPackageId=Microsoft.ML.OnnxRuntime.Openvino /p:Configuration=Debug /t:CreatePackage
+```
+The msbuild log will show the path of the nuget packages created. 

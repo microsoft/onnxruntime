@@ -223,7 +223,12 @@ TEST(GatherOpTest, Gather_axis1_indices2d_int16) {
                           {1, 0, 2, 1,
                            11, 10, 12, 11,
                            21, 20, 22, 21});
-  test.Run();
+
+  #if defined(OPENVINO_CONFIG_MYRIAD)
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+  #else
+    test.Run();
+  #endif    
 }
 
 TEST(GatherOpTest, Gather_axis1_indices2d_uint16) {
@@ -257,7 +262,11 @@ TEST(GatherOpTest, Gather_axis1_indices2d_int8) {
                          {1, 0, 2, 1,
                           11, 10, 12, 11,
                           21, 20, 22, 21});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Assertion `regionRanges != nullptr' failed
+  #if defined(OPENVINO_CONFIG_MYRIAD)
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
+  #else
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Assertion `regionRanges != nullptr' failed
+  #endif
 }
 
 TEST(GatherOpTest, Gather_axis1_indices2d_string) {
@@ -291,7 +300,11 @@ TEST(GatherOpTest, Gather_axis1_indices2d_bool) {
                        {false, true, true, false,
                         true, true, false, true,
                         true, false, false, true});
-  test.Run();
+  #if defined(OPENVINO_CONFIG_MYRIAD)
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
+  #else
+    test.Run();
+  #endif
 }
 
 TEST(GatherOpTest, Gather_perf) {

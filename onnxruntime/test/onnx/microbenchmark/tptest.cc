@@ -110,11 +110,11 @@ static void BM_SimpleScheduleWait(benchmark::State& state) {
   tpo.auto_set_affinity = true;
   tpo.thread_pool_size = 0;
   std::unique_ptr<concurrency::ThreadPool> tp(concurrency::CreateThreadPool(&onnxruntime::Env::Default(), tpo, ThreadPoolType::INTRA_OP));
-  size_t threads = tp->NumThreads();
+  std::ptrdiff_t threads = concurrency::ThreadPool::DegreeOfParallelism(tp.get());
 
   for (auto _ : state) {
     onnxruntime::Barrier barrier(static_cast<unsigned int>(threads));
-    for (std::ptrdiff_t id = 0; id < static_cast<std::ptrdiff_t>(threads); ++id) {
+    for (std::ptrdiff_t id = 0; id < threads; ++id) {
       tp->Schedule([id, threads, len, &barrier]() {
         std::ptrdiff_t start, work_remaining;
         TestPartitionWork(id, threads, len, &start, &work_remaining);
