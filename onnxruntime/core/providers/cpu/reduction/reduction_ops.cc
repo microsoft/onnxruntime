@@ -154,6 +154,7 @@ REGISTER_UNARY_ELEMENTWISE_KERNEL(ArgMin, 12);
 bool NeedsTransposeForReduce(const Tensor* input_tensor_ptr,
                              const std::vector<int64_t>& axes_,
                              std::vector<int64_t>& axes,
+                             TensorShape& new_input_shape,
                              std::vector<int64_t>& output_shape,
                              bool& empty_reduce,
                              const TensorShape* input_shape_override) {
@@ -164,8 +165,8 @@ bool NeedsTransposeForReduce(const Tensor* input_tensor_ptr,
                 "The input shape override's size does not match the input tensor's shape size");
   }
 
-  const auto& input_shape = input_shape_override ? *input_shape_override : input_tensor_ptr->Shape();
-  size_t ndim = input_shape.NumDimensions();
+  new_input_shape = input_shape_override ? *input_shape_override : input_tensor_ptr->Shape();
+  size_t ndim = new_input_shape.NumDimensions();
   if (ndim == 0) {
     empty_reduce = true;
     return false;
@@ -194,9 +195,9 @@ bool NeedsTransposeForReduce(const Tensor* input_tensor_ptr,
   }
 
   empty_reduce = false;
-  output_shape = input_shape.GetDims();
+  output_shape = new_input_shape.GetDims();
   for (auto a : axes) {
-    output_shape[a] = input_shape[a] > 0 ? 1 : 0;
+    output_shape[a] = new_input_shape[a] > 0 ? 1 : 0;
     empty_reduce |= output_shape[a] == 0;
   }
   return need_copy;
@@ -246,7 +247,8 @@ bool PrepareForReduce(const Tensor* input_tensor_ptr,
 
   std::vector<int64_t> axes, output_shape;
   bool empty_reduce;
-  bool need_copy = NeedsTransposeForReduce(input_tensor_ptr, axes_, axes, output_shape, empty_reduce, input_shape_override);
+  TensorShape new_input_shape;
+  bool need_copy = NeedsTransposeForReduce(input_tensor_ptr, axes_, axes, new_input_shape, output_shape, empty_reduce, input_shape_override);
 
   std::vector<bool> keep_axis(ndim, true);
   for (auto i : axes) {
@@ -395,32 +397,31 @@ bool PrepareForReduce(const Tensor* input_tensor_ptr,
   return false;
 }
 
-void ExperimentalPrepareForReduce(const Tensor& input, const std::vector<int64_t>& reduced_axes,
+void ExperimentalPrepareForReduce(const TensorShape& new_input_shape,
+                                  const std::vector<int64_t>& reduced_axes,
                                   ResultsExperimentalPrepareForReduce& results) {
-  auto input_shape = input.Shape();
-
   // Common initialisation for the indices.
-  std::vector<int64_t> cumulative_shape = input_shape.GetDims();
+  std::vector<int64_t> cumulative_shape = new_input_shape.GetDims();
   cumulative_shape[cumulative_shape.size() - 1] = 1;
   for (int i = static_cast<int>(cumulative_shape.size()) - 2; i >= 0; --i) {
-    cumulative_shape[i] = cumulative_shape[i + 1] * input_shape[i + 1];
+    cumulative_shape[i] = cumulative_shape[i + 1] * new_input_shape[i + 1];
   }
   int64_t projection_size = 1;
   for (auto a : reduced_axes) {
-    projection_size *= input_shape[a];
+    projection_size *= new_input_shape[a];
   }
 
   int last_reduced_axis = static_cast<int>(reduced_axes.size()) - 1;
   int loop_reduced_axis = 1;
-  results.last_loop_red_size = input_shape[reduced_axes[last_reduced_axis]];
+  results.last_loop_red_size = new_input_shape[reduced_axes[last_reduced_axis]];
   results.last_loop_red_inc = cumulative_shape[reduced_axes[last_reduced_axis]];
-  projection_size /= input_shape[reduced_axes[last_reduced_axis]];
+  projection_size /= new_input_shape[reduced_axes[last_reduced_axis]];
   --last_reduced_axis;
   while (last_reduced_axis >= 0) {
     if (reduced_axes[last_reduced_axis] != reduced_axes[last_reduced_axis + 1] - 1)
       break;
-    results.last_loop_red_size *= input_shape[reduced_axes[last_reduced_axis]];
-    projection_size /= input_shape[reduced_axes[last_reduced_axis]];
+    results.last_loop_red_size *= new_input_shape[reduced_axes[last_reduced_axis]];
+    projection_size /= new_input_shape[reduced_axes[last_reduced_axis]];
     --last_reduced_axis;
     ++loop_reduced_axis;
   }
@@ -440,10 +441,10 @@ void ExperimentalPrepareForReduce(const Tensor& input, const std::vector<int64_t
       ++projected_indices[projected_indices.size() - 1];
       current_index += cumulative_shape[reduced_axes[reduced_axes_size - 1]];
       for (j = reduced_axes_size - 1; j > 0; --j) {
-        if (projected_indices[j] < input_shape[reduced_axes[j]])
+        if (projected_indices[j] < new_input_shape[reduced_axes[j]])
           break;
-        projected_indices[j] -= input_shape[reduced_axes[j]];
-        current_index -= input_shape[reduced_axes[j]] * cumulative_shape[reduced_axes[j]];
+        projected_indices[j] -= new_input_shape[reduced_axes[j]];
+        current_index -= new_input_shape[reduced_axes[j]] * cumulative_shape[reduced_axes[j]];
         ++projected_indices[j - 1];
         current_index += cumulative_shape[reduced_axes[j - 1]];
       }
@@ -459,7 +460,7 @@ void ExperimentalPrepareForReduce(const Tensor& input, const std::vector<int64_t
   }
   int64_t unprojection_size = 1;
   for (auto a : unreduced_axes) {
-    unprojection_size *= input_shape[a];
+    unprojection_size *= new_input_shape[a];
   }
   if (unprojection_size == 0) {
     return;
@@ -468,7 +469,7 @@ void ExperimentalPrepareForReduce(const Tensor& input, const std::vector<int64_t
 
   // The last index is usually an image size.
   // We differently process the last unprojected dimension.
-  results.last_loop_size = input_shape[unreduced_axes[unreduced_axes.size() - 1]];
+  results.last_loop_size = new_input_shape[unreduced_axes[unreduced_axes.size() - 1]];
   int64_t unprojection_size_before_last = unprojection_size / results.last_loop_size;
   results.unprojected_index.reserve(unprojection_size_before_last);
   results.last_loop_inc = cumulative_shape[unreduced_axes[unreduced_axes.size() - 1]];
@@ -482,10 +483,10 @@ void ExperimentalPrepareForReduce(const Tensor& input, const std::vector<int64_t
       ++unprojected_indices[unprojected_indices.size() - 2];
       current_index += cumulative_shape[unreduced_axes[unreduced_axes.size() - 2]];
       for (j = static_cast<int>(unreduced_axes.size()) - 2; j > 0; --j) {
-        if (unprojected_indices[j] < input_shape[unreduced_axes[j]])
+        if (unprojected_indices[j] < new_input_shape[unreduced_axes[j]])
           break;
-        unprojected_indices[j] -= input_shape[unreduced_axes[j]];
-        current_index -= input_shape[unreduced_axes[j]] * cumulative_shape[unreduced_axes[j]];
+        unprojected_indices[j] -= new_input_shape[unreduced_axes[j]];
+        current_index -= new_input_shape[unreduced_axes[j]] * cumulative_shape[unreduced_axes[j]];
         ++unprojected_indices[j - 1];
         current_index += cumulative_shape[unreduced_axes[j - 1]];
       }
@@ -494,22 +495,23 @@ void ExperimentalPrepareForReduce(const Tensor& input, const std::vector<int64_t
 }
 
 template <typename T, typename AGG>
-void ExperimentalReduce(Tensor* output, const Tensor& input, const std::vector<int64_t>& reduced_axes,
-                        concurrency::ThreadPool* tp, ResultsExperimentalPrepareForReduce& last_results) {
+void ExperimentalReduce(Tensor* output, const TensorShape& new_input_shape, const Tensor& input,
+                        const std::vector<int64_t>& reduced_axes, concurrency::ThreadPool* tp,
+                        ResultsExperimentalPrepareForReduce& last_results) {
   auto output_shape = output->Shape();
   const T* from_data = input.template Data<T>();
   T* to_data = output->template MutableData<T>();
   int64_t count = output_shape.Size();
 
-  if (reduced_axes.size() == 0 || reduced_axes.size() == input.Shape().NumDimensions()) {
+  if (reduced_axes.size() == 0 || reduced_axes.size() == new_input_shape.NumDimensions()) {
     ORT_ENFORCE(count == 1, "Reduction on all axes, output size should be 1.");
-    int64_t input_size = input.Shape().Size();
+    int64_t input_size = new_input_shape.Size();
     to_data[0] = AGG(input_size).aggall(from_data);
     return;
   }
 
-  if (!last_results.equal(input.Shape().GetDims(), reduced_axes)) {
-    ExperimentalPrepareForReduce(input, reduced_axes, last_results);
+  if (!last_results.equal(new_input_shape.GetDims(), reduced_axes)) {
+    ExperimentalPrepareForReduce(new_input_shape, reduced_axes, last_results);
     if (last_results.last_loop_red_size == 0 || last_results.last_loop_size == 0)
       return;
   }
@@ -563,12 +565,12 @@ void CommonReduce(OpKernelContext* ctx,
   auto reduced_dims = input->Shape().GetDims();
   std::vector<int64_t> output_shape;
   bool empty_reduce;
-  NeedsTransposeForReduce(input, axes_, axes, output_shape, empty_reduce, nullptr);
+  TensorShape new_input_shape;
+  NeedsTransposeForReduce(input, axes_, axes, new_input_shape, output_shape, empty_reduce, nullptr);
 
   if (empty_reduce) {
     Tensor* output = ctx->Output(0, keepdims_ ? output_shape : std::vector<int64_t>());
-    if (input->Shape().Size() == 1) {
-      ctx->Output(0, std::vector<int64_t>(0));
+    if (new_input_shape.Size() == 1) {
       const T* from_data = input->template Data<T>();
       T* to_data = output->template MutableData<T>();
       *to_data = *from_data;
@@ -589,7 +591,7 @@ void CommonReduce(OpKernelContext* ctx,
     DropDimensions(output_shape, axes, dropped_axes);
     output = ctx->Output(0, dropped_axes);
   }
-  ExperimentalReduce<T, AGG>(output, *input, axes, ctx->GetOperatorThreadPool(), last_results);
+  ExperimentalReduce<T, AGG>(output, new_input_shape, *input, axes, ctx->GetOperatorThreadPool(), last_results);
 }
 
 template <typename T>
@@ -809,39 +811,44 @@ Status ReduceSum<T>::Compute(OpKernelContext* ctx) const {
 }
 
 template <typename T>
-void ReduceSumCore(const T* input_data, T* output_data, bool no_transpose,
-                   int64_t blocks, int64_t block_size, FastAllocVector<T>& transposed_input_data,
-                   concurrency::ThreadPool* tp) {
-  if (no_transpose) {
-    auto lambda = [input_data, blocks, output_data](ptrdiff_t i) {
-      // The ConstEigenMatrixMap type is expanded to work around a MS compiler issue
-      output_data[i] = Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(input_data + (i * blocks), blocks).sum();
-    };
-    concurrency::ThreadPool::TryBatchParallelFor(tp, block_size, lambda, 0);
-  } else {
-    EigenVectorMap<T> out_vec(output_data, block_size);
-    out_vec = ConstEigenMatrixMap<T>(&transposed_input_data[0], block_size, blocks).rowwise().sum();
-  }
-}
-
-template <typename T>
 Tensor ReduceSum<T>::Impl(const Tensor& input, const std::vector<int64_t>& reduce_axes,
                           AllocatorPtr allocator, concurrency::ThreadPool* tp, bool keep_dims,
                           const TensorShape* input_shape_override) {
-  FastAllocVector<T> transposed_input_data(allocator);
-  int64_t block_size;
-  int64_t blocks;
-  std::vector<int64_t> reduced_dims;
+  std::vector<int64_t> axes;
+  auto reduced_dims = input.Shape().GetDims();
+  std::vector<int64_t> output_shape;
+  TensorShape new_input_shape;
+  bool empty_reduce;
+  NeedsTransposeForReduce(&input, reduce_axes, axes, new_input_shape, output_shape, empty_reduce, input_shape_override);
 
-  bool no_transpose = PrepareForReduce<T>(&input, transposed_input_data, block_size, blocks,
-                                          reduce_axes, keep_dims, reduced_dims, true, input_shape_override);
+  if (empty_reduce) {
+    Tensor output(input.DataType(), keep_dims ? output_shape : std::vector<int64_t>(), allocator);
+    if (new_input_shape.Size() == 1) {
+      const T* from_data = input.template Data<T>();
+      T* to_data = output.template MutableData<T>();
+      *to_data = *from_data;
+    } else {
+      ORT_ENFORCE(keep_dims,
+                  "Can't reduce on dim with value of 0 if 'keepdims' is false. "
+                  "Invalid output shape would be produced. input_shape:",
+                  new_input_shape);
+    }
+    return output;
+  }
 
-  Tensor output(input.DataType(), reduced_dims, allocator);
-
-  ReduceSumCore(input.template Data<T>(), output.template MutableData<T>(),
-                no_transpose, blocks, block_size, transposed_input_data, tp);
-
-  return output;
+  if (keep_dims) {
+    ResultsExperimentalPrepareForReduce last_results;
+    Tensor output(input.DataType(), output_shape, allocator);
+    ExperimentalReduce<T, ReduceAggregatorSum<T>>(&output, new_input_shape, input, axes, tp, last_results);
+    return output;
+  } else {
+    ResultsExperimentalPrepareForReduce last_results;
+    std::vector<int64_t> dropped_axes;
+    DropDimensions(output_shape, axes, dropped_axes);
+    Tensor output(input.DataType(), dropped_axes, allocator);
+    ExperimentalReduce<T, ReduceAggregatorSum<T>>(&output, new_input_shape, input, axes, tp, last_results);
+    return output;
+  }
 }
 
 template <typename T>
