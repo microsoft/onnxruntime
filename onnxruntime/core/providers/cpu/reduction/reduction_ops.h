@@ -13,23 +13,84 @@
 
 namespace onnxruntime {
 
+template <typename T>
+class ReduceAggregator {
+ protected:
+  int64_t N_;
+  T accumulator_;
+
+ public:
+  inline ReduceAggregator(int64_t N) {
+    N_ = N;
+    accumulator_ = 0;
+  }
+  inline void update(const T& v) { accumulator_ += v; }
+  inline T aggall(const T* from_data) {
+    return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, N_).sum();
+  }
+  inline T get_value() { return accumulator_; }
+};
+
+template <typename T>
+class ReduceAggregatorSum : public ReduceAggregator<T> {
+ public:
+  inline ReduceAggregatorSum(int64_t N) : ReduceAggregator(N) {}
+};
+
+template <typename T>
+class ReduceAggregatorMean : public ReduceAggregator<T> {
+ public:
+  inline ReduceAggregatorMean(int64_t N) : ReduceAggregator(N) {}
+  inline T aggall(const T* from_data) {
+    return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, N_).mean();
+  }
+  inline T get_value() { return accumulator_ / static_cast<T>(N_); }
+};
+
 bool NeedsTransposeForReduce(const Tensor* input_tensor_ptr,
                              const std::vector<int64_t>& axes_,
                              std::vector<int64_t>& axes,
                              const TensorShape* input_shape_override);
 
-void ExperimentalPrepareForReduceSum(const Tensor& input, const std::vector<int64_t>& reduced_axes,
-                                     std::vector<int64_t>& projected_index,
-                                     int64_t& last_loop_red_size, int64_t& last_loop_red_inc,
-                                     std::vector<int64_t>& unprojected_index,
-                                     int64_t& last_loop_size, int64_t& last_loop_int);
+class ResultsExperimentalPrepareForReduce {
+ public:
+  std::vector<int64_t> input_shape;
+  std::vector<int64_t> reduced_axes;
+  std::vector<int64_t> projected_index;
+  int64_t last_loop_red_size;
+  int64_t last_loop_red_inc;
+  std::vector<int64_t> unprojected_index;
+  int64_t last_loop_size;
+  int64_t last_loop_inc;
+  bool equal(const std::vector<int64_t>& local_input_shape, const std::vector<int64_t>& local_reduced_axes) {
+    if (input_shape.size() != local_input_shape.size())
+      return false;
+    if (reduced_axes.size() != local_reduced_axes.size())
+      return false;
+    for (std::vector<int64_t>::const_iterator it1 = input_shape.begin(), it2 = local_input_shape.begin();
+         it1 != input_shape.end(); ++it1, ++it2) {
+      if (*it1 != *it2)
+        return false;
+    }
+    for (std::vector<int64_t>::const_iterator it1 = reduced_axes.begin(), it2 = local_reduced_axes.begin();
+         it1 != reduced_axes.end(); ++it1, ++it2) {
+      if (*it1 != *it2)
+        return false;
+    }
+    return true;
+  }
+};
 
-template <typename T>
-void ExperimentalReduceSum(Tensor* output, const Tensor& input, const std::vector<int64_t>& reduced_axes,
-                           OpKernelContext* ctx);
+void ExperimentalPrepareForReduce(const Tensor& input, const std::vector<int64_t>& reduced_axes,
+                                  ResultsExperimentalPrepareForReduce& results);
 
-template <typename T>
-void CommonCompute(OpKernelContext* ctx, const std::vector<int64_t> axes_, int64_t keepdims_);
+template <typename T, typename AGG>
+void ExperimentalReduce(Tensor* output, const Tensor& input, const std::vector<int64_t>& reduced_axes,
+                        OpKernelContext* ctx, ResultsExperimentalPrepareForReduce& last_results);
+
+template <typename T, typename AGG>
+void CommonComputeReduce(OpKernelContext* ctx, const std::vector<int64_t> axes_, int64_t keepdims_,
+                         ResultsExperimentalPrepareForReduce& last_results);
 
 template <typename T>
 bool PrepareForReduce(const Tensor* input_tensor_ptr,
@@ -74,6 +135,9 @@ class ReduceKernelBase {
   bool keepdims_;
   bool noop_with_empty_axes_;
   bool select_last_index_;
+
+  // Caches the configuration of the last execution.
+  mutable ResultsExperimentalPrepareForReduce last_results_;
 };
 
 template <bool allow_multi_axes>
