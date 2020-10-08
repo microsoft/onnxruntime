@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import re
+import sys
 import time
 
 import requests
@@ -86,10 +87,13 @@ def main():
     token = os.environ[args.token_env]
 
     print("Submitting job {} ..".format(args.job_name))
+    sys.stdout.flush()
     submit_job(yaml_with_substitutions, token)
     print('See https://rr.openpai.org/job-detail.html?username=onnxrt&jobName={}'.format(args.job_name))
+    sys.stdout.flush()
 
     print("Waiting for job to complete ..")
+    sys.stdout.flush()
     wait_for_job(args.job_name, user, token)
 
 

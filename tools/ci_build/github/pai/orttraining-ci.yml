@@ -37,6 +37,7 @@ taskRoles:
         --nccl_home /opt/rocm
         --update
         --build --parallel 8
+        --test
 secrets:
   docker_password_0: "@@docker_password@@"
 defaults:
