@@ -157,8 +157,16 @@ class FusionAttention(Fusion):
         # SkipLayerNormalization has two inputs, and one of them is the root input for attention.
         qkv_nodes = self.model.match_parent_path(normalize_node, ['Add', 'MatMul', 'Reshape', 'Transpose', 'MatMul'],
                                                  [None, 0, 0, 0, 0])
-        if qkv_nodes is None:
-            return
+        einsum = None
+        if qkv_nodes is not None:
+            (_, matmul_qkv, reshape_qkv, transpose_qkv, matmul_qkv) = qkv_nodes
+        else:
+            # Match Albert
+            qkv_nodes = self.model.match_parent_path(normalize_node, ['Add', 'Einsum', 'Transpose', 'MatMul'], [None, 0, 0, 0])
+            if qkv_nodes is not None:
+                (_, einsum, transpose_qkv, matmul_qkv) = qkv_nodes
+            else:
+                return
 
         other_inputs = []
         for i, input in enumerate(normalize_node.input):
@@ -176,8 +184,6 @@ class FusionAttention(Fusion):
         children_types = [child.op_type for child in children]
         if children_types.count('MatMul') != 3:
             return
-
-        (_, matmul_qkv, reshape_qkv, transpose_qkv, matmul_qkv) = qkv_nodes
 
         v_nodes = self.model.match_parent_path(matmul_qkv, ['Transpose', 'Reshape', 'Add', 'MatMul'], [1, 0, 0, 0])
         if v_nodes is None:
@@ -242,14 +248,15 @@ class FusionAttention(Fusion):
         if matmul_v.input[0] == root_input and matmul_q.input[0] == root_input and matmul_v.input[0] == root_input:
             mask_index = self.attention_mask.process_mask(mask_nodes[-1].input[0])
 
+            attention_last_node = reshape_qkv if einsum is None else einsum
             new_node = self.create_attention_node(mask_index, matmul_q, matmul_k, matmul_v, add_q, add_k, add_v,
-                                                  root_input, reshape_qkv.output[0])
+                                                  root_input, attention_last_node.output[0])
             if new_node is None:
                 return
 
             self.nodes_to_add.append(new_node)
 
-            self.nodes_to_remove.extend([reshape_qkv, transpose_qkv, matmul_qkv])
+            self.nodes_to_remove.extend([attention_last_node, transpose_qkv, matmul_qkv])
             self.nodes_to_remove.extend(qk_nodes)
             self.nodes_to_remove.extend(q_nodes)
             self.nodes_to_remove.extend(k_nodes)
