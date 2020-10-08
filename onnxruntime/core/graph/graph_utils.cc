@@ -816,5 +816,20 @@ NodeArg& CreateNodeArg(Graph& graph, const NodeArg& base_arg) {
   return graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(base_arg.Name()), base_arg.TypeAsProto());
 }
 
+void ComputeConstantInitializerUseCount(const Graph& graph, std::unordered_map<std::string, size_t>& constant_initializers_use_count) {
+  for (const auto& node : graph.Nodes()) {
+    for (const auto* arg : node.InputDefs()) {
+      if (arg->Exists() && IsConstantInitializer(graph, arg->Name()))
+        constant_initializers_use_count[arg->Name()]++;
+    }
+
+    if (node.ContainsSubgraph()) {
+      for (const gsl::not_null<const Graph*>& subgraph : node.GetSubgraphs()) {
+        ComputeConstantInitializerUseCount(*subgraph, constant_initializers_use_count);
+      }
+    }
+  }
+}
+
 }  // namespace graph_utils
 }  // namespace onnxruntime

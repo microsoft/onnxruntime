@@ -266,5 +266,9 @@ bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& node);
  * @returns NodeArg reference that contains the same TypeProto info as base_arg with generated different names.
 */
 NodeArg& CreateNodeArg(Graph& graph, const NodeArg& base_arg);
+
+/** Compute the use count of constant initializer, including the use in subgraph.
+*/
+void ComputeConstantInitializerUseCount(const Graph& graph, std::unordered_map<std::string, size_t>& constant_initializers_use_count);
 }  // namespace graph_utils
 }  // namespace onnxruntime
