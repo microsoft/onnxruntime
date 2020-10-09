@@ -416,6 +416,10 @@ TEST(GradientCheckerTest, LogGrad) {
   EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
 }
 
+TEST(GradientCheckerTest, ExpGrad) {
+  UnaryOpGradientTest("Neg");
+}
+
 TEST(GradientCheckerTest, TanhGrad) {
   UnaryOpGradientTest("Tanh");
 }
