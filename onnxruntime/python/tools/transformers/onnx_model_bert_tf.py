@@ -314,25 +314,19 @@ class BertOnnxModelTF(BertOnnxModel):
 
         skip_layer_norm_nodes = self.get_nodes_by_op_type("SkipLayerNormalization")
         for normalize_node in skip_layer_norm_nodes:
-            #normalize_add_node = self.get_parent(normalize_node, 0)
-            #if normalize_add_node is None or normalize_add_node.op_type not in ["Add"]:
-            #    continue
-            #normalize_node = normalize_add_node
             # SkipLayerNormalization has two inputs, and one of them is the root input for attention.
             parent = self.get_parent(normalize_node, 1)
             if parent is None or parent.op_type not in ["SkipLayerNormalization", "LayerNormalization", "Reshape"]:
                 logger.debug("Failed to match parent of normalize_node")
                 continue
 
-            qkv_nodes = self.match_parent_path(normalize_node,
-                                               ['Add', 'MatMul', 'Reshape', 'Transpose', 'MatMul'],
+            qkv_nodes = self.match_parent_path(normalize_node, ['Add', 'MatMul', 'Reshape', 'Transpose', 'MatMul'],
                                                [0, 0, 0, 0, 0])
             if qkv_nodes is None:
                 logger.debug("Failed to match qkv nodes")
                 continue
             (add, matmul, reshape_qkv, transpose_qkv, matmul_qkv) = qkv_nodes
-            v_nodes = self.match_parent_path(matmul_qkv, ['Transpose', 'Reshape', 'Add', 'MatMul'],
-                                             [1, 0, 0, 0])
+            v_nodes = self.match_parent_path(matmul_qkv, ['Transpose', 'Reshape', 'Add', 'MatMul'], [1, 0, 0, 0])
             if v_nodes is None:
                 logger.debug("Failed to match v path")
                 continue
@@ -342,14 +336,12 @@ class BertOnnxModelTF(BertOnnxModel):
                 logger.debug("Failed to match qk_paths")
                 continue
             (softmax_qk, add_qk, mul_qk, matmul_qk) = qk_nodes
-            q_nodes = self.match_parent_path(matmul_qk, ['Transpose', 'Reshape', 'Add', 'MatMul'],
-                                                 [0, 0, 0, 0])
+            q_nodes = self.match_parent_path(matmul_qk, ['Transpose', 'Reshape', 'Add', 'MatMul'], [0, 0, 0, 0])
             if q_nodes is None:
                 logger.debug("Failed to match q path")
                 continue
             (transpose_q, reshape_q, add_q, matmul_q) = q_nodes
-            k_nodes = self.match_parent_path(matmul_qk, ['Transpose', 'Reshape', 'Add', 'MatMul'],
-                                             [1, 0, 0, 0])
+            k_nodes = self.match_parent_path(matmul_qk, ['Transpose', 'Reshape', 'Add', 'MatMul'], [1, 0, 0, 0])
             if k_nodes is None:
                 logger.debug("Failed to match k path")
                 continue
@@ -367,12 +359,15 @@ class BertOnnxModelTF(BertOnnxModel):
             if upper_mask_nodes is None:
                 continue
             mask_concat = upper_mask_nodes[2]
-            if len(mask_concat.input) == 3: # remove the middle one
-                self.add_node(helper.make_node("Concat", [mask_concat.input[0], mask_concat.input[2]], [mask_concat.output[0]], mask_concat.name + "_modified", axis=0))
+            if len(mask_concat.input) == 3:
+                # Temporary work around
+                self.add_node(
+                    helper.make_node("Concat", [mask_concat.input[0], mask_concat.input[2]], [mask_concat.output[0]],
+                                     mask_concat.name + "_modified",
+                                     axis=0))
                 self.remove_node(mask_concat)
 
-            is_same_root = self.check_attention_input(matmul_q, matmul_k, matmul_v, parent,
-                                                                     output_name_to_node)
+            is_same_root = self.check_attention_input(matmul_q, matmul_k, matmul_v, parent, output_name_to_node)
             if is_same_root:
                 mask_index = self.attention_mask.process_mask(mask_nodes[-1].input[0])
                 logger.debug("Create an Attention node.")
@@ -380,9 +375,12 @@ class BertOnnxModelTF(BertOnnxModel):
                                                                              add_q, add_k, add_v, parent.output[0],
                                                                              reshape_qkv.output[0])
                 if parent.op_type == 'Reshape':
-                    tensor = self.convert_list_to_tensor("my_shape", TensorProto.INT64, [3], [1, -1, 768])
+                    # Temporary work around
+                    hidden_size = numpy_helper.to_array(self.get_initializer(parent.input[1]))[1]
+                    tensor = self.convert_list_to_tensor(parent.name + "_modified", TensorProto.INT64, [3],
+                                                         [1, -1, hidden_size])
                     self.add_initializer(tensor)
-                    parent.input[1] = "my_shape"
+                    parent.input[1] = parent.name + "_modified"
 
                 if attention_node is None:
                     continue
@@ -423,6 +421,5 @@ class BertOnnxModelTF(BertOnnxModel):
 
     def postprocess(self):
         self.remove_reshape_before_first_attention()
-        #temperarily not prune graph for a bert model
+        # Temporary work around for the following comment as it will cause topological issues for a bert model
         #self.prune_graph()
-
