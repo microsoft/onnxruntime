@@ -12,7 +12,6 @@ import subprocess
 import sys
 import hashlib
 from logger import log
-import pytest
 
 
 class BaseError(Exception):
@@ -1114,6 +1113,8 @@ def run_orttraining_test_orttrainer_frontend_separately(cwd):
                 if start > 0:
                     test_name = test_name[:start]
                 self.collected.add(test_name)
+
+    import pytest
 
     plugin = TestNameCollecterPlugin()
     test_script_filename = os.path.join(cwd, "orttraining_test_orttrainer_frontend.py")
