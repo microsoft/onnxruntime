@@ -39,6 +39,7 @@ taskRoles:
         --build --parallel 8
         --skip_tests &&
         cd ./build/RelWithDebInfo &&
+        LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8
         ../../tools/ci_build/github/pai/pai_test_launcher.sh 
 secrets:
   docker_password_0: "@@docker_password@@"
