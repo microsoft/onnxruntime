@@ -16,7 +16,7 @@
     <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Linux</OnnxRuntimeBuildDirectory>
     <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)</NativeBuildOutputDir>
     <ProtocDirectory Condition="'$(ProtocDirectory)'==''">$(OnnxRuntimeBuildDirectory)\$(Configuration)\external\protobuf\cmake</ProtocDirectory>
-    <ProtocExe>$(ProtocDirectory)\protoc.exe</ProtocExe>
+    <ProtocExe>$(ProtocDirectory)\protoc</ProtocExe>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(IsLinuxBuild)'=='false'">
