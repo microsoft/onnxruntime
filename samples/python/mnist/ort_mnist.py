@@ -10,13 +10,14 @@
 # See https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/framework/debug_node_inputs_outputs_utils.h
 
 import argparse
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import datasets, transforms
 
 import onnxruntime
-from onnxruntime.training import ORTTrainer, ORTTrainerOptions, optim
+from onnxruntime.training import ORTTrainer, ORTTrainerOptions, optim, checkpoint
 
 
 # Pytorch model
@@ -45,21 +46,17 @@ def my_loss(x, target):
     return F.nll_loss(F.log_softmax(x, dim=1), target)
 
 # Helpers
-def train(log_interval, trainer, device, train_loader, epoch):
+def train(log_interval, trainer, device, train_loader, epoch, train_steps):
     for batch_idx, (data, target) in enumerate(train_loader):
+        if batch_idx == train_steps:
+            break
+
         # Fetch data
         data, target = data.to(device), target.to(device)
         data = data.reshape(data.shape[0], -1)
 
         # Train step
         loss, prob = trainer.train_step(data, target)
-
-        if batch_idx == 0:
-            # trainer.save_as_onnx('/home/thiagofc/mnist_onnx/pytorch_as_onnx.onnx')
-            # import pdb; pdb.set_trace()
-            pass
-        else:
-            break
 
         # Stats
         if batch_idx % log_interval == 0:
@@ -96,6 +93,8 @@ def test(trainer, device, test_loader):
 def main():
     # Training settings
     parser = argparse.ArgumentParser(description='ONNX Runtime MNIST Example')
+    parser.add_argument('--train-steps', type=int, default=-1, metavar='N',
+                        help='number of steps to train. Set -1 to run through whole dataset (default: -1)')
     parser.add_argument('--batch-size', type=int, default=20, metavar='N',
                         help='input batch size for training (default: 20)')
     parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
@@ -110,6 +109,8 @@ def main():
                         help='random seed (default: 1)')
     parser.add_argument('--log-interval', type=int, default=10, metavar='N',
                         help='how many batches to wait before logging training status')
+    parser.add_argument('--save-path', type=str, default='',
+                        help='Path for Saving the current Model')
 
     # Basic setup
     args = parser.parse_args()
@@ -128,20 +129,24 @@ def main():
                            transforms.Normalize((0.1307,), (0.3081,))
                        ])),
         batch_size=args.batch_size, shuffle=True)
-    test_loader = torch.utils.data.DataLoader(
-        datasets.MNIST('./data', train=False, transform=transforms.Compose([
-            transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])),
-        batch_size=args.test_batch_size, shuffle=True)
+
+    if args.test_batch_size > 0:
+        test_loader = torch.utils.data.DataLoader(
+            datasets.MNIST('./data', train=False, transform=transforms.Compose([
+                transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])),
+            batch_size=args.test_batch_size, shuffle=True)
 
     # Modeling
     model = NeuralNet(784, 500, 10)
     model_desc = mnist_model_description()
     optim_config = optim.SGDConfig(lr=args.lr)
-    opts = ORTTrainerOptions({'device': {'id': device}})
+    opts = {'device': {'id': device}}
+    if args.save_path:
+        opts.update({'debug': {
+            'model_with_loss_function_path' : os.path.join(args.save_path, 'model_with_loss.onnx'),
+            'model_with_training_graph_path' : os.path.join(args.save_path, 'model_with_training.onnx'),}})
+    opts = ORTTrainerOptions(opts)
 
-    # import onnx
-    # model = onnx.load('/home/thiagofc/mnist_onnx/mnist_with_training_probability_grad.onnx')
-    # my_loss=None
     trainer = ORTTrainer(model,
                          model_desc,
                          optim_config,
@@ -150,9 +155,13 @@ def main():
 
     # Train loop
     for epoch in range(1, args.epochs + 1):
-        train(args.log_interval, trainer, device, train_loader, epoch)
-        # test(trainer, device, test_loader)
+        train(args.log_interval, trainer, device, train_loader, epoch, args.train_steps)
+        if args.test_batch_size > 0:
+            test(trainer, device, test_loader)
 
+    # Save model
+    if args.save_path:
+        torch.save(model.state_dict(), os.path.join(args.save_path, "mnist_cnn.pt"))
 
 if __name__ == '__main__':
     main()

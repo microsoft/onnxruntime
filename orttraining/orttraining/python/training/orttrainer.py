@@ -615,8 +615,8 @@ class ORTTrainer(object):
         
         # TrainingParameters
         ort_parameters = ort.TrainingParameters()
-        ort_parameters.model_with_loss_function_path = '/home/thiagofc/mnist_onnx/mnist_with_loss.onnx'
-        ort_parameters.model_with_training_graph_path = '/home/thiagofc/mnist_onnx/mnist_with_training.onnx'
+        ort_parameters.model_with_loss_function_path = self.options.debug.model_with_loss_function_path
+        ort_parameters.model_with_training_graph_path = self.options.debug.model_with_training_graph_path
         ort_parameters.loss_output_name = loss_name
         ort_parameters.use_mixed_precision = self.options.mixed_precision.enabled
         ort_parameters.world_rank = self.options.distributed.world_rank
