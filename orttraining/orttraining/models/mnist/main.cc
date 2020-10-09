@@ -79,7 +79,8 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
 #ifdef USE_CUDA
     bool use_cuda = flags.count("use_cuda") > 0;
     if (use_cuda) {
-      params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(0));
+      const auto local_rank =  MPIContext::GetInstance().GetLocalRank();
+      params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(local_rank));
     }
 #endif
   } catch (const exception& e) {
