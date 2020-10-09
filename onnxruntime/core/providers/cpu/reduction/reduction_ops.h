@@ -34,13 +34,13 @@ class ReduceAggregator {
 template <typename T>
 class ReduceAggregatorSum : public ReduceAggregator<T> {
  public:
-  inline ReduceAggregatorSum(int64_t N) : ReduceAggregator(N) {}
+  inline ReduceAggregatorSum(int64_t N) : ReduceAggregator<T>(N) {}
 };
 
 template <typename T>
 class ReduceAggregatorMean : public ReduceAggregator<T> {
  public:
-  inline ReduceAggregatorMean(int64_t N) : ReduceAggregator(N) {}
+  inline ReduceAggregatorMean(int64_t N) : ReduceAggregator<T>(N) {}
   inline T aggall(const T* from_data) {
     return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, N_).mean();
   }
