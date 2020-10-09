@@ -146,6 +146,7 @@ ORT_API_STATUS_IMPL(winmla::DmlGetD3D12ResourceFromAllocation, _In_ OrtExecution
       Dml::GetD3D12ResourceFromAllocation(
           dml_provider_internal->GetAllocator(0, ::OrtMemType::OrtMemTypeDefault).get(),
           allocation);
+  (*d3d_resource)->AddRef();
 #endif  // USE_DML USE_DML
   return nullptr;
   API_IMPL_END

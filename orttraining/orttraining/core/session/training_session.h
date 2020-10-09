@@ -200,6 +200,8 @@ class TrainingSession : public InferenceSession {
       bool gelu_recompute{false};
       // Enable recompute of transformer layer ouput to save memory
       bool transformer_layer_recompute{false};
+      // Number of layers to apply recompute
+      int number_recompute_layers{0};
     };
 
     GraphTransformerConfiguration graph_transformer_config{};
