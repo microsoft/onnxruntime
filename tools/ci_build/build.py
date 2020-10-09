@@ -99,7 +99,7 @@ def parse_arguments():
         "--use_horovod", action='store_true', help="Enable Horovod.")
     parser.add_argument(
         "--disable_nccl", action='store_true', help="Disable Nccl.")
-   parser.add_argument(
+    parser.add_argument(
         "--mpi_home", help="Path to MPI installation dir")
     parser.add_argument(
         "--nccl_home", help="Path to NCCL installation dir")
