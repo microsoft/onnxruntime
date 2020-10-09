@@ -314,9 +314,13 @@ class BertOnnxModelTF(BertOnnxModel):
 
         skip_layer_norm_nodes = self.get_nodes_by_op_type("SkipLayerNormalization")
         for normalize_node in skip_layer_norm_nodes:
+            #normalize_add_node = self.get_parent(normalize_node, 0)
+            #if normalize_add_node is None or normalize_add_node.op_type not in ["Add"]:
+            #    continue
+            #normalize_node = normalize_add_node
             # SkipLayerNormalization has two inputs, and one of them is the root input for attention.
             parent = self.get_parent(normalize_node, 1)
-            if parent is None or parent.op_type not in ["SkipLayerNormalization", "EmbedLayerNormalization"]:
+            if parent is None or parent.op_type not in ["SkipLayerNormalization", "LayerNormalization", "Reshape"]:
                 logger.debug("Failed to match parent of normalize_node")
                 continue
 
@@ -349,7 +353,6 @@ class BertOnnxModelTF(BertOnnxModel):
             if k_nodes is None:
                 logger.debug("Failed to match k path")
                 continue
-
             (transpose_k, reshape_k, add_k, matmul_k) = k_nodes
 
             mask_nodes = self.match_parent_path(add_qk, ['Mul', 'Sub', 'Unsqueeze'], [1, 0, 1])
@@ -368,6 +371,8 @@ class BertOnnxModelTF(BertOnnxModel):
                 attention_node = self.attention_fusion.create_attention_node(mask_index, matmul_q, matmul_k, matmul_v,
                                                                              add_q, add_k, add_v, parent.output[0],
                                                                              reshape_qkv.output[0])
+                if parent.op_type == 'Reshape':
+                    print(parent)
                 if attention_node is None:
                     continue
 
@@ -407,4 +412,6 @@ class BertOnnxModelTF(BertOnnxModel):
 
     def postprocess(self):
         self.remove_reshape_before_first_attention()
-        self.prune_graph()
+        #temperarily not prune graph for a bert model
+        #self.prune_graph()
+
