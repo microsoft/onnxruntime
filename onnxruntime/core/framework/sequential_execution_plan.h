@@ -33,6 +33,7 @@ struct AllocPlanPerValue {
   bool create_fence_if_async{false};
   IntervalT life_interval{0, 0};
   IntervalT allocate_interval{0, 0};
+  bool inplace_reuse{false};
 
  public:
   AllocPlanPerValue() : location(CPU, Invalid) {}

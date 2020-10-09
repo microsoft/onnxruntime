@@ -241,7 +241,6 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
       input_shapes.push_back(std::cref(tensor.Shape()));
     }
 
-    session_state_.GetMutableMemoryInfo().RecordInputMemoryInfo(feed_mlvalue_idxs, feeds);
     //if there are some traditional ml value type in inputs disable the memory pattern optimization.
     if (all_tensors) {
       mem_patterns_ = session_state.GetMemoryPatternGroup(input_shapes, feed_mlvalue_idxs, inferred_shapes_);
@@ -574,7 +573,7 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
       }
     }
 
-    session_state_.GetMutableMemoryInfo().RecordTensorDeviceAllocInfo(ort_value_index, ort_value);
+    session_state_.GetMutableMemoryInfo().RecordActivationAllocInfo(ort_value_index, ort_value);
 
     return Status::OK();
   } else if (ml_type->IsSparseTensorType()) {

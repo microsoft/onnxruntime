@@ -660,10 +660,10 @@ class PlannerImpl {
           // Reuse one of this node's input buffers as the output buffer (for in-place update)
           //In this case, we dont kill the "reused" tensor
           Reuse(reused, current, AllocKind::kReuse);
+          AllocPlan(current).inplace_reuse = true;
         } else if (!context_.IsParallelExecutionEnabled() &&
                    FindReusableTensor(*node_output, &reused)) {
           // Reuse an available (dead) buffer for this output, this is only for sequential execution.
-          AllocPlan(reused).life_interval.second = program_counter;
           Reuse(reused, current, AllocKind::kReuse);
         } else {
           // otherwise: allocate a new buffer for this output
@@ -812,10 +812,33 @@ class PlannerImpl {
     return !utils::HasTensorType(type_proto);
   }
 
+  //For reuse tensors, the alloc-time is equal to the allocate time of the allocated tensor
   void AdjustAllocateIntervals() {
     for (size_t i = 0; i < ort_value_info_.size(); ++i) {
       if (i != ort_value_info_[i].reused_buffer_index) {
         AllocPlan(OrtValueIndex(i)).allocate_interval = AllocPlan(ort_value_info_[i].reused_buffer_index).allocate_interval;
+      }
+    }
+  }
+
+  //For in-place reuse tensors, the lifetime is the union of all the tensor that tensors that use that buffer
+  void AdjustInplaceLifeIntervals() {
+    std::unordered_map<OrtValueIndex, std::vector<OrtValueIndex>> inplace_reuse_buffer;
+    for (size_t i = 0; i < ort_value_info_.size(); ++i) {
+      if (AllocPlan(OrtValueIndex(i)).inplace_reuse) {
+        inplace_reuse_buffer[ort_value_info_[i].reused_buffer_index].push_back(OrtValueIndex(i));
+      }
+    }
+    for (const auto& item : inplace_reuse_buffer) {
+      IntervalT& lifetime = AllocPlan(item.first).life_interval;
+      for (const auto& value : item.second) {
+        auto start = AllocPlan(value).life_interval.first;
+        auto end = AllocPlan(value).life_interval.second;
+        lifetime.first = lifetime.first < start ? lifetime.first : start;
+        lifetime.second = lifetime.second > end ? lifetime.second : end;
+      }
+      for (const auto& value : item.second) {
+        AllocPlan(value).life_interval = lifetime;
       }
     }
   }
@@ -843,8 +866,9 @@ Status PlannerImpl::CreatePlan() {
   // Determine nodes that need fence check. This needs to be done after ComputeUseCounts and ComputeReusePlan.
   ORT_RETURN_IF_ERROR(ComputeFenceCheck());
 
-  //Adjust the allocate intervals for all ml-values, based on their allocation kind.
+  //Adjust the allocate and lifetime intervals for all ml-values, based on their allocation kind.
   AdjustAllocateIntervals();
+  AdjustInplaceLifeIntervals();
 
   // convert information in the freelist_ into a deallocation plan in required format
   GenerateDeallocationPlan();
