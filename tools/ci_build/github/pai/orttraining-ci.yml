@@ -38,8 +38,7 @@ taskRoles:
         --update
         --build --parallel 8
         --skip_tests
-
-	# excludes tests listed in pai-excluded-tests.txt
+        # excludes tests listed in pai-excluded-tests.txt
         cd ./build/RelWithDebInfo
         ../../tools/ci_build/github/pai/pai_test_launcher.sh 
 secrets:
