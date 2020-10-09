@@ -135,8 +135,7 @@ class ONNXQuantizer:
         return opset_version
 
     def replace_gemm_with_matmul(self):
-        nodes_to_remove = []
-        nodes_to_add = []
+        new_nodes = []
 
         for node in self.model.nodes():
             if node.op_type == 'Gemm':
@@ -163,8 +162,7 @@ class ONNXQuantizer:
                                                      outputs=node.output,
                                                      name=node.output[0] + '_Add')
 
-                    nodes_to_add.extend([matmul_node, add_node])
-                    nodes_to_remove.extend([node])
+                    new_nodes.extend([matmul_node, add_node])
 
                     if transB == 1:
                         B = self.model.get_initializer(node.input[1])
@@ -173,9 +171,17 @@ class ONNXQuantizer:
                         B_trans.name = B.name
                         self.model.remove_initializer(B)
                         self.model.add_initializer(B_trans)
+                
+                # unsupported
+                else:
+                    new_nodes.append(node)
+            
+            # not GEMM
+            else:
+                new_nodes.append(node)
 
-        self.model.add_nodes(nodes_to_add)
-        self.model.remove_nodes(nodes_to_remove)
+        self.model.graph().ClearField('node')
+        self.model.graph().node.extend(new_nodes)
 
     def remove_fake_quantized_nodes(self):
         '''
