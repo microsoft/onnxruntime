@@ -57,10 +57,10 @@ TEST(DenormalTest, OpenMPDenormalAsZeroTest) {
         input_double[i] *= 2;
       }
 
-      std::for_each(input_float.begin(), input_float.end(), [&](auto f) {
+      std::for_each(input_float.begin(), input_float.end(), [&](float f) {
         EXPECT_EQ(f, (set_denormal_as_zero) ? 0.0f : denormal_float * 2);
       });
-      std::for_each(input_double.begin(), input_double.end(), [&](auto d) {
+      std::for_each(input_double.begin(), input_double.end(), [&](double d) {
         EXPECT_EQ(d, (set_denormal_as_zero) ? 0.0 : denormal_double * 2);
       });
     }

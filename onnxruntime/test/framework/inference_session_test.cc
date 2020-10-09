@@ -2569,10 +2569,10 @@ void VerifyThreadPoolWithDenormalAsZero(onnxruntime::concurrency::ThreadPool* tp
     input_float[i] *= 2;
     input_double[i] *= 2;
   });
-  std::for_each(input_float.begin(), input_float.end(), [&](auto f) {
+  std::for_each(input_float.begin(), input_float.end(), [&](float f) {
     EXPECT_EQ(f, (set_denormal_as_zero) ? 0.0f : denormal_float * 2);
   });
-  std::for_each(input_double.begin(), input_double.end(), [&](auto d) {
+  std::for_each(input_double.begin(), input_double.end(), [&](double d) {
     EXPECT_EQ(d, (set_denormal_as_zero) ? 0.0 : denormal_double * 2);
   });
 }
@@ -2625,67 +2625,6 @@ TEST(InferenceSessionTests, GlobalThreadPoolWithDenormalAsZero) {
   VerifyThreadPoolWithDenormalAsZero(env->GetIntraOpThreadPool(), true);
 #endif
   VerifyThreadPoolWithDenormalAsZero(env->GetInterOpThreadPool(), true);
-
-  // Set back to default.
-#ifdef _OPENMP
-  InitializeWithDenormalAsZero(false);
-#endif
-  SetDenormalAsZero(false);
-}
-
-// test per-session thread pool with setting denormal as zero
-TEST(InferenceSessionTests, PerSessionThreadPoolWithDenormalAsZero) {
-  // test if denormal-as-zero mode is supported
-  if (!SetDenormalAsZero(false)) {
-    return;
-  }
-
-  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
-      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
-      LoggingManager::InstanceType::Temporal);
-
-  std::unique_ptr<Environment> env;
-  auto st = Environment::Create(std::move(logging_manager), env);
-  ASSERT_TRUE(st.IsOK());
-
-  SessionOptions so;
-
-  // inference session with denormal as zero
-  so.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "1");
-
-  // Since only the first session option for flush-to-zero and denormal-as-zero are effective,
-  // set them manually here for a test.
-#ifdef _OPENMP
-  InitializeWithDenormalAsZero(true);
-#endif
-  SetDenormalAsZero(true);
-
-  InferenceSessionTestGlobalThreadPools session1{so, *env};
-  ASSERT_STATUS_OK(session1.Load("testdata/matmul_1.onnx"));
-  ASSERT_STATUS_OK(session1.Initialize());
-
-  RunOptions run_options;
-  run_options.run_tag = "per_session_thread_pool_denormal_as_zero";
-  run_options.run_log_severity_level = static_cast<int>(Severity::kVERBOSE);
-  RunModelWithDenormalAsZero(session1, run_options, true);
-
-#ifndef _OPENMP
-  VerifyThreadPoolWithDenormalAsZero(session1.GetIntraOpThreadPoolToUse(), true);
-#endif
-
-  // inference session without denormal as zero.
-  // it won't change denormal behavior to main thread since the first one is effective,
-  // but it applies to session thread pool.
-  so.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "0");
-  InferenceSessionTestGlobalThreadPools session2{so, *env};
-  ASSERT_STATUS_OK(session2.Load("testdata/matmul_1.onnx"));
-  ASSERT_STATUS_OK(session2.Initialize());
-
-  RunModelWithDenormalAsZero(session2, run_options, true);
-
-#ifndef _OPENMP
-  VerifyThreadPoolWithDenormalAsZero(session2.GetIntraOpThreadPoolToUse(), false);
-#endif
 
   // Set back to default.
 #ifdef _OPENMP
