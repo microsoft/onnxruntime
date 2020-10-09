@@ -860,7 +860,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
     tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext> trt_context;
     if (!has_dynamic_shape) {
       //std::string trt_node_name_with_precision_shape = trt_node_name_with_precision + "_" + GetVecHash(input_shapes);
-      std::string profile_path = GetProfilePath(engine_cache_path, trt_node_name_with_precision);
+      std::string profile_path = GetProfilePath(engine_cache_path_, trt_node_name_with_precision);
       std::ifstream profile_file(profile_path, std::ios::binary | std::ios::in);      
       std::string cached_path = GetEnginePath(engine_cache_path_, trt_node_name_with_precision);
       std::ifstream plan_file(cached_path, std::ios::binary | std::ios::in);
