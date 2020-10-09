@@ -143,7 +143,7 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   return python_config_result;
 }
 
-#if defined(USE_NCCL)
+#if defined(USE_MPI)
 void CopyMPIContextToTrainingParameters(TrainingParameters& parameters, const logging::Logger* logger) {
   LOGS(*logger, INFO) << "MPIContext::GetInstance().GetWorldRank(): " << MPIContext::GetInstance().GetWorldRank();
   LOGS(*logger, INFO) << "MPIContext::GetInstance().GetLocalRank(): " << MPIContext::GetInstance().GetLocalRank();
@@ -188,7 +188,7 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("set_gradients_as_graph_outputs", &TrainingParameters::set_gradients_as_graph_outputs)
       .def_readwrite("use_invertible_layernorm_grad", &TrainingParameters::use_invertible_layernorm_grad);
 
-#if defined(USE_NCCL)
+#if defined(USE_MPI)
   m.def("get_mpi_context_local_rank", []() -> int { return MPIContext::GetInstance().GetLocalRank(); });
   m.def("get_mpi_context_local_size", []() -> int { return MPIContext::GetInstance().GetLocalSize(); });
   m.def("get_mpi_context_world_rank", []() -> int { return MPIContext::GetInstance().GetWorldRank(); });
@@ -234,7 +234,7 @@ void addObjectMethodsForTraining(py::module& m) {
       .def("load_model", [](PyTrainingSession* sess, const std::string& path, TrainingParameters& parameters) {
         OrtPybindThrowIfError(sess->GetSessionHandle()->Load(path));
 
-#if defined(USE_NCCL)
+#if defined(USE_MPI)
         bool use_nccl = parameters.allreduce_post_accumulation;
         if (!use_nccl && parameters.world_size > 1)
           CopyMPIContextToTrainingParameters(parameters, sess->GetSessionHandle()->GetLogger());
@@ -250,7 +250,7 @@ void addObjectMethodsForTraining(py::module& m) {
         std::istringstream buffer(serialized_model);
         OrtPybindThrowIfError(sess->GetSessionHandle()->Load(buffer));
 
-#if defined(USE_NCCL)
+#if defined(USE_MPI)
         bool use_nccl = parameters.allreduce_post_accumulation;
         if (!use_nccl && parameters.world_size > 1)
           CopyMPIContextToTrainingParameters(parameters, sess->GetSessionHandle()->GetLogger());
