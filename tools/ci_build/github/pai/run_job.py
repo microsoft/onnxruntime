@@ -89,7 +89,7 @@ def main():
     print("Submitting job {} ..".format(args.job_name))
     sys.stdout.flush()
     submit_job(yaml_with_substitutions, token)
-    print('See https://rr.openpai.org/job-detail.html?username=onnxrt&jobName={}'.format(args.job_name))
+    print('See https://rr.openpai.org/job-detail.html?username={}&jobName={}'.format(user, args.job_name))
     sys.stdout.flush()
 
     print("Waiting for job to complete ..")

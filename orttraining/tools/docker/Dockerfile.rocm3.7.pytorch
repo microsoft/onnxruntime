@@ -186,4 +186,8 @@ ENV LD_PERLOAD=${WORKSPACE_DIR}/lib/libpsl.so
 
 ENV LOG_DIR=/data/wezhan/logs
 
+# add locale en_US.UTF-8
+RUN apt-get install -y locales
+RUN locale-gen en_US.UTF-8
+
 WORKDIR ${WORKSPACE_DIR}/script
