@@ -21,14 +21,12 @@ Window Machine Learning is a high-performance, reliable API for deploying hardwa
 
 We support community contribution to Windows ML based on our principles to enhance user experience on Windows. While we encourage everyone to contribute to Windows ML, the Windows ML team will keep the bar for the acceptance high. Help us to do so by following the recommendations bellow.
   * The feature request is aligned with the Windows ML base principles. 
-  * The feature request focuses on the enhancement of user experience. 
   * The feature request addresses the real existing or future user problems.
-  * The feature request benefits a meaningful number of users. 
-  * The feature request demonstrates the competence to implement the PR, for example generate clean code, unit tests, samples, and documentation, etc.
-
+  * The feature request focuses on the enhancement of user experience and benefits a meaningful number of users. 
+  
 ## When there is no need in feature request
 
-  * When the required change is fixing a minor bug in Windows ML APIs.
+  * When the required change is fixing a bug in Windows ML APIs. In this case, please fill the bug/performance issue request. 
   * When the required change resulted from the existing and ongoing communication with Windows ML partners.
   * When the required change is planned to be addressed by the Windows ML team.
 
