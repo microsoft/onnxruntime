@@ -860,9 +860,11 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
     tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext> trt_context;
     if (!has_dynamic_shape) {
       //std::string trt_node_name_with_precision_shape = trt_node_name_with_precision + "_" + GetVecHash(input_shapes);
+      std::string profile_path = GetProfilePath(engine_cache_path, trt_node_name_with_precision);
+      std::ifstream profile_file(profile_path, std::ios::binary | std::ios::in);      
       std::string cached_path = GetEnginePath(engine_cache_path_, trt_node_name_with_precision);
       std::ifstream plan_file(cached_path, std::ios::binary | std::ios::in);
-      if (engine_cache_enable_ && plan_file) {
+      if (engine_cache_enable_ && profile_path && plan_file) {
         plan_file.seekg(0, std::ios::end);
         int engine_size = plan_file.tellg();
         plan_file.seekg(0, std::ios::beg);
@@ -870,7 +872,8 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
         plan_file.read((char*)engine_buf.get(), engine_size);
         trt_engine = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
         LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + cached_path;
-      } else if (engine_decryption_enable_ && engine_cache_enable_ && !plan_file) {
+      } else if (engine_decryption_enable_ && engine_cache_enable_ && !profile_file && !plan_file) {
+        WriteProfile(profile_path, input_shape_ranges);
         void* handle = dlopen(engine_decryption_lib_path_.c_str(), RTLD_LAZY);
         if (handle == nullptr) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
