@@ -1,6 +1,6 @@
 # Nuphar Execution Provider (preview)
 
-NUPHAR stands for Neural-network Unified Preprocessing Heterogeneous ARchitecture. As an execution provider in the ONNX Runtime, it is built on top of [TVM](https://github.com/dmlc/tvm) and [LLVM](https://llvm.org) to accelerate ONNX models by compiling nodes in subgraphs into optimized functions via JIT. It also provides JIT caching to save compilation time at runtime. 
+NUPHAR stands for Neural-network Unified Preprocessing Heterogeneous Architecture. As an execution provider in the ONNX Runtime, it is built on top of [TVM](https://github.com/dmlc/tvm) and [LLVM](https://llvm.org) to accelerate ONNX models by compiling nodes in subgraphs into optimized functions via JIT. It also provides JIT caching to save compilation time at runtime. 
 
 Developers can tap into the power of Nuphar through ONNX Runtime to accelerate inferencing of ONNX models. The Nuphar execution provider comes with a common ONNX to TVM lowering [library](../../onnxruntime/core/codegen) that can potentially be reused by other execution providers to leverage TVM. With the Nuphar execution provider, the ONNX Runtime delivers better inferencing performance on the same hardware compared to generic X64 CPU acceleration, especially for quantized recurrent neural networks. Various products at Microsoft have seen up to a 5x improvement in performance with no loss of accuracy, by running quantized LSTMs via the Nuphar execution provider in the ONNX Runtime.
 
