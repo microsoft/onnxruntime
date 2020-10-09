@@ -835,11 +835,15 @@ GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, std::string d
       //Omitting zero dim subgraphs
       for (auto index : this_cluster) {
         const auto& node = graph_viewer.GetNode(index);
-        if (node->OpType() == "Mul" || node->OpType() == "Transpose" || node->OpType() == "Unsqueeze" ||
-            node->OpType() == "Cast" || node->OpType() == "Concat" || node->OpType() == "Gather" ||
-            node->OpType() == "Div" || node->OpType() == "Sub") {
+        const auto& optype = node->OpType();
+        if (optype == "Mul" || optype == "Transpose" || optype == "Unsqueeze" ||
+            optype == "Cast" || optype == "Concat" || optype == "Gather" ||
+            optype == "Div" || optype == "Sub" || optype == "Identity") {
 
-            if((node->OpType() == "Div" || node->OpType() == "Sub") && (device_id != "MYRIAD" &&  device_id != "GPU"))
+            if(optype == "Identity" && device_id != "CPU")
+              continue;
+
+            if((optype == "Div" || optype == "Sub") && (device_id != "MYRIAD" &&  device_id != "GPU"))
               continue;
             for (const auto& input : node->InputDefs()) {
               auto input_name = input->Name();
@@ -851,7 +855,7 @@ GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, std::string d
             }
         }
 
-        if(node->OpType() == "Conv"){
+        if(optype == "Conv" || optype == "Identity"){
           auto output_name = node->OutputDefs()[0]->Name();
           auto it = find(cluster_outputs.begin(), cluster_outputs.end(), output_name);
           if(it != cluster_outputs.end() && node->GetOutputEdgesCount() != 0){
@@ -860,7 +864,7 @@ GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, std::string d
           }
         }
 
-        if(node->OpType() == "Slice"){
+        if(optype == "Slice"){
           auto input = node->InputDefs()[0];
           auto input_name = input->Name();
           const bool is_data_int32 = input->Type()->find("int32") != std::string::npos;
