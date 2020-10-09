@@ -92,6 +92,11 @@ def main():
     print('See https://rr.openpai.org/job-detail.html?username={}&jobName={}'.format(user, args.job_name))
     sys.stdout.flush()
 
+    print('\nWarning: The following tests will be excluded:')
+    with open('tools/ci_build/github/pai/pai-excluded-tests.txt', 'r') as fin:
+        print(fin.read())
+    print('')
+
     print("Waiting for job to complete ..")
     sys.stdout.flush()
     wait_for_job(args.job_name, user, token)
