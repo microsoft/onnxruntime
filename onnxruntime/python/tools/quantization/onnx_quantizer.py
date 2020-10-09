@@ -153,7 +153,7 @@ class ONNXQuantizer:
                         transA = onnx.helper.get_attribute_value(attr)
                     elif attr.name == 'transB':
                         transB = onnx.helper.get_attribute_value(attr)
-                if alpha == 1.0 and beta == 1.0 and transA == 0 and transB == 0:
+                if alpha == 1.0 and beta == 1.0 and transA == 0:
                     matmul_node = onnx.helper.make_node('MatMul', [node.input[0], node.input[1]],
                                                         [node.output[0] + '_MatMul'],
                                                         name=node.output[0] + '_MatMul')
@@ -165,6 +165,14 @@ class ONNXQuantizer:
 
                     nodes_to_add.extend([matmul_node, add_node])
                     nodes_to_remove.extend([node])
+
+                    if transB == 1:
+                        B = self.model.get_initializer(node.input[1])
+                        B_array = onnx.numpy_helper.to_array(B)
+                        B_trans = onnx.numpy_helper.from_array(B_array.T)
+                        B_trans.name = B.name
+                        self.model.remove_initializer(B)
+                        self.model.add_initializer(B_trans)
 
         self.model.add_nodes(nodes_to_add)
         self.model.remove_nodes(nodes_to_remove)
