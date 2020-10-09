@@ -1,6 +1,14 @@
 # This code is from https://github.com/pytorch/examples/blob/master/mnist/main.py
 # with modification to do training using onnxruntime as backend on cuda device.
 
+# To print nodes from ORT backend
+# Add --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1 to build.sh
+# export ORT_DEBUG_NODE_IO_NAME_FILTER="SoftmaxCrossEntropyLoss_3_Grad/SoftmaxCrossEntropyLossGrad_0"
+# export ORT_DEBUG_NODE_IO_NAME_FILTER="SoftmaxCrossEntropyLoss_3"
+# export ORT_DEBUG_NODE_IO_DUMP_INPUT_DATA=1
+# export ORT_DEBUG_NODE_IO_DUMP_OUTPUT_DATA=1
+# See https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/framework/debug_node_inputs_outputs_utils.h
+
 import argparse
 import torch
 import torch.nn as nn
@@ -33,20 +41,25 @@ def mnist_model_description():
             'outputs': [('loss', [], True),
                         ('probability', ['batch', 10])]}
 
-
 def my_loss(x, target):
     return F.nll_loss(F.log_softmax(x, dim=1), target)
 
-
 # Helpers
-def train_with_trainer(log_interval, trainer, device, train_loader, epoch):
+def train(log_interval, trainer, device, train_loader, epoch):
     for batch_idx, (data, target) in enumerate(train_loader):
         # Fetch data
         data, target = data.to(device), target.to(device)
         data = data.reshape(data.shape[0], -1)
 
         # Train step
-        loss, _ = trainer.train_step(data, target)
+        loss, prob = trainer.train_step(data, target)
+
+        if batch_idx == 0:
+            # trainer.save_as_onnx('/home/thiagofc/mnist_onnx/pytorch_as_onnx.onnx')
+            # import pdb; pdb.set_trace()
+            pass
+        else:
+            break
 
         # Stats
         if batch_idx % log_interval == 0:
@@ -55,16 +68,14 @@ def train_with_trainer(log_interval, trainer, device, train_loader, epoch):
                 100. * batch_idx / len(train_loader), loss))
 
 
-def test_with_trainer(trainer, device, test_loader):
+def test(trainer, device, test_loader):
     test_loss = 0
     correct = 0
     with torch.no_grad():
         for data, target in test_loader:
-            # Fetch data
             data, target = data.to(device), target.to(device)
             data = data.reshape(data.shape[0], -1)
 
-            # Eval step
             # Using fetches around without eval_step to not pass 'target' as input
             trainer._train_step_info.fetches = ['probability']
             output = F.log_softmax(trainer.eval_step(data), dim=1)
@@ -74,7 +85,9 @@ def test_with_trainer(trainer, device, test_loader):
             test_loss += F.nll_loss(output, target, reduction='sum').item()
             pred = output.argmax(dim=1, keepdim=True)
             correct += pred.eq(target.view_as(pred)).sum().item()
+
     test_loss /= len(test_loader.dataset)
+
     print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
         test_loss, correct, len(test_loader.dataset),
         100. * correct / len(test_loader.dataset)))
@@ -82,13 +95,13 @@ def test_with_trainer(trainer, device, test_loader):
 
 def main():
     # Training settings
-    parser = argparse.ArgumentParser(description='MNIST Example')
-    parser.add_argument('--batch-size', type=int, default=64, metavar='N',
-                        help='input batch size for training (default: 64)')
+    parser = argparse.ArgumentParser(description='ONNX Runtime MNIST Example')
+    parser.add_argument('--batch-size', type=int, default=20, metavar='N',
+                        help='input batch size for training (default: 20)')
     parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
                         help='input batch size for testing (default: 1000)')
-    parser.add_argument('--epochs', type=int, default=10, metavar='N',
-                        help='number of epochs to train (default: 10)')
+    parser.add_argument('--epochs', type=int, default=1, metavar='N',
+                        help='number of epochs to train (default: 1)')
     parser.add_argument('--lr', type=float, default=0.01, metavar='LR',
                         help='learning rate (default: 0.01)')
     parser.add_argument('--no-cuda', action='store_true', default=False,
@@ -125,6 +138,10 @@ def main():
     model_desc = mnist_model_description()
     optim_config = optim.SGDConfig(lr=args.lr)
     opts = ORTTrainerOptions({'device': {'id': device}})
+
+    # import onnx
+    # model = onnx.load('/home/thiagofc/mnist_onnx/mnist_with_training_probability_grad.onnx')
+    # my_loss=None
     trainer = ORTTrainer(model,
                          model_desc,
                          optim_config,
@@ -133,9 +150,8 @@ def main():
 
     # Train loop
     for epoch in range(1, args.epochs + 1):
-        train_with_trainer(args.log_interval, trainer,
-                           device, train_loader, epoch)
-        test_with_trainer(trainer, device, test_loader)
+        train(args.log_interval, trainer, device, train_loader, epoch)
+        # test(trainer, device, test_loader)
 
 
 if __name__ == '__main__':
