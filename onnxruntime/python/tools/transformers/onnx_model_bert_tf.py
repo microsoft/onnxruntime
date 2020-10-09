@@ -373,6 +373,12 @@ class BertOnnxModelTF(BertOnnxModel):
                                                                              reshape_qkv.output[0])
                 if parent.op_type == 'Reshape':
                     print(parent)
+                    print(numpy_helper.to_array(self.get_initializer(parent.input[1])))
+                    tensor = self.convert_list_to_tensor("my_shape", TensorProto.INT64, [3], [1, -1, 768])
+                    self.add_initializer(tensor)
+                    parent.input[1] = "my_shape"
+
+
                 if attention_node is None:
                     continue
 
