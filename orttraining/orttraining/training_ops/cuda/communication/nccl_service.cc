@@ -233,6 +233,7 @@ void NcclService::Initialize() {
   // Set device this NCCL communicator runs on.
   CUDA_CALL(cudaSetDevice(mpi_rank));
 
+  // Create communication stream.
   CUDA_CALL(cudaStreamCreate(&stream_));
 
   // Get NCCL unique ID at rank 0 and broadcast it to all others.
