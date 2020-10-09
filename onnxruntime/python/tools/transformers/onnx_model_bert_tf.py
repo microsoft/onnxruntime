@@ -9,7 +9,7 @@ import sys
 import argparse
 import numpy as np
 from collections import deque
-from onnx import ModelProto, TensorProto, numpy_helper
+from onnx import ModelProto, TensorProto, numpy_helper, helper
 from onnx_model_bert import BertOnnxModel
 
 logger = logging.getLogger(__name__)
@@ -363,6 +363,14 @@ class BertOnnxModelTF(BertOnnxModel):
                 logger.debug("Sub node expected to have an input with constant value 1.0.")
                 continue
 
+            upper_mask_nodes = self.match_parent_path(mask_nodes[2], ['Reshape', 'Cast', 'Concat'], [0, 1, 0])
+            if upper_mask_nodes is None:
+                continue
+            mask_concat = upper_mask_nodes[2]
+            if len(mask_concat.input) == 3: # remove the middle one
+                self.add_node(helper.make_node("Concat", [mask_concat.input[0], mask_concat.input[2]], [mask_concat.output[0]], mask_concat.name + "_modified", axis=0))
+                self.remove_node(mask_concat)
+
             is_same_root = self.check_attention_input(matmul_q, matmul_k, matmul_v, parent,
                                                                      output_name_to_node)
             if is_same_root:
@@ -372,12 +380,9 @@ class BertOnnxModelTF(BertOnnxModel):
                                                                              add_q, add_k, add_v, parent.output[0],
                                                                              reshape_qkv.output[0])
                 if parent.op_type == 'Reshape':
-                    print(parent)
-                    print(numpy_helper.to_array(self.get_initializer(parent.input[1])))
                     tensor = self.convert_list_to_tensor("my_shape", TensorProto.INT64, [3], [1, -1, 768])
                     self.add_initializer(tensor)
                     parent.input[1] = "my_shape"
-
 
                 if attention_node is None:
                     continue
