@@ -143,5 +143,5 @@ endif()
 # check if we need to link against libatomic due to std::atomic usage by the threadpool code
 # e.g. Raspberry Pi requires this
 if (onnxruntime_LINK_LIBATOMIC)
-  target_link_libraries(onnxruntime_common atomic)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES atomic)
 endif()

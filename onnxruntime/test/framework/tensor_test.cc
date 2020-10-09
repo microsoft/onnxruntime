@@ -13,18 +13,16 @@
 namespace onnxruntime {
 namespace test {
 template <typename T>
-void CPUTensorTest(std::vector<int64_t> dims, const int offset = 0) {
-  // note: 'offset' is treated as a number of elements so that the alignment is valid on ARM platforms
-
-  //not own the buffer
-  TensorShape shape(dims);  // this is the shape that will be available starting at offset in the Tensor
+void CPUTensorTest(std::vector<int64_t> dims, const int offset_elements = 0) {
+  // create Tensor where we provide the buffer
+  TensorShape shape(dims);  // this is the shape that will be available starting at the offset in the Tensor
   auto alloc = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
-  // alloc extra data as anything before 'offset' is not covered by the shape
-  auto num_elements = shape.Size() + offset;
+  // alloc extra data if needed, as anything before the offset is not covered by the shape
+  auto num_elements = shape.Size() + offset_elements;
   auto num_bytes = num_elements * sizeof(T);
-  auto offset_bytes = offset * sizeof(T);
+  auto offset_bytes = offset_elements * sizeof(T);
   void* data = alloc->Alloc(num_bytes);
-  const T* first_element = static_cast<const T*>(data) + offset;
+  const T* first_element = static_cast<const T*>(data) + offset_elements;
 
   Tensor t(DataTypeImpl::GetType<T>(), shape, data, alloc->Info(), offset_bytes);
   auto tensor_shape = t.Shape();
@@ -34,14 +32,14 @@ void CPUTensorTest(std::vector<int64_t> dims, const int offset = 0) {
   EXPECT_STREQ(location.name, CPU);
   EXPECT_EQ(location.id, 0);
 
-  T* t_data = t.MutableData<T>();
+  const T* t_data = t.Data<T>();
   EXPECT_EQ(first_element, t_data);
   alloc->Free(data);
 
   // test when the Tensor allocates the buffer.
-  // there's no point using an offset here as you'd be allocating extra data prior to the buffer needed
+  // there's no point using an offset_elements here as you'd be allocating extra data prior to the buffer needed
   // by the Tensor instance.
-  if (offset == 0) {
+  if (offset_elements == 0) {
     Tensor new_t(DataTypeImpl::GetType<T>(), shape, alloc);
     EXPECT_TRUE(new_t.OwnsBuffer());
 
