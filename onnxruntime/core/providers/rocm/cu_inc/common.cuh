@@ -8,8 +8,8 @@
 #include <assert.h>
 #include <hip/hip_runtime.h>
 #include <hip/hip_fp16.h>
-#include "core/providers/hip/hip_common.h"
-#include "core/providers/hip/shared_inc/hip_call.h"
+#include "core/providers/rocm/hip_common.h"
+#include "core/providers/rocm/shared_inc/hip_call.h"
 
 namespace onnxruntime {
 namespace rocm {
@@ -189,7 +189,7 @@ struct GridDim {
 
 // HIP_KERNEL_ASSERT is a macro that wraps an assert() call inside hip kernels.
 // This is not supported by Apple platforms so we special case it.
-// See http://docs.nvidia.com/hip/hip-c-programming-guide/#assertion
+// See http://docs.nvidia.com/rocm/hip-c-programming-guide/#assertion
 #if defined(__APPLE__) || defined(__HIP_PLATFORM_HCC__)
 #define HIP_KERNEL_ASSERT(...)
 #else // __APPLE__

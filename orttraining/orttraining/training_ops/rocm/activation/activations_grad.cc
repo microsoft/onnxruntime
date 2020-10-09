@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "orttraining/training_ops/hip/activation/activations_grad.h"
+#include "orttraining/training_ops/rocm/activation/activations_grad.h"
 #include "core/framework/op_kernel.h"
 
 namespace onnxruntime {

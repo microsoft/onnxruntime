@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/hip/hip_provider_factory.h"
+#include "core/providers/rocm/hip_provider_factory.h"
 #include <atomic>
 #include "core/graph/onnx_protobuf.h"
 #include "hip_execution_provider.h"

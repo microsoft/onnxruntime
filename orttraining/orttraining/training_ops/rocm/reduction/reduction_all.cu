@@ -2,11 +2,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "orttraining/training_ops/hip/reduction/reduction_all.h"
-#include "core/providers/hip/cu_inc/common.cuh"
-#include "core/providers/hip/hip_common.h"
-#include "core/providers/hip/atomic/common.cuh"
-#include "core/providers/hip/reduction/reduction_utils.cuh"
+#include "orttraining/training_ops/rocm/reduction/reduction_all.h"
+#include "core/providers/rocm/cu_inc/common.cuh"
+#include "core/providers/rocm/hip_common.h"
+#include "core/providers/rocm/atomic/common.cuh"
+#include "core/providers/rocm/reduction/reduction_utils.cuh"
 
 namespace onnxruntime {
 namespace rocm {

@@ -23,7 +23,7 @@
 
 /* Modifications Copyright (c) Microsoft. */
 
-#include "core/providers/hip/cu_inc/common.cuh"
+#include "core/providers/rocm/cu_inc/common.cuh"
 
 #include "layer_norm_impl.h"
 

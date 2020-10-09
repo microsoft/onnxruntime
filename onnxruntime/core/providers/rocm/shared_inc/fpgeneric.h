@@ -13,7 +13,7 @@
 
 #pragma once
 
-#include "core/providers/hip/hip_common.h"
+#include "core/providers/rocm/hip_common.h"
 
 // Generalize library calls to be use in template functions
 

@@ -1,5 +1,5 @@
 #include <stdint.h>
-#include "core/providers/hip/shared_inc/hip_utils.h"
+#include "core/providers/rocm/shared_inc/hip_utils.h"
 
 using namespace onnxruntime::rocm;
 

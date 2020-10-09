@@ -3,10 +3,10 @@
 
 #pragma once
 #include <stdint.h>
-#include "core/providers/hip/shared_inc/hip_utils.h"
+#include "core/providers/rocm/shared_inc/hip_utils.h"
 #include "core/framework/data_types.h"
 #include "core/common/common.h"
-#include "core/providers/hip/hip_common.h"
+#include "core/providers/rocm/hip_common.h"
 
 namespace onnxruntime {
 namespace rocm {

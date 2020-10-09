@@ -2,8 +2,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/hip/math/clip_impl.h"
-#include "core/providers/hip/cu_inc/common.cuh"
+#include "core/providers/rocm/math/clip_impl.h"
+#include "core/providers/rocm/cu_inc/common.cuh"
 
 namespace onnxruntime {
 namespace rocm {

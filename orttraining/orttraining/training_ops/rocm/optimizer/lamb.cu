@@ -2,12 +2,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/hip/cu_inc/common.cuh"
-#include "core/providers/hip/hip_common.h"
-#include "core/providers/hip/atomic/common.cuh"
-#include "orttraining/training_ops/hip/math/isfinite.cuh"
-#include "orttraining/training_ops/hip/optimizer/common.cuh"
-#include "orttraining/training_ops/hip/optimizer/lamb.h"
+#include "core/providers/rocm/cu_inc/common.cuh"
+#include "core/providers/rocm/hip_common.h"
+#include "core/providers/rocm/atomic/common.cuh"
+#include "orttraining/training_ops/rocm/math/isfinite.cuh"
+#include "orttraining/training_ops/rocm/optimizer/common.cuh"
+#include "orttraining/training_ops/rocm/optimizer/lamb.h"
 namespace onnxruntime {
 namespace rocm {
 template <typename T1, typename T2, typename T3>

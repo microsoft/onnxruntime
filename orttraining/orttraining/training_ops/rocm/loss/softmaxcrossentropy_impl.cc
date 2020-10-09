@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/hip/reduction/reduction_functions.h"
-#include "core/providers/hip/math/softmax.h"
+#include "core/providers/rocm/reduction/reduction_functions.h"
+#include "core/providers/rocm/math/softmax.h"
 #include "softmaxcrossentropy_impl.h"
 
 namespace onnxruntime {

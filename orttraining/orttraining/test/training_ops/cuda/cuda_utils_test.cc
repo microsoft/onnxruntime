@@ -13,8 +13,8 @@
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #elif USE_ROCM
-#include "core/providers/hip/shared_inc/hip_call.h"
-#include "core/providers/hip/shared_inc/hip_utils.h"
+#include "core/providers/rocm/shared_inc/hip_call.h"
+#include "core/providers/rocm/shared_inc/hip_utils.h"
 #endif
 namespace onnxruntime {
 namespace cuda {

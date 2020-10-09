@@ -6,7 +6,7 @@
 #include <functional>
 #include <vector>
 
-#include "core/providers/hip/hip_common.h"
+#include "core/providers/rocm/hip_common.h"
 
 namespace onnxruntime {
 namespace rocm {

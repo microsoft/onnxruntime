@@ -1,12 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/hip/math/variadic_elementwise_ops_impl.h"
+#include "core/providers/rocm/math/variadic_elementwise_ops_impl.h"
 
-#include "core/providers/hip/cu_inc/variadic_elementwise_impl.cuh"
-#include "core/providers/hip/math/binary_elementwise_ops_impl.h"
-#include "core/providers/hip/math/binary_elementwise_ops_impl_functors.cuh"
-#include "core/providers/hip/math/variadic_elementwise_ops_tags.h"
+#include "core/providers/rocm/cu_inc/variadic_elementwise_impl.cuh"
+#include "core/providers/rocm/math/binary_elementwise_ops_impl.h"
+#include "core/providers/rocm/math/binary_elementwise_ops_impl_functors.cuh"
+#include "core/providers/rocm/math/variadic_elementwise_ops_tags.h"
 
 namespace onnxruntime {
 namespace rocm {

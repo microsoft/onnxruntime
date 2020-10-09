@@ -3,10 +3,10 @@
 
 #pragma once
 
-#include "core/providers/hip/hip_common.h"
-#include "core/providers/hip/math/binary_elementwise_ops.h"
-#include "core/providers/hip/activation/activations.h"
-#include "orttraining/training_ops/hip/activation/activations_grad_impl.h"
+#include "core/providers/rocm/hip_common.h"
+#include "core/providers/rocm/math/binary_elementwise_ops.h"
+#include "core/providers/rocm/activation/activations.h"
+#include "orttraining/training_ops/rocm/activation/activations_grad_impl.h"
 
 namespace onnxruntime {
 namespace rocm {

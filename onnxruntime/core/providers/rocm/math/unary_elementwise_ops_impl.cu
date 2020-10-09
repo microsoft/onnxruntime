@@ -3,8 +3,8 @@
 
 #include <hip/hip_runtime.h>
 #include "unary_elementwise_ops_impl.h"
-#include "core/providers/hip/cu_inc/common.cuh"
-#include "core/providers/hip/cu_inc/unary_elementwise_impl.cuh"
+#include "core/providers/rocm/cu_inc/common.cuh"
+#include "core/providers/rocm/cu_inc/unary_elementwise_impl.cuh"
 
 namespace onnxruntime {
 namespace rocm {

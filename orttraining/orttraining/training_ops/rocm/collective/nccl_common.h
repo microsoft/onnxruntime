@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "core/providers/hip/hip_common.h"
+#include "core/providers/rocm/hip_common.h"
 #include "orttraining/core/framework/distributed_run_context.h"
 #include <rccl.h>
 

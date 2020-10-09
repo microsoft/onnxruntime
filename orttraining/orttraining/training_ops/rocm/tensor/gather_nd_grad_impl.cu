@@ -2,10 +2,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "orttraining/training_ops/hip/tensor/gather_nd_grad_impl.h"
+#include "orttraining/training_ops/rocm/tensor/gather_nd_grad_impl.h"
 
-#include "core/providers/hip/cu_inc/common.cuh"
-#include "core/providers/hip/atomic/common.cuh"
+#include "core/providers/rocm/cu_inc/common.cuh"
+#include "core/providers/rocm/atomic/common.cuh"
 
 namespace onnxruntime {
 namespace rocm {

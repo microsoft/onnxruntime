@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/hip/tensor/gather_impl.h"
-#include "core/providers/hip/tensor/gather.h"
+#include "core/providers/rocm/tensor/gather_impl.h"
+#include "core/providers/rocm/tensor/gather.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/common.h"
 

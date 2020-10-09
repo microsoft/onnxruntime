@@ -17,7 +17,7 @@
 // The code below is mostly copied from Pytorch PersistentSoftmax.cuh
 
 #pragma once
-#include "core/providers/hip/cu_inc/common.cuh"
+#include "core/providers/rocm/cu_inc/common.cuh"
 
 namespace onnxruntime {
 namespace rocm {

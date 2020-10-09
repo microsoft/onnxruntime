@@ -2,10 +2,10 @@
 // Licensed under the MIT License.
 
 #include <hip/hip_runtime.h>
-#include "orttraining/training_ops/hip/activation/activations_grad_impl.h"
-#include "orttraining/training_ops/hip/activation/gelu_grad_impl_common.cuh"
-#include "core/providers/hip/cu_inc/common.cuh"
-#include "core/providers/hip/cu_inc/binary_elementwise_impl.cuh"
+#include "orttraining/training_ops/rocm/activation/activations_grad_impl.h"
+#include "orttraining/training_ops/rocm/activation/gelu_grad_impl_common.cuh"
+#include "core/providers/rocm/cu_inc/common.cuh"
+#include "core/providers/rocm/cu_inc/binary_elementwise_impl.cuh"
 
 namespace onnxruntime {
 namespace rocm {

@@ -2,11 +2,11 @@
 // Licensed under the MIT License.
 
 #include <cmath>
-#include "core/providers/hip/hip_allocator.h"
-#include "core/providers/hip/reduction/reduction_functions.h"
-#include "core/providers/hip/math/binary_elementwise_ops.h"
-#include "orttraining/training_ops/hip/optimizer/common.h"
-#include "orttraining/training_ops/hip/optimizer/lamb.h"
+#include "core/providers/rocm/hip_allocator.h"
+#include "core/providers/rocm/reduction/reduction_functions.h"
+#include "core/providers/rocm/math/binary_elementwise_ops.h"
+#include "orttraining/training_ops/rocm/optimizer/common.h"
+#include "orttraining/training_ops/rocm/optimizer/lamb.h"
 
 namespace onnxruntime {
 namespace rocm {

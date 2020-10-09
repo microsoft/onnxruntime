@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "orttraining/training_ops/hip/tensor/split.h"
-#include "core/providers/hip/tensor/split_impl.h"
+#include "orttraining/training_ops/rocm/tensor/split.h"
+#include "core/providers/rocm/tensor/split_impl.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/common.h"
 

@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 #include "core/providers/common.h"
-#include "core/providers/hip/math/clip.h"
-#include "core/providers/hip/math/clip_impl.h"
+#include "core/providers/rocm/math/clip.h"
+#include "core/providers/rocm/math/clip_impl.h"
 
 namespace onnxruntime {
 namespace rocm {

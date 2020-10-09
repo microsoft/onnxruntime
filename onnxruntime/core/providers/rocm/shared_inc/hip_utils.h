@@ -11,7 +11,7 @@
 #include <vector>
 
 #include "core/common/common.h"
-#include "core/providers/hip/shared_inc/fast_divmod.h"
+#include "core/providers/rocm/shared_inc/fast_divmod.h"
 
 namespace onnxruntime {
 namespace rocm {

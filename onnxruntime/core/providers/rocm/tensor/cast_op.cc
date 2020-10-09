@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "cast_op.h"
-#include "core/providers/hip/math/unary_elementwise_ops_impl.h"
+#include "core/providers/rocm/math/unary_elementwise_ops_impl.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;

@@ -2,11 +2,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/hip/atomic/common.cuh"
-#include "core/providers/hip/cu_inc/common.cuh"
+#include "core/providers/rocm/atomic/common.cuh"
+#include "core/providers/rocm/cu_inc/common.cuh"
 #include "scatter_elements_impl.h"
 #ifdef ENABLE_TRAINING
-#include "orttraining/training_ops/hip/tensor/gather_elements_grad_impl.h"
+#include "orttraining/training_ops/rocm/tensor/gather_elements_grad_impl.h"
 #endif
 
 namespace onnxruntime {

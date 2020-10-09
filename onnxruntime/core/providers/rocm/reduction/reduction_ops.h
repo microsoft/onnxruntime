@@ -4,8 +4,8 @@
 #pragma once
 #include "core/common/optional.h"
 #include "core/providers/cpu/reduction/reduction_ops.h"
-#include "core/providers/hip/hip_common.h"
-#include "core/providers/hip/reduction/reduction_functions.h"
+#include "core/providers/rocm/hip_common.h"
+#include "core/providers/rocm/reduction/reduction_functions.h"
 
 namespace onnxruntime {
 namespace rocm {

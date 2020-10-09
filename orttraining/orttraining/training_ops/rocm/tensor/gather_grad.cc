@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "orttraining/training_ops/hip/tensor/gather_grad.h"
-#include "orttraining/training_ops/hip/tensor/gather_grad_impl.h"
+#include "orttraining/training_ops/rocm/tensor/gather_grad.h"
+#include "orttraining/training_ops/rocm/tensor/gather_grad_impl.h"
 #include "core/providers/common.h"
 
 namespace onnxruntime {

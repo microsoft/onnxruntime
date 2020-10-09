@@ -3,9 +3,9 @@
 
 #pragma once
 
-#include "core/providers/hip/hip_common.h"
-#include "core/providers/hip/math/unary_elementwise_ops.h"
-#include "core/providers/hip/math/binary_elementwise_ops.h"
+#include "core/providers/rocm/hip_common.h"
+#include "core/providers/rocm/math/unary_elementwise_ops.h"
+#include "core/providers/rocm/math/binary_elementwise_ops.h"
 #include "activations_impl.h"
 
 namespace onnxruntime {

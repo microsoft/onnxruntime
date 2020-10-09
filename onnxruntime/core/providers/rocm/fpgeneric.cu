@@ -12,7 +12,7 @@
 // NV_TODO: optimize speed -- pass things needed in, optimize kernel speed, add half2
 // NV_TODO: investigate cub support for half
 
-#include "core/providers/hip/cu_inc/common.cuh"
+#include "core/providers/rocm/cu_inc/common.cuh"
 //#include <hiprand_kernel.h>
 
 #define TRANS_TILE_DIM 32

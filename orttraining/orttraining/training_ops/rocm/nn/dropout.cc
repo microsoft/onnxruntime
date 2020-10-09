@@ -2,9 +2,9 @@
 // Licensed under the MIT License.
 
 #include "core/framework/random_seed.h"
-#include "orttraining/training_ops/hip/nn/dropout.h"
-#include "core/providers/hip/nn/dropout.h"
-#include "core/providers/hip/hip_common.h"
+#include "orttraining/training_ops/rocm/nn/dropout.h"
+#include "core/providers/rocm/nn/dropout.h"
+#include "core/providers/rocm/hip_common.h"
 #include "core/providers/common.h"
 
 namespace onnxruntime {

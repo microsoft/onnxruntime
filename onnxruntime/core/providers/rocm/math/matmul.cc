@@ -3,8 +3,8 @@
 
 #include "matmul.h"
 #include "core/providers/cpu/math/matmul_helper.h"
-#include "core/providers/hip/shared_inc/fpgeneric.h"
-#include "core/providers/hip/hip_allocator.h"
+#include "core/providers/rocm/shared_inc/fpgeneric.h"
+#include "core/providers/rocm/hip_allocator.h"
 
 namespace onnxruntime {
 namespace rocm {

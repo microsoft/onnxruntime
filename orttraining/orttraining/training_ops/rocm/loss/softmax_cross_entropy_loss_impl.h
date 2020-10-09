@@ -4,8 +4,8 @@
 #pragma once
 
 #include "orttraining/training_ops/cpu/loss/reduction_type.h"
-#include "core/providers/hip/reduction/reduction_ops.h"
-#include "orttraining/training_ops/hip/loss/softmaxcrossentropy_impl.h"
+#include "core/providers/rocm/reduction/reduction_ops.h"
+#include "orttraining/training_ops/rocm/loss/softmaxcrossentropy_impl.h"
 
 namespace onnxruntime {
 namespace rocm {

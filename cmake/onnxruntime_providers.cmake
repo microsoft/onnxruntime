@@ -26,13 +26,13 @@ file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cu_srcs CONFIGURE_DEPENDS
 )
 
 file(GLOB_RECURSE onnxruntime_rocm_contrib_ops_cc_srcs CONFIGURE_DEPENDS
-  "${ONNXRUNTIME_ROOT}/contrib_ops/hip/*.h"
-  "${ONNXRUNTIME_ROOT}/contrib_ops/hip/*.cc"
+  "${ONNXRUNTIME_ROOT}/contrib_ops/rocm/*.h"
+  "${ONNXRUNTIME_ROOT}/contrib_ops/rocm/*.cc"
 )
 
 file(GLOB_RECURSE onnxruntime_rocm_contrib_ops_cu_srcs CONFIGURE_DEPENDS
-  "${ONNXRUNTIME_ROOT}/contrib_ops/hip/*.cu"
-  "${ONNXRUNTIME_ROOT}/contrib_ops/hip/*.cuh"
+  "${ONNXRUNTIME_ROOT}/contrib_ops/rocm/*.cu"
+  "${ONNXRUNTIME_ROOT}/contrib_ops/rocm/*.cuh"
 )
 
 file(GLOB onnxruntime_cpu_featurizers_cc_srcs CONFIGURE_DEPENDS
@@ -816,17 +816,17 @@ if (onnxruntime_USE_ROCM)
   find_library(HIP_BLAS hipblas REQUIRED)
   find_library(ROC_BLAS rocblas REQUIRED)
   find_library(MIOPEN_LIB MIOpen REQUIRED)
-  find_library(RCCL_LIB rccl REQUIRED)
+  # find_library(RCCL_LIB rccl REQUIRED)
   set(ONNXRUNTIME_ROCM_LIBS ${HIP_LIB} ${HIP_BLAS} ${ROC_BLAS} ${MIOPEN_LIB} ${RCCL_LIB})
 
   file(GLOB_RECURSE onnxruntime_providers_rocm_cc_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/hip/*.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/hip/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/providers/rocm/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/rocm/*.cc"
   )
 
   file(GLOB_RECURSE onnxruntime_providers_rocm_cu_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/hip/*.cu"
-    "${ONNXRUNTIME_ROOT}/core/providers/hip/*.cuh"
+    "${ONNXRUNTIME_ROOT}/core/providers/rocm/*.cu"
+    "${ONNXRUNTIME_ROOT}/core/providers/rocm/*.cuh"
   )
   
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_rocm_cc_srcs} ${onnxruntime_providers_rocm_cu_srcs})
@@ -841,28 +841,28 @@ if (onnxruntime_USE_ROCM)
 
   if (onnxruntime_ENABLE_TRAINING)
     file(GLOB_RECURSE onnxruntime_rocm_training_ops_cc_srcs CONFIGURE_DEPENDS
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/hip/*.h"
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/hip/*.cc"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/rocm/*.h"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/rocm/*.cc"
     )
 
     # NCCL is not support in Windows build
     if (WIN32)
       list(REMOVE_ITEM onnxruntime_rocm_training_ops_cc_srcs
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/hip/collective/nccl_common.cc"
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/hip/collective/nccl_kernels.cc"
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/hip/collective/megatron.cc"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/rocm/collective/nccl_common.cc"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/rocm/collective/nccl_kernels.cc"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/rocm/collective/megatron.cc"
       )
     elseif (NOT onnxruntime_USE_NCCL)
       list(REMOVE_ITEM onnxruntime_rocm_training_ops_cc_srcs
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/hip/collective/nccl_common.cc"
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/hip/collective/nccl_kernels.cc"
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/hip/collective/megatron.cc"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/rocm/collective/nccl_common.cc"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/rocm/collective/nccl_kernels.cc"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/rocm/collective/megatron.cc"
       )
     endif()
 
     file(GLOB_RECURSE onnxruntime_rocm_training_ops_cu_srcs CONFIGURE_DEPENDS
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/hip/*.cu"
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/hip/*.cuh"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/rocm/*.cu"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/rocm/*.cuh"
     )
 
     source_group(TREE ${ORTTRAINING_ROOT} FILES ${onnxruntime_rocm_training_ops_cc_srcs} ${onnxruntime_rocm_training_ops_cu_srcs})

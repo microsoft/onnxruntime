@@ -17,8 +17,8 @@
 
 /* Modifications Copyright (c) Microsoft. */
 
-#include "core/providers/hip/cu_inc/common.cuh"
-#include "core/providers/hip/nn/dropout_impl.h"
+#include "core/providers/rocm/cu_inc/common.cuh"
+#include "core/providers/rocm/nn/dropout_impl.h"
 #include <hiprand_kernel.h>
 #include <algorithm>
 

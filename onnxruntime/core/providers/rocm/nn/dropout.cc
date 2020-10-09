@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/hip/nn/dropout.h"
+#include "core/providers/rocm/nn/dropout.h"
 
 namespace onnxruntime {
 namespace rocm {

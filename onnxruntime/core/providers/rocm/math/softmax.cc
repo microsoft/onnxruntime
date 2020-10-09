@@ -3,7 +3,7 @@
 
 #include "softmax.h"
 #include "core/providers/common.h"
-#include "core/providers/hip/miopen_common.h"
+#include "core/providers/rocm/miopen_common.h"
 
 namespace onnxruntime {
 namespace rocm {

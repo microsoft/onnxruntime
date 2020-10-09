@@ -3,8 +3,8 @@
 
 #include <hip/hip_runtime.h>
 #include "activations_impl.h"
-#include "core/providers/hip/cu_inc/common.cuh"
-#include "core/providers/hip/cu_inc/unary_elementwise_impl.cuh"
+#include "core/providers/rocm/cu_inc/common.cuh"
+#include "core/providers/rocm/cu_inc/unary_elementwise_impl.cuh"
 
 using namespace onnxruntime::rocm;
 

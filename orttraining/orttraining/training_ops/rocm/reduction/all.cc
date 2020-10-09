@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "orttraining/training_ops/hip/reduction/all.h"
+#include "orttraining/training_ops/rocm/reduction/all.h"
 
 namespace onnxruntime {
 namespace rocm {

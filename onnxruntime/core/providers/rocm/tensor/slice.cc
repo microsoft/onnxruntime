@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/hip/tensor/slice.h"
+#include "core/providers/rocm/tensor/slice.h"
 #include "core/providers/cpu/tensor/utils.h"
-#include "core/providers/hip/tensor/slice_impl.h"
+#include "core/providers/rocm/tensor/slice_impl.h"
 
 namespace onnxruntime {
 namespace rocm {

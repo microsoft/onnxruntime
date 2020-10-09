@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "orttraining/training_ops/hip/nn/layer_norm.h"
-#include "orttraining/training_ops/hip/nn/layer_norm_impl.h"
+#include "orttraining/training_ops/rocm/nn/layer_norm.h"
+#include "orttraining/training_ops/rocm/nn/layer_norm_impl.h"
 
 #include "core/providers/common.h"
 

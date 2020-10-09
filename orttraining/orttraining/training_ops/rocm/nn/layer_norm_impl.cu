@@ -23,8 +23,8 @@
 
 /* Modifications Copyright (c) Microsoft. */
 
-#include "orttraining/training_ops/hip/nn/layer_norm_impl.h"
-#include "core/providers/hip/cu_inc/common.cuh"
+#include "orttraining/training_ops/rocm/nn/layer_norm_impl.h"
+#include "core/providers/rocm/cu_inc/common.cuh"
 
 namespace onnxruntime {
 namespace rocm {

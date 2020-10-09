@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "core/providers/hip/cu_inc/common.cuh"
+#include "core/providers/rocm/cu_inc/common.cuh"
 #include "orttraining/training_ops/cpu/activation/gelu_computation_mode.h"
 
 namespace onnxruntime {

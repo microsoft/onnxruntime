@@ -2,7 +2,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/hip/cu_inc/common.cuh"
+#include "core/providers/rocm/cu_inc/common.cuh"
 #include "gather_impl.h"
 
 namespace onnxruntime {

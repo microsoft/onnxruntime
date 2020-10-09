@@ -19,7 +19,7 @@
 
 // The code below is mostly copied from Pytorch PersistentSoftmax.cuh
 
-#include "core/providers/hip/cu_inc/common.cuh"
+#include "core/providers/rocm/cu_inc/common.cuh"
 #include "softmax_impl.cuh"
 #include "softmax.h"
 

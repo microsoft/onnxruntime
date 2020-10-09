@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "core/providers/hip/math/binary_elementwise_ops_impl.h"
+#include "core/providers/rocm/math/binary_elementwise_ops_impl.h"
 
 namespace onnxruntime {
 namespace rocm {

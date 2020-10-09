@@ -2,9 +2,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/hip/tensor/gather_nd_impl.h"
-#include "core/providers/hip/cu_inc/common.cuh"
-#include "core/providers/hip/atomic/common.cuh"
+#include "core/providers/rocm/tensor/gather_nd_impl.h"
+#include "core/providers/rocm/cu_inc/common.cuh"
+#include "core/providers/rocm/atomic/common.cuh"
 
 namespace onnxruntime {
 namespace rocm {

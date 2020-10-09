@@ -19,10 +19,10 @@
 
 // The code below is mostly copied from Pytorch PersistentSoftmax.cuh
 
-#include "orttraining/training_ops/hip/math/softmax_grad.h"
+#include "orttraining/training_ops/rocm/math/softmax_grad.h"
 
-#include "core/providers/hip/cu_inc/common.cuh"
-#include "core/providers/hip/math/softmax_impl.cuh"
+#include "core/providers/rocm/cu_inc/common.cuh"
+#include "core/providers/rocm/math/softmax_impl.cuh"
 
 namespace onnxruntime {
 namespace rocm {

@@ -5,8 +5,8 @@
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
-#include "core/providers/hip/hip_common.h"
-#include "core/providers/hip/tensor/gather_nd.h"
+#include "core/providers/rocm/hip_common.h"
+#include "core/providers/rocm/tensor/gather_nd.h"
 
 namespace onnxruntime {
 namespace rocm {

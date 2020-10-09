@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "orttraining/training_ops/hip/tensor/concat.h"
-#include "core/providers/hip/tensor/concat_impl.h"
+#include "orttraining/training_ops/rocm/tensor/concat.h"
+#include "core/providers/rocm/tensor/concat_impl.h"
 
 namespace onnxruntime {
 namespace rocm {

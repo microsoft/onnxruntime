@@ -2,9 +2,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/hip/cu_inc/common.cuh"
-#include "orttraining/training_ops/hip/loss/softmax_cross_entropy_loss_impl.h"
-#include "core/providers/hip/hip_common.h"
+#include "core/providers/rocm/cu_inc/common.cuh"
+#include "orttraining/training_ops/rocm/loss/softmax_cross_entropy_loss_impl.h"
+#include "core/providers/rocm/hip_common.h"
 
 namespace onnxruntime {
 namespace rocm {

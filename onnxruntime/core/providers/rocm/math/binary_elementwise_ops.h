@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include "core/providers/hip/hip_common.h"
-#include "core/providers/hip/shared_inc/fast_divmod.h"
+#include "core/providers/rocm/hip_common.h"
+#include "core/providers/rocm/shared_inc/fast_divmod.h"
 #include "core/providers/cpu/tensor/utils.h"
 
 namespace onnxruntime {

@@ -1,8 +1,8 @@
 #include "hip/hip_runtime.h"
 #pragma once
 
-#include "core/providers/hip/cu_inc/common.cuh"
-#include "core/providers/hip/shared_inc/hip_utils.h"
+#include "core/providers/rocm/cu_inc/common.cuh"
+#include "core/providers/rocm/shared_inc/hip_utils.h"
 
 namespace onnxruntime {
 namespace rocm {

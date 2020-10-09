@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "nccl_kernels.h"
-#include "core/providers/hip/tensor/identity_op.h"
+#include "core/providers/rocm/tensor/identity_op.h"
 
 namespace onnxruntime {
 namespace rocm {

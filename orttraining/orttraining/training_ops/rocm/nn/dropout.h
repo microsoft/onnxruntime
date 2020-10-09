@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include "core/providers/hip/hip_common.h"
-#include "orttraining/training_ops/hip/nn/dropout_impl.h"
+#include "core/providers/rocm/hip_common.h"
+#include "orttraining/training_ops/rocm/nn/dropout_impl.h"
 
 namespace onnxruntime {
 namespace rocm {

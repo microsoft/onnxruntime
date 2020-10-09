@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/hip/math/matmul.h"
+#include "core/providers/rocm/math/matmul.h"
 
 namespace onnxruntime {
 namespace contrib {

@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "orttraining/training_ops/hip/math/softmax_grad.h"
-#include "core/providers/hip/math/softmax.h"
+#include "orttraining/training_ops/rocm/math/softmax_grad.h"
+#include "core/providers/rocm/math/softmax.h"
 #include "core/providers/common.h"
-#include "core/providers/hip/miopen_common.h"
+#include "core/providers/rocm/miopen_common.h"
 
 namespace onnxruntime {
 namespace rocm {

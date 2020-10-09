@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "orttraining/training_ops/hip/tensor/view.h"
+#include "orttraining/training_ops/rocm/tensor/view.h"
 
 namespace onnxruntime {
 namespace rocm {

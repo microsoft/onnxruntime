@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/hip/tensor/onehot.h"
+#include "core/providers/rocm/tensor/onehot.h"
 #include "core/providers/cpu/tensor/onehot.h"
 
 namespace onnxruntime {

@@ -4,8 +4,8 @@
 #pragma once
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
-#include "core/providers/hip/hip_common.h"
-#include "core/providers/hip/multi_tensor/common.cuh"
+#include "core/providers/rocm/hip_common.h"
+#include "core/providers/rocm/multi_tensor/common.cuh"
 
 constexpr int PARALLEL_LOADS = 4;
 constexpr int WARP_THREAD_COUNT = 32;

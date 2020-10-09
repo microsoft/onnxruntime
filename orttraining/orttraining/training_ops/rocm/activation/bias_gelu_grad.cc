@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "orttraining/training_ops/hip/activation/bias_gelu_grad.h"
+#include "orttraining/training_ops/rocm/activation/bias_gelu_grad.h"
 
 #include "core/common/common.h"
 #include "orttraining/training_ops/cpu/activation/gelu_computation_mode.h"
-#include "orttraining/training_ops/hip/activation/bias_gelu_grad_impl.h"
+#include "orttraining/training_ops/rocm/activation/bias_gelu_grad_impl.h"
 
 namespace onnxruntime {
 namespace rocm {

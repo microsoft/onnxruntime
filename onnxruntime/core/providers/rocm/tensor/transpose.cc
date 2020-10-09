@@ -2,9 +2,9 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/tensor/utils.h"
-#include "core/providers/hip/shared_inc/fpgeneric.h"
-#include "core/providers/hip/tensor/transpose.h"
-#include "core/providers/hip/tensor/transpose_impl.h"
+#include "core/providers/rocm/shared_inc/fpgeneric.h"
+#include "core/providers/rocm/tensor/transpose.h"
+#include "core/providers/rocm/tensor/transpose_impl.h"
 
 namespace onnxruntime {
 namespace rocm {

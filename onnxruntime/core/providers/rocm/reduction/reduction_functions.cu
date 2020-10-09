@@ -5,8 +5,8 @@
 #include <algorithm>
 #include <hip/hip_runtime.h>
 #include <hip/hip_fp16.h>
-#include "core/providers/hip/cu_inc/common.cuh"
-#include "core/providers/hip/atomic/common.cuh"
+#include "core/providers/rocm/cu_inc/common.cuh"
+#include "core/providers/rocm/atomic/common.cuh"
 #include "reduction_functions.h"
 #include "reduction_utils.cuh"
 

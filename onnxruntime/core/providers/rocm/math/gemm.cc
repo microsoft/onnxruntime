@@ -3,7 +3,7 @@
 
 #include "gemm.h"
 #include "core/providers/cpu/math/gemm_helper.h"
-#include "core/providers/hip/shared_inc/fpgeneric.h"
+#include "core/providers/rocm/shared_inc/fpgeneric.h"
 
 namespace onnxruntime {
 namespace rocm {

@@ -138,7 +138,7 @@ struct OrtStatus {
 OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE;
 bool do_copy_in_default_stream = true;
 #elif USE_ROCM
-#include "core/providers/hip/hip_provider_factory.h"
+#include "core/providers/rocm/hip_provider_factory.h"
 #endif
 OrtDevice::DeviceId cuda_device_id = 0;
 size_t cuda_mem_limit = std::numeric_limits<size_t>::max();

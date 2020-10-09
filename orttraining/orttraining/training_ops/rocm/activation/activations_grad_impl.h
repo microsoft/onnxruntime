@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/providers/hip/activation/activations_impl.h"
+#include "core/providers/rocm/activation/activations_impl.h"
 
 namespace onnxruntime {
 namespace rocm {

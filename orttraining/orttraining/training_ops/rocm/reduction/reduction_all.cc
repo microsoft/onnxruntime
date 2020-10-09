@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "orttraining/training_ops/hip/reduction/reduction_all.h"
-#include "core/providers/hip/reduction/reduction_functions.h"
+#include "orttraining/training_ops/rocm/reduction/reduction_all.h"
+#include "core/providers/rocm/reduction/reduction_functions.h"
 #include "core/framework/op_kernel_context_internal.h"
 
 namespace onnxruntime {

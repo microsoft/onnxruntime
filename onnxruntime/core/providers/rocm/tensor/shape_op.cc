@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/tensor/shape_op.h"
-#include "core/providers/hip/hip_fwd.h"
+#include "core/providers/rocm/hip_fwd.h"
 
 namespace onnxruntime {
 namespace rocm {
