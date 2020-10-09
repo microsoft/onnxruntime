@@ -234,7 +234,7 @@ void NcclService::Initialize() {
   CUDA_CALL(cudaSetDevice(mpi_rank));
 
   // Create communication stream.
-  CUDA_CALL(cudaStreamCreate(&stream_));
+  CUDA_CALL(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking));
 
   // Get NCCL unique ID at rank 0 and broadcast it to all others.
   ncclUniqueId id;
