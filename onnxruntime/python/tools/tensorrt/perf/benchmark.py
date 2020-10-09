@@ -711,7 +711,7 @@ def find_model_path(path):
 
     target_model_path = []
     for m in model_path:
-        if "by_trt_perf" in m:
+        if "by_trt_perf" in m or m.startswith('.'):
             continue
         target_model_path.append(m)
 
@@ -1178,6 +1178,9 @@ def output_fail(model_to_fail_ep, csv_filename):
                 csv_writer.writerow(result)
 
     logger.info(f"Failing results are saved to csv file: {csv_filename}")
+    
+    if os.path.exists(FAIL_MODEL_FILE):
+        os.remove(FAIL_MODEL_FILE)
 
 def output_latency(results, csv_filename):
     need_write_header = True 
@@ -1275,6 +1278,9 @@ def output_latency(results, csv_filename):
             csv_writer.writerow(row)
 
     logger.info(f"CUDA/TRT latency comparison are saved to csv file: {csv_filename}")
+
+    if os.path.exists(LATENCY_FILE):
+        os.remove(LATENCY_FILE)
 
 def output_metrics(model_to_metrics, csv_filename):
     with open(csv_filename, mode="w", newline='') as csv_file:
@@ -1383,6 +1389,9 @@ def output_metrics_ori(results, csv_filename):
             csv_writer.writerow(row)
 
     logger.info(f"Tensorrt ratio metrics are saved to csv file: {csv_filename}")
+
+    if os.path.exists(METRICS_FILE):
+        os.remove(METRICS_FILE)
 
 def output_system_info(result, csv_filename):
     with open(csv_filename, mode="a", newline='') as csv_file:
