@@ -506,7 +506,7 @@ void ExperimentalReduce(Tensor* output, const TensorShape& new_input_shape, cons
   if (reduced_axes.size() == 0 || reduced_axes.size() == new_input_shape.NumDimensions()) {
     ORT_ENFORCE(count == 1, "Reduction on all axes, output size should be 1.");
     int64_t input_size = new_input_shape.Size();
-    to_data[0] = AGG(input_size).aggall(from_data);
+    to_data[0] = AGG(input_size, from_data[0]).aggall(from_data);
     return;
   }
 
@@ -524,8 +524,8 @@ void ExperimentalReduce(Tensor* output, const TensorShape& new_input_shape, cons
     int64_t current_index = first * last_results.last_loop_size;
     for (int64_t main_index = first; main_index < end; ++main_index) {
       for (loop = 0; loop < last_results.last_loop_size; ++loop, ++current_index) {
-        AGG accumulator(denominator);
         int64_t origin = last_results.unprojected_index[main_index] + loop * last_results.last_loop_inc;
+        AGG accumulator(denominator, from_data[origin + last_results.projected_index[0]]);
         for (auto it = last_results.projected_index.begin(); it != last_results.projected_index.end(); ++it) {
           loop_red_ptr = from_data + (origin + *it);
           loop_red_ptr_end = loop_red_ptr + last_results.last_loop_red_size * last_results.last_loop_red_inc;
@@ -573,7 +573,9 @@ void CommonReduce(OpKernelContext* ctx,
     if (new_input_shape.Size() == 1) {
       const T* from_data = input->template Data<T>();
       T* to_data = output->template MutableData<T>();
-      *to_data = *from_data;
+      AGG agg(1, *from_data);
+      agg.update(*from_data);
+      *to_data = agg.get_value();
     } else {
       ORT_ENFORCE(keepdims_,
                   "Can't reduce on dim with value of 0 if 'keepdims' is false. "
@@ -596,93 +598,19 @@ void CommonReduce(OpKernelContext* ctx,
 
 template <typename T>
 Status ReduceL1<T>::Compute(OpKernelContext* ctx) const {
-  FastAllocVector<T> transposed_input_data(GetAllocator<T>(*ctx));
-  int64_t block_size;
-  int64_t blocks;
-  std::vector<int64_t> reduced_dims;
-
-  const Tensor* input = ctx->Input<Tensor>(0);
-
-  bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes_, keepdims_, reduced_dims, true);
-
-  Tensor* reduced = ctx->Output(0, reduced_dims);
-
-  T* output_data = reduced->template MutableData<T>();
-
-  if (no_transpose) {
-    const T* input_data = input->template Data<T>();
-
-    for (int64_t i = 0; i < block_size; ++i) {
-      output_data[i] = ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).cwiseAbs().sum();
-    }
-  } else {
-    EigenVectorMap<T> out_vec(output_data, block_size);
-    out_vec = ConstEigenMatrixMap<T>(&transposed_input_data[0], block_size, blocks).cwiseAbs().rowwise().sum();
-  }
-
+  CommonReduce<T, ReduceAggregatorL1<T>>(ctx, axes_, keepdims_, last_results_);
   return Status::OK();
 }
 
 template <typename T>
 Status ReduceL2<T>::Compute(OpKernelContext* ctx) const {
-  FastAllocVector<T> transposed_input_data(GetAllocator<T>(*ctx));
-  int64_t block_size;
-  int64_t blocks;
-  std::vector<int64_t> reduced_dims;
-
-  const Tensor* input = ctx->Input<Tensor>(0);
-
-  bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes_, keepdims_, reduced_dims, true);
-
-  Tensor* reduced = ctx->Output(0, reduced_dims);
-
-  T* output_data = reduced->template MutableData<T>();
-
-  if (no_transpose) {
-    const T* input_data = input->template Data<T>();
-
-    for (int64_t i = 0; i < block_size; ++i) {
-      output_data[i] = ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).norm();
-    }
-  } else {
-    EigenVectorMap<T> out_vec(output_data, block_size);
-    out_vec = ConstEigenMatrixMap<T>(&transposed_input_data[0], block_size, blocks).rowwise().norm();
-  }
-
+  CommonReduce<T, ReduceAggregatorL2<T>>(ctx, axes_, keepdims_, last_results_);
   return Status::OK();
 }
 
 template <typename T>
 Status ReduceLogSum<T>::Compute(OpKernelContext* ctx) const {
-  FastAllocVector<T> transposed_input_data(GetAllocator<T>(*ctx));
-  int64_t block_size;
-  int64_t blocks;
-  std::vector<int64_t> reduced_dims;
-
-  const Tensor* input = ctx->Input<Tensor>(0);
-
-  bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes_, keepdims_, reduced_dims, true);
-
-  Tensor* reduced = ctx->Output(0, reduced_dims);
-
-  T* output_data = reduced->template MutableData<T>();
-
-  if (no_transpose) {
-    const T* input_data = input->template Data<T>();
-
-    for (int64_t i = 0; i < block_size; ++i) {
-      output_data[i] = ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).sum();
-    }
-  } else {
-    EigenVectorMap<T> out_vec(output_data, block_size);
-    out_vec = ConstEigenMatrixMap<T>(&transposed_input_data[0], block_size, blocks).rowwise().sum();
-  }
-
-  for (int j = 0; j < block_size; ++j) {
-    *(output_data) = static_cast<T>(std::log(*(output_data)));
-    ++output_data;
-  }
-
+  CommonReduce<T, ReduceAggregatorLogSum<T>>(ctx, axes_, keepdims_, last_results_);
   return Status::OK();
 }
 
@@ -716,29 +644,7 @@ Status ReduceLogSumExp<T>::Compute(OpKernelContext* ctx) const {
 
 template <typename T>
 Status ReduceMax<T>::Compute(OpKernelContext* ctx) const {
-  FastAllocVector<T> transposed_input_data(GetAllocator<T>(*ctx));
-  int64_t block_size;
-  int64_t blocks;
-  std::vector<int64_t> reduced_dims;
-  const Tensor* input = ctx->Input<Tensor>(0);
-
-  bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes_, keepdims_, reduced_dims, true);
-
-  Tensor* reduced = ctx->Output(0, reduced_dims);
-
-  T* output_data = reduced->template MutableData<T>();
-
-  if (no_transpose) {
-    const T* input_data = input->template Data<T>();
-
-    for (int64_t i = 0; i < block_size; ++i) {
-      output_data[i] = ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).maxCoeff();
-    }
-  } else {
-    EigenVectorMap<T> out_vec(output_data, block_size);
-    out_vec = ConstEigenMatrixMap<T>(&transposed_input_data[0], block_size, blocks).rowwise().maxCoeff();
-  }
-
+  CommonReduce<T, ReduceAggregatorMax<T>>(ctx, axes_, keepdims_, last_results_);
   return Status::OK();
 }
 
@@ -750,57 +656,13 @@ Status ReduceMean<T>::Compute(OpKernelContext* ctx) const {
 
 template <typename T>
 Status ReduceMin<T>::Compute(OpKernelContext* ctx) const {
-  FastAllocVector<T> transposed_input_data(GetAllocator<T>(*ctx));
-  int64_t block_size;
-  int64_t blocks;
-  std::vector<int64_t> reduced_dims;
-  const Tensor* input = ctx->Input<Tensor>(0);
-
-  bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes_, keepdims_, reduced_dims, true);
-
-  Tensor* reduced = ctx->Output(0, reduced_dims);
-
-  T* output_data = reduced->template MutableData<T>();
-
-  if (no_transpose) {
-    const T* input_data = input->template Data<T>();
-
-    for (int64_t i = 0; i < block_size; ++i) {
-      output_data[i] = ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).minCoeff();
-    }
-  } else {
-    EigenVectorMap<T> out_vec(output_data, block_size);
-    out_vec = ConstEigenMatrixMap<T>(&transposed_input_data[0], block_size, blocks).rowwise().minCoeff();
-  }
-
+  CommonReduce<T, ReduceAggregatorMin<T>>(ctx, axes_, keepdims_, last_results_);
   return Status::OK();
 }
 
 template <typename T>
 Status ReduceProd<T>::Compute(OpKernelContext* ctx) const {
-  FastAllocVector<T> transposed_input_data(GetAllocator<T>(*ctx));
-  int64_t block_size;
-  int64_t blocks;
-  std::vector<int64_t> reduced_dims;
-  const Tensor* input = ctx->Input<Tensor>(0);
-
-  bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes_, keepdims_, reduced_dims, true);
-
-  Tensor* reduced = ctx->Output(0, reduced_dims);
-
-  T* output_data = reduced->template MutableData<T>();
-
-  if (no_transpose) {
-    const T* input_data = input->template Data<T>();
-
-    for (int64_t i = 0; i < block_size; ++i) {
-      output_data[i] = ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).prod();
-    }
-  } else {
-    EigenVectorMap<T> out_vec(output_data, block_size);
-    out_vec = ConstEigenMatrixMap<T>(&transposed_input_data[0], block_size, blocks).rowwise().prod();
-  }
-
+  CommonReduce<T, ReduceAggregatorProd<T>>(ctx, axes_, keepdims_, last_results_);
   return Status::OK();
 }
 
@@ -853,29 +715,7 @@ Tensor ReduceSum<T>::Impl(const Tensor& input, const std::vector<int64_t>& reduc
 
 template <typename T>
 Status ReduceSumSquare<T>::Compute(OpKernelContext* ctx) const {
-  FastAllocVector<T> transposed_input_data(GetAllocator<T>(*ctx));
-  int64_t block_size;
-  int64_t blocks;
-  std::vector<int64_t> reduced_dims;
-  const Tensor* input = ctx->Input<Tensor>(0);
-
-  bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes_, keepdims_, reduced_dims, true);
-
-  Tensor* reduced = ctx->Output(0, reduced_dims);
-
-  T* output_data = reduced->template MutableData<T>();
-
-  if (no_transpose) {
-    const T* input_data = input->template Data<T>();
-
-    for (int64_t i = 0; i < block_size; ++i) {
-      output_data[i] = ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).squaredNorm();
-    }
-  } else {
-    EigenVectorMap<T> out_vec(output_data, block_size);
-    out_vec = ConstEigenMatrixMap<T>(&transposed_input_data[0], block_size, blocks).rowwise().squaredNorm();
-  }
-
+  CommonReduce<T, ReduceAggregatorSumSquare<T>>(ctx, axes_, keepdims_, last_results_);
   return Status::OK();
 }
 

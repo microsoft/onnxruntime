@@ -10,8 +10,27 @@
 #include "core/providers/cpu/containers.h"
 #include "core/util/math_cpuonly.h"
 #include "core/platform/threadpool.h"
+#include <cmath>
 
 namespace onnxruntime {
+
+template <typename T>
+inline T reduce_sqrt(T value) { return std::sqrt(value); }
+
+template <>
+inline int64_t reduce_sqrt<int64_t>(int64_t value) { return static_cast<int64_t>(std::sqrt(static_cast<double>(value))); }
+
+template <>
+inline int32_t reduce_sqrt<int32_t>(int32_t value) { return static_cast<int32_t>(std::sqrt(static_cast<double>(value))); }
+
+template <typename T>
+inline T reduce_log(T value) { return static_cast<T>(std::log(value)); }
+
+template <>
+inline int64_t reduce_log<int64_t>(int64_t value) { return static_cast<int64_t>(std::log(static_cast<double>(value))); }
+
+template <>
+inline int32_t reduce_log<int32_t>(int32_t value) { return static_cast<int32_t>(std::log(static_cast<double>(value))); }
 
 template <typename T>
 class ReduceAggregator {
@@ -20,9 +39,9 @@ class ReduceAggregator {
   T accumulator_;
 
  public:
-  inline ReduceAggregator(int64_t N) {
+  inline ReduceAggregator(int64_t N, const T& init) {
     N_ = N;
-    accumulator_ = 0;
+    accumulator_ = init;
   }
   inline void update(const T& v) { accumulator_ += v; }
   inline T aggall(const T* from_data) {
@@ -34,17 +53,94 @@ class ReduceAggregator {
 template <typename T>
 class ReduceAggregatorSum : public ReduceAggregator<T> {
  public:
-  inline ReduceAggregatorSum(int64_t N) : ReduceAggregator<T>(N) {}
+  inline ReduceAggregatorSum(int64_t N, const T&) : ReduceAggregator<T>(N, 0) {}
+};
+
+template <typename T>
+class ReduceAggregatorSumSquare : public ReduceAggregator<T> {
+ public:
+  inline ReduceAggregatorSumSquare(int64_t N, const T&) : ReduceAggregator<T>(N, 0) {}
+  inline T aggall(const T* from_data) {
+    return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, this->N_).squaredNorm();
+  }
+  inline void update(const T& v) { accumulator_ += v * v; }
+  inline T get_value() { return this->accumulator_; }
 };
 
 template <typename T>
 class ReduceAggregatorMean : public ReduceAggregator<T> {
  public:
-  inline ReduceAggregatorMean(int64_t N) : ReduceAggregator<T>(N) {}
+  inline ReduceAggregatorMean(int64_t N, const T&) : ReduceAggregator<T>(N, 0) {}
   inline T aggall(const T* from_data) {
-    return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, N_).mean();
+    return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, this->N_).mean();
   }
-  inline T get_value() { return accumulator_ / static_cast<T>(N_); }
+  inline T get_value() { return this->accumulator_ / static_cast<T>(this->N_); }
+};
+
+template <typename T>
+class ReduceAggregatorMax : public ReduceAggregator<T> {
+ public:
+  inline ReduceAggregatorMax(int64_t N, const T& init) : ReduceAggregator<T>(N, init) {}
+  inline T aggall(const T* from_data) {
+    return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, this->N_).maxCoeff();
+  }
+  inline void update(const T& v) { accumulator_ = v > this->accumulator_ ? v : this->accumulator_; }
+  inline T get_value() { return this->accumulator_; }
+};
+
+template <typename T>
+class ReduceAggregatorMin : public ReduceAggregator<T> {
+ public:
+  inline ReduceAggregatorMin(int64_t N, const T& init) : ReduceAggregator<T>(N, init) {}
+  inline T aggall(const T* from_data) {
+    return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, this->N_).minCoeff();
+  }
+  inline void update(const T& v) { accumulator_ = v < this->accumulator_ ? v : this->accumulator_; }
+  inline T get_value() { return this->accumulator_; }
+};
+
+template <typename T>
+class ReduceAggregatorProd : public ReduceAggregator<T> {
+ public:
+  inline ReduceAggregatorProd(int64_t N, const T&) : ReduceAggregator<T>(N, 1) {}
+  inline T aggall(const T* from_data) {
+    return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, this->N_).prod();
+  }
+  inline void update(const T& v) { accumulator_ *= v; }
+  inline T get_value() { return this->accumulator_; }
+};
+
+template <typename T>
+class ReduceAggregatorL1 : public ReduceAggregator<T> {
+ public:
+  inline ReduceAggregatorL1(int64_t N, const T&) : ReduceAggregator<T>(N, 0) {}
+  inline T aggall(const T* from_data) {
+    return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, this->N_).cwiseAbs().sum();
+  }
+  inline void update(const T& v) { accumulator_ += v > 0 ? v : -v; }
+  inline T get_value() { return this->accumulator_; }
+};
+
+template <typename T>
+class ReduceAggregatorL2 : public ReduceAggregator<T> {
+ public:
+  inline ReduceAggregatorL2(int64_t N, const T&) : ReduceAggregator<T>(N, 0) {}
+  inline T aggall(const T* from_data) {
+    return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, this->N_).norm();
+  }
+  inline void update(const T& v) { accumulator_ += v * v; }
+  inline T get_value() { return reduce_sqrt<T>(this->accumulator_); }
+};
+
+template <typename T>
+class ReduceAggregatorLogSum : public ReduceAggregator<T> {
+ public:
+  inline ReduceAggregatorLogSum(int64_t N, const T&) : ReduceAggregator<T>(N, 0) {}
+  inline T aggall(const T* from_data) {
+    return reduce_log<T>(Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, this->N_).sum());
+  }
+  inline void update(const T& v) { accumulator_ += v; }
+  inline T get_value() { return reduce_log<T>(this->accumulator_); }
 };
 
 bool NeedsTransposeForReduce(const Tensor* input_tensor_ptr,
