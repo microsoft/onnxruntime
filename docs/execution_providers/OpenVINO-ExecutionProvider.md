@@ -93,7 +93,7 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | Mul | Yes | Yes | Yes |
 | Neg | Yes | Yes | Yes |
 | NonMaxSuppression | No | No | Yes |
-| NonZero | No | No | Yes |
+| NonZero | Yes | No | Yes |
 | Not | Yes | Yes | No |
 | OneHot | Yes | Yes | Yes |
 | Pad | Yes | Yes | Yes |
