@@ -249,6 +249,13 @@ class ORTTrainerOptions(object):
                                     'default': ''
                                 },
                             }
+                        'model_with_loss_function_path': {
+                            'type': 'string',
+                            'default': ''
+                        },
+                        'model_with_training_graph_path': {
+                            'type': 'string',
+                            'default': ''
                         },
                     }
                 },
@@ -371,6 +378,10 @@ class ORTTrainerOptions(object):
             No output when it is empty.
         debug.graph_save_paths.model_with_training_graph_after_optimization_path (str, default is "")
             outputs the optimized training graph to the path if nonempty.
+        debug.model_with_loss_function_path (str, default is '')
+            path to dump an ONNX file with model and loss function
+        debug.model_with_training_graph_path (str, default is '')
+            path to dump an ONNX file with full training graph
         _internal_use (dict):
             internal options, possibly undocumented, that might be removed without notice
         _internal_use.enable_internal_postprocess (bool, default is True):
@@ -702,7 +713,14 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                         'type': 'string',
                         'default': ''
                     },
-                }
+                },
+            'model_with_loss_function_path': {
+                'type': 'string',
+                'default': ''
+            },
+            'model_with_training_graph_path': {
+                'type': 'string',
+                'default': ''
             },
         }
     },
