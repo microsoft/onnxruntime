@@ -1743,7 +1743,7 @@ TEST(GradientCheckerTest, LayerNormGrad) {
 TEST(GradientCheckerTest, SimplifiedLayerNormGrad) {
   GradientChecker<float, float, float> gradient_checker;
   {
-    TensorShape shape({2, 3, 8});
+    TensorShape shape({2, 3, 512});
     TensorInfo x_info{shape, true};
     TensorInfo scale_info{{512}, true};
     TensorInfo var_info{{2, 3, 1}, false};
