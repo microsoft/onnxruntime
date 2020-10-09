@@ -297,7 +297,7 @@ void setup_training_params(GPT2Parameters& params) {
                                            {/*prediction_name*/ "output",
                                             /*label_name*/ "labels"});
 
-#if defined(USE_NCCL) || defined(USE_HOROVOD)
+#if defined(USE_MPI)
   ORT_ENFORCE(params.horizontal_parallel_size <= MPIContext::GetInstance().GetWorldSize());
   ORT_ENFORCE(params.data_parallel_size <= MPIContext::GetInstance().GetWorldSize());
   if (MPIContext::GetInstance().GetWorldSize() % params.horizontal_parallel_size != 0) {
@@ -481,18 +481,13 @@ int main(int argc, char* argv[]) {
     RETURN_IF_FAIL(RunTraining(params, *env));
   }
 
-<<<<<<< HEAD
-#if defined(USE_NCCL)
+#if defined(USE_MPI)
 #ifdef _WIN32
   // https://docs.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-best-practices
   // shutdown_mpi() is not called within MPIContext destructor because of DllMain's restriction
   // call shutdown_mpi() here instead.
   MPIContext::shutdown_mpi();
 #endif
-=======
-#if defined(USE_MPI)
-  shutdown_mpi();
->>>>>>> cdeb6e5... Add USE_MPI distinct from USE_NCCL/USE_HOROVOD
 #endif
   return 0;
 }

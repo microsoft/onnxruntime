@@ -127,7 +127,6 @@ option(onnxruntime_DISABLE_ORT_FORMAT_LOAD "Disable loading an ORT format model 
 option(onnxruntime_ENABLE_NVTX_PROFILE "Enable NVTX profile." OFF)
 option(onnxruntime_ENABLE_TRAINING "Enable training functionality." OFF)
 option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
-option(onnxruntime_USE_MPI "Build with MPI support, required by HOROVOD and NCCL" ON)
 option(onnxruntime_USE_HOROVOD "Build with HOROVOD support" OFF)
 option(onnxruntime_USE_NCCL "Build with NCCL support" OFF)
 #A special option just for debugging and sanitize check. Please do not enable in option in retail builds.
@@ -1217,7 +1216,8 @@ if (onnxruntime_ENABLE_TRAINING)
     include(FindPackageHandleStandardArgs)
     find_package_handle_standard_args(MPI DEFAULT_MSG MPI_INCLUDE_DIR MPI_LIBRARY)
 
-    if (MPI_FOUND AND onnxruntime_USE_MPI)
+    set(onnxruntime_USE_MPI ON)
+    if (MPI_FOUND)
       if(NOT DEFINED onnxruntime_MPI_HOME)
         execute_process(COMMAND mpirun --version OUTPUT_VARIABLE MPIRUN_OUTPUT)
       else()
