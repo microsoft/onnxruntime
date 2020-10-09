@@ -872,8 +872,8 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
         plan_file.read((char*)engine_buf.get(), engine_size);
         trt_engine = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
         LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + cached_path;
-      } else if (engine_decryption_enable_ && engine_cache_enable_ && !profile_file && !plan_file) {
-        WriteProfile(profile_path, input_shape_ranges);
+      } else if (engine_decryption_enable_ && engine_cache_enable_ && profile_file && !plan_file) {
+        input_shape_ranges = ReadProfile(profile_path); 
         void* handle = dlopen(engine_decryption_lib_path_.c_str(), RTLD_LAZY);
         if (handle == nullptr) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
