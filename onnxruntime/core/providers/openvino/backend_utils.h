@@ -34,6 +34,12 @@ void FillOutputsWithConstantData(Ort::CustomOpApi& ort, std::shared_ptr<ngraph::
 
 template <typename T>
 void FillOutputHelper(Ort::CustomOpApi& ort, OrtValue* out_tensor, std::shared_ptr<ngraph::Node> node);
+
+OrtValue*
+GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context,
+                 std::string output_name,
+                 std::unordered_map<std::string, int> output_names,
+                 std::shared_ptr<ngraph::Node> node);
 #endif
 
 InferenceEngine::Precision
@@ -45,11 +51,6 @@ GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_s
                  std::string output_name,
                  std::unordered_map<std::string, int> output_names);
 
-OrtValue*
-GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context,
-                 std::string output_name,
-                 std::unordered_map<std::string, int> output_names,
-                 std::shared_ptr<ngraph::Node> node);
 
 void FillInputBlob(InferenceEngine::Blob::Ptr& inputBlob, size_t request_id, size_t batch_slice_idx,
                    std::string input_name, Ort::CustomOpApi& ort, OrtKernelContext* context,
