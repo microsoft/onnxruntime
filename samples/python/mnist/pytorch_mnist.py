@@ -1,4 +1,5 @@
 import argparse
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -31,6 +32,8 @@ def my_loss(x, target, is_train=True):
 def train(args, model, device, train_loader, optimizer, epoch):
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
+        if batch_idx == args.train_steps:
+            break
         data, target = data.to(device), target.to(device)
         data = data.reshape(data.shape[0], -1)
         optimizer.zero_grad()
@@ -68,8 +71,10 @@ def test(model, device, test_loader):
 def main():
     # Training settings
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
-    parser.add_argument('--batch-size', type=int, default=64, metavar='N',
-                        help='input batch size for training (default: 64)')
+    parser.add_argument('--train-steps', type=int, default=-1, metavar='N',
+                        help='number of steps to train. Set -1 to run through whole dataset (default: -1)')
+    parser.add_argument('--batch-size', type=int, default=20, metavar='N',
+                        help='input batch size for training (default: 20)')
     parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
                         help='input batch size for testing (default: 1000)')
     parser.add_argument('--epochs', type=int, default=1, metavar='N',
@@ -82,6 +87,8 @@ def main():
                         help='random seed (default: 1)')
     parser.add_argument('--log-interval', type=int, default=10, metavar='N',
                         help='how many batches to wait before logging training status')
+    parser.add_argument('--save-path', type=str, default='',
+                        help='Path for Saving the current Model')
 
     # Basic setup
     args = parser.parse_args()
@@ -99,10 +106,12 @@ def main():
                            transforms.Normalize((0.1307,), (0.3081,))
                        ])),
         batch_size=args.batch_size, shuffle=True)
-    test_loader = torch.utils.data.DataLoader(
-        datasets.MNIST('./data', train=False, transform=transforms.Compose([
-            transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])),
-        batch_size=args.test_batch_size, shuffle=True)
+
+    if args.test_batch_size > 0:
+        test_loader = torch.utils.data.DataLoader(
+            datasets.MNIST('./data', train=False, transform=transforms.Compose([
+                transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])),
+            batch_size=args.test_batch_size, shuffle=True)
 
     # Modeling
     model = NeuralNet(784, 500, 10).to(device)
@@ -111,9 +120,13 @@ def main():
     # Train loop
     for epoch in range(1, args.epochs + 1):
         train(args, model, device, train_loader, optimizer, epoch)
-        test(model, device, test_loader)
+        if args.test_batch_size > 0:
+            test(model, device, test_loader)
         optimizer.step()
 
+    # Save model
+    if args.save_path:
+        torch.save(model.state_dict(), os.path.join(args.save_path, "mnist_cnn.pt"))
 
 if __name__ == '__main__':
     main()
