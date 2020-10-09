@@ -170,7 +170,12 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear_align_corners) {
   };
 
   run_test(false);
+
+#ifdef USE_NNAPI
+  // NNAPI will need the scales as an initializer
+  // Also tensor RT EP will fail if scales is an initializer but will pass if it is not
   run_test(true);
+#endif
 }
 
 TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_2DBilinear_pytorch_half_pixel) {
