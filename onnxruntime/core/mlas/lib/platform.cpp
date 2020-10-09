@@ -233,16 +233,14 @@ Return Value:
 				__cpuid_count(7, 1, Cpuid7_1[0], Cpuid7_1[1], Cpuid7_1[2], Cpuid7_1[3]);
 #endif
 
-				//if ((Cpuid7_1[0] & 0x10) != 0) {
+				if ((Cpuid7_1[0] & 0x10) != 0) {
 
-				if (1) {
 					fprintf(stdout, "AVXVNNI Detected\n");
 					this->GemmU8U8Operation = MlasGemmU8X8Operation<MLAS_GEMM_U8S8_KERNEL_AVX2>;
 					this->GemmU8U8PackedOperation = MlasGemmU8X8PackedOperation<MLAS_GEMM_U8S8_KERNEL_AVX2>;
 					this->GemmU8S8Kernel = MlasGemmU8S8KernelAvxVnni;
 					this->GemvU8S8Kernel = MlasGemvU8S8KernelAvxVnni;
 				}
-
 
 #if !defined(MLAS_AVX512F_UNSUPPORTED)
 
