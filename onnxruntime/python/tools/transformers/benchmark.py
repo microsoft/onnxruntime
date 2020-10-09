@@ -240,6 +240,31 @@ def run_pytorch(use_gpu, model_names, model_class, precision, num_threads, batch
     return results
 
 
+def run_with_tf_optimizations(do_eager_mode: bool, use_xla: bool):
+    import tensorflow as tf
+    from functools import wraps
+
+    def run_func(func):
+        @wraps(func)
+        def run_in_eager_mode(*args, **kwargs):
+            return func(*args, **kwargs)
+
+        @wraps(func)
+        @tf.function(experimental_compile=use_xla)
+        def run_in_graph_mode(*args, **kwargs):
+            return func(*args, **kwargs)
+
+        if do_eager_mode is True:
+            assert (
+                use_xla is False
+            ), "Cannot run model in XLA, if `args.eager_mode` is set to `True`. Please set `args.eager_mode=False`."
+            return run_in_eager_mode
+        else:
+            return run_in_graph_mode
+
+    return run_func
+
+
 def run_tensorflow(use_gpu, model_names, model_class, precision, num_threads, batch_sizes, sequence_lengths,
                    repeat_times, cache_dir, verbose):
     results = []
@@ -258,6 +283,8 @@ def run_tensorflow(use_gpu, model_names, model_class, precision, num_threads, ba
         physical_devices = tf.config.list_physical_devices('GPU')
         try:
             tf.config.set_visible_devices(physical_devices[0], 'GPU')
+            tf.config.experimental.set_memory_growth(physical_devices[0], True)
+            tf.distribute.OneDeviceStrategy(device='/gpu:0')
         except RuntimeError as e:
             logger.exception(e)
 
@@ -295,10 +322,12 @@ def run_tensorflow(use_gpu, model_names, model_class, precision, num_threads, ba
                 input_ids = tf.constant(values, shape=(batch_size, sequence_length), dtype=tf.int32)
 
                 try:
-
+                    # Disable both for better inference perf
+                    @run_with_tf_optimizations(do_eager_mode=False, use_xla=False)
                     def encoder_forward():
                         return model(input_ids, training=False)
 
+                    @run_with_tf_optimizations(do_eager_mode=False, use_xla=False)
                     def encoder_decoder_forward():
                         return model(input_ids, decoder_input_ids=input_ids, training=False)
 
