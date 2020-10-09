@@ -864,7 +864,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
       std::ifstream profile_file(profile_path, std::ios::binary | std::ios::in);      
       std::string cached_path = GetEnginePath(engine_cache_path_, trt_node_name_with_precision);
       std::ifstream plan_file(cached_path, std::ios::binary | std::ios::in);
-      if (engine_cache_enable_ && profile_path && plan_file) {
+      if (engine_cache_enable_ && profile_file && plan_file) {
         plan_file.seekg(0, std::ios::end);
         int engine_size = plan_file.tellg();
         plan_file.seekg(0, std::ios::beg);
