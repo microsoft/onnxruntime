@@ -249,6 +249,7 @@ Status SessionState::PrepackConstantInitializedTensors(std::unordered_map<std::s
       if (input_def->Exists()) {
         const std::string& input_name = input_def->Name();
         SessionState* st = this;
+        bool prepack_not_checked = true;
         do {
           int ort_value_idx;
           if (st->GetOrtValueNameIdxMap().GetIdx(input_name, ort_value_idx).IsOK()) {
@@ -263,10 +264,11 @@ Status SessionState::PrepackConstantInitializedTensors(std::unordered_map<std::s
                 st->GetMutableInitializedTensors().erase(ort_value_idx);
                 constant_initialized_tensors.erase(ort_value_idx);
               }
+              prepack_not_checked = false;
             }
           }
           st = st->Parent();
-        } while (st);
+        } while (prepack_not_checked && st);
       }
       input_idx++;
     }
