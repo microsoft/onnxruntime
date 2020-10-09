@@ -16,6 +16,7 @@ class ORTModule(torch.nn.Module):
 
     def __init__(self, module):
         print(f'ORTModule.__init__() was called')
+        assert isinstance(module, torch.nn.Module), "'module' mst be a torch.nn.Module"
         super(ORTModule, self).__init__()
         # User will interact with it (debugging, etc)
         self._original_module = module
@@ -154,8 +155,7 @@ class ORTModule(torch.nn.Module):
         #                   keep_initializers_as_inputs=True,
         #                   export_params=True)
         # return onnx.load_model_from_string(f.getvalue())
-        return onnx.load('/home/thiagofc/mnist_onnx/mnist_with_training_forward_sliced.onnx')
-        # return onnx.load('/home/thiagofc/mnist_onnx/mnist_with_training.onnx')
+        return onnx.load('./model_with_training_forward_sliced.onnx')
 
     def _get_initializer_from_graph(self, graph):
         # TODO: There is a tradeoff between memory footprint and total model export time
@@ -242,7 +242,7 @@ class ORTModule(torch.nn.Module):
         # * Module weights
         # * Gradients with respect to the module outputs
         # …and produces gradients with respect to the module inputs and weights.
-        return onnx.load('/home/thiagofc/mnist_onnx/mnist_with_training_backward_sliced.onnx')
+        return onnx.load('./model_with_training_backward_sliced.onnx')
 
     @staticmethod
     def _split_forward_and_backward(gradient_graph):
