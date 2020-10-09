@@ -489,7 +489,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_BertToy) {
   const auto model_path = ORT_TSTR("testdata/bert_toy_optimized.onnx");
 
   TrainingSession::TrainingConfiguration config{};
-  config.model_with_training_graph_path = ORT_TSTR("testdata/bert_toy_optimized_bw.onnx");
+  config.model_with_training_graph_path = ORT_TSTR("testdata/bert_toy_optimized_fp16_bw_1.onnx");
   config.loss_function_config = TrainingSession::TrainingConfiguration::LossFunctionConfiguration{};
   config.loss_function_config.value().loss_function_info =
       LossFunctionInfo(OpDef("BertLoss", kOnnxDomain),
@@ -510,6 +510,10 @@ TEST(GradientGraphBuilderTest, TrainingSession_BertToy) {
       {"Add", {{1, 1.0f}, {1, 9.999999960041972e-13f}}},
       {"Mul", {{1, 0.5f}, {1, -10000.0f}}},
       {"Sub", {{0, 1.0f}}}};
+  
+  TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mixed_precision_config{};
+  mixed_precision_config.use_mixed_precision_initializers = false;
+  config.mixed_precision_config = mixed_precision_config;
 
   PathString backprop_model_file;
   ASSERT_STATUS_OK(BuildBackPropGraph(model_path, config, backprop_model_file));
