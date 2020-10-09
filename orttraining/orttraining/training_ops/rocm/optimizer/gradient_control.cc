@@ -3,7 +3,7 @@
 
 #include "core/providers/rocm/math/binary_elementwise_ops.h"
 #include "core/providers/rocm/reduction/reduction_functions.h"
-#include "core/providers/rocm/hip_allocator.h"
+#include "core/providers/rocm/rocm_allocator.h"
 #include "common.h"
 #include "gradient_control.h"
 

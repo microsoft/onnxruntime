@@ -3,7 +3,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
-#include "core/providers/rocm/hip_common.h"
+#include "core/providers/rocm/rocm_common.h"
 #include "core/providers/cpu/tensor/unsqueeze.h"
 
 namespace onnxruntime {

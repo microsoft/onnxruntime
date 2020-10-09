@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/rocm/hip_allocator.h"
+#include "core/providers/rocm/rocm_allocator.h"
 #include "core/providers/rocm/reduction/reduction_functions.h"
 #include "core/providers/rocm/math/binary_elementwise_ops.h"
 #include "sg.h"

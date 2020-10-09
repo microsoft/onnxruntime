@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/common/common.h"
-#include "core/providers/rocm/hip_common.h"
+#include "core/providers/rocm/rocm_common.h"
 #include "core/providers/cpu/tensor/split.h"
 
 namespace onnxruntime {

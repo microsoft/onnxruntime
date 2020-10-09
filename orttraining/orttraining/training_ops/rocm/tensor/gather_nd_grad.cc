@@ -3,7 +3,7 @@
 
 #include "orttraining/training_ops/rocm/tensor/gather_nd_grad.h"
 #include "orttraining/training_ops/rocm/tensor/gather_nd_grad_impl.h"
-#include "core/providers/rocm/shared_inc/hip_utils.h"
+#include "core/providers/rocm/shared_inc/rocm_utils.h"
 
 namespace onnxruntime {
 namespace rocm {

@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "core/providers/rocm/hip_common.h"
+#include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/math/unary_elementwise_ops.h"
 #include "core/providers/rocm/math/binary_elementwise_ops.h"
 #include "core/providers/rocm/activation/activations.h"

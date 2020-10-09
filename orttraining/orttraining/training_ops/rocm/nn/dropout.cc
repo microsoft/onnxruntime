@@ -4,7 +4,7 @@
 #include "core/framework/random_seed.h"
 #include "orttraining/training_ops/rocm/nn/dropout.h"
 #include "core/providers/rocm/nn/dropout.h"
-#include "core/providers/rocm/hip_common.h"
+#include "core/providers/rocm/rocm_common.h"
 #include "core/providers/common.h"
 
 namespace onnxruntime {

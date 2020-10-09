@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include <cmath>
-#include "core/providers/rocm/hip_allocator.h"
+#include "core/providers/rocm/rocm_allocator.h"
 #include "core/providers/rocm/reduction/reduction_functions.h"
 #include "core/providers/rocm/math/binary_elementwise_ops.h"
 #include "orttraining/training_ops/rocm/optimizer/common.h"

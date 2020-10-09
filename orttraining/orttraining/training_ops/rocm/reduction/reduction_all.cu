@@ -4,7 +4,7 @@
 
 #include "orttraining/training_ops/rocm/reduction/reduction_all.h"
 #include "core/providers/rocm/cu_inc/common.cuh"
-#include "core/providers/rocm/hip_common.h"
+#include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/atomic/common.cuh"
 #include "core/providers/rocm/reduction/reduction_utils.cuh"
 

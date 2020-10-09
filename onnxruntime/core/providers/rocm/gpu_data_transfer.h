@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "hip_pch.h"
+#include "rocm_pch.h"
 #include "core/framework/data_transfer.h"
 
 namespace onnxruntime {

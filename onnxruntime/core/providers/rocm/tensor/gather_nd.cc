@@ -3,7 +3,7 @@
 
 #include "core/providers/rocm/tensor/gather_nd.h"
 #include "core/providers/rocm/tensor/gather_nd_impl.h"
-#include "core/providers/rocm/shared_inc/hip_utils.h"
+#include "core/providers/rocm/shared_inc/rocm_utils.h"
 
 namespace onnxruntime {
 namespace rocm {

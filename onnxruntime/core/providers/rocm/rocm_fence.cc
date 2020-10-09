@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "hip_common.h"
-#include "hip_fence.h"
+#include "rocm_common.h"
+#include "rocm_fence.h"
 #include "gpu_data_transfer.h"
 
 namespace onnxruntime {

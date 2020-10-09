@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/rocm/hip_provider_factory.h"
+#include "core/providers/rocm/rocm_provider_factory.h"
 #include <atomic>
 #include "core/graph/onnx_protobuf.h"
-#include "hip_execution_provider.h"
+#include "rocm_execution_provider.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/framework/bfc_arena.h"
 

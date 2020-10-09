@@ -4,7 +4,7 @@
 
 #include "core/providers/rocm/cu_inc/common.cuh"
 #include "softmaxcrossentropy_impl.h"
-#include "core/providers/rocm/hip_common.h"
+#include "core/providers/rocm/rocm_common.h"
 
 namespace onnxruntime {
 namespace rocm {

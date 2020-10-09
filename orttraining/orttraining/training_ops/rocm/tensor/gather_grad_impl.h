@@ -3,8 +3,8 @@
 
 #pragma once
 #include <stdint.h>
-#include "core/providers/rocm/hip_common.h"
-#include "core/providers/rocm/shared_inc/hip_utils.h"
+#include "core/providers/rocm/rocm_common.h"
+#include "core/providers/rocm/shared_inc/rocm_utils.h"
 
 namespace onnxruntime {
 namespace rocm {

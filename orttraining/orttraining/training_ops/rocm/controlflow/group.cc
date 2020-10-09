@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cpu/controlflow/group.h"
-#include "core/providers/rocm/hip_fwd.h"
+#include "core/providers/rocm/rocm_fwd.h"
 
 namespace onnxruntime {
 namespace rocm {

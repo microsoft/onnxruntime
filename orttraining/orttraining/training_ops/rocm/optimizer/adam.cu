@@ -2,7 +2,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/rocm/hip_common.h"
+#include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/cu_inc/common.cuh"
 #include "orttraining/training_ops/rocm/optimizer/common.cuh"
 #include "orttraining/training_ops/rocm/optimizer/adam.h"

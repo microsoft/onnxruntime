@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "hip_allocator.h"
-#include "hip_common.h"
+#include "rocm_allocator.h"
+#include "rocm_common.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/session_state.h"
-#include "hip_fence.h"
+#include "rocm_fence.h"
 #include "gpu_data_transfer.h"
 
 namespace onnxruntime {

@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "hip_common.h"
-#include "hip_execution_provider.h"
-#include "hip_fence.h"
-#include "hip_allocator.h"
+#include "rocm_common.h"
+#include "rocm_execution_provider.h"
+#include "rocm_fence.h"
+#include "rocm_allocator.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/memcpy.h"
@@ -12,11 +12,11 @@
 #include "core/providers/rocm/gpu_data_transfer.h"
 
 #ifndef DISABLE_CONTRIB_OPS
-#include "contrib_ops/rocm/hip_contrib_kernels.h"
+#include "contrib_ops/rocm/rocm_contrib_kernels.h"
 #endif
 
 #ifdef ENABLE_TRAINING
-#include "orttraining/training_ops/rocm/hip_training_kernels.h"
+#include "orttraining/training_ops/rocm/rocm_training_kernels.h"
 #endif
 
 using namespace onnxruntime::common;

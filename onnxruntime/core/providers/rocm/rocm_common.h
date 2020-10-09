@@ -2,16 +2,16 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "hip_pch.h"
+#include "rocm_pch.h"
 #include "core/common/status.h"
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/op_kernel.h"
 #include "core/graph/graph_viewer.h"
-#include "shared_inc/hip_call.h"
-#include "hip_execution_provider.h"
+#include "shared_inc/rocm_call.h"
+#include "rocm_execution_provider.h"
 #include "shared_inc/fast_divmod.h"
 #include "core/util/math.h"
-#include "hip_fwd.h"
+#include "rocm_fwd.h"
 
 namespace onnxruntime {
 namespace rocm {

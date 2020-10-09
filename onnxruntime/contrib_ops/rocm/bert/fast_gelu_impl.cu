@@ -22,9 +22,9 @@ limitations under the License.
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/rocm/hip_common.h"
+#include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/cu_inc/common.cuh"
-#include "core/providers/rocm/shared_inc/hip_call.h"
+#include "core/providers/rocm/shared_inc/rocm_call.h"
 #include "fast_gelu_impl.h"
 
 using namespace onnxruntime::rocm;

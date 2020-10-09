@@ -3,7 +3,7 @@
 // Licensed under the MIT License.
 
 #include <stdint.h>
-#include "core/providers/rocm/shared_inc/hip_utils.h"
+#include "core/providers/rocm/shared_inc/rocm_utils.h"
 #include "core/providers/rocm/cu_inc/common.cuh"
 #include "where_impl.h"
 

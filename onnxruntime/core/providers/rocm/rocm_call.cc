@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "shared_inc/hip_call.h"
+#include "shared_inc/rocm_call.h"
 #include "core/common/common.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"

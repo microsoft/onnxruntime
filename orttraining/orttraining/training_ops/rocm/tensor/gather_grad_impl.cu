@@ -4,7 +4,7 @@
 
 #include "orttraining/training_ops/rocm/tensor/gather_grad_impl.h"
 #include "core/providers/rocm/cu_inc/common.cuh"
-#include "core/providers/rocm/shared_inc/hip_call.h"
+#include "core/providers/rocm/shared_inc/rocm_call.h"
 
 #include <hipcub/hipcub.hpp>
 

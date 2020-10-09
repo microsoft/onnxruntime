@@ -11,9 +11,9 @@
 #include "core/framework/bfc_arena.h"
 #include "core/framework/execution_provider.h"
 #include "core/platform/ort_mutex.h"
-#include "core/providers/rocm/hip_pch.h"
+#include "core/providers/rocm/rocm_pch.h"
 #include "core/providers/rocm/gpu_data_transfer.h"
-#include "core/providers/rocm/shared_inc/hip_utils.h"
+#include "core/providers/rocm/shared_inc/rocm_utils.h"
 
 namespace onnxruntime {
 

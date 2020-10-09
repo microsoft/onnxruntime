@@ -2,7 +2,7 @@
 #pragma once
 
 #include "core/providers/rocm/cu_inc/common.cuh"
-#include "core/providers/rocm/shared_inc/hip_utils.h"
+#include "core/providers/rocm/shared_inc/rocm_utils.h"
 
 namespace onnxruntime {
 namespace rocm {
