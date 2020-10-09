@@ -12,6 +12,7 @@ import subprocess
 import sys
 import hashlib
 from logger import log
+import pytest
 
 
 class BaseError(Exception):
@@ -1100,6 +1101,30 @@ def run_ios_tests(args, source_dir, config, cwd):
                     "-destination", "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)"], cwd=cwd)
 
 
+def run_orttraining_test_orttrainer_frontend_separately(cwd):
+    class TestNameCollecterPlugin:
+        def __init__(self):
+            self.collected = set()
+
+        def pytest_collection_modifyitems(self, items):
+            for item in items:
+                print('item.name: ', item.name)
+                test_name = item.name
+                start = test_name.find('[')
+                if start > 0:
+                    test_name = test_name[:start]
+                self.collected.add(test_name)
+
+    plugin = TestNameCollecterPlugin()
+    test_script_filename = os.path.join(cwd, "orttraining_test_orttrainer_frontend.py")
+    pytest.main(['--collect-only', test_script_filename], plugins=[plugin])
+
+    for test_name in plugin.collected:
+        run_subprocess([
+            sys.executable, '-m', 'pytest',
+            'orttraining_test_orttrainer_frontend.py', '-v', '-k', test_name], cwd=cwd)
+
+
 def run_training_python_frontend_tests(cwd):
     run_subprocess([sys.executable, 'onnxruntime_test_ort_trainer.py'], cwd=cwd)
     run_subprocess([sys.executable, 'onnxruntime_test_training_unit_tests.py'], cwd=cwd)
@@ -1112,7 +1137,12 @@ def run_training_python_frontend_tests(cwd):
     run_subprocess([
         sys.executable, 'orttraining_test_transformers.py',
         'BertModelTest.test_for_pretraining_full_precision_list_and_dict_input'], cwd=cwd)
-    run_subprocess([sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_orttrainer_frontend.py'], cwd=cwd)
+
+    # TODO: use run_orttraining_test_orttrainer_frontend_separately to work around a sporadic segfault.
+    # shall revert to run_subprocess call once the segfault issue is resolved.
+    run_orttraining_test_orttrainer_frontend_separately(cwd)
+    # run_subprocess([sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_orttrainer_frontend.py'], cwd=cwd)
+
     run_subprocess([sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_orttrainer_bert_toy_onnx.py'], cwd=cwd)
 
 
