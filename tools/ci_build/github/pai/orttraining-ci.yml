@@ -37,7 +37,11 @@ taskRoles:
         --nccl_home /opt/rocm
         --update
         --build --parallel 8
-        --test
+        --skip_tests
+
+	# excludes tests listed in pai-excluded-tests.txt
+        cd ./build/RelWithDebInfo
+        ../../tools/ci_build/github/pai/pai_test_launcher.sh 
 secrets:
   docker_password_0: "@@docker_password@@"
 defaults:

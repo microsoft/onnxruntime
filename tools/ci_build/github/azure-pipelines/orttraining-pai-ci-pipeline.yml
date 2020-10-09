@@ -6,6 +6,8 @@ pool: 'Linux-CPU-CorpNet'
 
 variables:
 - group: pai-variables
+- name: pai-user
+  value: onnxrt
 
 steps:
 - checkout: self
