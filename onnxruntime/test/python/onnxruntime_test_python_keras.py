@@ -4,8 +4,6 @@
 # -*- coding: UTF-8 -*-
 # Taken from https://github.com/onnx/onnxmltools/blob/master/tests/end2end/test_custom_op.py.
 import unittest
-import os
-import sys
 import numpy as np
 import onnxmltools
 import onnxruntime as onnxrt
