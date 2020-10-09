@@ -61,7 +61,7 @@ Status LayerNormGrad<T, simplified>::Compute(OpKernelContext* op_kernel_context)
   const auto N = X_shape.SizeToDimension(axis);
   const auto M = X_shape.SizeFromDimension(axis);
   ORT_ENFORCE(M != 1);
-  
+
   const Tensor* scale = op_kernel_context->Input<Tensor>(input_index++);
   const Tensor* mean;
   if (!simplified) {
@@ -102,20 +102,23 @@ Status LayerNormGrad<T, simplified>::Compute(OpKernelContext* op_kernel_context)
   Array X_mean_difference_over_std_var;
   if (simplified) {
     X_mean_difference_over_std_var =
-      X_arr.rowwise() * inv_std_var_vec.cast<T>().transpose();
+        X_arr.rowwise() * inv_std_var_vec.cast<T>().transpose();
   } else {
     X_mean_difference_over_std_var =
-      (X_arr.rowwise() - mean_vec.cast<T>().transpose()).rowwise() * inv_std_var_vec.cast<T>().transpose();
+        (X_arr.rowwise() - mean_vec.cast<T>().transpose()).rowwise() * inv_std_var_vec.cast<T>().transpose();
   }
   Array A = Y_grad_arr * X_mean_difference_over_std_var;
   Array B = (Y_grad_arr.colwise() * scale_vec).rowwise() * inv_std_var_vec.cast<T>().transpose();
   Array C = B * X_mean_difference_over_std_var;
 
-  RowVector mean_B = B.colwise().mean();  // 1 x N
-
   RowVector mean_C = C.colwise().mean();  // 1 x N
 
-  X_grad_arr = B.rowwise() - mean_B - X_mean_difference_over_std_var.rowwise() * mean_C;
+  if (simplified) {
+    X_grad_arr = B - X_mean_difference_over_std_var.rowwise() * mean_C;
+  } else {
+    RowVector mean_B = B.colwise().mean();  // 1 x N
+    X_grad_arr = B.rowwise() - mean_B - X_mean_difference_over_std_var.rowwise() * mean_C;
+  }
 
   if (!simplified) {
     bias_grad_vec = Y_grad_arr.rowwise().sum();
