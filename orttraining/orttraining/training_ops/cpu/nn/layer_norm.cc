@@ -111,11 +111,14 @@ Status LayerNormGrad<T, simplified>::Compute(OpKernelContext* op_kernel_context)
   Array B = (Y_grad_arr.colwise() * scale_vec).rowwise() * inv_std_var_vec.cast<T>().transpose();
   Array C = B * X_mean_difference_over_std_var;
 
-  RowVector mean_B = B.colwise().mean();  // 1 x N
-
   RowVector mean_C = C.colwise().mean();  // 1 x N
 
-  X_grad_arr = B.rowwise() - mean_B - X_mean_difference_over_std_var.rowwise() * mean_C;
+  if (simplified) {
+    X_grad_arr = B - X_mean_difference_over_std_var.rowwise() * mean_C;
+  } else {
+    RowVector mean_B = B.colwise().mean();  // 1 x N
+    X_grad_arr = B.rowwise() - mean_B - X_mean_difference_over_std_var.rowwise() * mean_C;
+  }
 
   if (!simplified) {
     bias_grad_vec = Y_grad_arr.rowwise().sum();
