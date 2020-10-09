@@ -1848,11 +1848,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var ortCpuMemInfo = OrtMemoryInfo.DefaultInstance;
             var dims = new long[] { 3, 2 };
             var dataBuffer = new float[] { 1.0F, 2.0F, 3.0F, 4.0F, 5.0F, 6.0F };
-            var handle = GCHandle.Alloc(dataBuffer, GCHandleType.Pinned);
+            var dataHandle = GCHandle.Alloc(dataBuffer, GCHandleType.Pinned);
             
+            try
+            {            
                 unsafe
                 {
-                    float* p = (float*)handle.AddrOfPinnedObject();
+                    float* p = (float*)dataHandle.AddrOfPinnedObject();
                     for (int i = 0; i < dataBuffer.Length; ++i)
                     {
                         *p++ = dataBuffer[i];
@@ -1860,7 +1862,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 }
                 var dataBufferNumBytes = (uint)dataBuffer.Length * sizeof(float);
                 var sharedInitializer = OrtValue.CreateTensorValueWithData(ortCpuMemInfo, Tensors.TensorElementType.Float,
-                dims, handle.AddrOfPinnedObject(), dataBufferNumBytes);
+                dims, dataHandle.AddrOfPinnedObject(), dataBufferNumBytes);
 
                 SessionOptions options = new SessionOptions();
                 options.AddInitializer("W", sharedInitializer);
@@ -1902,9 +1904,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                             validateRunResultData(r.AsTensor<float>(), expectedOutput, expectedDimensions);
                         }
                     }
+                }
             }
 
-            handle.Free();
+            finally
+            {
+                dataHandle.Free();
+            }
         }
 
         [DllImport("kernel32", SetLastError = true)]
