@@ -55,14 +55,9 @@ RUN apt update && \
     dpkg -i /tmp/opencl/*.deb && \
     ldconfig && \
     rm -rf /tmp/opencl && \
-# Install CMake
     cd ${MY_ROOT} && \
     locale-gen en_US.UTF-8 && update-locale LANG=en_US.UTF-8  && \
-    pip3 install cython numpy && \
-    mkdir -p /opt/cmake/bin && \
-    cd ${MY_ROOT} && \
-    wget https://github.com/Kitware/CMake/releases/download/v3.13.2/cmake-3.13.2-Linux-x86_64.tar.gz && \
-    tar -xf cmake-3.13.2-Linux-x86_64.tar.gz --strip 1 -C /opt/cmake && rm -rf ${MY_ROOT}/cmake-3.13.2-Linux-x86_64.tar.gz && \
+    pip3 install cython && \
 # Download and build ONNX Runtime
     cd ${MY_ROOT} && \
     git clone --recursive -b ${ONNXRUNTIME_BRANCH} ${ONNXRUNTIME_REPO} && \
@@ -70,4 +65,4 @@ RUN apt update && \
     cd onnxruntime/cmake/external/onnx && python3 setup.py install && \
     cd ${MY_ROOT}/onnxruntime && ./build.sh --config Release --update --build --parallel --use_openvino ${DEVICE} --build_wheel && \
     pip install build/Linux/Release/dist/*-linux_x86_64.whl && \
-    cd ${MY_ROOT}/ && rm -rf cmake-3.13.2-Linux-x86_64 onnxruntime
+    cd ${MY_ROOT}/ && rm -rf onnxruntime
