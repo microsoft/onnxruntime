@@ -135,6 +135,7 @@ winrt::com_ptr<ID3D12Resource> CreateD3D12Resource(ID3D12Device& device) {
   return d3d12_resource;
 }
 
+
 void DmlCreateAndFreeGPUAllocationFromD3DResource() {
   GPUTEST;
   winrt::com_ptr<ID3D12Device> device;

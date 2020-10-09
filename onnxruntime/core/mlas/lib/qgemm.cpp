@@ -1721,7 +1721,17 @@ Return Value:
             RowSums = vpadalq_u16(RowSums, vpaddlq_u8(v));
         }
 
+#if defined(_M_ARM64)
+        // N.B. The workaround of defining a local vaddvq_u32 doesn't work here
+        // as VS2019 added new intrinsics to make the operation work. Also, not
+        // all build environments using VS2019 have the up-to-date arm64_neon.h,
+        // so fallback to pairwise addition.
+        RowSums = vpaddq_u32(RowSums, RowSums);
+        RowSums = vpaddq_u32(RowSums, RowSums);
+        vst1q_lane_u32(reinterpret_cast<int32_t*>(RowSumBuffer), RowSums, 0);
+#else
         *RowSumBuffer = int32_t(vaddvq_u32(RowSums));
+#endif
     }
 }
 
