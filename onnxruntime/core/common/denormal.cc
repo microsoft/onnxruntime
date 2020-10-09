@@ -8,20 +8,25 @@
 #if defined(PLATFORM_X86)
 #if defined(_MSC_VER)
 #include <intrin.h>
-#elif defined(__GNUC__)
+#define DENORMAL_INTRINC
+// intrins headers at gcc 4.8 and older are not usable without compiler flags
+#elif defined(__GNUC__) && ((__GNUC__ >= 5) || ((__GNUC__ == 4) && (__GNUC_MINOR__ > 8)))
 #include <cpuid.h>
 #include <x86intrin.h>
+#define DENORMAL_INTRINC
 #endif
 #endif
 
 #include <mutex>
 
+#include "core/common/common.h"
 #include "core/common/cpuid_info.h"
 #include "core/common/denormal.h"
 
 namespace onnxruntime {
 
 bool SetDenormalAsZero(bool on) {
+#ifdef DENORMAL_INTRINC
   if (CPUIDInfo::GetCPUIDInfo().HasSSE3()) {
     if (on) {
       _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
@@ -32,6 +37,9 @@ bool SetDenormalAsZero(bool on) {
     }
     return true;
   }
+#else
+  ORT_UNUSED_PARAMETER(on);
+#endif
   return false;
 }
 

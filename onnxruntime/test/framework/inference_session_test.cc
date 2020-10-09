@@ -2579,6 +2579,11 @@ void VerifyThreadPoolWithDenormalAsZero(onnxruntime::concurrency::ThreadPool* tp
 
 // test global thread pool with setting denormal as zero
 TEST(InferenceSessionTests, GlobalThreadPoolWithDenormalAsZero) {
+  // test if denormal-as-zero mode is supported
+  if (!SetDenormalAsZero(false)) {
+    return;
+  }
+
   auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
@@ -2630,6 +2635,11 @@ TEST(InferenceSessionTests, GlobalThreadPoolWithDenormalAsZero) {
 
 // test per-session thread pool with setting denormal as zero
 TEST(InferenceSessionTests, PerSessionThreadPoolWithDenormalAsZero) {
+  // test if denormal-as-zero mode is supported
+  if (!SetDenormalAsZero(false)) {
+    return;
+  }
+
   auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
@@ -2686,6 +2696,11 @@ TEST(InferenceSessionTests, PerSessionThreadPoolWithDenormalAsZero) {
 
 // test inter thread pool with setting denormal as zero
 TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
+  // test if denormal-as-zero mode is supported
+  if (!SetDenormalAsZero(false)) {
+    return;
+  }
+
   auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
