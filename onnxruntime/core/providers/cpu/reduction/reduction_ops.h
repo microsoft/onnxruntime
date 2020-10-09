@@ -63,7 +63,7 @@ class ReduceAggregatorSumSquare : public ReduceAggregator<T> {
   inline T aggall(const T* from_data) {
     return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, this->N_).squaredNorm();
   }
-  inline void update(const T& v) { accumulator_ += v * v; }
+  inline void update(const T& v) { this->accumulator_ += v * v; }
   inline T get_value() { return this->accumulator_; }
 };
 
@@ -84,7 +84,7 @@ class ReduceAggregatorMax : public ReduceAggregator<T> {
   inline T aggall(const T* from_data) {
     return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, this->N_).maxCoeff();
   }
-  inline void update(const T& v) { accumulator_ = v > this->accumulator_ ? v : this->accumulator_; }
+  inline void update(const T& v) { this->accumulator_ = v > this->accumulator_ ? v : this->accumulator_; }
   inline T get_value() { return this->accumulator_; }
 };
 
@@ -95,7 +95,7 @@ class ReduceAggregatorMin : public ReduceAggregator<T> {
   inline T aggall(const T* from_data) {
     return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, this->N_).minCoeff();
   }
-  inline void update(const T& v) { accumulator_ = v < this->accumulator_ ? v : this->accumulator_; }
+  inline void update(const T& v) { this->accumulator_ = v < this->accumulator_ ? v : this->accumulator_; }
   inline T get_value() { return this->accumulator_; }
 };
 
@@ -106,7 +106,7 @@ class ReduceAggregatorProd : public ReduceAggregator<T> {
   inline T aggall(const T* from_data) {
     return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, this->N_).prod();
   }
-  inline void update(const T& v) { accumulator_ *= v; }
+  inline void update(const T& v) { this->accumulator_ *= v; }
   inline T get_value() { return this->accumulator_; }
 };
 
@@ -117,7 +117,7 @@ class ReduceAggregatorL1 : public ReduceAggregator<T> {
   inline T aggall(const T* from_data) {
     return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, this->N_).cwiseAbs().sum();
   }
-  inline void update(const T& v) { accumulator_ += v > 0 ? v : -v; }
+  inline void update(const T& v) { this->accumulator_ += v > 0 ? v : -v; }
   inline T get_value() { return this->accumulator_; }
 };
 
@@ -128,7 +128,7 @@ class ReduceAggregatorL2 : public ReduceAggregator<T> {
   inline T aggall(const T* from_data) {
     return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, this->N_).norm();
   }
-  inline void update(const T& v) { accumulator_ += v * v; }
+  inline void update(const T& v) { this->accumulator_ += v * v; }
   inline T get_value() { return reduce_sqrt<T>(this->accumulator_); }
 };
 
@@ -139,7 +139,7 @@ class ReduceAggregatorLogSum : public ReduceAggregator<T> {
   inline T aggall(const T* from_data) {
     return reduce_log<T>(Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, this->N_).sum());
   }
-  inline void update(const T& v) { accumulator_ += v; }
+  inline void update(const T& v) { this->accumulator_ += v; }
   inline T get_value() { return reduce_log<T>(this->accumulator_); }
 };
 
