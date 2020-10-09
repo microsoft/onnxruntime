@@ -134,15 +134,21 @@ REG_ELEMENTWISE_TYPED_KERNEL(Exp, 6, double, Exp);
 REG_ELEMENTWISE_TYPED_KERNEL(Log, 6, float, Log);
 
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Sum, 6, 7, float, Sum_6);
-REG_ELEMENTWISE_TYPED_KERNEL(Sum, 8, float, Sum_8);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Sum, 8, 12, float, Sum_8);
+// Supposed to add BFloat16 but we are not supporting now, however, separate registration
+REG_ELEMENTWISE_TYPED_KERNEL(Sum, 13, float, Sum_8);
 
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Max, 6, 7, float, Max_6);
 REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Max, 8, 11, Max_8, float, double);
-REG_ELEMENTWISE_KERNEL_NONT(Max, 12, Max_8, float, double, MLFloat16, int32_t, uint32_t, int64_t, uint64_t);
+REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Max, 12, 12, Max_8, float, double, MLFloat16, int32_t, uint32_t, int64_t, uint64_t);
+// Supposed to add BFloat16 but we are not supporting now, however, separate registration
+REG_ELEMENTWISE_KERNEL_NONT(Max, 13, Max_8, float, double, MLFloat16, int32_t, uint32_t, int64_t, uint64_t);
 
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Min, 6, 7, float, Min_6);
 REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Min, 8, 11, Min_8, float);
-REG_ELEMENTWISE_KERNEL_NONT(Min, 12, Min_8, float, double, MLFloat16, int32_t, uint32_t, int64_t, uint64_t);
+REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Min, 12, 12, Min_8, float, double, MLFloat16, int32_t, uint32_t, int64_t, uint64_t);
+// Supposed to add BFloat16 but we are not supporting now, however, separate registration
+REG_ELEMENTWISE_KERNEL_NONT(Min, 13, Min_8, float, double, MLFloat16, int32_t, uint32_t, int64_t, uint64_t);
 
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 7, 8, float, Less);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 7, 8, double, Less);
@@ -170,14 +176,18 @@ REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 11, float, Equal);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 11, double, Equal);
 
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Mean, 6, 7, float, Mean_6);
-REG_ELEMENTWISE_TYPED_KERNEL(Mean, 8, float, Mean_8);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Mean, 8, 12, float, Mean_8);
+// Supposed to add BFloat16 but we are not supporting now, however, separate registration
+REG_ELEMENTWISE_TYPED_KERNEL(Mean, 13, float, Mean_8);
 
 REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 11, uint8_t, BitShift);
 //REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 11, uint16_t, BitShift);
 REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 11, uint32_t, BitShift);
 REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 11, uint64_t, BitShift);
 
-REG_ELEMENTWISE_TYPED_KERNEL(Erf, 9, float, Erf);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Erf, 9, 12, float, Erf);
+// Supposed to add BFloat16 but we are not supporting now, however, separate registration
+REG_ELEMENTWISE_TYPED_KERNEL(Erf, 13, float, Erf);
 
 // REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Not, 1, bool, Not);
 // REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(And, 7, bool, And);
