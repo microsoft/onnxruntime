@@ -8,6 +8,7 @@ from onnxruntime.capi import _pybind_state as C
 
 
 def get_ort_device_type(device):
+    device = device.lower()
     if device == 'cuda':
         return C.OrtDevice.cuda()
     elif device == 'cpu':
@@ -253,6 +254,7 @@ class IOBinding:
     '''
     def __init__(self, session):
         self._iobinding = C.SessionIOBinding(session._sess)
+        self._numpy_obj_references = []
 
     def bind_cpu_input(self, name, arr_on_cpu):
         '''
@@ -260,12 +262,16 @@ class IOBinding:
         :param name: input name
         :param arr_on_cpu: input values as a python array on CPU
         '''
+        # Hold a reference to the numpy object as the bound OrtValue is backed
+        # directly by the data buffer of the numpy object and so the numpy object
+        # must be around until this IOBinding instance is around
+        self._numpy_obj_references.append(arr_on_cpu)
         self._iobinding.bind_input(name, arr_on_cpu)
 
     def bind_input(self, name, device_type, device_id, element_type, shape, buffer_ptr):
         '''
         :param name: input name
-        :param device_type: e.g. CPU, CUDA
+        :param device_type: e.g. cpu, cuda
         :param device_id: device id, e.g. 0
         :param element_type: input element type
         :param shape: input shape
@@ -276,10 +282,17 @@ class IOBinding:
                                                device_id),
                                    element_type, shape, buffer_ptr)
 
+    def bind_ortvalue_input(self, name, ortvalue):
+        '''
+        :param name: input name
+        :param ortvalue: OrtValue instance to bind
+        '''
+        self._iobinding.bind_ortvalue_input(name, ortvalue._ortvalue)
+
     def bind_output(self, name, device_type='cpu', device_id=0, element_type=None, shape=None, buffer_ptr=None):
         '''
         :param name: output name
-        :param device_type: e.g. CPU, CUDA, CPU by default
+        :param device_type: e.g. cpu, cuda, cpu by default
         :param device_id: device id, e.g. 0
         :param element_type: output element type
         :param shape: output shape
@@ -304,6 +317,25 @@ class IOBinding:
                                                     device_id),
                                         element_type, shape, buffer_ptr)
 
+    def bind_ortvalue_output(self, name, ortvalue):
+        '''
+        :param name: output name
+        :param ortvalue: OrtValue instance to bind
+        '''
+        self._iobinding.bind_ortvalue_output(name, ortvalue._ortvalue)
+
+    def get_outputs(self):
+        '''
+        Returns the output OrtValues from the Run() that preceded the call.
+        The data buffer of the obtained OrtValues may not reside on CPU memory
+        '''
+        returned_ortvalues = []
+
+        for ortvalue in self._iobinding.get_outputs():
+            returned_ortvalues.append(OrtValue(ortvalue))
+
+        return returned_ortvalues
+
     def copy_outputs_to_cpu(self):
         '''Copy output contents to CPU (if on another device). No-op if already on the CPU.'''
         return self._iobinding.copy_outputs_to_cpu()
@@ -313,3 +345,88 @@ class IOBinding:
 
     def clear_binding_outputs(self):
         self._iobinding.clear_binding_outputs()
+
+
+class OrtValue:
+    '''
+    A data structure that supports all ONNX data formats (tensors and non-tensors) that allows users
+    to place the data backing these on a device, for example, on a CUDA supported device.
+    This class provides APIs to construct and deal with OrtValues.
+    '''
+    def __init__(self, ortvalue, numpy_obj=None):
+        if isinstance(ortvalue, C.OrtValue):
+            self._ortvalue = ortvalue
+            # Hold a ref count to the numpy object if the OrtValue is backed directly
+            # by its data buffer so that it isn't destroyed when the OrtValue is in use
+            self._numpy_obj = numpy_obj
+        else:
+            # An end user won't hit this error
+            raise ValueError("`Provided ortvalue` needs to be of type " +
+                             "`onnxruntime.capi.onnxruntime_pybind11_state.OrtValue`")
+
+    @staticmethod
+    def ortvalue_from_numpy(numpy_obj, device_type='cpu', device_id=0):
+        '''
+        Factory method to construct an OrtValue (which holds a Tensor) from a given Numpy object
+        A copy of the data in the Numpy object is held by the OrtValue only if the device is NOT cpu
+        :param numpy_obj: The Numpy object to construct the OrtValue from
+        :param device_type: e.g. cpu, cuda, cpu by default
+        :param device_id: device id, e.g. 0
+        '''
+        # Hold a reference to the numpy object (if device_type is 'cpu') as the OrtValue
+        # is backed directly by the data buffer of the numpy object and so the numpy object
+        # must be around until this OrtValue instance is around
+        return OrtValue(C.OrtValue.ortvalue_from_numpy(numpy_obj, C.OrtDevice(get_ort_device_type(device_type),
+                        C.OrtDevice.default_memory(), device_id)), numpy_obj if device_type.lower() == 'cpu' else None)
+
+    @staticmethod
+    def ortvalue_from_shape_and_type(shape=None, element_type=None, device_type='cpu', device_id=0):
+        '''
+        Factory method to construct an OrtValue (which holds a Tensor) from given shape and element_type
+        :param shape: List of integers indicating the shape of the OrtValue
+        :param element_type: The data type of the elements in the OrtValue (numpy type)
+        :param device_type: e.g. cpu, cuda, cpu by default
+        :param device_id: device id, e.g. 0
+        '''
+        if shape is None or element_type is None:
+            raise ValueError("`element_type` and `shape` are to be provided if pre-allocated memory is provided")
+
+        return OrtValue(C.OrtValue.ortvalue_from_shape_and_type(shape, element_type,
+                        C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(), device_id)))
+
+    def data_ptr(self):
+        '''
+        Returns the address of the first element in the OrtValue's data buffer
+        '''
+        return self._ortvalue.data_ptr()
+
+    def device_name(self):
+        '''
+        Returns the name of the device where the OrtValue's data buffer resides e.g. cpu, cuda
+        '''
+        return self._ortvalue.device_name().lower()
+
+    def shape(self):
+        '''
+        Returns the shape of the data in the OrtValue
+        '''
+        return self._ortvalue.shape()
+
+    def data_type(self):
+        '''
+        Returns the data type of the data in the OrtValue
+        '''
+        return self._ortvalue.data_type()
+
+    def is_tensor(self):
+        '''
+        Returns True if the OrtValue is a Tensor, else returns False
+        '''
+        return self._ortvalue.is_tensor()
+
+    def numpy(self):
+        '''
+        Returns a Numpy object from the OrtValue.
+        Valid only for OrtValues holding Tensors. Throws for OrtValues holding non-Tensors.
+        '''
+        return self._ortvalue.numpy()

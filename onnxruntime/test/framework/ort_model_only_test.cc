@@ -50,6 +50,7 @@ struct OrtModelTestInfo {
   std::vector<std::string> output_names;
   std::function<void(const std::vector<OrtValue>&)> output_verifier;
   std::vector<std::pair<std::string, std::string>> configs;
+  bool run_use_buffer{false};
 };
 
 static void RunOrtModel(const OrtModelTestInfo& test_info) {
@@ -58,8 +59,21 @@ static void RunOrtModel(const OrtModelTestInfo& test_info) {
   for (const auto& config : test_info.configs)
     so.AddConfigEntry(config.first.c_str(), config.second.c_str());
 
+  std::vector<char> model_data;
   InferenceSessionGetGraphWrapper session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.Load(test_info.model_filename));  // infer type from filename
+  if (test_info.run_use_buffer) {
+    // Load the file into a buffer and use the buffer to create inference session
+    size_t num_bytes = 0;
+    ASSERT_STATUS_OK(Env::Default().GetFileLength(test_info.model_filename.c_str(), num_bytes));
+    model_data.resize(num_bytes);
+    std::ifstream bytes_stream(test_info.model_filename, std::ifstream::in | std::ifstream::binary);
+    bytes_stream.read(model_data.data(), num_bytes);
+    bytes_stream.close();
+    ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(num_bytes)));
+  } else {
+    ASSERT_STATUS_OK(session_object.Load(test_info.model_filename));  // infer type from filename
+  }
+
   ASSERT_STATUS_OK(session_object.Initialize());
 
   std::vector<OrtValue> fetches;
@@ -311,8 +325,7 @@ TEST(OrtModelOnlyTests, SerializeToOrtFormatMLOps) {
 #endif  // #if !defined(DISABLE_ML_OPS)
 #endif  // #if !defined(ORT_MINIMAL_BUILD)
 
-// test that we can deserialize and run a previously saved ORT format model
-TEST(OrtModelOnlyTests, LoadOrtFormatModel) {
+OrtModelTestInfo GetTestInfoForLoadOrtFormatModel() {
   OrtModelTestInfo test_info;
   test_info.model_filename = ORT_TSTR("testdata/ort_github_issue_4031.onnx.ort");
   test_info.logid = "LoadOrtFormatModel";
@@ -330,13 +343,26 @@ TEST(OrtModelOnlyTests, LoadOrtFormatModel) {
     ASSERT_TRUE(output.Data<float>()[0] == 125.f);
   };
 
+  return test_info;
+}
+
+// test that we can deserialize and run a previously saved ORT format model
+TEST(OrtModelOnlyTests, LoadOrtFormatModel) {
+  OrtModelTestInfo test_info = GetTestInfoForLoadOrtFormatModel();
+  RunOrtModel(test_info);
+}
+
+// Load the model from a buffer instead of a file path
+TEST(OrtModelOnlyTests, LoadOrtFormatModelFromBuffer) {
+  OrtModelTestInfo test_info = GetTestInfoForLoadOrtFormatModel();
+  test_info.run_use_buffer = true;
   RunOrtModel(test_info);
 }
 
 #if !defined(DISABLE_ML_OPS)
 // test that we can deserialize and run a previously saved ORT format model
 // for a model with sequence and map outputs
-TEST(OrtModelOnlyTests, LoadOrtFormatModelMLOps) {
+OrtModelTestInfo GetTestInfoForLoadOrtFormatModelMLOps() {
   OrtModelTestInfo test_info;
   test_info.model_filename = ORT_TSTR("testdata/sklearn_bin_voting_classifier_soft.ort");
   test_info.logid = "LoadOrtFormatModelMLOps";
@@ -370,8 +396,23 @@ TEST(OrtModelOnlyTests, LoadOrtFormatModelMLOps) {
     }
   };
 
+  return test_info;
+}
+
+// test that we can deserialize and run a previously saved ORT format model
+// for a model with sequence and map outputs
+TEST(OrtModelOnlyTests, LoadOrtFormatModelMLOps) {
+  OrtModelTestInfo test_info = GetTestInfoForLoadOrtFormatModelMLOps();
   RunOrtModel(test_info);
 }
+
+// Load the model from a buffer instead of a file path
+TEST(OrtModelOnlyTests, LoadOrtFormatModelMLOpsFromBuffer) {
+  OrtModelTestInfo test_info = GetTestInfoForLoadOrtFormatModelMLOps();
+  test_info.run_use_buffer = true;
+  RunOrtModel(test_info);
+}
+
 #endif  // !defined(DISABLE_ML_OPS)
 
 }  // namespace test

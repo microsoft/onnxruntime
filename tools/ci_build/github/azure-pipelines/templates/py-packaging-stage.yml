@@ -586,7 +586,7 @@ stages:
           sudo python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
           sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
           brew install libomp
-          python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --use_openmp --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --config Release --build_wheel ${{ parameters.build_py_parameters }}
+          python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --use_openmp --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --config Release --skip_onnx_tests --build_wheel ${{ parameters.build_py_parameters }}
         displayName: 'Command Line Script'
 
       - task: CopyFiles@2
