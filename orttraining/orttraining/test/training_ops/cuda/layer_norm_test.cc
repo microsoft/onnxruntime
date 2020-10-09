@@ -28,7 +28,7 @@ static Status SplitDims(
 
 static void TestLayerNormGrad(
     const std::vector<int64_t>& x_dims,
-    const std::string op,
+    const std::string& op,
     int64_t axis = -1,
     double error_tolerance = 1e-4) {
   const std::vector<int64_t>& n_x_m_dims = x_dims;

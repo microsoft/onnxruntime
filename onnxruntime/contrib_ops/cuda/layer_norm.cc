@@ -36,7 +36,6 @@ namespace cuda {
 REGISTER_KERNEL_TYPED(float, float)
 REGISTER_KERNEL_TYPED(double, double)
 REGISTER_KERNEL_TYPED(MLFloat16, float)
-//REGISTER_KERNEL_TYPED(half, float)
 
 template <typename T, typename U, bool simplified>
 LayerNorm<T, U, simplified>::LayerNorm(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {

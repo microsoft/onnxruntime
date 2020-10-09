@@ -392,6 +392,7 @@ __global__ void cuComputeGradInput(
       }
     }
     // all threads now have the two sums over l
+    // U sum_loss2 = X_mean_difference_over_std_var in cpu kernel
     U fH = (U)n2;
     U term1 = (U(1) / fH) * c_invvar;
     T* k_grad_input = grad_input + i1 * n2;
@@ -399,7 +400,9 @@ __global__ void cuComputeGradInput(
       for (int l = thrx; l < n2; l += numx) {
         const U c_loss = static_cast<U>(k_dout[l]);
         U f_grad_input = fH * c_loss * U(gamma[l]);
-        f_grad_input -= sum_loss1;
+        if (!simplified) {
+          f_grad_input -= sum_loss1;
+        }
         if (use_mean) {
           const U c_h = static_cast<U>(k_input[l]);
           f_grad_input -= (c_h - c_mean) * c_invvar * sum_loss2;
@@ -414,7 +417,9 @@ __global__ void cuComputeGradInput(
       for (int l = thrx; l < n2; l += numx) {
         const U c_loss = static_cast<U>(k_dout[l]);
         U f_grad_input = fH * c_loss;
-        f_grad_input -= sum_loss1;
+        if (!simplified) {
+          f_grad_input -= sum_loss1;
+        }
         if (use_mean) {
           const U c_h = static_cast<U>(k_input[l]);
           f_grad_input -= (c_h - c_mean) * c_invvar * sum_loss2;
@@ -524,8 +529,8 @@ void HostLayerNormGradient(
   }
 }
 
-#define LAYERNORMGRAD_IMPL(T, U, simplified)                                                                                                              \
-  template void HostLayerNormGradient<T, U, simplified>(const cudaDeviceProp& prop, const T* dout, const T* input, const T* output,                             \
+#define LAYERNORMGRAD_IMPL(T, U, simplified)                                                                                                  \
+  template void HostLayerNormGradient<T, U, simplified>(const cudaDeviceProp& prop, const T* dout, const T* input, const T* output,           \
                                       const T* gamma, const T* beta, const U* mean, const U* invvar, int64_t n1, int64_t n2,                  \
                                       T* grad_input, T* grad_gamma, T* grad_beta, U* part_grad_gamma, U* part_grad_beta, const int part_size);
 
