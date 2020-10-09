@@ -4,7 +4,7 @@ type: job
 jobRetryCount: 0
 prerequisites:
   - type: dockerimage
-    uri: onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimepaibuild:rocm3.7-latest
+    uri: onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimepaibuild:rocm3.7-paiagent
     name: docker_image_0
     auth:
       username: "@@docker_user@@"
