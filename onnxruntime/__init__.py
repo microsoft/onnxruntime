@@ -7,7 +7,7 @@ ONNX Runtime is a performance-focused scoring engine for Open Neural Network Exc
 For more information on ONNX Runtime, please see `aka.ms/onnxruntime <https://aka.ms/onnxruntime/>`_
 or the `Github project <https://github.com/microsoft/onnxruntime/>`_.
 """
-__version__ = "1.5.1"
+__version__ = "1.5.2"
 __author__ = "Microsoft"
 
 from onnxruntime.capi._pybind_state import get_all_providers, get_available_providers, get_device, set_seed, \
@@ -19,7 +19,7 @@ try:
 except ImportError:
     pass
 
-from onnxruntime.capi.session import InferenceSession, IOBinding
+from onnxruntime.capi.onnxruntime_inference_collection import InferenceSession, IOBinding, OrtValue
 from onnxruntime.capi import onnxruntime_validation
 
 from onnxruntime.capi.training import *  # noqa: F403

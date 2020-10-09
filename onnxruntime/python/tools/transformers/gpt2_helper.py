@@ -12,6 +12,7 @@ import random
 import numpy
 import time
 import re
+from pathlib import Path
 from typing import List, Dict, Tuple, Union
 from transformers import GPT2Model, GPT2LMHeadModel, GPT2Config
 from benchmark_helper import Precision
@@ -284,6 +285,8 @@ class Gpt2Helper:
         logger.info(
             f"Shapes: input_ids={dummy_inputs.input_ids.shape} past={dummy_inputs.past[0].shape} output={outputs[0].shape} present={outputs[1][0].shape}"
         )
+
+        Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
 
         torch.onnx.export(model,
                           args=tuple(input_list),
@@ -567,7 +570,6 @@ class Gpt2Helper:
         model_name = model_name_or_path
         if not re.match('^[\w_-]+$', model_name_or_path):  # It is not a name, shall be a path
             assert os.path.isdir(model_name_or_path)
-            from pathlib import Path
             model_name = Path(model_name_or_path).parts[-1]
 
         if model_class != 'GPT2LMHeadModel':
@@ -577,9 +579,13 @@ class Gpt2Helper:
             model_name += "_past"
 
         if new_folder:
-            output_dir = os.path.join(output_dir, model_name)
-            if not os.path.exists(output_dir):
-                os.makedirs(output_dir)
+            # store each model to its own directory (for external data format).
+            return {
+                "raw": os.path.join(os.path.join(output_dir, model_name), model_name + ".onnx"),
+                "fp32": os.path.join(os.path.join(output_dir, model_name + "_fp32"), model_name + "_fp32.onnx"),
+                "fp16": os.path.join(os.path.join(output_dir, model_name + "_fp16"), model_name + "_fp16.onnx"),
+                "int8": os.path.join(os.path.join(output_dir, model_name + "_int8"), model_name + "_int8.onnx")
+            }
 
         return {
             "raw": os.path.join(output_dir, model_name + ".onnx"),
