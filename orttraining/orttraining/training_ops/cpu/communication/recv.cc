@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#if defined(USE_MPI)
 
 #include "orttraining/training_ops/cpu/communication/recv.h"
 
@@ -165,3 +166,5 @@ Status Recv::Compute(OpKernelContext* ctx) const {
 
 }  // namespace contrib
 }  // namespace onnxruntime
+
+#endif
