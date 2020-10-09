@@ -21,8 +21,8 @@ namespace python {
 
 namespace py = pybind11;
 
-static constexpr const char* PYTHON_ORTVALUE_OBJECT_NAME = "OrtValue";
-static constexpr const char* PYTHON_ORTVALUE_NATIVE_OBJECT_ATTR = "_ortvalue";
+extern const char* PYTHON_ORTVALUE_OBJECT_NAME;
+extern const char* PYTHON_ORTVALUE_NATIVE_OBJECT_ATTR;
 
 bool IsNumericNumpyType(int npy_type);
 

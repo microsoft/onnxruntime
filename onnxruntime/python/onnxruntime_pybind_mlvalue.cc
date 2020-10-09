@@ -23,6 +23,9 @@ namespace python {
 namespace py = pybind11;
 using namespace onnxruntime::logging;
 
+const char* PYTHON_ORTVALUE_OBJECT_NAME = "OrtValue";
+const char* PYTHON_ORTVALUE_NATIVE_OBJECT_ATTR = "_ortvalue";
+
 static bool PyObjectCheck_NumpyArray(PyObject* o) {
   return PyObject_HasAttrString(o, "__array_finalize__");
 }
