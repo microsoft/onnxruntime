@@ -86,6 +86,7 @@ int main(int argc, char* argv[]) {
   std::vector<FreeDimensionOverride> overrides = {};
   SessionOptions so = {
       ExecutionMode::ORT_SEQUENTIAL,     //execution_mode
+      ExecutionOrder::DEFAULT,           //execution_order
       false,                             //enable_profiling
       ORT_TSTR(""),                      //optimized_model_filepath
       true,                              //enable_mem_pattern
@@ -103,6 +104,7 @@ int main(int argc, char* argv[]) {
       true,                              //thread_pool_allow_spinning
       false,                             //use_deterministic_compute
       {},                                //session_configurations
+      {},                                //initializers_to_share_map
   };
 
   InferenceSession session_object{so, *env};

@@ -91,14 +91,6 @@ Status OptimizerGraphBuilder::AddGradientScalingNodes(
                              graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
   graph_defs.AddInitializers({CreateTensorProto<float>(pre_allreduce_scale.name, scale, {})});
 
-<<<<<<< 6132e1f6ae690ddb44053f015da37786390d0167
-=======
-  auto target_type = allreduce_in_fp16 ? ONNX_NAMESPACE::TensorProto_DataType_FLOAT16
-                                       : ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
-  if (allreduce_in_fp16) {
-    std::cout<<"########Doing allreduce in fp16."<<std::endl;
-  }
->>>>>>> prepare for merge
   if (fuse_scaling_outputs) {
     TypeProto* fused_gradient_type_proto = graph_defs.CreateTypeProto();
     fused_gradient_type_proto->mutable_tensor_type()->set_elem_type(allreduce_element_type);
@@ -127,13 +119,8 @@ Status OptimizerGraphBuilder::AddGradientScalingNodes(
       graph_defs.AddNodeDefs({NodeDef(OpDef{"MixedPrecisionScale", kMSDomain, 1},
                                       {pre_allreduce_scale, gradient_argdef},
                                       {scaled_gradient_argdef},
-<<<<<<< 6132e1f6ae690ddb44053f015da37786390d0167
                                       {ONNX_NAMESPACE::MakeAttribute("to", static_cast<int64_t>(allreduce_element_type))},
                                       scaled_gradient_argdef.name)});
-=======
-                                      {ONNX_NAMESPACE::MakeAttribute("to", static_cast<int64_t>(target_type))},
-                                      scaled_gradient_argdef.name + "_node")});
->>>>>>> prepare for merge
 
       gradient_argdef = scaled_gradient_argdef;
     }
