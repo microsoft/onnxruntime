@@ -715,6 +715,7 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
   const auto& sparse_values = sparse.values();
   auto type = sparse_values.data_type();
   dense.set_data_type(type);
+  *dense.mutable_name() = sparse_values.name();
 
   SafeInt<size_t> n_sparse_elements = 1;
   for (auto dim : sparse_values.dims()) {

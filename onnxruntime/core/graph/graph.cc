@@ -989,6 +989,18 @@ Graph::Graph(const Model& owning_model,
                      }),
       graph_mutable_nodes->end());
 
+  // For now we convert sparse_intializer to dense tensors
+  // since there are currently no supported ops that consume sparse
+  // initializers directly.
+  // Unlike Constant nodes we are not removing sparse initializers from the graph
+  // unless they are not used by any operation. This is done so we can still save space
+  // when storing an optimized model in ort format.
+  for (auto& sparse_tensor : graph_proto_->sparse_initializer()) {
+    const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
+    auto status = utils::SparseTensorProtoToDenseTensorProto(sparse_tensor, *tensor);
+    ORT_ENFORCE(status.IsOK(), status.ToString());
+  }
+
   // Collect all node arg name, type, shape information in the graph.
   // type/shape information will be assigned to each node arg when going
   // thru all nodes later.
@@ -1094,6 +1106,14 @@ void Graph::InitializeStateFromModelFileGraphProto() {
 
   for (auto& initializer : graph_proto_->initializer()) {
     auto& initializer_name = initializer.name();
+    auto initializer_arg = GetNodeArg(initializer_name);
+    graph_initializers.insert({initializer_name, initializer_arg});
+  }
+
+  // We currently have no way of overriding sparse initializers even though
+  // they may be reported as such
+  for (auto& sparse_initializer : graph_proto_->sparse_initializer()) {
+    auto& initializer_name = sparse_initializer.values().name();
     auto initializer_arg = GetNodeArg(initializer_name);
     graph_initializers.insert({initializer_name, initializer_arg});
   }
@@ -1602,7 +1622,7 @@ void Graph::KahnsTopologicalSort(const std::function<void(const Node*)>& enter,
     topo_order.push_back(current->Index());
   }
 
-  if (NumberOfNodes() != static_cast<int>(topo_order.size())) {   
+  if (NumberOfNodes() != static_cast<int>(topo_order.size())) {
     ORT_THROW("Some nodes are not included in the topological sort, graph have a cycle.");
   }
 }
@@ -2565,7 +2585,7 @@ void Graph::RemoveInitializedTensor(const std::string& tensor_name) {
   auto iter = name_to_initial_tensor_.find(tensor_name);
   found = iter != name_to_initial_tensor_.end();
   if (found) {
-    name_to_initial_tensor_.erase(tensor_name);
+    name_to_initial_tensor_.erase(iter);
     SetGraphResolveNeeded();
   }
 
@@ -2578,6 +2598,14 @@ void Graph::RemoveInitializedTensor(const std::string& tensor_name) {
   } else {
     // these should always be in sync as the pointer in name_to_initial_tensor_ is to memory owned by graph_proto_
     ORT_ENFORCE(!found, "graph_proto_ is not in sync with name_to_initial_tensor_.");
+  }
+
+  // This could have been a sparse_initializer.
+  auto& mutable_sparse_initializers = *(graph_proto_->mutable_sparse_initializer());
+  auto sparse_proto_entry = std::find_if(mutable_sparse_initializers.begin(), mutable_sparse_initializers.end(),
+                                         [&tensor_name](const SparseTensorProto& entry) { return entry.values().name() == tensor_name; });
+  if (sparse_proto_entry != mutable_sparse_initializers.end()) {
+    RemoveRepeatedFieldEntry(mutable_sparse_initializers, sparse_proto_entry);
   }
 }
 
