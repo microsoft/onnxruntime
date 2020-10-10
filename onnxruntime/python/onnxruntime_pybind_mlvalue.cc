@@ -23,6 +23,9 @@ namespace python {
 namespace py = pybind11;
 using namespace onnxruntime::logging;
 
+const char* PYTHON_ORTVALUE_OBJECT_NAME = "OrtValue";
+const char* PYTHON_ORTVALUE_NATIVE_OBJECT_ATTR = "_ortvalue";
+
 static bool PyObjectCheck_NumpyArray(PyObject* o) {
   return PyObject_HasAttrString(o, "__array_finalize__");
 }
@@ -656,12 +659,12 @@ void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, const
     throw std::runtime_error("Map type is not supported in this build.");
 #endif
 
-  } else if (!accept_only_numpy_array && strcmp(Py_TYPE(value.ptr())->tp_name, "OrtValue") == 0) {
+  } else if (!accept_only_numpy_array && strcmp(Py_TYPE(value.ptr())->tp_name, PYTHON_ORTVALUE_OBJECT_NAME) == 0) {
     // This is an OrtValue coming in directly from Python, so assign the underlying native OrtValue handle
     // to the OrtValue object that we are going to use for Run().
     // This should just increase the ref counts of the underlying shared_ptrs in the native OrtValue
     // and the ref count will be decreased when the OrtValue used for Run() is destroyed upon exit.
-    *p_mlvalue = value.attr("_ortvalue").cast<OrtValue>();
+    *p_mlvalue = *value.attr(PYTHON_ORTVALUE_NATIVE_OBJECT_ATTR).cast<OrtValue*>();
   } else if (!accept_only_numpy_array) {
     auto iterator = PyObject_GetIter(value.ptr());
     if (iterator == NULL) {
