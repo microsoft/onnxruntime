@@ -777,7 +777,7 @@ class TestInferenceSession(unittest.TestCase):
             # 2. it's easier to repro on slower GPU (like M60, Geforce 1070)
 
             # to repro #4829, uncomment the line below to run copy in a separate stream
-            onnxrt.capi._pybind_state.set_do_copy_in_default_stream(False)
+            #onnxrt.capi._pybind_state.set_do_copy_in_default_stream(False)
 
             session = onnxrt.InferenceSession(get_name("issue4829.onnx"))
             shape = np.array([2,2])
