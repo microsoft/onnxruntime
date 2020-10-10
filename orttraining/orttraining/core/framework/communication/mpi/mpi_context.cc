@@ -96,7 +96,7 @@ local_size_(1) {
                      << ". Local rank: " << local_rank;
   std::cout << "MPI context initialized. World size: " << world_size << ". World rank: " << world_rank << ". Local size: " << local_size << ". Local rank: " << local_rank <<std::endl;
 
-  mpi_groups_.resize(WorkerGroupType::MaxNumOfParallelGroups);
+  mpi_groups_.resize(WorkerGroupType::WorkerGroupTypeCount);
   // Create global parallel group
   // We duplicate MPI_WORLD_COMM here to avoid freeing MPI_WORLD_COMM at the end which is illegal.
   MPI_Comm global_comm;
@@ -114,7 +114,7 @@ local_size_(1) {
 
   MPIGroup node_local_group = {mpi_node_local_group, shmcomm, true};
 
-  mpi_groups_[WorkerGroupType::NodeLocalParallel] = node_local_group;
+  mpi_groups_[WorkerGroupType::NodeLocalDataParallel] = node_local_group;
   this->world_rank_ = world_rank;
   this->local_rank_ = local_rank;
   this->world_size_ = world_size;
@@ -122,6 +122,11 @@ local_size_(1) {
 }
 
 void MPIContext::ReleaseComms() {
+  // If MPI is finalized, return right away.
+  int is_mpi_finalized = 0;
+  MPI_Finalized(&is_mpi_finalized);
+  if(is_mpi_finalized)
+    return;
   for (auto group : mpi_groups_) {
       if (group.is_group_initialized) {
         MPI_CHECK(MPI_Group_free(&group.mpi_group));
