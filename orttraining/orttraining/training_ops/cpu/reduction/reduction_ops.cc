@@ -29,6 +29,22 @@ REGISTER_REDUCESUMTRAINING_KERNEL_TYPED(int64_t)
 
 
 template <typename T>
+void ReduceSumCore(const T* input_data, T* output_data, bool no_transpose,
+                   int64_t blocks, int64_t block_size, FastAllocVector<T>& transposed_input_data,
+                   concurrency::ThreadPool* tp) {
+  if (no_transpose) {
+    auto lambda = [input_data, blocks, output_data](ptrdiff_t i) {
+      // The ConstEigenMatrixMap type is expanded to work around a MS compiler issue
+      output_data[i] = Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(input_data + (i * blocks), blocks).sum();
+    };
+    concurrency::ThreadPool::TryBatchParallelFor(tp, block_size, lambda, 0);
+  } else {
+    EigenVectorMap<T> out_vec(output_data, block_size);
+    out_vec = ConstEigenMatrixMap<T>(&transposed_input_data[0], block_size, blocks).rowwise().sum();
+  }
+}
+
+template <typename T>
 Status ReduceSumTraining<T>::Compute(OpKernelContext* ctx) const {
   FastAllocVector<T> transposed_input_data(GetAllocator<T>(*ctx));
   int64_t block_size;
