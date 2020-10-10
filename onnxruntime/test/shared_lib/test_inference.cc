@@ -949,11 +949,12 @@ TEST(CApiTest, TestSharingOfInitializer) {
 
   // prepare expected inputs and outputs
   std::vector<int64_t> expected_dims_y = {3, 2};
-  std::vector<float> expected_values_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
+  std::vector<float> expected_values_y = {2.0f, 2.0f, 12.0f, 12.0f, 30.0f, 30.0f};
 
   Ort::SessionOptions session_options;
   Ort::MemoryInfo mem_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-  float data[] = {1., 2., 3., 4., 5., 6.};
+  // These values are different from the actual initializer values in the model
+  float data[] = {2., 1., 4., 3., 6., 5.};
   const int data_len = sizeof(data) / sizeof(data[0]);
   const int64_t shape[] = {3, 2};
   const size_t shape_len = sizeof(shape) / sizeof(shape[0]);

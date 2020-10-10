@@ -6,9 +6,6 @@
 #include "provider_api.h"
 #include <assert.h>
 #include <mutex>
-#include <iostream>  // For std::cout used in a stub
-
-#define PROVIDER_NOT_IMPLEMENTED ORT_THROW("Unimplemented shared library provider method");
 
 extern "C" {
 void* Provider_GetHost();
@@ -124,20 +121,6 @@ std::string TensorShape::ToString() const {
   return result;
 }
 
-CPUIDInfo g_info;
-
-const CPUIDInfo& CPUIDInfo::GetCPUIDInfo() {
-  return g_info;
-}
-
-bool CPUIDInfo::HasAVX2() const {
-  return g_host->CPU_HasAVX2();
-}
-
-bool CPUIDInfo::HasAVX512f() const {
-  return g_host->CPU_HasAVX512f();
-}
-
 Provider_AllocatorPtr CreateAllocator(Provider_AllocatorCreationInfo info) {
   return g_host->CreateAllocator(info);
 }
@@ -169,34 +152,6 @@ Provider_IExecutionProvider::Provider_IExecutionProvider(const std::string& type
 }
 
 namespace logging {
-
-bool Logger::OutputIsEnabled(Severity severity, DataType data_type) const noexcept {
-  ORT_UNUSED_PARAMETER(severity);
-  ORT_UNUSED_PARAMETER(data_type);
-  return false;
-  // TODO: Logging not essential to make it work initially, do later
-}
-
-static Logger g_default_logger;
-
-const Logger& LoggingManager::DefaultLogger() {
-  return g_default_logger;
-}
-
-Capture::Capture(const Logger& logger, logging::Severity severity, const char* category,
-                 logging::DataType dataType, const CodeLocation& location) {
-  PROVIDER_NOT_IMPLEMENTED
-  ORT_UNUSED_PARAMETER(logger);
-  ORT_UNUSED_PARAMETER(severity);
-  ORT_UNUSED_PARAMETER(category);
-  ORT_UNUSED_PARAMETER(dataType);
-  ORT_UNUSED_PARAMETER(location);
-}
-
-std::ostream& Capture::Stream() noexcept {
-  // PROVIDER_NOT_IMPLEMENTED
-  return std::cout;
-}
 
 const char* Category::onnxruntime = "onnxruntime";
 
@@ -257,10 +212,7 @@ const std::string& Status::EmptyString() noexcept {
 
 }  // namespace common
 
-std::vector<std::string> GetStackTrace() {
-  // PROVIDER_NOT_IMPLEMENTED
-  return {};
-}
+std::vector<std::string> GetStackTrace() { return g_host->GetStackTrace(); }
 
 void LogRuntimeError(uint32_t session_id, const common::Status& status,
                      const char* file, const char* function, uint32_t line) {
