@@ -1,10 +1,11 @@
 #include "testPch.h"
-#include "onnxruntime_cxx_api.h"
 #include "test/onnx/TestCase.h"
 #include "test/onnx/heap_buffer.h"
 #include "test/util/include/test/compare_ortvalue.h"
 #include "ort_value_helper.h"
+#include "onnxruntime_cxx_api.h"
 #include "StringHelpers.h"
+#include "skip_model_tests.h"
 
 #ifndef BUILD_GOOGLE_TEST
 #error Must use googletest for value-parameterized tests
@@ -28,8 +29,8 @@ class ModelTest : public testing::TestWithParam<std::tuple<ITestCase*, winml::Le
   }
   // Called after the last test in this test suite.
   static void TearDownTestSuite() {
-    ownedTests.clear(); // clear the global vector
-  } 
+    ownedTests.clear();  // clear the global vector
+  }
   winml::LearningModelDeviceKind m_deviceKind;
   ITestCase* m_testCase;
   double m_perSampleTolerance = 1e-3;
@@ -86,7 +87,6 @@ TEST_P(ModelTest, Run) {
   WINML_EXPECT_NO_THROW(session = LearningModelSession(model, device));
   WINML_EXPECT_NO_THROW(binding = LearningModelBinding(session));
   for (size_t i = 0; i < m_testCase->GetDataCount(); i++) {
-
     // Load and bind inputs
     onnxruntime::test::HeapBuffer inputHolder;
     std::unordered_map<std::string, Ort::Value> inputFeeds;
@@ -107,10 +107,22 @@ TEST_P(ModelTest, Run) {
   }
 }
 
-void SetTestDataPath(char* testDataPath) {
+bool SetTestDataPath(char* testDataPath) {
   GetEnvironmentVariableA("WINML_TEST_DATA_PATH", testDataPath, MAX_PATH);
   if (testDataPath[0] == 0) {
-    throw std::invalid_argument("need to set environment variable WINML_TEST_DATA_PATH");
+    auto hardcodedModelTestCollateralPath = FileHelpers::GetModulePath() + L"../models/";
+    printf("Need to set environment variable WINML_TEST_DATA_PATH. Trying to find hardcoded model path.. %ws", hardcodedModelTestCollateralPath.c_str());
+    if (std::filesystem::exists(hardcodedModelTestCollateralPath)) {
+      std::string hardcodedModelTestCollateralPathStr = _winml::Strings::UTF8FromUnicode(hardcodedModelTestCollateralPath.c_str(),
+                                                                                         hardcodedModelTestCollateralPath.length());
+      std::size_t length = hardcodedModelTestCollateralPathStr.copy(testDataPath, hardcodedModelTestCollateralPathStr.length());
+      testDataPath[length] = '\0';
+      return true;
+    } else {
+      return false;
+    }
+  } else {
+    return true;
   }
 }
 
@@ -123,7 +135,7 @@ static std::vector<ITestCase*> GetAllTestCases() {
   std::unordered_set<std::basic_string<ORTCHAR_T>> allDisabledTests;
   std::vector<std::basic_string<PATH_CHAR_TYPE>> dataDirs;
   char testDataPath[MAX_PATH];
-  SetTestDataPath(testDataPath);
+  if(!SetTestDataPath(testDataPath)) return tests;
 
   for (auto& p : std::filesystem::directory_iterator(testDataPath)) {
     if (p.is_directory()) {
@@ -140,6 +152,30 @@ static std::vector<ITestCase*> GetAllTestCases() {
   return tests;
 }
 
+// determine if test should be disabled
+void DetermineIfDisableTest(std::string& testName, winml::LearningModelDeviceKind deviceKind) {
+  bool shouldSkip = false;
+  std::string reason = "Reason not found.";
+  if (disabledTests.find(testName) != disabledTests.end()) {
+    reason = disabledTests.at(testName);
+    shouldSkip = true;
+  }
+  if (deviceKind == LearningModelDeviceKind::DirectX) {
+    if (SkipGpuTests()) {
+      reason = "GPU tests are not enabled for this build.";
+      shouldSkip = true;
+    } else if (disabledGpuTests.find(testName) != disabledGpuTests.end()) {
+      reason = disabledGpuTests.at(testName);
+      shouldSkip = true;
+    }
+  }
+
+  if (shouldSkip) {
+    printf("Disabling %s test because : %s\n", testName.c_str(), reason.c_str());
+    testName = "DISABLED_" + testName;
+  }
+}
+
 // This function gets the name of the test
 static std::string GetNameOfTest(const testing::TestParamInfo<ModelTest::ParamType>& info) {
   std::string name = "";
@@ -153,16 +189,20 @@ static std::string GetNameOfTest(const testing::TestParamInfo<ModelTest::ParamTy
   }
   // The model path is structured like this "<opset>/<model_name>/model.onnx
   // The desired naming of the test is like this <model_name>_<opset>_<CPU/GPU>
-  name += tokenizedModelPath[tokenizedModelPath.size() - 2] += "_"; // model name
-  name += tokenizedModelPath[tokenizedModelPath.size() - 3] += "_"; // opset version
-
-  if (std::get<1>(info.param) == winml::LearningModelDeviceKind::Cpu) {
-    name += "CPU";
-  } else {
-    name += "GPU";
-  }
+  name += tokenizedModelPath[tokenizedModelPath.size() - 2] += "_";  // model name
+  name += tokenizedModelPath[tokenizedModelPath.size() - 3];         // opset version
 
   std::replace_if(name.begin(), name.end(), [&name](char c) { return !google::protobuf::ascii_isalnum(c); }, '_');
+
+  auto deviceKind = std::get<1>(info.param);
+  // Determine if test should be skipped
+  DetermineIfDisableTest(name, deviceKind);
+  if (deviceKind == winml::LearningModelDeviceKind::Cpu) {
+    name += "_CPU";
+  } else {
+    name += "_GPU";
+  }
+
   return name;
 }
 
