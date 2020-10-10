@@ -68,10 +68,6 @@ __global__ void _AdamOptimizer_mode0(
 
   moment_1_out[id] = m1o;
   moment_2_out[id] = m2o;
-
-  if (fp16_weights_out) {
-    fp16_weights_out[id] = static_cast<half>(weights_out[id]);
-  }
 }
 
 template <typename T1, typename T3, typename T4, typename T_GRAD, typename T_GRAD_NORM, typename T_MIXED_PRECISION_FP>
