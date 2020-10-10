@@ -85,7 +85,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "db2aa9b4eca0edc94aea9e2059c21ce8786fc762",
+          "commitHash": "6df40a2471737b27271bdd9b900ab5f3aec746c7",
           "repositoryUrl": "https://github.com/google/flatbuffers.git"
         },
         "comments": "git submodule at cmake/external/flatbuffers"

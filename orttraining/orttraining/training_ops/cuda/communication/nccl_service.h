@@ -156,6 +156,7 @@ class NcclService final {
   std::condition_variable cv_;
 
   // Stream for running NCCL.
+  cudaStream_t stream_;
   ncclComm_t comm_;
 
   // Indicates if NCCL service launched.

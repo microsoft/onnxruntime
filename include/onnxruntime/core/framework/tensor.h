@@ -61,11 +61,12 @@ class Tensor final {
   Tensor() = default;  // to allow creating vector<Tensor> to support seq(tensor)
 
   /**
-   * Create tensor with given type, shape, pre-allocate memory and allocator info.
+   * Create tensor with given type, shape, pre-allocated memory and allocator info.
    * This function won't check if the preallocated buffer(p_data) has enough room for the shape.
    * \param data A preallocated buffer. Can be NULL if the shape is empty.
    *              Tensor does not own the data and will not delete it
    * \param alloc Where the buffer('data') was allocated from
+   * \param offset Offset in bytes to start of Tensor within p_data. 
    */
   Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc,
          ptrdiff_t offset = 0);
@@ -74,7 +75,7 @@ class Tensor final {
    * Deprecated. The orginal design is this Tensor class won't do any allocation / release.
    * However, this function will allocate the buffer for the shape, and do placement new if p_type is string tensor.
    */
-  Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator, ptrdiff_t offset = 0);
+  Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator);
 
   ~Tensor();
 

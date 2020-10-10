@@ -1628,10 +1628,8 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
         {},
         {}},
        {{
-            "MeanSquaredError_reduce_mean_Grad/Scale_Denominator",
-            "MeanSquaredError_reduce_mean_Grad/Casted_Scale_Denominator",
-            "MeanSquaredError_reduce_mean_Grad/Scale_Numerator",
-            "MeanSquaredError_reduce_mean_Grad/Casted_Scale_Numerator",
+            "MeanSquaredError_reduce_mean_Grad/Sized_X",
+            "MeanSquaredError_reduce_mean_Grad/Sized_Grad",
             "MeanSquaredError_reduce_mean_Grad/Scale",
             "MeanSquaredError_reduce_mean_Grad/Scaled_Grad",
             "MeanSquaredError_reduce_mean_Grad/Shaped_X",

@@ -2,7 +2,7 @@
 parameters:
 - name: condition
   type: string
-  default: '' # could be 'ci_only', 'always', 'succeeded'
+  default: 'succeeded' # could be 'ci_only', 'always', 'succeeded'
 
 steps:
 - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0

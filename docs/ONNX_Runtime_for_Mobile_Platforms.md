@@ -2,10 +2,12 @@
 
 ## Overview
 
+<img align="left" width=40% src="images/Mobile.png" alt="Steps to build the reduced binary size."/>
+
 ONNX Runtime now supports an internal model format to minimize the build size for usage in mobile and embedded scenarios. An ONNX model can be converted to an internal ONNX Runtime format ('ORT format model') using the below instructions.
 
-The minimal build can be used with any ORT format model, provided that the kernels for the operators used in the model were included in the build. 
-  i.e. the custom build provides a set of kernels, and if that set satisfies a given ORT format model's needs, the model can be loaded and executed. 
+The minimal build can be used with any ORT format model, provided that the kernels for the operators used in the model were included in the build.
+    i.e. the custom build provides a set of kernels, and if that set satisfies a given ORT format model's needs, the model can be loaded and executed.
 
 ## Steps to create model and minimal build
 
@@ -129,4 +131,6 @@ A minimal build has the following limitations currently:
     - e.g. ORT CPU and CUDA execution providers
     - Execution providers that dynamically compile nodes in the graph into custom kernels at runtime are not supported
   - No support for custom operators
+
+We do not currently offer backwards compatibility guarantees for ORT format models, as we will be expanding the capabilities in the short term and may need to update the internal format in an incompatible manner to accommodate these changes. You may need to regenerate the ORT format models to use with a future version of ONNX Runtime. Once the feature set stabilizes we will provide backwards compatibility guarantees.
 
