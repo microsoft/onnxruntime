@@ -25,18 +25,14 @@ bool GeluRecompute::SatisfyCondition(const Node& node) const {
 
 Status GeluRecompute::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/, const logging::Logger& /*logger*/) const {
   GraphViewer graph_viewer(graph);
-  const auto& order = graph_viewer.GetNodesInTopologicalOrder();
+  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder();
 
-  std::vector<Node*> target_nodes;
-  for (NodeIndex i : order) {
-    Node* node = graph.GetNode(i);
-    if (SatisfyCondition(*node)) {
-      target_nodes.push_back(node);
+  for (int i = node_ids.size() - 1; i >= 0; --i) {
+    Node& node = *graph.GetNode(node_ids[i]);
+
+    if (!SatisfyCondition(node)) {
+      continue;
     }
-  }
-
-  for (size_t i = 0; i < target_nodes.size(); ++i) {
-    Node& node = *target_nodes[i];
 
     const auto& output = node.OutputDefs()[0];
 
@@ -51,7 +47,7 @@ Status GeluRecompute::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*
                                          &node.GetAttributes(),
                                          node.Domain());
 
-    recompute_node.SetPriority(static_cast<int>(target_nodes.size() - i));
+    recompute_node.SetPriority(static_cast<int>(ExecutionPriority::LOCAL_LOW));
 
     modified = true;
   }
@@ -74,19 +70,18 @@ bool AttentionDropoutRecompute::SatisfyCondition(const Node& node) const {
 
 Status AttentionDropoutRecompute::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/, const logging::Logger& /*logger*/) const {
   GraphViewer graph_viewer(graph);
-  const auto& order = graph_viewer.GetNodesInTopologicalOrder();
+  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder();
 
-  std::vector<Node*> target_nodes;
-  for (NodeIndex i : order) {
-    Node* node = graph.GetNode(i);
-    if (SatisfyCondition(*node)) {
-      target_nodes.push_back(node);
+  for (int i = node_ids.size() - 1; i >= 0; --i) {
+    Node& node = *graph.GetNode(node_ids[i]);
+
+    if (!SatisfyCondition(node)) {
+      continue;
     }
-  }
 
-  for (size_t i = 0; i < target_nodes.size(); ++i) {
-    Node& recompute_node = InsertDropoutRecompute(graph, *target_nodes[i], /*use_original_input*/ true);
-    recompute_node.SetPriority(static_cast<int>(target_nodes.size() - i));
+    Node& recompute_node = InsertDropoutRecompute(graph, node, /*use_original_input*/ true);
+    recompute_node.SetPriority(static_cast<int>(ExecutionPriority::LOCAL_LOW));
+
     modified = true;
   }
   return Status::OK();
