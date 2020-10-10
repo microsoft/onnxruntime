@@ -2,10 +2,8 @@
 # Licensed under the MIT License.
 
 import unittest
-import pytest
 from numpy.testing import assert_allclose, assert_array_equal
 
-import torch
 from onnxruntime_test_ort_trainer import runBertTrainingTest
 
 class TestOrtTrainer(unittest.TestCase):

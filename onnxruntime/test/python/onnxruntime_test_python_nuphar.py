@@ -8,7 +8,6 @@ from onnx import helper, numpy_helper
 import onnxruntime as onnxrt
 import os
 from onnxruntime.nuphar.rnn_benchmark import perf_test, generate_model
-from pathlib import Path
 import shutil
 import sys
 import subprocess
@@ -532,7 +531,6 @@ class TestNuphar(unittest.TestCase):
         assert np.allclose(first_lstm_data_output, scan_batch_data_output)
 
     def test_gemm_to_matmul(self):
-        model_cnt = 0
         gemm_model_name_prefix = "gemm_model"
         matmul_model_name_prefix = "matmul_model"
         common_config = {
@@ -582,7 +580,6 @@ class TestNuphar(unittest.TestCase):
             assert np.allclose(expected_y, actual_y)
 
     def test_gemm_to_matmul_with_scan(self):
-        model_cnt = 0
         gemm_model_name_prefix = "gemm_scan_model"
         matmul_model_name_prefix = "matmul_scan_model"
 

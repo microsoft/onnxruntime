@@ -3,10 +3,8 @@
 
 # -*- coding: UTF-8 -*-
 import unittest
-import os
 import numpy as np
 import onnxruntime as onnxrt
-import threading
 from helper import get_name
 
 

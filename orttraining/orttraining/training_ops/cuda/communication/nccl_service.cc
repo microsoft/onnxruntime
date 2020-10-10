@@ -233,6 +233,9 @@ void NcclService::Initialize() {
   // Set device this NCCL communicator runs on.
   CUDA_CALL(cudaSetDevice(mpi_rank));
 
+  // Create communication stream.
+  CUDA_CALL(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking));
+
   // Get NCCL unique ID at rank 0 and broadcast it to all others.
   ncclUniqueId id;
   if (mpi_rank == 0) NCCL_CALL(ncclGetUniqueId(&id));
@@ -276,11 +279,11 @@ void NcclService::Launch() {
           switch (task.type) {
             case NcclTask::Type::SEND:
               ORT_ENFORCE(task.peers.size() == 1, "Send can only send data to one rank.");
-              NCCL_CALL(ncclSend(task.ptr, task.size, ncclChar, task.peers.front(), comm_, nullptr));
+              NCCL_CALL(ncclSend(task.ptr, task.size, ncclChar, task.peers.front(), comm_, stream_));
               break;
             case NcclTask::Type::RECV:
               ORT_ENFORCE(task.peers.size() == 1, "Recv can only send data to one rank.");
-              NCCL_CALL(ncclRecv(task.ptr, task.size, ncclChar, task.peers.front(), comm_, nullptr));
+              NCCL_CALL(ncclRecv(task.ptr, task.size, ncclChar, task.peers.front(), comm_, stream_));
               break;
             default:
               ORT_NOT_IMPLEMENTED("NCCL service currently only support ncclSend and ncclRecv.");
@@ -288,6 +291,13 @@ void NcclService::Launch() {
           task.is_finished = true;
         }
         NCCL_CALL(ncclGroupEnd());
+
+        // Make sure all NCCL computation are done.
+        // Since the Submit*andWait are blocked by the following "cv_.notify_all()",
+        // all NCCL Send and Recv called above are all finished before Submit*andWait returning.
+        // Thus, CUDA operations after Send and Recv won't be inserted by other threads
+        // when we call NCCL Send's and Recv's.
+        CUDA_CALL(cudaStreamSynchronize(stream_));
 
         // This round of communication is done.
         // We can start waiting for the tasks to be fully scheduled.
@@ -340,6 +350,8 @@ void NcclService::Terminate() {
     std::unique_lock<std::mutex> lock(mutex_);
     cv_.wait(lock, [this] { return schedule_.empty() || total_time_ > 0 && time_ == 0; });
   }
+
+  CUDA_CALL(cudaStreamDestroy(stream_));
 
   is_running_ = false;
   worker_.join();
