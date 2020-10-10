@@ -20,12 +20,12 @@ bool AdasumMPI::IsAdasumInitialized() {
   return reduction_comms_initialized_;
 }
 
-void AdasumMPI::InitializeVHDDReductionComms() {
+void AdasumMPI::InitializeVHDDReductionComms(WorkerGroupType worker_group) {
   int rank = GetMPIRank(MPIContext::GetInstance()
-                        .GetMPIGroup(WorkerGroupType::GlobalParallel)
+                        .GetMPIGroup(worker_group)
                         .communicator);
   int size = GetMPISize(MPIContext::GetInstance()
-                        .GetMPIGroup(WorkerGroupType::GlobalParallel)
+                        .GetMPIGroup(worker_group)
                         .communicator);
   
   // Initialize communication groups for the vector halving, distance doubling
@@ -38,7 +38,7 @@ void AdasumMPI::InitializeVHDDReductionComms() {
   // size of MPI_COMM_WORLD. In essence, a reduction group includes all nodes
   // that a tensor may be split across.
   MPI_Group world_group;
-  MPI_Comm_group(MPIContext::GetInstance().GetMPIGroup(WorkerGroupType::GlobalParallel).communicator,
+  MPI_Comm_group(MPIContext::GetInstance().GetMPIGroup(worker_group).communicator,
                  &world_group);
   int nearest_power_2 = 1;
   int log_size;
@@ -92,6 +92,7 @@ void AdasumMPI::PointToPointSendRecv(
   int output_count = output_buffer_length / element_size;
   int chunk_count =
       std::max((int)(adasum_mpi_chunk_size_ / element_size), 1);
+
 
   for (int i = 0; i < std::max(input_count, output_count); i += chunk_count) {
     status = MPI_Sendrecv((char*)input_data_buffer + i * element_size,

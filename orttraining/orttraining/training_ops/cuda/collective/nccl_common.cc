@@ -33,14 +33,7 @@ static Status CreateNcclCommunicator(MPI_Group* mpi_world_group,
                                      const training::WorkerGroupType worker_group_type,
                                      ncclComm_t* group_comm) {
   auto worker_group = training::DistributedRunContext::GetInstance().GetWorkerGroup(worker_group_type);
-  if (worker_group.ranks.size() == 1) {
-    LOGS_DEFAULT(WARNING) << "Target group size = 1, skip creating nccl communicator. Group info: "
-                          << worker_group.ToString();
-    return Status::OK();
-  }
 
-  // bugbug
-  std::cout<<"worker group: "<<worker_group_type<<" has ranks:"<<std::endl;
   for (size_t i=0; i<worker_group.ranks.size(); i++)
     std::cout<<" "<<worker_group.ranks[i]<<" "<<std::endl;
 
@@ -91,12 +84,12 @@ NcclContext::NcclContext() {
   ORT_ENFORCE(ret.IsOK());
 
   // Initialize node local Parallel Group NCCL Communicator
-  ret = CreateNcclCommunicator(&mpi_world_group, training::WorkerGroupType::NodeLocalParallel,
+  ret = CreateNcclCommunicator(&mpi_world_group, training::WorkerGroupType::NodeLocalDataParallel,
                                &node_local_comm_);
   ORT_ENFORCE(ret.IsOK());
 
   // Initialize cross node Parallel Group NCCL Communicator
-  ret = CreateNcclCommunicator(&mpi_world_group, training::WorkerGroupType::CrossNodeParallel,
+  ret = CreateNcclCommunicator(&mpi_world_group, training::WorkerGroupType::CrossNodeDataParallel,
                                &cross_node_comm_);
   ORT_ENFORCE(ret.IsOK());
 
@@ -109,10 +102,10 @@ ncclComm_t NcclContext::Comm(training::WorkerGroupType group_type) {
   } else if (training::WorkerGroupType::HorizontalParallel == group_type) {
     return horizontal_group_comm_;
   }
-  else if (training::WorkerGroupType::NodeLocalParallel == group_type) {
+  else if (training::WorkerGroupType::NodeLocalDataParallel == group_type) {
     return node_local_comm_;
   }
-  else if (training::WorkerGroupType::CrossNodeParallel == group_type) {
+  else if (training::WorkerGroupType::CrossNodeDataParallel == group_type) {
     return cross_node_comm_;
   }
 

@@ -55,7 +55,7 @@ Status parse_arguments(int argc, char* argv[], Parameters& params) {
     const std::string msg = "Failed to parse the command line arguments";
     cerr << msg << ": " << e.what() << "\n"
          << options.help() << "\n";
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, msg);
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, msg);
   }
   return Status::OK();
 }
