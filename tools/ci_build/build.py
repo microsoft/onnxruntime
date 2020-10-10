@@ -569,6 +569,16 @@ def setup_test_data(build_dir, configs):
                                 src_model_dir], shell=True)
 
 
+def use_dev_mode(args):
+    if args.use_acl:
+        return 'OFF'
+    if args.use_armnn:
+        return 'OFF'
+    if args.ios and is_macOS():
+        return 'OFF'
+    return 'ON'
+
+
 def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home,
                         mpi_home, nccl_home, tensorrt_home, migraphx_home,
                         path_to_protoc_exe, configs, cmake_extra_defines, args, cmake_extra_args):
@@ -584,9 +594,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_BUILD_WINML_TESTS=" + (
             "OFF" if args.skip_winml_tests else "ON"),
         "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
-        "-Donnxruntime_DEV_MODE=" + (
-            "OFF" if args.use_acl or args.use_armnn or
-            (args.ios and is_macOS()) else "ON"),
+        "-Donnxruntime_DEV_MODE=" + use_dev_mode(args),
         "-DPYTHON_EXECUTABLE=" + sys.executable,
         "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
         "-Donnxruntime_CUDNN_HOME=" + (cudnn_home if args.use_cuda else ""),
@@ -1092,6 +1100,32 @@ def run_ios_tests(args, source_dir, config, cwd):
                     "-destination", "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)"], cwd=cwd)
 
 
+def run_orttraining_test_orttrainer_frontend_separately(cwd):
+    class TestNameCollecterPlugin:
+        def __init__(self):
+            self.collected = set()
+
+        def pytest_collection_modifyitems(self, items):
+            for item in items:
+                print('item.name: ', item.name)
+                test_name = item.name
+                start = test_name.find('[')
+                if start > 0:
+                    test_name = test_name[:start]
+                self.collected.add(test_name)
+
+    import pytest
+
+    plugin = TestNameCollecterPlugin()
+    test_script_filename = os.path.join(cwd, "orttraining_test_orttrainer_frontend.py")
+    pytest.main(['--collect-only', test_script_filename], plugins=[plugin])
+
+    for test_name in plugin.collected:
+        run_subprocess([
+            sys.executable, '-m', 'pytest',
+            'orttraining_test_orttrainer_frontend.py', '-v', '-k', test_name], cwd=cwd)
+
+
 def run_training_python_frontend_tests(cwd):
     run_subprocess([sys.executable, 'onnxruntime_test_ort_trainer.py'], cwd=cwd)
     run_subprocess([sys.executable, 'onnxruntime_test_training_unit_tests.py'], cwd=cwd)
@@ -1104,7 +1138,12 @@ def run_training_python_frontend_tests(cwd):
     run_subprocess([
         sys.executable, 'orttraining_test_transformers.py',
         'BertModelTest.test_for_pretraining_full_precision_list_and_dict_input'], cwd=cwd)
-    run_subprocess([sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_orttrainer_frontend.py'], cwd=cwd)
+
+    # TODO: use run_orttraining_test_orttrainer_frontend_separately to work around a sporadic segfault.
+    # shall revert to run_subprocess call once the segfault issue is resolved.
+    run_orttraining_test_orttrainer_frontend_separately(cwd)
+    # run_subprocess([sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_orttrainer_frontend.py'], cwd=cwd)
+
     run_subprocess([sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_orttrainer_bert_toy_onnx.py'], cwd=cwd)
 
 
@@ -1115,19 +1154,25 @@ def run_training_python_frontend_e2e_tests(cwd):
     import torch
     ngpus = torch.cuda.device_count()
     if ngpus > 1:
-        log.debug('RUN: {} -m torch.distributed.launch --nproc_per_node {} \
-            orttraining_run_bert_pretrain.py ORTBertPretrainTest.test_pretrain_throughput'.format(
-            sys.executable, ngpus))
+        bert_pretrain_script = 'orttraining_run_bert_pretrain.py'
+        log.debug('RUN: mpirun -n {} ''-x' 'NCCL_DEBUG=INFO'' {} {} {}'.format(
+            ngpus, sys.executable, bert_pretrain_script, 'ORTBertPretrainTest.test_pretrain_throughput'))
         run_subprocess([
-            sys.executable, '-m', 'torch.distributed.launch', '--nproc_per_node', str(ngpus),
-            'orttraining_run_bert_pretrain.py', 'ORTBertPretrainTest.test_pretrain_throughput'], cwd=cwd)
+            'mpirun', '-n', str(ngpus), '-x', 'NCCL_DEBUG=INFO', sys.executable,
+            bert_pretrain_script, 'ORTBertPretrainTest.test_pretrain_throughput'], cwd=cwd)
 
-        log.debug('RUN: {} -m torch.distributed.launch --nproc_per_node {} \
-            orttraining_run_bert_pretrain.py ORTBertPretrainTest.test_pretrain_convergence'.format(
-            sys.executable, ngpus))
+        log.debug('RUN: mpirun -n {} ''-x' 'NCCL_DEBUG=INFO'' {} {} {}'.format(
+            ngpus, sys.executable, bert_pretrain_script, 'ORTBertPretrainTest.test_pretrain_convergence'))
         run_subprocess([
-            sys.executable, '-m', 'torch.distributed.launch', '--nproc_per_node', str(ngpus),
-            'orttraining_run_bert_pretrain.py', 'ORTBertPretrainTest.test_pretrain_convergence'], cwd=cwd)
+            'mpirun', '-n', str(ngpus), '-x', 'NCCL_DEBUG=INFO', sys.executable,
+            bert_pretrain_script, 'ORTBertPretrainTest.test_pretrain_convergence'], cwd=cwd)
+
+        # a long run
+        log.debug('RUN: mpirun -n {} ''-x' 'NCCL_DEBUG=INFO'' {} {}'.format(
+            ngpus, sys.executable, bert_pretrain_script))
+        run_subprocess([
+            'mpirun', '-n', str(ngpus), '-x', 'NCCL_DEBUG=INFO', sys.executable,
+            bert_pretrain_script], cwd=cwd)
 
         log.debug('RUN: mpirun -n {} {} orttraining_run_glue.py'.format(ngpus, sys.executable))
         run_subprocess([
@@ -1307,28 +1352,9 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                                cwd=cwd, dll_path=dll_path)
 
             # For CUDA enabled builds test IOBinding feature
-            # Limit testing to Windows non-ARM builds for now
-            iobinding_test = False
-            if args.use_cuda and not (args.arm or args.arm64):
+            if args.use_cuda:
                 # We need to have Torch installed to test the IOBinding feature
                 # which currently uses Torch's allocator to allocate GPU memory for testing
-                iobinding_test = True
-
-                # Try install Torch on Windows
-                if is_windows():
-                    log.info("Attempting to install Torch to test ORT's IOBinding feature")
-                    install_torch()
-
-                try:
-                    import torch  # noqa
-                except ImportError as error:
-                    iobinding_test = False
-                    log.exception(error)
-                    log.warning(
-                        "Torch is not installed. "
-                        "The IOBinding tests will be skipped as it requires Torch.")
-
-            if iobinding_test:
                 log.info("Testing IOBinding feature")
                 run_subprocess([sys.executable, 'onnxruntime_test_python_iobinding.py'], cwd=cwd, dll_path=dll_path)
 
@@ -1360,8 +1386,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
                 if not args.skip_onnx_tests:
                     run_subprocess([os.path.join(cwd, 'onnx_test_runner'), 'test_models'], cwd=cwd)
-                if config != 'Debug':
-                    run_subprocess([sys.executable, 'onnx_backend_test_series.py'], cwd=cwd, dll_path=dll_path)
+                    if config != 'Debug':
+                        run_subprocess([sys.executable, 'onnx_backend_test_series.py'], cwd=cwd, dll_path=dll_path)
 
             if not args.skip_keras_test:
                 try:

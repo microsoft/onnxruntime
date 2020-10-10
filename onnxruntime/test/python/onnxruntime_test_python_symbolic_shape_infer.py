@@ -6,7 +6,6 @@ import onnx
 import os
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 from pathlib import Path
-import sys
 import unittest
 
 class TestSymbolicShapeInference(unittest.TestCase):
