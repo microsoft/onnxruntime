@@ -54,7 +54,7 @@ class MPIContext {
     int GetWorldSize() const { return world_size_; }
     int GetLocalSize() const { return local_size_; }
     
-    const static int MPI_TIMEOUT_IN_SECONDS = 15;
+    const static int MPI_TIMEOUT_IN_SECONDS = 10;
 
 #if defined(USE_MPI)
     // https://docs.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-best-practices

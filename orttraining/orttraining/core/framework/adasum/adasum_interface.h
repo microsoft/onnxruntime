@@ -13,6 +13,8 @@
 
 #include "orttraining/core/graph/optimizer_config.h"
 
+#include "orttraining/core/framework/distributed_run_context.h"
+
 namespace onnxruntime {
 namespace training {
 
@@ -28,8 +30,10 @@ static inline AdasumReductionType GetAdasumAlgo(int64_t reduce_algo)
 {
   switch (reduce_algo) {
     case 0:
-      return AdasumReductionType::CpuReduction;
+      return AdasumReductionType::None;
     case 1:
+      return AdasumReductionType::CpuReduction;
+    case 2:
       return AdasumReductionType::GpuHierarchical;
     default:
       ORT_THROW("Invalid Adasum reduction algorithm.");
@@ -40,18 +44,6 @@ static inline AdasumReductionType GetAdasumAlgo(int64_t reduce_algo)
 template <typename Communicator_type>
 class AdasumInterface {
 public:
-  AdasumInterface() {
-    // allocator_ = allocator;
-    // current_recv_buffer_length = INITIAL_TEMP_BUFFER_SIZE;
-    // // Pre-allocate a buffer.
-    // recv_buffer_ = (uint8_t*)allocator_->Alloc(current_recv_buffer_length);
-  };
-
-  ~AdasumInterface() {
-    // if (recv_buffer_ != nullptr) {
-    //   allocator_->Free((void*)recv_buffer_);
-    // }
-  }
 
   Status DispatchFusedAllreduce(void* grad_buffer, void* recv_buffer,
                                 std::vector<int>& tensor_counts, int start_level,
@@ -86,7 +78,7 @@ public:
 
   virtual bool IsAdasumInitialized() = 0;
 
-  virtual void InitializeVHDDReductionComms() = 0;
+  virtual void InitializeVHDDReductionComms(WorkerGroupType worker_group) = 0;
 
   virtual Communicator_type* GetReductionComms() = 0;
 

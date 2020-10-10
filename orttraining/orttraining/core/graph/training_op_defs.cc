@@ -961,8 +961,9 @@ Example 4:
   ONNX_CONTRIB_OPERATOR_SCHEMA(NcclAllReduce)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Attr("group_type", "0 - data parallel group, 1 - horizontal parallel group,"
-                           "2 - node local parallel group, 3 - cross node parallel group",
+      .Attr("group_type", "0 - global parallel group, 1 - data parallel group, "
+                          "2 - node local data parallel group, 3 - cross node data parallel group, "
+                          "4 - horozontal parallel, 5 - model parallel.",
             AttributeProto::INT,
             static_cast<int64_t>(0))
       .Input(0, "input", "tensors to be reduced", "T", OpSchema::Variadic)
@@ -1007,7 +1008,7 @@ Example 4:
   ONNX_CONTRIB_OPERATOR_SCHEMA(AdasumAllReduce)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Attr("reduce_algo", "Algorithms for Adasum. Valid values are: CpuReduction(0) or GpuHierarchical(1)",
+      .Attr("reduce_algo", "Algorithms for Adasum. Valid values are: CpuReduction(1) or GpuHierarchical(2)",
             AttributeProto::INT,
             static_cast<int64_t>(0))
       .Input(0, "input", "tensors to be reduced", "T", OpSchema::Variadic)

@@ -21,7 +21,7 @@ enum WorkerGroupType {
 
 struct WorkerGroup {
   std::vector<int32_t> ranks;  // array of global world rank
-  int32_t group_id;
+  int32_t group_id{-1};
   WorkerGroupType group_type;
   int32_t rank_in_group{-1};  // current worker' relative rank within this group, ranging from 0 to size-1
 

@@ -5,25 +5,32 @@
 #include "orttraining/training_ops/cuda/collective/nccl_common.h"
 
 #include "orttraining/core/framework/adasum/adasum_interface.h"
-
+#ifdef ORT_USE_MPI
+#include "orttraining/core/framework/adasum/adasum_mpi.h"
+#endif // ORT_USE_MPI
 namespace onnxruntime {
 namespace cuda {
 
 class AdasumAllReduce final : public NcclKernel {
  public:
   explicit AdasumAllReduce(const OpKernelInfo& info) : NcclKernel(info) {
-    unique_name_ = "AdasumAllReduceNode_" + info.node().Name();
-    int64_t adasum_type = training::AdasumReductionType::None;
-    info.GetAttrOrDefault("reduce_type", &adasum_type, static_cast<int64_t>(training::AdasumReductionType::None));
-    adasum_reduction_type_ = static_cast<training::AdasumReductionType>(adasum_type);
+   int64_t adasum_reduce_algo;
+   info.GetAttrOrDefault("reduce_algo", &adasum_reduce_algo, static_cast<int64_t>(0));
+   adasum_reduce_algo_ = training::GetAdasumAlgo(adasum_reduce_algo);
+   if (adasum_reduce_algo_ == training::AdasumReductionType::GpuHierarchical ||
+       adasum_reduce_algo_ == training::AdasumReductionType::CpuReduction) {
+     adasum_reducer_ = std::make_unique<training::AdasumMPI>();
+   }
+   if(!adasum_reducer_->IsAdasumInitialized()) {
+     adasum_reducer_->InitializeVHDDReductionComms();
+   }
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  std::string unique_name_;
-  training::AdasumReductionType adasum_reduction_type_ = training::AdasumReductionType::None;
-};
+  training::AdasumReductionType adasum_reduce_algo_ = training::AdasumReductionType::GpuHierarchical;
+  std::unique_ptr<training::AdasumMPI> adasum_reducer_;};
 
 }  // namespace cuda
 }  // namespace onnxruntime

@@ -17,7 +17,7 @@ public:
 
   bool IsAdasumInitialized() override;
   
-  void InitializeVHDDReductionComms() override;
+  void InitializeVHDDReductionComms(WorkerGroupType worker_group = WorkerGroupType::GlobalParallel) override;
 
   MPI_Comm* GetReductionComms() override { return reduction_comms_; }
 
