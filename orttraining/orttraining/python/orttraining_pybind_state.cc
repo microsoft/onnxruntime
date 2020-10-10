@@ -127,9 +127,7 @@ TrainingConfigurationResult ConfigureSessionForTraining(
       return it->second;
     };
     opt.use_mixed_precision_moments = parameters.use_fp16_moments;
-    opt.do_all_reduce_in_mixed_precision_type = true;
-    opt.use_fp16_moments = parameters.use_fp16_moments;
-    opt.do_all_reduce_in_fp16 = parameters.perform_fp16_allreduce;
+    opt.do_all_reduce_in_mixed_precision_type = parameters.perform_fp16_allreduce;
     // TODO: this mapping is temporary.
     // For now, nccl allreduce kernel only implements for allreduce_post_accumulation
     // hovorod allreduce kernel only implements for not allreduce_post_accumulation.
