@@ -46,7 +46,8 @@ void MemoryInfo::RecordActivationPatternInfo(const MemoryPatternGroup& mem_patte
   for (auto& item : tensors_memory_info_map_[MapType::Activation]) {
     if (AllocPlan(item.first).alloc_kind == AllocKind::kReuse) {
       auto reuse_buffer = AllocPlan(item.first).reused_buffer;
-      auto& reused_meomry = tensors_memory_info_map_[MapType::Activation].GetPlannedMemory(reuse_buffer);
+      auto reuse_map_type = AllocPlan(reuse_buffer).alloc_kind == AllocKind::kAllocateStatically ? MapType::Initializer : MapType::Activation;
+      auto& reused_meomry = tensors_memory_info_map_[reuse_map_type].GetPlannedMemory(reuse_buffer);
       tensors_memory_info_map_[MapType::Activation].AddPlannedMemory(item.first, reused_meomry);
     }
   }

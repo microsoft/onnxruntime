@@ -61,20 +61,25 @@ struct MemoryInfoMap {
   }
 
   inline const bool DynamicAllocation(const OrtValueIndex& idx) const {
+    ORT_ENFORCE(map_.find(idx) != map_.end());
     return map_.at(idx).dynamic_allocation;
   }
   inline const MemoryBlock& GetPlannedMemory(const OrtValueIndex& idx) const {
+    ORT_ENFORCE(map_.find(idx) != map_.end());
     return map_.at(idx).planned_block;
   }
 
   inline const size_t GetPlannedAddress(const OrtValueIndex& idx) const {
+    ORT_ENFORCE(map_.find(idx) != map_.end());
     return map_.at(idx).planned_block.offset_;
   }
 
   inline const size_t GetPlannedSize(const OrtValueIndex& idx) const {
+    ORT_ENFORCE(map_.find(idx) != map_.end());
     return map_.at(idx).planned_block.size_;
   }
   const size_t GetAllocAddress(const OrtValueIndex& idx, bool raw = false) const {
+    ORT_ENFORCE(map_.find(idx) != map_.end());
     if (raw) {
       return map_.at(idx).alloced_block.offset_;
     } else {
@@ -83,6 +88,7 @@ struct MemoryInfoMap {
   }
 
   inline const size_t GetAllocSize(const OrtValueIndex& idx) const {
+    ORT_ENFORCE(map_.find(idx) != map_.end());
     return map_.at(idx).alloced_block.size_;
   }
 
