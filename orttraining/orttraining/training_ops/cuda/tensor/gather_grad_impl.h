@@ -24,8 +24,9 @@ class CudaScratchBufferAllocator {
 };
 
 enum GatherGradImplementation {
-  ThreadPerIndex,
-  FancyIterator,
+  ThreadPerIndex = 0,
+  FancyIterator = 1,
+  PartialSums = 2,
 };
 
 template <typename T, typename Tin>

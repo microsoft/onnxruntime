@@ -25,12 +25,13 @@ ONNX_OPERATOR_KERNEL_EX(
     GatherGrad);
 
 GatherGradImplementation GetGatherGradImplementation() {
-  std::istringstream stream{
-      Env::Default().GetEnvironmentVar("ORT_GATHER_GRAD_IMPL")};
-
-  int val;
-  ORT_ENFORCE(stream >> val && stream.eof(), "Failed to parse ORT_GATHER_GRAD_IMPL environment variable value.");
-
+  int val = GatherGradImplementation::PartialSums;
+  const auto val_str = Env::Default().GetEnvironmentVar("ORT_GATHER_GRAD_IMPL");
+  if (!val_str.empty()) {
+    std::istringstream stream{val_str};
+    ORT_ENFORCE(stream >> val && stream.eof(), "Failed to parse ORT_GATHER_GRAD_IMPL environment variable value.");
+  }
+  LOGS_DEFAULT(WARNING) << "gather grad impl: " << val;
   return static_cast<GatherGradImplementation>(val);
 }
 
@@ -108,6 +109,12 @@ Status GatherGrad::ComputeInternal(OpKernelContext* context) const {
 
   Tensor* output = context->Output(0, data_shape);
   CUDA_RETURN_IF_ERROR(cudaMemset(output->MutableDataRaw(), 0, output->SizeInBytes()));
+
+  if (indices->Shape().Size() == 0) {
+    // nothing else to do
+    return Status::OK();
+  }
+
   MLDataType T_type = grad->DataType();
   MLDataType Tin_type = indices->DataType();
 

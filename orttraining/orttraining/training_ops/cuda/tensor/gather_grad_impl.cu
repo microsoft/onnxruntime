@@ -6,6 +6,7 @@
 #include <iterator>
 
 #include <cub/device/device_radix_sort.cuh>
+#include <cub/device/device_reduce.cuh>
 #include <cub/device/device_run_length_encode.cuh>
 #include <cub/device/device_scan.cuh>
 #include <cub/device/device_segmented_reduce.cuh>
@@ -186,12 +187,18 @@ struct Sum {
 template <typename T>
 __global__ void PrintDataKernel(const T* data, size_t length) {
   if (threadIdx.x == 0) {
-    printf("PrintData:\n");
     for (size_t i = 0; i < length; ++i) {
       printf("%f ", static_cast<float>(data[i]));
     }
     printf("\n");
   }
+}
+
+template <typename T>
+void PrintData(const char* description, const T* data, size_t length) {
+  printf("%s\n", description);
+  PrintDataKernel<T><<<1, 1>>>(data, length);
+  cudaDeviceSynchronize();
 }
 
 template <typename T, typename TIndex>
@@ -265,14 +272,6 @@ void GatherGradImpl_FancyIterator(
         num_unique_dX_indices.get(),
         num_indices));
   }
-
-  // idea 1:
-  // split into similarly sized segments
-  // - one segment sums a fixed number of items
-  // combine segment sums into output
-
-  // idea 2:
-  // use fancy iterators and cub::DeviceSegmentedReduce
 
   // TODO - this causes sync with CPU!
   int32_t host_num_unique_dX_indices;
@@ -420,11 +419,326 @@ void GatherGradImpl_FancyIterator(
   }
 }
 
-template <typename T, typename Tin>
+// adapted from here: https://github.com/pytorch/pytorch/blob/b186831c08e0e4e447eedb8a5cfab582995d37f9/aten/src/ATen/native/cuda/EmbeddingBackwardKernel.cu
+constexpr int kMaxPartialSegmentSize = 10;
+
+template <typename TIndex>
+__global__ void krn_partials_per_segment(
+    TIndex* ret, const TIndex* segment_offsets,
+    TIndex num_of_segments, TIndex numel) {
+  const int id = blockIdx.x * blockDim.x + threadIdx.x;
+  if (id < num_of_segments) {
+    const TIndex idx_start = segment_offsets[id];
+    const TIndex idx_end = (id == num_of_segments - 1) ? numel : segment_offsets[id + 1];
+    const TIndex size = idx_end - idx_start;
+    ret[id] = CeilDiv(size, kMaxPartialSegmentSize);
+  }
+}
+
+template <typename TIndex>
+__global__ void krn_partial_segment_offset(
+    TIndex* ret,
+    const TIndex* partials_per_segment,
+    const TIndex* partials_per_segment_offset,
+    const TIndex* segment_offsets,
+    TIndex num_of_segments) {
+  const int id = blockIdx.x * blockDim.x + threadIdx.x;
+  if (id < num_of_segments) {
+    TIndex idx = partials_per_segment_offset[id];
+    const TIndex num_partials = partials_per_segment[id];
+    const TIndex segment_offset = segment_offsets[id];
+    for (TIndex i = 0; i < num_partials; ++i) {
+      ret[idx++] = segment_offset + i * kMaxPartialSegmentSize;
+    }
+  }
+}
+
+template <typename T>
+struct AccumulationType;
+template <>
+struct AccumulationType<half> { using type = float; };
+template <>
+struct AccumulationType<float> { using type = float; };
+
+template <typename T>
+using AccumulationType_t = typename AccumulationType<T>::type;
+
+template <typename T, typename TIndex>
+__global__ void compute_grad_weight(
+    const TIndex* dY_indices_sorted,
+    const T* dY_data,
+    TIndex num_indices,
+    TIndex num_gathered_per_index,
+    const TIndex* partial_segment_offsets,
+    TIndex num_partial_segments,
+    AccumulationType_t<T>* partial_segment_sums,
+    const TIndex num_gathered_per_index_warp_size_multiple) {
+  const int id = blockIdx.x * blockDim.x + threadIdx.x;
+  const int partial_segment_id = id / num_gathered_per_index_warp_size_multiple;
+  const int gathered_id = id % num_gathered_per_index_warp_size_multiple;
+  const int batch_id = blockIdx.y;
+
+  if (gathered_id >= num_gathered_per_index) {
+    return;
+  }
+  if (partial_segment_id >= num_partial_segments) {
+    return;
+  }
+
+  const TIndex idx_begin = partial_segment_offsets[partial_segment_id];
+  const TIndex idx_end =
+      (partial_segment_id == num_partial_segments - 1) ? num_indices : partial_segment_offsets[partial_segment_id + 1];
+
+  AccumulationType_t<T> partial_segment_sum = 0;
+  for (TIndex idx = idx_begin; idx < idx_end; ++idx) {
+    const TIndex target_row = dY_indices_sorted[idx];
+    partial_segment_sum += static_cast<AccumulationType_t<T>>(
+        dY_data[batch_id * num_indices * num_gathered_per_index +
+                target_row * num_gathered_per_index +
+                gathered_id]);
+  }
+
+  // printf("compute_partial_sums: batch %d, partial_segment %d, gathered %d, partial_sum %f",
+  //        static_cast<int>(batch_id), static_cast<int>(partial_segment_id), static_cast<int>(gathered_id),
+  //        static_cast<float>(partial_segment_sum));
+  partial_segment_sums[batch_id * num_partial_segments * num_gathered_per_index +
+                       partial_segment_id * num_gathered_per_index +
+                       gathered_id] =
+      partial_segment_sum;
+}
+
+// This kernel assumes that all input tensors are contiguous.
+template <typename T, typename TIndex>
+__global__ void sum_and_scatter(
+    const TIndex* dX_indices_sorted, T* dX_data, TIndex num_gathered_per_index,
+    const TIndex* segment_offsets, TIndex num_segments,
+    const AccumulationType_t<T>* partial_segment_sums,
+    const TIndex* per_segment_partial_segment_offsets, TIndex num_partial_segments,
+    const TIndex num_gathered_per_index_warp_size_multiple,
+    const TIndex dX_batch_size) {
+  const int gid = blockIdx.x * blockDim.x + threadIdx.x;
+  const int segment_id = gid / num_gathered_per_index_warp_size_multiple;
+  const int gathered_id = gid % num_gathered_per_index_warp_size_multiple;
+  const int batch_id = blockIdx.y;
+
+  if (gathered_id >= num_gathered_per_index) {
+    return;
+  }
+  if (segment_id >= num_segments) {
+    return;
+  }
+
+  const TIndex idx_begin = per_segment_partial_segment_offsets[segment_id];
+  const TIndex idx_end =
+      (segment_id == num_segments - 1) ? num_partial_segments : per_segment_partial_segment_offsets[segment_id + 1];
+
+  AccumulationType_t<T> segment_sum = 0;
+  for (TIndex idx = idx_begin; idx < idx_end; ++idx) {
+    segment_sum +=
+        partial_segment_sums[batch_id * num_partial_segments * num_gathered_per_index +
+                             idx * num_gathered_per_index +
+                             gathered_id];
+  }
+
+  const int64_t target_row = dX_indices_sorted[segment_offsets[segment_id]];
+  dX_data[batch_id * dX_batch_size +
+          target_row * num_gathered_per_index +
+          gathered_id] =
+      segment_sum;
+}
+
+template <typename T, typename TIndex>
+void GatherGradImpl_PartialSums(
+    const CudaScratchBufferAllocator& allocator,
+    const T* dY_data,
+    const TIndex* dX_indices,
+    const TIndex num_indices,
+    const int64_t /*num_weights*/,
+    const TIndex num_gathered_per_index,
+    T* dX_data,
+    const TIndex dX_batch_size,
+    const TIndex num_batches) {
+  // allocate intermediate buffers
+  auto dY_indices = allocator.GetScratchBuffer<TIndex>(num_indices);
+
+  // initialize dY_indices with [0, num_indices)
+  {
+    const auto blocks_per_grid = CeilDiv(num_indices, GridDim::maxThreadsPerBlock);
+    cub::CountingInputIterator<TIndex> counting_input(TIndex{0});
+    CopyKernel<<<blocks_per_grid, GridDim::maxThreadsPerBlock>>>(
+        counting_input, num_indices, dY_indices.get());
+  }
+
+  // sort index lists together by dX_indices
+  auto dX_indices_sorted = allocator.GetScratchBuffer<TIndex>(num_indices);
+  auto dY_indices_sorted = allocator.GetScratchBuffer<TIndex>(num_indices);
+  {
+    size_t temp_storage_size_bytes = 0;
+    CUDA_CALL_THROW(cub::DeviceRadixSort::SortPairs(
+        nullptr, temp_storage_size_bytes,
+        dX_indices, dX_indices_sorted.get(),
+        dY_indices.get(), dY_indices_sorted.get(),
+        num_indices));
+
+    auto temp_storage = allocator.GetScratchBuffer<void>(temp_storage_size_bytes);
+    CUDA_CALL_THROW(cub::DeviceRadixSort::SortPairs(
+        temp_storage.get(), temp_storage_size_bytes,
+        dX_indices, dX_indices_sorted.get(),
+        dY_indices.get(), dY_indices_sorted.get(),
+        num_indices));
+  }
+  // PrintData("dX_indices_sorted", dX_indices_sorted.get(), num_indices);
+  // PrintData("dY_indices_sorted", dY_indices_sorted.get(), num_indices);
+
+  // a segment is a group of dX and dY indices. each continuous run of indices
+  // with the same value in dX_indices_sorted forms a segment.
+  // for example, given:
+  //   dX_indices_sorted = [1, 1, 2, 2, 2, 3]
+  //   dY_indices_sorted = [1, 4, 0, 3, 5, 2]
+  // the segments will be:  '--'  '-----'  '
+
+  // get number of segments and segment offsets
+  TIndex host_num_segments = 0;
+  auto segment_offsets = allocator.GetScratchBuffer<TIndex>(num_indices);
+  {
+    auto num_segments = allocator.GetScratchBuffer<TIndex>(1);
+    auto dX_indices_sorted_unique = allocator.GetScratchBuffer<TIndex>(num_indices);
+    size_t temp_storage_size_bytes = 0;
+    CUDA_CALL_THROW(cub::DeviceReduce::ReduceByKey(
+        nullptr, temp_storage_size_bytes,
+        dX_indices_sorted.get(),
+        dX_indices_sorted_unique.get(),
+        thrust::make_counting_iterator<TIndex>(0),
+        segment_offsets.get(),
+        num_segments.get(),
+        cub::Min{},
+        num_indices));
+
+    auto temp_storage = allocator.GetScratchBuffer<void>(temp_storage_size_bytes);
+    CUDA_CALL_THROW(cub::DeviceReduce::ReduceByKey(
+        temp_storage.get(), temp_storage_size_bytes,
+        dX_indices_sorted.get(),
+        dX_indices_sorted_unique.get(),
+        thrust::make_counting_iterator(0),
+        segment_offsets.get(),
+        num_segments.get(),
+        cub::Min{},
+        num_indices));
+
+    // CPU/GPU sync!
+    CUDA_CALL_THROW(cudaMemcpy(
+        &host_num_segments, num_segments.get(), sizeof(TIndex), cudaMemcpyDeviceToHost));
+  }
+  // PrintData("segment_offsets", segment_offsets.get(), host_num_segments);
+
+  // each segment is split into partial segments of at most
+  // kMaxPartialSegmentSize index pairs.
+
+  // compute the number of partial segments per segment
+  auto per_segment_partial_segment_counts = allocator.GetScratchBuffer<TIndex>(host_num_segments);
+  {
+    const auto blocks_per_grid = CeilDiv(num_indices, GridDim::maxThreadsPerBlock);
+    krn_partials_per_segment<<<blocks_per_grid, GridDim::maxThreadsPerBlock>>>(
+        per_segment_partial_segment_counts.get(),
+        segment_offsets.get(), host_num_segments, num_indices);
+  }
+  // PrintData("per_segment_partial_segment_counts", per_segment_partial_segment_counts.get(), host_num_segments);
+
+  // compute offsets (in partial segments) per segment
+  auto per_segment_partial_segment_offsets = allocator.GetScratchBuffer<TIndex>(host_num_segments);
+  {
+    size_t temp_storage_size_bytes = 0;
+    cub::DeviceScan::ExclusiveSum(
+        nullptr, temp_storage_size_bytes,
+        per_segment_partial_segment_counts.get(),
+        per_segment_partial_segment_offsets.get(),
+        host_num_segments);
+
+    auto temp_storage = allocator.GetScratchBuffer<void>(temp_storage_size_bytes);
+    cub::DeviceScan::ExclusiveSum(
+        temp_storage.get(), temp_storage_size_bytes,
+        per_segment_partial_segment_counts.get(),
+        per_segment_partial_segment_offsets.get(),
+        host_num_segments);
+  }
+  // PrintData("per_segment_partial_segment_offsets", per_segment_partial_segment_offsets.get(), host_num_segments);
+
+  TIndex host_num_partial_segments = 0;
+  {
+    // CPU/GPU sync!
+    TIndex last_segment_partial_segment_offset, last_segment_num_partial_segments;
+    CUDA_CALL_THROW(cudaMemcpy(
+        &last_segment_partial_segment_offset,
+        &per_segment_partial_segment_offsets.get()[host_num_segments - 1],
+        sizeof(TIndex), cudaMemcpyDeviceToHost));
+    CUDA_CALL_THROW(cudaMemcpy(
+        &last_segment_num_partial_segments,
+        &per_segment_partial_segment_counts.get()[host_num_segments - 1],
+        sizeof(TIndex), cudaMemcpyDeviceToHost));
+    host_num_partial_segments =
+        last_segment_partial_segment_offset + last_segment_num_partial_segments;
+  }
+
+  auto partial_segment_offsets = allocator.GetScratchBuffer<TIndex>(host_num_partial_segments);
+  {
+    const auto blocks_per_grid = CeilDiv(host_num_segments, GridDim::maxThreadsPerBlock);
+    krn_partial_segment_offset<<<blocks_per_grid, GridDim::maxThreadsPerBlock>>>(
+        partial_segment_offsets.get(),
+        per_segment_partial_segment_counts.get(),
+        per_segment_partial_segment_offsets.get(),
+        segment_offsets.get(),
+        host_num_segments);
+  }
+  // PrintData("partial_segment_offsets", partial_segment_offsets.get(), host_num_partial_segments);
+
+  {
+    auto partial_segment_sums = allocator.GetScratchBuffer<AccumulationType_t<T>>(
+        num_batches * host_num_partial_segments * num_gathered_per_index);
+    const auto num_gathered_per_index_warp_size_multiple =
+        CeilDiv(num_gathered_per_index, GPU_WARP_SIZE) * GPU_WARP_SIZE;
+    const auto threads_per_block =
+        std::min<TIndex>(num_gathered_per_index_warp_size_multiple, GridDim::maxThreadsPerBlock);
+    {
+      const dim3 blocks_per_grid(
+          CeilDiv(host_num_partial_segments * num_gathered_per_index_warp_size_multiple, threads_per_block),
+          num_batches);
+      compute_grad_weight<<<blocks_per_grid, threads_per_block>>>(
+          dY_indices_sorted.get(),
+          dY_data,
+          num_indices,
+          num_gathered_per_index,
+          partial_segment_offsets.get(),
+          host_num_partial_segments,
+          partial_segment_sums.get(),
+          num_gathered_per_index_warp_size_multiple);
+    }
+    // PrintData("partial_segment_sums", partial_segment_sums.get(),
+    //           num_batches * host_num_partial_segments * num_gathered_per_index);
+
+    {
+      const dim3 blocks_per_grid(
+          CeilDiv(host_num_segments * num_gathered_per_index_warp_size_multiple, threads_per_block),
+          num_batches);
+      sum_and_scatter<<<blocks_per_grid, threads_per_block>>>(
+          dX_indices_sorted.get(),
+          dX_data,
+          num_gathered_per_index,
+          segment_offsets.get(),
+          host_num_segments,
+          partial_segment_sums.get(),
+          per_segment_partial_segment_offsets.get(),
+          host_num_partial_segments,
+          num_gathered_per_index_warp_size_multiple,
+          dX_batch_size);
+    }
+  }
+}
+
+template <typename T, typename TIndex>
 void GatherGradImpl(
     const CudaScratchBufferAllocator& allocator,
     const T* grad_data,
-    const Tin* indices_data,
+    const TIndex* indices_data,
     const int64_t num_indices,
     const int64_t num_weights,
     const int64_t stride,
@@ -439,6 +753,10 @@ void GatherGradImpl(
 
     case GatherGradImplementation::FancyIterator:
       GatherGradImpl_FancyIterator(allocator, grad_data, indices_data, num_indices, num_weights, stride, output_data, num_inputs, param_itrs);
+      break;
+
+    case GatherGradImplementation::PartialSums:
+      GatherGradImpl_PartialSums(allocator, grad_data, indices_data, static_cast<TIndex>(num_indices), static_cast<TIndex>(num_weights), static_cast<TIndex>(stride), output_data, static_cast<TIndex>(num_inputs), static_cast<TIndex>(param_itrs));
       break;
 
     default:
