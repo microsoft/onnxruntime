@@ -205,11 +205,6 @@ bool PrepareForReduce(const Tensor* input_tensor_ptr,
                       bool check_no_transpose = false,
                       const TensorShape* input_shape_override = nullptr);
 
-template <typename T>
-void ReduceSumCore(const T* input_data, T* output_data, bool no_transpose,
-                   int64_t blocks, int64_t block_size, FastAllocVector<T>& transposed_input_data,
-                   concurrency::ThreadPool* tp);
-
 template <bool allow_multi_axes>
 class ReduceKernelBase {
  protected:
