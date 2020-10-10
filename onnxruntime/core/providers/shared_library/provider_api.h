@@ -19,6 +19,73 @@
 #include "core/framework/ortdevice.h"
 #include "core/framework/ortmemoryinfo.h"
 #include "core/framework/tensor_shape.h"
+
+namespace onnxruntime {
+namespace logging {
+
+enum class Severity {
+  kVERBOSE = 0,
+  kINFO = 1,
+  kWARNING = 2,
+  kERROR = 3,
+  kFATAL = 4
+};
+
+enum class DataType {
+  SYSTEM = 0,  ///< System data.
+  USER = 1     ///< Contains potentially sensitive user data.
+};
+
+}  // namespace logging
+
+enum class AutoPadType {
+  NOTSET = 0,
+  VALID = 1,
+  SAME_UPPER = 2,
+  SAME_LOWER = 3,
+};
+
+// onnx Protobuf types (all of these are actually just Provider_<type> -> ONNX_NAMESPACE::<type>)
+struct Provider_AttributeProto;
+struct Provider_GraphProto;
+struct Provider_ModelProto;
+struct Provider_NodeProto;
+struct Provider_TensorProto;
+struct Provider_TensorProtos;
+struct Provider_TensorShapeProto_Dimension;
+struct Provider_TensorShapeProto_Dimensions;
+struct Provider_TensorShapeProto;
+struct Provider_TypeProto_Tensor;
+struct Provider_TypeProto;
+struct Provider_ValueInfoProto;
+struct Provider_ValueInfoProtos;
+
+// OnnxRuntime Types (all of these are actually just Provider_<type> -> <type>)
+struct CPUIDInfo;
+namespace logging {
+struct Logger;
+struct Capture;
+}  // namespace logging
+struct Provider_ComputeCapability;
+struct Provider_DataTransferManager;
+struct Provider_IDataTransfer;
+struct Provider_IndexedSubGraph;
+struct Provider_IndexedSubGraph_MetaDef;
+struct Provider_KernelDef;
+struct Provider_KernelDefBuilder;
+struct Provider_KernelRegistry;
+struct Provider_Function;
+struct Provider_Graph;
+struct Provider_GraphViewer;
+struct Provider_Model;
+struct Provider_Node;
+struct Provider_NodeArg;
+struct Provider_NodeAttributes;
+struct Provider_OpKernelContext;
+struct Provider_OpKernelInfo;
+struct Provider_Tensor;
+}
+
 #include "provider_interfaces.h"
 
 namespace ONNX_NAMESPACE {
@@ -119,85 +186,17 @@ std::unique_ptr<Provider_IDataTransfer> Provider_CreateGPUDataTransfer();
 
 std::string GetEnvironmentVar(const std::string& var_name);
 
-class CPUIDInfo {
- public:
-  static const CPUIDInfo& GetCPUIDInfo();
-
-  bool HasAVX2() const;
-  bool HasAVX512f() const;
-};
+inline AutoPadType StringToAutoPadType(const std::string& str) { return g_host->StringToAutoPadType(str); }
 
 namespace logging {
 
-enum class Severity {
-  kVERBOSE = 0,
-  kINFO = 1,
-  kWARNING = 2,
-  kERROR = 3,
-  kFATAL = 4
-};
-
-enum class DataType {
-  SYSTEM = 0,  ///< System data.
-  USER = 1     ///< Contains potentially sensitive user data.
-};
-
 struct Category {
   static const char* onnxruntime;  ///< General output
-  static const char* System;       ///< Log output regarding interactions with the host system
-  // TODO: What other high level categories are meaningful? Model? Optimizer? Execution?
 };
 
 constexpr const char* SEVERITY_PREFIX = "VIWEF";
 
-class Logger {
- public:
-  bool OutputIsEnabled(Severity severity, DataType data_type) const noexcept;
-};
-
-class LoggingManager {
- public:
-  static const Logger& DefaultLogger();
-};
-
-class Capture {
- public:
-  Capture(const Logger& logger, logging::Severity severity, const char* category,
-          logging::DataType dataType, const CodeLocation& location);
-
-  std::ostream& Stream() noexcept;
-
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Capture);
-};
-
 }  // namespace logging
-
-enum class AutoPadType {
-  NOTSET = 0,
-  VALID = 1,
-  SAME_UPPER = 2,
-  SAME_LOWER = 3,
-};
-
-// TODO(RyanHill): Move this to a host function
-inline AutoPadType StringToAutoPadType(const std::string& str) {
-  if (str.empty()) {
-    return AutoPadType::NOTSET;
-  }
-  if (str == "NOTSET") {  // in onnx spec, default value is "NOTSET"
-    return AutoPadType::NOTSET;
-  }
-  if (str == "VALID") {
-    return AutoPadType::VALID;
-  }
-  if (str == "SAME_UPPER") {
-    return AutoPadType::SAME_UPPER;
-  }
-  if (str == "SAME_LOWER") {
-    return AutoPadType::SAME_LOWER;
-  }
-  ORT_ENFORCE(false, "Unknown AutoPadType String");
-}
 
 namespace math {
 
@@ -230,12 +229,12 @@ constexpr T roundUpPow2(T a) {
   }
 
 #define CREATE_MESSAGE(logger, severity, category, datatype) \
-  ::onnxruntime::logging::Capture(logger, ::onnxruntime::logging::Severity::k##severity, category, datatype, ORT_WHERE)
+  ::onnxruntime::logging::Capture::Create(logger, ::onnxruntime::logging::Severity::k##severity, category, datatype, ORT_WHERE)
 
 // iostream style logging. Capture log info in Message, and push to the logger in ~Message.
 #define LOGS_CATEGORY(logger, severity, category)                                                                        \
   if ((logger).OutputIsEnabled(::onnxruntime::logging::Severity::k##severity, ::onnxruntime::logging::DataType::SYSTEM)) \
-  CREATE_MESSAGE(logger, severity, category, ::onnxruntime::logging::DataType::SYSTEM).Stream()
+  CREATE_MESSAGE(logger, severity, category, ::onnxruntime::logging::DataType::SYSTEM)->Stream()
 
 #define LOGS_DEFAULT_CATEGORY(severity, category) \
   LOGS_CATEGORY(::onnxruntime::logging::LoggingManager::DefaultLogger(), severity, category)
