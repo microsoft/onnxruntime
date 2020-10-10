@@ -1465,7 +1465,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
           "Rpbdoc(Get a single session configuration value using the given configuration key.)pbdoc")
       .def(
           "register_custom_ops_library",
-          [](PySessionOptions* options, const std::string& library_path)
+          [](PySessionOptions* options, const char* library_path)
               -> void {
 #if !defined(ORT_MINIMAL_BUILD)
             // We need to pass in an `OrtSessionOptions` instance because the exported method in the shared library expects that
@@ -1473,7 +1473,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
             // into the container we are maintaining for that very purpose and the `ortSessionoptions` instance can go out of scope.
             OrtSessionOptions s;
 
-            options->custom_op_libraries_.emplace_back(std::make_shared<CustomOpLibrary>(library_path.c_str(), s));
+            options->custom_op_libraries_.emplace_back(std::make_shared<CustomOpLibrary>(library_path, s));
 
             // reserve enough memory to hold current contents and the new incoming contents
             options->custom_op_domains_.reserve(options->custom_op_domains_.size() + s.custom_op_domains_.size());
@@ -1486,7 +1486,16 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
             ORT_THROW("Custom Ops are not supported in this build.");
 #endif
           },
-          "Rpbdoc(Specify the path to the shared library containing the custom op kernels required to run a model.)pbdoc");
+          "Rpbdoc(Specify the path to the shared library containing the custom op kernels required to run a model.)pbdoc")
+      .def(
+          "add_initializer", [](PySessionOptions* options, const char* name, py::object& ml_value_pyobject) -> void {
+            ORT_ENFORCE(strcmp(Py_TYPE(ml_value_pyobject.ptr())->tp_name, PYTHON_ORTVALUE_OBJECT_NAME) == 0, "The provided Python object must be an OrtValue");
+            // The user needs to ensure that the python OrtValue being provided as an overriding initializer
+            // is not destructed as long as any session that uses the provided OrtValue initializer is still in scope
+            // This is no different than the native APIs
+            OrtValue* ml_value = ml_value_pyobject.attr(PYTHON_ORTVALUE_NATIVE_OBJECT_ATTR).cast<OrtValue*>();
+            options->AddInitializer(name, ml_value);
+          });
 
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")
       .def(py::init())
