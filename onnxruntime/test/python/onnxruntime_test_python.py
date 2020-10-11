@@ -780,7 +780,7 @@ class TestInferenceSession(unittest.TestCase):
             #onnxrt.capi._pybind_state.set_do_copy_in_default_stream(False)
 
             session = onnxrt.InferenceSession(get_name("issue4829.onnx"))
-            shape = np.array([2,2])
+            shape = np.array([2,2], dtype=np.int64)
             for iteration in range(100000):
                 result = session.run(output_names=['output'], input_feed={'shape': shape})
 
