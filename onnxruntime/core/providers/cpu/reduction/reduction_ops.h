@@ -151,7 +151,7 @@ bool NeedsTransposeForReduce(const Tensor* input_tensor_ptr,
                              bool& empty_reduce,
                              const TensorShape* input_shape_override);
 
-class ResultsExperimentalPrepareForReduce {
+class ResultsNoTransposePrepareForReduce {
  public:
   std::vector<int64_t> input_shape;
   std::vector<int64_t> reduced_axes;
@@ -180,19 +180,19 @@ class ResultsExperimentalPrepareForReduce {
   }
 };
 
-void ExperimentalPrepareForReduce(const TensorShape& new_input_shape,
+void NoTransposePrepareForReduce(const TensorShape& new_input_shape,
                                   const std::vector<int64_t>& reduced_axes,
-                                  ResultsExperimentalPrepareForReduce& results);
+                                  ResultsNoTransposePrepareForReduce& results);
 
 template <typename T, typename AGG>
-void ExperimentalReduce(Tensor* output, const TensorShape& new_input_shape, const Tensor& input,
+void NoTransposeReduce(Tensor* output, const TensorShape& new_input_shape, const Tensor& input,
                         const std::vector<int64_t>& reduced_axes, concurrency::ThreadPool* tp,
-                        ResultsExperimentalPrepareForReduce& last_results);
+                        ResultsNoTransposePrepareForReduce& last_results);
 
 template <typename T, typename AGG>
 void CommonReduce(OpKernelContext* ctx,
                   const std::vector<int64_t> axes_, int64_t keepdims_,
-                  ResultsExperimentalPrepareForReduce& last_results);
+                  ResultsNoTransposePrepareForReduce& last_results);
 
 template <typename T>
 bool PrepareForReduce(const Tensor* input_tensor_ptr,
@@ -234,7 +234,7 @@ class ReduceKernelBase {
   bool select_last_index_;
 
   // Caches the configuration of the last execution.
-  mutable ResultsExperimentalPrepareForReduce last_results_;
+  mutable ResultsNoTransposePrepareForReduce last_results_;
 };
 
 template <bool allow_multi_axes>

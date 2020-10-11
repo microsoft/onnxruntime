@@ -397,9 +397,9 @@ bool PrepareForReduce(const Tensor* input_tensor_ptr,
   return false;
 }
 
-void ExperimentalPrepareForReduce(const TensorShape& new_input_shape,
-                                  const std::vector<int64_t>& reduced_axes,
-                                  ResultsExperimentalPrepareForReduce& results) {
+void NoTransposePrepareForReduce(const TensorShape& new_input_shape,
+                                 const std::vector<int64_t>& reduced_axes,
+                                 ResultsNoTransposePrepareForReduce& results) {
   // Common initialisation for the indices.
   std::vector<int64_t> cumulative_shape = new_input_shape.GetDims();
   cumulative_shape[cumulative_shape.size() - 1] = 1;
@@ -495,9 +495,9 @@ void ExperimentalPrepareForReduce(const TensorShape& new_input_shape,
 }
 
 template <typename T, typename AGG>
-void ExperimentalReduce(Tensor* output, const TensorShape& new_input_shape, const Tensor& input,
-                        const std::vector<int64_t>& reduced_axes, concurrency::ThreadPool* tp,
-                        ResultsExperimentalPrepareForReduce& last_results) {
+void NoTransposeReduce(Tensor* output, const TensorShape& new_input_shape, const Tensor& input,
+                       const std::vector<int64_t>& reduced_axes, concurrency::ThreadPool* tp,
+                       ResultsNoTransposePrepareForReduce& last_results) {
   auto output_shape = output->Shape();
   const T* from_data = input.template Data<T>();
   T* to_data = output->template MutableData<T>();
@@ -511,7 +511,7 @@ void ExperimentalReduce(Tensor* output, const TensorShape& new_input_shape, cons
   }
 
   if (!last_results.equal(new_input_shape.GetDims(), reduced_axes)) {
-    ExperimentalPrepareForReduce(new_input_shape, reduced_axes, last_results);
+    NoTransposePrepareForReduce(new_input_shape, reduced_axes, last_results);
     if (last_results.last_loop_red_size == 0 || last_results.last_loop_size == 0)
       return;
   }
@@ -559,7 +559,7 @@ void DropDimensions(const std::vector<int64_t>& input_shape, const std::vector<i
 template <typename T, typename AGG>
 void CommonReduce(OpKernelContext* ctx,
                   const std::vector<int64_t> axes_, int64_t keepdims_,
-                  ResultsExperimentalPrepareForReduce& last_results) {
+                  ResultsNoTransposePrepareForReduce& last_results) {
   std::vector<int64_t> axes;
   const Tensor* input = ctx->Input<Tensor>(0);
   auto reduced_dims = input->Shape().GetDims();
@@ -593,7 +593,7 @@ void CommonReduce(OpKernelContext* ctx,
     DropDimensions(output_shape, axes, dropped_axes);
     output = ctx->Output(0, dropped_axes);
   }
-  ExperimentalReduce<T, AGG>(output, new_input_shape, *input, axes, ctx->GetOperatorThreadPool(), last_results);
+  NoTransposeReduce<T, AGG>(output, new_input_shape, *input, axes, ctx->GetOperatorThreadPool(), last_results);
 }
 
 template <typename T>
@@ -699,16 +699,16 @@ Tensor ReduceSum<T>::Impl(const Tensor& input, const std::vector<int64_t>& reduc
   }
 
   if (keep_dims) {
-    ResultsExperimentalPrepareForReduce last_results;
+    ResultsNoTransposePrepareForReduce last_results;
     Tensor output(input.DataType(), output_shape, allocator);
-    ExperimentalReduce<T, ReduceAggregatorSum<T>>(&output, new_input_shape, input, axes, tp, last_results);
+    NoTransposeReduce<T, ReduceAggregatorSum<T>>(&output, new_input_shape, input, axes, tp, last_results);
     return output;
   } else {
-    ResultsExperimentalPrepareForReduce last_results;
+    ResultsNoTransposePrepareForReduce last_results;
     std::vector<int64_t> dropped_axes;
     DropDimensions(output_shape, axes, dropped_axes);
     Tensor output(input.DataType(), dropped_axes, allocator);
-    ExperimentalReduce<T, ReduceAggregatorSum<T>>(&output, new_input_shape, input, axes, tp, last_results);
+    NoTransposeReduce<T, ReduceAggregatorSum<T>>(&output, new_input_shape, input, axes, tp, last_results);
     return output;
   }
 }
@@ -855,5 +855,22 @@ template class ReduceSum<float>;
 template class ReduceSum<int32_t>;
 template class ReduceSum<double>;
 template class ReduceSum<int64_t>;
+
+// TODO: replace implementation of ReduceSum in OrtTraining by the new one
+#define REGISTER_FOR_ORTTRAINING_TYPED(T)                                    \
+  template bool PrepareForReduce(const Tensor* input_tensor_ptr,             \
+                                 FastAllocVector<T>& transposed_input_data,  \
+                                 int64_t& block_size,                        \
+                                 int64_t& blocks,                            \
+                                 const std::vector<int64_t>& axes_,          \
+                                 bool keepdims_,                             \
+                                 /*out*/ std::vector<int64_t>& reduced_dims, \
+                                 bool check_no_transpose,                    \
+                                 const TensorShape* input_shape_override);
+
+REGISTER_FOR_ORTTRAINING_TYPED(float)
+REGISTER_FOR_ORTTRAINING_TYPED(double)
+REGISTER_FOR_ORTTRAINING_TYPED(int32_t)
+REGISTER_FOR_ORTTRAINING_TYPED(int64_t)
 
 }  // namespace onnxruntime
