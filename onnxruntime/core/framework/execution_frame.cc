@@ -244,7 +244,6 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
     //if there are some traditional ml value type in inputs disable the memory pattern optimization.
     if (all_tensors) {
       mem_patterns_ = session_state.GetMemoryPatternGroup(input_shapes, feed_mlvalue_idxs, inferred_shapes_);
-      planner_ = onnxruntime::make_unique<OrtValuePatternPlanner>(*session_state.GetExecutionPlan());
       // if no existing patterns, generate one in this executionframe
       if (!mem_patterns_) {
         planner_ = onnxruntime::make_unique<OrtValuePatternPlanner>(*session_state.GetExecutionPlan());
@@ -301,6 +300,7 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
       }
     }
     //Record activation memory pattern
+    session_state_.GetMutableMemoryInfo().ClearMemoryInfoPerExecution();
     session_state_.GetMutableMemoryInfo().RecordActivationPatternInfo(*mem_patterns_);
   }
 }

@@ -21,24 +21,9 @@ enum MLValueTensorType {
   Unknown,
 };
 
-struct AllocInfoPerTensor {
-  AllocInfoPerTensor() = default;
-  MLValueTensorType tensor_type{Unknown};
-  OrtValueIndex mlvalue_index{0};
-  OrtValueName mlvalue_name{""};
-
-  IntervalT lifetime_interval{0, 0};
-  IntervalT alloctime_interval{0, 0};
-  bool inplace_reuse{false};
-  OrtValueIndex reused_buffer{0};
-  AllocKind alloc_kind;
-  OrtMemoryInfo location;
-};
-
 struct MemoryInfoPerTensor {
   MemoryBlock planned_block;
   MemoryBlock alloced_block;
-  bool dynamic_allocation{false};
 };
 
 struct MemoryInfoMap {
@@ -56,14 +41,6 @@ struct MemoryInfoMap {
     }
   }
 
-  inline void SetDynamicAllocation(const OrtValueIndex& idx, bool flag) {
-    map_[idx].dynamic_allocation = flag;
-  }
-
-  inline const bool DynamicAllocation(const OrtValueIndex& idx) const {
-    ORT_ENFORCE(map_.find(idx) != map_.end());
-    return map_.at(idx).dynamic_allocation;
-  }
   inline const MemoryBlock& GetPlannedMemory(const OrtValueIndex& idx) const {
     ORT_ENFORCE(map_.find(idx) != map_.end());
     return map_.at(idx).planned_block;
@@ -92,6 +69,10 @@ struct MemoryInfoMap {
     return map_.at(idx).alloced_block.size_;
   }
 
+  inline const void clear() {
+      map_.clear();
+  }
+
   auto begin() { return map_.begin(); }
   auto begin() const { return map_.begin(); }
   auto end() { return map_.end(); }
@@ -106,8 +87,26 @@ class MemoryInfo {
  public:
   enum MapType {
     Initializer = 0,
-    Activation,
+    StaticActivation,
+    DynamicActivation,
   };
+
+  struct AllocInfoPerTensor {
+    AllocInfoPerTensor() = default;
+
+    MLValueTensorType tensor_type{Unknown};
+    OrtValueIndex mlvalue_index{0};
+    OrtValueName mlvalue_name{""};
+    MapType map_type{MapType::Initializer};
+
+    IntervalT lifetime_interval{0, 0};
+    IntervalT alloctime_interval{0, 0};
+    bool inplace_reuse{false};
+    OrtValueIndex reused_buffer{0}; //The index of the reused tensor, if no reuse, it is its own tensor.
+    AllocKind alloc_kind;
+    OrtMemoryInfo location;
+  };
+
   MemoryInfo() : iteration_(0) {
     time_t now_c = std::time(0);
     struct tm timeinfo;
@@ -124,10 +123,21 @@ class MemoryInfo {
   void RecordActivationAllocInfo(const OrtValueIndex idx, const OrtValue& value);
   void SetDynamicAllocation(const OrtValueIndex idx);
 
-  void PrintMemoryInfoForLocation(const logging::Logger& /*logger*/, const OrtDevice::DeviceType location);
   inline void SetIteration(size_t iteration) { iteration_ = iteration; }
+
+  void PrintMemoryInfoForLocation(const logging::Logger& /*logger*/, const OrtDevice::DeviceType location);
+  void GenerateMemoryProfilePerType(const MapType& map_type);
   void GenerateMemoryProfile();
-  const AllocInfoPerTensor& AllocPlan(const OrtValueIndex& idx) {
+  inline void ClearMemoryInfoPerExecution() {
+    tensors_memory_info_map_[MapType::DynamicActivation].clear();
+    tensors_memory_info_map_[MapType::StaticActivation].clear();
+    for (auto& item : tensor_alloc_info_map_) {
+      if (item.second.map_type == MapType::DynamicActivation) {
+        item.second.map_type = MapType::StaticActivation;
+      }
+    }
+  }
+  AllocInfoPerTensor& AllocPlan(const OrtValueIndex& idx) {
     return tensor_alloc_info_map_[idx];
   }
 
