@@ -203,7 +203,7 @@ GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_s
   int index = it->second;
 
   output_tensor = ort.KernelContext_GetOutput(context, index, output_shape, num_dims);
-  delete output_shape;
+  delete[] output_shape;
 
   return output_tensor;
 }
