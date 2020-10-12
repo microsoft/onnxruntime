@@ -305,7 +305,7 @@ void NoTransposeReduce(Tensor* output, const TensorShape& new_input_shape, const
                        ResultsNoTransposePrepareForReduce& last_results) {
   auto output_shape = output->Shape();
   const T* from_data = input.template Data<T>();
-  AGG::value_type* to_data = output->template MutableData<AGG::value_type>();
+  typename AGG::value_type* to_data = output->template MutableData<typename AGG::value_type>();
   int64_t count = output_shape.Size();
 
   if (reduced_axes.size() == 0 || reduced_axes.size() == new_input_shape.NumDimensions()) {
@@ -419,7 +419,7 @@ void CommonReduce(OpKernelContext* ctx,
     std::vector<int64_t> input_axes(data, data + nDims);
     if (input_axes.empty() && noop_with_empty_axes) {
       auto* output = ctx->Output(0, input->Shape());
-      memcpy(output->template MutableData<AGG::value_type>(), input->template Data<T>(), input->SizeInBytes());
+      memcpy(output->template MutableData<typename AGG::value_type>(), input->template Data<T>(), input->SizeInBytes());
       return;
     }
     SetupForReduce(input, input_axes, axes, new_input_shape, output_shape, empty_reduce, nullptr);
@@ -431,7 +431,7 @@ void CommonReduce(OpKernelContext* ctx,
     Tensor* output = ctx->Output(0, keepdims_ ? output_shape : std::vector<int64_t>());
     if (new_input_shape.Size() == 1) {
       const T* from_data = input->template Data<T>();
-      AGG::value_type* to_data = output->template MutableData<AGG::value_type>();
+      typename AGG::value_type* to_data = output->template MutableData<typename AGG::value_type>();
       AGG agg(1, *from_data);
       if (agg.two_loops()) {
         agg.update0(*from_data);
