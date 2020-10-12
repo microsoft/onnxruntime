@@ -139,7 +139,9 @@ class ORTModule(torch.nn.Module):
         # Return gradient tensors for inputs and weights.
         print(f'_run_backward_graph was called...')
         data = self._prepare_backward_input(grad_output, intermediates, *inputs, **kwargs)
-        return self._backward_session.run(None, data)
+        # TODO: Hack to guarantee output order from InferenceSession.run()
+        return self._backward_session.run(['fc1.bias_grad', 'fc1.weight_grad', 'fc2.weight_grad', 'fc2.bias_grad'], data)
+        # return self._backward_session.run(None, data)
 
     @staticmethod
     def _get_forward_graph(module, module_input):
