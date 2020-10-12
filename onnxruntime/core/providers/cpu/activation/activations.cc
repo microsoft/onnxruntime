@@ -8,6 +8,8 @@
 #endif
 #include "core/mlas/inc/mlas.h"
 
+using namespace onnxruntime::common;
+
 namespace onnxruntime {
 
 #define CREATE_ELE_KERNEL(X)                  \
@@ -77,7 +79,7 @@ template Status ElementWiseRangedTransform<float>::Create(const std::string& typ
 #define REGISTER_UNARY_ELEMENTWISE_KERNEL(x, sinceVersion) REGISTER_UNARY_ELEMENTWISE_KERNEL_ALIAS(x, x, sinceVersion)
 
 #define REGISTER_VERSIONED_UNARY_ELEMENTWISE_KERNEL_ALIAS(alias, x, sinceVersion, firstEnd, newVersion)         \
-  ONNX_CPU_OPERATOR_VERSIONED_KERNEL(                                                                    \
+  ONNX_CPU_OPERATOR_VERSIONED_KERNEL(                                                                           \
       alias, sinceVersion, firstEnd,                                                                            \
       KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), x<float>); \
   ONNX_CPU_OPERATOR_KERNEL(                                                                                     \

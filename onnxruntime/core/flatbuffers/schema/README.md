@@ -16,3 +16,12 @@ Change to the directory containing this file (onnxruntime/core/flatbuffers) and 
 `> ..\..\..\build\Windows\Debug\external\flatbuffers\Debug\flatc.exe --cpp --scoped-enums --filename-suffix .fbs ort.fbs`
 
 This should result in ort.fbs.h being updated.
+
+# ORT FB format version history
+`See onnxruntime/core/session/inference_session.cc:IsOrtModelVersionSupported()` for version array and `kOrtModelVersion` for currently supported version.
+
+## Version 1. History begins
+Initial support for DB that includes Model support. Graph support including Attributes, Tensors, Tensor Sequences, Maps and Sequences. Contant initializers are also supported. Constant nodes are converted to constant initializers in the ORT format.
+
+## Version 2. 
+Support for SparseInitialiers. Sparse intializers are stored within ORT FB format, which includes sparse initializers converted from Constant node attribute.

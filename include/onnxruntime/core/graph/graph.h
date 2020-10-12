@@ -121,7 +121,7 @@ class Node {
 
   /** Gets the Node's Node::Type. */
   Node::Type NodeType() const noexcept { return node_type_; }
-  
+
   /** Gets the opset version that the Node's operator was first defined in.
   @returns Opset version. If -1 the Node's operator has not been set.
   @remarks Prefer over Op()->SinceVersion() as Op() is disabled in a minimal build
@@ -1262,6 +1262,10 @@ class Graph {
   ONNX_NAMESPACE::GraphProto deserialized_proto_data_;
 
   InitializedTensorSet name_to_initial_tensor_;
+
+  std::unordered_set<std::reference_wrapper<const std::string>,
+                     std::hash<std::string>, std::equal_to<std::string>>
+      sparse_tensor_names_;
 
 #if !defined(ORT_MINIMAL_BUILD)
 
