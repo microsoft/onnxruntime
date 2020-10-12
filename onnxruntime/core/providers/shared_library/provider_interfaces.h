@@ -25,49 +25,12 @@ using DataType = const std::string*;
 
 namespace onnxruntime {
 
-// onnx Protobuf types (all of these are actually just Provider_<type> -> ONNX_NAMESPACE::<type>)
-#ifndef PROVIDER_BRIDGE_ORT
-struct Provider_AttributeProto;
-struct Provider_GraphProto;
-struct Provider_ModelProto;
-struct Provider_NodeProto;
-struct Provider_TensorProto;
-struct Provider_TensorProtos;
-struct Provider_TensorShapeProto_Dimension;
-struct Provider_TensorShapeProto_Dimensions;
-struct Provider_TensorShapeProto;
-struct Provider_TypeProto_Tensor;
-struct Provider_TypeProto;
-struct Provider_ValueInfoProto;
-struct Provider_ValueInfoProtos;
-#endif
-
-// OnnxRuntime Types (all of these are actually just Provider_<type> -> <type>)
-#ifndef PROVIDER_BRIDGE_ORT
-struct Provider_ComputeCapability;
-struct Provider_DataTransferManager;
-struct Provider_IDataTransfer;
-struct Provider_IndexedSubGraph;
-struct Provider_IndexedSubGraph_MetaDef;
-struct Provider_KernelDef;
-struct Provider_KernelDefBuilder;
-struct Provider_KernelRegistry;
-struct Provider_Function;
-struct Provider_Graph;
-struct Provider_GraphViewer;
-struct Provider_Model;
-struct Provider_Node;
-struct Provider_NodeArg;
-struct Provider_NodeAttributes;
-struct Provider_OpKernelContext;
-struct Provider_OpKernelInfo;
-struct Provider_Tensor;
-#endif
-
+// These types don't directly map to internal types
 struct Provider_IExecutionProvider;
 struct Provider_KernelCreateInfo;
 struct Provider_OpKernel_Base;
 struct ProviderHost;
+
 class TensorShape;
 
 template <typename T, typename TResult>
@@ -216,10 +179,6 @@ struct NodeComputeInfo {
 };
 #endif
 
-namespace logging {
-class Logger;
-}
-
 // Provides the base class implementations, since Provider_IExecutionProvider is just an interface. This is to fake the C++ inheritance used by internal IExecutionProvider implementations
 struct Provider_IExecutionProvider_Router {
   virtual ~Provider_IExecutionProvider_Router() {}
@@ -300,11 +259,28 @@ struct ProviderHost {
   virtual void* HeapAllocate(size_t size) = 0;
   virtual void HeapFree(void*) = 0;
 
+  virtual AutoPadType StringToAutoPadType(const std::string& str) = 0;
+
   virtual void LogRuntimeError(uint32_t session_id, const common::Status& status,
                                const char* file, const char* function, uint32_t line) = 0;
 
-  virtual bool CPU_HasAVX2() = 0;
-  virtual bool CPU_HasAVX512f() = 0;
+  virtual std::vector<std::string> GetStackTrace() = 0;
+
+  // CPUIDInfo
+  virtual const CPUIDInfo& CPUIDInfo__GetCPUIDInfo() = 0;
+  virtual bool CPUIDInfo__HasAVX2(const CPUIDInfo* p) = 0;
+  virtual bool CPUIDInfo__HasAVX512f(const CPUIDInfo* p) = 0;
+
+  // logging::Logger
+  virtual bool logging__Logger__OutputIsEnabled(const logging::Logger* p, logging::Severity severity, logging::DataType data_type) = 0;
+
+  // logging::LoggingManager
+  virtual const logging::Logger& logging__LoggingManager__DefaultLogger() = 0;
+
+  // logging::Capture
+  virtual std::unique_ptr<logging::Capture> logging__Capture__construct(const logging::Logger& logger, logging::Severity severity, const char* category, logging::DataType dataType, const CodeLocation& location) = 0;
+  virtual void logging__Capture__operator_delete(logging::Capture* p) noexcept = 0;
+  virtual std::ostream& logging__Capture__Stream(logging::Capture* p) noexcept = 0;
 
   // Provider_TypeProto_Tensor
   virtual int32_t Provider_TypeProto_Tensor__elem_type(const Provider_TypeProto_Tensor* p) = 0;
@@ -560,6 +536,42 @@ struct ProviderHost {
 extern ProviderHost* g_host;
 
 #ifndef PROVIDER_BRIDGE_ORT
+
+struct CPUIDInfo {
+  static const CPUIDInfo& GetCPUIDInfo() { return g_host->CPUIDInfo__GetCPUIDInfo(); }
+
+  bool HasAVX2() const { return g_host->CPUIDInfo__HasAVX2(this); }
+  bool HasAVX512f() const { return g_host->CPUIDInfo__HasAVX512f(this); }
+
+PROVIDER_DISALLOW_ALL(CPUIDInfo)
+};
+
+namespace logging {
+
+struct Logger {
+  bool OutputIsEnabled(Severity severity, DataType data_type) const noexcept { return g_host->logging__Logger__OutputIsEnabled(this, severity, data_type);  }
+
+PROVIDER_DISALLOW_ALL(Logger)
+};
+
+struct LoggingManager {
+  static const Logger& DefaultLogger() { return g_host->logging__LoggingManager__DefaultLogger();  }
+
+  PROVIDER_DISALLOW_ALL(LoggingManager)
+};
+
+struct Capture {
+    static std::unique_ptr<Capture> Create(const Logger& logger, logging::Severity severity, const char* category,
+            logging::DataType dataType, const CodeLocation& location) { return g_host->logging__Capture__construct(logger, severity, category, dataType, location); }
+    static void operator delete(void* p) { g_host->logging__Capture__operator_delete(reinterpret_cast<Capture*>(p)); }
+
+    std::ostream& Stream() noexcept { return g_host->logging__Capture__Stream(this); }
+
+    Capture() = delete;
+    Capture(const Capture&) = delete;
+    void operator=(const Capture&) = delete;
+};
+}
 
 struct Provider_TypeProto_Tensor {
   int32_t elem_type() const { return g_host->Provider_TypeProto_Tensor__elem_type(this); }
