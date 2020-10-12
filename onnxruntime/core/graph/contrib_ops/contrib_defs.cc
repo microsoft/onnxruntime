@@ -1879,7 +1879,7 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
       });
 
   static const char* TransposeMatMul_doc = R"DOC(
-Deprecated. Going forward FusedMatMul should be used. This OP will be supported for backward compatibility. 
+Duplicate of FusedMatMul. Going forward FusedMatMul should be used. This OP will be supported for backward compatibility. 
 Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html
 )DOC";
 
@@ -1890,37 +1890,6 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
   ONNX_CONTRIB_OPERATOR_SCHEMA(TransposeMatMul)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Input(0, "A", "N-dimensional matrix A", "T")
-      .Input(1, "B", "N-dimensional matrix B", "T")
-      .Attr(
-          "alpha",
-          "Scalar multiplier for the product of the input tensors.",
-          AttributeProto::FLOAT,
-          1.0f)
-      .Attr(
-          "transA",
-          "Whether A should be transposed on the last two dimensions before doing multiplication",
-          AttributeProto::INT,
-          static_cast<int64_t>(0))
-      .Attr(
-          "transB",
-          "Whether B should be transposed on the last two dimensions before doing multiplication",
-          AttributeProto::INT,
-          static_cast<int64_t>(0))
-      .Output(0, "Y", "Matrix multiply results", "T")
-      .TypeConstraint(
-          "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain input and output types to float tensors.")
-      .SetDoc(TransposeMatMul_doc)
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        FusedMatMulShapeInference(ctx);
-      });
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(TransposeMatMul)
-      .SetDomain(kMSDomain)
-      .SinceVersion(2)
-      .Deprecate()
       .Input(0, "A", "N-dimensional matrix A", "T")
       .Input(1, "B", "N-dimensional matrix B", "T")
       .Attr(
