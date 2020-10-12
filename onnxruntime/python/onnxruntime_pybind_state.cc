@@ -192,7 +192,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(O
                                                                                OrtCudnnConvAlgoSearch cudnn_conv_algo_search,
                                                                                size_t cuda_mem_limit,
                                                                                onnxruntime::ArenaExtendStrategy arena_extend_strategy,
-                                                                               bool do_copy_in_compute_stream);
+                                                                               bool do_copy_in_default_stream);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
