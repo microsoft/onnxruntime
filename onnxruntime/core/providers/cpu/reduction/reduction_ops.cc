@@ -500,7 +500,7 @@ void NoTransposeReduce(Tensor* output, const TensorShape& new_input_shape, const
                        ResultsNoTransposePrepareForReduce& last_results) {
   auto output_shape = output->Shape();
   const T* from_data = input.template Data<T>();
-  T* to_data = output->template MutableData<T>();
+  AGG::value_type* to_data = output->template MutableData<AGG::value_type>();
   int64_t count = output_shape.Size();
 
   if (reduced_axes.size() == 0 || reduced_axes.size() == new_input_shape.NumDimensions()) {
@@ -517,31 +517,66 @@ void NoTransposeReduce(Tensor* output, const TensorShape& new_input_shape, const
   }
   int64_t denominator = last_results.last_loop_red_size * last_results.projected_index.size();
 
-  auto fn = [&](std::ptrdiff_t first, std::ptrdiff_t end) {
-    int64_t loop;
-    const T* loop_red_ptr;
-    const T* loop_red_ptr_end;
-    int64_t current_index = first * last_results.last_loop_size;
-    for (int64_t main_index = first; main_index < end; ++main_index) {
-      for (loop = 0; loop < last_results.last_loop_size; ++loop, ++current_index) {
-        int64_t origin = last_results.unprojected_index[main_index] + loop * last_results.last_loop_inc;
-        AGG accumulator(denominator, from_data[origin + last_results.projected_index[0]]);
-        for (auto it = last_results.projected_index.begin(); it != last_results.projected_index.end(); ++it) {
-          loop_red_ptr = from_data + (origin + *it);
-          loop_red_ptr_end = loop_red_ptr + last_results.last_loop_red_size * last_results.last_loop_red_inc;
-          for (; loop_red_ptr != loop_red_ptr_end; loop_red_ptr += last_results.last_loop_red_inc) {
-            accumulator.update(*loop_red_ptr);
+  if (AGG::two_loops()) {
+    auto fn = [&](std::ptrdiff_t first, std::ptrdiff_t end) {
+      int64_t loop;
+      const T* loop_red_ptr;
+      const T* loop_red_ptr_end;
+      int64_t current_index = first * last_results.last_loop_size;
+      for (int64_t main_index = first; main_index < end; ++main_index) {
+        for (loop = 0; loop < last_results.last_loop_size; ++loop, ++current_index) {
+          int64_t origin = last_results.unprojected_index[main_index] + loop * last_results.last_loop_inc;
+          AGG accumulator(denominator, from_data[origin + last_results.projected_index[0]]);
+          for (auto it = last_results.projected_index.begin(); it != last_results.projected_index.end(); ++it) {
+            loop_red_ptr = from_data + (origin + *it);
+            loop_red_ptr_end = loop_red_ptr + last_results.last_loop_red_size * last_results.last_loop_red_inc;
+            for (; loop_red_ptr != loop_red_ptr_end; loop_red_ptr += last_results.last_loop_red_inc) {
+              accumulator.update0(*loop_red_ptr);
+            }
           }
+          for (auto it = last_results.projected_index.begin(); it != last_results.projected_index.end(); ++it) {
+            loop_red_ptr = from_data + (origin + *it);
+            loop_red_ptr_end = loop_red_ptr + last_results.last_loop_red_size * last_results.last_loop_red_inc;
+            for (; loop_red_ptr != loop_red_ptr_end; loop_red_ptr += last_results.last_loop_red_inc) {
+              accumulator.update(*loop_red_ptr);
+            }
+          }
+          to_data[current_index] = accumulator.get_value();
         }
-        to_data[current_index] = accumulator.get_value();
       }
-    }
-  };
+    };
 
-  auto cost = TensorOpCost{(double)(last_results.projected_index.size() * sizeof(T) * last_results.last_loop_size * last_results.last_loop_red_size),
-                           (double)last_results.last_loop_size * last_results.last_loop_red_size,
-                           (double)last_results.projected_index.size() * last_results.last_loop_size * last_results.last_loop_red_size};
-  concurrency::ThreadPool::TryParallelFor(tp, count / last_results.last_loop_size, cost, fn);
+    auto cost = TensorOpCost{(double)(last_results.projected_index.size() * sizeof(T) * last_results.last_loop_size * last_results.last_loop_red_size),
+                             (double)last_results.last_loop_size * last_results.last_loop_red_size,
+                             (double)last_results.projected_index.size() * last_results.last_loop_size * last_results.last_loop_red_size * 2};
+    concurrency::ThreadPool::TryParallelFor(tp, count / last_results.last_loop_size, cost, fn);
+  } else {
+    auto fn = [&](std::ptrdiff_t first, std::ptrdiff_t end) {
+      int64_t loop;
+      const T* loop_red_ptr;
+      const T* loop_red_ptr_end;
+      int64_t current_index = first * last_results.last_loop_size;
+      for (int64_t main_index = first; main_index < end; ++main_index) {
+        for (loop = 0; loop < last_results.last_loop_size; ++loop, ++current_index) {
+          int64_t origin = last_results.unprojected_index[main_index] + loop * last_results.last_loop_inc;
+          AGG accumulator(denominator, from_data[origin + last_results.projected_index[0]]);
+          for (auto it = last_results.projected_index.begin(); it != last_results.projected_index.end(); ++it) {
+            loop_red_ptr = from_data + (origin + *it);
+            loop_red_ptr_end = loop_red_ptr + last_results.last_loop_red_size * last_results.last_loop_red_inc;
+            for (; loop_red_ptr != loop_red_ptr_end; loop_red_ptr += last_results.last_loop_red_inc) {
+              accumulator.update(*loop_red_ptr);
+            }
+          }
+          to_data[current_index] = accumulator.get_value();
+        }
+      }
+    };
+
+    auto cost = TensorOpCost{(double)(last_results.projected_index.size() * sizeof(T) * last_results.last_loop_size * last_results.last_loop_red_size),
+                             (double)last_results.last_loop_size * last_results.last_loop_red_size,
+                             (double)last_results.projected_index.size() * last_results.last_loop_size * last_results.last_loop_red_size};
+    concurrency::ThreadPool::TryParallelFor(tp, count / last_results.last_loop_size, cost, fn);
+  }
 }
 
 void DropDimensions(const std::vector<int64_t>& input_shape, const std::vector<int64_t>& axes, std::vector<int64_t>& dropped_axes) {
@@ -572,9 +607,14 @@ void CommonReduce(OpKernelContext* ctx,
     Tensor* output = ctx->Output(0, keepdims_ ? output_shape : std::vector<int64_t>());
     if (new_input_shape.Size() == 1) {
       const T* from_data = input->template Data<T>();
-      T* to_data = output->template MutableData<T>();
+      AGG::value_type* to_data = output->template MutableData<AGG::value_type>();
       AGG agg(1, *from_data);
-      agg.update(*from_data);
+      if (agg.two_loops()) {
+        agg.update0(*from_data);
+        agg.update(*from_data);
+      } else {
+        agg.update(*from_data);
+      }
       *to_data = agg.get_value();
     } else {
       ORT_ENFORCE(keepdims_,
@@ -616,29 +656,7 @@ Status ReduceLogSum<T>::Compute(OpKernelContext* ctx) const {
 
 template <typename T>
 Status ReduceLogSumExp<T>::Compute(OpKernelContext* ctx) const {
-  FastAllocVector<T> transposed_input_data(GetAllocator<T>(*ctx));
-  int64_t block_size;
-  int64_t blocks;
-  std::vector<int64_t> reduced_dims;
-  const Tensor* input = ctx->Input<Tensor>(0);
-
-  PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes_, keepdims_, reduced_dims);
-
-  Tensor* reduced = ctx->Output(0, reduced_dims);
-
-  T* output_data = reduced->template MutableData<T>();
-
-  for (int j = 0; j < block_size; ++j) {
-    T max_value = std::numeric_limits<T>::lowest();
-    for (int i = 0; i < blocks; ++i) {
-      max_value = std::max(max_value, transposed_input_data[i * block_size + j]);
-    }
-    T scaled_exp_sum = 0;
-    for (int i = 0; i < blocks; ++i) {
-      scaled_exp_sum += static_cast<T>(std::exp(transposed_input_data[i * block_size + j] - max_value));
-    }
-    *(output_data++) = static_cast<T>(std::log(scaled_exp_sum) + max_value);
-  }
+  CommonReduce<T, ReduceAggregatorLogSumExp<T>>(ctx, axes_, keepdims_, last_results_);
   return Status::OK();
 }
 
@@ -721,129 +739,21 @@ Status ReduceSumSquare<T>::Compute(OpKernelContext* ctx) const {
 
 template <typename T>
 Status ArgMax<T>::Compute(OpKernelContext* ctx) const {
-  FastAllocVector<T> transposed_input_data(GetAllocator<T>(*ctx));
-  int64_t block_size;
-  int64_t blocks;
-
-  std::vector<int64_t> reduced_dims;
-  const Tensor* input = ctx->Input<Tensor>(0);
-
-  bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes_, keepdims_, reduced_dims, true);
-
-  Tensor* reduced = ctx->Output(0, reduced_dims);
-  int64_t* output_data = reduced->template MutableData<int64_t>();
-  Eigen::MatrixXf::Index maxIndex;
-
-  if (no_transpose) {
-    const T* input_data = ctx->Input<Tensor>(0)->template Data<T>();
-    if (select_last_index_) {
-      assert(blocks > 0);
-      for (int64_t i = 0; i < block_size; ++i) {
-        gsl::span<const T> row(input_data, blocks);
-        auto first = row.cbegin();
-        auto const end = row.cend();
-        auto max_el = first;
-        while (++first < end) {
-          if (*first >= *max_el) {
-            max_el = first;
-          }
-        }
-        *(output_data++) = max_el - row.cbegin();
-        input_data += blocks;
-      }
-    } else {
-      for (int64_t i = 0; i < block_size; ++i) {
-        ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).maxCoeff(&maxIndex);
-        *(output_data++) = maxIndex;
-      }
-    }
+  if (select_last_index_) {
+    CommonReduce<T, ReduceAggregatorArgMaxLastIndex<T>>(ctx, axes_, keepdims_, last_results_);
   } else {
-    auto matrixData = ConstEigenMatrixMap<T>(&transposed_input_data[0], block_size, blocks);
-    if (select_last_index_) {
-      for (int i = 0; i < block_size; ++i) {
-        int idx = 0;
-        T max_val = matrixData(i, 0);
-        for (int c = 1; c < blocks; ++c) {
-          auto val = matrixData(i, c);
-          if (val >= max_val) {
-            idx = c;
-            max_val = val;
-          }
-        }
-        *(output_data++) = idx;
-      }
-    } else {
-      for (int i = 0; i < block_size; ++i) {
-        matrixData.row(i).maxCoeff(&maxIndex);
-        *(output_data++) = maxIndex;
-      }
-    }
+    CommonReduce<T, ReduceAggregatorArgMax<T>>(ctx, axes_, keepdims_, last_results_);
   }
-
   return Status::OK();
 }
 
 template <typename T>
 Status ArgMin<T>::Compute(OpKernelContext* ctx) const {
-  FastAllocVector<T> transposed_input_data(GetAllocator<T>(*ctx));
-  int64_t block_size;
-  int64_t blocks;
-
-  std::vector<int64_t> reduced_dims;
-  const Tensor* input = ctx->Input<Tensor>(0);
-
-  bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes_, keepdims_, reduced_dims, true);
-
-  Tensor* reduced = ctx->Output(0, reduced_dims);
-  int64_t* output_data = reduced->template MutableData<int64_t>();
-  Eigen::MatrixXf::Index minIndex;
-
-  if (no_transpose) {
-    const T* input_data = ctx->Input<Tensor>(0)->template Data<T>();
-    if (select_last_index_) {
-      assert(blocks > 0);
-      for (int64_t i = 0; i < block_size; ++i) {
-        gsl::span<const T> row(input_data, blocks);
-        auto first = row.cbegin();
-        auto const end = row.cend();
-        auto min_el = first;
-        while (++first < end) {
-          if (*first <= *min_el) {
-            min_el = first;
-          }
-        }
-        *(output_data++) = min_el - row.cbegin();
-        input_data += blocks;
-      }
-    } else {
-      for (int64_t i = 0; i < block_size; ++i) {
-        ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).minCoeff(&minIndex);
-        *(output_data++) = minIndex;
-      }
-    }
+  if (select_last_index_) {
+    CommonReduce<T, ReduceAggregatorArgMinLastIndex<T>>(ctx, axes_, keepdims_, last_results_);
   } else {
-    auto matrixData = ConstEigenMatrixMap<T>(&transposed_input_data[0], block_size, blocks);
-    if (select_last_index_) {
-      for (int i = 0; i < block_size; ++i) {
-        int idx = 0;
-        T min_val = matrixData(i, 0);
-        for (int c = 1; c < blocks; ++c) {
-          auto val = matrixData(i, c);
-          if (val <= min_val) {
-            idx = c;
-            min_val = val;
-          }
-        }
-        *(output_data++) = idx;
-      }
-    } else {
-      for (int i = 0; i < block_size; ++i) {
-        matrixData.row(i).minCoeff(&minIndex);
-        *(output_data++) = minIndex;
-      }
-    }
+    CommonReduce<T, ReduceAggregatorArgMin<T>>(ctx, axes_, keepdims_, last_results_);
   }
-
   return Status::OK();
 }
 
