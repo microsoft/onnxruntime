@@ -24,7 +24,7 @@ namespace onnxruntime {
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Tile,
     6,
-	12,
+    12,
     KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
                                             DataTypeImpl::GetTensorType<double>(),
                                             DataTypeImpl::GetTensorType<int8_t>(),
