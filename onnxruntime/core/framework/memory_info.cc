@@ -22,6 +22,7 @@ void MemoryInfo::GenerateTensorMap(const SequentialExecutionPlan* execution_plan
     mem_info.reused_buffer = (execution_plan->allocation_plan[value_idx].alloc_kind != AllocKind::kReuse) ? value_idx : execution_plan->allocation_plan[value_idx].reused_buffer;
     //If the tensor is using memory outside of the scope, do not store it
     if (execution_plan->allocation_plan[mem_info.reused_buffer].alloc_kind == AllocKind::kPreExisting) continue;
+    if (execution_plan->allocation_plan[mem_info.reused_buffer].alloc_kind == AllocKind::kAllocateOutput) continue;
     mem_info.inplace_reuse = (execution_plan->allocation_plan[value_idx].inplace_reuse != -1 && execution_plan->allocation_plan[value_idx].inplace_reuse != value_idx);
     mem_info.alloc_kind = execution_plan->allocation_plan[value_idx].alloc_kind;
     mem_info.location = execution_plan->allocation_plan[value_idx].location;
@@ -38,6 +39,7 @@ void MemoryInfo::GenerateTensorMap(const SequentialExecutionPlan* execution_plan
 void MemoryInfo::RecordMemoryPatternInfo(const MemoryPatternGroup& mem_patterns, MapType type) {
   for (const auto& location : mem_patterns.locations) {
     for (const auto& p : mem_patterns.GetPatterns(location)->GetPatternsMap()) {
+      ORT_ENFORCE(AllocPlan(p.first));
       tensors_memory_info_map_[type].AddPlannedMemory(p.first, p.second);
     }
   }
@@ -84,6 +86,7 @@ void MemoryInfo::RecordTensorDeviceAllocInfo(const OrtValueIndex idx, const OrtV
 
 void MemoryInfo::RecordInitializerAllocInfo(const std::unordered_map<int, OrtValue>& tensor_map) {
   for (const auto& item : tensor_map) {
+    ORT_ENFORCE(AllocPlan(item.first));
     RecordTensorDeviceAllocInfo(item.first, item.second, MapType::Initializer);
   }
 }
@@ -105,8 +108,9 @@ void MemoryInfo::RecordActivationAllocInfo(const OrtValueIndex idx, const OrtVal
 }
 
 void MemoryInfo::SetDynamicAllocation(const OrtValueIndex idx) {
+  if (!AllocPlan(idx)) return;
   if (!tensors_memory_info_map_[MapType::DynamicActivation].Contain(idx)) {
-      tensors_memory_info_map_[MapType::DynamicActivation][idx];
+    tensors_memory_info_map_[MapType::DynamicActivation][idx];
   }
 }
 
