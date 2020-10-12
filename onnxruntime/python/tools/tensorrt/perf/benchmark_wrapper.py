@@ -78,7 +78,7 @@ def main():
 
                 update_fail_model_map(model_to_fail_ep, model, ep, error_type, error_message)
                 write_map_to_file(model_to_fail_ep, FAIL_MODEL_FILE)
-                print(model_to_fail_ep)
+                logger.info(model_to_fail_ep)
 
         os.remove(model_list_file)
 
@@ -92,27 +92,32 @@ def main():
         logger.info("========== Failing Models/EPs (accumulated) ==============")
         logger.info("==========================================================")
 
-        model_to_fail_ep = read_map_from_file(FAIL_MODEL_FILE)
-        output_fail(model_to_fail_ep, os.path.join(path, benchmark_fail_csv))
+        if os.path.exists(FAIL_MODEL_FILE) or len(model_to_fail_ep) > 1:
+            model_to_fail_ep = read_map_from_file(FAIL_MODEL_FILE)
+            output_fail(model_to_fail_ep, os.path.join(path, benchmark_fail_csv))
 
-        logger.info(model_to_fail_ep)
+            logger.info(model_to_fail_ep)
+
 
         logger.info("\n=========================================")
         logger.info("========== Models/EPs metrics  ==========")
         logger.info("=========================================")
-        model_to_metrics = read_map_from_file(METRICS_FILE)
-        output_metrics(model_to_metrics, os.path.join(path, benchmark_metrics_csv))
+
+        if os.path.exists(METRICS_FILE):
+            model_to_metrics = read_map_from_file(METRICS_FILE)
+            output_metrics(model_to_metrics, os.path.join(path, benchmark_metrics_csv))
 
     elif args.running_mode == "benchmark":
         logger.info("\n=======================================================")
         logger.info("=========== Models/EPs latency (accumulated)  ===========")
         logger.info("=======================================================")
 
-        model_to_latency = read_map_from_file(LATENCY_FILE)
-        add_improvement_information(model_to_latency)
-        output_latency(model_to_latency, os.path.join(path, benchmark_latency_csv))
+        if os.path.exists(LATENCY_FILE):
+            model_to_latency = read_map_from_file(LATENCY_FILE)
+            add_improvement_information(model_to_latency)
+            output_latency(model_to_latency, os.path.join(path, benchmark_latency_csv))
 
-        pp.pprint(model_to_latency)
+            pp.pprint(model_to_latency)
 
 
     logger.info("\n===========================================")

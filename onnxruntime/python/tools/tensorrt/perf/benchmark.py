@@ -1179,9 +1179,6 @@ def output_fail(model_to_fail_ep, csv_filename):
 
     logger.info(f"Failing results are saved to csv file: {csv_filename}")
     
-    if os.path.exists(FAIL_MODEL_FILE):
-        os.remove(FAIL_MODEL_FILE)
-
 def output_latency(results, csv_filename):
     need_write_header = True 
     if os.path.exists(csv_filename):
@@ -1279,9 +1276,6 @@ def output_latency(results, csv_filename):
 
     logger.info(f"CUDA/TRT latency comparison are saved to csv file: {csv_filename}")
 
-    if os.path.exists(LATENCY_FILE):
-        os.remove(LATENCY_FILE)
-
 def output_metrics(model_to_metrics, csv_filename):
     with open(csv_filename, mode="w", newline='') as csv_file:
         column_names = ["Model",
@@ -1362,36 +1356,6 @@ def output_metrics(model_to_metrics, csv_filename):
             csv_writer.writerow(row)
 
     logger.info(f"Tensorrt ratio metrics are saved to csv file: {csv_filename}")
-
-def output_metrics_ori(results, csv_filename):
-    with open(csv_filename, mode="w", newline='') as csv_file:
-        column_names = ["Model",
-                        "% CUDA operators (not fall back to CPU)",
-                        "Total TRT operators",
-                        "Total operators",
-                        "% TRT operator",
-                        "Total TRT execution time",
-                        "Total execution time",
-                        "% TRT execution time"]
-        csv_writer = csv.writer(csv_file)
-        csv_writer.writerow(column_names)
-
-        for key, value in results.items():
-            row = [key,
-                   value['ratio_of_ops_in_cuda_not_fallback_cpu'] if 'ratio_of_ops_in_cuda_not_fallback_cpu' in value else "  ",
-                   value['total_ops_in_trt'] if 'total_ops_in_trt' in value else "  ",
-                   value['total_ops'] if 'total_ops' in value else "  ",
-                   value['ratio_of_ops_in_trt'] if 'ratio_of_ops_in_trt' in value else "  ",
-                   value['total_trt_execution_time'] if 'total_trt_execution_time' in value else "  ",
-                   value['total_execution_time'] if 'total_execution_time' in value else "  ",
-                   value['ratio_of_execution_time_in_trt'] if 'ratio_of_execution_time_in_trt' in value else "  ",
-                   ]
-            csv_writer.writerow(row)
-
-    logger.info(f"Tensorrt ratio metrics are saved to csv file: {csv_filename}")
-
-    if os.path.exists(METRICS_FILE):
-        os.remove(METRICS_FILE)
 
 def output_system_info(result, csv_filename):
     with open(csv_filename, mode="a", newline='') as csv_file:
