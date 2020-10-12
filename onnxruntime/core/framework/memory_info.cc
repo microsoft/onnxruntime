@@ -75,7 +75,7 @@ void MemoryInfo::RecordTensorDeviceAllocInfo(const OrtValueIndex idx, const OrtV
   auto& tensor = value.Get<Tensor>();
   auto sizeinbytes = tensor.SizeInBytes() % alignment ? tensor.SizeInBytes() + alignment - tensor.SizeInBytes() % alignment : tensor.SizeInBytes();
   MemoryBlock mb(size_t(tensor.DataRaw()), sizeinbytes);
-  if (type != MapType::DynamicActivation) {
+  if (type == MapType::StaticActivation) {
     bool valid = tensors_memory_info_map_[type].Contain(idx);
     ORT_ENFORCE(valid);
   }
