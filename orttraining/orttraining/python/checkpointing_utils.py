@@ -267,7 +267,16 @@ def test_bert_tiny():
 
     ckpt_agg = CombineZeroCheckpoint(checkpoint_files)
     aggregate_state_dict = ckpt_agg.aggregate_checkpoints()
-    aggregate_state_dict_old = ckpt_agg.aggregate_checkpoints_old()
+
+    checkpoint_dir_old = '/bert_ort/aibhanda/public_ort_latest/onnxruntime/build/Linux/RelWithDebInfo'
+    checkpoint_files_old = sorted(list_checkpoint_files(checkpoint_dir_old, checkpoint_prefix))
+    sd0_old = torch.load(checkpoint_files_old[0], map_location=torch.device("cpu"))['model']
+    sd1_old = torch.load(checkpoint_files_old[1], map_location=torch.device("cpu"))['model']
+    ckpt_agg_old = CombineZeroCheckpoint(checkpoint_files_old)
+    aggregate_state_dict_old = ckpt_agg_old.aggregate_checkpoints_old()
+
+    assert(aggregate_state_dict.keys() == aggregate_state_dict_old.keys())
+    allequal = {k:(aggregate_state_dict_old[k] == aggregate_state_dict[k]).all() for k in aggregate_state_dict.keys()}
     return
 
 test_bert_tiny()
