@@ -1744,6 +1744,23 @@ TEST(GradientCheckerTest, LayerNormGrad) {
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 }
+
+TEST(GradientCheckerTest, SimplifiedLayerNormGrad) {
+  GradientChecker<float, float, float> gradient_checker;
+  {
+    TensorShape shape({2, 3, 8});
+    TensorInfo x_info{shape, true};
+    TensorInfo scale_info{{8}, true};
+    TensorInfo var_info{{2, 3, 1}, false};
+
+    float max_error;
+    float error_tolerance = 1e-2f;
+
+    OpDef op_def{"SimplifiedLayerNormalization"};
+    gradient_checker.ComputeGradientError(op_def, {x_info, scale_info}, {shape, var_info}, &max_error);
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+  }
+}
 #endif
 
 TEST(GradientUtilsTest, InPlaceAccumulatorFloat32) {
