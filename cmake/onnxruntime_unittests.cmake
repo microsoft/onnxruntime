@@ -109,7 +109,7 @@ function(AddTest)
     if(_UT_DYN)
       target_link_libraries(${_UT_TARGET}_xc PRIVATE ${_UT_LIBS} GTest::gtest GTest::gmock onnxruntime ${CMAKE_DL_LIBS}
               Threads::Threads)
-      target_compile_definitions(${_UT_TARGET}_xc PRIVATE -DUSE_ONNXRUNTIME_DLL)
+      target_compile_definitions(${_UT_TARGET}_xc PRIVATE USE_ONNXRUNTIME_DLL)
     else()
       target_link_libraries(${_UT_TARGET}_xc PRIVATE ${_UT_LIBS} GTest::gtest GTest::gmock ${onnxruntime_EXTERNAL_LIBRARIES})
     endif()

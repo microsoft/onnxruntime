@@ -1096,12 +1096,12 @@ def run_android_tests(args, source_dir, config, cwd):
 
 def run_ios_tests(args, source_dir, config, cwd):
     cpr = run_subprocess(["xcodebuild", "test", "-project", "./onnxruntime.xcodeproj",
-                          "-configuration", "RelWithDebInfo",
+                          "-configuration", config,
                           "-scheme",  "onnxruntime_test_all_xc",
                           "-destination", "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)"], cwd=cwd)
     if cpr.returncode == 0:
         run_subprocess(["xcodebuild", "test", "-project", "./onnxruntime.xcodeproj",
-                        "-configuration", "RelWithDebInfo",
+                        "-configuration", config,
                         "-scheme",  "onnxruntime_shared_lib_test_xc",
                         "-destination", "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)"], cwd=cwd)
 
