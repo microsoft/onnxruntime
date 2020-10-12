@@ -46,7 +46,6 @@ void MemoryInfo::RecordMemoryPatternInfo(const MemoryPatternGroup& mem_patterns,
 }
 
 void MemoryInfo::RecordActivationPatternInfo(const MemoryPatternGroup& mem_patterns) {
-  printf("start act plan\n");
   RecordMemoryPatternInfo(mem_patterns, MapType::StaticActivation);
   for (auto& item : tensor_alloc_info_map_) {
     if (item.second.alloc_kind == AllocKind::kReuse) {
@@ -59,7 +58,6 @@ void MemoryInfo::RecordActivationPatternInfo(const MemoryPatternGroup& mem_patte
       }
     }
   }
-  printf("done act plan\n");
 }
 
 void MemoryInfo::RecordInitializerPatternInfo(const MemoryPatternGroup& mem_patterns) {
@@ -91,12 +89,10 @@ void MemoryInfo::RecordTensorDeviceAllocInfo(const OrtValueIndex idx, const OrtV
 }
 
 void MemoryInfo::RecordInitializerAllocInfo(const std::unordered_map<int, OrtValue>& tensor_map) {
-  printf("\n\nInitializer Alloc\n\n");
   for (const auto& item : tensor_map) {
     ORT_ENFORCE(AllocPlan(item.first));
     RecordTensorDeviceAllocInfo(item.first, item.second, MapType::Initializer);
   }
-  printf("done initializer alloc \n");
 }
 
 void MemoryInfo::RecordActivationAllocInfo(const OrtValueIndex idx, const OrtValue& value) {

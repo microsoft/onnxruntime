@@ -39,7 +39,6 @@ struct MemoryInfoMap {
     if (ptr_offset == 0 || (ptr_offset > mb.offset_ && mb.offset_ != 0)) {
       ptr_offset = mb.offset_;
     }
-    printf("idx = %d, ptr_offset = %lu, rel_addr=%lu, abb_addr=%lu \n", int(idx), ptr_offset, mb.offset_ - ptr_offset, mb.offset_);
   }
 
   inline const MemoryBlock& GetPlannedMemory(const OrtValueIndex& idx) const {
@@ -147,8 +146,8 @@ class MemoryInfo {
   void GenerateMemoryProfile();
   inline void ClearMemoryInfoPerExecution() {
     for (auto& location_map : tensors_memory_info_map_) {
-      location_map.second.at(MapType::DynamicActivation).clear();
-      location_map.second.at(MapType::StaticActivation).clear();
+      location_map.second[MapType::DynamicActivation].clear();
+      location_map.second[MapType::StaticActivation].clear();
     }
   }
   const AllocInfoPerTensor* AllocPlan(const OrtValueIndex& idx) {
