@@ -287,13 +287,13 @@ class ReduceAggregatorLogSumExp : public ReduceAggregator<T, TVAL> {
   static inline bool two_loops() { return true; }
 };
 
-bool NeedsTransposeForReduce(const Tensor* input_tensor_ptr,
-                             const std::vector<int64_t>& axes_,
-                             std::vector<int64_t>& axes,
-                             TensorShape& new_input_shape,
-                             std::vector<int64_t>& output_shape,
-                             bool& empty_reduce,
-                             const TensorShape* input_shape_override);
+bool SetupForReduce(const Tensor* input_tensor_ptr,
+                    const std::vector<int64_t>& axes_,
+                    std::vector<int64_t>& axes,
+                    TensorShape& new_input_shape,
+                    std::vector<int64_t>& output_shape,
+                    bool& empty_reduce,
+                    const TensorShape* input_shape_override);
 
 void NoTransposePrepareForReduce(const TensorShape& new_input_shape,
                                  const std::vector<int64_t>& reduced_axes,
@@ -307,18 +307,8 @@ void NoTransposeReduce(Tensor* output, const TensorShape& new_input_shape, const
 template <typename T, typename AGG>
 void CommonReduce(OpKernelContext* ctx,
                   const std::vector<int64_t> axes_, int64_t keepdims_,
-                  ResultsNoTransposePrepareForReduce& last_results);
-
-template <typename T>
-bool PrepareForReduce(const Tensor* input_tensor_ptr,
-                      FastAllocVector<T>& transposed_input_data,
-                      int64_t& block_size,
-                      int64_t& blocks,
-                      const std::vector<int64_t>& axes_,
-                      bool keepdims_,
-                      /*out*/ std::vector<int64_t>& reduced_dims,
-                      bool check_no_transpose = false,
-                      const TensorShape* input_shape_override = nullptr);
+                  ResultsNoTransposePrepareForReduce& last_results,
+                  bool noop_with_empty_axes = false);
 
 template <bool allow_multi_axes>
 class ReduceKernelBase {
@@ -348,7 +338,10 @@ class ReduceKernelBase {
   bool noop_with_empty_axes_;
   bool select_last_index_;
 
-  // Caches the configuration of the last execution.
+  // The computation only depends off the input shape and the input axes.
+  // This cache assumes the same instance cannot be called from two different
+  // threads. It allows the operator to reuse the last computed output shape
+  // and the order of computation.
   mutable ResultsNoTransposePrepareForReduce last_results_;
 };
 

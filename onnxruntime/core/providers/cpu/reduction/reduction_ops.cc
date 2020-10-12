@@ -151,13 +151,13 @@ REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ArgMin, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ArgMin, 11, 11);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ArgMin, 12);
 
-bool NeedsTransposeForReduce(const Tensor* input_tensor_ptr,
-                             const std::vector<int64_t>& axes_,
-                             std::vector<int64_t>& axes,
-                             TensorShape& new_input_shape,
-                             std::vector<int64_t>& output_shape,
-                             bool& empty_reduce,
-                             const TensorShape* input_shape_override) {
+bool SetupForReduce(const Tensor* input_tensor_ptr,
+                    const std::vector<int64_t>& axes_,
+                    std::vector<int64_t>& axes,
+                    TensorShape& new_input_shape,
+                    std::vector<int64_t>& output_shape,
+                    bool& empty_reduce,
+                    const TensorShape* input_shape_override) {
   ORT_ENFORCE(input_tensor_ptr != nullptr, "Input to be reduced is null");
 
   if (input_shape_override) {
@@ -202,201 +202,6 @@ bool NeedsTransposeForReduce(const Tensor* input_tensor_ptr,
   }
   return need_copy;
 }
-
-// When all reduce axes are located at the tail of the dims, quite general cases, transpose and extra
-// copy could be skipped to improve performance. If required by check_no_transpose = true, then
-// the calling code will check if the data was transposed and act accordingly.
-// return value: true means transposedInputData is not created/copied, input tensor data could
-// be directly used as row major matrix [block_size, blocks], where blocks is the
-// size of each reduce.
-// `input_shape_override` overrides the shape of `input` for compute purposes.
-template <typename T>
-bool PrepareForReduce(const Tensor* input_tensor_ptr,
-                      FastAllocVector<T>& transposed_input_data,
-                      int64_t& block_size,
-                      int64_t& blocks,
-                      const std::vector<int64_t>& axes_,
-                      bool keepdims_,
-                      /*out*/ std::vector<int64_t>& reduced_dims,
-                      bool check_no_transpose,
-                      const TensorShape* input_shape_override) {
-  ORT_ENFORCE(input_tensor_ptr != nullptr, "Input to be reduced is null");
-
-  if (input_shape_override) {
-    ORT_ENFORCE(input_tensor_ptr->Shape().Size() == input_shape_override->Size(),
-                "The input shape override's size does not match the input tensor's shape size");
-  }
-
-  const Tensor& input = *input_tensor_ptr;
-  const auto& input_shape = input_shape_override ? *input_shape_override : input.Shape();
-
-  size_t ndim = input_shape.NumDimensions();
-
-  // Scalar tensor
-  if (ndim == 0) {
-    if (!check_no_transpose) {
-      auto size = input_shape.Size();
-      assert(size == 1);
-      transposed_input_data.resize(size, 0);
-      T* to_data = &transposed_input_data[0];
-      *to_data = *input.Data<T>();
-    }
-    block_size = blocks = 1;
-    return true;
-  }
-
-  std::vector<int64_t> axes, output_shape;
-  bool empty_reduce;
-  TensorShape new_input_shape;
-  bool need_copy = NeedsTransposeForReduce(input_tensor_ptr, axes_, axes, new_input_shape, output_shape, empty_reduce, input_shape_override);
-
-  std::vector<bool> keep_axis(ndim, true);
-  for (auto i : axes) {
-    keep_axis[i] = false;
-  }
-
-  //transpose the input so that all to-be-reduced axes are at the head
-  std::vector<int64_t> transposed_axes(axes.begin(), axes.end());
-  for (size_t i = 0; i < ndim; ++i) {
-    if (keep_axis[i]) {
-      transposed_axes.push_back(i);
-    }
-  }
-
-  std::vector<int64_t> new_dims(transposed_axes.size());
-  for (size_t i = 0; i < transposed_axes.size(); ++i) {
-    new_dims[i] = input_shape.GetDims().at(transposed_axes[i]);
-  }
-
-  int num_axes = static_cast<int>(transposed_axes.size());
-  auto in_dims = input_shape.GetDims();
-
-  // Measure amount of contiguous data we can copy at once
-  int64_t blocksize = 1;
-  int n_shared_idxs = 0;
-  for (int i = num_axes - 1; i >= 0; --i) {
-    if (transposed_axes[i] == i) {
-      blocksize *= new_dims[i];
-      ++n_shared_idxs;
-    } else {
-      break;
-    }
-  }
-
-  const T* from_data = input.template Data<T>();
-  size_t count = input_shape.Size();
-
-  //set to-be-reduced axes to one. squeeze is keepdims_ is false
-  int64_t first_dim = 1;
-  reduced_dims.reserve(in_dims.size());
-
-  for (size_t i = 0; i < in_dims.size(); i++) {
-    const auto in_dim = in_dims[i];
-    if (keep_axis[i]) {
-      reduced_dims.push_back(in_dim);
-    } else {
-      first_dim *= in_dim;
-      if (keepdims_) {
-        reduced_dims.push_back(in_dim == 0 ? 0 : 1);
-      } else {
-        // as we are reducing on this axis and not keeping a dim for it, we can't drop a dim value of 0.
-        // e.g. if input was {3, 0, 2} and we reduced on axis 1 without keeping it, the output shape would be
-        // {3, 2} which is invalid given the input was empty.
-        // note that if we do keep the dim the output shape will have a 0 in it,
-        // which is still valid for an empty tensor, so allow that.
-        ORT_ENFORCE(in_dim != 0,
-                    "Can't reduce on dim with value of 0 if 'keepdims' is false. "
-                    "Invalid output shape would be produced. input_shape:",
-                    input_shape);
-      }
-    }
-  }
-
-  auto num_elements = input_shape.Size();
-
-  // edge case. one or more input dims with value of 0.
-  if (num_elements == 0) {
-    block_size = blocks = 0;
-    return true;
-  }
-
-  if (0 == first_dim) {
-    return false;
-  }
-
-  block_size = num_elements / first_dim;
-  blocks = first_dim;
-
-  if (!need_copy && check_no_transpose) {
-    return true;
-  }
-
-  transposed_input_data.resize(input_shape.Size(), 0);
-  T* to_data = &transposed_input_data[0];
-  if (num_axes < 2 || n_shared_idxs == num_axes) {
-    memcpy(to_data, from_data, count * sizeof(T));
-    return false;
-  }
-
-  int itr_axes = num_axes - n_shared_idxs;
-
-  // Calculate strides
-  std::vector<int64_t> stride_x(itr_axes, 0);
-  for (size_t i = 0; static_cast<int>(i) < itr_axes; i++) {
-    stride_x[i] = 1;
-    for (size_t j = transposed_axes[i] + 1; static_cast<int>(j) < itr_axes; j++) {
-      stride_x[i] *= in_dims[j];
-    }
-  }
-
-  std::vector<int64_t> itr_idxs(itr_axes, 0);
-
-  // Branch here to avoid branching within the loop
-  if (blocksize > 1) {
-    for (size_t index = 0; index < (count / blocksize); index++) {
-      int64_t from_index = 0;
-      for (int i = 0; i < itr_axes; ++i) {
-        from_index += stride_x[i] * itr_idxs[i];
-      }
-
-      memcpy(
-          to_data + blocksize * index,
-          from_data + blocksize * from_index,
-          blocksize * sizeof(T));
-
-      ++itr_idxs[itr_axes - 1];
-      for (int i = itr_axes - 1; i >= 1; --i) {
-        auto expected_dim = new_dims[i];
-        if (itr_idxs[i] < expected_dim) {
-          break;
-        }
-        itr_idxs[i] %= expected_dim;
-        ++itr_idxs[i - 1];
-      }
-    }
-  } else {
-    for (size_t index = 0; index < count; index++) {
-      int64_t from_index = 0;
-      for (int i = 0; i < itr_axes; ++i) {
-        from_index += stride_x[i] * itr_idxs[i];
-      }
-
-      *(to_data + index) = *(from_data + from_index);
-
-      ++itr_idxs[itr_axes - 1];
-      for (int i = itr_axes - 1; i >= 1; --i) {
-        auto expected_dim = new_dims[i];
-        if (itr_idxs[i] < expected_dim) {
-          break;
-        }
-        itr_idxs[i] %= expected_dim;
-        ++itr_idxs[i - 1];
-      }
-    }
-  }
-  return false;
-}
-
 void NoTransposePrepareForReduce(const TensorShape& new_input_shape,
                                  const std::vector<int64_t>& reduced_axes,
                                  ResultsNoTransposePrepareForReduce& results) {
@@ -594,14 +399,33 @@ void DropDimensions(const std::vector<int64_t>& input_shape, const std::vector<i
 template <typename T, typename AGG>
 void CommonReduce(OpKernelContext* ctx,
                   const std::vector<int64_t> axes_, int64_t keepdims_,
-                  ResultsNoTransposePrepareForReduce& last_results) {
+                  ResultsNoTransposePrepareForReduce& last_results,
+                  bool noop_with_empty_axes) {
   std::vector<int64_t> axes;
   const Tensor* input = ctx->Input<Tensor>(0);
   auto reduced_dims = input->Shape().GetDims();
   std::vector<int64_t> output_shape;
   bool empty_reduce;
   TensorShape new_input_shape;
-  NeedsTransposeForReduce(input, axes_, axes, new_input_shape, output_shape, empty_reduce, nullptr);
+
+  if (ctx->InputCount() == 2) {
+    // second input holds the axes.
+    const Tensor* axes_tensor = ctx->Input<Tensor>(1);
+    ORT_ENFORCE(axes_tensor != nullptr, "Axes input is null");
+    ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1,
+                "An axes tensor must be a vector tensor.");
+    auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);
+    const auto* data = axes_tensor->template Data<int64_t>();
+    std::vector<int64_t> input_axes(data, data + nDims);
+    if (input_axes.empty() && noop_with_empty_axes) {
+      auto* output = ctx->Output(0, input->Shape());
+      memcpy(output->template MutableData<AGG::value_type>(), input->template Data<T>(), input->SizeInBytes());
+      return;
+    }
+    SetupForReduce(input, input_axes, axes, new_input_shape, output_shape, empty_reduce, nullptr);
+  } else {
+    SetupForReduce(input, axes_, axes, new_input_shape, output_shape, empty_reduce, nullptr);
+  }
 
   if (empty_reduce) {
     Tensor* output = ctx->Output(0, keepdims_ ? output_shape : std::vector<int64_t>());
@@ -699,7 +523,7 @@ Tensor ReduceSum<T>::Impl(const Tensor& input, const std::vector<int64_t>& reduc
   std::vector<int64_t> output_shape;
   TensorShape new_input_shape;
   bool empty_reduce;
-  NeedsTransposeForReduce(&input, reduce_axes, axes, new_input_shape, output_shape, empty_reduce, input_shape_override);
+  SetupForReduce(&input, reduce_axes, axes, new_input_shape, output_shape, empty_reduce, input_shape_override);
 
   if (empty_reduce) {
     Tensor output(input.DataType(), keep_dims ? output_shape : std::vector<int64_t>(), allocator);
@@ -765,22 +589,5 @@ template class ReduceSum<float>;
 template class ReduceSum<int32_t>;
 template class ReduceSum<double>;
 template class ReduceSum<int64_t>;
-
-// TODO: replace implementation of ReduceSum in OrtTraining by the new one
-#define REGISTER_FOR_ORTTRAINING_TYPED(T)                                    \
-  template bool PrepareForReduce(const Tensor* input_tensor_ptr,             \
-                                 FastAllocVector<T>& transposed_input_data,  \
-                                 int64_t& block_size,                        \
-                                 int64_t& blocks,                            \
-                                 const std::vector<int64_t>& axes_,          \
-                                 bool keepdims_,                             \
-                                 /*out*/ std::vector<int64_t>& reduced_dims, \
-                                 bool check_no_transpose,                    \
-                                 const TensorShape* input_shape_override);
-
-REGISTER_FOR_ORTTRAINING_TYPED(float)
-REGISTER_FOR_ORTTRAINING_TYPED(double)
-REGISTER_FOR_ORTTRAINING_TYPED(int32_t)
-REGISTER_FOR_ORTTRAINING_TYPED(int64_t)
 
 }  // namespace onnxruntime
