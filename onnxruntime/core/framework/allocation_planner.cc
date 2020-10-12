@@ -830,7 +830,7 @@ class PlannerImpl {
   //For reuse tensors, the alloc-time is equal to the allocate time of the allocated tensor
   void AdjustAllocateIntervals() {
     for (size_t i = 0; i < ort_value_info_.size(); ++i) {
-      if (i != ort_value_info_[i].reused_buffer_index) {
+      if (OrtValueIndex(i) != ort_value_info_[i].reused_buffer_index) {
         AllocPlan(OrtValueIndex(i)).allocate_interval = AllocPlan(ort_value_info_[i].reused_buffer_index).allocate_interval;
       }
     }

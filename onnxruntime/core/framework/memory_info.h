@@ -39,6 +39,7 @@ struct MemoryInfoMap {
     if (ptr_offset == 0 || (ptr_offset > mb.offset_ && mb.offset_ != 0)) {
       ptr_offset = mb.offset_;
     }
+    printf("idx = %d, ptr_offset = %lu, rel_addr=%lu, abb_addr=%lu \n", int(idx), ptr_offset, mb.offset_ - ptr_offset, mb.offset_);
   }
 
   inline const MemoryBlock& GetPlannedMemory(const OrtValueIndex& idx) const {
@@ -77,11 +78,11 @@ struct MemoryInfoMap {
     map_.clear();
   }
 
-  auto begin() { return map_.begin(); }
-  auto begin() const { return map_.begin(); }
-  auto end() { return map_.end(); }
-  auto end() const { return map_.end(); }
-  auto& operator[](const OrtValueIndex& k) { return map_[k]; }
+  std::unordered_map<onnxruntime::OrtValueIndex, onnxruntime::MemoryInfoPerTensor>::iterator begin() { return map_.begin(); }
+  std::unordered_map<onnxruntime::OrtValueIndex, onnxruntime::MemoryInfoPerTensor>::const_iterator begin() const { return map_.begin(); }
+  std::unordered_map<onnxruntime::OrtValueIndex, onnxruntime::MemoryInfoPerTensor>::iterator end() { return map_.end(); }
+  std::unordered_map<onnxruntime::OrtValueIndex, onnxruntime::MemoryInfoPerTensor>::const_iterator end() const { return map_.end(); }
+  onnxruntime::MemoryInfoPerTensor& operator[](const OrtValueIndex& k) { return map_[k]; }
 
  private:
   std::unordered_map<OrtValueIndex, MemoryInfoPerTensor> map_;
@@ -114,7 +115,7 @@ class MemoryInfo {
   struct MemoryInfoProfile {
    public:
     MemoryInfoProfile(MemoryInfo& mem_info) : pid_(0), mem_info_(mem_info){};
-    const size_t GetAndIncreasePid() {
+    size_t GetAndIncreasePid() {
       size_t val = pid_++;
       return val;
     }
@@ -131,14 +132,7 @@ class MemoryInfo {
     MemoryInfo& mem_info_;
   };
 
-  MemoryInfo() : iteration_(0), profiler(*this) {
-    time_t now_c = std::time(0);
-    struct tm timeinfo;
-    localtime_s(&timeinfo, &now_c);
-    char buffer[80];
-    asctime_s(buffer, &timeinfo);
-    memory_info_file = "memory_info_file_" + std::string(buffer);
-  }
+  MemoryInfo() : profiler(*this), iteration_(0) {}
   void GenerateTensorMap(const SequentialExecutionPlan* execution_plan, const OrtValueNameIdxMap& value_name_idx_map);
   void RecordInitializerPatternInfo(const MemoryPatternGroup& mem_patterns);
   void RecordActivationPatternInfo(const MemoryPatternGroup& mem_patterns);
@@ -152,8 +146,10 @@ class MemoryInfo {
   void PrintMemoryInfoForLocation(const logging::Logger& /*logger*/, const OrtDevice::DeviceType location);
   void GenerateMemoryProfile();
   inline void ClearMemoryInfoPerExecution() {
-    tensors_memory_info_map_[MapType::DynamicActivation].clear();
-    tensors_memory_info_map_[MapType::StaticActivation].clear();
+    for (auto& location_map : tensors_memory_info_map_) {
+      location_map.second.at(MapType::DynamicActivation).clear();
+      location_map.second.at(MapType::StaticActivation).clear();
+    }
   }
   const AllocInfoPerTensor* AllocPlan(const OrtValueIndex& idx) {
     if (tensor_alloc_info_map_.find(idx) != tensor_alloc_info_map_.end())
@@ -173,14 +169,13 @@ class MemoryInfo {
   }
 
   //Key: The map type. E.g., initializer, activation. Value: A map from the tensor index to its memory information
-  std::unordered_map<MapType, MemoryInfoMap> tensors_memory_info_map_;
+  std::map<OrtMemoryInfo, std::map<MapType, MemoryInfoMap> > tensors_memory_info_map_;
 
-  std::unordered_map<OrtValueIndex, AllocInfoPerTensor> tensor_alloc_info_map_;
+  std::map<OrtValueIndex, AllocInfoPerTensor> tensor_alloc_info_map_;
 
   //TODO: The dynamic and statically planned alignments may not be the same, need to check
   static const int alignment = 256;
-  size_t iteration_ = 0;
-  std::string memory_info_file;
+  size_t iteration_;
   size_t num_node_size_;
 
   //Memory Profile
