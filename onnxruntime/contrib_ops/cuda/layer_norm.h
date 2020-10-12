@@ -12,7 +12,7 @@ namespace cuda {
 
 using namespace onnxruntime::cuda;
 
-template <typename T, typename U>
+template <typename T, typename U, bool simplified>
 class LayerNorm final : public CudaKernel {
  public:
   LayerNorm(const OpKernelInfo& op_kernel_info);
