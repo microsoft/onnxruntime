@@ -1,1 +1,22 @@
-
+remote_theme: pmarsceill/just-the-docs
+color_scheme: onnxruntime
+search_enabled: false
+plugins:
+  - jekyll-toc
+kramdown:
+  parse_block_html: true
+logo: "/images/ONNX-Runtime-logo.svg"
+aux_links:
+  "Get started":
+    - "/docs/get-started/"
+  "Tutorials":
+    - "/docs/tutorials/"
+  "Recipes":
+    - "/docs/how-to/"
+  "Reference":
+    - "/docs/reference/"
+  "Resources":
+    - "/docs/resources/"
+  "GitHub":
+    - "https://github.com/microsoft/onnxruntime"
+ga_tracking: UA-156955408-1    
