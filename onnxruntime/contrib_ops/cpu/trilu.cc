@@ -8,8 +8,6 @@
 #include "trilu.h"
 #include <functional>
 
-using namespace onnxruntime::common;
-
 namespace onnxruntime {
 namespace contrib {
 

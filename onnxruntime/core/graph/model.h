@@ -244,8 +244,8 @@ class Model {
   // properties that would normally come from ModelProto
   std::string producer_version_;
   std::string producer_name_;
-  int64_t model_version_ = 0;
-  int64_t ir_version_ = kNoVersion;
+  int64_t model_version_;
+  int64_t ir_version_;
   std::string domain_;
   std::string doc_string_;
 #endif

@@ -3,8 +3,6 @@
 
 #include "einsum_auxiliary_ops.h"
 
-using namespace onnxruntime::common;
-
 namespace onnxruntime {
 
 namespace EinsumOp {
