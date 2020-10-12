@@ -149,7 +149,7 @@ class ReduceAggregatorArgMax : public ReduceAggregatorArgMinMax<T, TVAL> {
   inline ReduceAggregatorArgMax(int64_t N, const T& init) : ReduceAggregatorArgMinMax<T, TVAL>(N, init) {}
   inline TVAL aggall(const T* from_data) {
     Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, this->N_).maxCoeff(&this->arg_);
-    return get_value();
+    return this->get_value();
   }
   inline void update(const T& v) {
     if (v > this->accumulator_) {
@@ -168,7 +168,7 @@ class ReduceAggregatorArgMaxLastIndex : public ReduceAggregatorArgMax<T, TVAL> {
     for (int64_t i = 0; i < this->N_; ++i) {
       update(from_data[i]);
     }
-    return get_value();
+    return this->get_value();
   }
   inline void update(const T& v) {
     if (v >= this->accumulator_) {
@@ -185,7 +185,7 @@ class ReduceAggregatorArgMin : public ReduceAggregatorArgMinMax<T, TVAL> {
   inline ReduceAggregatorArgMin(int64_t N, const T& init) : ReduceAggregatorArgMinMax<T, TVAL>(N, init) {}
   inline TVAL aggall(const T* from_data) {
     Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, this->N_).minCoeff(&this->arg_);
-    return get_value();
+    return this->get_value();
   }
   inline void update(const T& v) {
     if (v < this->accumulator_) {
@@ -204,7 +204,7 @@ class ReduceAggregatorArgMinLastIndex : public ReduceAggregatorArgMin<T, TVAL> {
     for (int64_t i = 0; i < this->N_; ++i) {
       update(from_data[i]);
     }
-    return get_value();
+    return this->get_value();
   }
   inline void update(const T& v) {
     if (v <= this->accumulator_) {
