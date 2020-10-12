@@ -31,6 +31,7 @@ void MemoryInfo::GenerateTensorMap(const SequentialExecutionPlan* execution_plan
     ORT_ENFORCE(mem_info.lifetime_interval.first >= mem_info.alloctime_interval.first &&
                 mem_info.lifetime_interval.second <= mem_info.alloctime_interval.second);
     tensor_alloc_info_map_[value_idx] = std::move(mem_info);
+    tensors_memory_info_map_[mem_info.location];
   }
   return;
 }
@@ -40,7 +41,7 @@ void MemoryInfo::RecordMemoryPatternInfo(const MemoryPatternGroup& mem_patterns,
   for (const auto& location : mem_patterns.locations) {
     for (const auto& p : mem_patterns.GetPatterns(location)->GetPatternsMap()) {
       ORT_ENFORCE(AllocPlan(p.first));
-      tensors_memory_info_map_[location][type].AddPlannedMemory(p.first, p.second);
+      tensors_memory_info_map_.at(location)[type].AddPlannedMemory(p.first, p.second);
     }
   }
 }
@@ -50,7 +51,6 @@ void MemoryInfo::RecordActivationPatternInfo(const MemoryPatternGroup& mem_patte
   for (auto& item : tensor_alloc_info_map_) {
     if (item.second.alloc_kind == AllocKind::kReuse) {
       auto reuse_buffer = AllocPlan(item.first)->reused_buffer;
-      if (tensors_memory_info_map_.find(AllocPlan(item.first)->location) == tensors_memory_info_map_.end()) continue;
       auto& map = tensors_memory_info_map_.at(AllocPlan(item.first)->location);
       if (map[MapType::StaticActivation].Contain(reuse_buffer)) {
         auto& reused_memory = map[MapType::StaticActivation].GetPlannedMemory(reuse_buffer);
@@ -65,7 +65,6 @@ void MemoryInfo::RecordInitializerPatternInfo(const MemoryPatternGroup& mem_patt
   for (auto& item : tensor_alloc_info_map_) {
     if (item.second.alloc_kind == AllocKind::kReuse) {
       auto reuse_buffer = AllocPlan(item.first)->reused_buffer;
-      if (tensors_memory_info_map_.find(AllocPlan(item.first)->location) == tensors_memory_info_map_.end()) continue;
       auto& map = tensors_memory_info_map_.at(AllocPlan(item.first)->location);
       if (map[MapType::Initializer].Contain(reuse_buffer)) {
         auto& reused_memory = map[MapType::Initializer].GetPlannedMemory(reuse_buffer);
@@ -81,11 +80,11 @@ void MemoryInfo::RecordTensorDeviceAllocInfo(const OrtValueIndex idx, const OrtV
   auto& tensor = value.Get<Tensor>();
   auto sizeinbytes = tensor.SizeInBytes() % alignment ? tensor.SizeInBytes() + alignment - tensor.SizeInBytes() % alignment : tensor.SizeInBytes();
   MemoryBlock mb(size_t(tensor.DataRaw()), sizeinbytes);
-  //if (type == MapType::StaticActivation) {
-  //  bool valid = tensors_memory_info_map_.at(AllocPlan(idx)->location).at(type).Contain(idx);
-  //  ORT_ENFORCE(valid);
-  //}
-  tensors_memory_info_map_[AllocPlan(idx)->location][type].AddAllocMemory(idx, mb);
+  if (type == MapType::StaticActivation) {
+    bool valid = tensors_memory_info_map_.at(AllocPlan(idx)->location).at(type).Contain(idx);
+    ORT_ENFORCE(valid);
+  }
+  tensors_memory_info_map_.at(AllocPlan(idx)->location)[type].AddAllocMemory(idx, mb);
 }
 
 void MemoryInfo::RecordInitializerAllocInfo(const std::unordered_map<int, OrtValue>& tensor_map) {
@@ -99,7 +98,7 @@ void MemoryInfo::RecordActivationAllocInfo(const OrtValueIndex idx, const OrtVal
   if (!AllocPlan(idx)) return;
   auto reuse_buffer = AllocPlan(idx)->reused_buffer;
   MapType map_type;
-  auto& map = tensors_memory_info_map_[AllocPlan(idx)->location];
+  auto& map = tensors_memory_info_map_.at(AllocPlan(reuse_buffer)->location);
   if (map[MapType::DynamicActivation].Contain(reuse_buffer))
     map_type = MapType::DynamicActivation;
   else if (map[MapType::StaticActivation].Contain(reuse_buffer))
@@ -114,8 +113,8 @@ void MemoryInfo::RecordActivationAllocInfo(const OrtValueIndex idx, const OrtVal
 
 void MemoryInfo::SetDynamicAllocation(const OrtValueIndex idx) {
   if (!AllocPlan(idx)) return;
-  if (!tensors_memory_info_map_[AllocPlan(idx)->location][MapType::DynamicActivation].Contain(idx)) {
-    tensors_memory_info_map_[AllocPlan(idx)->location][MapType::DynamicActivation][idx];
+  if (!tensors_memory_info_map_.at(AllocPlan(idx)->location)[MapType::DynamicActivation].Contain(idx)) {
+    tensors_memory_info_map_.at(AllocPlan(idx)->location)[MapType::DynamicActivation][idx];
   }
 }
 
