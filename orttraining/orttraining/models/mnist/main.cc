@@ -79,7 +79,9 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
 #ifdef USE_CUDA
     bool use_cuda = flags.count("use_cuda") > 0;
     if (use_cuda) {
-      params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(0));
+      // Use local rank as device ID of the associated CUDA EP. 
+      OrtDevice::DeviceId device_id = static_cast<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
+      params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(device_id));
     }
 #endif
   } catch (const exception& e) {
