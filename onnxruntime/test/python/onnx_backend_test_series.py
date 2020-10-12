@@ -84,7 +84,8 @@ def create_backend_test(testname=None):
                 '^test_range_int32_type_negative_delta_expanded_cpu',
                 '^test_operator_symbolic_override_nested_cpu',
                 '^test_negative_log_likelihood_loss',
-                '^test_softmax_cross_entropy'
+                '^test_softmax_cross_entropy',
+                '^test_greater_equal', '^test_less_equal'
             ]
 
         # Skip these tests for a "pure" DML onnxruntime python wheel. We keep these tests enabled for instances where both DML and CUDA

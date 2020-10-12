@@ -675,7 +675,7 @@ def create_session(model_path, providers, session_options):
         new_model_path = model_path[:].replace(".onnx", "_new.onnx")
 
         if not os.path.exists(new_model_path):
-            subprocess.run("python3 ../symbolic_shape_infer.py --input " + model_path + " --output " + new_model_path + " --auto_merge", shell=True, check=True)
+            subprocess.run("python3 -m onnxruntime.tools.symbolic_shape_infer --input " + model_path + " --output " + new_model_path + " --auto_merge", shell=True, check=True)
         session = onnxruntime.InferenceSession(new_model_path, providers=providers, sess_options=session_options)
         return session
     except Exception as e:

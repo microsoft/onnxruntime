@@ -102,7 +102,10 @@ void WindowsTelemetry::LogProcessInfo() const {
   // did we already log the process info?  we only need to log it once
   if (process_info_logged.exchange(true))
     return;
-
+  bool isRedist = true;
+#if BUILD_INBOX
+  isRedist = false;
+#endif
   TraceLoggingWrite(telemetry_provider_handle,
                     "ProcessInfo",
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
@@ -111,7 +114,7 @@ void WindowsTelemetry::LogProcessInfo() const {
                     // Telemetry info
                     TraceLoggingUInt8(0, "schemaVersion"),
                     TraceLoggingString(ORT_VERSION, "runtimeVersion"),
-                    TraceLoggingBool(true, "isRedist"));
+                    TraceLoggingBool(isRedist, "isRedist"));
 
   process_info_logged = true;
 }

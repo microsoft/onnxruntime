@@ -11,13 +11,16 @@
 #include <iostream>
 #include <numeric>
 #include <stack>
+#include <queue>
 
 #include "gsl/gsl"
 #include "core/common/logging/logging.h"
+#include "core/flatbuffers/schema/ort.fbs.h"
+#include "core/flatbuffers/flatbuffers_utils.h"
+#include "core/graph/graph_flatbuffers_utils.h"
 #include "core/framework/tensor_shape.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
-#include "core/graph/graph_flatbuffers_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/indexed_sub_graph.h"
 #include "core/graph/model.h"
@@ -420,6 +423,10 @@ const Node* Node::NodeConstIterator::operator->() const {
   return &(operator*());
 }
 
+void Node::SetPriority(int priority) noexcept {
+  priority_ = priority;
+}
+
 #if !defined(ORT_MINIMAL_BUILD)
 
 void Node::SetNodeType(Node::Type node_type) noexcept {
@@ -581,7 +588,7 @@ Status Node::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Node& fbs_n
           bool check_parent_graph = false) -> Status {
     ORT_RETURN_IF(nullptr == fbs_node_arg_names, "fbs_node_arg_names cannot be null");
     node_args.reserve(fbs_node_arg_names->size());
-    for (const auto& node_arg_name : *fbs_node_arg_names) {
+    for (const auto* node_arg_name : *fbs_node_arg_names) {
       ORT_RETURN_IF(nullptr == node_arg_name, "node_arg_name cannot be null");
       auto* node_arg = check_parent_graph ? graph_->GetNodeArgIncludingParentGraphs(node_arg_name->str())
                                           : graph_->GetNodeArg(node_arg_name->str());
@@ -677,6 +684,7 @@ void Node::Init(const std::string& name,
   definitions_.input_defs = input_args;
   definitions_.output_defs = output_args;
   domain_ = domain;
+  priority_ = 0;
   if (kOnnxDomainAlias == domain_) {
     domain_ = kOnnxDomain;
   }
@@ -1560,6 +1568,44 @@ void Graph::ReverseDFSFrom(const std::vector<const Node*>& from,
   }
 }
 
+void Graph::KahnsTopologicalSort(const std::function<void(const Node*)>& enter,
+                                 const std::function<bool(const Node*, const Node*)>& comp) const {
+  std::unordered_map<NodeIndex, size_t> in_degree;
+  std::priority_queue<const Node*, std::vector<const Node*>, decltype(comp)> to_visit(comp);
+  std::vector<NodeIndex> topo_order;
+
+  for (auto& node : Nodes()) {
+    size_t input_edge_count = node.GetInputEdgesCount();
+    in_degree.insert({node.Index(), input_edge_count});
+    if (input_edge_count == 0) {
+      to_visit.push(&node);
+    }
+  }
+
+  while (!to_visit.empty()) {
+    const Node* current = to_visit.top();
+    to_visit.pop();
+
+    if (!current) continue;
+
+    if (enter) {
+      enter(current);
+    }
+
+    for (auto node_it = current->OutputNodesBegin(); node_it != current->OutputNodesEnd(); ++node_it) {
+      in_degree[node_it->Index()]--;
+
+      if (in_degree[node_it->Index()] == 0) {
+        to_visit.push(&*node_it);
+      }
+    }
+    topo_order.push_back(current->Index());
+  }
+
+  if (NumberOfNodes() != static_cast<int>(topo_order.size())) {   
+    ORT_THROW("Some nodes are not included in the topological sort, graph have a cycle.");
+  }
+}
 #if !defined(ORT_MINIMAL_BUILD)
 
 GSL_SUPPRESS(es .84)  // noisy warning about ignoring return value from insert(...)

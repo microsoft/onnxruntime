@@ -347,6 +347,7 @@ INSTANTIATE_TEST_SUITE_P(MnistInputOutput, MnistImageTest,
         std::make_pair(L"RGB_5.png", 5)
     ));
 
+#if defined(NDEBUG) || defined(RUN_MODELTEST_IN_DEBUG_MODE)
 typedef std::tuple<std::tuple<std::wstring, ModelInputOutputType, std::wstring>, std::wstring, std::wstring, InputImageSource, EvaluationStrategy, OutputBindingStrategy, LearningModelDeviceKind> ImageTestParamTuple;
 struct ImageTestParam {
     std::wstring model_file_name, model_pixel_format, image_file_name, input_pixel_format;
@@ -422,6 +423,7 @@ INSTANTIATE_TEST_SUITE_P(ImageTest, ImageTest,
         testing::Values(Bound, Unbound),
         testing::Values(LearningModelDeviceKind::DirectX, LearningModelDeviceKind::Cpu)
     ));
+
 
 typedef std::tuple<std::tuple<std::wstring, ModelInputOutputType, std::vector<std::wstring>, int, bool>, OutputBindingStrategy, EvaluationStrategy, VideoFrameSource, VideoFrameSource, LearningModelDeviceKind> BatchTestParamTuple;
 struct BatchTestParam {
@@ -550,6 +552,8 @@ INSTANTIATE_TEST_SUITE_P(BatchTest, BatchTest,
         testing::Values(FromSoftwareBitmap, FromDirect3DSurface, FromUnsupportedD3DSurface),
         testing::Values(LearningModelDeviceKind::DirectX, LearningModelDeviceKind::Cpu)
     ));
+#endif
+
 TEST_F(ImageTests, LoadBindEvalModelWithoutImageMetadata) {
     GPUTEST;
 

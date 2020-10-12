@@ -46,7 +46,7 @@ namespace Dml
         gsl::span<const uint32_t> GetSizes() const { return { m_sizes, m_sizes + m_bufferTensorDesc.DimensionCount }; }
         gsl::span<const uint32_t> GetStrides() const;
   
-        inline UINT64 GetBufferSizeInBytes() const
+        inline uint64_t GetBufferSizeInBytes() const
         { 
             assert(m_tensorType == DML_TENSOR_TYPE_BUFFER);
             return m_bufferTensorDesc.TotalTensorSizeInBytes;

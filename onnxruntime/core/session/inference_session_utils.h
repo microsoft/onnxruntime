@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "core/flatbuffers/ort.fbs.h"
+#include "core/flatbuffers/schema/ort.fbs.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 //
@@ -66,23 +66,6 @@ class JsonConfigParser {
 };
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
-
-// check if filename ends in .ort
-template <typename T>
-bool IsOrtFormatModel(const std::basic_string<T>& filename) {
-  auto len = filename.size();
-  return len > 4 &&
-         filename[len - 4] == '.' &&
-         std::tolower(filename[len - 3]) == 'o' &&
-         std::tolower(filename[len - 2]) == 'r' &&
-         std::tolower(filename[len - 1]) == 't';
-}
-
-// check if bytes has the flatbuffer ORT identifier
-inline bool IsOrtFormatModelBytes(const void* bytes, int num_bytes) {
-  return num_bytes > 8 &&  // check buffer is large enough to contain identifier so we don't read random memory
-         experimental::fbs::InferenceSessionBufferHasIdentifier(bytes);
-}
 
 }  // namespace inference_session_utils
 }  // namespace onnxruntime

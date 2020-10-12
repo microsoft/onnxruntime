@@ -29,7 +29,7 @@ Status SoftMaxGradComputeHelper(
   auto Y_data = reinterpret_cast<const CudaT*>(Y);
   auto dX_data = reinterpret_cast<CudaT*>(dX);
 
-  if (D == input_shape[normalized_axis] && D <= 1024 && D * sizeof(T) <= 4096) {
+  if (D <= 1024 && D * sizeof(T) <= 4096) {
     dispatch_softmax_backward<CudaT, CudaT, AccType<T>, is_log_softmax>(dX_data, dY_data, Y_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));
     return Status::OK();
   }

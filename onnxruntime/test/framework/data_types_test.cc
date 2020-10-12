@@ -204,7 +204,12 @@ struct MapTypeProto {
 class DataTypeTest : public testing::Test {
  public:
   static void SetUpTestCase() {
-    RegisterTestTypes();
+    // xcTest run test case by case, so the SetUp needs to be reentrant.
+    static std::atomic<bool> loaded(false);
+    if (!loaded.load()) {
+      loaded.store(true);
+      RegisterTestTypes();
+    }
   }
 };
 

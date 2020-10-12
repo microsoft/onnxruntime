@@ -24,6 +24,7 @@ struct CUDAExecutionProviderInfo {
   OrtDevice::DeviceId device_id{0};
   size_t cuda_mem_limit{std::numeric_limits<size_t>::max()};
   ArenaExtendStrategy arena_extend_strategy{ArenaExtendStrategy::kNextPowerOfTwo};
+  OrtCudnnConvAlgoSearch cudnn_conv_algo{OrtCudnnConvAlgoSearch::EXHAUSTIVE};
 };
 
 // Logical device representation.
@@ -52,9 +53,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
   cudnnHandle_t PerThreadCudnnHandle() {
     return GetPerThreadContext().CudnnHandle();
   }
-  curandGenerator_t PerThreadCurandGenerator() {
-    return GetPerThreadContext().CurandGenerator();
-  }
 
   template <typename T>
   const T* GetConstOnes(size_t count) {
@@ -80,13 +78,15 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   int GetDeviceId() const { return device_id_; }
   const cudaDeviceProp& GetDeviceProp() const { return device_prop_; };
+  int GetCudnnConvAlgo() const { return cudnn_conv_algo_; }
   void UpdateProviderOptionsInfo();
 
- private:
+private:
   OrtDevice::DeviceId device_id_;
   cudaDeviceProp device_prop_;
   size_t cuda_mem_limit_;
   ArenaExtendStrategy arena_extend_strategy_;
+  int cudnn_conv_algo_;
 
   struct DeferredReleaseCPUPtrs {
     bool recorded = false;
@@ -107,10 +107,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
     cudnnHandle_t CudnnHandle() const {
       return cudnn_handle_;
-    }
-
-    curandGenerator_t CurandGenerator() const {
-      return curand_generator_;
     }
 
     cudaEvent_t& GetCurrentDeferredReleaseEvent() {
@@ -146,7 +142,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
    private:
     cublasHandle_t cublas_handle_ = nullptr;
     cudnnHandle_t cudnn_handle_ = nullptr;
-    curandGenerator_t curand_generator_ = nullptr;
 
     // deferred release for temporary CPU pinned memory used in cudaMemcpyAsync
     // note that cudaEvent will be assigned at OnRunEnd() when PerThreadContext destory
