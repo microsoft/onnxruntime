@@ -36,7 +36,7 @@ struct MemoryInfoMap {
 
   inline void AddAllocMemory(const OrtValueIndex& idx, MemoryBlock& mb) {
     map_[idx].alloced_block = mb;
-    if (ptr_offset == 0 || ptr_offset > mb.offset_) {
+    if (ptr_offset == 0 || (ptr_offset > mb.offset_ && mb.offset_ != 0)) {
       ptr_offset = mb.offset_;
     }
   }
@@ -46,16 +46,16 @@ struct MemoryInfoMap {
     return map_.at(idx).planned_block;
   }
 
-  inline const size_t GetPlannedAddress(const OrtValueIndex& idx) const {
+  inline size_t GetPlannedAddress(const OrtValueIndex& idx) const {
     ORT_ENFORCE(map_.find(idx) != map_.end());
     return map_.at(idx).planned_block.offset_;
   }
 
-  inline const size_t GetPlannedSize(const OrtValueIndex& idx) const {
+  inline size_t GetPlannedSize(const OrtValueIndex& idx) const {
     ORT_ENFORCE(map_.find(idx) != map_.end());
     return map_.at(idx).planned_block.size_;
   }
-  const size_t GetAllocAddress(const OrtValueIndex& idx, bool raw = false) const {
+  size_t GetAllocAddress(const OrtValueIndex& idx, bool raw = false) const {
     ORT_ENFORCE(map_.find(idx) != map_.end());
     if (raw) {
       return map_.at(idx).alloced_block.offset_;
@@ -64,19 +64,24 @@ struct MemoryInfoMap {
     }
   }
 
-  inline const size_t GetAllocSize(const OrtValueIndex& idx) const {
+  inline size_t GetAllocSize(const OrtValueIndex& idx) const {
     ORT_ENFORCE(map_.find(idx) != map_.end());
     return map_.at(idx).alloced_block.size_;
   }
 
-  inline const void clear() {
-      map_.clear();
+  inline bool Contain(const OrtValueIndex& idx) {
+    return map_.find(idx) != map_.end();
+  }
+
+  inline void clear() {
+    map_.clear();
   }
 
   auto begin() { return map_.begin(); }
   auto begin() const { return map_.begin(); }
   auto end() { return map_.end(); }
   auto end() const { return map_.end(); }
+  auto& operator[](const OrtValueIndex& k) { return map_[k]; }
 
  private:
   std::unordered_map<OrtValueIndex, MemoryInfoPerTensor> map_;
@@ -97,13 +102,12 @@ class MemoryInfo {
     MLValueTensorType tensor_type{Unknown};
     OrtValueIndex mlvalue_index{0};
     OrtValueName mlvalue_name{""};
-    MapType map_type{MapType::Initializer};
 
     IntervalT lifetime_interval{0, 0};
     IntervalT alloctime_interval{0, 0};
     bool inplace_reuse{false};
-    OrtValueIndex reused_buffer{0}; //The index of the reused tensor, if no reuse, it is its own tensor.
-    AllocKind alloc_kind;
+    OrtValueIndex reused_buffer{0};  //The index of the reused tensor, if no reuse, it is its own tensor.
+    AllocKind alloc_kind{AllocKind::kAllocate};
     OrtMemoryInfo location;
   };
 
@@ -126,19 +130,16 @@ class MemoryInfo {
   inline void SetIteration(size_t iteration) { iteration_ = iteration; }
 
   void PrintMemoryInfoForLocation(const logging::Logger& /*logger*/, const OrtDevice::DeviceType location);
-  void GenerateMemoryProfilePerType(const MapType& map_type);
   void GenerateMemoryProfile();
   inline void ClearMemoryInfoPerExecution() {
     tensors_memory_info_map_[MapType::DynamicActivation].clear();
     tensors_memory_info_map_[MapType::StaticActivation].clear();
-    for (auto& item : tensor_alloc_info_map_) {
-      if (item.second.map_type == MapType::DynamicActivation) {
-        item.second.map_type = MapType::StaticActivation;
-      }
-    }
   }
-  AllocInfoPerTensor& AllocPlan(const OrtValueIndex& idx) {
-    return tensor_alloc_info_map_[idx];
+  const AllocInfoPerTensor* AllocPlan(const OrtValueIndex& idx) {
+    if (tensor_alloc_info_map_.find(idx) != tensor_alloc_info_map_.end())
+      return &tensor_alloc_info_map_.at(idx);
+    else
+      return nullptr;
   }
 
  private:

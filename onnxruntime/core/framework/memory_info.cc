@@ -20,10 +20,11 @@ void MemoryInfo::GenerateTensorMap(const SequentialExecutionPlan* execution_plan
     mem_info.lifetime_interval = execution_plan->allocation_plan[value_idx].life_interval;
     mem_info.alloctime_interval = execution_plan->allocation_plan[value_idx].allocate_interval;
     mem_info.reused_buffer = (execution_plan->allocation_plan[value_idx].alloc_kind != AllocKind::kReuse) ? value_idx : execution_plan->allocation_plan[value_idx].reused_buffer;
-    mem_info.inplace_reuse = execution_plan->allocation_plan[value_idx].inplace_reuse;
+    //If the tensor is using memory outside of the scope, do not store it
+    if (execution_plan->allocation_plan[mem_info.reused_buffer].alloc_kind == AllocKind::kPreExisting) continue;
+    mem_info.inplace_reuse = (execution_plan->allocation_plan[value_idx].inplace_reuse != -1 && execution_plan->allocation_plan[value_idx].inplace_reuse != value_idx);
     mem_info.alloc_kind = execution_plan->allocation_plan[value_idx].alloc_kind;
     mem_info.location = execution_plan->allocation_plan[value_idx].location;
-    mem_info.map_type = execution_plan->allocation_plan[value_idx].alloc_kind == AllocKind::kAllocateStatically ? MapType::Initializer : MapType::StaticActivation;
 
     ORT_ENFORCE(mem_info.lifetime_interval.first <= mem_info.lifetime_interval.second);
     ORT_ENFORCE(mem_info.lifetime_interval.first >= mem_info.alloctime_interval.first &&
@@ -44,25 +45,40 @@ void MemoryInfo::RecordMemoryPatternInfo(const MemoryPatternGroup& mem_patterns,
 
 void MemoryInfo::RecordActivationPatternInfo(const MemoryPatternGroup& mem_patterns) {
   RecordMemoryPatternInfo(mem_patterns, MapType::StaticActivation);
-  for (auto& item : tensors_memory_info_map_[MapType::StaticActivation]) {
-    if (AllocPlan(item.first).alloc_kind == AllocKind::kReuse) {
-      auto reuse_buffer = AllocPlan(item.first).reused_buffer;
-      auto reuse_map_type = AllocPlan(reuse_buffer).map_type;
-      auto& reused_meomry = tensors_memory_info_map_[reuse_map_type].GetPlannedMemory(reuse_buffer);
-      tensors_memory_info_map_[MapType::StaticActivation].AddPlannedMemory(item.first, reused_meomry);
+  for (auto& item : tensor_alloc_info_map_) {
+    if (item.second.alloc_kind == AllocKind::kReuse) {
+      auto reuse_buffer = AllocPlan(item.first)->reused_buffer;
+      if (tensors_memory_info_map_[MapType::StaticActivation].Contain(reuse_buffer)) {
+        auto& reused_memory = tensors_memory_info_map_[MapType::StaticActivation].GetPlannedMemory(reuse_buffer);
+        tensors_memory_info_map_[MapType::StaticActivation].AddPlannedMemory(item.first, reused_memory);
+      }
     }
   }
 }
 
 void MemoryInfo::RecordInitializerPatternInfo(const MemoryPatternGroup& mem_patterns) {
   RecordMemoryPatternInfo(mem_patterns, MapType::Initializer);
+  for (auto& item : tensor_alloc_info_map_) {
+    if (item.second.alloc_kind == AllocKind::kReuse) {
+      auto reuse_buffer = AllocPlan(item.first)->reused_buffer;
+      if (tensors_memory_info_map_[MapType::StaticActivation].Contain(reuse_buffer)) {
+        auto& reused_memory = tensors_memory_info_map_[MapType::Initializer].GetPlannedMemory(reuse_buffer);
+        tensors_memory_info_map_[MapType::Initializer].AddPlannedMemory(item.first, reused_memory);
+      }
+    }
+  }
 }
 
 //Record the actual allocated tensor in the device
 void MemoryInfo::RecordTensorDeviceAllocInfo(const OrtValueIndex idx, const OrtValue& value, const MapType& type) {
+  if (tensor_alloc_info_map_.find(idx) == tensor_alloc_info_map_.end()) return;
   auto& tensor = value.Get<Tensor>();
   auto sizeinbytes = tensor.SizeInBytes() % alignment ? tensor.SizeInBytes() + alignment - tensor.SizeInBytes() % alignment : tensor.SizeInBytes();
   MemoryBlock mb(size_t(tensor.DataRaw()), sizeinbytes);
+  if (type != MapType::DynamicActivation) {
+    bool valid = tensors_memory_info_map_[type].Contain(idx);
+    ORT_ENFORCE(valid);
+  }
   tensors_memory_info_map_[type].AddAllocMemory(idx, mb);
 }
 
@@ -73,19 +89,32 @@ void MemoryInfo::RecordInitializerAllocInfo(const std::unordered_map<int, OrtVal
 }
 
 void MemoryInfo::RecordActivationAllocInfo(const OrtValueIndex idx, const OrtValue& value) {
-  auto reuse_buffer = AllocPlan(idx).reused_buffer;
-  auto map_type = AllocPlan(reuse_buffer).map_type;
+  if (!AllocPlan(idx)) return;
+  auto reuse_buffer = AllocPlan(idx)->reused_buffer;
+  MapType map_type;
+  if (tensors_memory_info_map_[MapType::DynamicActivation].Contain(reuse_buffer))
+    map_type = MapType::DynamicActivation;
+  else if (tensors_memory_info_map_[MapType::StaticActivation].Contain(reuse_buffer))
+    map_type = MapType::StaticActivation;
+  else if (tensors_memory_info_map_[MapType::Initializer].Contain(reuse_buffer))
+    map_type = MapType::Initializer;
+  else
+    ORT_ENFORCE(false, "Unsupported tensor type.");
+
   RecordTensorDeviceAllocInfo(idx, value, map_type);
 }
 
 void MemoryInfo::SetDynamicAllocation(const OrtValueIndex idx) {
-  AllocPlan(idx).map_type = MapType::DynamicActivation;
+  if (!tensors_memory_info_map_[MapType::DynamicActivation].Contain(idx)) {
+      tensors_memory_info_map_[MapType::DynamicActivation][idx];
+  }
 }
 
 void PrintInforPerTensor(const MemoryInfo::AllocInfoPerTensor& alloc_info, const MemoryInfoPerTensor& mem_info, const size_t& rel_addr) {
   std::cout << "Tensor name: " << alloc_info.mlvalue_name << ", ";
   std::cout << "Index: " << alloc_info.mlvalue_index << ", ";
   std::cout << "Type: " << alloc_info.tensor_type << ", ";
+  std::cout << "Reuse inplace: " << alloc_info.inplace_reuse << ", ";
   std::cout << "Alloc type " << alloc_info.alloc_kind << ", ";
   std::cout << "Location: " << alloc_info.location.name << ", ";
   std::cout << "lifetime: (" << alloc_info.lifetime_interval.first << ", " << alloc_info.lifetime_interval.second << "), ";
@@ -102,21 +131,21 @@ void MemoryInfo::PrintMemoryInfoForLocation(const logging::Logger& /*logger*/, c
   std::cout << "Initializer\n";
   const auto& initailizer_map = tensors_memory_info_map_[MapType::Initializer];
   for (auto& item : initailizer_map) {
-    if (AllocPlan(item.first).location.device.Type() != location) continue;
-    PrintInforPerTensor(AllocPlan(item.first), item.second, initailizer_map.GetAllocAddress(item.first));
+    if (AllocPlan(item.first)->location.device.Type() != location) continue;
+    PrintInforPerTensor(*AllocPlan(item.first), item.second, initailizer_map.GetAllocAddress(item.first));
   }
-  std::cout << "Static Activation\n";
+  std::cout << "\nStatic Activation\n";
   const auto& static_activation_map = tensors_memory_info_map_[MapType::StaticActivation];
   for (auto& item : static_activation_map) {
-    if (AllocPlan(item.first).location.device.Type() != location) continue;
-    PrintInforPerTensor(AllocPlan(item.first), item.second, static_activation_map.GetAllocAddress(item.first));
+    if (AllocPlan(item.first)->location.device.Type() != location) continue;
+    PrintInforPerTensor(*AllocPlan(item.first), item.second, static_activation_map.GetAllocAddress(item.first));
   }
 
-  std::cout << "Dynamic Activation\n";
+  std::cout << "\nDynamic Activation\n";
   const auto& dynamic_activation_map = tensors_memory_info_map_[MapType::DynamicActivation];
   for (auto& item : dynamic_activation_map) {
-    if (AllocPlan(item.first).location.device.Type() != location) continue;
-    PrintInforPerTensor(AllocPlan(item.first), item.second, dynamic_activation_map.GetAllocAddress(item.first));
+    if (AllocPlan(item.first)->location.device.Type() != location) continue;
+    PrintInforPerTensor(*AllocPlan(item.first), item.second, dynamic_activation_map.GetAllocAddress(item.first));
   }
 }
 
@@ -220,16 +249,16 @@ void MemoryInfo::GenerateMemoryProfile() {
   //Static Activation
   const auto& static_activation_map = tensors_memory_info_map_.at(MapType::StaticActivation);
   for (const auto& item : static_activation_map) {
-    const auto& info = AllocPlan(item.first);
-    if (info.location.device.Type() != OrtDevice::GPU) continue;
-    if (info.inplace_reuse) continue;
+    const auto info = AllocPlan(item.first);
+    if (info->location.device.Type() != OrtDevice::GPU) continue;
+    if (info->inplace_reuse) continue;
 
-    const std::string& name = info.mlvalue_name;
+    const std::string& name = info->mlvalue_name;
     const std::string cname = color_names[events.size() % color_names.size()];
-    size_t offset = static_activation_map.GetAllocAddress(item.first);
-    size_t size = static_activation_map.GetAllocSize(item.first);
-    size_t alloc_step = AllocPlan(item.first).lifetime_interval.first;  //alloc_kind == AllocKind::kReuse ? info.alloc_plan.life_interval.first + 1 : info.alloc_plan.life_interval.first;
-    size_t dealloc_step = AllocPlan(item.first).lifetime_interval.second;
+    size_t offset = static_activation_map.GetPlannedAddress(item.first);
+    size_t size = static_activation_map.GetPlannedSize(item.first);
+    size_t alloc_step = AllocPlan(item.first)->lifetime_interval.first;  //alloc_kind == AllocKind::kReuse ? info.alloc_plan.life_interval.first + 1 : info.alloc_plan.life_interval.first;
+    size_t dealloc_step = AllocPlan(item.first)->lifetime_interval.second;
     for (size_t tid = alloc_step; tid <= dealloc_step; tid++) {
       events.push_back(CreateMemoryEvent(static_activations_pid, tid, name, offset, size, cname));
     }
@@ -239,15 +268,15 @@ void MemoryInfo::GenerateMemoryProfile() {
   const auto& dynamic_activation_map = tensors_memory_info_map_.at(MapType::DynamicActivation);
   for (const auto& item : dynamic_activation_map) {
     const auto& info = AllocPlan(item.first);
-    if (info.location.device.Type() != OrtDevice::GPU) continue;
-    if (info.inplace_reuse) continue;
+    if (info->location.device.Type() != OrtDevice::GPU) continue;
+    if (info->inplace_reuse) continue;
 
-    const std::string& name = info.mlvalue_name;
+    const std::string& name = info->mlvalue_name;
     const std::string cname = color_names[events.size() % color_names.size()];
     size_t offset = dynamic_activation_map.GetAllocAddress(item.first);
     size_t size = dynamic_activation_map.GetAllocSize(item.first);
-    size_t alloc_step = AllocPlan(item.first).lifetime_interval.first;  //alloc_kind == AllocKind::kReuse ? info.alloc_plan.life_interval.first + 1 : info.alloc_plan.life_interval.first;
-    size_t dealloc_step = AllocPlan(item.first).lifetime_interval.second;
+    size_t alloc_step = AllocPlan(item.first)->lifetime_interval.first;  //alloc_kind == AllocKind::kReuse ? info.alloc_plan.life_interval.first + 1 : info.alloc_plan.life_interval.first;
+    size_t dealloc_step = AllocPlan(item.first)->lifetime_interval.second;
     for (size_t tid = alloc_step; tid <= dealloc_step; tid++) {
       events.push_back(CreateMemoryEvent(dynamic_activations_pid, tid, name, offset, size, cname));
     }
@@ -256,14 +285,15 @@ void MemoryInfo::GenerateMemoryProfile() {
   //Initalizer
   const auto& initializer_map = tensors_memory_info_map_.at(MapType::Initializer);
   for (const auto& item : initializer_map) {
-    const auto& info = AllocPlan(item.first);
-    if (info.location.device.Type() != OrtDevice::GPU) continue;
-    const std::string& name = info.mlvalue_name;
+    const auto info = AllocPlan(item.first);
+    if (info->location.device.Type() != OrtDevice::GPU) continue;
+    if (info->inplace_reuse) continue;
+    const std::string& name = info->mlvalue_name;
     const std::string cname = color_names[events.size() % color_names.size()];
     size_t offset = initializer_map.GetAllocAddress(item.first);
     size_t size = initializer_map.GetAllocSize(item.first);
-    size_t alloc_step = AllocPlan(item.first).lifetime_interval.first;  //alloc_kind == AllocKind::kReuse ? info.alloc_plan.life_interval.first + 1 : info.alloc_plan.life_interval.first;
-    size_t dealloc_step = AllocPlan(item.first).lifetime_interval.second;
+    size_t alloc_step = AllocPlan(item.first)->lifetime_interval.first;  //alloc_kind == AllocKind::kReuse ? info.alloc_plan.life_interval.first + 1 : info.alloc_plan.life_interval.first;
+    size_t dealloc_step = AllocPlan(item.first)->lifetime_interval.second;
     for (size_t tid = alloc_step; tid <= dealloc_step; tid++) {
       events.push_back(CreateMemoryEvent(initializers_pid, tid, name, offset, size, cname));
     }

@@ -150,7 +150,8 @@ class PlannerImpl {
     // case that the DML provider has removed initilizers from the graph during partitioning.
     // Removing initializers is a temporary measure needed to limit the number of copies of
     // tensors in GPU memory.
-    OrtValueIndex reused_buffer_index = -1;  // index of original buffer to reuse
+    OrtValueIndex reused_buffer_index = -1;          // index of original buffer to reuse
+    OrtValueIndex inplace_reused_buffer_index = -1;  // index of original buffer to reuse inplace
   };
 
   // ort_value_info_ is indexed by an OrtValueIndex
@@ -189,6 +190,11 @@ class PlannerImpl {
     return use_count;
   }
 
+  OrtValueIndex& InplaceBuffer(OrtValueIndex n) {
+    ORT_ENFORCE(n >= 0 && static_cast<size_t>(n) < ort_value_info_.size());
+    return ort_value_info_[n].inplace_reused_buffer_index;
+  }
+
   OrtValueIndex& Buffer(OrtValueIndex n) {
     ORT_ENFORCE(n >= 0 && static_cast<size_t>(n) < ort_value_info_.size());
     return ort_value_info_[n].reused_buffer_index;
@@ -206,7 +212,9 @@ class PlannerImpl {
     ORT_ENFORCE(id >= 0 && static_cast<size_t>(id) < ort_value_info_.size());
     OrtValueInfo& info = ort_value_info_[id];
     info.usecount = 0;
-    info.reused_buffer_index = id;  // initially, no reuse; the ml-value uses its own buffer
+    info.reused_buffer_index = id;          // initially, no reuse; the ml-value uses its own buffer
+    info.inplace_reused_buffer_index = id;  // initially, no reuse; the ml-value uses its own buffer
+
     info.p_def_site = p_def_site;
   }
 
@@ -224,6 +232,13 @@ class PlannerImpl {
     auto& symplan = AllocPlan(reused_for);
     symplan.alloc_kind = alloc_kind;
     symplan.reused_buffer = original;
+  }
+
+  void InplaceReuse(OrtValueIndex reused, OrtValueIndex reused_for) {
+    ORT_ENFORCE(reused != reused_for);
+    OrtValueIndex original = InplaceBuffer(reused);
+    InplaceBuffer(reused_for) = original;
+    AllocPlan(reused_for).inplace_reuse = original;
   }
 
   // Find if there exists some input tensor that we can use in-place for output_arg_num-th input in the node.
@@ -660,7 +675,7 @@ class PlannerImpl {
           // Reuse one of this node's input buffers as the output buffer (for in-place update)
           //In this case, we dont kill the "reused" tensor
           Reuse(reused, current, AllocKind::kReuse);
-          AllocPlan(current).inplace_reuse = true;
+          InplaceReuse(reused, current);
         } else if (!context_.IsParallelExecutionEnabled() &&
                    FindReusableTensor(*node_output, &reused)) {
           // Reuse an available (dead) buffer for this output, this is only for sequential execution.
@@ -825,8 +840,8 @@ class PlannerImpl {
   void AdjustInplaceLifeIntervals() {
     std::unordered_map<OrtValueIndex, std::vector<OrtValueIndex>> inplace_reuse_buffer;
     for (size_t i = 0; i < ort_value_info_.size(); ++i) {
-      if (AllocPlan(OrtValueIndex(i)).inplace_reuse) {
-        inplace_reuse_buffer[ort_value_info_[i].reused_buffer_index].push_back(OrtValueIndex(i));
+      if (AllocPlan(OrtValueIndex(i)).inplace_reuse != OrtValueIndex(i)) {
+        inplace_reuse_buffer[ort_value_info_[i].inplace_reused_buffer_index].push_back(OrtValueIndex(i));
       }
     }
     for (const auto& item : inplace_reuse_buffer) {
