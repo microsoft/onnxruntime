@@ -153,7 +153,7 @@ void MemoryInfo::PrintMemoryInfoForLocation(const logging::Logger& /*logger*/, c
   }
 }
 
-static std::string CreateMetadataEvent(const std::string& process_name, size_t process_id) {
+std::string MemoryInfo::MemoryInfoProfile::CreateMetadataEvent(const std::string& process_name, size_t process_id) {
   std::stringstream evt;
   evt << "{";
   evt << "\"ph\":\"M\",";
@@ -171,7 +171,7 @@ static std::string CreateMetadataEvent(const std::string& process_name, size_t p
   return evt.str();
 }
 
-static std::string CreateMemoryEvent(size_t pid, size_t tid, const std::string& name, size_t offset, size_t size, const std::string& color_name) {
+std::string MemoryInfo::MemoryInfoProfile::CreateMemoryEvent(size_t pid, size_t tid, const std::string& name, size_t offset, size_t size, const std::string& color_name) {
   std::stringstream evt;
   evt << "{";
   evt << "\"ph\":\"X\",";
@@ -215,103 +215,74 @@ static std::string CreateMemoryEvent(size_t pid, size_t tid, const std::string& 
 //      Need an indication of tensors that were statically planned (offset+size) but ended up dynamically allocated outside the BFC arena (offset+size).
 //      For reused tensors, the lifetime should not overlap with other reuses/original allocation.
 
-void MemoryInfo::GenerateMemoryProfile() {
-  std::vector<std::string> color_names = {
-      "good",
-      "bad",
-      "terrible",
-      "yellow",
-      "olive",
-      "generic_work",
-      "background_memory_dump",
-      "light_memory_dump",
-      "detailed_memory_dump",
-      "thread_state_uninterruptible",
-      "thread_state_iowait",
-      "thread_state_running",
-      "thread_state_runnable",
-      "thread_state_unknown",
-      "cq_build_running",
-      "cq_build_passed",
-      "cq_build_failed",
-      "cq_build_abandoned",
-      "cq_build_attempt_runnig",
-      "cq_build_attempt_passed",
-      "cq_build_attempt_failed",
-  };
+const std::vector<std::string> MemoryInfo::MemoryInfoProfile::color_names = {
+    "good",
+    "bad",
+    "terrible",
+    "yellow",
+    "olive",
+    "generic_work",
+    "background_memory_dump",
+    "light_memory_dump",
+    "detailed_memory_dump",
+    "thread_state_uninterruptible",
+    "thread_state_iowait",
+    "thread_state_running",
+    "thread_state_runnable",
+    "thread_state_unknown",
+    "cq_build_running",
+    "cq_build_passed",
+    "cq_build_failed",
+    "cq_build_abandoned",
+    "cq_build_attempt_runnig",
+    "cq_build_attempt_passed",
+    "cq_build_attempt_failed",
+};
 
-  std::vector<std::string> events;
-
+void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string p_name, const size_t pid, const MemoryInfo::MapType& map_type, const std::string name_pattern) {
   // Metadata.
-  const size_t initializers_pid = 0;
-  const size_t static_activations_pid = 1;
-  const size_t dynamic_activations_pid = 2;
-  events.push_back(CreateMetadataEvent("GPU (initializers)", initializers_pid));
-  events.push_back(CreateMetadataEvent("GPU (static activations)", static_activations_pid));
-  events.push_back(CreateMetadataEvent("GPU (dynamic activations)", dynamic_activations_pid));
+  std::string pid_name_internal = p_name + name_pattern;
+  events.push_back(CreateMetadataEvent(pid_name_internal, pid));
 
-  //Static Activation
-  const auto& static_activation_map = tensors_memory_info_map_.at(MapType::StaticActivation);
-  for (const auto& item : static_activation_map) {
-    const auto info = AllocPlan(item.first);
+  //Create Event for each tensor
+  const auto& map = mem_info_.tensors_memory_info_map_.at(map_type);
+  for (const auto& item : map) {
+    const auto info = mem_info_.AllocPlan(item.first);
     if (info->location.device.Type() != OrtDevice::GPU) continue;
     if (info->inplace_reuse) continue;
 
     const std::string& name = info->mlvalue_name;
+    //Filter out string with no certain name
+    if (!name_pattern.empty() && name.find(name_pattern) == std::string::npos) continue;
     const std::string cname = color_names[events.size() % color_names.size()];
-    size_t offset = static_activation_map.GetPlannedAddress(item.first);
-    size_t size = static_activation_map.GetPlannedSize(item.first);
-    size_t alloc_step = AllocPlan(item.first)->lifetime_interval.first;  //alloc_kind == AllocKind::kReuse ? info.alloc_plan.life_interval.first + 1 : info.alloc_plan.life_interval.first;
-    size_t dealloc_step = AllocPlan(item.first)->lifetime_interval.second;
+    //Sometimes a tensor can be both statically planned and dynamically planed, so we need to use planed address/size in static_activation type
+    size_t offset = map_type == MemoryInfo::MapType::StaticActivation ? map.GetPlannedAddress(item.first) : map.GetAllocAddress(item.first);
+    size_t size = map_type == MemoryInfo::MapType::StaticActivation ? map.GetPlannedSize(item.first) : map.GetAllocSize(item.first);
+    size_t alloc_step = mem_info_.AllocPlan(item.first)->lifetime_interval.first;  //alloc_kind == AllocKind::kReuse ? info.alloc_plan.life_interval.first + 1 : info.alloc_plan.life_interval.first;
+    size_t dealloc_step = mem_info_.AllocPlan(item.first)->lifetime_interval.second;
     for (size_t tid = alloc_step; tid <= dealloc_step; tid++) {
-      events.push_back(CreateMemoryEvent(static_activations_pid, tid, name, offset, size, cname));
+      events.push_back(CreateMemoryEvent(pid, tid, name, offset, size, cname));
     }
   }
+}
 
-  //Dynamic Activation
-  const auto& dynamic_activation_map = tensors_memory_info_map_.at(MapType::DynamicActivation);
-  for (const auto& item : dynamic_activation_map) {
-    const auto& info = AllocPlan(item.first);
-    if (info->location.device.Type() != OrtDevice::GPU) continue;
-    if (info->inplace_reuse) continue;
-
-    const std::string& name = info->mlvalue_name;
-    const std::string cname = color_names[events.size() % color_names.size()];
-    size_t offset = dynamic_activation_map.GetAllocAddress(item.first);
-    size_t size = dynamic_activation_map.GetAllocSize(item.first);
-    size_t alloc_step = AllocPlan(item.first)->lifetime_interval.first;  //alloc_kind == AllocKind::kReuse ? info.alloc_plan.life_interval.first + 1 : info.alloc_plan.life_interval.first;
-    size_t dealloc_step = AllocPlan(item.first)->lifetime_interval.second;
-    for (size_t tid = alloc_step; tid <= dealloc_step; tid++) {
-      events.push_back(CreateMemoryEvent(dynamic_activations_pid, tid, name, offset, size, cname));
-    }
-  }
-
-  //Initalizer
-  const auto& initializer_map = tensors_memory_info_map_.at(MapType::Initializer);
-  for (const auto& item : initializer_map) {
-    const auto info = AllocPlan(item.first);
-    if (info->location.device.Type() != OrtDevice::GPU) continue;
-    if (info->inplace_reuse) continue;
-    const std::string& name = info->mlvalue_name;
-    const std::string cname = color_names[events.size() % color_names.size()];
-    size_t offset = initializer_map.GetAllocAddress(item.first);
-    size_t size = initializer_map.GetAllocSize(item.first);
-    size_t alloc_step = AllocPlan(item.first)->lifetime_interval.first;  //alloc_kind == AllocKind::kReuse ? info.alloc_plan.life_interval.first + 1 : info.alloc_plan.life_interval.first;
-    size_t dealloc_step = AllocPlan(item.first)->lifetime_interval.second;
-    for (size_t tid = alloc_step; tid <= dealloc_step; tid++) {
-      events.push_back(CreateMemoryEvent(initializers_pid, tid, name, offset, size, cname));
-    }
-  }
+void MemoryInfo::GenerateMemoryProfile() {
+  profiler.CreateEvents("GPU (initializers)", profiler.GetAndIncreasePid(), MapType::Initializer);
+  profiler.CreateEvents("GPU (static activations)", profiler.GetAndIncreasePid(), MapType::StaticActivation);
+  profiler.CreateEvents("GPU (dynamic activations)", profiler.GetAndIncreasePid(), MapType::DynamicActivation);
+  profiler.CreateEvents("GPU (static activations) ", profiler.GetAndIncreasePid(), MapType::StaticActivation, "_grad");
+  profiler.CreateEvents("GPU (dynamic activations) ", profiler.GetAndIncreasePid(), MapType::DynamicActivation, "_grad");
 
   // Write memory profile .json
   std::ofstream memory_profile("memory_profile.json", std::ios::trunc);
   memory_profile << "[" << std::endl;
-  for (size_t i = 0; i < events.size(); i++) {
-    memory_profile << "  " << events[i];
-    if (i < events.size() - 1) memory_profile << ",";
+  for (size_t i = 0; i < profiler.events.size(); i++) {
+    memory_profile << "  " << profiler.events[i];
+    if (i < profiler.events.size() - 1) memory_profile << ",";
     memory_profile << std::endl;
   }
   memory_profile << "]" << std::endl;
+  memory_profile.close();
 }
 
 }  // namespace onnxruntime

@@ -111,7 +111,27 @@ class MemoryInfo {
     OrtMemoryInfo location;
   };
 
-  MemoryInfo() : iteration_(0) {
+  struct MemoryInfoProfile {
+   public:
+    MemoryInfoProfile(MemoryInfo& mem_info) : pid_(0), mem_info_(mem_info){};
+    const size_t GetAndIncreasePid() {
+      size_t val = pid_++;
+      return val;
+    }
+    static std::string CreateMetadataEvent(const std::string& process_name, size_t process_id);
+    static std::string CreateMemoryEvent(size_t pid, size_t tid, const std::string& name, size_t offset, size_t size, const std::string& color_name);
+    void CreateEvents(const std::string p_name, const size_t pid, const MemoryInfo::MapType& map_type, const std::string name_pattern = "");
+    //static void CreateCustomizedEvents(std::string name_pattern, std::vector<std::string>& events, const size_t pid, const MapType& map_type);
+
+    static const std::vector<std::string> color_names;
+    std::vector<std::string> events;
+
+   private:
+    size_t pid_;
+    MemoryInfo& mem_info_;
+  };
+
+  MemoryInfo() : iteration_(0), profiler(*this) {
     time_t now_c = std::time(0);
     struct tm timeinfo;
     localtime_s(&timeinfo, &now_c);
@@ -142,6 +162,8 @@ class MemoryInfo {
       return nullptr;
   }
 
+  MemoryInfoProfile profiler;
+
  private:
   void RecordMemoryPatternInfo(const MemoryPatternGroup& mem_patterns, MapType type);
   void RecordTensorDeviceAllocInfo(const OrtValueIndex idx, const OrtValue& value, const MapType& type);
@@ -160,6 +182,8 @@ class MemoryInfo {
   size_t iteration_ = 0;
   std::string memory_info_file;
   size_t num_node_size_;
+
+  //Memory Profile
 };
 
 }  // namespace onnxruntime
