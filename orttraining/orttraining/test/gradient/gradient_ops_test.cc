@@ -416,6 +416,27 @@ TEST(GradientCheckerTest, LogGrad) {
   EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
 }
 
+TEST(GradientCheckerTest, ExpGrad) {
+  // Define input data with a narrower distribution than the default GradientChecker, to avoid
+  // precision issues.
+  TensorShape shape({2, 3, 4});
+  std::vector<std::vector<float>> x_datas(1);
+  const auto seed = GetTestRandomSeed();
+  std::default_random_engine generator{gsl::narrow_cast<decltype(generator)::result_type>(seed)};
+  std::uniform_real_distribution<float> distribution{-1.0, 1.0};
+  x_datas[0].resize(shape.Size());
+  std::generate(x_datas[0].begin(), x_datas[0].end(), [&] { return distribution(generator); });
+
+  float max_error;
+  float error_tolerance = 1e-3f;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"Exp"};
+
+  gradient_checker.ComputeGradientError(op_def, {shape}, {shape}, &max_error, x_datas);
+
+  EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+}
+
 TEST(GradientCheckerTest, TanhGrad) {
   UnaryOpGradientTest("Tanh");
 }
