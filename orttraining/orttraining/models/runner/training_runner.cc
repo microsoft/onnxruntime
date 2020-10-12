@@ -188,6 +188,7 @@ Status TrainingRunner::Initialize() {
     gt_config.gelu_recompute = params_.gelu_recompute;
     gt_config.transformer_layer_recompute = params_.transformer_layer_recompute;
     gt_config.number_recompute_layers = params_.number_recompute_layers;
+    gt_config.cost_based_optimization = params_.cost_based_optimization;
 
     config.graph_transformer_config = gt_config;
   }

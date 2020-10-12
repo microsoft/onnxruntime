@@ -8,6 +8,7 @@
 #include "core/session/IOBinding.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
+#include "core/optimizer/graph_transformer_mgr_with_costs.h"
 #include "orttraining/core/graph/loss_function_builder.h"
 #include "orttraining/core/graph/optimizer_builder.h"
 #include "orttraining/core/framework/checkpointing.h"
@@ -232,7 +233,11 @@ Status TrainingSession::ConfigureForTraining(
     }
   }
 
-  ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(trainable_initializers, config.graph_transformer_config));
+  if (config.graph_transformer_config.cost_based_optimization) {
+    ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraphWithCosts(trainable_initializers, config.graph_transformer_config));
+  } else {
+    ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(trainable_initializers, config.graph_transformer_config));
+  }
 
   if (IsRootNode(config) && config.model_with_loss_function_path.has_value()) {
     ORT_IGNORE_RETURN_VALUE(Save(
@@ -510,6 +515,27 @@ static Status AddGradientAccumulationNodes(Graph& graph,
             .name);
   }
   return GraphAugmenter::AugmentGraph(graph, graph_defs);
+}
+
+Status TrainingSession::ApplyTransformationsToMainGraphWithCosts(const std::unordered_set<std::string>& weights_to_train,
+                                                                 const TrainingConfiguration::GraphTransformerConfiguration& config) {
+  GraphTransformerManagerWithCosts graph_transformation_mgr{2};
+  // TODO: ideally we can just reuse the CPU EP registered with the session, but in the training session case
+  // the EPs are registered after ConfigureForTraining and before Initialize is called. Hence we don't have access
+  // to the registered CPU EP at this stage. Hence creating the EP here again. This is still much better than
+  // creating an EP instance for every single node in ConstantFolding.
+  // Create execution frame for executing constant nodes.
+  std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
+      onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  AddPreTrainingTransformers(*cpu_execution_provider, graph_transformation_mgr, weights_to_train, config);
+
+  // apply transformers
+  Graph& graph = model_->MainGraph();
+  for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
+    ORT_RETURN_IF_ERROR(graph_transformation_mgr.ApplyTransformers(
+        graph, static_cast<TransformerLevel>(i), *session_logger_));
+  }
+  return common::Status::OK();
 }
 
 Status TrainingSession::ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train,

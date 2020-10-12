@@ -77,13 +77,13 @@ class TrainingSession : public InferenceSession {
       MixedPrecisionDataType mixed_precision_type{MixedPrecisionDataType::FP16};
 
       bool layernorm_stash_as_fp32{true};
-      
+
       ONNX_NAMESPACE::TensorProto_DataType TensorProtoDataType() const {
         switch (mixed_precision_type) {
           case MixedPrecisionDataType::FP16: return ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
           case MixedPrecisionDataType::BF16: return ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
           default: return ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
-        }  
+        }
       }
     };
     // The mixed precision configuration.
@@ -202,6 +202,8 @@ class TrainingSession : public InferenceSession {
       bool transformer_layer_recompute{false};
       // Number of layers to apply recompute
       int number_recompute_layers{0};
+      // Enable cost-based optimization
+      bool cost_based_optimization{false};
     };
 
     GraphTransformerConfiguration graph_transformer_config{};
@@ -392,6 +394,8 @@ class TrainingSession : public InferenceSession {
   common::Status InsertPipelineOps(const std::unordered_set<std::string>& initializer_names_to_preserve,
                                    pipeline::PipelineTensorNames& pipeline_tensor_names);
 
+  common::Status ApplyTransformationsToMainGraphWithCosts(const std::unordered_set<std::string>& weights_to_train,
+                                                          const TrainingConfiguration::GraphTransformerConfiguration& config);
   common::Status ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train,
                                                  const TrainingConfiguration::GraphTransformerConfiguration& config);
 

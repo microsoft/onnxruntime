@@ -184,6 +184,8 @@ class TrainingRunner {
     int number_recompute_layers = 0;
     // Use invertible layernorm grad
     bool use_invertible_layernorm_grad = false;
+    // Enable cost based optimization
+    bool cost_based_optimization = false;
   };
 
   TrainingRunner(Parameters params, const Environment& env);

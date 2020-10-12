@@ -177,7 +177,9 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       ("number_recompute_layers", "Number of layers to apply recompute.",
         cxxopts::value<int>()->default_value("0"))
       ("use_invertible_layernorm_grad", "Specify whether to use invertible laynorm(dropping the input activation)",
-        cxxopts::value<bool>()->default_value("false"));
+        cxxopts::value<bool>()->default_value("false"))
+      ("cost_based_optimization", "Enable cost based optimization.",
+       cxxopts::value<bool>()->default_value("false"));
   options
     .add_options("ORT configuration")
       ("ort_log_severity", "ORT minimum logging severity (see onnxruntime::logging::Severity values)",
@@ -477,6 +479,11 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
     ort_params.vlog_level = flags["ort_vlog_level"].as<int>();
 
     params.use_invertible_layernorm_grad = flags["use_invertible_layernorm_grad"].as<bool>();
+
+    params.cost_based_optimization = flags["cost_based_optimization"].as<bool>();
+    if (params.cost_based_optimization) {
+      printf("Enabling cost based optimization\n");
+    }
   } catch (const exception& e) {
     const std::string msg = "Failed to parse the command line arguments";
     cerr << msg << ": " << e.what() << "\n"
