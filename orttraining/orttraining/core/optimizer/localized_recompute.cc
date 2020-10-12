@@ -27,7 +27,9 @@ Status GeluRecompute::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*
   GraphViewer graph_viewer(graph);
   const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder();
 
-  for (size_t i = node_ids.size() - 1; i >= 0; --i) {
+  // Traverse backward from the bottom of the graph, so that the recompute nodes
+  // for lower layers are executed earlier
+  for (int i = static_cast<int>(node_ids.size() - 1); i >= 0; --i) {
     Node& node = *graph.GetNode(node_ids[i]);
 
     if (!SatisfyCondition(node)) {
@@ -72,7 +74,9 @@ Status AttentionDropoutRecompute::ApplyImpl(Graph& graph, bool& modified, int /*
   GraphViewer graph_viewer(graph);
   const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder();
 
-  for (size_t i = node_ids.size() - 1; i >= 0; --i) {
+  // Traverse backward from the bottom of the graph, so that the recompute nodes
+  // for lower layers are executed earlier
+  for (int i = static_cast<int>(node_ids.size() - 1); i >= 0; --i) {
     Node& node = *graph.GetNode(node_ids[i]);
 
     if (!SatisfyCondition(node)) {
