@@ -97,7 +97,7 @@ PathString MakeTensorFileName(const std::string& tensor_name, const NodeDumpOpti
     return name;
   };
 
-  return path_utils::MakePathString(make_valid_name(tensor_name)+ dump_options.file_suffix, ".tensorproto");
+  return path_utils::MakePathString(make_valid_name(tensor_name), dump_options.file_suffix, ".tensorproto");
 }
 
 void DumpTensorToFile(const Tensor& tensor, const std::string& tensor_name, const Path& file_path) {
@@ -204,7 +204,7 @@ const NodeDumpOptions& NodeDumpOptionsFromEnvironmentVariables() {
     }
 
     if (get_bool_env_var(env_vars::kRankToFileName)) {
-      char const* tmp = getenv("OMPI_COMM_WORLD_RANK");
+      char const* tmp = Env::GetEnvironmentVar("OMPI_COMM_WORLD_RANK");
       if ( tmp == NULL ) {
         opts.file_suffix = "_default_rank_0";
       } else {
