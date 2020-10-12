@@ -14,7 +14,7 @@ using ONNX_NAMESPACE::OpSchema;
 using ONNX_NAMESPACE::OPTIONAL_VALUE;
 
 void RegisterSignalSchemas() {
-  MS_SIGNAL_OPERATOR_SCHEMA(Dft)
+  MS_SIGNAL_OPERATOR_SCHEMA(DFT)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc(R"DOC(DFT)DOC")
@@ -38,7 +38,7 @@ void RegisterSignalSchemas() {
           "T")
       .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "");
 
-  MS_SIGNAL_OPERATOR_SCHEMA(Idft)
+  MS_SIGNAL_OPERATOR_SCHEMA(IDFT)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc(R"DOC(IDFT)DOC")
