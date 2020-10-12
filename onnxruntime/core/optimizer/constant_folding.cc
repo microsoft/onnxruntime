@@ -174,6 +174,13 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     }
 
     if (converted_to_constant) {
+      // Remove single-output node chain for inputs of the node
+      for (int i = 0; i < node->InputArgCount().front(); ++i) {
+        const Node* p_ip_node = graph_utils::GetInputNode(*node, i);
+        if (p_ip_node != nullptr) {
+          graph_utils::RemoveNodesWithOneOutputBottomUp(graph, *p_ip_node);
+        }
+      }
       // Remove the output edges of the constant node and then remove the node itself.
       graph_utils::RemoveNodeOutputEdges(graph, *node);
       graph.RemoveNode(node->Index());

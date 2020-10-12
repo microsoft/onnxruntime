@@ -1649,7 +1649,7 @@ TEST_F(GraphTransformationTests, ReshapeFusionDistilBertTest) {
   }
 }
 
-// Test Reshape Fusion with 2 constant initializers for Concat inputs.
+// Test eliminating redundant Concat-Slice pattern.
 TEST_F(GraphTransformationTests, ConcatSliceEliminationTest) {
   auto model_uri = MODEL_FOLDER "concat_slice_basic_test.onnx";
   std::shared_ptr<Model> p_model;
