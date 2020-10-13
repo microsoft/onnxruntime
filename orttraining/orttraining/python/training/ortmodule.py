@@ -70,8 +70,8 @@ class ORTModule(torch.nn.Module):
                 # Note: A potential optimization would be to detect which of inputs and weights
                 # require a gradient.
                 # intermediates, outputs = self._run_forward_graph(inputs) # inputs, weights)
-                outputs = self._run_forward_graph(*input, **kwargs)  # inputs, weights)
-                outputs = [torch.from_numpy(out).requires_grad_(True) for out in outputs]
+                outputs = self._run_forward_graph(self._prepare_forward_input(*input, **kwargs))  # inputs, weights)
+                outputs = [torch.nn.Parameter(torch.from_numpy(out)) for out in outputs]
 
                 # TODO: Properly save intermediate tensors and remove them from model output
                 ctx.save_for_backward([(input, kwargs), outputs[1]])
@@ -90,7 +90,7 @@ class ORTModule(torch.nn.Module):
                 #     grad_output, intermediates)
                 # return grad_inputs, grad_weights
 
-        return _ORTModuleFunction.apply(self._prepare_forward_input(*input, **kwargs))
+        return _ORTModuleFunction.apply(*input, **kwargs)
 
     def _prepare_forward_input(self, *input, **kwargs):
         # Dictionary containing both inputs and initializers
