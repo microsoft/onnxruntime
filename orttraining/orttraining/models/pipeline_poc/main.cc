@@ -3,7 +3,7 @@
 
 #include "core/session/environment.h"
 
-#ifdef USE_HOROVOD
+#ifdef ORT_USE_MPI
 
 #include "cxxopts.hpp"
 #include "core/common/logging/logging.h"

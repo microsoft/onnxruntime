@@ -159,7 +159,7 @@ private:
   // Perform Adasum allreduce using a vector-halving, distance-doubling (VHDD)
   // approach. grad_buffer: holds the data to reduce and will hold the result.
   // recv_buffer: must point to a buffer of the same size as grad_buffer.
-  // horovod_datatype: the element type of grad_buffer.
+  // data_type: the element type of grad_buffer.
   // tensor_counts: is a list of how many elements grad_buffer contains for each
   // tensor
   //                involved in the allreduce. It should contain a 0 if this

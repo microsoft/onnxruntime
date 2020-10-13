@@ -152,8 +152,6 @@ def parse_arguments():
         "--enable_training_pipeline_e2e_tests", action="store_true",
         help="Enable the pipeline c++ e2e tests.")
     parser.add_argument(
-        "--use_horovod", action='store_true', help="Enable Horovod.")
-    parser.add_argument(
         "--disable_nccl", action='store_true', help="Disable Nccl.")
     parser.add_argument(
         "--mpi_home", help="Path to MPI installation dir")
@@ -782,8 +780,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         # Enable advanced computations such as AVX for some traininig related ops.
         "-Donnxruntime_ENABLE_ADVANCED_INSTRUCTIONS_FOR_TRAINING=" + (
             "ON" if args.enable_training and check_all_flags_supported(['-mf16c', '-mavx', '-mfma']) else "OFF"),
-        "-Donnxruntime_USE_HOROVOD=" + (
-            "ON" if args.use_horovod else "OFF"),
         "-Donnxruntime_USE_NCCL=" + (
             "OFF" if args.disable_nccl else "ON"),
         "-Donnxruntime_BUILD_BENCHMARKS=" + (
