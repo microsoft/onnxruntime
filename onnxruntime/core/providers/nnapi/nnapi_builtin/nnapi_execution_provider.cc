@@ -303,8 +303,12 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
         OperandType input_type = model_input_type;
         input_type.SetDimensions(dimensions);
 
-        if (input_type.GetOperandBlobByteSize() == 0)
-          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "The actual input cannot have 0 dim (dynamic)");
+        // We have some op has input can have {0} shapes, such as Resize.scales/roi, these are valid input
+        // We still want to log the shape info, in case we get an input shape with some zero dim and some non-zero dim
+        if (input_type.GetOperandBlobByteSize() == 0) {
+          LOGS_DEFAULT(INFO) << "The actual input [" << input_name << "] has "
+                             << nnapi::Shape2String(dimensions) << " shape";
+        }
 
         if (input_type.dimensions != model_input_type.dimensions && model_input_type.GetOperandBlobByteSize() != 0) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,

@@ -1320,6 +1320,14 @@ IMPLEMENT_GRADIENT_BUILDER(GetLayerNormalizationGradient) {
   }
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetSimplifiedLayerNormalizationGradient) {
+  return std::vector<NodeDef>{
+      NodeDef(OpDef{"SimplifiedLayerNormalizationGrad", kMSDomain, 1},
+              {GO(0), I(0), I(1), O(1)},
+              {GI(0), GI(1)},
+              {SrcNodeAttributes()})};
+}
+
 IMPLEMENT_GRADIENT_BUILDER(GetBatchNormalizationGradient) {
   auto attributes = SrcNodeAttributes();
   if (attributes.find("epsilon") != attributes.end()) {
@@ -1446,6 +1454,13 @@ IMPLEMENT_GRADIENT_BUILDER(GetExpandGradient) {
   }
 
   return output;
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetExpGradient) {
+  return std::vector<NodeDef>{
+      NodeDef("Mul",
+              {GO(0), O(0)},
+              {GI(0)})};
 }
 
 }  // namespace training

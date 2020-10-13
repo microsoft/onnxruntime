@@ -145,6 +145,8 @@ OrtDevice::DeviceId cuda_device_id = 0;
 OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE;
 size_t cuda_mem_limit = std::numeric_limits<size_t>::max();
 onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
+bool do_copy_in_default_stream = true;
+
 #endif
 #ifdef USE_TENSORRT
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
@@ -189,7 +191,8 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(in
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id,
                                                                                OrtCudnnConvAlgoSearch cudnn_conv_algo_search,
                                                                                size_t cuda_mem_limit,
-                                                                               onnxruntime::ArenaExtendStrategy arena_extend_strategy);
+                                                                               onnxruntime::ArenaExtendStrategy arena_extend_strategy,
+                                                                               bool do_copy_in_default_stream);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
@@ -626,13 +629,15 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
             sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_provider_options.device_id,
                                                                     cuda_provider_options.cudnn_conv_algo,
                                                                     cuda_provider_options.cuda_mem_limit,
-                                                                    cuda_provider_options.arena_extend_strategy));
+                                                                    cuda_provider_options.arena_extend_strategy,
+                                                                    cuda_provider_options.do_copy_in_default_stream));
       } else {
         RegisterExecutionProvider(
             sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_device_id,
                                                                     cudnn_conv_algo_search,
                                                                     cuda_mem_limit,
-                                                                    arena_extend_strategy));
+                                                                    arena_extend_strategy,
+                                                                    do_copy_in_default_stream));
       }
 #endif
     } else if (type == kDnnlExecutionProvider) {
@@ -853,7 +858,7 @@ void addGlobalMethods(py::module& m, const Environment& env) {
         std::vector<std::shared_ptr<onnxruntime::IExecutionProviderFactory>> factories = {
             onnxruntime::CreateExecutionProviderFactory_CPU(0),
 #ifdef USE_CUDA
-            onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_device_id, cudnn_conv_algo_search, cuda_mem_limit, arena_extend_strategy),
+            onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_device_id, cudnn_conv_algo_search, cuda_mem_limit, arena_extend_strategy, do_copy_in_default_stream),
 #endif
 #ifdef USE_DNNL
             onnxruntime::CreateExecutionProviderFactory_Dnnl(1),
@@ -909,6 +914,7 @@ void addGlobalMethods(py::module& m, const Environment& env) {
   m.def("set_cudnn_conv_algo_search", [](const OrtCudnnConvAlgoSearch algo) { cudnn_conv_algo_search = algo; });
   m.def("set_cuda_mem_limit", [](const int64_t limit) { cuda_mem_limit = static_cast<size_t>(limit); });
   m.def("set_arena_extend_strategy", [](const onnxruntime::ArenaExtendStrategy strategy) { arena_extend_strategy = strategy; });
+  m.def("set_do_copy_in_default_stream", [](const bool use_single_stream) { do_copy_in_default_stream = use_single_stream; });
 #endif
 }
 
