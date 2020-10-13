@@ -54,9 +54,11 @@ __global__ void _AdamOptimizer_mode0(
 
   const T4 delta = -T4(*eta) * update;
 
+  // Compute the new gradient.
   if (grads_out) {
-    grads_out[id] = T_GRAD(delta * T4(4096.0f));
-  }  
+    grads_out[id] = T_GRAD(delta);
+  }
+
   // Compute the new weight.
   if (weights_out) {
     weights_out[id] = weights[id] + T3(delta);
