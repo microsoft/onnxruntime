@@ -270,6 +270,7 @@ typedef struct OrtCUDAProviderOptions {
   OrtCudnnConvAlgoSearch cudnn_conv_algo_search;  // cudnn conv algo search option
   size_t cuda_mem_limit;                          //  default cuda memory limitation to maximum finite value of size_t.
   int arena_extend_strategy;                      // default area extend strategy to KNextPowerOfTwo.
+  int do_copy_in_default_stream;
 } OrtCUDAProviderOptions;
 
 struct OrtApi;

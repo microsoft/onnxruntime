@@ -1,4 +1,3 @@
-import sys
 import numpy as np
 from onnx import numpy_helper
 

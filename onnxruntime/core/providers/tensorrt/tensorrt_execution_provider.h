@@ -33,7 +33,10 @@ class TensorrtLogger : public nvinfer1::ILogger {
                "%Y-%m-%d %H:%M:%S",
                std::gmtime(&rawtime));
       const char* sevstr = (severity == Severity::kINTERNAL_ERROR ? "    BUG" : severity == Severity::kERROR ? "  ERROR" : severity == Severity::kWARNING ? "WARNING" : severity == Severity::kINFO ? "   INFO" : "UNKNOWN");
-      LOGS_DEFAULT(WARNING) << "[" << buf << " " << sevstr << "] " << msg;
+      if(severity <= Severity::kERROR)
+          LOGS_DEFAULT(ERROR) << "[" << buf << " " << sevstr << "] " << msg;
+      else
+          LOGS_DEFAULT(WARNING) << "[" << buf << " " << sevstr << "] " << msg;
     }
   }
 };

@@ -1095,9 +1095,42 @@ def run_android_tests(args, source_dir, config, cwd):
 
 
 def run_ios_tests(args, source_dir, config, cwd):
-    run_subprocess(["xcodebuild", "test", "-project", "./onnxruntime.xcodeproj",
-                    "-scheme",  "onnxruntime_test_all_xc",
-                    "-destination", "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)"], cwd=cwd)
+    cpr = run_subprocess(["xcodebuild", "test", "-project", "./onnxruntime.xcodeproj",
+                          "-configuration", config,
+                          "-scheme",  "onnxruntime_test_all_xc", "-destination",
+                          "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)"], cwd=cwd)
+    if cpr.returncode == 0:
+        cpr = run_subprocess(["xcodebuild", "test", "-project", "./onnxruntime.xcodeproj",
+                              "-configuration", config,
+                              "-scheme",  "onnxruntime_shared_lib_test_xc", "-destination",
+                              "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)"], cwd=cwd)
+    cpr.check_returncode()
+
+
+def run_orttraining_test_orttrainer_frontend_separately(cwd):
+    class TestNameCollecterPlugin:
+        def __init__(self):
+            self.collected = set()
+
+        def pytest_collection_modifyitems(self, items):
+            for item in items:
+                print('item.name: ', item.name)
+                test_name = item.name
+                start = test_name.find('[')
+                if start > 0:
+                    test_name = test_name[:start]
+                self.collected.add(test_name)
+
+    import pytest
+
+    plugin = TestNameCollecterPlugin()
+    test_script_filename = os.path.join(cwd, "orttraining_test_orttrainer_frontend.py")
+    pytest.main(['--collect-only', test_script_filename], plugins=[plugin])
+
+    for test_name in plugin.collected:
+        run_subprocess([
+            sys.executable, '-m', 'pytest',
+            'orttraining_test_orttrainer_frontend.py', '-v', '-k', test_name], cwd=cwd)
 
 
 def run_training_python_frontend_tests(cwd):
@@ -1112,7 +1145,12 @@ def run_training_python_frontend_tests(cwd):
     run_subprocess([
         sys.executable, 'orttraining_test_transformers.py',
         'BertModelTest.test_for_pretraining_full_precision_list_and_dict_input'], cwd=cwd)
-    run_subprocess([sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_orttrainer_frontend.py'], cwd=cwd)
+
+    # TODO: use run_orttraining_test_orttrainer_frontend_separately to work around a sporadic segfault.
+    # shall revert to run_subprocess call once the segfault issue is resolved.
+    run_orttraining_test_orttrainer_frontend_separately(cwd)
+    # run_subprocess([sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_orttrainer_frontend.py'], cwd=cwd)
+
     run_subprocess([sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_orttrainer_bert_toy_onnx.py'], cwd=cwd)
 
 
@@ -1355,8 +1393,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
                 if not args.skip_onnx_tests:
                     run_subprocess([os.path.join(cwd, 'onnx_test_runner'), 'test_models'], cwd=cwd)
-                if config != 'Debug':
-                    run_subprocess([sys.executable, 'onnx_backend_test_series.py'], cwd=cwd, dll_path=dll_path)
+                    if config != 'Debug':
+                        run_subprocess([sys.executable, 'onnx_backend_test_series.py'], cwd=cwd, dll_path=dll_path)
 
             if not args.skip_keras_test:
                 try:

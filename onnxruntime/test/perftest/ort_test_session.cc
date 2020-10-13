@@ -48,9 +48,10 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #ifdef USE_CUDA
     OrtCUDAProviderOptions cuda_options{
         0,
-        OrtCudnnConvAlgoSearch::EXHAUSTIVE,
+        static_cast<OrtCudnnConvAlgoSearch>(performance_test_config.run_config.cudnn_conv_algo),
         std::numeric_limits<size_t>::max(),
         0,
+        !performance_test_config.run_config.do_cuda_copy_in_separate_stream
     };
   Ort::ThrowOnError(session_options.OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, &cuda_options));
 #else
