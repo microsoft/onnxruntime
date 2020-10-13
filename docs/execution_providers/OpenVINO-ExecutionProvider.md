@@ -246,3 +246,7 @@ Below topologies from ONNX open model zoo are fully supported on OpenVINO Execut
 ## CSharp API
 
 To use csharp api for openvino execution provider create a custom nuget package. Follow the instructions [here](../../BUILD.md##build-nuget-packages) to install prerequisites for nuget creation. Once prerequisites are installed follow the instructions to [build openvino](../../BUILD.md#openvino) and add an extra flag `--build_nuget` to create nuget packages. Two nuget packages will be created Microsoft.ML.OnnxRuntime.Managed and Microsoft.ML.OnnxRuntime.Openvino.
+
+## Multi-threading for OpenVINO EP
+
+OpenVINO Execution Provider enables thread-safe deep learning inference
