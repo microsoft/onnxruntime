@@ -130,13 +130,13 @@ class FusionEmbedLayerNoMask(Fusion):
 
         input_ids = word_embedding_gather.input[1]
 
-        position_embedding_expand = None
+        position_embedding_node_before_gather = None
         position_embedding_shape = None
 
         position_embedding_path = self.model.match_parent_path(normalize_node, ['Gather', 'Expand'],
                                                                [1, 1])  # for distill-bert
         if position_embedding_path is not None:
-            position_embedding_weight_node, position_embedding_expand = position_embedding_path
+            position_embedding_weight_node, position_embedding_node_before_gather = position_embedding_path
         else:
             position_embedding_path = self.model.match_parent_path(normalize_node, ['Reshape', 'Slice'], [1, 0])
             if position_embedding_path is not None:
@@ -145,28 +145,33 @@ class FusionEmbedLayerNoMask(Fusion):
                 position_embedding_path = self.model.match_parent_path(add_node, ['Gather', 'Expand', 'Shape'],
                                                                        [1, 1, 1])
                 if position_embedding_path is not None:
-                    position_embedding_weight_node, position_embedding_expand, position_embedding_shape = position_embedding_path
+                    position_embedding_weight_node, position_embedding_node_before_gather, position_embedding_shape = position_embedding_path
                 else:
                     position_embedding_path = self.model.match_parent_path(
                         add_node, ['Gather', 'Expand', 'Concat', 'Unsqueeze', 'Gather', 'Shape'], [1, 1, 1, 1, 0, 0])
                     if position_embedding_path is not None:
-                        position_embedding_weight_node, position_embedding_expand, _, _, _, position_embedding_shape = position_embedding_path
+                        position_embedding_weight_node, position_embedding_node_before_gather, _, _, _, position_embedding_shape = position_embedding_path
                     else:
                         # Here we will not try to get exact match. Instead, we only try identify position embedding weights.
                         position_embedding_path = self.model.match_parent_path(add_node, ['Gather', 'Expand'], [1, 1])
                         if position_embedding_path is not None:
-                            position_embedding_weight_node, position_embedding_expand = position_embedding_path
+                            position_embedding_weight_node, position_embedding_node_before_gather = position_embedding_path
                         else:
-                            logger.info("Position embedding path is not found. Embed layer cannot be fused.")
-                            return
+                            position_embedding_path = self.model.match_parent_path(add_node, ['Gather', 'Slice'],
+                                                                                   [1, 1])
+                            if position_embedding_path is not None:
+                                position_embedding_weight_node, position_embedding_node_before_gather = position_embedding_path
+                            else:
+                                logger.info("Position embedding path is not found. Embed layer cannot be fused.")
+                                return
 
                 if position_embedding_shape is not None and position_embedding_shape.input[0] != input_ids:
                     logger.info("position and word embedding is expected to be applied on same input")
                     return
 
-        if position_embedding_expand and position_embedding_shape:
+        if position_embedding_node_before_gather and position_embedding_shape:
             input_parent = self.model.get_parent(position_embedding_shape, 0, output_name_to_node)
-            subgraph_nodes = self.model.get_parent_subgraph_nodes(position_embedding_expand,
+            subgraph_nodes = self.model.get_parent_subgraph_nodes(position_embedding_node_before_gather,
                                                                   [input_parent] if input_parent else [],
                                                                   output_name_to_node)
             self.nodes_to_remove.extend(subgraph_nodes)

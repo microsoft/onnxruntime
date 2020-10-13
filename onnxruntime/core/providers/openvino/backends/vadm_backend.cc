@@ -47,7 +47,7 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   // sets number of maximum parallel inferences
   num_inf_reqs_ = 8;
 
-  ie_cnn_network_ = CreateCNNNetwork(model_proto, subgraph_context_, const_outputs_map_);
+  ie_cnn_network_ = CreateCNNNetwork(model_proto, global_context_, subgraph_context_, const_outputs_map_);
 
   SetIODefs(model_proto, ie_cnn_network_, subgraph_context_.output_names, const_outputs_map_);
   std::map<std::string, std::string> config;

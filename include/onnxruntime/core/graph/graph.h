@@ -15,7 +15,6 @@
 #include "core/common/path.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
-#include "core/flatbuffers/ort.fbs.h"
 #include "core/graph/basic_types.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph_nodes.h"
@@ -24,11 +23,25 @@
 #include "core/graph/function.h"
 #include "gsl/gsl"
 
+namespace flatbuffers {
+class FlatBufferBuilder;
+template <typename T>
+struct Offset;
+}  // namespace flatbuffers
+
 namespace onnxruntime {
 class Graph;
 struct IndexedSubGraph;
 class Model;
 class OpSignature;
+
+namespace experimental {
+namespace fbs {
+struct Graph;
+struct Node;
+struct NodeEdge;
+}  // namespace fbs
+}  // namespace experimental
 
 /**
 @class Node
@@ -95,12 +108,20 @@ class Node {
   /** Gets the domain of the OperatorSet that specifies the operator returned by #OpType. */
   const std::string& Domain() const noexcept { return domain_; }
 
+  /** Gets the Node's exection priority. 
+  @remarks Lower value means higher priority  */
+  int Priority() const noexcept { return priority_; };
+
+  /** Sets the execution priority of a node.
+  @remarks Lower value means higher priority  */
+  void SetPriority(int priority) noexcept;
+
   /** Gets the node description. */
   const std::string& Description() const noexcept { return description_; }
 
   /** Gets the Node's Node::Type. */
   Node::Type NodeType() const noexcept { return node_type_; }
-
+  
   /** Gets the opset version that the Node's operator was first defined in.
   @returns Opset version. If -1 the Node's operator has not been set.
   @remarks Prefer over Op()->SinceVersion() as Op() is disabled in a minimal build
@@ -381,11 +402,13 @@ class Node {
 
 #endif
 
+#if defined(ENABLE_ORT_FORMAT_LOAD)
   static Status LoadFromOrtFormat(const onnxruntime::experimental::fbs::Node& fbs_node, Graph& graph,
                                   const logging::Logger& logger, std::unique_ptr<Node>& node);
 
   Status LoadFromOrtFormat(const onnxruntime::experimental::fbs::Node& fbs_node, const logging::Logger& logger);
   Status LoadEdgesFromOrtFormat(const onnxruntime::experimental::fbs::NodeEdge& fbs_node_edgs, const Graph& graph);
+#endif
 
   /**
   @class Definitions
@@ -504,6 +527,9 @@ class Node {
   // OperatorSchema that <*this> node refers to.
   const ONNX_NAMESPACE::OpSchema* op_ = nullptr;
 #endif
+
+  // Execution priority, lower value for higher priority
+  int priority_ = 0;
 
   // set from op_->SinceVersion() or via deserialization when OpSchema is not available
   int since_version_ = -1;
@@ -848,6 +874,13 @@ class Graph {
                       const std::function<bool(const Node*, const Node*)>& comp,
                       const std::function<bool(const Node*, const Node*)>& stop) const;
 
+  /** Performs topological sort with Kahn's algorithm on the graph/s.
+  @param enter Visit function that will be invoked on a node when it is visited.
+  @param comp Comparison function to stabilize the traversal order by making Node ordering deterministic.
+  */
+  void KahnsTopologicalSort(const std::function<void(const Node*)>& enter,
+                            const std::function<bool(const Node*, const Node*)>& comp) const;
+
   /** Gets the map of operator domains to their opset versions. */
   const std::unordered_map<std::string, int>& DomainToVersionMap() const noexcept {
     return domain_to_version_;
@@ -1017,6 +1050,7 @@ class Graph {
 
   virtual ~Graph();
 
+#if defined(ENABLE_ORT_FORMAT_LOAD)
   static common::Status LoadFromOrtFormat(
       const onnxruntime::experimental::fbs::Graph& fbs_graph, const Model& owning_model,
       const std::unordered_map<std::string, int>& domain_to_version,
@@ -1026,7 +1060,7 @@ class Graph {
   static Status LoadFromOrtFormat(const onnxruntime::experimental::fbs::Graph& fbs_graph,
                                   Graph& parent_graph, const Node& parent_node,
                                   const logging::Logger& logger, std::unique_ptr<Graph>& graph);
-
+#endif
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Graph);
 
@@ -1042,8 +1076,10 @@ class Graph {
         Graph* parent_graph, const Node* parent_node,
         const logging::Logger& logger);
 
+#if defined(ENABLE_ORT_FORMAT_LOAD)
   // Populate Graph instance from ORT format serialized data.
   common::Status LoadFromOrtFormat(const onnxruntime::experimental::fbs::Graph& fbs_graph);
+#endif
 
 #if !defined(ORT_MINIMAL_BUILD)
   // Constructor: Given a <GraphProto> loaded from model file, construct

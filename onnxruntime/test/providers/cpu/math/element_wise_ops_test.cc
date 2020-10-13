@@ -11,6 +11,15 @@
 namespace onnxruntime {
 namespace test {
 
+std::vector<MLFloat16> MakeMLFloat16(const std::initializer_list<float>& input) {
+  std::vector<MLFloat16> output;
+  std::transform(input.begin(), input.end(), std::back_inserter(output),
+                 [](float fl) {
+                   return MLFloat16(math::floatToHalf(fl));
+                 });
+  return output;
+}
+
 TEST(MathOpTest, DimWithZeroHandling) {
   auto run = [](OpTester& tester) {
     // exclude NGraph, TensorRT and NNAPI as this isn't handled by those EPs
@@ -739,6 +748,34 @@ TEST(MathOpTest, Pow_double_int64) {
   test.AddOutput<double>("Z", dims, {1., 32., 729.});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
 }
+
+#ifdef USE_CUDA
+TEST(MathOpTest, Pow_float16_float16) {
+  OpTester test("Pow", 12);
+  std::vector<int64_t> dims{4};
+
+  test.AddInput<MLFloat16>("X", dims, MakeMLFloat16({2.0f, 2.0f, std::sqrt(2.0f), 1.0f}));
+  test.AddInput<MLFloat16>("Y", dims, MakeMLFloat16({0.0f, 8.0f, 2.0f, 9.0f}));
+  test.AddOutput<MLFloat16>("Z", dims, MakeMLFloat16({1.0f, 256.0f, 2.0f, 1.0f}));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MathOpTest, Pow_float_float16) {
+  OpTester test("Pow", 12);
+  std::vector<int64_t> dims{4};
+
+  test.AddInput<MLFloat16>("X", dims, MakeMLFloat16({2.0f, 2.0f, std::sqrt(2.0f), 1.0f}));
+  test.AddInput<float>("Y", dims, {0.0f, 8.0f, 2.0f, 9.0f});
+  test.AddOutput<MLFloat16>("Z", dims, MakeMLFloat16({1.0f, 256.0f, 2.0f, 1.0f}));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif
 
 TEST(MathOpTest, Exp_float) {
   OpTester test("Exp");
@@ -1856,15 +1893,6 @@ TEST(ModOpTest, Fmod_float_mixed_sign) {
   test.AddOutput<float>("Z", {6}, {-0.1f, 0.4f, 5.f, 0.1f, -0.4f, 3.f});
 
   test.Run();
-}
-
-std::vector<MLFloat16> MakeMLFloat16(const std::initializer_list<float>& input) {
-  std::vector<MLFloat16> output;
-  std::transform(input.begin(), input.end(), std::back_inserter(output),
-                 [](float fl) {
-                   return MLFloat16(math::floatToHalf(fl));
-                 });
-  return output;
 }
 
 TEST(ModOpTest, Fmod_float16_mixed_sign) {

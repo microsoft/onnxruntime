@@ -151,7 +151,7 @@ Status AllreduceOptimizerGraphBuilder::BuildInternal(
   ORT_RETURN_IF_NOT(total_num_accumulations > 0);
   const float scale = 1.0f / total_num_accumulations;
   ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, fused_gradient_argdef, graph_defs,
-                                              opt_graph_config_.allreduce_in_fp16));
+                                              opt_graph_config_.AllReduceDataType()));
 
   // add Allreduce for gradients
   if (opt_graph_config_.use_nccl) {

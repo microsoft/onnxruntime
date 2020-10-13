@@ -295,7 +295,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kOnnxDomain,
     13,
     kCudaExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraints<int32_t, int64_t, float, double>()).TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t, float, double>()),
+    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraints<int32_t, int64_t, float, double, MLFloat16>()).TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t, float, double, MLFloat16>()),
     Pow);
 
 namespace pow12_internal {
@@ -356,6 +356,19 @@ Status DispatchOnFirstArg(const BinaryElementwisePreparation& prepare) {
           reinterpret_cast<typename ToCudaType<T>::MappedType*>(prepare.output_tensor->template MutableData<T>()),
           prepare.output_tensor->Shape().Size());
       break;
+    case on::TensorProto_DataType_FLOAT16:
+      ImplT1_Pow<typename ToCudaType<T>::MappedType, typename ToCudaType<MLFloat16>::MappedType>(
+          prepare.output_rank_or_simple_broadcast,
+          &prepare.lhs_padded_strides,
+          reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),
+          &prepare.rhs_padded_strides,
+          reinterpret_cast<const typename ToCudaType<MLFloat16>::MappedType*>(prepare.rhs_tensor->template Data<MLFloat16>()),
+          &prepare.fdm_output_strides,
+          prepare.fdm_H,
+          prepare.fdm_C,
+          reinterpret_cast<typename ToCudaType<T>::MappedType*>(prepare.output_tensor->template MutableData<T>()),
+          prepare.output_tensor->Shape().Size());
+      break;
     default:
       s = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported Y type: ",
                           DataTypeImpl::ToString(prepare.rhs_tensor->DataType()));
@@ -384,6 +397,9 @@ Status Pow::ComputeInternal(OpKernelContext* context) const {
       break;
     case on::TensorProto_DataType_DOUBLE:
       s = DispatchOnFirstArg<double>(prepare);
+      break;
+    case on::TensorProto_DataType_FLOAT16:
+      s = DispatchOnFirstArg<MLFloat16>(prepare);
       break;
     default:
       s = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported X type: ",

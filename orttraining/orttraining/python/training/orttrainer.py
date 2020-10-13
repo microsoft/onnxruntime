@@ -10,6 +10,8 @@ import onnxruntime as ort
 from . import _utils, amp, checkpoint, optim, postprocess, ORTTrainerOptions
 from .model_desc_validation import _ORTTrainerModelDesc
 
+from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
+
 class TrainStepInfo(object):
     r"""Private class used to store runtime information from current train step.
 
@@ -285,19 +287,19 @@ class ORTTrainer(object):
         with open(path, "wb") as f:
             f.write(self._onnx_model.SerializeToString())
 
-    def _debug_model_export(self, input):
+    def _check_model_export(self, input):
         from onnx import helper, TensorProto, numpy_helper
         import numpy as np
         from numpy.testing import assert_allclose
         import _test_helpers
         onnx_model_copy = copy.deepcopy(self._onnx_model)
-        
+
         # Mute the dropout nodes
         dropout_nodes = [n for n in onnx_model_copy.graph.node if n.op_type == 'Dropout']
         for node in dropout_nodes:
             ratio_node = [n for n in onnx_model_copy.graph.node if node.input[1] in n.output][0]
             training_mode_node = [n for n in onnx_model_copy.graph.node if node.input[2] in n.output][0]
-            
+
             training_mode_node.attribute.pop()
             ratio_node.attribute.pop()
             new_training_mode_arr = np.array(False, dtype=bool)
@@ -310,14 +312,19 @@ class ORTTrainer(object):
             ratio_node.attribute[0].type = 4
             training_mode_node.attribute[0].name = "value"
             ratio_node.attribute[0].name = "value"
-            
+
         _inference_sess = ort.InferenceSession(onnx_model_copy.SerializeToString())
         inf_inputs = {}
         for i, input_elem in enumerate(input):
             inf_inputs[_inference_sess.get_inputs()[i].name] = input_elem.cpu().numpy()
         _inference_outs = _inference_sess.run(None, inf_inputs)
         for torch_item, ort_item in zip(self.torch_sample_outputs, _inference_outs):
-            assert_allclose(torch_item, ort_item, rtol=1e-2, atol=1e-6)
+            assert_allclose(torch_item, ort_item, rtol=1e-2, atol=1e-6,
+                            err_msg="Mismatch between outputs of PyTorch model and exported ONNX model. "
+                                    "Note that different backends may exhibit small computational differences."
+                                    "If this is within acceptable margin, or if there is random generator "
+                                    "in the model causing inevitable mismatch, you can proceed training by "
+                                    "setting the flag debug.check_model_export to False.")
 
     def train_step(self, *args, **kwargs):
         r"""Train step method
@@ -337,10 +344,10 @@ class ORTTrainer(object):
         if self._onnx_model is None:
             sample_input = self._prepare_model_input(self.model_desc.inputs, None, None, *args, **kwargs)
             self._init_onnx_model(sample_input)
-            
+
             # Debug Model Export if indicated
             if self.options.debug.check_model_export:
-                self._debug_model_export(sample_input)
+                self._check_model_export(sample_input)
 
 
         # Prepare inputs+lr and output descriptions
@@ -626,9 +633,18 @@ class ORTTrainer(object):
         ort_parameters.optimizer_attributes_map = optimizer_attributes_map
         ort_parameters.optimizer_int_attributes_map = optimizer_int_attributes_map
 
+        ort_parameters.attn_dropout_recompute = self.options.graph_transformer.attn_dropout_recompute
+        ort_parameters.gelu_recompute = self.options.graph_transformer.gelu_recompute
+        ort_parameters.transformer_layer_recompute = self.options.graph_transformer.transformer_layer_recompute
+        ort_parameters.number_recompute_layers = self.options.graph_transformer.number_recompute_layers
+
         # SessionOptions
         session_options = ort.SessionOptions()
         session_options.use_deterministic_compute = self.options.debug.deterministic_compute
+        if (self.options.graph_transformer.attn_dropout_recompute or 
+            self.options.graph_transformer.gelu_recompute or 
+            self.options.graph_transformer.transformer_layer_recompute):
+            session_options.execution_order = ort.ExecutionOrder.PRIORITY_BASED
 
         # TrainingSession
         self._training_session = ort.TrainingSession(self._onnx_model.SerializeToString(),
@@ -665,6 +681,9 @@ class ORTTrainer(object):
     def _init_session(self):
         if self._onnx_model is None:
             return
+
+        if self.options.utils.run_symbolic_shape_infer:
+            self._onnx_model = SymbolicShapeInference.infer_shapes(self._onnx_model, auto_merge=True, guess_output_rank=True)
 
         # Create training session used by train_step
         self._create_ort_training_session()
@@ -782,7 +801,12 @@ class ORTTrainer(object):
         outputs_desc_resolved = self._resolve_symbolic_dimensions(inputs, inputs_desc, outputs_desc)
         result = {}
         for output_desc in outputs_desc_resolved:
-            torch_tensor = torch.zeros(output_desc.shape, device=self.options.device.id,
+            target_device = self.options.device.id
+            if self.options.mixed_precision.enabled and output_desc.name == self.model_desc.all_finite.name:
+                # Keep all finite flag on CPU to match backend implementation
+                # This prevents CPU -> GPU -> CPU copies between frontend and backend
+                target_device = 'cpu'
+            torch_tensor = torch.zeros(output_desc.shape, device=target_device,
                                        dtype=output_desc.dtype_amp if output_desc.dtype_amp else output_desc.dtype)
             iobinding.bind_output(output_desc.name, torch_tensor.device.type, _utils.get_device_index(self.options.device.id),
                                   _utils.dtype_torch_to_numpy(torch_tensor.dtype),

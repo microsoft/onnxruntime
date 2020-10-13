@@ -28,6 +28,9 @@ common::Status GraphTransformerManager::ApplyTransformers(Graph& graph, Transfor
   for (unsigned step = 0; step < steps_; ++step) {
     bool graph_changed = false;
     for (const auto& transformer : transformers->second) {
+      if (step > 0 && transformer->ShouldOnlyApplyOnce())
+        continue;
+
       bool modified = false;
       ORT_RETURN_IF_ERROR(transformer->Apply(graph, modified, logger));
       graph_changed = graph_changed || modified;

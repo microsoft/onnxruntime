@@ -29,16 +29,16 @@ constexpr const char* DNNL_CPU = "DnnlCpu";
 DNNLExecutionProvider::DNNLExecutionProvider(const DNNLExecutionProviderInfo& info)
     : Provider_IExecutionProvider{onnxruntime::kDnnlExecutionProvider} {
   Provider_AllocatorCreationInfo default_memory_info(
-      [](int) {
+      {[](int) {
         return onnxruntime::Provider_CreateCPUAllocator(OrtMemoryInfo(DNNL, OrtAllocatorType::OrtDeviceAllocator));
-      },
+      }},
       0, info.create_arena);
 
   Provider_AllocatorCreationInfo cpu_memory_info(
-      [](int) {
+      {[](int) {
         return onnxruntime::Provider_CreateCPUAllocator(OrtMemoryInfo(DNNL_CPU, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0,
                                                                       OrtMemTypeCPUOutput));
-      },
+      }},
       0, info.create_arena);
 
   Provider_InsertAllocator(CreateAllocator(default_memory_info));

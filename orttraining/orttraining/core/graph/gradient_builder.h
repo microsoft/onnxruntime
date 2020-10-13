@@ -56,6 +56,7 @@ DECLARE_GRADIENT_BUILDER(GetGeluGradient)
 DECLARE_GRADIENT_BUILDER(GetBiasGeluGradient)
 DECLARE_GRADIENT_BUILDER(GetFastGeluGradient)
 DECLARE_GRADIENT_BUILDER(GetLayerNormalizationGradient)
+DECLARE_GRADIENT_BUILDER(GetSimplifiedLayerNormalizationGradient)
 DECLARE_GRADIENT_BUILDER(GetBatchNormalizationGradient)
 DECLARE_GRADIENT_BUILDER(GetMegatronFGradient)
 DECLARE_GRADIENT_BUILDER(GetMegatronGGradient)
@@ -64,6 +65,7 @@ DECLARE_GRADIENT_BUILDER(GetWhereGradient)
 DECLARE_GRADIENT_BUILDER(GetSendGradient)
 DECLARE_GRADIENT_BUILDER(GetRecvGradient)
 DECLARE_GRADIENT_BUILDER(GetExpandGradient)
+DECLARE_GRADIENT_BUILDER(GetExpGradient)
 
 }  // namespace training
 }  // namespace onnxruntime

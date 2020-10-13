@@ -42,15 +42,12 @@ void DumpOnnxModelProto(const ONNX_NAMESPACE::ModelProto& model_proto, std::stri
 #endif
 
 std::shared_ptr<InferenceEngine::CNNNetwork>
-CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const SubGraphContext& subgraph_context, std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map) {
+CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context, const SubGraphContext& subgraph_context, std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map) {
 
 
 #if (defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
   ORT_UNUSED_PARAMETER(const_outputs_map);
 #endif
-
-  InferenceEngine::Precision precision = subgraph_context.precision;
-  std::string device_id = subgraph_context.device_id;
 
   std::istringstream model_stream{model_proto.SerializeAsString()};
   std::shared_ptr<ngraph::Function> ng_function;
@@ -70,7 +67,8 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const SubGraphCo
     ORT_THROW(log_tag + "[OpenVINO-EP] Unknown exception while importing model to nGraph Func");
   }
 
-  if (device_id == "GPU" && precision == InferenceEngine::Precision::FP16) {
+  if (global_context.device_type == "GPU" &&
+       subgraph_context.precision == InferenceEngine::Precision::FP16) {
     //FP16 transformations
     ngraph::pass::ConvertFP32ToFP16().run_on_function(ng_function);
     ng_function->validate_nodes_and_infer_types();

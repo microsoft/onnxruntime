@@ -43,7 +43,7 @@ optional<float> GetScalarConstantInitializer(const Graph& graph, const NodeArg& 
     return {};
   }
 
-  float scalar=0.f;
+  float scalar{};
   utils::MLTypeCallDispatcherRet<
       Status, ExtractScalarAsFloatDispatchTarget,
       uint32_t, uint64_t, int32_t, int64_t, MLFloat16, float, double, BFloat16>
@@ -167,11 +167,32 @@ std::vector<ScaleMergeInfo> GetOutputNodeMerges(
   return output_node_merges;
 }
 
+bool IsMatMulInputTypeSupported(const Node& node) {
+  // if no matching key is present, any data type is allowed
+  static const std::map<std::string, std::vector<std::string>> k_supported_data_types{
+      {kCudaExecutionProvider, {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"}},
+      {kCpuExecutionProvider, {"tensor(float)"}},
+  };
+
+  const auto it = k_supported_data_types.find(node.GetExecutionProviderType());
+  return it == k_supported_data_types.end() || optimizer_utils::IsSupportedDataType(node, it->second);
+}
+
 Status ProcessNode(
     Graph& graph, Node& node, bool& modified,
-    const std::unordered_set<std::string>& excluded_initializer_names) {
+    const std::unordered_set<std::string>& excluded_initializer_names,
+    const std::unordered_set<std::string>& compatible_execution_providers) {
+  if (!graph_utils::IsSupportedProvider(node, compatible_execution_providers)) {
+    return Status::OK();
+  }
+
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", {9, 13}) &&
-      !graph_utils::IsSupportedOptypeVersionAndDomain(node, "TransposeScaleMatMul", {1}, kMSDomain)) {
+      !graph_utils::IsSupportedOptypeVersionAndDomain(node, "FusedMatMul", {1}, kMSDomain) &&
+      !graph_utils::IsSupportedOptypeVersionAndDomain(node, "TransposeMatMul", {1}, kMSDomain)) {
+    return Status::OK();
+  }
+
+  if (!IsMatMulInputTypeSupported(node)) {
     return Status::OK();
   }
 
@@ -185,7 +206,7 @@ Status ProcessNode(
   }
 
   NodeAttributes fused_node_attrs =
-      node.OpType() == "TransposeScaleMatMul" ? node.GetAttributes() : NodeAttributes{};
+      (node.OpType() == "TransposeMatMul") || (node.OpType() == "FusedMatMul") ? node.GetAttributes() : NodeAttributes{};
 
   {
     ONNX_NAMESPACE::AttributeProto& alpha_attr = fused_node_attrs["alpha"];
@@ -220,7 +241,7 @@ Status ProcessNode(
 
   Node& matmul_scale_node = graph.AddNode(
       graph.GenerateNodeName(node.Name() + "_FusedMatMulAndScale"),
-      "TransposeScaleMatMul",
+      "FusedMatMul",
       "Fused MatMul and Scale",
       fused_node_inputs,
       fused_node_outputs,
@@ -273,7 +294,8 @@ Status MatMulScaleFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
 
     ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level, logger));
 
-    ORT_RETURN_IF_ERROR(ProcessNode(graph, *node, modified, excluded_initializer_names_));
+    ORT_RETURN_IF_ERROR(ProcessNode(
+        graph, *node, modified, excluded_initializer_names_, GetCompatibleExecutionProviders()));
   }
 
   return Status::OK();

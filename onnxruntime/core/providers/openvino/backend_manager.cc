@@ -21,10 +21,8 @@ GlobalContext& BackendManager::GetGlobalContext() {
   return global_context;
 }
 
-BackendManager::BackendManager(const onnxruntime::Node* fused_node, const logging::Logger& logger,
-                               std::string dev_id, std::string prec_str) {
-  subgraph_context_.device_id = dev_id;
-  subgraph_context_.precision_str = prec_str;
+BackendManager::BackendManager(const onnxruntime::Node* fused_node, const logging::Logger& logger) {
+  auto prec_str = GetGlobalContext().precision_str; 
   if (prec_str == "FP32") {
     subgraph_context_.precision = InferenceEngine::Precision::FP32;
   } else if (prec_str == "FP16") {
@@ -51,7 +49,7 @@ BackendManager::BackendManager(const onnxruntime::Node* fused_node, const loggin
 
   auto graph_inputs = fused_node->GetFunctionBody()->Body().GetInputs();
   for (auto input : graph_inputs) {
-    if(subgraph_context_.device_id == "MYRIAD"){
+    if(GetGlobalContext().device_type == "MYRIAD"){
       auto shape = input->Shape();
       if(shape != nullptr){
         if(shape->dim_size() != 4){
@@ -81,7 +79,7 @@ BackendManager::BackendManager(const onnxruntime::Node* fused_node, const loggin
 
   if (ModelHasBatchedInputs(model_proto_) &&
       GetGlobalContext().is_wholly_supported_graph &&
-      subgraph_context_.device_id == "HDDL") {
+      GetGlobalContext().device_type == "HDDL") {
     subgraph_context_.enable_batching = true;
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model can be Batch inferenced \n";
     auto model_copy = ReWriteBatchDimWithOne(model_proto_);
@@ -212,9 +210,9 @@ std::vector<std::vector<int64_t>> GetInputTensorShapes(Ort::CustomOpApi& api,
 }
 
 std::string MakeMapKeyString(std::vector<std::vector<int64_t>>& shapes,
-                             std::string& device_id) {
+                             std::string& device_type) {
   std::string key;
-  key += device_id;
+  key += device_type;
   key += "|";  //separator
   for (auto shape : shapes) {
     for (auto dim : shape) {
@@ -267,9 +265,9 @@ BackendManager::ReWriteBatchDimWithOne(const ONNX_NAMESPACE::ModelProto& model_p
 void BackendManager::Compute(Ort::CustomOpApi api, OrtKernelContext* context) {
   if (subgraph_context_.has_dynamic_input_shape) {
     std::vector<std::vector<int64_t>> tensor_shapes = GetInputTensorShapes(api, context);
-    auto key = MakeMapKeyString(tensor_shapes, subgraph_context_.device_id);
+    auto key = MakeMapKeyString(tensor_shapes, GetGlobalContext().device_type);
 
-    if(subgraph_context_.device_id == "MYRIAD"){
+    if(GetGlobalContext().device_type == "MYRIAD"){
       
       #if (defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
       for(size_t i = 0; i < subgraph_context_.input_indexes.size(); i++){
