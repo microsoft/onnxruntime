@@ -19,23 +19,23 @@ void RegisterSignalSchemas() {
       .SinceVersion(1)
       .SetDoc(R"DOC(DFT)DOC")
       .Attr("signal_ndim",
-          "The number of dimension of the input signal."
-          "Values can be 1, 2 or 3.",
-          AttributeProto::AttributeType::AttributeProto_AttributeType_INT,
-          false)
+            "The number of dimension of the input signal."
+            "Values can be 1, 2 or 3.",
+            AttributeProto::AttributeType::AttributeProto_AttributeType_INT,
+            false)
       .Input(0,
-          "input",
-          "A complex signal of dimension signal_ndim."
-          "The last dimension of the tensor should be 2,"
-          "representing the real and imaginary components of complex numbers,"
-          "and should have at least signal_ndim + 2 dimensions."
-          "The first dimension is the batch dimension.",
-          "T")
+             "input",
+             "A complex signal of dimension signal_ndim."
+             "The last dimension of the tensor should be 2,"
+             "representing the real and imaginary components of complex numbers,"
+             "and should have at least signal_ndim + 2 dimensions."
+             "The first dimension is the batch dimension.",
+             "T")
       .Output(0,
-          "output",
-          "The fourier transform of the input vector,"
-          "using the same format as the input.",
-          "T")
+              "output",
+              "The fourier transform of the input vector,"
+              "using the same format as the input.",
+              "T")
       .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "");
 
   MS_SIGNAL_OPERATOR_SCHEMA(IDFT)
@@ -61,6 +61,70 @@ void RegisterSignalSchemas() {
               "using the same format as the input.",
               "T")
       .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "");
+
+  // Window Functions
+  MS_SIGNAL_OPERATOR_SCHEMA(HannWindow)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC(HannWindow)DOC")
+      .Attr("output_datatype",
+            "The data type of the output tensor. "
+            "Strictly must be one of the types from DataType enum in TensorProto.",
+            AttributeProto::AttributeType::AttributeProto_AttributeType_INT,
+            static_cast<int64_t>(onnx::TensorProto_DataType::TensorProto_DataType_FLOAT))
+      .Input(0,
+             "size",
+             "An integral value indicating the length of the Hann Window. "
+             "The fist dimension is the batch dimension.",
+             "T1")
+      .Output(0,
+              "output",
+              "A Hann Window with length: size.",
+              "T2")
+      .TypeConstraint("T1", {"tensor(uint8)", "tensor(uint16)", "tensor(uint32)", "tensor(uint64)", "tensor(int8)", "tensor(int16)", "tensor(int32)", "tensor(int64)"}, "")
+      .TypeConstraint("T2", {"tensor(float)", "tensor(float16)", "tensor(double)", "tensor(uint8)", "tensor(uint16)", "tensor(uint32)", "tensor(uint64)", "tensor(int8)", "tensor(int16)", "tensor(int32)", "tensor(int64)"}, "");
+
+  MS_SIGNAL_OPERATOR_SCHEMA(HammingWindow)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC(HammingWindow)DOC")
+      .Attr("output_datatype",
+            "The data type of the output tensor. "
+            "Strictly must be one of the types from DataType enum in TensorProto.",
+            AttributeProto::AttributeType::AttributeProto_AttributeType_INT,
+            static_cast<int64_t>(onnx::TensorProto_DataType::TensorProto_DataType_FLOAT))
+      .Input(0,
+             "size",
+             "An integral value indicating the length of the Hamming Window. "
+             "The fist dimension is the batch dimension.",
+             "T1")
+      .Output(0,
+              "output",
+              "A Hamming Window with length: size.",
+              "T2")
+      .TypeConstraint("T1", {"tensor(uint8)", "tensor(uint16)", "tensor(uint32)", "tensor(uint64)", "tensor(int8)", "tensor(int16)", "tensor(int32)", "tensor(int64)"}, "")
+      .TypeConstraint("T2", {"tensor(float)", "tensor(float16)", "tensor(double)", "tensor(uint8)", "tensor(uint16)", "tensor(uint32)", "tensor(uint64)", "tensor(int8)", "tensor(int16)", "tensor(int32)", "tensor(int64)"}, "");
+    
+  MS_SIGNAL_OPERATOR_SCHEMA(BlackmanWindow)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC(HannWindow)DOC")
+      .Attr("output_datatype",
+            "The data type of the output tensor. "
+            "Strictly must be one of the types from DataType enum in TensorProto.",
+            AttributeProto::AttributeType::AttributeProto_AttributeType_INT,
+            static_cast<int64_t>(onnx::TensorProto_DataType::TensorProto_DataType_FLOAT))
+      .Input(0,
+             "size",
+             "An integral value indicating the length of the Blackman Window. "
+             "The fist dimension is the batch dimension.",
+             "T1")
+      .Output(0,
+              "output",
+              "A Blackman Window with length: size.",
+              "T2")
+      .TypeConstraint("T1", {"tensor(uint8)", "tensor(uint16)", "tensor(uint32)", "tensor(uint64)", "tensor(int8)", "tensor(int16)", "tensor(int32)", "tensor(int64)"}, "")
+      .TypeConstraint("T2", {"tensor(float)", "tensor(float16)", "tensor(double)", "tensor(uint8)", "tensor(uint16)", "tensor(uint32)", "tensor(uint64)", "tensor(int8)", "tensor(int16)", "tensor(int32)", "tensor(int64)"}, "");
 }
 
 }  // namespace audio

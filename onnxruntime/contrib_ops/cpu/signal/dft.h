@@ -21,6 +21,5 @@ class IDFT final : public OpKernel {
   Status Compute(OpKernelContext* ctx) const override;
 };
 
-
 }  // namespace contrib
 }  // namespace onnxruntime
