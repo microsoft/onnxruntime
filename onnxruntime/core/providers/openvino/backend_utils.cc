@@ -229,7 +229,7 @@ GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context,
     output_shape[j] = static_cast<int64_t>(shape[j]);
   }
   output_tensor = ort.KernelContext_GetOutput(context, index, output_shape, num_dims);
-  delete output_shape;
+  delete[] output_shape;
 
   return output_tensor;
 }
