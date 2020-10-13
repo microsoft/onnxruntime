@@ -338,7 +338,7 @@ Status OptimizerGraphBuilder::AddGradientNorm(
   }
 
   const TypeProto* const grad_norm_type = graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-  grad_norm_argdef = ArgDef{nodearg_name_generator(name), grad_norm_type};
+  grad_norm_argdef = ArgDef{nodearg_name_generator("global_gradient_norm"), grad_norm_type};
 
   graph_defs.AddNodeDefs({NodeDef{OpDef{"ReduceAllL2", kMSDomain, 1},
                                   grad_argdefs,
