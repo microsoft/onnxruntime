@@ -671,13 +671,9 @@ class PlannerImpl {
         if (node_input->Exists()) {
           auto& sym = node_input->Name();
           auto original = Buffer(Index(sym));
-<<<<<<< HEAD
-          if (0 == --UseCount(original)) {
-=======
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
           // See comments in the OrtValueInfo definition.
           if ((original != -1) && (0 == DecrementUseCount(original)))
->>>>>>> c444b9d76a9fda3775026ed3a4120ae1a6caaeb3
             freelist_.push_front(FreeBufferInfo(original, program_counter));
             if (AllocPlan(original).alloc_kind == AllocKind::kAllocate) {
               ORT_ENFORCE(AllocPlan(original).program_counter_end.size() > 0);
@@ -692,13 +688,9 @@ class PlannerImpl {
         if (node_input->Exists()) {
           auto& sym = node_input->Name();
           auto original = Buffer(Index(sym));
-<<<<<<< HEAD
-          if (0 == --UseCount(original)) {
-=======
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
           // See comments in the OrtValueInfo definition.
           if ((original != -1) && (0 == DecrementUseCount(original)))
->>>>>>> c444b9d76a9fda3775026ed3a4120ae1a6caaeb3
             freelist_.push_front(FreeBufferInfo(original, program_counter));
             if (AllocPlan(original).alloc_kind == AllocKind::kAllocate) {
               ORT_ENFORCE(AllocPlan(original).program_counter_end.size() > 0);
@@ -714,11 +706,7 @@ class PlannerImpl {
         if (node_output->Exists()) {
           auto& sym = node_output->Name();
           auto original = Buffer(Index(sym));
-<<<<<<< HEAD
-          if (0 == --UseCount(original)) {
-=======
           if (0 == DecrementUseCount(original))
->>>>>>> c444b9d76a9fda3775026ed3a4120ae1a6caaeb3
             freelist_.push_front(FreeBufferInfo(original, program_counter));
             if (AllocPlan(original).alloc_kind == AllocKind::kAllocate) {
               ORT_ENFORCE(AllocPlan(original).program_counter_end.size() > 0);
