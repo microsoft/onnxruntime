@@ -134,8 +134,10 @@ REG_ELEMENTWISE_TYPED_KERNEL(Ceil, 13, float, Ceil);
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Reciprocal, 6, 12, float, Reciprocal);
 REG_ELEMENTWISE_TYPED_KERNEL(Reciprocal, 13, float, Reciprocal);
 
-REG_ELEMENTWISE_TYPED_KERNEL(Sqrt, 6, float, Sqrt);
-REG_ELEMENTWISE_TYPED_KERNEL(Sqrt, 6, double, Sqrt);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Sqrt, 6, 12, float, Sqrt);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Sqrt, 6, 12, double, Sqrt);
+REG_ELEMENTWISE_TYPED_KERNEL(Sqrt, 13, float, Sqrt);
+REG_ELEMENTWISE_TYPED_KERNEL(Sqrt, 13, double, Sqrt);
 
 REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Pow, 7, 11, Pow, float, double);
 // To reduce templetization we choose to support the below types for both
