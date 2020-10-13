@@ -198,7 +198,7 @@ static Status AddParameterPartition(
   std::vector<ArgDef> weight_views, mixed_precision_weight_views;
   if (opt_config.mixed_precision_weight_arg != nullptr) {
     //Partition the FP32 weight
-    std::vector<ArgDef> weight_views = AddPartitionsForParameter(graph, graph_defs, weight_argdef.name, view_shapes, updated_weight_names_map);
+    weight_views = AddPartitionsForParameter(graph, graph_defs, weight_argdef.name, view_shapes, updated_weight_names_map);
     ORT_ENFORCE(weight_views.size() == enabled.size());
 
     // Add View for mixed precision weight.

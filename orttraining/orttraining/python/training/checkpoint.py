@@ -159,6 +159,21 @@ def _get_checkpoint_name(prefix, is_partitioned, world_rank=None, world_size=Non
         filename = SINGLE_CHECKPOINT_FILENAME.format(prefix=prefix)
     return filename
 
+def _split_state_dict(state_dict):
+    optimizer_keys = ['Moment_1_', 'Moment_2_', 'Update_Count_', 'Step_']
+    split_sd = {'optimizer': {}, 'fp32_param': {}, 'fp16_param': {}}
+    for k,v in state_dict.items():
+        mode = 'fp32_param'
+        for optim_key in optimizer_keys:
+            if k.startswith(optim_key):
+                mode = 'optimizer'
+                break
+        if k.endswith('_fp16'):
+            split_sd['fp16_param'][k] = v
+        else:
+            split_sd['fp32_param'][k] = v
+    
+    return split_sd
 
 class _CombineZeroCheckpoint(object):
     def __init__(self, checkpoint_files, clean_state_dict=None):
@@ -237,7 +252,7 @@ class _CombineZeroCheckpoint(object):
             if self.clean_state_dict:
                 rank_state_dict = self.clean_state_dict(rank_state_dict)
             
-            rank_state_dict = split_state_dict(rank_state_dict)
+            rank_state_dict = _split_state_dict(rank_state_dict)
             self._aggregate(rank_state_dict['fp16_param'])
             self._aggregate(rank_state_dict['fp32_param'])
             self._aggregate(rank_state_dict['optimizer'])
