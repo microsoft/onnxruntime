@@ -44,8 +44,8 @@ private:
   // Flag to indicate if reduction comms have been initialized
   bool reduction_comms_initialized_ = false;
 
-  // Chunk size for MPI send/recv in Adasum allreduce. Some versions of Intel MPI
-  // benefit from a smaller chunk size.
+  // Chunk size for MPI send/recv in Adasum allreduce. Sometimes MPI
+  // benefits from a smaller chunk size.
   const int64_t adasum_mpi_chunk_size_ = 1<<30;
 
 };
