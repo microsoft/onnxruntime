@@ -235,7 +235,7 @@ Status ModelBuilder::RegisterInitializers() {
       shape.push_back(SafeInt<uint32_t>(dim));
     }
 
-    ORT_RETURN_IF_NOT(!shape.empty(), "NNAPI does not support scalar initializer");
+    ORT_RETURN_IF_NOT(!shape.empty(), "NNAPI does not support scalar initializer, tensor name, ", name);
 
     Type type = Type::TENSOR_FLOAT32;
     switch (tensor.data_type()) {
