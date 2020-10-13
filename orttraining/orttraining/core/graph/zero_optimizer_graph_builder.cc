@@ -101,18 +101,13 @@ static std::vector<ArgDef> AddPartitionsForParameter(
     const std::string& initializer_name,
     const std::vector<TensorShape>& shapes,
     std::unordered_map<std::string, std::string>& updated_weight_names_map){
-  std::cout<<"shapes: [";
-  for (size_t i=0; i< shapes.size(); i++){
-    std::cout<< shapes[i] << " ";
-  }
-  std::cout<<"]\n";
   int64_t partition_offset = shapes[0].GetDims()[0];
   int64_t partition_size = shapes[1].GetDims()[0];
-  std::cout<< "Partition offset and size: " << partition_offset << ", "<< partition_size << "\n";
   std::vector<ArgDef> view_outputs;
   size_t view_num = 0;
   for (size_t i = 0; i < shapes.size(); i++) {
     if (shapes[i].Size() > 0) {
+      // keep the naming consistent with the "Views" created for the rest of the parameters.
       std::string partition_name = initializer_name + "_view_" + std::to_string(view_num);
       if (i == 1) {
         const ONNX_NAMESPACE::TensorProto* tensor_proto;
@@ -132,25 +127,20 @@ static std::vector<ArgDef> AddPartitionsForParameter(
         initializer_partition.add_dims(partition_size);
         initializer_partition.set_raw_data(initializer_data + partition_offset, partition_size * sizeof(float));
 
-        // Clear the initializer shape, as we are replacing the full weight with a segment of the weight.
-        // NodeArg* initializer_arg = graph.GetNodeArg(initializer_name);
-        // initializer_arg->ClearShape();
-
+        //Replace the old initializer with the new one
         graph.RemoveInitializedTensor(initializer_name);
-
         graph_utils::AddInitializer(graph, initializer_partition);
-        //modify weight name
+
+        //add the modified weight name to get state 
         updated_weight_names_map.insert({initializer_name, partition_name});
 
         auto partition_argdef = ArgDef(partition_name, graph_defs.CreateTypeProto({partition_size}, dtype));
 
         view_outputs.push_back(partition_argdef);
-        std::cout << i << " Partition View:" << partition_argdef.name << "\n";
       } else {
         auto dtype = ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
         auto partition_argdef = ArgDef(partition_name, graph_defs.CreateTypeProto({shapes[i].Size()}, dtype));
         view_outputs.push_back(partition_argdef);
-        std::cout << i << " Partition View:" << partition_argdef.name << "\n";
       }
       view_num++;
     }
@@ -181,10 +171,6 @@ static std::vector<ArgDef> AddViewForParameter(
       view_inputs.push_back(shape_argdef);
       view_outputs.push_back(view_argdef);
       view_num++;
-      std::cout<< i << " View:" << view_argdef.name << "\n";
-    }
-    else{
-      std::cout<< i << " Size 0!!!" << "\n";
     }
   }
 
@@ -193,7 +179,6 @@ static std::vector<ArgDef> AddViewForParameter(
                                   view_outputs,
                                   NodeAttributes(),
                                   argdef.name + "_view")});
-  std::cout<< "View outputs size: " << view_outputs.size() << "\n";
   return view_outputs;
 }
 
@@ -209,28 +194,18 @@ static Status AddParameterPartition(
     std::vector<ArgDef>& weight_argdefs,
     std::vector<ArgDef>& gradient_argdefs,
     std::unordered_map<std::string, std::string>& updated_weight_names_map) {
-  
-  std::cout<< "----Partitioning weight: " << weight_argdef.name << "\n";
-  std::cout << "-----------------gradient: " << gradient_argdef.name << "\n";
-
-  // (Optional) Add View for mixed precision weight.
+  // Add View/Partition for weight
   std::vector<ArgDef> weight_views, mixed_precision_weight_views;
   if (opt_config.mixed_precision_weight_arg != nullptr) {
-    //FP32 weight
-    std::vector<ArgDef> test_partitioned_weights = AddPartitionsForParameter(graph, graph_defs, weight_argdef.name, view_shapes, updated_weight_names_map);
-    ORT_ENFORCE(test_partitioned_weights.size() == enabled.size());
-    for (size_t i=0; i < test_partitioned_weights.size(); i++){
-      std::cout<< "Test partitoned: " << test_partitioned_weights[i].name << "\n";
-    }
-    weight_views = test_partitioned_weights;
-    // weight_views = AddViewForParameter(graph_defs, weight_argdef, view_shapes);
+    //Partition the FP32 weight
+    std::vector<ArgDef> weight_views = AddPartitionsForParameter(graph, graph_defs, weight_argdef.name, view_shapes, updated_weight_names_map);
+    ORT_ENFORCE(weight_views.size() == enabled.size());
 
-    //Mixedprecision weight
+    // Add View for mixed precision weight.
     ArgDef mixed_precision_weight_argdef(opt_config.mixed_precision_weight_arg->Name(), opt_config.mixed_precision_weight_arg->TypeAsProto());
     mixed_precision_weight_views = AddViewForParameter(graph_defs, mixed_precision_weight_argdef, view_shapes);
   } else {
     weight_views = AddViewForParameter(graph_defs, weight_argdef, view_shapes);
-    weight_argdefs.insert(weight_argdefs.end(), weight_views.begin(), weight_views.end());
   }
   ORT_ENFORCE(weight_views.size() == enabled.size());
 
@@ -241,9 +216,6 @@ static Status AddParameterPartition(
   weight_argdefs.insert(weight_argdefs.end(), weight_views.begin(), weight_views.end());
   gradient_argdefs.insert(gradient_argdefs.end(), gradient_views.begin(), gradient_views.end());
 
-  std::cout<< "In AddParameterPartition: Weight views size: " << weight_views.size() << "\n";
-  std::cout<< "In AddParameterPartition: Gradient views size: " << gradient_views.size() << "\n";
-
   // Update Optimizer node configs.
   ORT_ENFORCE(weight_views.size() == gradient_views.size());
   for (size_t i = 0; i < weight_views.size(); i++) {
@@ -253,9 +225,7 @@ static Status AddParameterPartition(
     if (opt_config.mixed_precision_weight_arg != nullptr) {
       new_config.mixed_precision_weight_arg = &graph.GetOrCreateNodeArg(mixed_precision_weight_views[i].name, mixed_precision_weight_views[i].type_proto);
     }
-
     opt_configs.push_back(new_config);
-    std::cout << "Added view: " << weight_views[i].name << "\n";
   }
 
   return Status::OK();
@@ -308,12 +278,6 @@ static Status ModifyParametersForOptimizerPartitioning(
     const OptimizerNodeConfig& opt_config = opt_configs[i];
     ArgDef weight_argdef = weight_argdefs[i];
     ArgDef gradient_argdef = gradient_argdefs[i];
-
-    // In mixed-precision mode, we pass the FP32 weights to the optimizer builder and it returns the FP16 weights.
-    // We only run the optimizer builder for weights belonging to this rank. For weights handled by other ranks,
-    // immediately grab the FP16 weight (if it exists).
-    // ArgDef fp16_or_fp32_weight_argdef = opt_config.fp16_weight_arg != nullptr ? 
-    //     ArgDef(opt_config.fp16_weight_arg->Name(), opt_config.fp16_weight_arg->TypeAsProto()) : weight_argdef;
 
     const auto& tensor_shape_proto = weight_argdef.type_proto->tensor_type().shape();
     const TensorShape& tensor_shape = utils::GetTensorShapeFromTensorShapeProto(tensor_shape_proto);
@@ -416,10 +380,6 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
   ORT_RETURN_IF_ERROR(ModifyParametersForOptimizerPartitioning(
       graph, graph_defs, opt_graph_config_, opt_configs_, weight_argdefs, gradient_argdefs, updated_weight_names_map_));
 
-  std::cout<< "ModifyParametersForOptimizerPartitioning: Weight argdefs size: " << weight_argdefs.size() << "\n";
-  std::cout<< "ModifyParametersForOptimizerPartitioning: Gradient argdefs size: " << gradient_argdefs.size() << "\n";
-  std::cout<< "ModifyParametersForOptimizerPartitioning: Optimizer configs size: " << opt_configs_.size() << "\n";
-
   // add gradient scaling
   ArgDef fused_gradient_argdef;
   const auto total_num_accumulations = opt_graph_config_.gradient_accumulation_steps * opt_graph_config_.data_parallel_group_size;
@@ -448,10 +408,6 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
         nodearg_name_generator, {global_grad_norm_argdef}, graph_defs, global_grad_norm_finite_argdef));
     optimizer_graph_outputs[OptimizerOutputKey::GradientAllIsFinite] = global_grad_norm_finite_argdef.name;
   }
-
-  std::cout<< "Before AddDirectWeightUpdate: Weight argdefs size: " << weight_argdefs.size() << "\n";
-  std::cout<< "Before AddDirectWeightUpdate: Gradient argdefs size: " << gradient_argdefs.size() << "\n";
-  std::cout<< "Before AddDirectWeightUpdate: Optimizer configs size: " << opt_configs_.size() << "\n";
 
   // add weight update
   ORT_RETURN_IF_ERROR(AddDirectWeightUpdate(

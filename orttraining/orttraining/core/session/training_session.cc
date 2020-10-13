@@ -348,10 +348,6 @@ Status TrainingSession::ConfigureForTraining(
     }
   }
 
-  std::string save_path = "bert_test_zero_" + std::to_string(config.distributed_config.world_rank) + ".onnx";
-  ORT_IGNORE_RETURN_VALUE(Save(
-        save_path, SaveOption::NO_RELOAD));
-
   // Set eval feed names for nodes that differ between training and inferencing.
   ORT_RETURN_IF_ERROR(SetEvalFeedNames());
 

@@ -381,46 +381,6 @@ def testToyBERTModelGradientAccumulation(gradient_accumulation_steps, expected_l
     # Check output
     _test_helpers.assert_model_outputs(losses, expected_losses, rtol=rtol)
 
-@pytest.mark.parametrize("gradient_accumulation_steps, expected_losses", [
-    (7, [10.988012313842773, 10.99213981628418, 11.090258598327637, 11.039335250854492, 10.993097305297852,
-        11.112862586975098, 10.996183395385742, 11.072013854980469, 11.00184154510498, 11.097928047180176])
-])
-def testToyBERTModelMixedPrecisionLossScaler(loss_scaler, expected_losses):
-    # Common setup
-    total_steps = 10
-    device = 'cuda'
-    seed = 1
-    rtol = 1e-3
-    torch.manual_seed(seed)
-    onnxruntime.set_seed(seed)
-
-    # Modeling
-    model_desc = bert_model_description()
-    model = load_bert_onnx_model()
-    optim_config = optim.LambConfig()
-    opts =  orttrainer.ORTTrainerOptions({
-        'debug' : {
-            'deterministic_compute': True
-        },
-        'device': {
-            'id': device,
-        },
-        'mixed_precision': {
-            'enabled': True,
-            'loss_scaler': loss_scaler
-        }
-    })
-    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
-
-    # Train
-    losses = []
-    for i in range(total_steps):
-        sample_input = generate_random_input_from_model_desc(model_desc, i)
-        losses.append(trainer.train_step(*sample_input).cpu().item())
-
-    # Check output
-    _test_helpers.assert_model_outputs(losses, expected_losses, rtol=rtol)
-
 def testToyBertCheckpointBasic():
     # Common setup
     seed = 1
