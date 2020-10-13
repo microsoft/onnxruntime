@@ -97,9 +97,6 @@ ReductionOpTest.ArgMin_do_not_keepdims
 ReductionOpTest.ArgMin_do_not_keepdims_2 
 GatherOpTest.Gather_invalid_index_cpu 
 Scatter.InvalidIndex 
-TransposeOpTest.Transpose0213 
-TransposeOpTest.Transpose0231 
-TransposeOpTest.Transpose0312 
 GatherElementsGrad.WithoutAxis 
 GatherElementsGrad.WithAxis 
 GatherElementsGrad.ThreeDimsWithAxis_0 
