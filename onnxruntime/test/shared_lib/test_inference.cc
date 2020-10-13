@@ -378,7 +378,7 @@ lib_name = "./libcustom_op_library.so";
   bool success = ::FreeLibrary(reinterpret_cast<HMODULE>(library_handle));
   ORT_ENFORCE(success, "Error while closing custom op shared library");
 #else
-  int retval = dlclose(handle);
+  int retval = dlclose(library_handle);
   ORT_ENFORCE(retval == 0, "Error while closing custom op shared library");
 #endif
 }
