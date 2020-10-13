@@ -146,6 +146,8 @@ class Session:
         """
         Return the nanoseconds of profiling's start time
         Comparable to time.monotonic_ns() after Python 3.3
+        On some platforms, this timer may not be as precise as nanoseconds
+        For instance, on Windows and MacOS, the precision will be ~100ns
         """
         return self._sess.get_profiling_start_time_ns
 

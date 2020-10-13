@@ -659,6 +659,8 @@ namespace Microsoft.ML.OnnxRuntime
 
         /// <summary>
         /// Return the nanoseconds of profiling's start time
+        /// On some platforms, this timer may not be as precise as nanoseconds
+        /// For instance, on Windows and MacOS, the precision will be ~100ns
         /// </summary>
         public ulong ProfilingStartTimeNs
         {

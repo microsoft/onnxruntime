@@ -61,8 +61,8 @@ class Profiler {
   }
   /*
   Return the stored start time of profiler.
-  On Windows and Mac, this timer is not as precise as nanoseconds. 
-  The precision of high_resolution_clock is ~100ns.
+  On some platforms, this timer may not be as precise as nanoseconds
+  For instance, on Windows and MacOS, the precision (high_resolution_clock) will be ~100ns
   */
   uint64_t GetStartTimeNs() const {
     return std::chrono::duration_cast<std::chrono::nanoseconds>(
