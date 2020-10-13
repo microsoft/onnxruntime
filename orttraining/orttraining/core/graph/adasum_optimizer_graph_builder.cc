@@ -161,6 +161,26 @@ static Status AddNcclAllReduceForGradients(
   return Status::OK();
 }
 
+static Status AddAdasumAllReduceForGradients(
+    std::vector<ArgDef>& gradient_argdefs,
+    GraphAugmenter::GraphDefs& graph_defs,
+    AdasumReductionType adasum_reduction_type) {
+  std::vector<ArgDef> adasum_output_argdefs;
+  for (size_t i = 0; i < gradient_argdefs.size(); i++) {
+    adasum_output_argdefs.emplace_back(ArgDef(gradient_argdefs[i].name + "Adasum_Out", gradient_argdefs[i].type_proto));
+  }
+
+  // Add Adasum Allreduce node.
+  graph_defs.AddNodeDefs({NodeDef(OpDef{"AdasumAllReduce", kMSDomain, 1},
+                                  gradient_argdefs,
+                                  adasum_output_argdefs,
+                                  {ONNX_NAMESPACE::MakeAttribute("reduce_algo",
+                                    static_cast<int64_t>(adasum_reduction_type))},
+                                  "AdasumAllReduce")});
+  gradient_argdefs = std::move(adasum_output_argdefs);
+  return Status::OK();
+}
+
 Status AdasumOptimizerGraphBuilder::BuildInternal(
     bool should_add_gradient_norm,
     bool should_add_gradient_finite_check,
@@ -239,7 +259,9 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
   optimizer_graph_outputs[OptimizerOutputKey::InitialDeltaNorm] = initial_delta_grad_norm_argdef.name;
 
   // Perform allreduce on deltas after step() for Adasum
-  ORT_RETURN_IF_ERROR(AddHorovodAllReduceForGradients(gradient_argdefs, graph_defs, horovod_reduce_op));
+  ORT_RETURN_IF_ERROR(AddAdasumAllReduceForGradients(gradient_argdefs,
+                                                     graph_defs,
+                                                     opt_graph_config_.adasum_reduction_type));
 
   // bugbug
   // If Adasum GPU hierarchical reduce is used, then scale resulting gradients by local size.
