@@ -16,6 +16,7 @@
 #include "core/graph/model.h"
 #include "core/optimizer/attention_fusion.h"
 #include "core/optimizer/bias_gelu_fusion.h"
+#include "core/optimizer/bias_softmax_fusion.h"
 #include "core/optimizer/computation_reduction.h"
 #include "core/optimizer/cast_elimination.h"
 #include "core/optimizer/concat_slice_elimination.h"
@@ -715,7 +716,7 @@ TEST_F(GraphTransformationTests, TransposeMatmulFusion) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Transpose"] == 0);
   ASSERT_TRUE(op_to_count["MatMul"] == 0);
-  ASSERT_TRUE(op_to_count["TransposeScaleMatMul"] == 1);
+  ASSERT_TRUE(op_to_count["FusedMatMul"] == 1);
 }
 
 TEST_F(GraphTransformationTests, TransposeMatmulFusionOnTwoTranspose) {
@@ -732,10 +733,10 @@ TEST_F(GraphTransformationTests, TransposeMatmulFusionOnTwoTranspose) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Transpose"] == 0);
   ASSERT_TRUE(op_to_count["MatMul"] == 0);
-  ASSERT_TRUE(op_to_count["TransposeScaleMatMul"] == 1);
+  ASSERT_TRUE(op_to_count["FusedMatMul"] == 1);
 
   auto& node = *graph.Nodes().begin();
-  ASSERT_TRUE(node.OpType() == "TransposeScaleMatMul");
+  ASSERT_TRUE(node.OpType() == "FusedMatMul");
   ASSERT_TRUE(static_cast<bool>(node.GetAttributes().at("transA").i()));
   ASSERT_TRUE(static_cast<bool>(node.GetAttributes().at("transB").i()));
 }
@@ -754,10 +755,10 @@ TEST_F(GraphTransformationTests, TransposeMatmulFusionOnThreeTranspose) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Transpose"] == 0);
   ASSERT_TRUE(op_to_count["MatMul"] == 0);
-  ASSERT_TRUE(op_to_count["TransposeScaleMatMul"] == 1);
+  ASSERT_TRUE(op_to_count["FusedMatMul"] == 1);
 
   auto& node = *graph.Nodes().begin();
-  ASSERT_TRUE(node.OpType() == "TransposeScaleMatMul");
+  ASSERT_TRUE(node.OpType() == "FusedMatMul");
   ASSERT_FALSE(static_cast<bool>(node.GetAttributes().at("transA").i()));
   ASSERT_TRUE(static_cast<bool>(node.GetAttributes().at("transB").i()));
 }
@@ -780,11 +781,11 @@ TEST_F(GraphTransformationTests, TransposeMatmulNoFusionOnInvalidPerm) {
     std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
     ASSERT_EQ(op_to_count["Transpose"], 1);
     ASSERT_EQ(op_to_count["MatMul"], 1);
-    ASSERT_EQ(op_to_count["TransposeScaleMatMul"], 0);
+    ASSERT_EQ(op_to_count["FusedMatMul"], 0);
   }
 }
 
-TEST_F(GraphTransformationTests, TransposeMatmulFusionFromTransposeScaleMatMul) {
+TEST_F(GraphTransformationTests, TransposeMatmulFusionFromTransposeMatMul) {
   auto model_uri = MODEL_FOLDER "fusion/transpose_matmul_2d_fusion_from_transpose_scale_matmul.onnx";
   std::shared_ptr<Model> p_model;
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
@@ -795,7 +796,7 @@ TEST_F(GraphTransformationTests, TransposeMatmulFusionFromTransposeScaleMatMul) 
     auto transpose_scale_matmul_node =
         std::find_if(
             graph.Nodes().cbegin(), graph.Nodes().cend(),
-            [](const Node& node) { return node.Name() == "TransposeScaleMatMul"; });
+            [](const Node& node) { return node.Name() == "FusedMatMul"; });
     ASSERT_NE(transpose_scale_matmul_node, graph.Nodes().cend());
     expected_alpha = transpose_scale_matmul_node->GetAttributes().at("alpha").f();
   }
@@ -808,10 +809,10 @@ TEST_F(GraphTransformationTests, TransposeMatmulFusionFromTransposeScaleMatMul) 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_EQ(op_to_count["Transpose"], 0);
   ASSERT_EQ(op_to_count["MatMul"], 0);
-  ASSERT_EQ(op_to_count["TransposeScaleMatMul"], 1);
+  ASSERT_EQ(op_to_count["FusedMatMul"], 1);
 
   auto& transpose_scale_matmul_node = *graph.Nodes().begin();
-  ASSERT_EQ(transpose_scale_matmul_node.OpType(), "TransposeScaleMatMul");
+  ASSERT_EQ(transpose_scale_matmul_node.OpType(), "FusedMatMul");
   ASSERT_FALSE(static_cast<bool>(transpose_scale_matmul_node.GetAttributes().at("transA").i()));
   ASSERT_FALSE(static_cast<bool>(transpose_scale_matmul_node.GetAttributes().at("transB").i()));
   ASSERT_EQ(transpose_scale_matmul_node.GetAttributes().at("alpha").f(), expected_alpha);
@@ -831,7 +832,7 @@ TEST_F(GraphTransformationTests, TransposeMatmulFusionWithPreservedTranspose) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_EQ(op_to_count["Transpose"], 1);
   ASSERT_EQ(op_to_count["MatMul"], 0);
-  ASSERT_EQ(op_to_count["TransposeScaleMatMul"], 1);
+  ASSERT_EQ(op_to_count["FusedMatMul"], 1);
 
   ASSERT_FALSE(graph.GraphResolveNeeded());
 }
@@ -2287,6 +2288,128 @@ TEST_F(GraphTransformationTests, FastGeluWithBiasUseGraphInputFusionTest2) {
   ASSERT_TRUE(op_to_count["FastGelu"] == 1);
 }
 
+struct BiasSoftmaxFusionTester {
+  std::shared_ptr<Model> p_model_;
+  Status model_load_;
+  onnxruntime::logging::Logger* logger_;
+  onnxruntime::GraphTransformerManager graph_transformation_mgr_;
+
+  bool GetAxis(const std::string op_type, const std::string name, int* axis) {
+    for (auto& node : p_model_->MainGraph().Nodes()) {
+      if (node.OpType() == op_type) {
+        auto& softmax_attr = node.GetAttributes();
+        if (softmax_attr.find(name) != softmax_attr.end()) {
+          // found axis attribute
+          auto& axis_attr = softmax_attr.at(name);
+          *axis = (int)axis_attr.i();
+          return true;
+        }
+      }
+    }
+    // not found
+    return false;
+  }
+
+  BiasSoftmaxFusionTester(
+      const PathString& model_uri,
+      onnxruntime::logging::Logger* logger,
+      bool on_cuda_ = true) : logger_(logger), graph_transformation_mgr_{5} {
+    model_load_ = Model::Load(model_uri, p_model_, nullptr, *logger_);
+
+    // move to cuda since fusion only takes place in that case
+    if (on_cuda_) {
+      for (auto& node : p_model_->MainGraph().Nodes()) {
+        node.SetExecutionProviderType(kCudaExecutionProvider);
+      }
+    }
+
+    graph_transformation_mgr_.Register(
+        onnxruntime::make_unique<BiasSoftmaxFusion>(), TransformerLevel::Level2);
+  }
+
+  void TestFusionOccurs(int expected_broadcast_axis) {
+    ASSERT_STATUS_OK(model_load_);
+
+    int expected_softmax_axis = 1;
+    GetAxis("Softmax", "axis", &expected_softmax_axis);
+
+    auto ret = graph_transformation_mgr_.ApplyTransformers(p_model_->MainGraph(), TransformerLevel::Level2, *logger_);
+    ASSERT_STATUS_OK(ret);
+    std::map<std::string, int> op_to_count = CountOpsInGraph(p_model_->MainGraph());
+
+    ASSERT_EQ(op_to_count["Add"], 0);
+    ASSERT_EQ(op_to_count["Softmax"], 0);
+    ASSERT_EQ(op_to_count["BiasSoftmax"], 1);
+
+    int actual_softmax_axis, actual_broadcast_axis;
+    ASSERT_TRUE(GetAxis("BiasSoftmax", "softmax_axis", &actual_softmax_axis));
+    ASSERT_EQ(actual_softmax_axis, expected_softmax_axis);
+
+    ASSERT_TRUE(GetAxis("BiasSoftmax", "broadcast_axis", &actual_broadcast_axis));
+    ASSERT_EQ(actual_broadcast_axis, expected_broadcast_axis);
+  }
+
+  void TestNoFusionOccurs() {
+    ASSERT_STATUS_OK(model_load_);
+
+    auto ret = graph_transformation_mgr_.ApplyTransformers(p_model_->MainGraph(), TransformerLevel::Level2, *logger_);
+    ASSERT_STATUS_OK(ret);
+
+    std::map<std::string, int> op_to_count = CountOpsInGraph(p_model_->MainGraph());
+    ASSERT_EQ(op_to_count["Add"], 1);
+    ASSERT_EQ(op_to_count["Softmax"], 1);
+    ASSERT_EQ(op_to_count["BiasSoftmax"], 0);
+  }
+};
+
+TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_CudaOnly) {
+  auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_simple.onnx";
+  BiasSoftmaxFusionTester tester(model_uri, logger_.get(), false);
+  tester.TestNoFusionOccurs();
+}
+
+TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_Simple) {
+  auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_simple.onnx";
+  BiasSoftmaxFusionTester tester(model_uri, logger_.get());
+  tester.TestFusionOccurs(1);
+}
+
+TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_MiddleOnes) {
+  auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_middleones.onnx";
+  BiasSoftmaxFusionTester tester(model_uri, logger_.get());
+  tester.TestFusionOccurs(3);
+}
+
+TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_ReversedInputs) {
+  auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_middleones_reversed.onnx";
+  BiasSoftmaxFusionTester tester(model_uri, logger_.get());
+  tester.TestFusionOccurs(3);
+}
+
+TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_BadAxis) {
+  auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_middleones_badaxis.onnx";
+  BiasSoftmaxFusionTester tester(model_uri, logger_.get());
+  tester.TestNoFusionOccurs();
+}
+
+TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_AllLeadingOnes) {
+  auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_allleadingones.onnx";
+  BiasSoftmaxFusionTester tester(model_uri, logger_.get());
+  tester.TestFusionOccurs(0);
+}
+
+TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_SomeLeadingOnes) {
+  auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_someleadingones.onnx";
+  BiasSoftmaxFusionTester tester(model_uri, logger_.get());
+  tester.TestFusionOccurs(0);
+}
+
+TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_NoLeadingOnes) {
+  auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_noleadingones.onnx";
+  BiasSoftmaxFusionTester tester(model_uri, logger_.get());
+  tester.TestFusionOccurs(0);
+}
+
 TEST_F(GraphTransformationTests, LayerNormFusionTest) {
   auto model_uri = MODEL_FOLDER "fusion/layer_norm.onnx";
   std::shared_ptr<Model> p_model;
@@ -2381,14 +2504,14 @@ TEST_F(GraphTransformationTests, LayerNormWithSubDupFusionTest) {
   }
 }
 
-TEST_F(GraphTransformationTests, T5LayerNormFusionTest) {
+TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionTest) {
   auto model_uri = MODEL_FOLDER "fusion/layer_norm_t5.onnx";
   std::shared_ptr<Model> p_model;
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<LayerNormT5Fusion>(), TransformerLevel::Level2);
+  graph_transformation_mgr.Register(onnxruntime::make_unique<SimplifiedLayerNormFusion>(), TransformerLevel::Level2);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_);
   ASSERT_TRUE(ret.IsOK());
 
@@ -2399,10 +2522,10 @@ TEST_F(GraphTransformationTests, T5LayerNormFusionTest) {
   ASSERT_TRUE(op_to_count["ReduceMean"] == 0);
   ASSERT_TRUE(op_to_count["Pow"] == 0);
   ASSERT_TRUE(op_to_count["Sqrt"] == 0);
-  ASSERT_TRUE(op_to_count["T5LayerNormalization"] == 1);
+  ASSERT_TRUE(op_to_count["SimplifiedLayerNormalization"] == 1);
 
   for (const Node& node : graph.Nodes()) {
-    if (node.OpType() == "T5LayerNormalization") {
+    if (node.OpType() == "SimplifiedLayerNormalization") {
       // LayerNormalization should have two inputs.
       EXPECT_EQ(node.InputDefs().size(), 2u) << "LayerNormalization number of inputs does not equal to 2. Got:" << node.InputDefs().size();
       // LayerNormalization input "scale" and "bias" should have the same dimension.
@@ -2732,7 +2855,7 @@ TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat9) {
   EXPECT_EQ(op_to_count["EmbedLayerNormalization"], 1);
   EXPECT_EQ(op_to_count["Attention"], 1);
   EXPECT_EQ(op_to_count["Cast"], 2);
-  EXPECT_EQ(op_to_count["Shape"], 0);
+  EXPECT_EQ(op_to_count["Shape"], 1);
   EXPECT_EQ(op_to_count["Gather"], 2);
   EXPECT_EQ(op_to_count["Unsqueeze"], 2);
   EXPECT_EQ(op_to_count["ReduceSum"], 1);
@@ -3053,10 +3176,12 @@ TEST_F(GraphTransformationTests, ComputationReductionTransformer_GatherND_E2E) {
 #endif
 
 #ifndef DISABLE_CONTRIB_OPS
-template <typename GraphTransformationCheckFn>
+template <typename GraphTransformationCheckFn, typename GraphPreprocessFn>
 static void TestMatMulScaleFusion(
     const PathString& model_path, const Logger& logger,
-    GraphTransformationCheckFn graph_transformation_check,
+    GraphPreprocessFn graph_preprocess_fn,
+    GraphTransformationCheckFn graph_transformation_check_fn,
+    const std::unordered_set<std::string>& compatible_execution_providers = {},
     const std::unordered_set<std::string>& excluded_initializer_names = {}) {
   SCOPED_TRACE(ORT_TSTR("model path: ") + model_path);
 
@@ -3064,17 +3189,31 @@ static void TestMatMulScaleFusion(
   ASSERT_STATUS_OK(Model::Load(model_path, model, nullptr, logger));
   Graph& graph = model->MainGraph();
 
+  graph_preprocess_fn(graph);
+
   auto original_op_counts = CountOpsInGraph(graph);
 
   onnxruntime::GraphTransformerManager graph_transformer_manager{5};
   ASSERT_STATUS_OK(graph_transformer_manager.Register(
-      make_unique<MatMulScaleFusion>(std::unordered_set<std::string>{}, excluded_initializer_names),
+      make_unique<MatMulScaleFusion>(compatible_execution_providers, excluded_initializer_names),
       TransformerLevel::Level2));
   ASSERT_STATUS_OK(graph_transformer_manager.ApplyTransformers(graph, TransformerLevel::Level2, logger));
 
   auto transformed_op_counts = CountOpsInGraph(graph);
 
-  graph_transformation_check(graph, original_op_counts, transformed_op_counts);
+  graph_transformation_check_fn(graph, original_op_counts, transformed_op_counts);
+}
+
+template <typename GraphTransformationCheckFn>
+static void TestMatMulScaleFusion(
+    const PathString& model_path, const Logger& logger,
+    GraphTransformationCheckFn graph_transformation_check,
+    const std::unordered_set<std::string>& compatible_execution_providers = {},
+    const std::unordered_set<std::string>& excluded_initializer_names = {}) {
+  TestMatMulScaleFusion(
+      model_path, logger,
+      [](Graph&) {}, graph_transformation_check,
+      compatible_execution_providers, excluded_initializer_names);
 }
 
 TEST_F(GraphTransformationTests, MatMulScaleFusionFusableModels) {
@@ -3094,17 +3233,17 @@ TEST_F(GraphTransformationTests, MatMulScaleFusionFusableModels) {
           EXPECT_EQ(transformed_op_counts["Mul"], 0);
           EXPECT_EQ(transformed_op_counts["Div"], 0);
           EXPECT_EQ(transformed_op_counts["MatMul"], 0);
-          EXPECT_EQ(transformed_op_counts["TransposeScaleMatMul"], 1);
+          EXPECT_EQ(transformed_op_counts["FusedMatMul"], 1);
 
           // check combined scale, individual scales should all have the same value
           const float scale_value = 3.0f;
 
           const int num_scales =
-              original_op_counts["Mul"] + original_op_counts["Div"] + original_op_counts["TransposeScaleMatMul"];
+              original_op_counts["Mul"] + original_op_counts["Div"] + original_op_counts["FusedMatMul"];
 
           auto fused_node = std::find_if(
               graph.Nodes().cbegin(), graph.Nodes().cend(),
-              [](const Node& node) { return node.OpType() == "TransposeScaleMatMul"; });
+              [](const Node& node) { return node.OpType() == "FusedMatMul"; });
           ASSERT_NE(fused_node, graph.Nodes().cend());
 
           auto alpha_attr = fused_node->GetAttributes().find("alpha");
@@ -3142,7 +3281,7 @@ TEST_F(GraphTransformationTests, MatMulScaleFusionReusedInputScale) {
         EXPECT_EQ(transformed_op_counts["Mul"], 0);
         EXPECT_EQ(transformed_op_counts["Div"], 0);
         EXPECT_EQ(transformed_op_counts["MatMul"], 0);
-        EXPECT_EQ(transformed_op_counts["TransposeScaleMatMul"], 2);
+        EXPECT_EQ(transformed_op_counts["FusedMatMul"], 2);
       });
 }
 
@@ -3154,7 +3293,40 @@ TEST_F(GraphTransformationTests, MatMulScaleFusionExcludedInitializerName) {
          const std::map<std::string, int>& transformed_op_counts) {
         EXPECT_EQ(original_op_counts, transformed_op_counts);
       },
+      {},
       {"scale"});
+}
+
+TEST_F(GraphTransformationTests, MatMulScaleFusionIncompatibleExecutionProvider) {
+  TestMatMulScaleFusion(
+      MODEL_FOLDER "fusion/matmul_scale_in0.onnx", *logger_,
+      [](Graph& graph) {
+        for (auto& node : graph.Nodes()) {
+          node.SetExecutionProviderType(kCudaExecutionProvider);
+        }
+      },
+      [](const Graph&,
+         const std::map<std::string, int>& original_op_counts,
+         const std::map<std::string, int>& transformed_op_counts) {
+        EXPECT_EQ(original_op_counts, transformed_op_counts);
+      },
+      {kCpuExecutionProvider});
+}
+
+TEST_F(GraphTransformationTests, MatMulScaleFusionUnsupportedInputType) {
+  TestMatMulScaleFusion(
+      MODEL_FOLDER "fusion/matmul_scale_int32.onnx", *logger_,
+      [](Graph& graph) {
+        for (auto& node : graph.Nodes()) {
+          node.SetExecutionProviderType(kCpuExecutionProvider);
+        }
+      },
+      [](const Graph&,
+         const std::map<std::string, int>& original_op_counts,
+         const std::map<std::string, int>& transformed_op_counts) {
+        EXPECT_EQ(original_op_counts, transformed_op_counts);
+      },
+      {kCpuExecutionProvider});
 }
 #endif
 

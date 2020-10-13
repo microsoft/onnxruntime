@@ -4,8 +4,8 @@
 # --------------------------------------------------------------
 # Dockerfile to run ONNXRuntime with CUDA, CUDNN integration
 
-# nVidia cuda 10.1 Base Image
-FROM nvidia/cuda:10.1-cudnn7-devel
+# nVidia cuda 10.2 Base Image
+FROM nvidia/cuda:10.2-cudnn8-devel
 MAINTAINER Vinitra Swamy "viswamy@microsoft.com"
 
 ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime

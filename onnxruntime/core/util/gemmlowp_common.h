@@ -29,11 +29,12 @@ void inline QuantizeMultiplier(float fp_multiplier, std::int32_t* integer_multip
 }
 
 void GemmlowpMultiplyu8u8_u8(const uint8_t* lhs_data, const uint8_t* rhs_data, uint8_t* result_data,
-                        const int lhs_offset, const int rhs_offset, const int result_offset,
-                        int m, int n, int k, int32_t int_multiplier, int32_t right_shift, const int32_t* bias = nullptr);
+                             const int lhs_offset, const int rhs_offset, const int result_offset,
+                             int m, int n, int k, int32_t int_multiplier, int32_t right_shift, const int32_t* bias = nullptr);
 
 void GemmlowpMultiplyu8u8_s32(const uint8_t* lhs_data, const uint8_t* rhs_data, int32_t* result_data,
-                             const int lhs_offset, const int rhs_offset, int m, int n, int k, concurrency::ThreadPool*);
+                              const int lhs_offset, const int rhs_offset,
+                              int m, int n, int k, int lda, int ldb, int ldc, concurrency::ThreadPool*);
 
 }  // namespace onnxruntime
 

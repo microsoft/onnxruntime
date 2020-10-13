@@ -337,11 +337,23 @@ def _create_config_file_with_required_ops(required_operators, model_path, config
     log.info("Wrote set of required operators to {}".format(output_file))
 
 
-def exclude_unused_ops(models_path, config_path, ort_root=None, use_cuda=True):
-    "Note that this called directly from build.py"
+def exclude_unused_ops(models_path, config_path, ort_root=None, use_cuda=True, output_config_path=None):
+    '''Determine operators that are used, and either exclude them or create a configuration file that will.
+    Note that this called directly from build.py'''
 
-    required_operators = _extract_ops_from_config(config_path, _extract_ops_from_model(models_path, {}))
-    _exclude_unused_ops_in_providers(required_operators, _get_provider_paths(ort_root, use_cuda))
+    if not models_path and not config_path:
+        log.error('Please specify model_path and/or config_path.')
+        sys.exit(-1)
+
+    if not ort_root and not output_config_path:
+        log.info('ort_root was not specified. Inferring ONNX Runtime repository root from location of this script.')
+
+    required_ops = _extract_ops_from_config(config_path, _extract_ops_from_model(models_path, {}))
+
+    if not output_config_path:
+        _exclude_unused_ops_in_providers(required_ops, _get_provider_paths(ort_root, use_cuda))
+    else:
+        _create_config_file_with_required_ops(required_ops, models_path, config_path, output_config_path)
 
 
 if __name__ == "__main__":
@@ -379,11 +391,5 @@ if __name__ == "__main__":
         parser.print_help()
         sys.exit(-1)
 
-    if not ort_root:
-        log.info('ort_root was not specified. Inferring ORT root from location of this script.')
-
-    if not args.write_combined_config_to:
-        exclude_unused_ops(models_path, config_path, ort_root, use_cuda=True)
-    else:
-        required_ops = _extract_ops_from_config(config_path, _extract_ops_from_model(models_path, {}))
-        _create_config_file_with_required_ops(required_ops, models_path, config_path, args.write_combined_config_to)
+    exclude_unused_ops(models_path, config_path, ort_root, use_cuda=True,
+                       output_config_path=args.write_combined_config_to)

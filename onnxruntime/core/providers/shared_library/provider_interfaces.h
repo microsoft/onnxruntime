@@ -25,44 +25,12 @@ using DataType = const std::string*;
 
 namespace onnxruntime {
 
-// onnx Protobuf types
-struct Provider_AttributeProto;
-struct Provider_GraphProto;
-struct Provider_ModelProto;
-struct Provider_NodeProto;
-struct Provider_TensorProto;
-struct Provider_TensorProtos;
-struct Provider_TensorShapeProto_Dimension;
-struct Provider_TensorShapeProto_Dimensions;
-struct Provider_TensorShapeProto;
-struct Provider_TypeProto_Tensor;
-struct Provider_TypeProto;
-struct Provider_ValueInfoProto;
-struct Provider_ValueInfoProtos;
-
-// OnnxRuntime Types
-struct ProviderHost;
-struct Provider_ComputeCapability;
-struct Provider_DataTransferManager;
-struct Provider_IDataTransfer;
+// These types don't directly map to internal types
 struct Provider_IExecutionProvider;
-struct Provider_IndexedSubGraph;
-struct Provider_IndexedSubGraph_MetaDef;
 struct Provider_KernelCreateInfo;
-struct Provider_KernelDef;
-struct Provider_KernelDefBuilder;
-struct Provider_KernelRegistry;
-struct Provider_Function;
-struct Provider_Graph;
-struct Provider_GraphViewer;
-struct Provider_Model;
-struct Provider_Node;
-struct Provider_NodeArg;
-struct Provider_NodeAttributes;
 struct Provider_OpKernel_Base;
-struct Provider_OpKernelContext;
-struct Provider_OpKernelInfo;
-struct Provider_Tensor;
+struct ProviderHost;
+
 class TensorShape;
 
 template <typename T, typename TResult>
@@ -177,7 +145,7 @@ using Provider_NodeArgInfo = Provider_ValueInfoProto;
 // We can't just reinterpret_cast this one, since it's an unordered_map of object BY VALUE (can't do anything by value on the real types)
 //using Provider_NodeAttributes = std::unordered_map<std::string, ONNX_NAMESPACE::Provider_AttributeProto_Copyable>;
 
-using Provider_InitializedTensorSet = std::unordered_map<std::string, const ONNX_NAMESPACE::Provider_TensorProto*>;
+using Provider_InitializedTensorSet = std::unordered_map<std::string, const Provider_TensorProto*>;
 
 struct Provider_Node__NodeIterator {
   virtual ~Provider_Node__NodeIterator() {}
@@ -210,10 +178,6 @@ struct NodeComputeInfo {
   DestroyFunctionStateFunc release_state_func;
 };
 #endif
-
-namespace logging {
-class Logger;
-}
 
 // Provides the base class implementations, since Provider_IExecutionProvider is just an interface. This is to fake the C++ inheritance used by internal IExecutionProvider implementations
 struct Provider_IExecutionProvider_Router {
@@ -295,11 +259,28 @@ struct ProviderHost {
   virtual void* HeapAllocate(size_t size) = 0;
   virtual void HeapFree(void*) = 0;
 
+  virtual AutoPadType StringToAutoPadType(const std::string& str) = 0;
+
   virtual void LogRuntimeError(uint32_t session_id, const common::Status& status,
                                const char* file, const char* function, uint32_t line) = 0;
 
-  virtual bool CPU_HasAVX2() = 0;
-  virtual bool CPU_HasAVX512f() = 0;
+  virtual std::vector<std::string> GetStackTrace() = 0;
+
+  // CPUIDInfo
+  virtual const CPUIDInfo& CPUIDInfo__GetCPUIDInfo() = 0;
+  virtual bool CPUIDInfo__HasAVX2(const CPUIDInfo* p) = 0;
+  virtual bool CPUIDInfo__HasAVX512f(const CPUIDInfo* p) = 0;
+
+  // logging::Logger
+  virtual bool logging__Logger__OutputIsEnabled(const logging::Logger* p, logging::Severity severity, logging::DataType data_type) = 0;
+
+  // logging::LoggingManager
+  virtual const logging::Logger& logging__LoggingManager__DefaultLogger() = 0;
+
+  // logging::Capture
+  virtual std::unique_ptr<logging::Capture> logging__Capture__construct(const logging::Logger& logger, logging::Severity severity, const char* category, logging::DataType dataType, const CodeLocation& location) = 0;
+  virtual void logging__Capture__operator_delete(logging::Capture* p) noexcept = 0;
+  virtual std::ostream& logging__Capture__Stream(logging::Capture* p) noexcept = 0;
 
   // Provider_TypeProto_Tensor
   virtual int32_t Provider_TypeProto_Tensor__elem_type(const Provider_TypeProto_Tensor* p) = 0;
@@ -466,7 +447,7 @@ struct ProviderHost {
   virtual ONNX_NAMESPACE::DataType Provider_NodeArg__Type(const Provider_NodeArg* p) noexcept = 0;
   virtual const Provider_NodeArgInfo& Provider_NodeArg__ToProto(const Provider_NodeArg* p) noexcept = 0;
   virtual bool Provider_NodeArg__Exists(const Provider_NodeArg* p) const noexcept = 0;
-  virtual const ONNX_NAMESPACE::Provider_TypeProto* Provider_NodeArg__TypeAsProto(const Provider_NodeArg* p) noexcept = 0;
+  virtual const Provider_TypeProto* Provider_NodeArg__TypeAsProto(const Provider_NodeArg* p) noexcept = 0;
 
   // Provider_NodeAttributes
   virtual std::unique_ptr<Provider_NodeAttributes> Provider_NodeAttributes__construct() = 0;
@@ -554,6 +535,44 @@ struct ProviderHost {
 
 extern ProviderHost* g_host;
 
+#ifndef PROVIDER_BRIDGE_ORT
+
+struct CPUIDInfo {
+  static const CPUIDInfo& GetCPUIDInfo() { return g_host->CPUIDInfo__GetCPUIDInfo(); }
+
+  bool HasAVX2() const { return g_host->CPUIDInfo__HasAVX2(this); }
+  bool HasAVX512f() const { return g_host->CPUIDInfo__HasAVX512f(this); }
+
+PROVIDER_DISALLOW_ALL(CPUIDInfo)
+};
+
+namespace logging {
+
+struct Logger {
+  bool OutputIsEnabled(Severity severity, DataType data_type) const noexcept { return g_host->logging__Logger__OutputIsEnabled(this, severity, data_type);  }
+
+PROVIDER_DISALLOW_ALL(Logger)
+};
+
+struct LoggingManager {
+  static const Logger& DefaultLogger() { return g_host->logging__LoggingManager__DefaultLogger();  }
+
+  PROVIDER_DISALLOW_ALL(LoggingManager)
+};
+
+struct Capture {
+    static std::unique_ptr<Capture> Create(const Logger& logger, logging::Severity severity, const char* category,
+            logging::DataType dataType, const CodeLocation& location) { return g_host->logging__Capture__construct(logger, severity, category, dataType, location); }
+    static void operator delete(void* p) { g_host->logging__Capture__operator_delete(reinterpret_cast<Capture*>(p)); }
+
+    std::ostream& Stream() noexcept { return g_host->logging__Capture__Stream(this); }
+
+    Capture() = delete;
+    Capture(const Capture&) = delete;
+    void operator=(const Capture&) = delete;
+};
+}
+
 struct Provider_TypeProto_Tensor {
   int32_t elem_type() const { return g_host->Provider_TypeProto_Tensor__elem_type(this); }
 
@@ -609,8 +628,8 @@ struct Provider_ModelProto {
   bool SerializeToString(std::string& string) const { return g_host->Provider_ModelProto__SerializeToString(this, string); }
   bool SerializeToOstream(std::ostream& output) const { return g_host->Provider_ModelProto__SerializeToOstream(this, output); }
 
-  const ONNX_NAMESPACE::Provider_GraphProto& graph() const { return g_host->Provider_ModelProto__graph(this); }
-  ONNX_NAMESPACE::Provider_GraphProto* mutable_graph() { return g_host->Provider_ModelProto__mutable_graph(this); }
+  const Provider_GraphProto& graph() const { return g_host->Provider_ModelProto__graph(this); }
+  Provider_GraphProto* mutable_graph() { return g_host->Provider_ModelProto__mutable_graph(this); }
 
   void set_ir_version(int64_t value) { return g_host->Provider_ModelProto__set_ir_version(this, value); }
 
@@ -741,6 +760,7 @@ struct Provider_KernelDef {
   Provider_KernelDef(const Provider_KernelDef*) = delete;
   void operator=(const Provider_KernelDef&) = delete;
 };
+#endif
 
 using Provider_KernelCreateFn = std::function<Provider_OpKernel*(const Provider_OpKernelInfo& info)>;
 using Provider_KernelCreatePtrFn = std::add_pointer<Provider_OpKernel*(const Provider_OpKernelInfo& info)>::type;
@@ -761,6 +781,7 @@ struct Provider_KernelCreateInfo {
 
 using Provider_BuildKernelCreateInfoFn = Provider_KernelCreateInfo (*)();
 
+#ifndef PROVIDER_BRIDGE_ORT
 struct Provider_KernelDefBuilder {
   static std::unique_ptr<Provider_KernelDefBuilder> Create() { return g_host->Provider_KernelDefBuilder__construct(); }
   static void operator delete(void* p) { g_host->Provider_KernelDefBuilder__operator_delete(reinterpret_cast<Provider_KernelDefBuilder*>(p)); }
@@ -972,6 +993,7 @@ struct Provider_GraphViewer {
   Provider_GraphViewer(const Provider_GraphViewer&) = delete;
   void operator=(const Provider_GraphViewer&) = delete;
 };
+#endif
 
 struct Provider_OpKernel_Base {
   const Provider_OpKernelInfo& GetInfo() const { return g_host->Provider_OpKernel_Base__GetInfo(this); }
@@ -979,6 +1001,7 @@ struct Provider_OpKernel_Base {
   PROVIDER_DISALLOW_ALL(Provider_OpKernel_Base)
 };
 
+#ifndef PROVIDER_BRIDGE_ORT
 struct Provider_OpKernelContext {
   const Provider_Tensor* Input_Tensor(int index) const { return g_host->Provider_OpKernelContext__Input_Tensor(this, index); }
 
@@ -1043,5 +1066,6 @@ inline float* Provider_Tensor::MutableData<float>() { return MutableData_float()
 
 template <>
 inline const float* Provider_Tensor::Data<float>() const { return Data_float(); }
+#endif
 
 }  // namespace onnxruntime

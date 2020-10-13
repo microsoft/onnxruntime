@@ -17,7 +17,7 @@ enum CUDAStreamType : int {
 
 class GPUDataTransfer : public IDataTransfer {
  public:
-  GPUDataTransfer();
+  GPUDataTransfer(bool do_copy_in_default_stream = true);
   ~GPUDataTransfer();
 
   bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const override;

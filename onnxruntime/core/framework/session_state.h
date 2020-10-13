@@ -13,7 +13,6 @@
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/common/profiler.h"
-#include "core/flatbuffers/ort.fbs.h"
 #include "core/framework/allocation_planner.h"
 #include "core/framework/callback.h"
 #include "core/framework/data_transfer_manager.h"
@@ -33,7 +32,19 @@
 #include "core/platform/path_lib.h"
 #include "core/platform/threadpool.h"
 
+namespace flatbuffers {
+class FlatBufferBuilder;
+template <typename T>
+struct Offset;
+}  // namespace flatbuffers
+
 namespace onnxruntime {
+
+namespace experimental {
+namespace fbs {
+struct SessionState;
+}  // namespace fbs
+}  // namespace experimental
 
 class ExecutionProviders;
 class KernelDef;

@@ -995,14 +995,12 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
               dimension_update[input_name] = true;
             }
 
-            if (dimension_update[input_name]) {
-              if (trt_profile == nullptr) {
-                trt_profile = trt_builder->createOptimizationProfile();
-              }
-              trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, &shapes_min[0], shape_size);
-              trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt[0], shape_size);
-              trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_max[0], shape_size);
+            if (trt_profile == nullptr) {
+              trt_profile = trt_builder->createOptimizationProfile();
             }
+            trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, &shapes_min[0], shape_size);
+            trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt[0], shape_size);
+            trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_max[0], shape_size);
           } else {  // execution tensor
             nvinfer1::Dims dims_min(dims), dims_opt(dims), dims_max(dims);
             for (int j = 0, end = nb_dims; j < end; ++j) {
@@ -1030,14 +1028,12 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
               }
             }
 
-            if (dimension_update[input_name]) {
-              if (trt_profile == nullptr) {
-                trt_profile = trt_builder->createOptimizationProfile();
-              }
-              trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, dims_min);
-              trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, dims_opt);
-              trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, dims_max);
+            if (trt_profile == nullptr) {
+              trt_profile = trt_builder->createOptimizationProfile();
             }
+            trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, dims_min);
+            trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, dims_opt);
+            trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, dims_max);
           }
           ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
         }
@@ -1341,6 +1337,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
         }
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "TensorRT EP execution context enqueue failed.");
       }
+      cudaDeviceSynchronize();
 
       // Cast INT64 input to INT32 because TensorRT doesn't fully support INT64
       for (int i = 0, end = output_binding_names.size(); i < end; ++i) {
@@ -1359,7 +1356,6 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
         }
       }
 
-      cudaDeviceSynchronize();
       for (const auto& binding_index : binding_buffers_to_freeup) {
         cudaFree(buffers[binding_index]);
       }

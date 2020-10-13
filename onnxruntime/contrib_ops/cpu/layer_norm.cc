@@ -23,7 +23,7 @@ namespace contrib {
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       LayerNorm<T, false>);                                       \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      T5LayerNormalization,                                       \
+      SimplifiedLayerNormalization,                               \
       kOnnxDomain,                                                \
       1,                                                          \
       T,                                                          \
@@ -31,26 +31,26 @@ namespace contrib {
       KernelDefBuilder()                                          \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       LayerNorm<T, true>);
-  
+
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(double)
 
-template <typename T, bool t5_layer_norm>
-LayerNorm<T, t5_layer_norm>::LayerNorm(const OpKernelInfo& op_kernel_info)
+template <typename T, bool simplified>
+LayerNorm<T, simplified>::LayerNorm(const OpKernelInfo& op_kernel_info)
     : OpKernel(op_kernel_info) {
   ORT_ENFORCE(op_kernel_info.GetAttr("axis", &axis_).IsOK());
   ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
 }
 
-template <typename T, bool t5_layer_norm>
-Status LayerNorm<T, t5_layer_norm>::Compute(OpKernelContext* p_ctx) const {
+template <typename T, bool simplified>
+Status LayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
   // Inputs
   const Tensor* X = p_ctx->Input<Tensor>(0);
   const Tensor* scale = p_ctx->Input<Tensor>(1);
   const Tensor* bias = p_ctx->Input<Tensor>(2);
   auto X_data = X->template Data<T>();
   auto scale_data = scale->template Data<T>();
-  auto bias_data = t5_layer_norm ? nullptr : bias->template Data<T>();
+  auto bias_data = simplified ? nullptr : bias->template Data<T>();
 
   const TensorShape& x_shape = X->Shape();
   const int64_t axis = HandleNegativeAxis(axis_, x_shape.NumDimensions());
@@ -78,7 +78,7 @@ Status LayerNorm<T, t5_layer_norm>::Compute(OpKernelContext* p_ctx) const {
 
   int output_index = 1;
 
-  if (!t5_layer_norm) {
+  if (!simplified) {
     Tensor* mean = p_ctx->Output(output_index++, TensorShape(mean_inv_std_var_dim));
     if (mean != nullptr) {
       mean_data = mean->template MutableData<T>();
@@ -101,39 +101,41 @@ Status LayerNorm<T, t5_layer_norm>::Compute(OpKernelContext* p_ctx) const {
     inv_std_var_data = static_cast<T*>(inv_std_var_data_buf_ptr.get());
   }
 
-  concurrency::ThreadPool::TryBatchParallelFor(p_ctx->GetOperatorThreadPool(), static_cast<int32_t>(norm_count),
-                                               [&](ptrdiff_t task_idx) {
-                                                 const T* p_input = X_data + task_idx * norm_size;
-                                                 T* p_output = Y_data + task_idx * norm_size;
+  concurrency::ThreadPool::TryBatchParallelFor(
+      p_ctx->GetOperatorThreadPool(), static_cast<int32_t>(norm_count),
+      [&](ptrdiff_t task_idx) {
+        const T* p_input = X_data + task_idx * norm_size;
+        T* p_output = Y_data + task_idx * norm_size;
 
-                                                 T mean = 0;
-                                                 T mean_square = 0;
+        T mean = 0;
+        T mean_square = 0;
 
-                                                 for (int64_t h = 0; h < norm_size; h++) {
-                                                   mean += p_input[h];
-                                                   mean_square += p_input[h] * p_input[h];
-                                                 }
+        for (int64_t h = 0; h < norm_size; h++) {
+          mean += p_input[h];
+          mean_square += p_input[h] * p_input[h];
+        }
 
-                                                 mean = mean / norm_size;
-                                                 if (t5_layer_norm) {
-                                                   mean_square = sqrt(mean_square / norm_size + epsilon_);
-                                                 } else {
-                                                   mean_square = sqrt(mean_square / norm_size - mean * mean + epsilon_);
-                                                 }
+        mean = mean / norm_size;
+        if (simplified) {
+          mean_square = sqrt(mean_square / norm_size + epsilon_);
+        } else {
+          mean_square = sqrt(mean_square / norm_size - mean * mean + epsilon_);
+        }
 
-                                                 for (int64_t h = 0; h < norm_size; h++) {
-                                                   if (t5_layer_norm) {
-                                                     p_output[h] = p_input[h] / mean_square * scale_data[h];
-                                                   } else {
-                                                     p_output[h] = (p_input[h] - mean) / mean_square * scale_data[h] + bias_data[h];
-                                                   }
-                                                 }
+        for (int64_t h = 0; h < norm_size; h++) {
+          if (simplified) {
+            p_output[h] = p_input[h] / mean_square * scale_data[h];
+          } else {
+            p_output[h] = (p_input[h] - mean) / mean_square * scale_data[h] + bias_data[h];
+          }
+        }
 
-                                                 if (mean_data != nullptr) {
-                                                   mean_data[task_idx] = mean;
-                                                 }
-                                                 inv_std_var_data[task_idx] = 1 / mean_square;
-                                               }, 0);
+        if (mean_data != nullptr) {
+          mean_data[task_idx] = mean;
+        }
+        inv_std_var_data[task_idx] = 1 / mean_square;
+      },
+      0);
 
   return Status::OK();
 }

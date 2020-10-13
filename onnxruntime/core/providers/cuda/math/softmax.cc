@@ -26,7 +26,7 @@ Status SoftMaxComputeHelper(
 
   // cudnnSoftmaxForward/Backward is not optimal implementation.
   // TODO: remove cudnn path completely in the future.
-  if (D == input_shape[normalized_axis] && D <= 1024 && D * sizeof(T) <= 4096) {
+  if (D <= 1024 && D * sizeof(T) <= 4096) {
     dispatch_softmax_forward<CudaT, CudaT, AccType<T>, is_log_softmax>(Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));
     return Status::OK();
   }

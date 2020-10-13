@@ -338,7 +338,7 @@ X --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mul
 |                                              |
 +----------------------------------------------+
 */
-Status LayerNormT5Fusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
+Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
   std::vector<std::reference_wrapper<Node>> nodes_to_remove;
@@ -351,7 +351,6 @@ Status LayerNormT5Fusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     Node& pow_node = *p_pow;
     ORT_RETURN_IF_ERROR(Recurse(pow_node, modified, graph_level, logger));
 
-    // Node& pow_node = *graph.GetNode(reduce_mean2_node.InputNodesBegin()->Index());
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(pow_node, "Pow", {7, 12, 13}) ||
         !graph_utils::IsSupportedProvider(pow_node, GetCompatibleExecutionProviders()) ||
         !optimizer_utils::CheckOutputEdges(graph, pow_node, 1) ||
@@ -468,8 +467,8 @@ Status LayerNormT5Fusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     }
 
     const std::vector<NodeArg*> layer_norm_input_defs{pow_node.MutableInputDefs()[0], scale};
-    Node& layer_norm_node = graph.AddNode(graph.GenerateNodeName("T5LayerNormalization"),
-                                          "T5LayerNormalization",
+    Node& layer_norm_node = graph.AddNode(graph.GenerateNodeName("SimplifiedLayerNormalization"),
+                                          "SimplifiedLayerNormalization",
                                           "fused LayerNorm subgraphs ",
                                           layer_norm_input_defs,
                                           {}, {}, kOnnxDomain);
@@ -493,7 +492,7 @@ Status LayerNormT5Fusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     graph_utils::FinalizeNodeFusion(graph, nodes_to_remove, layer_norm_node);
 
 #ifdef ENABLE_TRAINING
-    // add two extra output defs, so we have 3 output defs that match what gradient builder expected
+    // add one extra output def, so we have 2 output defs that match what gradient builder expected
     layer_norm_node.MutableOutputDefs().push_back(&graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("saved_inv_std_var"), nullptr));
 #endif
 

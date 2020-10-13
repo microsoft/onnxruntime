@@ -6,6 +6,7 @@
 #include "core/mlas/inc/mlas.h"
 #include "core/optimizer/attention_fusion.h"
 #include "core/optimizer/bias_gelu_fusion.h"
+#include "core/optimizer/bias_softmax_fusion.h"
 #include "core/optimizer/cast_elimination.h"
 #include "core/optimizer/common_subexpression_elimination.h"
 #include "core/optimizer/constant_folding.h"
@@ -143,11 +144,12 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       std::unordered_set<std::string> cpu_cuda_execution_providers = {onnxruntime::kCpuExecutionProvider, onnxruntime::kCudaExecutionProvider};
       transformers.emplace_back(onnxruntime::make_unique<GeluFusion>(cpu_cuda_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<LayerNormFusion>(cpu_cuda_execution_providers));
-      transformers.emplace_back(onnxruntime::make_unique<LayerNormT5Fusion>(cpu_cuda_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<SimplifiedLayerNormFusion>(cpu_cuda_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<AttentionFusion>(cpu_cuda_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<EmbedLayerNormFusion>(cpu_cuda_execution_providers));
 
       transformers.emplace_back(onnxruntime::make_unique<BiasGeluFusion>(cpu_cuda_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<BiasSoftmaxFusion>(cpu_cuda_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<SkipLayerNormFusion>(cpu_cuda_execution_providers));
 
       transformers.emplace_back(onnxruntime::make_unique<FastGeluFusion>(cpu_cuda_execution_providers));
@@ -179,8 +181,8 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
     return transformers;
   }
 
-  // Some transformers have side-effect like result is not exactly same.
-  // These transformers could only be enabled by custom transformer list.
+// Some transformers have side-effect like result is not exactly same.
+// These transformers could only be enabled by custom transformer list.
 #ifndef DISABLE_CONTRIB_OPS
   if (level == TransformerLevel::Level2) {
     std::unordered_set<std::string> cuda_execution_providers = {onnxruntime::kCudaExecutionProvider};

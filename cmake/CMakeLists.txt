@@ -42,6 +42,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # Enable CTest
 enable_testing()
+include(Dart)
 
 if(NOT CMAKE_BUILD_TYPE)
   message(STATUS "Build type not set - using RelWithDebInfo")
@@ -128,6 +129,9 @@ option(onnxruntime_ENABLE_TRAINING "Enable training functionality." OFF)
 option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
 option(onnxruntime_USE_HOROVOD "Build with HOROVOD support" OFF)
 option(onnxruntime_USE_NCCL "Build with NCCL support" ON)
+#A special option just for debugging and sanitize check. Please do not enable in option in retail builds.
+#The option has no effect on Windows.
+option(onnxruntime_USE_VALGRIND "Build with valgrind hacks" OFF)
 
 # A special build option only used for gathering code coverage info
 option(onnxruntime_RUN_MODELTEST_IN_DEBUG_MODE "Run model tests even in debug mode" OFF)
@@ -142,6 +146,10 @@ if(MSVC AND WIN32 AND onnxruntime_FUZZ_TEST AND onnxruntime_BUILD_SHARED_LIB AND
   # Fuzz test library dependency, protobuf-mutator,
   # needs the onnx message to be compiled using "non-lite protobuf version"
   set(onnxruntime_FUZZ_ENABLED ON)
+endif()
+
+if(onnxruntime_USE_VALGRIND AND NOT WIN32)
+  add_definitions(-DRE2_ON_VALGRIND=1)
 endif()
 
 if (onnxruntime_ENABLE_NVTX_PROFILE)
@@ -210,7 +218,7 @@ endif()
 if(onnxruntime_MINIMAL_BUILD)
   add_compile_definitions(ORT_MINIMAL_BUILD)
   add_compile_definitions(ENABLE_ORT_FORMAT_LOAD)
-  
+
   set(onnxruntime_REDUCED_OPS_BUILD ON)
 
   if (NOT onnxruntime_ENABLE_PYTHON)
@@ -296,6 +304,26 @@ if(onnxruntime_DISABLE_EXCEPTIONS)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-exceptions -fno-unwind-tables -fno-asynchronous-unwind-tables")
   endif()
 endif()
+
+# We need to link with libatomic on systems that do not have built-in atomics, or
+# don't have built-in support for 8 byte atomics
+# Derived from https://github.com/protocolbuffers/protobuf/blob/master/cmake/CMakeLists.txt
+set(onnxruntime_LINK_LIBATOMIC false)
+if (NOT MSVC)
+  include(CheckCXXSourceCompiles)
+  set(OLD_CMAKE_REQUIRED_FLAGS ${CMAKE_REQUIRED_FLAGS})
+  set(CMAKE_REQUIRED_FLAGS ${CMAKE_REQUIRED_FLAGS} -std=c++11)
+  check_cxx_source_compiles("
+    #include <atomic>
+    int main() {
+      return std::atomic<int64_t>{};
+    }
+  " onnxruntime_HAVE_BUILTIN_ATOMICS)
+  if (NOT onnxruntime_HAVE_BUILTIN_ATOMICS)
+    set(onnxruntime_LINK_LIBATOMIC true)
+  endif ()
+  set(CMAKE_REQUIRED_FLAGS ${OLD_CMAKE_REQUIRED_FLAGS})
+endif ()
 
 set(REPO_ROOT ${PROJECT_SOURCE_DIR}/..)
 set(ONNXRUNTIME_ROOT ${PROJECT_SOURCE_DIR}/../onnxruntime)
@@ -744,7 +772,7 @@ else()
 endif()
 
 if (NOT onnxruntime_MINIMAL_BUILD)
-  add_subdirectory(external/onnx)
+  add_subdirectory(external/onnx EXCLUDE_FROM_ALL)
 else()
   include(onnx_minimal)
 endif()
@@ -843,12 +871,16 @@ if (WIN32)
     if (MSVC)
       foreach(type EXE STATIC SHARED)
         if (NOT type MATCHES STATIC)
-          set(CMAKE_${type}_LINKER_FLAGS_RELEASE "${CMAKE_${type}_LINKER_FLAGS_RELEASE} /OPT:REF,ICF,LBR")
-          set(CMAKE_${type}_LINKER_FLAGS_RELEASE "${CMAKE_${type}_LINKER_FLAGS_RELEASE} /INCREMENTAL:NO")
-          set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /OPT:REF,ICF,LBR")
-          set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /INCREMENTAL:NO")
-          set(CMAKE_${type}_LINKER_FLAGS_MINSIZEREL "${CMAKE_${type}_LINKER_FLAGS_MINSIZEREL} /OPT:REF,ICF,LBR")
-          set(CMAKE_${type}_LINKER_FLAGS_MINSIZEREL "${CMAKE_${type}_LINKER_FLAGS_MINSIZEREL} /INCREMENTAL:NO")
+          # The WinML internal toolchain does not allow link's "additional options" to contain optimization
+          # flags (/OPT#); these are already specified using msbuild properties.
+          if (NOT DEFINED onnxruntime_DISABLE_LINKER_OPT_FLAGS)
+            set(CMAKE_${type}_LINKER_FLAGS_RELEASE "${CMAKE_${type}_LINKER_FLAGS_RELEASE} /OPT:REF,ICF,LBR")
+            set(CMAKE_${type}_LINKER_FLAGS_RELEASE "${CMAKE_${type}_LINKER_FLAGS_RELEASE} /INCREMENTAL:NO")
+            set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /OPT:REF,ICF,LBR")
+            set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /INCREMENTAL:NO")
+            set(CMAKE_${type}_LINKER_FLAGS_MINSIZEREL "${CMAKE_${type}_LINKER_FLAGS_MINSIZEREL} /OPT:REF,ICF,LBR")
+            set(CMAKE_${type}_LINKER_FLAGS_MINSIZEREL "${CMAKE_${type}_LINKER_FLAGS_MINSIZEREL} /INCREMENTAL:NO")
+          endif()
         endif()
         if (onnxruntime_ENABLE_LTO AND NOT onnxruntime_USE_CUDA)
           set(CMAKE_${type}_LINKER_FLAGS_RELEASE "${CMAKE_${type}_LINKER_FLAGS_RELEASE} /LTCG")
@@ -1031,8 +1063,9 @@ if (onnxruntime_USE_CUDA)
     link_directories(${onnxruntime_CUDNN_HOME}/lib/x64)
 
     # delayload causes crash on exit, so disable for now
+    # please update cudaDelayLoadedLibs in Microsoft.ML.OnnxRuntime/SessionOptions.cs if you change delayload
     #file(GLOB cuda_dll_paths "${onnxruntime_CUDA_HOME}/bin/cublas64_*" "${onnxruntime_CUDA_HOME}/bin/cudart64_*" "${onnxruntime_CUDA_HOME}/bin/curand64_*" "${onnxruntime_CUDA_HOME}/bin/cufft64_*")
-    #set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:cudnn64_7.dll")
+    #set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:cudnn64_8.dll")
     #foreach(cuda_dll_path ${cuda_dll_paths})
     #    get_filename_component(cuda_dll_file_name ${cuda_dll_path} NAME)
     #    set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:${cuda_dll_file_name}")
@@ -1244,7 +1277,7 @@ endif()
 
 #names in this var must match the directory names under onnxruntime/core/providers
 set(ONNXRUNTIME_PROVIDER_NAMES cpu)
-foreach(target_name onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session onnxruntime_mlas)
+foreach(target_name onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session onnxruntime_mlas onnxruntime_flatbuffers)
   include(${target_name}.cmake)
   if (MSVC)
     target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
@@ -1287,7 +1320,7 @@ else()
 endif()
 
 if (WIN32)
-  if (onnxruntime_BUILD_FOR_WINDOWS_STORE)
+  if (WINDOWS_STORE)
     # Setting WINAPI_FAMILY, WINVER and _WIN32_WINNT restrict the APIs exposed in Windows headers to those available
     # in store or desktop, and that support at least the version of Windows specified
     # add_compile_definitions(WINAPI_FAMILY=2)
@@ -1365,10 +1398,7 @@ if (onnxruntime_BUILD_CSHARP)
   include(onnxruntime_csharp.cmake)
 endif()
 
-if (onnxruntime_BUILD_FOR_WINDOWS_STORE)
-  set_target_properties(onnxruntime PROPERTIES VS_GLOBAL_AppContainerApplication true)
-  set_target_properties(winml_dll PROPERTIES VS_GLOBAL_AppContainerApplication true)
-
+if (WINDOWS_STORE)
   target_link_options(onnxruntime PRIVATE /DYNAMICBASE /NXCOMPAT /APPCONTAINER)
   target_link_options(winml_dll PRIVATE /DYNAMICBASE /NXCOMPAT /APPCONTAINER)
 

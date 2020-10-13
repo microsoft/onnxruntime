@@ -38,7 +38,7 @@
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
-#include "core/flatbuffers/ort.fbs.h"
+#include "core/flatbuffers/flatbuffers_utils.h"
 #ifdef USE_DML  // TODO: This is necessary for the workaround in TransformGraph
 #include "core/providers/dml/DmlExecutionProvider/src/GraphTransformer.h"
 #endif
@@ -486,7 +486,7 @@ common::Status InferenceSession::SaveToOrtFormat(const std::basic_string<ORTCHAR
   sb.add_model(model);
   sb.add_session_state(session_state);
   auto session = sb.Finish();
-  builder.Finish(session);
+  builder.Finish(session, fbs::InferenceSessionIdentifier());
 
   // TODO: Do we need to catch any std::exceptions from creating/writing to disk and convert to Status codes?
   {
@@ -576,7 +576,7 @@ common::Status InferenceSession::Load(const std::string& model_uri) {
   bool has_explicit_type = !model_type.empty();
 
   if ((has_explicit_type && model_type == "ORT") ||
-      (!has_explicit_type && inference_session_utils::IsOrtFormatModel(model_uri))) {
+      (!has_explicit_type && experimental::utils::IsOrtFormatModel(model_uri))) {
 #if defined(ENABLE_ORT_FORMAT_LOAD)
     return LoadOrtModel(model_uri);
 #else
@@ -603,7 +603,7 @@ common::Status InferenceSession::Load(const std::wstring& model_uri) {
   bool has_explicit_type = !model_type.empty();
 
   if ((has_explicit_type && model_type == "ORT") ||
-      (!has_explicit_type && inference_session_utils::IsOrtFormatModel(model_uri))) {
+      (!has_explicit_type && experimental::utils::IsOrtFormatModel(model_uri))) {
 #if defined(ENABLE_ORT_FORMAT_LOAD)
     return LoadOrtModel(model_uri);
 #else
@@ -631,7 +631,7 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
 
   if ((has_explicit_type && model_type == "ORT") ||
       (!has_explicit_type &&
-       inference_session_utils::IsOrtFormatModelBytes(model_data, model_data_len))) {
+       experimental::utils::IsOrtFormatModelBytes(model_data, model_data_len))) {
 #if defined(ENABLE_ORT_FORMAT_LOAD)
     return LoadOrtModel(model_data, model_data_len);
 #else
@@ -939,6 +939,11 @@ Status InferenceSession::LoadOrtModel(std::function<Status()> load_ort_format_mo
   }
 
   ORT_RETURN_IF_ERROR(load_ort_format_model_bytes());
+
+  // Verify the ort_format_model_bytes_ is a valid InferenceSessionBuffer before we access the data
+  flatbuffers::Verifier verifier(ort_format_model_bytes_.data(), ort_format_model_bytes_.size());
+  ORT_RETURN_IF_NOT(fbs::VerifyInferenceSessionBuffer(verifier));
+
   const auto* fbs_session = fbs::GetInferenceSession(ort_format_model_bytes_.data());
   ORT_RETURN_IF(nullptr == fbs_session, "InferenceSession is null. Invalid ORT format model.");
 
@@ -1146,7 +1151,7 @@ common::Status InferenceSession::Initialize() {
 
       if ((has_explicit_type && model_type == "ORT") ||
           (!has_explicit_type &&
-           inference_session_utils::IsOrtFormatModel(session_options_.optimized_model_filepath))) {
+           experimental::utils::IsOrtFormatModel(session_options_.optimized_model_filepath))) {
         ORT_RETURN_IF_ERROR_SESSIONID_(SaveToOrtFormat(session_options_.optimized_model_filepath));
       } else {
         ORT_RETURN_IF_ERROR_SESSIONID_(Model::Save(*model_, session_options_.optimized_model_filepath));
@@ -1635,6 +1640,10 @@ std::string InferenceSession::EndProfiling() {
   }
   LOGS(*session_logger_, ERROR) << "Could not write a profile because no model was loaded.";
   return std::string();
+}
+
+const profiling::Profiler& InferenceSession::GetProfiling() const {
+  return session_profiler_;
 }
 
 AllocatorPtr InferenceSession::GetAllocator(const OrtMemoryInfo& mem_info) const {

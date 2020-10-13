@@ -465,7 +465,11 @@ void NchwcTransformerImpl::TransformPool(Node& node) {
 
   const size_t nchwc_block_size = MlasNchwcGetBlockSize();
 
-  auto* input_shape = input_defs[0]->Shape();
+  const auto* input_type = input_defs[0]->TypeAsProto();
+  if ((input_type == nullptr) || (input_type->tensor_type().elem_type() != TensorProto_DataType_FLOAT)) {
+    return;
+  }
+  const auto* input_shape = input_defs[0]->Shape();
   if ((input_shape == nullptr) || (input_shape->dim_size() != 4)) {
     return;
   }
@@ -927,9 +931,7 @@ void NchwcTransformerImpl::Transform(Node& node) {
       graph_utils::IsSupportedOptypeVersionAndDomain(node, "FusedConv", {1}, kMSDomain)) {
     TransformConv(node);
   } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "MaxPool", {1, 8, 10, 11, 12}) ||
-             graph_utils::IsSupportedOptypeVersionAndDomain(node, "AveragePool", {1, 7, 10, 11}) ||
-             graph_utils::IsSupportedOptypeVersionAndDomain(node, "GlobalMaxPool", {1}) ||
-             graph_utils::IsSupportedOptypeVersionAndDomain(node, "GlobalAveragePool", {1})) {
+             graph_utils::IsSupportedOptypeVersionAndDomain(node, "AveragePool", {1, 7, 10, 11})) {
     TransformPool(node);
   } else if (node.GetInputEdgesCount() == 0 && node.InputDefs().size() != 0) {
     // The following transforms only run when the input edge count has already
@@ -955,6 +957,10 @@ void NchwcTransformerImpl::Transform(Node& node) {
     } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Upsample", {9, 13}) ||
                graph_utils::IsSupportedOptypeVersionAndDomain(node, "Resize", {10, 11, 13})) {
       TransformResize(node);
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "GlobalMaxPool", {1}) ||
+               graph_utils::IsSupportedOptypeVersionAndDomain(node, "GlobalAveragePool", {1})) {
+      // Convert these pooling types only if the input is already in NCHWc format.
+      TransformPool(node);
     }
   }
 

@@ -22,7 +22,7 @@ class ConvInteger(QuantOperatorBase):
             quantized_bias_name = self.quantizer.quantize_bias(node, nodes)
             bias_present = True
 
-        conv_integer_output = node.output[0] + "_quantized"
+        conv_integer_output = node.output[0] + "_output_quantized"
         conv_integer_name = node.name + "_quant" if node.name != "" else ""
 
         kwargs = {}

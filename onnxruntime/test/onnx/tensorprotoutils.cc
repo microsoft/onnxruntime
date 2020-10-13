@@ -7,7 +7,10 @@
 #include <algorithm>
 #include <limits>
 #include <gsl/gsl>
+
+#include "mem_buffer.h"
 #include "core/common/safeint.h"
+#include "core/common/status.h"
 #include "core/framework/data_types.h"
 #include "core/framework/endian.h"
 #include "core/session/onnxruntime_cxx_api.h"

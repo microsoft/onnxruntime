@@ -223,7 +223,7 @@ void CopyInputAcrossDevices() {
   constexpr size_t input_tensor_size = [&dimensions]() {
     size_t size = 1;
     for (auto dim : dimensions)
-      size *= dim;
+      size *= static_cast<size_t>(dim);
     return size;
   } ();
 
@@ -259,7 +259,7 @@ void CopyInputAcrossDevices_DML() {
   constexpr size_t input_tensor_size = [&dimensions]() {
     size_t size = 1;
     for (auto dim : dimensions)
-      size *= dim;
+      size *= static_cast<size_t>(dim);
     return size;
   } ();
 

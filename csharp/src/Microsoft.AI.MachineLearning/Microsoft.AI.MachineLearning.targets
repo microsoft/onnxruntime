@@ -32,11 +32,7 @@
     <MLBinaries>$(WindowsAIBinary);$(OnnxRuntimeBinary)</MLBinaries>
   </PropertyGroup>
 
-  <Target Name="CopyMLBinaries" BeforeTargets="Build">
-    <PropertyGroup>
-      <WindowsAIBinplaceMessage>Binplacing WindowsAI binaries: {0} and {1}.</WindowsAIBinplaceMessage>
-    </PropertyGroup>
-    <Message Text="$([System.String]::Format('$(WindowsAIBinplaceMessage)', '$(WindowsAIBinary)', '$(OnnxRuntimeBinary)'))" />
-    <Copy SkipUnchangedFiles="True" SourceFiles="$(MLBinaries)" DestinationFolder="$(OutDir)" />
-  </Target>
+  <ItemGroup>
+    <ReferenceCopyLocalPaths Include="$(MLBinaries)" />
+  </ItemGroup>
 </Project>
