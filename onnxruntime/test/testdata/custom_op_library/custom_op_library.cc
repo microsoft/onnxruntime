@@ -7,7 +7,6 @@
 #include <vector>
 #include <cmath>
 #include <mutex>
-#include <iostream>
 
 static const char* c_OpDomain = "test.customop";
 
