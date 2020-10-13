@@ -35,7 +35,12 @@ function GetFile {
   return $?
 }
 
-PYTHON_EXES=("/opt/python/cp35-cp35m/bin/python3.5" "/opt/python/cp36-cp36m/bin/python3.6" "/opt/python/cp37-cp37m/bin/python3.7" "/opt/python/cp38-cp38/bin/python3.8")
+if [ ! -d "/opt/python/cp35-cp35m" ]; then
+  PYTHON_EXES=("/usr/bin/python3")
+else
+  PYTHON_EXES=("/opt/python/cp35-cp35m/bin/python3.5" "/opt/python/cp36-cp36m/bin/python3.6" "/opt/python/cp37-cp37m/bin/python3.7" "/opt/python/cp38-cp38/bin/python3.8")
+fi
+
 os_major_version=$(cat /etc/redhat-release | tr -dc '0-9.'|cut -d \. -f1)
 
 SYS_LONG_BIT=$(getconf LONG_BIT)
@@ -86,35 +91,26 @@ unzip /tmp/src/gradle-6.3-bin.zip
 mv /tmp/src/gradle-6.3 /usr/local/gradle
 
 if ! [ -x "$(command -v protoc)" ]; then
-  source ${0/%install_deps\.sh/install_protobuf\.sh}
+  source ${0/%install_deps.sh/..\/install_protobuf.sh}
 fi
 
 export ONNX_ML=1
+export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
 
 for PYTHON_EXE in "${PYTHON_EXES[@]}"
 do
   ${PYTHON_EXE} -m pip install -r ${0/%install_deps\.sh/requirements\.txt}
-  onnx_version="c443abd2acad2411103593600319ff81a676afbc"
-  onnx_tag="onnxtip"
-  GetFile https://github.com/onnx/onnx/archive/$onnx_version.tar.gz /tmp/src/$onnx_version.tar.gz
-  tar -xf /tmp/src/$onnx_version.tar.gz -C /tmp/src
-  cd /tmp/src/onnx-$onnx_version
-  if [ ! -d "third_party/pybind11/pybind11" ]; then
-    git clone https://github.com/pybind/pybind11.git third_party/pybind11
-  fi
-  # We need to make the adjustment only for CentOS6 OR we substitue this only for
-  # ${PYTHON_EXE} where we'd need to escape slashes
-  # Make sure we do not hit pyhon2 as on CentOS 6 it does not work
-  ESCAPED_PY=$(echo "${PYTHON_EXE}" | sed 's/\//\\\//g')
-  sed "1,1 s/\/usr\/bin\/env python/$ESCAPED_PY/" /tmp/src/onnx-$onnx_version/tools/protoc-gen-mypy.py > /tmp/src/onnx-$onnx_version/tools/repl_protoc-gen-mypy.py
-  chmod a+w /tmp/src/onnx-$onnx_version/tools/protoc-gen-mypy.py
-  mv /tmp/src/onnx-$onnx_version/tools/repl_protoc-gen-mypy.py /tmp/src/onnx-$onnx_version/tools/protoc-gen-mypy.py
-  mkdir -p /data/onnx/${onnx_tag}
-  ${PYTHON_EXE} -m pip install .
   cd /tmp  
-  ${PYTHON_EXE} -m onnx.backend.test.cmd_tools generate-data -o /data/onnx/$onnx_tag
+  ${PYTHON_EXE} -m onnx.backend.test.cmd_tools generate-data -o /data/onnx/onnxtip
 done
 
+cd /tmp/src
+GetFile 'https://sourceware.org/pub/valgrind/valgrind-3.16.1.tar.bz2' /tmp/src/valgrind-3.16.1.tar.bz2
+tar -jxvf valgrind-3.16.1.tar.bz2
+cd valgrind-3.16.1
+./configure --prefix=/usr --libdir=/usr/lib64 --enable-only64bit --enable-tls
+make -j$(getconf _NPROCESSORS_ONLN)
+make install
 
 cd /
 rm -rf /tmp/src

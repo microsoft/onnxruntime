@@ -256,7 +256,7 @@ Status OptimizerGraphBuilder::AddGradientNorm(
                   "Unsupport gradient type: it has to be either float, MLFloat16 or BFloat16.");
   }
 
-  for (const auto argdef : grad_argdefs) {
+  for (const auto& argdef : grad_argdefs) {
     ONNX_NAMESPACE::TensorProto_DataType elem_type =
         static_cast<ONNX_NAMESPACE::TensorProto_DataType>(argdef.type_proto->tensor_type().elem_type());
     if (elem_type != grad_type) {
@@ -324,8 +324,7 @@ OptimizerGraphBuilder::OptimizerGraphBuilder(
   std::transform(
       weight_names_.begin(), weight_names_.end(), std::back_inserter(gradient_names_),
       [&weight_names_to_opt_configs](const std::string& weight_name) {
-        return GradientBuilderBase::GradientName(weight_names_to_opt_configs.at(weight_name).mixed_precision_weight_arg != nullptr ?
-                                                 weight_names_to_opt_configs.at(weight_name).mixed_precision_weight_arg->Name() : weight_name);
+        return GradientBuilderBase::GradientName(weight_names_to_opt_configs.at(weight_name).mixed_precision_weight_arg != nullptr ? weight_names_to_opt_configs.at(weight_name).mixed_precision_weight_arg->Name() : weight_name);
       });
 
   // add optimizer configurations
@@ -412,9 +411,9 @@ Status OptimizerGraphBuilder::BuildInternal(
       ORT_RETURN_IF_ERROR(AddGradientNorm(
           nodearg_name_generator, gradient_argdefs, graph_defs, global_grad_norm_argdef));
       optimizer_graph_outputs[OptimizerOutputKey::GlobalGradientNorm] = global_grad_norm_argdef.name;
-        ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
-            nodearg_name_generator, {global_grad_norm_argdef}, graph_defs, global_grad_norm_finite_argdef));
-        optimizer_graph_outputs[OptimizerOutputKey::GradientAllIsFinite] = global_grad_norm_finite_argdef.name;
+      ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
+          nodearg_name_generator, {global_grad_norm_argdef}, graph_defs, global_grad_norm_finite_argdef));
+      optimizer_graph_outputs[OptimizerOutputKey::GradientAllIsFinite] = global_grad_norm_finite_argdef.name;
     }
   }
 

@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "core/optimizer/rewrite_rule.h"
+#include "core/optimizer/graph_transformer.h"
 
 namespace onnxruntime {
 
@@ -13,18 +13,16 @@ namespace onnxruntime {
 Recompute Gelu/BiasGelu/FastGelu
 
 */
-class GeluRecompute : public RewriteRule {
+class GeluRecompute : public GraphTransformer {
  public:
-  GeluRecompute() noexcept : RewriteRule("GeluRecompute") {}
+  GeluRecompute() noexcept : GraphTransformer("GeluRecompute") {}
 
-  std::vector<std::string> TargetOpTypes() const noexcept override {
-    return {"Gelu", "FastGelu", "BiasGelu"};
-  }
+  Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
+
+  bool ShouldOnlyApplyOnce() const override { return true; }
 
  private:
-  bool SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const override;
-
-  Status Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& logger) const override;
+  bool SatisfyCondition(const Node& node) const;
 };
 
 /**
@@ -33,18 +31,16 @@ class GeluRecompute : public RewriteRule {
 Recompute Dropout in the attention layer
 
 */
-class AttentionDropoutRecompute : public RewriteRule {
+class AttentionDropoutRecompute : public GraphTransformer {
  public:
-  AttentionDropoutRecompute() noexcept : RewriteRule("AttentionDropoutRecompute") {}
+  AttentionDropoutRecompute() noexcept : GraphTransformer("AttentionDropoutRecompute") {}
 
-  std::vector<std::string> TargetOpTypes() const noexcept override {
-    return {"Dropout"};
-  }
+  Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
+
+  bool ShouldOnlyApplyOnce() const override { return true; }
 
  private:
-  bool SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const override;
-
-  Status Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& logger) const override;
+  bool SatisfyCondition(const Node& node) const;
 };
 
 }  // namespace onnxruntime

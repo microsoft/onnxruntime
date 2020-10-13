@@ -13,42 +13,43 @@
 namespace onnxruntime {
 namespace test {
 template <typename T>
-void CPUTensorTest(std::vector<int64_t> dims, const int offset = 0) {
-  //not own the buffer
-  TensorShape shape(dims);
+void CPUTensorTest(std::vector<int64_t> dims, const int offset_elements = 0) {
+  // create Tensor where we provide the buffer
+  TensorShape shape(dims);  // this is the shape that will be available starting at the offset in the Tensor
   auto alloc = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
-  auto data = alloc->Alloc(sizeof(T) * (shape.Size() + offset));
-  EXPECT_TRUE(data);
-  Tensor t(DataTypeImpl::GetType<T>(), shape, data, alloc->Info(), offset);
+  // alloc extra data if needed, as anything before the offset is not covered by the shape
+  auto num_elements = shape.Size() + offset_elements;
+  auto num_bytes = num_elements * sizeof(T);
+  auto offset_bytes = offset_elements * sizeof(T);
+  void* data = alloc->Alloc(num_bytes);
+  const T* first_element = static_cast<const T*>(data) + offset_elements;
+
+  Tensor t(DataTypeImpl::GetType<T>(), shape, data, alloc->Info(), offset_bytes);
   auto tensor_shape = t.Shape();
-  //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
-  EXPECT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&shape), *reinterpret_cast<const std::vector<int64_t>*>(&tensor_shape));
+  EXPECT_EQ(shape.GetDims(), tensor_shape.GetDims());
   EXPECT_EQ(t.DataType(), DataTypeImpl::GetType<T>());
   auto& location = t.Location();
   EXPECT_STREQ(location.name, CPU);
   EXPECT_EQ(location.id, 0);
 
-  auto t_data = t.template MutableData<T>();
-  EXPECT_TRUE(t_data);
-  memset(t_data, 0, sizeof(T) * shape.Size());
-  EXPECT_EQ(*(T*)((char*)data + offset), (T)0);
+  const T* t_data = t.Data<T>();
+  EXPECT_EQ(first_element, t_data);
   alloc->Free(data);
 
-  Tensor new_t(DataTypeImpl::GetType<T>(), shape, alloc, offset);
+  // test when the Tensor allocates the buffer.
+  // there's no point using an offset_elements here as you'd be allocating extra data prior to the buffer needed
+  // by the Tensor instance.
+  if (offset_elements == 0) {
+    Tensor new_t(DataTypeImpl::GetType<T>(), shape, alloc);
+    EXPECT_TRUE(new_t.OwnsBuffer());
 
-  tensor_shape = new_t.Shape();
-  //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
-  EXPECT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&shape), *reinterpret_cast<const std::vector<int64_t>*>(&tensor_shape));
-  EXPECT_EQ(new_t.DataType(), DataTypeImpl::GetType<T>());
-  auto& new_location = new_t.Location();
-  ASSERT_STREQ(new_location.name, CPU);
-  EXPECT_EQ(new_location.id, 0);
-
-  auto new_data = new_t.template MutableData<T>();
-  EXPECT_TRUE(new_data);
-  memset(new_data, 0, sizeof(T) * shape.Size());
-  EXPECT_EQ(*(T*)((char*)new_data + offset), (T)0);
-  //no free op as the tensor own the buffer
+    tensor_shape = new_t.Shape();
+    EXPECT_EQ(shape.GetDims(), tensor_shape.GetDims());
+    EXPECT_EQ(new_t.DataType(), DataTypeImpl::GetType<T>());
+    auto& new_location = new_t.Location();
+    ASSERT_STREQ(new_location.name, CPU);
+    EXPECT_EQ(new_location.id, 0);
+  }
 }
 
 TEST(TensorTest, CPUFloatTensorTest) {
@@ -208,11 +209,6 @@ TEST(TensorTest, SizeOverflow) {
 
   Tensor t(type, shape1, nullptr, alloc->Info());
   EXPECT_THROW(t.SizeInBytes(), OnnxRuntimeException);
-
-  // overflow due to offset. max/4 from shape, *4 from float size, + 4 from offset
-  TensorShape shape2({static_cast<int64_t>(std::numeric_limits<size_t>::max() / 4)});
-  ptrdiff_t offset = sizeof(float);  // one more element to push past max
-  EXPECT_THROW(Tensor(type, shape2, alloc, offset), OnnxRuntimeException);
 }
 }  // namespace test
 }  // namespace onnxruntime

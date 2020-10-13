@@ -755,7 +755,7 @@ TEST(CApiTest, end_profiling) {
   char* profile_file = session_1.EndProfiling(allocator.get());
 
   ASSERT_TRUE(std::string(profile_file).find("profile_prefix") != std::string::npos);
-
+  allocator->Free(profile_file);
   // Create session with profiling disabled
   Ort::SessionOptions session_options_2;
 #ifdef _WIN32
@@ -765,8 +765,8 @@ TEST(CApiTest, end_profiling) {
 #endif
   Ort::Session session_2(*ort_env, MODEL_WITH_CUSTOM_MODEL_METADATA, session_options_2);
   profile_file = session_2.EndProfiling(allocator.get());
-
   ASSERT_TRUE(std::string(profile_file) == std::string());
+  allocator->Free(profile_file);
 }
 
 TEST(CApiTest, get_profiling_start_time) {
@@ -780,14 +780,16 @@ TEST(CApiTest, get_profiling_start_time) {
 #endif
 
   uint64_t before_start_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
-      std::chrono::high_resolution_clock::now().time_since_epoch()).count(); // get current time
+                                   std::chrono::high_resolution_clock::now().time_since_epoch())
+                                   .count();  // get current time
   Ort::Session session_1(*ort_env, MODEL_WITH_CUSTOM_MODEL_METADATA, session_options);
   uint64_t profiling_start_time = session_1.GetProfilingStartTimeNs();
   uint64_t after_start_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
-      std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-      
+                                  std::chrono::high_resolution_clock::now().time_since_epoch())
+                                  .count();
+
   // the profiler's start time needs to be between before_time and after_time
-  ASSERT_TRUE(before_start_time <= profiling_start_time && profiling_start_time <= after_start_time);  
+  ASSERT_TRUE(before_start_time <= profiling_start_time && profiling_start_time <= after_start_time);
 }
 
 TEST(CApiTest, model_metadata) {
@@ -899,8 +901,8 @@ TEST(CApiTest, TestSharedAllocatorUsingCreateAndRegisterAllocator) {
 
   OrtMemoryInfo* mem_info = nullptr;
   const auto& api = Ort::GetApi();
-  std::unique_ptr<OrtMemoryInfo, decltype(api.ReleaseMemoryInfo)> rel_info(mem_info, api.ReleaseMemoryInfo);
   ASSERT_TRUE(api.CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &mem_info) == nullptr);
+  std::unique_ptr<OrtMemoryInfo, decltype(api.ReleaseMemoryInfo)> rel_info(mem_info, api.ReleaseMemoryInfo);
 
   OrtArenaCfg arena_cfg{0, -1, -1, -1};
   ASSERT_TRUE(api.CreateAndRegisterAllocator(env_ptr, mem_info, &arena_cfg) == nullptr);
@@ -947,11 +949,12 @@ TEST(CApiTest, TestSharingOfInitializer) {
 
   // prepare expected inputs and outputs
   std::vector<int64_t> expected_dims_y = {3, 2};
-  std::vector<float> expected_values_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
+  std::vector<float> expected_values_y = {2.0f, 2.0f, 12.0f, 12.0f, 30.0f, 30.0f};
 
   Ort::SessionOptions session_options;
   Ort::MemoryInfo mem_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-  float data[] = {1., 2., 3., 4., 5., 6.};
+  // These values are different from the actual initializer values in the model
+  float data[] = {2., 1., 4., 3., 6., 5.};
   const int data_len = sizeof(data) / sizeof(data[0]);
   const int64_t shape[] = {3, 2};
   const size_t shape_len = sizeof(shape) / sizeof(shape[0]);

@@ -33,6 +33,9 @@
 #include "abi_session_options_impl.h"
 #include "core/framework/TensorSeq.h"
 #include "core/platform/ort_mutex.h"
+#ifdef USE_CUDA
+#include "core/providers/cuda/cuda_provider_factory.h"
+#endif
 
 using namespace onnxruntime::logging;
 using onnxruntime::BFloat16;
@@ -83,30 +86,41 @@ using namespace onnxruntime;
   auto tensor = v->GetMutable<onnxruntime::Tensor>();
 
 ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithCustomLogger, OrtLoggingFunction logging_function,
-                    _In_opt_ void* logger_param, OrtLoggingLevel default_warning_level, _In_ const char* logid,
+                    _In_opt_ void* logger_param, OrtLoggingLevel logging_level, _In_ const char* logid,
                     _Outptr_ OrtEnv** out) {
   API_IMPL_BEGIN
-  OrtEnv::LoggingManagerConstructionInfo lm_info{logging_function, logger_param, default_warning_level, logid};
+  OrtEnv::LoggingManagerConstructionInfo lm_info{logging_function, logger_param, logging_level, logid};
   Status status;
   *out = OrtEnv::GetInstance(lm_info, status);
   return ToOrtStatus(status);
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::CreateEnv, OrtLoggingLevel default_warning_level,
+ORT_API_STATUS_IMPL(OrtApis::CreateEnv, OrtLoggingLevel logging_level,
                     _In_ const char* logid, _Outptr_ OrtEnv** out) {
   API_IMPL_BEGIN
-  OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, default_warning_level, logid};
+  OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, logging_level, logid};
   Status status;
   *out = OrtEnv::GetInstance(lm_info, status);
   return ToOrtStatus(status);
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithGlobalThreadPools, OrtLoggingLevel default_warning_level,
+ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithGlobalThreadPools, OrtLoggingLevel logging_level,
                     _In_ const char* logid, _In_ const struct OrtThreadingOptions* tp_options, _Outptr_ OrtEnv** out) {
   API_IMPL_BEGIN
-  OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, default_warning_level, logid};
+  OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, logging_level, logid};
+  Status status;
+  *out = OrtEnv::GetInstance(lm_info, status, tp_options);
+  return ToOrtStatus(status);
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithCustomLoggerAndGlobalThreadPools, OrtLoggingFunction logging_function, _In_opt_ void* logger_param,
+                    OrtLoggingLevel logging_level, _In_ const char* logid, _In_ const struct OrtThreadingOptions* tp_options,
+                    _Outptr_ OrtEnv** out) {
+  API_IMPL_BEGIN
+  OrtEnv::LoggingManagerConstructionInfo lm_info{logging_function, logger_param, logging_level, logid};
   Status status;
   *out = OrtEnv::GetInstance(lm_info, status, tp_options);
   return ToOrtStatus(status);
@@ -2016,6 +2030,10 @@ static constexpr OrtApi ort_api_1_to_6 = {
 
     // Version 6 - In development, feel free to add/remove/rearrange here
     &OrtApis::AddInitializer,
+    &OrtApis::CreateEnvWithCustomLoggerAndGlobalThreadPools,
+#ifdef USE_CUDA
+    &OrtApis::OrtSessionOptionsAppendExecutionProvider_CUDA,
+#endif
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)

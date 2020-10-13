@@ -487,7 +487,7 @@ void RegisterTrainingOpSchemas() {
           "Constrain input shape to integer tensors.")
       .TypeConstraint(
           "T",
-          OpSchema::all_tensor_types_with_bfloat(),
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input and output types to float tensors.")
       .TypeConstraint(
           "Tind",
@@ -1698,6 +1698,30 @@ Example 4:
           "U",
           {"tensor(float)", "tensor(bfloat16)"},
           "Constrain mean and inv_std_var to float tensors.");
+  
+    ONNX_CONTRIB_OPERATOR_SCHEMA(SimplifiedLayerNormalizationGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("SimplifiedLayerNormalizationGrad")
+      .Attr("axis",
+            "The first normalization dimension: normalization will be performed along dimensions axis : rank(inputs).",
+            AttributeProto::INT, static_cast<int64_t>(-1))
+      .AllowUncheckedAttributes()
+      .Input(0, "Y_grad", "The gradient tensor from output.", "T")
+      .Input(1, "X", "Input data tensor from the forward path", "T")
+      .Input(2, "scale", "Scale tensor.", "T")
+      .Input(3, "inv_std_var", "inverse std variance of X.", "U")
+      .Output(0, "X_grad", "Gradient of the input.", "T")
+      .Output(1, "scale_grad", "Gradient of the scale.", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain input and output types (except mean and inv_std_var) to float tensors.")
+      .TypeConstraint(
+          "U",
+          {"tensor(float)"},
+          "Constrain mean and inv_std_var to float tensors.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(InvertibleLayerNormalizationGrad)
       .SetDomain(kMSDomain)
@@ -1876,6 +1900,30 @@ Return true if all elements are true and false otherwise.
           }
         }
       });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Scale)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Scale")
+      .Input(0, "input", "Input tensor.", "T")
+      .Input(1, "scale", "Scale scalar tensor.", "ScaleT")
+      .Output(0, "output", "The scaled output tensor.", "T")
+      .Attr("scale_down",
+            "If true, the output tensor is input tensor devided by scale, "
+            "otherwise, it's input tensor multiplied by scale. "
+            "The default value is false.",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input types to float tensors.")
+      .TypeConstraint(
+          "ScaleT",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(int64)", "tensor(int32)"},
+          "Constrain scale types to float and int64 tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(View)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)

@@ -8,6 +8,8 @@
 * [Supported architectures and build environments](#supported-architectures-and-build-environments)
 * [Common Build Instructions](#common-build-instructions)
 * Additional Build Instructions - complete list: `./build.sh (or .\build.bat) --help`
+  * [Reduced Operator Kernel Build](#Reduced-Operator-Kernel-Build)
+  * [ONNX Runtime for Mobile Platforms](#ONNX-Runtime-for-Mobile-Platforms)
   * [ONNX Runtime Server (Linux)](#Build-ONNX-Runtime-Server-on-Linux)
   * Execution Providers
     * [NVIDIA CUDA](#CUDA)
@@ -143,6 +145,11 @@ GCC 4.x and below are not supported.
 |**Node.js**|--build_nodejs|Build Node.js binding. Implies `--build_shared_lib`|
 
 ---
+## Reduced Operator Kernel Build
+Reduced Operator Kernel builds allow you to customize the kernels in the build to provide smaller binary sizes - [see instructions](./docs/Reduced_Operator_Kernel_build.md).
+
+## ONNX Runtime for Mobile Platforms
+For builds compatible with mobile platforms, see more details in [ONNX_Runtime_for_Mobile_Platforms.md](./docs/ONNX_Runtime_for_Mobile_Platforms.md). Android and iOS build instructions can be found below on this page - [Android](#Android), [iOS](#iOS)
 
 ## Build ONNX Runtime Server on Linux
 Read more about ONNX Runtime Server [here](./docs/ONNX_Runtime_Server_Usage.md).
@@ -180,7 +187,7 @@ Nuget packages are created under <native_build_dir>\nuget-artifacts
     ONNX Runtime can also be built with CUDA versions from 10.1 up to 11.0, and cuDNN versions from 7.6 up to 8.0.
   * The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home` parameter
   * The path to the cuDNN installation (include the `cuda` folder in the path) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home` parameter. The cuDNN path should contain `bin`, `include` and `lib` directories.
-  * The path to the cuDNN bin directory must be added to the PATH environment variable so that cudnn64_7.dll is found.
+  * The path to the cuDNN bin directory must be added to the PATH environment variable so that cudnn64_8.dll is found.
 
 #### Build Instructions
 ##### Windows
@@ -674,7 +681,7 @@ ORT_DEBUG_NODE_IO_DUMP_OUTPUT_DATA=1
 To specify that node output data should be dumped to files for nodes with name "Foo" or "Bar", set these environment variables:
 ```
 ORT_DEBUG_NODE_IO_DUMP_OUTPUT_DATA=1
-ORT_DEBUG_NODE_IO_NODE_NAME_FILTER="Foo;Bar"
+ORT_DEBUG_NODE_IO_NAME_FILTER="Foo;Bar"
 ORT_DEBUG_NODE_IO_DUMP_DATA_TO_FILES=1
 ```
 
@@ -1039,6 +1046,17 @@ e.g. using the paths from our example
 
 Android Archive (AAR) files, which can be imported directly in Android Studio, will be generated in your_build_dir/java/build/outputs/aar, by using the above building commands with `--build_java`
 
+To build on Windows with `--build_java` enabled you must also:
+  - set JAVA_HOME to the path to your JDK install
+    - this could be the JDK from Android Studio, or a [standalone JDK install](https://www.oracle.com/java/technologies/javase-downloads.html)
+    - e.g. Powershell: `$env:JAVA_HOME="C:\Program Files\Java\jdk-15"`
+           CMD: `set JAVA_HOME=C:\Program Files\Java\jdk-15`
+  - install [Gradle](https://gradle.org/install/) and add the directory to the PATH
+    - e.g. Powershell: `$env:PATH="$env:PATH;C:\Gradle\gradle-6.6.1\bin"`
+           CMD: `set PATH=%PATH%;C:\Gradle\gradle-6.6.1\bin`
+  - run the build from an admin window
+    - the Java build needs permissions to create a symlink, which requires an admin window
+
 #### Android NNAPI Execution Provider
 
 If you want to use NNAPI Execution Provider on Android, see [NNAPI Execution Provider](/docs/execution_providers/NNAPI-ExecutionProvider.md).
@@ -1121,12 +1139,13 @@ Dockerfile instructions are available [here](./dockerfiles#migraphx)
 
 The default NVIDIA GPU build requires CUDA runtime libraries installed on the system:
 
-* CUDA 10.2
-* cuDNN 7.6.5
-* NCCL v2.7.8
-* OpenMPI 4.0.4
+* [CUDA](https://developer.nvidia.com/cuda-toolkit) 10.2
+* [cuDNN](https://developer.nvidia.com/cudnn) 8.0
+* [NCCL](https://developer.nvidia.com/nccl) 2.7
+* [OpenMPI](https://www.open-mpi.org/) 4.0.4
+  * See [install_openmpi.sh](./tools/ci_build/github/linux/docker/scripts/install_openmpi.sh)
 
-The official dependency versions are specified in [Dockerfile.training](./dockerfiles/Dockerfile.training).
+These dependency versions should reflect what is in [Dockerfile.training](./dockerfiles/Dockerfile.training).
 
 ## Build instructions
 
