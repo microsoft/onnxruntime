@@ -641,7 +641,7 @@ class ORTTrainer():
                  global_step=0, get_lr_this_step=None, loss_scaler=None, deepspeed_zero_stage=0,
                  enable_grad_norm_clip=True, frozen_weights=[], _opset_version=DEFAULT_OPSET_VERSION,
                  _enable_internal_postprocess=True, _extra_postprocess=None, _use_deterministic_compute=False,
-                 use_invertible_layernorm_grad=False, run_symbolic_shape_infer=False, use_invertible_layernorm_grad=False,
+                 use_invertible_layernorm_grad=False, run_symbolic_shape_infer=False,
                  data_parallel_size=1, horizontal_parallel_size=1,
                  pipeline_parallel_size=1, output_model_path="", use_external_data_format=True):
         super(ORTTrainer, self).__init__()

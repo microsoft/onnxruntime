@@ -230,6 +230,7 @@ void addObjectMethodsForTraining(py::module& m) {
         if (result.loss_scale_input_name.has_value()) {
           return py::str{result.loss_scale_input_name.value()};
         }
+
         return py::none();
       });
 
