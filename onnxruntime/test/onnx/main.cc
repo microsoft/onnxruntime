@@ -336,6 +336,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           OrtCudnnConvAlgoSearch::EXHAUSTIVE,
           std::numeric_limits<size_t>::max(),
           0,
+          true
       };
       Ort::ThrowOnError(sf.OrtSessionOptionsAppendExecutionProvider_CUDA(sf, &cuda_options));
 #else
