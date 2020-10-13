@@ -10,19 +10,31 @@
 #include "core/framework/allocator.h"
 #include "core/framework/tensor.h"
 #include "core/framework/execution_provider.h"
+#include "core/graph/constants.h"
+#include "core/session/environment.h"
 
 namespace onnxruntime {
 
 class ORTInvoker {
  public:
   ORTInvoker(std::unique_ptr<IExecutionProvider> execution_provider);
-  common::Status Invoke(const std::string& name,
+
+  IExecutionProvider& GetCurrentExecutionProvider();
+
+  common::Status Invoke(const std::string& op_name,
                         //optional inputs / outputs?
-                        const std::vector<Tensor>& inputs,
-                        std::vector < std::unique_ptr<Tensor> > & outputs,
-                        //attributes?
-                        const std::string domain = common::kONNXDomain,
+                        const std::vector<OrtValue>& inputs,
+                        std::vector<OrtValue>& outputs,
+                        const NodeAttributes* attributes,
+                        const std::string domain = kOnnxDomain,
                         const int version = -1);
+
+ private:
+  logging::LoggingManager& DefaultLoggingManager();
+
+  std::unique_ptr<IExecutionProvider> execution_provider_;
+  std::unique_ptr<Environment> ort_env_;
+  std::unique_ptr<logging::LoggingManager> default_logging_manager_;
 };
 
 #ifdef __GNUC__

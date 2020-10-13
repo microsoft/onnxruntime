@@ -67,6 +67,37 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
   node_index_info_ = onnxruntime::make_unique<NodeIndexInfo>(nodes, ort_value_name_idx_map_);
 }
 
+OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
+                                    const std::unordered_map<std::string, OrtValue>& initialized_tensor_set,
+                                    const Path& model_path,
+                                    const IExecutionProvider& execution_provider) : execution_provider_(execution_provider) {
+  allocator_ptr_ = execution_provider_.GetAllocator(device_id_, mem_type_);
+  ORT_ENFORCE(allocator_ptr_, "Failed to get allocator for optimizer");
+
+  data_transfer_mgr_.RegisterDataTransfer(onnxruntime::make_unique<CPUDataTransfer>());
+
+  // Create MLValues related maps
+  auto initialize_maps = [this, &initialized_tensor_set, &model_path](const NodeArg& arg, size_t /*index*/) -> Status {
+    int idx = ort_value_name_idx_map_.Add(arg.Name());
+    ort_value_idx_nodearg_map_[idx] = &arg;
+
+    // Only create OrtValue instances for initializers used by an array of nodes.
+    std::unordered_map<std::string, OrtValue>::const_iterator it = initialized_tensor_set.find(arg.Name());
+    if (it != initialized_tensor_set.cend()) {
+      initializers_[idx] = it->second;
+    }
+    return Status::OK();
+  };
+
+  // TODO: node->ImplicitInputDefs() need to be added here for control flow nodes.
+  for (auto* node : nodes) {
+    ORT_THROW_IF_ERROR(onnxruntime::Node::ForEachWithIndex(node->InputDefs(), initialize_maps));
+    ORT_THROW_IF_ERROR(onnxruntime::Node::ForEachWithIndex(node->OutputDefs(), initialize_maps));
+  }
+
+  node_index_info_ = onnxruntime::make_unique<NodeIndexInfo>(nodes, ort_value_name_idx_map_);
+}
+
 std::unique_ptr<const OpKernel> OptimizerExecutionFrame::Info::CreateKernel(const Node* node) const {
   std::unique_ptr<OpKernel> op_kernel;
   std::shared_ptr<KernelRegistry> kernel_registry = execution_provider_.GetKernelRegistry();
