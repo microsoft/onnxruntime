@@ -203,8 +203,8 @@ const NodeDumpOptions& NodeDumpOptionsFromEnvironmentVariables() {
       opts.data_destination = NodeDumpOptions::DataDestination::TensorProtoFiles;
     }
 
-    if (get_bool_env_var(env_vars::kRankToFileName)) {
-      char const* tmp = Env::GetEnvironmentVar("OMPI_COMM_WORLD_RANK");
+    if (get_bool_env_var(env_vars::kAppendRankToFileName)) {
+      char const* tmp = Env::Default().GetEnvironmentVar("OMPI_COMM_WORLD_RANK");
       if ( tmp == NULL ) {
         opts.file_suffix = "_default_rank_0";
       } else {

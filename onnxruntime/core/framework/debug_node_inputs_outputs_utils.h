@@ -31,7 +31,7 @@ constexpr const char* kOpTypeFilter = "ORT_DEBUG_NODE_IO_OP_TYPE_FILTER";
 // set to non-zero to dump data to files instead of stdout
 constexpr const char* kDumpDataToFiles = "ORT_DEBUG_NODE_IO_DUMP_DATA_TO_FILES";
 // set to non-zero to append OpenMPI world rank to filename
-constexpr const char* kRankToFileName = "ORT_DEBUG_NODE_IO_APPEND_RANK_TO_FILE_NAME";
+constexpr const char* kAppendRankToFileName = "ORT_DEBUG_NODE_IO_APPEND_RANK_TO_FILE_NAME";
 // specify the output directory for any data files produced
 constexpr const char* kOutputDir = "ORT_DEBUG_NODE_IO_OUTPUT_DIR";
 // set to non-zero to confirm that dumping data files for all nodes is acceptable
