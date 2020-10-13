@@ -87,10 +87,16 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear) {
   test.Run();
 }
 
-// Since NNAPI only using the scale calulate using the input/output size
-// So the 0.6 scale in above test will be treated as 0.5 in NNAPI
+// Since NNAPI(TFLite) only using the scale calulate using the input/output size
+// For the above test (ResizeOpLinearDownSampleTest_4DBilinear)
+// The output size is [1,1,2,4].*[1,1,0.6,0.6]=[1,1,1,2]
+// NNAPI will recaluclate the scales as the output size divided by input size
+// scales = [1,1,1,2]./[1,1,2,4] = [1,1,0.5,0.5]
+// See, https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/kernels/internal/reference/reference_ops.h
+// So the result of the above example will be different than CPU EP
 // Add the following 2 tests to test with scales valid to NNAPI
 TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear1) {
+  // To test NNAPI EP, we need the sclaes/sizes to be in initializers
   auto run_test = [](bool scales_in_initializer) {
     OpTester test("Resize", 11);
     std::vector<float> roi{};
@@ -118,6 +124,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear1) {
 }
 
 TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear1_WithSizes) {
+  // To test NNAPI EP, we need the sclaes/sizes to be in initializers
   auto run_test = [](bool scales_and_sizes_in_initializer) {
     OpTester test("Resize", 11);
     std::vector<float> roi{};
@@ -146,6 +153,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear1_WithSizes) {
 }
 
 TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear_align_corners) {
+  // To test NNAPI EP, we need the sclaes/sizes to be in initializers
   auto run_test = [](bool scales_in_initializer) {
     OpTester test("Resize", 11);
     std::vector<float> roi{};
@@ -207,6 +215,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_2DBilinear_pytorch_half_pixel) {
 }
 
 TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_4DBilinear_asymmetric) {
+  // To test NNAPI EP, we need the sclaes/sizes to be in initializers
   auto run_test = [](bool scales_in_initializer) {
     OpTester test("Resize", 11);
     std::vector<float> roi{};
@@ -330,6 +339,7 @@ TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_5DTrilinear_pytorch_half_pixel) {
 }
 
 TEST(ResizeOpTest, ResizeOpLinearScalesNoOpTest) {
+  // To test NNAPI EP, we need the sclaes/sizes to be in initializers
   auto run_test = [](bool scales_in_initializer) {
     OpTester test("Resize", 11);
     std::vector<float> roi{};

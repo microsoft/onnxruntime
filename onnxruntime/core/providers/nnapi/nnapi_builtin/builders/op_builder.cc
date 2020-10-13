@@ -1852,13 +1852,13 @@ bool SoftMaxOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node
     return false;
   }
 
-  const auto android_skd_ver = model_builder.GetAndroidSdkVer();
-  if (android_skd_ver < 29) {
+  const auto android_sdk_ver = model_builder.GetAndroidSdkVer();
+  if (android_sdk_ver < 29) {
     NodeAttrHelper helper(node);
     int32_t axis = helper.Get("axis", 1);
     if (axis != 1) {
       LOGS_DEFAULT(VERBOSE)
-          << "SoftMax only support axis 1 on Android API level: " << android_skd_ver
+          << "SoftMax only support axis 1 on Android API level: " << android_sdk_ver
           << " input axis: " << axis;
       return false;
     }
@@ -1871,13 +1871,13 @@ Status SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
-  const auto android_skd_ver = model_builder.GetAndroidSdkVer();
+  const auto android_sdk_ver = model_builder.GetAndroidSdkVer();
   NodeAttrHelper helper(node);
 
   auto input = node.InputDefs()[0]->Name();
   bool input_is_nhwc = model_builder.IsOperandNHWC(input);
   bool output_is_nhwc = input_is_nhwc;
-  if (android_skd_ver < 29) {
+  if (android_sdk_ver < 29) {
     if (model_builder.IsOperandNHWC(input)) {
       output_is_nhwc = false;
       // We want to transpose nhwc operand back to nchw before softmax
@@ -1901,7 +1901,7 @@ Status SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   input_indices.push_back(operand_indices.at(input));
   ADD_SCALAR_OPERAND(model_builder, input_indices, beta);
 
-  if (android_skd_ver > 28) {
+  if (android_sdk_ver > 28) {
     // you can only specify axis for android api level 29+
     ADD_SCALAR_OPERAND(model_builder, input_indices, axis);
   }
@@ -2622,12 +2622,12 @@ Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
   NodeAttrHelper helper(node);
-  const auto android_skd_ver = model_builder.GetAndroidSdkVer();
+  const auto android_sdk_ver = model_builder.GetAndroidSdkVer();
 
   auto input = node.InputDefs()[0]->Name();
   const auto& output = node.OutputDefs()[0]->Name();
   bool output_is_nhwc = model_builder.IsOperandNHWC(input);
-  if (android_skd_ver < 29) {
+  if (android_sdk_ver < 29) {
     // on android api level 28, we need to transpose the nchw input to nhwc
     output_is_nhwc = true;
     if (!model_builder.IsOperandNHWC(input)) {
@@ -2655,7 +2655,7 @@ Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
   ADD_SCALAR_OPERAND(model_builder, input_indices, beta);
 
   // specify axis is only available on api level >= 29
-  if (android_skd_ver > 28) {
+  if (android_sdk_ver > 28) {
     // ONNX LRN is always performed on C dimension
     int32_t axis = output_is_nhwc
                        ? 3   // nhwc
@@ -2693,35 +2693,36 @@ void ClipOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
 }
 
 /* static */ bool ClipOpBuilder::GetMinMax(ModelBuilder& model_builder, const Node& node, float& min, float& max) {
-  const auto& initializers(model_builder.GetInitializerTensors());
+  if (node.SinceVersion() < 11) {  // Clip opset 1, 6 is using attributes for min/max
+    NodeAttrHelper helper(node);
+    min = helper.Get("min", std::numeric_limits<float>::lowest());
+    max = helper.Get("max", std::numeric_limits<float>::max());
+  } else {
+    const auto& initializers(model_builder.GetInitializerTensors());
 
-  if (node.InputDefs().size() > 1) {  // we have input min
-    const auto& min_name = node.InputDefs()[1]->Name();
-    if (!Contains(initializers, min_name)) {
-      LOGS_DEFAULT(VERBOSE) << "Input min of Clip must be known";
-      return false;
+    if (node.InputDefs().size() > 1) {  // we have input min
+      const auto& min_name = node.InputDefs()[1]->Name();
+      if (!Contains(initializers, min_name)) {
+        LOGS_DEFAULT(VERBOSE) << "Input min of Clip must be known";
+        return false;
+      }
+      min = GetTensorFloatData(initializers.at(min_name))[0];
     }
-    min = GetTensorFloatData(initializers.at(min_name))[0];
-  }
 
-  if (node.InputDefs().size() > 2) {  // we have input max
-    const auto& max_name = node.InputDefs()[2]->Name();
-    if (!Contains(initializers, max_name)) {
-      LOGS_DEFAULT(VERBOSE) << "Input max of Clip must be known";
-      return false;
+    if (node.InputDefs().size() > 2) {  // we have input max
+      const auto& max_name = node.InputDefs()[2]->Name();
+      if (!Contains(initializers, max_name)) {
+        LOGS_DEFAULT(VERBOSE) << "Input max of Clip must be known";
+        return false;
+      }
+      max = GetTensorFloatData(initializers.at(max_name))[0];
     }
-    max = GetTensorFloatData(initializers.at(max_name))[0];
   }
 
   return true;
 }
 
 bool ClipOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) {
-  if (node.SinceVersion() < 11) {
-    LOGS_DEFAULT(VERBOSE) << "Clip only supports opset 11+";
-    return false;
-  }
-
   float min = std::numeric_limits<float>::lowest();
   float max = std::numeric_limits<float>::max();
   if (!GetMinMax(model_builder, node, min, max))
@@ -2762,7 +2763,8 @@ Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   else if (min == -1.0f && max == 1.0f)
     op_code = ANEURALNETWORKS_RELU1;
   else
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ClipOpBuilder, unsupported input [", min, ", ", max, "]");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ClipOpBuilder, unsupported input [", min, ", ", max, "].",
+                           "We should not reach here, ClipOpBuilder::IsOpSupportedImpl should have caught this.");
 
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
@@ -2782,20 +2784,18 @@ class ResizeOpBuilder : public BaseOpBuilder {
  private:
   bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
 
-  int32_t GetMinSupportedSdkVer(ModelBuilder& /* model_builder */, const Node& node) const override;
+  int32_t GetMinSupportedSdkVer(ModelBuilder& model_builder, const Node& node) const override;
 
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override ORT_MUST_USE_RESULT;
 };
 
-int32_t ResizeOpBuilder::GetMinSupportedSdkVer(ModelBuilder& /* model_builder */, const Node& node) const {
-  NodeAttrHelper helper(node);
-  if (helper.Get("mode", "nearest") == "nearest")
-    return 29;
-
+int32_t ResizeOpBuilder::GetMinSupportedSdkVer(ModelBuilder& /* model_builder */, const Node& /* node */) const {
   return 28;
 }
 
 void ResizeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) {
+  // We will still add scales to the skipped list even sizes are present
+  // since there is no use of it, we will not process it later
   model_builder.AddInitializerToSkip(node.InputDefs()[2]->Name());  // scales
 
   if (node.InputDefs().size() > 3)
@@ -2803,6 +2803,8 @@ void ResizeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const N
 }
 
 bool ResizeOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) {
+  // Resize opset 10- is very different than Resize opset 11+, with many key attributes missing
+  // We only support Resize opset 11+ here
   if (node.SinceVersion() < 11) {
     LOGS_DEFAULT(VERBOSE) << "Resize only supports opset 11+";
     return false;
@@ -2820,7 +2822,7 @@ bool ResizeOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node&
   }
 
   {  // check attributes
-    const auto android_skd_ver = model_builder.GetAndroidSdkVer();
+    const auto android_sdk_ver = model_builder.GetAndroidSdkVer();
 
     NodeAttrHelper helper(node);
     const auto mode = helper.Get("mode", "nearest");
@@ -2837,9 +2839,9 @@ bool ResizeOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node&
       return false;
     }
 
-    if (android_skd_ver < 30 && (using_half_pixel || using_align_corners)) {
+    if (android_sdk_ver < 30 && (using_half_pixel || using_align_corners)) {
       LOGS_DEFAULT(VERBOSE) << "Resize only support half_pixel/align_corners on API level 30+, current API level is "
-                            << android_skd_ver;
+                            << android_sdk_ver;
       return false;
     }
 
@@ -2852,16 +2854,45 @@ bool ResizeOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node&
 
   {  // scales and sizes (if present) must be initializers
     const auto& initializers(model_builder.GetInitializerTensors());
+    const auto input_defs = node.InputDefs();
     // scales
-    if (node.InputDefs().size() < 3 || !Contains(initializers, node.InputDefs()[2]->Name())) {
+    if (input_defs.size() < 3 || !Contains(initializers, input_defs[2]->Name())) {
       LOGS_DEFAULT(VERBOSE) << "Input scales of Resize must be known";
       return false;
     }
 
     // sizes
-    if (node.InputDefs().size() > 3 && !Contains(initializers, node.InputDefs()[3]->Name())) {
+    if (input_defs.size() > 3 && !Contains(initializers, input_defs[3]->Name())) {
       LOGS_DEFAULT(VERBOSE) << "Input sizes of Resize must be known";
       return false;
+    }
+
+    // We want to check if the scales or sizes are not trying to resize on N/C channels here
+    if (input_defs.size() == 3) {  // we are using scales
+      const auto& scales_tensor = initializers.at(input_defs[2]->Name());
+      const float* scales_data = GetTensorFloatData(scales_tensor);
+      float scale_n = scales_data[0];
+      float scale_c = scales_data[1];
+      if (scale_n != 1.0f || scale_c != 1.0f) {
+        LOGS_DEFAULT(VERBOSE) << "Scales of N/C channel should be 1"
+                              << "Resize of N/C channels are not supported"
+                              << ", scale_n, " << scale_n << ", scale_c, " << scale_c;
+        return false;
+      }
+    } else {
+      // we are using sizes
+      const auto& sizes_name = input_defs[3]->Name();
+      const auto& sizes_tensor = initializers.at(sizes_name);
+      const int64_t* sizes_data = GetTensorInt64Data(sizes_tensor);
+      uint32_t size_n = SafeInt<uint32_t>(sizes_data[0]);
+      uint32_t size_c = SafeInt<uint32_t>(sizes_data[1]);
+      if (size_n != input_shape[0] || size_c != input_shape[1]) {
+        LOGS_DEFAULT(VERBOSE) << "Output sizes of N/C chanel should match the input sizes, "
+                              << "Resize of N/C channels are not supported"
+                              << ", input_size_n, " << input_shape[0] << ", output_size_n, " << size_n
+                              << ". input_size_c, " << input_shape[1] << ", output_size_c, " << size_c;
+        return false;
+      }
     }
   }
   return true;
@@ -2874,7 +2905,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   const auto& initializers(model_builder.GetInitializerTensors());
   NodeAttrHelper helper(node);
   const auto input_defs = node.InputDefs();
-  const auto android_skd_ver = model_builder.GetAndroidSdkVer();
+  const auto android_sdk_ver = model_builder.GetAndroidSdkVer();
   const auto& output = node.OutputDefs()[0]->Name();
 
   auto input = input_defs[0]->Name();
@@ -2901,14 +2932,12 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   bool using_half_pixel = coord_trans_mode == "half_pixel";
   bool using_align_corners = coord_trans_mode == "align_corners";
 
-  float scale_h = 0.0f;
-  float scale_w = 0.0f;
-  if (node.InputDefs().size() == 3) {  // we are using scales
+  if (input_defs.size() == 3) {  // we are using scales
     const auto& scales_name = input_defs[2]->Name();
     const auto& scales_tensor = initializers.at(scales_name);
     const float* scales_data = GetTensorFloatData(scales_tensor);
-    scale_h = scales_data[2];
-    scale_w = scales_data[3];
+    float scale_h = scales_data[2];
+    float scale_w = scales_data[3];
     ORT_RETURN_IF_ERROR(
         shaper.ResizeUsingScales(input, scale_h, scale_w, use_nchw, output));
   } else {  // we are using sizes
@@ -2916,7 +2945,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     const auto& sizes_tensor = initializers.at(sizes_name);
     const int64_t* sizes_data = GetTensorInt64Data(sizes_tensor);
     ORT_RETURN_IF_ERROR(
-        shaper.ResizeUsingOutputSizes(input, SafeInt<int32_t>(sizes_data[2]), SafeInt<int32_t>(sizes_data[3]), use_nchw, output));
+        shaper.ResizeUsingOutputSizes(input, SafeInt<uint32_t>(sizes_data[2]), SafeInt<uint32_t>(sizes_data[3]), use_nchw, output));
   }
 
   const auto& output_shape = shaper[output];
@@ -2928,12 +2957,12 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   ADD_SCALAR_OPERAND(model_builder, input_indices, output_w);
   ADD_SCALAR_OPERAND(model_builder, input_indices, output_h);
 
-  if (android_skd_ver > 28) {
+  if (android_sdk_ver > 28) {
     // using nchw is only available on API level 29
     ADD_SCALAR_OPERAND(model_builder, input_indices, use_nchw);
   }
 
-  if (android_skd_ver > 29 && (using_align_corners || using_half_pixel)) {
+  if (android_sdk_ver > 29 && (using_align_corners || using_half_pixel)) {
     ADD_SCALAR_OPERAND(model_builder, input_indices, using_align_corners);
     if (using_half_pixel)
       ADD_SCALAR_OPERAND(model_builder, input_indices, using_half_pixel);

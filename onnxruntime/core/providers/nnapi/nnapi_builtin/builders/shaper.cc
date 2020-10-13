@@ -138,7 +138,7 @@ Status Shaper::ResizeUsingScales(const std::string& input_name,
 }
 
 Status Shaper::ResizeUsingOutputSizes(const std::string& input_name,
-                                      const int32_t output_h, const int32_t output_w,
+                                      const uint32_t output_h, const uint32_t output_w,
                                       bool nchw,
                                       const std::string& output_name) {
   SHAPER_FUNC(ResizeUsingOutputSizes, input_name, output_h, output_w, nchw, output_name);
@@ -415,7 +415,7 @@ Status Shaper::ResizeUsingScalesImpl(const std::string& input_name,
 }
 
 Status Shaper::ResizeUsingOutputSizesImpl(const std::string& input_name,
-                                          const int32_t output_h, const int32_t output_w,
+                                          const uint32_t output_h, const uint32_t output_w,
                                           bool nchw,
                                           const std::string& output_name) {
   Shape output_dimen = shape_map_.at(input_name);

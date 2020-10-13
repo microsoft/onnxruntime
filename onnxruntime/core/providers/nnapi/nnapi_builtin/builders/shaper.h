@@ -65,7 +65,7 @@ class Shaper {
                            bool nchw,
                            const std::string& output_name) ORT_MUST_USE_RESULT;
   Status ResizeUsingOutputSizes(const std::string& input_name,
-                                const int32_t output_h, const int32_t output_w,
+                                const uint32_t output_h, const uint32_t output_w,
                                 bool nchw,
                                 const std::string& output_name) ORT_MUST_USE_RESULT;
 
@@ -120,7 +120,7 @@ class Shaper {
                                bool nchw,
                                const std::string& output_name) ORT_MUST_USE_RESULT;
   Status ResizeUsingOutputSizesImpl(const std::string& input_name,
-                                    const int32_t output_h, const int32_t output_w,
+                                    const uint32_t output_h, const uint32_t output_w,
                                     bool nchw,
                                     const std::string& output_name) ORT_MUST_USE_RESULT;
 

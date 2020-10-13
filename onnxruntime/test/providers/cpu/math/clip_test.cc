@@ -119,6 +119,7 @@ TEST(MathOpTest, Clip_Default_uint64) {
 }
 
 TEST(MathOpTest, Clip) {
+  // To test NNAPI EP, we need the min/max to be in initializers
   auto run_test = [](bool min_max_are_initializer) {
     OpTester test("Clip", 11);
 
@@ -142,8 +143,9 @@ TEST(MathOpTest, Clip) {
   run_test(true);
 }
 
-// Use clip between [0, 6] as Relu6
+// Use clip between [0, 6] as Relu6 (for some EPs, such as NNAPI)
 TEST(MathOpTest, Clip_Relu6) {
+  // To test NNAPI EP, we need the min/max to be in initializers
   auto run_test = [](bool min_max_are_initializer) {
     OpTester test("Clip", 11);
 
@@ -167,8 +169,9 @@ TEST(MathOpTest, Clip_Relu6) {
   run_test(true);
 }
 
-// Use clip between [-1, 1] as Relu1
+// Use clip between [-1, 1] as Relu1 (for some EPs, such as NNAPI)
 TEST(MathOpTest, Clip_Relu1) {
+  // To test NNAPI EP, we need the min/max to be in initializers
   auto run_test = [](bool min_max_are_initializer) {
     OpTester test("Clip", 11);
 
