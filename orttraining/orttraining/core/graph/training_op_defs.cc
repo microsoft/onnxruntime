@@ -923,41 +923,6 @@ Example 4:
       })
       .SetDoc(R"DOC(SoftmaxCrossEntropyGrad)DOC");
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(HorovodAllReduce)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
-      .Attr("reduce_op", "Reduce operation supported by Horovod. Valid values are: AVERAGE(0), SUM(1) or ADASUM(2)", AttributeProto::INT, int64_t(1))
-      .Attr("reduce_algo", "Algorithms for Adasum. Valid values are: None(0), CpuReduction(1) or GpuHierarchical(2)", AttributeProto::INT, int64_t(0))
-      .Input(0, "input", "tensor to be reduced", "T")
-      .Output(0, "output", "reduced tensor", "T")
-      .Output(1, "ready", "true when reduced tensor is ready", "B")
-      .TypeConstraint(
-          "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain to float, float16 and double tensors.")
-      .TypeConstraint("B", {"tensor(bool)"}, "Constrain to bool tensors.")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        propagateShapeAndTypeFromFirstInput(ctx);
-        updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto::BOOL);
-        updateOutputShape(ctx, 1, {});
-      });
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(HorovodBarrier)
-      .SetDomain(kOnnxDomain)
-      .SetDoc("Waits for one or more async Horovod operators to complete")
-      .SinceVersion(9)
-      .Input(0, "input", "input tensor", "T")
-      .Input(1, "input_ready", "one or more bool tensors to wait on", "B", OpSchema::Variadic)
-      .Output(0, "output", "output tensor", "T")
-      .Output(1, "output_ready", "output tensor is ready", "B")
-      .TypeConstraint("B", {"tensor(bool)"}, "Only bool")
-      .TypeConstraint("T", OpSchema::all_tensor_types(), "All Tensor types")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        propagateShapeAndTypeFromFirstInput(ctx);
-        updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto::BOOL);
-        updateOutputShape(ctx, 1, {});
-      });
-
   ONNX_CONTRIB_OPERATOR_SCHEMA(NcclAllReduce)
       .SetDomain(kMSDomain)
       .SinceVersion(1)

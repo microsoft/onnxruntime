@@ -130,12 +130,6 @@ if (onnxruntime_ENABLE_TRAINING)
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/*.cc"
   )
 
-  if (NOT onnxruntime_USE_HOROVOD)
-    list(REMOVE_ITEM onnxruntime_cpu_training_ops_srcs
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/collective/horovod_kernels.cc"
-    )
-  endif()
-
   source_group(TREE ${ORTTRAINING_ROOT}/ FILES ${onnxruntime_cpu_training_ops_srcs})
   list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_training_ops_srcs})
 endif()
@@ -176,11 +170,7 @@ if (onnxruntime_ENABLE_TRAINING)
   add_dependencies(onnxruntime_providers tensorboard)
   onnxruntime_add_include_to_target(onnxruntime_providers tensorboard)
 
-  if (onnxruntime_USE_HOROVOD)
-    target_include_directories(onnxruntime_providers PRIVATE ${HOROVOD_INCLUDE_DIRS})
-  endif()
-
-  if (onnxruntime_USE_MPI)
+  if (onnxruntime_USE_NCCL)
     target_include_directories(onnxruntime_providers PUBLIC ${MPI_INCLUDE_DIRS})
   endif()
 endif()
@@ -223,13 +213,6 @@ if (onnxruntime_USE_CUDA)
       "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/communication/*.cu"
       "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/communication/*.cuh"
     )
-
-    if (NOT onnxruntime_USE_HOROVOD)
-      list(REMOVE_ITEM onnxruntime_cuda_training_ops_cc_srcs
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/horovod_kernels.cc"
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/ready_event.cc"
-      )
-    endif()
 
     # NCCL is not support in Windows build
     if (WIN32)
@@ -277,10 +260,6 @@ if (onnxruntime_USE_CUDA)
 
   if (onnxruntime_ENABLE_TRAINING)
     target_include_directories(onnxruntime_providers_cuda PRIVATE ${ORTTRAINING_ROOT} ${MPI_INCLUDE_DIRS})
-
-    if (onnxruntime_USE_HOROVOD)
-      target_include_directories(onnxruntime_providers_cuda PRIVATE ${HOROVOD_INCLUDE_DIRS})
-    endif()
 
     if (onnxruntime_USE_NCCL)
       target_include_directories(onnxruntime_providers_cuda PRIVATE ${NCCL_INCLUDE_DIRS})

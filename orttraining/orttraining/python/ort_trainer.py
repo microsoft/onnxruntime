@@ -749,38 +749,6 @@ class ORTTrainer():
                 *self.model_desc_.outputs_,
                 IODescription(get_all_gradients_finite_arg_name(self.session), [1], torch.bool)]
 
-        #bugbug
-        global_norm = [x for x in self.session._outputs_meta if 'global_gradient_norm' in x.name]
-        if len(global_norm) > 0:
-            if self.use_mixed_precision:
-                self.output_desc_with_all_fp_16_or_fp32_gradients_finite.append(IODescription(global_norm[0].name, [], torch.float32))
-            else:
-                self.model_desc_.outputs_.append(IODescription(global_norm[0].name, [], torch.float32))
-
-        #bugbug
-        delta_finite = [x for x in self.session._outputs_meta if 'adasum_all_deltas_finite' in x.name]
-        if len(delta_finite) > 0:
-            if self.use_mixed_precision:
-                self.output_desc_with_all_fp_16_or_fp32_gradients_finite.append(IODescription(delta_finite[0].name, [1], torch.bool))
-            else:
-                self.model_desc_.outputs_.append(IODescription(delta_finite[0].name, [1], torch.bool))
-
-        #bugbug
-        delta_norm = [x for x in self.session._outputs_meta if 'delta_norm' in x.name]
-        if len(delta_norm) > 0:
-            if self.use_mixed_precision:
-                self.output_desc_with_all_fp_16_or_fp32_gradients_finite.append(IODescription(delta_norm[0].name, [], torch.float32))
-            else:
-                self.model_desc_.outputs_.append(IODescription(delta_norm[0].name, [], torch.float32))
-
-        #bugbug
-        delta_initial_norm = [x for x in self.session._outputs_meta if 'delta_initial_norm' in x.name]
-        if len(delta_initial_norm) > 0:
-            if self.use_mixed_precision:
-                self.output_desc_with_all_fp_16_or_fp32_gradients_finite.append(IODescription(delta_initial_norm[0].name, [], torch.float32))
-            else:
-                self.model_desc_.outputs_.append(IODescription(delta_initial_norm[0].name, [], torch.float32))
-
         if self.state_dict_:
             self.load_state_dict(self.state_dict_, self.strict_)
         self.state_dict_ = None
@@ -1009,25 +977,11 @@ class ORTTrainer():
             results = [session_run_results[fetch] for fetch in fetches]
         else:
             results = [session_run_results[output.name_] for output in output_desc]
-        #     # return descripted outputs plus the all_finite flag so that the training script can handle loss scaling.
-        #     results = [session_run_results[output_desc.name_] for output_desc in self.output_desc_with_all_fp_16_or_fp32_gradients_finite]
-        # else:
-        #     results = [session_run_results[output_desc.name_] for output_desc in self.model_desc_.outputs_]
+            # return descripted outputs plus the all_finite flag so that the training script can handle loss scaling.
+            results = [session_run_results[output_desc.name_] for output_desc in self.output_desc_with_all_fp_16_or_fp32_gradients_finite]
+        else:
+            results = [session_run_results[output_desc.name_] for output_desc in self.model_desc_.outputs_]
         
-        #bugbug
-        if 'global_gradient_norm' in session_run_results:
-            print("#####Global norm is {}".format(session_run_results['global_gradient_norm']))
-
-        if 'delta_norm' in session_run_results:
-            print("#####delta norm is {}".format(session_run_results['delta_norm']))
-
-        if 'delta_initial_norm' in session_run_results:
-            print("#####delta norm before reduction is {}".format(session_run_results['delta_initial_norm']))
-
-        if 'adasum_all_deltas_finite' in session_run_results:
-            print("#####adasum_all_deltas_finite is {}".format(session_run_results['adasum_all_deltas_finite']))
-        
-        print("#####Internal global step is: {}".format(self.global_step_))
         return results[0] if len(results) == 1 else results
 
     def __call__(self, *args, **kwargs):

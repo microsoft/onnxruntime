@@ -318,9 +318,7 @@ Status OptimizerGraphBuilder::AddGradientNorm(
     const NodeArgNameGeneratorFn& nodearg_name_generator,
     const std::vector<ArgDef>& grad_argdefs,
     GraphAugmenter::GraphDefs& graph_defs,
-    ArgDef& grad_norm_argdef,
-    //bugbug
-    const std::string& name) {
+    ArgDef& grad_norm_argdef) {
   ONNX_NAMESPACE::TensorProto_DataType grad_type =
       static_cast<ONNX_NAMESPACE::TensorProto_DataType>(grad_argdefs[0].type_proto->tensor_type().elem_type());
   if (grad_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&

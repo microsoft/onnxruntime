@@ -38,7 +38,6 @@ const std::vector<const char*> k_weight_names{"weight_1", "weight_2"};
 constexpr const char* const k_loss_scaling_factor_name = "loss_scaling_factor";
 constexpr const char* const k_adam_optimizer_op_name = "AdamOptimizer";
 constexpr const char* const k_lamb_optimizer_op_name = "LambOptimizer";
-constexpr const char* const k_horovod_all_reduce_op_name = "HorovodAllReduce";
 constexpr const char* const k_all_reduce_op_name = "NcclAllReduce";
 constexpr const char* const k_all_gather_op_name = "NcclAllGather";
 constexpr const char* const k_reduce_scatter_op_name = "NcclReduceScatter";
@@ -47,6 +46,7 @@ constexpr const char* const k_gradient_norm_op_name = "ReduceAllL2";
 constexpr const char* const k_unscale_op_name = "MixedPrecisionScale";
 constexpr const char* const k_inplace_accumulator_op_name = "InPlaceAccumulator";
 constexpr const char* const k_zero_gradient_op_name = "ZeroGradient";
+constexpr const char* const k_adasum_op_name = "AdasumAllReduce";
 
 Status SetUpBaseGraph(Graph& graph);
 
@@ -249,7 +249,6 @@ static void TestDefaultOptimizerGraphBuilder(OptimizerGraphConfig config, Graph&
   ASSERT_EQ(GetOpCount(op_counts, k_all_reduce_op_name), 0);
   ASSERT_EQ(GetOpCount(op_counts, k_reduce_scatter_op_name), 0);
   ASSERT_EQ(GetOpCount(op_counts, k_all_gather_op_name), 0);
-  ASSERT_EQ(GetOpCount(op_counts, k_horovod_all_reduce_op_name), 0);
 }
 
 TEST_F(OptimizerGraphBuilderTest, Default_NoGradientAccumulation_NoMixedPrecision) {
@@ -282,7 +281,7 @@ TEST_F(OptimizerGraphBuilderTest, Default_WithGradientAccumulation_WithMixedPrec
   TestDefaultOptimizerGraphBuilder(config, graph_);
 }
 
-#if defined(USE_NCCL) || defined(USE_HOROVOD)
+#if defined(USE_NCCL)
 static void TestAllreduceOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& graph) {
   std::unordered_map<std::string, std::string> updated_weight_names_map;
   AllreduceOptimizerGraphBuilder optimizer_graph_builder(
@@ -310,11 +309,7 @@ static void TestAllreduceOptimizerGraphBuilder(OptimizerGraphConfig config, Grap
 
   // verify allreduce operations exist
   ASSERT_GT(GetOpCount(op_counts, k_unscale_op_name), 0);
-  if (config.use_nccl) {
-    ASSERT_GT(GetOpCount(op_counts, k_all_reduce_op_name), 0);
-  } else {
-    ASSERT_GT(GetOpCount(op_counts, k_horovod_all_reduce_op_name), 0);
-  }
+  ASSERT_GT(GetOpCount(op_counts, k_all_reduce_op_name), 0);
 
   // verify optimizers exist
   ASSERT_EQ(GetOpCount(op_counts, k_adam_optimizer_op_name), k_weight_names.size());
@@ -322,81 +317,9 @@ static void TestAllreduceOptimizerGraphBuilder(OptimizerGraphConfig config, Grap
 
 #endif
 
-#ifdef USE_HOROVOD
-static void TestAdasumOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& graph) {
-  std::unordered_map<std::string, std::string> updated_weight_names_map;
-  AdasumOptimizerGraphBuilder optimizer_graph_builder(
-      GetOptimizerBuilderRegistry(), config, GetOptInfoMap(), updated_weight_names_map);
+#if defined(USE_NCCL) || defined(ORT_USE_MPI)
 
-  OptimizerOutputKeyMap<std::string> opt_graph_outputs;
-  std::unordered_set<std::string> opt_initializer_names;
-  ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph, opt_initializer_names, opt_graph_outputs));
-
-  auto op_counts = CountOpsInGraph(graph, false);
-
-  // verify gradient accumulation operations exist
-  if (config.gradient_accumulation_steps > 1) {
-    ASSERT_GT(GetOpCount(op_counts, k_unscale_op_name), 0);
-    ASSERT_EQ(GetOpCount(op_counts, k_inplace_accumulator_op_name), k_weight_names.size() * 2);
-    ASSERT_EQ(GetOpCount(op_counts, k_zero_gradient_op_name), k_weight_names.size());
-    ASSERT_GT(opt_graph_outputs.count(OptimizerOutputKey::GradientAccumulation), 0);
-  }
-
-  // verify mixed precision operations exist
-  if (config.use_mixed_precision) {
-    ASSERT_GT(GetOpCount(op_counts, k_gradient_norm_op_name), 0);
-    ASSERT_GT(GetOpCount(op_counts, k_is_all_finite_op_name), 0);
-  }
-
-  // verify allreduce operations exist
-  ASSERT_GT(GetOpCount(op_counts, k_unscale_op_name), 0);
-  ASSERT_GT(GetOpCount(op_counts, k_horovod_all_reduce_op_name), 0);
-
-  // verify in place adder operations exist
-  ASSERT_GT(GetOpCount(op_counts, k_inplace_accumulator_op_name), 0);
-
-  // verify optimizers exist
-  ASSERT_EQ(GetOpCount(op_counts, k_adam_optimizer_op_name), k_weight_names.size());
-}
-
-TEST_F(OptimizerGraphBuilderTest, Allreduce_Horovod_NoGradientAccumulation_NoMixedPrecision) {
-  OptimizerGraphConfig config;
-  config.data_parallel_group_size = 4;
-  config.use_nccl = false;
-  config.gradient_accumulation_steps = 1;
-  config.use_mixed_precision = false;
-  TestAllreduceOptimizerGraphBuilder(config, graph_);
-}
-
-TEST_F(OptimizerGraphBuilderTest, Allreduce_Horovod_WithGradientAccumulation_NoMixedPrecision) {
-  OptimizerGraphConfig config;
-  config.data_parallel_group_size = 4;
-  config.use_nccl = false;
-  config.gradient_accumulation_steps = 10;
-  config.use_mixed_precision = false;
-  TestAllreduceOptimizerGraphBuilder(config, graph_);
-}
-
-TEST_F(OptimizerGraphBuilderTest, Allreduce_Horovod_NoGradientAccumulation_WithMixedPrecision) {
-  OptimizerGraphConfig config;
-  config.data_parallel_group_size = 4;
-  config.use_nccl = false;
-  config.gradient_accumulation_steps = 1;
-  config.use_mixed_precision = true;
-  config.loss_scale_input_name = k_loss_scaling_factor_name;
-  TestAllreduceOptimizerGraphBuilder(config, graph_);
-}
-
-TEST_F(OptimizerGraphBuilderTest, Allreduce_Horovod_WithGradientAccumulation_WithMixedPrecision) {
-  OptimizerGraphConfig config;
-  config.data_parallel_group_size = 4;
-  config.use_nccl = false;
-  config.gradient_accumulation_steps = 10;
-  config.use_mixed_precision = true;
-  config.loss_scale_input_name = k_loss_scaling_factor_name;
-  TestAllreduceOptimizerGraphBuilder(config, graph_);
-}
-TEST_F(OptimizerGraphBuilderTest, Adasum_Horovod_NoGradientAccumulation_NoMixedPrecision) {
+TEST_F(OptimizerGraphBuilderTest, Adasum_NoGradientAccumulation_NoMixedPrecision) {
   OptimizerGraphConfig config;
   config.data_parallel_group_size = 4;
   config.use_nccl = false;
@@ -405,7 +328,7 @@ TEST_F(OptimizerGraphBuilderTest, Adasum_Horovod_NoGradientAccumulation_NoMixedP
   config.use_mixed_precision = false;
   TestAdasumOptimizerGraphBuilder(config, graph_);
 }
-TEST_F(OptimizerGraphBuilderTest, Adasum_Horovod_WithGradientAccumulation_NoMixedPrecision) {
+TEST_F(OptimizerGraphBuilderTest, Adasum_WithGradientAccumulation_NoMixedPrecision) {
   OptimizerGraphConfig config;
   config.data_parallel_group_size = 4;
   config.use_nccl = false;
@@ -415,7 +338,7 @@ TEST_F(OptimizerGraphBuilderTest, Adasum_Horovod_WithGradientAccumulation_NoMixe
   TestAdasumOptimizerGraphBuilder(config, graph_);
 }
 
-TEST_F(OptimizerGraphBuilderTest, Adasum_Horovod_NoGradientAccumulation_WithMixedPrecision) {
+TEST_F(OptimizerGraphBuilderTest, Adasum_NoGradientAccumulation_WithMixedPrecision) {
   OptimizerGraphConfig config;
   config.data_parallel_group_size = 4;
   config.use_nccl = false;
@@ -426,7 +349,7 @@ TEST_F(OptimizerGraphBuilderTest, Adasum_Horovod_NoGradientAccumulation_WithMixe
   TestAdasumOptimizerGraphBuilder(config, graph_);
 }
 
-TEST_F(OptimizerGraphBuilderTest, Adasum_Horovod_WithGradientAccumulation_WithMixedPrecision) {
+TEST_F(OptimizerGraphBuilderTest, Adasum_WithGradientAccumulation_WithMixedPrecision) {
   OptimizerGraphConfig config;
   config.data_parallel_group_size = 4;
   config.use_nccl = false;
@@ -436,8 +359,7 @@ TEST_F(OptimizerGraphBuilderTest, Adasum_Horovod_WithGradientAccumulation_WithMi
   config.loss_scale_input_name = k_loss_scaling_factor_name;
   TestAdasumOptimizerGraphBuilder(config, graph_);
 }
-
-#endif  // USE_HOROVOD
+#endif //USE_NCCL || ORT_USE_MPI
 
 #ifdef USE_NCCL
 TEST_F(OptimizerGraphBuilderTest, Allreduce_NoGradientAccumulation_NoMixedPrecision) {

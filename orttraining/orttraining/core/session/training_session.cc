@@ -30,10 +30,6 @@
 #include "core/providers/cuda/cuda_allocator.h"
 #endif
 
-#ifdef USE_HOROVOD
-#include "orttraining/core/graph/horovod_adapters.h"
-#endif
-
 namespace onnxruntime {
 namespace training {
 
@@ -118,12 +114,6 @@ Status SetupOptimizerParams(
   opt_graph_config.use_nccl = optimizer_config.use_nccl;
   opt_graph_config.adasum_reduction_type = optimizer_config.adasum_reduction_type;
   opt_graph_config.enable_grad_norm_clip = optimizer_config.enable_grad_norm_clip;
-#if USE_HOROVOD
-  opt_graph_config.horovod_reduce_op =
-      opt_graph_config.adasum_reduction_type == AdasumReductionType::None
-          ? static_cast<int64_t>(hvd::ReduceOp::SUM)
-          : static_cast<int64_t>(hvd::ReduceOp::ADASUM);
-#endif
   opt_graph_config.deepspeed_zero = optimizer_config.deepspeed_zero;
 
   // check if shared initial optimizer states have been provided
