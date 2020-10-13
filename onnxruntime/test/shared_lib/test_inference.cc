@@ -17,6 +17,12 @@
 #include "test_allocator.h"
 #include "test_fixture.h"
 
+#ifdef _WIN32
+#include <Windows.h>
+#else
+#include <dlfcn.h>
+#endif
+
 struct Input {
   const char* name = nullptr;
   std::vector<int64_t> dims;
@@ -68,6 +74,7 @@ void TestInference(Ort::Env& env, T model_uri,
                    int provider_type,
                    OrtCustomOpDomain* custom_op_domain_ptr,
                    const char* custom_op_library_filename,
+                   void*& library_handle,
                    bool test_session_creation_only = false) {
   Ort::SessionOptions session_options;
 
@@ -100,7 +107,6 @@ void TestInference(Ort::Env& env, T model_uri,
   }
 
   if (custom_op_library_filename) {
-    void* library_handle = nullptr;  // leak this, no harm.
     Ort::ThrowOnError(Ort::GetApi().RegisterCustomOpsLibrary((OrtSessionOptions*)session_options, custom_op_library_filename, &library_handle));
   }
 
@@ -164,7 +170,9 @@ TEST_P(CApiTestWithProvider, simple) {
   std::vector<int64_t> expected_dims_y = {3, 2};
   std::vector<float> expected_values_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
 
-  TestInference<PATH_TYPE, float>(*ort_env, MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, GetParam(), nullptr, nullptr);
+  void* library_handle = nullptr;
+  TestInference<PATH_TYPE, float>(*ort_env, MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, GetParam(),
+                                  nullptr, nullptr, library_handle);
 }
 
 TEST(CApiTest, dim_param) {
@@ -280,6 +288,8 @@ TEST(CApiTest, custom_op_handler) {
   Ort::CustomOpDomain custom_op_domain("");
   custom_op_domain.Add(&custom_op);
 
+  void* library_handle = nullptr;
+
 #ifdef USE_CUDA
   // The custom op kernel has a Compute() method that doesn't really use CUDA and can't be used as is
   // because it uses the contents of the inputs and writes to the output of the node
@@ -289,9 +299,11 @@ TEST(CApiTest, custom_op_handler) {
   // It is enough to test for successful session creation because if the custom node wasn't assigned an EP,
   // the session creation would fail. Since the custom node is only tied to the CUDA EP (in CUDA-enabled builds),
   // if the session creation succeeds, it is assumed that the node got assigned to the CUDA EP.
-  TestInference<PATH_TYPE, float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1, custom_op_domain, nullptr, true);
+  TestInference<PATH_TYPE, float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1,
+                                  custom_op_domain, nullptr, library_handle, true);
 #else
-  TestInference<PATH_TYPE, float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, custom_op_domain, nullptr);
+  TestInference<PATH_TYPE, float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0,
+                                  custom_op_domain, nullptr, library_handle);
 #endif
 }
 
@@ -316,13 +328,14 @@ TEST(CApiTest, RegisterCustomOpForCPUAndCUDA) {
   custom_op_domain.Add(&custom_op_cpu);
   custom_op_domain.Add(&custom_op_cuda);
 
+  void* library_handle = nullptr;
   TestInference<PATH_TYPE, float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y,
-                                  expected_values_y, 1, custom_op_domain, nullptr, true);
+                                  expected_values_y, 1, custom_op_domain, nullptr, library_handle, true);
 }
 #endif
 
 //It has memory leak. The OrtCustomOpDomain created in custom_op_library.cc:RegisterCustomOps function was not freed
-#if defined(__ANDROID__) || defined(ONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
+#if defined(__ANDROID__)
 TEST(CApiTest, DISABLED_test_custom_op_library) {
 #else
 TEST(CApiTest, test_custom_op_library) {
@@ -357,7 +370,17 @@ TEST(CApiTest, test_custom_op_library) {
 lib_name = "./libcustom_op_library.so";
 #endif
 
-  TestInference<PATH_TYPE, int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y, expected_values_y, 0, nullptr, lib_name.c_str());
+  void* library_handle = nullptr;
+  TestInference<PATH_TYPE, int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
+                                    expected_values_y, 0, nullptr, lib_name.c_str(), library_handle);
+
+#ifdef _WIN32
+  bool success = ::FreeLibrary(reinterpret_cast<HMODULE>(library_handle));
+  ORT_ENFORCE(success, "Error while closing custom op shared library");
+#else
+  int retval = dlclose(handle);
+  ORT_ENFORCE(retval == 0, "Error while closing custom op shared library");
+#endif
 }
 
 #if defined(ENABLE_LANGUAGE_INTEROP_OPS)
@@ -404,7 +427,9 @@ TEST(CApiTest, test_pyop) {
   input.values = {1.0f, 2.0f, 3.0f, 4.0f};
   std::vector<int64_t> expected_dims_y = {2, 2};
   std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f};
-  TestInference<PATH_TYPE, float>(*ort_env, PYOP_FLOAT_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, nullptr, nullptr);
+  void* library_handle = nullptr;
+  TestInference<PATH_TYPE, float>(*ort_env, PYOP_FLOAT_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y,
+                                  0, nullptr, nullptr, library_handle);
 }
 
 TEST(CApiTest, test_pyop_multi) {
@@ -416,7 +441,9 @@ TEST(CApiTest, test_pyop_multi) {
   input.values = {1.0f, 2.0f, 3.0f, 4.0f};
   std::vector<int64_t> expected_dims_y = {2, 2};
   std::vector<float> expected_values_y = {8.0f, 16.0f, 24.0f, 32.0f};
-  TestInference<PATH_TYPE, float>(*ort_env, PYOP_MULTI_MODEL_URI, inputs, "Z", expected_dims_y, expected_values_y, 0, nullptr, nullptr);
+  void* library_handle = nullptr;
+  TestInference<PATH_TYPE, float>(*ort_env, PYOP_MULTI_MODEL_URI, inputs, "Z", expected_dims_y, expected_values_y,
+                                  0, nullptr, nullptr, library_handle);
 }
 
 TEST(CApiTest, test_pyop_kwarg) {
@@ -428,7 +455,9 @@ TEST(CApiTest, test_pyop_kwarg) {
   input.values = {1.0f, 2.0f, 3.0f, 4.0f};
   std::vector<int64_t> expected_dims_y = {2, 2};
   std::vector<float> expected_values_y = {25.0f, 50.0f, 75.0f, 100.0f};
-  TestInference<PATH_TYPE, float>(*ort_env, PYOP_KWARG_MODEL_URI, inputs, "Z", expected_dims_y, expected_values_y, 0, nullptr, nullptr);
+  void* library_handle = nullptr;
+  TestInference<PATH_TYPE, float>(*ort_env, PYOP_KWARG_MODEL_URI, inputs, "Z", expected_dims_y, expected_values_y,
+                                  0, nullptr, nullptr, library_handle);
 }
 #endif
 
@@ -448,7 +477,9 @@ TEST(ReducedOpsBuildTest, test_included_ops) {
   std::vector<Input> inputs = {{"X", {3}, {-1.0f, 2.0f, -3.0f}}};
   std::vector<int64_t> expected_dims_y = {1};
   std::vector<float> expected_values_y = {0.75};
-  TestInference<PATH_TYPE, float>(*ort_env, model_uri, inputs, "Y", expected_dims_y, expected_values_y, 0, nullptr, nullptr);
+  void* library_handle = nullptr;
+  TestInference<PATH_TYPE, float>(*ort_env, model_uri, inputs, "Y", expected_dims_y, expected_values_y, 0,
+                                  nullptr, nullptr, library_handle);
 }
 
 TEST(ReducedOpsBuildTest, test_excluded_ops) {
@@ -460,8 +491,9 @@ TEST(ReducedOpsBuildTest, test_excluded_ops) {
   std::vector<int64_t> expected_dims_z = {3};
   std::vector<float> expected_values_z = {0.1f, 0.1f, 0.1f};
   bool failed = false;
+  void* library_handle = nullptr;
   try {
-    TestInference<PATH_TYPE, float>(*ort_env, model_uri, inputs, "Z", expected_dims_z, expected_values_z, 0, nullptr, nullptr);
+    TestInference<PATH_TYPE, float>(*ort_env, model_uri, inputs, "Z", expected_dims_z, expected_values_z, 0, nullptr, nullptr, library_handle);
   } catch (const Ort::Exception& e) {
     failed = e.GetOrtErrorCode() == ORT_NOT_IMPLEMENTED;
   }
