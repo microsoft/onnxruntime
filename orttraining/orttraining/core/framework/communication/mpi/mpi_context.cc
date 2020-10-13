@@ -94,7 +94,6 @@ local_size_(1) {
                      << ". World rank: " << world_rank
                      << ". Local size: " << local_size
                      << ". Local rank: " << local_rank;
-  std::cout << "MPI context initialized. World size: " << world_size << ". World rank: " << world_rank << ". Local size: " << local_size << ". Local rank: " << local_rank <<std::endl;
 
   mpi_groups_.resize(WorkerGroupType::WorkerGroupTypeCount);
   // Create global parallel group

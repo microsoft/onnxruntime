@@ -408,8 +408,6 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     ort_parameters.use_invertible_layernorm_grad = use_invertible_layernorm_grad
     ort_parameters.use_adasum = use_adasum
     ort_parameters.perform_fp16_allreduce = perform_fp16_allreduce
-    ort_parameters.data_parallel_size = data_parallel_size
-    ort_parameters.horizontal_parallel_size = horizontal_parallel_size
     output_types = {}
     for output in model.graph.output:
         output_types[output.name] = output.type.tensor_type
@@ -660,8 +658,6 @@ class ORTTrainer():
         self.session = None
         self.device_ = device
         self.gradient_accumulation_steps = gradient_accumulation_steps
-        self.data_parallel_size = data_parallel_size
-        self.horizontal_parallel_size = horizontal_parallel_size
         # we use self.current_step to count calls to train_step. It is used for gradient accumulation.
         # gradients are being accumulated when self.current_step is not divisible by gradient_accumulation_steps.
         # gradients are updated when self.current_step is divisible by gradient_accumulation_steps.
@@ -962,8 +958,7 @@ class ORTTrainer():
             # Otherwise next run with only_execute_path_to_fetches will lead to gradient all reduce
             # because all_fp32_gradients_finite is still in the feed.
             self.train_io_binding.clear_binding_outputs()
-            index = -5 if self.use_adasum else -2
-            all_finite = session_run_results[self.output_desc_with_all_fp_16_or_fp32_gradients_finite[index].name_]
+            all_finite = session_run_results[self.output_desc_with_all_fp_16_or_fp32_gradients_finite[-1].name_]
             if self.loss_scaler_ is not None:
                 self.loss_scaler_.update_loss_scale(all_finite)
             if all_finite:
@@ -975,8 +970,7 @@ class ORTTrainer():
 
         if fetches is not None:
             results = [session_run_results[fetch] for fetch in fetches]
-        else:
-            results = [session_run_results[output.name_] for output in output_desc]
+        elif has_if_all_finite and self.loss_scaler_ is None:
             # return descripted outputs plus the all_finite flag so that the training script can handle loss scaling.
             results = [session_run_results[output_desc.name_] for output_desc in self.output_desc_with_all_fp_16_or_fp32_gradients_finite]
         else:

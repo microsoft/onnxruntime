@@ -34,9 +34,6 @@ static Status CreateNcclCommunicator(MPI_Group* mpi_world_group,
                                      ncclComm_t* group_comm) {
   auto worker_group = training::DistributedRunContext::GetInstance().GetWorkerGroup(worker_group_type);
 
-  for (size_t i=0; i<worker_group.ranks.size(); i++)
-    std::cout<<" "<<worker_group.ranks[i]<<" "<<std::endl;
-
   // Create new group
   MPI_Group mpi_group;
   MPI_CHECK(MPI_Group_incl(*mpi_world_group, worker_group.ranks.size(), worker_group.ranks.data(), &mpi_group));

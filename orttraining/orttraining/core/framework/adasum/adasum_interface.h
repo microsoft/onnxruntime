@@ -18,9 +18,6 @@
 namespace onnxruntime {
 namespace training {
 
-// Initial temp buffer size for Adasum allreduce
-const size_t INITIAL_TEMP_BUFFER_SIZE = 64 * 1024 * 1024;
-
 static inline bool IsPowerOfTwo(ulong x)
 {
   return (x != 0) && ((x & (x - 1)) == 0);
