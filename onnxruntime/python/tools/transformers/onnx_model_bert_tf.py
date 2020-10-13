@@ -360,7 +360,7 @@ class BertOnnxModelTF(BertOnnxModel):
                 continue
             mask_concat = upper_mask_nodes[2]
             if len(mask_concat.input) == 3:
-                # Temporary work around
+                # Temporary work around[Tracy's model]: require 2-d mask input, the current model has a 3-d mask input
                 self.add_node(
                     helper.make_node("Concat", [mask_concat.input[0], mask_concat.input[2]], [mask_concat.output[0]],
                                      mask_concat.name + "_modified",
@@ -375,7 +375,7 @@ class BertOnnxModelTF(BertOnnxModel):
                                                                              add_q, add_k, add_v, parent.output[0],
                                                                              reshape_qkv.output[0])
                 if parent.op_type == 'Reshape':
-                    # Temporary work around
+                    # Temporary work around[Tracy's model]: we require the skiplayernorm and attention op be fed with 3-d input
                     hidden_size = numpy_helper.to_array(self.get_initializer(parent.input[1]))[1]
                     tensor = self.convert_list_to_tensor(parent.name + "_modified", TensorProto.INT64, [3],
                                                          [1, -1, hidden_size])
