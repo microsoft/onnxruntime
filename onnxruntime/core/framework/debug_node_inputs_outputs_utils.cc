@@ -204,12 +204,11 @@ const NodeDumpOptions& NodeDumpOptionsFromEnvironmentVariables() {
     }
 
     if (get_bool_env_var(env_vars::kAppendRankToFileName)) {
-      char const* tmp = Env::Default().GetEnvironmentVar("OMPI_COMM_WORLD_RANK");
-      if ( tmp == NULL ) {
+      std::string rank = Env::Default().GetEnvironmentVar("OMPI_COMM_WORLD_RANK");
+      if (rank.empty()) {
         opts.file_suffix = "_default_rank_0";
       } else {
-          std::string s(tmp);
-        opts.file_suffix = "_rank_" + s;
+        opts.file_suffix = "_rank_" + rank;
       }
     }
 
