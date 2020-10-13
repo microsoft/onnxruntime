@@ -45,6 +45,7 @@ struct OptimizerNodeConfig {
   bool use_fp16_moments{false};
   bool update_weight{true};  // indicates whether Optimizer should do weight update, or output new gradient
   bool enabled{true};        // indicates whether this weight is included in the Optimizer
+  bool megatron_partitioned{false};
 };
 
 // configuration for optimizer portion of graph

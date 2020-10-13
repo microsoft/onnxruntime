@@ -83,7 +83,7 @@ struct NodeDumpOptions {
 };
 
 // gets NodeDumpOptions instance configured from environment variable values
-const NodeDumpOptions& NodeDumpOptionsFromEnvironmentVariables();
+const NodeDumpOptions NodeDumpOptionsFromEnvironmentVariables();
 
 // dumps inputs for a node
 void DumpNodeInputs(

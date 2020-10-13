@@ -38,17 +38,22 @@ Status ReduceAllL2<TIn, TOut>::ComputeInternal(OpKernelContext* ctx) const {
   const auto total_tensor_count = ctx->InputCount();
   // We only have one tensor per group so
   // grouped_tensor_pointers[i] always contains only one element.
-  std::vector<std::vector<void*>> grouped_tensor_pointers(total_tensor_count);
-  std::vector<int> tensor_sizes(total_tensor_count);
+  std::vector<std::vector<void*>> grouped_tensor_pointers;
+  std::vector<int> tensor_sizes;
 
   for (int i = 0; i < total_tensor_count; ++i) {
+    if (ignore_mask_ & (1 << i)) {
+      continue;
+    }
     const Tensor* input = ctx->Input<Tensor>(i);
     const auto size = input->Shape().Size();
     ORT_ENFORCE(size <= std::numeric_limits<int>::max(), "Number of reduced elements (",
                 size, ") exceeds the max allowed value (", std::numeric_limits<int>::max(), ").");
-    grouped_tensor_pointers[i] = {const_cast<TIn*>(input->Data<TIn>())};
-    tensor_sizes[i] = static_cast<int>(size);
+    grouped_tensor_pointers.push_back({const_cast<TIn*>(input->Data<TIn>())});
+    tensor_sizes.push_back(static_cast<int>(size));
   }
+
+  const auto tensor_to_reduce_count = tensor_sizes.size();
 
   // Allocate output tensor.
   Tensor* output = ctx->Output(0, {});
@@ -59,7 +64,6 @@ Status ReduceAllL2<TIn, TOut>::ComputeInternal(OpKernelContext* ctx) const {
   bool deterministic = ctx_internal && ctx_internal->GetUseDeterministicCompute();
 
   if (!deterministic) {
-
     typedef MultiTensorReduceL2<CudaTIn, CudaTOut> TFunctor;
     TFunctor functor;
 
@@ -71,38 +75,36 @@ Status ReduceAllL2<TIn, TOut>::ComputeInternal(OpKernelContext* ctx) const {
     // *p_output is the squared sum of all elements.
     // Let's take a sqrt to get the actual L2-norm.
     ScalarSqrt(p_output, p_output);
-  }
-  else {
-
+  } else {
     // alternate path only for deterministic compute ..
     typedef AccType<CudaTOut> CudaTAcc;
 
     // find scratch buffer size needed by 'reduce_square_sum' for each tensor
     int scratch_size = 0;
-    for (int i = 0; i < total_tensor_count; ++i) {
+    for (int i = 0; i < tensor_to_reduce_count; ++i) {
       scratch_size = std::max(scratch_size, compute_reduction_buffer_size(sizeof(CudaTAcc), tensor_sizes[i]));
     }
 
     // enlarge scratch buffer size for 'reduce_sum' over tensor square norms
-    scratch_size = std::max(scratch_size, compute_reduction_buffer_size(sizeof(CudaTAcc), total_tensor_count));
+    scratch_size = std::max(scratch_size, compute_reduction_buffer_size(sizeof(CudaTAcc), tensor_to_reduce_count));
 
     // add head room for final output and square norms of each tensor
-    scratch_size += (1 + total_tensor_count)*sizeof(CudaTAcc);
+    scratch_size += (1 + tensor_to_reduce_count) * sizeof(CudaTAcc);
 
     // create GPU scratch space and zero target for each tensor square norm
     uint8_t* p_scratch = GetScratchBuffer<uint8_t>(scratch_size).get();
-    ORT_ENFORCE(cudaMemset(p_scratch, 0, sizeof(CudaTAcc)*(1 + total_tensor_count)) == cudaSuccess);
+    ORT_ENFORCE(cudaMemset(p_scratch, 0, sizeof(CudaTAcc) * (1 + tensor_to_reduce_count)) == cudaSuccess);
 
     CudaTAcc* p_global_sqnorm = reinterpret_cast<CudaTAcc*>(p_scratch);
     CudaTAcc* p_tensor_sqnorm = p_global_sqnorm + 1;
-    CudaTAcc* p_reduce_buffer = p_tensor_sqnorm + total_tensor_count;
- 
+    CudaTAcc* p_reduce_buffer = p_tensor_sqnorm + tensor_to_reduce_count;
+
     // perform reduction l2norm = sqrt[sum(tensor[i][j]**2)] for i,j over all tensor elements
-    for (int i = 0; i < total_tensor_count; ++i) {
+    for (int i = 0; i < tensor_to_reduce_count; ++i) {
       CudaTIn* p_tensor_i = reinterpret_cast<CudaTIn*>(grouped_tensor_pointers[i][0]);
       reduce_square_sum(p_tensor_i, p_tensor_sqnorm + i, tensor_sizes[i], p_reduce_buffer);
     }
-    reduce_sum(p_tensor_sqnorm, p_global_sqnorm, total_tensor_count, p_reduce_buffer);
+    reduce_sum(p_tensor_sqnorm, p_global_sqnorm, tensor_to_reduce_count, p_reduce_buffer);
     ScalarSqrt(p_global_sqnorm, p_output);
   }
 

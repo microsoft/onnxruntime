@@ -82,11 +82,16 @@ class OptimizerGraphBuilder {
       const bool allreduce_in_fp16,
       const bool fuse_scaling_outputs);
 
+  Status AddL2NormBetweenMegatronRanksNcclAllReduce(
+      ArgDef& norm_argdef,
+      GraphAugmenter::GraphDefs& graph_defs);
+
   Status AddGradientNorm(
       const NodeArgNameGeneratorFn& nodearg_name_generator,
       const std::vector<ArgDef>& grad_argdefs,
       GraphAugmenter::GraphDefs& graph_defs,
-      ArgDef& grad_norm_argdef);
+      ArgDef& grad_norm_argdef,
+      int64_t ignore_mask = 0);
 
   Status AddFiniteGradientCheck(
       const NodeArgNameGeneratorFn& nodearg_name_generator,
@@ -124,6 +129,8 @@ class OptimizerGraphBuilder {
   const OptimizerBuilderRegistry& opt_builder_registry_;
   const OptimizerGraphConfig opt_graph_config_;
   std::vector<std::string> weight_names_;
+  std::vector<size_t> megatron_partitioned_weight_grad_index_;
+  std::vector<size_t> zero_partitioned_weight_grad_index_;
   std::vector<std::string> gradient_names_;
   std::vector<OptimizerNodeConfig> opt_configs_;
 };

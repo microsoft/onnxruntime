@@ -61,6 +61,7 @@ Status SetupOptimizerParams(
     std::string w_n = weight_name;
     if (reversed_weight_names_map.find(w_n) != reversed_weight_names_map.end()) {
       w_n = reversed_weight_names_map.at(w_n);
+      opt_node_config.megatron_partitioned = true;
     }
     try {
       opt_node_config.attributes = optimizer_config.weight_attributes_generator(w_n);
@@ -247,21 +248,21 @@ Status TrainingSession::ConfigureForTraining(
   ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(trainable_initializers, config.graph_transformer_config,
                                                       config_result, IsRootNode(config)));
 
-  std::unordered_set<std::string> furthur_filtered_weight_to_train;
-  for (auto& filtered_weight_name : filtered_config_weight_names_to_train) {
+  std::unordered_set<std::string> all_weights;
+  for (auto& filtered_weight_name : trainable_initializers) {
     if (config_result.updated_weight_names.find(filtered_weight_name) !=
         config_result.updated_weight_names.end()) {
       auto& updated_weight_name = config_result.updated_weight_names.at(filtered_weight_name);
-      furthur_filtered_weight_to_train.insert(updated_weight_name);
+      all_weights.insert(updated_weight_name);
     } else {
-      furthur_filtered_weight_to_train.insert(filtered_weight_name);
+      all_weights.insert(filtered_weight_name);
     }
   }
 
   // derive actual set of weights to train
   std::unordered_set<std::string> weight_names_to_train =
-      !furthur_filtered_weight_to_train.empty()
-          ? furthur_filtered_weight_to_train
+      !all_weights.empty()
+          ? all_weights
           : GetTrainableModelInitializers(config.immutable_weights, loss_name);
 
   for (const auto& weight_name_to_not_train : config.weight_names_to_not_train) {
@@ -922,6 +923,21 @@ common::Status TrainingSession::Run(const RunOptions& run_options, IOBinding& io
       // Bind new feed to graph input.
       ORT_RETURN_IF_ERROR(io_binding.BindInput(new_feed.first, new_feed.second));
     }
+  }
+
+  int r = DistributedRunContext::RankInGroup(training::WorkerGroupType::HorizontalParallel);
+  static int a = 0;
+  if (r == 0 && a == 0) {
+    std::cout << "before first run saving " << std::endl;
+    Save("before_first_run_" + std::to_string(r) + ".onnx", SaveOption::NO_RELOAD);
+    a += 1;
+  }
+
+  static int b = 0;
+  if (r == 1 && b == 0) {
+    std::cout << "before first run saving " << std::endl;
+    Save("before_first_run_" + std::to_string(r) + ".onnx", SaveOption::NO_RELOAD);
+    b += 1;
   }
 
   // Call Run in inferenceSession

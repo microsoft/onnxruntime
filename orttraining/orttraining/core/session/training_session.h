@@ -460,6 +460,8 @@ class TrainingSession : public InferenceSession {
   bool is_configured_{false};
 
   std::unordered_set<std::string> weights_to_train_;
+  std::unordered_set<std::string> megatron_partitioned_weights_;
+  std::unordered_set<std::string> non_megatron_partitioned_weights_;
   // names of additional initializers to be included in checkpoints
   std::unordered_set<std::string> opt_state_initializer_names_;
   std::unordered_set<std::string> fp16_weight_initializer_names_;

@@ -1226,7 +1226,6 @@ Example 4:
               ->mutable_dim(axis)
               ->set_dim_value(split[i]);
         }
-
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ConcatTraining)
@@ -1306,7 +1305,6 @@ Example 4:
         if (all_lengths_known) {
           output_shape->mutable_dim(static_cast<int>(axis))->set_dim_value(total_length);
         }
-
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(TrainableDropout)
@@ -1699,8 +1697,8 @@ Example 4:
           "U",
           {"tensor(float)"},
           "Constrain mean and inv_std_var to float tensors.");
-  
-    ONNX_CONTRIB_OPERATOR_SCHEMA(T5LayerNormalizationGrad)
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(T5LayerNormalizationGrad)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
@@ -1926,6 +1924,10 @@ Return true if all elements are true and false otherwise.
       .SetDoc("Multi-tensor version of ReduceL2.")
       .Input(0, "X", "inputs", "TIn", OpSchema::Variadic)
       .Output(0, "Y", "output", "TOut")
+      .Attr("ignore_mask",
+            "Each bit being 1 represents whether we need ignore the inputs of corresponding index.",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
       .TypeConstraint(
           "TIn",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
