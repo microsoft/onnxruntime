@@ -1456,5 +1456,12 @@ IMPLEMENT_GRADIENT_BUILDER(GetExpandGradient) {
   return output;
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetExpGradient) {
+  return std::vector<NodeDef>{
+      NodeDef("Mul",
+              {GO(0), O(0)},
+              {GI(0)})};
+}
+
 }  // namespace training
 }  // namespace onnxruntime
