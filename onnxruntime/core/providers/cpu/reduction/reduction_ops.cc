@@ -462,55 +462,67 @@ void CommonReduce(OpKernelContext* ctx,
 
 template <typename T>
 Status ReduceL1<T>::Compute(OpKernelContext* ctx) const {
-  CommonReduce<T, ReduceAggregatorL1<T>>(ctx, axes_, keepdims_, last_results_);
+  // The following variable does not change if the input tensor and the
+  // axes do not either. It could be either cached in ctx or precomputed
+  // in the constructor if shape and axes are known at this stage.
+  ResultsNoTransposePrepareForReduce last_results;
+  CommonReduce<T, ReduceAggregatorL1<T>>(ctx, axes_, keepdims_, last_results);
   return Status::OK();
 }
 
 template <typename T>
 Status ReduceL2<T>::Compute(OpKernelContext* ctx) const {
-  CommonReduce<T, ReduceAggregatorL2<T>>(ctx, axes_, keepdims_, last_results_);
+  ResultsNoTransposePrepareForReduce last_results;
+  CommonReduce<T, ReduceAggregatorL2<T>>(ctx, axes_, keepdims_, last_results);
   return Status::OK();
 }
 
 template <typename T>
 Status ReduceLogSum<T>::Compute(OpKernelContext* ctx) const {
-  CommonReduce<T, ReduceAggregatorLogSum<T>>(ctx, axes_, keepdims_, last_results_);
+  ResultsNoTransposePrepareForReduce last_results;
+  CommonReduce<T, ReduceAggregatorLogSum<T>>(ctx, axes_, keepdims_, last_results);
   return Status::OK();
 }
 
 template <typename T>
 Status ReduceLogSumExp<T>::Compute(OpKernelContext* ctx) const {
-  CommonReduce<T, ReduceAggregatorLogSumExp<T>>(ctx, axes_, keepdims_, last_results_);
+  ResultsNoTransposePrepareForReduce last_results;
+  CommonReduce<T, ReduceAggregatorLogSumExp<T>>(ctx, axes_, keepdims_, last_results);
   return Status::OK();
 }
 
 template <typename T>
 Status ReduceMax<T>::Compute(OpKernelContext* ctx) const {
-  CommonReduce<T, ReduceAggregatorMax<T>>(ctx, axes_, keepdims_, last_results_);
+  ResultsNoTransposePrepareForReduce last_results;
+  CommonReduce<T, ReduceAggregatorMax<T>>(ctx, axes_, keepdims_, last_results);
   return Status::OK();
 }
 
 template <typename T>
 Status ReduceMean<T>::Compute(OpKernelContext* ctx) const {
-  CommonReduce<T, ReduceAggregatorMean<T>>(ctx, axes_, keepdims_, last_results_);
+  ResultsNoTransposePrepareForReduce last_results;
+  CommonReduce<T, ReduceAggregatorMean<T>>(ctx, axes_, keepdims_, last_results);
   return Status::OK();
 }
 
 template <typename T>
 Status ReduceMin<T>::Compute(OpKernelContext* ctx) const {
-  CommonReduce<T, ReduceAggregatorMin<T>>(ctx, axes_, keepdims_, last_results_);
+  ResultsNoTransposePrepareForReduce last_results;
+  CommonReduce<T, ReduceAggregatorMin<T>>(ctx, axes_, keepdims_, last_results);
   return Status::OK();
 }
 
 template <typename T>
 Status ReduceProd<T>::Compute(OpKernelContext* ctx) const {
-  CommonReduce<T, ReduceAggregatorProd<T>>(ctx, axes_, keepdims_, last_results_);
+  ResultsNoTransposePrepareForReduce last_results;
+  CommonReduce<T, ReduceAggregatorProd<T>>(ctx, axes_, keepdims_, last_results);
   return Status::OK();
 }
 
 template <typename T>
 Status ReduceSum<T>::Compute(OpKernelContext* ctx) const {
-  CommonReduce<T, ReduceAggregatorSum<T>>(ctx, axes_, keepdims_, last_results_);
+  ResultsNoTransposePrepareForReduce last_results;
+  CommonReduce<T, ReduceAggregatorSum<T>>(ctx, axes_, keepdims_, last_results);
   return Status::OK();
 }
 
@@ -557,26 +569,29 @@ Tensor ReduceSum<T>::Impl(const Tensor& input, const std::vector<int64_t>& reduc
 
 template <typename T>
 Status ReduceSumSquare<T>::Compute(OpKernelContext* ctx) const {
-  CommonReduce<T, ReduceAggregatorSumSquare<T>>(ctx, axes_, keepdims_, last_results_);
+  ResultsNoTransposePrepareForReduce last_results;
+  CommonReduce<T, ReduceAggregatorSumSquare<T>>(ctx, axes_, keepdims_, last_results);
   return Status::OK();
 }
 
 template <typename T>
 Status ArgMax<T>::Compute(OpKernelContext* ctx) const {
+  ResultsNoTransposePrepareForReduce last_results;
   if (select_last_index_) {
-    CommonReduce<T, ReduceAggregatorArgMaxLastIndex<T>>(ctx, axes_, keepdims_, last_results_);
+    CommonReduce<T, ReduceAggregatorArgMaxLastIndex<T>>(ctx, axes_, keepdims_, last_results);
   } else {
-    CommonReduce<T, ReduceAggregatorArgMax<T>>(ctx, axes_, keepdims_, last_results_);
+    CommonReduce<T, ReduceAggregatorArgMax<T>>(ctx, axes_, keepdims_, last_results);
   }
   return Status::OK();
 }
 
 template <typename T>
 Status ArgMin<T>::Compute(OpKernelContext* ctx) const {
+  ResultsNoTransposePrepareForReduce last_results;
   if (select_last_index_) {
-    CommonReduce<T, ReduceAggregatorArgMinLastIndex<T>>(ctx, axes_, keepdims_, last_results_);
+    CommonReduce<T, ReduceAggregatorArgMinLastIndex<T>>(ctx, axes_, keepdims_, last_results);
   } else {
-    CommonReduce<T, ReduceAggregatorArgMin<T>>(ctx, axes_, keepdims_, last_results_);
+    CommonReduce<T, ReduceAggregatorArgMin<T>>(ctx, axes_, keepdims_, last_results);
   }
   return Status::OK();
 }

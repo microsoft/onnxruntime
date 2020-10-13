@@ -337,12 +337,6 @@ class ReduceKernelBase {
   bool keepdims_;
   bool noop_with_empty_axes_;
   bool select_last_index_;
-
-  // The computation only depends off the input shape and the input axes.
-  // This cache assumes the same instance cannot be called from two different
-  // threads. It allows the operator to reuse the last computed output shape
-  // and the order of computation.
-  mutable ResultsNoTransposePrepareForReduce last_results_;
 };
 
 template <bool allow_multi_axes>

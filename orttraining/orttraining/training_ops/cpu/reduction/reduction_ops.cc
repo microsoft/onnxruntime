@@ -29,7 +29,8 @@ REGISTER_REDUCESUMTRAINING_KERNEL_TYPED(int64_t)
 
 template <typename T>
 Status ReduceSumTraining<T>::Compute(OpKernelContext* ctx) const {
-  CommonReduce<T, ReduceAggregatorSum<T>>(ctx, axes_, keepdims_, last_results_, noop_with_empty_axes_);
+  ResultsNoTransposePrepareForReduce last_results;
+  CommonReduce<T, ReduceAggregatorSum<T>>(ctx, axes_, keepdims_, last_results, noop_with_empty_axes_);
   return Status::OK();
 }
 
