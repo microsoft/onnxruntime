@@ -32,8 +32,6 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   ie_cnn_network_ = CreateCNNNetwork(model_proto, global_context_, subgraph_context_, const_outputs_map_);
   SetIODefs(model_proto, ie_cnn_network_, subgraph_context_.output_names, const_outputs_map_, global_context_.device_type);
 
-  InferenceEngine::ExecutableNetwork exe_network;
-
 #if defined(OPENVINO_2020_4) || defined(OPENVINO_2021_1)
   if(const_outputs_map_.size() == subgraph_context_.output_names.size())
     subgraph_context_.is_constant = true;
@@ -63,16 +61,6 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
     ORT_THROW(log_tag + " Exception while Loading Network for graph " + subgraph_context_.subgraph_name);
   }
   LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
-
-  // Create infer request
-  try {
-    infer_request_ = exe_network.CreateInferRequestPtr();
-  } catch (InferenceEngine::details::InferenceEngineException e) {
-    ORT_THROW(log_tag + " Exception while creating InferRequest object: " + e.what());
-  } catch (...) {
-    ORT_THROW(log_tag + "Exception while creating InferRequest object");
-  }
-  LOGS_DEFAULT(INFO) << log_tag << "Infer request created";
 }
 
 // Starts an asynchronous inference request for data in slice indexed by batch_slice_idx on
@@ -158,9 +146,18 @@ void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   // Preliminary Thread safety mechanism
   // Currently allows only one Infer execution at a time
 
+  size_t nireq = 4; // currently the value is hardcoded to 4
+  static InferRequestsQueue inferRequestsQueue(exe_network, nireq); // static InferRequestsQueue object created
+
+  //Requesting for infer_request_  from the pool
+  infer_request_ = inferRequestsQueue.getIdleRequest();
+  if (!infer_request_) {
+    THROW_IE_EXCEPTION << "No idle Infer Requests!";
+  }
+
   LOGS_DEFAULT(INFO) << log_tag << "Running graph " << subgraph_context_.subgraph_name;
   LOGS_DEFAULT(INFO) << log_tag << "In Infer";
-  std::lock_guard<std::mutex> lock(compute_lock_);
+  //std::lock_guard<std::mutex> lock(compute_lock_);
 
   if(subgraph_context_.is_constant){
 #if defined(OPENVINO_2020_4) || defined(OPENVINO_2021_1)
@@ -178,6 +175,9 @@ void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   }
   // Get Output tensors
   LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
+  //Once the inference is completed, the infer_request_ is free and placed back into pool of infer_request_'s
+  inferRequestsQueue.putIdleRequest(infer_request_); 
+  inferRequestsQueue.printstatus(); //Printing the current status of infer_request_'s available in the pool
 }
 
 }  // namespace openvino_ep
