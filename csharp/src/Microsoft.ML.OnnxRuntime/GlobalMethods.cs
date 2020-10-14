@@ -6,7 +6,8 @@ namespace Microsoft.ML.OnnxRuntime
     public static class GlobalMethods
     {
         /// <summary>
-        /// Enable platform telemetry (currently only certain Windows builds has telemetry collection capabilities)
+        /// Enable platform telemetry collection where applicable
+        /// (currently only official Windows ORT builds have telemetry collection capabilities)
         /// </summary>
         public static void EnableTelemetryEvents()
         {
@@ -15,7 +16,7 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Disable platform telemetry (currently only certain Windows builds has telemetry collection capabilities)
+        /// Disable platform telemetry collection
         /// </summary>
         public static void DisableTelemetryEvents()
         {
