@@ -111,7 +111,7 @@ struct SessionOptions {
   std::unordered_map<std::string, std::string> session_configurations;
   std::unordered_map<std::string, const OrtValue*> initializers_to_share_map;
 
-  size_t local_rank{0};
+  int local_rank{0};
 
   // See onnxruntime_c_api.h for detailed documentation.
   Status AddInitializer(const char* name, const OrtValue* val) noexcept;

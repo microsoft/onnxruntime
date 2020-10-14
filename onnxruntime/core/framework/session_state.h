@@ -83,7 +83,7 @@ class SessionState {
                const logging::Logger& logger,
                profiling::Profiler& profiler,
                bool use_deterministic_compute = false,
-               size_t local_rank = 0)
+               int local_rank = 0)
       : graph_(graph),
         execution_providers_(execution_providers),
         logger_(logger),
@@ -93,7 +93,8 @@ class SessionState {
         inter_op_thread_pool_(inter_op_thread_pool),
         data_transfer_mgr_(data_transfer_mgr),
         use_deterministic_compute_(use_deterministic_compute),
-        local_rank_(local_rank) {
+        local_rank_(local_rank),
+        memory_info_(local_rank) {
     SetupAllocators();
   }
 
@@ -401,8 +402,8 @@ class SessionState {
   // lock for the mem_patterns_
   mutable OrtMutex mem_patterns_lock_;
 
+  int local_rank_;
   MemoryInfo memory_info_;
-  size_t local_rank_;
 
   // cache for the generated mem_patterns. key is calculated based on input shapes.
   mutable std::map<int64_t, std::unique_ptr<MemoryPatternGroup>> mem_patterns_;

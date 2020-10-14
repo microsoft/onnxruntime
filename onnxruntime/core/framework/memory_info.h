@@ -131,7 +131,7 @@ class MemoryInfo {
     MemoryInfo& mem_info_;
   };
 
-  MemoryInfo() : profiler(*this), iteration_(0) {}
+  MemoryInfo(int local_rank) : profiler(*this), iteration_(0), local_rank_(local_rank){}
   void GenerateTensorMap(const SequentialExecutionPlan* execution_plan, const OrtValueNameIdxMap& value_name_idx_map);
   void RecordInitializerPatternInfo(const MemoryPatternGroup& mem_patterns);
   void RecordActivationPatternInfo(const MemoryPatternGroup& mem_patterns);
@@ -176,6 +176,7 @@ class MemoryInfo {
   static const int alignment = 256;
   size_t iteration_;
   size_t num_node_size_;
+  int local_rank_;
 
   //Memory Profile
 };
