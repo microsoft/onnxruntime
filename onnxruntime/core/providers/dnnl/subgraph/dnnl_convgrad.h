@@ -262,7 +262,7 @@ class DnnlConvGrad : public DnnlKernel {
     }
 
     conv_bwd_data_desc_ = onnxruntime::make_unique<dnnl::convolution_backward_data::desc>(
-        dnnl::convolution_backward_data::desc::desc(
+        dnnl::convolution_backward_data::desc(
           dnnl::algorithm::convolution_direct,
           *primitive_dst_md_,
           *weights_md_,
@@ -277,7 +277,7 @@ class DnnlConvGrad : public DnnlKernel {
             *conv_bwd_data_desc_, engine_to_use, *(conv_fwd_->GetPrimitiveDesc())));
 
     conv_bwd_weights_desc_ = onnxruntime::make_unique<dnnl::convolution_backward_weights::desc>(
-        dnnl::convolution_backward_weights::desc::desc(
+        dnnl::convolution_backward_weights::desc(
             dnnl::algorithm::convolution_direct,
             *src_md_,
             *diff_weights_md_,

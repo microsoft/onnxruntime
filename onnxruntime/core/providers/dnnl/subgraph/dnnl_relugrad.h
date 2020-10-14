@@ -112,9 +112,9 @@ class DnnlReluGrad : public DnnlKernel {
       ort_source_desc_ = dnnl::memory::desc(
           {xgrad_dims}, DnnnType<T>(), ort_source_format_);
       source_desc_ = ort_source_desc_;
-      diff_dist_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
+      diff_dst_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
           dnnl::memory::desc({xgrad_dims}, DnnnType<T>(), ort_source_format_));
-      diff_dist_mem_ = onnxruntime::make_unique<dnnl::memory>(
+      diff_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
           dnnl::memory({{xgrad_dims}, DnnnType<T>(), ort_source_format_}, engine_to_use, nullptr));
 
       // convert the onnx Tensor to dnnl::memory and dnnl::memory::desc
@@ -152,9 +152,9 @@ class DnnlReluGrad : public DnnlKernel {
       ort_source_desc_ = parents_[0].get()->ort_source_desc_;
       source_desc_ = parents_[0].get()->primitive_dst_desc_;
 
-      diff_dist_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
+      diff_dst_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
           dnnl::memory::desc(parents_[0].get()->primitive_dst_desc_));
-      diff_dist_mem_ = parents_[0].get()->primitive_dst_mem_;
+      diff_dst_mem_ = parents_[0].get()->primitive_dst_mem_;
       xgrad_shape = parents_[0].get()->primitive_dst_shape_;
 
       src_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
@@ -169,7 +169,7 @@ class DnnlReluGrad : public DnnlKernel {
     dnnl::algorithm algo = dnnl::algorithm::eltwise_relu;
 
     relu_bwd_desc_ = onnxruntime::make_unique<dnnl::eltwise_backward::desc>(
-        dnnl::eltwise_backward::desc(algo, *diff_dist_md_,*src_md_, 0.0, 0.0));
+        dnnl::eltwise_backward::desc(algo, *diff_dst_md_,*src_md_, 0.0, 0.0));
     relu_bwd_pd_ = onnxruntime::make_unique<dnnl::eltwise_backward::primitive_desc>(
         dnnl::eltwise_backward::primitive_desc(*relu_bwd_desc_, engine_to_use, *(relu_fwd_->GetPrimitiveDesc())));
 
@@ -198,7 +198,7 @@ class DnnlReluGrad : public DnnlKernel {
     net.push_back(*relugrad_bwd_);
 
     net_args.push_back({{DNNL_ARG_SRC, *src_mem_},
-                        {DNNL_ARG_DIFF_DST, *diff_dist_mem_},
+                        {DNNL_ARG_DIFF_DST, *diff_dst_mem_},
                         {DNNL_ARG_DIFF_SRC, *primitive_dst_mem_}});
 
     if (mklnode_ptr_->output_index >= 0) {
@@ -220,7 +220,7 @@ class DnnlReluGrad : public DnnlKernel {
       //
       const OrtValue* dx_input_tensor = ort.KernelContext_GetInput(context, input_index);
       const T* dx_data = const_cast<T*>(ort.GetTensorData<T>(dx_input_tensor));
-      diff_dist_mem_->set_data_handle(static_cast<void*>(const_cast<T*>(dx_data)));
+      diff_dst_mem_->set_data_handle(static_cast<void*>(const_cast<T*>(dx_data)));
       // Sub-graph's first node. Read input from input buffer
       const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index + 1);
       const T* src_data = const_cast<T*>(ort.GetTensorData<T>(input_tensor));
@@ -244,8 +244,8 @@ class DnnlReluGrad : public DnnlKernel {
 
  private:
   std::shared_ptr<DnnlRelu<T>> relu_fwd_;
-  std::shared_ptr<dnnl::memory> diff_dist_mem_;
-  std::unique_ptr<dnnl::memory::desc> diff_dist_md_;
+  std::shared_ptr<dnnl::memory> diff_dst_mem_;
+  std::unique_ptr<dnnl::memory::desc> diff_dst_md_;
 
   std::shared_ptr<dnnl::memory> src_mem_;
   std::unique_ptr<dnnl::memory::desc> src_md_;

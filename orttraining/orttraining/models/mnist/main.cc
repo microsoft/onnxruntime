@@ -37,15 +37,21 @@ using namespace onnxruntime::training::tensorboard;
 using namespace std;
 
 const static int NUM_CLASS = 10;
-const static vector<int64_t> IMAGE_DIMS = {1, 28, 28};  //{1, 28, 28} for mnist_conv
+const static vector<int64_t> IMAGE_DIMS_GEMM = {784}; // for mnist_gemm models
+const static vector<int64_t> IMAGE_DIMS_CONV = {1, 28, 28}; // for mnist_conv models
 const static vector<int64_t> LABEL_DIMS = {10};
 
-Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params) {
+struct MnistParameters : public TrainingRunner::Parameters {
+  std::string model_type;
+};
+
+Status ParseArguments(int argc, char* argv[], MnistParameters& params) {
   cxxopts::Options options("POC Training", "Main Program to train on MNIST");
   // clang-format off
   options
     .add_options()
       ("model_name", "model to be trained", cxxopts::value<std::string>())
+      ("model_type", "one of [gemm|conv] defaults gemm.", cxxopts::value<std::string>()->default_value("gemm"))
       ("train_data_dir", "MNIST training and test data path.",
         cxxopts::value<std::string>()->default_value("mnist_data"))
       ("log_dir", "The directory to write tensorboard events.",
@@ -170,6 +176,13 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
       params.providers.emplace(kDnnlExecutionProvider, CreateExecutionProviderFactory_Dnnl(1));
     }
 //#endif
+    std::string model_type = flags["model_type"].as<std::string>();
+    if (model_type == "gemm" || model_type == "conv") {
+      params.model_type = model_type;
+    } else {
+      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Incorrect command line for model_type: it must be one of [gemm|conv]");
+    }
+
   } catch (const exception& e) {
     const std::string msg = "Failed to parse the command line arguments";
     cerr << msg << ": " << e.what() << "\n"
@@ -183,7 +196,7 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
 int true_count = 0;
 float total_loss = 0.0f;
 
-void setup_training_params(TrainingRunner::Parameters& params) {
+void setup_training_params(MnistParameters& params) {
   params.model_path = ToPathString(params.model_name) + ORT_TSTR(".onnx");
   params.model_with_loss_func_path = ToPathString(params.model_name) + ORT_TSTR("_with_cost.onnx");
   params.model_with_training_graph_path = ToPathString(params.model_name) + ORT_TSTR("_bw.onnx");
@@ -268,7 +281,7 @@ int main(int argc, char* args[]) {
   ORT_ENFORCE(Environment::Create(nullptr, env).IsOK());
 
   // setup training params
-  TrainingRunner::Parameters params;
+  MnistParameters params;
   RETURN_IF_FAIL(ParseArguments(argc, args, params));
   setup_training_params(params);
 
@@ -278,7 +291,11 @@ int main(int argc, char* args[]) {
   auto trainingData = std::make_shared<DataSet>(feeds);
   auto testData = std::make_shared<DataSet>(feeds);
   std::string mnist_data_path = ToMBString(params.train_data_dir);
-  PrepareMNISTData(mnist_data_path, IMAGE_DIMS, LABEL_DIMS, *trainingData, *testData, MPIContext::GetInstance().GetWorldRank() /* shard_to_load */, device_count /* total_shards */);
+  if (params.model_type == "conv") {
+    PrepareMNISTData(mnist_data_path, IMAGE_DIMS_CONV, LABEL_DIMS, *trainingData, *testData, MPIContext::GetInstance().GetWorldRank() /* shard_to_load */, device_count /* total_shards */);
+  } else /* gemm */ {
+    PrepareMNISTData(mnist_data_path, IMAGE_DIMS_GEMM, LABEL_DIMS, *trainingData, *testData, MPIContext::GetInstance().GetWorldRank() /* shard_to_load */, device_count /* total_shards */);
+  }
 
   if (testData->NumSamples() == 0) {
     printf("Warning: No data loaded - run cancelled.\n");

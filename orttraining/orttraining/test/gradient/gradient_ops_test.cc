@@ -774,7 +774,7 @@ TEST(GradientCheckerTest, MaxPoolGradDnnl) {
                                            true, true,
                                            &execution_providers);
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
-    
+
   }
 
   //maxpool_2d_default
@@ -1017,9 +1017,12 @@ TEST(GradientCheckerTest, ConvGradDnnl) {
                                            MakeAttribute("dilations", std::vector<int64_t>{2, 2})},
                                           // TODO: ConvGrad does not handle the case where W does not have gradient.
                                           // Check for not has_gradient need to be disabled to pass this test.
-                                          false);
+                                          false,
+                                          false,
+                                          &execution_providers);
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
 }
+
       //conv_with_dialation
   {
     TensorShape x_shape({2, 1, 7, 5});
@@ -1032,7 +1035,9 @@ TEST(GradientCheckerTest, ConvGradDnnl) {
                                            MakeAttribute("dilations", std::vector<int64_t>{2, 2})},
                                           // TODO: ConvGrad does not handle the case where W does not have gradient.
                                           // Check for not has_gradient need to be disabled to pass this test.
-                                          false);
+                                          false,
+                                          false,
+                                          &execution_providers);
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 }

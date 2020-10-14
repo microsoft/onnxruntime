@@ -461,7 +461,6 @@ class DnnlConv : public DnnlKernel {
     auto xdim = tensor_shape.size();
 
     TensorShape W(xshape, xdim);
-    const T* filter_data = const_cast<T*>(ort.GetTensorData<T>(input_tensor));
 
     const int group_mkl = static_cast<int>(group_);
 
@@ -474,6 +473,7 @@ class DnnlConv : public DnnlKernel {
       filter_dims_mkl.insert(filter_dims_mkl.end(), W.GetDims().begin() + 1, W.GetDims().end());
     }
 
+    const T* filter_data = const_cast<T*>(ort.GetTensorData<T>(input_tensor));
     {
       // lock to make sure reordering is done only once
       std::lock_guard<OrtMutex> lock(provider_->GetMutex());
@@ -499,7 +499,12 @@ class DnnlConv : public DnnlKernel {
               .execute(dnnl_engine_gpu_, src, *filter_dst_mem);
         }
 
+    // Do not use cached weights if running training since weight is changed each iteration
+#ifndef ENABLE_TRAINING
         provider_->SetWeightsMemoryBuffer(mklnode_ptr_->weight_name, filter_dst_mem);
+#else
+        filter_dst_mem_ = filter_dst_mem;
+#endif // !ENABLE_TRAINING
       }
     }
   }
@@ -518,6 +523,8 @@ class DnnlConv : public DnnlKernel {
       const OrtValue* binput_tensor = ort.KernelContext_GetInput(context, input_index + 2);
       bias_data = const_cast<T*>(ort.GetTensorData<T>(binput_tensor));
     }
+    // Do not use cached weights if running training
+#ifndef ENABLE_TRAINING
     std::shared_ptr<dnnl::memory> filter_dst_mem = provider_->GetWeightsMemoryBuffer(mklnode_ptr_->weight_name);
     if (filter_dst_mem == nullptr) {
       ReorderWeights(api, context, dnnl_engine_cpu_);
@@ -530,8 +537,19 @@ class DnnlConv : public DnnlKernel {
 #ifdef USE_DNNL_GPU_OCL
       std::lock_guard<OrtMutex> lock(provider_->GetMutex());
       filter_mem_gpu_->set_ocl_mem_object(filter_dst_mem->get_ocl_mem_object());
-#endif
+#endif // USE_DNNL_GPU_OCL
     }
+#else // ENABLE_TRAINING
+    if (!gpu_available_) {
+      filter_data = static_cast<T*>(filter_dst_mem_->get_data_handle());
+      filter_mem_->set_data_handle(static_cast<void*>(const_cast<T*>(filter_data)));
+    } else if (gpu_available_) {
+#ifdef USE_DNNL_GPU_OCL
+      std::lock_guard<OrtMutex> lock(provider_->GetMutex());
+      filter_mem_gpu_->set_ocl_mem_object(filter_dst_mem_->get_ocl_mem_object());
+#endif // USE_DNNL_GPU_OCL
+    }
+#endif // ENABLE_TRAINING
 
     if (bias_data != nullptr) {
       bias_mem_->set_data_handle(static_cast<void*>(const_cast<T*>(bias_data)));
@@ -645,7 +663,9 @@ class DnnlConv : public DnnlKernel {
  private:
   dnnl::memory::desc filter_desc_;
   dnnl::memory::format_tag filter_format_;
-
+#ifdef ENABLE_TRAINING
+  std::shared_ptr<dnnl::memory> filter_dst_mem_;
+#endif
   std::shared_ptr<dnnl::memory> src_mem_from_;
   std::unique_ptr<dnnl::memory> src_mem_to_;
 

@@ -92,12 +92,12 @@ class DNNLExecutionProvider : public IExecutionProvider {
   // Note if the a DnnlKernel already exists this will replace the existing kernel with the
   // new kernel. This was done so the latest kernel is always placed in the map.
   void SetForwardKernel(onnxruntime::NodeIndex key, std::shared_ptr<ort_dnnl::DnnlKernel> kernel) {
-    fwd_kernal_map[key] = kernel;
+    fwd_kernal_map_[key] = kernel;
   }
 
   // Fetch the kerenel using the NodeIndex
   std::shared_ptr<ort_dnnl::DnnlKernel> GetForwardKernal(onnxruntime::NodeIndex key) {
-    return fwd_kernal_map.at(key);
+    return fwd_kernal_map_.at(key);
   }
 
   std::stack<std::shared_ptr<ort_dnnl::DnnlKernel>> fwd_conv_stack;
@@ -119,7 +119,7 @@ class DNNLExecutionProvider : public IExecutionProvider {
   // running in training mode.The backward Kernels need access the forward kernals; typically
   // to obtain the forward primitive description but it may be need for other items like
   // accessing workspace memory.
-  std::map<onnxruntime::NodeIndex, std::shared_ptr<ort_dnnl::DnnlKernel>> fwd_kernal_map;
+  std::map<onnxruntime::NodeIndex, std::shared_ptr<ort_dnnl::DnnlKernel>> fwd_kernal_map_;
 #endif
   // SUBGRAPH
  private:
@@ -164,9 +164,13 @@ class DNNLExecutionProvider : public IExecutionProvider {
       if (node_inputs[0]->Shape() != nullptr && node_inputs[0]->Shape()->dim_size() < 3) {
         supported = false;
       }
-
+      #ifdef ENABLE_TRAINING
       if (node->OutputDefs().size() > 2)
         supported = false;
+      #else
+      if (node->OutputDefs().size() > 1)
+        supported = false;
+      #endif
 
     }
     return supported;
@@ -194,7 +198,7 @@ class DNNLExecutionProvider : public IExecutionProvider {
 
  private:
   // supported Dnnl Operators
-  std::set<std::string> dnnl_ops_ = {/*"Conv", "ConvGrad",*/ "BatchNormalization", "Relu", "ReluGrad", "Sum",
+  std::set<std::string> dnnl_ops_ = {"Conv", "ConvGrad", "BatchNormalization", "Relu", "ReluGrad", "Sum",
                                      "AveragePool", "GlobalMaxPool", "GlobalAveragePool", "MaxPool", "MaxPoolGrad", "LRN"};
 
   mutable std::unordered_map<std::string, std::shared_ptr<ort_dnnl::Subgraph>> mkl_subgraphs_;

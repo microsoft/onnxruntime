@@ -71,9 +71,9 @@ class DnnlMaxPoolGrad : public DnnlKernel {
       source_desc_ = dnnl::memory::desc({xgrad_src_dims_mkl}, DnnnType<T>(), ort_source_format_);
 
       // reorder for better performance
-      dnnl::memory::format_tag diff_dist_format = GetAVXFormat(xgrad_src_dims_mkl);
-      diff_dist_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
-          dnnl::memory::desc({xgrad_src_dims_mkl}, DnnnType<T>(), diff_dist_format));
+      dnnl::memory::format_tag diff_dst_format = GetAVXFormat(xgrad_src_dims_mkl);
+      diff_dst_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
+          dnnl::memory::desc({xgrad_src_dims_mkl}, DnnnType<T>(), diff_dst_format));
     } else {
       // get the output of previous node (Dnnl block propagation).
       // TODO Sourcenode will set src of this node.
@@ -140,7 +140,7 @@ class DnnlMaxPoolGrad : public DnnlKernel {
     }*/
 
     bwd_desc_ = onnxruntime::make_unique<dnnl::pooling_backward::desc>(
-        dnnl::pooling_backward::desc(algo, *primitive_dst_md_, *diff_dist_md_,
+        dnnl::pooling_backward::desc(algo, *primitive_dst_md_, *diff_dst_md_,
                                      strides_mkl, kernel_mkl,
                                      padding_left_mkl, padding_right_mkl));
 	
@@ -150,11 +150,11 @@ class DnnlMaxPoolGrad : public DnnlKernel {
 
     if (mklnode_ptr_->parent_nodes.empty()) {
       // Sub-graph's first node. Read input from input buffer
-      diff_dist_mem_ = onnxruntime::make_unique<dnnl::memory>(
+      diff_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
           dnnl::memory(bwd_primitive_desc_.get()->diff_dst_desc(), engine_to_use, nullptr));
     } else {
       // Sub-graph's inner node. set input to parent's output
-      diff_dist_mem_ = parents_[0].get()->primitive_dst_mem_;
+      diff_dst_mem_ = parents_[0].get()->primitive_dst_mem_;
     }
 
     primitive_src_desc_ = bwd_primitive_desc_.get()->diff_src_desc();
@@ -169,22 +169,22 @@ class DnnlMaxPoolGrad : public DnnlKernel {
       auto pd = dnnl::memory::desc(source_desc_);
 
       if (mklnode_ptr_->parent_nodes.empty())
-        diff_dist_mem_from_ = onnxruntime::make_unique<dnnl::memory>(
+        diff_dst_mem_from_ = onnxruntime::make_unique<dnnl::memory>(
             dnnl::memory(pd, engine_to_use, nullptr));
       else
-        diff_dist_mem_from_ = parents_[0].get()->primitive_dst_mem_;
+        diff_dst_mem_from_ = parents_[0].get()->primitive_dst_mem_;
 
-      diff_dist_mem_ = onnxruntime::make_unique<dnnl::memory>(
+      diff_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
           dnnl::memory(bwd_primitive_desc_->diff_dst_desc(), engine_to_use, nullptr));
-      net.push_back(dnnl::reorder(*diff_dist_mem_from_, *diff_dist_mem_));
-      net_args.push_back({{DNNL_ARG_FROM, *diff_dist_mem_from_},
-                          {DNNL_ARG_TO, *diff_dist_mem_}});
+      net.push_back(dnnl::reorder(*diff_dst_mem_from_, *diff_dst_mem_));
+      net_args.push_back({{DNNL_ARG_FROM, *diff_dst_mem_from_},
+                          {DNNL_ARG_TO, *diff_dst_mem_}});
     } else {
       if (mklnode_ptr_->parent_nodes.empty()) {
-        diff_dist_mem_ = onnxruntime::make_unique<dnnl::memory>(
+        diff_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
             dnnl::memory(bwd_primitive_desc_->diff_dst_desc(), engine_to_use, nullptr));
       } else {
-        diff_dist_mem_ = parents_[0].get()->primitive_dst_mem_;
+        diff_dst_mem_ = parents_[0].get()->primitive_dst_mem_;
       }
     }
 
@@ -211,7 +211,7 @@ class DnnlMaxPoolGrad : public DnnlKernel {
 
     net.push_back(*pool_bwd_);
 
-    net_args.push_back({{DNNL_ARG_DIFF_DST, *diff_dist_mem_},
+    net_args.push_back({{DNNL_ARG_DIFF_DST, *diff_dst_mem_},
                         {DNNL_ARG_DIFF_SRC, *primitive_dst_mem_},
                         {DNNL_ARG_WORKSPACE, *src_mem_}});
 
@@ -229,25 +229,25 @@ class DnnlMaxPoolGrad : public DnnlKernel {
     ORT_RETURN_IF_ERROR(primitive_created_status_);
 
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
-    if (bwd_primitive_desc_.get()->diff_src_desc() != source_desc_) {
+    if (bwd_primitive_desc_.get()->diff_dst_desc() != source_desc_) {
       if (mklnode_ptr_->parent_nodes.empty()) {
         const OrtValue* dx_input_tensor = ort.KernelContext_GetInput(context, input_index);
         const T* dx_data = const_cast<T*>(ort.GetTensorData<T>(dx_input_tensor));
-        diff_dist_mem_from_->set_data_handle(static_cast<void*>(const_cast<T*>(dx_data)));
+        diff_dst_mem_from_->set_data_handle(static_cast<void*>(const_cast<T*>(dx_data)));
       } else {
-        diff_dist_mem_from_ = parents_[0].get()->primitive_dst_mem_;
+        diff_dst_mem_from_ = parents_[0].get()->primitive_dst_mem_;
       }
 
-      auto diff_dist_size = bwd_primitive_desc_.get()->diff_dst_desc().get_size();
-      src_reorder_buffer_ = IAllocator::MakeUniquePtr<void>(alloc_, diff_dist_size);
-      diff_dist_mem_->set_data_handle(src_reorder_buffer_.get());
+      auto diff_dst_size = bwd_primitive_desc_.get()->diff_dst_desc().get_size();
+      src_reorder_buffer_ = IAllocator::MakeUniquePtr<void>(alloc_, diff_dst_size);
+      diff_dst_mem_->set_data_handle(src_reorder_buffer_.get());
     } else {
       if (mklnode_ptr_->parent_nodes.empty()) {
         const OrtValue* dx_input_tensor = ort.KernelContext_GetInput(context, input_index);
-        const T* diff_dist_data = const_cast<T*>(ort.GetTensorData<T>(dx_input_tensor));
-        diff_dist_mem_->set_data_handle(static_cast<void*>(const_cast<T*>(diff_dist_data)));
+        const T* diff_dst_data = const_cast<T*>(ort.GetTensorData<T>(dx_input_tensor));
+        diff_dst_mem_->set_data_handle(static_cast<void*>(const_cast<T*>(diff_dst_data)));
       } else {
-        diff_dist_mem_ = parents_[0].get()->primitive_dst_mem_;
+        diff_dst_mem_ = parents_[0].get()->primitive_dst_mem_;
       }
     }
 
@@ -339,10 +339,10 @@ class DnnlMaxPoolGrad : public DnnlKernel {
   size_t dst_size_;
 
   std::shared_ptr<dnnl::memory> src_mem_;
-  std::shared_ptr<dnnl::memory> diff_dist_mem_;
+  std::shared_ptr<dnnl::memory> diff_dst_mem_;
 
   std::unique_ptr<dnnl::memory::desc> src_md_;
-  std::unique_ptr<dnnl::memory::desc> diff_dist_md_;
+  std::unique_ptr<dnnl::memory::desc> diff_dst_md_;
 
   std::unique_ptr<dnnl::pooling_forward::desc> fwd_desc_;
   std::shared_ptr<dnnl::pooling_forward::primitive_desc> fwd_primitive_desc_;
@@ -355,8 +355,8 @@ class DnnlMaxPoolGrad : public DnnlKernel {
   std::shared_ptr<dnnl::memory> src_mem_from_;
   std::unique_ptr<dnnl::memory> src_mem_to_;
 
-  std::shared_ptr<dnnl::memory> diff_dist_mem_from_;
-  std::unique_ptr<dnnl::memory> diff_dist_mem_to_;
+  std::shared_ptr<dnnl::memory> diff_dst_mem_from_;
+  std::unique_ptr<dnnl::memory> diff_dst_mem_to_;
 
   std::unique_ptr<dnnl::memory> dst_mem_from_;
   std::unique_ptr<dnnl::memory> dst_mem_to_;

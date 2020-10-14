@@ -9,16 +9,17 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/dnnl/dnnl_common.h"
 #include "core/providers/dnnl/subgraph/dnnl_conv.h"
-#include "core/providers/dnnl/subgraph/dnnl_convgrad.h"
 #include "core/providers/dnnl/subgraph/dnnl_batchnorm.h"
 #include "core/providers/dnnl/subgraph/dnnl_conv_batchnorm.h"
 #include "core/providers/dnnl/subgraph/dnnl_activations.h"
-#include "core/providers/dnnl/subgraph/dnnl_relugrad.h"
 #include "core/providers/dnnl/subgraph/dnnl_pool.h"
 #include "core/providers/dnnl/subgraph/dnnl_sum.h"
 #include "core/providers/dnnl/subgraph/dnnl_lrn.h"
+#ifdef ENABLE_TRAINING
+#include "core/providers/dnnl/subgraph/dnnl_convgrad.h"
+#include "core/providers/dnnl/subgraph/dnnl_relugrad.h"
 #include "core/providers/dnnl/subgraph/dnnl_maxpoolgrad.h"
-
+#endif // ENABLE_TRAINING
 
 namespace onnxruntime {
 namespace ort_dnnl {
@@ -82,20 +83,6 @@ class SubgraphPrimitive : public PrimitiveBase {
           kernel->parents_.push_back(context_.kernels[index]);
         }
         context_.kernels.push_back(kernel);
-      } else if (dnnl_node.name == "ConvGrad") {
-        std::ostringstream os;
-        os << "ConvGrad-" << dnnl_node.node_index << "-";
-        std::shared_ptr<DnnlConvGrad<T>> kernel;
-        kernel = std::make_shared<DnnlConvGrad<T>>(dnnl_node, params.provider, *params.attributes, os.str());
-
-        auto fwd_kernel = params.provider->fwd_conv_stack.top();
-        kernel->AddForwardDnnlKernel(std::dynamic_pointer_cast<DnnlConv<T>>(fwd_kernel));
-        params.provider->fwd_conv_stack.pop();
-
-        for (auto index : dnnl_node.parent_nodes) {
-          kernel->parents_.push_back(context_.kernels[index]);
-        }
-        context_.kernels.push_back(kernel);
       } else if (dnnl_node.name == "Conv-Relu") {
         std::ostringstream os;
         os << "Conv-" << dnnl_node.node_index << "-";
@@ -117,25 +104,6 @@ class SubgraphPrimitive : public PrimitiveBase {
         // onnxruntime\core\framwork\run_options.h
         params.provider->SetForwardKernel(dnnl_node.onnx_index, kernel);
 #endif
-        for (auto index : dnnl_node.parent_nodes) {
-          kernel->parents_.push_back(context_.kernels[index]);
-        }
-        context_.kernels.push_back(kernel);
-      } else if (dnnl_node.name == "ReluGrad") {
-        std::ostringstream os;
-        os << "ReluGrad-" << dnnl_node.node_index << "-";
-        std::shared_ptr<DnnlReluGrad<T>> kernel;
-        kernel = std::make_shared<DnnlReluGrad<T>>(dnnl_node, params.provider, *params.attributes, os.str());
-
-        // walk the input_nodes for this ReluGrad dnnl_node find the node index of the Relu input_node
-        // use that index to obtain the Relu kernel pointer from the fwd_kernal_map.
-        for (auto iter = dnnl_node.input_nodes.begin(); iter != dnnl_node.input_nodes.end(); ++iter) {
-          if (iter->op_type == "Relu") {
-            auto fwd_kernel = params.provider->GetForwardKernal(iter->index);
-            kernel->AddForwardDnnlKernel(std::dynamic_pointer_cast<DnnlRelu<T>>(fwd_kernel));
-          }
-        }
-
         for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
         }
@@ -183,25 +151,9 @@ class SubgraphPrimitive : public PrimitiveBase {
         os << "MaxPool-" << dnnl_node.node_index << "-";
         std::shared_ptr<DnnlPool<T>> kernel;
         kernel = std::make_shared<DnnlPool<T>>(dnnl_node, params.provider, *params.attributes, os.str());
+#ifdef ENABLE_TRAINING
         params.provider->SetForwardKernel(dnnl_node.onnx_index, kernel);
-        for (auto index : dnnl_node.parent_nodes) {
-          kernel->parents_.push_back(context_.kernels[index]);
-        }
-        params.provider->SetForwardKernel(dnnl_node.onnx_index, kernel);
-        context_.kernels.push_back(kernel);
-      } else if (dnnl_node.name == "MaxPoolGrad") {
-        std::ostringstream os;
-        os << "MaxPoolGrad-" << dnnl_node.node_index << "-";
-        std::shared_ptr<DnnlMaxPoolGrad<T>> kernel;
-        kernel = std::make_shared<DnnlMaxPoolGrad<T>>(dnnl_node, params.provider, *params.attributes, os.str());
-
-        for (auto iter = dnnl_node.input_nodes.begin(); iter != dnnl_node.input_nodes.end(); ++iter) {
-          if (iter->op_type == "MaxPool") {
-            auto fwd_kernel = params.provider->GetForwardKernal(iter->index);
-            kernel->AddForwardDnnlKernel(std::dynamic_pointer_cast<DnnlPool<T>>(fwd_kernel));
-          }
-        }
-
+#endif
         for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
         }
@@ -252,6 +204,59 @@ class SubgraphPrimitive : public PrimitiveBase {
         }
         context_.kernels.push_back(kernel);
       }
+#ifdef ENABLE_TRAINING
+      else if (dnnl_node.name == "ConvGrad") {
+        std::ostringstream os;
+        os << "ConvGrad-" << dnnl_node.node_index << "-";
+        std::shared_ptr<DnnlConvGrad<T>> kernel;
+        kernel = std::make_shared<DnnlConvGrad<T>>(dnnl_node, params.provider, *params.attributes, os.str());
+
+        auto fwd_kernel = params.provider->fwd_conv_stack.top();
+        kernel->AddForwardDnnlKernel(std::dynamic_pointer_cast<DnnlConv<T>>(fwd_kernel));
+        params.provider->fwd_conv_stack.pop();
+
+        for (auto index : dnnl_node.parent_nodes) {
+          kernel->parents_.push_back(context_.kernels[index]);
+        }
+        context_.kernels.push_back(kernel);
+      } else if (dnnl_node.name == "ReluGrad") {
+        std::ostringstream os;
+        os << "ReluGrad-" << dnnl_node.node_index << "-";
+        std::shared_ptr<DnnlReluGrad<T>> kernel;
+        kernel = std::make_shared<DnnlReluGrad<T>>(dnnl_node, params.provider, *params.attributes, os.str());
+
+        // walk the input_nodes for this ReluGrad dnnl_node find the node index of the Relu input_node
+        // use that index to obtain the Relu kernel pointer from the fwd_kernal_map.
+        for (auto iter = dnnl_node.input_nodes.begin(); iter != dnnl_node.input_nodes.end(); ++iter) {
+          if (iter->op_type == "Relu") {
+            auto fwd_kernel = params.provider->GetForwardKernal(iter->index);
+            kernel->AddForwardDnnlKernel(std::dynamic_pointer_cast<DnnlRelu<T>>(fwd_kernel));
+          }
+        }
+
+        for (auto index : dnnl_node.parent_nodes) {
+          kernel->parents_.push_back(context_.kernels[index]);
+        }
+        context_.kernels.push_back(kernel);
+      } else if (dnnl_node.name == "MaxPoolGrad") {
+        std::ostringstream os;
+        os << "MaxPoolGrad-" << dnnl_node.node_index << "-";
+        std::shared_ptr<DnnlMaxPoolGrad<T>> kernel;
+        kernel = std::make_shared<DnnlMaxPoolGrad<T>>(dnnl_node, params.provider, *params.attributes, os.str());
+
+        for (auto iter = dnnl_node.input_nodes.begin(); iter != dnnl_node.input_nodes.end(); ++iter) {
+          if (iter->op_type == "MaxPool") {
+            auto fwd_kernel = params.provider->GetForwardKernal(iter->index);
+            kernel->AddForwardDnnlKernel(std::dynamic_pointer_cast<DnnlPool<T>>(fwd_kernel));
+          }
+        }
+
+        for (auto index : dnnl_node.parent_nodes) {
+          kernel->parents_.push_back(context_.kernels[index]);
+        }
+        context_.kernels.push_back(kernel);
+      }
+#endif //ENABLE_TRAINING
     }
   }
 
@@ -292,10 +297,7 @@ class SubgraphPrimitivePool : public PrimitivePool<T> {
     for (auto i = 0; i < params.subgraph->dnnl_nodes[0].num_inputs; i++) {
       const OrtValue* input_tensor = ort.KernelContext_GetInput(context, i);
 
-	  if (i>0)
-        continue;
-      
-	  auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
+      auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
       auto tensor_shape = ort.GetTensorShape(tensor_info);
       ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
 
