@@ -480,6 +480,28 @@ MlasConvertHalfToFloatBuffer(
     );
 
 //
+// Transpose routines.
+//
+
+void
+MLASCALL
+MlasTranspose(
+    const uint8_t* Input,
+    uint8_t* Output,
+    size_t M,
+    size_t N
+    );
+
+void
+MLASCALL
+MlasTranspose(
+    const uint32_t* Input,
+    uint32_t* Output,
+    size_t M,
+    size_t N
+    );
+
+//
 // Buffer reordering routines.
 //
 
@@ -600,6 +622,30 @@ MlasRequantizeOutput(
     size_t M,
     size_t N,
     float Scale,
+    uint8_t ZeroPoint
+    );
+
+void
+MLASCALL
+MlasRequantizeOutputColumn(
+    const int32_t* Input,
+    uint8_t* Output,
+    const int32_t* Bias,
+    size_t M,
+    size_t N,
+    const float Scale,
+    uint8_t ZeroPoint
+    );
+
+void
+MLASCALL
+MlasRequantizeOutputColumn(
+    const int32_t* Input,
+    uint8_t* Output,
+    const int32_t* Bias,
+    size_t M,
+    size_t N,
+    const float* Scale,
     uint8_t ZeroPoint
     );
 

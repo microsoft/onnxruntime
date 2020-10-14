@@ -234,6 +234,24 @@ struct Im2col<T, StorageOrder::NHWC> {
       int64_t stride_w,
       T* data_col,
       T padding_value = 0);
+  void operator()(
+      const T* data_im,
+      int64_t channels,
+      int64_t input_h,
+      int64_t input_w,
+      int64_t kernel_h,
+      int64_t kernel_w,
+      int64_t dilation_h,
+      int64_t dilation_w,
+      int64_t pad_t,
+      int64_t pad_l,
+      int64_t stride_h,
+      int64_t stride_w,
+      int64_t output_w,
+      int64_t output_start,
+      int64_t output_count,
+      T* data_col,
+      T padding_value = 0);
 };
 
 template <typename T, int order>
