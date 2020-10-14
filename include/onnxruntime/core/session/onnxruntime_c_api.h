@@ -233,6 +233,7 @@ typedef enum OrtLanguageProjection {
   ORT_PROJECTION_PYTHON = 3,
   ORT_PROJECTION_JAVA = 4,
   ORT_PROJECTION_WINML = 5,
+  ORT_PROJECTION_NODEJS = 6,
 } OrtLanguageProjection;
 
 struct OrtKernelInfo;
