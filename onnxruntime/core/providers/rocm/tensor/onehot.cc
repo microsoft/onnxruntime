@@ -4,6 +4,8 @@
 #include "core/providers/rocm/tensor/onehot.h"
 #include "core/providers/cpu/tensor/onehot.h"
 
+using namespace onnxruntime::common;
+
 namespace onnxruntime {
 namespace rocm {
 

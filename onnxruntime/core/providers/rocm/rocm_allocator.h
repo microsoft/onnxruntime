@@ -7,10 +7,10 @@
 
 namespace onnxruntime {
 
-class HIPAllocator : public IDeviceAllocator {
+class HIPAllocator : public IAllocator {
  public:
   HIPAllocator(OrtDevice::DeviceId device_id, const char* name)
-      : IDeviceAllocator(
+      : IAllocator(
             OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
                           OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, device_id),
                           device_id, OrtMemTypeDefault)) {}
@@ -23,10 +23,10 @@ class HIPAllocator : public IDeviceAllocator {
 };
 
 //TODO: add a default constructor
-class HIPPinnedAllocator : public IDeviceAllocator {
+class HIPPinnedAllocator : public IAllocator {
  public:
   HIPPinnedAllocator(OrtDevice::DeviceId device_id, const char* name)
-      : IDeviceAllocator(
+      : IAllocator(
             OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
                           OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, device_id),
                           device_id, OrtMemTypeCPUOutput)) {}
