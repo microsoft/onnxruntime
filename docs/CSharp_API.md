@@ -102,19 +102,18 @@ Holds some static methods which can be used to tune the runime environment of OR
 ```cs
 void EnableTelemetryEvents();
 ```
-Enables platform-specific telemetry collection where applicable. Please see [Privacy](./Privacy.md) for more details.
-```
+Enables platform-specific telemetry collection where applicable. Please see [Privacy](./Privacy.md) for more details.    
 
 ```cs
 void DisableTelemetryEvents();
 ```
-Disables platform-specific telemetry collection. Please see [Privacy](./Privacy.md) for more details.
-```
+Disables platform-specific telemetry collection. Please see [Privacy](./Privacy.md) for more details.    
 
 ### InferenceSession
 ```cs
 class InferenceSession: IDisposable
 ```
+
 The runtime representation of an ONNX model
 
 #### Constructor
