@@ -329,4 +329,175 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
   }
   return Status::OK();
 }
+
+/**
+Layer Normalization will fuse LayerNormalization into one node :
+
+X --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mul
+|                                              ^
+|                                              |
++----------------------------------------------+
+*/
+Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
+  GraphViewer graph_viewer(graph);
+  const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
+  std::vector<std::reference_wrapper<Node>> nodes_to_remove;
+  for (auto node_index : node_topology_list) {
+    nodes_to_remove.clear();
+    auto* p_pow = graph.GetNode(node_index);
+    if (p_pow == nullptr)
+      continue;  // we removed the node as part of an earlier fusion
+
+    Node& pow_node = *p_pow;
+    ORT_RETURN_IF_ERROR(Recurse(pow_node, modified, graph_level, logger));
+
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(pow_node, "Pow", {7, 12, 13}) ||
+        !graph_utils::IsSupportedProvider(pow_node, GetCompatibleExecutionProviders()) ||
+        !optimizer_utils::CheckOutputEdges(graph, pow_node, 1) ||
+        !graph.GetNodeOutputsInGraphOutputs(pow_node).empty() ||
+        !IsSupportedDataType(pow_node)) {
+      continue;
+    }
+    nodes_to_remove.push_back(pow_node);
+
+    const Node* p_reduce_mean = nullptr;
+
+    p_reduce_mean = graph_utils::FirstChildByType(pow_node, "ReduceMean");
+    if (p_reduce_mean == nullptr) {
+      continue;
+    }
+    Node& reduce_mean_node = *graph.GetNode(p_reduce_mean->Index());
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(reduce_mean_node, "ReduceMean", {1, 11, 13}) ||
+        reduce_mean_node.GetExecutionProviderType() != pow_node.GetExecutionProviderType() ||
+        !optimizer_utils::CheckOutputEdges(graph, reduce_mean_node, 1) ||
+        !IsSupportedDataType(reduce_mean_node) ||
+        reduce_mean_node.GetInputEdgesCount() == 0) {
+      continue;
+    }
+    nodes_to_remove.push_back(reduce_mean_node);
+
+    const Node* p_add = graph_utils::FirstChildByType(reduce_mean_node, "Add");
+    if (p_add == nullptr) {
+      continue;
+    }
+    Node& add_node = *graph.GetNode(p_add->Index());
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(add_node, "Add", {7, 13}) ||
+        add_node.GetExecutionProviderType() != pow_node.GetExecutionProviderType() ||
+        !optimizer_utils::CheckOutputEdges(graph, add_node, 1) ||
+        !IsSupportedDataType(add_node)) {
+      continue;
+    }
+    nodes_to_remove.push_back(add_node);
+
+    const Node* p_sqrt = graph_utils::FirstChildByType(add_node, "Sqrt");
+    if (p_sqrt == nullptr) {
+      continue;
+    }
+    Node& sqrt_node = *graph.GetNode(p_sqrt->Index());
+
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(sqrt_node, "Sqrt", {6, 13}) ||
+        sqrt_node.GetExecutionProviderType() != pow_node.GetExecutionProviderType() ||
+        !optimizer_utils::CheckOutputEdges(graph, sqrt_node, 1) ||
+        !IsSupportedDataType(sqrt_node) ||
+        sqrt_node.GetInputEdgesCount() == 0) {
+      continue;
+    }
+    nodes_to_remove.push_back(sqrt_node);
+
+    const Node* p_div = graph_utils::FirstChildByType(sqrt_node, "Div");
+    if (p_div == nullptr) {
+      continue;
+    }
+    Node& div_node = *graph.GetNode(p_div->Index());
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(div_node, "Div", {7, 13}) ||
+        div_node.GetExecutionProviderType() != pow_node.GetExecutionProviderType() ||
+        !optimizer_utils::CheckOutputEdges(graph, div_node, 1) ||
+        !IsSupportedDataType(div_node)) {
+      continue;
+    }
+    nodes_to_remove.push_back(div_node);
+
+    const NodeArg* p_div_input = div_node.MutableInputDefs()[0];
+    const NodeArg* p_pow_input = pow_node.MutableInputDefs()[0];
+
+    if (p_div_input == nullptr || p_pow_input == nullptr ||
+        p_div_input != p_pow_input) {
+      continue;
+    }
+
+    // div --> mul
+    Node& mul_node = *graph.GetNode(div_node.OutputNodesBegin()->Index());
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(mul_node, "Mul", {7, 13}) ||
+        mul_node.GetExecutionProviderType() != pow_node.GetExecutionProviderType() ||
+        !IsSupportedDataType(mul_node)) {
+      continue;
+    }
+    nodes_to_remove.push_back(mul_node);
+
+    // get axes attributes
+    const onnxruntime::NodeAttributes& attributes = reduce_mean_node.GetAttributes();
+    std::vector<int64_t> axes_values;
+    if (attributes.find("axes") != attributes.end()) {
+      axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
+    }
+
+    // Get the inputs for the new LayerNormalization node.
+    // scale and bias could be multi-dims; we only support it for training at the moment
+    // because SkipLayerNorm kernel, for example, has dependency on single dim size
+    NodeArg* scale = nullptr;
+    for (size_t i = 0; i < mul_node.MutableInputDefs().size(); i++) {
+      if (graph_utils::NodeArgIsConstant(graph, *(mul_node.MutableInputDefs()[i])) ||
+          graph_utils::IsGraphInput(graph, mul_node.MutableInputDefs()[i])) {
+#ifdef ENABLE_TRAINING
+        if (axes_values.empty() ||
+            mul_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
+          scale = mul_node.MutableInputDefs()[i];
+        }
+#else
+        // Scale must be 1d.
+        if (mul_node.MutableInputDefs()[i]->Shape()->dim_size() == 1) {
+          scale = mul_node.MutableInputDefs()[i];
+        }
+#endif
+      }
+    }
+
+    if (scale == nullptr) {
+      continue;
+    }
+
+    const std::vector<NodeArg*> layer_norm_input_defs{pow_node.MutableInputDefs()[0], scale};
+    Node& layer_norm_node = graph.AddNode(graph.GenerateNodeName("SimplifiedLayerNormalization"),
+                                          "SimplifiedLayerNormalization",
+                                          "fused LayerNorm subgraphs ",
+                                          layer_norm_input_defs,
+                                          {}, {}, kOnnxDomain);
+
+    // Get constant "epsilon" from "Add" node if available. Else, default value will be used.
+    const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, add_node.MutableInputDefs()[1]->Name());
+    if (tensor_proto != nullptr &&
+        tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+      Initializer initializer{*tensor_proto, graph.ModelPath()};
+      layer_norm_node.AddAttribute("epsilon", initializer.data<float>()[0]);
+    } else {
+      layer_norm_node.AddAttribute("epsilon", DEFAULT_LAYERNORM_EPSILON);
+    }
+
+    // Assign provider to this new node. Provider should be same as the provider for old node.
+    layer_norm_node.SetExecutionProviderType(reduce_mean_node.GetExecutionProviderType());
+
+    // move input edges to add (first in list) across to the layer_norm_node.
+    // move output definitions and output edges from mul_node (last in list) to layer_norm_node.
+    // remove all the other nodes.
+    graph_utils::FinalizeNodeFusion(graph, nodes_to_remove, layer_norm_node);
+
+#ifdef ENABLE_TRAINING
+    // add one extra output def, so we have 2 output defs that match what gradient builder expected
+    layer_norm_node.MutableOutputDefs().push_back(&graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("saved_inv_std_var"), nullptr));
+#endif
+
+    modified = true;
+  }
+  return Status::OK();
+}
 }  // namespace onnxruntime

@@ -142,6 +142,15 @@ class Session:
         """
         return self._sess.end_profiling()
 
+    def get_profiling_start_time_ns(self):
+        """
+        Return the nanoseconds of profiling's start time
+        Comparable to time.monotonic_ns() after Python 3.3
+        On some platforms, this timer may not be as precise as nanoseconds
+        For instance, on Windows and MacOS, the precision will be ~100ns
+        """
+        return self._sess.get_profiling_start_time_ns
+
     def io_binding(self):
         "Return an onnxruntime.IOBinding object`."
         return IOBinding(self)
@@ -229,6 +238,7 @@ class InferenceSession(Session):
         self._model_meta = self._sess.model_meta
         self._providers = self._sess.get_providers()
         self._provider_options = self._sess.get_provider_options()
+        self._profiling_start_time_ns = self._sess.get_profiling_start_time_ns
 
     def _reset_session(self, providers, provider_options):
         "release underlying session object."
@@ -241,6 +251,7 @@ class InferenceSession(Session):
         self._model_meta = None
         self._providers = None
         self._provider_options = None
+        self._profiling_start_time_ns = None
 
         # create a new C.InferenceSession
         self._sess = None
