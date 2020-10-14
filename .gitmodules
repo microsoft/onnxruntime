@@ -1,6 +1,6 @@
 [submodule "cmake/external/protobuf"]
 	path = cmake/external/protobuf
-	url = https://github.com/google/protobuf.git
+	url = https://github.com/protocolbuffers/protobuf.git
 [submodule "cmake/external/googletest"]
 	path = cmake/external/googletest
 	url = https://github.com/google/googletest.git
