@@ -18,4 +18,4 @@ The Windows provider uses the [TraceLogging](https://docs.microsoft.com/en-us/wi
 
 Windows ML and onnxruntime C APIs allow Trace Logging to be turned on/off (see [API pages](../README.md#api-documentation) for details).
 For information on how to enable and disable telemetry, see [C API: Telemetry](./C_API.md#telemetry). 
-There are equivalent APIs in the C# and Python language bindings as well.
+There are equivalent APIs in the C#, Python, and Java language bindings as well.
