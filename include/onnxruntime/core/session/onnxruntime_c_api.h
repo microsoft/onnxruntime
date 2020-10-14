@@ -1043,6 +1043,8 @@ struct OrtApi {
   ORT_API2_STATUS(SetLanguageProjection, _In_ const OrtEnv* ort_env, _In_ OrtLanguageProjection projection);
 
   /**
+   * On some platforms, this timer may not be as precise as nanoseconds
+   * For instance, on Windows and MacOS, the precision will be ~100ns
    * \param out is set to the nanoseconds of profiling's start time
    */
   ORT_API2_STATUS(SessionGetProfilingStartTimeNs, _In_ const OrtSession* sess, _Outptr_ uint64_t* out);
