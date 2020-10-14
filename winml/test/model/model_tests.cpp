@@ -111,7 +111,7 @@ TEST_P(ModelTest, Run) {
 std::string GetTestDataPath() {
   std::string testDataPath(MAX_PATH, '\0');
   auto environmentVariableFetchSuceeded = GetEnvironmentVariableA("WINML_TEST_DATA_PATH", testDataPath.data(), MAX_PATH);
-  if (environmentVariableFetchSuceeded == 0 && GetLastError() == ERROR_ENVVAR_NOT_FOUND) {
+  if (environmentVariableFetchSuceeded == 0 && GetLastError() == ERROR_ENVVAR_NOT_FOUND || environmentVariableFetchSuceeded > MAX_PATH) {
     // if the WINML_TEST_DATA_PATH environment variable cannot be found, attempt to find the hardcoded models folder
     std::wstring modulePath = FileHelpers::GetModulePath();
     std::filesystem::path currPath = modulePath.substr(0,modulePath.find_last_of(L"\\"));
