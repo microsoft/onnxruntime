@@ -210,7 +210,7 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("attn_dropout_recompute", &TrainingParameters::attn_dropout_recompute)
       .def_readwrite("gelu_recompute", &TrainingParameters::gelu_recompute)
       .def_readwrite("transformer_layer_recompute", &TrainingParameters::transformer_layer_recompute)
-      .def_readwrite("number_recompute_layers", &TrainingParameters::number_recompute_layers);
+      .def_readwrite("number_recompute_layers", &TrainingParameters::number_recompute_layers)
       .def_readwrite("data_parallel_size", &TrainingParameters::data_parallel_size)
       .def_readwrite("horizontal_parallel_size", &TrainingParameters::horizontal_parallel_size)
       .def_readwrite("pipeline_parallel_size", &TrainingParameters::pipeline_parallel_size)
