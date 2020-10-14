@@ -2,7 +2,7 @@
 This script mainly focus on benchmarking ORT TensorRT EP performance compared with CUDA EP and standalone TensorRT. The metrics includes TensorRT EP performance gain, percentage of model operators and execution time that run on TensorRT EP.
 
 ## Usage
-You can use following command to run benchmark and validate prediction results:
+You can use following command to test whether models can be run using TensorRT and run benchmark:
 ```
 ./perf.sh
 ```
@@ -176,6 +176,12 @@ The output of running benchmark:
                        'Tensorrt_gain(%)': '54.94 %'}}
 
 ```
+## Others
+ort_build_latest.py: This script should be run before running the benchmark.py to make sure the latest ORT wheel file is being used.
+- **-o, --ort_master_path**: ORT master repo.
+- **-t, --tensorrt_home**: TensorRT home directory.
+- **-c, --cuda_home**: CUDA home directory.
 ## Dependencies
 - When inferencing model using CUDA float16, this script following script to convert nodes in model graph from float32 to float16. It also modifies the converting script a little bit to better cover more model graph conversion.
 https://github.com/microsoft/onnxconverter-common/blob/master/onnxconverter_common/float16.py
+

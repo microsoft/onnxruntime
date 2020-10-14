@@ -1384,8 +1384,6 @@ def parse_arguments():
 
     parser.add_argument("-m", "--model_source", required=False, default="model_list.json", help="Model source: (1) model list file (2) model directory.")
 
-    parser.add_argument("-s", "--symbolic_shape_infer", required=False, default=None, help="Path for symbolic_shape_infer.py")
-
     parser.add_argument("-r", "--running_mode", required=False, default="benchmark", choices=["validate", "benchmark"], help="Testing mode.")
 
     parser.add_argument("-i", "--input_data", required=False, default="fix", choices=["fix", "random"], help="Type of input data.")
@@ -1438,10 +1436,10 @@ def main():
         logger.info("Parsing model information from directory ...")
         parse_models_info_from_directory(args.model_source, models)
 
-    if args.symbolic_shape_infer:
-        os.environ["SYMBOLIC_SHAPE_INFER"] = args.symbolic_shape_infer 
-    else:
-        os.environ["SYMBOLIC_SHAPE_INFER"] = os.path.join(os.getcwd(), "symbolic_shape_infer.py")
+    if not os.path.exists("symbolic_shape_infer.py"):
+        p1 = subprocess.Popen(["sudo", "wget", "https://raw.githubusercontent.com/microsoft/onnxruntime/master/onnxruntime/python/tools/symbolic_shape_infer.py"])
+        p1.wait()
+    os.environ["SYMBOLIC_SHAPE_INFER"] = os.path.join(os.getcwd(), "symbolic_shape_infer.py")
 
     perf_start_time = datetime.now()
     success_results, model_to_latency, model_to_fail_ep, model_to_metrics = run_onnxruntime(args, models)
