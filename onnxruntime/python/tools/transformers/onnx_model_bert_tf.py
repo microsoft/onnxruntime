@@ -9,7 +9,7 @@ import sys
 import argparse
 import numpy as np
 from collections import deque
-from onnx import ModelProto, TensorProto, numpy_helper
+from onnx import ModelProto, TensorProto, numpy_helper, helper
 from onnx_model_bert import BertOnnxModel
 
 logger = logging.getLogger(__name__)
@@ -295,6 +295,112 @@ class BertOnnxModelTF(BertOnnxModel):
                 self.prune_graph()
                 break
 
+    def check_attention_input(self, matmul_q, matmul_k, matmul_v, parent, output_name_to_node):
+        for x in [matmul_q, matmul_k, matmul_v]:
+            root_input = x.input[0]
+            root_node = output_name_to_node[root_input]
+            if root_node == parent:
+                continue
+            logger.debug(f"Check attention input failed:{root_input}, {parent.output[0]}")
+            return False
+
+        return True
+
+    def fuse_attention(self):
+        output_name_to_node = self.output_name_to_node()
+
+        nodes_to_remove = []
+        attention_count = 0
+
+        skip_layer_norm_nodes = self.get_nodes_by_op_type("SkipLayerNormalization")
+        for normalize_node in skip_layer_norm_nodes:
+            # SkipLayerNormalization has two inputs, and one of them is the root input for attention.
+            parent = self.get_parent(normalize_node, 1)
+            if parent is None or parent.op_type not in ["SkipLayerNormalization", "LayerNormalization", "Reshape"]:
+                logger.debug("Failed to match parent of normalize_node")
+                continue
+
+            qkv_nodes = self.match_parent_path(normalize_node, ['Add', 'MatMul', 'Reshape', 'Transpose', 'MatMul'],
+                                               [0, 0, 0, 0, 0])
+            if qkv_nodes is None:
+                logger.debug("Failed to match qkv nodes")
+                continue
+            (add, matmul, reshape_qkv, transpose_qkv, matmul_qkv) = qkv_nodes
+            v_nodes = self.match_parent_path(matmul_qkv, ['Transpose', 'Reshape', 'Add', 'MatMul'], [1, 0, 0, 0])
+            if v_nodes is None:
+                logger.debug("Failed to match v path")
+                continue
+            (transpose_v, reshape_v, add_v, matmul_v) = v_nodes
+            qk_nodes = self.match_parent_path(matmul_qkv, ['Softmax', 'Add', "Mul", 'MatMul'], [0, 0, 0, 0])
+            if qk_nodes is None:
+                logger.debug("Failed to match qk_paths")
+                continue
+            (softmax_qk, add_qk, mul_qk, matmul_qk) = qk_nodes
+            q_nodes = self.match_parent_path(matmul_qk, ['Transpose', 'Reshape', 'Add', 'MatMul'], [0, 0, 0, 0])
+            if q_nodes is None:
+                logger.debug("Failed to match q path")
+                continue
+            (transpose_q, reshape_q, add_q, matmul_q) = q_nodes
+            k_nodes = self.match_parent_path(matmul_qk, ['Transpose', 'Reshape', 'Add', 'MatMul'], [1, 0, 0, 0])
+            if k_nodes is None:
+                logger.debug("Failed to match k path")
+                continue
+            (transpose_k, reshape_k, add_k, matmul_k) = k_nodes
+
+            mask_nodes = self.match_parent_path(add_qk, ['Mul', 'Sub', 'Unsqueeze'], [1, 0, 1])
+            if mask_nodes is None:
+                logger.debug("Failed to match mask path")
+                continue
+            if not self.has_constant_input(mask_nodes[1], 1):
+                logger.debug("Sub node expected to have an input with constant value 1.0.")
+                continue
+
+            upper_mask_nodes = self.match_parent_path(mask_nodes[2], ['Reshape', 'Cast', 'Concat'], [0, 1, 0])
+            if upper_mask_nodes is None:
+                continue
+            mask_concat = upper_mask_nodes[2]
+            if len(mask_concat.input) == 3:
+                # Temporary work around[Tracy's model]: require 2-d mask input, the current model has a 3-d mask input
+                self.add_node(
+                    helper.make_node("Concat", [mask_concat.input[0], mask_concat.input[2]], [mask_concat.output[0]],
+                                     mask_concat.name + "_modified",
+                                     axis=0))
+                self.remove_node(mask_concat)
+
+            is_same_root = self.check_attention_input(matmul_q, matmul_k, matmul_v, parent, output_name_to_node)
+            if is_same_root:
+                mask_index = self.attention_mask.process_mask(mask_nodes[-1].input[0])
+                logger.debug("Create an Attention node.")
+                attention_node = self.attention_fusion.create_attention_node(mask_index, matmul_q, matmul_k, matmul_v,
+                                                                             add_q, add_k, add_v, parent.output[0],
+                                                                             reshape_qkv.output[0])
+                if parent.op_type == 'Reshape':
+                    # Temporary work around[Tracy's model]: we require the skiplayernorm and attention op be fed with 3-d input
+                    hidden_size = numpy_helper.to_array(self.get_initializer(parent.input[1]))[1]
+                    tensor = self.convert_list_to_tensor(parent.name + "_modified", TensorProto.INT64, [3],
+                                                         [1, -1, hidden_size])
+                    self.add_initializer(tensor)
+                    parent.input[1] = parent.name + "_modified"
+
+                if attention_node is None:
+                    continue
+
+                self.add_node(attention_node)
+                attention_count += 1
+
+                nodes_to_remove.extend([reshape_qkv, transpose_qkv, matmul_qkv])
+                nodes_to_remove.extend(qk_nodes)
+                nodes_to_remove.extend(q_nodes)
+                nodes_to_remove.extend(k_nodes)
+                nodes_to_remove.extend(v_nodes)
+                nodes_to_remove.extend(mask_nodes)
+            else:
+                logger.debug("Root node not matched.")
+                continue
+        self.remove_nodes(nodes_to_remove)
+        self.update_graph()
+        logger.info(f"Fused Attention count:{attention_count}")
+
     def preprocess(self):
         self.remove_identity()
         self.process_embedding()
@@ -315,4 +421,5 @@ class BertOnnxModelTF(BertOnnxModel):
 
     def postprocess(self):
         self.remove_reshape_before_first_attention()
-        self.prune_graph()
+        # Temporary work around for the following comment as it will cause topological issues for a bert model
+        #self.prune_graph()
