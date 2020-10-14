@@ -815,6 +815,12 @@ void addGlobalMethods(py::module& m, const Environment& env) {
   m.def(
       "get_available_providers", []() -> const std::vector<std::string>& { return GetAvailableProviders(); },
       "Return list of available Execution Providers available in this installed version of Onnxruntime.");
+  m.def(
+      "enable_telemetry_events", []() -> void { platform_env.GetTelemetryProvider().EnableTelemetryEvents(); },
+      "Enables platform-specific telemetry collection where applicable.");
+  m.def(
+      "disable_telemetry_events", []() -> void { platform_env.GetTelemetryProvider().DisableTelemetryEvents(); },
+      "Disables platform-specific telemetry collection.");
 
 #ifdef USE_NUPHAR
   m.def("set_nuphar_settings", [](const std::string& str) {

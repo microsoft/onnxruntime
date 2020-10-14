@@ -165,6 +165,16 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
         [Fact]
+        public void EnablingAndDisablingTelemetryEventCollection()
+        {
+            GlobalMethods.DisableTelemetryEvents();
+
+            // no-op on non-Windows builds
+            // may be no-op on certain Windows builds based on build configuration
+            GlobalMethods.EnableTelemetryEvents();
+        }
+
+        [Fact]
         public void CanCreateAndDisposeSessionWithModelPath()
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
