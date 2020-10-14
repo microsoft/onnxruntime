@@ -929,6 +929,9 @@ target_link_libraries(onnxruntime_mlas_test PRIVATE ${onnxruntime_mlas_test_libs
 if(WIN32)
   target_link_libraries(onnxruntime_mlas_test PRIVATE debug Dbghelp Advapi32)
 endif()
+if (onnxruntime_LINK_LIBATOMIC)
+  target_link_libraries(onnxruntime_mlas_test PRIVATE atomic)
+endif()
 set_target_properties(onnxruntime_mlas_test PROPERTIES FOLDER "ONNXRuntimeTest")
 
 add_library(custom_op_library SHARED ${REPO_ROOT}/onnxruntime/test/testdata/custom_op_library/custom_op_library.cc)
