@@ -107,23 +107,21 @@ TEST_P(ModelTest, Run) {
   }
 }
 
-bool SetTestDataPath(char* testDataPath) {
-  GetEnvironmentVariableA("WINML_TEST_DATA_PATH", testDataPath, MAX_PATH);
-  if (testDataPath[0] == 0) {
-    auto hardcodedModelTestCollateralPath = FileHelpers::GetModulePath() + L"../models/";
-    printf("Need to set environment variable WINML_TEST_DATA_PATH. Trying to find hardcoded model path.. %ws", hardcodedModelTestCollateralPath.c_str());
-    if (std::filesystem::exists(hardcodedModelTestCollateralPath)) {
-      std::string hardcodedModelTestCollateralPathStr = _winml::Strings::UTF8FromUnicode(hardcodedModelTestCollateralPath.c_str(),
-                                                                                         hardcodedModelTestCollateralPath.length());
-      std::size_t length = hardcodedModelTestCollateralPathStr.copy(testDataPath, hardcodedModelTestCollateralPathStr.length());
-      testDataPath[length] = '\0';
-      return true;
-    } else {
-      return false;
+// Get the path of the model test collateral. Will return empty string if it doesn't exist.
+std::string GetTestDataPath() {
+  std::string testDataPath(MAX_PATH, '\0');
+  auto environmentVariableFetchSuceeded = GetEnvironmentVariableA("WINML_TEST_DATA_PATH", testDataPath.data(), MAX_PATH);
+  if (environmentVariableFetchSuceeded == 0 && GetLastError() == ERROR_ENVVAR_NOT_FOUND) {
+    // if the WINML_TEST_DATA_PATH environment variable cannot be found, attempt to find the hardcoded models folder
+    std::wstring modulePath = FileHelpers::GetModulePath();
+    std::filesystem::path currPath = modulePath.substr(0,modulePath.find_last_of(L"\\"));
+    std::filesystem::path parentPath = currPath.parent_path();
+    auto hardcodedModelPath = parentPath.string() + "\\models";
+    if (std::filesystem::exists(hardcodedModelPath) && hardcodedModelPath.length() <= MAX_PATH) {
+      return hardcodedModelPath;
     }
-  } else {
-    return true;
   }
+  return testDataPath;
 }
 
 // This function returns the list of all test cases inside model test collateral
@@ -134,8 +132,8 @@ static std::vector<ITestCase*> GetAllTestCases() {
   double relativePerSampleTolerance = 1e-3;
   std::unordered_set<std::basic_string<ORTCHAR_T>> allDisabledTests;
   std::vector<std::basic_string<PATH_CHAR_TYPE>> dataDirs;
-  char testDataPath[MAX_PATH];
-  if(!SetTestDataPath(testDataPath)) return tests;
+  auto testDataPath = GetTestDataPath();
+  if (testDataPath == "") return tests;
 
   for (auto& p : std::filesystem::directory_iterator(testDataPath)) {
     if (p.is_directory()) {
