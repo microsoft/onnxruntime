@@ -175,7 +175,7 @@ void setup_training_params(TrainingRunner::Parameters& params) {
   params.model_with_training_graph_path = ToPathString(params.model_name) + ORT_TSTR("_bw.onnx");
   params.model_actual_running_graph_path = ToPathString(params.model_name) + ORT_TSTR("_bw_running.onnx");
   params.output_dir = ORT_TSTR(".");
-
+  params.shuffle_data = false;
   //Gist encode
   params.model_gist_encode_path = ToPathString(params.model_name) + ORT_TSTR("_encode_gist.onnx");
   params.loss_func_info = LossFunctionInfo(OpDef("SoftmaxCrossEntropy", kMSDomain, 1),

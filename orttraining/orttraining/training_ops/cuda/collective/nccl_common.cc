@@ -38,25 +38,32 @@ static Status CreateNcclCommunicator(MPI_Group* mpi_world_group,
                           << worker_group.ToString();
     return Status::OK();
   }
-
+  std::cout<<"havenka debug: worker_group > 1"<< worker_group.ToString() << "\n";
   // Create new group
   MPI_Group mpi_group;
   MPI_CHECK(MPI_Group_incl(*mpi_world_group, worker_group.ranks.size(), worker_group.ranks.data(), &mpi_group));
+  std::cout<<"havenka debug: created new mpi group" << "\n";
 
   // Create new MPI communicator
   MPI_Comm mpi_comm;
   static int32_t mpi_group_id = 0;
   MPI_CHECK(MPI_Comm_create_group(MPI_COMM_WORLD, mpi_group, ++mpi_group_id, &(mpi_comm)));
   ORT_ENFORCE(mpi_comm != MPI_COMM_NULL, "MPI communicator creation failed.");
+  std::cout<<"havenka debug: MPI communicator creation success." << "\n";
 
   // Create new NCCL communicator
   ncclUniqueId nccl_id;
   if (worker_group.rank_in_group == 0) {
     NCCL_RETURN_IF_ERROR(ncclGetUniqueId(&nccl_id));
   }
+  std::cout<<"havenka debug: after nccl get uniqueid" << "\n";
+  std::cout<<"havenka debug: process id (long)getpid(): "<< (long)getpid() << ", (long)getppid(): " << (long)getppid() <<"\n";
+  //std::cout<< "havenka debug: thread id " <<std::this_thread::get_id()<<"\n";
+  //std::cout<< "havenka debug: thread id " <<std::this_thread::get_id()<<"\n";
+  std::cout<<"havenka debug: ncclCommInitRank : worker_group.ranks.size()" << worker_group.ranks.size() << " worker_group.rank_in_group = "<<  worker_group.rank_in_group<<"\n";
   MPI_CHECK(MPI_Bcast(&nccl_id, sizeof(nccl_id), MPI_BYTE, 0, mpi_comm));
   NCCL_RETURN_IF_ERROR(ncclCommInitRank(group_comm, worker_group.ranks.size(), nccl_id, worker_group.rank_in_group));
-
+  std::cout<<"havenka debug: ncclCommInitRank done" << "\n";
   // Clean up
   MPI_CHECK(MPI_Group_free(&mpi_group));
   MPI_CHECK(MPI_Comm_free(&mpi_comm));
@@ -78,6 +85,8 @@ NcclContext::NcclContext() {
   // Initialize Data Parallel Group NCCL Communicator
   auto ret = CreateNcclCommunicator(&mpi_world_group, training::WorkerGroupType::DataParallel,
                                     &data_group_comm_);
+  printf("return from CreateNcclCommunicator : ");
+  std::cout<<ret.ToString()<<"\n";
   ORT_ENFORCE(ret.IsOK());
 
   // Initialize Horizontal Model Parallel Group NCCL Communicator

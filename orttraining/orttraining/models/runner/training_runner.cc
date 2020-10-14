@@ -25,7 +25,8 @@
 #endif
 #include "single_include/nlohmann/json.hpp"
 #include "test/perftest/utils.h"
-
+#include "core/framework/debug_node_inputs_outputs_utils.h"
+#include <iomanip>
 using json = nlohmann::json;
 
 namespace onnxruntime {
@@ -532,6 +533,39 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
                                    VectorString& fetch_names,
                                    std::vector<MLValue>& feeds,
                                    std::vector<MLValue>& fetches) {
+
+  std::cout<<"feeds in RunWithUpdate are: ";
+  
+  for(unsigned int i=0;i< 1;i++){ //feeds.size()
+    auto te = feeds[i].GetMutable<Tensor>();
+
+    const auto& shape = te->Shape();
+    auto num_items = shape.Size();
+    size_t num_dims = shape.NumDimensions();
+    size_t num_rows = 1;
+    if (num_dims > 1) {
+      num_rows = static_cast<size_t>(shape[0]);
+    }
+
+    size_t row_size = num_items / num_rows;
+    //::onnxruntime::utils::DumpTensorToStdOut(tensor);
+    auto data = te->DataAsSpan<float>();
+    auto print_val = [](const float& value) {    
+      std::cout << std::setprecision(8) << value;
+    };
+
+    for (size_t row = 0; row < 1; ++row) {//num_rows
+      print_val(data[row * row_size]);
+      for (size_t i = 1; i < row_size; ++i) {//row_size
+        std::cout << ", ";
+        print_val(data[row * row_size + i]);
+      }
+      std::cout << "\n";
+    }
+
+    std::cout << std::endl;
+  }
+  //std::cout<<"\n";
   if (params_.pipeline_parallel_size > 1) {
     // Cyclically pick up a worker ID.
     const size_t worker_id = step_ % params_.pipeline_parallel_size;
@@ -649,6 +683,37 @@ void TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
                                       VectorString& fetch_names,
                                       std::vector<MLValue>& feeds,
                                       size_t& gradient_accumulation_step_count) {
+  std::cout<<"feeds in RunWithoutUpdate are: ";
+  for(unsigned int i=0;i< 1;i++){ //feeds.size()
+    auto te = feeds[i].GetMutable<Tensor>();
+
+    const auto& shape = te->Shape();
+    auto num_items = shape.Size();
+    size_t num_dims = shape.NumDimensions();
+    size_t num_rows = 1;
+    if (num_dims > 1) {
+      num_rows = static_cast<size_t>(shape[0]);
+    }
+
+    size_t row_size = num_items / num_rows;
+    //::onnxruntime::utils::DumpTensorToStdOut(tensor);
+    auto data = te->DataAsSpan<float>();
+    auto print_val = [](const float& value) {    
+      std::cout << std::setprecision(8) << value;
+    };
+
+    for (size_t row = 0; row < 1; ++row) {//num_rows
+      print_val(data[row * row_size]);
+      for (size_t i = 1; i < row_size; ++i) {//row_size
+        std::cout << ", ";
+        print_val(data[row * row_size + i]);
+      }
+      std::cout << "\n";
+    }
+
+    std::cout << std::endl;
+  }
+
   if (params_.pipeline_parallel_size > 1) {
     // Launch the graph using other threads when pipeline parallel is enabled.
 
