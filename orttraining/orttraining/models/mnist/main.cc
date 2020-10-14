@@ -71,6 +71,9 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
     }
     params.evaluation_period = flags["evaluation_period"].as<size_t>();
 
+    params.shuffle_data = false;
+    params.is_perf_test = false;
+
     auto train_data_dir = flags["train_data_dir"].as<std::string>();
     auto log_dir = flags["log_dir"].as<std::string>();
     params.train_data_dir.assign(train_data_dir.begin(), train_data_dir.end());
@@ -206,5 +209,7 @@ int main(int argc, char* args[]) {
   auto runner = onnxruntime::make_unique<TrainingRunner>(params, *env);
   RETURN_IF_FAIL(runner->Initialize());
   RETURN_IF_FAIL(runner->Run(training_data_loader.get(), test_data_loader.get()));
-  RETURN_IF_FAIL(runner->EndTraining(test_data_loader.get()));
+  // if (MPIContext::GetInstance().GetWorldRank() == device_count - 1) {
+    RETURN_IF_FAIL(runner->EndTraining(test_data_loader.get()));
+  // }
 }
