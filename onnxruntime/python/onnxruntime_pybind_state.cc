@@ -1690,6 +1690,9 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .def("end_profiling", [](PyInferenceSession* sess) -> std::string {
         return sess->GetSessionHandle()->EndProfiling();
       })
+      .def_property_readonly("get_profiling_start_time_ns", [](const PyInferenceSession* sess) -> uint64_t{
+        return sess->GetSessionHandle()->GetProfiling().GetStartTimeNs();
+      })
       .def("get_providers", [](PyInferenceSession* sess) -> const std::vector<std::string>& {
         return sess->GetSessionHandle()->GetRegisteredProviderTypes();
       })
