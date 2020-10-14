@@ -591,9 +591,16 @@ Status Transpose::Compute(OpKernelContext* ctx) const {
   return status;
 }
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Transpose,
     1,
+    12,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
+    Transpose);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    Transpose,
+    13,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
     Transpose);
 
