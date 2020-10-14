@@ -218,24 +218,6 @@ TEST(TransposeMatMulOpTest, FloatTypeScale) {
   RunFusedMatMulTest<float>("TransposeMatMul", 1, true, true, 4.0f, true);
 }
 
-TEST(TransposeMatMulOpTest, DeprecatedSchema) {
-  OpTester test("TransposeMatMul", 2, onnxruntime::kMSDomain);
-
-  std::vector<int64_t> input0_dims{3, 4};
-  std::vector<float> input0_vals{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
-
-  std::vector<int64_t> input1_dims{4, 3};
-  std::vector<float> input1_vals{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
-
-  test.AddInput<float>("A", input0_dims, input0_vals);
-  test.AddInput<float>("B", input1_dims, input1_vals);
-  test.AddOutput<float>("Y", {3, 3}, {42, 48, 54, 114, 136, 158, 186, 224, 262});
-
-  // TransposeMatMul is deprecated from version 2 onwards of ms domain.
-  test.Run(OpTester::ExpectResult::kExpectFailure);
-}
-
-
 }  // namespace transpose_matmul
 }  // namespace test
 }  // namespace onnxruntime

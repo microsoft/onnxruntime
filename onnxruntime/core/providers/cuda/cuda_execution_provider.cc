@@ -121,7 +121,8 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
       device_id_(info.device_id),
       cuda_mem_limit_(info.cuda_mem_limit),
       arena_extend_strategy_(info.arena_extend_strategy),
-      cudnn_conv_algo_(info.cudnn_conv_algo) {
+      cudnn_conv_algo_(info.cudnn_conv_algo),
+      do_copy_in_default_stream_(info.do_copy_in_default_stream) {
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
 
   // must wait GPU idle, otherwise cudaGetDeviceProperties might fail
@@ -1811,7 +1812,7 @@ static bool CastNeedFallbackToCPU(const onnxruntime::Node& node) {
 }
 
 std::unique_ptr<onnxruntime::IDataTransfer> CUDAExecutionProvider::GetDataTransfer() const {
-  return onnxruntime::make_unique<onnxruntime::GPUDataTransfer>();
+  return onnxruntime::make_unique<onnxruntime::GPUDataTransfer>(do_copy_in_default_stream_);
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>

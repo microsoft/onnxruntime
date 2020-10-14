@@ -130,6 +130,20 @@ Status Shaper::Squeeze(const std::string& input_name,
   SHAPER_FUNC(Squeeze, input_name, axes, output_name);
 }
 
+Status Shaper::ResizeUsingScales(const std::string& input_name,
+                                 const float scale_h, const float scale_w,
+                                 bool nchw,
+                                 const std::string& output_name) {
+  SHAPER_FUNC(ResizeUsingScales, input_name, scale_h, scale_w, nchw, output_name);
+}
+
+Status Shaper::ResizeUsingOutputSizes(const std::string& input_name,
+                                      const uint32_t output_h, const uint32_t output_w,
+                                      bool nchw,
+                                      const std::string& output_name) {
+  SHAPER_FUNC(ResizeUsingOutputSizes, input_name, output_h, output_w, nchw, output_name);
+}
+
 #undef SHAPER_FUNC
 
 Status Shaper::ConvImpl(const std::string& input_name,
@@ -380,6 +394,38 @@ Status Shaper::SqueezeImpl(const std::string& input_name,
       output_dimen.push_back(input_dimen[i]);
   }
 
+  shape_map_[output_name] = output_dimen;
+  return Status::OK();
+}
+
+Status Shaper::ResizeUsingScalesImpl(const std::string& input_name,
+                                     const float scale_h, const float scale_w,
+                                     bool nchw,
+                                     const std::string& output_name) {
+  Shape output_dimen = shape_map_.at(input_name);
+  if (nchw) {
+    output_dimen[2] *= scale_h;
+    output_dimen[3] *= scale_w;
+  } else {  // nhwc
+    output_dimen[1] *= scale_h;
+    output_dimen[2] *= scale_w;
+  }
+  shape_map_[output_name] = output_dimen;
+  return Status::OK();
+}
+
+Status Shaper::ResizeUsingOutputSizesImpl(const std::string& input_name,
+                                          const uint32_t output_h, const uint32_t output_w,
+                                          bool nchw,
+                                          const std::string& output_name) {
+  Shape output_dimen = shape_map_.at(input_name);
+  if (nchw) {
+    output_dimen[2] = output_h;
+    output_dimen[3] = output_w;
+  } else {  // nhwc
+    output_dimen[1] = output_h;
+    output_dimen[2] = output_w;
+  }
   shape_map_[output_name] = output_dimen;
   return Status::OK();
 }

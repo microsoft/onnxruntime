@@ -139,3 +139,9 @@ endif()
 if (onnxruntime_WINML_NAMESPACE_OVERRIDE STREQUAL "Windows")
   target_compile_definitions(onnxruntime_common PRIVATE "BUILD_INBOX=1")
 endif()
+
+# check if we need to link against libatomic due to std::atomic usage by the threadpool code
+# e.g. Raspberry Pi requires this
+if (onnxruntime_LINK_LIBATOMIC)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES atomic)
+endif()

@@ -1,9 +1,7 @@
 import numpy as np
-import onnx
 import onnxruntime
 import unittest
 
-from onnx import numpy_helper
 from helper import get_name
 
 class TestIOBinding(unittest.TestCase):

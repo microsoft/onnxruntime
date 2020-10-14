@@ -2,21 +2,15 @@
 # Licensed under the MIT License.
 
 import unittest
-import pytest
-import sys
-import copy
-from numpy.testing import assert_allclose, assert_array_equal
+from numpy.testing import assert_allclose
 
-import onnx
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from onnxruntime_test_ort_trainer import map_optimizer_attributes, ort_trainer_learning_rate_description
-from helper import get_name
 import onnxruntime
 from onnxruntime_test_training_unittest_utils import process_dropout
-from onnxruntime.capi.ort_trainer import ORTTrainer, IODescription, ModelDescription, LossScaler, generate_sample
+from onnxruntime.capi.ort_trainer import ORTTrainer, IODescription, ModelDescription
 
 torch.manual_seed(1)
 onnxruntime.set_seed(1)
@@ -66,7 +60,7 @@ class TestTrainingDropout(unittest.TestCase):
 
         eval_output = model.eval_step(input)
         assert_allclose(expected_eval_output, eval_output.item(), rtol=rtol, err_msg="dropout eval loss mismatch")
- 
+
         # Do another train step to make sure it's using original ratios
         train_output_2 = model.train_step(*input_args)
         assert_allclose(expected_training_output, train_output_2.item(), rtol=rtol, err_msg="dropout training loss 2 mismatch")
