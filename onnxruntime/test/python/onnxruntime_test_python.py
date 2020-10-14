@@ -42,7 +42,6 @@ class TestInferenceSession(unittest.TestCase):
         # may be no-op on certain Windows builds based on build configuration
         onnxrt.enable_telemetry_events()
 
-
     def testSetProviders(self):
         if 'CUDAExecutionProvider' in onnxrt.get_available_providers():
             sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
