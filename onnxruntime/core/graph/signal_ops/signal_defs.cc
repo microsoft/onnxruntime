@@ -22,7 +22,7 @@ void RegisterSignalSchemas() {
             "The number of dimension of the input signal."
             "Values can be 1, 2 or 3.",
             AttributeProto::AttributeType::AttributeProto_AttributeType_INT,
-            false)
+            static_cast<int64_t>(1))
       .Input(0,
              "input",
              "A complex signal of dimension signal_ndim."
@@ -46,7 +46,7 @@ void RegisterSignalSchemas() {
             "The number of dimension of the input signal."
             "Values can be 1, 2 or 3.",
             AttributeProto::AttributeType::AttributeProto_AttributeType_INT,
-            false)
+            static_cast<int64_t>(1))
       .Input(0,
              "input",
              "A complex signal of dimension signal_ndim."
@@ -74,8 +74,7 @@ void RegisterSignalSchemas() {
             static_cast<int64_t>(onnx::TensorProto_DataType::TensorProto_DataType_FLOAT))
       .Input(0,
              "size",
-             "An integral value indicating the length of the Hann Window. "
-             "The fist dimension is the batch dimension.",
+             "A scalar value indicating the length of the Hann Window.",
              "T1")
       .Output(0,
               "output",
@@ -95,8 +94,7 @@ void RegisterSignalSchemas() {
             static_cast<int64_t>(onnx::TensorProto_DataType::TensorProto_DataType_FLOAT))
       .Input(0,
              "size",
-             "An integral value indicating the length of the Hamming Window. "
-             "The fist dimension is the batch dimension.",
+             "A scalar value indicating the length of the Hamming Window.",
              "T1")
       .Output(0,
               "output",
@@ -108,7 +106,7 @@ void RegisterSignalSchemas() {
   MS_SIGNAL_OPERATOR_SCHEMA(BlackmanWindow)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetDoc(R"DOC(HannWindow)DOC")
+      .SetDoc(R"DOC(BlackmanWindow)DOC")
       .Attr("output_datatype",
             "The data type of the output tensor. "
             "Strictly must be one of the types from DataType enum in TensorProto.",
@@ -116,8 +114,7 @@ void RegisterSignalSchemas() {
             static_cast<int64_t>(onnx::TensorProto_DataType::TensorProto_DataType_FLOAT))
       .Input(0,
              "size",
-             "An integral value indicating the length of the Blackman Window. "
-             "The fist dimension is the batch dimension.",
+             "A scalar value indicating the length of the Blackman Window.",
              "T1")
       .Output(0,
               "output",
@@ -125,6 +122,43 @@ void RegisterSignalSchemas() {
               "T2")
       .TypeConstraint("T1", {"tensor(uint8)", "tensor(uint16)", "tensor(uint32)", "tensor(uint64)", "tensor(int8)", "tensor(int16)", "tensor(int32)", "tensor(int64)"}, "")
       .TypeConstraint("T2", {"tensor(float)", "tensor(float16)", "tensor(double)", "tensor(uint8)", "tensor(uint16)", "tensor(uint32)", "tensor(uint64)", "tensor(int8)", "tensor(int16)", "tensor(int32)", "tensor(int64)"}, "");
+
+  MS_SIGNAL_OPERATOR_SCHEMA(MelWeightMatrix)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC(MelWeightMatrix)DOC")
+      .Attr("output_datatype",
+            "The data type of the output tensor. "
+            "Strictly must be one of the types from DataType enum in TensorProto.",
+            AttributeProto::AttributeType::AttributeProto_AttributeType_INT,
+            static_cast<int64_t>(onnx::TensorProto_DataType::TensorProto_DataType_FLOAT))
+      .Input(0,
+             "num_mel_bins",
+             "The number of bands in the mel spectrum.",
+             "T1")
+      .Input(1,
+             "num_spectrogram_bins",
+             "The number of bins in the spectrogram. FFT size.",
+             "T1")
+      .Input(2,
+             "sample_rate",
+             "",
+             "T1")
+      .Input(3,
+             "lower_edge_hertz",
+             "",
+             "T2")
+      .Input(4,
+             "upper_edge_hertz",
+             "",
+             "T2")
+      .Output(0,
+              "output",
+              "The MEL Matrix",
+              "T3")
+      .TypeConstraint("T1", {"tensor(uint8)", "tensor(uint16)", "tensor(uint32)", "tensor(uint64)", "tensor(int8)", "tensor(int16)", "tensor(int32)", "tensor(int64)"}, "")
+      .TypeConstraint("T2", {"tensor(float)", "tensor(float16)", "tensor(double)", "tensor(uint8)", "tensor(uint16)", "tensor(uint32)", "tensor(uint64)", "tensor(int8)", "tensor(int16)", "tensor(int32)", "tensor(int64)"}, "")
+      .TypeConstraint("T3", {"tensor(float)", "tensor(float16)", "tensor(double)", "tensor(uint8)", "tensor(uint16)", "tensor(uint32)", "tensor(uint64)", "tensor(int8)", "tensor(int16)", "tensor(int32)", "tensor(int64)"}, "");
 }
 
 }  // namespace audio

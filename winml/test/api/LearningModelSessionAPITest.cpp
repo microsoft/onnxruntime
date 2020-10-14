@@ -406,12 +406,12 @@ static void TestWindowFunction(const wchar_t* window_operator) {
     using namespace winml_experimental;
     using Operator = winml_experimental::LearningModelOperator;
 
-    std::vector<int64_t> window_shape = { 1 };
+    std::vector<int64_t> scalar_shape = {};
     std::vector<int64_t> output_shape = {32};
     auto double_data_type = TensorInt32Bit::CreateFromArray(std::vector<int64_t>({1}), std::vector<int32_t>({7}));
     auto model = 
         LearningModelBuilder::Create()
-                .Inputs().Add(TensorFeatureDescriptor(L"Input", L"The input time domain signal", TensorKind::Int32, window_shape))
+                .Inputs().Add(TensorFeatureDescriptor(L"Input", L"The input time domain signal", TensorKind::Int32, scalar_shape))
                 .Outputs().Add(TensorFeatureDescriptor(L"Output", L"The output frequency domain spectra", TensorKind::Float, output_shape))
                 .Operators().Add(Operator(window_operator, L"window0", L"com.microsoft").SetInput(L"size", L"Input").SetOutput(L"output", L"Output"))//.SetAttribute(L"output_datatype", double_data_type))
                 .CreateModel();
@@ -420,7 +420,7 @@ static void TestWindowFunction(const wchar_t* window_operator) {
     LearningModelBinding binding(session);
 
     std::vector<int32_t> x = { 32 };
-    binding.Bind(L"Input", TensorInt32Bit::CreateFromShapeArrayAndDataArray(window_shape, x));
+    binding.Bind(L"Input", TensorInt32Bit::CreateFromShapeArrayAndDataArray(scalar_shape, x));
 
     // Evaluate
     auto result = session.Evaluate(binding, L"");

@@ -511,11 +511,12 @@ ORT_API_STATUS_IMPL(winmla::ModelAddInput, _In_ OrtModel* model, _In_ const char
   input.set_name(input_name);
 
   if (info->type == ONNXType::ONNX_TYPE_TENSOR) {
+    auto num_dims = info->data->shape.NumDimensions();
     CreateTypeProto_Tensor(
         input.mutable_type()->mutable_tensor_type(),
         input_name,
-        &info->data->shape[0],
-        info->data->shape.NumDimensions(),
+        (num_dims == 0) ? nullptr : &info->data->shape[0],
+        num_dims,
         ONNXTensorElementDataTypeToTensorProto_DataType(info->data->type));
   }
   return nullptr;

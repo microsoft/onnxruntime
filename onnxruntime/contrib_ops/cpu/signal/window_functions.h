@@ -4,36 +4,44 @@
 namespace onnxruntime {
 namespace contrib {
 
-class WindowFunctionBase : public OpKernel {
+class VariableOutputDataTypeBase : public OpKernel {
  protected:
   onnx::TensorProto_DataType data_type_;
 
  public:
-  WindowFunctionBase(const OpKernelInfo& info) : OpKernel(info) {
-    data_type_ = static_cast<onnx::TensorProto_DataType>(info.GetAttrOrDefault<int64_t>("border", onnx::TensorProto_DataType::TensorProto_DataType_FLOAT));
+  VariableOutputDataTypeBase(const OpKernelInfo& info) : OpKernel(info) {
+    data_type_ = static_cast<onnx::TensorProto_DataType>(info.GetAttrOrDefault<int64_t>("output_datatype", onnx::TensorProto_DataType::TensorProto_DataType_FLOAT));
   }
 };
 
-class HannWindow final : public WindowFunctionBase {
+class HannWindow final : public VariableOutputDataTypeBase {
  public:
-  explicit HannWindow(const OpKernelInfo& info) : WindowFunctionBase(info) {
+  explicit HannWindow(const OpKernelInfo& info) : VariableOutputDataTypeBase(info) {
   }
   Status Compute(OpKernelContext* ctx) const override;
 };
 
-class HammingWindow final : public WindowFunctionBase {
+class HammingWindow final : public VariableOutputDataTypeBase {
  public:
-  explicit HammingWindow(const OpKernelInfo& info) : WindowFunctionBase(info) {
+  explicit HammingWindow(const OpKernelInfo& info) : VariableOutputDataTypeBase(info) {
   }
   Status Compute(OpKernelContext* ctx) const override;
 };
 
-class BlackmanWindow final : public WindowFunctionBase {
+class BlackmanWindow final : public VariableOutputDataTypeBase {
  public:
-  explicit BlackmanWindow(const OpKernelInfo& info) : WindowFunctionBase(info) {
+  explicit BlackmanWindow(const OpKernelInfo& info) : VariableOutputDataTypeBase(info) {
   }
   Status Compute(OpKernelContext* ctx) const override;
 };
+
+class MelWeightMatrix final : public VariableOutputDataTypeBase {
+ public:
+  explicit MelWeightMatrix(const OpKernelInfo& info) : VariableOutputDataTypeBase(info) {
+  }
+  Status Compute(OpKernelContext* ctx) const override;
+};
+
 
 }  // namespace contrib
 }  // namespace onnxruntime

@@ -46,6 +46,18 @@ ONNX_OPERATOR_KERNEL_EX(
     BlackmanWindow);
 
 
+ONNX_OPERATOR_KERNEL_EX(
+    MelWeightMatrix,
+    kMSDomain,
+    1,
+    kCpuExecutionProvider,
+    KernelDefBuilder().MayInplace(0, 0)
+        .TypeConstraint("T1", BuildKernelDefConstraints<uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t>())
+        .TypeConstraint("T2", BuildKernelDefConstraints<float, double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t>())
+        .TypeConstraint("T3", BuildKernelDefConstraints<float, double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t>()),
+    MelWeightMatrix);
+
+
 template <typename T>
 static Status cosine_sum_window(Tensor* Y, size_t size, float a0, float a1, float a2) {
   auto* Y_data = reinterpret_cast<T*>(Y->MutableDataRaw());
@@ -71,40 +83,36 @@ static Status create_cosine_sum_window(
     onnx::TensorProto_DataType output_datatype,
     float a0, float a1, float a2) {
 
-  const auto* X = ctx->Input<Tensor>(0);
-  const auto& X_shape = X->Shape();
+  const auto* size_tensor = ctx->Input<Tensor>(0);
+  ORT_ENFORCE(size_tensor->Shape().Size() == 1, "ratio input should have a single value.");
 
-  int64_t X_num_dims = static_cast<int64_t>(X_shape.NumDimensions());
-  ORT_ENFORCE(X_num_dims == 1, "HannWindow input size must be a single integral value");
-  ORT_ENFORCE(X_shape[0] == 1, "HannWindow input size must be a single integral value");
-
-  auto input_data_type = X->DataType()->AsPrimitiveDataType()->GetDataType();
+  auto input_data_type = size_tensor->DataType()->AsPrimitiveDataType()->GetDataType();
 
   size_t size;
   switch (input_data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_INT8:
-      size = *reinterpret_cast<const int8_t*>(X->DataRaw());
+      size = *reinterpret_cast<const int8_t*>(size_tensor->DataRaw());
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_INT16:
-      size = *reinterpret_cast<const int16_t*>(X->DataRaw());
+      size = *reinterpret_cast<const int16_t*>(size_tensor->DataRaw());
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-      size = *reinterpret_cast<const int32_t*>(X->DataRaw());
+      size = *reinterpret_cast<const int32_t*>(size_tensor->DataRaw());
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-      size = *reinterpret_cast<const int64_t*>(X->DataRaw());
+      size = *reinterpret_cast<const int64_t*>(size_tensor->DataRaw());
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
-      size = *reinterpret_cast<const uint8_t*>(X->DataRaw());
+      size = *reinterpret_cast<const uint8_t*>(size_tensor->DataRaw());
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_UINT16:
-      size = *reinterpret_cast<const uint16_t*>(X->DataRaw());
+      size = *reinterpret_cast<const uint16_t*>(size_tensor->DataRaw());
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
-      size = *reinterpret_cast<const uint32_t*>(X->DataRaw());
+      size = *reinterpret_cast<const uint32_t*>(size_tensor->DataRaw());
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
-      size = *reinterpret_cast<const uint64_t*>(X->DataRaw());
+      size = *reinterpret_cast<const uint64_t*>(size_tensor->DataRaw());
       break;
     default:
       ORT_THROW("Unsupported input data type of ", input_data_type);
@@ -170,6 +178,10 @@ Status BlackmanWindow::Compute(OpKernelContext* ctx) const {
   float a0 = .5f - a2;
   float a1 = .5f;
   return create_cosine_sum_window(ctx, data_type_, a0, a1, a2);
+}
+
+Status MelWeightMatrix::Compute(OpKernelContext* ctx) const {
+  return Status::OK();
 }
 
 }  // namespace contrib
