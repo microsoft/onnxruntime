@@ -12,6 +12,7 @@
 #include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/framework/mpi_context.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
+#include "orttraining/core/framework/FileStore.hpp"
 
 namespace onnxruntime {
 namespace python {
@@ -19,6 +20,9 @@ namespace py = pybind11;
 using namespace onnxruntime;
 using namespace onnxruntime::logging;
 using namespace onnxruntime::training;
+
+template <typename T>
+using shared_ptr_class_ = py::class_<T, std::shared_ptr<T>>;
 
 struct TrainingParameters {
   std::string loss_output_name;
@@ -324,6 +328,113 @@ void addObjectMethodsForTraining(py::module& m) {
       .def("is_output_fp32_node", [](PyTrainingSession* sess, const std::string& output_name) {
         return static_cast<TrainingSession*>(sess->GetSessionHandle())->IsGraphOutputFp32Node(output_name);
       });
+
+  // PythonStore is a pybind11 trampoline class to allow a Python
+  // class to inherit from c10d.Store and implement its interface.
+  class PythonStore : public ::c10d::Store {
+  public:
+    using ::c10d::Store::Store;
+
+    // Note: this function manually calls the Python-side overload
+    // for this function instead of using the PYBIND11_OVERLOAD_XYZ
+    // macros. This is done so that we can call the Python-side
+    // function with a std::string instead of a std::vector<uint8_t>.
+    void set(const std::string& key, const std::vector<uint8_t>& value) override {
+      pybind11::gil_scoped_acquire gil;
+      pybind11::function fn =
+          pybind11::get_overload(static_cast<const ::c10d::Store*>(this), "set");
+      // TORCH_INTERNAL_ASSERT(fn);
+      // Call function with a py::bytes object for the value.
+      fn(key,
+        py::bytes(reinterpret_cast<const char*>(value.data()), value.size()));
+    }
+
+    // Note: this function manually calls the Python-side overload
+    // for this function instead of using the PYBIND11_OVERLOAD_XYZ
+    // macros. This is done so that the Python-side function can
+    // return a py::bytes instead of a std::vector<uint8_t>.
+    std::vector<uint8_t> get(const std::string& key) override {
+      pybind11::gil_scoped_acquire gil;
+      pybind11::function fn =
+          pybind11::get_overload(static_cast<const ::c10d::Store*>(this), "get");
+      // TORCH_INTERNAL_ASSERT(fn);
+      // Cast return value from Python to py::bytes, then implicitly
+      // convert that to a std::string, so that we can construct a
+      // std::vector<uint8_t>. There is no API for directly accessing
+      // the contents of the py::bytes object.
+      std::string str = pybind11::cast<py::bytes>(fn(key));
+      return std::vector<uint8_t>(str.begin(), str.end());
+    }
+
+    int64_t add(const std::string& key, int64_t value) override {
+      PYBIND11_OVERLOAD_PURE(int64_t, ::c10d::Store, add, key, value);
+    }
+
+    bool check(const std::vector<std::string>& keys) override {
+      PYBIND11_OVERLOAD_PURE(bool, ::c10d::Store, check, keys);
+    }
+
+    void wait(const std::vector<std::string>& keys) override {
+      PYBIND11_OVERLOAD_PURE(void, ::c10d::Store, wait, keys);
+    }
+
+    void wait(
+        const std::vector<std::string>& keys,
+        const std::chrono::milliseconds& timeout) override {
+      PYBIND11_OVERLOAD_PURE(void, ::c10d::Store, wait, keys, timeout);
+    }
+  };
+
+  auto store =
+      py::class_<::c10d::Store, std::shared_ptr<::c10d::Store>, PythonStore>(
+          m, "Store")
+          // Default constructor.
+          .def(py::init<>())
+          // Convert from std::string to std::vector<uint8>.
+          .def(
+              "set",
+              [](::c10d::Store& store,
+                 const std::string& key,
+                 const std::string& value) {
+                std::vector<uint8_t> value_(value.begin(), value.end());
+                store.set(key, value_);
+              },
+              py::call_guard<py::gil_scoped_release>())
+          // Convert from std::vector<uint8_t> to py::bytes.
+          // The returned value is not guaranteed to be valid UTF-8.
+          .def(
+              "get",
+              [](::c10d::Store& store, const std::string& key) -> py::bytes {
+                auto value = store.get(key);
+                return py::bytes(
+                    reinterpret_cast<char*>(value.data()), value.size());
+              },
+              py::call_guard<py::gil_scoped_release>())
+          .def(
+              "add",
+              &::c10d::Store::add,
+              py::call_guard<py::gil_scoped_release>())
+          .def(
+              "set_timeout",
+              &::c10d::Store::setTimeout,
+              py::call_guard<py::gil_scoped_release>())
+          .def(
+              "wait",
+              [](::c10d::Store& store, const std::vector<std::string>& keys) {
+                store.wait(keys);
+              },
+              py::call_guard<py::gil_scoped_release>())
+          .def(
+              "wait",
+              [](::c10d::Store& store,
+                 const std::vector<std::string>& keys,
+                 const std::chrono::milliseconds& timeout) {
+                store.wait(keys, timeout);
+              },
+              py::call_guard<py::gil_scoped_release>());
+
+  shared_ptr_class_<::c10d::FileStore>(m, "FileStore", store)
+      .def(py::init<const std::string&, int>());
 }
 }  // namespace python
 }  // namespace onnxruntime

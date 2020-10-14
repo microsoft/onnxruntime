@@ -6,6 +6,7 @@
 #include <cassert>
 
 #include "core/common/common.h"
+#include "FileStore.hpp"
 
 namespace onnxruntime {
 namespace training {
@@ -103,6 +104,8 @@ class DistributedRunContext {
     return groups_[group_type];
   }
 
+  c10d::FileStore* Store() { return &file_store_; }
+
  protected:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(DistributedRunContext);
 
@@ -123,6 +126,9 @@ class DistributedRunContext {
 
   // Groups containing current worker
   std::vector<WorkerGroup> groups_;
+
+  c10d::FileStore file_store_;
+  int64_t ncclCommCounter_;
 };
 
 }  // namespace training

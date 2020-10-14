@@ -29,6 +29,7 @@ from concurrent.futures import ProcessPoolExecutor
 import onnxruntime as ort
 from onnxruntime.training import amp, optim, orttrainer
 from onnxruntime.training.optim import PolyWarmupLRScheduler, LinearWarmupLRScheduler
+from onnxruntime.capi import _pybind_state as C
 
 # need to override torch.onnx.symbolic_opset12.nll_loss to handle ignore_index == -100 cases.
 # the fix for ignore_index == -100 cases is already in pytorch master.
@@ -274,6 +275,11 @@ class PretrainArguments:
         default=None,
         metadata={"help": "Whether to use fp16 gradient accumulators."}
     )
+
+    # file_store: Optional[C.FileStore] = field(
+    #     default=None,
+    #     metadata={"help": "Store."}
+    # )
 
     def to_json_string(self):
         """
@@ -546,7 +552,9 @@ class ORTBertPretrainTest(unittest.TestCase):
             fp16=self.fp16,
             allreduce_post_accumulation=self.allreduce_post_accumulation,
             force_num_hidden_layers=self.force_num_hidden_layers,
-            tensorboard_dir=generate_tensorboard_logdir('/bert_data/hf_data/test_out/'))
+            tensorboard_dir=generate_tensorboard_logdir('/bert_data/hf_data/test_out/'),
+            # file_store=self.file_store
+            )
         final_loss = do_pretrain(args)
         return final_loss
 
@@ -556,21 +564,11 @@ class ORTBertPretrainTest(unittest.TestCase):
 if __name__ == "__main__":
     import sys
     logger.warning("sys.argv: %s", sys.argv)
-    # usage:
-    #   mpirun -n 4 python orttraining_run_bert_pretrain.py ORTBertPretrainTest.test_pretrain_throughput
-    #   mpirun -n 4 python orttraining_run_bert_pretrain.py ORTBertPretrainTest.test_pretrain_convergence
-    #   mpirun -n 4 python orttraining_run_bert_pretrain.py     # to run real BERT convergence test
-    # pytorch.distributed.launch will not work because ort backend requires MPI to broadcast ncclUniqueId
-    #
-    # calling unpublished get_mpi_context_xxx to get rank/size numbers.
-    from onnxruntime.capi._pybind_state import get_mpi_context_local_rank, get_mpi_context_local_size, get_mpi_context_world_rank, get_mpi_context_world_size
-    world_size = get_mpi_context_world_size()
-    if world_size > 1:
-        print ('get_mpi_context_world_size(): ', world_size)
-        local_rank = get_mpi_context_local_rank()
-
-        if local_rank == 0:
-            print('================================================================> os.getpid() = ', os.getpid())
+    if len(sys.argv) >= 2 and sys.argv[1].startswith('--local_rank='):
+        # torch.parallel.launch
+        local_rank = int(sys.argv[1][len('--local_rank='):])
+        world_size = int(os.environ['WORLD_SIZE'])
+        print("torch.parallel.launch, local_rank/world_size: ", local_rank, '/', world_size)
 
         test = ORTBertPretrainTest()
         test.setUp()
@@ -578,58 +576,98 @@ if __name__ == "__main__":
         test.world_rank = local_rank
         test.world_size = world_size
 
-        if len(sys.argv) >= 2 and sys.argv[1] == 'ORTBertPretrainTest.test_pretrain_throughput':
+        test.file_store = C.FileStore('/bert_ort/liqun/test_out/file_store.dat', 4)
+        test.file_store.set("local_rank", str(local_rank))
+        test.file_store.set("world_rank", str(local_rank))
+        test.file_store.set("world_size", str(world_size))
+
+        if sys.argv[2] == 'ORTBertPretrainTest.test_pretrain_throughput':
             logger.info("running ORTBertPretrainTest.test_pretrain_throughput()...")
             test.test_pretrain_throughput()
             logger.info("ORTBertPretrainTest.test_pretrain_throughput() passed")
-        elif len(sys.argv) >= 2 and sys.argv[1] == 'ORTBertPretrainTest.test_pretrain_convergence':
-            logger.info("running ORTBertPretrainTest.test_pretrain_convergence()...")
+        else:
             test.max_steps = 200
             test.force_num_hidden_layers = 8
+            logger.info("running ORTBertPretrainTest.test_pretrain_convergence()...")
             final_loss = test.test_pretrain_convergence()
             logger.info("ORTBertPretrainTest.test_pretrain_convergence() final loss = %f", final_loss)
             test.assertLess(final_loss, 8.5)
             logger.info("ORTBertPretrainTest.test_pretrain_convergence() passed")
-        else:
-            # https://microsoft.sharepoint.com/teams/ONNX2/_layouts/15/Doc.aspx?sourcedoc={170774be-e1c6-4f8b-a3ae-984f211fe410}&action=edit&wd=target%28ONNX%20Training.one%7C8176133b-c7cb-4ef2-aa9d-3fdad5344c40%2FGitHub%20Master%20Merge%20Schedule%7Cb67f0db1-e3a0-4add-80a6-621d67fd8107%2F%29
-            # to make equivalent args for cpp convergence test
-
-            # ngpu=4 
-            # seq_len=128 
-            # max_predictions_per_seq=20 
-            # batch_size=64 
-            # grad_acc=16 
-            # num_train_steps=1000000 
-            # optimizer=adam
-            # lr=5e-4 
-            # warmup_ratio=0.1 
-            # warmup_mode=Linear 
-            # effective_batch_size=$((ngpu * batch_size * grad_acc)) 
-            # commit=$(git rev-parse HEAD | cut -c1-8) 
-            # time_now=$(date +%m%d%H%M) 
-            # run_name=ort_${commit}_nvbertbase_bookwiki128_fp16_${optimizer}_lr${lr}_${warmup_mode}${warmup_ratio}_g${ngpu}_bs${batch_size}_acc${grad_acc}_efbs${effective_batch_size}_steps${num_train_steps}_fp16allreduce_${time_now} 
-
-            # mixed precision 
-            # mpirun -n ${ngpu} ./onnxruntime_training_bert --model_name /bert_ort/bert_models/nv/bert-base/bert-base-uncased_L_12_H_768_A_12_V_30528_S_512_Dp_0.1_optimized_layer_norm
-            #   --train_data_dir /bert_data/128/books_wiki_en_corpus/train --test_data_dir /bert_data/128/books_wiki_en_corpus/test
-            #   --train_batch_size ${batch_size} --mode train --num_train_steps ${num_train_steps} --display_loss_steps 5 
-            #   --log_dir ./logs/bert_base/${run_name} --optimizer ${optimizer} --learning_rate ${lr} --warmup_ratio ${warmup_ratio} --warmup_mode ${warmup_mode} 
-            #   --gradient_accumulation_steps ${grad_acc} --max_predictions_per_seq=${max_predictions_per_seq} --use_mixed_precision --allreduce_in_fp16 --lambda 0
-            #   --use_nccl | tee ${run_name}.log 
-
-            test.max_seq_length = 128
-            test.max_predictions_per_seq = 20
-            test.gradient_accumulation_steps = 16
-            test.train_batch_size = 64 * test.gradient_accumulation_steps * test.world_size    # cpp_batch_size (=64) * grad_acc * world_size
-            test.max_steps = 300000
-
-            test.force_num_hidden_layers = None
-
-            # already using Adam (e.g. AdamConfig)
-            test.learning_rate = 5e-4
-            test.warmup_proportion = 0.1
-
-            final_loss = test.test_pretrain_convergence()
-            logger.info("ORTBertPretrainTest.test_pretrain_convergence() final loss = %f", final_loss)
     else:
-        unittest.main()
+        # usage:
+        #   mpirun -n 4 python orttraining_run_bert_pretrain.py ORTBertPretrainTest.test_pretrain_throughput
+        #   mpirun -n 4 python orttraining_run_bert_pretrain.py ORTBertPretrainTest.test_pretrain_convergence
+        #   mpirun -n 4 python orttraining_run_bert_pretrain.py     # to run real BERT convergence test
+        # pytorch.distributed.launch will not work because ort backend requires MPI to broadcast ncclUniqueId
+        #
+        # calling unpublished get_mpi_context_xxx to get rank/size numbers.
+        from onnxruntime.capi._pybind_state import get_mpi_context_local_rank, get_mpi_context_local_size, get_mpi_context_world_rank, get_mpi_context_world_size
+        world_size = get_mpi_context_world_size()
+        if world_size > 1:
+            print ('get_mpi_context_world_size(): ', world_size)
+            local_rank = get_mpi_context_local_rank()
+
+            if local_rank == 0:
+                print('================================================================> os.getpid() = ', os.getpid())
+
+            test = ORTBertPretrainTest()
+            test.setUp()
+            test.local_rank = local_rank
+            test.world_rank = local_rank
+            test.world_size = world_size
+
+            if len(sys.argv) >= 2 and sys.argv[1] == 'ORTBertPretrainTest.test_pretrain_throughput':
+                logger.info("running ORTBertPretrainTest.test_pretrain_throughput()...")
+                test.test_pretrain_throughput()
+                logger.info("ORTBertPretrainTest.test_pretrain_throughput() passed")
+            elif len(sys.argv) >= 2 and sys.argv[1] == 'ORTBertPretrainTest.test_pretrain_convergence':
+                logger.info("running ORTBertPretrainTest.test_pretrain_convergence()...")
+                test.max_steps = 200
+                test.force_num_hidden_layers = 8
+                final_loss = test.test_pretrain_convergence()
+                logger.info("ORTBertPretrainTest.test_pretrain_convergence() final loss = %f", final_loss)
+                test.assertLess(final_loss, 8.5)
+                logger.info("ORTBertPretrainTest.test_pretrain_convergence() passed")
+            else:
+                # https://microsoft.sharepoint.com/teams/ONNX2/_layouts/15/Doc.aspx?sourcedoc={170774be-e1c6-4f8b-a3ae-984f211fe410}&action=edit&wd=target%28ONNX%20Training.one%7C8176133b-c7cb-4ef2-aa9d-3fdad5344c40%2FGitHub%20Master%20Merge%20Schedule%7Cb67f0db1-e3a0-4add-80a6-621d67fd8107%2F%29
+                # to make equivalent args for cpp convergence test
+
+                # ngpu=4 
+                # seq_len=128 
+                # max_predictions_per_seq=20 
+                # batch_size=64 
+                # grad_acc=16 
+                # num_train_steps=1000000 
+                # optimizer=adam
+                # lr=5e-4 
+                # warmup_ratio=0.1 
+                # warmup_mode=Linear 
+                # effective_batch_size=$((ngpu * batch_size * grad_acc)) 
+                # commit=$(git rev-parse HEAD | cut -c1-8) 
+                # time_now=$(date +%m%d%H%M) 
+                # run_name=ort_${commit}_nvbertbase_bookwiki128_fp16_${optimizer}_lr${lr}_${warmup_mode}${warmup_ratio}_g${ngpu}_bs${batch_size}_acc${grad_acc}_efbs${effective_batch_size}_steps${num_train_steps}_fp16allreduce_${time_now} 
+
+                # mixed precision 
+                # mpirun -n ${ngpu} ./onnxruntime_training_bert --model_name /bert_ort/bert_models/nv/bert-base/bert-base-uncased_L_12_H_768_A_12_V_30528_S_512_Dp_0.1_optimized_layer_norm
+                #   --train_data_dir /bert_data/128/books_wiki_en_corpus/train --test_data_dir /bert_data/128/books_wiki_en_corpus/test
+                #   --train_batch_size ${batch_size} --mode train --num_train_steps ${num_train_steps} --display_loss_steps 5 
+                #   --log_dir ./logs/bert_base/${run_name} --optimizer ${optimizer} --learning_rate ${lr} --warmup_ratio ${warmup_ratio} --warmup_mode ${warmup_mode} 
+                #   --gradient_accumulation_steps ${grad_acc} --max_predictions_per_seq=${max_predictions_per_seq} --use_mixed_precision --allreduce_in_fp16 --lambda 0
+                #   --use_nccl | tee ${run_name}.log 
+
+                test.max_seq_length = 128
+                test.max_predictions_per_seq = 20
+                test.gradient_accumulation_steps = 16
+                test.train_batch_size = 64 * test.gradient_accumulation_steps * test.world_size    # cpp_batch_size (=64) * grad_acc * world_size
+                test.max_steps = 300000
+
+                test.force_num_hidden_layers = None
+
+                # already using Adam (e.g. AdamConfig)
+                test.learning_rate = 5e-4
+                test.warmup_proportion = 0.1
+
+                final_loss = test.test_pretrain_convergence()
+                logger.info("ORTBertPretrainTest.test_pretrain_convergence() final loss = %f", final_loss)
+        else:
+            unittest.main()
