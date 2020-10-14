@@ -816,7 +816,7 @@ if (onnxruntime_USE_ROCM)
   find_library(HIP_BLAS hipblas REQUIRED)
   find_library(ROC_BLAS rocblas REQUIRED)
   find_library(MIOPEN_LIB MIOpen REQUIRED)
-  # find_library(RCCL_LIB rccl REQUIRED)
+  find_library(RCCL_LIB rccl REQUIRED)
   set(ONNXRUNTIME_ROCM_LIBS ${HIP_LIB} ${HIP_BLAS} ${ROC_BLAS} ${MIOPEN_LIB} ${RCCL_LIB})
 
   file(GLOB_RECURSE onnxruntime_providers_rocm_cc_srcs CONFIGURE_DEPENDS

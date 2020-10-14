@@ -1218,13 +1218,17 @@ if (onnxruntime_ENABLE_TRAINING)
 
     # Find NCCL and MPI
     if (onnxruntime_USE_NCCL AND MPI_FOUND)
+      if (onnxruntime_USE_CUDA)
+        set(NCCL_LIBNAME "nccl")
+      elseif (onnxruntime_USE_ROCM)
+        set(NCCL_LIBNAME "rccl")
+      endif()
+
       find_path(NCCL_INCLUDE_DIR
-        NAMES rccl.h
+        NAMES ${NCCL_LIBNAME}.h
         HINTS
         ${onnxruntime_NCCL_HOME}/include
         $ENV{CUDA_ROOT}/include)
-
-      set(NCCL_LIBNAME "rccl")
 
       find_library(NCCL_LIBRARY
         NAMES ${NCCL_LIBNAME}
@@ -1237,7 +1241,7 @@ if (onnxruntime_ENABLE_TRAINING)
       find_package_handle_standard_args(NCCL DEFAULT_MSG NCCL_INCLUDE_DIR NCCL_LIBRARY)
 
       if (NCCL_FOUND)
-        set(NCCL_HEADER_FILE "${NCCL_INCLUDE_DIR}/rccl.h")
+        set(NCCL_HEADER_FILE "${NCCL_INCLUDE_DIR}/${NCCL_LIBNAME}.h")
         message( STATUS "Determining NCCL version from the header file: ${NCCL_HEADER_FILE}" )
         file (STRINGS ${NCCL_HEADER_FILE} NCCL_MAJOR_VERSION_DEFINED
               REGEX "^[ \t]*#define[ \t]+NCCL_MAJOR[ \t]+[0-9]+.*$" LIMIT_COUNT 1)
