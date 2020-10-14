@@ -561,6 +561,7 @@ if (onnxruntime_USE_OPENVINO)
     if ((OPENVINO_VERSION VERSION_GREATER_EQUAL "2020.3") OR (WIN32))
       # Link to nGraph from OpenVINO installation
       list(APPEND OPENVINO_INCLUDE_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/ngraph/include)
+      list(APPEND OPENVINO_INCLUDE_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/ngraph/include/ngraph/frontend)
       list(APPEND OPENVINO_LIB_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/ngraph/lib)
       if (WIN32)
         list(APPEND OPENVINO_LIB_LIST ngraph.lib)
