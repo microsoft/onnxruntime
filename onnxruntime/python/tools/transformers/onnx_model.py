@@ -368,6 +368,11 @@ class OnnxModel:
                 shape_list.append("?")  # shall not happen
         return shape_list
 
+    def convert_list_to_tensor(self, name, type, shape, value):
+        """ Convert list to tensor
+        """
+        return helper.make_tensor(name, type, shape, value)
+
     def change_input_output_float32_to_float16(self):
         """ Change graph input and output data type from FLOAT to FLOAT16
         """

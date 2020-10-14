@@ -106,7 +106,13 @@ function(AddTest)
       ${TEST_SRC_DIR}/xctest/xcgtest.mm
       ${_UT_SOURCES})
 
-    target_link_libraries(${_UT_TARGET}_xc PRIVATE ${_UT_LIBS} GTest::gtest GTest::gmock ${onnxruntime_EXTERNAL_LIBRARIES})
+    if(_UT_DYN)
+      target_link_libraries(${_UT_TARGET}_xc PRIVATE ${_UT_LIBS} GTest::gtest GTest::gmock onnxruntime ${CMAKE_DL_LIBS}
+              Threads::Threads)
+      target_compile_definitions(${_UT_TARGET}_xc PRIVATE USE_ONNXRUNTIME_DLL)
+    else()
+      target_link_libraries(${_UT_TARGET}_xc PRIVATE ${_UT_LIBS} GTest::gtest GTest::gmock ${onnxruntime_EXTERNAL_LIBRARIES})
+    endif()
     onnxruntime_add_include_to_target(${_UT_TARGET}_xc date_interface flatbuffers)
     target_include_directories(${_UT_TARGET}_xc PRIVATE ${TEST_INC_DIR})
     get_target_property(${_UT_TARGET}_DEFS ${_UT_TARGET} COMPILE_DEFINITIONS)
@@ -854,49 +860,54 @@ if (onnxruntime_BUILD_SHARED_LIB)
   if (CMAKE_SYSTEM_NAME STREQUAL "Android")
     list(APPEND onnxruntime_shared_lib_test_LIBS ${android_shared_libs})
   endif()
-  if (NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+  AddTest(DYN
+          TARGET onnxruntime_shared_lib_test
+          SOURCES ${onnxruntime_shared_lib_test_SRC} ${TEST_SRC_DIR}/providers/test_main.cc
+          LIBS ${onnxruntime_shared_lib_test_LIBS}
+          DEPENDS ${all_dependencies}
+  )
+  if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    add_custom_command(
+      TARGET onnxruntime_shared_lib_test POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_directory
+      ${TEST_DATA_DES}
+      $<TARGET_FILE_DIR:onnxruntime_shared_lib_test>/testdata)
+  endif()
+
+  # test inference using global threadpools
+  if (NOT CMAKE_SYSTEM_NAME MATCHES "Android|iOS" AND NOT onnxruntime_MINIMAL_BUILD)
     AddTest(DYN
-            TARGET onnxruntime_shared_lib_test
-            SOURCES ${onnxruntime_shared_lib_test_SRC} ${TEST_SRC_DIR}/providers/test_main.cc
+            TARGET onnxruntime_global_thread_pools_test
+            SOURCES ${onnxruntime_global_thread_pools_test_SRC}
             LIBS ${onnxruntime_shared_lib_test_LIBS}
             DEPENDS ${all_dependencies}
     )
   endif()
 
-  # test inference using global threadpools
-  if (NOT CMAKE_SYSTEM_NAME MATCHES "Android|iOS" AND NOT onnxruntime_MINIMAL_BUILD)
-  AddTest(DYN
-          TARGET onnxruntime_global_thread_pools_test
-          SOURCES ${onnxruntime_global_thread_pools_test_SRC}
-          LIBS ${onnxruntime_shared_lib_test_LIBS}
-          DEPENDS ${all_dependencies}
-  )
-  endif()
-
  # A separate test is needed to test the APIs that don't rely on the env being created first.
   if (NOT CMAKE_SYSTEM_NAME MATCHES "Android|iOS")
-  AddTest(DYN
-          TARGET onnxruntime_api_tests_without_env
-          SOURCES ${onnxruntime_api_tests_without_env_SRC}
-          LIBS ${onnxruntime_shared_lib_test_LIBS}
-          DEPENDS ${all_dependencies}
-  )
+    AddTest(DYN
+            TARGET onnxruntime_api_tests_without_env
+            SOURCES ${onnxruntime_api_tests_without_env_SRC}
+            LIBS ${onnxruntime_shared_lib_test_LIBS}
+            DEPENDS ${all_dependencies}
+    )
   endif()
 endif()
 
 #some ETW tools
 if(WIN32 AND onnxruntime_ENABLE_INSTRUMENT)
-    add_executable(generate_perf_report_from_etl ${ONNXRUNTIME_ROOT}/tool/etw/main.cc
-            ${ONNXRUNTIME_ROOT}/tool/etw/eparser.h ${ONNXRUNTIME_ROOT}/tool/etw/eparser.cc
-            ${ONNXRUNTIME_ROOT}/tool/etw/TraceSession.h ${ONNXRUNTIME_ROOT}/tool/etw/TraceSession.cc)
-    target_compile_definitions(generate_perf_report_from_etl PRIVATE "_CONSOLE" "_UNICODE" "UNICODE")
-    target_link_libraries(generate_perf_report_from_etl PRIVATE tdh Advapi32)
+  add_executable(generate_perf_report_from_etl ${ONNXRUNTIME_ROOT}/tool/etw/main.cc
+          ${ONNXRUNTIME_ROOT}/tool/etw/eparser.h ${ONNXRUNTIME_ROOT}/tool/etw/eparser.cc
+          ${ONNXRUNTIME_ROOT}/tool/etw/TraceSession.h ${ONNXRUNTIME_ROOT}/tool/etw/TraceSession.cc)
+  target_compile_definitions(generate_perf_report_from_etl PRIVATE "_CONSOLE" "_UNICODE" "UNICODE")
+  target_link_libraries(generate_perf_report_from_etl PRIVATE tdh Advapi32)
 
-    add_executable(compare_two_sessions ${ONNXRUNTIME_ROOT}/tool/etw/compare_two_sessions.cc
-            ${ONNXRUNTIME_ROOT}/tool/etw/eparser.h ${ONNXRUNTIME_ROOT}/tool/etw/eparser.cc
-            ${ONNXRUNTIME_ROOT}/tool/etw/TraceSession.h ${ONNXRUNTIME_ROOT}/tool/etw/TraceSession.cc)
-    target_compile_definitions(compare_two_sessions PRIVATE "_CONSOLE" "_UNICODE" "UNICODE")
-    target_link_libraries(compare_two_sessions PRIVATE ${GETOPT_LIB_WIDE} tdh Advapi32)
+  add_executable(compare_two_sessions ${ONNXRUNTIME_ROOT}/tool/etw/compare_two_sessions.cc
+          ${ONNXRUNTIME_ROOT}/tool/etw/eparser.h ${ONNXRUNTIME_ROOT}/tool/etw/eparser.cc
+          ${ONNXRUNTIME_ROOT}/tool/etw/TraceSession.h ${ONNXRUNTIME_ROOT}/tool/etw/TraceSession.cc)
+  target_compile_definitions(compare_two_sessions PRIVATE "_CONSOLE" "_UNICODE" "UNICODE")
+  target_link_libraries(compare_two_sessions PRIVATE ${GETOPT_LIB_WIDE} tdh Advapi32)
 endif()
 
 add_executable(onnxruntime_mlas_test ${TEST_SRC_DIR}/mlas/unittest.cpp)
@@ -917,6 +928,9 @@ list(APPEND onnxruntime_mlas_test_libs Threads::Threads)
 target_link_libraries(onnxruntime_mlas_test PRIVATE ${onnxruntime_mlas_test_libs})
 if(WIN32)
   target_link_libraries(onnxruntime_mlas_test PRIVATE debug Dbghelp Advapi32)
+endif()
+if (onnxruntime_LINK_LIBATOMIC)
+  target_link_libraries(onnxruntime_mlas_test PRIVATE atomic)
 endif()
 set_target_properties(onnxruntime_mlas_test PROPERTIES FOLDER "ONNXRuntimeTest")
 

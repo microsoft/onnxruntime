@@ -1095,9 +1095,16 @@ def run_android_tests(args, source_dir, config, cwd):
 
 
 def run_ios_tests(args, source_dir, config, cwd):
-    run_subprocess(["xcodebuild", "test", "-project", "./onnxruntime.xcodeproj",
-                    "-scheme",  "onnxruntime_test_all_xc",
-                    "-destination", "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)"], cwd=cwd)
+    cpr = run_subprocess(["xcodebuild", "test", "-project", "./onnxruntime.xcodeproj",
+                          "-configuration", config,
+                          "-scheme",  "onnxruntime_test_all_xc", "-destination",
+                          "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)"], cwd=cwd)
+    if cpr.returncode == 0:
+        cpr = run_subprocess(["xcodebuild", "test", "-project", "./onnxruntime.xcodeproj",
+                              "-configuration", config,
+                              "-scheme",  "onnxruntime_shared_lib_test_xc", "-destination",
+                              "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)"], cwd=cwd)
+    cpr.check_returncode()
 
 
 def run_orttraining_test_orttrainer_frontend_separately(cwd):

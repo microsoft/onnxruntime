@@ -513,6 +513,23 @@ class TestInferenceSession(unittest.TestCase):
                     self.assertTrue(tag in lines[i])
             self.assertTrue(']' in lines[8])
 
+    def testProfilerGetStartTimeNs(self):
+        def getSingleSessionProfilingStartTime():
+            so = onnxrt.SessionOptions()
+            so.enable_profiling = True
+            sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=so)
+            return sess.get_profiling_start_time_ns()
+
+        # Get 1st profiling's start time
+        start_time_1 = getSingleSessionProfilingStartTime()
+        # Get 2nd profiling's start time
+        start_time_2 = getSingleSessionProfilingStartTime()
+        # Get 3rd profiling's start time
+        start_time_3 = getSingleSessionProfilingStartTime()
+
+        # Chronological profiling's start time
+        self.assertTrue(start_time_1 <= start_time_2 <= start_time_3)
+
     def testGraphOptimizationLevel(self):
         opt = onnxrt.SessionOptions()
         # default should be all optimizations optimization
@@ -765,6 +782,24 @@ class TestInferenceSession(unittest.TestCase):
             # The constructed OrtValue should still be valid after being used in a session
             self.assertTrue(np.array_equal(ortvalue2.numpy(), numpy_arr_input))
 
+    def testRunModelWithCudaCopyStream(self):
+        available_providers = onnxrt.get_available_providers()
+
+        if (not 'CUDAExecutionProvider' in available_providers):
+            print("Skipping testRunModelWithCudaCopyStream when CUDA is not available")
+        else:
+            # adapted from issue #4829 for a race condition when copy is not on default stream
+            # note:
+            # 1. if there are intermittent failure in this test, something is wrong
+            # 2. it's easier to repro on slower GPU (like M60, Geforce 1070)
+
+            # to repro #4829, uncomment the line below to run copy in a separate stream
+            #onnxrt.capi._pybind_state.set_do_copy_in_default_stream(False)
+
+            session = onnxrt.InferenceSession(get_name("issue4829.onnx"))
+            shape = np.array([2,2], dtype=np.int64)
+            for iteration in range(100000):
+                result = session.run(output_names=['output'], input_feed={'shape': shape})
 
 if __name__ == '__main__':
     unittest.main()
