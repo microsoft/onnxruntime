@@ -90,8 +90,7 @@ class OptimizerGraphBuilder {
       const NodeArgNameGeneratorFn& nodearg_name_generator,
       const std::vector<ArgDef>& grad_argdefs,
       GraphAugmenter::GraphDefs& graph_defs,
-      ArgDef& grad_norm_argdef,
-      int64_t ignore_mask = 0);
+      ArgDef& grad_norm_argdef);
 
   Status AddFiniteGradientCheck(
       const NodeArgNameGeneratorFn& nodearg_name_generator,

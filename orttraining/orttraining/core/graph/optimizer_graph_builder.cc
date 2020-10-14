@@ -281,8 +281,7 @@ Status OptimizerGraphBuilder::AddGradientNorm(
     const NodeArgNameGeneratorFn& nodearg_name_generator,
     const std::vector<ArgDef>& grad_argdefs,
     GraphAugmenter::GraphDefs& graph_defs,
-    ArgDef& grad_norm_argdef,
-    int64_t ignore_mask) {
+    ArgDef& grad_norm_argdef) {
   ONNX_NAMESPACE::TensorProto_DataType grad_type =
       static_cast<ONNX_NAMESPACE::TensorProto_DataType>(grad_argdefs[0].type_proto->tensor_type().elem_type());
   if (grad_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
@@ -307,10 +306,9 @@ Status OptimizerGraphBuilder::AddGradientNorm(
   graph_defs.AddNodeDefs({NodeDef{OpDef{"ReduceAllL2", kMSDomain, 1},
                                   grad_argdefs,
                                   {grad_norm_argdef},
-                                  {ONNX_NAMESPACE::MakeAttribute("ignore_mask", ignore_mask)},
-                                  grad_norm_argdef.name}});
-
-  graph_defs.AddGraphOutputs({grad_norm_argdef.name});
+                                  NodeAttributes(),
+                                  grad_norm_argdef.name,
+                                  static_cast<int>(ExecutionPriority::GLOBAL_LOW)}});
 
   return Status::OK();
 }
@@ -437,7 +435,6 @@ Status OptimizerGraphBuilder::BuildInternal(
   };
 
   const bool is_gradient_accumulation_enabled = opt_graph_config_.gradient_accumulation_steps > 1;
-
   // add gradient scaling
   ArgDef fused_gradient_argdef;
   if (is_gradient_accumulation_enabled) {
@@ -453,21 +450,26 @@ Status OptimizerGraphBuilder::BuildInternal(
     //gradient norm for bfloat is not ready yet. skip it to unblock the testing
     //will add it back when it is ready
     if (opt_graph_config_.mixed_precision_type == MixedPrecisionDataType::FP16) {
-      int64_t ignore_mask = 0;
+      std::vector<ArgDef> gradient_norm_inputs;
       if (DistributedRunContext::GroupSize(WorkerGroupType::HorizontalParallel) > 1) {
-        ORT_ENFORCE(gradient_argdefs.size() > 1);  // model parallel only works with non-fused allreduce outputs.
         int rank_in_hori_group = DistributedRunContext::RankInGroup(WorkerGroupType::HorizontalParallel);
         if (rank_in_hori_group != 0) {
           for (size_t i = 0; i < megatron_partitioned_weight_grad_index_.size(); ++i) {
-            ignore_mask += 1 << megatron_partitioned_weight_grad_index_[i];
+            gradient_norm_inputs.push_back(gradient_argdefs[megatron_partitioned_weight_grad_index_[i]]);
           }
         }
       }
+      if (gradient_norm_inputs.empty()) {
+        gradient_norm_inputs = gradient_argdefs;
+      }
+
       ORT_RETURN_IF_ERROR(AddGradientNorm(
-          nodearg_name_generator, gradient_argdefs, graph_defs, global_grad_norm_argdef, ignore_mask));
+          nodearg_name_generator, gradient_norm_inputs, graph_defs, global_grad_norm_argdef));
       if (DistributedRunContext::GroupSize(WorkerGroupType::HorizontalParallel) > 1) {
         ORT_RETURN_IF_ERROR(AddL2NormBetweenMegatronRanksNcclAllReduce(global_grad_norm_argdef, graph_defs));
       }
+      graph_defs.AddGraphOutputs({global_grad_norm_argdef.name});
+
       optimizer_graph_outputs[OptimizerOutputKey::GlobalGradientNorm] = global_grad_norm_argdef.name;
       ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
           nodearg_name_generator, {global_grad_norm_argdef}, graph_defs, global_grad_norm_finite_argdef));

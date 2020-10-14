@@ -550,6 +550,14 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     if "LOG_SEVERITY" not in os.environ:
         os.environ["LOG_SEVERITY"] = 0 # 2, warning
     sessionOptions.log_severity_level = int(os.environ['LOG_SEVERITY'])
+    # hard  code temoira
+    if ort_parameters.data_parallel_size == 1 and  ort_parameters.horizontal_parallel_size > 1:
+        # If no data prallel, the last gradient norm reduce across megatron ranks will make the excution hang
+        # The reason is: rank 0's all reduce will depend on all grads, but other ranks only depend on partitioned grads
+        # so other ranks will hit the graident norm reduce earlier, at the same time rank 0 is doing other all reduce. 
+        #sessionOptions.execution_order = ort.ExecutionOrder.PRIORITY_BASED
+        pass
+
     session = ort.TrainingSession(file_name_or_serialized_string, ort_parameters, sessionOptions)
     train_io_binding = session.io_binding()
     eval_io_binding = session.io_binding()

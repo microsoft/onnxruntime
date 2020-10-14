@@ -174,7 +174,7 @@ static Status ModifyParametersForOptimizerPartitioning(
     std::vector<OptimizerNodeConfig>& opt_configs,
     std::vector<ArgDef>& weight_argdefs,
     std::vector<ArgDef>& gradient_argdefs,
-    int64_t& reduce_l2_ignore_mask,
+    std::vector<ArgDef>& gradient_norm_inputs,
     const std::vector<size_t>& megatron_partitioned_weight_grad_index) {
   ORT_ENFORCE(weight_argdefs.size() == gradient_argdefs.size());
   ORT_ENFORCE(weight_argdefs.size() == opt_configs.size());
@@ -212,8 +212,6 @@ static Status ModifyParametersForOptimizerPartitioning(
 
   bool is_rank_zero = DistributedRunContext::RunConfig().world_rank == 0;
   int64_t offset = 0;
-  reduce_l2_ignore_mask = 0;
-  int64_t new_index = 0;
   for (size_t i = 0; i < weight_argdefs.size(); i++) {
     bool is_shared_weight = false;
     if (std::find(megatron_partitioned_weight_grad_index.begin(), megatron_partitioned_weight_grad_index.end(), i) == megatron_partitioned_weight_grad_index.end()) {
@@ -238,6 +236,9 @@ static Status ModifyParametersForOptimizerPartitioning(
         new_opt_configs.push_back(opt_config);
         new_weight_argdefs.push_back(weight_argdef);
         new_gradient_argdefs.push_back(gradient_argdef);
+        if (!is_shared_weight || is_rank_zero) {
+          gradient_norm_inputs.push_back(gradient_argdef);
+        }
       } else if (offset < rank_start && offset + tensor_count <= rank_end) {
         int64_t size_for_previous_rank = rank_start - offset;
         int64_t size_for_current_rank = offset + tensor_count - rank_start;
@@ -245,11 +246,9 @@ static Status ModifyParametersForOptimizerPartitioning(
         std::vector<bool> enabled = {false, true};
         AddViewForParameters(graph, graph_defs, weight_argdef, gradient_argdef, opt_config, view_shapes, enabled,
                              new_opt_configs, new_weight_argdefs, new_gradient_argdefs);
-        reduce_l2_ignore_mask |= 1 << (new_index);
-        if (is_shared_weight && !is_rank_zero) {
-          reduce_l2_ignore_mask |= 1 << (new_index + 1);
+        if (!is_shared_weight || is_rank_zero) {
+          gradient_norm_inputs.push_back(new_gradient_argdefs[new_gradient_argdefs.size() - 1]);
         }
-        new_index += 2;
       } else if (offset >= rank_start && offset + tensor_count > rank_end) {
         int64_t size_for_current_rank = rank_end - offset;
         int64_t size_for_next_rank = offset + tensor_count - rank_end;
@@ -257,11 +256,9 @@ static Status ModifyParametersForOptimizerPartitioning(
         std::vector<bool> enabled = {true, false};
         AddViewForParameters(graph, graph_defs, weight_argdef, gradient_argdef, opt_config, view_shapes, enabled,
                              new_opt_configs, new_weight_argdefs, new_gradient_argdefs);
-        reduce_l2_ignore_mask |= 1 << (new_index + 1);
-        if (is_shared_weight && !is_rank_zero) {
-          reduce_l2_ignore_mask |= 1 << (new_index);
+        if (!is_shared_weight || is_rank_zero) {
+          gradient_norm_inputs.push_back(new_gradient_argdefs[new_gradient_argdefs.size() - 2]);
         }
-        new_index += 2;
       } else {  // offset < rank_start && offset + tensor_count > rank_end
         int64_t size_for_previous_rank = rank_start - offset;
         int64_t size_for_current_rank = rank_end - rank_start;
@@ -270,11 +267,9 @@ static Status ModifyParametersForOptimizerPartitioning(
         std::vector<bool> enabled = {false, true, false};
         AddViewForParameters(graph, graph_defs, weight_argdef, gradient_argdef, opt_config, view_shapes, enabled,
                              new_opt_configs, new_weight_argdefs, new_gradient_argdefs);
-        reduce_l2_ignore_mask |= (1 << new_index) + (1 << (new_index + 2));
-        if (is_shared_weight && !is_rank_zero) {
-          reduce_l2_ignore_mask |= 1 << (new_index + 1);
+        if (!is_shared_weight || is_rank_zero) {
+          gradient_norm_inputs.push_back(new_gradient_argdefs[new_gradient_argdefs.size() - 2]);
         }
-        new_index += 3;
       }
     } else {
       // Parameter is handled by a different rank.
@@ -284,8 +279,6 @@ static Status ModifyParametersForOptimizerPartitioning(
       new_opt_configs.push_back(new_config);
       new_weight_argdefs.push_back(weight_argdef);
       new_gradient_argdefs.push_back(gradient_argdef);
-      reduce_l2_ignore_mask |= 1 << new_index;
-      new_index++;
     }
     offset += tensor_count;
   }
@@ -333,10 +326,10 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
     return graph.GenerateNodeArgName(base_name);
   };
 
-  int64_t ignore_mask = 0;
+  std::vector<ArgDef> gradient_norm_inputs;
   // handle optimizer partitioning
   ORT_RETURN_IF_ERROR(ModifyParametersForOptimizerPartitioning(
-      graph, graph_defs, opt_graph_config_, opt_configs_, weight_argdefs, gradient_argdefs, ignore_mask,
+      graph, graph_defs, opt_graph_config_, opt_configs_, weight_argdefs, gradient_argdefs, gradient_norm_inputs,
       megatron_partitioned_weight_grad_index_));
 
   // add gradient scaling
@@ -357,7 +350,7 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
     //auto gradient_norm_inputs = GetGradientNormInputs(gradient_argdefs, opt_configs_);
 
     ORT_RETURN_IF_ERROR(AddGradientNorm(
-        nodearg_name_generator, gradient_argdefs, graph_defs, global_grad_norm_argdef, ignore_mask));
+        nodearg_name_generator, gradient_argdefs, graph_defs, global_grad_norm_argdef));
     optimizer_graph_outputs[OptimizerOutputKey::GlobalGradientNorm] = global_grad_norm_argdef.name;
 
     ORT_RETURN_IF_ERROR(AddL2NormNcclAllReduce(global_grad_norm_argdef, graph_defs));

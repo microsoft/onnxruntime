@@ -67,13 +67,16 @@ Status GraphAugmenter::AugmentGraph(Graph& graph,
       output_args.push_back(&node_arg);
     }
 
-    graph.AddNode(node_def.name,
-                  node_def.op_type,
-                  "Backward pass",
-                  input_args,
-                  output_args,
-                  &node_def.attributes,
-                  node_def.domain);
+    auto& added_node = graph.AddNode(node_def.name,
+                                     node_def.op_type,
+                                     "Backward pass",
+                                     input_args,
+                                     output_args,
+                                     &node_def.attributes,
+                                     node_def.domain);
+    if (node_def.execution_priority != 0) {
+      added_node.SetPriority(node_def.execution_priority);
+    }
   }
 
   // Add new inputs to the graph.
