@@ -9,8 +9,9 @@
 #if defined(_MSC_VER)
 #include <intrin.h>
 #define DENORMAL_INTRINC
-// intrins headers at gcc 4.8 and older are not usable without compiler flags
-#elif defined(__GNUC__) && ((__GNUC__ >= 5) || ((__GNUC__ == 4) && (__GNUC_MINOR__ > 8)))
+// intrins headers at gcc 4.8 and older are not usable without compiler flags.
+// clang claims gnuc 4.2, but it has a proper intrin header.
+#elif defined(__clang__) || (defined(__GNUC__) && ((__GNUC__ >= 5) || ((__GNUC__ == 4) && (__GNUC_MINOR__ > 8))))
 #include <cpuid.h>
 #include <x86intrin.h>
 #define DENORMAL_INTRINC
@@ -44,10 +45,14 @@ bool SetDenormalAsZero(bool on) {
 }
 
 #ifdef _OPENMP
+// To execute an initialization for each openmp thread, use a property of the firstprivate clause:
+// "the initialization or construction of the given variable happens as if it were done once per thread,
+// prior to the thread's execution of the construct".
 class DenormalAsZeroInitializer {
  public:
   explicit DenormalAsZeroInitializer(bool on) : on_(on) {}
 
+  // Working as initializer per each openmp thread.
   DenormalAsZeroInitializer(const DenormalAsZeroInitializer& init) : on_(init.on_) {
     SetDenormalAsZero(on_);
   }
@@ -58,6 +63,8 @@ class DenormalAsZeroInitializer {
 
 void InitializeWithDenormalAsZero(bool on) {
   DenormalAsZeroInitializer init(on);
+// Each openmp thread calls DenormalAsZeroInitializer's copy constructor by firstprivate.
+// Even if loop count is less than the maximum number of openmp threads, all openmp threads are initialized here.
 #pragma omp parallel for firstprivate(init)
   for (auto i = 0; i < 1; ++i) {
   }

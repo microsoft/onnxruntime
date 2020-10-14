@@ -214,6 +214,8 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
       InitializeWithDenormalAsZero(set_denormal_as_zero);
 #endif
       SetDenormalAsZero(set_denormal_as_zero);
+
+      LOGS(*session_logger_, INFO) << "Flush-to-zero and denormal-as-zero are " << ((set_denormal_as_zero) ? "on" : "off");
     });
   }
 

@@ -261,9 +261,9 @@ typedef enum OrtMemType {
 } OrtMemType;
 
 typedef enum OrtCudnnConvAlgoSearch {
-  EXHAUSTIVE,   // expensive exhaustive benchmarking using cudnnFindConvolutionForwardAlgorithmEx
-  HEURISTIC,    // lightweight heuristic based search using cudnnGetConvolutionForwardAlgorithm_v7
-  DEFAULT,      // default algorithm using CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM
+  EXHAUSTIVE,  // expensive exhaustive benchmarking using cudnnFindConvolutionForwardAlgorithmEx
+  HEURISTIC,   // lightweight heuristic based search using cudnnGetConvolutionForwardAlgorithm_v7
+  DEFAULT,     // default algorithm using CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM
 } OrtCudnnConvAlgoSearch;
 
 typedef struct OrtCUDAProviderOptions {
@@ -1047,11 +1047,11 @@ struct OrtApi {
    */
   ORT_API2_STATUS(SessionGetProfilingStartTimeNs, _In_ const OrtSession* sess, _Outptr_ uint64_t* out);
 
-/**
- * Use this API to configure the global thread pool options to be used in the call to CreateEnvWithGlobalThreadPools.
- * A value of 0 means ORT will pick the default.
- * A value of 1 means the invoking thread will be used; no threads will be created in the thread pool.
- */
+  /**
+   * Use this API to configure the global thread pool options to be used in the call to CreateEnvWithGlobalThreadPools.
+   * A value of 0 means ORT will pick the default.
+   * A value of 1 means the invoking thread will be used; no threads will be created in the thread pool.
+   */
   ORT_API2_STATUS(SetGlobalIntraOpNumThreads, _Inout_ OrtThreadingOptions* tp_options, int intra_op_num_threads);
   ORT_API2_STATUS(SetGlobalInterOpNumThreads, _Inout_ OrtThreadingOptions* tp_options, int inter_op_num_threads);
 
@@ -1089,16 +1089,18 @@ struct OrtApi {
                   _In_ const char* logid, _In_ const struct OrtThreadingOptions* tp_options, _Outptr_ OrtEnv** out);
 
 #ifdef USE_CUDA
- /**
-  * Append CUDA execution provider
-  */
+  /**
+   * Append CUDA execution provider
+   */
   ORT_API2_STATUS(OrtSessionOptionsAppendExecutionProvider_CUDA,
                   _In_ OrtSessionOptions* options, _In_ OrtCUDAProviderOptions* cuda_options);
 #endif  // USE_CUDA
 
   /**
    * Use this API to configure the global thread pool options to be used in the call to CreateEnvWithGlobalThreadPools.
-   * Set denormal as zero.
+   * When this API is called, flush-to-zero and denormal-as-zero are applied to threads in both intra and inter global thread pool.
+   * Note that an alternative way not using this option at runtime is to train and export a model without denormals
+   * and that's recommended because turning this option on may hurt model accuracy.
    */
   ORT_API2_STATUS(SetGlobalDenormalAsZero, _Inout_ OrtThreadingOptions* tp_options);
 };

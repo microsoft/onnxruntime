@@ -50,7 +50,7 @@ namespace perftest {
       "\t-u [optimized_model_path]: Specify the optimized model path for saving.\n"
       "\t-d [cudnn_conv_algorithm]: Specify CUDNN convolution algothrithms: 0(benchmark), 1(heuristic), 2(default). \n"
       "\t-q: [CUDA only] use separate stream for copy. \n"
-      "\t-z: Set denormal as zero. When tuning on this option reduces latency dramatically, a model may have denormals.\n"
+      "\t-z: Set denormal as zero. When turning on this option reduces latency dramatically, a model may have denormals.\n"
       "\t-h: help\n");
 }
 
