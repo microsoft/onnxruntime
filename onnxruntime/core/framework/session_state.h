@@ -143,16 +143,12 @@ class SessionState {
    */
   const std::unordered_map<int, OrtValue>& GetInitializedTensors() const;
 
-  std::unordered_map<int, OrtValue>& GetMutableInitializedTensors();
-
   /**
    * Gets the map of ort_value_index to initialized tensors (e.g. weights) that are constant
    * and cannot be overridden at runtime.
    * The lifetime of returned OrtValues are limited by this SessionState object.
    */
   const std::unordered_map<int, OrtValue>& GetConstantInitializedTensors() const;
-
-  std::unordered_map<int, OrtValue>& GetMutableConstantInitializedTensors();
 
 #ifdef ENABLE_TRAINING
   /**

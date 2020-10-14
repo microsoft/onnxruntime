@@ -198,13 +198,7 @@ Status SessionState::AddInitializedTensor(int ort_value_index, const OrtValue& o
 
 const std::unordered_map<int, OrtValue>& SessionState::GetInitializedTensors() const { return initialized_tensors_; }
 
-std::unordered_map<int, OrtValue>& SessionState::GetMutableInitializedTensors() { return initialized_tensors_; }
-
 const std::unordered_map<int, OrtValue>& SessionState::GetConstantInitializedTensors() const {
-  return constant_initialized_tensors_;
-}
-
-std::unordered_map<int, OrtValue>& SessionState::GetMutableConstantInitializedTensors() {
   return constant_initialized_tensors_;
 }
 
@@ -249,26 +243,26 @@ Status SessionState::PrepackConstantInitializedTensors(std::unordered_map<std::s
       if (input_def->Exists()) {
         const std::string& input_name = input_def->Name();
         SessionState* st = this;
-        bool prepack_not_checked = true;
+        // subgraph can use the value from outer scope,
+        // so it needs to check if current node uses const initilized tensor from current and outer graphs
         do {
           int ort_value_idx;
           if (st->GetOrtValueNameIdxMap().GetIdx(input_name, ort_value_idx).IsOK()) {
-            std::unordered_map<int, OrtValue>& constant_initialized_tensors = st->GetMutableConstantInitializedTensors();
-            if (constant_initialized_tensors.count(ort_value_idx) &&
-                constant_initialized_tensors[ort_value_idx].IsTensor()) {
+            std::unordered_map<int, OrtValue>& constant_initialized_tensors = st->constant_initialized_tensors_;
+            if (constant_initialized_tensors.count(ort_value_idx)) {
               bool is_packed = false;
               const Tensor& const_initialized_tensor = constant_initialized_tensors[ort_value_idx].Get<Tensor>();
               ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, input_idx, is_packed));
               if (is_packed && constant_initializers_use_count.count(input_name) && --constant_initializers_use_count[input_name] == 0) {
                 // release the constant intialized tensor
-                st->GetMutableInitializedTensors().erase(ort_value_idx);
+                st->initialized_tensors_.erase(ort_value_idx);
                 constant_initialized_tensors.erase(ort_value_idx);
               }
-              prepack_not_checked = false;
+              break;
             }
           }
           st = st->Parent();
-        } while (prepack_not_checked && st);
+        } while (st);
       }
       input_idx++;
     }
@@ -784,6 +778,26 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
 }
 #endif
 
+// Calculate the use count of a constant initialized tensor, including the use in subgrah.
+// Note: This function doesn't handle this case below:
+// The main graph has a constant initializer called X, and the subgraph also has a constant initializer called X, which overrides the X from main graph.
+// For case like this, the current implementation will calculate an use count of 2, but they could contain completely different values so each should have a use count of 1.
+// This is a very rare case. If it happends and X is prepacked, the consequence is that X won't be released and memory usage of X won't be saved. This will be fine.
+static void ComputeConstantInitializerUseCount(const Graph& graph, std::unordered_map<std::string, size_t>& constant_initializers_use_count) {
+  for (const auto& node : graph.Nodes()) {
+    for (const auto* arg : node.InputDefs()) {
+      if (arg->Exists() && graph_utils::IsConstantInitializer(graph, arg->Name()))
+        constant_initializers_use_count[arg->Name()]++;
+    }
+
+    if (node.ContainsSubgraph()) {
+      for (const gsl::not_null<const Graph*>& subgraph : node.GetSubgraphs()) {
+        ComputeConstantInitializerUseCount(*subgraph, constant_initializers_use_count);
+      }
+    }
+  }
+}
+
 Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
                                           KernelRegistryManager& kernel_registry_manager,
                                           const SessionOptions& session_options,
@@ -816,7 +830,7 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
   }
 
   std::unordered_map<std::string, size_t> constant_initializers_use_count;
-  graph_utils::ComputeConstantInitializerUseCount(graph_, constant_initializers_use_count);
+  ComputeConstantInitializerUseCount(graph_, constant_initializers_use_count);
   return FinalizeSessionStateImpl(graph_location, kernel_registry_manager, nullptr, session_options,
                                   remove_initializers, constant_initializers_use_count);
 }
