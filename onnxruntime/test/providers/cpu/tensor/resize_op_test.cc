@@ -418,7 +418,7 @@ TEST(ResizeOpTest, ResizeOpNearestDownSampleTest_WithSizes) {
 }
 
 TEST(ResizeOpTest, ResizeOpNearestDownSampleTest_tf_half_pixel) {
-  OpTester test("Resize", 12);
+  OpTester test("Resize", 12);  // tf_half_pixel_for_nn is deprecated since opset 13
   std::vector<float> scales{};
   std::vector<float> roi{};
   std::vector<int64_t> sizes{1, 1, 3, 2};
