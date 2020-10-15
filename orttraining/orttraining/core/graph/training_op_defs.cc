@@ -1433,7 +1433,11 @@ Example 4:
       .TypeConstraint(
           "T",
           {"tensor(int64)"},
-          "Constrain input and output types to 64-bit integer.");
+          "Constrain input and output types to 64-bit integer.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::INT64);
+        updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto::INT64);
+      });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GistBinarizeEncoder)
       .SetDomain(kMSDomain)
