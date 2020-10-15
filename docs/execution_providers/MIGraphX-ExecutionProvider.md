@@ -11,7 +11,7 @@ For build instructions, please see the [BUILD page](../../BUILD.md#AMD-MIGraphX)
 Ort::Env env = Ort::Env{ORT_LOGGING_LEVEL_ERROR, "Default"};
 Ort::SessionOptions sf;
 int device_id = 0;
-Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Migraphx(sf, device_id));
+Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_MiGraphX(sf, device_id));
 ```
 You can check [here](https://github.com/scxiao/ort_test/tree/master/char_rnn) for a specific c/c++ program.
 

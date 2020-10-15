@@ -11,7 +11,7 @@ For build instructions, please see the [BUILD page](../../BUILD.md#ARM-Compute-L
 Ort::Env env = Ort::Env{ORT_LOGGING_LEVEL_ERROR, "Default"};
 Ort::SessionOptions sf;
 bool enable_cpu_mem_arena = true;
-Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Acl(sf, enable_cpu_mem_arena));
+Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ACL(sf, enable_cpu_mem_arena));
 ```
 The C API details are [here](../C_API.md#c-api).
 
