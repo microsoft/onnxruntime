@@ -178,11 +178,11 @@ class MemoryInfo {
   size_t num_node_size_;
   int local_rank_;
   //Memory Profile
-  std::map<AllocKind, std::set<int> > time_step_trace_;
+  std::map<MapType, std::set<size_t> > time_step_trace_;
   struct InfoPerTimeStep {
     std::set<MemoryBlock> live_tensors;
-    int peak_memory;
-    int fragment = 0;
+    size_t peak_memory;
+    size_t fragment = 0;
     void AddTensor(const MemoryBlock& mb) {
       auto itr = live_tensors.insert(mb).first;
       peak_memory = live_tensors.rbegin()->size_ + live_tensors.rbegin()->offset_;

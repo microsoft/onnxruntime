@@ -31,8 +31,6 @@ void MemoryInfo::GenerateTensorMap(const SequentialExecutionPlan* execution_plan
     ORT_ENFORCE(mem_info.lifetime_interval.first >= mem_info.alloctime_interval.first &&
                 mem_info.lifetime_interval.second <= mem_info.alloctime_interval.second);
     tensor_alloc_info_map_[value_idx] = std::move(mem_info);
-    time_step_trace_[mem_info.alloc_kind].insert(mem_info.lifetime_interval.first);
-    time_step_trace_[mem_info.alloc_kind].insert(mem_info.lifetime_interval.second);
     tensors_memory_info_map_[mem_info.location];
   }
   return;
@@ -252,34 +250,39 @@ void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string p_name, const
   std::string pid_name_internal = p_name + name_pattern;
   events.push_back(CreateMetadataEvent(pid_name_internal, pid));
 
-  //Create Event for each tensor
-  for (const auto& location_map : mem_info_.tensors_memory_info_map_) {
-    if (location_map.first.device.Type() != OrtDevice::GPU) continue;
-    const auto& map = location_map.second.at(map_type);
-    for (const auto& item : map) {
-      const auto info = mem_info_.AllocPlan(item.first);
-      if (info->inplace_reuse) continue;
-
-      const std::string& name = info->mlvalue_name;
-      //Filter out string with no certain name
-      if (!name_pattern.empty() && name.find(name_pattern) == std::string::npos) continue;
-      const std::string cname = color_names[events.size() % color_names.size()];
-      //Sometimes a tensor can be both statically planned and dynamically planed, so we need to use planed address/size in static_activation type
-      size_t offset = map_type == MemoryInfo::MapType::StaticActivation ? map.GetPlannedAddress(item.first) : map.GetAllocAddress(item.first);
-      size_t size = map_type == MemoryInfo::MapType::StaticActivation ? map.GetPlannedSize(item.first) : map.GetAllocSize(item.first);
-      size_t alloc_step = mem_info_.AllocPlan(item.first)->lifetime_interval.first;  //alloc_kind == AllocKind::kReuse ? info.alloc_plan.life_interval.first + 1 : info.alloc_plan.life_interval.first;
-      size_t dealloc_step = mem_info_.AllocPlan(item.first)->lifetime_interval.second;
-      const auto& ts_map = mem_info_.time_step_trace_[mem_info_.AllocPlan(item.first)->alloc_kind];
-      const auto& start_itr = ts_map.find(alloc_step);
-      const auto& end_itr = ts_map.find(dealloc_step);
-      ORT_ENFORCE(start_itr != ts_map.end() && end_itr != ts_map.end());
-      for (auto itr = start_itr; itr != end_itr; ++itr) {
-        events.push_back(CreateMemoryEvent(pid, *itr, name, offset, size, cname));
-      }
-      events.push_back(CreateMemoryEvent(pid, *end_itr, name, offset, size, cname));
+//Create Event for each tensor
+for (const auto& location_map : mem_info_.tensors_memory_info_map_) {
+  if (location_map.first.device.Type() != OrtDevice::GPU) continue;
+  if (mem_info_.time_step_trace_[map_type].empty()) {
+    for (const auto& item : location_map.second.at(map_type)) {
+        mem_info_.time_step_trace_[map_type].insert(mem_info_.AllocPlan(item.first)->lifetime_interval.first);
+        mem_info_.time_step_trace_[map_type].insert(mem_info_.AllocPlan(item.first)->lifetime_interval.second);
     }
   }
+  const auto& map = location_map.second.at(map_type);
+  for (const auto& item : map) {
+    const auto info = mem_info_.AllocPlan(item.first);
+    if (info->inplace_reuse) continue;
+    const std::string& name = info->mlvalue_name;
+    //Filter out string without a certain name
+    if (!name_pattern.empty() && name.find(name_pattern) == std::string::npos) continue;
+    const std::string cname = color_names[events.size() % color_names.size()];
+    //Sometimes a tensor can be both statically planned and dynamically allocated, so we need to use planed address/size in static_activation type
+    size_t offset = map_type == MemoryInfo::MapType::StaticActivation ? map.GetPlannedAddress(item.first) : map.GetAllocAddress(item.first);
+    size_t size = map_type == MemoryInfo::MapType::StaticActivation ? map.GetPlannedSize(item.first) : map.GetAllocSize(item.first);
+    size_t alloc_step = mem_info_.AllocPlan(item.first)->lifetime_interval.first;  //alloc_kind == AllocKind::kReuse ? info.alloc_plan.life_interval.first + 1 : info.alloc_plan.life_interval.first;
+    size_t dealloc_step = mem_info_.AllocPlan(item.first)->lifetime_interval.second;
+    const auto& ts_map = mem_info_.time_step_trace_[map_type];
+    const auto& start_itr = ts_map.find(alloc_step);
+    const auto& end_itr = ts_map.find(dealloc_step);
+    ORT_ENFORCE(start_itr != ts_map.end() && end_itr != ts_map.end());
+    for (auto itr = start_itr; itr != end_itr; ++itr) {
+      events.push_back(CreateMemoryEvent(pid, *itr, name, offset, size, cname));
+    }
+    events.push_back(CreateMemoryEvent(pid, *end_itr, name, offset, size, cname));
+  }
 }
+}  // namespace onnxruntime
 
 void MemoryInfo::GenerateMemoryProfile() {
   //for (const auto& location_map : tensors_memory_info_map_) {
