@@ -265,6 +265,7 @@ add_dependencies(winml_test_adapter ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(winml_test_adapter PRIVATE ${winml_adapter_dir})
 target_include_directories(winml_test_adapter PRIVATE ${winml_lib_common_dir}/inc)
 
+# Onnxruntime memory leak checker doesn't work well with GTest static mutexes that create critical sections that cannot be freed prematurely.
 if(NOT onnxruntime_ENABLE_MEMLEAK_CHECKER)
   get_winml_test_model_src(${WINML_TEST_SRC_DIR} winml_test_model_src winml_test_model_libs)
   add_winml_test(
