@@ -12,8 +12,8 @@ struct MemoryBlock {
 
   MemoryBlock() = default;
   MemoryBlock(size_t offset, size_t size) : offset_(offset), size_(size) {}
-  bool operator<(const MemoryBlock& mb) {
-    return offset_ <= mb.offset_;
+  bool operator<(const MemoryBlock& mb) const {
+    return offset_ < mb.offset_;
   }
 };
 

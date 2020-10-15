@@ -31,6 +31,8 @@ void MemoryInfo::GenerateTensorMap(const SequentialExecutionPlan* execution_plan
     ORT_ENFORCE(mem_info.lifetime_interval.first >= mem_info.alloctime_interval.first &&
                 mem_info.lifetime_interval.second <= mem_info.alloctime_interval.second);
     tensor_alloc_info_map_[value_idx] = std::move(mem_info);
+    time_step_trace_[mem_info.alloc_kind].insert(mem_info.lifetime_interval.first);
+    time_step_trace_[mem_info.alloc_kind].insert(mem_info.lifetime_interval.second);
     tensors_memory_info_map_[mem_info.location];
   }
   return;
@@ -267,14 +269,27 @@ void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string p_name, const
       size_t size = map_type == MemoryInfo::MapType::StaticActivation ? map.GetPlannedSize(item.first) : map.GetAllocSize(item.first);
       size_t alloc_step = mem_info_.AllocPlan(item.first)->lifetime_interval.first;  //alloc_kind == AllocKind::kReuse ? info.alloc_plan.life_interval.first + 1 : info.alloc_plan.life_interval.first;
       size_t dealloc_step = mem_info_.AllocPlan(item.first)->lifetime_interval.second;
-      for (size_t tid = alloc_step; tid <= dealloc_step; tid++) {
-        events.push_back(CreateMemoryEvent(pid, tid, name, offset, size, cname));
+      const auto& ts_map = mem_info_.time_step_trace_[mem_info_.AllocPlan(item.first)->alloc_kind];
+      const auto& start_itr = ts_map.find(alloc_step);
+      const auto& end_itr = ts_map.find(dealloc_step);
+      ORT_ENFORCE(start_itr != ts_map.end() && end_itr != ts_map.end());
+      for (auto itr = start_itr; itr != end_itr; ++itr) {
+        events.push_back(CreateMemoryEvent(pid, *itr, name, offset, size, cname));
       }
+      events.push_back(CreateMemoryEvent(pid, *end_itr, name, offset, size, cname));
     }
   }
 }
 
 void MemoryInfo::GenerateMemoryProfile() {
+  //for (const auto& location_map : tensors_memory_info_map_) {
+  //  if (location_map.first.device.Type() != OrtDevice::GPU) continue;
+  //  //for (const auto& item : location_map.second.at(MapType::StaticActivation)) {
+  //  //  const auto info = AllocPlan(item.first);
+  //  //  //time_step_info_map_[info->lifetime_interval.first].AddTensor(item.second.planned_block);
+  //  //  //time_step_info_map_[info->lifetime_interval.second + 1].RemoveTensor(item.second.planned_block);
+  //  //}
+  //}
   profiler.CreateEvents("GPU (initializers)", profiler.GetAndIncreasePid(), MapType::Initializer);
   profiler.CreateEvents("GPU (static activations)", profiler.GetAndIncreasePid(), MapType::StaticActivation);
   profiler.CreateEvents("GPU (dynamic activations)", profiler.GetAndIncreasePid(), MapType::DynamicActivation);
@@ -282,7 +297,7 @@ void MemoryInfo::GenerateMemoryProfile() {
   profiler.CreateEvents("GPU (dynamic activations) ", profiler.GetAndIncreasePid(), MapType::DynamicActivation, "_grad");
 
   // Write memory profile .json
-  std::ofstream memory_profile("memory_profile.json", std::ios::trunc);
+  std::ofstream memory_profile("memory_profile_" + std::to_string(local_rank_) + ".json", std::ios::trunc);
   memory_profile << "[" << std::endl;
   for (size_t i = 0; i < profiler.events.size(); i++) {
     memory_profile << "  " << profiler.events[i];

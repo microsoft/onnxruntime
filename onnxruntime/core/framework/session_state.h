@@ -402,8 +402,6 @@ class SessionState {
   // lock for the mem_patterns_
   mutable OrtMutex mem_patterns_lock_;
 
-  int local_rank_;
-  MemoryInfo memory_info_;
 
   // cache for the generated mem_patterns. key is calculated based on input shapes.
   mutable std::map<int64_t, std::unique_ptr<MemoryPatternGroup>> mem_patterns_;
@@ -427,6 +425,8 @@ class SessionState {
   const DataTransferManager& data_transfer_mgr_;
 
   bool use_deterministic_compute_;
+  int local_rank_;
+  MemoryInfo memory_info_;
 
   std::unique_ptr<NodeIndexInfo> node_index_info_;
   std::multimap<int, std::unique_ptr<FeedsFetchesManager>> cached_feeds_fetches_managers_;
