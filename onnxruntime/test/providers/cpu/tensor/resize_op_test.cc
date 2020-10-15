@@ -418,7 +418,7 @@ TEST(ResizeOpTest, ResizeOpNearestDownSampleTest_WithSizes) {
 }
 
 TEST(ResizeOpTest, ResizeOpNearestDownSampleTest_tf_half_pixel) {
-  OpTester test("Resize", 13);
+  OpTester test("Resize", 12);
   std::vector<float> scales{};
   std::vector<float> roi{};
   std::vector<int64_t> sizes{1, 1, 3, 2};
@@ -620,7 +620,7 @@ TEST(ResizeOpTest, ResizeOpNearestUpSample_Floor_Align_Corners) {
 }
 
 TEST(ResizeOpTest, ResizeOpNearest_OneToOneMappingBetweenInputAndOutputDataDims) {
-  OpTester test("Resize", 13);
+  OpTester test("Resize", 12);  // tf_half_pixel_for_nn is deprecated since opset 13
 
   std::vector<float> roi{};
   // There is one-to-one mapping in the outermost dim.
