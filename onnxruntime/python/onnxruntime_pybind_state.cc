@@ -143,8 +143,8 @@ bool do_copy_in_default_stream = true;
 OrtDevice::DeviceId cuda_device_id = 0;
 size_t cuda_mem_limit = std::numeric_limits<size_t>::max();
 onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
-
 #endif
+
 #ifdef USE_TENSORRT
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
 #endif
@@ -947,10 +947,12 @@ void addGlobalMethods(py::module& m, const Environment& env) {
    *
    */
   m.def("set_cuda_device_id", [](const int id) { cuda_device_id = static_cast<OrtDevice::DeviceId>(id); });
+#ifdef USE_CUDA
   m.def("set_cudnn_conv_algo_search", [](const OrtCudnnConvAlgoSearch algo) { cudnn_conv_algo_search = algo; });
+  m.def("set_do_copy_in_default_stream", [](const bool use_single_stream) { do_copy_in_default_stream = use_single_stream; });
+#endif
   m.def("set_cuda_mem_limit", [](const int64_t limit) { cuda_mem_limit = static_cast<size_t>(limit); });
   m.def("set_arena_extend_strategy", [](const onnxruntime::ArenaExtendStrategy strategy) { arena_extend_strategy = strategy; });
-  m.def("set_do_copy_in_default_stream", [](const bool use_single_stream) { do_copy_in_default_stream = use_single_stream; });
 #endif
 }
 
