@@ -11,6 +11,7 @@
 #include <fstream>
 
 #include <google/protobuf/io/zero_copy_stream_impl.h>
+#include "core/common/denormal.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/common/profiler.h"
@@ -681,11 +682,13 @@ TEST(InferenceSessionTests, CheckRunProfilerStartTime) {
   ASSERT_STATUS_OK(session_object.Initialize());
 
   uint64_t before_start_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
-      std::chrono::high_resolution_clock::now().time_since_epoch()).count(); // get current time
+                                   std::chrono::high_resolution_clock::now().time_since_epoch())
+                                   .count();  // get current time
   session_object.StartProfiling("onnxruntime_profile_start");
   uint64_t profiling_start_time = session_object.GetProfiling().GetStartTimeNs();
   uint64_t after_start_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
-      std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+                                  std::chrono::high_resolution_clock::now().time_since_epoch())
+                                  .count();
 
   // the profiler's start time needs to be between before_time and after_time
   ASSERT_TRUE(before_start_time <= profiling_start_time && profiling_start_time <= after_start_time);
@@ -2514,6 +2517,187 @@ TEST(InferenceSessionTests, InitializerSharing_EnsureSessionsUseUserAddedInitial
 
   // Ensure session 3 doesn't share the same data ptr as the one supplied by the user for any of the other sessions
   ASSERT_NE(so3_init_buffer, val_to_share.Get<Tensor>().Data<float>());
+}
+
+void RunModelWithDenormalAsZero(InferenceSession& session_object,
+                                const RunOptions& run_options,
+                                bool set_denormal_as_zero) {
+  const float denormal_float = 1e-38f;
+
+  // prepare input X
+  std::vector<int64_t> dims_mul{3, 2};
+  std::vector<float> values_mul(6);
+  std::fill(values_mul.begin(), values_mul.end(), denormal_float);
+  OrtValue ml_value;
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault),
+                       dims_mul, values_mul, &ml_value);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value));
+
+  // prepare output C
+  std::vector<std::string> output_names;
+  output_names.push_back("Y");
+  std::vector<OrtValue> fetches;
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_mul{3, 1};
+  std::vector<float> expected_values_mul(3);
+  std::fill(expected_values_mul.begin(), expected_values_mul.end(),
+            (set_denormal_as_zero) ? 0.0f : denormal_float * 3);
+
+  // Now run
+  common::Status st = session_object.Run(run_options, feeds, output_names, &fetches);
+  if (!st.IsOK()) {
+    std::cout << "Run returned status: " << st.ErrorMessage() << std::endl;
+  }
+  ASSERT_TRUE(st.IsOK());
+  VerifyOutputs(fetches, expected_dims_mul, expected_values_mul);
+}
+
+void VerifyThreadPoolWithDenormalAsZero(onnxruntime::concurrency::ThreadPool* tp,
+                                        bool set_denormal_as_zero) {
+  const int num_tasks = 4;
+  const float denormal_float = 1e-38f;
+  const double denormal_double = 1e-308;
+
+  std::array<float, num_tasks> input_float;
+  input_float.fill(denormal_float);
+  std::array<double, num_tasks> input_double;
+  input_double.fill(denormal_double);
+
+  tp->SimpleParallelFor(num_tasks, [&](std::ptrdiff_t i) {
+    input_float[i] *= 2;
+    input_double[i] *= 2;
+  });
+  std::for_each(input_float.begin(), input_float.end(), [&](float f) {
+    EXPECT_EQ(f, (set_denormal_as_zero) ? 0.0f : denormal_float * 2);
+  });
+  std::for_each(input_double.begin(), input_double.end(), [&](double d) {
+    EXPECT_EQ(d, (set_denormal_as_zero) ? 0.0 : denormal_double * 2);
+  });
+}
+
+// test global thread pool with setting denormal as zero
+TEST(InferenceSessionTests, GlobalThreadPoolWithDenormalAsZero) {
+  // test if denormal-as-zero mode is supported
+  if (!SetDenormalAsZero(false)) {
+    return;
+  }
+
+  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+
+  std::unique_ptr<Environment> env;
+  OrtThreadingOptions tp_options;
+  tp_options.inter_op_thread_pool_params.thread_pool_size = 2;
+  tp_options.inter_op_thread_pool_params.set_denormal_as_zero = true;
+  tp_options.intra_op_thread_pool_params.thread_pool_size = 2;
+  tp_options.intra_op_thread_pool_params.set_denormal_as_zero = true;
+  auto st = Environment::Create(std::move(logging_manager), env, &tp_options, true);
+  ASSERT_TRUE(st.IsOK());
+
+  SessionOptions so;
+  so.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "1");
+  so.use_per_session_threads = false;
+
+  std::string configValue;
+  so.TryGetConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, configValue);
+  EXPECT_EQ(configValue, "1");
+
+  // Since only the first session option for flush-to-zero and denormal-as-zero are effective,
+  // set them manually here for a test.
+#ifdef _OPENMP
+  InitializeWithDenormalAsZero(true);
+#endif
+  SetDenormalAsZero(true);
+
+  InferenceSessionTestGlobalThreadPools session{so, *env};
+  ASSERT_STATUS_OK(session.Load("testdata/matmul_1.onnx"));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  RunOptions run_options;
+  run_options.run_tag = "global_thread_pool_denormal_as_zero";
+  run_options.run_log_severity_level = static_cast<int>(Severity::kVERBOSE);
+  RunModelWithDenormalAsZero(session, run_options, true);
+
+#ifndef _OPENMP
+  VerifyThreadPoolWithDenormalAsZero(env->GetIntraOpThreadPool(), true);
+#endif
+  VerifyThreadPoolWithDenormalAsZero(env->GetInterOpThreadPool(), true);
+
+  // Set back to default.
+#ifdef _OPENMP
+  InitializeWithDenormalAsZero(false);
+#endif
+  SetDenormalAsZero(false);
+}
+
+// test inter thread pool with setting denormal as zero
+TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
+  // test if denormal-as-zero mode is supported
+  if (!SetDenormalAsZero(false)) {
+    return;
+  }
+
+  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+
+  std::unique_ptr<Environment> env;
+  auto st = Environment::Create(std::move(logging_manager), env);
+  ASSERT_TRUE(st.IsOK());
+
+  SessionOptions so;
+
+  // inference session without denormal as zero.
+  so.execution_mode = ExecutionMode::ORT_PARALLEL;
+  // inference session with denormal as zero
+  so.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "1");
+
+  // Since only the first session option for flush-to-zero and denormal-as-zero are effective,
+  // set them manually here for a test.
+#ifdef _OPENMP
+  InitializeWithDenormalAsZero(true);
+#endif
+  SetDenormalAsZero(true);
+
+  InferenceSessionTestGlobalThreadPools session1{so, *env};
+  ASSERT_STATUS_OK(session1.Load("testdata/matmul_1.onnx"));
+  ASSERT_STATUS_OK(session1.Initialize());
+
+  RunOptions run_options;
+  run_options.run_tag = "inter_thread_pool_denormal_as_zero";
+  run_options.run_log_severity_level = static_cast<int>(Severity::kVERBOSE);
+  RunModelWithDenormalAsZero(session1, run_options, true);
+
+#ifndef _OPENMP
+  VerifyThreadPoolWithDenormalAsZero(session1.GetIntraOpThreadPoolToUse(), true);
+#endif
+  VerifyThreadPoolWithDenormalAsZero(session1.GetInterOpThreadPoolToUse(), true);
+
+  // inference session without denormal as zero.
+  so.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "0");
+
+  // Since only the first session option for flush-to-zero and denormal-as-zero are effective,
+  // set them manually here for a test.
+#ifdef _OPENMP
+  InitializeWithDenormalAsZero(false);
+#endif
+  SetDenormalAsZero(false);
+
+  InferenceSessionTestGlobalThreadPools session2{so, *env};
+  ASSERT_STATUS_OK(session2.Load("testdata/matmul_1.onnx"));
+  ASSERT_STATUS_OK(session2.Initialize());
+
+  // Since it's parallel, it runs on threads.
+  RunModelWithDenormalAsZero(session2, run_options, false);
+
+#ifndef _OPENMP
+  VerifyThreadPoolWithDenormalAsZero(session2.GetIntraOpThreadPoolToUse(), false);
+#endif
+  VerifyThreadPoolWithDenormalAsZero(session2.GetInterOpThreadPoolToUse(), false);
 }
 
 }  // namespace test
