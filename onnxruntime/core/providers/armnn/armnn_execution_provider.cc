@@ -44,6 +44,8 @@ class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kArmNNExecutionProvider, kOnnxDo
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kArmNNExecutionProvider, kOnnxDomain, 4, 10, Concat);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kArmNNExecutionProvider, kOnnxDomain, 11, Concat);
 
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kArmNNExecutionProvider, kMSDomain, 1, float, FusedConv);
+
 Status RegisterArmNNKernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
 #ifdef RELU_ARMNN
@@ -71,6 +73,8 @@ Status RegisterArmNNKernels(KernelRegistry& kernel_registry) {
 #endif
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kArmNNExecutionProvider, kOnnxDomain, 4, 10, Concat)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kArmNNExecutionProvider, kOnnxDomain, 11, Concat)>,
+
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kArmNNExecutionProvider, kMSDomain, 1, float, FusedConv)>,
   };
 
   for (auto& function_table_entry : function_table) {
