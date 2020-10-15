@@ -61,7 +61,6 @@ ROCMExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
   HIPBLAS_CALL_THROW(hipblasCreate(&hipblas_handle_));
   ROCBLAS_CALL_THROW(rocblas_create_handle(&rocblas_handle_));
   MIOPEN_CALL_THROW(miopenCreate(&miopen_handle_));
-  // HIPRAND_CALL_THROW(hiprandCreateGenerator(&hiprand_generator_, HIPRAND_RNG_PSEUDO_DEFAULT));
 
   AllocatorCreationInfo default_memory_info(
       [](OrtDevice::DeviceId id) {
@@ -98,12 +97,6 @@ ROCMExecutionProvider::PerThreadContext::~PerThreadContext() {
   } catch (const std::exception& ex) {
     LOGS_DEFAULT(ERROR) << "miopenDestroy threw:" << ex.what();
   }
-
-  // try {
-  //   HIPRAND_CALL_THROW(hiprandDestroyGenerator(hiprand_generator_));
-  // } catch (const std::exception& ex) {
-  //   LOGS_DEFAULT(ERROR) << "hiprandDestroyGenerator threw:" << ex.what();
-  // }
 }
 
 /*

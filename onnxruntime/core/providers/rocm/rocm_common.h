@@ -179,9 +179,6 @@ class RocmKernel : public OpKernel {
   }
 
  protected:
-  // inline hiprandGenerator_t HiprandGenerator() const {
-  //   return provider_->PerThreadHiprandGenerator();
-  // }
 
   template <typename T>
   inline const T* GetConstOnes(size_t count) const {
