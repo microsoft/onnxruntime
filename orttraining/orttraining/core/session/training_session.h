@@ -66,6 +66,8 @@ class TrainingSession : public InferenceSession {
       // The number of pipeline stages.
       int pipeline_parallel_size{1};
 
+      int num_pipeline_steps{1};
+
       int pipeline_stage_id{0};
     };
     // The distributed training configuration.
@@ -77,13 +79,16 @@ class TrainingSession : public InferenceSession {
       MixedPrecisionDataType mixed_precision_type{MixedPrecisionDataType::FP16};
 
       bool layernorm_stash_as_fp32{true};
-      
+
       ONNX_NAMESPACE::TensorProto_DataType TensorProtoDataType() const {
         switch (mixed_precision_type) {
-          case MixedPrecisionDataType::FP16: return ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
-          case MixedPrecisionDataType::BF16: return ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
-          default: return ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
-        }  
+          case MixedPrecisionDataType::FP16:
+            return ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+          case MixedPrecisionDataType::BF16:
+            return ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
+          default:
+            return ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+        }
       }
     };
     // The mixed precision configuration.
@@ -319,7 +324,21 @@ class TrainingSession : public InferenceSession {
   using InferenceSession::Run;  // For overload resolution.
   common::Status Run(const RunOptions& run_options, IOBinding& io_binding) override;
 
+  common::Status RunWithPipeline(const RunOptions& run_options, IOBinding& io_binding);
+
  private:
+  void CreatePipelineEvents(
+      const bool traning_mode,
+      const int batch_id,
+      const int stage_id,
+      IOBinding& io_binding);
+
+  void CreateBatchVariables(
+      IOBinding& io_binding, IOBinding& sub_io_binding,
+      const size_t slice_id, const size_t slice_axis,
+      const size_t num_slices);
+  // Slice inputs into sub-tensors along a specified axis.
+
   /** Configures the loss function.
   The loss function can either be provided externally or built from the provided loss function information.
   Exactly one of external_loss_name or loss_function_info should be given.
@@ -481,6 +500,14 @@ class TrainingSession : public InferenceSession {
 
   GradientGraphConfiguration gradient_graph_config_;
   static const std::string training_mode_string_;
+
+  // Pipeline fields are valid only if params_.pipeline_parallel_size > 1.
+  // Information for running pipeline.
+  pipeline::PipelineContext pipeline_context_;
+  // Pipeline schedule for deciding when to run batch, forward, or backward.
+  pipeline::PipelineScheduler pipeline_schedule_;
+  // Workers to run pipeline stage.
+  pipeline::PipelineWorkerPool pipeline_worker_pool_;
 };
 }  // namespace training
 }  // namespace onnxruntime

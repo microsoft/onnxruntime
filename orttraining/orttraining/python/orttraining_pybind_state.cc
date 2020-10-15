@@ -43,6 +43,8 @@ struct TrainingParameters {
   int gradient_accumulation_steps = 1;
   int data_parallel_size = 1;
   int horizontal_parallel_size = 1;
+  int pipeline_parallel_size = 1;
+  int num_pipeline_steps = 1;
   int deepspeed_zero_stage = 0;
   bool enable_grad_norm_clip = true;
   bool set_gradients_as_graph_outputs = false;
@@ -63,17 +65,14 @@ struct TrainingConfigurationResult {
 TrainingConfigurationResult ConfigureSessionForTraining(
     training::TrainingSession* sess, TrainingParameters& parameters) {
   //TODO tix, refactor the mpi related code to populate all fields correctly by default.
-  ORT_ENFORCE(parameters.horizontal_parallel_size <= parameters.world_size);
   ORT_ENFORCE(parameters.data_parallel_size <= parameters.world_size);
-  if (parameters.world_size % parameters.horizontal_parallel_size != 0) {
-    throw std::runtime_error("Cannot split horizontal parallel group because world_size is not divisible");
-  }
+  ORT_ENFORCE(parameters.horizontal_parallel_size <= parameters.world_size);
+  ORT_ENFORCE(parameters.pipeline_parallel_size <= parameters.world_size);
 
-  auto data_group_size = parameters.world_size / parameters.horizontal_parallel_size;
-  if (data_group_size != parameters.data_parallel_size) {
-    LOGS(*(sess->GetLogger()), WARNING) << "data_parallel_size is not correct, tuned automatically to "
-                                        << data_group_size;
-    parameters.data_parallel_size = data_group_size;
+  if (parameters.world_size != parameters.data_parallel_size * parameters.horizontal_parallel_size * parameters.pipeline_parallel_size) {
+    const std::string msg = "Cannot distribute " + std::to_string(parameters.world_size) + " ranks for distributed computation with D=" + std::to_string(parameters.data_parallel_size) +
+        ", H=" + std::to_string(parameters.horizontal_parallel_size) + ", P=" + std::to_string(parameters.pipeline_parallel_size);
+    throw std::runtime_error(msg);
   }
 
   training::TrainingSession::TrainingConfiguration config{};
@@ -89,6 +88,8 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   config.distributed_config.local_size = parameters.local_size;
   config.distributed_config.data_parallel_size = parameters.data_parallel_size;
   config.distributed_config.horizontal_parallel_size = parameters.horizontal_parallel_size;
+  config.distributed_config.pipeline_parallel_size = parameters.pipeline_parallel_size;
+  config.distributed_config.num_pipeline_steps = parameters.num_pipeline_steps;
 
   if (parameters.use_mixed_precision) {
     training::TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mp{};
@@ -193,6 +194,10 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("loss_scale", &TrainingParameters::loss_scale)
       .def_readwrite("world_rank", &TrainingParameters::world_rank)
       .def_readwrite("world_size", &TrainingParameters::world_size)
+      .def_readwrite("data_parallel_size", &TrainingParameters::data_parallel_size)
+      .def_readwrite("horizontal_parallel_size", &TrainingParameters::horizontal_parallel_size)
+      .def_readwrite("pipeline_parallel_size", &TrainingParameters::pipeline_parallel_size)
+      .def_readwrite("num_pipeline_steps", &TrainingParameters::num_pipeline_steps)
       .def_readwrite("gradient_accumulation_steps", &TrainingParameters::gradient_accumulation_steps)
       .def_readwrite("deepspeed_zero_stage", &TrainingParameters::deepspeed_zero_stage)
       .def_readwrite("enable_grad_norm_clip", &TrainingParameters::enable_grad_norm_clip)
