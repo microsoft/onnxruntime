@@ -23,11 +23,14 @@ winml_experimental::LearningModelBuilder LearningModelInputs::AddInput(winml::IL
   auto input_name = _winml::Strings::UTF8FromHString(input.Name());
 
   winrt::com_ptr<_winml::IValue> default_value_ivalue;
+
+#ifdef ENABLE_CONTANT_INTIALIZERS
   if (default_value) {
     auto default_value_value_provider = default_value.as<_winml::ILotusValueProviderPrivate>();
     _winml::BindingContext bc{};
     default_value_value_provider->GetValue(bc, default_value_ivalue.put());
   }
+#endif
 
   model->AddModelInput(input_name.c_str(), descriptor_provider.get(), is_constant, default_value_ivalue.get());
 

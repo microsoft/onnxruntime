@@ -21,5 +21,19 @@ class IDFT final : public OpKernel {
   Status Compute(OpKernelContext* ctx) const override;
 };
 
+class STFT final : public OpKernel {
+ public:
+  explicit STFT(const OpKernelInfo& info) : OpKernel(info) {
+  }
+  Status Compute(OpKernelContext* ctx) const override;
+};
+
+class ISTFT final : public OpKernel {
+ public:
+  explicit ISTFT(const OpKernelInfo& info) : OpKernel(info) {
+  }
+  Status Compute(OpKernelContext* ctx) const override;
+};
+
 }  // namespace contrib
 }  // namespace onnxruntime

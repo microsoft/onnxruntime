@@ -401,6 +401,112 @@ static void CloseSession()
                               });
 }
 
+static void TestSpectrogram() {
+  printf("\nTestSpectrogram\n");
+  using namespace winml_experimental;
+  using Operator = winml_experimental::LearningModelOperator;
+
+  //          .Inputs().Add(TensorFeatureDescriptor(L"num_mel_bins", L"The number of mel bins", TensorKind::Float, scalar_shape))
+
+  std::vector<int64_t> scalar_shape = {};
+  std::vector<int64_t> shape = {1, 32};
+  std::vector<int64_t> output_shape = {1, 32, 1};
+  std::vector<int64_t> slice_shape = {3};
+  std::vector<int64_t> input_slice_shape = {1};
+
+  // Constant initializers
+  auto real_slice_start = TensorInt32Bit::CreateFromShapeArrayAndDataArray(slice_shape, {0, 0, 0});
+  auto real_slice_ends = TensorInt32Bit::CreateFromShapeArrayAndDataArray(slice_shape, {INT_MAX, INT_MAX, 1});
+  auto complex_slice_start = TensorInt32Bit::CreateFromShapeArrayAndDataArray(slice_shape, {0, 0, 1});
+  auto complex_slice_ends = TensorInt32Bit::CreateFromShapeArrayAndDataArray(slice_shape, {INT_MAX, INT_MAX, 2});
+  auto power_of_2_exponent = TensorFloat::CreateFromShapeArrayAndDataArray(scalar_shape, {2});
+  auto number_of_samples = TensorFloat::CreateFromShapeArrayAndDataArray(scalar_shape, {32});
+  auto input_slice_start = TensorInt32Bit::CreateFromShapeArrayAndDataArray(input_slice_shape, {1});
+  auto input_slice_ends = TensorInt32Bit::CreateFromShapeArrayAndDataArray(input_slice_shape, {2});
+
+  auto model =
+      LearningModelBuilder::Create()
+          // Inputs
+          .Inputs().Add(TensorFeatureDescriptor(L"Input", L"The input time domain signal", TensorKind::Float, shape))
+          .Inputs().Add(TensorFeatureDescriptor(L"NumSamples", L"Number of samples in audio signal", TensorKind::Float, scalar_shape), number_of_samples) // This is only needed becase a cast is necessary and unsupported due to lack of attribute support
+          // Outputs
+          .Outputs().Add(TensorFeatureDescriptor(L"Output", L"The real output of the frequency domain spectra", TensorKind::Float, output_shape))
+          // Should be constant initializers, but constants are not implemented....
+          .Inputs().AddConstant(TensorFeatureDescriptor(L"real_slice_start", L"The starts to real slice the spectra", TensorKind::Int32, slice_shape), real_slice_start)
+          .Inputs().AddConstant(TensorFeatureDescriptor(L"real_slice_ends", L"The ends to real slice the spectra", TensorKind::Int32, slice_shape), real_slice_ends)
+          .Inputs().AddConstant(TensorFeatureDescriptor(L"complex_slice_start", L"The starts to complex slice the spectra", TensorKind::Int32, slice_shape), complex_slice_start)
+          .Inputs().AddConstant(TensorFeatureDescriptor(L"complex_slice_ends", L"The ends to complex slice the spectra", TensorKind::Int32, slice_shape), complex_slice_ends)
+          .Inputs().AddConstant(TensorFeatureDescriptor(L"power_of_2_exponent", L"The power of 2", TensorKind::Float, scalar_shape), power_of_2_exponent)
+          .Inputs().AddConstant(TensorFeatureDescriptor(L"shape_slice_start", L"The starts to the input shape slice", TensorKind::Int32, input_slice_shape), input_slice_start)
+          .Inputs().AddConstant(TensorFeatureDescriptor(L"shape_slice_ends", L"The ends to the input shape slice", TensorKind::Int32, input_slice_shape), input_slice_ends)
+          // The graph
+          .Operators().Add(Operator(L"Shape", L"shape0", L"")
+              .SetInput(L"data", L"Input")
+              .SetOutput(L"shape", L"input_shape"))
+          .Operators().Add(Operator(L"Slice", L"shape_slice", L"")
+              .SetInput(L"data", L"input_shape").SetInput(L"starts", L"shape_slice_start").SetInput(L"ends", L"shape_slice_ends")
+              .SetOutput(L"output", L"num_samples"))
+          .Operators().Add(Operator(L"HannWindow", L"hann0", L"com.microsoft")
+              .SetInput(L"size", L"num_samples")
+              .SetOutput(L"output", L"hann_window"))
+          .Operators().Add(Operator(L"Mul", L"mul0", L"")
+              .SetInput(L"A", L"hann_window").SetInput(L"B", L"Input")
+              .SetOutput(L"C", L"windowed_signal"))
+          .Operators().Add(Operator(L"DFT", L"dft0", L"com.microsoft")
+              .SetInput(L"input", L"windowed_signal")
+              .SetOutput(L"output", L"spectra"))
+          .Operators().Add(Operator(L"Slice", L"real_slice", L"")
+              .SetInput(L"data", L"spectra").SetInput(L"starts", L"real_slice_start").SetInput(L"ends", L"real_slice_ends")
+              .SetOutput(L"output", L"reals"))
+          .Operators().Add(Operator(L"Slice", L"complex_slice", L"")
+              .SetInput(L"data", L"spectra").SetInput(L"starts", L"complex_slice_start").SetInput(L"ends", L"complex_slice_ends")
+              .SetOutput(L"output", L"imaginaries"))
+          .Operators().Add(Operator(L"Pow", L"real_pow", L"")
+              .SetInput(L"X", L"reals").SetInput(L"Y", L"power_of_2_exponent")
+              .SetOutput(L"Z", L"reals_squared"))
+          .Operators().Add(Operator(L"Pow", L"complex_pow", L"")
+              .SetInput(L"X", L"imaginaries").SetInput(L"Y", L"power_of_2_exponent")
+              .SetOutput(L"Z", L"imaginaries_squared"))
+          .Operators().Add(Operator(L"Add", L"add0", L"")
+              .SetInput(L"A", L"reals_squared").SetInput(L"B", L"imaginaries_squared")
+              .SetOutput(L"C", L"magnitude_squared"))
+          .Operators().Add(Operator(L"Sqrt", L"sqrt0", L"")
+              .SetInput(L"X", L"magnitude_squared")
+              .SetOutput(L"Y", L"magnitude"))
+          .Operators().Add(Operator(L"Div", L"div0", L"")
+              .SetInput(L"A", L"magnitude").SetInput(L"B", L"NumSamples")
+              .SetOutput(L"C", L"Output"))
+          .CreateModel();
+
+  LearningModelSession session(model);
+  LearningModelBinding binding(session);
+
+  // Populate binding
+  std::vector<float> input = {1, 2, 3, 4, 1, 0, 0, 0, 1, 2, 3, 4, 1, 0, 0, 0, 1, 2, 3, 4, 1, 0, 0, 0, 1, 2, 3, 4, 1, 0, 0, 0};
+  binding.Bind(L"Input", TensorFloat::CreateFromShapeArrayAndDataArray(shape, input));
+
+  // These are constant initializers... but since that is not implemented... they need to be duplicated
+  binding.Bind(L"real_slice_start", real_slice_start);
+  binding.Bind(L"real_slice_ends", real_slice_ends);
+  binding.Bind(L"complex_slice_start", complex_slice_start);
+  binding.Bind(L"complex_slice_ends", complex_slice_ends);
+  binding.Bind(L"power_of_2_exponent", power_of_2_exponent);
+  binding.Bind(L"NumSamples", number_of_samples); 
+  binding.Bind(L"shape_slice_start", input_slice_start);
+  binding.Bind(L"shape_slice_ends", input_slice_ends);
+  
+  // Evaluate
+  auto result = session.Evaluate(binding, L"");
+
+  // Check results
+  auto y_tensor = result.Outputs().Lookup(L"Output").as<TensorFloat>();
+  auto y_ivv = y_tensor.GetAsVectorView();
+
+  for (int i = 0; i < output_shape[0] * output_shape[1]; i++) {
+    printf("%f\n", y_ivv.GetAt(i));
+  }
+}
+
 static void TestWindowFunction(const wchar_t* window_operator) {
   printf("\n%ls\n", window_operator);
     using namespace winml_experimental;
@@ -411,7 +517,7 @@ static void TestWindowFunction(const wchar_t* window_operator) {
     auto double_data_type = TensorInt32Bit::CreateFromArray(std::vector<int64_t>({1}), std::vector<int32_t>({7}));
     auto model = 
         LearningModelBuilder::Create()
-                .Inputs().Add(TensorFeatureDescriptor(L"Input", L"The input time domain signal", TensorKind::Int32, scalar_shape))
+                .Inputs().Add(TensorFeatureDescriptor(L"Input", L"The input time domain signal", TensorKind::Int64, scalar_shape))
                 .Outputs().Add(TensorFeatureDescriptor(L"Output", L"The output frequency domain spectra", TensorKind::Float, output_shape))
                 .Operators().Add(Operator(window_operator, L"window0", L"com.microsoft").SetInput(L"size", L"Input").SetOutput(L"output", L"Output"))//.SetAttribute(L"output_datatype", double_data_type))
                 .CreateModel();
@@ -419,8 +525,8 @@ static void TestWindowFunction(const wchar_t* window_operator) {
     LearningModelSession session(model);
     LearningModelBinding binding(session);
 
-    std::vector<int32_t> x = { 32 };
-    binding.Bind(L"Input", TensorInt32Bit::CreateFromShapeArrayAndDataArray(scalar_shape, x));
+    std::vector<int64_t> x = { 32 };
+    binding.Bind(L"Input", TensorInt64Bit::CreateFromShapeArrayAndDataArray(scalar_shape, x));
 
     // Evaluate
     auto result = session.Evaluate(binding, L"");
@@ -444,7 +550,7 @@ static void TestDFT() {
   auto model =
       LearningModelBuilder::Create()
           .Inputs().Add(TensorFeatureDescriptor(L"Input", L"The input time domain signal", TensorKind::Float, shape))
-          .Outputs().Add(TensorFeatureDescriptor(L"Output", L"The output frequency domain spectra", TensorKind::Float, shape))
+          .Outputs().Add(TensorFeatureDescriptor(L"Output", L"The output frequency domain spectra", TensorKind::Float, output_shape))
           .Operators().Add(Operator(L"DFT", L"dft0", L"com.microsoft").SetInput(L"input", L"Input").SetOutput(L"output", L"Output"))
           //.Operators().Add(Operator(L"DFT", L"dft0", L"com.microsoft").SetInput(L"input", L"Input").SetOutput(L"output", L"dft0_output"))
           //.Operators().Add(Operator(L"IDFT", L"idft0", L"com.microsoft").SetInput(L"input", L"dft0_output").SetOutput(L"output", L"Output"))
@@ -506,6 +612,7 @@ static void TestGemm() {
 }
 
 static void TestModelBuilding() {
+  TestSpectrogram();
   TestWindowFunction(L"HannWindow");
   TestWindowFunction(L"HammingWindow");
   TestWindowFunction(L"BlackmanWindow");

@@ -31,6 +31,22 @@ ONNX_OPERATOR_KERNEL_EX(
     KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", BuildKernelDefConstraints<float, double>()),
     IDFT);
 
+ONNX_OPERATOR_KERNEL_EX(
+    STFT,
+    kMSDomain,
+    1,
+    kCpuExecutionProvider,
+    KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", BuildKernelDefConstraints<float, double>()),
+    STFT);
+
+ONNX_OPERATOR_KERNEL_EX(
+    ISTFT,
+    kMSDomain,
+    1,
+    kCpuExecutionProvider,
+    KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", BuildKernelDefConstraints<float, double>()),
+    ISTFT);
+
 bool is_power_of_2(size_t size) {
   unsigned n_bits = 0;
   while (size != 0) {
@@ -232,6 +248,14 @@ Status DFT::Compute(OpKernelContext* ctx) const {
 
 Status IDFT::Compute(OpKernelContext* ctx) const {
   return dft(ctx, signal_ndim_, true);
+}
+
+Status STFT::Compute(OpKernelContext* /*ctx*/) const {
+  return Status::OK();
+}
+
+Status ISTFT::Compute(OpKernelContext* /*ctx*/) const {
+  return Status::OK();
 }
 
 }  // namespace contrib

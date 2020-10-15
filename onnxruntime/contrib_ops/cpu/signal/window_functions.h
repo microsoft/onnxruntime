@@ -42,6 +42,5 @@ class MelWeightMatrix final : public VariableOutputDataTypeBase {
   Status Compute(OpKernelContext* ctx) const override;
 };
 
-
 }  // namespace contrib
 }  // namespace onnxruntime

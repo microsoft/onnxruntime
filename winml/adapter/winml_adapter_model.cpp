@@ -164,7 +164,7 @@ static OrtStatus* CreateModelProto(const char* path, std::unique_ptr<ONNX_NAMESP
 OrtStatus* OrtModel::CreateEmptyModel(OrtModel** model) {
   auto model_proto = std::unique_ptr<ONNX_NAMESPACE::ModelProto>(new ONNX_NAMESPACE::ModelProto());
   auto opsetimportproto = model_proto->add_opset_import();
-  opsetimportproto->set_version(7);
+  opsetimportproto->set_version(11);
   model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   return OrtModel::CreateOrtModelFromProto(std::move(model_proto), model);
 }
