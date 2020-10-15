@@ -31,3 +31,12 @@ static const char* const kOrtSessionOptionsConfigLoadModelFormat = "session.load
 // Set to 'ORT' (case sensitive) to save optimized model in ORT format when SessionOptions.optimized_model_path is set.
 // If unset, format will default to ONNX unless optimized_model_filepath ends in '.ort'.
 static const char* const kOrtSessionOptionsConfigSaveModelFormat = "session.save_model_format";
+
+// If a value is "1", flush-to-zero and denormal-as-zero are applied. The default is "0".
+// When multiple sessions are created, a main thread doesn't override changes from succeeding session options,
+// but threads in session thread pools follow option changes.
+// When ORT runs with OpenMP, the same rule is applied, i.e. the first session option to flush-to-zero and
+// denormal-as-zero is only applied to global OpenMP thread pool, which doesn't support per-session thread pool.
+// Note that an alternative way not using this option at runtime is to train and export a model without denormals
+// and that's recommended because turning this option on may hurt model accuracy.
+static const char* const kOrtSessionOptionsConfigSetDenormalAsZero = "session.set_denormal_as_zero";
