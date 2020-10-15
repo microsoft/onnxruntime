@@ -18,8 +18,6 @@
 #endif
 #endif
 
-#include <mutex>
-
 #include "core/common/common.h"
 #include "core/common/cpuid_info.h"
 #include "core/common/denormal.h"
