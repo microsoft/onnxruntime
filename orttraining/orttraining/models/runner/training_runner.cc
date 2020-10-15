@@ -1069,7 +1069,8 @@ Status TrainingRunner::EndTraining(IDataLoader* data_loader) {
   }
 
   // We only want to save with WITH_UPDATED_WEIGHTS or WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC
-  // if the Loss Function is configured, or otherwise saving will fail.
+  // if the Loss function is in the graph, or otherwise saving will fail.
+  // Assuming here that the Loss function will be assigned to the last device of the pipeline.
   if (MPIContext::GetInstance().GetWorldRank() == params_.pipeline_parallel_size - 1) {
     printf("\nSaving the trained model.\n");
     const PathString model_base_name = GetLastComponent(params_.model_path);

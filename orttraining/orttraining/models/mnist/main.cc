@@ -209,7 +209,5 @@ int main(int argc, char* args[]) {
   auto runner = onnxruntime::make_unique<TrainingRunner>(params, *env);
   RETURN_IF_FAIL(runner->Initialize());
   RETURN_IF_FAIL(runner->Run(training_data_loader.get(), test_data_loader.get()));
-  // if (MPIContext::GetInstance().GetWorldRank() == device_count - 1) {
-    RETURN_IF_FAIL(runner->EndTraining(test_data_loader.get()));
-  // }
+  RETURN_IF_FAIL(runner->EndTraining(test_data_loader.get()));
 }
