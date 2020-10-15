@@ -52,6 +52,7 @@
 #include "core/session/inference_session.h"
 #include "core/util/math.h"
 #include "gtest/gtest.h"
+#include "orttraining/core/optimizer/localized_recompute.h"
 #include "test/capturing_sink.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/compare_ortvalue.h"
@@ -2274,6 +2275,35 @@ TEST_F(GraphTransformationTests, FastGeluWithBiasFusionTest) {
   ASSERT_TRUE(op_to_count["Tanh"] == 0);
   ASSERT_TRUE(op_to_count["Mul"] == 0);
   ASSERT_TRUE(op_to_count["com.microsoft.FastGelu"] == 1);
+}
+
+TEST_F(GraphTransformationTests, FastGeluWithBiasFusionRecomputeTest) {
+  auto model_uri = MODEL_FOLDER "fusion/fast_gelu_with_bias.onnx";
+  std::shared_ptr<Model> p_model;
+  auto load_ret = Model::Load(model_uri, p_model, nullptr, *logger_);
+  ASSERT_TRUE(load_ret.IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<FastGeluFusion>(), TransformerLevel::Level2);
+  graph_transformation_mgr.Register(onnxruntime::make_unique<BiasGeluFusion>(), TransformerLevel::Level2);
+  graph_transformation_mgr.Register(onnxruntime::make_unique<GeluRecompute>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_);
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  for (auto& node : graph.Nodes()) {
+    std::cout << node.Name() << std::endl;
+  }
+  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["Tanh"] == 0);
+  ASSERT_TRUE(op_to_count["Mul"] == 0);
+  ASSERT_TRUE(op_to_count["FastGelu"] == 2);
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "FastGelu") {
+      ASSERT_TRUE(node.InputDefs().size() == 2);
+    }
+  }
 }
 
 TEST_F(GraphTransformationTests, FastGeluWithBiasUseGraphInputFusionTest) {
