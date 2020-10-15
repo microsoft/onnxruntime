@@ -40,6 +40,8 @@ if (onnxruntime_ENABLE_TRAINING)
   list(APPEND onnxruntime_pybind_srcs_pattern
     "${ORTTRAINING_ROOT}/orttraining/python/*.cc"
     "${ORTTRAINING_ROOT}/orttraining/python/*.h"
+    "${ORTTRAINING_ROOT}/orttraining/models/runner/pipeline.h"
+    "${ORTTRAINING_ROOT}/orttraining/models/runner/pipeline.cc"
   )
 endif()
 
