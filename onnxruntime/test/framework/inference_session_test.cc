@@ -43,6 +43,7 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/optimizer/dummy_graph_transformer.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/inference_session_wrapper.h"
 
 #include "gtest/gtest.h"
 
@@ -130,18 +131,6 @@ class FuseExecutionProvider : public IExecutionProvider {
     // throw if the registry failed to initialize
     ORT_THROW_IF_ERROR(k.st);
     return k.kernel_registry;
-  }
-};
-
-// InferenceSession wrapper to expose loaded graph.
-class InferenceSessionGetGraphWrapper : public InferenceSession {
- public:
-  explicit InferenceSessionGetGraphWrapper(const SessionOptions& session_options,
-                                           const Environment& env) : InferenceSession(session_options, env) {
-  }
-
-  const Graph& GetGraph() {
-    return model_->MainGraph();
   }
 };
 
@@ -409,7 +398,7 @@ TEST(InferenceSessionTests, TestModelSerialization) {
   const string test_model = "testdata/transform/abs-id-max.onnx";
   so.session_logid = "InferenceSessionTests.TestModelSerialization";
   so.graph_optimization_level = TransformerLevel::Default;
-  InferenceSessionGetGraphWrapper session_object_noopt{so, GetEnvironment()};
+  InferenceSessionWrapper session_object_noopt{so, GetEnvironment()};
   ASSERT_TRUE(session_object_noopt.Load(test_model).IsOK());
   ASSERT_TRUE(session_object_noopt.Initialize().IsOK());
 
@@ -421,7 +410,7 @@ TEST(InferenceSessionTests, TestModelSerialization) {
   // Load model with level 1 transform level.
   so.graph_optimization_level = TransformerLevel::Level1;
   so.optimized_model_filepath = ToWideString(test_model + "-TransformLevel-" + std::to_string(static_cast<uint32_t>(so.graph_optimization_level)));
-  InferenceSessionGetGraphWrapper session_object{so, GetEnvironment()};
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
   ASSERT_TRUE(session_object.Load(test_model).IsOK());
   ASSERT_STATUS_OK(session_object.Initialize());
 
@@ -2162,21 +2151,13 @@ TEST(InferenceSessionTests, LoadModelWithEnvVarSetToUnsupportedVal) {
 #endif
 }
 
-struct InferenceSessionExposingSessionState : public InferenceSession {
-  InferenceSessionExposingSessionState(const SessionOptions& session_options,
-                                       const Environment& env)
-      : InferenceSession(session_options, env) {
-  }
-  const SessionState& GetSessionState() const { return InferenceSession::GetSessionState(); }
-};
-
 // Global threadpool related tests
 // We test for 4 combinations
-class InferenceSessionTestGlobalThreadPools : public InferenceSessionExposingSessionState {
+class InferenceSessionTestGlobalThreadPools : public InferenceSessionWrapper {
  public:
   InferenceSessionTestGlobalThreadPools(const SessionOptions& session_options,
                                         const Environment& env)
-      : InferenceSessionExposingSessionState(session_options, env) {
+      : InferenceSessionWrapper(session_options, env) {
   }
 
   onnxruntime::concurrency::ThreadPool* GetIntraOpThreadPoolToUse() const {
@@ -2341,11 +2322,11 @@ TEST(InferenceSessionTests, InvalidSessionEnvCombination) {
 }
 
 // Tests for sharing allocators between sessions
-class InferenceSessionTestSharingAllocator : public InferenceSessionExposingSessionState {
+class InferenceSessionTestSharingAllocator : public InferenceSessionWrapper {
  public:
   InferenceSessionTestSharingAllocator(const SessionOptions& session_options,
                                        const Environment& env)
-      : InferenceSessionExposingSessionState(session_options, env) {
+      : InferenceSessionWrapper(session_options, env) {
   }
 };
 
@@ -2439,11 +2420,11 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsDontUseSameOrtCreated
             sess2.GetSessionState().GetAllocator(mem_info).get());
 }
 
-class InferenceSessionTestSharingInitializer : public InferenceSessionExposingSessionState {
+class InferenceSessionTestSharingInitializer : public InferenceSessionWrapper {
  public:
   InferenceSessionTestSharingInitializer(const SessionOptions& session_options,
                                          const Environment& env)
-      : InferenceSessionExposingSessionState(session_options, env) {
+      : InferenceSessionWrapper(session_options, env) {
   }
 };
 
