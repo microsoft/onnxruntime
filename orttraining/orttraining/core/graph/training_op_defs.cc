@@ -1435,8 +1435,10 @@ Example 4:
           {"tensor(int64)"},
           "Constrain input and output types to 64-bit integer.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::INT64);
-        updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto::INT64);
+        // NOTE: Both outputs are optional.
+        for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
+          updateOutputElemType(ctx, i, ONNX_NAMESPACE::TensorProto::INT64);
+        }
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GistBinarizeEncoder)
