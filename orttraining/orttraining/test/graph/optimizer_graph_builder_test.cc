@@ -112,6 +112,14 @@ OptimizerBuilderRegistry& GetOptimizerBuilderRegistry() {
 }
 
 int GetOpCount(const std::map<std::string, int>& op_counts, const std::string& op_type) {
+  static std::string ms_domain_prefix{std::string(kMsDomain) + '.'};
+
+  std::string key;
+  if (op_type != std::string(k_horovod_all_reduce_op_name)) {
+    key = ms_domain_prefix;
+  }
+  key += op_type;
+
   auto op_count_it = op_counts.find(op_type);
   return op_count_it != op_counts.end() ? op_count_it->second : 0;
 }
