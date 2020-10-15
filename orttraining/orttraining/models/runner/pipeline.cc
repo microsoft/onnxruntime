@@ -87,6 +87,10 @@ const PipelineTask& PipelineSlot::GetFrontAction() const {
   return tasks_.front();
 }
 
+PipelineScheduler::PipelineScheduler() {
+  PipelineScheduler(0, 0);
+}
+
 PipelineScheduler::PipelineScheduler(const int num_batches, const int num_stages) {
   num_stages_ = num_stages;
   num_batches_ = num_batches;

@@ -72,6 +72,26 @@ class ORTTrainerOptions(object):
                             'min' : 0,
                             'default' : 0
                         },
+                        'data_parallel_size' : {
+                            'type' : 'integer',
+                            'min' : 1,
+                            'default' : 1
+                        },
+                        'horizontal_parallel_size' : {
+                            'type' : 'integer',
+                            'min' : 1,
+                            'default' : 1
+                        },
+                        'pipeline_parallel_size' : {
+                            'type' : 'integer',
+                            'min' : 1,
+                            'default' : 1
+                        },
+                        'num_pipeline_steps' : {
+                            'type' : 'integer',
+                            'min' : 1,
+                            'default' : 1
+                        },
                         'allreduce_post_accumulation' : {
                             'type' : 'boolean',
                             'default' : False
@@ -222,7 +242,15 @@ class ORTTrainerOptions(object):
         distributed.world_rank (int, default is 0):
             rank ID used for data parallelism
         distributed.world_size (int, default is 1):
-            number of rank participating in data parallelism
+            number of ranks participating in parallelism
+        distributed.data_parallel_size (int, default is 1):
+            number of ranks participating in data parallelism
+        distributed.horizontal_parallel_size (int, default is 1):
+            number of ranks participating in horizontal parallelism
+        distributed.pipeline_parallel_size (int, default is 1):
+            number of ranks participating in pipeline parallelism
+        distributed.num_pipeline_steps (int, default is 1):
+            number of sub-batches. We divide input batch into sub-batches and run the graph.
         distributed.allreduce_post_accumulation (bool, default is False):
             True enables overlap of AllReduce with computation, while False,
             postpone AllReduce until all gradients are ready
@@ -424,6 +452,26 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                 'type': 'integer',
                 'min': 0,
                 'default': 0
+            },
+            'data_parallel_size': {
+                'type': 'integer',
+                'min': 1,
+                'default': 1
+            },
+            'horizontal_parallel_size': {
+                'type': 'integer',
+                'min': 1,
+                'default': 1
+            },
+            'pipeline_parallel_size': {
+                'type': 'integer',
+                'min': 1,
+                'default': 1
+            },
+            'num_pipeline_steps': {
+                'type': 'integer',
+                'min': 1,
+                'default': 1
             },
             'allreduce_post_accumulation': {
                 'type': 'boolean',
