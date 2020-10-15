@@ -306,7 +306,6 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       node_compute_range.Begin();
 #endif
       ORT_TRY {
-        // std::cerr << "Node: " << p_op_kernel->Node().OpType() << " EP: " << p_op_kernel->Info().GetExecutionProvider()->Type() << std::endl;
         compute_status = p_op_kernel->Compute(&op_kernel_context);
       }
       ORT_CATCH(const std::exception& ex) {

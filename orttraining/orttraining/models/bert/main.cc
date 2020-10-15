@@ -9,8 +9,12 @@
 #include "core/common/profiler.h"
 #include "core/session/environment.h"
 #include "core/framework/random_seed.h"
+#ifdef USE_CUDA
 #include "core/providers/cuda/cuda_allocator.h"
+#endif
+#ifdef USE_ROCM
 #include "core/providers/rocm/rocm_allocator.h"
+#endif
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
 #include "orttraining/core/framework/mpi_context.h"
@@ -20,15 +24,18 @@
 #include "orttraining/models/runner/data_loader.h"
 
 namespace onnxruntime {
+#ifdef USE_CUDA
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id,
                                                                                OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE,
                                                                                size_t cuda_mem_limit = std::numeric_limits<size_t>::max(),
                                                                                onnxruntime::ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo,
                                                                                bool do_copy_in_default_stream = true);
-
+#endif
+#ifdef USE_ROCM
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ROCM(OrtDevice::DeviceId device_id,
                                                                               size_t hip_mem_limit = std::numeric_limits<size_t>::max(),
                                                                               onnxruntime::ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo);
+#endif
 }
 
 using namespace onnxruntime;
