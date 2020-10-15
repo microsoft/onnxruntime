@@ -13,7 +13,7 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kRocmExecutionProvider,
     KernelDefBuilder()
-        .OutputMemoryType<OrtMemTypeCPUOutput>(0)
+        .OutputMemoryType<OrtMemTypeCPUInput>(0)
         .TypeConstraint("T",  DataTypeImpl::AllFixedSizeTensorTypes())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
     Shape);
