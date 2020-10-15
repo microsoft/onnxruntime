@@ -38,6 +38,7 @@ jobs:
       --build_wheel
       --enable_training_python_frontend_e2e_tests
       --enable_training_pipeline_e2e_tests
+      --enable_training_multi_gpu_tests
       "
     displayName: 'Build and run frontend tests'
 

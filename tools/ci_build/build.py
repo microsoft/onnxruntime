@@ -97,11 +97,11 @@ def parse_arguments():
         "--enable_training_python_frontend_e2e_tests", action="store_true",
         help="Enable the pytorch frontend training tests.")
     parser.add_argument(
-        "--enable_training_multi_gpu_tests", action="store_true",
-        help="Enable multi gpu test.")
-    parser.add_argument(
         "--enable_training_pipeline_e2e_tests", action="store_true",
         help="Enable the pipeline c++ e2e tests.")
+    parser.add_argument(
+        "--enable_training_multi_gpu_tests", action="store_true",
+        help="Enable multi gpu test.")
     parser.add_argument(
         "--use_horovod", action='store_true', help="Enable Horovod.")
     parser.add_argument(
@@ -1198,12 +1198,14 @@ def run_training_pipeline_e2e_tests(cwd):
 def run_training_multi_gpu_tests(cwd):
     log.info("Running multi gpu test.")
 
-    run_subprocess(['/bert_ort/openmpi/bin/mpirun', '-n', '2', '--tag-output', '-merge-stderr-to-stdout', '--output-filename',
-        'log-mem-many-p3-s128-b1-a16', './build/Linux/RelWithDebInfo/onnxruntime_training_bert', '--model_name', 
-        '/bert_ort/bert_models/nv/bert-large/bert-large-uncased_L_24_H_1024_A_16_V_30528_S_512_Dp_0.1_optimized_layer_norm', '--train_data_dir',
-        '/bert_data/128/books_wiki_en_corpus/train', '--test_data_dir', '/bert_data/128/books_wiki_en_corpus/test', 
-        '--train_batch_size', '1', '--mode', 'train', '--display_loss_steps', '1', '--optimizer', 'lamb', '--learning_rate', '0.006',
-        '--gradient_accumulation_steps', '16', '--num_train_steps', '32', '--warmup_ratio', '0', '--warmup_mode', 'Linear', '--use_nccl'])
+    # run_subprocess(['/bert_ort/openmpi/bin/mpirun', '-n', '2', '--tag-output', '-merge-stderr-to-stdout', '--output-filename',
+    #     'log-mem-many-p3-s128-b1-a16', './build/Linux/RelWithDebInfo/onnxruntime_training_bert', '--model_name', 
+    #     '/bert_ort/bert_models/nv/bert-large/bert-large-uncased_L_24_H_1024_A_16_V_30528_S_512_Dp_0.1_optimized_layer_norm', '--train_data_dir',
+    #     '/bert_data/128/books_wiki_en_corpus/train', '--test_data_dir', '/bert_data/128/books_wiki_en_corpus/test', 
+    #     '--train_batch_size', '1', '--mode', 'train', '--display_loss_steps', '1', '--optimizer', 'lamb', '--learning_rate', '0.006',
+    #     '--gradient_accumulation_steps', '16', '--num_train_steps', '32', '--warmup_ratio', '0', '--warmup_mode', 'Linear', '--use_nccl'])
+    run_subprocess([
+        sys.executable, 'run_multi_gpu_test.py'], cwd=cwd)
 
 
 def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
@@ -1217,14 +1219,15 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             run_training_python_frontend_e2e_tests(cwd=cwd)
             run_training_python_frontend_tests(cwd=cwd)
             continue
-        
-        if args.enable_training and args.use_cuda and args.enable_training_multi_gpu_tests:
-            run_training_multi_gpu_tests(cwd=cwd)
-            continue
 
         if args.enable_training and args.use_cuda and args.enable_training_pipeline_e2e_tests:
             # run distributed pipeline test on 4-GPU CI machine.
             run_training_pipeline_e2e_tests(cwd=cwd)
+            continue
+        
+        if args.enable_training and args.use_cuda and args.enable_training_multi_gpu_tests:
+            # run multi gpu test
+            run_training_multi_gpu_tests(cwd=cwd)
             continue
 
         if args.android:
