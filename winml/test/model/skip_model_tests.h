@@ -126,4 +126,7 @@ std::unordered_map<std::string, std::string> disabledx86Tests(
      {"faster_rcnn_opset10", disabledx86TestDefaultReason},
      {"test_vgg19_opset7", disabledx86TestDefaultReason},
      {"test_vgg19_opset8", disabledx86TestDefaultReason},
-     {"coreml_VGG16_ImageNet_opset7", disabledx86TestDefaultReason}});
+     {"coreml_VGG16_ImageNet_opset7", disabledx86TestDefaultReason},
+     {"GPT2_LM_HEAD_opset10", disabledx86TestDefaultReason},
+     {"GPT2_opset10", disabledx86TestDefaultReason},
+     {"BERT_Squad_opset10", disabledx86TestDefaultReason}});

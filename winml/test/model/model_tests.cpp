@@ -166,8 +166,10 @@ void DetermineIfDisableTest(std::string& testName, winml::LearningModelDeviceKin
       shouldSkip = true;
     }
   } else if (disabledx86Tests.find(testName) != disabledx86Tests.end()) {
+#if !defined(__amd64__) && !defined(_M_AMD64)
     reason = disabledx86Tests.at(testName);
     shouldSkip = true;
+#endif
   }
   if (shouldSkip) {
     printf("Disabling %s test because : %s\n", testName.c_str(), reason.c_str());
