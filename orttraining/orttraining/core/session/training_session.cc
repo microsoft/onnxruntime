@@ -20,6 +20,7 @@
 #include "orttraining/core/graph/tensorboard_transformer.h"
 #include "orttraining/core/graph/pipeline_transformer.h"
 #include "orttraining/core/graph/gradient_builder_base.h"
+#include "orttraining/models/runner/training_util.h"
 
 //Gist Encoding
 #include "orttraining/core/optimizer/gist_encode_decode.h"
@@ -270,14 +271,23 @@ Status TrainingSession::ConfigureForTraining(
       weight_names_to_train, loss_name, config.gradient_graph_config, *session_logger_));
 
   if (config.pipeline_config.has_value()) {
+    // TODO: The number of pipeline steps should be passed in from Python API.
+    const int num_pipeline_steps = config.distributed_config.num_pipeline_steps;
+    const int num_pipeline_stages = config.distributed_config.pipeline_parallel_size;
+    pipeline_schedule_ = pipeline::PipelineScheduler(num_pipeline_steps, num_pipeline_stages);
+    pipeline_worker_pool_ = pipeline::PipelineWorkerPool(num_pipeline_stages);
+
+    // Declar a place holder for pipeline configuration.
     TrainingConfigurationResult::PipelineConfigurationResult pipeline_result{};
     ORT_RETURN_IF_ERROR(InsertPipelineOps(weight_names_to_train,
                                           pipeline_result.pipeline_tensor_names));
+
     // Records which which tensors can be fed into the graph.
     // It may be different than the original graph because of extra event tensors.
     for (auto& node_arg : model_->MainGraph().GetInputsIncludingInitializers()) {
       pipeline_result.feed_names.push_back(node_arg->Name());
     }
+
     // The following loop is for not to fetch tensors not in this pipeline stage.
     for (size_t i = 0; i < config.pipeline_config.value().fetch_names.size(); ++i) {
       auto name = config.pipeline_config.value().fetch_names[i];
@@ -289,9 +299,17 @@ Status TrainingSession::ConfigureForTraining(
       }
       pipeline_result.fetch_names.push_back(name);
     }
+
     pipeline_result.pipeline_stage_id =
         config.distributed_config.world_rank /
         (config.distributed_config.data_parallel_size * config.distributed_config.horizontal_parallel_size);
+
+    // TODO: keep all other pipeline context fields such as feed_names.
+    pipeline_context_.pipeline_tensor_names = pipeline_result.pipeline_tensor_names;
+    pipeline_context_.num_pipeline_batches = num_pipeline_steps;
+    pipeline_context_.pipeline_stage_id = pipeline_result.pipeline_stage_id;
+
+    // Return pipeline configuration back.
     config_result.pipeline_config_result = pipeline_result;
   }
 
@@ -895,11 +913,175 @@ common::Status TrainingSession::Run(const RunOptions& run_options, IOBinding& io
   return InferenceSession::Run(run_options, io_binding);
 }
 
+OrtValue SliceTensor(
+    const OrtValue& /*sliced_value*/,
+    const size_t /*slice_id*/,
+    const size_t /*slice_axis*/,
+    const size_t /*num_slices*/) {
+  OrtValue value;
+  return value;
+}
+
+void TrainingSession::CreateBatchVariables(
+    IOBinding& io_binding,
+    IOBinding& sub_io_binding,
+    const size_t slice_id,
+    const size_t slice_axis,
+    const size_t num_slices) {
+  // Slice inputs into sub-tensors along a specified axis.
+
+  auto& inputs = io_binding.GetInputs();
+  auto& input_names = io_binding.GetInputNames();
+
+  ORT_ENFORCE(inputs.size() == input_names.size());
+
+  // Slice input tensors.
+  // TODO: need to specify which tensor to slice.
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    OrtValue sliced_value = SliceTensor(inputs[i], slice_id, slice_axis, num_slices);
+    sub_io_binding.BindInput(input_names[i], sliced_value);
+  }
+
+  auto& outputs = io_binding.GetOutputs();
+  auto& output_names = io_binding.GetOutputNames();
+
+  ORT_ENFORCE(outputs.size() == output_names.size());
+
+  // Slice output tensors.
+  // TODO: need to specify which tensor to slice.
+  for (size_t i = 0; i < outputs.size(); ++i) {
+    OrtValue sliced_value = SliceTensor(outputs[i], slice_id, slice_axis, num_slices);
+    sub_io_binding.BindOutput(output_names[i], sliced_value);
+  }
+}
+
+void TrainingSession::CreatePipelineEvents(
+    const bool training_mode,
+    const int batch_id,
+    const int stage_id,
+    IOBinding& io_binding) {
+  ORT_ENFORCE(batch_id >= 0);
+  ORT_ENFORCE(stage_id >= 0);
+
+  // Define helper function to create events as ORT values.
+  auto append_to_io_binding = [&](const std::string event_name, const int64_t event_value) -> void {
+    // If an event name is empty, the corresponding event won't be used when running the graph.
+    if (event_name.empty()) {
+      // No need to add unused event.
+      return;
+    }
+
+    // Event "-1" means no event to wait or record.
+    // A non-negative value means a specific event's ID.
+    ORT_ENFORCE(event_value != -1 && event_value < 0);
+
+    // Check uniqueness of event names.
+    for (auto name : io_binding.GetInputNames()) {
+      ORT_ENFORCE(event_name != name, "Two variable cannot have the same name.");
+    }
+    for (auto name : io_binding.GetOutputNames()) {
+      ORT_ENFORCE(event_name != name, "Two variable cannot have the same name.");
+    }
+
+    const auto* cpu_ep = GetSessionState().GetExecutionProviders().Get(onnxruntime::kCpuExecutionProvider);
+    const auto cpu_allocator = cpu_ep->GetAllocator(0, OrtMemTypeDefault);
+    auto event = onnxruntime::MakeScalarMLValue<int64_t>(cpu_allocator, event_value, false);
+    
+    // Add the created event to the list.
+    io_binding.BindInput(event_name, event);
+  };
+
+  int id = -1;
+
+  // Forward Recv
+  id = !training_mode ? -1 : pipeline_schedule_.GetForwardRecvWaitedEvent(batch_id, stage_id);
+  append_to_io_binding(pipeline_context_.pipeline_tensor_names.forward_recv_waited_event_name, id);
+  id = !training_mode ? -1 : pipeline_schedule_.GetForwardRecvRecordedEvent(batch_id, stage_id);
+  append_to_io_binding(pipeline_context_.pipeline_tensor_names.forward_recv_recorded_event_name, id);
+
+  // Forward Send
+  id = !training_mode ? -1 : pipeline_schedule_.GetForwardSendWaitedEvent(batch_id, stage_id);
+  append_to_io_binding(pipeline_context_.pipeline_tensor_names.forward_send_waited_event_name, id);
+  id = !training_mode ? -1 : pipeline_schedule_.GetForwardSendRecordedEvent(batch_id, stage_id);
+  append_to_io_binding(pipeline_context_.pipeline_tensor_names.forward_send_recorded_event_name, id);
+
+  // Backward Recv
+  id = !training_mode ? -1 : pipeline_schedule_.GetBackwardRecvWaitedEvent(batch_id, stage_id);
+  append_to_io_binding(pipeline_context_.pipeline_tensor_names.backward_recv_waited_event_name, id);
+  id = !training_mode ? -1 : pipeline_schedule_.GetBackwardRecvRecordedEvent(batch_id, stage_id);
+  append_to_io_binding(pipeline_context_.pipeline_tensor_names.backward_recv_recorded_event_name, id);
+
+  // Backward Send
+  id = !training_mode ? -1 : pipeline_schedule_.GetBackwardSendWaitedEvent(batch_id, stage_id);
+  append_to_io_binding(pipeline_context_.pipeline_tensor_names.backward_send_waited_event_name, id);
+  id = !training_mode ? -1 : pipeline_schedule_.GetBackwardSendRecordedEvent(batch_id, stage_id);
+  append_to_io_binding(pipeline_context_.pipeline_tensor_names.backward_send_recorded_event_name, id);
+
+  // Forward Compute
+  id = !training_mode ? -1 : pipeline_schedule_.GetForwardComputeWaitedEvent(batch_id, stage_id);
+  append_to_io_binding(pipeline_context_.pipeline_tensor_names.forward_compute_waited_event_name, id);
+  id = !training_mode ? -1 : pipeline_schedule_.GetForwardComputeRecordedEvent(batch_id, stage_id);
+  append_to_io_binding(pipeline_context_.pipeline_tensor_names.forward_compute_recorded_event_name, id);
+
+  // Backward Compute
+  id = !training_mode ? -1 : pipeline_schedule_.GetBackwardComputeWaitedEvent(batch_id, stage_id);
+  append_to_io_binding(pipeline_context_.pipeline_tensor_names.backward_compute_waited_event_name, id);
+  id = !training_mode ? -1 : pipeline_schedule_.GetBackwardComputeRecordedEvent(batch_id, stage_id);
+  append_to_io_binding(pipeline_context_.pipeline_tensor_names.backward_compute_recorded_event_name, id);
+}
+
+// This function splits input batch into several sub-batches and then 
+// run those sub-batches using pipeline parallel. This function
+// is responsible for adding pipeline-related feeds such as event IDs before 
+// calling the graph.
+common::Status TrainingSession::RunWithPipeline(const RunOptions& run_options, IOBinding& io_binding) {
+  // This list contains all variables needed to run the graph.
+  // The passed-in binding object is a partial set of final inputs.
+  std::vector<std::pair<std::string, OrtValue>> modified_feeds;
+
+  // TODO: add it to run_options.
+  const size_t slice_axis = 0;
+  // TODO: add it to run_options.
+  const size_t num_steps = 8;
+  // TODO: add it to run_options.
+  const bool training_mode = true;
+
+  for (size_t i = 0; i < num_steps; ++i) {
+    // TODO: run this code block using a thread.
+
+    // Inputs and outputs of a sub-batch run.
+    std::unique_ptr<IOBinding> sub_io_binding;
+    auto status = NewIOBinding(&sub_io_binding);
+    ORT_RETURN_IF_ERROR(status);
+
+    // Add inputs and outputs to the binding.
+    CreateBatchVariables(*sub_io_binding.get(), io_binding, i, slice_axis, num_steps);
+
+    // Add proper events to the binding.
+    CreatePipelineEvents(training_mode, i, pipeline_context_.pipeline_stage_id, *sub_io_binding.get());
+
+    // TODO: When pipeline parallel is enabled, we need to ensure gradient accumulation
+    // flag is set to true when initializing the session.
+
+    //ORT_RETURN_IF_ERROR(InferenceSession::Run(run_options, sub_io_binding));
+    ORT_RETURN_IF_ERROR(
+      InferenceSession::Run(
+          run_options,
+          sub_io_binding->GetInputNames(),
+          sub_io_binding->GetInputs(),
+          sub_io_binding->GetOutputNames(),
+          &sub_io_binding->GetOutputs()));
+  }
+
+  return common::Status::OK();
+}
+
 static const std::unordered_set<std::string> Nodes_Need_Eval_Feeds = {
     // TODO remove this once ONNX TrainableDropout is completely deprecated.
     "TrainableDropout",
     "Dropout",
 };
+
 Status TrainingSession::SetEvalFeedNames() {
   Graph& graph = model_->MainGraph();
 

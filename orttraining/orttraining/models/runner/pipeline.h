@@ -142,6 +142,7 @@ class PipelineSlot {
 
 class PipelineScheduler {
  public:
+  PipelineScheduler();
   PipelineScheduler(const int num_batches, const int num_stages);
   // Number of time steps.
   size_t GetScheduleSize() const { return compute_commute_table_.size(); }

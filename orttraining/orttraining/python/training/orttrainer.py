@@ -638,6 +638,16 @@ class ORTTrainer(object):
         ort_parameters.transformer_layer_recompute = self.options.graph_transformer.transformer_layer_recompute
         ort_parameters.number_recompute_layers = self.options.graph_transformer.number_recompute_layers
 
+        ort_parameters.data_parallel_size = self.options.distributed.data_parallel_size
+        ort_parameters.horizontal_parallel_size = self.options.distributed.horizontal_parallel_size
+        ort_parameters.pipeline_parallel_size = self.options.distributed.pipeline_parallel_size
+        ort_parameters.num_pipeline_steps = self.options.distributed.num_pipeline_steps
+
+        print('[orttrainer.py] ort_parameters.data_parallel_size=', ort_parameters.data_parallel_size)
+        print('[orttrainer.py] ort_parameters.horizontal_parallel_size=', ort_parameters.horizontal_parallel_size)
+        print('[orttrainer.py] ort_parameters.pipeline_parallel_size=', ort_parameters.pipeline_parallel_size)
+        print('[orttrainer.py] ort_parameters.num_pipeline_steps=', ort_parameters.num_pipeline_steps)
+
         # SessionOptions
         session_options = ort.SessionOptions()
         session_options.use_deterministic_compute = self.options.debug.deterministic_compute
