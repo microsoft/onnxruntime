@@ -887,10 +887,10 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     output_is_nhwc = input1_is_nhwc;
   } else if (input1_is_nhwc) {
     // need transpsoe input1 back to nchw
-    GetNCHWInput(model_builder, node, a_idx, input1);
+    ORT_RETURN_IF_ERROR(GetNCHWInput(model_builder, node, a_idx, input1));
   } else {  // input2_is_nhwc
     // need transpsoe input2 back to nchw
-    GetNCHWInput(model_builder, node, b_idx, input2);
+    ORT_RETURN_IF_ERROR(GetNCHWInput(model_builder, node, b_idx, input2));
   }
 
   float a_scale = 0.0f,
@@ -1077,7 +1077,7 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   auto input = node.InputDefs()[0]->Name();
   if (model_builder.IsOperandNHWC(input)) {
     // We want to transpose nhwc operand back to nchw before reshape
-    GetNCHWInput(model_builder, node, 0, input);
+    ORT_RETURN_IF_ERROR(GetNCHWInput(model_builder, node, 0, input));
   }
 
   const auto& output = node.OutputDefs()[0]->Name();
@@ -1871,7 +1871,7 @@ Status SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
     if (model_builder.IsOperandNHWC(input)) {
       output_is_nhwc = false;
       // We want to transpose nhwc operand back to nchw before softmax
-      GetNCHWInput(model_builder, node, 0, input);
+      ORT_RETURN_IF_ERROR(GetNCHWInput(model_builder, node, 0, input));
     }
   }
 
@@ -2299,7 +2299,7 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     for (size_t i = 0; i < node_input_size; i++) {
       auto input = node.InputDefs()[i]->Name();
       if (model_builder.IsOperandNHWC(input)) {
-        GetNCHWInput(model_builder, node, i, input);
+        ORT_RETURN_IF_ERROR(GetNCHWInput(model_builder, node, i, input));
       }
       input_indices.push_back(operand_indices.at(input));
       inputs.push_back(input);
@@ -2364,7 +2364,7 @@ Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   auto input = node.InputDefs()[0]->Name();
   if (model_builder.IsOperandNHWC(input)) {
     // We want to transpose nhwc operand back to nchw before squeeze
-    GetNCHWInput(model_builder, node, 0, input);
+    ORT_RETURN_IF_ERROR(GetNCHWInput(model_builder, node, 0, input));
   }
 
   NodeAttrHelper helper(node);
