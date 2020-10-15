@@ -265,13 +265,15 @@ add_dependencies(winml_test_adapter ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(winml_test_adapter PRIVATE ${winml_adapter_dir})
 target_include_directories(winml_test_adapter PRIVATE ${winml_lib_common_dir}/inc)
 
-get_winml_test_model_src(${WINML_TEST_SRC_DIR} winml_test_model_src winml_test_model_libs)
-add_winml_test(
-  TARGET winml_test_model
-  SOURCES ${winml_test_model_src}
-  LIBS winml_test_common ${winml_test_model_libs}
-)
-target_precompiled_header(winml_test_model testPch.h)
+if(NOT onnxruntime_ENABLE_MEMLEAK_CHECKER)
+  get_winml_test_model_src(${WINML_TEST_SRC_DIR} winml_test_model_src winml_test_model_libs)
+  add_winml_test(
+    TARGET winml_test_model
+    SOURCES ${winml_test_model_src}
+    LIBS winml_test_common ${winml_test_model_libs}
+  )
+  target_precompiled_header(winml_test_model testPch.h)
+endif()
 
 # During build time, copy any modified collaterals.
 # configure_file(source destination COPYONLY), which configures CMake to copy the file whenever source is modified,

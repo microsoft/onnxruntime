@@ -121,7 +121,7 @@ std::string GetTestDataPath() {
       return hardcodedModelPath;
     }
   }
-  return testDataPath;
+  return std::move(testDataPath);
 }
 
 // This function returns the list of all test cases inside model test collateral
@@ -135,7 +135,7 @@ static std::vector<ITestCase*> GetAllTestCases() {
   auto testDataPath = GetTestDataPath();
   if (testDataPath == "") return tests;
 
-  for (auto& p : std::filesystem::directory_iterator(testDataPath)) {
+  for (auto& p : std::filesystem::directory_iterator(testDataPath.c_str())) {
     if (p.is_directory()) {
       dataDirs.push_back(std::move(p.path()));
     }
@@ -157,8 +157,7 @@ void DetermineIfDisableTest(std::string& testName, winml::LearningModelDeviceKin
   if (disabledTests.find(testName) != disabledTests.end()) {
     reason = disabledTests.at(testName);
     shouldSkip = true;
-  }
-  if (deviceKind == LearningModelDeviceKind::DirectX) {
+  } else if (deviceKind == LearningModelDeviceKind::DirectX) {
     if (SkipGpuTests()) {
       reason = "GPU tests are not enabled for this build.";
       shouldSkip = true;
@@ -166,8 +165,10 @@ void DetermineIfDisableTest(std::string& testName, winml::LearningModelDeviceKin
       reason = disabledGpuTests.at(testName);
       shouldSkip = true;
     }
+  } else if (disabledx86Tests.find(testName) != disabledx86Tests.end()) {
+    reason = disabledx86Tests.at(testName);
+    shouldSkip = true;
   }
-
   if (shouldSkip) {
     printf("Disabling %s test because : %s\n", testName.c_str(), reason.c_str());
     testName = "DISABLED_" + testName;
