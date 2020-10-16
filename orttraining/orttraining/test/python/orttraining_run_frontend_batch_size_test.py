@@ -37,10 +37,11 @@ for config in configs:
         sys.executable,
         'orttraining_run_bert_pretrain.py',
         "ORTBertPretrainTest.test_pretrain_throughput",
-        "--enable_mixed_precision",
-        "--sequence_length", "128",
+        "--sequence_length", str(config.sequence_length),
         "--max_batch_size", str(config.max_batch_size),
         "--max_predictions_per_seq", str(config.max_predictions_per_seq)]
+    if config.enable_mixed_precision:
+        cmds = [*cmds, "--enable_mixed_precision"]
     if config.gelu_recompute:
         cmds = [*cmds, "--gelu_recompute"]
     if config.attn_dropout_recompute:
