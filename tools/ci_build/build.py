@@ -1158,6 +1158,10 @@ def run_training_python_frontend_e2e_tests(cwd):
     # frontend tests are to be added here:
     log.info("Running python frontend e2e tests.")
 
+    run_subprocess(
+        [sys.executable, 'orttraining_run_frontend_batch_size_test.py', '-v'],
+        cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'})
+
     import torch
     ngpus = torch.cuda.device_count()
     if ngpus > 1:
