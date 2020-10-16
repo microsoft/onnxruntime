@@ -479,6 +479,20 @@ void addObjectMethodsForTraining(py::module& m) {
       .def("is_output_fp32_node", [](PyTrainingSession* sess, const std::string& output_name) {
         return static_cast<PipelineTrainingSession*>(sess->GetSessionHandle())->IsGraphOutputFp32Node(output_name);
       });
+
+  py::class_<ModuleTransformer> module_transformer(m, "ModuleTransformer");
+  module_transformer
+      .def(py::init([]() {
+        return onnxruntime::make_unique<ModuleTransformer>();
+      }))
+      .def("transform", [](ModuleTransformer* transformer,
+                           const py::bytes& serialized_model,
+                           const std::unordered_set<std::string>& weights_to_train,
+                           const std::unordered_set<std::string>& output_names) {
+        std::istringstream buffer(serialized_model);
+        std::string model_as_string = transformer->Transform(buffer, weights_to_train, output_names);
+        return py::bytes(model_as_string);
+      });
 }
 }  // namespace python
 }  // namespace onnxruntime
