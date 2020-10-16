@@ -478,8 +478,14 @@ inline SessionOptions& SessionOptions::AddInitializer(const char* name, const Or
 }
 
 inline OrtStatus* SessionOptions::OrtSessionOptionsAppendExecutionProvider_CUDA(OrtSessionOptions * options, OrtCUDAProviderOptions * cuda_options) {
+  #ifdef USE_CUDA
     ThrowOnError(GetApi().OrtSessionOptionsAppendExecutionProvider_CUDA(options, cuda_options));
     return nullptr;
+  #else
+    ORT_UNUSED_PARAMETER(options);
+    ORT_UNUSED_PARAMETER(cuda_options);
+    return Ort::GetApi().CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled.");
+  #endif
 }
 
 inline Session::Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options) {

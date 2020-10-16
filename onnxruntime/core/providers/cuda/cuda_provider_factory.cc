@@ -64,15 +64,10 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessi
 
 ORT_API_STATUS_IMPL(OrtApis::OrtSessionOptionsAppendExecutionProvider_CUDA,
                     _In_ OrtSessionOptions* options, _In_ OrtCUDAProviderOptions* cuda_options) {
-  #ifdef USE_CUDA
   options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_CUDA(static_cast<OrtDevice::DeviceId>(cuda_options->device_id),
                                             cuda_options->cudnn_conv_algo_search, cuda_options->cuda_mem_limit, 
                                             static_cast<onnxruntime::ArenaExtendStrategy>(cuda_options->arena_extend_strategy),
                                             cuda_options->do_copy_in_default_stream));
-  #elif
-  ORT_UNUSED_PARAMETER(options);
-  ORT_UNUSED_PARAMETER(cuda_options);
-  return Ort::GetApi().CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled.");
-  #endif
+  
   return nullptr;
 }
