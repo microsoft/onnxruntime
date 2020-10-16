@@ -115,6 +115,8 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
     return Status::OK();
   }
 
+  // TODO: miOpen doesn't support reduction op as CUDNN. Two options:
+  // 1) implement reduction ops by ourselves 2) ask AMD to support same reduction functionality as CUDNN.
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "reduction1 is not supported");
 }
 
@@ -319,7 +321,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, miopenR
 template <>
 template <>
 Status ReduceKernel<true>::ComputeImpl<int32_t>(OpKernelContext* /*ctx*/, miopenReduceTensorOp_t /*miopen_reduce_op*/) const {
-  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "reduction3 is not supported");
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, Node().OpType(), " is not supported");
 }
 
 #define REGISTER_KERNEL_HFD(name)        \

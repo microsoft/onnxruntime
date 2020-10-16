@@ -1,10 +1,10 @@
-import argparse
+# import argparse
 import os
 import subprocess
 
-contrib_ops_path='onnxruntime/contrib_ops'
-core_ops_path='onnxruntime/core/providers'
-training_ops_path='orttraining/orttraining/training_ops'
+contrib_ops_path = 'onnxruntime/contrib_ops'
+core_ops_path = 'onnxruntime/core/providers'
+training_ops_path = 'orttraining/orttraining/training_ops'
 
 contrib_ops_files = [
                     # 'cuda_contrib_kernels.cc',
@@ -172,15 +172,15 @@ training_ops_files = [
                     'activation/bias_gelu_grad_impl.cu',
                     'activation/bias_gelu_grad_impl.h',
                     'activation/gelu_grad_impl_common.cuh',
-                    #'collective/horovod_kernels.cc',
-                    #'collective/horovod_kernels.h',
+                    # 'collective/horovod_kernels.cc',
+                    # 'collective/horovod_kernels.h',
                     'collective/megatron.cc',
                     # 'collective/nccl_common.cc',
                     'collective/nccl_common.h',
                     'collective/nccl_kernels.cc',
                     'collective/nccl_kernels.h',
-                    #'collective/ready_event.cc',
-                    #'collective/ready_event.h',
+                    # 'collective/ready_event.cc',
+                    # 'collective/ready_event.h',
                     # #'communication/common.h',
                     # #'communication/recv.cc',
                     # #'communication/recv.h',
@@ -252,8 +252,9 @@ training_ops_files = [
                     # 'tensor/view.h'
 ]
 
-HIPIFY_PERL='/opt/rocm/bin/hipify-perl'
-FINDCODE='/opt/rocm/bin/findcode.sh'
+HIPIFY_PERL = '/opt/rocm/bin/hipify-perl'
+FINDCODE = '/opt/rocm/bin/findcode.sh'
+
 
 def hipify(src_file_path, dst_file_path):
     dst_file_path = dst_file_path.replace('cuda', 'hip')
@@ -266,14 +267,14 @@ def hipify(src_file_path, dst_file_path):
         s = f.read().replace('cuda', 'hip')
         s = s.replace('Cuda', 'Hip')
         s = s.replace('CUDA', 'HIP')
-        #s = s.replace('kCudaExecutionProvider', 'kHipExecutionProvider')
-        #s = s.replace('CudaAsyncBuffer', 'HipAsyncBuffer')
-        #s = s.replace('CudaKernel', 'HipKernel')
-        #s = s.replace('ToCudaType', 'ToHipType')
-        #s = s.replace('CudaT', 'HipT')
-        #s = s.replace('CUDA_LONG', 'HIP_LONG')
-        #s = s.replace('CUDA_RETURN_IF_ERROR', 'HIP_RETURN_IF_ERROR')
-        #s = s.replace('CUDA_KERNEL_ASSERT', 'HIP_KERNEL_ASSERT')
+        # s = s.replace('kCudaExecutionProvider', 'kHipExecutionProvider')
+        # s = s.replace('CudaAsyncBuffer', 'HipAsyncBuffer')
+        # s = s.replace('CudaKernel', 'HipKernel')
+        # s = s.replace('ToCudaType', 'ToHipType')
+        # s = s.replace('CudaT', 'HipT')
+        # s = s.replace('CUDA_LONG', 'HIP_LONG')
+        # s = s.replace('CUDA_RETURN_IF_ERROR', 'HIP_RETURN_IF_ERROR')
+        # s = s.replace('CUDA_KERNEL_ASSERT', 'HIP_KERNEL_ASSERT')
 
         s = s.replace('GPU_WARP_SIZE = 32', 'GPU_WARP_SIZE = 64')
         s = s.replace('std::exp', 'expf')
@@ -290,9 +291,9 @@ def hipify(src_file_path, dst_file_path):
         s = s.replace('CURAND', 'HIPRAND')
         s = s.replace('Curand', 'Hiprand')
         s = s.replace('curand', 'hiprand')
-    
+
         # NCCL -> RCCL
-        #s = s.replace('NCCL_CALL', 'RCCL_CALL')
+        # s = s.replace('NCCL_CALL', 'RCCL_CALL')
         s = s.replace('#include <nccl.h>', '#include <rccl.h>')
 
         # CUDNN -> MIOpen
@@ -312,6 +313,7 @@ def hipify(src_file_path, dst_file_path):
         s = s.replace('CUFFT', 'HIPFFT')
     with open(dst_file_path, 'w') as f:
         f.write(s)
+
 
 def main():
     cuda_path = contrib_ops_path + '/cuda/'
@@ -334,6 +336,7 @@ def main():
         src_file_path = cuda_path + file
         dst_file_path = hip_path + file
         hipify(src_file_path, dst_file_path)
+
 
 if __name__ == '__main__':
     main()

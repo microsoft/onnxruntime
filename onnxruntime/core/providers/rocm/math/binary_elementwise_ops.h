@@ -16,6 +16,8 @@ struct BinaryElementwisePreparation {
   Tensor* output_tensor = nullptr;
   int32_t output_rank_or_simple_broadcast = 0; // for no_broadcast|left_scalar|right_scalar cases, output_rank uses SimpleBroadcast enums
 
+  // TODO: Unlike to CUDA EP, "pass by pointer" has been used in ROCM EP since ROCm compiler has a perf issue with "pass by value".
+  // The fix for ROCm compiler will be released in ROCm 3.10
   RocmKernel::HipAsyncBuffer<int64_t> lhs_padded_strides;  // for lhs shape == output shape, this is nullptr
   RocmKernel::HipAsyncBuffer<int64_t> rhs_padded_strides;  // for rhs shape == output shape, this is nullptr
   RocmKernel::HipAsyncBuffer<fast_divmod> fdm_output_strides;

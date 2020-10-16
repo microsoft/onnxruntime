@@ -4,7 +4,7 @@
 
 import argparse
 import glob
-import multiprocessing
+# import multiprocessing
 import os
 import re
 import shutil
@@ -1063,7 +1063,8 @@ def setup_dml_build(args, cmake_path, build_dir, configs):
                         "--target", "RESTORE_PACKAGES"]
             run_subprocess(cmd_args)
 
-def setup_hip_vars(args):
+
+def setup_rocm_vars(args):
 
     rocm_home = None
 
@@ -1814,9 +1815,9 @@ def main():
     # if using migraphx, setup migraphx paths
     migraphx_home = setup_migraphx_vars(args)
 
-    # if using hip, setup hip paths
-    rocm_home = setup_hip_vars(args)
-  
+    # if using rocm, setup rocm paths
+    rocm_home = setup_rocm_vars(args)
+
     os.makedirs(build_dir, exist_ok=True)
 
     log.info("Build started")

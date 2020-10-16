@@ -866,7 +866,6 @@ void OpTester::Run(
         has_run = true;
 
         ASSERT_PROVIDER_STATUS_OK(session_object.RegisterExecutionProvider(std::move(execution_provider)));
-        std::cerr << "Running on EP: " << provider_type << std::endl;
         fetches_ = ExecuteModel<InferenceSession>(
             *p_model, session_object, expect_result, expected_failure_string,
             run_options, feeds, output_names, provider_type);

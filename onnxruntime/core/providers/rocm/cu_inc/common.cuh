@@ -187,14 +187,7 @@ struct GridDim {
   if (id >= N)                                              \
     return;
 
-// HIP_KERNEL_ASSERT is a macro that wraps an assert() call inside hip kernels.
-// This is not supported by Apple platforms so we special case it.
-// See http://docs.nvidia.com/rocm/hip-c-programming-guide/#assertion
-#if defined(__APPLE__) || defined(__HIP_PLATFORM_HCC__)
 #define HIP_KERNEL_ASSERT(...)
-#else // __APPLE__
-#define HIP_KERNEL_ASSERT(...) assert(__VA_ARGS__)
-#endif // __APPLE__
 
 // WARP related definitions and functions
 constexpr int GPU_WARP_SIZE = 64;
@@ -202,41 +195,25 @@ constexpr int GPU_WARP_SIZE = 64;
 template <typename T>
 __device__ __forceinline__ T WARP_SHFL(T value, int srcLane, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff)
 {
-#if HIP_VERSION >= 9000
-  return __shfl_sync(mask, value, srcLane, width);
-#else
   return __shfl(value, srcLane, width);
-#endif
 }
 
 template <typename T>
 __device__ __forceinline__ T WARP_SHFL_XOR(T value, int laneMask, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff)
 {
-#if HIP_VERSION >= 9000
-  return __shfl_xor_sync(mask, value, laneMask, width);
-#else
   return __shfl_xor(value, laneMask, width);
-#endif
 }
 
 template <typename T>
 __device__ __forceinline__ T WARP_SHFL_UP(T value, unsigned int delta, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff)
 {
-#if HIP_VERSION >= 9000
-  return __shfl_up_sync(mask, value, delta, width);
-#else
   return __shfl_up(value, delta, width);
-#endif
 }
 
 template <typename T>
 __device__ __forceinline__ T WARP_SHFL_DOWN(T value, unsigned int delta, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff)
 {
-#if HIP_VERSION >= 9000
-  return __shfl_down_sync(mask, value, delta, width);
-#else
   return __shfl_down(value, delta, width);
-#endif
 }
 
 }  // namespace rocm
