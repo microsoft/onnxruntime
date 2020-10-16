@@ -437,6 +437,19 @@ TEST(GradientCheckerTest, ExpGrad) {
   EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
 }
 
+TEST(GradientCheckerTest, FlattenGrad) {
+  TensorShape shape({2, 3, 4});
+  float max_error;
+  float error_tolerance = 1e-3f;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"Flatten", kOnnxDomain, 11};
+
+  for (int axis = -3; axis < 3; ++axis) {
+    gradient_checker.ComputeGradientError(op_def, {shape}, {shape}, &max_error, {MakeAttribute("axis", int64_t(axis))});
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+  }
+}
+
 TEST(GradientCheckerTest, TanhGrad) {
   UnaryOpGradientTest("Tanh");
 }
