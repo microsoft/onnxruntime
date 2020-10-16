@@ -207,11 +207,12 @@ struct SliceIteratorBase {
 
   void AdvanceOverInnerExtent() {
     size_t axis = skips_.size() - 1;
-    input_ += skips_[axis] * element_size_;
+    int64_t move = skips_[axis];
     while (axis-- && ++indices_[axis] == extents_[axis]) {
       indices_[axis] = 0;
-      input_ += skips_[axis] * element_size_;
+      move += skips_[axis];
     }
+    input_ += move * element_size_;
   }
 
   void IncrementInnerDimension() {
@@ -231,12 +232,12 @@ struct SliceIteratorBase {
     byte* out_bytes = reinterpret_cast<byte*>(output);
     auto bytes_to_copy = inner_extent_ * element_size_;
 
-    if (!is_string_tensor_) {
-      std::copy(input_, input_ + bytes_to_copy, out_bytes);
-    } else {
+    if (is_string_tensor_) {
       const std::string* input = reinterpret_cast<const std::string*>(input_);
       std::string* out = reinterpret_cast<std::string*>(output);
       std::copy(input, input + inner_extent_, out);
+    } else {
+      std::copy(input_, input_ + bytes_to_copy, out_bytes);
     }
 
     input_ += bytes_to_copy;
@@ -249,7 +250,9 @@ struct SliceIteratorBase {
   // Assumes generic inner_step_
   void* CopyInnermostAxisNonSolitaryInnerStep(void* output) {
     // need to special case std::string so the copy works correctly
-    if (!is_string_tensor_) {
+    if (is_string_tensor_) {
+      output = TypedCopyInnermostAxisNonSolitaryInnerStep<std::string>(output);
+    } else {
       // switch on element size so copy is efficient
       switch (element_size_) {
         case sizeof(uint8_t):
@@ -267,8 +270,6 @@ struct SliceIteratorBase {
         default:
           ORT_THROW("Unexpected element size of ", element_size_);
       }
-    } else {
-      output = TypedCopyInnermostAxisNonSolitaryInnerStep<std::string>(output);
     }
 
     return output;

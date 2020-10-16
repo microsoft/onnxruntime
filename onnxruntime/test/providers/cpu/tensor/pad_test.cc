@@ -210,6 +210,34 @@ TYPED_TEST(PadOpTest, Pad_Constant_2D) {
                                    T(123), T(123), T(123), T(123), T(123), T(123)});
 }
 
+TYPED_TEST(PadOpTest, Pad_Constant_3D) {
+  using T = TypeParam;
+  RunAllOpsetAllDomainPadTests<T>({2, 2, 2},
+                                  {T(11), T(21),
+                                   T(12), T(22),
+                                   T(111), T(121),
+                                   T(112), T(122)},
+                                  {1, 1, 1, 1, 1, 1},
+                                  T(123),
+                                  {4, 4, 4},
+                                  {T(123), T(123), T(123), T(123),
+                                   T(123), T(123), T(123), T(123),
+                                   T(123), T(123), T(123), T(123),
+                                   T(123), T(123), T(123), T(123),
+                                   T(123), T(123), T(123), T(123),
+                                   T(123), T(11), T(21), T(123),
+                                   T(123), T(12), T(22), T(123),
+                                   T(123), T(123), T(123), T(123),
+                                   T(123), T(123), T(123), T(123),
+                                   T(123), T(111), T(121), T(123),
+                                   T(123), T(112), T(122), T(123),
+                                   T(123), T(123), T(123), T(123),
+                                   T(123), T(123), T(123), T(123),
+                                   T(123), T(123), T(123), T(123),
+                                   T(123), T(123), T(123), T(123),
+                                   T(123), T(123), T(123), T(123)});
+}
+
 TYPED_TEST(PadOpTest, Pad_Constant_2D_negative_pads_1) {
   using T = TypeParam;
   RunAllOpsetAllDomainPadTests<T>({2, 3},
