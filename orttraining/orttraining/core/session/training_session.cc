@@ -242,7 +242,7 @@ Status TrainingSession::ConfigureForTraining(
   }
 
   ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(trainable_initializers, config.graph_transformer_config,
-                                                      config_result, IsRootNode(config)));
+                                                      config_result));
 
   std::unordered_set<std::string> furthur_filtered_weight_to_train;
   for (auto& filtered_weight_name : filtered_config_weight_names_to_train) {
@@ -544,8 +544,7 @@ static Status AddGradientAccumulationNodes(Graph& graph,
 
 Status TrainingSession::ApplyTransformationsToMainGraph(std::unordered_set<std::string>& weights_to_train,
                                                         const TrainingConfiguration::GraphTransformerConfiguration& config,
-                                                        TrainingConfigurationResult& config_result_out,
-                                                        bool is_master_node) {
+                                                        TrainingConfigurationResult& config_result_out) {
   GraphTransformerManager graph_transformation_mgr{2};
   // TODO: ideally we can just reuse the CPU EP registered with the session, but in the training session case
   // the EPs are registered after ConfigureForTraining and before Initialize is called. Hence we don't have access
