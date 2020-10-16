@@ -111,6 +111,11 @@ class MemoryInfo {
     OrtMemoryInfo location;
   };
 
+  struct AllocationSummary {
+    size_t total_size = 0;
+    size_t used_size = 0;
+  };
+
   struct MemoryInfoProfile {
    public:
     MemoryInfoProfile(MemoryInfo& mem_info) : pid_(0), mem_info_(mem_info){};
@@ -120,7 +125,8 @@ class MemoryInfo {
     }
     static std::string CreateMetadataEvent(const std::string& process_name, size_t process_id);
     static std::string CreateMemoryEvent(size_t pid, size_t tid, const std::string& name, size_t offset, size_t size, const std::string& color_name);
-    void CreateEvents(const std::string p_name, const size_t pid, const MemoryInfo::MapType& map_type, const std::string name_pattern = "");
+    static std::string CreateSummaryEvent(size_t pid, size_t tid, const AllocationSummary& summary, size_t size);
+    void CreateEvents(const std::string& p_name, const size_t pid, const MemoryInfo::MapType& map_type, const std::string& name_pattern = "");
     //static void CreateCustomizedEvents(std::string name_pattern, std::vector<std::string>& events, const size_t pid, const MapType& map_type);
 
     static const std::vector<std::string> color_names;

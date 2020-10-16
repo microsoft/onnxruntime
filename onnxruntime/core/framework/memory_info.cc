@@ -3,8 +3,10 @@
 #include "core/framework/ml_value.h"
 
 #include <fstream>
+#include <numeric>
 
 namespace onnxruntime {
+
 void MemoryInfo::GenerateTensorMap(const SequentialExecutionPlan* execution_plan, const OrtValueNameIdxMap& value_name_idx_map) {
   if (!tensor_alloc_info_map_.empty()) {
     return;
@@ -182,7 +184,7 @@ std::string MemoryInfo::MemoryInfoProfile::CreateMemoryEvent(size_t pid, size_t 
   evt << "{";
   evt << "\"ph\":\"X\",";
   evt << "\"pid\":" << pid << ",";
-  evt << "\"tid\":" << tid++ << ",";
+  evt << "\"tid\":" << tid << ",";
   evt << "\"ts\":" << offset << ",";
   evt << "\"dur\":" << size << ",";
   evt << "\"name\":\"" << name << "\",";
@@ -196,30 +198,37 @@ std::string MemoryInfo::MemoryInfoProfile::CreateMemoryEvent(size_t pid, size_t 
   return evt.str();
 }
 
-//Data needed for each tensor:
-//- name
-//- type (initializer, statically allocated activation, dynamically allocated activation)
-//- allocation offset (zero-based within it's type)
-//- allocation size (in bytes)
-//- for activations: lifetime (start and end execution step)
-//  - memory blocks/lifetime should not overlap when tensors are the same type
+std::string MemoryInfo::MemoryInfoProfile::CreateSummaryEvent(size_t pid, size_t tid, const AllocationSummary& summary, size_t size) {
+  const size_t total_bytes = summary.total_size;
+  const size_t used_bytes = summary.used_size;
+  const size_t free_bytes = total_bytes - used_bytes;
+  const float used_percent = (float)used_bytes / (float)total_bytes;
+  const float free_percent = (float)free_bytes / (float)total_bytes;
 
-//TODO: the data should be organized in the following way
+  std::stringstream evt;
+  evt << "{";
+  evt << "\"ph\":\"X\",";
+  evt << "\"pid\":" << pid << ",";
+  evt << "\"tid\":" << tid << ",";
+  evt << "\"ts\":" << -(int64_t)size << ",";
+  evt << "\"dur\":" << size << ",";
+  evt << "\"name\":\"Summary\",";
+  evt << "\"cname\":\"black\",";
+  evt << "\"args\":{";
+  evt << "\"total_bytes\":" << total_bytes << ",";
+  evt << "\"used_bytes\":" << used_bytes << ",";
+  evt << "\"free_bytes\":" << free_bytes << ",";
+  evt << "\"used_percent\":" << used_percent << ",";
+  evt << "\"free_percent\":" << free_percent;
+  evt << "}";
+  evt << "}";
+  return evt.str();
+}
 
-//[1] initializers:  tensors that exist for the lifetime of the graph/session.
-//      AllocKind=kAllocateStatically.  Need zero-based offset + size.
-//      Initializers can be reused.  We need some indication that it's reusing a static initializer.
-//      Currently, I use the alloc lifetime to infer this (start=0, end=max int)
-//[2] activations (static):  tensors that exist during execution steps, and their allocations are statically planned.
-//      Generally, these are AllocKind=kAllocate,kReuse
-//      Need zero-based offset + size, lifetime (first step it's used, last step it's used).
-//      Need an indication of tensors that were statically planned (offset+size) but ended up dynamically allocated outside the BFC arena (offset+size).
-//      For reused tensors, the lifetime should not overlap with other reuses/original allocation.
-//[3] activations (dynamic):  tensors that exist during execution steps, and their allocations are dynamically allocated outside a memory plan.
-//      Generally, these are AllocKind=kAllocate,kReuse
-//      Need zero-based offset + size (based on the addresses from all other dynamic allocations only), lifetime (first step it's used, last step it's used).
-//      Need an indication of tensors that were statically planned (offset+size) but ended up dynamically allocated outside the BFC arena (offset+size).
-//      For reused tensors, the lifetime should not overlap with other reuses/original allocation.
+static void UpdateSummary(MemoryInfo::AllocationSummary& summary, size_t alloc_offset, size_t alloc_size) {
+  summary.total_size = std::max(summary.total_size, alloc_offset + alloc_size);
+  summary.used_size += alloc_size;
+}
 
 const std::vector<std::string> MemoryInfo::MemoryInfoProfile::color_names = {
     "good",
@@ -245,44 +254,57 @@ const std::vector<std::string> MemoryInfo::MemoryInfoProfile::color_names = {
     "cq_build_attempt_failed",
 };
 
-void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string p_name, const size_t pid, const MemoryInfo::MapType& map_type, const std::string name_pattern) {
+void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name, const size_t pid, const MemoryInfo::MapType& map_type, const std::string& name_pattern) {
   // Metadata.
   std::string pid_name_internal = p_name + name_pattern;
   events.push_back(CreateMetadataEvent(pid_name_internal, pid));
+  std::unordered_map<size_t, AllocationSummary> summary;
 
-//Create Event for each tensor
-for (const auto& location_map : mem_info_.tensors_memory_info_map_) {
-  if (location_map.first.device.Type() != OrtDevice::GPU) continue;
-  if (mem_info_.time_step_trace_[map_type].empty()) {
-    for (const auto& item : location_map.second.at(map_type)) {
+  //Create Event for each tensor
+  for (const auto& location_map : mem_info_.tensors_memory_info_map_) {
+    if (location_map.first.device.Type() != OrtDevice::GPU) continue;
+    if (mem_info_.time_step_trace_[map_type].empty()) {
+      for (const auto& item : location_map.second.at(map_type)) {
         mem_info_.time_step_trace_[map_type].insert(mem_info_.AllocPlan(item.first)->lifetime_interval.first);
         mem_info_.time_step_trace_[map_type].insert(mem_info_.AllocPlan(item.first)->lifetime_interval.second);
+      }
+    }
+
+    const auto& map = location_map.second.at(map_type);
+    for (const auto& item : map) {
+      const auto info = mem_info_.AllocPlan(item.first);
+      if (info->inplace_reuse) continue;
+      const std::string& name = info->mlvalue_name;
+      //Filter out string without a certain name
+      if (!name_pattern.empty() && name.find(name_pattern) == std::string::npos) continue;
+      const std::string cname = color_names[events.size() % color_names.size()];
+      //Sometimes a tensor can be both statically planned and dynamically allocated, so we need to use planned address/size in static_activation type
+      size_t offset = map_type == MemoryInfo::MapType::StaticActivation ? map.GetPlannedAddress(item.first) : map.GetAllocAddress(item.first);
+      size_t size = map_type == MemoryInfo::MapType::StaticActivation ? map.GetPlannedSize(item.first) : map.GetAllocSize(item.first);
+      size_t alloc_step = mem_info_.AllocPlan(item.first)->lifetime_interval.first;  //alloc_kind == AllocKind::kReuse ? info.alloc_plan.life_interval.first + 1 : info.alloc_plan.life_interval.first;
+      size_t dealloc_step = mem_info_.AllocPlan(item.first)->lifetime_interval.second;
+      const auto& ts_map = mem_info_.time_step_trace_[map_type];
+      const auto& start_itr = ts_map.find(alloc_step);
+      const auto& end_itr = ts_map.find(dealloc_step);
+      ORT_ENFORCE(start_itr != ts_map.end() && end_itr != ts_map.end());
+      for (auto itr = start_itr; itr != end_itr; ++itr) {
+        events.push_back(CreateMemoryEvent(pid, *itr, name, offset, size, cname));
+        UpdateSummary(summary[*itr], offset, size);
+      }
+      events.push_back(CreateMemoryEvent(pid, *end_itr, name, offset, size, cname));
+      UpdateSummary(summary[*end_itr], offset, size);
     }
   }
-  const auto& map = location_map.second.at(map_type);
-  for (const auto& item : map) {
-    const auto info = mem_info_.AllocPlan(item.first);
-    if (info->inplace_reuse) continue;
-    const std::string& name = info->mlvalue_name;
-    //Filter out string without a certain name
-    if (!name_pattern.empty() && name.find(name_pattern) == std::string::npos) continue;
-    const std::string cname = color_names[events.size() % color_names.size()];
-    //Sometimes a tensor can be both statically planned and dynamically allocated, so we need to use planed address/size in static_activation type
-    size_t offset = map_type == MemoryInfo::MapType::StaticActivation ? map.GetPlannedAddress(item.first) : map.GetAllocAddress(item.first);
-    size_t size = map_type == MemoryInfo::MapType::StaticActivation ? map.GetPlannedSize(item.first) : map.GetAllocSize(item.first);
-    size_t alloc_step = mem_info_.AllocPlan(item.first)->lifetime_interval.first;  //alloc_kind == AllocKind::kReuse ? info.alloc_plan.life_interval.first + 1 : info.alloc_plan.life_interval.first;
-    size_t dealloc_step = mem_info_.AllocPlan(item.first)->lifetime_interval.second;
-    const auto& ts_map = mem_info_.time_step_trace_[map_type];
-    const auto& start_itr = ts_map.find(alloc_step);
-    const auto& end_itr = ts_map.find(dealloc_step);
-    ORT_ENFORCE(start_itr != ts_map.end() && end_itr != ts_map.end());
-    for (auto itr = start_itr; itr != end_itr; ++itr) {
-      events.push_back(CreateMemoryEvent(pid, *itr, name, offset, size, cname));
-    }
-    events.push_back(CreateMemoryEvent(pid, *end_itr, name, offset, size, cname));
+
+  // Add summary events.  These will show up visually as 10% of the max width in a section.
+  size_t summary_size = 10;
+  for (const auto& item : summary) {
+    summary_size = std::max(summary_size, item.second.total_size / 10);
+  }
+  for (const auto& item : summary) {
+    events.push_back(CreateSummaryEvent(pid, item.first, item.second, summary_size));
   }
 }
-}  // namespace onnxruntime
 
 void MemoryInfo::GenerateMemoryProfile() {
   //for (const auto& location_map : tensors_memory_info_map_) {
