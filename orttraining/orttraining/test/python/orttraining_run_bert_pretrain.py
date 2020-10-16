@@ -616,9 +616,6 @@ if __name__ == "__main__":
     # usage:
     # data parallel training
     #   mpirun -n 4 python orttraining_run_bert_pretrain.py 
-    #       ORTBertPretrainTest.test_pretrain_convergence
-    # Or
-    #   mpirun -n 4 python orttraining_run_bert_pretrain.py
     #
     # single gpu:
     # python orttraining_run_bert_pretrain.py ORTBertPretrainTest.test_pretrain_throughput
@@ -642,32 +639,13 @@ if __name__ == "__main__":
         test.world_rank = local_rank
         test.world_size = world_size
 
-        if run_test_pretrain_convergence:
-            logger.info("running ORTBertPretrainTest.test_pretrain_convergence() with reduced hidden layers...")
-            test.max_steps = 200
-            test.force_num_hidden_layers = 8
-            final_loss = test.test_pretrain_convergence()
-            logger.info("ORTBertPretrainTest.test_pretrain_convergence() final loss = %f", final_loss)
-            test.assertLess(final_loss, 8.5)
-            logger.info("ORTBertPretrainTest.test_pretrain_convergence() passed")
-        else:
-            # https://microsoft.sharepoint.com/teams/ONNX2/_layouts/15/Doc.aspx?sourcedoc={170774be-e1c6-4f8b-a3ae-984f211fe410}&action=edit&wd=target%28ONNX%20Training.one%7C8176133b-c7cb-4ef2-aa9d-3fdad5344c40%2FGitHub%20Master%20Merge%20Schedule%7Cb67f0db1-e3a0-4add-80a6-621d67fd8107%2F%29
-            # to make equivalent args for cpp convergence test
-
-            test.max_seq_length = 128
-            test.max_predictions_per_seq = 20
-            test.gradient_accumulation_steps = 16
-            test.train_batch_size = 64 * test.gradient_accumulation_steps * test.world_size    # cpp_batch_size (=64) * grad_acc * world_size
-            test.max_steps = 300000
-
-            test.force_num_hidden_layers = None
-
-            # already using Adam (e.g. AdamConfig)
-            test.learning_rate = 5e-4
-            test.warmup_proportion = 0.1
-
-            final_loss = test.test_pretrain_convergence()
-            logger.info("ORTBertPretrainTest.test_pretrain_convergence() final loss = %f", final_loss)
+        logger.info("running ORTBertPretrainTest.test_pretrain_convergence() with reduced hidden layers...")
+        test.max_steps = 200
+        test.force_num_hidden_layers = 8
+        final_loss = test.test_pretrain_convergence()
+        logger.info("ORTBertPretrainTest.test_pretrain_convergence() final loss = %f", final_loss)
+        test.assertLess(final_loss, 8.5)
+        logger.info("ORTBertPretrainTest.test_pretrain_convergence() passed")
     else:
         # unittest does not accept user defined arguments
         # we need to run this script with user defined arguments

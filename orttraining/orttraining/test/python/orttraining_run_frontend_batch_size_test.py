@@ -48,25 +48,3 @@ for config in configs:
     if config.transformer_layer_recompute:
         cmds = [*cmds, "--transformer_layer_recompute"]
     subprocess.run(cmds, timeout=1200).check_returncode()
-
-# for max_batch_size in range(15, 50, 1):
-#     cmds = [
-#         sys.executable,
-#         'orttraining_run_bert_pretrain.py',
-#         "ORTBertPretrainTest.test_pretrain_throughput",
-#         "--enable_mixed_precision",
-#         "--sequence_length", "512",
-#         "--max_batch_size", str(max_batch_size),
-#         "--max_predictions_per_seq", "80",
-#         "--transformer_layer_recompute"]
-
-#     subprocess.run(cmds, timeout=12000).check_returncode()
-
-# max_batch_size_fp16_128_20_gelu_recompute = 55
-#max_batch_size_fp16_128_20_attn_dropout_recompute = 51
-#max_batch_size_fp16_128_20_transformer_layer_recompute = 78
-
-# max_batch_size_fp16_512_80_gelu_recompute = 9
-# max_batch_size_fp16_512_80_attn_dropout_recompute = 10
-# max_batch_size_fp16_512_80_transformer_layer_recompute = 16
-
