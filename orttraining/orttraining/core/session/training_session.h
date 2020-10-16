@@ -29,7 +29,7 @@ class TrainingSession : public InferenceSession {
                             OptimizerState;
 
   TrainingSession(const SessionOptions& session_options, const Environment& env)
-      : InferenceSession(session_options, env) {}
+      : InferenceSession(session_options, env) {  std::cout << "[training_session.h] Call ctor TrainingSession" << std::endl; }
 
   /**
    * The training configuration options.

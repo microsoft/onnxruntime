@@ -4,6 +4,8 @@
 #include "python/onnxruntime_pybind_exceptions.h"
 #include "python/onnxruntime_pybind_state_common.h"
 
+#include <fstream>
+
 // pybind11/stl.h is needed to support std::unordered_set, etc.
 #include <pybind11/stl.h>
 
@@ -85,6 +87,9 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   training::TrainingSession::TrainingConfiguration config{};
   config.weight_names_to_train = parameters.weights_to_train;
   config.weight_names_to_not_train = parameters.weights_not_to_train;
+  for (auto name: parameters.weights_to_train) {
+    std::cout << "[orttraining_pybind_state.cc, ConfigureSessionForTraining] train weight: " << name << std::endl;
+  }
   config.immutable_weights = parameters.immutable_weights;
 
   config.gradient_accumulation_steps = parameters.gradient_accumulation_steps;
@@ -104,6 +109,14 @@ TrainingConfigurationResult ConfigureSessionForTraining(
 
     config.mixed_precision_config = mp;
   }
+
+  std::cout << "[ConfigureSessionForTraining] pipeline_config" << std::endl;
+  training::TrainingSession::TrainingConfiguration::PipelineConfiguration pipeline_config;
+  pipeline_config.do_partition = true;
+  training::TrainingSession::TrainingConfiguration::CutEdge cut_edge0("12");
+  training::TrainingSession::TrainingConfiguration::CutInfo cut_info{cut_edge0};
+  pipeline_config.cut_list.push_back(cut_info);
+  config.pipeline_config = pipeline_config;
 
   config.loss_name = parameters.loss_output_name;
 
@@ -292,6 +305,20 @@ void addObjectMethodsForTraining(py::module& m) {
         if (!use_nccl && parameters.world_size > 1)
           CopyMPIContextToTrainingParameters(parameters, sess->GetSessionHandle()->GetLogger());
 #endif
+        std::string dbg_flag_line;
+        std::ifstream dbg_flag_file ("dbg_flag.txt");
+        if (dbg_flag_file.is_open()) {
+          std::getline(dbg_flag_file, dbg_flag_line);
+          dbg_flag_file.close();
+        }
+
+        bool gdb_flag = dbg_flag_line[0] == '1' ? true : false;
+        std::cout << "Wait for attach..." << std::endl;
+        while (gdb_flag) {
+          gdb_flag = gdb_flag;
+        }
+        std::cout << "Wait for attach...done" << std::endl;
+
         const auto config_result = ConfigureSessionForTraining(static_cast<TrainingSession*>(sess->GetSessionHandle()), parameters);
 
         std::vector<std::string> provider_types = {};
