@@ -57,7 +57,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_string, _In_ const OrtKernel
     if (*size >= value.size() + 1) {
       std::memcpy(out, value.data(), value.size());
       out[value.size()] = '\0';
-      *size = value.size();
+      *size = value.size() + 1;
       return nullptr;
     } else {
       *size = value.size() + 1;
