@@ -418,9 +418,9 @@ void RegisterTrainingOpSchemas() {
       .Input(0, "dY", "Gradient of output Y", "T")
       .Input(1, "X", "Input tensor", "T")
       .Input(2, "W", "Weight tensor", "T")
-      .Output(0, "dX", "Gradient of input X", "T")
+      .Output(0, "dX", "Gradient of input X", "T", OpSchema::Optional)
       .Output(1, "dW", "Gradient of W", "T")
-      .Output(2, "dB", "Gradient of B", "T")
+      .Output(2, "dB", "Gradient of B", "T", OpSchema::Optional)
       .AllowUncheckedAttributes()
       .TypeConstraint(
           "T",
@@ -1433,7 +1433,13 @@ Example 4:
       .TypeConstraint(
           "T",
           {"tensor(int64)"},
-          "Constrain input and output types to 64-bit integer.");
+          "Constrain input and output types to 64-bit integer.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // NOTE: Both outputs are optional.
+        for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
+          updateOutputElemType(ctx, i, ONNX_NAMESPACE::TensorProto::INT64);
+        }
+      });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GistBinarizeEncoder)
       .SetDomain(kMSDomain)
