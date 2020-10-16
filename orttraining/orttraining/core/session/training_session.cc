@@ -559,12 +559,6 @@ Status TrainingSession::ApplyTransformationsToMainGraph(std::unordered_set<std::
   // apply transformers
   Graph& graph = model_->MainGraph();
   for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
-    const Env& env_instance = Env::Default();
-    const std::string save = env_instance.GetEnvironmentVar("SaveModelBeforeApplyOpt");
-    if (!save.empty() && is_master_node) {
-      Model::Save(*model_, "./before_apply_opt_" + std::to_string(i) + ".onnx");
-      std::cout << "saved ./before_apply_opt_" << std::to_string(i) << ".onnx" << std::endl;
-    }
     ORT_RETURN_IF_ERROR(graph_transformation_mgr.ApplyTransformers(
         graph, static_cast<TransformerLevel>(i), *session_logger_));
   }
