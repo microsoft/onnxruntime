@@ -11,7 +11,7 @@
 
 namespace onnxruntime {
 namespace cuda {
-namespace gather_grad {
+namespace gather_grad_internal {
 
 // Note:
 // For these implementations, first we generate sorted lists of dX and dY
@@ -31,6 +31,8 @@ namespace gather_grad {
 
 // unit for handling indexing and counting of segments or partial segments
 using SegmentIndex_t = GatheredIndexIndex_t;
+
+constexpr GatheredIndexIndex_t kMaxPartialSegmentSize = 10;
 
 template <typename TInputIterator, typename TOutputIterator>
 __global__ void CopyKernel(TOutputIterator dst, TInputIterator src, int64_t length) {
@@ -169,24 +171,8 @@ void DirectSumImpl(
       num_batches);
 }
 
-template <typename T>
-__global__ void PrintDataKernel(const T* data, size_t length) {
-  if (threadIdx.x == 0) {
-    for (size_t i = 0; i < length; ++i) {
-      printf("%f ", static_cast<float>(data[i]));
-    }
-    printf("\n");
-  }
-}
-
-template <typename T>
-void PrintData(const char* description, const T* data, size_t length) {
-  printf("%s\n", description);
-  PrintDataKernel<T><<<1, 1>>>(data, length);
-  cudaDeviceSynchronize();
-}
-
-constexpr GatheredIndexIndex_t kMaxPartialSegmentSize = 10;
+// partial sums implementation adapted from here:
+// https://github.com/pytorch/pytorch/blob/b186831c08e0e4e447eedb8a5cfab582995d37f9/aten/src/ATen/native/cuda/EmbeddingBackwardKernel.cu
 
 __global__ void ComputePerSegmentPartialSegmentCountsKernel(
     SegmentIndex_t* ret, const GatheredIndexIndex_t* segment_offsets,
@@ -303,8 +289,6 @@ __global__ void ComputeSegmentSumsAndScatterKernel(
 
 // get partial sums of gathered dY values first, then sum the partial sums into
 // the corresponding dX value
-// partial sums implementation adapted from here:
-// https://github.com/pytorch/pytorch/blob/b186831c08e0e4e447eedb8a5cfab582995d37f9/aten/src/ATen/native/cuda/EmbeddingBackwardKernel.cu
 template <typename T, typename TIndex>
 void PartialSumsImpl(
     const CudaScratchBufferAllocator& allocator,
@@ -329,12 +313,10 @@ void PartialSumsImpl(
         per_segment_partial_segment_counts.get(),
         segment_offsets, num_segments, num_gathered_indices);
   }
-  // PrintData("per_segment_partial_segment_counts", per_segment_partial_segment_counts.get(), num_segments);
 
   // compute partial segment offsets per segment
   auto per_segment_partial_segment_offsets = GetOffsetsFromCounts(
       allocator, per_segment_partial_segment_counts.get(), num_segments);
-  // PrintData("per_segment_partial_segment_offsets", per_segment_partial_segment_offsets.get(), num_segments);
 
   SegmentIndex_t host_num_partial_segments = 0;
   {
@@ -365,7 +347,6 @@ void PartialSumsImpl(
         segment_offsets,
         num_segments);
   }
-  // PrintData("partial_segment_offsets", partial_segment_offsets.get(), host_num_partial_segments);
 
   {
     const auto num_gathered_per_index_warp_size_multiple =
@@ -390,8 +371,6 @@ void PartialSumsImpl(
           partial_segment_sums.get(),
           num_gathered_per_index_warp_size_multiple);
     }
-    // PrintData("partial_segment_sums", partial_segment_sums.get(),
-    //           num_batches * host_num_partial_segments * num_gathered_per_index);
 
     // compute segment sums from partial segment sums
     {
@@ -450,7 +429,6 @@ void Impl(
     CUDA_CALL_THROW(cudaMemcpy(
         &host_num_segments, num_segments.get(), sizeof(SegmentIndex_t), cudaMemcpyDeviceToHost));
   }
-  // PrintData("segment_counts", segment_counts.get(), host_num_segments);
 
   // get largest segment size and use that to select implementation
   GatheredIndexIndex_t host_max_segment_count = 0;
@@ -472,7 +450,8 @@ void Impl(
         &host_max_segment_count, max_segment_count.get(), sizeof(GatheredIndexIndex_t), cudaMemcpyDeviceToHost));
   }
 
-  if (host_max_segment_count < 16) {
+  constexpr GatheredIndexIndex_t kMaxSegmentSizeThreshold = 32;
+  if (host_max_segment_count <= kMaxSegmentSizeThreshold) {
     DirectSumImpl(
         dX_indices_sorted.get(), dY_indices_sorted.get(),
         dY_data, dX_data,
@@ -523,7 +502,7 @@ void Impl_Simplified(
       num_batches);
 }
 
-}  // namespace gather_grad
+}  // namespace gather_grad_internal
 
 template <typename T, typename TIndex>
 void GatherGradImpl(
@@ -535,7 +514,7 @@ void GatherGradImpl(
     const int64_t num_gathered_per_index,
     const int64_t num_batches,
     T* dX_data) {
-  gather_grad::Impl(
+  gather_grad_internal::Impl(
       allocator,
       dY_data, dX_indices,
       num_gathered_indices, gather_dimension_size, num_gathered_per_index, num_batches,
@@ -559,6 +538,9 @@ void GatherGradImpl(
 
 SPECIALIZED_WITH_IDX(float)
 SPECIALIZED_WITH_IDX(half)
+
+#undef SPECIALIZED_WITH_IDX
+#undef SPECIALIZED
 
 }  // namespace cuda
 }  // namespace onnxruntime
