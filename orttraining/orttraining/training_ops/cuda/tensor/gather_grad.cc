@@ -3,7 +3,7 @@
 
 #include "orttraining/training_ops/cuda/tensor/gather_grad.h"
 
-#include "core/platform/env.h"
+#include "core/common/safeint.h"
 #include "core/providers/common.h"
 #include "orttraining/training_ops/cuda/tensor/gather_grad_impl.h"
 
@@ -25,43 +25,30 @@ ONNX_OPERATOR_KERNEL_EX(
                                     DataTypeImpl::GetTensorType<int64_t>()}),
     GatherGrad);
 
-GatherGradImplementation GetGatherGradImplementation() {
-  int val = GatherGradImplementation::PartialSums;
-  const auto val_str = Env::Default().GetEnvironmentVar("ORT_GATHER_GRAD_IMPL");
-  if (!val_str.empty()) {
-    std::istringstream stream{val_str};
-    ORT_ENFORCE(stream >> val && stream.eof(), "Failed to parse ORT_GATHER_GRAD_IMPL environment variable value.");
-  }
-  LOGS_DEFAULT(WARNING) << "gather grad impl: " << val;
-  return static_cast<GatherGradImplementation>(val);
-}
-
 namespace {
-template <typename T, typename Tin>
+template <typename T, typename TIndex>
 Status CallGatherGradImpl(
     const CudaScratchBufferAllocator& allocator,
-    int64_t num_weights, int64_t stride, int64_t num_inputs, int64_t param_itrs,
+    int64_t num_gathered_per_index, int64_t gather_dimension_size, int64_t num_batches,
     const Tensor& grad, const Tensor& indices,
     Tensor& output) {
   using CudaT = typename ToCudaType<T>::MappedType;
 
-  static const GatherGradImplementation impl = GetGatherGradImplementation();
-
   const T* grad_data = grad.template Data<T>();
   T* output_data = output.template MutableData<T>();
-  const Tin* indices_data = indices.template Data<Tin>();
+  const TIndex* indices_data = indices.template Data<TIndex>();
+
+  const SafeInt<GatheredIndexIndex_t> num_gathered_indices{indices.Shape().Size()};
 
   GatherGradImpl(
       allocator,
       reinterpret_cast<const CudaT*>(grad_data),
       indices_data,
-      indices.Shape().Size(),
-      num_weights,
-      stride,
-      reinterpret_cast<CudaT*>(output_data),
-      num_inputs,
-      param_itrs,
-      impl);
+      num_gathered_indices,
+      gather_dimension_size,
+      num_gathered_per_index,
+      num_batches,
+      reinterpret_cast<CudaT*>(output_data));
 
   return Status::OK();
 }
@@ -70,32 +57,32 @@ template <typename T>
 Status DispatchToGatherGradImplByTin(
     MLDataType tin_data_type,
     const CudaScratchBufferAllocator& allocator,
-    int64_t num_weights, int64_t stride, int64_t num_inputs, int64_t param_itrs,
+    int64_t num_gathered_per_index, int64_t gather_dimension_size, int64_t num_batches,
     const Tensor& grad, const Tensor& indices,
     Tensor& output) {
   if (utils::IsPrimitiveDataType<int32_t>(tin_data_type)) {
     return CallGatherGradImpl<T, int32_t>(
-        allocator, num_weights, stride, num_inputs, param_itrs, grad, indices, output);
+        allocator, num_gathered_per_index, gather_dimension_size, num_batches, grad, indices, output);
   } else if (utils::IsPrimitiveDataType<int64_t>(tin_data_type)) {
     return CallGatherGradImpl<T, int64_t>(
-        allocator, num_weights, stride, num_inputs, param_itrs, grad, indices, output);
+        allocator, num_gathered_per_index, gather_dimension_size, num_batches, grad, indices, output);
   }
 
-  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GatherGrad unsupported Tin type: ", tin_data_type);
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GatherGrad unsupported TIndex type: ", tin_data_type);
 }
 
 Status DispatchToGatherGradImpl(
     MLDataType t_data_type, MLDataType tin_data_type,
     const CudaScratchBufferAllocator& allocator,
-    int64_t num_weights, int64_t stride, int64_t num_inputs, int64_t param_itrs,
+    int64_t num_gathered_per_index, int64_t gather_dimension_size, int64_t num_batches,
     const Tensor& grad, const Tensor& indices,
     Tensor& output) {
   if (utils::IsPrimitiveDataType<float>(t_data_type)) {
     return DispatchToGatherGradImplByTin<float>(
-        tin_data_type, allocator, num_weights, stride, num_inputs, param_itrs, grad, indices, output);
+        tin_data_type, allocator, num_gathered_per_index, gather_dimension_size, num_batches, grad, indices, output);
   } else if (utils::IsPrimitiveDataType<MLFloat16>(t_data_type)) {
     return DispatchToGatherGradImplByTin<MLFloat16>(
-        tin_data_type, allocator, num_weights, stride, num_inputs, param_itrs, grad, indices, output);
+        tin_data_type, allocator, num_gathered_per_index, gather_dimension_size, num_batches, grad, indices, output);
   }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GatherGrad unsupported T type: ", t_data_type);
@@ -120,14 +107,13 @@ Status GatherGrad::ComputeInternal(OpKernelContext* context) const {
   MLDataType Tin_type = indices->DataType();
 
   const auto axis = HandleNegativeAxis(axis_, data_shape.NumDimensions());
-  const int64_t stride = data_shape.SizeFromDimension(axis + 1);            // axis + 1, end
-  const int64_t num_weights = data_shape.Size() / stride;                   // 0, axis + 1 [NOT USED]
-  const int64_t num_inputs = data_shape.SizeFromDimension(axis);            // axis, end
-  const int64_t param_itrs = data_shape.SizeFromDimension(0) / num_inputs;  // 0, axis
+  const int64_t num_gathered_per_index = data_shape.SizeFromDimension(axis + 1);
+  const int64_t gather_dimension_size = data_shape[axis];
+  const int64_t num_batches = data_shape.SizeToDimension(axis);
 
   return DispatchToGatherGradImpl(
       T_type, Tin_type, CudaScratchBufferAllocator{*this},
-      num_weights, stride, num_inputs, param_itrs,
+      num_gathered_per_index, gather_dimension_size, num_batches,
       *grad, *indices, *output);
 }
 

@@ -9,6 +9,7 @@
 #include "core/providers/common.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cudnn_common.h"
+#include "core/providers/cuda/cu_inc/accumulation_type.cuh"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/math/softmax_impl.cuh"
 #include "core/providers/cuda/cu_inc/binary_elementwise_impl.cuh"
@@ -16,21 +17,6 @@
 
 using namespace onnxruntime;
 using namespace onnxruntime::cuda;
-
-namespace {
-
-template <typename T>
-struct AccumulateType {};
-template <>
-struct AccumulateType<MLFloat16> { using type = float; };
-template <>
-struct AccumulateType<float> { using type = float; };
-template <>
-struct AccumulateType<double> { using type = double; };
-template <typename T>
-using AccType = typename AccumulateType<T>::type;
-
-} // namespace anonymous
 
 namespace onnxruntime {
 namespace contrib {
@@ -154,8 +140,8 @@ void DispatchBiasSoftmaxForwardImpl(
     typedef typename ToCudaType<T>::MappedType CudaT;
     typedef CudaT input_t;
     typedef CudaT output_t;
-    typedef AccType<T> acc_t;
-  
+    typedef AccumulationType_t<CudaT> acc_t;
+
     const auto* input = reinterpret_cast<const CudaT*>(input_tensor->template Data<T>());
     const auto* input_bias = reinterpret_cast<const CudaT*>(input_bias_tensor->template Data<T>());
     auto* output = reinterpret_cast<CudaT*>(output_tensor->template MutableData<T>());

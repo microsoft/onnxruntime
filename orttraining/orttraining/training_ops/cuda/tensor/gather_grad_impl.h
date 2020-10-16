@@ -23,24 +23,19 @@ class CudaScratchBufferAllocator {
   const CudaKernel& kernel_;
 };
 
-enum GatherGradImplementation {
-  ThreadPerIndex = 0,
-  FancyIterator = 1,
-  PartialSums = 2,
-};
+// unit for handling indexing and counting of gathered indices
+using GatheredIndexIndex_t = int32_t;
 
-template <typename T, typename Tin>
+template <typename T, typename TIndex>
 void GatherGradImpl(
     const CudaScratchBufferAllocator& allocator,
-    const T* grad_data,
-    const Tin* indices_data,
-    const int64_t num_indices,
-    const int64_t num_weights,
-    const int64_t stride,
-    T* output_data,
-    const int64_t num_inputs,
-    const int64_t param_itrs,
-    GatherGradImplementation impl);
+    const T* dY_data,
+    const TIndex* dX_indices,
+    const GatheredIndexIndex_t num_gathered_indices,
+    const int64_t gather_dimension_size,
+    const int64_t num_gathered_per_index,
+    const int64_t num_batches,
+    T* dX_data);
 
 }  // namespace cuda
 }  // namespace onnxruntime
