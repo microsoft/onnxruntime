@@ -711,7 +711,7 @@ TEST_F(GraphTransformationTests, TransposeMatmulFusion) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Transpose"] == 0);
   ASSERT_TRUE(op_to_count["MatMul"] == 0);
-  ASSERT_TRUE(op_to_count["FusedMatMul"] == 1);
+  ASSERT_TRUE(op_to_count["com.microsoft.FusedMatMul"] == 1);
 }
 
 TEST_F(GraphTransformationTests, TransposeMatmulFusionOnTwoTranspose) {
@@ -728,7 +728,7 @@ TEST_F(GraphTransformationTests, TransposeMatmulFusionOnTwoTranspose) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Transpose"] == 0);
   ASSERT_TRUE(op_to_count["MatMul"] == 0);
-  ASSERT_TRUE(op_to_count["FusedMatMul"] == 1);
+  ASSERT_TRUE(op_to_count["com.microsoft.FusedMatMul"] == 1);
 
   auto& node = *graph.Nodes().begin();
   ASSERT_TRUE(node.OpType() == "FusedMatMul");
@@ -750,7 +750,7 @@ TEST_F(GraphTransformationTests, TransposeMatmulFusionOnThreeTranspose) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Transpose"] == 0);
   ASSERT_TRUE(op_to_count["MatMul"] == 0);
-  ASSERT_TRUE(op_to_count["FusedMatMul"] == 1);
+  ASSERT_TRUE(op_to_count["com.microsoft.FusedMatMul"] == 1);
 
   auto& node = *graph.Nodes().begin();
   ASSERT_TRUE(node.OpType() == "FusedMatMul");
@@ -776,7 +776,7 @@ TEST_F(GraphTransformationTests, TransposeMatmulNoFusionOnInvalidPerm) {
     std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
     ASSERT_EQ(op_to_count["Transpose"], 1);
     ASSERT_EQ(op_to_count["MatMul"], 1);
-    ASSERT_EQ(op_to_count["FusedMatMul"], 0);
+    ASSERT_EQ(op_to_count["com.microsoft.FusedMatMul"], 0);
   }
 }
 
@@ -804,7 +804,7 @@ TEST_F(GraphTransformationTests, TransposeMatmulFusionFromTransposeMatMul) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_EQ(op_to_count["Transpose"], 0);
   ASSERT_EQ(op_to_count["MatMul"], 0);
-  ASSERT_EQ(op_to_count["FusedMatMul"], 1);
+  ASSERT_EQ(op_to_count["com.microsoft.FusedMatMul"], 1);
 
   auto& transpose_scale_matmul_node = *graph.Nodes().begin();
   ASSERT_EQ(transpose_scale_matmul_node.OpType(), "FusedMatMul");
@@ -827,7 +827,7 @@ TEST_F(GraphTransformationTests, TransposeMatmulFusionWithPreservedTranspose) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_EQ(op_to_count["Transpose"], 1);
   ASSERT_EQ(op_to_count["MatMul"], 0);
-  ASSERT_EQ(op_to_count["FusedMatMul"], 1);
+  ASSERT_EQ(op_to_count["com.microsoft.FusedMatMul"], 1);
 
   ASSERT_FALSE(graph.GraphResolveNeeded());
 }
@@ -846,7 +846,7 @@ TEST_F(GraphTransformationTests, Gemm_LeakyRelu_Fusion) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["LeakyRelu"] == 0);
   ASSERT_TRUE(op_to_count["Gemm"] == 0);
-  ASSERT_TRUE(op_to_count["FusedGemm"] == 1);
+  ASSERT_TRUE(op_to_count["com.microsoft.FusedGemm"] == 1);
 }
 #endif
 
@@ -1763,7 +1763,7 @@ TEST_F(GraphTransformationTests, AttentionFusionInt32Test) {
   EXPECT_EQ(op_to_count["Transpose"], 0);
   EXPECT_EQ(op_to_count["Reshape"], 0);
   EXPECT_EQ(op_to_count["Cast"], 0);
-  EXPECT_EQ(op_to_count["Attention"], 1);
+  EXPECT_EQ(op_to_count["com.microsoft.Attention"], 1);
 
   ValidateAttention(graph);
 }
@@ -1786,7 +1786,7 @@ TEST_F(GraphTransformationTests, AttentionFusionInt64Test) {
   EXPECT_EQ(op_to_count["Transpose"], 0);
   EXPECT_EQ(op_to_count["Reshape"], 0);
   EXPECT_EQ(op_to_count["Cast"], 1);  // Cast for int64 mask to int32
-  EXPECT_EQ(op_to_count["Attention"], 1);
+  EXPECT_EQ(op_to_count["com.microsoft.Attention"], 1);
 
   ValidateAttention(graph);
 }
@@ -1812,7 +1812,7 @@ TEST_F(GraphTransformationTests, AttentionFusionFloat32Test) {
   EXPECT_EQ(op_to_count["Div"], 0);
   EXPECT_EQ(op_to_count["Sub"], 0);
   EXPECT_EQ(op_to_count["Unsqueeze"], 0);
-  EXPECT_EQ(op_to_count["Attention"], 1);
+  EXPECT_EQ(op_to_count["com.microsoft.Attention"], 1);
 
   ValidateAttention(graph);
 }
@@ -1832,7 +1832,7 @@ TEST_F(GraphTransformationTests, AttentionFusionGPTWithPastAndMaskTest) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   EXPECT_EQ(op_to_count["Transpose"], 0);
   EXPECT_EQ(op_to_count["Softmax"], 0);
-  EXPECT_EQ(op_to_count["Attention"], 1);
+  EXPECT_EQ(op_to_count["com.microsoft.Attention"], 1);
 }
 
 // Test GPT-2 Attention Fusion without input mask
@@ -1850,7 +1850,7 @@ TEST_F(GraphTransformationTests, AttentionFusionGPTWithPastNoMaskTest) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   EXPECT_EQ(op_to_count["Transpose"], 0);
   EXPECT_EQ(op_to_count["Softmax"], 0);
-  EXPECT_EQ(op_to_count["Attention"], 1);
+  EXPECT_EQ(op_to_count["com.microsoft.Attention"], 1);
 }
 
 // Test GPT-2 Attention Fusion without input mask and past state
@@ -1868,7 +1868,7 @@ TEST_F(GraphTransformationTests, AttentionFusionGPTTest) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   EXPECT_EQ(op_to_count["Transpose"], 0);
   EXPECT_EQ(op_to_count["Softmax"], 0);
-  EXPECT_EQ(op_to_count["Attention"], 1);
+  EXPECT_EQ(op_to_count["com.microsoft.Attention"], 1);
 }
 
 TEST_F(GraphTransformationTests, AttentionFusionDistilBertTest) {
@@ -1884,7 +1884,7 @@ TEST_F(GraphTransformationTests, AttentionFusionDistilBertTest) {
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   EXPECT_EQ(op_to_count["ReduceSum"], 0);
-  EXPECT_EQ(op_to_count["Attention"], 1);
+  EXPECT_EQ(op_to_count["com.microsoft.Attention"], 1);
   EXPECT_EQ(op_to_count["Gather"], 0);
   EXPECT_EQ(op_to_count["Unsqueeze"], 0);
   EXPECT_EQ(op_to_count["Concat"], 0);
@@ -1909,7 +1909,7 @@ TEST_F(GraphTransformationTests, GeluFusionTest) {
   ASSERT_TRUE(op_to_count["Add"] == 0);
   ASSERT_TRUE(op_to_count["Erf"] == 0);
   ASSERT_TRUE(op_to_count["Mul"] == 0);
-  ASSERT_TRUE(op_to_count["Gelu"] == 1);
+  ASSERT_TRUE(op_to_count["com.microsoft.Gelu"] == 1);
 }
 
 TEST_F(GraphTransformationTests, GeluFusionTestSwitchOrderFormat2) {
@@ -1928,7 +1928,7 @@ TEST_F(GraphTransformationTests, GeluFusionTestSwitchOrderFormat2) {
   ASSERT_TRUE(op_to_count["Add"] == 0);
   ASSERT_TRUE(op_to_count["Erf"] == 0);
   ASSERT_TRUE(op_to_count["Mul"] == 0);
-  ASSERT_TRUE(op_to_count["Gelu"] == 1);
+  ASSERT_TRUE(op_to_count["com.microsoft.Gelu"] == 1);
 }
 
 TEST_F(GraphTransformationTests, GeluFusionTestFormat2) {
@@ -1947,7 +1947,7 @@ TEST_F(GraphTransformationTests, GeluFusionTestFormat2) {
   ASSERT_TRUE(op_to_count["Add"] == 0);
   ASSERT_TRUE(op_to_count["Erf"] == 0);
   ASSERT_TRUE(op_to_count["Mul"] == 0);
-  ASSERT_TRUE(op_to_count["Gelu"] == 1);
+  ASSERT_TRUE(op_to_count["com.microsoft.Gelu"] == 1);
 }
 
 TEST_F(GraphTransformationTests, GeluFusionTestFormat2GraphInput) {
@@ -1966,7 +1966,7 @@ TEST_F(GraphTransformationTests, GeluFusionTestFormat2GraphInput) {
   ASSERT_TRUE(op_to_count["Add"] == 0);
   ASSERT_TRUE(op_to_count["Erf"] == 0);
   ASSERT_TRUE(op_to_count["Mul"] == 0);
-  ASSERT_TRUE(op_to_count["Gelu"] == 1);
+  ASSERT_TRUE(op_to_count["com.microsoft.Gelu"] == 1);
 }
 
 TEST_F(GraphTransformationTests, GeluFusionTestFormat2GraphOutput) {
@@ -1982,8 +1982,8 @@ TEST_F(GraphTransformationTests, GeluFusionTestFormat2GraphOutput) {
   ASSERT_TRUE(ret.IsOK());
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Gelu"] == 0);
-  ASSERT_TRUE(op_to_count["BiasGelu"] == 0);
+  ASSERT_TRUE(op_to_count["com.microsoft.Gelu"] == 0);
+  ASSERT_TRUE(op_to_count["com.microsoft.BiasGelu"] == 0);
 }
 
 TEST_F(GraphTransformationTests, BiasGeluTest) {
@@ -2002,8 +2002,8 @@ TEST_F(GraphTransformationTests, BiasGeluTest) {
   ASSERT_TRUE(op_to_count["Add"] == 0);
   ASSERT_TRUE(op_to_count["Erf"] == 0);
   ASSERT_TRUE(op_to_count["Mul"] == 0);
-  ASSERT_TRUE(op_to_count["Gelu"] == 0);
-  ASSERT_TRUE(op_to_count["BiasGelu"] == 1);
+  ASSERT_TRUE(op_to_count["com.microsoft.Gelu"] == 0);
+  ASSERT_TRUE(op_to_count["com.microsoft.BiasGelu"] == 1);
 }
 
 // BiasGelu allows input switching based on input dimensions.
@@ -2069,8 +2069,8 @@ TEST_F(GraphTransformationTests, GeluApproximation_Gelu) {
   ASSERT_TRUE(ret.IsOK());
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  EXPECT_EQ(op_to_count["Gelu"], 0);
-  EXPECT_EQ(op_to_count["FastGelu"], 1);
+  EXPECT_EQ(op_to_count["com.microsoft.Gelu"], 0);
+  EXPECT_EQ(op_to_count["com.microsoft.FastGelu"], 1);
 }
 
 // Test AddGeluFusion -> FastGelu
@@ -2086,8 +2086,8 @@ TEST_F(GraphTransformationTests, GeluApproximation_Gelu_Add_Bias) {
   ASSERT_TRUE(ret.IsOK());
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  EXPECT_EQ(op_to_count["BiasGelu"], 0);
-  EXPECT_EQ(op_to_count["FastGelu"], 1);
+  EXPECT_EQ(op_to_count["com.microsoft.BiasGelu"], 0);
+  EXPECT_EQ(op_to_count["com.microsoft.FastGelu"], 1);
 }
 
 // Test MatMul & AddGeluFusion -> MatMul & FastGelu
@@ -2103,9 +2103,9 @@ TEST_F(GraphTransformationTests, GeluApproximation_Gelu_Add_MatMul) {
   ASSERT_TRUE(ret.IsOK());
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  EXPECT_EQ(op_to_count["BiasGelu"], 0);
+  EXPECT_EQ(op_to_count["com.microsoft.BiasGelu"], 0);
   EXPECT_EQ(op_to_count["MatMul"], 1);
-  EXPECT_EQ(op_to_count["FastGelu"], 1);
+  EXPECT_EQ(op_to_count["com.microsoft.FastGelu"], 1);
 }
 
 TEST_F(GraphTransformationTests, FastGeluFusionTest) {
@@ -2125,7 +2125,7 @@ TEST_F(GraphTransformationTests, FastGeluFusionTest) {
   ASSERT_TRUE(op_to_count["Add"] == 0);
   ASSERT_TRUE(op_to_count["Tanh"] == 0);
   ASSERT_TRUE(op_to_count["Mul"] == 0);
-  ASSERT_TRUE(op_to_count["FastGelu"] == 1);
+  ASSERT_TRUE(op_to_count["com.microsoft.FastGelu"] == 1);
 }
 
 TEST_F(GraphTransformationTests, FastGeluUseGraphInputFusionTest) {
@@ -2144,7 +2144,7 @@ TEST_F(GraphTransformationTests, FastGeluUseGraphInputFusionTest) {
   ASSERT_TRUE(op_to_count["Add"] == 0);
   ASSERT_TRUE(op_to_count["Tanh"] == 0);
   ASSERT_TRUE(op_to_count["Mul"] == 0);
-  ASSERT_TRUE(op_to_count["FastGelu"] == 1);
+  ASSERT_TRUE(op_to_count["com.microsoft.FastGelu"] == 1);
 }
 
 TEST_F(GraphTransformationTests, FastGeluWithBiasFusionTest) {
@@ -2164,7 +2164,7 @@ TEST_F(GraphTransformationTests, FastGeluWithBiasFusionTest) {
   ASSERT_TRUE(op_to_count["Add"] == 0);
   ASSERT_TRUE(op_to_count["Tanh"] == 0);
   ASSERT_TRUE(op_to_count["Mul"] == 0);
-  ASSERT_TRUE(op_to_count["FastGelu"] == 1);
+  ASSERT_TRUE(op_to_count["com.microsoft.FastGelu"] == 1);
 }
 
 TEST_F(GraphTransformationTests, FastGeluWithBiasUseGraphInputFusionTest) {
@@ -2184,7 +2184,7 @@ TEST_F(GraphTransformationTests, FastGeluWithBiasUseGraphInputFusionTest) {
   ASSERT_TRUE(op_to_count["Add"] == 0);
   ASSERT_TRUE(op_to_count["Tanh"] == 0);
   ASSERT_TRUE(op_to_count["Mul"] == 0);
-  ASSERT_TRUE(op_to_count["FastGelu"] == 1);
+  ASSERT_TRUE(op_to_count["com.microsoft.FastGelu"] == 1);
 }
 
 TEST_F(GraphTransformationTests, FastGeluFusionTest2) {
@@ -2203,7 +2203,7 @@ TEST_F(GraphTransformationTests, FastGeluFusionTest2) {
   ASSERT_TRUE(op_to_count["Add"] == 0);
   ASSERT_TRUE(op_to_count["Tanh"] == 0);
   ASSERT_TRUE(op_to_count["Mul"] == 0);
-  ASSERT_TRUE(op_to_count["FastGelu"] == 1);
+  ASSERT_TRUE(op_to_count["com.microsoft.FastGelu"] == 1);
 }
 
 TEST_F(GraphTransformationTests, FastGeluUseGraphInputFusionTest2) {
@@ -2222,7 +2222,7 @@ TEST_F(GraphTransformationTests, FastGeluUseGraphInputFusionTest2) {
   ASSERT_TRUE(op_to_count["Add"] == 0);
   ASSERT_TRUE(op_to_count["Tanh"] == 0);
   ASSERT_TRUE(op_to_count["Mul"] == 0);
-  ASSERT_TRUE(op_to_count["FastGelu"] == 1);
+  ASSERT_TRUE(op_to_count["com.microsoft.FastGelu"] == 1);
 }
 
 TEST_F(GraphTransformationTests, FastGeluWithBiasFusionTest2) {
@@ -2242,7 +2242,7 @@ TEST_F(GraphTransformationTests, FastGeluWithBiasFusionTest2) {
   ASSERT_TRUE(op_to_count["Add"] == 0);
   ASSERT_TRUE(op_to_count["Tanh"] == 0);
   ASSERT_TRUE(op_to_count["Mul"] == 0);
-  ASSERT_TRUE(op_to_count["FastGelu"] == 1);
+  ASSERT_TRUE(op_to_count["com.microsoft.FastGelu"] == 1);
 }
 
 TEST_F(GraphTransformationTests, FastGeluWithBiasUseGraphInputFusionTest2) {
@@ -2262,7 +2262,7 @@ TEST_F(GraphTransformationTests, FastGeluWithBiasUseGraphInputFusionTest2) {
   ASSERT_TRUE(op_to_count["Add"] == 0);
   ASSERT_TRUE(op_to_count["Tanh"] == 0);
   ASSERT_TRUE(op_to_count["Mul"] == 0);
-  ASSERT_TRUE(op_to_count["FastGelu"] == 1);
+  ASSERT_TRUE(op_to_count["com.microsoft.FastGelu"] == 1);
 }
 
 struct BiasSoftmaxFusionTester {
@@ -2316,7 +2316,7 @@ struct BiasSoftmaxFusionTester {
 
     ASSERT_EQ(op_to_count["Add"], 0);
     ASSERT_EQ(op_to_count["Softmax"], 0);
-    ASSERT_EQ(op_to_count["BiasSoftmax"], 1);
+    ASSERT_EQ(op_to_count["com.microsoft.BiasSoftmax"], 1);
 
     int actual_softmax_axis, actual_broadcast_axis;
     ASSERT_TRUE(GetAxis("BiasSoftmax", "softmax_axis", &actual_softmax_axis));
@@ -2335,7 +2335,7 @@ struct BiasSoftmaxFusionTester {
     std::map<std::string, int> op_to_count = CountOpsInGraph(p_model_->MainGraph());
     ASSERT_EQ(op_to_count["Add"], 1);
     ASSERT_EQ(op_to_count["Softmax"], 1);
-    ASSERT_EQ(op_to_count["BiasSoftmax"], 0);
+    ASSERT_EQ(op_to_count["com.microsoft.BiasSoftmax"], 0);
   }
 };
 
@@ -2534,7 +2534,7 @@ static void TestSkipLayerNormFusion(const std::basic_string<ORTCHAR_T>& file_pat
   ASSERT_TRUE(op_to_count["Pow"] == 0);
   ASSERT_TRUE(op_to_count["Sqrt"] == 0);
   ASSERT_TRUE(op_to_count["LayerNormalization"] == ln_count);
-  ASSERT_TRUE(op_to_count["SkipLayerNormalization"] == skip_ln_count);
+  ASSERT_TRUE(op_to_count["com.microsoft.SkipLayerNormalization"] == skip_ln_count);
 }
 
 TEST_F(GraphTransformationTests, SkipLayerNormFusionTest) {
@@ -2603,9 +2603,9 @@ TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat1) {
   ASSERT_TRUE(op_to_count["Gather"] == 0);
   ASSERT_TRUE(op_to_count["Add"] == 0);
   ASSERT_TRUE(op_to_count["ReduceSum"] == 1);
-  ASSERT_TRUE(op_to_count["Attention"] == 1);
-  ASSERT_TRUE(op_to_count["SkipLayerNormalization"] == 0);
-  ASSERT_TRUE(op_to_count["EmbedLayerNormalization"] == 1);
+  ASSERT_TRUE(op_to_count["com.microsoft.Attention"] == 1);
+  ASSERT_TRUE(op_to_count["com.microsoft.SkipLayerNormalization"] == 0);
+  ASSERT_TRUE(op_to_count["com.microsoft.EmbedLayerNormalization"] == 1);
 }
 
 TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat2) {
@@ -2630,9 +2630,9 @@ TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat2) {
   ASSERT_TRUE(op_to_count["Squeeze"] == 0);
   ASSERT_TRUE(op_to_count["Add"] == 0);
   ASSERT_TRUE(op_to_count["ReduceSum"] == 1);
-  ASSERT_TRUE(op_to_count["Attention"] == 1);
-  ASSERT_TRUE(op_to_count["SkipLayerNormalization"] == 0);
-  ASSERT_TRUE(op_to_count["EmbedLayerNormalization"] == 1);
+  ASSERT_TRUE(op_to_count["com.microsoft.Attention"] == 1);
+  ASSERT_TRUE(op_to_count["com.microsoft.SkipLayerNormalization"] == 0);
+  ASSERT_TRUE(op_to_count["com.microsoft.EmbedLayerNormalization"] == 1);
 }
 
 TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat3) {
@@ -2652,13 +2652,13 @@ TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat3) {
   EXPECT_EQ(op_to_count["Gather"], 0);
   EXPECT_EQ(op_to_count["Unsqueeze"], 0);
   EXPECT_EQ(op_to_count["LayerNormalization"], 0);
-  EXPECT_EQ(op_to_count["SkipLayerNormalization"], 0);
+  EXPECT_EQ(op_to_count["com.microsoft.SkipLayerNormalization"], 0);
   EXPECT_EQ(op_to_count["ReduceSum"], 1);
   EXPECT_EQ(op_to_count["MatMul"], 1);
   EXPECT_EQ(op_to_count["Add"], 2);
   EXPECT_EQ(op_to_count["Cast"], 3);
-  EXPECT_EQ(op_to_count["Attention"], 1);
-  EXPECT_EQ(op_to_count["EmbedLayerNormalization"], 1);
+  EXPECT_EQ(op_to_count["com.microsoft.Attention"], 1);
+  EXPECT_EQ(op_to_count["com.microsoft.EmbedLayerNormalization"], 1);
 }
 
 TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat3NoCast) {
@@ -2678,13 +2678,13 @@ TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat3NoCast) {
   EXPECT_EQ(op_to_count["Gather"], 0);
   EXPECT_EQ(op_to_count["Unsqueeze"], 0);
   EXPECT_EQ(op_to_count["LayerNormalization"], 0);
-  EXPECT_EQ(op_to_count["SkipLayerNormalization"], 0);
+  EXPECT_EQ(op_to_count["com.microsoft.SkipLayerNormalization"], 0);
   EXPECT_EQ(op_to_count["ReduceSum"], 1);
   EXPECT_EQ(op_to_count["MatMul"], 1);
   EXPECT_EQ(op_to_count["Add"], 2);
   EXPECT_EQ(op_to_count["Cast"], 3);
-  EXPECT_EQ(op_to_count["Attention"], 1);
-  EXPECT_EQ(op_to_count["EmbedLayerNormalization"], 1);
+  EXPECT_EQ(op_to_count["com.microsoft.Attention"], 1);
+  EXPECT_EQ(op_to_count["com.microsoft.EmbedLayerNormalization"], 1);
 }
 
 TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat4) {
@@ -2710,9 +2710,9 @@ TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat4) {
   ASSERT_TRUE(op_to_count["Squeeze"] == 0);
   ASSERT_TRUE(op_to_count["Add"] == 0);
   ASSERT_TRUE(op_to_count["ReduceSum"] == 1);
-  ASSERT_TRUE(op_to_count["Attention"] == 1);
-  ASSERT_TRUE(op_to_count["SkipLayerNormalization"] == 0);
-  ASSERT_TRUE(op_to_count["EmbedLayerNormalization"] == 1);
+  ASSERT_TRUE(op_to_count["com.microsoft.Attention"] == 1);
+  ASSERT_TRUE(op_to_count["com.microsoft.SkipLayerNormalization"] == 0);
+  ASSERT_TRUE(op_to_count["com.microsoft.EmbedLayerNormalization"] == 1);
 }
 
 TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat5) {
@@ -2729,13 +2729,13 @@ TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat5) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   EXPECT_EQ(op_to_count["Gather"], 0);
   EXPECT_EQ(op_to_count["LayerNormalization"], 0);
-  EXPECT_EQ(op_to_count["SkipLayerNormalization"], 0);
+  EXPECT_EQ(op_to_count["com.microsoft.SkipLayerNormalization"], 0);
   EXPECT_EQ(op_to_count["ReduceSum"], 1);
   EXPECT_EQ(op_to_count["MatMul"], 1);
   EXPECT_EQ(op_to_count["Add"], 2);
   EXPECT_EQ(op_to_count["Cast"], 3);
-  EXPECT_EQ(op_to_count["Attention"], 1);
-  EXPECT_EQ(op_to_count["EmbedLayerNormalization"], 1);
+  EXPECT_EQ(op_to_count["com.microsoft.Attention"], 1);
+  EXPECT_EQ(op_to_count["com.microsoft.EmbedLayerNormalization"], 1);
 
   // Validate the position embedding input.
   for (const Node& node : graph.Nodes()) {
@@ -2777,13 +2777,13 @@ TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat6) {
   EXPECT_EQ(op_to_count["Equal"], 0);
   EXPECT_EQ(op_to_count["Where"], 0);
   EXPECT_EQ(op_to_count["LayerNormalization"], 0);
-  EXPECT_EQ(op_to_count["SkipLayerNormalization"], 0);
+  EXPECT_EQ(op_to_count["com.microsoft.SkipLayerNormalization"], 0);
   EXPECT_EQ(op_to_count["ReduceSum"], 1);
   EXPECT_EQ(op_to_count["MatMul"], 1);
   EXPECT_EQ(op_to_count["Add"], 2);
   EXPECT_EQ(op_to_count["Cast"], 3);
-  EXPECT_EQ(op_to_count["Attention"], 1);
-  EXPECT_EQ(op_to_count["EmbedLayerNormalization"], 1);
+  EXPECT_EQ(op_to_count["com.microsoft.Attention"], 1);
+  EXPECT_EQ(op_to_count["com.microsoft.EmbedLayerNormalization"], 1);
 }
 
 static void TestEmbedLayerNormFusionDistilBert(const std::basic_string<ORTCHAR_T>& model_uri,
@@ -2805,8 +2805,8 @@ static void TestEmbedLayerNormFusionDistilBert(const std::basic_string<ORTCHAR_T
 TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat7) {
   std::map<std::string, int> op_to_count;
   TestEmbedLayerNormFusionDistilBert(MODEL_FOLDER "fusion/embed_layer_norm_format7.onnx", op_to_count, logger_.get());
-  EXPECT_EQ(op_to_count["EmbedLayerNormalization"], 1);
-  EXPECT_EQ(op_to_count["Attention"], 1);
+  EXPECT_EQ(op_to_count["com.microsoft.EmbedLayerNormalization"], 1);
+  EXPECT_EQ(op_to_count["com.microsoft.Attention"], 1);
   EXPECT_EQ(op_to_count["Cast"], 2);
   EXPECT_EQ(op_to_count["Shape"], 0);
   EXPECT_EQ(op_to_count["Gather"], 0);
@@ -2817,8 +2817,8 @@ TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat7) {
 TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat8) {
   std::map<std::string, int> op_to_count;
   TestEmbedLayerNormFusionDistilBert(MODEL_FOLDER "fusion/embed_layer_norm_format8.onnx", op_to_count, logger_.get());
-  EXPECT_EQ(op_to_count["EmbedLayerNormalization"], 1);
-  EXPECT_EQ(op_to_count["Attention"], 1);
+  EXPECT_EQ(op_to_count["com.microsoft.EmbedLayerNormalization"], 1);
+  EXPECT_EQ(op_to_count["com.microsoft.Attention"], 1);
   EXPECT_EQ(op_to_count["Cast"], 2);
   EXPECT_EQ(op_to_count["Shape"], 0);
   EXPECT_EQ(op_to_count["Gather"], 0);
@@ -2829,8 +2829,8 @@ TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat8) {
 TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat9) {
   std::map<std::string, int> op_to_count;
   TestEmbedLayerNormFusionDistilBert(MODEL_FOLDER "fusion/embed_layer_norm_format9.onnx", op_to_count, logger_.get());
-  EXPECT_EQ(op_to_count["EmbedLayerNormalization"], 1);
-  EXPECT_EQ(op_to_count["Attention"], 1);
+  EXPECT_EQ(op_to_count["com.microsoft.EmbedLayerNormalization"], 1);
+  EXPECT_EQ(op_to_count["com.microsoft.Attention"], 1);
   EXPECT_EQ(op_to_count["Cast"], 2);
   EXPECT_EQ(op_to_count["Shape"], 1);
   EXPECT_EQ(op_to_count["Gather"], 2);
@@ -2855,13 +2855,13 @@ TEST_F(GraphTransformationTests, EmbedLayerNormFusionMultiple) {
   EXPECT_EQ(op_to_count["Gather"], 0);
   EXPECT_EQ(op_to_count["Unsqueeze"], 0);
   EXPECT_EQ(op_to_count["LayerNormalization"], 0);
-  EXPECT_EQ(op_to_count["SkipLayerNormalization"], 0);
+  EXPECT_EQ(op_to_count["com.microsoft.SkipLayerNormalization"], 0);
   EXPECT_EQ(op_to_count["ReduceSum"], 2);
   EXPECT_EQ(op_to_count["MatMul"], 2);
   EXPECT_EQ(op_to_count["Add"], 5);
   EXPECT_EQ(op_to_count["Cast"], 6);
-  EXPECT_EQ(op_to_count["Attention"], 2);
-  EXPECT_EQ(op_to_count["EmbedLayerNormalization"], 2);
+  EXPECT_EQ(op_to_count["com.microsoft.Attention"], 2);
+  EXPECT_EQ(op_to_count["com.microsoft.EmbedLayerNormalization"], 2);
 }
 
 TEST_F(GraphTransformationTests, DynamicQuantizeMatMulTest) {
@@ -2880,7 +2880,7 @@ TEST_F(GraphTransformationTests, DynamicQuantizeMatMulTest) {
   EXPECT_EQ(op_to_count["MatMulInteger"], 0);
   EXPECT_EQ(op_to_count["Cast"], 0);
   EXPECT_EQ(op_to_count["Mul"], 0);
-  EXPECT_EQ(op_to_count["DynamicQuantizeMatMul"], 1);
+  EXPECT_EQ(op_to_count["com.microsoft.DynamicQuantizeMatMul"], 1);
 }
 
 TEST_F(GraphTransformationTests, DynamicQuantizeMatMulTest_With_Bias) {
@@ -2899,7 +2899,7 @@ TEST_F(GraphTransformationTests, DynamicQuantizeMatMulTest_With_Bias) {
   EXPECT_EQ(op_to_count["MatMulInteger"], 0);
   EXPECT_EQ(op_to_count["Cast"], 0);
   EXPECT_EQ(op_to_count["Mul"], 0);
-  EXPECT_EQ(op_to_count["DynamicQuantizeMatMul"], 1);
+  EXPECT_EQ(op_to_count["com.microsoft.DynamicQuantizeMatMul"], 1);
 }
 
 TEST_F(GraphTransformationTests, DynamicQuantizeMatMulTest_With_ND_bias) {
@@ -2918,7 +2918,7 @@ TEST_F(GraphTransformationTests, DynamicQuantizeMatMulTest_With_ND_bias) {
   EXPECT_EQ(op_to_count["MatMulInteger"], 0);
   EXPECT_EQ(op_to_count["Cast"], 0);
   EXPECT_EQ(op_to_count["Mul"], 0);
-  EXPECT_EQ(op_to_count["DynamicQuantizeMatMul"], 1);
+  EXPECT_EQ(op_to_count["com.microsoft.DynamicQuantizeMatMul"], 1);
   EXPECT_EQ(op_to_count["Add"], 1);
 }
 
@@ -2938,7 +2938,7 @@ TEST_F(GraphTransformationTests, DynamicQuantizeMatMulTest_With_Bias_No_B_ZP) {
   EXPECT_EQ(op_to_count["MatMulInteger"], 0);
   EXPECT_EQ(op_to_count["Cast"], 0);
   EXPECT_EQ(op_to_count["Mul"], 0);
-  EXPECT_EQ(op_to_count["DynamicQuantizeMatMul"], 1);
+  EXPECT_EQ(op_to_count["com.microsoft.DynamicQuantizeMatMul"], 1);
 }
 
 TEST_F(GraphTransformationTests, MatMulIntegerToFloatTest) {
@@ -2957,7 +2957,7 @@ TEST_F(GraphTransformationTests, MatMulIntegerToFloatTest) {
   EXPECT_EQ(op_to_count["MatMulInteger"], 0);
   EXPECT_EQ(op_to_count["Cast"], 0);
   EXPECT_EQ(op_to_count["Mul"], 0);
-  EXPECT_EQ(op_to_count["MatMulIntegerToFloat"], 3);
+  EXPECT_EQ(op_to_count["com.microsoft.MatMulIntegerToFloat"], 3);
   EXPECT_EQ(op_to_count["Add"], 1);
 }
 
@@ -3210,13 +3210,13 @@ TEST_F(GraphTransformationTests, MatMulScaleFusionFusableModels) {
           EXPECT_EQ(transformed_op_counts["Mul"], 0);
           EXPECT_EQ(transformed_op_counts["Div"], 0);
           EXPECT_EQ(transformed_op_counts["MatMul"], 0);
-          EXPECT_EQ(transformed_op_counts["FusedMatMul"], 1);
+          EXPECT_EQ(transformed_op_counts["com.microsoft.FusedMatMul"], 1);
 
           // check combined scale, individual scales should all have the same value
           const float scale_value = 3.0f;
 
           const int num_scales =
-              original_op_counts["Mul"] + original_op_counts["Div"] + original_op_counts["FusedMatMul"];
+              original_op_counts["Mul"] + original_op_counts["Div"] + original_op_counts["com.microsoft.FusedMatMul"];
 
           auto fused_node = std::find_if(
               graph.Nodes().cbegin(), graph.Nodes().cend(),
@@ -3258,7 +3258,7 @@ TEST_F(GraphTransformationTests, MatMulScaleFusionReusedInputScale) {
         EXPECT_EQ(transformed_op_counts["Mul"], 0);
         EXPECT_EQ(transformed_op_counts["Div"], 0);
         EXPECT_EQ(transformed_op_counts["MatMul"], 0);
-        EXPECT_EQ(transformed_op_counts["FusedMatMul"], 2);
+        EXPECT_EQ(transformed_op_counts["com.microsoft.FusedMatMul"], 2);
       });
 }
 
