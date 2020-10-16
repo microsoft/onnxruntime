@@ -47,7 +47,7 @@ class ModelTest : public testing::TestWithParam<std::tuple<ITestCase*, winml::Le
 
   void CompareEvaluationResults(LearningModelEvaluationResult& results,
                                 std::unordered_map<std::string, Ort::Value>& expectedOutputFeeds) {
-    for (auto& [name, value] : expectedOutputFeeds) {
+    for (const auto& [name, value] : expectedOutputFeeds) {
       // Extract the output buffer from the evaluation output
       std::wstring outputName = _winml::Strings::WStringFromString(name);
       auto actualOutputTensorValue = results.Outputs().Lookup(outputName).as<ITensorNative>();
@@ -121,7 +121,7 @@ std::string GetTestDataPath() {
       return hardcodedModelPath;
     }
   }
-  return std::move(testDataPath);
+  return testDataPath;
 }
 
 // This function returns the list of all test cases inside model test collateral
@@ -193,7 +193,7 @@ static std::string GetNameOfTest(const testing::TestParamInfo<ModelTest::ParamTy
   name += tokenizedModelPath[tokenizedModelPath.size() - 2] += "_";  // model name
   name += tokenizedModelPath[tokenizedModelPath.size() - 3];         // opset version
 
-  std::replace_if(name.begin(), name.end(), [&name](char c) { return !google::protobuf::ascii_isalnum(c); }, '_');
+  std::replace_if(name.begin(), name.end(), [](char c) { return !google::protobuf::ascii_isalnum(c); }, '_');
 
   auto deviceKind = std::get<1>(info.param);
   // Determine if test should be skipped
