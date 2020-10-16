@@ -1797,7 +1797,7 @@ ORT_API_STATUS_IMPL(OrtApis::SetLanguageProjection, _In_ const OrtEnv* ort_env, 
 ORT_API_STATUS_IMPL(OrtApis::SessionGetProfilingStartTimeNs, _In_ const OrtSession* sess, _Outptr_ uint64_t* out) {
   API_IMPL_BEGIN
   const auto* session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(sess);
-  auto profiling_start_time = session->GetProfiling().GetStartTime();
+  auto profiling_start_time = session->GetProfiling().GetStartTimeNs();
   *out = static_cast<uint64_t>(profiling_start_time);
   return nullptr;
   API_IMPL_END
@@ -2032,6 +2032,7 @@ static constexpr OrtApi ort_api_1_to_6 = {
     &OrtApis::AddInitializer,
     &OrtApis::CreateEnvWithCustomLoggerAndGlobalThreadPools,
     &OrtApis::OrtSessionOptionsAppendExecutionProvider_CUDA,
+    &OrtApis::SetGlobalDenormalAsZero,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
