@@ -30,59 +30,59 @@ template <typename T, typename TIndex>
 Status CallGatherGradImpl(
     const CudaScratchBufferAllocator& allocator,
     int64_t num_gathered_per_index, int64_t gather_dimension_size, int64_t num_batches,
-    const Tensor& grad, const Tensor& indices,
-    Tensor& output) {
+    const Tensor& dY, const Tensor& gathered_indices,
+    Tensor& dX) {
   using CudaT = typename ToCudaType<T>::MappedType;
 
-  const T* grad_data = grad.template Data<T>();
-  T* output_data = output.template MutableData<T>();
-  const TIndex* indices_data = indices.template Data<TIndex>();
+  const T* dY_data = dY.template Data<T>();
+  T* dX_data = dX.template MutableData<T>();
+  const TIndex* indices_data = gathered_indices.template Data<TIndex>();
 
-  const SafeInt<GatheredIndexIndex_t> num_gathered_indices{indices.Shape().Size()};
+  const SafeInt<GatheredIndexIndex_t> num_gathered_indices{gathered_indices.Shape().Size()};
 
   GatherGradImpl(
       allocator,
-      reinterpret_cast<const CudaT*>(grad_data),
+      reinterpret_cast<const CudaT*>(dY_data),
       indices_data,
       num_gathered_indices,
       gather_dimension_size,
       num_gathered_per_index,
       num_batches,
-      reinterpret_cast<CudaT*>(output_data));
+      reinterpret_cast<CudaT*>(dX_data));
 
   return Status::OK();
 }
 
 template <typename T>
-Status DispatchToGatherGradImplByTin(
-    MLDataType tin_data_type,
+Status DispatchToGatherGradImplByTindex(
+    MLDataType tindex_data_type,
     const CudaScratchBufferAllocator& allocator,
     int64_t num_gathered_per_index, int64_t gather_dimension_size, int64_t num_batches,
-    const Tensor& grad, const Tensor& indices,
-    Tensor& output) {
-  if (utils::IsPrimitiveDataType<int32_t>(tin_data_type)) {
+    const Tensor& dY, const Tensor& gathered_indices,
+    Tensor& dX) {
+  if (utils::IsPrimitiveDataType<int32_t>(tindex_data_type)) {
     return CallGatherGradImpl<T, int32_t>(
-        allocator, num_gathered_per_index, gather_dimension_size, num_batches, grad, indices, output);
-  } else if (utils::IsPrimitiveDataType<int64_t>(tin_data_type)) {
+        allocator, num_gathered_per_index, gather_dimension_size, num_batches, dY, gathered_indices, dX);
+  } else if (utils::IsPrimitiveDataType<int64_t>(tindex_data_type)) {
     return CallGatherGradImpl<T, int64_t>(
-        allocator, num_gathered_per_index, gather_dimension_size, num_batches, grad, indices, output);
+        allocator, num_gathered_per_index, gather_dimension_size, num_batches, dY, gathered_indices, dX);
   }
 
-  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GatherGrad unsupported TIndex type: ", tin_data_type);
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GatherGrad unsupported TIndex type: ", tindex_data_type);
 }
 
 Status DispatchToGatherGradImpl(
-    MLDataType t_data_type, MLDataType tin_data_type,
+    MLDataType t_data_type, MLDataType tindex_data_type,
     const CudaScratchBufferAllocator& allocator,
     int64_t num_gathered_per_index, int64_t gather_dimension_size, int64_t num_batches,
-    const Tensor& grad, const Tensor& indices,
-    Tensor& output) {
+    const Tensor& dY, const Tensor& gathered_indices,
+    Tensor& dX) {
   if (utils::IsPrimitiveDataType<float>(t_data_type)) {
-    return DispatchToGatherGradImplByTin<float>(
-        tin_data_type, allocator, num_gathered_per_index, gather_dimension_size, num_batches, grad, indices, output);
+    return DispatchToGatherGradImplByTindex<float>(
+        tindex_data_type, allocator, num_gathered_per_index, gather_dimension_size, num_batches, dY, gathered_indices, dX);
   } else if (utils::IsPrimitiveDataType<MLFloat16>(t_data_type)) {
-    return DispatchToGatherGradImplByTin<MLFloat16>(
-        tin_data_type, allocator, num_gathered_per_index, gather_dimension_size, num_batches, grad, indices, output);
+    return DispatchToGatherGradImplByTindex<MLFloat16>(
+        tindex_data_type, allocator, num_gathered_per_index, gather_dimension_size, num_batches, dY, gathered_indices, dX);
   }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GatherGrad unsupported T type: ", t_data_type);
@@ -90,31 +90,31 @@ Status DispatchToGatherGradImpl(
 }  // namespace
 
 Status GatherGrad::ComputeInternal(OpKernelContext* context) const {
-  const Tensor* shape = context->Input<Tensor>(0);
-  const TensorShape data_shape(shape->template Data<int64_t>(), shape->Shape().Size());
-  const Tensor* indices = context->Input<Tensor>(1);
-  const Tensor* grad = context->Input<Tensor>(2);
+  const Tensor* X_shape_tensor = context->Input<Tensor>(0);
+  const TensorShape X_shape(X_shape_tensor->template Data<int64_t>(), X_shape_tensor->Shape().Size());
+  const Tensor* gathered_indices = context->Input<Tensor>(1);
+  const Tensor* dY = context->Input<Tensor>(2);
 
-  Tensor* output = context->Output(0, data_shape);
-  CUDA_RETURN_IF_ERROR(cudaMemset(output->MutableDataRaw(), 0, output->SizeInBytes()));
+  Tensor* dX = context->Output(0, X_shape);
+  CUDA_RETURN_IF_ERROR(cudaMemset(dX->MutableDataRaw(), 0, dX->SizeInBytes()));
 
-  if (indices->Shape().Size() == 0) {
+  if (gathered_indices->Shape().Size() == 0) {
     // nothing else to do
     return Status::OK();
   }
 
-  MLDataType T_type = grad->DataType();
-  MLDataType Tin_type = indices->DataType();
+  MLDataType t_type = dY->DataType();
+  MLDataType tindex_type = gathered_indices->DataType();
 
-  const auto axis = HandleNegativeAxis(axis_, data_shape.NumDimensions());
-  const int64_t num_gathered_per_index = data_shape.SizeFromDimension(axis + 1);
-  const int64_t gather_dimension_size = data_shape[axis];
-  const int64_t num_batches = data_shape.SizeToDimension(axis);
+  const auto axis = HandleNegativeAxis(axis_, X_shape.NumDimensions());
+  const int64_t num_gathered_per_index = X_shape.SizeFromDimension(axis + 1);
+  const int64_t gather_dimension_size = X_shape[axis];
+  const int64_t num_batches = X_shape.SizeToDimension(axis);
 
   return DispatchToGatherGradImpl(
-      T_type, Tin_type, CudaScratchBufferAllocator{*this},
+      t_type, tindex_type, CudaScratchBufferAllocator{*this},
       num_gathered_per_index, gather_dimension_size, num_batches,
-      *grad, *indices, *output);
+      *dY, *gathered_indices, *dX);
 }
 
 }  // namespace cuda
