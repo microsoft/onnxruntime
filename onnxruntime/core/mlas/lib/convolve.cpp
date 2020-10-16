@@ -146,6 +146,7 @@ Return Value:
 
                 size_t InputX = InitialInputX;
                 const float* InputRow = &Input[InputY * InputWidth];
+                const float* tempInputRow;
 
                 do {
 
@@ -172,6 +173,28 @@ Return Value:
                         }
 
                         CountX -= CountCopyX;
+                        tempInputRow = &InputRow[InputX];
+
+                        while (CountCopyX >= 16) {
+                          MlasStoreFloat32x4(ColumnBuffer, MlasLoadFloat32x4(tempInputRow));
+                          ColumnBuffer += 4;
+                          tempInputRow += 4;
+
+                          MlasStoreFloat32x4(ColumnBuffer, MlasLoadFloat32x4(tempInputRow));
+                          ColumnBuffer += 4;
+                          tempInputRow += 4;
+
+                          MlasStoreFloat32x4(ColumnBuffer, MlasLoadFloat32x4(tempInputRow));
+                          ColumnBuffer += 4;
+                          tempInputRow += 4;
+
+                          MlasStoreFloat32x4(ColumnBuffer, MlasLoadFloat32x4(tempInputRow));
+                          ColumnBuffer += 4;
+                          tempInputRow += 4;
+
+                          InputX += 16;
+                          CountCopyX -= 16;
+                        }
 
                         while (CountCopyX >= 4) {
                             MlasStoreFloat32x4(ColumnBuffer, MlasLoadFloat32x4(&InputRow[InputX]));
@@ -209,6 +232,22 @@ Return Value:
                 //
 
                 MLAS_FLOAT32X4 ZeroFloat32x4 = MlasZeroFloat32x4();
+
+                while (CountX >= 16) {
+                  MlasStoreFloat32x4(ColumnBuffer, ZeroFloat32x4);
+                  ColumnBuffer += 4;
+
+                  MlasStoreFloat32x4(ColumnBuffer, ZeroFloat32x4);
+                  ColumnBuffer += 4;
+
+                  MlasStoreFloat32x4(ColumnBuffer, ZeroFloat32x4);
+                  ColumnBuffer += 4;
+
+                  MlasStoreFloat32x4(ColumnBuffer, ZeroFloat32x4);
+                  ColumnBuffer += 4;
+
+                  CountX -= 16;
+                }
 
                 while (CountX >= 4) {
                     MlasStoreFloat32x4(ColumnBuffer, ZeroFloat32x4);
@@ -527,6 +566,8 @@ Return Value:
     const size_t FilterCount = Parameters->FilterCount;
     const size_t OutputSize = Parameters->OutputSize;
     const size_t K = Parameters->K;
+    const size_t K2 = Parameters->K * 2;
+    const size_t SegmentCountN2 = SegmentCountN * 2;
 
     //
     // Compute the strides to step through slices of the local segment.
@@ -539,14 +580,14 @@ Return Value:
 
     if (SegmentCountN >= K) {
 
-        while (StrideK / 2 >= K) {
+        while (StrideK >= K2) {
             StrideN *= 2;
             StrideK /= 2;
         }
 
     } else {
 
-        while (StrideN > 16 && StrideN / 2 >= SegmentCountN) {
+        while (StrideN > 16 && StrideN >= SegmentCountN2) {
             StrideK *= 2;
             StrideN /= 2;
         }
@@ -560,11 +601,12 @@ Return Value:
 
     for (size_t n = 0; n < SegmentCountN; n += CountN) {
 
-        CountN = SegmentCountN - n;
+        // CountN = SegmentCountN - n;
 
-        if (CountN > StrideN) {
-            CountN = StrideN;
-        }
+        CountN = SegmentCountN - n > StrideN ? StrideN : SegmentCountN - n;
+        // if (CountN > StrideN) {
+        //    CountN = StrideN;
+        //}
 
         //
         // Step through each slice of the input tensor along the K dimension.
@@ -576,11 +618,12 @@ Return Value:
 
         for (size_t k = 0; k < K; k += CountK) {
 
-            CountK = K - k;
+            // CountK = K - k;
 
-            if (CountK > StrideK) {
-                CountK = StrideK;
-            }
+            CountK = K - k > StrideK ? StrideK : K - k;
+            //if (CountK > StrideK) {
+            //    CountK = StrideK;
+            //}
 
             if (Parameters->Dimensions == 2) {
                 MlasConvIm2Col(Parameters, Input, ColumnBuffer, k, CountK,
