@@ -269,7 +269,7 @@ class QLinearConvOpTester {
   struct QuantizedTensor {
     std::vector<T> data_;
     std::vector<int64_t> shape_;
-    std::vector<float> scale_{1.0f};
+    std::vector<float> scale_;
     T zero_point_{0};
   };
 
