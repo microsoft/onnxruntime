@@ -43,7 +43,12 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   if(subgraph_context_.is_constant)
     return;
   std::map<std::string, std::string> config;
-  if(global_context_.device_type == "MYRIAD"){
+#ifndef NDEBUG
+    if (openvino_ep::backend_utils::IsDebugEnabled()) {
+      config["PERF_COUNT"] = CONFIG_VALUE(YES);
+    }
+#endif
+  if(global_context_.device_type.find("MYRIAD") != std::string::npos){
 
 #if defined(OPENVINO_2021_1) 
     if(subgraph_context_.set_vpu_config) {
@@ -200,6 +205,8 @@ void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
 #ifndef NDEBUG
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
       inferRequestsQueue_->printstatus(); //Printing the elements of infer_requests_ vector pool only in debug mode
+      std::string& hw_target = (global_context_.device_id != "") ? global_context_.device_id : global_context_.device_type;
+      printPerformanceCounts(*infer_request_, std::cout, hw_target, true);
   }
 #endif
 }

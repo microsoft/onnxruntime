@@ -13,6 +13,27 @@
 
 namespace onnxruntime {
 
+static std::vector<std::string> split(const std::string &s, char delim) {
+    std::vector<std::string> result;
+    std::stringstream ss(s);
+    std::string item;
+
+    while (getline(ss, item, delim)) {
+        result.push_back(item);
+    }
+    return result;
+}
+
+static std::vector<std::string> parseDevices(const std::string& device_string) {
+    std::string comma_separated_devices = device_string;
+    if (comma_separated_devices.find(":") != std::string::npos) {
+        comma_separated_devices = comma_separated_devices.substr(comma_separated_devices.find(":") + 1);
+        std::cout << "comma_separated_devices: " << comma_separated_devices << std::endl;
+    }
+    auto devices = split(comma_separated_devices, ',');
+    return devices;
+}
+
 // Information needed to construct OpenVINO execution providers.
 struct OpenVINOExecutionProviderInfo {
   std::string device_type_;
@@ -45,6 +66,19 @@ struct OpenVINOExecutionProviderInfo {
       #elif defined OPENVINO_CONFIG_VAD_F
       device_type_ = "HETERO:FPGA,CPU";
       precision_ = "FP32";
+      #elif defined OPENVINO_CONFIG_HETERO
+        #ifdef DEVICE_NAME
+          #define DEVICE DEVICE_NAME
+        #endif
+      dev_type = DEVICE;
+      if (dev_type.find("HETERO") == 0) {
+      std::vector<std::string> devices = parseDevices(dev_type);
+      precision_ = "FP16";
+      if(devices[0] == "CPU" || devices[0] == "GPU") {
+        precision_ = "FP32";
+      }
+      device_type_ = dev_type;
+      }
       #endif
     } else if (dev_type == "CPU_FP32") {
       device_type_ = "CPU";
@@ -64,6 +98,13 @@ struct OpenVINOExecutionProviderInfo {
     } else if (dev_type == "VAD-F_FP32") {
       device_type_ = "HETERO:FPGA,CPU";
       precision_ = "FP32";
+    } else if (dev_type.find("HETERO") == 0) {
+      std::vector<std::string> devices = parseDevices(dev_type);
+      precision_ = "FP16";
+      if(devices[0] == "CPU" || devices[0] == "GPU") {
+        precision_ = "FP32";
+      }
+      device_type_ = dev_type;
     } else {
       ORT_THROW("Invalid device string: " + dev_type);
     }

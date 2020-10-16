@@ -49,7 +49,7 @@ BackendManager::BackendManager(const onnxruntime::Node* fused_node, const loggin
 
   auto graph_inputs = fused_node->GetFunctionBody()->Body().GetInputs();
   for (auto input : graph_inputs) {
-    if(GetGlobalContext().device_type == "MYRIAD"){
+    if(GetGlobalContext().device_type.find("MYRIAD") != std::string::npos){
       auto shape = input->Shape();
       if(shape != nullptr){
         if(shape->dim_size() != 4){
@@ -79,7 +79,7 @@ BackendManager::BackendManager(const onnxruntime::Node* fused_node, const loggin
 
   if (ModelHasBatchedInputs(model_proto_) &&
       GetGlobalContext().is_wholly_supported_graph &&
-      GetGlobalContext().device_type == "HDDL") {
+      GetGlobalContext().device_type.find("HDDL") != std::string::npos) {
     subgraph_context_.enable_batching = true;
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model can be Batch inferenced \n";
     auto model_copy = ReWriteBatchDimWithOne(model_proto_);
@@ -267,7 +267,7 @@ void BackendManager::Compute(Ort::CustomOpApi api, OrtKernelContext* context) {
     std::vector<std::vector<int64_t>> tensor_shapes = GetInputTensorShapes(api, context);
     auto key = MakeMapKeyString(tensor_shapes, GetGlobalContext().device_type);
 
-    if(GetGlobalContext().device_type == "MYRIAD"){
+    if(GetGlobalContext().device_type.find("MYRIAD") != std::string::npos){
       
       #if (defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
       for(size_t i = 0; i < subgraph_context_.input_indexes.size(); i++){

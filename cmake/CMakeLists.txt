@@ -1018,6 +1018,12 @@ if(onnxruntime_USE_OPENVINO)
     add_definitions(-DOPENVINO_CONFIG_VAD_F=1)
   endif()
 
+  if(onnxruntime_USE_OPENVINO_HETERO)
+    add_definitions(-DOPENVINO_CONFIG_HETERO=1)
+    add_definitions(-DDEVICE_NAME="${onnxruntime_USE_OPENVINO_DEVICE}")
+    message("${DEVICE_NAME}")
+  endif()
+
 endif()
 
 if (onnxruntime_USE_VITISAI)
