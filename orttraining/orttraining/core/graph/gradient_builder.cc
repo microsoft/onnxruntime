@@ -750,7 +750,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetConvGradient) {
     if (IsGradientRequiredForSrcNodeInput(i)) {
       outputs.push_back(GI(i));
     } else {
-      outputs.push_back(ArgDef("", nullptr));
+      outputs.push_back(IA("ConvInput_" + I(i).name));
     }
   }
 
@@ -1468,6 +1468,14 @@ IMPLEMENT_GRADIENT_BUILDER(GetFlattenGradient) {
       NodeDef("Shape", {I(0)}, {IA("input_shape")}),
       NodeDef("Reshape", {GO(0), IA("input_shape")}, {GI(0)})
   };
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetTopKGradient) {
+  return std::vector<NodeDef>{
+      NodeDef(OpDef{"TopKGrad", kMSDomain, 1},
+              {GO(0), O(1), I(0)},
+              {GI(0)},
+              SrcNodeAttributes())};
 }
 
 }  // namespace training
