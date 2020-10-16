@@ -532,9 +532,9 @@ void RegisterTrainingOpSchemas() {
            return nodes;
       }())
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        // TODO: Add shape inference.
         for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
           propagateElemTypeFromTensorInputToOutput(ctx, 0, i);
+          propagateShapeFromInputToOutput(i + 1, i);
         }
       });
 
