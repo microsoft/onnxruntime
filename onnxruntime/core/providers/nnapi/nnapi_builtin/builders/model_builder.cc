@@ -122,6 +122,7 @@ Status ModelBuilder::Prepare() {
   RETURN_STATUS_ON_ERROR(nnapi_->ANeuralNetworksModel_create(&nnapi_model_->model_));
   ORT_RETURN_IF_ERROR(GetTargetDevices());
   PreprocessInitializers();
+  PreprocessActivations();
   ORT_RETURN_IF_ERROR(RegisterInitializers());
   ORT_RETURN_IF_ERROR(RegisterModelInputs());
   ORT_RETURN_IF_ERROR(AddOperations());
@@ -190,6 +191,28 @@ void ModelBuilder::PreprocessInitializers() {
   }
 }
 
+void ModelBuilder::PreprocessActivations() {
+  const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
+  for (size_t i = 0; i < node_indices.size(); i++) {
+    const auto* node(graph_viewer_.GetNode(node_indices[i]));
+    const auto& op_type(node->OpType());
+
+    if (op_type == "Relu") {
+      activation_nodes_.emplace(node->Index(), ANEURALNETWORKS_FUSED_RELU);
+    } else if (op_type == "Clip") {  // Relu1 or Relu6
+      float min, max;
+      if (!GetClipMinMax(*this, *node, min, max))
+        continue;
+
+      if (min == -1.0f && max == 1.0f) {
+        activation_nodes_.emplace(node->Index(), ANEURALNETWORKS_FUSED_RELU1);
+      } else if (min == 0.0f && max == 6.0f) {
+        activation_nodes_.emplace(node->Index(), ANEURALNETWORKS_FUSED_RELU6);
+      }
+    }
+  }
+}
+
 // Help to get all quantized operators' input and the node(s) using the input
 std::unordered_map<std::string, vector<const Node*>> GetAllQuantizedOpInputs(const GraphViewer& graph_viewer) {
   std::unordered_map<std::string, vector<const Node*>> all_quantized_op_inputs;
@@ -235,7 +258,7 @@ Status ModelBuilder::RegisterInitializers() {
       shape.push_back(SafeInt<uint32_t>(dim));
     }
 
-    ORT_RETURN_IF_NOT(!shape.empty(), "NNAPI does not support scalar initializer");
+    ORT_RETURN_IF_NOT(!shape.empty(), "NNAPI does not support scalar initializer, tensor name, ", name);
 
     Type type = Type::TENSOR_FLOAT32;
     switch (tensor.data_type()) {
@@ -554,9 +577,9 @@ int32_t ModelBuilder::FindActivation(const Node& node, const NodeArg& output) {
   for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
     const auto& dst_node = it->GetNode();
     const auto* dst_input = dst_node.InputDefs()[it->GetDstArgIndex()];
-    if (dst_node.OpType() == "Relu") {
+    if (Contains(activation_nodes_, dst_node.Index())) {
       if (&output == dst_input) {
-        fuse_code = ANEURALNETWORKS_FUSED_RELU;
+        fuse_code = activation_nodes_.at(dst_node.Index());
       }
     } else {
       // if there is any other non-relu node using the output

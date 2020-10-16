@@ -70,12 +70,15 @@ class FusionGptAttentionNoPast(Fusion):
 
         layernorm_before_attention = self.model.get_parent(reshape_before_gemm, 0, output_name_to_node)
         if layernorm_before_attention is None or layernorm_before_attention.op_type != 'LayerNormalization':
-            logger.debug(f"failed to get layernorm before gemm. Got {layernorm_before_attention.op_type}")
-            return
+            if layernorm_before_attention.op_type != 'Add':
+                logger.debug(f"failed to get layernorm before gemm. Got {layernorm_before_attention.op_type}")
+                return
 
         if not another_input in layernorm_before_attention.input:
-            logger.debug("Add and LayerNormalization shall have one same input")
-            return
+            # match openai-gpt
+            if not another_input in layernorm_before_attention.output:
+                logger.debug("Add and LayerNormalization shall have one same input")
+                return
 
         qk_nodes = self.model.match_parent_path(matmul_qkv, ['Softmax', 'Sub', 'Mul', 'Div', 'MatMul'], [0, 0, 0, 0, 0])
         if qk_nodes is not None:
@@ -95,22 +98,40 @@ class FusionGptAttentionNoPast(Fusion):
         else:
             # New pattern for gpt2 from PyTorch 1.5.0 and Transformers 2.9.0.
             qk_nodes = self.model.match_parent_path(matmul_qkv, ['Softmax', 'Where', 'Div', 'MatMul'], [0, 0, 1, 0])
-            if qk_nodes is None:
-                logger.debug("fuse_attention: failed to match qk path")
-                return
-            (softmax_qk, where_qk, div_qk, matmul_qk) = qk_nodes
-            mask_nodes = self.model.match_parent_path(
-                where_qk,
-                ['Cast', 'Slice', 'Slice', 'Unsqueeze', 'Sub', 'Squeeze', 'Slice', 'Shape', 'Div'],
-                [ 0,     0,       0,       1,           0,     0,         0,       0,       0])  # yapf: disable
-            if mask_nodes is None:
-                logger.debug("fuse_attention: failed to match mask path")
-                return
-            div_mask = mask_nodes[-1]
+            if qk_nodes is not None:
+                (softmax_qk, where_qk, div_qk, matmul_qk) = qk_nodes
+                mask_nodes = self.model.match_parent_path(
+                    where_qk,
+                    ['Cast', 'Slice', 'Slice', 'Unsqueeze', 'Sub', 'Squeeze', 'Slice', 'Shape', 'Div'],
+                    [ 0,     0,       0,       1,           0,     0,         0,       0,       0])  # yapf: disable
+                if mask_nodes is None:
+                    logger.debug("fuse_attention: failed to match mask path")
+                    return
+                div_mask = mask_nodes[-1]
 
-            if div_qk != div_mask:
-                logger.debug("fuse_attention: skip since div_qk != div_mask")
-                return
+                if div_qk != div_mask:
+                    logger.debug("fuse_attention: skip since div_qk != div_mask")
+                    return
+            else:
+                # match openai-gpt
+                qk_nodes = self.model.match_parent_path(matmul_qkv, ['Softmax', 'Add', 'Mul', 'Div', 'MatMul'],
+                                                        [0, 0, 0, 0, 0])
+                if qk_nodes is None:
+                    logger.debug("fuse_attention: failed to match qk path")
+                    return
+                (softmax_qk, add_qk, mul_qk, div_qk, matmul_qk) = qk_nodes
+                mask_nodes = self.model.match_parent_path(
+                    mul_qk,
+                    ['Slice', 'Slice', 'Unsqueeze', 'Squeeze', 'Slice', 'Shape', 'Div'],
+                    [ 1,       0,       2,           0,         0,       0,       0])  # yapf: disable
+                if mask_nodes is None:
+                    logger.debug("fuse_attention: failed to match mask path")
+                    return
+                div_mask = mask_nodes[-1]
+
+                if div_qk != div_mask:
+                    logger.debug("fuse_attention: skip since div_qk != div_mask")
+                    return
 
         q_nodes = self.model.match_parent_path(matmul_qk, ['Transpose', 'Reshape', 'Split'], [0, 0, 0])
         if q_nodes is None:
