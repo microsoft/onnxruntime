@@ -140,6 +140,9 @@ Status TrainingSession::ConfigureForTraining(
 
   std::unordered_set<std::string> filtered_config_weight_names_to_train;
   FilterUnusedWeights(config.weight_names_to_train, filtered_config_weight_names_to_train);
+  for (auto name : filtered_config_weight_names_to_train) {
+    std::cout << "[training_session.cc, ConfigureForTraining] train weight with consumer: " << name << std::endl;
+  }
 
   TrainingConfigurationResult config_result{};
 
@@ -177,6 +180,11 @@ Status TrainingSession::ConfigureForTraining(
             config.pipeline_config.value().partitioned_model_path.value(), SaveOption::NO_RELOAD));
       }
     }
+  }
+
+  FilterUnusedWeights(config.weight_names_to_train, filtered_config_weight_names_to_train);
+  for (auto name : filtered_config_weight_names_to_train) {
+    std::cout << "[training_session.cc, ConfigureForTraining] train weight with consumer (new): " << name << std::endl;
   }
 
   is_mixed_precision_enabled_ = config.mixed_precision_config.has_value();
@@ -252,6 +260,7 @@ Status TrainingSession::ConfigureForTraining(
   {
     std::ostringstream weight_names_stream{};
     for (const auto& weight_name : weight_names_to_train) {
+      std::cout << "trainable weight: " << std::endl;
       weight_names_stream << "  " << weight_name << "\n";
     }
     LOGS(*session_logger_, INFO) << "Training weights:\n"
@@ -266,6 +275,8 @@ Status TrainingSession::ConfigureForTraining(
                                              mixed_precision_config,
                                              fp32_weight_name_to_mixed_precision_node_arg));
   }
+
+  ORT_IGNORE_RETURN_VALUE(Save(std::string("simple_forward_stage_") + std::to_string(config.distributed_config.world_rank) + std::string(".onnx"), SaveOption::NO_RELOAD));
 
   ORT_RETURN_IF_ERROR(BuildGradientGraph(
       weight_names_to_train, loss_name, config.gradient_graph_config, *session_logger_));
@@ -418,6 +429,7 @@ Status TrainingSession::ConfigureForTraining(
   config_result_out = std::move(config_result);
   is_configured_ = true;
 
+  ORT_IGNORE_RETURN_VALUE(Save(std::string("simple_final_stage_") + std::to_string(config.distributed_config.world_rank) + std::string(".onnx"), SaveOption::NO_RELOAD));
   return Status::OK();
 }
 
@@ -875,6 +887,10 @@ bool TrainingSession::IsGraphOutputFp32Node(const std::string& output_name) cons
 }
 
 common::Status TrainingSession::Run(const RunOptions& run_options, IOBinding& io_binding) {
+  if (true) {
+    return RunWithPipeline(run_options, io_binding);
+  }
+  std::cout << "[training_session.cc] call Run" << std::endl;
   // Override initializers in eval mode.
   if (!run_options.training_mode) {
     std::vector<std::pair<std::string, OrtValue>> new_feeds;
@@ -1038,6 +1054,16 @@ common::Status TrainingSession::RunWithPipeline(const RunOptions& run_options, I
   // This list contains all variables needed to run the graph.
   // The passed-in binding object is a partial set of final inputs.
   std::vector<std::pair<std::string, OrtValue>> modified_feeds;
+
+  int i = 0;
+  for (auto name : io_binding.GetInputNames()) {
+    std::cout << "[training_session.cc] io_binding.InputNames[" << i << "]=" << name << std::endl;
+  }
+  
+  i = 0;
+  for (auto name : io_binding.GetOutputNames()) {
+    std::cout << "[training_session.cc] io_binding.OutputNames[" << i << "]=" << name << std::endl;
+  }
 
   // TODO: add it to run_options.
   const size_t slice_axis = 0;
