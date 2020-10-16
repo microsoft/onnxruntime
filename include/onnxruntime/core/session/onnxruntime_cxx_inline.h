@@ -558,7 +558,7 @@ inline char* Session::EndProfiling(OrtAllocator* allocator) const {
 inline uint64_t Session::GetProfilingStartTimeNs() const {
   uint64_t out;
   ThrowOnError(GetApi().SessionGetProfilingStartTimeNs(p_, &out));
-  return out;  
+  return out;
 }
 
 inline ModelMetadata Session::GetModelMetadata() const {

@@ -22,6 +22,7 @@ namespace Microsoft.ML.OnnxRuntime
         private RunOptions _builtInRunOptions = null;
         private ModelMetadata _modelMetadata = null;
         private bool _disposed = false;
+        private ulong _profilingStartTimeNs = 0;
 
         #region Public API
 
@@ -597,7 +598,7 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
 
-    private DisposableList<OrtValue> RunImpl(RunOptions options, IntPtr[] inputNames, IntPtr[] inputValues, IntPtr[] outputNames,
+         private DisposableList<OrtValue> RunImpl(RunOptions options, IntPtr[] inputNames, IntPtr[] inputValues, IntPtr[] outputNames,
             DisposableList<IDisposable> cleanupList)
         {
             var ortValues = new DisposableList<OrtValue>(outputNames.Length);
@@ -655,6 +656,19 @@ namespace Microsoft.ML.OnnxRuntime
                 return _modelMetadata;
             }
         }
+
+        /// <summary>
+        /// Return the nanoseconds of profiling's start time
+        /// On some platforms, this timer may not be as precise as nanoseconds
+        /// For instance, on Windows and MacOS, the precision will be ~100ns
+        /// </summary>
+        public ulong ProfilingStartTimeNs
+        {
+           get
+           {
+               return _profilingStartTimeNs;
+           }
+        }  
 
         #endregion
 
@@ -724,7 +738,11 @@ namespace Microsoft.ML.OnnxRuntime
                 {
                     _overridableInitializerMetadata[GetOverridableInitializerName(i)] = GetOverridableInitializerMetadata(i);
                 }
-
+                // set profiling's start time
+                UIntPtr startTime = UIntPtr.Zero;
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetProfilingStartTimeNs(_nativeHandle,
+                                                                    out startTime)); 
+                _profilingStartTimeNs = (ulong) startTime;
             }
             catch (OnnxRuntimeException e)
             {
@@ -736,7 +754,7 @@ namespace Microsoft.ML.OnnxRuntime
                 throw e;
             }
 
-            _builtInRunOptions = new RunOptions();  // create a default built-in run option, and avoid creating a new one every run() call
+            _builtInRunOptions = new RunOptions();  // create a default built-in run option, and avoid creating a new one every run() call  
         }
 
 
