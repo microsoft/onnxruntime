@@ -35,7 +35,8 @@ While the nGraph Compiler stack supports various operating systems and backends 
 ```
 Ort::Env env = Ort::Env{ORT_LOGGING_LEVEL_ERROR, "Default"};
 Ort::SessionOptions sf;
-Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Ngraph(sf, "cpu"));;
+Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Ngraph(sf, "cpu"));
+Ort::Session session(env, model_path, sf);
 ```
 The C API details are [here](../C_API.md#c-api).
 

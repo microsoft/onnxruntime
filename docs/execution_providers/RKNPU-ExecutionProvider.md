@@ -17,7 +17,8 @@ To use RKNPU as execution provider for inferencing, please register it as below.
 ```
 Ort::Env env = Ort::Env{ORT_LOGGING_LEVEL_ERROR, "Default"};
 Ort::SessionOptions sf;
-Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_RKNPU(sf);
+Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_RKNPU(sf));
+Ort::Session session(env, model_path, sf);
 ```
 The C API details are [here](../C_API.md#c-api).
 

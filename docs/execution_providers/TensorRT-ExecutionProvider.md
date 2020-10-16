@@ -17,6 +17,7 @@ Ort::SessionOptions sf;
 int device_id = 0;
 Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf, device_id));
 Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, device_id));
+Ort::Session session(env, model_path, sf);
 ```
 The C API details are [here](../C_API.md#c-api).
 
