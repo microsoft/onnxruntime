@@ -38,14 +38,27 @@ ONNX_CPU_OPERATOR_KERNEL(
 Status UnsqueezeBase::PrepareCompute(OpKernelContext* ctx, Prepare& p) const {
   const auto* X = ctx->Input<Tensor>(0);
   ORT_ENFORCE(X != nullptr);
+  const auto* axes = ctx->Input<Tensor>(1);
+  std::vector<int64_t> axes_input = axes_;
+  if (axes != nullptr) {
+    axes_input.resize(0);
+    size_t num_elements = axes->Shape().Size();
+
+    const int64_t* axes_data = axes->Data<int64_t>();
+
+    for (size_t i = 0; i < num_elements; ++i) {
+      axes_input.push_back(axes_data[i]);
+    }
+  }
+
   auto& input_tensor = *X;
 
-  // New dimension count is the current dimensions + the number of entries in axes_
+  // New dimension count is the current dimensions + the number of entries in axes_input
   // Initialize output_dims to 0 in each axis initially
-  std::vector<int64_t> output_dims(axes_.size() + input_tensor.Shape().NumDimensions(), 0);
+  std::vector<int64_t> output_dims(axes_input.size() + input_tensor.Shape().NumDimensions(), 0);
 
-  // Set all axes_ indices to 1 in output_dims and check for duplicates
-  for (int64_t axis : axes_) {
+  // Set all axes_input indices to 1 in output_dims and check for duplicates
+  for (int64_t axis : axes_input) {
     // Valid axis range is [0, output_rank - 1]
     axis = HandleNegativeAxis(axis, output_dims.size());
     if (axis < 0 || axis >= static_cast<int64_t>(output_dims.size()))
