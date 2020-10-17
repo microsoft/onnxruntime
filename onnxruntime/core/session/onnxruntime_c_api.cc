@@ -1465,7 +1465,7 @@ static ORT_STATUS_PTR OrtCreateValueImplSeqHelper(const OrtValue* const* in, siz
   using namespace c_api_internal;
   std::vector<Tensor> tensors;
   tensors.resize(num_values);
-  auto dtype = static_cast<const OrtValue*>(in[0])->Get<Tensor>().DataType();
+  auto dtype = num_values != 0 ? static_cast<const OrtValue*>(in[0])->Get<Tensor>().DataType() : DataTypeImpl::GetType<float>();
 
   for (size_t idx = 0; idx < num_values; ++idx) {
     ORT_ENFORCE(in[idx]->IsTensor(), "Expecting all elements to be tensors. Got: ", DataTypeImpl::ToString(in[idx]->Type()));
@@ -1506,10 +1506,15 @@ static ORT_STATUS_PTR OrtCreateValueImplSeq(_In_reads_(num_values) const OrtValu
   // We only support limited sequence types. For the sake of simplicity the type of the first
   // OrtValue* in OrtValue** will determine the type of the vector used to create the output OrtValue
   // this type should be either a tensor of limited types or map of limited types
-  const OrtValue* ovfirst = in[0];
   ONNXType first_value_type;
-  if (auto status = OrtApis::GetValueType(ovfirst, &first_value_type))
-    return status;
+  if (num_values != 0) {
+    const OrtValue* ovfirst = in[0];
+    if (auto status = OrtApis::GetValueType(ovfirst, &first_value_type))
+      return status;
+  } else {
+    first_value_type = ONNX_TYPE_TENSOR;
+  }
+
   // in onnxruntime type registrations we can support only a fixed vector types
   // this check ensures that the input conforms to that
   if (!(first_value_type == ONNX_TYPE_TENSOR || first_value_type == ONNX_TYPE_MAP)) {
@@ -1530,7 +1535,7 @@ static ORT_STATUS_PTR OrtCreateValueImplSeq(_In_reads_(num_values) const OrtValu
   }
 
   // finally create the output vector/MLValue
-  auto first_mlvalue = reinterpret_cast<const OrtValue*>(ovfirst);
+  auto first_mlvalue = num_values != 0 ? reinterpret_cast<const OrtValue*>(in[0]) : nullptr;
   if (first_value_type == ONNX_TYPE_TENSOR) {
     return OrtCreateValueImplSeqHelper(in, num_values, out);
   } else if (first_value_type == ONNX_TYPE_MAP) {
@@ -1643,9 +1648,6 @@ static ORT_STATUS_PTR OrtCreateValueImplMap(const OrtValue* const* in, size_t nu
 
 static ORT_STATUS_PTR OrtCreateValueImpl(_In_reads_(num_values) const OrtValue* const* in, size_t num_values,
                                          enum ONNXType value_type, _Outptr_ OrtValue** out) {
-  if (num_values <= 0) {
-    return OrtApis::CreateStatus(ORT_FAIL, "Number of values should be at least 1.");
-  }
   if (value_type == ONNX_TYPE_MAP) {
 #if !defined(DISABLE_ML_OPS)
     return OrtCreateValueImplMap(in, num_values, out);
