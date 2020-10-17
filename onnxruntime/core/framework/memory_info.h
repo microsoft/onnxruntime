@@ -114,6 +114,7 @@ class MemoryInfo {
   struct AllocationSummary {
     size_t total_size = 0;
     size_t used_size = 0;
+    std::vector< OrtValueIndex> life_tensosrs;
   };
 
   struct MemoryInfoProfile {
@@ -126,7 +127,7 @@ class MemoryInfo {
     static std::string CreateMetadataEvent(const std::string& process_name, size_t process_id);
     static std::string CreateMemoryEvent(size_t pid, size_t tid, const std::string& name, size_t offset, size_t size, const std::string& color_name);
     static std::string CreateSummaryEvent(size_t pid, size_t tid, const AllocationSummary& summary, size_t size);
-    void CreateEvents(const std::string& p_name, const size_t pid, const MemoryInfo::MapType& map_type, const std::string& name_pattern = "");
+    void CreateEvents(const std::string& p_name, const size_t pid, const MemoryInfo::MapType& map_type, const std::string& name_pattern, const int top_k);
     //static void CreateCustomizedEvents(std::string name_pattern, std::vector<std::string>& events, const size_t pid, const MapType& map_type);
 
     static const std::vector<std::string> color_names;
@@ -185,48 +186,6 @@ class MemoryInfo {
   int local_rank_;
   //Memory Profile
   std::map<MapType, std::set<size_t> > time_step_trace_;
-  struct InfoPerTimeStep {
-    std::set<MemoryBlock> live_tensors;
-    size_t peak_memory;
-    size_t fragment = 0;
-    void AddTensor(const MemoryBlock& mb) {
-      auto itr = live_tensors.insert(mb).first;
-      peak_memory = live_tensors.rbegin()->size_ + live_tensors.rbegin()->offset_;
-      if (itr == live_tensors.begin()) {
-        auto old_frag_end = std::next(itr)->offset_;
-        auto new_fragment = old_frag_end - (itr->offset_ + itr->size_) - 1;
-        fragment += new_fragment;
-      } else if (std::next(itr) == live_tensors.end()) {
-        auto old_frag_start = (std::prev(itr)->offset_ + std::prev(itr)->size_);
-        auto new_fragment = (itr->offset_ - old_frag_start - 1);
-        fragment += new_fragment;
-      } else {
-        auto old_frag_start = (std::prev(itr)->offset_ + std::prev(itr)->size_);
-        auto old_frag_end = std::next(itr)->offset_;
-        auto old_fragment = old_frag_end - old_frag_start - 1;
-        auto new_fragment = (itr->offset_ - old_frag_start - 1) + (old_frag_end - (itr->offset_ + itr->size_) - 1);
-        fragment = fragment + new_fragment - old_fragment;
-      }
-
-    }
-    void RemoveTensor(const MemoryBlock& mb) {
-      auto itr = live_tensors.find(mb);
-      if(itr == live_tensors.begin()){
-        auto old_frag_start = itr->size_ + itr->offset_;
-        auto old_frag_end = std::next(itr)->offset_;
-        fragment -= (old_frag_end - old_frag_start -1);
-      } else if(std::next(itr) == live_tensors.end()){
-        auto old_frag_start = std::prev(itr)->offset_+ std::prev(itr)->size_;
-        auto old_frag_end = itr->offset_;
-        fragment -= (old_frag_end - old_frag_start -1);
-      } else {
-        fragment -= itr->size_;
-      }
-      live_tensors.erase(itr);
-      peak_memory = live_tensors.rbegin()->size_ + live_tensors.rbegin()->offset_;
-    }
-  };
-  std::map<int, InfoPerTimeStep> time_step_info_map_;
 };
 
 }  // namespace onnxruntime

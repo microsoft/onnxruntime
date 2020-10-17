@@ -4,6 +4,7 @@
 
 #include <fstream>
 #include <numeric>
+#include <queue>
 
 namespace onnxruntime {
 
@@ -225,9 +226,10 @@ std::string MemoryInfo::MemoryInfoProfile::CreateSummaryEvent(size_t pid, size_t
   return evt.str();
 }
 
-static void UpdateSummary(MemoryInfo::AllocationSummary& summary, size_t alloc_offset, size_t alloc_size) {
+static void UpdateSummary(MemoryInfo::AllocationSummary& summary, size_t alloc_offset, size_t alloc_size, const OrtValueIndex idx) {
   summary.total_size = std::max(summary.total_size, alloc_offset + alloc_size);
   summary.used_size += alloc_size;
+  summary.life_tensosrs.push_back(idx);
 }
 
 const std::vector<std::string> MemoryInfo::MemoryInfoProfile::color_names = {
@@ -254,15 +256,18 @@ const std::vector<std::string> MemoryInfo::MemoryInfoProfile::color_names = {
     "cq_build_attempt_failed",
 };
 
-void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name, const size_t pid, const MemoryInfo::MapType& map_type, const std::string& name_pattern) {
+void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name, const size_t pid, const MemoryInfo::MapType& map_type, const std::string& name_pattern, const int top_k) {
   // Metadata.
   std::string pid_name_internal = p_name + name_pattern;
   events.push_back(CreateMetadataEvent(pid_name_internal, pid));
   std::unordered_map<size_t, AllocationSummary> summary;
+  size_t summary_size = 10;
+  std::hash<std::string> str_hash;
 
   //Create Event for each tensor
   for (const auto& location_map : mem_info_.tensors_memory_info_map_) {
     if (location_map.first.device.Type() != OrtDevice::GPU) continue;
+    //Preprocessing
     if (mem_info_.time_step_trace_[map_type].empty()) {
       for (const auto& item : location_map.second.at(map_type)) {
         mem_info_.time_step_trace_[map_type].insert(mem_info_.AllocPlan(item.first)->lifetime_interval.first);
@@ -271,14 +276,8 @@ void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name, cons
     }
 
     const auto& map = location_map.second.at(map_type);
+    //Update summary
     for (const auto& item : map) {
-      const auto info = mem_info_.AllocPlan(item.first);
-      if (info->inplace_reuse) continue;
-      const std::string& name = info->mlvalue_name;
-      //Filter out string without a certain name
-      if (!name_pattern.empty() && name.find(name_pattern) == std::string::npos) continue;
-      const std::string cname = color_names[events.size() % color_names.size()];
-      //Sometimes a tensor can be both statically planned and dynamically allocated, so we need to use planned address/size in static_activation type
       size_t offset = map_type == MemoryInfo::MapType::StaticActivation ? map.GetPlannedAddress(item.first) : map.GetAllocAddress(item.first);
       size_t size = map_type == MemoryInfo::MapType::StaticActivation ? map.GetPlannedSize(item.first) : map.GetAllocSize(item.first);
       size_t alloc_step = mem_info_.AllocPlan(item.first)->lifetime_interval.first;  //alloc_kind == AllocKind::kReuse ? info.alloc_plan.life_interval.first + 1 : info.alloc_plan.life_interval.first;
@@ -286,40 +285,51 @@ void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name, cons
       const auto& ts_map = mem_info_.time_step_trace_[map_type];
       const auto& start_itr = ts_map.find(alloc_step);
       const auto& end_itr = ts_map.find(dealloc_step);
-      ORT_ENFORCE(start_itr != ts_map.end() && end_itr != ts_map.end());
       for (auto itr = start_itr; itr != end_itr; ++itr) {
-        events.push_back(CreateMemoryEvent(pid, *itr, name, offset, size, cname));
-        UpdateSummary(summary[*itr], offset, size);
+        UpdateSummary(summary[*itr], offset, size, item.first);
       }
-      events.push_back(CreateMemoryEvent(pid, *end_itr, name, offset, size, cname));
-      UpdateSummary(summary[*end_itr], offset, size);
+      UpdateSummary(summary[*end_itr], offset, size, item.first);
     }
-  }
 
-  // Add summary events.  These will show up visually as 10% of the max width in a section.
-  size_t summary_size = 10;
-  for (const auto& item : summary) {
-    summary_size = std::max(summary_size, item.second.total_size / 10);
-  }
-  for (const auto& item : summary) {
-    events.push_back(CreateSummaryEvent(pid, item.first, item.second, summary_size));
+    //extract top_k total size
+    std::priority_queue<size_t, std::vector<size_t>, std::greater<size_t> > top_k_minheap;
+    for (const auto& item : summary) {
+      if (top_k_minheap.size() < top_k)
+        top_k_minheap.push(item.second.total_size);
+      else if (top_k_minheap.top() < item.second.total_size) {
+        top_k_minheap.pop();
+        top_k_minheap.push(item.second.total_size);
+      }
+    }
+    size_t top_kth_total_size = top_k_minheap.top();
+
+    for (const auto& item : summary) {
+      if (item.second.total_size < top_kth_total_size) continue;
+      for (const auto& live_tensor : item.second.life_tensosrs) {
+        const auto info = mem_info_.AllocPlan(live_tensor);
+        if (info->inplace_reuse) continue;
+        const std::string& name = info->mlvalue_name;
+        //Filter out string without a certain name
+        if (!name_pattern.empty() && name.find(name_pattern) == std::string::npos) continue;
+        const std::string cname = color_names[str_hash(name) % color_names.size()];
+        //Sometimes a tensor can be both statically planned and dynamically allocated, so we need to use planned address/size in static_activation type
+        size_t offset = map_type == MemoryInfo::MapType::StaticActivation ? map.GetPlannedAddress(live_tensor) : map.GetAllocAddress(live_tensor);
+        size_t size = map_type == MemoryInfo::MapType::StaticActivation ? map.GetPlannedSize(live_tensor) : map.GetAllocSize(live_tensor);
+        events.push_back(CreateMemoryEvent(pid, item.first, name, offset, size, cname));
+      }
+      // Add summary events.  These will show up visually as 10% of the max width in a section.
+      summary_size = std::max(summary_size, item.second.total_size / 10);
+      events.push_back(CreateSummaryEvent(pid, item.first, item.second, summary_size));
+    }
   }
 }
 
 void MemoryInfo::GenerateMemoryProfile() {
-  //for (const auto& location_map : tensors_memory_info_map_) {
-  //  if (location_map.first.device.Type() != OrtDevice::GPU) continue;
-  //  //for (const auto& item : location_map.second.at(MapType::StaticActivation)) {
-  //  //  const auto info = AllocPlan(item.first);
-  //  //  //time_step_info_map_[info->lifetime_interval.first].AddTensor(item.second.planned_block);
-  //  //  //time_step_info_map_[info->lifetime_interval.second + 1].RemoveTensor(item.second.planned_block);
-  //  //}
-  //}
-  profiler.CreateEvents("GPU (initializers)", profiler.GetAndIncreasePid(), MapType::Initializer);
-  profiler.CreateEvents("GPU (static activations)", profiler.GetAndIncreasePid(), MapType::StaticActivation);
-  profiler.CreateEvents("GPU (dynamic activations)", profiler.GetAndIncreasePid(), MapType::DynamicActivation);
-  profiler.CreateEvents("GPU (static activations) ", profiler.GetAndIncreasePid(), MapType::StaticActivation, "_grad");
-  profiler.CreateEvents("GPU (dynamic activations) ", profiler.GetAndIncreasePid(), MapType::DynamicActivation, "_grad");
+  profiler.CreateEvents("GPU (initializers)", profiler.GetAndIncreasePid(), MapType::Initializer, "", 1);
+  profiler.CreateEvents("GPU (static activations)", profiler.GetAndIncreasePid(), MapType::StaticActivation, "", 1);
+  profiler.CreateEvents("GPU (dynamic activations)", profiler.GetAndIncreasePid(), MapType::DynamicActivation, "", 1);
+  profiler.CreateEvents("GPU (static activations) ", profiler.GetAndIncreasePid(), MapType::StaticActivation, "_grad", 1);
+  profiler.CreateEvents("GPU (dynamic activations) ", profiler.GetAndIncreasePid(), MapType::DynamicActivation, "_grad", 1);
 
   // Write memory profile .json
   std::ofstream memory_profile("memory_profile_" + std::to_string(local_rank_) + ".json", std::ios::trunc);
