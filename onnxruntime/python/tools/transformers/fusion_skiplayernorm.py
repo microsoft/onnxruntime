@@ -32,6 +32,11 @@ class FusionSkipLayerNormalization(Fusion):
         if len(self.model.get_parents(add)) != 2:
             return
 
+        # todo: this op bring bart-model output diff issue
+        gather_node = self.model.match_parent_path(add, ['Gather'], [None])
+        if gather_node is not None:
+            return
+
         if add is not None and add.op_type == 'Add' and self.model.is_safe_to_fuse_nodes(
             [add, node], node.output, input_name_to_nodes, output_name_to_node):
             self.nodes_to_remove.extend([add, node])

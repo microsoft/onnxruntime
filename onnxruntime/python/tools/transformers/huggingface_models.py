@@ -47,7 +47,7 @@ MODELS = {
     # Transformer-XL
     #"transfo-xl-wt103": (["input_ids"], 11, False, "bert"),
     # XLNet
-    #"xlnet-base-cased": (["input_ids"], 12, False, "bert"), # Models uses Einsum, which need opset version 12 and PyTorch 1.5.0 or above.
+    "xlnet-base-cased": (["input_ids"], 12, False, "bert"), # Models uses Einsum, which need opset version 12 and PyTorch 1.5.0 or above.
     #"xlnet-large-cased": (["input_ids"], 12, False, "bert"), # Models uses Einsum, which need opset version 12 and PyTorch 1.5.0 or above.
     # XLM
     "xlm-mlm-en-2048": (["input_ids"], 11, True, "bert"),
@@ -104,7 +104,7 @@ MODELS = {
     "flaubert/flaubert_large_cased": (["input_ids"], 11, False, "bert"),
     # Bart
     #"facebook/bart-large": (["input_ids"], 11, False, "bert"),
-    #"facebook/bart-base": (["input_ids"], 11, False, "bert"),
+    "facebook/bart-base": (["input_ids"], 11, False, "bert"),
     #"facebook/bart-large-mnli": (["input_ids"], 11, False, "bert"),
     #"facebook/bart-large-cnn": (["input_ids"], 11, False, "bert"),
     #"facebook/mbart-large-en-ro": (["input_ids"], 11, True, "bert"),

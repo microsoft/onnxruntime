@@ -150,6 +150,8 @@ def run_onnxruntime(use_gpu, model_names, model_class, precision, num_threads, b
 
                     logger.info("Run onnxruntime on {} with input shape {}".format(model_name,
                                                                                    [batch_size, sequence_length]))
+                    #bugbug: consider using a try catch
+                    disable_ort_io_binding = True
                     if disable_ort_io_binding:
                         result = inference_ort(ort_session, ort_inputs, result_template, repeat_times, batch_size)
                     else:
