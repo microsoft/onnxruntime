@@ -116,6 +116,8 @@
         "^test_unique_not_sorted_without_axis",
         "^test_negative_log_likelihood.*", // Does not support 5-D or above tensors for SUB op.
         "^test_softmax_cross_entropy.*", // Does not support 5-D or above tensors for SUB op.
+        "^test_sce.*",
+        "^test_nllloss.*",
         "^test_gather_negative_indices.*"
     ],
     "current_failing_tests_OPENVINO_CPU_FP32": [
@@ -125,7 +127,10 @@
         "^test_negative_log_likelihood.*", // Does not support 5-D or above tensors for SUB op.
         "^test_softmax_cross_entropy.*", // Does not support 5-D or above tensors for SUB op.
         "^test_mvn.*",
-        "^test_gather_negative_indices.*"
+        "^test_gather_negative_indices.*",
+        "^test_sce.*",
+        "^test_nllloss.*",
+        "^test_upsample_nearest.*"
     ],
     // ORT first supported opset 7, so models with nodes that require versions prior to opset 7 are not supported
     "tests_with_pre_opset7_dependencies": [

@@ -1337,6 +1337,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
         }
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "TensorRT EP execution context enqueue failed.");
       }
+      cudaDeviceSynchronize();
 
       // Cast INT64 input to INT32 because TensorRT doesn't fully support INT64
       for (int i = 0, end = output_binding_names.size(); i < end; ++i) {
@@ -1355,7 +1356,6 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
         }
       }
 
-      cudaDeviceSynchronize();
       for (const auto& binding_index : binding_buffers_to_freeup) {
         cudaFree(buffers[binding_index]);
       }

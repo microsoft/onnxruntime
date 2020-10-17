@@ -385,7 +385,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "088554a5fbee9ba183c05c09c1abe986034e9208",
+          "commitHash": "a3a4e38b2dfa7a62b6dcae33c0d1678b3bb5ef2a",
           "repositoryUrl": "https://github.com/onnx/onnx-tensorrt.git"
         },
         "comments": "git submodule at cmake/external/onnx-tensorrt"
@@ -436,7 +436,7 @@
         "type": "git",
         "git": {
           "commitHash": "498de9f761bef56a032815ee44b6e6dbe0892cc4",
-          "repositoryUrl": "https://github.com/google/protobuf.git"
+          "repositoryUrl": "https://github.com/protocolbuffers/protobuf.git"
         },
         "comments": "git submodule at cmake/external/protobuf"
       }

@@ -10,6 +10,8 @@ namespace test {
 constexpr auto k_epsilon_default = 1e-5f;
 constexpr auto k_random_data_min = -10.0f;
 constexpr auto k_random_data_max = 10.0f;
+const std::string SIMPLIFIED_LAYER_NORM_OP = "SimplifiedLayerNormalization";
+const std::string LAYER_NORM_OP = "LayerNormalization";
 
 // The dimensions are split at the specified axis into N (before, exclusive) and M (after, inclusive).
 static Status SplitDims(
@@ -24,6 +26,7 @@ static Status SplitDims(
 }
 
 static void TestLayerNorm(const std::vector<int64_t>& x_dims,
+                          const std::string& op,
                           optional<float> epsilon,
                           int64_t axis = -1,
                           int64_t keep_dims = 1) {
@@ -38,8 +41,8 @@ static void TestLayerNorm(const std::vector<int64_t>& x_dims,
   ASSERT_NE(keep_dims, 0);
 
   const std::vector<int64_t>& stats_dims = keep_dims ? n_and_ones_dims : n_dims;
-
-  CompareOpTester test("LayerNormalization");
+  
+  CompareOpTester test(op.c_str());
   test.AddAttribute("axis", axis);
   test.AddAttribute("keep_dims", keep_dims);
   if (epsilon.has_value()) {
@@ -54,14 +57,18 @@ static void TestLayerNorm(const std::vector<int64_t>& x_dims,
 
   test.AddInput<float>("X", n_x_m_dims, X_data);
   test.AddInput<float>("scale", m_dims, scale_data, true);
-  test.AddInput<float>("B", m_dims, B_data, true);
+  if (op.compare(SIMPLIFIED_LAYER_NORM_OP) != 0) {
+    test.AddInput<float>("B", m_dims, B_data, true);
+  }
 
   std::vector<float> Y_data = FillZeros<float>(n_x_m_dims);
   std::vector<float> mean_data = FillZeros<float>(stats_dims);
   std::vector<float> var_data = FillZeros<float>(stats_dims);
 
   test.AddOutput<float>("output", n_x_m_dims, Y_data);
-  test.AddOutput<float>("mean", stats_dims, mean_data);
+  if (op.compare(SIMPLIFIED_LAYER_NORM_OP) != 0) {
+    test.AddOutput<float>("mean", stats_dims, mean_data);
+  }
   test.AddOutput<float>("var", stats_dims, var_data);
 
   test.CompareWithCPU(kCudaExecutionProvider);
@@ -69,23 +76,44 @@ static void TestLayerNorm(const std::vector<int64_t>& x_dims,
 
 TEST(CudaKernelTest, LayerNorm_SmallSizeTensor) {
   const std::vector<int64_t> X_dims{4, 20, 128};
-  TestLayerNorm(X_dims, k_epsilon_default);
+  TestLayerNorm(X_dims, LAYER_NORM_OP, k_epsilon_default);
 }
 
 TEST(CudaKernelTest, LayerNorm_SmallSizeTensor_IntermediateAxis) {
   const std::vector<int64_t> X_dims{4, 20, 8, 16};
   const int64_t axis = -2;
-  TestLayerNorm(X_dims, k_epsilon_default, axis);
+  TestLayerNorm(X_dims, LAYER_NORM_OP, k_epsilon_default, axis);
 }
 
 TEST(CudaKernelTest, LayerNorm_MidSizeTensor) {
   std::vector<int64_t> X_dims{8, 80, 768};
-  TestLayerNorm(X_dims, k_epsilon_default);
+  TestLayerNorm(X_dims, LAYER_NORM_OP, k_epsilon_default);
 }
 
 TEST(CudaKernelTest, LayerNorm_LargeSizeTensor) {
   std::vector<int64_t> X_dims{16, 512, 1024};
-  TestLayerNorm(X_dims, k_epsilon_default);
+  TestLayerNorm(X_dims, LAYER_NORM_OP, k_epsilon_default);
+}
+
+TEST(CudaKernelTest, SimplifiedLayerNorm_SmallSizeTensor) {
+  const std::vector<int64_t> X_dims{4, 20, 128};
+  TestLayerNorm(X_dims, SIMPLIFIED_LAYER_NORM_OP, k_epsilon_default);
+}
+
+TEST(CudaKernelTest, SimplifiedLayerNorm_SmallSizeTensor_IntermediateAxis) {
+  const std::vector<int64_t> X_dims{4, 20, 8, 16};
+  const int64_t axis = -2;
+  TestLayerNorm(X_dims, SIMPLIFIED_LAYER_NORM_OP, k_epsilon_default, axis);
+}
+
+TEST(CudaKernelTest, SimplifiedLayerNorm_MidSizeTensor) {
+  std::vector<int64_t> X_dims{8, 80, 768};
+  TestLayerNorm(X_dims, SIMPLIFIED_LAYER_NORM_OP, k_epsilon_default);
+}
+
+TEST(CudaKernelTest, SimplifiedLayerNorm_LargeSizeTensor) {
+  std::vector<int64_t> X_dims{16, 512, 1024};
+  TestLayerNorm(X_dims, SIMPLIFIED_LAYER_NORM_OP, k_epsilon_default);
 }
 #endif
 }  // namespace test

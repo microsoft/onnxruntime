@@ -15,7 +15,7 @@ ARG MY_ROOT=/code
 ENV PATH /opt/miniconda/bin:/code/cmake-3.14.3-Linux-x86_64/bin:$PATH
 ENV LD_LIBRARY_PATH=/opt/miniconda/lib:/usr/lib:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
 
-ENV INTEL_OPENVINO_DIR=/opt/intel/openvino_2020.4.287
+ENV INTEL_OPENVINO_DIR=/opt/intel/openvino_2021.1.110
 ENV InferenceEngine_DIR=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/share
 ENV IE_PLUGINS_PATH=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64
 ENV LD_LIBRARY_PATH=/opt/intel/opencl:${INTEL_OPENVINO_DIR}/inference_engine/external/gna/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/mkltiny_lnx/lib:$INTEL_OPENVINO_DIR/deployment_tools/ngraph/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/omp/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/lib:${IE_PLUGINS_PATH}:${LD_LIBRARY_PATH}
@@ -24,6 +24,7 @@ ENV LD_LIBRARY_PATH=${INTEL_OPENVINO_DIR}/opencv/lib:${INTEL_OPENVINO_DIR}/openc
 ENV HDDL_INSTALL_DIR=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/hddl
 ENV LD_LIBRARY_PATH=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/hddl/lib:$LD_LIBRARY_PATH
 ENV LANG en_US.UTF-8
+ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt update && \
     apt -y install apt-transport-https ca-certificates python3 python3-pip zip x11-apps lsb-core wget cpio sudo libboost-python-dev libpng-dev zlib1g-dev git libnuma1 ocl-icd-libopencl1 clinfo libboost-filesystem1.65-dev libboost-thread1.65-dev protobuf-compiler libprotoc-dev autoconf automake libtool libjson-c-dev unattended-upgrades && \
@@ -31,12 +32,12 @@ RUN apt update && \
     rm -rf /var/lib/apt/lists/*  && \
 # Install OpenVINO
     cd ${MY_ROOT} && \
-    wget https://apt.repos.intel.com/openvino/2020/GPG-PUB-KEY-INTEL-OPENVINO-2020 && \
-    apt-key add GPG-PUB-KEY-INTEL-OPENVINO-2020 && rm GPG-PUB-KEY-INTEL-OPENVINO-2020 && \
+    wget https://apt.repos.intel.com/openvino/2021/GPG-PUB-KEY-INTEL-OPENVINO-2021 && \
+    apt-key add GPG-PUB-KEY-INTEL-OPENVINO-2021 && rm GPG-PUB-KEY-INTEL-OPENVINO-2021 && \
     cd /etc/apt/sources.list.d && \
-    echo "deb https://apt.repos.intel.com/openvino/2020 all main">intel-openvino-2020.list && \ 
+    echo "deb https://apt.repos.intel.com/openvino/2021 all main">intel-openvino-2021.list && \ 
     apt update && \
-    apt -y install intel-openvino-dev-ubuntu18-2020.4.287 && \
+    apt -y install intel-openvino-dev-ubuntu18-2021.1.110 && \
     cd ${INTEL_OPENVINO_DIR}/install_dependencies && ./install_openvino_dependencies.sh && \
     cd ${INTEL_OPENVINO_DIR} && rm -rf documentation && cd deployment_tools/ && rm -rf model_optimizer open_model_zoo demo && cd inference_engine && rm -rf samples && \
 # Install GPU runtime and drivers
@@ -54,14 +55,9 @@ RUN apt update && \
     dpkg -i /tmp/opencl/*.deb && \
     ldconfig && \
     rm -rf /tmp/opencl && \
-# Install CMake
     cd ${MY_ROOT} && \
     locale-gen en_US.UTF-8 && update-locale LANG=en_US.UTF-8  && \
-    pip3 install cython numpy && \
-    mkdir -p /opt/cmake/bin && \
-    cd ${MY_ROOT} && \
-    wget https://github.com/Kitware/CMake/releases/download/v3.13.2/cmake-3.13.2-Linux-x86_64.tar.gz && \
-    tar -xf cmake-3.13.2-Linux-x86_64.tar.gz --strip 1 -C /opt/cmake && rm -rf ${MY_ROOT}/cmake-3.13.2-Linux-x86_64.tar.gz && \
+    pip3 install cython && \
 # Download and build ONNX Runtime
     cd ${MY_ROOT} && \
     git clone --recursive -b ${ONNXRUNTIME_BRANCH} ${ONNXRUNTIME_REPO} && \
@@ -69,4 +65,4 @@ RUN apt update && \
     cd onnxruntime/cmake/external/onnx && python3 setup.py install && \
     cd ${MY_ROOT}/onnxruntime && ./build.sh --config Release --update --build --parallel --use_openvino ${DEVICE} --build_wheel && \
     pip install build/Linux/Release/dist/*-linux_x86_64.whl && \
-    cd ${MY_ROOT}/ && rm -rf cmake-3.14.3-Linux-x86_64 onnxruntime
+    cd ${MY_ROOT}/ && rm -rf onnxruntime

@@ -12,7 +12,7 @@
 #include "test/test_environment.h"
 #include "test_utils.h"
 #include "test/util/include/asserts.h"
-
+#include "test/util/include/inference_session_wrapper.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "flatbuffers/idl.h"
 #include "flatbuffers/util.h"
@@ -24,23 +24,6 @@ using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::logging;
 
 namespace onnxruntime {
-
-// InferenceSession wrapper to expose loaded graph.
-class InferenceSessionGetGraphWrapper : public InferenceSession {
- public:
-  explicit InferenceSessionGetGraphWrapper(const SessionOptions& session_options,
-                                           const Environment& env) : InferenceSession(session_options, env) {
-  }
-
-  const Graph& GetGraph() const {
-    return model_->MainGraph();
-  }
-
-  const SessionState& GetSessionState() const {
-    return InferenceSession::GetSessionState();
-  }
-};
-
 namespace test {
 
 struct OrtModelTestInfo {
@@ -60,7 +43,7 @@ static void RunOrtModel(const OrtModelTestInfo& test_info) {
     so.AddConfigEntry(config.first.c_str(), config.second.c_str());
 
   std::vector<char> model_data;
-  InferenceSessionGetGraphWrapper session_object{so, GetEnvironment()};
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
   if (test_info.run_use_buffer) {
     // Load the file into a buffer and use the buffer to create inference session
     size_t num_bytes = 0;
@@ -154,8 +137,8 @@ static void CompareValueInfos(const ValueInfoProto& left, const ValueInfoProto& 
   // CompareTypeProtos(left.type(), right.type());
 }
 
-static void CompareGraphAndSessionState(const InferenceSessionGetGraphWrapper& session_object_1,
-                                        const InferenceSessionGetGraphWrapper& session_object_2) {
+static void CompareGraphAndSessionState(const InferenceSessionWrapper& session_object_1,
+                                        const InferenceSessionWrapper& session_object_2) {
   const auto& graph_1 = session_object_1.GetGraph();
   const auto& graph_2 = session_object_2.GetGraph();
 
@@ -213,7 +196,7 @@ static void SaveAndCompareModels(const std::string& onnx_file, const std::basic_
   so.optimized_model_filepath = ort_file;
   // not strictly necessary - type should be inferred from the filename
   so.AddConfigEntry(kOrtSessionOptionsConfigSaveModelFormat, "ORT");
-  InferenceSessionGetGraphWrapper session_object{so, GetEnvironment()};
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
 
   // create .ort file during Initialize due to values in SessionOptions
   ASSERT_STATUS_OK(session_object.Load(onnx_file));
@@ -226,7 +209,7 @@ static void SaveAndCompareModels(const std::string& onnx_file, const std::basic_
   so2.AddConfigEntry(kOrtSessionOptionsConfigLoadModelFormat, "ORT");
 
   // load serialized version
-  InferenceSessionGetGraphWrapper session_object2{so2, GetEnvironment()};
+  InferenceSessionWrapper session_object2{so2, GetEnvironment()};
   ASSERT_STATUS_OK(session_object2.Load(ort_file));
   ASSERT_STATUS_OK(session_object2.Initialize());
 
