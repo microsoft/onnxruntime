@@ -43,8 +43,6 @@ TEST(DebugNodeInputsOutputs, BasicFileOutput) {
       EnvVarMap{
           {env_vars::kDumpInputData, {"1"}},
           {env_vars::kDumpOutputData, {"1"}},
-          {env_vars::kNameFilter, {}},
-          {env_vars::kOpTypeFilter, {}},
           {env_vars::kDumpDataToFiles, {"1"}},
           {env_vars::kOutputDir, {ToMBString(temp_dir.Path())}},
           {env_vars::kDumpingDataToFilesForAllNodesIsOk, {"1"}},
