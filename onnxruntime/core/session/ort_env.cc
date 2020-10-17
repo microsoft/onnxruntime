@@ -19,6 +19,10 @@
 using namespace onnxruntime;
 using namespace onnxruntime::logging;
 
+namespace onnxruntime {
+void UnloadSharedProviders();
+}
+
 OrtEnv* OrtEnv::p_instance_ = nullptr;
 int OrtEnv::ref_count_ = 0;
 onnxruntime::OrtMutex OrtEnv::m_;
@@ -36,6 +40,10 @@ void LoggingWrapper::SendImpl(const onnxruntime::logging::Timestamp& /*timestamp
 
 OrtEnv::OrtEnv(std::unique_ptr<onnxruntime::Environment> value1)
     : value_(std::move(value1)) {
+}
+
+OrtEnv::~OrtEnv() {
+  UnloadSharedProviders();
 }
 
 OrtEnv* OrtEnv::GetInstance(const OrtEnv::LoggingManagerConstructionInfo& lm_info,

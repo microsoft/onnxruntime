@@ -13,6 +13,7 @@ namespace onnxruntime {
 class KernelRegistry {
  public:
   KernelRegistry() = default;
+  ~KernelRegistry() {}
 
   // Register a kernel with kernel definition and function to create the kernel.
   Status Register(KernelDefBuilder& kernel_def_builder, const KernelCreateFn& kernel_creator) ORT_MUST_USE_RESULT;
