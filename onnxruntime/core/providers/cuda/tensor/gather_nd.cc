@@ -126,7 +126,7 @@ Status GatherNDBase::PrepareCompute(
 REGISTER_KERNEL_TYPED_GATHER_ND(int64_t, 1)
 #endif
 REGISTER_KERNEL_TYPED_GATHER_ND(int64_t, 13)
-REGISTER_KERNEL_VERSIONED_TYPED_GATHER_ND(int64_t, 12, 12)
+REGISTER_KERNEL_TYPED_GATHER_ND(int64_t, 12)
 
 template <typename T>
 struct GatherNDComputeImpl {
