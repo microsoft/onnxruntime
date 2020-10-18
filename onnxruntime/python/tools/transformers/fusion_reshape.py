@@ -23,18 +23,23 @@ class FusionReshape(Fusion):
         if reshape_path is not None:
             expand_node = reshape_path[0]
             expand_shape_value = self.model.get_constant_value(expand_node.input[1])
-            if expand_shape_value is not None and len(expand_shape_value) is 2 and expand_shape_value[1] > 0:
-                name_1 = "modified_expand_shape_in_bart"
-                self.model.add_initializer(
-                    self.model.convert_list_to_tensor(name_1, TensorProto.INT64, [2], [expand_shape_value[0], 63]))
-                expand_node.input[1] = name_1
-
+            #if expand_shape_value is not None and len(expand_shape_value) is 2 and expand_shape_value[1] > 0:
+            #    name_1 = "modified_expand_shape_in_bart"
+            #    self.model.add_initializer(
+            #        self.model.convert_list_to_tensor(name_1, TensorProto.INT64, [2], [expand_shape_value[0], 63]))
+            #    expand_node.input[1] = name_1
+            ##bugbug: reshape->expand is nothing???
             reshape_before_expand = reshape_path[1]
             shape_value = self.model.get_constant_value(reshape_before_expand.input[1])
-            if shape_value is not None and len(shape_value) is 1 and shape_value[0] > 0:
-                name_2 = "modified_shape_in_bart"
-                self.model.add_initializer(self.model.convert_list_to_tensor(name_2, TensorProto.INT64, [1], [-1]))
-                reshape_before_expand.input[1] = name_2
+            #if shape_value is not None and len(shape_value) is 1 and shape_value[0] > 0:
+            #    name_2 = "modified_shape_in_bart"
+            #    self.model.add_initializer(self.model.convert_list_to_tensor(name_2, TensorProto.INT64, [1], [-1]))
+            #    reshape_before_expand.input[1] = name_2
+
+            slice_node = reshape_path[2]
+            if expand_shape_value is not None and shape_value is not None and len(expand_shape_value) is 2 and len(
+                    shape_value) is 1 and expand_shape_value[1] == shape_value[0]:
+                reshape_node.input[0] = slice_node.output[0]
 
         if reshape_node.input[1] not in output_name_to_node:
             return
