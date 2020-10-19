@@ -49,6 +49,10 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Choose build type: Debug Release RelWithDebInfo MinSizeRel." FORCE)
 endif()
 
+# Generate a CompilationDatabase (compile_commands.json file).
+# This is used by clang_complete, YouCompleteMe, etc.
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # Options
 option(onnxruntime_RUN_ONNX_TESTS "Enable ONNX Compatibility Testing" OFF)
 option(onnxruntime_GENERATE_TEST_REPORTS "Enable test report generation" OFF)
