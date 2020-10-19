@@ -11,6 +11,7 @@ namespace onnxruntime {
 namespace test {
 
 namespace {
+#ifdef USE_CUDA
 std::vector<MLFloat16> FloatToMLFloat16(const std::vector<float>& float_data) {
   std::vector<MLFloat16> new_data;
   for (const auto& f : float_data) {
@@ -18,6 +19,7 @@ std::vector<MLFloat16> FloatToMLFloat16(const std::vector<float>& float_data) {
   }
   return new_data;
 }
+#endif
 
 template <typename T>
 std::vector<T> CalculateOutput(
@@ -53,7 +55,7 @@ void TestGatherGradWithRandomData(
     const TensorShape& X_shape,
     const TensorShape& indices_shape) {
   ASSERT_LE(0, axis);
-  ASSERT_LT(axis, X_shape.NumDimensions());
+  ASSERT_LT(static_cast<size_t>(axis), X_shape.NumDimensions());
 
   const TensorShape dY_shape = [&]() {
     std::vector<int64_t> dY_dims = X_shape.GetDims();
