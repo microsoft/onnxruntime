@@ -293,6 +293,13 @@ bool IsSupportedOptypeVersionAndDomain(const Node& node,
           MatchesOpSinceVersion(node, versions) && MatchesOpSetDomain(node, domain));
 }
 
+bool IsSupportedOptypeVersionAndDomain(const Node& node,
+                                       const char* op_type,
+                                       const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion>& versions,
+                                       const char* domain) {
+  return IsSupportedOptypeVersionAndDomain(node, std::string(op_type), versions, std::string(domain));
+}
+
 bool MatchesOpSinceVersion(const Node& node, const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion>& versions) {
   return std::find(versions.begin(), versions.end(), node.SinceVersion()) != versions.end();
 }
