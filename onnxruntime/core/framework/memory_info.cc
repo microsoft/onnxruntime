@@ -292,16 +292,16 @@ void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name, cons
     }
 
     //extract top_k total size
-    std::priority_queue<size_t, std::vector<size_t>, std::greater<size_t> > top_k_minheap;
+    std::set<size_t> top_k_set;
     for (const auto& item : summary) {
-      if (top_k_minheap.size() < top_k)
-        top_k_minheap.push(item.second.total_size);
-      else if (top_k_minheap.top() < item.second.total_size) {
-        top_k_minheap.pop();
-        top_k_minheap.push(item.second.total_size);
+      if (top_k_set.size() < top_k)
+        top_k_set.insert(item.second.total_size);
+      else if (*top_k_set.cbegin() < item.second.total_size) {
+          top_k_set.erase(top_k_set.begin());
+          top_k_set.insert(item.second.total_size);
       }
     }
-    size_t top_kth_total_size = top_k_minheap.top();
+    size_t top_kth_total_size = *top_k_set.cbegin();
 
     for (const auto& item : summary) {
       if (item.second.total_size < top_kth_total_size) continue;
@@ -325,11 +325,9 @@ void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name, cons
 }
 
 void MemoryInfo::GenerateMemoryProfile() {
-  profiler.CreateEvents("GPU (initializers)", profiler.GetAndIncreasePid(), MapType::Initializer, "", 1);
-  profiler.CreateEvents("GPU (static activations)", profiler.GetAndIncreasePid(), MapType::StaticActivation, "", 1);
-  profiler.CreateEvents("GPU (dynamic activations)", profiler.GetAndIncreasePid(), MapType::DynamicActivation, "", 1);
-  profiler.CreateEvents("GPU (static activations) ", profiler.GetAndIncreasePid(), MapType::StaticActivation, "_grad", 1);
-  profiler.CreateEvents("GPU (dynamic activations) ", profiler.GetAndIncreasePid(), MapType::DynamicActivation, "_grad", 1);
+  profiler.CreateEvents("GPU (initializers)", profiler.GetAndIncreasePid(), MapType::Initializer, "", 2);
+  profiler.CreateEvents("GPU (static activations)", profiler.GetAndIncreasePid(), MapType::StaticActivation, "", 2);
+  profiler.CreateEvents("GPU (dynamic activations)", profiler.GetAndIncreasePid(), MapType::DynamicActivation, "", 2);
 
   // Write memory profile .json
   std::ofstream memory_profile("memory_profile_" + std::to_string(local_rank_) + ".json", std::ios::trunc);
