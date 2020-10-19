@@ -28,6 +28,7 @@
 #include "core/framework/utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
+#include "core/optimizer/op_runtime_profiler.h"
 #include "core/optimizer/transformer_memcpy.h"
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/insert_cast_transformer.h"
@@ -1401,6 +1402,8 @@ Status InferenceSession::Run(const RunOptions& run_options,
   std::vector<IExecutionProvider*> exec_providers_to_stop;
   exec_providers_to_stop.reserve(execution_providers_.NumProviders());
 
+  OpRuntimeProfiler op_runtime_profiler;
+
   ORT_TRY {
     if (!is_inited_) {
       LOGS(*session_logger_, ERROR) << "Session was not initialized";
@@ -1459,6 +1462,10 @@ Status InferenceSession::Run(const RunOptions& run_options,
       session_state_->UpdateToBeExecutedNodes(feeds_fetches_manager.GetFeedsFetchesInfo().fetches_mlvalue_idxs);
     }
 #endif
+
+    // profile the graph
+    ORT_CHECK_AND_SET_RETVAL(op_runtime_profiler.ProfileGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches, {},
+                                                              run_logger));
 
     // execute the graph
     ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
