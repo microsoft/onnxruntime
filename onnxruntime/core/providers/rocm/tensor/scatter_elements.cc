@@ -22,10 +22,23 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
                                     DataTypeImpl::GetTensorType<int64_t>()}),
     ScatterElements);
 
-ONNX_OPERATOR_KERNEL_EX(
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     ScatterElements,
     kOnnxDomain,
     11,
+    12,
+    kRocmExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .TypeConstraint("Tind", std::vector<MLDataType>{
+                                    DataTypeImpl::GetTensorType<int32_t>(),
+                                    DataTypeImpl::GetTensorType<int64_t>()}),
+    ScatterElements);
+
+ONNX_OPERATOR_KERNEL_EX(
+    ScatterElements,
+    kOnnxDomain,
+    13,
     kRocmExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())

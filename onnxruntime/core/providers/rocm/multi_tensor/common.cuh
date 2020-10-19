@@ -99,7 +99,7 @@ void launch_multi_tensor_functor(
     ORT_ENFORCE(grouped_tensor_pointers[i].size() == static_cast<size_t>(group_size));
   }
 
-  // Handle multiple tensors per HIP kernel call.
+  // Handle multiple tensors per ROCM kernel call.
   ChunkGroup<TensorGroupSize> chunk_group;
   for (int i = 0; i < group_count; ++i) {
     // Add pointers to one group of tensors into chunk_group.

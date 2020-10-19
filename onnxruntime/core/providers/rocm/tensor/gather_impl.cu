@@ -97,7 +97,7 @@ void GatherImpl(
     } break;
 
     default:
-      ORT_THROW("Unsupported element size by the Gather HIP kernel");
+      ORT_THROW("Unsupported element size by the Gather ROCM kernel");
   }
 }
 

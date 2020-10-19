@@ -72,7 +72,7 @@ RUN git clone https://github.com/openucx/ucx.git \
   && ./autogen.sh \
   && mkdir build \
   && cd build \
-  && ../contrib/configure-opt --prefix=$UCX_DIR --without-rocm --without-knem --without-cuda \
+  && ../contrib/configure-opt --prefix=$UCX_DIR --with-rocm=/opt/rocm --without-knem --without-cuda \
   && make -j"$(nproc)" \
   && make install
 
@@ -109,12 +109,12 @@ RUN mv $OPENMPI_DIR/bin/mpirun $OPENMPI_DIR/bin/mpirun.real && \
 # install mpi4py (be sure to link existing /opt/openmpi-xxx)
 RUN CC=mpicc MPICC=mpicc pip install mpi4py --no-binary mpi4py
 
-ARG CACHE_DATA=2020-09-22
+ARG CACHE_DATA=2020-10-17
 
 # ONNX Runtime
 WORKDIR $GITHUB_DIR
 ENV ORT_DIR=$GITHUB_DIR/onnxruntime
-RUN git clone --recursive -b wezhan/amdgpu https://github.com/microsoft/onnxruntime.git \
+RUN git clone --recursive -b wezhan/rocm https://github.com/microsoft/onnxruntime.git \
   && cd onnxruntime \
   && python3 tools/ci_build/build.py \
     --cmake_extra_defines ONNXRUNTIME_VERSION=`cat ./VERSION_NUMBER` \
@@ -180,9 +180,6 @@ ENTRYPOINT service ssh restart && /bin/bash
 ADD model ${WORKSPACE_DIR}/model
 ADD script ${WORKSPACE_DIR}/script
 RUN chmod a+x ${WORKSPACE_DIR}/script/run_bert.sh
-
-ADD lib ${WORKSPACE_DIR}/lib
-ENV LD_PERLOAD=${WORKSPACE_DIR}/lib/libpsl.so
 
 ENV LOG_DIR=/data/wezhan/logs
 

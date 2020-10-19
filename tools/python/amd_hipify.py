@@ -17,11 +17,6 @@ contrib_ops_files = [
                     'bert/fast_gelu.h',
                     # 'bert/fast_gelu_impl.cu',
                     'bert/fast_gelu_impl.h',
-                    # # 'bert/layer_norm.cuh',
-                    # # 'bert/skip_layer_norm.cc',
-                    # # 'bert/skip_layer_norm.h',
-                    # # 'bert/skip_layer_norm_impl.cu',
-                    # # 'bert/skip_layer_norm_impl.h',
                     # 'math/bias_softmax.cc',
                     # 'math/bias_softmax.h',
                     # 'math/bias_softmax_impl.cu',
@@ -29,8 +24,7 @@ contrib_ops_files = [
                     # 'math/binary_elementwise_ops.h',
                     # 'math/binary_elementwise_ops_impl.cu',
                     # 'math/binary_elementwise_ops_impl.h',
-                    # 'math/fused_matmul.cc',
-                    'math/transpose_scale_matmul.cc',
+                    'math/fused_matmul.cc',
                     'layer_norm.cc',
                     'layer_norm.h',
                     'layer_norm_impl.cu',
@@ -38,32 +32,31 @@ contrib_ops_files = [
 ]
 
 core_ops_files = [
-                # #'cuda_allocator.cc',
-                # #'cuda_allocator.h',
-                # #'cuda_call.cc',
-                # #'cuda_common.h',
+                # 'cuda_allocator.cc',
+                # 'cuda_allocator.h',
+                # 'cuda_call.cc',
+                # 'cuda_common.h',
                 # 'cuda_execution_provider.cc',
                 # 'cuda_execution_provider.h',
-                # #'cuda_fence.cc',
-                'cuda_fence.h',
-                'cuda_fwd.h',
-                'cuda_pch.cc',
-                'cuda_pch.h',
-                'cuda_provider_factory.cc',
-                'cuda_provider_options.h',
-                'cuda_utils.cu',
-                # # 'fpgeneric.cu',
-                # #'gpu_data_transfer.cc',
-                'gpu_data_transfer.h',
+                # 'cuda_fence.cc',
+                # 'cuda_fence.h',
+                # 'cuda_fwd.h',
+                # 'cuda_pch.cc',
+                # 'cuda_pch.h',
+                # 'cuda_provider_factory.cc',
+                # 'cuda_utils.cu',
+                # 'fpgeneric.cu',
+                # 'gpu_data_transfer.cc',
+                # 'gpu_data_transfer.h',
                 'activation/activations.cc',
                 'activation/activations.h',
                 'activation/activations_impl.cu',
                 'activation/activations_impl.h',
-                # #'atomic/common.cuh',
+                # 'atomic/common.cuh',
                 # 'cu_inc/binary_elementwise_impl.cuh',
-                # # 'cu_inc/common.cuh',
+                # 'cu_inc/common.cuh',
                 'cu_inc/unary_elementwise_impl.cuh',
-                # 'cu_inc/variadic_elementwise_impl.cuh',
+                'cu_inc/variadic_elementwise_impl.cuh',
                 # 'math/binary_elementwise_ops.cc',
                 # 'math/binary_elementwise_ops.h',
                 # 'math/binary_elementwise_ops_impl.cu',
@@ -95,15 +88,15 @@ core_ops_files = [
                 'nn/dropout.h',
                 'nn/dropout_impl.cu',
                 'nn/dropout_impl.h',
-                'reduction/reduction_functions.cu',
-                'reduction/reduction_functions.h',
-                'reduction/reduction_ops.cc',
-                'reduction/reduction_ops.h',
+                # 'reduction/reduction_functions.cu',
+                # 'reduction/reduction_functions.h',
+                # 'reduction/reduction_ops.cc',
+                # 'reduction/reduction_ops.h',
                 'reduction/reduction_utils.cuh',
-                'shared_inc/cuda_call.h',
-                # #'shared_inc/cuda_utils.h',
-                # #'shared_inc/fast_divmod.h',
-                # #'shared_inc/fpgeneric.h',
+                # 'shared_inc/cuda_call.h',
+                'shared_inc/cuda_utils.h',
+                # 'shared_inc/fast_divmod.h',
+                # 'shared_inc/fpgeneric.h',
                 'tensor/cast_op.cc',
                 'tensor/cast_op.h',
                 'tensor/concat_impl.cu',
@@ -124,10 +117,6 @@ core_ops_files = [
                 'tensor/gather.h',
                 'tensor/identity_op.cc',
                 'tensor/identity_op.h',
-                # 'tensor/nonzero_impl.cu',
-                # 'tensor/nonzero_impl.h',
-                # 'tensor/nonzero_op.cc',
-                # 'tensor/nonzero_op.h',
                 'tensor/onehot.cc',
                 'tensor/onehot.cu',
                 'tensor/onehot.h',
@@ -148,10 +137,10 @@ core_ops_files = [
                 'tensor/split_impl.h',
                 'tensor/squeeze.cc',
                 'tensor/squeeze.h',
-                # # 'tensor/transpose_impl.cu',
-                # # 'tensor/transpose_impl.h',
-                # # 'tensor/transpose.cc',
-                # # 'tensor/transpose.h',
+                # 'tensor/transpose_impl.cu',
+                # 'tensor/transpose_impl.h',
+                # 'tensor/transpose.cc',
+                # 'tensor/transpose.h',
                 'tensor/unsqueeze.cc',
                 'tensor/unsqueeze.h',
                 'tensor/where_impl.cu',
@@ -161,95 +150,95 @@ core_ops_files = [
 ]
 
 training_ops_files = [
-                    # 'cuda_training_kernels.cc',
-                    # 'cuda_training_kernels.h',
-                    # 'activation/activations_grad.cc',
-                    'activation/activations_grad.h',
-                    'activation/activations_grad_impl.cu',
-                    'activation/activations_grad_impl.h',
-                    'activation/bias_gelu_grad.cc',
-                    'activation/bias_gelu_grad.h',
-                    'activation/bias_gelu_grad_impl.cu',
-                    'activation/bias_gelu_grad_impl.h',
-                    'activation/gelu_grad_impl_common.cuh',
-                    # 'collective/horovod_kernels.cc',
-                    # 'collective/horovod_kernels.h',
-                    'collective/megatron.cc',
-                    # 'collective/nccl_common.cc',
-                    'collective/nccl_common.h',
-                    'collective/nccl_kernels.cc',
-                    'collective/nccl_kernels.h',
-                    # 'collective/ready_event.cc',
-                    # 'collective/ready_event.h',
-                    # #'communication/common.h',
-                    # #'communication/recv.cc',
-                    # #'communication/recv.h',
-                    # #'communication/send.cc',
-                    # #'communication/send.h',
-                    # 'controlflow/group.cc',
-                    # 'loss/softmax_cross_entropy_loss_impl.cc',
-                    'loss/softmax_cross_entropy_loss_impl.cu',
-                    'loss/softmax_cross_entropy_loss_impl.h',
-                    # 'loss/softmaxcrossentropy_impl.cc',
-                    'loss/softmaxcrossentropy_impl.cu',
-                    'loss/softmaxcrossentropy_impl.h',
-                    'math/isfinite.cc',
-                    'math/isfinite.cu',
-                    # 'math/isfinite.cuh',
-                    'math/isfinite.h',
-                    'math/mixed_precision_scale.cc',
-                    'math/mixed_precision_scale.cu',
-                    'math/mixed_precision_scale.h',
-                    'math/softmax_grad_impl.cu',
-                    # 'math/softmax_grad.cc',
-                    'math/softmax_grad.h',
-                    'nn/dropout.cc',
-                    'nn/dropout.h',
-                    'nn/dropout_impl.cu',
-                    'nn/dropout_impl.h',
-                    'nn/layer_norm.cc',
-                    'nn/layer_norm.h',
-                    'nn/layer_norm_impl.cu',
-                    'nn/layer_norm_impl.h',
-                    # 'optimizer/adam.cc',
-                    # 'optimizer/adam.cu',
-                    'optimizer/adam.h',
-                    'optimizer/common.cuh',
-                    'optimizer/common.h',
-                    'optimizer/gradient_control.cc',
-                    'optimizer/gradient_control.cu',
-                    'optimizer/gradient_control.h',
-                    # 'optimizer/lamb.cc',
-                    'optimizer/lamb.cu',
-                    'optimizer/lamb.h',
-                    'optimizer/sg.cc',
-                    'optimizer/sg.cu',
-                    'optimizer/sg.h',
-                    'reduction/all.cc',
-                    'reduction/all.cu',
-                    'reduction/all.h',
-                    'reduction/reduction_all.cc',
-                    'reduction/reduction_all.cu',
-                    'reduction/reduction_all.h',
-                    'reduction/reduction_ops.cc',
-                    'reduction/reduction_ops.h',
-                    'tensor/concat.cc',
-                    'tensor/concat.h',
-                    'tensor/gather_elements_grad_impl.h',
-                    'tensor/gather_grad_impl.cu',
-                    'tensor/gather_grad_impl.h',
-                    'tensor/gather_grad.cc',
-                    'tensor/gather_grad.h',
-                    # 'tensor/gather_nd_grad_impl.cu',
-                    'tensor/gather_nd_grad_impl.h',
-                    'tensor/gather_nd_grad.cc',
-                    'tensor/gather_nd_grad.h',
-                    'tensor/slice_grad.cc',
-                    'tensor/slice_grad.h',
-                    'tensor/split.cc',
-                    'tensor/split.h',
-                    # 'tensor/view.cc',
-                    # 'tensor/view.h'
+                    # # 'cuda_training_kernels.cc',
+                    # # 'cuda_training_kernels.h',
+                    # # 'activation/activations_grad.cc',
+                    # 'activation/activations_grad.h',
+                    # 'activation/activations_grad_impl.cu',
+                    # 'activation/activations_grad_impl.h',
+                    # 'activation/bias_gelu_grad.cc',
+                    # 'activation/bias_gelu_grad.h',
+                    # 'activation/bias_gelu_grad_impl.cu',
+                    # 'activation/bias_gelu_grad_impl.h',
+                    # 'activation/gelu_grad_impl_common.cuh',
+                    # # 'collective/horovod_kernels.cc',
+                    # # 'collective/horovod_kernels.h',
+                    # 'collective/megatron.cc',
+                    # # 'collective/nccl_common.cc',
+                    # 'collective/nccl_common.h',
+                    # 'collective/nccl_kernels.cc',
+                    # 'collective/nccl_kernels.h',
+                    # # 'collective/ready_event.cc',
+                    # # 'collective/ready_event.h',
+                    # # #'communication/common.h',
+                    # # #'communication/recv.cc',
+                    # # #'communication/recv.h',
+                    # # #'communication/send.cc',
+                    # # #'communication/send.h',
+                    # # 'controlflow/group.cc',
+                    # # 'loss/softmax_cross_entropy_loss_impl.cc',
+                    # 'loss/softmax_cross_entropy_loss_impl.cu',
+                    # 'loss/softmax_cross_entropy_loss_impl.h',
+                    # # 'loss/softmaxcrossentropy_impl.cc',
+                    # 'loss/softmaxcrossentropy_impl.cu',
+                    # 'loss/softmaxcrossentropy_impl.h',
+                    # 'math/isfinite.cc',
+                    # 'math/isfinite.cu',
+                    # # 'math/isfinite.cuh',
+                    # 'math/isfinite.h',
+                    # 'math/mixed_precision_scale.cc',
+                    # 'math/mixed_precision_scale.cu',
+                    # 'math/mixed_precision_scale.h',
+                    # 'math/softmax_grad_impl.cu',
+                    # # 'math/softmax_grad.cc',
+                    # 'math/softmax_grad.h',
+                    # 'nn/dropout.cc',
+                    # 'nn/dropout.h',
+                    # 'nn/dropout_impl.cu',
+                    # 'nn/dropout_impl.h',
+                    # 'nn/layer_norm.cc',
+                    # 'nn/layer_norm.h',
+                    # 'nn/layer_norm_impl.cu',
+                    # 'nn/layer_norm_impl.h',
+                    # # 'optimizer/adam.cc',
+                    # # 'optimizer/adam.cu',
+                    # 'optimizer/adam.h',
+                    # 'optimizer/common.cuh',
+                    # 'optimizer/common.h',
+                    # 'optimizer/gradient_control.cc',
+                    # 'optimizer/gradient_control.cu',
+                    # 'optimizer/gradient_control.h',
+                    # # 'optimizer/lamb.cc',
+                    # 'optimizer/lamb.cu',
+                    # 'optimizer/lamb.h',
+                    # 'optimizer/sg.cc',
+                    # 'optimizer/sg.cu',
+                    # 'optimizer/sg.h',
+                    # 'reduction/all.cc',
+                    # 'reduction/all.cu',
+                    # 'reduction/all.h',
+                    # 'reduction/reduction_all.cc',
+                    # 'reduction/reduction_all.cu',
+                    # 'reduction/reduction_all.h',
+                    # 'reduction/reduction_ops.cc',
+                    # 'reduction/reduction_ops.h',
+                    # 'tensor/concat.cc',
+                    # 'tensor/concat.h',
+                    # 'tensor/gather_elements_grad_impl.h',
+                    # 'tensor/gather_grad_impl.cu',
+                    # 'tensor/gather_grad_impl.h',
+                    # 'tensor/gather_grad.cc',
+                    # 'tensor/gather_grad.h',
+                    # # 'tensor/gather_nd_grad_impl.cu',
+                    # 'tensor/gather_nd_grad_impl.h',
+                    # 'tensor/gather_nd_grad.cc',
+                    # 'tensor/gather_nd_grad.h',
+                    # 'tensor/slice_grad.cc',
+                    # 'tensor/slice_grad.h',
+                    # 'tensor/split.cc',
+                    # 'tensor/split.h',
+                    # # 'tensor/view.cc',
+                    # # 'tensor/view.h'
 ]
 
 HIPIFY_PERL = '/opt/rocm/bin/hipify-perl'
@@ -257,24 +246,29 @@ FINDCODE = '/opt/rocm/bin/findcode.sh'
 
 
 def hipify(src_file_path, dst_file_path):
-    dst_file_path = dst_file_path.replace('cuda', 'hip')
+    dst_file_path = dst_file_path.replace('cuda', 'rocm')
     dir_name = os.path.dirname(dst_file_path)
     if not os.path.exists(dir_name):
         os.mkdir(dir_name)
     with open(dst_file_path, 'w') as f:
         subprocess.run([HIPIFY_PERL, src_file_path], stdout=f)
     with open(dst_file_path) as f:
-        s = f.read().replace('cuda', 'hip')
-        s = s.replace('Cuda', 'Hip')
-        s = s.replace('CUDA', 'HIP')
-        # s = s.replace('kCudaExecutionProvider', 'kHipExecutionProvider')
-        # s = s.replace('CudaAsyncBuffer', 'HipAsyncBuffer')
-        # s = s.replace('CudaKernel', 'HipKernel')
-        # s = s.replace('ToCudaType', 'ToHipType')
-        # s = s.replace('CudaT', 'HipT')
-        # s = s.replace('CUDA_LONG', 'HIP_LONG')
-        # s = s.replace('CUDA_RETURN_IF_ERROR', 'HIP_RETURN_IF_ERROR')
-        # s = s.replace('CUDA_KERNEL_ASSERT', 'HIP_KERNEL_ASSERT')
+        # s = f.read().replace('cuda', 'hip')
+        # s = s.replace('Cuda', 'Hip')
+        # s = s.replace('CUDA', 'HIP')
+        s = f.read().replace('kCudaExecutionProvider', 'kRocmExecutionProvider')
+        s = s.replace('CudaAsyncBuffer', 'HipAsyncBuffer')
+        s = s.replace('CudaKernel', 'RocmKernel')
+        s = s.replace('ToCudaType', 'ToHipType')
+        s = s.replace('CudaT', 'HipT')
+        s = s.replace('CUDA_LONG', 'HIP_LONG')
+        s = s.replace('CUDA_RETURN_IF_ERROR', 'HIP_RETURN_IF_ERROR')
+        s = s.replace('CUDA_KERNEL_ASSERT', 'HIP_KERNEL_ASSERT')
+        s = s.replace('CUDA_CALL', 'HIP_CALL')
+        s = s.replace('SliceCuda', 'SliceRocm')
+        s = s.replace('cuda', 'rocm')
+        # s = s.replace('Cuda', 'Rocm')
+        s = s.replace('CUDA', 'ROCM')
 
         s = s.replace('GPU_WARP_SIZE = 32', 'GPU_WARP_SIZE = 64')
         s = s.replace('std::exp', 'expf')
@@ -317,21 +311,21 @@ def hipify(src_file_path, dst_file_path):
 
 def main():
     cuda_path = contrib_ops_path + '/cuda/'
-    hip_path = contrib_ops_path + '/hip/'
+    hip_path = contrib_ops_path + '/rocm/'
     for file in contrib_ops_files:
         src_file_path = cuda_path + file
         dst_file_path = hip_path + file
         hipify(src_file_path, dst_file_path)
 
     cuda_path = core_ops_path + '/cuda/'
-    hip_path = core_ops_path + '/hip/'
+    hip_path = core_ops_path + '/rocm/'
     for file in core_ops_files:
         src_file_path = cuda_path + file
         dst_file_path = hip_path + file
         hipify(src_file_path, dst_file_path)
 
     cuda_path = training_ops_path + '/cuda/'
-    hip_path = training_ops_path + '/hip/'
+    hip_path = training_ops_path + '/rocm/'
     for file in training_ops_files:
         src_file_path = cuda_path + file
         dst_file_path = hip_path + file

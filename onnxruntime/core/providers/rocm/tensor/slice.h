@@ -9,7 +9,7 @@
 namespace onnxruntime {
 namespace rocm {
 
-namespace SliceHip {
+namespace SliceRocm {
 
 Status Impl(const void* input_data,
             const TensorShape& input_shape,
@@ -17,7 +17,7 @@ Status Impl(const void* input_data,
             SliceOp::PrepareForComputeMetadata& prepare_metadata,
             size_t element_size);
 
-}  // namespace SliceHip
+}  // namespace SliceRocm
 
 template <bool dynamic>
 class Slice : public RocmKernel, public SliceBase {

@@ -16,9 +16,16 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Split,
                                   Split);
 
 // explicitly supports negative axis
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Split,
+                                  kOnnxDomain,
+                                  11, 12,
+                                  kRocmExecutionProvider,
+                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+                                  Split);
+
 ONNX_OPERATOR_KERNEL_EX(Split,
                         kOnnxDomain,
-                        11,
+                        13,
                         kRocmExecutionProvider,
                         KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
                         Split);

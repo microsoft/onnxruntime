@@ -26,7 +26,7 @@ Status SoftMaxComputeHelper(
 
   // miopenSoftmaxForward/Backward is not optimal implementation.
   // TODO: remove miopen path completely in the future.
-  if (D == input_shape[normalized_axis] && D <= 1024 && D * sizeof(T) <= 4096) {
+  if (D <= 1024 && D * sizeof(T) <= 4096) {
     dispatch_softmax_forward<HipT, HipT, AccType<T>, is_log_softmax>(Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));
     return Status::OK();
   }
@@ -44,6 +44,7 @@ Status SoftMaxComputeHelper(
   } else {
     MIOPEN_RETURN_IF_ERROR(miopenSoftmaxForward_V2(handle, &alpha, input_tensor, X_data, &beta, output_tensor, Y_data, MIOPEN_SOFTMAX_ACCURATE, MIOPEN_SOFTMAX_MODE_INSTANCE));
   }
+
   return Status::OK();
 }
 
@@ -64,10 +65,18 @@ SPECIALIZED_SOFTMAX_HELPER_IMPL(MLFloat16)
       kRocmExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Softmax<T>);                                                              \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
+      Softmax,                                                                  \
+      kOnnxDomain,                                                              \
+      11, 12,                                                                    \
+      T,                                                                        \
+      kRocmExecutionProvider,                                                   \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Softmax<T>);                                                              \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
       Softmax,                                                                  \
       kOnnxDomain,                                                              \
-      11,                                                                       \
+      13,                                                                       \
       T,                                                                        \
       kRocmExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
@@ -80,10 +89,18 @@ SPECIALIZED_SOFTMAX_HELPER_IMPL(MLFloat16)
       kRocmExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Softmax<T>);                                                              \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
+      LogSoftmax,                                                               \
+      kOnnxDomain,                                                              \
+      11, 12,                                                                    \
+      T,                                                                        \
+      kRocmExecutionProvider,                                                   \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Softmax<T>);                                                              \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
       LogSoftmax,                                                               \
       kOnnxDomain,                                                              \
-      11,                                                                       \
+      13,                                                                       \
       T,                                                                        \
       kRocmExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \

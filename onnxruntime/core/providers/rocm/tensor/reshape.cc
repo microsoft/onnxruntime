@@ -9,7 +9,19 @@ namespace rocm {
 ONNX_OPERATOR_KERNEL_EX(
     Reshape,
     kOnnxDomain,
-    5,
+    13,
+    kRocmExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .TypeConstraint("shape", DataTypeImpl::GetTensorType<int64_t>())
+        .Alias(0, 0)
+        .InputMemoryType<OrtMemTypeCPUInput>(1),
+    Reshape);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Reshape,
+    kOnnxDomain,
+    5, 12,
     kRocmExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())

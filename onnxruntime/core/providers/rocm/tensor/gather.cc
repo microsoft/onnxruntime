@@ -20,11 +20,23 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
                                     DataTypeImpl::GetTensorType<int64_t>()}),
     Gather);
 
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Gather,
+    kOnnxDomain,
+    11, 12,
+    kRocmExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .TypeConstraint("Tind", std::vector<MLDataType>{
+                                    DataTypeImpl::GetTensorType<int32_t>(),
+                                    DataTypeImpl::GetTensorType<int64_t>()}),
+    Gather);
+
 // explicit negative axis support
 ONNX_OPERATOR_KERNEL_EX(
     Gather,
     kOnnxDomain,
-    11,
+    13,
     kRocmExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
@@ -59,7 +71,7 @@ Status Gather::ComputeInternal(OpKernelContext* context) const {
   const size_t element_size = p.input_tensor->DataType()->Size();
   const size_t index_element_size = p.indices_tensor->DataType()->Size();
 
-  // HIP Kernel implementation supports element sizes of:
+  // ROCM Kernel implementation supports element sizes of:
   // int8_t, int16_t, int32_t and int64_t which covers all supported
   // types since there is no computations necessary just data movement
   if (p.indices_tensor->IsDataType<int32_t>() ||

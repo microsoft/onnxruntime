@@ -45,7 +45,7 @@ void Fill(T* output, T value, int64_t count);
 
 /*
   This is a utility wrapper for arbitrary type array
-  Commonly used for passing small list of metadata during hip kernel launch
+  Commonly used for passing small list of metadata during rocm kernel launch
   It's better to pass the array by value than having another cuMemcpy to pass the data to device.
 */
 template <typename T, int32_t capacity = 8>

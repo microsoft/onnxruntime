@@ -34,10 +34,20 @@ const std::vector<MLDataType> castOpTypeConstraints{
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()) \
           .TypeConstraint("T2", castOpTypeConstraints),           \
       Cast<T>);                                                   \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
+      Cast,                                                       \
+      kOnnxDomain,                                                \
+      9, 12,                                                       \
+      T,                                                          \
+      kRocmExecutionProvider,                                     \
+      KernelDefBuilder()                                          \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()) \
+          .TypeConstraint("T2", castOpTypeConstraints),           \
+      Cast<T>);                                                   \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       Cast,                                                       \
       kOnnxDomain,                                                \
-      9,                                                          \
+      13,                                                          \
       T,                                                          \
       kRocmExecutionProvider,                                     \
       KernelDefBuilder()                                          \
@@ -47,17 +57,17 @@ const std::vector<MLDataType> castOpTypeConstraints{
 
 template <typename SrcT>
 Status Cast<SrcT>::ComputeInternal(OpKernelContext* context) const {
-  typedef typename ToHipType<SrcT>::MappedType HipSrcT;
+  typedef typename ToHipType<SrcT>::MappedType CudaSrcT;
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& shape = X->Shape();
   Tensor* Y = context->Output(0, shape);
-  const auto* x_data = reinterpret_cast<const HipSrcT*>(X->template Data<SrcT>());
+  const auto* x_data = reinterpret_cast<const CudaSrcT*>(X->template Data<SrcT>());
   size_t count = shape.Size();
 
 #define CASE(TP_TYPE, DstT)                                                                          \
   case TP_TYPE:                                                                                      \
     if (count > 0) {                                                                                 \
-      Impl_Cast<HipSrcT, typename ToHipType<DstT>::MappedType>(                                    \
+      Impl_Cast<CudaSrcT, typename ToHipType<DstT>::MappedType>(                                    \
           x_data,                                                                                    \
           reinterpret_cast<typename ToHipType<DstT>::MappedType*>(Y->template MutableData<DstT>()), \
           count);                                                                                    \

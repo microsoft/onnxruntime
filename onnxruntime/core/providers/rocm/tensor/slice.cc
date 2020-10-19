@@ -43,11 +43,11 @@ REGISTER_V10_TYPED_SLICE(int32_t)
 REGISTER_V10_TYPED_SLICE(int64_t)
 REGISTER_V10_TYPED_SLICE(float)
 
-#define REGISTER_V11_TYPED_SLICE(TIND)                                  \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
+#define REGISTER_V12_TYPED_SLICE(TIND)                                  \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                              \
       Slice,                                                            \
       kOnnxDomain,                                                      \
-      11,                                                               \
+      11, 12,                                                           \
       TIND,                                                             \
       kRocmExecutionProvider,                                           \
       KernelDefBuilder()                                                \
@@ -59,9 +59,29 @@ REGISTER_V10_TYPED_SLICE(float)
           .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()), \
       Slice<true>);
 
-REGISTER_V11_TYPED_SLICE(int32_t)
-REGISTER_V11_TYPED_SLICE(int64_t)
-REGISTER_V11_TYPED_SLICE(float)
+REGISTER_V12_TYPED_SLICE(int32_t)
+REGISTER_V12_TYPED_SLICE(int64_t)
+REGISTER_V12_TYPED_SLICE(float)
+
+#define REGISTER_V13_TYPED_SLICE(TIND)                                  \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
+      Slice,                                                            \
+      kOnnxDomain,                                                      \
+      13,                                                               \
+      TIND,                                                             \
+      kRocmExecutionProvider,                                           \
+      KernelDefBuilder()                                                \
+          .InputMemoryType<OrtMemTypeCPUInput>(1)                       \
+          .InputMemoryType<OrtMemTypeCPUInput>(2)                       \
+          .InputMemoryType<OrtMemTypeCPUInput>(3)                       \
+          .InputMemoryType<OrtMemTypeCPUInput>(4)                       \
+          .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()) \
+          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()), \
+      Slice<true>);
+
+REGISTER_V13_TYPED_SLICE(int32_t)
+REGISTER_V13_TYPED_SLICE(int64_t)
+REGISTER_V13_TYPED_SLICE(float)
 
 static Status SliceImpCore(const void* input_data, void* output_data,
                            size_t element_size, size_t dimension_count,
@@ -83,7 +103,7 @@ static Status SliceImpCore(const void* input_data, void* output_data,
                    output_shape.Size());
 }
 
-namespace SliceHip {
+namespace SliceRocm {
 
 static Status ComputeSliceStrides(const TensorShape& input_shape,
                                   TArray<int64_t>& input_strides,
@@ -155,7 +175,7 @@ Status Impl(const void* input_data,
 
   return Status::OK();
 }
-}  // namespace SliceHip
+}  // namespace SliceRocm
 
 template <bool dynamic>
 Status Slice<dynamic>::ComputeInternal(OpKernelContext* ctx) const {
@@ -183,7 +203,7 @@ Status Slice<dynamic>::ComputeInternal(OpKernelContext* ctx) const {
   TArray<int64_t> input_strides;
   TArray<fast_divmod> output_strides;
 
-  ORT_RETURN_IF_ERROR(SliceHip::ComputeSliceStrides(input_shape, input_strides, output_strides, compute_metadata));
+  ORT_RETURN_IF_ERROR(SliceRocm::ComputeSliceStrides(input_shape, input_strides, output_strides, compute_metadata));
 
   // It may seem that we may use `SliceImpCore()` directly, but we need to go through `CallSliceImp()` because
   // `ComputeInternal()` is shared between the inferencing and training kernels and the training kernel overrides
