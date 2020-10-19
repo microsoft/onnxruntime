@@ -1,13 +1,9 @@
 import argparse
 import torch
 from torchvision import datasets, transforms
-import torchviz
 
-from onnxruntime import set_seed
+import onnxruntime
 from onnxruntime.training import ORTModule
-
-import _test_commons
-import _test_helpers
 
 
 class NeuralNet(torch.nn.Module):
@@ -24,112 +20,127 @@ class NeuralNet(torch.nn.Module):
         out = self.fc2(out)
         return out
 
-def main():
-    #Training settings
-    parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
-    parser.add_argument('--pytorch-only', action='store_true', default=False,
-                        help='disables ONNX Runtime training')
-    args = parser.parse_args()
 
-    # Model architecture
-    lr = 1e-4
-    batch_size=20
-    seed=42
-
-    torch.manual_seed(seed)
-    set_seed(seed)
-
-
-    model = NeuralNet(input_size=784, hidden_size=500, num_classes=10)
-    print('Training MNIST on ORTModule....')
-    if not args.pytorch_only:
-        model = ORTModule(model)
-
-    criterion = torch.nn.CrossEntropyLoss()
-    optimizer = torch.optim.SGD(model.parameters(), lr=lr)
-
-    # Data loader
-    train_loader = torch.utils.data.DataLoader(datasets.MNIST('./data', train=True, download=True,
-                                            transform=transforms.Compose([transforms.ToTensor(),
-                                                                            transforms.Normalize((0.1307,), (0.3081,))])),
-                                            batch_size=batch_size,
-                                            shuffle=True)
-    # Training Loop
-    loss = float('inf')
+def train(args, model, device, optimizer, loss_fn, train_loader, epoch):
+    model.train()
     for iteration, (data, target) in enumerate(train_loader):
-        if iteration == 1:
-            print(f'Final loss is {loss}')
+        if iteration == args.train_steps:
             break
-
+        data, target = data.to(device), target.to(device)
         data = data.reshape(data.shape[0], -1)
+
         optimizer.zero_grad()
         if args.pytorch_only:
-            print("Using PyTorch-only API")
+            probability = model(data)
+        else:
             probability = model(data)
 
+        if args.view_graphs:
+            import torchviz
             pytorch_backward_graph = torchviz.make_dot(probability, params=dict(list(model.named_parameters())))
-            print(f'probability.grad_fn={probability.grad_fn}')
-            print(f'probability.grad_fn.next_functions={probability.grad_fn.next_functions}')
-            # pytorch_backward_graph.view()
-            probability.retain_grad()
-        else:
-            print("Using ONNX Runtime Flexible API")
-            probability, intermediates = model(data)
-            probability.requires_grad_(True)
+            pytorch_backward_graph.view()
 
-        print(f'Output from forward has shape {probability.size()}')
-        loss = criterion(probability, target)
+        loss = loss_fn(probability, target)
         loss.backward()
-        print(f'***** probability.grad[0]={probability.grad[0]}')
-
-        if args.pytorch_only:
-            print(f'***** (PYTORCH) fc1.bias_grad[0]          BEFORE {model.fc1.bias.data[0].item()}')
-            print(f'***** (PYTORCH) fc1.weight_grad[0][0]     BEFORE {model.fc1.weight.data[0][0].item()}')
-            print(f'***** (PYTORCH) fc2.bias_grad[0]          BEFORE {model.fc2.bias.data[0].item()}')
-            print(f'***** (PYTORCH) fc2.weight_grad[0][0]     BEFORE {model.fc2.weight.data[0][0].item()}')
-        else:
-            # import pdb; pdb.set_trace()
-            # Fake backward call to test backprop graph
-            # TODO: The model output *order* is changing from ONNX export to ONNX export
-            fc1_bias_grad, fc1_weight_grad, fc2_weight_grad, fc2_bias_grad = model._run_backward_graph(probability.grad, intermediates, data)
-            fc1_bias_grad = torch.from_numpy(fc1_bias_grad).requires_grad_(True)
-            fc2_bias_grad = torch.from_numpy(fc2_bias_grad).requires_grad_(True)
-            fc1_weight_grad = torch.from_numpy(fc1_weight_grad).requires_grad_(True)
-            fc2_weight_grad = torch.from_numpy(fc2_weight_grad).requires_grad_(True)
-            fc1_bias_grad.retain_grad()
-            fc1_weight_grad.retain_grad()
-            fc2_bias_grad.retain_grad()
-            fc2_weight_grad.retain_grad()
-
-            print(f'***** (ONNX Runtime) fc1_bias_grad[0]          BEFORE {model._original_module.fc1.bias.data[0].item()}')
-            print(f'***** (ONNX Runtime) fc1_weight_grad[0][0]     BEFORE {model._original_module.fc1.weight.data[0][0].item()}')
-            print(f'***** (ONNX Runtime) fc2_bias_grad[0]          BEFORE {model._original_module.fc2.bias.data[0].item()}')
-            print(f'***** (ONNX Runtime) fc2_weight_grad[0][0]     BEFORE {model._original_module.fc2.weight.data[0][0].item()}')
-            print(f'***** (ONNX Runtime) fc1_bias_grad[0]          AFTER {fc1_bias_grad[0].item()}')
-            print(f'***** (ONNX Runtime) fc1_weight_grad[0][0]     AFTER {fc1_weight_grad[0][0]}')
-            print(f'***** (ONNX Runtime) fc2_bias_grad[0]          AFTER {fc2_bias_grad[0].item()}')
-            print(f'***** (ONNX Runtime) fc2_weight_grad[0][0]     AFTER {fc2_weight_grad[0][0].item()}')
-            model._original_module.fc1.bias.data = fc1_bias_grad.data
-            model._original_module.fc1.weight.data = fc1_weight_grad.data
-            model._original_module.fc2.bias.data = fc2_bias_grad.data
-            model._original_module.fc2.weight.data = fc2_weight_grad.data
-
-            print(f'Output from backaward has the following shapes after update:')
-            print(f'fc1_bias_grad={fc1_bias_grad.size()}')
-            print(f'fc2_bias_grad={fc2_bias_grad.size()}')
-            print(f'fc1_weight_grad={fc1_weight_grad.size()}')
-            print(f'fc2_weight_grad={fc2_weight_grad.size()}')
-
         optimizer.step()
-        if args.pytorch_only:
-            print(f'***** (PYTORCH) fc1.bias_grad[0]          AFTER {model.fc1.bias.data[0].item()}')
-            print(f'***** (PYTORCH) fc1.weight_grad[0][0]     AFTER {model.fc1.weight.data[0][0].item()}')
-            print(f'***** (PYTORCH) fc2.bias_grad[0]          AFTER {model.fc2.bias.data[0].item()}')
-            print(f'***** (PYTORCH) fc2.weight_grad[0][0]     AFTER {model.fc2.weight.data[0][0].item()}')
 
-        if iteration == 0:
-            print(f'Initial loss is {loss}')
-    print('Tah dah!')
+        # Stats
+        if iteration % args.log_interval == 0:
+            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+                epoch, iteration * len(data), len(train_loader.dataset),
+                100. * iteration / len(train_loader), loss))
+
+
+def test(args, model, device, loss_fn, test_loader):
+    model.eval()
+    test_loss = 0
+    correct = 0
+    with torch.no_grad():
+        for data, target in test_loader:
+            data, target = data.to(device), target.to(device)
+            data = data.reshape(data.shape[0], -1)
+            output = model(data)
+
+            # Stats
+            test_loss += loss_fn(output, target, False).item()
+            pred = output.argmax(dim=1, keepdim=True)
+            correct += pred.eq(target.view_as(pred)).sum().item()
+    test_loss /= len(test_loader.dataset)
+    print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
+        test_loss, correct, len(test_loader.dataset),
+        100. * correct / len(test_loader.dataset)))
+
+def my_loss(x, target, is_train=True):
+    if is_train:
+        return torch.nn.CrossEntropyLoss()(x, target)
+    else:
+        return torch.nn.CrossEntropyLoss(reduction='sum')(x, target)
+
+def main():
+    # Training settings
+    parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
+    parser.add_argument('--train-steps', type=int, default=-1, metavar='N',
+                        help='number of steps to train. Set -1 to run through whole dataset (default: -1)')
+    parser.add_argument('--lr', type=float, default=0.001, metavar='LR',
+                        help='learning rate (default: 0.001)')
+    parser.add_argument('--batch-size', type=int, default=20, metavar='N',
+                        help='input batch size for training (default: 20)')
+    parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
+                        help='input batch size for testing (default: 1000)')
+    parser.add_argument('--no-cuda', action='store_true', default=False,
+                        help='disables CUDA training')
+    parser.add_argument('--seed', type=int, default=42, metavar='S',
+                        help='random seed (default: 42)')
+    parser.add_argument('--pytorch-only', action='store_true', default=False,
+                        help='disables ONNX Runtime training')
+    parser.add_argument('--log-interval', type=int, default=100, metavar='N',
+                        help='how many batches to wait before logging training status (default: 100)')
+    parser.add_argument('--view-graphs', action='store_true', default=False,
+                        help='views forward and backward graphs')
+    parser.add_argument('--epochs', type=int, default=10, metavar='N',
+                        help='number of epochs to train (default: 10)')
+    args = parser.parse_args()
+
+
+    # Common setup
+    torch.manual_seed(args.seed)
+    onnxruntime.set_seed(args.seed)
+
+    # TODO: CUDA support is broken due to copying from PyTorch into ORT
+    # if not args.no_cuda and torch.cuda.is_available():
+    #     device = "cuda"
+    # else:
+    #     device = "cpu"
+    device = 'cpu'
+
+    ## Data loader
+    train_loader = torch.utils.data.DataLoader(datasets.MNIST('./data', train=True, download=True,
+                                            transform=transforms.Compose([transforms.ToTensor(),
+
+                                                                            transforms.Normalize((0.1307,), (0.3081,))])),
+                                            batch_size=args.batch_size,
+                                            shuffle=True)
+    if args.test_batch_size > 0:
+        test_loader = torch.utils.data.DataLoader(
+            datasets.MNIST('./data', train=False, transform=transforms.Compose([
+                transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])),
+            batch_size=args.test_batch_size, shuffle=True)
+
+    # Model architecture
+    model = NeuralNet(input_size=784, hidden_size=500, num_classes=10).to(device)
+    if not args.pytorch_only:
+        print('Training MNIST on ORTModule....')
+        model = ORTModule(model)
+    else:
+        print('Training MNIST on vanilla PyTorch....')
+    optimizer = torch.optim.SGD(model.parameters(), lr=args.lr)
+
+    # Train loop
+    for epoch in range(1, args.epochs + 1):
+        train(args, model, device, optimizer, my_loss, train_loader, epoch)
+        if args.test_batch_size > 0:
+            test(args, model, device, my_loss, test_loader)
+
 
 if __name__ == '__main__':
     main()

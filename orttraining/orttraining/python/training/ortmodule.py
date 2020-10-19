@@ -15,10 +15,10 @@ ONNX_OPSET_VERSION = 12
 class ORTModule(torch.nn.Module):
 
     def __init__(self, module):
-        print(f'ORTModule.__init__() was called')
         assert isinstance(module, torch.nn.Module), "'module' mst be a torch.nn.Module"
         super(ORTModule, self).__init__()
-        # User will interact with it (debugging, etc)
+
+        # User module is wrapped to use its initializers and save computed gradients
         self._original_module = module
 
         # Forward pass
@@ -31,10 +31,11 @@ class ORTModule(torch.nn.Module):
         # Backward pass
         self._onnx_backward = None
         self._backward_session = None
+        self._onnx_backward_initializers_desc = []
+        self._onnx_backward_inputs_desc = []
+        self._onnx_backward_outputs_desc = []
 
     def forward(self, *input, **kwargs):
-        print(f'ORTModule.forward() was called')
-
         if not self._onnx_forward:
             original_forward_graph = ORTModule._get_forward_graph(self._original_module, *input, **kwargs)
             gradient_graph = ORTModule._build_gradient_graph(original_forward_graph)
@@ -45,118 +46,132 @@ class ORTModule(torch.nn.Module):
             self._forward_session = onnxruntime.InferenceSession(self._onnx_forward.SerializeToString())
             self._backward_session = onnxruntime.InferenceSession(self._onnx_backward.SerializeToString())
 
-            # TODO: debug only
-            self._save_onnx_graph(self._onnx_forward, 'ortmodule_forward_mnist.onnx')
-            self._save_onnx_graph(self._onnx_backward, 'ortmodule_backward_mnist.onnx')
-
+        # Forward I/O description
         if not self._onnx_forward_initializers_desc:
             self._onnx_forward_initializers_desc = self._get_initializer_from_graph(self._onnx_forward)
+            print(f'Forward initializers: {self._onnx_forward_initializers_desc}')
         if not self._onnx_forward_inputs_desc:
             self._onnx_forward_inputs_desc = self._get_input_from_graph(self._onnx_forward)
+            print(f'Forward inputs: {self._onnx_forward_inputs_desc}')
         if not self._onnx_forward_outputs_desc:
             self._onnx_forward_outputs_desc = self._get_output_from_graph(self._onnx_forward)
+            print(f'Forward outputs: {self._onnx_forward_outputs_desc}')
 
-        # TODO: debug only
-        print(f'Initializers: {self._onnx_forward_initializers_desc}')
-        print(f'Inputs: {self._onnx_forward_inputs_desc}')
-        print(f'Outpus: {self._onnx_forward_outputs_desc}')
+        # Backward I/O description
+        if not self._onnx_backward_initializers_desc:
+            self._onnx_backward_initializers_desc = self._get_initializer_from_graph(self._onnx_backward)
+            print(f'Backward initializers: {self._onnx_backward_initializers_desc}')
+        if not self._onnx_backward_inputs_desc:
+            self._onnx_backward_inputs_desc = self._get_input_from_graph(self._onnx_backward)
+            print(f'Backward inputs: {self._onnx_forward_inputs_desc}')
+        if not self._onnx_backward_outputs_desc:
+            self._onnx_backward_outputs_desc = self._get_output_from_graph(self._onnx_backward)
+            print(f'Backward outputs: {self._onnx_backward_outputs_desc}')
 
         # Use a custom torch.autograd.Function to associate self.backward_graph as the
         # gradient implementation for self.forward_graph.
         class _ORTModuleFunction(torch.autograd.Function):
             @staticmethod
             def forward(ctx, *input, **kwargs):
-                print(f'_ORTModuleFunction.forward() was called...')
-                # Note: A potential optimization would be to detect which of inputs and weights
-                # require a gradient.
-                # intermediates, outputs = self._run_forward_graph(inputs) # inputs, weights)
-                outputs = self._run_forward_graph(self._prepare_forward_input(*input, **kwargs))  # inputs, weights)
-                outputs = [torch.nn.Parameter(torch.from_numpy(out)) for out in outputs]
+                # TODO: Potential optimization is to detect which inputs and weights require gradients
+                input_with_initializer = self._prepare_forward_input_ort(*input, **kwargs)
+                outputs = self._run_forward_graph(input_with_initializer)
+                outputs = tuple(torch.from_numpy(out) for out in outputs)
 
-                # TODO: Properly save intermediate tensors and remove them from model output
-                ctx.save_for_backward([(input, kwargs), outputs[1]])
-                # outputs = [outputs[0]]
+                # TODO: Properly save dynamic number of intermediate tensors and remove them from model output
+                #       Tensors that need to have gradients tracked can't be saved by `save_for_backward`
+                #       saved_tensors ==> input1, fc2.weight, 7
+                ctx.save_for_backward(*[input[0], input[3], outputs[1]])
+                outputs = [outputs[0]]
 
                 # TODO: Properly support original module output format
                 if len(outputs) == 1:
                     return outputs[0]
-                return tuple(outputs)
+                return outputs
 
             @staticmethod
             def backward(ctx, *grad_output):
-                print(f'_ORTModuleFunction.backward() was called')
-                input_and_kwargs, intermediates = ctx.saved_tensors
-                # grad_inputs, grad_weights = self._run_backward_graph(
-                #     grad_output, intermediates)
-                # return grad_inputs, grad_weights
+                # TODO: Properly restore dynamic number of intermediate tensors
+                #       saved_tensors ==> input1, fc2.weight, 7
+                saved_tensors = ctx.saved_tensors
+                grad_weights = self._run_backward_graph(*[*saved_tensors, *grad_output])
+                grad_weights = [torch.from_numpy(grad) for grad in grad_weights]
+                # TODO: backward must return grad tensors in the same order forward does
+                #       [input1_grad, fc1.weight_grad, fc1.bias_grad, fc2.weight_grad, fc2.bias_grad]
+                return tuple([torch.tensor([1.]), grad_weights[1], grad_weights[0], grad_weights[2], grad_weights[3]])
 
-        return _ORTModuleFunction.apply(*input, **kwargs)
+        return _ORTModuleFunction.apply(*self._prepare_forward_input_autograd(*input, **kwargs))
 
-    def _prepare_forward_input(self, *input, **kwargs):
-        # Dictionary containing both inputs and initializers
-        input_with_initializer = {}
+    def _prepare_forward_input_autograd(self, *input, **kwargs):
+        # List containing both user inputs and initializers, in this order
+        input_with_initializer = []
 
         # Inputs
         for idx, input_data in enumerate(self._forward_session.get_inputs()):
-            input_with_initializer.update({input_data.name: input[idx].cpu().numpy()})
+            input_with_initializer.append(input[idx])
 
         # Initializers
         for idx, param in enumerate(self._original_module.named_parameters()):
-            input_with_initializer.update({param[0]: param[1].detach().numpy()})
+            input_with_initializer.append(param[1])
+
+        # TODO: [input1, fc1.weight, fc1.bias, fc2.weight, fc2.bias]
+        return input_with_initializer
+
+    def _prepare_forward_input_ort(self, *inputs):
+        # Dictionary containing both inputs and initializers
+        input_with_initializer = {}
+
+        # TODO: [input1, fc1.weight, fc1.bias, fc2.weight, fc2.bias]
+        # Inputs
+        inputs_len = 0
+        for idx, input_data in enumerate(self._forward_session.get_inputs()):
+            inputs_len += 1
+            input_with_initializer.update({input_data.name: inputs[idx].cpu().numpy()})
+
+        # Initializers
+        for param in self._original_module.named_parameters():
+            input_with_initializer.update({param[0]: inputs[inputs_len].detach().numpy()})
+            inputs_len += 1
 
         return input_with_initializer
 
-    def _prepare_backward_input(self, grad_output, intermediates, *inputs, **kwargs):
+    def _prepare_backward_input(self, *inputs, **kwargs):
         # Dictionary containing initializers
         input_with_initializer = {}
 
         # User input
         # TODO: How to determine which user input to feed to backward
-        for idx, input_data in enumerate(self._forward_session.get_inputs()):
-            input_with_initializer.update({input_data.name: inputs[idx].cpu().numpy()})
+        # for idx, input_data in enumerate(self._forward_session.get_inputs()):
+        #     input_with_initializer.update({input_data.name: inputs[idx].cpu().numpy()})
+        input_with_initializer.update({'input1' : inputs[0].detach().numpy()})
 
         # Initializers
         # TODO: How to determine which initializer (subset) to be used
-        for idx, param in enumerate(self._original_module.named_parameters()):
-            if param[0] == 'fc2.weight':
-                input_with_initializer.update({param[0]: param[1].detach().numpy()})
-
-        # Grad output
-        # TODO: How to determine grad_output name?
-        input_with_initializer.update({'probability_grad': grad_output.detach().numpy()})
+        # for idx, param in enumerate(self._original_module.named_parameters()):
+        #     input_with_initializer.update({param[0]: param[1].detach().numpy()})
+        input_with_initializer.update({'fc2.weight' : inputs[1].detach().numpy()})
 
         # Intermediates
         # TODO: How to determine intermediates name?
-        input_with_initializer.update({'7': intermediates.detach().numpy()})
+        input_with_initializer.update({'7': inputs[2].detach().numpy()})
+
+        # Grad output
+        # TODO: How to determine grad_output name?
+        input_with_initializer.update({'probability_grad': inputs[3].detach().numpy()})
         return input_with_initializer
 
     def _run_forward_graph(self, data_with_initializer):  # input, weights):
-        print(f'_run_forward_graph was called...')
         return self._forward_session.run(None, data_with_initializer)
 
-    def _run_backward_graph(self, grad_output, intermediates, *inputs, **kwargs):
-        # Use an InferenceSession to execute self.backward_graph.
-        # Return gradient tensors for inputs and weights.
-        print(f'_run_backward_graph was called...')
-        data = self._prepare_backward_input(grad_output, intermediates, *inputs, **kwargs)
+    def _run_backward_graph(self, *inputs, **kwargs):
+        data = self._prepare_backward_input(*inputs, **kwargs)
         # TODO: Hack to guarantee output order from InferenceSession.run()
         return self._backward_session.run(['fc1.bias_grad', 'fc1.weight_grad', 'fc2.weight_grad', 'fc2.bias_grad'], data)
-        # return self._backward_session.run(None, data)
 
     @staticmethod
     def _get_forward_graph(module, module_input):
-        print(f'_get_forward_graph was called...')
         # TODO: Pytorch module must be exported to ONNX and splitted
         #       Hard-coding with MNIST stub for MVP
-        # Export torch.nn.Module to ONNX with initializers as input
-        # f = io.BytesIO()
-        # torch.onnx.export(module, module_input, f, verbose=True,
-        #                   opset_version=ONNX_OPSET_VERSION,
-        #                   _retain_param_name=True,
-        #                   training=torch.onnx.TrainingMode.TRAINING,
-        #                   keep_initializers_as_inputs=True,
-        #                   export_params=True)
-        # return onnx.load_model_from_string(f.getvalue())
         return onnx.load('./model_with_training_forward_sliced.onnx')
 
     def _get_initializer_from_graph(self, graph):
@@ -200,6 +215,7 @@ class ORTModule(torch.nn.Module):
         for elem in graph.graph.output:
             for initializer in self._onnx_forward_initializers_desc:
                 if elem.name == initializer['name']:
+                    # skip initializers
                     break
             else:
                 name = elem.name
@@ -236,7 +252,6 @@ class ORTModule(torch.nn.Module):
 
     @staticmethod
     def _build_gradient_graph(forward_graph):
-        print(f'_build_gradient_graph was called...')
         # TODO: Invoke the C++ GradientBuilder implementation via pybind.
         # Return an ONNX graph that contains the forward and backward nodes, which takes the
         # following inputs:
@@ -248,7 +263,6 @@ class ORTModule(torch.nn.Module):
 
     @staticmethod
     def _split_forward_and_backward(gradient_graph):
-        print(f'_split_forward_and_backward was called...')
         # TODO: Split the result of _build_gradient_graph into two subgraphs:
         # * A forward graph that takes module inputs and weights as input, and produces module
         #   outputs and (“stashed”) intermediate tensors as output.
