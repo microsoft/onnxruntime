@@ -199,7 +199,7 @@ std::string MemoryInfo::MemoryInfoProfile::CreateMemoryEvent(size_t pid, size_t 
   return evt.str();
 }
 
-std::string MemoryInfo::MemoryInfoProfile::CreateSummaryEvent(size_t pid, size_t tid, const AllocationSummary& summary, size_t size) {
+std::string MemoryInfo::MemoryInfoProfile::CreateSummaryEvent(size_t pid, size_t tid, const AllocationSummary& summary, size_t size, size_t bytes_for_pattern) {
   const size_t total_bytes = summary.total_size;
   const size_t used_bytes = summary.used_size;
   const size_t free_bytes = total_bytes - used_bytes;
@@ -220,7 +220,8 @@ std::string MemoryInfo::MemoryInfoProfile::CreateSummaryEvent(size_t pid, size_t
   evt << "\"used_bytes\":" << used_bytes << ",";
   evt << "\"free_bytes\":" << free_bytes << ",";
   evt << "\"used_percent\":" << used_percent << ",";
-  evt << "\"free_percent\":" << free_percent;
+  evt << "\"free_percent\":" << free_percent << ",";
+  evt << "\"bytes for pattern\":" << bytes_for_pattern;
   evt << "}";
   evt << "}";
   return evt.str();
@@ -279,9 +280,11 @@ void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name, cons
     //Update summary
     if (summary_.find(summary_key) == summary_.end()) {
       for (const auto& item : map) {
+        const auto info = mem_info_.AllocPlan(item.first);
+        if (info->inplace_reuse) continue;
         size_t offset = map_type == MemoryInfo::MapType::StaticActivation ? map.GetPlannedAddress(item.first) : map.GetAllocAddress(item.first);
         size_t size = map_type == MemoryInfo::MapType::StaticActivation ? map.GetPlannedSize(item.first) : map.GetAllocSize(item.first);
-        size_t alloc_step = mem_info_.AllocPlan(item.first)->lifetime_interval.first;  //alloc_kind == AllocKind::kReuse ? info.alloc_plan.life_interval.first + 1 : info.alloc_plan.life_interval.first;
+        size_t alloc_step = mem_info_.AllocPlan(item.first)->lifetime_interval.first;
         size_t dealloc_step = mem_info_.AllocPlan(item.first)->lifetime_interval.second;
         const auto& ts_map = mem_info_.time_step_trace_[map_type];
         const auto& start_itr = ts_map.find(alloc_step);
@@ -307,6 +310,7 @@ void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name, cons
 
     for (const auto& item : summary_[summary_key]) {
       if (item.second.total_size < top_kth_total_size) continue;
+      size_t alloc_size_for_pattern = 0;
       for (const auto& live_tensor : item.second.life_tensosrs) {
         const auto info = mem_info_.AllocPlan(live_tensor);
         if (info->inplace_reuse) continue;
@@ -317,19 +321,20 @@ void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name, cons
         //Sometimes a tensor can be both statically planned and dynamically allocated, so we need to use planned address/size in static_activation type
         size_t offset = map_type == MemoryInfo::MapType::StaticActivation ? map.GetPlannedAddress(live_tensor) : map.GetAllocAddress(live_tensor);
         size_t size = map_type == MemoryInfo::MapType::StaticActivation ? map.GetPlannedSize(live_tensor) : map.GetAllocSize(live_tensor);
+        alloc_size_for_pattern += size;
         events.push_back(CreateMemoryEvent(pid, item.first, name, offset, size, cname));
       }
       // Add summary events.  These will show up visually as 10% of the max width in a section.
       summary_size = std::max(summary_size, item.second.total_size / 10);
-      events.push_back(CreateSummaryEvent(pid, item.first, item.second, summary_size));
+      events.push_back(CreateSummaryEvent(pid, item.first, item.second, summary_size, alloc_size_for_pattern));
     }
   }
 }
 
 void MemoryInfo::GenerateMemoryProfile() {
-  profiler.CreateEvents("GPU (static activations)", profiler.GetAndIncreasePid(), MapType::StaticActivation, "", 2);
-  profiler.CreateEvents("GPU (dynamic activations)", profiler.GetAndIncreasePid(), MapType::DynamicActivation, "", 2);
-  profiler.CreateEvents("GPU (static activations), _grad", profiler.GetAndIncreasePid(), MapType::StaticActivation, "_grad", 2);
+  profiler.CreateEvents("GPU (static activations)", profiler.GetAndIncreasePid(), MapType::StaticActivation, "", 1);
+  profiler.CreateEvents("GPU (dynamic activations)", profiler.GetAndIncreasePid(), MapType::DynamicActivation, "", 1);
+  profiler.CreateEvents("GPU (static activations), _grad", profiler.GetAndIncreasePid(), MapType::StaticActivation, "_grad", 1);
 
   // Write memory profile .json
   std::ofstream memory_profile("memory_profile_" + std::to_string(local_rank_) + ".json", std::ios::trunc);
