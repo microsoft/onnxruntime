@@ -74,7 +74,7 @@ class UniDirectionalLstm {
   bool use_bias_;
   bool use_peepholes_;
 
-  int hidden_num_threads_ = -1;
+  int num_threads_ = -1;
 
   IAllocatorUniquePtr<T> output_iofc_ptr_;
   IAllocatorUniquePtr<T> hidden0_ptr_, batched_hidden0_ptr_;

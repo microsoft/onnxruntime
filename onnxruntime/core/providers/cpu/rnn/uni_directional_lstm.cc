@@ -30,7 +30,7 @@ static inline void ExecuteLambdaInParallel(TLambda lambda, int max, int step, do
   const int total_tasks = max / (step > 0 ? step : 1) + (max % step > 0 ? 1 : 0);
   concurrency::ThreadPool::TryParallelFor(ttp, total_tasks, cost, [&lambda, step](ptrdiff_t first, ptrdiff_t last) {
     for (int i = static_cast<int>(first), end = static_cast<int>(last); i < end; ++i) {
-      lambda(i * step);
+      lambda(i * step, nullptr);
     }
   });
 #endif
@@ -272,121 +272,47 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
   const span_T_iter C_prev_end = batched_internal_state_prev_one_step.end();
   const span_T_iter C_prev_clipped_end = batched_internal_state_clipped_one_step.end();
 
+  int num_seq_to_compute = batch_size_;
   if (batch_parallel_) {
-    int fused_hidden_rows = batch_size_ / hidden_num_threads_;
-    if (batch_size_ % hidden_num_threads_ != 0)
-      fused_hidden_rows++;
+    num_seq_to_compute = batch_size_ / num_threads_;
+    if (batch_size_ % num_threads_ != 0)
+      num_seq_to_compute++;
+  }
 
-    // lambda to do all processing on fused_hidden_rows rows
-    auto hidden_gemm_and_activations = [&](int row) {
-      span_T_const_iter previous_state_end = batched_hidden_state_one_step.cend();
-
-      // handling boundaries
-      int local_fused_hidden_rows = fused_hidden_rows;
-      if ((row + fused_hidden_rows) > batch_size_)
-        local_fused_hidden_rows = batch_size_ - row;
-
-      // these are all batch * hidden_size_ and get updated in-place when running GateComputations so non-const iters
-      span_T_iter c_prev = batched_internal_state_prev_one_step.begin() + row * hidden_size_;
-      span_T_iter c_prev_clipped = batched_internal_state_clipped_one_step.begin() + row * hidden_size_;
-
-      // hidden state can be provided as input for first step, so need to special case that.
-      // after the first step this will switch to the output from the previous step
-      span_T_const_iter previous_state = batched_hidden_state_one_step.cbegin() + row * hidden_size_;
-
-      // run through steps sequentially
-      for (int step = 0; step < max_sequence_length; step++) {
-#if defined(DUMP_MATRIXES)
-        const std::string row_str = " [row=" + std::to_string(row) + ",seqno=" + std::to_string(step) + "]";
-#endif
-
-        span_T_iter step_out_IOFC = output_iofc_.begin() + (step * batch_size_ + row) * hidden_size_x4;
-
-        // calculate Xt*(W[iofc]^T) + Ht-t*R[iofc]
-        // Do it sequentially to avoid nested parallelism
-        ComputeGemm(local_fused_hidden_rows, hidden_size_x4, hidden_size_, alpha,
-                    previous_state, previous_state_end,       // Ht-1
-                    recurrent_weights,                        // R[iofc]
-                    beta, step_out_IOFC, output_iofc_.end(),  // input contains Xt*(W[iofc]^T)
-                    hidden_size_x4, nullptr);
-
-        DumpMatrix("Xt*(W[iofc]^T) + Ht-t*R[iofc]" + row_str, &*step_out_IOFC, local_fused_hidden_rows, hidden_size_x4);
-
-        span_T_iter batched_output;
-        span_T_iter batched_output_end;
-        if (output_sequence) {
-          batched_output = outputs.begin() + step * output_step_length;
-          batched_output_end = outputs.end();
-
-        } else {
-          batched_output = final_hidden_state.begin();
-          batched_output_end = final_hidden_state.end();
-        }
-
-        span_T_iter step_out_IOFC_end = step_out_IOFC + local_fused_hidden_rows * hidden_size_x4;
-        GateComputations(step_out_IOFC, step_out_IOFC_end, c_prev, C_prev_end, c_prev_clipped, C_prev_clipped_end,
-                         batched_output, batched_output_end, sequence_lengths, min_sequence_length, step, row,
-                         local_fused_hidden_rows, output_sequence);
-
-        // copy last row to final_cell_state
-        for (int lrow = row; lrow < row + local_fused_hidden_rows; ++lrow) {
-          if ((step + 1) == sequence_lengths[lrow]) {
-            gsl::span<const T> src = batched_internal_memory_prev_.subspan(lrow * hidden_size_, hidden_size_);
-            gsl::span<T> dst = final_cell_state.subspan(lrow * hidden_size_, hidden_size_);
-            gsl::copy(src, dst);
-          }
-          if (step == 0 && sequence_lengths[lrow] == 0) {
-            auto final_cell_state_dst = final_cell_state.begin() + lrow * hidden_size_;
-            std::fill_n(final_cell_state_dst, hidden_size_, T{});
-          }
-        }
-
-        if (output_sequence) {
-          // set to 0 if step >= sequence_length
-          for (int lrow = row; lrow < row + local_fused_hidden_rows; lrow++) {
-            if (step >= min_sequence_length && step >= sequence_lengths[lrow]) {
-              auto output_lrow = outputs.begin() + step * output_step_length + lrow * hidden_size_;
-              std::fill_n(output_lrow, hidden_size_, (T)0);
-            }
-          }
-        }
-
-        previous_state = batched_output + row * hidden_size_;
-        previous_state_end = batched_output_end;
-      }
-    };
-
-    // Approximate worst case cost of hidden_gemm_and_activations.
-    double gemm_cost = fused_hidden_rows * hidden_size_x4 * hidden_size_;
-    double cost = max_sequence_length * (gemm_cost + fused_hidden_rows);
-    ExecuteLambdaInParallel(hidden_gemm_and_activations, batch_size_, fused_hidden_rows, cost, thread_pool_);
-
-  } else {
+  // lambda to do all processing on num_of_rows_to_calculate sequences
+  auto sequences_calculator = [&](int seq_start, onnxruntime::concurrency::ThreadPool* ttp) {
     span_T_const_iter previous_state_end = batched_hidden_state_one_step.cend();
 
-    span_T_iter c_prev = batched_internal_state_prev_one_step.begin();
-    span_T_iter c_prev_clipped = batched_internal_state_clipped_one_step.begin();
+    // handling boundaries
+    int num_seq_to_compute_adjusted = num_seq_to_compute;
+    if ((seq_start + num_seq_to_compute) > batch_size_)
+      num_seq_to_compute_adjusted = batch_size_ - seq_start;
+
+    // these are all batch * hidden_size_ and get updated in-place when running GateComputations so non-const iters
+    span_T_iter c_prev = batched_internal_state_prev_one_step.begin() + seq_start * hidden_size_;
+    span_T_iter c_prev_clipped = batched_internal_state_clipped_one_step.begin() + seq_start * hidden_size_;
 
     // hidden state can be provided as input for first step, so need to special case that.
     // after the first step this will switch to the output from the previous step
-    span_T_const_iter previous_state = batched_hidden_state_one_step.cbegin();
+    span_T_const_iter previous_state = batched_hidden_state_one_step.cbegin() + seq_start * hidden_size_;
 
     // run through steps sequentially
     for (int step = 0; step < max_sequence_length; step++) {
 #if defined(DUMP_MATRIXES)
-      const std::string seqno_str = " [seqno=" + std::to_string(step) + "]";
+      const std::string row_str = " [row=" + std::to_string(row) + ",seqno=" + std::to_string(step) + "]";
 #endif
 
-      DumpMatrix("previous_state" + seqno_str, &*previous_state, batch_size_, hidden_size_);
-
-      span_T_iter step_out_IOFC = output_iofc_.begin() + (step * batch_size_) * hidden_size_x4;
+      span_T_iter step_out_IOFC = output_iofc_.begin() + (step * batch_size_ + seq_start) * hidden_size_x4;
 
       // calculate Xt*(W[iofc]^T) + Ht-t*R[iofc]
-      ComputeGemm(batch_size_, hidden_size_x4, hidden_size_, alpha,
+      // Do it sequentially to avoid nested parallelism
+      ComputeGemm(num_seq_to_compute_adjusted, hidden_size_x4, hidden_size_, alpha,
                   previous_state, previous_state_end,       // Ht-1
                   recurrent_weights,                        // R[iofc]
                   beta, step_out_IOFC, output_iofc_.end(),  // input contains Xt*(W[iofc]^T)
-                  hidden_size_x4, thread_pool_);
+                  hidden_size_x4, ttp);
+
+      DumpMatrix("Xt*(W[iofc]^T) + Ht-t*R[iofc]" + row_str, &*step_out_IOFC, num_seq_to_compute_adjusted, hidden_size_x4);
 
       span_T_iter batched_output;
       span_T_iter batched_output_end;
@@ -399,16 +325,17 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
         batched_output_end = final_hidden_state.end();
       }
 
-      span_T_iter step_out_IOFC_end = step_out_IOFC + batch_size_ * hidden_size_x4;
+      span_T_iter step_out_IOFC_end = step_out_IOFC + num_seq_to_compute_adjusted * hidden_size_x4;
       GateComputations(step_out_IOFC, step_out_IOFC_end, c_prev, C_prev_end, c_prev_clipped, C_prev_clipped_end,
-                       batched_output, batched_output_end, sequence_lengths, min_sequence_length, step, 0, batch_size_,
-                       output_sequence);
+                       batched_output, batched_output_end, sequence_lengths, min_sequence_length, step, seq_start,
+                       num_seq_to_compute_adjusted, output_sequence);
 
       // copy last row to final_cell_state
-      for (int lrow = 0; lrow < batch_size_; lrow++) {
+      for (int lrow = seq_start; lrow < seq_start + num_seq_to_compute_adjusted; ++lrow) {
         if ((step + 1) == sequence_lengths[lrow]) {
-          gsl::copy(batched_internal_memory_prev_.subspan(lrow * hidden_size_, hidden_size_),
-                    final_cell_state.subspan(lrow * hidden_size_, hidden_size_));
+          gsl::span<const T> src = batched_internal_memory_prev_.subspan(lrow * hidden_size_, hidden_size_);
+          gsl::span<T> dst = final_cell_state.subspan(lrow * hidden_size_, hidden_size_);
+          gsl::copy(src, dst);
         }
         if (step == 0 && sequence_lengths[lrow] == 0) {
           auto final_cell_state_dst = final_cell_state.begin() + lrow * hidden_size_;
@@ -418,17 +345,25 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
 
       if (output_sequence) {
         // set to 0 if step >= sequence_length
-        for (int lrow = 0; lrow < batch_size_; lrow++) {
+        for (int lrow = seq_start; lrow < seq_start + num_seq_to_compute_adjusted; lrow++) {
           if (step >= min_sequence_length && step >= sequence_lengths[lrow]) {
-            auto dst = outputs.begin() + step * output_step_length + lrow * hidden_size_;
-            std::fill_n(dst, hidden_size_, (T)0);
+            auto output_lrow = outputs.begin() + step * output_step_length + lrow * hidden_size_;
+            std::fill_n(output_lrow, hidden_size_, (T)0);
           }
         }
       }
 
-      previous_state = batched_output;
+      previous_state = batched_output + seq_start * hidden_size_;
       previous_state_end = batched_output_end;
     }
+  };
+
+  if (batch_parallel_) {
+    double gemm_cost = num_seq_to_compute * hidden_size_x4 * hidden_size_;
+    double cost = max_sequence_length * (gemm_cost + num_seq_to_compute);
+    ExecuteLambdaInParallel(sequences_calculator, batch_size_, num_seq_to_compute, cost, thread_pool_);
+  } else {
+    sequences_calculator(0, thread_pool_);
   }
 
   for (int i = 0; i < batch_size_; i++) {
@@ -596,7 +531,7 @@ void UniDirectionalLstm<T>::SetNumThreads() {
   if (threads < 1)
     threads = 1;
 
-  hidden_num_threads_ = threads;
+  num_threads_ = threads;
   batch_parallel_ = false;
 
   // for readability of the below logic
@@ -606,7 +541,7 @@ void UniDirectionalLstm<T>::SetNumThreads() {
   // parallelize by partitioning the batch rows
   if (num_rows > 4 || (num_rows >= 2 && num_columns <= 256)) {
     batch_parallel_ = true;
-    VLOGS(logger_, 1) << "Hidden Threads : " << hidden_num_threads_;
+    VLOGS(logger_, 1) << "Hidden Threads : " << num_threads_;
   }
 }
 
