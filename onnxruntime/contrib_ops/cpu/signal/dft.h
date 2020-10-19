@@ -5,18 +5,19 @@ namespace onnxruntime {
 namespace contrib {
 
 class DFT final : public OpKernel {
-  int64_t signal_ndim_ = 1;
+  bool is_onesided_ = true;
  public:
-
   explicit DFT(const OpKernelInfo& info) : OpKernel(info) {
+    is_onesided_ = info.GetAttrOrDefault<int64_t>("onesided", 1);
   }
   Status Compute(OpKernelContext* ctx) const override;
 };
 
 class IDFT final : public OpKernel {
-  int64_t signal_ndim_ = 1;
+  bool is_onesided_ = true;
  public:
   explicit IDFT(const OpKernelInfo& info) : OpKernel(info) {
+    is_onesided_ = info.GetAttrOrDefault<int64_t>("onesided", 1);
   }
   Status Compute(OpKernelContext* ctx) const override;
 };

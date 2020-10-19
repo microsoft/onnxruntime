@@ -49,41 +49,44 @@ void RegisterSignalSchemas() {
             "Values can be 1, 2 or 3.",
             AttributeProto::AttributeType::AttributeProto_AttributeType_INT,
             static_cast<int64_t>(1))
+      .Attr("onesided",
+            "If True (default), only values for half of the fft size are returned because the real-to-complex Fourier transform satisfies the conjugate symmetry."
+            "The output tensor will return the first floor(n_fft/2) + 1 values from the DFT."
+            "Values can be 0 or 1.",
+            AttributeProto::AttributeType::AttributeProto_AttributeType_INT,
+            static_cast<int64_t>(1))
       .Input(0,
           "input",
-          "For complex input, the tensor should have one of the following shapes:" 
-          "1) signal_ndim = 1 : [batch_idx][Dim1][2]" 
-          "2) signal_ndim = 2 : [batch_idx][Dim1][Dim2][2]" 
-          "3) signal_ndim = 3 : [batch_idx][Dim1][Dim2][Dim3][2]" 
-          "representing the real and imaginary components of complex numbers, " 
-          "and the tensor should have signal_ndim + 1 dimensions." 
-          "For real input, the tensor should have one of the following shapes:" 
-          "1) signal_ndim = 1 : [batch_idx][Dim1]" 
-          "2) signal_ndim = 2 : [batch_idx][Dim1][Dim2]" 
-          "3) signal_ndim = 3 : [batch_idx][Dim1][Dim2][Dim3]" 
-          "and the tensor should have signal_ndim + 1 dimensions." 
+          "For complex input, the following shape is expected: [batch_idx][n_fft][2]" 
+          "The final dimension represents the real and imaginary parts of the value."
+          "For real input, the following shape is expected: [batch_idx][n_fft]"
           "The first dimension is the batch dimension.",
           "T")
       .Output(0,
               "output",
-              "The Fourier Transform of the input vectors.,"
-              "using the same format as the input."
-              "1) signal_ndim = 1 : [batch_idx][Dim1][2]" 
-              "2) signal_ndim = 2 : [batch_idx][Dim1][Dim2][2]" 
-              "3) signal_ndim = 3 : [batch_idx][Dim1][Dim2][Dim3][2]",
+              "The Fourier Transform of the input vector."
+              "If onesided is 1, [batch_idx][floor(n_fft/2)+1][2]" 
+              "If onesided is 0, [batch_idx][n_fft][2]",
               "T")
       .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
         size_t ndim = 1;
-        auto attr_proto = ctx.getAttribute("signal_ndim");
+
+        bool is_onesided = true;
+        auto attr_proto = ctx.getAttribute("onesided");
         if (attr_proto && attr_proto->has_i()) {
-          ndim = static_cast<size_t>(attr_proto->i());
+          is_onesided = static_cast<bool>(attr_proto->i());
         }
 
         if (ctx.getInputType(0)->tensor_type().has_shape()) {
           auto& input_shape = getInputShape(ctx, 0);
           ONNX_NAMESPACE::TensorShapeProto result_shape = input_shape;
+
+          if (is_onesided) {
+            auto n_fft = input_shape.dim(1).dim_value();
+            result_shape.mutable_dim(1)->set_dim_value(static_cast<int64_t>(std::floor(n_fft / 2.f) + 1));
+          }
 
           auto dim_size = input_shape.dim_size();
           if (dim_size == ndim + 1) {                  // real input
@@ -91,7 +94,7 @@ void RegisterSignalSchemas() {
           } else if (dim_size == ndim + 2) {           // complex input, do nothing
           } else {
             fail_shape_inference(
-                "the input_shape must have 1 + signal_ndim dimensions for real inputs, or 2 + signal_ndim dimensions for complex input.")
+                "the input_shape must [batch_idx][n_fft] for real values or [batch_idx][n_fft][2] for complex values.")
           }
           updateOutputShape(ctx, 0, result_shape);
         }
@@ -151,6 +154,12 @@ void RegisterSignalSchemas() {
       .Attr("signal_ndim",
             "The number of dimension of the input signal."
             "Values can be 1, 2 or 3.",
+            AttributeProto::AttributeType::AttributeProto_AttributeType_INT,
+            static_cast<int64_t>(1))
+      .Attr("onesided",
+            "If True (default), only values for half of the fft size are returned because the real-to-complex Fourier transform satisfies the conjugate symmetry."
+            "The output tensor will return the first floor(n_fft/2) + 1 values from the DFT."
+            "Values can be 0 or 1.",
             AttributeProto::AttributeType::AttributeProto_AttributeType_INT,
             static_cast<int64_t>(1))
       .Input(0,

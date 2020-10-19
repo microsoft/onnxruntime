@@ -122,9 +122,15 @@ STDAPI DllGetExperimentalActivationFactory(void* classId, void** factory) noexce
 }
 
 STDAPI DllGetActivationFactory(HSTRING classId, void** factory) {
-  auto ret = WINRT_GetActivationFactory(classId, factory);
-  if (ret != 0)
+  UINT32 length;
+  auto class_id = WindowsGetStringRawBuffer(classId, &length); 
+  wchar_t prefix[] = L"Microsoft.AI.MachineLearning.Experimental";
+  auto size = _countof(prefix) - 1;
+  if (_wcsnicmp(class_id, prefix, size) == 0) {
     return DllGetExperimentalActivationFactory(classId, factory);
+  } else {
+    return WINRT_GetActivationFactory(classId, factory);
+  }
 
   return 0;
 }

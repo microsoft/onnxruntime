@@ -75,7 +75,7 @@ static T compute_angular_velocity(size_t number_of_samples, bool inverse) {
 }
 
 template <typename T, typename U>
-static Status fft_radix2(OpKernelContext* ctx, size_t batch_idx, const Tensor* X, Tensor* Y, bool inverse) {
+static Status fft_radix2(OpKernelContext* ctx, size_t batch_idx, const Tensor* X, Tensor* Y, bool is_onesided, bool inverse) {
   // Get shape and significant bits
   const auto& X_shape = X->Shape();
   size_t number_of_samples = static_cast<size_t>(X_shape[1]);
@@ -83,7 +83,15 @@ static Status fft_radix2(OpKernelContext* ctx, size_t batch_idx, const Tensor* X
 
   // Get data
   auto* X_data = const_cast<U*>(reinterpret_cast<const U*>(X->DataRaw())) + (batch_idx * number_of_samples);
-  auto* Y_data = reinterpret_cast<std::complex<T>*>(Y->MutableDataRaw()) + (batch_idx * number_of_samples);
+
+  std::unique_ptr<std::complex<T>[]> temp_output = nullptr;
+  std::complex<T>* Y_data;
+  if (is_onesided) {
+    temp_output = std::unique_ptr<std::complex<T>[]>(new std::complex<T>[number_of_samples]);
+    Y_data = temp_output.get();
+  } else {
+    Y_data = reinterpret_cast<std::complex<T>*>(Y->MutableDataRaw()) + (batch_idx * number_of_samples);
+  }
 
   auto angular_velocity = compute_angular_velocity<T>(number_of_samples, inverse);
 
@@ -140,6 +148,13 @@ static Status fft_radix2(OpKernelContext* ctx, size_t batch_idx, const Tensor* X
     }
   }
 
+  if (is_onesided) {
+    const auto& Y_shape = Y->Shape();
+    size_t n_fft = static_cast<size_t>(Y_shape[1]);
+    auto destination = reinterpret_cast<std::complex<T>*>(Y->MutableDataRaw()) + (batch_idx * n_fft);
+    memcpy(destination, Y_data, sizeof(std::complex<T>) * n_fft);
+  }
+
   return Status::OK();
 }
 
@@ -148,14 +163,16 @@ static Status dft_naive(size_t batch_idx, const Tensor* X, Tensor* Y, bool inver
   // Get shape and significant bits
   const auto& X_shape = X->Shape();
   size_t number_of_samples = static_cast<size_t>(X_shape[1]);
+  const auto& Y_shape = Y->Shape();
+  size_t n_fft = static_cast<size_t>(Y_shape[1]);
 
   // Get data
   auto* X_data = const_cast<U*>(reinterpret_cast<const U*>(X->DataRaw())) + (batch_idx * number_of_samples);
-  auto* Y_data = reinterpret_cast<std::complex<T>*>(Y->MutableDataRaw()) + (batch_idx * number_of_samples);
+  auto* Y_data = reinterpret_cast<std::complex<T>*>(Y->MutableDataRaw()) + (batch_idx * n_fft);
 
   auto angular_velocity = compute_angular_velocity<T>(number_of_samples, inverse);
 
-  for (int i = 0; i < number_of_samples; i++) {
+  for (int i = 0; i < n_fft; i++) {
     std::complex<T>& out = *(Y_data + i);
     out.real(0);
     out.imag(0);
@@ -175,7 +192,7 @@ static Status dft_naive(size_t batch_idx, const Tensor* X, Tensor* Y, bool inver
 }
 
 template <typename T, typename U>
-static Status dft(OpKernelContext* ctx, const Tensor* X, Tensor* Y, bool inverse) {
+static Status dft(OpKernelContext* ctx, const Tensor* X, Tensor* Y, bool is_onesided, bool inverse) {
   // Get shape and significant bits
   const auto& X_shape = X->Shape();
   size_t number_of_batches = static_cast<size_t>(X_shape[0]);
@@ -186,7 +203,7 @@ static Status dft(OpKernelContext* ctx, const Tensor* X, Tensor* Y, bool inverse
   // radix 2 fft
   for (size_t i = 0; i < number_of_batches; i++) {
     if (is_power_of_2(number_of_samples)) {
-      status = fft_radix2<T, U>(ctx, i, X, Y, inverse);
+      status = fft_radix2<T, U>(ctx, i, X, Y, is_onesided, inverse);
     } else {
       status = dft_naive<T, U>(i, X, Y, inverse);
     }
@@ -198,42 +215,32 @@ static Status dft(OpKernelContext* ctx, const Tensor* X, Tensor* Y, bool inverse
   return status;
 }
 
-static Status dft(OpKernelContext* ctx, int64_t signal_ndim, bool inverse) {
+static Status dft(OpKernelContext* ctx, bool is_onesided, bool inverse) {
   Status status;
   const auto* X = ctx->Input<Tensor>(0);
   const auto& X_shape = X->Shape();
   int64_t X_num_dims = static_cast<int64_t>(X_shape.NumDimensions());
 
   onnxruntime::TensorShape Y_shape;
-  if (signal_ndim == 1) {
-    ORT_ENFORCE(X_num_dims == 3 || X_num_dims == 2, "FFT dimension is 1D (signal_ndim=1), and so the input tensor dimension must be either [BatchIdx][NumberOfSamples][2] for complex inputs, or [BatchIdx][NumberOfSamples] for real inputs");
-    Y_shape = onnxruntime::TensorShape({X_shape[0], X_shape[1], 2});
-  } else {
-    ORT_ENFORCE(false, "Only 1D DFT is supported. signal_ndim must be 1.");
-  }
-
+  int64_t n_fft = is_onesided ? static_cast<int64_t>(std::floor(X_shape[1]/2.f) + 1) : X_shape[1];
+  Y_shape = onnxruntime::TensorShape({X_shape[0], n_fft, 2});
   auto* Y = ctx->Output(0, Y_shape);
   
-  if (signal_ndim == 1) {
-    int64_t Y_num_dims = static_cast<int64_t>(Y_shape.NumDimensions());
-    ORT_ENFORCE(Y_num_dims == 3, "FFT dimension is 1D (signal_ndim=1), and so the output tensor dimension must be [BatchIdx][NumberOfSamples][2].");
-  }
-
   MLDataType data_type = X->DataType();
   const auto element_size = data_type->Size();
   switch (element_size) {
     case sizeof(float):
       if (X_shape.NumDimensions() == 2) {
-        status = dft<float, float>(ctx, X, Y, inverse);
+        status = dft<float, float>(ctx, X, Y, is_onesided, inverse);
       } else if (X_shape.NumDimensions() == 3 && X_shape[2] == 2) {
-        status = dft<float, std::complex<float>>(ctx, X, Y, inverse);
+        status = dft<float, std::complex<float>>(ctx, X, Y, is_onesided, inverse);
       }
       break;
     case sizeof(double):
       if (X_shape.NumDimensions() == 2) {
-        status = dft<double, double>(ctx, X, Y, inverse);
+        status = dft<double, double>(ctx, X, Y, is_onesided, inverse);
       } else if (X_shape.NumDimensions() == 3 && X_shape[2] == 2) {
-        status = dft<double, std::complex<double>>(ctx, X, Y, inverse);
+        status = dft<double, std::complex<double>>(ctx, X, Y, is_onesided, inverse);
       }
       break;
     default:
@@ -243,11 +250,11 @@ static Status dft(OpKernelContext* ctx, int64_t signal_ndim, bool inverse) {
 }
 
 Status DFT::Compute(OpKernelContext* ctx) const {
-  return dft(ctx, signal_ndim_, false);
+  return dft(ctx, is_onesided_, false);
 }
 
 Status IDFT::Compute(OpKernelContext* ctx) const {
-  return dft(ctx, signal_ndim_, true);
+  return dft(ctx, is_onesided_, true);
 }
 
 Status STFT::Compute(OpKernelContext* /*ctx*/) const {

@@ -402,7 +402,8 @@ static void CloseSession()
 }
 
 static void TestSpectrogram() {
-  printf("\nTestSpectrogram\n");
+//  WINML_LOG_COMMENT("\nTestSpectrogram\n");
+
   using namespace winml_experimental;
   using Operator = winml_experimental::LearningModelOperator;
 
@@ -410,11 +411,11 @@ static void TestSpectrogram() {
   static const wchar_t MS_DOMAIN[] = L"com.microsoft";
 
   std::vector<int64_t> scalar_shape = {};
-  std::vector<int64_t> shape = {1, 32};
-  std::vector<int64_t> output_shape = {1, 32, 1};
-  std::vector<int64_t> slice_shape = {3};
-  std::vector<int64_t> input_slice_shape = {1};
-  std::vector<int64_t> mel_shape = { 32, 10 };
+  std::vector<int64_t> shape = {(int64_t)1, (int64_t)32};
+  std::vector<int64_t> output_shape = {(int64_t)1, (int64_t)16, (int64_t)1};
+  std::vector<int64_t> slice_shape = {(int64_t)3};
+  std::vector<int64_t> input_slice_shape = {(int64_t)1};
+  std::vector<int64_t> mel_shape = {(int64_t)16, (int64_t)10};
 
   // Constant initializers
 
@@ -434,7 +435,7 @@ static void TestSpectrogram() {
 
   // Mel spectrogram
   auto num_mel_bins = TensorInt64Bit::CreateFromShapeArrayAndDataArray(scalar_shape, {10});
-  auto num_spectrogram_bins = TensorInt64Bit::CreateFromShapeArrayAndDataArray(scalar_shape, {32});
+  auto num_spectrogram_bins = TensorInt64Bit::CreateFromShapeArrayAndDataArray(scalar_shape, {16});
   auto sample_rate = TensorInt64Bit::CreateFromShapeArrayAndDataArray(scalar_shape, {48000});
   auto lower_edge_hertz = TensorFloat::CreateFromShapeArrayAndDataArray(scalar_shape, {0});
   auto upper_edge_hertz = TensorFloat::CreateFromShapeArrayAndDataArray(scalar_shape, {8000});
@@ -608,8 +609,15 @@ static void TestDFT() {
   using namespace winml_experimental;
   using Operator = winml_experimental::LearningModelOperator;
 
-  std::vector<int64_t> shape = {1, 5};
-  std::vector<int64_t> output_shape = {1, 5, 2};
+  std::vector<int64_t> shape = {(int64_t)1, (int64_t)5};
+  std::vector<int64_t> output_shape = {(int64_t)1, (int64_t)5, (int64_t)2};
+
+  //bool onesided = true;
+  //if (onesided) {
+  float fft_output = std::floor(output_shape[1] / 2.f) + 1.f;
+  output_shape[1] = static_cast<int64_t>(fft_output);
+  //}
+
   auto model =
       LearningModelBuilder::Create()
           .Inputs().Add(TensorFeatureDescriptor(L"Input", L"The input time domain signal", TensorKind::Float, shape))
@@ -637,8 +645,8 @@ static void TestDFT() {
   // Check results
   auto y_tensor = result.Outputs().Lookup(L"Output").as<TensorFloat>();
   auto y_ivv = y_tensor.GetAsVectorView();
-  for (int i = 0; i < shape[0] * shape[1] * 2; i += 2) {
-    printf("%f + %fj\n", y_ivv.GetAt(i), y_ivv.GetAt(i + 1));
+  for (int i = 0; i < output_shape[0] * output_shape[1] * 2; i += 2) {
+    WINML_LOG_COMMENT((std::ostringstream() << y_ivv.GetAt(i) << " + " << y_ivv.GetAt(i + 1) << "i\n").str());
   }
 }
 
@@ -675,11 +683,11 @@ static void TestGemm() {
 }
 
 static void TestModelBuilding() {
+  TestDFT();
   TestSpectrogram();
   TestWindowFunction(L"HannWindow");
   TestWindowFunction(L"HammingWindow");
   TestWindowFunction(L"BlackmanWindow");
-  TestDFT();
   TestGemm();
 }
 
