@@ -161,8 +161,19 @@ Status BlackmanWindow::Compute(OpKernelContext* ctx) const {
 }
 
 template <typename T>
-Status create_mel_weight_matrix(Tensor* Y, int64_t num_mel_bins, int64_t num_spectrogram_bins, int64_t /*sample_rate*/, float /*lower_edge_hertz*/, float /*upper_edge_hertz*/) {
+Status create_mel_weight_matrix(Tensor* Y, int64_t num_mel_bins, int64_t num_spectrogram_bins, int64_t sample_rate, float lower_edge_hertz, float upper_edge_hertz) {
   auto* Y_data = reinterpret_cast<T*>(Y->MutableDataRaw());
+  
+  std::vector<T> frequency_bins(num_mel_bins + 2);
+
+  auto low_frequency_mel = 2595 * std::log10l(1 + lower_edge_hertz / 700));
+  auto high_frequency_mel = 2595 * std::log10l(1 + upper_edge_hertz / 700));
+  auto mel_step = (high_frequency_mel - low_frequency_mel) / mel_points.size();
+
+  for (size_t index = 0; index < mel_points.size(); index++) {
+    auto point = (700 * (10 * *(mel_step * index / 2595) - 1));
+    frequency_bins[index] = std::floor(((num_spectrogram_bins + 1) * point) / sample_rate)
+  }
 
   for (int j = 0; j < num_spectrogram_bins; j++) {
     for (int i = 0; i < num_mel_bins; i++) {

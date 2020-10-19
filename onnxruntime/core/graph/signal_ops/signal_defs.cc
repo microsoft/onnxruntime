@@ -50,17 +50,27 @@ void RegisterSignalSchemas() {
             AttributeProto::AttributeType::AttributeProto_AttributeType_INT,
             static_cast<int64_t>(1))
       .Input(0,
-             "input",
-             "A complex signal of dimension signal_ndim."
-             "The last dimension of the tensor should be 2,"
-             "representing the real and imaginary components of complex numbers,"
-             "and should have at least signal_ndim + 2 dimensions."
-             "The first dimension is the batch dimension.",
-             "T")
+          "input",
+          "For complex input, the tensor should have one of the following shapes:" 
+          "1) signal_ndim = 1 : [batch_idx][Dim1][2]" 
+          "2) signal_ndim = 2 : [batch_idx][Dim1][Dim2][2]" 
+          "3) signal_ndim = 3 : [batch_idx][Dim1][Dim2][Dim3][2]" 
+          "representing the real and imaginary components of complex numbers, " 
+          "and the tensor should have signal_ndim + 1 dimensions." 
+          "For real input, the tensor should have one of the following shapes:" 
+          "1) signal_ndim = 1 : [batch_idx][Dim1]" 
+          "2) signal_ndim = 2 : [batch_idx][Dim1][Dim2]" 
+          "3) signal_ndim = 3 : [batch_idx][Dim1][Dim2][Dim3]" 
+          "and the tensor should have signal_ndim + 1 dimensions." 
+          "The first dimension is the batch dimension.",
+          "T")
       .Output(0,
               "output",
-              "The fourier transform of the input vector,"
-              "using the same format as the input.",
+              "The Fourier Transform of the input vectors.,"
+              "using the same format as the input."
+              "1) signal_ndim = 1 : [batch_idx][Dim1][2]" 
+              "2) signal_ndim = 2 : [batch_idx][Dim1][Dim2][2]" 
+              "3) signal_ndim = 3 : [batch_idx][Dim1][Dim2][Dim3][2]",
               "T")
       .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
@@ -150,13 +160,27 @@ void RegisterSignalSchemas() {
              "representing the real and imaginary components of complex numbers,"
              "and should have at least signal_ndim + 2 dimensions."
              "The first dimension is the batch dimension.",
-             "T")
+             "T1")
+      .Input(1,
+             "window",
+             "A tensor representing the window that will be slid over the input signal.",
+             "T1",
+             OpSchema::FormalParameterOption::Optional)
+      .Input(2,
+             "hop_length",
+             "The number of samples to step between successive DFTs.",
+             "T2")
+      .Input(3,
+             "dft_length",
+             "The number of samples to consider in the DFTs.",
+             "T2")
       .Output(0,
               "output",
-              "The fourier transform of the input vector,"
+              "The inverse fourier transform of the input vector,"
               "using the same format as the input.",
-              "T")
-      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "");
+              "T1")
+      .TypeConstraint("T1", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "")
+      .TypeConstraint("T2", {"tensor(int64)"}, "");
 
   MS_SIGNAL_OPERATOR_SCHEMA(ISTFT)
       .SetDomain(kMSDomain)
@@ -174,13 +198,27 @@ void RegisterSignalSchemas() {
              "representing the real and imaginary components of complex numbers,"
              "and should have at least signal_ndim + 2 dimensions."
              "The first dimension is the batch dimension.",
-             "T")
+             "T1")
+      .Input(1,
+             "window",
+             "A tensor representing the window that will be slid over the input signal.",
+             "T1",
+             OpSchema::FormalParameterOption::Optional)
+      .Input(2,
+             "hop_length",
+             "The number of samples to step between successive DFTs.",
+             "T2")
+      .Input(3,
+             "dft_length",
+             "The number of samples to consider in the DFTs.",
+             "T2")
       .Output(0,
               "output",
               "The inverse fourier transform of the input vector,"
               "using the same format as the input.",
-              "T")
-      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "");
+              "T1")
+      .TypeConstraint("T1", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "")
+      .TypeConstraint("T2", {"tensor(int64)"}, "");
 
   // Window Functions
   MS_SIGNAL_OPERATOR_SCHEMA(HannWindow)
