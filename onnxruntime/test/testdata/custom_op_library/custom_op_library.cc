@@ -11,7 +11,7 @@
 static const char* c_OpDomain = "test.customop";
 
 struct OrtCustomOpDomainDeleter {
-  OrtCustomOpDomainDeleter(const OrtApi* ort_api) {
+  explicit OrtCustomOpDomainDeleter(const OrtApi* ort_api) {
     ort_api_ = ort_api;
   }
   void operator()(OrtCustomOpDomain* domain) const {
