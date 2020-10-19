@@ -1,13 +1,13 @@
 # Contributing to Windows ML
 
-Window Machine Learning is a high-performance, reliable API for deploying hardware-accelerated ML inferences on Windows devices. Please visit the [Windows ML documentation](https://docs.microsoft.com/en-us/windows/ai/windows-ml/) to learn more about Windows Machine Learning. 
+Window Machine Learning is a high-performance, reliable API for deploying hardware-accelerated ML inferences on Windows devices. Please visit the [Windows ML documentation](https://docs.microsoft.com/en-us/windows/ai/windows-ml/) to learn more about Windows ML. 
 
 
 ## Windows ML Base Principles
 
 **We design and optimize for all Windows devices.**
   
-  Our goal is to provide developers with a platform that enables new experiences that runs well on all Windows devices. Our design drives innovation in the DirectX ecosystem through DirectML and gives developers the confidence that their applications will work for all Windows customers.
+  Our goal is to provide developers with a platform that enables new experiences that run well on all Windows devices. Our design drives innovation in the DirectX ecosystem through DirectML and gives developers the confidence that their applications will work for all Windows customers.
 
 **We maintain and curate the Windows ML APIs.**
     
@@ -19,19 +19,14 @@ Window Machine Learning is a high-performance, reliable API for deploying hardwa
 
 ## Keeping the bar high
 
-We support community contribution to Windows ML based on our principles to enhance user experience on Windows. While we encourage everyone to contribute to Windows ML, the Windows ML team will keep the bar for the acceptance high. Help us to do so by following the recommendations bellow.
+We support community contribution to Windows ML based on our principles to enhance user experience on Windows. While we encourage everyone to contribute to Windows ML, the Windows ML team will keep the bar for the acceptance high. Help us to do so by following the recommendations below.
   * The feature request is aligned with the Windows ML base principles. 
-  * The feature request addresses the real existing or future user problems.
+  * The feature request addresses an existing or future user problem.
   * The feature request focuses on the enhancement of user experience and benefits a meaningful number of users. 
   
-## When there is no need in feature request
-
-  * When the required change is fixing a bug in Windows ML APIs. In this case, please fill the bug/performance issue request. 
-  * When the required change resulted from the existing and ongoing communication with Windows ML partners.
-  * When the required change is planned to be addressed by the Windows ML team.
-
+In cases when the required change is fixing a bug in Windows ML APIs, please fill the [bug/performance issue request](https://github.com/microsoft/onnxruntime/issues/new/choose) rather then feature request. 
 
 ## Start your feature request
 
-If you like to contribute to Windows ML and engage with the Windows ML community by getting feedback from the stakeholders and ML experts, please open a new feature request in the [issue tracker](https://github.com/microsoft/onnxruntime/issues). 
+If you like to contribute to Windows ML and engage with the Windows ML community by getting feedback from the stakeholders and ML experts, please review to the contributing [process details](https://github.com/microsoft/onnxruntime/blob/master/CONTRIBUTING.md) and submit a new feature request [here](https://github.com/microsoft/onnxruntime/issues/new/choose). 
 
