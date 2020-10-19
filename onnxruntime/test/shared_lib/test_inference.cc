@@ -170,8 +170,7 @@ TEST_P(CApiTestWithProvider, simple) {
   std::vector<int64_t> expected_dims_y = {3, 2};
   std::vector<float> expected_values_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
 
-  TestInference<PATH_TYPE, float>(*ort_env, MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, GetParam(),
-                                  nullptr, nullptr);
+  TestInference<PATH_TYPE, float>(*ort_env, MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, GetParam(), nullptr, nullptr);
 }
 
 TEST(CApiTest, dim_param) {
@@ -296,11 +295,9 @@ TEST(CApiTest, custom_op_handler) {
   // It is enough to test for successful session creation because if the custom node wasn't assigned an EP,
   // the session creation would fail. Since the custom node is only tied to the CUDA EP (in CUDA-enabled builds),
   // if the session creation succeeds, it is assumed that the node got assigned to the CUDA EP.
-  TestInference<PATH_TYPE, float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1,
-                                  custom_op_domain, nullptr, nullptr, true);
+  TestInference<PATH_TYPE, float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1, custom_op_domain, nullptr, nullptr, true);
 #else
-  TestInference<PATH_TYPE, float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0,
-                                  custom_op_domain, nullptr);
+  TestInference<PATH_TYPE, float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, custom_op_domain, nullptr);
 #endif
 }
 
@@ -423,8 +420,7 @@ TEST(CApiTest, test_pyop) {
   input.values = {1.0f, 2.0f, 3.0f, 4.0f};
   std::vector<int64_t> expected_dims_y = {2, 2};
   std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f};
-  TestInference<PATH_TYPE, float>(*ort_env, PYOP_FLOAT_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y,
-                                  0, nullptr, nullptr);
+  TestInference<PATH_TYPE, float>(*ort_env, PYOP_FLOAT_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, nullptr, nullptr);
 }
 
 TEST(CApiTest, test_pyop_multi) {
@@ -436,8 +432,7 @@ TEST(CApiTest, test_pyop_multi) {
   input.values = {1.0f, 2.0f, 3.0f, 4.0f};
   std::vector<int64_t> expected_dims_y = {2, 2};
   std::vector<float> expected_values_y = {8.0f, 16.0f, 24.0f, 32.0f};
-  TestInference<PATH_TYPE, float>(*ort_env, PYOP_MULTI_MODEL_URI, inputs, "Z", expected_dims_y, expected_values_y,
-                                  0, nullptr, nullptr);
+  TestInference<PATH_TYPE, float>(*ort_env, PYOP_MULTI_MODEL_URI, inputs, "Z", expected_dims_y, expected_values_y, 0, nullptr, nullptr);
 }
 
 TEST(CApiTest, test_pyop_kwarg) {
@@ -449,8 +444,7 @@ TEST(CApiTest, test_pyop_kwarg) {
   input.values = {1.0f, 2.0f, 3.0f, 4.0f};
   std::vector<int64_t> expected_dims_y = {2, 2};
   std::vector<float> expected_values_y = {25.0f, 50.0f, 75.0f, 100.0f};
-  TestInference<PATH_TYPE, float>(*ort_env, PYOP_KWARG_MODEL_URI, inputs, "Z", expected_dims_y, expected_values_y,
-                                  0, nullptr, nullptr);
+  TestInference<PATH_TYPE, float>(*ort_env, PYOP_KWARG_MODEL_URI, inputs, "Z", expected_dims_y, expected_values_y, 0, nullptr, nullptr);
 }
 #endif
 
@@ -470,8 +464,7 @@ TEST(ReducedOpsBuildTest, test_included_ops) {
   std::vector<Input> inputs = {{"X", {3}, {-1.0f, 2.0f, -3.0f}}};
   std::vector<int64_t> expected_dims_y = {1};
   std::vector<float> expected_values_y = {0.75};
-  TestInference<PATH_TYPE, float>(*ort_env, model_uri, inputs, "Y", expected_dims_y, expected_values_y, 0,
-                                  nullptr, nullptr);
+  TestInference<PATH_TYPE, float>(*ort_env, model_uri, inputs, "Y", expected_dims_y, expected_values_y, 0, nullptr, nullptr);
 }
 
 TEST(ReducedOpsBuildTest, test_excluded_ops) {
