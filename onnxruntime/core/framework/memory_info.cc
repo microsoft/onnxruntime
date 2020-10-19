@@ -256,7 +256,7 @@ const std::vector<std::string> MemoryInfo::MemoryInfoProfile::color_names = {
     "cq_build_attempt_failed",
 };
 
-void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name, const size_t pid, const MemoryInfo::MapType& map_type, const std::string& name_pattern, const int top_k) {
+void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name, const size_t pid, const MemoryInfo::MapType& map_type, const std::string& name_pattern, const size_t top_k) {
   // Metadata.
   std::string pid_name_internal = p_name + name_pattern;
   events.push_back(CreateMetadataEvent(pid_name_internal, pid));

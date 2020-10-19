@@ -127,8 +127,7 @@ class MemoryInfo {
     static std::string CreateMetadataEvent(const std::string& process_name, size_t process_id);
     static std::string CreateMemoryEvent(size_t pid, size_t tid, const std::string& name, size_t offset, size_t size, const std::string& color_name);
     static std::string CreateSummaryEvent(size_t pid, size_t tid, const AllocationSummary& summary, size_t size);
-    void CreateEvents(const std::string& p_name, const size_t pid, const MemoryInfo::MapType& map_type, const std::string& name_pattern, const int top_k);
-    //static void CreateCustomizedEvents(std::string name_pattern, std::vector<std::string>& events, const size_t pid, const MapType& map_type);
+    void CreateEvents(const std::string& p_name, const size_t pid, const MemoryInfo::MapType& map_type, const std::string& name_pattern, const size_t top_k);
 
     static const std::vector<std::string> color_names;
     std::vector<std::string> events;
