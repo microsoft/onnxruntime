@@ -122,7 +122,6 @@ def main():
         train(args, model, device, train_loader, optimizer, epoch)
         if args.test_batch_size > 0:
             test(model, device, test_loader)
-        optimizer.step()
 
     # Save model
     if args.save_path:
