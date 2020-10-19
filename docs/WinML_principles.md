@@ -28,5 +28,5 @@ In cases when the required change is fixing a bug in Windows ML APIs, please fil
 
 ## Start your feature request
 
-If you like to contribute to Windows ML and engage with the Windows ML community by getting feedback from the stakeholders and ML experts, please review to the contributing [process details](https://github.com/microsoft/onnxruntime/blob/master/CONTRIBUTING.md) and submit a new feature request [here](https://github.com/microsoft/onnxruntime/issues/new/choose). 
+If you'd like to contribute to Windows ML and engage with the community to get feedback, please review to the contributing [process details](https://github.com/microsoft/onnxruntime/blob/master/CONTRIBUTING.md) and submit a new feature request [here](https://github.com/microsoft/onnxruntime/issues/new/choose). 
 
