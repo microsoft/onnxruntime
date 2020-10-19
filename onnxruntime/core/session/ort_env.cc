@@ -10,6 +10,7 @@
 #include "core/session/environment.h"
 #include "core/session/allocator_impl.h"
 #include "core/common/logging/logging.h"
+#include "core/framework/provider_shutdown.h"
 #ifdef __ANDROID__
 #include "core/platform/android/logging/android_log_sink.h"
 #else
@@ -18,10 +19,6 @@
 
 using namespace onnxruntime;
 using namespace onnxruntime::logging;
-
-namespace onnxruntime {
-void UnloadSharedProviders();
-}
 
 OrtEnv* OrtEnv::p_instance_ = nullptr;
 int OrtEnv::ref_count_ = 0;
