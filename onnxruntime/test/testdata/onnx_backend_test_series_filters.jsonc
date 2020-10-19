@@ -119,7 +119,8 @@
         "^test_unsqueeze_negative_axes_cpu", 
         "^test_unsqueeze_three_axes_cpu", 
         "^test_unsqueeze_two_axes_cpu", 
-        "^test_unsqueeze_unsorted_axes_cpu"
+        "^test_unsqueeze_unsorted_axes_cpu",
+        "^test_convtranspose_pads" // Temporary disable this test. Needs bug fix in onnx shape inference
     ],
     "current_failing_tests_x86": [
         "^test_vgg19",
