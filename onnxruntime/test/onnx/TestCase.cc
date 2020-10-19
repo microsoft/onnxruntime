@@ -517,6 +517,7 @@ void OnnxTestCase::LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b,
             return true;
           });
 
+  /* LOOP
   if (is_input) {
     SortTensorFileNames(test_data_pb_files);
     test_sequence_data_pb_files.push_back(test_data_pb_files[2]);
@@ -533,6 +534,20 @@ void OnnxTestCase::LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b,
   std::vector<ONNX_NAMESPACE::SequenceProto> test_sequence_data_pbs;
   LoadSequenceTensors(test_sequence_data_pb_files, &test_sequence_data_pbs);
   ConvertSequenceTestData(test_sequence_data_pbs, b, is_input, name_data_map);
+  */
+
+  // IF test
+  if (is_input) {
+    SortTensorFileNames(test_data_pb_files);
+    std::vector<ONNX_NAMESPACE::TensorProto> test_data_pbs;
+    LoadTensors(test_data_pb_files, &test_data_pbs);
+    ConvertTestData(test_data_pbs, b, is_input, name_data_map);
+  } else {
+    SortTensorFileNames(test_data_pb_files);
+    std::vector<ONNX_NAMESPACE::SequenceProto> sequence_test_data_pbs;
+    LoadSequenceTensors(test_data_pb_files, &sequence_test_data_pbs);
+    ConvertSequenceTestData(sequence_test_data_pbs, b, is_input, name_data_map);
+  }
 }
 
 void OnnxTestCase::ConvertTestData(const std::vector<ONNX_NAMESPACE::TensorProto>& test_data_pbs,

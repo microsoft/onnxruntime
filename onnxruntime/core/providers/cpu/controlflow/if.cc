@@ -278,28 +278,40 @@ Status IfImpl::AllocateOutputTensors() {
   int index = 0;
 
   for (auto& graph_output : info_.subgraph.GetOutputs()) {
-    auto* graph_output_shape = graph_output->Shape();
-    bool symbolic_dim_in_shape = false;
+    const auto* graph_output_type = graph_output->TypeAsProto();
 
-    if (graph_output_shape) {
-      TensorShape output_shape = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*graph_output_shape);
+    if (graph_output_type->has_tensor_type()) {
+      auto* graph_output_shape = graph_output->Shape();
+      bool symbolic_dim_in_shape = false;
 
-      // if size < 0 we have a symbolic dimension and need to use a temporary OrtValue in the subgraph execution
-      if (output_shape.Size() < 0) {
-        symbolic_dim_in_shape = true;
-      } else {
-        auto* tensor = context_.Output(index, output_shape);
+      if (graph_output_shape) {
+        TensorShape output_shape = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*graph_output_shape);
 
-        if (!tensor)
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create output tensor for ", graph_output->Name());
+        // if size < 0 we have a symbolic dimension and need to use a temporary OrtValue in the subgraph execution
+        if (output_shape.Size() < 0) {
+          symbolic_dim_in_shape = true;
+        } else {
+          auto* tensor = context_.Output(index, output_shape);
 
-        outputs_.push_back({AllocationType::IfOutput, *context_.GetOutputMLValue(index)});
+          if (!tensor)
+            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create output tensor for ", graph_output->Name());
+
+          outputs_.push_back({AllocationType::IfOutput, *context_.GetOutputMLValue(index)});
+        }
       }
-    }
 
-    if (!graph_output_shape || symbolic_dim_in_shape) {
-      // we still need a value to put in the feeds we give to the execution frame, so just use an empty MLValue
-      outputs_.push_back({AllocationType::Delayed, {}});
+      if (!graph_output_shape || symbolic_dim_in_shape) {
+        // we still need a value to put in the feeds we give to the execution frame, so just use an empty MLValue
+        outputs_.push_back({AllocationType::Delayed, {}});
+      }
+    } else if (graph_output_type->has_sequence_type()) {
+      auto* seq_tensor = context_.Output<TensorSeq>(index);
+      if (!seq_tensor)
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create output tensor for ", graph_output->Name());
+      outputs_.push_back({AllocationType::IfOutput, *context_.GetOutputMLValue(index)});
+    } else {
+      // Shouldn't hit this
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Only tensors or sequence of tensors are suppported");
     }
 
     ++index;
