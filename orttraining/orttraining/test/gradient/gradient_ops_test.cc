@@ -1709,57 +1709,6 @@ TEST(GradientCheckerTest, GatherNDGrad_unique_float_data) {
   }
 }
 
-TEST(GradientCheckerTest, GatherElementsGradWithDuplicateUpdate) {
-  float max_error;
-  GradientChecker<float, float, float> gradient_checker;
-  OpDef op_def{"GatherElements", kOnnxDomain, 11};
-
-  TensorInfo data_info({3, 3}, true);
-  TensorInfo indice_info({2, 3}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
-  std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6, 7, 8, 9}, {1, 2, 0, 2, 0, 0}};
-
-  TensorInfo y_info({2, 3}, true);
-  int64_t axis = 0;
-
-  gradient_checker.ComputeGradientError(op_def, {data_info, indice_info}, {y_info}, &max_error, x_datas,
-                                        {MakeAttribute("axis", axis)});
-  EXPECT_IS_TINY(max_error);
-}
-
-TEST(GradientCheckerTest, GatherElementsGradWithoutDuplicateUpdate) {
-  float max_error;
-  GradientChecker<float, float, float> gradient_checker;
-  OpDef op_def{"GatherElements", kOnnxDomain, 11};
-
-  TensorInfo data_info({3, 3}, true);
-  TensorInfo indice_info({2, 3}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
-  std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6, 7, 8, 9}, {1, 1, 1, 2, 2, 2}};
-
-  TensorInfo y_info({2, 3}, true);
-  int64_t axis = 0;
-
-  gradient_checker.ComputeGradientError(op_def, {data_info, indice_info}, {y_info}, &max_error, x_datas,
-                                        {MakeAttribute("axis", axis)});
-  EXPECT_IS_TINY(max_error);
-}
-
-TEST(GradientCheckerTest, GatherElementsGradAxisWithDuplicateUpdate) {
-  float max_error;
-  GradientChecker<float, float, float> gradient_checker;
-  OpDef op_def{"GatherElements", kOnnxDomain, 11};
-
-  TensorInfo data_info({3, 3}, true);
-  TensorInfo indice_info({2, 3}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
-  std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6, 7, 8, 9}, {1, 1, 1, 1, 1, 1}};
-
-  TensorInfo y_info({2, 3}, true);
-  int64_t axis = 1;
-
-  gradient_checker.ComputeGradientError(op_def, {data_info, indice_info}, {y_info}, &max_error, x_datas,
-                                        {MakeAttribute("axis", axis)});
-  EXPECT_IS_TINY(max_error);
-}
-
 TEST(GradientCheckerTest, LayerNormGrad) {
   GradientChecker<float, float, float> gradient_checker;
   {
@@ -2006,6 +1955,68 @@ TEST(GradientCheckerTest, ExpandGrad) {
     TensorInfo y_info({4, 5, 2, 3}, true);
 
     gradient_checker.ComputeGradientError(op_def, {x_info, shape_info}, {y_info}, &max_error, x_datas, attributes, true, true);
+    EXPECT_IS_TINY(max_error);
+  }
+}
+
+TEST(GradientCheckerTest, GatherElementsGrad) {
+  float max_error;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"GatherElements", kOnnxDomain, 11};
+
+  {
+    // GatherElementsGradWithDuplicateUpdate
+    TensorInfo data_info({3, 3}, true);
+    TensorInfo indice_info({2, 3}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6, 7, 8, 9}, {1, 2, 0, 2, 0, 0}};
+
+    TensorInfo y_info({2, 3}, true);
+    int64_t axis = 0;
+
+    gradient_checker.ComputeGradientError(op_def, {data_info, indice_info}, {y_info}, &max_error, x_datas,
+                                          {MakeAttribute("axis", axis)});
+    EXPECT_IS_TINY(max_error);
+  }
+
+  {
+    // GatherElementsGradWithoutDuplicateUpdate
+    TensorInfo data_info({3, 3}, true);
+    TensorInfo indice_info({2, 3}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6, 7, 8, 9}, {1, 1, 1, 2, 2, 2}};
+
+    TensorInfo y_info({2, 3}, true);
+    int64_t axis = 0;
+
+    gradient_checker.ComputeGradientError(op_def, {data_info, indice_info}, {y_info}, &max_error, x_datas,
+                                          {MakeAttribute("axis", axis)});
+    EXPECT_IS_TINY(max_error);
+  }
+
+  {
+    // GatherElementsGradAxisWithDuplicateUpdate
+    TensorInfo data_info({3, 3}, true);
+    TensorInfo indice_info({2, 3}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6, 7, 8, 9}, {1, 1, 1, 1, 1, 1}};
+
+    TensorInfo y_info({2, 3}, true);
+    int64_t axis = 1;
+
+    gradient_checker.ComputeGradientError(op_def, {data_info, indice_info}, {y_info}, &max_error, x_datas,
+                                          {MakeAttribute("axis", axis)});
+    EXPECT_IS_TINY(max_error);
+  }
+  
+  {
+    // GatherElementsGradWithAxisInMiddle
+    TensorInfo data_info({2, 2, 2}, true);
+    TensorInfo indice_info({2, 1, 2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6, 7, 8}, {1, 1, 1, 1}};
+
+    TensorInfo y_info({2, 1, 2}, true);
+    int64_t axis = 1;
+
+    gradient_checker.ComputeGradientError(op_def, {data_info, indice_info}, {y_info}, &max_error, x_datas,
+                                          {MakeAttribute("axis", axis)});
     EXPECT_IS_TINY(max_error);
   }
 }

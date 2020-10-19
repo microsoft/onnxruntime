@@ -9,22 +9,16 @@
 namespace onnxruntime {
 namespace contrib {
 
-template <typename T>
-class TopKGrad final : public OpKernel {
+class GatherElementsGrad final : public OpKernel {
  public:
-  TopKGrad(const OpKernelInfo& info) : OpKernel(info) {
-    int64_t tmp_axis;
-    if (info.GetAttr<int64_t>("axis", &tmp_axis).IsOK()) {
-      axis_ = tmp_axis;
-    }
+  GatherElementsGrad(const OpKernelInfo& info) : OpKernel(info) {
+    info.GetAttrOrDefault("axis", &axis_, static_cast<int64_t>(0));
   }
 
   Status Compute(OpKernelContext* context) const override;
 
  private:
-  Status ComputeImpl(const Tensor& indices, const Tensor& grad, Tensor& output) const;
-
-  int64_t axis_ = -1;
+  int64_t axis_;
 };
 
 }  // namespace contrib
