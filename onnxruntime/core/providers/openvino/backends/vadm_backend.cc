@@ -62,6 +62,7 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   int i = 0;
   if(subgraph_context_.is_constant)
     return;
+  std::string& hw_target = (global_context_.device_id != "") ? global_context_.device_id : global_context_.device_type;
   // Loading model to the plugin
   //If graph is fully supported and batching is enabled, load the network onto all VPU's and infer
   std::vector<InferenceEngine::ExecutableNetwork> exe_networks;
@@ -74,7 +75,7 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
       config[VPU_HDDL_CONFIG_KEY(DEVICE_TAG)] = global_context_.deviceTags[j];
     #endif
       try {
-        exe_network = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, "HDDL", config);
+        exe_network = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, hw_target, config);
       } catch (InferenceEngine::details::InferenceEngineException e) {
         ORT_THROW(log_tag + " Exception while Loading Network for graph: " + subgraph_context_.subgraph_name + e.what());
       } catch (...) {
@@ -108,7 +109,7 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   #endif
     InferenceEngine::ExecutableNetwork exe_network;
     try {
-      exe_network = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, "HDDL", config);
+      exe_network = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, hw_target, config);
     } catch (InferenceEngine::details::InferenceEngineException e) {
       ORT_THROW(log_tag + " Exception while Loading Network for graph: " + subgraph_context_.subgraph_name + e.what());
     } catch (...) {
