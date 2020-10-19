@@ -89,6 +89,8 @@ static void PadAxisConstant(T* output, T constant, size_t size) {
     *output = constant;
     *(output + 1) = constant;
   } else {
+    // This would be faster with SSE instructions.
+    // That would mean to have an implementation for each type (uint8, uint32, uint64).
     T* end = output + size;
     for (; output != end;)
       *output++ = constant;
