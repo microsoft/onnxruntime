@@ -11,6 +11,7 @@ endif()
 
 if (${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
   set(CMAKE_SHARED_LIBRARY_RUNTIME_C_FLAG "-Wl,-rpath,")
+  set(OUTPUT_STYLE xcode)
 endif()
 
 #If you want to verify if there is any extra line in symbols.txt, run
@@ -23,7 +24,10 @@ foreach(f ${ONNXRUNTIME_PROVIDER_NAMES})
 endforeach()
 
 add_custom_command(OUTPUT ${SYMBOL_FILE} ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c
-  COMMAND ${PYTHON_EXECUTABLE} "${REPO_ROOT}/tools/ci_build/gen_def.py" --version_file "${ONNXRUNTIME_ROOT}/../VERSION_NUMBER" --src_root "${ONNXRUNTIME_ROOT}" --config ${ONNXRUNTIME_PROVIDER_NAMES} --style=${OUTPUT_STYLE} --output ${SYMBOL_FILE} --output_source ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c
+  COMMAND ${PYTHON_EXECUTABLE} "${REPO_ROOT}/tools/ci_build/gen_def.py"
+    --version_file "${ONNXRUNTIME_ROOT}/../VERSION_NUMBER" --src_root "${ONNXRUNTIME_ROOT}"
+    --config ${ONNXRUNTIME_PROVIDER_NAMES} --style=${OUTPUT_STYLE} --output ${SYMBOL_FILE}
+    --output_source ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c
   DEPENDS ${SYMBOL_FILES}
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
@@ -72,6 +76,7 @@ if (NOT WIN32)
         INSTALL_RPATH_USE_LINK_PATH FALSE
         BUILD_WITH_INSTALL_NAME_DIR TRUE
         INSTALL_NAME_DIR @rpath)
+      set(ONNXRUNTIME_SO_LINK_FLAG " -Wl,-exported_symbols_list,${SYMBOL_FILE}")
     else()
         set_target_properties(onnxruntime PROPERTIES INSTALL_RPATH "@loader_path")
     endif()
@@ -114,6 +119,7 @@ target_link_libraries(onnxruntime PRIVATE
     onnxruntime_graph
     onnxruntime_common
     onnxruntime_mlas
+    onnxruntime_flatbuffers
     ${onnxruntime_EXTERNAL_LIBRARIES})
 
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)

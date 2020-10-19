@@ -34,7 +34,7 @@ Use `docker pull` with any of the images and tags below to pull an image and try
 | Nuphar            | mcr.microsoft.com/azureml/onnxruntime |                                       | :latest-nuphar |
 | Server            | mcr.microsoft.com/onnxruntime/server  | :v0.4.0, :v0.5.0, :v0.5.1, :v1.0.0      | :latest |
 | MIGraphX (GPU)    | mcr.microsoft.com/azureml/onnxruntime | :v0.6                                 | :latest |
-| Training ([usage](https://github.com/microsoft/onnxruntime-training-examples))| mcr.microsoft.com/azureml/onnxruntime-training | :0.1-rc1-openmpi4.0-cuda10.1-cudnn7.6-nccl2.4.8| 0.1-rc1-openmpi4.0-cuda10.1-cudnn7.6-nccl2.4.8|
+| Training ([usage](https://github.com/microsoft/onnxruntime-training-examples))| mcr.microsoft.com/azureml/onnxruntime-training | :0.1-rc1-openmpi4.0-cuda10.1-cudnn7.6-nccl2.4.8, :0.1-rc2-openmpi4.0-cuda10.2-cudnn7.6-nccl2.7.6, :0.1-rc3-openmpi4.0-cuda10.2-cudnn8.0-nccl2.7 | :latest |
 ---
 
 # Building and using Docker images
@@ -120,7 +120,7 @@ Therefore, ONNX RT Execution Provider for **nGraph** will be deprecated starting
 
    Retrieve your docker image in one of the following ways.
 
-    -  Choose Dockerfile.openvino as the dockerfile for building an OpenVINO 2020.4 based Docker image. Providing the docker build argument DEVICE enables the onnxruntime build for that particular device. You can also provide arguments ONNXRUNTIME_REPO and ONNXRUNTIME_BRANCH to test that particular repo and branch. Default repository is http://github.com/microsoft/onnxruntime and default branch is master.
+    -  Choose Dockerfile.openvino as the dockerfile for building an OpenVINO 2021.1 based Docker image. Providing the docker build argument DEVICE enables the onnxruntime build for that particular device. You can also provide arguments ONNXRUNTIME_REPO and ONNXRUNTIME_BRANCH to test that particular repo and branch. Default repository is http://github.com/microsoft/onnxruntime and default branch is master.
        ```
        docker build --rm -t onnxruntime --build-arg DEVICE=$DEVICE -f Dockerfile.openvino .
        ```
@@ -176,7 +176,7 @@ Therefore, ONNX RT Execution Provider for **nGraph** will be deprecated starting
 
 ### OpenVINO on VAD-M Accelerator Version
 
-1. Download OpenVINO **Full package** for version **2020.3** for Linux on host machine from [this link](https://software.intel.com/en-us/openvino-toolkit/choose-download) and install it with the help of instructions from [this link](https://docs.openvinotoolkit.org/latest/_docs_install_guides_installing_openvino_linux.html)
+1. Download OpenVINO **Full package** for version **2021.1** for Linux on host machine from [this link](https://software.intel.com/en-us/openvino-toolkit/choose-download) and install it with the help of instructions from [this link](https://docs.openvinotoolkit.org/latest/_docs_install_guides_installing_openvino_linux.html)
 
 2. Install the drivers on the host machine according to the reference in [here](https://docs.openvinotoolkit.org/latest/_docs_install_guides_installing_openvino_linux_ivad_vpu.html)
 

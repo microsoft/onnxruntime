@@ -195,6 +195,10 @@ class WindowsEnv : public Env {
     wil::unique_hfile file_handle{
         CreateFileW(file_path, FILE_READ_ATTRIBUTES, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL)};
 #endif
+    if (file_handle.get() == INVALID_HANDLE_VALUE) {
+      const int err = GetLastError();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToMBString(file_path), " fail, errcode = ", err);
+    }
     LARGE_INTEGER filesize;
     if (!GetFileSizeEx(file_handle.get(), &filesize)) {
       const int err = GetLastError();

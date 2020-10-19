@@ -114,6 +114,17 @@ Status UpsampleNearest(const T* input,
   auto CalculateInputMapping =
       [n_dim, &input_shape, &output_shape, &input_dim_factor, &scales, &roi, extrapolation_enabled, &get_original_coordinate, &get_nearest_pixel](
           std::vector<int64_t>& input_mapping, const int64_t axis) {
+        // When scale is 1.0, there is a one-to-one mapping between the dimension
+        // in the input and the output and there is no need to apply the co-ordinate
+        // transformation which should only be done when there is "resizing" required
+        if (scales[axis] == 1.0f) {
+          for (int64_t dim = 0; dim < output_shape[axis]; dim++) {
+            input_mapping[dim] = dim * input_dim_factor[axis];
+          }
+          return;
+        }
+
+        // scale != 1.0
         const int64_t input_size = input_dim_factor[0] * input_shape[0];
         for (int64_t dim = 0; dim < output_shape[axis]; dim++) {
           float original_dim = get_original_coordinate(static_cast<float>(dim), scales[axis], static_cast<float>(output_shape[axis]),
@@ -211,7 +222,7 @@ Status UpsampleNearest(const T* input,
         break;
       }
       output_dim_counter[dim_idx] = 0;
-      input_idx += input_mappings[dim_idx][0 /* output_dim_counter[dim_idx] */ ];
+      input_idx += input_mappings[dim_idx][0 /* output_dim_counter[dim_idx] */];
     }
   }
 
@@ -310,30 +321,54 @@ void UpsampleBilinear(int64_t batch_size,
                       AllocatorPtr& alloc,
                       GetOriginalCoordinateFunc get_original_coordinate) {
   std::vector<float> y_original;
-  std::vector<float> x_original;
+  y_original.reserve(output_height);
 
+  std::vector<float> x_original;
+  x_original.reserve(output_width);
+
+  // For each index in the output height and output width, cache its corresponding indices in the input
+  // while multiplying it with the input stride for that dimension (cache because we don't have to re-compute
+  // each time we come across the output width/ output height value while iterating the output image tensor
   SafeInt<size_t> idx_buffer_size = SafeInt<size_t>(2) * sizeof(int64_t) * (output_height + output_width);
+
+  // For each index in the output height and output width, cache its corresponding "weights/scales" for its
+  // corresponding indices in the input which proportionately indicates how much they will influence the final
+  // pixel value in the output
+  // (cache because we don't have to re-compute each time we come across the output width/ output height value while iterating the output image tensor
   SafeInt<size_t> scale_buffer_size = SafeInt<size_t>(2) * sizeof(float_t) * (output_height + output_width);
+
+  // Limit number of allocations to just 1
   auto inx_scale_data_buffer = alloc->Alloc(idx_buffer_size + scale_buffer_size);
   BufferUniquePtr idx_scale_data_buffer_holder(inx_scale_data_buffer, BufferDeleter(alloc));
+
+  // Get pointers to appropriate memory locations in the scratch buffer
   auto* idx_data = static_cast<int64_t*>(idx_scale_data_buffer_holder.get());
+
+  // input_width is the stride for the height dimension
   int64_t* input_width_mul_y1 = idx_data;
-  int64_t* input_width_mul_y2 = idx_data + output_height;
-  int64_t* in_x1 = idx_data + 2 * output_height;
-  int64_t* in_x2 = idx_data + 2 * output_height + output_width;
+  int64_t* input_width_mul_y2 = input_width_mul_y1 + output_height;
+
+  // stride for width is 1 (no multiplication needed)
+  int64_t* in_x1 = input_width_mul_y1 + 2 * output_height;
+  int64_t* in_x2 = in_x1 + output_width;
 
   auto* scale_data = reinterpret_cast<float*>(in_x2 + output_width);
-  float* dy1 = scale_data;
-  float* dy2 = scale_data + output_height;
-  float* dx1 = scale_data + 2 * output_height;
-  float* dx2 = scale_data + 2 * output_height + output_width;
 
+  float* dy1 = scale_data;
+  float* dy2 = dy1 + output_height;
+
+  float* dx1 = dy1 + 2 * output_height;
+  float* dx2 = dx1 + output_width;
+
+  // Start processing
   auto roi_y_start = roi.size() / 2 - 2;
   auto roi_y_end = roi.size() - 2;
   for (int64_t y = 0; y < output_height; ++y) {
-    float in_y = get_original_coordinate(static_cast<float>(y), height_scale,
-                                         static_cast<float>(output_height), static_cast<float>(input_height),
-                                         roi[roi_y_start], roi[roi_y_end]);
+    float in_y = height_scale == 1 ? static_cast<float>(y)
+                                   : get_original_coordinate(static_cast<float>(y), height_scale,
+                                                             static_cast<float>(output_height),
+                                                             static_cast<float>(input_height),
+                                                             roi[roi_y_start], roi[roi_y_end]);
     y_original.emplace_back(in_y);
     in_y = std::max(0.0f, std::min(in_y, static_cast<float>(input_height - 1)));
 
@@ -354,17 +389,20 @@ void UpsampleBilinear(int64_t batch_size,
   auto roi_x_start = roi.size() / 2 - 1;
   auto roi_x_end = roi.size() - 1;
   for (int64_t x = 0; x < output_width; ++x) {
-    float in_x = get_original_coordinate(static_cast<float>(x), width_scale,
-                                         static_cast<float>(output_width), static_cast<float>(input_width),
-                                         roi[roi_x_start], roi[roi_x_end]);
+    float in_x = width_scale == 1 ? static_cast<float>(x)
+                                  : get_original_coordinate(static_cast<float>(x),
+                                                            width_scale,
+                                                            static_cast<float>(output_width),
+                                                            static_cast<float>(input_width),
+                                                            roi[roi_x_start], roi[roi_x_end]);
     x_original.emplace_back(in_x);
     in_x = std::max(0.0f, std::min(in_x, static_cast<float>(input_width - 1)));
 
     in_x1[x] = std::min(static_cast<int64_t>(in_x), input_width - 1);
     in_x2[x] = std::min(in_x1[x] + 1, input_width - 1);
 
-    dx1[x] = std::abs(in_x - in_x1[x]);
-    dx2[x] = std::abs(in_x - in_x2[x]);
+    dx1[x] = std::fabs(in_x - in_x1[x]);
+    dx2[x] = std::fabs(in_x - in_x2[x]);
     if (in_x1[x] == in_x2[x]) {
       dx1[x] = 0.5f;
       dx2[x] = 0.5f;
@@ -384,6 +422,7 @@ void UpsampleBilinear(int64_t batch_size,
             continue;
           }
 
+          // subscript ordering in the variable - (xy)
           T X11 = Xdata[input_width_mul_y1[y] + in_x1[x]];
           T X21 = Xdata[input_width_mul_y1[y] + in_x2[x]];
           T X12 = Xdata[input_width_mul_y2[y] + in_x1[x]];
@@ -397,6 +436,198 @@ void UpsampleBilinear(int64_t batch_size,
       }
       Xdata += input_height * input_width;
       Ydata += output_width * output_height;
+    }
+  }
+}
+
+// The following method supports a 5-D input in 'Linear mode'
+// that amounts to 'Trilinear' Upsampling/Resizing in the sense that it assumes
+// the scale values for the outermost 2 dimensions are 1.
+// This is the common use-case where the 5-D input (batched multi-channel volumes)
+// is usually of shape [N, C, D, H, W] and the scales are [1.0, 1.0, depth_scale, height_scale, width_scale]
+template <typename T>
+void UpsampleTrilinear(int64_t batch_size,
+                       int64_t num_channels,
+                       int64_t input_depth,
+                       int64_t input_height,
+                       int64_t input_width,
+                       int64_t output_depth,
+                       int64_t output_height,
+                       int64_t output_width,
+                       float depth_scale,
+                       float height_scale,
+                       float width_scale,
+                       const std::vector<float>& roi,
+                       bool use_extrapolation,
+                       float extrapolation_value,
+                       const T* Xdata,
+                       T* Ydata,
+                       AllocatorPtr& alloc,
+                       GetOriginalCoordinateFunc get_original_coordinate) {
+  std::vector<float> z_original;
+  z_original.reserve(output_depth);
+
+  std::vector<float> y_original;
+  y_original.reserve(output_height);
+
+  std::vector<float> x_original;
+  x_original.reserve(output_width);
+
+  // For each index in the output height and output width, cache its corresponding indices in the input
+  // while multiplying it with the input stride for that dimension (cache because we don't have to re-compute
+  // each time we come across the output width/ output height value while iterating the output image tensor
+  SafeInt<size_t> idx_buffer_size = SafeInt<size_t>(2) * sizeof(int64_t) *
+                                    (output_depth + output_height + output_width);
+
+  // For each index in the output height and output width, cache its corresponding "weights/scales" for its
+  // corresponding indices in the input which proportionately indicates how much they will influence the final
+  // pixel value in the output
+  // (cache because we don't have to re-compute each time we come across the output width/ output height value while iterating the output image tensor
+  SafeInt<size_t> scale_buffer_size = SafeInt<size_t>(2) * sizeof(float_t) *
+                                      (output_depth + output_height + output_width);
+
+  // Limit number of allocations to just 1
+  auto inx_scale_data_buffer = alloc->Alloc(idx_buffer_size + scale_buffer_size);
+  BufferUniquePtr idx_scale_data_buffer_holder(inx_scale_data_buffer, BufferDeleter(alloc));
+
+  // Get pointers to appropriate memory locations in the scratch buffer
+  auto* idx_data = static_cast<int64_t*>(idx_scale_data_buffer_holder.get());
+
+  // input_width * input_height is the stride for the depth dimension
+  int64_t* input_height_width_mul_z1 = idx_data;
+  int64_t* input_height_width_mul_z2 = input_height_width_mul_z1 + output_depth;
+
+  // input_width is the stride for the height dimension
+  int64_t* input_width_mul_y1 = input_height_width_mul_z1 + 2 * output_depth;
+  int64_t* input_width_mul_y2 = input_width_mul_y1 + output_height;
+
+  // stride for width is 1 (no multiplication needed)
+  int64_t* in_x1 = input_width_mul_y1 + 2 * output_height;
+  int64_t* in_x2 = in_x1 + output_width;
+
+  auto* scale_data = reinterpret_cast<float*>(in_x2 + output_width);
+
+  float* dz1 = scale_data;
+  float* dz2 = dz1 + output_depth;
+
+  float* dy1 = dz1 + 2 * output_depth;
+  float* dy2 = dy1 + output_height;
+
+  float* dx1 = dy1 + 2 * output_height;
+  float* dx2 = dx1 + output_width;
+
+  // Start processing
+  auto roi_z_start = roi.size() / 2 - 3;
+  auto roi_z_end = roi.size() - 3;
+  for (int64_t z = 0; z < output_depth; ++z) {
+    float in_z = depth_scale == 1 ? static_cast<float>(z)
+                                  : get_original_coordinate(static_cast<float>(z), depth_scale,
+                                                            static_cast<float>(output_depth), static_cast<float>(input_depth),
+                                                            roi[roi_z_start], roi[roi_z_end]);
+    z_original.emplace_back(in_z);
+    in_z = std::max(0.0f, std::min(in_z, static_cast<float>(input_depth - 1)));
+
+    const int64_t in_z1 = std::min(static_cast<int64_t>(in_z), input_depth - 1);
+    const int64_t in_z2 = std::min(in_z1 + 1, input_depth - 1);
+    dz1[z] = std::fabs(in_z - in_z1);
+    dz2[z] = std::fabs(in_z - in_z2);
+
+    if (in_z1 == in_z2) {
+      dz1[z] = 0.5f;
+      dz2[z] = 0.5f;
+    }
+
+    input_height_width_mul_z1[z] = input_height * input_width * in_z1;
+    input_height_width_mul_z2[z] = input_height * input_width * in_z2;
+  }
+
+  auto roi_y_start = roi.size() / 2 - 2;
+  auto roi_y_end = roi.size() - 2;
+  for (int64_t y = 0; y < output_height; ++y) {
+    float in_y = height_scale == 1 ? static_cast<float>(y)
+                                   : get_original_coordinate(static_cast<float>(y), height_scale,
+                                                             static_cast<float>(output_height), static_cast<float>(input_height),
+                                                             roi[roi_y_start], roi[roi_y_end]);
+    y_original.emplace_back(in_y);
+    in_y = std::max(0.0f, std::min(in_y, static_cast<float>(input_height - 1)));
+
+    const int64_t in_y1 = std::min(static_cast<int64_t>(in_y), input_height - 1);
+    const int64_t in_y2 = std::min(in_y1 + 1, input_height - 1);
+    dy1[y] = std::fabs(in_y - in_y1);
+    dy2[y] = std::fabs(in_y - in_y2);
+
+    if (in_y1 == in_y2) {
+      dy1[y] = 0.5f;
+      dy2[y] = 0.5f;
+    }
+
+    input_width_mul_y1[y] = input_width * in_y1;
+    input_width_mul_y2[y] = input_width * in_y2;
+  }
+
+  auto roi_x_start = roi.size() / 2 - 1;
+  auto roi_x_end = roi.size() - 1;
+  for (int64_t x = 0; x < output_width; ++x) {
+    float in_x = width_scale == 1 ? static_cast<float>(x)
+                                  : get_original_coordinate(static_cast<float>(x), width_scale,
+                                                            static_cast<float>(output_width), static_cast<float>(input_width),
+                                                            roi[roi_x_start], roi[roi_x_end]);
+    x_original.emplace_back(in_x);
+    in_x = std::max(0.0f, std::min(in_x, static_cast<float>(input_width - 1)));
+
+    in_x1[x] = std::min(static_cast<int64_t>(in_x), input_width - 1);
+    in_x2[x] = std::min(in_x1[x] + 1, input_width - 1);
+
+    dx1[x] = std::fabs(in_x - in_x1[x]);
+    dx2[x] = std::fabs(in_x - in_x2[x]);
+    if (in_x1[x] == in_x2[x]) {
+      dx1[x] = 0.5f;
+      dx2[x] = 0.5f;
+    }
+  }
+
+  for (int64_t n = 0; n < batch_size; ++n) {
+    for (int64_t c = 0; c < num_channels; ++c) {
+      for (int64_t z = 0; z < output_depth; ++z) {
+        for (int64_t y = 0; y < output_height; ++y) {
+          for (int64_t x = 0; x < output_width; ++x) {
+            // when use_extrapolation is set and original index of x or y is out of the dim range
+            // then use extrapolation_value as the output value.
+            if (use_extrapolation &&
+                ((z_original[z] < 0 || z_original[z] > static_cast<float>(input_depth - 1)) ||
+                 (y_original[y] < 0 || y_original[y] > static_cast<float>(input_height - 1)) ||
+                 (x_original[x] < 0 || x_original[x] > static_cast<float>(input_width - 1)))) {
+              Ydata[output_width * output_height * z + output_width * y + x] =
+                  static_cast<T>(extrapolation_value);
+              continue;
+            }
+
+            // subscript ordering in the variable - (xyz)
+            T X111 = Xdata[input_height_width_mul_z1[z] + input_width_mul_y1[y] + in_x1[x]];
+            T X211 = Xdata[input_height_width_mul_z1[z] + input_width_mul_y1[y] + in_x2[x]];
+            T X121 = Xdata[input_height_width_mul_z1[z] + input_width_mul_y2[y] + in_x1[x]];
+            T X221 = Xdata[input_height_width_mul_z1[z] + input_width_mul_y2[y] + in_x2[x]];
+
+            T X112 = Xdata[input_height_width_mul_z2[z] + input_width_mul_y1[y] + in_x1[x]];
+            T X212 = Xdata[input_height_width_mul_z2[z] + input_width_mul_y1[y] + in_x2[x]];
+            T X122 = Xdata[input_height_width_mul_z2[z] + input_width_mul_y2[y] + in_x1[x]];
+            T X222 = Xdata[input_height_width_mul_z2[z] + input_width_mul_y2[y] + in_x2[x]];
+
+            Ydata[output_width * output_height * z + output_width * y + x] =
+                static_cast<T>(dx2[x] * dy2[y] * dz2[z] * X111 +
+                               dx1[x] * dy2[y] * dz2[z] * X211 +
+                               dx2[x] * dy1[y] * dz2[z] * X121 +
+                               dx1[x] * dy1[y] * dz2[z] * X221 +
+
+                               dx2[x] * dy2[y] * dz1[z] * X112 +
+                               dx1[x] * dy2[y] * dz1[z] * X212 +
+                               dx2[x] * dy1[y] * dz1[z] * X122 +
+                               dx1[x] * dy1[y] * dz1[z] * X222);
+          }
+        }
+      }
+      Xdata += input_depth * input_height * input_width;
+      Ydata += output_depth * output_width * output_height;
     }
   }
 }
@@ -475,7 +706,11 @@ void ResizeBiCubic(
     T* Ydata,
     GetOriginalCoordinateFunc get_original_coordinate) {
   std::vector<float> y_original;
+  y_original.reserve(output_height);
+
   std::vector<float> x_original;
+  x_original.reserve(output_width);
+
   std::unordered_map<float, std::array<float, CubicModeGridLength>> cubic_coeffs;
   std::unordered_map<float, std::unordered_map<int64_t, float>> coeff_to_1Dinterpolation_map;
   auto roi_y_start = roi.size() / 2 - 2;
@@ -485,9 +720,11 @@ void ResizeBiCubic(
 
   // generate coefficients in y direction
   for (int64_t y = 0; y < output_height; ++y) {
-    float in_y = get_original_coordinate(static_cast<float>(y), height_scale,
-                                         static_cast<float>(output_height), static_cast<float>(input_height),
-                                         roi[roi_y_start], roi[roi_y_end]);
+    float in_y = height_scale == 1 ? static_cast<float>(y)
+                                   : get_original_coordinate(static_cast<float>(y), height_scale,
+                                                             static_cast<float>(output_height),
+                                                             static_cast<float>(input_height),
+                                                             roi[roi_y_start], roi[roi_y_end]);
     y_original.emplace_back(in_y);
     auto s = y_original[y] - std::floor(y_original[y]);
     if (cubic_coeffs.find(s) == cubic_coeffs.end()) {
@@ -498,9 +735,12 @@ void ResizeBiCubic(
 
   // generate coefficients in x direction
   for (int64_t x = 0; x < output_width; ++x) {
-    float in_x = get_original_coordinate(static_cast<float>(x), width_scale,
-                                         static_cast<float>(output_width), static_cast<float>(input_width),
-                                         roi[roi_x_start], roi[roi_x_end]);
+    float in_x = width_scale == 1 ? static_cast<float>(x)
+                                  : get_original_coordinate(static_cast<float>(x),
+                                                            width_scale,
+                                                            static_cast<float>(output_width),
+                                                            static_cast<float>(input_width),
+                                                            roi[roi_x_start], roi[roi_x_end]);
     x_original.emplace_back(in_x);
     auto s = x_original[x] - std::floor(x_original[x]);
     if (cubic_coeffs.find(s) == cubic_coeffs.end()) {
@@ -639,33 +879,70 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                                 scales, roi, is_resize_, use_extrapolation_, extrapolation_value_,
                                 use_nearest2x_optimization_, get_original_coordinate_, get_nearest_pixel_);
     case UpsampleMode::LINEAR: {
-      //The correct behavior of 'linear' mode for an N-D input is not clear right now,
-      //so only support 'bilinear' with 2-D or 4-D input tensor with outermost 2 scales as 1 in the 4-D case
+      // Supports 'bilinear' and 'trilinear' sampling only
+
+      //'bilinear' == 2-D input or 4-D input with outermost 2 scales as 1
+      if (dims.size() == 2 || dims.size() == 4) {
+        bool is_2D = dims.size() == 2;
+
+        const int64_t batch_size = is_2D ? 1 : dims[0];
+        const int64_t num_channels = is_2D ? 1 : dims[1];
+        const int64_t input_height = is_2D ? dims[0] : dims[2];
+        const int64_t input_width = is_2D ? dims[1] : dims[3];
+
+        const int64_t output_height = is_2D ? output_dims[0] : output_dims[2];
+        const int64_t output_width = is_2D ? output_dims[1] : output_dims[3];
+
+        AllocatorPtr alloc;
+        ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
+        UpsampleBilinear(batch_size, num_channels, input_height, input_width, output_height, output_width,
+                         is_2D ? scales[0] : scales[2], is_2D ? scales[1] : scales[3], roi,
+                         use_extrapolation_, extrapolation_value_, X->template Data<T>(),
+                         Y->template MutableData<T>(), alloc, get_original_coordinate_);
+        return Status::OK();
+      } else if (dims.size() == 3 || dims.size() == 5) {
+        //'trilinear' == 3-D input or 5-D input with outermost 2 scales as 1
+        bool is_3D = dims.size() == 3;
+
+        const int64_t batch_size = is_3D ? 1 : dims[0];
+        const int64_t num_channels = is_3D ? 1 : dims[1];
+        const int64_t input_depth = is_3D ? dims[0] : dims[2];
+        const int64_t input_height = is_3D ? dims[1] : dims[3];
+        const int64_t input_width = is_3D ? dims[2] : dims[4];
+
+        const int64_t output_depth = is_3D ? output_dims[0] : output_dims[2];
+        const int64_t output_height = is_3D ? output_dims[1] : output_dims[3];
+        const int64_t output_width = is_3D ? output_dims[2] : output_dims[4];
+
+        AllocatorPtr alloc;
+        ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
+        UpsampleTrilinear(batch_size, num_channels, input_depth, input_height, input_width,
+                          output_depth, output_height, output_width,
+                          is_3D ? scales[0] : scales[2], is_3D ? scales[1] : scales[3],
+                          is_3D ? scales[2] : scales[4], roi, use_extrapolation_, extrapolation_value_,
+                          X->template Data<T>(), Y->template MutableData<T>(), alloc, get_original_coordinate_);
+        return Status::OK();
+      } else {
+        // User shouldn't hit this as the check has been performed in ScalesValidation()
+        std::ostringstream oss;
+        oss << "'Linear' mode only support 2-D inputs or 3-D inputs ('Bilinear', 'Trilinear') "
+               "or 4-D inputs or 5-D inputs with the corresponding outermost 2 scale values "
+               "being 1 in the ";
+        oss << (is_resize_ ? "Resize operator" : "Upsample operator");
+        return Status(ONNXRUNTIME, FAIL, oss.str());
+      }
+    }
+    case UpsampleMode::CUBIC: {
+      // Supports 'bicubic' sampling only
+
+      // User shouldn't hit this as the check has been performed in ScalesValidation()
       if (dims.size() != 2 && dims.size() != 4) {
         std::ostringstream oss;
-        oss << "'Linear' mode only support 2-D inputs ('Bilinear') or 4-D inputs "
+        oss << "'Cubic' mode only support 2-D inputs ('Bicubic') or 4-D inputs "
                "with the corresponding outermost 2 scale values being 1 in the ";
         oss << (is_resize_ ? "Resize operator" : "Upsample operator");
         return Status(ONNXRUNTIME, FAIL, oss.str());
       }
-
-      bool is_2D = dims.size() == 2;
-      const int64_t batch_size = is_2D ? 1 : dims[0];
-      const int64_t num_channels = is_2D ? 1 : dims[1];
-      const int64_t input_height = is_2D ? dims[0] : dims[2];
-      const int64_t input_width = is_2D ? dims[1] : dims[3];
-      const int64_t output_height = is_2D ? output_dims[0] : output_dims[2];
-      const int64_t output_width = is_2D ? output_dims[1] : output_dims[3];
-
-      AllocatorPtr alloc;
-      ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
-      UpsampleBilinear(batch_size, num_channels, input_height, input_width, output_height, output_width,
-                       is_2D ? scales[0] : scales[2], is_2D ? scales[1] : scales[3], roi,
-                       use_extrapolation_, extrapolation_value_, X->template Data<T>(),
-                       Y->template MutableData<T>(), alloc, get_original_coordinate_);
-      return Status::OK();
-    }
-    case UpsampleMode::CUBIC: {
       bool is_2D = dims.size() == 2;
       const int64_t batch_size = is_2D ? 1 : dims[0];
       const int64_t num_channels = is_2D ? 1 : dims[1];

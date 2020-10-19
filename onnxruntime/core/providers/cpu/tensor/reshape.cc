@@ -4,9 +4,19 @@
 #include "core/providers/cpu/tensor/reshape.h"
 namespace onnxruntime {
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Reshape,
     5,
+    12,
+    KernelDefBuilder()
+        .Alias(0, 0)
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        .TypeConstraint("shape", DataTypeImpl::GetTensorType<int64_t>()),
+    Reshape);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    Reshape,
+    13,
     KernelDefBuilder()
         .Alias(0, 0)
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())

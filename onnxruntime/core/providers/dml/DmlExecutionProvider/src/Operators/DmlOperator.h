@@ -79,6 +79,8 @@ namespace Dml
         // will read the full 64-bit values. This means it is necessary to zero out the memory to ensure there
         // are no uninitialized values in the upper 32-bit portion of the tensor memory.
         //
+        // It returns nullptr if there is no work to do (0 bytes).
+        //
         ComPtr<IDMLCompiledOperator> InitializeZeroInt64Tensor(uint64_t tensorSizeInBytes);
 
         void ExecuteZeroInt64Tensor(IDMLCompiledOperator* compiledOperator, IMLOperatorTensor* tensor);

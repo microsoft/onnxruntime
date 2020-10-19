@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/graph/graph.h"
+#include "core/framework/session_options.h"
 
 namespace onnxruntime {
 class Function;
@@ -87,7 +88,7 @@ class GraphViewer {
   int MaxNodeIndex() const noexcept;
 
   /** Gets the NodeIndex values for the Graph nodes, sorted into topological order. */
-  const std::vector<NodeIndex>& GetNodesInTopologicalOrder() const;
+  const std::vector<NodeIndex>& GetNodesInTopologicalOrder(ExecutionOrder order = ExecutionOrder::DEFAULT) const;
 
   /**
   Gets the NodeIndex values for the root nodes in the Graph.
@@ -125,6 +126,18 @@ class GraphViewer {
   /** Get the Node containing this Graph if IsSubgraph is true. Returns nullptr otherwise. */
   const Node* ParentNode() const noexcept { return graph_->ParentNode(); }
 
+#if !defined(ORT_MINIMAL_BUILD)
+  /** Get the consumer nodes of a node arg */
+  std::vector<const Node*> GetConsumerNodes(const std::string& node_arg_name) const {
+    return graph_->GetConsumerNodes(node_arg_name);
+  }
+
+  /** Get the producer node of a node arg */
+  const Node* GetProducerNode(const std::string& node_arg_name) const {
+    return graph_->GetProducerNode(node_arg_name);
+  }
+#endif
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphViewer);
 
@@ -132,6 +145,10 @@ class GraphViewer {
 
   // The NodeIndex values of the graph nodes sorted in topological order.
   std::vector<NodeIndex> nodes_in_topological_order_;
+
+  // The NodeIndex values of the graph nodes sorted in topological order with priority.
+  std::vector<NodeIndex> nodes_in_topological_order_with_priority_;
+
   // Graph root nodes.
   std::vector<NodeIndex> root_nodes_;
 };
