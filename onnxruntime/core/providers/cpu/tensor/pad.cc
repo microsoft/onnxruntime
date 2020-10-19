@@ -45,9 +45,22 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
 // 'pads' and 'value' (attributes previously) became inputs in this version
 // The core logic remains the same
 
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+    Pad,
+    11, 12,
+    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                                            DataTypeImpl::GetTensorType<double>(),
+                                            DataTypeImpl::GetTensorType<int32_t>(),
+                                            DataTypeImpl::GetTensorType<int64_t>(),
+                                            DataTypeImpl::GetTensorType<uint32_t>(),
+                                            DataTypeImpl::GetTensorType<uint64_t>(),
+                                            DataTypeImpl::GetTensorType<int8_t>(),
+                                            DataTypeImpl::GetTensorType<uint8_t>()}),
+    Pad);
+
 ONNX_CPU_OPERATOR_KERNEL(
     Pad,
-    11,
+    13,
     KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
                                             DataTypeImpl::GetTensorType<double>(),
                                             DataTypeImpl::GetTensorType<int32_t>(),
@@ -60,7 +73,8 @@ ONNX_CPU_OPERATOR_KERNEL(
 
 // This is the general padding method to n-dimensionally do edge or reflection padding (based on the inputDelta values)
 template <typename T>
-static void PadAxis(T* output, T* input, ptrdiff_t input_delta, ptrdiff_t input_pitch, size_t block_size, size_t block_count) {
+static void PadAxis(T* output, T* input, ptrdiff_t input_delta, ptrdiff_t input_pitch,
+                    size_t block_size, size_t block_count) {
   for (size_t block_index = 0; block_index < block_count; block_index++) {
     for (size_t i = 0; i < block_size; i++) {
       *output++ = *input;
@@ -159,7 +173,8 @@ static void FlattenInnerShape(const std::vector<int64_t>& input_dims, const std:
       break;
 
     // Break on first Axis that has padding
-    if (!(pads[inner_axis] == 0 && pads[inner_axis + dims_count] == 0 && slices[inner_axis] == 0 && slices[inner_axis + dims_count] == 0))
+    if (!(pads[inner_axis] == 0 && pads[inner_axis + dims_count] == 0 &&
+          slices[inner_axis] == 0 && slices[inner_axis + dims_count] == 0))
       break;
 
   } while (inner_axis-- > 0);
@@ -175,7 +190,8 @@ static void ReshapePads(const std::vector<int64_t>& src_pad, size_t src_dim_coun
                         size_t inner_no_pad_size, std::vector<int64_t>& reshaped_pad) {
   size_t inner_axis = new_dim_count - 1;
   std::copy(src_pad.begin(), src_pad.begin() + inner_axis, reshaped_pad.begin());
-  std::copy(src_pad.begin() + src_dim_count, src_pad.begin() + src_dim_count + inner_axis, reshaped_pad.begin() + new_dim_count);
+  std::copy(src_pad.begin() + src_dim_count, src_pad.begin() + src_dim_count + inner_axis,
+            reshaped_pad.begin() + new_dim_count);
 
   // Flatten inner axis.
   reshaped_pad[inner_axis] = src_pad[inner_axis] * inner_no_pad_size;
@@ -184,10 +200,10 @@ static void ReshapePads(const std::vector<int64_t>& src_pad, size_t src_dim_coun
 
 template <typename T>
 static Status PadImpl(OpKernelContext* ctx,
-                  const std::vector<int64_t>& pads,
-                  const std::vector<int64_t>& slices,
-                  const Mode& mode,
-                  T value) {
+                      const std::vector<int64_t>& pads,
+                      const std::vector<int64_t>& slices,
+                      const Mode& mode,
+                      T value) {
   const auto& input_tensor = *ctx->Input<Tensor>(0);
   const auto& orig_input_shape = input_tensor.Shape();
   std::vector<int64_t> output_dims(orig_input_shape.GetDims());
@@ -204,7 +220,9 @@ static Status PadImpl(OpKernelContext* ctx,
   // Reshape padding
   size_t new_dims_count = reshaped_input_dims.size();
   size_t inner_axis = new_dims_count - 1;
-  size_t inner_no_pad_size = output_dims[inner_axis] > 0 ? reshaped_input_dims[inner_axis] / output_dims[inner_axis] : 0;
+  size_t inner_no_pad_size = output_dims[inner_axis] > 0
+                                 ? reshaped_input_dims[inner_axis] / output_dims[inner_axis]
+                                 : 0;
   std::vector<int64_t> reshaped_pad(2 * new_dims_count), reshaped_slice(2 * new_dims_count);
   ReshapePads(pads, data_rank, new_dims_count, inner_no_pad_size, reshaped_pad);
   ReshapePads(slices, data_rank, new_dims_count, inner_no_pad_size, reshaped_slice);
@@ -219,7 +237,8 @@ static Status PadImpl(OpKernelContext* ctx,
   for (size_t i = 0; i < new_dims_count; i++) {
     input_starts.push_back(-1 * reshaped_slice[i]);
     input_extents.push_back(reshaped_input_dims[i] + reshaped_slice[i] + reshaped_slice[i + new_dims_count]);
-    reshaped_output_dims[i] += reshaped_pad[i] + reshaped_pad[i + new_dims_count] + reshaped_slice[i] + reshaped_slice[i + new_dims_count];
+    reshaped_output_dims[i] += reshaped_pad[i] + reshaped_pad[i + new_dims_count] +
+                               reshaped_slice[i] + reshaped_slice[i + new_dims_count];
   }
 
   for (size_t i = 0; i < data_rank; i++) {
@@ -335,7 +354,8 @@ static Status PadImpl(OpKernelContext* ctx,
           T* axisStart = output - inner_pitch * input_extents[input_counters.Axis()];
           int64_t prePad = reshaped_pad[input_counters.Axis()];
           int64_t postPad = reshaped_pad[input_counters.Axis() + new_dims_count];
-          PadAxis(axisStart - prePad * inner_pitch, axisStart + prePad * inner_pitch, 1, -inner_pitch * 2, inner_pitch, prePad);
+          PadAxis(axisStart - prePad * inner_pitch, axisStart + prePad * inner_pitch, 1, -inner_pitch * 2,
+                  inner_pitch, prePad);
           PadAxis(output, output - 2 * inner_pitch, 1, -inner_pitch * 2, inner_pitch, postPad);
           output += inner_pitch * postPad;
           alignSkip += inner_pitch * prePad;
@@ -347,24 +367,21 @@ static Status PadImpl(OpKernelContext* ctx,
   return Status::OK();
 }
 
-union PadValue
-{
+union PadValue {
   uint64_t u64;
   uint32_t u32;
-  uint8_t  u8;
-  double   f64;
-  float    f32;
+  uint8_t u8;
+  double f64;
+  float f32;
 };
 
 static PadValue PadValueFromFloat(float value, MLDataType data_type) {
   PadValue result;
   if (data_type == DataTypeImpl::GetType<float>()) {
     result.f32 = value;
-  }
-  else if (data_type == DataTypeImpl::GetType<double>()) {
+  } else if (data_type == DataTypeImpl::GetType<double>()) {
     result.f64 = value;
-  }
-  else {
+  } else {
     ORT_THROW("Unsupported input data type of ", data_type);
   }
   return result;
@@ -390,7 +407,8 @@ Status Pad::Compute(OpKernelContext* ctx) const {
     ORT_ENFORCE(pads_tensor.IsDataType<int64_t>(),
                 "Pads tensor should be an INT64 tensor");
     ORT_ENFORCE(pads_tensor_dims.size() == 1 || (pads_tensor_dims.size() == 2 && pads_tensor_dims[0] == 1),
-                "Pads tensor should be a 1D tensor of shape [2 * input_rank] or a 2D tensor of shape [1, 2 * input_rank]");
+                "Pads tensor should be a 1D tensor of shape [2 * input_rank] "
+                "or a 2D tensor of shape [1, 2 * input_rank]");
 
     const int64_t* pads_tensor_raw_data = pads_tensor.template Data<int64_t>();
     size_t pads_size = static_cast<size_t>(pads_tensor.Shape().Size());

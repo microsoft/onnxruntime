@@ -187,8 +187,8 @@ TEST(GradientGraphBuilderTest, BuildConcatGradientGraphTest) {
 
   ASSERT_EQ(op_to_count["Concat"], 0);
   ASSERT_EQ(op_to_count["Split"], 0);
-  ASSERT_EQ(op_to_count["ConcatTraining"], 1);
-  ASSERT_EQ(op_to_count["SplitTraining"], 1);
+  ASSERT_EQ(op_to_count["com.microsoft.ConcatTraining"], 1);
+  ASSERT_EQ(op_to_count["com.microsoft.SplitTraining"], 1);
 }
 
 TEST(GradientGraphBuilderTest, TrainingSession_Basic) {
