@@ -260,13 +260,13 @@ void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name, cons
   // Metadata.
   std::string pid_name_internal = p_name + name_pattern;
   events.push_back(CreateMetadataEvent(pid_name_internal, pid));
-  std::unordered_map<size_t, AllocationSummary> summary;
   size_t summary_size = 10;
   std::hash<std::string> str_hash;
 
   //Create Event for each tensor
   for (const auto& location_map : mem_info_.tensors_memory_info_map_) {
     if (location_map.first.device.Type() != OrtDevice::GPU) continue;
+    auto summary_key = str_hash(location_map.first.ToString() + std::to_string(map_type));
     //Preprocessing
     if (mem_info_.time_step_trace_[map_type].empty()) {
       for (const auto& item : location_map.second.at(map_type)) {
@@ -277,33 +277,35 @@ void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name, cons
 
     const auto& map = location_map.second.at(map_type);
     //Update summary
-    for (const auto& item : map) {
-      size_t offset = map_type == MemoryInfo::MapType::StaticActivation ? map.GetPlannedAddress(item.first) : map.GetAllocAddress(item.first);
-      size_t size = map_type == MemoryInfo::MapType::StaticActivation ? map.GetPlannedSize(item.first) : map.GetAllocSize(item.first);
-      size_t alloc_step = mem_info_.AllocPlan(item.first)->lifetime_interval.first;  //alloc_kind == AllocKind::kReuse ? info.alloc_plan.life_interval.first + 1 : info.alloc_plan.life_interval.first;
-      size_t dealloc_step = mem_info_.AllocPlan(item.first)->lifetime_interval.second;
-      const auto& ts_map = mem_info_.time_step_trace_[map_type];
-      const auto& start_itr = ts_map.find(alloc_step);
-      const auto& end_itr = ts_map.find(dealloc_step);
-      for (auto itr = start_itr; itr != end_itr; ++itr) {
-        UpdateSummary(summary[*itr], offset, size, item.first);
+    if (summary_.find(summary_key) == summary_.end()) {
+      for (const auto& item : map) {
+        size_t offset = map_type == MemoryInfo::MapType::StaticActivation ? map.GetPlannedAddress(item.first) : map.GetAllocAddress(item.first);
+        size_t size = map_type == MemoryInfo::MapType::StaticActivation ? map.GetPlannedSize(item.first) : map.GetAllocSize(item.first);
+        size_t alloc_step = mem_info_.AllocPlan(item.first)->lifetime_interval.first;  //alloc_kind == AllocKind::kReuse ? info.alloc_plan.life_interval.first + 1 : info.alloc_plan.life_interval.first;
+        size_t dealloc_step = mem_info_.AllocPlan(item.first)->lifetime_interval.second;
+        const auto& ts_map = mem_info_.time_step_trace_[map_type];
+        const auto& start_itr = ts_map.find(alloc_step);
+        const auto& end_itr = ts_map.find(dealloc_step);
+        for (auto itr = start_itr; itr != end_itr; ++itr) {
+          UpdateSummary(summary_[summary_key][*itr], offset, size, item.first);
+        }
+        UpdateSummary(summary_[summary_key][*end_itr], offset, size, item.first);
       }
-      UpdateSummary(summary[*end_itr], offset, size, item.first);
     }
 
     //extract top_k total size
     std::set<size_t> top_k_set;
-    for (const auto& item : summary) {
+    for (const auto& item : summary_[summary_key]) {
       if (top_k_set.size() < top_k)
         top_k_set.insert(item.second.total_size);
       else if (*top_k_set.cbegin() < item.second.total_size) {
-          top_k_set.erase(top_k_set.begin());
-          top_k_set.insert(item.second.total_size);
+        top_k_set.erase(top_k_set.begin());
+        top_k_set.insert(item.second.total_size);
       }
     }
     size_t top_kth_total_size = *top_k_set.cbegin();
 
-    for (const auto& item : summary) {
+    for (const auto& item : summary_[summary_key]) {
       if (item.second.total_size < top_kth_total_size) continue;
       for (const auto& live_tensor : item.second.life_tensosrs) {
         const auto info = mem_info_.AllocPlan(live_tensor);
@@ -325,9 +327,9 @@ void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name, cons
 }
 
 void MemoryInfo::GenerateMemoryProfile() {
-  profiler.CreateEvents("GPU (initializers)", profiler.GetAndIncreasePid(), MapType::Initializer, "", 2);
   profiler.CreateEvents("GPU (static activations)", profiler.GetAndIncreasePid(), MapType::StaticActivation, "", 2);
   profiler.CreateEvents("GPU (dynamic activations)", profiler.GetAndIncreasePid(), MapType::DynamicActivation, "", 2);
+  profiler.CreateEvents("GPU (static activations), _grad", profiler.GetAndIncreasePid(), MapType::StaticActivation, "_grad", 2);
 
   // Write memory profile .json
   std::ofstream memory_profile("memory_profile_" + std::to_string(local_rank_) + ".json", std::ios::trunc);

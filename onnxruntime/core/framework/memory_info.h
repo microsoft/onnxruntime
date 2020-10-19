@@ -114,7 +114,7 @@ class MemoryInfo {
   struct AllocationSummary {
     size_t total_size = 0;
     size_t used_size = 0;
-    std::vector< OrtValueIndex> life_tensosrs;
+    std::vector<OrtValueIndex> life_tensosrs;
   };
 
   struct MemoryInfoProfile {
@@ -135,6 +135,8 @@ class MemoryInfo {
    private:
     size_t pid_;
     MemoryInfo& mem_info_;
+    //Key: the hash function of device+map_type. Value: (key: The time step. value: The allocation information)
+    std::unordered_map<size_t, std::unordered_map<size_t, AllocationSummary> > summary_;
   };
 
   MemoryInfo(int local_rank) : profiler(*this), iteration_(0), local_rank_(local_rank) {}
