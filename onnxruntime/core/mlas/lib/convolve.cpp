@@ -173,7 +173,7 @@ Return Value:
                         }
 
                         CountX -= CountCopyX;
-                        tempInputRow = &InputRow[InputX];
+                        tempInputRow = InputRow + InputX;
 
                         while (CountCopyX >= 16) {
                           MlasStoreFloat32x4(ColumnBuffer, MlasLoadFloat32x4(tempInputRow));
@@ -197,15 +197,18 @@ Return Value:
                         }
 
                         while (CountCopyX >= 4) {
-                            MlasStoreFloat32x4(ColumnBuffer, MlasLoadFloat32x4(&InputRow[InputX]));
+                            MlasStoreFloat32x4(ColumnBuffer, MlasLoadFloat32x4(tempInputRow));
                             ColumnBuffer += 4;
                             InputX += 4;
                             CountCopyX -= 4;
+                            tempInputRow += 4;
                         }
 
                         while (CountCopyX > 0) {
-                            *ColumnBuffer++ = InputRow[InputX++];
-                            CountCopyX--;
+                            *ColumnBuffer++ = *tempInputRow;
+                            ++InputX;
+                            --CountCopyX;
+                            ++tempInputRow;
                         }
 
                     } else if (InputX + CountX * StrideWidth <= InputWidth) {
@@ -230,7 +233,6 @@ Return Value:
                 //
                 // The entire input row is in the padding region.
                 //
-
                 MLAS_FLOAT32X4 ZeroFloat32x4 = MlasZeroFloat32x4();
 
                 while (CountX >= 16) {
@@ -257,8 +259,8 @@ Return Value:
 
                 while (CountX > 0) {
                     MlasStoreLaneFloat32x4<0>(ColumnBuffer, ZeroFloat32x4);
-                    ColumnBuffer++;
-                    CountX--;
+                    ++ColumnBuffer;
+                    --CountX;
                 }
             }
 
@@ -274,14 +276,10 @@ Return Value:
         //
 
         if (++kx == KernelWidth) {
-
             if (++ky == KernelHeight) {
-
                 Input += InputSize;
-
                 ky = 0;
             }
-
             kx = 0;
         }
     }
