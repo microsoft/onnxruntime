@@ -410,9 +410,6 @@ Status TrainingSession::ConfigureForTraining(
         config.model_with_training_graph_path.value(), SaveOption::NO_RELOAD));
   }
 
-  if (config.model_with_training_graph_path.has_value())
-    this->model_output_path = config.model_with_training_graph_path.value();
-
   // After pipeline partition, we need to return the inputs allowed in this partition.
   if (config.pipeline_config.has_value()) {
     const auto& allowed_inputs = model_->MainGraph().GetInputsIncludingInitializers();

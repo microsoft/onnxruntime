@@ -946,7 +946,7 @@ Status MegatronTransformer::TransformBARTSelfAttention(Graph& graph, bool& modif
       auto& sa_f_out_arg = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(k_matmul->Name() + "BARTAttention_MegatronF_Output"), &sa_f_type_info);
       Node& sa_f_node = graph.AddNode(graph.GenerateNodeName(k_matmul->Name() + "BARTAttention_MegatronF"),
                                       "MegatronF",
-                                      k_matmul->Name() + "BARTAttention MegatronF",
+                                      k_matmul->Name() + " BARTAttention MegatronF",
                                       sa_f_input_defs,
                                       {&sa_f_out_arg}, {}, kMSDomain);
       sa_f_node.SetExecutionProviderType(k_matmul->GetExecutionProviderType());
@@ -961,29 +961,29 @@ Status MegatronTransformer::TransformBARTSelfAttention(Graph& graph, bool& modif
     counter++;
     if (!shared_same_input) {
       {
-        NodeArg* prev_input_node_ptr = q_matmul->MutableInputDefs()[0];
-        std::vector<Node*> new_consumer_nodes;
-        const auto& node_consumers = graph.GetConsumerNodes(prev_input_node_ptr->Name());
-        for (auto& n : node_consumers) {
+        NodeArg* q_prev_input_node_ptr = q_matmul->MutableInputDefs()[0];
+        std::vector<Node*> q_new_consumer_nodes;
+        const auto& q_node_consumers = graph.GetConsumerNodes(q_prev_input_node_ptr->Name());
+        for (auto& n : q_node_consumers) {
           if (n->Index() == k_matmul->Index() || n->Index() == v_matmul->Index() || n->Index() == q_matmul->Index()) {
             continue;
           }
-          new_consumer_nodes.emplace_back(const_cast<Node*>(n));
+          q_new_consumer_nodes.emplace_back(const_cast<Node*>(n));
         }
 
-        const std::vector<NodeArg*> sa_f_input_defs{q_matmul->MutableInputDefs()[0]};
-        auto sa_f_type_info = *q_matmul->MutableInputDefs()[0]->TypeAsProto();
-        auto& sa_f_out_arg = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(q_matmul->Name() + "BARTAttention_MegatronF_Output"), &sa_f_type_info);
-        Node& sa_f_node = graph.AddNode(graph.GenerateNodeName(q_matmul->Name() + "BARTAttention_MegatronF"),
+        const std::vector<NodeArg*> q_sa_f_input_defs{q_matmul->MutableInputDefs()[0]};
+        auto q_sa_f_type_info = *q_matmul->MutableInputDefs()[0]->TypeAsProto();
+        auto& q_sa_f_out_arg = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(q_matmul->Name() + "BARTAttention_MegatronF_Output"), &q_sa_f_type_info);
+        Node& q_sa_f_node = graph.AddNode(graph.GenerateNodeName(q_matmul->Name() + "BARTAttention_MegatronF"),
                                         "MegatronF",
-                                        q_matmul->Name() + "BARTAttention MegatronF",
-                                        sa_f_input_defs,
-                                        {&sa_f_out_arg}, {}, kMSDomain);
-        sa_f_node.SetExecutionProviderType(q_matmul->GetExecutionProviderType());
+                                        q_matmul->Name() + " BARTAttention MegatronF",
+                                        q_sa_f_input_defs,
+                                        {&q_sa_f_out_arg}, {}, kMSDomain);
+        q_sa_f_node.SetExecutionProviderType(q_matmul->GetExecutionProviderType());
 
-        graph_utils::ReplaceNodeInput(*q_matmul, 0, *(sa_f_node.MutableOutputDefs()[0]));
-        new_consumer_nodes.push_back(&sa_f_node);
-        graph.UpdateConsumerNodes(prev_input_node_ptr->Name(), new_consumer_nodes);
+        graph_utils::ReplaceNodeInput(*q_matmul, 0, *(q_sa_f_node.MutableOutputDefs()[0]));
+        q_new_consumer_nodes.push_back(&q_sa_f_node);
+        graph.UpdateConsumerNodes(q_prev_input_node_ptr->Name(), q_new_consumer_nodes);
         // todo: need update the consumer node for the input_node as well.
       }
     }
