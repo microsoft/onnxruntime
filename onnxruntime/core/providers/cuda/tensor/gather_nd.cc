@@ -99,7 +99,13 @@ Status GatherNDBase::PrepareCompute(
       TIndex,                                                               \
       kCudaExecutionProvider,                                               \
       KernelDefBuilder()                                                    \
-          .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes())     \
+          .TypeConstraint("T",                                              \
+                          std::vector<MLDataType>{                          \
+                              DataTypeImpl::GetTensorType<float>(),         \
+                              DataTypeImpl::GetTensorType<double>(),        \
+                              DataTypeImpl::GetTensorType<MLFloat16>(),     \
+                              DataTypeImpl::GetTensorType<int64_t>(),       \
+                          })                                                \
           .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIndex>()),   \
       GatherND<TIndex>);
 
@@ -126,7 +132,7 @@ Status GatherNDBase::PrepareCompute(
 REGISTER_KERNEL_TYPED_GATHER_ND(int64_t, 1)
 #endif
 REGISTER_KERNEL_TYPED_GATHER_ND(int64_t, 13)
-REGISTER_KERNEL_TYPED_GATHER_ND(int64_t, 12)
+REGISTER_KERNEL_VERSIONED_TYPED_GATHER_ND(int64_t, 12, 12)
 
 template <typename T>
 struct GatherNDComputeImpl {
