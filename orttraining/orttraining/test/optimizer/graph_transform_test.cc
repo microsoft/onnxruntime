@@ -63,7 +63,7 @@ static void TestBiasDropoutFusion(const PathString& file_path, const logging::Lo
   ASSERT_EQ(op_to_count["Add"], add_count);
   ASSERT_EQ(op_to_count["Dropout"], 0);
   ASSERT_EQ(op_to_count["TrainableDropout"], 0);
-  ASSERT_EQ(op_to_count["BiasDropout"], 1);
+  ASSERT_EQ(op_to_count["com.microsoft.BiasDropout"], 1);
 }
 
 TEST_F(GraphTransformationTests, BiasDropoutFusionTest) {
@@ -128,7 +128,7 @@ TEST_F(GraphTransformationTests, ConcatReplacement) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
 
   ASSERT_EQ(op_to_count["Concat"], 0);
-  ASSERT_EQ(op_to_count["ConcatTraining"], 1);
+  ASSERT_EQ(op_to_count["com.microsoft.ConcatTraining"], 1);
 }
 
 TEST_F(GraphTransformationTests, MegatronMLPPartitionRank0) {

@@ -3,7 +3,7 @@ jobs:
   parameters:
     AgentPool : 'Linux-CPU'
     JobName: 'Linux_CI_Dev'
-    BuildCommand: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu18.04 -d openvino -v 2020.4 -r $(Build.BinariesDirectory) -x "--use_openvino CPU_FP32 --build_wheel"'
+    BuildCommand: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu18.04 -d openvino -v 2021.1 -r $(Build.BinariesDirectory) -x "--use_openvino CPU_FP32 --build_wheel"'
     DoNugetPack:  'false'
     ArtifactName: 'drop-linux'
     TimeoutInMinutes: 120
