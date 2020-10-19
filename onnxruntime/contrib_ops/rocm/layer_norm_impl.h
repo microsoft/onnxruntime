@@ -29,7 +29,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace rocm {
 
-template <typename T, typename U>
+template <typename T, typename U, bool simplified>
 void HostApplyLayerNorm(
     const hipDeviceProp_t& prop,
     T* output,

@@ -12,7 +12,7 @@ namespace rocm {
 
 using namespace onnxruntime::rocm;
 
-template <typename T, typename U>
+template <typename T, typename U, bool simplified>
 class LayerNorm final : public RocmKernel {
  public:
   LayerNorm(const OpKernelInfo& op_kernel_info);
