@@ -402,7 +402,7 @@ static void CloseSession()
 }
 
 static void TestSpectrogram() {
-//  WINML_LOG_COMMENT("\nTestSpectrogram\n");
+  WINML_LOG_COMMENT("\nTestSpectrogram\n");
 
   using namespace winml_experimental;
   using Operator = winml_experimental::LearningModelOperator;
@@ -411,11 +411,11 @@ static void TestSpectrogram() {
   static const wchar_t MS_DOMAIN[] = L"com.microsoft";
 
   std::vector<int64_t> scalar_shape = {};
-  std::vector<int64_t> shape = {(int64_t)1, (int64_t)32};
-  std::vector<int64_t> output_shape = {(int64_t)1, (int64_t)16, (int64_t)1};
-  std::vector<int64_t> slice_shape = {(int64_t)3};
-  std::vector<int64_t> input_slice_shape = {(int64_t)1};
-  std::vector<int64_t> mel_shape = {(int64_t)16, (int64_t)10};
+  std::vector<int64_t> shape = {1, 32};
+  std::vector<int64_t> output_shape = {1, 16, 1};
+  std::vector<int64_t> slice_shape = {3};
+  std::vector<int64_t> input_slice_shape = {1};
+  std::vector<int64_t> mel_shape = {16, 10};
 
   // Constant initializers
 
@@ -609,8 +609,8 @@ static void TestDFT() {
   using namespace winml_experimental;
   using Operator = winml_experimental::LearningModelOperator;
 
-  std::vector<int64_t> shape = {(int64_t)1, (int64_t)5};
-  std::vector<int64_t> output_shape = {(int64_t)1, (int64_t)5, (int64_t)2};
+  std::vector<int64_t> shape = {1, 5};
+  std::vector<int64_t> output_shape = {1, 5, 2};
 
   //bool onesided = true;
   //if (onesided) {
