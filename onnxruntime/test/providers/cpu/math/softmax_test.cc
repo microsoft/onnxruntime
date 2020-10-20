@@ -188,10 +188,8 @@ TEST(SoftmaxOperator, InvalidAxis) {
           // bug in ONNX error message currently. Message should be
           // "[ShapeInferenceError] 'axis' must be in [-2 , 1]. Its actual value is: -10"
           ", 1]. Its actual value is: -10",
-          // Latest valid opset for this test is 12. This operator was updated in opset 13 and 
-          // relevent tests for this new opset will be added along with the implementations of the changes.
           // latest opset so we get shape inferencing errors
-          12);
+          -1);
 }
 
 TEST(SoftmaxOperator, DimWithZero) {

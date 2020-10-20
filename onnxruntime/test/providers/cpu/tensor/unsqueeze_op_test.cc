@@ -46,8 +46,7 @@ TEST(TensorOpTest, Unsqueeze_3) {
 }
 
 TEST(TensorOpTest, Unsqueeze_Duplicate) {
-  // latest valid opset for this test is 12. Since opset 13 attribute axes was made an input. 
-  OpTester test("Unsqueeze", 12);
+  OpTester test("Unsqueeze", -1);
 
   test.AddAttribute("axes", std::vector<int64_t>{2, 1, 0, 2});
   test.AddInput<float>("input", {2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
@@ -58,8 +57,7 @@ TEST(TensorOpTest, Unsqueeze_Duplicate) {
 }
 
 TEST(TensorOpTest, Unsqueeze_OutOfRange) {
-  // latest valid opset for this test is 12. Since opset 13 attribute axes was made an input. 
-  OpTester test("Unsqueeze", 12);
+  OpTester test("Unsqueeze", -1);
 
   test.AddAttribute("axes", std::vector<int64_t>{4});
   test.AddInput<float>("input", {2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
