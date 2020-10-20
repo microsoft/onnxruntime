@@ -257,6 +257,7 @@ struct Provider_IExecutionProvider {
 
 struct Provider {
   virtual std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory(int device_id) = 0;
+  virtual void Shutdown() = 0;
 };
 
 // There are two ways to route a function, one is a virtual method and the other is a function pointer (or pointer to member function)
