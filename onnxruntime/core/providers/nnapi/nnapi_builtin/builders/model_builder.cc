@@ -34,7 +34,7 @@ bool ModelBuilder::IsNodeSupported(const Node& node) {
 }
 
 bool IsValidSupportedNodesVec(const std::vector<int>& supported_node_vec, const GraphViewer& graph_viewer) {
-  if (!supported_node_vec.empty())
+  if (supported_node_vec.empty())
     return false;
 
   if (supported_node_vec.size() == 1) {

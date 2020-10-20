@@ -1037,8 +1037,9 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
   model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());
 }
 
-// We can skip the Reshape if only node(s) in this graph using the output is Matmul or Gemm,
-// which will automatically flatten the shape
+// We can skip the Reshape if only node(s) in this graph using the output is Matmul or Gemm, which will
+// automatically flatten the shape by NNAPI ANEURALNETWORKS_FULLY_CONNECTED operation
+// Matmul/Gemm will convert to ANEURALNETWORKS_FULLY_CONNECTED in NNAPI
 /* static */ bool ReshapeOpBuilder::CanSkipReshape(const Node& node) {
   for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
     const auto& op_type = it->GetNode().OpType();
