@@ -9,6 +9,7 @@ set(mlas_common_srcs
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/qgemm.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/convolve.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/pooling.cpp
+  ${ONNXRUNTIME_ROOT}/core/mlas/lib/transpose.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/reorder.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/snchwc.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/activate.cpp
