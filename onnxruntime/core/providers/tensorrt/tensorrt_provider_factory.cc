@@ -10,8 +10,6 @@ using namespace onnxruntime;
 
 namespace onnxruntime {
 
-void Shutdown_DeleteRegistry();
-
 struct TensorrtProviderFactory : Provider_IExecutionProviderFactory {
   TensorrtProviderFactory(int device_id) : device_id_(device_id) {}
   ~TensorrtProviderFactory() override {}
@@ -39,10 +37,9 @@ struct Tensorrt_Provider : Provider {
     return std::make_shared<TensorrtProviderFactory>(device_id);
   }
 
-  void Shutdown() override {
-    Shutdown_DeleteRegistry();
+  void SetProviderHost(ProviderHost& host) {
+    onnxruntime::SetProviderHost(host);
   }
-
 } g_provider;
 
 }  // namespace onnxruntime

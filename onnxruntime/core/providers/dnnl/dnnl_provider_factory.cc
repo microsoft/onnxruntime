@@ -11,8 +11,6 @@ using namespace onnxruntime;
 
 namespace onnxruntime {
 
-void Shutdown_DeleteRegistry();
-
 struct DnnlProviderFactory : Provider_IExecutionProviderFactory {
   DnnlProviderFactory(bool create_arena) : create_arena_(create_arena) {}
   ~DnnlProviderFactory() override {}
@@ -49,10 +47,9 @@ struct Dnnl_Provider : Provider {
     return std::make_shared<DnnlProviderFactory>(use_arena != 0);
   }
 
-  void Shutdown() override {
-    Shutdown_DeleteRegistry();
+  void SetProviderHost(ProviderHost& host) {
+    onnxruntime::SetProviderHost(host);
   }
-
 } g_provider;
 
 }  // namespace onnxruntime
