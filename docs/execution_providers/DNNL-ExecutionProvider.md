@@ -21,17 +21,10 @@ For build instructions, please see the [BUILD page](../../BUILD.md#dnnl-and-mklm
 ### C/C++
 The DNNLExecutionProvider execution provider needs to be registered with ONNX Runtime to enable in the inference session.
 ```
-string log_id = "Foo";
-auto logging_manager = std::make_unique<LoggingManager>
-(std::unique_ptr<ISink>{new CLogSink{}},
-                                  static_cast<Severity>(lm_info.default_warning_level),
-                                  false,
-                                  LoggingManager::InstanceType::Default,
-                                  &log_id)
-Environment::Create(std::move(logging_manager), env)
-InferenceSession session_object{so,env};
-session_object.RegisterExecutionProvider(std::make_unique<::onnxruntime:: DNNLExecutionProvider >());
-status = session_object.Load(model_file_name);
+Ort::Env env = Ort::Env{ORT_LOGGING_LEVEL_ERROR, "Default"};
+Ort::SessionOptions sf;
+bool enable_cpu_mem_arena = true;
+Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Dnnl(sf, enable_cpu_mem_arena));
 ```
 The C API details are [here](../C_API.md#c-api).
 

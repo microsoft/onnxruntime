@@ -62,11 +62,11 @@
     "node-addon-api": "^3.0.0",
     "node-pre-gyp-github": "^1.4.3",
     "onnx-proto": "^4.0.4",
-    "tar-stream": "2.1.2",
+    "tar-stream": "^2.1.4",
     "typedoc": "^0.17.3",
     "typescript": "^3.8.3"
   },
   "dependencies": {
-    "prebuild-install": "^5.3.3"
+    "prebuild-install": "^5.3.5"
   }
 }
