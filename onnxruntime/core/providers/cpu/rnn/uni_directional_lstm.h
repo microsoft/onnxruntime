@@ -32,8 +32,9 @@ class UniDirectionalLstm {
                      const ActivationFuncs::Entry& activation_func_f, const ActivationFuncs::Entry& activation_func_g,
                      const ActivationFuncs::Entry& activation_func_h, float clip, concurrency::ThreadPool* thread_pool);
 
+  template <typename WeightT>
   void Compute(const gsl::span<const T>& inputs, const gsl::span<const int>& sequence_lengths, int num_directions,
-               const GemmWeights<T>& input_weights, const GemmWeights<T>& recurrent_weights, gsl::span<T>& outputs,
+               const GemmWeights<WeightT>& input_weights, const GemmWeights<WeightT>& recurrent_weights, gsl::span<T>& outputs,
                gsl::span<T>& final_hidden_state, gsl::span<T>& final_cell_state);
 
   ~UniDirectionalLstm() = default;

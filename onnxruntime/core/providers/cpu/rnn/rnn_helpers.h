@@ -12,6 +12,7 @@
 #include "core/framework/allocator.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
+#include "core/util/qmath.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/common/safeint.h"
 #include "core/platform/threadpool.h"
@@ -169,9 +170,22 @@ struct PackedWeights {
   TensorShape shape_;
 };
 
+enum class QuantizationType {
+  PerTensor,
+  PerRow,
+  PerCol,
+};
+
+struct QuantizationParameter {
+  const float* scale{nullptr};
+  const uint8_t* zero_point{nullptr};
+  bool b_is_signed{false};
+  QuantizationType quant_type{QuantizationType::PerTensor};
+};
+
 template <typename T>
 struct GemmWeights {
-  GemmWeights(int idx, const T* weights_data, size_t weights_size, const PackedWeights& packed_weights) {
+  GemmWeights(int idx, const T* weights_data, size_t weights_size, const PackedWeights& packed_weights, QuantizationParameter* quant_para = nullptr) : quant_para_(quant_para) {
     if (packed_weights.buffer_) {
       is_prepacked_ = true;
       buffer_ = static_cast<uint8_t*>(packed_weights.buffer_.get()) + packed_weights.weights_size_ * idx;
@@ -183,42 +197,36 @@ struct GemmWeights {
 
   bool is_prepacked_;
   const void* buffer_;
+  QuantizationParameter* quant_para_;
 };
 
-template <typename TSpanAIter, typename TSpanCIter>
 void ComputeGemm(const int M,
                  const int N,
                  const int K,
                  const float alpha,
-                 TSpanAIter A,
-                 TSpanAIter A_end,
+                 const float* A,
+                 const float* A_end,
                  const GemmWeights<float>& weights,
                  const float beta,
-                 TSpanCIter C,
-                 TSpanCIter C_end,
+                 float* C,
+                 float* C_end,
                  const int ldc,
-                 concurrency::ThreadPool* thread_pool) {
-  // validate all the inputs
-  // need to use the lda/ldb/ldc strides which should be >= the columns for the span
-  ORT_ENFORCE(A + (M * K) <= A_end);
-  ORT_ENFORCE(C + (M * ldc - (ldc - N)) <= C_end);
+                 AllocatorPtr /*allocator*/,
+                 concurrency::ThreadPool* thread_pool);
 
-  if (weights.is_prepacked_) {
-    MlasGemm(
-        CblasNoTrans,
-        M, N, K, alpha,
-        &*A, K,
-        weights.buffer_, beta,
-        &*C, ldc, thread_pool);
-  } else {
-    ::onnxruntime::math::GemmEx<float>(
-        CblasNoTrans, CblasTrans,
-        M, N, K, alpha,
-        &*A, K,
-        static_cast<const float *>(weights.buffer_), K, beta,
-        &*C, ldc, thread_pool);
-  }
-}
+void ComputeGemm(const int M,
+                 const int N,
+                 const int K,
+                 const float alpha,
+                 const float* A,
+                 const float* A_end,
+                 const GemmWeights<uint8_t>& weights,
+                 const float beta,
+                 float* C,
+                 float* C_end,
+                 const int ldc,
+                 AllocatorPtr allocator,
+                 concurrency::ThreadPool* thread_pool);
 
 // helper to convert a span to a raw pointer
 // after validating the memory covered by the span supports the size required

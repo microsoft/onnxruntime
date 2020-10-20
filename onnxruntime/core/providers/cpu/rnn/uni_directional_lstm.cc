@@ -199,9 +199,10 @@ void UniDirectionalLstm<T>::LoadBias(const gsl::span<const T>& WbRb_values) {
 }
 
 template <typename T>
+template <typename WeightT>
 void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
                                     const gsl::span<const int>& sequence_lengths_arg, const int num_directions,
-                                    const GemmWeights<T>& input_weights, const GemmWeights<T>& recurrent_weights,
+                                    const GemmWeights<WeightT>& input_weights, const GemmWeights<WeightT>& recurrent_weights,
                                     gsl::span<T>& outputs,
                                     gsl::span<T>& final_hidden_state, gsl::span<T>& final_cell_state) {
   // copy spans (just T* and size, not data in span) as we may change them
@@ -259,7 +260,7 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
   // apply the weights to all the inputs and save to output_IOFC
   ComputeGemm(total_rows, hidden_size_x4, input_size_, alpha, inputs.cbegin(), inputs.cend(),
               input_weights,
-              beta, output_iofc_.begin(), output_iofc_.end(), hidden_size_x4, thread_pool_);
+              beta, output_iofc_.begin(), output_iofc_.end(), hidden_size_x4, allocator_, thread_pool_);
 
   DumpMatrix("Xt*(W[iofc]^T)", output_iofc_.data(), total_rows, hidden_size_x4);
 
@@ -279,7 +280,7 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
       num_seq_to_compute++;
   }
 
-  // lambda to do all processing on num_of_rows_to_calculate sequences
+  // lambda to do all processing on num_seq_to_compute sequences
   auto sequences_calculator = [&](int seq_start, onnxruntime::concurrency::ThreadPool* ttp) {
     span_T_const_iter previous_state_end = batched_hidden_state_one_step.cend();
 
@@ -310,7 +311,7 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
                   previous_state, previous_state_end,       // Ht-1
                   recurrent_weights,                        // R[iofc]
                   beta, step_out_IOFC, output_iofc_.end(),  // input contains Xt*(W[iofc]^T)
-                  hidden_size_x4, ttp);
+                  hidden_size_x4, allocator_, ttp);
 
       DumpMatrix("Xt*(W[iofc]^T) + Ht-t*R[iofc]" + row_str, &*step_out_IOFC, num_seq_to_compute_adjusted, hidden_size_x4);
 
@@ -546,5 +547,19 @@ void UniDirectionalLstm<T>::SetNumThreads() {
 }
 
 template class UniDirectionalLstm<float>;
+template void UniDirectionalLstm<float>::Compute<float>(
+    const gsl::span<const float>& inputs_arg,
+    const gsl::span<const int>& sequence_lengths_arg, const int num_directions,
+    const GemmWeights<float>& input_weights, const GemmWeights<float>& recurrent_weights,
+    gsl::span<float>& outputs,
+    gsl::span<float>& final_hidden_state, gsl::span<float>& final_cell_state);
+
+template void UniDirectionalLstm<float>::Compute<uint8_t>(
+    const gsl::span<const float>& inputs_arg,
+    const gsl::span<const int>& sequence_lengths_arg, const int num_directions,
+    const GemmWeights<uint8_t>& input_weights, const GemmWeights<uint8_t>& recurrent_weights,
+    gsl::span<float>& outputs,
+    gsl::span<float>& final_hidden_state, gsl::span<float>& final_cell_state);
+
 }  // namespace lstm
 }  // namespace onnxruntime

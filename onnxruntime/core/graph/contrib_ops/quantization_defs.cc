@@ -861,24 +861,32 @@ Wwhere the function `Sigmoid(x) = 1 / (1 + exp(-x))` )DOC";
           "assumed to be 0.",
           "T",
           OpSchema::Optional)
-      .Input(8, "W_scale",
-             "W's scale. Its size is [num_directions] for per-tensor/layer quantization, "
-             "or [num_directions, 4*hidden_size] for per-channel quantization on the axis input_size.",
-             "T")
-      .Input(9, "W_zero_point",
-             "W's zero point. Default value is 0 if it's not specified."
-             "Otherwise its size is [num_directions] for per-tensor/layer quantization, "
-             "or [num_directions, 4*hidden_size] for per-channel quantization on the axis input_size.",
-             "T2", OpSchema::Optional)
-      .Input(8, "R_scale",
-             "R's scale. Its size is [num_directions] for per-tensor/layer quantization, "
-             "or [num_directions, 4*hidden_size] for per-channel quantization on the axis input_size.",
-             "T")
-      .Input(9, "R_zero_point",
-             "R's zero point. Default value is 0 if it's not specified."
-             "Otherwise its size is [num_directions] for per-tensor/layer quantization, "
-             "or [num_directions, 4*hidden_size] for per-channel quantization on the axis input_size.",
-             "T2", OpSchema::Optional)
+      .Input(
+          8,
+          "W_scale",
+          "W's scale. Its size is [num_directions] for per-tensor/layer quantization, "
+          "or [num_directions, 4*hidden_size] for per-channel quantization on the axis input_size.",
+          "T")
+      .Input(
+          9,
+          "W_zero_point",
+          "W's zero point. Default value is 0 if it's not specified."
+          "Otherwise its size is [num_directions] for per-tensor/layer quantization, "
+          "or [num_directions, 4*hidden_size] for per-channel quantization on the axis input_size.",
+          "T2", OpSchema::Optional)
+      .Input(
+          10,
+          "R_scale",
+          "R's scale. Its size is [num_directions] for per-tensor/layer quantization, "
+          "or [num_directions, 4*hidden_size] for per-channel quantization on the axis input_size.",
+          "T")
+      .Input(
+          11,
+          "R_zero_point",
+          "R's zero point. Default value is 0 if it's not specified."
+          "Otherwise its size is [num_directions] for per-tensor/layer quantization, "
+          "or [num_directions, 4*hidden_size] for per-channel quantization on the axis input_size.",
+          "T2", OpSchema::Optional)
       .Output(
           0,
           "Y",

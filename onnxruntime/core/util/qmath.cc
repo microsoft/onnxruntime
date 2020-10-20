@@ -109,4 +109,22 @@ void QGemm(
 #endif
 }
 
+void GetQuantizationParameter(const float* data, int64_t num_of_elements, float& scale, uint8_t& zp) {
+  // find input range min and max
+  float min, max;
+  MlasFindMinMaxElement(data, &min, &max, num_of_elements);
+
+  // ensure the input range includes zero
+  min = std::min(min, 0.0f);
+  max = std::max(max, 0.0f);
+
+  // find scale and zero point
+  uint8_t qmin = 0;
+  uint8_t qmax = 255;
+  scale = max == min ? 1.0f : (max - min) / (qmax - qmin);
+
+  float initial_zero_point = qmin - min / scale;
+  zp = static_cast<uint8_t>(RoundHalfToEven(std::max(float(qmin), std::min(float(qmax), initial_zero_point))));
+}
+
 }  // namespace onnxruntime

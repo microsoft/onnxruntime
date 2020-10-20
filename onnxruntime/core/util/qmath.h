@@ -50,4 +50,6 @@ inline float RoundHalfToEven(float input) {
   return input - std::remainderf(input, 1.f);
 }
 
+void GetQuantizationParameter(const float* data, int64_t num_of_elements, float& scale, uint8_t& zp);
+
 }  // namespace onnxruntime
