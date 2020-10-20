@@ -11,16 +11,6 @@
 #include "dnnl_execution_provider.h"
 #include "dnnl_fwd.h"
 
-namespace {
-
-struct KernelRegistryAndStatus {
-  std::shared_ptr<onnxruntime::Provider_KernelRegistry> kernel_registry{onnxruntime::Provider_KernelRegistry::Create()};
-
-  Status st;
-};
-
-}  // namespace
-
 namespace onnxruntime {
 
 constexpr const char* DNNL = "Dnnl";
@@ -62,18 +52,24 @@ Status RegisterDNNLKernels(Provider_KernelRegistry& kernel_registry) {
   return Status::OK();
 }
 
-KernelRegistryAndStatus GetDnnlKernelRegistry() {
-  KernelRegistryAndStatus ret;
-  ret.st = RegisterDNNLKernels(*ret.kernel_registry);
-  return ret;
-}
 }  // namespace ort_dnnl
 
+static std::shared_ptr<onnxruntime::Provider_KernelRegistry> s_kernel_registry;
+
+void Shutdown_DeleteRegistry() {
+  s_kernel_registry.reset();
+}
+
 std::shared_ptr<Provider_KernelRegistry> DNNLExecutionProvider::Provider_GetKernelRegistry() const {
-  static KernelRegistryAndStatus k = onnxruntime::ort_dnnl::GetDnnlKernelRegistry();
-  // throw if the registry failed to initialize
-  ORT_THROW_IF_ERROR(k.st);
-  return k.kernel_registry;
+  if (!s_kernel_registry) {
+    s_kernel_registry = onnxruntime::Provider_KernelRegistry::Create();
+    auto status = ort_dnnl::RegisterDNNLKernels(*s_kernel_registry);
+    if (!status.IsOK())
+      s_kernel_registry.reset();
+    ORT_THROW_IF_ERROR(status);
+  }
+
+  return s_kernel_registry;
 }
 
 bool DNNLExecutionProvider::UseSubgraph(const onnxruntime::Provider_GraphViewer& graph_viewer) const {
