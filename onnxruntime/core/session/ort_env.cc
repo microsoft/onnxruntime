@@ -40,7 +40,9 @@ OrtEnv::OrtEnv(std::unique_ptr<onnxruntime::Environment> value1)
 }
 
 OrtEnv::~OrtEnv() {
+#ifndef ORT_MINIMAL_BUILD
   UnloadSharedProviders();
+#endif
 }
 
 OrtEnv* OrtEnv::GetInstance(const OrtEnv::LoggingManagerConstructionInfo& lm_info,
