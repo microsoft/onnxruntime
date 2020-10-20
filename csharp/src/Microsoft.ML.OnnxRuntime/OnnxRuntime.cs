@@ -38,31 +38,15 @@ namespace Microsoft.ML.OnnxRuntime
     }
 
     /// <summary>
-    /// This class intializes the process-global ONNX runtime
-    /// C# API users do not need to access this, thus kept as internal
+    /// This class initializes the process-global ONNX runtime
     /// </summary>
-    internal sealed class OnnxRuntime : SafeHandle
+    public sealed class OrtEnv : SafeHandle
     {
-        private static readonly Lazy<OnnxRuntime> _instance = new Lazy<OnnxRuntime>(()=> new OnnxRuntime());
-        
-        internal static IntPtr Handle  // May throw exception in every access, if the constructor have thrown an exception
-        {
-            get
-            {
-                return _instance.Value.handle;
-            }
-        }
+        private static readonly Lazy<OrtEnv> _instance = new Lazy<OrtEnv>(()=> new OrtEnv());
 
-        public override bool IsInvalid
-        {
-            get
-            {
-                return (handle == IntPtr.Zero);
-            }
-        }
-
-        private OnnxRuntime()  //Problem: it is not possible to pass any option for a Singleton
-            :base(IntPtr.Zero, true)
+        #region private methods
+        private OrtEnv()  //Problem: it is not possible to pass any option for a Singleton
+    : base(IntPtr.Zero, true)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateEnv(LogLevel.Warning, @"CSharpOnnxRuntime", out handle));
             try
@@ -75,6 +59,47 @@ namespace Microsoft.ML.OnnxRuntime
                 throw e;
             }
         }
+        #endregion
+
+        #region internal methods
+        internal static IntPtr Handle  // May throw exception in every access, if the constructor have thrown an exception
+        {
+            get
+            {
+                return _instance.Value.handle;
+            }
+        }
+        #endregion
+
+        #region public methods
+
+        /// <summary>
+        /// Enable platform telemetry collection where applicable
+        /// (currently only official Windows ORT builds have telemetry collection capabilities)
+        /// </summary>
+        public static void EnableTelemetryEvents()
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtEnableTelemetryEvents(Handle));
+        }
+
+        /// <summary>
+        /// Disable platform telemetry collection
+        /// </summary>
+        public static void DisableTelemetryEvents()
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtDisableTelemetryEvents(Handle));
+        }
+
+        #endregion
+
+        #region SafeHandle
+        public override bool IsInvalid
+        {
+            get
+            {
+                return (handle == IntPtr.Zero);
+            }
+        }
 
         protected override bool ReleaseHandle()
         {
@@ -82,5 +107,6 @@ namespace Microsoft.ML.OnnxRuntime
             handle = IntPtr.Zero;
             return true;
         }
+        #endregion
     }
 }

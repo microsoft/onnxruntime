@@ -662,7 +662,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         private void Init(string modelPath, SessionOptions options)
         {
-            var envHandle = OnnxRuntime.Handle;
+            var envHandle = OrtEnv.Handle;
             var session = IntPtr.Zero;
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, NativeMethods.GetPlatformSerializedString(modelPath), options.Handle, out session));
 
@@ -671,7 +671,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         private void Init(byte[] modelData, SessionOptions options)
         {
-            var envHandle = OnnxRuntime.Handle;
+            var envHandle = OrtEnv.Handle;
             var session = IntPtr.Zero;
 
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionFromArray(envHandle, modelData, (UIntPtr)modelData.Length, options.Handle, out session));

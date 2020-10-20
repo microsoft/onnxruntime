@@ -167,11 +167,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [Fact]
         public void EnablingAndDisablingTelemetryEventCollection()
         {
-            GlobalMethods.DisableTelemetryEvents();
+            OrtEnv.DisableTelemetryEvents();
 
             // no-op on non-Windows builds
             // may be no-op on certain Windows builds based on build configuration
-            GlobalMethods.EnableTelemetryEvents();
+            OrtEnv.EnableTelemetryEvents();
         }
 
         [Fact]
