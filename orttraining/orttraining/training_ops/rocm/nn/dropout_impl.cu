@@ -97,7 +97,7 @@ __global__ void BiasDropoutKernel(
 
   // We ensure every thread generates the same number of random numbers (by rounding
   // up the size) and at the same timestep (by syncing threads).
-  // From HIP hiprand documentation:
+  // From ROCM hiprand documentation:
   //   The Philox_4x32_10 algorithm is closely tied to the thread and block count.
   //   Each thread computes 4 random numbers in the same time thus the most efficient
   //   use of Philox_4x32_10 is to generate a multiple of 4 times number of threads.

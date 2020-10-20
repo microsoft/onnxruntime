@@ -51,7 +51,7 @@ REGISTER_ISFINITE_KERNEL_TYPED(double)
 
 template <typename TSrc>
 Status IsAllFiniteOp<TSrc>::ComputeInternal(OpKernelContext* context) const {
-  typedef typename ToHipType<TSrc>::MappedType TSrcHip;
+  typedef typename ToHipType<TSrc>::MappedType TSrcCuda;
 
   // Get Input tensor count.
   const auto total_tensor_count = context->InputCount();
@@ -71,7 +71,7 @@ Status IsAllFiniteOp<TSrc>::ComputeInternal(OpKernelContext* context) const {
     tensor_sizes[i] = static_cast<int>(input->Shape().Size());
   }
 
-  typedef IsAllFiniteFunctor<TSrcHip> TFunctor;
+  typedef IsAllFiniteFunctor<TSrcCuda> TFunctor;
   TFunctor functor;
 
   // Check if all values are finite and write true to deviceOutput.

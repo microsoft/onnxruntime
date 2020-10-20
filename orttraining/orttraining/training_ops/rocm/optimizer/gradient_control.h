@@ -22,7 +22,7 @@ class InPlaceAccumulator final : public RocmKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
-// Implementation can be found in hip file, optimizers_impl.cu
+// Implementation can be found in rocm file, optimizers_impl.cu
 template <typename T, typename T_GRAD>
 void InPlaceAccumulatorImpl(
     const T* gradient_buffer,

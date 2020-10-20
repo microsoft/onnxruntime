@@ -88,7 +88,7 @@ void MultiTensorReduce(ChunkGroup<1> chunk_group, TOut* output) {
   // shared memory's size per block.
   const int shared_memory_size = thread_count / GPU_WARP_SIZE * sizeof(TBuf);
 
-  // Enforce assumptions used inside this reduction HIP kernel.
+  // Enforce assumptions used inside this reduction ROCM kernel.
   ORT_ENFORCE(thread_count % GPU_WARP_SIZE == 0);
   ORT_ENFORCE((thread_count & (thread_count - 1)) == 0);
 

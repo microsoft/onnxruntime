@@ -55,7 +55,7 @@ MixedPrecisionScale<SrcT>::MixedPrecisionScale(const OpKernelInfo& info) : RocmK
 
 template <typename SrcT>
 Status MixedPrecisionScale<SrcT>::ComputeInternal(OpKernelContext* context) const {
-  typedef typename ToHipType<SrcT>::MappedType HipSrcT;
+  typedef typename ToHipType<SrcT>::MappedType CudaSrcT;
 
   const Tensor* scale = context->Input<Tensor>(0);
   const float* scale_data = scale->template Data<float>();
@@ -87,7 +87,7 @@ Status MixedPrecisionScale<SrcT>::ComputeInternal(OpKernelContext* context) cons
 
 #define CASE(TP_TYPE, DstT)                                                    \
   case TP_TYPE:                                                                \
-    Impl_MixedPrecisionScale<HipSrcT, typename ToHipType<DstT>::MappedType>( \
+    Impl_MixedPrecisionScale<CudaSrcT, typename ToHipType<DstT>::MappedType>( \
         x_data,                                                                \
         scale_data,                                                            \
         reinterpret_cast<typename ToHipType<DstT>::MappedType*>(y_data),      \
@@ -97,7 +97,7 @@ Status MixedPrecisionScale<SrcT>::ComputeInternal(OpKernelContext* context) cons
   for (int i = 0; i < num_inputs; ++i) {
     const Tensor* X = context->Input<Tensor>(i + 1);
     size_t count = X->Shape().Size();
-    const HipSrcT* x_data = reinterpret_cast<const HipSrcT*>(X->template Data<SrcT>());
+    const CudaSrcT* x_data = reinterpret_cast<const CudaSrcT*>(X->template Data<SrcT>());
     auto y_data = y_datas[i];
 
     switch (to_) {

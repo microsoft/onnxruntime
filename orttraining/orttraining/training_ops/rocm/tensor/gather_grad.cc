@@ -16,7 +16,8 @@ ONNX_OPERATOR_KERNEL_EX(
     KernelDefBuilder()
         .InputMemoryType<OrtMemTypeCPUInput>(0)
         .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
-        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                              DataTypeImpl::GetTensorType<MLFloat16>()})
         .TypeConstraint("Tind", std::vector<MLDataType>{
                                     DataTypeImpl::GetTensorType<int32_t>(),
                                     DataTypeImpl::GetTensorType<int64_t>()}),
@@ -25,7 +26,7 @@ ONNX_OPERATOR_KERNEL_EX(
 namespace {
 template <typename T, typename Tin>
 Status CallGatherGradImpl(
-    const RocmKernel& hip_kernel,
+    const RocmKernel& rocm_kernel,
     int64_t num_weights, int64_t stride, int64_t num_inputs, int64_t param_itrs,
     const Tensor& grad, const Tensor& indices,
     Tensor& output) {
@@ -36,7 +37,7 @@ Status CallGatherGradImpl(
   const Tin* indices_data = indices.template Data<Tin>();
 
   GatherGradImpl(
-      hip_kernel,
+      rocm_kernel,
       reinterpret_cast<const HipT*>(grad_data),
       indices_data,
       indices.Shape().Size(),
@@ -52,16 +53,16 @@ Status CallGatherGradImpl(
 template <typename T>
 Status DispatchToGatherGradImplByTin(
     MLDataType tin_data_type,
-    const RocmKernel& hip_kernel,
+    const RocmKernel& rocm_kernel,
     int64_t num_weights, int64_t stride, int64_t num_inputs, int64_t param_itrs,
     const Tensor& grad, const Tensor& indices,
     Tensor& output) {
   if (utils::IsPrimitiveDataType<int32_t>(tin_data_type)) {
     return CallGatherGradImpl<T, int32_t>(
-        hip_kernel, num_weights, stride, num_inputs, param_itrs, grad, indices, output);
+        rocm_kernel, num_weights, stride, num_inputs, param_itrs, grad, indices, output);
   } else if (utils::IsPrimitiveDataType<int64_t>(tin_data_type)) {
     return CallGatherGradImpl<T, int64_t>(
-        hip_kernel, num_weights, stride, num_inputs, param_itrs, grad, indices, output);
+        rocm_kernel, num_weights, stride, num_inputs, param_itrs, grad, indices, output);
   }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GatherGrad unsupported Tin type: ", tin_data_type);
@@ -69,16 +70,16 @@ Status DispatchToGatherGradImplByTin(
 
 Status DispatchToGatherGradImpl(
     MLDataType t_data_type, MLDataType tin_data_type,
-    const RocmKernel& hip_kernel,
+    const RocmKernel& rocm_kernel,
     int64_t num_weights, int64_t stride, int64_t num_inputs, int64_t param_itrs,
     const Tensor& grad, const Tensor& indices,
     Tensor& output) {
   if (utils::IsPrimitiveDataType<float>(t_data_type)) {
     return DispatchToGatherGradImplByTin<float>(
-        tin_data_type, hip_kernel, num_weights, stride, num_inputs, param_itrs, grad, indices, output);
+        tin_data_type, rocm_kernel, num_weights, stride, num_inputs, param_itrs, grad, indices, output);
   } else if (utils::IsPrimitiveDataType<MLFloat16>(t_data_type)) {
     return DispatchToGatherGradImplByTin<MLFloat16>(
-        tin_data_type, hip_kernel, num_weights, stride, num_inputs, param_itrs, grad, indices, output);
+        tin_data_type, rocm_kernel, num_weights, stride, num_inputs, param_itrs, grad, indices, output);
   }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GatherGrad unsupported T type: ", t_data_type);

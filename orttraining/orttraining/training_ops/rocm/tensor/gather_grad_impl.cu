@@ -73,7 +73,7 @@ __global__ void _GatherGradImpl(
 
 template <typename T, typename Tin>
 void GatherGradImpl(
-    const RocmKernel& hip_kernel,
+    const RocmKernel& rocm_kernel,
     const T* grad_data,
     const Tin* indices_data,
     const int64_t num_indices,
@@ -84,7 +84,7 @@ void GatherGradImpl(
     const int64_t param_itrs   //The size of dimensions of the data before gathering dimension
     ) {
   // allocate intermediate buffers
-  auto original_indices = hip_kernel.template GetScratchBuffer<Tin>(num_indices);
+  auto original_indices = rocm_kernel.template GetScratchBuffer<Tin>(num_indices);
 
   // initialize original_indices with [0, num_indices)
   {
@@ -94,8 +94,8 @@ void GatherGradImpl(
         counting_input, num_indices, original_indices.get());
   }
 
-  auto indices_data_sorted = hip_kernel.template GetScratchBuffer<Tin>(num_indices);
-  auto original_indices_sorted = hip_kernel.template GetScratchBuffer<Tin>(num_indices);
+  auto indices_data_sorted = rocm_kernel.template GetScratchBuffer<Tin>(num_indices);
+  auto original_indices_sorted = rocm_kernel.template GetScratchBuffer<Tin>(num_indices);
 
   // sort indices and original indices
   size_t sort_temp_storage_size_bytes = 0;
@@ -105,7 +105,7 @@ void GatherGradImpl(
       original_indices.get(), original_indices_sorted.get(),
       num_indices));
 
-  auto sort_temp_storage = hip_kernel.GetScratchBuffer<void>(sort_temp_storage_size_bytes);
+  auto sort_temp_storage = rocm_kernel.GetScratchBuffer<void>(sort_temp_storage_size_bytes);
 
   HIP_CALL_THROW(hipcub::DeviceRadixSort::SortPairs(
       sort_temp_storage.get(), sort_temp_storage_size_bytes,
@@ -129,7 +129,7 @@ void GatherGradImpl(
 
 #define SPECIALIZED_GRAD_IMPL2(T)           \
   template void GatherGradImpl<T, int64_t>( \
-      const RocmKernel& hip_kernel,        \
+      const RocmKernel& rocm_kernel,        \
       const T* grad_data,                   \
       const int64_t* indices_data,          \
       const int64_t num_indices,            \
@@ -139,7 +139,7 @@ void GatherGradImpl(
       const int64_t num_inputs,             \
       const int64_t param_itrs);            \
   template void GatherGradImpl<T, int32_t>( \
-      const RocmKernel& hip_kernel,        \
+      const RocmKernel& rocm_kernel,        \
       const T* grad_data,                   \
       const int32_t* indices_data,          \
       const int64_t num_indices,            \

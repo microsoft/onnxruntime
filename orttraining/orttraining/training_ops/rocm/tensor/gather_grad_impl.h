@@ -11,7 +11,7 @@ namespace rocm {
 
 template <typename T, typename Tin>
 void GatherGradImpl(
-    const RocmKernel& hip_kernel,
+    const RocmKernel& rocm_kernel,
     const T* grad_data,
     const Tin* indices_data,
     const int64_t num_indices,
