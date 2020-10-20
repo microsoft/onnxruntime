@@ -1038,7 +1038,7 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
 }
 
 // We can skip the Reshape if
-// 1. The output of the reshape/flatten is either input 0 of the GEMM/Matmul,
+// 1. The output of the reshape/flatten is the input 0 of the GEMM/Matmul,
 //    and the input rank >= 2 and output_rand == 2
 //    This is because Gemm/Matmul will map to ANEURALNETWORKS_FULLY_CONNECTED in NNAPI,
 //    ANEURALNETWORKS_FULLY_CONNECTED will flatten the 2+ dim input 0 to 2d

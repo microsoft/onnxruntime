@@ -2,8 +2,9 @@
 #include "core/providers/nnapi/nnapi_builtin/nnapi_execution_provider.h"
 #include "core/session/inference_session.h"
 #include "gtest/gtest.h"
-#include "test/providers/provider_test_utils.h"
 #include "test/framework/test_utils.h"
+#include "test/providers/provider_test_utils.h"
+#include "test/util/include/inference_session_wrapper.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -85,13 +86,19 @@ TEST(NnapiExecutionProviderTest, FunctionTest) {
   RunOptions run_options;
   run_options.run_tag = so.session_logid;
 
-  InferenceSession session_object{so, GetEnvironment()};
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
   status = session_object.RegisterExecutionProvider(onnxruntime::make_unique<::onnxruntime::NnapiExecutionProvider>());
   ASSERT_TRUE(status.IsOK());
   status = session_object.Load(model_file_name);
   ASSERT_TRUE(status.IsOK());
   status = session_object.Initialize();
   ASSERT_TRUE(status.IsOK());
+
+  // Since we already know the model is entirely supported by NNAPI, all nodes (2 Add nodes here) will be fused
+  // Get the graph after session is initialized, and verify the fused node (the only node in the graph) is using NNAPI EP
+  const auto& session_graph = session_object.GetGraph();
+  ASSERT_EQ(1, session_graph.NumberOfNodes());  // Make sure the graph has 1 fused node
+  ASSERT_EQ(onnxruntime::kNnapiExecutionProvider, session_graph.Nodes().cbegin()->GetExecutionProviderType());
 
   // Now run
   status = session_object.Run(run_options, feeds, output_names, &fetches);
