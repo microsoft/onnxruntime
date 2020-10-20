@@ -35,6 +35,8 @@ class Environment {
                        const OrtThreadingOptions* tp_options = nullptr,
                        bool create_global_thread_pools = false);
 
+  ~Environment();
+
   logging::LoggingManager* GetLoggingManager() const {
     return logging_manager_.get();
   }
