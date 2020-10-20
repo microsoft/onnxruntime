@@ -34,7 +34,7 @@ This will require the standard ONNX Runtime python package to be installed.
 
 Example:
 
-Running `'python <ORT repository root>/tools/python/convert_onnx_model_to_ort.py /models'` where the '/models' directory contains ModelA.onnx and ModelB.onnx
+Running `'python <ORT repository root>/tools/python/convert_onnx_models_to_ort.py /models'` where the '/models' directory contains ModelA.onnx and ModelB.onnx
   - Will create /models/ModelA.ort and /models/ModelB.ort
   - Will create /models/required_operators.config/
 
