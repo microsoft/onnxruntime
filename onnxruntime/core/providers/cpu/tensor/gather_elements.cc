@@ -87,7 +87,7 @@ static inline void increment_over_inner_dim(std::vector<int64_t>& current_dims, 
 }
 
 template <typename Tin>
-static int64_t GetNegativeIndexAdjustedValue(const Tin* indices_data, Tin index, int64_t axis, const TensorShape& input_shape) {
+static inline int64_t GetNegativeIndexAdjustedValue(const Tin* indices_data, Tin index, int64_t axis, const TensorShape& input_shape) {
   int64_t retval = -1;
   if (indices_data[index] < 0) {
     retval = static_cast<int64_t>(indices_data[index] + input_shape[axis]);
@@ -127,7 +127,6 @@ static void core_impl(const Tensor* input_tensor, const Tensor* indices_tensor,
   const int64_t input_rank = static_cast<int64_t>(input_tensor->Shape().NumDimensions());
   const TensorPitches input_shape_pitches(*input_tensor);
 
-  //const std::vector<int64_t>& indices_data = parse_and_validate_indices_tensor(indices_tensor, axis, input_tensor->Shape());
   const auto& input_shape = input_tensor->Shape();
   const TensorShape& indices_shape = indices_tensor->Shape();
   const Tin* indices_data = indices_tensor->Data<Tin>();
@@ -159,9 +158,9 @@ static void core_impl(const Tensor* input_tensor, const Tensor* indices_tensor,
       base_offset = compute_base_offset(process_dims, input_shape_pitches, axis);
 
       // process 1 chunk of 'inner dimension' length
+      // optimizer will remove the redundant if/else block based on 'is_string' template parameter
       if (is_string) {
         for (int64_t i = 0; i < inner_dim_size; ++i) {
-          // optimizer will remove the redundant if/else block based on 'is_string' template parameter
           output_data[++output_counter] =
               input_data[base_offset +
                          (GetNegativeIndexAdjustedValue<Tin>(indices_data, ++indices_counter, axis, input_shape) *
@@ -186,10 +185,10 @@ static void core_impl(const Tensor* input_tensor, const Tensor* indices_tensor,
       base_offset = compute_base_offset(process_dims, input_shape_pitches, axis);
 
       // process 1 chunk of 'inner dimension' length
+      // optimizer will remove the redundant if/else block based on 'is_string' template parameter
       if (is_string) {
         for (int64_t i = 0; i < inner_dim_size; ++i) {
           // for innermost axis, input_shape_pitches[axis] = 1 (so no need to multiply)
-          // optimizer will remove the redundant if/else block based on 'is_string' template parameter
           output_data[++output_counter] =
               input_data[base_offset +
                          GetNegativeIndexAdjustedValue<Tin>(indices_data, ++indices_counter, axis, input_shape)];
