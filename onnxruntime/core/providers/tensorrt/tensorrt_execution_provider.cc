@@ -31,11 +31,6 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::logging;
 namespace fs = std::experimental::filesystem;
 namespace {
-struct KernelRegistryAndStatus {
-  std::shared_ptr<onnxruntime::Provider_KernelRegistry> kernel_registry{onnxruntime::Provider_KernelRegistry::Create()};
-  Status st;
-};
-
 std::string GetEnginePath(const ::std::string& root, const std::string& name) {
   if (root.empty()) {
     return name + ".engine";
@@ -151,17 +146,22 @@ static Status RegisterTensorrtKernels(Provider_KernelRegistry& kernel_registry) 
   return Status::OK();
 }
 
-KernelRegistryAndStatus GetTensorrtKernelRegistry() {
-  KernelRegistryAndStatus ret;
-  ret.st = RegisterTensorrtKernels(*ret.kernel_registry);
-  return ret;
+static std::shared_ptr<onnxruntime::Provider_KernelRegistry> s_kernel_registry;
+
+void Shutdown_DeleteRegistry() {
+  s_kernel_registry.reset();
 }
 
 std::shared_ptr<Provider_KernelRegistry> TensorrtExecutionProvider::Provider_GetKernelRegistry() const {
-  static KernelRegistryAndStatus k = onnxruntime::GetTensorrtKernelRegistry();
-  // throw if the registry failed to initialize
-  ORT_THROW_IF_ERROR(k.st);
-  return k.kernel_registry;
+  if (!s_kernel_registry) {
+    s_kernel_registry = onnxruntime::Provider_KernelRegistry::Create();
+    auto status = RegisterTensorrtKernels(*s_kernel_registry);
+    if (!status.IsOK())
+      s_kernel_registry.reset();
+    ORT_THROW_IF_ERROR(status);
+  }
+
+  return s_kernel_registry;
 }
 
 // Per TensorRT documentation, logger needs to be a singleton.
