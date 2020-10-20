@@ -92,20 +92,20 @@ var session = new InferenceSession("model.onnx", SessionOptions.MakeSessionOptio
 ```
 
 ## API Reference
-### GlobalMethods
+### OrtEnv
 ```cs
-static class GlobalMethods
+sealed class OrtEnv
 ```
-Holds some static methods which can be used to tune the runime environment of ORT
+Holds some static methods which can be used to tune the ORT's runime environment
 
 #### Methods
 ```cs
-void EnableTelemetryEvents();
+static void EnableTelemetryEvents();
 ```
 Enables platform-specific telemetry collection where applicable. Please see [Privacy](./Privacy.md) for more details.    
 
 ```cs
-void DisableTelemetryEvents();
+static void DisableTelemetryEvents();
 ```
 Disables platform-specific telemetry collection. Please see [Privacy](./Privacy.md) for more details.    
 
