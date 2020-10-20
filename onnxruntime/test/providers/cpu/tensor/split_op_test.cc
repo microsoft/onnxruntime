@@ -203,6 +203,28 @@ TEST(SplitOperatorTest, Axis1EqualSplitString) {
   RunTest<std::string>(axis, {}, input, outputs, false);
 }
 
+TEST(SplitOperatorTest, Axis1EqualSplitFloat_Large) {
+  const int64_t axis = 1;
+  std::vector<ShapeAndFloatData> outputs;
+
+  // input shape and data
+  ShapeAndFloatData input = {{2, 9},
+                             {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f,
+                              10.f, 11.f, 12.f, 13.f, 14.f, 15.f, 16.f, 17.f, 18.f}};
+
+  outputs.push_back({{2, 1}, {1.f, 10.f}});
+  outputs.push_back({{2, 1}, {2.f, 11.f}});
+  outputs.push_back({{2, 1}, {3.f, 12.f}});
+  outputs.push_back({{2, 1}, {4.f, 13.f}});
+  outputs.push_back({{2, 1}, {5.f, 14.f}});
+  outputs.push_back({{2, 1}, {6.f, 15.f}});
+  outputs.push_back({{2, 1}, {7.f, 16.f}});
+  outputs.push_back({{2, 1}, {8.f, 17.f}});
+  outputs.push_back({{2, 1}, {9.f, 18.f}});
+
+  RunTest<float>(axis, {}, input, outputs, false);
+}
+
 TEST(SplitOperatorTest, Axis1UnequalSplitFloat) {
   const int64_t axis = 1;
   std::vector<ShapeAndFloatData> outputs;

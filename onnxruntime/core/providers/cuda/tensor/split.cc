@@ -50,54 +50,57 @@ Status Split::ComputeInternal(OpKernelContext* ctx) const {
                                         split_sizes));
 
   auto input_data = input_tensor->DataRaw();
-
   auto& input_dims = input_shape.GetDims();
+  size_t element_size = input_tensor->DataType()->Size();
+
   std::vector<int64_t> output_dimensions{input_dims};
 
-  CudaAsyncBuffer<void*> output_ptr(this, num_outputs);
-  gsl::span<void*> output_ptr_span = output_ptr.CpuSpan();
-  std::vector<int64_t> axis_dimension_input_output_mapping(input_dims[axis]);
-  int index = 0;
+  std::vector<void*> output_ptr(num_outputs);
   for (int i = 0; i < num_outputs; ++i) {
     // update size of dimension for axis we're splitting on
-    auto split_size = gsl::narrow<int>(split_sizes[i]);
-    output_dimensions[axis] = split_size;
+    output_dimensions[axis] = gsl::narrow<int>(split_sizes[i]);
 
     Tensor* output = ctx->Output(i, TensorShape{output_dimensions});
-    auto output_data = output->MutableDataRaw();
-    output_ptr_span[i] = output_data;
-    for (int j = 0; j < split_size; ++j) {
-      axis_dimension_input_output_mapping.at(index++) = i;
-    }
+    output_ptr[i] = output->MutableDataRaw();
+  }
+  
+  if (input_shape.Size() == 0) return Status::OK();
+
+  std::vector<int64_t> split_sizes_range(split_sizes);
+  for (size_t i = 1; i < split_sizes_range.size(); ++i) {
+    split_sizes_range[i] += split_sizes_range[i - 1];
   }
 
-  if (input_tensor->Shape().Size() > 0) {
-    output_ptr.CopyToGpu();
+  if (num_outputs <= 8) {
+    TArray<void*> output_ptr_gpu(output_ptr);
+    TArray<int64_t> split_sizes_gpu(split_sizes);
+    TArray<int64_t> split_sizes_range_gpu(split_sizes_range);
 
+    ORT_RETURN_IF_ERROR(SplitImpl(element_size,
+                                  block_size_including_axis_dim,
+                                  block_size_inside_axis_dim,
+                                  split_sizes_gpu,
+                                  split_sizes_range_gpu,
+                                  num_outputs,
+                                  input_data,
+                                  output_ptr,
+                                  input_shape.Size()));
+  } else {
+    CudaAsyncBuffer<void*> output_ptr_gpu(this, output_ptr);
     CudaAsyncBuffer<int64_t> split_sizes_gpu(this, split_sizes);
-    split_sizes_gpu.CopyToGpu();
-
-    std::vector<int64_t> split_sizes_range(split_sizes);
-    for (size_t i = 1; i < split_sizes_range.size(); ++i) {
-      split_sizes_range[i] += split_sizes_range[i - 1];
-    }
-
     CudaAsyncBuffer<int64_t> split_sizes_range_gpu(this, split_sizes_range);
+
+    output_ptr_gpu.CopyToGpu();
+    split_sizes_gpu.CopyToGpu();
     split_sizes_range_gpu.CopyToGpu();
-
-    CudaAsyncBuffer<int64_t> axis_dimension_input_output_mapping_gpu(this, axis_dimension_input_output_mapping);
-    axis_dimension_input_output_mapping_gpu.CopyToGpu();
-
-    size_t element_size = input_tensor->DataType()->Size();
     ORT_RETURN_IF_ERROR(SplitImpl(element_size,
                                   block_size_including_axis_dim,
                                   block_size_inside_axis_dim,
                                   split_sizes_gpu.GpuPtr(),
                                   split_sizes_range_gpu.GpuPtr(),
-                                  axis_dimension_input_output_mapping_gpu.GpuPtr(),
                                   num_outputs,
                                   input_data,
-                                  output_ptr.GpuPtr(),
+                                  output_ptr_gpu.GpuPtr(),
                                   input_shape.Size()));
   }
 
