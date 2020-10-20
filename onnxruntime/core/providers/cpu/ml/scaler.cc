@@ -101,7 +101,7 @@ common::Status ScalerOp<T>::Compute(OpKernelContext* context) const {
     concurrency::ThreadPool::TrySimpleParallelFor(
         ttp,
         num_threads,
-        [this, num_threads, y_data, x_data, stride, x_size](ptrdiff_t batch_num) {
+        [this, num_threads, y_data, x_data, x_size](ptrdiff_t batch_num) {
           auto work = concurrency::ThreadPool::PartitionWork(batch_num, num_threads, x_size);
           for (auto i = work.start; i < work.end; ++i) {
             y_data[i] = static_cast<float>((x_data[i] - offset_[0]) * scale_[0]);
