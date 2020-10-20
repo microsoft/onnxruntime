@@ -195,6 +195,7 @@ TEST(GatherGradOpTest, GatherFewDistinctIndices) {
   RunGatherGradTestWithRandomData<float>(0, {2, 32}, {6, 128}, absolute_error);
 }
 
+#ifdef USE_CUDA
 TEST(GatherGradOpTest, ConsistentOutput) {
   RunGatherGradConsistentOutputTest(0, {256 * 1024}, {1024 * 1024});
 }
@@ -202,6 +203,7 @@ TEST(GatherGradOpTest, ConsistentOutput) {
 TEST(GatherGradOpTest, ConsistentOutputFewDistinctIndices) {
   RunGatherGradConsistentOutputTest(0, {2}, {1024 * 1024});
 }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
