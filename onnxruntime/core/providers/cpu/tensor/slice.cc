@@ -26,15 +26,24 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
                                  DataTypeImpl::GetTensorType<int64_t>()}),
     Slice10);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Slice,
     11,
+    12,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
         .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(),
                                  DataTypeImpl::GetTensorType<int64_t>()}),
     Slice10);
 
+ONNX_CPU_OPERATOR_KERNEL(
+    Slice,
+    13,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(),
+                                 DataTypeImpl::GetTensorType<int64_t>()}),
+    Slice10);
 namespace {
 // std::clamp doesn't exist until C++17 so create a local version
 template <typename T>

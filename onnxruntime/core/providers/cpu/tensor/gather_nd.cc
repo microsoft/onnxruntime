@@ -37,9 +37,18 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     GatherND);
 
 // opset 12 added batch_dims attribute
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+    GatherND,
+    12, 12,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        .TypeConstraint("Tind", DataTypeImpl::GetTensorType<int64_t>()),
+    GatherND);
+
+// spec added BFloat16
 ONNX_CPU_OPERATOR_KERNEL(
     GatherND,
-    12,
+    13,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
         .TypeConstraint("Tind", DataTypeImpl::GetTensorType<int64_t>()),
@@ -93,12 +102,14 @@ Status GatherNDBase::PrepareForCompute(const TensorShape& input_shape, const Ten
 
     p.slice_offsets[slice_idx] = input_base_offset + relative_slice_offset;
   };
-  concurrency::ThreadPool::TryParallelFor(tp, num_slices, static_cast<double>(num_slice_dims),
-                                          [&lambda](ptrdiff_t first, ptrdiff_t last) {
-                                            for (int slice_idx = static_cast<int>(first), end = static_cast<int>(last); slice_idx < end; ++slice_idx) {
-                                              lambda(slice_idx);
-                                            }
-                                          });
+
+  concurrency::ThreadPool::TryParallelFor(
+      tp, num_slices, static_cast<double>(num_slice_dims),
+      [&lambda](ptrdiff_t first, ptrdiff_t last) {
+        for (int slice_idx = static_cast<int>(first), end = static_cast<int>(last); slice_idx < end; ++slice_idx) {
+          lambda(slice_idx);
+        }
+      });
 
   return err_index == 0 ? Status::OK()
                         : ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid index found, index = ", err_index);
@@ -119,7 +130,8 @@ Status GatherND::Compute(OpKernelContext* context) const {
   const auto* input_tensor = context->Input<Tensor>(0);
   const auto* indices_tensor = context->Input<Tensor>(1);
 
-  ORT_ENFORCE(input_tensor != nullptr && indices_tensor != nullptr, "GatherNDBase PrepareForCompute: Input count mismatch");
+  ORT_ENFORCE(input_tensor != nullptr && indices_tensor != nullptr,
+              "GatherNDBase PrepareForCompute: Input count mismatch");
 
   const auto& input_shape = input_tensor->Shape();
   const auto& indices_shape = indices_tensor->Shape();
@@ -164,12 +176,13 @@ Status GatherND::GatherNumber(const Prepare& p, concurrency::ThreadPool* tp) con
     memcpy(p.output_base + slice_idx * p.bytes_per_slice, p.input_base + p.slice_offsets[slice_idx] * p.element_bytes,
            p.bytes_per_slice);
   };
-  concurrency::ThreadPool::TryParallelFor(tp, p.slice_offsets.size(), static_cast<double>(p.bytes_per_slice),
-                                          [&lambda](ptrdiff_t first, ptrdiff_t last) {
-                                            for (int slice_idx = static_cast<int>(first), end = static_cast<int>(last); slice_idx < end; ++slice_idx) {
-                                              lambda(slice_idx);
-                                            }
-                                          });
+  concurrency::ThreadPool::TryParallelFor(
+      tp, p.slice_offsets.size(), static_cast<double>(p.bytes_per_slice),
+      [&lambda](ptrdiff_t first, ptrdiff_t last) {
+        for (int slice_idx = static_cast<int>(first), end = static_cast<int>(last); slice_idx < end; ++slice_idx) {
+          lambda(slice_idx);
+        }
+      });
   return Status::OK();
 }
 
@@ -180,12 +193,13 @@ Status GatherND::GatherString(const Prepare& p, concurrency::ThreadPool* tp) con
       p.output_str_base[slice_base_offset + j] = p.input_str_base[p.slice_offsets[slice_idx] + j];
     }
   };
-  concurrency::ThreadPool::TryParallelFor(tp, p.slice_offsets.size(), static_cast<double>(p.element_count_per_slice),
-                                          [&lambda](ptrdiff_t first, ptrdiff_t last) {
-                                            for (int slice_idx = static_cast<int>(first), end = static_cast<int>(last); slice_idx < end; ++slice_idx) {
-                                              lambda(slice_idx);
-                                            }
-                                          });
+  concurrency::ThreadPool::TryParallelFor(
+      tp, p.slice_offsets.size(), static_cast<double>(p.element_count_per_slice),
+      [&lambda](ptrdiff_t first, ptrdiff_t last) {
+        for (int slice_idx = static_cast<int>(first), end = static_cast<int>(last); slice_idx < end; ++slice_idx) {
+          lambda(slice_idx);
+        }
+      });
 
   return Status::OK();
 }
