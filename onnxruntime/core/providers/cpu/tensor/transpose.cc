@@ -32,6 +32,29 @@ static inline void IncrementIndex(std::vector<int64_t>& index, const std::vector
   }
 }
 
+// Combines the two previous functions.
+template <typename T>
+static inline void IncrementIndexAndComputeOffset(std::vector<int64_t>& index, const std::vector<int64_t>& upper_bound,
+                                                  int64_t num_axes, const std::vector<size_t>& stride,
+                                                  const uint8_t*& local_source) {
+  int k = static_cast<int>(num_axes) - 1;
+  local_source += stride[k] * sizeof(T);
+  if (++index[k] < upper_bound[k]) {
+    return;
+  }
+  local_source -= index[k] * stride[k] * sizeof(T);
+  index[k] = 0;
+  --k;
+  for (; k >= 0; --k) {
+    index[k]++;
+    local_source += stride[k] * sizeof(T);
+    if (index[k] < upper_bound[k])
+      break;
+    local_source -= index[k] * stride[k] * sizeof(T);
+    index[k] = 0;
+  }
+}
+
 // DoTransposeSingleBlock: specialization of DoTranspose for the num_blocks=1 case.
 // copies source tensor to target, transposing elements.
 static inline void DoTransposeSingleBlock(size_t num_elts_in_block, const void* source, void* target,
@@ -90,6 +113,21 @@ inline void CopyPrim(uint8_t* target, const uint8_t* source) {
   *reinterpret_cast<T*>(target) = *reinterpret_cast<const T*>(source);
 }
 
+template <class T>
+static void TypedDoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_dims, size_t num_blocks,
+                                    const std::vector<size_t>& stride, const uint8_t* source, uint8_t* target) {
+  std::vector<int64_t> target_index(num_axes, 0);
+  const uint8_t* local_source = source;
+  for (size_t i = 0; i < num_blocks; ++i) {
+    // copy
+    CopyPrim<uint64_t>(target, local_source);
+
+    // increment target_index:
+    IncrementIndexAndComputeOffset<T>(target_index, target_dims, num_axes, stride, local_source);
+    target += sizeof(T);
+  }
+}
+
 // DoTransposeEltWise: specialization of DoTranspose for the num_elts_in_block=1 case.
 // copies source tensor to target, transposing elements.
 // The stride vector indicates the transposition.
@@ -101,56 +139,16 @@ static void DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& tar
 
   switch (element_size) {
     case sizeof(uint64_t):
-      for (size_t i = 0; i < num_blocks; ++i) {
-        // convert target_index into an offset in source data
-        size_t source_offset = ComputeOffset(target_index, stride, num_axes);
-
-        // copy
-        CopyPrim<uint64_t>(target, source + (source_offset * element_size));
-
-        // increment target_index:
-        IncrementIndex(target_index, target_dims, num_axes);
-        target += element_size;
-      }
+      TypedDoTransposeEltWise<uint64_t>(num_axes, target_dims, num_blocks, stride, source, target);
       break;
     case sizeof(uint32_t):
-      for (size_t i = 0; i < num_blocks; ++i) {
-        // convert target_index into an offset in source data
-        size_t source_offset = ComputeOffset(target_index, stride, num_axes);
-
-        // copy
-        CopyPrim<uint32_t>(target, source + (source_offset * element_size));
-
-        // increment target_index:
-        IncrementIndex(target_index, target_dims, num_axes);
-        target += element_size;
-      }
+      TypedDoTransposeEltWise<uint32_t>(num_axes, target_dims, num_blocks, stride, source, target);
       break;
     case sizeof(uint16_t):
-      for (size_t i = 0; i < num_blocks; ++i) {
-        // convert target_index into an offset in source data
-        size_t source_offset = ComputeOffset(target_index, stride, num_axes);
-
-        // copy
-        CopyPrim<uint16_t>(target, source + (source_offset * element_size));
-
-        // increment target_index:
-        IncrementIndex(target_index, target_dims, num_axes);
-        target += element_size;
-      }
+      TypedDoTransposeEltWise<uint16_t>(num_axes, target_dims, num_blocks, stride, source, target);
       break;
     case sizeof(uint8_t):
-      for (size_t i = 0; i < num_blocks; ++i) {
-        // convert target_index into an offset in source data
-        size_t source_offset = ComputeOffset(target_index, stride, num_axes);
-
-        // copy
-        *target = *(source + (source_offset * element_size));
-
-        // increment target_index:
-        IncrementIndex(target_index, target_dims, num_axes);
-        target += element_size;
-      }
+      TypedDoTransposeEltWise<uint8_t>(num_axes, target_dims, num_blocks, stride, source, target);
       break;
     default:
       assert(false);
