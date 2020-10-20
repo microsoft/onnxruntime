@@ -1030,22 +1030,49 @@ class ReshapeOpBuilder : public BaseOpBuilder {
  private:
   bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override ORT_MUST_USE_RESULT;
-  static bool CanSkipReshape(const Node& node);
+  static bool CanSkipReshape(const Node& node, size_t input_rank, size_t output_rank);
 };
 
 void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) {
   model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());
 }
 
-// We can skip the Reshape if only node(s) in this graph using the output is Matmul or Gemm, which will
-// automatically flatten the shape by NNAPI ANEURALNETWORKS_FULLY_CONNECTED operation
-// Matmul/Gemm will convert to ANEURALNETWORKS_FULLY_CONNECTED in NNAPI
-/* static */ bool ReshapeOpBuilder::CanSkipReshape(const Node& node) {
+// We can skip the Reshape if
+// 1. The output of the reshape/flatten is either input 0 of the GEMM/Matmul,
+//    and the input rank >= 2 and output_rand == 2
+//    This is because Gemm/Matmul will map to ANEURALNETWORKS_FULLY_CONNECTED in NNAPI,
+//    ANEURALNETWORKS_FULLY_CONNECTED will flatten the 2+ dim input 0 to 2d
+// 2. Or the output the reshape/flatten is the ouput of the graph
+//    (no op in the graph is using the output except can be used by Gemm/Matmul satisfying condition 1 above)
+/* static */ bool ReshapeOpBuilder::CanSkipReshape(const Node& node, size_t input_rank, size_t output_rank) {
+  const auto& output = node.OutputDefs()[0]->Name();
   for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
     const auto& op_type = it->GetNode().OpType();
     // TODO add quantized matmul when reshape support quantized input
-    if (op_type != "Gemm" && op_type != "MatMul")
+    if (op_type != "Gemm" && op_type != "MatMul") {
+      LOGS_DEFAULT(VERBOSE) << "Reshape/Flatten can only be skipped when the output is Gemm/Matmul"
+                            << " or no op is using the output (output is graph output)"
+                            << ", output name, " << output
+                            << " is used by " << op_type;
       return false;
+    }
+
+    // NNAPI ANEURALNETWORKS_FULLY_CONNECTED will only flatten the input 0
+    if (it->GetDstArgIndex() != 0) {
+      LOGS_DEFAULT(VERBOSE) << "Reshape/Flatten can only be skipped when the output is input 0 of Gemm/Matmul"
+                            << ", output name, " << output;
+      return false;
+    }
+
+    // We only support 2d matmul/gemm here
+    // And NNAPI ANEURALNETWORKS_FULLY_CONNECTED will only flatten input rand >= 2
+    if (input_rank < 2 || output_rank != 2) {
+      LOGS_DEFAULT(VERBOSE) << "Reshape/Flatten can only be skipped when input_rank >= 2 and output_rank == 2"
+                            << ", output name, " << output
+                            << ", the actual input_rank, " << input_rank
+                            << ", the actual output_rank, " << output_rank;
+      return false;
+    }
   }
 
   return true;
@@ -1060,8 +1087,10 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
   const auto& operand_types(model_builder.GetOperandTypes());
   const auto& output = node.OutputDefs()[0]->Name();
   ORT_RETURN_IF_ERROR(shaper.Reshape(input, shape, output));
+  auto input_rank = shaper[input].size();
+  auto output_rank = shaper[output].size();
 
-  if (CanSkipReshape(node)) {
+  if (CanSkipReshape(node, input_rank, output_rank)) {
     // Since reshape can be skipped, only register the dimension and type, with same index and new name
     const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
     model_builder.RegisterOperand(output, operand_indices.at(input), output_operand_type, false);
