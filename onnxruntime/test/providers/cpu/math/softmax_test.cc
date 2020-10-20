@@ -189,7 +189,8 @@ TEST(SoftmaxOperator, InvalidAxis) {
           // "[ShapeInferenceError] 'axis' must be in [-2 , 1]. Its actual value is: -10"
           ", 1]. Its actual value is: -10",
           // latest opset so we get shape inferencing errors
-          -1);
+          // Latest valid opset for this is 12. Once opset 13 changes are implemented this can be changed back to -1
+          12);
 }
 
 TEST(SoftmaxOperator, DimWithZero) {

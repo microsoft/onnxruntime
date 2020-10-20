@@ -198,7 +198,8 @@ TEST(LogSoftmaxOperator, InvalidAxis) {
           // "[ShapeInferenceError] 'axis' must be in [-2 , 1]. Its actual value is: -7"
           ", 1]. Its actual value is: -7",
           // latest opset so we get shape inferencing errors
-          -1);  //TensorRT parser: Assertion failed: axis >= 0 && axis < nbDims
+          // Latest valid opset for this is 12. Once opset 13 changes are implemented this can be changed back to -1
+          12);  //TensorRT parser: Assertion failed: axis >= 0 && axis < nbDims
 }
 
 }  // namespace test
