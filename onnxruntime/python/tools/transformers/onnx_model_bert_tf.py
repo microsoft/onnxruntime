@@ -317,30 +317,39 @@ class BertOnnxModelTF(BertOnnxModel):
             # SkipLayerNormalization has two inputs, and one of them is the root input for attention.
             parent = self.get_parent(normalize_node, 1)
             if parent is None or parent.op_type not in ["SkipLayerNormalization", "LayerNormalization", "Reshape"]:
-                logger.debug("Failed to match parent of normalize_node")
-                continue
+                parent = self.get_parent(normalize_node, 0)
+                if parent is None or parent.op_type not in ["SkipLayerNormalization", "LayerNormalization", "Reshape"]:
+                    logger.debug("Failed to match parent of normalize_node")
+                    continue
 
             qkv_nodes = self.match_parent_path(normalize_node, ['Add', 'MatMul', 'Reshape', 'Transpose', 'MatMul'],
                                                [0, 0, 0, 0, 0])
             if qkv_nodes is None:
-                logger.debug("Failed to match qkv nodes")
-                continue
-            (add, matmul, reshape_qkv, transpose_qkv, matmul_qkv) = qkv_nodes
+                qkv_nodes = self.match_parent_path(normalize_node, ['MatMul', 'Reshape', 'Transpose', 'MatMul'],
+                                                   [1, 0, 0, 0])
+                if qkv_nodes is None:
+                    logger.debug("Failed to match qkv nodes")
+                    continue
+
+            (reshape_qkv, transpose_qkv, matmul_qkv) = qkv_nodes[-3:]
             v_nodes = self.match_parent_path(matmul_qkv, ['Transpose', 'Reshape', 'Add', 'MatMul'], [1, 0, 0, 0])
             if v_nodes is None:
                 logger.debug("Failed to match v path")
                 continue
+
             (transpose_v, reshape_v, add_v, matmul_v) = v_nodes
             qk_nodes = self.match_parent_path(matmul_qkv, ['Softmax', 'Add', "Mul", 'MatMul'], [0, 0, 0, 0])
             if qk_nodes is None:
                 logger.debug("Failed to match qk_paths")
                 continue
             (softmax_qk, add_qk, mul_qk, matmul_qk) = qk_nodes
+
             q_nodes = self.match_parent_path(matmul_qk, ['Transpose', 'Reshape', 'Add', 'MatMul'], [0, 0, 0, 0])
             if q_nodes is None:
                 logger.debug("Failed to match q path")
                 continue
             (transpose_q, reshape_q, add_q, matmul_q) = q_nodes
+
             k_nodes = self.match_parent_path(matmul_qk, ['Transpose', 'Reshape', 'Add', 'MatMul'], [1, 0, 0, 0])
             if k_nodes is None:
                 logger.debug("Failed to match k path")
@@ -349,23 +358,26 @@ class BertOnnxModelTF(BertOnnxModel):
 
             mask_nodes = self.match_parent_path(add_qk, ['Mul', 'Sub', 'Unsqueeze'], [1, 0, 1])
             if mask_nodes is None:
-                logger.debug("Failed to match mask path")
-                continue
+                mask_nodes = self.match_parent_path(add_qk, ['Mul', 'Sub', 'Cast', 'Unsqueeze'], [1, 0, 1, 0])
+                if mask_nodes is None:
+                    logger.debug("Failed to match mask path")
+                    continue
+
             if not self.has_constant_input(mask_nodes[1], 1):
                 logger.debug("Sub node expected to have an input with constant value 1.0.")
                 continue
 
-            upper_mask_nodes = self.match_parent_path(mask_nodes[2], ['Reshape', 'Cast', 'Concat'], [0, 1, 0])
-            if upper_mask_nodes is None:
-                continue
-            mask_concat = upper_mask_nodes[2]
-            if len(mask_concat.input) == 3:
-                # Temporary work around[Tracy's model]: require 2-d mask input, the current model has a 3-d mask input
-                self.add_node(
-                    helper.make_node("Concat", [mask_concat.input[0], mask_concat.input[2]], [mask_concat.output[0]],
-                                     mask_concat.name + "_modified",
-                                     axis=0))
-                self.remove_node(mask_concat)
+            #upper_mask_nodes = self.match_parent_path(mask_nodes[-1], ['Reshape', 'Cast', 'Concat'], [0, 1, 0])
+            #if upper_mask_nodes is None:
+            #    continue
+            #mask_concat = upper_mask_nodes[2]
+            #if len(mask_concat.input) == 3:
+            #    # Temporary work around: require 2-d mask input, the current model has a 3-d mask input
+            #    self.add_node(
+            #        helper.make_node("Concat", [mask_concat.input[0], mask_concat.input[2]], [mask_concat.output[0]],
+            #                         mask_concat.name + "_modified",
+            #                         axis=0))
+            #    self.remove_node(mask_concat)
 
             is_same_root = self.check_attention_input(matmul_q, matmul_k, matmul_v, parent, output_name_to_node)
             if is_same_root:
@@ -375,7 +387,7 @@ class BertOnnxModelTF(BertOnnxModel):
                                                                              add_q, add_k, add_v, parent.output[0],
                                                                              reshape_qkv.output[0])
                 if parent.op_type == 'Reshape':
-                    # Temporary work around[Tracy's model]: we require the skiplayernorm and attention op be fed with 3-d input
+                    # Temporary work around: we require the skiplayernorm and attention op be fed with 3-d input
                     hidden_size = numpy_helper.to_array(self.get_initializer(parent.input[1]))[1]
                     tensor = self.convert_list_to_tensor(parent.name + "_modified", TensorProto.INT64, [3],
                                                          [1, -1, hidden_size])
