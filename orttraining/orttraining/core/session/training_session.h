@@ -12,6 +12,7 @@
 #include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/graph/gradient_config.h"
 #include "orttraining/models/runner/pipeline.h"
+#include "orttraining/core/framework/Store.hpp"
 
 namespace onnxruntime {
 namespace training {
@@ -24,7 +25,7 @@ class TrainingSession : public InferenceSession {
 
   TrainingSession(const SessionOptions& session_options, const Environment& env)
       : InferenceSession(session_options, env) {}
-
+      
   /**
    * The training configuration options.
    */
@@ -67,6 +68,9 @@ class TrainingSession : public InferenceSession {
       int pipeline_parallel_size{1};
 
       int pipeline_stage_id{0};
+
+      const std::function<void(std::string, std::string)>* store_set{nullptr};
+      const std::function<std::string(std::string)>* store_get{nullptr};
     };
     // The distributed training configuration.
     DistributedConfiguration distributed_config{};
@@ -481,6 +485,7 @@ class TrainingSession : public InferenceSession {
 
   GradientGraphConfiguration gradient_graph_config_;
   static const std::string training_mode_string_;
+
 };
 }  // namespace training
 }  // namespace onnxruntime

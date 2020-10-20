@@ -196,7 +196,8 @@ class ORTTransformerTrainer:
                                                         'world_rank': max(0, self.args.local_rank),
                                                         'world_size': int(self.world_size),
                                                         'local_rank': max(0, self.args.local_rank),
-                                                        'allreduce_post_accumulation': True},
+                                                        'allreduce_post_accumulation': True,
+                                                        'store_url': '/bert_ort/liqun/test_out/ort_bert.onnx'},
                                                     'lr_scheduler': lr_scheduler
                                                     })
 

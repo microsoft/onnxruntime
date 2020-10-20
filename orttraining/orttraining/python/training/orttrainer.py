@@ -638,11 +638,34 @@ class ORTTrainer(object):
         ort_parameters.transformer_layer_recompute = self.options.graph_transformer.transformer_layer_recompute
         ort_parameters.number_recompute_layers = self.options.graph_transformer.number_recompute_layers
 
+        file_store = None
+        if ort_parameters.world_size > 1 and self.options.distributed.store_url:
+            file_store = torch.distributed.FileStore(self.options.distributed.store_url, ort_parameters.world_size)
+
+            def store_set(store_key, store_value):
+                print("store_set: {}/{}", store_key, store_value)
+                print(type(store_key))
+                print(type(store_value))
+                file_store.set(store_key, store_value)
+
+            def store_get(store_key):
+                print(type(store_key))
+                store_value = file_store.get(store_key)
+                print(type(store_value))
+                print("store_get: {}/{}", store_key, store_value)
+                return store_value.decode("utf-8")
+
+            from onnxruntime.capi._pybind_state import DistributedStore
+            store = DistributedStore()
+            store.store_set = store_set
+            store.store_get = store_get
+            ort_parameters.store = store
+
         # SessionOptions
         session_options = ort.SessionOptions()
         session_options.use_deterministic_compute = self.options.debug.deterministic_compute
-        if (self.options.graph_transformer.attn_dropout_recompute or 
-            self.options.graph_transformer.gelu_recompute or 
+        if (self.options.graph_transformer.attn_dropout_recompute or
+            self.options.graph_transformer.gelu_recompute or
             self.options.graph_transformer.transformer_layer_recompute):
             session_options.execution_order = ort.ExecutionOrder.PRIORITY_BASED
 

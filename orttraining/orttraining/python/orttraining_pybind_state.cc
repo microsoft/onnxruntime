@@ -6,6 +6,7 @@
 
 // pybind11/stl.h is needed to support std::unordered_set, etc.
 #include <pybind11/stl.h>
+#include <pybind11/functional.h>
 
 #include "core/session/environment.h"
 #include "orttraining/core/session/training_session.h"
@@ -13,6 +14,7 @@
 #include "orttraining/core/framework/mpi_context.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
 #include "orttraining/core/framework/FileStore.hpp"
+#include "orttraining/core/framework/Store.hpp"
 
 namespace onnxruntime {
 namespace python {
@@ -23,6 +25,11 @@ using namespace onnxruntime::training;
 
 template <typename T>
 using shared_ptr_class_ = py::class_<T, std::shared_ptr<T>>;
+
+// struct DistributedStore {
+//   std::function<void(std::string, std::string)> store_set;
+//   std::function<std::string(std::string)> store_get;
+// };
 
 struct TrainingParameters {
   std::string loss_output_name;
@@ -57,6 +64,11 @@ struct TrainingParameters {
   bool gelu_recompute = false;
   bool transformer_layer_recompute = false;
   int number_recompute_layers = 0;
+
+  // std::function<void(std::string, std::string)> store_set;
+  // std::function<std::string(std::string)> store_get;
+
+  // DistributedStore* store = nullptr;
 };
 
 struct TrainingConfigurationResult {
@@ -65,7 +77,9 @@ struct TrainingConfigurationResult {
 
 // TODO: this method does not handle parallel optimization.
 TrainingConfigurationResult ConfigureSessionForTraining(
-    training::TrainingSession* sess, TrainingParameters& parameters) {
+    training::TrainingSession* sess, TrainingParameters& parameters,
+    const std::function<void(std::string, std::string)>* store_set = nullptr,
+    const std::function<std::string(std::string)>* store_get = nullptr) {
   //TODO tix, refactor the mpi related code to populate all fields correctly by default.
   ORT_ENFORCE(parameters.horizontal_parallel_size <= parameters.world_size);
   ORT_ENFORCE(parameters.data_parallel_size <= parameters.world_size);
@@ -93,6 +107,9 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   config.distributed_config.local_size = parameters.local_size;
   config.distributed_config.data_parallel_size = parameters.data_parallel_size;
   config.distributed_config.horizontal_parallel_size = parameters.horizontal_parallel_size;
+
+  config.distributed_config.store_set = store_set;
+  config.distributed_config.store_get = store_get;
 
   if (parameters.use_mixed_precision) {
     training::TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mp{};
@@ -180,6 +197,27 @@ void CopyMPIContextToTrainingParameters(TrainingParameters& parameters, const lo
 }
 #endif
 
+static std::function<int(int)>* f_saved = nullptr;
+int func_arg(const std::function<int(int)> &f) {
+  f_saved = const_cast<std::function<int(int)>*>(&f);
+  int a = (*f_saved)(11);
+  std::cout << "f_saved(11): " << a << std::endl;
+  return f(10);
+}
+
+std::function<int(int)> func_ret(const std::function<int(int)> &f) {
+  int a = (*f_saved)(11);
+  std::cout << "f_saved(11): " << a << std::endl;
+    return [f](int i) {
+        return f(i) + 1;
+    };
+}
+
+py::cpp_function func_cpp() {
+    return py::cpp_function([](int i) { return i+1; },
+      py::arg("number"));
+}
+
 void addObjectMethodsForTraining(py::module& m) {
   py::class_<TrainingParameters> parameters(m, "TrainingParameters", R"pbdoc(Configuration information for training.)pbdoc");
   parameters.def(py::init())
@@ -207,6 +245,10 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("transformer_layer_recompute", &TrainingParameters::transformer_layer_recompute)
       .def_readwrite("number_recompute_layers", &TrainingParameters::number_recompute_layers);
 
+  m.def("func_arg", &func_arg);
+  m.def("func_ret", &func_ret);
+  m.def("func_cpp", &func_cpp);
+
 #if defined(USE_NCCL)
   m.def("get_mpi_context_local_rank", []() -> int { return MPIContext::GetInstance().GetLocalRank(); });
   m.def("get_mpi_context_local_size", []() -> int { return MPIContext::GetInstance().GetLocalSize(); });
@@ -221,112 +263,6 @@ void addObjectMethodsForTraining(py::module& m) {
           return py::str{result.loss_scale_input_name.value()};
         }
         return py::none();
-      });
-
-  // Thin wrapper over internal C++ InferenceSession to accommodate custom op library management for the Python user
-  struct PyTrainingSession : public PyInferenceSession {
-    PyTrainingSession(Environment& env, const PySessionOptions& so)
-        : PyInferenceSession(onnxruntime::make_unique<TrainingSession>(so, env)) {
-    }
-  };
-
-  py::class_<PyTrainingSession, PyInferenceSession> training_session(m, "TrainingSession");
-  training_session
-      .def(py::init([](const PySessionOptions& so) {
-        Environment& env = GetEnv();
-        return onnxruntime::make_unique<PyTrainingSession>(env, so);
-      }))
-      .def(py::init([]() {
-        Environment& env = GetEnv();
-        return onnxruntime::make_unique<PyTrainingSession>(env, GetDefaultCPUSessionOptions());
-      }))
-      .def("finalize", [](py::object) {
-#if defined(USE_NCCL)
-#ifdef _WIN32
-        // https://docs.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-best-practices
-        // shutdown_mpi() is not called within MPIContext destructor because of DllMain's restriction
-        // call shutdown_mpi() here instead.
-        MPIContext::shutdown_mpi();
-#endif
-#endif
-      })
-      .def("load_model", [](PyTrainingSession* sess, const std::string& path, TrainingParameters& parameters) {
-        OrtPybindThrowIfError(sess->GetSessionHandle()->Load(path));
-
-#if defined(USE_NCCL)
-        bool use_nccl = parameters.allreduce_post_accumulation;
-        if (!use_nccl && parameters.world_size > 1)
-          CopyMPIContextToTrainingParameters(parameters, sess->GetSessionHandle()->GetLogger());
-#endif
-        const auto config_result = ConfigureSessionForTraining(static_cast<TrainingSession*>(sess->GetSessionHandle()), parameters);
-
-        std::vector<std::string> provider_types = {};
-        InitializeSession(sess->GetSessionHandle(), provider_types);
-
-        return config_result;
-      })
-      .def("read_bytes", [](PyTrainingSession* sess, const py::bytes& serialized_model, TrainingParameters& parameters) {
-        std::istringstream buffer(serialized_model);
-        OrtPybindThrowIfError(sess->GetSessionHandle()->Load(buffer));
-
-#if defined(USE_NCCL)
-        bool use_nccl = parameters.allreduce_post_accumulation;
-        if (!use_nccl && parameters.world_size > 1)
-          CopyMPIContextToTrainingParameters(parameters, sess->GetSessionHandle()->GetLogger());
-#endif
-        const auto config_result = ConfigureSessionForTraining(static_cast<TrainingSession*>(sess->GetSessionHandle()), parameters);
-
-        std::vector<std::string> provider_types = {};
-        InitializeSession(sess->GetSessionHandle(), provider_types);
-
-        return config_result;
-      })
-      .def("get_state", [](PyTrainingSession* sess) {
-        NameMLValMap state_tensors;
-        ORT_THROW_IF_ERROR(static_cast<TrainingSession*>(sess->GetSessionHandle())->GetStateTensors(state_tensors));
-        auto& data_transfer_manager = sess->GetSessionHandle()->GetDataTransferManager();
-        //convert to numpy array
-        std::map<std::string, py::object> rmap;
-        for (auto& kv : state_tensors) {
-          if (kv.second.IsTensor()) {
-            py::object obj;
-            const Tensor& rtensor = kv.second.Get<Tensor>();
-            GetPyObjFromTensor(rtensor, obj, &data_transfer_manager);
-            rmap.insert({kv.first, obj});
-          } else {
-            throw std::runtime_error("Non tensor type in session state tensors is not expected.");
-          }
-        }
-        return rmap;
-      })
-      .def("load_state", [](PyTrainingSession* sess, std::unordered_map<std::string, py::object>& state, bool strict) {
-        NameMLValMap state_tensors;
-        for (auto initializer : state) {
-          OrtValue ml_value;
-          auto px = sess->GetSessionHandle()->GetModelInputs();
-          if (!px.first.IsOK() || !px.second) {
-            throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
-          }
-          CreateGenericMLValue(px.second, GetAllocator(), initializer.first, initializer.second, &ml_value);
-          if (PyErr_Occurred()) {
-            PyObject *ptype, *pvalue, *ptraceback;
-            PyErr_Fetch(&ptype, &pvalue, &ptraceback);
-
-            PyObject* pStr = PyObject_Str(ptype);
-            std::string sType = py::reinterpret_borrow<py::str>(pStr);
-            Py_XDECREF(pStr);
-            pStr = PyObject_Str(pvalue);
-            sType += ": ";
-            sType += py::reinterpret_borrow<py::str>(pStr);
-            Py_XDECREF(pStr);
-            throw std::runtime_error(sType);
-          }
-          state_tensors.insert(std::make_pair(initializer.first, ml_value));
-        }
-        ORT_THROW_IF_ERROR(static_cast<TrainingSession*>(sess->GetSessionHandle())->SetStateTensors(state_tensors, strict));
-      })
-      .def("is_output_fp32_node", [](PyTrainingSession* sess, const std::string& output_name) {
-        return static_cast<TrainingSession*>(sess->GetSessionHandle())->IsGraphOutputFp32Node(output_name);
       });
 
   // PythonStore is a pybind11 trampoline class to allow a Python
@@ -387,7 +323,7 @@ void addObjectMethodsForTraining(py::module& m) {
 
   auto store =
       py::class_<::c10d::Store, std::shared_ptr<::c10d::Store>, PythonStore>(
-          m, "Store")
+          m, "MyStore")
           // Default constructor.
           .def(py::init<>())
           // Convert from std::string to std::vector<uint8>.
@@ -434,7 +370,124 @@ void addObjectMethodsForTraining(py::module& m) {
               py::call_guard<py::gil_scoped_release>());
 
   shared_ptr_class_<::c10d::FileStore>(m, "FileStore", store)
-      .def(py::init<const std::string&, int>());
+  .def(py::init<const std::string&, int>());
+
+  // Thin wrapper over internal C++ InferenceSession to accommodate custom op library management for the Python user
+  struct PyTrainingSession : public PyInferenceSession {
+    PyTrainingSession(Environment& env, const PySessionOptions& so)
+        : PyInferenceSession(onnxruntime::make_unique<TrainingSession>(so, env)) {
+    }
+  };
+
+  py::class_<PyTrainingSession, PyInferenceSession> training_session(m, "TrainingSession");
+  training_session
+      .def(py::init([](const PySessionOptions& so) {
+        Environment& env = GetEnv();
+        return onnxruntime::make_unique<PyTrainingSession>(env, so);
+      }))
+      .def(py::init([]() {
+        Environment& env = GetEnv();
+        return onnxruntime::make_unique<PyTrainingSession>(env, GetDefaultCPUSessionOptions());
+      }))
+      .def("finalize", [](py::object) {
+#if defined(USE_NCCL)
+#ifdef _WIN32
+        // https://docs.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-best-practices
+        // shutdown_mpi() is not called within MPIContext destructor because of DllMain's restriction
+        // call shutdown_mpi() here instead.
+        MPIContext::shutdown_mpi();
+#endif
+#endif
+      })
+      .def("load_model", [](PyTrainingSession* sess, const std::string& path, TrainingParameters& parameters) {
+        OrtPybindThrowIfError(sess->GetSessionHandle()->Load(path));
+
+#if defined(USE_NCCL)
+        bool use_nccl = parameters.allreduce_post_accumulation;
+        if (!use_nccl && parameters.world_size > 1)
+          CopyMPIContextToTrainingParameters(parameters, sess->GetSessionHandle()->GetLogger());
+#endif
+        const auto config_result = ConfigureSessionForTraining(static_cast<TrainingSession*>(sess->GetSessionHandle()), parameters);
+
+        std::vector<std::string> provider_types = {};
+        InitializeSession(sess->GetSessionHandle(), provider_types);
+
+        return config_result;
+      })
+      .def("read_bytes", [](PyTrainingSession* sess, const py::bytes& serialized_model, TrainingParameters& parameters,
+        const std::function<void(std::string, std::string)>& store_set,
+        const std::function<std::string(std::string)>& store_get) {
+        std::string key_str = "test_sss", value_str = "aaa_test";
+
+        store_set(key_str, value_str);
+
+        std::string ret_value_str = store_get(key_str);
+        std::cout << "store_get(\"test_sss\"): " << ret_value_str << std::endl;
+
+        std::istringstream buffer(serialized_model);
+        OrtPybindThrowIfError(sess->GetSessionHandle()->Load(buffer));
+
+#if defined(USE_NCCL)
+        bool use_nccl = parameters.allreduce_post_accumulation;
+        if (!use_nccl && parameters.world_size > 1)
+          CopyMPIContextToTrainingParameters(parameters, sess->GetSessionHandle()->GetLogger());
+#endif
+        const auto config_result = ConfigureSessionForTraining(static_cast<TrainingSession*>(sess->GetSessionHandle()), parameters, &store_set, &store_get);
+        // const auto config_result = ConfigureSessionForTraining(static_cast<TrainingSession*>(sess->GetSessionHandle()), parameters);
+
+        std::vector<std::string> provider_types = {};
+        InitializeSession(sess->GetSessionHandle(), provider_types);
+
+        return config_result;
+      })
+      .def("get_state", [](PyTrainingSession* sess) {
+        NameMLValMap state_tensors;
+        ORT_THROW_IF_ERROR(static_cast<TrainingSession*>(sess->GetSessionHandle())->GetStateTensors(state_tensors));
+        auto& data_transfer_manager = sess->GetSessionHandle()->GetDataTransferManager();
+        //convert to numpy array
+        std::map<std::string, py::object> rmap;
+        for (auto& kv : state_tensors) {
+          if (kv.second.IsTensor()) {
+            py::object obj;
+            const Tensor& rtensor = kv.second.Get<Tensor>();
+            GetPyObjFromTensor(rtensor, obj, &data_transfer_manager);
+            rmap.insert({kv.first, obj});
+          } else {
+            throw std::runtime_error("Non tensor type in session state tensors is not expected.");
+          }
+        }
+        return rmap;
+      })
+      .def("load_state", [](PyTrainingSession* sess, std::unordered_map<std::string, py::object>& state, bool strict) {
+        NameMLValMap state_tensors;
+        for (auto initializer : state) {
+          OrtValue ml_value;
+          auto px = sess->GetSessionHandle()->GetModelInputs();
+          if (!px.first.IsOK() || !px.second) {
+            throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
+          }
+          CreateGenericMLValue(px.second, GetAllocator(), initializer.first, initializer.second, &ml_value);
+          if (PyErr_Occurred()) {
+            PyObject *ptype, *pvalue, *ptraceback;
+            PyErr_Fetch(&ptype, &pvalue, &ptraceback);
+
+            PyObject* pStr = PyObject_Str(ptype);
+            std::string sType = py::reinterpret_borrow<py::str>(pStr);
+            Py_XDECREF(pStr);
+            pStr = PyObject_Str(pvalue);
+            sType += ": ";
+            sType += py::reinterpret_borrow<py::str>(pStr);
+            Py_XDECREF(pStr);
+            throw std::runtime_error(sType);
+          }
+          state_tensors.insert(std::make_pair(initializer.first, ml_value));
+        }
+        ORT_THROW_IF_ERROR(static_cast<TrainingSession*>(sess->GetSessionHandle())->SetStateTensors(state_tensors, strict));
+      })
+      .def("is_output_fp32_node", [](PyTrainingSession* sess, const std::string& output_name) {
+        return static_cast<TrainingSession*>(sess->GetSessionHandle())->IsGraphOutputFp32Node(output_name);
+      });
+
 }
 }  // namespace python
 }  // namespace onnxruntime

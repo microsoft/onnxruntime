@@ -13,7 +13,14 @@ DistributedRunContext::DistributedRunContext(int32_t world_rank,
                                              int32_t local_size,
                                              int32_t data_parallel_size,
                                              int32_t horizontal_parallel_size,
-                                             int32_t pipeline_stage_size) : file_store_("/bert_ort/liqun/test_out/file_store_2.dat", world_size) {
+                                             int32_t pipeline_stage_size,
+                                             const std::function<void(std::string, std::string)>* store_set,
+                                             const std::function<std::string(std::string)>* store_get) : 
+                                             store_set_(store_set),
+                                             store_get_(store_get) {
+  // this->c10d_store_ = new c10d::FileStore("/bert_ort/liqun/test_out/file_store_2.dat", world_size);
+
+
   // We only check world_size and world_rank since local_size and local_rank might not be set if using NCCL.
   // TODO tix, refactor the mpi related code to populate all fields correctly by default.
   ORT_ENFORCE(world_rank >= 0 && world_size > 0,

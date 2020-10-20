@@ -6,7 +6,7 @@
 #include <cassert>
 
 #include "core/common/common.h"
-#include "FileStore.hpp"
+#include "Store.hpp"
 
 namespace onnxruntime {
 namespace training {
@@ -38,6 +38,8 @@ struct DistributedRunConfig {
   int32_t data_parallel_size{1};
   int32_t horizontal_parallel_size{1};
   int32_t pipeline_stage_size{1};
+  const std::function<void(std::string, std::string)>* store_set{nullptr};
+  const std::function<std::string(std::string)>* store_get{nullptr};
 };
 
 // This function returns the corresponding pipeline stage id for the given world rank.
@@ -60,7 +62,9 @@ class DistributedRunContext {
                                                       config.local_rank, config.local_size,
                                                       config.data_parallel_size,
                                                       config.horizontal_parallel_size,
-                                                      config.pipeline_stage_size);
+                                                      config.pipeline_stage_size,
+                                                      config.store_set,
+                                                      config.store_get);
   }
 
   static DistributedRunContext& GetInstance() {
@@ -104,21 +108,26 @@ class DistributedRunContext {
     return groups_[group_type];
   }
 
-  c10d::FileStore* Store() { return &file_store_; }
+  const std::function<void(std::string, std::string)>* StoreSet() { return store_set_; }
+  const std::function<std::string(std::string)>* StoreGet() { return store_get_; }
 
  protected:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(DistributedRunContext);
 
   DistributedRunContext(int32_t world_rank, int32_t world_size, int32_t local_rank, int32_t local_size,
-                        int32_t data_parallel_size, int32_t horizontal_parallel_size, int32_t pipeline_stage_size = 1);
+                        int32_t data_parallel_size, int32_t horizontal_parallel_size, int32_t pipeline_stage_size,
+                        const std::function<void(std::string, std::string)>* store_set = nullptr,
+                        const std::function<std::string(std::string)>* store_get = nullptr);
 
   static DistributedRunContext& GetOrCreateInstance(int32_t world_rank = 0, int32_t world_size = 1,
                                                     int32_t local_rank = 0, int32_t local_size = 1,
                                                     int32_t data_parallel_size = 1,
                                                     int32_t horizontal_parallel_size = 1,
-                                                    int32_t pipeline_stage_size = 1) {
+                                                    int32_t pipeline_stage_size = 1,
+                                                    const std::function<void(std::string, std::string)>* store_set = nullptr,
+                                                    const std::function<std::string(std::string)>* store_get = nullptr) {
     static DistributedRunContext instance(world_rank, world_size, local_rank, local_size,
-                                          data_parallel_size, horizontal_parallel_size, pipeline_stage_size);
+                                          data_parallel_size, horizontal_parallel_size, pipeline_stage_size, store_set, store_get);
     return instance;
   }
 
@@ -127,7 +136,10 @@ class DistributedRunContext {
   // Groups containing current worker
   std::vector<WorkerGroup> groups_;
 
-  c10d::FileStore file_store_;
+  // c10d::Store* c10d_store_;
+  const std::function<void(std::string, std::string)>* store_set_;
+  const std::function<std::string(std::string)>* store_get_;
+
   int64_t ncclCommCounter_;
 };
 

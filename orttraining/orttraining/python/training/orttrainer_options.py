@@ -445,8 +445,11 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
             'enable_adasum': {
                 'type': 'boolean',
                 'default': False
-            }
-
+            },
+            'store_url': {
+                'type': 'string',
+                'default': None
+            },
         }
     },
     'lr_scheduler': {

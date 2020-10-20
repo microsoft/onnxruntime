@@ -5,7 +5,8 @@
 #include <mpi.h>
 
 #include "orttraining/core/framework/mpi_context.h"
-#include "orttraining/core/framework/FileStore.hpp"
+#include "orttraining/core/framework/Store.hpp"
+#include "orttraining/core/framework/distributed_run_context.h"
 
 
 namespace onnxruntime {
@@ -31,7 +32,10 @@ ncclDataType_t GetNcclDataType(onnxruntime::MLDataType type) {
   }
 }
 
-static void BroadcastUniqueNCCLID(c10d::FileStore* file_store, int32_t rank, ncclUniqueId* ncclID) {
+static void BroadcastUniqueNCCLIDWithStore(
+  const std::function<void(std::string, std::string)>& store_set, 
+  const std::function<std::string(std::string)>& store_get, 
+  int32_t rank, ncclUniqueId& nccl_id) {
   // For every NCCL communicator that we create we need to broadcast
   // a unique ID from rank 0 to all other ranks. This broadcast is
   // done by rank 0 setting a key in the store and all other ranks
@@ -41,18 +45,33 @@ static void BroadcastUniqueNCCLID(c10d::FileStore* file_store, int32_t rank, ncc
   static int64_t ncclCommCounter_ = 0;
   std::string storeKey = std::to_string(ncclCommCounter_++);
   if (rank == 0) {
-    auto vec = std::vector<uint8_t>(
-        reinterpret_cast<uint8_t*>(ncclID),
-        reinterpret_cast<uint8_t*>(ncclID) + NCCL_UNIQUE_ID_BYTES);
-    file_store->set(storeKey, vec);
+    std::string value(reinterpret_cast<uint8_t*>(&nccl_id), reinterpret_cast<uint8_t*>(&nccl_id) + NCCL_UNIQUE_ID_BYTES);
+    store_set(storeKey, value);
   } else {
-    auto vec = file_store->get(storeKey);
-    ORT_ENFORCE(vec.size() == NCCL_UNIQUE_ID_BYTES);
-    std::memcpy(ncclID, vec.data(), vec.size());
+    std::string value = store_get(storeKey);
+    ORT_ENFORCE(value.size() == NCCL_UNIQUE_ID_BYTES);
+    std::memcpy(&nccl_id, value.data(), value.size());
   }
 }
 
-static Status CreateNcclCommunicator(MPI_Group* /*mpi_world_group*/,
+static void BroadcastUniqueNCCLIDWithMPI(MPI_Group& mpi_world_group, onnxruntime::training::WorkerGroup& worker_group, ncclUniqueId& nccl_id) {
+    // Create new group
+    MPI_Group mpi_group;
+    MPI_CHECK(MPI_Group_incl(mpi_world_group, worker_group.ranks.size(), worker_group.ranks.data(), &mpi_group));
+
+    // Create new MPI communicator
+    MPI_Comm mpi_comm;
+    static int32_t mpi_group_id = 0;
+    MPI_CHECK(MPI_Comm_create_group(MPI_COMM_WORLD, mpi_group, ++mpi_group_id, &(mpi_comm)));
+    ORT_ENFORCE(mpi_comm != MPI_COMM_NULL, "MPI communicator creation failed.");
+    MPI_CHECK(MPI_Bcast(&nccl_id, sizeof(nccl_id), MPI_BYTE, 0, mpi_comm));
+
+    // Clean up
+    MPI_CHECK(MPI_Group_free(&mpi_group));
+    MPI_CHECK(MPI_Comm_free(&mpi_comm));
+}
+
+static Status CreateNcclCommunicator(MPI_Group* mpi_world_group,
                                      const training::WorkerGroupType worker_group_type,
                                      ncclComm_t* group_comm) {
   auto worker_group = training::DistributedRunContext::GetInstance().GetWorkerGroup(worker_group_type);
@@ -62,55 +81,61 @@ static Status CreateNcclCommunicator(MPI_Group* /*mpi_world_group*/,
     return Status::OK();
   }
 
-  // // Create new group
-  // MPI_Group mpi_group;
-  // MPI_CHECK(MPI_Group_incl(*mpi_world_group, worker_group.ranks.size(), worker_group.ranks.data(), &mpi_group));
-
-  // // Create new MPI communicator
-  // MPI_Comm mpi_comm;
-  // static int32_t mpi_group_id = 0;
-  // MPI_CHECK(MPI_Comm_create_group(MPI_COMM_WORLD, mpi_group, ++mpi_group_id, &(mpi_comm)));
-  // ORT_ENFORCE(mpi_comm != MPI_COMM_NULL, "MPI communicator creation failed.");
-
   // Create new NCCL communicator
   ncclUniqueId nccl_id;
   if (worker_group.rank_in_group == 0) {
     NCCL_RETURN_IF_ERROR(ncclGetUniqueId(&nccl_id));
   }
-  // MPI_CHECK(MPI_Bcast(&nccl_id, sizeof(nccl_id), MPI_BYTE, 0, mpi_comm));
-  BroadcastUniqueNCCLID(training::DistributedRunContext::GetInstance().Store(), worker_group.rank_in_group, &nccl_id);
+
+  if (mpi_world_group) {
+    LOGS_DEFAULT(WARNING) << "BroadcastUniqueNCCLIDWithMPI";
+    BroadcastUniqueNCCLIDWithMPI(*mpi_world_group, worker_group, nccl_id);
+  } else {
+    LOGS_DEFAULT(WARNING) << "BroadcastUniqueNCCLIDWithStore";
+    BroadcastUniqueNCCLIDWithStore(
+      *(training::DistributedRunContext::GetInstance().StoreSet()), *(training::DistributedRunContext::GetInstance().StoreGet()),
+      worker_group.rank_in_group, nccl_id);
+  }
 
   NCCL_RETURN_IF_ERROR(ncclCommInitRank(group_comm, worker_group.ranks.size(), nccl_id, worker_group.rank_in_group));
 
-  // // Clean up
-  // MPI_CHECK(MPI_Group_free(&mpi_group));
-  // MPI_CHECK(MPI_Comm_free(&mpi_comm));
   return Status::OK();
 }
 
 NcclContext::NcclContext() {
-  int is_mpi_initialized = 0;
-  MPI_Initialized(&is_mpi_initialized);
-  if (!is_mpi_initialized) {
-    int mpi_threads_provided = 0;
-    MPI_Init_thread(nullptr, nullptr, MPI_THREAD_MULTIPLE, &mpi_threads_provided);
+  if (training::DistributedRunContext::GetInstance().StoreSet()) {
+    // Initialize Data Parallel Group NCCL Communicator
+    auto ret = CreateNcclCommunicator(nullptr, training::WorkerGroupType::DataParallel,
+                                      &data_group_comm_);
+    ORT_ENFORCE(ret.IsOK());
+    // Initialize Horizontal Model Parallel Group NCCL Communicator
+    ret = CreateNcclCommunicator(nullptr, training::WorkerGroupType::HorizontalParallel,
+                                &horizontal_group_comm_);
+    ORT_ENFORCE(ret.IsOK());    
+  } else {
+    int is_mpi_initialized = 0;
+    MPI_Initialized(&is_mpi_initialized);
+    if (!is_mpi_initialized) {
+      int mpi_threads_provided = 0;
+      MPI_Init_thread(nullptr, nullptr, MPI_THREAD_MULTIPLE, &mpi_threads_provided);
+    }
+
+    // Get the group under MPI_COMM_WORLD
+    MPI_Group mpi_world_group;
+    MPI_Comm_group(MPI_COMM_WORLD, &mpi_world_group);
+
+    // Initialize Data Parallel Group NCCL Communicator
+    auto ret = CreateNcclCommunicator(&mpi_world_group, training::WorkerGroupType::DataParallel,
+                                      &data_group_comm_);
+    ORT_ENFORCE(ret.IsOK());
+
+    // Initialize Horizontal Model Parallel Group NCCL Communicator
+    ret = CreateNcclCommunicator(&mpi_world_group, training::WorkerGroupType::HorizontalParallel,
+                                &horizontal_group_comm_);
+    ORT_ENFORCE(ret.IsOK());
+
+    MPI_Group_free(&mpi_world_group);
   }
-
-  // Get the group under MPI_COMM_WORLD
-  MPI_Group mpi_world_group;
-  MPI_Comm_group(MPI_COMM_WORLD, &mpi_world_group);
-
-  // Initialize Data Parallel Group NCCL Communicator
-  auto ret = CreateNcclCommunicator(&mpi_world_group, training::WorkerGroupType::DataParallel,
-                                    &data_group_comm_);
-  ORT_ENFORCE(ret.IsOK());
-
-  // Initialize Horizontal Model Parallel Group NCCL Communicator
-  ret = CreateNcclCommunicator(&mpi_world_group, training::WorkerGroupType::HorizontalParallel,
-                               &horizontal_group_comm_);
-  ORT_ENFORCE(ret.IsOK());
-
-  MPI_Group_free(&mpi_world_group);
 }
 
 ncclComm_t NcclContext::Comm(training::WorkerGroupType group_type) {

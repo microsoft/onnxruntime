@@ -576,10 +576,20 @@ if __name__ == "__main__":
         test.world_rank = local_rank
         test.world_size = world_size
 
-        test.file_store = C.FileStore('/bert_ort/liqun/test_out/file_store.dat', 4)
-        test.file_store.set("local_rank", str(local_rank))
-        test.file_store.set("world_rank", str(local_rank))
-        test.file_store.set("world_size", str(world_size))
+        # init_method = "file:///bert_ort/liqun/test_out/file_store_2.dat"       # "env://"
+        # from datetime import timedelta
+        # from torch.distributed import rendezvous
+        # timeout = timedelta(minutes=30)
+
+        # rendezvous_iterator = rendezvous(
+        #     init_method, local_rank, world_size, timeout=timeout)
+        # store, rank, world_size = next(rendezvous_iterator)
+        # store.set_timeout(timeout)
+
+        # test.file_store = torch.distributed.FileStore('/bert_ort/liqun/test_out/file_store.dat', 4)
+        # test.file_store.set("local_rank", str(local_rank))
+        # test.file_store.set("world_rank", str(local_rank))
+        # test.file_store.set("world_size", str(world_size))
 
         if sys.argv[2] == 'ORTBertPretrainTest.test_pretrain_throughput':
             logger.info("running ORTBertPretrainTest.test_pretrain_throughput()...")
@@ -587,7 +597,7 @@ if __name__ == "__main__":
             logger.info("ORTBertPretrainTest.test_pretrain_throughput() passed")
         else:
             test.max_steps = 200
-            test.force_num_hidden_layers = 8
+            test.force_num_hidden_layers = 2
             logger.info("running ORTBertPretrainTest.test_pretrain_convergence()...")
             final_loss = test.test_pretrain_convergence()
             logger.info("ORTBertPretrainTest.test_pretrain_convergence() final loss = %f", final_loss)

@@ -7,6 +7,7 @@
 #include "core/framework/session_options.h"
 #include "core/session/environment.h"
 #include "core/session/inference_session.h"
+#include "orttraining/core/framework/FileStore.hpp"
 
 namespace onnxruntime {
 namespace python {
@@ -29,6 +30,8 @@ struct CustomOpLibrary {
   void* library_handle_ = nullptr;
 };
 #endif
+
+struct PyFileStore : public c10d::FileStore {};
 
 // Thin wrapper over internal C++ SessionOptions to accommodate custom op library management for the Python user
 struct PySessionOptions : public SessionOptions {
