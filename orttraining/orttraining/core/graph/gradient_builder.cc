@@ -750,7 +750,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetConvGradient) {
     if (IsGradientRequiredForSrcNodeInput(i)) {
       outputs.push_back(GI(i));
     } else {
-      outputs.push_back(IA("ConvInput_" + I(i).name));
+      outputs.push_back(ArgDef("", nullptr));
     }
   }
 
