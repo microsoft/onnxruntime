@@ -294,12 +294,10 @@ TEST(GradientCheckerTest, DISABLED_MulGrad) {
   TestBroadcastableBinaryOpGrad("Mul");
 }
 
-#ifdef USE_CUDA
 TEST(GradientCheckerTest, DivGrad) {
   std::function<float(float)> transformer = [](float x) { return x > 0 ? x + 0.2f : x - 0.2f; };
   TestBroadcastableBinaryOpGrad("Div", &transformer);
 }
-#endif
 
 // TODO: Powgrad Test doesn't cover exponent
 TEST(GradientCheckerTest, PowGrad) {
