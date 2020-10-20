@@ -70,7 +70,7 @@ struct OrtEnv {
   std::unique_ptr<onnxruntime::Environment> value_;
 
   OrtEnv(std::unique_ptr<onnxruntime::Environment> value1);
-  ~OrtEnv() = default;
+  ~OrtEnv();
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(OrtEnv);
 };
