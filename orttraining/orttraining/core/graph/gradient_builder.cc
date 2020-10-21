@@ -1470,5 +1470,19 @@ IMPLEMENT_GRADIENT_BUILDER(GetFlattenGradient) {
   };
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetTopKGradient) {
+  // TopK's default axis is -1, which is different from GatherElements.
+  auto attributes = SrcNodeAttributes();
+  auto axis = utils::HasInt(attributes.at("axis")) ? attributes.at("axis").i() : -1;
+  return std::vector<NodeDef>{
+      NodeDef("Shape",
+              {I(0)},
+              {IA("x_shape")}),
+      NodeDef(OpDef{"GatherElementsGrad", kMSDomain, 1},
+              {GO(0), IA("x_shape"), O(1)},
+              {GI(0)},
+              {MakeAttribute("axis", axis)})};
+}
+
 }  // namespace training
 }  // namespace onnxruntime
