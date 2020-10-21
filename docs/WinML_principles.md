@@ -21,10 +21,10 @@ Window Machine Learning is a high-performance, reliable API for deploying hardwa
 ## Open for Community Contributions
 
 We encourage community contributions to Windows ML to enhance users’ experience on Windows. We use the principles above to guide how we look at and evaluate all contributions. 
-  * Making sure your feature request follows all of these principles up front will help the review process. 
-  * Include as much information about existing or future customer problems the feature request addresses as well as how many users may benefit from this new feature.
 
-Small changes such as minor issues or bugs can be addressed much quicker using the [bug/performance issue request](https://github.com/microsoft/onnxruntime/issues/new/choose) rather than feature request. 
+Ensure your feature request follows all these principles to help the review process and include information about the customer problem(s) the feature request addresses.
+
+Note: minor issues or bugs can be addressed more quickly using the [bug/performance issue request](https://github.com/microsoft/onnxruntime/issues/new/choose) rather than feature request. 
 
 ## Start your Feature Request
 
