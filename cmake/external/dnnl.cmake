@@ -1,9 +1,8 @@
 include (ExternalProject)
 
 set(DNNL_URL https://github.com/intel/mkl-dnn.git)
-# If DNNL_TAG is updated, check if MKLML_VERSION and platform.cmake.patch need to be updated.
+# If DNNL_TAG is updated, check if platform.cmake.patch need to be updated.
 set(DNNL_TAG v1.1.1)
-set(MKLML_VERSION 2019.0.5.20190502)
 
 if(WIN32)
   set(MKLML_OS_VERSION_STR "win")
@@ -19,24 +18,6 @@ else()
     set(DNNL_SHARED_LIB libdnnl.so.1)
     set(MKLML_OS_VERSION_STR "lnx")    
   endif()  
-endif()
-
-if (onnxruntime_USE_MKLML)
-  set(MKLDNN_VERSION_SHORT v0.20)
-  set(MKLML_URL https://github.com/intel/mkl-dnn/releases/download/${MKLDNN_VERSION_SHORT}/mklml_${MKLML_OS_VERSION_STR}_${MKLML_VERSION}.${MKLML_FILE_EXTENSION})
-
-  ExternalProject_Add(project_mklml
-    PREFIX mklml
-    URL ${MKLML_URL}
-    CONFIGURE_COMMAND ""
-    BUILD_COMMAND ""
-    UPDATE_COMMAND ""
-    INSTALL_COMMAND ""  )
-
-  set(MKML_DIR ${CMAKE_CURRENT_BINARY_DIR}/mklml/src/project_mklml)
-  set(MKLML_INCLUDE_DIR "${MKML_DIR}/include")
-  set(MKLML_LIB_DIR "${MKML_DIR}/lib")
-  link_directories(${MKLML_LIB_DIR})
 endif()
 
 if (onnxruntime_USE_DNNL)
@@ -68,7 +49,4 @@ if (onnxruntime_USE_DNNL)
     CMAKE_ARGS -DDNNL_BUILD_TESTS=OFF -DDNNL_BUILD_EXAMPLES=OFF -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} -DCMAKE_INSTALL_PREFIX=${DNNL_INSTALL}
   )
   link_directories(${DNNL_LIB_DIR})
-  #if (onnxruntime_USE_MKLML)
-  #  add_dependencies(project_dnnl project_mklml)
-  #endif()
 endif()
