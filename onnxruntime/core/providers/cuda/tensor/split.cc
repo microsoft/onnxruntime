@@ -56,12 +56,18 @@ Status Split::ComputeInternal(OpKernelContext* ctx) const {
   std::vector<int64_t> output_dimensions{input_dims};
 
   std::vector<void*> output_ptr(num_outputs);
+  std::vector<int64_t> axis_dimension_input_output_mapping(input_dims[axis]);
+  int index = 0;
   for (int i = 0; i < num_outputs; ++i) {
     // update size of dimension for axis we're splitting on
-    output_dimensions[axis] = gsl::narrow<int>(split_sizes[i]);
+    auto split_size = gsl::narrow<int>(split_sizes[i]);
+    output_dimensions[axis] = split_size;
 
     Tensor* output = ctx->Output(i, TensorShape{output_dimensions});
     output_ptr[i] = output->MutableDataRaw();
+    for (int j = 0; j < split_size; ++j) {
+      axis_dimension_input_output_mapping.at(index++) = i;
+    }
   }
 
   if (input_shape.Size() == 0) return Status::OK();
@@ -70,6 +76,9 @@ Status Split::ComputeInternal(OpKernelContext* ctx) const {
   for (size_t i = 1; i < split_sizes_range.size(); ++i) {
     split_sizes_range[i] += split_sizes_range[i - 1];
   }
+
+  CudaAsyncBuffer<int64_t> axis_dimension_input_output_mapping_gpu(this, axis_dimension_input_output_mapping);
+  axis_dimension_input_output_mapping_gpu.CopyToGpu();
 
   if (num_outputs <= TArray<int64_t>::Capacity()) {
     TArray<void*> output_ptr_gpu(output_ptr);
@@ -81,6 +90,7 @@ Status Split::ComputeInternal(OpKernelContext* ctx) const {
                                   block_size_inside_axis_dim,
                                   split_sizes_gpu,
                                   split_sizes_range_gpu,
+                                  axis_dimension_input_output_mapping_gpu.ConstGpuPtr(),
                                   num_outputs,
                                   input_data,
                                   output_ptr_gpu,
@@ -98,6 +108,7 @@ Status Split::ComputeInternal(OpKernelContext* ctx) const {
                                   block_size_inside_axis_dim,
                                   split_sizes_gpu.ConstGpuPtr(),
                                   split_sizes_range_gpu.ConstGpuPtr(),
+                                  axis_dimension_input_output_mapping_gpu.ConstGpuPtr(),
                                   num_outputs,
                                   input_data,
                                   output_ptr_gpu.GpuPtr(),
