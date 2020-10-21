@@ -84,42 +84,6 @@ void RunGatherGradTestWithRandomData(
   }
   test.Run();
 }
-
-void RunGatherGradConsistentOutputTest(
-    int64_t axis,
-    const TensorShape& X_shape,
-    const TensorShape& indices_shape) {
-  std::map<std::string, std::vector<std::vector<float>>> provider_outputs;
-  for (int i = 0; i < 2; ++i) {
-    OpTester test("GatherGrad", 1, kMSDomain);
-    ConfigureGatherGradRandomDataOpTester<float>(axis, X_shape, indices_shape, test);
-
-    auto output_handler =
-        [&provider_outputs](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
-          ASSERT_EQ(fetches.size(), 1);
-          const Tensor& output_tensor = FetchTensor(fetches[0]);
-          const auto output_size = output_tensor.Shape().Size();
-          std::vector<float> output;
-          output.reserve(output_size);
-          std::copy_n(output_tensor.Data<float>(), output_size, std::back_inserter(output));
-          provider_outputs[provider_type].emplace_back(std::move(output));
-        };
-
-    test.SetCustomOutputVerifier(output_handler);
-
-    // current CPU implementation is non-deterministic
-    const std::unordered_set<std::string> excluded_providers{kCpuExecutionProvider};
-
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
-  }
-
-  for (const auto& kvp : provider_outputs) {
-    SCOPED_TRACE(kvp.first);
-    const auto& outputs = kvp.second;
-    ASSERT_EQ(outputs.size(), 2);
-    ASSERT_EQ(outputs[0], outputs[1]);
-  }
-}
 }  // namespace
 
 #ifdef USE_CUDA
@@ -196,6 +160,44 @@ TEST(GatherGradOpTest, GatherFewDistinctIndices) {
 }
 
 #ifdef USE_CUDA
+namespace {
+void RunGatherGradConsistentOutputTest(
+    int64_t axis,
+    const TensorShape& X_shape,
+    const TensorShape& indices_shape) {
+  std::map<std::string, std::vector<std::vector<float>>> provider_outputs;
+  for (int i = 0; i < 2; ++i) {
+    OpTester test("GatherGrad", 1, kMSDomain);
+    ConfigureGatherGradRandomDataOpTester<float>(axis, X_shape, indices_shape, test);
+
+    auto output_handler =
+        [&provider_outputs](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
+          ASSERT_EQ(fetches.size(), 1);
+          const Tensor& output_tensor = FetchTensor(fetches[0]);
+          const auto output_size = output_tensor.Shape().Size();
+          std::vector<float> output;
+          output.reserve(output_size);
+          std::copy_n(output_tensor.Data<float>(), output_size, std::back_inserter(output));
+          provider_outputs[provider_type].emplace_back(std::move(output));
+        };
+
+    test.SetCustomOutputVerifier(output_handler);
+
+    // current CPU implementation is non-deterministic
+    const std::unordered_set<std::string> excluded_providers{kCpuExecutionProvider};
+
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
+  }
+
+  for (const auto& kvp : provider_outputs) {
+    SCOPED_TRACE(kvp.first);
+    const auto& outputs = kvp.second;
+    ASSERT_EQ(outputs.size(), 2);
+    ASSERT_EQ(outputs[0], outputs[1]);
+  }
+}
+}  // namespace
+
 TEST(GatherGradOpTest, ConsistentOutput) {
   RunGatherGradConsistentOutputTest(0, {256 * 1024}, {1024 * 1024});
 }
