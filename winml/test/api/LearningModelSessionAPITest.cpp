@@ -412,9 +412,10 @@ static void TestSpectrogram(int64_t batch_size, int64_t num_samples, int64_t one
 
   std::vector<int64_t> scalar_shape = {};
   std::vector<int64_t> input_shape = {batch_size, num_samples};
-  std::vector<int64_t> output_shape = {batch_size, onesided_fft_size, batch_size};
-  std::vector<int64_t> output_mel_matrix_shape = {onesided_fft_size, n_mel_bins};
-  std::vector<int64_t> mel_output_shape = {batch_size, n_mel_bins};
+  std::vector<int64_t> dft_shape = {batch_size, onesided_fft_size, 2};
+  std::vector<int64_t> powerframe_shape = {batch_size, onesided_fft_size, 1};
+  std::vector<int64_t> mel_matrix_shape = {onesided_fft_size, n_mel_bins};
+  std::vector<int64_t> mel_spectrogram_shape = {batch_size, n_mel_bins};
 
   // Constant initializers
 
@@ -432,7 +433,6 @@ static void TestSpectrogram(int64_t batch_size, int64_t num_samples, int64_t one
   auto input_slice_start = TensorInt32Bit::CreateFromShapeArrayAndDataArray({1}, {1});
   auto input_slice_ends = TensorInt32Bit::CreateFromShapeArrayAndDataArray({1}, {2});
 
-  
   auto mel_input_shape = TensorInt64Bit::CreateFromShapeArrayAndDataArray({2}, {batch_size, onesided_fft_size});
 
   // Mel spectrogram
@@ -444,23 +444,21 @@ static void TestSpectrogram(int64_t batch_size, int64_t num_samples, int64_t one
   auto model =
       LearningModelBuilder::Create()
           // Inputs
-          .Inputs().Add(TensorFeatureDescriptor(L"Input", L"The input time domain signal", TensorKind::Float, input_shape))
-
+          .Inputs().Add(TensorFeatureDescriptor(L"Input.TimeSignal", L"The input time domain signal", TensorKind::Float, input_shape))
           // Outputs
-          .Outputs().Add(TensorFeatureDescriptor(L"Output", L"The real output of the frequency domain spectra", TensorKind::Float, output_shape))
-          .Outputs().Add(TensorFeatureDescriptor(L"MelMatrixOutput", L"The mel matrix", TensorKind::Float, output_mel_matrix_shape))
-          .Outputs().Add(TensorFeatureDescriptor(L"MelTransformedOutput", L"The output spectrogram", TensorKind::Float, mel_output_shape))
-       
-          // complex slice
+          .Outputs().Add(TensorFeatureDescriptor(L"Output.OnesidedDFT", L"The onesided output of the frequency domain spectra", TensorKind::Float, dft_shape))
+          .Outputs().Add(TensorFeatureDescriptor(L"Output.PowerFrames", L"The real output of the frequency domain spectra", TensorKind::Float, powerframe_shape))
+          .Outputs().Add(TensorFeatureDescriptor(L"Output.MelWeightMatrix", L"The mel matrix", TensorKind::Float, mel_matrix_shape))
+          .Outputs().Add(TensorFeatureDescriptor(L"Output.MelSpectrogram", L"The output spectrogram", TensorKind::Float, mel_spectrogram_shape))
+          // Constants
           .Inputs().AddConstant(L"power_of_2_exponent", power_of_2_exponent)
-
           // The graph
           .Operators().Add(Operator(L"Shape", L"shape0")
-              .SetInput(L"data", L"Input")
+              .SetInput(L"data", L"Input.TimeSignal")
               .SetOutput(L"shape", L"input_shape"))
           .Operators().Add(Operator(L"Slice", L"input_slice")
               .SetInput(L"data", L"input_shape")
-              .SetConstant(L"starts", input_slice_start)
+              .SetConstant(L"starts", input_slice_start) // make_tensor<int32_t>({1}, {2}))
               .SetConstant(L"ends", input_slice_ends)
               .SetOutput(L"output", L"num_samples"))
           .Operators().Add(Operator(L"HannWindow", L"hann0", MS_DOMAIN)
@@ -468,18 +466,18 @@ static void TestSpectrogram(int64_t batch_size, int64_t num_samples, int64_t one
               .SetOutput(L"output", L"hann_window"))
           .Operators().Add(Operator(L"Mul", L"mul0")
               .SetInput(L"A", L"hann_window")
-              .SetInput(L"B", L"Input")
+              .SetInput(L"B", L"Input.TimeSignal")
               .SetOutput(L"C", L"windowed_signal"))
           .Operators().Add(Operator(L"DFT", L"dft0", MS_DOMAIN)
               .SetInput(L"input", L"windowed_signal")
-              .SetOutput(L"output", L"spectra"))
+              .SetOutput(L"output", L"Output.OnesidedDFT"))
           .Operators().Add(Operator(L"Slice", L"real_slice")
-              .SetInput(L"data", L"spectra")
+              .SetInput(L"data", L"Output.OnesidedDFT")
               .SetConstant(L"starts", real_slice_start)
               .SetConstant(L"ends", real_slice_ends)
               .SetOutput(L"output", L"reals"))
           .Operators().Add(Operator(L"Slice", L"complex_slice")
-              .SetInput(L"data", L"spectra")
+              .SetInput(L"data", L"Output.OnesidedDFT")
               .SetConstant(L"starts", complex_slice_start)
               .SetConstant(L"ends", complex_slice_ends)
               .SetOutput(L"output", L"imaginaries"))
@@ -498,22 +496,22 @@ static void TestSpectrogram(int64_t batch_size, int64_t num_samples, int64_t one
           .Operators().Add(Operator(L"Div", L"div0")
               .SetInput(L"A", L"magnitude_squared")
               .SetConstant(L"B", number_of_samples)
-              .SetOutput(L"C", L"Output"))
+              .SetOutput(L"C", L"Output.PowerFrames"))
           .Operators().Add(Operator(L"MelWeightMatrix", L"melweightmatrix0", MS_DOMAIN)
               .SetConstant(L"num_mel_bins", num_mel_bins)
               .SetInput(L"fft_size", L"num_samples")
               .SetConstant(L"sample_rate", sample_rate)
               .SetConstant(L"lower_edge_hertz", lower_edge_hertz)
               .SetConstant(L"upper_edge_hertz", upper_edge_hertz)
-              .SetOutput(L"output", L"MelMatrixOutput"))
+              .SetOutput(L"output", L"Output.MelWeightMatrix"))
           .Operators().Add(Operator(L"Reshape", L"reshape0")
-              .SetInput(L"data", L"Output")
+              .SetInput(L"data", L"Output.PowerFrames")
               .SetConstant(L"shape", mel_input_shape)
               .SetOutput(L"reshaped", L"ReshapedOutput"))      
           .Operators().Add(Operator(L"MatMul", L"matmul0")
               .SetInput(L"A", L"ReshapedOutput")
-              .SetInput(L"B", L"MelMatrixOutput")
-              .SetOutput(L"Y", L"MelTransformedOutput"))
+              .SetInput(L"B", L"Output.MelWeightMatrix")
+              .SetOutput(L"Y", L"Output.MelSpectrogram"))
           .CreateModel();
 
   LearningModelSession session(model);
@@ -521,7 +519,7 @@ static void TestSpectrogram(int64_t batch_size, int64_t num_samples, int64_t one
 
   // Populate binding
   std::vector<float> input = {1, 2, 3, 4, 1, 0, 0, 0, 1, 2, 3, 4, 1, 0, 0, 0, 1, 2, 3, 4, 1, 0, 0, 0, 1, 2, 3, 4, 1, 0, 0, 0};
-  binding.Bind(L"Input", TensorFloat::CreateFromShapeArrayAndDataArray(input_shape, input));
+  binding.Bind(L"Input.TimeSignal", TensorFloat::CreateFromShapeArrayAndDataArray(input_shape, input));
 
   // These are constant initializers. Constants should be automatically generated and set... but since that is not implemented... they need to be duplicated
   binding.Bind(L"real_slice.starts", real_slice_start);
@@ -542,26 +540,34 @@ static void TestSpectrogram(int64_t batch_size, int64_t num_samples, int64_t one
   auto result = session.Evaluate(binding, L"");
 
   // Check results
-  auto y_tensor = result.Outputs().Lookup(L"Output").as<TensorFloat>();
+  printf("DFT\n");
+  auto dft_tensor = result.Outputs().Lookup(L"Output.OnesidedDFT").as<TensorFloat>();
+  auto dft_ivv = dft_tensor.GetAsVectorView();
+  for (int i = 0; i < dft_shape[0] * dft_shape[1] * 2; i += 2) {
+    printf("%f + %fi\n", dft_ivv.GetAt(i), dft_ivv.GetAt(i + 1));
+  }
+
+  printf("PowerFrames\n");
+  auto y_tensor = result.Outputs().Lookup(L"Output.PowerFrames").as<TensorFloat>();
   auto y_ivv = y_tensor.GetAsVectorView();
-  for (int i = 0; i < output_shape[0] * output_shape[1]; i++) {
+  for (int i = 0; i < powerframe_shape[0] * powerframe_shape[1]; i++) {
     printf("%f\n", y_ivv.GetAt(i));
   }
 
-  auto mel_tensor = result.Outputs().Lookup(L"MelMatrixOutput").as<TensorFloat>();
+  auto mel_tensor = result.Outputs().Lookup(L"Output.MelWeightMatrix").as<TensorFloat>();
   auto mel_ivv = mel_tensor.GetAsVectorView();
   printf("MelWeightMatrix\n");
-  for (int i = 0; i < output_mel_matrix_shape[0]; i++) {
-    for (int j = 0; j < output_mel_matrix_shape[1]; j++) {
-      printf("%.2f,", mel_ivv.GetAt((i * output_mel_matrix_shape[1]) + j));
+  for (int i = 0; i < mel_matrix_shape[0]; i++) {
+    for (int j = 0; j < mel_matrix_shape[1]; j++) {
+      printf("%.2f,", mel_ivv.GetAt((i * mel_matrix_shape[1]) + j));
     }
     printf("\n");
   }
 
-  auto final_tensor = result.Outputs().Lookup(L"MelTransformedOutput").as<TensorFloat>();
+  auto final_tensor = result.Outputs().Lookup(L"Output.MelSpectrogram").as<TensorFloat>();
   auto final_ivv = final_tensor.GetAsVectorView();
   printf("MelTransformedOutput\n");
-  for (int i = 0; i < mel_output_shape[0] * mel_output_shape[1]; i++) {
+  for (int i = 0; i < mel_spectrogram_shape[0] * mel_spectrogram_shape[1]; i++) {
     printf("%f\n", final_ivv.GetAt(i));
   }
 }
