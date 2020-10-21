@@ -19,12 +19,26 @@ def parse_args():
 def main():
     args = parse_args()
 
-    Config = collections.namedtuple("Config", ["enable_mixed_precision", "sequence_length", "max_batch_size"])
+    Config = collections.namedtuple("Config", ["enable_mixed_precision", 
+                                               "sequence_length", 
+                                               "max_batch_size", 
+                                               "max_predictions_per_seq", 
+                                               "additional_options"])
     configs = [
-        Config(True, 128, 66),
-        Config(True, 512, 10),
-        Config(False, 128, 33),
-        Config(False, 512, 5),
+        Config(True, 128, 76, 20, ""),
+        Config(True, 512, 11, 80, ""),
+        Config(False, 128, 39, 20, ""),
+        Config(False, 512, 6, 80, ""),
+
+        # BertLarge Phase 1 recompute
+        Config(True, 128, 91, 20, "--gelu_recompute"),
+        Config(True, 128, 83, 20, "--attn_dropout_recompute"),
+        Config(True, 128, 344, 20, "--transformer_layer_recompute"),
+
+        # BertLarge Phase 2 recompute
+        Config(True, 512, 12, 80, "--gelu_recompute"),
+        Config(True, 512, 14, 80, "--attn_dropout_recompute"),
+        Config(True, 512, 50, 80, "--transformer_layer_recompute"),
     ]
 
     # run BERT training
@@ -52,6 +66,7 @@ def main():
             "--use_nccl",
             "--seed", "42",
             "--enable_grad_norm_clip=false",
+            config.additional_options
         ]
 
         if config.enable_mixed_precision:

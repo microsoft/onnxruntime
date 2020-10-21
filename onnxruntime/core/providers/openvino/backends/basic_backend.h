@@ -22,13 +22,9 @@ class BasicBackend : public IBackend {
   void Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) override;
 
  private:
-  void StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* context,
-                           InferenceEngine::InferRequest::Ptr infer_request,
-                           std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network);
+  void StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* context);
 
-  void CompleteAsyncInference(Ort::CustomOpApi& ort, std::vector<OrtValue*> output_tensors,
-                              InferenceEngine::InferRequest::Ptr infer_request,
-                              std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network);
+  void CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* context);
 
   GlobalContext& global_context_;
   SubGraphContext subgraph_context_;

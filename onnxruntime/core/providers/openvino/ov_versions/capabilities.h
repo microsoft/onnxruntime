@@ -13,6 +13,10 @@ GetCapability_2020_2(const onnxruntime::GraphViewer& graph_viewer, const std::st
 std::vector<std::unique_ptr<ComputeCapability>>
 GetCapability_2020_4(const onnxruntime::GraphViewer& graph_viewer, const std::string device_type);
 
+#elif defined OPENVINO_2021_1
+std::vector<std::unique_ptr<ComputeCapability>>
+GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, const std::string device_id);
+
 #endif
 
 } //namespace openvino_ep

@@ -1320,6 +1320,14 @@ IMPLEMENT_GRADIENT_BUILDER(GetLayerNormalizationGradient) {
   }
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetSimplifiedLayerNormalizationGradient) {
+  return std::vector<NodeDef>{
+      NodeDef(OpDef{"SimplifiedLayerNormalizationGrad", kMSDomain, 1},
+              {GO(0), I(0), I(1), O(1)},
+              {GI(0), GI(1)},
+              {SrcNodeAttributes()})};
+}
+
 IMPLEMENT_GRADIENT_BUILDER(GetBatchNormalizationGradient) {
   auto attributes = SrcNodeAttributes();
   if (attributes.find("epsilon") != attributes.end()) {
@@ -1446,6 +1454,34 @@ IMPLEMENT_GRADIENT_BUILDER(GetExpandGradient) {
   }
 
   return output;
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetExpGradient) {
+  return std::vector<NodeDef>{
+      NodeDef("Mul",
+              {GO(0), O(0)},
+              {GI(0)})};
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetFlattenGradient) {
+  return std::vector<NodeDef>{
+      NodeDef("Shape", {I(0)}, {IA("input_shape")}),
+      NodeDef("Reshape", {GO(0), IA("input_shape")}, {GI(0)})
+  };
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetTopKGradient) {
+  // TopK's default axis is -1, which is different from GatherElements.
+  auto attributes = SrcNodeAttributes();
+  auto axis = utils::HasInt(attributes.at("axis")) ? attributes.at("axis").i() : -1;
+  return std::vector<NodeDef>{
+      NodeDef("Shape",
+              {I(0)},
+              {IA("x_shape")}),
+      NodeDef(OpDef{"GatherElementsGrad", kMSDomain, 1},
+              {GO(0), IA("x_shape"), O(1)},
+              {GI(0)},
+              {MakeAttribute("axis", axis)})};
 }
 
 }  // namespace training

@@ -55,6 +55,7 @@ CPUIDInfo::CPUIDInfo() noexcept {
       const int AVX512_MASK = 0xE6;
       int value = XGETBV();
       bool has_sse2 = (data[3] & (1 << 26));
+      has_sse3_ = (data[2] & 0x1);
       bool has_ssse3 = (data[2] & (1 << 9));
       has_avx_ = has_sse2 && has_ssse3 && (data[2] & (1 << 28)) && ((value & AVX_MASK) == AVX_MASK);
       bool has_avx512 = (value & AVX512_MASK) == AVX512_MASK;

@@ -8,7 +8,7 @@
 namespace onnxruntime {
 namespace contrib {
 
-template <typename T>
+template <typename T, bool simplified>
 class LayerNormGrad final : public OpKernel {
  public:
   LayerNormGrad(const OpKernelInfo& op_kernel_info);

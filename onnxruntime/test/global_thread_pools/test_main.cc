@@ -68,6 +68,9 @@ int main(int argc, char** argv) {
     st_ptr.reset(g_ort->SetGlobalInterOpNumThreads(tp_options, std::thread::hardware_concurrency()));
     ORT_RETURN_IF_NON_NULL_STATUS(st_ptr);
 
+    st_ptr.reset(g_ort->SetGlobalDenormalAsZero(tp_options));
+    ORT_RETURN_IF_NON_NULL_STATUS(st_ptr);
+
     ort_env.reset(new Ort::Env(tp_options, ORT_LOGGING_LEVEL_VERBOSE, "Default"));  // this is the only change from test/providers/test_main.cc
     g_ort->ReleaseThreadingOptions(tp_options);
     status = RUN_ALL_TESTS();

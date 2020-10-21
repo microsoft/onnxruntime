@@ -90,10 +90,10 @@ class TestCalibrate(unittest.TestCase):
         augmented_model_outputs = [output.name for output in augmented_model.graph.output]
         added_node_names = ['C_ReduceMin', 'C_ReduceMax', 'D_ReduceMin', 'D_ReduceMax', 'F_ReduceMin', 'F_ReduceMax']
         added_outputs = ['C_ReduceMin', 'C_ReduceMax', 'D_ReduceMin', 'D_ReduceMax', 'F_ReduceMin', 'F_ReduceMax']
-        # Original 3 nodes + added ReduceMin/Max nodes * 6 (exlude graph input/output)
-        self.assertEqual(len(augmented_model_node_names), 9)
+        # Original 3 nodes + added ReduceMin/Max nodes
+        self.assertEqual(len(augmented_model_node_names), 15)
         # Original 1 graph output + added outputs * 6
-        self.assertEqual(len(augmented_model_outputs), 7)
+        self.assertEqual(len(augmented_model_outputs), 13)
         for name in added_node_names:
             self.assertTrue(name in augmented_model_node_names)
         for output in added_outputs:
@@ -131,9 +131,9 @@ class TestCalibrate(unittest.TestCase):
         added_node_names = ['I_ReduceMin', 'I_ReduceMax', 'K_ReduceMin', 'K_ReduceMax']
         added_outputs = ['I_ReduceMin', 'I_ReduceMax', 'K_ReduceMin', 'K_ReduceMax']
         # Original 2 nodes + added ReduceMin/Max nodes * 4
-        self.assertEqual(len(augmented_model_node_names), 6)
+        self.assertEqual(len(augmented_model_node_names), 12)
         # Original 1 graph output + added outputs * 4
-        self.assertEqual(len(augmented_model_outputs), 5)
+        self.assertEqual(len(augmented_model_outputs), 11)
         for name in added_node_names:
             self.assertTrue(name in augmented_model_node_names)
         for output in added_outputs:
@@ -175,10 +175,10 @@ class TestCalibrate(unittest.TestCase):
         augmented_model_outputs = [output.name for output in augmented_model.graph.output]
         added_node_names = ['M_ReduceMin', 'M_ReduceMax', 'O_ReduceMin', 'O_ReduceMax', 'P_ReduceMin', 'P_ReduceMax', 'Q_ReduceMin', 'Q_ReduceMax']
         added_outputs =  ['M_ReduceMin', 'M_ReduceMax', 'O_ReduceMin', 'O_ReduceMax', 'P_ReduceMin', 'P_ReduceMax',  'Q_ReduceMin', 'Q_ReduceMax']
-        # Original 4 nodes + added ReduceMin/Max nodes * 8
-        self.assertEqual(len(augmented_model_node_names), 12)
-        # Original 1 graph output + added outputs * 8
-        self.assertEqual(len(augmented_model_outputs), 9)
+        # Original 4 nodes + added ReduceMin/Max nodes
+        self.assertEqual(len(augmented_model_node_names), 14)
+        # Original 1 graph output + added outputs
+        self.assertEqual(len(augmented_model_outputs), 11)
         for name in added_node_names:
             self.assertTrue(name in augmented_model_node_names)
         for output in added_outputs:
@@ -242,7 +242,7 @@ class TestCalibrate(unittest.TestCase):
         quantization_params_dict = calibrater.calculate_quantization_params(dict_for_quantization)
         
         #check the size of the quantization dictionary
-        self.assertEqual(len(quantization_params_dict), 5)
+        self.assertEqual(len(quantization_params_dict), 11)
         
         #check the computation of zp and scale
         for key, value in quantization_params_dict.items():
