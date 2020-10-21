@@ -1037,15 +1037,23 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
   model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());
 }
 
-// We can skip the Reshape if
+// We can skip the Reshape if all the output edges satisfies,
 // 1. The output of the reshape/flatten is the input 0 of the GEMM/Matmul,
-//    and the input rank >= 2 and output_rand == 2
+//    and the input rank >= 2 and output_rank == 2
 //    This is because Gemm/Matmul will map to ANEURALNETWORKS_FULLY_CONNECTED in NNAPI,
 //    ANEURALNETWORKS_FULLY_CONNECTED will flatten the 2+ dim input 0 to 2d
-// 2. Or the output the reshape/flatten is the ouput of the graph
+// 2. Or the output the reshape/flatten is the output of the graph
 //    (no op in the graph is using the output except can be used by Gemm/Matmul satisfying condition 1 above)
+// The reason we want to skip Reshape is that Reshape is not running on Hardware (NPU,...) in NNAPI for
+// some CPU (e.g. Qualcomm SD for now), skipping unnecessary Reshape will prevent context switching
+// between NNAPI CPU impl and Hardware Accelerator impl and will speed up the execution
+// If we are going to skip the reshape, we will still add correct shape and operand type for the output in
+// onnxruntime::nnapi::Model.
+// If the Reshape output is also a graph output, since NNAPI output is a void* buffer, we can find the shape
+// information in onnxruntime::nnapi::Model and pass the correct shape information back to ORT to be used as output shape
 /* static */ bool ReshapeOpBuilder::CanSkipReshape(const Node& node, size_t input_rank, size_t output_rank) {
   const auto& output = node.OutputDefs()[0]->Name();
+  // We will go through all the output edges
   for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
     const auto& op_type = it->GetNode().OpType();
     // TODO add quantized matmul when reshape support quantized input
@@ -1065,7 +1073,7 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
     }
 
     // We only support 2d matmul/gemm here
-    // And NNAPI ANEURALNETWORKS_FULLY_CONNECTED will only flatten input rand >= 2
+    // And NNAPI ANEURALNETWORKS_FULLY_CONNECTED will only flatten input rank >= 2
     if (input_rank < 2 || output_rank != 2) {
       LOGS_DEFAULT(VERBOSE) << "Reshape/Flatten can only be skipped when input_rank >= 2 and output_rank == 2"
                             << ", output name, " << output
@@ -1075,6 +1083,11 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
     }
   }
 
+  // If we reach here, we have either,
+  // all the Reshape outputs are used by gemm/matmul, the output can also be a model output [doesn't really matter here]
+  // or
+  // Reshape has no output edge ==> the output is a graph output or a dead end [which we don't care]
+  // we can skip this Reshape now
   return true;
 }
 
@@ -1090,6 +1103,9 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
   auto input_rank = shaper[input].size();
   auto output_rank = shaper[output].size();
 
+  // Since Reshape is not running using hardware in NNAPI for some CPU (e.g. Qualcomm SD for now)
+  // We will try to see if we the skip the Reshape to prevent context switching between
+  // NNAPI CPU impl and NNAPI hardware accelerator impl
   if (CanSkipReshape(node, input_rank, output_rank)) {
     // Since reshape can be skipped, only register the dimension and type, with same index and new name
     const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
@@ -1100,7 +1116,7 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
     std::vector<uint32_t> input_indices;
     input_indices.push_back(operand_indices.at(input));
     // Add new shape
-    Shape shape_dimen = {SafeInt<uint32_t>(shape.size())};
+    Shape shape_dimen = {static_cast<uint32_t>(shape.size())};
     std::string shape_name = model_builder.GetUniqueName(node.Name() + input + "newshape");
     OperandType shape_operand_type(Type::TENSOR_INT32, shape_dimen);
     ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(shape_name, shape.data(), shape_operand_type));
@@ -2368,7 +2384,7 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   }
 
   int rank = shaper[input0].size();
-  int32_t axis = SafeInt<int32_t>(HandleNegativeAxis(helper.Get("axis", 1), rank));
+  int32_t axis = static_cast<int32_t>(HandleNegativeAxis(helper.Get("axis", 1), rank));
 
   if (output_is_nhwc) {
     ORT_RETURN_IF_NOT(rank == 4,
@@ -2433,7 +2449,7 @@ Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   const auto& input_shape(shaper[input]);
   auto input_dims = input_shape.size();
   for (auto& axis : axes) {
-    axis = SafeInt<int32_t>(HandleNegativeAxis(axis, input_dims));
+    axis = static_cast<int32_t>(HandleNegativeAxis(axis, input_dims));
   }
 
   if (axes.empty()) {  // Squeeze all
@@ -2989,13 +3005,13 @@ class FlattenOpBuilder : public BaseOpBuilder {
 };
 
 /* static */ void FlattenOpBuilder::GetFlattenShape(const Node& node, const Shape& input_shape, int32_t& dim_1, int32_t& dim_2) {
-  int32_t rank = SafeInt<int>(input_shape.size());
+  int32_t rank = static_cast<int>(input_shape.size());
   NodeAttrHelper helper(node);
   int32_t axis = helper.Get("axis", 1);
   // axis == rank is a valid input, but invalid for HandleNegativeAxis
   // Skip non-negative axis here
   if (axis < 0)
-    axis = SafeInt<int32_t>(HandleNegativeAxis(axis, rank));
+    axis = static_cast<int32_t>(HandleNegativeAxis(axis, rank));
 
   dim_1 = std::accumulate(input_shape.cbegin(), input_shape.cbegin() + axis, 1, std::multiplies<int32_t>());
   dim_2 = std::accumulate(input_shape.cbegin() + axis, input_shape.cend(), 1, std::multiplies<int32_t>());
