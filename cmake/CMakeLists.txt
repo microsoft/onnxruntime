@@ -305,6 +305,26 @@ if(onnxruntime_DISABLE_EXCEPTIONS)
   endif()
 endif()
 
+# We need to link with libatomic on systems that do not have built-in atomics, or
+# don't have built-in support for 8 byte atomics
+# Derived from https://github.com/protocolbuffers/protobuf/blob/master/cmake/CMakeLists.txt
+set(onnxruntime_LINK_LIBATOMIC false)
+if (NOT MSVC)
+  include(CheckCXXSourceCompiles)
+  set(OLD_CMAKE_REQUIRED_FLAGS ${CMAKE_REQUIRED_FLAGS})
+  set(CMAKE_REQUIRED_FLAGS ${CMAKE_REQUIRED_FLAGS} -std=c++11)
+  check_cxx_source_compiles("
+    #include <atomic>
+    int main() {
+      return std::atomic<int64_t>{};
+    }
+  " onnxruntime_HAVE_BUILTIN_ATOMICS)
+  if (NOT onnxruntime_HAVE_BUILTIN_ATOMICS)
+    set(onnxruntime_LINK_LIBATOMIC true)
+  endif ()
+  set(CMAKE_REQUIRED_FLAGS ${OLD_CMAKE_REQUIRED_FLAGS})
+endif ()
+
 set(REPO_ROOT ${PROJECT_SOURCE_DIR}/..)
 set(ONNXRUNTIME_ROOT ${PROJECT_SOURCE_DIR}/../onnxruntime)
 set(ORTTRAINING_ROOT ${PROJECT_SOURCE_DIR}/../orttraining)
@@ -948,6 +968,9 @@ if(onnxruntime_USE_OPENVINO)
   elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "2020.4")
     set(OPENVINO_VERSION "2020.4")
     add_definitions(-DOPENVINO_2020_4=1)
+  elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "2021.1")
+    set(OPENVINO_VERSION "2021.1")
+    add_definitions(-DOPENVINO_2021_1=1)
   else()
     message(FATAL_ERROR "Unsupported OpenVINO version: ${INTEL_OPENVINO_DIR}")
   endif()

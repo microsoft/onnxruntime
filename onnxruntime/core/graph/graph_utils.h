@@ -15,6 +15,10 @@ bool IsSupportedOptypeVersionAndDomain(const Node& node,
                                        const std::string& op_type,
                                        const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion>& versions,
                                        const std::string& domain = kOnnxDomainAlias);
+bool IsSupportedOptypeVersionAndDomain(const Node& node,
+                                       const char* op_type,
+                                       const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion>& versions,
+                                       const char* domain = kOnnxDomainAlias);
 
 /** Checks if the node has the same operator since version as the given one. */
 bool MatchesOpSinceVersion(const Node& node, const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion>& versions);

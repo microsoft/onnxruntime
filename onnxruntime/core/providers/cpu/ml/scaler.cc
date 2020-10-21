@@ -83,15 +83,30 @@ common::Status ScalerOp<T>::Compute(OpKernelContext* context) const {
 
   size_t x_size = x_shape.Size();
   int64_t stride = x_dims.size() == 1 ? x_dims[0] : x_dims[1];
+  auto* ttp = context->GetOperatorThreadPool();
+  auto num_threads = std::min<int>(concurrency::ThreadPool::DegreeOfParallelism(ttp), static_cast<int>(x_size));
+
   if (static_cast<int64_t>(offset_.size()) == stride &&
       static_cast<int64_t>(scale_.size()) == stride) {
-    for (size_t i = 0; i < x_size; i++) {
-      y_data[i] = static_cast<float>((x_data[i] - offset_[i % stride]) * scale_[i % stride]);
-    }
+    concurrency::ThreadPool::TrySimpleParallelFor(
+        ttp,
+        num_threads,
+        [this, num_threads, y_data, x_data, stride, x_size](ptrdiff_t batch_num) {
+          auto work = concurrency::ThreadPool::PartitionWork(batch_num, num_threads, x_size);
+          for (auto i = work.start; i < work.end; ++i) {
+            y_data[i] = static_cast<float>((x_data[i] - offset_[i % stride]) * scale_[i % stride]);
+          }
+        });
   } else if (offset_.size() == 1 && scale_.size() == 1) {
-    for (size_t i = 0; i < x_size; i++) {
-      y_data[i] = static_cast<float>((x_data[i] - offset_[0]) * scale_[0]);
-    }
+    concurrency::ThreadPool::TrySimpleParallelFor(
+        ttp,
+        num_threads,
+        [this, num_threads, y_data, x_data, x_size](ptrdiff_t batch_num) {
+          auto work = concurrency::ThreadPool::PartitionWork(batch_num, num_threads, x_size);
+          for (auto i = work.start; i < work.end; ++i) {
+            y_data[i] = static_cast<float>((x_data[i] - offset_[0]) * scale_[0]);
+          }
+        });
   } else {
     std::ostringstream err_msg;
     err_msg << "Either both scale and offset can be of feature size (" << stride << ") or 1";

@@ -41,6 +41,12 @@ void DumpOnnxModelProto(const ONNX_NAMESPACE::ModelProto& model_proto, std::stri
 
 #endif
 
+struct static_cast_int64
+{
+  template <typename T1> // T1 models type statically convertible to T
+  int64_t operator()(const T1& x) const { return static_cast<int64_t>(x); }
+};
+
 std::shared_ptr<InferenceEngine::CNNNetwork>
 CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context, const SubGraphContext& subgraph_context, std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map) {
 
@@ -74,21 +80,23 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalCont
     ng_function->validate_nodes_and_infer_types();
   }
 
-#if defined(OPENVINO_2020_4)
-  std::map<std::string, std::string> result_to_output;
-  for(auto& result : ng_function->get_results()){
-    result_to_output[result->get_friendly_name()] = result->input_value(0).get_node_shared_ptr()->get_friendly_name();
-  }
-
-  ngraph::pass::ConstantFolding().run_on_function(ng_function);
-  auto& results = const_cast<::ngraph::ResultVector&>(ng_function->get_results());
-  size_t index = results.size() - 1;
-  for (auto it = results.rbegin(); it != results.rend(); ++it){
-    if(auto const_node = std::dynamic_pointer_cast<ngraph::op::Constant>((*it)->input_value(0).get_node_shared_ptr())){
-      const_outputs_map[result_to_output.at((*it)->get_friendly_name())] = const_node;
-      results.erase(results.begin() + index);
+#if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1)
+  if(!global_context.is_wholly_supported_graph){
+    std::map<std::string, std::string> result_to_output;
+    for(auto& result : ng_function->get_results()){
+      result_to_output[result->get_friendly_name()] = result->input_value(0).get_node_shared_ptr()->get_friendly_name();
     }
-    --index;
+
+    ngraph::pass::ConstantFolding().run_on_function(ng_function);
+    auto& results = const_cast<::ngraph::ResultVector&>(ng_function->get_results());
+    size_t index = results.size() - 1;
+    for (auto it = results.rbegin(); it != results.rend(); ++it){
+      if(auto const_node = std::dynamic_pointer_cast<ngraph::op::Constant>((*it)->input_value(0).get_node_shared_ptr())){
+        const_outputs_map[result_to_output.at((*it)->get_friendly_name())] = const_node;
+        results.erase(results.begin() + index);
+      }
+      --index;
+    }
   }
 #endif
 
@@ -102,7 +110,7 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalCont
   }
 }
 
-InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::TypeProto& onnx_type) {
+InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::TypeProto& onnx_type, std::string device) {
   ONNX_NAMESPACE::DataType type_string = ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(onnx_type);
   if (*type_string == "float" || *type_string == "tensor(float)") {
     return InferenceEngine::Precision::FP32;
@@ -119,7 +127,11 @@ InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::
   } else if (*type_string == "uint8" || *type_string == "tensor(uint8)") {
     return InferenceEngine::Precision::U8;
   } else if (*type_string == "bool" || *type_string == "tensor(bool)") {
-    return InferenceEngine::Precision::U8;
+    if (device == "MYRIAD") {
+      return InferenceEngine::Precision::I32;
+    } else {
+      return InferenceEngine::Precision::U8;
+    }
   } else if (*type_string == "int64" || *type_string == "tensor(int64)") {
     return InferenceEngine::Precision::I32;
   } else {
@@ -130,7 +142,8 @@ InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::
 void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
                std::shared_ptr<InferenceEngine::CNNNetwork> network,
                std::unordered_map<std::string, int> output_names,
-               std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map) {
+               std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map,
+               std::string device) {
   // Configure input & output
   // Prepare input blobs
 
@@ -141,7 +154,7 @@ void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
   int input_idx = 0;
   for (auto iter = inputInfo.begin(); iter != inputInfo.end(); ++iter, ++input_idx) {
     // Get the onnx index for the corresponding input (ignoring initializers)
-    auto precision = ConvertPrecisionONNXToOpenVINO(model_proto.graph().input(input_idx).type());
+    auto precision = ConvertPrecisionONNXToOpenVINO(model_proto.graph().input(input_idx).type(), device);
     iter->second->setPrecision(precision);
   }
 
@@ -149,74 +162,78 @@ void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
   auto outputInfo = network->getOutputsInfo();
   for (auto iter = outputInfo.begin(); iter != outputInfo.end(); ++iter) {
     auto output_name = iter->first;
-#if defined(OPENVINO_2020_4)
+#if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1)
     auto it = const_outputs_map.find(output_name);
     //Output is constant and don't need to set precision
     if(it != const_outputs_map.end())
       break;
 #endif
-    auto precision = ConvertPrecisionONNXToOpenVINO(model_proto.graph().output(output_names.at(output_name)).type());
+    auto itr = output_names.find(output_name);
+    if(itr == output_names.end()){
+      ORT_THROW(log_tag + "Output Names Mismatch: " + output_name + " doesn't exist");
+    }
+    auto precision = ConvertPrecisionONNXToOpenVINO(model_proto.graph().output(itr->second).type(), device);
     iter->second->setPrecision(precision);
   }
 }
 
-std::vector<OrtValue*>
-GetOutputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_size,
+OrtValue*
+GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_size,
                  InferenceEngine::InferRequest::Ptr infer_request,
-                 std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network,
-                 std::unordered_map<std::string, int> output_names, std::map<std::string, std::shared_ptr<ngraph::Node>> const_output_map) {
-  std::vector<OrtValue*> output_tensors;
+                 std::string output_name,
+                 std::unordered_map<std::string, int> output_names) {
 
-  if(output_names.size() != const_output_map.size()){
-    auto graph_output_info = ie_cnn_network->getOutputsInfo();
+  OrtValue* output_tensor;
 
-    size_t i = 0;
-    for (auto output_info_iter = graph_output_info.begin();
-        output_info_iter != graph_output_info.end(); ++output_info_iter, ++i) {
-      auto graph_output_blob = infer_request->GetBlob(output_info_iter->first);
-      auto graph_output_dims = graph_output_blob->getTensorDesc().getDims();
-
-      if (batch_size > 1) {
-        // Add the batch size as dim 0.
-        graph_output_dims.insert(graph_output_dims.begin(), batch_size);
-      }
-      size_t num_dims = graph_output_dims.size();
-      auto output_shape = new int64_t[num_dims];
-      for (size_t j = 0; j < num_dims; j++) {
-        output_shape[j] = static_cast<int64_t>(graph_output_dims[j]);
-      }
-      auto it = output_names.find(output_info_iter->first);
-      if (it == output_names.end()) {
-        ORT_THROW(log_tag + "Output names mismatch between OpenVINO and ONNX");
-      }
-      int index = it->second;
-
-      output_tensors.push_back(ort.KernelContext_GetOutput(context, index, output_shape, num_dims));
-      delete output_shape;
-    }
+  auto graph_output_blob = infer_request->GetBlob(output_name);
+  auto graph_output_dims = graph_output_blob->getTensorDesc().getDims();
+  if (batch_size > 1) {
+    // Add the batch size as dim 0.
+    graph_output_dims.insert(graph_output_dims.begin(), batch_size);
   }
-#if defined(OPENVINO_2020_4)
-  for(auto item : const_output_map){
-    auto it = output_names.find(item.first);
-    if(it == output_names.end()) {
-      ORT_THROW(log_tag + "Output names mismatch between OpenVINO and ONNX");
-    }
-    int index = it->second;
-    auto node = item.second;
-    auto shape = node->get_shape();
-
-    size_t num_dims = shape.size();
-    auto output_shape = new int64_t[num_dims];
-    for(size_t j = 0; j < num_dims; j++){
-      output_shape[j] = static_cast<int64_t>(shape[j]);
-    }
-
-    output_tensors.push_back(ort.KernelContext_GetOutput(context, index, output_shape, num_dims));
-    delete output_shape;
+  size_t num_dims = graph_output_dims.size();
+  auto output_shape = new int64_t[num_dims];
+  for (size_t j = 0; j < num_dims; j++) {
+    output_shape[j] = static_cast<int64_t>(graph_output_dims[j]);
   }
-#endif
-  return output_tensors;
+  auto it = output_names.find(output_name);
+  if (it == output_names.end()) {
+    ORT_THROW(log_tag + "Output names mismatch between OpenVINO and ONNX");
+  }
+  int index = it->second;
+
+  output_tensor = ort.KernelContext_GetOutput(context, index, output_shape, num_dims);
+  delete[] output_shape;
+
+  return output_tensor;
 }
+
+#if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1)
+OrtValue*
+GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context,
+                 std::string output_name,
+                 std::unordered_map<std::string, int> output_names,
+                 std::shared_ptr<ngraph::Node> node){
+
+  OrtValue* output_tensor;
+  auto it = output_names.find(output_name);
+  if (it == output_names.end()) {
+    ORT_THROW(log_tag + "Output names mismatch between OpenVINO and ONNX");
+  }
+  int index = it->second;
+  auto shape = node->get_shape();
+
+  size_t num_dims = shape.size();
+  auto output_shape = new int64_t[num_dims];
+  for(size_t j = 0; j < num_dims; j++){
+    output_shape[j] = static_cast<int64_t>(shape[j]);
+  }
+  output_tensor = ort.KernelContext_GetOutput(context, index, output_shape, num_dims);
+  delete[] output_shape;
+
+  return output_tensor;
+}
+#endif
 
 int GetFirstAvailableDevice(GlobalContext& global_context){
 
@@ -242,7 +259,7 @@ int GetFirstAvailableDevice(GlobalContext& global_context){
   return i;
 }
 
-#if defined(OPENVINO_2020_4)
+#if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1)
 void FillOutputsWithConstantData(Ort::CustomOpApi& ort, std::shared_ptr<ngraph::Node> node, OrtValue* out_tensor){
 
 
@@ -274,7 +291,7 @@ void FillOutputsWithConstantData(Ort::CustomOpApi& ort, std::shared_ptr<ngraph::
 }
 #endif
 
-#if defined(OPENVINO_2020_4)
+#if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1)
 template<typename T>
 void FillOutputHelper(Ort::CustomOpApi& ort, OrtValue* out_tensor, std::shared_ptr<ngraph::Node> node){
 
@@ -284,6 +301,73 @@ void FillOutputHelper(Ort::CustomOpApi& ort, OrtValue* out_tensor, std::shared_p
   std::copy(res.begin(), res.end(), tensor_data);
 }
 #endif
+
+void FillInputBlob(InferenceEngine::Blob::Ptr& inputBlob, size_t request_id, size_t batch_slice_idx,
+                   std::string input_name, Ort::CustomOpApi& ort, OrtKernelContext* context,
+                   InferenceEngine::Precision precision, const SubGraphContext& subgraph_context){
+
+  auto minput = InferenceEngine::as<InferenceEngine::MemoryBlob>(inputBlob);
+  auto minputHolder = minput->wmap();
+
+  auto input_data = minputHolder.as<InferenceEngine::PrecisionTrait<InferenceEngine::Precision::FP32>::value_type*>();
+  size_t input_data_size = inputBlob->byteSize();
+
+#if (defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
+  const OrtValue* tensor = ort.KernelContext_GetInput(context, subgraph_context.input_indexes[request_id]);
+#else
+  ORT_UNUSED_PARAMETER(request_id);
+  const OrtValue* tensor = ort.KernelContext_GetInput(context, subgraph_context.input_names.at(input_name));
+#endif
+  auto tensor_shape = ort.GetTensorTypeAndShape(tensor);
+  auto elem_type = ort.GetTensorElementType(tensor_shape);
+
+  if ((elem_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) &&
+      (precision == InferenceEngine::Precision::I32)) {
+
+    const int64_t* tensor_data_64 = ort.GetTensorData<int64_t>(tensor);
+    auto data_len = (input_data_size * 2) / sizeof(int64_t);
+    const int64_t* batch_memory_offset = tensor_data_64 + data_len * batch_slice_idx;
+
+    std::copy(batch_memory_offset, batch_memory_offset+data_len, (uint32_t*)input_data);
+  } else {
+
+    // Copy input data into OpenVINO's input buffer
+    const char* tensor_data = ort.GetTensorData<char>(tensor);
+    const char* batch_memory_offset = tensor_data + input_data_size * batch_slice_idx;
+    std::memcpy(input_data, batch_memory_offset, input_data_size);
+  }
+}
+
+void FillOutputBlob(InferenceEngine::Blob::Ptr& outputBlob, OrtValue* output_tensor,
+                    Ort::CustomOpApi& ort, InferenceEngine::Precision precision, size_t batch_slice_idx){
+
+  auto moutput = InferenceEngine::as<InferenceEngine::MemoryBlob>(outputBlob);
+
+  auto moutputHolder = moutput->rmap();
+
+  const auto output_data = moutputHolder.
+                           as<const InferenceEngine::PrecisionTrait<InferenceEngine::Precision::FP32>::value_type*>();
+
+  size_t output_data_size = outputBlob->byteSize();
+  auto tensor_shape = ort.GetTensorTypeAndShape(output_tensor);
+  auto elem_type = ort.GetTensorElementType(tensor_shape);
+
+  if ((elem_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) &&
+      (precision == InferenceEngine::Precision::I32)) {
+
+    int64_t* tensor_data = ort.GetTensorMutableData<int64_t>(output_tensor);
+    auto data_len = output_data_size/sizeof(int32_t);
+    int64_t* batch_memory_offset = tensor_data + data_len * batch_slice_idx;
+
+    std::transform((int32_t*)output_data,((int32_t*)output_data) + data_len, batch_memory_offset, static_cast_int64());
+
+  } else {
+    char* tensor_data = ort.GetTensorMutableData<char>(output_tensor);
+    char* batch_memory_offset = tensor_data + output_data_size * batch_slice_idx;
+
+    std::memcpy(batch_memory_offset, output_data, output_data_size);
+  }
+}
 
 }  // namespace backend_utils
 }  // namespace openvino_ep

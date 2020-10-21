@@ -295,12 +295,16 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                                input_activation_sizes, input_parameter_sizes, node_name_for_profiling);
     }
 
-#ifdef CONCURRENCY_VISUALIZER
+    Status compute_status;
     {
+#ifdef CONCURRENCY_VISUALIZER
       diagnostic::span span(series, "%s.%d", node.OpType().c_str(), node.Index());
 #endif
-      Status compute_status;
-
+#ifdef ENABLE_NVTX_PROFILE
+      profile::NvtxRangeCreator node_compute_range(
+          MakeString(node.OpType(), ".", node.Index()), profile::Color::Blue);
+      node_compute_range.Begin();
+#endif
       ORT_TRY {
         compute_status = p_op_kernel->Compute(&op_kernel_context);
       }
@@ -310,18 +314,19 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
         });
       }
 
-      if (!compute_status.IsOK()) {
-        std::ostringstream ss;
-        ss << "Non-zero status code returned while running " << node.OpType() << " node. Name:'" << node.Name()
-           << "' Status Message: " << compute_status.ErrorMessage();
-        const auto msg_string = ss.str();
-        LOGS(logger, ERROR) << msg_string;
-        return Status(compute_status.Category(), compute_status.Code(), msg_string);
-      }
-
-#ifdef CONCURRENCY_VISUALIZER
-    }
+#ifdef ENABLE_NVTX_PROFILE
+      node_compute_range.End();
 #endif
+    }
+
+    if (!compute_status.IsOK()) {
+      std::ostringstream ss;
+      ss << "Non-zero status code returned while running " << node.OpType() << " node. Name:'" << node.Name()
+         << "' Status Message: " << compute_status.ErrorMessage();
+      const auto msg_string = ss.str();
+      LOGS(logger, ERROR) << msg_string;
+      return Status(compute_status.Category(), compute_status.Code(), msg_string);
+    }
 
     if (is_profiler_enabled) {
       // Calculate total output sizes for this operation.

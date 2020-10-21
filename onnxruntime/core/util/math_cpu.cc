@@ -297,7 +297,6 @@ DELEGATE_SIMPLE_UNARY_FUNCTION(float, Log, log)
 DELEGATE_SIMPLE_UNARY_FUNCTION(float, Sqr, square)
 #undef DELEGATE_SIMPLE_UNARY_FUNCTION
 
-
 #define EIGEN_SIMPLE_BINARY_FUNCTION(T, Funcname, expr)                                                       \
   template <>                                                                                                 \
   void Funcname<T, CPUMathUtil>(int N, const T* a, const T* b, T* y, CPUMathUtil*) {                          \
@@ -412,12 +411,12 @@ void Im2col<T, StorageOrder::NCHW>::operator()(const T* data_im, int64_t channel
 template struct Im2col<float, StorageOrder::NCHW>;
 template struct Im2col<uint8_t, StorageOrder::NCHW>;
 
-template <>
-void Im2col<float, StorageOrder::NHWC>::operator()(const float* data_im, int64_t channels, int64_t height,
-                                                   int64_t width, int64_t kernel_h, int64_t kernel_w,
-                                                   int64_t dilation_h, int64_t dilation_w, int64_t pad_t,
-                                                   int64_t pad_l, int64_t pad_b, int64_t pad_r, int64_t stride_h,
-                                                   int64_t stride_w, float* data_col, float padding_value) {
+template <typename T>
+void Im2col<T, StorageOrder::NHWC>::operator()(const T* data_im, int64_t channels, int64_t height,
+                                               int64_t width, int64_t kernel_h, int64_t kernel_w,
+                                               int64_t dilation_h, int64_t dilation_w, int64_t pad_t,
+                                               int64_t pad_l, int64_t pad_b, int64_t pad_r, int64_t stride_h,
+                                               int64_t stride_w, T* data_col, T padding_value) {
   const int64_t dkernel_h = dilation_h * (kernel_h - 1) + 1;
   const int64_t dkernel_w = dilation_w * (kernel_w - 1) + 1;
 
@@ -430,13 +429,11 @@ void Im2col<float, StorageOrder::NHWC>::operator()(const float* data_im, int64_t
     for (int64_t w = 0; w < width_col; ++w) {
       for (int64_t ih = h_pad; ih < h_pad + dkernel_h; ih += dilation_h) {
         for (int64_t iw = w_pad; iw < w_pad + dkernel_w; iw += dilation_w) {
-          if (ih >= 0 && ih < height && iw >= 0 && iw < width) {
-            memcpy(data_col, data_im + (ih * width + iw) * channels,
-                   sizeof(float) * channels);
+          if (is_a_ge_zero_and_a_lt_b(ih, height) && is_a_ge_zero_and_a_lt_b(iw, width)) {
+            data_col = std::copy_n(data_im + (ih * width + iw) * channels, channels, data_col);
           } else {
-            std::fill_n(data_col, channels, padding_value);
+            data_col = std::fill_n(data_col, channels, padding_value);
           }
-          data_col += channels;
         }
       }
       w_pad += stride_w;
@@ -444,6 +441,59 @@ void Im2col<float, StorageOrder::NHWC>::operator()(const float* data_im, int64_t
     h_pad += stride_h;
   }
 }
+
+template <typename T>
+void Im2col<T, StorageOrder::NHWC>::operator()(const T* data_im, int64_t channels, int64_t input_h,
+                                               int64_t input_w, int64_t kernel_h, int64_t kernel_w,
+                                               int64_t dilation_h, int64_t dilation_w, int64_t pad_t,
+                                               int64_t pad_l, int64_t stride_h, int64_t stride_w,
+                                               int64_t output_w, int64_t output_start, int64_t output_count,
+                                               T* data_col, T padding_value) {
+  for (int64_t m = output_start; m < output_start + output_count; m++) {
+    int64_t mh = m / output_w;
+    int64_t mw = m % output_w;
+
+    int64_t oh = mh * stride_h;
+    int64_t ow = mw * stride_w;
+
+    for (int64_t kh = 0; kh < kernel_h; kh++) {
+      int64_t ih = kh * dilation_h + oh - pad_t;
+
+      if (is_a_ge_zero_and_a_lt_b(ih, input_h)) {
+        if (dilation_w == 1) {
+          int64_t kw = kernel_w;
+          int64_t iw = ow - pad_l;
+          while (kw > 0) {
+            if (is_a_ge_zero_and_a_lt_b(iw, input_w)) {
+              // Increase the copy count size to reduce the number of copy calls.
+              int64_t batch_w = std::min(kw, input_w - iw);
+              data_col = std::copy_n(data_im + (ih * input_w + iw) * channels, batch_w * channels, data_col);
+              iw += batch_w;
+              kw -= batch_w;
+            } else {
+              data_col = std::fill_n(data_col, channels, padding_value);
+              iw++;
+              kw--;
+            }
+          }
+        } else {
+          for (int64_t kw = 0; kw < kernel_w; kw++) {
+            int64_t iw = kw * dilation_w + ow - pad_l;
+            if (is_a_ge_zero_and_a_lt_b(iw, input_w)) {
+              data_col = std::copy_n(data_im + (ih * input_w + iw) * channels, channels, data_col);
+            } else {
+              data_col = std::fill_n(data_col, channels, padding_value);
+            }
+          }
+        }
+      } else {
+        data_col = std::fill_n(data_col, kernel_w * channels, padding_value);
+      }
+    }
+  }
+}
+
+template struct Im2col<uint8_t, StorageOrder::NHWC>;
 
 template <>
 void Col2im<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, int64_t channels, int64_t height,

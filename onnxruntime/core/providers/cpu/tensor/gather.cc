@@ -18,9 +18,19 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
                                                         DataTypeImpl::GetTensorType<int64_t>()}),
     Gather);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Gather,
     11,
+    12,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
+                                                        DataTypeImpl::GetTensorType<int64_t>()}),
+    Gather);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    Gather,
+    13,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
         .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
