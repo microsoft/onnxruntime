@@ -221,7 +221,6 @@ struct Provider_IExecutionProvider {
 
 struct Provider {
   virtual std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory(int device_id) = 0;
-  virtual void Shutdown() = 0;
 };
 
 // There are two ways to route a function, one is a virtual method and the other is a function pointer (or pointer to member function)
@@ -544,35 +543,35 @@ struct CPUIDInfo {
   bool HasAVX2() const { return g_host->CPUIDInfo__HasAVX2(this); }
   bool HasAVX512f() const { return g_host->CPUIDInfo__HasAVX512f(this); }
 
-  PROVIDER_DISALLOW_ALL(CPUIDInfo)
+PROVIDER_DISALLOW_ALL(CPUIDInfo)
 };
 
 namespace logging {
 
 struct Logger {
-  bool OutputIsEnabled(Severity severity, DataType data_type) const noexcept { return g_host->logging__Logger__OutputIsEnabled(this, severity, data_type); }
+  bool OutputIsEnabled(Severity severity, DataType data_type) const noexcept { return g_host->logging__Logger__OutputIsEnabled(this, severity, data_type);  }
 
-  PROVIDER_DISALLOW_ALL(Logger)
+PROVIDER_DISALLOW_ALL(Logger)
 };
 
 struct LoggingManager {
-  static const Logger& DefaultLogger() { return g_host->logging__LoggingManager__DefaultLogger(); }
+  static const Logger& DefaultLogger() { return g_host->logging__LoggingManager__DefaultLogger();  }
 
   PROVIDER_DISALLOW_ALL(LoggingManager)
 };
 
 struct Capture {
-  static std::unique_ptr<Capture> Create(const Logger& logger, logging::Severity severity, const char* category,
-                                         logging::DataType dataType, const CodeLocation& location) { return g_host->logging__Capture__construct(logger, severity, category, dataType, location); }
-  static void operator delete(void* p) { g_host->logging__Capture__operator_delete(reinterpret_cast<Capture*>(p)); }
+    static std::unique_ptr<Capture> Create(const Logger& logger, logging::Severity severity, const char* category,
+            logging::DataType dataType, const CodeLocation& location) { return g_host->logging__Capture__construct(logger, severity, category, dataType, location); }
+    static void operator delete(void* p) { g_host->logging__Capture__operator_delete(reinterpret_cast<Capture*>(p)); }
 
-  std::ostream& Stream() noexcept { return g_host->logging__Capture__Stream(this); }
+    std::ostream& Stream() noexcept { return g_host->logging__Capture__Stream(this); }
 
-  Capture() = delete;
-  Capture(const Capture&) = delete;
-  void operator=(const Capture&) = delete;
+    Capture() = delete;
+    Capture(const Capture&) = delete;
+    void operator=(const Capture&) = delete;
 };
-}  // namespace logging
+}
 
 struct Provider_TypeProto_Tensor {
   int32_t elem_type() const { return g_host->Provider_TypeProto_Tensor__elem_type(this); }
