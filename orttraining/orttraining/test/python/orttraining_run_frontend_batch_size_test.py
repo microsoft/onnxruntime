@@ -18,7 +18,7 @@ configs = [
     Config(True, 512, 8, 80, False, False, False),
     Config(False, 128, 26, 20, False, False, False),
     Config(False, 512, 4, 80, False, False, False),
-    Config(True, 128, 55, 20, True, False, False),
+    Config(True, 128, 50, 20, True, False, False),
     Config(True, 128, 51, 20, False, True, False),
     Config(True, 128, 78, 20, False, False, True),
     Config(True, 512, 9, 80, True, False, False),
