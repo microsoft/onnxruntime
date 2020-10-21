@@ -28,8 +28,8 @@ __global__ void _SplitKernel(const fast_divmod block_size_including_axis_dim_div
   block_size_inside_axis_dim_div.divmod(offset, block_index, offset);
 
   int output_index = 0;
-  while (block_index >= split_sizes_range[output_index] && output_index < num_outputs) {
-    output_index++;
+  for (int i = 0; i < num_outputs; ++i) {
+    output_index += int(block_index >= split_sizes_range[i]);
   }
 
   int64_t range_left = (output_index == 0) ? 0 : split_sizes_range[output_index - 1];
@@ -97,7 +97,6 @@ Status SplitImpl(const size_t element_size,
   return Status::OK();
 }
 
-
 #define SPLIT_IMPL(TINT64, TOUTPUT)                                                   \
   template Status SplitImpl<TINT64, TOUTPUT>(const size_t element_size,               \
                                              const int block_size_including_axis_dim, \
@@ -108,7 +107,7 @@ Status SplitImpl(const size_t element_size,
                                              const void* input_data,                  \
                                              TOUTPUT output_ptr,                      \
                                              const size_t N);
- 
+
 SPLIT_IMPL(TArray<int64_t>, TArray<void*>)
 SPLIT_IMPL(const int64_t*, void**)
 
