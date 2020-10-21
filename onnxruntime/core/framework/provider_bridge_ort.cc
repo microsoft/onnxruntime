@@ -636,7 +636,8 @@ struct ProviderSharedLibrary {
   }
 
   ProviderSharedLibrary() = default;
-  ~ProviderSharedLibrary() { assert(!handle_); }
+  ~ProviderSharedLibrary() { /*assert(!handle_);*/
+  }                          // We should already be unloaded at this point (disabled until Python shuts down deterministically)
 
  private:
   void* handle_{};
@@ -648,7 +649,8 @@ static ProviderSharedLibrary s_library_shared;
 
 struct ProviderLibrary {
   ProviderLibrary(const char* filename) : filename_{filename} {}
-  ~ProviderLibrary() { assert(!handle_); }  // We should already be unloaded at this point
+  ~ProviderLibrary() { /*assert(!handle_);*/
+  }                    // We should already be unloaded at this point (disabled until Python shuts down deterministically)
 
   Provider* Get() {
     if (provider_)

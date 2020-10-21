@@ -12,8 +12,7 @@ from pathlib import Path
 import unittest
 import urllib.request
 
-from onnxruntime.quantization.quantize import optimize_model, ONNXQuantizer
-from onnxruntime.quantization.onnx_model import ONNXModel
+from onnxruntime.quantization.quantize import ONNXQuantizer
 
 from onnxruntime.quantization.quant_utils import QuantizationMode
 from onnx import onnx_pb as onnx_proto
@@ -83,8 +82,6 @@ def generate_qat_model(model_names):
 
     model_1 = onnx.helper.make_model(graph)
     model_1.ir_version = onnx.IR_VERSION
-    opset = model_1.opset_import.add()
-    opset.version = 11
     onnx.save(model_1, model_names[0])
 
     test_models.extend([model_1])
@@ -157,8 +154,6 @@ def generate_qat_model(model_names):
 
     model_2 = onnx.helper.make_model(graph)
     model_2.ir_version = onnx.IR_VERSION
-    opset = model_2.opset_import.add()
-    opset.version = 11
     onnx.save(model_2, model_names[1])
 
     test_models.extend([model_2])
@@ -208,8 +203,6 @@ def generate_qat_support_model(model_names, test_initializers):
 
     model_1 = onnx.ModelProto()
     model_1.ir_version = onnx.IR_VERSION
-    opset = model_1.opset_import.add()
-    opset.version = 11
     model_1 = onnx.helper.make_model(graph)
     onnx.save(model_1, model_names[0])
 
@@ -251,8 +244,6 @@ def generate_qat_support_model(model_names, test_initializers):
 
     model_2 = onnx.ModelProto()
     model_2.ir_version = onnx.IR_VERSION
-    opset = model_2.opset_import.add()
-    opset.version = 11
     model_2 = onnx.helper.make_model(graph)
     onnx.save(model_1, model_names[1])
 
