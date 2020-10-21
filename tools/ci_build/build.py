@@ -259,7 +259,7 @@ def parse_arguments():
     parser.add_argument(
         "--use_openblas", action='store_true', help="Build with OpenBLAS.")
     parser.add_argument(
-        "--use_dnnl", action='store_true', help="Build with DNNL.")    
+        "--use_dnnl", action='store_true', help="Build with DNNL.")
     parser.add_argument(
         "--use_featurizers", action='store_true',
         help="Build with ML Featurizer support.")
@@ -1304,7 +1304,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             dll_path_list.append(os.path.join(
                 build_dir, config, "external", "tvm", config))
         if args.use_tensorrt:
-            dll_path_list.append(os.path.join(args.tensorrt_home, 'lib'))        
+            dll_path_list.append(os.path.join(args.tensorrt_home, 'lib'))
         if not is_windows():
             # A workaround for making libonnxruntime_providers_shared.so loadable.
             dll_path_list.append(os.path.join(build_dir, config))
