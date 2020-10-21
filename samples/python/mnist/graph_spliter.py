@@ -119,15 +119,41 @@ def split_graph(onnx_model):
     return forward_model, backward_model
 
 
+# MNIST
+"""
 original_model = onnx.load('mnist_original.onnx')
-weights_to_train = set()
+config = C.ModuleGradientGraphBuilderConfiguration()
+weight_names_to_train = set()
 for initializer in original_model.graph.initializer:
-    weights_to_train.add(initializer.name)
+    weight_names_to_train.add(initializer.name)
+config.weight_names_to_train = weight_names_to_train
 output_names = set()
 for output in original_model.graph.output:
     output_names.add(output.name)
-transformed_model = onnx.load_model_from_string(C.ModuleTransformer().transform(original_model.SerializeToString(), weights_to_train, output_names))
-onnx.save(transformed_model, 'mnist_transformed.onnx')
-forward_model, backward_model = split_graph(transformed_model)
+config.output_names = output_names
+
+gradient_graph_model = onnx.load_model_from_string(C.ModuleGradientGraphBuilder().build(original_model.SerializeToString(), config))
+onnx.save(gradient_graph_model, 'minst_gradient_graph.onnx')
+forward_model, backward_model = split_graph(gradient_graph_model)
 onnx.save(forward_model, 'mnist_forward.onnx')
 onnx.save(backward_model, 'mnist_backward.onnx')
+"""
+
+
+#BERT
+original_model = onnx.load('bert-tiny.onnx')
+config = C.ModuleGradientGraphBuilderConfiguration()
+weight_names_to_train = set()
+for initializer in original_model.graph.initializer:
+    weight_names_to_train.add(initializer.name)
+config.weight_names_to_train = weight_names_to_train
+output_names = set()
+for output in original_model.graph.output:
+    output_names.add(output.name)
+config.output_names = output_names
+
+gradient_graph_model = onnx.load_model_from_string(C.ModuleGradientGraphBuilder().build(original_model.SerializeToString(), config))
+onnx.save(gradient_graph_model, 'bert_gradient_graph.onnx')
+forward_model, backward_model = split_graph(gradient_graph_model)
+onnx.save(forward_model, 'bert_forward.onnx')
+onnx.save(backward_model, 'bert_backward.onnx')
