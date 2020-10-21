@@ -1,6 +1,6 @@
 /*++
 
-Copyright (c) Intel Corporation 2020. All rights reserved.
+Copyright (c) 2020 Intel Corporation. All rights reserved.
 
 Licensed under the MIT License.
 
@@ -112,7 +112,7 @@ C_UNDERSCORE(MlasGemvU8S8KernelAvxVnni):
         vpunpcklwd ymm3,ymm2,ymm4
         vpunpckhwd ymm2,ymm2,ymm4
         vpxor ymm10,ymm10,ymm10
-        VpdpbusdsYmmYmmYmm ymm7,ymm0,ymm5 
+        VpdpbusdsYmmYmmYmm ymm7,ymm0,ymm5
         VpdpbusdsYmmYmmYmm ymm8,ymm0,ymm1
         VpdpbusdsYmmYmmYmm ymm9,ymm0,ymm3
         VpdpbusdsYmmYmmYmm ymm10,ymm0,ymm2
@@ -180,7 +180,7 @@ C_UNDERSCORE(MlasGemvU8S8KernelAvxVnni):
         vpunpckhwd xmm2,xmm2,xmm4
         vinserti128 ymm1,ymm1,xmm2,1        # concatenate vector
         vpxor ymm8,ymm8,ymm8
-        VpdpbusdsYmmYmmYmm ymm8,ymm0,ymm1  
+        VpdpbusdsYmmYmmYmm ymm8,ymm0,ymm1
         test    r11,r11                     # ZeroMode?
         jnz     .LSkipAccumulateOutput4By8
         vpaddd  ymm8,ymm8,YMMWORD PTR [rbx]
@@ -207,7 +207,7 @@ C_UNDERSCORE(MlasGemvU8S8KernelAvxVnni):
         vpinsrd xmm1,xmm1,DWORD PTR [rax+r9],3
         vpshufb xmm1,xmm1,XMMWORD PTR C_UNDERSCORE(MlasTranspose4x4BytesAvx)[rip]
         vpxor xmm8,xmm8,xmm8
-        VpdpbusdsXmmXmmXmm xmm8,xmm0,xmm1  
+        VpdpbusdsXmmXmmXmm xmm8,xmm0,xmm1
         test    r11,r11                     # ZeroMode?
         jnz     .LSkipAccumulateOutput4By4
         vpaddd  xmm8,xmm8,XMMWORD PTR [rbx]
@@ -251,7 +251,7 @@ C_UNDERSCORE(MlasGemvU8S8KernelAvxVnni):
 .LComputeOutput4BySmallN:
         vpshufb xmm1,xmm1,XMMWORD PTR C_UNDERSCORE(MlasTranspose4x4BytesAvx)[rip]
         vpxor xmm8,xmm8,xmm8
-        VpdpbusdsXmmXmmXmm xmm8,xmm0,xmm1 
+        VpdpbusdsXmmXmmXmm xmm8,xmm0,xmm1
         test    r11,r11                     # ZeroMode?
         jnz     .LStoreOutput4BySmallN
         vpmaskmovd xmm3,xmm2,XMMWORD PTR [rbx]
@@ -297,7 +297,7 @@ C_UNDERSCORE(MlasGemvU8S8KernelAvxVnni):
 .LComputeOutputSmallKBy4:
         vpshufb xmm1,xmm1,XMMWORD PTR C_UNDERSCORE(MlasTranspose4x4BytesAvx)[rip]
         vpxor xmm8,xmm8,xmm8
-        VpdpbusdsXmmXmmXmm xmm8,xmm0,xmm1  
+        VpdpbusdsXmmXmmXmm xmm8,xmm0,xmm1
         test    r11,r11                     # ZeroMode?
         jnz     .LSkipAccumulateOutputSmallKBy4
         vpaddd  xmm8,xmm8,XMMWORD PTR [r10]
@@ -327,7 +327,7 @@ C_UNDERSCORE(MlasGemvU8S8KernelAvxVnni):
 
 .LComputeOutputSmallKBySmallN:
         vpxor xmm8,xmm8,xmm8
-        VpdpbusdsXmmXmmXmm xmm8,xmm0,xmm1 
+        VpdpbusdsXmmXmmXmm xmm8,xmm0,xmm1
         test    r11,r11                     # ZeroMode?
         jnz     .LSkipAccumulateOutputSmallKBySmallN
         vmovd   xmm3,DWORD PTR [r10]

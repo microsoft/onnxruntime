@@ -231,7 +231,7 @@ ENDIF
         mov     r11,GemmU8X8KernelFrame.CountM[rsp]
         mov     r12,GemmU8X8KernelFrame.RowSumBuffer[rsp]
         mov     r13,GemmU8X8KernelFrame.ColumnSumBuffer[rsp]
-        
+
 ;
 ; Process CountM rows of the matrices.
 ;
@@ -295,4 +295,4 @@ ProcessCountM5:
 
         NESTED_END MlasGemmU8S8KernelAvxVnni, _TEXT
 
-        END   
+        END

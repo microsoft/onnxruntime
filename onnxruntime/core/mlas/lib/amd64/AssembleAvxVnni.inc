@@ -1,6 +1,6 @@
 ;++
 ;
-; Copyright (c) Microsoft Corporation. All rights reserved.
+; Copyright (c) 2020 Intel Corporation. All rights reserved.
 ;
 ; Licensed under the MIT License.
 ;

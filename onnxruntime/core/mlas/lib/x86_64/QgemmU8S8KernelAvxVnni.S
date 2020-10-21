@@ -1,6 +1,6 @@
 /*++
 
-Copyright (c) Intel Corporation 2020. All rights reserved.
+Copyright (c) 2020 Intel Corporation. All rights reserved.
 
 Licensed under the MIT License.
 

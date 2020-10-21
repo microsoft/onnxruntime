@@ -1,6 +1,6 @@
 ;++
 ;
-; Copyright (c) Intel Corporation 2020. All rights reserved.
+; Copyright (c) 2020 Intel Corporation. All rights reserved.
 ;
 ; Licensed under the MIT License.
 ;
@@ -141,7 +141,7 @@ ProcessColumnLoop4By32:
         vpunpcklwd ymm3,ymm2,ymm4
         vpunpckhwd ymm2,ymm2,ymm4
         vpxor ymm10,ymm10,ymm10
-        VpdpbusdsYmmYmmYmm ymm7,ymm0,ymm5 
+        VpdpbusdsYmmYmmYmm ymm7,ymm0,ymm5
         VpdpbusdsYmmYmmYmm ymm8,ymm0,ymm1
         VpdpbusdsYmmYmmYmm ymm9,ymm0,ymm3
         VpdpbusdsYmmYmmYmm ymm10,ymm0,ymm2
@@ -219,7 +219,7 @@ ProcessColumnLoop4By8:
         vpunpckhwd xmm2,xmm2,xmm4
         vinserti128 ymm1,ymm1,xmm2,1        ; concatenate vector
         vpxor ymm8,ymm8,ymm8
-        VpdpbusdsYmmYmmYmm ymm8,ymm0,ymm1           
+        VpdpbusdsYmmYmmYmm ymm8,ymm0,ymm1
         test    r11,r11                     ; ZeroMode?
         jnz     SkipAccumulateOutput4By8
         vpaddd  ymm8,ymm8,YMMWORD PTR [rbx]
@@ -246,7 +246,7 @@ ProcessColumn4By4:
         vpinsrd xmm1,xmm1,DWORD PTR [rax+rdi],3
         vpshufb xmm1,xmm1,XMMWORD PTR [MlasTranspose4x4BytesAvx]
         vpxor xmm8,xmm8,xmm8
-        VpdpbusdsXmmXmmXmm xmm8,xmm0,xmm1           
+        VpdpbusdsXmmXmmXmm xmm8,xmm0,xmm1
         test    r11,r11                     ; ZeroMode?
         jnz     SkipAccumulateOutput4By4
         vpaddd  xmm8,xmm8,XMMWORD PTR [rbx]
@@ -290,7 +290,7 @@ ProcessColumn4By1:
 ComputeOutput4BySmallN:
         vpshufb xmm1,xmm1,XMMWORD PTR [MlasTranspose4x4BytesAvx]
         vpxor xmm8,xmm8,xmm8
-        VpdpbusdsXmmXmmXmm xmm8,xmm0,xmm1           
+        VpdpbusdsXmmXmmXmm xmm8,xmm0,xmm1
         test    r11,r11                     ; ZeroMode?
         jnz     StoreOutput4BySmallN
         vpmaskmovd xmm3,xmm2,XMMWORD PTR [rbx]
@@ -336,7 +336,7 @@ ProcessColumnLoopSmallKBy4:
 ComputeOutputSmallKBy4:
         vpshufb xmm1,xmm1,XMMWORD PTR [MlasTranspose4x4BytesAvx]
         vpxor xmm8,xmm8,xmm8
-        VpdpbusdsXmmXmmXmm xmm8,xmm0,xmm1           
+        VpdpbusdsXmmXmmXmm xmm8,xmm0,xmm1
         test    r11,r11                     ; ZeroMode?
         jnz     SkipAccumulateOutputSmallKBy4
         vpaddd  xmm8,xmm8,XMMWORD PTR [r8]
@@ -366,7 +366,7 @@ ProcessColumnLoopSmallKBySmallN:
 
 ComputeOutputSmallKBySmallN:
         vpxor xmm8,xmm8,xmm8
-        VpdpbusdsXmmXmmXmm xmm8,xmm0,xmm1        
+        VpdpbusdsXmmXmmXmm xmm8,xmm0,xmm1
         test    r11,r11                     ; ZeroMode?
         jnz     SkipAccumulateOutputSmallKBySmallN
         vmovd   xmm3,DWORD PTR [r8]
