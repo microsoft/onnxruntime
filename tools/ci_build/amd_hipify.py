@@ -1,4 +1,5 @@
-# import argparse
+#!/usr/bin/env python3
+
 import os
 import subprocess
 
@@ -244,9 +245,6 @@ def hipify(src_file_path, dst_file_path):
     with open(dst_file_path, 'w') as f:
         subprocess.run([HIPIFY_PERL, src_file_path], stdout=f)
     with open(dst_file_path) as f:
-        # s = f.read().replace('cuda', 'hip')
-        # s = s.replace('Cuda', 'Hip')
-        # s = s.replace('CUDA', 'HIP')
         s = f.read().replace('kCudaExecutionProvider', 'kRocmExecutionProvider')
         s = s.replace('CudaAsyncBuffer', 'HipAsyncBuffer')
         s = s.replace('CudaKernel', 'RocmKernel')
@@ -300,7 +298,7 @@ def hipify(src_file_path, dst_file_path):
         f.write(s)
 
 
-def main():
+def amd_hipify():
     cuda_path = contrib_ops_path + '/cuda/'
     hip_path = contrib_ops_path + '/rocm/'
     for file in contrib_ops_files:
@@ -324,4 +322,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    amd_hipify()

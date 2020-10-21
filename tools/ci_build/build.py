@@ -12,6 +12,7 @@ import subprocess
 import sys
 import hashlib
 from logger import log
+from amd_hipify import amd_hipify
 
 
 class BaseError(Exception):
@@ -1064,7 +1065,7 @@ def setup_dml_build(args, cmake_path, build_dir, configs):
             run_subprocess(cmd_args)
 
 
-def setup_rocm_vars(args):
+def setup_rocm_build(args):
 
     rocm_home = None
 
@@ -1078,6 +1079,8 @@ def setup_rocm_vars(args):
             raise BuildError("rocm_home paths must be specified and valid.",
                              "rocm_home='{}' valid={}."
                              .format(rocm_home, rocm_home_not_valid))
+
+        amd_hipify()
     return rocm_home or ''
 
 
@@ -1816,7 +1819,7 @@ def main():
     migraphx_home = setup_migraphx_vars(args)
 
     # if using rocm, setup rocm paths
-    rocm_home = setup_rocm_vars(args)
+    rocm_home = setup_rocm_build(args)
 
     os.makedirs(build_dir, exist_ok=True)
 
