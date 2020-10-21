@@ -12,15 +12,17 @@ namespace training {
 std::string ToString(const std::vector<Dimension>& dims) {
   std::stringstream output;
   output << "[";
-  for (auto& dim : dims) {
-    if (dim.has_dim_value()) {
-      output << dim.dim_value() << ",";
+  if (!dim.empty()) {
+    for (auto& dim : dims) {
+      if (dim.has_dim_value()) {
+        output << dim.dim_value() << ",";
+      }
+      if (dim.has_dim_param()) {
+        output << dim.dim_param() << ",";
+      }
     }
-    if (dim.has_dim_param()) {
-      output << dim.dim_param() << ",";
-    }
+    output.seekp(-1, output.cur);
   }
-  output.seekp(-1, output.cur);
   output << "]";
 
   return output.str();

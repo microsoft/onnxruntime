@@ -1236,8 +1236,8 @@ std::vector<NodeDef> GetBiasGeluGradNodes(
     bool use_approximation,
     const ArgDef& dY, const ArgDef& X, const ArgDef& B,  // inputs
     const ArgDef& dX, const ArgDef& dB,                  // outputs
-    const ArgDef& b_axes, const ArgDef& b_shape, const ArgDef& x_shape,
-    const std::string& node_name) {  //intermediate args
+    const ArgDef& b_axes, const ArgDef& b_shape, const ArgDef& x_shape,  //intermediate args
+    const std::string& node_name) {
   std::vector<Dimension> B_shape, X_shape;
   if (GetShape(B, B_shape).IsOK() && GetShape(X, X_shape).IsOK()) {
     ORT_ENFORCE(B_shape.size() == 1, "B must have exactly one dimension.");
@@ -1294,7 +1294,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetFastGeluGradient) {
     ArgDef b_axes = IA("ReduceAxes_" + B.name);
     ArgDef b_shape = IA("Shape_" + B.name);
     ArgDef x_shape = IA("Shape_" + X.name);
-    return GetBiasGeluGradNodes(true, dY, X, B, dX, dB, b_axes, b_shape, x_shape, NodeName());
+    return GetBiasGeluGradNodes(true, dY, X, B,onst std::string& node_ dX, dB, b_axes, b_shape, x_shape, NodeName());
   }
   if (num_src_node_inputs == 1) {  // without bias
     return std::vector<NodeDef>{
