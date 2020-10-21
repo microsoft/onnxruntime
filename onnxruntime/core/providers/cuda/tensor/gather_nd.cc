@@ -115,13 +115,13 @@ Status GatherNDBase::PrepareCompute(
                                   DataTypeImpl::GetTensorType<MLFloat16>(),  \
                                   DataTypeImpl::GetTensorType<BFloat16>(),   \
                                   DataTypeImpl::GetTensorType<int64_t>()}
-#define ALL_IEEE_FLOAT_DATA_TYPES float, MLFloat16, double, BFloat16
+#define GATHER_ND_T_DATA_TYPES float, MLFloat16, double, int64_t, BFloat16
 #else
 #define GATHER_ND_T_TENSOR_TYPES {DataTypeImpl::GetTensorType<float>(),      \
                                   DataTypeImpl::GetTensorType<double>(),     \
                                   DataTypeImpl::GetTensorType<MLFloat16>(),  \
                                   DataTypeImpl::GetTensorType<int64_t>()}
-#define ALL_IEEE_FLOAT_DATA_TYPES float, MLFloat16, double
+#define GATHER_ND_T_DATA_TYPES float, MLFloat16, double, int64_t
 #endif
 
 #define REGISTER_KERNEL_TYPED_GATHER_ND(TIndex, ver)                      \
@@ -196,7 +196,7 @@ Status GatherND<TIndex>::ComputeInternal(OpKernelContext* context) const {
 
   const void* const kernel_input_data = input_tensor->DataRaw();
   void* const kernel_output_data = output_tensor->MutableDataRaw();
-  utils::MLTypeCallDispatcher<GatherNDComputeImpl, ALL_IEEE_FLOAT_DATA_TYPES>
+  utils::MLTypeCallDispatcher<GatherNDComputeImpl, GATHER_ND_T_DATA_TYPES>
       t_disp(input_tensor->GetElementType());
   t_disp.Invoke(num_slices, slice_size, kernel_input_data, kernel_output_data, input_slice_offsets_buffer.get());
 
