@@ -17,16 +17,16 @@ Window Machine Learning is a high-performance, reliable API for deploying hardwa
     
   The Windows ML source code is packaged and distributed with each new release of Windows. To provide consumers with high-quality products, Microsoft is responsible for distributing Windows ML and related binaries as part of Windows or standalone distributable packages.
 
-## Keeping the bar high
 
-We support community contribution to Windows ML based on our principles to enhance user experience on Windows. While we encourage everyone to contribute to Windows ML, the Windows ML team will keep the bar for the acceptance high. Help us to do so by following the recommendations below.
-  * The feature request is aligned with the Windows ML base principles. 
-  * The feature request addresses an existing or future user problem.
-  * The feature request focuses on the enhancement of user experience and benefits a meaningful number of users. 
-  
-In cases when the required change is fixing a bug in Windows ML APIs, please fill the [bug/performance issue request](https://github.com/microsoft/onnxruntime/issues/new/choose) rather then feature request. 
+## Open for Community Contributions
 
-## Start your feature request
+We encourage community contributions to Windows ML to enhance users’ experience on Windows. We use the principles above to guide how we look at and evaluate all contributions. 
+  * Making sure your feature request follows all of these principles up front will help the review process. 
+  * Include as much information about existing or future customer problems the feature request addresses as well as how many users may benefit from this new feature.
+
+Small changes such as minor issues or bugs can be addressed much quicker using the [bug/performance issue request](https://github.com/microsoft/onnxruntime/issues/new/choose) rather than feature request. 
+
+## Start your Feature Request
 
 If you'd like to contribute to Windows ML and engage with the community to get feedback, please review to the contributing [process details](https://github.com/microsoft/onnxruntime/blob/master/CONTRIBUTING.md) and submit a new feature request [here](https://github.com/microsoft/onnxruntime/issues/new/choose). 
 
