@@ -214,8 +214,6 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
 
     params.deepspeed_zero = ZeROConfig(flags["deepspeed_zero_stage"].as<int>());
     params.enable_grad_norm_clip = flags["enable_grad_norm_clip"].as<bool>();
-    params.attn_dropout_checkpoint = flags["attn_dropout_checkpoint"].as<bool>();
-    params.gelu_checkpoint = flags["gelu_checkpoint"].as<bool>();
     if(params.deepspeed_zero.stage == 1){
       printf("use ZeRO stage 1\n");
     } else if(params.deepspeed_zero.stage == 2){

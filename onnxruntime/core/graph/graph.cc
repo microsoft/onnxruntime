@@ -2857,7 +2857,8 @@ Node& Graph::AddNode(const std::string& name,
                      const std::vector<NodeArg*>& input_args,
                      const std::vector<NodeArg*>& output_args,
                      const NodeAttributes* attributes,
-                     const std::string& domain) {
+                     const std::string& domain,
+                     const int& priority) {
   std::vector<NodeArg*> inputs;
   std::vector<NodeArg*> outputs;
   inputs.resize(input_args.size());
@@ -2873,6 +2874,7 @@ Node& Graph::AddNode(const std::string& name,
 
   const gsl::not_null<Node*> node = AllocateNode();
   node->Init(name, op_type, description, inputs, outputs, attributes, domain);
+  node->SetPriority(priority);
   if (0 != op_type.compare(kNoOp)) {
     GraphProtoSyncNeeded(true);
   }

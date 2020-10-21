@@ -37,7 +37,7 @@ static SessionOptions SESSION_OPTION = {
     ExecutionOrder::PRIORITY_BASED,            //execution_order
     false,                                     //enable_profiling
     ORT_TSTR(""),                              //optimized_model_filepath
-    true,                                      //enable_mem_pattern
+    false,                                      //enable_mem_pattern
     true,                                      //enable_cpu_mem_arena
     ORT_TSTR("onnxruntime_profile_"),          //profile_file_prefix
     "",                                        //session_logid

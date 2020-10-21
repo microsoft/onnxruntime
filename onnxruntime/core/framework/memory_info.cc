@@ -227,9 +227,14 @@ std::string MemoryInfo::MemoryInfoProfile::CreateSummaryEvent(size_t pid, size_t
   return evt.str();
 }
 
-static void UpdateSummary(MemoryInfo::AllocationSummary& summary, size_t alloc_offset, size_t alloc_size, const OrtValueIndex idx) {
+static void UpdateSummary(MemoryInfo::AllocationSummary& summary, size_t alloc_offset, size_t alloc_size, const OrtValueIndex idx, const MemoryInfo::MapType& map_type) {
   summary.total_size = std::max(summary.total_size, alloc_offset + alloc_size);
   summary.used_size += alloc_size;
+  if (map_type == MemoryInfo::MapType::DynamicActivation) {
+    summary.total_size = summary.used_size;
+  } else {
+    summary.total_size = std::max(summary.total_size, alloc_offset + alloc_size);
+  }
   summary.life_tensosrs.push_back(idx);
 }
 
@@ -290,26 +295,29 @@ void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name, cons
         const auto& start_itr = ts_map.find(alloc_step);
         const auto& end_itr = ts_map.find(dealloc_step);
         for (auto itr = start_itr; itr != end_itr; ++itr) {
-          UpdateSummary(summary_[summary_key][*itr], offset, size, item.first);
+          UpdateSummary(summary_[summary_key][*itr], offset, size, item.first, map_type);
         }
-        UpdateSummary(summary_[summary_key][*end_itr], offset, size, item.first);
+        UpdateSummary(summary_[summary_key][*end_itr], offset, size, item.first, map_type);
       }
     }
 
     //extract top_k total size
-    std::set<size_t> top_k_set;
-    for (const auto& item : summary_[summary_key]) {
-      if (top_k_set.size() < top_k)
-        top_k_set.insert(item.second.total_size);
-      else if (*top_k_set.cbegin() < item.second.total_size) {
-        top_k_set.erase(top_k_set.begin());
-        top_k_set.insert(item.second.total_size);
+    size_t top_kth_total_size = 0;
+    if (top_k != 0) {
+      std::set<size_t> top_k_set;
+      for (const auto& item : summary_[summary_key]) {
+        if (top_k_set.size() < top_k)
+          top_k_set.insert(item.second.total_size);
+        else if (*top_k_set.cbegin() < item.second.total_size) {
+          top_k_set.erase(top_k_set.begin());
+          top_k_set.insert(item.second.total_size);
+        }
       }
+      top_kth_total_size = *top_k_set.cbegin();
     }
-    size_t top_kth_total_size = *top_k_set.cbegin();
 
     for (const auto& item : summary_[summary_key]) {
-      if (item.second.total_size < top_kth_total_size) continue;
+      if (top_k != 0 && item.second.total_size < top_kth_total_size) continue;
       size_t alloc_size_for_pattern = 0;
       for (const auto& live_tensor : item.second.life_tensosrs) {
         const auto info = mem_info_.AllocPlan(live_tensor);
@@ -332,9 +340,13 @@ void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name, cons
 }
 
 void MemoryInfo::GenerateMemoryProfile() {
+  profiler.CreateEvents("GPU (initializer)", profiler.GetAndIncreasePid(), MapType::Initializer, "", 1);
   profiler.CreateEvents("GPU (static activations)", profiler.GetAndIncreasePid(), MapType::StaticActivation, "", 1);
   profiler.CreateEvents("GPU (dynamic activations)", profiler.GetAndIncreasePid(), MapType::DynamicActivation, "", 1);
-  profiler.CreateEvents("GPU (static activations), _grad", profiler.GetAndIncreasePid(), MapType::StaticActivation, "_grad", 1);
+  profiler.CreateEvents("GPU (static activations)", profiler.GetAndIncreasePid(), MapType::StaticActivation, "_grad", 0);
+  profiler.CreateEvents("GPU (dynamic activations)", profiler.GetAndIncreasePid(), MapType::DynamicActivation, "_grad", 0);
+  profiler.CreateEvents("GPU (static activations)", profiler.GetAndIncreasePid(), MapType::StaticActivation, "_partition_", 0);
+  profiler.CreateEvents("GPU (dynamic activations)", profiler.GetAndIncreasePid(), MapType::DynamicActivation, "_partition_", 0);
 
   // Write memory profile .json
   std::ofstream memory_profile("memory_profile_" + std::to_string(local_rank_) + ".json", std::ios::trunc);

@@ -134,11 +134,14 @@ static Status AddNcclReduceForGradients(
 
     std::vector<AttributeProto> attributes({onnx::MakeAttribute("root_rank", int64_t(i)),
                                             onnx::MakeAttribute("num_input_readies", has_old_reduce)});  //,
-    graph_defs.AddNodeDefs({NodeDef(OpDef{"NcclReduce", kMSDomain, 1},
-                                    reduce_inputs,
-                                    reduce_outputs,
-                                    attributes,
-                                    node_name)});
+    auto nd = NodeDef(OpDef{"NcclReduce", kMSDomain, 1},
+                      reduce_inputs,
+                      reduce_outputs,
+                      attributes,
+                      node_name);
+    nd.SetPriority(-1);
+    graph_defs.AddNodeDefs({nd});
+
     output_readies.push_back(reduce_outputs[0]);
   }
   return Status::OK();
@@ -465,7 +468,7 @@ static Status GetGradientArgsInTopoOrder(
     std::vector<OptimizerNodeConfig>& opt_configs,
     std::vector<ArgDef>& gradient_argdefs) {
   GraphViewer gv(graph);
-  const auto& node_indices = gv.GetNodesInTopologicalOrder();
+  const auto& node_indices = gv.GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED);
   std::vector<std::string> gradient_names;
   for (auto& g_argdef : gradient_argdefs) {
     gradient_names.push_back(g_argdef.name);
@@ -516,9 +519,9 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
     std::vector<ArgDef>& gradient_argdefs,
     std::unordered_set<std::string>& optimizer_state_initializer_names,
     OptimizerOutputKeyMap<std::string>& optimizer_graph_outputs) {
-  std::vector<int64_t> partitions;  //The vector to hold the partition result of gradient tensors. For stage=1, it should be empty
-  std::vector<ArgDef> reduce_output_readies; //The vector to hold nodes to enforce the same order for reduce nodes. This should be empty for stage 1
-  int64_t max_group_size=0;
+  std::vector<int64_t> partitions;            //The vector to hold the partition result of gradient tensors. For stage=1, it should be empty
+  std::vector<ArgDef> reduce_output_readies;  //The vector to hold nodes to enforce the same order for reduce nodes. This should be empty for stage 1
+  int64_t max_group_size = 0;
 
   ORT_ENFORCE(stage_ == 1 || stage_ == 2);
   if (stage_ == 2) {
@@ -546,7 +549,7 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
   ORT_RETURN_IF_NOT(total_num_accumulations > 0);
   const float scale = 1.0f / total_num_accumulations;
   ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, fused_gradient_argdef, graph_defs,
-                                              opt_graph_config_.AllReduceDataType(), false));
+                                              opt_graph_config_.AllReduceDataType(), false, partitions));
 
   if (stage_ == 1) {
     // add Reducescatter for gradients;
