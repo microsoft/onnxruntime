@@ -72,6 +72,16 @@ class ORTTrainerOptions(object):
                             'min' : 0,
                             'default' : 0
                         },
+                        'data_parallel_size' : {
+                            'type' : 'integer',
+                            'min' : 1,
+                            'default' : 1
+                        },
+                        'horizontal_parallel_size' : {
+                            'type' : 'integer',
+                            'min' : 1,
+                            'default' : 1
+                        },
                         'allreduce_post_accumulation' : {
                             'type' : 'boolean',
                             'default' : False
@@ -220,9 +230,13 @@ class ORTTrainerOptions(object):
         distributed (dict):
             distributed training options
         distributed.world_rank (int, default is 0):
-            rank ID used for data parallelism
+            rank ID used for data/horizontal parallelism
         distributed.world_size (int, default is 1):
+            number of rank participating in data/horizontal parallellism
+        distributed.data_parallel_size (int, default is 1):
             number of rank participating in data parallelism
+        distributed.horizontal_parallel_size (int, default is 1):
+            number of rank participating in horizontal parallelism
         distributed.allreduce_post_accumulation (bool, default is False):
             True enables overlap of AllReduce with computation, while False,
             postpone AllReduce until all gradients are ready
@@ -424,6 +438,16 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                 'type': 'integer',
                 'min': 0,
                 'default': 0
+            },
+            'data_parallel_size': {
+                'type': 'integer',
+                'min': 1,
+                'default': 1
+            },
+            'horizontal_parallel_size': {
+                'type': 'integer',
+                'min': 1,
+                'default': 1
             },
             'allreduce_post_accumulation': {
                 'type': 'boolean',
