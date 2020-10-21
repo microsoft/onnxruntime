@@ -1088,6 +1088,8 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
   // or
   // Reshape has no output edge ==> the output is a graph output or a dead end [which we don't care]
   // we can skip this Reshape now
+  LOGS_DEFAULT(VERBOSE) << "Skipping Reshape/Flatten node ["
+                        << node.Name() << "] with output, " << output;
   return true;
 }
 
