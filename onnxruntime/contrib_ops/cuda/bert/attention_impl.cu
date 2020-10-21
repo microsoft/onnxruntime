@@ -677,7 +677,7 @@ bool QkvToContext(
     v = present + batches * present_size_per_batch;
   }
 
-  bool use_2d_attention_mask = (nullptr != mask_index && nullptr != mask_index_dims && mask_index_dims->size() == 2);
+  bool use_2d_attention_mask = (nullptr != mask_index && nullptr != mask_index_dims && (mask_index_dims->size() == 2 || mask_index_dims->size() == 3));
 
   // compute Q*K' (as K'*Q), scaled by 1/sqrt(H) and store in scratch1: BxNxSxS*
   // Q: BxNxSxH, K (present_k): BxNxS*xH, Q*K': BxNxSxS*
