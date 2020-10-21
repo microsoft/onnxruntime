@@ -12,6 +12,7 @@ LearningModelOperator::LearningModelOperator(hstring const& type, hstring const&
     type_(type),
     name_(name),
     domain_(domain) {
+  constant_input_mapping_ = winrt::single_threaded_map<winrt::hstring, wf::IInspectable>();
   input_mapping_ = winrt::single_threaded_map<winrt::hstring, winrt::hstring>();
   output_mapping_ = winrt::single_threaded_map<winrt::hstring, winrt::hstring>();
 
@@ -30,6 +31,16 @@ winml_experimental::LearningModelOperator LearningModelOperator::SetInput(
   return *this;
 }
 
+winml_experimental::LearningModelOperator LearningModelOperator::SetConstant(
+    hstring const& operator_input_name, wf::IInspectable const& value) {
+  // TODO Validate against allowed operator input NAMES. The types are not deduced.
+  auto constant_name = name_ + L"." + operator_input_name;
+  input_mapping_.Insert(operator_input_name, constant_name);
+  constant_input_mapping_.Insert(constant_name, value);
+  return *this;
+}
+
+
 winml_experimental::LearningModelOperator LearningModelOperator::SetOutput(
     hstring const& operator_output_name, hstring const& output_name) {
   // TODO Validate against allowed operator output NAMES. The types are not deduced.
@@ -37,7 +48,7 @@ winml_experimental::LearningModelOperator LearningModelOperator::SetOutput(
   return *this;
 }
 
-winml_experimental::LearningModelOperator LearningModelOperator::SetAttribute(hstring const& name, Windows::Foundation::IInspectable const& value) {
+winml_experimental::LearningModelOperator LearningModelOperator::SetAttribute(hstring const& /*name*/, Windows::Foundation::IInspectable const& /*value*/) {
   // TODO Validate against allowed operator attribute NAMES. The types are not deduced.
  // attributes_[name] = inspectable;
 
@@ -85,6 +96,10 @@ hstring LearningModelOperator::Domain() {
 
 wfc::IMap<winrt::hstring, winrt::hstring> LearningModelOperator::InputMapping(){
   return input_mapping_;
+}
+
+wfc::IMap<winrt::hstring, wf::IInspectable> LearningModelOperator::ConstantInputMapping() {
+  return constant_input_mapping_;
 }
 
 wfc::IMap<winrt::hstring, winrt::hstring> LearningModelOperator::OutputMapping() {

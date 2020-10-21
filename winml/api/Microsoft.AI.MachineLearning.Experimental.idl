@@ -46,6 +46,7 @@ namespace ROOT_NS.AI.MachineLearning.Experimental {
     LearningModelOperator(String type, String name, String domain);
 
     LearningModelOperator SetInput(String operator_input_name, String input_name);
+    LearningModelOperator SetConstant(String operator_input_name, IInspectable default_value);
     LearningModelOperator SetOutput(String operator_output_name, String output_name);
     LearningModelOperator SetAttribute(String name, IInspectable value);
 
@@ -65,8 +66,8 @@ namespace ROOT_NS.AI.MachineLearning.Experimental {
   [dualapipartition(1)]
   runtimeclass LearningModelInputs {
     LearningModelBuilder Add(ROOT_NS.AI.MachineLearning.ILearningModelFeatureDescriptor input);
-    LearningModelBuilder Add(ROOT_NS.AI.MachineLearning.ILearningModelFeatureDescriptor input, IInspectable default_value);
-    LearningModelBuilder AddConstant(ROOT_NS.AI.MachineLearning.ILearningModelFeatureDescriptor input, IInspectable value);
+    LearningModelBuilder Add(String input_name, String input_description, IInspectable default_value);
+    LearningModelBuilder AddConstant(String input_name, IInspectable value);
   }
 
   [marshaling_behavior(agile)]

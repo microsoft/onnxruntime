@@ -332,8 +332,8 @@ void RegisterSignalSchemas() {
              "The number of bands in the mel spectrum.",
              "T1")
       .Input(1,
-             "num_spectrogram_bins",
-             "The number of bins in the spectrogram. FFT size.",
+             "fft_size",
+             "The size of the FFT.",
              "T1")
       .Input(2,
              "sample_rate",
@@ -356,11 +356,11 @@ void RegisterSignalSchemas() {
       .TypeConstraint("T3", {"tensor(float)", "tensor(float16)", "tensor(double)", "tensor(uint8)", "tensor(uint16)", "tensor(uint32)", "tensor(uint64)", "tensor(int8)", "tensor(int16)", "tensor(int32)", "tensor(int64)"}, "")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         auto num_mel_bins = get_scalar_value_from_tensor<int64_t>(ctx.getInputData(0));
-        auto num_spectrogram_bins = get_scalar_value_from_tensor<int64_t>(ctx.getInputData(1));
-        if (num_mel_bins > 0 && num_spectrogram_bins > 0) {
+        auto fft_size = get_scalar_value_from_tensor<int64_t>(ctx.getInputData(1));
+        if (num_mel_bins > 0 && fft_size > 0) {
           ONNX_NAMESPACE::TensorShapeProto result_shape;
           result_shape.add_dim()->set_dim_value(num_mel_bins);
-          result_shape.add_dim()->set_dim_value(num_spectrogram_bins);
+          result_shape.add_dim()->set_dim_value(static_cast<int64_t>(std::floor(fft_size/2.f + 1)));
           updateOutputShape(ctx, 0, result_shape);
         }
         propagateElemTypeFromAttributeToOutput(ctx, "output_datatype", 0);

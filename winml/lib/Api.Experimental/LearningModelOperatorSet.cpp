@@ -13,6 +13,7 @@ LearningModelOperatorSet::LearningModelOperatorSet(winml_experimental::LearningM
 winml_experimental::LearningModelBuilder LearningModelOperatorSet::Add(winml_experimental::LearningModelOperator const& op)
 {
   auto operator_private = op.as<winml_experimentalp::LearningModelOperator>();
+  auto constant_input_map = operator_private->ConstantInputMapping();
   auto input_map = operator_private->InputMapping();
   auto output_map = operator_private->OutputMapping();
   auto attribute_map = operator_private->AttributeMap();
@@ -54,6 +55,11 @@ winml_experimental::LearningModelBuilder LearningModelOperatorSet::Add(winml_exp
       operator_domain.c_str(),
       raw_operator_input_names.data(), raw_actual_input_names.data(), input_map.Size(),
       raw_operator_output_names.data(), raw_actual_output_names.data(), output_map.Size()));
+
+  // Add constants
+  for (auto kvp : constant_input_map) {
+    builder_.Inputs().AddConstant(kvp.Key(), kvp.Value());
+  }
 
   return builder_;
 }
