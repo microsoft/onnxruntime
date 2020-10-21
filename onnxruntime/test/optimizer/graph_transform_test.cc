@@ -693,9 +693,9 @@ TEST_F(GraphTransformationTests, MatMulAddFusion_MissingShape) {
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["MatMul"] == 1);
-  ASSERT_TRUE(op_to_count["Add"] == 1);
-  ASSERT_TRUE(op_to_count["Gemm"] == 0);
+  ASSERT_EQ(op_to_count["MatMul"], 1);
+  ASSERT_EQ(op_to_count["Add"], 1);
+  ASSERT_EQ(op_to_count["Gemm"], 0);
 }
 
 #ifndef DISABLE_CONTRIB_OPS
