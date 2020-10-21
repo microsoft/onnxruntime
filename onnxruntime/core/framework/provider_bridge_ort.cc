@@ -10,6 +10,7 @@
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/provider_shutdown.h"
 #include "core/graph/model.h"
 #include "core/platform/env.h"
 #include "core/providers/common.h"
@@ -328,7 +329,7 @@ struct ProviderHostImpl : ProviderHost {
     return onnxruntime::make_unique<logging::Capture>(logger, severity, category, dataType, location);
   }
   void logging__Capture__operator_delete(logging::Capture* p) noexcept override { delete p; }
-  std::ostream& logging__Capture__Stream(logging::Capture* p) noexcept override { return p->Stream();  }
+  std::ostream& logging__Capture__Stream(logging::Capture* p) noexcept override { return p->Stream(); }
 
   // Provider_TypeProto_Tensor
   int32_t Provider_TypeProto_Tensor__elem_type(const Provider_TypeProto_Tensor* p) override { return p->elem_type(); }
@@ -609,61 +610,96 @@ struct ProviderHostImpl : ProviderHost {
 } provider_host_;
 
 struct ProviderSharedLibrary {
-  ProviderSharedLibrary() {
+  bool Ensure() {
+    if (handle_)
+      return true;
+
     std::string full_path = Env::Default().GetRuntimePath() + std::string(LIBRARY_PREFIX "onnxruntime_providers_shared" LIBRARY_EXTENSION);
     auto error = Env::Default().LoadDynamicLibrary(full_path, &handle_);
     if (!error.IsOK()) {
       LOGS_DEFAULT(ERROR) << error.ErrorMessage();
-      return;
+      return false;
     }
 
     void (*PProvider_SetHost)(void*);
     Env::Default().GetSymbolFromLibrary(handle_, "Provider_SetHost", (void**)&PProvider_SetHost);
 
     PProvider_SetHost(&provider_host_);
+    return true;
   }
 
-  ~ProviderSharedLibrary() {
-    Env::Default().UnloadDynamicLibrary(handle_);
+  void Unload() {
+    if (handle_) {
+      Env::Default().UnloadDynamicLibrary(handle_);
+      handle_ = nullptr;
+    }
   }
 
+  ProviderSharedLibrary() = default;
+  ~ProviderSharedLibrary() { /*assert(!handle_);*/
+  }                          // We should already be unloaded at this point (disabled until Python shuts down deterministically)
+
+ private:
   void* handle_{};
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(ProviderSharedLibrary);
 };
 
-bool EnsureSharedProviderLibrary() {
-  static ProviderSharedLibrary shared_library;
-  return shared_library.handle_;
-}
+static ProviderSharedLibrary s_library_shared;
 
 struct ProviderLibrary {
-  ProviderLibrary(const char* filename) {
-    if (!EnsureSharedProviderLibrary())
-      return;
+  ProviderLibrary(const char* filename) : filename_{filename} {}
+  ~ProviderLibrary() { /*assert(!handle_);*/
+  }                    // We should already be unloaded at this point (disabled until Python shuts down deterministically)
 
-    std::string full_path = Env::Default().GetRuntimePath() + std::string(filename);
+  Provider* Get() {
+    if (provider_)
+      return provider_;
+
+    if (!s_library_shared.Ensure())
+      return nullptr;
+
+    std::string full_path = Env::Default().GetRuntimePath() + std::string(filename_);
     auto error = Env::Default().LoadDynamicLibrary(full_path, &handle_);
     if (!error.IsOK()) {
       LOGS_DEFAULT(ERROR) << error.ErrorMessage();
-      return;
+      return nullptr;
     }
 
     Provider* (*PGetProvider)();
     Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider);
 
     provider_ = PGetProvider();
+    return provider_;
   }
 
-  ~ProviderLibrary() {
-    Env::Default().UnloadDynamicLibrary(handle_);
+  void Unload() {
+    if (handle_) {
+      if (provider_)
+        provider_->Shutdown();
+
+      Env::Default().UnloadDynamicLibrary(handle_);
+      handle_ = nullptr;
+      provider_ = nullptr;
+    }
   }
 
+ private:
+  const char* filename_;
   Provider* provider_{};
   void* handle_{};
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(ProviderLibrary);
 };
+
+static ProviderLibrary s_library_dnnl(LIBRARY_PREFIX "onnxruntime_providers_dnnl" LIBRARY_EXTENSION);
+static ProviderLibrary s_library_tensorrt(LIBRARY_PREFIX "onnxruntime_providers_tensorrt" LIBRARY_EXTENSION);
+
+void UnloadSharedProviders() {
+  s_library_dnnl.Unload();
+  s_library_tensorrt.Unload();
+  s_library_shared.Unload();
+}
 
 // This class translates the IExecutionProviderFactory interface to work with the interface providers implement
 struct IExecutionProviderFactory_Translator : IExecutionProviderFactory {
@@ -677,22 +713,18 @@ struct IExecutionProviderFactory_Translator : IExecutionProviderFactory {
   std::shared_ptr<Provider_IExecutionProviderFactory> p_;
 };
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int device_id) {
-  static ProviderLibrary library(LIBRARY_PREFIX "onnxruntime_providers_dnnl" LIBRARY_EXTENSION);
-  if (!library.provider_)
-    return nullptr;
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena) {
+  if (auto provider = s_library_dnnl.Get())
+    return std::make_shared<IExecutionProviderFactory_Translator>(provider->CreateExecutionProviderFactory(use_arena));
 
-  //return std::make_shared<onnxruntime::MkldnnProviderFactory>(device_id);
-  //TODO: This is apparently a bug. The constructor parameter is create-arena-flag, not the device-id
-  return std::make_shared<IExecutionProviderFactory_Translator>(library.provider_->CreateExecutionProviderFactory(device_id));
+  return nullptr;
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id) {
-  static ProviderLibrary library(LIBRARY_PREFIX "onnxruntime_providers_tensorrt" LIBRARY_EXTENSION);
-  if (!library.provider_)
-    return nullptr;
+  if (auto provider = s_library_tensorrt.Get())
+    return std::make_shared<IExecutionProviderFactory_Translator>(provider->CreateExecutionProviderFactory(device_id));
 
-  return std::make_shared<IExecutionProviderFactory_Translator>(library.provider_->CreateExecutionProviderFactory(device_id));
+  return nullptr;
 }
 
 }  // namespace onnxruntime
@@ -700,7 +732,6 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensor
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOptions* options, int use_arena) {
   auto factory = onnxruntime::CreateExecutionProviderFactory_Dnnl(use_arena);
   if (!factory) {
-    LOGS_DEFAULT(ERROR) << "OrtSessionOptionsAppendExecutionProvider_Dnnl: Failed to load shared library";
     return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_Dnnl: Failed to load shared library");
   }
 
