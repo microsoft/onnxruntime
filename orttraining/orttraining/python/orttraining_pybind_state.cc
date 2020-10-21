@@ -77,7 +77,6 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   }
 
   training::TrainingSession::TrainingConfiguration config{};
-
   config.weight_names_to_train = parameters.weights_to_train;
   config.weight_names_to_not_train = parameters.weights_not_to_train;
   config.immutable_weights = parameters.immutable_weights;
