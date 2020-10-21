@@ -10,7 +10,8 @@
 #include "core/session/environment.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/graph/optimizer_config.h"
-#include "orttraining/core/framework/communication/mpi/mpi_context.h"
+#include "orttraining/core/framework/mpi_context.h"
+#include "orttraining/core/framework/module_gradient_graph_builder.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
 
 namespace onnxruntime {
@@ -480,17 +481,24 @@ void addObjectMethodsForTraining(py::module& m) {
         return static_cast<PipelineTrainingSession*>(sess->GetSessionHandle())->IsGraphOutputFp32Node(output_name);
       });
 
-  py::class_<ModuleTransformer> module_transformer(m, "ModuleTransformer");
-  module_transformer
+  py::class_<ModuleGradientGraphBuilderConfiguration> module_gradient_graph_builder_config(
+      m, "ModuleGradientGraphBuilderConfiguration", R"pbdoc(Configuration information for module gradient graph builder.)pbdoc");
+  module_gradient_graph_builder_config.def(py::init())
+      .def_readwrite("weight_names_to_train", &ModuleGradientGraphBuilderConfiguration::weight_names_to_train)
+      .def_readwrite("output_names", &ModuleGradientGraphBuilderConfiguration::output_names)
+      .def_readwrite("use_invertible_layernorm_grad", &ModuleGradientGraphBuilderConfiguration::use_invertible_layernorm_grad)
+      .def_readwrite("set_gradients_as_graph_outputs", &ModuleGradientGraphBuilderConfiguration::set_gradients_as_graph_outputs);
+
+  py::class_<ModuleGradientGraphBuilder> module_gradient_graph_builder(m, "ModuleGradientGraphBuilder");
+  module_gradient_graph_builder
       .def(py::init([]() {
-        return onnxruntime::make_unique<ModuleTransformer>();
+        return onnxruntime::make_unique<ModuleGradientGraphBuilder>();
       }))
-      .def("transform", [](ModuleTransformer* transformer,
-                           const py::bytes& serialized_model,
-                           const std::unordered_set<std::string>& weights_to_train,
-                           const std::unordered_set<std::string>& output_names) {
+      .def("build", [](ModuleGradientGraphBuilder* module_gradient_graph_builder,
+                       const py::bytes& serialized_model,
+                       const ModuleGradientGraphBuilderConfiguration& config) {
         std::istringstream buffer(serialized_model);
-        std::string model_as_string = transformer->Transform(buffer, weights_to_train, output_names);
+        std::string model_as_string = module_gradient_graph_builder->Build(buffer, config);
         return py::bytes(model_as_string);
       });
 }
