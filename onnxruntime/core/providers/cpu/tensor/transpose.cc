@@ -12,26 +12,6 @@ namespace onnxruntime {
    etc.
    */
 
-// ComputeOffset: compute offset into a tensor. This is essentially the dot-product of
-// index and stride, restricted to the specified number of axes.
-static inline size_t ComputeOffset(const std::vector<int64_t>& index, const std::vector<size_t>& stride, int64_t num_axes) {
-  size_t offset = 0;
-  for (int64_t j = 0; j < num_axes; ++j) {
-    offset += index[j] * stride[j];
-  }
-  return offset;
-}
-
-// IncrementIndex: Increment an index into a tensor (in lexicographic ordering), wrapping
-// around the specified upper_bound.
-static inline void IncrementIndex(std::vector<int64_t>& index, const std::vector<int64_t>& upper_bound, int64_t num_axes) {
-  for (int64_t k = num_axes - 1; k >= 0; --k) {
-    index[k]++;
-    if (index[k] < upper_bound[k]) break;
-    index[k] = 0;
-  }
-}
-
 typedef struct MultiIndex {
   size_t index;
   size_t upper_bound;
@@ -43,8 +23,38 @@ typedef struct MultiIndex {
   }
 } MultiIndex;
 
+static size_t IncrementIndexAndComputeOffsetSetup(MultiIndex* mindex, int64_t num_axes, const std::vector<int64_t>& target_dims,
+                                                  const std::vector<size_t>& stride, size_t element_size) {
+  size_t naxes = 0;
+  for (int64_t i = 0; i < num_axes; ++i) {
+    if (target_dims[i] == 1)
+      continue;
+    mindex[naxes] = MultiIndex(0, static_cast<size_t>(target_dims[i]), stride[i] * element_size);
+    ++naxes;
+  }
+  return naxes;
+}
+
 // Combines the two previous functions.
 static void IncrementIndexAndComputeOffset(MultiIndex* mindex, size_t naxes, const uint8_t*& local_source) {
+  MultiIndex* it = mindex + (naxes - 1);
+  local_source += it->stride;
+  if (++it->index < it->upper_bound)
+    return;
+  local_source -= it->stride * it->index;
+  it->index = 0;
+  --it;
+  MultiIndex* rend = mindex - 1;
+  for (; it != rend; --it) {
+    local_source += it->stride;
+    if (++it->index < it->upper_bound)
+      break;
+    local_source -= it->stride * it->index;
+    it->index = 0;
+  }
+}
+
+static void IncrementIndexAndComputeOffset(MultiIndex* mindex, size_t naxes, const std::string*& local_source) {
   MultiIndex* it = mindex + (naxes - 1);
   local_source += it->stride;
   if (++it->index < it->upper_bound)
@@ -82,17 +92,19 @@ static void DoTransposeImpl(int64_t num_axes, const std::vector<int64_t>& target
                             size_t num_blocks, size_t num_elts_in_block, const std::vector<size_t>& stride,
                             const uint8_t* source, uint8_t* target, size_t element_size) {
   size_t blocksize = num_elts_in_block * element_size;
+  ORT_ENFORCE(num_axes > 0, "Transpose not implemented for empty tensors.");
+  MultiIndex* mindex = (MultiIndex*)alloca(num_axes * sizeof(MultiIndex));
+  size_t naxes = IncrementIndexAndComputeOffsetSetup(mindex, num_axes, target_dims, stride, element_size);
+
   // index used to iterate over target iteration-space
   std::vector<int64_t> target_index(num_axes, 0);
+  const uint8_t* local_source = source;
   for (size_t i = 0; i < num_blocks; ++i) {
-    // convert target_index into an offset in source data
-    size_t source_offset = ComputeOffset(target_index, stride, num_axes);
-
     // copy
-    memcpy(target, source + source_offset * element_size, blocksize);
+    memcpy(target, local_source, blocksize);
 
     // increment target_index:
-    IncrementIndex(target_index, target_dims, num_axes);
+    IncrementIndexAndComputeOffset(mindex, naxes, local_source);
     target += blocksize;
   }
 }
@@ -100,17 +112,19 @@ static void DoTransposeImpl(int64_t num_axes, const std::vector<int64_t>& target
 static void DoTransposeImpl(int64_t num_axes, const std::vector<int64_t>& target_dims,
                             size_t num_blocks, size_t num_elts_in_block, const std::vector<size_t>& stride,
                             const std::string* source, std::string* target) {
+  ORT_ENFORCE(num_axes > 0, "Transpose not implemented for empty tensors.");
+  MultiIndex* mindex = (MultiIndex*)alloca(num_axes * sizeof(MultiIndex));
+  size_t naxes = IncrementIndexAndComputeOffsetSetup(mindex, num_axes, target_dims, stride, 1);
+
   // index used to iterate over target iteration-space
   std::vector<int64_t> target_index(num_axes, 0);
+  const std::string* local_source = source;
   for (size_t i = 0; i < num_blocks; ++i) {
-    // convert target_index into an offset in source data
-    size_t source_offset = ComputeOffset(target_index, stride, num_axes);
-
     // copy
-    DoTransposeSingleBlock(num_elts_in_block, source + source_offset, target);
+    DoTransposeSingleBlock(num_elts_in_block, local_source, target);
 
     // increment target_index:
-    IncrementIndex(target_index, target_dims, num_axes);
+    IncrementIndexAndComputeOffset(mindex, naxes, local_source);
     target += num_elts_in_block;
   }
 }
@@ -125,13 +139,7 @@ static void TypedDoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>
                                     const std::vector<size_t>& stride, const uint8_t* source, uint8_t* target) {
   ORT_ENFORCE(num_axes > 0, "Transpose not implemented for empty tensors.");
   MultiIndex* mindex = (MultiIndex*)alloca(num_axes * sizeof(MultiIndex));
-  size_t naxes = 0;
-  for (int64_t i = 0; i < num_axes; ++i) {
-    if (target_dims[i] == 1)
-      continue;
-    mindex[naxes] = MultiIndex(0, static_cast<size_t>(target_dims[i]), stride[i] * sizeof(T));
-    ++naxes;
-  }
+  size_t naxes = IncrementIndexAndComputeOffsetSetup(mindex, num_axes, target_dims, stride, sizeof(T));
 
   const uint8_t* local_source = source;
   for (size_t i = 0; i < num_blocks; ++i) {
@@ -173,17 +181,19 @@ static void DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& tar
 
 static void DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_dims, size_t num_blocks,
                                const std::vector<size_t>& stride, const std::string* source, std::string* target) {
+  ORT_ENFORCE(num_axes > 0, "Transpose not implemented for empty tensors.");
+  MultiIndex* mindex = (MultiIndex*)alloca(num_axes * sizeof(MultiIndex));
+  size_t naxes = IncrementIndexAndComputeOffsetSetup(mindex, num_axes, target_dims, stride, 1);
+
   // index used to iterate over target iteration-space
   std::vector<int64_t> target_index(num_axes, 0);
+  const std::string* local_source = source;
   for (size_t i = 0; i < num_blocks; ++i) {
-    // convert target_index into an offset in source data
-    size_t source_offset = ComputeOffset(target_index, stride, num_axes);
-
     // copy
-    *target = *(source + source_offset);
+    *target = *local_source;
 
     // increment target_index:
-    IncrementIndex(target_index, target_dims, num_axes);
+    IncrementIndexAndComputeOffset(mindex, naxes, local_source);
     target++;
   }
 }
@@ -285,13 +295,15 @@ template <typename T>
 static void SimpleTransposeSingleAxisOutwards(const T* input_data, T* output_data,
                                               int64_t num_loops, int64_t num_writers,
                                               int64_t writes_per_loop, int64_t writes_per_writer_per_loop) {
+  const T* end;
   for (int64_t l = 0; l < num_loops; ++l) {
     T* output_for_first_writer = output_data;
 
     for (auto wwpl = 0; wwpl < writes_per_writer_per_loop; ++wwpl) {
       T* output_for_current_writer = output_for_first_writer;
 
-      for (int64_t w = 0; w < num_writers; ++w) {
+      end = input_data + num_writers;
+      for (; input_data != end;) {
         *output_for_current_writer = *input_data++;
 
         // skip to output position for next writer
@@ -377,13 +389,15 @@ template <typename T>
 static void SimpleTransposeSingleAxisInwards(const T* input_data, T* output_data,
                                              int64_t num_loops, int64_t num_readers,
                                              int64_t reads_per_loop, int64_t reads_per_reader_per_loop) {
+  T* end;
   for (int64_t l = 0; l < num_loops; ++l) {
     const T* input_for_first_reader = input_data;
 
     for (auto rrpl = 0; rrpl < reads_per_reader_per_loop; ++rrpl) {
       const T* input_for_current_reader = input_for_first_reader;
 
-      for (int64_t r = 0; r < num_readers; ++r) {
+      end = output_data + num_readers;
+      for (; output_data != end;) {
         *output_data++ = *input_for_current_reader;
         // skip to input position for next reader
         input_for_current_reader += reads_per_reader_per_loop;
