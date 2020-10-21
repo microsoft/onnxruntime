@@ -2,10 +2,12 @@
 
 ## Overview
 
+<img align="left" width=40% src="images/Mobile.png" alt="Steps to build the reduced binary size."/>
+
 ONNX Runtime now supports an internal model format to minimize the build size for usage in mobile and embedded scenarios. An ONNX model can be converted to an internal ONNX Runtime format ('ORT format model') using the below instructions.
 
-The minimal build can be used with any ORT format model, provided that the kernels for the operators used in the model were included in the build. 
-  i.e. the custom build provides a set of kernels, and if that set satisfies a given ORT format model's needs, the model can be loaded and executed. 
+The minimal build can be used with any ORT format model, provided that the kernels for the operators used in the model were included in the build.
+    i.e. the custom build provides a set of kernels, and if that set satisfies a given ORT format model's needs, the model can be loaded and executed.
 
 ## Steps to create model and minimal build
 
@@ -32,7 +34,7 @@ This will require the standard ONNX Runtime python package to be installed.
 
 Example:
 
-Running `'python <ORT repository root>/tools/python/convert_onnx_model_to_ort.py /models'` where the '/models' directory contains ModelA.onnx and ModelB.onnx
+Running `'python <ORT repository root>/tools/python/convert_onnx_models_to_ort.py /models'` where the '/models' directory contains ModelA.onnx and ModelB.onnx
   - Will create /models/ModelA.ort and /models/ModelB.ort
   - Will create /models/required_operators.config/
 

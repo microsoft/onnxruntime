@@ -50,17 +50,22 @@ class DeepCpuLstmOp final : public OpKernel {
                                                      activation_func_betas);
   }
 
+#if !defined(USE_MKLML_FOR_BLAS)
+  Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed) override;
+#endif
   Status Compute(OpKernelContext* context) const override;
 
   ~DeepCpuLstmOp() override = default;
 
  private:
+  Status TryPackWeights(const Tensor& weights, rnn::detail::PackedWeights& packed_weights, bool& is_packed);
+
   template <typename T>
   Status ComputeImpl(OpKernelContext& context) const;
 
   Status ValidateInputs(const Tensor& X,
-                        const Tensor& W,
-                        const Tensor& R,
+                        const TensorShape& W,
+                        const TensorShape& R,
                         const Tensor* B,
                         const Tensor* sequence_lens,
                         const Tensor* initial_h,
@@ -74,6 +79,9 @@ class DeepCpuLstmOp final : public OpKernel {
   int hidden_size_ = 0;
   float clip_;
   bool input_forget_ = false;
+
+  rnn::detail::PackedWeights packed_W_;
+  rnn::detail::PackedWeights packed_R_;
 
   rnn::detail::ActivationFuncs activation_funcs_;
 

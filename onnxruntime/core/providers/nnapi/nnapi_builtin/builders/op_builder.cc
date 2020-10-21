@@ -33,50 +33,6 @@ GET_TENSOR_DATA(Int64Data, int64_t, int64_data)
 
 #undef GET_TENSOR_DATA
 
-// TODO, move this to a shared location
-#define CASE_UNPACK(TYPE, ELEMENT_TYPE, DATA_SIZE)                              \
-  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##TYPE: {     \
-    size_t element_count = initializer.has_raw_data()                           \
-                               ? initializer.raw_data().size()                  \
-                               : initializer.DATA_SIZE();                       \
-    tensor_byte_size = element_count * sizeof(ELEMENT_TYPE);                    \
-    unpacked_tensor.reset(new uint8_t[tensor_byte_size]);                       \
-    return onnxruntime::utils::UnpackTensor(                                    \
-        initializer,                                                            \
-        initializer.has_raw_data() ? initializer.raw_data().data() : nullptr,   \
-        initializer.has_raw_data() ? initializer.raw_data().size() : 0,         \
-        reinterpret_cast<ELEMENT_TYPE*>(unpacked_tensor.get()), element_count); \
-    break;                                                                      \
-  }
-
-static Status UnpackInitializerTensor(const onnx::TensorProto& initializer,
-                                      std::unique_ptr<uint8_t[]>& unpacked_tensor,
-                                      size_t& tensor_byte_size) ORT_MUST_USE_RESULT;
-static Status UnpackInitializerTensor(const onnx::TensorProto& initializer,
-                                      std::unique_ptr<uint8_t[]>& unpacked_tensor,
-                                      size_t& tensor_byte_size) {
-  switch (initializer.data_type()) {
-    CASE_UNPACK(FLOAT, float, float_data_size);
-    CASE_UNPACK(DOUBLE, double, double_data_size);
-    CASE_UNPACK(BOOL, bool, int32_data_size);
-    CASE_UNPACK(INT8, int8_t, int32_data_size);
-    CASE_UNPACK(INT16, int16_t, int32_data_size);
-    CASE_UNPACK(INT32, int32_t, int32_data_size);
-    CASE_UNPACK(INT64, int64_t, int64_data_size);
-    CASE_UNPACK(UINT8, uint8_t, int32_data_size);
-    CASE_UNPACK(UINT16, uint16_t, int32_data_size);
-    CASE_UNPACK(UINT32, uint32_t, uint64_data_size);
-    CASE_UNPACK(UINT64, uint64_t, uint64_data_size);
-    CASE_UNPACK(FLOAT16, onnxruntime::MLFloat16, int32_data_size);
-    CASE_UNPACK(BFLOAT16, onnxruntime::BFloat16, int32_data_size);
-    default:
-      break;
-  }
-  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                         "Unsupported type: ", initializer.data_type());
-}
-#undef CASE_UNPACK
-
 #define ADD_SCALAR_OPERAND(model_builder, input_indices, scalar_value)             \
   {                                                                                \
     uint32_t _index = 0;                                                           \
@@ -127,7 +83,7 @@ Status TransposeBetweenNCHWAndNHWC(ModelBuilder& model_builder,
   ORT_RETURN_IF_NOT(!model_builder.UseNCHW(), "model_builder.UseNCHW() is on");
   const auto& shaper(model_builder.GetShaper());
   ORT_RETURN_IF_NOT(4 == shaper[input].size(),
-                    "TransposeNCHWToNHWC input has to be a 4d tensor, actual dimensions: ", shaper[input].size());
+                    "TransposeBetweenNCHWAndNHWC input has to be a 4d tensor, actual dimensions: ", shaper[input].size());
 
   std::string perm_name;
   vector<int32_t> perm;
@@ -173,6 +129,28 @@ Status TransposeNCHWToNHWC(ModelBuilder& model_builder,
                            const std::string& input,
                            const std::string& output) {
   return TransposeBetweenNCHWAndNHWC(model_builder, input, output, true /* nchw_to_nhwc */);
+}
+
+// Convert the input from nchw to nhwc
+Status GetNHWCInput(ModelBuilder& model_builder, const Node& node, size_t input_index, std::string& input) {
+  const auto& nchw_input = node.InputDefs()[input_index]->Name();
+  ORT_RETURN_IF(model_builder.IsOperandNHWC(input));
+  if (!model_builder.GetNHWCOperand(nchw_input, input)) {
+    input = model_builder.GetUniqueName(nchw_input + "_nchw_to_nhwc");
+    ORT_RETURN_IF_ERROR(TransposeNCHWToNHWC(model_builder, nchw_input, input));
+  }
+  return Status::OK();
+}
+
+// Convert the input from nhwc to nchw
+Status GetNCHWInput(ModelBuilder& model_builder, const Node& node, size_t input_index, std::string& input) {
+  const auto& nhwc_input = node.InputDefs()[input_index]->Name();
+  ORT_RETURN_IF_NOT(model_builder.IsOperandNHWC(input));
+  if (!model_builder.GetNCHWOperand(nhwc_input, input)) {
+    input = model_builder.GetUniqueName(nhwc_input + "_nhwc_to_nchw");
+    ORT_RETURN_IF_ERROR(TransposeNHWCToNCHW(model_builder, nhwc_input, input));
+  }
+  return Status::OK();
 }
 
 static Status AddBinaryOperator(int32_t op_type,
@@ -268,7 +246,7 @@ static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
       ORT_RETURN_IF_ERROR(
-          UnpackInitializerTensor(tensor, unpacked_tensor, tensor_byte_size));
+          onnxruntime::utils::UnpackInitializerData(tensor, unpacked_tensor, tensor_byte_size));
       src = unpacked_tensor.get();
       break;
     }
@@ -348,7 +326,7 @@ static Status AddInitializerTransposed(ModelBuilder& model_builder,
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
       ORT_RETURN_IF_ERROR(
-          UnpackInitializerTensor(tensor, unpacked_tensor, tensor_byte_size));
+          onnxruntime::utils::UnpackInitializerData(tensor, unpacked_tensor, tensor_byte_size));
       src = unpacked_tensor.get();
       break;
     }
@@ -519,7 +497,7 @@ static Status GetQuantizationZeroPoint(const ModelBuilder& model_builder, const 
   size_t tensor_byte_size;
   const auto& zero_point_tensor = model_builder.GetInitializerTensors().at(node.InputDefs()[idx]->Name());
   ORT_RETURN_IF_ERROR(
-      UnpackInitializerTensor(zero_point_tensor, unpacked_tensor, tensor_byte_size));
+      onnxruntime::utils::UnpackInitializerData(zero_point_tensor, unpacked_tensor, tensor_byte_size));
   zero_point = static_cast<int32_t>(unpacked_tensor.get()[0]);
   return Status::OK();
 }
@@ -645,6 +623,38 @@ Status GetQuantizedInputScaleAndZeroPoint(const ModelBuilder& model_builder,
   }
 
   return Status::OK();
+}
+
+bool GetClipMinMax(const ModelBuilder& model_builder, const Node& node, float& min, float& max) {
+  min = std::numeric_limits<float>::lowest();
+  max = std::numeric_limits<float>::max();
+  if (node.SinceVersion() < 11) {  // Clip opset 1, 6 is using attributes for min/max
+    NodeAttrHelper helper(node);
+    min = helper.Get("min", std::numeric_limits<float>::lowest());
+    max = helper.Get("max", std::numeric_limits<float>::max());
+  } else {
+    const auto& initializers(model_builder.GetInitializerTensors());
+
+    if (node.InputDefs().size() > 1) {  // we have input min
+      const auto& min_name = node.InputDefs()[1]->Name();
+      if (!Contains(initializers, min_name)) {
+        LOGS_DEFAULT(VERBOSE) << "Input min of Clip must be known";
+        return false;
+      }
+      min = GetTensorFloatData(initializers.at(min_name))[0];
+    }
+
+    if (node.InputDefs().size() > 2) {  // we have input max
+      const auto& max_name = node.InputDefs()[2]->Name();
+      if (!Contains(initializers, max_name)) {
+        LOGS_DEFAULT(VERBOSE) << "Input max of Clip must be known";
+        return false;
+      }
+      max = GetTensorFloatData(initializers.at(max_name))[0];
+    }
+  }
+
+  return true;
 }
 
 #pragma endregion helpers
@@ -877,18 +887,10 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     output_is_nhwc = input1_is_nhwc;
   } else if (input1_is_nhwc) {
     // need transpsoe input1 back to nchw
-    const auto& nhwc_input = input_defs[a_idx]->Name();
-    if (!model_builder.GetNCHWOperand(nhwc_input, input1)) {
-      input1 = model_builder.GetUniqueName(nhwc_input + "_nhwc_to_nchw");
-      ORT_RETURN_IF_ERROR(TransposeNHWCToNCHW(model_builder, nhwc_input, input1));
-    }
+    ORT_RETURN_IF_ERROR(GetNCHWInput(model_builder, node, a_idx, input1));
   } else {  // input2_is_nhwc
     // need transpsoe input2 back to nchw
-    const auto& nhwc_input = input_defs[b_idx]->Name();
-    if (!model_builder.GetNCHWOperand(nhwc_input, input2)) {
-      input2 = model_builder.GetUniqueName(nhwc_input + "_nhwc_to_nchw");
-      ORT_RETURN_IF_ERROR(TransposeNHWCToNCHW(model_builder, nhwc_input, input2));
-    }
+    ORT_RETURN_IF_ERROR(GetNCHWInput(model_builder, node, b_idx, input2));
   }
 
   float a_scale = 0.0f,
@@ -1075,11 +1077,7 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   auto input = node.InputDefs()[0]->Name();
   if (model_builder.IsOperandNHWC(input)) {
     // We want to transpose nhwc operand back to nchw before reshape
-    const auto& nhwc_input = node.InputDefs()[0]->Name();
-    if (!model_builder.GetNCHWOperand(nhwc_input, input)) {
-      input = model_builder.GetUniqueName(nhwc_input + "_nhwc_to_nchw");
-      ORT_RETURN_IF_ERROR(TransposeNHWCToNCHW(model_builder, nhwc_input, input));
-    }
+    ORT_RETURN_IF_ERROR(GetNCHWInput(model_builder, node, 0, input));
   }
 
   const auto& output = node.OutputDefs()[0]->Name();
@@ -1353,11 +1351,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   } else {
     output_is_nhwc = true;
     if (!input_is_nhwc) {
-      const auto& nchw_input = node.InputDefs()[0]->Name();
-      if (!model_builder.GetNHWCOperand(nchw_input, input)) {
-        input = model_builder.GetUniqueName(nchw_input + "_nchw_to_nhwc");
-        ORT_RETURN_IF_ERROR(TransposeNCHWToNHWC(model_builder, nchw_input, input));
-      }
+      ORT_RETURN_IF_ERROR(GetNHWCInput(model_builder, node, 0, input));
     }
   }
 
@@ -1581,11 +1575,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   } else {
     output_is_nhwc = true;
     if (!input_is_nhwc) {
-      const auto& nchw_input = input_defs[x_idx]->Name();
-      if (!model_builder.GetNHWCOperand(nchw_input, input)) {
-        input = model_builder.GetUniqueName(nchw_input + "_nchw_to_nhwc");
-        ORT_RETURN_IF_ERROR(TransposeNCHWToNHWC(model_builder, nchw_input, input));
-      }
+      ORT_RETURN_IF_ERROR(GetNHWCInput(model_builder, node, x_idx, input));
     }
   }
 
@@ -1852,13 +1842,13 @@ bool SoftMaxOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node
     return false;
   }
 
-  const auto android_skd_ver = model_builder.GetAndroidSdkVer();
-  if (android_skd_ver < 29) {
+  const auto android_sdk_ver = model_builder.GetAndroidSdkVer();
+  if (android_sdk_ver < 29) {
     NodeAttrHelper helper(node);
     int32_t axis = helper.Get("axis", 1);
     if (axis != 1) {
       LOGS_DEFAULT(VERBOSE)
-          << "SoftMax only support axis 1 on Android API level: " << android_skd_ver
+          << "SoftMax only support axis 1 on Android API level: " << android_sdk_ver
           << " input axis: " << axis;
       return false;
     }
@@ -1871,21 +1861,17 @@ Status SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
-  const auto android_skd_ver = model_builder.GetAndroidSdkVer();
+  const auto android_sdk_ver = model_builder.GetAndroidSdkVer();
   NodeAttrHelper helper(node);
 
   auto input = node.InputDefs()[0]->Name();
   bool input_is_nhwc = model_builder.IsOperandNHWC(input);
   bool output_is_nhwc = input_is_nhwc;
-  if (android_skd_ver < 29) {
+  if (android_sdk_ver < 29) {
     if (model_builder.IsOperandNHWC(input)) {
       output_is_nhwc = false;
       // We want to transpose nhwc operand back to nchw before softmax
-      const auto& nhwc_input = node.InputDefs()[0]->Name();
-      if (!model_builder.GetNCHWOperand(nhwc_input, input)) {
-        input = model_builder.GetUniqueName(nhwc_input + "_nhwc_to_nchw");
-        ORT_RETURN_IF_ERROR(TransposeNHWCToNCHW(model_builder, nhwc_input, input));
-      }
+      ORT_RETURN_IF_ERROR(GetNCHWInput(model_builder, node, 0, input));
     }
   }
 
@@ -1901,7 +1887,7 @@ Status SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   input_indices.push_back(operand_indices.at(input));
   ADD_SCALAR_OPERAND(model_builder, input_indices, beta);
 
-  if (android_skd_ver > 28) {
+  if (android_sdk_ver > 28) {
     // you can only specify axis for android api level 29+
     ADD_SCALAR_OPERAND(model_builder, input_indices, axis);
   }
@@ -2313,20 +2299,15 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     for (size_t i = 0; i < node_input_size; i++) {
       auto input = node.InputDefs()[i]->Name();
       if (model_builder.IsOperandNHWC(input)) {
-        std::string nhwc_input = input;
-        input = model_builder.GetUniqueName(input + "_nhwc_to_nchw");
-        ORT_RETURN_IF_ERROR(TransposeNHWCToNCHW(model_builder, nhwc_input, input));
+        ORT_RETURN_IF_ERROR(GetNCHWInput(model_builder, node, i, input));
       }
       input_indices.push_back(operand_indices.at(input));
       inputs.push_back(input);
     }
   }
 
-  int32_t axis = helper.Get("axis", 1);
   int rank = shaper[input0].size();
-  if (axis < 0) {  // NNAPI does not support negative axis
-    axis = rank + axis;
-  }
+  int32_t axis = SafeInt<int32_t>(HandleNegativeAxis(helper.Get("axis", 1), rank));
 
   if (output_is_nhwc) {
     ORT_RETURN_IF_NOT(rank == 4,
@@ -2383,11 +2364,7 @@ Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   auto input = node.InputDefs()[0]->Name();
   if (model_builder.IsOperandNHWC(input)) {
     // We want to transpose nhwc operand back to nchw before squeeze
-    const auto& nhwc_input = node.InputDefs()[0]->Name();
-    if (!model_builder.GetNCHWOperand(nhwc_input, input)) {
-      input = model_builder.GetUniqueName(nhwc_input + "_nhwc_to_nchw");
-      ORT_RETURN_IF_ERROR(TransposeNHWCToNCHW(model_builder, nhwc_input, input));
-    }
+    ORT_RETURN_IF_ERROR(GetNCHWInput(model_builder, node, 0, input));
   }
 
   NodeAttrHelper helper(node);
@@ -2395,8 +2372,7 @@ Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   const auto& input_shape(shaper[input]);
   auto input_dims = input_shape.size();
   for (auto& axis : axes) {
-    if (axis < 0)
-      axis += input_dims;
+    axis = SafeInt<int32_t>(HandleNegativeAxis(axis, input_dims));
   }
 
   if (axes.empty()) {  // Squeeze all
@@ -2493,8 +2469,6 @@ Status QuantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builde
   if (input_defs.size() == 3) {  // Get zero point
     ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(model_builder, node, 2, zero_point));
   }
-
-  LOGS_DEFAULT(VERBOSE) << "scale: " << scale << " zp: " << zero_point;
 
   ORT_RETURN_IF_ERROR(shaper.Identity(input, output));
   const OperandType output_operand_type(output_type, shaper[output], scale, zero_point);
@@ -2624,20 +2598,16 @@ Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
   NodeAttrHelper helper(node);
-  const auto android_skd_ver = model_builder.GetAndroidSdkVer();
+  const auto android_sdk_ver = model_builder.GetAndroidSdkVer();
 
   auto input = node.InputDefs()[0]->Name();
   const auto& output = node.OutputDefs()[0]->Name();
   bool output_is_nhwc = model_builder.IsOperandNHWC(input);
-  if (android_skd_ver < 29) {
+  if (android_sdk_ver < 29) {
     // on android api level 28, we need to transpose the nchw input to nhwc
     output_is_nhwc = true;
     if (!model_builder.IsOperandNHWC(input)) {
-      const auto& nchw_input = node.InputDefs()[0]->Name();
-      if (!model_builder.GetNHWCOperand(nchw_input, input)) {
-        input = model_builder.GetUniqueName(nchw_input + "_nchw_to_nhwc");
-        ORT_RETURN_IF_ERROR(TransposeNCHWToNHWC(model_builder, nchw_input, input));
-      }
+      ORT_RETURN_IF_ERROR(GetNHWCInput(model_builder, node, 0, input));
     }
   }
 
@@ -2657,7 +2627,7 @@ Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
   ADD_SCALAR_OPERAND(model_builder, input_indices, beta);
 
   // specify axis is only available on api level >= 29
-  if (android_skd_ver > 28) {
+  if (android_sdk_ver > 28) {
     // ONNX LRN is always performed on C dimension
     int32_t axis = output_is_nhwc
                        ? 3   // nhwc
@@ -2669,6 +2639,280 @@ Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_LOCAL_RESPONSE_NORMALIZATION, input_indices,
                                                  {output}, {output_operand_type}, {output_is_nhwc}));
+  return Status::OK();
+}
+
+#pragma endregion
+
+#pragma region op_clip
+
+class ClipOpBuilder : public BaseOpBuilder {
+ public:
+  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) override;
+
+ private:
+  bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override ORT_MUST_USE_RESULT;
+};
+
+void ClipOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) {
+  if (node.InputDefs().size() > 1)
+    model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());  // min
+
+  if (node.InputDefs().size() > 2)
+    model_builder.AddInitializerToSkip(node.InputDefs()[2]->Name());  // max
+}
+
+bool ClipOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) {
+  float min, max;
+  if (!GetClipMinMax(model_builder, node, min, max))
+    return false;
+
+  // We only supoort relu6 or relu1
+  // TODO, support clip between 2 arbitrary numbers
+  if ((min == 0.0f && max == 6.0f) || (min == -1.0f && max == 1.0f)) {
+    return true;
+  } else {
+    LOGS_DEFAULT(VERBOSE) << "Clip only supports [min, max] = [0, 6] or [-1, 1], the input is ["
+                          << min << ", " << max << "]";
+    return false;
+  }
+
+  return true;
+}
+
+Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
+  auto& shaper(model_builder.GetShaper());
+  const auto& operand_indices(model_builder.GetOperandIndices());
+  const auto& operand_types(model_builder.GetOperandTypes());
+
+  const auto& input = node.InputDefs()[0]->Name();
+  const auto& output = node.OutputDefs()[0]->Name();
+  bool output_is_nhwc = model_builder.IsOperandNHWC(input);
+
+  ORT_RETURN_IF_ERROR(shaper.Identity(input, output));
+  const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
+
+  if (Contains(model_builder.GetFusedActivations(), input)) {
+    LOGS_DEFAULT(VERBOSE) << "Clip Node [" << node.Name() << "] fused";
+    model_builder.RegisterOperand(output, operand_indices.at(input), output_operand_type, output_is_nhwc);
+    return Status::OK();
+  }
+
+  float min, max;
+  GetClipMinMax(model_builder, node, min, max);
+
+  int32_t op_code;
+  if (min == 0.0f && max == 6.0f)
+    op_code = ANEURALNETWORKS_RELU6;
+  else if (min == -1.0f && max == 1.0f)
+    op_code = ANEURALNETWORKS_RELU1;
+  else
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ClipOpBuilder, unsupported input [", min, ", ", max, "].",
+                           "We should not reach here, ClipOpBuilder::IsOpSupportedImpl should have caught this.");
+
+  std::vector<uint32_t> input_indices;
+  input_indices.push_back(operand_indices.at(input));
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices,
+                                                 {output}, {output_operand_type}, {output_is_nhwc}));
+  return Status::OK();
+}
+
+#pragma endregion
+
+#pragma region op_Resize
+
+class ResizeOpBuilder : public BaseOpBuilder {
+ public:
+  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) override;
+
+ private:
+  bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
+
+  int32_t GetMinSupportedSdkVer(ModelBuilder& model_builder, const Node& node) const override;
+
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override ORT_MUST_USE_RESULT;
+};
+
+int32_t ResizeOpBuilder::GetMinSupportedSdkVer(ModelBuilder& /* model_builder */, const Node& /* node */) const {
+  return 28;
+}
+
+void ResizeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) {
+  // We will still add scales to the skipped list even sizes are present
+  // since there is no use of it, we will not process it later
+  model_builder.AddInitializerToSkip(node.InputDefs()[2]->Name());  // scales
+
+  if (node.InputDefs().size() > 3)
+    model_builder.AddInitializerToSkip(node.InputDefs()[3]->Name());  // sizes
+}
+
+bool ResizeOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) {
+  // Resize opset 10- is very different than Resize opset 11+, with many key attributes missing
+  // We only support Resize opset 11+ here
+  if (node.SinceVersion() < 11) {
+    LOGS_DEFAULT(VERBOSE) << "Resize only supports opset 11+";
+    return false;
+  }
+
+  Shape input_shape;
+  if (!GetShape(*node.InputDefs()[0], input_shape))
+    return false;
+
+  const auto input_size = input_shape.size();
+  if (input_size != 4) {
+    LOGS_DEFAULT(VERBOSE) << "Resize only support 4d shape, input is "
+                          << input_size << "d shape";
+    return false;
+  }
+
+  {  // check attributes
+    const auto android_sdk_ver = model_builder.GetAndroidSdkVer();
+
+    NodeAttrHelper helper(node);
+    const auto mode = helper.Get("mode", "nearest");
+    if (mode != "linear") {
+      LOGS_DEFAULT(VERBOSE) << "Resize unsupported input mode, " << mode;
+      return false;
+    }
+
+    const auto coord_trans_mode = helper.Get("coordinate_transformation_mode", "half_pixel");
+    bool using_half_pixel = coord_trans_mode == "half_pixel";
+    bool using_align_corners = coord_trans_mode == "align_corners";
+    if (!using_half_pixel && !using_align_corners && coord_trans_mode != "asymmetric") {
+      LOGS_DEFAULT(VERBOSE) << "Resize, unsupported coord_trans_mode, " << coord_trans_mode;
+      return false;
+    }
+
+    if (android_sdk_ver < 30 && (using_half_pixel || using_align_corners)) {
+      LOGS_DEFAULT(VERBOSE) << "Resize only support half_pixel/align_corners on API level 30+, current API level is "
+                            << android_sdk_ver;
+      return false;
+    }
+
+    const auto exclude_outside = helper.Get("exclude_outside", 0);
+    if (exclude_outside != 0) {
+      LOGS_DEFAULT(VERBOSE) << "Resize does not support exclude_outside for now";
+      return false;
+    }
+  }
+
+  {  // scales and sizes (if present) must be initializers
+    const auto& initializers(model_builder.GetInitializerTensors());
+    const auto input_defs = node.InputDefs();
+    // scales
+    if (input_defs.size() < 3 || !Contains(initializers, input_defs[2]->Name())) {
+      LOGS_DEFAULT(VERBOSE) << "Input scales of Resize must be known";
+      return false;
+    }
+
+    // sizes
+    if (input_defs.size() > 3 && !Contains(initializers, input_defs[3]->Name())) {
+      LOGS_DEFAULT(VERBOSE) << "Input sizes of Resize must be known";
+      return false;
+    }
+
+    // We want to check if the scales or sizes are not trying to resize on N/C channels here
+    if (input_defs.size() == 3) {  // we are using scales
+      const auto& scales_tensor = initializers.at(input_defs[2]->Name());
+      const float* scales_data = GetTensorFloatData(scales_tensor);
+      float scale_n = scales_data[0];
+      float scale_c = scales_data[1];
+      if (scale_n != 1.0f || scale_c != 1.0f) {
+        LOGS_DEFAULT(VERBOSE) << "Scales of N/C channel should be 1"
+                              << "Resize of N/C channels are not supported"
+                              << ", scale_n, " << scale_n << ", scale_c, " << scale_c;
+        return false;
+      }
+    } else {
+      // we are using sizes
+      const auto& sizes_name = input_defs[3]->Name();
+      const auto& sizes_tensor = initializers.at(sizes_name);
+      const int64_t* sizes_data = GetTensorInt64Data(sizes_tensor);
+      uint32_t size_n = SafeInt<uint32_t>(sizes_data[0]);
+      uint32_t size_c = SafeInt<uint32_t>(sizes_data[1]);
+      if (size_n != input_shape[0] || size_c != input_shape[1]) {
+        LOGS_DEFAULT(VERBOSE) << "Output sizes of N/C chanel should match the input sizes, "
+                              << "Resize of N/C channels are not supported"
+                              << ", input_size_n, " << input_shape[0] << ", output_size_n, " << size_n
+                              << ". input_size_c, " << input_shape[1] << ", output_size_c, " << size_c;
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
+  auto& shaper(model_builder.GetShaper());
+  const auto& operand_indices(model_builder.GetOperandIndices());
+  const auto& operand_types(model_builder.GetOperandTypes());
+  const auto& initializers(model_builder.GetInitializerTensors());
+  NodeAttrHelper helper(node);
+  const auto input_defs = node.InputDefs();
+  const auto android_sdk_ver = model_builder.GetAndroidSdkVer();
+  const auto& output = node.OutputDefs()[0]->Name();
+
+  auto input = input_defs[0]->Name();
+  bool use_nchw = model_builder.UseNCHW();
+  bool input_is_nhwc = model_builder.IsOperandNHWC(input);
+  bool output_is_nhwc = false;
+  if (use_nchw) {
+    ORT_RETURN_IF_NOT(!input_is_nhwc, "model_builder.UseNCHW() but input is NHWC");
+  } else {
+    output_is_nhwc = true;
+    if (!input_is_nhwc) {
+      ORT_RETURN_IF_ERROR(GetNHWCInput(model_builder, node, 0, input));
+    }
+  }
+
+  // TODO, add support for nearest neighbor
+  int32_t operationCode = ANEURALNETWORKS_RESIZE_BILINEAR;
+
+  const auto coord_trans_mode = helper.Get("coordinate_transformation_mode", "half_pixel");
+  bool using_half_pixel = coord_trans_mode == "half_pixel";
+  bool using_align_corners = coord_trans_mode == "align_corners";
+
+  if (input_defs.size() == 3) {  // we are using scales
+    const auto& scales_name = input_defs[2]->Name();
+    const auto& scales_tensor = initializers.at(scales_name);
+    const float* scales_data = GetTensorFloatData(scales_tensor);
+    float scale_h = scales_data[2];
+    float scale_w = scales_data[3];
+    ORT_RETURN_IF_ERROR(
+        shaper.ResizeUsingScales(input, scale_h, scale_w, use_nchw, output));
+  } else {  // we are using sizes
+    const auto& sizes_name = input_defs[3]->Name();
+    const auto& sizes_tensor = initializers.at(sizes_name);
+    const int64_t* sizes_data = GetTensorInt64Data(sizes_tensor);
+    ORT_RETURN_IF_ERROR(
+        shaper.ResizeUsingOutputSizes(input, SafeInt<uint32_t>(sizes_data[2]), SafeInt<uint32_t>(sizes_data[3]), use_nchw, output));
+  }
+
+  const auto& output_shape = shaper[output];
+  int32_t output_h = use_nchw ? output_shape[2] : output_shape[1];
+  int32_t output_w = use_nchw ? output_shape[3] : output_shape[2];
+
+  std::vector<uint32_t> input_indices;
+  input_indices.push_back(operand_indices.at(input));
+  ADD_SCALAR_OPERAND(model_builder, input_indices, output_w);
+  ADD_SCALAR_OPERAND(model_builder, input_indices, output_h);
+
+  if (android_sdk_ver > 28) {
+    // using nchw is only available on API level 29
+    ADD_SCALAR_OPERAND(model_builder, input_indices, use_nchw);
+  }
+
+  if (android_sdk_ver > 29 && (using_align_corners || using_half_pixel)) {
+    ADD_SCALAR_OPERAND(model_builder, input_indices, using_align_corners);
+    if (using_half_pixel)
+      ADD_SCALAR_OPERAND(model_builder, input_indices, using_half_pixel);
+  }
+
+  const OperandType output_operand_type(operand_types.at(input).type, output_shape);
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(operationCode, input_indices,
+                                                 {output}, {output_operand_type}, {output_is_nhwc}));
+
   return Status::OK();
 }
 
@@ -2736,6 +2980,8 @@ CreateOpBuilders() {
   op_map.emplace("QuantizeLinear", std::make_shared<QuantizeLinearOpBuilder>());
   op_map.emplace("DequantizeLinear", std::make_shared<DequantizeLinearOpBuilder>());
   op_map.emplace("LRN", std::make_shared<LRNOpBuilder>());
+  op_map.emplace("Clip", std::make_shared<ClipOpBuilder>());
+  op_map.emplace("Resize", std::make_shared<ResizeOpBuilder>());
 
   return op_map;
 }

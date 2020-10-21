@@ -412,7 +412,6 @@ and present state are optional. Present state could appear in output even when p
   ONNX_CONTRIB_OPERATOR_SCHEMA(Attention)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc(Attention_ver1_doc)
       .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
       .Attr("unidirectional",
@@ -470,7 +469,6 @@ and present state are optional. Present state could appear in output even when p
   ONNX_CONTRIB_OPERATOR_SCHEMA(QAttention)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("Quantization of Multi-Head Self Attention.")
       .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
       .Attr("unidirectional",
@@ -566,7 +564,6 @@ will be calculated.)DOC";
   ONNX_CONTRIB_OPERATOR_SCHEMA(EmbedLayerNormalization)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc(EmbedLayerNormalization_ver1_doc)
       .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, kDefaultEmbedLayerNormEpsilon)
       .Input(0, "input_ids", "2D words IDs with shape (batch_size, sequence_length)", "T1")
@@ -628,7 +625,6 @@ GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.03
   ONNX_CONTRIB_OPERATOR_SCHEMA(FastGelu)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc(FastGelu_ver1_doc)
       .Input(0, "X", "input tensor", "T")
       .Input(1, "bias", "bias tensor", "T", OpSchema::Optional)
@@ -639,7 +635,6 @@ GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.03
   ONNX_CONTRIB_OPERATOR_SCHEMA(SkipLayerNormalization)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("Skip and Layer Normalization Fusion")
       .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, kDefaultSkipLayerNormEpsilon)
       .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
@@ -1884,7 +1879,7 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
       });
 
   static const char* TransposeMatMul_doc = R"DOC(
-Deprecated. Going forward FusedMatMul should be used. This OP will be supported for backward compatibility. 
+Duplicate of FusedMatMul. Going forward FusedMatMul should be used. This OP will be supported for backward compatibility. 
 Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html
 )DOC";
 
@@ -2828,6 +2823,54 @@ Example 4:
         }
       });
 
+    ONNX_CONTRIB_OPERATOR_SCHEMA(SimplifiedLayerNormalization)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("SimplifiedLayerNormalization")
+      .Attr("axis",
+            "The first normalization dimension: normalization will be performed along dimensions axis : rank(inputs).",
+            AttributeProto::INT, static_cast<int64_t>(-1))
+      .Attr("epsilon",
+            "The epsilon value to use to avoid division by zero.",
+            AttributeProto::FLOAT, 1e-5f)
+      .AllowUncheckedAttributes()
+      .Input(0, "X", "Input data tensor from the previous layer.", "T")
+      .Input(1, "scale", "Scale tensor.", "T")
+      .Output(0, "Y", "Output data tensor.", "T")
+      .Output(1, "inv_std_var", "Saved inverse standard variance used during training to speed up gradient computation.", "U", OpSchema::Optional)
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain input and output types (except mean and inv_std_var) to float tensors.")
+      .TypeConstraint(
+          "U",
+          {"tensor(float)"},
+          "Constrain mean and inv_std_var to be float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateShapeAndTypeFromFirstInput(ctx);
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        if (!hasNInputShapes(ctx, 1)) {
+          return;
+        }
+        auto& input_shape = ctx.getInputType(0)->tensor_type().shape();
+        int64_t input_ndim = input_shape.dim_size();
+        int64_t axis = -1;
+        auto axis_proto = ctx.getAttribute("axis");
+        if (axis_proto) {
+          axis = axis_proto->i();
+        }
+        if (axis < 0) {
+          axis += input_ndim;
+        }
+
+        if (ctx.getNumOutputs() > 1) {
+          auto saved_inv_std_var_shape = ctx.getOutputType(1)->mutable_tensor_type()->mutable_shape();
+          saved_inv_std_var_shape->CopyFrom(input_shape);
+          saved_inv_std_var_shape->mutable_dim(static_cast<int>(axis))->set_dim_value(1);
+        }
+      });
+
   // Register the NCHWc schemas if supported by the platform.
   if (MlasNchwcGetBlockSize() > 1) {
     RegisterNchwcSchemas();
@@ -2843,7 +2886,6 @@ inputs by their magnitude, rather than gates inputs by their sign as in ReLUs.)D
   ONNX_CONTRIB_OPERATOR_SCHEMA(Gelu)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc(Gelu_ver1_doc)
       .Input(0, "X", "The input data as Tensor.", "T")
       .Output(0, "Y", "The output.", "T")
@@ -2859,7 +2901,6 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
   ONNX_CONTRIB_OPERATOR_SCHEMA(BiasGelu)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc(BiasGelu_ver1_doc)
       .Input(0, "A", "The normal input data.", "T")
       .Input(1, "B", "The bias input data that is a 1D tensor.", "T")
@@ -2885,7 +2926,6 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
   ONNX_CONTRIB_OPERATOR_SCHEMA(Inverse)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .Input(0, "X", "Input tensor. Every matrix in the batch must be invertible.", "T")
       .Output(0, "Y", "Output tensor of the same type and shape as the input tensor.", "T")
       .TypeConstraint(
@@ -2943,7 +2983,6 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc(Trilu_ver1_doc)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .Attr("upper",
             "Boolean. Indicates whether upper or lower part of matrix is retained. Default is true.",
             AttributeProto::INT,
@@ -2999,7 +3038,6 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
   ONNX_CONTRIB_OPERATOR_SCHEMA(BiasSoftmax)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc(
           "Y = softmax(scores + bias)) with simple broadcast on bias. "
           "Intended to specialize softmax(scores + additive_mask) commonly found in transformer models.")
