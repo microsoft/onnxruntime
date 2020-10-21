@@ -272,8 +272,10 @@ class ModelMetadata
 ```
 Encapsulates some metadata about the ONNX model.
 
-The `ModelMetadata` instance for an ONNX model may be obtained by querying the `ModelMetadata` property of an `InferenceSession` instance.
+#### Constructor
+No public constructor available.
 
+The `ModelMetadata` instance for an ONNX model may be obtained by querying the `ModelMetadata` property of an `InferenceSession` instance.
     
 #### Properties
 ```cs
