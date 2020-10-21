@@ -56,8 +56,8 @@ static void CalculateSqeuclidean(const Tensor& a, const Tensor& b, Tensor& c, co
   // in Xij and Yjk are very similar, so subtracting can be problematic.
   // Due to that we calculate -2*sum_k(Xik*Yjk) using GEMM, add sum_k(Xik**2) next, and add sum_k(Yjk**2) last.
 
-// use MLAS on 64-bit (no 32-bit dgemm), or MKL on 32-bit or 64-bit
-#if defined(_M_AMD64) || defined(__x86_64__) || defined(USE_MKLML_FOR_BLAS)
+// use MLAS on 64-bit (no 32-bit dgemm)
+#if defined(_M_AMD64) || defined(__x86_64__)
   // Use GEMM of A and B^T with -2 as alpha to calculate -2*sum_k(Xik*Yjk)
   math::Gemm<T>(CBLAS_TRANSPOSE::CblasNoTrans, CBLAS_TRANSPOSE::CblasTrans,
                 m, n, k,

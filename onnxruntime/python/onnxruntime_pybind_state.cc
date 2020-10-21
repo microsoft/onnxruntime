@@ -50,12 +50,6 @@ struct OrtStatus {
 #define BACKEND_DNNL ""
 #endif
 
-#if USE_MKLML
-#define BACKEND_MKLML "-MKL-ML"
-#else
-#define BACKEND_MKLML ""
-#endif
-
 #if USE_NGRAPH
 #define BACKEND_NGRAPH "-NGRAPH"
 #include "core/providers/ngraph/ngraph_execution_provider.h"
@@ -129,7 +123,7 @@ struct OrtStatus {
 #define BACKEND_DML ""
 #endif
 
-#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_MKLML BACKEND_NGRAPH BACKEND_OPENVINO BACKEND_NUPHAR BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN BACKEND_DML
+#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_NGRAPH BACKEND_OPENVINO BACKEND_NUPHAR BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN BACKEND_DML
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/providers.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -815,6 +809,12 @@ void addGlobalMethods(py::module& m, const Environment& env) {
   m.def(
       "get_available_providers", []() -> const std::vector<std::string>& { return GetAvailableProviders(); },
       "Return list of available Execution Providers available in this installed version of Onnxruntime.");
+  m.def(
+      "enable_telemetry_events", []() -> void { platform_env.GetTelemetryProvider().EnableTelemetryEvents(); },
+      "Enables platform-specific telemetry collection where applicable.");
+  m.def(
+      "disable_telemetry_events", []() -> void { platform_env.GetTelemetryProvider().DisableTelemetryEvents(); },
+      "Disables platform-specific telemetry collection.");
 
 #ifdef USE_NUPHAR
   m.def("set_nuphar_settings", [](const std::string& str) {

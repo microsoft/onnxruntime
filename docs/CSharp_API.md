@@ -92,10 +92,37 @@ var session = new InferenceSession("model.onnx", SessionOptions.MakeSessionOptio
 ```
 
 ## API Reference
+
+### OrtEnv
+```cs
+class OrtEnv
+```
+Holds some methods which can be used to tune the ONNX Runtime's runime environment
+
+#### Constructor
+No public constructor available.
+
+#### Methods
+```cs
+static OrtEnv Instance();
+```
+Returns an instance of the singlton class `OrtEnv`.    
+
+```cs
+void EnableTelemetryEvents();
+```
+Enables platform-specific telemetry collection where applicable. Please see [Privacy](./Privacy.md) for more details.    
+
+```cs
+void DisableTelemetryEvents();
+```
+Disables platform-specific telemetry collection. Please see [Privacy](./Privacy.md) for more details.    
+
 ### InferenceSession
 ```cs
 class InferenceSession: IDisposable
 ```
+
 The runtime representation of an ONNX model
 
 #### Constructor
@@ -239,5 +266,44 @@ class OnnxRuntimeException: Exception;
 
 The type of Exception that is thrown in most of the error conditions related to Onnx Runtime.
 
+### ModelMetadata
+```cs
+class ModelMetadata
+```
+Encapsulates some metadata about the ONNX model.
 
+#### Constructor
+No public constructor available.
 
+The `ModelMetadata` instance for an ONNX model may be obtained by querying the `ModelMetadata` property of an `InferenceSession` instance.
+    
+#### Properties
+```cs
+string ProducerName;
+```
+Holds the producer name of the ONNX model.
+
+```cs
+string GraphName;
+```
+Holds the graph name of the ONNX model.
+
+```cs
+string Domain;
+```
+Holds the opset domain of the ONNX model.
+
+```cs
+string Description;
+```
+Holds the description of the ONNX model.
+
+```cs
+long Version;
+```
+Holds the version of the ONNX model.
+
+```cs
+Dictionary<string, string> CustomMetadataMap;
+```
+Holds a dictionary containing key-value pairs of custom metadata held by the ONNX model.
