@@ -150,6 +150,10 @@ class CudaKernel : public OpKernel {
       return gpu_copy_.get();
     }
 
+    const T* ConstGpuPtr() const {
+      return gpu_copy_.get();
+    }
+
     size_t count() const {
       return count_;
     }

@@ -61,7 +61,7 @@ Status SplitTraining::ComputeInternal(OpKernelContext* ctx) const {
     split_sizes_range[i] += split_sizes_range[i - 1];
   }
 
-  if (num_outputs <= 8) {
+  if (num_outputs <= TArray<int64_t>::Capacity()) {
     TArray<void*> output_ptr_gpu(output_ptr);
     TArray<int64_t> split_sizes_gpu(split_sizes);
     TArray<int64_t> split_sizes_range_gpu(split_sizes_range);
@@ -73,7 +73,7 @@ Status SplitTraining::ComputeInternal(OpKernelContext* ctx) const {
                                   split_sizes_range_gpu,
                                   num_outputs,
                                   input_data,
-                                  output_ptr,
+                                  output_ptr_gpu,
                                   input_shape.Size()));
   } else {
     CudaAsyncBuffer<void*> output_ptr_gpu(this, output_ptr);
@@ -86,8 +86,8 @@ Status SplitTraining::ComputeInternal(OpKernelContext* ctx) const {
     ORT_RETURN_IF_ERROR(SplitImpl(element_size,
                                   block_size_including_axis_dim,
                                   block_size_inside_axis_dim,
-                                  split_sizes_gpu.GpuPtr(),
-                                  split_sizes_range_gpu.GpuPtr(),
+                                  split_sizes_gpu.ConstGpuPtr(),
+                                  split_sizes_range_gpu.ConstGpuPtr(),
                                   num_outputs,
                                   input_data,
                                   output_ptr_gpu.GpuPtr(),
