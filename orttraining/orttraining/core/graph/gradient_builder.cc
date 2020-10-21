@@ -1294,7 +1294,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetFastGeluGradient) {
     ArgDef b_axes = IA("ReduceAxes_" + B.name);
     ArgDef b_shape = IA("Shape_" + B.name);
     ArgDef x_shape = IA("Shape_" + X.name);
-    return GetBiasGeluGradNodes(true, dY, X, B,onst std::string& node_ dX, dB, b_axes, b_shape, x_shape, NodeName());
+    return GetBiasGeluGradNodes(true, dY, X, B, dX, dB, b_axes, b_shape, x_shape, NodeName());
   }
   if (num_src_node_inputs == 1) {  // without bias
     return std::vector<NodeDef>{

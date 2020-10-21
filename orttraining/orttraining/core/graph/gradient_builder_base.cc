@@ -12,7 +12,7 @@ namespace training {
 std::string ToString(const std::vector<Dimension>& dims) {
   std::stringstream output;
   output << "[";
-  if (!dim.empty()) {
+  if (!dims.empty()) {
     for (auto& dim : dims) {
       if (dim.has_dim_value()) {
         output << dim.dim_value() << ",";
