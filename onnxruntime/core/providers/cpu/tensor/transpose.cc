@@ -32,26 +32,33 @@ static inline void IncrementIndex(std::vector<int64_t>& index, const std::vector
   }
 }
 
-// Combines the two previous functions.
-template <typename T>
-static inline void IncrementIndexAndComputeOffset(std::vector<int64_t>& index, const std::vector<int64_t>& upper_bound,
-                                                  int64_t num_axes, const std::vector<size_t>& stride,
-                                                  const uint8_t*& local_source) {
-  int k = static_cast<int>(num_axes) - 1;
-  local_source += stride[k] * sizeof(T);
-  if (++index[k] < upper_bound[k]) {
-    return;
+typedef struct MultiIndex {
+  size_t index;
+  size_t upper_bound;
+  int64_t stride;
+  MultiIndex(size_t i, size_t n, int64_t s) {
+    index = i;
+    upper_bound = n;
+    stride = s;
   }
-  local_source -= index[k] * stride[k] * sizeof(T);
-  index[k] = 0;
-  --k;
-  for (; k >= 0; --k) {
-    index[k]++;
-    local_source += stride[k] * sizeof(T);
-    if (index[k] < upper_bound[k])
+} MultiIndex;
+
+// Combines the two previous functions.
+static void IncrementIndexAndComputeOffset(MultiIndex* mindex, size_t naxes, const uint8_t*& local_source) {
+  MultiIndex* it = mindex + (naxes - 1);
+  local_source += it->stride;
+  if (++it->index < it->upper_bound)
+    return;
+  local_source -= it->stride * it->index;
+  it->index = 0;
+  --it;
+  MultiIndex* rend = mindex - 1;
+  for (; it != rend; --it) {
+    local_source += it->stride;
+    if (++it->index < it->upper_bound)
       break;
-    local_source -= index[k] * stride[k] * sizeof(T);
-    index[k] = 0;
+    local_source -= it->stride * it->index;
+    it->index = 0;
   }
 }
 
@@ -116,14 +123,23 @@ inline void CopyPrim(uint8_t* target, const uint8_t* source) {
 template <class T>
 static void TypedDoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_dims, size_t num_blocks,
                                     const std::vector<size_t>& stride, const uint8_t* source, uint8_t* target) {
-  std::vector<int64_t> target_index(num_axes, 0);
+  ORT_ENFORCE(num_axes > 0, "Transpose not implemented for empty tensors.");
+  MultiIndex* mindex = (MultiIndex*)alloca(num_axes * sizeof(MultiIndex));
+  size_t naxes = 0;
+  for (int64_t i = 0; i < num_axes; ++i) {
+    if (target_dims[i] == 1)
+      continue;
+    mindex[naxes] = MultiIndex(0, static_cast<size_t>(target_dims[i]), stride[i] * sizeof(T));
+    ++naxes;
+  }
+
   const uint8_t* local_source = source;
   for (size_t i = 0; i < num_blocks; ++i) {
     // copy
     CopyPrim<uint64_t>(target, local_source);
 
     // increment target_index:
-    IncrementIndexAndComputeOffset<T>(target_index, target_dims, num_axes, stride, local_source);
+    IncrementIndexAndComputeOffset(mindex, naxes, local_source);
     target += sizeof(T);
   }
 }
