@@ -73,7 +73,8 @@ def bert_model_description(config):
         'outputs': [
             ('loss', [], True),
             ('prediction_scores', ['batch', 'max_seq_len_in_batch', vocab_size],),
-            ('seq_relationship_scores', ['batch', 2],)]}
+            ('seq_relationship_scores', ['batch', 2],)
+            ]}
     return new_model_desc
 
 

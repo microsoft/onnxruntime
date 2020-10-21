@@ -19,14 +19,14 @@ configs = [
     Config(False, 128, 26, 20, False, False, False),
     Config(False, 512, 4, 80, False, False, False),
     Config(True, 128, 50, 20, True, False, False),
-    Config(True, 128, 51, 20, False, True, False),
-    Config(True, 128, 78, 20, False, False, True),
-    Config(True, 512, 9, 80, True, False, False),
-    Config(True, 512, 10, 80, False, True, False),
-    Config(True, 512, 16, 80, False, False, True),
+    Config(True, 128, 50, 20, False, True, False),
+    Config(True, 128, 76, 20, False, False, True),
+    Config(True, 512, 8, 80, True, False, False),
+    Config(True, 512, 9, 80, False, True, False),
+    Config(True, 512, 15, 80, False, False, True),
 ]
 
-for config in configs:
+def run_with_config(config):
     print("##### testing name - {}-{} #####".format("fp16" if config.enable_mixed_precision else "fp32",
                                                         config.sequence_length))
     print("gelu_recompute: ", config.gelu_recompute)
@@ -49,3 +49,8 @@ for config in configs:
     if config.transformer_layer_recompute:
         cmds = [*cmds, "--transformer_layer_recompute"]
     subprocess.run(cmds, timeout=1200).check_returncode()
+
+for config in configs:
+    run_with_config(config)
+
+
