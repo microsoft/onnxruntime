@@ -367,21 +367,19 @@ class BertOnnxModelTF(BertOnnxModel):
                 logger.debug("Sub node expected to have an input with constant value 1.0.")
                 continue
 
-            #upper_mask_nodes = self.match_parent_path(mask_nodes[-1], ['Reshape', 'Cast', 'Concat'], [0, 1, 0])
-            #if upper_mask_nodes is None:
-            #    continue
-            #mask_concat = upper_mask_nodes[2]
-            #if len(mask_concat.input) == 3:
-            #    # Temporary work around: require 2-d mask input, the current model has a 3-d mask input
-            #    self.add_node(
-            #        helper.make_node("Concat", [mask_concat.input[0], mask_concat.input[2]], [mask_concat.output[0]],
-            #                         mask_concat.name + "_modified",
-            #                         axis=0))
-            #    self.remove_node(mask_concat)
+            # add a squeeze node to convert a 3-d mask to 2-d
+            squeeze_node = self.match_parent_path(mask_nodes[-1], ['Squeeze'], [0])
+            squeeze_node_name = "Squeeze_3d_to_2d_mask"
+            squeeze_output_name = squeeze_node_name + "_output"
+            if squeeze_node is None:
+                mask_input = mask_nodes[-1].input[0]
+                self.add_node(
+                    helper.make_node("Squeeze", [mask_input], [squeeze_output_name], squeeze_node_name, axes=[1]))
+                mask_nodes[-1].input[0] = squeeze_output_name
 
             is_same_root = self.check_attention_input(matmul_q, matmul_k, matmul_v, parent, output_name_to_node)
             if is_same_root:
-                mask_index = self.attention_mask.process_mask(mask_nodes[-1].input[0])
+                mask_index = self.attention_mask.process_mask(squeeze_output_name)
                 logger.debug("Create an Attention node.")
                 attention_node = self.attention_fusion.create_attention_node(mask_index, matmul_q, matmul_k, matmul_v,
                                                                              add_q, add_k, add_v, parent.output[0],
