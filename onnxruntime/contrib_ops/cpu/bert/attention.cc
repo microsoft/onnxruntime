@@ -98,10 +98,6 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
 
   int past_sequence_length = 0;
   if (past != nullptr) {  // past is optional
-    if (!is_unidirectional_) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'past' is only allowed for unidirectional");
-    }
-
     const auto& past_dims = past->Shape().GetDims();
     if (past_dims.size() != 5) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'past' is expected to have 5 dimension, got ",

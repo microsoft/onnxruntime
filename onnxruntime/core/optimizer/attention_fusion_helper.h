@@ -1,5 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include "onnx/defs/shape_inference.h"
+#include "onnx/defs/tensor_proto_util.h"
 
 #pragma once
 
@@ -57,11 +59,14 @@ bool CheckSliceParameters(const Graph& graph, const Node& slice, const std::vect
       +----> Shape --> Gather (indices=0) --> Unsqueeze (axes=0) -----------+  |
       |                                                                        |
       +----> Shape --> Gather (indices=1) --> Unsqueeze (axes=0) --------------+
+
+The 3 Shape nodes are merged into one node if use_shared_node is true.
 */
 bool MatchGemmSubgraph(Graph& graph,
                        Node& node_after_gemm_reshape,
                        int dst_arg_index,
                        MatchGemmResult& result,
+                       bool use_shared_node,
                        const logging::Logger& logger) {
   DEBUG_LOG("Start MatchGemmSubgraph");
   // GPT Attention fusion supports opset version 9 or later.
@@ -96,7 +101,7 @@ bool MatchGemmSubgraph(Graph& graph,
     return false;
   }
 
-  if (!optimizer_utils::CheckOutputEdges(graph, shape_before_slice, 1) ||
+  if (!optimizer_utils::CheckOutputEdges(graph, shape_before_slice, use_shared_node ? 3 : 1) ||
       !optimizer_utils::CheckOutputEdges(graph, slice, 1) ||
       !optimizer_utils::CheckOutputEdges(graph, squeeze, 1) ||
       !optimizer_utils::CheckOutputEdges(graph, unsqueeze, 1) ||
@@ -173,14 +178,21 @@ bool MatchGemmSubgraph(Graph& graph,
 
     if (!optimizer_utils::CheckOutputEdges(graph, unsqueeze_after_gather, 1) ||
         !optimizer_utils::CheckOutputEdges(graph, gather, 1) ||
-        !optimizer_utils::CheckOutputEdges(graph, shape, 1)) {  //TODO: deal with shared Shape node which has output edges > 1
+        !optimizer_utils::CheckOutputEdges(graph, shape, 1) && !use_shared_node) {
       DEBUG_LOG("Output edge count not expected for nodes in gemm gather path");
       return false;
     }
 
     result.node_indices.push_back(unsqueeze_after_gather.Index());
     result.node_indices.push_back(gather.Index());
-    result.node_indices.push_back(shape.Index());
+
+    if (use_shared_node) {
+      if (shape.Index() != shape_before_slice.Index()) {
+        return false;
+      }
+    } else {
+      result.node_indices.push_back(shape.Index());
+    }
 
     if (shape.InputDefs()[0]->Name() != subgraph_input->Name()) {
       return false;
@@ -252,8 +264,82 @@ bool ValidateGemmInitializer(const Graph& graph, const Node& gemm, int64_t hidde
 
 struct MatchUnidirMaskResult {
   const Node* div_node;                 // the root node (Div) of the subgraph
+  bool is_unidirectional;               // whether the mask is unidirectional.
   std::vector<NodeIndex> node_indices;  // id of all nodes in the subgraph for removing later.
 };
+
+// Return true when mask is unidirectionl (lower trigular) or all elements are 1.
+template <class T>
+bool ValidateUnidirMask(std::vector<T> mask_data, int64_t w, bool& is_undirectional) {
+  // The mask data has shape 1x1xWxW
+  if (mask_data.size() == static_cast<size_t>(w * w)) {
+    bool is_one = true;
+    is_undirectional = true;
+
+    const T* p = mask_data.data();
+    for (int i = 0; i < w; i++) {
+      for (int j = 0; j < w; j++) {
+        if (*p != static_cast<T>(1)) {
+          is_one = false;
+        }
+
+        if (*p != ((i >= j) ? static_cast<T>(1) : static_cast<T>(0))) {
+          is_undirectional = false;
+        }
+
+        p++;
+      }
+    }
+
+    if (is_undirectional || is_one)
+      return true;
+  }
+
+  return false;
+}
+
+bool ValidateUnidirMask(const Graph& graph, const NodeArg& mask, bool& is_unidirectional, const logging::Logger& logger) {
+  if (!graph_utils::IsInitializer(graph, mask.Name(), true)) {
+    DEBUG_LOG("unidir mask is not constant");
+    return false;
+  }
+
+  // Check that the mask shape is 1x1xWxW
+  auto shape = mask.Shape();
+  if (shape == nullptr || static_cast<size_t>(shape->dim_size()) != 4 || !utils::HasDimValue(shape->dim(0)) || static_cast<int64_t>(1) != shape->dim(0).dim_value() || !utils::HasDimValue(shape->dim(1)) || static_cast<int64_t>(1) != shape->dim(1).dim_value() || !utils::HasDimValue(shape->dim(2)) || !utils::HasDimValue(shape->dim(3)) || shape->dim(2).dim_value() != shape->dim(3).dim_value()) {
+    DEBUG_LOG("unidir mask shape not expected");
+    return false;
+  }
+
+  const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+  if (!graph.GetInitializedTensor(mask.Name(), tensor_proto) || tensor_proto == nullptr) {
+    return false;
+  }
+
+  if (tensor_proto->data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
+    DEBUG_LOG("This optimizer does not support external data for unidirectional mask right now");
+    return false;
+  }
+
+  if (tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+    std::vector<int32_t> int32_data = ONNX_NAMESPACE::ParseData<int32_t>(tensor_proto);
+    if (!ValidateUnidirMask(int32_data, shape->dim(2).dim_value(), is_unidirectional)) {
+      DEBUG_LOG("Mask is neither unidirectional nor all ones");
+      return false;
+    }
+  } else if (tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    std::vector<float_t> float_data = ONNX_NAMESPACE::ParseData<float_t>(tensor_proto);
+    if (!ValidateUnidirMask(float_data, shape->dim(2).dim_value(), is_unidirectional)) {
+      DEBUG_LOG("Mask is neither unidirectional nor all ones");
+      return false;
+    }
+  } else {
+    DEBUG_LOG("Expect mask data type is uint8 or float");
+    return false;
+  }
+
+  return true;
+}
 
 /**  Match Unidirectional Mask subgraph.
      In the below graph, ':' is followed by variable name in code. * means the input on the left side.
@@ -274,8 +360,10 @@ struct MatchUnidirMaskResult {
       +----> Shape --> Slice ---------> Squeeze-------+                                                |
       |      :shape2   :slice2         :squeeze2                                                       v condition
       +----------------------------------------------------------------------------------------->Where( ,*,-10000)--->[Add]
+
+ When use_shared_node is true, shape1 and shape2 is one node, and also unsqueeze2 and unsqueeze3 is same.
 */
-bool MatchUnidirMaskSubgraph(const Graph& graph, const Node& add_node, MatchUnidirMaskResult& result, const logging::Logger& logger) {
+bool MatchUnidirMaskSubgraph(const Graph& graph, const Node& add_node, MatchUnidirMaskResult& result, bool use_shared_node, const logging::Logger& logger) {
   DEBUG_LOG("Start MatchUnidirMaskSubgraph");
   std::vector<graph_utils::EdgeEndToMatch> root_path{
       {0, 0, "Where", {9}, kOnnxDomain},
@@ -325,10 +413,9 @@ bool MatchUnidirMaskSubgraph(const Graph& graph, const Node& add_node, MatchUnid
       !optimizer_utils::CheckOutputEdges(graph, mask_slice, 1) ||
       !optimizer_utils::CheckOutputEdges(graph, unsqueeze1, 1) ||
       !optimizer_utils::CheckOutputEdges(graph, sub, 1) ||
-      !optimizer_utils::CheckOutputEdges(graph, squeeze1, 3) ||
+      !optimizer_utils::CheckOutputEdges(graph, squeeze1, use_shared_node ? 2 : 3) ||
       !optimizer_utils::CheckOutputEdges(graph, slice1, 1) ||
-      !optimizer_utils::CheckOutputEdges(graph, shape1, 1) ||
-      !optimizer_utils::CheckOutputEdges(graph, mask_slice, 1)) {
+      !optimizer_utils::CheckOutputEdges(graph, shape1, use_shared_node ? 2 : 1)) {
     DEBUG_LOG("Output edge count not expected for nodes in path 1 of unidirectional mask");
     return false;
   }
@@ -348,6 +435,11 @@ bool MatchUnidirMaskSubgraph(const Graph& graph, const Node& add_node, MatchUnid
     return false;
   }
 
+  if (!ValidateUnidirMask(graph, *(mask_slice.InputDefs()[0]), result.is_unidirectional, logger)) {
+    DEBUG_LOG("ValidateUnidirMask returns false for mask_slice");
+    return false;
+  }
+
   if (!CheckSliceParameters(graph, slice1, {1, 2, 3}, {-1, INT_MAX, 0}, logger)) {
     DEBUG_LOG("CheckSliceParameters returns false for slice1");
     return false;
@@ -364,7 +456,7 @@ bool MatchUnidirMaskSubgraph(const Graph& graph, const Node& add_node, MatchUnid
   }
 
   const Node& unsqueeze2 = edges[0]->GetNode();
-  if (!optimizer_utils::CheckOutputEdges(graph, unsqueeze2, 1)) {
+  if (!optimizer_utils::CheckOutputEdges(graph, unsqueeze2, use_shared_node ? 2 : 1)) {
     DEBUG_LOG("Output edge count not expected for unsqueeze2 of unidirectional mask");
     return false;
   }
@@ -376,7 +468,7 @@ bool MatchUnidirMaskSubgraph(const Graph& graph, const Node& add_node, MatchUnid
   }
 
   const Node& unsqueeze3 = edges[0]->GetNode();
-  if (!optimizer_utils::CheckOutputEdges(graph, unsqueeze3, 1)) {
+  if (!optimizer_utils::CheckOutputEdges(graph, unsqueeze3, use_shared_node ? 2 : 1)) {
     DEBUG_LOG("Output edge count not expected for unsqueeze3 of unidirectional mask");
     return false;
   }
@@ -401,13 +493,17 @@ bool MatchUnidirMaskSubgraph(const Graph& graph, const Node& add_node, MatchUnid
   const Node& shape2 = edges[2]->GetNode();
   if (!optimizer_utils::CheckOutputEdges(graph, squeeze2, 1) ||
       !optimizer_utils::CheckOutputEdges(graph, slice2, 1) ||
-      !optimizer_utils::CheckOutputEdges(graph, shape2, 1)) {
+      !optimizer_utils::CheckOutputEdges(graph, shape2, use_shared_node ? 2 : 1)) {
     DEBUG_LOG("Output edge count not expected for squeeze_2/slices2/shape2 of unidirectional mask");
     return false;
   }
 
   if (!CheckSliceParameters(graph, slice2, {1, 2, 3}, {-2, -1, 0}, logger)) {
     DEBUG_LOG("CheckSliceParameters return false for slice2");
+    return false;
+  }
+
+  if (use_shared_node && (shape1.Index() != shape2.Index() || unsqueeze2.Index() != unsqueeze3.Index())) {
     return false;
   }
 
@@ -423,10 +519,13 @@ bool MatchUnidirMaskSubgraph(const Graph& graph, const Node& add_node, MatchUnid
       slice1.Index(),
       shape1.Index(),
       unsqueeze2.Index(),
-      unsqueeze3.Index(),
       squeeze2.Index(),
-      slice2.Index(),
-      shape2.Index()};
+      slice2.Index()};
+
+  if (!use_shared_node) {
+    result.node_indices.push_back(unsqueeze3.Index());
+    result.node_indices.push_back(shape2.Index());
+  }
 
   DEBUG_LOG("Pass MatchUnidirMaskSubgraph");
   return true;
@@ -739,14 +838,14 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& layer_norm, const No
   }
   std::vector<int64_t> shape_value;
   if (!optimizer_utils::AppendTensorFromInitializer(graph, *(concat.InputDefs()[1]), shape_value, true) ||
-                                                    shape_value.size() != 1 ||
-                                                    shape_value[0] != 1) {
+      shape_value.size() != 1 ||
+      shape_value[0] != 1) {
     return false;
   }
   shape_value.clear();
   if (!optimizer_utils::AppendTensorFromInitializer(graph, *(concat.InputDefs()[2]), shape_value, true) ||
-                                                    shape_value.size() != 1 ||
-                                                    shape_value[0] != 1) {
+      shape_value.size() != 1 ||
+      shape_value[0] != 1) {
     return false;
   }
 
@@ -894,8 +993,8 @@ bool CheckDistilBertReshapeShape(const Graph& graph, const Node& reshape, int64_
 
   // lazy check: record unqueeze first and then check in the mask path
   std::vector<graph_utils::EdgeEndToMatch> shape_path{
-    {0, 1, "Concat", {4, 11, 13}, kOnnxDomain},
-    {0, 0, "Unsqueeze", {1, 11, 13}, kOnnxDomain}};
+      {0, 1, "Concat", {4, 11, 13}, kOnnxDomain},
+      {0, 0, "Unsqueeze", {1, 11, 13}, kOnnxDomain}};
   std::vector<const Node::EdgeEnd*> edges;
   if (!graph_utils::FindPath(reshape, true, shape_path, edges, logger)) {
     DEBUG_LOG("Failed to find shape path");
@@ -1138,12 +1237,12 @@ NodeArg* GetOrCreateMaskInt32(
           |  (0,2,1,3)  (0,2,3,1)    (perm=0,2,1,3)
           |   \          /            |                       [Past]?
                \        /             |                          |
-          |     \    p_Concat? <------|---------------------{Past_Subgraphj}?
+          |     \    k_Concat? <------|---------------------{Past_Subgraphj}?
           |      \    /               |                          |
           |      qk_MatMul            |                          |
           |           |    [B=h]      |                          |
           |           |   /           |                         /
-          |        qk_Div         p_Concat? <------------------
+          |        qk_Div         v_Concat? <------------------
           |            |              |
           | {Unidir_Mask_Subgraph}    |                             [Mask]?
           |            |              /                               |
@@ -1178,7 +1277,7 @@ After Fusion:
               --------> Add
 TODO: replace Gemm_Subgraph by MatMul + Add
 */
-bool FuseGptAttention(Node& layer_norm, Graph& graph, int64_t hidden_size, std::map<std::string, NodeArg*>& mask_int32_map, const logging::Logger& logger) {
+bool FuseGptAttention(Node& layer_norm, Graph& graph, int64_t hidden_size, std::map<std::string, NodeArg*>& mask_int32_map, bool use_shared_node, const logging::Logger& logger) {
   DEBUG_LOG("Start FuseGptAttention");
   const Node* parent_node = graph_utils::GetInputNode(layer_norm, 0);
   if (nullptr == parent_node || !graph_utils::IsSupportedOptypeVersionAndDomain(*parent_node, "Add", {7, 13}, kOnnxDomain)) {
@@ -1191,7 +1290,7 @@ bool FuseGptAttention(Node& layer_norm, Graph& graph, int64_t hidden_size, std::
   }
 
   MatchGemmResult gemm1_result;
-  if (!MatchGemmSubgraph(graph, *graph.GetNode(add_after_gemm->Index()), 1, gemm1_result, logger) ||
+  if (!MatchGemmSubgraph(graph, *graph.GetNode(add_after_gemm->Index()), 1, gemm1_result, use_shared_node, logger) ||
       !ValidateGemmInitializer(graph, *gemm1_result.gemm, hidden_size, false, logger)) {
     return false;
   }
@@ -1233,7 +1332,7 @@ bool FuseGptAttention(Node& layer_norm, Graph& graph, int64_t hidden_size, std::
   const Node& v_split = edges[2]->GetNode();
 
   MatchGemmResult gemm0_result;
-  if (!MatchGemmSubgraph(graph, *graph.GetNode(v_split.Index()), 0, gemm0_result, logger) ||
+  if (!MatchGemmSubgraph(graph, *graph.GetNode(v_split.Index()), 0, gemm0_result, use_shared_node, logger) ||
       !ValidateGemmInitializer(graph, *gemm0_result.gemm, hidden_size, true, logger)) {
     return false;
   }
@@ -1263,7 +1362,7 @@ bool FuseGptAttention(Node& layer_norm, Graph& graph, int64_t hidden_size, std::
   }
 
   MatchUnidirMaskResult unidir_mask_result;
-  if (!MatchUnidirMaskSubgraph(graph, *(mask_nodes.has_input_mask ? mask_nodes.add : mask_nodes.softmax), unidir_mask_result, logger)) {
+  if (!MatchUnidirMaskSubgraph(graph, *(mask_nodes.has_input_mask ? mask_nodes.add : mask_nodes.softmax), unidir_mask_result, use_shared_node, logger)) {
     DEBUG_LOG("MatchUnidirMaskSubgraph returns NULL");
     return false;
   }
@@ -1365,7 +1464,7 @@ bool FuseGptAttention(Node& layer_norm, Graph& graph, int64_t hidden_size, std::
       nullptr,
       kMSDomain);
   attention_node.AddAttribute("num_heads", num_heads);
-  attention_node.AddAttribute("unidirectional", (int64_t)1);
+  attention_node.AddAttribute("unidirectional", static_cast<int64_t>(unidir_mask_result.is_unidirectional));
 
   // Assign provider to this new node.
   attention_node.SetExecutionProviderType(layer_norm.GetExecutionProviderType());
