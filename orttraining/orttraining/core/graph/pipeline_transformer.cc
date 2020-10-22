@@ -13,11 +13,21 @@ using namespace onnxruntime::graph_utils;
 namespace onnxruntime {
 namespace training {
 
-void GetPipelineSendOutput(const Graph& graph, std::string& loss_name) {
+void GetPipelineRecvInput(const Graph& graph, std::string& node_arg_name) {
+  for (auto& node : graph.Nodes()) {
+    if (!node.OpType().compare("Recv")) {
+      // send op should always have an output, which is the OutputSignal.
+      node_arg_name = node.InputDefs()[0]->Name();
+      return;
+    }
+  }
+}
+
+void GetPipelineSendOutput(const Graph& graph, std::string& node_arg_name) {
   for (auto& node : graph.Nodes()) {
     if (!node.OpType().compare("Send")) {
       // send op should always have an output, which is the OutputSignal.
-      loss_name = node.OutputDefs()[0]->Name();
+      node_arg_name = node.OutputDefs()[0]->Name();
       return;
     }
   }
@@ -420,6 +430,10 @@ Status TransformGraphForPipeline(
   const bool is_middle_stage = forward_recv && forward_send && backward_recv && backward_send;
   const bool is_last_stage = forward_recv && !forward_send && !backward_recv && backward_send;
 
+  std::cout << "[pipeline_transformer.cc, TransformGraphForPipeline] is_first_stage: " << is_first_stage << std::endl;
+  std::cout << "[pipeline_transformer.cc, TransformGraphForPipeline] is_middle_stage: " << is_middle_stage << std::endl;
+  std::cout << "[pipeline_transformer.cc, TransformGraphForPipeline] is_last_stage: " << is_last_stage << std::endl;
+
   // One and only one of is_first_stage, is_middle_stage, and is_last_stage can be true.
   const unsigned int stage_flag_sum = is_first_stage + is_middle_stage + is_last_stage;
   ORT_RETURN_IF_NOT(stage_flag_sum == 1u,
@@ -685,15 +699,17 @@ Status FindAllConnectedNodes(Graph& graph,
   ORT_RETURN_IF_ERROR(node->ForEachMutableWithIndex(
       node->MutableOutputDefs(),
       [&](NodeArg& node_arg, size_t /*index*/) {
-        if (!graph.IsOutput(&node_arg)) {
-          std::vector<Node*> consumer_nodes = graph.GetMutableConsumerNodes(node_arg.Name());
-          connected_nodes.insert(std::end(connected_nodes), consumer_nodes.begin(), consumer_nodes.end());
-
-        } else {
+        std::vector<Node*> consumer_nodes = graph.GetMutableConsumerNodes(node_arg.Name());
+        connected_nodes.insert(std::end(connected_nodes), consumer_nodes.begin(), consumer_nodes.end());
+        if (graph.IsOutput(&node_arg)) {
           connected_outputs.insert(&node_arg);
         }
         return Status::OK();
       }));
+  for (auto node_ : connected_nodes) {
+    std::cout << "[pipeline_transformer.cc, FindAllConnectedNodes] node " << node->Name() << " is connected with " << node_->Name() << std::endl;
+  }
+
   return Status::OK();
 }
 
@@ -780,9 +796,18 @@ Status TraverseGraphWithConnectedElement(Graph& graph,
                                          std::set<NodeArg*>& visited_inputs,
                                          std::set<NodeArg*>& visited_outputs) {
   assert(start_node);
+
   visited_nodes.clear();
   visited_inputs.clear();
   visited_outputs.clear();
+
+  for (const auto node_arg: graph.GetInputs()) {
+    if (!node_arg->Exists()) {
+      continue;
+    }
+    NodeArg* mutable_node_arg = graph.GetNodeArg(node_arg->Name());
+    visited_inputs.insert(mutable_node_arg);
+  }
 
   std::queue<Node*> node_queue;
   node_queue.push(start_node);
@@ -1096,6 +1121,8 @@ common::Status GenerateSubgraph(Graph& graph, Node* start_node) {
   // reverse iterate the nodes in tolopogical order, and delete those not visited
   for (auto it = node_topology_list.rbegin(); it != node_topology_list.rend(); it++) {
     if (visited_node_index.count(*it) == 0) {
+      auto node = graph.GetNode(*it);
+      std::cout << "Remove a " << node->OpType() << " node, " << node->Name() << std::endl;
       graph.RemoveNode(*it);
     }
   }

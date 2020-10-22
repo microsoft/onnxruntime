@@ -161,6 +161,10 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
   std::deque<const Node*> queue(x_nodes_.begin(), x_nodes_.end());
   NodeSet visited(x_nodes_);
 
+  for (auto node__ : x_nodes_) {
+    std::cout << "[gradient_graph_builder.cc] visited_x_node: " << node__->Name() << std::endl;
+  }
+
   std::unordered_set<const NodeArg*> visited_node_args = x_node_args_;
   visited_node_args.insert(y_node_args_.begin(), y_node_args_.end());
 
@@ -190,6 +194,8 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
       if (visited.find(&next_node) == visited.end()) {
         queue.push_back(&next_node);
         visited.insert(&next_node);
+
+        std::cout << "[gradient_graph_builder.cc] visited_node: " << next_node.Name() << std::endl;
       }
     }
   }

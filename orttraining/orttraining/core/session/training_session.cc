@@ -138,6 +138,9 @@ Status TrainingSession::ConfigureForTraining(
 
   if (is_configured_) return Status::OK();
 
+  if (config.distributed_config.world_rank == 0)
+    ORT_IGNORE_RETURN_VALUE(Save(std::string("simple_forward") + std::string(".onnx"), SaveOption::NO_RELOAD));
+
   std::unordered_set<std::string> filtered_config_weight_names_to_train;
   FilterUnusedWeights(config.weight_names_to_train, filtered_config_weight_names_to_train);
   for (auto name : filtered_config_weight_names_to_train) {
@@ -183,6 +186,18 @@ Status TrainingSession::ConfigureForTraining(
   }
 
   FilterUnusedWeights(config.weight_names_to_train, filtered_config_weight_names_to_train);
+
+  // We rely on backprop to build Send-Recv pairs. Thus, all forward Recv's must be visited inside gradient builder. 
+  // To this end, we add one input of forward Recv to trainable tensor list.
+  if (config.pipeline_config.has_value()) {
+    std::string first_send_input_name;
+    // Find the only Recv node in forward-only graph.
+    GetPipelineRecvInput(model_->MainGraph(), first_send_input_name);
+    if (!first_send_input_name.empty()) {
+      filtered_config_weight_names_to_train.insert(first_send_input_name);
+    }
+  }
+
   for (auto name : filtered_config_weight_names_to_train) {
     std::cout << "[training_session.cc, ConfigureForTraining] train weight with consumer (new): " << name << std::endl;
   }
@@ -260,7 +275,6 @@ Status TrainingSession::ConfigureForTraining(
   {
     std::ostringstream weight_names_stream{};
     for (const auto& weight_name : weight_names_to_train) {
-      std::cout << "trainable weight: " << std::endl;
       weight_names_stream << "  " << weight_name << "\n";
     }
     LOGS(*session_logger_, INFO) << "Training weights:\n"
@@ -280,6 +294,8 @@ Status TrainingSession::ConfigureForTraining(
 
   ORT_RETURN_IF_ERROR(BuildGradientGraph(
       weight_names_to_train, loss_name, config.gradient_graph_config, *session_logger_));
+
+  ORT_IGNORE_RETURN_VALUE(Save(std::string("simple_backward_stage_") + std::to_string(config.distributed_config.world_rank) + std::string(".onnx"), SaveOption::NO_RELOAD));
 
   if (config.pipeline_config.has_value()) {
     // TODO: The number of pipeline steps should be passed in from Python API.
@@ -890,7 +906,6 @@ common::Status TrainingSession::Run(const RunOptions& run_options, IOBinding& io
   if (true) {
     return RunWithPipeline(run_options, io_binding);
   }
-  std::cout << "[training_session.cc] call Run" << std::endl;
   // Override initializers in eval mode.
   if (!run_options.training_mode) {
     std::vector<std::pair<std::string, OrtValue>> new_feeds;
@@ -981,6 +996,7 @@ void TrainingSession::CreatePipelineEvents(
 
   // Define helper function to create events as ORT values.
   auto append_to_io_binding = [&](const std::string event_name, const int64_t event_value) -> void {
+    std::cout << "[training_session.cc, CreatePipelineEvents] add event " << event_name << ", " << event_value << std::endl;
     // If an event name is empty, the corresponding event won't be used when running the graph.
     if (event_name.empty()) {
       // No need to add unused event.

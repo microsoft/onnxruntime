@@ -9,7 +9,8 @@
 namespace onnxruntime {
 namespace training {
 
-void GetPipelineSendOutput(const Graph& graph, std::string& loss_name);
+void GetPipelineSendOutput(const Graph& graph, std::string& node_arg_name);
+void GetPipelineRecvInput(const Graph& graph, std::string& node_arg_name);
 
 Status TransformGraphForPipeline(
     Graph& graph,
