@@ -45,7 +45,7 @@ common::Status ORTInvoker::Invoke(const std::string& op_name,
   size_t i = 0;
   
   for (auto input : inputs) {
-    std::string name = "I" + std::to_string(i);
+    std::string name = "I" + std::to_string(i++);
     auto& arg = graph.GetOrCreateNodeArg(name, &tensor_type);
     input_args.push_back(&arg);
     initializer_map[name] = input;
