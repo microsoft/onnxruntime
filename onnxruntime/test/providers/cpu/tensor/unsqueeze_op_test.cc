@@ -46,7 +46,11 @@ TEST(TensorOpTest, Unsqueeze_3) {
 }
 
 TEST(TensorOpTest, Unsqueeze_Duplicate) {
-  OpTester test("Unsqueeze", -1);  // use latest opset for shape inference errors
+  // This test is valid for opset 12.
+  // setting opset to -1 makes the test infra pick the latest available opset, so ort will pull the
+  // schema for that opset and do verification against it. Since opset 13 is enabled this test
+  //will fail schema validation.
+  OpTester test("Unsqueeze", 12);
 
   test.AddAttribute("axes", std::vector<int64_t>{2, 1, 0, 2});
   test.AddInput<float>("input", {2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
@@ -57,7 +61,11 @@ TEST(TensorOpTest, Unsqueeze_Duplicate) {
 }
 
 TEST(TensorOpTest, Unsqueeze_OutOfRange) {
-  OpTester test("Unsqueeze", -1);  // use latest opset for shape inference errors
+  // This test is valid for opset 12.
+  // setting opset to -1 makes the test infra pick the latest available opset, so ort will pull the
+  // schema for that opset and do verification against it. Since opset 13 is enabled this test
+  // will fail schema validation.
+  OpTester test("Unsqueeze", 12);
 
   test.AddAttribute("axes", std::vector<int64_t>{4});
   test.AddInput<float>("input", {2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));

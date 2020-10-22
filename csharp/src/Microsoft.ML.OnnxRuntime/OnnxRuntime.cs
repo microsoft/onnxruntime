@@ -38,31 +38,15 @@ namespace Microsoft.ML.OnnxRuntime
     }
 
     /// <summary>
-    /// This class intializes the process-global ONNX runtime
-    /// C# API users do not need to access this, thus kept as internal
+    /// This class initializes the process-global ONNX Runtime environment instance (OrtEnv)
     /// </summary>
-    internal sealed class OnnxRuntime : SafeHandle
+    public sealed class OrtEnv : SafeHandle
     {
-        private static readonly Lazy<OnnxRuntime> _instance = new Lazy<OnnxRuntime>(()=> new OnnxRuntime());
-        
-        internal static IntPtr Handle  // May throw exception in every access, if the constructor have thrown an exception
-        {
-            get
-            {
-                return _instance.Value.handle;
-            }
-        }
+        private static readonly Lazy<OrtEnv> _instance = new Lazy<OrtEnv>(()=> new OrtEnv());
 
-        public override bool IsInvalid
-        {
-            get
-            {
-                return (handle == IntPtr.Zero);
-            }
-        }
-
-        private OnnxRuntime()  //Problem: it is not possible to pass any option for a Singleton
-            :base(IntPtr.Zero, true)
+        #region private methods
+        private OrtEnv()  //Problem: it is not possible to pass any option for a Singleton
+    : base(IntPtr.Zero, true)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateEnv(LogLevel.Warning, @"CSharpOnnxRuntime", out handle));
             try
@@ -75,6 +59,58 @@ namespace Microsoft.ML.OnnxRuntime
                 throw e;
             }
         }
+        #endregion
+
+        #region internal methods
+        /// <summary>
+        /// Returns a handle to the native `OrtEnv` instance held by the singleton C# `OrtEnv` instance
+        /// Exception caching: May throw an exception on every call, if the `OrtEnv` constructor threw an exception
+        /// during lazy initialization
+        /// </summary>
+        internal static IntPtr Handle  
+        {
+            get
+            {
+                return _instance.Value.handle;
+            }
+        }
+        #endregion
+
+        #region public methods
+
+        /// <summary>
+        /// Returns an instance of OrtEnv
+        /// It returns the same instance on every call - `OrtEnv` is singleton
+        /// </summary>
+        public static OrtEnv Instance() { return _instance.Value; }
+
+        /// <summary>
+        /// Enable platform telemetry collection where applicable
+        /// (currently only official Windows ORT builds have telemetry collection capabilities)
+        /// </summary>
+        public void EnableTelemetryEvents()
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtEnableTelemetryEvents(Handle));
+        }
+
+        /// <summary>
+        /// Disable platform telemetry collection
+        /// </summary>
+        public void DisableTelemetryEvents()
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtDisableTelemetryEvents(Handle));
+        }
+
+        #endregion
+
+        #region SafeHandle
+        public override bool IsInvalid
+        {
+            get
+            {
+                return (handle == IntPtr.Zero);
+            }
+        }
 
         protected override bool ReleaseHandle()
         {
@@ -82,5 +118,6 @@ namespace Microsoft.ML.OnnxRuntime
             handle = IntPtr.Zero;
             return true;
         }
+        #endregion
     }
 }

@@ -35,6 +35,13 @@ class TestInferenceSession(unittest.TestCase):
         sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
         self.assertTrue('CPUExecutionProvider' in sess.get_providers())
 
+    def testEnablingAndDisablingTelemetry(self):
+        onnxrt.disable_telemetry_events()
+
+        # no-op on non-Windows builds
+        # may be no-op on certain Windows builds based on build configuration
+        onnxrt.enable_telemetry_events()
+
     def testSetProviders(self):
         if 'CUDAExecutionProvider' in onnxrt.get_available_providers():
             sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
