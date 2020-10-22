@@ -8,6 +8,7 @@
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/session/environment.h"
 #include "core/framework/random_seed.h"
+#include "core/framework/bfc_arena.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "orttraining/core/framework/mpi_context.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"

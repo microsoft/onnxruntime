@@ -4,7 +4,6 @@
 #pragma once
 
 #include "core/framework/allocator.h"
-#include "core/framework/bfc_arena.h"
 
 namespace onnxruntime {
 

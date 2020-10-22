@@ -10,7 +10,6 @@
 #include "core/common/safeint.h"
 
 #include "tensorrt_execution_provider.h"
-#include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 #include "cuda_runtime_api.h"

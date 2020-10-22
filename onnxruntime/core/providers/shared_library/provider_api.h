@@ -15,20 +15,13 @@
 #include "onnx/common/stl_backports.h"
 #include "core/common/common.h"
 #include "core/common/const_pointer_container.h"
+#include "core/common/logging/severity.h"
 #include "core/framework/allocator.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/tensor_shape.h"
 
 namespace onnxruntime {
 namespace logging {
-
-enum class Severity {
-  kVERBOSE = 0,
-  kINFO = 1,
-  kWARNING = 2,
-  kERROR = 3,
-  kFATAL = 4
-};
 
 enum class DataType {
   SYSTEM = 0,  ///< System data.
@@ -191,8 +184,6 @@ namespace logging {
 struct Category {
   static const char* onnxruntime;  ///< General output
 };
-
-constexpr const char* SEVERITY_PREFIX = "VIWEF";
 
 }  // namespace logging
 
