@@ -15,9 +15,8 @@
 #include "onnx/common/stl_backports.h"
 #include "core/common/common.h"
 #include "core/common/const_pointer_container.h"
-#include "core/session/onnxruntime_c_api.h"
-#include "core/framework/ortdevice.h"
-#include "core/framework/ortmemoryinfo.h"
+#include "core/framework/allocator.h"
+#include "core/framework/allocatormgr.h"
 #include "core/framework/tensor_shape.h"
 
 namespace onnxruntime {
@@ -84,7 +83,7 @@ struct Provider_NodeAttributes;
 struct Provider_OpKernelContext;
 struct Provider_OpKernelInfo;
 struct Provider_Tensor;
-}
+}  // namespace onnxruntime
 
 #include "provider_interfaces.h"
 
@@ -177,10 +176,9 @@ class DataTypeImpl {
 template <typename T>
 using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
 
-std::unique_ptr<Provider_IAllocator> Provider_CreateCPUAllocator(const OrtMemoryInfo& memory_info);
-std::unique_ptr<Provider_IAllocator> Provider_CreateCUDAAllocator(int16_t device_id, const char* name);
-std::unique_ptr<Provider_IAllocator> Provider_CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
-Provider_AllocatorPtr CreateAllocator(const Provider_AllocatorCreationInfo& info);
+std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info);
+std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name);
+std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
 
 std::unique_ptr<Provider_IDataTransfer> Provider_CreateGPUDataTransfer();
 
