@@ -7,19 +7,11 @@ For build instructions, please see the [BUILD page](../../BUILD.md#ARM-Compute-L
 
 ### Using the ACL execution provider
 #### C/C++
-To use ACL as execution provider for inferencing, please register it as below.
 ```
-string log_id = "Foo";
-auto logging_manager = std::make_unique<LoggingManager>
-(std::unique_ptr<ISink>{new CLogSink{}},
-                                  static_cast<Severity>(lm_info.default_warning_level),
-                                  false,
-                                  LoggingManager::InstanceType::Default,
-                                  &log_id)
-Environment::Create(std::move(logging_manager), env)
-InferenceSession session_object{so, env};
-session_object.RegisterExecutionProvider(std::make_unique<::onnxruntime::ACLExecutionProvider>());
-status = session_object.Load(model_file_name);
+Ort::Env env = Ort::Env{ORT_LOGGING_LEVEL_ERROR, "Default"};
+Ort::SessionOptions sf;
+bool enable_cpu_mem_arena = true;
+Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ACL(sf, enable_cpu_mem_arena));
 ```
 The C API details are [here](../C_API.md#c-api).
 

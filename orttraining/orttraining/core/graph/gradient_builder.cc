@@ -342,7 +342,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
     if (IsGradientRequiredForSrcNodeInput(0)) {
       ArgDef pre_reduce_grad_0 = IA("PreReduceGrad0");
       result.push_back(
-          NodeDef(OpDef{"TransposeMatMul", kMSDomain, 1},
+          NodeDef(OpDef{"FusedMatMul", kMSDomain, 1},
                   {GO(0), B},
                   {pre_reduce_grad_0},
                   {{"transB", MakeAttribute("transB", int64_t(1))}}));
@@ -1064,24 +1064,13 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceMeanGradient) {
     result.push_back(NodeDef("Unsqueeze", {GO(0)}, {grad}, {MakeAttribute("axes", axes_values)}));
   }
 
-  const int64_t type_float = static_cast<int64_t>(OElemType(0));
-  result.push_back(NodeDef("Size", {I(0)}, {IA("Scale_Denominator")}));
-  result.push_back(
-      NodeDef("Cast",
-              {IA("Scale_Denominator")},
-              {IA("Casted_Scale_Denominator")},
-              {MakeAttribute("to", type_float)}));
-  result.push_back(NodeDef("Size", {GO(0)}, {IA("Scale_Numerator")}));
-  result.push_back(
-      NodeDef("Cast",
-              {IA("Scale_Numerator")},
-              {IA("Casted_Scale_Numerator")},
-              {MakeAttribute("to", type_float)}));
-  result.push_back(
-      NodeDef("Div",
-              {IA("Casted_Scale_Numerator"), IA("Casted_Scale_Denominator")},
-              {IA("Scale")}));
-  result.push_back(NodeDef("Mul", {grad, IA("Scale")}, {IA("Scaled_Grad")}));
+  result.push_back(NodeDef("Size", {I(0)}, {IA("Sized_X")}));
+  result.push_back(NodeDef("Size", {GO(0)}, {IA("Sized_Grad")}));
+  result.push_back(NodeDef("Div",{IA("Sized_X"), IA("Sized_Grad")}, {IA("Scale")}));
+  result.push_back(NodeDef(OpDef{"Scale", kMSDomain, 1},
+                           {grad, IA("Scale")},
+                           {IA("Scaled_Grad")},
+                           {MakeAttribute("scale_down", int64_t(1))}));
   result.push_back(NodeDef("Shape", {I(0)}, {IA("Shaped_X")}));
   result.push_back(NodeDef("Expand", {IA("Scaled_Grad"), IA("Shaped_X")}, {GI(0)}));
   return result;
@@ -1331,6 +1320,14 @@ IMPLEMENT_GRADIENT_BUILDER(GetLayerNormalizationGradient) {
   }
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetSimplifiedLayerNormalizationGradient) {
+  return std::vector<NodeDef>{
+      NodeDef(OpDef{"SimplifiedLayerNormalizationGrad", kMSDomain, 1},
+              {GO(0), I(0), I(1), O(1)},
+              {GI(0), GI(1)},
+              {SrcNodeAttributes()})};
+}
+
 IMPLEMENT_GRADIENT_BUILDER(GetBatchNormalizationGradient) {
   auto attributes = SrcNodeAttributes();
   if (attributes.find("epsilon") != attributes.end()) {
@@ -1457,6 +1454,34 @@ IMPLEMENT_GRADIENT_BUILDER(GetExpandGradient) {
   }
 
   return output;
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetExpGradient) {
+  return std::vector<NodeDef>{
+      NodeDef("Mul",
+              {GO(0), O(0)},
+              {GI(0)})};
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetFlattenGradient) {
+  return std::vector<NodeDef>{
+      NodeDef("Shape", {I(0)}, {IA("input_shape")}),
+      NodeDef("Reshape", {GO(0), IA("input_shape")}, {GI(0)})
+  };
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetTopKGradient) {
+  // TopK's default axis is -1, which is different from GatherElements.
+  auto attributes = SrcNodeAttributes();
+  auto axis = utils::HasInt(attributes.at("axis")) ? attributes.at("axis").i() : -1;
+  return std::vector<NodeDef>{
+      NodeDef("Shape",
+              {I(0)},
+              {IA("x_shape")}),
+      NodeDef(OpDef{"GatherElementsGrad", kMSDomain, 1},
+              {GO(0), IA("x_shape"), O(1)},
+              {GI(0)},
+              {MakeAttribute("axis", axis)})};
 }
 
 }  // namespace training

@@ -36,5 +36,9 @@ Status GetQuantizedInputScaleAndZeroPoint(const ModelBuilder& model_builder,
                                           const Node& node, const std::string& input_name,
                                           float& scale, int32_t& zero_point) ORT_MUST_USE_RESULT;
 
+// Get the min/max value from Clip op
+// If the min/max are inputs be not initializers (value not preset), will return false
+bool GetClipMinMax(const ModelBuilder& model_builder, const Node& node, float& min, float& max);
+
 }  // namespace nnapi
 }  // namespace onnxruntime

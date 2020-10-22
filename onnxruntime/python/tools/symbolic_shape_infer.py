@@ -1202,9 +1202,11 @@ class SymbolicShapeInference:
                             for idx in range(len(out_shape)):
                                 if out_shape[idx] is not None:
                                     continue
+                                # note that the broadcasting rule aligns from right to left
+                                # if a tensor has a lower rank (dim_idx[idx] < 0), it would automatically broadcast and need no merge
                                 dim_idx = [len(s) - len(out_shape) + idx for s in shapes]
-                                assert all([d >= 0 for d in dim_idx])
-                                self._add_suggested_merge([s[i] if is_literal(s[i]) else str(s[i]) for s, i in zip(shapes, dim_idx)])
+                                if len(dim_idx) > 0:
+                                    self._add_suggested_merge([s[i] if is_literal(s[i]) else str(s[i]) for s, i in zip(shapes, dim_idx) if i >= 0])
                             self.run_ = True
                         else:
                             self.run_ = False

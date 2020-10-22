@@ -2,10 +2,12 @@
 
 ## Overview
 
+<img align="left" width=40% src="images/Mobile.png" alt="Steps to build the reduced binary size."/>
+
 ONNX Runtime now supports an internal model format to minimize the build size for usage in mobile and embedded scenarios. An ONNX model can be converted to an internal ONNX Runtime format ('ORT format model') using the below instructions.
 
-The minimal build can be used with any ORT format model, provided that the kernels for the operators used in the model were included in the build. 
-  i.e. the custom build provides a set of kernels, and if that set satisfies a given ORT format model's needs, the model can be loaded and executed. 
+The minimal build can be used with any ORT format model, provided that the kernels for the operators used in the model were included in the build.
+    i.e. the custom build provides a set of kernels, and if that set satisfies a given ORT format model's needs, the model can be loaded and executed.
 
 ## Steps to create model and minimal build
 
@@ -32,7 +34,7 @@ This will require the standard ONNX Runtime python package to be installed.
 
 Example:
 
-Running `'python <ORT repository root>/tools/python/convert_onnx_model_to_ort.py /models'` where the '/models' directory contains ModelA.onnx and ModelB.onnx
+Running `'python <ORT repository root>/tools/python/convert_onnx_models_to_ort.py /models'` where the '/models' directory contains ModelA.onnx and ModelB.onnx
   - Will create /models/ModelA.ort and /models/ModelB.ort
   - Will create /models/required_operators.config/
 
@@ -46,7 +48,7 @@ See [here](https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#start-b
 
 The follow options can be used to reduce the build size. Enable all options that your scenario allows.
   - Reduce build to required operator kernels
-    - Add `--include_ops_by_config <config file produced by step 1>` to the build parameters.
+    - Add `--include_ops_by_config <config file produced by step 1> --skip_tests` to the build parameters.
     - See the documentation on the [Reduced Operator Kernel build](Reduced_Operator_Kernel_build.md) for more information. This step can also be done pre-build if needed.
 
   - Enable minimal build (`--minimal_build`)
@@ -77,11 +79,11 @@ The `Release` configuration could also be used if you wish to prioritize perform
 
 ##### Windows
 
-`<ONNX Runtime repository root>\build.bat --config=MinSizeRel --cmake_generator="Visual Studio 16 2019" --build_shared_lib --minimal_build --disable_ml_ops --disable_exceptions --include_ops_by_config <config file produced by step 1>`
+`<ONNX Runtime repository root>\build.bat --config=MinSizeRel --cmake_generator="Visual Studio 16 2019" --build_shared_lib --minimal_build --disable_ml_ops --disable_exceptions --include_ops_by_config <config file produced by step 1> --skip_tests`
 
 ##### Linux
 
-`<ONNX Runtime repository root>/build.sh --config=MinSizeRel --build_shared_lib --minimal_build --disable_ml_ops --disable_exceptions --include_ops_by_config <config file produced by step 1>`
+`<ONNX Runtime repository root>/build.sh --config=MinSizeRel --build_shared_lib --minimal_build --disable_ml_ops --disable_exceptions --include_ops_by_config <config file produced by step 1> --skip_tests`
 
 ##### Building ONNX Runtime Python Wheel as part of Minimal build
 
@@ -129,4 +131,6 @@ A minimal build has the following limitations currently:
     - e.g. ORT CPU and CUDA execution providers
     - Execution providers that dynamically compile nodes in the graph into custom kernels at runtime are not supported
   - No support for custom operators
+
+We do not currently offer backwards compatibility guarantees for ORT format models, as we will be expanding the capabilities in the short term and may need to update the internal format in an incompatible manner to accommodate these changes. You may need to regenerate the ORT format models to use with a future version of ONNX Runtime. Once the feature set stabilizes we will provide backwards compatibility guarantees.
 
