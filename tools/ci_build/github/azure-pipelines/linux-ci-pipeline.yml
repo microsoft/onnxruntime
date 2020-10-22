@@ -55,6 +55,19 @@ jobs:
       testRunTitle: 'Unit Test Run'
     condition: succeededOrFailed()
 
+
+  - task: CopyFiles@2
+    displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
+    inputs:
+      SourceFolder: '$(Build.BinariesDirectory)'
+      Contents: 'Release/Testing/Temporary/MemoryChecker.*.log'
+      TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+  - task: PublishBuildArtifacts@1
+    displayName: 'Publish Artifact: ONNXRuntime python wheel'
+    inputs:
+      ArtifactName: onnxruntime
+
   - template: templates/component-governance-component-detection-steps.yml
     parameters:
       condition: 'succeeded'
