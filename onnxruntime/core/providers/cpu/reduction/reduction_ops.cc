@@ -563,7 +563,7 @@ Status ReduceProd<T>::Compute(OpKernelContext* ctx) const {
 template <typename T>
 Status ReduceSum<T>::Compute(OpKernelContext* ctx) const {
   ResultsNoTransposePrepareForReduce last_results;
-  CommonReduce<T, ReduceAggregatorSum<T>>(ctx, axes_, keepdims_, last_results);
+  CommonReduce<T, ReduceAggregatorSum<T>>(ctx, axes_, keepdims_, last_results, noop_with_empty_axes_);
   return Status::OK();
 }
 
