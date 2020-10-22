@@ -10,8 +10,8 @@
 #include <cub/iterator/counting_input_iterator.cuh>
 #include <cub/iterator/discard_output_iterator.cuh>
 
-#include "core/providers/cuda/cu_inc/accumulation_type.cuh"
 #include "core/providers/cuda/cu_inc/common.cuh"
+#include "core/providers/cuda/shared_inc/accumulation_type.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 
 namespace onnxruntime {
