@@ -55,7 +55,7 @@ void RunAndVerifyOutputs(const std::string& model_file_name,
 // Please see ReshapeOpBuilder::CanSkipReshape in <repo_root>/onnxruntime/core/providers/nnapi/nnapi_builtin/builders/op_builder.cc
 // We have a separated test for these skip reshape scenarios
 TEST(NnapiExecutionProviderTest, ReshapeFlattenTest) {
-  std::string model_file_name = "testdata/reshape_flatten_test.onnx";
+  std::string model_file_name = "testdata/nnapi_reshape_flatten_test.onnx";
 
   std::vector<int64_t> dims_mul_x = {2, 1, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f};

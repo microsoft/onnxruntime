@@ -31,7 +31,7 @@ def GenerateModel(model_name):
 
     graph = helper.make_graph(
         nodes,
-        "Reshape_Flatten_Test",
+        "NNAPI_Reshape_Flatten_Test",
         inputs,
         [helper.make_tensor_value_info('Z', TensorProto.FLOAT, [1, 6])],
         initializers
