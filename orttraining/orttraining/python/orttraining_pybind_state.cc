@@ -66,11 +66,16 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   //TODO tix, refactor the mpi related code to populate all fields correctly by default.
   ORT_ENFORCE(parameters.horizontal_parallel_size <= parameters.world_size);
   ORT_ENFORCE(parameters.data_parallel_size <= parameters.world_size);
+
+  if (parameters.world_size % parameters.data_parallel_size != 0) {
+    throw std::runtime_error("Cannot split data parallel group because world_size is not divisible");
+  }
+
   if (parameters.world_size % parameters.horizontal_parallel_size != 0) {
     throw std::runtime_error("Cannot split horizontal parallel group because world_size is not divisible");
   }
 
-  auto data_group_size = parameters.world_size / parameters.horizontal_parallel_size;
+  auto data_group_size = parameters.world_size / (parameters.horizontal_parallel_size * parameters.pipeline_parallel_size);
   if (data_group_size != parameters.data_parallel_size) {
     LOGS(*(sess->GetLogger()), WARNING) << "data_parallel_size is not correct, tuned automatically to "
                                         << data_group_size;

@@ -82,6 +82,11 @@ Status SetupOptimizerParams(
     const auto mixed_precision_weight_name_it = fp32_weight_names_to_mixed_precision_node_args.find(w_n);
     if (mixed_precision_weight_name_it != fp32_weight_names_to_mixed_precision_node_args.end()) {
       opt_node_config.mixed_precision_weight_arg = mixed_precision_weight_name_it->second;
+    } else {
+      const auto new_mixed_precision_weight_name_it = fp32_weight_names_to_mixed_precision_node_args.find(weight_name);
+      if (new_mixed_precision_weight_name_it != fp32_weight_names_to_mixed_precision_node_args.end()) {
+        opt_node_config.mixed_precision_weight_arg = new_mixed_precision_weight_name_it->second;
+      }
     }
     opt_node_configs.emplace(weight_name, std::move(opt_node_config));
   }
