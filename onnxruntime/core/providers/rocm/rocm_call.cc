@@ -32,26 +32,6 @@ const char* RocmErrString<hipError_t>(hipError_t x) {
 }
 
 template <>
-const char* RocmErrString<hipblasStatus_t>(hipblasStatus_t e) {
-  hipDeviceSynchronize();
-
-  switch (e) {
-    CASE_ENUM_TO_STR(HIPBLAS_STATUS_SUCCESS);
-    CASE_ENUM_TO_STR(HIPBLAS_STATUS_NOT_INITIALIZED);
-    CASE_ENUM_TO_STR(HIPBLAS_STATUS_ALLOC_FAILED);
-    CASE_ENUM_TO_STR(HIPBLAS_STATUS_INVALID_VALUE);
-    CASE_ENUM_TO_STR(HIPBLAS_STATUS_ARCH_MISMATCH);
-    CASE_ENUM_TO_STR(HIPBLAS_STATUS_MAPPING_ERROR);
-    CASE_ENUM_TO_STR(HIPBLAS_STATUS_EXECUTION_FAILED);
-    CASE_ENUM_TO_STR(HIPBLAS_STATUS_INTERNAL_ERROR);
-    CASE_ENUM_TO_STR(HIPBLAS_STATUS_NOT_SUPPORTED);
-    //CASE_ENUM_TO_STR(HIPBLAS_STATUS_LICENSE_ERROR);
-    default:
-      return "(look for HIPBLAS_STATUS_xxx in hipblas_api.h)";
-  }
-}
-
-template <>
 const char* RocmErrString<rocblas_status>(rocblas_status e) {
   hipDeviceSynchronize();
 
@@ -155,8 +135,6 @@ bool RocmCall(ERRTYPE retCode, const char* exprString, const char* libName, ERRT
 
 template bool RocmCall<hipError_t, false>(hipError_t retCode, const char* exprString, const char* libName, hipError_t successCode, const char* msg);
 template bool RocmCall<hipError_t, true>(hipError_t retCode, const char* exprString, const char* libName, hipError_t successCode, const char* msg);
-template bool RocmCall<hipblasStatus_t, false>(hipblasStatus_t retCode, const char* exprString, const char* libName, hipblasStatus_t successCode, const char* msg);
-template bool RocmCall<hipblasStatus_t, true>(hipblasStatus_t retCode, const char* exprString, const char* libName, hipblasStatus_t successCode, const char* msg);
 template bool RocmCall<rocblas_status, false>(rocblas_status retCode, const char* exprString, const char* libName, rocblas_status successCode, const char* msg);
 template bool RocmCall<rocblas_status, true>(rocblas_status retCode, const char* exprString, const char* libName, rocblas_status successCode, const char* msg);
 template bool RocmCall<miopenStatus_t, false>(miopenStatus_t retCode, const char* exprString, const char* libName, miopenStatus_t successCode, const char* msg);

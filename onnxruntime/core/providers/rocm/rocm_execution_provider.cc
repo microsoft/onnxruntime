@@ -59,7 +59,6 @@ ONNX_OPERATOR_KERNEL_EX(
 
 ROCMExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, size_t hip_mem_limit, ArenaExtendStrategy arena_extend_strategy) {
   HIP_CALL_THROW(hipSetDevice(device_id));
-  HIPBLAS_CALL_THROW(hipblasCreate(&hipblas_handle_));
   ROCBLAS_CALL_THROW(rocblas_create_handle(&rocblas_handle_));
   MIOPEN_CALL_THROW(miopenCreate(&miopen_handle_));
 
@@ -81,12 +80,6 @@ ROCMExecutionProvider::PerThreadContext::~PerThreadContext() {
   // dtor shouldn't throw. if something went wrong earlier (e.g. out of HIP memory) the handles
   // here may be bad, and the destroy calls can throw.
   // https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rc-dtor-noexcept
-  try {
-    HIPBLAS_CALL(hipblasDestroy(hipblas_handle_));
-  } catch (const std::exception& ex) {
-    LOGS_DEFAULT(ERROR) << "hipblasDestroy threw:" << ex.what();
-  }
-
   try {
     ROCBLAS_CALL(rocblas_destroy_handle(rocblas_handle_));
   } catch (const std::exception& ex) {

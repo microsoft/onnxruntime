@@ -25,8 +25,8 @@ ONNX_OPERATOR_KERNEL_EX(Transpose,
                             .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
                         Transpose);
 
-// special case acceleration using hipblas matrix transpose
-static std::tuple<int, int> TryTransposeWithHipblas(const std::vector<size_t>& perm, const TensorShape& input_shape) {
+// special case acceleration using rocblas matrix transpose
+static std::tuple<int, int> TryTransposeWithRocblas(const std::vector<size_t>& perm, const TensorShape& input_shape) {
   int M = 0;
   int N = 0;
 
@@ -52,15 +52,15 @@ static std::tuple<int, int> TryTransposeWithHipblas(const std::vector<size_t>& p
 }
 
 template <typename T>
-Status TransposeWithHipblas(hipblasHandle_t hipblas_handle, const Tensor& input, Tensor& output, int M, int N) {
+Status TransposeWithRocblas(rocblas_handle handle, const Tensor& input, Tensor& output, int M, int N) {
   typedef typename ToHipType<T>::MappedType HipT;
   HipT one = ToHipType<T>::FromFloat(1.0f);
   HipT zero = ToHipType<T>::FromFloat(0.0f);
   const HipT* input_data = reinterpret_cast<const HipT*>(input.Data<T>());
   HipT* output_data = reinterpret_cast<HipT*>(output.MutableData<T>());
-  HIPBLAS_RETURN_IF_ERROR(
-      hipblasTransposeHelper(hipblas_handle,
-                            HIPBLAS_OP_T, HIPBLAS_OP_T, M, N,
+  ROCBLAS_RETURN_IF_ERROR(
+      rocblasTransposeHelper(handle,
+                            rocblas_operation_transpose, rocblas_operation_transpose, M, N,
                             &one,
                             input_data,
                             N,
@@ -82,16 +82,16 @@ Status Transpose::DoTranspose(const Transpose& kernel,
   if (element_type == utils::GetONNXTensorElementDataType<float>() ||
       element_type == utils::GetONNXTensorElementDataType<double>() ||
       element_type == utils::GetONNXTensorElementDataType<MLFloat16>()) {
-    auto mn = TryTransposeWithHipblas(permutations, input.Shape());
+    auto mn = TryTransposeWithRocblas(permutations, input.Shape());
     int M = std::get<0>(mn);
     int N = std::get<1>(mn);
     if (M != 0 && N != 0) {
       if (element_type == utils::GetONNXTensorElementDataType<float>()) {
-        return TransposeWithHipblas<float>(kernel.HipblasHandle(), input, output, M, N);
+        return TransposeWithRocblas<float>(kernel.RocblasHandle(), input, output, M, N);
       } else if (element_type == utils::GetONNXTensorElementDataType<double>()) {
-        return TransposeWithHipblas<double>(kernel.HipblasHandle(), input, output, M, N);
+        return TransposeWithRocblas<double>(kernel.RocblasHandle(), input, output, M, N);
       } else {
-        return TransposeWithHipblas<MLFloat16>(kernel.HipblasHandle(), input, output, M, N);
+        return TransposeWithRocblas<MLFloat16>(kernel.RocblasHandle(), input, output, M, N);
       }
     }
   }

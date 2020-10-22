@@ -45,10 +45,6 @@ class ROCMExecutionProvider : public IExecutionProvider {
     return nullptr;
   }
 
-  hipblasHandle_t PerThreadHipblasHandle() {
-    return GetPerThreadContext().HipblasHandle();
-  }
-
   rocblas_handle PerThreadRocblasHandle() {
     return GetPerThreadContext().RocblasHandle();
   }
@@ -102,10 +98,6 @@ class ROCMExecutionProvider : public IExecutionProvider {
     PerThreadContext(OrtDevice::DeviceId device_id, size_t hip_mem_limit, ArenaExtendStrategy arena_extend_strategy);
     ~PerThreadContext();
 
-    hipblasHandle_t HipblasHandle() const {
-      return hipblas_handle_;
-    }
-
     rocblas_handle RocblasHandle() const {
       return rocblas_handle_;
     }
@@ -145,7 +137,6 @@ class ROCMExecutionProvider : public IExecutionProvider {
     }
 
    private:
-    hipblasHandle_t hipblas_handle_ = nullptr;
     rocblas_handle rocblas_handle_ = nullptr;
     miopenHandle_t miopen_handle_ = nullptr;
 

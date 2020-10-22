@@ -14,7 +14,6 @@ template <typename ERRTYPE, bool THRW>
 bool RocmCall(ERRTYPE retCode, const char* exprString, const char* libName, ERRTYPE successCode, const char* msg = "");
 
 #define HIP_CALL(expr) (RocmCall<hipError_t, false>((expr), #expr, "HIP", hipSuccess))
-#define HIPBLAS_CALL(expr) (RocmCall<hipblasStatus_t, false>((expr), #expr, "HIPBLAS", HIPBLAS_STATUS_SUCCESS))
 #define ROCBLAS_CALL(expr) (RocmCall<rocblas_status, false>((expr), #expr, "ROCBLAS", rocblas_status_success))
 #define HIPSPARSE_CALL(expr) (RocmCall<hipsparseStatus_t, false>((expr), #expr, "HIPSPARSE", HIPSPARSE_STATUS_SUCCESS))
 #define HIPRAND_CALL(expr) (RocmCall<hiprandStatus_t, false>((expr), #expr, "HIPRAND", HIPRAND_STATUS_SUCCESS))
@@ -23,7 +22,6 @@ bool RocmCall(ERRTYPE retCode, const char* exprString, const char* libName, ERRT
 #define HIPFFT_CALL(expr) (RocmCall<hipfftResult, false>((expr), #expr, "HIPFFT", HIPFFT_SUCCESS))
 
 #define HIP_CALL_THROW(expr) (RocmCall<hipError_t, true>((expr), #expr, "HIP", hipSuccess))
-#define HIPBLAS_CALL_THROW(expr) (RocmCall<hipblasStatus_t, true>((expr), #expr, "HIPBLAS", HIPBLAS_STATUS_SUCCESS))
 #define ROCBLAS_CALL_THROW(expr) (RocmCall<rocblas_status, true>((expr), #expr, "ROCBLAS", rocblas_status_success))
 #define HIPSPARSE_CALL_THROW(expr) (RocmCall<hipsparseStatus_t, true>((expr), #expr, "HIPSPARSE", HIPSPARSE_STATUS_SUCCESS))
 #define HIPRAND_CALL_THROW(expr) (RocmCall<hiprandStatus_t, true>((expr), #expr, "HIPRAND", HIPRAND_STATUS_SUCCESS))

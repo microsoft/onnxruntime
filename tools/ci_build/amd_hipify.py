@@ -265,10 +265,10 @@ def hipify(src_file_path, dst_file_path):
         s = s.replace('#include <cub/device/device_radix_sort.cuh>', '#include <hipcub/hipcub.hpp>')
         s = s.replace('#include <cub/iterator/counting_input_iterator.cuh>', '')
         s = s.replace('typedef half MappedType', 'typedef __half MappedType')
-        # CUBLAS -> HIPBLAS
-        s = s.replace('CUBLAS', 'HIPBLAS')
-        s = s.replace('Cublas', 'Hipblas')
-        s = s.replace('cublas', 'hipblas')
+        # CUBLAS -> ROCBLAS
+        # s = s.replace('CUBLAS', 'HIPBLAS')
+        # s = s.replace('Cublas', 'Hipblas')
+        # s = s.replace('cublas', 'hipblas')
 
         # CURAND -> HIPRAND
         s = s.replace('CURAND', 'HIPRAND')

@@ -21,11 +21,6 @@ namespace rocm {
                           ? common::Status::OK() \
                           : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "HIP error executing ", #expr))
 
-#define HIPBLAS_RETURN_IF_ERROR(expr)             \
-  ORT_RETURN_IF_ERROR(HIPBLAS_CALL(expr)          \
-                          ? common::Status::OK() \
-                          : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "HIPBLAS error executing ", #expr))
-
 #define ROCBLAS_RETURN_IF_ERROR(expr)             \
   ORT_RETURN_IF_ERROR(ROCBLAS_CALL(expr)          \
                           ? common::Status::OK() \
@@ -166,10 +161,6 @@ class RocmKernel : public OpKernel {
     const RocmKernel* op_kernel_;
   };
 
-  inline hipblasHandle_t HipblasHandle() const {
-    return provider_->PerThreadHipblasHandle();
-  }
-
   inline rocblas_handle RocblasHandle() const {
     return provider_->PerThreadRocblasHandle();
   }
@@ -228,21 +219,6 @@ inline bool CalculateFdmStrides(gsl::span<fast_divmod> p, const std::vector<int6
   }
   return true;
 }
-
-// class HipblasMathModeSetter {
-//  public:
-//   HipblasMathModeSetter(hipblasHandle_t handle, hipblasMath_t mode) : handle_(handle) {
-//     hipblasGetMathMode(handle, &mode_);
-//     hipblasSetMathMode(handle, mode);
-//   }
-//   ~HipblasMathModeSetter() {
-//     hipblasSetMathMode(handle_, mode_);
-//   }
-
-//  private:
-//   hipblasHandle_t handle_;
-//   hipblasMath_t mode_;
-// };
 
 }  // namespace rocm
 }  // namespace onnxruntime
