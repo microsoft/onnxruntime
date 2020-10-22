@@ -22,7 +22,6 @@ limitations under the License.
 #include <memory>
 #include "core/common/common.h"
 #include "core/platform/env.h"
-#include "core/common/optional.h"
 
 #include <functional>
 #include <memory>
@@ -110,7 +109,7 @@ class ThreadPool {
                    const std::function<void(std::ptrdiff_t first, std::ptrdiff_t)>& fn);
 
   static void TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t total, const TensorOpCost& cost_per_unit,
-                             const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn); 
+                             const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn);
 
   // Return the degree of parallelism that code should assume when using the thread pool.
   // This API takes into account if OpenMP is enabled/disabled, and if the thread pool ptr is
@@ -254,7 +253,6 @@ class ThreadPool {
   // Requires 0 < block_size <= total.
   void ParallelForFixedBlockSizeScheduling(std::ptrdiff_t total, std::ptrdiff_t block_size,
                                            const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn);
-
 
   // Return whether or not the calling thread should run a loop of
   // num_iterations divided in chunks of block_size in parallel.  If not,
