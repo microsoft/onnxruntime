@@ -14,6 +14,9 @@
 #include "core/session/environment.h"
 
 namespace onnxruntime {
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#endif
 
 class ORTInvoker {
  public:

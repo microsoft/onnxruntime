@@ -42,13 +42,15 @@ common::Status ORTInvoker::Invoke(const std::string& op_name,
 
   Graph& graph = model.MainGraph();
   std::unordered_map<std::string, OrtValue> initializer_map;
-  int i = 0;
+  size_t i = 0;
+  
   for (auto input : inputs) {
     std::string name = "I" + std::to_string(i);
     auto& arg = graph.GetOrCreateNodeArg(name, &tensor_type);
     input_args.push_back(&arg);
     initializer_map[name] = input;
   }
+  
   for (i = 0; i < outputs.size(); ++i) {
     auto& arg = graph.GetOrCreateNodeArg("O" + std::to_string(i), &tensor_type);
     output_args.push_back(&arg);
