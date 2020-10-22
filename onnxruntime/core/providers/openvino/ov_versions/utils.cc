@@ -94,6 +94,11 @@ std::map<std::string, std::set<std::string>> GetNgSupportedOps(const int onnx_op
     ng_supported_ops.at(kOnnxDomain).erase(disabled_op);
   }
 
+  const auto opset = ng_supported_ops.find(kOnnxDomain);
+  const auto opset_string = opset->second;
+  for (std::set<std::string>::iterator it=opset_string.begin(); it!=opset_string.end(); ++it)
+    std::cout << ' ' << *it;
+  
   return ng_supported_ops;
 }
 

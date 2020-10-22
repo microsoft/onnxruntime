@@ -59,6 +59,30 @@ bool IsDimensionSupported(const Node* node) {
   return true;
 }
 
+bool IsOpInNgSupportedList(std::string name) {
+  std::set<std::string> ng_supported_ops = {
+    "Abs", "Acos", "Acosh", "Add", "And", "ArgMax", "ArgMin", "Asin",
+    "Asinh", "Atanh", "AveragePool", "BatchNormalization",
+    "Cast", "Ceil", "Clip", "Concat", "Constant", "ConstantOfShape", 
+    "Conv", "ConvInteger", "ConvTranspose", "Cos", "Cosh", 
+    "Cumsum", "DepthToSpace", "DequantizeLinear", "Div", "Dropout", 
+    "Elu", "Equal", "Erf", "Exp", "Expand", "EyeLike", "Flatten", "Floor", 
+    "GRU", "Gather", "GatherND", "Gemm", "GlobalAveragePool", "GlobalLpPool", "GlobalMaxPool", "Greater",
+    "HardSigmoid", "Hardmax", "Identity", "InstanceNoramalization", "LRN", "LeakyRelu", "Less",
+    "Log", "LogSoftmax", "LpNormalization", "Matmul", "MatMulInteger", "Max", "MaxPool", "Mean",
+    "MeanVarainceNormalization", "Min", "Mod", "Mul", "Neg", "NonMaxSuppression", "NonZero", "Not",
+    "OneHot", "Or", "PRelu", "Pad", "Pow", "QLinearConv", "QLinearMatMul", "QuantizeLinear", "RNN", 
+    "Range", "Reciprocal", "ReduceL1", "ReduceL2", "ReduceLogSum", "ReduceLogSumExp", "ReduceMax",
+    "ReduceMean", "ReduceMin", "ReduceProd", "ReduceSum", "ReduceSumSquare", "Relu", "Reshape", "Resize",
+    "ReverseSequence", "RoiAlign", "Round", "Scatter", "ScatterElements", "ScatterND", "Selu", "Shape",
+    "Shrink", "Sigmoid", "Sign", "Sin", "Sinh", "Slice", "Softmax", "Softplus", "Softsign", "SpaceToDepth", 
+    "Split", "Sqrt", "Squeeze", "Sub", "Sum", "Tan", "Tanh", "ThresholdRelu", "Tile", "TopK", "Transpose", 
+    "Unsqueeze", "Where", "Xor" 
+  };
+
+  return ng_supported_ops.find(name) != ng_supported_ops.end();
+}  
+
 //Ops which are not supported by OpenVINO EP
 bool IsUnsupportedOp(std::string name, std::string device) {
   std::set<std::string> unsupported_ops_cpu = {
@@ -476,8 +500,7 @@ static bool IsTypeSupported(const NodeArg* node_arg, bool is_initializer, const 
   }
 }
 
-static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& op_map,
-                            const onnxruntime::GraphViewer& graph_viewer,
+static bool IsNodeSupported(const onnxruntime::GraphViewer& graph_viewer,
                             const NodeIndex node_idx, std::string& device_type) {
   const auto& node = graph_viewer.GetNode(node_idx);
   const auto& optype = node->OpType();
@@ -571,23 +594,21 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
     return false;
   }
 
-  //Check 3b
-  const auto opset = op_map.find(domain);
-  if (opset == op_map.end() || opset->second.find(optype) == opset->second.end()) {
-    return false;
-  } else {
+   //Check 3b
+  if (IsOpInNgSupportedList(optype))
     return true;
-  }
+  else
+    return false;
 }
 
 static std::vector<NodeIndex>
 GetUnsupportedNodeIndices(const GraphViewer& graph_viewer, std::string device, /*out*/ std::unordered_set<std::string>& ng_required_initializers) {
-  const auto ng_supported_ops = GetNgSupportedOps(GetOnnxOpSet(graph_viewer));
+  GetNgSupportedOps(GetOnnxOpSet(graph_viewer));
 
   std::vector<NodeIndex> unsupported_nodes_idx;
 
   for (const auto& node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
-    if (IsNodeSupported(ng_supported_ops, graph_viewer, node_idx, device)) {
+    if (IsNodeSupported(graph_viewer, node_idx, device)) {
       // Collect inputs that are initializers
       graph_viewer.GetNode(node_idx)->ForEachDef([&ng_required_initializers, &graph_viewer](const onnxruntime::NodeArg& node_arg, bool is_input) {
               if(is_input && graph_viewer.GetAllInitializedTensors().count(node_arg.Name())) {
