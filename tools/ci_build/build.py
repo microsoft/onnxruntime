@@ -1155,6 +1155,10 @@ def run_training_python_frontend_tests(cwd):
 
     run_subprocess([sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_orttrainer_bert_toy_onnx.py'], cwd=cwd)
 
+    run_subprocess(
+        [sys.executable, 'orttraining_run_glue.py', 'ORTGlueTest.test_bert_with_mrpc', '-v'],
+        cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'})
+
 
 def run_training_python_frontend_e2e_tests(cwd):
     # frontend tests are to be added here:

@@ -112,34 +112,30 @@ class ORTGlueTest(unittest.TestCase):
 
     def test_bert_with_mrpc(self):
         if self.local_rank == -1:
-            expected_acc = 0.8553921568627451
-            expected_f1 = 0.8970331588132635
-            expected_acc_and_f1 = 0.8762126578380043
-            expected_loss = 0.42737212419217707
+            expected_acc = 0.8480392156862745
+            expected_f1 = 0.8923611111111109
+            expected_acc_and_f1 = 0.8702001633986927
+            expected_loss = 0.4089253710619375
         elif self.local_rank == 0:
             expected_acc = 0.8308823529411765
             expected_f1 = 0.881646655231561
             expected_acc_and_f1 = 0.8562645040863688
             expected_loss = 0.42491564023144107
 
-        if self.local_rank == -1:
-            # not parallel case, we can run both new and old api tests
-            results_per_api = dict()
-            for use_new_api in [True, False]:
-                results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=False, use_new_api=use_new_api)
-                results_per_api[use_new_api] = results
-
-            verify_old_and_new_api_are_equal(results_per_api)
-        else:
-            # with parallel training, TrainingArguments can only be created once (due to its cached _setup_devices)
-            # thus we can only choose one test case to run.
-            results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=False, use_new_api=True)
+        results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=False, use_new_api=True)
 
         if self.local_rank in [-1, 0]:
-            assert_allclose(results['acc'], expected_acc, rtol=self.rtol)
-            assert_allclose(results['f1'], expected_f1, rtol=self.rtol)
-            assert_allclose(results['acc_and_f1'], expected_acc_and_f1, rtol=self.rtol)
-            assert_allclose(results['loss'], expected_loss, rtol=self.rtol)
+            # NOTE: in case this test has failed, please investigate if there is any change in the PR
+            # that may cause a numerical difference. Please confirm that the difference is expected.
+            # Then update above expected values to make the test pass again.
+            #
+            # we use these tolerances to ensure exact match.
+            # note that atol is under precision limit of expected values.
+            rtol, atol = 0, 1e-19
+            assert_allclose(results['acc'], expected_acc, rtol=rtol, atol=atol)
+            assert_allclose(results['f1'], expected_f1, rtol=rtol, atol=atol)
+            assert_allclose(results['acc_and_f1'], expected_acc_and_f1, rtol=rtol, atol=atol)
+            assert_allclose(results['loss'], expected_loss, rtol=rtol, atol=atol)
 
     def test_bert_fp16_with_mrpc(self):
         expected_acc = 0.8529411764705882
