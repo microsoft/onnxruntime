@@ -3,6 +3,7 @@
 
 #include "core/providers/cpu/tensor/transpose.h"
 #include "core/framework/utils.h"
+#include "utils.h"
 namespace onnxruntime {
 
 /* A permutation [a,b,c,...] indicates that 
@@ -560,6 +561,20 @@ static bool IsMovingSingleAxis(const std::vector<size_t>& permutations, size_t& 
   return single_axis_moved;
 }
 
+bool IsReshape(const std::vector<size_t>& perm, const std::vector<int64_t>& input_dims) {
+  // A transposition only moving single dimension is equivalent to a reshape.
+  // Example: Shape=(1,1,1024,4096) -> perm=(2,0,3,1).
+  size_t last_permuted_axis = 0;
+  for (size_t i = 0; i < perm.size(); ++i) {
+    if (input_dims[perm[i]] == 1)
+      continue;
+    if (perm[i] < last_permuted_axis)
+      return false;
+    last_permuted_axis = perm[i];
+  }
+  return true;
+}
+
 //`input_shape_override` overrides the shape of `input` for compute purposes.
 Status TransposeBase::DoTranspose(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
                                   const TensorShape* input_shape_override) {
@@ -572,6 +587,14 @@ Status TransposeBase::DoTranspose(const std::vector<size_t>& permutations, const
     status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Mismatched data types between input and output Tensors. ",
                              input_type, " != ", output_type);
   } else {
+    TensorShape shape = input_shape_override ? *input_shape_override : input.Shape();
+    if (IsReshape(permutations, shape.GetDims())) {
+      // A transposition only moving single dimension is equivalent to a reshape.
+      // Example: Shape=(1,1,1024,4096) -> perm=(2,0,3,1).
+      CopyCpuTensor(&input, &output);
+      return Status::OK();
+    }
+
     size_t from = 0, to = 0;
     bool moving_single_axis = IsMovingSingleAxis(permutations, from, to);
 
@@ -606,6 +629,13 @@ Status Transpose::Compute(OpKernelContext* ctx) const {
 
   if (output_shape.Size() == 0)
     return Status::OK();
+
+  if (IsReshape(*p_perm, input_dims)) {
+    // A transposition only moving single dimension is equivalent to a reshape.
+    // Example: Shape=(1,1,1024,4096) -> perm=(2,0,3,1).
+    CopyCpuTensor(&X, &Y);
+    return Status::OK();
+  }
 
   size_t from = 0, to = 0;
   bool moving_single_axis = IsMovingSingleAxis(*p_perm, from, to);
