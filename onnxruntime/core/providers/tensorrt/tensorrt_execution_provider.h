@@ -81,6 +81,7 @@ struct TensorrtFuncState {
   bool engine_cache_enable;
   std::string engine_cache_path;
   nvinfer1::IRuntime* runtime = nullptr;
+  std::string unique_prefix_hashed_filename;
 };
 
 // Logical device representation.
@@ -123,6 +124,8 @@ class TensorrtExecutionProvider : public Provider_IExecutionProvider {
   std::unordered_map<std::string, std::vector<std::unordered_map<std::string, int>>> input_info_;
   std::unordered_map<std::string, std::vector<std::unordered_map<std::string, int>>> output_info_;
   std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>>> input_shape_ranges_;
+  std::map<std::string, std::string> metadata_map_; // runtime-lib/meta -> version
+  std::unordered_map<std::string, int> subgraph_node_num_map; // subgraph -> number of nodes in subgraph
 
   /**Get IndexedSubGraph based on node list of the subgraph*/
   std::unique_ptr<Provider_IndexedSubGraph> GetSubGraph(SubGraph_t graph_nodes_index, int& kernels_index,
@@ -139,6 +142,9 @@ class TensorrtExecutionProvider : public Provider_IExecutionProvider {
                                         const onnxruntime::Provider_GraphViewer& graph, bool* early_termination) const;
 
   void RemoveTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const onnxruntime::Provider_GraphViewer& graph) const;
+
+  void GetSubraphInfoAsMeta(std::unique_ptr<Provider_GraphViewer> graph, std::string subgraph_name);
+  std::string GetUniquePathAndHash(const std::string& name) const;
 
   Provider_AllocatorPtr allocator_;
 };

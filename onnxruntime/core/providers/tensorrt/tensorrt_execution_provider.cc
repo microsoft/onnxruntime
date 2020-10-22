@@ -21,6 +21,11 @@
 #include <limits>
 #include <map>
 #include <memory>
+#include <sys/types.h> 
+#include <sys/stat.h>
+#ifdef _WIN32
+#include <direct.h>
+#endif
 
 #define CUDA_RETURN_IF_ERROR(expr)               \
   ORT_RETURN_IF_ERROR(CUDA_CALL(expr)            \
@@ -52,6 +57,25 @@ std::string GetVecHash(const ::std::vector<int>& vec) {
     ret ^= i + 0x9e3779b9 + (ret << 6) + (ret >> 2);
   }
   return std::to_string(ret);
+}
+
+inline bool FileExists(const std::string& name) {
+  struct stat buffer;
+  return (stat(name.c_str(), &buffer) == 0);
+}
+
+int CreateMetaDirectory(const std::string path) {
+#ifdef _WIN32
+  return mkdir(path.c_str());
+
+#else
+  int status = mkdir(path.c_str(), 0777);
+  if (status != -1) {
+    return 0;
+  }
+  return 1;
+#endif
+  return -1;
 }
 }  // namespace
 
@@ -139,6 +163,97 @@ ONNX_OPERATOR_KERNEL_EX(
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1, MemcpyFromHost);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1, MemcpyToHost);
 
+
+void TensorrtExecutionProvider::GetSubraphInfoAsMeta(std::unique_ptr<Provider_GraphViewer> graph, std::string subgraph_name) {
+  const auto& map = graph->DomainToVersionMap();
+  if (map.find("") != map.end() && metadata_map_.find("opset") == metadata_map_.end()) {
+    metadata_map_["opset"] = std::to_string(map.find("")->second);
+  }
+
+  int num_nodes = graph->NumberOfNodes();
+  if (subgraph_node_num_map.find(subgraph_name) == subgraph_node_num_map.end()) {
+    subgraph_node_num_map[subgraph_name] = num_nodes;
+  }
+}
+
+/*
+* Generate unique filename with layout of "ort_version/opset_version/cuda_version/trt_version/subgraph_name/hash_value"
+* 
+* e.g. onnxruntime_1.5.2/opset_10/cuda_11000/tensorrt_7103/TensorrtExecutionProvider_TRTKernel_graph_model_1_0_0/11015672930019568690
+* 
+* Note that the hash_value is hashed from versions of onnxruntime, opset, cuda, tensorrt and number of nodes in subgraph.
+*/
+std::string TensorrtExecutionProvider::GetUniquePathAndHash(const std::string& subgraph_name) const {
+  
+  std::size_t value = metadata_map_.size();
+  for (auto i = metadata_map_.begin(); i != metadata_map_.end(); i++) {
+    for (char const &c: i->second) {
+      value ^= (std::size_t)c + 0x9e3779b9 + (value << 6) + (value >> 2);
+    }
+  }
+
+  auto iterator1 = subgraph_node_num_map.find(subgraph_name);
+  if (iterator1 != subgraph_node_num_map.end()) {
+    value ^= iterator1->second + 0x9e3779b9 + (value << 6) + (value >> 2);
+  }
+
+  fs::path path = "";
+  if (!engine_cache_path_.empty()) {
+    path = engine_cache_path_;
+  }
+
+  auto iterator2 = metadata_map_.find("onnxruntime");
+  if (iterator2 != metadata_map_.end()) {
+    path.append("onnxruntime_" + iterator2->second);
+    if (!FileExists(path.string())) {
+      if (CreateMetaDirectory(path.string()) != 0) {
+        path = path.parent_path();
+      }
+    }
+  }
+
+  iterator2 = metadata_map_.find("opset");
+  if (iterator2 != metadata_map_.end()) {
+    path.append("opset_" + iterator2->second);
+    if (!FileExists(path.string())) {
+      if (CreateMetaDirectory(path.string()) != 0) {
+        path = path.parent_path();
+      }
+    }
+  }
+
+  iterator2 = metadata_map_.find("cuda");
+  if (iterator2 != metadata_map_.end()) {
+    path.append("cuda_" + iterator2->second);
+    if (!FileExists(path.string())) {
+      if (CreateMetaDirectory(path.string()) != 0) {
+        path = path.parent_path();
+      }
+    }
+  }
+
+  iterator2 = metadata_map_.find("tensorrt");
+  if (iterator2 != metadata_map_.end()) {
+    path.append("tensorrt_" + iterator2->second);
+    if (!FileExists(path.string())) {
+      if (CreateMetaDirectory(path.string()) != 0) {
+        path = path.parent_path();
+      }
+    }
+  }
+  path.append(subgraph_name);
+  if (!FileExists(path.string())) {
+    if (CreateMetaDirectory(path.string()) != 0) {
+      path = path.parent_path();
+    }
+  }
+
+  path.append(std::to_string(value));
+
+  return path.string();
+}
+
+
 static Status RegisterTensorrtKernels(Provider_KernelRegistry& kernel_registry) {
   static const Provider_BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,
@@ -223,6 +338,11 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     }
     runtime_ = nvinfer1::createInferRuntime(GetTensorrtLogger());
   }
+
+  metadata_map_["onnxruntime"] = ORT_VERSION;
+  metadata_map_["tensorrt"] = std::to_string(NV_TENSORRT_VERSION);
+  metadata_map_["cuda"] = std::to_string(CUDA_VERSION);
+
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {}
@@ -794,13 +914,21 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] FP16 mode is enabled.";
     }
 
+    std::string unique_prefix_hashed_filename = "";
+
+    // collect subgraph info as TRT metadata for hash
+    if (engine_cache_enable_) {
+      GetSubraphInfoAsMeta(graph_body.CreateGraphViewer(), fused_node->Name());
+      unique_prefix_hashed_filename = GetUniquePathAndHash(fused_node->Name());
+    }
+
     // Build TRT engine here if the graph doesn't have dynamic shape input. Otherwise engine will
     // be built at runtime
     tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine> trt_engine;
     tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext> trt_context;
     if (!has_dynamic_shape) {
-      std::string trt_node_name_with_precision_shape = trt_node_name_with_precision + "_" + GetVecHash(input_shapes);
-      std::string cached_path = GetEnginePath(engine_cache_path_, trt_node_name_with_precision_shape);
+      //std::string trt_node_name_with_precision_shape = trt_node_name_with_precision + "_" + GetVecHash(input_shapes);
+      std::string cached_path = GetEnginePath(engine_cache_path_, unique_prefix_hashed_filename);
       std::ifstream plan_file(cached_path, std::ios::binary | std::ios::in);
       if (plan_file && engine_cache_enable_) {
         plan_file.seekg(0, std::ios::end);
@@ -864,6 +992,9 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
     output_info_[fused_node->Name()].push_back(output_types);
     input_shape_ranges_[fused_node->Name()] = input_shape_ranges;
 
+ 
+    
+
     // Create function state
     // TODO: remove default capture
     NodeComputeInfo compute_info;
@@ -873,7 +1004,8 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
             &engines_[context->node_name], &contexts_[context->node_name], builders_[context->node_name].get(),
             networks_[context->node_name].get(), input_info_[context->node_name], output_info_[context->node_name],
             input_shape_ranges_[context->node_name], &tensorrt_mu_, &fp16_enable_,
-            &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, engine_cache_path_, runtime_};
+            &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, engine_cache_path_, runtime_,
+            unique_prefix_hashed_filename};
       *state = p.release();
       return 0;
     };
@@ -1046,8 +1178,8 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
       // Regenerate engine
       // Only one profile is generated, so no need to explicitly set optimization profile
       if (engine_update) {
-        std::string trt_node_name_with_precision_shape = trt_state->trt_node_name_with_precision + "_" + GetVecHash(input_shapes);
-        std::string cached_path = GetEnginePath(trt_state->engine_cache_path, trt_node_name_with_precision_shape);
+        //std::string trt_node_name_with_precision_shape = trt_state->trt_node_name_with_precision + "_" + GetVecHash(input_shapes);
+        std::string cached_path = GetEnginePath(trt_state->engine_cache_path, trt_state->unique_prefix_hashed_filename);
         std::ifstream plan_file(cached_path, std::ios::binary | std::ios::in);
         trt_state->context->reset();
         trt_state->engine->reset();
