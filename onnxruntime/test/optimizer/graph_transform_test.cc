@@ -681,6 +681,23 @@ TEST_F(GraphTransformationTests, MatMulAddFusion_NotBroadcastable) {
   ASSERT_TRUE(op_to_count["Gemm"] == 0);
 }
 
+TEST_F(GraphTransformationTests, MatMulAddFusion_MissingShape) {
+  auto model_uri = MODEL_FOLDER "matmul_add_fusion/matmul_add_missing_shape.onnx";
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<MatMulAddFusion>(), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["MatMul"], 1);
+  ASSERT_EQ(op_to_count["Add"], 1);
+  ASSERT_EQ(op_to_count["Gemm"], 0);
+}
+
 #ifndef DISABLE_CONTRIB_OPS
 TEST_F(GraphTransformationTests, Gemm_Relu_three_input) {
   auto model_uri = MODEL_FOLDER "matmul_add_fusion/3Input/gemm_relu.onnx";
@@ -1815,6 +1832,63 @@ TEST_F(GraphTransformationTests, AttentionFusionFloat32Test) {
   EXPECT_EQ(op_to_count["com.microsoft.Attention"], 1);
 
   ValidateAttention(graph);
+}
+
+// Test GPT-2 Attention Fusion with past and unidirectional mask
+TEST_F(GraphTransformationTests, AttentionFusionWithPastAndUnidirMaskTest) {
+  auto model_uri = MODEL_FOLDER "fusion/attention_past_unidir.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<AttentionFusion>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_);
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["Transpose"], 0);
+  EXPECT_EQ(op_to_count["Softmax"], 0);
+  EXPECT_EQ(op_to_count["com.microsoft.Attention"], 1);
+
+
+  GraphViewer graph_viewer(graph);
+  const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
+
+  for (auto node_index : node_topology_list) {
+    Node* p_node = graph.GetNode(node_index);
+    if (p_node->OpType().compare("Attention") == 0) {
+      EXPECT_EQ(p_node->GetAttributes().at("unidirectional").i(), 1);
+    }
+  }
+}
+
+// Test Attention Fusion with past but no unidirectional mask
+TEST_F(GraphTransformationTests, AttentionFusionWithPastAndNoUnidirMaskTest) {
+  auto model_uri = MODEL_FOLDER "fusion/attention_past_no_unidir.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<AttentionFusion>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_);
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["Transpose"], 0);
+  EXPECT_EQ(op_to_count["Softmax"], 0);
+  EXPECT_EQ(op_to_count["com.microsoft.Attention"], 1);
+
+  GraphViewer graph_viewer(graph);
+  const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
+
+  for (auto node_index : node_topology_list) {
+    Node* p_node = graph.GetNode(node_index);
+    if (p_node->OpType().compare("Attention") == 0) {
+      EXPECT_EQ(p_node->GetAttributes().at("unidirectional").i(), 0);
+    }
+  }
 }
 
 // Test GPT-2 Attention Fusion with float32 mask

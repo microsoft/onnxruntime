@@ -5,6 +5,9 @@
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/common.h"
+#ifdef ENABLE_TRAINING
+#include "orttraining/training_ops/cpu/tensor/gather_elements_grad_impl.h"
+#endif
 
 namespace onnxruntime {
 
@@ -50,8 +53,15 @@ ONNX_CPU_OPERATOR_KERNEL(
         .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
     Scatter);
 
-template <class Tin, class Tdata>
-Status CopyScatterData(const Tensor* data_input, const Tensor* indices_input, const Tensor* updates_input,
+template <class T>
+struct Func_Assignment {
+  void operator()(T* a, const T* b) const {
+    *a = *b;
+  }
+};
+
+template <class Tin, class Tdata, typename FuncT>
+Status CopyScatterData(const FuncT& func, const Tensor* data_input, const Tensor* indices_input, const Tensor* updates_input,
                        const int64_t axis, Tensor* data_output) {
   const TensorShape& input_data_shape = data_input->Shape();
   const Tin* indices_data_raw = indices_input->template Data<Tin>();
@@ -157,7 +167,7 @@ Status CopyScatterData(const Tensor* data_input, const Tensor* indices_input, co
       }
     }
 
-    dst_base[dst_offset] = update_data[index];
+    func(dst_base + dst_offset, update_data + index);
 
     if (++index == num_indices) {
       break;
@@ -181,12 +191,12 @@ Status CopyScatterData(const Tensor* data_input, const Tensor* indices_input, co
 
 template <class T, class... Args>
 inline Status CopyInt32Index(Args&&... args) {
-  return CopyScatterData<int32_t, T>(std::forward<Args>(args)...);
+  return CopyScatterData<int32_t, T>(Func_Assignment<T>(), std::forward<Args>(args)...);
 }
 
 template <class T, class... Args>
 inline Status CopyInt64Index(Args&&... args) {
-  return CopyScatterData<int64_t, T>(std::forward<Args>(args)...);
+  return CopyScatterData<int64_t, T>(Func_Assignment<T>(), std::forward<Args>(args)...);
 }
 
 Status Scatter::Compute(OpKernelContext* context) const {
@@ -244,5 +254,40 @@ Status Scatter::Compute(OpKernelContext* context) const {
   }
   return status;
 }
+
+#ifdef ENABLE_TRAINING
+
+namespace contrib {
+
+template <class T>
+struct Func_Add {
+  void operator()(T* a, const T* b) const {
+    *a = *a + *b;
+  }
+};
+
+template <class Tin, class Tdata>
+Status GatherElementsGradImpl(const Tensor* indices_input, const Tensor* updates_input,
+                              const int64_t axis, Tensor* data_output) {
+  return CopyScatterData<Tin, Tdata>(Func_Add<Tdata>(), data_output, indices_input, updates_input, axis, data_output);
+}
+
+#define GATHER_ELEMENTS_GRAD_IMPL_SPECIALIZED(Tin, Tdata)         \
+  template Status GatherElementsGradImpl<Tin, Tdata>(             \
+      const Tensor* indices_input,                                \
+      const Tensor* updates_input,                                \
+      const int64_t axis,                                         \
+      Tensor* data_output)
+
+#define GATHER_ELEMENTS_GRAD_IMPL_TDATA_SPECIALIZED(Tdata)  \
+  GATHER_ELEMENTS_GRAD_IMPL_SPECIALIZED(int32_t, Tdata);    \
+  GATHER_ELEMENTS_GRAD_IMPL_SPECIALIZED(int64_t, Tdata);
+
+GATHER_ELEMENTS_GRAD_IMPL_TDATA_SPECIALIZED(float)
+GATHER_ELEMENTS_GRAD_IMPL_TDATA_SPECIALIZED(double)
+
+}  // namespace contrib
+
+#endif
 
 }  // namespace onnxruntime

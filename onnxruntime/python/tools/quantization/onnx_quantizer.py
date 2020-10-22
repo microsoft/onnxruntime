@@ -641,26 +641,27 @@ class ONNXQuantizer:
             parameter last_output: output of previous node (input to bias add)
             return: the name of output
         '''
-        # Add an Add operation for bias
-        # Add reshape for correct broadcase
-        reshape_input = [quantized_bias_name]
-
         # Add tensors for the shape to be reshaped to
         weight = find_by_name(node.input[1], self.model.initializer())
         if weight is None:
             raise ValueError("Expected {} to be an initializer".format(node.input[1]))
 
+        # Add reshape for correct broadcase
+        reshape_input_data = quantized_bias_name
+        reshape_input_shape = quantized_bias_name + "_reshape_shape"
+        reshape_input = [reshape_input_data, reshape_input_shape]
+
         reshape_shape = np.ones((len(weight.dims)), dtype=np.int64)
         reshape_shape[1] = -1
-        init_shape = onnx.helper.make_tensor("reshape_shape", onnx_proto.TensorProto.INT64, [len(weight.dims)], reshape_shape)
+        init_shape = onnx.helper.make_tensor(reshape_input_shape, onnx_proto.TensorProto.INT64, [len(weight.dims)], reshape_shape)
         self.model.add_initializer(init_shape)
 
-        reshape_input.append('reshape_shape')
         reshape_op_output = node.output[0] + "_reshape"
         reshape_node = onnx.helper.make_node("Reshape", reshape_input, [reshape_op_output],
                                              quantized_bias_name + "reshape")
         nodes.append(reshape_node)
 
+        # Add an Add operation for bias
         bias_add_input = [last_output]
         bias_add_input.append(reshape_op_output)
         add_node_output = node.output[0] + "_bias_add"
