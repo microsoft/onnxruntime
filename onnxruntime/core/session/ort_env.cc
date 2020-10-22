@@ -40,7 +40,10 @@ OrtEnv::OrtEnv(std::unique_ptr<onnxruntime::Environment> value1)
 }
 
 OrtEnv::~OrtEnv() {
+// We don't support any shared providers in the minimal build yet
+#if !defined(ORT_MINIMAL_BUILD)
   UnloadSharedProviders();
+#endif
 }
 
 OrtEnv* OrtEnv::GetInstance(const OrtEnv::LoggingManagerConstructionInfo& lm_info,
