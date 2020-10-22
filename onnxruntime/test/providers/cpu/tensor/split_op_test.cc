@@ -459,6 +459,7 @@ TEST(SplitOperatorTest, InvalidValueInSplitAttribute) {
   RunTest<float>(axis, splits, input, outputs, false, true, false,true, "in 'split' attribute");  //TensorRT parser: Assertion failed: axis != BATCH_DIM
 }
 
+// split as input
 TEST(SplitOperatorTest, Axis0UnequalSplitInputFloat) {
   const int64_t axis = 0;
   std::vector<ShapeAndFloatData> outputs;
@@ -482,6 +483,7 @@ TEST(SplitOperatorTest, Axis0UnequalSplitInputFloat) {
   RunTest<float>(axis, splits, input, outputs, false, false, true);
 }
 
+// split as input
 TEST(SplitOperatorTest, Axis0UnequalSplitInputFloat_not_initializer) {
   const int64_t axis = 0;
   std::vector<ShapeAndFloatData> outputs;
@@ -503,15 +505,6 @@ TEST(SplitOperatorTest, Axis0UnequalSplitInputFloat_not_initializer) {
                       7.f, 8.f}});
 
   RunTest<float>(axis, splits, input, outputs, false, false, true, false);
-
-  // outputs.push_back({{2, 2},
-  //                    {1.f, 2.f,
-  //                     3.f, 4.f}});
-
-  // outputs.push_back({{2, 2},
-  //                    {5.f, 6.f,
-  //                     7.f, 8.f}});
-  // RunTest<float>(axis, {}, input, outputs, false, false, true, false);
 }
 
 /*
