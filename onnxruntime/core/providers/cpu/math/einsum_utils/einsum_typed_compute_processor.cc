@@ -171,8 +171,12 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
   left_permutation.insert(left_permutation.end(), lo.begin(), lo.end());
   left_permutation.insert(left_permutation.end(), reduce_dims.begin(), reduce_dims.end());
   left_permutation.insert(left_permutation.end(), ro.begin(), ro.end());
-  if (EinsumOp::IsTransposeRequired(current_left ? current_left->Shape().GetDims().size() : left_dims.size(),
-                                    left_permutation)) {
+  if (EinsumOp::IsReshapeRequired(current_left ? current_left->Shape().GetDims() : left_dims, left_permutation)) {
+    current_left = EinsumOp::Reshape(current_left ? *current_left : left,
+                                     current_left ? current_left->Shape().GetDims() : left_dims,
+                                     left_permutation, allocator_);
+  } else if (EinsumOp::IsTransposeRequired(current_left ? current_left->Shape().GetDims().size() : left_dims.size(),
+                                           left_permutation)) {
     current_left = EinsumOp::Transpose(current_left ? *current_left : left,
                                        current_left ? current_left->Shape().GetDims() : left_dims,
                                        left_permutation, allocator_, einsum_ep_assets_,
@@ -186,8 +190,12 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
   right_permutation.insert(right_permutation.end(), reduce_dims.begin(), reduce_dims.end());
   right_permutation.insert(right_permutation.end(), ro.begin(), ro.end());
   right_permutation.insert(right_permutation.end(), lo.begin(), lo.end());
-  if (EinsumOp::IsTransposeRequired(current_right ? current_right->Shape().GetDims().size() : right_dims.size(),
-                                    right_permutation)) {
+  if (EinsumOp::IsReshapeRequired(current_right ? current_right->Shape().GetDims() : right_dims, right_permutation)) {
+    current_right = EinsumOp::Reshape(current_right ? *current_right : right,
+                                      current_right ? current_right->Shape().GetDims() : right_dims,
+                                      right_permutation, allocator_);
+  } else if (EinsumOp::IsTransposeRequired(current_right ? current_right->Shape().GetDims().size() : right_dims.size(),
+                                           right_permutation)) {
     current_right = EinsumOp::Transpose(current_right ? *current_right : right,
                                         current_right ? current_right->Shape().GetDims() : right_dims,
                                         right_permutation, allocator_, einsum_ep_assets_,

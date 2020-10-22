@@ -82,8 +82,16 @@ std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim
 
 }  // namespace DeviceHelpers
 
+// This helps decide if we need to reshape a tensor.
+bool IsReshapeRequired(const std::vector<int64_t>& input_dims, const std::vector<size_t>& permutation);
+
 // This helps decide if we need to apply (and pay the cost) of a Transpose
 bool IsTransposeRequired(size_t input_rank, const std::vector<size_t>& permutation);
+
+// Reshape rather transpose. IsReshapeRequired determines whether or not it is possible.
+// The function creates a new tensor with a different shape but reuses the buffer coming from the input.
+std::unique_ptr<Tensor> Reshape(const Tensor& input, const std::vector<int64_t>& input_shape_override,
+                                const std::vector<size_t>& permutation, AllocatorPtr allocator);
 
 // Thin wrapper over the Transpose op to be called from Einsum that does some checks and invokes the device specific helper
 std::unique_ptr<Tensor> Transpose(const Tensor& input, const std::vector<int64_t>& input_shape_override,

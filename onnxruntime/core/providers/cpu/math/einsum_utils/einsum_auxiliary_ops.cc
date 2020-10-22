@@ -251,6 +251,28 @@ std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim
 
 }  // namespace DeviceHelpers
 
+// This helps decide if we need to reshape instead of transposing.
+bool IsReshapeRequired(const std::vector<int64_t>& input_dims, const std::vector<size_t>& permutation) {
+  ORT_ENFORCE(input_dims.size() == permutation.size(), "The rank of the input must match permutation size for Transpose/Reshape.");
+
+  // No transpose required for scalars
+  if (input_dims.size() == 0) {
+    return false;
+  }
+
+  // A transposition only moving single dimension is equivalent to a reshape.
+  // Example: Shape=(1,1,1024,4096) -> perm=(2,0,3,1).
+  size_t last_permuted_axis = 0;
+  for (size_t i = 0; i < permutation.size(); ++i) {
+    if (input_dims[permutation[i]] == 1)
+      continue;
+    if (permutation[i] < last_permuted_axis)
+      return false;
+    last_permuted_axis = permutation[i];
+  }
+  return true;
+}
+
 // This helps decide if we need to apply (and pay the cost) of a Transpose
 bool IsTransposeRequired(size_t input_rank, const std::vector<size_t>& permutation) {
   ORT_ENFORCE(input_rank == permutation.size(), "The rank of the input must match permutation size for Transpose");
@@ -270,6 +292,27 @@ bool IsTransposeRequired(size_t input_rank, const std::vector<size_t>& permutati
   }
 
   return transpose_required;
+}
+
+// Reshape rather transpose. IsReshapeRequired determines whether or not it is possible.
+// The function creates a new tensor with a different shape but reuses the buffer coming from the input.
+std::unique_ptr<Tensor> Reshape(const Tensor& input, const std::vector<int64_t>& input_shape_override,
+                                const std::vector<size_t>& permutation, AllocatorPtr allocator) {
+  auto input_rank = input_shape_override.size();
+  ORT_ENFORCE(input_rank == permutation.size(), "Length of permutation must match the rank of the input to be permutated");
+
+  std::vector<int64_t> output_dims;
+  output_dims.reserve(input_rank);
+
+  for (const auto& dim : permutation) {
+    output_dims.push_back(input_shape_override[dim]);
+  }
+
+  // Pass in allocator as that will be used as an allocator deleter by the framework
+  // and it will de-allocate the memory for this intermediate tensor when it goes out of scope
+  std::unique_ptr<Tensor> output = onnxruntime::make_unique<Tensor>(input.DataType(), output_dims, (void*)input.DataRaw(), input.Location());
+
+  return output;
 }
 
 // The following are thin wrappers over device specific helpers
