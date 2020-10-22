@@ -113,12 +113,12 @@ Status Transpose::DoTranspose(const Transpose& kernel,
   //   output_strides[i] = fast_divmod(gsl::narrow_cast<int>(original_output_strides[i]));
   // }
 
-  HipAsyncBuffer<int64_t> input_strides(&kernel, rank);
+  RocmAsyncBuffer<int64_t> input_strides(&kernel, rank);
   for (auto i = 0; i < rank; i++) {
     input_strides.CpuPtr()[i] = original_input_strides[permutations[i]];
   }
 
-  HipAsyncBuffer<fast_divmod> output_strides(&kernel, rank);
+  RocmAsyncBuffer<fast_divmod> output_strides(&kernel, rank);
   ORT_ENFORCE(CalculateFdmStrides(output_strides.CpuSpan(), output_dims));
 
   // TODO: use output shape in reverse order for uint24 math

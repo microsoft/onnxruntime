@@ -8,10 +8,10 @@
 namespace onnxruntime {
 class GPUDataTransfer;
 
-class HIPFence : public IFence {
+class ROCMFence : public IFence {
  public:
-  HIPFence(const GPUDataTransfer* data_transfer);
-  virtual ~HIPFence();
+  ROCMFence(const GPUDataTransfer* data_transfer);
+  virtual ~ROCMFence();
   virtual void BeforeUsingAsInput(onnxruntime::ProviderType provider_type, int queue_id) override;
   virtual void BeforeUsingAsOutput(onnxruntime::ProviderType provider_type, int queue_id) override;
   virtual void AfterUsedAsInput(int queue_id) override;

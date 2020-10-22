@@ -7,9 +7,9 @@
 
 namespace onnxruntime {
 
-class HIPAllocator : public IAllocator {
+class ROCMAllocator : public IAllocator {
  public:
-  HIPAllocator(OrtDevice::DeviceId device_id, const char* name)
+  ROCMAllocator(OrtDevice::DeviceId device_id, const char* name)
       : IAllocator(
             OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
                           OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, device_id),

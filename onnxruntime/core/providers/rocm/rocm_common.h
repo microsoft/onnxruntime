@@ -107,23 +107,23 @@ class RocmKernel : public OpKernel {
   // To support hipMemcpyAsync, the cpu memory should be allocated in pinned memory
   // and it can only be released after the copy has finished
   template <typename T>
-  class HipAsyncBuffer {
+  class RocmAsyncBuffer {
    public:
-    HipAsyncBuffer(const RocmKernel* op_kernel) : gpu_copy_(nullptr), count_(0), op_kernel_(op_kernel) {}
+    RocmAsyncBuffer(const RocmKernel* op_kernel) : gpu_copy_(nullptr), count_(0), op_kernel_(op_kernel) {}
 
-    HipAsyncBuffer(const RocmKernel* op_kernel, size_t count) : HipAsyncBuffer(op_kernel) {
+    RocmAsyncBuffer(const RocmKernel* op_kernel, size_t count) : RocmAsyncBuffer(op_kernel) {
       AllocCpuPtr(count);
     }
 
-    HipAsyncBuffer(const RocmKernel* op_kernel, const T& value, size_t count)
-        : HipAsyncBuffer(op_kernel, count) {
+    RocmAsyncBuffer(const RocmKernel* op_kernel, const T& value, size_t count)
+        : RocmAsyncBuffer(op_kernel, count) {
       T* p = CpuPtr();
       for (size_t i = 0; i != count; ++i) {
         *p++ = value;
       }
     }
 
-    HipAsyncBuffer(const RocmKernel* op_kernel, const std::vector<T>& vec) : HipAsyncBuffer(op_kernel, vec.size()) {
+    RocmAsyncBuffer(const RocmKernel* op_kernel, const std::vector<T>& vec) : RocmAsyncBuffer(op_kernel, vec.size()) {
       memcpy(CpuPtr(), vec.data(), vec.size() * sizeof(T));
     }
 

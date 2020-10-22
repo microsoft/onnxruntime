@@ -16,7 +16,7 @@ static const GPUDataTransfer* GetGPUDataTransfer(const SessionState* session_sta
   return static_cast<const GPUDataTransfer*>(session_state->GetDataTransferMgr().GetDataTransfer(gpu_device, cpu_device));
 }
 
-void HIPAllocator::CheckDevice(bool throw_when_fail) const {
+void ROCMAllocator::CheckDevice(bool throw_when_fail) const {
 #ifndef NDEBUG
   // check device to match at debug build
   // if it's expected to change, call hipSetDevice instead of the check
@@ -32,7 +32,7 @@ void HIPAllocator::CheckDevice(bool throw_when_fail) const {
 #endif
 }
 
-void* HIPAllocator::Alloc(size_t size) {
+void* ROCMAllocator::Alloc(size_t size) {
   CheckDevice(true);
   void* p = nullptr;
   if (size > 0) {
@@ -42,13 +42,13 @@ void* HIPAllocator::Alloc(size_t size) {
   return p;
 }
 
-void HIPAllocator::Free(void* p) {
+void ROCMAllocator::Free(void* p) {
   CheckDevice(false);  // ignore HIP failure when free
   hipFree(p);         // do not throw error since it's OK for hipFree to fail during shutdown
 }
 
-FencePtr HIPAllocator::CreateFence(const SessionState* session_state) {
-  return std::make_shared<HIPFence>(GetGPUDataTransfer(session_state));
+FencePtr ROCMAllocator::CreateFence(const SessionState* session_state) {
+  return std::make_shared<ROCMFence>(GetGPUDataTransfer(session_state));
 }
 
 void* HIPPinnedAllocator::Alloc(size_t size) {
@@ -64,7 +64,7 @@ void HIPPinnedAllocator::Free(void* p) {
 }
 
 FencePtr HIPPinnedAllocator::CreateFence(const SessionState* session_state) {
-  return std::make_shared<HIPFence>(GetGPUDataTransfer(session_state));
+  return std::make_shared<ROCMFence>(GetGPUDataTransfer(session_state));
 }
 
 }  // namespace onnxruntime

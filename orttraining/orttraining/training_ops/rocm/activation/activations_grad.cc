@@ -24,7 +24,7 @@ namespace rocm {
   Status x<T>::ComputeInternal(OpKernelContext* context) const {                                                 \
     BinaryElementwisePreparation prepare(this);                                                                  \
     Prepare(context, &prepare);                                                                                  \
-    HipAsyncBuffer<Ctx##x> func_ctx(this, MakeFuncCtx(), 1);                                                    \
+    RocmAsyncBuffer<Ctx##x> func_ctx(this, MakeFuncCtx(), 1);                                                    \
     if (!std::is_same<CtxNull, Ctx##x>::value) ORT_RETURN_IF_ERROR(func_ctx.CopyToGpu());                        \
     Impl_##x<typename ToHipType<T>::MappedType>(                                                                \
         reinterpret_cast<const typename ToHipType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),     \

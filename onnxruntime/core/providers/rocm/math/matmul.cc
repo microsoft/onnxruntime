@@ -190,9 +190,9 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
-  HipAsyncBuffer<const HipT*> left_arrays(this, helper.LeftOffsets().size());
-  HipAsyncBuffer<const HipT*> right_arrays(this, helper.RightOffsets().size());
-  HipAsyncBuffer<HipT*> output_arrays(this, helper.OutputOffsets().size());
+  RocmAsyncBuffer<const HipT*> left_arrays(this, helper.LeftOffsets().size());
+  RocmAsyncBuffer<const HipT*> right_arrays(this, helper.RightOffsets().size());
+  RocmAsyncBuffer<HipT*> output_arrays(this, helper.OutputOffsets().size());
   MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const HipT*>(left_X->template Data<T>()), helper.LeftOffsets(), left_arrays.CpuSpan());
   MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const HipT*>(right_X->template Data<T>()), helper.RightOffsets(), right_arrays.CpuSpan());
   MatMulComputeHelper::OffsetToArrays(reinterpret_cast<HipT*>(Y->template MutableData<T>()), helper.OutputOffsets(), output_arrays.CpuSpan());
