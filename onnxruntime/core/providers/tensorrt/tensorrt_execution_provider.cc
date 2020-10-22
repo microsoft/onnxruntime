@@ -1012,7 +1012,6 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
                 if (tensor_shape_value < shape_range[j].first) {
                   shape_range[j].first = tensor_shape_value;
                   shapes_min[j] = tensor_shape_value;
-                  shapes_opt[j] = tensor_shape_value;
                   dimension_update[input_name] = true;
                 }
                 // Update shape range upper bound
@@ -1056,7 +1055,6 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
                 if (tensor_shape < shape_range[j].first) {
                   shape_range[j].first = tensor_shape;
                   dims_min.d[j] = tensor_shape;
-                  dims_opt.d[j] = tensor_shape;
                   dimension_update[input_name] = true;
                 }
                 // Update maximum dimension
