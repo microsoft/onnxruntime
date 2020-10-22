@@ -47,7 +47,7 @@ steps:
   - powershell: |
      Write-Host "##vso[task.setvariable variable=BuildFlags]$(BuildFlags) --use_dml"
     displayName: Add DML flags
-    condition: or(eq('${{ parameters.BuildArch }}', ''), eq('${{ parameters.BuildArch }}', 'x86'))
+    condition: or(eq('${{ parameters.BuildArch }}', 'x64'), eq('${{ parameters.BuildArch }}', 'x86'))
 
   - powershell: |
      Write-Host "##vso[task.setvariable variable=BuildFlags]$(BuildFlags) --enable_wcos"
