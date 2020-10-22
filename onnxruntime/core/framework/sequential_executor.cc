@@ -302,7 +302,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 #endif
 #ifdef ENABLE_NVTX_PROFILE
       profile::NvtxRangeCreator node_compute_range(
-          node.Name(), profile::Color::Blue);
+          MakeString(node.OpType(), ".", node.Index(), "(", node.Name(), ")"), profile::Color::Blue);
       node_compute_range.Begin();
 #endif
       ORT_TRY {
