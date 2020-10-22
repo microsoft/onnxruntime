@@ -266,6 +266,5 @@ bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& node);
  * @returns NodeArg reference that contains the same TypeProto info as base_arg with generated different names.
 */
 NodeArg& CreateNodeArg(Graph& graph, const NodeArg& base_arg);
-
 }  // namespace graph_utils
 }  // namespace onnxruntime
