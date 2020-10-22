@@ -35,7 +35,12 @@ steps:
       workingFolder: '$(Build.BinariesDirectory)'
 
   - powershell: |
-     Write-Host "##vso[task.setvariable variable=BuildFlags]--${{ parameters.BuildArch }}"
+      Write-Host "##vso[task.setvariable variable=BuildFlags]"
+      Write-Host "##vso[task.setvariable variable=ArtifactName]Microsoft.AI.MachineLearning.${{ parameters.BuildArch }}"
+    displayName: Initialize build flags
+
+  - powershell: |
+     Write-Host "##vso[task.setvariable variable=BuildFlags]$(BuildFlags) --${{ parameters.BuildArch }}"
     displayName: Add cross compilation flags
     condition: ne('${{ parameters.BuildArch }}', 'x64')
 
@@ -45,12 +50,19 @@ steps:
     condition: or(eq('${{ parameters.BuildArch }}', ''), eq('${{ parameters.BuildArch }}', 'x86'))
 
   - powershell: |
-     Write-Host "##vso[task.setvariable variable=BuildFlags]$(BuildFlags) --enable_windows_store"
+     Write-Host "##vso[task.setvariable variable=BuildFlags]$(BuildFlags) --enable_wcos"
+    displayName: Add OneCore flags
+    condition: eq('${{ parameters.BuildForStore }}', 'false')
+
+  - powershell: |
+      Write-Host "##vso[task.setvariable variable=BuildFlags]$(BuildFlags) --enable_windows_store"
+      Write-Host "##vso[task.setvariable variable=ArtifactName]$(ArtifactName).Store"
     displayName: Add Microsoft Store flags
     condition: eq('${{ parameters.BuildForStore }}', 'true')
 
   - powershell: |
      Write-Host "##vso[task.setvariable variable=BuildFlags]$(BuildFlags) --enable_msvc_static_runtime"
+      Write-Host "##vso[task.setvariable variable=ArtifactName]$(ArtifactName).StaticRuntime"
     displayName: Add static runtime flags
     condition: eq('${{ parameters.Runtime }}', 'static')
 
@@ -58,7 +70,7 @@ steps:
     displayName: 'Generate CMake Configuration'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos $(TelemetryOption) --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --disable_rtti $(BuildFlags)'
+      arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests $(TelemetryOption) --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --disable_rtti $(BuildFlags)'
       workingDirectory: '$(Build.BinariesDirectory)'
 
   - ${{ if or(notIn(parameters['sln_platform'], 'Win32', 'x64'), eq(parameters.BuildForStore, 'true')) }}:
@@ -234,19 +246,11 @@ steps:
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
       displayName: 'Create NuGet Package'
 
-  - ${{ if eq(parameters.BuildForStore, 'false') }}:
-    - task: PublishPipelineArtifact@0
-      displayName: 'Publish Pipeline Artifact: Microsoft.AI.MachineLearning ${{ parameters.BuildArch }}'
-      inputs:
-        artifactName: 'Microsoft.AI.MachineLearning.${{ parameters.BuildArch }}'
-        targetPath: '$(Build.ArtifactStagingDirectory)'
-
-  - ${{ if eq(parameters.BuildForStore, 'true') }}:
-      - task: PublishPipelineArtifact@0
-        displayName: 'Publish Pipeline Artifact: Microsoft.AI.MachineLearning ${{ parameters.BuildArch }}'
-        inputs:
-          artifactName: 'Microsoft.AI.MachineLearning.${{ parameters.BuildArch }}.Store'
-          targetPath: '$(Build.ArtifactStagingDirectory)'
+  - task: PublishPipelineArtifact@0
+    displayName: 'Publish Pipeline Artifact: $(ArtifactName)'
+    inputs:
+      artifactName: '$(ArtifactName)'
+      targetPath: '$(Build.ArtifactStagingDirectory)'
 
   - task: PublishSymbols@2
     displayName: 'Publish Build Symbols'
