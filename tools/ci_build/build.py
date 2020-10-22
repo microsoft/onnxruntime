@@ -241,7 +241,7 @@ def parse_arguments():
         "This is only supported on MacOS")
 
     def verify_device_type(device_read):
-        choices=["CPU_FP32", "GPU_FP32", "GPU_FP16", "VAD-M_FP16", "MYRIAD_FP16", "VAD-F_FP32"]
+        choices = ["CPU_FP32", "GPU_FP32", "GPU_FP16", "VAD-M_FP16", "MYRIAD_FP16", "VAD-F_FP32"]
         status_Hetero = True
         res = False
         if(device_read in choices):
@@ -253,7 +253,7 @@ def parse_arguments():
             if(len(comma_separated_devices) < 2):
                 print("Atleast two devices required in Hetero Mode")
                 status_Hetero = False
-            dev_options = ["CPU","GPU","MYRIAD","FPGA","HDDL"]
+            dev_options = ["CPU", "GPU", "MYRIAD", "FPGA", "HDDL"]
             for dev in comma_separated_devices:
                 if(dev not in dev_options):
                     status_Hetero = False
@@ -262,11 +262,12 @@ def parse_arguments():
         def Invalid_Hetero_Build():
             print("\n" + "If trying to build Hetero, specifiy the supported devices along with it")
             print("specify the keyword HETERO followed by the devices in the order of priority you want to build")
-            print("The different hardware devices that can be added in HETERO are ['CPU','GPU','MYRIAD','FPGA','HDDL']" + "\n")
+            print("The different hardware devices that can be added in HETERO ")
+            print("are ['CPU','GPU','MYRIAD','FPGA','HDDL']" + "\n")
             print("An example of how to specify the hetero build type. Ex: HETERO:GPU,CPU" + "\n")
             sys.exit("Wrong Build Type selected")
 
-        if(res == False):
+        if(res is False):
             print("\n" + "You have selcted wrong configuration for the build.")
             print("pick the build type for specific Hardware Device from following options: ", choices)
             print("\n")
@@ -274,7 +275,7 @@ def parse_arguments():
                 Invalid_Hetero_Build()
             sys.exit("Wrong Build Type selected")
 
-        if(status_Hetero == False):
+        if(status_Hetero is False):
             Invalid_Hetero_Build()
 
         return device_read
@@ -769,9 +770,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                        "-Donnxruntime_USE_OPENVINO_VAD_F=" + (
                            "ON" if args.use_openvino == "VAD-F_FP32" else "OFF"),
                        "-Donnxruntime_USE_OPENVINO_HETERO=" + (
-			                "ON" if args.use_openvino.startswith("HETERO") else "OFF"),
-		               "-Donnxruntime_USE_OPENVINO_DEVICE=" + (
-			                args.use_openvino),
+                           "ON" if args.use_openvino.startswith("HETERO") else "OFF"),
+                       "-Donnxruntime_USE_OPENVINO_DEVICE=" + (args.use_openvino),
                        "-Donnxruntime_USE_OPENVINO_BINARY=" + (
                            "ON" if args.use_openvino else "OFF")]
     # temp turn on only for linux gpu build
