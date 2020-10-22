@@ -244,7 +244,7 @@ Status SessionState::PrepackConstantInitializedTensors(std::unordered_map<std::s
         const std::string& input_name = input_def->Name();
         SessionState* st = this;
         // subgraph can use the value from outer scope,
-        // so it needs to check if current node uses const initilized tensor from current and outer graphs
+        // so it needs to check if current node uses constant initialized tensor from current and outer graphs
         do {
           int ort_value_idx;
           if (st->GetOrtValueNameIdxMap().GetIdx(input_name, ort_value_idx).IsOK()) {
@@ -254,10 +254,15 @@ Status SessionState::PrepackConstantInitializedTensors(std::unordered_map<std::s
               const Tensor& const_initialized_tensor = constant_initialized_tensors[ort_value_idx].Get<Tensor>();
               ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, input_idx, is_packed));
               if (is_packed && constant_initializers_use_count.count(input_name) && --constant_initializers_use_count[input_name] == 0) {
-                // release the constant intialized tensor
+                // release the constant initialized tensor
                 st->initialized_tensors_.erase(ort_value_idx);
                 constant_initialized_tensors.erase(ort_value_idx);
               }
+            }
+            // stop searching in 2 cases:
+            // 1. value is not from OuterScope
+            // 2. value is from OuterScope and the current OuterScope has the value
+            if (st != this || !st->graph_.IsOuterScopeValue(input_name)) {
               break;
             }
           }
@@ -778,11 +783,11 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
 }
 #endif
 
-// Calculate the use count of a constant initialized tensor, including the use in subgrah.
-// Note: This function doesn't handle this case below:
+// Calculate the use count of a constant initialized tensor, including the use in subgraph.
+// Note: This function doesn't handle the case below:
 // The main graph has a constant initializer called X, and the subgraph also has a constant initializer called X, which overrides the X from main graph.
-// For case like this, the current implementation will calculate an use count of 2, but they could contain completely different values so each should have a use count of 1.
-// This is a very rare case. If it happends and X is prepacked, the consequence is that X won't be released and memory usage of X won't be saved. This will be fine.
+// For case like this, the current implementation will calculate the use count as 2, but they could contain completely different values so each should have a use count of 1.
+// This is a very rare case. If it happens and X is prepacked, the consequence is that X won't be released and memory usage of X won't be saved. This will be fine.
 static void ComputeConstantInitializerUseCount(const Graph& graph, std::unordered_map<std::string, size_t>& constant_initializers_use_count) {
   for (const auto& node : graph.Nodes()) {
     for (const auto* arg : node.InputDefs()) {
