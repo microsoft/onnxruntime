@@ -8,15 +8,16 @@
   <PropertyGroup>
     <RuntimesDirectory Condition="'$(OutputType)' == 'AppContainerExe'">$(MSBuildThisFileDirectory)..\..\runtimes\win-$(WindowsAI-Platform)\uap</RuntimesDirectory>
     <RuntimesDirectory Condition="'$(RuntimesDirectory)' == ''">$(MSBuildThisFileDirectory)..\..\runtimes\win-$(WindowsAI-Platform)\native</RuntimesDirectory>
-    <WindowsAIBinary>$(RuntimesDirectory)\Microsoft.AI.MachineLearning.dll</WindowsAIBinary>
+    <WindowsAIBinaryPrefix Condition="'$(UseWindowsMLStaticRuntime)' == 'true'">.Static</WindowsAIBinaryPrefix>
+    <WindowsAIBinary>$(RuntimesDirectory)\Microsoft.AI.MachineLearning$(WindowsAIBinaryPrefix).dll</WindowsAIBinary>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(DisableOnnxRuntimeDllCopy)' != 'true'">
-    <OnnxRuntimeBinary Condition="'$(OnnxRuntimeBinary)' == ''">$(RuntimesDirectory)\onnxruntime.dll</OnnxRuntimeBinary>
+    <OnnxRuntimeBinary Condition="'$(OnnxRuntimeBinary)' == ''">$(RuntimesDirectory)\onnxruntime$(WindowsAIBinaryPrefix).dll</OnnxRuntimeBinary>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(DisableDirectMLDllCopy)' != 'true'">
-    <DirectMLBinary Condition="'$(DirectMLBinary)' == ''">$(RuntimesDirectory)\directml.dll</DirectMLBinary>
+    <DirectMLBinary Condition="'$(DirectMLBinary)' == ''">$(RuntimesDirectory)\directml$(WindowsAIBinaryPrefix).dll</DirectMLBinary>
   </PropertyGroup>
   
   <ItemGroup>
