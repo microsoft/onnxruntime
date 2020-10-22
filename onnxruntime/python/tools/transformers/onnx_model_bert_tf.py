@@ -358,9 +358,7 @@ class BertOnnxModelTF(BertOnnxModel):
 
             mask_nodes = self.match_parent_path(add_qk, ['Mul', 'Sub', 'Unsqueeze'], [1, 0, 1])
             if mask_nodes is None:
-                mask_nodes = self.match_parent_path(add_qk,
-                                                    ['Mul', 'Sub', 'Cast', 'Unsqueeze', 'Mul', 'Cast', 'Reshape'],
-                                                    [1, 0, 1, 0, 0, 1, 0])
+                mask_nodes = self.match_parent_path(add_qk, ['Mul', 'Sub', 'Cast', 'Unsqueeze', 'Mul', 'Cast', 'Reshape'], [1, 0, 1, 0, 0, 1, 0])
                 if mask_nodes is None:
                     logger.debug("Failed to match mask path")
                     continue
