@@ -77,7 +77,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       rule_transformer->Register(make_unique<InsertSoftmaxCrossEntropyLossOutput>());
 
       // Remove duplicate nodes. Must be applied before any recompute transformations.
-      transformers.emplace_back(onnxruntime::make_unique<CommonSubexpressionElimination>(compatible_eps));
+      transformers.emplace_back(onnxruntime::make_unique<CommonSubexpressionEliminationApplyOnce>(compatible_eps));
 
       transformers.emplace_back(onnxruntime::make_unique<GeluFusion>(compatible_eps));
       transformers.emplace_back(onnxruntime::make_unique<LayerNormFusion>(compatible_eps));
