@@ -245,7 +245,7 @@ class GradientBuilderBase {
                                  const ArgDef& reduce_axes,
                                  std::vector<NodeDef>& output) const;
 
-  std::string NodeName() const { return node_->Name(); }
+  const std::string& NodeName() const { return node_->Name(); }
 
  private:
   friend class GradientGraphBuilder;
