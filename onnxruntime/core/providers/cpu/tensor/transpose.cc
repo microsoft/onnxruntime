@@ -35,7 +35,7 @@ static size_t IncrementIndexAndComputeOffsetSetup(MultiIndex* mindex, int64_t nu
   return naxes;
 }
 
-// Combines the two previous functions.
+// Combines multi-index increment and corresponding pointer in the tensor to transpose.
 static void IncrementIndexAndComputeOffset(MultiIndex* mindex, size_t naxes, const uint8_t*& local_source) {
   MultiIndex* it = mindex + (naxes - 1);
   local_source += it->stride;
@@ -54,6 +54,7 @@ static void IncrementIndexAndComputeOffset(MultiIndex* mindex, size_t naxes, con
   }
 }
 
+// Combines multi-index increment and corresponding pointer in the string tensor to transpose.
 static void IncrementIndexAndComputeOffset(MultiIndex* mindex, size_t naxes, const std::string*& local_source) {
   MultiIndex* it = mindex + (naxes - 1);
   local_source += it->stride;
