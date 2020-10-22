@@ -31,9 +31,19 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
         .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
     Scatter);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     ScatterElements,
     11,
+    12,
+    KernelDefBuilder()
+        .MayInplace(0, 0)
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
+    Scatter);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    ScatterElements,
+    13,
     KernelDefBuilder()
         .MayInplace(0, 0)
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
