@@ -109,7 +109,7 @@ std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& info) {
   return g_host->CreateCPUAllocator(info);
 }
 
-bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) noexcept ORT_MUST_USE_RESULT {
+bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) noexcept {
   return g_host->IAllocator__CalcMemSizeForArrayWithAlignment(nmemb, size, alignment, out);
 }
 
