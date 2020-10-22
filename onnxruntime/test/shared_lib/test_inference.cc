@@ -607,6 +607,17 @@ TEST(CApiTest, io_binding) {
 
 #ifdef USE_CUDA
 TEST(CApiTest, io_binding_cuda) {
+  struct CudaMemoryDeleter {
+    explicit CudaMemoryDeleter(const Ort::Allocator* alloc) {
+      alloc_ = alloc;
+    }
+    void operator()(void* ptr) const {
+      alloc_->Free(ptr);
+    }
+
+    const Ort::Allocator* alloc_;
+  };
+
   Ort::SessionOptions session_options;
   Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
   Ort::Session session(*ort_env, MODEL_URI, session_options);
@@ -618,21 +629,23 @@ TEST(CApiTest, io_binding_cuda) {
 
   const std::array<int64_t, 2> x_shape = {3, 2};
   std::array<float, 3 * 2> x_values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-  void* input_data = cuda_allocator.Alloc(x_values.size() * sizeof(float));
-  ASSERT_NE(input_data, nullptr);
-  cudaMemcpy(input_data, x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
+  auto input_data = std::unique_ptr<void, CudaMemoryDeleter>(cuda_allocator.Alloc(x_values.size() * sizeof(float)),
+                                                             CudaMemoryDeleter(&cuda_allocator));
+  ASSERT_NE(input_data.get(), nullptr);
+  cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
 
   // Create an OrtValue tensor backed by data on CUDA memory
-  Ort::Value bound_x = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(input_data), x_values.size(),
+  Ort::Value bound_x = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(input_data.get()), x_values.size(),
                                                 x_shape.data(), x_shape.size());
 
   const std::array<int64_t, 2> expected_y_shape = {3, 2};
   const std::array<float, 3 * 2> expected_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
-  void* output_data = cuda_allocator.Alloc(expected_y.size() * sizeof(float));
-  ASSERT_NE(output_data, nullptr);
+  auto output_data = std::unique_ptr<void, CudaMemoryDeleter>(cuda_allocator.Alloc(expected_y.size() * sizeof(float)),
+                                                              CudaMemoryDeleter(&cuda_allocator));
+  ASSERT_NE(output_data.get(), nullptr);
 
   // Create an OrtValue tensor backed by data on CUDA memory
-  Ort::Value bound_y = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(output_data), expected_y.size(),
+  Ort::Value bound_y = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(output_data.get()), expected_y.size(),
                                                 expected_y_shape.data(), expected_y_shape.size());
 
   Ort::IoBinding binding(session);
@@ -643,7 +656,7 @@ TEST(CApiTest, io_binding_cuda) {
 
   // Check the values against the bound raw memory (needs copying from device to host first)
   std::array<float, 3 * 2> y_values_0;
-  cudaMemcpy(y_values_0.data(), output_data, sizeof(float) * y_values_0.size(), cudaMemcpyDeviceToHost);
+  cudaMemcpy(y_values_0.data(), output_data.get(), sizeof(float) * y_values_0.size(), cudaMemcpyDeviceToHost);
   ASSERT_TRUE(std::equal(std::begin(y_values_0), std::end(y_values_0), std::begin(expected_y)));
 
   // Now compare values via GetOutputValues
@@ -696,11 +709,7 @@ TEST(CApiTest, io_binding_cuda) {
   // Clean up
   binding.ClearBoundInputs();
   binding.ClearBoundOutputs();
-
-  cuda_allocator.Free(input_data);
-  cuda_allocator.Free(output_data);
 }
-
 #endif
 
 TEST(CApiTest, create_tensor) {
