@@ -358,7 +358,7 @@ class BertOnnxModelTF(BertOnnxModel):
 
             mask_nodes = self.match_parent_path(add_qk, ['Mul', 'Sub', 'Unsqueeze'], [1, 0, 1])
             if mask_nodes is None:
-                mask_nodes = self.match_parent_path(add_qk, ['Mul', 'Sub', 'Cast', 'Unsqueeze', 'Mul', 'Cast', 'Reshape'], [1, 0, 1, 0, 0, 1, 0])
+                mask_nodes = self.match_parent_path(add_qk, ['Mul', 'Sub', 'Cast', 'Unsqueeze'], [1, 0, 1, 0])
                 if mask_nodes is None:
                     logger.debug("Failed to match mask path")
                     continue
@@ -366,6 +366,18 @@ class BertOnnxModelTF(BertOnnxModel):
             if not self.has_constant_input(mask_nodes[1], 1):
                 logger.debug("Sub node expected to have an input with constant value 1.0.")
                 continue
+
+            #upper_mask_nodes = self.match_parent_path(mask_nodes[-1], ['Reshape', 'Cast', 'Concat'], [0, 1, 0])
+            #if upper_mask_nodes is None:
+            #    continue
+            #mask_concat = upper_mask_nodes[2]
+            #if len(mask_concat.input) == 3:
+            #    # Temporary work around: require 2-d mask input, the current model has a 3-d mask input
+            #    self.add_node(
+            #        helper.make_node("Concat", [mask_concat.input[0], mask_concat.input[2]], [mask_concat.output[0]],
+            #                         mask_concat.name + "_modified",
+            #                         axis=0))
+            #    self.remove_node(mask_concat)
 
             is_same_root = self.check_attention_input(matmul_q, matmul_k, matmul_v, parent, output_name_to_node)
             if is_same_root:
