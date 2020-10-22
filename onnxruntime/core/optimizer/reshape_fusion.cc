@@ -191,8 +191,8 @@ bool ReshapeFusion::Match_One_Element_Output_Subgraph_2(Graph& graph, const Node
 
     // Check if Slice op slices 1d array (result of shape) to one element.
     std::vector<int64_t> slice_inputs;
-    int64_t slice_start;
-    int64_t slice_end;
+    int64_t slice_start(0);
+    int64_t slice_end(0);
     if (slice.GetInputEdgesCount() >= 3) {
       if (optimizer_utils::AppendTensorFromInitializer(graph, *(slice.InputDefs()[1]), slice_inputs, true) &&
           optimizer_utils::AppendTensorFromInitializer(graph, *(slice.InputDefs()[2]), slice_inputs, true)) {
