@@ -60,6 +60,8 @@ ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>()).MayInplace(0, 0),
     ScalerOp<int32_t>);
 
+static constexpr int kParallelizationThreshold = 10 * 1000;
+
 template <typename T>
 ScalerOp<T>::ScalerOp(const OpKernelInfo& info) : OpKernel(info),
                                                   scale_(info.GetAttrsOrDefault<float>("scale")),
@@ -85,7 +87,7 @@ common::Status ScalerOp<T>::Compute(OpKernelContext* context) const {
   int64_t stride = x_dims.size() == 1 ? x_dims[0] : x_dims[1];
   auto* ttp = context->GetOperatorThreadPool();
   auto conditional_batch_call = [ttp, x_size](std::function<void(ptrdiff_t)> f) {
-    if (x_size < 10 * 1000) {  // TODO: tune this, arbitrary threshold
+    if (x_size < kParallelizationThreshold) {  // TODO: tune this, arbitrary threshold
       for (size_t i = 0; i < x_size; ++i) {
         f(i);
       }

@@ -25,6 +25,8 @@ ONNX_CPU_OPERATOR_KERNEL(
                                                         DataTypeImpl::GetTensorType<int64_t>()}),
     GatherElements);
 
+static constexpr int kParallelizationThreshold = 10 * 1000;
+
 // Some helpers needed for GatherElements op -
 
 // The following method computes the offset in the flattened array
@@ -159,7 +161,7 @@ static void core_impl(const Tensor* input_tensor, const Tensor* indices_tensor,
   int64_t output_counter = 0;
 
   auto conditional_batch_call = [ttp, inner_dim_size](std::function<void(ptrdiff_t)> f) {
-    if (inner_dim_size < 10 * 1000) {  // TODO: tune this, arbitrary threshold
+    if (inner_dim_size < kParallelizationThreshold) {  // TODO: tune this, arbitrary threshold
       for (int64_t i = 0; i < inner_dim_size; ++i) {
         f(i);
       }
