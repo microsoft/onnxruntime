@@ -35,8 +35,8 @@ steps:
       workingFolder: '$(Build.BinariesDirectory)'
 
   - powershell: |
-      Write-Host "##vso[task.setvariable variable=BuildFlags]"
-      Write-Host "##vso[task.setvariable variable=ArtifactName]Microsoft.AI.MachineLearning.${{ parameters.BuildArch }}"
+     Write-Host "##vso[task.setvariable variable=BuildFlags]"
+     Write-Host "##vso[task.setvariable variable=ArtifactName]Microsoft.AI.MachineLearning.${{ parameters.BuildArch }}"
     displayName: Initialize build flags
 
   - powershell: |
@@ -55,14 +55,14 @@ steps:
     condition: eq('${{ parameters.BuildForStore }}', 'false')
 
   - powershell: |
-      Write-Host "##vso[task.setvariable variable=BuildFlags]$(BuildFlags) --enable_windows_store"
-      Write-Host "##vso[task.setvariable variable=ArtifactName]$(ArtifactName).Store"
+     Write-Host "##vso[task.setvariable variable=BuildFlags]$(BuildFlags) --enable_windows_store"
+     Write-Host "##vso[task.setvariable variable=ArtifactName]$(ArtifactName).Store"
     displayName: Add Microsoft Store flags
     condition: eq('${{ parameters.BuildForStore }}', 'true')
 
   - powershell: |
      Write-Host "##vso[task.setvariable variable=BuildFlags]$(BuildFlags) --enable_msvc_static_runtime"
-      Write-Host "##vso[task.setvariable variable=ArtifactName]$(ArtifactName).StaticRuntime"
+     Write-Host "##vso[task.setvariable variable=ArtifactName]$(ArtifactName).StaticRuntime"
     displayName: Add static runtime flags
     condition: eq('${{ parameters.Runtime }}', 'static')
 

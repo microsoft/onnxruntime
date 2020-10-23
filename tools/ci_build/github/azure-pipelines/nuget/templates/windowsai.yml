@@ -164,8 +164,8 @@ jobs:
   - WindowsAI_CPU_X86_Store
   - WindowsAI_CPU_ARM64_Store
   - WindowsAI_CPU_ARM_Store
-  - WindowsAI_CPU_X64_StaticRuntime
-  - WindowsAI_CPU_X86_StaticRuntime
+  - WindowsAI_DirectML_X64_StaticRuntime
+  - WindowsAI_DirectML_X86_StaticRuntime
   - WindowsAI_CPU_ARM64_StaticRuntime
   - WindowsAI_CPU_ARM_StaticRuntime
   condition: succeeded()
@@ -336,8 +336,8 @@ jobs:
         $arm64_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-arm64', 'native')
         $arm64_store_runtime_path_old = [System.IO.Path]::Combine($arm64_store_nupkg_unzipped_directory, 'runtimes', 'win-arm64', 'uap')
         $arm64_store_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-arm64', 'uap')
-        $arm6staticre_runtime_path_old = [System.IO.Path]::Combine($arm64_static_runtime_nupkg_unzipped_directory, 'runtimes', 'win-arm64', 'uap')
-        $arm6staticre_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-arm64', 'uap')
+        $arm64_static_runtime_path_old = [System.IO.Path]::Combine($arm64_static_runtime_nupkg_unzipped_directory, 'runtimes', 'win-arm64', 'uap')
+        $arm64_static_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-arm64', 'uap')
         $arm_runtime_path_old = [System.IO.Path]::Combine($arm_nupkg_unzipped_directory, 'runtimes', 'win-arm', 'native')
         $arm_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-arm', 'native')
         $arm_store_runtime_path_old = [System.IO.Path]::Combine($arm_store_nupkg_unzipped_directory, 'runtimes', 'win-arm', 'uap')
