@@ -57,16 +57,18 @@ jobs:
 
 
   - task: CopyFiles@2
-    displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
+    displayName: 'Copy valgrind log to: $(Build.ArtifactStagingDirectory)'
     inputs:
       SourceFolder: '$(Build.BinariesDirectory)'
       Contents: 'Release/Testing/Temporary/MemoryChecker.*.log'
       TargetFolder: '$(Build.ArtifactStagingDirectory)'
+    condition: succeededOrFailed()
 
   - task: PublishBuildArtifacts@1
     displayName: 'Publish Artifact: ONNXRuntime python wheel'
     inputs:
       ArtifactName: onnxruntime
+    condition: succeededOrFailed()
 
   - template: templates/component-governance-component-detection-steps.yml
     parameters:
