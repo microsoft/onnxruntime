@@ -164,6 +164,10 @@ jobs:
   - WindowsAI_CPU_X86_Store
   - WindowsAI_CPU_ARM64_Store
   - WindowsAI_CPU_ARM_Store
+  - WindowsAI_CPU_X64_StaticRuntime
+  - WindowsAI_CPU_X86_StaticRuntime
+  - WindowsAI_CPU_ARM64_StaticRuntime
+  - WindowsAI_CPU_ARM_StaticRuntime
   condition: succeeded()
   steps:
   - task: DownloadPipelineArtifact@0
