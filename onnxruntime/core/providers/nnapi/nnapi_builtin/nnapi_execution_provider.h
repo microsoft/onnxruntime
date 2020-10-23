@@ -20,6 +20,8 @@ class NnapiExecutionProvider : public IExecutionProvider {
   common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
+  const std::bitset<NNAPI_FLAG_MAX>& GetNNAPIFlags() const { return nnapi_flags_; }
+
  private:
   std::unordered_map<std::string, std::unique_ptr<onnxruntime::nnapi::Model>> nnapi_models_;
   std::bitset<NNAPI_FLAG_MAX> nnapi_flags_;
