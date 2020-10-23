@@ -78,7 +78,7 @@ size_t Model::GetMappedOutputIdx(const std::string& name) const {
 }
 
 bool Model::SupportsDynamicOutputShape() const {
-  // dynamic output shape is only supported on Android API levle 29+
+  // dynamic output shape is only supported on Android API level 29+
   return GetAndroidSdkVer() >= 29 && dynamic_output_buffer_size_ > 0;
 }
 
