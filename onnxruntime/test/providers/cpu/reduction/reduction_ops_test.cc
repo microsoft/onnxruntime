@@ -15,6 +15,9 @@
 namespace onnxruntime {
 namespace test {
 
+const float FLOAT_INF = std::numeric_limits<float>::infinity();
+const float FLOAT_NINF = -std::numeric_limits<float>::infinity();
+
 // Disable TensorRT on some of the tests because the limit in its parser: axis >=0 && axis < nbDims
 template <typename OutT>
 void TestReduceOp(const std::string& op,
@@ -2023,16 +2026,16 @@ TEST(ReductionOpTest, ReduceInfMax) {
   test.AddAttribute("axes", std::vector<int64_t>{1});
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddInput<float>("data", {6, 2},
-                       {1.0f, -std::numeric_limits<float>::infinity(),
-                        -std::numeric_limits<float>::infinity(), 4.0f,
-                        std::numeric_limits<float>::infinity(), -std::numeric_limits<float>::infinity(),
-                        -std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity(),
-                        1.0f, std::numeric_limits<float>::infinity(),
-                        std::numeric_limits<float>::infinity(), 4.0f});
+                       {1.0f, FLOAT_NINF,
+                        FLOAT_NINF, 4.0f,
+                        FLOAT_INF, FLOAT_NINF,
+                        FLOAT_NINF, FLOAT_INF,
+                        1.0f, FLOAT_INF,
+                        FLOAT_INF, 4.0f});
   test.AddOutput<float>("reduced", {6},
                         {1.0f, 4.0f,
-                         std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity(),
-                         std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity()});
+                         FLOAT_INF, FLOAT_INF,
+                         FLOAT_INF, FLOAT_INF});
   test.Run();
 }
 
@@ -2041,16 +2044,16 @@ TEST(ReductionOpTest, ReduceInfMin) {
   test.AddAttribute("axes", std::vector<int64_t>{1});
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddInput<float>("data", {6, 2},
-                       {1.0f, std::numeric_limits<float>::infinity(),
-                        std::numeric_limits<float>::infinity(), 4.0f,
-                        std::numeric_limits<float>::infinity(), -std::numeric_limits<float>::infinity(),
-                        -std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity(),
-                        1.0f, -std::numeric_limits<float>::infinity(),
-                        -std::numeric_limits<float>::infinity(), 4.0f});
+                       {1.0f, FLOAT_INF,
+                        FLOAT_INF, 4.0f,
+                        FLOAT_INF, FLOAT_NINF,
+                        FLOAT_NINF, FLOAT_INF,
+                        1.0f, FLOAT_NINF,
+                        FLOAT_NINF, 4.0f});
   test.AddOutput<float>("reduced", {6},
                         {1.0f, 4.0f,
-                         -std::numeric_limits<float>::infinity(), -std::numeric_limits<float>::infinity(),
-                         -std::numeric_limits<float>::infinity(), -std::numeric_limits<float>::infinity()});
+                         FLOAT_NINF, FLOAT_NINF,
+                         FLOAT_NINF, FLOAT_NINF});
   test.Run();
 }
 
@@ -2059,16 +2062,16 @@ TEST(ReductionOpTest, ReduceInfSum) {
   test.AddAttribute("axes", std::vector<int64_t>{1});
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddInput<float>("data", {6, 2},
-                       {1.0f, std::numeric_limits<float>::infinity(),
-                        std::numeric_limits<float>::infinity(), 4.0f,
-                        std::numeric_limits<float>::infinity(), -std::numeric_limits<float>::infinity(),
-                        -std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity(),
-                        1.0f, -std::numeric_limits<float>::infinity(),
-                        -std::numeric_limits<float>::infinity(), 4.0f});
+                       {1.0f, FLOAT_INF,
+                        FLOAT_INF, 4.0f,
+                        FLOAT_INF, FLOAT_NINF,
+                        FLOAT_NINF, FLOAT_INF,
+                        1.0f, FLOAT_NINF,
+                        FLOAT_NINF, 4.0f});
   test.AddOutput<float>("reduced", {6},
-                        {std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity(),
+                        {FLOAT_INF, FLOAT_INF,
                          std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(),
-                         -std::numeric_limits<float>::infinity(), -std::numeric_limits<float>::infinity()});
+                         FLOAT_NINF, FLOAT_NINF});
   test.Run();
 }
 
@@ -2077,31 +2080,52 @@ TEST(ReductionOpTest, ReduceInfLogSum) {
   test.AddAttribute("axes", std::vector<int64_t>{1});
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddInput<float>("data", {6, 2},
-                       {1.0f, std::numeric_limits<float>::infinity(),
-                        std::numeric_limits<float>::infinity(), 1.0f,
-                        std::numeric_limits<float>::infinity(), -std::numeric_limits<float>::infinity(),
-                        -std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity(),
-                        1.0f, -std::numeric_limits<float>::infinity(),
-                        -std::numeric_limits<float>::infinity(), 1.0f});
+                       {1.0f, FLOAT_INF,
+                        FLOAT_INF, 1.0f,
+                        FLOAT_INF, FLOAT_NINF,
+                        FLOAT_NINF, FLOAT_INF,
+                        1.0f, FLOAT_NINF,
+                        FLOAT_NINF, 1.0f});
   test.AddOutput<float>("reduced", {6},
-                        {std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity(),
+                        {FLOAT_INF, FLOAT_INF,
                          -std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(),
                          std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN()});
   test.Run();
 }
 
-TEST(ReductionOpTest, ReduceInfSumLogExp) {
+TEST(ReductionOpTest, ReduceInfSumLogExp1) {
   OpTester test("ReduceLogSumExp");
   test.AddAttribute("axes", std::vector<int64_t>{1});
   test.AddAttribute("keepdims", (int64_t)0);
-  test.AddInput<float>("data", {4, 2},
-                       {1.0f, std::numeric_limits<float>::infinity(),
-                        std::numeric_limits<float>::infinity(), 1.0f,
-                        1.0f, -std::numeric_limits<float>::infinity(),
-                        -std::numeric_limits<float>::infinity(), 1.0f});
-  test.AddOutput<float>("reduced", {4},
-                        {std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity(),
-                         1.0f, 1.0f});
+  test.AddInput<float>("data", {1, 2}, {1.0f, FLOAT_INF});
+  test.AddOutput<float>("reduced", {1}, {FLOAT_INF});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceInfSumLogExp2) {
+  OpTester test("ReduceLogSumExp");
+  test.AddAttribute("axes", std::vector<int64_t>{1});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {1, 2}, {FLOAT_INF, 1.0f});
+  test.AddOutput<float>("reduced", {1}, {FLOAT_INF});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceInfSumLogExp3) {
+  OpTester test("ReduceLogSumExp");
+  test.AddAttribute("axes", std::vector<int64_t>{1});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {1, 2}, {1.0f, FLOAT_NINF});
+  test.AddOutput<float>("reduced", {1}, {1.0f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceInfSumLogExp4) {
+  OpTester test("ReduceLogSumExp");
+  test.AddAttribute("axes", std::vector<int64_t>{1});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {1, 2}, {FLOAT_NINF, 1.0f});
+  test.AddOutput<float>("reduced", {1}, {1.0f});
   test.Run();
 }
 
