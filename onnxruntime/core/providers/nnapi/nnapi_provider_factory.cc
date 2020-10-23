@@ -22,7 +22,7 @@ std::unique_ptr<IExecutionProvider> NnapiProviderFactory::CreateProvider() {
   return onnxruntime::make_unique<NnapiExecutionProvider>(nnapi_flags_);
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(unsigned long nnapi_flags = 0) {
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(unsigned long nnapi_flags) {
   return std::make_shared<onnxruntime::NnapiProviderFactory>(nnapi_flags);
 }
 }  // namespace onnxruntime

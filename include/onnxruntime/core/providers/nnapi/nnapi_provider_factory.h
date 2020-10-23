@@ -12,9 +12,10 @@
 //   std::bitset<NNAPI_FLAG_MAX> _nnapi_flags;
 //   _nnapi_flags.set(NNAPI_FLAG_USE_FP16);
 //   unsigned long nnapi_flags = _nnapi_flags.to_ulong();
-enum NNAPIFlag : unsigned char {
-  // Using fp16 relaxation in NNAPI EP, this may improve perf but reduce precision
+enum NNAPIFlag {
+  // Using fp16 relaxation in NNAPI EP, this may improve perf but may also reduce precision
   NNAPI_FLAG_USE_FP16 = 0,
+
   // Use NCHW layout in NNAPI EP, this is only available after Android API level 29
   // Please note for now, NNAPI perform worse using NCHW compare to using NHWC
   NNAPI_FLAG_USE_NCHW = 1,
@@ -27,7 +28,7 @@ enum NNAPIFlag : unsigned char {
 extern "C" {
 #endif
 
-ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Nnapi, _In_ OrtSessionOptions* options, unsigned long nnapi_flags = 0);
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Nnapi, _In_ OrtSessionOptions* options, unsigned long nnapi_flags);
 
 #ifdef __cplusplus
 }
