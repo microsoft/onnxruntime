@@ -231,7 +231,7 @@ Status TrainingSession::ConfigureForTraining(
   // }
 
   //if (IsRootNode(config)) {
-  Save("before_opt_" + std::to_string(config.distributed_config.world_rank) + ".onnx", SaveOption::NO_RELOAD);
+  //Save("before_opt_" + std::to_string(config.distributed_config.world_rank) + ".onnx", SaveOption::NO_RELOAD);
   //}
   // We need to get trainable weights to prevent constant folding from them. This works well if trainable weights are passed from config.
   // For case we use GetTrainableModelInitializers to get trainable weights such as C++ frontend, it may get more initializers
@@ -291,7 +291,7 @@ Status TrainingSession::ConfigureForTraining(
                                  << weight_names_stream.str();
   }
 
-  Save("before_mixed_precision_" + std::to_string(config.distributed_config.world_rank) + ".onnx", SaveOption::NO_RELOAD);
+  //Save("before_mixed_precision_" + std::to_string(config.distributed_config.world_rank) + ".onnx", SaveOption::NO_RELOAD);
   // Transform for mixed precision on forward graph.
   std::unordered_map<std::string, NodeArg*> fp32_weight_name_to_mixed_precision_node_arg{};
   if (is_mixed_precision_enabled_) {
@@ -302,7 +302,7 @@ Status TrainingSession::ConfigureForTraining(
   }
 
   //if (IsRootNode(config)) {
-  Save("after_mixed_precision_" + std::to_string(config.distributed_config.world_rank) + ".onnx", SaveOption::NO_RELOAD);
+  //Save("after_mixed_precision_" + std::to_string(config.distributed_config.world_rank) + ".onnx", SaveOption::NO_RELOAD);
   //}
   ORT_RETURN_IF_ERROR(BuildGradientGraph(
       weight_names_to_train, loss_name, config.gradient_graph_config, *session_logger_));
@@ -370,7 +370,7 @@ Status TrainingSession::ConfigureForTraining(
   // Set eval feed names for nodes that differ between training and inferencing.
   ORT_RETURN_IF_ERROR(SetEvalFeedNames());
   //if (IsRootNode(config)) {
-  Save("after_build_optimizer_" + std::to_string(config.distributed_config.world_rank) + ".onnx", SaveOption::NO_RELOAD);
+  //Save("after_build_optimizer_" + std::to_string(config.distributed_config.world_rank) + ".onnx", SaveOption::NO_RELOAD);
   //}
   // add Tensorboard
   if (config.tensorboard_config.has_value()) {

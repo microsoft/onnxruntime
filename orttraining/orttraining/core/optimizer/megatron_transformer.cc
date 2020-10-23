@@ -111,10 +111,10 @@ static bool MatchLinearPattern(Graph& graph,
 
     sub_graph_node_ptrs.push_back(has_matched_op ? next_node_ptr : nullptr);
     if (has_matched_op) {
-      LOGS_DEFAULT(WARNING) << "  MatchLinearPattern 2222" << next_node_ptr->Name();
+      //LOGS_DEFAULT(WARNING) << "  MatchLinearPattern 2222" << next_node_ptr->Name();
       curr_node_ptr = next_node_ptr;
     } else if (node_info.required) {
-      LOGS_DEFAULT(WARNING) << "  MatchLinearPattern 11111" << next_node_ptr->Name();
+      //LOGS_DEFAULT(WARNING) << "  MatchLinearPattern 11111" << next_node_ptr->Name();
       return false;
     }
   }
@@ -1421,21 +1421,21 @@ Status MegatronTransformer::TransformBARTSelfAttention(Graph& graph, bool& modif
     for (auto x : reshape_node_ptrs) {
       Node* node_ptr = x.first;
       int64_t idx = x.second;
-      LOGS_DEFAULT(WARNING) << " BART Attention Transpose Check 565656565" << node_ptr->Name();
+      //LOGS_DEFAULT(WARNING) << " BART Attention Transpose Check 565656565" << node_ptr->Name();
       auto shape_arg = node_ptr->MutableInputDefs()[1];
       const ONNX_NAMESPACE::TensorProto* tensor;
-      LOGS_DEFAULT(WARNING) << " BART Attention Transpose Check 6666" << node.Name();
+      //LOGS_DEFAULT(WARNING) << " BART Attention Transpose Check 6666" << node.Name();
       if (!graph.GetInitializedTensor(shape_arg->Name(), tensor)) {
         is_reshape_valid = false;
         break;
       }
-      LOGS_DEFAULT(WARNING) << " BART Attention Transpose Check 7777" << node.Name();
+      //LOGS_DEFAULT(WARNING) << " BART Attention Transpose Check 7777" << node.Name();
       auto data_type = tensor->data_type();
       if (data_type != ONNX_NAMESPACE::TensorProto_DataType_INT64) {
         is_reshape_valid = false;
         break;
       }
-      LOGS_DEFAULT(WARNING) << " BART Attention Transpose Check 8888" << node.Name();
+      //LOGS_DEFAULT(WARNING) << " BART Attention Transpose Check 8888" << node.Name();
       // The number of the values should be more than 2, and the 3rd value should be divisible by parallel size,
       // i.e., the attention head number should be divisible by parallel size.
       auto init_const = onnxruntime::make_unique<Initializer>(*tensor, graph.ModelPath());
@@ -1443,7 +1443,7 @@ Status MegatronTransformer::TransformBARTSelfAttention(Graph& graph, bool& modif
         is_reshape_valid = false;
         break;
       }
-      LOGS_DEFAULT(WARNING) << " BART Attention Transpose Check 99999" << node.Name();
+      //LOGS_DEFAULT(WARNING) << " BART Attention Transpose Check 99999" << node.Name();
       const int64_t* val = init_const->data<int64_t>();
       // if (val[2] % horizontal_parallel_size_ != 0) {
       if (val[idx] % horizontal_parallel_size_ != 0) {
@@ -1453,7 +1453,7 @@ Status MegatronTransformer::TransformBARTSelfAttention(Graph& graph, bool& modif
         is_reshape_valid = false;
         break;
       }
-      LOGS_DEFAULT(WARNING) << " BART Attention Transpose Check 10101010101" << node.Name();
+      //LOGS_DEFAULT(WARNING) << " BART Attention Transpose Check 10101010101" << node.Name();
     }
 
     if (!is_reshape_valid) {

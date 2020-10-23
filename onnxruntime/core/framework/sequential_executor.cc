@@ -162,6 +162,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 #if defined(TRACE_EXECUTION)
   std::cout << std::make_pair(&seq_exec_plan, &session_state) << std::endl;
 #endif
+  //std::cout << std::make_pair(&seq_exec_plan, &session_state) << std::endl;
 
   const auto& graph_viewer = session_state.GetGraphViewer();
 
@@ -272,7 +273,8 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
     utils::DumpNodeInputs(op_kernel_context, p_op_kernel->Node(), session_state);
 #endif
-
+    //std::string temp_node = node.Name().empty() ? MakeString(node.OpType(), "_", node_index) : node.Name();
+    //std::cout << "Computing kernel: " << temp_node << std::endl;
     const std::string node_name_for_profiling = [&]() -> std::string {
       if (!is_profiler_enabled) return {};
       // Derive something meaningful for profile traces and logs if node name field is blank in execution graph
