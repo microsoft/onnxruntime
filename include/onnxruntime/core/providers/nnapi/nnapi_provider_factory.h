@@ -13,9 +13,14 @@
 //   _nnapi_flags.set(NNAPI_FLAG_USE_FP16);
 //   unsigned long nnapi_flags = _nnapi_flags.to_ulong();
 enum NNAPIFlag : unsigned char {
+  // Using fp16 relaxation in NNAPI EP, this may improve perf but reduce precision
   NNAPI_FLAG_USE_FP16 = 0,
+  // Use NCHW layout in NNAPI EP, this is only available after Android API level 29
+  // Please note for now, NNAPI perform worse using NCHW compare to using NHWC
   NNAPI_FLAG_USE_NCHW = 1,
-  NNAPI_FLAG_MAX,  // Keep NNAPI_FLAG_MAX at the end of the enum definition
+
+  // Keep NNAPI_FLAG_MAX at the end of the enum definition
+  NNAPI_FLAG_MAX,
 };
 
 #ifdef __cplusplus
