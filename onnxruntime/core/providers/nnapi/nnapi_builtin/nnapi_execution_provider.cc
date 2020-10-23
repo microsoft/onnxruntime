@@ -304,12 +304,16 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
         OperandType input_type = model_input_type;
         input_type.SetDimensions(dimensions);
 
-        if (input_type.GetOperandBlobByteSize() == 0)
-          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "The actual input cannot have 0 dim (dynamic)");
+        // We have some op has input can have {0} shapes, such as Resize.scales/roi, these are valid input
+        // We still want to log the shape info, in case we get an input shape with some zero dim and some non-zero dim
+        if (input_type.GetOperandBlobByteSize() == 0) {
+          LOGS_DEFAULT(INFO) << "The actual input [" << input_name << "] has "
+                             << nnapi::Shape2String(dimensions) << " shape";
+        }
 
         if (input_type.dimensions != model_input_type.dimensions && model_input_type.GetOperandBlobByteSize() != 0) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                 "The actual input dimanesions should match the model input "
+                                 "The actual input dimensions should match the model input "
                                  "dimensions, or model input dimension has 0 (dynamic)");
         }
 
@@ -358,7 +362,7 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
             output_buffer_byte_size = model_output_type.GetOperandBlobByteSize();
           } else {
             // This output is dynamic (size unknown), will need allocate a buffer for the result
-            // and copy the content to ORT output tensors afte the execution (will know output shape after the execution)
+            // and copy the content to ORT output tensors after the execution (will know output shape after the execution)
             output_buffer_byte_size = model->GetDynamicOutputBufferSize() * model_output_type.GetElementByteSize();
             std::unique_ptr<uint8_t[]> buffer_holder(new uint8_t[output_buffer_byte_size]);
             output_buffer = buffer_holder.get();

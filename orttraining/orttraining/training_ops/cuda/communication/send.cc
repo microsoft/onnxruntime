@@ -93,7 +93,8 @@ void Send::SendData(
 
   profile::NvtxRangeCreator memcpyRange(
       "Batch-" + tag +
-      " SendMemcpy-" + std::to_string(dst), profile::Color::Red);
+          " SendMemcpy-" + std::to_string(dst),
+      profile::Color::Red);
   // Begin of major communication tasks.
   // The previous MPI_Send's are not included because we don't want to
   // count waiting time before setting up the actual communication.
@@ -125,7 +126,8 @@ void Send::SendData(
 #ifdef ENABLE_NVTX_PROFILE
   profile::NvtxRangeCreator sendRange(
       "Batch-" + tag +
-      " Send-" + std::to_string(dst), profile::Color::Red);
+          " Send-" + std::to_string(dst),
+      profile::Color::Red);
   // Begin of major communication tasks.
   // The previous MPI_Send's are not included because we don't want to
   // count waiting time before setting up the actual communication.
@@ -174,7 +176,8 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
 
   profile::NvtxRangeCreator preRange(
       "Batch-" + tag +
-      " PreSend-" + std::to_string(dst), profile::Color::Red);
+          " PreSend-" + std::to_string(dst),
+      profile::Color::Red);
   // Begin of preparation for sending data. This time range includes
   // the time for sending a scalar.
   preRange.Begin();
@@ -234,7 +237,8 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
 #ifdef ENABLE_NVTX_PROFILE
   profile::NvtxRangeCreator postRange(
       "Batch-" + tag +
-      " PostSend-" + std::to_string(dst), profile::Color::Red);
+          " PostSend-" + std::to_string(dst),
+      profile::Color::Red);
   // Begin of post communication tasks.
   postRange.Begin();
 #endif

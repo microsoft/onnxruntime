@@ -21,9 +21,7 @@ class Attention : public OpKernel, public AttentionCPUBase {
   explicit Attention(const OpKernelInfo& info);
 
   Status Compute(OpKernelContext* context) const override;
-#if !defined(USE_MKLML_FOR_BLAS)
   Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed) override;
-#endif
 
  private:
   BufferUniquePtr packed_weights_;
@@ -100,10 +98,6 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
 
   int past_sequence_length = 0;
   if (past != nullptr) {  // past is optional
-    if (!is_unidirectional_) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'past' is only allowed for unidirectional");
-    }
-
     const auto& past_dims = past->Shape().GetDims();
     if (past_dims.size() != 5) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'past' is expected to have 5 dimension, got ",
@@ -178,7 +172,6 @@ template <typename T>
 Attention<T>::Attention(const OpKernelInfo& info) : OpKernel(info), AttentionCPUBase(info) {
 }
 
-#if !defined(USE_MKLML_FOR_BLAS)
 
 template <typename T>
 Status Attention<T>::PrePack(const Tensor& weights, int input_idx, bool& is_packed) {
@@ -224,8 +217,6 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, bool& is_pack
   is_packed = true;
   return Status::OK();
 }
-
-#endif
 
 template <typename T>
 Status Attention<T>::Compute(OpKernelContext* context) const {

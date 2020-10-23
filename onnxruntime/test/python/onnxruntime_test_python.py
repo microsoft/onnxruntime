@@ -35,6 +35,13 @@ class TestInferenceSession(unittest.TestCase):
         sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
         self.assertTrue('CPUExecutionProvider' in sess.get_providers())
 
+    def testEnablingAndDisablingTelemetry(self):
+        onnxrt.disable_telemetry_events()
+
+        # no-op on non-Windows builds
+        # may be no-op on certain Windows builds based on build configuration
+        onnxrt.enable_telemetry_events()
+
     def testSetProviders(self):
         if 'CUDAExecutionProvider' in onnxrt.get_available_providers():
             sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
@@ -513,6 +520,23 @@ class TestInferenceSession(unittest.TestCase):
                     self.assertTrue(tag in lines[i])
             self.assertTrue(']' in lines[8])
 
+    def testProfilerGetStartTimeNs(self):
+        def getSingleSessionProfilingStartTime():
+            so = onnxrt.SessionOptions()
+            so.enable_profiling = True
+            sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=so)
+            return sess.get_profiling_start_time_ns()
+
+        # Get 1st profiling's start time
+        start_time_1 = getSingleSessionProfilingStartTime()
+        # Get 2nd profiling's start time
+        start_time_2 = getSingleSessionProfilingStartTime()
+        # Get 3rd profiling's start time
+        start_time_3 = getSingleSessionProfilingStartTime()
+
+        # Chronological profiling's start time
+        self.assertTrue(start_time_1 <= start_time_2 <= start_time_3)
+
     def testGraphOptimizationLevel(self):
         opt = onnxrt.SessionOptions()
         # default should be all optimizations optimization
@@ -664,6 +688,22 @@ class TestInferenceSession(unittest.TestCase):
         self.assertTrue(
             'SessionOptions does not have configuration with key: ' + invalide_key in str(context.exception))
 
+    def testSessionOptionsAddInitializer(self):
+        # Create an initializer and add it to a SessionOptions instance
+        so = onnxrt.SessionOptions()
+        # This initializer is different from the actual initializer in the model for "W"
+        ortvalue_initializer = onnxrt.OrtValue.ortvalue_from_numpy(np.array([[2.0, 1.0], [4.0, 3.0], [6.0, 5.0]], dtype=np.float32))
+        # The user should manage the life cycle of this OrtValue and should keep it in scope
+        # as long as any session that is going to be reliant on it is in scope
+        so.add_initializer("W", ortvalue_initializer)
+
+        # Create an InferenceSession that only uses the CPU EP and validate that it uses the
+        # initializer provided via the SessionOptions instance (overriding the model initializer)
+        # We only use the CPU EP because the initializer we created is on CPU and we want the model to use that
+        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), so, ['CPUExecutionProvider'])
+        res = sess.run(["Y"], {"X": np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)})
+        self.assertTrue(np.array_equal(res[0], np.array([[2.0, 2.0], [12.0, 12.0], [30.0, 30.0]], dtype=np.float32)))
+        
     def testRegisterCustomOpsLibrary(self):
         if sys.platform.startswith("win"):
             shared_library = 'custom_op_library.dll'
@@ -712,6 +752,61 @@ class TestInferenceSession(unittest.TestCase):
         so3.register_custom_ops_library(shared_library)
         sess3 = onnxrt.InferenceSession(custom_op_model, so3)
 
+    def testOrtValue(self):
+
+        numpy_arr_input = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        numpy_arr_output = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
+
+        def test_session_with_ortvalue_input(ortvalue):
+            sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
+            res = sess.run(["Y"], {"X": ortvalue})
+            self.assertTrue(np.array_equal(res[0], numpy_arr_output))
+
+        ortvalue1 = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr_input)
+        self.assertEqual(ortvalue1.device_name(), "cpu")
+        self.assertEqual(ortvalue1.shape(), [3, 2])
+        self.assertEqual(ortvalue1.data_type(), "tensor(float)")
+        self.assertEqual(ortvalue1.is_tensor(), True)
+        self.assertTrue(np.array_equal(ortvalue1.numpy(), numpy_arr_input))
+
+        # Pass in the constructed OrtValue to a session via Run() and check results
+        test_session_with_ortvalue_input(ortvalue1)
+
+        # The constructed OrtValue should still be valid after being used in a session
+        self.assertTrue(np.array_equal(ortvalue1.numpy(), numpy_arr_input))
+
+        if 'CUDAExecutionProvider' in onnxrt.get_available_providers():
+            ortvalue2 = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr_input, 'cuda', 0)
+            self.assertEqual(ortvalue2.device_name(), "cuda")
+            self.assertEqual(ortvalue2.shape(), [3, 2])
+            self.assertEqual(ortvalue2.data_type(), "tensor(float)")
+            self.assertEqual(ortvalue2.is_tensor(), True)
+            self.assertTrue(np.array_equal(ortvalue2.numpy(), numpy_arr_input))
+
+            # Pass in the constructed OrtValue to a session via Run() and check results
+            test_session_with_ortvalue_input(ortvalue2)
+
+            # The constructed OrtValue should still be valid after being used in a session
+            self.assertTrue(np.array_equal(ortvalue2.numpy(), numpy_arr_input))
+
+    def testRunModelWithCudaCopyStream(self):
+        available_providers = onnxrt.get_available_providers()
+
+        if (not 'CUDAExecutionProvider' in available_providers):
+            print("Skipping testRunModelWithCudaCopyStream when CUDA is not available")
+        else:
+            # adapted from issue #4829 for a race condition when copy is not on default stream
+            # note:
+            # 1. if there are intermittent failure in this test, something is wrong
+            # 2. it's easier to repro on slower GPU (like M60, Geforce 1070)
+
+            # to repro #4829, uncomment the line below to run copy in a separate stream
+            #onnxrt.capi._pybind_state.set_do_copy_in_default_stream(False)
+
+            session = onnxrt.InferenceSession(get_name("issue4829.onnx"))
+            shape = np.array([2,2], dtype=np.int64)
+            for iteration in range(100000):
+                result = session.run(output_names=['output'], input_feed={'shape': shape})
 
 if __name__ == '__main__':
     unittest.main()

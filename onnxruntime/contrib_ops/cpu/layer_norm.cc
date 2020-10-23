@@ -21,27 +21,36 @@ namespace contrib {
       kCpuExecutionProvider,                                      \
       KernelDefBuilder()                                          \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      LayerNorm<T>);
-
+      LayerNorm<T, false>);                                       \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+      SimplifiedLayerNormalization,                               \
+      kOnnxDomain,                                                \
+      1,                                                          \
+      T,                                                          \
+      kCpuExecutionProvider,                                      \
+      KernelDefBuilder()                                          \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      LayerNorm<T, true>);
+  
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(double)
 
-template <typename T>
-LayerNorm<T>::LayerNorm(const OpKernelInfo& op_kernel_info)
+template <typename T, bool simplified>
+LayerNorm<T, simplified>::LayerNorm(const OpKernelInfo& op_kernel_info)
     : OpKernel(op_kernel_info) {
   ORT_ENFORCE(op_kernel_info.GetAttr("axis", &axis_).IsOK());
   ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
 }
 
-template <typename T>
-Status LayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
+template <typename T, bool simplified>
+Status LayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
   // Inputs
   const Tensor* X = p_ctx->Input<Tensor>(0);
   const Tensor* scale = p_ctx->Input<Tensor>(1);
   const Tensor* bias = p_ctx->Input<Tensor>(2);
   auto X_data = X->template Data<T>();
   auto scale_data = scale->template Data<T>();
-  auto bias_data = bias->template Data<T>();
+  auto bias_data = simplified ? nullptr : bias->template Data<T>();
 
   const TensorShape& x_shape = X->Shape();
   const int64_t axis = HandleNegativeAxis(axis_, x_shape.NumDimensions());
@@ -67,19 +76,23 @@ Status LayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
   T* mean_data = nullptr;
   BufferUniquePtr mean_data_buf_ptr;
 
-  Tensor* mean = p_ctx->Output(1, TensorShape(mean_inv_std_var_dim));
-  if (mean != nullptr) {
-    mean_data = mean->template MutableData<T>();
-  } else {
-    auto mean_data_buf = alloc->Alloc(SafeInt<size_t>(sizeof(T)) * norm_count);
-    mean_data_buf_ptr = BufferUniquePtr(mean_data_buf, BufferDeleter(alloc));
-    mean_data = static_cast<T*>(mean_data_buf_ptr.get());
+  int output_index = 1;
+
+  if (!simplified) {
+    Tensor* mean = p_ctx->Output(output_index++, TensorShape(mean_inv_std_var_dim));
+    if (mean != nullptr) {
+      mean_data = mean->template MutableData<T>();
+    } else {
+      auto mean_data_buf = alloc->Alloc(SafeInt<size_t>(sizeof(T)) * norm_count);
+      mean_data_buf_ptr = BufferUniquePtr(mean_data_buf, BufferDeleter(alloc));
+      mean_data = static_cast<T*>(mean_data_buf_ptr.get());
+    }
   }
 
   T* inv_std_var_data = nullptr;
   BufferUniquePtr inv_std_var_data_buf_ptr;
 
-  Tensor* inv_std_var = p_ctx->Output(2, TensorShape(mean_inv_std_var_dim));
+  Tensor* inv_std_var = p_ctx->Output(output_index, TensorShape(mean_inv_std_var_dim));
   if (inv_std_var != nullptr) {
     inv_std_var_data = inv_std_var->template MutableData<T>();
   } else {
@@ -102,13 +115,23 @@ Status LayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
                                                  }
 
                                                  mean = mean / norm_size;
-                                                 mean_square = sqrt(mean_square / norm_size - mean * mean + epsilon_);
-
-                                                 for (int64_t h = 0; h < norm_size; h++) {
-                                                   p_output[h] = (p_input[h] - mean) / mean_square * scale_data[h] + bias_data[h];
+                                                 if (simplified) {
+                                                   mean_square = sqrt(mean_square / norm_size + epsilon_);
+                                                 } else {
+                                                   mean_square = sqrt(mean_square / norm_size - mean * mean + epsilon_);
                                                  }
 
-                                                 mean_data[task_idx] = mean;
+                                                 for (int64_t h = 0; h < norm_size; h++) {
+                                                   if (simplified) {
+                                                     p_output[h] = p_input[h] / mean_square * scale_data[h];
+                                                   } else {
+                                                     p_output[h] = (p_input[h] - mean) / mean_square * scale_data[h] + bias_data[h];
+                                                   }
+                                                 }
+
+                                                 if (mean_data != nullptr) {
+                                                   mean_data[task_idx] = mean;
+                                                 }
                                                  inv_std_var_data[task_idx] = 1 / mean_square;
                                                }, 0);
 

@@ -22,6 +22,9 @@ run_torch=false
 run_torchscript=true
 run_tensorflow=false
 
+# Onnx model source (default is from pytorch, set export_onnx_from_tf=true to convert from tensorflow model)
+export_onnx_from_tf=false
+
 # Devices to test (You can run either CPU or GPU, but not both: gpu need onnxruntime-gpu, and CPU need onnxruntime).
 run_gpu_fp32=true
 run_gpu_fp16=true
@@ -99,6 +102,11 @@ fi
 
 onnx_export_options="-i $input_counts -v -b 0 --overwrite -f fusion.csv -c $cache_dir --onnx_dir $onnx_dir"
 benchmark_options="-b $batch_sizes -s $sequence_lengths -t $average_over -f fusion.csv -r result.csv -d detail.csv -c $cache_dir --onnx_dir $onnx_dir"
+
+if [ "$export_onnx_from_tf" = true ] ; then
+  onnx_export_options="$onnx_export_options --model_source tf"
+  benchmark_options="$benchmark_options --model_source tf"
+fi
 
 if [ "$use_optimizer" = true ] ; then
   onnx_export_options="$onnx_export_options -o"
