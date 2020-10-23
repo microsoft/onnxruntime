@@ -92,6 +92,10 @@ class ORTTrainerOptions(object):
                             'min' : 1,
                             'default' : 1
                         },
+                        'pipeline_cut_info_string': {
+                            'type': 'string',
+                            'default': ''
+                        },
                         'allreduce_post_accumulation' : {
                             'type' : 'boolean',
                             'default' : False
@@ -152,7 +156,7 @@ class ORTTrainerOptions(object):
                         'transformer_layer_recompute': {
                             'type': 'boolean',
                             'default': False
-                        }, 
+                        },
                         'number_recompute_layers': {
                             'type': 'integer',
                             'min': 0,
@@ -251,6 +255,8 @@ class ORTTrainerOptions(object):
             number of ranks participating in pipeline parallelism
         distributed.num_pipeline_steps (int, default is 1):
             number of sub-batches. We divide input batch into sub-batches and run the graph.
+        distributed.pipeline_cut_info_string (string, default is ''):
+            string of cutting ids for pipeline partition.
         distributed.allreduce_post_accumulation (bool, default is False):
             True enables overlap of AllReduce with computation, while False,
             postpone AllReduce until all gradients are ready
@@ -472,6 +478,10 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                 'type': 'integer',
                 'min': 1,
                 'default': 1
+            },
+            'pipeline_cut_info_string': {
+                'type': 'string',
+                'default': ''
             },
             'allreduce_post_accumulation': {
                 'type': 'boolean',
