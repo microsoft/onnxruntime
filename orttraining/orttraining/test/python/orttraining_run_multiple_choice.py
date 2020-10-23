@@ -93,33 +93,24 @@ class ORTMultipleChoiceTest(unittest.TestCase):
 
     def test_bert_with_swag(self):
         expected_acc = 0.7640207937618715
-        expected_loss = 0.6234657892213054
-        results_per_api = dict()
-        for use_new_api in [False, True]:
-            results = self.run_multiple_choice(model_name="bert-base-cased", task_name="swag", fp16=False, use_new_api=use_new_api)
-            # assert_allclose(results['acc'], expected_acc)
-            # assert_allclose(results['loss'], expected_loss)
-            results_per_api[use_new_api] = results
+        expected_loss = 0.6234658131952969
 
-        verify_old_and_new_api_are_equal(results_per_api)
+        results = self.run_multiple_choice(model_name="bert-base-cased", task_name="swag", fp16=False)
+        assert_allclose(results['acc'], expected_acc)
+        assert_allclose(results['loss'], expected_loss)
 
     def test_bert_fp16_with_swag(self):
         # larger batch can be handled with mixed precision
         self.train_batch_size = 32
 
-        expected_acc = 0.7482255323402979
-        expected_loss = 0.6665752871014349
+        expected_acc = 0.7480255923223033
+        expected_loss = 0.6665347689820622
 
-        results_per_api = dict()
-        for use_new_api in [False, True]:
-            results = self.run_multiple_choice(model_name="bert-base-cased", task_name="swag", fp16=True, use_new_api=use_new_api)
-            assert_allclose(results['acc'], expected_acc)
-            assert_allclose(results['loss'], expected_loss)
-            results_per_api[use_new_api] = results
+        results = self.run_multiple_choice(model_name="bert-base-cased", task_name="swag", fp16=True)
+        assert_allclose(results['acc'], expected_acc)
+        assert_allclose(results['loss'], expected_loss)
 
-        verify_old_and_new_api_are_equal(results_per_api)
-
-    def run_multiple_choice(self, model_name, task_name, fp16, use_new_api):
+    def run_multiple_choice(self, model_name, task_name, fp16):
         model_args = ModelArguments(model_name_or_path=model_name, cache_dir=self.cache_dir)
         data_args = DataTrainingArguments(task_name=task_name, data_dir=self.data_dir,
             max_seq_length=self.max_seq_length)
@@ -248,7 +239,6 @@ class ORTMultipleChoiceTest(unittest.TestCase):
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
             compute_metrics=compute_metrics,
-            use_new_api=use_new_api
         )
 
         # Training

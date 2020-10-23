@@ -1159,6 +1159,10 @@ def run_training_python_frontend_tests(cwd):
         [sys.executable, 'orttraining_run_glue.py', 'ORTGlueTest.test_bert_with_mrpc', '-v'],
         cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'})
 
+    run_subprocess(
+        [sys.executable, 'orttraining_run_glue.py', 'ORTGlueTest.test_roberta_with_mrpc', '-v'],
+        cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'})
+
 
 def run_training_python_frontend_e2e_tests(cwd):
     # frontend tests are to be added here:
@@ -1180,12 +1184,13 @@ def run_training_python_frontend_e2e_tests(cwd):
             'mpirun', '-n', str(ngpus), '-x', 'NCCL_DEBUG=INFO', sys.executable,
             bert_pretrain_script, 'ORTBertPretrainTest.test_pretrain_convergence'], cwd=cwd)
 
-        # a long run
-        log.debug('RUN: mpirun -n {} ''-x' 'NCCL_DEBUG=INFO'' {} {}'.format(
-            ngpus, sys.executable, bert_pretrain_script))
-        run_subprocess([
-            'mpirun', '-n', str(ngpus), '-x', 'NCCL_DEBUG=INFO', sys.executable,
-            bert_pretrain_script], cwd=cwd)
+        # skip long run - it is very difficult to search for breaking commit with this long run test.
+        # # a long run
+        # log.debug('RUN: mpirun -n {} ''-x' 'NCCL_DEBUG=INFO'' {} {}'.format(
+        #     ngpus, sys.executable, bert_pretrain_script))
+        # run_subprocess([
+        #     'mpirun', '-n', str(ngpus), '-x', 'NCCL_DEBUG=INFO', sys.executable,
+        #     bert_pretrain_script], cwd=cwd)
 
         log.debug('RUN: mpirun -n {} {} orttraining_run_glue.py'.format(ngpus, sys.executable))
         run_subprocess([
