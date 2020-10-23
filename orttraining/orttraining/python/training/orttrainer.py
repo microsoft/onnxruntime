@@ -642,6 +642,7 @@ class ORTTrainer(object):
         ort_parameters.horizontal_parallel_size = self.options.distributed.horizontal_parallel_size
         ort_parameters.pipeline_parallel_size = self.options.distributed.pipeline_parallel_size
         ort_parameters.num_pipeline_steps = self.options.distributed.num_pipeline_steps
+        ort_parameters.pipeline_cut_info_string = self.options.distributed.pipeline_cut_info_string
 
         print('[orttrainer.py] ort_parameters.data_parallel_size=', ort_parameters.data_parallel_size)
         print('[orttrainer.py] ort_parameters.horizontal_parallel_size=', ort_parameters.horizontal_parallel_size)
@@ -651,8 +652,8 @@ class ORTTrainer(object):
         # SessionOptions
         session_options = ort.SessionOptions()
         session_options.use_deterministic_compute = self.options.debug.deterministic_compute
-        if (self.options.graph_transformer.attn_dropout_recompute or 
-            self.options.graph_transformer.gelu_recompute or 
+        if (self.options.graph_transformer.attn_dropout_recompute or
+            self.options.graph_transformer.gelu_recompute or
             self.options.graph_transformer.transformer_layer_recompute):
             session_options.execution_order = ort.ExecutionOrder.PRIORITY_BASED
 
