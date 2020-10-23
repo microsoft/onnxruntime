@@ -96,7 +96,8 @@ class MemPatternPlanner {
           best_offset = current;
         }
       }
-      current = allocs_[*it].block_.offset_ + allocs_[*it].block_.size_;
+
+      current = std::max(current, allocs_[*it].block_.offset_ + allocs_[*it].block_.size_);
     }
 
     // we only need to bounds check the addition of size to best_offset as that is the only time we extend
@@ -105,7 +106,10 @@ class MemPatternPlanner {
     allocs_.emplace_back(ml_value_idx, program_counter_start, program_counter_end, MemoryBlock(best_offset, size));
     std::list<int>::iterator best_fit_it = blocks_.end();
     for (auto it = blocks_.begin(); it != blocks_.end(); it++) {
-      if (allocs_[*it].block_.offset_ >= best_offset) {
+      if(allocs_[*it].block_.offset_ < best_offset)
+        continue;
+
+      if ((allocs_[*it].block_.offset_ > best_offset) || (allocs_[*it].block_.size_ >= size)) {
         best_fit_it = it;
         break;
       }

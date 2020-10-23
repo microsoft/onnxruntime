@@ -673,12 +673,13 @@ class PlannerImpl {
           auto original = Buffer(Index(sym));
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
           // See comments in the OrtValueInfo definition.
-          if ((original != -1) && (0 == DecrementUseCount(original)))
+          if ((original != -1) && (0 == DecrementUseCount(original))) {
             freelist_.push_front(FreeBufferInfo(original, program_counter));
-          if (AllocPlan(original).alloc_kind == AllocKind::kAllocate) {
-            ORT_ENFORCE(AllocPlan(original).program_counter_end.size() > 0);
-            ORT_ENFORCE(AllocPlan(original).program_counter_end.back() == SIZE_MAX);
-            AllocPlan(original).program_counter_end.back() = program_counter;
+            if (AllocPlan(original).alloc_kind == AllocKind::kAllocate) {
+              ORT_ENFORCE(AllocPlan(original).program_counter_end.size() > 0);
+              ORT_ENFORCE(AllocPlan(original).program_counter_end.back() == SIZE_MAX);
+              AllocPlan(original).program_counter_end.back() = program_counter;
+            }
           }
         }
       }
@@ -689,12 +690,13 @@ class PlannerImpl {
           auto original = Buffer(Index(sym));
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
           // See comments in the OrtValueInfo definition.
-          if ((original != -1) && (0 == DecrementUseCount(original)))
+          if ((original != -1) && (0 == DecrementUseCount(original))) {
             freelist_.push_front(FreeBufferInfo(original, program_counter));
-          if (AllocPlan(original).alloc_kind == AllocKind::kAllocate) {
-            ORT_ENFORCE(AllocPlan(original).program_counter_end.size() > 0);
-            ORT_ENFORCE(AllocPlan(original).program_counter_end.back() == SIZE_MAX);
-            AllocPlan(original).program_counter_end.back() = program_counter;
+            if (AllocPlan(original).alloc_kind == AllocKind::kAllocate) {
+              ORT_ENFORCE(AllocPlan(original).program_counter_end.size() > 0);
+              ORT_ENFORCE(AllocPlan(original).program_counter_end.back() == SIZE_MAX);
+              AllocPlan(original).program_counter_end.back() = program_counter;
+            }
           }
         }
       }
@@ -704,12 +706,13 @@ class PlannerImpl {
         if (node_output->Exists()) {
           auto& sym = node_output->Name();
           auto original = Buffer(Index(sym));
-          if (0 == DecrementUseCount(original))
+          if (0 == DecrementUseCount(original)) {
             freelist_.push_front(FreeBufferInfo(original, program_counter));
-          if (AllocPlan(original).alloc_kind == AllocKind::kAllocate) {
-            ORT_ENFORCE(AllocPlan(original).program_counter_end.size() > 0);
-            ORT_ENFORCE(AllocPlan(original).program_counter_end.back() == SIZE_MAX);
-            AllocPlan(original).program_counter_end.back() = program_counter;
+            if (AllocPlan(original).alloc_kind == AllocKind::kAllocate) {
+              ORT_ENFORCE(AllocPlan(original).program_counter_end.size() > 0);
+              ORT_ENFORCE(AllocPlan(original).program_counter_end.back() == SIZE_MAX);
+              AllocPlan(original).program_counter_end.back() = program_counter;
+            }
           }
         }
       }
