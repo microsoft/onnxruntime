@@ -11,6 +11,7 @@
 #include "test_utils.h"
 #include "test/test_environment.h"
 #include "test/framework/TestAllocatorManager.h"
+#include "test/util/include/inference_session_wrapper.h"
 #include "asserts.h"
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
@@ -137,7 +138,7 @@ TEST_F(ExecutionFrameTest, FeedInDataTest) {
                      DefaultLoggingManager().DefaultLogger(), profiler);
 
   ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
-  
+
   const OrtValueNameIdxMap& mlvalue_name_idx_map = state.GetOrtValueNameIdxMap();
   int x_idx = -1, y_idx = -1;
   ASSERT_TRUE(mlvalue_name_idx_map.GetIdx("X", x_idx).IsOK());
@@ -323,17 +324,7 @@ TEST(ExecutionFrameTestInit, InitializerAsOutput) {
 
   // test that if no pre-allocated fetch is provided a new OrtValue is allocated for the results
   {
-    class TestInferenceSesssion : public InferenceSession {
-     public:
-      TestInferenceSesssion(const SessionOptions& session_options,
-                            const Environment& session_env)
-          : InferenceSession(session_options, session_env) {
-      }
-
-      const SessionState& GetSessionState() const { return InferenceSession::GetSessionState(); }
-    };
-
-    TestInferenceSesssion session(so, GetEnvironment());
+    InferenceSessionWrapper session(so, GetEnvironment());
     ASSERT_STATUS_OK(session.Load(ORT_TSTR("testdata/initializer_as_output.onnx")));
     ASSERT_STATUS_OK(session.Initialize());
 

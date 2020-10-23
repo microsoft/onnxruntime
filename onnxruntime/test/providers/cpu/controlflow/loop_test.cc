@@ -92,7 +92,11 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(const RunOptions& options
   bool is_cond_1d = options.subgraph_cond_1d_tensor;
   bool is_iter_num_1d = options.subgraph_iter_num_1d_tensor;
 
-  Model model("Loop subgraph", false, DefaultLoggingManager().DefaultLogger());
+  // Loop tests use unsqueeze operator in it's subgraph. Unsqueeze was updated in opset13
+  // This test can continue to use opset12 or can be updated to use the latest opset once 
+  // unsqueeze op13 implementation is done.
+  Model model("Loop subgraph", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 12}},
+              {}, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   std::vector<NodeArg*> inputs;

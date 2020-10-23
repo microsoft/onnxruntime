@@ -645,14 +645,6 @@ if (onnxruntime_USE_DNNL)
     COMMAND ${CMAKE_COMMAND} -E copy ${DNNL_DLL_PATH} $<TARGET_FILE_DIR:${test_data_target}>
     )
 endif()
-if (onnxruntime_USE_MKLML)
-  add_custom_command(
-    TARGET ${test_data_target} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-    ${MKLML_LIB_DIR}/${MKLML_SHARED_LIB} ${MKLML_LIB_DIR}/${IOMP5MD_SHARED_LIB}
-    $<TARGET_FILE_DIR:${test_data_target}>
-  )
-endif()
 if(WIN32)
   if (onnxruntime_USE_NGRAPH)
     add_custom_command(
@@ -928,6 +920,9 @@ list(APPEND onnxruntime_mlas_test_libs Threads::Threads)
 target_link_libraries(onnxruntime_mlas_test PRIVATE ${onnxruntime_mlas_test_libs})
 if(WIN32)
   target_link_libraries(onnxruntime_mlas_test PRIVATE debug Dbghelp Advapi32)
+endif()
+if (onnxruntime_LINK_LIBATOMIC)
+  target_link_libraries(onnxruntime_mlas_test PRIVATE atomic)
 endif()
 set_target_properties(onnxruntime_mlas_test PROPERTIES FOLDER "ONNXRuntimeTest")
 

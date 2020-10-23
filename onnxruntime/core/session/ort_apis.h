@@ -246,4 +246,5 @@ ORT_API_STATUS_IMPL(AddInitializer, _Inout_ OrtSessionOptions* options, _In_ con
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_CUDA,
                     _In_ OrtSessionOptions* options, _In_ OrtCUDAProviderOptions* cuda_options);
+ORT_API_STATUS_IMPL(SetGlobalDenormalAsZero, _Inout_ OrtThreadingOptions* options);
 }  // namespace OrtApis
