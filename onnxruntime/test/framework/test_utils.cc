@@ -40,7 +40,7 @@ IExecutionProvider* TestOpenVINOExecutionProvider() {
 
 #ifdef USE_NNAPI
 IExecutionProvider* TestNnapiExecutionProvider() {
-  static NnapiExecutionProvider nnapi_provider;
+  static NnapiExecutionProvider nnapi_provider(0);
   return &nnapi_provider;
 }
 #endif
