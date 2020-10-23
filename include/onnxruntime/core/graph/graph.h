@@ -121,7 +121,7 @@ class Node {
 
   /** Gets the Node's Node::Type. */
   Node::Type NodeType() const noexcept { return node_type_; }
-  
+
   /** Gets the opset version that the Node's operator was first defined in.
   @returns Opset version. If -1 the Node's operator has not been set.
   @remarks Prefer over Op()->SinceVersion() as Op() is disabled in a minimal build
@@ -1029,13 +1029,12 @@ class Graph {
 
   /** Returns true if the name is for a value that is coming from outer scope */
   bool IsOuterScopeValue(const std::string& name) const {
-#if !defined(ORT_MINIMAL_BUILD)
-    return resolve_context_.outer_scope_node_args.find(name) != resolve_context_.outer_scope_node_args.cend();
-#else
-    // we shouldn't have code that calls this in a minimal build
-    ORT_UNUSED_PARAMETER(name);
-    ORT_THROW("Internal error. Outer scope value lookup is not currently supported in a minimal build.");
-#endif
+    if (!parent_node_) return false;
+    const auto& implicit_input_defs = parent_node_->ImplicitInputDefs();
+    return std::any_of(implicit_input_defs.cbegin(), implicit_input_defs.cend(),
+                       [&name](const NodeArg* implicit_input) {
+                         return implicit_input->Name() == name;
+                       });
   }
 
 #if !defined(ORT_MINIMAL_BUILD)

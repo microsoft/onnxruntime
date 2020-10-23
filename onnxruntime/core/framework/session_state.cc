@@ -261,10 +261,9 @@ Status SessionState::PrepackConstantInitializedTensors(std::unordered_map<std::s
             // stop searching in 2 cases:
             // 1. value is not from OuterScope
             // 2. value is from OuterScope and the current OuterScope has the value
-            if (st != this) break;
-#if !defined(ORT_MINIMAL_BUILD)
-            if (!st->graph_.IsOuterScopeValue(input_name)) break;
-#endif
+            if (st != this || !st->graph_.IsOuterScopeValue(input_name)) {
+              break;
+            }
           }
           st = st->Parent();
         } while (st);
@@ -791,15 +790,9 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
 static void ComputeConstantInitializerUseCount(const Graph& graph, std::unordered_map<std::string, size_t>& constant_initializers_use_count) {
   for (const auto& node : graph.Nodes()) {
     for (const auto* arg : node.InputDefs()) {
-#if !defined(ORT_MINIMAL_BUILD)
-      if (arg->Exists() && graph.GetConstantInitializer(arg->Name(), true /*check_outer_scope*/))
-#else
-      // ORT_MINIMAL_BUILD doesn't support Graph::IsOuterScopeValue function.
-      // GetConstantInitializer depends on IsOuterScopeValue, thus is not supported either.
-      // For ORT_MINIMAL_BUILD, it calculates use count for all values, but serves the same purpose.
-      if (arg->Exists())
-#endif
+      if (arg->Exists() && graph.GetConstantInitializer(arg->Name(), true /*check_outer_scope*/)) {
         constant_initializers_use_count[arg->Name()]++;
+      }
     }
 
     if (node.ContainsSubgraph()) {
