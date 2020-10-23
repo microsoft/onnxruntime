@@ -496,6 +496,7 @@ TEST_P(ModelTest, Run) {
       }
 
       ASSERT_STATUS_OK(session_object.Load(model_path));
+      std::cout<<model_path<<std::endl;
       auto st = session_object.Initialize();
       if (st.Code() == NOT_IMPLEMENTED)
         return;
