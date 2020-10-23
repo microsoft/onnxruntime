@@ -304,7 +304,7 @@ class ReduceAggregatorLogSumExp : public ReduceAggregator<T, TVAL> {
 
  public:
   inline ReduceAggregatorLogSumExp(int64_t N, const T& init) : ReduceAggregator<T, TVAL>(N, 0) {
-    max_ = reduce_isinf(init) ? accumulator_ : init;
+    max_ = reduce_isinf(init) ? this->accumulator_ : init;
   }
   inline TVAL aggall(const T* from_data) {
     max_ = Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, this->N_).maxCoeff();
