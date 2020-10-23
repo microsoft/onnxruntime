@@ -26,6 +26,6 @@ class NnapiExecutionProvider : public IExecutionProvider {
 
   // The bit set which defined bool options for NNAPI EP, bits are defined as
   // NNAPIFlag in include/onnxruntime/core/providers/nnapi/nnapi_provider_factory.h
-  std::bitset<NNAPI_FLAG_MAX> nnapi_flags_;
+  const std::bitset<NNAPI_FLAG_MAX> nnapi_flags_;
 };
 }  // namespace onnxruntime
