@@ -87,7 +87,8 @@ static inline void increment_over_inner_dim(std::vector<int64_t>& current_dims, 
 }
 
 template <typename Tin>
-static inline int64_t GetNegativeIndexAdjustedValue(const Tin* indices_data, Tin index, int64_t axis, const TensorShape& input_shape) {
+static inline int64_t GetNegativeIndexAdjustedValue(const Tin* indices_data, Tin index, int64_t axis,
+                                                    const TensorShape& input_shape) {
   int64_t retval = -1;
   if (indices_data[index] < 0) {
     retval = static_cast<int64_t>(indices_data[index] + input_shape[axis]);
@@ -142,7 +143,7 @@ static void core_impl(const Tensor* input_tensor, const Tensor* indices_tensor,
       ORT_THROW("GatherElements op: Value in indices must be within bounds [",
                 lower_index_limit, " , ", upper_index_limit, "]. Actual value is ", indices_val);
   };
-  for (int64_t i = 0; i < num_elements; ++i) {
+  for (int64_t i = 0; i < num_elements; ++i) {  // TODO: parallelize this? didn't give any benefit in my tests
     validation_fn(i);
   }
 
@@ -157,6 +158,16 @@ static void core_impl(const Tensor* input_tensor, const Tensor* indices_tensor,
   std::vector<int64_t> process_dims(input_rank, 0);
   int64_t output_counter = 0;
 
+  auto conditional_batch_call = [ttp, inner_dim_size](std::function<void(ptrdiff_t)> f) {
+    if (inner_dim_size < 10 * 1000) {  // TODO: tune this, arbitrary threshold
+      for (int64_t i = 0; i < inner_dim_size; ++i) {
+        f(i);
+      }
+    } else {
+      concurrency::ThreadPool::TryBatchParallelFor(ttp, inner_dim_size, f, 0);
+    }
+  };
+
   if (!processing_inner_dim) {
     while (num_inner_dim-- != 0) {
       base_offset = compute_base_offset(process_dims, input_shape_pitches, axis);
@@ -164,30 +175,24 @@ static void core_impl(const Tensor* input_tensor, const Tensor* indices_tensor,
       // process 1 chunk of 'inner dimension' length
       // optimizer will remove the redundant if/else block based on 'is_string' template parameter
       if (is_string) {
-        concurrency::ThreadPool::TryBatchParallelFor(
-            ttp,
-            inner_dim_size,
-            [input_data, output_data, base_offset, input_shape_pitches,
-             indices_data, indices_counter, axis, input_shape, output_counter](ptrdiff_t i) {
-              output_data[i + output_counter] =
-                  input_data[base_offset +
-                             (GetNegativeIndexAdjustedValue<Tin>(indices_data, (Tin)i + indices_counter, axis, input_shape) *
-                              input_shape_pitches[axis]) +
-                             i];
-            },
-            0);
+        auto fn = [input_data, output_data, base_offset, input_shape_pitches,
+                   indices_data, indices_counter, axis, input_shape, output_counter](ptrdiff_t i) {
+          output_data[i + output_counter] =
+              input_data[base_offset +
+                         (GetNegativeIndexAdjustedValue<Tin>(indices_data, static_cast<Tin>(i) + indices_counter, axis, input_shape) *
+                          input_shape_pitches[axis]) +
+                         i];
+        };
+        conditional_batch_call(fn);
         output_counter += inner_dim_size;
       } else {
-        concurrency::ThreadPool::TryBatchParallelFor(
-            ttp,
-            inner_dim_size,
-            [input_data, output_data, base_offset, input_shape_pitches, element_size,
-             indices_data, indices_counter, axis, input_shape](ptrdiff_t i) {
-              memcpy(output_data + (i * element_size),
-                     input_data + (base_offset + (GetNegativeIndexAdjustedValue<Tin>(indices_data, (Tin)i + indices_counter, axis, input_shape) * input_shape_pitches[axis]) + i) * element_size,
-                     element_size);
-            },
-            0);
+        auto fn = [input_data, output_data, base_offset, input_shape_pitches, element_size,
+                   indices_data, indices_counter, axis, input_shape](ptrdiff_t i) {
+          memcpy(output_data + (i * element_size),
+                 input_data + (base_offset + (GetNegativeIndexAdjustedValue<Tin>(indices_data, static_cast<Tin>(i) + indices_counter, axis, input_shape) * input_shape_pitches[axis]) + i) * element_size,
+                 element_size);
+        };
+        conditional_batch_call(fn);
         output_data += inner_dim_size * element_size;
       }
       indices_counter += static_cast<Tin>(inner_dim_size);
@@ -201,33 +206,26 @@ static void core_impl(const Tensor* input_tensor, const Tensor* indices_tensor,
 
       // process 1 chunk of 'inner dimension' length
       if (is_string) {
-        concurrency::ThreadPool::TryBatchParallelFor(
-            ttp,
-            inner_dim_size,
-            [input_data, output_data, base_offset,
-             indices_data, indices_counter, axis, input_shape, output_counter](ptrdiff_t i) {
-              // for innermost axis, input_shape_pitches[axis] = 1 (so no need to multiply)
-              output_data[i + output_counter] =
-                  input_data[base_offset +
-                             GetNegativeIndexAdjustedValue<Tin>(indices_data, (Tin)i + indices_counter, axis, input_shape)];
-            },
-            0);
+        auto fn = [input_data, output_data, base_offset,
+                   indices_data, indices_counter, axis, input_shape, output_counter](ptrdiff_t i) {
+          // for innermost axis, input_shape_pitches[axis] = 1 (so no need to multiply)
+          output_data[i + output_counter] =
+              input_data[base_offset +
+                         GetNegativeIndexAdjustedValue<Tin>(indices_data, static_cast<Tin>(i) + indices_counter, axis, input_shape)];
+        };
+        conditional_batch_call(fn);
         output_counter += inner_dim_size;
       } else {
         // for innermost axis, input_shape_pitches[axis] = 1 (so no need to multiply)
-        // optimizer will remove the redundant if/else block based on 'is_string' template parameter
-        concurrency::ThreadPool::TryBatchParallelFor(
-            ttp,
-            inner_dim_size,
-            [input_data, output_data, base_offset, element_size,
-             indices_data, indices_counter, axis, input_shape](ptrdiff_t i) {
-              memcpy(output_data + (i * element_size),
-                     input_data + (base_offset +
-                                   GetNegativeIndexAdjustedValue<Tin>(indices_data, (Tin)i + indices_counter, axis, input_shape)) *
-                                      element_size,
-                     element_size);
-            },
-            0);
+        auto fn = [input_data, output_data, base_offset, element_size,
+                   indices_data, indices_counter, axis, input_shape](ptrdiff_t i) {
+          memcpy(output_data + (i * element_size),
+                 input_data + (base_offset +
+                               GetNegativeIndexAdjustedValue<Tin>(indices_data, static_cast<Tin>(i) + indices_counter, axis, input_shape)) *
+                                  element_size,
+                 element_size);
+        };
+        conditional_batch_call(fn);
         output_data += inner_dim_size * element_size;
       }
 
@@ -235,7 +233,7 @@ static void core_impl(const Tensor* input_tensor, const Tensor* indices_tensor,
       increment_over_inner_dim(process_dims, indices_shape);
     }
   }
-}  // namespace onnxruntime
+}
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
 #endif
