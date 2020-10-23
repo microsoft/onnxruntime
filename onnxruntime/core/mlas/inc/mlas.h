@@ -61,7 +61,7 @@ Abstract:
 #define MLAS_SUPPORTS_GEMM_DOUBLE
 #endif
 
-#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_ARM64)
+#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_ARM64) || (defined(MLAS_TARGET_ARM) && !defined(_MSC_VER))
 #define MLAS_SUPPORTS_GEMM_U8X8
 #endif
 
@@ -69,7 +69,7 @@ Abstract:
 #define MLAS_SUPPORTS_GEMM_U8X8_AND_REQUANTIZE_OUTPUT
 #endif
 
-#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_ARM64)
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_ARM64) || (defined(MLAS_TARGET_ARM) && !defined(_MSC_VER))
 #define MLAS_SUPPORTS_PACKED_GEMM_U8X8
 #endif
 
