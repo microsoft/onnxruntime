@@ -59,8 +59,8 @@ jobs:
   - task: CopyFiles@2
     displayName: 'Copy valgrind log to: $(Build.ArtifactStagingDirectory)'
     inputs:
-      SourceFolder: '$(Build.BinariesDirectory)'
-      Contents: 'Release/Testing/Temporary/MemoryChecker.*.log'
+      SourceFolder: '$(Build.BinariesDirectory)/Release/Testing/Temporary/'
+      Contents: 'MemoryChecker.*.log'
       TargetFolder: '$(Build.ArtifactStagingDirectory)'
     condition: succeededOrFailed()
 
