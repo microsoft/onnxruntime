@@ -2093,39 +2093,12 @@ TEST(ReductionOpTest, ReduceInfLogSum) {
   test.Run();
 }
 
-TEST(ReductionOpTest, ReduceInfSumLogExp1) {
+TEST(ReductionOpTest, ReduceInfLogSumExp) {
   OpTester test("ReduceLogSumExp");
   test.AddAttribute("axes", std::vector<int64_t>{1});
   test.AddAttribute("keepdims", (int64_t)0);
-  test.AddInput<float>("data", {1, 2}, {1.0f, FLOAT_INF});
-  test.AddOutput<float>("reduced", {1}, {FLOAT_INF});
-  test.Run();
-}
-
-TEST(ReductionOpTest, ReduceInfSumLogExp2) {
-  OpTester test("ReduceLogSumExp");
-  test.AddAttribute("axes", std::vector<int64_t>{1});
-  test.AddAttribute("keepdims", (int64_t)0);
-  test.AddInput<float>("data", {1, 2}, {FLOAT_INF, 1.0f});
-  test.AddOutput<float>("reduced", {1}, {FLOAT_INF});
-  test.Run();
-}
-
-TEST(ReductionOpTest, ReduceInfSumLogExp3) {
-  OpTester test("ReduceLogSumExp");
-  test.AddAttribute("axes", std::vector<int64_t>{1});
-  test.AddAttribute("keepdims", (int64_t)0);
-  test.AddInput<float>("data", {1, 2}, {1.0f, FLOAT_NINF});
-  test.AddOutput<float>("reduced", {1}, {1.0f});
-  test.Run();
-}
-
-TEST(ReductionOpTest, ReduceInfSumLogExp4) {
-  OpTester test("ReduceLogSumExp");
-  test.AddAttribute("axes", std::vector<int64_t>{1});
-  test.AddAttribute("keepdims", (int64_t)0);
-  test.AddInput<float>("data", {1, 2}, {FLOAT_NINF, 1.0f});
-  test.AddOutput<float>("reduced", {1}, {1.0f});
+  test.AddInput<float>("data", {2, 2}, {1.0f, FLOAT_NINF, FLOAT_NINF, 1.0f});
+  test.AddOutput<float>("reduced", {2}, {1.0f, 1.0f});
   test.Run();
 }
 
