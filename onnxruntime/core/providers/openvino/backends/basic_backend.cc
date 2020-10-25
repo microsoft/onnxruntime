@@ -65,7 +65,13 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
 
   //Initializing the infer_requests_ pool with 8 infer_request's (creating infer_request)
-  size_t nireq = 8;
+  size_t nireq = global_context_.num_of_threads;
+  LOGS_DEFAULT(INFO) << "The value of nireq being used is: " << nireq;
+#ifndef NDEBUG
+  if (openvino_ep::backend_utils::IsDebugEnabled()) {
+      std::cout << "The value of nireq being used is: " << nireq << std::endl;
+  }
+#endif
   inferRequestsQueue_ = std::unique_ptr<InferRequestsQueue>(new InferRequestsQueue(exe_network, nireq));
 }
 
