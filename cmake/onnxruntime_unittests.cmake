@@ -29,7 +29,7 @@ function(AddTest)
       else()
         target_link_directories(${_UT_TARGET} PRIVATE ${onnxruntime_CUDA_HOME}/lib64)
       endif()
-   endif()
+    endif()
   endif()
   list(REMOVE_DUPLICATES _UT_SOURCES)
 
