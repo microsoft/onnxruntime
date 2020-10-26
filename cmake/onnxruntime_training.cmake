@@ -187,6 +187,27 @@ endif()
 target_link_libraries(onnxruntime_training_pipeline_poc PRIVATE onnxruntime_training_runner onnxruntime_training ${ONNXRUNTIME_LIBS} ${onnxruntime_EXTERNAL_LIBRARIES})
 set_target_properties(onnxruntime_training_pipeline_poc PROPERTIES FOLDER "ONNXRuntimeTest")
 
+# Pipeline test tensor slice
+file(GLOB_RECURSE training_pipeline_tensor_test_src
+    "${ORTTRAINING_SOURCE_DIR}/models/pipeline_tensor_tests/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/models/pipeline_tensor_tests/*.cc"
+)
+add_executable(onnxruntime_training_pipeline_tensor_tests ${training_pipeline_tensor_test_src})
+
+if(UNIX AND NOT APPLE)
+  target_compile_options(onnxruntime_training_pipeline_tensor_tests PUBLIC "-Wno-maybe-uninitialized")
+endif()
+
+onnxruntime_add_include_to_target(onnxruntime_training_pipeline_tensor_tests onnxruntime_common onnx onnx_proto protobuf::libprotobuf onnxruntime_training flatbuffers)
+target_include_directories(onnxruntime_training_pipeline_tensor_tests PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${MPI_INCLUDE_DIRS} ${eigen_INCLUDE_DIRS} ${CXXOPTS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner)
+
+if (onnxruntime_USE_HOROVOD)
+  target_include_directories(onnxruntime_training_pipeline_tensor_tests PUBLIC ${HOROVOD_INCLUDE_DIRS})
+endif()
+
+target_link_libraries(onnxruntime_training_pipeline_tensor_tests PRIVATE onnxruntime_training_runner onnxruntime_training ${ONNXRUNTIME_LIBS} ${onnxruntime_EXTERNAL_LIBRARIES})
+set_target_properties(onnxruntime_training_pipeline_tensor_tests PROPERTIES FOLDER "ONNXRuntimeTest")
+
 # GPT-2
 file(GLOB_RECURSE training_gpt2_src
     "${ORTTRAINING_SOURCE_DIR}/models/gpt2/*.h"
