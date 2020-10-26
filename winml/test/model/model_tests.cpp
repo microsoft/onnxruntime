@@ -26,6 +26,13 @@ class ModelTest : public testing::TestWithParam<std::tuple<ITestCase*, winml::Le
     WINML_EXPECT_NO_THROW(m_testCase->GetPerSampleTolerance(&m_perSampleTolerance));
     WINML_EXPECT_NO_THROW(m_testCase->GetRelativePerSampleTolerance(&m_relativePerSampleTolerance));
     WINML_EXPECT_NO_THROW(m_testCase->GetPostProcessing(&m_postProcessing));
+
+    // DirectML runs needs a higher relativePerSampleTolerance to handle GPU variability in results.
+#ifdef USE_DML
+    if (m_deviceKind == winml::LearningModelDeviceKind::DirectX) {
+      m_relativePerSampleTolerance = 0.009; // tolerate up to 0.9% difference of expected result.
+    }
+#endif
   }
   // Called after the last test in this test suite.
   static void TearDownTestSuite() {

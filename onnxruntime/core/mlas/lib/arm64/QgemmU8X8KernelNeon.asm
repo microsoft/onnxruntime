@@ -48,10 +48,10 @@ Routine Description:
 Arguments:
 
     A (x0) - Supplies the address of matrix A. The matrix data has been packed
-        using MlasGemmU8S8CopyPackANeon.
+        using MlasGemmU8X8CopyPackANeon.
 
     B (x1) - Supplies the address of matrix B. The matrix data has been packed
-        using MlasGemmU8S8CopyPackBNeon.
+        using MlasGemmU8X8CopyPackBNeon.
 
     C (x2) - Supplies the address of matrix C.
 
