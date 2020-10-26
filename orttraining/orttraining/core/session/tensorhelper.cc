@@ -62,6 +62,8 @@ namespace onnxruntime {
       auto small_cpu_ptr = small_cpu_value.GetMutable<Tensor>()->MutableDataRaw(); // ???..
 
 
+      int device; 
+      cudaGetDevice(&device);
       //size_t bias =  round * old_type->Size() * small_shape.Size(); // how was bias calculated ?
       //size_t copied_size = old_type->Size() * small_shape.Size(); // what is copied size  ??
       // slice_id, axis, numslices
@@ -75,16 +77,48 @@ namespace onnxruntime {
         // slice_size * slice_id will give us number of elements to copy inside the axis dimension          
         //copied_size = orig_tensor_type->Size() * contiguous_slice_size *slice_size;
                     
-        bias = (elements_read_so_far + slice_id*slice_size*contiguous_slice_size) * orig_tensor_type->Size();  
-        memcpy(static_cast<char*>((void*)small_cpu_ptr) + num_strides*copied_size, static_cast<const char*>(cpu_ptr) + bias, copied_size);                  
+        bias = (elements_read_so_far + slice_id * slice_size * contiguous_slice_size) * orig_tensor_type->Size();  
+        if (std::string(orig_tensor_location.name) == std::string("Cuda")) {
+          if (device != orig_tensor_location.id) {
+            cudaSetDevice(orig_tensor_location.id);
+          }
+
+          cudaMemcpy(static_cast<char*>((void*)small_cpu_ptr) + num_strides*copied_size, static_cast<const char*>(cpu_ptr) + bias, copied_size, cudaMemcpyDeviceToHost);                  
+
+          if (device != orig_tensor_location.id) {
+            cudaSetDevice(device);
+          }
+        } else {
+          memcpy(static_cast<char*>((void*)small_cpu_ptr) + num_strides*copied_size, static_cast<const char*>(cpu_ptr) + bias, copied_size);                  
+        }
+        //bias = (elements_read_so_far + slice_id*slice_size*contiguous_slice_size);
+        //if (orig_tensor_type->Size() == 4) {
+        //  std::cout << "-----------------------------" << std::endl;
+        //  std::cout << "Do float copy" << std::endl;
+        //  std::cout << "-----------------------------" << std::endl;
+        //  // Assume type is float.
+        //  const float* ptr_from = reinterpret_cast<const float*>(cpu_ptr);
+        //  float* ptr_to = reinterpret_cast<float*>(small_cpu_ptr);
+        //  for (size_t ii = 0; ii < contiguous_slice_size * slice_size; ++ii) {
+        //    ptr_to[num_strides * contiguous_slice_size * slice_size + ii] = ptr_from[bias + ii];
+        //  }
+        //} else {
+        //  // Assume type is int64.
+        //  std::cout << "-----------------------------" << std::endl;
+        //  std::cout << "Do int64 copy" << std::endl;
+        //  std::cout << "-----------------------------" << std::endl;
+        //  const int64_t* ptr_from = reinterpret_cast<const int64_t*>(cpu_ptr);
+        //  int64_t* ptr_to = reinterpret_cast<int64_t*>(small_cpu_ptr);
+        //  for (size_t ii = 0; ii < contiguous_slice_size * slice_size; ++ii) {
+        //    ptr_to[num_strides * contiguous_slice_size * slice_size + ii] = ptr_from[bias + ii];
+        //  }
+        //}
         elements_read_so_far += orig_dims[slice_axis] * contiguous_slice_size;
       
         num_strides += 1;
       }
 
       copied_size = num_strides*copied_size;
-      int device; 
-      cudaGetDevice(&device); 	
       std::cout << "[inference_session.cc] current GPU device " << device << std::endl;;
       if (std::string(orig_tensor_location.name) == std::string("Cuda")) {
         // Get CPU tensor to be copied.

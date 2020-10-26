@@ -271,7 +271,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       }
     }
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-    // utils::DumpNodeInputs(op_kernel_context, p_op_kernel->Node(), session_state);
+    utils::DumpNodeInputs(op_kernel_context, p_op_kernel->Node(), session_state);
 #endif
 
     const std::string node_name_for_profiling = [&]() -> std::string {
@@ -413,7 +413,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     }
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-    // utils::DumpNodeOutputs(op_kernel_context, p_op_kernel->Node(), session_state);
+    utils::DumpNodeOutputs(op_kernel_context, p_op_kernel->Node(), session_state);
 #endif
 
     // free ml-values corresponding to this node

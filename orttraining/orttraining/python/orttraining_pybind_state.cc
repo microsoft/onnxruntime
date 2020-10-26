@@ -83,9 +83,9 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   training::TrainingSession::TrainingConfiguration config{};
   config.weight_names_to_train = parameters.weights_to_train;
   config.weight_names_to_not_train = parameters.weights_not_to_train;
-  for (auto name : parameters.weights_to_train) {
-    std::cout << "[orttraining_pybind_state.cc, ConfigureSessionForTraining] train weight: " << name << std::endl;
-  }
+  //for (auto name : parameters.weights_to_train) {
+  //  std::cout << "[orttraining_pybind_state.cc, ConfigureSessionForTraining] train weight: " << name << std::endl;
+  //}
   config.immutable_weights = parameters.immutable_weights;
 
   config.gradient_accumulation_steps = parameters.gradient_accumulation_steps;
