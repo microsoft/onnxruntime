@@ -330,16 +330,19 @@ namespace GraphKernelHelper
         const char* suffix = nullptr;
         
         // The suffix used when inserting mem copies is equal to the below, probably followed by an incrementing number.
-        if (!suffix) {
+        if (!suffix) 
+        {
             suffix = strstr(fusedNodeArgeName.c_str(), "_DmlExecutionProvider_");
         }
 
         // The suffix used when inserting mem copies is equal to the below, not followed by an incrementing number.
-        if (!suffix) {
+        if (!suffix) 
+        {
             suffix = strstr(fusedNodeArgeName.c_str(), "_DmlExecutionProvider");
         }
         
-        if (!suffix) {
+        if (!suffix) 
+        {
             suffix = strstr(fusedNodeArgeName.c_str(), "_token_");
         }
 
@@ -349,7 +352,9 @@ namespace GraphKernelHelper
                 fusedNodeArgeName.begin(),
                 fusedNodeArgeName.begin() + (suffix - fusedNodeArgeName.c_str())
             );
-        } else {
+        } 
+        else 
+        {
             return fusedNodeArgeName;
         }
     }
