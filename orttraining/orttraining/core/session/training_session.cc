@@ -1,6 +1,8 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <set>
+
 #include "orttraining/core/session/training_session.h"
 
 #include "core/framework/data_transfer_utils.h"
@@ -21,6 +23,7 @@
 #include "orttraining/core/graph/pipeline_transformer.h"
 #include "orttraining/core/graph/gradient_builder_base.h"
 #include "orttraining/models/runner/training_util.h"
+#include "orttraining/core/session/tensorhelper.h"
 
 //Gist Encoding
 #include "orttraining/core/optimizer/gist_encode_decode.h"
@@ -171,9 +174,9 @@ Status TrainingSession::ConfigureForTraining(
 
   std::unordered_set<std::string> filtered_config_weight_names_to_train;
   FilterUnusedWeights(config.weight_names_to_train, filtered_config_weight_names_to_train);
-  for (auto name : filtered_config_weight_names_to_train) {
-    std::cout << "[training_session.cc, ConfigureForTraining] train weight with consumer: " << name << std::endl;
-  }
+  //for (auto name : filtered_config_weight_names_to_train) {
+  //  std::cout << "[training_session.cc, ConfigureForTraining] train weight with consumer: " << name << std::endl;
+  //}
 
   TrainingConfigurationResult config_result{};
 
@@ -203,7 +206,7 @@ Status TrainingSession::ConfigureForTraining(
     for (auto& output_node_arg : model_->MainGraph().GetOutputs()) {
       std::string name = output_node_arg->Name();
       graph_output_names.push_back(name);
-      std::cout << "[pipeline_transformer.cc, ApplyPipelinePartitionToMainGraph] See graph output: " << name << std::endl;
+      //std::cout << "[pipeline_transformer.cc, ApplyPipelinePartitionToMainGraph] See graph output: " << name << std::endl;
       graph_output_shapes.push_back(*output_node_arg->Shape());
     }
 
@@ -235,9 +238,9 @@ Status TrainingSession::ConfigureForTraining(
     }
   }
 
-  for (auto name : filtered_config_weight_names_to_train) {
-    std::cout << "[training_session.cc, ConfigureForTraining] train weight with consumer (new): " << name << std::endl;
-  }
+  //for (auto name : filtered_config_weight_names_to_train) {
+  //  std::cout << "[training_session.cc, ConfigureForTraining] train weight with consumer (new): " << name << std::endl;
+  //}
 
   is_mixed_precision_enabled_ = config.mixed_precision_config.has_value();
 
@@ -1028,15 +1031,6 @@ common::Status TrainingSession::Run(const RunOptions& run_options, IOBinding& io
   return InferenceSession::Run(run_options, io_binding);
 }
 
-OrtValue SliceTensor(
-    const OrtValue& /*sliced_value*/,
-    const size_t /*slice_id*/,
-    const size_t /*slice_axis*/,
-    const size_t /*num_slices*/) {
-  OrtValue value;
-  return value;
-}
-
 void TrainingSession::CreateBatchVariables(
     IOBinding& io_binding,
     IOBinding& sub_io_binding,
@@ -1050,11 +1044,19 @@ void TrainingSession::CreateBatchVariables(
 
   ORT_ENFORCE(inputs.size() == input_names.size());
 
+  // TODO: Pass them from config.
+  std::set<std::string> sliced_input_tensor_names{"x", "target"};
+  std::set<std::string> sliced_output_tensor_names{"output"};
+
   // Slice input tensors.
   // TODO: need to specify which tensor to slice.
   for (size_t i = 0; i < inputs.size(); ++i) {
-    OrtValue sliced_value = SliceTensor(inputs[i], slice_id, slice_axis, num_slices);
-    sub_io_binding.BindInput(input_names[i], sliced_value);
+    if (sliced_input_tensor_names.find(input_names[i]) != sliced_input_tensor_names.end()) {
+      OrtValue sliced_value = SliceTensor(inputs[i], slice_id, slice_axis, num_slices, *this);
+      sub_io_binding.BindInput(input_names[i], sliced_value);
+    } else {
+      sub_io_binding.BindInput(input_names[i], inputs[i]);
+    }
   }
 
   auto& outputs = io_binding.GetOutputs();
@@ -1065,8 +1067,12 @@ void TrainingSession::CreateBatchVariables(
   // Slice output tensors.
   // TODO: need to specify which tensor to slice.
   for (size_t i = 0; i < outputs.size(); ++i) {
-    OrtValue sliced_value = SliceTensor(outputs[i], slice_id, slice_axis, num_slices);
-    sub_io_binding.BindOutput(output_names[i], sliced_value);
+    if (sliced_output_tensor_names.find(output_names[i]) != sliced_output_tensor_names.end()) {
+      OrtValue sliced_value = SliceTensor(outputs[i], slice_id, slice_axis, num_slices, *this);
+      sub_io_binding.BindOutput(output_names[i], sliced_value);
+    } else {
+      sub_io_binding.BindOutput(output_names[i], outputs[i]);
+    }
   }
 }
 
@@ -1080,7 +1086,6 @@ void TrainingSession::CreatePipelineEvents(
 
   // Define helper function to create events as ORT values.
   auto append_to_io_binding = [&](const std::string event_name, const int64_t event_value) -> void {
-    std::cout << "[training_session.cc, CreatePipelineEvents] add event " << event_name << ", " << event_value << std::endl;
     // If an event name is empty, the corresponding event won't be used when running the graph.
     if (event_name.empty()) {
       // No need to add unused event.
@@ -1155,21 +1160,11 @@ common::Status TrainingSession::RunWithPipeline(const RunOptions& run_options, I
   // The passed-in binding object is a partial set of final inputs.
   std::vector<std::pair<std::string, OrtValue>> modified_feeds;
 
-  int i = 0;
-  for (auto name : io_binding.GetInputNames()) {
-    std::cout << "[training_session.cc] io_binding.InputNames[" << i << "]=" << name << std::endl;
-  }
-  
-  i = 0;
-  for (auto name : io_binding.GetOutputNames()) {
-    std::cout << "[training_session.cc] io_binding.OutputNames[" << i << "]=" << name << std::endl;
-  }
-
-  // TODO: add it to run_options.
+  // TODO: add it to distributed config.
   const size_t slice_axis = 0;
-  // TODO: add it to run_options.
-  const size_t num_steps = 1;
-  // TODO: add it to run_options.
+  // TODO: add it to distributed config.
+  const size_t num_steps = 5;
+  // TODO: add it to distributed config.
   const bool training_mode = true;
 
   for (size_t i = 0; i < num_steps; ++i) {
@@ -1181,22 +1176,36 @@ common::Status TrainingSession::RunWithPipeline(const RunOptions& run_options, I
     ORT_RETURN_IF_ERROR(status);
 
     // Add inputs and outputs to the binding.
-    CreateBatchVariables(*sub_io_binding.get(), io_binding, i, slice_axis, num_steps);
+    CreateBatchVariables(io_binding, *sub_io_binding.get(), i, slice_axis, num_steps);
 
     // Add proper events to the binding.
-    // CreatePipelineEvents(training_mode, i, pipeline_context_.pipeline_stage_id, *sub_io_binding.get());
-    CreatePipelineEvents(training_mode, i, pipeline_context_.pipeline_stage_id, io_binding);
+    CreatePipelineEvents(training_mode, i, pipeline_context_.pipeline_stage_id, *sub_io_binding.get());
+    //CreatePipelineEvents(training_mode, i, pipeline_context_.pipeline_stage_id, io_binding);
 
     // TODO: When pipeline parallel is enabled, we need to ensure gradient accumulation
     // flag is set to true when initializing the session.
 
-    //ORT_RETURN_IF_ERROR(
-    //  InferenceSession::Run(
-    //      run_options,
-    //      sub_io_binding->GetInputNames(),
-    //      sub_io_binding->GetInputs(),
-    //      sub_io_binding->GetOutputNames(),
-    //      &sub_io_binding->GetOutputs()));
+    //auto output_names = io_binding.GetOutputNames();
+    //auto output_values = io_binding.GetOutputs();
+    //for (size_t i = 0; i < output_names.size(); ++i) {
+    //  sub_io_binding->BindOutput(output_names[i], output_values[i]);
+    //}
+
+    for (auto name : sub_io_binding->GetInputNames()) {
+      std::cout << "[training_session.cc] sub_io_binding input " << name << std::endl;
+    }
+    for (auto name : sub_io_binding->GetOutputNames()) {
+      std::cout << "[training_session.cc] sub_io_binding output " << name << std::endl;
+    }
+
+    ORT_RETURN_IF_ERROR(
+      InferenceSession::Run(
+          run_options,
+          sub_io_binding->GetInputNames(),
+          sub_io_binding->GetInputs(),
+          sub_io_binding->GetOutputNames(),
+          &sub_io_binding->GetOutputs()));
+    /*
     ORT_RETURN_IF_ERROR(
       InferenceSession::Run(
           run_options,
@@ -1204,6 +1213,7 @@ common::Status TrainingSession::RunWithPipeline(const RunOptions& run_options, I
           io_binding.GetInputs(),
           io_binding.GetOutputNames(),
           &io_binding.GetOutputs()));
+    */
   }
 
   return common::Status::OK();

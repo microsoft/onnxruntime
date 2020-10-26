@@ -26,7 +26,8 @@ void CreateFakeOutput(Graph& graph, std::string output_name, const ONNX_NAMESPAC
   tensor_proto.set_data_type(element_type);
   int64_t reference_size = 1;
   for (auto d: reference_shape_proto->dim()) {
-    int64_t dim_value = d.dim_value() != 0 ? d.dim_value() : 10;
+    // TODO: this "2" should be computed by applying Shape operator on input.
+    int64_t dim_value = d.dim_value() != 0 ? d.dim_value() : 2;
     tensor_proto.add_dims(dim_value);
     reference_size *= dim_value;
   }
@@ -488,10 +489,6 @@ Status TransformGraphForPipeline(
   const bool is_middle_stage = forward_recv && forward_send && backward_recv && backward_send;
   const bool is_last_stage = forward_recv && !forward_send && !backward_recv && backward_send;
 
-  std::cout << "[pipeline_transformer.cc, TransformGraphForPipeline] is_first_stage: " << is_first_stage << std::endl;
-  std::cout << "[pipeline_transformer.cc, TransformGraphForPipeline] is_middle_stage: " << is_middle_stage << std::endl;
-  std::cout << "[pipeline_transformer.cc, TransformGraphForPipeline] is_last_stage: " << is_last_stage << std::endl;
-
   // One and only one of is_first_stage, is_middle_stage, and is_last_stage can be true.
   const unsigned int stage_flag_sum = is_first_stage + is_middle_stage + is_last_stage;
   ORT_RETURN_IF_NOT(stage_flag_sum == 1u,
@@ -693,50 +690,18 @@ Status TransformGraphForPipeline(
     ResolveForTraining(graph, weights_to_train);
   }
 
-  for (auto name_ : new_input_names) {
-    std::cout << "[pipeline_transformer.cc, TransformGraphForPipeline] new input: " << name_ << std::endl;
-  }
-
-  for (auto name_ : new_output_names) {
-    std::cout << "[pipeline_transformer.cc, TransformGraphForPipeline] new output: " << name_ << std::endl;
-  }
-
-
   for (size_t i = 0; i < graph_output_names.size(); ++i) {
     const std::string name = graph_output_names[i];
     const ONNX_NAMESPACE::TensorShapeProto shape = graph_output_shapes[i];
 
     auto producer = graph.GetProducerNode(name);
     if (producer) {
-      std::cout << "[pipeline_transformer.cc, TransformGraphForPipeline] kept output " << name << " has producer " << producer->Name() << std::endl;
-    } else {
-      std::cout << "[pipeline_transformer.cc, TransformGraphForPipeline] kept output " << name << " has producer " << "None" << std::endl;
-      CreateFakeOutput(graph, name, &shape); 
-      new_output_names.push_back(name);
+      continue;
     }
+    // TODO: this function should create fake output based on input shape.
+    CreateFakeOutput(graph, name, &shape); 
+    new_output_names.push_back(name);
   }
-
-  // auto loss_node_arg = graph.GetNodeArg("loss");
-  // CreateFakeOutput(graph, "loss", /*const TensorShapeProto* shape*/ loss_node_arg->Shape(), new_output_names) {
-  // if (!is_last_stage) {
-  //   TypeProto t;
-  //   t.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-
-  //   auto& fake_loss_value_seed = graph.GetOrCreateNodeArg("fake_loss_value_seed", &t);
-
-  //   TensorProto proto_data;
-  //   proto_data.set_name(fake_loss_value_seed.Name());
-  //   proto_data.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-  //   proto_data.add_float_data(1.0f);
-  //   graph.AddInitializedTensor(proto_data);
-
-  //   auto loss_node_arg = graph.GetNodeArg("loss");
-
-  //   std::vector<NodeArg*> input_args{&fake_loss_value_seed};
-  //   std::vector<NodeArg*> output_args{loss_node_arg};
-  //   graph.AddNode("identity", "Identity", "Fake loss node.", input_args, output_args);
-  //   new_output_names.push_back("loss");
-  // }
 
   ORT_RETURN_IF_ERROR(SetInputsOutputsAndResolve(graph, weights_to_train, new_input_names, new_output_names));
   return Status::OK();
@@ -809,9 +774,6 @@ Status FindAllConnectedNodes(Graph& graph,
         }
         return Status::OK();
       }));
-  for (auto node_ : connected_nodes) {
-    std::cout << "[pipeline_transformer.cc, FindAllConnectedNodes] node " << node->Name() << " is connected with " << node_->Name() << std::endl;
-  }
 
   return Status::OK();
 }
@@ -1224,8 +1186,6 @@ common::Status GenerateSubgraph(Graph& graph, Node* start_node) {
   // reverse iterate the nodes in tolopogical order, and delete those not visited
   for (auto it = node_topology_list.rbegin(); it != node_topology_list.rend(); it++) {
     if (visited_node_index.count(*it) == 0) {
-      auto node = graph.GetNode(*it);
-      std::cout << "Remove a " << node->OpType() << " node, " << node->Name() << std::endl;
       graph.RemoveNode(*it);
     }
   }
