@@ -356,8 +356,12 @@ void ThreadPool::TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t tota
                            const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn) {
 #ifdef _OPENMP
     ORT_ENFORCE(total >= 0);
-    if (total == 1 || total == 0) {
-      fn(0, total);
+    if (total == 0) {
+      return;
+    }
+
+    if (total == 1) {
+      fn(0, 1);
       return;
     }
 
