@@ -30,6 +30,27 @@ namespace test {
 
 #define MODEL_FOLDER ORT_TSTR("testdata/transform/")
 
+TEST_F(GraphTransformationTests, DropoutWithZeroRatioElimination) {
+  auto model_uri = MODEL_FOLDER "dropout_ratio.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Identity"] == 4);
+  ASSERT_TRUE(op_to_count["Dropout"] == 2);
+
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(onnxruntime::make_unique<EliminateDropout>());
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+
+  ASSERT_TRUE(op_to_count["Identity"] == 4);
+  ASSERT_TRUE(op_to_count["Dropout"] == 1);
+}
+
 TEST_F(GraphTransformationTests, GistEncodeDecode) {
   auto model_uri = MODEL_FOLDER "../test_training_model.onnx";
   std::shared_ptr<Model> p_model;
