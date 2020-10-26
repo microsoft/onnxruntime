@@ -187,6 +187,16 @@ TEST(Einsum, ExplicitEinsumAsMatmulWithUpperCasedLabel) {
   test.Run();
 }
 
+TEST(Einsum, ExplicitEinsumAsMatmulWithUpperCasedOutputLabel) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  // Einsum should handle be able to handle upper case on both LHS and RHS
+  test.AddAttribute<std::string>("equation", "Ki,ik->Kk");
+  test.AddInput<float>("x", {2, 1}, {1.f, 2.f});
+  test.AddInput<float>("y", {1, 2}, {1.f, 2.f});
+  test.AddOutput<float>("o", {2, 2}, {1.f, 2.f, 2.f, 4.f});
+  test.Run();
+}
+
 TEST(Einsum, ExplicitEinsumAsMatmul_Multi_Input) {
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", "ij,jk,kl->li");
