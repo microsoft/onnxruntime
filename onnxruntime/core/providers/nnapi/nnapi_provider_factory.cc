@@ -7,8 +7,6 @@
 using namespace onnxruntime;
 
 namespace onnxruntime {
-static_assert(NNAPI_FLAG_MAX < 32, "We can have at most 32 (0-31) nnapi flags");
-
 struct NnapiProviderFactory : IExecutionProviderFactory {
   NnapiProviderFactory(unsigned long nnapi_flags)
       : nnapi_flags_(nnapi_flags) {}

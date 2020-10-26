@@ -143,24 +143,12 @@ TEST(NnapiExecutionProviderTest, FunctionTest) {
 }
 
 TEST(NnapiExecutionProviderTest, NNAPIFlagsTest) {
-  {  // Test using C, set bits in a unsigned long
-    unsigned long nnapi_flags = 0;
-    nnapi_flags |= 1UL << NNAPI_FLAG_USE_FP16;
-    onnxruntime::NnapiExecutionProvider nnapi_ep(nnapi_flags);
-    const auto& flags_bitset = nnapi_ep.GetNNAPIFlags();
-    ASSERT_TRUE(flags_bitset[NNAPI_FLAG_USE_FP16]);
-    ASSERT_FALSE(flags_bitset[NNAPI_FLAG_USE_NCHW]);
-  }
-
-  {  // Test using C++, using a bitset
-    std::bitset<NNAPI_FLAG_MAX> _nnapi_flags;
-    _nnapi_flags.set(NNAPI_FLAG_USE_NCHW);
-    unsigned long nnapi_flags = _nnapi_flags.to_ulong();
-    onnxruntime::NnapiExecutionProvider nnapi_ep(nnapi_flags);
-    const auto& flags_bitset = nnapi_ep.GetNNAPIFlags();
-    ASSERT_FALSE(flags_bitset[NNAPI_FLAG_USE_FP16]);
-    ASSERT_TRUE(flags_bitset[NNAPI_FLAG_USE_NCHW]);
-  }
+  unsigned long nnapi_flags = NNAPI_FLAG_USE_NONE;
+  nnapi_flags |= NNAPI_FLAG_USE_FP16;
+  onnxruntime::NnapiExecutionProvider nnapi_ep(nnapi_flags);
+  const auto flags = nnapi_ep.GetNNAPIFlags();
+  ASSERT_TRUE(flags & NNAPI_FLAG_USE_FP16);
+  ASSERT_FALSE(flags & NNAPI_FLAG_USE_NCHW);
 }
 
 }  // namespace test
