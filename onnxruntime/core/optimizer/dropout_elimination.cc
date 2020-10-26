@@ -40,9 +40,26 @@ bool EliminateDropout::SatisfyCondition(const Graph& graph, const Node& node, co
     if (!initializer) {
       return false;
     }
+    int32_t data_type = initializer->data_type();
     Initializer ratio(*initializer, graph.ModelPath());
-    if (*ratio.data<float>() > 0.f) {
-      return false;
+    switch (data_type) {
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+        if (*ratio.data<float>() > 0.f) {
+          return false;
+        }
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+        if (math::halfToFloat(ratio.data<MLFloat16>()->val > 0.f)) {
+          return false;
+        }
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
+        if (*ratio.data<double>() > 0.f) {
+          return false;
+        }
+        break;
+      default:
+        ORT_THROW("Unexpected data type for Dropout 'ratio' input of ", initializer->data_type());
     }
   }
 #endif

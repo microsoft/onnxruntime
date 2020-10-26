@@ -10,6 +10,7 @@
 #include "gtest/gtest.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/utils.h"
+#include "core/optimizer/dropout_elimination.h"
 #include "orttraining/core/optimizer/bias_dropout_fusion.h"
 #include "orttraining/core/optimizer/gist_encode_decode.h"
 #include "orttraining/core/optimizer/nonzero_shape_setter.h"
@@ -36,8 +37,8 @@ TEST_F(GraphTransformationTests, DropoutWithZeroRatioElimination) {
   ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
   Graph& graph = model->MainGraph();
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Identity"] == 4);
-  ASSERT_TRUE(op_to_count["Dropout"] == 2);
+  ASSERT_TRUE(op_to_count["Identity"] == 10);
+  ASSERT_TRUE(op_to_count["Dropout"] == 5);
 
   auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
   rule_transformer_L1->Register(onnxruntime::make_unique<EliminateDropout>());
@@ -47,8 +48,8 @@ TEST_F(GraphTransformationTests, DropoutWithZeroRatioElimination) {
 
   op_to_count = CountOpsInGraph(graph);
 
-  ASSERT_TRUE(op_to_count["Identity"] == 4);
-  ASSERT_TRUE(op_to_count["Dropout"] == 1);
+  ASSERT_TRUE(op_to_count["Identity"] == 10);
+  ASSERT_TRUE(op_to_count["Dropout"] == 2);
 }
 
 TEST_F(GraphTransformationTests, GistEncodeDecode) {
