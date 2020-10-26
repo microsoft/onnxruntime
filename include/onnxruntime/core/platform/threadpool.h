@@ -84,6 +84,7 @@ class ThreadPool {
   static void Schedule(ThreadPool *tp,
                        std::function<void()> fn) {
 #ifdef _OPENMP
+    ORT_UNUSED_PARAMETER(tp);
     fn();
 #else
     if (tp) {
