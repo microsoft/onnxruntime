@@ -348,6 +348,10 @@ def parse_arguments():
         choices=["ACL_1902", "ACL_1905", "ACL_1908", "ACL_2002"],
         help="Build with ACL for ARM architectures.")
     parser.add_argument(
+        "--acl_home", help="Path to ACL home dir")
+    parser.add_argument(
+        "--acl_libs", help="Path to ACL libraries")
+    parser.add_argument(
         "--use_armnn", action='store_true',
         help="Enable ArmNN Execution Provider.")
     parser.add_argument(
@@ -356,6 +360,10 @@ def parse_arguments():
     parser.add_argument(
         "--armnn_bn", action='store_true',
         help="Use the Batch Normalization operator implementation from the ArmNN EP.")
+    parser.add_argument(
+        "--armnn_home", help="Path to ArmNN home dir")
+    parser.add_argument(
+        "--armnn_libs", help="Path to ArmNN libraries")
     parser.add_argument(
         "--build_micro_benchmarks", action='store_true',
         help="Build ONNXRuntime micro-benchmarks.")
@@ -578,7 +586,7 @@ def use_dev_mode(args):
 
 
 def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home,
-                        mpi_home, nccl_home, tensorrt_home, migraphx_home,
+                        mpi_home, nccl_home, tensorrt_home, migraphx_home, acl_home, acl_libs, armnn_home, armnn_libs,
                         path_to_protoc_exe, configs, cmake_extra_defines, args, cmake_extra_args):
     log.info("Generating CMake build tree")
     cmake_dir = os.path.join(source_dir, "cmake")
@@ -686,6 +694,18 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_BUILD_BENCHMARKS=" + (
             "ON" if args.build_micro_benchmarks else "OFF")
     ]
+
+    if acl_home and os.path.exists(acl_home):
+        cmake_args += ["-Donnxruntime_ACL_HOME=" + acl_home]
+
+    if acl_libs and os.path.exists(acl_libs):
+        cmake_args += ["-Donnxruntime_ACL_LIBS=" + acl_libs]
+
+    if armnn_home and os.path.exists(armnn_home):
+        cmake_args += ["-Donnxruntime_ARMNN_HOME=" + armnn_home]
+
+    if armnn_libs and os.path.exists(armnn_libs):
+        cmake_args += ["-Donnxruntime_ARMNN_LIBS=" + armnn_libs]
 
     if mpi_home and os.path.exists(mpi_home):
         cmake_args += ["-Donnxruntime_MPI_HOME=" + mpi_home]
@@ -1767,6 +1787,12 @@ def main():
     mpi_home = args.mpi_home
     nccl_home = args.nccl_home
 
+    acl_home = args.acl_home
+    acl_libs = args.acl_libs
+
+    armnn_home = args.armnn_home
+    armnn_libs = args.armnn_libs
+
     # if using tensorrt, setup tensorrt paths
     tensorrt_home = setup_tensorrt_vars(args)
 
@@ -1863,8 +1889,8 @@ def main():
             setup_test_data(build_dir, configs)
         generate_build_tree(
             cmake_path, source_dir, build_dir, cuda_home, cudnn_home, mpi_home, nccl_home,
-            tensorrt_home, migraphx_home, path_to_protoc_exe, configs, cmake_extra_defines,
-            args, cmake_extra_args)
+            tensorrt_home, migraphx_home, acl_home, acl_libs, armnn_home, armnn_libs,
+            path_to_protoc_exe, configs, cmake_extra_defines, args, cmake_extra_args)
 
     if args.clean:
         clean_targets(cmake_path, build_dir, configs)

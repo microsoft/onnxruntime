@@ -132,7 +132,7 @@ class ModelBuilder {
   std::unordered_map<std::string, const ONNX_NAMESPACE::TensorProto&> initializers_;
   std::unordered_set<std::string> skipped_initializers_;
 
-  // All activation nodes (Relu, Relu1, Relu6) as a map <NodeIndex, activeation_code>
+  // All activation nodes (Relu, Relu1, Relu6) as a map <NodeIndex, activation_code>
   std::unordered_map<NodeIndex, int32_t> activation_nodes_;
 
   std::unordered_map<std::string, std::shared_ptr<IOpBuilder>> op_builders_;

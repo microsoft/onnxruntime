@@ -161,13 +161,18 @@ else()
   endif()
 
   if(ARM)
+    enable_language(ASM)
+
+    set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -mfpu=neon")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mfpu=neon")
 
     set(mlas_platform_srcs
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/aarch32/QgemmU8X8KernelNeon.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm/sgemmc.cpp
     )
   elseif(ARM64)
     enable_language(ASM)
+
     set(mlas_platform_srcs
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/aarch64/QgemmU8X8KernelNeon.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/aarch64/SgemmKernelNeon.S
@@ -179,6 +184,7 @@ else()
     )
   elseif(X86)
     enable_language(ASM)
+
     set(mlas_platform_srcs_sse2
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86/SgemmKernelSse2.S
     )
