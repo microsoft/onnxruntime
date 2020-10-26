@@ -83,16 +83,11 @@ class ThreadPool {
   // reasons such as if queues used for buffering work are full.
   static void Schedule(ThreadPool *tp,
                        std::function<void()> fn) {
-#ifdef _OPENMP
-    ORT_UNUSED_PARAMETER(tp);
-    fn();
-#else
     if (tp) {
       tp->Schedule(fn);
     } else {
       fn();
     }
-#endif
   }
 
   // ParallelFor shards the "total" units of work assuming each unit of work
