@@ -13,7 +13,7 @@
 namespace onnxruntime {
 class SparseTensor;
 class TensorSeq;
-}
+}  // namespace onnxruntime
 
 /**
    Represents both tensors and non-tensors.
@@ -52,7 +52,7 @@ struct OrtValue {
     return (type_ != nullptr && type_->IsTensorType());
   }
 
-  bool IsTensorSequence () const noexcept {
+  bool IsTensorSequence() const noexcept {
     return (type_ != nullptr && type_->IsTensorSequenceType());
   }
 
@@ -91,7 +91,7 @@ inline const onnxruntime::Tensor& OrtValue::Get<onnxruntime::Tensor>() const {
 template <>
 inline onnxruntime::Tensor* OrtValue::GetMutable<onnxruntime::Tensor>() {
   ORT_ENFORCE(IsTensor(), "Trying to get a Tensor, but got: ", onnxruntime::DataTypeImpl::ToString(type_));
-  return static_cast<onnxruntime::Tensor*> (data_.get());
+  return static_cast<onnxruntime::Tensor*>(data_.get());
 }
 
 template <>
