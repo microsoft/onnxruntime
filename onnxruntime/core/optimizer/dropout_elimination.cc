@@ -49,7 +49,7 @@ bool EliminateDropout::SatisfyCondition(const Graph& graph, const Node& node, co
         }
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-        if (math::halfToFloat(ratio.data<MLFloat16>()->val > 0.f)) {
+        if (math::halfToFloat(ratio.data<MLFloat16>()->val) > 0.f) {
           return false;
         }
         break;
