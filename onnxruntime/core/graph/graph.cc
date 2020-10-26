@@ -3581,7 +3581,6 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Gr
     sparse_tensor_names_.reserve(fbs_sparse_initializers->size());
     for (const auto* fbs_sparse_tensor : *fbs_sparse_initializers) {
       ORT_RETURN_IF(nullptr == fbs_sparse_tensor, "Sparse Initializer tensor is missing. Invalid ORT format model.");
-      /// XXX: Add helper to load Sparse FB serialization directly to Dense Tensor
       SparseTensorProto sparse_initializer;
       ORT_RETURN_IF_ERROR(experimental::utils::LoadSparseInitializerOrtFormat(*fbs_sparse_tensor, sparse_initializer));
       TensorProto& initializer = *deserialized_proto_data_.add_initializer();
