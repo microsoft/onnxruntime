@@ -685,7 +685,7 @@ TEST(Loop, SubgraphTypeOverride) {
   options.override_types = true;
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kTensorrtExecutionProvider}, &session_run_options, nullptr,
-           ExecutionMode::ORT_SEQUENTIAL, {}, options);
+           ExecutionMode::ORT_SEQUENTIAL, options);
 }
 
 // Regression test that a subgraph input overrides an outer scope value of the same name.
