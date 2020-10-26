@@ -17,6 +17,8 @@ Abstract:
 
 #include "mlasi.h"
 
+#ifdef MLAS_SUPPORTS_GEMM_U8X8
+
 //
 // Define the parameters to execute segments of a QGEMM operation on worker
 // threads.
@@ -266,7 +268,7 @@ Return Value:
             offb = typename KernelType::OffsetBType(offb ^ 0x80);
         }
     }
-#elif defined(MLAS_NEON64_INTRINSICS)
+#elif defined(MLAS_NEON_INTRINSICS)
     if (WorkBlock->BIsSigned) {
         offb = typename KernelType::OffsetBType(offb ^ 0x80);
     }
@@ -416,7 +418,7 @@ Return Value:
             offb = typename KernelType::OffsetBType(offb ^ 0x80);
         }
     }
-#elif defined(MLAS_NEON64_INTRINSICS)
+#elif defined(MLAS_NEON_INTRINSICS)
     if (WorkBlock->BIsSigned) {
         offb = typename KernelType::OffsetBType(offb ^ 0x80);
     }
@@ -1416,7 +1418,7 @@ MlasGemmU8X8PackedOperation<MLAS_GEMM_U8U8_KERNEL_AVX2>(
 
 #endif
 
-#ifdef MLAS_NEON64_INTRINSICS
+#ifdef MLAS_NEON_INTRINSICS
 
 //
 // Define the prototypes of the NEON routines written in assembly.
@@ -1515,14 +1517,33 @@ Return Value:
             uint32x4_t v3 = vld1q_u32(reinterpret_cast<const uint32_t*>(a3));
             a3 += 16;
 
+#if defined(MLAS_NEON32_INTRINSICS)
+            uint32x4x2_t z0 = vzipq_u32(v0, v2);
+            uint32x4x2_t z1 = vzipq_u32(v1, v3);
+
+            v0 = z0.val[0];
+            v1 = z0.val[1];
+            v2 = z1.val[0];
+            v3 = z1.val[1];
+
+            uint32x4x2_t z2 = vzipq_u32(v0, v2);
+            uint32x4x2_t z3 = vzipq_u32(v1, v3);
+
+            v0 = z2.val[0];
+            v1 = z2.val[1];
+            v2 = z3.val[0];
+            v3 = z3.val[1];
+#else
             uint32x4_t z0 = vzip1q_u32(v0, v2);
             uint32x4_t z1 = vzip2q_u32(v0, v2);
             uint32x4_t z2 = vzip1q_u32(v1, v3);
             uint32x4_t z3 = vzip2q_u32(v1, v3);
+
             v0 = vzip1q_u32(z0, z2);
             v1 = vzip2q_u32(z0, z2);
             v2 = vzip1q_u32(z1, z3);
             v3 = vzip2q_u32(z1, z3);
+#endif
 
             vst1q_u8(&D[0], vreinterpretq_u8_u32(v0));
             vst1q_u8(&D[16], vreinterpretq_u8_u32(v1));
@@ -1721,14 +1742,18 @@ Return Value:
             RowSums = vpadalq_u16(RowSums, vpaddlq_u8(v));
         }
 
-#if defined(_M_ARM64)
+#if defined(MLAS_NEON32_INTRINSICS)
+        uint32x2_t RowSumsLow = vpadd_u32(vget_high_u32(RowSums), vget_low_u32(RowSums));
+        RowSumsLow = vpadd_u32(RowSumsLow, RowSumsLow);
+        vst1_lane_u32(reinterpret_cast<uint32_t*>(RowSumBuffer), RowSumsLow, 0);
+#elif defined(_M_ARM64)
         // N.B. The workaround of defining a local vaddvq_u32 doesn't work here
         // as VS2019 added new intrinsics to make the operation work. Also, not
         // all build environments using VS2019 have the up-to-date arm64_neon.h,
         // so fallback to pairwise addition.
         RowSums = vpaddq_u32(RowSums, RowSums);
         RowSums = vpaddq_u32(RowSums, RowSums);
-        vst1q_lane_u32(reinterpret_cast<int32_t*>(RowSumBuffer), RowSums, 0);
+        vst1q_lane_u32(reinterpret_cast<uint32_t*>(RowSumBuffer), RowSums, 0);
 #else
         *RowSumBuffer = int32_t(vaddvq_u32(RowSums));
 #endif
@@ -1749,7 +1774,11 @@ MlasGemmU8X8CopyPackBProcessNeon(
 
     uint16x8_t WordsRow = vmovl_u8(BytesRow);
     ColumnSums[0] = vaddq_u32(ColumnSums[0], vmovl_u16(vget_low_u16(WordsRow)));
+#if defined(MLAS_NEON32_INTRINSICS)
+    ColumnSums[1] = vaddq_u32(ColumnSums[1], vmovl_u16(vget_high_u16(WordsRow)));
+#else
     ColumnSums[1] = vaddq_u32(ColumnSums[1], vmovl_high_u16(WordsRow));
+#endif
 }
 
 void
@@ -2050,12 +2079,14 @@ Return Value:
     GemmU8X8Operation(&WorkBlock);
 #elif defined(MLAS_SSE2_INTRINSICS)
     MlasGemmU8X8Operation<MLAS_GEMM_U8X8_KERNEL_SSE>(&WorkBlock);
-#elif defined(MLAS_NEON64_INTRINSICS)
+#elif defined(MLAS_NEON_INTRINSICS)
     if (WorkBlock.BIsPacked) {
         MlasGemmU8X8PackedOperation<MLAS_GEMM_U8X8_KERNEL_NEON>(&WorkBlock);
     } else {
         MlasGemmU8X8Operation<MLAS_GEMM_U8X8_KERNEL_NEON>(&WorkBlock);
     }
+#else
+#error Unsupported architecture.
 #endif
 }
 
@@ -2331,7 +2362,9 @@ Return Value:
     MlasGemmU8X8Schedule(&WorkBlock, ThreadPool);
 }
 
-#if defined(MLAS_TARGET_AMD64) || defined(MLAS_NEON64_INTRINSICS)
+#endif // MLAS_SUPPORTS_GEMM_U8X8
+
+#ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
 
 void
 MLASCALL
@@ -2563,7 +2596,7 @@ Return Value:
     } else {
         return 0;
     }
-#elif defined(MLAS_NEON64_INTRINSICS)
+#elif defined(MLAS_NEON_INTRINSICS)
     MLAS_UNREFERENCED_PARAMETER(BIsSigned);
 
     PackedK = MLAS_GEMM_U8X8_KERNEL_NEON::PackedK;
@@ -2650,7 +2683,7 @@ Return Value:
         throw std::runtime_error("packing unavailable");
 #endif
     }
-#elif defined(MLAS_NEON64_INTRINSICS)
+#elif defined(MLAS_NEON_INTRINSICS)
     PackedK = MLAS_GEMM_U8X8_KERNEL_NEON::PackedK;
     StrideK = MLAS_GEMM_U8X8_KERNEL_NEON::PackedStrides.K;
 #else
@@ -2700,7 +2733,7 @@ Return Value:
             } else {
                 MLAS_GEMM_U8U8_KERNEL_AVX2::CopyPackB(pb, B + n, ldb, CountN, CountK, ColumnSumBuffer, BIsSigned);
             }
-#elif defined(MLAS_NEON64_INTRINSICS)
+#elif defined(MLAS_NEON_INTRINSICS)
             MLAS_GEMM_U8X8_KERNEL_NEON::CopyPackB(pb, B + n, ldb, CountN, CountK, ColumnSumBuffer, BIsSigned);
 #else
 #error Unknown architecture.
@@ -2723,4 +2756,4 @@ Return Value:
     }
 }
 
-#endif
+#endif // MLAS_SUPPORTS_PACKED_GEMM_U8X8
