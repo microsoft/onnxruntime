@@ -81,11 +81,11 @@ class Model {
   bool SupportsDynamicOutputShape() const;
 
   // Set and Get the number of elements in the buffer for a dynamic output
-  // If the buffer is not big enough, ANEURALNETWORKS_OUTPUT_INSUFFICIENT_SIZE will be returned by exection
+  // If the buffer is not big enough, ANEURALNETWORKS_OUTPUT_INSUFFICIENT_SIZE will be returned by execution
   // Note: this will return number of elements of the buffer not the byte size of the buffer
   //       and each output will have its separated buffer
   // TODO:
-  // 1. Consider an adaptive aproach to automatically increase the buffer size if the execution reports
+  // 1. Consider an adaptive approach to automatically increase the buffer size if the execution reports
   //    insufficient size
   // 2. Experiment with bigger initial buffer size (currently 1024)
   size_t GetDynamicOutputBufferSize() const { return dynamic_output_buffer_size_; }

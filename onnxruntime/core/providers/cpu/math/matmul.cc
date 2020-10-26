@@ -24,34 +24,68 @@ ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     MatMul<double>);
 
 // opset 9 supports more types
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     MatMul,
     9,
+    12,
+    float,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    MatMul<float>);
+
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
+    MatMul,
+    9,
+    12,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    MatMul<double>);
+
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
+    MatMul,
+    9,
+    12,
+    int32_t,
+    KernelDefBuilder()
+        .TypeConstraint("T", BuildKernelDefConstraints<int32_t, uint32_t>()),
+    MatMul<int32_t>);
+
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
+    MatMul,
+    9,
+    12,
+    int64_t,
+    KernelDefBuilder()
+        .TypeConstraint("T", BuildKernelDefConstraints<int64_t, uint64_t>()),
+    MatMul<int64_t>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    MatMul,
+    13,
     float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     MatMul<float>);
 
 ONNX_CPU_OPERATOR_TYPED_KERNEL(
     MatMul,
-    9,
+    13,
     double,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
     MatMul<double>);
 
 ONNX_CPU_OPERATOR_TYPED_KERNEL(
     MatMul,
-    9,
+    13,
     int32_t,
     KernelDefBuilder()
-        .TypeConstraint("T", {DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<uint32_t>()}),
+        .TypeConstraint("T", BuildKernelDefConstraints<int32_t, uint32_t>()),
     MatMul<int32_t>);
 
 ONNX_CPU_OPERATOR_TYPED_KERNEL(
     MatMul,
-    9,
+    13,
     int64_t,
     KernelDefBuilder()
-        .TypeConstraint("T", {DataTypeImpl::GetTensorType<int64_t>(), DataTypeImpl::GetTensorType<uint64_t>()}),
+        .TypeConstraint("T", BuildKernelDefConstraints<int64_t, uint64_t>()),
     MatMul<int64_t>);
 
 template <typename T>
@@ -91,7 +125,6 @@ Status MatMul<T>::Compute(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-#if !defined(USE_MKLML_FOR_BLAS)
 Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, bool& is_packed) {
   is_packed = false;
 
@@ -128,7 +161,6 @@ Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, bool& is_pack
   }
   return Status::OK();
 }
-#endif
 
 Status MatMul<float>::Compute(OpKernelContext* ctx) const {
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
@@ -156,7 +188,6 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
   // TODO: replace it with GemmBatch for performance, it's OK for now as GemmBatch unrolls as well
   size_t max_len = helper.OutputOffsets().size();
   for (size_t i = 0; i < max_len; i++) {
-#if !defined(USE_MKLML_FOR_BLAS)
     if (packed_b_) {
       MlasGemm(
           trans_a ? CblasTrans : CblasNoTrans,
@@ -173,7 +204,6 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
           thread_pool);
       continue;
     }
-#endif
     math::Gemm<float, concurrency::ThreadPool>(
         trans_a ? CblasTrans : CblasNoTrans,
         trans_b ? CblasTrans : CblasNoTrans,

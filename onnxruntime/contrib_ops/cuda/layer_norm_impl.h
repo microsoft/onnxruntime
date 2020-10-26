@@ -29,7 +29,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-template <typename T, typename U>
+template <typename T, typename U, bool simplified>
 void HostApplyLayerNorm(
     const cudaDeviceProp& prop,
     T* output,

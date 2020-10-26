@@ -304,7 +304,7 @@ def optimize_model(input,
         logger.debug("Remove tempoary model: {}".format(temp_model_path))
 
     optimizer.model.producer_name = "onnxruntime_tools"
-    optimizer.model.producer_version = "1.5.1"
+    optimizer.model.producer_version = "1.5.2"
 
     return optimizer
 
