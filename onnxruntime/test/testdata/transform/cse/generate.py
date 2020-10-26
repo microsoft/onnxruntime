@@ -1,5 +1,5 @@
 import onnx
-from onnx import helper, shape_inference
+from onnx import helper, numpy_helper, shape_inference
 from onnx import AttributeProto, TensorProto, GraphProto
 import os
 
@@ -44,6 +44,70 @@ def cse1():
   )
   _onnx_export(graph_def, 'cse1.onnx')
 
+def cse_initializer_simple():
+  nodes = []
+  initializers = []
+  outputs = []
+  
+  for i in range(0, 5):
+    padding_output_name = 'x_padding_{}'.format(i)
+    
+    # generate pad nodes with either 1 or 2 as the padding
+    # so that we end up with 2 equivalence classes
+    pad_val_ = 1 + i%2;
+    
+    padding = helper.make_node(
+      op_type = "Constant",
+      inputs = [],
+      outputs = ['padding_{}'.format(i)],
+      value=numpy_helper.from_array(numpy_helper.np.array([0, 0, pad_val_, pad_val_, 0, 0, pad_val_, pad_val_])))
+      
+    pad_node = helper.make_node(
+      op_type = "Pad",
+      inputs = ['x', 'padding_{}'.format(i)],
+      outputs = [padding_output_name],
+      name = 'padding_{}'.format(i)
+    )
+        
+    conv_output_name = 'x_padding_conv_{}'.format(i)
+    
+    conv_node = helper.make_node(
+      op_type = "Conv",
+      inputs = [padding_output_name, 'weights_{}'.format(i)],
+      outputs = [conv_output_name],
+      name = 'conv_{}'.format(i),
+      dilations=[1,1],
+      group=1,
+      kernel_shape=[3,3],
+      pads=[0,0,0,0],
+      strides=[1,1]
+    )
+    
+    conv_weights = numpy_helper.np.random.randn(1,3,3,3)
+    conv_weights = numpy_helper.from_array(conv_weights)
+    conv_weights.name = 'weights_{}'.format(i)
+        
+    conv_output = helper.make_tensor_value_info(
+      conv_output_name,
+      TensorProto.DOUBLE,
+      [])
+      
+    nodes.append(padding)
+    nodes.append(pad_node)
+    nodes.append(conv_node)
+    initializers.append(conv_weights)
+    
+    outputs.append(conv_output)
+    
+  graph_def = helper.make_graph(
+    nodes=nodes,
+    name = 'cse_initializer_graph_output',
+    inputs = [ helper.make_tensor_value_info("x", TensorProto.DOUBLE, [1, 3, 5, 5])],
+    outputs = outputs,
+    initializer = initializers)
+  
+  _onnx_export(graph_def, 'cse_initializer_simple.onnx')
+  
 def cse_graph_output():
   graph_def = helper.make_graph(
     nodes = [
@@ -220,6 +284,7 @@ def cse_only_one_graph_output():
 
 def generate_all():
   cse1()
+  cse_initializer_simple()
   cse_graph_output()
   cse_optional_args()
   cse_subgraph()

@@ -113,7 +113,7 @@ class EquivalenceClass {
         hash_(CalculateHash()) {
   }
 
-// private:
+ private:
   std::size_t CalculateHash() const;
 
   // Operation and domain of the node that produces this value.
@@ -436,9 +436,6 @@ Status CommonSubexpressionElimination::ApplyImpl(Graph& graph, bool& modified, i
       const NodeArg* output_def = node->OutputDefs()[output_index];
       auto equivalence_class = onnxruntime::make_unique<EquivalenceClass>(*node, input_values, output_index, discriminator);
       
-      if(node->OpType() == "Pad") {
-        std::cout << node->Name() << " hash " << equivalence_class->hash_ << std::endl;
-      }
       auto* raw_ptr = equivalence_class.get();
 
       auto it = value_to_representative.find(raw_ptr);
