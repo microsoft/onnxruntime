@@ -153,24 +153,36 @@ class ONNXQuantizer:
                     elif attr.name == 'transB':
                         transB = onnx.helper.get_attribute_value(attr)
                 if alpha == 1.0 and beta == 1.0 and transA == 0:
-                    matmul_node = onnx.helper.make_node('MatMul', [node.input[0], node.input[1]],
-                                                        [node.output[0] + '_MatMul'],
-                                                        name=node.output[0] + '_MatMul')
-
-                    add_node = onnx.helper.make_node('Add',
-                                                     inputs=[node.output[0] + '_MatMul', node.input[2]],
-                                                     outputs=node.output,
-                                                     name=node.output[0] + '_Add')
-
-                    new_nodes.extend([matmul_node, add_node])
-
+                    inputB = node.input[1]
                     if transB == 1:
                         B = self.model.get_initializer(node.input[1])
-                        B_array = onnx.numpy_helper.to_array(B)
-                        B_trans = onnx.numpy_helper.from_array(B_array.T)
-                        B_trans.name = B.name
-                        self.model.remove_initializer(B)
-                        self.model.add_initializer(B_trans)
+                        if B:
+                            # assume B is not used by any other node
+                            B_array = onnx.numpy_helper.to_array(B)
+                            B_trans = onnx.numpy_helper.from_array(B_array.T)
+                            B_trans.name = B.name
+                            self.model.remove_initializer(B)
+                            self.model.add_initializer(B_trans)
+                        else:
+                            inputB += '_Transposed'
+                            transpose_node = onnx.helper.make_node('Transpose',
+                                                                inputs=[node.input[1]],
+                                                                outputs=[inputB],
+                                                                name=node.name+'_Transpose')
+                            new_nodes.append(transpose_node)
+
+                    matmul_node = onnx.helper.make_node('MatMul',
+                                                        inputs=[node.input[0], inputB],
+                                                        outputs=[node.output[0] + ('_MatMul' if len(node.input)>2 else '')],
+                                                        name=node.name + '_MatMul')
+                    new_nodes.append(matmul_node)
+
+                    if len(node.input) > 2:
+                        add_node = onnx.helper.make_node('Add',
+                                                         inputs=[node.output[0] + '_MatMul', node.input[2]],
+                                                         outputs=node.output,
+                                                         name=node.name + '_Add')
+                        new_nodes.append(add_node)  
                 
                 # unsupported
                 else:
