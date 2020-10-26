@@ -36,22 +36,22 @@ Abstract:
         .equ    .LYmmIndex_ymm14, 14
         .equ    .LYmmIndex_ymm15, 15
 
-        .equ.   LXmmIndex_xmm0, 0
-        .equ.   LXmmIndex_xmm1, 1
-        .equ.   LXmmIndex_xmm2, 2
-        .equ.   LXmmIndex_xmm3, 3
-        .equ.   LXmmIndex_xmm4, 4
-        .equ.   LXmmIndex_xmm5, 5
-        .equ.   LXmmIndex_xmm6, 6
-        .equ.   LXmmIndex_xmm7, 7
-        .equ.   LXmmIndex_xmm8, 8
-        .equ.   LXmmIndex_xmm9, 9
-        .equ.   LXmmIndex_xmm10, 10
-        .equ.   LXmmIndex_xmm11, 11
-        .equ.   LXmmIndex_xmm12, 12
-        .equ.   LXmmIndex_xmm13, 13
-        .equ.   LXmmIndex_xmm14, 14
-        .equ.   LXmmIndex_xmm15, 15
+        .equ   LXmmIndex_xmm0, 0
+        .equ   LXmmIndex_xmm1, 1
+        .equ   LXmmIndex_xmm2, 2
+        .equ   LXmmIndex_xmm3, 3
+        .equ   LXmmIndex_xmm4, 4
+        .equ   LXmmIndex_xmm5, 5
+        .equ   LXmmIndex_xmm6, 6
+        .equ   LXmmIndex_xmm7, 7
+        .equ   LXmmIndex_xmm8, 8
+        .equ   LXmmIndex_xmm9, 9
+        .equ   LXmmIndex_xmm10, 10
+        .equ   LXmmIndex_xmm11, 11
+        .equ   LXmmIndex_xmm12, 12
+        .equ   LXmmIndex_xmm13, 13
+        .equ   LXmmIndex_xmm14, 14
+        .equ   LXmmIndex_xmm15, 15
 
 /*++
 
