@@ -315,7 +315,7 @@ void ThreadPool::ParallelFor(std::ptrdiff_t total, double cost_per_unit,
 }
 
 bool ThreadPool::ShouldParallelize(const concurrency::ThreadPool* tp) {
-  return (DegreeOfParallelism(tp) == 1);
+  return (DegreeOfParallelism(tp) != 1);
 }
 
 int ThreadPool::DegreeOfParallelism(const concurrency::ThreadPool* tp) {
