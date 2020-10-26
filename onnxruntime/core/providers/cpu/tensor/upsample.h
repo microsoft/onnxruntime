@@ -70,9 +70,9 @@ class UpsampleBase {
                                                      : "asymmetric";
     coordinate_transform_mode_ = StringToCoordinateTransformationMode(coordinate_transform_mode_name);
     if (opset >= 13) {
-      // TODO: Do we actually need to enforce this ? Might seem overly pedantic.
-      ORT_ENFORCE(coordinate_transform_mode_name != "tf_half_pixel_for_nn",
-                  "`tf_half_pixel_for_nn` is deprectaed since opset 13");
+      LOGS(onnxruntime::logging::LoggingManager::DefaultLogger(), WARNING)
+          << "`tf_half_pixel_for_nn` is deprecated since opset 13, "
+          << "yet this opset " << opset << " model uses the deprecated attribute";
     }
 
     get_original_coordinate_ = GetOriginalCoordinateFromResizedCoordinate(coordinate_transform_mode_);
