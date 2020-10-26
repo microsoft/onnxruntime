@@ -100,8 +100,7 @@ class ORTTransformerTrainer:
     def __init__(
         self,
         model: PreTrainedModel,
-        model_desc: ModelDescription,
-        new_model_desc: dict,
+        model_desc: dict,
         args: TrainingArguments,
         train_dataset: Dataset,
         eval_dataset: Dataset,
@@ -113,7 +112,6 @@ class ORTTransformerTrainer:
 
         self.model = model
         self.model_desc = model_desc
-        self.new_model_desc = new_model_desc
         self.args = args
         self.world_size = world_size
         self.data_collator = DefaultDataCollator()
@@ -205,7 +203,7 @@ class ORTTransformerTrainer:
             ]
 
         optim_config = optim.AdamConfig(params=params, lr=2e-5, do_bias_correction=True)
-        self.model = orttrainer.ORTTrainer(self.model, self.new_model_desc, optim_config, options=options)
+        self.model = orttrainer.ORTTrainer(self.model, self.model_desc, optim_config, options=options)
 
         # Train!
         logger.info("***** Running training *****")
