@@ -14,7 +14,7 @@ namespace concurrency {
 // Intrinsic to use in spin-loops
 
 inline void SpinPause() {
-#if defined(__x86_64__)
+#if defined(_M_AMD64) || defined(__x86_64__)
   _mm_pause();
 #endif
 }
