@@ -82,12 +82,12 @@ void TestMultipleParallelFor(const std::string& name, int num_threads, int num_c
 
       // For a range of scenarios, run some tests via the thread pool, and one directly
       for (int c = 0; c < num_concurrent - 1; c++) {
-	ThreadPool::Schedule(tp, [&, c]() {
-          ThreadPool::TrySimpleParallelFor(tp, num_tasks, [&](std::ptrdiff_t i) {
-            IncrementElement(*td[c], i);
+        ThreadPool::Schedule(tp, [&, c]() {
+            ThreadPool::TrySimpleParallelFor(tp, num_tasks, [&](std::ptrdiff_t i) {
+                IncrementElement(*td[c], i);
+              });
+            b.Notify();
           });
-          b.Notify();
-        });
       }
 
       ThreadPool::TrySimpleParallelFor(tp, num_tasks, [&](std::ptrdiff_t i) {

@@ -49,7 +49,7 @@ class Barrier {
   void Wait() {
     if (spin_) {
       while ((state_ >> 1) != 0) {
-	onnxruntime::concurrency::SpinPause();
+        onnxruntime::concurrency::SpinPause();
       }
     } else {
       unsigned int v = state_.fetch_or(1, std::memory_order_acq_rel);
