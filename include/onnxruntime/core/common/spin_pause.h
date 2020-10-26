@@ -3,7 +3,11 @@
 
 #pragma once
 
-#if defined(_M_AMD64) || defined(__x86_64__)
+#if defined(_M_AMD64)
+#include <intrin.h>
+#endif
+
+#if defined(__x86_64__)
 #include <xmmintrin.h>
 #endif
 
