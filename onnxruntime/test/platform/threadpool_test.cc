@@ -302,7 +302,7 @@ TEST(ThreadPoolTest, TestStackSize) {
   Notification n;
   ULONG_PTR low_limit, high_limit;
   bool has_thread_limit_info = false;
-  ThreadPool::Schedule(tp, [&]() {
+  ThreadPool::Schedule(tp.get(), [&]() {
     HMODULE kernel32_module = GetModuleHandle(TEXT("kernel32.dll"));
     assert(kernel32_module != nullptr);
     FnGetCurrentThreadStackLimits GetTS =
