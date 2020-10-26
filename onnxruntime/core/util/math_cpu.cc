@@ -420,6 +420,145 @@ void Im2col<T, StorageOrder::NHWC>::operator()(const T* data_im, int64_t channel
 
 template struct Im2col<uint8_t, StorageOrder::NHWC>;
 
+// Loop over spatial axes in reverse order to choose an index, like counting.
+static inline bool NextPosition(int64_t N, const int64_t* shape, int64_t* dims) {
+  bool has_next_output = false;
+  for (int64_t d_i = N - 1; d_i >= 0; --d_i) {
+    int64_t d_max = shape[d_i];
+    ORT_ENFORCE(dims[d_i] < d_max);
+    if (dims[d_i] == d_max - 1) {
+      dims[d_i] = 0;
+    } else {  // dims[d_i] < d_max - 1
+      ++dims[d_i];
+      has_next_output = true;
+      break;
+    }
+  }
+  return has_next_output;
+}
+
+template <typename T>
+struct Im2colNd<T, StorageOrder::NCHW> {
+  void operator()(const T* data_img, const int64_t* im_shape, const int64_t* col_shape, int64_t /*img_size*/,
+                  int64_t /*col_size*/, const int64_t* kernel_shape, const int64_t* stride, const int64_t* dilation,
+                  const int64_t* pad, int64_t N, T* data_col, bool accumulate_output = false,
+                  T padding_value = 0) {
+    int64_t kernel_size = 1;
+    for (int64_t i = 0; i < N; ++i) {
+      kernel_size *= kernel_shape[i];
+    }
+    int64_t channels_col = col_shape[0];
+    std::vector<int64_t> d_offset(N, 0);
+    std::vector<int64_t> d_iter(N, 0);
+    for (int64_t c_col = 0; c_col < channels_col; ++c_col) {
+      // Loop over spatial axes in reverse order to compute a per-axis offset.
+      int64_t offset = c_col;
+      for (int64_t d_i = N - 1; d_i >= 0; --d_i) {
+        if (d_i < N - 1) {
+          offset /= kernel_shape[d_i + 1];
+        }
+        d_offset[d_i] = offset % kernel_shape[d_i];
+      }
+      for (bool has_next_output = true; has_next_output;) {
+        // Loop over spatial axes in forward order to compute the indices in the
+        // image and column, and whether the index lies in the padding.
+        int64_t index_col = c_col;
+        int64_t index_im = c_col / kernel_size;
+        bool is_padding = false;
+        for (int64_t d_i = 0; d_i < N; ++d_i) {
+          int64_t d = d_iter[d_i];
+          int64_t d_im = d * stride[d_i] - pad[d_i] + d_offset[d_i] * dilation[d_i];
+          is_padding |= d_im < 0 || d_im >= im_shape[d_i + 1];
+          index_col *= col_shape[d_i + 1];
+          index_col += d;
+          index_im *= im_shape[d_i + 1];
+          index_im += d_im;
+        }
+        if (!accumulate_output) {
+          if (is_padding) {
+            data_col[index_col] = padding_value;
+          } else {
+            data_col[index_col] = data_img[index_im];
+          }
+        } else if (!is_padding) {  // col2im
+          data_col[index_im] += data_img[index_col];
+        }
+
+        has_next_output = NextPosition(N, col_shape + 1, d_iter.data());
+      }  // while(has_next_output) {
+    }    // for (int c = 0; c < channels_col; ++c) {
+  }
+};
+
+template struct Im2colNd<float, StorageOrder::NCHW>;
+template struct Im2colNd<uint8_t, StorageOrder::NCHW>;
+
+template <typename T>
+struct Im2colNd<T, StorageOrder::NHWC> {
+  void operator()(const T* data_img, const int64_t* im_shape, const int64_t* col_shape, int64_t /*img_size*/,
+                  int64_t /*col_size*/, const int64_t* kernel_shape, const int64_t* stride, const int64_t* dilation,
+                  const int64_t* pad, int64_t N, T* data_col, bool accumulate_output = false,
+                  T padding_value = 0) {
+    int64_t kernel_size = 1;
+    for (int64_t i = 0; i < N; ++i) {
+      kernel_size *= kernel_shape[i];
+    }
+
+    // channels_col = kernel size * input channels (effectively treat group = 1)
+    int64_t channels_col = col_shape[N];
+    int64_t input_channels = channels_col / kernel_size;
+    ORT_ENFORCE((input_channels == im_shape[N]) && (input_channels * kernel_size == channels_col),
+                "Dimensions not matcth");
+
+    // iterate dimensions on output image shape (without Batch and Channel)
+    std::vector<int64_t> d_output(N, 0);
+    // iterate inside each stop for kernel dimensions
+    std::vector<int64_t> d_kernel(N, 0);
+
+    // Loop over spatial axes along the output image shape
+    int64_t outer_col_index = 0;
+    for (bool has_next_output = true; has_next_output;) {
+      // Loop over spatial axes in reverse order to choose an index on kernel dimensions
+      int64_t inner_col_index = 0;
+      for (bool has_next_kernel = true; has_next_kernel; inner_col_index += input_channels) {
+        // Loop over spatial axes in forward order to compute the indices in the image
+        // and the inner col, and whether the index lies in the padding.
+        int64_t index_im = 0;
+        bool is_padding = false;
+        for (int64_t d_i = 0; d_i < N; ++d_i) {
+          int64_t d_im = d_output[d_i] * stride[d_i] - pad[d_i] + d_kernel[d_i] * dilation[d_i];
+          is_padding |= d_im < 0 || d_im >= im_shape[d_i];
+          index_im *= im_shape[d_i];
+          index_im += d_im;
+        }
+        index_im *= input_channels;
+        auto index_col = outer_col_index + inner_col_index;
+
+        if (!accumulate_output) {
+          if (is_padding) {
+            std::fill_n(data_col + index_col, input_channels, padding_value);
+          } else {
+            std::copy_n(data_img + index_im, input_channels, data_col + index_col);
+          }
+        } else if (!is_padding) {  // col2im
+          const T* ptr_im = data_img + index_col;
+          T* ptr_col = data_col + index_im;
+          for (int64_t i = 0; i < input_channels; ++i) {
+            *ptr_col++ += *ptr_im++;
+          }
+        }
+
+        has_next_kernel = NextPosition(N, kernel_shape, d_kernel.data());
+      }
+
+      outer_col_index += channels_col;
+      has_next_output = NextPosition(N, col_shape, d_output.data());
+    }  // while(has_next_output) {
+  }
+};
+
+template struct Im2colNd<uint8_t, StorageOrder::NHWC>;
+
 template <>
 void Col2im<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, int64_t channels, int64_t height,
                                                     int64_t width, int64_t kernel_h, int64_t kernel_w,
