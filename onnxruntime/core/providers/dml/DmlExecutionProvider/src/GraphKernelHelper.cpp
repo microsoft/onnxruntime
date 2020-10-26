@@ -109,7 +109,7 @@ namespace GraphKernelHelper
         const std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap) 
     {
         // Transferred initializers are uploaded to GPU memory
-        auto iter = transferredInitializerMap.find(fusedNodeInputDefs[index]->Name());
+        auto iter = transferredInitializerMap.find(GetFusedNodeArgNameMatchingGraph(fusedNodeInputDefs[index]->Name()));
         if (iter != transferredInitializerMap.end())
         {
             return true;
@@ -154,7 +154,7 @@ namespace GraphKernelHelper
         std::map<const onnx::TensorProto*, uint32_t> initializerToLastInputIndexMap;
         for (uint32_t i = 0; i < graphInputCount; i++) 
         {
-            auto iter = transferredInitializerMap.find(fusedNodeInputDefs[i]->Name());
+            auto iter = transferredInitializerMap.find(GetFusedNodeArgNameMatchingGraph(fusedNodeInputDefs[i]->Name()));
             if (iter != transferredInitializerMap.end()) {
                 initializerToLastInputIndexMap[&iter->second] = i;
             }
@@ -172,7 +172,7 @@ namespace GraphKernelHelper
             // initialization or execution). So just throw away the transferred initializer and skip this input.
             if (!inputsUsed[i])
             {
-                transferredInitializerMap.erase(fusedNodeInputDefs[i]->Name());
+                transferredInitializerMap.erase(GetFusedNodeArgNameMatchingGraph(fusedNodeInputDefs[i]->Name()));
 
                 if (inputRawData)
                 {
@@ -183,7 +183,7 @@ namespace GraphKernelHelper
             }
 
             // Look for the initializer among those transferred from the graph during partitioning
-            auto iter = transferredInitializerMap.find(fusedNodeInputDefs[i]->Name());
+            auto iter = transferredInitializerMap.find(GetFusedNodeArgNameMatchingGraph(fusedNodeInputDefs[i]->Name()));
             if (iter != transferredInitializerMap.end())
             {
                 std::byte* tensorPtr = nullptr;
@@ -319,6 +319,44 @@ namespace GraphKernelHelper
         dmlGraphDesc.OutputEdges = dmlOutputEdges.data();
         dmlGraphDesc.IntermediateEdgeCount = gsl::narrow_cast<uint32_t>(dmlIntermediateEdges.size());
         dmlGraphDesc.IntermediateEdges = dmlIntermediateEdges.data();
+    }
+
+    // TODO: This is a hack which strips the suffix added within Lotus transforms that insert mem copies.
+    // This shouldn't be necessary if Lotus exposes the inputs/ouputs in the same order between the kernel
+    // for a function, and the graph for that function exposed as a kernel property.  When the ordering 
+    // mismatch is fixed (WindowsAI: 21114358, Lotus: 1953), this workaround should be removed.
+    std::string GetFusedNodeArgNameMatchingGraph(const std::string& fusedNodeArgeName)
+    {
+        const char* suffix = nullptr;
+        
+        // The suffix used when inserting mem copies is equal to the below, probably followed by an incrementing number.
+        if (!suffix) 
+        {
+            suffix = strstr(fusedNodeArgeName.c_str(), "_DmlExecutionProvider_");
+        }
+
+        // The suffix used when inserting mem copies is equal to the below, not followed by an incrementing number.
+        if (!suffix) 
+        {
+            suffix = strstr(fusedNodeArgeName.c_str(), "_DmlExecutionProvider");
+        }
+        
+        if (!suffix) 
+        {
+            suffix = strstr(fusedNodeArgeName.c_str(), "_token_");
+        }
+
+        if (suffix)
+        {
+            return std::string(
+                fusedNodeArgeName.begin(),
+                fusedNodeArgeName.begin() + (suffix - fusedNodeArgeName.c_str())
+            );
+        } 
+        else 
+        {
+            return fusedNodeArgeName;
+        }
     }
 }  // namespace GraphKernelHelper
 }  // namespace Dml
