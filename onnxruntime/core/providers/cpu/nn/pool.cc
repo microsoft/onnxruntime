@@ -240,9 +240,9 @@ Status MaxPoolV8::ComputeImplOptimized(OpKernelContext* context) const {
       pool_size.size() > 2 && dilations[2] != stride_d() ||
       context->Output(1, output_dims) ||
       pool_size.size() == 1 && pool_size[0] < 128 || 
-      pool_size.size() == 2 && pool_size[0] * pool_size[1] < 32*32 || 
-      pool_size.size() == 3 && pool_size[0] * pool_size[1] * pool_size[2] < 16*16*16) {
-  
+      pool_size.size() == 2 && pool_size[0] * pool_size[1] < 64*64 || 
+      pool_size.size() == 3 && pool_size[0] * pool_size[1] * pool_size[2] < 32*32*32) {
+
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Arguments are not optimizable.");
   }
 
