@@ -41,13 +41,13 @@ def run_with_config(config):
         "--max_batch_size", str(config.max_batch_size),
         "--max_predictions_per_seq", str(config.max_predictions_per_seq)]
     if config.enable_mixed_precision:
-        cmds = [*cmds, "--enable_mixed_precision"]
+        cmds.append("--enable_mixed_precision")
     if config.gelu_recompute:
-        cmds = [*cmds, "--gelu_recompute"]
+        cmds.append("--gelu_recompute")
     if config.attn_dropout_recompute:
-        cmds = [*cmds, "--attn_dropout_recompute"]
+        cmds.append("--attn_dropout_recompute")
     if config.transformer_layer_recompute:
-        cmds = [*cmds, "--transformer_layer_recompute"]
+        cmds.append("--transformer_layer_recompute")
     subprocess.run(cmds, timeout=1200).check_returncode()
 
 for config in configs:

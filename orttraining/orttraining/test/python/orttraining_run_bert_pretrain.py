@@ -15,7 +15,6 @@ import dataclasses
 from dataclasses import dataclass, field
 from typing import Optional, Any, Dict
 import json
-import collections
 
 import unittest
 
