@@ -83,11 +83,6 @@ class ThreadPool {
   // reasons such as if queues used for buffering work are full.
   void Schedule(std::function<void()> fn);
 
-  // Returns the number of shards used by ParallelForFixedBlockSizeScheduling
-  // with these parameters.
-  int NumShardsUsedByFixedBlockSizeScheduling(std::ptrdiff_t total,
-                                              std::ptrdiff_t block_size) const;
-
   // ParallelFor shards the "total" units of work assuming each unit of work
   // having roughly "cost_per_unit" cost, in cycles. Each unit of work is
   // indexed 0, 1, ..., total - 1. Each shard contains 1 or more units of work
@@ -111,16 +106,6 @@ class ThreadPool {
 
   static void TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t total, const TensorOpCost& cost_per_unit,
                              const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn); 
-
-  // Return the degree of parallelism that code should assume when using the thread pool.
-  // This API takes into account if OpenMP is enabled/disabled, and if the thread pool ptr is
-  // nullptr.  It decouples the degree of parallelism for use with the thread pool from
-  // the implementation choice of whether this matches the number of threads created in
-  // the pool.
-  //
-  // Currently, a loop with degree-of-parallelism N is supported by a pool of N-1 threads
-  // working in combination with the thread initiating the loop.
-  static int DegreeOfParallelism(const concurrency::ThreadPool* tp);
 
   // Directly schedule the 'total' tasks to the underlying threadpool, without
   // cutting them by halves
@@ -225,6 +210,27 @@ class ThreadPool {
     return info;
   }
 
+  //......................................................................
+  //
+  // The following static methods take into account whether OpenMP is
+  // enabled/disabled, and if the thread pool pointer is nullptr
+  // during sequential execution.
+
+  // Provide a hint to the caller for whether or not to parallelize
+  // work.  This lets a caller switch to a sequential version of an
+  // algorithm rather than using calls via the ParallelFor functions.
+  
+  static bool ShouldParallelize(const concurrency::ThreadPool *tp);
+
+  // Return the degree of parallelism that code should assume when using the thread pool.
+  // It decouples the degree of parallelism for use with the thread pool from
+  // the implementation choice of whether this matches the number of threads created in
+  // the pool.
+  //
+  // Currently, a loop with degree-of-parallelism N is supported by a pool of N-1 threads
+  // working in combination with the thread initiating the loop.
+  static int DegreeOfParallelism(const concurrency::ThreadPool* tp);
+
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(ThreadPool);
 
  private:
@@ -250,7 +256,6 @@ class ThreadPool {
   // Each shard may be executed on a different thread in parallel, depending on
   // the number of threads available in the pool.
   // When (i+1)*block_size > total, fn(i*block_size, total) is called instead.
-  // Here, k = NumShardsUsedByFixedBlockSizeScheduling(total, block_size).
   // Requires 0 < block_size <= total.
   void ParallelForFixedBlockSizeScheduling(std::ptrdiff_t total, std::ptrdiff_t block_size,
                                            const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn);

@@ -232,16 +232,6 @@ bool ThreadPool::ShouldParallelizeLoop(const std::ptrdiff_t num_iterations,
   return true;
 }
 
-int ThreadPool::NumShardsUsedByFixedBlockSizeScheduling(const std::ptrdiff_t total,
-                                                        const std::ptrdiff_t block_size) const {
-  if (!ShouldParallelizeLoop(total, block_size)) {
-    return 1;
-  } else {
-    // TODO:check overflow?
-    return static_cast<int>((total + block_size - 1) / block_size);
-  }
-}
-
 using CostModel = Eigen::TensorCostModel<Eigen::ThreadPoolDevice>;
 
 // Calculates block size based on (1) the iteration cost and (2) parallel
@@ -322,6 +312,10 @@ void ThreadPool::ParallelFor(std::ptrdiff_t n, const TensorOpCost& c,
 void ThreadPool::ParallelFor(std::ptrdiff_t total, double cost_per_unit,
                              const std::function<void(std::ptrdiff_t first, std::ptrdiff_t)>& fn) {
   ParallelFor(total, TensorOpCost{0, 0, static_cast<double>(cost_per_unit)}, fn);
+}
+
+bool ThreadPool::ShouldParallelize(const concurrency::ThreadPool* tp) {
+  return (DegreeOfParallelism(tp) == 1);
 }
 
 int ThreadPool::DegreeOfParallelism(const concurrency::ThreadPool* tp) {
