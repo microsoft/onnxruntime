@@ -90,11 +90,12 @@ class EquivalenceClass {
 
   friend struct ::std::hash<EquivalenceClass>;
   friend std::vector<std::vector<const EquivalenceClass*>> Normalize(const Node& node, const std::vector<const EquivalenceClass*>& inputs);
-
-  explicit EquivalenceClass(const NodeArg* non_op_value)
+  
+  explicit EquivalenceClass(const NodeArg* non_op_value, const onnx::TensorProto* initializer_)
       : attributes_(nullptr),
         output_index_(kInvalidOutputIndex),
         non_op_value_(Normalize(non_op_value)),
+        initializer_(initializer_),
         discriminator_(0),
         hash_(CalculateHash()) {
   }
@@ -107,11 +108,12 @@ class EquivalenceClass {
         attributes_(&node.GetAttributes()),
         output_index_(output_index),
         non_op_value_(nullptr),
+        initializer_(nullptr),
         discriminator_(discriminator),
         hash_(CalculateHash()) {
   }
 
- private:
+// private:
   std::size_t CalculateHash() const;
 
   // Operation and domain of the node that produces this value.
@@ -132,7 +134,14 @@ class EquivalenceClass {
   // Currently, different inputs/initializers are always considered different values, although we
   // could merge equal initializers.
   const NodeArg* non_op_value_;
-
+  
+  // Store the weights of the operation - this will be needed to differentiate
+  // between 2 operations that are the same except for their input weights
+  // TODO: ideally this should be a field inside NodeArg or part of a union
+  // type that has either a `NodeArg*` input tensor or a `onnx::TensorProto`
+  // that contains the weights
+  const onnx::TensorProto* initializer_;
+  
   // When an operation is not supported by the CSE optimization pass, we consider its
   // outputs unique (not equal to other values). For this purpose we assign a unique
   // discriminator for such values.
@@ -260,12 +269,38 @@ bool EquivalenceClass::operator==(const EquivalenceClass& other) const {
     return true;
   }
 
+  bool are_input_same = inputs_.size() == other.inputs_.size();
+  
+  if(are_input_same) {
+    for(unsigned long i=0; i<inputs_.size(); i++) {
+      std::vector<const EquivalenceClass*> iclasses_ = inputs_[i];
+      std::vector<const EquivalenceClass*> oclasses_ = other.inputs_[i];
+      
+      are_input_same = are_input_same && (iclasses_.size() == oclasses_.size());
+      
+      if(!are_input_same)
+        break;
+      
+      for(unsigned long j=0; j<iclasses_.size(); j++) {
+        const EquivalenceClass* clsi = iclasses_[j];
+        const EquivalenceClass* clso = oclasses_[j];
+        
+        if((clsi->initializer_ != nullptr) && (clso->initializer_ != nullptr)) {
+          are_input_same = are_input_same && (clsi->initializer_->raw_data()
+                                              == clso->initializer_->raw_data());
+        } else {
+          are_input_same = are_input_same && (clsi->non_op_value_ == clso->non_op_value_);
+        }
+      }
+    }
+  }
+
   // Below we compare inputs_ as pointers. This is valid due to how EquivalenceClass'es are constructed:
   // we'll never have two distinct but equal inputs_ here, so their addresses are effectively their value numbers.
   return hash_ == other.hash_ && output_index_ == other.output_index_ && discriminator_ == other.discriminator_ &&
-         non_op_value_ == other.non_op_value_ &&
+         //non_op_value_ == other.non_op_value_ &&
          op_type_ == other.op_type_ && domain_ == other.domain_ &&
-         inputs_ == other.inputs_ &&
+         are_input_same &&
          SameAttributes(attributes_, other.attributes_);
 }
 
@@ -273,7 +308,13 @@ std::size_t EquivalenceClass::CalculateHash() const {
   std::size_t hash = 0;
   UpdateHash(output_index_, hash);
   UpdateHash(discriminator_, hash);
-  UpdateHash(non_op_value_, hash);
+  
+  if(initializer_ != nullptr) {
+    UpdateHash(initializer_->raw_data(), hash);
+  } else {
+    UpdateHash(non_op_value_, hash);
+  }
+  
   UpdateHash(op_type_, hash);
   UpdateHash(domain_, hash);
   if (attributes_ != nullptr) {
@@ -282,7 +323,7 @@ std::size_t EquivalenceClass::CalculateHash() const {
       UpdateHash(kv.second, &GetAttributeHash, hash);
     }
   }
-
+  
   for (const auto& arg : inputs_) {
     for (const EquivalenceClass* input : arg) {
       UpdateHash(input, DeepPointerHash{}, hash);
@@ -297,6 +338,7 @@ std::size_t EquivalenceClass::CalculateHash() const {
 // For inputs and constant initializers, output_index == kInvalidOutputIndex.
 struct Representative {
   const NodeArg* node_arg;
+  const onnx::TensorProto* initializer;
   NodeIndex node_index;
   OutputIndex output_index;
 };
@@ -365,12 +407,19 @@ Status CommonSubexpressionElimination::ApplyImpl(Graph& graph, bool& modified, i
     for (const NodeArg* input_def : node->InputDefs()) {
       auto it = equivalence_classes.find(input_def);
       if (it == equivalence_classes.end()) {
+        const onnx::TensorProto* initializer_ = new onnx::TensorProto();
+        if(graph.IsInitializedTensor(input_def->Name())) {
+          graph.GetInitializedTensor(input_def->Name(), initializer_);
+        }
+        
         // Because nodes are processed in topological order, this will always be
         // a non-op value (graph input or constant initializer).
-        auto value = onnxruntime::make_unique<EquivalenceClass>(input_def);
+        auto value = onnxruntime::make_unique<EquivalenceClass>(input_def, initializer_);
+
         const auto* raw_ptr = value.get();
         unique_equivalence_classes.push_back(std::move(value));
-        value_to_representative.emplace(raw_ptr, Representative{input_def, 0, kInvalidOutputIndex});
+        value_to_representative.emplace(raw_ptr, Representative{input_def,
+            initializer_, 0, kInvalidOutputIndex});
         it = equivalence_classes.emplace_hint(it, input_def, raw_ptr);
       }
 
@@ -386,13 +435,17 @@ Status CommonSubexpressionElimination::ApplyImpl(Graph& graph, bool& modified, i
          output_index < end; ++output_index) {
       const NodeArg* output_def = node->OutputDefs()[output_index];
       auto equivalence_class = onnxruntime::make_unique<EquivalenceClass>(*node, input_values, output_index, discriminator);
+      
+      if(node->OpType() == "Pad") {
+        std::cout << node->Name() << " hash " << equivalence_class->hash_ << std::endl;
+      }
       auto* raw_ptr = equivalence_class.get();
 
       auto it = value_to_representative.find(raw_ptr);
       if (it == value_to_representative.end()) {
         unique_equivalence_classes.push_back(std::move(equivalence_class));
         it = value_to_representative.emplace_hint(it, raw_ptr,
-                                                  Representative{output_def, node_index, output_index});
+                                                  Representative{output_def, nullptr, node_index, output_index});
       }
 
       equivalence_classes[output_def] = it->first;
