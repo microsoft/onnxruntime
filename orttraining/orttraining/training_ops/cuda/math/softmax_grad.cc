@@ -2,9 +2,11 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cuda/math/softmax_grad.h"
-#include "core/providers/cuda/math/softmax.h"
+
 #include "core/providers/common.h"
 #include "core/providers/cuda/cudnn_common.h"
+#include "core/providers/cuda/math/softmax.h"
+#include "core/providers/cuda/shared_inc/accumulation_type.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -30,7 +32,8 @@ Status SoftMaxGradComputeHelper(
   auto dX_data = reinterpret_cast<CudaT*>(dX);
 
   if (D <= 1024 && D * sizeof(T) <= 4096) {
-    dispatch_softmax_backward<CudaT, CudaT, AccType<T>, is_log_softmax>(dX_data, dY_data, Y_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));
+    dispatch_softmax_backward<CudaT, CudaT, AccumulationType_t<CudaT>, is_log_softmax>(
+        dX_data, dY_data, Y_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));
     return Status::OK();
   }
 
@@ -43,7 +46,7 @@ Status SoftMaxGradComputeHelper(
   CUDNN_RETURN_IF_ERROR(
       cudnnSoftmaxBackward(
           handle,
-          is_log_softmax? CUDNN_SOFTMAX_LOG : CUDNN_SOFTMAX_ACCURATE,
+          is_log_softmax ? CUDNN_SOFTMAX_LOG : CUDNN_SOFTMAX_ACCURATE,
           CUDNN_SOFTMAX_MODE_INSTANCE,
           &alpha,
           input_tensor,
@@ -56,7 +59,6 @@ Status SoftMaxGradComputeHelper(
 
   return Status::OK();
 }
-
 
 #define REGISTER_GRADIENT_KERNEL_TYPED(T)                                       \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
@@ -78,7 +80,6 @@ Status SoftMaxGradComputeHelper(
 
 template <typename T>
 Status SoftmaxGrad<T>::ComputeInternal(OpKernelContext* ctx) const {
-
   const Tensor* dY = ctx->Input<Tensor>(0);
   const TensorShape& input_shape{dY->Shape()};
   const Tensor* Y = ctx->Input<Tensor>(1);
@@ -90,8 +91,7 @@ Status SoftmaxGrad<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   if (log_softmax_) {
     return SoftMaxGradComputeHelper<T, true>(dY_data, input_shape, Y_data, dX_data, CudnnHandle(), axis_);
-  }
-  else {
+  } else {
     return SoftMaxGradComputeHelper<T, false>(dY_data, input_shape, Y_data, dX_data, CudnnHandle(), axis_);
   }
 }
