@@ -1036,7 +1036,7 @@ Graph::Graph(const Model& owning_model,
   for (auto& tensor : graph_proto_->initializer()) {
     auto p = name_to_initial_tensor_.emplace(tensor.name(), &tensor);
     if (!p.second) {
-      LOGS(logger_, WARNING) << "Duplicate initializer (dense, sparse or ContantNode): '" << tensor.name()
+      LOGS(logger_, WARNING) << "Duplicate initializer (dense, sparse or ConstantNode): '" << tensor.name()
                             << "' the model will use the latest encountered initializer"
                             << ". Please, fix your model.";
       p.first->second = &tensor;
@@ -3577,7 +3577,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Gr
       ORT_RETURN_IF_ERROR(experimental::utils::LoadInitializerOrtFormat(*fbs_tensor, *initializer));
       auto p = name_to_initial_tensor_.emplace(initializer->name(), initializer);
       if (!p.second) {
-        LOGS(logger_, WARNING) << "Duplicate initializer: '" << initializer->name()
+        LOGS(logger_, WARNING) << "Duplicate initializer (dense or ConstantNode): '" << initializer->name()
                               << "' the model will use the latest encountered initializer"
                               << ". Please, fix your model.";
         p.first->second = initializer;
@@ -3595,7 +3595,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Gr
       ORT_RETURN_IF_ERROR(utils::SparseTensorProtoToDenseTensorProto(sparse_initializer, initializer));
       auto p = name_to_initial_tensor_.emplace(initializer.name(), &initializer);
       if (!p.second) {
-        LOGS(logger_, WARNING) << "Duplicate initializer (dense, sparse or ContantNode): '" << initializer.name()
+        LOGS(logger_, WARNING) << "Duplicate initializer (dense, sparse or ConstantNode): '" << initializer.name()
                                << "' the model will use the latest encountered initializer"
                                << ". Please, fix your model.";
         p.first->second = &initializer;
