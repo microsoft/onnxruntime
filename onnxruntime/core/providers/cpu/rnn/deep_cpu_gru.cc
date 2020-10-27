@@ -581,6 +581,7 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
   }
 
   // for each item in sequence run all calculations
+  onnxruntime::concurrency::ThreadPool::StartParallelSection(ttp_);
   for (int step = 0; step < max_sequence_length; step++) {
 #if defined(DUMP_MATRIXES)
     const std::string seqno_str = " [seqno=" + std::to_string(step) + "]";
@@ -772,6 +773,7 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
     prev_Ht = output;
     prev_Ht_end = output_end;
   }
+  onnxruntime::concurrency::ThreadPool::EndParallelSection(ttp_);
 
   // copy last output to final_hidden_state
   for (int i = 0; i < batch_size_; i++) {
