@@ -326,7 +326,7 @@ namespace Microsoft.ML.OnnxRuntime
             OrtReleaseAvailableProviders = (DOrtReleaseAvailableProviders)Marshal.GetDelegateForFunctionPointer(api_.ReleaseAvailableProviders, typeof(DOrtReleaseAvailableProviders));
         }
 
-        [DllImport("F:\\onnxruntime6\\build\\Windows\\Debug\\Debug\\onnxruntime.dll", CharSet = charSet)]
+        [DllImport(nativeLib, CharSet = charSet)]
         public static extern ref OrtApiBase OrtGetApiBase();
 
         #region Runtime/Environment API
