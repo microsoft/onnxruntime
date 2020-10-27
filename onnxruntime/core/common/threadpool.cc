@@ -337,6 +337,7 @@ void ThreadPool::ParallelFor(std::ptrdiff_t total, double cost_per_unit,
 
 void ThreadPool::StartParallelSection(concurrency::ThreadPool* tp) {
 #ifdef _OPENMP
+  ORT_UNUSED_PARAMETER(tp);
 #else
   if (tp) {
     tp->StartParallelSection();
@@ -346,6 +347,7 @@ void ThreadPool::StartParallelSection(concurrency::ThreadPool* tp) {
 
 void ThreadPool::EndParallelSection(concurrency::ThreadPool* tp) {
 #ifdef _OPENMP
+  ORT_UNUSED_PARAMETER(tp);
 #else
   if (tp) {
     tp->EndParallelSection();
