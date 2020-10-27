@@ -38,6 +38,34 @@ namespace onnxruntime {
 namespace training {
 
 namespace {
+// void CreateFakeOutput(Graph& graph, std::string output_name, const ONNX_NAMESPACE::TensorShapeProto* reference_shape_proto) {
+//   const int32_t element_type = ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
+//   ONNX_NAMESPACE::TypeProto type_proto;
+//   type_proto.mutable_tensor_type()->set_elem_type(element_type);
+//   ONNX_NAMESPACE::TensorShapeProto* tensor_shape_proto = type_proto.mutable_tensor_type()->mutable_shape();
+//   tensor_shape_proto->CopyFrom(*reference_shape_proto);
+//   auto& seed_node_arg = graph.GetOrCreateNodeArg(output_name + "_seed", &type_proto);
+// 
+//   ONNX_NAMESPACE::TensorProto tensor_proto;
+//   tensor_proto.set_name(seed_node_arg.Name());
+//   tensor_proto.set_data_type(element_type);
+//   int64_t reference_size = 1;
+//   for (auto d: reference_shape_proto->dim()) {
+//     tensor_proto.add_dims(d.dim_value());
+//     reference_size *= d.dim_value();
+//   }
+//   for (int64_t i = 0; i < reference_size; ++i) {
+//     tensor_proto.add_float_data(1.0f);
+//   }
+//   graph.AddInitializedTensor(tensor_proto);
+// 
+//   auto output_node_arg = graph.GetNodeArg(output_name);
+//   std::vector<NodeArg*> input_args{&seed_node_arg};
+//   std::vector<NodeArg*> output_args{output_node_arg};
+//   auto node_name = graph.GenerateNodeName("Identity");
+//   graph.AddNode(node_name, "Identity", "Fake loss node.", input_args, output_args);
+// }
+
 Status SetupOptimizerParams(
     const std::unordered_set<std::string>& weight_names_to_train,
     const std::unordered_map<std::string, NodeArg*>& fp32_weight_names_to_mixed_precision_node_args,
@@ -165,10 +193,19 @@ Status TrainingSession::ConfigureForTraining(
                               DistributedRunContext::RankInGroup(WorkerGroupType::ModelParallel) :
                               -1;
 
+  std::vector<std::string> graph_output_names;
+  std::vector<ONNX_NAMESPACE::TensorShapeProto> graph_output_shapes;
   if (config.pipeline_config.has_value() && config.pipeline_config.value().do_partition) {
     // Apply online pipeline partition to graph obj. This needs to be done first before any graph
     // transportation which may alter node_arg and invalidate cut_list info from the original graph.
     ORT_ENFORCE(pipeline_stage_id >= 0, "invalid pipelie stage id (", pipeline_stage_id, ") before doing online partition.");
+
+    for (auto& output_node_arg : model_->MainGraph().GetOutputs()) {
+      std::string name = output_node_arg->Name();
+      graph_output_names.push_back(name);
+      std::cout << "[pipeline_transformer.cc, ApplyPipelinePartitionToMainGraph] See graph output: " << name << std::endl;
+      graph_output_shapes.push_back(*output_node_arg->Shape());
+    }
 
     ORT_RETURN_IF_ERROR(ApplyPipelinePartitionToMainGraph(model_->MainGraph(),
                                                           config.pipeline_config.value().cut_list,
@@ -295,6 +332,19 @@ Status TrainingSession::ConfigureForTraining(
   ORT_RETURN_IF_ERROR(BuildGradientGraph(
       weight_names_to_train, loss_name, config.gradient_graph_config, *session_logger_));
 
+  // for (size_t i = 0; i < graph_output_names.size(); ++i) {
+  //   const std::string name = graph_output_names[i];
+  //   const ONNX_NAMESPACE::TensorShapeProto shape = graph_output_shapes[i];
+
+  //   auto producer = model_->MainGraph().GetProducerNode(name);
+  //   if (producer) {
+  //     std::cout << "[pipeline_transformer.cc, ApplyPipelinePartitionToMainGraph] kept output " << name << " has producer " << producer->Name() << std::endl;
+  //   } else {
+  //     std::cout << "[pipeline_transformer.cc, ApplyPipelinePartitionToMainGraph] kept output " << name << " has producer " << "None" << std::endl;
+  //     CreateFakeOutput(model_->MainGraph(), name, &shape); 
+  //   }
+  // }
+
   ORT_IGNORE_RETURN_VALUE(Save(std::string("simple_backward_stage_") + std::to_string(config.distributed_config.world_rank) + std::string(".onnx"), SaveOption::NO_RELOAD));
 
   if (config.pipeline_config.has_value()) {
@@ -307,6 +357,8 @@ Status TrainingSession::ConfigureForTraining(
     // Declar a place holder for pipeline configuration.
     TrainingConfigurationResult::PipelineConfigurationResult pipeline_result{};
     ORT_RETURN_IF_ERROR(InsertPipelineOps(weight_names_to_train,
+                                          graph_output_names,
+                                          graph_output_shapes,
                                           pipeline_result.pipeline_tensor_names));
 
     // Records which which tensors can be fed into the graph.
@@ -662,11 +714,43 @@ Status TrainingSession::AddTensorboard(const std::string& summary_name,
 
 Status TrainingSession::InsertPipelineOps(
     const std::unordered_set<std::string>& initializer_names_to_preserve,
+    std::vector<std::string> graph_output_names,
+    std::vector<ONNX_NAMESPACE::TensorShapeProto> graph_output_shapes,
     pipeline::PipelineTensorNames& pipeline_tensor_names) {
   ORT_RETURN_IF_ERROR(TransformGraphForPipeline(
       model_->MainGraph(),
       initializer_names_to_preserve,
-      pipeline_tensor_names));
+      graph_output_names,
+      graph_output_shapes,
+      pipeline_tensor_names.forward_recv_waited_event_name,
+      pipeline_tensor_names.forward_recv_wait_output_name,
+      pipeline_tensor_names.forward_recv_recorded_event_name,
+      pipeline_tensor_names.forward_recv_record_output_name,
+      // Event ops' inputs and outputs related to forward Send.
+      pipeline_tensor_names.forward_send_waited_event_name,
+      pipeline_tensor_names.forward_send_wait_output_name,
+      pipeline_tensor_names.forward_send_recorded_event_name,
+      pipeline_tensor_names.forward_send_record_output_name,
+      // Event ops' inputs and outputs related to backward Recv.
+      pipeline_tensor_names.backward_recv_waited_event_name,
+      pipeline_tensor_names.backward_recv_wait_output_name,
+      pipeline_tensor_names.backward_recv_recorded_event_name,
+      pipeline_tensor_names.backward_recv_record_output_name,
+      // Event ops' inputs and outputs related to backward Send.
+      pipeline_tensor_names.backward_send_waited_event_name,
+      pipeline_tensor_names.backward_send_wait_output_name,
+      pipeline_tensor_names.backward_send_recorded_event_name,
+      pipeline_tensor_names.backward_send_record_output_name,
+      // Event ops' inputs and outputs related to forward Compute.
+      pipeline_tensor_names.forward_compute_waited_event_name,
+      pipeline_tensor_names.forward_compute_wait_output_name,
+      pipeline_tensor_names.forward_compute_recorded_event_name,
+      pipeline_tensor_names.forward_compute_record_output_name,
+      // Event ops' inputs and outputs related to backward Compute.
+      pipeline_tensor_names.backward_compute_waited_event_name,
+      pipeline_tensor_names.backward_compute_wait_output_name,
+      pipeline_tensor_names.backward_compute_recorded_event_name,
+      pipeline_tensor_names.backward_compute_record_output_name));
   return DoPostLoadProcessing(*model_);
 }
 
@@ -1005,15 +1089,15 @@ void TrainingSession::CreatePipelineEvents(
 
     // Event "-1" means no event to wait or record.
     // A non-negative value means a specific event's ID.
-    ORT_ENFORCE(event_value != -1 && event_value < 0);
+    ORT_ENFORCE(event_value >= -1, "Got event_value ", event_value);
 
     // Check uniqueness of event names.
-    for (auto name : io_binding.GetInputNames()) {
-      ORT_ENFORCE(event_name != name, "Two variable cannot have the same name.");
-    }
-    for (auto name : io_binding.GetOutputNames()) {
-      ORT_ENFORCE(event_name != name, "Two variable cannot have the same name.");
-    }
+    // for (auto name : io_binding.GetInputNames()) {
+    //   ORT_ENFORCE(event_name != name, "Two variable cannot have the same name.");
+    // }
+    // for (auto name : io_binding.GetOutputNames()) {
+    //   ORT_ENFORCE(event_name != name, "Two variable cannot have the same name.");
+    // }
 
     const auto* cpu_ep = GetSessionState().GetExecutionProviders().Get(onnxruntime::kCpuExecutionProvider);
     const auto cpu_allocator = cpu_ep->GetAllocator(0, OrtMemTypeDefault);
@@ -1084,7 +1168,7 @@ common::Status TrainingSession::RunWithPipeline(const RunOptions& run_options, I
   // TODO: add it to run_options.
   const size_t slice_axis = 0;
   // TODO: add it to run_options.
-  const size_t num_steps = 8;
+  const size_t num_steps = 1;
   // TODO: add it to run_options.
   const bool training_mode = true;
 
@@ -1100,19 +1184,26 @@ common::Status TrainingSession::RunWithPipeline(const RunOptions& run_options, I
     CreateBatchVariables(*sub_io_binding.get(), io_binding, i, slice_axis, num_steps);
 
     // Add proper events to the binding.
-    CreatePipelineEvents(training_mode, i, pipeline_context_.pipeline_stage_id, *sub_io_binding.get());
+    // CreatePipelineEvents(training_mode, i, pipeline_context_.pipeline_stage_id, *sub_io_binding.get());
+    CreatePipelineEvents(training_mode, i, pipeline_context_.pipeline_stage_id, io_binding);
 
     // TODO: When pipeline parallel is enabled, we need to ensure gradient accumulation
     // flag is set to true when initializing the session.
 
-    //ORT_RETURN_IF_ERROR(InferenceSession::Run(run_options, sub_io_binding));
+    //ORT_RETURN_IF_ERROR(
+    //  InferenceSession::Run(
+    //      run_options,
+    //      sub_io_binding->GetInputNames(),
+    //      sub_io_binding->GetInputs(),
+    //      sub_io_binding->GetOutputNames(),
+    //      &sub_io_binding->GetOutputs()));
     ORT_RETURN_IF_ERROR(
       InferenceSession::Run(
           run_options,
-          sub_io_binding->GetInputNames(),
-          sub_io_binding->GetInputs(),
-          sub_io_binding->GetOutputNames(),
-          &sub_io_binding->GetOutputs()));
+          io_binding.GetInputNames(),
+          io_binding.GetInputs(),
+          io_binding.GetOutputNames(),
+          &io_binding.GetOutputs()));
   }
 
   return common::Status::OK();
