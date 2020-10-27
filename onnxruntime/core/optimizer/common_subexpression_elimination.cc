@@ -407,19 +407,20 @@ Status CommonSubexpressionElimination::ApplyImpl(Graph& graph, bool& modified, i
     for (const NodeArg* input_def : node->InputDefs()) {
       auto it = equivalence_classes.find(input_def);
       if (it == equivalence_classes.end()) {
-        const onnx::TensorProto* initializer_ = new onnx::TensorProto();
+        const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
+        
         if(graph.IsInitializedTensor(input_def->Name())) {
-          graph.GetInitializedTensor(input_def->Name(), initializer_);
+          graph.GetInitializedTensor(input_def->Name(), initializer);
         }
         
         // Because nodes are processed in topological order, this will always be
         // a non-op value (graph input or constant initializer).
-        auto value = onnxruntime::make_unique<EquivalenceClass>(input_def, initializer_);
+        auto value = onnxruntime::make_unique<EquivalenceClass>(input_def, initializer);
 
         const auto* raw_ptr = value.get();
         unique_equivalence_classes.push_back(std::move(value));
         value_to_representative.emplace(raw_ptr, Representative{input_def,
-            initializer_, 0, kInvalidOutputIndex});
+            initializer, 0, kInvalidOutputIndex});
         it = equivalence_classes.emplace_hint(it, input_def, raw_ptr);
       }
 
