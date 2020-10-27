@@ -192,23 +192,23 @@ bool IsOpSupported(std::string name, std::string device) {
     std::vector<std::string> devices;
     std::stringstream s_stream(device);
     while(s_stream.good()) {
-    std::string substr;
-    getline(s_stream, substr, ',');
-    devices.push_back(substr);
+      std::string substr;
+      getline(s_stream, substr, ',');
+      devices.push_back(substr);
     }
     supported_ops.insert(common_supported_ops.begin(), common_supported_ops.end());
     for (auto& it : devices) {
-    if(it == "MYRIAD" || "HDDL") {
-      supported_ops.insert(supported_ops_vpu.begin(), supported_ops_vpu.end());
-    }
-    if(it == "GPU") {
-      supported_ops.insert(supported_ops_gpu.begin(), supported_ops_gpu.end());
-    }
-    if(it == "CPU") {
-      supported_ops.insert(supported_ops_cpu.begin(), supported_ops_cpu.end());
+      if(it == "MYRIAD" || "HDDL") {
+        supported_ops.insert(supported_ops_vpu.begin(), supported_ops_vpu.end());
+      }
+      if(it == "GPU") {
+        supported_ops.insert(supported_ops_gpu.begin(), supported_ops_gpu.end());
+      }
+      if(it == "CPU") {
+        supported_ops.insert(supported_ops_cpu.begin(), supported_ops_cpu.end());
+     }
     }
   }
-}
   return supported_ops.find(name) != supported_ops.end();
 }
 

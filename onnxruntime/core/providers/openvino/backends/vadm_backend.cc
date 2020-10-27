@@ -268,6 +268,7 @@ void VADMBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
     // Distribute the batched inputs among available Infer Requests
     // for parallel inference.
 
+    std::string& hw_target = (global_context_.device_id != "") ? global_context_.device_id : global_context_.device_type;
     // Run parallel inferences as sets of num_inf_reqs_
     for (size_t set = 0; set < full_parallel_runs; set++) {
       for (size_t inf_req_idx = 0; inf_req_idx < num_inf_reqs_; inf_req_idx++) {
@@ -277,6 +278,11 @@ void VADMBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
       for (size_t inf_req_idx = 0; inf_req_idx < num_inf_reqs_; inf_req_idx++) {
         size_t batch_slice_idx = set * num_inf_reqs_ + inf_req_idx;
         CompleteAsyncInference(ort, context, batch_slice_idx, inf_req_idx, batch_size);
+      #ifndef NDEBUG
+        if (openvino_ep::backend_utils::IsDebugEnabled()) {
+          printPerformanceCounts(*infer_requests_[inf_req_idx], std::cout, hw_target);
+        }
+      #endif
       }
     }
 
@@ -288,15 +294,12 @@ void VADMBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
     for (size_t inf_req_idx = 0; inf_req_idx < remainder_parallel_runs; inf_req_idx++) {
       size_t batch_slice_idx = full_parallel_runs * num_inf_reqs_ + inf_req_idx;
       CompleteAsyncInference(ort, context, batch_slice_idx, inf_req_idx, batch_size);
-    }
-#ifndef NDEBUG
-    if (openvino_ep::backend_utils::IsDebugEnabled()) {
-    std::string& hw_target = (global_context_.device_id != "") ? global_context_.device_id : global_context_.device_type;
-    for (size_t inf_req_idx = 0; inf_req_idx < remainder_parallel_runs; inf_req_idx++) {
-      printPerformanceCounts(*infer_requests_[inf_req_idx], std::cout, hw_target, true);
+    #ifndef NDEBUG
+      if (openvino_ep::backend_utils::IsDebugEnabled()) {
+        printPerformanceCounts(*infer_requests_[inf_req_idx], std::cout, hw_target);
       }
+    #endif
     }
-#endif
   }
   LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
 }

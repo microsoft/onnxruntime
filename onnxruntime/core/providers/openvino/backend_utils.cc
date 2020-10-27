@@ -384,13 +384,10 @@ std::vector<std::pair<std::string, InferenceEngine::InferenceEngineProfileInfo>>
 }
 
 void printPerformanceCounts(const std::map<std::string, InferenceEngine::InferenceEngineProfileInfo>& performanceMap,
-                                          std::ostream &stream, std::string deviceName,
-                                          bool bshowHeader) {
+                                          std::ostream &stream, std::string deviceName) {
     long long totalTime = 0;
     // Print performance counts
-    if (bshowHeader) {
-        stream << std::endl << "performance counts:" << std::endl << std::endl;
-    }
+    stream << std::endl << "performance counts:" << std::endl << std::endl;
 
     auto performanceMapSorted = perfCountersSorted(performanceMap);
 
@@ -428,9 +425,9 @@ void printPerformanceCounts(const std::map<std::string, InferenceEngine::Inferen
     std::cout << std::endl;
 }
 
-void printPerformanceCounts(InferenceEngine::InferRequest request, std::ostream &stream, std::string deviceName, bool bshowHeader = true) {
+void printPerformanceCounts(InferenceEngine::InferRequest request, std::ostream &stream, std::string deviceName) {
     auto performanceMap = request.GetPerformanceCounts();
-    printPerformanceCounts(performanceMap, stream, deviceName, bshowHeader);
+    printPerformanceCounts(performanceMap, stream, deviceName);
 }
 
 }  // namespace backend_utils
