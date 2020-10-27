@@ -628,13 +628,6 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
     }
   }
 
-  // Wait all workers to finish this around of pipeline parallism.
-  // The last batch in a pipeline collects gradient and update the model.
-  pipeline_worker_pool_.JoinAll();
-  for (auto& status : pipeline_worker_pool_.worker_states) {
-    CheckWorkerException(status.execution_exception);
-  }
-
   // TODO: move this to an operator in graph.
   onnxruntime::contrib::OrtEventPool::GetInstance().ResetAllEvents();
 
@@ -905,7 +898,9 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
         }
       }  // end of one file/shard
 
-      pipeline_worker_pool_.JoinAll();
+      if (params_.pipeline_parallel_size > 1) {
+        pipeline_worker_pool_.JoinAll();
+      }
       if (step_ < params_.num_train_steps) {
         training_data_loader.MoveToNextDataSet();
       }
