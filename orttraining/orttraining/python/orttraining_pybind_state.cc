@@ -68,15 +68,9 @@ struct TrainingConfigurationResult {
 TrainingConfigurationResult ConfigureSessionForTraining(
     training::TrainingSession* sess, TrainingParameters& parameters) {
   //TODO tix, refactor the mpi related code to populate all fields correctly by default.
-  ORT_ENFORCE(parameters.data_parallel_size <= parameters.world_size);
-
-  if (parameters.world_size % parameters.data_parallel_size != 0) {
-    throw std::runtime_error("Cannot split data parallel group because world_size is not divisible");
-  }
-
-  if (parameters.world_size % parameters.horizontal_parallel_size != 0) {
-    throw std::runtime_error("Cannot split horizontal parallel group because world_size is not divisible");
-  }
+  ORT_ENFORCE(parameters.data_parallel_size <= parameters.world_size, "data_parallel_size: ", parameters.data_parallel_size, ", world_size: ", parameters.world_size);
+  ORT_ENFORCE(parameters.horizontal_parallel_size <= parameters.world_size, "horizontal_parallel_size: ", parameters.horizontal_parallel_size, ", world_size: ", parameters.world_size);
+  ORT_ENFORCE(parameters.pipeline_parallel_size <= parameters.world_size, "pipeline_parallel_size: ", parameters.pipeline_parallel_size, ", world_size: ", parameters.world_size);
 
   if (parameters.world_size != parameters.data_parallel_size * parameters.horizontal_parallel_size * parameters.pipeline_parallel_size) {
     const std::string msg = "Cannot distribute " + std::to_string(parameters.world_size) + " ranks for distributed computation with D=" + std::to_string(parameters.data_parallel_size) +
@@ -110,13 +104,13 @@ TrainingConfigurationResult ConfigureSessionForTraining(
     config.mixed_precision_config = mp;
   }
 
-  std::cout << "[ConfigureSessionForTraining] pipeline_config" << std::endl;
-  training::TrainingSession::TrainingConfiguration::PipelineConfiguration pipeline_config;
-  pipeline_config.do_partition = true;
-  training::TrainingSession::TrainingConfiguration::CutEdge cut_edge0("12");
-  training::TrainingSession::TrainingConfiguration::CutInfo cut_info{cut_edge0};
-  pipeline_config.cut_list.push_back(cut_info);
-  config.pipeline_config = pipeline_config;
+  // std::cout << "[ConfigureSessionForTraining] pipeline_config" << std::endl;
+  // training::TrainingSession::TrainingConfiguration::PipelineConfiguration pipeline_config;
+  // pipeline_config.do_partition = true;
+  // training::TrainingSession::TrainingConfiguration::CutEdge cut_edge0("12");
+  // training::TrainingSession::TrainingConfiguration::CutInfo cut_info{cut_edge0};
+  // pipeline_config.cut_list.push_back(cut_info);
+  // config.pipeline_config = pipeline_config;
 
   config.loss_name = parameters.loss_output_name;
 
