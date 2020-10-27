@@ -45,6 +45,16 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   std::map<std::string, std::string> config;
   if(global_context_.device_type == "MYRIAD"){
 
+#if defined(OPENVINO_2021_1) 
+    if(subgraph_context_.set_vpu_config) {
+      config["MYRIAD_DETECT_NETWORK_BATCH"] = CONFIG_VALUE(NO);
+    }
+
+    if(global_context_.enable_vpu_fast_compile) {
+      config["MYRIAD_HW_INJECT_STAGES"] = CONFIG_VALUE(NO);
+      config["MYRIAD_COPY_OPTIMIZATION"] = CONFIG_VALUE(NO);
+    }
+#else    
     if(subgraph_context_.set_vpu_config) {
       config["VPU_DETECT_NETWORK_BATCH"] = CONFIG_VALUE(NO);
     }
@@ -53,6 +63,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
       config["VPU_HW_INJECT_STAGES"] = CONFIG_VALUE(NO);
       config["VPU_COPY_OPTIMIZATION"] = CONFIG_VALUE(NO);
     }
+#endif
   }
   std::string& hw_target = (global_context_.device_id != "") ? global_context_.device_id : global_context_.device_type;
   try {

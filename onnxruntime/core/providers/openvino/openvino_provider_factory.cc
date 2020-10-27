@@ -78,7 +78,12 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProviderEx_OpenVINO,
       device_id = value;
     } else if (key == "num_of_threads") {
       size_t n_t = std::stoi(value);
-      num_of_threads = n_t;
+      if((int)n_t <= 0) {
+        num_of_threads = 8;
+      }
+      else {
+        num_of_threads = n_t;
+      }
     }
 
   }
