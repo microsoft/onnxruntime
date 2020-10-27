@@ -207,6 +207,11 @@ MlasGemm(
     MLAS_THREADPOOL* ThreadPool
     );
 
+enum QuantizationScaleType {
+    PerMatrix,
+    PerColumn,
+};
+
 void
 MLASCALL
 MlasGemm(
@@ -238,8 +243,11 @@ MlasGemm(
     size_t ldb,
     uint8_t offb,
     bool BIsSigned,
+    float beta,
+    int32_t* WorkBuffer,
     float* C,
     size_t ldc,
+    QuantizationScaleType ScaleType,
     const float* Scale,
     const float* Bias,
     MLAS_THREADPOOL* ThreadPool
@@ -274,8 +282,10 @@ MlasGemm(
     const void* PackedB,
     uint8_t offb,
     bool BIsSigned,
+    float beta,
     float* C,
     size_t ldc,
+    QuantizationScaleType ScaleType,
     const float* Scale,
     const float* Bias,
     MLAS_THREADPOOL* ThreadPool
@@ -647,6 +657,28 @@ MlasRequantizeOutputColumn(
     size_t N,
     const float* Scale,
     uint8_t ZeroPoint
+    );
+
+void
+MLASCALL
+MlasScaleOutput(
+    const int32_t* Input,
+    float* Output,
+    size_t M,
+    size_t N,
+    const float Scale,
+    bool AccumulateMode
+    );
+
+void
+MLASCALL
+MlasScaleOutputColumn(
+    const int32_t* Input,
+    float* Output,
+    size_t M,
+    size_t N,
+    const float* Scale,
+    bool AccumulateMode
     );
 
 void

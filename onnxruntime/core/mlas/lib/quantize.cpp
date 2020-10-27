@@ -671,3 +671,79 @@ Return Value:
     MlasReduceMinimumMaximumF32Kernel(Input, Min, Max, N);
 #endif
 }
+
+void
+MLASCALL
+MlasScaleOutput(
+    const int32_t* Input,
+    float* Output,
+    size_t M,
+    size_t N,
+    const float Scale,
+    bool AccumulateMode
+    )
+/*++
+
+Routine Description:
+
+    This routine scale the intermediate buffer to the output buffer
+    optionally accumulate the original Output value.
+
+Arguments:
+
+    Input - Supplies the input matrix.
+
+    Output - Supplies the output matrix.
+
+    M - Supplies the number of elements of the bias vector and the number of
+        rows in the output matrix.
+
+    N - Supplies the number of columns of the output matrix.
+
+    Scale - Supplies the quantization scale.
+
+    AccumulateMode - If true, accumulate the Scaled value to Output. Or overwrite the Output.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    const MLAS_FLOAT32X4 ScaleVector = MlasBroadcastFloat32x4(Scale);
+
+    while (M-- > 0) {
+
+        size_t n = N;
+        float* o = Output;
+
+        while (n >= 4) {
+
+            MLAS_FLOAT32X4 FloatVector = MlasCastToFloat32x4(MlasLoadInt32x4(Input));
+            FloatVector = MlasMultiplyFloat32x4(FloatVector, ScaleVector);
+
+            MlasStoreFloat32x4(o, FloatVector);
+
+            o += 4;
+            n -= 4;
+        }
+
+        for (size_t remaining = 0; remaining < n; remaining++) {
+            o[remaining] = Input[remaining] * Scale;
+        }
+
+        Input += N;
+        Output += N;
+    }
+}
+
+void
+MLASCALL
+MlasScaleOutputColumn(
+    const int32_t* Input,
+    float* Output,
+    size_t M,
+    size_t N,
+    const float* Scale,
+    bool AccumulateMode
+    );

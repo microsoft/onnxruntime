@@ -82,20 +82,22 @@ void QGemm(
     float* result_data,
     int ldc,
     const float* result_scale,
+    int scale_size,
     const float* bias,
     concurrency::ThreadPool* thread_pool) {
+  ORT_ENFORCE(scale_size == N || scale_size == 1)
 #ifdef MLAS_SUPPORTS_GEMM_U8X8
-  MlasGemm(M, N, K, lhs_data, lda, lhs_offset, rhs_data, ldb, rhs_offset, rhs_signed, result_data, ldc, result_scale, bias, thread_pool);
+  MlasGemm(M, N, K, lhs_data, lda, lhs_offset, rhs_data, ldb, rhs_offset, rhs_signed, result_data, ldc, result_scale, scale_size, bias, thread_pool);
 #else
   QGemm(M, N, K, lhs_data, lda, lhs_offset, rhs_data, ldb, rhs_offset, rhs_signed, reinterpret_cast<int32_t*>(result_data), ldc, thread_pool);
   for (int m = 0; m < M; m++) {
     if (bias != nullptr) {
       for (int n = 0; n < N; n++) {
-        result_data[n] = static_cast<float>(reinterpret_cast<int32_t*>(result_data)[n]) * result_scale[0] + bias[n];
+        result_data[n] = static_cast<float>(reinterpret_cast<int32_t*>(result_data)[n]) * (scale_size == N ? result_scale[n] : result_scale[0]) + bias[n];
       }
     } else {
       for (int n = 0; n < N; n++) {
-        result_data[n] = static_cast<float>(reinterpret_cast<int32_t*>(result_data)[n]) * result_scale[0];
+        result_data[n] = static_cast<float>(reinterpret_cast<int32_t*>(result_data)[n]) * (scale_size == N ? result_scale[n] : result_scale[0]);
       }
     }
     result_data += ldc;

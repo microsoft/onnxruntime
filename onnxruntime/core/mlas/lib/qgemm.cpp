@@ -40,6 +40,7 @@ struct MLAS_GEMM_U8X8_WORK_BLOCK {
     size_t ldb;
     int32_t* C;
     size_t ldc;
+    QuantizationScaleType ScaleType;
     const float* Scale;
     const float* BiasFloat;
     uint8_t offa;
@@ -84,8 +85,9 @@ MlasGemmU8X8ScaleSumBuffer(
     return MlasGemmU8X8ScaleSumBuffer(SumBuffer, SumBuffer, N, Scale);
 }
 
+template <bool HasBias, QuantizationScaleType ScaleType>
 void
-MlasGemmU8X8OutputFloat(
+MlasGemmU8X8OutputFloatCalculation(
     const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock,
     int32_t* C,
     size_t StartN,
@@ -125,79 +127,120 @@ Return Value:
     const float ScaleValue = MlasExtractLaneFloat32x4<0>(ScaleVector);
 #endif
 
-    //
-    // Check if the optional bias vector was supplied.
-    //
-
+    const float* Scale = WorkBlock->Scale;
     const float* BiasFloat = WorkBlock->BiasFloat;
 
-    if (BiasFloat != nullptr) {
-
+    if (ScaleType == PerColumn) {
+        Scale += WorkBlock->RangeCountN + StartN;
+    }
+    if (HasBias) {
         BiasFloat += WorkBlock->RangeStartN + StartN;
+    }
 
-        while (CountM-- > 0) {
+    while (CountM-- > 0) {
 
-            const float* bias = BiasFloat;
-            int32_t* c = C;
-            size_t n = CountN;
+        const float* scale = Scale;
+        const float* bias = BiasFloat;
+        int32_t* c = C;
+        size_t n = CountN;
 
-            while (n >= 4) {
+        while (n >= 4) {
 
-                MLAS_FLOAT32X4 FloatVector = MlasCastToFloat32x4(MlasLoadInt32x4(c));
-                FloatVector = MlasMultiplyFloat32x4(FloatVector, ScaleVector);
+            MLAS_FLOAT32X4 FloatVector = MlasCastToFloat32x4(MlasLoadInt32x4(c));
+            if (ScaleType == PerColumn) {
+              FloatVector = MlasMultiplyFloat32x4(FloatVector, MlasLoadFloat32x4(scale));
+            } else {
+              FloatVector = MlasMultiplyFloat32x4(FloatVector, ScaleVector);
+            }
+
+            if (HasBias) {
                 FloatVector = MlasAddFloat32x4(FloatVector, MlasLoadFloat32x4(bias));
-                MlasStoreFloat32x4(reinterpret_cast<float*>(c), FloatVector);
-
-                bias += 4;
-                c += 4;
-                n -= 4;
             }
 
-            for (size_t offset = 0; offset < n; offset++) {
+            MlasStoreFloat32x4(reinterpret_cast<float*>(c), FloatVector);
+
+            if (ScaleType == PerColumn) scale += 4;
+            if (HasBias) bias += 4;
+
+            c += 4;
+            n -= 4;
+        }
+
+        for (size_t offset = 0; offset < n; offset++) {
 
 #if defined(MLAS_SSE2_INTRINSICS)
-                __m128 FloatVector = _mm_set_ss(float(c[offset]));
+            __m128 FloatVector = _mm_set_ss(float(c[offset]));
+            if (ScaleType == PerColumn) {
+                FloatVector = _mm_mul_ss(FloatVector, _mm_load_ss(&scale[offset]));
+            } else {
                 FloatVector = _mm_mul_ss(FloatVector, ScaleVector);
+            }
+            if (HasBias) {
                 FloatVector = _mm_add_ss(FloatVector, _mm_load_ss(&bias[offset]));
-                _mm_store_ss(reinterpret_cast<float*>(&c[offset]), FloatVector);
-#else
-                *reinterpret_cast<float*>(&c[offset]) = float(c[offset]) * ScaleValue + bias[offset];
-#endif
             }
-
-            C += ldc;
+            _mm_store_ss(reinterpret_cast<float*>(&c[offset]), FloatVector);
+#else
+          if (HasBias) {
+            if (ScaleType == PerColumn) {
+                *reinterpret_cast<float*>(&c[offset]) = float(c[offset]) * scale[offset] + bias[offset];
+            } else {
+                *reinterpret_cast<float*>(&c[offset]) = float(c[offset]) * ScaleValue +bias[offset];
+            }
+          } else if (ScaleType == PerColumn) {
+            *reinterpret_cast<float*>(&c[offset]) = float(c[offset]) * scale[offset];
+          } else {
+            *reinterpret_cast<float*>(&c[offset]) = float(c[offset]) * ScaleValue;
+          }
+#endif
         }
 
+        C += ldc;
+    }
+}
+
+void MlasGemmU8X8OutputFloat(
+    const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock,
+    int32_t* C,
+    size_t StartN,
+    size_t CountM,
+    size_t CountN)
+/*++
+
+Routine Description:
+
+    This routine converts the output matrix to a floating point format using
+    the supplied scale and bias parameters.
+
+Arguments:
+
+    WorkBlock - Supplies the structure containing the GEMM parameters.
+
+    C - Supplies the address of matrix C.
+
+    StartN - Supplies the starting column offset relative to the base of the
+        work block. This is used to offset into column vectors accessed via the
+        work block.
+
+    CountM - Supplies the number of rows of the output matrix to process.
+
+    CountN - Supplies the number of columns of the output matrix to process.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    if (WorkBlock->BiasFloat != nullptr) {
+        if (WorkBlock->ScaleType == PerColumn) {
+            MlasGemmU8X8OutputFloatCalculation<true, PerColumn>(WorkBlock, C, StartN, CountM, CountN);
+        } else {
+            MlasGemmU8X8OutputFloatCalculation<true, PerMatrix>(WorkBlock, C, StartN, CountM, CountN);
+        }
+    } else if (WorkBlock->ScaleType == PerColumn) {
+        MlasGemmU8X8OutputFloatCalculation<false, PerColumn>(WorkBlock, C, StartN, CountM, CountN);
     } else {
-
-        while (CountM-- > 0) {
-
-            int32_t* c = C;
-            size_t n = CountN;
-
-            while (n >= 4) {
-
-                MLAS_FLOAT32X4 FloatVector = MlasCastToFloat32x4(MlasLoadInt32x4(c));
-                FloatVector = MlasMultiplyFloat32x4(FloatVector, ScaleVector);
-                MlasStoreFloat32x4(reinterpret_cast<float*>(c), FloatVector);
-
-                c += 4;
-                n -= 4;
-            }
-
-            for (size_t offset = 0; offset < n; offset++) {
-
-#if defined(MLAS_SSE2_INTRINSICS)
-                __m128 FloatVector = _mm_set_ss((float)c[offset]);
-                FloatVector = _mm_mul_ss(FloatVector, ScaleVector);
-                _mm_store_ss(reinterpret_cast<float*>(&c[offset]), FloatVector);
-#else
-                *reinterpret_cast<float*>(&c[offset]) = float(c[offset]) * ScaleValue;
-#endif
-            }
-
-            C += ldc;
-        }
+        MlasGemmU8X8OutputFloatCalculation<false, PerMatrix>(WorkBlock, C, StartN, CountM, CountN);
     }
 }
 
@@ -336,7 +379,6 @@ Return Value:
                 size_t RowsRemaining = CountM;
 
                 bool ZeroMode = (k == 0);
-                bool PostProcess = (k + CountK == K);
 
                 while (RowsRemaining > 0) {
 
@@ -345,10 +387,6 @@ Return Value:
                     RowsHandled = KernelType::GemmKernel(pa, PanelB, c, PackedCountK,
                         RowsRemaining, CountN, ldc, RowSums, ColumnSumBuffer,
                         DepthValue, ZeroMode);
-
-                    if (PostProcess && WorkBlock->CIsFloat) {
-                        MlasGemmU8X8OutputFloat(WorkBlock, c, n, RowsHandled, CountN);
-                    }
 
                     c += ldc * RowsHandled;
                     pa += KernelType::PackedK * PackedCountK * RowsHandled;
@@ -360,6 +398,10 @@ Return Value:
 
         A += CountK;
         B += CountK * ldb;
+    }
+
+    if (WorkBlock->CIsFloat) {
+        MlasGemmU8X8OutputFloat(WorkBlock, C, 0, M, N);
     }
 }
 
@@ -498,7 +540,6 @@ Return Value:
                 size_t RowsRemaining = CountM;
 
                 bool ZeroMode = (k == 0);
-                bool PostProcess = (k + CountK == K);
 
                 while (RowsRemaining > 0) {
 
@@ -507,10 +548,6 @@ Return Value:
                     RowsHandled = KernelType::GemmKernel(pa, b, c, PackedCountK,
                         RowsRemaining, CountN, ldc, RowSums, ColumnSumBuffer,
                         DepthValue, ZeroMode);
-
-                    if (PostProcess && WorkBlock->CIsFloat) {
-                        MlasGemmU8X8OutputFloat(WorkBlock, c, n, RowsHandled, CountN);
-                    }
 
                     c += ldc * RowsHandled;
                     pa += KernelType::PackedK * PackedCountK * RowsHandled;
@@ -522,6 +559,10 @@ Return Value:
 
         A += CountK;
         PackedB = (const uint8_t*)PackedB + AlignedN * CountK;
+    }
+
+    if (WorkBlock->CIsFloat) {
+        MlasGemmU8X8OutputFloat(WorkBlock, C, 0, M, N);
     }
 }
 
@@ -2276,6 +2317,7 @@ MlasGemm(
     bool BIsSigned,
     float* C,
     size_t ldc,
+    QuantizationScaleType ScaleType,
     const float* Scale,
     const float* Bias,
     MLAS_THREADPOOL* ThreadPool
@@ -2311,11 +2353,17 @@ Arguments:
     BIsSigned - Supplies true if matrix B is signed data, else false if matrix
         B is unsigned data.
 
+    beta - Supplies the scalar beta multiplier.
+
     C - Supplies the address of matrix C.
 
     ldc - Supplies the first dimension of matrix C.
 
-    Scale - Supplies the scale multiplier to apply to each element of matrix C.
+    ScaleType - Specify the type of Scale. It can be per-matrix or per-column.
+
+    Scale - Supplies the scale multiplier.
+        If ScaleType is PerMatrix, *Scale applies to each element of matrix C.
+        If ScaleType is PerColumn, Scale[j] applies to column j of matrix C.
         Used to scale the integer output of the QGEMM back to a floating point
         number.
 
@@ -2348,6 +2396,7 @@ Return Value:
     WorkBlock.ldb = ldb;
     WorkBlock.C = (int32_t*)C;
     WorkBlock.ldc = ldc;
+    WorkBlock.ScaleType = ScaleType;
     WorkBlock.Scale = Scale;
     WorkBlock.BiasFloat = Bias;
     WorkBlock.offa = offa;
@@ -2466,6 +2515,7 @@ MlasGemm(
     bool BIsSigned,
     float* C,
     size_t ldc,
+    QuantizationScaleType ScaleType,
     const float* Scale,
     const float* Bias,
     MLAS_THREADPOOL* ThreadPool
@@ -2499,11 +2549,17 @@ Arguments:
     BIsSigned - Supplies true if matrix B is signed data, else false if matrix
         B is unsigned data.
 
+    beta - Supplies the scalar beta multiplier.
+
     C - Supplies the address of matrix C.
 
     ldc - Supplies the first dimension of matrix C.
 
-    Scale - Supplies the scale multiplier to apply to each element of matrix C.
+    ScaleType - Specify the type of Scale. It can be per-matrix or per-column.
+
+    Scale - Supplies the scale multiplier.
+        If ScaleType is PerMatrix, *Scale applies to each element of matrix C.
+        If ScaleType is PerColumn, Scale[j] applies to column j of matrix C.
         Used to scale the integer output of the QGEMM back to a floating point
         number.
 
@@ -2535,6 +2591,7 @@ Return Value:
     WorkBlock.B = PackedB;
     WorkBlock.C = (int32_t*)C;
     WorkBlock.ldc = ldc;
+    WorkBlock.ScaleType = ScaleType;
     WorkBlock.Scale = Scale;
     WorkBlock.BiasFloat = Bias;
     WorkBlock.offa = offa;
