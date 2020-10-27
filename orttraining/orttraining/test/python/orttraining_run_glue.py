@@ -84,8 +84,8 @@ class ORTGlueTest(unittest.TestCase):
         self.logging_steps = 10
 
     def test_roberta_with_mrpc(self):
-        expected_acc = 0.86
-        expected_f1 = 0.89
+        expected_acc = 0.85
+        expected_f1 = 0.88
         expected_loss = 0.35
         results = self.run_glue(model_name="roberta-base", task_name="MRPC", fp16=False)
 
@@ -94,9 +94,9 @@ class ORTGlueTest(unittest.TestCase):
         assert(results['loss'] <= expected_loss)
 
     def test_roberta_fp16_with_mrpc(self):
-        expected_acc = 0.89
-        expected_f1 = 0.91
-        expected_loss = 0.29
+        expected_acc = 0.87
+        expected_f1 = 0.90
+        expected_loss = 0.33
 
         results = self.run_glue(model_name="roberta-base", task_name="MRPC", fp16=True)
 
@@ -110,8 +110,8 @@ class ORTGlueTest(unittest.TestCase):
             expected_f1 = 0.88
             expected_loss = 0.44
         elif self.local_rank == 0:
-            expected_acc = 0.82
-            expected_f1 = 0.87
+            expected_acc = 0.81
+            expected_f1 = 0.86
             expected_loss = 0.44
 
         results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=False)
