@@ -66,11 +66,14 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
 common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& node,
                                               ONNX_NAMESPACE::TensorProto& tensor);
 
-#if !defined(ORT_MINIMAL_BUILD)
 // Convert a SparseTensorProto to a dense TensorProto
 common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseTensorProto& sparse,
                                                    ONNX_NAMESPACE::TensorProto& dense);
-#endif
+
+#if !defined(ORT_MINIMAL_BUILD)
+common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto& dense,
+                                              ONNX_NAMESPACE::SparseTensorProto& sparse);
+#endif // !ORT_MINIMAL_BUILD
 
 inline bool HasDimValue(const ONNX_NAMESPACE::TensorShapeProto_Dimension& dim) {
   return dim.value_case() == ONNX_NAMESPACE::TensorShapeProto_Dimension::kDimValue;
@@ -121,6 +124,11 @@ inline bool HasElemType(const ONNX_NAMESPACE::TypeProto_Sequence& seq_proto) {
 inline bool HasElemType(const ONNX_NAMESPACE::TypeProto_SparseTensor& ten_proto) {
   return ten_proto.elem_type() != ONNX_NAMESPACE::TensorProto::UNDEFINED;
 }
+
+inline bool HasName(const ONNX_NAMESPACE::SparseTensorProto& ten_proto) {
+  return ten_proto.values().has_name(); // XXX
+}
+
 
 inline bool HasKeyType(const ONNX_NAMESPACE::TypeProto_Map& map_proto) {
   return map_proto.key_type() != ONNX_NAMESPACE::TensorProto::UNDEFINED;

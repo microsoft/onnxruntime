@@ -320,10 +320,7 @@ class Node {
   ADD_ATTR_INTERFACES(std::string)
   ADD_ATTR_INTERFACES(ONNX_NAMESPACE::TensorProto)
   ADD_ATTR_INTERFACES(ONNX_NAMESPACE::GraphProto)
-
-#if !defined(ORT_MINIMAL_BUILD)
   ADD_ATTR_INTERFACES(ONNX_NAMESPACE::SparseTensorProto)
-#endif
 
   /** Gets the Node's attributes. */
   const NodeAttributes& GetAttributes() const noexcept { return attributes_; }
@@ -1264,6 +1261,10 @@ class Graph {
   ONNX_NAMESPACE::GraphProto deserialized_proto_data_;
 
   InitializedTensorSet name_to_initial_tensor_;
+
+  std::unordered_set<std::reference_wrapper<const std::string>,
+                     std::hash<std::string>, std::equal_to<std::string>>
+      sparse_tensor_names_;
 
 #if !defined(ORT_MINIMAL_BUILD)
 
