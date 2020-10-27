@@ -170,9 +170,30 @@ namespace Microsoft.ML.OnnxRuntime
         #endregion //ExecutionProviderAppends
 
         #region Public Methods
+
+        /// <summary>
+        /// (Deprecated) Loads a DLL named 'libraryPath' and looks for this entry point:
+        /// OrtStatus* RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api);
+        /// It then passes in the provided session options to this function along with the api base.
+        /// Deprecated in favor of RegisterCustomOpLibraryV2() because it provides users with the library handle 
+        /// to release when all sessions relying on it are destroyed
+        /// </summary>
         public void RegisterCustomOpLibrary(string libraryPath)
         {
             IntPtr libraryHandle = IntPtr.Zero;
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsLibrary(handle, libraryPath, out libraryHandle));
+        }
+
+        /// <summary>
+        /// Loads a DLL named 'libraryPath' and looks for this entry point:
+        /// OrtStatus* RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api);
+        /// It then passes in the provided session options to this function along with the api base.
+        /// The handle to the loaded library is returned in 'libraryHandle'. 
+        /// It can be freed by the caller after all sessions using the passed in
+        /// session options are destroyed, or if an error occurs and it is non null.
+        /// </summary>
+        public void RegisterCustomOpLibraryV2(string libraryPath, out IntPtr libraryHandle)
+        {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsLibrary(handle, libraryPath, out libraryHandle));
         }
 
@@ -186,18 +207,42 @@ namespace Microsoft.ML.OnnxRuntime
         /// managed by the user (created using the CreateTensorWithDataAsOrtValue API) and it must outlive the session object
         /// to which it is added.
         /// </summary>
-        public void AddInitializer(string name, OrtValue ort_value)
+        public void AddInitializer(string name, OrtValue ortValue)
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtAddInitializer(handle, name, ort_value.Handle));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtAddInitializer(handle, name, ortValue.Handle));
         }
 
+        /// <summary>
+        /// Set a single session configuration entry as a pair of strings
+        /// If a configuration with same key exists, this will overwrite the configuration with the given config_value
+        /// </summary>
         public void AddSessionConfigEntry(string configKey, string configValue)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtAddSessionConfigEntry(handle, configKey, configValue));
         }
-        #endregion
 
-        internal IntPtr Handle
+        /// <summary>
+        /// Override symbolic dimensions (by specific denotation strings) with actual values if known at session initialization time to enable
+        /// optimizations that can take advantage of fixed values (such as memory planning, etc)
+        /// </summary>
+        public void AddFreeDimensionOverride(string dimDenotation, long dimValue)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtAddFreeDimensionOverride(handle, dimDenotation, dimValue));
+
+        }
+
+        /// <summary>
+        /// Override symbolic dimensions (by specific name strings) with actual values if known at session initialization time to enable 
+        /// optimizations that can take advantage of fixed values (such as memory planning, etc)
+        /// </summary>
+        public void AddFreeDimensionOverrideByName(string dimName, long dimValue)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtAddFreeDimensionOverrideByName(handle, dimName, dimValue));
+
+        }
+    #endregion
+
+    internal IntPtr Handle
         {
             get
             {

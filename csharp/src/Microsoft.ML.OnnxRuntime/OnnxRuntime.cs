@@ -101,6 +101,34 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(NativeMethods.OrtDisableTelemetryEvents(Handle));
         }
 
+        /// <summary>
+        /// Queries all the execution providers supported in the native onnxruntime shared library
+        /// </summary>
+        public string[] GetAvailableProviders()
+        {
+            IntPtr availableProvidersHandle = IntPtr.Zero;
+            int numProviders;
+
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetAvailableProviders(out availableProvidersHandle, out numProviders));
+
+            var availableProviders = new string[numProviders];
+
+            try
+            {
+                for(int i=0; i<numProviders; ++i)
+                {
+                    availableProviders[i] = NativeOnnxValueHelper.StringFromNativeUtf8(Marshal.ReadIntPtr(availableProvidersHandle, IntPtr.Size * i));
+                }
+            }
+
+            finally
+            {
+                // TODO: What if OrtReleaseAvailableProviders() throws ?
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtReleaseAvailableProviders(availableProvidersHandle, numProviders));
+            }
+
+            return availableProviders;
+        }
         #endregion
 
         #region SafeHandle

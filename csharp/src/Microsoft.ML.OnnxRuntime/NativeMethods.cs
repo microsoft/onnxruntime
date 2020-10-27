@@ -275,6 +275,7 @@ namespace Microsoft.ML.OnnxRuntime
             OrtAllocatorFree = (DOrtAllocatorFree)Marshal.GetDelegateForFunctionPointer(api_.AllocatorFree, typeof(DOrtAllocatorFree));
             OrtAllocatorGetInfo = (DOrtAllocatorGetInfo)Marshal.GetDelegateForFunctionPointer(api_.AllocatorGetInfo, typeof(DOrtAllocatorGetInfo));
             OrtAddFreeDimensionOverride = (DOrtAddFreeDimensionOverride)Marshal.GetDelegateForFunctionPointer(api_.AddFreeDimensionOverride, typeof(DOrtAddFreeDimensionOverride));
+            OrtAddFreeDimensionOverrideByName = (DOrtAddFreeDimensionOverrideByName)Marshal.GetDelegateForFunctionPointer(api_.AddFreeDimensionOverrideByName, typeof(DOrtAddFreeDimensionOverrideByName));
 
             OrtCreateIoBinding = (DOrtCreateIoBinding)Marshal.GetDelegateForFunctionPointer(api_.CreateIoBinding, typeof(DOrtCreateIoBinding));
             OrtReleaseIoBinding = (DOrtReleaseIoBinding)Marshal.GetDelegateForFunctionPointer(api_.ReleaseIoBinding, typeof(DOrtReleaseIoBinding));
@@ -321,9 +322,11 @@ namespace Microsoft.ML.OnnxRuntime
             OrtModelMetadataLookupCustomMetadataMap = (DOrtModelMetadataLookupCustomMetadataMap)Marshal.GetDelegateForFunctionPointer(api_.ModelMetadataLookupCustomMetadataMap, typeof(DOrtModelMetadataLookupCustomMetadataMap));
             OrtReleaseModelMetadata = (DOrtReleaseModelMetadata)Marshal.GetDelegateForFunctionPointer(api_.ReleaseModelMetadata, typeof(DOrtReleaseModelMetadata));
 
+            OrtGetAvailableProviders = (DOrtGetAvailableProviders)Marshal.GetDelegateForFunctionPointer(api_.GetAvailableProviders, typeof(DOrtGetAvailableProviders));
+            OrtReleaseAvailableProviders = (DOrtReleaseAvailableProviders)Marshal.GetDelegateForFunctionPointer(api_.ReleaseAvailableProviders, typeof(DOrtReleaseAvailableProviders));
         }
 
-        [DllImport(nativeLib, CharSet = charSet)]
+        [DllImport("F:\\onnxruntime6\\build\\Windows\\Debug\\Debug\\onnxruntime.dll", CharSet = charSet)]
         public static extern ref OrtApiBase OrtGetApiBase();
 
         #region Runtime/Environment API
@@ -564,13 +567,16 @@ namespace Microsoft.ML.OnnxRuntime
         //[DllImport(nativeLib, CharSet = charSet)]
         //public static extern void OrtAddCustomOp(IntPtr /*(OrtSessionOptions*)*/ options, string custom_op_path);
 
-        public delegate IntPtr /*(OrtStatus*)*/DOrtAddFreeDimensionOverride(IntPtr /*(OrtSessionOptions*) */ options, string /*(const char*)*/ symbolic_dim, int dim_override);
+        public delegate IntPtr /*(OrtStatus*)*/DOrtAddFreeDimensionOverride(IntPtr /*(OrtSessionOptions*) */ options, string /*(const char*)*/ dimDenotation, long dimValue);
         public static DOrtAddFreeDimensionOverride OrtAddFreeDimensionOverride;
+
+        public delegate IntPtr /*(OrtStatus*)*/DOrtAddFreeDimensionOverrideByName(IntPtr /*(OrtSessionOptions*) */ options, string /*(const char*)*/ dimName, long dimValue);
+        public static DOrtAddFreeDimensionOverrideByName OrtAddFreeDimensionOverrideByName;
 
         public delegate IntPtr /*(OrtStatus*)*/DOrtRegisterCustomOpsLibrary(IntPtr /*(OrtSessionOptions*) */ options, string /*(const char*)*/ library_path, out IntPtr /* (void**) */ library_handle);
         public static DOrtRegisterCustomOpsLibrary OrtRegisterCustomOpsLibrary;
 
-        public delegate IntPtr /*(OrtStatus*)*/DOrtAddInitializer(IntPtr /*(OrtSessionOptions*) */ options, string /*(const char*)*/ name, IntPtr /* OrtValue* */ ort_value);
+        public delegate IntPtr /*(OrtStatus*)*/DOrtAddInitializer(IntPtr /*(OrtSessionOptions*) */ options, string /*(const char*)*/ name, IntPtr /* OrtValue* */ ortValue);
         public static DOrtAddInitializer OrtAddInitializer;
 
         #endregion
@@ -1046,6 +1052,27 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate void DOrtReleaseValue(IntPtr /*(OrtValue*)*/ value);
         public static DOrtReleaseValue OrtReleaseValue;
 
+        #endregion
+
+        #region Misc API
+
+        /// <summary>
+        /// Queries all the execution providers supported in the native onnxruntime shared library
+        /// </summary>
+        /// <param name="providers">(output) all execution providers (strings) supported in the native onnxruntime shared library</param>
+        /// <param name="numProviders">(output) number of execution providers (strings)</param>
+
+        public delegate IntPtr /* (OrtStatus*) */ DOrtGetAvailableProviders(out IntPtr /* (char***) */ providers, out int /* (int*) */ numProviders);
+        public static DOrtGetAvailableProviders OrtGetAvailableProviders;
+
+        /// <summary>
+        /// Releases all execution provider strings allocated and returned by OrtGetAvailableProviders
+        /// </summary>
+        /// <param name="providers">all execution providers (strings) returned by OrtGetAvailableProviders</param>
+        /// <param name="numProviders">number of execution providers (strings)</param>
+
+        public delegate IntPtr /* (OrtStatus*) */ DOrtReleaseAvailableProviders(IntPtr /* (char**) */ providers, int /* (int) */ numProviders);
+        public static DOrtReleaseAvailableProviders OrtReleaseAvailableProviders;
         #endregion
 
         public static byte[] GetPlatformSerializedString(string str)
