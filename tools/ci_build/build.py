@@ -1916,6 +1916,10 @@ def main():
     if args.build:
         if args.build_wheel:
             nightly_build = bool(os.getenv('NIGHTLY_BUILD') == '1')
+            wheel_name_suffix = args.wheel_name_suffix
+            if !args.use_openmp and wheel_name_suffix is None:
+                wheel_name_suffix = 'noopenmp'
+            
             build_python_wheel(
                 source_dir,
                 build_dir,
