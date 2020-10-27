@@ -2,8 +2,6 @@ parameters:
   AgentPool : 'Linux-CPU'
   JobName : 'Linux_CI_Dev'
   SubmoduleCheckoutMode: ''
-  OrtTrainingPrepareTestData: 'false'
-  OrtTrainingPrepareTestDataCommand: ''
   BuildCommand: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--use_tvm --build_wheel"'
   DoNodejsPack: 'false'
   DoNugetPack: 'false'
@@ -36,10 +34,6 @@ jobs:
     - task: NodeTool@0
       inputs:
         versionSpec: '12.16.3'
-    - ${{ if eq(parameters['OrtTrainingPrepareTestData'], 'true') }}:
-      - script: |
-         ${{ parameters.OrtTrainingPrepareTestDataCommand }}
-        displayName: 'OrtTraining Prepare Test Data'
     - script: ${{ parameters.BuildCommand }}
       displayName: 'Command Line Script'
     - task: PublishTestResults@2

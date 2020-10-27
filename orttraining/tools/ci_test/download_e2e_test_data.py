@@ -19,10 +19,6 @@ sys.path.append(os.path.join(REPO_DIR, "tools", "python"))
 
 import get_azcopy  # noqa: E402
 
-# update these if the E2E test data changes
-# ARCHIVE_BLOB_URL = "https://onnxruntimetestdata.blob.core.windows.net/training/onnxruntime_training_data.zip?snapshot=2020-06-15T23:17:35.8314853Z"
-# ARCHIVE_SHA256_DIGEST = "B01C169B6550D1A0A6F1B4E2F34AE2A8714B52DBB70AC04DA85D371F691BDFF9"
-
 def _download(azcopy_path, url, local_path):
   subprocess.run([azcopy_path, "cp", "--log-level", "NONE", url, local_path], check=True)
 
