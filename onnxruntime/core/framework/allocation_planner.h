@@ -62,8 +62,7 @@ class SequentialPlanner {
       const std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>>& kernel_create_info_map,
       const OrtValueNameIdxMap& ort_value_name_idx_map,
       const ISequentialPlannerContext& context,
-      std::unique_ptr<SequentialExecutionPlan>& plan,
-      KernelRegistryManager& kernel_registry_manager);
+      std::unique_ptr<SequentialExecutionPlan>& plan);
 };
 
 }  // namespace onnxruntime

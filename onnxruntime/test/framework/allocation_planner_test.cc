@@ -264,7 +264,7 @@ class PlannerTest : public ::testing::Test {
 
     status = SequentialPlanner::CreatePlan(nullptr, GraphViewer(graph_), outer_scope_node_args, execution_providers_,
                                            kernel_create_info_map, state_->GetOrtValueNameIdxMap(), test_context,
-                                           plan_, kernel_registry_manager);
+                                           plan_);
 
     EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
     AllocationPlanTestUtility::BasicIntegrityCheck(*plan_, name_to_arg_.size());

@@ -116,7 +116,7 @@ class PlannerImpl {
               const std::vector<const NodeArg*>& outer_scope_node_args, const ExecutionProviders& providers,
               const std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>>& kernel_create_info_map,
               const OrtValueNameIdxMap& ort_value_name_idx_map,
-              const ISequentialPlannerContext& context, SequentialExecutionPlan& plan, KernelRegistryManager& kernel_registry_manager)
+              const ISequentialPlannerContext& context, SequentialExecutionPlan& plan)
       : context_(context),
         plan_(plan),
         parent_node_(parent_node),
@@ -124,8 +124,7 @@ class PlannerImpl {
         outer_scope_node_args_(outer_scope_node_args),
         execution_providers_(providers),
         kernel_create_info_map_(kernel_create_info_map),
-        ort_value_name_idx_map_(ort_value_name_idx_map),
-        kernel_registry_manager_(kernel_registry_manager) {}
+        ort_value_name_idx_map_(ort_value_name_idx_map) {}
 
   Status CreatePlan();
 
@@ -140,7 +139,6 @@ class PlannerImpl {
 
   const std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>>& kernel_create_info_map_;
   const OrtValueNameIdxMap& ort_value_name_idx_map_;
-  KernelRegistryManager& kernel_registry_manager_;
 
   // OrtValueInfo: Auxiliary information about an OrtValue used only during plan-generation:
   struct OrtValueInfo {
@@ -934,13 +932,12 @@ Status SequentialPlanner::CreatePlan(
     const std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>>& kernel_create_info_map,
     const OrtValueNameIdxMap& ort_value_name_idx_map,
     const ISequentialPlannerContext& context,
-    std::unique_ptr<SequentialExecutionPlan>& plan,
-    KernelRegistryManager& kernel_registry_manager) {
+    std::unique_ptr<SequentialExecutionPlan>& plan) {
   // allocate/reset here so we know it's clean
   plan = onnxruntime::make_unique<SequentialExecutionPlan>();
 
   PlannerImpl planner(parent_node, graph_viewer, outer_scope_node_args, providers,
-                      kernel_create_info_map, ort_value_name_idx_map, context, *plan, kernel_registry_manager);
+                      kernel_create_info_map, ort_value_name_idx_map, context, *plan);
 
   return planner.CreatePlan();
 }
