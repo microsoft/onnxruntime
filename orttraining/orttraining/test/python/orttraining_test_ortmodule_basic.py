@@ -1,4 +1,5 @@
 import argparse
+import logging
 import torch
 from torchvision import datasets, transforms
 
@@ -81,12 +82,12 @@ def main():
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
     parser.add_argument('--train-steps', type=int, default=-1, metavar='N',
                         help='number of steps to train. Set -1 to run through whole dataset (default: -1)')
-    parser.add_argument('--lr', type=float, default=0.001, metavar='LR',
-                        help='learning rate (default: 0.001)')
+    parser.add_argument('--lr', type=float, default=0.01, metavar='LR',
+                        help='learning rate (default: 0.01)')
     parser.add_argument('--batch-size', type=int, default=20, metavar='N',
                         help='input batch size for training (default: 20)')
-    parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
-                        help='input batch size for testing (default: 1000)')
+    parser.add_argument('--test-batch-size', type=int, default=20, metavar='N',
+                        help='input batch size for testing (default: 20)')
     parser.add_argument('--no-cuda', action='store_true', default=False,
                         help='disables CUDA training')
     parser.add_argument('--seed', type=int, default=42, metavar='S',
@@ -99,6 +100,9 @@ def main():
                         help='views forward and backward graphs')
     parser.add_argument('--epochs', type=int, default=10, metavar='N',
                         help='number of epochs to train (default: 10)')
+    parser.add_argument('--log-level', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], default='WARNING',
+                        help='Log level (default: WARNING)')
+
     args = parser.parse_args()
 
 
@@ -131,6 +135,12 @@ def main():
     if not args.pytorch_only:
         print('Training MNIST on ORTModule....')
         model = ORTModule(model)
+
+        # Set log level
+        numeric_level = getattr(logging, args.log_level.upper(), None)
+        if not isinstance(numeric_level, int):
+            raise ValueError('Invalid log level: %s' % loglevel)
+        logging.basicConfig(level=numeric_level)
     else:
         print('Training MNIST on vanilla PyTorch....')
     optimizer = torch.optim.SGD(model.parameters(), lr=args.lr)
