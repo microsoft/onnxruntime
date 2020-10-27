@@ -597,7 +597,6 @@ class PlannerImpl {
         // OrtValue index of the considered output NodeArg.
         const auto current = Index(node_output->Name());
         AllocPlan(current).value_type = utils::GetMLDataType(*node_output);
-        AllocPlan(current).p_def_site = ort_value_info_[current].p_def_site;
         // Declare OrtValue index of the reused buffer.
         // The the OrtValue indexed by current may reuse the memory in the OrtValue indexed by reused.
         OrtValueIndex reused;
@@ -770,6 +769,32 @@ class PlannerImpl {
     return Status::OK();
   }
 
+  // Ensure memory time schedule is sorted.
+  Status VerifyMemoryTimeSchedule() {
+    std::vector<SequentialExecutionPlan::NodeExecutionPlan>& execution_plan(plan_.execution_plan);
+    for (size_t program_counter = 0; program_counter < execution_plan.size(); ++program_counter) {
+      SequentialExecutionPlan::NodeExecutionPlan step = execution_plan[program_counter];
+      const auto* pnode = graph_viewer_.GetNode(step.node_index);
+      if (pnode == nullptr) return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cannot find the node ", step.node_index);
+      const auto& input_defs = pnode->InputDefs();
+      for (int input_arg_def_index = 0; static_cast<size_t>(input_arg_def_index) < input_defs.size(); ++input_arg_def_index) {
+        const auto& node_input = input_defs[input_arg_def_index];
+        if (!node_input->Exists()) continue;
+        const auto& current_plan = AllocPlan(Index(node_input->Name()));
+        if (current_plan.alloc_kind != AllocKind::kAllocate) continue;
+
+        size_t start = 0;
+        for (size_t index = 0; index < current_plan.program_counter_start.size(); index += 1) {
+          ORT_ENFORCE((current_plan.program_counter_start[index] > start) || (start == 0));
+          ORT_ENFORCE(current_plan.program_counter_start[index] <= current_plan.program_counter_end[index]);
+          start = current_plan.program_counter_start[index];
+        }
+      }
+    }
+
+    return Status::OK();
+  }
+
   // Whether a given NodeArg has fence or not.
   // If the buffer is reused, need to check whether original OrtValue has fence or not.
   bool HasFence(const onnxruntime::NodeArg* arg) {
@@ -893,6 +918,10 @@ Status PlannerImpl::CreatePlan() {
 
   // convert information in the freelist_ into a deallocation plan in required format
   GenerateDeallocationPlan();
+
+  // Ensure Memory-Time schedule is sorted. This should be called at the end because memory start/end timestamps
+  // are updated until GenerateDeallocationPlan is finished.
+  ORT_RETURN_IF_ERROR(VerifyMemoryTimeSchedule());
 
   return Status::OK();
 }

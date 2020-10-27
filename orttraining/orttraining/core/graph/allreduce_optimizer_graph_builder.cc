@@ -92,21 +92,21 @@ Status AllreduceOptimizerGraphBuilder::AddHorovodAllReduceForGradients(std::vect
 
 static Status AddNcclAllReduceForGradients(
     std::vector<ArgDef>& gradient_argdefs,
-    std::vector<ArgDef>& fused_gradient_argdef,
+    std::vector<ArgDef>& input_gradient_argdef,
     GraphAugmenter::GraphDefs& graph_defs) {
 
   std::vector<ArgDef> allreduce_outputs(gradient_argdefs.size());
   for (size_t i = 0; i < gradient_argdefs.size(); i++) {
     TypeProto* allreduced_gradient_type_proto = graph_defs.CopyTypeProto(gradient_argdefs[i]);
     allreduced_gradient_type_proto->mutable_tensor_type()->set_elem_type(
-        fused_gradient_argdef[0].type_proto->tensor_type().elem_type());
+        input_gradient_argdef[0].type_proto->tensor_type().elem_type());
 
     allreduce_outputs[i] = ArgDef(gradient_argdefs[i].name + "_AllReduce_Out", allreduced_gradient_type_proto);
   }
 
   // Add NCCL Allreduce node.
   graph_defs.AddNodeDefs({NodeDef(OpDef{"NcclAllReduce", kMSDomain, 1},
-                                  fused_gradient_argdef,
+                                  input_gradient_argdef,
                                   allreduce_outputs,
                                   NodeAttributes(),
                                   "NcclAllReduce")});
@@ -145,17 +145,17 @@ Status AllreduceOptimizerGraphBuilder::BuildInternal(
   const int64_t horovod_reduce_op = opt_graph_config_.horovod_reduce_op;
 
   // add gradient scaling
-  std::vector<ArgDef> fused_gradient_argdef;
+  std::vector<ArgDef> output_gradient_argdef;
   const auto total_num_accumulations =
       opt_graph_config_.gradient_accumulation_steps * opt_graph_config_.data_parallel_group_size;
   ORT_RETURN_IF_NOT(total_num_accumulations > 0);
   const float scale = 1.0f / total_num_accumulations;
-  ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, fused_gradient_argdef, graph_defs,
+  ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, output_gradient_argdef, graph_defs,
                                               opt_graph_config_.AllReduceDataType()));
 
   // add Allreduce for gradients
   if (opt_graph_config_.use_nccl) {
-    ORT_RETURN_IF_ERROR(AddNcclAllReduceForGradients(gradient_argdefs, fused_gradient_argdef, graph_defs));
+    ORT_RETURN_IF_ERROR(AddNcclAllReduceForGradients(gradient_argdefs, output_gradient_argdef, graph_defs));
   } else {
     ORT_RETURN_IF_ERROR(AddHorovodAllReduceForGradients(gradient_argdefs, graph_defs, horovod_reduce_op));
   }

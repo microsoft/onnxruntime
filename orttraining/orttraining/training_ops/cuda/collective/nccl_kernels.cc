@@ -20,9 +20,7 @@ Status NcclAllReduce::ComputeInternal(OpKernelContext* context) const {
   for (int i = 0; i < context->InputCount(); i++) {
     const Tensor* input_tensor = context->Input<Tensor>(i);
     input_count += input_tensor->Shape().Size();
-
-    Tensor* output_tensor = context->Output(i, input_tensor->Shape());
-    output_tensor->MutableDataRaw();
+    context->Output(i, input_tensor->Shape());
   }
 
   ncclDataType_t dtype = GetNcclDataType(onnx_type);

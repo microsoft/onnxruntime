@@ -31,7 +31,7 @@ class MemPatternPlanner {
  public:
   MemPatternPlanner() = default;
 
-  void TraceAllocation(int ml_value_idx, std::vector<size_t> program_counter_start, std::vector<size_t> program_counter_end, size_t size) {
+  void TraceAllocation(int ml_value_idx, const std::vector<size_t>& program_counter_start, const std::vector<size_t>& program_counter_end, size_t size) {
     std::lock_guard<OrtMutex> lock(lock_);
 
     if (size == 0) {
@@ -48,21 +48,10 @@ class MemPatternPlanner {
     }
 
     for (auto it = blocks_.begin(); it != blocks_.end(); it++) {
-            // Memory block can be re-used as long as there is no overlap between their time schedules.
+      // Memory block can be re-used as long as there is no overlap between their time schedules.
       bool overlap = false;
       if (allocs_[*it].reuse_) {
-        //bool keep_looping = true;
-        //while(keep_looping);
         ORT_ENFORCE(program_counter_start.size() == program_counter_end.size());
-        ORT_ENFORCE(program_counter_start.size() == program_counter_end.size());
-
-        // Ensure memory time schedule is sorted.
-        size_t start = 0;
-        for (size_t index = 0; index < program_counter_start.size(); index += 1) {
-          ORT_ENFORCE((program_counter_start[index] > start) || (start == 0));
-          ORT_ENFORCE(program_counter_start[index] <= program_counter_end[index]);
-          start = program_counter_start[index];
-        }
 
         size_t index_allocated = 0;
         size_t index_to_be_allocated = 0;
@@ -82,9 +71,6 @@ class MemPatternPlanner {
           }
         }
       }
-
-      //if (allocs_[*it].reuse_ && ((allocs_[*it].program_counter_start_ > program_counter_end) || (allocs_[*it].program_counter_end_ < program_counter_start)))
-      //continue;
 
       if (allocs_[*it].reuse_ && !overlap)
         continue;
@@ -106,7 +92,7 @@ class MemPatternPlanner {
     allocs_.emplace_back(ml_value_idx, program_counter_start, program_counter_end, MemoryBlock(best_offset, size));
     std::list<int>::iterator best_fit_it = blocks_.end();
     for (auto it = blocks_.begin(); it != blocks_.end(); it++) {
-      if(allocs_[*it].block_.offset_ < best_offset)
+      if (allocs_[*it].block_.offset_ < best_offset)
         continue;
 
       if ((allocs_[*it].block_.offset_ > best_offset) || (allocs_[*it].block_.size_ >= size)) {

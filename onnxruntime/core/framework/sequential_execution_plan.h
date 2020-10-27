@@ -31,7 +31,6 @@ struct AllocPlanPerValue {
   // if the value is used in async kernel, a fence object would be created
   // note the fence object would be shared between MLValues reusing the same buffer
   bool create_fence_if_async{false};
-  const onnxruntime::NodeArg* p_def_site{nullptr};
   std::vector<size_t> program_counter_start;
   std::vector<size_t> program_counter_end;
 

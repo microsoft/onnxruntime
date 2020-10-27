@@ -132,7 +132,7 @@ Status OptimizerGraphBuilder::AddGradientScalingNodes(
 Status OptimizerGraphBuilder::AddGradientScalingNodes(
     const NodeArgNameGeneratorFn& nodearg_name_generator,
     const float scale,
-    std::vector<ArgDef>& gradient_argdefs,       // update argdefs in place
+    std::vector<ArgDef>& input_gradient_argdefs,       // update argdefs in place
     std::vector<ArgDef>& output_gradient_argdef,  // update argdef in place
     GraphAugmenter::GraphDefs& graph_defs,
     ONNX_NAMESPACE::TensorProto_DataType target_type) {
@@ -146,12 +146,12 @@ Status OptimizerGraphBuilder::AddGradientScalingNodes(
 
   std::vector<ArgDef> inputs;
   inputs.emplace_back(pre_allreduce_scale);
-  for (size_t i = 0; i < gradient_argdefs.size(); ++i) {
-    inputs.emplace_back(gradient_argdefs[i]);
+  for (size_t i = 0; i < input_gradient_argdefs.size(); ++i) {
+    inputs.emplace_back(input_gradient_argdefs[i]);
   }
   
-  for (size_t i = 0; i < gradient_argdefs.size(); ++i) {
-    ArgDef& gradient_argdef = gradient_argdefs[i];
+  for (size_t i = 0; i < input_gradient_argdefs.size(); ++i) {
+    ArgDef& gradient_argdef = input_gradient_argdefs[i];
 
     TypeProto* scaled_gradient_type_proto = graph_defs.CopyTypeProto(gradient_argdef);
     scaled_gradient_type_proto->mutable_tensor_type()->set_elem_type(target_type);

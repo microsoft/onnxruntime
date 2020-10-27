@@ -308,7 +308,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 #endif
       ORT_TRY {
         if (p_op_kernel->KernelDef().AllocateInputsContiguously())
-          utils::VerifyTensorsAllocatedContiguously(&op_kernel_context);
+          utils::VerifyInputTensorsAllocatedContiguously(&op_kernel_context);
           
         compute_status = p_op_kernel->Compute(&op_kernel_context);
       }
