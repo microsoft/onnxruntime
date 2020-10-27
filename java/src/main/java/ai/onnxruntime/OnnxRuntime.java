@@ -11,7 +11,6 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
-import java.util.Properties;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -117,10 +116,7 @@ final class OnnxRuntime {
    * @return True if the property java.vendor equals The Android Project, false otherwise.
    */
   static boolean isAndroid() {
-    if ( System.getProperty("java.vendor", "generic").equals("The Android Project")) {
-      return true;
-    }
-    return false;
+    return System.getProperty("java.vendor", "generic").equals("The Android Project");
   }
 
   /**
