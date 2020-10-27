@@ -10,6 +10,7 @@
 #include <fstream>
 #include "core/graph/model.h"
 #include "core/common/logging/sinks/clog_sink.h"
+#include "core/flatbuffers/ort.fbs.h"
 using namespace onnxruntime::experimental;
 using namespace onnxruntime::logging;
 #endif
