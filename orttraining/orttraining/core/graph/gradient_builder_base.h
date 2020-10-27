@@ -22,7 +22,8 @@ void ComputeBroadcastBackwardAxes(
     const std::vector<Dimension>& A_dims,
     const std::vector<Dimension>& B_dims,
     std::vector<int64_t>* A_axes,
-    std::vector<int64_t>* B_axes);
+    std::vector<int64_t>* B_axes,
+    const std::string& node_name = "");
 
 void ComputeBroadcastBackwardAxesDynamic(const ArgDef& a,
                                          const ArgDef& b,
@@ -211,11 +212,11 @@ class GradientBuilderBase {
     if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
       return ConstantScalarNode(MLFloat16(math::floatToHalf(value)), {1}, arg_name);
     }
-    
+
     if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16) {
       return ConstantScalarNode(BFloat16(value), {1}, arg_name);
     }
-    
+
     return ConstantScalarNode(value, {1}, arg_name);
   }
 
@@ -243,6 +244,8 @@ class GradientBuilderBase {
                                  const ArgDef& output_grad,
                                  const ArgDef& reduce_axes,
                                  std::vector<NodeDef>& output) const;
+
+  const std::string& NodeName() const { return node_->Name(); }
 
  private:
   friend class GradientGraphBuilder;
