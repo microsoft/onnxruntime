@@ -47,12 +47,24 @@ namespace concurrency {
 
 class ExtendedThreadPoolInterface : public Eigen::ThreadPoolInterface {
  public:
-  // Run fn with up to n degree-of-parallelism enlisting the thread pool for
-  // help.  The degree-of-parallelism includes the caller, and so if n==1
-  // then the function will run directly in the caller.  The fork-join
-  // synchronization is handled in the thread pool, and so any state captured
-  // by fn() is safe from concurrent access once RunInParallel returns.
-  virtual void RunInParallel(std::function<void()> fn, unsigned n) = 0;
+  // Start/end a parallel section, within which calls to
+  // RunInParallelSection may be made.  Parallel sections are
+  // non-nesting.
+  virtual void StartParallelSection() = 0;
+  virtual void EndParallelSection() = 0;
+
+  // Run fn with up to n degree-of-parallelism enlisting the thread
+  // pool for help.  The degree-of-parallelism includes the caller,
+  // and so if n==1 then the function will run directly in the caller.
+  //
+  // The fork-join synchronization is handled in the thread pool, and
+  // so any state captured by fn() is safe from concurrent access once
+  // RunInParallelSection returns.
+  //
+  // The parameter idx provides a loop-local thread ID, densely
+  // numbered in the range [0,k) where k<=n.
+  virtual void RunInParallelSection(std::function<void(unsigned idx)> fn,
+                                    unsigned n) = 0;
 };
 
 }  // namespace concurrency
@@ -366,12 +378,13 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     Tag(uint32_t v) : v_(v) {
     }
 
-    // Allocate a new tag to use to identify work items from a given thread
-    // in RunInParallel.  Ideally, threads will have unique tags, but re-use
-    // is not incorrect if the counter wraps (for intsance, if a long-running
-    // workload is calling into ORT from a fresh thread for each request).
-    // We must not re-use the default tag 0 which is used to identify work
-    // items added via Schedule as opposed to requests for help in RunInParallel.
+    // Allocate a new tag to use to identify work items from a given
+    // thread in a parallel section.  Ideally, threads will have
+    // unique tags, but re-use is not incorrect if the counter wraps
+    // (for intsance, if a long-running workload is calling into ORT
+    // from a fresh thread for each request).  We must not re-use the
+    // default tag 0 which is used to identify work items added via
+    // Schedule as opposed to requests for help in parallel sections.
 
     static Tag GetNext() {
       Tag t = Tag(next_tag++);
@@ -550,31 +563,71 @@ void GetGoodWorkerHints(int n, std::vector<unsigned>& good_hints, std::vector<un
   }
 }
 
-void RunInParallel(std::function<void()> fn, unsigned n) override {
+void StartParallelSection() override {
   PerThread* my_pt = GetPerThread();
-  assert(n>=1);
-  if (n == 1 || my_pt->in_parallel) {
-    fn();
-  } else {
+  ORT_ENFORCE(!my_pt->in_parallel, "Nested parallelism not supported");
+  ORT_ENFORCE(my_pt->num_workers == 0);
+  ORT_ENFORCE(my_pt->pending_items.size() == 0);
+  ORT_ENFORCE(my_pt->workers_started == 0);
+  my_pt->in_parallel=true;
+  if (!my_pt->tag.Get()) {
+    my_pt->tag = Tag::GetNext();
+  }
+  my_pt->par_section_active = true;
+}
+
+void EndParallelSection() override {
+  PerThread* my_pt = GetPerThread();
+  ORT_ENFORCE(my_pt->in_parallel, "Ending parallel section, but none started");
+
+  // Notify workers to exit from ParLoopWorker
+  my_pt->par_section_active = false;
+
+  // Attempt to cancel any tasks that were sent to workers but not
+  // started.
+  for (auto& item : my_pt->pending_items) {
+    Queue& q = worker_data_[item.first].queue;
+    if (q.RevokeWithTag(my_pt->tag, item.second)) {
+      my_pt->num_workers--;
+    }
+  }
+  my_pt->pending_items.clear();
+
+  // Wait for workers to exit ParLoopWorker
+  while (my_pt->num_workers) {
+    _mm_pause();
+  }
+
+  ORT_ENFORCE(my_pt->num_workers == 0);
+  my_pt->workers_started = 0;
+  my_pt->in_parallel=false;
+}
+
+ void RunInParallelSection(std::function<void(unsigned idx)> fn, unsigned n) override {
+  PerThread* my_pt = GetPerThread();
+  ORT_ENFORCE(my_pt->in_parallel, "RunInParallel, but not in parallel section");
+  ORT_ENFORCE(n > 1, "Trivial parallel section; should be avoided by caller");
+
+  ORT_ENFORCE(!my_pt->current_work_item);
+  std::function<void(unsigned idx)> work_item{
+    [&](unsigned idx) {
+      if (idx < n) {
+	fn(idx);
+      }
+    }
+  };
+
+  my_pt->current_work_item = &work_item;
+
+  if (n > (my_pt->num_workers+1)) {
+    unsigned extra_needed = n - (my_pt->num_workers+1);
     // We build a list of <thread,idx> pairs for each of the queues that accepts a work
     // item.  This lets us remove any work items that do not get executed by the threads
     // that we push them to.
-    std::vector<std::pair<int, unsigned>> pending_items;
-    Barrier b(n, allow_spinning_);
-
-    my_pt->in_parallel = true;
-    if (!my_pt->tag.Get()) {
-      my_pt->tag = Tag::GetNext();
-    }
-
-    // Push up to n-1 copies of the work item into the queues
     std::vector<unsigned> good_hints, alt_hints;
     GetGoodWorkerHints(n - 1, good_hints, alt_hints);
-    for (unsigned i = 0; i < n - 1; i++) {
-      Task t = env_.CreateTask([&b, &fn]() {
-        fn();
-        b.Notify(1);
-      });
+    for (unsigned i = 0; i < extra_needed; i++) {
+      Task t = env_.CreateTask([my_pt, this]{ ParLoopWorker(my_pt); });
       int q_idx;
       if (i < good_hints.size()) {
         q_idx = good_hints[i];
@@ -590,37 +643,22 @@ void RunInParallel(std::function<void()> fn, unsigned n) override {
       Queue& q = td.queue;
       unsigned w_idx;
       t = q.PushBackWithTag(std::move(t), my_pt->tag, w_idx);
-      if (t.f) {
-        // The queue rejected the work.  Account for the missing capacity for work
-        // on the synchronization barrier.  The semantics for RunInParallel are that
-        // the function is called with up to n-way parallelism, and so the
-        // work itself will be performed in the current thread's call to fn()
-        // after finishing adding work to the pool.
-        b.Notify(1);
-      } else {
+      if (!t.f) {
         // The queue accepted the work, ensure that the thread is servicing the queue
-        pending_items.push_back({q_idx, w_idx});
+        my_pt->num_workers++;
+        my_pt->pending_items.push_back({q_idx, w_idx});
         td.EnsureAwake();
       }
     }
+  }
 
-    // Run the final copy ourselves, for the total of n degree-of-parallelism
-    fn();
+  // Run the work ourselves, for the total of max-n degree-of-parallelism
+  work_item(0);
 
-    // Notify the barrier for the work we completed, plus any work that we successfully
-    // revoke from the work queues
-    int notifications_needed = 1;
-    for (auto& item : pending_items) {
-      Queue& q = worker_data_[item.first].queue;
-      if (q.RevokeWithTag(my_pt->tag, item.second)) {
-        notifications_needed++;
-      }
-    }
-    b.Notify(notifications_needed);
-
-    // Synchronize with any work items that are still running
-    b.Wait();
-    my_pt->in_parallel = false;
+  // Wait for workers to exit the work item
+  my_pt->current_work_item = 0;
+  while (my_pt->workers_in_loop) {
+    _mm_pause();
   }
 }
 
@@ -705,9 +743,15 @@ int CurrentThreadId() const EIGEN_FINAL {
     int thread_id{-1};                 // Worker thread index in pool.
     Tag tag{};                         // Work item tag used to identify this thread.
     bool in_parallel{false};           // Inside a parallel section (hence tag not unique if we re-use)
+    std::atomic<unsigned> num_workers{0}; // Could merge with in_parallel
+    std::atomic<unsigned> workers_started{0}; // Could merge with in_parallel
+    std::atomic<bool> par_section_active{false};
+    std::atomic<unsigned> workers_in_loop{0};
+    std::vector<std::pair<int, unsigned>> pending_items;
+    std::atomic<std::function<void(unsigned)> *> current_work_item{0};
   };
 
-  static_assert(std::is_trivially_destructible<PerThread>::value, "Per-thread state should be trivially destructible");
+  //  static_assert(std::is_trivially_destructible<PerThread>::value, "Per-thread state should be trivially destructible");
 
   struct WorkerData {
     constexpr WorkerData() : thread(), queue() {
@@ -999,6 +1043,30 @@ int CurrentThreadId() const EIGEN_FINAL {
     }
     return -1;
   }
+
+void ParLoopWorker(PerThread* leader_pt) {
+  PerThread* my_pt = GetPerThread();
+  ORT_ENFORCE(!my_pt->in_parallel);
+  ORT_ENFORCE(leader_pt);
+  ORT_ENFORCE(leader_pt->in_parallel);
+  my_pt->in_parallel = true;
+
+  int my_idx = (++leader_pt->workers_started);
+
+  while (leader_pt->par_section_active) {
+    if (leader_pt->current_work_item) {
+      leader_pt->workers_in_loop++;
+      std::function<void(unsigned)> *work_item = leader_pt->current_work_item;
+      if (work_item) {
+	(*work_item)(my_idx);
+      }
+      leader_pt->workers_in_loop--;
+    }
+  }
+
+  my_pt->in_parallel = false;
+  leader_pt->num_workers--;
+}
 
   static EIGEN_STRONG_INLINE uint64_t GlobalThreadIdHash() {
     return std::hash<std::thread::id>()(std::this_thread::get_id());

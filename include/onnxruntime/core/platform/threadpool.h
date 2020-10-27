@@ -90,6 +90,29 @@ class ThreadPool {
     }
   }
 
+  // Start and end a multi-loop parallel section.  Parallel loops can
+  // be executed directly (without using this API), but entering a
+  // parallel section allows the runtime system to amortize loop
+  // entry/exit costs over multiple loops, and allows it to promote
+  // affinity between corresponding iterations of different loops.
+  //
+  // Multi-loop sections would typically be used in cases where a
+  // series of loops executes without much code in between them, and
+  // where it is impractical to refactor code into a single loop.  For
+  // instance:
+  //
+  //   StartParallelSection(tp);
+  //   for (int x = 0; x < seq_len; x++) {
+  //     TrySimpleParallelFor(tp, 16, [&]() { ... });
+  //   }
+  //   EndParallelSection(tp);
+  //
+  // Parallel sections may not be nested, and may not be used inside
+  // parallel loops.
+
+  static void StartParallelSection(ThreadPool *tp);
+  static void EndParallelSection(ThreadPool *tp);
+
   // ParallelFor shards the "total" units of work assuming each unit of work
   // having roughly "cost_per_unit" cost, in cycles. Each unit of work is
   // indexed 0, 1, ..., total - 1. Each shard contains 1 or more units of work
@@ -251,7 +274,11 @@ class ThreadPool {
   // then the function will run directly in the caller.  The fork-join
   // synchronization is handled in the thread pool, and so any state captured
   // by fn() is safe from concurrent access once RunWithHelp returns.
-  void RunInParallel(std::function<void()> fn, int n);
+  void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n);
+
+  // Start and end a multi-loop parallel section.
+  void StartParallelSection();
+  void EndParallelSection();
 
   // Divides the work represented by the range [0, total) into k shards.
   // Calls fn(i*block_size, (i+1)*block_size) from the ith shard (0 <= i < k).
