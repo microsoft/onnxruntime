@@ -27,7 +27,7 @@ namespace cuda {
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
       name,                                                                     \
       kOnnxDomain,                                                              \
-      11, 12,                                                                    \
+      11, 12,                                                                   \
       T,                                                                        \
       kCudaExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
@@ -116,11 +116,11 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
       is_matrix_row_reduction(cudnn_reduce_op,
                               static_cast<int>(reduction_size),
                               static_cast<int>(stride), rank, axes_)) {
-    reduce_matrix_rows(
+    ORT_RETURN_IF_ERROR(reduce_matrix_rows(
         reinterpret_cast<const CudaT*>(X),
         reinterpret_cast<CudaT*>(Y),
         static_cast<int>(reduction_size),
-        static_cast<int>(stride));
+        static_cast<int>(stride)));
     return Status::OK();
   }
 
@@ -432,11 +432,11 @@ Status ReduceComputeCore(CUDAExecutionProvider& cuda_ep, const Tensor& input, Pr
     if (fast_reduction && reduction_size <= std::numeric_limits<int>::max() && stride <= std::numeric_limits<int>::max() &&
         prepare_reduce_metadata.contiguous_axes &&
         is_matrix_row_reduction(cudnn_reduce_op, static_cast<int>(reduction_size), static_cast<int>(stride), rank, axes)) {
-      reduce_matrix_rows(
+      ORT_RETURN_IF_ERROR(reduce_matrix_rows(
           reinterpret_cast<const CudaT*>(input.template Data<T>()),
           reinterpret_cast<CudaT*>(output.template MutableData<T>()),
           static_cast<int>(reduction_size),
-          static_cast<int>(stride));
+          static_cast<int>(stride)));
       return Status::OK();
     }
   }
