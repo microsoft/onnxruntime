@@ -15,7 +15,9 @@ benchmark_metrics_csv = 'metrics.csv'
 benchmark_success_csv = 'success.csv' 
 benchmark_latency_csv = 'latency.csv'
 
-def run_benchmark(args, ep, model_list_file):
+model_to_fail_ep = {}
+
+def run_benchmark(args, ep, model, model_list_file):
 
     if args.running_mode == "validate":
         p = subprocess.run(["python3",
@@ -24,6 +26,7 @@ def run_benchmark(args, ep, model_list_file):
                             "-m", model_list_file,
                             "--ep", ep,
                             "-o", args.perf_result_path,
+                            "--accuracy_tol", args.accuracy_tol,
                             "--write_test_result", "false",
                             "--benchmark_fail_csv", benchmark_fail_csv,
                             "--benchmark_metrics_csv", benchmark_metrics_csv])
@@ -66,8 +69,6 @@ def main():
     else:
         parse_models_info_from_directory(args.model_source, models)
 
-    model_to_fail_ep = {}
-
     for model, model_info in models.items():
         logger.info("\n" + "="*40 + "="*len(model))
         logger.info("="*20 + model +"="*20)
@@ -80,11 +81,11 @@ def main():
 
         if args.ep:
             logger.info('running for single ep')
-            run_benchmark(args, args.ep, model_list_file)
+            run_benchmark(args, args.ep, model, model_list_file)
         else: 
             ep_list = ["CPUExecutionProvider", "CUDAExecutionProvider", "TensorrtExecutionProvider", "CUDAExecutionProvider_fp16", "TensorrtExecutionProvider_fp16"]
             for ep in ep_list: 
-                run_benchmark(args, ep, model_list_file)
+                run_benchmark(args, ep, model, model_list_file)
 
     os.remove(model_list_file)
 

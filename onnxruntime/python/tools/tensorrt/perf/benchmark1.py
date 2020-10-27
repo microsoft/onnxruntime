@@ -44,6 +44,33 @@ FAIL_MODEL_FILE = ".fail_model_map"
 LATENCY_FILE = ".latency_map"
 METRICS_FILE = ".metrics_map"
 
+# accuracy helpers
+
+def max_relative_error(a, b):
+    error = abs(a - b)
+    max_rel_error = np.nanmax(error / abs(b))
+    return max_rel_error
+
+def max_absolute_error(a, b):
+    max_abs_error = np.nanmax(abs(a - b))
+    return max_abs_error
+
+# adopting the np.testing.assert_almost_equal error message 
+def assert_almost_equal_with_tol(a, b, tol):
+    logger.info("testing with the tol")
+    logger.info(tol)
+    is_not_close_bool_array = abs(a - b) > tol
+    if np.any(is_not_close_bool_array):
+        total_elements = is_not_close_bool_array.size
+        differing_elements = np.sum(is_not_close_bool_array)
+        max_rel_error = max_relative_error(a, b)
+        max_abs_error = max_absolute_error(a, b)
+        raise AssertionError(
+                """\nArrays are not almost equal\n\nDiffering elements with tolerance 
+                {0}: {1} / {2}\nMax absolute difference: {3}\n Max relative difference:  
+                {4}\nx: {5}\ny: {6}\n""".format(tol, differing_elements, total_elements,
+                    max_abs_error, max_rel_error, a, b)
+        )
 
 def run_trt_standalone(trtexec, model_path, ort_inputs, all_inputs_shape, fp16):
     model_path = "--onnx=" + model_path
@@ -404,7 +431,7 @@ def generate_onnx_model_random_input(test_times, ref_input):
 
     return inputs
 
-def validate(all_ref_outputs, all_outputs, decimal):
+def validate(all_ref_outputs, all_outputs, tol):
     if len(all_ref_outputs) == 0:
  #       logger.info("No reference output provided.")
         return True, None
@@ -414,7 +441,6 @@ def validate(all_ref_outputs, all_outputs, decimal):
 #    logger.info('decimal {}'.format(decimal))
     # print(np.array(all_ref_outputs).shape)
     # print(np.array(all_outputs).shape)
-
     try:
         for i in range(len(all_outputs)):
             ref_outputs = all_ref_outputs[i]
@@ -429,10 +455,8 @@ def validate(all_ref_outputs, all_outputs, decimal):
                 # Compare the results with reference outputs up to x decimal places
                 for ref_o, o in zip(ref_output, output):
                     # abs(desired-actual) < 1.5 * 10**(-decimal)
-                    np.testing.assert_almost_equal(ref_o, o, decimal)
-#                    logger.info('using allclose np func')
-                    #close_res = np.allclose(ref_o, o, atol=2)
-                    #logger.info(close_res)
+                    # np.testing.assert_almost_equal(ref_o, o, decimal)
+                    assert_almost_equal_with_tol(ref_o, o, tol)
     except Exception as e:
         logger.error(e)
         return False, e
@@ -1090,9 +1114,8 @@ def run_onnxruntime(args, models):
                 if ep not in validation_exemption:
                     try:
                         ort_outputs = inference_ort_and_get_prediction(name, sess, inputs)
-
-                        decimal = 0
-                        status = validate(ref_outputs, ort_outputs, decimal)
+                        tol = float(args.accuracy_tol)
+                        status = validate(ref_outputs, ort_outputs, tol)
                         if not status[0]:
                             update_fail_model_map(model_to_fail_ep, name, ep, 'result accuracy issue', status[1])
                             continue
@@ -1414,8 +1437,9 @@ def parse_arguments():
     parser.add_argument("-o", "--perf_result_path", required=False, default="result", help="Directory for perf result.")
 
     parser.add_argument("--ep", required=False, default=None, help="Specify ORT Execution Provider.")
-
-    parser.add_argument("--fp16", required=False, default=True, action="store_true", help="Inlcude Float16 into benchmarking.")
+    
+    parser.add_argument("--accuracy_tol", required=False, default=1.5, help="Tolerance for accuracy check: abs(a - b) < tol")
+    parser.add_argument("--fp16", required=False, default=True, action="store_true", help="Include Float16 into benchmarking.")
 
     parser.add_argument("--trtexec", required=False, default=None, help="trtexec executable path.")
 
