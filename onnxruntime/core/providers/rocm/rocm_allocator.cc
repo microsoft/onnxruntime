@@ -51,7 +51,7 @@ FencePtr ROCMAllocator::CreateFence(const SessionState* session_state) {
   return std::make_shared<ROCMFence>(GetGPUDataTransfer(session_state));
 }
 
-void* HIPPinnedAllocator::Alloc(size_t size) {
+void* ROCMPinnedAllocator::Alloc(size_t size) {
   void* p = nullptr;
   if (size > 0) {
     HIP_CALL_THROW(hipHostMalloc((void**)&p, size));
@@ -59,11 +59,11 @@ void* HIPPinnedAllocator::Alloc(size_t size) {
   return p;
 }
 
-void HIPPinnedAllocator::Free(void* p) {
+void ROCMPinnedAllocator::Free(void* p) {
   HIP_CALL_THROW(hipHostFree(p));
 }
 
-FencePtr HIPPinnedAllocator::CreateFence(const SessionState* session_state) {
+FencePtr ROCMPinnedAllocator::CreateFence(const SessionState* session_state) {
   return std::make_shared<ROCMFence>(GetGPUDataTransfer(session_state));
 }
 

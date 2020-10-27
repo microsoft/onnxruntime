@@ -591,7 +591,7 @@ void setup_training_params(BertParameters& params) {
   OrtDevice::DeviceId device_id = static_cast<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
   size_t hip_mem_limit = std::numeric_limits<size_t>::max();
   params.providers.emplace(kRocmExecutionProvider, CreateExecutionProviderFactory_ROCM(device_id, hip_mem_limit));
-  params.input_allocator = std::make_shared<HIPPinnedAllocator>(device_id, CUDA_PINNED);
+  params.input_allocator = std::make_shared<ROCMPinnedAllocator>(device_id, CUDA_PINNED);
 #endif
 
   params.loss_func_info = LossFunctionInfo(OpDef("BertLoss", kOnnxDomain),

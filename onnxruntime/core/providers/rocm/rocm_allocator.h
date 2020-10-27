@@ -23,9 +23,9 @@ class ROCMAllocator : public IAllocator {
 };
 
 //TODO: add a default constructor
-class HIPPinnedAllocator : public IAllocator {
+class ROCMPinnedAllocator : public IAllocator {
  public:
-  HIPPinnedAllocator(OrtDevice::DeviceId device_id, const char* name)
+  ROCMPinnedAllocator(OrtDevice::DeviceId device_id, const char* name)
       : IAllocator(
             OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
                           OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, device_id),

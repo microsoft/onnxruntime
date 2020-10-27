@@ -145,7 +145,7 @@ ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& in
 
   AllocatorCreationInfo pinned_memory_info(
       [](OrtDevice::DeviceId device_id) {
-        return onnxruntime::make_unique<HIPPinnedAllocator>(device_id, CUDA_PINNED);
+        return onnxruntime::make_unique<ROCMPinnedAllocator>(device_id, CUDA_PINNED);
       },
       CPU_ALLOCATOR_DEVICE_ID);
 
@@ -1695,7 +1695,7 @@ static Status RegisterRocmKernels(KernelRegistry& kernel_registry) {
 }
 
 
-KernelRegistryAndStatus GetHipKernelRegistry() {
+KernelRegistryAndStatus GetRocmKernelRegistry() {
   KernelRegistryAndStatus ret;
   ret.st = RegisterRocmKernels(*ret.kernel_registry);
   return ret;
@@ -1704,92 +1704,10 @@ KernelRegistryAndStatus GetHipKernelRegistry() {
 }  // namespace rocm
 
 std::shared_ptr<KernelRegistry> ROCMExecutionProvider::GetKernelRegistry() const {
-  static KernelRegistryAndStatus k = onnxruntime::rocm::GetHipKernelRegistry();
+  static KernelRegistryAndStatus k = onnxruntime::rocm::GetRocmKernelRegistry();
   // throw if the registry failed to initialize
   ORT_THROW_IF_ERROR(k.st);
   return k.kernel_registry;
-}
-
-static bool RNNNeedFallbackToCPU(const onnxruntime::Node& node,
-                                 const std::vector<std::string> activations_supported,
-                                 const std::string& op_type) {
-  const auto& node_attributes = node.GetAttributes();
-  // Check attributes
-  for (auto& attr : node_attributes) {
-    auto attr_name = attr.first;
-    auto attr_value = attr.second;
-
-    if ("activation_alpha" == attr_name || "activation_beta" == attr_name || "clip" == attr_name) {
-      return true;
-    }
-
-    if ("activations" == attr_name &&
-        ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRINGS == attr_value.type()) {
-      for (int i = 0; i < attr_value.strings_size(); ++i) {
-        std::string activation_lowercase(attr_value.strings(i));
-        std::transform(activation_lowercase.begin(), activation_lowercase.end(), activation_lowercase.begin(),
-                       [](const unsigned char i) { return static_cast<char>(::tolower(i)); });
-        if (activations_supported[i] != activation_lowercase) {
-          return true;
-        }
-      }
-    }
-
-    if ("LSTM" == op_type &&
-        "input_forget" == attr_name &&
-        ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT == attr_value.type()) {
-      if (0 != attr_value.i()) {
-        return true;
-      }
-    }
-
-    if ("GRU" == op_type &&
-        "linear_before_reset" == attr_name &&
-        ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT == attr_value.type()) {
-      // miopen GRU only support linear_before_reset = 1
-      if (1 != attr_value.i()) {
-        return true;
-      }
-    }
-  }
-
-  if ("LSTM" == op_type) {
-    // miopen LSTM not support peephole
-    auto input_defs = node.InputDefs();
-    if (8 == input_defs.size()) {
-      auto peephole = input_defs.at(7);
-      if (peephole->Exists()) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-static bool ConvTransposeNeedFallbackToCPU(const onnxruntime::Node& node) {
-  const auto& node_attributes = node.GetAttributes();
-  // Check attributes
-  for (auto& attr : node_attributes) {
-    auto attr_name = attr.first;
-    auto attr_value = attr.second;
-
-    //miopen only supports symmetric padding
-    // TODO: Check if we can adopt a similar approach to deal with asymmetric pads in 'ConvTranspose'
-    // as we did for 'Conv' to circumvent the miopen limitation
-    if ("pads" == attr_name && ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS == attr_value.type()) {
-      auto& pads = attr_value.ints();
-      int pads_size = pads.size();
-      ORT_ENFORCE(pads_size % 2 == 0);
-      int rank = pads_size / 2;
-      for (int i = 0; i < rank; i++) {
-        if (pads.Get(i) != pads.Get(i + rank)) {
-          return true;
-        }
-      }
-    }
-  }
-
-  return false;
 }
 
 static bool CastNeedFallbackToCPU(const onnxruntime::Node& node) {
@@ -1844,21 +1762,11 @@ std::vector<NodeIndex> candidates;
 
     bool not_supported = false;
     bool force_inside = false;  // for some compute heavy ops, we'll force it to run inside ROCM
-    if ("LSTM" == node.OpType()) {
-      // the supported activations covers the bidirectional mode
-      std::vector<std::string> activations_supported{"sigmoid", "tanh", "tanh", "sigmoid", "tanh", "tanh"};
-      not_supported = RNNNeedFallbackToCPU(node, activations_supported, node.OpType());
-      force_inside = !not_supported;
-    } else if ("RNN" == node.OpType()) {
-      std::vector<std::string> activations_supported{"tanh", "tanh"};
-      not_supported = RNNNeedFallbackToCPU(node, activations_supported, node.OpType());
-      force_inside = !not_supported;
-    } else if ("GRU" == node.OpType()) {
-      std::vector<std::string> activations_supported{"sigmoid", "tanh", "sigmoid", "tanh"};
-      not_supported = RNNNeedFallbackToCPU(node, activations_supported, node.OpType());
-      force_inside = !not_supported;
-    } else if ("ConvTranspose" == node.OpType()) {
-      not_supported = ConvTransposeNeedFallbackToCPU(node);
+    if ("LSTM" == node.OpType() ||
+        "RNN" == node.OpType() ||
+        "GRU" == node.OpType() ||
+        "ConvTranspose" == node.OpType()) {
+      not_supported = true;
       force_inside = !not_supported;
     } else if ("Cast" == node.OpType()) {
       not_supported = CastNeedFallbackToCPU(node);
