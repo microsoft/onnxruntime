@@ -720,12 +720,12 @@ class PlannerImpl {
   }
 
   bool AllocateInputsContiguously(const Node& node) const {
-    const KernelCreateInfo* ci = nullptr;
-    Status st = kernel_registry_manager_.SearchKernelRegistry(node, &ci);
-    if (!st.IsOK() || ci == nullptr || ci->kernel_def == nullptr) {
+    const KernelCreateInfo& ci = GetKernelCreateInfo(kernel_create_info_map_, node.Index());
+    if (ci.kernel_def == nullptr) {
       return false;
     }
-    return ci->kernel_def->AllocateInputsContiguously();
+
+    return ci.kernel_def->AllocateInputsContiguously();
   }
 
   // Compute allocation order for tensors that are required to be allocated contiguously.
