@@ -36,12 +36,6 @@ Status GeluRecompute::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*
       continue;
     }
 
-    std::vector<NodeArg*> gelu_input = {node.MutableInputDefs()[0]};
-    // For FastGelu and BiasGelu there may be a second input.
-    if (node.InputDefs().size() == 2) {
-      gelu_input.push_back(node.MutableInputDefs()[1]);
-    }
-
     const auto& output = node.OutputDefs()[0];
 
     auto& recomputed_output = graph.GetOrCreateNodeArg(graph_utils::RecomputeName(output->Name()),
@@ -50,7 +44,7 @@ Status GeluRecompute::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*
     Node& recompute_node = graph.AddNode(node.Name() + "_recompute",
                                          node.OpType(),
                                          "Recompute of " + node.Name(),
-                                         gelu_input,
+                                         node.MutableInputDefs(),
                                          {&recomputed_output},
                                          &node.GetAttributes(),
                                          node.Domain());
