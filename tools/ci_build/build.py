@@ -1919,7 +1919,7 @@ def main():
             wheel_name_suffix = args.wheel_name_suffix
             if not args.use_openmp and wheel_name_suffix is None:
                 wheel_name_suffix = 'noopenmp'
-            
+
             build_python_wheel(
                 source_dir,
                 build_dir,
