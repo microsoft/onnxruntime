@@ -57,7 +57,13 @@ public:
    // Otherwise, use as many shards as useful, up to MAX_SHARDS.
 
    auto num_blocks = num_iterations / block_size;
-   _num_shards = ::std::max(::std::min(num_blocks, MAX_SHARDS), 1ul);
+   if (num_blocks == 0) {
+     _num_shards = 0;
+   } else if (num_blocks < MAX_SHARDS) {
+     _num_shards = num_blocks;
+   } else {
+     _num_shards = MAX_SHARDS;
+   }
 
    // Divide the iteration space into shards.  If the iteration space
    // does not divide evenly into shards of multiples of block_size
