@@ -17,7 +17,6 @@ from perf_utils import *
 import pprint
 import time
 from float16 import *
-# import torch
 
 debug = False
 sys.path.append('.')
@@ -57,8 +56,6 @@ def max_absolute_error(a, b):
 
 # adopting the np.testing.assert_almost_equal error message 
 def assert_almost_equal_with_tol(a, b, tol):
-    logger.info("testing with the tol")
-    logger.info(tol)
     is_not_close_bool_array = abs(a - b) > tol
     if np.any(is_not_close_bool_array):
         total_elements = is_not_close_bool_array.size
