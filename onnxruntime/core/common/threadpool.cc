@@ -335,6 +335,24 @@ void ThreadPool::ParallelFor(std::ptrdiff_t total, double cost_per_unit,
   ParallelFor(total, TensorOpCost{0, 0, static_cast<double>(cost_per_unit)}, fn);
 }
 
+void ThreadPool::StartParallelSection(concurrency::ThreadPool* tp) {
+#ifdef _OPENMP
+#else
+  if (tp) {
+    tp->StartParallelSection();
+  }
+#endif
+}
+
+void ThreadPool::EndParallelSection(concurrency::ThreadPool* tp) {
+#ifdef _OPENMP
+#else
+  if (tp) {
+    tp->EndParallelSection();
+  }
+#endif
+}
+
 bool ThreadPool::ShouldParallelize(const concurrency::ThreadPool* tp) {
   return (DegreeOfParallelism(tp) != 1);
 }
