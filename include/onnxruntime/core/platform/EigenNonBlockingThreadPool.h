@@ -595,7 +595,7 @@ void EndParallelSection() override {
 
   // Wait for workers to exit ParLoopWorker
   while (my_pt->num_workers) {
-    _mm_pause();
+    onnxruntime::concurrency::SpinPause();
   }
 
   ORT_ENFORCE(my_pt->num_workers == 0);
@@ -658,7 +658,7 @@ void EndParallelSection() override {
   // Wait for workers to exit the work item
   my_pt->current_work_item = 0;
   while (my_pt->workers_in_loop) {
-    _mm_pause();
+    onnxruntime::concurrency::SpinPause();
   }
 }
 
