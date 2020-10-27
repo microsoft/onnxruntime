@@ -991,10 +991,8 @@ Graph::Graph(const Model& owning_model,
 
   // For now we convert sparse_intializer to dense tensors
   // since there are currently no supported ops that consume sparse
-  // initializers directly.
-  // Unlike Constant nodes we are not removing sparse initializers from the graph
-  // unless they are not used by any operation. This is done so we can still save space
-  // when storing an optimized model in ort format.
+  // initializers directly. We remove them from graph_proto. We will reconstitute them 
+  // when saving to ORT format to save space on disk.
   if (graph_proto_->sparse_initializer_size() > 0) {
     for (const auto& sparse_tensor : graph_proto_->sparse_initializer()) {
       ORT_ENFORCE(utils::HasName(sparse_tensor), "Sparse initializer must have a name. This model is invalid");
@@ -1037,7 +1035,12 @@ Graph::Graph(const Model& owning_model,
   // Copy initial tensors to a map.
   for (auto& tensor : graph_proto_->initializer()) {
     auto p = name_to_initial_tensor_.emplace(tensor.name(), &tensor);
-    ORT_ENFORCE(p.second, "Duplicate initializer: '", tensor.name(), "' Model is invalid.");
+    if (!p.second) {
+      LOGS(logger_, WARNING) << "Duplicate initializer (dense, sparse or ContantNode): '" << tensor.name()
+                            << "' the model will use the latest encountered initializer"
+                            << ". Please, fix your model.";
+      p.first->second = &tensor;
+    }
 
     NodeArg* matching_graph_input = GetNodeArg(tensor.name());
     TypeProto t{TypeProtoFromTensorProto(tensor)};
@@ -3573,7 +3576,12 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Gr
       TensorProto* initializer = deserialized_proto_data_.add_initializer();
       ORT_RETURN_IF_ERROR(experimental::utils::LoadInitializerOrtFormat(*fbs_tensor, *initializer));
       auto p = name_to_initial_tensor_.emplace(initializer->name(), initializer);
-      ORT_RETURN_IF(!p.second, "Initializer name duplicate found: ", "'", initializer->name(), "'", " Invalid ORT format model.");
+      if (!p.second) {
+        LOGS(logger_, WARNING) << "Duplicate initializer: '" << initializer->name()
+                              << "' the model will use the latest encountered initializer"
+                              << ". Please, fix your model.";
+        p.first->second = initializer;
+      }
     }
   }
 
@@ -3586,7 +3594,12 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Gr
       TensorProto& initializer = *deserialized_proto_data_.add_initializer();
       ORT_RETURN_IF_ERROR(utils::SparseTensorProtoToDenseTensorProto(sparse_initializer, initializer));
       auto p = name_to_initial_tensor_.emplace(initializer.name(), &initializer);
-      ORT_RETURN_IF(!p.second, "Sparse initializer name duplicate found: ", "'", initializer.name(), "'", " Invalid ORT format model.");
+      if (!p.second) {
+        LOGS(logger_, WARNING) << "Duplicate initializer (dense, sparse or ContantNode): '" << initializer.name()
+                               << "' the model will use the latest encountered initializer"
+                               << ". Please, fix your model.";
+        p.first->second = &initializer;
+      }
       sparse_tensor_names_.emplace(initializer.name());
     }
   }

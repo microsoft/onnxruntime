@@ -21,7 +21,7 @@ This should result in ort.fbs.h being updated.
 `See onnxruntime/core/session/inference_session.cc:IsOrtModelVersionSupported()` for version array and `kOrtModelVersion` for currently supported version.
 
 ## Version 1. History begins
-Initial support for DB that includes Model support. Graph support including Attributes, Tensors, Tensor Sequences, Maps and Sequences. Constant initializers are also supported. Constant nodes are converted to constant initializers in the ORT format.
+Initial support for FlatBuffers that includes Model support. Graph support including Attributes, Tensors, Tensor Sequences, Maps and Sequences. Constant initializers are also supported. Constant nodes are converted to constant initializers in the ORT format.
 
 ## Version 2. 
-Support for sparse initialiers. Sparse intializers are stored within ORT FB format, which includes sparse initializers converted from Constant node attribute.
+Support for sparse initialiers. Sparse intializers are stored within ORT FlatBuffers format, which includes sparse initializers converted from Constant node attribute.
