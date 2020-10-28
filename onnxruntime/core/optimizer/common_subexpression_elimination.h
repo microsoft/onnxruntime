@@ -20,4 +20,17 @@ class CommonSubexpressionElimination : public GraphTransformer {
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 };
 
+/**
+@Class CommonSubexpressionEliminationApplyOnce
+Same as CommonSubexpressionElimination, but with ShouldOnlyApplyOnce.
+*/
+class CommonSubexpressionEliminationApplyOnce : public CommonSubexpressionElimination {
+ public:
+  CommonSubexpressionEliminationApplyOnce(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
+      : CommonSubexpressionElimination(compatible_execution_providers) {
+  }
+
+  bool ShouldOnlyApplyOnce() const override { return true; }
+};
+
 }  // namespace onnxruntime
