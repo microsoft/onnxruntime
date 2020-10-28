@@ -391,25 +391,25 @@ jobs:
         Copy-Item ([System.IO.Path]::Combine($arm_store_runtime_path_old, 'microsoft.ai.machinelearning.dll'))   $arm_store_runtime_path_new
         Copy-Item ([System.IO.Path]::Combine($arm_store_runtime_path_old, 'microsoft.ai.machinelearning.lib'))   $arm_store_runtime_path_new
 
-        Copy-Item ([System.IO.Path]::Combine($x64_static_runtime_path_old, 'onnxruntime.dll'))                    ([System.IO.Path]::Combine($x64_runtime_path_new, 'onnxruntime.static.dll'))
-        Copy-Item ([System.IO.Path]::Combine($x64_static_runtime_path_old, 'onnxruntime.lib'))                    ([System.IO.Path]::Combine($x64_runtime_path_new, 'onnxruntime.static.lib'))
-        Copy-Item ([System.IO.Path]::Combine($x64_static_runtime_path_old, 'microsoft.ai.machinelearning.dll'))   ([System.IO.Path]::Combine($x64_runtime_path_new, 'microsoft.ai.machinelearning.static.dll'))
-        Copy-Item ([System.IO.Path]::Combine($x64_static_runtime_path_old, 'microsoft.ai.machinelearning.lib'))   ([System.IO.Path]::Combine($x64_runtime_path_new, 'microsoft.ai.machinelearning.static.lib'))
+        Copy-Item ([System.IO.Path]::Combine($x64_static_runtime_path_old, 'onnxruntime.dll'))                    ([System.IO.Path]::Combine($x64_static_runtime_path_new, 'onnxruntime.static.dll'))
+        Copy-Item ([System.IO.Path]::Combine($x64_static_runtime_path_old, 'onnxruntime.lib'))                    ([System.IO.Path]::Combine($x64_static_runtime_path_new, 'onnxruntime.static.lib'))
+        Copy-Item ([System.IO.Path]::Combine($x64_static_runtime_path_old, 'microsoft.ai.machinelearning.dll'))   ([System.IO.Path]::Combine($x64_static_runtime_path_new, 'microsoft.ai.machinelearning.static.dll'))
+        Copy-Item ([System.IO.Path]::Combine($x64_static_runtime_path_old, 'microsoft.ai.machinelearning.lib'))   ([System.IO.Path]::Combine($x64_static_runtime_path_new, 'microsoft.ai.machinelearning.static.lib'))
 
-        Copy-Item ([System.IO.Path]::Combine($x86_static_runtime_path_old, 'onnxruntime.dll'))                    ([System.IO.Path]::Combine($x86_runtime_path_new, 'onnxruntime.static.dll'))
-        Copy-Item ([System.IO.Path]::Combine($x86_static_runtime_path_old, 'onnxruntime.lib'))                    ([System.IO.Path]::Combine($x86_runtime_path_new, 'onnxruntime.static.lib'))
-        Copy-Item ([System.IO.Path]::Combine($x86_static_runtime_path_old, 'microsoft.ai.machinelearning.dll'))   ([System.IO.Path]::Combine($x86_runtime_path_new, 'microsoft.ai.machinelearning.static.dll'))
-        Copy-Item ([System.IO.Path]::Combine($x86_static_runtime_path_old, 'microsoft.ai.machinelearning.lib'))   ([System.IO.Path]::Combine($x86_runtime_path_new, 'microsoft.ai.machinelearning.static.lib'))
+        Copy-Item ([System.IO.Path]::Combine($x86_static_runtime_path_old, 'onnxruntime.dll'))                    ([System.IO.Path]::Combine($x86_static_runtime_path_new, 'onnxruntime.static.dll'))
+        Copy-Item ([System.IO.Path]::Combine($x86_static_runtime_path_old, 'onnxruntime.lib'))                    ([System.IO.Path]::Combine($x86_static_runtime_path_new, 'onnxruntime.static.lib'))
+        Copy-Item ([System.IO.Path]::Combine($x86_static_runtime_path_old, 'microsoft.ai.machinelearning.dll'))   ([System.IO.Path]::Combine($x86_static_runtime_path_new, 'microsoft.ai.machinelearning.static.dll'))
+        Copy-Item ([System.IO.Path]::Combine($x86_static_runtime_path_old, 'microsoft.ai.machinelearning.lib'))   ([System.IO.Path]::Combine($x86_static_runtime_path_new, 'microsoft.ai.machinelearning.static.lib'))
 
-        Copy-Item ([System.IO.Path]::Combine($arm64_static_runtime_path_old, 'onnxruntime.dll'))                  ([System.IO.Path]::Combine($arm64_runtime_path_new, 'onnxruntime.static.dll'))
-        Copy-Item ([System.IO.Path]::Combine($arm64_static_runtime_path_old, 'onnxruntime.lib'))                  ([System.IO.Path]::Combine($arm64_runtime_path_new, 'onnxruntime.static.lib'))
-        Copy-Item ([System.IO.Path]::Combine($arm64_static_runtime_path_old, 'microsoft.ai.machinelearning.dll')) ([System.IO.Path]::Combine($arm64_runtime_path_new, 'microsoft.ai.machinelearning.static.dll'))
-        Copy-Item ([System.IO.Path]::Combine($arm64_static_runtime_path_old, 'microsoft.ai.machinelearning.lib')) ([System.IO.Path]::Combine($arm64_runtime_path_new, 'microsoft.ai.machinelearning.static.lib'))
+        Copy-Item ([System.IO.Path]::Combine($arm64_static_runtime_path_old, 'onnxruntime.dll'))                  ([System.IO.Path]::Combine($arm64_static_runtime_path_new, 'onnxruntime.static.dll'))
+        Copy-Item ([System.IO.Path]::Combine($arm64_static_runtime_path_old, 'onnxruntime.lib'))                  ([System.IO.Path]::Combine($arm64_static_runtime_path_new, 'onnxruntime.static.lib'))
+        Copy-Item ([System.IO.Path]::Combine($arm64_static_runtime_path_old, 'microsoft.ai.machinelearning.dll')) ([System.IO.Path]::Combine($arm64_static_runtime_path_new, 'microsoft.ai.machinelearning.static.dll'))
+        Copy-Item ([System.IO.Path]::Combine($arm64_static_runtime_path_old, 'microsoft.ai.machinelearning.lib')) ([System.IO.Path]::Combine($arm64_static_runtime_path_new, 'microsoft.ai.machinelearning.static.lib'))
 
-        Copy-Item ([System.IO.Path]::Combine($arm_static_runtime_path_old, 'onnxruntime.dll'))                    ([System.IO.Path]::Combine($arm_runtime_path_new, 'onnxruntime.static.dll'))
-        Copy-Item ([System.IO.Path]::Combine($arm_static_runtime_path_old, 'onnxruntime.lib'))                    ([System.IO.Path]::Combine($arm_runtime_path_new, 'onnxruntime.static.lib'))
-        Copy-Item ([System.IO.Path]::Combine($arm_static_runtime_path_old, 'microsoft.ai.machinelearning.dll'))   ([System.IO.Path]::Combine($arm_runtime_path_new, 'microsoft.ai.machinelearning.static.dll'))
-        Copy-Item ([System.IO.Path]::Combine($arm_static_runtime_path_old, 'microsoft.ai.machinelearning.lib'))   ([System.IO.Path]::Combine($arm_runtime_path_new, 'microsoft.ai.machinelearning.static.lib'))
+        Copy-Item ([System.IO.Path]::Combine($arm_static_runtime_path_old, 'onnxruntime.dll'))                    ([System.IO.Path]::Combine($arm_static_runtime_path_new, 'onnxruntime.static.dll'))
+        Copy-Item ([System.IO.Path]::Combine($arm_static_runtime_path_old, 'onnxruntime.lib'))                    ([System.IO.Path]::Combine($arm_static_runtime_path_new, 'onnxruntime.static.lib'))
+        Copy-Item ([System.IO.Path]::Combine($arm_static_runtime_path_old, 'microsoft.ai.machinelearning.dll'))   ([System.IO.Path]::Combine($arm_static_runtime_path_new, 'microsoft.ai.machinelearning.static.dll'))
+        Copy-Item ([System.IO.Path]::Combine($arm_static_runtime_path_old, 'microsoft.ai.machinelearning.lib'))   ([System.IO.Path]::Combine($arm_static_runtime_path_new, 'microsoft.ai.machinelearning.static.lib'))
 
         Copy-Item -Recurse $uap_build_path_old $uap_build_path_new
 
