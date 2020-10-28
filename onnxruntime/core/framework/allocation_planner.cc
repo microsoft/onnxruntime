@@ -781,14 +781,9 @@ class PlannerImpl {
         const auto& current_plan = AllocPlan(Index(node_input->Name()));
         if (current_plan.alloc_kind != AllocKind::kAllocate) continue;
 
-        size_t start = 0;
-        ORT_ENFORCE(current_plan.program_counter_start.size() > 0);
         ORT_ENFORCE(current_plan.program_counter_start.size() == current_plan.program_counter_end.size());
-
-        // Tensors that do not want reuse optimization.
-        ORT_ENFORCE((current_plan.program_counter_start[0] < SIZE_MAX) ||
-                    ((current_plan.program_counter_start.size() == 1) && (current_plan.program_counter_end[0] == SIZE_MAX)));
-
+        
+        size_t start = 0;
         for (size_t index = 0; index < current_plan.program_counter_start.size(); index += 1) {
           ORT_ENFORCE((current_plan.program_counter_start[index] > start) || (start == 0));
           ORT_ENFORCE(current_plan.program_counter_start[index] <= current_plan.program_counter_end[index]);
