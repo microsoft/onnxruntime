@@ -637,7 +637,7 @@ class PlannerImpl {
         } else if (IsNonTensor(*node_output)) {
           // we do not try sharing-optimization for non-tensors
           AllocPlan(current).alloc_kind = AllocKind::kAllocate;
-          AllocPlan(current).program_counter_start.emplace_back(SIZE_MAX);
+          AllocPlan(current).program_counter_start.emplace_back(program_counter);
           AllocPlan(current).program_counter_end.emplace_back(SIZE_MAX);
         } else if (FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused)) {
           // Reuse one of this node's input buffers as the output buffer (for in-place update)
