@@ -179,7 +179,7 @@ void GradientOpTester::Run(
       EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
 
       fetches_ = ExecuteModel<onnxruntime::training::TrainingSession>(*p_model, session_object, expect_result, expected_failure_string, run_options,
-                                                                      feeds, output_names, provider_type, CustomOutputVerifierFn{});
+                                                                      feeds, output_names, provider_type);
     }
     EXPECT_TRUE(has_run) << "No registered execution providers were able to run the model.";
 

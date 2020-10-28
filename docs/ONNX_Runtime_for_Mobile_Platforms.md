@@ -48,7 +48,7 @@ See [here](https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#start-b
 
 The follow options can be used to reduce the build size. Enable all options that your scenario allows.
   - Reduce build to required operator kernels
-    - Add `--include_ops_by_config <config file produced by step 1>` to the build parameters.
+    - Add `--include_ops_by_config <config file produced by step 1> --skip_tests` to the build parameters.
     - See the documentation on the [Reduced Operator Kernel build](Reduced_Operator_Kernel_build.md) for more information. This step can also be done pre-build if needed.
 
   - Enable minimal build (`--minimal_build`)
@@ -79,11 +79,11 @@ The `Release` configuration could also be used if you wish to prioritize perform
 
 ##### Windows
 
-`<ONNX Runtime repository root>\build.bat --config=MinSizeRel --cmake_generator="Visual Studio 16 2019" --build_shared_lib --minimal_build --disable_ml_ops --disable_exceptions --include_ops_by_config <config file produced by step 1>`
+`<ONNX Runtime repository root>\build.bat --config=MinSizeRel --cmake_generator="Visual Studio 16 2019" --build_shared_lib --minimal_build --disable_ml_ops --disable_exceptions --include_ops_by_config <config file produced by step 1> --skip_tests`
 
 ##### Linux
 
-`<ONNX Runtime repository root>/build.sh --config=MinSizeRel --build_shared_lib --minimal_build --disable_ml_ops --disable_exceptions --include_ops_by_config <config file produced by step 1>`
+`<ONNX Runtime repository root>/build.sh --config=MinSizeRel --build_shared_lib --minimal_build --disable_ml_ops --disable_exceptions --include_ops_by_config <config file produced by step 1> --skip_tests`
 
 ##### Building ONNX Runtime Python Wheel as part of Minimal build
 

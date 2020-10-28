@@ -9,11 +9,31 @@
 namespace onnxruntime {
 namespace training {
 
+std::string ToString(const std::vector<Dimension>& dims) {
+  std::stringstream output;
+  output << "[";
+  if (!dims.empty()) {
+    for (auto& dim : dims) {
+      if (dim.has_dim_value()) {
+        output << dim.dim_value() << ",";
+      }
+      if (dim.has_dim_param()) {
+        output << dim.dim_param() << ",";
+      }
+    }
+    output.seekp(-1, output.cur);
+  }
+  output << "]";
+
+  return output.str();
+}
+
 void ComputeBroadcastBackwardAxes(
     const std::vector<Dimension>& A_dims,
     const std::vector<Dimension>& B_dims,
     std::vector<int64_t>* A_axes,
-    std::vector<int64_t>* B_axes) {
+    std::vector<int64_t>* B_axes,
+    const std::string& node_name) {
   if (A_axes) A_axes->clear();
   if (B_axes) B_axes->clear();
 
@@ -39,16 +59,16 @@ void ComputeBroadcastBackwardAxes(
       auto A_dim = A_dims[i].dim_param(),
            B_dim = B_dims[j].dim_param();
       if (A_dim != B_dim) {
-        ORT_THROW("Error: symbolic dimension doesn't match. Expect the same symbolic but got \"",
-                  A_dim, "\" and \"", B_dim, "\".");
+        ORT_THROW("Gradient building error for node ", node_name, ": symbolic dimension doesn't match. ",
+                  "A_dims:", ToString(A_dims), ", B_dims:", ToString(B_dims));
       }
     } else if (A_dims[i].has_dim_param() && B_dims[j].has_dim_value()) {
       auto A_dim = A_dims[i].dim_param();
       auto B_dim = B_dims[j].dim_value();
 
       if (B_dim != 1) {
-        ORT_THROW("Error: symbolic broadcasting requires the corresponding dimension to be 1. ",
-                  "Actually got ", B_dim);
+        ORT_THROW("Gradient building error for node ", node_name, ": symbolic broadcasting requires the B_dimension to be 1. ",
+                  "A_dims:", ToString(A_dims), ", B_dims:", ToString(B_dims));
       }
       if (B_axes) {
         B_axes->push_back(gsl::narrow_cast<int64_t>(k));
@@ -58,8 +78,8 @@ void ComputeBroadcastBackwardAxes(
       auto B_dim = B_dims[i].dim_param();
 
       if (A_dim != 1) {
-        ORT_THROW("Error: symbolic broadcasting requires the corresponding dimension to be 1. ",
-                  "Actually got ", A_dim);
+        ORT_THROW("Gradient building error for node ", node_name, ": symbolic broadcasting requires the A_dimension to be 1. ",
+                  "A_dims:", ToString(A_dims), ", B_dims:", ToString(B_dims));
       }
       if (A_axes) {
         A_axes->push_back(gsl::narrow_cast<int64_t>(k));

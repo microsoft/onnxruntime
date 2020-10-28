@@ -68,5 +68,6 @@ ORT_API_STATUS_IMPL(OrtApis::OrtSessionOptionsAppendExecutionProvider_CUDA,
                                             cuda_options->cudnn_conv_algo_search, cuda_options->cuda_mem_limit, 
                                             static_cast<onnxruntime::ArenaExtendStrategy>(cuda_options->arena_extend_strategy),
                                             cuda_options->do_copy_in_default_stream));
+  
   return nullptr;
 }
