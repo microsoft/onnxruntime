@@ -52,11 +52,11 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph& filter_info)
 
 GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
     : graph_{&graph},
-      filter_info_{filter_info},
       // we can setup the filter here if needed. filtered_node_indices_ will have been populated by the time it's used
       graph_nodes_{graph_->FilteredNodes(
           filter_info ? [this](NodeIndex idx) { return filtered_node_indices_.count(idx) == 0; }
-                      : ConstGraphNodes::NodeFilterFunc(nullptr))} {
+                      : ConstGraphNodes::NodeFilterFunc(nullptr))},
+      filter_info_{filter_info} {
   std::vector<const Node*> leaf_nodes;
   for (auto& node : graph_->Nodes()) {
     // This is a leaf node (without any output node)
@@ -87,8 +87,8 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
 
   if (filter_info_) {
     // create set of node indexes as we need quick lookups and don't care about the order
-    filtered_node_indices_ = std::move(std::unordered_set<NodeIndex>(filter_info->nodes.cbegin(),
-                                                                     filter_info->nodes.cend()));
+    filtered_node_indices_ = std::unordered_set<NodeIndex>(filter_info->nodes.cbegin(),
+                                                           filter_info->nodes.cend());
 
     // validate. if something is off here it's a bug in our code
     for (NodeIndex idx : filter_info->nodes) {
