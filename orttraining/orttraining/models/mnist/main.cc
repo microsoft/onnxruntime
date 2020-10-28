@@ -23,7 +23,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(O
                                                                                OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE,
                                                                                size_t cuda_mem_limit = std::numeric_limits<size_t>::max(),
                                                                                onnxruntime::ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo,
-                                                                               bool do_copy_in_default_stream = true);
+                                                                               bool do_copy_in_default_stream = false);
 }
 
 using namespace onnxruntime;
