@@ -706,8 +706,7 @@ class ORTBertPretrainTest(unittest.TestCase):
         final_loss = do_pretrain(args)
         return final_loss
 
-# to do parallel training:
-# python -m torch.distributed.launch --nproc_per_node 4 orttraining_run_bert_pretrain.py
+
 if __name__ == "__main__":
     import sys
     logger.warning("sys.argv: %s", sys.argv)
@@ -722,10 +721,16 @@ if __name__ == "__main__":
     #
     # pytorch.distributed.launch will not work because ort backend requires MPI to broadcast ncclUniqueId
     # calling unpublished get_mpi_context_xxx to get rank/size numbers.
-    from onnxruntime.capi._pybind_state import get_mpi_context_local_rank, get_mpi_context_local_size,\
-        get_mpi_context_world_rank, get_mpi_context_world_size
-    world_size = get_mpi_context_world_size()
-    if world_size > 1:
+    try:
+        # In case ORT is not built with MPI/NCCL, there are no get_mpi_context_xxx internal apis.
+        from onnxruntime.capi._pybind_state import get_mpi_context_local_rank, get_mpi_context_local_size,\
+            get_mpi_context_world_rank, get_mpi_context_world_size
+        has_get_mpi_context_internal_api = True
+    except ImportError:
+        has_get_mpi_context_internal_api = False
+        pass
+    if has_get_mpi_context_internal_api and get_mpi_context_world_size() > 1:
+        world_size = get_mpi_context_world_size()
         print('get_mpi_context_world_size(): ', world_size)
         local_rank = get_mpi_context_local_rank()
 
@@ -793,5 +798,5 @@ if __name__ == "__main__":
             logger.info("running single GPU ORTBertPretrainTest.test_pretrain_throughput()...")
             test.test_pretrain_throughput(process_args)
             logger.info("single GPU ORTBertPretrainTest.test_pretrain_throughput() passed")
-
-        # unittest.main()
+        else:
+            unittest.main()
