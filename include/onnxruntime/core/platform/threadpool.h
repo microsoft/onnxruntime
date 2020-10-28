@@ -111,32 +111,40 @@ class ThreadPool {
   // Parallel sections may not be nested, and may not be used inside
   // parallel loops.
 
+#ifdef _OPENMP
   class ParallelSection {
   public:
-    ParallelSection(ThreadPool *tp) : _tp(tp) {
-#ifdef _OPENMP
-      ORT_UNUSED_PARAMETER(tp);
-#else
-      if (tp) {
-        tp->StartParallelSection();
-      }
-#endif
+    ParallelSection(ThreadPool *) {
+      // Nothing
     }
 
     ~ParallelSection() {
-#ifdef _OPENMP
       // Nothing
+    }
+
+  private:
+    ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ParallelSection);
+  };
 #else
+  class ParallelSection {
+  public:
+    ParallelSection(ThreadPool *tp) : _tp(tp) {
+      if (tp) {
+        tp->StartParallelSection();
+      }
+    }
+
+    ~ParallelSection() {
       if (_tp) {
         _tp->EndParallelSection();
       }
-#endif
     }
 
   private:
     ThreadPool* const _tp;
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ParallelSection);
   };
+#endif
 
   static void StartParallelSection(ThreadPool *tp);
   static void EndParallelSection(ThreadPool *tp);
