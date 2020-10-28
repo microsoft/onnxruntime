@@ -350,8 +350,6 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
   // try to allocated on pre-allocated big chunk.
   const auto& per_alloc_plan = GetAllocationPlan(ort_value_index);
 
-  ORT_ENFORCE(per_alloc_plan.alloc_kind == AllocKind::kAllocate || per_alloc_plan.alloc_kind == AllocKind::kAllocateOutput);
-
   if (mem_patterns_ && per_alloc_plan.alloc_kind != AllocKind::kAllocateOutput) {
     auto pattern = mem_patterns_->GetPatterns(location);
     if (pattern) {
