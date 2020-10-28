@@ -166,7 +166,7 @@ void TestMultiLoopSections(const std::string& name, int num_threads, int num_loo
     const int num_tasks = 1024;
     auto test_data = CreateTestData(num_tasks);
     CreateThreadPoolAndTest(name, num_threads, [&](ThreadPool* tp) {
-	ThreadPool::StartParallelSection(tp);
+	ThreadPool::ParallelSection ps(tp);
 	for (int l = 0; l < num_loops; l++) {
           ThreadPool::TrySimpleParallelFor(tp,
                                            num_tasks,
@@ -174,7 +174,6 @@ void TestMultiLoopSections(const std::string& name, int num_threads, int num_loo
                                              IncrementElement(*test_data, i);
                                            });
 	}
-	ThreadPool::EndParallelSection(tp);
       });
     ValidateTestData(*test_data, num_loops);
   }

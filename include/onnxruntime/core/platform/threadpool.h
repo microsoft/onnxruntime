@@ -101,14 +101,42 @@ class ThreadPool {
   // where it is impractical to refactor code into a single loop.  For
   // instance:
   //
-  //   StartParallelSection(tp);
+  // {
+  //   onnxruntime::concurrency::ThreadPoool::ParallelSection ps(tp);
   //   for (int x = 0; x < seq_len; x++) {
   //     TrySimpleParallelFor(tp, 16, [&]() { ... });
   //   }
-  //   EndParallelSection(tp);
+  // }
   //
   // Parallel sections may not be nested, and may not be used inside
   // parallel loops.
+
+  class ParallelSection {
+  public:
+    ParallelSection(ThreadPool *tp) : _tp(tp) {
+#ifdef _OPENMP
+      ORT_UNUSED_PARAMETER(tp);
+#else
+      if (tp) {
+        tp->StartParallelSection();
+      }
+#endif
+    }
+
+    ~ParallelSection() {
+#ifdef _OPENMP
+      ORT_UNUSED_PARAMETER(tp);
+#else
+      if (_tp) {
+        _tp->EndParallelSection();
+      }
+#endif
+    }
+
+  private:
+    ThreadPool* const _tp;
+    ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ParallelSection);
+  };
 
   static void StartParallelSection(ThreadPool *tp);
   static void EndParallelSection(ThreadPool *tp);
