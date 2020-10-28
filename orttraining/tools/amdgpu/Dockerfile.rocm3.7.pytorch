@@ -181,8 +181,6 @@ ADD model ${WORKSPACE_DIR}/model
 ADD script ${WORKSPACE_DIR}/script
 RUN chmod a+x ${WORKSPACE_DIR}/script/run_bert.sh
 
-ENV LOG_DIR=/data/wezhan/logs
-
 # add locale en_US.UTF-8
 RUN apt-get install -y locales
 RUN locale-gen en_US.UTF-8
