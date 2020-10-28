@@ -125,7 +125,7 @@ class ThreadPool {
 
     ~ParallelSection() {
 #ifdef _OPENMP
-      ORT_UNUSED_PARAMETER(tp);
+      // Nothing
 #else
       if (_tp) {
         _tp->EndParallelSection();
