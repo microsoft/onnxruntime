@@ -798,5 +798,5 @@ if __name__ == "__main__":
             logger.info("running single GPU ORTBertPretrainTest.test_pretrain_throughput()...")
             test.test_pretrain_throughput(process_args)
             logger.info("single GPU ORTBertPretrainTest.test_pretrain_throughput() passed")
-        else:
-            unittest.main()
+
+        # unittest.main()
