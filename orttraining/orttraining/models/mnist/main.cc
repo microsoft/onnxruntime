@@ -4,6 +4,7 @@
 #include "cxxopts.hpp"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
+#include "core/framework/bfc_arena.h"
 #include "core/platform/env.h"
 #include "core/session/environment.h"
 #include "orttraining/core/session/training_session.h"
@@ -83,7 +84,7 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
 #ifdef USE_CUDA
     bool use_cuda = flags.count("use_cuda") > 0;
     if (use_cuda) {
-      // Use local rank as device ID of the associated CUDA EP. 
+      // Use local rank as device ID of the associated CUDA EP.
       OrtDevice::DeviceId device_id = static_cast<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
       params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(device_id));
     }
