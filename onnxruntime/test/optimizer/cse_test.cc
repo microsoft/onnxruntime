@@ -116,6 +116,41 @@ TEST(CseTests, SimpleInitializerTest) {
   ASSERT_EQ(op_count.at("Conv"), 5);
 }
 
+TEST(CseTests, NoSimplifyCommutativeOperator) {
+  auto model_uri = ORT_TSTR("testdata/transform/cse/cse_initializer_commutative.onnx");
+  
+  std::shared_ptr<Model> model;
+  
+  ASSERT_TRUE(Model::Load(model_uri, model, nullptr,
+                          DefaultLoggingManager().DefaultLogger()).IsOK());
+  
+  ApplyCse(*model);
+  
+  Graph& graph = model->MainGraph();
+  const auto& graph_inputs = GetSortedNames(graph.GetInputs());
+  ASSERT_EQ(graph_inputs, (std::vector<std::string>{"x"}));
+  
+  const auto& graph_outputs = GetSortedNames(graph.GetOutputs());
+  
+  ASSERT_EQ(graph_outputs, (std::vector<std::string>{
+    "x_mul_conv_0",
+    "x_mul_conv_1",
+    "x_mul_conv_2",
+    "x_mul_conv_3"
+  }));
+  
+  auto op_count = CountOpsInGraph(graph);
+  
+  // 4 mul nodes must map to 2 mul nodes, even though
+  // they have the same input - constant, x for 2 for nodes 1,3
+  // and x,constant for 2,4; the EquivalenceClass checker considers
+  // the ordering of nodes as well, so commutative operations like
+  // Mul in this case are not compared accurately when determining
+  // the representative object of the equivalence class
+  ASSERT_EQ(op_count.at("Mul"), 2);
+  ASSERT_EQ(op_count.at("Conv"), 4);
+}
+
 TEST(CseTests, GraphOutput) {
   auto model_uri = ORT_TSTR("testdata/transform/cse/cse_graph_output.onnx");
   std::shared_ptr<Model> model;
