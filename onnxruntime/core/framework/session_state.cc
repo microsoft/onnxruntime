@@ -234,36 +234,39 @@ void SessionState::CleanInitializedTensorsFromGraph() {
   graph_.CleanAllInitializedTensors();
 }
 
-Status SessionState::PrepackInitializedConstantTensors() {
-  // calculate the use count of each value
-  std::unordered_map<std::string, size_t> node_arg_use_count;
-  for (const auto& node : GetGraphViewer().Nodes()) {
-    node.ForEachDef([&](const onnxruntime::NodeArg& node_arg, bool is_input) {
-      if (is_input) {
-        node_arg_use_count[node_arg.Name()]++;
-      }
-    });
-  }
-
+Status SessionState::PrepackConstantInitializedTensors(std::unordered_map<std::string, size_t>& constant_initializers_use_count) {
   for (auto& node : GetGraphViewer().Nodes()) {
     auto kernel = GetMutableKernel(node.Index());
     int input_idx = 0;
     for (auto& input_def : node.InputDefs()) {
       if (input_def->Exists()) {
         const std::string& input_name = input_def->Name();
-        int ort_value_idx;
-        ORT_RETURN_IF_ERROR(ort_value_name_idx_map_.GetIdx(input_name, ort_value_idx));
-        if (constant_initialized_tensors_.count(ort_value_idx) &&
-            constant_initialized_tensors_[ort_value_idx].IsTensor()) {
-          bool is_packed = false;
-          const Tensor& const_initialized_tensor = constant_initialized_tensors_[ort_value_idx].Get<Tensor>();
-          ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, input_idx, is_packed));
-          if (is_packed && node_arg_use_count.count(input_name) && --node_arg_use_count[input_name] == 0) {
-            // release the constant intialized tensor
-            initialized_tensors_.erase(ort_value_idx);
-            constant_initialized_tensors_.erase(ort_value_idx);
+        SessionState* st = this;
+        // subgraph can use the value from outer scope,
+        // so it needs to check if current node uses constant initialized tensor from current and outer graphs
+        do {
+          int ort_value_idx;
+          if (st->GetOrtValueNameIdxMap().GetIdx(input_name, ort_value_idx).IsOK()) {
+            std::unordered_map<int, OrtValue>& constant_initialized_tensors = st->constant_initialized_tensors_;
+            if (constant_initialized_tensors.count(ort_value_idx)) {
+              bool is_packed = false;
+              const Tensor& const_initialized_tensor = constant_initialized_tensors[ort_value_idx].Get<Tensor>();
+              ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, input_idx, is_packed));
+              if (is_packed && constant_initializers_use_count.count(input_name) && --constant_initializers_use_count[input_name] == 0) {
+                // release the constant initialized tensor
+                st->initialized_tensors_.erase(ort_value_idx);
+                constant_initialized_tensors.erase(ort_value_idx);
+              }
+            }
+            // stop searching in 2 cases:
+            // 1. value is not from OuterScope
+            // 2. value is from OuterScope and the current OuterScope has the value
+            if (st != this || !st->graph_.IsOuterScopeValue(input_name)) {
+              break;
+            }
           }
-        }
+          st = st->Parent();
+        } while (st);
       }
       input_idx++;
     }
@@ -567,10 +570,13 @@ void SessionState::AddSubgraphSessionState(onnxruntime::NodeIndex index, const s
     ORT_ENFORCE(existing_entries.find(attribute_name) == existing_entries.cend(), "Entry exists in node ", index,
                 " for attribute ", attribute_name);
   }
-#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
+
   session_state->parent_ = this;
+
+#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   GenerateGraphId();
 #endif
+
   subgraph_session_states_[index].insert(std::make_pair(attribute_name, std::move(session_state)));
 }
 
@@ -776,6 +782,27 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
 }
 #endif
 
+// Calculate the use count of a constant initialized tensor, including the use in subgraph.
+// Note: This function doesn't handle the case below:
+// The main graph has a constant initializer called X, and the subgraph also has a constant initializer called X, which overrides the X from main graph.
+// For case like this, the current implementation will calculate the use count as 2, but they could contain completely different values so each should have a use count of 1.
+// This is a very rare case. If it happens and X is prepacked, the consequence is that X won't be released and memory usage of X won't be saved. This will be fine.
+static void ComputeConstantInitializerUseCount(const Graph& graph, std::unordered_map<std::string, size_t>& constant_initializers_use_count) {
+  for (const auto& node : graph.Nodes()) {
+    for (const auto* arg : node.InputDefs()) {
+      if (arg->Exists() && graph.GetConstantInitializer(arg->Name(), true /*check_outer_scope*/)) {
+        constant_initializers_use_count[arg->Name()]++;
+      }
+    }
+
+    if (node.ContainsSubgraph()) {
+      for (const gsl::not_null<const Graph*>& subgraph : node.GetSubgraphs()) {
+        ComputeConstantInitializerUseCount(*subgraph, constant_initializers_use_count);
+      }
+    }
+  }
+}
+
 Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
                                           KernelRegistryManager& kernel_registry_manager,
                                           const SessionOptions& session_options,
@@ -807,15 +834,18 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
 #endif
   }
 
+  std::unordered_map<std::string, size_t> constant_initializers_use_count;
+  ComputeConstantInitializerUseCount(graph_, constant_initializers_use_count);
   return FinalizeSessionStateImpl(graph_location, kernel_registry_manager, nullptr, session_options,
-                                  remove_initializers);
+                                  remove_initializers, constant_initializers_use_count);
 }
 
 Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
                                               KernelRegistryManager& kernel_registry_manager,
                                               _In_opt_ const Node* parent_node,
                                               const SessionOptions& session_options,
-                                              bool remove_initializers) {
+                                              bool remove_initializers,
+                                              std::unordered_map<std::string, size_t>& constant_initializers_use_count) {
   CreateGraphInfo();
 
   // ignore any outer scope args we don't know about. this can happen if a node contains multiple subgraphs.
@@ -868,7 +898,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
       session_options.GetConfigOrDefault(kOrtSessionOptionsConfigDisablePrepacking, "0");
 
   if (disable_prepacking != "1") {
-    ORT_RETURN_IF_ERROR(PrepackInitializedConstantTensors());
+    ORT_RETURN_IF_ERROR(PrepackConstantInitializedTensors(constant_initializers_use_count));
   }
 
   ORT_RETURN_IF_ERROR(
@@ -896,7 +926,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
 
       // recurse
       ORT_RETURN_IF_ERROR(subgraph_session_state.FinalizeSessionStateImpl(
-          graph_location, kernel_registry_manager, &node, subgraph_session_options, remove_initializers));
+          graph_location, kernel_registry_manager, &node, subgraph_session_options, remove_initializers, constant_initializers_use_count));
 
       // setup all the info for handling the feeds and fetches used in subgraph execution
       auto* p_op_kernel = GetMutableKernel(node.Index());

@@ -288,7 +288,7 @@ void ParallelExecutor::EnqueueNode(size_t p_node_index, const SessionState& sess
     out_standings_++;
   }
 
-  executor_pool_->Schedule([this, p_node_index, &session_state, &logger]() {
+  onnxruntime::concurrency::ThreadPool::Schedule(executor_pool_, [this, p_node_index, &session_state, &logger]() {
     auto create_exception_message = [p_node_index, &session_state](const std::exception* ex) {
       const auto* node = session_state.GetGraphViewer().GetNode(p_node_index);
 
