@@ -704,15 +704,20 @@ public class OnnxTensor implements OnnxValue {
   private static OnnxTensor createTensor(
       OnnxJavaType type, OrtAllocator allocator, Buffer data, long[] shape) throws OrtException {
     int bufferPos;
-    int bufferSize = data.remaining() * type.size;
-    if ((bufferSize < 0) || (bufferSize > ((Integer.MAX_VALUE / type.size) - 10))) {
-      // overflowed as we can't make a direct byte buffer of that size
+    long bufferSizeLong = data.remaining() * (long) type.size;
+    if ((bufferSizeLong < 0) || (bufferSizeLong > (Integer.MAX_VALUE - (8 * type.size)))) {
+      // Negative value implies we overflowed and we can't allocate something that big (though overflowing
+      // a long at this point should be tricky),
+      // and the maximum direct byte buffer size is a little below Integer.MAX_VALUE depending
+      // on the JVM, so we check for something 8 elements below the maximum size.
       throw new IllegalStateException(
           "Cannot allocate a direct buffer of the requested size and type, size "
               + data.remaining()
               + ", type = "
               + type);
     }
+    // Now we know we're in range
+    int bufferSize = data.remaining() * type.size;
     Buffer tmp;
     if (data.isDirect()) {
       tmp = data;
