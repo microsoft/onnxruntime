@@ -90,6 +90,7 @@ class ORTMultipleChoiceTest(unittest.TestCase):
         self.output_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "multiple_choice_test_output/")
         self.cache_dir = '/tmp/multiple_choice/'
         self.logging_steps = 10
+        self.rtol = 2e-01
 
     def test_bert_with_swag(self):
         expected_acc = 0.75
