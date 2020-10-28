@@ -94,7 +94,6 @@ static void DoTransposeImpl(int64_t num_axes, const std::vector<int64_t>& target
                             size_t num_blocks, size_t num_elts_in_block, const std::vector<size_t>& stride,
                             const uint8_t* source, uint8_t* target, size_t element_size) {
   size_t blocksize = num_elts_in_block * element_size;
-  ORT_ENFORCE(num_axes > 0, "Transpose not implemented for empty tensors.");
   MultiIndex* mindex = (MultiIndex*)alloca(num_axes * sizeof(MultiIndex));
   size_t naxes = IncrementIndexAndComputeOffsetSetup(mindex, num_axes, target_dims, stride, element_size);
 
@@ -562,7 +561,7 @@ static bool IsMovingSingleAxis(const std::vector<size_t>& permutations, size_t& 
 }
 
 bool IsReshape(const std::vector<size_t>& perm, const std::vector<int64_t>& input_dims) {
-  // A transposition only moving single dimension is equivalent to a reshape.
+  // As long as the dims with values > 1 stay in the same order, it's a reshape.
   // Example: Shape=(1,1,1024,4096) -> perm=(2,0,3,1).
   size_t last_permuted_axis = 0;
   for (size_t i = 0; i < perm.size(); ++i) {
@@ -589,7 +588,7 @@ Status TransposeBase::DoTranspose(const std::vector<size_t>& permutations, const
   } else {
     TensorShape shape = input_shape_override ? *input_shape_override : input.Shape();
     if (IsReshape(permutations, shape.GetDims())) {
-      // A transposition only moving single dimension is equivalent to a reshape.
+      // As long as the dims with values > 1 stay in the same order, it's a reshape.
       // Example: Shape=(1,1,1024,4096) -> perm=(2,0,3,1).
       CopyCpuTensor(&input, &output);
       return Status::OK();
@@ -631,7 +630,7 @@ Status Transpose::Compute(OpKernelContext* ctx) const {
     return Status::OK();
 
   if (IsReshape(*p_perm, input_dims)) {
-    // A transposition only moving single dimension is equivalent to a reshape.
+    // As long as the dims with values > 1 stay in the same order, it's a reshape.
     // Example: Shape=(1,1,1024,4096) -> perm=(2,0,3,1).
     CopyCpuTensor(&X, &Y);
     return Status::OK();
