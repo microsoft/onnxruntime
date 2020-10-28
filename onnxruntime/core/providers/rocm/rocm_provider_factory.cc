@@ -40,7 +40,7 @@ std::unique_ptr<IExecutionProvider> HIPProviderFactory::CreateProvider() {
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ROCM(OrtDevice::DeviceId device_id,
                                                                                size_t hip_mem_limit = std::numeric_limits<size_t>::max(),
                                                                                ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo) {
-  return std::make_shared<onnxruntime::HIPProviderFactory>(device_id, hip_mem_limit, arena_extend_strategy);
+  return std::make_shared<HIPProviderFactory>(device_id, hip_mem_limit, arena_extend_strategy);
 }
 
 }  // namespace onnxruntime

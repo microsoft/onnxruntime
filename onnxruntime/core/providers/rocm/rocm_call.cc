@@ -54,12 +54,6 @@ const char* RocmErrString<rocblas_status>(rocblas_status e) {
   }
 }
 
-// template <>
-// const char* RocmErrString<hiprandStatus_t>(hiprandStatus_t) {
-//   hipDeviceSynchronize();
-//   return "(see hiprand.h & look for hiprandStatus_t or HIPRAND_STATUS_xxx)";
-// }
-
 template <>
 const char* RocmErrString<miopenStatus_t>(miopenStatus_t e) {
   hipDeviceSynchronize();

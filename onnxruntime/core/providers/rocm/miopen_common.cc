@@ -43,17 +43,14 @@ Status MiopenTensor::Set(const std::vector<int64_t>& input_dims, miopenDataType_
 
 template <typename ElemType>
 miopenDataType_t MiopenTensor::GetDataType() {
-  if (typeid(ElemType) == typeid(float))
-    return miopenFloat;
-  else if (typeid(ElemType) == typeid(half))
-    return miopenHalf;
-  else
-    ORT_THROW("miopen engine currently supports only single/half precision data types.");
+  ORT_THROW("miopen engine currently supports only single/half precision data types.");
 }
 
-template miopenDataType_t MiopenTensor::GetDataType<float>();
-template miopenDataType_t MiopenTensor::GetDataType<double>();
-template miopenDataType_t MiopenTensor::GetDataType<half>();
+template <>
+miopenDataType_t MiopenTensor::GetDataType<float>() { return miopenFloat; }
+
+template <>
+miopenDataType_t MiopenTensor::GetDataType<half>() { return miopenHalf; }
 
 template <>
 const float Consts<float>::One = 1;

@@ -64,9 +64,6 @@ class RocmKernel : public OpKernel {
 
   Status Compute(OpKernelContext* p_op_kernel_context) const override {
     auto s = ComputeInternal(p_op_kernel_context);
-    // use this to precisely locate the node where HIP failure comes from
-    //  if (hipSuccess != hipDeviceSynchronize())
-    //    __debugbreak();
 
     if (s.IsOK()) {
       auto err = hipGetLastError();

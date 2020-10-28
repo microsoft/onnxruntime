@@ -901,9 +901,6 @@ if (onnxruntime_USE_ROCM)
 
   if (onnxruntime_ENABLE_TRAINING)
     target_include_directories(onnxruntime_providers_rocm PRIVATE ${ORTTRAINING_ROOT})
-    if (onnxruntime_USE_HOROVOD)
-      target_include_directories(onnxruntime_providers_rocm PRIVATE ${HOROVOD_INCLUDE_DIRS})
-    endif()
   endif()
 
   onnxruntime_add_include_to_target(onnxruntime_providers_rocm onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf flatbuffers)

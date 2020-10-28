@@ -12,11 +12,11 @@ class ROCMFence : public IFence {
  public:
   ROCMFence(const GPUDataTransfer* data_transfer);
   virtual ~ROCMFence();
-  virtual void BeforeUsingAsInput(onnxruntime::ProviderType provider_type, int queue_id) override;
-  virtual void BeforeUsingAsOutput(onnxruntime::ProviderType provider_type, int queue_id) override;
-  virtual void AfterUsedAsInput(int queue_id) override;
-  virtual void AfterUsedAsOutput(int queue_id) override;
-  virtual bool CanRelease() override;
+  void BeforeUsingAsInput(onnxruntime::ProviderType provider_type, int queue_id) override;
+  void BeforeUsingAsOutput(onnxruntime::ProviderType provider_type, int queue_id) override;
+  void AfterUsedAsInput(int queue_id) override;
+  void AfterUsedAsOutput(int queue_id) override;
+  bool CanRelease() override;
 
  private:
   hipEvent_t read_event_;

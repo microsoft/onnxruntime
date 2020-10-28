@@ -57,23 +57,10 @@ ONNX_OPERATOR_KERNEL_EX(
 
 }  // namespace rocm
 
-ROCMExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, size_t hip_mem_limit, ArenaExtendStrategy arena_extend_strategy) {
+ROCMExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id) {
   HIP_CALL_THROW(hipSetDevice(device_id));
   ROCBLAS_CALL_THROW(rocblas_create_handle(&rocblas_handle_));
   MIOPEN_CALL_THROW(miopenCreate(&miopen_handle_));
-
-  AllocatorCreationInfo default_memory_info(
-      [](OrtDevice::DeviceId id) {
-        return onnxruntime::make_unique<ROCMAllocator>(id, CUDA);
-      },
-      device_id,
-      true,
-      {hip_mem_limit,
-       static_cast<int>(arena_extend_strategy),
-       -1, -1});
-
-  // HIP malloc/free is expensive so always use an arena
-  allocator_ = CreateAllocator(default_memory_info);
 }
 
 ROCMExecutionProvider::PerThreadContext::~PerThreadContext() {
@@ -213,7 +200,7 @@ ROCMExecutionProvider::PerThreadContext& ROCMExecutionProvider::GetPerThreadCont
 
     // get or create a context
     if (context_state_.retired_context_pool.empty()) {
-      context = std::make_shared<PerThreadContext>(device_id_, hip_mem_limit_, arena_extend_strategy_);
+      context = std::make_shared<PerThreadContext>(device_id_);
     } else {
       context = context_state_.retired_context_pool.back();
       context_state_.retired_context_pool.pop_back();
@@ -247,17 +234,6 @@ void ROCMExecutionProvider::ReleasePerThreadContext() const {
   }
 
   per_thread_context_cache->erase(cached_context_it);
-}
-
-AllocatorPtr ROCMExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
-  // Pinned memory allocator is shared between threads, but HIP memory allocator is per-thread or it may cause result changes
-  // A hypothesis is that arena allocator is not aligned with HIP output cache, and data from different kernel writes may
-  // cause cacheline to contain dirty data.
-  if (mem_type == OrtMemTypeDefault) {
-    return GetPerThreadContext().GetAllocator();
-  } else {
-    return IExecutionProvider::GetAllocator(id, mem_type);
-  }
 }
 
 Status ROCMExecutionProvider::Sync() const {

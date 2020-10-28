@@ -4,7 +4,6 @@
 
 import argparse
 import glob
-# import multiprocessing
 import os
 import re
 import shutil

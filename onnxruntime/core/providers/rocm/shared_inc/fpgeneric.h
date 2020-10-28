@@ -1,15 +1,5 @@
-//
-// Copyright (c) 2017, NVIDIA CORPORATION. All rights reserved.
-// Licensed under the MIT license. See LICENSE.md file in the project root for full license information.
-//
-
-// Make generic operators for floating point types
-/* This file contains:
-   Generalized library calls
-   kernels to be called for not supported data type
-*/
-// NV_TODO: optimize speed -- pass things needed in, optimize kernel speed, add half2
-// NV_TODO: investigate cub support for half
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
 #pragma once
 

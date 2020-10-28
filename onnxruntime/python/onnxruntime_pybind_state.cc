@@ -644,22 +644,10 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
 #endif
     } else if (type == kRocmExecutionProvider) {
 #ifdef USE_ROCM
-
-      // auto it = provider_options_map.find(type);
-      // if (it != provider_options_map.end()) {
-      //   onnxruntime::CudaProviderOptions cuda_provider_options;
-      //   UpdateCudaProviderOptions(sess, cuda_provider_options, it->second);
-
-      //   RegisterExecutionProvider(
-      //       sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_provider_options.device_id,
-      //                                                               cuda_provider_options.cuda_mem_limit,
-      //                                                               cuda_provider_options.arena_extend_strategy));
-      // } else {
-        RegisterExecutionProvider(
-            sess, *onnxruntime::CreateExecutionProviderFactory_ROCM(cuda_device_id,
-                                                                    cuda_mem_limit,
-                                                                    arena_extend_strategy));
-      // }
+    RegisterExecutionProvider(
+        sess, *onnxruntime::CreateExecutionProviderFactory_ROCM(cuda_device_id,
+                                                                cuda_mem_limit,
+                                                                arena_extend_strategy));
 #endif
     } else if (type == kDnnlExecutionProvider) {
 #ifdef USE_DNNL
@@ -947,10 +935,22 @@ void addGlobalMethods(py::module& m, const Environment& env) {
    *
    */
   m.def("set_cuda_device_id", [](const int id) { cuda_device_id = static_cast<OrtDevice::DeviceId>(id); });
-#ifdef USE_CUDA
-  m.def("set_cudnn_conv_algo_search", [](const OrtCudnnConvAlgoSearch algo) { cudnn_conv_algo_search = algo; });
-  m.def("set_do_copy_in_default_stream", [](const bool use_single_stream) { do_copy_in_default_stream = use_single_stream; });
+  m.def("set_cudnn_conv_algo_search", [](const OrtCudnnConvAlgoSearch algo) {
+#ifdef USE_ROCM
+    ORT_UNUSED_PARAMETER(algo);
+    ORT_THROW("set_cudnn_conv_algo_search is not supported in ROCM");
+#else
+    cudnn_conv_algo_search = algo;
 #endif
+  });
+  m.def("set_do_copy_in_default_stream", [](const bool use_single_stream) {
+#ifdef USE_ROCM
+    ORT_UNUSED_PARAMETER(use_single_stream);
+    ORT_THROW("set_do_copy_in_default_stream is not supported in ROCM");
+#else
+    do_copy_in_default_stream = use_single_stream;
+#endif
+  });
   m.def("set_cuda_mem_limit", [](const int64_t limit) { cuda_mem_limit = static_cast<size_t>(limit); });
   m.def("set_arena_extend_strategy", [](const onnxruntime::ArenaExtendStrategy strategy) { arena_extend_strategy = strategy; });
 #endif
