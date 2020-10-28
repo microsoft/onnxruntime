@@ -15,6 +15,7 @@ bool NodeCompare::operator()(const Node* n1, const Node* n2) const {
   return n1->Index() < n2->Index();
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 struct PriorityNodeCompare {
   inline bool IsHighPri(const Node* n) const {
     static const std::unordered_set<std::string> high_pri_ops = {"Shape", "Size"};
@@ -39,6 +40,7 @@ struct PriorityNodeCompare {
     return n1->Index() > n2->Index();
   }
 };
+#endif
 
 GraphViewer::GraphViewer(const Graph& graph)
     : GraphViewer(graph, nullptr) {
