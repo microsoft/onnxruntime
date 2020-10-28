@@ -126,9 +126,9 @@ RUN git clone --recursive -b wezhan/amdgpu https://github.com/microsoft/onnxrunt
     --use_rocm --rocm_home /opt/rocm \
     --mpi_home $OPENMPI_DIR \
     --nccl_home /opt/rocm \
-	--enable_training \
-  && test -f $ORT_DIR/build/Release/onnxruntime_training_bert \
-  && pip install $ORT_DIR/build/Release/dist/*.whl \
+    --enable_training \
+  && test -f $ORT_DIR/build/RelWithDebInfo/onnxruntime_training_bert \
+  && pip install $ORT_DIR/build/RelWithDebInfo/dist/*.whl \
   && ldconfig
 
 # ONNX Runtime Training Examples
