@@ -46,7 +46,7 @@ Status ReduceAllL2<TIn, TOut>::ComputeInternal(OpKernelContext* ctx) const {
   CudaTOut* p_output = reinterpret_cast<CudaTOut*>(output->template MutableData<TOut>());
   ORT_ENFORCE(cudaMemset(p_output, 0, sizeof(CudaTOut)) == cudaSuccess);
 
-  auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
+  auto ctx_internal = dynamic_cast<OpKernelContextInternal*>(ctx);
   bool deterministic = ctx_internal && ctx_internal->GetUseDeterministicCompute();
 
   if (!deterministic) {
