@@ -14,7 +14,7 @@ namespace onnxruntime {
 using namespace common;
 
 AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
-  auto device_allocator = std::unique_ptr<IDeviceAllocator>(info.device_alloc_factory(info.device_id));
+  auto device_allocator = std::unique_ptr<IAllocator>(info.device_alloc_factory(info.device_id));
 
   if (info.use_arena) {
     size_t max_mem = info.arena_cfg.max_mem == 0 ? BFCArena::DEFAULT_MAX_MEM : info.arena_cfg.max_mem;

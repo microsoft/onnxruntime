@@ -74,6 +74,15 @@ if (onnxruntime_ENABLE_TRAINING)
   target_include_directories(onnxruntime_pybind11_state PRIVATE ${ORTTRAINING_ROOT})
 endif()
 
+# Disable certain pybind11 warnings while building using AppleClang 12 on macOS
+# TODO, remove this after switch to pybind11 2.6.0+
+if(APPLE AND ${CMAKE_CXX_COMPILER_ID} STREQUAL "AppleClang" AND ${CMAKE_CXX_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.0)
+  # https://github.com/pybind/pybind11/pull/2522
+  target_compile_options(onnxruntime_pybind11_state PRIVATE "-Wno-range-loop-analysis")
+  # https://github.com/pybind/pybind11/pull/2294
+  target_compile_options(onnxruntime_pybind11_state PRIVATE "-Wno-unused-value")
+endif()
+
 if(APPLE)
   set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker -exported_symbols_list ${ONNXRUNTIME_ROOT}/python/exported_symbols.lst")
 elseif(UNIX)
@@ -107,6 +116,7 @@ set(onnxruntime_pybind11_state_libs
     onnxruntime_graph
     onnxruntime_common
     onnxruntime_mlas
+    onnxruntime_flatbuffers
     ${pybind11_lib}
 )
 
@@ -147,6 +157,7 @@ set_target_properties(onnxruntime_pybind11_state PROPERTIES FOLDER "ONNXRuntime"
 if(onnxruntime_ENABLE_LTO)
   set_target_properties(onnxruntime_pybind11_state PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
   set_target_properties(onnxruntime_pybind11_state PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
+  set_target_properties(onnxruntime_pybind11_state PROPERTIES INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL TRUE)
 endif()
 if (MSVC)
   set_target_properties(onnxruntime_pybind11_state PROPERTIES SUFFIX ".pyd")
@@ -171,16 +182,16 @@ endif()
 
 if (onnxruntime_ENABLE_TRAINING)
   file(GLOB onnxruntime_python_capi_training_srcs CONFIGURE_DEPENDS
-    "${ORTTRAINING_SOURCE_DIR}/python/training/*.py"
+    "${ORTTRAINING_SOURCE_DIR}/python/deprecated/*.py"
   )
   file(GLOB onnxruntime_python_root_srcs CONFIGURE_DEPENDS
-    "${ORTTRAINING_SOURCE_DIR}/python/experimental/*.py"
+    "${ORTTRAINING_SOURCE_DIR}/python/training/*.py"
   )
   file(GLOB onnxruntime_python_amp_srcs CONFIGURE_DEPENDS
-    "${ORTTRAINING_SOURCE_DIR}/python/experimental/amp/*.py"
+    "${ORTTRAINING_SOURCE_DIR}/python/training/amp/*.py"
   )
   file(GLOB onnxruntime_python_optim_srcs CONFIGURE_DEPENDS
-    "${ORTTRAINING_SOURCE_DIR}/python/experimental/optim/*.py"
+    "${ORTTRAINING_SOURCE_DIR}/python/training/optim/*.py"
   )
   file(GLOB onnxruntime_python_train_tools_srcs CONFIGURE_DEPENDS
     "${REPO_ROOT}/tools/python/register_custom_ops_pytorch_exporter.py"
@@ -207,6 +218,11 @@ file(GLOB onnxruntime_python_quantization_src CONFIGURE_DEPENDS
 file(GLOB onnxruntime_python_quantization_operators_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/quantization/operators/*.py"
 )
+file(GLOB onnxruntime_python_transformers_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/tools/transformers/*.py"
+)
+list(REMOVE_ITEM onnxruntime_python_transformers_src
+  "${ONNXRUNTIME_ROOT}/python/tools/transformers/test_optimizer.py")
 file(GLOB onnxruntime_python_datasets_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/datasets/*.py"
 )
@@ -225,6 +241,7 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/datasets
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/tools
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/tools/featurizer_ops
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/transformers
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/quantization
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/quantization/operators
   COMMAND ${CMAKE_COMMAND} -E copy
@@ -273,6 +290,9 @@ add_custom_command(
       ${onnxruntime_python_quantization_operators_src}
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/quantization/operators/
   COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_python_transformers_src}
+      $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/transformers/
+  COMMAND ${CMAKE_COMMAND} -E copy
       ${REPO_ROOT}/VERSION_NUMBER
       $<TARGET_FILE_DIR:${test_data_target}>
 )
@@ -280,21 +300,24 @@ add_custom_command(
 if (onnxruntime_ENABLE_TRAINING)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/amp
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/optim
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/training
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/training/amp
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/training/optim
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_capi_training_srcs}
+        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/training/
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_root_srcs}
-        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/
+        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/training/
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_amp_srcs}
-        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/amp/
+        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/training/amp/
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_optim_srcs}
-        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/optim/
+        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/training/optim/
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_train_tools_srcs}
-        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/
+        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/training/
   )
 endif()
 
@@ -351,15 +374,6 @@ if (onnxruntime_USE_TVM)
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
         $<TARGET_FILE:tvm> $<TARGET_FILE:nnvm_compiler>
-        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
-  )
-endif()
-
-if (onnxruntime_USE_MKLML)
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${MKLML_LIB_DIR}/${MKLML_SHARED_LIB} ${MKLML_LIB_DIR}/${IOMP5MD_SHARED_LIB}
         $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
   )
 endif()

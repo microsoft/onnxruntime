@@ -21,6 +21,8 @@ class TensorShapeProto;
 
 /** Test if two TensorShapeProto dimensions are equal. */
 bool operator==(const TensorShapeProto_Dimension& l, const TensorShapeProto_Dimension& r);
+bool operator!=(const TensorShapeProto_Dimension& l, const TensorShapeProto_Dimension& r);
+
 }  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
@@ -64,9 +66,11 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
 common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& node,
                                               ONNX_NAMESPACE::TensorProto& tensor);
 
+#if !defined(ORT_MINIMAL_BUILD)
 // Convert a SparseTensorProto to a dense TensorProto
 common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseTensorProto& sparse,
                                                    ONNX_NAMESPACE::TensorProto& dense);
+#endif
 
 inline bool HasDimValue(const ONNX_NAMESPACE::TensorShapeProto_Dimension& dim) {
   return dim.value_case() == ONNX_NAMESPACE::TensorShapeProto_Dimension::kDimValue;

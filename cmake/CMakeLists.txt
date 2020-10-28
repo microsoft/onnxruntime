@@ -14,7 +14,13 @@ endif()
 # Support OS X versions 10.12+
 # This variable is ignored on non-Apple platforms and needs to be set prior to the first project(...) invocation
 # TODO: Make the miniumum deployment target MacOSX version configurable
-set(CMAKE_OSX_DEPLOYMENT_TARGET "10.12" CACHE STRING "Minimum OS X deployment version for ORT" FORCE)
+# If the CMAKE_OSX_DEPLOYMENT_TARGET was set (currently valid only for iOS build),
+# we will cache its value instead of the default "10.12"
+if (NOT DEFINED CMAKE_OSX_DEPLOYMENT_TARGET)
+  set(CMAKE_OSX_DEPLOYMENT_TARGET "10.12" CACHE STRING "Minimum OS X deployment version for ORT" FORCE)
+else()
+  set(CMAKE_OSX_DEPLOYMENT_TARGET ${CMAKE_OSX_DEPLOYMENT_TARGET} CACHE STRING "Minimum OS X deployment version for ORT" FORCE)
+endif()
 
 # Project
 project(onnxruntime C CXX)
@@ -36,10 +42,11 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # Enable CTest
 enable_testing()
+include(Dart)
 
 if(NOT CMAKE_BUILD_TYPE)
   message(STATUS "Build type not set - using RelWithDebInfo")
-  set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Choose build type: Debug Release RelWithDebInfo." FORCE)
+  set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Choose build type: Debug Release RelWithDebInfo MinSizeRel." FORCE)
 endif()
 
 # Options
@@ -55,7 +62,6 @@ option(onnxruntime_USE_EIGEN_FOR_BLAS "Use eign for blas" ON)
 option(onnxruntime_USE_NNAPI_BUILTIN "Build with builtin NNAPI lib for Android NNAPI support" OFF)
 option(onnxruntime_USE_RKNPU "Build with RKNPU support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
-option(onnxruntime_USE_MKLML "Build the default cpu provider with MKL-ML binary dependency" OFF)
 option(onnxruntime_USE_FEATURIZERS "Build ML Featurizers support" OFF)
 option(onnxruntime_USE_NGRAPH "Build with nGraph support" OFF)
 option(onnxruntime_USE_OPENBLAS "Use openblas" OFF)
@@ -106,7 +112,7 @@ option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
 #It's default OFF because it's experimental now.
 option(onnxruntime_PREFER_SYSTEM_LIB "Experimental: Build with the preinstalled libraries in your system" OFF)
 
-# Options to reduce build size
+# Options related to reducing the binary size produced by the build
 option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF)
 option(onnxruntime_DISABLE_ML_OPS "Disable traditional ML ops" OFF)
 option(onnxruntime_DISABLE_RTTI "Disable RTTI" OFF)
@@ -114,6 +120,7 @@ option(onnxruntime_DISABLE_RTTI "Disable RTTI" OFF)
 option(onnxruntime_DISABLE_EXCEPTIONS "Disable exception handling. Requires onnxruntime_MINIMAL_BUILD currently." OFF)
 option(onnxruntime_MINIMAL_BUILD "Exclude as much as possible from the build. Support ORT format models. No support for ONNX format models." OFF)
 option(onnxruntime_REDUCED_OPS_BUILD "Reduced set of kernels are registered in build via modification of the kernel registration source files." OFF)
+option(onnxruntime_DISABLE_ORT_FORMAT_LOAD "Disable loading an ORT format model when onnxruntime_MINIMAL_BUILD=OFF (i.e. in a full build)." OFF)
 
 # training options
 option(onnxruntime_ENABLE_NVTX_PROFILE "Enable NVTX profile." OFF)
@@ -121,6 +128,9 @@ option(onnxruntime_ENABLE_TRAINING "Enable training functionality." OFF)
 option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
 option(onnxruntime_USE_HOROVOD "Build with HOROVOD support" OFF)
 option(onnxruntime_USE_NCCL "Build with NCCL support" ON)
+#A special option just for debugging and sanitize check. Please do not enable in option in retail builds.
+#The option has no effect on Windows.
+option(onnxruntime_USE_VALGRIND "Build with valgrind hacks" OFF)
 
 # A special build option only used for gathering code coverage info
 option(onnxruntime_RUN_MODELTEST_IN_DEBUG_MODE "Run model tests even in debug mode" OFF)
@@ -135,6 +145,10 @@ if(MSVC AND WIN32 AND onnxruntime_FUZZ_TEST AND onnxruntime_BUILD_SHARED_LIB AND
   # Fuzz test library dependency, protobuf-mutator,
   # needs the onnx message to be compiled using "non-lite protobuf version"
   set(onnxruntime_FUZZ_ENABLED ON)
+endif()
+
+if(onnxruntime_USE_VALGRIND AND NOT WIN32)
+  add_definitions(-DRE2_ON_VALGRIND=1)
 endif()
 
 if (onnxruntime_ENABLE_NVTX_PROFILE)
@@ -171,7 +185,6 @@ if(NOT WIN32)
     set(onnxruntime_ENABLE_INSTRUMENT OFF)
   endif()
 else()
-  add_compile_definitions(WINVER=0x0601)  # Support Windows 7 and newer
   if(WINDOWS_STORE)
     # cmake/external/protobuf/src/google/protobuf/compiler/subprocess.cc and onnxruntime/core/platform/windows/env.cc call a bunch of Win32 APIs.
     # For now, we'll set the API family to desktop globally to expose Win32 symbols in headers; this must be fixed!
@@ -184,12 +197,7 @@ if(onnxruntime_USE_OPENMP)
   if (OPENMP_FOUND)
     set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
-    include_directories(${OpenMP_CXX_INCLUDE_DIR})
-    # MKLML and NGraph depend on their own OpenMP library that may be different with the compiler's.
-    # Disable the options to build mklml/NGraph and OpenMP together.
-    if((WIN32 OR APPLE) AND onnxruntime_USE_MKLML)
-      message(FATAL_ERROR "Please use only one of onnxruntime_USE_MKLML, onnxruntime_USE_OPENMP")
-    endif()
+    include_directories(${OpenMP_CXX_INCLUDE_DIR})    
     if(onnxruntime_USE_NGRAPH)
       message(FATAL_ERROR "Please use only one of onnxruntime_USE_NGRAPH, onnxruntime_USE_OPENMP")
     endif()
@@ -199,21 +207,12 @@ if(onnxruntime_USE_OPENMP)
   endif()
 endif()
 
-if(onnxruntime_ENABLE_LTO)
-    include(CheckIPOSupported)
-    check_ipo_supported(RESULT ipo_enabled OUTPUT ipo_output)
-    if(NOT ipo_enabled)
-      message(WARNING "IPO is not supported by this compiler")
-      set(onnxruntime_ENABLE_LTO OFF)
-    else()
-      set (CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
-    endif()
-endif()
-
 # ORT build with as much excluded as possible. Supports ORT flatbuffers models only.
 # Will expose option in build.py when all pieces are available
 if(onnxruntime_MINIMAL_BUILD)
   add_compile_definitions(ORT_MINIMAL_BUILD)
+  add_compile_definitions(ENABLE_ORT_FORMAT_LOAD)
+
   set(onnxruntime_REDUCED_OPS_BUILD ON)
 
   if (NOT onnxruntime_ENABLE_PYTHON)
@@ -222,8 +221,11 @@ if(onnxruntime_MINIMAL_BUILD)
   endif()
 
   if (MSVC)
-    # add MSVC specific flags to reduce build size here if needed
-    
+    # turn on LTO (which adds some compiler flags and turns on LTCG) unless it's a Debug build to minimize binary size
+    if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+      set (onnxruntime_ENABLE_LTO ON)
+    endif()
+
     # undocumented internal flag to allow analysis of a minimal build binary size
     if (ADD_DEBUG_INFO_TO_MINIMAL_BUILD)
       string(APPEND CMAKE_CXX_FLAGS " /Zi")
@@ -237,7 +239,28 @@ if(onnxruntime_MINIMAL_BUILD)
     else()
       add_link_options(-Wl,--gc-sections)
     endif()
+
+    if (ADD_DEBUG_INFO_TO_MINIMAL_BUILD)
+      string(APPEND CMAKE_CXX_FLAGS " -g")
+      string(APPEND CMAKE_C_FLAGS " -g")
+    endif()
   endif()
+else()
+  # support ORT format model loading unless onnxruntime_DISABLE_ORT_FORMAT_LOAD is set
+  if (NOT onnxruntime_DISABLE_ORT_FORMAT_LOAD)
+    add_compile_definitions(ENABLE_ORT_FORMAT_LOAD)
+  endif()
+endif()
+
+if(onnxruntime_ENABLE_LTO)
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT ipo_enabled OUTPUT ipo_output)
+    if(NOT ipo_enabled)
+      message(WARNING "IPO is not supported by this compiler")
+      set(onnxruntime_ENABLE_LTO OFF)
+    else()
+      set (CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+    endif()
 endif()
 
 if (onnxruntime_REDUCED_OPS_BUILD)
@@ -275,6 +298,26 @@ if(onnxruntime_DISABLE_EXCEPTIONS)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-exceptions -fno-unwind-tables -fno-asynchronous-unwind-tables")
   endif()
 endif()
+
+# We need to link with libatomic on systems that do not have built-in atomics, or
+# don't have built-in support for 8 byte atomics
+# Derived from https://github.com/protocolbuffers/protobuf/blob/master/cmake/CMakeLists.txt
+set(onnxruntime_LINK_LIBATOMIC false)
+if (NOT MSVC)
+  include(CheckCXXSourceCompiles)
+  set(OLD_CMAKE_REQUIRED_FLAGS ${CMAKE_REQUIRED_FLAGS})
+  set(CMAKE_REQUIRED_FLAGS ${CMAKE_REQUIRED_FLAGS} -std=c++11)
+  check_cxx_source_compiles("
+    #include <atomic>
+    int main() {
+      return std::atomic<int64_t>{};
+    }
+  " onnxruntime_HAVE_BUILTIN_ATOMICS)
+  if (NOT onnxruntime_HAVE_BUILTIN_ATOMICS)
+    set(onnxruntime_LINK_LIBATOMIC true)
+  endif ()
+  set(CMAKE_REQUIRED_FLAGS ${OLD_CMAKE_REQUIRED_FLAGS})
+endif ()
 
 set(REPO_ROOT ${PROJECT_SOURCE_DIR}/..)
 set(ONNXRUNTIME_ROOT ${PROJECT_SOURCE_DIR}/../onnxruntime)
@@ -353,6 +396,7 @@ if (MSVC)
   if (onnxruntime_ENABLE_LTO AND NOT onnxruntime_USE_CUDA)
     SET (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Gw /GL")
     SET (CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /Gw /GL")
+    SET (CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} /Gw /GL")
   endif()
 
   # The WinML build tool chain builds ARM/ARM64, and the internal tool chain does not have folders for spectre mitigation libs.
@@ -371,6 +415,8 @@ if (MSVC)
     SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /guard:cf")
     SET(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} /guard:cf")
     SET(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /guard:cf")
+    SET(CMAKE_C_FLAGS_MINSIZEREL "${CMAKE_C_FLAGS_MINSIZEREL} /guard:cf")
+    SET(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} /guard:cf")
     SET(CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} /guard:cf")
   endif()
 else()
@@ -564,7 +610,6 @@ get_filename_component(ORTTRAINING_ROOT "${ORTTRAINING_ROOT}" ABSOLUTE)
 get_filename_component(REPO_ROOT "${REPO_ROOT}" ABSOLUTE)
 set(ONNXRUNTIME_INCLUDE_DIR ${REPO_ROOT}/include/onnxruntime)
 
-
 add_subdirectory(external/date EXCLUDE_FROM_ALL)
 
 if(onnxruntime_PREFER_SYSTEM_LIB)
@@ -630,7 +675,28 @@ if (onnxruntime_USE_ACL OR onnxruntime_USE_ACL_1902 OR onnxruntime_USE_ACL_1905 
     endif()
   endif()
 
+  if (NOT ${onnxruntime_ACL_LIBS} STREQUAL "")
+
+    add_library(arm_compute SHARED IMPORTED)
+    set_target_properties(arm_compute PROPERTIES
+        IMPORTED_NO_SONAME 1
+        IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute.so")
+
+    add_library(arm_compute_core SHARED IMPORTED)
+    set_target_properties(arm_compute_core PROPERTIES
+        IMPORTED_NO_SONAME 1
+        IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute_core.so")
+
+    add_library(arm_compute_graph SHARED IMPORTED)
+    set_target_properties(arm_compute_graph PROPERTIES
+        IMPORTED_NO_SONAME 1
+        IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute_graph.so")
+
+    link_libraries(arm_compute arm_compute_core arm_compute_graph)
+  endif()
+
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES arm_compute arm_compute_graph arm_compute_core)
+
 endif()
 
 # ArmNN
@@ -642,11 +708,39 @@ if (onnxruntime_USE_ARMNN)
     add_definitions(-DBN_ARMNN=1)
   endif()
 
+  if (NOT onnxruntime_USE_ACL AND NOT ${onnxruntime_ACL_LIBS} STREQUAL "")
+
+    add_library(arm_compute SHARED IMPORTED)
+    set_target_properties(arm_compute PROPERTIES
+        IMPORTED_NO_SONAME 1
+        IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute.so")
+
+    add_library(arm_compute_core SHARED IMPORTED)
+    set_target_properties(arm_compute_core PROPERTIES
+        IMPORTED_NO_SONAME 1
+        IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute_core.so")
+
+    add_library(arm_compute_graph SHARED IMPORTED)
+    set_target_properties(arm_compute_graph PROPERTIES
+        IMPORTED_NO_SONAME 1
+        IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute_graph.so")
+
+    link_libraries(arm_compute arm_compute_core arm_compute_graph)
+  endif()
+
+  if (NOT ${onnxruntime_ARMNN_LIBS} STREQUAL "")
+
+    find_library(ARMNN_LIBRARY NAMES armnn
+                     PATHS ${onnxruntime_ARMNN_LIBS}
+                     NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
+
+    link_libraries(armnn)
+  endif()
+
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES armnn pthread arm_compute_core arm_compute arm_compute_graph)
 endif()
 
-# MKLML
-if (onnxruntime_USE_DNNL OR onnxruntime_USE_MKLML)
+if (onnxruntime_USE_DNNL)
   include(dnnl)
 endif()
 
@@ -662,28 +756,12 @@ if (onnxruntime_USE_TVM)
   if (onnxruntime_USE_OPENMP)
     set(USE_OPENMP "gnu")
   endif()
-  if (onnxruntime_USE_MKLML)
-    set(USE_OPENMP "intel")
-    # make sure MKLML in ORT is used by TVM
-    if (WIN32)
-      set(OMP_LIBRARY ${MKLML_LIB_DIR}/${IOMP5MD_IMPORT_LIB})
-    else()
-      set(OMP_LIBRARY ${MKLML_LIB_DIR}/${IOMP5MD_SHARED_LIB})
-    endif()
-  endif()
 
   add_subdirectory(${PROJECT_SOURCE_DIR}/external/tvm EXCLUDE_FROM_ALL)
   set_target_properties(tvm PROPERTIES FOLDER "External/tvm")
   set_target_properties(tvm_topi PROPERTIES FOLDER "External/tvm")
   set_target_properties(tvm_runtime PROPERTIES FOLDER "External/tvm")
   set_target_properties(nnvm_compiler PROPERTIES FOLDER "External/tvm")
-
-  if (onnxruntime_USE_MKLML)
-    add_dependencies(tvm project_mklml)
-    add_dependencies(tvm_topi project_mklml)
-    add_dependencies(tvm_runtime project_mklml)
-    add_dependencies(nnvm_compiler project_mklml)
-  endif()
 
   set(TVM_INCLUDES ${PROJECT_SOURCE_DIR}/external/tvm/include
     ${PROJECT_SOURCE_DIR}/external/tvm/3rdparty/dmlc-core/include
@@ -721,7 +799,7 @@ else()
 endif()
 
 if (NOT onnxruntime_MINIMAL_BUILD)
-  add_subdirectory(external/onnx)
+  add_subdirectory(external/onnx EXCLUDE_FROM_ALL)
 else()
   include(onnx_minimal)
 endif()
@@ -732,22 +810,6 @@ if (NOT onnxruntime_USE_FULL_PROTOBUF)
 endif()
 set_target_properties(onnx PROPERTIES FOLDER "External/ONNX")
 set_target_properties(onnx_proto PROPERTIES FOLDER "External/ONNX")
-
-if (onnxruntime_USE_MKLML)
-  add_definitions(-DUSE_MKLML=1 -DUSE_MKLML_FOR_BLAS=1)
-  if (WIN32 OR APPLE)
-    list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml)
-  else()
-    if(onnxruntime_USE_OPENMP)
-      list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml_gnu)
-    else()
-      list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml_intel)
-    endif()
-  endif()
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_mklml)
-  include_directories(${MKLML_INCLUDE_DIR})
-  link_directories(${MKLML_LIB_DIR})
-endif()
 
 if (onnxruntime_USE_NGRAPH)
   if (NOT onnxruntime_USE_FULL_PROTOBUF)
@@ -820,13 +882,21 @@ if (WIN32)
     if (MSVC)
       foreach(type EXE STATIC SHARED)
         if (NOT type MATCHES STATIC)
-          set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /OPT:REF,ICF,LBR")
-          set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /INCREMENTAL:NO")
-          #TODO: the "/LTCG" switch should be controlled by onnxruntime_ENABLE_LTO
+          # The WinML internal toolchain does not allow link's "additional options" to contain optimization
+          # flags (/OPT#); these are already specified using msbuild properties.
+          if (NOT DEFINED onnxruntime_DISABLE_LINKER_OPT_FLAGS)
+            set(CMAKE_${type}_LINKER_FLAGS_RELEASE "${CMAKE_${type}_LINKER_FLAGS_RELEASE} /OPT:REF,ICF,LBR")
+            set(CMAKE_${type}_LINKER_FLAGS_RELEASE "${CMAKE_${type}_LINKER_FLAGS_RELEASE} /INCREMENTAL:NO")
+            set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /OPT:REF,ICF,LBR")
+            set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /INCREMENTAL:NO")
+            set(CMAKE_${type}_LINKER_FLAGS_MINSIZEREL "${CMAKE_${type}_LINKER_FLAGS_MINSIZEREL} /OPT:REF,ICF,LBR")
+            set(CMAKE_${type}_LINKER_FLAGS_MINSIZEREL "${CMAKE_${type}_LINKER_FLAGS_MINSIZEREL} /INCREMENTAL:NO")
+          endif()
         endif()
         if (onnxruntime_ENABLE_LTO AND NOT onnxruntime_USE_CUDA)
           set(CMAKE_${type}_LINKER_FLAGS_RELEASE "${CMAKE_${type}_LINKER_FLAGS_RELEASE} /LTCG")
           set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /LTCG")
+          set(CMAKE_${type}_LINKER_FLAGS_MINSIZEREL "${CMAKE_${type}_LINKER_FLAGS_MINSIZEREL} /LTCG")
         endif()
       endforeach()
     endif()
@@ -909,6 +979,9 @@ if(onnxruntime_USE_OPENVINO)
   elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "2020.4")
     set(OPENVINO_VERSION "2020.4")
     add_definitions(-DOPENVINO_2020_4=1)
+  elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "2021.1")
+    set(OPENVINO_VERSION "2021.1")
+    add_definitions(-DOPENVINO_2021_1=1)
   else()
     message(FATAL_ERROR "Unsupported OpenVINO version: ${INTEL_OPENVINO_DIR}")
   endif()
@@ -1004,8 +1077,9 @@ if (onnxruntime_USE_CUDA)
     link_directories(${onnxruntime_CUDNN_HOME}/lib/x64)
 
     # delayload causes crash on exit, so disable for now
+    # please update cudaDelayLoadedLibs in Microsoft.ML.OnnxRuntime/SessionOptions.cs if you change delayload
     #file(GLOB cuda_dll_paths "${onnxruntime_CUDA_HOME}/bin/cublas64_*" "${onnxruntime_CUDA_HOME}/bin/cudart64_*" "${onnxruntime_CUDA_HOME}/bin/curand64_*" "${onnxruntime_CUDA_HOME}/bin/cufft64_*")
-    #set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:cudnn64_7.dll")
+    #set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:cudnn64_8.dll")
     #foreach(cuda_dll_path ${cuda_dll_paths})
     #    get_filename_component(cuda_dll_file_name ${cuda_dll_path} NAME)
     #    set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:${cuda_dll_file_name}")
@@ -1173,6 +1247,13 @@ if (onnxruntime_ENABLE_TRAINING)
           message(STATUS "NCCL_MINOR_VERSION: ${NCCL_MINOR_VERSION}")
         endif()
 
+        if (NCCL_MAJOR_VERSION_DEFINED AND NCCL_MINOR_VERSION_DEFINED)
+          if ("${NCCL_MAJOR_VERSION}.${NCCL_MINOR_VERSION}" VERSION_GREATER_EQUAL "2.7")
+            add_definitions(-DUSE_NCCL_P2P=1)
+            message( STATUS "NCCL P2P is enabled for supporting ncclSend and ncclRecv." )
+          endif()
+        endif()
+
         set(NCCL_INCLUDE_DIRS ${NCCL_INCLUDE_DIR})
         set(NCCL_LIBRARIES ${NCCL_LIBRARY})
         message( STATUS "NCCL (include: ${NCCL_INCLUDE_DIRS}, library: ${NCCL_LIBRARIES})" )
@@ -1210,7 +1291,7 @@ endif()
 
 #names in this var must match the directory names under onnxruntime/core/providers
 set(ONNXRUNTIME_PROVIDER_NAMES cpu)
-foreach(target_name onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session onnxruntime_mlas)
+foreach(target_name onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session onnxruntime_mlas onnxruntime_flatbuffers)
   include(${target_name}.cmake)
   if (MSVC)
     target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
@@ -1250,6 +1331,27 @@ if(WIN32)
 else()
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES nsync_cpp)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${CMAKE_DL_LIBS} Threads::Threads)
+endif()
+
+if (WIN32)
+  if (WINDOWS_STORE)
+    # Setting WINAPI_FAMILY, WINVER and _WIN32_WINNT restrict the APIs exposed in Windows headers to those available
+    # in store or desktop, and that support at least the version of Windows specified
+    # add_compile_definitions(WINAPI_FAMILY=2)
+    add_compile_definitions(WINVER=0x0A00 _WIN32_WINNT=0x0A00)  # Support Windows 10
+    # /ZW adds /FUplatform.winmd and /FUwindows.winmd. windows.winmd, in turn, overrides the include path for
+    # the cppwinrt headers, which we set to use the WinML built ones.
+    # Instead, we use /ZW:nostdlib and force include platform.winml only.
+    add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:SHELL:/ZW:nostdlib /FUplatform.winmd>")
+    get_filename_component(msvc_path "${CMAKE_C_COMPILER}/../../../.." ABSOLUTE)
+    link_directories("${msvc_path}/lib/${onnxruntime_target_platform}/store")
+    add_link_options(/APPCONTAINER)
+  else()
+    add_compile_definitions(WINVER=0x0601)  # Support Windows 7 and newer
+    # add_compile_definitions(WINAPI_FAMILY=3)
+    # FIXME adding _WIN32_WINNT=0x0601 and WINAPI_FAMILY is desirable. However, it hides some symbols that are used in WRL
+    # headers and breaks the build of WinML. We should have separate WINVER/_WIN32_WINNT definitions for WinML
+  endif()
 endif()
 
 # Default version parts for Microsoft.AI.MachineLearning.dll and onnxruntime.dll in non-ADO pipeline local builds
@@ -1310,10 +1412,7 @@ if (onnxruntime_BUILD_CSHARP)
   include(onnxruntime_csharp.cmake)
 endif()
 
-if (onnxruntime_BUILD_FOR_WINDOWS_STORE)
-  set_target_properties(onnxruntime PROPERTIES VS_GLOBAL_AppContainerApplication true)
-  set_target_properties(winml_dll PROPERTIES VS_GLOBAL_AppContainerApplication true)
-
+if (WINDOWS_STORE)
   target_link_options(onnxruntime PRIVATE /DYNAMICBASE /NXCOMPAT /APPCONTAINER)
   target_link_options(winml_dll PRIVATE /DYNAMICBASE /NXCOMPAT /APPCONTAINER)
 

@@ -109,7 +109,7 @@ namespace GraphKernelHelper
         const std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap) 
     {
         // Transferred initializers are uploaded to GPU memory
-        auto iter = transferredInitializerMap.find(fusedNodeInputDefs[index]->Name());
+        auto iter = transferredInitializerMap.find(GetFusedNodeArgNameMatchingGraph(fusedNodeInputDefs[index]->Name()));
         if (iter != transferredInitializerMap.end())
         {
             return true;
@@ -133,7 +133,7 @@ namespace GraphKernelHelper
         return true;
     };
 
-    std::vector<std::vector<std::byte>> PopulateInputBindings(
+    void ProcessInputData(
         Dml::IExecutionProvider* provider,
         IWinmlExecutionProvider* winmlProvider,
         const std::vector<uint8_t>& inputsConstant,
@@ -145,17 +145,16 @@ namespace GraphKernelHelper
         _Out_ std::vector<ComPtr<ID3D12Resource>>& initInputResources,
         _Out_ std::vector<ComPtr<ID3D12Resource>>& nonOwnedGraphInputsFromInitializers,
         _Out_ std::vector<ComPtr<ID3D12Resource>>& initializeResourceRefs,
+        _Out_opt_ std::vector<std::vector<std::byte>>* inputRawData,
         _Inout_ std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap)
     {
-        std::vector<std::vector<std::byte>> inputRawData;
-
         const uint32_t graphInputCount = kernelInfo.GetInputCount();
         // Determine the last input which uses an initializer, so initializers can be freed incrementally
         // while processing each input in order.
         std::map<const onnx::TensorProto*, uint32_t> initializerToLastInputIndexMap;
         for (uint32_t i = 0; i < graphInputCount; i++) 
         {
-            auto iter = transferredInitializerMap.find(fusedNodeInputDefs[i]->Name());
+            auto iter = transferredInitializerMap.find(GetFusedNodeArgNameMatchingGraph(fusedNodeInputDefs[i]->Name()));
             if (iter != transferredInitializerMap.end()) {
                 initializerToLastInputIndexMap[&iter->second] = i;
             }
@@ -166,19 +165,25 @@ namespace GraphKernelHelper
         for (const DML_INPUT_GRAPH_EDGE_DESC& edge : graphDesc.inputEdges) {
             inputsUsed[edge.GraphInputIndex] = true;
         }
+
         for (uint32_t i = 0; i < initInputBindings.size(); i++)
         {
             // If the input isn't actually used by the graph, nothing ever needs to be bound (either for
             // initialization or execution). So just throw away the transferred initializer and skip this input.
             if (!inputsUsed[i])
             {
-                transferredInitializerMap.erase(fusedNodeInputDefs[i]->Name());
-                inputRawData.push_back(std::vector<std::byte>());
+                transferredInitializerMap.erase(GetFusedNodeArgNameMatchingGraph(fusedNodeInputDefs[i]->Name()));
+
+                if (inputRawData)
+                {
+                    inputRawData->push_back(std::vector<std::byte>());
+                }
+
                 continue;
             }
 
             // Look for the initializer among those transferred from the graph during partitioning
-            auto iter = transferredInitializerMap.find(fusedNodeInputDefs[i]->Name());
+            auto iter = transferredInitializerMap.find(GetFusedNodeArgNameMatchingGraph(fusedNodeInputDefs[i]->Name()));
             if (iter != transferredInitializerMap.end())
             {
                 std::byte* tensorPtr = nullptr;
@@ -202,7 +207,10 @@ namespace GraphKernelHelper
                 // Tensor sizes in DML must be a multiple of 4 bytes large.
                 tensorByteSize = AlignToPow2<size_t>(tensorByteSize, 4);
 
-                inputRawData.push_back(std::vector<std::byte>(tensorPtr, tensorPtr + tensorByteSize));
+                if (inputRawData)
+                {
+                    inputRawData->push_back(std::vector<std::byte>(tensorPtr, tensorPtr + tensorByteSize));
+                }
 
                 if (!inputsConstant[i])
                 {
@@ -243,8 +251,12 @@ namespace GraphKernelHelper
                 THROW_HR_IF(E_UNEXPECTED, !kernelInfo.TryGetConstantInput(i, &inputTensor));
 
                 const std::byte* tensorData = reinterpret_cast<const std::byte*>(inputTensor->DataRaw());
-                inputRawData.push_back(
-                    std::vector<std::byte>(tensorData, tensorData + inputTensor->SizeInBytes()));
+
+                if (inputRawData)
+                {
+                    inputRawData->push_back(
+                        std::vector<std::byte>(tensorData, tensorData + inputTensor->SizeInBytes()));
+                }
 
                 uint64_t allocId;
                 UnwrapTensor(winmlProvider, inputTensor, &initInputBindings[i].Buffer, &allocId);
@@ -253,15 +265,14 @@ namespace GraphKernelHelper
                 initInputBindings[i].Buffer->Release(); // Avoid holding an additional reference
                 initInputResources.push_back(initInputBindings[i].Buffer);
             } 
-            else 
+            else if (inputRawData)
             {
-                inputRawData.push_back(std::vector<std::byte>());
+                inputRawData->push_back(std::vector<std::byte>());
             }
         }
 
         // All initializers should have been consumed and freed above
         assert(transferredInitializerMap.empty());
-        return inputRawData;
     }
 
     void ConvertGraphDesc(
@@ -308,6 +319,44 @@ namespace GraphKernelHelper
         dmlGraphDesc.OutputEdges = dmlOutputEdges.data();
         dmlGraphDesc.IntermediateEdgeCount = gsl::narrow_cast<uint32_t>(dmlIntermediateEdges.size());
         dmlGraphDesc.IntermediateEdges = dmlIntermediateEdges.data();
+    }
+
+    // TODO: This is a hack which strips the suffix added within Lotus transforms that insert mem copies.
+    // This shouldn't be necessary if Lotus exposes the inputs/ouputs in the same order between the kernel
+    // for a function, and the graph for that function exposed as a kernel property.  When the ordering 
+    // mismatch is fixed (WindowsAI: 21114358, Lotus: 1953), this workaround should be removed.
+    std::string GetFusedNodeArgNameMatchingGraph(const std::string& fusedNodeArgeName)
+    {
+        const char* suffix = nullptr;
+        
+        // The suffix used when inserting mem copies is equal to the below, probably followed by an incrementing number.
+        if (!suffix) 
+        {
+            suffix = strstr(fusedNodeArgeName.c_str(), "_DmlExecutionProvider_");
+        }
+
+        // The suffix used when inserting mem copies is equal to the below, not followed by an incrementing number.
+        if (!suffix) 
+        {
+            suffix = strstr(fusedNodeArgeName.c_str(), "_DmlExecutionProvider");
+        }
+        
+        if (!suffix) 
+        {
+            suffix = strstr(fusedNodeArgeName.c_str(), "_token_");
+        }
+
+        if (suffix)
+        {
+            return std::string(
+                fusedNodeArgeName.begin(),
+                fusedNodeArgeName.begin() + (suffix - fusedNodeArgeName.c_str())
+            );
+        } 
+        else 
+        {
+            return fusedNodeArgeName;
+        }
     }
 }  // namespace GraphKernelHelper
 }  // namespace Dml

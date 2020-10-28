@@ -11,9 +11,12 @@
 #include "core/framework/tensor.h"
 
 namespace onnxruntime {
+#if !defined(ORT_MINIMAL_BUILD)
 class SparseTensor;
+#endif
+
 class TensorSeq;
-}
+}  // namespace onnxruntime
 
 /**
    Represents both tensors and non-tensors.
@@ -52,7 +55,7 @@ struct OrtValue {
     return (type_ != nullptr && type_->IsTensorType());
   }
 
-  bool IsTensorSequence () const noexcept {
+  bool IsTensorSequence() const noexcept {
     return (type_ != nullptr && type_->IsTensorSequenceType());
   }
 
@@ -91,7 +94,7 @@ inline const onnxruntime::Tensor& OrtValue::Get<onnxruntime::Tensor>() const {
 template <>
 inline onnxruntime::Tensor* OrtValue::GetMutable<onnxruntime::Tensor>() {
   ORT_ENFORCE(IsTensor(), "Trying to get a Tensor, but got: ", onnxruntime::DataTypeImpl::ToString(type_));
-  return static_cast<onnxruntime::Tensor*> (data_.get());
+  return static_cast<onnxruntime::Tensor*>(data_.get());
 }
 
 template <>
@@ -106,6 +109,7 @@ inline onnxruntime::TensorSeq* OrtValue::GetMutable<onnxruntime::TensorSeq>() {
   return static_cast<onnxruntime::TensorSeq*>(data_.get());
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 template <>
 inline const onnxruntime::SparseTensor& OrtValue::Get<onnxruntime::SparseTensor>() const {
   ORT_ENFORCE(IsSparseTensor(), "Trying to get a SparseTensor, but got: ", onnxruntime::DataTypeImpl::ToString(type_));
@@ -117,6 +121,7 @@ inline onnxruntime::SparseTensor* OrtValue::GetMutable<onnxruntime::SparseTensor
   ORT_ENFORCE(IsSparseTensor(), "Trying to get a SparseTensor, but got: ", onnxruntime::DataTypeImpl::ToString(type_));
   return static_cast<onnxruntime::SparseTensor*>(data_.get());
 }
+#endif
 
 //TODO: remove the following line
 #define MLValue OrtValue

@@ -550,6 +550,13 @@ namespace OperatorHelper
                 ++inDim1Iter;
             }
 
+            // 0-sized dimensions indicate an empty tensor and shouldn't be broadcasted to higher dimensions
+            if (inDimension0 == 0 || inDimension1 == 0)
+            {
+                inDimension0 = 0;
+                inDimension1 = 0;
+            }
+
             ML_CHECK_VALID_ARGUMENT((inDimension0 == inDimension1) || (inDimension0 == 1) || (inDimension1 == 1));
             *outDimIter = std::max(inDimension0, inDimension1);
         }
@@ -742,8 +749,8 @@ namespace OperatorHelper
         // Determine the number of output dimensions.
         ML_CHECK_VALID_ARGUMENT(inputDimensions.size() >= 1);
         ML_CHECK_VALID_ARGUMENT(indicesDimensions.size() >= 1);
-        ML_CHECK_VALID_ARGUMENT(inputDimensions.size() > batchCount);
-        ML_CHECK_VALID_ARGUMENT(indicesDimensions.size() > batchCount);
+        ML_CHECK_VALID_ARGUMENT(static_cast<int64_t>(inputDimensions.size()) > static_cast<int64_t>(batchCount));
+        ML_CHECK_VALID_ARGUMENT(static_cast<int64_t>(indicesDimensions.size()) > static_cast<int64_t>(batchCount));
         const uint32_t numberOfCoordinatesPerIndex = indicesDimensions.back();
         ML_CHECK_VALID_ARGUMENT(inputDimensions.size() >= batchCount + numberOfCoordinatesPerIndex);
         const uint32_t numberOfOutputDimensionsFromInput = static_cast<uint32_t>(inputDimensions.size()) - batchCount - numberOfCoordinatesPerIndex;

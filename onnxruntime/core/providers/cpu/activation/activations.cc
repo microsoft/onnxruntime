@@ -8,6 +8,8 @@
 #endif
 #include "core/mlas/inc/mlas.h"
 
+using namespace onnxruntime::common;
+
 namespace onnxruntime {
 
 #define CREATE_ELE_KERNEL(X)                  \
@@ -36,9 +38,9 @@ namespace onnxruntime {
 REGISTER_UNARY_ELEMENTWISE_KERNEL(Elu, 6);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(HardSigmoid, 6);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(LeakyRelu, 6);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(Relu, 6);
+REGISTER_VERSIONED_UNARY_ELEMENTWISE_KERNEL_ALIAS(Relu, Relu, 6, 12, 13);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(Selu, 6);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(Sigmoid, 6);
+REGISTER_VERSIONED_UNARY_ELEMENTWISE_KERNEL_ALIAS(Sigmoid, Sigmoid, 6, 12, 13);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(Softplus, 1);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(Softsign, 1);
 REGISTER_VERSIONED_UNARY_ELEMENTWISE_KERNEL_ALIAS(Tanh, Tanh, 6, 12, 13);
@@ -77,7 +79,7 @@ template Status ElementWiseRangedTransform<float>::Create(const std::string& typ
 #define REGISTER_UNARY_ELEMENTWISE_KERNEL(x, sinceVersion) REGISTER_UNARY_ELEMENTWISE_KERNEL_ALIAS(x, x, sinceVersion)
 
 #define REGISTER_VERSIONED_UNARY_ELEMENTWISE_KERNEL_ALIAS(alias, x, sinceVersion, firstEnd, newVersion)         \
-  ONNX_CPU_OPERATOR_VERSIONED_KERNEL(                                                                    \
+  ONNX_CPU_OPERATOR_VERSIONED_KERNEL(                                                                           \
       alias, sinceVersion, firstEnd,                                                                            \
       KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), x<float>); \
   ONNX_CPU_OPERATOR_KERNEL(                                                                                     \

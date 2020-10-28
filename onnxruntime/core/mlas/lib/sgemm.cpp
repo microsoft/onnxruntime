@@ -32,21 +32,22 @@ Abstract:
 //
 
 struct MLAS_SGEMM_WORK_BLOCK {
+    int32_t ThreadCountM;
+    int32_t ThreadCountN;
     CBLAS_TRANSPOSE TransA;
     CBLAS_TRANSPOSE TransB;
+    size_t M;
+    size_t N;
     size_t K;
+    const float* A;
     size_t lda;
+    const float* B;
     size_t ldb;
+    const void* PackedB;
+    float* C;
     size_t ldc;
     float alpha;
     float beta;
-    struct SEGMENT {
-        size_t M;
-        size_t N;
-        const float* A;
-        const float* B;
-        float* C;
-    } Segments[MLAS_MAXIMUM_THREAD_COUNT];
 };
 
 void
@@ -962,8 +963,8 @@ Return Value:
     // the A panel needs to be used for transposing.
     //
 
-    uint32_t StrideN = MLAS_SGEMM_STRIDEN;
-    uint32_t StrideK = MLAS_SGEMM_STRIDEK;
+    size_t StrideN = MLAS_SGEMM_STRIDEN;
+    size_t StrideK = MLAS_SGEMM_STRIDEK;
 
     if (N >= K) {
 
@@ -985,15 +986,10 @@ Return Value:
     //
 
     size_t CountN;
-    size_t CountK;
 
     for (size_t n = 0; n < N; n += CountN) {
 
-        CountN = StrideN;
-
-        if (CountN > (N - n)) {
-            CountN = N - n;
-        }
+        CountN = std::min(N - n, StrideN);
 
         //
         // Multiply the output matrix by beta as needed.
@@ -1007,15 +1003,12 @@ Return Value:
         // Step through each slice of matrix B along the K dimension.
         //
 
+        size_t CountK;
         bool ZeroMode = (beta == 0.0f);
 
         for (size_t k = 0; k < K; k += CountK) {
 
-            CountK = StrideK;
-
-            if (CountK > (K - k)) {
-                CountK = K - k;
-            }
+            CountK = std::min(K - k, StrideK);
 
             //
             // Copy or transpose a panel of matrix B to a local packed buffer.
@@ -1048,11 +1041,7 @@ Return Value:
                     // Transpose elements from matrix A into a local buffer.
                     //
 
-                    size_t RowsTransposed = RowsRemaining;
-
-                    if (RowsTransposed > MLAS_SGEMM_TRANSA_ROWS) {
-                        RowsTransposed = MLAS_SGEMM_TRANSA_ROWS;
-                    }
+                    size_t RowsTransposed = std::min(RowsRemaining, size_t(MLAS_SGEMM_TRANSA_ROWS));
 
                     MlasSgemmTransposeA(PanelA, a, lda, RowsTransposed, CountK);
 
@@ -1074,9 +1063,145 @@ Return Value:
 }
 
 void
-MlasSgemmOperationThreaded(
+MlasSgemmPackedOperation(
+    CBLAS_TRANSPOSE TransA,
+    size_t M,
+    size_t RangeStartN,
+    size_t RangeCountN,
+    size_t K,
+    float alpha,
+    const float* A,
+    size_t lda,
+    const void* PackedB,
+    size_t AlignedN,
+    float beta,
+    float* C,
+    size_t ldc
+    )
+/*++
+
+Routine Description:
+
+    This routine implements the single precision matrix/matrix multiply
+    operation (SGEMM).
+
+Arguments:
+
+    TransA - Supplies the transpose operation for matrix A.
+
+    M - Supplies the number of rows of matrix A and matrix C.
+
+    RangeStartN - Supplies the starting column from packed matrix B.
+
+    RangeCountN - Supplies the number of columns of matrix B and matrix C.
+
+    K - Supplies the number of columns of matrix A and the number of rows of
+        matrix B.
+
+    alpha - Supplies the scalar alpha multiplier (see SGEMM definition).
+
+    A - Supplies the address of matrix A.
+
+    lda - Supplies the first dimension of matrix A.
+
+    PackedB - Supplies the address of packed matrix B.
+
+    AlignedN - Supplies the total number of aligned columns for packed matrix B.
+
+    ldb - Supplies the first dimension of matrix B.
+
+    beta - Supplies the scalar beta multiplier (see SGEMM definition).
+
+    C - Supplies the address of matrix C.
+
+    ldc - Supplies the first dimension of matrix C.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    float PanelA[MLAS_SGEMM_TRANSA_ROWS * MLAS_SGEMM_PACKED_STRIDEK];
+
+    //
+    // Step through each slice of matrix B along the N dimension.
+    //
+
+    size_t CountN;
+
+    for (size_t n = 0; n < RangeCountN; n += CountN) {
+
+        const size_t SliceStartN = RangeStartN + n;
+
+        CountN = std::min(RangeCountN - n, size_t(MLAS_SGEMM_PACKED_STRIDEN));
+
+        //
+        // Multiply the output matrix by beta as needed.
+        //
+
+        if (beta != 0.0f && beta != 1.0f) {
+            MlasSgemmMultiplyBeta(C + n, M, CountN, ldc, beta);
+        }
+
+        //
+        // Step through each slice of matrix B along the K dimension.
+        //
+
+        size_t CountK;
+        bool ZeroMode = (beta == 0.0f);
+
+        for (size_t k = 0; k < K; k += CountK) {
+
+            CountK = std::min(K - k, size_t(MLAS_SGEMM_PACKED_STRIDEK));
+
+            //
+            // Step through each slice of matrix A along the M dimension.
+            //
+
+            const float* pb = (const float*)PackedB + AlignedN * k + CountK * SliceStartN;
+            float* c = C + n;
+
+            if (TransA == CblasNoTrans) {
+
+                MlasSgemmKernelLoop(A + k, pb, c, CountK, M, CountN, lda, ldc, alpha, ZeroMode);
+
+            } else {
+
+                const float* a = A + k * lda;
+                size_t RowsRemaining = M;
+
+                do {
+
+                    //
+                    // Transpose elements from matrix A into a local buffer.
+                    //
+
+                    size_t RowsTransposed = std::min(RowsRemaining, size_t(MLAS_SGEMM_TRANSA_ROWS));
+
+                    MlasSgemmTransposeA(PanelA, a, lda, RowsTransposed, CountK);
+
+                    RowsRemaining -= RowsTransposed;
+                    a += RowsTransposed;
+
+                    //
+                    // Step through the rows of the local buffer.
+                    //
+
+                    c = MlasSgemmKernelLoop(PanelA, pb, c, CountK, RowsTransposed, CountN, CountK, ldc, alpha, ZeroMode);
+
+                } while (RowsRemaining > 0);
+            }
+
+            ZeroMode = false;
+        }
+    }
+}
+
+void
+MlasSgemmThreaded(
     void* Context,
-    int32_t Index
+    int32_t ThreadId
     )
 /*++
 
@@ -1089,7 +1214,7 @@ Arguments:
 
     Context - Supplies the pointer to the context for the threaded operation.
 
-    Index - Supplies the current index of the threaded operation.
+    ThreadId - Supplies the current index of the threaded operation.
 
 Return Value:
 
@@ -1097,89 +1222,111 @@ Return Value:
 
 --*/
 {
-    MLAS_SGEMM_WORK_BLOCK* WorkBlock = (MLAS_SGEMM_WORK_BLOCK*)Context;
+    const auto* WorkBlock = (MLAS_SGEMM_WORK_BLOCK*)Context;
 
-    MLAS_SGEMM_WORK_BLOCK::SEGMENT* Segment = &WorkBlock->Segments[Index];
+    const int32_t ThreadCountM = WorkBlock->ThreadCountM;
+    const int32_t ThreadCountN = WorkBlock->ThreadCountN;
 
-    MlasSgemmOperation(WorkBlock->TransA, WorkBlock->TransB, Segment->M,
-        Segment->N, WorkBlock->K, WorkBlock->alpha, Segment->A, WorkBlock->lda,
-        Segment->B, WorkBlock->ldb, WorkBlock->beta, Segment->C,
-        WorkBlock->ldc);
+    const int32_t ThreadIdM = ThreadId / ThreadCountN;
+    const int32_t ThreadIdN = ThreadId % ThreadCountN;
+
+    //
+    // Partition the operation along the M dimension.
+    //
+
+    size_t M = WorkBlock->M;
+    size_t RangeStartM;
+    size_t RangeCountM;
+
+    MlasPartitionWork(ThreadIdM, ThreadCountM, M, &RangeStartM, &RangeCountM);
+
+    //
+    // Partition the operation along the N dimension.
+    //
+
+    size_t N = WorkBlock->N;
+    size_t RangeStartN;
+    size_t RangeCountN;
+
+    const size_t BlockedN = (N + MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1) /
+        MLAS_SGEMM_STRIDEN_THREAD_ALIGN;
+
+    MlasPartitionWork(ThreadIdN, ThreadCountN, BlockedN, &RangeStartN,
+        &RangeCountN);
+
+    RangeStartN *= MLAS_SGEMM_STRIDEN_THREAD_ALIGN;
+    RangeCountN *= MLAS_SGEMM_STRIDEN_THREAD_ALIGN;
+
+    RangeCountN = std::min(N - RangeStartN, RangeCountN);
+
+    //
+    // Dispatch the partitioned operation.
+    //
+
+    CBLAS_TRANSPOSE TransA = WorkBlock->TransA;
+
+    const size_t lda = WorkBlock->lda;
+    const size_t ldc = WorkBlock->ldc;
+
+    const float* A = WorkBlock->A + RangeStartM * ((TransA == CblasNoTrans) ? lda : 1);
+    float* C = WorkBlock->C + RangeStartM * ldc + RangeStartN;
+
+    if (WorkBlock->B != nullptr) {
+
+        CBLAS_TRANSPOSE TransB = WorkBlock->TransB;
+
+        const size_t ldb = WorkBlock->ldb;
+
+        const float* B = WorkBlock->B + RangeStartN * ((TransB == CblasNoTrans) ? 1 : ldb);
+
+        MlasSgemmOperation(TransA, TransB, RangeCountM, RangeCountN, WorkBlock->K,
+            WorkBlock->alpha, A, lda, B, ldb, WorkBlock->beta, C, ldc);
+
+    } else {
+
+        MlasSgemmPackedOperation(TransA, RangeCountM, RangeStartN, RangeCountN,
+            WorkBlock->K, WorkBlock->alpha, A, lda, WorkBlock->PackedB,
+            BlockedN * MLAS_SGEMM_STRIDEN_THREAD_ALIGN, WorkBlock->beta, C, ldc);
+    }
 }
 
-inline
-bool
-MlasSgemmTryMultithread(
-    CBLAS_TRANSPOSE TransA,
-    CBLAS_TRANSPOSE TransB,
-    size_t M,
-    size_t N,
-    size_t K,
-    float alpha,
-    const float* A,
-    size_t lda,
-    const float* B,
-    size_t ldb,
-    float beta,
-    float* C,
-    size_t ldc,
+void
+MlasSgemmSchedule(
+    MLAS_SGEMM_WORK_BLOCK* WorkBlock,
     MLAS_THREADPOOL* ThreadPool
     )
 /*++
 
 Routine Description:
 
-    This routine attempts to launch a single precision matrix/matrix multiply
-    operation (SGEMM) across multiple threads.
+    This routine schedules the single precision matrix/matrix multiply
+    operation (SGEMM) across one or more threads.
 
 Arguments:
 
-    TransA - Supplies the transpose operation for matrix A.
-
-    TransB - Supplies the transpose operation for matrix B.
-
-    M - Supplies the number of rows of matrix A and matrix C.
-
-    N - Supplies the number of columns of matrix B and matrix C.
-
-    K - Supplies the number of columns of matrix A and the number of rows of
-        matrix B.
-
-    alpha - Supplies the scalar alpha multiplier (see SGEMM definition).
-
-    A - Supplies the address of matrix A.
-
-    lda - Supplies the first dimension of matrix A.
-
-    B - Supplies the address of matrix B.
-
-    ldb - Supplies the first dimension of matrix B.
-
-    beta - Supplies the scalar beta multiplier (see SGEMM definition).
-
-    C - Supplies the address of matrix C.
-
-    ldc - Supplies the first dimension of matrix C.
+    WorkBlock - Supplies the structure containing the GEMM parameters.
 
     ThreadPool - Supplies the thread pool object to use, else nullptr if the
         base library threading support should be used.
 
 Return Value:
 
-    Returns true if the operation was completed across multiple threads, else
-    false if the operation should fall back to a single thread.
+    None.
 
 --*/
 {
-    MLAS_SGEMM_WORK_BLOCK WorkBlock;
-    int32_t TargetThreadCount;
+    const size_t M = WorkBlock->M;
+    const size_t N = WorkBlock->N;
+    const size_t K = WorkBlock->K;
 
     //
     // Compute the number of target threads given the complexity of the SGEMM
     // operation. Small requests should run using the single threaded path.
     //
 
-    double Complexity = double(M) * double(N) * double(K);
+    const double Complexity = double(M) * double(N) * double(K);
+
+    int32_t TargetThreadCount;
 
     if (Complexity < double(MLAS_SGEMM_THREAD_COMPLEXITY * MLAS_MAXIMUM_THREAD_COUNT)) {
         TargetThreadCount = int32_t(Complexity / double(MLAS_SGEMM_THREAD_COMPLEXITY)) + 1;
@@ -1193,90 +1340,36 @@ Return Value:
         TargetThreadCount = MaximumThreadCount;
     }
 
-    if (TargetThreadCount == 1) {
-        return false;
-    }
-
-    //
-    // Initialize the common fields of the work block.
-    //
-
-    WorkBlock.TransA = TransA;
-    WorkBlock.TransB = TransB;
-    WorkBlock.K = K;
-    WorkBlock.lda = lda;
-    WorkBlock.ldb = ldb;
-    WorkBlock.ldc = ldc;
-    WorkBlock.alpha = alpha;
-    WorkBlock.beta = beta;
-
     //
     // Segment the operation across multiple threads.
     //
-
-    int32_t Index = 0;
+    // N.B. Currently, the operation is segmented as a 1D partition, which
+    // works okay for operations involving skinny matrices.
+    //
 
     if (N > M) {
 
-        size_t StrideN = N / TargetThreadCount;
+        const size_t BlockedN = (N + MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1) /
+            MLAS_SGEMM_STRIDEN_THREAD_ALIGN;
 
-        if ((StrideN * TargetThreadCount) != N) {
-            StrideN++;
+        if (size_t(TargetThreadCount) > BlockedN) {
+            TargetThreadCount = int32_t(BlockedN);
         }
 
-        StrideN =
-            (StrideN + MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1);
-
-        size_t pldb = (TransB == CblasNoTrans) ? 1 : ldb;
-
-        for (size_t CountN, n = 0; n < N; n += CountN) {
-
-            CountN = StrideN;
-
-            if (CountN > (N - n)) {
-                CountN = N - n;
-            }
-
-            WorkBlock.Segments[Index].M = M;
-            WorkBlock.Segments[Index].N = CountN;
-            WorkBlock.Segments[Index].A = A;
-            WorkBlock.Segments[Index].B = B + n * pldb;
-            WorkBlock.Segments[Index].C = C + n;
-
-            Index++;
-        }
+        WorkBlock->ThreadCountM = 1;
+        WorkBlock->ThreadCountN = TargetThreadCount;
 
     } else {
 
-        size_t StrideM = M / TargetThreadCount;
-
-        if ((StrideM * TargetThreadCount) != M) {
-            StrideM++;
+        if (size_t(TargetThreadCount) > M) {
+            TargetThreadCount = int32_t(M);
         }
 
-        size_t plda = (TransA == CblasNoTrans) ? lda : 1;
-
-        for (size_t CountM, m = 0; m < M; m += CountM) {
-
-            CountM = StrideM;
-
-            if (CountM > (M - m)) {
-                CountM = M - m;
-            }
-
-            WorkBlock.Segments[Index].M = CountM;
-            WorkBlock.Segments[Index].N = N;
-            WorkBlock.Segments[Index].A = A + m * plda;
-            WorkBlock.Segments[Index].B = B;
-            WorkBlock.Segments[Index].C = C + m * ldc;
-
-            Index++;
-        }
+        WorkBlock->ThreadCountM = TargetThreadCount;
+        WorkBlock->ThreadCountN = 1;
     }
 
-    MlasExecuteThreaded(MlasSgemmOperationThreaded, &WorkBlock, Index, ThreadPool);
-
-    return true;
+    MlasExecuteThreaded(MlasSgemmThreaded, WorkBlock, TargetThreadCount, ThreadPool);
 }
 
 void
@@ -1342,12 +1435,216 @@ Return Value:
 
 --*/
 {
+    MLAS_SGEMM_WORK_BLOCK WorkBlock;
+
     //
-    // Try to run the operation across multiple threads or fall back to a
-    // single thread based on the GEMM parameters and system configuration.
+    // Capture the GEMM parameters to the work block.
     //
 
-    if (!MlasSgemmTryMultithread(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, ThreadPool)) {
-        MlasSgemmOperation(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
+    memset(&WorkBlock, 0, sizeof(MLAS_SGEMM_WORK_BLOCK));
+
+    WorkBlock.TransA = TransA;
+    WorkBlock.TransB = TransB;
+    WorkBlock.M = M;
+    WorkBlock.N = N;
+    WorkBlock.K = K;
+    WorkBlock.A = A;
+    WorkBlock.lda = lda;
+    WorkBlock.B = B;
+    WorkBlock.ldb = ldb;
+    WorkBlock.C = C;
+    WorkBlock.ldc = ldc;
+    WorkBlock.alpha = alpha;
+    WorkBlock.beta = beta;
+
+    //
+    // Schedule the operation across a set of worker threads.
+    //
+
+    MlasSgemmSchedule(&WorkBlock, ThreadPool);
+}
+
+void
+MLASCALL
+MlasGemm(
+    CBLAS_TRANSPOSE TransA,
+    size_t M,
+    size_t N,
+    size_t K,
+    float alpha,
+    const float* A,
+    size_t lda,
+    const void* PackedB,
+    float beta,
+    float* C,
+    size_t ldc,
+    MLAS_THREADPOOL* ThreadPool
+    )
+/*++
+
+Routine Description:
+
+    This routine implements the single precision matrix/matrix multiply
+    operation (SGEMM).
+
+Arguments:
+
+    TransA - Supplies the transpose operation for matrix A.
+
+    M - Supplies the number of rows of matrix A and matrix C.
+
+    N - Supplies the number of columns of matrix B and matrix C.
+
+    K - Supplies the number of columns of matrix A and the number of rows of
+        matrix B.
+
+    alpha - Supplies the scalar alpha multiplier (see SGEMM definition).
+
+    A - Supplies the address of matrix A.
+
+    lda - Supplies the first dimension of matrix A.
+
+    PackedB - Supplies the address of packed matrix B.
+
+    beta - Supplies the scalar beta multiplier (see SGEMM definition).
+
+    C - Supplies the address of matrix C.
+
+    ldc - Supplies the first dimension of matrix C.
+
+    ThreadPool - Supplies the thread pool object to use, else nullptr if the
+        base library threading support should be used.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    MLAS_SGEMM_WORK_BLOCK WorkBlock;
+
+    //
+    // Capture the GEMM parameters to the work block.
+    //
+
+    memset(&WorkBlock, 0, sizeof(MLAS_SGEMM_WORK_BLOCK));
+
+    WorkBlock.TransA = TransA;
+    WorkBlock.M = M;
+    WorkBlock.N = N;
+    WorkBlock.K = K;
+    WorkBlock.A = A;
+    WorkBlock.lda = lda;
+    WorkBlock.PackedB = PackedB;
+    WorkBlock.C = C;
+    WorkBlock.ldc = ldc;
+    WorkBlock.alpha = alpha;
+    WorkBlock.beta = beta;
+
+    //
+    // Schedule the operation across a set of worker threads.
+    //
+
+    MlasSgemmSchedule(&WorkBlock, ThreadPool);
+}
+
+size_t
+MLASCALL
+MlasGemmPackBSize(
+    size_t N,
+    size_t K
+    )
+/*++
+
+Routine Description:
+
+    This routine computes the length in bytes for the packed matrix B buffer.
+
+Arguments:
+
+    N - Supplies the number of columns of matrix B.
+
+    K - Supplies the number of rows of matrix B.
+
+Return Value:
+
+    Returns the size in bytes for the packed matrix B buffer.
+
+--*/
+{
+    //
+    // Compute the number of bytes required to hold the packed buffer.
+    //
+
+    const size_t AlignedN =
+        (N + MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1);
+
+    const size_t BytesRequired = AlignedN * K * sizeof(float);
+    const size_t BufferAlignment = MlasGetPreferredBufferAlignment();
+    const size_t AlignedBytesRequired = (BytesRequired + BufferAlignment - 1) &
+        ~(BufferAlignment - 1);
+
+    return AlignedBytesRequired;
+}
+
+void
+MLASCALL
+MlasGemmPackB(
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K,
+    const float* B,
+    size_t ldb,
+    void* PackedB
+    )
+/*++
+
+Routine Description:
+
+    This routine packs the contents of matrix B to the destination buffer. The
+    destination buffer should be sized based on MlasGemmPackBSize(). For best
+    performance, the destination buffer should be aligned to the value returned
+    from MlasGetPreferredBufferAlignment().
+
+Arguments:
+
+    TransB - Supplies the transpose operation for matrix B.
+
+    N - Supplies the number of columns of matrix B.
+
+    K - Supplies the number of rows of matrix B.
+
+    B - Supplies the address of matrix B.
+
+    ldb - Supplies the first dimension of matrix B.
+
+    PackedB - Supplies the address of packed matrix B.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    const size_t AlignedN =
+        (N + MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1);
+
+    //
+    // Step through each slice of matrix B along the K dimension.
+    //
+
+    size_t CountK;
+
+    for (size_t k = 0; k < K; k += CountK) {
+
+        CountK = std::min(K - k, size_t(MLAS_SGEMM_PACKED_STRIDEK));
+
+        if (TransB == CblasNoTrans) {
+            MlasSgemmCopyPackB((float*)PackedB, B + k * ldb, ldb, N, CountK);
+        } else {
+            MlasSgemmTransposePackB((float*)PackedB, B + k, ldb, N, CountK);
+        }
+
+        PackedB = (float*)PackedB + AlignedN * CountK;
     }
 }

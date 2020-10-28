@@ -21,8 +21,10 @@ void HIPAllocator::CheckDevice() const {
   // check device to match at debug build
   // if it's expected to change, call hipSetDevice instead of the check
   int current_device;
-  hipGetDevice(&current_device);
-  ORT_ENFORCE(current_device == info_.id);
+  auto hip_err = hipGetDevice(&current_device);
+  if (hip_err == hipSuccess) {
+    ORT_ENFORCE(current_device == Info().id);
+  }
 #endif
 }
 

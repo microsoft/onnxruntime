@@ -13,7 +13,7 @@ namespace test {
 // Dummy Arena which just call underline device allocator directly.
 class DummyArena : public IArenaAllocator {
  public:
-  explicit DummyArena(std::unique_ptr<IDeviceAllocator> resource_allocator)
+  explicit DummyArena(std::unique_ptr<IAllocator> resource_allocator)
       : IArenaAllocator(OrtMemoryInfo(resource_allocator->Info().name,
                                       OrtAllocatorType::OrtArenaAllocator,
                                       resource_allocator->Info().device,
@@ -49,7 +49,7 @@ class DummyArena : public IArenaAllocator {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(DummyArena);
 
-  std::unique_ptr<IDeviceAllocator> allocator_;
+  std::unique_ptr<IAllocator> allocator_;
 };
 
 static std::string GetAllocatorId(const std::string& name, const int id, const bool isArena) {
@@ -63,7 +63,7 @@ static std::string GetAllocatorId(const std::string& name, const int id, const b
 }
 
 static Status RegisterAllocator(std::unordered_map<std::string, AllocatorPtr>& map,
-                                std::unique_ptr<IDeviceAllocator> allocator, size_t /*memory_limit*/,
+                                std::unique_ptr<IAllocator> allocator, size_t /*memory_limit*/,
                                 bool use_arena) {
   auto& info = allocator->Info();
   auto allocator_id = GetAllocatorId(info.name, info.id, use_arena);

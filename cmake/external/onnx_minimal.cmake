@@ -51,11 +51,6 @@ file(GLOB onnx_src CONFIGURE_DEPENDS
 "${ONNX_SOURCE_ROOT}/onnx/defs/data_type_utils.*"
 )
 
-if (MSVC)
-  SET (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Gw /GL")
-  SET (CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /Gw /GL")
-endif()
-
 add_library(onnx ${onnx_src})
 add_dependencies(onnx onnx_proto)
 target_include_directories(onnx PUBLIC "${ONNX_SOURCE_ROOT}")

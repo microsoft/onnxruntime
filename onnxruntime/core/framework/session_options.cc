@@ -3,6 +3,7 @@
 
 #include "core/framework/session_options.h"
 #include "core/common/logging/logging.h"
+#include "core/framework/ml_value.h"
 
 namespace onnxruntime {
 
@@ -41,6 +42,33 @@ Status SessionOptions::AddConfigEntry(const char* config_key, const char* config
     iter->second = std::move(val);
   } else {
     session_configurations[std::move(key)] = std::move(val);
+  }
+
+  return Status::OK();
+}
+
+Status SessionOptions::AddInitializer(const char* name, const OrtValue* val) noexcept {
+  // input validation
+  if (name == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Received nullptr for name.");
+  }
+
+  if (val == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Received nullptr for OrtValue.");
+  }
+
+  if (!val->IsTensor()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Received OrtValue is not a tensor. Only tensors are supported.");
+  }
+
+  if (val->Get<Tensor>().OwnsBuffer()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Buffer containing the initializer must be owned by the user.");
+  }
+
+  // now do the actual work
+  auto rc = initializers_to_share_map.insert({name, val});
+  if (!rc.second) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "An OrtValue for this name has already been added.");
   }
 
   return Status::OK();

@@ -12,6 +12,7 @@ import random
 import numpy
 import time
 import re
+from pathlib import Path
 from typing import List, Dict, Tuple, Union
 from transformers import GPT2Model, GPT2LMHeadModel, GPT2Config
 from benchmark_helper import Precision
@@ -285,6 +286,8 @@ class Gpt2Helper:
             f"Shapes: input_ids={dummy_inputs.input_ids.shape} past={dummy_inputs.past[0].shape} output={outputs[0].shape} present={outputs[1][0].shape}"
         )
 
+        Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
+
         torch.onnx.export(model,
                           args=tuple(input_list),
                           f=onnx_model_path,
@@ -297,6 +300,7 @@ class Gpt2Helper:
                           use_external_data_format=use_external_data_format,
                           verbose=verbose)
 
+    @staticmethod
     def optimize_onnx(onnx_model_path,
                       optimized_model_path,
                       is_float16,
@@ -322,7 +326,7 @@ class Gpt2Helper:
     def pytorch_inference(model, inputs: Gpt2Inputs, total_runs: int = 0):
         """ Run inference of PyTorch model, and returns average latency in ms when total_runs > 0 besides outputs.
         """
-        logger.debug(f"start pytorch_inference")
+        logger.debug("start pytorch_inference")
 
         # Convert it to fp32 as the PyTroch model cannot deal with half input.
         input_list = inputs.to_fp32().to_list()
@@ -440,7 +444,7 @@ class Gpt2Helper:
     def onnxruntime_inference_with_binded_io(ort_session,
                                              inputs: Gpt2Inputs,
                                              output_buffers: Dict[str, torch.Tensor],
-                                             output_shapes : Dict[str, List[int]],
+                                             output_shapes: Dict[str, List[int]],
                                              total_runs: int = 0,
                                              return_numpy: bool = True,
                                              include_copy_output_latency: bool = False):
@@ -563,8 +567,10 @@ class Gpt2Helper:
                        new_folder=False):
         """ Build a  path name for given model based on given attributes.
         """
-        model_name = model_name_or_path if re.match('^[\w_-]+$',
-                                                    model_name_or_path) else os.path.dirname(model_name_or_path)
+        model_name = model_name_or_path
+        if not re.match('^[\w_-]+$', model_name_or_path):  # It is not a name, shall be a path
+            assert os.path.isdir(model_name_or_path)
+            model_name = Path(model_name_or_path).parts[-1]
 
         if model_class != 'GPT2LMHeadModel':
             model_name += "_" + model_class
@@ -573,9 +579,13 @@ class Gpt2Helper:
             model_name += "_past"
 
         if new_folder:
-            output_dir = os.path.join(output_dir, model_name)
-            if not os.path.exists(output_dir):
-                os.makedirs(output_dir)
+            # store each model to its own directory (for external data format).
+            return {
+                "raw": os.path.join(os.path.join(output_dir, model_name), model_name + ".onnx"),
+                "fp32": os.path.join(os.path.join(output_dir, model_name + "_fp32"), model_name + "_fp32.onnx"),
+                "fp16": os.path.join(os.path.join(output_dir, model_name + "_fp16"), model_name + "_fp16.onnx"),
+                "int8": os.path.join(os.path.join(output_dir, model_name + "_int8"), model_name + "_int8.onnx")
+            }
 
         return {
             "raw": os.path.join(output_dir, model_name + ".onnx"),

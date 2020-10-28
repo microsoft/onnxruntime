@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
+#define _SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING
 #include <gtest/gtest.h>
 #include "runtimeParameters.h"
 
@@ -82,6 +82,9 @@
 #define WINML_EXPECT_HRESULT_FAILED(hresult_expression) EXPECT_HRESULT_FAILED(hresult_expression)
 #define WINML_EXPECT_THROW_SPECIFIC(statement, exception, condition) EXPECT_THROW_SPECIFIC(statement, exception, condition)
 
+#pragma warning(push)
+#pragma warning(disable:4505)  // unreferenced local function has been removed
+
 static bool RuntimeParameterExists(std::wstring param) 
 {
   std::string narrowParam = std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(param);
@@ -89,7 +92,7 @@ static bool RuntimeParameterExists(std::wstring param)
   return no_gpu_tests != RuntimeParameters::Parameters.end() && no_gpu_tests->second != "0";
 }
 
-static bool SkipGpuTests() 
+static bool SkipGpuTests()
 {
 #ifndef USE_DML
   return true;
@@ -110,3 +113,5 @@ static bool SkipTestsImpactedByOpenMP() {
   return false;
 #endif
 }
+
+#pragma warning(pop)

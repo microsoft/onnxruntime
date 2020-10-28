@@ -11,10 +11,23 @@
 
 namespace onnxruntime {
 
+enum class ExecutionOrder {
+  DEFAULT = 0,        // default topological sort
+  PRIORITY_BASED = 1  // priority-based topological sort
+};
+
 enum class FreeDimensionOverrideType {
   Invalid = 0,
   Denotation = 1,
   Name = 2
+};
+
+enum class ExecutionPriority : int {
+  GLOBAL_HIGHT = -100,
+  LOCAL_HIGH = -10,
+  DEFAULT = 0,
+  LOCAL_LOW = 10,
+  GLOBAL_LOW = 100
 };
 
 struct FreeDimensionOverride {
@@ -28,6 +41,9 @@ struct FreeDimensionOverride {
   */
 struct SessionOptions {
   ExecutionMode execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+
+  // set the execution order of the graph
+  ExecutionOrder execution_order = ExecutionOrder::DEFAULT;
 
   // enable profiling for this session.
   bool enable_profiling = false;
@@ -93,6 +109,10 @@ struct SessionOptions {
   // The configuration keys and value formats are defined in
   // /include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h
   std::unordered_map<std::string, std::string> session_configurations;
+  std::unordered_map<std::string, const OrtValue*> initializers_to_share_map;
+
+  // See onnxruntime_c_api.h for detailed documentation.
+  Status AddInitializer(const char* name, const OrtValue* val) noexcept;
 
   // Check if the given SessionOptions has a config using the given config_key.
   // Returns true if found and copies the value into config_value.

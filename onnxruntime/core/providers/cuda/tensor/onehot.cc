@@ -4,6 +4,8 @@
 #include "core/providers/cuda/tensor/onehot.h"
 #include "core/providers/cpu/tensor/onehot.h"
 
+using namespace onnxruntime::common;
+
 namespace onnxruntime {
 namespace cuda {
 

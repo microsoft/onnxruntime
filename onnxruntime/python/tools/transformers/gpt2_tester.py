@@ -7,7 +7,6 @@
 import os
 import logging
 import torch
-import onnx
 import random
 import numpy
 import time
@@ -152,6 +151,44 @@ class Gpt2Tester:
     def get_inputs(self) -> Gpt2Inputs:
         return Gpt2Inputs(self.input_ids, self.position_ids, self.attention_mask, self.past)
 
+    def save_test_data(self, session, output, save_test_data_dir, test_case_id):
+        from onnx import numpy_helper
+
+        path = os.path.join(save_test_data_dir, 'test_data_set_' + str(test_case_id))
+        if os.path.exists(path):
+            print(f"Directory {path} existed. Skip saving test data")
+            return
+
+        os.makedirs(path, exist_ok=True)
+
+        def add_tensor(input_tensors, torch_tensor, name):
+            input_tensors.append(numpy_helper.from_array(torch_tensor.clone().cpu().numpy(), name))
+
+        input_tensors = []
+        add_tensor(input_tensors, self.input_ids, "input_ids")
+
+        if self.has_position_ids:
+            add_tensor(input_tensors, self.position_ids, "position_ids")
+
+        if self.has_attention_mask:
+            add_tensor(input_tensors, self.attention_mask, "attention_mask")
+
+        for i in range(self.n_layer):
+            add_tensor(input_tensors, self.past[i], 'past_' + str(i))
+
+        for i, tensor in enumerate(input_tensors):
+            with open(os.path.join(path, 'input_{}.pb'.format(i)), 'wb') as f:
+                f.write(tensor.SerializeToString())
+
+        output_names = [output.name for output in session.get_outputs()]
+        for i, name in enumerate(output_names):
+            tensor = numpy_helper.from_array(
+                output[i] if isinstance(output[i], numpy.ndarray) else output[i].clone().cpu().numpy())
+            with open(os.path.join(path, 'output_{}.pb'.format(i)), 'wb') as f:
+                f.write(tensor.SerializeToString())
+
+        print(f"Test data saved to directory {path}")
+
     def update(self, output, step, device):
         """
         Update the inputs for next inference.
@@ -253,8 +290,8 @@ class Gpt2Tester:
         """
         Returns True if the ONNX model is quantized.
         """
-        import onnx
-        model = onnx.load(onnx_model_path)
+        from onnx import load
+        model = load(onnx_model_path)
         from onnxruntime.quantization.quantize import __producer__ as quantize_producer
         return model.producer_name == quantize_producer
 
@@ -269,7 +306,9 @@ class Gpt2Tester:
                         top_k_no_order=True,
                         max_steps=24,
                         max_inputs=0,
-                        verbose=False):
+                        verbose=False,
+                        save_test_data=0,
+                        save_test_data_dir='.'):
         """
         Test Generation using greedy beam search (without sampling) to compare PyTorch and ONNX model.
         It will print top 1 and top k errors on the given test inputs.
@@ -280,15 +319,15 @@ class Gpt2Tester:
         n_layer = model.config.n_layer
         n_head = model.config.n_head
         n_embd = model.config.n_embd
-        vocab_size = model.config.vocab_size
         eos_token_id = model.config.eos_token_id
+        test_data_saved = 0
 
-        torch_float = torch.float16 if precision == Precision.FLOAT16 else torch.float32
         is_float16 = (precision == Precision.FLOAT16)
         if is_float16:
             assert 'float16' in session.get_outputs()[0].type
 
-        model.eval().to(device).to(torch_float)
+        # We will still use fp32 torch model as baseline when onnx model if fp16
+        model.eval().to(device)
 
         # Allocate initial buffers for IO Binding of ONNX Runtimne. The buffer size will automatically increase later.
         init_output_shapes = Gpt2Helper.get_output_shapes(batch_size=4,
@@ -296,9 +335,7 @@ class Gpt2Tester:
                                                           sequence_length=32,
                                                           config=model.config,
                                                           model_class=model_class)
-        output_buffers = Gpt2Helper.get_output_buffers(init_output_shapes,
-                                                       device,
-                                                       is_float16=(torch_float == torch.float16))
+        output_buffers = Gpt2Helper.get_output_buffers(init_output_shapes, device, is_float16=is_float16)
 
         baseline_name = 'Torch'
         treatment_name = 'Quantized Onnx' if precision == Precision.INT8 else "Onnx"
@@ -319,8 +356,8 @@ class Gpt2Tester:
                                      is_float16, top_k, not top_k_no_order)
             onnx_io_runner = Gpt2Tester(input_ids, position_ids, attention_mask, n_head, n_embd, n_layer, device,
                                         is_float16, top_k, not top_k_no_order)
-            torch_runner = Gpt2Tester(input_ids, position_ids, attention_mask, n_head, n_embd, n_layer, device,
-                                      is_float16, top_k, not top_k_no_order)
+            torch_runner = Gpt2Tester(input_ids, position_ids, attention_mask, n_head, n_embd, n_layer, device, False,
+                                      top_k, not top_k_no_order)  # Torch model baseline is fp32
 
             batch_size = torch_runner.batch_size
             onnx_metric.start_batch(batch_size)
@@ -359,6 +396,11 @@ class Gpt2Tester:
                         return_numpy=False,
                         include_copy_output_latency=True)
                     onnx_io_metric.add_latency(past_seq_len, avg_latency_ms / 1000.0)
+
+                    if test_data_saved < save_test_data:
+                        onnx_io_runner.save_test_data(session, onnx_io_output, save_test_data_dir, test_data_saved)
+                        test_data_saved += 1
+
                     onnx_io_runner.update(onnx_io_output, step, device)
 
                     if verbose:
@@ -367,8 +409,8 @@ class Gpt2Tester:
 
                         print("Top 1 tokens:")
                         print("\tTorch", torch_runner.top_1_tokens)
-                        print("\ONNX", onnx_runner.top_1_tokens)
-                        print("\ONNX with IO binding", onnx_io_runner.top_1_tokens)
+                        print("\tONNX", onnx_runner.top_1_tokens)
+                        print("\tONNX with IO binding", onnx_io_runner.top_1_tokens)
 
                     onnx_metric.eval_batch(torch_runner, onnx_runner, past_seq_len, verbose=verbose)
                     onnx_io_metric.eval_batch(torch_runner, onnx_io_runner, past_seq_len, verbose=verbose)

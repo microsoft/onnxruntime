@@ -5,7 +5,7 @@
 #include <type_traits>
 
 namespace onnxruntime {
-BFCArena::BFCArena(std::unique_ptr<IDeviceAllocator> resource_allocator,
+BFCArena::BFCArena(std::unique_ptr<IAllocator> resource_allocator,
                    size_t total_memory,
                    ArenaExtendStrategy arena_extend_strategy,
                    int initial_chunk_size_bytes,

@@ -17,6 +17,12 @@
 #include "test_allocator.h"
 #include "test_fixture.h"
 
+#ifdef _WIN32
+#include <Windows.h>
+#else
+#include <dlfcn.h>
+#endif
+
 struct Input {
   const char* name = nullptr;
   std::vector<int64_t> dims;
@@ -68,6 +74,7 @@ void TestInference(Ort::Env& env, T model_uri,
                    int provider_type,
                    OrtCustomOpDomain* custom_op_domain_ptr,
                    const char* custom_op_library_filename,
+                   void** library_handle = nullptr,
                    bool test_session_creation_only = false) {
   Ort::SessionOptions session_options;
 
@@ -100,8 +107,7 @@ void TestInference(Ort::Env& env, T model_uri,
   }
 
   if (custom_op_library_filename) {
-    void* library_handle = nullptr;  // leak this, no harm.
-    Ort::ThrowOnError(Ort::GetApi().RegisterCustomOpsLibrary((OrtSessionOptions*)session_options, custom_op_library_filename, &library_handle));
+    Ort::ThrowOnError(Ort::GetApi().RegisterCustomOpsLibrary((OrtSessionOptions*)session_options, custom_op_library_filename, library_handle));
   }
 
   // if session creation passes, model loads fine
@@ -289,7 +295,7 @@ TEST(CApiTest, custom_op_handler) {
   // It is enough to test for successful session creation because if the custom node wasn't assigned an EP,
   // the session creation would fail. Since the custom node is only tied to the CUDA EP (in CUDA-enabled builds),
   // if the session creation succeeds, it is assumed that the node got assigned to the CUDA EP.
-  TestInference<PATH_TYPE, float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1, custom_op_domain, nullptr, true);
+  TestInference<PATH_TYPE, float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1, custom_op_domain, nullptr, nullptr, true);
 #else
   TestInference<PATH_TYPE, float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, custom_op_domain, nullptr);
 #endif
@@ -317,12 +323,12 @@ TEST(CApiTest, RegisterCustomOpForCPUAndCUDA) {
   custom_op_domain.Add(&custom_op_cuda);
 
   TestInference<PATH_TYPE, float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y,
-                                  expected_values_y, 1, custom_op_domain, nullptr, true);
+                                  expected_values_y, 1, custom_op_domain, nullptr, nullptr, true);
 }
 #endif
 
 //It has memory leak. The OrtCustomOpDomain created in custom_op_library.cc:RegisterCustomOps function was not freed
-#if defined(__ANDROID__) || defined(ONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
+#if defined(__ANDROID__)
 TEST(CApiTest, DISABLED_test_custom_op_library) {
 #else
 TEST(CApiTest, test_custom_op_library) {
@@ -357,7 +363,17 @@ TEST(CApiTest, test_custom_op_library) {
 lib_name = "./libcustom_op_library.so";
 #endif
 
-  TestInference<PATH_TYPE, int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y, expected_values_y, 0, nullptr, lib_name.c_str());
+  void* library_handle = nullptr;
+  TestInference<PATH_TYPE, int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
+                                    expected_values_y, 0, nullptr, lib_name.c_str(), &library_handle);
+
+#ifdef _WIN32
+  bool success = ::FreeLibrary(reinterpret_cast<HMODULE>(library_handle));
+  ORT_ENFORCE(success, "Error while closing custom op shared library");
+#else
+  int retval = dlclose(library_handle);
+  ORT_ENFORCE(retval == 0, "Error while closing custom op shared library");
+#endif
 }
 
 #if defined(ENABLE_LANGUAGE_INTEROP_OPS)
@@ -680,8 +696,8 @@ TEST(CApiTest, access_tensor_data_elements) {
   Ort::Value tensor = Ort::Value::CreateTensor<float>(info, values.data(), values.size(), shape.data(), shape.size());
 
   float expected_value = 0;
-  for (size_t row = 0; row < (size_t)shape[0]; row++) {
-    for (size_t col = 0; col < (size_t)shape[1]; col++) {
+  for (int64_t row = 0; row < shape[0]; row++) {
+    for (int64_t col = 0; col < shape[1]; col++) {
       ASSERT_EQ(expected_value++, tensor.At<float>({row, col}));
     }
   }
@@ -725,8 +741,7 @@ TEST(CApiTest, override_initializer) {
   ort_inputs.push_back(std::move(f11_input_tensor));
 
   std::vector<const char*> input_names = {"Label", "F2", "F1"};
-
-  const char* const output_names[] = {"Label0", "F20", "F11"};
+  const char* output_names[] = {"Label0", "F20", "F11"};
   std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, input_names.data(),
                                                     ort_inputs.data(), ort_inputs.size(),
                                                     output_names, countof(output_names));
@@ -756,7 +771,7 @@ TEST(CApiTest, end_profiling) {
   char* profile_file = session_1.EndProfiling(allocator.get());
 
   ASSERT_TRUE(std::string(profile_file).find("profile_prefix") != std::string::npos);
-
+  allocator->Free(profile_file);
   // Create session with profiling disabled
   Ort::SessionOptions session_options_2;
 #ifdef _WIN32
@@ -766,8 +781,31 @@ TEST(CApiTest, end_profiling) {
 #endif
   Ort::Session session_2(*ort_env, MODEL_WITH_CUSTOM_MODEL_METADATA, session_options_2);
   profile_file = session_2.EndProfiling(allocator.get());
-
   ASSERT_TRUE(std::string(profile_file) == std::string());
+  allocator->Free(profile_file);
+}
+
+TEST(CApiTest, get_profiling_start_time) {
+  // Test whether the C_API can access the profiler's start time
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  Ort::SessionOptions session_options;
+#ifdef _WIN32
+  session_options.EnableProfiling(L"profile_prefix");
+#else
+  session_options.EnableProfiling("profile_prefix");
+#endif
+
+  uint64_t before_start_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                   std::chrono::high_resolution_clock::now().time_since_epoch())
+                                   .count();  // get current time
+  Ort::Session session_1(*ort_env, MODEL_WITH_CUSTOM_MODEL_METADATA, session_options);
+  uint64_t profiling_start_time = session_1.GetProfilingStartTimeNs();
+  uint64_t after_start_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                  std::chrono::high_resolution_clock::now().time_since_epoch())
+                                  .count();
+
+  // the profiler's start time needs to be between before_time and after_time
+  ASSERT_TRUE(before_start_time <= profiling_start_time && profiling_start_time <= after_start_time);
 }
 
 TEST(CApiTest, model_metadata) {
@@ -879,8 +917,8 @@ TEST(CApiTest, TestSharedAllocatorUsingCreateAndRegisterAllocator) {
 
   OrtMemoryInfo* mem_info = nullptr;
   const auto& api = Ort::GetApi();
-  std::unique_ptr<OrtMemoryInfo, decltype(api.ReleaseMemoryInfo)> rel_info(mem_info, api.ReleaseMemoryInfo);
   ASSERT_TRUE(api.CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &mem_info) == nullptr);
+  std::unique_ptr<OrtMemoryInfo, decltype(api.ReleaseMemoryInfo)> rel_info(mem_info, api.ReleaseMemoryInfo);
 
   OrtArenaCfg arena_cfg{0, -1, -1, -1};
   ASSERT_TRUE(api.CreateAndRegisterAllocator(env_ptr, mem_info, &arena_cfg) == nullptr);
@@ -895,6 +933,51 @@ TEST(CApiTest, TestSharedAllocatorUsingCreateAndRegisterAllocator) {
   auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
   session_options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1");
 
+  // create session 1
+  Ort::Session session1(*ort_env, MODEL_URI, session_options);
+  RunSession<float>(default_allocator.get(),
+                    session1,
+                    inputs,
+                    "Y",
+                    expected_dims_y,
+                    expected_values_y,
+                    nullptr);
+
+  // create session 2
+  Ort::Session session2(*ort_env, MODEL_URI, session_options);
+  RunSession<float>(default_allocator.get(),
+                    session2,
+                    inputs,
+                    "Y",
+                    expected_dims_y,
+                    expected_values_y,
+                    nullptr);
+}
+
+TEST(CApiTest, TestSharingOfInitializer) {
+  // simple inference test
+  // prepare inputs
+  std::vector<Input> inputs(1);
+  Input& input = inputs.back();
+  input.name = "X";
+  input.dims = {3, 2};
+  input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_y = {3, 2};
+  std::vector<float> expected_values_y = {2.0f, 2.0f, 12.0f, 12.0f, 30.0f, 30.0f};
+
+  Ort::SessionOptions session_options;
+  Ort::MemoryInfo mem_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+  // These values are different from the actual initializer values in the model
+  float data[] = {2., 1., 4., 3., 6., 5.};
+  const int data_len = sizeof(data) / sizeof(data[0]);
+  const int64_t shape[] = {3, 2};
+  const size_t shape_len = sizeof(shape) / sizeof(shape[0]);
+  Ort::Value val = Ort::Value::CreateTensor<float>(mem_info, data, data_len, shape, shape_len);
+  session_options.AddInitializer("W", val);
+
+  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
   // create session 1
   Ort::Session session1(*ort_env, MODEL_URI, session_options);
   RunSession<float>(default_allocator.get(),

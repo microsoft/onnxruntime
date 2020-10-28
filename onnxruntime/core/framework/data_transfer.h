@@ -26,9 +26,6 @@ class IDataTransfer {
 
   // batched copy. default implementation copies each entry sequentially, and returns on first failure.
   virtual common::Status CopyTensors(const std::vector<SrcDstPair>& src_dst_pairs) const;
-
-  // If this is really a Provider_IDataTransfer, this returns true. Used to convert back & forth with providers efficiently
-  virtual bool IsProviderInterface() const { return false; }
 };
 
 class CPUDataTransfer : public IDataTransfer {

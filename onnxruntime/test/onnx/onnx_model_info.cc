@@ -6,9 +6,37 @@
 #include "re2/re2.h"
 #include "pb_helper.h"
 
-using namespace onnxruntime;
-static constexpr int protobuf_block_size_in_bytes = 4 * 1024 * 1024;
+#if defined(ENABLE_ORT_FORMAT_LOAD)
 
+#include <fstream>
+#include "core/flatbuffers/schema/ort.fbs.h"
+#include "core/flatbuffers/flatbuffers_utils.h"
+using namespace onnxruntime::experimental;
+
+#endif
+
+using namespace onnxruntime;
+
+OnnxModelInfo::OnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url, bool is_ort_model)
+    : model_url_(model_url) {
+  if (is_ort_model) {
+#if defined(ENABLE_ORT_FORMAT_LOAD)
+    InitOrtModelInfo(model_url);
+#else
+    ORT_THROW("ort model is not supported in this build");
+#endif
+  } else {
+#if !defined(ORT_MINIMAL_BUILD)
+    InitOnnxModelInfo(model_url);
+#else
+    ORT_THROW("onnx model is not supported in this build");
+#endif
+  }
+}
+
+#if !defined(ORT_MINIMAL_BUILD)
+
+static constexpr int protobuf_block_size_in_bytes = 4 * 1024 * 1024;
 template <typename T>
 static void RepeatedPtrFieldToVector(const ::google::protobuf::RepeatedPtrField<T>& input_value_info,
                                      std::vector<T>& out) {
@@ -17,8 +45,7 @@ static void RepeatedPtrFieldToVector(const ::google::protobuf::RepeatedPtrField<
   }
 }
 
-OnnxModelInfo::OnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url) : model_url_(model_url) {
-  // parse model
+void OnnxModelInfo::InitOnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url) {  // parse model
   int model_fd;
   auto st = Env::Default().FileOpenRd(model_url, model_fd);
   if (!st.IsOK()) {
@@ -70,3 +97,83 @@ OnnxModelInfo::OnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url) : model_url_(
   }
   RepeatedPtrFieldToVector(graph.output(), output_value_info_);
 }
+
+#endif  // #if !defined(ORT_MINIMAL_BUILD)
+
+#if defined(ENABLE_ORT_FORMAT_LOAD)
+
+void OnnxModelInfo::InitOrtModelInfo(_In_ const PATH_CHAR_TYPE* model_url) {
+  std::vector<uint8_t> bytes;
+  size_t num_bytes = 0;
+  const auto model_location = ToWideString(model_url);
+  ORT_THROW_IF_ERROR(Env::Default().GetFileLength(model_location.c_str(), num_bytes));
+  bytes.resize(num_bytes);
+  std::ifstream bytes_stream(model_location, std::ifstream::in | std::ifstream::binary);
+  bytes_stream.read(reinterpret_cast<char*>(bytes.data()), num_bytes);
+
+  // TODO use ort format version here?
+  onnx_commit_tag_ = TestModelInfo::unknown_version;
+
+  // TODO, verify it is a valid ort format
+  // TODO, version matches the ORT version
+  const auto* fbs_session = fbs::GetInferenceSession(bytes.data());
+  if (nullptr == fbs_session)
+    ORT_THROW("InferenceSession is null. Invalid ORT format model.");
+
+  const auto* fbs_model = fbs_session->model();
+  if (nullptr == fbs_model)
+    ORT_THROW("Missing Model. Invalid ORT format model.");
+
+  const auto* fbs_graph = fbs_model->graph();
+  if (nullptr == fbs_graph)
+    ORT_THROW("Missing Graph. Invalid ORT format model.");
+
+  std::unordered_map<std::string, int> _opset_import;
+  ORT_THROW_IF_ERROR(experimental::utils::LoadOpsetImportOrtFormat(fbs_model->opset_import(), _opset_import));
+  for (const auto& entry : _opset_import)
+    domain_to_version_[entry.first] = entry.second;
+
+  // Load all node args from fbs_graph
+  std::unordered_map<std::string, ONNX_NAMESPACE::ValueInfoProto> _node_args;
+  auto fbs_node_args = fbs_graph->node_args();
+  if (fbs_node_args) {
+    _node_args.reserve(fbs_node_args->size());
+    for (const auto* fbs_value_info : *fbs_node_args) {
+      if (nullptr == fbs_value_info)
+        ORT_THROW("NodeArg is missing. Invalid ORT format model.");
+      ONNX_NAMESPACE::ValueInfoProto node_arg_info;
+      ORT_THROW_IF_ERROR(experimental::utils::LoadValueInfoOrtFormat(*fbs_value_info, node_arg_info));
+      // NodeArg ctor is private, cannot use make_unique
+      _node_args[fbs_value_info->name()->str()] = std::move(node_arg_info);
+    }
+  }
+
+  if (fbs_graph->nodes() && fbs_graph->nodes()->size() == 1) {
+    const auto* node = fbs_graph->nodes()->Get(0);
+    if (!node)
+      ORT_THROW("Missing Node. Invalid ORT format model.");
+
+    if (!node->op_type())
+      ORT_THROW("Missing op_type. Invalid ORT format model.");
+
+    node_name_ = node->op_type()->str();
+  }
+  // Load input and output node args
+  auto add_node_args = [&](const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>* fbs_node_args,
+                           std::vector<ONNX_NAMESPACE::ValueInfoProto> node_args) -> Status {
+    if (fbs_node_args != nullptr) {
+      node_args.reserve(fbs_node_args->size());
+      for (const auto* fbs_node_arg_name : *fbs_node_args) {
+        if (!fbs_node_arg_name)
+          ORT_THROW("NodeArg Name is missing. Invalid ORT format model.");
+        node_args.push_back(_node_args.at(fbs_node_arg_name->str()));
+      }
+    }
+    return Status::OK();
+  };
+
+  ORT_THROW_IF_ERROR(add_node_args(fbs_graph->inputs(), input_value_info_));
+  ORT_THROW_IF_ERROR(add_node_args(fbs_graph->outputs(), output_value_info_));
+}
+
+#endif  //#if defined(ENABLE_ORT_FORMAT_LOAD)

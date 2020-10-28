@@ -83,10 +83,10 @@ class NodeArg {
   @returns Success unless there is existing type or shape info that can't be successfully updated. */
   common::Status UpdateTypeAndShape(const NodeArg& node_arg, bool strict, bool override_types, const logging::Logger& logger);
 
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
   /** Gets this NodeArg as a ValueInfoProto. */
   const NodeArgInfo& ToProto() const noexcept { return node_arg_info_; }
-
-#endif  // !defined(ORT_MINIMAL_BUILD)
 
   /** Gets a flag indicating whether this NodeArg exists or not.
   Optional inputs are allowed in ONNX and an empty #Name represents a non-existent input argument. */

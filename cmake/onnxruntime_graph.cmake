@@ -94,6 +94,10 @@ if (onnxruntime_ENABLE_TRAINING)
     if (onnxruntime_USE_HOROVOD)
         target_include_directories(onnxruntime_graph PRIVATE ${HOROVOD_INCLUDE_DIRS})
     endif()
+
+    if (onnxruntime_USE_NCCL)
+        target_include_directories(onnxruntime_graph PRIVATE ${NCCL_INCLUDE_DIRS})
+    endif()
 endif()
 
 set_target_properties(onnxruntime_graph PROPERTIES FOLDER "ONNXRuntime")

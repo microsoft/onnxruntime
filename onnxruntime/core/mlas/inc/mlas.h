@@ -31,6 +31,49 @@ Abstract:
 #endif
 
 //
+// Define the target architecture.
+//
+
+#if defined(_M_AMD64) || defined(__x86_64__)
+#define MLAS_TARGET_AMD64
+#endif
+#if defined(_M_IX86) || defined(__i386__)
+#define MLAS_TARGET_IX86
+#endif
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_IX86)
+#define MLAS_TARGET_AMD64_IX86
+#endif
+#if defined(_M_ARM64) || defined(__aarch64__)
+#define MLAS_TARGET_ARM64
+#endif
+#if defined(_M_ARM) || defined(__arm__)
+#define MLAS_TARGET_ARM
+#endif
+#if defined(__VSX__)
+#define MLAS_TARGET_POWER
+#endif
+
+//
+// Define the support levels for the target architecture.
+//
+
+#if defined(MLAS_TARGET_AMD64)
+#define MLAS_SUPPORTS_GEMM_DOUBLE
+#endif
+
+#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_ARM64)
+#define MLAS_SUPPORTS_GEMM_U8X8
+#endif
+
+#if defined(MLAS_TARGET_AMD64_IX86)
+#define MLAS_SUPPORTS_GEMM_U8X8_AND_REQUANTIZE_OUTPUT
+#endif
+
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_ARM64)
+#define MLAS_SUPPORTS_PACKED_GEMM_U8X8
+#endif
+
+//
 // Basic Linear Algebra Subprograms (BLAS) types.
 //
 
@@ -122,6 +165,23 @@ MlasGemm(
     size_t lda,
     const float* B,
     size_t ldb,
+    float beta,
+    float* C,
+    size_t ldc,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+void
+MLASCALL
+MlasGemm(
+    CBLAS_TRANSPOSE TransA,
+    size_t M,
+    size_t N,
+    size_t K,
+    float alpha,
+    const float* A,
+    size_t lda,
+    const void* PackedB,
     float beta,
     float* C,
     size_t ldc,
@@ -224,6 +284,24 @@ MlasGemm(
 //
 // Buffer packing routines.
 //
+
+size_t
+MLASCALL
+MlasGemmPackBSize(
+    size_t N,
+    size_t K
+    );
+
+void
+MLASCALL
+MlasGemmPackB(
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K,
+    const float* B,
+    size_t ldb,
+    void* PackedB
+    );
 
 size_t
 MLASCALL
@@ -402,6 +480,28 @@ MlasConvertHalfToFloatBuffer(
     );
 
 //
+// Transpose routines.
+//
+
+void
+MLASCALL
+MlasTranspose(
+    const uint8_t* Input,
+    uint8_t* Output,
+    size_t M,
+    size_t N
+    );
+
+void
+MLASCALL
+MlasTranspose(
+    const uint32_t* Input,
+    uint32_t* Output,
+    size_t M,
+    size_t N
+    );
+
+//
 // Buffer reordering routines.
 //
 
@@ -522,6 +622,30 @@ MlasRequantizeOutput(
     size_t M,
     size_t N,
     float Scale,
+    uint8_t ZeroPoint
+    );
+
+void
+MLASCALL
+MlasRequantizeOutputColumn(
+    const int32_t* Input,
+    uint8_t* Output,
+    const int32_t* Bias,
+    size_t M,
+    size_t N,
+    const float Scale,
+    uint8_t ZeroPoint
+    );
+
+void
+MLASCALL
+MlasRequantizeOutputColumn(
+    const int32_t* Input,
+    uint8_t* Output,
+    const int32_t* Bias,
+    size_t M,
+    size_t N,
+    const float* Scale,
     uint8_t ZeroPoint
     );
 

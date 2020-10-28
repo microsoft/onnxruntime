@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <core/session/onnxruntime_cxx_api.h>
 #include <set>
 #include <iostream>
 #include <fstream>
@@ -12,9 +11,8 @@
 #include <thread>
 #endif
 #include "TestResultStat.h"
+#include "TestCase.h"
 #include "testenv.h"
-#include "runner.h"
-#include "sync_api.h"
 #include "providers.h"
 #include <google/protobuf/stubs/common.h>
 #include "core/platform/path_lib.h"
@@ -107,6 +105,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   int device_id = 0;
   GraphOptimizationLevel graph_optimization_level = ORT_ENABLE_ALL;
   bool user_graph_optimization_level_set = false;
+  bool set_denormal_as_zero = false;
 
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_ERROR;
   bool verbose_logging_required = false;
@@ -114,7 +113,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool pause = false;
   {
     int ch;
-    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:xvo:d:p"))) != -1) {
+    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:xvo:d:pz"))) != -1) {
       switch (ch) {
         case 'A':
           enable_cpu_mem_arena = false;
@@ -222,6 +221,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             return -1;
           }
           break;
+        case 'z':
+          set_denormal_as_zero = true;
+          break;
         case '?':
         case 'h':
         default:
@@ -285,7 +287,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     double per_sample_tolerance = 1e-3;
     // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
     // when openvino is enabled, set it to a larger value for resolving MNIST accuracy mismatch
-    double relative_per_sample_tolerance = enable_cuda ? 0.017 : enable_openvino ? 0.009 : 1e-3;
+    double relative_per_sample_tolerance = enable_cuda ? 0.017 : enable_openvino ? 0.009
+                                                                                 : 1e-3;
 
     Ort::SessionOptions sf;
 
@@ -298,6 +301,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     else
       sf.DisableMemPattern();
     sf.SetExecutionMode(execution_mode);
+    if (set_denormal_as_zero)
+      sf.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "1");
 
     if (enable_tensorrt) {
 #ifdef USE_TENSORRT
@@ -333,7 +338,14 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
     if (enable_cuda) {
 #ifdef USE_CUDA
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, device_id));
+      OrtCUDAProviderOptions cuda_options{
+          0,
+          OrtCudnnConvAlgoSearch::EXHAUSTIVE,
+          std::numeric_limits<size_t>::max(),
+          0,
+          true
+      };
+      Ort::ThrowOnError(sf.OrtSessionOptionsAppendExecutionProvider_CUDA(sf, &cuda_options));
 #else
       fprintf(stderr, "CUDA is not supported in this build");
       return -1;
@@ -481,7 +493,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
 
     std::vector<ITestCase*> tests;
-
     LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance,
               all_disabled_tests,
               [&owned_tests, &tests](std::unique_ptr<ITestCase> l) {
@@ -489,9 +500,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
                 owned_tests.push_back(std::move(l));
               });
 
-    TestEnv args(tests, stat, env, sf);
-    Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count),
-                         GetDefaultThreadPool(Env::Default()));
+    TestEnv test_env(env, sf, TestEnv::GetDefaultThreadPool(Env::Default()), std::move(tests), stat);
+    Status st = test_env.Run(p_models, concurrent_session_runs, repeat_count);
     if (!st.IsOK()) {
       fprintf(stderr, "%s\n", st.ErrorMessage().c_str());
       return -1;

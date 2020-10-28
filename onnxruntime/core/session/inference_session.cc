@@ -11,6 +11,7 @@
 #include <string>
 #include <thread>
 
+#include "core/common/denormal.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/error_code_helper.h"
@@ -38,7 +39,7 @@
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
-#include "core/flatbuffers/ort.fbs.h"
+#include "core/flatbuffers/flatbuffers_utils.h"
 #ifdef USE_DML  // TODO: This is necessary for the workaround in TransformGraph
 #include "core/providers/dml/DmlExecutionProvider/src/GraphTransformer.h"
 #endif
@@ -55,6 +56,7 @@
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::experimental;
+using namespace onnxruntime::common;
 
 namespace onnxruntime {
 namespace {
@@ -94,6 +96,27 @@ inline std::basic_string<T> GetCurrentTimeString() {
 }  // namespace
 
 std::atomic<uint32_t> InferenceSession::global_session_id_{1};
+
+// The current model versions for saving the ort format models
+// This version is NOT onnxruntime version
+// Only update this version when there is a file format change which will break the compatibilites
+// Once this model version is updated, the kSupportedOrtModelVersions in IsOrtModelVersionSupported
+// below will also need to be updated.
+static constexpr const char* kOrtModelVersion = "1";
+
+#if defined(ENABLE_ORT_FORMAT_LOAD)
+// Check if the givne ort model version is supported in this build
+static bool IsOrtModelVersionSupported(const std::string& ort_model_version) {
+  // The ort model versions we will support in this build
+  // This may contain more versions than the kOrtModelVersion, based on the compatibilities
+  static const std::unordered_set<std::string> kSupportedOrtModelVersions{
+      std::string("1.4.0"),  // This is a special model version for existing converted model
+      std::string(kOrtModelVersion),
+  };
+
+  return kSupportedOrtModelVersions.find(ort_model_version) != kSupportedOrtModelVersions.cend();
+}
+#endif  // defined(ENABLE_ORT_FORMAT_LOAD)
 
 static Status FinalizeSessionOptions(const SessionOptions& user_provided_session_options,
                                      const ONNX_NAMESPACE::ModelProto& model_proto,
@@ -180,6 +203,22 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   ORT_ENFORCE(graph_transformation_mgr_.SetSteps(session_options_.max_num_graph_transformation_steps).IsOK());
 #endif
 
+  bool set_denormal_as_zero = session_options_.GetConfigOrDefault(kOrtSessionOptionsConfigSetDenormalAsZero, "0") == "1";
+
+  // The only first session option for flush-to-zero and denormal-as-zero is effective to main thread and OpenMP threads.
+  {
+    static std::once_flag once;
+
+    std::call_once(once, [&] {
+#ifdef _OPENMP
+      InitializeWithDenormalAsZero(set_denormal_as_zero);
+#endif
+      SetDenormalAsZero(set_denormal_as_zero);
+
+      LOGS(*session_logger_, INFO) << "Flush-to-zero and denormal-as-zero are " << ((set_denormal_as_zero) ? "on" : "off");
+    });
+  }
+
   use_per_session_threads_ = session_options.use_per_session_threads;
 
   if (use_per_session_threads_) {
@@ -189,6 +228,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
       if (to.name == nullptr) {
         to.name = ORT_TSTR("intra-op");
       }
+      to.set_denormal_as_zero = set_denormal_as_zero;
       // If the thread pool can use all the processors, then
       // we set affinity of each thread to each processor.
       to.auto_set_affinity = to.thread_pool_size == 0 &&
@@ -205,6 +245,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
           to.thread_pool_size == 0 && session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL;
       if (to.name == nullptr)
         to.name = ORT_TSTR("intra-op");
+      to.set_denormal_as_zero = set_denormal_as_zero;
       inter_op_thread_pool_ =
           concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTER_OP);
       if (inter_op_thread_pool_ == nullptr) {
@@ -450,7 +491,7 @@ common::Status InferenceSession::SaveToOrtFormat(const std::basic_string<ORTCHAR
   fbs_buffer_size = ((fbs_buffer_size + m_bytes - 1) / m_bytes) * m_bytes;
   flatbuffers::FlatBufferBuilder builder(fbs_buffer_size);
 
-  auto ort_version = builder.CreateString(ORT_VERSION);
+  auto ort_model_version = builder.CreateString(kOrtModelVersion);
   flatbuffers::Offset<fbs::Model> model;
   ORT_RETURN_IF_ERROR(
       model_->SaveToOrtFormat(builder, model));
@@ -460,11 +501,11 @@ common::Status InferenceSession::SaveToOrtFormat(const std::basic_string<ORTCHAR
       session_state_->SaveToOrtFormat(builder, session_state));
 
   fbs::InferenceSessionBuilder sb(builder);
-  sb.add_ort_version(ort_version);
+  sb.add_ort_version(ort_model_version);
   sb.add_model(model);
   sb.add_session_state(session_state);
   auto session = sb.Finish();
-  builder.Finish(session);
+  builder.Finish(session, fbs::InferenceSessionIdentifier());
 
   // TODO: Do we need to catch any std::exceptions from creating/writing to disk and convert to Status codes?
   {
@@ -554,8 +595,12 @@ common::Status InferenceSession::Load(const std::string& model_uri) {
   bool has_explicit_type = !model_type.empty();
 
   if ((has_explicit_type && model_type == "ORT") ||
-      (!has_explicit_type && inference_session_utils::IsOrtFormatModel(model_uri))) {
+      (!has_explicit_type && experimental::utils::IsOrtFormatModel(model_uri))) {
+#if defined(ENABLE_ORT_FORMAT_LOAD)
     return LoadOrtModel(model_uri);
+#else
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ORT format model is not supported in this build.");
+#endif
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -577,8 +622,12 @@ common::Status InferenceSession::Load(const std::wstring& model_uri) {
   bool has_explicit_type = !model_type.empty();
 
   if ((has_explicit_type && model_type == "ORT") ||
-      (!has_explicit_type && inference_session_utils::IsOrtFormatModel(model_uri))) {
+      (!has_explicit_type && experimental::utils::IsOrtFormatModel(model_uri))) {
+#if defined(ENABLE_ORT_FORMAT_LOAD)
     return LoadOrtModel(model_uri);
+#else
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ORT format model is not supported in this build.");
+#endif
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -601,8 +650,12 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
 
   if ((has_explicit_type && model_type == "ORT") ||
       (!has_explicit_type &&
-       inference_session_utils::IsOrtFormatModelBytes(model_data, model_data_len))) {
+       experimental::utils::IsOrtFormatModelBytes(model_data, model_data_len))) {
+#if defined(ENABLE_ORT_FORMAT_LOAD)
     return LoadOrtModel(model_data, model_data_len);
+#else
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ORT format model is not supported in this build.");
+#endif
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -833,6 +886,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
+#if defined(ENABLE_ORT_FORMAT_LOAD)
 template <typename T>
 static Status LoadOrtModelBytes(const std::basic_string<T>& model_uri,
                                 std::basic_string<ORTCHAR_T>& model_location,
@@ -904,15 +958,20 @@ Status InferenceSession::LoadOrtModel(std::function<Status()> load_ort_format_mo
   }
 
   ORT_RETURN_IF_ERROR(load_ort_format_model_bytes());
+
+  // Verify the ort_format_model_bytes_ is a valid InferenceSessionBuffer before we access the data
+  flatbuffers::Verifier verifier(ort_format_model_bytes_.data(), ort_format_model_bytes_.size());
+  ORT_RETURN_IF_NOT(fbs::VerifyInferenceSessionBuffer(verifier));
+
   const auto* fbs_session = fbs::GetInferenceSession(ort_format_model_bytes_.data());
   ORT_RETURN_IF(nullptr == fbs_session, "InferenceSession is null. Invalid ORT format model.");
 
   // Check version mismatch, for now we will only proceed when runtime version matches the model's ort version
-  const auto* fbs_ort_version = fbs_session->ort_version();
-  ORT_RETURN_IF(fbs_ort_version == nullptr, "Serialized version info is null. Invalid ORT format model.");
-  ORT_RETURN_IF_NOT(fbs_ort_version->str() == ORT_VERSION,
-                    "ORT_VERSION mismatch. Saved model ORT version: ", fbs_ort_version->str(),
-                    ", Current ORT version: ", ORT_VERSION);
+  const auto* fbs_ort_model_version = fbs_session->ort_version();
+  ORT_RETURN_IF(fbs_ort_model_version == nullptr, "Serialized version info is null. Invalid ORT format model.");
+  ORT_RETURN_IF_NOT(IsOrtModelVersionSupported(fbs_ort_model_version->str()),
+                    "The ORT format model version [", fbs_ort_model_version->str(),
+                    "] is not supported this build ", ORT_VERSION);
 
   const auto* fbs_model = fbs_session->model();
   ORT_RETURN_IF(nullptr == fbs_model, "Missing Model. Invalid ORT format model.");
@@ -931,6 +990,7 @@ Status InferenceSession::LoadOrtModel(std::function<Status()> load_ort_format_mo
 
   return Status::OK();
 }
+#endif  // defined(ENABLE_ORT_FORMAT_LOAD)
 
 bool InferenceSession::IsInitialized() const {
   std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
@@ -1110,7 +1170,7 @@ common::Status InferenceSession::Initialize() {
 
       if ((has_explicit_type && model_type == "ORT") ||
           (!has_explicit_type &&
-           inference_session_utils::IsOrtFormatModel(session_options_.optimized_model_filepath))) {
+           experimental::utils::IsOrtFormatModel(session_options_.optimized_model_filepath))) {
         ORT_RETURN_IF_ERROR_SESSIONID_(SaveToOrtFormat(session_options_.optimized_model_filepath));
       } else {
         ORT_RETURN_IF_ERROR_SESSIONID_(Model::Save(*model_, session_options_.optimized_model_filepath));
@@ -1229,7 +1289,6 @@ common::Status InferenceSession::CheckShapes(const std::string& input_name, cons
     ostr << " Please fix either the inputs or the model.";
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, ostr.str());
   }
-
   return Status::OK();
 }
 
@@ -1281,14 +1340,20 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
         ORT_RETURN_IF_ERROR_SESSIONID_(CheckShapes(feed_name, input_shape, expected_shape));
       }
     } else if (input_ml_value.IsSparseTensor()) {
+#if !defined(ORT_MINIMAL_BUILD)
       if (!expected_type->IsSparseTensorType()) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input with name: ", feed_name,
                                " is not expected to be of type sparse tensor.");
       }
       auto expected_element_type = expected_type->AsSparseTensorType()->GetElementType();
       auto input_element_type = input_ml_value.Get<SparseTensor>().Values().DataType();
-      ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type));
       // TODO: In the future, when sparsetensors are in use, find out how to properly verify the shape
+      ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type));
+#else
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input with name ", feed_name,
+                             " is a sparse tensor, which is not supported in this build.");
+#endif
+
     } else if (input_ml_value.IsTensorSequence()) {
       if (!expected_type->IsTensorSequenceType()) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input with name: ", feed_name,
@@ -1593,6 +1658,10 @@ std::string InferenceSession::EndProfiling() {
   }
   LOGS(*session_logger_, ERROR) << "Could not write a profile because no model was loaded.";
   return std::string();
+}
+
+const profiling::Profiler& InferenceSession::GetProfiling() const {
+  return session_profiler_;
 }
 
 AllocatorPtr InferenceSession::GetAllocator(const OrtMemoryInfo& mem_info) const {

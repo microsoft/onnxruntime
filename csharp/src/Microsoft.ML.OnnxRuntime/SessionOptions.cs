@@ -36,7 +36,8 @@ namespace Microsoft.ML.OnnxRuntime
     /// </summary>
     public class SessionOptions : SafeHandle
     {
-        private static string[] cudaDelayLoadedLibs = { "cublas64_10.dll", "cudnn64_7.dll", "curand64_10.dll" };
+        // Delayloaded CUDA or cuDNN DLLs. Currently, delayload is disabled. See cmake/CMakeLists.txt for more information.
+        private static string[] cudaDelayLoadedLibs = { };
 
         #region Constructor and Factory methods
 
@@ -44,7 +45,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Constructs an empty SessionOptions
         /// </summary>
         public SessionOptions()
-            :base(IntPtr.Zero, true)
+            : base(IntPtr.Zero, true)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionOptions(out handle));
         }
@@ -114,9 +115,9 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
-        public void AppendExecutionProvider_Dml(int deviceId)
+        public void AppendExecutionProvider_DML(int deviceId)
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Dml(handle, deviceId));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_DML(handle, deviceId));
         }
 
         /// <summary>
@@ -173,6 +174,21 @@ namespace Microsoft.ML.OnnxRuntime
         {
             IntPtr libraryHandle = IntPtr.Zero;
             NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsLibrary(handle, libraryPath, out libraryHandle));
+        }
+
+        /// <summary>
+        /// Add a pre-allocated initializer to a session. If a model contains an initializer with a name
+        /// that is same as the name passed to this API call, ORT will use this initializer instance
+        /// instead of deserializing one from the model file. This is useful when you want to share
+        /// the same initializer across sessions.
+        /// \param name name of the initializer
+        /// \param val OrtValue containing the initializer. Lifetime of 'val' and the underlying initializer buffer must be
+        /// managed by the user (created using the CreateTensorWithDataAsOrtValue API) and it must outlive the session object
+        /// to which it is added.
+        /// </summary>
+        public void AddInitializer(string name, OrtValue ort_value)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtAddInitializer(handle, name, ort_value.Handle));
         }
 
         public void AddSessionConfigEntry(string configKey, string configValue)

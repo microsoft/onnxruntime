@@ -1,5 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+
+// if we can't load an ORT format model we can't really test anything
+#if defined(ENABLE_ORT_FORMAT_LOAD)
+
 #include "core/framework/data_types.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
@@ -8,8 +12,8 @@
 #include "test/test_environment.h"
 #include "test_utils.h"
 #include "test/util/include/asserts.h"
-
-#include "core/flatbuffers/ort.fbs.h"
+#include "test/util/include/inference_session_wrapper.h"
+#include "core/flatbuffers/schema/ort.fbs.h"
 #include "flatbuffers/idl.h"
 #include "flatbuffers/util.h"
 
@@ -20,23 +24,6 @@ using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::logging;
 
 namespace onnxruntime {
-
-// InferenceSession wrapper to expose loaded graph.
-class InferenceSessionGetGraphWrapper : public InferenceSession {
- public:
-  explicit InferenceSessionGetGraphWrapper(const SessionOptions& session_options,
-                                           const Environment& env) : InferenceSession(session_options, env) {
-  }
-
-  const Graph& GetGraph() const {
-    return model_->MainGraph();
-  }
-
-  const SessionState& GetSessionState() const {
-    return InferenceSession::GetSessionState();
-  }
-};
-
 namespace test {
 
 struct OrtModelTestInfo {
@@ -46,6 +33,7 @@ struct OrtModelTestInfo {
   std::vector<std::string> output_names;
   std::function<void(const std::vector<OrtValue>&)> output_verifier;
   std::vector<std::pair<std::string, std::string>> configs;
+  bool run_use_buffer{false};
 };
 
 static void RunOrtModel(const OrtModelTestInfo& test_info) {
@@ -54,8 +42,21 @@ static void RunOrtModel(const OrtModelTestInfo& test_info) {
   for (const auto& config : test_info.configs)
     so.AddConfigEntry(config.first.c_str(), config.second.c_str());
 
-  InferenceSessionGetGraphWrapper session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.Load(test_info.model_filename));  // infer type from filename
+  std::vector<char> model_data;
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  if (test_info.run_use_buffer) {
+    // Load the file into a buffer and use the buffer to create inference session
+    size_t num_bytes = 0;
+    ASSERT_STATUS_OK(Env::Default().GetFileLength(test_info.model_filename.c_str(), num_bytes));
+    model_data.resize(num_bytes);
+    std::ifstream bytes_stream(test_info.model_filename, std::ifstream::in | std::ifstream::binary);
+    bytes_stream.read(model_data.data(), num_bytes);
+    bytes_stream.close();
+    ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(num_bytes)));
+  } else {
+    ASSERT_STATUS_OK(session_object.Load(test_info.model_filename));  // infer type from filename
+  }
+
   ASSERT_STATUS_OK(session_object.Initialize());
 
   std::vector<OrtValue> fetches;
@@ -85,6 +86,8 @@ static void CompareTensors(const OrtValue& left_value, const OrtValue& right_val
   }
 }
 
+// Keep the CompareTypeProtos in case we need debug the difference
+/*
 static void CompareTypeProtos(const TypeProto& left_type_proto, const TypeProto& right_type_proto) {
   ASSERT_EQ(left_type_proto.denotation(), right_type_proto.denotation());
 
@@ -121,16 +124,21 @@ static void CompareTypeProtos(const TypeProto& left_type_proto, const TypeProto&
     FAIL();  // We do not support SparseTensor and Opaque for now
   }
 }
+*/
 
 static void CompareValueInfos(const ValueInfoProto& left, const ValueInfoProto& right) {
-  ASSERT_EQ(left.name(), right.name());
-  ASSERT_EQ(left.doc_string(), right.doc_string());
+  const auto str_left = left.SerializeAsString();
+  const auto str_right = right.SerializeAsString();
+  ASSERT_EQ(str_left, str_right);
 
-  CompareTypeProtos(left.type(), right.type());
+  // Keep the ValueInfoProto content comparison in case we need debug the difference
+  // ASSERT_EQ(left.name(), right.name());
+  // ASSERT_EQ(left.doc_string(), right.doc_string());
+  // CompareTypeProtos(left.type(), right.type());
 }
 
-static void CompareGraphAndSessionState(const InferenceSessionGetGraphWrapper& session_object_1,
-                                        const InferenceSessionGetGraphWrapper& session_object_2) {
+static void CompareGraphAndSessionState(const InferenceSessionWrapper& session_object_1,
+                                        const InferenceSessionWrapper& session_object_2) {
   const auto& graph_1 = session_object_1.GetGraph();
   const auto& graph_2 = session_object_2.GetGraph();
 
@@ -188,7 +196,7 @@ static void SaveAndCompareModels(const std::string& onnx_file, const std::basic_
   so.optimized_model_filepath = ort_file;
   // not strictly necessary - type should be inferred from the filename
   so.AddConfigEntry(kOrtSessionOptionsConfigSaveModelFormat, "ORT");
-  InferenceSessionGetGraphWrapper session_object{so, GetEnvironment()};
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
 
   // create .ort file during Initialize due to values in SessionOptions
   ASSERT_STATUS_OK(session_object.Load(onnx_file));
@@ -201,7 +209,7 @@ static void SaveAndCompareModels(const std::string& onnx_file, const std::basic_
   so2.AddConfigEntry(kOrtSessionOptionsConfigLoadModelFormat, "ORT");
 
   // load serialized version
-  InferenceSessionGetGraphWrapper session_object2{so2, GetEnvironment()};
+  InferenceSessionWrapper session_object2{so2, GetEnvironment()};
   ASSERT_STATUS_OK(session_object2.Load(ort_file));
   ASSERT_STATUS_OK(session_object2.Initialize());
 
@@ -289,7 +297,7 @@ TEST(OrtModelOnlyTests, SerializeToOrtFormatMLOps) {
     for (size_t i = 0; i < 3; i++) {
       const auto& expected = expected_output_1[i];
       const auto& actual = actual_output_1[i];
-      ASSERT_EQ(actual.size(), 2);
+      ASSERT_EQ(actual.size(), size_t(2));
       ASSERT_NEAR(expected.at("A"), actual.at("A"), 1e-6);
       ASSERT_NEAR(expected.at("B"), actual.at("B"), 1e-6);
     }
@@ -300,8 +308,7 @@ TEST(OrtModelOnlyTests, SerializeToOrtFormatMLOps) {
 #endif  // #if !defined(DISABLE_ML_OPS)
 #endif  // #if !defined(ORT_MINIMAL_BUILD)
 
-// test that we can deserialize and run a previously saved ORT format model
-TEST(OrtModelOnlyTests, LoadOrtFormatModel) {
+OrtModelTestInfo GetTestInfoForLoadOrtFormatModel() {
   OrtModelTestInfo test_info;
   test_info.model_filename = ORT_TSTR("testdata/ort_github_issue_4031.onnx.ort");
   test_info.logid = "LoadOrtFormatModel";
@@ -319,13 +326,26 @@ TEST(OrtModelOnlyTests, LoadOrtFormatModel) {
     ASSERT_TRUE(output.Data<float>()[0] == 125.f);
   };
 
+  return test_info;
+}
+
+// test that we can deserialize and run a previously saved ORT format model
+TEST(OrtModelOnlyTests, LoadOrtFormatModel) {
+  OrtModelTestInfo test_info = GetTestInfoForLoadOrtFormatModel();
+  RunOrtModel(test_info);
+}
+
+// Load the model from a buffer instead of a file path
+TEST(OrtModelOnlyTests, LoadOrtFormatModelFromBuffer) {
+  OrtModelTestInfo test_info = GetTestInfoForLoadOrtFormatModel();
+  test_info.run_use_buffer = true;
   RunOrtModel(test_info);
 }
 
 #if !defined(DISABLE_ML_OPS)
 // test that we can deserialize and run a previously saved ORT format model
 // for a model with sequence and map outputs
-TEST(OrtModelOnlyTests, LoadOrtFormatModelMLOps) {
+OrtModelTestInfo GetTestInfoForLoadOrtFormatModelMLOps() {
   OrtModelTestInfo test_info;
   test_info.model_filename = ORT_TSTR("testdata/sklearn_bin_voting_classifier_soft.ort");
   test_info.logid = "LoadOrtFormatModelMLOps";
@@ -349,19 +369,36 @@ TEST(OrtModelOnlyTests, LoadOrtFormatModelMLOps) {
                                                 {{"A", 0.596016f}, {"B", 0.403984f}},
                                                 {{"A", 0.656315f}, {"B", 0.343685f}}};
     const auto& actual_output_1 = fetches[1].Get<VectorMapStringToFloat>();
-    ASSERT_EQ(actual_output_1.size(), 3);
+    ASSERT_EQ(actual_output_1.size(), size_t(3));
     for (size_t i = 0; i < 3; i++) {
       const auto& expected = expected_output_1[i];
       const auto& actual = actual_output_1[i];
-      ASSERT_EQ(actual.size(), 2);
+      ASSERT_EQ(actual.size(), size_t(2));
       ASSERT_NEAR(expected.at("A"), actual.at("A"), 1e-6);
       ASSERT_NEAR(expected.at("B"), actual.at("B"), 1e-6);
     }
   };
 
+  return test_info;
+}
+
+// test that we can deserialize and run a previously saved ORT format model
+// for a model with sequence and map outputs
+TEST(OrtModelOnlyTests, LoadOrtFormatModelMLOps) {
+  OrtModelTestInfo test_info = GetTestInfoForLoadOrtFormatModelMLOps();
   RunOrtModel(test_info);
 }
-#endif
+
+// Load the model from a buffer instead of a file path
+TEST(OrtModelOnlyTests, LoadOrtFormatModelMLOpsFromBuffer) {
+  OrtModelTestInfo test_info = GetTestInfoForLoadOrtFormatModelMLOps();
+  test_info.run_use_buffer = true;
+  RunOrtModel(test_info);
+}
+
+#endif  // !defined(DISABLE_ML_OPS)
 
 }  // namespace test
 }  // namespace onnxruntime
+
+#endif  //  defined(ENABLE_ORT_FORMAT_LOAD)
