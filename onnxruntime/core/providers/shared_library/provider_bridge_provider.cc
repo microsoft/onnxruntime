@@ -48,7 +48,7 @@ void operator delete(void* p, size_t /*size*/) { return onnxruntime::g_host->Hea
 
 namespace onnxruntime {
 
-Provider_AllocatorPtr CreateAllocator(const Provider_AllocatorCreationInfo& info) {
+AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
   return g_host->CreateAllocator(info);
 }
 
@@ -85,13 +85,7 @@ int64_t TensorShape::Size() const {
 }
 
 int64_t TensorShape::SizeHelper(size_t start, size_t end) const {
-  // Must return 1 for an empty sequence
-  int64_t size = 1;
-  for (size_t i = start; i < end; i++) {
-    if ((*this)[i] < 0) return -1;
-    size *= (*this)[i];
-  }
-  return size;
+  return g_host->TensorShape__SizeHelper(this, start, end);
 }
 
 TensorShape TensorShape::Slice(size_t dimstart, size_t dimend) const {
@@ -104,37 +98,27 @@ TensorShape TensorShape::Slice(size_t dimstart) const {
 }
 
 std::string TensorShape::ToString() const {
-  std::string result;
-
-  result.append("{");
-  bool first = true;
-  for (auto dim : (*this)) {
-    if (!first) {
-      result.append(",");
-    }
-
-    result.append(std::to_string(dim));
-    first = false;
-  }
-  result.append("}");
-
-  return result;
+  return g_host->TensorShape__ToString(this);
 }
 
-Provider_AllocatorPtr CreateAllocator(Provider_AllocatorCreationInfo info) {
+AllocatorPtr CreateAllocator(AllocatorCreationInfo info) {
   return g_host->CreateAllocator(info);
 }
 
-std::unique_ptr<Provider_IAllocator> Provider_CreateCPUAllocator(const OrtMemoryInfo& info) {
+std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& info) {
   return g_host->CreateCPUAllocator(info);
 }
 
+bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) noexcept {
+  return g_host->IAllocator__CalcMemSizeForArrayWithAlignment(nmemb, size, alignment, out);
+}
+
 #ifdef USE_TENSORRT
-std::unique_ptr<Provider_IAllocator> Provider_CreateCUDAAllocator(int16_t device_id, const char* name) {
+std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) {
   return g_host->CreateCUDAAllocator(device_id, name);
 }
 
-std::unique_ptr<Provider_IAllocator> Provider_CreateCUDAPinnedAllocator(int16_t device_id, const char* name) {
+std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) {
   return g_host->CreateCUDAPinnedAllocator(device_id, name);
 }
 
@@ -181,29 +165,7 @@ const std::string& Status::ErrorMessage() const noexcept {
   return IsOK() ? EmptyString() : state_->msg;
 }
 
-std::string Status::ToString() const {
-  if (state_ == nullptr) {
-    return std::string("OK");
-  }
-
-  std::string result;
-
-  if (common::SYSTEM == state_->category) {
-    result += "SystemError";
-    result += " : ";
-    result += std::to_string(errno);
-  } else if (common::ONNXRUNTIME == state_->category) {
-    result += "[ONNXRuntimeError]";
-    result += " : ";
-    result += std::to_string(Code());
-    result += " : ";
-    result += StatusCodeToString(static_cast<StatusCode>(Code()));
-    result += " : ";
-    result += state_->msg;
-  }
-
-  return result;
-}
+std::string Status::ToString() const { return g_host->Status__ToString(this); }
 
 const std::string& Status::EmptyString() noexcept {
   static std::string s_empty;

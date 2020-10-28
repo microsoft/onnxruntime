@@ -139,7 +139,6 @@ void DumpTensor(
     const SessionState& session_state) {
   // check tensor is on CPU before dumping it
   auto& tensor_location = tensor.Location();
-  const auto data_type = tensor.DataType();
   if (tensor_location.device.Type() == OrtDevice::CPU ||
       tensor_location.mem_type == OrtMemTypeCPUInput ||
       tensor_location.mem_type == OrtMemTypeCPUOutput) {
@@ -148,6 +147,7 @@ void DumpTensor(
     std::cout << tensor_location << "\n";
 
 #ifdef USE_CUDA
+    const auto data_type = tensor.DataType();
     // Dumping GPU only when cuda is enabled.
     if (tensor_location.device.Type() == OrtDevice::GPU) {
       const auto& execution_providers = session_state.GetExecutionProviders();
