@@ -479,7 +479,6 @@ struct Im2colNd<T, StorageOrder::NCHW> {
         } else if (!is_padding) {  // col2im
           data_col[index_im] += data_img[index_col];
         }
-
       } while (NextPosition(N, col_shape + 1, d_iter.data()));
     }  // for (int c = 0; c < channels_col; ++c) {
   }

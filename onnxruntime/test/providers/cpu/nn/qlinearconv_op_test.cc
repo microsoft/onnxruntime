@@ -336,7 +336,7 @@ class QLinearConvOpTester {
     return static_cast<T>(RoundHalfToEven(f) + requantize_values.zero_point_);
   }
 
-  static inline bool NextPosition(int64_t N, const int64_t* shape, int64_t* dims) {
+  static bool NextPosition(int64_t N, const int64_t* shape, int64_t* dims) {
     // Loop over spatial axes in reverse order to choose an index, like counting.
     bool incremented = false;
     for (int64_t d_i = N - 1; d_i >= 0; --d_i) {
@@ -552,6 +552,16 @@ class QLinearConvOpTester {
   }
 };
 
+TEST(QLinearConvTest, Conv1D_U8S8) {
+  QLinearConvOpTester<uint8_t, int8_t> test;
+  test.GenerateRandomInput({3, 24, 15}, .05f, 4);
+  test.GenerateRandomWeights({32, 24, 3}, .125f, 0);
+  test.GenerateRandomBias();
+  test.SetPads({1, 1});
+  test.SetOutputScaleAndZeroPoint(.55f, 54);
+  test.Run();
+}
+
 TEST(QLinearConvTest, Conv2D_U8S8) {
   QLinearConvOpTester<uint8_t, int8_t> test;
   test.GenerateRandomInput({3, 24, 15, 11}, .05f, 4);
@@ -569,6 +579,15 @@ TEST(QLinearConvTest, Conv3D_U8S8) {
   test.GenerateRandomBias();
   test.SetPads({1, 1, 1, 1, 1, 1});
   test.SetOutputScaleAndZeroPoint(.55f, 54);
+  test.Run();
+}
+
+TEST(QLinearConvTest, Conv1D_U8S8_Dilations) {
+  QLinearConvOpTester<uint8_t, int8_t> test;
+  test.GenerateRandomInput({1, 4, 19}, .02f, 20);
+  test.GenerateRandomWeights({6, 4, 3}, .11f, 0);
+  test.SetDilations({2});
+  test.SetOutputScaleAndZeroPoint(.24f, 15);
   test.Run();
 }
 
@@ -590,6 +609,15 @@ TEST(QLinearConvTest, Conv3D_U8S8_Dilations) {
   test.Run();
 }
 
+TEST(QLinearConvTest, Conv1D_U8S8_Strides) {
+  QLinearConvOpTester<uint8_t, int8_t> test;
+  test.GenerateRandomInput({1, 7, 18}, .04f, 16);
+  test.GenerateRandomWeights({5, 7, 2}, .14f, 0);
+  test.SetStrides({2});
+  test.SetOutputScaleAndZeroPoint(.31f, 30);
+  test.Run();
+}
+
 TEST(QLinearConvTest, Conv2D_U8S8_Strides) {
   QLinearConvOpTester<uint8_t, int8_t> test;
   test.GenerateRandomInput({1, 7, 18, 24}, .04f, 16);
@@ -605,6 +633,17 @@ TEST(QLinearConvTest, Conv3D_U8S8_Strides) {
   test.GenerateRandomWeights({2, 3, 2, 3, 2}, .14f, 0);
   test.SetStrides({2, 2, 2});
   test.SetOutputScaleAndZeroPoint(.31f, 30);
+  test.Run();
+}
+
+TEST(QLinearConvTest, Conv1D_U8S8_Groups) {
+  QLinearConvOpTester<uint8_t, int8_t> test;
+  test.GenerateRandomInput({1, 8, 13}, .03f, 7);
+  test.GenerateRandomWeights({12, 4, 3}, .10f, 0);
+  test.GenerateRandomBias();
+  test.SetPads({1, 1});
+  test.SetGroups(2);
+  test.SetOutputScaleAndZeroPoint(.76f, 88);
   test.Run();
 }
 
