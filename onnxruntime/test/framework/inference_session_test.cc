@@ -50,6 +50,8 @@
 using namespace std;
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::logging;
+using namespace onnxruntime::concurrency;
+
 namespace {
 struct KernelRegistryAndStatus {
   std::shared_ptr<onnxruntime::KernelRegistry> kernel_registry = std::make_shared<onnxruntime::KernelRegistry>();
@@ -2547,7 +2549,7 @@ void VerifyThreadPoolWithDenormalAsZero(onnxruntime::concurrency::ThreadPool* tp
   std::array<double, num_tasks> input_double;
   input_double.fill(denormal_double);
 
-  tp->SimpleParallelFor(num_tasks, [&](std::ptrdiff_t i) {
+  ThreadPool::TrySimpleParallelFor(tp, num_tasks, [&](std::ptrdiff_t i) {
     input_float[i] *= 2;
     input_double[i] *= 2;
   });

@@ -52,7 +52,7 @@ void CreateThreadPoolAndTest(const std::string&, int num_threads, const std::fun
 void TestParallelFor(const std::string& name, int num_threads, int num_tasks) {
   auto test_data = CreateTestData(num_tasks);
   CreateThreadPoolAndTest(name, num_threads, [&](ThreadPool* tp) {
-    tp->SimpleParallelFor(num_tasks, [&](std::ptrdiff_t i) { IncrementElement(*test_data, i); });
+      ThreadPool::TrySimpleParallelFor(tp, num_tasks, [&](std::ptrdiff_t i) { IncrementElement(*test_data, i); });
   });
   ValidateTestData(*test_data);
 }
@@ -82,15 +82,15 @@ void TestMultipleParallelFor(const std::string& name, int num_threads, int num_c
 
       // For a range of scenarios, run some tests via the thread pool, and one directly
       for (int c = 0; c < num_concurrent - 1; c++) {
-        tp->Schedule([&, c]() {
-          tp->SimpleParallelFor(num_tasks, [&](std::ptrdiff_t i) {
-            IncrementElement(*td[c], i);
+        ThreadPool::Schedule(tp, [&, c]() {
+            ThreadPool::TrySimpleParallelFor(tp, num_tasks, [&](std::ptrdiff_t i) {
+                IncrementElement(*td[c], i);
+              });
+            b.Notify();
           });
-          b.Notify();
-        });
       }
 
-      tp->SimpleParallelFor(num_tasks, [&](std::ptrdiff_t i) {
+      ThreadPool::TrySimpleParallelFor(tp, num_tasks, [&](std::ptrdiff_t i) {
         IncrementElement(*td[num_concurrent - 1], i);
       });
 
@@ -117,7 +117,7 @@ void TestBurstScheduling(const std::string& name, int num_tasks) {
     CreateThreadPoolAndTest(name, 2, [&](ThreadPool* tp) {
       // First variant : schedule from outside the pool
       for (int tasks = 0; tasks < num_tasks; tasks++) {
-        tp->Schedule([&]() {
+        ThreadPool::Schedule(tp, [&]() {
           ctr++;
         });
       }
@@ -125,9 +125,9 @@ void TestBurstScheduling(const std::string& name, int num_tasks) {
     ASSERT_TRUE(ctr == num_tasks);
     CreateThreadPoolAndTest(name, 2, [&](ThreadPool* tp) {
       // Second variant : schedule from inside the pool
-      tp->Schedule([&, tp]() {
+      ThreadPool::Schedule(tp, [&, tp]() {
         for (int tasks = 0; tasks < num_tasks; tasks++) {
-          tp->Schedule([&]() {
+          ThreadPool::Schedule(tp, [&]() {
             ctr++;
           });
         }
@@ -153,7 +153,7 @@ void TestPoolCreation(const std::string&, int iter) {
                                                    nullptr,
                                                    num_threads,
                                                    true);
-    tp->ParallelFor(per_iter, 0.0,
+    ThreadPool::TryParallelFor(tp.get(), per_iter, 0.0,
                     [&](std::ptrdiff_t s, std::ptrdiff_t e) {
                       ctr += e - s;
                     });
@@ -302,7 +302,7 @@ TEST(ThreadPoolTest, TestStackSize) {
   Notification n;
   ULONG_PTR low_limit, high_limit;
   bool has_thread_limit_info = false;
-  tp->Schedule([&]() {
+  ThreadPool::Schedule(tp.get(), [&]() {
     HMODULE kernel32_module = GetModuleHandle(TEXT("kernel32.dll"));
     assert(kernel32_module != nullptr);
     FnGetCurrentThreadStackLimits GetTS =
