@@ -113,7 +113,7 @@ namespace cuda {
       kCudaExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       name<T>);                                                                 \
-   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
       name,                                                                     \
       kOnnxDomain,                                                              \
       13,                                                                       \
@@ -703,14 +703,15 @@ Status ReduceKernel<true>::ComputeImpl<int32_t, CUDNN_REDUCE_TENSOR_NO_INDICES>(
     auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);
     const auto* data = axes_tensor->template Data<int64_t>();
     axes.assign(data, data + nDims);
-    // empty axes and no-op
-    if (axes.empty() && noop_with_empty_axes_) {
-      auto* Y = ctx->Output(0, X->Shape());
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y->template MutableData<int32_t>(), X->template Data<int32_t>(), X->SizeInBytes(), cudaMemcpyDeviceToDevice));
-      return Status::OK();
-    }
   } else {
     axes.assign(axes_.begin(), axes_.end());
+  }
+
+  // empty axes and no-op
+  if (axes.empty() && noop_with_empty_axes_) {
+    auto* Y = ctx->Output(0, X->Shape());
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y->template MutableData<int32_t>(), X->template Data<int32_t>(), X->SizeInBytes(), cudaMemcpyDeviceToDevice));
+    return Status::OK();
   }
 
   PrepareReduceMetadata prepare_reduce_metadata;
@@ -1040,7 +1041,6 @@ REGISTER_KERNEL_INT32(ReduceL2)
 REGISTER_KERNEL_INT32(ReduceMean)
 
 REGISTER_KERNEL_INT32(ReduceProd)
-// REGISTER_KERNEL_INT32(ReduceSum)
 
 }  // namespace cuda
 }  // namespace onnxruntime

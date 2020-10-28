@@ -28,7 +28,9 @@ ONNX_OPERATOR_KERNEL_EX(Split,
                         kOnnxDomain,
                         13,
                         kCudaExecutionProvider,
-                        KernelDefBuilder().InputMemoryType<OrtMemTypeCPUInput>(1).TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+                        KernelDefBuilder()
+                            .InputMemoryType<OrtMemTypeCPUInput>(1)
+                            .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
                         Split);
 
 Status Split::ComputeInternal(OpKernelContext* ctx) const {
@@ -48,7 +50,6 @@ Status Split::ComputeInternal(OpKernelContext* ctx) const {
     ORT_ENFORCE(split_tensor->Shape().NumDimensions() == 1, "An split tensor must be a vector tensor.");
     auto nDims = static_cast<size_t>(split_tensor->Shape()[0]);
     const int64_t* data = split_tensor->template Data<int64_t>();
-    // std::vector<int64_t> split_sizes(data, data + nDims);
     split_sizes.assign(data, data + nDims);
   } else {
     split_sizes.assign(split_sizes_.begin(), split_sizes_.end());

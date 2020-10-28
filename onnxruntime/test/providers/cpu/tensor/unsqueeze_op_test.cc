@@ -57,7 +57,7 @@ TEST(TensorOpTest, Unsqueeze_Duplicate) {
              {kTensorrtExecutionProvider});  //TensorRT failed
   }
   {
-    OpTester test("Unsqueeze", 13); // use latest opset with axis input
+    OpTester test("Unsqueeze", -1); // use latest opset with axis input
 
     test.AddInput<float>("input", {2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
     test.AddInput<int64_t>("axes", {4}, std::vector<int64_t>{2, 1, 0, 2}, true); //set as initializer to enable shape inference
@@ -78,7 +78,7 @@ TEST(TensorOpTest, Unsqueeze_OutOfRange) {
              "[ShapeInferenceError] values in 'axes' are beyond the bounds of the computed output shape");
   }
   {
-    OpTester test("Unsqueeze", 13);  // use latest opset with axis input
+    OpTester test("Unsqueeze", -1);  // use latest opset with axis input
     test.AddInput<float>("input", {2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
     test.AddInput<int64_t>("axes", {1}, std::vector<int64_t>{4}, true); //set as initializer to enable shape inference
     test.AddOutput<float>("output", {2, 1, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));

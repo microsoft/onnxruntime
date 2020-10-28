@@ -38,26 +38,6 @@ static bool IsErrorWithinTolerance(float error, float tolerance) {
 #define EXPECT_IS_TINY(max_error) \
   EXPECT_IS_TINIER_THAN(max_error, 1.5e-2f)
 
-template <typename T>
-void GenerateRandomData(
-    std::vector<std::vector<T>>& x_datas,
-    std::vector<TensorShape> input_shapes) {
-  // TODO: Consider varying mean and variance
-  float scale = 5.f;
-  float mean = 0.f;
-  const uint32_t seed = GetTestRandomSeed();
-
-  std::default_random_engine generator{gsl::narrow_cast<decltype(generator)::result_type>(seed)};
-  std::normal_distribution<T> distribution{mean, scale};
-
-  for (size_t i = 0; i < input_shapes.size(); i++) {
-    auto x_data_length = input_shapes[i].Size();
-    x_datas[i].resize(x_data_length);
-
-    std::generate(x_datas[i].begin(), x_datas[i].end(), [&] { return distribution(generator); });
-  }
-}
-
 static void RunReductionTests(const OpDef& op_def,
                               bool axes_as_input = false,
                               bool check_not_have_shape_inferencing = false) {
@@ -111,8 +91,9 @@ static void RunReductionTests(const OpDef& op_def,
     TensorShape x_shape = x_shapes[i];
     TensorShape y_shape = y_shapes[i];
     std::vector<int64_t> axes = axes_vec[i];
-    std::vector<std::vector<float>> x_datas(1);
-    GenerateRandomData<float>(x_datas, {x_shape});
+    std::vector<std::vector<float>> x_datas;
+    RandomValueGenerator random{};
+    x_datas.push_back(random.Gaussian<float>(x_shapes[i], 0.f, 5.f));
     std::vector<TensorInfo> input = {x_shape};
     std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {};
     if (keepdims_ip[i] != -1) attributes.push_back(MakeAttribute("keepdims", keepdims_ip[i]));
@@ -1042,8 +1023,9 @@ static void RunSqueezeUnsqueezeTests(const OpDef& op_def,
     TensorShape x_shape = x_shapes[i];
     TensorShape y_shape = y_shapes[i];
     std::vector<int64_t> axes = axes_ip[i];
-    std::vector<std::vector<float>> x_datas(1);
-    GenerateRandomData<float>(x_datas, {x_shape});
+    std::vector<std::vector<float>> x_datas;
+    RandomValueGenerator random{};
+    x_datas.push_back(random.Gaussian<float>(x_shapes[i], 0.f, 5.f));
     std::vector<TensorInfo> input = {x_shape};
     std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {};
     if (axes_input) {
