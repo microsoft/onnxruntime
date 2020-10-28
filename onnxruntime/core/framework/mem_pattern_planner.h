@@ -146,7 +146,7 @@ class MemPatternPlanner {
           best_offset = current;
         }
       }
-      current = allocs_[*it].block_.offset_ + allocs_[*it].block_.size_;
+      current = std::max(current, allocs_[*it].block_.offset_ + allocs_[*it].block_.size_);
     }
 
     if (current < buffer_size_) {

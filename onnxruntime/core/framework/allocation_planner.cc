@@ -870,7 +870,6 @@ class PlannerImpl {
     if (has_prev_dealloc_point)
       plan_.execution_plan[prev_dealloc_point].free_to_index = current - 1;
 
-    // For each activation that is "allocated", fill in it's deallocation point.
     size_t program_counter = 0;
     for (auto& node_plan : plan_.execution_plan) {
       for (int index = node_plan.free_from_index; index <= node_plan.free_to_index; ++index) {
@@ -878,7 +877,6 @@ class PlannerImpl {
         if (AllocPlan(ml_value_idx).alloc_kind == AllocKind::kAllocate) {
           ORT_ENFORCE(AllocPlan(ml_value_idx).program_counter_start.back() <= program_counter);
           ORT_ENFORCE(AllocPlan(ml_value_idx).program_counter_end.back() == program_counter);
-          AllocPlan(ml_value_idx).program_counter_end.back() = program_counter;
         }
       }
 
