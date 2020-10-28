@@ -408,6 +408,7 @@ class SessionState {
   using SubgraphSessionStateMap =
       std::unordered_map<onnxruntime::NodeIndex, std::unordered_map<std::string, std::unique_ptr<SessionState>>>;
   SubgraphSessionStateMap subgraph_session_states_;
+  const SessionState* parent_ = nullptr;
 
   // either threadpool could be nullptr
   concurrency::ThreadPool* const thread_pool_{};
@@ -426,14 +427,13 @@ class SessionState {
   std::map<std::vector<int>, std::unordered_set<NodeIndex>> to_be_executed_nodes_;
 #endif
 
-  SessionState* parent_ = nullptr;
-  //Assign each graph in each session an unique id.
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
+  //Assign each graph in each session an unique id.
   int graph_id_ = 0;
   int next_graph_id_ = 1;
 
   void GenerateGraphId() {
-    SessionState* p = this;
+    const SessionState* p = this;
     while (p->parent_ != nullptr) p = p->parent_;
     graph_id_ = p->next_graph_id_++;
   }

@@ -147,8 +147,8 @@ class PlannerImpl {
 
     // This is initialized to -1 to ensure that if ProcessDef is somehow not called, planning
     // will fail more cleanly.  This is also used as a temporary workaround to detect the
-    // case that the DML provider has removed initilizers from the graph during partitioning. 
-    // Removing initializers is a temporary measure needed to limit the number of copies of 
+    // case that the DML provider has removed initilizers from the graph during partitioning.
+    // Removing initializers is a temporary measure needed to limit the number of copies of
     // tensors in GPU memory.
     OrtValueIndex reused_buffer_index = -1;  // index of original buffer to reuse
   };
@@ -513,7 +513,7 @@ class PlannerImpl {
   Status GeneratePlanForWeights() {
     auto& weights = graph_viewer_.GetAllInitializedTensors();
     std::vector<std::vector<OrtMemoryInfo>> locations(plan_.allocation_plan.size());
-    for (auto& node : graph_viewer_.Nodes()) {
+    for (const auto& node : graph_viewer_.Nodes()) {
       auto status = onnxruntime::Node::ForEachWithIndex(
           node.InputDefs(), [this, &locations, &node, &weights](const onnxruntime::NodeArg& def, size_t index) {
             auto sub_status = Status::OK();
