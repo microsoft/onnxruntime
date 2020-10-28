@@ -792,14 +792,13 @@ IMPLEMENT_GRADIENT_BUILDER(GetLogSoftmaxGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetUnsqueezeGradient) {
-  size_t numInputs = GetSrcNodeInputSize();
-  if (numInputs == 1) {
+  if (SrcNodeOpsetVersion() < 13) {
     return std::vector<NodeDef>{
         NodeDef("Squeeze",
                 {GO(0)},
                 {GI(0)},
                 SrcNodeAttributes())};
-  } else {
+  } else { // mandatory input 'axes' since opset 13
     return std::vector<NodeDef>{
         NodeDef(OpDef{"Squeeze", kOnnxDomain, 13},
                 {GO(0), I(1)},
@@ -840,7 +839,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetReluGradient) {
 IMPLEMENT_GRADIENT_BUILDER(GetSqueezeGradient) {
   std::vector<NodeDef> result;
   size_t numInputs = GetSrcNodeInputSize();
-  if (numInputs == 1) {
+  if (SrcNodeOpsetVersion() < 13) { //axes attribute
     auto attributes = SrcNodeAttributes();
     std::vector<int64_t> axes_values;
     if (attributes.find("axes") != attributes.end()) {
@@ -850,8 +849,13 @@ IMPLEMENT_GRADIENT_BUILDER(GetSqueezeGradient) {
                   {GO(0)},
                   {GI(0)},
                   {MakeAttribute("axes", axes_values)}));
-      // if axes attribute not provided for squeeze
-    } else {
+    } 
+  } else if(numInputs == 2){ //optional input 'axes' is provided
+    result.push_back(
+        NodeDef(OpDef{"Unsqueeze", kOnnxDomain, 13},
+                {GO(0), I(1)},
+                {GI(0)}));
+  } else { // if axes attribute/input not provided for squeeze
       result.push_back(
           NodeDef("Shape",
                   {I(0)},
@@ -860,12 +864,6 @@ IMPLEMENT_GRADIENT_BUILDER(GetSqueezeGradient) {
           NodeDef("Reshape",
                   {GO(0), IA("I0_shape")},
                   {GI(0)}));
-    }
-  } else { //axes is input
-    result.push_back(
-        NodeDef(OpDef{"Unsqueeze", kOnnxDomain, 13},
-                {GO(0), I(1)},
-                {GI(0)}));
   }
 
   return result;
@@ -1139,33 +1137,18 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceSumGradient) {
   ArgDef grad = GO(0);
   if (!keepdims) {
     size_t numInputs = GetSrcNodeInputSize();
-    if (numInputs == 1) {  //axes is attribute
+    if (SrcNodeOpsetVersion() < 13) {  //axes is attribute
       if (attributes.find("axes") != attributes.end()) {
         std::vector<int64_t> axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
 
         grad = IA("Unqueezed_Grad");
         result.push_back(NodeDef("Unsqueeze", {GO(0)}, {grad}, {MakeAttribute("axes", axes_values)}));
 
-      } else {  //axes is not available, try to add grad graph from input shape info
-        std::vector<Dimension> input_shape;
-        if (GetShape(I(0), input_shape).IsOK()) {
-          size_t nDim = input_shape.size();
-          std::vector<int64_t> axes_values(nDim);
-          std::iota(axes_values.begin(), axes_values.end(), 0);
-          grad = IA("Unqueezed_Grad");
-          result.push_back(NodeDef("Unsqueeze", {GO(0)}, {grad}, {MakeAttribute("axes", axes_values)}));
-        } else {
-          ORT_THROW(
-              "Cannot add gradient graph as attribute 'axes' "
-              "is not set and input shape is not available.");
-        }
-      }
-    } else if (numInputs == 2) {  //axes is input I(1) instead of attribute
+      } 
+    } else if (numInputs == 2) {  //optional input 'axes' is available as input I(1)
       grad = IA("Unqueezed_Grad");
       result.push_back(NodeDef(OpDef{"Unsqueeze", kOnnxDomain, 13}, {GO(0), I(1)}, {grad}));
-    } else {
-      ORT_THROW("Unsupported number of Inputs.");
-    }
+    } //axes is not available, the GO(0) is a scalar which can be expanded to required shape
   }
 
   result.push_back(NodeDef("Shape", {I(0)}, {IA("Shaped_X")}));

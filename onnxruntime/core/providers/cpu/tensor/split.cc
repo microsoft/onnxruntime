@@ -133,7 +133,7 @@ Status Split::ComputeImpl(OpKernelContext& context, const Tensor& input) const {
     ORT_ENFORCE(split_tensor->Shape().NumDimensions() == 1, "An split tensor must be a vector tensor.");
     auto nDims = static_cast<size_t>(split_tensor->Shape()[0]);
     const auto* data = split_tensor->template Data<int64_t>();
-    copy(data, data+nDims, back_inserter(split_sizes));
+    split_sizes.assign(data, data + nDims);
   }
   else{
     split_sizes.assign(split_sizes_.begin(), split_sizes_.end());
