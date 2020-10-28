@@ -178,20 +178,25 @@ class MemPatternPlanner {
 
     // Time schedules of overlapping memory blocks SHOULD NOT intersect.
     for (size_t index_1 = 0; index_1 < allocs_.size(); index_1 += 1) {
+      if (!allocs_[index_1].reuse_)
+        continue;
+
       for (size_t index_2 = index_1 + 1; index_2 < allocs_.size(); index_2 += 1) {
+        if (!allocs_[index_2].reuse_)
+          continue;
+
         size_t alloc_1_start = allocs_[index_1].block_.offset_;
         size_t alloc_1_end = alloc_1_start + allocs_[index_1].block_.size_ - 1;
-        
+
         ORT_ENFORCE(alloc_1_start <= alloc_1_end);
-        
+
         size_t alloc_2_start = allocs_[index_2].block_.offset_;
         size_t alloc_2_end = alloc_2_start + allocs_[index_2].block_.size_ - 1;
-        
+
         ORT_ENFORCE(alloc_2_start <= alloc_2_end);
 
         if (((alloc_1_start >= alloc_2_start) && (alloc_1_start <= alloc_2_end)) ||
             ((alloc_2_start >= alloc_1_start) && (alloc_2_start <= alloc_1_end))) {
-
           ORT_ENFORCE(!OverlappingTimeSchedules(allocs_[index_1].program_counter_start_, allocs_[index_1].program_counter_end_,
                                                 allocs_[index_2].program_counter_start_, allocs_[index_2].program_counter_end_));
         }
