@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
+#include "core/util/math.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "core/mlas/inc/mlas.h"
@@ -394,26 +396,10 @@ class QLinearConvOpTester {
     const int64_t* output_shape = Y_shape.data() + 2;
     Y_data.resize(ShapeSize(Y_shape));
 
-    auto calc_size = [](size_t N, const int64_t* shape) -> int64_t {
-      int64_t s = 1;
-      for (size_t i = 0; i < N; ++i) s *= shape[i];
-      return s;
-    };
-
-    const int64_t input_h = input_shape[0];
-    const int64_t input_w = input_shape[1];
-    const int64_t input_image_size = calc_size(kernel_rank, input_shape);
-    const int64_t kernel_h = kernel_shape[0];
-    const int64_t kernel_w = kernel_shape[1];
-    const int64_t kernel_size = calc_size(kernel_rank, kernel_shape);
-    const int64_t output_h = output_shape[0];
-    const int64_t output_w = output_shape[1];
-    const int64_t pad_t = pads[0];
-    const int64_t pad_l = pads[1];
-    const int64_t dilation_h = dilations[0];
-    const int64_t dilation_w = dilations[1];
-    const int64_t stride_h = strides[0];
-    const int64_t stride_w = strides[1];
+    const int64_t input_image_size = std::accumulate(
+        input_shape, input_shape + kernel_rank, 1LL, std::multiplies<int64_t>());
+    const int64_t kernel_size = std::accumulate(
+        kernel_shape, kernel_shape + kernel_rank, 1LL, std::multiplies<int64_t>());
     const int32_t X_zero_point = X_.zero_point_;
 
     const T1* Xdata = X_.data_.data();
@@ -432,62 +418,34 @@ class QLinearConvOpTester {
           float weight_scale = W_.scale_[(W_.scale_.size() == 1) ? 0 : channel_index];
           float requantize_scale = (X_.scale_[0] * weight_scale) / output_scale_;
 
-          if (kernel_rank == 2) {
-            for (int64_t oh = 0; oh < output_h; oh++) {
-              for (int64_t ow = 0; ow < output_w; ow++) {
-                int32_t sum = bias;
-                const T1* input_image = Xdata;
-                const T2* weight_data = weight_row;
-                for (int64_t ic = 0; ic < group_input_channels; ic++) {
-                  for (int64_t kh = 0; kh < kernel_h; kh++) {
-                    int64_t ih = kh * dilation_h + oh * stride_h - pad_t;
-                    for (int64_t kw = 0; kw < kernel_w; kw++) {
-                      int64_t iw = kw * dilation_w + ow * stride_w - pad_l;
-                      int32_t w_value = static_cast<int32_t>(*weight_data++);
-                      if (static_cast<uint64_t>(ih) < static_cast<uint64_t>(input_h) &&
-                          static_cast<uint64_t>(iw) < static_cast<uint64_t>(input_w)) {
-                        int32_t x_value = static_cast<int32_t>(input_image[ih * input_w + iw]) - X_zero_point;
-                        sum += x_value * w_value;
-                      }
-                    }
-                  }
-                  input_image += input_image_size;
+          std::vector<int64_t> d_output(kernel_rank, 0);
+          std::vector<int64_t> d_kernel(kernel_rank, 0);
+          do {
+            int32_t sum = bias;
+            const T1* input_image = Xdata;
+            const T2* weight_data = weight_row;
+            for (int64_t ic = 0; ic < group_input_channels; ic++) {
+              do {
+                int64_t input_offset = 0;
+                bool is_padding = false;
+                for (size_t axis = 0; axis < kernel_rank; ++axis) {
+                  int64_t input_dim = d_kernel[axis] * dilations[axis] + d_output[axis] * strides[axis] - pads[axis];
+                  is_padding |= !math::is_a_ge_zero_and_a_lt_b(input_dim, input_shape[axis]);
+                  input_offset *= input_shape[axis];
+                  input_offset += input_dim;
                 }
-                *Ydata++ = RequantizeOutput<T1>(sum, requantize_scale, requantize_values);
-              }
-            }
-          } else {
-            std::vector<int64_t> d_output(kernel_rank, 0);
-            std::vector<int64_t> d_kernel(kernel_rank, 0);
-            for (bool has_next_out = true; has_next_out;) {
-              int32_t sum = bias;
-              const T1* input_image = Xdata;
-              const T2* weight_data = weight_row;
-              for (int64_t ic = 0; ic < group_input_channels; ic++) {
-                for (bool has_next_kernel = true; has_next_kernel;) {
-                  int64_t input_offset = 0;
-                  bool is_padding = false;
-                  for (size_t axis = 0; axis < kernel_rank; ++axis) {
-                    int64_t input_dim = d_kernel[axis] * dilations[axis] + d_output[axis] * strides[axis] - pads[axis];
-                    is_padding |= input_dim < 0 || input_dim >= input_shape[axis];
-                    input_offset *= input_shape[axis];
-                    input_offset += input_dim;
-                  }
-                  int32_t w_value = static_cast<int32_t>(*weight_data++);
-                  if (!is_padding) {
-                    int32_t x_value = static_cast<int32_t>(input_image[input_offset]) - X_zero_point;
-                    sum += x_value * w_value;
-                  }
-
-                  has_next_kernel = NextPosition(kernel_rank, kernel_shape, d_kernel.data());
+                int32_t w_value = static_cast<int32_t>(*weight_data++);
+                if (!is_padding) {
+                  int32_t x_value = static_cast<int32_t>(input_image[input_offset]) - X_zero_point;
+                  sum += x_value * w_value;
                 }
-                input_image += input_image_size;
-              }
-              *Ydata++ = RequantizeOutput<T1>(sum, requantize_scale, requantize_values);
+              } while (NextPosition(kernel_rank, kernel_shape, d_kernel.data()));
 
-              has_next_out = NextPosition(kernel_rank, output_shape, d_output.data());
+              input_image += input_image_size;
             }
-          }
+            *Ydata++ = RequantizeOutput<T1>(sum, requantize_scale, requantize_values);
+
+          } while (NextPosition(kernel_rank, output_shape, d_output.data()));
 
           weight_row += group_input_channels * kernel_size;
         }

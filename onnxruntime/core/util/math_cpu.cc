@@ -210,7 +210,6 @@ template void Gemv<double, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, int M, int
 SPECIALIZED_AXPY(float)
 #undef SPECIALIZED_AXPY
 
-
 #define DELEGATE_SIMPLE_UNARY_FUNCTION(T, Funcname, expr)                  \
   template <>                                                              \
   void Funcname<T, CPUMathUtil>(int N, const T* x, T* y, CPUMathUtil*) {   \
@@ -443,10 +442,7 @@ struct Im2colNd<T, StorageOrder::NCHW> {
                   int64_t /*col_size*/, const int64_t* kernel_shape, const int64_t* stride, const int64_t* dilation,
                   const int64_t* pad, int64_t N, T* data_col, bool accumulate_output = false,
                   T padding_value = 0) {
-    int64_t kernel_size = 1;
-    for (int64_t i = 0; i < N; ++i) {
-      kernel_size *= kernel_shape[i];
-    }
+    int64_t kernel_size = std::accumulate(kernel_shape, kernel_shape + N, 1LL, std::multiplies<int64_t>());
     int64_t channels_col = col_shape[0];
     std::vector<int64_t> d_offset(N, 0);
     std::vector<int64_t> d_iter(N, 0);
@@ -459,7 +455,7 @@ struct Im2colNd<T, StorageOrder::NCHW> {
         }
         d_offset[d_i] = offset % kernel_shape[d_i];
       }
-      for (bool has_next_output = true; has_next_output;) {
+      do {
         // Loop over spatial axes in forward order to compute the indices in the
         // image and column, and whether the index lies in the padding.
         int64_t index_col = c_col;
@@ -468,7 +464,7 @@ struct Im2colNd<T, StorageOrder::NCHW> {
         for (int64_t d_i = 0; d_i < N; ++d_i) {
           int64_t d = d_iter[d_i];
           int64_t d_im = d * stride[d_i] - pad[d_i] + d_offset[d_i] * dilation[d_i];
-          is_padding |= d_im < 0 || d_im >= im_shape[d_i + 1];
+          is_padding |= !is_a_ge_zero_and_a_lt_b(d_im, im_shape[d_i + 1]);
           index_col *= col_shape[d_i + 1];
           index_col += d;
           index_im *= im_shape[d_i + 1];
@@ -484,9 +480,8 @@ struct Im2colNd<T, StorageOrder::NCHW> {
           data_col[index_im] += data_img[index_col];
         }
 
-        has_next_output = NextPosition(N, col_shape + 1, d_iter.data());
-      }  // while(has_next_output) {
-    }    // for (int c = 0; c < channels_col; ++c) {
+      } while (NextPosition(N, col_shape + 1, d_iter.data()));
+    }  // for (int c = 0; c < channels_col; ++c) {
   }
 };
 
@@ -499,10 +494,7 @@ struct Im2colNd<T, StorageOrder::NHWC> {
                   int64_t /*col_size*/, const int64_t* kernel_shape, const int64_t* stride, const int64_t* dilation,
                   const int64_t* pad, int64_t N, T* data_col, bool accumulate_output = false,
                   T padding_value = 0) {
-    int64_t kernel_size = 1;
-    for (int64_t i = 0; i < N; ++i) {
-      kernel_size *= kernel_shape[i];
-    }
+    int64_t kernel_size = std::accumulate(kernel_shape, kernel_shape + N, 1LL, std::multiplies<int64_t>());
 
     // channels_col = kernel size * input channels (effectively treat group = 1)
     int64_t channels_col = col_shape[N];
@@ -517,17 +509,17 @@ struct Im2colNd<T, StorageOrder::NHWC> {
 
     // Loop over spatial axes along the output image shape
     int64_t outer_col_index = 0;
-    for (bool has_next_output = true; has_next_output;) {
+    do {
       // Loop over spatial axes in reverse order to choose an index on kernel dimensions
       int64_t inner_col_index = 0;
-      for (bool has_next_kernel = true; has_next_kernel; inner_col_index += input_channels) {
+      do {
         // Loop over spatial axes in forward order to compute the indices in the image
         // and the inner col, and whether the index lies in the padding.
         int64_t index_im = 0;
         bool is_padding = false;
         for (int64_t d_i = 0; d_i < N; ++d_i) {
           int64_t d_im = d_output[d_i] * stride[d_i] - pad[d_i] + d_kernel[d_i] * dilation[d_i];
-          is_padding |= d_im < 0 || d_im >= im_shape[d_i];
+          is_padding |= !is_a_ge_zero_and_a_lt_b(d_im, im_shape[d_i]);
           index_im *= im_shape[d_i];
           index_im += d_im;
         }
@@ -547,13 +539,11 @@ struct Im2colNd<T, StorageOrder::NHWC> {
             *ptr_col++ += *ptr_im++;
           }
         }
-
-        has_next_kernel = NextPosition(N, kernel_shape, d_kernel.data());
-      }
+        inner_col_index += input_channels;
+      } while (NextPosition(N, kernel_shape, d_kernel.data()));
 
       outer_col_index += channels_col;
-      has_next_output = NextPosition(N, col_shape, d_output.data());
-    }  // while(has_next_output) {
+    } while (NextPosition(N, col_shape, d_output.data()));
   }
 };
 
