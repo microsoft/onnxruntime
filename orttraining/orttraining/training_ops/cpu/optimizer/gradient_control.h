@@ -21,5 +21,12 @@ class InPlaceAccumulator final : public OpKernel {
   InPlaceAccumulator(const OpKernelInfo& info) : OpKernel(info) {}
   Status Compute(OpKernelContext* context) const override;
 };
+
+class DeduplicateBuffer final : public OpKernel {
+ public:
+  DeduplicateBuffer(const OpKernelInfo& info) : OpKernel(info) {}
+  Status Compute(OpKernelContext* context) const override;
+};
+
 }  // namespace contrib
 }  // namespace onnxruntime

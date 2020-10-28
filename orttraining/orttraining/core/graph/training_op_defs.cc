@@ -504,32 +504,32 @@ void RegisterTrainingOpSchemas() {
           "Constrain input and output types to numeric tensors.")
       .FunctionBody([]() {
         auto nodes = ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes(
-          {// nodes: {outputs, op, inputs, attributes}
+            {// nodes: {outputs, op, inputs, attributes}
 
-           // Get input shapes and dynamic reduction axes.
-           {{"shape_A"}, "Shape", {"A"}},
-           {{"shape_B"}, "Shape", {"B"}},
-           {{"axes_A", "axes_B"}, "BroadcastGradientArgs", {"shape_A", "shape_B"}},
+             // Get input shapes and dynamic reduction axes.
+             {{"shape_A"}, "Shape", {"A"}},
+             {{"shape_B"}, "Shape", {"B"}},
+             {{"axes_A", "axes_B"}, "BroadcastGradientArgs", {"shape_A", "shape_B"}},
 
-           // dA = reshape(reduce_sum(dY / B, axes_A), shape_A)
-           {{"dY_over_B"}, "Div", {"dY", "B"}},
-           {{"reduce_dA"}, "ReduceSumTraining", {"dY_over_B", "axes_A"},
-            {ONNX_NAMESPACE::MakeAttribute("noop_with_empty_axes", int64_t(1))}},
-           {{"dA"}, "Reshape", {"reduce_dA", "shape_A"}},
+             // dA = reshape(reduce_sum(dY / B, axes_A), shape_A)
+             {{"dY_over_B"}, "Div", {"dY", "B"}},
+             {{"reduce_dA"}, "ReduceSumTraining", {"dY_over_B", "axes_A"}, 
+              {ONNX_NAMESPACE::MakeAttribute("noop_with_empty_axes", int64_t(1))}},
+             {{"dA"}, "Reshape", {"reduce_dA", "shape_A"}},
 
-           // dB = reshape(reduce_sum(dY * -A / (B * B)), axes_B), shape_B)
-           {{"B_squared"}, "Mul", {"B", "B"}},
-           {{"minus_A"}, "Neg", {"A"}},
-           {{"minus_A_over_B_squared"}, "Div", {"minus_A", "B_squared"}},
-           {{"pre_reduce_dB"}, "Mul", {"dY", "minus_A_over_B_squared"}},
-           {{"reduce_dB"}, "ReduceSumTraining", {"pre_reduce_dB", "axes_B"},
-            {ONNX_NAMESPACE::MakeAttribute("noop_with_empty_axes", int64_t(1))}},
-           {{"dB"}, "Reshape", {"reduce_dB", "shape_B"}}});
+             // dB = reshape(reduce_sum(dY * -A / (B * B)), axes_B), shape_B)
+             {{"B_squared"}, "Mul", {"B", "B"}},
+             {{"minus_A"}, "Neg", {"A"}},
+             {{"minus_A_over_B_squared"}, "Div", {"minus_A", "B_squared"}},
+             {{"pre_reduce_dB"}, "Mul", {"dY", "minus_A_over_B_squared"}},
+             {{"reduce_dB"}, "ReduceSumTraining", {"pre_reduce_dB", "axes_B"},
+              {ONNX_NAMESPACE::MakeAttribute("noop_with_empty_axes", int64_t(1))}},
+             {{"dB"}, "Reshape", {"reduce_dB", "shape_B"}}});
 
-           for (size_t contrib_node_index : {2, 4, 10}) {
-             nodes[contrib_node_index].set_domain(kMSDomain);
-           }
-           return nodes;
+        for (size_t contrib_node_index : {2, 4, 10}) {
+          nodes[contrib_node_index].set_domain(kMSDomain);
+        }
+        return nodes;
       }())
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
@@ -731,6 +731,20 @@ void RegisterTrainingOpSchemas() {
           "T_BOOL",
           {"tensor(bool)"},
           "Constrain types to boolean tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateShapeAndTypeFromFirstInput(ctx);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(DeduplicateBuffer)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("All input tensors are sharing the same buffer, this op deduplicate the tensors")
+      .Input(0, "inputs", "Duplicated inputs", "T", OpSchema::Variadic)
+      .Output(0, "output", "Deduplicated output", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateShapeAndTypeFromFirstInput(ctx);
       });
@@ -1261,7 +1275,6 @@ Example 4:
               ->mutable_dim(axis)
               ->set_dim_value(split[i]);
         }
-
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ConcatTraining)
@@ -1341,7 +1354,6 @@ Example 4:
         if (all_lengths_known) {
           output_shape->mutable_dim(static_cast<int>(axis))->set_dim_value(total_length);
         }
-
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(TrainableDropout)
@@ -1657,8 +1669,8 @@ Example 4:
           "U",
           {"tensor(float)", "tensor(bfloat16)"},
           "Constrain mean and inv_std_var to float tensors.");
-  
-    ONNX_CONTRIB_OPERATOR_SCHEMA(SimplifiedLayerNormalizationGrad)
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SimplifiedLayerNormalizationGrad)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)

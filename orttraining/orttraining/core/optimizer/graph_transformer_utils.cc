@@ -45,6 +45,7 @@
 #include "orttraining/core/optimizer/megatron_transformer.h"
 #include "orttraining/core/optimizer/nonzero_shape_setter.h"
 #include "orttraining/core/optimizer/transformer_layer_recompute.h"
+#include "orttraining/core/optimizer/sum_accumulate_transformer.h"
 
 namespace onnxruntime {
 namespace training {
@@ -171,7 +172,8 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
   switch (level) {
     case TransformerLevel::Level1: {
       std::unordered_set<std::string> l1_execution_providers = {};
-      std::unordered_set<std::string> cuda_execution_providers = {onnxruntime::kCudaExecutionProvider};
+      std::unordered_set<std::string> cuda_execution_providers = {kCudaExecutionProvider};
+      std::unordered_set<std::string> cpu_cuda_execution_providers = {kCpuExecutionProvider, kCudaExecutionProvider};
 
       // TODO hack - constant folding currently doesn't work after mixed precision transformation so it's disabled for now
       //             ORT uses CPU kernels to evaluate constant values but some of them don't support fp16
@@ -182,6 +184,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(onnxruntime::make_unique<BiasDropoutFusion>(cuda_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<BiasSoftmaxFusion>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<MatMulScaleFusion>(l1_execution_providers, weights_to_train));
+      transformers.emplace_back(onnxruntime::make_unique<SumAccumulateTransformer>(cpu_cuda_execution_providers));
 
       rule_transformer = optimizer_utils::GenerateRuleBasedGraphTransformer(level, transformers_and_rules_to_enable, l1_execution_providers);
     } break;

@@ -4,8 +4,8 @@
 #include "core/providers/cuda/math/binary_elementwise_ops.h"
 #include "core/providers/cuda/reduction/reduction_functions.h"
 #include "core/providers/cuda/cuda_allocator.h"
-#include "common.h"
-#include "gradient_control.h"
+#include "orttraining/training_ops/cpu/optimizer/gradient_control.h"
+#include "orttraining/training_ops/cuda/optimizer/common.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -82,6 +82,16 @@ Status InPlaceAccumulator<T, T_GRAD>::ComputeInternal(OpKernelContext* ctx) cons
 
   return Status::OK();
 }
+
+ONNX_OPERATOR_KERNEL_EX(
+    DeduplicateBuffer,
+    kMSDomain,
+    1,
+    kCudaExecutionProvider,
+    KernelDefBuilder()
+        .Alias(0, 0)
+        .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
+    onnxruntime::contrib::DeduplicateBuffer);
 
 }  // namespace cuda
 }  // namespace onnxruntime

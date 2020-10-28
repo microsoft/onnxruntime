@@ -73,5 +73,32 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T2", DataTypeImpl::AllTensorTypes()),
     ZeroGradient<float>);
 
+Status DeduplicateBuffer::Compute(OpKernelContext* ctx) const {
+  const Tensor* input0 = ctx->Input<Tensor>(0);
+  const void* data = input0->DataRaw();
+  const size_t size = input0->SizeInBytes();
+
+  for (auto i = 1; i < ctx->InputCount(); ++i) {
+    const Tensor* t = ctx->Input<Tensor>(i);
+    ORT_ENFORCE(data == t->DataRaw(), "Buffers address are not identical among inputs.");
+    ORT_ENFORCE(size == t->SizeInBytes(), "Buffers size are not identical among inputs.");
+  }
+
+  Tensor* output = ctx->Output(0, input0->Shape());
+  ORT_ENFORCE(data == output->DataRaw(), "Output buffer address are different from input buffer address.");
+
+  return Status::OK();
+}
+
+ONNX_OPERATOR_KERNEL_EX(
+    DeduplicateBuffer,
+    kMSDomain,
+    1,
+    kCpuExecutionProvider,
+    KernelDefBuilder()
+        .Alias(0, 0)
+        .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
+    DeduplicateBuffer);
+
 }  // namespace contrib
 }  // namespace onnxruntime
