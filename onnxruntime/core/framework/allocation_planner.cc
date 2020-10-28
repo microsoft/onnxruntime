@@ -637,7 +637,7 @@ class PlannerImpl {
         } else if (IsNonTensor(*node_output)) {
           // we do not try sharing-optimization for non-tensors
           AllocPlan(current).alloc_kind = AllocKind::kAllocate;
-          AllocPlan(current).program_counter_start.emplace_back(program_counter);
+          AllocPlan(current).program_counter_start.emplace_back(SIZE_MAX);
           AllocPlan(current).program_counter_end.emplace_back(SIZE_MAX);
         } else if (FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused)) {
           // Reuse one of this node's input buffers as the output buffer (for in-place update)
@@ -782,9 +782,19 @@ class PlannerImpl {
         if (current_plan.alloc_kind != AllocKind::kAllocate) continue;
 
         size_t start = 0;
+        ORT_ENFORCE(current_plan.program_counter_start.size() > 0);
+        ORT_ENFORCE(current_plan.program_counter_start.size() == current_plan.program_counter_end.size());
+
+        // Tensors that do not want reuse optimization.
+        ORT_ENFORCE((current_plan.program_counter_start[0] < SIZE_MAX) ||
+                    ((current_plan.program_counter_start.size() == 1) && (current_plan.program_counter_end[0] == SIZE_MAX)));
+
         for (size_t index = 0; index < current_plan.program_counter_start.size(); index += 1) {
           ORT_ENFORCE((current_plan.program_counter_start[index] > start) || (start == 0));
           ORT_ENFORCE(current_plan.program_counter_start[index] <= current_plan.program_counter_end[index]);
+          ORT_ENFORCE((index > 0) || (current_plan.program_counter_start[index] < SIZE_MAX));
+          ORT_ENFORCE((index > 0) || (current_plan.program_counter_end[index] > 0));
+
           start = current_plan.program_counter_start[index];
         }
       }
