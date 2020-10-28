@@ -65,8 +65,9 @@ class ORTModule(torch.nn.Module):
             self._onnx_training = ORTModule._get_forward_graph(self._original_module, *inputs, **kwargs)
             self._onnx_gradient = ORTModule._build_gradient_graph(self._onnx_training, self._grad_builder_config)
             self._onnx_forward, self._onnx_backward = ORTModule._split_forward_and_backward(self._onnx_gradient, self._grad_builder_config.weight_names_to_train)
-            self._forward_session = onnxruntime.InferenceSession(self._onnx_forward.SerializeToString())
-            self._backward_session = onnxruntime.InferenceSession(self._onnx_backward.SerializeToString())
+            # TODO: hard-coding to CPU only
+            self._forward_session = onnxruntime.InferenceSession(self._onnx_forward.SerializeToString(), providers=['CPUExecutionProvider'])
+            self._backward_session = onnxruntime.InferenceSession(self._onnx_backward.SerializeToString(), providers=['CPUExecutionProvider'])
 
         # Forward I/O description
         if not self._onnx_training_inputs_desc:
