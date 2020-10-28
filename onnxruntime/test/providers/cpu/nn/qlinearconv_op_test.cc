@@ -589,6 +589,30 @@ TEST(QLinearConvTest, Conv2D_U8S8_Groups_PerChannel) {
   test.Run();
 }
 
+TEST(QLinearConvTest, Conv2D_U8S8_Depthwise5x5) {
+  QLinearConvOpTester<uint8_t, int8_t> test;
+  test.GenerateRandomInput({1, 24, 25, 25}, .03f, 12);
+  test.GenerateRandomWeights({24, 1, 5, 5}, .10f, 0);
+  test.GenerateRandomBias();
+  test.SetPads({2, 2, 2, 2});
+  test.SetGroups(24);
+  test.SetOutputScaleAndZeroPoint(.76f, 88);
+  test.Run();
+}
+
+TEST(QLinearConvTest, Conv2D_U8S8_Depthwise1x1) {
+  // Tests the combination of using the depthwise convolution path along with the
+  // pointed convolution optimization that avoids im2col.
+  QLinearConvOpTester<uint8_t, int8_t> test;
+  test.GenerateRandomInput({1, 27, 18, 18}, .03f, 12);
+  test.GenerateRandomInput({1, 27, 4, 4}, .03f, 12);
+  test.GenerateRandomWeights({27, 1, 1, 1}, .05f, 0);
+  test.GenerateRandomBias();
+  test.SetGroups(27);
+  test.SetOutputScaleAndZeroPoint(.24f, 88);
+  test.Run();
+}
+
 #endif
 
 }  // namespace
