@@ -518,8 +518,7 @@ std::vector<MLValue> OpTester::ExecuteModel(
     const std::string& expected_failure_string, const RunOptions* run_options,
     const std::unordered_map<std::string, OrtValue>& feeds,
     const std::vector<std::string>& output_names,
-    const std::string& provider_type,
-    const CustomOutputVerifierFn& custom_output_verifier) {
+    const std::string& provider_type) {
   std::string s1;
   const bool rc = model.ToProto().SerializeToString(&s1);
   if (!rc) {
@@ -592,9 +591,9 @@ std::vector<MLValue> OpTester::ExecuteModel(
   // Verify the outputs
   // Todo: support check output with map/sequence/....
   if (verify_output_) {
-    if (custom_output_verifier) {
+    if (custom_output_verifier_) {
       // do custom verification if provided
-      custom_output_verifier(fetches, provider_type);
+      custom_output_verifier_(fetches, provider_type);
     } else {
       // default verification
       size_t idx = 0;
@@ -647,7 +646,6 @@ void OpTester::Run(
     const RunOptions* run_options,
     std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers,
     ExecutionMode execution_mode,
-    const CustomOutputVerifierFn& custom_output_verifier,
     const Graph::ResolveOptions& options) {
   SessionOptions so;
   so.use_per_session_threads = false;
@@ -657,7 +655,7 @@ void OpTester::Run(
   so.use_deterministic_compute = use_determinism_;
   so.graph_optimization_level = TransformerLevel::Default;  // 'Default' == off
   Run(so, expect_result, expected_failure_string, excluded_provider_types,
-      run_options, execution_providers, custom_output_verifier, options);
+      run_options, execution_providers, options);
 }
 
 #define ASSERT_PROVIDER_STATUS_OK(function)                                                         \
@@ -673,7 +671,6 @@ void OpTester::Run(
     const std::unordered_set<std::string>& excluded_provider_types,
     const RunOptions* run_options,
     std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers,
-    const CustomOutputVerifierFn& custom_output_verifier,
     const Graph::ResolveOptions& options) {
   std::string cur_provider = "not set";
   ORT_TRY {
@@ -778,8 +775,7 @@ void OpTester::Run(
 
       fetches_ = ExecuteModel<InferenceSession>(
           *p_model, session_object, expect_result, expected_failure_string,
-          run_options, feeds, output_names, provider_types,
-          custom_output_verifier);
+          run_options, feeds, output_names, provider_types);
 
     } else {
       for (const std::string& provider_type : all_provider_types) {
@@ -867,8 +863,7 @@ void OpTester::Run(
 
         fetches_ = ExecuteModel<InferenceSession>(
             *p_model, session_object, expect_result, expected_failure_string,
-            run_options, feeds, output_names, provider_type,
-            custom_output_verifier);
+            run_options, feeds, output_names, provider_type);
 
         cur_provider = "not set";
       }
@@ -946,8 +941,7 @@ template std::vector<MLValue> OpTester::ExecuteModel<training::TrainingSession>(
     ExpectResult expect_result, const std::string& expected_failure_string,
     const RunOptions* run_options,
     const std::unordered_map<std::string, MLValue>& feeds,
-    const std::vector<std::string>& output_names, const std::string& provider_type,
-    const CustomOutputVerifierFn& custom_output_verifier);
+    const std::vector<std::string>& output_names, const std::string& provider_type);
 #endif
 
 }  // namespace test
