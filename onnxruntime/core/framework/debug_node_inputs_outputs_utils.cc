@@ -6,6 +6,7 @@
 #include "core/framework/debug_node_inputs_outputs_utils.h"
 
 #include <iomanip>
+#include <cctype>
 
 #include "core/common/path_utils.h"
 #include "core/framework/tensorprotoutils.h"
