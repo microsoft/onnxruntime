@@ -66,6 +66,8 @@ std::vector<std::pair<std::string, InferenceEngine::InferenceEngineProfileInfo>>
 void printPerformanceCounts(const std::map<std::string, InferenceEngine::InferenceEngineProfileInfo>& performanceMap,
                                           std::ostream &stream, std::string deviceName);
 
+void printPerformanceCounts(InferenceEngine::InferRequest::Ptr request, std::ostream &stream, std::string deviceName);
+
 void printPerformanceCounts(InferenceEngine::InferRequest request, std::ostream &stream, std::string deviceName);
 
 }  // namespace backend_utils

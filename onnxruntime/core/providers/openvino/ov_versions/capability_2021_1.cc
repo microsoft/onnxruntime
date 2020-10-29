@@ -545,7 +545,7 @@ static bool IsTypeSupported(const NodeArg* node_arg, bool is_initializer, const 
     };
     auto dtype = type_proto->tensor_type().elem_type();
 
-    if (device_id == "CPU" || device_id == "MYRIAD" || device_id.find("HDDL") != std::string::npos || device_id.find("HETERO") != std::string::npos) {
+    if (device_id == "CPU" || device_id == "MYRIAD" || device_id == "HDDL" || device_id.find("HETERO") != std::string::npos) {
       if (supported_types_cpu.find(dtype) != supported_types_cpu.end())
         return true;
       else {
@@ -869,7 +869,7 @@ GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, std::string d
             if(optype == "Identity" && device_id != "CPU")
               continue;
 
-            if((optype == "Div" || optype == "Sub") && (device_id.find("MYRIAD") == std::string::npos &&  device_id != "GPU"))
+            if((optype == "Div" || optype == "Sub") && (device_id.find("MYRIAD") == std::string::npos &&  device_id.find("GPU") == std::string::npos))
               continue;
             for (const auto& input : node->InputDefs()) {
               auto input_name = input->Name();

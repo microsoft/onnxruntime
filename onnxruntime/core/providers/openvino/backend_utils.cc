@@ -425,6 +425,11 @@ void printPerformanceCounts(const std::map<std::string, InferenceEngine::Inferen
     std::cout << std::endl;
 }
 
+void printPerformanceCounts(InferenceEngine::InferRequest::Ptr  request, std::ostream &stream, std::string deviceName) {
+    auto performanceMap = request->GetPerformanceCounts();
+    printPerformanceCounts(performanceMap, stream, deviceName);
+}
+
 void printPerformanceCounts(InferenceEngine::InferRequest request, std::ostream &stream, std::string deviceName) {
     auto performanceMap = request.GetPerformanceCounts();
     printPerformanceCounts(performanceMap, stream, deviceName);

@@ -16,6 +16,7 @@ namespace onnxruntime {
 
 static void print_build_options()
 {
+    std::cout << "[ERROR] INVALID DEVICE BUILD TYPE SPECIFIED" << std::endl;
     std::cout << "Specify the keyword HETERO followed by the devices in the order of priority you want to build" << std::endl;
     std::cout << "The different hardware devices that can be added with HETERO build ";
     std::cout << "are ['CPU','GPU','MYRIAD','FPGA','HDDL']" << std::endl;

@@ -80,7 +80,8 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   }
   LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
 
-  //Initializing the infer_requests_ pool with 8 infer_request's (creating infer_request)
+  //The infer_requests_ pool will be intialized with a default value of 8 infer_request's
+  //The nireq value can also be configured to any num_of_threads during runtime
   size_t nireq = global_context_.num_of_threads;
   LOGS_DEFAULT(INFO) << "The value of nireq being used is: " << nireq;
 #ifndef NDEBUG
@@ -206,7 +207,7 @@ void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
       inferRequestsQueue_->printstatus(); //Printing the elements of infer_requests_ vector pool only in debug mode
       std::string& hw_target = (global_context_.device_id != "") ? global_context_.device_id : global_context_.device_type;
-      printPerformanceCounts(*infer_request_, std::cout, hw_target);
+      printPerformanceCounts(infer_request, std::cout, hw_target);
   }
 #endif
 }
