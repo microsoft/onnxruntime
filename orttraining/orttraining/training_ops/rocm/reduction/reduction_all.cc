@@ -55,9 +55,9 @@ Status ReduceAllL2<TIn, TOut>::ComputeInternal(OpKernelContext* ctx) const {
   HipTOut* p_output = reinterpret_cast<HipTOut*>(output->template MutableData<TOut>());
   ORT_ENFORCE(hipMemset(p_output, 0, sizeof(HipTOut)) == hipSuccess);
 
-  auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
-  bool deterministic = ctx_internal && ctx_internal->GetUseDeterministicCompute();
-
+  // auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
+  // bool deterministic = ctx_internal && ctx_internal->GetUseDeterministicCompute();
+  bool deterministic = true;
   if (!deterministic) {
 
     typedef MultiTensorReduceL2<HipTIn, HipTOut> TFunctor;

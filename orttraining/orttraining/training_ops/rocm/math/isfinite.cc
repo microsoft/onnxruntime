@@ -62,22 +62,28 @@ Status IsAllFiniteOp<TSrc>::ComputeInternal(OpKernelContext* context) const {
   IAllocatorUniquePtr<bool> deviceOutput = GetScratchBuffer<bool>(1);
   HIP_RETURN_IF_ERROR(hipMemset(deviceOutput.get(), int(true), sizeof(bool)));
 
-  std::vector<std::vector<void*>> grouped_tensor_pointers(total_tensor_count);
-  std::vector<int> tensor_sizes(total_tensor_count);
-
   for (int i = 0; i < total_tensor_count; ++i) {
     const auto& input = context->Input<Tensor>(i);
-    grouped_tensor_pointers[i] = {const_cast<TSrc*>(input->Data<TSrc>())};
-    tensor_sizes[i] = static_cast<int>(input->Shape().Size());
+    IsFinite(reinterpret_cast<const TSrcCuda*>(input->template Data<TSrc>()), deviceOutput.get(), input->Shape().Size());
   }
 
-  typedef IsAllFiniteFunctor<TSrcCuda> TFunctor;
-  TFunctor functor;
+  // std::vector<std::vector<void*>> grouped_tensor_pointers(total_tensor_count);
+  // std::vector<int> tensor_sizes(total_tensor_count);
 
-  // Check if all values are finite and write true to deviceOutput.
-  // Otherwise, false will be written.
-  launch_multi_tensor_functor<1, TFunctor, bool*>(
-      2048 * 32, tensor_sizes, grouped_tensor_pointers, functor, deviceOutput.get());
+  // for (int i = 0; i < total_tensor_count; ++i) {
+  //   const auto& input = context->Input<Tensor>(i);
+  //   grouped_tensor_pointers[i] = {const_cast<TSrc*>(input->Data<TSrc>())};
+  //   tensor_sizes[i] = static_cast<int>(input->Shape().Size());
+  //   IsFinite(const TSrc* input, bool* output, size_t count)
+  // }
+
+  // typedef IsAllFiniteFunctor<TSrcCuda> TFunctor;
+  // TFunctor functor;
+
+  // // Check if all values are finite and write true to deviceOutput.
+  // // Otherwise, false will be written.
+  // launch_multi_tensor_functor<1, TFunctor, bool*>(
+  //     2048 * 32, tensor_sizes, grouped_tensor_pointers, functor, deviceOutput.get());
 
   // Copy GPU result in deviceOutput to CPU memory.
   // Per this operator's schema, it's output is in CPU memory.

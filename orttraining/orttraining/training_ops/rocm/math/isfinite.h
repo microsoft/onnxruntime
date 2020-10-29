@@ -17,6 +17,9 @@ namespace onnxruntime {
 namespace rocm {
 
 template <typename TSrc>
+void IsFinite(const TSrc* input, bool* output, size_t count);
+
+template <typename TSrc>
 class IsFiniteOp final : public RocmKernel {
  public:
   IsFiniteOp(const OpKernelInfo& info) : RocmKernel(info) {
