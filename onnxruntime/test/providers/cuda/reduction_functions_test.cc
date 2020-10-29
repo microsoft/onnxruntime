@@ -91,15 +91,16 @@ void TestReduceRowToScalarApis(int64_t size, float relative_error_tolerance = 1e
   CheckDeviceValues(1, device_output_mean.get(), &expected_output_mean, relative_error_tolerance);
 }
 
-void TestReduceRowsToRow(int64_t m, int64_t n, float relative_error_tolerance = 1e-4f) {
-  SCOPED_TRACE(MakeString("m: ", m, ", n:", n));
+void TestReduceRowsToRow(int64_t m, int64_t n, bool reset_initial_output, float relative_error_tolerance = 1e-4f) {
+  SCOPED_TRACE(MakeString("m: ", m, ", n:", n, ", reset_initial_output: ", reset_initial_output));
 
   const TensorShape shape{m, n};
   RandomValueGenerator random{};
   const auto values = random.Uniform<float>(shape.GetDims(), 1.0f, 10.0f);
+  const auto initial_value = reset_initial_output ? 0.0f : 5.0f;
   const std::vector<float> expected_row =
-      [m, n, &values]() {
-        std::vector<float> row(n);
+      [m, n, &values, initial_value]() {
+        std::vector<float> row(n, initial_value);
         for (int64_t i = 0; i < m; ++i) {
           for (int64_t j = 0; j < n; ++j) {
             row[j] += values[i * n + j];
@@ -113,7 +114,12 @@ void TestReduceRowsToRow(int64_t m, int64_t n, float relative_error_tolerance = 
 
   cudaMemcpy(d_in.get(), values.data(), m * n * sizeof(float), cudaMemcpyHostToDevice);
 
-  ASSERT_STATUS_OK(cuda::reduce_matrix_rows(d_in.get(), d_out.get(), m, n));
+  if (!reset_initial_output) {
+    // manually initialize output data
+    cuda::Fill(d_out.get(), initial_value, n);
+  }
+
+  ASSERT_STATUS_OK(cuda::reduce_matrix_rows(d_in.get(), d_out.get(), m, n, reset_initial_output));
 
   ASSERT_TRUE(CUDA_CALL(cudaDeviceSynchronize()));
 
@@ -170,7 +176,8 @@ TEST(ReductionFunctionsTest, ReduceRowsToRow) {
   const std::vector<int64_t> sizes{3, 193, 2945};
   for (int64_t m : sizes) {
     for (int64_t n : sizes) {
-      TestReduceRowsToRow(m, n);
+      TestReduceRowsToRow(m, n, true);
+      TestReduceRowsToRow(m, n, false);
     }
   }
 }

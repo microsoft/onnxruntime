@@ -119,21 +119,13 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
         cudnn_reduce_op, input_shape.GetDims(), axes_, m, n);
     switch (applicable_matrix_reduction) {
       case ApplicableMatrixReduction::Rows: {
-        ORT_RETURN_IF_ERROR(reduce_matrix_rows(
+        return reduce_matrix_rows(
             reinterpret_cast<const CudaT*>(X),
             reinterpret_cast<CudaOutT*>(Y),
-            m, n));
-        return Status::OK();
+            m, n, false);
       }
-      case ApplicableMatrixReduction::Columns: {
-        const auto buffer_size_bytes = compute_reduce_matrix_columns_buffer_size<CudaT>(m, n);
-        auto buffer = GetScratchBuffer<void>(buffer_size_bytes);
-        ORT_RETURN_IF_ERROR(reduce_matrix_columns(
-            reinterpret_cast<const CudaT*>(X),
-            reinterpret_cast<CudaOutT*>(Y),
-            m, n, buffer.get(), buffer_size_bytes));
-        return Status::OK();
-      }
+      case ApplicableMatrixReduction::Columns:
+        // don't call reduce_matrix_columns() since it will reset initial output data
       default:
         break;
     }
@@ -403,13 +395,6 @@ Status ReduceComputeCore(CUDAExecutionProvider& cuda_ep, const Tensor& input, Pr
     return Status::OK();
   }
 
-  // This reduction keep adding values to this buffer. If a non-zero value, say 1000, is here, the sum will start with 1000.
-  // Therefore zeroing out the memory is required
-  CUDA_RETURN_IF_ERROR(cudaMemset(output.MutableDataRaw(), 0, output.SizeInBytes()));
-
-  IAllocatorUniquePtr<float> temp_X;
-  cudnnDataType_t cudnn_type_X = CudnnTensor::GetDataType<CudaT>();
-
   // Block of fast matrix reduction.
   if (fast_reduction) {
     int m{}, n{};
@@ -434,6 +419,13 @@ Status ReduceComputeCore(CUDAExecutionProvider& cuda_ep, const Tensor& input, Pr
         break;
     }
   }
+
+  // This reduction keep adding values to this buffer. If a non-zero value, say 1000, is here, the sum will start with 1000.
+  // Therefore zeroing out the memory is required
+  CUDA_RETURN_IF_ERROR(cudaMemset(output.MutableDataRaw(), 0, output.SizeInBytes()));
+
+  IAllocatorUniquePtr<float> temp_X;
+  cudnnDataType_t cudnn_type_X = CudnnTensor::GetDataType<CudaT>();
 
   if (ReduceTensorIndices == CUDNN_REDUCE_TENSOR_FLATTENED_INDICES && std::is_same<T, MLFloat16>::value) {
     // ArgMax/ArgMin with FP16 are not supported by cudnn, so convert input to fp32 then call cudnn

@@ -11,6 +11,7 @@
 #include "core/common/common.h"
 #include "core/providers/cuda/atomic/common.cuh"
 #include "core/providers/cuda/cu_inc/common.cuh"
+#include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "core/providers/cuda/reduction/reduction_utils.cuh"
 
 namespace onnxruntime {
@@ -439,14 +440,18 @@ void call_reduce_matrix_rows(const TIn* input, TOut* output, int m, int n) {
 }
 
 template <typename TIn, typename TOut>
-Status reduce_matrix_rows(const TIn* data, TOut* output, int m, int n) {
+Status reduce_matrix_rows(const TIn* data, TOut* output, int m, int n, bool reset_initial_output) {
+  if (reset_initial_output) {
+    Fill(output, TOut{0}, n);
+  }
+
   using TBuf = AccumulationType_t<TIn>;
   call_reduce_matrix_rows<TIn, TOut, TBuf>(data, output, m, n);
   return Status::OK();
 }
 
 #define INSTANTIATE_REDUCE_MATRIX_ROWS(T) \
-  template Status reduce_matrix_rows<T, T>(const T* data, T* output, int m, int n)
+  template Status reduce_matrix_rows<T, T>(const T* data, T* output, int m, int n, bool reset_initial_output)
 INSTANTIATE_REDUCE_MATRIX_ROWS(half);
 INSTANTIATE_REDUCE_MATRIX_ROWS(float);
 INSTANTIATE_REDUCE_MATRIX_ROWS(double);

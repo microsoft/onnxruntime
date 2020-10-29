@@ -69,7 +69,7 @@ ApplicableMatrixReduction get_applicable_matrix_reduction(
     int& m, int& n);
 
 template <typename TIn, typename TOut>
-Status reduce_matrix_rows(const TIn* data, TOut* output, int m, int n);
+Status reduce_matrix_rows(const TIn* data, TOut* output, int m, int n, bool reset_initial_output = true);
 
 template <typename TIn, typename TOut>
 Status reduce_matrix_columns(const TIn* data, TOut* output, int m, int n, void* buffer, size_t buffer_size);
