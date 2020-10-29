@@ -19,6 +19,12 @@ jobs:
     displayName: 'Download training end-to-end test data'
 
   - script: |
+      orttraining/tools/ci_test/download_e2e_test_data.py \
+      --azure_blob_url https://onnxruntimetestdata.blob.core.windows.net/training/glue_MRPC_data.zip
+      --target_dir /bert_data/hf_data/
+    displayName: 'Download training end-to-end test data'
+
+  - script: |
       tools/ci_build/github/linux/run_dockerbuild.sh \
         -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory) \
         -x " \
@@ -55,6 +61,12 @@ jobs:
             --model_root /training_e2e_test_data/models \
             --training_data_root /training_e2e_test_data/data
     displayName: 'Run convergence test'
+    condition: succeededOrFailed() # ensure all tests are run
+
+  - script: |
+      export CUDA_VISIBLE_DEVICES=0
+      orttraining/orttraining/test/python/python orttraining_run_frontend_batch_size_test.py
+    displayName: 'Run python batch size test'
     condition: succeededOrFailed() # ensure all tests are run
 
   - template: templates/clean-agent-build-directory-step.yml
