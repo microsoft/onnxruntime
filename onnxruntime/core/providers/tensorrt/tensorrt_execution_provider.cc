@@ -10,7 +10,6 @@
 #include "core/common/safeint.h"
 
 #include "tensorrt_execution_provider.h"
-#include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 #include "cuda_runtime_api.h"
@@ -174,13 +173,13 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     : Provider_IExecutionProvider{onnxruntime::kTensorrtExecutionProvider}, device_id_(info.device_id) {
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
 
-  Provider_AllocatorCreationInfo default_memory_info(
-      [](int id) { return Provider_CreateCUDAAllocator(id, TRT); }, device_id_);
+  AllocatorCreationInfo default_memory_info(
+      [](int id) { return CreateCUDAAllocator(id, TRT); }, device_id_);
   allocator_ = CreateAllocator(default_memory_info);
   Provider_InsertAllocator(allocator_);
 
-  Provider_AllocatorCreationInfo pinned_allocator_info(
-      [](int) { return Provider_CreateCUDAPinnedAllocator(0, TRT_PINNED); }, device_id_);
+  AllocatorCreationInfo pinned_allocator_info(
+      [](int) { return CreateCUDAPinnedAllocator(0, TRT_PINNED); }, device_id_);
   Provider_InsertAllocator(CreateAllocator(pinned_allocator_info));
 
   // Get environment variables
@@ -227,7 +226,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {}
 
-Provider_AllocatorPtr TensorrtExecutionProvider::Provider_GetAllocator(int id, OrtMemType mem_type) const {
+AllocatorPtr TensorrtExecutionProvider::Provider_GetAllocator(int id, OrtMemType mem_type) const {
   if (mem_type == OrtMemTypeDefault) {
     return allocator_;
   } else {

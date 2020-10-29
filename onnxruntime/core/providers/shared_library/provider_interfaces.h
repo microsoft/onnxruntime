@@ -74,62 +74,6 @@ struct Provider_IExecutionProviderFactory {
 class DataTypeImpl;
 using MLDataType = const DataTypeImpl*;
 
-template <typename T>
-using Provider_IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
-
-struct Provider_IAllocator {
-  Provider_IAllocator(const OrtMemoryInfo& info) : memory_info_{info} {}
-  virtual ~Provider_IAllocator() {}
-
-  virtual void* Alloc(size_t size) = 0;
-  virtual void Free(void* p) = 0;
-  const OrtMemoryInfo& Info() const { return memory_info_; };
-
-  virtual bool IsProviderInterface() const { return true; }
-
-  template <typename T>
-  static Provider_IAllocatorUniquePtr<T> MakeUniquePtr(std::shared_ptr<Provider_IAllocator> allocator, size_t count_or_bytes) {
-    if (allocator == nullptr) return nullptr;
-
-    size_t alloc_size = count_or_bytes;
-
-    // if T is not void, 'count_or_bytes' == number of items so allow for that
-    if (!std::is_void<T>::value) {
-      // TODO: Use internal implementation to get correct sizes
-      return nullptr;
-    }
-    return Provider_IAllocatorUniquePtr<T>{
-        static_cast<T*>(allocator->Alloc(alloc_size)),  // allocate
-        [=](T* ptr) { allocator->Free(ptr); }};         // capture IAllocator so it's always valid, and use as deleter
-  }
-
-  const OrtMemoryInfo memory_info_;
-
-  Provider_IAllocator(const Provider_IAllocator&) = delete;
-  void operator=(const Provider_IAllocator&) = delete;
-};
-
-using Provider_AllocatorPtr = std::shared_ptr<Provider_IAllocator>;
-using Provider_AllocatorFactory = std::function<std::unique_ptr<Provider_IAllocator>(int)>;
-
-using DeviceId = int16_t;
-struct Provider_AllocatorCreationInfo {
-  Provider_AllocatorCreationInfo(Provider_AllocatorFactory device_alloc_factory0,
-                                 DeviceId device_id0 = 0,
-                                 bool use_arena0 = true,
-                                 OrtArenaCfg arena_cfg0 = {0, -1, -1, -1})
-      : factory(device_alloc_factory0),
-        device_id(device_id0),
-        use_arena(use_arena0),
-        arena_cfg(arena_cfg0) {
-  }
-
-  Provider_AllocatorFactory factory;
-  DeviceId device_id;
-  bool use_arena;
-  OrtArenaCfg arena_cfg;
-};
-
 struct Provider_OpKernel {
   Provider_OpKernel() {}
   virtual ~Provider_OpKernel() = default;
@@ -143,7 +87,7 @@ struct Provider_OpKernel {
 using NodeIndex = size_t;
 using Provider_NodeArgInfo = Provider_ValueInfoProto;
 // We can't just reinterpret_cast this one, since it's an unordered_map of object BY VALUE (can't do anything by value on the real types)
-//using Provider_NodeAttributes = std::unordered_map<std::string, ONNX_NAMESPACE::Provider_AttributeProto_Copyable>;
+// using Provider_NodeAttributes = std::unordered_map<std::string, ONNX_NAMESPACE::Provider_AttributeProto_Copyable>;
 
 using Provider_InitializedTensorSet = std::unordered_map<std::string, const Provider_TensorProto*>;
 
@@ -188,9 +132,9 @@ struct Provider_IExecutionProvider_Router {
   virtual std::vector<std::unique_ptr<Provider_ComputeCapability>> Provider_GetCapability(const onnxruntime::Provider_GraphViewer& graph,
                                                                                           const std::vector<const Provider_KernelRegistry*>& kernel_registries) const = 0;
 
-  virtual Provider_AllocatorPtr Provider_GetAllocator(int id, OrtMemType mem_type) const = 0;
+  virtual AllocatorPtr Provider_GetAllocator(int id, OrtMemType mem_type) const = 0;
   virtual std::unique_ptr<Provider_IDataTransfer> Provider_GetDataTransfer() const = 0;
-  virtual void Provider_InsertAllocator(Provider_AllocatorPtr allocator) = 0;
+  virtual void Provider_InsertAllocator(AllocatorPtr allocator) = 0;
   virtual const logging::Logger* GetLogger() const = 0;
 
   void operator=(const Provider_IExecutionProvider_Router&) = delete;
@@ -209,8 +153,8 @@ struct Provider_IExecutionProvider {
 
   virtual common::Status Provider_Compile(const std::vector<Provider_Node*>& fused_nodes, std::vector<NodeComputeInfo>& node_compute_funcs) = 0;
 
-  virtual Provider_AllocatorPtr Provider_GetAllocator(int id, OrtMemType mem_type) const { return p_->Provider_GetAllocator(id, mem_type); }
-  virtual void Provider_InsertAllocator(Provider_AllocatorPtr allocator) { return p_->Provider_InsertAllocator(allocator); }
+  virtual AllocatorPtr Provider_GetAllocator(int id, OrtMemType mem_type) const { return p_->Provider_GetAllocator(id, mem_type); }
+  virtual void Provider_InsertAllocator(AllocatorPtr allocator) { return p_->Provider_InsertAllocator(allocator); }
 
   virtual const logging::Logger* GetLogger() const { return p_->GetLogger(); }
 
@@ -230,15 +174,15 @@ struct Provider {
 // calls the virtual function (which will lead to infinite recursion in the bridge). There is no known way to get the non virtual member
 // function pointer implementation in this case.
 struct ProviderHost {
-  virtual Provider_AllocatorPtr CreateAllocator(const Provider_AllocatorCreationInfo& info) = 0;
+  virtual AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) = 0;
 
   virtual logging::Logger* LoggingManager_GetDefaultLogger() = 0;
 
-  virtual std::unique_ptr<Provider_IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info) = 0;
+  virtual std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info) = 0;
 
 #ifdef USE_TENSORRT
-  virtual std::unique_ptr<Provider_IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) = 0;
-  virtual std::unique_ptr<Provider_IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) = 0;
+  virtual std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) = 0;
+  virtual std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) = 0;
   virtual std::unique_ptr<Provider_IDataTransfer> CreateGPUDataTransfer() = 0;
 
   virtual void cuda__Impl_Cast(const int64_t* input_data, int32_t* output_data, size_t count) = 0;
@@ -266,6 +210,16 @@ struct ProviderHost {
                                const char* file, const char* function, uint32_t line) = 0;
 
   virtual std::vector<std::string> GetStackTrace() = 0;
+
+  // IAllocator
+  virtual bool IAllocator__CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) = 0;
+
+  // Status
+  virtual std::string Status__ToString(const Status* p) = 0;
+
+  // TensorShape
+  virtual int64_t TensorShape__SizeHelper(const TensorShape* p, size_t start, size_t end) = 0;
+  virtual std::string TensorShape__ToString(const TensorShape* p) = 0;
 
   // CPUIDInfo
   virtual const CPUIDInfo& CPUIDInfo__GetCPUIDInfo() = 0;
