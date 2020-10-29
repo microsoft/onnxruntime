@@ -236,6 +236,41 @@ TEST(ReductionFunctionsTest, InvalidBufferSize) {
   ASSERT_FALSE(status.IsOK());
 }
 
+TEST(ReductionFunctionsTest, GetApplicableMatrixReduction) {
+  const cudnnReduceTensorOp_t valid_op_type = CUDNN_REDUCE_TENSOR_ADD;
+  int m{}, n{};
+
+  EXPECT_EQ(
+      cuda::get_applicable_matrix_reduction(
+          valid_op_type, {2, 4, 8, 16}, {0, 1}, m, n),
+      cuda::ApplicableMatrixReduction::Rows);
+  EXPECT_EQ(m, 2 * 4);
+  EXPECT_EQ(n, 8 * 16);
+
+  EXPECT_EQ(
+      cuda::get_applicable_matrix_reduction(
+          valid_op_type, {2, 4, 8, 16}, {1, 2, 3}, m, n),
+      cuda::ApplicableMatrixReduction::Columns);
+  EXPECT_EQ(m, 2);
+  EXPECT_EQ(n, 4 * 8 * 16);
+
+  // invalid axes
+  EXPECT_EQ(
+      cuda::get_applicable_matrix_reduction(
+          valid_op_type, {2, 4, 8, 16}, {1, 3}, m, n),
+      cuda::ApplicableMatrixReduction::None);
+  EXPECT_EQ(
+      cuda::get_applicable_matrix_reduction(
+          valid_op_type, {2, 4, 8, 16}, {1, 2}, m, n),
+      cuda::ApplicableMatrixReduction::None);
+
+  // invalid op type
+  EXPECT_EQ(
+      cuda::get_applicable_matrix_reduction(
+          CUDNN_REDUCE_TENSOR_MAX, {2, 4, 8, 16}, {0, 1}, m, n),
+      cuda::ApplicableMatrixReduction::None);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
 

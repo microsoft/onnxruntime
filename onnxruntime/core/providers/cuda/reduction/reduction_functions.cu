@@ -59,8 +59,6 @@ size_t compute_reduce_all_in_rows_buffer_size(int element_size, int element_alig
   // add padding to give us room to align
   buffer_size += alignof(max_align_t) - 1;
 
-  printf("buffer size: %d\n", static_cast<int>(buffer_size));
-
   return buffer_size;
 }
 }  // namespace detail
@@ -70,15 +68,16 @@ Status get_reduction_buffers(
     int row_size, int num_rows, void* buffer, size_t buffer_size,
     TBuf*& block_reductions_buffer, int*& block_done_counts_buffer) {
   const auto grid_dim = compute_grid_and_block_dims(row_size, num_rows).first;
+  const int64_t num_rows_int64 = num_rows;  // avoid int overflow in offset calculations
 
   const uintptr_t begin_addr = reinterpret_cast<uintptr_t>(buffer);
   const uintptr_t block_reductions_addr =
       round_up_to_aligned(begin_addr, alignof(TBuf));
   const uintptr_t block_done_counts_buffer_addr =
       round_up_to_aligned(
-          block_reductions_addr + num_rows * grid_dim.x * sizeof(TBuf), alignof(int));
+          block_reductions_addr + num_rows_int64 * grid_dim.x * sizeof(TBuf), alignof(int));
   const uintptr_t end_addr =
-      block_done_counts_buffer_addr + num_rows * sizeof(int);
+      block_done_counts_buffer_addr + num_rows_int64 * sizeof(int);
   const size_t required_size = end_addr - begin_addr;
 
   ORT_RETURN_IF_NOT(
@@ -264,7 +263,8 @@ __global__ void reduce_all_in_rows_kernel(
   const int num_grid_rows = gridDim.y;
 
   // one row per iteration
-  for (int row_id = row_id_in_grid; row_id < num_rows; row_id += num_grid_rows) {
+  // row_id is int64_t to avoid int overflow in offset calculations
+  for (int64_t row_id = row_id_in_grid; row_id < num_rows; row_id += num_grid_rows) {
     const TIn* const row_data = data + row_id * row_size;
     TOut* const row_output = output + row_id;
     TBuf* const row_block_reductions_buffer = block_reductions_buffer + row_id * num_blocks_in_grid_row;
@@ -359,31 +359,6 @@ INSTANTIATE_REDUCE_MEAN(half, float);
 INSTANTIATE_REDUCE_MEAN(float, float);
 INSTANTIATE_REDUCE_MEAN(double, double);
 #undef INSTANTIATE_REDUCE_MEAN
-
-bool is_matrix_row_reduction(
-    const cudnnReduceTensorOp_t cudnn_reduce_op,
-    const int m,
-    const int n,
-    const size_t rank,
-    std::vector<int64_t> axes) {
-  if (m < 1)
-    return false;
-
-  if (n < 1)
-    return false;
-
-  if (rank < 2)
-    return false;
-
-  if (cudnn_reduce_op != CUDNN_REDUCE_TENSOR_ADD)
-    return false;
-
-  //empty axes, default reduction
-  if (axes.size() < 1)
-    return false;
-
-  return true;
-}
 
 template <typename TIn, typename TOut, typename TBuf>
 __global__ void reduce_matrix_rows_kernel(const TIn* input, TOut* output, int m, int n) {
