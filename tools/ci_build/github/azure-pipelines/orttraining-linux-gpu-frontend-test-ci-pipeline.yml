@@ -26,8 +26,6 @@ jobs:
     continueOnError: true
     condition: always()
 
-  # insert a python frontend test data preparation step here
-
   - script: >
       tools/ci_build/github/linux/run_dockerbuild.sh
       -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory)

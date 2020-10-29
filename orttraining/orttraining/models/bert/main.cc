@@ -8,6 +8,7 @@
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/common/profiler.h"
 #include "core/session/environment.h"
+#include "core/framework/bfc_arena.h"
 #include "core/framework/random_seed.h"
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_allocator.h"

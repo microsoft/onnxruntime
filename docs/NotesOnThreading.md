@@ -9,10 +9,13 @@ When developing an op, please use these abstractions to parallelize your code. T
 When OpenMP is enabled, they resort to using OpenMP. When OpenMP is disabled they resort to sequential execution if the threadpool ptr is NULL or schedule the tasks on the threadpool otherwise.
 
 Examples of these abstractions are: ([threadpool.h](https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/platform/threadpool.h) has more documentation for these)
-* TryBatchParallelFor
 * TryParallelFor
 * TrySimpleParallelFor
+* TryBatchParallelFor
+* ShouldParallelize
 * DegreeOfParallelism
+
+These static methods abstract over the different implementation choices.  They can run over the ORT thread pool, or run over OpenMP, or run sequentially.
 
 **Please do not write #ifdef pragma omp in operator code**.
 
