@@ -13,6 +13,7 @@ int MemoryInfo::local_rank_ = 0;
 std::map<OrtMemoryInfo, std::map<MemoryInfo::MapType, MemoryInfoMap> > MemoryInfo::tensors_memory_info_map_;
 std::map<OrtValueIndex, MemoryInfo::AllocInfoPerTensor> MemoryInfo::tensor_alloc_info_map_;
 std::map<MemoryInfo::MapType, std::set<size_t> > MemoryInfo::time_step_trace_;
+std::map<const std::string, std::map<const std::string, bool> > MemoryInfo::customized_recording_group_;
 
 void MemoryInfo::GenerateTensorMap(const SequentialExecutionPlan* execution_plan, const OrtValueNameIdxMap& value_name_idx_map) {
   if (!tensor_alloc_info_map_.empty()) {
@@ -272,9 +273,9 @@ size_t MemoryInfo::MemoryInfoProfile::pid_ = 0;
 std::vector<std::string> MemoryInfo::MemoryInfoProfile::events;
 std::unordered_map<size_t, std::unordered_map<size_t, MemoryInfo::AllocationSummary> > MemoryInfo::MemoryInfoProfile::summary_;
 
-void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name, const size_t pid, const MemoryInfo::MapType& map_type, const std::string& name_pattern, const size_t top_k) {
+void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name, const size_t pid, const MemoryInfo::MapType& map_type, const std::string& group_name, const size_t top_k) {
   // Metadata.
-  std::string pid_name_internal = p_name + name_pattern;
+  std::string pid_name_internal = p_name + group_name;
   events.push_back(CreateMetadataEvent(pid_name_internal, pid));
   size_t summary_size = 10;
   std::hash<std::string> str_hash;
@@ -334,7 +335,9 @@ void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name, cons
         if (info->inplace_reuse) continue;
         const std::string& name = info->mlvalue_name;
         //Filter out string without a certain name
-        if (!name_pattern.empty() && name.find(name_pattern) == std::string::npos) continue;
+        if (!group_name.empty()) {
+          if (!InRecordingTensorGroup(group_name, name)) continue;
+        }
         const std::string cname = color_names[str_hash(name) % color_names.size()];
         //Sometimes a tensor can be both statically planned and dynamically allocated, so we need to use planned address/size in static_activation type
         size_t offset = map_type == MemoryInfo::MapType::StaticActivation ? map.GetPlannedAddress(live_tensor) : map.GetAllocAddress(live_tensor);
@@ -353,10 +356,7 @@ void MemoryInfo::GenerateMemoryProfile() {
   MemoryInfoProfile::CreateEvents("GPU (initializer)", MemoryInfoProfile::GetAndIncreasePid(), MapType::Initializer, "", 1);
   MemoryInfoProfile::CreateEvents("GPU (static activations)", MemoryInfoProfile::GetAndIncreasePid(), MapType::StaticActivation, "", 1);
   MemoryInfoProfile::CreateEvents("GPU (dynamic activations)", MemoryInfoProfile::GetAndIncreasePid(), MapType::DynamicActivation, "", 1);
-  MemoryInfoProfile::CreateEvents("GPU (static activations)", MemoryInfoProfile::GetAndIncreasePid(), MapType::StaticActivation, "_grad", 0);
-  MemoryInfoProfile::CreateEvents("GPU (dynamic activations)", MemoryInfoProfile::GetAndIncreasePid(), MapType::DynamicActivation, "_grad", 0);
-  MemoryInfoProfile::CreateEvents("GPU (static activations)", MemoryInfoProfile::GetAndIncreasePid(), MapType::StaticActivation, "_partition_", 0);
-  MemoryInfoProfile::CreateEvents("GPU (dynamic activations)", MemoryInfoProfile::GetAndIncreasePid(), MapType::DynamicActivation, "_partition_", 0);
+  MemoryInfoProfile::CreateEvents("", MemoryInfoProfile::GetAndIncreasePid(), MapType::StaticActivation, "adam_inputs", 0);
 
   // Write memory profile .json
   std::ofstream memory_profile("memory_profile_" + std::to_string(local_rank_) + ".json", std::ios::trunc);

@@ -164,6 +164,15 @@ class MemoryInfo {
       return nullptr;
   }
 
+  static void AddRecordingTensorGroup(const std::string& group_name, const std::string& tensor_name) {
+    customized_recording_group_[group_name][tensor_name] = true;
+  }
+
+  static const bool InRecordingTensorGroup(const std::string& group_name, const std::string& tensor_name) {
+      if (customized_recording_group_.find(group_name) == customized_recording_group_.end()) return false;
+      if (customized_recording_group_.at(group_name).find(tensor_name) == customized_recording_group_.at(group_name).end()) return false;
+      return true;
+  }
  private:
   //MemoryInfo(int local_rank) : profiler(*this), iteration_(0), local_rank_(local_rank) {}
   MemoryInfo() = default;
@@ -178,6 +187,8 @@ class MemoryInfo {
   static std::map<OrtMemoryInfo, std::map<MapType, MemoryInfoMap> > tensors_memory_info_map_;
 
   static std::map<OrtValueIndex, AllocInfoPerTensor> tensor_alloc_info_map_;
+
+  static std::map<const std::string, std::map<const std::string, bool> >customized_recording_group_;
 
   //TODO: The dynamic and statically planned alignments may not be the same, need to check
   static const int alignment = 256;
