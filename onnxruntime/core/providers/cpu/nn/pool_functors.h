@@ -517,7 +517,7 @@ struct MaxPool1DTaskOpt {
   int64_t dilation;
   int64_t pool_size;
 
-  TensorOpCost Cost() {
+  TensorOpCost Cost() const {
     auto loop_count = static_cast<double>(x_h);
     return TensorOpCost{loop_count, loop_count, loop_count};
   }
@@ -556,7 +556,7 @@ struct MaxPool2DTaskOpt {
   int64_t pool_h;
   int64_t pool_w;
 
-  TensorOpCost Cost() {
+  TensorOpCost Cost() const {
     auto loop_count = static_cast<double>(x_h * x_w);
     return TensorOpCost{loop_count, loop_count, loop_count};
   }
@@ -614,7 +614,7 @@ struct MaxPool3DTaskOpt {
   int64_t pool_w;
   int64_t pool_d;
 
-  TensorOpCost Cost() {
+  TensorOpCost Cost() const {
     auto loop_count = static_cast<double>(x_h * x_w * x_d);
     return TensorOpCost{loop_count, loop_count, loop_count};
   }
