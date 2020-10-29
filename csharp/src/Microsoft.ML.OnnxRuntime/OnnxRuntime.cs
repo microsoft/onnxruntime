@@ -30,7 +30,7 @@ namespace Microsoft.ML.OnnxRuntime
     public enum OrtLanguageProjection
     {
         ORT_PROJECTION_C = 0,
-        ORT_PROJECTION_CPLUSPLUS = 1 ,
+        ORT_PROJECTION_CPLUSPLUS = 1,
         ORT_PROJECTION_CSHARP = 2,
         ORT_PROJECTION_PYTHON = 3,
         ORT_PROJECTION_JAVA = 4,
@@ -99,6 +99,15 @@ namespace Microsoft.ML.OnnxRuntime
         public void DisableTelemetryEvents()
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtDisableTelemetryEvents(Handle));
+        }
+
+        /// <summary>
+        /// Create and register an arena based allocator to the OrtEnv instance
+        /// so as to enable sharing across all sessions using the OrtEnv instance
+        /// </summary>
+        public void CreateAndRegisterAllocator(OrtMemoryInfo memInfo, OrtArenaCfg arenaCfg)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateAndRegisterAllocator(Handle, memInfo.Pointer, arenaCfg.Pointer));
         }
 
         #endregion

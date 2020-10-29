@@ -28,6 +28,51 @@ namespace Microsoft.ML.OnnxRuntime
     }
 
     /// <summary>
+    /// This class encapsulates an arena configuration information that will be used to define the behavior
+    /// of an arena based allocator
+    /// </summary>
+    public class OrtArenaCfg : SafeHandle
+    {
+        /// <summary>
+        /// Create an instance of arena configuration which will be used to create an arena based allocator
+        /// </summary>
+        /// <param name="maxMemory">TODO</param>
+        /// <param name="arenaExtendStrategy">TODO</param>
+        /// <param name="initialChunkSizeBytes">TODO</param>
+        /// <param name="maxDeadBytesPerChunk">TODO</param>
+        public OrtArenaCfg(uint maxMemory, int arenaExtendStrategy, int initialChunkSizeBytes, int maxDeadBytesPerChunk)
+            : base(IntPtr.Zero, true)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateArenaCfg((UIntPtr)maxMemory,
+                                                                           arenaExtendStrategy,
+                                                                           initialChunkSizeBytes,
+                                                                           maxDeadBytesPerChunk,
+                                                                           out handle));
+        }
+
+        public override bool IsInvalid { get { return handle == IntPtr.Zero; } }
+
+        internal IntPtr Pointer
+        {
+            get
+            {
+                return handle;
+            }
+        }
+
+        #region SafeHandle
+        protected override bool ReleaseHandle()
+        {
+
+            NativeMethods.OrtReleaseArenaCfg(handle);
+            handle = IntPtr.Zero;
+            return true;
+        }
+        #endregion
+
+    }
+
+    /// <summary>
     /// This class encapsulates and most of the time owns the underlying native OrtMemoryInfo instance.
     /// Instance returned from OrtAllocator will not own OrtMemoryInfo, the class must be disposed
     /// regardless.

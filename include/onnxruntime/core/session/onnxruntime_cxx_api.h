@@ -98,6 +98,7 @@ ORT_DEFINE_RELEASE(Value);
 ORT_DEFINE_RELEASE(ModelMetadata);
 ORT_DEFINE_RELEASE(ThreadingOptions);
 ORT_DEFINE_RELEASE(IoBinding);
+ORT_DEFINE_RELEASE(ArenaCfg);
 
 // This is used internally by the C++ API. This is the common base class used by the wrapper objects.
 template <typename T>
@@ -252,7 +253,6 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions& AddConfigEntry(const char* config_key, const char* config_value);
   SessionOptions& AddInitializer(const char* name, const OrtValue* ort_val);
   OrtStatus* OrtSessionOptionsAppendExecutionProvider_CUDA(OrtSessionOptions* options, OrtCUDAProviderOptions* cuda_options);
-
 };
 
 struct ModelMetadata : Base<OrtModelMetadata> {
@@ -477,6 +477,12 @@ struct IoBinding : public Base<OrtIoBinding> {
   std::vector<Value> GetOutputValues(Allocator&) const;
   void ClearBoundInputs();
   void ClearBoundOutputs();
+};
+
+struct ArenaCfg : Base<OrtArenaCfg> {
+  explicit ArenaCfg(std::nullptr_t) {}
+  ArenaCfg(size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes,
+           int max_dead_bytes_per_chunk);
 };
 
 //
