@@ -120,7 +120,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
         } else {
           math::Im2colNd<T, StorageOrder::NCHW>()(
               Xdata + group_id * X_offset,
-              X->Shape().GetDims().data() + 1,
+              X->Shape().GetDims().data() + 2,
               col_buffer_shape.data(),
               kernel_shape.data(),
               strides.data(),
@@ -249,7 +249,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
     BufferUniquePtr col_buffer(col_data, BufferDeleter(alloc));
     auto* col_buffer_data = static_cast<float*>(col_buffer.get());
 
-    TensorShape image_shape = X->Shape().Slice(1);
+    TensorShape image_shape = X->Shape().Slice(2);
     std::vector<int64_t> col_buffer_shape{kernel_dim};
     col_buffer_shape.insert(col_buffer_shape.end(), output_shape.GetDims().begin(),
                             output_shape.GetDims().end());

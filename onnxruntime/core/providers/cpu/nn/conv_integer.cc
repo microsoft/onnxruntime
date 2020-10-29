@@ -143,7 +143,7 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
         } else {
           math::Im2colNd<uint8_t, StorageOrder::NCHW>()(
               Xdata,
-              X->Shape().GetDims().data() + 1,
+              X->Shape().GetDims().data() + 2,
               col_buffer_shape.data(),
               kernel_shape.data(),
               strides.data(),

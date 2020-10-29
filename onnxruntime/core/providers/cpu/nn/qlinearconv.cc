@@ -187,7 +187,7 @@ Status QLinearConv<uint8_t>::Compute(OpKernelContext* context) const {
         } else {
           math::Im2colNd<uint8_t, StorageOrder::NCHW>()(
               Xdata,
-              X->Shape().GetDims().data() + 1,
+              X->Shape().GetDims().data() + 2,
               col_buffer_shape.data(),
               kernel_shape.data(),
               strides.data(),
@@ -476,8 +476,6 @@ Status QLinearConv<int8_t>::Compute(OpKernelContext* context) const {
   const int64_t Y_offset = group_output_channels * output_image_size;
   const int64_t kernel_dim = group_input_channels * kernel_size;
   const int64_t col_buffer_size = kernel_dim * output_image_size;
-  std::vector<int64_t> input_hwc_shape = input_shape.GetDims();
-  input_hwc_shape.push_back(group_input_channels);
 
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
@@ -571,7 +569,7 @@ Status QLinearConv<int8_t>::Compute(OpKernelContext* context) const {
         // Try big Im2ColNd in this case, parallel it later if needed
         math::Im2colNd<uint8_t, StorageOrder::NHWC>()(
             transpose_input,
-            input_hwc_shape.data(),
+            input_shape.GetDims().data(),
             col_buffer_shape.data(),
             kernel_shape.data(),
             strides.data(),

@@ -464,10 +464,10 @@ struct Im2colNd<T, StorageOrder::NCHW> {
         for (int64_t d_i = 0; d_i < N; ++d_i) {
           int64_t d = d_iter[d_i];
           int64_t d_im = d * stride[d_i] - pad[d_i] + d_offset[d_i] * dilation[d_i];
-          is_padding |= !is_a_ge_zero_and_a_lt_b(d_im, im_shape[d_i + 1]);
+          is_padding |= !is_a_ge_zero_and_a_lt_b(d_im, im_shape[d_i]);
           index_col *= col_shape[d_i + 1];
           index_col += d;
-          index_im *= im_shape[d_i + 1];
+          index_im *= im_shape[d_i];
           index_im += d_im;
         }
         if (!accumulate_output) {
@@ -498,8 +498,7 @@ struct Im2colNd<T, StorageOrder::NHWC> {
     // channels_col = kernel size * input channels (effectively treat group = 1)
     int64_t channels_col = col_shape[N];
     int64_t input_channels = channels_col / kernel_size;
-    ORT_ENFORCE((input_channels == im_shape[N]) && (input_channels * kernel_size == channels_col),
-                "Dimensions not matcth");
+    ORT_ENFORCE(input_channels * kernel_size == channels_col, "Dimensions not matcth");
 
     // iterate dimensions on output image shape (without Batch and Channel)
     std::vector<int64_t> d_output(N, 0);

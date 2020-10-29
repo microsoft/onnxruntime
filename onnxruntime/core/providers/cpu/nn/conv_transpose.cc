@@ -146,7 +146,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
         // Col2im
         math::Col2imNd<T, CPUMathUtil, StorageOrder::NCHW>(
             col_buffer_data,
-            output_shape.GetDims().data(),
+            output_shape.GetDims().data() + 1,
             col_buffer_shape.data(),
             output_shape.Size(),
             p.kernel_shape.data(),

@@ -98,7 +98,7 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
                               &CPUMathUtil::Instance());
   }
 
-  TensorShape image_shape = X->Shape().Slice(1);
+  TensorShape image_shape = X->Shape().Slice(2);
   std::vector<int64_t> col_buffer_shape{kernel_dim};
   col_buffer_shape.insert(col_buffer_shape.end(), output_shape.GetDims().begin(),
                           output_shape.GetDims().end());
