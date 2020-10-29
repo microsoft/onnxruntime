@@ -75,7 +75,7 @@ Status QLinearConv<uint8_t>::Compute(OpKernelContext* context) const {
   const Tensor* B = context->Input<Tensor>(8);
 
   const int64_t N = X->Shape()[0];
-  const int64_t C = X->Shape()[1];
+  //const int64_t C = X->Shape()[1];
   const int64_t M = W->Shape()[0];
   ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X, W));
 
@@ -189,8 +189,6 @@ Status QLinearConv<uint8_t>::Compute(OpKernelContext* context) const {
               Xdata,
               X->Shape().GetDims().data() + 1,
               col_buffer_shape.data(),
-              C * input_image_size,
-              col_buffer_size,
               kernel_shape.data(),
               strides.data(),
               dilations.data(),
@@ -575,8 +573,6 @@ Status QLinearConv<int8_t>::Compute(OpKernelContext* context) const {
             transpose_input,
             input_hwc_shape.data(),
             col_buffer_shape.data(),
-            X_offset,
-            col_buffer_size,
             kernel_shape.data(),
             strides.data(),
             dilations.data(),

@@ -438,8 +438,8 @@ static inline bool NextPosition(int64_t N, const int64_t* shape, int64_t* dims) 
 
 template <typename T>
 struct Im2colNd<T, StorageOrder::NCHW> {
-  void operator()(const T* data_img, const int64_t* im_shape, const int64_t* col_shape, int64_t /*img_size*/,
-                  int64_t /*col_size*/, const int64_t* kernel_shape, const int64_t* stride, const int64_t* dilation,
+  void operator()(const T* data_img, const int64_t* im_shape, const int64_t* col_shape,
+                  const int64_t* kernel_shape, const int64_t* stride, const int64_t* dilation,
                   const int64_t* pad, int64_t N, T* data_col, bool accumulate_output = false,
                   T padding_value = 0) {
     int64_t kernel_size = std::accumulate(kernel_shape, kernel_shape + N, 1LL, std::multiplies<int64_t>());
@@ -489,8 +489,8 @@ template struct Im2colNd<uint8_t, StorageOrder::NCHW>;
 
 template <typename T>
 struct Im2colNd<T, StorageOrder::NHWC> {
-  void operator()(const T* data_img, const int64_t* im_shape, const int64_t* col_shape, int64_t /*img_size*/,
-                  int64_t /*col_size*/, const int64_t* kernel_shape, const int64_t* stride, const int64_t* dilation,
+  void operator()(const T* data_img, const int64_t* im_shape, const int64_t* col_shape,
+                  const int64_t* kernel_shape, const int64_t* stride, const int64_t* dilation,
                   const int64_t* pad, int64_t N, T* data_col, bool accumulate_output = false,
                   T padding_value = 0) {
     int64_t kernel_size = std::accumulate(kernel_shape, kernel_shape + N, 1LL, std::multiplies<int64_t>());
@@ -686,7 +686,7 @@ void Col2im<float, CPUMathUtil, StorageOrder::NHWC>(const float* data_col, int64
 
 template <>
 void Col2imNd<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, const int64_t* img_shape,
-                                                      const int64_t* col_shape, int64_t img_size, int64_t col_size,
+                                                      const int64_t* col_shape, int64_t img_size,
                                                       const int64_t* kernel_shape, const int64_t* stride,
                                                       const int64_t* dilation, const int64_t* pad, int64_t N,
                                                       float* data_img, CPUMathUtil* context) {
@@ -695,8 +695,6 @@ void Col2imNd<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, con
       data_col,
       img_shape,
       col_shape,
-      img_size,
-      col_size,
       kernel_shape,
       stride,
       dilation,

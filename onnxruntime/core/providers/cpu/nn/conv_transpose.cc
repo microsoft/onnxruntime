@@ -149,7 +149,6 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
             output_shape.GetDims().data(),
             col_buffer_shape.data(),
             output_shape.Size(),
-            col_buffer_size,
             p.kernel_shape.data(),
             p.strides.data(),
             p.dilations.data(),

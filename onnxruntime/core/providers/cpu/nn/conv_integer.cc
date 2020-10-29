@@ -145,8 +145,6 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
               Xdata,
               X->Shape().GetDims().data() + 1,
               col_buffer_shape.data(),
-              C * input_image_size,
-              col_buffer_size,
               kernel_shape.data(),
               strides.data(),
               dilations.data(),
