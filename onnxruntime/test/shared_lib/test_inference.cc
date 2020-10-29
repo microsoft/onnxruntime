@@ -221,9 +221,7 @@ struct OrtTensorDimensions : std::vector<int64_t> {
 template <typename T, size_t N>
 constexpr size_t countof(T (&)[N]) { return N; }
 
-#ifdef USE_CUDA
 void cuda_add(int64_t, float*, const float*, const float*);
-#endif
 
 struct MyCustomKernel {
   MyCustomKernel(Ort::CustomOpApi ort, const OrtKernelInfo* /*info*/) : ort_(ort) {
@@ -245,7 +243,7 @@ struct MyCustomKernel {
     int64_t size = ort_.GetTensorShapeElementCount(output_info);
     ort_.ReleaseTensorTypeAndShapeInfo(output_info);
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) && !defined(_WIN32) && !defined(ENABLE_TRAINING)
     cuda_add(size, out, X, Y); 
 #else
     // Do computation
