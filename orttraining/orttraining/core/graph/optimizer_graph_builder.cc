@@ -228,8 +228,10 @@ Status OptimizerGraphBuilder::AddDirectWeightUpdate(
       new_initializers,
       output_weight_argdefs, output_gradient_argdefs));
 
+  std::cout << "OptimizerGraphBuilder::AddDirectWeightUpdate after BuildOptimizerNode" <<std::endl;
   graph_defs.AddInitializers(new_initializers);
 
+  std::cout << "OptimizerGraphBuilder::AddDirectWeightUpdate after graph_defs.AddInitializers(new_initializers)" <<std::endl;
   weight_argdefs = std::move(output_weight_argdefs);
   gradient_argdefs = std::move(output_gradient_argdefs);
 
@@ -434,6 +436,7 @@ Status OptimizerGraphBuilder::BuildInternal(
     return graph.GenerateNodeArgName(base_name);
   };
 
+  std::cout << "OptimizerGraphBuilder::BuildInternal start " << std::endl;
   const bool is_gradient_accumulation_enabled = opt_graph_config_.gradient_accumulation_steps > 1;
   // add gradient scaling
   ArgDef fused_gradient_argdef;
@@ -443,6 +446,7 @@ Status OptimizerGraphBuilder::BuildInternal(
                                                 opt_graph_config_.AllReduceDataType(), false));
   }
 
+  std::cout << "OptimizerGraphBuilder::BuildInternal 2222 " << std::endl;
   // check if all gradients are finite
   ArgDef global_grad_norm_argdef;
   ArgDef global_grad_norm_finite_argdef;
@@ -458,25 +462,29 @@ Status OptimizerGraphBuilder::BuildInternal(
             gradient_norm_inputs.push_back(gradient_argdefs[megatron_partitioned_weight_grad_index_[i]]);
           }
         }
-      }
-      if (gradient_norm_inputs.empty()) {
-        gradient_norm_inputs = gradient_argdefs;
+        ORT_RETURN_IF_ERROR(AddGradientNorm(
+          nodearg_name_generator, gradient_norm_inputs, graph_defs, global_grad_norm_argdef));
+      } else {
+        std::cout << "OptimizerGraphBuilder::BuildInternal 3333 " << std::endl;
+              ORT_RETURN_IF_ERROR(AddGradientNorm(
+          nodearg_name_generator, gradient_argdefs, graph_defs, global_grad_norm_argdef));
+        std::cout << "OptimizerGraphBuilder::BuildInternal 4444 " << std::endl;
       }
 
-      ORT_RETURN_IF_ERROR(AddGradientNorm(
-          nodearg_name_generator, gradient_norm_inputs, graph_defs, global_grad_norm_argdef));
+
       if (DistributedRunContext::GroupSize(WorkerGroupType::HorizontalParallel) > 1) {
         ORT_RETURN_IF_ERROR(AddL2NormBetweenMegatronRanksNcclAllReduce(global_grad_norm_argdef, graph_defs));
       }
       graph_defs.AddGraphOutputs({global_grad_norm_argdef.name});
-
+      std::cout << "OptimizerGraphBuilder::BuildInternal 55555 " << std::endl;
       optimizer_graph_outputs[OptimizerOutputKey::GlobalGradientNorm] = global_grad_norm_argdef.name;
       ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
           nodearg_name_generator, {global_grad_norm_argdef}, graph_defs, global_grad_norm_finite_argdef));
       optimizer_graph_outputs[OptimizerOutputKey::GradientAllIsFinite] = global_grad_norm_finite_argdef.name;
+      std::cout << "OptimizerGraphBuilder::BuildInternal 66666 " << std::endl;
     }
   }
-
+  std::cout << "OptimizerGraphBuilder::BuildInternal 77777 " << std::endl;
   // add weight update
   ORT_RETURN_IF_ERROR(AddDirectWeightUpdate(
       opt_builder_registry_, weight_argdefs, gradient_argdefs,
@@ -484,7 +492,7 @@ Status OptimizerGraphBuilder::BuildInternal(
       &global_grad_norm_finite_argdef,
       opt_configs_, graph_defs,
       optimizer_state_initializer_names));
-
+  std::cout << "OptimizerGraphBuilder::BuildInternal 88888 " << std::endl;
   return Status::OK();
 }
 

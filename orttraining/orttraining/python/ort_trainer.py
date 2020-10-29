@@ -22,6 +22,7 @@ from filelock import Timeout, FileLock
 from os import path
 import gc
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
+import psutil
 
 DEFAULT_OPSET_VERSION = 12
 
@@ -429,6 +430,11 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs,
 
     return onnx_model
 
+def check_onnx_model_exists():
+    exported_model_dir = os.path.join(str(os.environ['T5_MODEL_PATH']), "t5/models_to_train/" + str(os.environ['T5_MODEL_NAME']))
+    exported_model_file_name = os.path.join(exported_model_dir, str(os.environ['T5_MODEL_NAME']) + ".onnx")
+    return [os.path.exists(exported_model_file_name), exported_model_file_name]
+
 def create_ort_training_session_with_optimizer(model, device, training_optimizer_name, lr_params_feed_name,
                                                map_optimizer_attributes, world_rank=-1, world_size=1,
                                                gradient_accumulation_steps=1, bind_parameters=False,
@@ -527,22 +533,33 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
 
     file_name_or_serialized_string = None
     if ort_parameters.use_external_data_format:
-        exported_model_dir = os.path.join(str(os.environ['T5_MODEL_PATH']), "t5/models_to_train/" + str(os.environ['T5_MODEL_NAME']))
-        lock_file = os.path.join(str(os.environ['T5_MODEL_PATH']), str(os.environ['T5_MODEL_NAME']) + ".model_to_train.lock")
-        exported_model_file_name = os.path.join(exported_model_dir, str(os.environ['T5_MODEL_NAME']) + ".onnx")
-        lock = FileLock(lock_file)
-        lock.acquire()
-        if path.exists(exported_model_file_name):
-            print("reuse existing saved model at ", exported_model_file_name)
+        if check_onnx_model_exists()[0] is True:
+            file_name_or_serialized_string = check_onnx_model_exists()[1]
+            print("reuse models to train model from ", file_name_or_serialized_string)
         else:
-            print("start saving model to ", exported_model_file_name)
-            os.makedirs(exported_model_dir, exist_ok=True)
-            onnx.save_model(model, exported_model_file_name)
-            print("finish saving model to ", exported_model_file_name)
-        lock.release()
-        file_name_or_serialized_string = exported_model_file_name
+            exported_model_dir = os.path.join(str(os.environ['T5_MODEL_PATH']), "t5/models_to_train/" + str(os.environ['T5_MODEL_NAME']))
+            lock_file = os.path.join(str(os.environ['T5_MODEL_PATH']), str(os.environ['T5_MODEL_NAME']) + ".model_to_train.lock")
+            exported_model_file_name = os.path.join(exported_model_dir, str(os.environ['T5_MODEL_NAME']) + ".onnx")
+            lock = FileLock(lock_file)
+            lock.acquire()
+            if path.exists(exported_model_file_name):
+                print("reuse existing saved model at ", exported_model_file_name)
+            else:
+                print("start saving model to ", exported_model_file_name)
+                os.makedirs(exported_model_dir, exist_ok=True)
+                onnx.save_model(model, exported_model_file_name)
+                print("finish saving model to ", exported_model_file_name)
+            lock.release()
+            file_name_or_serialized_string = exported_model_file_name
     else:
         file_name_or_serialized_string = model.SerializeToString()
+
+
+    del model.graph.initializer[:]
+    print("before sleep ", psutil.virtual_memory())
+    import time
+    time.sleep(30) # wait for GC
+    print("before start session", psutil.virtual_memory())
 
     sessionOptions = ort.SessionOptions()
     sessionOptions.use_deterministic_compute = use_deterministic_compute

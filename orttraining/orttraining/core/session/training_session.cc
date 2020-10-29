@@ -135,6 +135,7 @@ void TrainingSession::FilterUnusedWeights(const std::unordered_set<std::string>&
       LOGS(*session_logger_, WARNING)
           << "Couldn't find any consumer node for weight " << name << ", exclude it from training.";
   }
+
 }
 
 const std::string TrainingSession::training_mode_string_ = "training_mode";
@@ -146,7 +147,11 @@ Status TrainingSession::ConfigureForTraining(
       "TrainingSession::ConfigureForTraining() must be called before TrainingSession::Initialize().");
 
   if (is_configured_) return Status::OK();
+  // we make sure on each node, graph building across different processes are handled one by one
+  // to ease the burden for CPU memory.
 
+  LOGS(*session_logger_, WARNING)
+      << "Enter TrainingSession::ConfigureForTraining on rank  " << config.distributed_config.world_rank;
   std::unordered_set<std::string> filtered_config_weight_names_to_train;
   FilterUnusedWeights(config.weight_names_to_train, filtered_config_weight_names_to_train);
 
@@ -304,9 +309,10 @@ Status TrainingSession::ConfigureForTraining(
   //if (IsRootNode(config)) {
   //Save("after_mixed_precision_" + std::to_string(config.distributed_config.world_rank) + ".onnx", SaveOption::NO_RELOAD);
   //}
+  LOGS(*session_logger_, WARNING) << "BuildGradientGraph started";
   ORT_RETURN_IF_ERROR(BuildGradientGraph(
       weight_names_to_train, loss_name, config.gradient_graph_config, *session_logger_));
-
+  LOGS(*session_logger_, WARNING) << "BuildGradientGraph completed";
   if (config.pipeline_config.has_value()) {
     TrainingConfigurationResult::PipelineConfigurationResult pipeline_result{};
     ORT_RETURN_IF_ERROR(InsertPipelineOps(weight_names_to_train,
@@ -352,14 +358,16 @@ Status TrainingSession::ConfigureForTraining(
   if (config.optimizer_config.has_value()) {
     OptimizerGraphConfig opt_graph_config{};
     std::unordered_map<std::string, OptimizerNodeConfig> opt_node_configs{};
+    LOGS(*session_logger_, WARNING) << "SetupOptimizerParams started";
     ORT_RETURN_IF_ERROR(SetupOptimizerParams(
         weight_names_to_train, fp32_weight_name_to_mixed_precision_node_arg,
         loss_scale_input_name, config, opt_graph_config, opt_node_configs, config_result.updated_weight_names));
+        LOGS(*session_logger_, WARNING) << "BuildOptimizer started";
     TrainingConfigurationResult::OptimizerConfigurationResult optimizer_config_result{};
     ORT_RETURN_IF_ERROR(BuildOptimizer(
         opt_graph_config, opt_node_configs,
         optimizer_config_result.output_key_to_graph_output_name, weight_names_to_train));
-
+    LOGS(*session_logger_, WARNING) << "BuildOptimizer completed";
     config_result.opt_config_result = optimizer_config_result;
   } else {
     if (config.gradient_accumulation_steps > 1) {
@@ -367,6 +375,7 @@ Status TrainingSession::ConfigureForTraining(
     }
   }
 
+  LOGS(*session_logger_, WARNING) << "SetEvalFeedNames started";
   // Set eval feed names for nodes that differ between training and inferencing.
   ORT_RETURN_IF_ERROR(SetEvalFeedNames());
   //if (IsRootNode(config)) {
@@ -398,7 +407,7 @@ Status TrainingSession::ConfigureForTraining(
       add_opt_graph_output_by_key(OptimizerOutputKey::GradientAllIsFinite);
       add_opt_graph_output_by_key(OptimizerOutputKey::GlobalGradientNorm);
     }
-
+    LOGS(*session_logger_, WARNING) << "AddTensorboard started";
     ORT_RETURN_IF_ERROR(AddTensorboard(
         tensorboard_config.summary_name, tensorboard_scalar_names,
         tensorboard_config.histogram_node_names, tensorboard_config.norm_node_names,
@@ -442,7 +451,8 @@ Status TrainingSession::ConfigureForTraining(
 
   config_result_out = std::move(config_result);
   is_configured_ = true;
-
+  LOGS(*session_logger_, WARNING)
+      << "Done TrainingSession::ConfigureForTraining on rank  " << config.distributed_config.world_rank;
   return Status::OK();
 }
 

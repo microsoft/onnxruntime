@@ -269,11 +269,11 @@ void addObjectMethodsForTraining(py::module& m) {
           CopyMPIContextToTrainingParameters(parameters, sess->GetSessionHandle()->GetLogger());
 #endif
         const auto config_result = ConfigureSessionForTraining(static_cast<TrainingSession*>(sess->GetSessionHandle()), parameters);
-
+        return config_result;
+      })
+      .def("init_train_session", [](PyTrainingSession* sess) {
         std::vector<std::string> provider_types = {};
         InitializeSession(sess->GetSessionHandle(), provider_types);
-
-        return config_result;
       })
       .def("read_bytes", [](PyTrainingSession* sess, const py::bytes& serialized_model, TrainingParameters& parameters) {
         std::istringstream buffer(serialized_model);

@@ -37,6 +37,7 @@ Status AdamOptimizerBuilder::Build(
     std::vector<ArgDef>& output_weight_argdefs,
     std::vector<ArgDef>& output_gradient_argdefs,
     bool enable_grad_clipping) const {
+  std::cout << " AdamOptimizerBuilder::Build started" << std::endl;
   for (size_t i = 0; i < weight_argdefs.size(); ++i) {
     const std::string& weight_name = weight_argdefs[i].name;
     const std::string& gradient_name = gradient_argdefs[i].name;
@@ -149,7 +150,7 @@ Status AdamOptimizerBuilder::Build(
     output_weight_argdefs.push_back(output_weight_argdef);
     output_gradient_argdefs.push_back(output_gradient_argdef);
   }
-
+  std::cout << " AdamOptimizerBuilder::Build completed" << std::endl;
   return Status::OK();
 }
 
