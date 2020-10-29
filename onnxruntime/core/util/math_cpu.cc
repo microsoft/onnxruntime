@@ -494,11 +494,11 @@ struct Im2colNd<T, StorageOrder::NHWC> {
                   T padding_value = 0) {
     int64_t kernel_size = std::accumulate(kernel_shape, kernel_shape + N, 1LL, std::multiplies<int64_t>());
     int64_t input_channels = channels_col / kernel_size;
-    ORT_ENFORCE(input_channels * kernel_size == channels_col, "Dimensions not matcth");
+    ORT_ENFORCE(input_channels * kernel_size == channels_col, "Dimensions not match!");
 
     // iterate dimensions on output image shape (without Batch and Channel)
     std::vector<int64_t> d_output(N, 0);
-    // iterate inside each stop for kernel dimensions
+    // inner iterate dimensions on kernel shape (without output channel and input channel)
     std::vector<int64_t> d_kernel(N, 0);
 
     // Loop over spatial axes along the output image shape

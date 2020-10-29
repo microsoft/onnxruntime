@@ -135,7 +135,7 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
         } else {
           math::Im2colNd<uint8_t, StorageOrder::NCHW>()(
               Xdata,
-              X->Shape().GetDims().data() + 2,
+              input_shape.GetDims().data(),
               output_shape.GetDims().data(),
               kernel_dim,
               kernel_shape.data(),

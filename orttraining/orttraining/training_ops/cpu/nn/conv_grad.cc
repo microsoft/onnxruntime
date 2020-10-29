@@ -98,8 +98,6 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
                               &CPUMathUtil::Instance());
   }
 
-  TensorShape image_shape = X->Shape().Slice(2);
-
   for (int image_id = 0; image_id < N; ++image_id) {
     for (int group_id = 0; group_id < conv_attrs_.group; ++group_id) {
       if (Is2DKernel) {
@@ -122,7 +120,7 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
       } else {
         math::Im2colNd<T, StorageOrder::NCHW>()(
             Xdata + group_id * X_offset,
-            image_shape.GetDims().data(),
+            input_shape.GetDims().data(),
             output_shape.GetDims().data(),
             kernel_dim,
             kernel_shape.data(),
@@ -204,7 +202,7 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
         } else {
           math::Col2imNd<T, CPUMathUtil, StorageOrder::NCHW>(
               col_buffer_data,
-              image_shape.GetDims().data(),
+              input_shape.GetDims().data(),
               output_shape.GetDims().data(),
               kernel_dim,
               C * input_image_size,

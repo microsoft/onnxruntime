@@ -75,7 +75,6 @@ Status QLinearConv<uint8_t>::Compute(OpKernelContext* context) const {
   const Tensor* B = context->Input<Tensor>(8);
 
   const int64_t N = X->Shape()[0];
-  //const int64_t C = X->Shape()[1];
   const int64_t M = W->Shape()[0];
   ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X, W));
 
@@ -179,7 +178,7 @@ Status QLinearConv<uint8_t>::Compute(OpKernelContext* context) const {
         } else {
           math::Im2colNd<uint8_t, StorageOrder::NCHW>()(
               Xdata,
-              X->Shape().GetDims().data() + 2,
+              input_shape.GetDims().data(),
               output_shape.GetDims().data(),
               kernel_dim,
               kernel_shape.data(),
@@ -513,10 +512,10 @@ Status QLinearConv<int8_t>::Compute(OpKernelContext* context) const {
     }
   }
 
-  // Pointwise convolutions can use the original input tensor in place,
-  // otherwise a temporary buffer is required for the im2col transform.
   BufferUniquePtr col_buffer;
 
+  // Pointwise convolutions can use the original input tensor in place,
+  // otherwise a temporary buffer is required for the im2col transform.
   if (kernel_size != 1 || !conv_attrs_.HasStridesOneAndNoPadding()) {
     auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(uint8_t)) * col_buffer_size);
     col_buffer = BufferUniquePtr(col_data, BufferDeleter(alloc));
