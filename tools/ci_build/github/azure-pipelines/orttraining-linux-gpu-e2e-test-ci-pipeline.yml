@@ -70,6 +70,7 @@ jobs:
         --gpus all \
         --rm \
         --volume $(Build.SourcesDirectory):/onnxruntime_src \
+        --volume /bert_data/hf_data:/bert_data/hf_data \
         onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
           /onnxruntime_src/orttraining/orttraining/test/python/launch_test.py \
             --process_args "mpirun -n 4 -x NCCL_DEBUG=INFO python orttraining_run_bert_pretrain.py ORTBertPretrainTest.test_pretrain_convergence" \
@@ -82,6 +83,7 @@ jobs:
         --gpus all \
         --rm \
         --volume $(Build.SourcesDirectory):/onnxruntime_src \
+        --volume /bert_data/hf_data:/bert_data/hf_data \
         onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
           /onnxruntime_src/orttraining/orttraining/test/python/launch_test.py \
             --process_args "python orttraining_run_glue.py ORTGlueTest.test_bert_with_mrpc -v" \
@@ -95,6 +97,7 @@ jobs:
         --gpus all \
         --rm \
         --volume $(Build.SourcesDirectory):/onnxruntime_src \
+        --volume /bert_data/hf_data:/bert_data/hf_data \
         onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
           /onnxruntime_src/orttraining/orttraining/test/python/launch_test.py \
             --process_args "python orttraining_run_frontend_batch_size_test.py -v" \
