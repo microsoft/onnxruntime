@@ -244,7 +244,7 @@ struct MyCustomKernel {
     ort_.ReleaseTensorTypeAndShapeInfo(output_info);
 
     // Do computation
-#if defined(USE_CUDA) && !defined(_WIN32) && !defined(ENABLE_TRAINING) && !defined(USE_OPENVINO)
+#ifdef USE_CUDA
     cuda_add(size, out, X, Y); 
 #else
     for (int64_t i = 0; i < size; i++) {
@@ -287,7 +287,7 @@ TEST(CApiTest, custom_op_handler) {
   std::vector<int64_t> expected_dims_y = {3, 2};
   std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
 
-#if defined(USE_CUDA) && !defined(_WIN32) && !defined(ENABLE_TRAINING) && !defined(USE_OPENVINO)
+#ifdef USE_CUDA
   MyCustomOp custom_op{onnxruntime::kCudaExecutionProvider};
 #else
   MyCustomOp custom_op{onnxruntime::kCpuExecutionProvider};
@@ -296,7 +296,7 @@ TEST(CApiTest, custom_op_handler) {
   Ort::CustomOpDomain custom_op_domain("");
   custom_op_domain.Add(&custom_op);
 
-#if defined(USE_CUDA) && !defined(_WIN32) && !defined(ENABLE_TRAINING) && !defined(USE_OPENVINO)
+#ifdef USE_CUDA
   TestInference<PATH_TYPE, float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1, custom_op_domain, nullptr, nullptr);
 #else
   TestInference<PATH_TYPE, float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, custom_op_domain, nullptr);

@@ -326,9 +326,6 @@ set (onnxruntime_shared_lib_test_SRC
 
 if (NOT onnxruntime_MINIMAL_BUILD)
   list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_inference.cc)
-  if (onnxruntime_USE_CUDA AND UNIX AND NOT onnxruntime_ENABLE_TRAINING AND NOT onnxruntime_USE_OPENVINO)
-    list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cuda_add.cu)
-  endif()
 endif()
 
 if(onnxruntime_RUN_ONNX_TESTS)
@@ -609,7 +606,6 @@ set(all_dependencies ${onnxruntime_test_providers_dependencies} )
   # so skip in this type of
   target_compile_definitions(onnxruntime_test_all PUBLIC -DSKIP_DEFAULT_LOGGER_TESTS)
   if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
-      target_compile_definitions(onnxruntime_test_all_xc PUBLIC -DSKIP_DEFAULT_LOGGER_TESTS)
   endif()
   if(onnxruntime_RUN_MODELTEST_IN_DEBUG_MODE)
     target_compile_definitions(onnxruntime_test_all PUBLIC -DRUN_MODELTEST_IN_DEBUG_MODE)
@@ -857,12 +853,13 @@ if (onnxruntime_BUILD_SHARED_LIB)
   #################################################################
   # test inference using shared lib
   set(onnxruntime_shared_lib_test_LIBS onnxruntime_mocked_allocator onnxruntime_test_utils onnxruntime_common onnx_proto)
-
+  
   if(NOT WIN32)
     list(APPEND onnxruntime_shared_lib_test_LIBS nsync_cpp)
   endif()
   if (onnxruntime_USE_CUDA)
-    list(APPEND onnxruntime_shared_lib_test_LIBS cudart)
+    add_library(onnxruntime_shared_lib_test_cuda ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cuda_add.cu)
+    list(APPEND onnxruntime_shared_lib_test_LIBS onnxruntime_shared_lib_test_cuda cudart)
   endif()
   if (CMAKE_SYSTEM_NAME STREQUAL "Android")
     list(APPEND onnxruntime_shared_lib_test_LIBS ${android_shared_libs})
