@@ -1,6 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/cuda/cuda_allocator.h"
+#include "core/providers/cuda/reduction/reduction_functions.h"
+#include "core/providers/cuda/math/binary_elementwise_ops.h"
+#include "orttraining/training_ops/cuda/optimizer/common.h"
+#include "orttraining/training_ops/cuda/optimizer/lamb.h"
+
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/atomic/common.cuh"
@@ -9,6 +15,18 @@
 #include "orttraining/training_ops/cuda/optimizer/lamb.h"
 namespace onnxruntime {
 namespace cuda {
+
+__forceinline__ __host__ __device__ int least_pow2_bound(int value) {
+  unsigned int value_ = static_cast<unsigned int>(value);
+  --value_;
+  value_ |= value_ >> 1;
+  value_ |= value_ >> 2;
+  value_ |= value_ >> 4;
+  value_ |= value_ >> 8;
+  value_ |= value_ >> 16;
+  return static_cast<int>(++value_);
+}
+
 template <typename T1, typename T2, typename T3>
 __device__ __forceinline__ void _LambComputeDirectionRule(
     const T1& g_scale,
@@ -440,7 +458,7 @@ INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(half, float, half, half)
 INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(float, float, half, half)
 
 template <typename TIn1, typename TIn2, typename TOut1, typename TOut2, typename TBuf>
-__global__ void LambMultiTensorReductionImpl(ChunkGroup<4> chunk_group) {
+__global__ void LambMultiTensorReductionImpl(ChunkGroup<4> chunk_group, TOut1* w_buffer, TOut2* d_buffer) {
   const int group_index = chunk_group.block_index_to_tensor_group_index[blockIdx.x];
   const int tensor_size = chunk_group.tensor_sizes[group_index];
   const int chunk_size = chunk_group.chunk_size;
@@ -500,10 +518,75 @@ __global__ void LambMultiTensorReductionImpl(ChunkGroup<4> chunk_group) {
     __syncthreads();
   }
 
-  if (threadIdx.x == 0) {
-    atomic_add(w_norm, TOut1(w_shared_memory_[0]));
-    atomic_add(d_norm, TOut2(d_shared_memory_[0]));
+  // -- testing: modify code to use deterministic block level reduction
+
+  // if (threadIdx.x == 0) {
+  //   atomic_add(w_norm, TOut1(w_shared_memory_[0]));
+  //   atomic_add(d_norm, TOut2(d_shared_memory_[0]));
+  // }
+
+  // Thread-level indexes:
+  // Linear index of thread in block.
+  const int tid_in_block = threadIdx.y * blockDim.x + threadIdx.x;
+
+  // Grid-level indexes:
+  // Linear index of block in grid.
+  const int bid_in_grid = blockIdx.x + blockIdx.y * gridDim.x;
+  // Linear index of thread in grid.
+  const int tid_in_grid = bid_in_grid * (blockDim.x * blockDim.y) + tid_in_block;
+  // Total number of blocks in a 2-D grid.
+  const int num_blocks_in_grid = gridDim.x * gridDim.y;
+
+  // Return early if only one block is used for reduction.
+  if (num_blocks_in_grid == 1) {
+    if (tid_in_grid == 0) {
+      *w_norm = TOut1(w_shared_memory_[0]);
+      *d_norm = TOut2(d_shared_memory_[0]);
+    }
+    return;
   }
+
+  if (tid_in_block == 0) {
+    w_buffer[bid_in_grid] = w_shared_memory_[0];
+    d_buffer[bid_in_grid] = d_shared_memory_[0];
+  }
+
+  __threadfence();
+  __syncthreads();
+
+  // Grid-level reduciton. We use the last block to sum up values
+  // stored in the global buffer.
+  __shared__ bool is_last_block_done;
+
+  if (tid_in_block == 0) {
+    int* p_lock = reinterpret_cast<int*>(w_buffer + num_blocks_in_grid);
+    int count = atomicAdd(p_lock, 1);
+    is_last_block_done = (count == (num_blocks_in_grid - 1));
+  }
+
+  // All threads in each block see if they belong the last active block
+  // (i.e., the value of is_last_block_done).
+  __syncthreads();
+
+  // Only the block which saw that count equals to num_blocks_in_grid - 1 can
+  // enter the following block.
+  if (is_last_block_done) {
+    const int pow2_bound = least_pow2_bound(num_blocks_in_grid);
+    for (int stride = pow2_bound / 2; stride > 0; stride /= 2) {
+      if (tid_in_block < stride && tid_in_block + stride < num_blocks_in_grid) {
+        w_buffer[tid_in_block] += w_buffer[tid_in_block + stride];
+        d_buffer[tid_in_block] += d_buffer[tid_in_block + stride];        
+      }
+      __syncthreads();
+    }
+
+    // The first thread in the last block assigns the final output.
+    if (tid_in_block == 0) {
+      *w_norm = TOut1(w_buffer[0]);
+      *d_norm = TOut2(d_buffer[0]);
+    }
+  }
+
 };
 
 template <typename TIn1, typename TIn2, typename TOut1, typename TOut2, typename TBuf>
@@ -517,7 +600,22 @@ void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()
   ORT_ENFORCE(thread_count % GPU_WARP_SIZE == 0);
   ORT_ENFORCE((thread_count & (thread_count - 1)) == 0);
 
-  LambMultiTensorReductionImpl<TIn1, TIn2, TOut1, TOut2, TBuf><<<chunk_group.chunk_count, thread_count, shared_memory_size>>>(chunk_group);
+  const int num_blocks = chunk_group.chunk_count;
+  int w_buffer_size = static_cast<int>(num_blocks * sizeof(TOut1) + sizeof(int));
+  int d_buffer_size = static_cast<int>(num_blocks * sizeof(TOut2) + sizeof(int));
+
+  TOut1 *w_buffer;
+  cudaMalloc(&w_buffer, w_buffer_size*sizeof(TOut1));
+  ORT_ENFORCE(cudaMemset(w_buffer, 0, w_buffer_size * sizeof(TOut1)) == cudaSuccess);
+
+  TOut2 *d_buffer;
+  cudaMalloc(&d_buffer, d_buffer_size*sizeof(TOut2));
+  ORT_ENFORCE(cudaMemset(d_buffer, 0, d_buffer_size * sizeof(TOut2)) == cudaSuccess);
+
+  LambMultiTensorReductionImpl<TIn1, TIn2, TOut1, TOut2, TBuf><<<chunk_group.chunk_count, thread_count, shared_memory_size>>>(chunk_group, w_buffer, d_buffer);
+
+  cudaFree(w_buffer);
+  cudaFree(d_buffer);
 }
 
 #define INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(TIn1, TIn2, TOut1, TOut2, TBuf) \
