@@ -168,7 +168,7 @@ class MemoryInfo {
     customized_recording_group_[group_name][tensor_name] = true;
   }
 
-  static const bool InRecordingTensorGroup(const std::string& group_name, const std::string& tensor_name) {
+  static bool InRecordingTensorGroup(const std::string& group_name, const std::string& tensor_name) {
       if (customized_recording_group_.find(group_name) == customized_recording_group_.end()) return false;
       if (customized_recording_group_.at(group_name).find(tensor_name) == customized_recording_group_.at(group_name).end()) return false;
       return true;
