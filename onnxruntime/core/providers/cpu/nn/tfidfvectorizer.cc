@@ -315,7 +315,7 @@ void TfIdfVectorizer::ComputeImpl(OpKernelContext* ctx, ptrdiff_t row_num, size_
   auto X = ctx->Input<Tensor>(0);
   const auto elem_size = X->DataType()->Size();
 
-  const void* row_begin = AdvanceElementPtr(X->DataRaw(), row_num * row_size, elem_size);
+  const void* const row_begin = AdvanceElementPtr(X->DataRaw(), row_num * row_size, elem_size);
   const void* const row_end = AdvanceElementPtr(row_begin, row_size, elem_size);
 
   const auto& impl = *impl_;

@@ -38,16 +38,21 @@ inline bool HasTyped<GraphProto>(const AttributeProto* attr) {
 }
 
 template <typename T>
-inline bool HasTypedSpan(const AttributeProto* attr);
+inline bool HasTypedList(const AttributeProto* attr);
 
 template <>
-inline bool HasTypedSpan<float>(const AttributeProto* attr) {
+inline bool HasTypedList<float>(const AttributeProto* attr) {
   return utils::HasFloats(*attr);
 }
 
 template <>
-inline bool HasTypedSpan<int64_t>(const AttributeProto* attr) {
+inline bool HasTypedList<int64_t>(const AttributeProto* attr) {
   return utils::HasInts(*attr);
+}
+
+template <>
+inline bool HasTypedList<std::string>(const AttributeProto* attr) {
+  return utils::HasStrings(*attr);
 }
 
 template <typename T>
@@ -62,6 +67,12 @@ template <>
 inline constexpr int ArrayTypeToAttributeType<int64_t>() {
   return AttributeProto_AttributeType_INTS;
 }
+
+template <>
+inline constexpr int ArrayTypeToAttributeType<std::string>() {
+  return AttributeProto_AttributeType_STRINGS;
+}
+
 
 #define ORT_DEFINE_GET_ATTR(IMPL_T, T, type)                                                       \
   template <>                                                                                      \
@@ -120,7 +131,7 @@ inline constexpr int ArrayTypeToAttributeType<int64_t>() {
     if (!attr) {                                                                                   \
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "No attribute with name: ", name, " is defined."); \
     }                                                                                              \
-    if (!HasTypedSpan<T>(attr)) {                                                                  \
+    if (!HasTypedList<T>(attr)) {                                                                  \
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Attribute: ", name,                               \
                              " expected to be of type: ",                                          \
                              AttributeProto::AttributeType_Name(ArrayTypeToAttributeType<T>()),    \
@@ -177,17 +188,17 @@ MUST_USE_RESULT Status OpNodeProtoHelper<Impl_t>::GetAttrsStringRefs(
   if (!attr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "No attribute with name: ", name, " is defined.");
   }
-  if (!utils::HasStrings(*attr)) {
+  if (!HasTypedList<std::string>(attr)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Requested attribute: ",
-                           name, " is expected to have STRINGS type but is of type: ",
+                           name, " is expected to have type: ",
+                           AttributeProto::AttributeType_Name(AttributeProto_AttributeType_STRINGS),
+                           " but is of type: ",
                            AttributeProto::AttributeType_Name(attr->type()));
   }
   std::vector<std::reference_wrapper<const std::string>> result;
   if (attr->strings_size() > 0) {
     result.reserve(attr->strings_size());
-    for (const auto& s : attr->strings()) {
-      result.push_back(s);
-    }
+    std::copy(attr->strings().cbegin(), attr->strings().cend(), std::back_inserter(result));
   }
   refs.swap(result);
   return Status::OK();
