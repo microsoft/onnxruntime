@@ -254,7 +254,8 @@ struct Im2colNd {
   void operator()(
       const T* data_img,
       const int64_t* im_shape,
-      const int64_t* col_shape,
+      const int64_t* output_shape,
+      int64_t channels_col,
       const int64_t* kernel_shape,
       const int64_t* stride,
       const int64_t* dilation,
@@ -269,7 +270,8 @@ template <typename T, class Provider, int order>
 void Col2imNd(
     const T* data_col,
     const int64_t* img_shape,
-    const int64_t* col_shape,
+    const int64_t* output_shape,
+    int64_t channels_col,
     int64_t img_size,
     const int64_t* kernel_shape,
     const int64_t* stride,

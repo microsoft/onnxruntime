@@ -438,12 +438,11 @@ static inline bool NextPosition(int64_t N, const int64_t* shape, int64_t* dims) 
 
 template <typename T>
 struct Im2colNd<T, StorageOrder::NCHW> {
-  void operator()(const T* data_img, const int64_t* im_shape, const int64_t* col_shape,
+  void operator()(const T* data_img, const int64_t* im_shape, const int64_t* output_shape, int64_t channels_col,
                   const int64_t* kernel_shape, const int64_t* stride, const int64_t* dilation,
                   const int64_t* pad, int64_t N, T* data_col, bool accumulate_output = false,
                   T padding_value = 0) {
     int64_t kernel_size = std::accumulate(kernel_shape, kernel_shape + N, 1LL, std::multiplies<int64_t>());
-    int64_t channels_col = col_shape[0];
     std::vector<int64_t> d_offset(N, 0);
     std::vector<int64_t> d_iter(N, 0);
     for (int64_t c_col = 0; c_col < channels_col; ++c_col) {
@@ -465,7 +464,7 @@ struct Im2colNd<T, StorageOrder::NCHW> {
           int64_t d = d_iter[d_i];
           int64_t d_im = d * stride[d_i] - pad[d_i] + d_offset[d_i] * dilation[d_i];
           is_padding |= !is_a_ge_zero_and_a_lt_b(d_im, im_shape[d_i]);
-          index_col *= col_shape[d_i + 1];
+          index_col *= output_shape[d_i];
           index_col += d;
           index_im *= im_shape[d_i];
           index_im += d_im;
@@ -479,7 +478,7 @@ struct Im2colNd<T, StorageOrder::NCHW> {
         } else if (!is_padding) {  // col2im
           data_col[index_im] += data_img[index_col];
         }
-      } while (NextPosition(N, col_shape + 1, d_iter.data()));
+      } while (NextPosition(N, output_shape, d_iter.data()));
     }  // for (int c = 0; c < channels_col; ++c) {
   }
 };
@@ -489,14 +488,11 @@ template struct Im2colNd<uint8_t, StorageOrder::NCHW>;
 
 template <typename T>
 struct Im2colNd<T, StorageOrder::NHWC> {
-  void operator()(const T* data_img, const int64_t* im_shape, const int64_t* col_shape,
+  void operator()(const T* data_img, const int64_t* im_shape, const int64_t* output_shape, int64_t channels_col,
                   const int64_t* kernel_shape, const int64_t* stride, const int64_t* dilation,
                   const int64_t* pad, int64_t N, T* data_col, bool accumulate_output = false,
                   T padding_value = 0) {
     int64_t kernel_size = std::accumulate(kernel_shape, kernel_shape + N, 1LL, std::multiplies<int64_t>());
-
-    // channels_col = kernel size * input channels (effectively treat group = 1)
-    int64_t channels_col = col_shape[N];
     int64_t input_channels = channels_col / kernel_size;
     ORT_ENFORCE(input_channels * kernel_size == channels_col, "Dimensions not matcth");
 
@@ -541,7 +537,7 @@ struct Im2colNd<T, StorageOrder::NHWC> {
       } while (NextPosition(N, kernel_shape, d_kernel.data()));
 
       outer_col_index += channels_col;
-    } while (NextPosition(N, col_shape, d_output.data()));
+    } while (NextPosition(N, output_shape, d_output.data()));
   }
 };
 
@@ -685,7 +681,7 @@ void Col2im<float, CPUMathUtil, StorageOrder::NHWC>(const float* data_col, int64
 
 template <>
 void Col2imNd<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, const int64_t* img_shape,
-                                                      const int64_t* col_shape, int64_t img_size,
+                                                      const int64_t* output_shape, int64_t channels_col, int64_t img_size,
                                                       const int64_t* kernel_shape, const int64_t* stride,
                                                       const int64_t* dilation, const int64_t* pad, int64_t N,
                                                       float* data_img, CPUMathUtil* context) {
@@ -693,7 +689,8 @@ void Col2imNd<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, con
   Im2colNd<float, StorageOrder::NCHW>()(
       data_col,
       img_shape,
-      col_shape,
+      output_shape,
+      channels_col,
       kernel_shape,
       stride,
       dilation,

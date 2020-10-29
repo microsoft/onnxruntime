@@ -125,20 +125,12 @@ Status QLinearConv<uint8_t>::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
   BufferUniquePtr col_buffer;
-  std::vector<int64_t> col_buffer_shape;
 
   // Pointwise convolutions can use the original input tensor in place,
   // otherwise a temporary buffer is required for the im2col transform.
   if (kernel_size != 1 || !conv_attrs_.HasStridesOneAndNoPadding()) {
     auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(uint8_t)) * col_buffer_size);
     col_buffer = BufferUniquePtr(col_data, BufferDeleter(alloc));
-
-    if (kernel_rank != 2) {
-      const auto& output_dims = output_shape.GetDims();
-      col_buffer_shape.reserve(1 + output_dims.size());
-      col_buffer_shape.push_back(kernel_dim);
-      col_buffer_shape.insert(col_buffer_shape.end(), output_dims.begin(), output_dims.end());
-    }
   }
 
   auto* col_buffer_data = static_cast<uint8_t*>(col_buffer.get());
@@ -188,7 +180,8 @@ Status QLinearConv<uint8_t>::Compute(OpKernelContext* context) const {
           math::Im2colNd<uint8_t, StorageOrder::NCHW>()(
               Xdata,
               X->Shape().GetDims().data() + 2,
-              col_buffer_shape.data(),
+              output_shape.GetDims().data(),
+              kernel_dim,
               kernel_shape.data(),
               strides.data(),
               dilations.data(),
@@ -523,16 +516,10 @@ Status QLinearConv<int8_t>::Compute(OpKernelContext* context) const {
   // Pointwise convolutions can use the original input tensor in place,
   // otherwise a temporary buffer is required for the im2col transform.
   BufferUniquePtr col_buffer;
-  std::vector<int64_t> col_buffer_shape;
 
   if (kernel_size != 1 || !conv_attrs_.HasStridesOneAndNoPadding()) {
     auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(uint8_t)) * col_buffer_size);
     col_buffer = BufferUniquePtr(col_data, BufferDeleter(alloc));
-
-    if (kernel_rank != 2) {
-      col_buffer_shape = output_shape.GetDims();
-      col_buffer_shape.push_back(kernel_dim);
-    }
   }
   auto* col_buffer_data = static_cast<uint8_t*>(col_buffer.get());
 
@@ -570,7 +557,8 @@ Status QLinearConv<int8_t>::Compute(OpKernelContext* context) const {
         math::Im2colNd<uint8_t, StorageOrder::NHWC>()(
             transpose_input,
             input_shape.GetDims().data(),
-            col_buffer_shape.data(),
+            output_shape.GetDims().data(),
+            kernel_dim,
             kernel_shape.data(),
             strides.data(),
             dilations.data(),

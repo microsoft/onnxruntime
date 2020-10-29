@@ -99,9 +99,6 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
   }
 
   TensorShape image_shape = X->Shape().Slice(2);
-  std::vector<int64_t> col_buffer_shape{kernel_dim};
-  col_buffer_shape.insert(col_buffer_shape.end(), output_shape.GetDims().begin(),
-                          output_shape.GetDims().end());
 
   for (int image_id = 0; image_id < N; ++image_id) {
     for (int group_id = 0; group_id < conv_attrs_.group; ++group_id) {
@@ -126,7 +123,8 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
         math::Im2colNd<T, StorageOrder::NCHW>()(
             Xdata + group_id * X_offset,
             image_shape.GetDims().data(),
-            col_buffer_shape.data(),
+            output_shape.GetDims().data(),
+            kernel_dim,
             kernel_shape.data(),
             strides.data(),
             dilations.data(),
@@ -207,7 +205,8 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
           math::Col2imNd<T, CPUMathUtil, StorageOrder::NCHW>(
               col_buffer_data,
               image_shape.GetDims().data(),
-              col_buffer_shape.data(),
+              output_shape.GetDims().data(),
+              kernel_dim,
               C * input_image_size,
               kernel_shape.data(),
               strides.data(),
