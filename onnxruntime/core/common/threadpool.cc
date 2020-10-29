@@ -46,29 +46,18 @@ struct alignas(CACHE_LINE_BYTES) LoopCounterShard {
   uint64_t _end;
 };
 
+static_assert(sizeof(LoopCounterShard) == CACHE_LINE_BYTES, "Expected loop counter shards to match cache-line size");
+
 class alignas(CACHE_LINE_BYTES) LoopCounter {
 public:
  LoopCounter(uint64_t num_iterations,
-             uint64_t block_size = 1) : _block_size(block_size) {
-   assert(sizeof(LoopCounterShard) == 64);
-   assert(block_size != 0);
-
-   // Use at least 1 shard to avoid division-by-zero and corner cases.
-   // Otherwise, use as many shards as useful, up to MAX_SHARDS.
+             uint64_t block_size = 1) : _block_size(block_size),
+                                        _num_shards(GetNumShards(num_iterations, block_size)) {
+   // Divide the iteration space between the shards.  If the iteration
+   // space does not divide evenly into shards of multiples of
+   // block_size then the final shard is left uneven.
 
    auto num_blocks = num_iterations / block_size;
-   if (num_blocks == 0) {
-     _num_shards = 0;
-   } else if (num_blocks < MAX_SHARDS) {
-     _num_shards = num_blocks;
-   } else {
-     _num_shards = MAX_SHARDS;
-   }
-
-   // Divide the iteration space into shards.  If the iteration space
-   // does not divide evenly into shards of multiples of block_size
-   // then the final shard is left uneven.
-
    auto blocks_per_shard = num_blocks / _num_shards;
    auto iterations_per_shard = blocks_per_shard * block_size;
 
@@ -118,9 +107,26 @@ public:
   }
 
 private:
+  // Derive the number of shards to use for a given loop.  We require
+  // at least one block of work per shard, and subject to that
+  // constraint we use [1,MAX_SHARDS) shards.
+  static uint64_t GetNumShards(uint64_t num_iterations,
+                               uint64_t block_size) {
+    uint64_t num_shards;
+    auto num_blocks = num_iterations / block_size;
+    if (num_blocks == 0) {
+      num_shards = 1;
+    } else if (num_blocks < MAX_SHARDS) {
+      num_shards = num_blocks;
+    } else {
+      num_shards = MAX_SHARDS;
+    }
+    return num_shards;
+  }
+
   alignas(CACHE_LINE_BYTES) LoopCounterShard _shards[MAX_SHARDS];
-  uint64_t _num_shards; // Could be const
   const uint64_t _block_size;
+  const uint64_t _num_shards;
 };
 
 #ifdef _MSC_VER
