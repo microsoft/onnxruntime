@@ -161,6 +161,8 @@ class ORTTrainer(object):
         self.optim_config = optim_config
 
         # ORTTrainerOptions
+        self.slice_input_names = set()
+        self.slice_output_names = set()
         if not options:
             options = ORTTrainerOptions()
         self.options = options
@@ -634,6 +636,8 @@ class ORTTrainer(object):
         ort_parameters.training_optimizer_name = self.optim_config.name
         ort_parameters.lr_params_feed_name = self.model_desc.learning_rate.name
         ort_parameters.weights_to_train = trainable_params
+        ort_parameters.slice_input_names = self.slice_input_names
+        ort_parameters.slice_output_names = self.slice_output_names
         ort_parameters.optimizer_attributes_map = optimizer_attributes_map
         ort_parameters.optimizer_int_attributes_map = optimizer_int_attributes_map
         if bool(self._optim_state_dict):

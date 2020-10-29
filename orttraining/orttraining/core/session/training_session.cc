@@ -438,6 +438,8 @@ Status TrainingSession::ConfigureForTraining(
     pipeline_context_.pipeline_tensor_names = pipeline_result.pipeline_tensor_names;
     pipeline_context_.num_pipeline_batches = num_pipeline_steps;
     pipeline_context_.pipeline_stage_id = pipeline_result.pipeline_stage_id;
+    pipeline_context_.slice_input_names = config.distributed_config.slice_input_names;
+    pipeline_context_.slice_output_names = config.distributed_config.slice_output_names;
 
     // Return pipeline configuration back.
     config_result.pipeline_config_result = pipeline_result;
@@ -1098,18 +1100,15 @@ void TrainingSession::CreateBatchVariables(
 
   ORT_ENFORCE(inputs.size() == input_names.size());
 
-  // TODO: Pass them from config.
-  std::set<std::string> sliced_input_tensor_names{"x", "target"};
-  std::set<std::string> sliced_output_tensor_names{"output"};
-
   // Slice input tensors.
   // TODO: need to specify which tensor to slice.
   for (size_t i = 0; i < inputs.size(); ++i) {
-    if (sliced_input_tensor_names.find(input_names[i]) != sliced_input_tensor_names.end()) {
+    auto name = input_names[i];
+    if (pipeline_context_.slice_input_names.find(name) != pipeline_context_.slice_input_names.end()) {
       OrtValue sliced_value = SliceTensor(inputs[i], slice_id, slice_axis, num_slices, *this);
-      sub_io_binding.BindInput(input_names[i], sliced_value);
+      sub_io_binding.BindInput(name, sliced_value);
     } else {
-      sub_io_binding.BindInput(input_names[i], inputs[i]);
+      sub_io_binding.BindInput(name, inputs[i]);
     }
   }
 
@@ -1121,11 +1120,12 @@ void TrainingSession::CreateBatchVariables(
   // Slice output tensors.
   // TODO: need to specify which tensor to slice.
   for (size_t i = 0; i < outputs.size(); ++i) {
-    if (sliced_output_tensor_names.find(output_names[i]) != sliced_output_tensor_names.end()) {
+    auto name = output_names[i];
+    if (pipeline_context_.slice_output_names.find(name) != pipeline_context_.slice_output_names.end()) {
       OrtValue sliced_value = SliceTensor(outputs[i], slice_id, slice_axis, num_slices, *this);
-      sub_io_binding.BindOutput(output_names[i], sliced_value);
+      sub_io_binding.BindOutput(name, sliced_value);
     } else {
-      sub_io_binding.BindOutput(output_names[i], outputs[i]);
+      sub_io_binding.BindOutput(name, outputs[i]);
     }
   }
 }
@@ -1210,10 +1210,6 @@ void TrainingSession::CreatePipelineEvents(
 // is responsible for adding pipeline-related feeds such as event IDs before 
 // calling the graph.
 common::Status TrainingSession::RunWithPipeline(const RunOptions& run_options, IOBinding& io_binding) {
-  // This list contains all variables needed to run the graph.
-  // The passed-in binding object is a partial set of final inputs.
-  std::vector<std::pair<std::string, OrtValue>> modified_feeds;
-
   // TODO: add it to distributed config.
   const size_t slice_axis = 0;
   // TODO: add it to distributed config.

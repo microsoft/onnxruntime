@@ -322,6 +322,9 @@ struct PipelineContext {
   // Allowed fetch names.
   // Values can be fetched at this pipeline stage.
   std::vector<std::string> fetch_names;
+
+  std::unordered_set<std::string> slice_input_names;
+  std::unordered_set<std::string> slice_output_names;
 };
 
 }  // namespace pipeline

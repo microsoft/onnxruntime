@@ -79,6 +79,12 @@ class TrainingSession : public InferenceSession {
       int num_pipeline_steps{1};
 
       int pipeline_stage_id{0};
+
+      // This field contains ONNX model's names for input tensors to be sliced. 
+      std::unordered_set<std::string> slice_input_names;
+
+      // This field contains ONNX model's names for output tensors to be sliced. 
+      std::unordered_set<std::string> slice_output_names;
     };
     // The distributed training configuration.
     DistributedConfiguration distributed_config{};

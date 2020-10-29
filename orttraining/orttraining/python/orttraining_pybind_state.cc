@@ -26,6 +26,12 @@ struct TrainingParameters {
   std::string loss_output_name;
   std::unordered_set<std::string> weights_to_train;
   std::unordered_set<std::string> weights_not_to_train;
+
+  // This field contains ONNX model's names for input tensors to be sliced. 
+  std::unordered_set<std::string> slice_input_names;
+  // This field contains ONNX model's names for output tensors to be sliced. 
+  std::unordered_set<std::string> slice_output_names;
+
   onnxruntime::training::TrainingSession::ImmutableWeights immutable_weights;
 
   // optimizer
@@ -83,6 +89,12 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   training::TrainingSession::TrainingConfiguration config{};
   config.weight_names_to_train = parameters.weights_to_train;
   config.weight_names_to_not_train = parameters.weights_not_to_train;
+
+  config.distributed_config.slice_input_names = parameters.slice_input_names;
+  config.distributed_config.slice_output_names = parameters.slice_output_names;
+
+  // This field contains ONNX model's names for output tensors to be sliced. 
+  std::unordered_set<std::string> outputs_to_slice;
   //for (auto name : parameters.weights_to_train) {
   //  std::cout << "[orttraining_pybind_state.cc, ConfigureSessionForTraining] train weight: " << name << std::endl;
   //}
@@ -258,6 +270,8 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("immutable_weights", &TrainingParameters::immutable_weights)
       .def_readwrite("weights_not_to_train", &TrainingParameters::weights_not_to_train)
       .def_readwrite("weights_to_train", &TrainingParameters::weights_to_train)
+      .def_readwrite("slice_input_names", &TrainingParameters::slice_input_names)
+      .def_readwrite("slice_output_names", &TrainingParameters::slice_output_names)
       .def_readwrite("training_optimizer_name", &TrainingParameters::training_optimizer_name)
       .def_readwrite("lr_params_feed_name", &TrainingParameters::lr_params_feed_name)
       .def_readwrite("optimizer_attributes_map", &TrainingParameters::optimizer_attributes_map)
