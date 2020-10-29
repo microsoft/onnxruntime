@@ -65,7 +65,7 @@ jobs:
 
   - script: |
       export CUDA_VISIBLE_DEVICES=0
-      orttraining/orttraining/test/python/python orttraining_run_frontend_batch_size_test.py
+      orttraining/orttraining/test/python/orttraining_run_frontend_batch_size_test.py
     displayName: 'Run orttraining_run_frontend_batch_size_test.py'
     condition: succeededOrFailed() # ensure all tests are run
 
