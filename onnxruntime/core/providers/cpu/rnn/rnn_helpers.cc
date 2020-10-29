@@ -239,11 +239,11 @@ void ComputeGemm(const int M,
 void ComputeGemm(const int M,
                  const int N,
                  const int K,
-                 const float /*alpha*/,
+                 const float alpha,
                  const float* A,
                  const float* A_end,
                  const GemmWeights<uint8_t>& weights,
-                 const float /*beta*/,
+                 const float beta,
                  float* C,
                  float* C_end,
                  const int ldc,
@@ -254,6 +254,7 @@ void ComputeGemm(const int M,
   ORT_ENFORCE(A + (M * K) <= A_end);
   ORT_ENFORCE(C + (M * ldc - (ldc - N)) <= C_end);
   ORT_ENFORCE(weights.quant_para_);
+  ORT_ENFORCE(alpha == 1.0f && (beta == 0.0f || beta == 1.0f), "Quantized GEMM only support alpha equal to 1.0f and beta equal to 0.0f or 1.0f");
 
   float a_scale;
   uint8_t a_zero_point;
