@@ -117,11 +117,28 @@ Status Upsample<T>::ComputeInternal(OpKernelContext* context) const {
   std::vector<int64_t> output_dims(X->Shape().GetDims().size());
   std::vector<float> roi_array(X->Shape().GetDims().size() * 2, 0.0f);
   if (!roi_cached_) {
+    bool use_default_roi = true;
     if (need_roi_input_) {
       ORT_ENFORCE(roi_input_idx_ > 0, "Invalid roi input index.");
-      ParseRoiData(context->Input<Tensor>(roi_input_idx_), roi_array);
+      const auto* roi = context->Input<Tensor>(roi_input_idx_);
+      if (roi != nullptr) {
+        ParseRoiData(roi, roi_array);
+        use_default_roi = false;
+      }
+    }
+    if (use_default_roi) {
+      // default roi includes ensures all the values in that axis are included in the roi
+      // normalized roi is thus : [start, end] = [0, 1]
+      const auto& input_dims = X->Shape().GetDims();
+      size_t input_rank = input_dims.size();
+      roi_array.resize(input_rank * 2);
+      for (size_t i = 0; i < input_rank; ++i) {
+        roi_array[i] = 0;
+        roi_array[i + input_rank] = 1;
+      }
     }
   }
+
   const std::vector<float>& roi = roi_cached_ ? roi_ : roi_array;
 
   if (OpKernel::Node().InputDefs().size() == 1) {
@@ -132,7 +149,6 @@ Status Upsample<T>::ComputeInternal(OpKernelContext* context) const {
 
   const auto* scales = context->Input<Tensor>(scales_input_idx_);
   const auto* sizes = context->Input<Tensor>(sizes_input_idx_);
-  ORT_ENFORCE(scales != nullptr);
 
   if (scales_cached_) {
     ORT_ENFORCE(sizes == nullptr, "Only one of scales or sizes must be provided as input.");

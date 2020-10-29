@@ -629,13 +629,6 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
     }
   }
 
-  // Wait all workers to finish this around of pipeline parallism.
-  // The last batch in a pipeline collects gradient and update the model.
-  pipeline_worker_pool_.JoinAll();
-  for (auto& status : pipeline_worker_pool_.worker_states) {
-    CheckWorkerException(status.execution_exception);
-  }
-
   // TODO: move this to an operator in graph.
   onnxruntime::contrib::OrtEventPool::GetInstance().ResetAllEvents();
 
@@ -907,7 +900,9 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
         }
       }  // end of one file/shard
 
-      pipeline_worker_pool_.JoinAll();
+      if (params_.pipeline_parallel_size > 1) {
+        pipeline_worker_pool_.JoinAll();
+      }
       if (step_ < params_.num_train_steps) {
         training_data_loader.MoveToNextDataSet();
       }
@@ -1070,18 +1065,23 @@ Status TrainingRunner::EndTraining(IDataLoader* data_loader) {
     ORT_RETURN_IF_ERROR(Env::Default().CreateFolder(params_.output_dir));
   }
 
-  printf("\nSaving the trained model.\n");
-  const PathString model_base_name = GetLastComponent(params_.model_path);
+  // We only want to save with WITH_UPDATED_WEIGHTS or WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC
+  // if the Loss function is in the graph, or otherwise saving will fail.
+  // Assuming here that the Loss function will be assigned to the last device of the pipeline.
+  if (MPIContext::GetInstance().GetWorldRank() == params_.pipeline_parallel_size - 1) {
+    printf("\nSaving the trained model.\n");
+    const PathString model_base_name = GetLastComponent(params_.model_path);
 
-  const PathString trained_model_path =
-      params_.output_dir + GetPathSep<PathChar>() + model_base_name + ORT_TSTR("_trained.onnx");
-  ORT_RETURN_IF_ERROR(session_.Save(
-      trained_model_path, TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS));
+    const PathString trained_model_path =
+        params_.output_dir + GetPathSep<PathChar>() + model_base_name + ORT_TSTR("_trained.onnx");
+    ORT_RETURN_IF_ERROR(session_.Save(
+        trained_model_path, TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS));
 
-  const PathString trained_model_with_loss_func_path =
-      params_.output_dir + GetPathSep<PathChar>() + model_base_name + ORT_TSTR("_with_cost_trained.onnx");
-  ORT_RETURN_IF_ERROR(session_.Save(
-      trained_model_with_loss_func_path, TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC));
+    const PathString trained_model_with_loss_func_path =
+        params_.output_dir + GetPathSep<PathChar>() + model_base_name + ORT_TSTR("_with_cost_trained.onnx");
+    ORT_RETURN_IF_ERROR(session_.Save(
+        trained_model_with_loss_func_path, TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC));
+  }
 
   return Status::OK();
 }

@@ -50,12 +50,6 @@ struct OrtStatus {
 #define BACKEND_DNNL ""
 #endif
 
-#if USE_MKLML
-#define BACKEND_MKLML "-MKL-ML"
-#else
-#define BACKEND_MKLML ""
-#endif
-
 #if USE_NGRAPH
 #define BACKEND_NGRAPH "-NGRAPH"
 #include "core/providers/ngraph/ngraph_execution_provider.h"
@@ -129,7 +123,7 @@ struct OrtStatus {
 #define BACKEND_DML ""
 #endif
 
-#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_MKLML BACKEND_NGRAPH BACKEND_OPENVINO BACKEND_NUPHAR BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN BACKEND_DML
+#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_NGRAPH BACKEND_OPENVINO BACKEND_NUPHAR BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN BACKEND_DML
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/providers.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -199,7 +193,8 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(i
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_NGraph(const char* ng_backend_type);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* device_type,
                                                                                    bool enable_vpu_fast_compile,
-                                                                                   const char* device_id);
+                                                                                   const char* device_id,
+                                                                                   size_t num_of_threads);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VITISAI(const char* backend_type, int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena);
@@ -652,6 +647,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
     } else if (type == kOpenVINOExecutionProvider) {
 #ifdef USE_OPENVINO
       bool enable_vpu_fast_compile = false;
+      size_t num_of_threads = 8;
       std::string openvino_device_id;
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
@@ -667,8 +663,12 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
               ORT_THROW("Invalid value passed for enable_vpu_fast_compile: ", option.second);
             }
 
-          } else if (option.first == "device_id")
+          } else if (option.first == "device_id") {
             openvino_device_id = option.second;
+          }
+            else if (option.first == "num_of_threads") {
+            num_of_threads = std::stoi(option.second);
+          }
           else {
             ORT_THROW("Invalid OpenVINO EP option: ", option.first);
           }
@@ -676,7 +676,8 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
       }
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_OpenVINO(openvino_device_type.c_str(),
                                                                                             enable_vpu_fast_compile,
-                                                                                            openvino_device_id.c_str()));
+                                                                                            openvino_device_id.c_str(),
+                                                                                            num_of_threads));
       // Reset global variables config to avoid it being accidentally passed on to the next session
       openvino_device_type.clear();
 #endif
@@ -815,6 +816,12 @@ void addGlobalMethods(py::module& m, const Environment& env) {
   m.def(
       "get_available_providers", []() -> const std::vector<std::string>& { return GetAvailableProviders(); },
       "Return list of available Execution Providers available in this installed version of Onnxruntime.");
+  m.def(
+      "enable_telemetry_events", []() -> void { platform_env.GetTelemetryProvider().EnableTelemetryEvents(); },
+      "Enables platform-specific telemetry collection where applicable.");
+  m.def(
+      "disable_telemetry_events", []() -> void { platform_env.GetTelemetryProvider().DisableTelemetryEvents(); },
+      "Disables platform-specific telemetry collection.");
 
 #ifdef USE_NUPHAR
   m.def("set_nuphar_settings", [](const std::string& str) {
@@ -867,7 +874,7 @@ void addGlobalMethods(py::module& m, const Environment& env) {
             onnxruntime::CreateExecutionProviderFactory_NGraph("CPU"),
 #endif
 #ifdef USE_OPENVINO
-            onnxruntime::CreateExecutionProviderFactory_OpenVINO(openvino_device_type, false, ""),
+            onnxruntime::CreateExecutionProviderFactory_OpenVINO(openvino_device_type, false, "", 8),
 #endif
 #ifdef USE_TENSORRT
             onnxruntime::CreateExecutionProviderFactory_Tensorrt(0),

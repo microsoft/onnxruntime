@@ -510,6 +510,11 @@ cmake ../onnxruntime-arm-upstream/cmake -DONNX_CUSTOM_PROTOC_EXECUTABLE=/usr/bin
 The ```-Donnxruntime_USE_ACL=ON``` option will use, by default, the 19.05 version of the Arm Compute Library. To set the right version you can use:
 ```-Donnxruntime_USE_ACL_1902=ON```, ```-Donnxruntime_USE_ACL_1905=ON```, ```-Donnxruntime_USE_ACL_1908=ON``` or ```-Donnxruntime_USE_ACL_2002=ON```;
 
+To use a library outside the normal environment you can set a custom path by using ```-Donnxruntime_ACL_HOME``` and ```-Donnxruntime_ACL_LIBS``` tags that defines the path to the ComputeLibrary directory and the build directory respectively.
+
+```-Donnxruntime_ACL_HOME=/path/to/ComputeLibrary```, ```-Donnxruntime_ACL_LIBS=/path/to/build```
+
+
 2. Build ONNX Runtime library, test and performance application:
 ```
 make -j 6
@@ -542,6 +547,10 @@ export LD_LIBRARY_PATH=~/ComputeLibrary/build/
 ```
 ./build.sh --use_acl
 ```
+To use a library outside the normal environment you can set a custom path by using --acl_home and --acl_libs tags that defines the path to the ComputeLibrary directory and the build directory respectively.
+```
+./build.sh --use_acl --acl_home /path/to/ComputeLibrary --acl_libs /path/to/build
+```
 
 ---
 
@@ -570,6 +579,11 @@ The Relu operator is set by default to use the CPU execution provider for better
 The Batch Normalization operator is set by default to use the CPU execution provider. To use the ArmNN implementation build with --armnn_bn flag
 ```
 ./build.sh --use_armnn --armnn_bn
+```
+
+To use a library outside the normal environment you can set a custom path by using --armnn_home and --armnn_libs tags that defines the path to the ArmNN home directory and the build directory respectively.
+```
+./build.sh --use_armnn --armnn_home /path/to/ComputeLibrary --armnn_libs /path/to/build
 ```
 
 ---

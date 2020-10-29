@@ -315,5 +315,23 @@ TEST(GatherElementsOpTest, string) {
   RunTypedTest<std::string>();
 }
 
+TEST(GatherElementsOpTest, BigIndices) {
+  // int32_t indices - axis 0
+  OpTester test1("GatherElements", 11);
+
+  test1.AddAttribute<int64_t>("axis", 0LL);
+  const int kNumIndices = 10 * 1000;  // must be >= kParallelizationThreshold in gather_elements.cc
+  std::vector<float> input(2 * kNumIndices);
+  std::iota(std::begin(input), std::end(input), 0.f);
+  test1.AddInput<float>("data", {2, kNumIndices}, input);
+
+  std::vector<int32_t> indices(kNumIndices, 0);
+  std::vector<float> output(kNumIndices);
+  std::iota(std::begin(output), std::end(output), 0.f);
+  test1.AddInput<int32_t>("indices", {1, kNumIndices}, indices);
+  test1.AddOutput<float>("output", {1, kNumIndices}, output);
+  test1.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime
