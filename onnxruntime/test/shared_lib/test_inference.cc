@@ -243,7 +243,7 @@ struct MyCustomKernel {
     int64_t size = ort_.GetTensorShapeElementCount(output_info);
     ort_.ReleaseTensorTypeAndShapeInfo(output_info);
 
-#if defined(USE_CUDA) && !defined(_WIN32) && !defined(ENABLE_TRAINING)
+#if defined(USE_CUDA) && !defined(_WIN32) && !defined(ENABLE_TRAINING) && !defined(USE_OPENVINO)
     cuda_add(size, out, X, Y); 
 #else
     // Do computation

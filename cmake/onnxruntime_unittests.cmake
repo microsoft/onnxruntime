@@ -326,7 +326,7 @@ set (onnxruntime_shared_lib_test_SRC
 
 if (NOT onnxruntime_MINIMAL_BUILD)
   list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_inference.cc)
-  if (onnxruntime_USE_CUDA AND UNIX AND NOT onnxruntime_ENABLE_TRAINING)
+  if (onnxruntime_USE_CUDA AND UNIX AND NOT onnxruntime_ENABLE_TRAINING AND NOT onnxruntime_USE_OPENVINO)
     list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cuda_add.cu)
   endif()
 endif()
