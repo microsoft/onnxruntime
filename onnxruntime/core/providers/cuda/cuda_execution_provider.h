@@ -34,8 +34,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
   explicit CUDAExecutionProvider(const CUDAExecutionProviderInfo& info);
   virtual ~CUDAExecutionProvider();
 
-  AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
-
   Status Sync() const override;
 
   Status OnRunStart() override;
@@ -57,7 +55,24 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   template <typename T>
   const T* GetConstOnes(size_t count) {
-    return GetPerThreadContext().template GetConstOnes<T>(count);
+    if (std::is_same<T, float>::value) {
+      if (!constant_ones_float_) {
+        constant_ones_float_ = cuda::CreateConstantOnes<float>();
+      }
+      return reinterpret_cast<const T*>(constant_ones_float_->GetBuffer(count));
+    } else if (std::is_same<T, double>::value) {
+      if (!constant_ones_double_) {
+        constant_ones_double_ = cuda::CreateConstantOnes<double>();
+      }
+      return reinterpret_cast<const T*>(constant_ones_double_->GetBuffer(count));
+    } else if (std::is_same<T, half>::value) {
+      if (!constant_ones_half_) {
+        constant_ones_half_ = cuda::CreateConstantOnes<half>();
+      }
+      return reinterpret_cast<const T*>(constant_ones_half_->GetBuffer(count));
+    } else {
+      return nullptr;
+    }
   }
 
   void AddDeferredReleaseCPUPtr(void* p);
@@ -82,7 +97,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   int GetCudnnConvAlgo() const { return cudnn_conv_algo_; }
   void UpdateProviderOptionsInfo();
 
-private:
+ private:
   OrtDevice::DeviceId device_id_;
   cudaDeviceProp device_prop_;
   size_t cuda_mem_limit_;
@@ -98,9 +113,13 @@ private:
   std::unordered_map<cudaEvent_t, DeferredReleaseCPUPtrs> deferred_release_cpu_ptr_;
   OrtMutex deferred_release_cpu_ptr_mutex_;
 
+  std::unique_ptr<cuda::IConstantBuffer<float>> constant_ones_float_;
+  std::unique_ptr<cuda::IConstantBuffer<double>> constant_ones_double_;
+  std::unique_ptr<cuda::IConstantBuffer<half>> constant_ones_half_;
+
   class PerThreadContext final {
    public:
-    PerThreadContext(OrtDevice::DeviceId device_id, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy);
+    PerThreadContext(OrtDevice::DeviceId device_id);
     ~PerThreadContext();
 
     cublasHandle_t CublasHandle() const {
@@ -115,32 +134,6 @@ private:
       return current_deferred_release_event_;
     }
 
-    template <typename T>
-    const T* GetConstOnes(size_t count) {
-      if (std::is_same<T, float>::value) {
-        if (!constant_ones_float_) {
-          constant_ones_float_ = cuda::CreateConstantOnes<float>();
-        }
-        return reinterpret_cast<const T*>(constant_ones_float_->GetBuffer(count));
-      } else if (std::is_same<T, double>::value) {
-        if (!constant_ones_double_) {
-          constant_ones_double_ = cuda::CreateConstantOnes<double>();
-        }
-        return reinterpret_cast<const T*>(constant_ones_double_->GetBuffer(count));
-      } else if (std::is_same<T, half>::value) {
-        if (!constant_ones_half_) {
-          constant_ones_half_ = cuda::CreateConstantOnes<half>();
-        }
-        return reinterpret_cast<const T*>(constant_ones_half_->GetBuffer(count));
-      } else {
-        return nullptr;
-      }
-    }
-
-    AllocatorPtr GetAllocator() const {
-      return allocator_;
-    }
-
    private:
     cublasHandle_t cublas_handle_ = nullptr;
     cudnnHandle_t cudnn_handle_ = nullptr;
@@ -149,12 +142,6 @@ private:
     // note that cudaEvent will be assigned at OnRunEnd() when PerThreadContext destory
     // so the ownership is passed to deferred_release_cpu_ptr_
     cudaEvent_t current_deferred_release_event_ = nullptr;
-
-    std::unique_ptr<cuda::IConstantBuffer<float>> constant_ones_float_;
-    std::unique_ptr<cuda::IConstantBuffer<double>> constant_ones_double_;
-    std::unique_ptr<cuda::IConstantBuffer<half>> constant_ones_half_;
-
-    AllocatorPtr allocator_;
   };
 
   using PerThreadContextMap = std::unordered_map<const CUDAExecutionProvider*, std::weak_ptr<PerThreadContext>>;
