@@ -526,7 +526,7 @@ namespace Microsoft.ML.OnnxRuntime
         public static DOrtSetSessionGraphOptimizationLevel OrtSetSessionGraphOptimizationLevel;
 
         /// <summary>
-        /// Add session config entry (by denotation)
+        /// Add session config entry
         /// </summary>
         /// <param name="options">Native SessionOptions instance</param>
         /// <param name="configKey">Config key</param>
@@ -541,7 +541,7 @@ namespace Microsoft.ML.OnnxRuntime
         //  * on your most preferred execution provider first followed by the less preferred ones.
         //  * Calling this API is optional in which case onnxruntime will use its internal CPU execution provider.
         //  */
-        [DllImport("F:\\onnxruntime6\\build\\Windows\\Debug\\Debug\\onnxruntime.dll", CharSet = charSet)]
+        [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_CPU(IntPtr /*(OrtSessionOptions*) */ options, int use_arena);
 
         [DllImport(nativeLib, CharSet = charSet)]
@@ -590,7 +590,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Free Dimension override (by name)
         /// </summary>
         /// <param name="options">Native SessionOptions instance</param>
-        /// <param name="dimDenotation">Dimension name</param>
+        /// <param name="dimName">Dimension name</param>
         /// <param name="dimValue">Dimension value</param>
         public delegate IntPtr /*(OrtStatus*)*/DOrtAddFreeDimensionOverrideByName(IntPtr /*(OrtSessionOptions*)*/ options, 
                                                                                   IntPtr /*(const char*)*/ dimName, 
@@ -602,7 +602,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Register custom op library
         /// </summary>
         /// <param name="options">Native SessionOptions instance</param>
-        /// <param name="libraryName">Library path</param>
+        /// <param name="libraryPath">Library path</param>
         /// <param name="libraryHandle">(out) Native library handle</param>
         public delegate IntPtr /*(OrtStatus*)*/DOrtRegisterCustomOpsLibrary(IntPtr /*(OrtSessionOptions*) */ options, 
                                                                             IntPtr /*(const char*)*/ libraryPath, 
@@ -617,7 +617,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="ortValue">Native OrtValue instnce</param>
         public delegate IntPtr /*(OrtStatus*)*/DOrtAddInitializer(IntPtr /*(OrtSessionOptions*)*/ options, 
                                                                   IntPtr /*(const char*)*/ name, 
-                                                                  IntPtr /* OrtValue* */ ortValue);
+                                                                  IntPtr /*(OrtValue*)*/ ortValue);
         public static DOrtAddInitializer OrtAddInitializer;
 
         #endregion
