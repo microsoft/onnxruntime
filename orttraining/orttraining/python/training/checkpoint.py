@@ -187,12 +187,11 @@ class _CombineZeroCheckpoint(object):
 
     def _split_name(self, name):
         name_split = name.split('_view_')
+        view_num = None
         if(len(name_split) > 1):
-            view_num = int(name_split[1])
-        else:
-            view_num = None
+            view_num = int(name_split[1])           
         optimizer_key = ''
-        fp16_key = ''
+        mp_suffix = ''
         if name_split[0].startswith('Moment_1'):
             optimizer_key = 'Moment_1_'
         elif name_split[0].startswith('Moment_2'):
@@ -200,12 +199,12 @@ class _CombineZeroCheckpoint(object):
         elif name_split[0].startswith('Update_Count'):
             optimizer_key = 'Update_Count_'
         elif name_split[0].endswith('_fp16'):
-            fp16_key = '_fp16'
+            mp_suffix = '_fp16'
         param_name = name_split[0]
         if optimizer_key != '':
             param_name = param_name.split(optimizer_key)[1]
         param_name = param_name.split('_fp16')[0]
-        return param_name, optimizer_key, view_num, fp16_key
+        return param_name, optimizer_key, view_num, mp_suffix
 
     def _update_weight_statistics(self, name, value):
         if name not in self.weight_shape_map:
@@ -219,10 +218,10 @@ class _CombineZeroCheckpoint(object):
 
     def _aggregate(self, param_dict):
         for k, v in param_dict.items():
-            weight_name, optimizer_key, view_num, fp16_key = self._split_name(k)
+            weight_name, optimizer_key, view_num, mp_suffix = self._split_name(k)
             if view_num is not None:
                 # parameter is sharded
-                param_name = optimizer_key + weight_name + fp16_key
+                param_name = optimizer_key + weight_name + mp_suffix
 
                 if param_name in self.aggregate_state_dict and optimizer_key not in ['Update_Count_']:
                     self.sharded_params.add(param_name)

@@ -1025,7 +1025,7 @@ std::unordered_set<std::string> TrainingSession::GetStateTensorNames() const {
   std::unordered_set<std::string> checkpointed_tensor_names{};
   checkpointed_tensor_names.insert(
       weights_to_train_.begin(), weights_to_train_.end());
-  for (auto& p : updated_weight_names_map_) {
+  for (const auto& p : updated_weight_names_map_) {
     checkpointed_tensor_names.insert(p.second);
   }
   checkpointed_tensor_names.insert(

@@ -95,6 +95,10 @@ static Status AddL2NormNcclAllReduce(
   return Status::OK();
 }
 
+static std::string GetViewName(const std::string param_name, const size_t view_num) {
+  return param_name + "_view_" + std::to_string(view_num);
+}
+
 static std::vector<ArgDef> AddPartitionsForParameter(
     Graph& graph,
     GraphAugmenter::GraphDefs& graph_defs,
@@ -105,15 +109,14 @@ static std::vector<ArgDef> AddPartitionsForParameter(
   int64_t partition_offset = shapes[0].GetDims()[0];
   int64_t partition_size = shapes[1].GetDims()[0];
   std::vector<ArgDef> view_outputs;
-  size_t view_num = 0;
-  for (size_t i = 0; i < shapes.size(); i++) {
+  for (size_t i = 0, view_num = 0; i < shapes.size(); i++) {
     if (shapes[i].Size() > 0) {
       // keep the naming consistent with the "Views" created for the rest of the parameters.
-      std::string partition_name = initializer_name + "_view_" + std::to_string(view_num);
+      const auto partition_name = GetViewName(initializer_name, view_num);
       if (i == 1) {
         const ONNX_NAMESPACE::TensorProto* tensor_proto;
         ORT_ENFORCE(graph.GetInitializedTensor(initializer_name, tensor_proto));
-        auto dtype = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(tensor_proto->data_type());
+        const auto dtype = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(tensor_proto->data_type());
         // Shard only fp32 weight for zero stage 1
         ORT_ENFORCE(dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
@@ -155,8 +158,7 @@ static std::vector<ArgDef> AddViewForParameter(
     const std::vector<TensorShape>& shapes) {
   std::vector<ArgDef> view_inputs = {argdef};
   std::vector<ArgDef> view_outputs;
-  size_t view_num = 0;
-  for (size_t i = 0; i < shapes.size(); i++) {
+  for (size_t i = 0, view_num = 0; i < shapes.size(); i++) {
     const TensorShape& shape = shapes[i];
     if (shape.Size() > 0) {
       const int64_t dims = shape.NumDimensions();
@@ -166,7 +168,7 @@ static std::vector<ArgDef> AddViewForParameter(
       graph_defs.AddInitializers({CreateTensorProto<int64_t>(shape_argdef.name, shape.GetDims(), {dims})});
 
       auto dtype = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(argdef.type_proto->tensor_type().elem_type());
-      ArgDef view_argdef(argdef.name + "_view_" + std::to_string(view_num),
+      ArgDef view_argdef(GetViewName(argdef.name, view_num),
                          graph_defs.CreateTypeProto(shape.GetDims(), dtype));
 
       view_inputs.push_back(shape_argdef);
