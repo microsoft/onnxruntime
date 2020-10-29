@@ -261,6 +261,13 @@ TEST(ReductionFunctionsTest, GetApplicableMatrixReduction) {
   EXPECT_EQ(m, 2);
   EXPECT_EQ(n, 4 * 8 * 16);
 
+  EXPECT_EQ(
+      cuda::get_applicable_matrix_reduction(
+          valid_op_type, {2, 4, 8, 16}, {3}, m, n),
+      cuda::ApplicableMatrixReduction::Columns);
+  EXPECT_EQ(m, 2 * 4 * 8);
+  EXPECT_EQ(n, 16);
+
   // invalid axes
   EXPECT_EQ(
       cuda::get_applicable_matrix_reduction(
