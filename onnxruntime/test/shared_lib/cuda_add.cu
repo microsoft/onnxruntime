@@ -1,5 +1,8 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
+#include <cstdint>
+
+using namespace std;
 
 __global__ void cuda_add_impl(int64_t N, float* O, const float* X, const float* Y) {
   auto offset = threadIdx.x;
