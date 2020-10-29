@@ -525,7 +525,15 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate IntPtr /*(OrtStatus*)*/ DOrtSetSessionGraphOptimizationLevel(IntPtr /* OrtSessionOptions* */ options, GraphOptimizationLevel graphOptimizationLevel);
         public static DOrtSetSessionGraphOptimizationLevel OrtSetSessionGraphOptimizationLevel;
 
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtAddSessionConfigEntry(IntPtr /* OrtSessionOptions* */ options, string configKey, string configValue);
+        /// <summary>
+        /// Add session config entry (by denotation)
+        /// </summary>
+        /// <param name="options">Native SessionOptions instance</param>
+        /// <param name="configKey">Config key</param>
+        /// <param name="configValue">Config value</param>
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtAddSessionConfigEntry(IntPtr /* OrtSessionOptions* */ options, 
+                                                                          IntPtr /* const char* */configKey, 
+                                                                          IntPtr /* const char* */ configValue);
         public static DOrtAddSessionConfigEntry OrtAddSessionConfigEntry;
 
         ///**
@@ -533,7 +541,7 @@ namespace Microsoft.ML.OnnxRuntime
         //  * on your most preferred execution provider first followed by the less preferred ones.
         //  * Calling this API is optional in which case onnxruntime will use its internal CPU execution provider.
         //  */
-        [DllImport(nativeLib, CharSet = charSet)]
+        [DllImport("F:\\onnxruntime6\\build\\Windows\\Debug\\Debug\\onnxruntime.dll", CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_CPU(IntPtr /*(OrtSessionOptions*) */ options, int use_arena);
 
         [DllImport(nativeLib, CharSet = charSet)]
@@ -567,16 +575,49 @@ namespace Microsoft.ML.OnnxRuntime
         //[DllImport(nativeLib, CharSet = charSet)]
         //public static extern void OrtAddCustomOp(IntPtr /*(OrtSessionOptions*)*/ options, string custom_op_path);
 
-        public delegate IntPtr /*(OrtStatus*)*/DOrtAddFreeDimensionOverride(IntPtr /*(OrtSessionOptions*) */ options, string /*(const char*)*/ dimDenotation, long dimValue);
+        /// <summary>
+        /// Free Dimension override (by denotation)
+        /// </summary>
+        /// <param name="options">Native SessionOptions instance</param>
+        /// <param name="dimDenotation">Dimension denotation</param>
+        /// <param name="dimValue">Dimension value</param>
+        public delegate IntPtr /*(OrtStatus*)*/DOrtAddFreeDimensionOverride(IntPtr /*(OrtSessionOptions*)*/ options, 
+                                                                            IntPtr /*(const char*)*/ dimDenotation, 
+                                                                            long dimValue);
         public static DOrtAddFreeDimensionOverride OrtAddFreeDimensionOverride;
 
-        public delegate IntPtr /*(OrtStatus*)*/DOrtAddFreeDimensionOverrideByName(IntPtr /*(OrtSessionOptions*) */ options, string /*(const char*)*/ dimName, long dimValue);
+        /// <summary>
+        /// Free Dimension override (by name)
+        /// </summary>
+        /// <param name="options">Native SessionOptions instance</param>
+        /// <param name="dimDenotation">Dimension name</param>
+        /// <param name="dimValue">Dimension value</param>
+        public delegate IntPtr /*(OrtStatus*)*/DOrtAddFreeDimensionOverrideByName(IntPtr /*(OrtSessionOptions*)*/ options, 
+                                                                                  IntPtr /*(const char*)*/ dimName, 
+                                                                                  long dimValue);
         public static DOrtAddFreeDimensionOverrideByName OrtAddFreeDimensionOverrideByName;
 
-        public delegate IntPtr /*(OrtStatus*)*/DOrtRegisterCustomOpsLibrary(IntPtr /*(OrtSessionOptions*) */ options, string /*(const char*)*/ library_path, out IntPtr /* (void**) */ library_handle);
+
+        /// <summary>
+        /// Register custom op library
+        /// </summary>
+        /// <param name="options">Native SessionOptions instance</param>
+        /// <param name="libraryName">Library path</param>
+        /// <param name="libraryHandle">(out) Native library handle</param>
+        public delegate IntPtr /*(OrtStatus*)*/DOrtRegisterCustomOpsLibrary(IntPtr /*(OrtSessionOptions*) */ options, 
+                                                                            IntPtr /*(const char*)*/ libraryPath, 
+                                                                            out IntPtr /*(void**)*/ libraryHandle);
         public static DOrtRegisterCustomOpsLibrary OrtRegisterCustomOpsLibrary;
 
-        public delegate IntPtr /*(OrtStatus*)*/DOrtAddInitializer(IntPtr /*(OrtSessionOptions*) */ options, string /*(const char*)*/ name, IntPtr /* OrtValue* */ ortValue);
+        /// <summary>
+        /// Add initializer that is shared across Sessions using this SessionOptions (by denotation)
+        /// </summary>
+        /// <param name="options">Native SessionOptions instance</param>
+        /// <param name="name">Name of the initializer</param>
+        /// <param name="ortValue">Native OrtValue instnce</param>
+        public delegate IntPtr /*(OrtStatus*)*/DOrtAddInitializer(IntPtr /*(OrtSessionOptions*)*/ options, 
+                                                                  IntPtr /*(const char*)*/ name, 
+                                                                  IntPtr /* OrtValue* */ ortValue);
         public static DOrtAddInitializer OrtAddInitializer;
 
         #endregion

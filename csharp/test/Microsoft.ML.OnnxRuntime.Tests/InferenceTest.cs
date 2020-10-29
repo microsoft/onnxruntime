@@ -1057,10 +1057,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     }
                 }
 
-
                 // Safe to unload the custom op shared library now
                 UnloadLibrary(libraryHandle);
-
             }
         }
 

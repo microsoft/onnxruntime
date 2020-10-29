@@ -181,7 +181,11 @@ namespace Microsoft.ML.OnnxRuntime
         public void RegisterCustomOpLibrary(string libraryPath)
         {
             IntPtr libraryHandle = IntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsLibrary(handle, libraryPath, out libraryHandle));
+            var libraryPathPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(libraryPath), GCHandleType.Pinned);
+            using (var pinnedlibraryPath = new PinnedGCHandle(libraryPathPinned))
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsLibrary(handle, pinnedlibraryPath.Pointer, out libraryHandle));
+            }
         }
 
         /// <summary>
@@ -194,7 +198,11 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         public void RegisterCustomOpLibraryV2(string libraryPath, out IntPtr libraryHandle)
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsLibrary(handle, libraryPath, out libraryHandle));
+            var libraryPathPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(libraryPath), GCHandleType.Pinned);
+            using (var pinnedlibraryPath = new PinnedGCHandle(libraryPathPinned))
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsLibrary(handle, pinnedlibraryPath.Pointer, out libraryHandle));
+            }
         }
 
         /// <summary>
@@ -209,16 +217,28 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         public void AddInitializer(string name, OrtValue ortValue)
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtAddInitializer(handle, name, ortValue.Handle));
+            var utf8NamePinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(name), GCHandleType.Pinned);
+            using (var pinnedName = new PinnedGCHandle(utf8NamePinned))
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtAddInitializer(handle, pinnedName.Pointer, ortValue.Handle));
+            }
         }
 
         /// <summary>
         /// Set a single session configuration entry as a pair of strings
-        /// If a configuration with same key exists, this will overwrite the configuration with the given config_value
+        /// If a configuration with same key exists, this will overwrite the configuration with the given configValue
         /// </summary>
         public void AddSessionConfigEntry(string configKey, string configValue)
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtAddSessionConfigEntry(handle, configKey, configValue));
+            var utf8NameConfigKeyPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(configKey), GCHandleType.Pinned);
+            var utf8NameConfigValuePinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(configValue), GCHandleType.Pinned);
+
+            using (var pinnedConfigKeyName = new PinnedGCHandle(utf8NameConfigKeyPinned))
+            using (var pinnedConfigValueName = new PinnedGCHandle(utf8NameConfigValuePinned))
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtAddSessionConfigEntry(handle, 
+                                              pinnedConfigKeyName.Pointer, pinnedConfigValueName.Pointer));
+            }
         }
 
         /// <summary>
@@ -227,8 +247,11 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         public void AddFreeDimensionOverride(string dimDenotation, long dimValue)
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtAddFreeDimensionOverride(handle, dimDenotation, dimValue));
-
+            var utf8DimDenotationPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(dimDenotation), GCHandleType.Pinned);
+            using (var pinnedDimDenotation = new PinnedGCHandle(utf8DimDenotationPinned))
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtAddFreeDimensionOverride(handle, pinnedDimDenotation.Pointer, dimValue));
+            }
         }
 
         /// <summary>
@@ -237,8 +260,11 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         public void AddFreeDimensionOverrideByName(string dimName, long dimValue)
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtAddFreeDimensionOverrideByName(handle, dimName, dimValue));
-
+            var utf8DimNamePinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(dimName), GCHandleType.Pinned);
+            using (var pinnedDimName = new PinnedGCHandle(utf8DimNamePinned))
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtAddFreeDimensionOverrideByName(handle, pinnedDimName.Pointer, dimValue));
+            }
         }
     #endregion
 
