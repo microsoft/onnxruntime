@@ -108,7 +108,7 @@ class Node {
   /** Gets the domain of the OperatorSet that specifies the operator returned by #OpType. */
   const std::string& Domain() const noexcept { return domain_; }
 
-  /** Gets the Node's exection priority. 
+  /** Gets the Node's execution priority.
   @remarks Lower value means higher priority  */
   int Priority() const noexcept { return priority_; };
 

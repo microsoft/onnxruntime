@@ -1180,16 +1180,15 @@ def run_training_python_frontend_e2e_tests(cwd):
     # frontend tests are to be added here:
     log.info("Running python frontend e2e tests.")
 
+    run_subprocess(
+        [sys.executable, 'orttraining_run_frontend_batch_size_test.py', '-v'],
+        cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'})
+
     import torch
     ngpus = torch.cuda.device_count()
     if ngpus > 1:
         bert_pretrain_script = 'orttraining_run_bert_pretrain.py'
-        log.debug('RUN: mpirun -n {} ''-x' 'NCCL_DEBUG=INFO'' {} {} {}'.format(
-            ngpus, sys.executable, bert_pretrain_script, 'ORTBertPretrainTest.test_pretrain_throughput'))
-        run_subprocess([
-            'mpirun', '-n', str(ngpus), '-x', 'NCCL_DEBUG=INFO', sys.executable,
-            bert_pretrain_script, 'ORTBertPretrainTest.test_pretrain_throughput'], cwd=cwd)
-
+        # TODO: this test will be replaced with convergence test ported from backend
         log.debug('RUN: mpirun -n {} ''-x' 'NCCL_DEBUG=INFO'' {} {} {}'.format(
             ngpus, sys.executable, bert_pretrain_script, 'ORTBertPretrainTest.test_pretrain_convergence'))
         run_subprocess([
@@ -1231,7 +1230,8 @@ def run_training_python_frontend_e2e_tests(cwd):
         sys.executable, 'orttraining_test_transformers.py',
         'BertModelTest.test_for_pretraining_mixed_precision'], cwd=cwd)
 
-    # this test is not stable. need to skip to unblock release
+    # this test is not stable. it occasionally causes segfault due to its session creation/release pattern.
+    # need to skip to unblock release
     # run_subprocess([
     #     sys.executable, 'orttraining_test_transformers.py',
     #     'BertModelTest.test_for_pretraining_mixed_precision_with_gradient_accumulation'], cwd=cwd)
@@ -1909,6 +1909,10 @@ def main():
     if args.build:
         if args.build_wheel:
             nightly_build = bool(os.getenv('NIGHTLY_BUILD') == '1')
+            wheel_name_suffix = args.wheel_name_suffix
+            if not args.use_openmp and wheel_name_suffix is None:
+                wheel_name_suffix = 'noopenmp'
+
             build_python_wheel(
                 source_dir,
                 build_dir,
@@ -1923,7 +1927,7 @@ def main():
                 args.use_acl,
                 args.use_armnn,
                 args.use_dml,
-                args.wheel_name_suffix,
+                wheel_name_suffix,
                 args.enable_training,
                 nightly_build=nightly_build,
                 featurizers_build=args.use_featurizers,
