@@ -40,7 +40,7 @@ For making changes to the WinRT API someone from the ONNX Runtime team will work
    * Make and checkin your changes along with unit tests
    * git commit your changes
    * git push origin HEAD
-   * To request merge into master, send a pull request from the [web ui](https://github.com/Microsoft/onnxruntime).
+   * To request merge into master, send a pull request
   * Add 'Microsoft/onnxruntime' as a reviewer.
 * Binaries: We periodically produce signed prerelease binaries from the master branch to validate new features and APIs.  After the feature has been sufficiently validated as part of a prerelease package we will include it in the next stable binary release.
 * Note: After creating a pull request, you might not see a build getting triggered right away. One of the
