@@ -8,7 +8,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD, typename T_GRAD_NORM>
+template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD, typename T_GRAD_NORM, typename T_MIXED_PRECISION_FP>
 void AdamOptimizerImpl(
     const T1* eta,
     const T2 update_count,
@@ -28,10 +28,10 @@ void AdamOptimizerImpl(
     T4* moment_2_out,
     T3* weights_out,
     T_GRAD* grads_out,
-    half* fp16_weights_out,
+    T_MIXED_PRECISION_FP* mixed_precision_weights_out,
     size_t count);
 
-template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD, typename T_GRAD_NORM>
+template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD, typename T_GRAD_NORM, typename T_MIXED_PRECISION_FP>
 class AdamOptimizer final : public CudaKernel {
  public:
   AdamOptimizer(const OpKernelInfo& info) : CudaKernel(info) {

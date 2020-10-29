@@ -7,7 +7,7 @@
 
 namespace onnxruntime {
 namespace cuda {
-template <typename T>
+
 struct Tile final : CudaKernel {
   Tile(const OpKernelInfo& info) : CudaKernel(info) {
   }

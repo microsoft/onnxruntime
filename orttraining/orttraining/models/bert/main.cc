@@ -8,11 +8,12 @@
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/common/profiler.h"
 #include "core/session/environment.h"
+#include "core/framework/bfc_arena.h"
 #include "core/framework/random_seed.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
-#include "orttraining/core/framework/mpi_setup.h"
+#include "orttraining/core/framework/mpi_context.h"
 #include "orttraining/models/runner/constant.h"
 #include "orttraining/models/runner/training_runner.h"
 #include "orttraining/models/runner/training_util.h"
@@ -20,11 +21,14 @@
 
 namespace onnxruntime {
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id,
+                                                                               OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE,
                                                                                size_t cuda_mem_limit = std::numeric_limits<size_t>::max(),
-                                                                               onnxruntime::ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo);
+                                                                               onnxruntime::ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo,
+                                                                               bool do_copy_in_default_stream = true);
 }
 
 using namespace onnxruntime;
+using namespace onnxruntime::common;
 using namespace onnxruntime::training;
 using namespace onnxruntime::training::tensorboard;
 using namespace std;
@@ -133,7 +137,9 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
         "Maximum number of masked LM predictions per sequence. "
         "Must match data generation.", cxxopts::value<int>()->default_value("80"))
       ("optimizer", "Adam or Lamb", cxxopts::value<std::string>()->default_value("Adam"))
-      ("partition_optimizer", "Whether to partition the optimizer state for distributed training.", cxxopts::value<bool>()->default_value("false"))
+      ("deepspeed_zero_stage", "Controls whether to partition state using the DeepSpeed ZeRO technique. "
+       "Stages 0 (disabled) and 1 (optimizer state partitioning) are supported.",
+       cxxopts::value<int>()->default_value("0"))
       ("alpha", "Adam/Lamb alpha parameter", cxxopts::value<float>()->default_value("0.9"))
       ("beta", "Adam/Lamb beta parameter", cxxopts::value<float>()->default_value("0.999"))
       ("lambda", "Adam/Lamb lambda parameter", cxxopts::value<float>()->default_value("0.01"))
@@ -155,8 +161,25 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       ("horizontal_parallel_size", "Horizontal model parallel group size.", cxxopts::value<int>()->default_value("1"))
       ("pipeline_parallel_size", "Number of pipeline stages.", cxxopts::value<int>()->default_value("1"))
       ("pipeline_stage_paths", "Specify the forward ONNX files for pipeline evaluation.", cxxopts::value<std::vector<std::string>>()->default_value(""))
+      ("cut_group_info", "Specify the cutting info for graph partition (pipeline only). An example of a cut_group_info of "
+      "size two is: 1393:407-1463/1585/1707,2369:407-2439/2561/2683. Here, the cut info is split by ',', with the first "
+      "cut_info equal to 1393:407-1463/1585/1707, and second cut_info equal to 2369:407-2439/2561/2683. Each CutEdge is "
+      "seperated by ':'. If consumer nodes need to be specified, specify them after producer node with a '-' delimiter and "
+      "separate each consumer node with a '/'. ", cxxopts::value<std::vector<std::string>>()->default_value(""))
       ("enable_grad_norm_clip", "Specify whether to enable gradient clipping for optimizers.",
-        cxxopts::value<bool>()->default_value("true"));
+        cxxopts::value<bool>()->default_value("true"))
+      ("enable_gelu_approximation", "Specify whether to enable GELU approximation.",
+        cxxopts::value<bool>()->default_value("true"))
+      ("attn_dropout_recompute", "Enable checkpointing of attention dropout to save memory.",
+        cxxopts::value<bool>()->default_value("false"))
+      ("gelu_recompute", "Enable checkpointing of Gelu activation output to save memory.",
+        cxxopts::value<bool>()->default_value("false"))
+      ("transformer_layer_recompute", "Enable checkpointing of transformer layer output to save memory.",
+        cxxopts::value<bool>()->default_value("false"))
+      ("number_recompute_layers", "Number of layers to apply recompute.",
+        cxxopts::value<int>()->default_value("0"))
+      ("use_invertible_layernorm_grad", "Specify whether to use invertible laynorm(dropping the input activation)",
+        cxxopts::value<bool>()->default_value("false"));
   options
     .add_options("ORT configuration")
       ("ort_log_severity", "ORT minimum logging severity (see onnxruntime::logging::Severity values)",
@@ -263,12 +286,12 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
     }
 
     params.use_mixed_precision = flags["use_mixed_precision"].as<bool>();
-    params.allreduce_in_fp16 = flags["allreduce_in_fp16"].as<bool>() && params.use_mixed_precision;
+    params.allreduce_in_mixed_precision_type = flags["allreduce_in_fp16"].as<bool>() && params.use_mixed_precision;
     if (params.use_mixed_precision) {
       printf("Mixed precision training is enabled.\n");
     }
-    if (params.allreduce_in_fp16) {
-      printf("Performing AllReduce in fp16 \n");
+    if (params.allreduce_in_mixed_precision_type) {
+      printf("Performing AllReduce in mixed precision type \n");
     } else {
       printf("Performing AllReduce in fp32 \n");
     }
@@ -287,13 +310,13 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       }
     }
 
-    params.use_fp16_moments = flags["use_fp16_moments"].as<bool>();
-    if (params.use_fp16_moments) {
-      printf("Using fp16 version of moments.\n");
+    params.use_mixed_precision_moments = flags["use_fp16_moments"].as<bool>();
+    if (params.use_mixed_precision_moments) {
+      printf("Using mixed precision version of moments.\n");
     }
-    params.use_fp16_initializer = flags["use_fp16_initializer"].as<bool>();
-    if (params.use_mixed_precision && params.use_fp16_initializer) {
-      printf("FP16 initializer is enabled.\n");
+    params.use_mixed_precision_initializer = flags["use_fp16_initializer"].as<bool>();
+    if (params.use_mixed_precision && params.use_mixed_precision_initializer) {
+      printf("Mixed precision initializer is enabled.\n");
     }
 
     std::string warmup_mode = flags["warmup_mode"].as<std::string>();
@@ -318,8 +341,9 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Incorrect optimizer type: it must be one of [Adam|Lamb]");
     }
 
-    params.partition_optimizer = flags["partition_optimizer"].as<bool>();
+    params.deepspeed_zero = ZeROConfig(flags["deepspeed_zero_stage"].as<int>());
     params.enable_grad_norm_clip = flags["enable_grad_norm_clip"].as<bool>();
+
     float alpha = flags["alpha"].as<float>();
     float beta = flags["beta"].as<float>();
     float lambda = flags["lambda"].as<float>();
@@ -379,6 +403,58 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
     // Backward pass and optimizer nodes are implicitly generated by ORT.
     params.pipeline_stage_paths = flags["pipeline_stage_paths"].as<std::vector<std::string>>();
 
+    // If user doesn't provide partitioned model files, a cut list should be provided for ORT to do partition
+    // online. If the pipeline contains n stages, the cut list should be of length (n-1), in order to cut the
+    // graph into n partitions.
+    if (params.pipeline_parallel_size > 1 && params.pipeline_stage_paths.empty()) {
+      auto cut_info_groups = flags["cut_group_info"].as<std::vector<std::string>>();
+
+      ORT_RETURN_IF_NOT(static_cast<int>(cut_info_groups.size() + 1) == params.pipeline_parallel_size,
+                        "cut_info length plus one must match pipeline parallel size");
+
+      auto process_with_delimiter = [](std::string& input_str, const std::string& delimiter) {
+        std::vector<std::string> result;
+        size_t pos = 0;
+        std::string token;
+        while ((pos = input_str.find(delimiter)) != std::string::npos) {
+          token = input_str.substr(0, pos);
+          result.emplace_back(token);
+          input_str.erase(0, pos + delimiter.length());
+        }
+        // push the last split of substring into result.
+        result.emplace_back(input_str);
+        return result;
+      };
+
+      auto process_cut_info = [&](std::string& cut_info_string) {
+        TrainingSession::TrainingConfiguration::CutInfo cut_info;
+        const std::string edge_delimiter = ":";
+        const std::string consumer_delimiter = "/";
+        const std::string producer_consumer_delimiter = "-";
+
+        auto cut_edges = process_with_delimiter(cut_info_string, edge_delimiter);
+        for (auto& cut_edge : cut_edges) {
+          auto process_edge = process_with_delimiter(cut_edge, producer_consumer_delimiter);
+          if (process_edge.size() == 1) {
+            TrainingSession::TrainingConfiguration::CutEdge edge{process_edge[0]};
+            cut_info.emplace_back(edge);
+          } else {
+            ORT_ENFORCE(process_edge.size() == 2);
+            auto consumer_list = process_with_delimiter(process_edge[1], consumer_delimiter);
+
+            TrainingSession::TrainingConfiguration::CutEdge edge{process_edge[0], consumer_list};
+            cut_info.emplace_back(edge);
+          }
+        }
+        return cut_info;
+      };
+
+      for (auto& cut_info : cut_info_groups) {
+        TrainingSession::TrainingConfiguration::CutInfo cut = process_cut_info(cut_info);
+        params.pipeline_partition_cut_list.emplace_back(cut);
+      }
+    }
+
     int64_t seed = flags["seed"].as<int64_t>();
     if (params.horizontal_parallel_size > 1 && seed <= 0) {
       seed = 8211;  // Megatron needs a random seed.
@@ -388,6 +464,12 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       std::cout << "Random seed is set to: " << seed << std::endl;
     }
 
+    params.enable_gelu_approximation = flags["enable_gelu_approximation"].as<bool>();
+    params.attn_dropout_recompute = flags["attn_dropout_recompute"].as<bool>();
+    params.gelu_recompute = flags["gelu_recompute"].as<bool>();
+    params.transformer_layer_recompute = flags["transformer_layer_recompute"].as<bool>();
+    params.number_recompute_layers = flags["number_recompute_layers"].as<int>();
+
     ort_params.log_severity = static_cast<logging::Severity>(flags["ort_log_severity"].as<int>());
     ORT_RETURN_IF_NOT(
         logging::Severity::kVERBOSE <= ort_params.log_severity &&
@@ -395,12 +477,15 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
         "Log severity must be in the range [", static_cast<int>(logging::Severity::kVERBOSE),
         ", ", static_cast<int>(logging::Severity::kFATAL), "].");
     ort_params.vlog_level = flags["ort_vlog_level"].as<int>();
+
+    params.use_invertible_layernorm_grad = flags["use_invertible_layernorm_grad"].as<bool>();
   } catch (const exception& e) {
     const std::string msg = "Failed to parse the command line arguments";
     cerr << msg << ": " << e.what() << "\n"
          << options.help() << "\n";
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, msg);
   }
+
   return Status::OK();
 }
 
@@ -439,29 +524,36 @@ float GetLossValue(const Tensor& loss_tensor) {
 // batch is not part of the initial tensor shape vector till later
 // see GetTensorDimensionsFromInputs() in training_util.h and training_runner.cc for more details
 const std::map<std::string, std::pair<std::string, size_t>> input_to_dimension_mapping = {
-  {"input1", {"SeqLen", 0}},                   // int64[batch,sequence]    "sequence" -> "SeqLen", 0
-  {"masked_lm_ids", {"PredictionsPerSeq", 0}}  // int64[batch,dynamic_prediction_count]
+    {"input1", {"SeqLen", 0}},                   // int64[batch,sequence]    "sequence" -> "SeqLen", 0
+    {"masked_lm_ids", {"PredictionsPerSeq", 0}}  // int64[batch,dynamic_prediction_count]
 };
 
 // generic properties for storing perf metrics
 MapStringToString mapped_dimensions;
 
 void setup_training_params(BertParameters& params) {
-  params.model_path = ToPathString(params.model_name) + ORT_TSTR(".onnx");
-  params.model_with_loss_func_path = ToPathString(params.model_name) + ORT_TSTR("_with_cost.onnx");
-  params.model_with_training_graph_path = ToPathString(params.model_name) + ORT_TSTR("_bw.onnx");
-  params.model_actual_running_graph_path = ToPathString(params.model_name) + ORT_TSTR("_bw_running.onnx");
+  auto model_name_base = ToPathString(params.model_name);
+  params.model_path = model_name_base + ORT_TSTR(".onnx");
+  params.model_with_loss_func_path = model_name_base + ORT_TSTR("_with_cost.onnx");
+  params.model_with_training_graph_path = model_name_base + ORT_TSTR("_bw.onnx");
+  params.model_actual_running_graph_path = model_name_base + ORT_TSTR("_bw_running.onnx");
 
-#ifdef USE_HOROVOD
-  params.mpi_context = setup_horovod();
-  ORT_ENFORCE(params.horizontal_parallel_size <= params.mpi_context.world_size);
-  ORT_ENFORCE(params.data_parallel_size <= params.mpi_context.world_size);
-  if (params.mpi_context.world_size % params.horizontal_parallel_size != 0) {
+#if defined(USE_NCCL) || defined(USE_HOROVOD)
+  if (params.pipeline_parallel_size > 1) {
+    auto pipeline_model_name_base = model_name_base + ToPathString(std::to_string(MPIContext::GetInstance().GetWorldRank()));
+    params.pipeline_partitioned_model_path = pipeline_model_name_base + ORT_TSTR("_partitioned.onnx");
+    params.model_with_loss_func_path = pipeline_model_name_base + ORT_TSTR("_with_cost.onnx");
+    params.model_with_training_graph_path = pipeline_model_name_base + ORT_TSTR("_bw.onnx");
+    params.model_actual_running_graph_path = pipeline_model_name_base + ORT_TSTR("_bw_running.onnx");
+  }
+  ORT_ENFORCE(params.horizontal_parallel_size <= MPIContext::GetInstance().GetWorldSize());
+  ORT_ENFORCE(params.data_parallel_size <= MPIContext::GetInstance().GetWorldSize());
+  if (MPIContext::GetInstance().GetWorldSize() % params.horizontal_parallel_size != 0) {
     LOGS_DEFAULT(ERROR) << "Cannot split horizontal parallel group because world_size is not divisible";
     return;
   }
 
-  auto data_group_size = params.mpi_context.world_size / (params.horizontal_parallel_size * params.pipeline_parallel_size);
+  auto data_group_size = MPIContext::GetInstance().GetWorldSize() / (params.horizontal_parallel_size * params.pipeline_parallel_size);
   ORT_ENFORCE(data_group_size > 0, "Insufficient processes lead to zero-way data parallelism, which should be at least one-way.");
   if (data_group_size != params.data_parallel_size) {
     LOGS_DEFAULT(WARNING) << "WARNING: data_parallel_size is not correct, tuned automatically to "
@@ -475,11 +567,12 @@ void setup_training_params(BertParameters& params) {
 #endif
 
 #ifdef USE_CUDA
-  OrtDevice::DeviceId device_id = static_cast<OrtDevice::DeviceId>(params.mpi_context.local_rank);
+  OrtDevice::DeviceId device_id = static_cast<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
   size_t cuda_mem_limit = std::numeric_limits<size_t>::max();
   if (params.cuda_mem_limit_in_gb > 0)
     cuda_mem_limit = static_cast<size_t>(params.cuda_mem_limit_in_gb * 1024 * 1024 * 1024);
-  params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(device_id, cuda_mem_limit));
+  params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(device_id, OrtCudnnConvAlgoSearch::EXHAUSTIVE,
+                                                                                       cuda_mem_limit));
   params.input_allocator = std::make_shared<CUDAPinnedAllocator>(device_id, CUDA_PINNED);
 #endif
 
@@ -489,16 +582,10 @@ void setup_training_params(BertParameters& params) {
                                             /*prediction_next_sentence*/ "output2",
                                             /*masked_lm_positions*/ "masked_lm_positions",
                                             /*masked_lm_ids*/ "masked_lm_ids",
-                                            /*masked_lm_weights*/ "masked_lm_weights",
                                             /*next_sentence_labels*/ "next_sentence_labels",
                                             /*mlm_loss*/ "mlm_loss",
                                             /*nsp_loss*/ "nsp_loss"});
 
-  params.weights_not_to_train = {
-      "position_01",            // Slice's dat input
-      "op_min_ends_expand_10",  //op_min_ends_expand_10
-      "72",                     // [BERT-tiny only] input of expand
-  };
   params.fetch_names = {"total_loss", "mlm_loss", "nsp_loss"};
 
   if (params.EnableTensorboard()) {
@@ -521,7 +608,6 @@ void setup_training_params(BertParameters& params) {
       {"input_mask", "input3"},
       {"masked_lm_positions", "masked_lm_positions"},
       {"masked_lm_ids", "masked_lm_ids"},
-      {"masked_lm_weights", "masked_lm_weights"},
       {"next_sentence_label", "next_sentence_labels"}};
 
   params.model_type = "bert";
@@ -552,7 +638,7 @@ void setup_training_params(BertParameters& params) {
 
     if (params.dump_fetches) {
       std::ostringstream filename;
-      filename << "./fetch_dumps/rank_" << params.mpi_context.world_rank << "_step_" << step << ".txt";
+      filename << "./fetch_dumps/rank_" << MPIContext::GetInstance().GetWorldRank() << "_step_" << step << ".txt";
       ofstream ofs(filename.str());
       for (size_t i = 0; i < fetch_names.size(); ++i) {
         TrainingUtil::PrintTensor(fetch_names[i], fetches[i].Get<Tensor>(), ofs);
@@ -624,12 +710,10 @@ static Status RunPerformanceTest(const BertParameters& params, const Environment
                                            "input3", /*input_mask*/
                                            "masked_lm_positions",
                                            "masked_lm_ids",
-                                           "masked_lm_weights",
                                            "next_sentence_labels"};
   std::vector<TensorShape> tensor_shapes = {{batch_size, params.max_sequence_length},
                                             {batch_size, params.max_sequence_length},
                                             {batch_size, params.max_sequence_length},
-                                            {batch_size, params.max_predictions_per_sequence},
                                             {batch_size, params.max_predictions_per_sequence},
                                             {batch_size, params.max_predictions_per_sequence},
                                             {batch_size}};
@@ -638,7 +722,6 @@ static Status RunPerformanceTest(const BertParameters& params, const Environment
                                                           onnx::TensorProto_DataType_INT64,
                                                           onnx::TensorProto_DataType_INT64,
                                                           onnx::TensorProto_DataType_INT64,
-                                                          onnx::TensorProto_DataType_FLOAT,
                                                           onnx::TensorProto_DataType_INT64};
   const size_t num_of_perf_samples = params.num_train_steps * params.batch_size;
   auto random_perf_data = std::make_shared<RandomDataSet>(num_of_perf_samples, tensor_names, tensor_shapes, tensor_types);
@@ -660,7 +743,7 @@ static Status RunTraining(const BertParameters& params, const Environment& env) 
   BertParameters params_for_phase;
   while (GetParametersForPhase(runner->GetRound(), params, params_for_phase)) {
     ORT_RETURN_IF_ERROR(runner->UpdateParams(params_for_phase));
-    auto rank_in_data_parallel_group = params_for_phase.mpi_context.world_rank / params_for_phase.horizontal_parallel_size;
+    auto rank_in_data_parallel_group = (MPIContext::GetInstance().GetWorldRank() / params_for_phase.horizontal_parallel_size) % params_for_phase.data_parallel_size;
     auto training_data_loader = onnxruntime::make_unique<DataLoader>(params_for_phase.input_name_map,
                                                                      params_for_phase.train_data_dir,
                                                                      max_num_files_preload,
@@ -669,7 +752,7 @@ static Status RunTraining(const BertParameters& params, const Environment& env) 
 
     auto test_data_loader = std::unique_ptr<DataLoader>{};
     // Evaluation is only done in device #0
-    if (params_for_phase.mpi_context.world_rank == 0) {
+    if (MPIContext::GetInstance().GetWorldRank() == 0) {
       test_data_loader = onnxruntime::make_unique<DataLoader>(params_for_phase.input_name_map,
                                                               params_for_phase.test_data_dir,
                                                               max_num_files_preload);
@@ -686,10 +769,11 @@ static Status RunTraining(const BertParameters& params, const Environment& env) 
     ORT_RETURN_IF_ERROR(runner->ResetLossScaler());
   }
 
-  auto test_data_loader = onnxruntime::make_unique<DataLoader>(params_for_phase.input_name_map,
-                                                               params_for_phase.test_data_dir,
-                                                               max_num_files_preload);
-  ORT_RETURN_IF_ERROR(runner->EndTraining(test_data_loader.get()));
+  if (MPIContext::GetInstance().GetWorldRank() == 0) {
+    // Pass in empty dataloader to disable evaluation in EndTraining
+    // to avoid a redundant synchronization caused by Tensorboard's SummaryMerge Op.
+    ORT_RETURN_IF_ERROR(runner->EndTraining(nullptr));
+  }
 
   return Status::OK();
 }
@@ -733,9 +817,13 @@ int main(int argc, char* argv[]) {
     RETURN_IF_FAIL(RunTraining(params, *env));
   }
 
-#ifdef USE_HOROVOD
-  shutdown_horovod();
+#if defined(USE_NCCL)
+#ifdef _WIN32
+  // https://docs.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-best-practices
+  // shutdown_mpi() is not called within MPIContext destructor because of DllMain's restriction
+  // call shutdown_mpi() here instead.
+  MPIContext::shutdown_mpi();
 #endif
-
+#endif
   return 0;
 }

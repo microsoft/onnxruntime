@@ -13,7 +13,7 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 
 // FastGelu supports limited data types.
-static std::vector<std::string> supported_data_types{"tensor(float16)", "tensor(float)"};
+static std::vector<std::string> supported_data_types{"tensor(float16)", "tensor(float)", "tensor(bfloat16)"};
 
 static bool IsSupportedDataType(const Node& node) {
   for (const auto& input_arg : node.InputDefs()) {
@@ -51,7 +51,7 @@ static bool CheckInputShape(const Node& node, const NodeArg& input, const NodeAr
   // it means that the shape of MatMul output is good for FastGelu.
   const Node* parent_node = graph_utils::GetInputNode(node, 0);
   if (nullptr != parent_node &&
-      graph_utils::IsSupportedOptypeVersionAndDomain(*parent_node, "MatMul", {1, 9}, kOnnxDomain)) {
+      graph_utils::IsSupportedOptypeVersionAndDomain(*parent_node, "MatMul", {1, 9, 13}, kOnnxDomain)) {
     const NodeArg& input_b = *(parent_node->InputDefs()[1]);
     if (optimizer_utils::ValidateShape(input_b, {-1, bias_length})) {
       return true;

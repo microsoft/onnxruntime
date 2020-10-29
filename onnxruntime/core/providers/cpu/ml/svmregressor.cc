@@ -49,7 +49,7 @@ Status SVMRegressor<T>::Compute(OpKernelContext* ctx) const {
   // support_vectors_ : [vector_count_, feature_count_]
 
   // Y: [num_batches, 1]
-  Tensor* Y = ctx->Output(0, TensorShape({num_batches, 1}));  // this op outputs for one target only
+  Tensor* Y = ctx->Output(0, {num_batches, 1});  // this op outputs for one target only
   const auto x_data = X->template DataAsSpan<T>();
   auto out = Y->MutableDataAsSpan<T>();
 

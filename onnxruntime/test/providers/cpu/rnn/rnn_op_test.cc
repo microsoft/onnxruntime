@@ -430,7 +430,7 @@ TEST(RNNTest, RNN_bidirectional_1) {
   std::vector<int64_t> R_dims = {num_directions, hidden_size, hidden_size};
   std::vector<float> R_data({// forward
                              1.0F, 1.0F,
-                             1.0F, 1.0F, 
+                             1.0F, 1.0F,
                              // reverse
                              1.0F, 1.0F,
                              1.0F, 1.0F});
@@ -835,6 +835,36 @@ TEST(RNNTest, RNN_bidirectional_with_sequence_lens) {
   test.AddOutput<float>("Y_h", Y_h_dims, Y_h_data);
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider});
+}
+
+TEST(RNNTest, RNN_with_invalid_activation_load_failure) {
+  OpTester test("RNN");
+  int64_t num_directions = 1, input_size = 1, hidden_size = 1, seq_length = 1;
+
+  test.AddAttribute("activations", vector<string>(num_directions, "Invalid_activation"));
+  test.AddAttribute("direction", "reverse");
+  test.AddAttribute("hidden_size", hidden_size);
+
+  int batch_size = 1;
+
+  std::vector<int64_t> X_dims = {seq_length, batch_size, input_size};
+  std::vector<float> X_data{0.F};
+  test.AddInput<float>("X", X_dims, X_data);
+
+  std::vector<int64_t> W_dims = {num_directions, hidden_size, input_size};
+  std::vector<float> W_data({0.F});
+  test.AddInput<float>("W", W_dims, W_data);
+
+  std::vector<int64_t> R_dims = {num_directions, hidden_size, hidden_size};
+  std::vector<float> R_data({0.F});
+  test.AddInput<float>("R", R_dims, R_data);
+
+  std::vector<int64_t> Y_dims = {seq_length, num_directions, batch_size, hidden_size};
+  std::vector<float> Y_data({0.F});
+  test.AddOutput<float>("Y", Y_dims, Y_data);
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "RNN op: Invalid activation attribute - Invalid_activation",
+           {kCudaExecutionProvider, kTensorrtExecutionProvider});
 }
 
 }  // namespace test

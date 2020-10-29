@@ -41,7 +41,7 @@ Status FeatureVectorizer::Compute(OpKernelContext* context) const {
   int64_t N = X.Shape().NumDimensions() == 1 ? 1 : x_dims[0];
 
   // initialize all the output to 0.f
-  Tensor* Y = context->Output(0, TensorShape({N, total_dimensions_}));
+  Tensor* Y = context->Output(0, {N, total_dimensions_});
   auto Y_data = Y->template MutableData<float>();
 
   auto out = gsl::make_span(Y_data, Y->Shape().Size());

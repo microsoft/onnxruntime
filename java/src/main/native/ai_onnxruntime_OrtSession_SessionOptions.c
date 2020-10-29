@@ -22,6 +22,7 @@
 #include "onnxruntime/core/providers/nuphar/nuphar_provider_factory.h"
 #include "onnxruntime/core/providers/openvino/openvino_provider_factory.h"
 #include "onnxruntime/core/providers/tensorrt/tensorrt_provider_factory.h"
+#include "onnxruntime/core/providers/migraphx/migraphx_provider_factory.h"
 #include "onnxruntime/core/providers/acl/acl_provider_factory.h"
 #ifdef USE_DIRECTML
 #include "onnxruntime/core/providers/dml/dml_provider_factory.h"
@@ -296,6 +297,23 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_closeC
 
 /*
  * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    addConfigEntry
+ * Signature: (JJLjava/lang/String;Ljava/lang/String;)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addConfigEntry
+    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong optionsHandle, jstring configKey, jstring configValue) {
+  (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*)apiHandle;
+  OrtSessionOptions* options = (OrtSessionOptions*) optionsHandle;
+  const char* configKeyStr = (*jniEnv)->GetStringUTFChars(jniEnv, configKey, NULL);
+  const char* configValueStr = (*jniEnv)->GetStringUTFChars(jniEnv, configValue, NULL);
+  checkOrtStatus(jniEnv,api,api->AddSessionConfigEntry(options, configKeyStr, configValueStr));
+  (*jniEnv)->ReleaseStringUTFChars(jniEnv, configKey, configKeyStr);
+  (*jniEnv)->ReleaseStringUTFChars(jniEnv, configValue, configValueStr);
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
  * Method:    addCPU
  * Signature: (JJI)V
  */
@@ -420,6 +438,22 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addNup
   #else
     (void)apiHandle;(void)handle;(void)allowUnalignedBuffers;(void)settingsString; // Parameters used when Nuphar is defined.
     throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with Nuphar support.");
+  #endif
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    addMIGraphX
+ * Signature: (JJI)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addMIGraphX
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint deviceNum) {
+    (void)jobj;
+  #ifdef USE_MIGRAPHX
+    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_MIGraphX((OrtSessionOptions*) handle, deviceNum));
+  #else
+    (void)apiHandle;(void)handle;(void)deviceNum; // Parameters used when MIGraphX is defined.
+    throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with MIGraphX support.");
   #endif
 }
 

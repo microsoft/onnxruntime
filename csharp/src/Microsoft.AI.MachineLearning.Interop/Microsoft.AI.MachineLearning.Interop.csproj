@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <ProjectName>Microsoft.AI.MachineLearning.Interop</ProjectName>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    
+    <Platform>Any CPU</Platform>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+ 
+    <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">..\..\..\build\Windows</OnnxRuntimeBuildDirectory>
+    <BuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</BuildOutputDir>
+    <WindowsAIInteropOutputDir>$(BuildOutputDir)\Microsoft.AI.MachineLearning.Interop</WindowsAIInteropOutputDir>
+    <OutputPath>$(WindowsAIInteropOutputDir)</OutputPath>
+    <LangVersion>7.3</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Windows.CsWinRT" Version="0.1.0-prerelease.200629.3" targetFramework="net46" />
+    <PackageReference Include="Microsoft.Windows.SDK.NET" Version="10.0.18362.3-preview" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Generated Files\" />
+  </ItemGroup>
+
+  <Target Name="GenerateProjection" BeforeTargets="DispatchToInnerBuilds;Build;CoreCompile">
+    <ConvertToAbsolutePath Paths="$(OnnxRuntimeBuildDirectory)">
+      <Output TaskParameter="AbsolutePaths" PropertyName="OnnxRuntimeBuildDirectoryAbs" />
+    </ConvertToAbsolutePath>
+
+    <ItemGroup>
+      <WindowsAIsWinMDs Include="$(OnnxRuntimeBuildDirectoryAbs)\$(Configuration)\Microsoft.AI.MachineLearning.winmd" />
+    </ItemGroup>
+
+    <PropertyGroup>
+      <CsWinRTCommand>$(CsWinRTPath)cswinrt.exe -verbose -in local -in @(WindowsAIsWinMDs->'"%(FullPath)"', ' ') -out "$(ProjectDir)Generated Files" -include Microsoft.AI.MachineLearning</CsWinRTCommand>
+    </PropertyGroup>
+
+    <Message Text="Generating $(ProjectName) CS projection sources with command:" />
+    <Message Text="$(CsWinRTCommand)" />
+    <Exec Command="$(CsWinRTCommand)" />
+    
+    <ItemGroup>
+      <Compile Include="$(ProjectDir)Generated Files/*.cs" Exclude="@(Compile)" />
+    </ItemGroup>
+  </Target>
+
+</Project>

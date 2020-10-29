@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef USE_HOROVOD
+#if defined(USE_NCCL) || defined(USE_HOROVOD)
 
 #pragma once
 #include "core/common/common.h"
@@ -20,6 +20,18 @@ public:
   Status ComputeInternal(OpKernelContext* context) const override;
 
 private:
+  void ReceiveShapeInfo(
+      const int src,
+      const int num_tensors,
+      size_t& aggregated_aligned_tensor_bytes,
+      std::vector<size_t>& prefix_tensor_shape_sizes,
+      std::vector<int64_t>& aggregated_tensor_shapes) const;
+  void ReceiveData(
+    const int num_tensors,
+    std::vector<Tensor*> received_tensors,
+    const int src,
+    const size_t aggregated_aligned_tensor_bytes,
+    IAllocatorUniquePtr<char>& buffer) const;
   int64_t tag_;
   std::vector<int64_t> element_types_;
 };

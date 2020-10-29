@@ -36,6 +36,10 @@ Status MatMulInteger<int8_t, int8_t>::ComputeInternal(OpKernelContext* ctx) cons
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b->Shape()));
   Tensor* Y = ctx->Output(0, helper.OutputShape());
 
+  // Bail out early if the output is going to be empty
+  if (Y->Shape().Size() == 0)
+    return Status::OK();
+
   const int8_t* a_ptr = a->template Data<int8_t>();
   const int8_t* b_ptr = b->template Data<int8_t>();
   int32_t* output_ptr = Y->template MutableData<int32_t>();

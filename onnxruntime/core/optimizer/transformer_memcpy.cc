@@ -27,13 +27,6 @@ class TransformerMemcpyImpl {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TransformerMemcpyImpl);
 
   // use value-based compare to make sure transformer output order is consistent
-  struct NodeCompare {
-    bool operator()(const onnxruntime::Node* lhs, const onnxruntime::Node* rhs) const {
-      return lhs->Index() < rhs->Index();
-    }
-  };
-
-  // use value-based compare to make sure transformer output order is consistent
   struct NodeArgCompare {
     bool operator()(const onnxruntime::NodeArg* lhs, const onnxruntime::NodeArg* rhs) const {
       return lhs->Name() < rhs->Name();
@@ -76,7 +69,8 @@ common::Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
         provider != onnxruntime::kVitisAIExecutionProvider &&
         provider != onnxruntime::kOpenVINOExecutionProvider &&
         provider != onnxruntime::kNnapiExecutionProvider &&
-        provider != onnxruntime::kAclExecutionProvider) {
+        provider != onnxruntime::kAclExecutionProvider &&
+        provider != onnxruntime::kArmNNExecutionProvider) {
       TransformerMemcpyImpl copy_impl(graph, provider);
       auto current_modified = copy_impl.ModifyGraph(registry_manager_);
       modified = modified || current_modified;

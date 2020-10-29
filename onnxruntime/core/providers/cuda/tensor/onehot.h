@@ -20,6 +20,15 @@ void OneHotImpl(
     out_type* output,
     size_t count);
 
+template <typename in_type, typename out_type>
+void OneHotWithZeroOffValueImpl(
+    const in_type* indices,
+    const fast_divmod fdm_suffix,
+    const int64_t depth_val,
+    const out_type on_value,
+    out_type* output,
+    size_t count);
+
 template <typename in_type, typename out_type, typename depth_type>
 class OneHotOp final : public CudaKernel {
  public:

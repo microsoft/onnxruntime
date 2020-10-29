@@ -1,18 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
-using System.Collections.Generic;
-using System.Text;
 using System.Buffers;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
-
 
 namespace Microsoft.ML.OnnxRuntime
 {
     /// <summary>
+    /// TODO: dmitrism -> Get rid of this class.
     /// A non-public interface detailing the contract to be honored by NativeOnnxTensorMemory
     /// </summary>
     internal interface NativeMemoryHandler : IDisposable
@@ -23,29 +21,29 @@ namespace Microsoft.ML.OnnxRuntime
     internal class NativeOnnxTensorMemory<T> : MemoryManager<T>, NativeMemoryHandler
     {
         private bool _disposed;
-        private int _referenceCount;
         private IntPtr _onnxValueHandle;      // pointer to onnxvalue object in native
         private IntPtr _dataBufferPointer;    // pointer to mutable tensor data in native memory
         private string[] _dataBufferAsString; // string tensor values copied into managed memory
-        private TensorElementType _elementType;
+        private Tensors.TensorElementType _elementType;
         private int _elementCount;
         private int _elementWidth;
         private int[] _dimensions;
 
         public NativeOnnxTensorMemory(IntPtr onnxValueHandle)
         {
+            Type type = null;
+            int width = 0;
+            _onnxValueHandle = onnxValueHandle;
+            _disposed = false;
             IntPtr typeAndShape = IntPtr.Zero;
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorTypeAndShape(onnxValueHandle, out typeAndShape));
             try
             {
-                Type type = null;
-                int width = 0;
-                _onnxValueHandle = onnxValueHandle;
-
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorTypeAndShape(onnxValueHandle, out typeAndShape));
                 TensorElementType elemType;
-                unsafe
                 {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorElementType(typeAndShape, new IntPtr(&elemType)));
+                    IntPtr el_type;
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorElementType(typeAndShape, out el_type));
+                    elemType = (TensorElementType)el_type;
                 }
                 TensorElementTypeConverter.GetTypeAndWidth(elemType, out type, out width);
 
@@ -57,9 +55,10 @@ namespace Microsoft.ML.OnnxRuntime
                 UIntPtr dimension;
                 long count;
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtGetDimensionsCount(typeAndShape, out dimension));
-                unsafe
                 {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorShapeElementCount(typeAndShape, new IntPtr(&count)));  // count can be negative. 
+                    IntPtr el_count;
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorShapeElementCount(typeAndShape, out el_count));  // count can be negative. 
+                    count = (long)el_count;
                 }
                 if (count < 0)
                 {
@@ -67,10 +66,7 @@ namespace Microsoft.ML.OnnxRuntime
                 }
 
                 long[] shape = new long[dimension.ToUInt64()];
-                unsafe
-                {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtGetDimensions(typeAndShape, shape, new UIntPtr(&dimension))); //Note: shape must be alive during the call
-                }
+                 NativeApiStatus.VerifySuccess(NativeMethods.OrtGetDimensions(typeAndShape, shape, dimension)); //Note: shape must be alive during the call
 
                 _elementCount = (int)count;
                 _dimensions = new int[dimension.ToUInt64()];
@@ -115,39 +111,15 @@ namespace Microsoft.ML.OnnxRuntime
                     }
                 }
             }
-            catch (Exception e)
-            {
-                //TODO: cleanup any partially created state
-                //Do not call ReleaseTensor here. If the constructor has thrown exception, 
-                //then this NativeOnnxTensorWrapper is not created, so caller should take 
-                //appropriate action to dispose
-                throw e;
-            }
             finally
             {
-                if (typeAndShape != IntPtr.Zero)
-                {
-                    NativeMethods.OrtReleaseTensorTypeAndShapeInfo(typeAndShape);
-                }
+                NativeMethods.OrtReleaseTensorTypeAndShapeInfo(typeAndShape);
             }
         }
 
         public IntPtr Handle { get { return _onnxValueHandle; } }
 
-        ~NativeOnnxTensorMemory()
-        {
-            Dispose(false);
-        }
-
-        public void Dispose()
-        {
-            GC.SuppressFinalize(this);
-            Dispose(true);
-        }
-
         public bool IsDisposed => _disposed;
-
-        protected bool IsRetained => _referenceCount > 0;
 
         public int[] Dimensions => _dimensions;
 
@@ -157,7 +129,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         public int ElementWidth => _elementWidth;
 
-        public TensorElementType ElementType => _elementType;
+        public Tensors.TensorElementType ElementType => _elementType;
 
         public override Span<T> GetSpan()
         {
@@ -192,52 +164,34 @@ namespace Microsoft.ML.OnnxRuntime
                 {
                     throw new ArgumentOutOfRangeException(nameof(elementIndex));
                 }
-                Retain();
-
                 return new MemoryHandle((void*)((int)_dataBufferPointer + elementIndex * _elementWidth)); //could not use Unsafe.Add
             }
         }
 
-        public override void Unpin()
+        // MemoryHandle returned above by Pin() should be disposed.
+        // Unpin() is purely to satisfy the interface.
+        // TODO: This class needs work. It is not clear what happens
+        // if the MemoryHandle remains alive and this class gets Disposed.
+        public override void Unpin() { }
+
+        public void Dispose()
         {
-            Release();
-        }
-
-        private bool Release()
-        {
-            int newRefCount = Interlocked.Decrement(ref _referenceCount);
-
-            if (newRefCount < 0)
-            {
-                throw new InvalidOperationException("Unmatched Release/Retain");
-            }
-
-            return newRefCount != 0;
-        }
-
-        private void Retain()
-        {
-            if (IsDisposed)
-            {
-                throw new ObjectDisposedException(nameof(NativeOnnxTensorMemory<T>));
-            }
-
-            Interlocked.Increment(ref _referenceCount);
+            Dispose(true);
+            GC.SuppressFinalize(this);
         }
 
         protected override void Dispose(bool disposing)
         {
-            if (_disposed)
+            if(_disposed)
             {
                 return;
             }
 
-            if (disposing)
+            if (_onnxValueHandle != IntPtr.Zero)
             {
-                // do managed objects cleanup
+                NativeMethods.OrtReleaseValue(_onnxValueHandle);
+                _onnxValueHandle = IntPtr.Zero;
             }
-
-            NativeMethods.OrtReleaseValue(_onnxValueHandle);
 
             _disposed = true;
         }

@@ -7,7 +7,52 @@
 
 namespace onnxruntime {
 
+namespace SliceOp {
+struct PrepareForComputeMetadata {
+  PrepareForComputeMetadata() = delete;
+  PrepareForComputeMetadata(const std::vector<int64_t>& input_dimensions)
+      : input_dimensions_(input_dimensions) {
+    size_t dimension_count = input_dimensions.size();
+    starts_.resize(dimension_count, 0);
+    steps_.resize(dimension_count, 1);
+    output_dims_ = input_dimensions;
+  }
+
+  const std::vector<int64_t>& input_dimensions_;
+  std::vector<int64_t> starts_;
+  std::vector<int64_t> steps_;
+  std::vector<int64_t> output_dims_;
+  std::vector<int64_t> flattened_output_dims_;
+  std::vector<int64_t>* p_flattened_output_dims_ = &flattened_output_dims_;
+};
+}  // namespace SliceOp
+
 class SliceBase {
+  // static methods that can be used from other ops if needed
+ public:
+  // compute output_dims without steps (Slice V1-9 & DynamicSlice)
+  static Status PrepareForCompute(const std::vector<int64_t>& raw_starts,
+                                  const std::vector<int64_t>& raw_ends,
+                                  const std::vector<int64_t>& raw_axes,
+                                  SliceOp::PrepareForComputeMetadata& compute_metadata);
+
+  // compute output_dims with steps (Slice V10)
+  static Status PrepareForCompute(const std::vector<int64_t>& raw_starts,
+                                  const std::vector<int64_t>& raw_ends,
+                                  const std::vector<int64_t>& raw_axes,
+                                  const std::vector<int64_t>& raw_steps,
+                                  SliceOp::PrepareForComputeMetadata& compute_metadata);
+
+  // Slice V10 & DynamicSlice
+  static void FillVectorsFromInput(const Tensor& start_tensor,
+                                   const Tensor& ends_tensor,
+                                   const Tensor* axes_tensor,
+                                   const Tensor* steps_tensor,
+                                   std::vector<int64_t>& input_starts,
+                                   std::vector<int64_t>& input_ends,
+                                   std::vector<int64_t>& input_axes,
+                                   std::vector<int64_t>& input_steps);
+
  protected:
   SliceBase(const OpKernelInfo& info, bool dynamic = false)
       : dynamic_(dynamic) {
@@ -21,37 +66,6 @@ class SliceBase {
                   "Invalid axes attribute, axes attribute (if present) should have the same size as starts/ends attributes");
     }
   }
-
-  // compute output_dims without steps (Slice V1-9 & DynamicSlice)
-  Status PrepareForCompute(const std::vector<int64_t>& raw_starts,
-                           const std::vector<int64_t>& raw_ends,
-                           const std::vector<int64_t>& raw_axes,
-                           const std::vector<int64_t>& input_dimensions,
-                           std::vector<int64_t>& starts,
-                           std::vector<int64_t>& steps,
-                           std::vector<int64_t>& output_dims,
-                           std::vector<int64_t>*& flattened_output_dims) const;
-
-  // compute output_dims with steps (Slice V10)
-  Status PrepareForCompute(const std::vector<int64_t>& raw_starts,
-                           const std::vector<int64_t>& raw_ends,
-                           const std::vector<int64_t>& raw_axes,
-                           const std::vector<int64_t>& raw_steps,
-                           const std::vector<int64_t>& input_dimensions,
-                           std::vector<int64_t>& starts,
-                           std::vector<int64_t>& steps,
-                           std::vector<int64_t>& output_dims,
-                           std::vector<int64_t>*& flattened_output_dims) const;
-
-  // Slice V10 & DynamicSlice
-  void FillVectorsFromInput(const Tensor& start_tensor,
-                            const Tensor& ends_tensor,
-                            const Tensor* axes_tensor,
-                            const Tensor* steps_tensor,
-                            std::vector<int64_t>& input_starts,
-                            std::vector<int64_t>& input_ends,
-                            std::vector<int64_t>& input_axes,
-                            std::vector<int64_t>& input_steps) const;
 
   Status Compute(OpKernelContext* context) const;
 

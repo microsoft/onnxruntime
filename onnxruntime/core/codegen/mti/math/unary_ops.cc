@@ -30,7 +30,7 @@ tvm::Tensor Ceil(const tvm::Tensor& X, const std::string& name) {
   return topi::ceil(X, name);
 }
 
-tvm::Tensor Clip(const tvm::Tensor& X, float min_value, float max_value, const std::string& name) {
+tvm::Tensor Clip(const tvm::Tensor& X, tvm::Expr min_value, tvm::Expr max_value, const std::string& name) {
   auto Y = tvm::compute(
       X->shape,
       [&](const tvm::Array<tvm::Var>& indices) {

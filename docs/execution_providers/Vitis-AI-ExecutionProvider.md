@@ -6,9 +6,13 @@
 
 [Vitis-AI](https://github.com/Xilinx/Vitis-AI) is Xilinx's development stack for hardware-accelerated AI inference on Xilinx platforms, including both edge devices and Alveo cards. It consists of optimized IP, tools, libraries, models, and example designs. It is designed with high efficiency and ease of use in mind, unleashing the full potential of AI acceleration on Xilinx FPGA and ACAP.
 
+The current Vitis-AI execution provider inside ONNXRuntime enables acceleration of Neural Network model inference using DPUv1. DPUv1 is a hardware accelerator for Convolutional Neural Networks (CNN) on top of the Xilinx [Alveo](https://www.xilinx.com/products/boards-and-kits/alveo.html) platform and targets U200 and U250 accelerator cards.
+
+On this page you will find information on how to [build](#Build) ONNXRuntime with Vitis-AI and on how to [get started](#Getting-started) with an example.
+
 ## Build
 
-For build instructions, please see the [BUILD page](../../BUILD.md#Vitis-AI). Please setup the hardware environment before starting the build: [Hardware setup](#Hardware-setup).
+For building ONNXRuntime with the Vitis-AI execution provider, you will have to setup the hardware environment and build the docker, see [build steps](#Hardware-setup-and-docker-build).
 
 ### System requirements
 
@@ -28,7 +32,7 @@ The following table lists system requirements for running docker containers as w
 | FPGA                                                | Xilinx Alveo U200 or U250                                  |
 | Docker Version                                      | 19\.03\.1                                                  |
 
-### Hardware setup
+### Hardware setup and docker build
 
 1. Clone the Vitis AI repository:
     ```
@@ -66,11 +70,24 @@ The following table lists system requirements for running docker containers as w
    conda activate vitis-ai-tensorflow
    ```
 
+## Getting started
 
+### On-the-fly quantization
+
+Usually, to be able to accelerate inference of Neural Network models with Vitis-AI DPU accelerators, those models need to quantized upfront. In the ONNXRuntime Vitis-AI execution provider we make use of on-the-fly quantization to remove this additional preprocessing step. In this flow, one doesn't need to quantize his/her model upfront but can make use of the typical inference execution calls (InferenceSession.run) to quantize the model on-the-fly using the first N inputs that are provided (see more information below). This will set up and calibrate the Vitis-AI DPU and from that point onwards inference will be accelerated for all next inputs.
+
+### Config/Settings
+
+A couple of environment variables can be used to customize the Vitis-AI execution provider.
+
+| **Environment Variable**   | **Default if unset**      | **Explanation**                                         |
+|----------------------------|---------------------------|---------------------------------------------------------|
+| PX_QUANT_SIZE              | 128                    | The number of inputs that will be used for quantization (necessary for Vitis-AI acceleration) |
+| PX_BUILD_DIR               | Use the on-the-fly quantization flow | Loads the quantization and compilation information from the provided build directory and immediately starts Vitis-AI hardware acceleration. This configuration can be used if the model has been executed before using on-the-fly quantization during which the quantization and comilation information was cached in a build directory. |
 
 ### Samples
 
-For python, you can base yourself on the following example:
+When using python, you can base yourself on the following example:
 
 ```
 # Import pyxir before onnxruntime
@@ -91,6 +108,7 @@ session = onnxruntime.InferenceSession('[model_file].onnx', None,["VitisAIExecut
 
 # First N (default = 128) inputs are used for quantization calibration and will
 #   be executed on the CPU
+# This config can be changed by setting the 'PX_QUANT_SIZE' (e.g. export PX_QUANT_SIZE=64)
 imput_name = [...]
 outputs = [session.run([], {input_name: calib_inputs[i]})[0] for i in range(128)]
 

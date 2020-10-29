@@ -68,6 +68,11 @@ Status FuseReluClip::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
             replace_min = true;
           }
           break;
+        case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
+          if (i.data<BFloat16>()->ToFloat() < 0.f) {
+            replace_min = true;
+          }
+          break;
         default:
           ORT_THROW("Unexpected data type for Clip 'min' input of ", initializer->data_type());
       }
@@ -110,7 +115,7 @@ Status FuseReluClip::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
 }
 
 bool FuseReluClip::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const {
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", {6})) {
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", {6, 13})) {
     return false;
   }
 
@@ -122,7 +127,7 @@ bool FuseReluClip::SatisfyCondition(const Graph& graph, const Node& node, const 
   // as Clip will apply the minimum. If the Clip 'min' value is < 0 we need
   // to update it to 0 to apply what the Relu would have done. We do that in Apply.
   const auto& next_node = *node.OutputNodesBegin();
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Clip", {6, 11, 12}) ||
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Clip", {6, 11, 12, 13}) ||
       next_node.GetExecutionProviderType() != node.GetExecutionProviderType()) {
     return false;
   }

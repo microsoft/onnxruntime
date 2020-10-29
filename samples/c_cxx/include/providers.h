@@ -22,3 +22,6 @@
 #ifdef USE_DML
 #include "onnxruntime/core/providers/dml/dml_provider_factory.h"
 #endif
+#ifdef USE_MIGRAPHX
+#include "onnxruntime/core/providers/migraphx/migraphx_provider_factory.h"
+#endif

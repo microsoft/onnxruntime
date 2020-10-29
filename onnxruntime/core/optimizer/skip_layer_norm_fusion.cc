@@ -12,7 +12,7 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 
 // LayerNorm supports limited data types.
-static std::vector<std::string> supported_data_types{"tensor(float16)", "tensor(float)"};
+static std::vector<std::string> supported_data_types{"tensor(float16)", "tensor(float)", "tensor(bfloat16)"};
 
 static bool IsSupportedDataType(const Node& node) {
   for (const auto& input_arg : node.InputDefs()) {
@@ -163,8 +163,8 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
 
     // Format 1
     std::vector<graph_utils::EdgeEndToMatch> format1_parent_path{
-        {0, 0, "Add", {7}, kOnnxDomain},
-        {0, 0, "Add", {7}, kOnnxDomain}};
+        {0, 0, "Add", {7, 13}, kOnnxDomain},
+        {0, 0, "Add", {7, 13}, kOnnxDomain}};
 
     std::vector<const Node::EdgeEnd*> edges;
     if (graph_utils::FindPath(ln_node, true, format1_parent_path, edges, logger)) {
@@ -182,8 +182,8 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     if (matched_format == Format::None) {
       // Format 2
       std::vector<graph_utils::EdgeEndToMatch> format2_parent_path{
-          {0, 0, "Add", {7}, kOnnxDomain},
-          {0, 1, "Add", {7}, kOnnxDomain}};
+          {0, 0, "Add", {7, 13}, kOnnxDomain},
+          {0, 1, "Add", {7, 13}, kOnnxDomain}};
 
       if (graph_utils::FindPath(ln_node, true, format2_parent_path, edges, logger)) {
         p_add1 = const_cast<Node*>(&edges[0]->GetNode());
@@ -201,7 +201,7 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     if (matched_format == Format::None) {
       // Format 3
       std::vector<graph_utils::EdgeEndToMatch> format3_parent_path{
-          {0, 0, "Add", {7}, kOnnxDomain}};
+          {0, 0, "Add", {7, 13}, kOnnxDomain}};
 
       if (graph_utils::FindPath(ln_node, true, format3_parent_path, edges, logger)) {
         p_add1 = const_cast<Node*>(&edges[0]->GetNode());

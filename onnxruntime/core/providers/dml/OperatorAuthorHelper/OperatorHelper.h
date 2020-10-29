@@ -633,7 +633,7 @@ public:
         {
             int dimIndex = axes.empty() ? i : axes[i];
             int stride = steps.empty() ? 1 : steps[i];
-            ML_CHECK_VALID_ARGUMENT(dimIndex < inputDimensions.size(), "'axes' must be valid with within actual input dimensions.");
+            ML_CHECK_VALID_ARGUMENT(static_cast<size_t>(dimIndex) < static_cast<size_t>(inputDimensions.size()), "'axes' must be valid with within actual input dimensions.");
             ML_CHECK_VALID_ARGUMENT(stride != 0, "'steps' must not be 0.");
 
             // Positive values are offsets from 0.
@@ -733,6 +733,7 @@ class ReduceHelperBase {
   template <typename Info_t, typename Shape_t>
   ReduceHelperBase(const Info_t& info, const Shape_t& shape, bool usingAxes) {
     m_keepDims = info.GetOptionalAttribute<int>(AttrName::KeepDims, 1);
+    m_selectLastIndex = info.GetOptionalAttribute<int>(AttrName::SelectLastIndex, 0);
     if (usingAxes) {
       m_axes = info.GetOptionalAttributeVectorInt32(AttrName::Axes);
     } else {
@@ -751,6 +752,7 @@ class ReduceHelperBase {
  protected:
   std::vector<int> m_axes;
   int m_keepDims = 0;
+  int m_selectLastIndex = 0;
 };
 
 class ArgMinArgMaxHelper : public ReduceHelperBase {
@@ -767,6 +769,70 @@ class ReduceHelper : public ReduceHelperBase {
   // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
   template <typename Info_t, typename Shape_t>
   ReduceHelper(const Info_t& info, const Shape_t& shape) : ReduceHelperBase(info, shape, true) {}
+};
+
+class EinSumHelper
+{
+public:
+    void Initialize();
+
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
+    template <typename Info_t, typename Shape_t>
+    EinSumHelper(const Info_t& info, const Shape_t& shape, uint32_t opsetVersion)
+    {
+        m_equation = info.GetAttribute(AttrName::Equation);
+        Initialize();
+    }
+
+    EinSumHelper(const MLOperatorAttributes& info)
+    {
+        m_equation = info.GetAttribute(AttrName::Equation);
+        Initialize();
+    }
+
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+
+    enum class RecognizedOperatorType
+    {
+        None,
+        Identity,
+        Multiply,
+        MatMul,
+        MatMulTransposeA,
+        MatMulTransposeB,
+        ReduceSum,
+        Transpose,
+        Total,
+    };
+
+    RecognizedOperatorType GetRecognizedOperatorType() const noexcept { return m_recognizedOperatorType; }
+
+protected:
+    void ParseEquationComponents();
+    RecognizedOperatorType DetermineRecognizedOperatorType();
+
+protected:
+    struct Component
+    {
+        uint32_t labelIndexBegin;
+        uint32_t labelIndexEnd;
+       
+        uint32_t GetDimensionCount() const noexcept
+        {
+            return labelIndexEnd - labelIndexBegin;
+        }
+        gsl::span<const uint32_t> GetLabels(gsl::span<const uint32_t> labels) const
+        {
+            return labels.subspan(labelIndexBegin, labelIndexEnd - labelIndexBegin);
+        };
+    };
+
+    std::string m_equation;
+    std::vector<uint32_t> m_labelIndices; // Concatenation of all labels as rebased indices ("ij,ai" -> 0,1,2,0).
+    std::vector<Component> m_components; // All components in order, including inputs and output.
+    std::vector<uint32_t> m_outputDimensions;
+    RecognizedOperatorType m_recognizedOperatorType = RecognizedOperatorType::None;
 };
 
 class MatMulHelperBase {
@@ -975,9 +1041,13 @@ class GatherNdHelper {
   // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
   template <typename Info_t, typename Shape_t>
   GatherNdHelper(const Info_t& info, const Shape_t& shape) {
+    m_batchCount = info.GetOptionalAttribute<int32_t>(AttrName::BatchDimensions, 0);
   }
 
   std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+
+protected:
+  int32_t m_batchCount;
 };
 
 class PoolingHelperBase {
@@ -1040,26 +1110,51 @@ class PoolingHelper : public PoolingHelperBase {
   PoolingHelper(const Info_t& info, const Shape_t& shape) : PoolingHelperBase(info, shape, false) {}
 };
 
-class RoiPoolingHelper {
- public:
-  enum InputTensors { INPUT,
-                      ROIS };
+class RoiPoolingHelperBase
+{
+public:
+    enum InputTensors { INPUT, ROIS, BATCH_INDICES };
 
-  // Info_t is used to obtain attributes which will be used for calculating the output shape later.
-  // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
-  template <typename Info_t, typename Shape_t>
-  RoiPoolingHelper(const Info_t& info, const Shape_t& shape) {
-    std::vector<int> pooledShape = info.GetOptionalAttributeVectorInt32(AttrName::PooledShape);
-    ML_CHECK_VALID_ARGUMENT(pooledShape.size() == 2, "Pooled shape must be 2.");
-    m_pooledSizeH = pooledShape[0];
-    m_pooledSizeW = pooledShape[1];
-  }
+    RoiPoolingHelperBase()
+    {}
 
-  std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 
- protected:
-  uint32_t m_pooledSizeW;
-  uint32_t m_pooledSizeH;
+protected:
+    uint32_t m_outputSizeW = 1;
+    uint32_t m_outputSizeH = 1;
+};
+
+class RoiPoolingHelper : public RoiPoolingHelperBase
+{
+public:
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
+    template <typename Info_t, typename Shape_t>
+    RoiPoolingHelper(const Info_t& info, const Shape_t& shape)
+    {
+        std::vector<int> pooledShape = info.GetOptionalAttributeVectorInt32(AttrName::PooledShape);
+        ML_CHECK_VALID_ARGUMENT(pooledShape.size() == 2, "Pooled shape must be 2.");
+        m_outputSizeH = pooledShape[0];
+        m_outputSizeW = pooledShape[1];
+    }
+
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+};
+
+class RoiAlignHelper : public RoiPoolingHelperBase
+{
+public:
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
+    template <typename Info_t, typename Shape_t>
+    RoiAlignHelper(const Info_t& info, const Shape_t& shape, uint32_t opsetVersion)
+    {
+        m_outputSizeW = info.GetOptionalAttribute<uint32_t>(AttrName::OutputWidth, 1);
+        m_outputSizeH = info.GetOptionalAttribute<uint32_t>(AttrName::OutputHeight, 1);
+    }
+
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 };
 
 class SqueezeHelper {
@@ -1330,6 +1425,7 @@ using ShapeInferenceHelper_MaxUnpool = UnpoolingHelper;
 using ShapeInferenceHelper_LpPool = PoolingHelper;
 using ShapeInferenceHelper_GlobalLpPool = GlobalPoolingHelper;
 using ShapeInferenceHelper_MaxRoiPool = RoiPoolingHelper;
+using ShapeInferenceHelper_RoiAlign10 = VersionedOpsetHelper<RoiAlignHelper, 10>;
 using ShapeInferenceHelper_InstanceNormalization = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_BatchNormalization = GetOutputShapeAsInputShapeHelper;
 
@@ -1382,8 +1478,11 @@ using ShapeInferenceHelper_Ceil = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Floor = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Clip7 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Clip11 = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_Clip12 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Greater = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_Less = GetBroadcastedOutputShapeHelper;
+using ShapeInferenceHelper_GreaterOrEqual = GetBroadcastedOutputShapeHelper;
+using ShapeInferenceHelper_LessOrEqual = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_Equal = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_Not = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_And = GetBroadcastedOutputShapeHelper;
@@ -1430,6 +1529,7 @@ using ShapeInferenceHelper_ReduceL1 = ReduceHelper;
 using ShapeInferenceHelper_ReduceL2 = ReduceHelper;
 using ShapeInferenceHelper_ReduceMax = ReduceHelper;
 using ShapeInferenceHelper_ReduceMin = ReduceHelper;
+using ShapeInferenceHelper_Einsum12 = VersionedOpsetHelper<EinSumHelper, 12>;
 using ShapeInferenceHelper_ArgMax = ArgMinArgMaxHelper;
 using ShapeInferenceHelper_ArgMin = ArgMinArgMaxHelper;
 using ShapeInferenceHelper_Gemm = GemmHelper;
@@ -1450,6 +1550,7 @@ using ShapeInferenceHelper_LeakyRelu = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_PRelu = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_ThresholdedRelu = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Elu = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_Celu = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Selu = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Softmax = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_LogSoftmax = GetOutputShapeAsInputShapeHelper;

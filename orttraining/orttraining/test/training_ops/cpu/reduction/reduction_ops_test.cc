@@ -85,8 +85,14 @@ TEST(AllOpTest, All_1d_large) {
   }
 }
 
-TEST(ReductionOpTest, ReduceAllL2) {
+class ReductionOpTest : public ::testing::TestWithParam<bool> {
+  protected:
+    bool use_determinism;
+};
+
+TEST_P(ReductionOpTest, ReduceAllL2) {
   OpTester test("ReduceAllL2", 1, onnxruntime::kMSDomain, true);
+  test.SetDeterminism(GetParam());
   std::vector<float> data0 = {1.0f, 2.0f, 3.0f};
   std::vector<float> data1 = {-1.0f, -2.0f};
 
@@ -96,8 +102,9 @@ TEST(ReductionOpTest, ReduceAllL2) {
   test.Run();
 }
 
-TEST(ReductionOpTest, ReduceAllL2HalfHalf) {
+TEST_P(ReductionOpTest, ReduceAllL2HalfHalf) {
   OpTester test("ReduceAllL2", 1, onnxruntime::kMSDomain, true);
+  test.SetDeterminism(GetParam());
 
   std::vector<float> data0 = {1.0f, 2.0f, 3.0f};
   std::vector<MLFloat16> data0_half(3);
@@ -118,8 +125,9 @@ TEST(ReductionOpTest, ReduceAllL2HalfHalf) {
   test.Run();
 }
 
-TEST(ReductionOpTest, ReduceAllL2FloatHalf) {
+TEST_P(ReductionOpTest, ReduceAllL2FloatHalf) {
   OpTester test("ReduceAllL2", 1, onnxruntime::kMSDomain, true);
+  test.SetDeterminism(GetParam());
 
   std::vector<float> data0 = {1.0f, 2.0f, 3.0f};
   std::vector<float> data1 = {-1.0f, -2.0f};
@@ -135,8 +143,9 @@ TEST(ReductionOpTest, ReduceAllL2FloatHalf) {
   test.Run();
 }
 
-TEST(ReductionOpTest, ReduceAllL2HalfFloat) {
+TEST_P(ReductionOpTest, ReduceAllL2HalfFloat) {
   OpTester test("ReduceAllL2", 1, onnxruntime::kMSDomain, true);
+  test.SetDeterminism(GetParam());
 
   std::vector<float> data0 = {1.0f, 2.0f, 3.0f};
   std::vector<MLFloat16> data0_half(3);
@@ -160,8 +169,10 @@ void TestMultiTensorReduce(
     const int min_tensor_size,
     const int max_tensor_size,
     const float min,
-    const float max) {
+    const float max,
+    bool use_determinism) {
   OpTester test("ReduceAllL2", 1, onnxruntime::kMSDomain, true);
+  test.SetDeterminism(use_determinism);
 
   // Set up random number generator.
   std::random_device random_device;
@@ -196,22 +207,150 @@ void TestMultiTensorReduce(
   test.Run();
 }
 
-TEST(ReductionOpTest, ReduceAllL2LargeOne) {
-  TestMultiTensorReduce(16, 1, 131072, 1.f, 1.f);
+TEST_P(ReductionOpTest, ReduceAllL2LargeOne) {
+  TestMultiTensorReduce(16, 1, 131072, 1.f, 1.f, GetParam());
 }
 
-TEST(ReductionOpTest, ReduceAllL2Large) {
-  TestMultiTensorReduce(16, 1, 131072, 1.2f, 1.3f);
+TEST_P(ReductionOpTest, ReduceAllL2Large) {
+  TestMultiTensorReduce(16, 1, 131072, 1.2f, 1.3f, GetParam());
 }
 
-TEST(ReductionOpTest, ReduceAllL2ManyOne) {
-  TestMultiTensorReduce(4096, 1, 8, 1.f, 1.f);
+TEST_P(ReductionOpTest, ReduceAllL2ManyOne) {
+  TestMultiTensorReduce(4096, 1, 8, 1.f, 1.f, GetParam());
 }
 
-TEST(ReductionOpTest, ReduceAllL2Many) {
-  TestMultiTensorReduce(4096, 1, 8, 1.2f, 1.3f);
+TEST_P(ReductionOpTest, ReduceAllL2Many) {
+  TestMultiTensorReduce(4096, 1, 8, 1.2f, 1.3f, GetParam());
 }
 
+// invoke with and without use_determinism flag for session
+INSTANTIATE_TEST_SUITE_P(ReductionOpTestWrapper, ReductionOpTest, ::testing::Bool());
+
+#endif
+
+TEST(ReductionOpTest, ReduceSumTraining_int32) {
+  OpTester test("ReduceSumTraining", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<int32_t>("data", {3, 2, 2},
+                         {1, 2,
+                          3, 4,
+
+                          5, 6,
+                          7, 8,
+
+                          9, 10,
+                          11, 12});
+  test.AddInput<int64_t>("axes", {2}, {0, 2}, true /*is_initializer*/);
+  test.AddOutput<int32_t>("reduced", {1, 2, 1}, {33, 45});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSumTraining_default_axes_keepdims) {
+  OpTester test("ReduceSumTraining", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddInput<int64_t>("axes", {0}, {}, true /*is_initializer*/);
+  test.AddOutput<float>("reduced", {1, 1, 1}, {78.0f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSumTraining_axes_not_initializer) {
+  OpTester test("ReduceSumTraining", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddInput<int64_t>("axes", {0}, {});
+  test.AddOutput<float>("reduced", {1, 1, 1}, {78.0f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSumTraining_empty_axes_noop) {
+  OpTester test("ReduceSumTraining", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddAttribute("noop_with_empty_axes", (int64_t)1);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddInput<int64_t>("axes", {0}, {}, true /*is_initializer*/);
+  test.AddOutput<float>("reduced", {3, 2, 2},
+                        {1.0f, 2.0f,
+                         3.0f, 4.0f,
+
+                         5.0f, 6.0f,
+                         7.0f, 8.0f,
+
+                         9.0f, 10.0f,
+                         11.0f, 12.0f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSumTraining_do_not_keepdims) {
+  OpTester test("ReduceSumTraining", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {1, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f});
+  test.AddInput<int64_t>("axes", {1}, {1}, true /*is_initializer*/);
+  test.AddOutput<float>("reduced", {1, 2}, {4.0f, 6.0f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSumTraining_neg_axis) {
+  OpTester test("ReduceSumTraining", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {1, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f});
+  test.AddInput<int64_t>("axes", {1}, {-2}, true /*is_initializer*/);
+  test.AddOutput<float>("reduced", {1, 2}, {4.0f, 6.0f});
+  test.Run();
+}
+
+#ifdef USE_CUDA
+TEST(ReductionOpTest, ReduceSumTrainingHalfHalf) {
+  OpTester test("ReduceSumTraining", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("keepdims", (int64_t)0);
+
+  std::vector<float> data = {1.0f, 2.0f,
+                             3.0f, 4.0f,
+
+                             5.0f, 6.0f,
+                             7.0f, 8.0f,
+
+                             9.0f, 10.0f,
+                             11.0f, 12.0f};
+  std::vector<MLFloat16> data_half(12);
+  ConvertFloatToMLFloat16(data.data(), data_half.data(), 12);
+
+  std::vector<float> result = {36.0f, 42.0f};
+  std::vector<MLFloat16> result_half(2);
+  ConvertFloatToMLFloat16(result.data(), result_half.data(), 2);
+  test.AddInput<MLFloat16>("data", {3, 2, 2}, data_half);
+  test.AddInput<int64_t>("axes", {2}, {0, 1}, true /*is_initializer*/);
+  test.AddOutput<MLFloat16>("reduced", {2}, result_half);
+  test.Run();
+}
 #endif
 
 }  // namespace test

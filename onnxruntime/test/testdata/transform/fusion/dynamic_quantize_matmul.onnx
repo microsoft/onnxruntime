@@ -1,0 +1,28 @@
+:ì
+Q
+inputa_quantizeda_scalea_zpDynamicQuantizeLinear"DynamicQuantizeLinear
+Y
+a_quantized
+b_quantized
+a_zp
+b_zpmatmul_output_int32MatMulInteger"MatMulInteger
+.
+a_scale
+b_scale
+multiplier	mul_right"Mul
+A
+matmul_output_int32matmul_output_floatcast"Cast*	
+to 
+:
+matmul_output_float
+
+multiplieroutput
+mul_bottom"MulDynamicQuantizeLinear_fusion**Bb_quantized*"ffæ?Bb_scale**€Bb_zpZ
+input
+
+
+b
+output
+
+
+B

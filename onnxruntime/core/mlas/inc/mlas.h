@@ -31,6 +31,49 @@ Abstract:
 #endif
 
 //
+// Define the target architecture.
+//
+
+#if defined(_M_AMD64) || defined(__x86_64__)
+#define MLAS_TARGET_AMD64
+#endif
+#if defined(_M_IX86) || defined(__i386__)
+#define MLAS_TARGET_IX86
+#endif
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_IX86)
+#define MLAS_TARGET_AMD64_IX86
+#endif
+#if defined(_M_ARM64) || defined(__aarch64__)
+#define MLAS_TARGET_ARM64
+#endif
+#if defined(_M_ARM) || defined(__arm__)
+#define MLAS_TARGET_ARM
+#endif
+#if defined(__VSX__)
+#define MLAS_TARGET_POWER
+#endif
+
+//
+// Define the support levels for the target architecture.
+//
+
+#if defined(MLAS_TARGET_AMD64)
+#define MLAS_SUPPORTS_GEMM_DOUBLE
+#endif
+
+#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_ARM64) || (defined(MLAS_TARGET_ARM) && !defined(_MSC_VER))
+#define MLAS_SUPPORTS_GEMM_U8X8
+#endif
+
+#if defined(MLAS_TARGET_AMD64_IX86)
+#define MLAS_SUPPORTS_GEMM_U8X8_AND_REQUANTIZE_OUTPUT
+#endif
+
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_ARM64) || (defined(MLAS_TARGET_ARM) && !defined(_MSC_VER))
+#define MLAS_SUPPORTS_PACKED_GEMM_U8X8
+#endif
+
+//
 // Basic Linear Algebra Subprograms (BLAS) types.
 //
 
@@ -132,6 +175,23 @@ void
 MLASCALL
 MlasGemm(
     CBLAS_TRANSPOSE TransA,
+    size_t M,
+    size_t N,
+    size_t K,
+    float alpha,
+    const float* A,
+    size_t lda,
+    const void* PackedB,
+    float beta,
+    float* C,
+    size_t ldc,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+void
+MLASCALL
+MlasGemm(
+    CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t M,
     size_t N,
@@ -156,9 +216,10 @@ MlasGemm(
     const uint8_t* A,
     size_t lda,
     uint8_t offa,
-    const int8_t* B,
+    const uint8_t* B,
     size_t ldb,
-    int8_t offb,
+    uint8_t offb,
+    bool BIsSigned,
     int32_t* C,
     size_t ldc,
     MLAS_THREADPOOL* ThreadPool
@@ -176,9 +237,89 @@ MlasGemm(
     const uint8_t* B,
     size_t ldb,
     uint8_t offb,
+    bool BIsSigned,
+    float* C,
+    size_t ldc,
+    const float* Scale,
+    const float* Bias,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+void
+MLASCALL
+MlasGemm(
+    size_t M,
+    size_t N,
+    size_t K,
+    const uint8_t* A,
+    size_t lda,
+    uint8_t offa,
+    const void* PackedB,
+    uint8_t offb,
+    bool BIsSigned,
     int32_t* C,
     size_t ldc,
     MLAS_THREADPOOL* ThreadPool
+    );
+
+void
+MLASCALL
+MlasGemm(
+    size_t M,
+    size_t N,
+    size_t K,
+    const uint8_t* A,
+    size_t lda,
+    uint8_t offa,
+    const void* PackedB,
+    uint8_t offb,
+    bool BIsSigned,
+    float* C,
+    size_t ldc,
+    const float* Scale,
+    const float* Bias,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+//
+// Buffer packing routines.
+//
+
+size_t
+MLASCALL
+MlasGemmPackBSize(
+    size_t N,
+    size_t K
+    );
+
+void
+MLASCALL
+MlasGemmPackB(
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K,
+    const float* B,
+    size_t ldb,
+    void* PackedB
+    );
+
+size_t
+MLASCALL
+MlasGemmPackBSize(
+    size_t N,
+    size_t K,
+    bool BIsSigned
+    );
+
+void
+MLASCALL
+MlasGemmPackB(
+    size_t N,
+    size_t K,
+    const uint8_t* B,
+    size_t ldb,
+    bool BIsSigned,
+    void* PackedB
     );
 
 //
@@ -250,6 +391,20 @@ MlasConv(
     float* WorkingBuffer,
     float* Output,
     MLAS_THREADPOOL* ThreadPool
+    );
+
+template<typename FilterType>
+void
+MLASCALL
+MlasConvDepthwise(
+    const uint8_t* Input,
+    uint8_t InputZeroPoint,
+    const FilterType* Filter,
+    FilterType FilterZeroPoint,
+    int32_t* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
     );
 
 //
@@ -336,6 +491,28 @@ MlasConvertHalfToFloatBuffer(
     const unsigned short* Source,
     float* Destination,
     size_t Count
+    );
+
+//
+// Transpose routines.
+//
+
+void
+MLASCALL
+MlasTranspose(
+    const uint8_t* Input,
+    uint8_t* Output,
+    size_t M,
+    size_t N
+    );
+
+void
+MLASCALL
+MlasTranspose(
+    const uint32_t* Input,
+    uint32_t* Output,
+    size_t M,
+    size_t N
     );
 
 //
@@ -460,4 +637,75 @@ MlasRequantizeOutput(
     size_t N,
     float Scale,
     uint8_t ZeroPoint
+    );
+
+void
+MLASCALL
+MlasRequantizeOutputColumn(
+    const int32_t* Input,
+    uint8_t* Output,
+    const int32_t* Bias,
+    size_t M,
+    size_t N,
+    const float Scale,
+    uint8_t ZeroPoint
+    );
+
+void
+MLASCALL
+MlasRequantizeOutputColumn(
+    const int32_t* Input,
+    uint8_t* Output,
+    const int32_t* Bias,
+    size_t M,
+    size_t N,
+    const float* Scale,
+    uint8_t ZeroPoint
+    );
+
+void
+MLASCALL
+MlasFindMinMaxElement(
+    const float* Input,
+    float* Min,
+    float* Max,
+    size_t N
+    );
+
+//
+// InputA is of size N,
+// Input B is of size 1 if IsScalarB == true, otherwise it is of size N
+//
+template<typename DataType>
+void
+MLASCALL
+MlasQLinearAdd(
+    const DataType* InputA,
+    float ScaleA,
+    int32_t ZeroPointA,
+    const DataType* InputB,
+    float ScaleB,
+    int32_t ZeroPointB,
+    float ScaleC,
+    int32_t ZeroPointC,
+    DataType* OutputC,
+    size_t N,
+    bool IsScalarB
+    );
+
+template<typename DataType>
+void
+MLASCALL
+MlasQLinearMul(
+    const DataType* InputA,
+    float ScaleA,
+    int32_t ZeroPointA,
+    const DataType* InputB,
+    float ScaleB,
+    int32_t ZeroPointB,
+    float ScaleC,
+    int32_t ZeroPointC,
+    DataType* OutputC,
+    size_t N,
+    bool IsScalarB
     );

@@ -13,26 +13,23 @@ template <class T, class U>
 Status QuantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
   typedef typename ToCudaType<U>::MappedType CudaU;
 
-  auto x = ctx->Input<Tensor>(0);
-  auto y_scale = ctx->Input<Tensor>(1);
-  auto y_zero_point = ctx->Input<Tensor>(2);
-  ORT_ENFORCE(x != nullptr &&
-              y_scale != nullptr &&
-              y_zero_point != nullptr);
-  auto y = ctx->Output(0, x->Shape());
-  ORT_ENFORCE(y != nullptr);
+  auto& x = *ctx->Input<Tensor>(0);
+  auto& y_scale = *ctx->Input<Tensor>(1);
+  auto* y_zero_point = ctx->Input<Tensor>(2);
 
-  const auto& x_shape = x->Shape();
+  auto& y = *ctx->Output(0, x.Shape());
 
-  const CudaU* input = reinterpret_cast<const CudaU*>(x->template Data<U>());
-  T* output = y->template MutableData<T>();
+  const auto& x_shape = x.Shape();
+
+  const CudaU* input = reinterpret_cast<const CudaU*>(x.template Data<U>());
+  T* output = y.template MutableData<T>();
 
   // TO DO: support per-channel
-  ORT_ENFORCE(IsScalarOr1ElementVector(y_scale), "y_scale must be a scalar or 1D tensor of size 1.");
-  ORT_ENFORCE(IsScalarOr1ElementVector(y_zero_point), "y_zero_point must be a scalar or 1D tensor of size 1.");
+  ORT_ENFORCE(IsScalarOr1ElementVector(&y_scale), "y_scale must be a scalar or 1D tensor of size 1.");
+  ORT_ENFORCE(y_zero_point == nullptr || IsScalarOr1ElementVector(y_zero_point), "y_zero_point must be a scalar or 1D tensor of size 1.");
 
-  const T* zero_point = y_zero_point->template Data<T>();
-  const CudaU* scale = reinterpret_cast<const CudaU*>(y_scale->template Data<U>());
+  const T* zero_point = y_zero_point != nullptr ? y_zero_point->template Data<T>() : nullptr;
+  const CudaU* scale = reinterpret_cast<const CudaU*>(y_scale.template Data<U>());
   const auto num_of_elements = x_shape.Size();
 
   CudaQuantizeLinear(input, output, scale, zero_point, num_of_elements);
@@ -44,26 +41,22 @@ template <class T, class U>
 Status DequantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
   typedef typename ToCudaType<U>::MappedType CudaU;
 
-  auto x = ctx->Input<Tensor>(0);
-  auto y_scale = ctx->Input<Tensor>(1);
-  auto y_zero_point = ctx->Input<Tensor>(2);
-  ORT_ENFORCE(x != nullptr &&
-              y_scale != nullptr &&
-              y_zero_point != nullptr);
+  auto& x = *ctx->Input<Tensor>(0);
+  auto& y_scale = *ctx->Input<Tensor>(1);
+  auto* y_zero_point = ctx->Input<Tensor>(2);
 
-  const auto& x_shape = x->Shape();
+  const auto& x_shape = x.Shape();
 
-  auto y = ctx->Output(0, x_shape);
-  ORT_ENFORCE(y != nullptr);
+  auto& y = *ctx->Output(0, x_shape);
 
-  const T* input = x->template Data<T>();
-  CudaU* output = reinterpret_cast<CudaU*>(y->template MutableData<U>());
+  const T* input = x.template Data<T>();
+  CudaU* output = reinterpret_cast<CudaU*>(y.template MutableData<U>());
 
-  ORT_ENFORCE(IsScalarOr1ElementVector(y_scale), "y_scale must be a scalar or 1D tensor of size 1.");
-  ORT_ENFORCE(IsScalarOr1ElementVector(y_zero_point), "y_zero_point must be a scalar or 1D tensor of size 1.");
+  ORT_ENFORCE(IsScalarOr1ElementVector(&y_scale), "y_scale must be a scalar or 1D tensor of size 1.");
+  ORT_ENFORCE(y_zero_point == nullptr || IsScalarOr1ElementVector(y_zero_point), "y_zero_point must be a scalar or 1D tensor of size 1.");
 
-  const T* zero_point = y_zero_point->template Data<T>();
-  const CudaU* scale = reinterpret_cast<const CudaU*>(y_scale->template Data<U>());
+  const T* zero_point = y_zero_point != nullptr ? y_zero_point->template Data<T>() : nullptr;
+  const CudaU* scale = reinterpret_cast<const CudaU*>(y_scale.template Data<U>());
   const auto num_of_elements = x_shape.Size();
 
   CudaDequantizeLinear(input, output, scale, zero_point, num_of_elements);

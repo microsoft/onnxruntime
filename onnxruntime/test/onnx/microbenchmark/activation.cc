@@ -1,3 +1,5 @@
+#include "common.h"
+
 #include "core/session/ort_env.h"
 #include "core/graph/model.h"
 #include "core/graph/graph.h"
@@ -16,17 +18,6 @@
 using namespace onnxruntime;
 using namespace onnx;
 extern OrtEnv* env;
-
-static float* GenerateFloatArray(size_t batch_size, float low, float high) {
-  std::random_device rd;
-  std::mt19937 gen(rd());
-  std::uniform_real_distribution<float> dist(low, high);
-  float* data = (float*)_aligned_malloc(sizeof(float) * batch_size, 64);
-  for (size_t i = 0; i != batch_size; ++i) {
-    data[i] = dist(gen);
-  }
-  return data;
-}
 
 class Allocs : public IExecutionProvider {
  private:
@@ -91,9 +82,9 @@ class MyIExecutionFrame : public IExecutionFrame {
                     const std::vector<OrtValue>& feeds, const std::unordered_map<int, OrtValue>& initializers,
                     const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches,
                     const OrtValueNameIdxMap& ort_value_idx_map, const NodeIndexInfo& node_index_info)
-      : IExecutionFrame(feed_mlvalue_idxs, feeds, initializers, fetch_mlvalue_idxs, fetches, ort_value_idx_map,
-                        node_index_info),
+      : IExecutionFrame(ort_value_idx_map, node_index_info, fetch_mlvalue_idxs),
         a_(a) {
+    Init(feed_mlvalue_idxs, feeds, initializers, fetches);
   }
 
   AllocatorPtr GetAllocatorImpl(const OrtMemoryInfo& info) const {
@@ -124,6 +115,10 @@ class MyIExecutionFrame : public IExecutionFrame {
     ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
     return Status::OK();
   }
+
+  Status CopyTensor(const Tensor& /*src*/, Tensor& /*dest*/) const {
+    return Status::OK();
+  }
 };
 
 template <typename KernelType>
@@ -131,8 +126,8 @@ static void RunSingleNode(const std::string& op_name, const std::string& domain,
                           const std::vector<AttributeProto>& attrs, benchmark::State& state, float low = -1.0f,
                           float high = 1.0f) {
   const int64_t batch_size = state.range(0);
-  float* output = (float*)_aligned_malloc(sizeof(float) * static_cast<size_t>(batch_size), 64);
-  float* data = GenerateFloatArray(batch_size, low, high);
+  float* output = (float*)aligned_alloc(sizeof(float) * static_cast<size_t>(batch_size), 64);
+  float* data = GenerateArrayWithRandomValue<float>(batch_size, low, high);
   KernelAndDef k = KernelAndDef::CreateKernel<KernelType>(op_name, domain, attrs, batch_size);
 
   std::vector<int> feed_mlvalue_idxs(1);
@@ -162,8 +157,8 @@ static void RunSingleNode(const std::string& op_name, const std::string& domain,
     if (!st.IsOK())
       state.SkipWithError(st.ErrorMessage().c_str());
   }
-  _aligned_free(data);
-  _aligned_free(output);
+  aligned_free(data);
+  aligned_free(output);
 }
 
 static void BM_GeluCompute(benchmark::State& state) {
@@ -373,9 +368,9 @@ struct Powx {
 static void BM_Powx(benchmark::State& state) {
   const size_t batch_size = static_cast<size_t>(state.range(0));
   const int cost = static_cast<int>(state.range(1));
-  float* output = (float*)_aligned_malloc(sizeof(float) * batch_size, 64);
-  float* input2 = GenerateFloatArray(batch_size, -1, 1);
-  float* input1 = GenerateFloatArray(batch_size, -1, 1);
+  float* output = (float*)aligned_alloc(sizeof(float) * batch_size, 64);
+  float* input2 = GenerateArrayWithRandomValue<float>(batch_size, -1, 1);
+  float* input1 = GenerateArrayWithRandomValue<float>(batch_size, -1, 1);
   OrtThreadPoolParams tpo;
   tpo.auto_set_affinity = true;
   std::unique_ptr<concurrency::ThreadPool> tp(
@@ -387,9 +382,9 @@ static void BM_Powx(benchmark::State& state) {
   for (auto _ : state) {
     tp->ParallelFor(batch_size, TensorOpCost{2, 1, static_cast<double>(cost)}, f);
   }
-  _aligned_free(input1);
-  _aligned_free(input2);
-  _aligned_free(output);
+  aligned_free(input1);
+  aligned_free(input2);
+  aligned_free(output);
 }
 
 BENCHMARK(BM_Powx)

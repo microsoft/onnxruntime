@@ -4,6 +4,7 @@
 #include "cxxopts.hpp"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
+#include "core/framework/bfc_arena.h"
 #include "core/platform/env.h"
 #include "core/session/environment.h"
 #include "orttraining/core/session/training_session.h"
@@ -19,11 +20,14 @@
 
 namespace onnxruntime {
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id,
+                                                                               OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE,
                                                                                size_t cuda_mem_limit = std::numeric_limits<size_t>::max(),
-                                                                               onnxruntime::ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo);
+                                                                               onnxruntime::ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo,
+                                                                               bool do_copy_in_default_stream = true);
 }
 
 using namespace onnxruntime;
+using namespace onnxruntime::common;
 using namespace onnxruntime::training;
 using namespace onnxruntime::training::tensorboard;
 using namespace std;
@@ -68,6 +72,9 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
     }
     params.evaluation_period = flags["evaluation_period"].as<size_t>();
 
+    params.shuffle_data = false;
+    params.is_perf_test = false;
+
     auto train_data_dir = flags["train_data_dir"].as<std::string>();
     auto log_dir = flags["log_dir"].as<std::string>();
     params.train_data_dir.assign(train_data_dir.begin(), train_data_dir.end());
@@ -77,7 +84,9 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
 #ifdef USE_CUDA
     bool use_cuda = flags.count("use_cuda") > 0;
     if (use_cuda) {
-      params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(0));
+      // Use local rank as device ID of the associated CUDA EP.
+      OrtDevice::DeviceId device_id = static_cast<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
+      params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(device_id));
     }
 #endif
   } catch (const exception& e) {
@@ -143,7 +152,7 @@ void setup_training_params(TrainingRunner::Parameters& params) {
   };
 
   std::shared_ptr<EventWriter> tensorboard;
-  if (!params.log_dir.empty() && params.mpi_context.world_rank == 0)
+  if (!params.log_dir.empty() && MPIContext::GetInstance().GetWorldRank() == 0)
     tensorboard = std::make_shared<EventWriter>(params.log_dir);
 
   params.post_evaluation_callback = [tensorboard](size_t num_samples, size_t step, const std::string /**/) {
@@ -183,12 +192,12 @@ int main(int argc, char* args[]) {
   setup_training_params(params);
 
   // setup data
-  auto device_count = params.mpi_context.world_size;
+  auto device_count = MPIContext::GetInstance().GetWorldSize();
   std::vector<string> feeds{"X", "labels"};
   auto trainingData = std::make_shared<DataSet>(feeds);
   auto testData = std::make_shared<DataSet>(feeds);
   std::string mnist_data_path = ToMBString(params.train_data_dir);
-  PrepareMNISTData(mnist_data_path, IMAGE_DIMS, LABEL_DIMS, *trainingData, *testData, params.mpi_context.world_rank /* shard_to_load */, device_count /* total_shards */);
+  PrepareMNISTData(mnist_data_path, IMAGE_DIMS, LABEL_DIMS, *trainingData, *testData, MPIContext::GetInstance().GetWorldRank() /* shard_to_load */, device_count /* total_shards */);
 
   if (testData->NumSamples() == 0) {
     printf("Warning: No data loaded - run cancelled.\n");

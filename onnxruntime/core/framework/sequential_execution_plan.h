@@ -19,7 +19,6 @@ using OrtValueName = std::string;
 
 class SessionState;
 
-// AllocPlanPerValue: (a simplified form of AllocationPlanPerValue above)
 // Captures information required to allocate/reuse buffer for a ml-value
 struct AllocPlanPerValue {
   AllocKind alloc_kind{AllocKind::kAllocate};

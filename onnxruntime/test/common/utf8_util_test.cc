@@ -3,7 +3,6 @@
 
 #include "core/common/utf8_util.h"
 #include "gtest/gtest.h"
-#include "test/providers/provider_test_utils.h"
 
 namespace onnxruntime {
 namespace test {

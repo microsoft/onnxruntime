@@ -111,8 +111,10 @@ OptimizerBuilderRegistry& GetOptimizerBuilderRegistry() {
   return OptimizerBuilderRegistry::GetInstance();
 }
 
-int GetOpCount(const std::map<std::string, int>& op_counts, const std::string& op_type) {
-  auto op_count_it = op_counts.find(op_type);
+static int GetOpCount(const std::map<std::string, int>& op_counts, const std::string& op_type) {
+  static std::string ms_domain_prefix{std::string(kMSDomain) + '.'};
+
+  auto op_count_it = op_counts.find(ms_domain_prefix + op_type);
   return op_count_it != op_counts.end() ? op_count_it->second : 0;
 }
 
@@ -182,7 +184,7 @@ TEST_F(OptimizerGraphBuilderTest, Default_WithGradientAccumulation_WithMixedPrec
   TestDefaultOptimizerGraphBuilder(config, graph_);
 }
 
-#if defined(USE_HOROVOD) || defined(USE_NCCL)
+#if defined(USE_NCCL) || defined(USE_HOROVOD)
 static void TestAllreduceOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& graph) {
   AllreduceOptimizerGraphBuilder optimizer_graph_builder(
       GetOptimizerBuilderRegistry(), config, GetOptInfoMap());
@@ -412,7 +414,7 @@ TEST_F(OptimizerGraphBuilderTest, ZeRO_NoGradientAccumulation_NoMixedPrecision) 
   OptimizerGraphConfig config;
   config.data_parallel_group_size = 4;
   config.use_nccl = true;
-  config.partition_optimizer = true;
+  config.deepspeed_zero = ZeROConfig{0};
   config.gradient_accumulation_steps = 1;
   config.use_mixed_precision = false;
   TestZeROOptimizerGraphBuilder(config, graph_);
@@ -422,7 +424,7 @@ TEST_F(OptimizerGraphBuilderTest, ZeRO_WithGradientAccumulation_NoMixedPrecision
   OptimizerGraphConfig config;
   config.data_parallel_group_size = 4;
   config.use_nccl = true;
-  config.partition_optimizer = true;
+  config.deepspeed_zero = ZeROConfig{0};
   config.gradient_accumulation_steps = 10;
   config.use_mixed_precision = false;
   TestZeROOptimizerGraphBuilder(config, graph_);
@@ -432,7 +434,7 @@ TEST_F(OptimizerGraphBuilderTest, ZeRO_NoGradientAccumulation_WithMixedPrecision
   OptimizerGraphConfig config;
   config.data_parallel_group_size = 4;
   config.use_nccl = true;
-  config.partition_optimizer = true;
+  config.deepspeed_zero = ZeROConfig{0};
   config.gradient_accumulation_steps = 1;
   config.use_mixed_precision = true;
   config.loss_scale_input_name = k_loss_scaling_factor_name;
@@ -443,7 +445,7 @@ TEST_F(OptimizerGraphBuilderTest, ZeRO_WithGradientAccumulation_WithMixedPrecisi
   OptimizerGraphConfig config;
   config.data_parallel_group_size = 4;
   config.use_nccl = true;
-  config.partition_optimizer = true;
+  config.deepspeed_zero = ZeROConfig{0};
   config.gradient_accumulation_steps = 10;
   config.use_mixed_precision = true;
   config.loss_scale_input_name = k_loss_scaling_factor_name;

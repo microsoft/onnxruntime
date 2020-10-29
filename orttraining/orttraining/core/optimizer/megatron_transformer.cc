@@ -28,24 +28,25 @@ struct OpInfo {
   size_t output_count;
 };
 
-const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> opset_v1 = {1};
-const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> opset_v1_11 = {1, 11};
-const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> opset_v2_11 = {2, 11};
-const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> opset_v5 = {5};
-const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> opset_v7 = {7};
+const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> opset_v1_13 = {1, 13};
+const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> opset_v1_11_13 = {1, 11, 13};
+const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> opset_v2_11_13 = {2, 11, 13};
+const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> opset_v5_13 = {5, 13};
+const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> opset_v7_13 = {7, 13};
 const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> opset_v9 = {9};
-const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> opset_v12 = {12};
-const OpInfo add_info = OpInfo("Add", opset_v7);
-const OpInfo split_info = OpInfo("Split", opset_v2_11, kOnnxDomainAlias, 3);
-const OpInfo reshape_info = OpInfo("Reshape", opset_v5);
-const OpInfo transpose_info = OpInfo("Transpose", opset_v1);
-const OpInfo matmul_info = OpInfo("MatMul", opset_v9);
-const OpInfo div_info = OpInfo("Div", opset_v7);
-const OpInfo mul_info = OpInfo("Mul", opset_v7);
-const OpInfo sub_info = OpInfo("Sub", opset_v7);
-const OpInfo softmax_info = OpInfo("Softmax", opset_v1_11);
+const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> opset_v9_13 = {9, 13};
+const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> opset_v12_13 = {12, 13};
+const OpInfo add_info = OpInfo("Add", opset_v7_13);
+const OpInfo split_info = OpInfo("Split", opset_v2_11_13, kOnnxDomainAlias, 3);
+const OpInfo reshape_info = OpInfo("Reshape", opset_v5_13);
+const OpInfo transpose_info = OpInfo("Transpose", opset_v1_13);
+const OpInfo matmul_info = OpInfo("MatMul", opset_v9_13);
+const OpInfo div_info = OpInfo("Div", opset_v7_13);
+const OpInfo mul_info = OpInfo("Mul", opset_v7_13);
+const OpInfo sub_info = OpInfo("Sub", opset_v7_13);
+const OpInfo softmax_info = OpInfo("Softmax", opset_v1_11_13);
 const OpInfo trainable_dropout_info = OpInfo("TrainableDropout", opset_v9, kOnnxDomain);
-const OpInfo dropout_info = OpInfo("Dropout", opset_v12);
+const OpInfo dropout_info = OpInfo("Dropout", opset_v12_13);
 
 struct NodeInfo {
   NodeInfo(const std::vector<OpInfo>& op_infos,
@@ -243,7 +244,7 @@ Status MegatronTransformer::TransformMLP(Graph& graph, bool& modified, int graph
     auto& node = *graph.GetNode(node_index);
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", {9}) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", {9, 13}) ||
         !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) ||
         node.GetOutputEdgesCount() != 1) {
       continue;
@@ -257,7 +258,7 @@ Status MegatronTransformer::TransformMLP(Graph& graph, bool& modified, int graph
     }
 
     Node& add_node = *graph.GetNode(node.OutputNodesBegin()->Index());
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(add_node, "Add", {7}) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(add_node, "Add", {7, 13}) ||
         add_node.GetExecutionProviderType() != node.GetExecutionProviderType() ||
         add_node.GetOutputEdgesCount() != 1) {
       continue;
@@ -272,14 +273,14 @@ Status MegatronTransformer::TransformMLP(Graph& graph, bool& modified, int graph
     }
 
     Node& matmul2_node = *graph.GetNode(gelu_node.OutputNodesBegin()->Index());
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(matmul2_node, "MatMul", {9}) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(matmul2_node, "MatMul", {9, 13}) ||
         matmul2_node.GetExecutionProviderType() != node.GetExecutionProviderType() ||
         matmul2_node.GetOutputEdgesCount() != 1) {
       continue;
     }
 
     Node& add2_node = *graph.GetNode(matmul2_node.OutputNodesBegin()->Index());
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(add2_node, "Add", {7}) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(add2_node, "Add", {7, 13}) ||
         add2_node.GetExecutionProviderType() != node.GetExecutionProviderType() ||
         add2_node.GetOutputEdgesCount() != 1) {
       continue;
@@ -368,7 +369,7 @@ Status MegatronTransformer::TransformSelfAttention(Graph& graph, bool& modified,
     auto& node = *graph.GetNode(node_index);
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", opset_v9) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", opset_v9_13) ||
         !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) ||
         node.GetOutputEdgesCount() != 1) {
       continue;
@@ -603,7 +604,7 @@ Status MegatronTransformer::TransformDropout(Graph& graph, bool& modified, int g
       continue;
     }
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Dropout", opset_v12) &&
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Dropout", opset_v12_13) &&
         !graph_utils::IsSupportedOptypeVersionAndDomain(node, "TrainableDropout", opset_v9, kOnnxDomain)) {
       continue;
     }

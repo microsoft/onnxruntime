@@ -3,6 +3,7 @@
 
 #include "core/platform/threadpool.h"
 #include "core/platform/EigenNonBlockingThreadPool.h"
+#include "core/platform/ort_mutex.h"
 
 #include <core/common/make_unique.h>
 
@@ -10,7 +11,6 @@
 #include <algorithm>
 #include <memory>
 #include <functional>
-#include <mutex>
 
 #ifdef _WIN32
 #include <Windows.h>
@@ -24,7 +24,7 @@ struct TestData {
   explicit TestData(int num) : data(num, 0) {
   }
   std::vector<int> data;
-  std::mutex mutex;
+  onnxruntime::OrtMutex mutex;
 };
 
 // This unittest tests ThreadPool function by counting the number of calls to function with each index.
@@ -35,7 +35,7 @@ std::unique_ptr<TestData> CreateTestData(int num) {
 }
 
 void IncrementElement(TestData& test_data, ptrdiff_t i) {
-  std::lock_guard<std::mutex> lock(test_data.mutex);
+  std::lock_guard<onnxruntime::OrtMutex> lock(test_data.mutex);
   test_data.data[i]++;
 }
 
@@ -52,7 +52,7 @@ void CreateThreadPoolAndTest(const std::string&, int num_threads, const std::fun
 void TestParallelFor(const std::string& name, int num_threads, int num_tasks) {
   auto test_data = CreateTestData(num_tasks);
   CreateThreadPoolAndTest(name, num_threads, [&](ThreadPool* tp) {
-    tp->SimpleParallelFor(num_tasks, [&](std::ptrdiff_t i) { IncrementElement(*test_data, i); });
+      ThreadPool::TrySimpleParallelFor(tp, num_tasks, [&](std::ptrdiff_t i) { IncrementElement(*test_data, i); });
   });
   ValidateTestData(*test_data);
 }
@@ -65,6 +65,100 @@ void TestBatchParallelFor(const std::string& name, int num_threads, int num_task
         tp, num_tasks, [&](ptrdiff_t i) { IncrementElement(*test_data, i); }, batch_size);
   });
   ValidateTestData(*test_data);
+}
+
+void TestMultipleParallelFor(const std::string& name, int num_threads, int num_concurrent, int num_tasks) {
+  // Test running multiple concurrent loops over the same thread pool.  This aims to provoke a
+  // more diverse mix of interleavings than with a single loop running at a time.
+  for (int rep = 0; rep < 5; rep++) {
+    CreateThreadPoolAndTest(name, num_threads, [&](ThreadPool* tp) {
+      std::vector<std::unique_ptr<TestData>> td;
+      onnxruntime::Barrier b(num_concurrent - 1);
+
+      // Each concurrent tests runs with its own set of counters
+      for (int c = 0; c < num_concurrent; c++) {
+        td.push_back(CreateTestData(num_tasks));
+      }
+
+      // For a range of scenarios, run some tests via the thread pool, and one directly
+      for (int c = 0; c < num_concurrent - 1; c++) {
+        ThreadPool::Schedule(tp, [&, c]() {
+            ThreadPool::TrySimpleParallelFor(tp, num_tasks, [&](std::ptrdiff_t i) {
+                IncrementElement(*td[c], i);
+              });
+            b.Notify();
+          });
+      }
+
+      ThreadPool::TrySimpleParallelFor(tp, num_tasks, [&](std::ptrdiff_t i) {
+        IncrementElement(*td[num_concurrent - 1], i);
+      });
+
+      // Validate all outputs
+      b.Wait();
+      for (int c = 0; c < num_concurrent; c++) {
+        ValidateTestData(*td[c]);
+      }
+      td.clear();
+    });
+  }
+}
+
+void TestBurstScheduling(const std::string& name, int num_tasks) {
+  // Test submitting a burst of functions for executing.  The aim is to provoke cases such
+  // as the thread pool's work queues being full.
+  for (int rep = 0; rep < 5; rep++) {
+    std::atomic<int> ctr{0};
+    // Schedule a burst of num_tasks back-to-back, and then cleanly shut down the thread
+    // pool.  The synchronization barrier during shut down should ensure that all of the
+    // tasks are complete.  Note that if the thread pool's work queues are full, then a
+    // call to tp->Schedule() may run its argument synchronously.  In any case, we expect
+    // ctr==num_tasks.
+    CreateThreadPoolAndTest(name, 2, [&](ThreadPool* tp) {
+      // First variant : schedule from outside the pool
+      for (int tasks = 0; tasks < num_tasks; tasks++) {
+        ThreadPool::Schedule(tp, [&]() {
+          ctr++;
+        });
+      }
+    });
+    ASSERT_TRUE(ctr == num_tasks);
+    CreateThreadPoolAndTest(name, 2, [&](ThreadPool* tp) {
+      // Second variant : schedule from inside the pool
+      ThreadPool::Schedule(tp, [&, tp]() {
+        for (int tasks = 0; tasks < num_tasks; tasks++) {
+          ThreadPool::Schedule(tp, [&]() {
+            ctr++;
+          });
+        }
+      });
+    });
+    ASSERT_TRUE(ctr == num_tasks*2);
+  }
+}
+
+void TestPoolCreation(const std::string&, int iter) {
+  // Test creating and destroying thread pools.  This can be used with Valgrind to help
+  // check for memory leaks related to the initialization and clean-up code.  For instance
+  //
+  //  valgrind --leak-check=full ./onnxruntime_test_all --gtest_filter=ThreadPoolTest.TestPoolCreation_10Iter
+  //
+  // We create #iter thread pools, and within each of them run a loop of #per_iter steps.
+  std::atomic<std::ptrdiff_t> ctr{0};
+  constexpr std::ptrdiff_t per_iter = 1024;
+  constexpr int num_threads = 4;
+  for (auto i = 0; i < iter; i++) {
+    auto tp = onnxruntime::make_unique<ThreadPool>(&onnxruntime::Env::Default(),
+                                                   onnxruntime::ThreadOptions(),
+                                                   nullptr,
+                                                   num_threads,
+                                                   true);
+    ThreadPool::TryParallelFor(tp.get(), per_iter, 0.0,
+                    [&](std::ptrdiff_t s, std::ptrdiff_t e) {
+                      ctr += e - s;
+                    });
+  }
+  ASSERT_EQ(ctr, iter * per_iter);
 }
 
 }  // namespace
@@ -102,6 +196,100 @@ TEST(ThreadPoolTest, TestBatchParallelFor_2_Thread_81_Task_20_Batch) {
   TestBatchParallelFor("TestBatchParallelFor_2_Thread_81_Task_20_Batch", 2, 81, 20);
 }
 
+TEST(ThreadPoolTest, TestMultipleParallelFor_1Thread_1Conc_0Tasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_1Thread_1Conc_0Tasks", 1, 1, 0);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_1Thread_1Conc_1Tasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_1Thread_1Conc_1Tasks", 1, 1, 1);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_1Thread_1Conc_8Tasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_1Thread_1Conc_8Tasks", 1, 1, 8);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_1Thread_1Conc_1MTasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_1Thread_1Conc_1MTasks", 1, 1, 1000000);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_1Thread_4Conc_0Tasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_1Thread_4Conc_0Tasks", 1, 4, 0);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_1Thread_4Conc_1Tasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_1Thread_4Conc_1Tasks", 1, 4, 1);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_1Thread_4Conc_8Tasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_1Thread_4Conc_8Tasks", 1, 4, 8);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_1Thread_4Conc_1MTasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_1Thread_4Conc_1MTasks", 1, 4, 1000000);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_4Thread_1Conc_0Tasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_4Thread_4Conc_0Tasks", 4, 1, 0);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_4Thread_1Conc_1Tasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_4Thread_4Conc_1Tasks", 4, 1, 1);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_4Thread_1Conc_8Tasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_4Thread_4Conc_8Tasks", 4, 1, 8);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_4Thread_1Conc_1MTasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_4Thread_4Conc_1MTasks", 4, 1, 1000000);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_4Thread_4Conc_0Tasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_4Thread_4Conc_0Tasks", 4, 4, 0);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_4Thread_4Conc_1Tasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_4Thread_4Conc_1Tasks", 4, 4, 1);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_4Thread_4Conc_8Tasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_4Thread_4Conc_8Tasks", 4, 4, 8);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_4Thread_4Conc_1MTasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_4Thread_4Conc_1MTasks", 4, 4, 1000000);
+}
+
+TEST(ThreadPoolTest, TestBurstScheduling_0Tasks) {
+  TestBurstScheduling("TestBurstScheduling_0Tasks", 0);
+}
+
+TEST(ThreadPoolTest, TestBurstScheduling_1Task) {
+  TestBurstScheduling("TestBurstScheduling_1Task", 1);
+}
+
+TEST(ThreadPoolTest, TestBurstScheduling_16Tasks) {
+  TestBurstScheduling("TestBurstScheduling_16Tasks", 16);
+}
+
+TEST(ThreadPoolTest, TestBurstScheduling_65536Task) {
+  // Attempt to exhaust the size of the queues used in the thread pool to
+  // buffer tasks.
+  TestBurstScheduling("TestBurstScheduling_65536Tasks", 65536);
+}
+
+TEST(ThreadPoolTest, TestPoolCreation_1Iter) {
+  TestPoolCreation("TestPoolCreation_1Iter", 1);
+}
+
+TEST(ThreadPoolTest, TestPoolCreation_10Iter) {
+  TestPoolCreation("TestPoolCreation_10Iter", 10);
+}
+
+TEST(ThreadPoolTest, TestPoolCreation_100Iter) {
+  TestPoolCreation("TestPoolCreation_100Iter", 100);
+}
+
 #ifdef _WIN32
 TEST(ThreadPoolTest, TestStackSize) {
   ThreadOptions to;
@@ -114,7 +302,7 @@ TEST(ThreadPoolTest, TestStackSize) {
   Notification n;
   ULONG_PTR low_limit, high_limit;
   bool has_thread_limit_info = false;
-  tp->Schedule([&]() {
+  ThreadPool::Schedule(tp.get(), [&]() {
     HMODULE kernel32_module = GetModuleHandle(TEXT("kernel32.dll"));
     assert(kernel32_module != nullptr);
     FnGetCurrentThreadStackLimits GetTS =

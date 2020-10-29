@@ -1,0 +1,60 @@
+# sets up common build tools for the windows build machines before build
+
+parameters:
+  buildConfig: 'RelWithDebInfo'
+  artifactName: 'onnxruntime-java-win-x64'
+  version: ''
+  comitId: ''
+steps:
+    - task: CmdLine@2
+      inputs:
+        script: |
+          @echo on
+          set NATIVE_FOLDER=$(Build.BinariesDirectory)\${{parameters.artifactName}}\stage\ai\onnxruntime\native\win-x64
+          mkdir %NATIVE_FOLDER%
+          echo "Directories created"
+          copy .\java\build\libs\*.jar $(Build.BinariesDirectory)\${{parameters.artifactName}}
+          pushd $(Build.BinariesDirectory)\${{parameters.artifactName}}
+          if ${{parameters.artifactName}} == onnxruntime-java-win-x64 (
+          set artifact_id=onnxruntime
+          ) else (
+          set artifact_id=onnxruntime_gpu
+          )
+          jar xf onnxruntime-${{parameters.version}}.jar META-INF\maven\com.microsoft.onnxruntime\%artifact_id%\pom.xml
+          move META-INF\maven\com.microsoft.onnxruntime\%artifact_id%\pom.xml onnxruntime-${{parameters.version}}.pom
+          rd /s /q META-INF
+          popd
+          copy .\${{parameters.buildConfig}}\onnxruntime.pdb %NATIVE_FOLDER%
+          copy .\${{parameters.buildConfig}}\onnxruntime4j_jni.pdb %NATIVE_FOLDER%
+          copy $(Build.SourcesDirectory)\docs\Privacy.md $(Build.BinariesDirectory)\${{parameters.artifactName}}\stage\Privacy.md
+          copy $(Build.SourcesDirectory)\ThirdPartyNotices.txt $(Build.BinariesDirectory)\${{parameters.artifactName}}\stage\ThirdPartyNotices.txt
+          @echo ${{parameters.commitId}} > $(Build.BinariesDirectory)\${{parameters.artifactName}}\stage\GIT_COMMIT_ID
+          pushd $(Build.BinariesDirectory)\${{parameters.artifactName}}\stage
+          jar uf $(Build.BinariesDirectory)\${{parameters.artifactName}}\onnxruntime-${{parameters.version}}.jar ai\onnxruntime\native\win-x64\onnxruntime.pdb
+          jar uf $(Build.BinariesDirectory)\${{parameters.artifactName}}\onnxruntime-${{parameters.version}}.jar ai\onnxruntime\native\win-x64\onnxruntime4j_jni.pdb
+          jar uf $(Build.BinariesDirectory)\${{parameters.artifactName}}\onnxruntime-${{parameters.version}}.jar Privacy.md ThirdPartyNotices.txt GIT_COMMIT_ID
+          popd
+          pushd $(Build.SourcesDirectory)\java\build\classes\java\test
+          jar cvf $(Build.BinariesDirectory)\${{parameters.artifactName}}\testing.jar .
+          popd
+          pushd $(Build.SourcesDirectory)\java\build\resources\test
+          rd /s /q ai\onnxruntime\native
+          jar uvf $(Build.BinariesDirectory)\${{parameters.artifactName}}\testing.jar .
+          popd
+          rd /s /q $(Build.BinariesDirectory)\${{parameters.artifactName}}\stage
+          dir /s /b $(Build.BinariesDirectory)\${{parameters.artifactName}}
+        workingDirectory: '$(Build.BinariesDirectory)\${{parameters.buildConfig}}'
+        displayName: 'Add symbols and notices'
+
+    - task: ArchiveFiles@2
+      inputs:
+        rootFolderOrFile: '$(Build.BinariesDirectory)\${{parameters.artifactName}}'
+        includeRootFolder: true
+        archiveType: 'zip' # Options: zip, 7z, tar, wim
+        archiveFile: '$(Build.ArtifactStagingDirectory)\${{parameters.artifactName}}.zip'
+        replaceExistingArchive: true 
+      
+    - task: PublishBuildArtifacts@1
+      inputs:
+        pathtoPublish: '$(Build.ArtifactStagingDirectory)\${{parameters.artifactName}}.zip' 
+        artifactName: 'drop-${{parameters.artifactName}}'

@@ -41,7 +41,7 @@ struct IndexedSubGraph {
 
   /** Set the meta definition needed to represent this subgraph as a FunctionProto
   It's needed IF AND ONLY IF there are multiple indexes contained in #nodes. */
-  void SetMetaDef(std::unique_ptr<MetaDef>& meta_def_) {
+  void SetMetaDef(std::unique_ptr<MetaDef>&& meta_def_) {
     meta_def = std::move(meta_def_);
   }
 

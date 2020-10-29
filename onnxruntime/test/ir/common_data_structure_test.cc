@@ -18,7 +18,7 @@ TEST(RecordTest, CommonDataStructureTest) {
   std::tuple<std::string, float> values("streamLength", 2.0f);
   Record<std::string, float> record(names, values);
 
-  const std::string* name;
+  const std::string* name = nullptr;
   auto status = record.GetName(2, &name);
   EXPECT_FALSE(status.IsOK());
 

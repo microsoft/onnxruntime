@@ -21,11 +21,13 @@ IExecutionProvider* TestCudaExecutionProvider() {
 #endif
 
 #ifdef USE_TENSORRT
+#if 0
 IExecutionProvider* TestTensorrtExecutionProvider() {
   static TensorrtExecutionProviderInfo info;
   static TensorrtExecutionProvider trt_provider(info);
   return &trt_provider;
 }
+#endif
 #endif
 
 #ifdef USE_OPENVINO
@@ -50,12 +52,13 @@ IExecutionProvider* TestRknpuExecutionProvider() {
 }
 #endif
 
-static void CountOpsInGraphImpl(
-    const Graph& graph, bool recurse_into_subgraphs, std::map<std::string, int>& ops) {
+static void CountOpsInGraphImpl(const Graph& graph, bool recurse_into_subgraphs, std::map<std::string, int>& ops) {
   for (auto& node : graph.Nodes()) {
-    auto pos = ops.find(node.OpType());
+    std::string key = node.Domain() + (node.Domain().empty() ? "" : ".") + node.OpType();
+
+    auto pos = ops.find(key);
     if (pos == ops.end()) {
-      ops[node.OpType()] = 1;
+      ops[key] = 1;
     } else {
       ++pos->second;
     }

@@ -135,7 +135,7 @@ class Scan8Impl {
 };
 
 template <>
-Scan<8>::Scan(const OpKernelInfo& info) : OpKernel(info) {
+Scan<8>::Scan(const OpKernelInfo& info) : IControlFlowKernel(info) {
   // make sure the attribute was present even though we don't need it here.
   // The GraphProto is loaded as a Graph instance by main Graph::Resolve,
   // and a SessionState instance for executing the subgraph is created by InferenceSession.
@@ -166,7 +166,7 @@ Status Scan<8>::SetupSubgraphExecutionInfo(const SessionState& session_state,
   ORT_UNUSED_PARAMETER(attribute_name);
 
   const auto& node = Node();
-  info_ = onnxruntime::make_unique<Scan<8>::Info>(node, *subgraph_session_state.GetGraphViewer(),
+  info_ = onnxruntime::make_unique<Scan<8>::Info>(node, subgraph_session_state.GetGraphViewer(),
                                                   static_cast<int>(num_scan_inputs_));
 
   auto status = scan::detail::CreateFeedsFetchesManager(node, *info_, session_state, subgraph_session_state,

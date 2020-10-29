@@ -174,8 +174,10 @@ static unsigned GetSizeFromTensorDataType(_winml::ImageTensorDataType type) {
   FAIL_FAST_HR(E_INVALIDARG);
 }
 
-static _winml::ImageTensorDescription CreateImageTensorDescriptor(winml::TensorKind tensorKind, wgi::BitmapPixelFormat pixelFormat,
-    uint32_t batchSize, uint32_t width, uint32_t height) {
+static _winml::ImageTensorDescription CreateImageTensorDescriptor(winml::TensorKind tensorKind,
+                                                                  wgi::BitmapPixelFormat pixelFormat,
+                                                                  ImageNominalPixelRange pixelRange,
+                                                                  uint32_t batchSize, uint32_t width, uint32_t height) {
   _winml::ImageTensorDescription tensorDescription = {};
   tensorDescription.dataType = GetTensorDataTypeFromTensorKind(tensorKind);
   tensorDescription.sizes[0] = batchSize;
@@ -192,6 +194,17 @@ static _winml::ImageTensorDescription CreateImageTensorDescriptor(winml::TensorK
   } else {
     THROW_HR(E_NOTIMPL);
   }
+
+  if (pixelRange == ImageNominalPixelRange::ImageNominalPixelRange_NominalRange_0_255) {
+    tensorDescription.pixelRange = _winml::ImageNominalPixelRange::kNominalRange_0_255;
+  } else if (pixelRange == ImageNominalPixelRange::ImageNominalPixelRange_Normalized_0_1) {
+    tensorDescription.pixelRange = _winml::ImageNominalPixelRange::kNormalized_0_1;
+  } else if (pixelRange == ImageNominalPixelRange::ImageNominalPixelRange_Normalized_1_1) {
+    tensorDescription.pixelRange = _winml::ImageNominalPixelRange::kNormalized_1_1;
+  } else {
+    THROW_HR(E_NOTIMPL);
+  }
+
   tensorDescription.sizes[2] = height;
   tensorDescription.sizes[3] = width;
 
@@ -375,8 +388,15 @@ std::optional<ImageFeatureValue::ImageResourceMetadata> ImageFeatureValue::GetIn
       THROW_HR(WINML_ERR_SIZE_MISMATCH);
     }
   }
+
+  // Set up ImageNominalPixelRange
+  ImageNominalPixelRange pixelRange = ImageNominalPixelRange::ImageNominalPixelRange_NominalRange_0_255;  //default;
+  if (spImageDescriptor) {
+    pixelRange = spImageDescriptor->GetNominalPixelRange();
+  }
+  
   //NCHW layout
-  auto imageTensorDescriptor = CreateImageTensorDescriptor(tensorKind, pixelFormat.value(), m_batchSize, descriptorWidth, descriptorHeight);
+  auto imageTensorDescriptor = CreateImageTensorDescriptor(tensorKind, pixelFormat.value(), pixelRange, m_batchSize, descriptorWidth, descriptorHeight);
 
   return ImageResourceMetadata{bounds, imageTensorDescriptor};
 }

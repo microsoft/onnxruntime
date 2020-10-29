@@ -9,17 +9,6 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T>
-struct AccumulateType {};
-template <>
-struct AccumulateType<float> { using type = float; };
-template <>
-struct AccumulateType<MLFloat16> { using type = float; };
-template <>
-struct AccumulateType<double> { using type = double; };
-template <typename T>
-using AccType = typename AccumulateType<T>::type;
-
 template <typename T, bool is_log_softmax>
 Status SoftMaxComputeHelper(
     const T* input,
@@ -36,12 +25,14 @@ class Softmax final : public CudaKernel {
  public:
   Softmax(const OpKernelInfo& info) : CudaKernel{info} {
     info.GetAttrOrDefault("axis", &axis_, static_cast<int64_t>(1));
+    log_softmax_ = info.GetKernelDef().OpName() == "LogSoftmax";
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
   int64_t axis_;
+  bool log_softmax_;
 };
 
 }  // namespace cuda

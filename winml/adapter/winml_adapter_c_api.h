@@ -287,6 +287,14 @@ struct WinmlAdapterApi {
 
   // Dml methods (TODO need to figure out how these need to move to session somehow...)
 
+    /**
+    * SessionGetNumberOfIntraOpThreads
+     * This api returns the number of intra operator threads set on the OrtSession.
+    *
+    * WinML uses this to determine that the correct number of threads was set correctly through OrtSessionOptions.
+    */
+  OrtStatus*(ORT_API_CALL* SessionGetNumberOfIntraOpThreads)(_In_ OrtSession* session, _Out_ uint32_t* num_threads)NO_EXCEPTION;
+
   /**
     * DmlExecutionProviderSetDefaultRoundingMode
 	 * This api is used to configure the DML EP to turn on/off rounding.

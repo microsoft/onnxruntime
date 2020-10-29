@@ -2,23 +2,32 @@
 // Licensed under the MIT License.
 
 #include "core/framework/bfc_arena.h"
+#include <type_traits>
 
 namespace onnxruntime {
-BFCArena::BFCArena(std::unique_ptr<IDeviceAllocator> resource_allocator,
+BFCArena::BFCArena(std::unique_ptr<IAllocator> resource_allocator,
                    size_t total_memory,
-                   ArenaExtendStrategy arena_extend_strategy)
-    : device_allocator_(std::move(resource_allocator)),
+                   ArenaExtendStrategy arena_extend_strategy,
+                   int initial_chunk_size_bytes,
+                   int max_dead_bytes_per_chunk)
+    : IArenaAllocator(OrtMemoryInfo(resource_allocator->Info().name,
+                                    OrtAllocatorType::OrtArenaAllocator,
+                                    resource_allocator->Info().device,
+                                    resource_allocator->Info().id,
+                                    resource_allocator->Info().mem_type)),
+      device_allocator_(std::move(resource_allocator)),
       free_chunks_list_(kInvalidChunkHandle),
       next_allocation_id_(1),
-      info_(device_allocator_->Info().name, OrtAllocatorType::OrtArenaAllocator,
-            device_allocator_->Info().device, device_allocator_->Info().id, device_allocator_->Info().mem_type) {
-  LOGS_DEFAULT(INFO) << "Creating BFCArena for " << device_allocator_->Info().name;
+      initial_chunk_size_bytes_(initial_chunk_size_bytes),
+      max_dead_bytes_per_chunk_(max_dead_bytes_per_chunk) {
+  LOGS_DEFAULT(INFO) << "Creating BFCArena for " << device_allocator_->Info().name
+                     << " with following configs: initial_chunk_size_bytes: " << initial_chunk_size_bytes_
+                     << " max_dead_bytes_per_chunk: " << max_dead_bytes_per_chunk_
+                     << " memory limit: " << total_memory
+                     << " arena_extend_strategy " << static_cast<int32_t>(arena_extend_strategy);
+  // static_cast<std::underlying_type_t<ArenaExtendStrategy>>(arena_extend_strategy); doesn't work on this compiler
 
-  // TODO - consider to make the initial chunk size and max 'fragmentation' (kMaxDeadBytesInChunk) values configurable. 
-  // But first we need to add a mechanism to allow that sort of low level configuration to be done 
-  // without adding separate parameters to SessionOptions for every single one of them.
-  curr_region_allocation_bytes_ = RoundedBytes(std::min(total_memory, size_t{1048576}));
-
+  curr_region_allocation_bytes_ = RoundedBytes(std::min(total_memory, static_cast<size_t>(initial_chunk_size_bytes_)));
   // Allocate the requested amount of memory.
   memory_limit_ = total_memory;
   stats_.bytes_limit = static_cast<int64_t>(total_memory);
@@ -62,7 +71,7 @@ BFCArena::Chunk* BFCArena::ChunkFromHandle(ChunkHandle h) {
   return &(chunks_[h]);
 }
 
-bool BFCArena::Extend(size_t rounded_bytes) {
+Status BFCArena::Extend(size_t rounded_bytes) {
   size_t available_bytes = memory_limit_ - static_cast<size_t>(stats_.total_allocated_bytes);
   // Rounds available_bytes down to the nearest multiple of kMinAllocationSize.
   available_bytes = (available_bytes / kMinAllocationSize) * kMinAllocationSize;
@@ -70,24 +79,28 @@ bool BFCArena::Extend(size_t rounded_bytes) {
   // Do we have enough space to handle the client's request?
   // If not, fail immediately.
   if (rounded_bytes > available_bytes) {
-    return false;
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Available memory of ", available_bytes,
+                           " is smaller than requested bytes of ", rounded_bytes);
   }
 
   auto safe_alloc = [this](size_t alloc_bytes) {
     void* new_mem = nullptr;
-    try {
+    ORT_TRY {
       new_mem = device_allocator_->Alloc(alloc_bytes);
-    } catch (const std::bad_alloc&) {
+    }
+    ORT_CATCH(const std::bad_alloc&) {
       // attempted allocation can throw std::bad_alloc. we want to treat this the same as if it returned nullptr
       // so swallow the exception
-    } catch (const OnnxRuntimeException& ort_exception) {
+    }
+    ORT_CATCH(const OnnxRuntimeException& ort_exception) {
       // swallow if exception is our throw from a failed cudaMalloc call.
       // re-throw otherwise.
-      if (std::string(ort_exception.what()).find("cudaMalloc") == std::string::npos) {
-        throw;
-      }
+      ORT_HANDLE_EXCEPTION([&ort_exception]() {
+        if (std::string(ort_exception.what()).find("cudaMalloc") == std::string::npos) {
+          ORT_RETHROW;
+        }
+      });
     }
-
     return new_mem;
   };
 
@@ -137,11 +150,11 @@ bool BFCArena::Extend(size_t rounded_bytes) {
   }
 
   if (mem_addr == nullptr) {
-    ORT_THROW("Failed to allocate memory for requested buffer of size ", rounded_bytes);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "Failed to allocate memory for requested buffer of size ", rounded_bytes);
   }
 
-  LOGS_DEFAULT(INFO) << "Extended allocation by " << bytes
-                     << " bytes.";
+  LOGS_DEFAULT(INFO) << "Extended allocation by " << bytes << " bytes.";
 
   stats_.total_allocated_bytes += bytes;
   LOGS_DEFAULT(INFO) << "Total allocated bytes: "
@@ -170,7 +183,7 @@ bool BFCArena::Extend(size_t rounded_bytes) {
   // Insert the chunk into the right bin.
   InsertFreeChunkIntoBin(h);
 
-  return true;
+  return Status::OK();
 }
 
 BFCArena::ChunkHandle BFCArena::AllocateChunk() {
@@ -260,10 +273,15 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
                      << ". bin_num:" << bin_num << " rounded_bytes:" << rounded_bytes;
 
   // Try to extend
-  if (Extend(rounded_bytes)) {
+  auto status = Extend(rounded_bytes);
+  if (status.IsOK()) {
     ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes);
     if (ptr != nullptr) {
       return ptr;
+    } else {
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "Failed to find a free memory block despite calling Extend. rounded_bytes=",
+                               rounded_bytes);
     }
   }
 
@@ -271,13 +289,12 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
   // couldn't find one.  This means we must have run out of memory,
   // Dump the memory log for analysis.
   if (dump_log_on_failure) {
-    LOGS_DEFAULT(ERROR) << "BFC Arena ran out of memory trying "
-                        << "to allocate " << num_bytes
+    LOGS_DEFAULT(ERROR) << "BFC Arena ran out of memory trying to allocate " << num_bytes
                         << ".  Current allocation summary follows.";
     DumpMemoryLog(rounded_bytes);
   }
 
-  return nullptr;
+  ORT_THROW(status.ErrorMessage());
 }
 
 void BFCArena::GetStats(AllocatorStats* stats) {
@@ -304,11 +321,9 @@ void* BFCArena::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
 
         // If we can break the size of the chunk into two reasonably large
         // pieces, do so.  In any case don't waste more than
-        // kMaxDeadBytesInChunk bytes on padding this alloc.
-        const int64_t kMaxDeadBytesInChunk = 128 << 20;  // 128mb
+        // max_dead_bytes_per_chunk bytes on padding this alloc.
         if (chunk->size >= rounded_bytes * 2 ||
-            static_cast<int64_t>(chunk->size) - rounded_bytes >=
-                kMaxDeadBytesInChunk) {
+            static_cast<int64_t>(chunk->size) - static_cast<int64_t>(rounded_bytes) >= max_dead_bytes_per_chunk_) {
           SplitChunk(h, rounded_bytes);
           chunk = ChunkFromHandle(h);  // Update chunk pointer in case it moved
         }

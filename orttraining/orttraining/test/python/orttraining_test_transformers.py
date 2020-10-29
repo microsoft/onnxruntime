@@ -6,12 +6,15 @@ import unittest
 import shutil
 import pytest
 import os
-
+import random
+import numpy as np
+from numpy.testing import assert_allclose
 from transformers import (BertConfig, BertForPreTraining, BertModel)
 
 from orttraining_test_data_loader import ids_tensor, BatchArgsOption
 from orttraining_test_utils import run_test, get_lr
 
+import onnxruntime
 from onnxruntime.capi.ort_trainer import ORTTrainer, IODescription, ModelDescription, LossScaler
 
 import torch
@@ -140,7 +143,20 @@ class BertModelTest(unittest.TestCase):
 
             return config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels
 
-        def create_and_check_bert_for_pretraining(self, config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels):
+        def create_and_check_bert_for_pretraining(self, config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels,
+            option_fp16,
+            option_allreduce_post_accumulation,
+            option_gradient_accumulation_steps,
+            option_split_batch,
+            option_use_internal_get_lr_this_step=[True],
+            option_use_internal_loss_scaler=[True]):
+            seed = 42
+            random.seed(seed)
+            np.random.seed(seed)
+            torch.manual_seed(seed)
+            torch.cuda.manual_seed_all(seed)
+            onnxruntime.set_seed(seed)
+
             model = BertForPreTraining(config=config)
             model.eval()
             loss, prediction_scores, seq_relationship_score = model(input_ids, attention_mask=input_mask, token_type_ids=token_type_ids,
@@ -150,23 +166,17 @@ class BertModelTest(unittest.TestCase):
                                           [self.loss_desc, self.prediction_scores_desc, self.seq_relationship_scores_desc])
 
             from collections import namedtuple
-            MyArgs = namedtuple("MyArgs", 
+            MyArgs = namedtuple("MyArgs",
                 "local_rank world_size max_steps learning_rate warmup_proportion batch_size seq_len")
-            args = MyArgs(local_rank=0, world_size=1, max_steps=100, learning_rate=0.00001, warmup_proportion=0.01, batch_size=13, seq_len=7)
+
+            dataset_len = 100
+            epochs = 8
+            max_steps = epochs * dataset_len 
+            args = MyArgs(local_rank=0, world_size=1, max_steps=max_steps, learning_rate=0.00001, warmup_proportion=0.01, batch_size=13, seq_len=7)
 
             def get_lr_this_step(global_step):
                 return get_lr(args, global_step)
             loss_scaler = LossScaler('loss_scale_input_name', True, up_scale_window=2000)
-
-            # It would be better to test both with/without mixed precision and allreduce_post_accumulation.
-            # However, stress test of all the 4 cases is not stable at lease on the test machine.
-            # There we only test mixed precision and allreduce_post_accumulation because it is the most useful use cases.
-            option_fp16 = [True]
-            option_allreduce_post_accumulation = [True]
-            option_gradient_accumulation_steps = [1, 8]
-            option_use_internal_get_lr_this_step = [True, False]
-            option_use_internal_loss_scaler = [True, False]
-            option_split_batch = [BatchArgsOption.ListAndDict]
 
             for fp16 in option_fp16:
                 for allreduce_post_accumulation in option_allreduce_post_accumulation:
@@ -175,24 +185,177 @@ class BertModelTest(unittest.TestCase):
                             for use_internal_loss_scaler in option_use_internal_loss_scaler:
                                 for split_batch in option_split_batch:
                                     print("gradient_accumulation_steps:", gradient_accumulation_steps)
-                                    print("use_internal_loss_scaler:", use_internal_loss_scaler)
-                                    loss_ort, prediction_scores_ort, seq_relationship_score_ort =\
-                                        run_test(model, model_desc, self.device, args, gradient_accumulation_steps, fp16,
+                                    print("split_batch:", split_batch)
+
+                                    seed = 42
+                                    random.seed(seed)
+                                    np.random.seed(seed)
+                                    torch.manual_seed(seed)
+                                    torch.cuda.manual_seed_all(seed)
+                                    onnxruntime.set_seed(seed)
+
+                                    old_api_loss_ort, old_api_prediction_scores_ort, old_api_seq_relationship_score_ort =\
+                                        run_test(
+                                            model, model_desc, self.device, args, gradient_accumulation_steps, fp16,
+                                            allreduce_post_accumulation,
+                                            get_lr_this_step, use_internal_get_lr_this_step,
+                                            loss_scaler, use_internal_loss_scaler,
+                                            split_batch,
+                                            dataset_len,
+                                            epochs,
+                                            use_new_api=False)
+
+                                    random.seed(seed)
+                                    np.random.seed(seed)
+                                    torch.manual_seed(seed)
+                                    torch.cuda.manual_seed_all(seed)
+                                    onnxruntime.set_seed(seed)
+                                    if use_internal_get_lr_this_step and use_internal_loss_scaler:
+                                        new_api_loss_ort, new_api_prediction_scores_ort, new_api_seq_relationship_score_ort =\
+                                            run_test(
+                                                model, model_desc, self.device, args, gradient_accumulation_steps, fp16,
                                                 allreduce_post_accumulation,
                                                 get_lr_this_step, use_internal_get_lr_this_step,
                                                 loss_scaler, use_internal_loss_scaler,
-                                                split_batch)
+                                                split_batch,
+                                                dataset_len,
+                                                epochs,
+                                                use_new_api=True)
+                                    
+                                        assert_allclose(old_api_loss_ort, new_api_loss_ort)
+                                        assert_allclose(old_api_prediction_scores_ort, new_api_prediction_scores_ort)
+                                        assert_allclose(old_api_seq_relationship_score_ort, new_api_seq_relationship_score_ort)
 
-                                    print(loss_ort)
-                                    print(prediction_scores_ort)
-                                    print(seq_relationship_score_ort)
 
     def setUp(self):
         self.model_tester = BertModelTest.BertModelTester(self)
 
-    def test_for_pretraining(self):
+    def test_for_pretraining_mixed_precision(self):
+        # It would be better to test both with/without mixed precision and allreduce_post_accumulation.
+        # However, stress test of all the 4 cases is not stable at least on the test machine.
+        # There we only test mixed precision and allreduce_post_accumulation because it is the most useful use cases.
+        option_fp16 = [True]
+        option_allreduce_post_accumulation = [True]
+        option_gradient_accumulation_steps = [1]
+        option_split_batch = [BatchArgsOption.ListAndDict]
         config_and_inputs = self.model_tester.prepare_config_and_inputs()
-        self.model_tester.create_and_check_bert_for_pretraining(*config_and_inputs)
+        self.model_tester.create_and_check_bert_for_pretraining(
+            *config_and_inputs,
+            option_fp16,
+            option_allreduce_post_accumulation,
+            option_gradient_accumulation_steps,
+            option_split_batch)
+
+    def test_for_pretraining_mixed_precision_with_gradient_accumulation(self):
+        # It would be better to test both with/without mixed precision and allreduce_post_accumulation.
+        # However, stress test of all the 4 cases is not stable at least on the test machine.
+        # There we only test mixed precision and allreduce_post_accumulation because it is the most useful use cases.
+        option_fp16 = [True]
+        option_allreduce_post_accumulation = [True]
+        option_gradient_accumulation_steps = [8]
+        option_split_batch = [BatchArgsOption.ListAndDict]
+        config_and_inputs = self.model_tester.prepare_config_and_inputs()
+        self.model_tester.create_and_check_bert_for_pretraining(
+            *config_and_inputs,
+            option_fp16,
+            option_allreduce_post_accumulation,
+            option_gradient_accumulation_steps,
+            option_split_batch)
+
+    def test_for_pretraining_full_precision_all(self):
+        # This test is not stable because it create and run ORTSession multiple times.
+        # It occasionally gets seg fault at ~MemoryPattern()
+        # when releasing patterns_. In order not to block PR merging CI test,
+        # this test is broke into following individual tests.
+        option_fp16 = [False]
+        option_allreduce_post_accumulation = [True]
+        option_gradient_accumulation_steps = [1, 8]
+        option_split_batch = [BatchArgsOption.List, BatchArgsOption.Dict, BatchArgsOption.ListAndDict]
+        config_and_inputs = self.model_tester.prepare_config_and_inputs()
+        self.model_tester.create_and_check_bert_for_pretraining(
+            *config_and_inputs,
+            option_fp16,
+            option_allreduce_post_accumulation,
+            option_gradient_accumulation_steps,
+            option_split_batch)
+
+    def test_for_pretraining_full_precision_list_input(self):
+        option_fp16 = [False]
+        option_allreduce_post_accumulation = [True]
+        option_gradient_accumulation_steps = [1]
+        option_split_batch = [BatchArgsOption.List]
+        config_and_inputs = self.model_tester.prepare_config_and_inputs()
+        self.model_tester.create_and_check_bert_for_pretraining(
+            *config_and_inputs,
+            option_fp16,
+            option_allreduce_post_accumulation,
+            option_gradient_accumulation_steps,
+            option_split_batch)
+
+    def test_for_pretraining_full_precision_dict_input(self):
+        option_fp16 = [False]
+        option_allreduce_post_accumulation = [True]
+        option_gradient_accumulation_steps = [1]
+        option_split_batch = [BatchArgsOption.Dict]
+        config_and_inputs = self.model_tester.prepare_config_and_inputs()
+        self.model_tester.create_and_check_bert_for_pretraining(
+            *config_and_inputs,
+            option_fp16,
+            option_allreduce_post_accumulation,
+            option_gradient_accumulation_steps,
+            option_split_batch)
+
+    def test_for_pretraining_full_precision_list_and_dict_input(self):
+        option_fp16 = [False]
+        option_allreduce_post_accumulation = [True]
+        option_gradient_accumulation_steps = [1]
+        option_split_batch = [BatchArgsOption.ListAndDict]
+        config_and_inputs = self.model_tester.prepare_config_and_inputs()
+        self.model_tester.create_and_check_bert_for_pretraining(
+            *config_and_inputs,
+            option_fp16,
+            option_allreduce_post_accumulation,
+            option_gradient_accumulation_steps,
+            option_split_batch)
+
+    def test_for_pretraining_full_precision_grad_accumulation_list_input(self):
+        option_fp16 = [False]
+        option_allreduce_post_accumulation = [True]
+        option_gradient_accumulation_steps = [8]
+        option_split_batch = [BatchArgsOption.List]
+        config_and_inputs = self.model_tester.prepare_config_and_inputs()
+        self.model_tester.create_and_check_bert_for_pretraining(
+            *config_and_inputs,
+            option_fp16,
+            option_allreduce_post_accumulation,
+            option_gradient_accumulation_steps,
+            option_split_batch)
+
+    def test_for_pretraining_full_precision_grad_accumulation_dict_input(self):
+        option_fp16 = [False]
+        option_allreduce_post_accumulation = [True]
+        option_gradient_accumulation_steps = [8]
+        option_split_batch = [BatchArgsOption.Dict]
+        config_and_inputs = self.model_tester.prepare_config_and_inputs()
+        self.model_tester.create_and_check_bert_for_pretraining(
+            *config_and_inputs,
+            option_fp16,
+            option_allreduce_post_accumulation,
+            option_gradient_accumulation_steps,
+            option_split_batch)
+
+    def test_for_pretraining_full_precision_grad_accumulation_list_and_dict_input(self):
+        option_fp16 = [False]
+        option_allreduce_post_accumulation = [True]
+        option_gradient_accumulation_steps = [8]
+        option_split_batch = [BatchArgsOption.ListAndDict]
+        config_and_inputs = self.model_tester.prepare_config_and_inputs()
+        self.model_tester.create_and_check_bert_for_pretraining(
+            *config_and_inputs,
+            option_fp16,
+            option_allreduce_post_accumulation,
+            option_gradient_accumulation_steps,
+            option_split_batch)
 
 if __name__ == "__main__":
     unittest.main()

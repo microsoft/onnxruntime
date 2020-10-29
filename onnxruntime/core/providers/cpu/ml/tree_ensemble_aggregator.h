@@ -41,9 +41,9 @@ struct ScoreValue {
 };
 
 enum MissingTrack {
-  NONE,
-  TRUE,
-  FALSE
+  kNone,
+  kTrue,
+  kFalse
 };
 
 template <typename T>

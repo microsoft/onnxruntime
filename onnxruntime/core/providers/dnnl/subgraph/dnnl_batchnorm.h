@@ -90,8 +90,8 @@ class DnnlBatchNorm : public DnnlKernel {
                       const std::string attributes_prefix = "") override {
     auto attr = attributes.find(attributes_prefix + "epsilon");
     if (attr != attributes.end() &&
-        attr->second->type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOAT) {
-      epsilon_ = attr->second->f();
+        attr->second().type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOAT) {
+      epsilon_ = attr->second().f();
     }
   }
 

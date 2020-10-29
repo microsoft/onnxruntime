@@ -61,6 +61,13 @@ class Path {
    * The algorithm should model that of std::filesystem::path::append().
    */
   Path& Append(const Path& other);
+
+  /**
+   * Concatenates the current path and the argument string.
+   * Unlike with Append() or operator/=, additional directory separators are never introduced.
+   */
+  Path& Concat(const PathString& string);
+
   /** Equivalent to this->Append(other). */
   Path& operator/=(const Path& other) {
     return Append(other);

@@ -55,4 +55,10 @@ interface ILearningModelEvaluationResultNative : IUnknown
         [out] IUnknown ** result);
 };
 
+[uuid(e3d31c3d-ddce-4c8e-866b-22ee1a88c775), object, local]
+interface ILearningModelSessionNative : IUnknown
+{
+    HRESULT GetIntraOpNumThreads(UINT32* numThreads);
+};
+
 cpp_quote("#endif /* WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP) */")

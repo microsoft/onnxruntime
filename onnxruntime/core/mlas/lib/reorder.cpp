@@ -213,7 +213,7 @@ Return Value:
 
     for (size_t i = InputChannels; i > 0;) {
 
-        const size_t InputChannelsThisIteration = (std::min)(i, BlockSize);
+        const size_t InputChannelsThisIteration = std::min(i, BlockSize);
         i -= InputChannelsThisIteration;
 
         const float* s = S;
@@ -308,7 +308,7 @@ Return Value:
 
         for (size_t o = OutputChannels; o > 0;) {
 
-            const size_t OutputChannelsThisIteration = (std::min)(o, BlockSize);
+            const size_t OutputChannelsThisIteration = std::min(o, BlockSize);
             const size_t AlignedOutputChannelsThisIteration = OutputChannelsThisIteration & (~3);
             o -= OutputChannelsThisIteration;
 
@@ -415,7 +415,7 @@ Return Value:
 
             for (size_t o = OutputChannels; o > 0;) {
 
-                const size_t OutputChannelsThisIteration = (std::min)(o, BlockSize);
+                const size_t OutputChannelsThisIteration = std::min(o, BlockSize);
                 const size_t AlignedOutputChannelsThisIteration = OutputChannelsThisIteration & (~3);
                 o -= OutputChannelsThisIteration;
 
@@ -523,7 +523,7 @@ Return Value:
 
     for (size_t o = OutputChannels; o > 0;) {
 
-        const size_t OutputChannelsThisIteration = (std::min)(o, BlockSize);
+        const size_t OutputChannelsThisIteration = std::min(o, BlockSize);
         const size_t AlignedOutputChannelsThisIteration = OutputChannelsThisIteration & (~3);
         o -= OutputChannelsThisIteration;
 
@@ -538,7 +538,7 @@ Return Value:
 
         for (size_t i = InputChannels; i > 0;) {
 
-            const size_t InputChannelsThisIteration = (std::min)(i, BlockSize);
+            const size_t InputChannelsThisIteration = std::min(i, BlockSize);
             i -= InputChannelsThisIteration;
 
             //
@@ -671,7 +671,7 @@ Return Value:
 
     for (size_t o = OutputChannels; o > 0;) {
 
-        const size_t OutputChannelsThisIteration = (std::min)(o, BlockSize);
+        const size_t OutputChannelsThisIteration = std::min(o, BlockSize);
         const size_t AlignedOutputChannelsThisIteration = OutputChannelsThisIteration & (~3);
         o -= OutputChannelsThisIteration;
 

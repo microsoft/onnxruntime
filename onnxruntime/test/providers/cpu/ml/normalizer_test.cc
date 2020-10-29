@@ -156,6 +156,7 @@ TEST(Normalizer, TwoDimensionDouble) {
   RunTests(input, dims, max_output, l1_output, l2_output);
 }
 
+#if defined(_M_AMD64) || defined(__x86_64__)
 TEST(Normalizer, TwoDimensionInt) {
   std::vector<int64_t> dims = {3, 2};
   std::vector<int32_t> input = {-242, -42,
@@ -176,6 +177,7 @@ TEST(Normalizer, TwoDimensionInt) {
 
   RunTests(input, dims, max_output, l1_output, l2_output);
 }
+#endif
 
 TEST(Normalizer, InvalidNorm) {
   std::vector<int64_t> dims = {3};

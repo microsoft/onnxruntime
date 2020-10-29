@@ -12,25 +12,21 @@ steps:
         variables = {
           "python.manylinux.dir": "/opt/python/cp35-cp35m",
           "python.manylinux.include.dir": "/opt/python/cp35-cp35m/include/python3.5m",
-          "python.whl.impl.abi.tags": "cp35-cp35m",
         }
       elif version == "3.6":
         variables = {
           "python.manylinux.dir": "/opt/python/cp36-cp36m",
           "python.manylinux.include.dir": "/opt/python/cp36-cp36m/include/python3.6m",
-          "python.whl.impl.abi.tags": "cp36-cp36m",
         }
       elif version == "3.7":
         variables = {
           "python.manylinux.dir": "/opt/python/cp37-cp37m",
           "python.manylinux.include.dir": "/opt/python/cp37-cp37m/include/python3.7m",
-          "python.whl.impl.abi.tags": "cp37-cp37m",
         }
       elif version == "3.8":
         variables = {
           "python.manylinux.dir": "/opt/python/cp38-cp38",
           "python.manylinux.include.dir": "/opt/python/cp38-cp38/include/python3.8",
-          "python.whl.impl.abi.tags": "cp38-cp38",
         }
       else:
         raise ValueError("Unsupported Python version: '{}'".format(version))

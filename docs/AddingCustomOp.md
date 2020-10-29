@@ -2,12 +2,15 @@ Adding a new op
 ===============
 
 ## A new op can be written and registered with ONNXRuntime in the following 3 ways
-### 1. Using the experimental custom op API in the C API (onnxruntime_c_api.h)
-Note: These APIs are experimental and will change in the next release. They're released now for feedback and experimentation.
+### 1. Using the custom op API in the C/C++ APIs (onnxruntime_c_api.h)
 * Create an OrtCustomOpDomain with the domain name used by the custom ops
 * Create an OrtCustomOp structure for each op and add them to the OrtCustomOpDomain with OrtCustomOpDomain_Add
 * Call OrtAddCustomOpDomain to add the custom domain of ops to the session options
 See [this](../onnxruntime/test/shared_lib/test_inference.cc) for an example called MyCustomOp that uses the C++ helper API (onnxruntime_cxx_api.h).
+You can also compile the custom ops into a shared library and use that to run a model via the C++ API. The same test file contains an example.
+The source code for a sample custom op shared library containing two custom kernels is [here](../onnxruntime/test/testdata/custom_op_library/custom_op_library.cc).
+See [this](../onnxruntime/test/python/onnxruntime_test_python.py) for an example called testRegisterCustomOpsLibrary that uses the Python API
+to register a shared library that contains custom op kernels.
 Currently, the only supported Execution Providers (EPs) for custom ops registered via this approach are the `CUDA` and the `CPU` EPs. 
 
 ### 2. Using RegisterCustomRegistry API

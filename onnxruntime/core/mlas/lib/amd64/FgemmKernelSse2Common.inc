@@ -13,7 +13,7 @@
 ;   This module implements the kernels for the floating point matrix/matrix
 ;   multiply operation (SGEMM and DGEMM).
 ;
-;   This implementation uses AVX fused multiply/add instructions.
+;   This implementation uses SSE2 instructions.
 ;
 ;--
 

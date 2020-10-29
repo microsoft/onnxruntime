@@ -28,7 +28,7 @@ Status Crop<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
   ORT_RETURN_IF_ERROR(ValidateInput(X));
 
-  const auto dims = X->Shape().GetDims();
+  const auto& dims = X->Shape().GetDims();
   const int64_t N = dims[0];
   const int64_t C = dims[1];
   const int64_t H = dims[2];

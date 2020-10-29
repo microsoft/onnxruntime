@@ -233,7 +233,7 @@ Status Multinomial::Compute(OpKernelContext* ctx) const {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "num_samples is < 1");
   }
 
-  Tensor* Y = ctx->Output(0, TensorShape({batch_size, num_samples_}));
+  Tensor* Y = ctx->Output(0, {batch_size, num_samples_});
 
   Status status = Status::OK();
   std::lock_guard<onnxruntime::OrtMutex> l(generator_mutex_);
@@ -255,9 +255,7 @@ Status Multinomial::Compute(OpKernelContext* ctx) const {
 
 // create output tensor using shape of input tensor
 static Status CreateOutputTensorFromTensorShape(OpKernelContext* ctx, const Tensor& X, Tensor** Y) {
-  const TensorShape& shape = X.Shape();
-
-  *Y = ctx->Output(0, shape);
+  *Y = ctx->Output(0, X.Shape());
 
   return Status::OK();
 }

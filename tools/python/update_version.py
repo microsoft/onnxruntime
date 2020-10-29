@@ -1,4 +1,5 @@
 import os
+import json
 
 
 def update_version():
@@ -86,6 +87,19 @@ def update_version():
                     f.write('__version__ = "' + version + '"\n')
                     continue
                 f.write(line)
+
+    # update version for node.js binding
+    current_version = ''
+    file_names = ['package.json', 'package-lock.json']
+    file_paths = [os.path.join(cwd, '..', '..', 'nodejs', file_name) for file_name in file_names]
+    for file_path in file_paths:
+        with open(file_path) as f:
+            content = json.load(f)
+            current_version = content['version']
+        if version != current_version:
+            content['version'] = version
+            with open(file_path, 'w') as f:
+                json.dump(content, f, indent=2)
 
 
 if __name__ == "__main__":

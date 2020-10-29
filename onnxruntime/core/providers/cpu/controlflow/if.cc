@@ -123,7 +123,7 @@ class IfImpl {
   std::vector<std::pair<AllocationType, OrtValue>> outputs_;
 };
 
-If::If(const OpKernelInfo& info) : OpKernel(info) {
+If::If(const OpKernelInfo& info) : IControlFlowKernel(info) {
   // make sure the required attributes are present even though we don't need it here.
   // The GraphProto attributes are loaded as a Graph instance by main Graph::Resolve,
   // and a SessionState instance for executing the subgraph is created by InferenceSession.
@@ -147,7 +147,7 @@ common::Status If::SetupSubgraphExecutionInfo(const SessionState& session_state,
   ORT_ENFORCE(info == nullptr, "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
 
   const auto& node = Node();
-  info = onnxruntime::make_unique<If::Info>(node, *subgraph_session_state.GetGraphViewer());
+  info = onnxruntime::make_unique<If::Info>(node, subgraph_session_state.GetGraphViewer());
 
   // all inputs for the If subgraph are implicit
   std::vector<std::string> feed_names;
@@ -189,7 +189,7 @@ common::Status If::SetupSubgraphExecutionInfo(const SessionState& session_state,
     fetch_locations.push_back(&alloc_info);
   }
 
-  utils::FinalizeFeedFetchCopyInfo(subgraph_session_state, *ffm, feed_locations, fetch_locations);
+  utils::FinalizeFeedFetchCopyInfo(*ffm, feed_locations, fetch_locations);
 
   if (attribute_name == "then_branch")
     then_feeds_fetches_manager_ = std::move(ffm);
@@ -248,24 +248,27 @@ Status IfImpl::AllocateOutputTensors() {
 
   for (auto& graph_output : info_.subgraph.GetOutputs()) {
     auto* graph_output_shape = graph_output->Shape();
-    if (!graph_output_shape) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Subgraph must have the shape set for all outputs but ",
-                             graph_output->Name(), " did not.");
+    bool symbolic_dim_in_shape = false;
+
+    if (graph_output_shape) {
+      TensorShape output_shape = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*graph_output_shape);
+
+      // if size < 0 we have a symbolic dimension and need to use a temporary OrtValue in the subgraph execution
+      if (output_shape.Size() < 0) {
+        symbolic_dim_in_shape = true;
+      } else {
+        auto* tensor = context_.Output(index, output_shape);
+
+        if (!tensor)
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create output tensor for ", graph_output->Name());
+
+        outputs_.push_back({AllocationType::IfOutput, *context_.GetOutputMLValue(index)});
+      }
     }
 
-    TensorShape output_shape = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*graph_output_shape);
-
-    // if size < 0 we have a symbolic dimension and need to use a temporary OrtValue in the subgraph execution
-    if (output_shape.Size() < 0) {
+    if (!graph_output_shape || symbolic_dim_in_shape) {
       // we still need a value to put in the feeds we give to the execution frame, so just use an empty MLValue
       outputs_.push_back({AllocationType::Delayed, {}});
-    } else {
-      auto* tensor = context_.Output(index, output_shape);
-
-      if (!tensor)
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create output tensor for ", graph_output->Name());
-
-      outputs_.emplace_back(AllocationType::IfOutput, *context_.GetOutputMLValue(index));
     }
 
     ++index;

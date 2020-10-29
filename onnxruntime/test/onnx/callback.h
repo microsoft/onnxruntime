@@ -5,13 +5,10 @@
 namespace onnxruntime {
 namespace test {
 struct OrtCallback {
-  void (*f)(void* param) noexcept;
-  void* param;
+  void (*f)(void* param) noexcept = nullptr;
+  void* param = nullptr;
+  void Run() noexcept;
 };
 
-/**
- *  f will be freed in this call
- */
-void OrtRunCallback(OrtCallback* f) noexcept;
 }  // namespace test
 }  // namespace onnxruntime

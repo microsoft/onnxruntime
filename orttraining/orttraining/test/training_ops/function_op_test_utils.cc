@@ -52,6 +52,7 @@ TwoDArray OpFunctionTester::RunFunctionBodyGraphOnCPU() {
   RunOptions run_options;
   run_options.run_tag = op_;
   run_options.run_log_verbosity_level = 1;
+  run_options.training_mode = true;
 
   std::vector<MLValue> cpu_fetches;
   status = cpu_session_object.Run(run_options, feeds, output_names, &cpu_fetches);

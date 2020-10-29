@@ -7,6 +7,7 @@
 #ifdef _MSC_VER
 #pragma warning(disable : 4996)
 #endif
+#include "core/util/math.h"
 #include "core/providers/cpu/tensor/pad.h"
 #include "core/providers/cpu/tensor/utils.h"
 
@@ -26,7 +27,7 @@ ONNX_OPERATOR_KERNEL_EX(Pad,
                         1,
                         kCpuExecutionProvider,
                         KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-                        onnxruntime::Pad<float>);
+                        onnxruntime::Pad);
 
 }  // namespace contrib
 
@@ -36,40 +37,44 @@ ONNX_OPERATOR_KERNEL_EX(Pad,
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Pad,
     2, 10,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Pad<float>);
+    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                                            DataTypeImpl::GetTensorType<double>()}),
+    Pad);
 
 // The interface for the 'Pad' op was changed in opset-11
 // 'pads' and 'value' (attributes previously) became inputs in this version
 // The core logic remains the same
 
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Pad,
-    11,
-    float,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), Pad<float>);
+    11, 12,
+    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                                            DataTypeImpl::GetTensorType<double>(),
+                                            DataTypeImpl::GetTensorType<int32_t>(),
+                                            DataTypeImpl::GetTensorType<int64_t>(),
+                                            DataTypeImpl::GetTensorType<uint32_t>(),
+                                            DataTypeImpl::GetTensorType<uint64_t>(),
+                                            DataTypeImpl::GetTensorType<int8_t>(),
+                                            DataTypeImpl::GetTensorType<uint8_t>()}),
+    Pad);
 
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
+ONNX_CPU_OPERATOR_KERNEL(
     Pad,
-    11,
-    double,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()), Pad<double>);
-
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    Pad,
-    11,
-    int32_t,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>()), Pad<int32_t>);
-
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    Pad,
-    11,
-    int64_t,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>()), Pad<int64_t>);
+    13,
+    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                                            DataTypeImpl::GetTensorType<double>(),
+                                            DataTypeImpl::GetTensorType<int32_t>(),
+                                            DataTypeImpl::GetTensorType<int64_t>(),
+                                            DataTypeImpl::GetTensorType<uint32_t>(),
+                                            DataTypeImpl::GetTensorType<uint64_t>(),
+                                            DataTypeImpl::GetTensorType<int8_t>(),
+                                            DataTypeImpl::GetTensorType<uint8_t>()}),
+    Pad);
 
 // This is the general padding method to n-dimensionally do edge or reflection padding (based on the inputDelta values)
 template <typename T>
-static void PadAxis(T* output, T* input, ptrdiff_t input_delta, ptrdiff_t input_pitch, size_t block_size, size_t block_count) {
+static void PadAxis(T* output, T* input, ptrdiff_t input_delta, ptrdiff_t input_pitch,
+                    size_t block_size, size_t block_count) {
   for (size_t block_index = 0; block_index < block_count; block_index++) {
     for (size_t i = 0; i < block_size; i++) {
       *output++ = *input;
@@ -144,7 +149,7 @@ static Status PadInputWithDimValueOfZero(OpKernelContext* ctx,
   // we need to add pads if mode is constant, otherwise the output has one or more dim values of 0 so is empty
   if (mode == Mode::Constant) {
     // we add pads with the default value to all dims including those with a value of 0
-    auto* output = output_tensor.template MutableData<T>();
+    auto* output = reinterpret_cast<T*>(output_tensor.MutableDataRaw());
     std::fill_n(output, output_shape.Size(), value);
   }
 
@@ -168,7 +173,8 @@ static void FlattenInnerShape(const std::vector<int64_t>& input_dims, const std:
       break;
 
     // Break on first Axis that has padding
-    if (!(pads[inner_axis] == 0 && pads[inner_axis + dims_count] == 0 && slices[inner_axis] == 0 && slices[inner_axis + dims_count] == 0))
+    if (!(pads[inner_axis] == 0 && pads[inner_axis + dims_count] == 0 &&
+          slices[inner_axis] == 0 && slices[inner_axis + dims_count] == 0))
       break;
 
   } while (inner_axis-- > 0);
@@ -184,7 +190,8 @@ static void ReshapePads(const std::vector<int64_t>& src_pad, size_t src_dim_coun
                         size_t inner_no_pad_size, std::vector<int64_t>& reshaped_pad) {
   size_t inner_axis = new_dim_count - 1;
   std::copy(src_pad.begin(), src_pad.begin() + inner_axis, reshaped_pad.begin());
-  std::copy(src_pad.begin() + src_dim_count, src_pad.begin() + src_dim_count + inner_axis, reshaped_pad.begin() + new_dim_count);
+  std::copy(src_pad.begin() + src_dim_count, src_pad.begin() + src_dim_count + inner_axis,
+            reshaped_pad.begin() + new_dim_count);
 
   // Flatten inner axis.
   reshaped_pad[inner_axis] = src_pad[inner_axis] * inner_no_pad_size;
@@ -192,11 +199,11 @@ static void ReshapePads(const std::vector<int64_t>& src_pad, size_t src_dim_coun
 }
 
 template <typename T>
-Status PadCpuImpl(OpKernelContext* ctx,
-                  const std::vector<int64_t>& pads,
-                  const std::vector<int64_t>& slices,
-                  const Mode& mode,
-                  T value) {
+static Status PadImpl(OpKernelContext* ctx,
+                      const std::vector<int64_t>& pads,
+                      const std::vector<int64_t>& slices,
+                      const Mode& mode,
+                      T value) {
   const auto& input_tensor = *ctx->Input<Tensor>(0);
   const auto& orig_input_shape = input_tensor.Shape();
   std::vector<int64_t> output_dims(orig_input_shape.GetDims());
@@ -213,7 +220,9 @@ Status PadCpuImpl(OpKernelContext* ctx,
   // Reshape padding
   size_t new_dims_count = reshaped_input_dims.size();
   size_t inner_axis = new_dims_count - 1;
-  size_t inner_no_pad_size = output_dims[inner_axis] > 0 ? reshaped_input_dims[inner_axis] / output_dims[inner_axis] : 0;
+  size_t inner_no_pad_size = output_dims[inner_axis] > 0
+                                 ? reshaped_input_dims[inner_axis] / output_dims[inner_axis]
+                                 : 0;
   std::vector<int64_t> reshaped_pad(2 * new_dims_count), reshaped_slice(2 * new_dims_count);
   ReshapePads(pads, data_rank, new_dims_count, inner_no_pad_size, reshaped_pad);
   ReshapePads(slices, data_rank, new_dims_count, inner_no_pad_size, reshaped_slice);
@@ -228,7 +237,8 @@ Status PadCpuImpl(OpKernelContext* ctx,
   for (size_t i = 0; i < new_dims_count; i++) {
     input_starts.push_back(-1 * reshaped_slice[i]);
     input_extents.push_back(reshaped_input_dims[i] + reshaped_slice[i] + reshaped_slice[i + new_dims_count]);
-    reshaped_output_dims[i] += reshaped_pad[i] + reshaped_pad[i + new_dims_count] + reshaped_slice[i] + reshaped_slice[i + new_dims_count];
+    reshaped_output_dims[i] += reshaped_pad[i] + reshaped_pad[i + new_dims_count] +
+                               reshaped_slice[i] + reshaped_slice[i + new_dims_count];
   }
 
   for (size_t i = 0; i < data_rank; i++) {
@@ -247,7 +257,7 @@ Status PadCpuImpl(OpKernelContext* ctx,
   // output_shape need to keep original.
   TensorShape output_shape(output_dims);
   auto& output_tensor = *ctx->Output(0, output_shape);
-  auto* output = output_tensor.template MutableData<T>();
+  auto* output = reinterpret_cast<T*>(output_tensor.MutableDataRaw());
 
   TensorPitches output_pitches(reshaped_output_dims);
   size_t alignSkip = 0;  // Amount to skip to align to where the next input tensor data needs to be written
@@ -344,7 +354,8 @@ Status PadCpuImpl(OpKernelContext* ctx,
           T* axisStart = output - inner_pitch * input_extents[input_counters.Axis()];
           int64_t prePad = reshaped_pad[input_counters.Axis()];
           int64_t postPad = reshaped_pad[input_counters.Axis() + new_dims_count];
-          PadAxis(axisStart - prePad * inner_pitch, axisStart + prePad * inner_pitch, 1, -inner_pitch * 2, inner_pitch, prePad);
+          PadAxis(axisStart - prePad * inner_pitch, axisStart + prePad * inner_pitch, 1, -inner_pitch * 2,
+                  inner_pitch, prePad);
           PadAxis(output, output - 2 * inner_pitch, 1, -inner_pitch * 2, inner_pitch, postPad);
           output += inner_pitch * postPad;
           alignSkip += inner_pitch * prePad;
@@ -356,11 +367,39 @@ Status PadCpuImpl(OpKernelContext* ctx,
   return Status::OK();
 }
 
-template <typename T>
-Status Pad<T>::Compute(OpKernelContext* ctx) const {
+union PadValue {
+  uint64_t u64;
+  uint32_t u32;
+  uint8_t u8;
+  double f64;
+  float f32;
+};
+
+static PadValue PadValueFromFloat(float value, MLDataType data_type) {
+  PadValue result;
+  if (data_type == DataTypeImpl::GetType<float>()) {
+    result.f32 = value;
+  } else if (data_type == DataTypeImpl::GetType<double>()) {
+    result.f64 = value;
+  } else {
+    ORT_THROW("Unsupported input data type of ", data_type);
+  }
+  return result;
+}
+
+Status Pad::Compute(OpKernelContext* ctx) const {
+  const Tensor& input_tensor = *ctx->Input<Tensor>(0);
+  MLDataType data_type = input_tensor.DataType();
+  const auto element_size = data_type->Size();
+  std::vector<int64_t> pads;
+  std::vector<int64_t> slices;
+  const std::vector<int64_t>* pads_to_use;
+  const std::vector<int64_t>* slices_to_use;
+  PadValue value;
+  Status status;
+
   // kOnnxDomain Pad opset >= 11 (Or) kMsDomain opset == 1
   if (is_dynamic_) {
-    const Tensor& input_tensor = *ctx->Input<Tensor>(0);
     size_t data_rank = input_tensor.Shape().NumDimensions();
 
     const Tensor& pads_tensor = *ctx->Input<Tensor>(1);
@@ -368,21 +407,21 @@ Status Pad<T>::Compute(OpKernelContext* ctx) const {
     ORT_ENFORCE(pads_tensor.IsDataType<int64_t>(),
                 "Pads tensor should be an INT64 tensor");
     ORT_ENFORCE(pads_tensor_dims.size() == 1 || (pads_tensor_dims.size() == 2 && pads_tensor_dims[0] == 1),
-                "Pads tensor should be a 1D tensor of shape [2 * input_rank] or a 2D tensor of shape [1, 2 * input_rank]");
+                "Pads tensor should be a 1D tensor of shape [2 * input_rank] "
+                "or a 2D tensor of shape [1, 2 * input_rank]");
 
     const int64_t* pads_tensor_raw_data = pads_tensor.template Data<int64_t>();
     size_t pads_size = static_cast<size_t>(pads_tensor.Shape().Size());
     ORT_ENFORCE(pads_size == 2 * data_rank,
                 "Pads tensor size should be equal to twice the input dimension count ");
 
-    std::vector<int64_t> pads;
     pads.reserve(2 * data_rank);
     for (size_t i = 0; i < pads_size; ++i) {
       pads.push_back(pads_tensor_raw_data[i]);
     }
 
     // Separate out any negative pads into the slices array
-    std::vector<int64_t> slices(pads.size(), 0);
+    slices = std::vector<int64_t>(pads.size(), 0);
     for (size_t index = 0; index < pads.size(); index++) {
       if (pads[index] < 0) {
         slices[index] = pads[index];
@@ -390,21 +429,50 @@ Status Pad<T>::Compute(OpKernelContext* ctx) const {
       }
     }
 
-    T value = static_cast<T>(0);
+    value.u64 = 0U;
     const Tensor* value_tensor = ctx->Input<Tensor>(2);
     if (nullptr != value_tensor) {
-      ORT_ENFORCE(value_tensor->IsDataType<T>() &&
+      ORT_ENFORCE(value_tensor->DataType() == data_type &&
                       value_tensor->Shape().Size() == 1,
                   "Value tensor should be a 1D tensor of size 1 with the same type as that of the input tensor");
-      value = value_tensor->template Data<T>()[0];
+      const void* value_data = value_tensor->DataRaw();
+      switch (element_size) {
+        case sizeof(uint32_t):
+          value.u32 = reinterpret_cast<const uint32_t*>(value_data)[0];
+          break;
+        case sizeof(uint64_t):
+          value.u64 = reinterpret_cast<const uint64_t*>(value_data)[0];
+          break;
+        case sizeof(uint8_t):
+          value.u8 = reinterpret_cast<const uint8_t*>(value_data)[0];
+          break;
+        default:
+          ORT_THROW("Unsupported input data type of ", data_type);
+      }
     }
-
-    return PadCpuImpl<T>(ctx, pads, slices, mode_, value);
+    pads_to_use = &pads;
+    slices_to_use = &slices;
   } else {
     // kOnnxDomain Pad opset < 11
     // In the earlier opset versions of Pad, the type for 'value' attribute was always float,
     // irrespective of the data type of the actual input to be padded
-    return PadCpuImpl<T>(ctx, pads_, slices_, mode_, static_cast<T>(value_));
+    value = PadValueFromFloat(value_, data_type);
+    pads_to_use = &pads_;
+    slices_to_use = &slices_;
   }
+  switch (element_size) {
+    case sizeof(uint32_t):
+      status = PadImpl<uint32_t>(ctx, *pads_to_use, *slices_to_use, mode_, value.u32);
+      break;
+    case sizeof(uint64_t):
+      status = PadImpl<uint64_t>(ctx, *pads_to_use, *slices_to_use, mode_, value.u64);
+      break;
+    case sizeof(uint8_t):
+      status = PadImpl<uint8_t>(ctx, *pads_to_use, *slices_to_use, mode_, value.u8);
+      break;
+    default:
+      ORT_THROW("Unsupported input data type of ", data_type);
+  }
+  return status;
 }
 };  // namespace onnxruntime

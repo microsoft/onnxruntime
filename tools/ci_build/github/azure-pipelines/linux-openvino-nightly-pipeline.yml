@@ -7,8 +7,8 @@ jobs:
       displayName: 'Clean untagged docker images'
       inputs:
         script: |
-          sudo docker rm $(sudo docker ps -a | grep Exited | awk '{print $1;}') || true
-          sudo docker images -q --filter "dangling=true" | xargs -n1 -r sudo docker rmi
+          docker rm $(docker ps -a | grep Exited | awk '{print $1;}') || true
+          docker images -q --filter "dangling=true" | xargs -n1 -r docker rmi
         workingDirectory: $(Build.BinariesDirectory)
       continueOnError: true
       condition: always()

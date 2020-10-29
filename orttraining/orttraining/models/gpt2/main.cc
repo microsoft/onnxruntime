@@ -8,8 +8,9 @@
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/session/environment.h"
 #include "core/framework/random_seed.h"
+#include "core/framework/bfc_arena.h"
 #include "core/providers/cuda/cuda_allocator.h"
-#include "orttraining/core/framework/mpi_setup.h"
+#include "orttraining/core/framework/mpi_context.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/models/runner/constant.h"
@@ -19,11 +20,14 @@
 
 namespace onnxruntime {
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id,
+                                                                               OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE,
                                                                                size_t cuda_mem_limit = std::numeric_limits<size_t>::max(),
-                                                                               onnxruntime::ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo);
+                                                                               onnxruntime::ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo,
+                                                                               bool do_copy_in_default_stream = true);
 }
 
 using namespace onnxruntime;
+using namespace onnxruntime::common;
 using namespace onnxruntime::training;
 using namespace onnxruntime::training::tensorboard;
 
@@ -78,7 +82,9 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
         "Sequences longer than this will be truncated, and sequences shorter "
         "than this will be padded. Must match data generation.", cxxopts::value<int>()->default_value("1024"))
       ("optimizer", "Adam or Lamb", cxxopts::value<std::string>()->default_value("Adam"))
-      ("partition_optimizer", "Whether to partition the optimizer state for distributed training.", cxxopts::value<bool>()->default_value("false"))
+      ("deepspeed_zero_stage", "Controls whether to partition state using the DeepSpeed ZeRO technique. "
+       "Stages 0 (disabled) and 1 (optimizer state partitioning) are supported.",
+       cxxopts::value<int>()->default_value("0"))
       ("alpha", "Adam/Lamb alpha parameter", cxxopts::value<float>()->default_value("0.9"))
       ("beta", "Adam/Lamb beta parameter", cxxopts::value<float>()->default_value("0.999"))
       ("lambda", "Adam/Lamb lambda parameter", cxxopts::value<float>()->default_value("0.01"))
@@ -149,12 +155,12 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
     }
 
     params.use_mixed_precision = flags["use_mixed_precision"].as<bool>();
-    params.allreduce_in_fp16 = flags["allreduce_in_fp16"].as<bool>() && params.use_mixed_precision;
+    params.allreduce_in_mixed_precision_type = flags["allreduce_in_fp16"].as<bool>() && params.use_mixed_precision;
     if (params.use_mixed_precision) {
       printf("Mixed precision training is enabled.\n");
     }
-    if (params.allreduce_in_fp16) {
-      printf("Performing AllReduce in fp16 \n");
+    if (params.allreduce_in_mixed_precision_type) {
+      printf("Performing AllReduce in mixed precision type \n");
     } else {
       printf("Performing AllReduce in fp32 \n");
     }
@@ -172,13 +178,13 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
       }
     }
 
-    params.use_fp16_moments = flags["use_fp16_moments"].as<bool>();
-    if (params.use_fp16_moments) {
-      printf("Using fp16 version of moments.\n");
+    params.use_mixed_precision_moments = flags["use_fp16_moments"].as<bool>();
+    if (params.use_mixed_precision_moments) {
+      printf("Using mixed precision version of moments.\n");
     }
-    params.use_fp16_initializer = flags["use_fp16_initializer"].as<bool>();
-    if (params.use_mixed_precision && params.use_fp16_initializer) {
-      printf("FP16 initializer is enabled.\n");
+    params.use_mixed_precision_initializer = flags["use_fp16_initializer"].as<bool>();
+    if (params.use_mixed_precision && params.use_mixed_precision_initializer) {
+      printf("Mixed precision initializer is enabled.\n");
     }
 
     std::string warmup_mode = flags["warmup_mode"].as<std::string>();
@@ -203,7 +209,7 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Incorrect optimizer type: it must be one of [Adam|Lamb]");
     }
 
-    params.partition_optimizer = flags["partition_optimizer"].as<bool>();
+    params.deepspeed_zero = ZeROConfig(flags["deepspeed_zero_stage"].as<int>());
     params.enable_grad_norm_clip = flags["enable_grad_norm_clip"].as<bool>();
     float alpha = flags["alpha"].as<float>();
     float beta = flags["beta"].as<float>();
@@ -291,16 +297,15 @@ void setup_training_params(GPT2Parameters& params) {
                                            {/*prediction_name*/ "output",
                                             /*label_name*/ "labels"});
 
-#ifdef USE_HOROVOD
-  params.mpi_context = setup_horovod();
-  ORT_ENFORCE(params.horizontal_parallel_size <= params.mpi_context.world_size);
-  ORT_ENFORCE(params.data_parallel_size <= params.mpi_context.world_size);
-  if (params.mpi_context.world_size % params.horizontal_parallel_size != 0) {
+#if defined(USE_NCCL) || defined(USE_HOROVOD)
+  ORT_ENFORCE(params.horizontal_parallel_size <= MPIContext::GetInstance().GetWorldSize());
+  ORT_ENFORCE(params.data_parallel_size <= MPIContext::GetInstance().GetWorldSize());
+  if (MPIContext::GetInstance().GetWorldSize() % params.horizontal_parallel_size != 0) {
     LOGS_DEFAULT(ERROR) << "Cannot split horizontal parallel group because world_size is not divisible";
     return;
   }
 
-  auto data_group_size = params.mpi_context.world_size / params.horizontal_parallel_size;
+  auto data_group_size = MPIContext::GetInstance().GetWorldSize() / params.horizontal_parallel_size;
   if (data_group_size != params.data_parallel_size) {
     LOGS_DEFAULT(WARNING) << "WARNING: data_parallel_size is not correct, tuned automatically to "
                           << data_group_size << std::endl;
@@ -339,7 +344,7 @@ void setup_training_params(GPT2Parameters& params) {
   params.model_type = "gpt2";
 
 #ifdef USE_CUDA
-  OrtDevice::DeviceId device_id = static_cast<OrtDevice::DeviceId>(params.mpi_context.local_rank);
+  OrtDevice::DeviceId device_id = static_cast<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
   params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(device_id));
   params.input_allocator = std::make_shared<CUDAPinnedAllocator>(device_id, CUDA_PINNED);
 #endif
@@ -415,7 +420,7 @@ static Status RunTraining(const GPT2Parameters& params, const Environment& env) 
   auto runner = onnxruntime::make_unique<TrainingRunner>(params, env);
   ORT_RETURN_IF_ERROR(runner->Initialize());
 
-  auto rank_in_data_parallel_group = params.mpi_context.world_rank / params.horizontal_parallel_size;
+  auto rank_in_data_parallel_group = MPIContext::GetInstance().GetWorldRank() / params.horizontal_parallel_size;
   auto training_data_loader = onnxruntime::make_unique<DataLoader>(params.input_name_map,
                                                                    params.train_data_dir,
                                                                    max_num_files_preload,
@@ -424,7 +429,7 @@ static Status RunTraining(const GPT2Parameters& params, const Environment& env) 
 
   std::unique_ptr<DataLoader> test_data_loader;
   // Evaluation is only done in device #0
-  if (params.mpi_context.world_rank == 0) {
+  if (MPIContext::GetInstance().GetWorldRank() == 0) {
     test_data_loader = onnxruntime::make_unique<DataLoader>(params.input_name_map,
                                                             params.test_data_dir,
                                                             max_num_files_preload);
@@ -439,7 +444,7 @@ static Status RunTraining(const GPT2Parameters& params, const Environment& env) 
   ORT_RETURN_IF_ERROR(runner->Run(training_data_loader.get(), test_data_loader.get(), mapped_dimensions));
 
   // only test and save trained model on device #0
-  if (params.mpi_context.world_rank == 0) {
+  if (MPIContext::GetInstance().GetWorldRank() == 0) {
     test_data_loader = onnxruntime::make_unique<DataLoader>(params.input_name_map,
                                                             params.test_data_dir,
                                                             max_num_files_preload);
@@ -476,9 +481,13 @@ int main(int argc, char* argv[]) {
     RETURN_IF_FAIL(RunTraining(params, *env));
   }
 
-#ifdef USE_HOROVOD
-  shutdown_horovod();
+#if defined(USE_NCCL)
+#ifdef _WIN32
+  // https://docs.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-best-practices
+  // shutdown_mpi() is not called within MPIContext destructor because of DllMain's restriction
+  // call shutdown_mpi() here instead.
+  MPIContext::shutdown_mpi();
 #endif
-
+#endif
   return 0;
 }

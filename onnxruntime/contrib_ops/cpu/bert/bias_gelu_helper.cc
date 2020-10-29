@@ -6,10 +6,7 @@
 #include "onnx/defs/tensor_proto_util.h"
 #include "core/common/safeint.h"
 #include "core/framework/tensor.h"
-#include "core/platform/threadpool.h"
 #include "core/providers/common.h"
-#include "core/util/math_cpuonly.h"
-#include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -19,14 +16,14 @@ Status CheckInputs(const OpKernelContext* context) {
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* bias = context->Input<Tensor>(1);
 
-  const auto input_dims = input->Shape().GetDims();
+  const auto& input_dims = input->Shape().GetDims();
   if (input_dims.size() < 1) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 0 is expected to have 1 or more dimensions, got ", input_dims.size());
   }
 
   if (nullptr != bias) {
-    const auto bias_dims = bias->Shape().GetDims();
+    const auto& bias_dims = bias->Shape().GetDims();
     if (bias_dims.size() != 1) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Input 1 is expected to have 1 dimensions, got ", bias_dims.size());
@@ -40,6 +37,6 @@ Status CheckInputs(const OpKernelContext* context) {
   return Status::OK();
 }
 
-}  // namespace bias_gelu
+}  // namespace bias_gelu_helper
 }  // namespace contrib
 }  // namespace onnxruntime

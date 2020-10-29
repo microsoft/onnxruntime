@@ -1,10 +1,9 @@
-This directory contains a few (Windows only) C/C++ sample applications for demoing onnxruntime usage:
+This directory contains a few C/C++ sample applications for demoing onnxruntime usage:
 
-1. fns_candy_style_transfer: A C application that uses the FNS-Candy style transfer model to re-style images. 
-2. MNIST: A windows GUI application for doing handwriting recognition
-3. imagenet: An end-to-end sample for the [ImageNet Large Scale Visual Recognition Challenge 2012](http://www.image-net.org/challenges/LSVRC/2012/)
-
-Imagenet sample requires ATL libraries installed as a part of VS Studio installation.
+1. (Windows only) fns_candy_style_transfer: A C application that uses the FNS-Candy style transfer model to re-style images. 
+2. (Windows only) MNIST: A windows GUI application for doing handwriting recognition
+3. (Windows only) imagenet: An end-to-end sample for the [ImageNet Large Scale Visual Recognition Challenge 2012](http://www.image-net.org/challenges/LSVRC/2012/) - requires ATL libraries to be installed as a part of the VS Studio installation.
+4. model-explorer: A commandline C++ application that generates random data and performs model inference. A second C++ application demonstrates how to perform batch processing.
 
 # How to build
 

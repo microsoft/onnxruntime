@@ -9,7 +9,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD_NORM>
+template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD_NORM, typename T_MIXED_PRECISION_FP>
 class LambOptimizer final : public CudaKernel {
  public:
   LambOptimizer(const OpKernelInfo& info) : CudaKernel(info) {
@@ -65,7 +65,7 @@ void LambComputeDirection(
 // T2's precision should be higher than T1. It's used for
 // large tensors. Small tensors should use multi-tensor version 
 // of this.
-template <typename T1, typename T2, typename T3>
+template <typename T1, typename T2, typename T3, typename T_MIXED_PRECISION_FP>
 void LambUpdate(
     const T1* eta,
     const float ratio_min,
@@ -76,7 +76,7 @@ void LambUpdate(
     const T3* update_direction,
     T2* weights_out,
     T3* gradients_out,
-    half* fp16_weights_out,
+    T_MIXED_PRECISION_FP* mixed_precision_weights_out,
     size_t count);
 
 // Lamb's stage 1 maps [w, g, m1, m2] to [d, m1_new, m2_new] where
@@ -129,14 +129,14 @@ struct LambMultiTensorReductionFunctor {
   void operator()(ChunkGroup<4> chunk_group);
 };
 
-// Lamb's stage 2 maps [w_norm, w_norm, w, d] to [w_new, g_new, w_fp16_new] where
+// Lamb's stage 2 maps [w_norm, w_norm, w, d] to [w_new, g_new, w_mixed_precision_new] where
 //  w_norm: norm of w
 //  d_norm: norm of d
 //  w: weight tensor
 //  d: update direction
 //  w_new: updated weight tensor
 //  g_new: updated gradient tensor
-//  w_fp16_new: updated weight tensor in half-precision
+//  w_mixed_precision_new: updated weight tensor of mixed-precision type
 // There are 7 distinct tensors in total and therefore the
 // type of chunk_group is ChunkGroup<7>.
 //
@@ -147,8 +147,8 @@ struct LambMultiTensorReductionFunctor {
 //  d: chunk_group.tensor_ptrs[3][i]
 //  w_new: chunk_group.tensor_ptrs[4][i]
 //  g_new: chunk_group.tensor_ptrs[5][i]
-//  w_fp16_new: chunk_group.tensor_ptrs[6][i]
-template <typename T1, typename T2, typename T3>
+//  w_mixed_precision_new: chunk_group.tensor_ptrs[6][i]
+template <typename T1, typename T2, typename T3, typename T_MIXED_PRECISION_FP>
 struct LambMultiTensorUpdateFunctor {
   void operator()(
       ChunkGroup<7> chunk_group,

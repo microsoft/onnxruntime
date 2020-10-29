@@ -17,7 +17,7 @@ class SliceGrad final : public Slice<true> {
 
   Status CallSliceImp(size_t element_size, size_t dimension_count, const TArray<int64_t>& starts_buffer,
                       const TArray<int64_t>& steps_buffer, const TArray<int64_t>& input_strides,
-                      const TArray<fast_divmod>& output_strides, OpKernelContext* ctx, TensorShape output_shape)
+                      const TArray<fast_divmod>& output_strides, OpKernelContext* ctx, const TensorShape& output_shape)
       const override;
 };
 }  // namespace cuda

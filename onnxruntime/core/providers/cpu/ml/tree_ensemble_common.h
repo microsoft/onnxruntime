@@ -4,6 +4,7 @@
 #pragma once
 
 #include "tree_ensemble_aggregator.h"
+#include "core/platform/ort_mutex.h"
 #include "core/platform/threadpool.h"
 
 namespace onnxruntime {
@@ -51,7 +52,7 @@ class TreeEnsembleCommon {
                      const std::vector<int64_t>& target_class_treeids,
                      const std::vector<OTYPE>& target_class_weights);
 
-  void compute(concurrency::ThreadPool* ttp, const Tensor* X, Tensor* Z, Tensor* label) const;
+  void compute(OpKernelContext* ctx, const Tensor* X, Tensor* Z, Tensor* label) const;
 
  protected:
   TreeNodeElement<OTYPE>* ProcessTreeNodeLeave(
@@ -137,10 +138,10 @@ TreeEnsembleCommon<ITYPE, OTYPE>::TreeEnsembleCommon(int parallel_tree, int para
     node.falsenode = nullptr;  // nodes_falsenodeids[i];
     node.missing_tracks = i < static_cast<size_t>(nodes_missing_value_tracks_true.size())
                               ? (nodes_missing_value_tracks_true[i] == 1
-                                     ? MissingTrack::TRUE
-                                     : MissingTrack::FALSE)
-                              : MissingTrack::NONE;
-    node.is_missing_track_true = node.missing_tracks == MissingTrack::TRUE;
+                                     ? MissingTrack::kTrue
+                                     : MissingTrack::kFalse)
+                              : MissingTrack::kNone;
+    node.is_missing_track_true = node.missing_tracks == MissingTrack::kTrue;
     if (idi.find(node.id) != idi.end()) {
       ORT_THROW("Node ", node.id.node_id, " in tree ", node.id.tree_id, " is already there.");
     }
@@ -215,33 +216,33 @@ TreeEnsembleCommon<ITYPE, OTYPE>::TreeEnsembleCommon(int parallel_tree, int para
 }
 
 template <typename ITYPE, typename OTYPE>
-void TreeEnsembleCommon<ITYPE, OTYPE>::compute(concurrency::ThreadPool* ttp, const Tensor* X, Tensor* Z,
+void TreeEnsembleCommon<ITYPE, OTYPE>::compute(OpKernelContext* ctx, const Tensor* X, Tensor* Z,
                                                Tensor* label) const {
   switch (aggregate_function_) {
     case AGGREGATE_FUNCTION::AVERAGE:
       ComputeAgg(
-          ttp, X, Z, label,
+          ctx->GetOperatorThreadPool(), X, Z, label,
           TreeAggregatorAverage<ITYPE, OTYPE>(
               roots_.size(), n_targets_or_classes_,
               post_transform_, base_values_));
       return;
     case AGGREGATE_FUNCTION::SUM:
       ComputeAgg(
-          ttp, X, Z, label,
+          ctx->GetOperatorThreadPool(), X, Z, label,
           TreeAggregatorSum<ITYPE, OTYPE>(
               roots_.size(), n_targets_or_classes_,
               post_transform_, base_values_));
       return;
     case AGGREGATE_FUNCTION::MIN:
       ComputeAgg(
-          ttp, X, Z, label,
+          ctx->GetOperatorThreadPool(), X, Z, label,
           TreeAggregatorMin<ITYPE, OTYPE>(
               roots_.size(), n_targets_or_classes_,
               post_transform_, base_values_));
       return;
     case AGGREGATE_FUNCTION::MAX:
       ComputeAgg(
-          ttp, X, Z, label,
+          ctx->GetOperatorThreadPool(), X, Z, label,
           TreeAggregatorMax<ITYPE, OTYPE>(
               roots_.size(), n_targets_or_classes_,
               post_transform_, base_values_));
@@ -325,8 +326,8 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::ComputeAgg(concurrency::ThreadPool* ttp, 
       } else {
         // split the work into one block per thread so we can re-use the 'private_scores' vector as much as possible
         // TODO: Refine the number of threads used
-        auto num_threads = std::min<int32_t>(concurrency::ThreadPool::NumThreads(ttp), SafeInt<int32_t>(n_trees_));
-        std::mutex merge_mutex;
+        auto num_threads = std::min<int32_t>(concurrency::ThreadPool::DegreeOfParallelism(ttp), SafeInt<int32_t>(n_trees_));
+        OrtMutex merge_mutex;
         concurrency::ThreadPool::TrySimpleParallelFor(
             ttp,
             num_threads,
@@ -337,7 +338,7 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::ComputeAgg(concurrency::ThreadPool* ttp, 
                 agg.ProcessTreeNodePrediction(private_scores, *ProcessTreeNodeLeave(roots_[j], x_data));
               }
 
-              std::lock_guard<std::mutex> lock(merge_mutex);
+              std::lock_guard<OrtMutex> lock(merge_mutex);
               agg.MergePrediction(scores, private_scores);
             });
       }
@@ -360,7 +361,7 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::ComputeAgg(concurrency::ThreadPool* ttp, 
       } else {
         // split the work into one block per thread so we can re-use the 'scores' vector as much as possible
         // TODO: Refine the number of threads used.
-        auto num_threads = std::min<int32_t>(concurrency::ThreadPool::NumThreads(ttp), SafeInt<int32_t>(N));
+        auto num_threads = std::min<int32_t>(concurrency::ThreadPool::DegreeOfParallelism(ttp), SafeInt<int32_t>(N));
         concurrency::ThreadPool::TrySimpleParallelFor(
             ttp,
             num_threads,
@@ -524,7 +525,7 @@ class TreeEnsembleCommonClassifier : TreeEnsembleCommon<ITYPE, OTYPE> {
 
   int64_t get_class_count() const { return this->n_targets_or_classes_; }
 
-  void compute(concurrency::ThreadPool* ttp, const Tensor* X, Tensor* Z, Tensor* label) const;
+  void compute(OpKernelContext* ctx, const Tensor* X, Tensor* Z, Tensor* label) const;
 };
 
 template <typename ITYPE, typename OTYPE>
@@ -588,11 +589,11 @@ TreeEnsembleCommonClassifier<ITYPE, OTYPE>::TreeEnsembleCommonClassifier(
 }
 
 template <typename ITYPE, typename OTYPE>
-void TreeEnsembleCommonClassifier<ITYPE, OTYPE>::compute(concurrency::ThreadPool* ttp, const Tensor* X, Tensor* Z,
+void TreeEnsembleCommonClassifier<ITYPE, OTYPE>::compute(OpKernelContext* ctx, const Tensor* X, Tensor* Z,
                                                          Tensor* label) const {
   if (classlabels_strings_.size() == 0) {
     this->ComputeAgg(
-        ttp, X, Z, label,
+        ctx->GetOperatorThreadPool(), X, Z, label,
         TreeAggregatorClassifier<ITYPE, OTYPE>(
             this->roots_.size(), this->n_targets_or_classes_,
             this->post_transform_, this->base_values_,
@@ -600,10 +601,11 @@ void TreeEnsembleCommonClassifier<ITYPE, OTYPE>::compute(concurrency::ThreadPool
             weights_are_all_positive_));
   } else {
     int64_t N = X->Shape().NumDimensions() == 1 ? 1 : X->Shape()[0];
-    std::shared_ptr<IAllocator> allocator = std::make_shared<CPUAllocator>();
-    Tensor label_int64(DataTypeImpl::GetType<int64_t>(), TensorShape({N}), allocator);
+    AllocatorPtr alloc;
+    ORT_THROW_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
+    Tensor label_int64(DataTypeImpl::GetType<int64_t>(), TensorShape({N}), alloc);
     this->ComputeAgg(
-        ttp, X, Z, &label_int64,
+        ctx->GetOperatorThreadPool(), X, Z, &label_int64,
         TreeAggregatorClassifier<ITYPE, OTYPE>(
             this->roots_.size(), this->n_targets_or_classes_,
             this->post_transform_, this->base_values_,

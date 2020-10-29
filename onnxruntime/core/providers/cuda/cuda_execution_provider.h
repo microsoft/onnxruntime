@@ -2,15 +2,18 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "cuda_pch.h"
-#include "core/platform/ort_mutex.h"
+
+#include <set>
+#include <vector>
+
 #include "core/graph/constants.h"
 #include "core/framework/allocatormgr.h"
-#include "core/framework/execution_provider.h"
-#include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/framework/bfc_arena.h"
-#include "shared_inc/cuda_utils.h"
-#include <deque>
+#include "core/framework/execution_provider.h"
+#include "core/platform/ort_mutex.h"
+#include "core/providers/cuda/cuda_pch.h"
+#include "core/providers/cuda/gpu_data_transfer.h"
+#include "core/providers/cuda/shared_inc/cuda_utils.h"
 
 namespace onnxruntime {
 
@@ -21,6 +24,8 @@ struct CUDAExecutionProviderInfo {
   OrtDevice::DeviceId device_id{0};
   size_t cuda_mem_limit{std::numeric_limits<size_t>::max()};
   ArenaExtendStrategy arena_extend_strategy{ArenaExtendStrategy::kNextPowerOfTwo};
+  OrtCudnnConvAlgoSearch cudnn_conv_algo{OrtCudnnConvAlgoSearch::EXHAUSTIVE};
+  bool do_copy_in_default_stream{true};
 };
 
 // Logical device representation.
@@ -28,8 +33,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
  public:
   explicit CUDAExecutionProvider(const CUDAExecutionProviderInfo& info);
   virtual ~CUDAExecutionProvider();
-
-  AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
 
   Status Sync() const override;
 
@@ -49,116 +52,126 @@ class CUDAExecutionProvider : public IExecutionProvider {
   cudnnHandle_t PerThreadCudnnHandle() {
     return GetPerThreadContext().CudnnHandle();
   }
-  curandGenerator_t PerThreadCurandGenerator() {
-    return GetPerThreadContext().CurandGenerator();
-  }
 
   template <typename T>
   const T* GetConstOnes(size_t count) {
-    return GetPerThreadContext().template GetConstOnes<T>(count);
+    if (std::is_same<T, float>::value) {
+      if (!constant_ones_float_) {
+        constant_ones_float_ = cuda::CreateConstantOnes<float>();
+      }
+      return reinterpret_cast<const T*>(constant_ones_float_->GetBuffer(count));
+    } else if (std::is_same<T, double>::value) {
+      if (!constant_ones_double_) {
+        constant_ones_double_ = cuda::CreateConstantOnes<double>();
+      }
+      return reinterpret_cast<const T*>(constant_ones_double_->GetBuffer(count));
+    } else if (std::is_same<T, half>::value) {
+      if (!constant_ones_half_) {
+        constant_ones_half_ = cuda::CreateConstantOnes<half>();
+      }
+      return reinterpret_cast<const T*>(constant_ones_half_->GetBuffer(count));
+    } else {
+      return nullptr;
+    }
   }
 
   void AddDeferredReleaseCPUPtr(void* p);
 
   template <typename T>
-  inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes) const {
+  IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes) const {
     if (count_or_bytes == 0)
       return nullptr;
 
     return IAllocator::MakeUniquePtr<T>(GetAllocator(device_id_, OrtMemTypeDefault), count_or_bytes);
   }
 
-  virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
+  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
 
-  virtual std::vector<std::unique_ptr<ComputeCapability>>
-  GetCapability(const onnxruntime::GraphViewer& graph,
-                const std::vector<const KernelRegistry*>& kernel_registries) const override;
+  std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
+      const onnxruntime::GraphViewer& graph,
+      const std::vector<const KernelRegistry*>& kernel_registries) const override;
 
   int GetDeviceId() const { return device_id_; }
   const cudaDeviceProp& GetDeviceProp() const { return device_prop_; };
+  int GetCudnnConvAlgo() const { return cudnn_conv_algo_; }
+  void UpdateProviderOptionsInfo();
 
  private:
   OrtDevice::DeviceId device_id_;
   cudaDeviceProp device_prop_;
   size_t cuda_mem_limit_;
   ArenaExtendStrategy arena_extend_strategy_;
+  int cudnn_conv_algo_;
+  bool do_copy_in_default_stream_;
 
   struct DeferredReleaseCPUPtrs {
     bool recorded = false;
     std::vector<void*> cpu_ptrs;
   };
+
   std::unordered_map<cudaEvent_t, DeferredReleaseCPUPtrs> deferred_release_cpu_ptr_;
   OrtMutex deferred_release_cpu_ptr_mutex_;
 
+  std::unique_ptr<cuda::IConstantBuffer<float>> constant_ones_float_;
+  std::unique_ptr<cuda::IConstantBuffer<double>> constant_ones_double_;
+  std::unique_ptr<cuda::IConstantBuffer<half>> constant_ones_half_;
+
   class PerThreadContext final {
    public:
-    PerThreadContext(OrtDevice::DeviceId device_id, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy);
+    PerThreadContext(OrtDevice::DeviceId device_id);
     ~PerThreadContext();
 
-    cublasHandle_t CublasHandle();
+    cublasHandle_t CublasHandle() const {
+      return cublas_handle_;
+    }
 
-    cudnnHandle_t CudnnHandle();
-
-    curandGenerator_t CurandGenerator();
+    cudnnHandle_t CudnnHandle() const {
+      return cudnn_handle_;
+    }
 
     cudaEvent_t& GetCurrentDeferredReleaseEvent() {
       return current_deferred_release_event_;
     }
 
-    template <typename T>
-    const T* GetConstOnes(size_t count) {
-      if (std::is_same<T, float>::value) {
-        if (!constant_ones_float_) {
-          constant_ones_float_ = cuda::CreateConstantOnes<float>();
-        }
-        return reinterpret_cast<const T*>(constant_ones_float_->GetBuffer(count));
-      } else if (std::is_same<T, double>::value) {
-        if (!constant_ones_double_) {
-          constant_ones_double_ = cuda::CreateConstantOnes<double>();
-        }
-        return reinterpret_cast<const T*>(constant_ones_double_->GetBuffer(count));
-      } else if (std::is_same<T, half>::value) {
-        if (!constant_ones_half_) {
-          constant_ones_half_ = cuda::CreateConstantOnes<half>();
-        }
-        return reinterpret_cast<const T*>(constant_ones_half_->GetBuffer(count));
-      } else {
-        return nullptr;
-      }
-    }
-
-    AllocatorPtr GetAllocator() const {
-      return allocator_;
-    }
-
    private:
     cublasHandle_t cublas_handle_ = nullptr;
     cudnnHandle_t cudnn_handle_ = nullptr;
-    curandGenerator_t curand_generator_ = nullptr;
 
     // deferred release for temporary CPU pinned memory used in cudaMemcpyAsync
     // note that cudaEvent will be assigned at OnRunEnd() when PerThreadContext destory
     // so the ownership is passed to deferred_release_cpu_ptr_
     cudaEvent_t current_deferred_release_event_ = nullptr;
-
-    std::unique_ptr<cuda::IConstantBuffer<float>> constant_ones_float_;
-    std::unique_ptr<cuda::IConstantBuffer<double>> constant_ones_double_;
-    std::unique_ptr<cuda::IConstantBuffer<half>> constant_ones_half_;
-
-    AllocatorPtr allocator_;
   };
 
-  // thread local context during execution
-  using PerThreadContextMap = std::unordered_map<const CUDAExecutionProvider*, std::shared_ptr<PerThreadContext>>;
-  static thread_local std::unique_ptr<PerThreadContextMap> per_thread_context_map_;
+  using PerThreadContextMap = std::unordered_map<const CUDAExecutionProvider*, std::weak_ptr<PerThreadContext>>;
+  // thread local PerThreadContext cache
+  static const std::shared_ptr<PerThreadContextMap>& PerThreadContextCache() {
+    thread_local const auto per_thread_context_cache = std::make_shared<PerThreadContextMap>();
+    return per_thread_context_cache;
+  }
 
-  // reuse thread local context
-  mutable std::deque<std::shared_ptr<PerThreadContext>> retired_context_pool_;
-  mutable OrtMutex context_pool_mutex_;
+  struct PerThreadContextState {
+    // contexts that are currently active
+    std::set<std::shared_ptr<PerThreadContext>, std::owner_less<std::shared_ptr<PerThreadContext>>> active_contexts;
+    // contexts available for reuse
+    std::vector<std::shared_ptr<PerThreadContext>> retired_context_pool;
+    // weak references to thread local caches from which this CUDAExecutionProvider instance's entry should be removed
+    // upon destruction
+    std::set<std::weak_ptr<PerThreadContextMap>, std::owner_less<std::weak_ptr<PerThreadContextMap>>>
+        caches_to_update_on_destruction;
+    // synchronizes access to PerThreadContextState members
+    OrtMutex mutex;
+  };
+
+  // The execution provider maintains the PerThreadContexts in this structure.
+  // Synchronization is required to update the contained structures.
+  // On the other hand, access to an individual PerThreadContext is assumed to be from a single thread at a time,
+  // so synchronization is not required for that.
+  mutable PerThreadContextState context_state_;
 
   PerThreadContext& GetPerThreadContext() const;
-  void ReleasePerThreadStuffs() const;
+  void ReleasePerThreadContext() const;
 };
 
 }  // namespace onnxruntime

@@ -55,9 +55,9 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, cons
     Node& div = *p_div;
     ORT_RETURN_IF_ERROR(Recurse(div, modified, graph_level, logger));
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(div, "Div", {7}) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(div, "Div", {7, 13}) ||
         !graph_utils::IsSupportedProvider(div, GetCompatibleExecutionProviders()) ||
-        div.GetOutputEdgesCount() != 1 ||
+        !optimizer_utils::CheckOutputEdges(graph, div, 1) ||
         !IsSupportedDataType(div)) {
       continue;
     }
@@ -71,17 +71,17 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, cons
     }
 
     Node& erf_node = *graph.GetNode(div.OutputNodesBegin()->Index());
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(erf_node, "Erf", {9}) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(erf_node, "Erf", {9, 13}) ||
         erf_node.GetExecutionProviderType() != div.GetExecutionProviderType() ||
-        erf_node.GetOutputEdgesCount() != 1 ||
+        !optimizer_utils::CheckOutputEdges(graph, erf_node, 1) ||
         !IsSupportedDataType(erf_node)) {
       continue;
     }
 
     Node& add_node = *graph.GetNode(erf_node.OutputNodesBegin()->Index());
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(add_node, "Add", {7}) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(add_node, "Add", {7, 13}) ||
         add_node.GetExecutionProviderType() != div.GetExecutionProviderType() ||
-        add_node.GetOutputEdgesCount() != 1 ||
+        !optimizer_utils::CheckOutputEdges(graph, add_node, 1) ||
         !IsSupportedDataType(add_node)) {
       continue;
     }
@@ -95,7 +95,7 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, cons
 
     Node& mul_node = *graph.GetNode(add_node.OutputNodesBegin()->Index());
     // note: output edges count doesn't matter as the new Gelu node will produce outputs with the same names
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(mul_node, "Mul", {7}) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(mul_node, "Mul", {7, 13}) ||
         mul_node.GetExecutionProviderType() != div.GetExecutionProviderType() ||
         !IsSupportedDataType(mul_node)) {
       continue;
@@ -106,9 +106,9 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, cons
     if (p_mul2_node != nullptr) {
       // Match subgraph pattern 1
       Node& mul2_node = *graph.GetNode(p_mul2_node->Index());
-      if (!graph_utils::IsSupportedOptypeVersionAndDomain(mul2_node, "Mul", {7}) ||
+      if (!graph_utils::IsSupportedOptypeVersionAndDomain(mul2_node, "Mul", {7, 13}) ||
           mul2_node.GetExecutionProviderType() != div.GetExecutionProviderType() ||
-          mul2_node.GetOutputEdgesCount() != 1 ||
+          !optimizer_utils::CheckOutputEdges(graph, mul2_node, 1) ||
           !IsSupportedDataType(mul2_node)) {
         continue;
       }
@@ -129,7 +129,7 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, cons
       is_pattern_1 = false;
 
       // Match subgraph pattern 2
-      if (mul_node.GetOutputEdgesCount() != 1) {
+      if (!optimizer_utils::CheckOutputEdges(graph, mul_node, 1)) {
         continue;
       }
 
@@ -139,7 +139,7 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, cons
         continue;
 
       Node& mul2_node = *graph.GetNode(mul_node.OutputNodesBegin()->Index());
-      if (!graph_utils::IsSupportedOptypeVersionAndDomain(mul2_node, "Mul", {7}) ||
+      if (!graph_utils::IsSupportedOptypeVersionAndDomain(mul2_node, "Mul", {7, 13}) ||
           mul_node.GetExecutionProviderType() != div.GetExecutionProviderType() ||
           !IsSupportedDataType(mul_node)) {
         continue;

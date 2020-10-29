@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "split.h"
-#include "split_impl.h"
+#include "core/providers/cuda/tensor/split.h"
+#include "core/providers/cuda/tensor/split_impl.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/common.h"
 
@@ -16,9 +16,16 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Split,
                                   Split);
 
 // explicitly supports negative axis
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Split,
+                                  kOnnxDomain,
+                                  11, 12,
+                                  kCudaExecutionProvider,
+                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+                                  Split);
+
 ONNX_OPERATOR_KERNEL_EX(Split,
                         kOnnxDomain,
-                        11,
+                        13,
                         kCudaExecutionProvider,
                         KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
                         Split);

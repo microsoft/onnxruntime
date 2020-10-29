@@ -10,18 +10,19 @@
 namespace onnxruntime {
 namespace cuda {
 
-template<typename T>
-__global__ void _ScalarSqrtImpl(T* input, T* output) {
-  *output = _Sqrt(*input);
+template<typename Tin, typename Tout>
+__global__ void _ScalarSqrtImpl(Tin* input, Tout* output) {
+  *output = (Tout)_Sqrt(*input);
 };
 
-template<typename T>
-void ScalarSqrt(T* input, T* output) {
+template<typename Tin, typename Tout>
+void ScalarSqrt(Tin* input, Tout* output) {
   _ScalarSqrtImpl<<<1, 1, 0>>>(input, output);
 };
 
 template void ScalarSqrt(float* input, float* output);
 template void ScalarSqrt(half* input, half* output);
+template void ScalarSqrt(float* input, half* output);
 
 template <typename TIn, typename TOut, typename TBuf, typename TInOp, typename TOutOp>
 __global__ void _MultiTensorReduceImpl(ChunkGroup<1> chunk_group, TOut* output) {

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Rule Name="WindowsAI" DisplayName="Microsoft.AI.MachineLearning NuGet Settings" Order="75" PageTemplate="generic" xmlns="http://schemas.microsoft.com/build/2009/properties">
+  <Rule.Categories>
+    <Category Name="General" DisplayName="General"/>
+  </Rule.Categories>
+
+  <Rule.DataSource>
+    <DataSource Persistence="ProjectFile" HasConfigurationCondition="false" Label="Globals" />
+  </Rule.DataSource>
+
+  <BoolProperty Name="DisableOnnxRuntimeDllCopy"
+                DisplayName="Disable onnxruntime.dll copy on build"
+                Description="Suppresses binplacing the onnxruntime.dll from the Mirosoft.AI.MachineLearning NuGet distribution."
+                Category="General" />
+
+  <BoolProperty Name="DisableDirectMLDllCopy"
+                DisplayName="Disable directml.dll copy on build"
+                Description="Suppresses binplacing the directml.dll from the Mirosoft.AI.MachineLearning NuGet distribution."
+                Category="General" />
+</Rule>

@@ -85,9 +85,9 @@ SgemmKernelM1Frame ENDS
         push_reg rbx
         push_reg rsi
         alloc_stack (SgemmKernelM1Frame.SavedRsi)
-        save_xmm128_avx xmm6,SgemmKernelM1Frame.SavedXmm6
-        save_xmm128_avx xmm7,SgemmKernelM1Frame.SavedXmm7
-        save_xmm128_avx xmm8,SgemmKernelM1Frame.SavedXmm8
+        save_xmm128 xmm6,SgemmKernelM1Frame.SavedXmm6
+        save_xmm128 xmm7,SgemmKernelM1Frame.SavedXmm7
+        save_xmm128 xmm8,SgemmKernelM1Frame.SavedXmm8
 
         END_PROLOGUE
 
@@ -217,9 +217,9 @@ ProcessRemainingCountK:
 
 ExitKernel:
         vzeroupper
-        vmovaps xmm6,SgemmKernelM1Frame.SavedXmm6[rsp]
-        vmovaps xmm7,SgemmKernelM1Frame.SavedXmm7[rsp]
-        vmovaps xmm8,SgemmKernelM1Frame.SavedXmm8[rsp]
+        movaps  xmm6,SgemmKernelM1Frame.SavedXmm6[rsp]
+        movaps  xmm7,SgemmKernelM1Frame.SavedXmm7[rsp]
+        movaps  xmm8,SgemmKernelM1Frame.SavedXmm8[rsp]
         add     rsp,(SgemmKernelM1Frame.SavedRsi)
 
         BEGIN_EPILOGUE
@@ -348,8 +348,8 @@ ProcessRemainingCountN1:
         push_reg rbx
         push_reg rsi
         alloc_stack (SgemmKernelM1Frame.SavedRsi)
-        save_xmm128_avx xmm6,SgemmKernelM1Frame.SavedXmm6
-        save_xmm128_avx xmm7,SgemmKernelM1Frame.SavedXmm7
+        save_xmm128 xmm6,SgemmKernelM1Frame.SavedXmm6
+        save_xmm128 xmm7,SgemmKernelM1Frame.SavedXmm7
 
         END_PROLOGUE
 
@@ -465,8 +465,8 @@ ProcessRemainingCountN:
 
 ExitKernel:
         vzeroupper
-        vmovaps xmm6,SgemmKernelM1Frame.SavedXmm6[rsp]
-        vmovaps xmm7,SgemmKernelM1Frame.SavedXmm7[rsp]
+        movaps  xmm6,SgemmKernelM1Frame.SavedXmm6[rsp]
+        movaps  xmm7,SgemmKernelM1Frame.SavedXmm7[rsp]
         add     rsp,(SgemmKernelM1Frame.SavedRsi)
 
         BEGIN_EPILOGUE

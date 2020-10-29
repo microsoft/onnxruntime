@@ -381,27 +381,28 @@ inline winml::ILearningModelFeatureValue CreateFeatureValueFromInspectable(
   else if (descriptor.Kind() == winml::LearningModelFeatureKind::Tensor) {
     auto tensorDescriptor = descriptor.as<winml::ITensorFeatureDescriptor>();
 
-    using TensorCreator = std::function<winml::ILearningModelFeatureValue()>;
-    std::vector<TensorCreator> creators =
+    using TensorCreator = winml::ILearningModelFeatureValue (*)(BindingType, const wf::IInspectable& inspectable, const winml::ITensorFeatureDescriptor& descriptor);
+    constexpr std::array<TensorCreator, 13> creators =
         {
             // Vector and VectorViews of float16 and int8 collide with float and uint8 respectively.
             // They are omitted because of this ambiguity and are not constructible via raw winrt collections.
-            [&]() { return CreateTensorValueFromInspectable<winmlp::TensorBoolean, bool>(bindingType, inspectable, tensorDescriptor); },
-            [&]() { return CreateTensorValueFromInspectable<winmlp::TensorFloat, float>(bindingType, inspectable, tensorDescriptor); },
-            [&]() { return CreateTensorValueFromInspectable<winmlp::TensorDouble, double>(bindingType, inspectable, tensorDescriptor); },
-            [&]() { return CreateTensorValueFromInspectable<winmlp::TensorUInt8Bit, uint8_t>(bindingType, inspectable, tensorDescriptor); },
-            [&]() { return CreateTensorValueFromInspectable<winmlp::TensorInt8Bit, uint8_t>(bindingType, inspectable, tensorDescriptor); },
-            [&]() { return CreateTensorValueFromInspectable<winmlp::TensorUInt16Bit, uint16_t>(bindingType, inspectable, tensorDescriptor); },
-            [&]() { return CreateTensorValueFromInspectable<winmlp::TensorInt16Bit, int16_t>(bindingType, inspectable, tensorDescriptor); },
-            [&]() { return CreateTensorValueFromInspectable<winmlp::TensorUInt32Bit, uint32_t>(bindingType, inspectable, tensorDescriptor); },
-            [&]() { return CreateTensorValueFromInspectable<winmlp::TensorInt32Bit, int32_t>(bindingType, inspectable, tensorDescriptor); },
-            [&]() { return CreateTensorValueFromInspectable<winmlp::TensorUInt64Bit, uint64_t>(bindingType, inspectable, tensorDescriptor); },
-            [&]() { return CreateTensorValueFromInspectable<winmlp::TensorInt64Bit, int64_t>(bindingType, inspectable, tensorDescriptor); },
-            [&]() { return CreateTensorValueFromInspectable<winmlp::TensorFloat16Bit, float>(bindingType, inspectable, tensorDescriptor); },
-            [&]() { return CreateTensorValueFromInspectable<winmlp::TensorString, winrt::hstring>(bindingType, inspectable, tensorDescriptor); }};
+            CreateTensorValueFromInspectable<winmlp::TensorBoolean, bool>,
+            CreateTensorValueFromInspectable<winmlp::TensorFloat, float>,
+            CreateTensorValueFromInspectable<winmlp::TensorDouble, double>,
+            CreateTensorValueFromInspectable<winmlp::TensorUInt8Bit, uint8_t>,
+            CreateTensorValueFromInspectable<winmlp::TensorInt8Bit, uint8_t>,
+            CreateTensorValueFromInspectable<winmlp::TensorUInt16Bit, uint16_t>,
+            CreateTensorValueFromInspectable<winmlp::TensorInt16Bit, int16_t>,
+            CreateTensorValueFromInspectable<winmlp::TensorUInt32Bit, uint32_t>,
+            CreateTensorValueFromInspectable<winmlp::TensorInt32Bit, int32_t>,
+            CreateTensorValueFromInspectable<winmlp::TensorUInt64Bit, uint64_t>,
+            CreateTensorValueFromInspectable<winmlp::TensorInt64Bit, int64_t>,
+            CreateTensorValueFromInspectable<winmlp::TensorFloat16Bit, float>,
+            CreateTensorValueFromInspectable<winmlp::TensorString, winrt::hstring>
+        };
 
     for (const auto& tensorCreator : creators) {
-      if (auto createdTensor = tensorCreator()) {
+      if (auto createdTensor = tensorCreator(bindingType, inspectable, tensorDescriptor)) {
         return createdTensor;
       }
     }

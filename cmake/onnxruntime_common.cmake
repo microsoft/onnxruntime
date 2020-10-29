@@ -30,8 +30,10 @@ if(WIN32)
          "${ONNXRUNTIME_ROOT}/core/platform/windows/logging/*.h"
          "${ONNXRUNTIME_ROOT}/core/platform/windows/logging/*.cc"
     )
-    # wndows platform adapter code uses advapi32
-    list(APPEND onnxruntime_EXTERNAL_LIBRARIES advapi32)
+    # Windows platform adapter code uses advapi32, which isn't linked in by default in desktop ARM
+    if (NOT WINDOWS_STORE)
+        list(APPEND onnxruntime_EXTERNAL_LIBRARIES advapi32)
+    endif()
 else()
     list(APPEND onnxruntime_common_src_patterns
          "${ONNXRUNTIME_ROOT}/core/platform/posix/*.h"
@@ -42,6 +44,13 @@ else()
         list(APPEND onnxruntime_common_src_patterns
             "${ONNXRUNTIME_ROOT}/core/platform/posix/logging/*.h"
             "${ONNXRUNTIME_ROOT}/core/platform/posix/logging/*.cc"
+        )
+    endif()
+
+    if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+        list(APPEND onnxruntime_common_src_patterns
+            "${ONNXRUNTIME_ROOT}/core/platform/android/logging/*.h"
+            "${ONNXRUNTIME_ROOT}/core/platform/android/logging/*.cc"
         )
     endif()
 endif()
@@ -125,4 +134,14 @@ if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Linux")
   else()
     target_link_libraries(onnxruntime_common rt)
   endif()
+endif()
+
+if (onnxruntime_WINML_NAMESPACE_OVERRIDE STREQUAL "Windows")
+  target_compile_definitions(onnxruntime_common PRIVATE "BUILD_INBOX=1")
+endif()
+
+# check if we need to link against libatomic due to std::atomic usage by the threadpool code
+# e.g. Raspberry Pi requires this
+if (onnxruntime_LINK_LIBATOMIC)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES atomic)
 endif()

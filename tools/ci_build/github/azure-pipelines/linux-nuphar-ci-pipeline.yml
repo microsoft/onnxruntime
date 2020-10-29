@@ -1,0 +1,9 @@
+jobs:
+- template: templates/linux-ci.yml
+  parameters:
+    AgentPool : 'Linux-CPU'
+    JobName: 'Linux_CI_Dev'
+    BuildCommand: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu18.04 -d cpu -r $(Build.BinariesDirectory) -x "--enable_pybind --use_nuphar"'
+    DoNugetPack:  'false'
+    ArtifactName: 'drop-linux'
+    TimeoutInMinutes: 180

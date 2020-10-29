@@ -15,7 +15,13 @@
 #include "core/framework/op_kernel_context_internal.h"
 
 #if defined DEBUG_NODE_INPUTS_OUTPUTS
-#include "core/framework/utils.h"
+#include "core/framework/debug_node_inputs_outputs_utils.h"
+#endif
+
+#ifdef ENABLE_NVTX_PROFILE
+// This header is for profile using Nvidia's visual profilier.
+#include "core/profile/profile.h"
+#include "core/profile/context.h"
 #endif
 
 // #define TRACE_EXECUTION
@@ -55,7 +61,7 @@ static void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context
   ORT_UNUSED_PARAMETER(node_name);
   for (auto i = 0; i < op_kernel_context->OutputCount(); i++) {
     const OrtValue* p_output = op_kernel_context->GetOutputMLValue(i);
-    if (p_output->IsTensor()) {
+    if (p_output != nullptr && p_output->IsTensor()) {
       const auto& tensor = p_output->Get<Tensor>();
       size_t tensor_size = tensor.SizeInBytes();
 #if defined(TRACE_EXECUTION)
@@ -69,7 +75,6 @@ static void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context
       total_output_sizes += tensor_size;
     }
   }
-
 }
 
 static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_context,
@@ -83,7 +88,7 @@ static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_co
   const int input_count = op_kernel_context->InputCount();
   for (auto i = 0; i < input_count; i++) {
     const OrtValue* p_input = op_kernel_context->GetInputMLValue(i);
-    if (p_input->IsTensor()) {
+    if (p_input != nullptr && p_input->IsTensor()) {
       const OpKernelInfo& op_kernel_info = p_op_kernel->Info();
       const Tensor* p_tensor = nullptr;
       bool is_param = op_kernel_info.TryGetConstantInput(i, &p_tensor);
@@ -134,13 +139,19 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   }
 
   ExecutionFrame frame{feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state};
+  const std::unordered_set<NodeIndex>* to_be_executed_nodes = nullptr;
 
-  const std::unordered_set<NodeIndex>* to_be_executed_nodes = session_state.GetToBeExecutedNodes(fetch_mlvalue_idxs);
+#if !defined(ORT_MINIMAL_BUILD)
+  to_be_executed_nodes = session_state.GetToBeExecutedNodes(fetch_mlvalue_idxs);
   const bool only_execute_path_to_fetches = only_execute_path_to_fetches_ && (to_be_executed_nodes != nullptr);
 
   if (only_execute_path_to_fetches) {
     VLOGS(logger, 1) << to_be_executed_nodes->size() << " nodes to be executed\n";
   }
+#else
+  ORT_UNUSED_PARAMETER(only_execute_path_to_fetches_);
+  const bool only_execute_path_to_fetches = false;
+#endif
 
   LOGS(logger, INFO) << "Begin execution";
   const SequentialExecutionPlan& seq_exec_plan = *session_state.GetExecutionPlan();
@@ -152,7 +163,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   std::cout << std::make_pair(&seq_exec_plan, &session_state) << std::endl;
 #endif
 
-  const auto* graph_viewer = session_state.GetGraphViewer();
+  const auto& graph_viewer = session_state.GetGraphViewer();
 
 #ifdef CONCURRENCY_VISUALIZER
   // need unique name for the series. number of nodes should be good enough for a subgraph
@@ -163,6 +174,17 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   }
 
   diagnostic::marker_series series(series_name);
+#endif
+
+#ifdef ENABLE_NVTX_PROFILE
+  auto& profile_context = profile::Context::GetInstance();
+  const auto tag = profile_context.GetThreadTagOrDefault(std::this_thread::get_id());
+  profile::NvtxRangeCreator forward_range(
+      "Batch-" + tag + " Forward",
+      profile::Color::White);
+  profile::NvtxRangeCreator backward_range(
+      "Batch-" + tag + " Backward",
+      profile::Color::Black);
 #endif
 
   for (const auto& node_exec_plan : exec_plan_vec) {
@@ -178,10 +200,22 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       continue;
     }
 
-    const auto& node = *graph_viewer->GetNode(node_exec_plan.node_index);
+    const auto& node = *graph_viewer.GetNode(node_exec_plan.node_index);
 
 #ifdef CONCURRENCY_VISUALIZER
     series.write_flag(node.Name().c_str());
+#endif
+
+#ifdef ENABLE_NVTX_PROFILE
+    if (node.Description() != "Backward pass" && !forward_range.IsBeginCalled()) {
+      // Start timing forward pass when encountering the first forward node.
+      forward_range.Begin();
+    } else if (node.Description() == "Backward pass" && !backward_range.IsBeginCalled() && forward_range.IsBeginCalled()) {
+      // Start timing backward pass when encountering the first backward node.
+      // In the meanwhile, forward range ends.
+      forward_range.End();
+      backward_range.Begin();
+    }
 #endif
 
     auto p_op_kernel = session_state.GetKernel(node_index);
@@ -235,13 +269,13 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
         }
       }
     }
-#if defined DEBUG_NODE_INPUTS_OUTPUTS
-    utils::DumpNodeInputs(op_kernel_context, p_op_kernel->Node());
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
+    utils::DumpNodeInputs(op_kernel_context, p_op_kernel->Node(), session_state);
 #endif
 
     const std::string node_name_for_profiling = [&]() -> std::string {
       if (!is_profiler_enabled) return {};
-      // Derive something meaningful for profile traces and logs if node name field is blank in execution graph 
+      // Derive something meaningful for profile traces and logs if node name field is blank in execution graph
       return node.Name().empty() ? MakeString(node.OpType(), "_", node_index) : node.Name();
     }();
 
@@ -258,33 +292,41 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
       // Calculate total input sizes for this operation.
       CalculateTotalInputSizes(&op_kernel_context, p_op_kernel,
-                               input_activation_sizes,input_parameter_sizes, node_name_for_profiling);
+                               input_activation_sizes, input_parameter_sizes, node_name_for_profiling);
     }
 
-#ifdef CONCURRENCY_VISUALIZER
+    Status compute_status;
     {
+#ifdef CONCURRENCY_VISUALIZER
       diagnostic::span span(series, "%s.%d", node.OpType().c_str(), node.Index());
 #endif
-      Status compute_status;
-
-      try {
-        compute_status = p_op_kernel->Compute(&op_kernel_context);
-      } catch (const std::exception& ex) {
-        compute_status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, ex.what());
-      }
-
-      if (!compute_status.IsOK()) {
-        std::ostringstream ss;
-        ss << "Non-zero status code returned while running " << node.OpType() << " node. Name:'" << node.Name()
-           << "' Status Message: " << compute_status.ErrorMessage();
-        const auto msg_string = ss.str();
-        LOGS(logger, ERROR) << msg_string;
-        return Status(compute_status.Category(), compute_status.Code(), msg_string);
-      }
-
-#ifdef CONCURRENCY_VISUALIZER
-    }
+#ifdef ENABLE_NVTX_PROFILE
+      profile::NvtxRangeCreator node_compute_range(
+          MakeString(node.OpType(), ".", node.Index(), "(", node.Name(), ")"), profile::Color::Blue);
+      node_compute_range.Begin();
 #endif
+      ORT_TRY {
+        compute_status = p_op_kernel->Compute(&op_kernel_context);
+      }
+      ORT_CATCH(const std::exception& ex) {
+        ORT_HANDLE_EXCEPTION([&]() {
+          compute_status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, ex.what());
+        });
+      }
+
+#ifdef ENABLE_NVTX_PROFILE
+      node_compute_range.End();
+#endif
+    }
+
+    if (!compute_status.IsOK()) {
+      std::ostringstream ss;
+      ss << "Non-zero status code returned while running " << node.OpType() << " node. Name:'" << node.Name()
+         << "' Status Message: " << compute_status.ErrorMessage();
+      const auto msg_string = ss.str();
+      LOGS(logger, ERROR) << msg_string;
+      return Status(compute_status.Category(), compute_status.Code(), msg_string);
+    }
 
     if (is_profiler_enabled) {
       // Calculate total output sizes for this operation.
@@ -363,7 +405,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                                                      {{"op_name", p_op_kernel->KernelDef().OpName()}});
     }
 
-#if defined(DEBUG_NODE_INPUTS_OUTPUTS)
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
     utils::DumpNodeOutputs(op_kernel_context, p_op_kernel->Node(), session_state);
 #endif
 
@@ -371,6 +413,23 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     VLOGS(logger, 1) << "Releasing node ML values.";
     ORT_RETURN_IF_ERROR(ReleaseNodeMLValues(frame, seq_exec_plan, node_exec_plan, logger));
   }
+
+#ifdef ENABLE_NVTX_PROFILE
+  // Make sure forward Range object call Begin and End.
+  if (!forward_range.IsBeginCalled()) {
+    forward_range.Begin();
+  }
+  if (!forward_range.IsEndCalled()) {
+    forward_range.End();
+  }
+  // Make sure backward Range object call Begin and End.
+  if (!backward_range.IsBeginCalled()) {
+    backward_range.Begin();
+  }
+  if (!backward_range.IsEndCalled()) {
+    backward_range.End();
+  }
+#endif
 
   VLOGS(logger, 1) << "Fetching output.";
   // ExecutionFrame::Finalize will update 'fetches' with the final output
@@ -398,6 +457,16 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
   if (is_profiler_enabled) {
     session_state.Profiler().EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", tp);
+  }
+
+  for (auto i : frame.GetStaticMemorySizeInfo()) {
+    LOGS(logger, INFO) << "[Memory] ExecutionFrame statically allocates "
+                       << i.second << " bytes for " << i.first << std::endl;
+  }
+
+  for (auto i : frame.GetDynamicMemorySizeInfo()) {
+    LOGS(logger, INFO) << "[Memory] ExecutionFrame dynamically allocates "
+                       << i.second << " bytes for " << i.first << std::endl;
   }
 
   return Status::OK();

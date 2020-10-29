@@ -33,7 +33,7 @@ class InferenceSessionProtectedLoadAccessor : public onnxruntime::InferenceSessi
     return onnxruntime::InferenceSession::Load(std::move(p_model_proto));
   }
   const onnxruntime::SessionState& GetSessionState() {
-    return *session_state_;
+    return onnxruntime::InferenceSession::GetSessionState();
   }
 };
 
@@ -240,6 +240,15 @@ ORT_API_STATUS_IMPL(winmla::SessionCopyOneInputAcrossDevices, _In_ OrtSession* s
 
   *new_value = ort_value.release();
 
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(winmla::SessionGetNumberOfIntraOpThreads, _In_ OrtSession* session, _Out_ uint32_t* num_threads) {
+  API_IMPL_BEGIN
+  auto inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
+  auto session_options = inference_session->GetSessionOptions();
+  *num_threads = session_options.intra_op_param.thread_pool_size;
   return nullptr;
   API_IMPL_END
 }

@@ -25,6 +25,7 @@
 #include "test/framework/test_utils.h"
 #include "gtest/gtest.h"
 #include "core/util/protobuf_parsing_utils.h"
+#include "test/providers/provider_test_utils.h"
 #include "asserts.h"
 
 using namespace std;
@@ -177,7 +178,7 @@ TEST(CUDAFenceTests, TileWithInitializer) {
   LoadInferenceSessionFromModel(session, *model);
   CUDAExecutionProviderInfo xp_info;
   ASSERT_STATUS_OK(session.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info)));
-  ASSERT_TRUE(session.Initialize().IsOK());
+  ASSERT_STATUS_OK(session.Initialize());
 
   vector<OrtValue> outputs;
   ASSERT_STATUS_OK(

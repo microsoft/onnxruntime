@@ -22,7 +22,7 @@ void OptimizerGraphBuilderRegistry::RegisterGraphBuilders() {
 
 std::string OptimizerGraphBuilderRegistry::GetNameFromConfig(const OptimizerGraphConfig& config) const {
   if (config.data_parallel_group_size > 1) {
-    if (config.partition_optimizer) {
+    if (config.deepspeed_zero.stage != 0) {
       return "ZeRO";
     } else if (config.adasum_reduction_type != AdasumReductionType::None) {
       return "Adasum";

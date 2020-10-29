@@ -10,10 +10,18 @@
 #include "gtest/gtest.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/utils.h"
+#include "core/optimizer/bias_gelu_fusion.h"
+#include "core/optimizer/gelu_fusion.h"
+#include "core/optimizer/dropout_elimination.h"
+#include "orttraining/core/optimizer/bias_dropout_fusion.h"
 #include "orttraining/core/optimizer/gist_encode_decode.h"
+#include "orttraining/core/optimizer/nonzero_shape_setter.h"
 #include "orttraining/core/optimizer/megatron_transformer.h"
+#include "orttraining/core/optimizer/concat_replacement.h"
+#include "orttraining/core/optimizer/localized_recompute.h"
 #include "test/optimizer/graph_transform_test_fixture.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/asserts.h"
 #include "orttraining/test/optimizer/horizontal_parallel_test_utils.h"
 
 #include <random>
@@ -25,6 +33,27 @@ namespace onnxruntime {
 namespace test {
 
 #define MODEL_FOLDER ORT_TSTR("testdata/transform/")
+
+TEST_F(GraphTransformationTests, DropoutWithZeroRatioElimination) {
+  auto model_uri = MODEL_FOLDER "dropout_ratio.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Identity"] == 10);
+  ASSERT_TRUE(op_to_count["Dropout"] == 5);
+
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(onnxruntime::make_unique<EliminateDropout>());
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+
+  ASSERT_TRUE(op_to_count["Identity"] == 10);
+  ASSERT_TRUE(op_to_count["Dropout"] == 2);
+}
 
 TEST_F(GraphTransformationTests, GistEncodeDecode) {
   auto model_uri = MODEL_FOLDER "../test_training_model.onnx";
@@ -44,6 +73,33 @@ TEST_F(GraphTransformationTests, GistEncodeDecode) {
   ASSERT_TRUE(op_to_count["GistBinarizeEncoder"] == op_to_count["GistBinarizeEncoder"]);
 }
 
+static void TestBiasDropoutFusion(const PathString& file_path, const logging::Logger& logger, const int add_count = 0) {
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(file_path, p_model, nullptr, logger).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<BiasDropoutFusion>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, logger);
+  ASSERT_STATUS_OK(ret);
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+  ASSERT_EQ(op_to_count["Add"], add_count);
+  ASSERT_EQ(op_to_count["Dropout"], 0);
+  ASSERT_EQ(op_to_count["TrainableDropout"], 0);
+  ASSERT_EQ(op_to_count["com.microsoft.BiasDropout"], 1);
+}
+
+TEST_F(GraphTransformationTests, BiasDropoutFusionTest) {
+  TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_fusion1.onnx", *logger_);
+  TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_fusion2.onnx", *logger_);
+  TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_residual_fusion1.onnx", *logger_);
+  TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_residual_fusion2.onnx", *logger_);
+  TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_residual_fusion_mismatch.onnx", *logger_, 1);
+  TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_trainabledropout_residual_fusion.onnx", *logger_);
+}
+
 Node* GetNodeByName(Graph& graph, std::string node_name) {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
@@ -58,9 +114,48 @@ Node* GetNodeByName(Graph& graph, std::string node_name) {
   return nullptr;
 }
 
+TEST_F(GraphTransformationTests, NonZeroShapeSetter) {
+  auto model_uri = MODEL_FOLDER "nonzero_shape_setter.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, *logger_).IsOK());
+  Graph& graph = p_model->MainGraph();
 
-// MegatronF/G is defined only for training, and in msdomain.
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("NonZeroShapeSetter1");
+  rule_transformer_L1->Register(onnxruntime::make_unique<NonZeroShapeSetter>());
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
+  ASSERT_TRUE(ret.IsOK());
+
+  auto nonzero_shape = GetNodeByName(graph, "nonzero")->OutputDefs()[0]->Shape();
+  ASSERT_TRUE(nonzero_shape->dim_size() == 2);
+  ASSERT_TRUE(nonzero_shape->dim(0).dim_value() == 2);
+  ASSERT_TRUE(nonzero_shape->dim(1).dim_param() == "nonzero_nonzero_count");
+}
+
+// MegatronF/G and ConcatTraining is defined only for training, and in msdomain.
 #ifndef DISABLE_CONTRIB_OPS
+TEST_F(GraphTransformationTests, ConcatReplacement) {
+  auto model_uri = MODEL_FOLDER "concat_trainable.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, *logger_).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("ConcatReplacement");
+  rule_transformer_L1->Register(onnxruntime::make_unique<ConcatReplacement>());
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+  ASSERT_EQ(op_to_count["Concat"], 0);
+  ASSERT_EQ(op_to_count["com.microsoft.ConcatTraining"], 1);
+}
+
 TEST_F(GraphTransformationTests, MegatronMLPPartitionRank0) {
   auto model_uri = MODEL_FOLDER "model_parallel/mlp_megatron_basic_test.onnx";
   std::shared_ptr<Model> p_model;
@@ -325,6 +420,33 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionRank1) {
   }
 }
 
+TEST_F(GraphTransformationTests, BiasGeluRecomputeTest) {
+  auto model_uri = MODEL_FOLDER "fusion/bias_gelu_fusion_recompute.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<GeluFusion>(), TransformerLevel::Level2);
+  graph_transformation_mgr.Register(onnxruntime::make_unique<BiasGeluFusion>(), TransformerLevel::Level2);
+  graph_transformation_mgr.Register(onnxruntime::make_unique<GeluRecompute>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_);
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Div"] == 0);
+  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["Erf"] == 0);
+  ASSERT_TRUE(op_to_count["Mul"] == 0);
+  ASSERT_TRUE(op_to_count["com.microsoft.Gelu"] == 0);
+  ASSERT_TRUE(op_to_count["com.microsoft.BiasGelu"] == 2);
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "com.microsoft.BiasGelu") {
+      ASSERT_TRUE(node.InputDefs().size() == 2);
+    }
+  }
+}
+
 // We only tested on CUDA run.
 #if defined(USE_CUDA)
 TEST_F(GraphTransformationTests, MegatronMLPPartitionCorrectnessTest) {
@@ -343,7 +465,7 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionCorrectnessTest) {
     graphs.push_back(&graph);
   }
 
-  onnxruntime::Model combine_model("combine_graph", false, *logger_);
+  onnxruntime::Model combine_model("combine_graph", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}, {kMSDomain, 1}}, {}, *logger_);
   auto& combine_graph = combine_model.MainGraph();
   auto ret = horizontal_parallel_test_utils::MergeGraphsOnAllWorkers(graphs, combine_graph);
   ORT_ENFORCE(ret.IsOK());
@@ -386,6 +508,7 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionCorrectnessTest) {
 
     // Now run
     RunOptions run_options;
+    run_options.training_mode = true;
     st = session_object.Run(run_options, feeds, output_names, &expected_ort_values);
 
     EXPECT_TRUE(st.IsOK());
@@ -417,6 +540,7 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionCorrectnessTest) {
 
     // Now run
     RunOptions run_options;
+    run_options.training_mode = true;
     st = session_object.Run(run_options, feeds, output_names, &actual_ort_values);
 
     EXPECT_TRUE(st.IsOK());
@@ -432,7 +556,7 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionCorrectnessTest) {
 
 TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionCorrectnessTest) {
   auto model_uri = MODEL_FOLDER "model_parallel/self_attention_megatron_basic_test.onnx";
-  const int total_rank = 2; // The test graph is too small to partition to 4, so use 2 instead here.
+  const int total_rank = 2;  // The test graph is too small to partition to 4, so use 2 instead here.
   std::vector<Graph*> graphs;
   std::vector<std::shared_ptr<Model>> p_models(total_rank);
   for (auto i = 0; i < total_rank; i++) {
@@ -460,7 +584,7 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionCorrectnessTest) 
     ORT_ENFORCE(attr != nullptr && attr->has_i() && attr->i() == dropout2_rank0_seed);
   }
 
-  onnxruntime::Model combine_model("combine_graph", false, *logger_);
+  onnxruntime::Model combine_model("combine_graph", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}, {kMSDomain, 1}}, {}, *logger_);
   auto& combine_graph = combine_model.MainGraph();
   auto ret = horizontal_parallel_test_utils::MergeGraphsOnAllWorkers(graphs, combine_graph);
   ORT_ENFORCE(ret.IsOK());
@@ -513,6 +637,7 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionCorrectnessTest) 
 
     // Now run
     RunOptions run_options;
+    run_options.training_mode = true;
     st = session_object.Run(run_options, feeds, output_names, &expected_ort_values);
     EXPECT_TRUE(st.IsOK());
   }
@@ -547,6 +672,7 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionCorrectnessTest) 
 
     // Now run
     RunOptions run_options;
+    run_options.training_mode = true;
     st = session_object.Run(run_options, feeds, output_names, &actual_ort_values);
     EXPECT_TRUE(st.IsOK());
   }

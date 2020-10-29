@@ -19,6 +19,9 @@ class OnnxruntimeEnvironment {
   UniqueOrtEnv ort_env_;
 };
 
+const OrtApi* GetVersionedOrtApi();
+const WinmlAdapterApi* GetVersionedWinmlAdapterApi();
+
 }  // namespace _winml
 
 #pragma warning(pop)

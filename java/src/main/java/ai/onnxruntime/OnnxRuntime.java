@@ -52,8 +52,10 @@ final class OnnxRuntime {
       detectedOS = "win";
     } else if (os.contains("nux")) {
       detectedOS = "linux";
-    } else {
+    } else if (isAndroid()) {
       detectedOS = "android";
+    } else {
+      throw new IllegalStateException("Unsupported os:" + os);
     }
     String detectedArch = null;
     String arch = System.getProperty("os.arch", "generic").toLowerCase(Locale.ENGLISH);
@@ -61,6 +63,8 @@ final class OnnxRuntime {
       detectedArch = "x64";
     } else if (arch.indexOf("x86") == 0) {
       detectedArch = "x86";
+    } else if (isAndroid()) {
+      detectedArch = arch;
     } else {
       throw new IllegalStateException("Unsupported arch:" + arch);
     }
@@ -109,15 +113,10 @@ final class OnnxRuntime {
   /**
    * Check if we're running on Android.
    *
-   * @return True if the {@code android.app.Activity} class can be loaded, false otherwise.
+   * @return True if the property java.vendor equals The Android Project, false otherwise.
    */
   static boolean isAndroid() {
-    try {
-      Class.forName("android.app.Activity");
-      return true;
-    } catch (ClassNotFoundException e) {
-      return false;
-    }
+    return System.getProperty("java.vendor", "generic").equals("The Android Project");
   }
 
   /**

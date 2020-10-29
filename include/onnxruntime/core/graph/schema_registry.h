@@ -129,6 +129,10 @@ class SchemaRegistryManager : public onnxruntime::IOnnxRuntimeOpSchemaCollection
   */
   DomainToVersionMap GetLatestOpsetVersions(bool is_onnx_only) const override;
 
+  /** Gets the last released opset versions.
+  @param is_onnx_only If true, return ONNX schemas only. If false, return the schemas for all domains.
+  */
+  DomainToVersionMap GetLastReleasedOpsetVersions(bool is_onnx_only) const ;
   /**
   Gets the OpSchema and its history.
   Searches custom schema registries starting with the last one added. \
@@ -146,6 +150,8 @@ class SchemaRegistryManager : public onnxruntime::IOnnxRuntimeOpSchemaCollection
                            int* earliest_opset_where_unchanged) const override;
 
  private:
+  void GetDomainToVersionMapForRegistries(DomainToVersionMap& domain_version_map, bool is_onnx_only) const;
+
   std::deque<std::shared_ptr<IOnnxRuntimeOpSchemaCollection>> registries;
 };
 

@@ -11,6 +11,18 @@
 namespace onnxruntime {
 namespace cuda {
 
+#define REGISTER_KERNEL_VERSIONED_TYPED_TWO_TYPES(Class, T, Tin, domain, startver, endver)  \
+  ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_EX(                                              \
+      Class,                                                                                \
+      domain,                                                                               \
+      startver, endver,                                                                     \
+      T, Tin,                                                                               \
+      kCudaExecutionProvider,                                                               \
+      KernelDefBuilder()                                                                    \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                            \
+          .TypeConstraint("Tin", DataTypeImpl::GetTensorType<Tin>()),                       \
+      Class<T, Tin>);
+
 #define REGISTER_KERNEL_TYPED_TWO_TYPES(Class, T, Tin, domain, version) \
   ONNX_OPERATOR_TWO_TYPED_KERNEL_EX(                                    \
       Class,                                                            \
@@ -243,11 +255,15 @@ Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx
   return Status::OK();
 }
 
+#define SPECIALIZED_VERSIONED_COMPUTE_SPARSE(Class, T, Tin, domain, startver, endvar) \
+  REGISTER_KERNEL_VERSIONED_TYPED_TWO_TYPES(Class, T, Tin, domain, startver, endvar)
+
 #define SPECIALIZED_COMPUTE_SPARSE(Class, T, Tin, domain, version) \
   REGISTER_KERNEL_TYPED_TWO_TYPES(Class, T, Tin, domain, version)  \
   template Status Class<T, Tin>::ComputeInternal(OpKernelContext* ctx) const;
 
-SPECIALIZED_COMPUTE_SPARSE(SoftmaxCrossEntropyLoss, float, int64_t, kOnnxDomain, 12)
+SPECIALIZED_VERSIONED_COMPUTE_SPARSE(SoftmaxCrossEntropyLoss, float, int64_t, kOnnxDomain, 12, 12)
+SPECIALIZED_COMPUTE_SPARSE(SoftmaxCrossEntropyLoss, float, int64_t, kOnnxDomain, 13)
 SPECIALIZED_COMPUTE_SPARSE(SoftmaxCrossEntropyLossGrad, float, int64_t, kMSDomain, 1)
 
 }  // namespace cuda

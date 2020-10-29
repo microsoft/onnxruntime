@@ -107,7 +107,7 @@ class Validator : public OutputCollector<TCharString> {
   void CreateSession() {
     Ort::SessionOptions session_options;
 #ifdef USE_CUDA
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_option, 0));
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
 #endif
     session_ = Ort::Session(env_, model_path_.c_str(), session_options);
   }

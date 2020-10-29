@@ -3,36 +3,56 @@
 # Licensed under the MIT License.
 
 import argparse
+import collections
 import subprocess
 import sys
 import os
 
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Runs a BERT batch size test.")
-    parser.add_argument("--binary_dir", required=True,
-                        help="Path to the ORT binary directory.")
-    parser.add_argument("--model_root", required=True,
-                        help="Path to the model root directory.")
+    parser.add_argument("--binary_dir", required=True, help="Path to the ORT binary directory.")
+    parser.add_argument("--model_root", required=True, help="Path to the model root directory.")
     return parser.parse_args()
+
 
 def main():
     args = parse_args()
-    matrix = { # enable mixed-precision, sequence length, max batch size
-        "fp16-128": [True, 128, 66],
-        "fp16-512": [True, 512, 10],
-        "fp32-128": [False, 128, 33],
-        "fp32-512": [False, 512, 5]}
+
+    Config = collections.namedtuple("Config", ["enable_mixed_precision", 
+                                               "sequence_length", 
+                                               "max_batch_size", 
+                                               "max_predictions_per_seq", 
+                                               "additional_options"])
+    configs = [
+        Config(True, 128, 76, 20, ""),
+        Config(True, 512, 11, 80, ""),
+        Config(False, 128, 39, 20, ""),
+        Config(False, 512, 6, 80, ""),
+
+        # BertLarge Phase 1 recompute
+        Config(True, 128, 91, 20, "--gelu_recompute"),
+        Config(True, 128, 83, 20, "--attn_dropout_recompute"),
+        Config(True, 128, 344, 20, "--transformer_layer_recompute"),
+
+        # BertLarge Phase 2 recompute
+        Config(True, 512, 12, 80, "--gelu_recompute"),
+        Config(True, 512, 14, 80, "--attn_dropout_recompute"),
+        Config(True, 512, 50, 80, "--transformer_layer_recompute"),
+    ]
 
     # run BERT training
-    for m in matrix:
-        print("######## testing name - " + m + " ##############")
+    for config in configs:
+        print("##### testing name - {}-{} #####".format("fp16" if config.enable_mixed_precision else "fp32",
+                                                        config.sequence_length))
         cmds = [
             os.path.join(args.binary_dir, "onnxruntime_training_bert"),
             "--model_name", os.path.join(
-                args.model_root, "nv/bert-large/bert-large-uncased_L_24_H_1024_A_16_V_30528_S_512_Dp_0.1_optimized_layer_norm"),
-            "--train_batch_size", str(matrix[m][2]),
+                args.model_root,
+                "nv/bert-large/bert-large-uncased_L_24_H_1024_A_16_V_30528_S_512_Dp_0.1_optimized_layer_norm_opset12"),
+            "--train_batch_size", str(config.max_batch_size),
             "--mode", "perf",
-            "--max_seq_length", str(matrix[m][1]),
+            "--max_seq_length", str(config.sequence_length),
             "--num_train_steps", "10",
             "--display_loss_steps", "5",
             "--optimizer", "adam",
@@ -46,14 +66,16 @@ def main():
             "--use_nccl",
             "--seed", "42",
             "--enable_grad_norm_clip=false",
+            config.additional_options
         ]
 
-        if matrix[m][0]:
+        if config.enable_mixed_precision:
             cmds.append("--use_mixed_precision"),
 
-        subprocess.run(cmds, timeout = 60).check_returncode()
+        subprocess.run(cmds, timeout=120).check_returncode()
 
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())

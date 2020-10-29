@@ -8,13 +8,34 @@
 
 #include "core/graph/graph_viewer.h"
 
-#include "core/graph/graph_utils.h"
-
 namespace onnxruntime {
 
-struct NodeCompare {
+bool NodeCompare::operator()(const Node* n1, const Node* n2) const {
+  return n1->Index() < n2->Index();
+}
+
+struct PriorityNodeCompare {
+  inline bool IsHighPri(const Node* n) const {
+    static const std::unordered_set<std::string> high_pri_ops = {"Shape", "Size"};
+    return high_pri_ops.find(n->OpType()) != high_pri_ops.end();
+  }
+
+  // Used for std::priority_queue
+  // If return false, n1 will be output first
+  // If return true, n2 will be output first
   bool operator()(const Node* n1, const Node* n2) const {
-    return n1->Index() < n2->Index();
+    // nodes in global high priorty list will be output first
+    if (IsHighPri(n1) != IsHighPri(n2)) {
+      return IsHighPri(n2);
+    }
+
+    // nodes with lower priority value will be output first
+    if (n1->Priority() != n2->Priority()) {
+      return n1->Priority() > n2->Priority();
+    }
+
+    // otherwise, nodes with lower index will be output first
+    return n1->Index() > n2->Index();
   }
 };
 
@@ -22,11 +43,16 @@ GraphViewer::GraphViewer(const Graph& graph) {
   graph_ = &graph;
   std::vector<const Node*> leaf_nodes;
   for (auto& node : graph_->Nodes()) {
+    // This is a leaf node (without any output node)
     if (node.OutputNodesBegin() == node.OutputNodesEnd()) {
-      // This is a leaf node (without any output node).
       leaf_nodes.push_back(&node);
     }
+    // This is a root node (without any input node)
+    if (node.InputEdgesBegin() == node.InputEdgesEnd()) {
+      root_nodes_.push_back(node.Index());
+    }
   }
+
   graph.ReverseDFSFrom(
       leaf_nodes,
       nullptr,
@@ -35,11 +61,11 @@ GraphViewer::GraphViewer(const Graph& graph) {
       },
       NodeCompare());
 
-  for (auto& node : graph_->Nodes()) {
-    if (node.InputEdgesBegin() == node.InputEdgesEnd()) {
-      root_nodes_.push_back(node.Index());
-    }
-  }
+  graph.KahnsTopologicalSort(
+      [this](const Node* n) {
+        nodes_in_topological_order_with_priority_.push_back(n->Index());
+      },
+      PriorityNodeCompare());
 }
 
 // Graph name.
@@ -96,8 +122,15 @@ int GraphViewer::MaxNodeIndex() const noexcept {
   return graph_->MaxNodeIndex();
 }
 
-const std::vector<NodeIndex>& GraphViewer::GetNodesInTopologicalOrder() const {
-  return nodes_in_topological_order_;
+const std::vector<NodeIndex>& GraphViewer::GetNodesInTopologicalOrder(ExecutionOrder order) const {
+  switch (order) {
+    case ExecutionOrder::DEFAULT:
+      return nodes_in_topological_order_;
+    case ExecutionOrder::PRIORITY_BASED:
+      return nodes_in_topological_order_with_priority_;
+    default:
+      ORT_THROW("Invalide ExecutionOrder");
+  }
 }
 
 const std::vector<NodeIndex>& GraphViewer::GetRootNodes() const {
@@ -117,7 +150,7 @@ bool GraphViewer::IsSubgraph() const {
 }
 
 bool GraphViewer::IsConstantInitializer(const std::string& name, bool check_outer_scope) const {
-  return graph_utils::IsConstantInitializer(*graph_, name, check_outer_scope);
+  return graph_->GetConstantInitializer(name, check_outer_scope) != nullptr;
 }
 
 }  // namespace onnxruntime

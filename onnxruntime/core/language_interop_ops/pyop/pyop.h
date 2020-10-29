@@ -19,33 +19,29 @@ using OnnxTypes   = std::vector<ONNXTensorElementDataType>;
 using OnnxAttrs   = std::unordered_map<std::string, std::string>;
 using PyOpLogFunc = std::function<void(const char*)>;
 
-typedef bool Initialize();
-typedef void ReleaseInstance(void*);
-typedef bool InvokePythonFunc(void*,
-                              const char*,
-                              const std::vector<const void*>&,
-                              const std::vector<int32_t>&,
-                              const std::vector<std::vector<int64_t>>&,
-                              std::vector<std::unique_ptr<char[]>>&,
-                              std::vector<int32_t>&,
-                              std::vector<std::vector<int64_t>>&,
-                              std::function<void(const char*)>);
-typedef const char* GetLastErrorMessage(std::string&);
-typedef void* NewInstance(const char*, const char*, const OnnxAttrs&);
-
 class PyOpLibProxy {
 
 public:
-    static const PyOpLibProxy& GetInstance();
-    HMODULE              handle_                 = nullptr;
-    Initialize*          initialize_             = nullptr;
-    NewInstance*         new_instance_           = nullptr;
-    InvokePythonFunc*    invoke_python_func_     = nullptr;
-    ReleaseInstance*     release_instance_       = nullptr;
-    GetLastErrorMessage* get_last_error_message_ = nullptr;
+    static PyOpLibProxy& GetInstance();
+    void ReleaseInstance(void*);
+    bool InvokePythonFunc(void*,
+                          const char*,
+                          const std::vector<const void*>&,
+                          const std::vector<int32_t>&,
+                          const std::vector<std::vector<int64_t>>&,
+                          std::vector<std::unique_ptr<char[]>>&,
+                          std::vector<int32_t>&,
+                          std::vector<std::vector<int64_t>>&,
+                          std::function<void(const char*)>);
+    const char* GetLastErrorMessage(std::string&);
+    void* NewInstance(const char*, const char*, const OnnxAttrs&);
+    bool Initialized() const { return initialized_; }
+    int32_t GetGil() const;
+    void PutGil(int32_t) const;
 private:
     PyOpLibProxy();
     ~PyOpLibProxy();
+    bool initialized_ = false;
 };
 
 struct PyCustomKernel {

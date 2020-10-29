@@ -7,8 +7,6 @@
 #include "core/framework/tensor_shape.h"
 #include "core/framework/tensor.h"
 
-using namespace onnxruntime::common;
-
 namespace onnxruntime {
 
 /**

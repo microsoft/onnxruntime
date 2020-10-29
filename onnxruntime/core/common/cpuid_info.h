@@ -17,6 +17,7 @@ class CPUIDInfo {
   bool HasAVX512f() const { return has_avx512f_; }
   bool HasAVX512Skylake() const { return has_avx512_skylake_; }
   bool HasF16C() const { return has_f16c_; }
+  bool HasSSE3() const { return has_sse3_; }
 
  private:
   CPUIDInfo() noexcept;
@@ -25,6 +26,7 @@ class CPUIDInfo {
   bool has_avx512f_{false};
   bool has_avx512_skylake_{false};
   bool has_f16c_{false};
+  bool has_sse3_{false};
 };
 
 }  // namespace onnxruntime

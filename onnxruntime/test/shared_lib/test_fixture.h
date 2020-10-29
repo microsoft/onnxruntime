@@ -16,4 +16,3 @@ typedef const char* PATH_TYPE;
 static inline void ORT_API_CALL MyLoggingFunction(void*, OrtLoggingLevel, const char*, const char*, const char*, const char*) {
 }
 
-

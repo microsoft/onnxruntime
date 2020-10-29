@@ -177,19 +177,19 @@ __global__ void _DivGrad(
   CUDA_LONG a_index = (a_need_compute ? 0 : id);
   CUDA_LONG b_index = (b_need_compute ? 0 : id);
   CUDA_LONG offset = id;
-  #pragma unroll
-  for (auto dim = 0; dim < fdm_output_strides.GetCapacity(); dim++) {
+#pragma unroll
+  for (auto dim = 0; dim < fdm_output_strides.Capacity(); dim++) {
     if (dim >= output_rank) {
       break;
     }
     int q, r;
-    fdm_output_strides.data_[dim].divmod(offset, q, r);
+    fdm_output_strides[dim].divmod(offset, q, r);
     if (a_need_compute) {
-        a_index += static_cast<int>(a_padded_strides.data_[dim]) * q;
+      a_index += static_cast<int>(a_padded_strides[dim]) * q;
     }
 
     if (b_need_compute) {
-        b_index += static_cast<int>(b_padded_strides.data_[dim]) * q;
+      b_index += static_cast<int>(b_padded_strides[dim]) * q;
     }
     offset = r;
   }
@@ -209,15 +209,15 @@ __global__ void _DivGrad_A(
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   CUDA_LONG b_index = (b_need_compute ? 0 : id);
   CUDA_LONG offset = id;
-  #pragma unroll
-  for (auto dim = 0; dim < fdm_output_strides.GetCapacity(); dim++) {
+#pragma unroll
+  for (auto dim = 0; dim < fdm_output_strides.Capacity(); dim++) {
     if (dim >= output_rank) {
       break;
     }
     int q, r;
-    fdm_output_strides.data_[dim].divmod(offset, q, r);
+    fdm_output_strides[dim].divmod(offset, q, r);
     if (b_need_compute) {
-      b_index += static_cast<int>(b_padded_strides.data_[dim]) * q;
+      b_index += static_cast<int>(b_padded_strides[dim]) * q;
     }
     offset = r;
   }
@@ -239,19 +239,19 @@ __global__ void _DivGrad_B(
   CUDA_LONG a_index = (a_need_compute ? 0 : id);
   CUDA_LONG b_index = (b_need_compute ? 0 : id);
   CUDA_LONG offset = id;
-  #pragma unroll
-  for (auto dim = 0; dim < fdm_output_strides.GetCapacity(); dim++) {
+#pragma unroll
+  for (auto dim = 0; dim < fdm_output_strides.Capacity(); dim++) {
     if (dim >= output_rank) {
       break;
     }
     int q, r;
-    fdm_output_strides.data_[dim].divmod(offset, q, r);
+    fdm_output_strides[dim].divmod(offset, q, r);
     if (a_need_compute) {
-      a_index += static_cast<int>(a_padded_strides.data_[dim]) * q;
+      a_index += static_cast<int>(a_padded_strides[dim]) * q;
     }
 
     if (b_need_compute) {
-      b_index += static_cast<int>(b_padded_strides.data_[dim]) * q;
+      b_index += static_cast<int>(b_padded_strides[dim]) * q;
     }
     offset = r;
   }
@@ -441,7 +441,7 @@ void ImplDivGrad(
     T* db_output_data) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
-  if (a_padded_strides && a_padded_strides->size_ && b_padded_strides && b_padded_strides->size_) {
+  if (a_padded_strides && a_padded_strides->Size() && b_padded_strides && b_padded_strides->Size()) {
     if (da_output_data && db_output_data)
       _DivGrad<T, true, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
           output_rank,
@@ -474,7 +474,7 @@ void ImplDivGrad(
           *fdm_output_strides,
           db_output_data,
           N);
-  } else if (a_padded_strides && a_padded_strides->size_) {
+  } else if (a_padded_strides && a_padded_strides->Size()) {
     if (da_output_data && db_output_data)
       _DivGrad<T, true, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
           output_rank,
@@ -543,42 +543,42 @@ void ImplDivGrad(
   }
 }  // namespace cuda
 
-#define SPECIALIZED_DIV_GRAD_IMPL(T)               \
-  template void ImplDivGrad<T>(                    \
-      int32_t output_rank,                         \
-      const TArray<int64_t>* a_padded_strides,     \
-      const T* a_data,                             \
-      const TArray<int64_t>* b_padded_strides,     \
-      const T* b_data,                             \
-      const T* dy_data,                            \
-      size_t count,                                \
-      const TArray<fast_divmod>* fdm_output_strides,\
-      T* da_output_data,                           \
-      T* db_output_data);                          \
-  template void ImplDivGradRhsPerChannelBatch1<T>( \
-      const T* a_data,                             \
-      const T* b_data,                             \
-      const T* dy_data,                            \
-      size_t count,                                \
-      const fast_divmod& fdm_H,                    \
-      T* da_output_data,                           \
-      T* db_output_data);                          \
-  template void ImplDivGradRhsPerChannelBatchN<T>( \
-      const T* a_data,                             \
-      const T* b_data,                             \
-      const T* dy_data,                            \
-      size_t count,                                \
-      const fast_divmod& fdm_H,                    \
-      const fast_divmod& fdm_C,                    \
-      T* da_output_data,                           \
-      T* db_output_data);                          \
-  template void ImplDivGradSimple<T>(              \
-      SimpleBroadcast simpleBroadcast,             \
-      const T* a_data,                             \
-      const T* b_data,                             \
-      const T* dy_data,                            \
-      size_t count,                                \
-      T* da_output_data,                           \
+#define SPECIALIZED_DIV_GRAD_IMPL(T)                 \
+  template void ImplDivGrad<T>(                      \
+      int32_t output_rank,                           \
+      const TArray<int64_t>* a_padded_strides,       \
+      const T* a_data,                               \
+      const TArray<int64_t>* b_padded_strides,       \
+      const T* b_data,                               \
+      const T* dy_data,                              \
+      size_t count,                                  \
+      const TArray<fast_divmod>* fdm_output_strides, \
+      T* da_output_data,                             \
+      T* db_output_data);                            \
+  template void ImplDivGradRhsPerChannelBatch1<T>(   \
+      const T* a_data,                               \
+      const T* b_data,                               \
+      const T* dy_data,                              \
+      size_t count,                                  \
+      const fast_divmod& fdm_H,                      \
+      T* da_output_data,                             \
+      T* db_output_data);                            \
+  template void ImplDivGradRhsPerChannelBatchN<T>(   \
+      const T* a_data,                               \
+      const T* b_data,                               \
+      const T* dy_data,                              \
+      size_t count,                                  \
+      const fast_divmod& fdm_H,                      \
+      const fast_divmod& fdm_C,                      \
+      T* da_output_data,                             \
+      T* db_output_data);                            \
+  template void ImplDivGradSimple<T>(                \
+      SimpleBroadcast simpleBroadcast,               \
+      const T* a_data,                               \
+      const T* b_data,                               \
+      const T* dy_data,                              \
+      size_t count,                                  \
+      T* da_output_data,                             \
       T* db_output_data);
 
 SPECIALIZED_DIV_GRAD_IMPL(half)

@@ -1028,6 +1028,50 @@ static void Scenario22ImageBindingAsGPUTensor() {
   encoder.FlushAsync().get();
 }
 
+static void Scenario23NominalPixelRange() {
+  std::wstring modulePath = FileHelpers::GetModulePath();
+  std::wstring inputImagePath = modulePath + L"1080.jpg";
+
+  // The following models have single op "add", with different metadata
+  std::vector<std::wstring> modelPaths = {
+    // Normalized_0_1 and image output
+    modulePath + L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_1.onnx",
+    // Normalized_1_1 and image output
+    modulePath + L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_1_1.onnx"
+  };
+
+  for (uint32_t model_i = 0; model_i < modelPaths.size(); model_i++) {
+    // load model and create session
+    auto model = LearningModel::LoadFromFilePath(modelPaths[model_i]);
+    auto session = LearningModelSession(model, LearningModelDevice(LearningModelDeviceKind::DirectX));
+    auto binding = LearningModelBinding(session);
+
+    SoftwareBitmap softwareBitmap = FileHelpers::GetSoftwareBitmapFromFile(inputImagePath);
+    auto videoFrame = VideoFrame::CreateWithSoftwareBitmap(softwareBitmap);
+    auto imageValue = ImageFeatureValue::CreateFromVideoFrame(videoFrame);
+
+    // Create Zero tensor
+    auto inputShape = std::vector<int64_t>{ 1, 3, 1080, 1920 };
+    auto inputData = std::vector<float>(3 * 1080 * 1920, 0);
+    auto zeroValue =
+      TensorFloat::CreateFromIterable(
+        inputShape,
+        winrt::single_threaded_vector<float>(std::move(inputData)).GetView());
+    // bind inputs
+    binding.Bind(L"input_39", imageValue);
+    binding.Bind(L"input_40", zeroValue);
+
+    VideoFrame outputimage(BitmapPixelFormat::Bgra8, 1920, 1080);
+    ImageFeatureValue outputIfv = ImageFeatureValue::CreateFromVideoFrame(outputimage);
+    binding.Bind(L"add_3", outputIfv);
+
+    winrt::hstring correlationId;
+    session.EvaluateAsync(binding, correlationId).get();
+
+    WINML_EXPECT_TRUE(VerifyHelper(imageValue, outputIfv));
+  }
+}
+
 static void QuantizedModels() {
   // load a model
   std::wstring filePath = FileHelpers::GetModulePath() + L"onnxzoo_lotus_inception_v1-dq.onnx";
@@ -1408,6 +1452,7 @@ const ScenarioTestsApi& getapi() {
           Scenario8SetDeviceSampleCPU,
           Scenario17DevDiagnostics,
           Scenario22ImageBindingAsCPUTensor,
+          Scenario23NominalPixelRange,
           QuantizedModels,
           EncryptedStream,
           Scenario3SoftwareBitmapInputBinding,
@@ -1441,19 +1486,20 @@ const ScenarioTestsApi& getapi() {
     api.Scenario8SetDeviceSampleMinPower = SkipTest;
     api.Scenario8SetDeviceSampleMaxPerf = SkipTest;
     api.Scenario8SetDeviceSampleCustomCommandQueue = SkipTest;
-    api.DISABLED_Scenario9LoadBindEvalInputTensorGPU = SkipTest;
+    api.Scenario9LoadBindEvalInputTensorGPU = SkipTest;
     api.Scenario13SingleModelOnCPUandGPU = SkipTest;
     api.Scenario11FreeDimensionsTensor = SkipTest;
     api.Scenario11FreeDimensionsImage = SkipTest;
     api.Scenario14RunModelSwapchain = SkipTest;
     api.Scenario20aLoadBindEvalCustomOperatorCPU = SkipTest;
     api.Scenario20bLoadBindEvalReplacementCustomOperatorCPU = SkipTest;
-    api.DISABLED_Scenario21RunModel2ChainZ = SkipTest;
-    api.DISABLED_Scenario22ImageBindingAsGPUTensor = SkipTest;
+    api.Scenario21RunModel2ChainZ = SkipTest;
+    api.Scenario22ImageBindingAsGPUTensor = SkipTest;
+    api.Scenario23NominalPixelRange = SkipTest;
     api.MsftQuantizedModels = SkipTest;
-    api.DISABLED_SyncVsAsync = SkipTest;
-    api.DISABLED_CustomCommandQueueWithFence = SkipTest;
-    api.DISABLED_ReuseVideoFrame = SkipTest;
+    api.SyncVsAsync = SkipTest;
+    api.CustomCommandQueueWithFence = SkipTest;
+    api.ReuseVideoFrame = SkipTest;
     api.DeviceLostRecovery = SkipTest;
     api.Scenario8SetDeviceSampleD3D11Device = SkipTest;
     api.D2DInterop = SkipTest;
@@ -1471,17 +1517,18 @@ const ScenarioTestsApi& getapi() {
     api.Scenario5AsyncEval = SkipTest;
     api.Scenario6BindWithProperties = SkipTest;
     api.Scenario7EvalWithNoBind = SkipTest;
-    api.DISABLED_Scenario9LoadBindEvalInputTensorGPU = SkipTest;
+    api.Scenario9LoadBindEvalInputTensorGPU = SkipTest;
     api.Scenario11FreeDimensionsTensor = SkipTest;
     api.Scenario11FreeDimensionsImage = SkipTest;
     api.Scenario13SingleModelOnCPUandGPU = SkipTest;
     api.Scenario14RunModelSwapchain = SkipTest;
     api.Scenario17DevDiagnostics = SkipTest;
-    api.DISABLED_Scenario21RunModel2ChainZ = SkipTest;
-    api.DISABLED_Scenario22ImageBindingAsCPUTensor = SkipTest;
-    api.DISABLED_Scenario22ImageBindingAsGPUTensor = SkipTest;
-    api.DISABLED_CustomCommandQueueWithFence = SkipTest;
-    api.DISABLED_ReuseVideoFrame = SkipTest;
+    api.Scenario21RunModel2ChainZ = SkipTest;
+    api.Scenario22ImageBindingAsCPUTensor = SkipTest;
+    api.Scenario22ImageBindingAsGPUTensor = SkipTest;
+    api.Scenario23NominalPixelRange = SkipTest;
+    api.CustomCommandQueueWithFence = SkipTest;
+    api.ReuseVideoFrame = SkipTest;
     api.D2DInterop = SkipTest;
     api.DeviceLostRecovery = SkipTest;
     api.QuantizedModels = SkipTest;

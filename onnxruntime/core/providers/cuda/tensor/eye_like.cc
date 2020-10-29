@@ -7,6 +7,8 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/cuda/shared_inc/fast_divmod.h"
 
+using namespace onnxruntime::common;
+
 namespace onnxruntime {
 namespace cuda {
 
@@ -21,25 +23,23 @@ ONNX_OPERATOR_KERNEL_EX(
                                           DataTypeImpl::GetTensorType<double>(),
                                           DataTypeImpl::GetTensorType<uint64_t>(),
                                           DataTypeImpl::GetTensorType<int64_t>(),
-                                          DataTypeImpl::GetTensorType<int32_t>()
-                                      })
-                        .TypeConstraint("T2",
-                                        std::vector<MLDataType>{
-                                            DataTypeImpl::GetTensorType<float>(),
-                                            DataTypeImpl::GetTensorType<double>(),
-                                            DataTypeImpl::GetTensorType<uint64_t>(),
-                                            DataTypeImpl::GetTensorType<int64_t>(),
-                                            DataTypeImpl::GetTensorType<int32_t>()
-                                        }),
+                                          DataTypeImpl::GetTensorType<int32_t>()})
+        .TypeConstraint("T2",
+                        std::vector<MLDataType>{
+                            DataTypeImpl::GetTensorType<float>(),
+                            DataTypeImpl::GetTensorType<double>(),
+                            DataTypeImpl::GetTensorType<uint64_t>(),
+                            DataTypeImpl::GetTensorType<int64_t>(),
+                            DataTypeImpl::GetTensorType<int32_t>()}),
     EyeLike);
 
-#define TYPED_FUNCTION_CALL(T)                                                                 \
-    EyeLikeImpl<typename ToCudaType<T>::MappedType>(                                           \
-      offset,                                                                                  \
-      dim1 + 1,                                                                                \
-      reinterpret_cast<typename ToCudaType<T>::MappedType *>(T2->template MutableData<T>()),   \
-      diag_count);                                                                             \
-      break;
+#define TYPED_FUNCTION_CALL(T)                                                              \
+  EyeLikeImpl<typename ToCudaType<T>::MappedType>(                                          \
+      offset,                                                                               \
+      dim1 + 1,                                                                             \
+      reinterpret_cast<typename ToCudaType<T>::MappedType*>(T2->template MutableData<T>()), \
+      diag_count);                                                                          \
+  break;
 
 Status EyeLike::ComputeInternal(OpKernelContext* context) const {
   const auto* T1 = context->Input<Tensor>(0);

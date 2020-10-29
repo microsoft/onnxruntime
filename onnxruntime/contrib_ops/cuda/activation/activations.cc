@@ -26,7 +26,7 @@ namespace cuda {
   template <>                                                                                              \
   Status x<T>::ComputeInternal(OpKernelContext* context) const {                                           \
     UnaryElementwisePreparation p;                                                                         \
-    UnaryElementwise::Prepare(context, &p);                                                                \
+    ORT_RETURN_IF_ERROR(UnaryElementwise::Prepare(context, &p));                                           \
     Ctx##x func_ctx = MakeFuncCtx();                                                                       \
     Impl_##x<typename ToCudaType<T>::MappedType>(                                                          \
         reinterpret_cast<const typename ToCudaType<T>::MappedType*>(p.input_tensor->template Data<T>()),   \
