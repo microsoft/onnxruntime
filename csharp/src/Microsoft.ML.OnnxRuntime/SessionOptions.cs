@@ -178,6 +178,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Deprecated in favor of RegisterCustomOpLibraryV2() because it provides users with the library handle 
         /// to release when all sessions relying on it are destroyed
         /// </summary>
+        [ObsoleteAttribute("RegisterCustomOpLibrary(...) is obsolete. Use RegisterCustomOpLibraryV2(...) instead.", false)]
         public void RegisterCustomOpLibrary(string libraryPath)
         {
             IntPtr libraryHandle = IntPtr.Zero;
