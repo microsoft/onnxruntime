@@ -153,7 +153,7 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
   // TODO: when the graph contain a function node, and user pass in the dll which could
   // run the function by SessionOption, we should create a function kernel for it and
   // delegate the compute to the functions inside the dlls.
-  for (auto& provider : providers) {
+  for (auto* provider : providers) {
     int count = 0;
     std::vector<Node*> nodes_need_compile;
     std::vector<std::unique_ptr<ComputeCapability>> capabilities =
@@ -195,7 +195,7 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
       for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
         Graph* subgraph = entry.second;
         // we pass through the export_dll value and FuncManager from the top level graph
-        ORT_RETURN_IF_ERROR(Partition(*subgraph, export_dll, func_mgr, &*provider));
+        ORT_RETURN_IF_ERROR(Partition(*subgraph, export_dll, func_mgr, provider));
       }
     }
   }
@@ -211,9 +211,9 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
       if (nullptr == node_func) {
         continue;
       }
-      nodes_need_inline.push_back(&node);      
+      nodes_need_inline.push_back(&node);
     }
-  }  
+  }
 
   for (auto* node : nodes_need_inline) {
     // If the node has a functionbody with no kernel and cannot be inlined
