@@ -991,7 +991,7 @@ Graph::Graph(const Model& owning_model,
 
   // For now we convert sparse_intializer to dense tensors
   // since there are currently no supported ops that consume sparse
-  // initializers directly. We remove them from graph_proto. We will reconstitute them 
+  // initializers directly. We remove them from graph_proto. We will reconstitute them
   // when saving to ORT format to save space on disk.
   if (graph_proto_->sparse_initializer_size() > 0) {
     for (const auto& sparse_tensor : graph_proto_->sparse_initializer()) {
@@ -2073,6 +2073,18 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
     auto status = Status::OK();
     ORT_TRY {
       context.RunInferencing();
+    }
+    ORT_CATCH(const onnx::InferenceError& ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        // Relax shape inference check for If node and subgraph.
+        // ONNX shape inference may fail for a branch that won't get executed at runtime.
+        if (std::string(ex.what()).find("[ShapeInferenceError]") != std::string::npos) {
+          if (node.OpType() == "If" || this->IsSubgraph()) {
+            return;
+          }
+        }
+        status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node (", node.Name(), ") Op (", node.OpType(), ") ", ex.what());
+      });
     }
     ORT_CATCH(const std::exception& ex) {
       ORT_HANDLE_EXCEPTION([&]() {
