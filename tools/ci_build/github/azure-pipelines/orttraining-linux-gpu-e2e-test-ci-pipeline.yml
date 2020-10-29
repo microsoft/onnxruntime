@@ -72,6 +72,17 @@ jobs:
         --volume $(Build.SourcesDirectory):/onnxruntime_src \
         --volume /bert_data/hf_data:/bert_data/hf_data \
         onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
+          /onnxruntime_src/orttraining/orttraining/test/python/launch_test2.py
+    displayName: 'Run launch_test2.py'
+    condition: succeededOrFailed() # ensure all tests are run
+
+  - script: |
+      docker run \
+        --gpus all \
+        --rm \
+        --volume $(Build.SourcesDirectory):/onnxruntime_src \
+        --volume /bert_data/hf_data:/bert_data/hf_data \
+        onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
           /onnxruntime_src/orttraining/orttraining/test/python/launch_test.py \
             --process_args "mpirun -n 4 -x NCCL_DEBUG=INFO python orttraining_run_bert_pretrain.py ORTBertPretrainTest.test_pretrain_convergence" \
             --cwd /onnxruntime_src/orttraining/orttraining/test/python
