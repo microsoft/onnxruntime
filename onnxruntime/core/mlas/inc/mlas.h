@@ -649,6 +649,28 @@ MlasRequantizeOutputColumn(
     uint8_t ZeroPoint
     );
 
+template <bool AccumulateMode>
+void
+MLASCALL
+MlasScaleOutput(
+    const int32_t* Input,
+    float* Output,
+    size_t M,
+    size_t N,
+    const float Scale
+    );
+
+template <bool AccumulateMode>
+void
+MLASCALL
+MlasScaleOutputColumn(
+    const int32_t* Input,
+    float* Output,
+    size_t M,
+    size_t N,
+    const float* Scale
+    );
+
 void
 MLASCALL
 MlasFindMinMaxElement(
