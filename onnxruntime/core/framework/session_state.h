@@ -82,8 +82,7 @@ class SessionState {
                const DataTransferManager& data_transfer_mgr,
                const logging::Logger& logger,
                profiling::Profiler& profiler,
-               bool use_deterministic_compute = false,
-               int local_rank = 0)
+               bool use_deterministic_compute = false)
       : graph_(graph),
         execution_providers_(execution_providers),
         logger_(logger),
@@ -92,9 +91,7 @@ class SessionState {
         thread_pool_(thread_pool),
         inter_op_thread_pool_(inter_op_thread_pool),
         data_transfer_mgr_(data_transfer_mgr),
-        use_deterministic_compute_(use_deterministic_compute),
-        local_rank_(local_rank),
-        memory_info_(local_rank) {
+        use_deterministic_compute_(use_deterministic_compute) {
     SetupAllocators();
   }
 
@@ -174,12 +171,6 @@ class SessionState {
     */
   NameMLValMap GetInitializedTensors(const std::unordered_set<std::string>& interested_weights) const;
 #endif
-
-  MemoryInfo& GetMutableMemoryInfo() const {
-    return const_cast<MemoryInfo&>(memory_info_);
-  }
-
-  inline size_t GetRank() const { return local_rank_; }
 
   // execution plan. nullptr until FinalizeSessionState is called
   const SequentialExecutionPlan* GetExecutionPlan() const;
@@ -430,8 +421,6 @@ class SessionState {
   const DataTransferManager& data_transfer_mgr_;
 
   bool use_deterministic_compute_;
-  int local_rank_;
-  MemoryInfo memory_info_;
 
   std::unique_ptr<NodeIndexInfo> node_index_info_;
   std::multimap<int, std::unique_ptr<FeedsFetchesManager>> cached_feeds_fetches_managers_;

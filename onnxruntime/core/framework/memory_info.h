@@ -119,74 +119,73 @@ class MemoryInfo {
 
   struct MemoryInfoProfile {
    public:
-    MemoryInfoProfile(MemoryInfo& mem_info) : pid_(0), mem_info_(mem_info){};
-    size_t GetAndIncreasePid() {
+    static size_t GetAndIncreasePid() {
       size_t val = pid_++;
       return val;
     }
     static std::string CreateMetadataEvent(const std::string& process_name, size_t process_id);
     static std::string CreateMemoryEvent(size_t pid, size_t tid, const std::string& name, size_t offset, size_t size, const std::string& color_name);
-    std::string CreateSummaryEvent(size_t pid, size_t tid, const AllocationSummary& summary, size_t size, size_t bytes_for_pattern);
-    void CreateEvents(const std::string& p_name, const size_t pid, const MemoryInfo::MapType& map_type, const std::string& name_pattern, const size_t top_k);
-
-    static const std::vector<std::string> color_names;
-    std::vector<std::string> events;
+    static std::string CreateSummaryEvent(size_t pid, size_t tid, const AllocationSummary& summary, size_t size, size_t bytes_for_pattern);
+    static void CreateEvents(const std::string& p_name, const size_t pid, const MemoryInfo::MapType& map_type, const std::string& name_pattern, const size_t top_k);
+    static const std::vector<std::string>& GetEvents() { return events; }
 
    private:
-    size_t pid_;
-    MemoryInfo& mem_info_;
+    static size_t pid_;
+    static const std::vector<std::string> color_names;
+    static std::vector<std::string> events;
     //Key: the hash function of device+map_type. Value: (key: The time step. value: The allocation information)
-    std::unordered_map<size_t, std::unordered_map<size_t, AllocationSummary> > summary_;
+    static std::unordered_map<size_t, std::unordered_map<size_t, AllocationSummary> > summary_;
+    MemoryInfoProfile() = default;
   };
 
-  MemoryInfo(int local_rank) : profiler(*this), iteration_(0), local_rank_(local_rank) {}
-  void GenerateTensorMap(const SequentialExecutionPlan* execution_plan, const OrtValueNameIdxMap& value_name_idx_map);
-  void RecordInitializerPatternInfo(const MemoryPatternGroup& mem_patterns);
-  void RecordActivationPatternInfo(const MemoryPatternGroup& mem_patterns);
+  static void GenerateTensorMap(const SequentialExecutionPlan* execution_plan, const OrtValueNameIdxMap& value_name_idx_map);
+  static void RecordInitializerPatternInfo(const MemoryPatternGroup& mem_patterns);
+  static void RecordActivationPatternInfo(const MemoryPatternGroup& mem_patterns);
 
-  void RecordInitializerAllocInfo(const std::unordered_map<int, OrtValue>& tensor_map);
-  void RecordActivationAllocInfo(const OrtValueIndex idx, const OrtValue& value);
-  void SetDynamicAllocation(const OrtValueIndex idx);
+  static void RecordInitializerAllocInfo(const std::unordered_map<int, OrtValue>& tensor_map);
+  static void RecordActivationAllocInfo(const OrtValueIndex idx, const OrtValue& value);
+  static void SetDynamicAllocation(const OrtValueIndex idx);
+  static void SetLocalRank(const int rank) { local_rank_ = rank; }
 
-  inline void SetIteration(size_t iteration) { iteration_ = iteration; }
+  static inline void SetIteration(size_t iteration) { iteration_ = iteration; }
 
-  void PrintMemoryInfoForLocation(const logging::Logger& /*logger*/, const OrtDevice::DeviceType location);
-  void GenerateMemoryProfile();
-  inline void ClearMemoryInfoPerExecution() {
+  static void PrintMemoryInfoForLocation(const logging::Logger& /*logger*/, const OrtDevice::DeviceType location);
+  static void GenerateMemoryProfile();
+  static inline void ClearMemoryInfoPerExecution() {
     for (auto& location_map : tensors_memory_info_map_) {
       location_map.second[MapType::DynamicActivation].clear();
       location_map.second[MapType::StaticActivation].clear();
     }
   }
-  const AllocInfoPerTensor* AllocPlan(const OrtValueIndex& idx) {
+  static const AllocInfoPerTensor* AllocPlan(const OrtValueIndex& idx) {
     if (tensor_alloc_info_map_.find(idx) != tensor_alloc_info_map_.end())
       return &tensor_alloc_info_map_.at(idx);
     else
       return nullptr;
   }
 
-  MemoryInfoProfile profiler;
-
  private:
-  void RecordMemoryPatternInfo(const MemoryPatternGroup& mem_patterns, MapType type);
-  void RecordTensorDeviceAllocInfo(const OrtValueIndex idx, const OrtValue& value, const MapType& type);
+  //MemoryInfo(int local_rank) : profiler(*this), iteration_(0), local_rank_(local_rank) {}
+  MemoryInfo() = default;
+  static void RecordMemoryPatternInfo(const MemoryPatternGroup& mem_patterns, MapType type);
+  static void RecordTensorDeviceAllocInfo(const OrtValueIndex idx, const OrtValue& value, const MapType& type);
 
-  bool IsInplaceReuse(const OrtValueIndex& idx) {
+  static bool IsInplaceReuse(const OrtValueIndex& idx) {
     return tensor_alloc_info_map_[idx].inplace_reuse;
   }
 
   //Key: The map type. E.g., initializer, activation. Value: A map from the tensor index to its memory information
-  std::map<OrtMemoryInfo, std::map<MapType, MemoryInfoMap> > tensors_memory_info_map_;
+  static std::map<OrtMemoryInfo, std::map<MapType, MemoryInfoMap> > tensors_memory_info_map_;
 
-  std::map<OrtValueIndex, AllocInfoPerTensor> tensor_alloc_info_map_;
+  static std::map<OrtValueIndex, AllocInfoPerTensor> tensor_alloc_info_map_;
 
   //TODO: The dynamic and statically planned alignments may not be the same, need to check
   static const int alignment = 256;
-  size_t iteration_;
-  size_t num_node_size_;
-  int local_rank_;
+  static size_t iteration_;
+  static size_t num_node_size_;
+  static int local_rank_;
   //Memory Profile
-  std::map<MapType, std::set<size_t> > time_step_trace_;
+  static std::map<MapType, std::set<size_t> > time_step_trace_;
 };
 
 }  // namespace onnxruntime

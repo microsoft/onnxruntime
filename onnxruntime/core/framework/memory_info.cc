@@ -7,6 +7,12 @@
 #include <queue>
 
 namespace onnxruntime {
+size_t MemoryInfo::iteration_ = 0;
+size_t MemoryInfo::num_node_size_ = 0;
+int MemoryInfo::local_rank_ = 0;
+std::map<OrtMemoryInfo, std::map<MemoryInfo::MapType, MemoryInfoMap> > MemoryInfo::tensors_memory_info_map_;
+std::map<OrtValueIndex, MemoryInfo::AllocInfoPerTensor> MemoryInfo::tensor_alloc_info_map_;
+std::map<MemoryInfo::MapType, std::set<size_t> > MemoryInfo::time_step_trace_;
 
 void MemoryInfo::GenerateTensorMap(const SequentialExecutionPlan* execution_plan, const OrtValueNameIdxMap& value_name_idx_map) {
   if (!tensor_alloc_info_map_.empty()) {
@@ -262,6 +268,10 @@ const std::vector<std::string> MemoryInfo::MemoryInfoProfile::color_names = {
     "cq_build_attempt_failed",
 };
 
+size_t MemoryInfo::MemoryInfoProfile::pid_ = 0;
+std::vector<std::string> MemoryInfo::MemoryInfoProfile::events;
+std::unordered_map<size_t, std::unordered_map<size_t, MemoryInfo::AllocationSummary> > MemoryInfo::MemoryInfoProfile::summary_;
+
 void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name, const size_t pid, const MemoryInfo::MapType& map_type, const std::string& name_pattern, const size_t top_k) {
   // Metadata.
   std::string pid_name_internal = p_name + name_pattern;
@@ -270,14 +280,14 @@ void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name, cons
   std::hash<std::string> str_hash;
 
   //Create Event for each tensor
-  for (const auto& location_map : mem_info_.tensors_memory_info_map_) {
+  for (const auto& location_map : tensors_memory_info_map_) {
     if (location_map.first.device.Type() != OrtDevice::GPU) continue;
     auto summary_key = str_hash(location_map.first.ToString() + std::to_string(map_type));
     //Preprocessing
-    if (mem_info_.time_step_trace_[map_type].empty()) {
+    if (time_step_trace_[map_type].empty()) {
       for (const auto& item : location_map.second.at(map_type)) {
-        mem_info_.time_step_trace_[map_type].insert(mem_info_.AllocPlan(item.first)->lifetime_interval.first);
-        mem_info_.time_step_trace_[map_type].insert(mem_info_.AllocPlan(item.first)->lifetime_interval.second);
+        time_step_trace_[map_type].insert(AllocPlan(item.first)->lifetime_interval.first);
+        time_step_trace_[map_type].insert(AllocPlan(item.first)->lifetime_interval.second);
       }
     }
 
@@ -285,13 +295,13 @@ void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name, cons
     //Update summary
     if (summary_.find(summary_key) == summary_.end()) {
       for (const auto& item : map) {
-        const auto info = mem_info_.AllocPlan(item.first);
+        const auto info = AllocPlan(item.first);
         if (info->inplace_reuse) continue;
         size_t offset = map_type == MemoryInfo::MapType::StaticActivation ? map.GetPlannedAddress(item.first) : map.GetAllocAddress(item.first);
         size_t size = map_type == MemoryInfo::MapType::StaticActivation ? map.GetPlannedSize(item.first) : map.GetAllocSize(item.first);
-        size_t alloc_step = mem_info_.AllocPlan(item.first)->lifetime_interval.first;
-        size_t dealloc_step = mem_info_.AllocPlan(item.first)->lifetime_interval.second;
-        const auto& ts_map = mem_info_.time_step_trace_[map_type];
+        size_t alloc_step = AllocPlan(item.first)->lifetime_interval.first;
+        size_t dealloc_step = AllocPlan(item.first)->lifetime_interval.second;
+        const auto& ts_map = time_step_trace_[map_type];
         const auto& start_itr = ts_map.find(alloc_step);
         const auto& end_itr = ts_map.find(dealloc_step);
         for (auto itr = start_itr; itr != end_itr; ++itr) {
@@ -320,7 +330,7 @@ void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name, cons
       if (top_k != 0 && item.second.total_size < top_kth_total_size) continue;
       size_t alloc_size_for_pattern = 0;
       for (const auto& live_tensor : item.second.life_tensosrs) {
-        const auto info = mem_info_.AllocPlan(live_tensor);
+        const auto info = AllocPlan(live_tensor);
         if (info->inplace_reuse) continue;
         const std::string& name = info->mlvalue_name;
         //Filter out string without a certain name
@@ -340,20 +350,20 @@ void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name, cons
 }
 
 void MemoryInfo::GenerateMemoryProfile() {
-  profiler.CreateEvents("GPU (initializer)", profiler.GetAndIncreasePid(), MapType::Initializer, "", 1);
-  profiler.CreateEvents("GPU (static activations)", profiler.GetAndIncreasePid(), MapType::StaticActivation, "", 1);
-  profiler.CreateEvents("GPU (dynamic activations)", profiler.GetAndIncreasePid(), MapType::DynamicActivation, "", 1);
-  profiler.CreateEvents("GPU (static activations)", profiler.GetAndIncreasePid(), MapType::StaticActivation, "_grad", 0);
-  profiler.CreateEvents("GPU (dynamic activations)", profiler.GetAndIncreasePid(), MapType::DynamicActivation, "_grad", 0);
-  profiler.CreateEvents("GPU (static activations)", profiler.GetAndIncreasePid(), MapType::StaticActivation, "_partition_", 0);
-  profiler.CreateEvents("GPU (dynamic activations)", profiler.GetAndIncreasePid(), MapType::DynamicActivation, "_partition_", 0);
+  MemoryInfoProfile::CreateEvents("GPU (initializer)", MemoryInfoProfile::GetAndIncreasePid(), MapType::Initializer, "", 1);
+  MemoryInfoProfile::CreateEvents("GPU (static activations)", MemoryInfoProfile::GetAndIncreasePid(), MapType::StaticActivation, "", 1);
+  MemoryInfoProfile::CreateEvents("GPU (dynamic activations)", MemoryInfoProfile::GetAndIncreasePid(), MapType::DynamicActivation, "", 1);
+  MemoryInfoProfile::CreateEvents("GPU (static activations)", MemoryInfoProfile::GetAndIncreasePid(), MapType::StaticActivation, "_grad", 0);
+  MemoryInfoProfile::CreateEvents("GPU (dynamic activations)", MemoryInfoProfile::GetAndIncreasePid(), MapType::DynamicActivation, "_grad", 0);
+  MemoryInfoProfile::CreateEvents("GPU (static activations)", MemoryInfoProfile::GetAndIncreasePid(), MapType::StaticActivation, "_partition_", 0);
+  MemoryInfoProfile::CreateEvents("GPU (dynamic activations)", MemoryInfoProfile::GetAndIncreasePid(), MapType::DynamicActivation, "_partition_", 0);
 
   // Write memory profile .json
   std::ofstream memory_profile("memory_profile_" + std::to_string(local_rank_) + ".json", std::ios::trunc);
   memory_profile << "[" << std::endl;
-  for (size_t i = 0; i < profiler.events.size(); i++) {
-    memory_profile << "  " << profiler.events[i];
-    if (i < profiler.events.size() - 1) memory_profile << ",";
+  for (size_t i = 0; i < MemoryInfoProfile::GetEvents().size(); i++) {
+    memory_profile << "  " << MemoryInfoProfile::GetEvents().at(i);
+    if (i < MemoryInfoProfile::GetEvents().size() - 1) memory_profile << ",";
     memory_profile << std::endl;
   }
   memory_profile << "]" << std::endl;

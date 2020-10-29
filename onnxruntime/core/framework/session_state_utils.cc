@@ -95,8 +95,7 @@ common::Status SaveInitializedTensors(
     const std::function<Status(int idx, const OrtValue& value, const OrtCallback& d, bool constant)>& save_tensor_func,
     const logging::Logger& logger, const DataTransferManager& data_transfer_mgr,
     const ExecutionPlanBase& exec_plan,
-    const SessionOptions& session_options,
-    MemoryInfo& memory_info) {
+    const SessionOptions& session_options) {
   LOGS(logger, INFO) << "Saving initialized tensors.";
   ORT_ENFORCE(ort_value_name_idx_map.MaxIdx() > -1, "OrtValue indexes should have been populated.");
 
@@ -155,7 +154,7 @@ common::Status SaveInitializedTensors(
   std::unordered_map<std::string, size_t> planned_initializers_memory_sizes_in_byte;
   ORT_RETURN_IF_ERROR(
       planner.FinalizePlan(planned_initializers_memory_sizes_in_byte));
-  memory_info.RecordInitializerPatternInfo(planner.GetMemPatterns());
+  MemoryInfo::RecordInitializerPatternInfo(planner.GetMemPatterns());
 
   for (auto i : planned_initializers_memory_sizes_in_byte) {
     LOGS(logger, INFO) << "[Memory] SessionStateInitializer statically allocates "

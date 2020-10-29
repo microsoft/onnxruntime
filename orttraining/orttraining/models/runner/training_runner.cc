@@ -33,27 +33,26 @@ namespace training {
 
 static std::vector<FreeDimensionOverride> overrides = {};
 static SessionOptions SESSION_OPTION = {
-    ExecutionMode::ORT_SEQUENTIAL,             //execution_mode
-    ExecutionOrder::PRIORITY_BASED,            //execution_order
-    false,                                     //enable_profiling
-    ORT_TSTR(""),                              //optimized_model_filepath
-    true,                                      //enable_mem_pattern
-    true,                                      //enable_cpu_mem_arena
-    ORT_TSTR("onnxruntime_profile_"),          //profile_file_prefix
-    "",                                        //session_logid
-    -1,                                        //session_log_severity_level
-    0,                                         //session_log_verbosity_level
-    5,                                         //max_num_graph_transformation_steps
-    TransformerLevel::Level1,                  //graph_optimization_level
-    {},                                        //intra_op_param
-    {},                                        //inter_op_param
-    overrides,                                 //free_dimension_overrides
-    true,                                      //use_per_session_threads
-    true,                                      //thread_pool_allow_spinning
-    false,                                     //use_deterministic_compute
-    {},                                        //session_configurations
-    {},                                        // initializers_to_share_map
-    MPIContext::GetInstance().GetLocalRank(),  //local_rank
+    ExecutionMode::ORT_SEQUENTIAL,     //execution_mode
+    ExecutionOrder::PRIORITY_BASED,    //execution_order
+    false,                             //enable_profiling
+    ORT_TSTR(""),                      //optimized_model_filepath
+    true,                              //enable_mem_pattern
+    true,                              //enable_cpu_mem_arena
+    ORT_TSTR("onnxruntime_profile_"),  //profile_file_prefix
+    "",                                //session_logid
+    -1,                                //session_log_severity_level
+    0,                                 //session_log_verbosity_level
+    5,                                 //max_num_graph_transformation_steps
+    TransformerLevel::Level1,          //graph_optimization_level
+    {},                                //intra_op_param
+    {},                                //inter_op_param
+    overrides,                         //free_dimension_overrides
+    true,                              //use_per_session_threads
+    true,                              //thread_pool_allow_spinning
+    false,                             //use_deterministic_compute
+    {},                                //session_configurations
+    {},                                // initializers_to_share_map
 };
 
 TrainingRunner::TrainingRunner(Parameters params, const Environment& env)
@@ -798,7 +797,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
       // loop through the data
       size_t batch_num_cur_shard = training_data->TotalBatch(params_.batch_size);
       for (size_t batch = 0; batch < batch_num_cur_shard && step_ < params_.num_train_steps; ++batch) {
-        session_.GetSessionState().GetMutableMemoryInfo().SetIteration(step_);
+        MemoryInfo::SetIteration(step_);
         const bool is_weight_update_step = (step_ + 1) % params_.gradient_accumulation_steps == 0;
 
         const bool stablized_perf_measurement_started = step_ >= stabilized_perf_start_step;
