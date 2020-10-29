@@ -8,6 +8,7 @@
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/session/environment.h"
 #include "core/framework/random_seed.h"
+#include "core/framework/bfc_arena.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "orttraining/core/framework/mpi_context.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
@@ -239,7 +240,7 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
 
     int64_t seed = flags["seed"].as<int64_t>();
     if (params.horizontal_parallel_size > 1 && seed <= 0) {
-      seed = 8211;  // Megatron needs a random seed.
+      seed = 8211; // Megatron needs a random seed.
     }
     if (seed > 0) {
       utils::SetRandomSeed(seed);
@@ -279,7 +280,7 @@ float GetLossValue(const Tensor& loss_tensor) {
 // mapping to define what to be stored in mapped_dimensions
 // see GetTensorDimensionsFromInputs() in training_util.h and training_runner.cc for more details
 const std::map<std::string, std::pair<std::string, size_t>> input_to_dimension_mapping = {
-    {"input_ids", {"SeqLen", 0}},  // int64[batch,seqlen]    "seqlen" -> "SeqLen", 0
+  {"input_ids", {"SeqLen", 0}},   // int64[batch,seqlen]    "seqlen" -> "SeqLen", 0
 };
 
 // generic properties for storing perf metrics

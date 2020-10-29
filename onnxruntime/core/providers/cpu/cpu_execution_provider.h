@@ -35,7 +35,7 @@ class CPUExecutionProvider : public IExecutionProvider {
 #endif
     //JEMalloc already has memory pool, so just use device allocator.
     create_arena = false;
-#elif !(defined(__amd64__) || defined(_M_AMD64))
+#elif !(defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64))
     //Disable Arena allocator for x86_32 build because it may run into infinite loop when integer overflow happens
     create_arena = false;
 #endif
