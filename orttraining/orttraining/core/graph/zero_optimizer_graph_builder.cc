@@ -101,6 +101,7 @@ static std::vector<ArgDef> AddPartitionsForParameter(
     const std::string& initializer_name,
     const std::vector<TensorShape>& shapes,
     std::unordered_map<std::string, std::string>& updated_weight_names_map){
+  ORT_ENFORCE(shapes.size() == 3, "Invalid shapes vector passed for partitioning.");
   int64_t partition_offset = shapes[0].GetDims()[0];
   int64_t partition_size = shapes[1].GetDims()[0];
   std::vector<ArgDef> view_outputs;
@@ -129,7 +130,7 @@ static std::vector<ArgDef> AddPartitionsForParameter(
 
         //Replace the old initializer with the new one
         graph.RemoveInitializedTensor(initializer_name);
-        graph_utils::AddInitializer(graph, initializer_partition);
+        graph.AddInitializedTensor(initializer_partition);
 
         //add the modified weight name to get state 
         updated_weight_names_map.insert({initializer_name, partition_name});
@@ -197,6 +198,10 @@ static Status AddParameterPartition(
   // Add View/Partition for weight
   std::vector<ArgDef> weight_views, mixed_precision_weight_views;
   if (opt_config.mixed_precision_weight_arg != nullptr) {
+    const NodeArg* weight_arg = graph.GetNodeArg(weight_argdef.name);
+    ORT_ENFORCE(weight_arg != nullptr, "Could not find nodearg in graph: " + weight_argdef.name);
+    ORT_ENFORCE(!graph_utils::IsGraphInput(graph, weight_arg), "Cannot partition weight that is a part of graph inputs for "+weight_argdef.name);
+    
     //Partition the FP32 weight
     weight_views = AddPartitionsForParameter(graph, graph_defs, weight_argdef.name, view_shapes, updated_weight_names_map);
     ORT_ENFORCE(weight_views.size() == enabled.size());

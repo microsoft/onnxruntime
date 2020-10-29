@@ -421,7 +421,8 @@ def testToyBertCheckpointBasic():
     for k,v in loaded_sd.items():
         assert torch.all(torch.eq(v, sd[k]))
 
-
+# checkpointfiles generated using:
+# mpirun -n 4 python3 orttrainer_bert_toy_onnx_ckpt_gen.py
 def testToyBertCheckpointLoadZero():
     # Common setup
     rtol = 1e-03
@@ -442,7 +443,7 @@ def testToyBertCheckpointLoadZero():
     checkpoint.experimental_load_checkpoint(trainer, ckpt_dir, 'bert_toy_lamb')
 
     # Expected values
-    expected_eval_loss = [10.997552871]
+    expected_eval_loss = [11.011026]
     input_ids = torch.tensor([[26598],[21379],[19922],[ 5219],[ 5644],[20559],[23777],[25672],[22969],[16824],[16822],[635],[27399],[20647],[18519],[15546]], device=device)
     segment_ids = torch.tensor([[0],[1],[0],[1],[0],[0],[1],[0],[0],[1],[1],[0],[0],[1],[1],[1]], device=device)
     input_mask = torch.tensor([[0],[0],[0],[0],[1],[1],[1],[0],[1],[1],[0],[0],[0],[1],[0],[0]], device=device)
@@ -452,6 +453,18 @@ def testToyBertCheckpointLoadZero():
     # Actual values
     actual_eval_loss = trainer.eval_step(input_ids, segment_ids, input_mask, masked_lm_labels, next_sentence_labels)
     actual_eval_loss = actual_eval_loss.cpu().numpy().item(0)
+
+    checkpoint_files = sorted(checkpoint._list_checkpoint_files(ckpt_dir, 'bert_toy_lamb'))
+    loaded_state_dict = checkpoint.experimental_state_dict(trainer)
+    loaded_state_dict = checkpoint._split_state_dict(loaded_state_dict)
+
+    for f in checkpoint_files:
+        rank_state_dict = torch.load(f, map_location=torch.device("cpu"))
+        rank_state_dict = checkpoint._split_state_dict(rank_state_dict)
+
+        for k,v in rank_state_dict['fp16_param'].items():
+            fp32_name = k.split('_fp16')[0]
+            assert_allclose(v, loaded_state_dict['fp32_param'][fp32_name])
 
     # Check results
     assert_allclose(expected_eval_loss, actual_eval_loss, rtol=rtol)
