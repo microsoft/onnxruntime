@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 
 import os
+import sys
 import argparse
 import subprocess
 
@@ -36,12 +37,17 @@ def list_to_dict(list_key_values):
     my_dictionary = {}
     for i in range(0, len(list_key_values), 2):
         my_dictionary[list_key_values[i]] = list_key_values[i + 1]
-    
+
     return my_dictionary
 
 launch_args = parse_arguments()
 
+print("sys.executable: ", sys.executable)
 process_args = launch_args.process_args.split()
+for n, arg in enumerate(process_args):
+    if arg == 'python':
+        process_args[n] = sys.executable
+
 cwd = launch_args.cwd
 
 env = list_to_dict(launch_args.env.split()) if launch_args.env else {}
