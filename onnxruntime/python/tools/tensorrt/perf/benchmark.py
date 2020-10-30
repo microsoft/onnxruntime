@@ -954,7 +954,7 @@ def run_onnxruntime(args, models):
 
                 # handle test data
                 if "test_data_path_fp16" in model_info:
-                    test_data_dir = model_info["test_data_dir"]
+                    test_data_dir = model_info["test_data_path_fp16"]
                     inputs, ref_outputs = get_test_data(False, test_data_dir, all_inputs_shape)
                 else:
                     inputs, ref_outputs = get_test_data(True, test_data_dir, all_inputs_shape)
@@ -1466,7 +1466,7 @@ def main():
     time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 
     if len(model_to_fail_ep) > 0:
-        logger.info("\n==========================================")
+        logger.info("\n============================================")
         logger.info("========== Failing Models/EPs ==============")
         logger.info("============================================")
         logger.info(model_to_fail_ep)
