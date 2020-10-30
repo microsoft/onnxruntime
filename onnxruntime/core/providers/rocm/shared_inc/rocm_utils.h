@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// for things shared between nvcc and onnxruntime
+// as currently nvcc cannot compile all onnxruntime headers
+
 #pragma once
 
 #include <memory>
