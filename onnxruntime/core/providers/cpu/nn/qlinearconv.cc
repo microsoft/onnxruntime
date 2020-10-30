@@ -572,7 +572,7 @@ Status QLinearConv<int8_t>::Compute(OpKernelContext* context) const {
                     static_cast<size_t>(group_input_channels),
                     static_cast<size_t>(input_image_size));
 
-      if (kernel_rank != 2) {
+      if (kernel_rank != 2 && col_buffer_data != nullptr) {
         // Try big Im2ColNd in this case, parallel it later if needed
         math::Im2colNd<uint8_t, StorageOrder::NHWC>()(
             transpose_input,
