@@ -582,6 +582,33 @@ TEST(QLinearConvTest, Conv3D_U8S8) {
   test.Run();
 }
 
+TEST(QLinearConvTest, Conv1D_U8S8_Pointwise) {
+  QLinearConvOpTester<uint8_t, int8_t> test;
+  test.GenerateRandomInput({3, 24, 15}, .05f, 4);
+  test.GenerateRandomWeights({32, 24, 1}, .125f, 0);
+  test.GenerateRandomBias();
+  test.SetOutputScaleAndZeroPoint(.55f, 54);
+  test.Run();
+}
+
+TEST(QLinearConvTest, Conv2D_U8S8_Pointwise) {
+  QLinearConvOpTester<uint8_t, int8_t> test;
+  test.GenerateRandomInput({3, 24, 15, 11}, .05f, 4);
+  test.GenerateRandomWeights({32, 24, 1, 1}, .125f, 0);
+  test.GenerateRandomBias();
+  test.SetOutputScaleAndZeroPoint(.55f, 54);
+  test.Run();
+}
+
+TEST(QLinearConvTest, Conv3D_U8S8_Pointwise) {
+  QLinearConvOpTester<uint8_t, int8_t> test;
+  test.GenerateRandomInput({2, 2, 15, 11, 6}, .05f, 4);
+  test.GenerateRandomWeights({5, 2, 1, 1, 1}, .125f, 0);
+  test.GenerateRandomBias();
+  test.SetOutputScaleAndZeroPoint(.55f, 54);
+  test.Run();
+}
+
 TEST(QLinearConvTest, Conv1D_U8S8_Dilations) {
   QLinearConvOpTester<uint8_t, int8_t> test;
   test.GenerateRandomInput({1, 4, 19}, .02f, 20);
