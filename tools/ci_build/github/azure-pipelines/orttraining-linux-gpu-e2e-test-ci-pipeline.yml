@@ -70,22 +70,12 @@ jobs:
         --gpus all \
         --rm \
         --volume $(Build.SourcesDirectory):/onnxruntime_src \
+        --volume $(Build.BinariesDirectory):/build \
         --volume /bert_data/hf_data:/bert_data/hf_data \
         onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
-          /onnxruntime_src/orttraining/orttraining/test/python/launch_test2.py
-    displayName: 'Run launch_test2.py'
-    condition: succeededOrFailed() # ensure all tests are run
-
-  - script: |
-      docker run \
-        --gpus all \
-        --rm \
-        --volume $(Build.SourcesDirectory):/onnxruntime_src \
-        --volume /bert_data/hf_data:/bert_data/hf_data \
-        onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
-          /onnxruntime_src/orttraining/orttraining/test/python/launch_test.py \
+          /build/launch_test.py \
             --process_args "mpirun -n 4 -x NCCL_DEBUG=INFO python orttraining_run_bert_pretrain.py ORTBertPretrainTest.test_pretrain_convergence" \
-            --cwd /onnxruntime_src/orttraining/orttraining/test/python
+            --cwd /build
     displayName: 'Run orttraining_run_bert_pretrain.py ORTBertPretrainTest.test_pretrain_convergence'
     condition: succeededOrFailed() # ensure all tests are run
 
@@ -94,11 +84,12 @@ jobs:
         --gpus all \
         --rm \
         --volume $(Build.SourcesDirectory):/onnxruntime_src \
+        --volume $(Build.BinariesDirectory):/build \
         --volume /bert_data/hf_data:/bert_data/hf_data \
         onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
-          /onnxruntime_src/orttraining/orttraining/test/python/launch_test.py \
+          /build/launch_test.py \
             --process_args "python orttraining_run_glue.py ORTGlueTest.test_bert_with_mrpc -v" \
-            --cwd /onnxruntime_src/orttraining/orttraining/test/python \
+            --cwd /build \
             --env "CUDA_VISIBLE_DEVICES 2"
     displayName: 'Run orttraining_run_glue.py ORTGlueTest.test_bert_with_mrpc'
     condition: succeededOrFailed() # ensure all tests are run
@@ -108,11 +99,12 @@ jobs:
         --gpus all \
         --rm \
         --volume $(Build.SourcesDirectory):/onnxruntime_src \
+        --volume $(Build.BinariesDirectory):/build \
         --volume /bert_data/hf_data:/bert_data/hf_data \
         onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
-          /onnxruntime_src/orttraining/orttraining/test/python/launch_test.py \
+          /build/launch_test.py \
             --process_args "python orttraining_run_frontend_batch_size_test.py -v" \
-            --cwd /onnxruntime_src/orttraining/orttraining/test/python \
+            --cwd /build \
             --env "CUDA_VISIBLE_DEVICES 2"
     displayName: 'Run orttraining_run_frontend_batch_size_test.py'
     condition: succeededOrFailed() # ensure all tests are run
