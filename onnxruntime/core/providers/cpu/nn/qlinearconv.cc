@@ -75,7 +75,6 @@ Status QLinearConv<uint8_t>::Compute(OpKernelContext* context) const {
   const Tensor* B = context->Input<Tensor>(8);
 
   const int64_t N = X->Shape()[0];
-  const int64_t C = X->Shape()[1];
   const int64_t M = W->Shape()[0];
   ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X, W));
 
@@ -125,20 +124,12 @@ Status QLinearConv<uint8_t>::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
   BufferUniquePtr col_buffer;
-  std::vector<int64_t> col_buffer_shape;
 
   // Pointwise convolutions can use the original input tensor in place,
   // otherwise a temporary buffer is required for the im2col transform.
   if (kernel_size != 1 || !conv_attrs_.HasStridesOneAndNoPadding()) {
     auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(uint8_t)) * col_buffer_size);
     col_buffer = BufferUniquePtr(col_data, BufferDeleter(alloc));
-
-    if (kernel_rank != 2) {
-      const auto& output_dims = output_shape.GetDims();
-      col_buffer_shape.reserve(1 + output_dims.size());
-      col_buffer_shape.push_back(kernel_dim);
-      col_buffer_shape.insert(col_buffer_shape.end(), output_dims.begin(), output_dims.end());
-    }
   }
 
   auto* col_buffer_data = static_cast<uint8_t*>(col_buffer.get());
@@ -187,10 +178,9 @@ Status QLinearConv<uint8_t>::Compute(OpKernelContext* context) const {
         } else {
           math::Im2colNd<uint8_t, StorageOrder::NCHW>()(
               Xdata,
-              X->Shape().GetDims().data() + 1,
-              col_buffer_shape.data(),
-              C * input_image_size,
-              col_buffer_size,
+              input_shape.GetDims().data(),
+              output_shape.GetDims().data(),
+              kernel_dim,
               kernel_shape.data(),
               strides.data(),
               dilations.data(),
@@ -450,7 +440,6 @@ Status QLinearConv<int8_t>::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W_shape, kernel_shape));
 
   const size_t kernel_rank = kernel_shape.size();
-  ORT_ENFORCE(kernel_rank == 2, "QLinearConv : must be 2D convolution");
 
   std::vector<int64_t> pads(conv_attrs_.pads);
   if (pads.empty()) {
@@ -544,9 +533,10 @@ Status QLinearConv<int8_t>::Compute(OpKernelContext* context) const {
   auto* transpose_output = static_cast<uint8_t*>(alloc->Alloc(SafeInt<size_t>(sizeof(uint8_t)) * Y_offset));
   BufferUniquePtr transpose_output_buffer(transpose_output, BufferDeleter(alloc));
 
+  BufferUniquePtr col_buffer;
+
   // Pointwise convolutions can use the original input tensor in place,
   // otherwise a temporary buffer is required for the im2col transform.
-  BufferUniquePtr col_buffer;
   if (kernel_size != 1 || !conv_attrs_.HasStridesOneAndNoPadding()) {
     auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(uint8_t)) * col_buffer_size);
     col_buffer = BufferUniquePtr(col_data, BufferDeleter(alloc));
@@ -582,6 +572,23 @@ Status QLinearConv<int8_t>::Compute(OpKernelContext* context) const {
                     static_cast<size_t>(group_input_channels),
                     static_cast<size_t>(input_image_size));
 
+      if (kernel_rank != 2 && col_buffer_data != nullptr) {
+        // Try big Im2ColNd in this case, parallel it later if needed
+        math::Im2colNd<uint8_t, StorageOrder::NHWC>()(
+            transpose_input,
+            input_shape.GetDims().data(),
+            output_shape.GetDims().data(),
+            kernel_dim,
+            kernel_shape.data(),
+            strides.data(),
+            dilations.data(),
+            pads.data(),
+            static_cast<int>(kernel_rank),
+            col_buffer_data,
+            false,
+            X_zero_point_value);
+      }
+
       auto conv_worker = [&](ptrdiff_t batch) {
         auto work = concurrency::ThreadPool::PartitionWork(batch, thread_count, static_cast<ptrdiff_t>(output_image_size));
         int64_t output_start = static_cast<int64_t>(work.start);
@@ -592,24 +599,26 @@ Status QLinearConv<int8_t>::Compute(OpKernelContext* context) const {
         uint8_t* worker_gemm_input;
         if (col_buffer_data != nullptr) {
           worker_gemm_input = col_buffer_data + output_start * kernel_dim;
-          math::Im2col<uint8_t, StorageOrder::NHWC>()(
-              transpose_input,
-              group_input_channels,
-              input_shape[0],
-              input_shape[1],
-              kernel_shape[0],
-              kernel_shape[1],
-              dilations[0],
-              dilations[1],
-              pads[0],
-              pads[1],
-              strides[0],
-              strides[1],
-              output_shape[1],
-              output_start,
-              output_count,
-              worker_gemm_input,
-              X_zero_point_value);
+          if (kernel_rank == 2) {
+            math::Im2col<uint8_t, StorageOrder::NHWC>()(
+                transpose_input,
+                group_input_channels,
+                input_shape[0],
+                input_shape[1],
+                kernel_shape[0],
+                kernel_shape[1],
+                dilations[0],
+                dilations[1],
+                pads[0],
+                pads[1],
+                strides[0],
+                strides[1],
+                output_shape[1],
+                output_start,
+                output_count,
+                worker_gemm_input,
+                X_zero_point_value);
+          }
         } else {
           worker_gemm_input = transpose_input + output_start * kernel_dim;
         }
