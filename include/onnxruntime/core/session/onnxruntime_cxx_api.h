@@ -481,8 +481,7 @@ struct IoBinding : public Base<OrtIoBinding> {
 
 struct ArenaCfg : Base<OrtArenaCfg> {
   explicit ArenaCfg(std::nullptr_t) {}
-  ArenaCfg(size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes,
-           int max_dead_bytes_per_chunk);
+  ArenaCfg(size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes, int max_dead_bytes_per_chunk);
 };
 
 //
