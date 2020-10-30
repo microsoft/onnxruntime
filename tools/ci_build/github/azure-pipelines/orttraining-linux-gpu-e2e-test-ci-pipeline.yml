@@ -69,6 +69,7 @@ jobs:
   - script: |
       docker run \
         --gpus all \
+        --shm-size=1024m \
         --rm \
         --volume $(Build.SourcesDirectory):/onnxruntime_src \
         --volume $(Build.BinariesDirectory):/build \
@@ -83,6 +84,7 @@ jobs:
   - script: |
       docker run \
         --gpus all \
+        --shm-size=1024m \
         --rm \
         --volume $(Build.SourcesDirectory):/onnxruntime_src \
         --volume $(Build.BinariesDirectory):/build \
@@ -98,6 +100,7 @@ jobs:
   - script: |
       docker run \
         --gpus all \
+        --shm-size=1024m \
         --rm \
         --volume $(Build.SourcesDirectory):/onnxruntime_src \
         --volume $(Build.BinariesDirectory):/build \
