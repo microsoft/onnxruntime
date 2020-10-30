@@ -16,6 +16,7 @@
 #include "orttraining/core/optimizer/nonzero_shape_setter.h"
 #include "orttraining/core/optimizer/megatron_transformer.h"
 #include "orttraining/core/optimizer/concat_replacement.h"
+#include "orttraining/core/optimizer/sum_accumulate_transformer.h"
 #include "test/optimizer/graph_transform_test_fixture.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/asserts.h"
@@ -95,6 +96,22 @@ TEST_F(GraphTransformationTests, BiasDropoutFusionTest) {
   TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_residual_fusion2.onnx", *logger_);
   TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_residual_fusion_mismatch.onnx", *logger_, 1);
   TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_trainabledropout_residual_fusion.onnx", *logger_);
+}
+
+TEST_F(GraphTransformationTests, SumAccumulatorTransformTest) {
+  auto model_uri = MODEL_FOLDER "sum_accumulator.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, *logger_).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<SumAccumulateTransformer>(), TransformerLevel::Level1);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
+  ASSERT_STATUS_OK(ret);
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["com.microsoft.InPlaceAccumulator"] == 3);
+  ASSERT_TRUE(op_to_count["com.microsoft.DeduplicateBuffer"] == 1);
 }
 
 Node* GetNodeByName(Graph& graph, std::string node_name) {
