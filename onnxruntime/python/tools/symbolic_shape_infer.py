@@ -971,7 +971,6 @@ class SymbolicShapeInference:
                     new_sympy_shape[i] = self._new_symbolic_dim_from_output(node,0,i)
         else:
             for i,s,e,t in zip(axes, starts, ends, steps):
-                idx = handle_negative_axis(i, len(new_sympy_shape))
                 if is_literal(e):
                     if e >= self.int_max_:
                         e = new_sympy_shape[i]
@@ -979,7 +978,7 @@ class SymbolicShapeInference:
                         e = 0 if s > 0 else -1
                     elif is_literal(new_sympy_shape[i]):
                         if e < 0:
-                            e = e + new_sympy_shape[i]
+                            e = max(0, e + new_sympy_shape[i])
                         e = min(e, new_sympy_shape[i])
                     else:
                         if e > 0:
@@ -999,8 +998,10 @@ class SymbolicShapeInference:
 
                 if is_literal(s) and int(s) < 0:
                     s = new_sympy_shape[i] + s
+                if is_literal(new_sympy_shape[i]) and is_literal(s):
+                    s = max(0, min(s, new_sympy_shape[i]))
 
-                new_sympy_shape[idx] = (e - s + t + (-1 if t > 0 else 1)) // t
+                new_sympy_shape[i] = (e - s + t + (-1 if t > 0 else 1)) // t
 
             self._update_computed_dims(new_sympy_shape)
 
@@ -1138,7 +1139,19 @@ class SymbolicShapeInference:
         self.tmp_mp_.CopyFrom(self.out_mp_)
         self.tmp_mp_.graph.ClearField('initializer')
 
-        for node in self.out_mp_.graph.node:
+        # topological sort nodes
+        sorted_nodes = []
+        sorted_inputs = set([i for i in self.known_vi_])
+        while len(self.out_mp_.graph.node) - len(sorted_nodes) > 0:
+            old_sorted_nodes_len = len(sorted_nodes)
+            for node in self.out_mp_.graph.node:
+                if (node.output[0] not in sorted_inputs) and all([i in sorted_inputs for i in node.input]):
+                    sorted_inputs.update(node.output)
+                    sorted_nodes.append(node)
+            if old_sorted_nodes_len == len(sorted_nodes):
+                raise Exception('Invalid model with cyclic graph')
+
+        for node in sorted_nodes:
             assert all([i in self.known_vi_ for i in node.input if i])
             self._onnx_infer_single_node(node)
             if node.op_type in self.dispatcher_:
