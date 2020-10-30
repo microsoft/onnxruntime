@@ -30,6 +30,7 @@ jobs:
         -x " \
           --config RelWithDebInfo \
           --enable_training \
+          --enable_pybind \
           --update --build \
           --enable_training_python_frontend_e2e_tests \
           --enable_training_pipeline_e2e_tests \
@@ -87,7 +88,7 @@ jobs:
         --volume $(Build.BinariesDirectory):/build \
         --volume /bert_data/hf_data:/bert_data/hf_data \
         onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
-          /build/Linux/RelWithDebInfo/launch_test.py \
+          /build/RelWithDebInfo/launch_test.py \
             --process_args "python orttraining_run_glue.py ORTGlueTest.test_bert_with_mrpc -v" \
             --cwd /build/RelWithDebInfo \
             --env "CUDA_VISIBLE_DEVICES 2"
@@ -109,4 +110,4 @@ jobs:
     displayName: 'Run orttraining_run_frontend_batch_size_test.py'
     condition: succeededOrFailed() # ensure all tests are run
 
-  # - template: templates/clean-agent-build-directory-step.yml
+  - template: templates/clean-agent-build-directory-step.yml
