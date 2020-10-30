@@ -98,6 +98,7 @@ def testToyBERTModelMixedPrecisionLossScaler():
     # Modeling
     model_desc = bert_model_description()
     model = load_bert_onnx_model()
+    # can use AdamConfig() instead to generate Adam checkpoints
     optim_config = optim.LambConfig()
     opts =  orttrainer.ORTTrainerOptions({
         'debug' : {
@@ -126,6 +127,7 @@ def testToyBERTModelMixedPrecisionLossScaler():
         losses.append(trainer.train_step(*sample_input).cpu().item())
     
     ckpt_dir = _test_helpers._get_name("ort_ckpt")
+    # use 'bert_toy_adam' instead for Adam
     checkpoint.experimental_save_checkpoint(trainer, ckpt_dir, 'bert_toy_lamb')
 
 if __name__ == "__main__":

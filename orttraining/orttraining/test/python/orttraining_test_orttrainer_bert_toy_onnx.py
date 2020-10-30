@@ -423,7 +423,7 @@ def testToyBertCheckpointBasic():
 
 # checkpointfiles generated using:
 # mpirun -n 4 python3 orttrainer_bert_toy_onnx_ckpt_gen.py
-def testToyBertCheckpointLoadZero():
+def testToyBertCheckpointLoadZeroFullprecisionLamb():
     # Common setup
     rtol = 1e-03
     device = 'cuda'
@@ -465,10 +465,180 @@ def testToyBertCheckpointLoadZero():
         for k,v in rank_state_dict['fp16_param'].items():
             fp32_name = k.split('_fp16')[0]
             assert_allclose(v, loaded_state_dict['fp32_param'][fp32_name])
+        
+        for k,v in rank_state_dict['optimizer'].items():
+            if k in loaded_state_dict['optimizer']:
+                assert_allclose(v, loaded_state_dict['optimizer'][k])
 
     # Check results
     assert_allclose(expected_eval_loss, actual_eval_loss, rtol=rtol)
 
+# checkpointfiles generated using:
+# mpirun -n 4 python3 orttrainer_bert_toy_onnx_ckpt_gen.py
+def testToyBertCheckpointLoadZeroFullprecisionAdam():
+    # Common setup
+    rtol = 1e-03
+    device = 'cuda'
+    seed = 1
+    torch.manual_seed(seed)
+    onnxruntime.set_seed(seed)
+    optim_config = optim.AdamConfig()
+    opts = orttrainer.ORTTrainerOptions({'debug' : {'deterministic_compute': True},
+                                         'device' : {'id' : device},
+                                         'distributed' : {'allreduce_post_accumulation' : True}})
+
+    # Create ORTTrainer and save initial state in a dict
+    model = load_bert_onnx_model()
+    model_desc = bert_model_description()
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
+    ckpt_dir = _test_helpers._get_name("ort_ckpt")
+    checkpoint.experimental_load_checkpoint(trainer, ckpt_dir, 'bert_toy_adam')
+
+    # Expected values
+    expected_eval_loss = [10.998348]
+    input_ids = torch.tensor([[26598],[21379],[19922],[ 5219],[ 5644],[20559],[23777],[25672],[22969],[16824],[16822],[635],[27399],[20647],[18519],[15546]], device=device)
+    segment_ids = torch.tensor([[0],[1],[0],[1],[0],[0],[1],[0],[0],[1],[1],[0],[0],[1],[1],[1]], device=device)
+    input_mask = torch.tensor([[0],[0],[0],[0],[1],[1],[1],[0],[1],[1],[0],[0],[0],[1],[0],[0]], device=device)
+    masked_lm_labels = torch.tensor([[25496],[16184],[11005],[16228],[14884],[21660],[ 8678],[23083],[ 4027],[ 8397],[11921],[ 1333],[26482],[ 1666],[17925],[27978]], device=device)
+    next_sentence_labels = torch.tensor([0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0], device=device)
+
+    # Actual values
+    actual_eval_loss = trainer.eval_step(input_ids, segment_ids, input_mask, masked_lm_labels, next_sentence_labels)
+    actual_eval_loss = actual_eval_loss.cpu().numpy().item(0)
+
+    checkpoint_files = sorted(checkpoint._list_checkpoint_files(ckpt_dir, 'bert_toy_adam'))
+    loaded_state_dict = checkpoint.experimental_state_dict(trainer)
+    loaded_state_dict = checkpoint._split_state_dict(loaded_state_dict)
+
+    for f in checkpoint_files:
+        rank_state_dict = torch.load(f, map_location=torch.device("cpu"))
+        rank_state_dict = checkpoint._split_state_dict(rank_state_dict)
+
+        for k,v in rank_state_dict['fp16_param'].items():
+            fp32_name = k.split('_fp16')[0]
+            assert_allclose(v, loaded_state_dict['fp32_param'][fp32_name])
+        
+        for k,v in rank_state_dict['optimizer'].items():
+            if k in loaded_state_dict['optimizer']:
+                assert_allclose(v, loaded_state_dict['optimizer'][k])
+
+    # Check results
+    assert_allclose(expected_eval_loss, actual_eval_loss, rtol=rtol)
+
+# checkpointfiles generated using:
+# mpirun -n 4 python3 orttrainer_bert_toy_onnx_ckpt_gen.py
+def testToyBertCheckpointLoadZeroMixedprecisionLamb():
+    # Common setup
+    rtol = 1e-03
+    device = 'cuda'
+    seed = 1
+    torch.manual_seed(seed)
+    onnxruntime.set_seed(seed)
+    optim_config = optim.LambConfig()
+    opts = orttrainer.ORTTrainerOptions({'debug' : {'deterministic_compute': True},
+                                         'device' : {'id' : device},
+                                         'mixed_precision': {
+                                                'enabled': True,
+                                                'loss_scaler': None
+                                            },
+                                         'distributed' : {'allreduce_post_accumulation' : True}})
+
+    # Create ORTTrainer and save initial state in a dict
+    model = load_bert_onnx_model()
+    model_desc = bert_model_description()
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
+    ckpt_dir = _test_helpers._get_name("ort_ckpt")
+    checkpoint.experimental_load_checkpoint(trainer, ckpt_dir, 'bert_toy_lamb')
+
+    # Expected values
+    expected_eval_loss = [11.011026]
+    input_ids = torch.tensor([[26598],[21379],[19922],[ 5219],[ 5644],[20559],[23777],[25672],[22969],[16824],[16822],[635],[27399],[20647],[18519],[15546]], device=device)
+    segment_ids = torch.tensor([[0],[1],[0],[1],[0],[0],[1],[0],[0],[1],[1],[0],[0],[1],[1],[1]], device=device)
+    input_mask = torch.tensor([[0],[0],[0],[0],[1],[1],[1],[0],[1],[1],[0],[0],[0],[1],[0],[0]], device=device)
+    masked_lm_labels = torch.tensor([[25496],[16184],[11005],[16228],[14884],[21660],[ 8678],[23083],[ 4027],[ 8397],[11921],[ 1333],[26482],[ 1666],[17925],[27978]], device=device)
+    next_sentence_labels = torch.tensor([0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0], device=device)
+
+    # Actual values
+    actual_eval_loss = trainer.eval_step(input_ids, segment_ids, input_mask, masked_lm_labels, next_sentence_labels)
+    actual_eval_loss = actual_eval_loss.cpu().numpy().item(0)
+
+    checkpoint_files = sorted(checkpoint._list_checkpoint_files(ckpt_dir, 'bert_toy_lamb'))
+    loaded_state_dict = checkpoint.experimental_state_dict(trainer)
+    loaded_state_dict = checkpoint._split_state_dict(loaded_state_dict)
+
+    for f in checkpoint_files:
+        rank_state_dict = torch.load(f, map_location=torch.device("cpu"))
+        rank_state_dict = checkpoint._split_state_dict(rank_state_dict)
+
+        for k,v in rank_state_dict['fp16_param'].items():
+            fp32_name = k.split('_fp16')[0]
+            assert_allclose(v, loaded_state_dict['fp32_param'][fp32_name])
+            assert_allclose(v, loaded_state_dict['fp16_param'][k])
+        
+        for k,v in rank_state_dict['optimizer'].items():
+            if k in loaded_state_dict['optimizer']:
+                assert_allclose(v, loaded_state_dict['optimizer'][k])
+
+    # Check results
+    assert_allclose(expected_eval_loss, actual_eval_loss, rtol=rtol)
+
+
+# checkpointfiles generated using:
+# mpirun -n 4 python3 orttrainer_bert_toy_onnx_ckpt_gen.py
+def testToyBertCheckpointLoadZeroMixedprecisionAdam():
+    # Common setup
+    rtol = 1e-03
+    device = 'cuda'
+    seed = 1
+    torch.manual_seed(seed)
+    onnxruntime.set_seed(seed)
+    optim_config = optim.AdamConfig()
+    opts = orttrainer.ORTTrainerOptions({'debug' : {'deterministic_compute': True},
+                                         'device' : {'id' : device},
+                                         'mixed_precision': {
+                                                'enabled': True,
+                                                'loss_scaler': None
+                                            },
+                                         'distributed' : {'allreduce_post_accumulation' : True}})
+
+    # Create ORTTrainer and save initial state in a dict
+    model = load_bert_onnx_model()
+    model_desc = bert_model_description()
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
+    ckpt_dir = _test_helpers._get_name("ort_ckpt")
+    checkpoint.experimental_load_checkpoint(trainer, ckpt_dir, 'bert_toy_adam')
+
+    # Expected values
+    expected_eval_loss = [10.998348]
+    input_ids = torch.tensor([[26598],[21379],[19922],[ 5219],[ 5644],[20559],[23777],[25672],[22969],[16824],[16822],[635],[27399],[20647],[18519],[15546]], device=device)
+    segment_ids = torch.tensor([[0],[1],[0],[1],[0],[0],[1],[0],[0],[1],[1],[0],[0],[1],[1],[1]], device=device)
+    input_mask = torch.tensor([[0],[0],[0],[0],[1],[1],[1],[0],[1],[1],[0],[0],[0],[1],[0],[0]], device=device)
+    masked_lm_labels = torch.tensor([[25496],[16184],[11005],[16228],[14884],[21660],[ 8678],[23083],[ 4027],[ 8397],[11921],[ 1333],[26482],[ 1666],[17925],[27978]], device=device)
+    next_sentence_labels = torch.tensor([0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0], device=device)
+
+    # Actual values
+    actual_eval_loss = trainer.eval_step(input_ids, segment_ids, input_mask, masked_lm_labels, next_sentence_labels)
+    actual_eval_loss = actual_eval_loss.cpu().numpy().item(0)
+
+    checkpoint_files = sorted(checkpoint._list_checkpoint_files(ckpt_dir, 'bert_toy_adam'))
+    loaded_state_dict = checkpoint.experimental_state_dict(trainer)
+    loaded_state_dict = checkpoint._split_state_dict(loaded_state_dict)
+
+    for f in checkpoint_files:
+        rank_state_dict = torch.load(f, map_location=torch.device("cpu"))
+        rank_state_dict = checkpoint._split_state_dict(rank_state_dict)
+
+        for k,v in rank_state_dict['fp16_param'].items():
+            fp32_name = k.split('_fp16')[0]
+            assert_allclose(v, loaded_state_dict['fp32_param'][fp32_name])
+            assert_allclose(v, loaded_state_dict['fp16_param'][k])
+        
+        for k,v in rank_state_dict['optimizer'].items():
+            if k in loaded_state_dict['optimizer']:
+                assert_allclose(v, loaded_state_dict['optimizer'][k])
+
+    # Check results
+    assert_allclose(expected_eval_loss, actual_eval_loss, rtol=rtol)
 
 def testToyBertCheckpointFrozenWeights():
     # Common setup
