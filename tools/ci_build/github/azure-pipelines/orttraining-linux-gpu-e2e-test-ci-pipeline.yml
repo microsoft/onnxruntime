@@ -72,7 +72,7 @@ jobs:
         --rm \
         --volume $(Build.SourcesDirectory):/onnxruntime_src \
         --volume $(Build.BinariesDirectory):/build \
-        --volume /bert_data/hf_data:/bert_data/hf_data \
+        --volume /bert_data:/bert_data \
         onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
           /build/RelWithDebInfo/launch_test.py \
             --process_args "mpirun -n 4 -x NCCL_DEBUG=INFO python orttraining_run_bert_pretrain.py ORTBertPretrainTest.test_pretrain_convergence" \
@@ -86,7 +86,7 @@ jobs:
         --rm \
         --volume $(Build.SourcesDirectory):/onnxruntime_src \
         --volume $(Build.BinariesDirectory):/build \
-        --volume /bert_data/hf_data:/bert_data/hf_data \
+        --volume /bert_data:/bert_data \
         onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
           /build/RelWithDebInfo/launch_test.py \
             --process_args "python orttraining_run_glue.py ORTGlueTest.test_bert_with_mrpc -v" \
@@ -101,7 +101,7 @@ jobs:
         --rm \
         --volume $(Build.SourcesDirectory):/onnxruntime_src \
         --volume $(Build.BinariesDirectory):/build \
-        --volume /bert_data/hf_data:/bert_data/hf_data \
+        --volume /bert_data:/bert_data \
         onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
           /build/RelWithDebInfo/launch_test.py \
             --process_args "python orttraining_run_frontend_batch_size_test.py -v" \
@@ -110,4 +110,4 @@ jobs:
     displayName: 'Run orttraining_run_frontend_batch_size_test.py'
     condition: succeededOrFailed() # ensure all tests are run
 
-  # - template: templates/clean-agent-build-directory-step.yml
+  - template: templates/clean-agent-build-directory-step.yml
