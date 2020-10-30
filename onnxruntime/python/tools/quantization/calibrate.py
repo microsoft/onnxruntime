@@ -10,6 +10,7 @@ import numpy as np
 import onnx
 import onnxruntime
 from onnx import helper, TensorProto
+from onnx import onnx_pb as onnx_proto
 
 import abc
 
@@ -46,7 +47,20 @@ class ONNXCalibrater:
         self.augmented_model_path = augmented_model_path
         self.input_name_to_nodes = {}
 
-    def augment_graph(self):
+    def get_value_info_to_type(self, value_info_proto, type_list):
+
+        value_info_to_type = {}
+
+        for value_info in value_info_proto:
+            elem_type = value_info.type.tensor_type.elem_type
+            # if elem_type == onnx_proto.TensorProto.FLOAT or elem_type == onnx_proto.TensorProto.FLOAT16:  
+            if elem_type in type_list:
+                value_info_to_type[value_info.name] = elem_type
+
+        return value_info_to_type
+        
+
+    def augment_graph(self, implicitly_quantize_all_ops=False):
         '''
         Adds ReduceMin and ReduceMax nodes to all quantization_candidates op type nodes in
         model and ensures their outputs are stored as part of the graph output
@@ -58,19 +72,49 @@ class ONNXCalibrater:
         added_nodes = []
         added_outputs = []
         tensors_to_calibrate = set()
+        value_info_to_type = {} # name of value info -> dtype
+        tensor_initializer = set()
+
+        for init in model.graph.initializer:
+            tensor_initializer.add(init.name)
+        print(tensor_initializer)
+
+        if implicitly_quantize_all_ops:
+            type_list = [onnx_proto.TensorProto.FLOAT, onnx_proto.TensorProto.FLOAT16]
+            value_info_to_type = self.get_value_info_to_type(model.graph.value_info, type_list)
 
         for node in model.graph.node:
-            should_be_calibrate = ((node.op_type in self.calibrate_op_types) and
-                                   (node.name not in self.black_nodes)) or (node.name in self.white_nodes)
-            if should_be_calibrate:
-                tensors_to_calibrate.update(node.input)
-                tensors_to_calibrate.update(node.output)
+            if implicitly_quantize_all_ops:
+                for i in node.input:
+                    if i in tensor_initializer:
+                        continue
+                    if i in value_info_to_type:
+                        tensors_to_calibrate.add(i)
+                for o in node.input:
+                    if o in tensor_initializer:
+                        continue
+                    if o in value_info_to_type:
+                        tensors_to_calibrate.add(o)
+            else:
+                should_be_calibrate = ((node.op_type in self.calibrate_op_types) and
+                                       (node.name not in self.black_nodes)) or (node.name in self.white_nodes)
+                if should_be_calibrate:
+                    tensors_to_calibrate.update(node.input)
+                    tensors_to_calibrate.update(node.output)
 
+
+            # following has the chance to cause "RuntimeError: Set changed size during iteration"
             for tensor in tensors_to_calibrate:
                 if tensor in model.graph.initializer:
                     tensors_to_calibrate.remove(tensor)
 
+        # final_tensor_to_calibrate = set()
+        # for tensor in tensors_to_calibrate:
+            # if "Shape" not in tensor and "slice" not in tensor:
+                # final_tensor_to_calibrate.add(tensor)
+
         for tensor in tensors_to_calibrate:
+        # for tensor in final_tensor_to_calibrate:
             # Adding ReduceMin nodes
             reduce_min_name = tensor + '_ReduceMin'
             reduce_min_node = onnx.helper.make_node('ReduceMin', [tensor], [tensor + '_ReduceMin'],
@@ -95,7 +139,7 @@ class ONNXCalibrater:
         return model
 
     #Using augmented outputs to generate inputs for quantization
-    def get_intermediate_outputs(self, calib_mode='naive'):
+    def get_intermediate_outputs(self, dynamic_range_file, calib_mode='naive', save_dynamic_range_to_file=True):
         ''' 
             Gather intermediate model outputs after running inference
             parameter calib_mode: type 'naive' gives (ReduceMin, ReduceMax) pairs
@@ -144,6 +188,38 @@ class ONNXCalibrater:
             raise ValueError('Unknown value for calib_mode. Currently only naive mode is supported.')
 
         final_dict = dict(zip(node_names, pairs))
+
+        if save_dynamic_range_to_file:
+            import json
+            import os
+            table_path = "table"
+            if not os.path.exists(table_path):
+                os.mkdir(table_path)
+            table_names = os.listdir(table_path)
+            if len(table_names) > 0:
+                with open("./table/"+table_names[-1], 'r') as file:
+                    data = json.load(file)
+
+                    for key, value in data.items():
+                        # min_value = final_dict[key][0]
+                        # max_value = final_dict[key][1]
+                        # if float(value[0]) < min_value:
+                            # min_value = float(value[0])
+
+                        # if float(value[1]) > max_value:
+                            # max_value = float(value[1])
+
+                        min_value = min(value[0], final_dict[key][0])
+                        max_value = max(value[1], final_dict[key][1])
+                        final_dict[key] = (min_value, max_value)
+
+                    print(data)
+                    print(table_names[-1])
+
+                os.remove("./table/"+table_names[-1])
+
+            with open(dynamic_range_file, 'w') as file:
+                file.write(json.dumps(final_dict)) # use `json.loads` to do the reverse
 
         return final_dict
 
@@ -238,6 +314,8 @@ def calibrate(model_path,
               op_types=['Conv', 'MatMul'],
               black_nodes=[],
               white_nodes=[],
+              implicitly_quantize_all_ops=False,
+              dynamic_range_file="dynamic_range.json",
               augmented_model_path='augmented_model.onnx'):
     '''
         Given an onnx model, augment and run the augmented model on calibration data set, aggregate and calculate the quantization parameters.
@@ -251,11 +329,11 @@ def calibrate(model_path,
     '''
     #1. initialize a calibrater
     calibrater = ONNXCalibrater(model_path, data_reader, op_types, black_nodes, white_nodes, augmented_model_path)
-    #2. augment
-    augmented_model = calibrater.augment_graph()
+    # #2. augment
+    augmented_model = calibrater.augment_graph(implicitly_quantize_all_ops)
     onnx.save(augmented_model, augmented_model_path)
     #3. generate quantization thresholds
-    dict_for_quantization = calibrater.get_intermediate_outputs()
+    dict_for_quantization = calibrater.get_intermediate_outputs(dynamic_range_file)
     #4. generate quantization parameters dict
     quantization_params_dict = calibrater.calculate_quantization_params(dict_for_quantization)
 

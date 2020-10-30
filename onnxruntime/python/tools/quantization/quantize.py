@@ -120,6 +120,56 @@ def quantize(model,
     else:
         raise ValueError('Only 8 and 7 bit quantization is currently supported')
 
+def get_dynamic_range_table(model_input,
+                    model_output,
+                    calibration_data_reader: CalibrationDataReader,
+                    op_types_to_quantize=[],
+                    per_channel=False,
+                    reduce_range=False,
+                    activation_type=QuantType.QUInt8,
+                    weight_type=QuantType.QUInt8,
+                    nodes_to_quantize=[],
+                    nodes_to_exclude=[],
+                    use_external_data_format=False, implicitly_quantize_all_ops=True, batch_end_index=0):
+
+    '''
+        Given an onnx model and calibration data reader, create a quantized onnx model and save it into a file
+    :param model_input: file path of model to quantize
+    :param model_output: file path of quantized model
+    :param calibration_data_reader: a calibration data reader. It enumerates calibration data and generates inputs for the original model.
+    :param op_types_to_quantize: specify the types of operators to quantize, like ['Conv'] to quantize Conv only. It quantizes all supported operators by default.
+    :param op_types: operators to quantize
+    :param per_channel: quantize weights per channel
+    :param reduce_range: quantize weights with 7-bits. It may improve the accuracy for some models running on non-VNNI machine, especially for per-channel mode
+    :param activation_type: quantization data type of activation
+    :param weight_type: quantization data type of weight
+    :param nodes_to_quantize:
+        List of nodes names to quantize. When this list is not None only the nodes in this list
+        are quantized.
+        example:
+        [
+            'Conv__224',
+            'Conv__252'
+        ]
+    :param nodes_to_exclude:
+        List of nodes names to exclude. The nodes in this list will be excluded from quantization
+        when it is not None.
+    :parma use_external_data_format: option used for large size (>2GB) model. Set to False by default. 
+    '''
+
+    if activation_type != QuantType.QUInt8:
+        raise ValueError("Static quantization only support uint8 for activation now.")
+
+    input_qType = onnx_proto.TensorProto.INT8 if activation_type == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
+    weight_qType = onnx_proto.TensorProto.INT8 if weight_type == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
+    mode = QuantizationMode.QLinearOps
+
+    if not op_types_to_quantize or len(op_types_to_quantize) == 0:
+        op_types_to_quantize = list(QLinearOpsRegistry.keys())
+
+    quantization_params_dict = calibrate(model_input, calibration_data_reader, op_types_to_quantize, nodes_to_quantize,
+                                         nodes_to_exclude, implicitly_quantize_all_ops, "table/dynamic_range_"+str(batch_end_index)+".json")
+
 
 def quantize_static(model_input,
                     model_output,
