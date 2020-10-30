@@ -705,11 +705,10 @@ public class OnnxTensor implements OnnxValue {
       OnnxJavaType type, OrtAllocator allocator, Buffer data, long[] shape) throws OrtException {
     int bufferPos;
     long bufferSizeLong = data.remaining() * (long) type.size;
-    if ((bufferSizeLong < 0) || (bufferSizeLong > (Integer.MAX_VALUE - (8 * type.size)))) {
-      // Negative value implies we overflowed and we can't allocate something that big (though overflowing
-      // a long at this point should be tricky),
-      // and the maximum direct byte buffer size is a little below Integer.MAX_VALUE depending
-      // on the JVM, so we check for something 8 elements below the maximum size.
+    if (bufferSizeLong > (Integer.MAX_VALUE - (8 * type.size))) {
+      // The maximum direct byte buffer size is a little below Integer.MAX_VALUE depending
+      // on the JVM, so we check for something 8 elements below the maximum size which
+      // should be allocatable (assuming there is enough memory) on all 64-bit JVMs.
       throw new IllegalStateException(
           "Cannot allocate a direct buffer of the requested size and type, size "
               + data.remaining()
