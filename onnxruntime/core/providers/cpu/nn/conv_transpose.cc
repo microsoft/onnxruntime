@@ -122,7 +122,6 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
     }
   } else {
     TensorShape output_shape = p.Y->Shape().Slice(1);
-    output_shape[0] = output_shape[0] / conv_transpose_attrs_.group;
 
     for (auto image_id = 0; image_id < p.N; ++image_id) {
       for (int group_id = 0; group_id < conv_transpose_attrs_.group; ++group_id) {
@@ -143,10 +142,10 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
         // Col2im
         math::Col2imNd<T, CPUMathUtil, StorageOrder::NCHW>(
             col_buffer_data,
-            output_shape.GetDims().data() + 1,
+            output_shape.GetDims().data(),
             p.input_shape.GetDims().data(),
             kernel_dim,
-            output_shape.Size(),
+            Y_offset,
             p.kernel_shape.data(),
             p.strides.data(),
             p.dilations.data(),
