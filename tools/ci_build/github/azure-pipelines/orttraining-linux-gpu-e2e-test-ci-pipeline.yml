@@ -26,7 +26,7 @@ jobs:
 
   - script: |
       tools/ci_build/github/linux/run_dockerbuild.sh \
-        -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory) \
+        -o ubuntu18.04 -d gpu -r $(Build.BinariesDirectory) \
         -x " \
           --config RelWithDebInfo \
           --enable_training \
