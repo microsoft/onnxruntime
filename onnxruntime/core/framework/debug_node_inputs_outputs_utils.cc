@@ -6,6 +6,7 @@
 #include "core/framework/debug_node_inputs_outputs_utils.h"
 
 #include <iomanip>
+#include <cctype>
 
 #include "core/common/path_utils.h"
 #include "core/framework/tensorprotoutils.h"
@@ -146,7 +147,7 @@ void DumpTensor(
   } else {
     std::cout << tensor_location << "\n";
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
     const auto data_type = tensor.DataType();
     // Dumping GPU only when cuda is enabled.
     if (tensor_location.device.Type() == OrtDevice::GPU) {

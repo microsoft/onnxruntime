@@ -6,7 +6,7 @@
 namespace onnxruntime {
 namespace test {
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 constexpr auto k_epsilon_default = 1e-5f;
 constexpr auto k_random_data_min = -10.0f;
 constexpr auto k_random_data_max = 10.0f;
@@ -71,7 +71,11 @@ static void TestLayerNorm(const std::vector<int64_t>& x_dims,
   }
   test.AddOutput<float>("var", stats_dims, var_data);
 
+#ifdef USE_CUDA
   test.CompareWithCPU(kCudaExecutionProvider);
+#elif USE_ROCM
+  test.CompareWithCPU(kRocmExecutionProvider);
+#endif
 }
 
 TEST(CudaKernelTest, LayerNorm_SmallSizeTensor) {
