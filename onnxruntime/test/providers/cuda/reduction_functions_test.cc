@@ -40,7 +40,7 @@ void CheckDeviceValues(size_t n, const T* d_actual, const T* expected, float rel
   }
 }
 
-void TestReduceRowToScalarApis(int64_t size, float relative_error_tolerance = 1e-4f) {
+void TestReduceRowToScalarApis(int size, float relative_error_tolerance = 1e-4f) {
   SCOPED_TRACE(MakeString("size: ", size));
 
   float expected_output_sum = 0;
@@ -55,7 +55,7 @@ void TestReduceRowToScalarApis(int64_t size, float relative_error_tolerance = 1e
     expected_output_mean += input_value / float(size);
   }
   const auto buffer_size_in_bytes =
-      cuda::compute_reduction_buffer_size<float>(static_cast<int>(size));
+      cuda::compute_reduction_buffer_size<float>(size);
 
   auto device_input = AllocateDeviceMemory<float>(size);
   auto device_output_sum = AllocateDeviceMemory<float>();
@@ -68,19 +68,19 @@ void TestReduceRowToScalarApis(int64_t size, float relative_error_tolerance = 1e
   ASSERT_STATUS_OK(cuda::reduce_sum(
       device_input.get(),
       device_output_sum.get(),
-      static_cast<int>(size),
+      size,
       buffer.get(),
       buffer_size_in_bytes));
   ASSERT_STATUS_OK(cuda::reduce_square_sum(
       device_input.get(),
       device_output_square_sum.get(),
-      static_cast<int>(size),
+      size,
       buffer.get(),
       buffer_size_in_bytes));
   ASSERT_STATUS_OK(cuda::reduce_mean(
       device_input.get(),
       device_output_mean.get(),
-      static_cast<int>(size),
+      size,
       buffer.get(),
       buffer_size_in_bytes));
 
@@ -91,7 +91,7 @@ void TestReduceRowToScalarApis(int64_t size, float relative_error_tolerance = 1e
   CheckDeviceValues(1, device_output_mean.get(), &expected_output_mean, relative_error_tolerance);
 }
 
-void TestReduceRowsToRow(int64_t m, int64_t n, bool reset_initial_output, float relative_error_tolerance = 1e-4f) {
+void TestReduceRowsToRow(int m, int n, bool reset_initial_output, float relative_error_tolerance = 1e-4f) {
   SCOPED_TRACE(MakeString("m: ", m, ", n:", n, ", reset_initial_output: ", reset_initial_output));
 
   const TensorShape shape{m, n};
@@ -101,8 +101,8 @@ void TestReduceRowsToRow(int64_t m, int64_t n, bool reset_initial_output, float 
   const std::vector<float> expected_row =
       [m, n, &values, initial_value]() {
         std::vector<float> row(n, initial_value);
-        for (int64_t i = 0; i < m; ++i) {
-          for (int64_t j = 0; j < n; ++j) {
+        for (int i = 0; i < m; ++i) {
+          for (int j = 0; j < n; ++j) {
             row[j] += values[i * n + j];
           }
         }
@@ -119,7 +119,10 @@ void TestReduceRowsToRow(int64_t m, int64_t n, bool reset_initial_output, float 
     cuda::Fill(d_out.get(), initial_value, n);
   }
 
-  ASSERT_STATUS_OK(cuda::reduce_matrix_rows(d_in.get(), d_out.get(), m, n, reset_initial_output));
+  ASSERT_STATUS_OK(cuda::reduce_matrix_rows(
+      d_in.get(), d_out.get(),
+      m, n,
+      reset_initial_output));
 
   ASSERT_TRUE(CUDA_CALL(cudaDeviceSynchronize()));
 
@@ -128,17 +131,17 @@ void TestReduceRowsToRow(int64_t m, int64_t n, bool reset_initial_output, float 
 
 template <typename T>
 std::vector<T> ExpectedReduceMatrixColumnsOutput(
-    int64_t m, int64_t n, const std::vector<T>& values) {
+    int m, int n, const std::vector<T>& values) {
   std::vector<T> column(m);
-  for (int64_t i = 0; i < m; ++i) {
-    for (int64_t j = 0; j < n; ++j) {
+  for (int i = 0; i < m; ++i) {
+    for (int j = 0; j < n; ++j) {
       column[i] += values[i * n + j];
     }
   }
   return column;
 }
 
-void TestReduceColumnsToColumn(int64_t m, int64_t n, float relative_error_tolerance = 1e-4f) {
+void TestReduceColumnsToColumn(int m, int n, float relative_error_tolerance = 1e-4f) {
   SCOPED_TRACE(MakeString("m: ", m, ", n:", n));
 
   const TensorShape shape{m, n};
@@ -155,7 +158,10 @@ void TestReduceColumnsToColumn(int64_t m, int64_t n, float relative_error_tolera
       cuda::compute_reduce_matrix_columns_buffer_size<float>(m, n);
   auto d_buffer = AllocateDeviceMemory<char>(buffer_size_in_bytes);
 
-  ASSERT_STATUS_OK(cuda::reduce_matrix_columns(d_in.get(), d_out.get(), m, n, d_buffer.get(), buffer_size_in_bytes));
+  ASSERT_STATUS_OK(cuda::reduce_matrix_columns(
+      d_in.get(), d_out.get(),
+      m, n,
+      d_buffer.get(), buffer_size_in_bytes));
 
   ASSERT_TRUE(CUDA_CALL(cudaDeviceSynchronize()));
 
@@ -173,9 +179,8 @@ TEST(ReductionFunctionsTest, ReduceRowToScalar) {
 }
 
 TEST(ReductionFunctionsTest, ReduceRowsToRow) {
-  const std::vector<int64_t> sizes{3, 193, 2945};
-  for (int64_t m : sizes) {
-    for (int64_t n : sizes) {
+  for (int m : {3, 193, 2945}) {
+    for (int n : {3, 193, 2945}) {
       TestReduceRowsToRow(m, n, true);
       TestReduceRowsToRow(m, n, false);
     }
@@ -183,17 +188,16 @@ TEST(ReductionFunctionsTest, ReduceRowsToRow) {
 }
 
 TEST(ReductionFunctionsTest, ReduceColumnsToColumn) {
-  const std::vector<int64_t> sizes{3, 193, 2945};
-  for (int64_t m : sizes) {
-    for (int64_t n : sizes) {
+  for (int m : {3, 193, 2945}) {
+    for (int n : {3, 193, 2945}) {
       TestReduceColumnsToColumn(m, n);
     }
   }
 }
 
 TEST(ReductionFunctionsTest, BufferOffsets) {
-  const int64_t m = 2048;
-  const int64_t n = 1024;
+  const int m = 2048;
+  const int n = 1024;
 
   const size_t max_buffer_offset = 15;
 
@@ -214,8 +218,10 @@ TEST(ReductionFunctionsTest, BufferOffsets) {
     cudaMemcpy(d_input.get(), input.data(), m * n * sizeof(double), cudaMemcpyHostToDevice);
 
     ASSERT_STATUS_OK(cuda::reduce_matrix_columns(
-        d_input.get(), d_output.get(), m, n,
-        d_buffer.get() + buffer_offset, buffer_size_in_bytes - buffer_offset));
+        d_input.get(), d_output.get(),
+        m, n,
+        d_buffer.get() + buffer_offset,
+        buffer_size_in_bytes - buffer_offset));
 
     const auto expected_column = ExpectedReduceMatrixColumnsOutput(m, n, input);
     CheckDeviceValues(m, d_output.get(), expected_column.data(), relative_error_tolerance);
@@ -223,8 +229,8 @@ TEST(ReductionFunctionsTest, BufferOffsets) {
 }
 
 TEST(ReductionFunctionsTest, InvalidBufferSize) {
-  const int64_t m = 2048;
-  const int64_t n = 1024;
+  const int m = 2048;
+  const int n = 1024;
 
   // this should be too small
   const size_t buffer_size_in_bytes =
