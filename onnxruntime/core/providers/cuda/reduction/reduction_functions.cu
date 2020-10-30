@@ -17,6 +17,7 @@
 namespace onnxruntime {
 namespace cuda {
 
+namespace detail {
 constexpr auto MAX_NUM_ELEMENTS_PER_THREAD = 4;
 constexpr auto MAX_NUM_WARPS_PER_BLOCK = 8;
 constexpr auto MAX_NUM_BLOCKS_IN_GRID_ROW = 256;
@@ -28,7 +29,7 @@ dim3 compute_block_dim(int row_size) {
   return dim3(x, y);
 }
 
-std::pair<dim3, dim3> compute_grid_and_block_dims(int row_size, int num_rows) {
+std::pair<dim3, dim3> compute_grid_and_block_dims(int num_rows, int row_size) {
   const auto block_dim = compute_block_dim(row_size);
   const auto grid_x =
       std::min<int>(
@@ -45,9 +46,8 @@ uintptr_t round_up_to_aligned(uintptr_t original, size_t alignment) {
   return (original + alignment - 1) & alignment_mask;
 }
 
-namespace detail {
-size_t compute_reduce_all_in_rows_buffer_size(int element_size, int element_alignment, int row_size, int num_rows) {
-  const auto grid_dim = compute_grid_and_block_dims(row_size, num_rows).first;
+size_t compute_reduce_all_in_rows_buffer_size(int element_size, int element_alignment, int num_rows, int row_size) {
+  const auto grid_dim = compute_grid_and_block_dims(num_rows, row_size).first;
 
   size_t buffer_size{};
 
@@ -62,13 +62,12 @@ size_t compute_reduce_all_in_rows_buffer_size(int element_size, int element_alig
 
   return buffer_size;
 }
-}  // namespace detail
 
 template <typename TBuf>
 Status get_reduction_buffers(
-    int row_size, int num_rows, void* buffer, size_t buffer_size,
+    int num_rows, int row_size, void* buffer, size_t buffer_size,
     TBuf*& block_reductions_buffer, int*& block_done_counts_buffer) {
-  const auto grid_dim = compute_grid_and_block_dims(row_size, num_rows).first;
+  const auto grid_dim = compute_grid_and_block_dims(num_rows, row_size).first;
   const int64_t num_rows_int64 = num_rows;  // avoid int overflow in offset calculations
 
   const uintptr_t begin_addr = reinterpret_cast<uintptr_t>(buffer);
@@ -257,7 +256,7 @@ __device__ void reduce_all_in_row(
 
 template <typename TIn, typename TOut, typename TBuf, typename TOp, typename TFinalOp, bool DivideResultBySize>
 __global__ void reduce_all_in_rows_kernel(
-    const int row_size, const int num_rows, const TIn* const input, TOut* const output,
+    const int num_rows, const int row_size, const TIn* const input, TOut* const output,
     TBuf* const block_reductions_buffer, int* const block_done_counts_buffer) {
   const int num_blocks_in_grid_row = gridDim.x;
   const int row_id_in_grid = blockIdx.y;
@@ -279,17 +278,17 @@ __global__ void reduce_all_in_rows_kernel(
 
 template <typename TIn, typename TOut, typename TOp, typename TFinalOp, bool DivideResultBySize>
 Status call_reduce_all_in_rows_kernel(
-    const TIn* input, TOut* output, const int row_size, const int num_rows, void* buffer, size_t buffer_size) {
+    const TIn* input, TOut* output, const int num_rows, const int row_size, void* buffer, size_t buffer_size) {
   using TBuf = AccumulationType_t<TIn>;
 
-  const auto grid_and_block_dims = compute_grid_and_block_dims(row_size, num_rows);
+  const auto grid_and_block_dims = compute_grid_and_block_dims(num_rows, row_size);
   const dim3& grid_dim = grid_and_block_dims.first;
   const dim3& block_dim = grid_and_block_dims.second;
 
   TBuf* block_reductions_buffer;
   int* block_done_counts_buffer;
   ORT_RETURN_IF_ERROR(get_reduction_buffers(
-      row_size, num_rows, buffer, buffer_size,
+      num_rows, row_size, buffer, buffer_size,
       block_reductions_buffer, block_done_counts_buffer));
 
   // If more than one block is used per grid row, then inter-block reduction is needed.
@@ -300,37 +299,38 @@ Status call_reduce_all_in_rows_kernel(
   const int shared_mem_size = sizeof(TBuf) * block_dim.x * block_dim.y / GPU_WARP_SIZE;
   reduce_all_in_rows_kernel<TIn, TOut, TBuf, TOp, TFinalOp, DivideResultBySize>
       <<<grid_dim, block_dim, shared_mem_size>>>(
-          row_size, num_rows, input, output, block_reductions_buffer, block_done_counts_buffer);
+          num_rows, row_size, input, output, block_reductions_buffer, block_done_counts_buffer);
 
   return Status::OK();
 }
+}  // namespace detail
 
 template <typename TIn, typename TOut>
 Status reduce_sum(
     const TIn* input, TOut* output, int size, void* buffer, size_t buffer_size) {
-  return call_reduce_all_in_rows_kernel<TIn, TOut, Identity, Identity, false>(
-      input, output, size, 1, buffer, buffer_size);
+  return detail::call_reduce_all_in_rows_kernel<TIn, TOut, Identity, Identity, false>(
+      input, output, 1, size, buffer, buffer_size);
 }
 
 template <typename TIn, typename TOut>
 Status reduce_square_sum(
     const TIn* input, TOut* output, int size, void* buffer, size_t buffer_size) {
-  return call_reduce_all_in_rows_kernel<TIn, TOut, Square, Identity, false>(
-      input, output, size, 1, buffer, buffer_size);
+  return detail::call_reduce_all_in_rows_kernel<TIn, TOut, Square, Identity, false>(
+      input, output, 1, size, buffer, buffer_size);
 }
 
 template <typename TIn, typename TOut>
 Status reduce_l2_norm(
     const TIn* input, TOut* output, int size, void* buffer, size_t buffer_size) {
-  return call_reduce_all_in_rows_kernel<TIn, TOut, Square, Sqrt, false>(
-      input, output, size, 1, buffer, buffer_size);
+  return detail::call_reduce_all_in_rows_kernel<TIn, TOut, Square, Sqrt, false>(
+      input, output, 1, size, buffer, buffer_size);
 }
 
 template <typename TIn, typename TOut>
 Status reduce_mean(
     const TIn* input, TOut* output, int size, void* buffer, size_t buffer_size) {
-  return call_reduce_all_in_rows_kernel<TIn, TOut, Identity, Identity, true>(
-      input, output, size, 1, buffer, buffer_size);
+  return detail::call_reduce_all_in_rows_kernel<TIn, TOut, Identity, Identity, true>(
+      input, output, 1, size, buffer, buffer_size);
 }
 
 #define INSTANTIATE_REDUCE_SUM(TIn, TOut) \
@@ -361,6 +361,7 @@ INSTANTIATE_REDUCE_MEAN(float, float);
 INSTANTIATE_REDUCE_MEAN(double, double);
 #undef INSTANTIATE_REDUCE_MEAN
 
+namespace detail {
 template <typename TIn, typename TOut, typename TBuf>
 __global__ void reduce_matrix_rows_kernel(const TIn* input, TOut* output, int m, int n) {
   constexpr int x_load_count_per_thread = 1;
@@ -438,6 +439,7 @@ void call_reduce_matrix_rows(const TIn* input, TOut* output, int m, int n) {
   reduce_matrix_rows_kernel<TIn, TOut, TBuf><<<grid, block, block.y * block.x * sizeof(TBuf)>>>(
       input, output, m, n);
 }
+}  // namespace detail
 
 template <typename TIn, typename TOut>
 Status reduce_matrix_rows(const TIn* input, TOut* output, int m, int n, bool reset_initial_output) {
@@ -446,7 +448,7 @@ Status reduce_matrix_rows(const TIn* input, TOut* output, int m, int n, bool res
   }
 
   using TBuf = AccumulationType_t<TIn>;
-  call_reduce_matrix_rows<TIn, TOut, TBuf>(input, output, m, n);
+  detail::call_reduce_matrix_rows<TIn, TOut, TBuf>(input, output, m, n);
   return Status::OK();
 }
 
@@ -459,8 +461,8 @@ INSTANTIATE_REDUCE_MATRIX_ROWS(double);
 
 template <typename TIn, typename TOut>
 Status reduce_matrix_columns(const TIn* input, TOut* output, int m, int n, void* buffer, size_t buffer_size) {
-  return call_reduce_all_in_rows_kernel<TIn, TOut, Identity, Identity, false>(
-      input, output, n, m, buffer, buffer_size);
+  return detail::call_reduce_all_in_rows_kernel<TIn, TOut, Identity, Identity, false>(
+      input, output, m, n, buffer, buffer_size);
 }
 
 #define INSTANTIATE_REDUCE_MATRIX_COLUMNS(T) \
