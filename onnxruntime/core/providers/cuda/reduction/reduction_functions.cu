@@ -41,7 +41,7 @@ std::pair<dim3, dim3> compute_grid_and_block_dims(int num_rows, int row_size) {
 }
 
 uintptr_t round_up_to_aligned(uintptr_t original, size_t alignment) {
-  assert(alignment & (alignment - 1) == 0);
+  assert((alignment & (alignment - 1)) == 0);
   const size_t alignment_mask = ~(alignment - 1);
   return (original + alignment - 1) & alignment_mask;
 }

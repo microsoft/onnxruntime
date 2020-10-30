@@ -282,7 +282,7 @@ TEST(ReductionFunctionsTest, GetApplicableMatrixReduction) {
       cuda::ApplicableMatrixReduction::None);
   EXPECT_EQ(
       cuda::get_applicable_matrix_reduction(
-          valid_op_type, {2, 4, 8, 16}, {1, 3}, m, n),
+          valid_op_type, {2, 4, 8, 16, 32, 64}, {0, 1, 3, 4}, m, n),
       cuda::ApplicableMatrixReduction::None);
   EXPECT_EQ(
       cuda::get_applicable_matrix_reduction(

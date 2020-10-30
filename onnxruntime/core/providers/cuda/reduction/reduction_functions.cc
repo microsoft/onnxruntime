@@ -43,10 +43,9 @@ ApplicableMatrixReduction get_applicable_matrix_reduction(
     }();
 
     const bool are_axes_contiguous =
-        axes.size() == 1 ||
         std::adjacent_find(
             axes.begin(), axes.end(),
-            [](int64_t a, int64_t b) { return a + 1 == b; }) != axes.end();
+            [](int64_t a, int64_t b) { return a + 1 != b; }) == axes.end();
 
     if (!are_axes_contiguous) {
       return {};
