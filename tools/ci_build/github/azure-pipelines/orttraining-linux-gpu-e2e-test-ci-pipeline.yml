@@ -73,9 +73,9 @@ jobs:
         --volume $(Build.BinariesDirectory):/build \
         --volume /bert_data/hf_data:/bert_data/hf_data \
         onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
-          /build/launch_test.py \
+          /build/RelWithDebInfo/launch_test.py \
             --process_args "mpirun -n 4 -x NCCL_DEBUG=INFO python orttraining_run_bert_pretrain.py ORTBertPretrainTest.test_pretrain_convergence" \
-            --cwd /build
+            --cwd /build/RelWithDebInfo
     displayName: 'Run orttraining_run_bert_pretrain.py ORTBertPretrainTest.test_pretrain_convergence'
     condition: succeededOrFailed() # ensure all tests are run
 
@@ -87,9 +87,9 @@ jobs:
         --volume $(Build.BinariesDirectory):/build \
         --volume /bert_data/hf_data:/bert_data/hf_data \
         onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
-          /build/launch_test.py \
+          /build/RelWithDebInfo/launch_test.py \
             --process_args "python orttraining_run_glue.py ORTGlueTest.test_bert_with_mrpc -v" \
-            --cwd /build \
+            --cwd /build/RelWithDebInfo \
             --env "CUDA_VISIBLE_DEVICES 2"
     displayName: 'Run orttraining_run_glue.py ORTGlueTest.test_bert_with_mrpc'
     condition: succeededOrFailed() # ensure all tests are run
@@ -102,9 +102,9 @@ jobs:
         --volume $(Build.BinariesDirectory):/build \
         --volume /bert_data/hf_data:/bert_data/hf_data \
         onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
-          /build/launch_test.py \
+          /build/RelWithDebInfo/launch_test.py \
             --process_args "python orttraining_run_frontend_batch_size_test.py -v" \
-            --cwd /build \
+            --cwd /build/RelWithDebInfo \
             --env "CUDA_VISIBLE_DEVICES 2"
     displayName: 'Run orttraining_run_frontend_batch_size_test.py'
     condition: succeededOrFailed() # ensure all tests are run
