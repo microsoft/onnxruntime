@@ -276,7 +276,7 @@ if (onnxruntime_ENABLE_TRAINING)
     )
   list(APPEND onnxruntime_test_providers_src ${orttraining_test_trainingops_cpu_src})
 
-  if (onnxruntime_USE_CUDA)
+  if (onnxruntime_USE_CUDA OR onnxruntime_USE_ROCM)
     file(GLOB_RECURSE orttraining_test_trainingops_cuda_src CONFIGURE_DEPENDS
       "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cuda/*"
       )
@@ -420,6 +420,9 @@ if(onnxruntime_USE_MIGRAPHX)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_migraphx)
 endif()
 
+if(onnxruntime_USE_ROCM)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_rocm)
+endif()
 
 file(GLOB_RECURSE onnxruntime_test_tvm_src CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/test/tvm/*.h"
@@ -460,6 +463,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
     ${PROVIDERS_ARMNN}
+    ${PROVIDERS_ROCM}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -606,7 +610,10 @@ set(all_dependencies ${onnxruntime_test_providers_dependencies} )
   # so skip in this type of
   target_compile_definitions(onnxruntime_test_all PUBLIC -DSKIP_DEFAULT_LOGGER_TESTS)
   if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
-      target_compile_definitions(onnxruntime_test_all_xc PUBLIC -DSKIP_DEFAULT_LOGGER_TESTS)
+    target_compile_definitions(onnxruntime_test_all_xc PUBLIC -DSKIP_DEFAULT_LOGGER_TESTS)
+  endif()
+  if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
+    target_compile_options(onnxruntime_test_all PUBLIC "-Wno-unused-const-variable")
   endif()
   if(onnxruntime_RUN_MODELTEST_IN_DEBUG_MODE)
     target_compile_definitions(onnxruntime_test_all PUBLIC -DRUN_MODELTEST_IN_DEBUG_MODE)
@@ -619,6 +626,10 @@ set(all_dependencies ${onnxruntime_test_providers_dependencies} )
   endif()
   if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
     target_link_libraries(onnxruntime_test_all PRIVATE onnxruntime_language_interop onnxruntime_pyop)
+  endif()
+
+  if (onnxruntime_USE_ROCM)
+    target_include_directories(onnxruntime_test_all PRIVATE ${onnxruntime_ROCM_HOME}/include/hiprand ${onnxruntime_ROCM_HOME}/include/rocrand)
   endif()
 
   set(test_data_target onnxruntime_test_all)

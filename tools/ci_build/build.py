@@ -4,7 +4,6 @@
 
 import argparse
 import glob
-import multiprocessing
 import os
 import re
 import shutil
@@ -12,6 +11,7 @@ import subprocess
 import sys
 import hashlib
 from logger import log
+# from amd_hipify import amd_hipify
 
 
 class BaseError(Exception):
@@ -77,13 +77,9 @@ def parse_arguments():
         "--clean", action='store_true',
         help="Run 'cmake --build --target clean' for the selected config/s.")
     parser.add_argument(
-        "--parallel", action='store_true', help="""Use parallel build.
-    The build setup doesn't get all dependencies right, so --parallel
-    only works if you're just rebuilding ONNXRuntime code. If you've
-    done an update that fetched external dependencies you have to build
-    without --parallel the first time. Once that's done , run with
-    "--build --parallel --test" to just build in
-    parallel and run tests.""")
+        "--parallel", nargs='?', const='0', default='1', type=int,
+        help="Use parallel build. The optional value specifies the maximum number of parallel jobs. "
+             "If the optional value is 0 or unspecified, it is interpreted as the number of CPUs.")
     parser.add_argument("--test", action='store_true', help="Run unit tests.")
     parser.add_argument(
         "--skip_tests", action='store_true', help="Skip all tests.")
@@ -388,6 +384,8 @@ def parse_arguments():
     parser.add_argument("--disable_ort_format_load", action='store_true',
                         help='Disable support for loading ORT format models in a non-minimal build.')
 
+    parser.add_argument("--use_rocm", action='store_true', help="Build with ROCm")
+    parser.add_argument("--rocm_home", help="Path to ROCm installation dir")
     return parser.parse_args()
 
 
@@ -585,7 +583,7 @@ def use_dev_mode(args):
     return 'ON'
 
 
-def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home,
+def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, rocm_home,
                         mpi_home, nccl_home, tensorrt_home, migraphx_home, acl_home, acl_libs, armnn_home, armnn_libs,
                         path_to_protoc_exe, configs, cmake_extra_defines, args, cmake_extra_args):
     log.info("Generating CMake build tree")
@@ -692,7 +690,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_USE_HOROVOD=" + (
             "ON" if args.use_horovod else "OFF"),
         "-Donnxruntime_BUILD_BENCHMARKS=" + (
-            "ON" if args.build_micro_benchmarks else "OFF")
+            "ON" if args.build_micro_benchmarks else "OFF"),
+        "-Donnxruntime_USE_ROCM=" + ("ON" if args.use_rocm else "OFF"),
+        "-Donnxruntime_ROCM_HOME=" + (rocm_home if args.use_rocm else ""),
     ]
 
     if acl_home and os.path.exists(acl_home):
@@ -940,7 +940,7 @@ def clean_targets(cmake_path, build_dir, configs):
         run_subprocess(cmd_args)
 
 
-def build_targets(args, cmake_path, build_dir, configs, parallel, target=None):
+def build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, target=None):
     for config in configs:
         log.info("Building targets for %s configuration", config)
         build_dir2 = get_config_build_dir(build_dir, config)
@@ -951,19 +951,18 @@ def build_targets(args, cmake_path, build_dir, configs, parallel, target=None):
             cmd_args.extend(['--target', target])
 
         build_tool_args = []
-        if parallel:
-            num_cores = str(multiprocessing.cpu_count())
+        if num_parallel_jobs != 1:
             if is_windows() and args.cmake_generator != 'Ninja':
                 build_tool_args += [
-                    "/maxcpucount:" + num_cores,
+                    "/maxcpucount:{}".format(num_parallel_jobs),
                     # if nodeReuse is true, msbuild processes will stay around for a bit after the build completes
                     "/nodeReuse:False",
                 ]
             elif (is_macOS() and args.use_xcode):
                 # CMake will generate correct build tool args for Xcode
-                cmd_args += ["--parallel", num_cores]
-            elif args.cmake_generator != 'Ninja':
-                build_tool_args += ["-j" + num_cores]
+                cmd_args += ["--parallel", str(num_parallel_jobs)]
+            else:
+                build_tool_args += ["-j{}".format(num_parallel_jobs)]
 
         if build_tool_args:
             cmd_args += ["--"]
@@ -1063,6 +1062,25 @@ def setup_dml_build(args, cmake_path, build_dir, configs):
                         "--config", config,
                         "--target", "RESTORE_PACKAGES"]
             run_subprocess(cmd_args)
+
+
+def setup_rocm_build(args):
+
+    rocm_home = None
+
+    if (args.use_rocm):
+        print("rocm_home = {}".format(args.rocm_home))
+        rocm_home = args.rocm_home or None
+
+        rocm_home_not_valid = (rocm_home and not os.path.exists(rocm_home))
+
+        if (rocm_home_not_valid):
+            raise BuildError("rocm_home paths must be specified and valid.",
+                             "rocm_home='{}' valid={}."
+                             .format(rocm_home, rocm_home_not_valid))
+
+        # amd_hipify()
+    return rocm_home or ''
 
 
 def adb_push(src, dest, **kwargs):
@@ -1792,6 +1810,9 @@ def main():
     # if using migraphx, setup migraphx paths
     migraphx_home = setup_migraphx_vars(args)
 
+    # if using rocm, setup rocm paths
+    rocm_home = setup_rocm_build(args)
+
     os.makedirs(build_dir, exist_ok=True)
 
     log.info("Build started")
@@ -1881,7 +1902,7 @@ def main():
         if args.enable_onnx_tests:
             setup_test_data(build_dir, configs)
         generate_build_tree(
-            cmake_path, source_dir, build_dir, cuda_home, cudnn_home, mpi_home, nccl_home,
+            cmake_path, source_dir, build_dir, cuda_home, cudnn_home, rocm_home, mpi_home, nccl_home,
             tensorrt_home, migraphx_home, acl_home, acl_libs, armnn_home, armnn_libs,
             path_to_protoc_exe, configs, cmake_extra_defines, args, cmake_extra_args)
 
@@ -1892,7 +1913,10 @@ def main():
     setup_dml_build(args, cmake_path, build_dir, configs)
 
     if args.build:
-        build_targets(args, cmake_path, build_dir, configs, args.parallel, args.target)
+        if args.parallel < 0:
+            raise BuildError("Invalid parallel job count: {}".format(args.parallel))
+        num_parallel_jobs = os.cpu_count() if args.parallel == 0 else args.parallel
+        build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, args.target)
 
     if args.test:
         run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs)
