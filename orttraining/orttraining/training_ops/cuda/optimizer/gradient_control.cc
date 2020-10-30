@@ -5,6 +5,7 @@
 #include "core/providers/cuda/reduction/reduction_functions.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "orttraining/training_ops/cpu/optimizer/gradient_control.h"
+#include "orttraining/training_ops/cuda/optimizer/gradient_control.h"
 #include "orttraining/training_ops/cuda/optimizer/common.h"
 
 namespace onnxruntime {
