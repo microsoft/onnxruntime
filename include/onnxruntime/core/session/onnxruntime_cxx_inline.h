@@ -287,7 +287,7 @@ inline void IoBinding::ClearBoundOutputs() {
 }
 
 inline ArenaCfg::ArenaCfg(size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes, int max_dead_bytes_per_chunk) {
-  ThrowOnError(GetApi().CreateArenaCfg(max_mem, arena_extend_strategy, initial_chunk_bytes, max_dead_bytes_per_chunk, &p_));
+  ThrowOnError(GetApi().CreateArenaCfg(max_mem, arena_extend_strategy, initial_chunk_size_bytes, max_dead_bytes_per_chunk, &p_));
 }
 
 inline Env::Env(OrtLoggingLevel logging_level, _In_ const char* logid) {
