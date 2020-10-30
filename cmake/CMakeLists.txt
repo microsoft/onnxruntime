@@ -1214,8 +1214,10 @@ if (onnxruntime_ENABLE_TRAINING)
 
       list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${MPI_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
 
-      # Enable NCCL only when using CUDA.
-      set(onnxruntime_USE_NCCL ${onnxruntime_USE_CUDA})
+      # Enable NCCL only when using CUDA or ROCM.
+      if(${onnxruntime_USE_CUDA} OR ${onnxruntime_USE_ROCM})
+        set(onnxruntime_USE_NCCL ON)
+      endif()
 
     else ()
       set(onnxruntime_USE_NCCL OFF)
