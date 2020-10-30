@@ -22,6 +22,11 @@ debug = False
 sys.path.append('.')
 logger = logging.getLogger('')
 
+# global variables 
+average_latency_ms = 'average_latency_ms'
+latency_90_percentile = 'latency_90_percentile'
+Standalone_TRT = 'Standalone_TRT'
+
 # EP Names
 cpu_execution_provider = "CPUExecutionProvider"
 cuda_execution_provider = "CUDAExecutionProvider"
@@ -37,6 +42,15 @@ ep_to_provider_list = {
     tensorrt_execution_provider_fp16: [tensorrt_execution_provider, cuda_execution_provider],
 }
 
+all_ep_list = [cpu_execution_provider, cuda_execution_provider, tensorrt_execution_provider]
+all_ep_list_fp16 = [cpu_execution_provider, cuda_execution_provider, cuda_execution_provider_fp16, tensorrt_execution_provider, tensorrt_execution_provider_fp16]
+
+# EP getter for benchmark_wrapper
+def get_ep_list(): 
+    return all_ep_list
+
+def get_ep_list_fp16(): 
+    return  all_ep_list_fp16
 
 # metadata
 FAIL_MODEL_FILE = ".fail_model_map"
@@ -44,7 +58,6 @@ LATENCY_FILE = ".latency_map"
 METRICS_FILE = ".metrics_map"
 
 # accuracy helpers
-
 def max_relative_error(a, b):
     error = abs(a - b)
     max_rel_error = np.nanmax(error / abs(b))
@@ -73,8 +86,6 @@ def run_trt_standalone(trtexec, model_path, ort_inputs, all_inputs_shape, fp16):
     model_path = "--onnx=" + model_path
     input_shape = []
 
-#    logger.info(all_inputs_shape)
-
     for i in range(len(ort_inputs)):
         name = ort_inputs[i].name
 
@@ -86,7 +97,6 @@ def run_trt_standalone(trtexec, model_path, ort_inputs, all_inputs_shape, fp16):
         input_shape.append(shape)
 
     shapes_arg = '--optShapes=' + ','.join(input_shape)
-#    logger.info(shapes_arg)
 
     result = {}
     try:
@@ -96,7 +106,6 @@ def run_trt_standalone(trtexec, model_path, ort_inputs, all_inputs_shape, fp16):
         else:
             p1 = subprocess.Popen([trtexec, model_path, "--percentile=90", "--explicitBatch", shapes_arg], stdout=subprocess.PIPE)
         stdout, sterr = p1.communicate()
-#        logger.info(stdout)
         stdout = stdout.decode("ascii").strip()
 
         tmp = stdout.split("\n")
@@ -111,12 +120,12 @@ def run_trt_standalone(trtexec, model_path, ort_inputs, all_inputs_shape, fp16):
         target = target_list[2]
         start = target.find('mean:') + 6
         end = target.find('ms')
-        result["average_latency_ms"] = target[start:end]
+        result[average_latency_ms] = target[start:end]
 
         target = target_list[3]
         start = target.find('percentile:') + 12
         end = target.find('ms')
-        result["latency_90_percentile"] = target[start:end]
+        result[latency_90_percentile] = target[start:end]
 
         logger.info(result)
         return result
@@ -124,8 +133,6 @@ def run_trt_standalone(trtexec, model_path, ort_inputs, all_inputs_shape, fp16):
     except Exception as e:
         logger.info("trtexec fails...")
         return None
-
-
 
 def get_latency_result(runtimes, batch_size):
     latency_ms = sum(runtimes) / float(len(runtimes)) * 1000.0
@@ -141,7 +148,6 @@ def get_latency_result(runtimes, batch_size):
         "average_latency_ms": "{:.2f}".format(latency_ms),
         "QPS": "{:.2f}".format(throughput),
     }
-
 
 def get_ort_session_inputs_and_outptus(name, session, ort_input):
 
@@ -193,11 +199,11 @@ def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_t
 
     for ort_input in ort_inputs:
         sess_inputs, sess_outputs = get_ort_session_inputs_and_outptus(name, session, ort_input)
-#        if debug:
-#            logger.info("ORT session inputs:")
-#            logger.info(sess_inputs)
-#            logger.info("ORT session outputs:")
-#            logger.info(sess_outputs)
+        if debug:
+            logger.info("ORT session inputs:")
+            logger.info(sess_inputs)
+            logger.info("ORT session outputs:")
+            logger.info(sess_outputs)
 
         try:
             runtime = timeit.repeat(lambda: session.run(sess_outputs, sess_inputs), number=1, repeat=repeat_times)
@@ -207,9 +213,7 @@ def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_t
             logger.error(e)
             return None
 
-#    logger.info(runtimes)
     runtimes[:] = runtimes[1:]
-#    logger.info(runtimes)
 
     result = {}
     result.update(result_template)
@@ -222,17 +226,17 @@ def inference_ort_and_get_prediction(name, session, ort_inputs):
     ort_outputs = []
     for ort_input in ort_inputs:
         sess_inputs, sess_outputs = get_ort_session_inputs_and_outptus(name, session, ort_input)
-#        if debug:
-#            logger.info("ORT session inputs:")
-#            logger.info(sess_inputs)
-#            logger.info("ORT session outputs:")
-#            logger.info(sess_outputs)
+        if debug:
+            logger.info("ORT session inputs:")
+            logger.info(sess_inputs)
+            logger.info("ORT session outputs:")
+            logger.info(sess_outputs)
 
         result = session.run(sess_outputs, sess_inputs)
 
-#        if debug:
-#            logger.info("ORT session output results:")
-#            logger.info(result)
+        if debug:
+            logger.info("ORT session output results:")
+            logger.info(result)
 
         # handle shape of output differently
         if 'bert_squad' in name.lower():
@@ -387,9 +391,9 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, data_type="fp32"):
                         tensor_to_array = tensor_to_array.astype(np.float16)
                     output_data_pb.append(tensor_to_array)
 
-#                    logger.info(np.array(output_data_pb[-1]).shape)
+                    logger.info(np.array(output_data_pb[-1]).shape)
             outputs.append(output_data_pb)
-#            logger.info('Loaded {} outputs successfully.'.format(len(outputs)))
+            logger.info('Loaded {} outputs successfully.'.format(len(outputs)))
 
         os.chdir(pwd)
 
@@ -520,14 +524,14 @@ def update_metrics_map(model_to_metrics, model_name, ep_to_operator):
             model_to_metrics[model_name][ep] = {}
 
         if ep == cuda_execution_provider or ep == cuda_execution_provider_fp16:
-            model_to_metrics[model_name][ep]['ratio_of_ops_in_cuda_not_fallback_cpu'] = calculate_cuda_op_percentage(op_map) 
-            model_to_metrics[model_name][ep]['total_ops'] = get_total_ops(op_map) 
+            model_to_metrics[model_name][ep][ratio_of_ops_in_cuda_not_fallback_cpu] = calculate_cuda_op_percentage(op_map) 
+            model_to_metrics[model_name][ep][total_ops] = get_total_ops(op_map) 
         else:
             total_trt_execution_time, total_execution_time, ratio_of_execution_time_in_trt = calculate_trt_latency_percentage(op_map)
-            model_to_metrics[model_name][ep]['total_ops'] = get_total_ops(op_map) 
-            model_to_metrics[model_name][ep]['total_trt_execution_time'] = total_trt_execution_time
-            model_to_metrics[model_name][ep]['total_execution_time'] = total_execution_time
-            model_to_metrics[model_name][ep]['ratio_of_execution_time_in_trt'] = ratio_of_execution_time_in_trt
+            model_to_metrics[model_name][ep][total_ops] = get_total_ops(op_map) 
+            model_to_metrics[model_name][ep][total_trt_execution_time] = total_trt_execution_time
+            model_to_metrics[model_name][ep][total_execution_time] = total_execution_time
+            model_to_metrics[model_name][ep][ratio_of_execution_time_in_trt] = ratio_of_execution_time_in_trt
 
 
 def update_metrics_map_ori(model_to_metrics, name, ep_to_operator):
@@ -554,31 +558,31 @@ def update_metrics_map_ori(model_to_metrics, name, ep_to_operator):
         model_to_metrics[name] = {}
 
     if cuda_op_map:
-        model_to_metrics[name]['ratio_of_ops_in_cuda_not_fallback_cpu'] = calculate_cuda_op_percentage(cuda_op_map) 
+        model_to_metrics[name][ratio_of_ops_in_cuda_not_fallback_cpu] = calculate_cuda_op_percentage(cuda_op_map) 
 
     if trt_op_map:
         total_trt_execution_time, total_execution_time, ratio_of_execution_time_in_trt = calculate_trt_latency_percentage(trt_op_map)
-        model_to_metrics[name]['total_trt_execution_time'] = total_trt_execution_time
-        model_to_metrics[name]['total_execution_time'] = total_execution_time
-        model_to_metrics[name]['ratio_of_execution_time_in_trt'] = ratio_of_execution_time_in_trt
+        model_to_metrics[name][total_trt_execution_time] = total_trt_execution_time
+        model_to_metrics[name][total_execution_time] = total_execution_time
+        model_to_metrics[name][ratio_of_execution_time_in_trt] = ratio_of_execution_time_in_trt
         if cuda_op_map:
             total_ops_in_trt, total_ops, ratio_of_ops_in_trt = calculate_trt_op_percentage(trt_op_map, cuda_op_map)
-            model_to_metrics[name]['total_ops_in_trt'] = total_ops_in_trt
-            model_to_metrics[name]['total_ops'] = total_ops
-            model_to_metrics[name]['ratio_of_ops_in_trt'] = ratio_of_ops_in_trt
+            model_to_metrics[name][total_ops_in_trt] = total_ops_in_trt
+            model_to_metrics[name][total_ops] = total_ops
+            model_to_metrics[name][ratio_of_ops_in_trt] = ratio_of_ops_in_trt
 
     if trt_fp16_op_map:
         total_trt_execution_time, total_execution_time, ratio_of_execution_time_in_trt = calculate_trt_latency_percentage(trt_fp16_op_map)
         name_ = name + " (FP16)"
         model_to_metrics[name_] = {}
-        model_to_metrics[name_]['total_trt_execution_time'] = total_trt_execution_time
-        model_to_metrics[name_]['total_execution_time'] = total_execution_time
-        model_to_metrics[name_]['ratio_of_execution_time_in_trt'] = ratio_of_execution_time_in_trt
+        model_to_metrics[name_][total_trt_execution_time] = total_trt_execution_time
+        model_to_metrics[name_][total_execution_time] = total_execution_time
+        model_to_metrics[name_][ratio_of_execution_time_in_trt] = ratio_of_execution_time_in_trt
         if cuda_fp16_op_map:
             total_ops_in_trt, total_ops, ratio_of_ops_in_trt = calculate_trt_op_percentage(trt_fp16_op_map, cuda_op_map)
-            model_to_metrics[name_]['total_ops_in_trt'] = total_ops_in_trt
-            model_to_metrics[name_]['total_ops'] = total_ops
-            model_to_metrics[name_]['ratio_of_ops_in_trt'] = ratio_of_ops_in_trt
+            model_to_metrics[name_][total_ops_in_trt] = total_ops_in_trt
+            model_to_metrics[name_][total_ops] = total_ops
+            model_to_metrics[name_][ratio_of_ops_in_trt] = ratio_of_ops_in_trt
 
     if debug:
         pp = pprint.PrettyPrinter(indent=4)
@@ -915,9 +919,9 @@ def run_onnxruntime(args, models):
         ep_list.append(args.ep)
     else:
         if args.fp16:
-            ep_list = [cpu_execution_provider, cuda_execution_provider, tensorrt_execution_provider, cuda_execution_provider_fp16, tensorrt_execution_provider_fp16]
+            ep_list = all_ep_list_fp16
         else:
-            ep_list = [cpu_execution_provider, cuda_execution_provider, tensorrt_execution_provider]
+            ep_list = all_ep_list
 
     validation_exemption = [tensorrt_execution_provider_fp16]
 
@@ -1056,8 +1060,8 @@ def run_onnxruntime(args, models):
                     logger.info(result)
 
                     latency_result[ep] = {}
-                    latency_result[ep]["average_latency_ms"] = result["average_latency_ms"]
-                    latency_result[ep]["latency_90_percentile"] = result["latency_90_percentile"]
+                    latency_result[ep][average_latency_ms] = result[average_latency_ms]
+                    latency_result[ep][latency_90_percentile] = result[latency_90_percentile]
 
                     # get standalone TensorRT perf
                     if tensorrt_execution_provider in ep and args.trtexec:
@@ -1159,14 +1163,14 @@ def add_improvement_information(model_to_latency):
         if not (tensorrt_execution_provider in value and cuda_execution_provider in value):
             continue
 
-        trt_latency = float(value[tensorrt_execution_provider]['average_latency_ms'])
-        cuda_latency = float(value[cuda_execution_provider]['average_latency_ms'])
+        trt_latency = float(value[tensorrt_execution_provider][average_latency_ms])
+        cuda_latency = float(value[cuda_execution_provider][average_latency_ms])
         gain = (cuda_latency - trt_latency)*100/cuda_latency
         value["Tensorrt_gain(%)"] = "{:.2f} %".format(gain)
 
         if tensorrt_execution_provider_fp16 in value and cuda_execution_provider_fp16 in value:
-            trt_fp16_latency = float(value[tensorrt_execution_provider_fp16]['average_latency_ms'])
-            cuda_fp16_latency = float(value[cuda_execution_provider_fp16]['average_latency_ms'])
+            trt_fp16_latency = float(value[tensorrt_execution_provider_fp16][average_latency_ms])
+            cuda_fp16_latency = float(value[cuda_execution_provider_fp16][average_latency_ms])
             gain = (cuda_fp16_latency - trt_fp16_latency)*100/cuda_fp16_latency
             value["Tensorrt_fp16_gain(%)"] = "{:.2f} %".format(gain)
 
@@ -1241,62 +1245,62 @@ def output_latency(results, csv_filename):
           
 
             cpu_average = ""
-            if cpu_execution_provider in value and 'average_latency_ms' in value[cpu_execution_provider]:
-                cpu_average = value[cpu_execution_provider]['average_latency_ms']
+            if cpu_execution_provider in value and average_latency_ms in value[cpu_execution_provider]:
+                cpu_average = value[cpu_execution_provider][average_latency_ms]
 
             cpu_99_percentile = ""
-            if cpu_execution_provider in value and 'latency_90_percentile' in value[cpu_execution_provider]:
-                cuda_99_percentile = value[cpu_execution_provider]['latency_90_percentile']
+            if cpu_execution_provider in value and latency_90_percentile in value[cpu_execution_provider]:
+                cuda_99_percentile = value[cpu_execution_provider][latency_90_percentile]
 
             
             cuda_average = ""
-            if cuda_execution_provider in value and 'average_latency_ms' in value[cuda_execution_provider]:
-                cuda_average = value[cuda_execution_provider]['average_latency_ms']
+            if cuda_execution_provider in value and average_latency_ms in value[cuda_execution_provider]:
+                cuda_average = value[cuda_execution_provider][average_latency_ms]
 
             cuda_99_percentile = ""
-            if cuda_execution_provider in value and 'latency_90_percentile' in value[cuda_execution_provider]:
-                cuda_99_percentile = value[cuda_execution_provider]['latency_90_percentile']
+            if cuda_execution_provider in value and latency_90_percentile in value[cuda_execution_provider]:
+                cuda_99_percentile = value[cuda_execution_provider][latency_90_percentile]
 
             trt_average = ""
-            if tensorrt_execution_provider in value and 'average_latency_ms' in value[tensorrt_execution_provider]:
-                trt_average = value[tensorrt_execution_provider]['average_latency_ms']
+            if tensorrt_execution_provider in value and average_latency_ms in value[tensorrt_execution_provider]:
+                trt_average = value[tensorrt_execution_provider][average_latency_ms]
 
             trt_99_percentile = ""
-            if tensorrt_execution_provider in value and 'latency_90_percentile' in value[tensorrt_execution_provider]:
-                trt_99_percentile = value[tensorrt_execution_provider]['latency_90_percentile']
+            if tensorrt_execution_provider in value and latency_90_percentile in value[tensorrt_execution_provider]:
+                trt_99_percentile = value[tensorrt_execution_provider][latency_90_percentile]
 
             standalone_trt_average = ""
-            if 'Standalone_TRT' in value and 'average_latency_ms' in value['Standalone_TRT']:
-                standalone_trt_average = value['Standalone_TRT']['average_latency_ms']
+            if Standalone_TRT in value and average_latency_ms in value[Standalone_TRT]:
+                standalone_trt_average = value[Standalone_TRT][average_latency_ms]
 
             standalone_trt_99_percentile = ""
-            if 'Standalone_TRT' in value and 'latency_90_percentile' in value['Standalone_TRT']:
-                standalone_trt_99_percentile = value['Standalone_TRT']['latency_90_percentile']
+            if Standalone_TRT in value and latency_90_percentile in value[Standalone_TRT]:
+                standalone_trt_99_percentile = value[Standalone_TRT][latency_90_percentile]
 
 
             cuda_fp16_average = ""
-            if cuda_execution_provider_fp16 in value and 'average_latency_ms' in value[cuda_execution_provider_fp16]:
-                cuda_fp16_average = value[cuda_execution_provider_fp16]['average_latency_ms']
+            if cuda_execution_provider_fp16 in value and average_latency_ms in value[cuda_execution_provider_fp16]:
+                cuda_fp16_average = value[cuda_execution_provider_fp16][average_latency_ms]
 
             cuda_fp16_99_percentile = ""
-            if cuda_execution_provider_fp16 in value and 'latency_90_percentile' in value[cuda_execution_provider_fp16]:
-                cuda_fp16_99_percentile = value[cuda_execution_provider_fp16]['latency_90_percentile']
+            if cuda_execution_provider_fp16 in value and latency_90_percentile in value[cuda_execution_provider_fp16]:
+                cuda_fp16_99_percentile = value[cuda_execution_provider_fp16][latency_90_percentile]
 
             trt_fp16_average = ""
-            if tensorrt_execution_provider_fp16 in value and 'average_latency_ms' in value[tensorrt_execution_provider_fp16]:
-                trt_fp16_average = value[tensorrt_execution_provider_fp16]['average_latency_ms']
+            if tensorrt_execution_provider_fp16 in value and average_latency_ms in value[tensorrt_execution_provider_fp16]:
+                trt_fp16_average = value[tensorrt_execution_provider_fp16][average_latency_ms]
 
             trt_fp16_99_percentile = ""
-            if tensorrt_execution_provider_fp16 in value and 'latency_90_percentile' in value[tensorrt_execution_provider_fp16]:
-                trt_fp16_99_percentile = value[tensorrt_execution_provider_fp16]['latency_90_percentile']
+            if tensorrt_execution_provider_fp16 in value and latency_90_percentile in value[tensorrt_execution_provider_fp16]:
+                trt_fp16_99_percentile = value[tensorrt_execution_provider_fp16][latency_90_percentile]
 
             standalone_trt_fp16_average = ""
-            if 'Standalone_TRT_fp16' in value and 'average_latency_ms' in value['Standalone_TRT_fp16']:
-                standalone_trt_fp16_average = value['Standalone_TRT_fp16']['average_latency_ms']
+            if 'Standalone_TRT_fp16' in value and average_latency_ms in value['Standalone_TRT_fp16']:
+                standalone_trt_fp16_average = value['Standalone_TRT_fp16'][average_latency_ms]
 
             standalone_trt_fp16_99_percentile = ""
-            if 'Standalone_TRT_fp16' in value and 'latency_90_percentile' in value['Standalone_TRT_fp16']:
-                standalone_trt_fp16_99_percentile = value['Standalone_TRT_fp16']['latency_90_percentile']
+            if 'Standalone_TRT_fp16' in value and latency_90_percentile in value['Standalone_TRT_fp16']:
+                standalone_trt_fp16_99_percentile = value['Standalone_TRT_fp16'][latency_90_percentile]
 
 
             row = [key,
@@ -1332,6 +1336,14 @@ def output_metrics(model_to_metrics, csv_filename):
         csv_writer = csv.writer(csv_file)
         csv_writer.writerow(column_names)
 
+        total_trt_execution_time = 'total_trt_execution_time'
+        total_ops_in_trt = 'total_ops_in_trt'
+        ratio_of_ops_in_cuda_not_fallback_cpu = 'ratio_of_ops_in_cuda_not_fallback_cpu'
+        total_execution_time = 'total_execution_time'
+        ratio_of_execution_time_in_trt = 'ratio_of_execution_time_in_trt'
+        total_ops = 'total_ops'
+        ratio_of_ops_in_trt = 'ratio_of_ops_in_trt'
+
         results = []
         for model, ep_info in model_to_metrics.items():
 
@@ -1341,44 +1353,44 @@ def output_metrics(model_to_metrics, csv_filename):
             result_fp16["model_name"] = model + " (FP16)"
 
             if cuda_execution_provider in ep_info:
-                result['ratio_of_ops_in_cuda_not_fallback_cpu'] = ep_info[cuda_execution_provider]['ratio_of_ops_in_cuda_not_fallback_cpu']
+                result[ratio_of_ops_in_cuda_not_fallback_cpu] = ep_info[cuda_execution_provider][ratio_of_ops_in_cuda_not_fallback_cpu]
 
             if tensorrt_execution_provider in ep_info:
-                result['total_trt_execution_time'] = ep_info[tensorrt_execution_provider]['total_trt_execution_time']
-                result['total_execution_time'] = ep_info[tensorrt_execution_provider]['total_execution_time']
-                result['ratio_of_execution_time_in_trt'] = ep_info[tensorrt_execution_provider]['ratio_of_execution_time_in_trt']
+                result[total_trt_execution_time] = ep_info[tensorrt_execution_provider][total_trt_execution_time]
+                result[total_execution_time] = ep_info[tensorrt_execution_provider][total_execution_time]
+                result[ratio_of_execution_time_in_trt] = ep_info[tensorrt_execution_provider][ratio_of_execution_time_in_trt]
 
             if cuda_execution_provider in ep_info and tensorrt_execution_provider in ep_info: 
                 ########################################################################################
                 # equation of % TRT ops:
                 # (total ops in cuda json - cuda and cpu ops in trt json)/ total ops in cuda json
                 ########################################################################################
-                total_ops_in_cuda = ep_info[cuda_execution_provider]["total_ops"] 
-                cuda_cpu_ops_in_trt = ep_info[tensorrt_execution_provider]["total_ops"]
+                total_ops_in_cuda = ep_info[cuda_execution_provider][total_ops] 
+                cuda_cpu_ops_in_trt = ep_info[tensorrt_execution_provider][total_ops]
 
-                result['total_ops_in_trt'] = total_ops_in_cuda - cuda_cpu_ops_in_trt
-                result['total_ops'] = total_ops_in_cuda
-                result['ratio_of_ops_in_trt'] = (total_ops_in_cuda - cuda_cpu_ops_in_trt) / total_ops_in_cuda
+                result[total_ops_in_trt] = total_ops_in_cuda - cuda_cpu_ops_in_trt
+                result[total_ops] = total_ops_in_cuda
+                result[ratio_of_ops_in_trt] = (total_ops_in_cuda - cuda_cpu_ops_in_trt) / total_ops_in_cuda
 
             if cuda_execution_provider_fp16 in ep_info:
-                result_fp16['ratio_of_ops_in_cuda_not_fallback_cpu'] = ep_info[cuda_execution_provider_fp16]['ratio_of_ops_in_cuda_not_fallback_cpu']
+                result_fp16[ratio_of_ops_in_cuda_not_fallback_cpu] = ep_info[cuda_execution_provider_fp16][ratio_of_ops_in_cuda_not_fallback_cpu]
 
             if tensorrt_execution_provider_fp16 in ep_info:
-                result_fp16['total_trt_execution_time'] = ep_info[tensorrt_execution_provider_fp16]['total_trt_execution_time']
-                result_fp16['total_execution_time'] = ep_info[tensorrt_execution_provider_fp16]['total_execution_time']
-                result_fp16['ratio_of_execution_time_in_trt'] = ep_info[tensorrt_execution_provider_fp16]['ratio_of_execution_time_in_trt']
+                result_fp16[total_trt_execution_time] = ep_info[tensorrt_execution_provider_fp16][total_trt_execution_time]
+                result_fp16[total_execution_time] = ep_info[tensorrt_execution_provider_fp16][total_execution_time]
+                result_fp16[ratio_of_execution_time_in_trt] = ep_info[tensorrt_execution_provider_fp16][ratio_of_execution_time_in_trt]
 
             if cuda_execution_provider_fp16 in ep_info and tensorrt_execution_provider_fp16 in ep_info: 
                 ########################################################################################
                 # equation of % TRT ops:
                 # (total ops in cuda json - cuda and cpu ops in trt json)/ total ops in cuda json
                 ########################################################################################
-                total_ops_in_cuda = ep_info[cuda_execution_provider_fp16]["total_ops"] 
-                cuda_cpu_ops_in_trt = ep_info[tensorrt_execution_provider_fp16]["total_ops"]
+                total_ops_in_cuda = ep_info[cuda_execution_provider_fp16][total_ops] 
+                cuda_cpu_ops_in_trt = ep_info[tensorrt_execution_provider_fp16][total_ops]
 
-                result_fp16['total_ops_in_trt'] = total_ops_in_cuda - cuda_cpu_ops_in_trt
-                result_fp16['total_ops'] = total_ops_in_cuda
-                result_fp16['ratio_of_ops_in_trt'] = (total_ops_in_cuda - cuda_cpu_ops_in_trt) / total_ops_in_cuda
+                result_fp16[total_ops_in_trt] = total_ops_in_cuda - cuda_cpu_ops_in_trt
+                result_fp16[total_ops] = total_ops_in_cuda
+                result_fp16[ratio_of_ops_in_trt] = (total_ops_in_cuda - cuda_cpu_ops_in_trt) / total_ops_in_cuda
 
             
             results.append(result)
@@ -1388,13 +1400,13 @@ def output_metrics(model_to_metrics, csv_filename):
         
         for value in results:
             row = [value['model_name'],
-                   value['ratio_of_ops_in_cuda_not_fallback_cpu'] if 'ratio_of_ops_in_cuda_not_fallback_cpu' in value else "  ",
-                   value['total_ops_in_trt'] if 'total_ops_in_trt' in value else "  ",
-                   value['total_ops'] if 'total_ops' in value else "  ",
-                   value['ratio_of_ops_in_trt'] if 'ratio_of_ops_in_trt' in value else "  ",
-                   value['total_trt_execution_time'] if 'total_trt_execution_time' in value else "  ",
-                   value['total_execution_time'] if 'total_execution_time' in value else "  ",
-                   value['ratio_of_execution_time_in_trt'] if 'ratio_of_execution_time_in_trt' in value else "  ",
+                   value[ratio_of_ops_in_cuda_not_fallback_cpu] if ratio_of_ops_in_cuda_not_fallback_cpu in value else "  ",
+                   value[total_ops_in_trt] if total_ops_in_trt in value else "  ",
+                   value[total_ops] if total_ops in value else "  ",
+                   value[ratio_of_ops_in_trt] if ratio_of_ops_in_trt in value else "  ",
+                   value[total_trt_execution_time] if total_trt_execution_time in value else "  ",
+                   value[total_execution_time] if total_execution_time in value else "  ",
+                   value[ratio_of_execution_time_in_trt] if ratio_of_execution_time_in_trt in value else "  ",
                    ]
             csv_writer.writerow(row)
 
@@ -1436,6 +1448,7 @@ def parse_arguments():
     parser.add_argument("--ep", required=False, default=None, help="Specify ORT Execution Provider.")
     
     parser.add_argument("--accuracy_tol", required=False, default=1.5, help="Tolerance for accuracy check: abs(a - b) < tol")
+    
     parser.add_argument("--fp16", required=False, default=True, action="store_true", help="Include Float16 into benchmarking.")
 
     parser.add_argument("--trtexec", required=False, default=None, help="trtexec executable path.")

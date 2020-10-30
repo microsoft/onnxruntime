@@ -26,7 +26,7 @@ def run_benchmark(args, ep, model, model_list_file):
                             "-m", model_list_file,
                             "--ep", ep,
                             "-o", args.perf_result_path,
-                            "--accuracy_tol", args.accuracy_tol,
+                            "--accuracy_tol", float(args.accuracy_tol),
                             "--write_test_result", "false",
                             "--benchmark_fail_csv", benchmark_fail_csv,
                             "--benchmark_metrics_csv", benchmark_metrics_csv])
@@ -83,7 +83,7 @@ def main():
             logger.info('running for single ep')
             run_benchmark(args, args.ep, model, model_list_file)
         else: 
-            ep_list = ["CPUExecutionProvider", "CUDAExecutionProvider", "TensorrtExecutionProvider", "CUDAExecutionProvider_fp16", "TensorrtExecutionProvider_fp16"]
+            ep_list = get_ep_list_fp16()
             for ep in ep_list: 
                 run_benchmark(args, ep, model, model_list_file)
 
