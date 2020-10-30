@@ -959,6 +959,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
+        // Hint: .NET Core 3.1 has a 'NativeLibrary' class that can be used to free the library handle
         private void UnloadLibrary(IntPtr libraryHandle)
         {
             if (libraryHandle != IntPtr.Zero)

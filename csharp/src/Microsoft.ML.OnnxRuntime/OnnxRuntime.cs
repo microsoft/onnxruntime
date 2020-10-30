@@ -123,7 +123,9 @@ namespace Microsoft.ML.OnnxRuntime
 
             finally
             {
-                // TODO: What if OrtReleaseAvailableProviders() throws ?
+                // Looks a bit weird that we might throw in finally(...)
+                // But the native method OrtReleaseAvailableProviders actually doesn't return a failure status
+                // If it does, it is BUG and we would like to propagate that to the user in the form of an exception
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtReleaseAvailableProviders(availableProvidersHandle, numProviders));
             }
 

@@ -194,8 +194,9 @@ namespace Microsoft.ML.OnnxRuntime
         /// OrtStatus* RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api);
         /// It then passes in the provided session options to this function along with the api base.
         /// The handle to the loaded library is returned in 'libraryHandle'. 
-        /// It can be freed by the caller after all sessions using the passed in
+        /// It can be unloaded by the caller after all sessions using the passed in
         /// session options are destroyed, or if an error occurs and it is non null.
+        /// Hint: .NET Core 3.1 has a 'NativeLibrary' class that can be used to free the library handle
         /// </summary>
         public void RegisterCustomOpLibraryV2(string libraryPath, out IntPtr libraryHandle)
         {
