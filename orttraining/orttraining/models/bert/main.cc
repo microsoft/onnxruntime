@@ -10,7 +10,12 @@
 #include "core/session/environment.h"
 #include "core/framework/bfc_arena.h"
 #include "core/framework/random_seed.h"
+#ifdef USE_CUDA
 #include "core/providers/cuda/cuda_allocator.h"
+#endif
+#ifdef USE_ROCM
+#include "core/providers/rocm/rocm_allocator.h"
+#endif
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
 #include "orttraining/core/framework/mpi_context.h"
@@ -20,11 +25,18 @@
 #include "orttraining/models/runner/data_loader.h"
 
 namespace onnxruntime {
+#ifdef USE_CUDA
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id,
                                                                                OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE,
                                                                                size_t cuda_mem_limit = std::numeric_limits<size_t>::max(),
                                                                                onnxruntime::ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo,
                                                                                bool do_copy_in_default_stream = true);
+#endif
+#ifdef USE_ROCM
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ROCM(OrtDevice::DeviceId device_id,
+                                                                              size_t hip_mem_limit = std::numeric_limits<size_t>::max(),
+                                                                              onnxruntime::ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo);
+#endif
 }
 
 using namespace onnxruntime;
@@ -574,6 +586,13 @@ void setup_training_params(BertParameters& params) {
   params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(device_id, OrtCudnnConvAlgoSearch::EXHAUSTIVE,
                                                                                        cuda_mem_limit));
   params.input_allocator = std::make_shared<CUDAPinnedAllocator>(device_id, CUDA_PINNED);
+#endif
+
+#ifdef USE_ROCM
+  OrtDevice::DeviceId device_id = static_cast<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
+  size_t hip_mem_limit = std::numeric_limits<size_t>::max();
+  params.providers.emplace(kRocmExecutionProvider, CreateExecutionProviderFactory_ROCM(device_id, hip_mem_limit));
+  params.input_allocator = std::make_shared<ROCMPinnedAllocator>(device_id, CUDA_PINNED);
 #endif
 
   params.loss_func_info = LossFunctionInfo(OpDef("BertLoss", kOnnxDomain),
