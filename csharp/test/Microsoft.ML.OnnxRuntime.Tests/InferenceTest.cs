@@ -2007,18 +2007,18 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         }
 
                         // Run inference with named inputs and outputs created with in Run()
-                        using (var results2 = session2.Run(container))  // results is an IReadOnlyList<NamedOnnxValue> container
+                        using (var results = session2.Run(container))  // results is an IReadOnlyList<NamedOnnxValue> container
                         {
-                            foreach (var r in results2)
+                            foreach (var r in results)
                             {
                                 validateRunResultData(r.AsTensor<float>(), output, outputDims);
                             }
                         }
 
                         // Run inference with named inputs and outputs created with in Run()
-                        using (var results3 = session3.Run(container))  // results is an IReadOnlyList<NamedOnnxValue> container
+                        using (var results = session3.Run(container))  // results is an IReadOnlyList<NamedOnnxValue> container
                         {
-                            foreach (var r in results3)
+                            foreach (var r in results)
                             {
                                 validateRunResultData(r.AsTensor<float>(), output, outputDims);
                             }

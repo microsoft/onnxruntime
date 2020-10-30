@@ -63,7 +63,6 @@ namespace Microsoft.ML.OnnxRuntime
         #region SafeHandle
         protected override bool ReleaseHandle()
         {
-
             NativeMethods.OrtReleaseArenaCfg(handle);
             handle = IntPtr.Zero;
             return true;
