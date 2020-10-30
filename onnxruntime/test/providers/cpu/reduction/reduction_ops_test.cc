@@ -15,6 +15,9 @@
 namespace onnxruntime {
 namespace test {
 
+const float FLOAT_INF = std::numeric_limits<float>::infinity();
+const float FLOAT_NINF = -std::numeric_limits<float>::infinity();
+
 // Disable TensorRT on some of the tests because the limit in its parser: axis >=0 && axis < nbDims
 template <typename OutT>
 void TestReduceOp(const std::string& op,
@@ -2016,6 +2019,87 @@ TEST(ReductionOpTest, ReduceDimWithZero) {
   test3.AddInput<float>("data", {3, 0, 2}, {});
   test3.AddOutput<float>("reduced", {3, 0}, {});
   run(test3);
+}
+
+TEST(ReductionOpTest, ReduceInfMax) {
+  OpTester test("ReduceMax");
+  test.AddAttribute("axes", std::vector<int64_t>{1});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {6, 2},
+                       {1.0f, FLOAT_NINF,
+                        FLOAT_NINF, 4.0f,
+                        FLOAT_INF, FLOAT_NINF,
+                        FLOAT_NINF, FLOAT_INF,
+                        1.0f, FLOAT_INF,
+                        FLOAT_INF, 4.0f});
+  test.AddOutput<float>("reduced", {6},
+                        {1.0f, 4.0f,
+                         FLOAT_INF, FLOAT_INF,
+                         FLOAT_INF, FLOAT_INF});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceInfMin) {
+  OpTester test("ReduceMin");
+  test.AddAttribute("axes", std::vector<int64_t>{1});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {6, 2},
+                       {1.0f, FLOAT_INF,
+                        FLOAT_INF, 4.0f,
+                        FLOAT_INF, FLOAT_NINF,
+                        FLOAT_NINF, FLOAT_INF,
+                        1.0f, FLOAT_NINF,
+                        FLOAT_NINF, 4.0f});
+  test.AddOutput<float>("reduced", {6},
+                        {1.0f, 4.0f,
+                         FLOAT_NINF, FLOAT_NINF,
+                         FLOAT_NINF, FLOAT_NINF});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceInfSum) {
+  OpTester test("ReduceSum");
+  test.AddAttribute("axes", std::vector<int64_t>{1});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {6, 2},
+                       {1.0f, FLOAT_INF,
+                        FLOAT_INF, 4.0f,
+                        FLOAT_INF, FLOAT_NINF,
+                        FLOAT_NINF, FLOAT_INF,
+                        1.0f, FLOAT_NINF,
+                        FLOAT_NINF, 4.0f});
+  test.AddOutput<float>("reduced", {6},
+                        {FLOAT_INF, FLOAT_INF,
+                         std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(),
+                         FLOAT_NINF, FLOAT_NINF});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceInfLogSum) {
+  OpTester test("ReduceLogSum");
+  test.AddAttribute("axes", std::vector<int64_t>{1});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {6, 2},
+                       {1.0f, FLOAT_INF,
+                        FLOAT_INF, 1.0f,
+                        FLOAT_INF, FLOAT_NINF,
+                        FLOAT_NINF, FLOAT_INF,
+                        1.0f, FLOAT_NINF,
+                        FLOAT_NINF, 1.0f});
+  test.AddOutput<float>("reduced", {6},
+                        {FLOAT_INF, FLOAT_INF,
+                         -std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(),
+                         std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN()});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceInfLogSumExp) {
+  OpTester test("ReduceLogSumExp");
+  test.AddAttribute("axes", std::vector<int64_t>{1});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {2, 2}, {1.0f, FLOAT_NINF, FLOAT_NINF, 1.0f});
+  test.AddOutput<float>("reduced", {2}, {1.0f, 1.0f});
+  test.Run();
 }
 
 }  // namespace test

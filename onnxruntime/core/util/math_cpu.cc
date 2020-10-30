@@ -59,8 +59,6 @@ EIGEN_MATMUL_FUNCTION(uint64_t)
 // will delegate the Caffe math functions that are BLAS-related to either the
 // CBLAS call or the Eigen implementation.
 ////////////////////////////////////////////////////////////////////////////////
-// when USE_MKLML is defined, use cblas APIs for MKLML
-#if !defined(USE_MKLML_FOR_BLAS)
 
 // Caffe2 gemm provides a simpler interface to the gemm functions, with the
 // limitation that the data has to be contiguous in memory.
@@ -212,79 +210,6 @@ template void Gemv<double, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, int M, int
 SPECIALIZED_AXPY(float)
 #undef SPECIALIZED_AXPY
 
-#else
-
-template <>
-void Gemm<float, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
-                             const int64_t N, const int64_t K, float alpha, const float* A, const float* B, float beta,
-                             float* C, ThreadPool* /*context*/) {
-  int lda = gsl::narrow_cast<int>((TransA == CblasNoTrans) ? K : M);
-  int ldb = gsl::narrow_cast<int>((TransB == CblasNoTrans) ? N : K);
-  cblas_sgemm(CblasRowMajor, TransA, TransB,
-              gsl::narrow_cast<int>(M),
-              gsl::narrow_cast<int>(N),
-              gsl::narrow_cast<int>(K),
-              alpha, A, lda, B, ldb,
-              beta, C, gsl::narrow_cast<int>(N));
-}
-
-template <>
-void Gemm<double, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
-                              const int64_t N, const int64_t K, double alpha, const double* A, const double* B, double beta,
-                              double* C, ThreadPool* /*context*/) {
-  int lda = gsl::narrow_cast<int>((TransA == CblasNoTrans) ? K : M);
-  int ldb = gsl::narrow_cast<int>((TransB == CblasNoTrans) ? N : K);
-  cblas_dgemm(CblasRowMajor, TransA, TransB,
-              gsl::narrow_cast<int>(M),
-              gsl::narrow_cast<int>(N),
-              gsl::narrow_cast<int>(K),
-              alpha, A, lda, B, ldb,
-              beta, C, gsl::narrow_cast<int>(N));
-}
-
-template <>
-void MatMul<float>(int M, int N, int K, const float* A, const float* B, float* C, ThreadPool*) {
-  cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, M, N, K, 1, A, K, B, N, 0, C, N);
-}
-
-template <>
-void MatMul<double>(int M, int N, int K, const double* A, const double* B, double* C, ThreadPool*) {
-  cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, M, N, K, 1, A, K, B, N, 0, C, N);
-}
-
-template <>
-void GemmEx<float, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, int M, int N, int K,
-                               float alpha, const float* A, int lda, const float* B, int ldb, float beta, float* C,
-                               int ldc, ThreadPool* /*context*/) {
-  cblas_sgemm(CblasRowMajor, TransA, TransB, M, N, K, alpha, A, lda, B, ldb,
-              beta, C, ldc);
-}
-
-template <>
-void Gemv<float, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, int M, int N, float alpha, const float* A, const float* x,
-                              float beta, float* y, CPUMathUtil* /*context*/) {
-  cblas_sgemv(CblasRowMajor, TransA, M, N, alpha, A, N, x, 1, beta, y, 1);
-}
-
-template <>
-void Gemv<double, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, int M, int N, float alpha, const double* A, const double* x,
-                               float beta, double* y, CPUMathUtil* /*context*/) {
-  cblas_dgemv(CblasRowMajor, TransA, M, N, alpha, A, N, x, 1, beta, y, 1);
-}
-
-#define CAFFE2_SPECIALIZED_AXPY(T, prefix)                                           \
-  template <>                                                                        \
-  void Axpy<T, CPUMathUtil>(int N, const T alpha, const T* x, T* y, CPUMathUtil*) {  \
-    cblas_##prefix##axpy(N, alpha, x, 1, y, 1);                                      \
-  }                                                                                  \
-  template <>                                                                        \
-  void Axpy<T, CPUMathUtil>(int N, const T* alpha, const T* x, T* y, CPUMathUtil*) { \
-    cblas_##prefix##axpy(N, *alpha, x, 1, y, 1);                                     \
-  }
-CAFFE2_SPECIALIZED_AXPY(float, s)
-#undef CAFFE2_SPECIALIZED_AXPY
-
-#endif
 
 #define DELEGATE_SIMPLE_UNARY_FUNCTION(T, Funcname, expr)                  \
   template <>                                                              \
@@ -296,7 +221,6 @@ DELEGATE_SIMPLE_UNARY_FUNCTION(double, Exp, exp)
 DELEGATE_SIMPLE_UNARY_FUNCTION(float, Log, log)
 DELEGATE_SIMPLE_UNARY_FUNCTION(float, Sqr, square)
 #undef DELEGATE_SIMPLE_UNARY_FUNCTION
-
 
 #define EIGEN_SIMPLE_BINARY_FUNCTION(T, Funcname, expr)                                                       \
   template <>                                                                                                 \
@@ -412,12 +336,12 @@ void Im2col<T, StorageOrder::NCHW>::operator()(const T* data_im, int64_t channel
 template struct Im2col<float, StorageOrder::NCHW>;
 template struct Im2col<uint8_t, StorageOrder::NCHW>;
 
-template <>
-void Im2col<float, StorageOrder::NHWC>::operator()(const float* data_im, int64_t channels, int64_t height,
-                                                   int64_t width, int64_t kernel_h, int64_t kernel_w,
-                                                   int64_t dilation_h, int64_t dilation_w, int64_t pad_t,
-                                                   int64_t pad_l, int64_t pad_b, int64_t pad_r, int64_t stride_h,
-                                                   int64_t stride_w, float* data_col, float padding_value) {
+template <typename T>
+void Im2col<T, StorageOrder::NHWC>::operator()(const T* data_im, int64_t channels, int64_t height,
+                                               int64_t width, int64_t kernel_h, int64_t kernel_w,
+                                               int64_t dilation_h, int64_t dilation_w, int64_t pad_t,
+                                               int64_t pad_l, int64_t pad_b, int64_t pad_r, int64_t stride_h,
+                                               int64_t stride_w, T* data_col, T padding_value) {
   const int64_t dkernel_h = dilation_h * (kernel_h - 1) + 1;
   const int64_t dkernel_w = dilation_w * (kernel_w - 1) + 1;
 
@@ -430,13 +354,11 @@ void Im2col<float, StorageOrder::NHWC>::operator()(const float* data_im, int64_t
     for (int64_t w = 0; w < width_col; ++w) {
       for (int64_t ih = h_pad; ih < h_pad + dkernel_h; ih += dilation_h) {
         for (int64_t iw = w_pad; iw < w_pad + dkernel_w; iw += dilation_w) {
-          if (ih >= 0 && ih < height && iw >= 0 && iw < width) {
-            memcpy(data_col, data_im + (ih * width + iw) * channels,
-                   sizeof(float) * channels);
+          if (is_a_ge_zero_and_a_lt_b(ih, height) && is_a_ge_zero_and_a_lt_b(iw, width)) {
+            data_col = std::copy_n(data_im + (ih * width + iw) * channels, channels, data_col);
           } else {
-            std::fill_n(data_col, channels, padding_value);
+            data_col = std::fill_n(data_col, channels, padding_value);
           }
-          data_col += channels;
         }
       }
       w_pad += stride_w;
@@ -444,6 +366,59 @@ void Im2col<float, StorageOrder::NHWC>::operator()(const float* data_im, int64_t
     h_pad += stride_h;
   }
 }
+
+template <typename T>
+void Im2col<T, StorageOrder::NHWC>::operator()(const T* data_im, int64_t channels, int64_t input_h,
+                                               int64_t input_w, int64_t kernel_h, int64_t kernel_w,
+                                               int64_t dilation_h, int64_t dilation_w, int64_t pad_t,
+                                               int64_t pad_l, int64_t stride_h, int64_t stride_w,
+                                               int64_t output_w, int64_t output_start, int64_t output_count,
+                                               T* data_col, T padding_value) {
+  for (int64_t m = output_start; m < output_start + output_count; m++) {
+    int64_t mh = m / output_w;
+    int64_t mw = m % output_w;
+
+    int64_t oh = mh * stride_h;
+    int64_t ow = mw * stride_w;
+
+    for (int64_t kh = 0; kh < kernel_h; kh++) {
+      int64_t ih = kh * dilation_h + oh - pad_t;
+
+      if (is_a_ge_zero_and_a_lt_b(ih, input_h)) {
+        if (dilation_w == 1) {
+          int64_t kw = kernel_w;
+          int64_t iw = ow - pad_l;
+          while (kw > 0) {
+            if (is_a_ge_zero_and_a_lt_b(iw, input_w)) {
+              // Increase the copy count size to reduce the number of copy calls.
+              int64_t batch_w = std::min(kw, input_w - iw);
+              data_col = std::copy_n(data_im + (ih * input_w + iw) * channels, batch_w * channels, data_col);
+              iw += batch_w;
+              kw -= batch_w;
+            } else {
+              data_col = std::fill_n(data_col, channels, padding_value);
+              iw++;
+              kw--;
+            }
+          }
+        } else {
+          for (int64_t kw = 0; kw < kernel_w; kw++) {
+            int64_t iw = kw * dilation_w + ow - pad_l;
+            if (is_a_ge_zero_and_a_lt_b(iw, input_w)) {
+              data_col = std::copy_n(data_im + (ih * input_w + iw) * channels, channels, data_col);
+            } else {
+              data_col = std::fill_n(data_col, channels, padding_value);
+            }
+          }
+        }
+      } else {
+        data_col = std::fill_n(data_col, kernel_w * channels, padding_value);
+      }
+    }
+  }
+}
+
+template struct Im2col<uint8_t, StorageOrder::NHWC>;
 
 template <>
 void Col2im<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, int64_t channels, int64_t height,

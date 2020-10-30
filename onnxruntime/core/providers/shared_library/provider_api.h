@@ -15,21 +15,13 @@
 #include "onnx/common/stl_backports.h"
 #include "core/common/common.h"
 #include "core/common/const_pointer_container.h"
-#include "core/session/onnxruntime_c_api.h"
-#include "core/framework/ortdevice.h"
-#include "core/framework/ortmemoryinfo.h"
+#include "core/common/logging/severity.h"
+#include "core/framework/allocator.h"
+#include "core/framework/allocatormgr.h"
 #include "core/framework/tensor_shape.h"
 
 namespace onnxruntime {
 namespace logging {
-
-enum class Severity {
-  kVERBOSE = 0,
-  kINFO = 1,
-  kWARNING = 2,
-  kERROR = 3,
-  kFATAL = 4
-};
 
 enum class DataType {
   SYSTEM = 0,  ///< System data.
@@ -84,7 +76,7 @@ struct Provider_NodeAttributes;
 struct Provider_OpKernelContext;
 struct Provider_OpKernelInfo;
 struct Provider_Tensor;
-}
+}  // namespace onnxruntime
 
 #include "provider_interfaces.h"
 
@@ -126,8 +118,6 @@ enum OperatorStatus : int {
 }  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
-
-void SetProviderHost(ProviderHost& host);
 
 // The function passed in will be run on provider DLL unload. This is used to free thread_local variables that are in threads we don't own
 // Since these are not destroyed when the DLL unloads we have to do it manually. Search for usage for an example.
@@ -177,10 +167,9 @@ class DataTypeImpl {
 template <typename T>
 using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
 
-std::unique_ptr<Provider_IAllocator> Provider_CreateCPUAllocator(const OrtMemoryInfo& memory_info);
-std::unique_ptr<Provider_IAllocator> Provider_CreateCUDAAllocator(int16_t device_id, const char* name);
-std::unique_ptr<Provider_IAllocator> Provider_CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
-Provider_AllocatorPtr CreateAllocator(const Provider_AllocatorCreationInfo& info);
+std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info);
+std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name);
+std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
 
 std::unique_ptr<Provider_IDataTransfer> Provider_CreateGPUDataTransfer();
 
@@ -193,8 +182,6 @@ namespace logging {
 struct Category {
   static const char* onnxruntime;  ///< General output
 };
-
-constexpr const char* SEVERITY_PREFIX = "VIWEF";
 
 }  // namespace logging
 

@@ -107,6 +107,7 @@ set(onnxruntime_pybind11_state_libs
     ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
     ${PROVIDERS_ARMNN}
+    ${PROVIDERS_ROCM}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -374,15 +375,6 @@ if (onnxruntime_USE_TVM)
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
         $<TARGET_FILE:tvm> $<TARGET_FILE:nnvm_compiler>
-        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
-  )
-endif()
-
-if (onnxruntime_USE_MKLML)
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${MKLML_LIB_DIR}/${MKLML_SHARED_LIB} ${MKLML_LIB_DIR}/${IOMP5MD_SHARED_LIB}
         $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
   )
 endif()

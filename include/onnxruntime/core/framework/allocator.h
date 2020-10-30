@@ -3,17 +3,8 @@
 
 #pragma once
 
-#include <functional>
-#include <map>
-#include <string>
-#include <cstring>
-#include <type_traits>
-
 #include "core/common/common.h"
-#include "core/common/exceptions.h"
-#include "core/common/status.h"
 #include "core/framework/fence.h"
-#include "core/graph/basic_types.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "ortdevice.h"
 #include "ortmemoryinfo.h"

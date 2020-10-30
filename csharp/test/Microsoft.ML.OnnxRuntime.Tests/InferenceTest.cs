@@ -165,6 +165,18 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
         [Fact]
+        public void EnablingAndDisablingTelemetryEventCollection()
+        {
+            var ortEnvInstance = OrtEnv.Instance();
+            ortEnvInstance.DisableTelemetryEvents();
+
+            // no-op on non-Windows builds
+            // may be no-op on certain Windows builds based on build configuration
+
+            ortEnvInstance.EnableTelemetryEvents();
+        }
+
+        [Fact]
         public void CanCreateAndDisposeSessionWithModelPath()
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");

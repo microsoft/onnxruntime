@@ -232,16 +232,6 @@ bool ThreadPool::ShouldParallelizeLoop(const std::ptrdiff_t num_iterations,
   return true;
 }
 
-int ThreadPool::NumShardsUsedByFixedBlockSizeScheduling(const std::ptrdiff_t total,
-                                                        const std::ptrdiff_t block_size) const {
-  if (!ShouldParallelizeLoop(total, block_size)) {
-    return 1;
-  } else {
-    // TODO:check overflow?
-    return static_cast<int>((total + block_size - 1) / block_size);
-  }
-}
-
 using CostModel = Eigen::TensorCostModel<Eigen::ThreadPoolDevice>;
 
 // Calculates block size based on (1) the iteration cost and (2) parallel
@@ -324,6 +314,10 @@ void ThreadPool::ParallelFor(std::ptrdiff_t total, double cost_per_unit,
   ParallelFor(total, TensorOpCost{0, 0, static_cast<double>(cost_per_unit)}, fn);
 }
 
+bool ThreadPool::ShouldParallelize(const concurrency::ThreadPool* tp) {
+  return (DegreeOfParallelism(tp) != 1);
+}
+
 int ThreadPool::DegreeOfParallelism(const concurrency::ThreadPool* tp) {
 #ifdef _OPENMP
   // When using OpenMP, omp_get_num_threads() returns the number of threads in the
@@ -362,8 +356,12 @@ void ThreadPool::TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t tota
                            const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn) {
 #ifdef _OPENMP
     ORT_ENFORCE(total >= 0);
-    if (total == 1 || total == 0) {
-      fn(0, total);
+    if (total == 0) {
+      return;
+    }
+
+    if (total == 1) {
+      fn(0, 1);
       return;
     }
 
