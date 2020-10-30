@@ -26,12 +26,12 @@ jobs:
 
   - script: |
       tools/ci_build/github/linux/run_dockerbuild.sh \
-        -o ubuntu18.04 -d gpu -r $(Build.BinariesDirectory) \
+        -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory) \
         -x " \
           --config RelWithDebInfo \
           --enable_training \
-          --enable_pybind \
           --update --build \
+          --build_wheel \
           --enable_training_python_frontend_e2e_tests \
           --enable_training_pipeline_e2e_tests \
           "
@@ -110,4 +110,4 @@ jobs:
     displayName: 'Run orttraining_run_frontend_batch_size_test.py'
     condition: succeededOrFailed() # ensure all tests are run
 
-  - template: templates/clean-agent-build-directory-step.yml
+  # - template: templates/clean-agent-build-directory-step.yml
