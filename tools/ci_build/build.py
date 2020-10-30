@@ -11,7 +11,7 @@ import subprocess
 import sys
 import hashlib
 from logger import log
-# from amd_hipify import amd_hipify
+from amd_hipify import amd_hipify
 
 
 class BaseError(Exception):
@@ -1079,7 +1079,7 @@ def setup_rocm_build(args):
                              "rocm_home='{}' valid={}."
                              .format(rocm_home, rocm_home_not_valid))
 
-        # amd_hipify()
+        amd_hipify()
     return rocm_home or ''
 
 

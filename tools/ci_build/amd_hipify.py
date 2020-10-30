@@ -8,8 +8,6 @@ core_ops_path = 'onnxruntime/core/providers'
 training_ops_path = 'orttraining/orttraining/training_ops'
 
 contrib_ops_files = [
-                    # 'cuda_contrib_kernels.cc',
-                    # 'cuda_contrib_kernels.h',
                     'activation/activations.cc',
                     'activation/activations.h',
                     'activation/activations_impl.cu',
@@ -33,22 +31,6 @@ contrib_ops_files = [
 ]
 
 core_ops_files = [
-                # 'cuda_allocator.cc',
-                # 'cuda_allocator.h',
-                # 'cuda_call.cc',
-                # 'cuda_common.h',
-                # 'cuda_execution_provider.cc',
-                # 'cuda_execution_provider.h',
-                # 'cuda_fence.cc',
-                # 'cuda_fence.h',
-                # 'cuda_fwd.h',
-                # 'cuda_pch.cc',
-                # 'cuda_pch.h',
-                # 'cuda_provider_factory.cc',
-                # 'cuda_utils.cu',
-                # 'fpgeneric.cu',
-                # 'gpu_data_transfer.cc',
-                # 'gpu_data_transfer.h',
                 'activation/activations.cc',
                 'activation/activations.h',
                 'activation/activations_impl.cu',
@@ -152,8 +134,6 @@ core_ops_files = [
 ]
 
 training_ops_files = [
-                    # 'cuda_training_kernels.cc',
-                    # 'cuda_training_kernels.h',
                     # 'activation/activations_grad.cc',
                     'activation/activations_grad.h',
                     'activation/activations_grad_impl.cu',
@@ -175,10 +155,10 @@ training_ops_files = [
                     # 'loss/softmaxcrossentropy_impl.cc',
                     'loss/softmaxcrossentropy_impl.cu',
                     'loss/softmaxcrossentropy_impl.h',
-                    'math/isfinite.cc',
+                    # 'math/isfinite.cc',
                     'math/isfinite.cu',
                     # 'math/isfinite.cuh',
-                    'math/isfinite.h',
+                    # 'math/isfinite.h',
                     'math/mixed_precision_scale.cc',
                     'math/mixed_precision_scale.cu',
                     'math/mixed_precision_scale.h',
@@ -210,7 +190,7 @@ training_ops_files = [
                     'reduction/all.cc',
                     'reduction/all.cu',
                     'reduction/all.h',
-                    'reduction/reduction_all.cc',
+                    # 'reduction/reduction_all.cc',
                     'reduction/reduction_all.cu',
                     'reduction/reduction_all.h',
                     # 'reduction/reduction_ops.cc',
