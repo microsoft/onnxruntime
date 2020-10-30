@@ -1184,9 +1184,9 @@ def run_training_python_frontend_e2e_tests(cwd):
         [sys.executable, 'orttraining_run_frontend_batch_size_test.py', '-v'],
         cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'})
 
-    import torch
-    ngpus = torch.cuda.device_count()
-    if ngpus > 1:
+    # import torch
+    # ngpus = torch.cuda.device_count()
+    # if ngpus > 1:
         # bert_pretrain_script = 'orttraining_run_bert_pretrain.py'
         # # TODO: this test will be replaced with convergence test ported from backend
         # log.debug('RUN: mpirun -n {} ''-x' 'NCCL_DEBUG=INFO'' {} {} {}'.format(
