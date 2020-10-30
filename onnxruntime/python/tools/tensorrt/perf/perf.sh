@@ -6,9 +6,9 @@ LATENCY_FILE=".latency_map"
 METRICS_FILE=".metrics_map"
 
 cleanup_metadata() {
-    rm -f FAIL_MODEL_FILE
-    rm -f LATENCY_FILE
-    rm -f METRICS_FILE
+    rm -f $FAIL_MODEL_FILE
+    rm -f $LATENCY_FILE
+    rm -f $METRICS_FILE
 }
 
 # many models 

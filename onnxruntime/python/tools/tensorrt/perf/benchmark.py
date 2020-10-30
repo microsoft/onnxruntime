@@ -1466,9 +1466,9 @@ def main():
     time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 
     if len(model_to_fail_ep) > 0:
-        logger.info("\n==========================================================")
-        logger.info("========== Failing Models/EPs (accumulated) ==============")
-        logger.info("==========================================================")
+        logger.info("\n==========================================")
+        logger.info("========== Failing Models/EPs ==============")
+        logger.info("============================================")
         logger.info(model_to_fail_ep)
         write_map_to_file(model_to_fail_ep, FAIL_MODEL_FILE)
 
