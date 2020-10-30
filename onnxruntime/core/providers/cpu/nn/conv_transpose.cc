@@ -121,7 +121,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
       Ydata += Y_offset * conv_transpose_attrs_.group;
     }
   } else {
-    TensorShape output_shape = p.Y->Shape().Slice(1);
+    TensorShape output_shape = p.Y->Shape().Slice(2);
 
     for (auto image_id = 0; image_id < p.N; ++image_id) {
       for (int group_id = 0; group_id < conv_transpose_attrs_.group; ++group_id) {
