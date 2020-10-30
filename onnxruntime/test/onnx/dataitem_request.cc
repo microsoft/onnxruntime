@@ -42,7 +42,7 @@ void DataTaskRequestContext::Request(const Callback& cb, concurrency::ThreadPool
   std::unique_ptr<DataTaskRequestContext> self(new DataTaskRequestContext(cb, c, session, allocator, task_id));
   CallableFactory<DataTaskRequestContext, void> f(self.get());
   auto runnable = f.GetCallable<&DataTaskRequestContext::RunAsync>();
-  tp->Schedule([runnable]() { runnable.Invoke(); });
+  onnxruntime::concurrency::ThreadPool::Schedule(tp, [runnable]() { runnable.Invoke(); });
   self.release();
 }
 

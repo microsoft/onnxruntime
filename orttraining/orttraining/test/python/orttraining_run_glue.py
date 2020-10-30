@@ -25,7 +25,15 @@ from transformers import (
 
 import onnxruntime
 from onnxruntime.capi.ort_trainer import ORTTrainer, LossScaler, ModelDescription, IODescription
-from onnxruntime.capi._pybind_state import get_mpi_context_local_rank, get_mpi_context_local_size, get_mpi_context_world_rank, get_mpi_context_world_size
+
+try:
+    from onnxruntime.capi._pybind_state import get_mpi_context_local_rank, get_mpi_context_local_size,\
+        get_mpi_context_world_rank, get_mpi_context_world_size
+    has_get_mpi_context_internal_api = True
+except ImportError:
+    has_get_mpi_context_internal_api = False
+    pass
+
 
 from orttraining_transformer_trainer import ORTTransformerTrainer
 
@@ -74,93 +82,59 @@ class ORTGlueTest(unittest.TestCase):
         self.output_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "glue_test_output/")
         self.cache_dir = '/tmp/glue/'
         self.logging_steps = 10
-        self.rtol = 1e-02
 
     def test_roberta_with_mrpc(self):
-        expected_acc = 0.8676470588235294
-        expected_f1 = 0.9035714285714286
-        expected_acc_and_f1 = 0.885609243697479
-        expected_loss = 0.3022572344862947
+        expected_acc = 0.85
+        expected_f1 = 0.88
+        expected_loss = 0.35
+        results = self.run_glue(model_name="roberta-base", task_name="MRPC", fp16=False)
 
-        results_per_api = dict()
-        for use_new_api in [True, False]:
-            results = self.run_glue(model_name="roberta-base", task_name="MRPC", fp16=False, use_new_api=use_new_api)
-            assert_allclose(results['acc'], expected_acc, rtol=self.rtol)
-            assert_allclose(results['f1'], expected_f1, rtol=self.rtol)
-            assert_allclose(results['acc_and_f1'], expected_acc_and_f1, rtol=self.rtol)
-            assert_allclose(results['loss'], expected_loss, rtol=self.rtol)
-            results_per_api[use_new_api] = results
-
-        verify_old_and_new_api_are_equal(results_per_api)
+        assert(results['acc'] >= expected_acc)
+        assert(results['f1'] >= expected_f1)
+        assert(results['loss'] <= expected_loss)
 
     def test_roberta_fp16_with_mrpc(self):
-        expected_acc = 0.8897058823529411
-        expected_f1 = 0.9197860962566845
-        expected_acc_and_f1 = 0.9047459893048129
-        expected_loss = 0.3035417107098243
+        expected_acc = 0.87
+        expected_f1 = 0.90
+        expected_loss = 0.33
 
-        results_per_api = dict()
-        for use_new_api in [True, False]:
-            results = self.run_glue(model_name="roberta-base", task_name="MRPC", fp16=True, use_new_api=use_new_api)
-            assert_allclose(results['acc'], expected_acc, rtol=self.rtol)
-            assert_allclose(results['f1'], expected_f1, rtol=self.rtol)
-            assert_allclose(results['acc_and_f1'], expected_acc_and_f1, rtol=self.rtol)
-            assert_allclose(results['loss'], expected_loss, rtol=self.rtol)
-            results_per_api[use_new_api] = results
+        results = self.run_glue(model_name="roberta-base", task_name="MRPC", fp16=True)
 
-        verify_old_and_new_api_are_equal(results_per_api)
+        assert(results['acc'] >= expected_acc)
+        assert(results['f1'] >= expected_f1)
+        assert(results['loss'] <= expected_loss)
 
     def test_bert_with_mrpc(self):
         if self.local_rank == -1:
-            expected_acc = 0.8553921568627451
-            expected_f1 = 0.8970331588132635
-            expected_acc_and_f1 = 0.8762126578380043
-            expected_loss = 0.42737212419217707
+            expected_acc = 0.83
+            expected_f1 = 0.88
+            expected_loss = 0.44
         elif self.local_rank == 0:
-            expected_acc = 0.8308823529411765
-            expected_f1 = 0.881646655231561
-            expected_acc_and_f1 = 0.8562645040863688
-            expected_loss = 0.42491564023144107
+            expected_acc = 0.81
+            expected_f1 = 0.86
+            expected_loss = 0.44
 
-        if self.local_rank == -1:
-            # not parallel case, we can run both new and old api tests
-            results_per_api = dict()
-            for use_new_api in [True, False]:
-                results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=False, use_new_api=use_new_api)
-                results_per_api[use_new_api] = results
-
-            verify_old_and_new_api_are_equal(results_per_api)
-        else:
-            # with parallel training, TrainingArguments can only be created once (due to its cached _setup_devices)
-            # thus we can only choose one test case to run.
-            results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=False, use_new_api=True)
+        results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=False)
 
         if self.local_rank in [-1, 0]:
-            assert_allclose(results['acc'], expected_acc, rtol=self.rtol)
-            assert_allclose(results['f1'], expected_f1, rtol=self.rtol)
-            assert_allclose(results['acc_and_f1'], expected_acc_and_f1, rtol=self.rtol)
-            assert_allclose(results['loss'], expected_loss, rtol=self.rtol)
+            assert(results['acc'] >= expected_acc)
+            assert(results['f1'] >= expected_f1)
+            assert(results['loss'] <= expected_loss)
 
     def test_bert_fp16_with_mrpc(self):
-        expected_acc = 0.8529411764705882
-        expected_f1 = 0.8972602739726027
-        expected_acc_and_f1 = 0.8751007252215954
-        expected_loss = 0.412924896998732
+        expected_acc = 0.84
+        expected_f1 = 0.88
+        expected_loss = 0.44
 
-        results_per_api = dict()
-        for use_new_api in [True, False]:
-            results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=True, use_new_api=use_new_api)
-            assert_allclose(results['acc'], expected_acc, rtol=self.rtol)
-            assert_allclose(results['f1'], expected_f1, rtol=self.rtol)
-            assert_allclose(results['acc_and_f1'], expected_acc_and_f1, rtol=self.rtol)
-            assert_allclose(results['loss'], expected_loss, rtol=self.rtol)
-            results_per_api[use_new_api] = results
+        results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=True)
 
-        verify_old_and_new_api_are_equal(results_per_api)
+        assert(results['acc'] >= expected_acc)
+        assert(results['f1'] >= expected_f1)
+        assert(results['loss'] <= expected_loss)
 
     def model_to_desc(self, model_name, model):
         if model_name.startswith('bert') or model_name.startswith('xlnet'):
-            new_model_desc = {
+            model_desc = {
                 'inputs': [
                     ('input_ids', ['batch', 'max_seq_len_in_batch'],),
                     ('attention_mask', ['batch', 'max_seq_len_in_batch'],),
@@ -168,33 +142,20 @@ class ORTGlueTest(unittest.TestCase):
                     ('labels', ['batch', ],)],
                 'outputs': [('loss', [], True),
                             ('logits', ['batch', 2])]}
-            model_desc = ModelDescription([
-                IODescription('input_ids', ['batch', 'max_seq_len_in_batch']),
-                IODescription('attention_mask', ['batch', 'max_seq_len_in_batch']),
-                IODescription('token_type_ids', ['batch', 'max_seq_len_in_batch']),
-                IODescription('labels', ['batch',])], [
-                IODescription('loss', []),
-                IODescription('logits', ['batch', 2])])
         elif model_name.startswith('roberta'):
-            new_model_desc = {
+            model_desc = {
                 'inputs': [
                     ('input_ids', ['batch', 'max_seq_len_in_batch'],),
                     ('attention_mask', ['batch', 'max_seq_len_in_batch'],),
                     ('labels', ['batch', ],)],
                 'outputs': [('loss', [], True),
                             ('logits', ['batch', 2])]}
-            model_desc = ModelDescription([
-                IODescription('input_ids', ['batch', 'max_seq_len_in_batch']),
-                IODescription('attention_mask', ['batch', 'max_seq_len_in_batch']),
-                IODescription('labels', ['batch',])], [
-                IODescription('loss', []),
-                IODescription('logits', ['batch', 2])])
         else:
             raise RuntimeError("unsupported base model name {}.".format(model_name))
 
-        return model_desc, new_model_desc
+        return model_desc
 
-    def run_glue(self, model_name, task_name, fp16, use_new_api):
+    def run_glue(self, model_name, task_name, fp16):
         model_args = ModelArguments(model_name_or_path=model_name, cache_dir=self.cache_dir)
         data_args = GlueDataTrainingArguments(
             task_name=task_name, data_dir=os.path.join(self.data_dir, task_name),
@@ -270,17 +231,15 @@ class ORTGlueTest(unittest.TestCase):
                 preds = np.squeeze(p.predictions)
             return glue_compute_metrics(data_args.task_name, preds, p.label_ids)
 
-        model_desc, new_model_desc = self.model_to_desc(model_name, model)
+        model_desc = self.model_to_desc(model_name, model)
         # Initialize the ORTTrainer within ORTTransformerTrainer
         trainer = ORTTransformerTrainer(
             model=model,
             model_desc=model_desc,
-            new_model_desc=new_model_desc,
             args=training_args,
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
             compute_metrics=compute_metrics,
-            use_new_api=use_new_api,
             world_size=self.world_size,
         )
 
@@ -305,8 +264,13 @@ class ORTGlueTest(unittest.TestCase):
         return results
 
 if __name__ == "__main__":
-    local_rank = get_mpi_context_local_rank()
-    world_size = get_mpi_context_world_size()
+    if has_get_mpi_context_internal_api:
+        local_rank = get_mpi_context_local_rank()
+        world_size = get_mpi_context_world_size()
+    else:
+        local_rank = -1
+        world_size = 1
+
     if world_size > 1:
         # mpi launch
         logger.warning("mpirun launch, local_rank / world_size: %s : % s", local_rank, world_size)
