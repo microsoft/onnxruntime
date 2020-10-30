@@ -111,6 +111,7 @@ option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
 #If you have already installed protobuf(or the others) in your system at the default system paths(like /usr/include), then it's better to set onnxruntime_PREFER_SYSTEM_LIB ON. Otherwise onnxruntime may see two different protobuf versions and we won't know which one will be used, the worst case could be onnxruntime picked up header files from one of them but the binaries from the other one.
 #It's default OFF because it's experimental now.
 option(onnxruntime_PREFER_SYSTEM_LIB "Experimental: Build with the preinstalled libraries in your system" OFF)
+option(onnxruntime_USE_ROCM "Build with AMD GPU support" OFF)
 
 # Options related to reducing the binary size produced by the build
 option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF)
@@ -1130,6 +1131,15 @@ if (onnxruntime_USE_MIGRAPHX)
   add_definitions(-DUSE_MIGRAPHX=1)
 endif()
 
+if (onnxruntime_USE_ROCM)
+  if (WIN32)
+    message(FATAL_ERROR "ROCM does not support build in Windows!")
+  endif()
+  if (onnxruntime_USE_CUDA)
+    message(FATAL_ERROR "ROCM does not support build with CUDA!")
+  endif()
+endif()
+
 if (onnxruntime_USE_TVM)
   if (WIN32 AND MSVC)
     # wd4100: identifier' : unreferenced formal parameter
@@ -1211,13 +1221,17 @@ if (onnxruntime_ENABLE_TRAINING)
 
     # Find NCCL and MPI
     if (onnxruntime_USE_NCCL AND MPI_FOUND)
+      if (onnxruntime_USE_CUDA)
+        set(NCCL_LIBNAME "nccl")
+      elseif (onnxruntime_USE_ROCM)
+        set(NCCL_LIBNAME "rccl")
+      endif()
+
       find_path(NCCL_INCLUDE_DIR
-        NAMES nccl.h
+        NAMES ${NCCL_LIBNAME}.h
         HINTS
         ${onnxruntime_NCCL_HOME}/include
         $ENV{CUDA_ROOT}/include)
-
-      set(NCCL_LIBNAME "nccl")
 
       find_library(NCCL_LIBRARY
         NAMES ${NCCL_LIBNAME}
@@ -1230,7 +1244,7 @@ if (onnxruntime_ENABLE_TRAINING)
       find_package_handle_standard_args(NCCL DEFAULT_MSG NCCL_INCLUDE_DIR NCCL_LIBRARY)
 
       if (NCCL_FOUND)
-        set(NCCL_HEADER_FILE "${NCCL_INCLUDE_DIR}/nccl.h")
+        set(NCCL_HEADER_FILE "${NCCL_INCLUDE_DIR}/${NCCL_LIBNAME}.h")
         message( STATUS "Determining NCCL version from the header file: ${NCCL_HEADER_FILE}" )
         file (STRINGS ${NCCL_HEADER_FILE} NCCL_MAJOR_VERSION_DEFINED
               REGEX "^[ \t]*#define[ \t]+NCCL_MAJOR[ \t]+[0-9]+.*$" LIMIT_COUNT 1)
