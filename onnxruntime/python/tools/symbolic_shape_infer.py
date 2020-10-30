@@ -343,7 +343,7 @@ class SymbolicShapeInference:
         symbolic_shape_inference._preprocess(self.tmp_mp_)
         symbolic_shape_inference.suggested_merge_ = self.suggested_merge_.copy()
         while symbolic_shape_inference.run_:
-            all_shapes_inferred = symbolic_shape_inference._infer_impl(self.tmp_mp_, self.sympy_data_.copy())
+            all_shapes_inferred = symbolic_shape_inference._infer_impl(self.sympy_data_.copy())
         symbolic_shape_inference._update_output_from_vi()
         if use_node_input:
             # if subgraph uses node input, it needs to update to merged dims
@@ -1111,7 +1111,7 @@ class SymbolicShapeInference:
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(new_vi)
 
-    def _infer_impl(self, in_mp, start_sympy_data=None):
+    def _infer_impl(self, start_sympy_data=None):
         self.sympy_data_ = start_sympy_data or {}
         self.out_mp_.graph.ClearField('value_info')
         self._apply_suggested_merge(graph_input_only=True)
@@ -1142,14 +1142,18 @@ class SymbolicShapeInference:
         # topological sort nodes, note there might be dead nodes so we check if all graph outputs are reached to terminate
         sorted_nodes = []
         sorted_known_vi = set([i.name for i in list(self.out_mp_.graph.input) + list(self.out_mp_.graph.initializer)])
-        while not all([o.name in sorted_known_vi for o in self.out_mp_.graph.output]):
-            old_sorted_nodes_len = len(sorted_nodes)
-            for node in self.out_mp_.graph.node:
-                if (node.output[0] not in sorted_known_vi ) and all([i in sorted_known_vi for i in node.input]):
-                    sorted_known_vi.update(node.output)
-                    sorted_nodes.append(node)
-            if old_sorted_nodes_len == len(sorted_nodes) and not all([o.name in sorted_known_vi for o in self.out_mp_.graph.output]):
-                raise Exception('Invalid model with cyclic graph')
+        if all([o.name in sorted_known_vi for o in self.out_mp_.graph.output]):
+            # Loop/Scan will have all graph output in graph inputs, so don't do topological sort
+            sorted_nodes = self.out_mp_.graph.node
+        else:
+            while not all([o.name in sorted_known_vi for o in self.out_mp_.graph.output]):
+                old_sorted_nodes_len = len(sorted_nodes)
+                for node in self.out_mp_.graph.node:
+                    if (node.output[0] not in sorted_known_vi ) and all([i in sorted_known_vi for i in node.input]):
+                        sorted_known_vi.update(node.output)
+                        sorted_nodes.append(node)
+                if old_sorted_nodes_len == len(sorted_nodes) and not all([o.name in sorted_known_vi for o in self.out_mp_.graph.output]):
+                    raise Exception('Invalid model with cyclic graph')
 
         for node in sorted_nodes:
             assert all([i in self.known_vi_ for i in node.input if i])
@@ -1288,7 +1292,7 @@ class SymbolicShapeInference:
         all_shapes_inferred = False
         symbolic_shape_inference._preprocess(in_mp)
         while symbolic_shape_inference.run_:
-            all_shapes_inferred = symbolic_shape_inference._infer_impl(in_mp)
+            all_shapes_inferred = symbolic_shape_inference._infer_impl()
         symbolic_shape_inference._update_output_from_vi()
         if not all_shapes_inferred:
             raise Exception("Incomplete symbolic shape inference")
