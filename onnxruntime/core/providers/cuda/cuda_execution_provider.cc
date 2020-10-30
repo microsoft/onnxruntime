@@ -57,10 +57,23 @@ ONNX_OPERATOR_KERNEL_EX(
 
 }  // namespace cuda
 
-CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id) {
+CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy) {
   CUDA_CALL_THROW(cudaSetDevice(device_id));
   CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
   CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
+
+  AllocatorCreationInfo default_memory_info(
+      [](OrtDevice::DeviceId id) {
+        return onnxruntime::make_unique<CUDAAllocator>(id, CUDA);
+      },
+      device_id,
+      true,
+      {cuda_mem_limit,
+       static_cast<int>(arena_extend_strategy),
+       -1, -1});
+
+  // CUDA malloc/free is expensive so always use an arena
+  allocator_ = CreateAllocator(default_memory_info);
 }
 
 CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
@@ -202,7 +215,7 @@ CUDAExecutionProvider::PerThreadContext& CUDAExecutionProvider::GetPerThreadCont
 
     // get or create a context
     if (context_state_.retired_context_pool.empty()) {
-      context = std::make_shared<PerThreadContext>(device_id_);
+      context = std::make_shared<PerThreadContext>(device_id_, cuda_mem_limit_, arena_extend_strategy_);
     } else {
       context = context_state_.retired_context_pool.back();
       context_state_.retired_context_pool.pop_back();
@@ -236,6 +249,17 @@ void CUDAExecutionProvider::ReleasePerThreadContext() const {
   }
 
   per_thread_context_cache->erase(cached_context_it);
+}
+
+AllocatorPtr CUDAExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
+  // Pinned memory allocator is shared between threads, but CUDA memory allocator is per-thread or it may cause result changes
+  // A hypothesis is that arena allocator is not aligned with CUDA output cache, and data from different kernel writes may
+  // cause cacheline to contain dirty data.
+  if (mem_type == OrtMemTypeDefault) {
+    return GetPerThreadContext().GetAllocator();
+  } else {
+    return IExecutionProvider::GetAllocator(id, mem_type);
+  }
 }
 
 Status CUDAExecutionProvider::Sync() const {
