@@ -202,7 +202,7 @@ def optimize_onnx_model(onnx_model_path, optimized_model_path, model_type, num_a
 
         if Precision.FLOAT16 == precision:
             opt_model.convert_model_float32_to_float16()
-        opt_model.save_model_to_file(optimized_model_path)
+        opt_model.save_model_to_file(optimized_model_path, use_external_data_format)
     else:
         logger.info(f"Skip optimization since model existed: {optimized_model_path}")
 
