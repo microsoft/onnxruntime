@@ -100,21 +100,18 @@ class ORTTransformerTrainer:
     def __init__(
         self,
         model: PreTrainedModel,
-        model_desc: ModelDescription,
-        new_model_desc: dict,
+        model_desc: dict,
         args: TrainingArguments,
         train_dataset: Dataset,
         eval_dataset: Dataset,
         compute_metrics: Callable[[EvalPrediction], Dict],
-        world_size: Optional[int] = 1,
-        use_new_api : Optional[bool] = False,
+        world_size: Optional[int] = 1
     ):
         """
         """
 
         self.model = model
         self.model_desc = model_desc
-        self.new_model_desc = new_model_desc
         self.args = args
         self.world_size = world_size
         self.data_collator = DefaultDataCollator()
@@ -125,8 +122,6 @@ class ORTTransformerTrainer:
         # Create output directory if needed
         if self.args.local_rank in [-1, 0]:
             os.makedirs(self.args.output_dir, exist_ok=True)
-
-        self.use_new_api = use_new_api
 
     def get_train_dataloader(self) -> DataLoader:
         if self.train_dataset is None:
@@ -174,67 +169,41 @@ class ORTTransformerTrainer:
             t_total = int(len(train_dataloader) // self.args.gradient_accumulation_steps * self.args.num_train_epochs)
             num_train_epochs = self.args.num_train_epochs
 
-        if self.use_new_api:
-            lr_scheduler = orttrainer.optim.LinearWarmupLRScheduler(t_total, self.args.warmup_steps/float(t_total))
+        lr_scheduler = orttrainer.optim.LinearWarmupLRScheduler(t_total, self.args.warmup_steps/float(t_total))
 
-            loss_scaler = amp.DynamicLossScaler() if self.args.fp16 else None
-            device = self.args.device.type
+        loss_scaler = amp.DynamicLossScaler() if self.args.fp16 else None
+        device = self.args.device.type
 
-            device = f'{device}:{self.args.device.index}' if self.args.device.index else f'{device}:0'
-            options = orttrainer.ORTTrainerOptions({'batch' : {
-                                                        'gradient_accumulation_steps' : self.args.gradient_accumulation_steps},
-                                                    'device': {'id': device},
-                                                    'mixed_precision': {
-                                                        'enabled': self.args.fp16,
-                                                        'loss_scaler': loss_scaler},
-                                                    'debug': {'deterministic_compute': True, },
-                                                    'utils': {
-                                                        'grad_norm_clip': False},
-                                                    'distributed': {
-                                                        # we are running single node multi gpu test. thus world_rank = local_rank
-                                                        # and world_size = self.args.n_gpu
-                                                        'world_rank': max(0, self.args.local_rank),
-                                                        'world_size': int(self.world_size),
-                                                        'local_rank': max(0, self.args.local_rank),
-                                                        'allreduce_post_accumulation': True},
-                                                    'lr_scheduler': lr_scheduler
-                                                    })
+        device = f'{device}:{self.args.device.index}' if self.args.device.index else f'{device}:0'
+        options = orttrainer.ORTTrainerOptions({'batch' : {
+                                                    'gradient_accumulation_steps' : self.args.gradient_accumulation_steps},
+                                                'device': {'id': device},
+                                                'mixed_precision': {
+                                                    'enabled': self.args.fp16,
+                                                    'loss_scaler': loss_scaler},
+                                                'debug': {'deterministic_compute': True, },
+                                                'utils': {
+                                                    'grad_norm_clip': False},
+                                                'distributed': {
+                                                    # we are running single node multi gpu test. thus world_rank = local_rank
+                                                    # and world_size = self.args.n_gpu
+                                                    'world_rank': max(0, self.args.local_rank),
+                                                    'world_size': int(self.world_size),
+                                                    'local_rank': max(0, self.args.local_rank),
+                                                    'allreduce_post_accumulation': True},
+                                                'lr_scheduler': lr_scheduler
+                                                })
 
-            param_optimizer = list(self.model.named_parameters())
-            params = [{
-                'params': [n for n, p in param_optimizer if "bias" in n or "LayerNorm.weight" in n],
-                "weight_decay_mode": 1, }, {
-                'params': [n for n, p in param_optimizer if not ("bias" in n or "LayerNorm.weight" in n)],
-                "weight_decay_mode": 1, }
-                ]
+        param_optimizer = list(self.model.named_parameters())
+        params = [{
+            'params': [n for n, p in param_optimizer if "bias" in n or "LayerNorm.weight" in n],
+            "weight_decay_mode": 1, }, {
+            'params': [n for n, p in param_optimizer if not ("bias" in n or "LayerNorm.weight" in n)],
+            "weight_decay_mode": 1, }
+            ]
 
-            optim_config = optim.AdamConfig(params=params, lr=2e-5, do_bias_correction=True)
-            self.model = orttrainer.ORTTrainer(self.model, self.new_model_desc, optim_config, options=options)
-        else:
-            def map_optimizer_attributes(name):
-                no_decay = "bias" in name or "LayerNorm.weight" in name
-                if no_decay:
-                    return {"weight_decay_mode" : 1}
-                else:
-                    return {"weight_decay_mode" : 1}
-            get_lr_this_step = get_linear_schedule_with_warmup(self.args.warmup_steps, t_total, self.args.learning_rate)
-            loss_scaler = LossScaler('loss_scale_input_name', True, up_scale_window=2000) if self.args.fp16 else None
-            self.model = ORTTrainer(self.model, None,
-                self.model_desc,
-                "AdamOptimizer",
-                map_optimizer_attributes=map_optimizer_attributes,
-                learning_rate_description=IODescription('Learning_Rate', [1,], torch.float32),
-                device=self.args.device,
-                gradient_accumulation_steps=self.args.gradient_accumulation_steps,
-                world_rank=max(0, self.args.local_rank),
-                world_size=int(self.world_size),
-                use_mixed_precision=self.args.fp16,
-                allreduce_post_accumulation=True,
-                get_lr_this_step=get_lr_this_step,
-                loss_scaler=loss_scaler,
-                enable_grad_norm_clip=False,
-                _opset_version=12,
-                _use_deterministic_compute=True)
+        optim_config = optim.AdamConfig(params=params, lr=2e-5, do_bias_correction=True)
+        self.model = orttrainer.ORTTrainer(self.model, self.model_desc, optim_config, options=options)
 
         # Train!
         logger.info("***** Running training *****")
@@ -289,9 +258,7 @@ class ORTTransformerTrainer:
                                     logs[eval_key] = value
 
                             loss_scalar = (tr_loss - logging_loss) / self.args.logging_steps
-                            if not self.use_new_api:
-                                learning_rate_scalar = get_lr_this_step(global_step)
-                                logs["learning_rate"] = learning_rate_scalar
+
                             logs["loss"] = loss_scalar
                             logging_loss = tr_loss
 
@@ -362,9 +329,6 @@ class ORTTransformerTrainer:
         preds: np.ndarray = None
         label_ids: np.ndarray = None
 
-        if not self.use_new_api:
-            self.model.eval()
-
         for inputs in tqdm(dataloader, desc=description):
             has_labels = any(inputs.get(k) is not None for k in ["labels", "masked_lm_labels"])
 
@@ -372,10 +336,8 @@ class ORTTransformerTrainer:
                 inputs[k] = v.to(self.args.device)
 
             with torch.no_grad():
-                if self.use_new_api:
-                    outputs = self.model.eval_step(**inputs)
-                else:
-                    outputs = self.model(**inputs)
+                outputs = self.model.eval_step(**inputs)
+
                 if has_labels:
                     step_eval_loss, logits = outputs[:2]
                     eval_losses += [step_eval_loss.mean().item()]

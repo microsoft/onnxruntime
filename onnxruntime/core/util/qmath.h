@@ -43,9 +43,11 @@ void QGemm(
     concurrency::ThreadPool* thread_pool);
 
 inline float RoundHalfToEven(float input) {
-  std::fesetround(FE_TONEAREST);
-  auto result = std::nearbyintf(input);
-  return result;
+  if (!std::isfinite(input)) {
+    return input;
+  }
+  // std::remainder returns x - n, where n is the integral value nearest to x. When |x - n| = 0.5, n is chosen to be even
+  return input - std::remainderf(input, 1.f);
 }
 
 }  // namespace onnxruntime

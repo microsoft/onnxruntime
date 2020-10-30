@@ -1,6 +1,6 @@
 # Nuphar Execution Provider (preview)
 
-NUPHAR stands for Neural-network Unified Preprocessing Heterogeneous ARchitecture. As an execution provider in the ONNX Runtime, it is built on top of [TVM](https://github.com/dmlc/tvm) and [LLVM](https://llvm.org) to accelerate ONNX models by compiling nodes in subgraphs into optimized functions via JIT. It also provides JIT caching to save compilation time at runtime. 
+NUPHAR stands for Neural-network Unified Preprocessing Heterogeneous Architecture. As an execution provider in the ONNX Runtime, it is built on top of [TVM](https://github.com/dmlc/tvm) and [LLVM](https://llvm.org) to accelerate ONNX models by compiling nodes in subgraphs into optimized functions via JIT. It also provides JIT caching to save compilation time at runtime. 
 
 Developers can tap into the power of Nuphar through ONNX Runtime to accelerate inferencing of ONNX models. The Nuphar execution provider comes with a common ONNX to TVM lowering [library](../../onnxruntime/core/codegen) that can potentially be reused by other execution providers to leverage TVM. With the Nuphar execution provider, the ONNX Runtime delivers better inferencing performance on the same hardware compared to generic X64 CPU acceleration, especially for quantized recurrent neural networks. Various products at Microsoft have seen up to a 5x improvement in performance with no loss of accuracy, by running quantized LSTMs via the Nuphar execution provider in the ONNX Runtime.
 
@@ -9,7 +9,10 @@ For build instructions, please see the [BUILD page](../../BUILD.md#nuphar).
 
 ## Using the Nuphar execution provider
 ### C/C++
-The Nuphar execution provider needs to be registered with ONNX Runtime to enable in the inference session. The C API details are [here](../C_API.md#c-api).
+Ort::Env env = Ort::Env{ORT_LOGGING_LEVEL_ERROR, "Default"};
+Ort::SessionOptions sf;
+Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nuphar(sf, /*allow_unaligned_buffers*/ 1, ""));
+Ort::Session session(env, model_path, sf);
 
 ### Python
 You can use the Nuphar execution provider via the python wheel from the ONNX Runtime build. The Nuphar execution provider will be automatically prioritized over the default CPU execution providers, thus no need to separately register the execution provider. Python APIs details are [here](../python/api_summary.rst#api-summary).

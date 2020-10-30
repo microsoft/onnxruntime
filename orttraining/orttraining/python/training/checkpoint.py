@@ -25,7 +25,7 @@ def experimental_state_dict(ort_trainer, include_optimizer_state=True):
 
     # extract untrained weights and buffer
     for n in ort_trainer._onnx_model.graph.initializer:
-        if n.name not in torch_state:
+        if n.name not in torch_state and n.name in ort_trainer.options.utils.frozen_weights:
             torch_state[n.name] = torch.from_numpy(np.array(onnx.numpy_helper.to_array(n)))
 
     # Need to remove redundant (optimizer) initializers to map back to original torch state names

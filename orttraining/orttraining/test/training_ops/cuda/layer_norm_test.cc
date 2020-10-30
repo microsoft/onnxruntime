@@ -8,6 +8,12 @@
 namespace onnxruntime {
 namespace test {
 
+#if USE_CUDA
+constexpr const char* kGpuExecutionProvider = kCudaExecutionProvider;
+#elif USE_ROCM
+constexpr const char* kGpuExecutionProvider = kRocmExecutionProvider;
+#endif
+
 constexpr auto k_epsilon_default = 1e-5f;
 constexpr auto k_random_data_min = -10.0f;
 constexpr auto k_random_data_max = 10.0f;
@@ -84,7 +90,7 @@ static void TestLayerNormGrad(
     test.AddOutput("bias_grad_data", m_dims, bias_grad_data);
   }
 
-  test.CompareWithCPU(kCudaExecutionProvider, error_tolerance);
+  test.CompareWithCPU(kGpuExecutionProvider, error_tolerance);
 }
 
 TEST(CudaKernelTest, LayerNormGrad_SmallSizeTensor) {
@@ -219,9 +225,9 @@ static void TestInvertibleLayerNormGrad(
   test.AddInput<float>("inv_std_var", n_dims, inv_std_var_data);
 
   if (test_fp16) {
-    test.CompareWithCPU(kCudaExecutionProvider, error_tolerance, error_tolerance);
+    test.CompareWithCPU(kGpuExecutionProvider, error_tolerance, error_tolerance);
   } else {
-    test.CompareWithCPU(kCudaExecutionProvider, error_tolerance);
+    test.CompareWithCPU(kGpuExecutionProvider, error_tolerance);
   }
 }
 

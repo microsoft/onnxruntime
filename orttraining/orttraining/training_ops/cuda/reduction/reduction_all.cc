@@ -2,22 +2,13 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cuda/reduction/reduction_all.h"
-#include "core/providers/cuda/reduction/reduction_functions.h"
+
 #include "core/framework/op_kernel_context_internal.h"
+#include "core/providers/cuda/reduction/reduction_functions.h"
+#include "core/providers/cuda/shared_inc/accumulation_type.h"
 
 namespace onnxruntime {
 namespace cuda {
-
-template <typename T>
-struct AccumulateType {};
-template <>
-struct AccumulateType<float> { using type = float; };
-template <>
-struct AccumulateType<half> { using type = float; };
-template <>
-struct AccumulateType<double> { using type = double; };
-template <typename T>
-using AccType = typename AccumulateType<T>::type;
 
 #define REGISTER_REDUCE_ALL_KERNEL_TYPED(Name, TIn, TOut)                                                                                       \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                                                                \
@@ -77,7 +68,7 @@ Status ReduceAllL2<TIn, TOut>::ComputeInternal(OpKernelContext* ctx) const {
     ScalarSqrt(p_output, p_output);
   } else {
     // alternate path only for deterministic compute ..
-    typedef AccType<CudaTOut> CudaTAcc;
+    typedef AccumulationType_t<CudaTOut> CudaTAcc;
 
     // find scratch buffer size needed by 'reduce_square_sum' for each tensor
     int scratch_size = 0;
@@ -89,6 +80,7 @@ Status ReduceAllL2<TIn, TOut>::ComputeInternal(OpKernelContext* ctx) const {
     scratch_size = std::max(scratch_size, compute_reduction_buffer_size(sizeof(CudaTAcc), tensor_to_reduce_count));
 
     // add head room for final output and square norms of each tensor
+
     scratch_size += (1 + tensor_to_reduce_count) * sizeof(CudaTAcc);
 
     // create GPU scratch space and zero target for each tensor square norm

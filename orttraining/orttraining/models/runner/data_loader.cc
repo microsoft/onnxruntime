@@ -12,6 +12,7 @@ namespace training {
 
 using FileInputStream = google::protobuf::io::FileInputStream;
 using CodedInputStream = google::protobuf::io::CodedInputStream;
+using ThreadPool = onnxruntime::concurrency::ThreadPool;
 
 static std::vector<PathString> GetAllDataFiles(const PathString& dir_path) {
   std::vector<PathString> data_files;
@@ -117,7 +118,7 @@ void DataLoader::EnsurePreloadedOrThrow() {
 }
 
 void DataLoader::LoadAndRemoveInternalAsync(size_t index_to_load, bool need_remove, size_t index_to_remove) {
-  data_loader_thread_pool_->Schedule([this, index_to_load, need_remove, index_to_remove]() {
+  ThreadPool::Schedule(data_loader_thread_pool_.get(), [this, index_to_load, need_remove, index_to_remove]() {
     std::shared_ptr<DataSet> data_set = std::make_shared<DataSet>(input_tensor_names_);
     if (index_to_load >= NumShards()) {
       LOGS_DEFAULT(WARNING)

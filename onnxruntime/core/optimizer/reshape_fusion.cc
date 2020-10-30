@@ -190,16 +190,24 @@ bool ReshapeFusion::Match_One_Element_Output_Subgraph_2(Graph& graph, const Node
     }
 
     // Check if Slice op slices 1d array (result of shape) to one element.
-    std::vector<int64_t> slice_inputs;
-    if (optimizer_utils::AppendTensorFromInitializer(graph, *(slice.InputDefs()[1]), slice_inputs, true) &&
-        optimizer_utils::AppendTensorFromInitializer(graph, *(slice.InputDefs()[2]), slice_inputs, true)) {
-      const int64_t slice_start = slice_inputs[0];
-      const int64_t slice_end = slice_inputs[1];
-      if (!(slice_end >= INT_MAX && slice_start == -1) && abs(slice_end - slice_start) != 1) {
-        return false;
-      }
-      return true;
+    std::vector<int64_t> starts_values;
+    std::vector<int64_t> ends_values;
+    if (slice.GetInputEdgesCount() >= 3) {
+      optimizer_utils::AppendTensorFromInitializer(graph, *(slice.InputDefs()[1]), starts_values, true);
+      optimizer_utils::AppendTensorFromInitializer(graph, *(slice.InputDefs()[2]), ends_values, true);
+    } else { // Support older version of Slice node
+      graph_utils::GetRepeatedNodeAttributeValues<int64_t>(slice, "starts", starts_values);
+      graph_utils::GetRepeatedNodeAttributeValues<int64_t>(slice, "ends", ends_values);
     }
+    if (starts_values.size() != 1 || ends_values.size() != 1) {
+      return false;
+    }
+    int64_t slice_start = starts_values[0];
+    int64_t slice_end = ends_values[0];
+    if (!(slice_end >= INT_MAX && slice_start == -1) && abs(slice_end - slice_start) != 1) {
+      return false;
+    }
+    return true;
   }
 
   return false;

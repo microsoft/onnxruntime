@@ -32,7 +32,9 @@
 #elif defined(_MSC_VER)
 #pragma warning(pop)
 #endif
+#include "core/common/denormal.h"
 #include "core/common/make_unique.h"
+#include "core/common/spin_pause.h"
 #include "core/platform/ort_mutex.h"
 #include "core/platform/Barrier.h"
 
@@ -405,6 +407,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
       : env_(env),
         num_threads_(num_threads),
         allow_spinning_(allow_spinning),
+        set_denormal_as_zero_(thread_options.set_denormal_as_zero),
         worker_data_(num_threads),
         all_coprimes_(num_threads),
         blocked_(0),
@@ -801,6 +804,7 @@ int CurrentThreadId() const EIGEN_FINAL {
   Environment& env_;
   const int num_threads_;
   const bool allow_spinning_;
+  const bool set_denormal_as_zero_;
   Eigen::MaxSizeVector<WorkerData> worker_data_;
   Eigen::MaxSizeVector<Eigen::MaxSizeVector<unsigned>> all_coprimes_;
   std::atomic<unsigned> blocked_;  // Count of blocked workers, used as a termination condition
@@ -846,6 +850,8 @@ int CurrentThreadId() const EIGEN_FINAL {
     const int spin_count = allow_spinning_ ? (1ull<<log2_spin) : 0;
     const int steal_count = spin_count/100;
 
+    SetDenormalAsZero(set_denormal_as_zero_);
+
     while (!cancelled_ && !should_exit) {
         Task t = q.PopFront();
         if (!t.f) {
@@ -856,7 +862,8 @@ int CurrentThreadId() const EIGEN_FINAL {
 
           SetGoodWorkerHint(thread_id, true);
           for (int i = 0; i < spin_count && !t.f && !cancelled_ && !done_; i++) {
-            t = (i%steal_count == 0) ? TrySteal() : q.PopFront();
+            t = ((i+1)%steal_count == 0) ? TrySteal() : q.PopFront();
+            onnxruntime::concurrency::SpinPause();
           }
           SetGoodWorkerHint(thread_id, false);
 
