@@ -128,7 +128,7 @@ std::string GetTestDataPath() {
       return hardcodedModelPath;
     }
   }
-  return testDataPath;
+  return testDataPath + "\\testData\\";
 }
 
 // This function returns the list of all test cases inside model test collateral
