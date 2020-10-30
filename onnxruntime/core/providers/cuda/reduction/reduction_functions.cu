@@ -21,7 +21,7 @@ namespace detail {
 constexpr auto MAX_NUM_ELEMENTS_PER_THREAD = 4;
 constexpr auto MAX_NUM_WARPS_PER_BLOCK = 8;
 constexpr auto MAX_NUM_BLOCKS_IN_GRID_ROW = 256;
-constexpr auto MAX_NUM_GRID_ROWS = 1024;  // TODO find a good value
+constexpr auto MAX_NUM_GRID_ROWS = 32768;
 
 dim3 compute_block_dim(int row_size) {
   int x = GPU_WARP_SIZE;
