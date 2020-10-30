@@ -53,7 +53,7 @@ Status ReduceAllL2<TIn, TOut>::ComputeInternal(OpKernelContext* ctx) const {
   // Allocate output tensor.
   Tensor* output = ctx->Output(0, {});
   HipTOut* p_output = reinterpret_cast<HipTOut*>(output->template MutableData<TOut>());
-  ORT_ENFORCE(hipMemset(p_output, 0, sizeof(HipTOut)) == hipSuccess);
+  HIP_RETURN_IF_ERROR(hipMemsetAsync(p_output, 0, sizeof(HipTOut)));
 
   // auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
   // bool deterministic = ctx_internal && ctx_internal->GetUseDeterministicCompute();
@@ -90,10 +90,10 @@ Status ReduceAllL2<TIn, TOut>::ComputeInternal(OpKernelContext* ctx) const {
     scratch_size += (1 + total_tensor_count)*sizeof(HipTAcc);
 
     // create GPU scratch space and zero target for each tensor square norm
-    uint8_t* p_scratch = GetScratchBuffer<uint8_t>(scratch_size).get();
-    ORT_ENFORCE(hipMemset(p_scratch, 0, sizeof(HipTAcc)*(1 + total_tensor_count)) == hipSuccess);
+    auto scratch_buffer = GetScratchBuffer<uint8_t>(scratch_size);
+    HIP_RETURN_IF_ERROR(hipMemsetAsync(scratch_buffer.get(), 0, sizeof(HipTAcc)*(1 + total_tensor_count)));
 
-    HipTAcc* p_global_sqnorm = reinterpret_cast<HipTAcc*>(p_scratch);
+    HipTAcc* p_global_sqnorm = reinterpret_cast<HipTAcc*>(scratch_buffer.get());
     HipTAcc* p_tensor_sqnorm = p_global_sqnorm + 1;
     HipTAcc* p_reduce_buffer = p_tensor_sqnorm + total_tensor_count;
  

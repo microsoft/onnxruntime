@@ -107,7 +107,7 @@ Status SoftmaxCrossEntropyLoss<T, Tin>::ComputeInternal(OpKernelContext* ctx) co
 
   IAllocatorUniquePtr<T> weight_data_nd = GetScratchBuffer<T>(N_D);
   T* weight_data_nd_data = weight_data_nd.get();
-  ORT_ENFORCE(hipMemset(weight_data_nd_data, 0, N_D * sizeof(T)) == hipSuccess);
+  HIP_RETURN_IF_ERROR(hipMemsetAsync(weight_data_nd_data, 0, N_D * sizeof(T)));
   ComputeWeightsSoftmaxCrossEntropyImpl(label_data, weight_data, N_D, C, ignore_index_, weight_data_nd_data);
 
   auto normalize_factor_data = GetScratchBuffer<T>(1);
@@ -125,7 +125,7 @@ Status SoftmaxCrossEntropyLoss<T, Tin>::ComputeInternal(OpKernelContext* ctx) co
                reinterpret_cast<T*>(reduction_buffer.get()));
   } else {
     const T normalize_factor = static_cast<T>(1);
-    hipMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), hipMemcpyHostToDevice);
+    HIP_RETURN_IF_ERROR(hipMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), hipMemcpyHostToDevice));
   }
 
   SoftmaxCrossEntropyLossImpl(log_prob_data,
@@ -147,7 +147,7 @@ Status SoftmaxCrossEntropyLoss<T, Tin>::ComputeInternal(OpKernelContext* ctx) co
     transpose_output.GetMutable<Tensor>()->Reshape(log_prob->Shape());
     log_prob->Reshape(log_prob_shape);
     ORT_RETURN_IF_ERROR(rocm::Transpose::DoTranspose(rocm::Transpose(info), permutations, *log_prob, *transpose_output.GetMutable<Tensor>()));
-    hipMemcpyAsync(log_prob_data, transposed_data, sizeof(T) * logit_shape.Size(), hipMemcpyDeviceToDevice);
+    HIP_RETURN_IF_ERROR(hipMemcpyAsync(log_prob_data, transposed_data, sizeof(T) * logit_shape.Size(), hipMemcpyDeviceToDevice));
     log_prob->Reshape(new_shape);
   }
 
@@ -220,7 +220,7 @@ Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx
 
   IAllocatorUniquePtr<T> weight_data_nd = GetScratchBuffer<T>(N_D);
   T* weight_data_nd_data = weight_data_nd.get();
-  ORT_ENFORCE(hipMemset(weight_data_nd_data, 0, N_D * sizeof(T)) == hipSuccess);
+  HIP_RETURN_IF_ERROR(hipMemsetAsync(weight_data_nd_data, 0, N_D * sizeof(T)));
   ComputeWeightsSoftmaxCrossEntropyImpl(label_data, weight_data, N_D, C, ignore_index_, weight_data_nd_data);
   auto normalize_factor_data = GetScratchBuffer<T>(1);
   if (reduction_ == ReductionType::MEAN) {
@@ -237,7 +237,7 @@ Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx
                reinterpret_cast<T*>(reduction_buffer.get()));
   } else {
     const T normalize_factor = static_cast<T>(1);
-    hipMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), hipMemcpyHostToDevice);
+    HIP_RETURN_IF_ERROR(hipMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), hipMemcpyHostToDevice));
   }
 
   SoftmaxCrossEntropyLossGradImpl(dY_data,
@@ -260,7 +260,7 @@ Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx
     d_logit->Reshape(logit_shape);
     ORT_RETURN_IF_ERROR(rocm::Transpose::DoTranspose(rocm::Transpose(info), permutations, *d_logit, *transpose_output.GetMutable<Tensor>()));
     auto* transposed_data = (*transpose_output.GetMutable<Tensor>()).template Data<T>();
-    hipMemcpyAsync(d_logit_data, transposed_data, sizeof(T) * probability_shape.Size(), hipMemcpyDeviceToDevice);
+    HIP_RETURN_IF_ERROR(hipMemcpyAsync(d_logit_data, transposed_data, sizeof(T) * probability_shape.Size(), hipMemcpyDeviceToDevice));
     d_logit->Reshape(new_shape);
   }
 

@@ -66,7 +66,7 @@ Status OneHotOp<in_type, out_type, depth_type>::ComputeInternal(OpKernelContext*
   auto* output_data = reinterpret_cast<HipT_Out*>(output->MutableData<out_type>());
 
   if (values_data[0] == HipT_Out(0.f)) {
-    HIP_RETURN_IF_ERROR(hipMemset(output->MutableDataRaw(), 0, output->SizeInBytes()));
+    HIP_RETURN_IF_ERROR(hipMemsetAsync(output->MutableDataRaw(), 0, output->SizeInBytes()));
     OneHotWithZeroOffValueImpl(indices_data,
                                fdm_suffix,
                                depth_val,

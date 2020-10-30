@@ -302,7 +302,7 @@ Status ReduceComputeCore(const Tensor& input, PrepareReduceMetadata& prepare_red
 
   // This reduction keep adding values to this buffer. If a non-zero value, say 1000, is here, the sum will start with 1000.
   // Therefore zeroing out the memory is required
-  HIP_RETURN_IF_ERROR(hipMemset(output.MutableDataRaw(), 0, output.SizeInBytes()));
+  HIP_RETURN_IF_ERROR(hipMemsetAsync(output.MutableDataRaw(), 0, output.SizeInBytes()));
 
   // Block of fast matrix row reduction.
   // It relies on new atomicAdd for half type, so old CUDA can't use it.

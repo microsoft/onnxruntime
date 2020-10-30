@@ -85,12 +85,12 @@ Status Dropout<trainable_dropout>::ComputeInternal(OpKernelContext* context) con
     const void* X_data = X->DataRaw();
     void* Y_data = Y->MutableDataRaw();
     if (Y_data != X_data) {
-      HIP_CALL_THROW(hipMemcpyAsync(Y_data, X_data, X->SizeInBytes(), hipMemcpyDeviceToDevice));
+      HIP_RETURN_IF_ERROR(hipMemcpyAsync(Y_data, X_data, X->SizeInBytes(), hipMemcpyDeviceToDevice));
     }
 
     // If mask is requested, return all 1s.
     if (mask != nullptr) {
-      ORT_ENFORCE(hipMemset(mask->MutableData<bool>(), true, N * sizeof(bool)) == hipSuccess);
+      HIP_RETURN_IF_ERROR(hipMemsetAsync(mask->MutableData<bool>(), true, N * sizeof(bool)));
     }
 
     return Status::OK();
