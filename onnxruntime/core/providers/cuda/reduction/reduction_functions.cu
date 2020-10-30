@@ -444,7 +444,7 @@ void call_reduce_matrix_rows(const TIn* input, TOut* output, int m, int n) {
 template <typename TIn, typename TOut>
 Status reduce_matrix_rows(const TIn* input, TOut* output, int m, int n, bool reset_initial_output) {
   if (reset_initial_output) {
-    Fill(output, TOut{0}, n);
+    CUDA_RETURN_IF_ERROR(cudaMemset(output, 0, n * sizeof(TOut)));
   }
 
   using TBuf = AccumulationType_t<TIn>;
