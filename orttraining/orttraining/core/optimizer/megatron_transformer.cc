@@ -63,20 +63,20 @@ static bool IsExpectedOpAndProvider(const Node& node,
                                     const OpInfo& op_info,
                                     ProviderType provider_type) {
   if (node.OpType() == "Mul") {
-    std::cout << "Extra debug:" << node.Name() << "\n";
+    // std::cout << "Extra debug:" << node.Name() << "\n";
     bool is_true = graph_utils::IsSupportedOptypeVersionAndDomain(node, op_info.op_type, op_info.supported_versions, op_info.domain);
     if (!is_true) {
-      std::cout << "Mismatch in IsSupportedOptypeVersionAndDomain:\n";
+      // std::cout << "Mismatch in IsSupportedOptypeVersionAndDomain:\n";
       return is_true;
     }
     is_true = node.GetExecutionProviderType() == provider_type;
     if (!is_true) {
-      std::cout << "Mismatch in ExecutionProviderType:\n";
+      // std::cout << "Mismatch in ExecutionProviderType:\n";
       return is_true;
     }
     is_true = node.GetOutputEdgesCount() == op_info.output_count;
     if (!is_true) {
-      std::cout << "Mismatch in IsSupportedOptypeVersionAndDomain:\n";
+      // std::cout << "Mismatch in IsSupportedOptypeVersionAndDomain:\n";
       return is_true;
     }
     return true;
@@ -1303,7 +1303,7 @@ Status MegatronTransformer::TransformBARTSelfAttention(Graph& graph, bool& modif
     if (!MatchLinearPattern(graph, &node, provider_type, linear_pattern, sub_graph_node_ptrs)) {
       continue;
     }
-    LOGS_DEFAULT(WARNING) << " BART Attention: linear pattern match. ";
+    // LOGS_DEFAULT(WARNING) << " BART Attention: linear pattern match. ";
     // Get all useful nodes here as more vector push back below will change the index.
     Node* q_biasadd_node_ptr = sub_graph_node_ptrs[sub_graph_node_ptrs.size() - 18];
     Node& q_transpose_after_reshape_node = *sub_graph_node_ptrs[sub_graph_node_ptrs.size() - 15];
@@ -1318,7 +1318,7 @@ Status MegatronTransformer::TransformBARTSelfAttention(Graph& graph, bool& modif
         !optimizer_utils::IsAttributeWithExpectedValues(transpose_node1, "perm", {1LL, 0LL, 2LL})) {
       continue;
     }
-    LOGS_DEFAULT(WARNING) << " BART Attention: transpose attribute match. ";
+    // LOGS_DEFAULT(WARNING) << " BART Attention: transpose attribute match. ";
     //std::vector<Node*> transpose_node_ptrs;  // For the k and v matmul transpose nodes.
     // std::vector<Node*> reshape_node_ptrs;  // To keep the reshape node that need to change the shape constant.
     std::unordered_map<Node*, int64_t> reshape_node_ptrs;
@@ -1337,7 +1337,7 @@ Status MegatronTransformer::TransformBARTSelfAttention(Graph& graph, bool& modif
     sub_graph_node_ptrs.push_back(q_transpose_ptr);
     bias_add_node_ptrs.push_back(q_biasadd_node_ptr);
 
-    LOGS_DEFAULT(WARNING) << " BART Attention: q info done. ";
+    // LOGS_DEFAULT(WARNING) << " BART Attention: q info done. ";
 
     Node* k_transpose_ptr = const_cast<Node*>(graph.GetProducerNode(qk_matmul_node_ptr->MutableInputDefs()[1]->Name()));
     ORT_ENFORCE(k_transpose_ptr->OpType().compare("Transpose") == 0);
@@ -1372,7 +1372,7 @@ Status MegatronTransformer::TransformBARTSelfAttention(Graph& graph, bool& modif
     Node* k_weight_transpose = const_cast<Node*>(graph.GetProducerNode(k_matmul->MutableInputDefs()[1]->Name()));
     sub_graph_node_ptrs.push_back(k_weight_transpose);
     weight_transpose_node_ptrs.push_back(k_weight_transpose);
-    LOGS_DEFAULT(WARNING) << " BART Attention: k info done. ";
+    // LOGS_DEFAULT(WARNING) << " BART Attention: k info done. ";
 
     Node* v_transpose_ptr = const_cast<Node*>(graph.GetProducerNode(qkv_matmul_node_ptr->MutableInputDefs()[1]->Name()));
     ORT_ENFORCE(v_transpose_ptr != nullptr);
@@ -1396,7 +1396,7 @@ Status MegatronTransformer::TransformBARTSelfAttention(Graph& graph, bool& modif
     ORT_ENFORCE(v_weight_transpose != nullptr);
     sub_graph_node_ptrs.push_back(v_weight_transpose);
     weight_transpose_node_ptrs.push_back(v_weight_transpose);
-    LOGS_DEFAULT(WARNING) << " BART Attention: v info done. ";
+    // LOGS_DEFAULT(WARNING) << " BART Attention: v info done. ";
 
     // K and V matmul must have the same input
     Node* q_matmul = &node;
