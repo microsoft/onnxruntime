@@ -247,6 +247,7 @@ TEST(ReductionFunctionsTest, GetApplicableMatrixReduction) {
   const cudnnReduceTensorOp_t valid_op_type = CUDNN_REDUCE_TENSOR_ADD;
   int m{}, n{};
 
+  // contiguous axes from beginning
   EXPECT_EQ(
       cuda::get_applicable_matrix_reduction(
           valid_op_type, {2, 4, 8, 16}, {0, 1}, m, n),
@@ -254,6 +255,7 @@ TEST(ReductionFunctionsTest, GetApplicableMatrixReduction) {
   EXPECT_EQ(m, 2 * 4);
   EXPECT_EQ(n, 8 * 16);
 
+  // contiguous axes to end
   EXPECT_EQ(
       cuda::get_applicable_matrix_reduction(
           valid_op_type, {2, 4, 8, 16}, {1, 2, 3}, m, n),
@@ -261,6 +263,7 @@ TEST(ReductionFunctionsTest, GetApplicableMatrixReduction) {
   EXPECT_EQ(m, 2);
   EXPECT_EQ(n, 4 * 8 * 16);
 
+  // single axis
   EXPECT_EQ(
       cuda::get_applicable_matrix_reduction(
           valid_op_type, {2, 4, 8, 16}, {3}, m, n),
@@ -268,7 +271,15 @@ TEST(ReductionFunctionsTest, GetApplicableMatrixReduction) {
   EXPECT_EQ(m, 2 * 4 * 8);
   EXPECT_EQ(n, 16);
 
-  // invalid axes
+  // unsupported axes
+  EXPECT_EQ(
+      cuda::get_applicable_matrix_reduction(
+          valid_op_type, {2, 4, 8, 16}, {0, 1, 2, 3}, m, n),
+      cuda::ApplicableMatrixReduction::None);
+  EXPECT_EQ(
+      cuda::get_applicable_matrix_reduction(
+          valid_op_type, {2, 4, 8, 16}, {}, m, n),
+      cuda::ApplicableMatrixReduction::None);
   EXPECT_EQ(
       cuda::get_applicable_matrix_reduction(
           valid_op_type, {2, 4, 8, 16}, {1, 3}, m, n),
