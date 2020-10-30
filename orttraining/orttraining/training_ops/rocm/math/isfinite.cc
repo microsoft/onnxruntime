@@ -60,7 +60,7 @@ Status IsAllFiniteOp<TSrc>::ComputeInternal(OpKernelContext* context) const {
   // The GPU result will be copied later to the output which locates
   // on CPU memory.
   IAllocatorUniquePtr<bool> deviceOutput = GetScratchBuffer<bool>(1);
-  HIP_RETURN_IF_ERROR(hipMemset(deviceOutput.get(), int(true), sizeof(bool)));
+  HIP_RETURN_IF_ERROR(hipMemsetAsync(deviceOutput.get(), int(true), sizeof(bool)));
 
   for (int i = 0; i < total_tensor_count; ++i) {
     const auto& input = context->Input<Tensor>(i);

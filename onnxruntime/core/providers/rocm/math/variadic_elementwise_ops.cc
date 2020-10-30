@@ -69,7 +69,7 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
 
   using HipT = typename ToHipType<T>::MappedType;
 
-  HIP_RETURN_IF_ERROR(hipMemset(output.MutableDataRaw(), 0, output.SizeInBytes()));
+  HIP_RETURN_IF_ERROR(hipMemsetAsync(output.MutableDataRaw(), 0, output.SizeInBytes()));
 
   BinaryElementwisePreparation prepare(kernel);
   ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(&output, &inputs[0].get(), &output, &prepare));

@@ -524,14 +524,14 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
   // and T2=float.
   IAllocatorUniquePtr<T2> d_norm_buffer = GetScratchBuffer<T2>(group_count);
   HipT2* d_norm_data = reinterpret_cast<HipT2*>(d_norm_buffer.get());
-  ORT_ENFORCE(hipMemset(d_norm_data, 0, group_count * sizeof(T2)) == hipSuccess);
+  HIP_RETURN_IF_ERROR(hipMemsetAsync(d_norm_data, 0, group_count * sizeof(T2)));
 
   // Allocate buffer for reduction computation of weight tensor.
   // The i-th weight's norm is stored at the i-th element.
   // We reduce type T2 tensor to type T2 scalar. An example is that T2=float.
   IAllocatorUniquePtr<T2> w_norm_buffer = GetScratchBuffer<T2>(group_count);
   HipT2* w_norm_data = reinterpret_cast<HipT2*>(w_norm_buffer.get());
-  ORT_ENFORCE(hipMemset(w_norm_data, 0, group_count * sizeof(T2)) == hipSuccess);
+  HIP_RETURN_IF_ERROR(hipMemsetAsync(w_norm_data, 0, group_count * sizeof(T2)));
 
   // Find the max size of updated weight tensors.
   int max_tensor_size = 0;
