@@ -947,6 +947,8 @@ class SymbolicShapeInference:
             axes = get_attribute(node, 'axes')
             starts = get_attribute(node, 'starts')
             ends = get_attribute(node, 'ends')
+            if not axes:
+                axes = list(range(len(starts)))
             steps = [1]*len(axes)
         else:
             starts = as_list(self._try_get_value(node, 1), keep_none=True)
@@ -1149,7 +1151,7 @@ class SymbolicShapeInference:
             while not all([o.name in sorted_known_vi for o in self.out_mp_.graph.output]):
                 old_sorted_nodes_len = len(sorted_nodes)
                 for node in self.out_mp_.graph.node:
-                    if (node.output[0] not in sorted_known_vi ) and all([i in sorted_known_vi for i in node.input]):
+                    if (node.output[0] not in sorted_known_vi ) and all([i in sorted_known_vi for i in node.input if i]):
                         sorted_known_vi.update(node.output)
                         sorted_nodes.append(node)
                 if old_sorted_nodes_len == len(sorted_nodes) and not all([o.name in sorted_known_vi for o in self.out_mp_.graph.output]):
