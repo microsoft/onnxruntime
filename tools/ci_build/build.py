@@ -1187,17 +1187,17 @@ def run_training_python_frontend_e2e_tests(cwd):
     import torch
     ngpus = torch.cuda.device_count()
     if ngpus > 1:
-        bert_pretrain_script = 'orttraining_run_bert_pretrain.py'
-        # TODO: this test will be replaced with convergence test ported from backend
-        log.debug('RUN: mpirun -n {} ''-x' 'NCCL_DEBUG=INFO'' {} {} {}'.format(
-            ngpus, sys.executable, bert_pretrain_script, 'ORTBertPretrainTest.test_pretrain_convergence'))
-        run_subprocess([
-            'mpirun', '-n', str(ngpus), '-x', 'NCCL_DEBUG=INFO', sys.executable,
-            bert_pretrain_script, 'ORTBertPretrainTest.test_pretrain_convergence'], cwd=cwd)
+        # bert_pretrain_script = 'orttraining_run_bert_pretrain.py'
+        # # TODO: this test will be replaced with convergence test ported from backend
+        # log.debug('RUN: mpirun -n {} ''-x' 'NCCL_DEBUG=INFO'' {} {} {}'.format(
+        #     ngpus, sys.executable, bert_pretrain_script, 'ORTBertPretrainTest.test_pretrain_convergence'))
+        # run_subprocess([
+        #     'mpirun', '-n', str(ngpus), '-x', 'NCCL_DEBUG=INFO', sys.executable,
+        #     bert_pretrain_script, 'ORTBertPretrainTest.test_pretrain_convergence'], cwd=cwd)
 
-        log.debug('RUN: mpirun -n {} {} orttraining_run_glue.py'.format(ngpus, sys.executable))
-        run_subprocess([
-            'mpirun', '-n', str(ngpus), '-x', 'NCCL_DEBUG=INFO', sys.executable, 'orttraining_run_glue.py'], cwd=cwd)
+        # log.debug('RUN: mpirun -n {} {} orttraining_run_glue.py'.format(ngpus, sys.executable))
+        # run_subprocess([
+        #     'mpirun', '-n', str(ngpus), '-x', 'NCCL_DEBUG=INFO', sys.executable, 'orttraining_run_glue.py'], cwd=cwd)
 
     # with orttraining_run_glue.py.
     # 1. we like to force to use single GPU (with CUDA_VISIBLE_DEVICES)
