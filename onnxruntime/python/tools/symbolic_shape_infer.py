@@ -1139,16 +1139,16 @@ class SymbolicShapeInference:
         self.tmp_mp_.CopyFrom(self.out_mp_)
         self.tmp_mp_.graph.ClearField('initializer')
 
-        # topological sort nodes
+        # topological sort nodes, note there might be dead nodes so we check if all graph outputs are reached to terminate
         sorted_nodes = []
-        sorted_inputs = set([i for i in self.known_vi_])
-        while len(self.out_mp_.graph.node) - len(sorted_nodes) > 0:
+        sorted_known_vi = set([i.name for i in list(self.out_mp_.graph.input) + list(self.out_mp_.graph.initializer)])
+        while not all([o.name in sorted_known_vi for o in self.out_mp_.graph.output]):
             old_sorted_nodes_len = len(sorted_nodes)
             for node in self.out_mp_.graph.node:
-                if (node.output[0] not in sorted_inputs) and all([i in sorted_inputs for i in node.input]):
-                    sorted_inputs.update(node.output)
+                if (node.output[0] not in sorted_known_vi ) and all([i in sorted_known_vi for i in node.input]):
+                    sorted_known_vi.update(node.output)
                     sorted_nodes.append(node)
-            if old_sorted_nodes_len == len(sorted_nodes):
+            if old_sorted_nodes_len == len(sorted_nodes) and not all([o.name in sorted_known_vi for o in self.out_mp_.graph.output]):
                 raise Exception('Invalid model with cyclic graph')
 
         for node in sorted_nodes:
