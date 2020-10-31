@@ -299,9 +299,11 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
         }
       }
     }
+#ifdef ENABLE_MEMORY_PROFILE
     //Record activation memory pattern
     MemoryInfo::ClearMemoryInfoPerExecution();
     MemoryInfo::RecordActivationPatternInfo(*mem_patterns_);
+#endif
   }
 }
 
@@ -407,7 +409,9 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
     // if parallel executor is used.
     std::unique_lock<std::mutex> lock(mtx_);
     dynamic_activation_memory_sizes_in_byte_[location.name] += size;
+#ifdef ENABLE_MEMORY_PROFILE
     MemoryInfo::SetDynamicAllocation(ort_value_index);
+#endif
   }
 
   return Status::OK();
@@ -434,8 +438,8 @@ Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_valu
 
     // be generous and use the buffer if it's large enough. log a warning though as it indicates a bad model
     if (buffer_num_elements >= required_num_elements) {
-      // View Operator is reusing the buffer bigger than the required size.
-      // Disabling warning message for now. The op is in the process of being deprecated.
+// View Operator is reusing the buffer bigger than the required size.
+// Disabling warning message for now. The op is in the process of being deprecated.
 #ifndef ENABLE_TRAINING
       LOGS(session_state_.Logger(), WARNING) << message;
 #endif
@@ -571,7 +575,9 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
       }
     }
 
+#ifdef ENABLE_MEMORY_PROFILE
     MemoryInfo::RecordActivationAllocInfo(ort_value_index, ort_value);
+#endif
 
     return Status::OK();
   } else if (ml_type->IsSparseTensorType()) {

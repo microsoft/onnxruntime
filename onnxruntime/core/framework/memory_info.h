@@ -13,13 +13,6 @@ namespace onnxruntime {
 using IntervalT = std::pair<size_t, size_t>;
 using OrtValueIndex = int;
 using OrtValueName = std::string;
-//TODO: need to extend this enum to include finner-grained decomposition
-enum MLValueTensorType {
-  WEIGHT = 0,
-  FWD_ACTIVATION,
-  GRADIENT,
-  Unknown,
-};
 
 struct MemoryInfoPerTensor {
   MemoryBlock planned_block;
@@ -99,7 +92,6 @@ class MemoryInfo {
   struct AllocInfoPerTensor {
     AllocInfoPerTensor() = default;
 
-    MLValueTensorType tensor_type{Unknown};
     OrtValueIndex mlvalue_index{0};
     OrtValueName mlvalue_name{""};
 
@@ -174,7 +166,6 @@ class MemoryInfo {
       return true;
   }
  private:
-  //MemoryInfo(int local_rank) : profiler(*this), iteration_(0), local_rank_(local_rank) {}
   MemoryInfo() = default;
   static void RecordMemoryPatternInfo(const MemoryPatternGroup& mem_patterns, MapType type);
   static void RecordTensorDeviceAllocInfo(const OrtValueIndex idx, const OrtValue& value, const MapType& type);
@@ -186,8 +177,10 @@ class MemoryInfo {
   //Key: The map type. E.g., initializer, activation. Value: A map from the tensor index to its memory information
   static std::map<OrtMemoryInfo, std::map<MapType, MemoryInfoMap> > tensors_memory_info_map_;
 
+  //Key: The tensor index. Value: The Allocation information per tensor
   static std::map<OrtValueIndex, AllocInfoPerTensor> tensor_alloc_info_map_;
 
+  //Key: The group name. Value: (key: The tensor name, value: not used (Use std::map for faster lookup).).
   static std::map<const std::string, std::map<const std::string, bool> >customized_recording_group_;
 
   //TODO: The dynamic and statically planned alignments may not be the same, need to check
