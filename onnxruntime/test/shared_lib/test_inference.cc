@@ -13,6 +13,7 @@
 #include <sstream>
 #include <atomic>
 #include <mutex>
+#include <algorithm>
 #include <gtest/gtest.h>
 #include "test_allocator.h"
 #include "test_fixture.h"
@@ -1006,6 +1007,11 @@ TEST(CApiTest, get_available_providers_cpp) {
   std::vector<std::string> providers = Ort::GetAvailableProviders();
   ASSERT_TRUE(providers.size() > 0);
   ASSERT_TRUE(providers[0] == std::string("CPUExecutionProvider"));
+
+#ifdef USE_CUDA
+  // CUDA EP will exist in the list but its position may vary based on other EPs included in the build
+  ASSERT_TRUE(std::find(providers.begin(), providers.end(), std::string("CUDAExecutionProvider")) != providers.end());
+#endif
 }
 
 // This test uses the CreateAndRegisterAllocator API to register an allocator with the env,
