@@ -865,12 +865,12 @@ if (onnxruntime_BUILD_SHARED_LIB)
   #################################################################
   # test inference using shared lib
   set(onnxruntime_shared_lib_test_LIBS onnxruntime_mocked_allocator onnxruntime_test_utils onnxruntime_common onnx_proto)
+
   if(NOT WIN32)
     list(APPEND onnxruntime_shared_lib_test_LIBS nsync_cpp)
   endif()
   if (onnxruntime_USE_CUDA)
-    add_library(onnxruntime_shared_lib_test_cuda ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cuda_add.cu)
-    list(APPEND onnxruntime_shared_lib_test_LIBS onnxruntime_shared_lib_test_cuda cudart)
+    list(APPEND onnxruntime_shared_lib_test_LIBS cudart)
   endif()
   if (CMAKE_SYSTEM_NAME STREQUAL "Android")
     list(APPEND onnxruntime_shared_lib_test_LIBS ${android_shared_libs})
