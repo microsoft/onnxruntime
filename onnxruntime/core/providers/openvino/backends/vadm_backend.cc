@@ -48,6 +48,11 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
 
   SetIODefs(model_proto, ie_cnn_network_, subgraph_context_.output_names, const_outputs_map_, global_context_.device_type);
   std::map<std::string, std::string> config;
+#ifndef NDEBUG
+    if (openvino_ep::backend_utils::IsDebugEnabled()) {
+    config["PERF_COUNT"] = CONFIG_VALUE(YES);
+    }
+#endif
 
 #if defined(OPENVINO_2020_4)
   if(const_outputs_map_.size() == subgraph_context_.output_names.size())
@@ -57,6 +62,7 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   int i = 0;
   if(subgraph_context_.is_constant)
     return;
+  std::string& hw_target = (global_context_.device_id != "") ? global_context_.device_id : global_context_.device_type;
   // Loading model to the plugin
   //If graph is fully supported and batching is enabled, load the network onto all VPU's and infer
   std::vector<InferenceEngine::ExecutableNetwork> exe_networks;
@@ -69,7 +75,7 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
       config[VPU_HDDL_CONFIG_KEY(DEVICE_TAG)] = global_context_.deviceTags[j];
     #endif
       try {
-        exe_network = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, "HDDL", config);
+        exe_network = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, hw_target, config);
       } catch (InferenceEngine::details::InferenceEngineException e) {
         ORT_THROW(log_tag + " Exception while Loading Network for graph: " + subgraph_context_.subgraph_name + e.what());
       } catch (...) {
@@ -103,7 +109,7 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   #endif
     InferenceEngine::ExecutableNetwork exe_network;
     try {
-      exe_network = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, "HDDL", config);
+      exe_network = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, hw_target, config);
     } catch (InferenceEngine::details::InferenceEngineException e) {
       ORT_THROW(log_tag + " Exception while Loading Network for graph: " + subgraph_context_.subgraph_name + e.what());
     } catch (...) {
@@ -234,12 +240,7 @@ void VADMBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
 
   if (subgraph_context_.enable_batching) {
     // Calculate the batch_size from the input tensor shape.
-    #if (defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
     const OrtValue* tensor = ort.KernelContext_GetInput(context, subgraph_context_.input_indexes[0]);
-    #else
-    auto iter = subgraph_context_.input_names.begin();
-    const OrtValue* tensor = ort.KernelContext_GetInput(context, subgraph_context_.input_names.at(iter->first));
-    #endif
 
     batch_size = DeduceBatchSize(ort, tensor,
                                  ie_cnn_network_->getInputsInfo().begin()->second->getTensorDesc().getDims());
@@ -271,6 +272,12 @@ void VADMBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
       for (size_t inf_req_idx = 0; inf_req_idx < num_inf_reqs_; inf_req_idx++) {
         size_t batch_slice_idx = set * num_inf_reqs_ + inf_req_idx;
         CompleteAsyncInference(ort, context, batch_slice_idx, inf_req_idx, batch_size);
+      #ifndef NDEBUG
+        if (openvino_ep::backend_utils::IsDebugEnabled()) {
+           std::string& hw_target = (global_context_.device_id != "") ? global_context_.device_id : global_context_.device_type;
+           printPerformanceCounts(*infer_requests_[inf_req_idx], std::cout, hw_target);
+        }
+      #endif
       }
     }
 
@@ -282,6 +289,12 @@ void VADMBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
     for (size_t inf_req_idx = 0; inf_req_idx < remainder_parallel_runs; inf_req_idx++) {
       size_t batch_slice_idx = full_parallel_runs * num_inf_reqs_ + inf_req_idx;
       CompleteAsyncInference(ort, context, batch_slice_idx, inf_req_idx, batch_size);
+    #ifndef NDEBUG
+      if (openvino_ep::backend_utils::IsDebugEnabled()) {
+        std::string& hw_target = (global_context_.device_id != "") ? global_context_.device_id : global_context_.device_type;
+        printPerformanceCounts(*infer_requests_[inf_req_idx], std::cout, hw_target);
+      }
+    #endif
     }
   }
   LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
