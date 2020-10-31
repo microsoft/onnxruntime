@@ -14,18 +14,7 @@ import onnx
 import onnxruntime
 import pytest
 
-BERT_TEST_MODELS = {
-    "bert_keras_squad": ('bert_squad_tensorflow2.1_keras2onnx_opset11', 'TFBertForQuestionAnswering.onnx'),
-    "gpt2_past_mask": ('FUSION', 'gpt2_past_mask_one_layer.onnx'),
-}
-
-
-def _get_test_model_path(name):
-    sub_dir, file = BERT_TEST_MODELS[name]
-    if sub_dir == "FUSION":
-        return os.path.join('..', '..', '..', 'test', 'testdata', 'transform', 'fusion', file)
-    else:
-        return os.path.join('test_data', sub_dir, file)
+from test_optimizer import _get_test_model_path
 
 
 class TestBertProfiler(unittest.TestCase):

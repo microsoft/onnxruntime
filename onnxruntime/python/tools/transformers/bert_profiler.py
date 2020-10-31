@@ -10,11 +10,15 @@ def parse_arguments(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument('--model', required=True, type=str, help="onnx model path")
 
-    parser.add_argument('--batch_size', required=True, type=int, help="batch size of input")
+    parser.add_argument('--batch_size', required=False, type=int, default=1, help="batch size of input")
 
-    parser.add_argument('--sequence_length', required=True, type=int, help="maximum sequence length of input")
+    parser.add_argument('--sequence_length', required=False, type=int, default=32, help="sequence length of input")
 
-    parser.add_argument('--samples', required=False, type=int, default=1, help="number of test cases to be generated")
+    parser.add_argument('--samples',
+                        required=False,
+                        type=int,
+                        default=1000,
+                        help="number of test cases to be generated")
 
     parser.add_argument("--thread_num", required=False, type=int, default=-1, help="number of threads to use")
 
@@ -95,7 +99,7 @@ def parse_profile_results(profile_file):
     total = 0
     for item in sess_time:
         if item["cat"] == "Node" and "args" in item and "provider" in item["args"]:
-            device = "CPU" if item["args"]["provider"] == "CPUExecutionProvider" else "GPU"
+            device = "CPU" if item["args"]["provider"] == "CPUExecutionProvider" else "CUDA"
             if item["name"] not in node_provider:
                 node_provider[item["name"]] = device
             else:
@@ -129,8 +133,7 @@ def create_dummy_inputs(onnx_model_path, batch_size, sequence_length):
     onnx_model = OnnxModel(onnx.load(onnx_model_path))
     dummy_inputs = {}
     for input in onnx_model.get_graph_inputs_excluding_initializers():
-        input_dims = input.type.tensor_type.shape.dim
-        shape = [get_dim_from_type_proto(input_dims[i_dim]) for i_dim in range(len(input_dims))]
+        shape = get_shape_from_type_proto(input.type)
         symbol_dims = []
         for i, dim in enumerate(shape):
             if type(dim) == str:
@@ -172,11 +175,14 @@ def run(args):
 
 if __name__ == '__main__':
     args = parse_arguments()
+    print("Arguments", args)
 
     from benchmark_helper import setup_logger
     setup_logger(args.verbose)
 
     results = run(args)
 
+    print("Results:")
+    print("-" * 64)
     for line in results:
         print(line)
