@@ -352,7 +352,7 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
                     static_cast<size_t>(input_image_size));
 
       if (col_buffer_data != nullptr) {
-        if (kernel_rank != 2) {
+        if (kernel_rank > 2) {
           math::Im2colNd<uint8_t, StorageOrder::NHWC>()(
               transpose_input,
               input_shape.GetDims().data(),
@@ -394,6 +394,25 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
                 strides[0],
                 strides[1],
                 output_shape[1],
+                output_start,
+                output_count,
+                worker_gemm_input,
+                X_zero_point_value);
+          } else if (kernel_rank == 1) {
+            math::Im2col<uint8_t, StorageOrder::NHWC>()(
+                transpose_input,
+                group_input_channels,
+                1,
+                input_shape[0],
+                1,
+                kernel_shape[0],
+                1,
+                dilations[0],
+                0,
+                pads[0],
+                1,
+                strides[0],
+                output_shape[0],
                 output_start,
                 output_count,
                 worker_gemm_input,
