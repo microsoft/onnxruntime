@@ -328,6 +328,7 @@ void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name, cons
     }
 
     for (const auto& item : summary_[summary_key]) {
+      bool has_other_tensors = false;
       if (top_k != 0 && item.second.total_size < top_kth_total_size) continue;
       size_t alloc_size_for_pattern = 0;
       for (const auto& live_tensor : item.second.life_tensosrs) {
@@ -344,19 +345,31 @@ void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name, cons
         size_t size = map_type == MemoryInfo::MapType::StaticActivation ? map.GetPlannedSize(live_tensor) : map.GetAllocSize(live_tensor);
         alloc_size_for_pattern += size;
         events.push_back(CreateMemoryEvent(pid, item.first, name, offset, size, cname));
+        has_other_tensors = true;
       }
-      // Add summary events.  These will show up visually as 10% of the max width in a section.
+      //If for that time steps, we have other tensors to plot other than just summary, add summary events.  These will show up visually as 10% of the max width in a section.
+      if(has_other_tensors){
       summary_size = std::max(summary_size, item.second.total_size / 10);
       events.push_back(CreateSummaryEvent(pid, item.first, item.second, summary_size, alloc_size_for_pattern));
+      }
     }
   }
 }
 
 void MemoryInfo::GenerateMemoryProfile() {
-  MemoryInfoProfile::CreateEvents("GPU (initializer)", MemoryInfoProfile::GetAndIncreasePid(), MapType::Initializer, "", 1);
   MemoryInfoProfile::CreateEvents("GPU (static activations)", MemoryInfoProfile::GetAndIncreasePid(), MapType::StaticActivation, "", 1);
   MemoryInfoProfile::CreateEvents("GPU (dynamic activations)", MemoryInfoProfile::GetAndIncreasePid(), MapType::DynamicActivation, "", 1);
-  MemoryInfoProfile::CreateEvents("", MemoryInfoProfile::GetAndIncreasePid(), MapType::StaticActivation, "adam_inputs", 0);
+  MemoryInfoProfile::CreateEvents("GPU (static activations)", MemoryInfoProfile::GetAndIncreasePid(), MapType::StaticActivation, "partition_0", 0);
+  MemoryInfoProfile::CreateEvents("GPU (static activations)", MemoryInfoProfile::GetAndIncreasePid(), MapType::StaticActivation, "partition_1", 0);
+  MemoryInfoProfile::CreateEvents("GPU (static activations)", MemoryInfoProfile::GetAndIncreasePid(), MapType::StaticActivation, "partition_2", 0);
+  MemoryInfoProfile::CreateEvents("GPU (static activations)", MemoryInfoProfile::GetAndIncreasePid(), MapType::StaticActivation, "partition_3", 0);
+  MemoryInfoProfile::CreateEvents("GPU (dynamic activations)", MemoryInfoProfile::GetAndIncreasePid(), MapType::DynamicActivation, "partition_0", 0);
+  MemoryInfoProfile::CreateEvents("GPU (dynamic activations)", MemoryInfoProfile::GetAndIncreasePid(), MapType::DynamicActivation, "partition_1", 0);
+  MemoryInfoProfile::CreateEvents("GPU (dynamic activations)", MemoryInfoProfile::GetAndIncreasePid(), MapType::DynamicActivation, "partition_2", 0);
+  MemoryInfoProfile::CreateEvents("GPU (dynamic activations)", MemoryInfoProfile::GetAndIncreasePid(), MapType::DynamicActivation, "partition_3", 0);
+  MemoryInfoProfile::CreateEvents("GPU (static activations)", MemoryInfoProfile::GetAndIncreasePid(), MapType::StaticActivation, "stage_1", 0);
+  MemoryInfoProfile::CreateEvents("GPU (dynamic activations)", MemoryInfoProfile::GetAndIncreasePid(), MapType::DynamicActivation, "stage_1", 0);
+
 
   // Write memory profile .json
   std::ofstream memory_profile("memory_profile_" + std::to_string(local_rank_) + ".json", std::ios::trunc);
