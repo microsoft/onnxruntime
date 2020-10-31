@@ -233,4 +233,16 @@ jobs:
     displayName: 'Run run_training_pipeline_e2e_tests.py'
     condition: succeededOrFailed() # ensure all tests are run
 
+  - script: |
+      docker run \
+        --gpus all \
+        --rm \
+        --volume $(Build.BinariesDirectory):/build \
+        onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
+          /build/RelWithDebInfo/launch_test.py \
+          --process_args "python run_training_pipeline_e2e_tests.py -v" \
+          --cwd /build/RelWithDebInfo
+    displayName: 'Run run_training_pipeline_e2e_tests.py'
+    condition: succeededOrFailed() # ensure all tests are run
+
   - template: templates/clean-agent-build-directory-step.yml
