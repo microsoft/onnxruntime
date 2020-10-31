@@ -240,7 +240,7 @@ jobs:
         --volume $(Build.BinariesDirectory):/build \
         onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
           /build/RelWithDebInfo/launch_test.py \
-          --process_args "python run_training_pipeline_e2e_tests.py -v" \
+          --process_args "python run_training_pipeline_e2e_tests.py" \
           --cwd /build/RelWithDebInfo
     displayName: 'Run run_training_pipeline_e2e_tests.py'
     condition: succeededOrFailed() # ensure all tests are run
