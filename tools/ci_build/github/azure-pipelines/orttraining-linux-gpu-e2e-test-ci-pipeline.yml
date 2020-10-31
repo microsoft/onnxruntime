@@ -3,7 +3,7 @@ trigger: none
 jobs:
 - job: Onnxruntime_Linux_GPU_Training_E2E_Test
 
-  timeoutInMinutes: 60
+  timeoutInMinutes: 120
 
   steps:
   - checkout: self
@@ -107,7 +107,7 @@ jobs:
         --volume $(Build.BinariesDirectory):/build \
         --volume /bert_data:/bert_data \
         onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
-          /build/RelWithDebInfo/launch_test.py \                          
+          /build/RelWithDebInfo/launch_test.py \
             --process_args "mpirun -n 4 -x NCCL_DEBUG=INFO python orttraining_run_glue.py" \
             --cwd /build/RelWithDebInfo
     displayName: 'mpirun -n 4 -x NCCL_DEBUG=INFO python orttraining_run_glue.py'
