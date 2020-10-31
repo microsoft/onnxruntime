@@ -36,7 +36,10 @@ class TensorrtLogger : public nvinfer1::ILogger {
                "%Y-%m-%d %H:%M:%S",
                std::gmtime(&rawtime));
       const char* sevstr = (severity == Severity::kINTERNAL_ERROR ? "    BUG" : severity == Severity::kERROR ? "  ERROR" : severity == Severity::kWARNING ? "WARNING" : severity == Severity::kINFO ? "   INFO" : "UNKNOWN");
-      LOGS_DEFAULT(WARNING) << "[" << buf << " " << sevstr << "] " << msg;
+      if (severity <= Severity::kERROR)
+        LOGS_DEFAULT(ERROR) << "[" << buf << " " << sevstr << "] " << msg;
+      else
+        LOGS_DEFAULT(WARNING) << "[" << buf << " " << sevstr << "] " << msg;
     }
   }
 };
@@ -77,7 +80,8 @@ struct TensorrtFuncState {
   OrtMutex* tensorrt_mu_ptr = nullptr;
   bool* fp16_enable_ptr = nullptr;
   size_t* max_workspace_size_ptr = nullptr;
-  std::string trt_node_name_with_precision;
+  //std::string trt_node_name_with_precision;
+  std::string unique_prefix_hashed_filename;
   bool engine_cache_enable;
   std::string engine_cache_path;
   nvinfer1::IRuntime* runtime = nullptr;
@@ -129,6 +133,8 @@ class TensorrtExecutionProvider : public Provider_IExecutionProvider {
   std::unordered_map<std::string, std::vector<std::unordered_map<std::string, int>>> input_info_;
   std::unordered_map<std::string, std::vector<std::unordered_map<std::string, int>>> output_info_;
   std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>>> input_shape_ranges_;
+  std::map<std::string, std::string> metadata_map_;            // runtime-lib/meta -> version
+  std::unordered_map<std::string, int> subgraph_node_num_map;  // subgraph -> number of nodes in subgraph
 
   /**Get IndexedSubGraph based on node list of the subgraph*/
   std::unique_ptr<Provider_IndexedSubGraph> GetSubGraph(SubGraph_t graph_nodes_index, int& kernels_index,
@@ -146,8 +152,9 @@ class TensorrtExecutionProvider : public Provider_IExecutionProvider {
 
   void RemoveTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const onnxruntime::Provider_GraphViewer& graph) const;
 
+  void GetSubraphInfoAsMeta(std::unique_ptr<Provider_GraphViewer> graph, std::string subgraph_name);
+  std::string GetUniquePathAndHash(const std::string& name) const;
   Provider_AllocatorPtr allocator_;
 };
 
 }  // namespace onnxruntime
-
