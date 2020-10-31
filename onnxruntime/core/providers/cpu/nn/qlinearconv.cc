@@ -13,18 +13,14 @@
 
 namespace onnxruntime {
 
-template <typename T>
-class QLinearConv;
-
 #if defined(MLAS_TARGET_AMD64_IX86)
 
-template <>
-class QLinearConv<int8_t> : public OpKernel {
+class QLinearConv : public OpKernel {
  public:
-  explicit QLinearConv<int8_t>(const OpKernelInfo& info) : OpKernel(info),
-                                                           conv_attrs_(info),
-                                                           is_W_signed_(false),
-                                                           is_W_packed_(false) {
+  explicit QLinearConv(const OpKernelInfo& info) : OpKernel(info),
+                                                   conv_attrs_(info),
+                                                   is_W_signed_(false),
+                                                   is_W_packed_(false) {
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -35,7 +31,16 @@ class QLinearConv<int8_t> : public OpKernel {
                             uint8_t* output,
                             size_t output_channels,
                             size_t input_channels,
-                            size_t kernel_size);
+                            size_t kernel_size) {
+    for (size_t k = 0; k < kernel_size; k++) {
+      for (size_t ic = 0; ic < input_channels; ic++) {
+        for (size_t oc = 0; oc < output_channels; oc++) {
+          size_t index = (oc * input_channels * kernel_size) + (ic * kernel_size) + k;
+          *output++ = input[index];
+        }
+      }
+    }
+  }
 
   ConvAttributes conv_attrs_;
   TensorShape W_shape_;
@@ -48,33 +53,17 @@ class QLinearConv<int8_t> : public OpKernel {
   bool is_W_packed_;
 };
 
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
+ONNX_CPU_OPERATOR_KERNEL(
     QLinearConv,
     10,
-    int8_t,
     KernelDefBuilder()
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
-        .TypeConstraint("T2", DataTypeImpl::GetTensorType<int8_t>())
+        .TypeConstraint("T2", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<int8_t>()})
         .TypeConstraint("T3", DataTypeImpl::GetTensorType<uint8_t>())
         .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
-    QLinearConv<int8_t>);
+    QLinearConv);
 
-void QLinearConv<int8_t>::ReorderFilter(const uint8_t* input,
-                                        uint8_t* output,
-                                        size_t output_channels,
-                                        size_t input_channels,
-                                        size_t kernel_size) {
-  for (size_t k = 0; k < kernel_size; k++) {
-    for (size_t ic = 0; ic < input_channels; ic++) {
-      for (size_t oc = 0; oc < output_channels; oc++) {
-        size_t index = (oc * input_channels * kernel_size) + (ic * kernel_size) + k;
-        *output++ = input[index];
-      }
-    }
-  }
-}
-
-Status QLinearConv<int8_t>::PrePack(const Tensor& tensor, int input_idx, bool& is_packed) {
+Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, bool& is_packed) {
   is_packed = false;
 
   // Support packing the weight matrix.
@@ -82,9 +71,9 @@ Status QLinearConv<int8_t>::PrePack(const Tensor& tensor, int input_idx, bool& i
     return Status::OK();
   }
 
-  const auto& shape = tensor.Shape();
-  size_t rank = shape.NumDimensions();
-  if (rank != 4) {
+  const auto& shape = tensor.Shape().GetDims();
+  size_t rank = shape.size();
+  if (rank <= 2) {
     return Status::OK();
   }
 
@@ -96,7 +85,8 @@ Status QLinearConv<int8_t>::PrePack(const Tensor& tensor, int input_idx, bool& i
   // shape indices are guaranteed to fit inside size_t.
   const size_t output_channels = static_cast<size_t>(shape[0]);
   const size_t group_input_channels = static_cast<size_t>(shape[1]);
-  const size_t kernel_size = static_cast<size_t>(shape[2] * shape[3]);
+  const size_t kernel_size =
+    static_cast<size_t>(std::accumulate(shape.data() + 2, shape.data() + rank, 1LL, std::multiplies<int64_t>()));
 
   const size_t group_count = static_cast<size_t>(conv_attrs_.group);
   const size_t group_output_channels = output_channels / group_count;
@@ -141,7 +131,7 @@ Status QLinearConv<int8_t>::PrePack(const Tensor& tensor, int input_idx, bool& i
   }
 #endif
 
-  auto* reordered_W = static_cast<uint8_t*>(alloc->Alloc(SafeInt<size_t>(sizeof(uint8_t)) * shape.Size()));
+  auto* reordered_W = static_cast<uint8_t*>(alloc->Alloc(SafeInt<size_t>(sizeof(uint8_t)) * output_channels * group_input_channels * kernel_size));
   reordered_W_buffer_ = BufferUniquePtr(reordered_W, BufferDeleter(alloc));
 
   ReorderFilter(Wdata, reordered_W, output_channels, group_input_channels, kernel_size);
@@ -151,10 +141,11 @@ Status QLinearConv<int8_t>::PrePack(const Tensor& tensor, int input_idx, bool& i
   return Status::OK();
 }
 
-Status QLinearConv<int8_t>::Compute(OpKernelContext* context) const {
+Status QLinearConv::Compute(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
   const Tensor* W = is_W_packed_ ? nullptr : context->Input<Tensor>(3);
   const auto& W_shape = is_W_packed_ ? W_shape_ : W->Shape();
+  const bool is_W_signed = (W != nullptr) ? W->IsDataType<int8_t>() : is_W_signed_;
 
   const int64_t N = X->Shape()[0];
   const int64_t M = W_shape[0];
@@ -171,14 +162,25 @@ Status QLinearConv<int8_t>::Compute(OpKernelContext* context) const {
   auto X_zero_point_value = *(X_zero_point->template Data<uint8_t>());
   auto Y_zero_point_value = *(Y_zero_point->template Data<uint8_t>());
 
+  uint8_t W_zero_point_value;
   const auto& W_zero_point_shape = W_zero_point->Shape();
   if (W_zero_point_shape.NumDimensions() == 0 ||
       (W_zero_point_shape.NumDimensions() == 1 && (W_zero_point_shape[0] == 1 || W_zero_point_shape[0] == M))) {
     const int64_t W_zero_point_size = W_zero_point_shape.Size();
-    const auto* W_zero_point_data = W_zero_point->template Data<int8_t>();
-    for (int64_t i = 0; i < W_zero_point_size; i++) {
-      if (W_zero_point_data[i] != 0) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "QLinearConv : filter zero point must be zero");
+    const auto* W_zero_point_data = static_cast<const uint8_t*>(W_zero_point->DataRaw());
+    if (is_W_signed) {
+      W_zero_point_value = 0;
+      for (int64_t i = 0; i < W_zero_point_size; i++) {
+        if (W_zero_point_data[i] != 0) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "QLinearConv : filter zero point must be zero");
+        }
+      }
+    } else {
+      W_zero_point_value = W_zero_point_data[0];
+      for (int64_t i = 1; i < W_zero_point_size; i++) {
+        if (W_zero_point_data[i] != W_zero_point_value) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "QLinearConv : filter zero point must be constant");
+        }
       }
     }
   } else {
@@ -255,7 +257,6 @@ Status QLinearConv<int8_t>::Compute(OpKernelContext* context) const {
   BufferUniquePtr reordered_W_buffer;
   uint8_t* reordered_W = nullptr;
   bool use_reordered_W = true;
-  bool is_W_signed = is_W_signed_;
 #ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
   if (packed_W_buffer_) {
     use_reordered_W = false;
@@ -273,7 +274,6 @@ Status QLinearConv<int8_t>::Compute(OpKernelContext* context) const {
                     static_cast<size_t>(M),
                     static_cast<size_t>(W_shape[1]),
                     static_cast<size_t>(kernel_size));
-      is_W_signed = W->IsDataType<int8_t>();
     }
   }
 
@@ -351,21 +351,22 @@ Status QLinearConv<int8_t>::Compute(OpKernelContext* context) const {
                     static_cast<size_t>(group_input_channels),
                     static_cast<size_t>(input_image_size));
 
-      if (kernel_rank != 2 && col_buffer_data != nullptr) {
-        // Try big Im2ColNd in this case, parallel it later if needed
-        math::Im2colNd<uint8_t, StorageOrder::NHWC>()(
-            transpose_input,
-            input_shape.GetDims().data(),
-            output_shape.GetDims().data(),
-            kernel_dim,
-            kernel_shape.data(),
-            strides.data(),
-            dilations.data(),
-            pads.data(),
-            static_cast<int>(kernel_rank),
-            col_buffer_data,
-            false,
-            X_zero_point_value);
+      if (col_buffer_data != nullptr) {
+        if (kernel_rank != 2) {
+          math::Im2colNd<uint8_t, StorageOrder::NHWC>()(
+              transpose_input,
+              input_shape.GetDims().data(),
+              output_shape.GetDims().data(),
+              kernel_dim,
+              kernel_shape.data(),
+              strides.data(),
+              dilations.data(),
+              pads.data(),
+              static_cast<int>(kernel_rank),
+              col_buffer_data,
+              false,
+              X_zero_point_value);
+        }
       }
 
       auto conv_worker = [&](ptrdiff_t batch) {
@@ -410,7 +411,7 @@ Status QLinearConv<int8_t>::Compute(OpKernelContext* context) const {
             MlasConvDepthwise(worker_gemm_input,
                               X_zero_point_value,
                               reinterpret_cast<int8_t*>(reordered_W),
-                              static_cast<int8_t>(0),
+                              static_cast<int8_t>(W_zero_point_value),
                               worker_gemm_output,
                               static_cast<size_t>(group_output_channels),
                               static_cast<size_t>(output_count),
@@ -419,7 +420,7 @@ Status QLinearConv<int8_t>::Compute(OpKernelContext* context) const {
             MlasConvDepthwise(worker_gemm_input,
                               X_zero_point_value,
                               reordered_W,
-                              static_cast<uint8_t>(0),
+                              W_zero_point_value,
                               worker_gemm_output,
                               static_cast<size_t>(group_output_channels),
                               static_cast<size_t>(output_count),
@@ -435,7 +436,7 @@ Status QLinearConv<int8_t>::Compute(OpKernelContext* context) const {
                      static_cast<size_t>(kernel_dim),
                      X_zero_point_value,
                      static_cast<const int8_t*>(packed_W_buffer_.get()) + group_id * packed_W_size_,
-                     0,
+                     W_zero_point_value,
                      is_W_signed,
                      worker_gemm_output,
                      static_cast<size_t>(group_output_channels),
@@ -451,7 +452,7 @@ Status QLinearConv<int8_t>::Compute(OpKernelContext* context) const {
                      X_zero_point_value,
                      reordered_W + group_id * group_output_channels,
                      static_cast<size_t>(M),
-                     0,
+                     W_zero_point_value,
                      is_W_signed,
                      worker_gemm_output,
                      static_cast<size_t>(group_output_channels),
@@ -494,12 +495,11 @@ Status QLinearConv<int8_t>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-#endif
+#else
 
-template <>
-class QLinearConv<uint8_t> : public OpKernel {
+class QLinearConv : public OpKernel {
  public:
-  explicit QLinearConv<uint8_t>(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {}
+  explicit QLinearConv(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {}
 
   Status Compute(OpKernelContext* context) const override;
 
@@ -507,18 +507,17 @@ class QLinearConv<uint8_t> : public OpKernel {
   ConvAttributes conv_attrs_;
 };
 
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
+ONNX_CPU_OPERATOR_KERNEL(
     QLinearConv,
     10,
-    uint8_t,
     KernelDefBuilder()
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>())
         .TypeConstraint("T3", DataTypeImpl::GetTensorType<uint8_t>())
         .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
-    QLinearConv<uint8_t>);
+    QLinearConv);
 
-Status QLinearConv<uint8_t>::Compute(OpKernelContext* context) const {
+Status QLinearConv::Compute(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
   const Tensor* W = context->Input<Tensor>(3);
 
@@ -716,5 +715,7 @@ Status QLinearConv<uint8_t>::Compute(OpKernelContext* context) const {
 
   return Status::OK();
 }
+
+#endif
 
 }  // namespace onnxruntime
