@@ -227,6 +227,8 @@ jobs:
         --gpus all \
         --rm \
         --volume $(Build.BinariesDirectory):/build \
+        --volume /bert_data:/bert_data \
+        --volume /bert_ort:/bert_ort \
         onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
           /build/RelWithDebInfo/run_training_pipeline_e2e_tests.py \
             --cwd /build/RelWithDebInfo
@@ -238,6 +240,8 @@ jobs:
         --gpus all \
         --rm \
         --volume $(Build.BinariesDirectory):/build \
+        --volume /bert_data:/bert_data \
+        --volume /bert_ort:/bert_ort \
         onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
           /build/RelWithDebInfo/launch_test.py \
           --process_args "python run_training_pipeline_e2e_tests.py" \
