@@ -7,6 +7,7 @@
 
 #include "core/session/onnxruntime_cxx_api.h"
 #include "contexts.h"
+#include <iomanip>
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -58,6 +59,16 @@ void FillInputBlob(InferenceEngine::Blob::Ptr& inputBlob, size_t request_id, siz
 
 void FillOutputBlob(InferenceEngine::Blob::Ptr& outputBlob, OrtValue* output_tensor,
                     Ort::CustomOpApi& ort, InferenceEngine::Precision precision, size_t batch_slice_idx);
+
+std::vector<std::pair<std::string, InferenceEngine::InferenceEngineProfileInfo>>
+  perfCountersSorted(std::map<std::string, InferenceEngine::InferenceEngineProfileInfo> perfMap);
+
+void printPerformanceCounts(const std::map<std::string, InferenceEngine::InferenceEngineProfileInfo>& performanceMap,
+                                          std::ostream &stream, std::string deviceName);
+
+void printPerformanceCounts(InferenceEngine::InferRequest::Ptr request, std::ostream &stream, std::string deviceName);
+
+void printPerformanceCounts(InferenceEngine::InferRequest request, std::ostream &stream, std::string deviceName);
 
 }  // namespace backend_utils
 }  // namespace openvino_ep
