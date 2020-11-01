@@ -53,7 +53,7 @@ static SessionOptions SESSION_OPTION = {
     false,                             //use_deterministic_compute
     {},                                //session_configurations
     {},                                // initializers_to_share_map
-    false,                             //enable memory_profiling
+    true,                             //enable memory_profiling
 };
 
 TrainingRunner::TrainingRunner(Parameters params, const Environment& env)

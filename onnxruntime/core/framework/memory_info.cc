@@ -273,7 +273,12 @@ size_t MemoryInfo::MemoryInfoProfile::pid_ = 0;
 std::vector<std::string> MemoryInfo::MemoryInfoProfile::events;
 std::unordered_map<size_t, std::unordered_map<size_t, MemoryInfo::AllocationSummary> > MemoryInfo::MemoryInfoProfile::summary_;
 
-//Create sessions in the profiler. To generate cutomized tensors, feed in the group_name that is recorded previously when building the graph
+//Create sessions in the profiler. 
+//p_name: session name
+//pid: sessionid
+//map_type: Initalizer, static_activation, dynamic_activation. We have this separtion because they are using different memory offsets.
+//group_name: The group_name that is recorded previously using function "AddRecordingTensorGroup". Used for generating customized sessions for a group of tensors
+//Top_k: The steps with the top-k highest memory consumptions are plot. When top_k == 0, we plot all the steps
 void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name, const size_t pid, const MemoryInfo::MapType& map_type, const std::string& group_name, const size_t top_k) {
   // Metadata.
   std::string pid_name_internal = p_name + group_name;
