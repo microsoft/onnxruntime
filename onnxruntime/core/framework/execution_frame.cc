@@ -299,11 +299,11 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
         }
       }
     }
-#ifdef ENABLE_MEMORY_PROFILE
-    //Record activation memory pattern
-    MemoryInfo::ClearMemoryInfoPerExecution();
-    MemoryInfo::RecordActivationPatternInfo(*mem_patterns_);
-#endif
+    if (session_state_.IsEnableMemoryProfile()) {
+      //Record activation memory pattern
+      MemoryInfo::ClearMemoryInfoPerExecution();
+      MemoryInfo::RecordActivationPatternInfo(*mem_patterns_);
+    }
   }
 }
 
@@ -409,9 +409,9 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
     // if parallel executor is used.
     std::unique_lock<std::mutex> lock(mtx_);
     dynamic_activation_memory_sizes_in_byte_[location.name] += size;
-#ifdef ENABLE_MEMORY_PROFILE
-    MemoryInfo::SetDynamicAllocation(ort_value_index);
-#endif
+    if (session_state_.IsEnableMemoryProfile()) {
+      MemoryInfo::SetDynamicAllocation(ort_value_index);
+    }
   }
 
   return Status::OK();
@@ -575,9 +575,8 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
       }
     }
 
-#ifdef ENABLE_MEMORY_PROFILE
-    MemoryInfo::RecordActivationAllocInfo(ort_value_index, ort_value);
-#endif
+    if (session_state_.IsEnableMemoryProfile())
+      MemoryInfo::RecordActivationAllocInfo(ort_value_index, ort_value);
 
     return Status::OK();
   } else if (ml_type->IsSparseTensorType()) {

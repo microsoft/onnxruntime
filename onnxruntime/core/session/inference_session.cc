@@ -270,6 +270,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   if (session_options_.enable_profiling) {
     StartProfiling(session_options_.profile_file_prefix);
   }
+  session_state_->SetEnableMemoryProfile(session_options_.enable_memory_profile);
 
   telemetry_ = {};
   // a monotonically increasing session id for use in telemetry

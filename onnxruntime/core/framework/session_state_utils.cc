@@ -154,7 +154,8 @@ common::Status SaveInitializedTensors(
   std::unordered_map<std::string, size_t> planned_initializers_memory_sizes_in_byte;
   ORT_RETURN_IF_ERROR(
       planner.FinalizePlan(planned_initializers_memory_sizes_in_byte));
-  MemoryInfo::RecordInitializerPatternInfo(planner.GetMemPatterns());
+  if(session_options.enable_memory_profile)
+	  MemoryInfo::RecordInitializerPatternInfo(planner.GetMemPatterns());
 
   for (auto i : planned_initializers_memory_sizes_in_byte) {
     LOGS(logger, INFO) << "[Memory] SessionStateInitializer statically allocates "

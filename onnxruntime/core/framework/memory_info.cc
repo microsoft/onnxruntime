@@ -132,7 +132,6 @@ void MemoryInfo::SetDynamicAllocation(const OrtValueIndex idx) {
 void PrintInforPerTensor(const MemoryInfo::AllocInfoPerTensor& alloc_info, const MemoryInfoPerTensor& mem_info, const size_t& rel_addr) {
   std::cout << "Tensor name: " << alloc_info.mlvalue_name << ", ";
   std::cout << "Index: " << alloc_info.mlvalue_index << ", ";
-  std::cout << "Type: " << alloc_info.tensor_type << ", ";
   std::cout << "Reuse inplace: " << alloc_info.inplace_reuse << ", ";
   std::cout << "Alloc type " << alloc_info.alloc_kind << ", ";
   std::cout << "Location: " << alloc_info.location.name << ", ";
@@ -274,6 +273,7 @@ size_t MemoryInfo::MemoryInfoProfile::pid_ = 0;
 std::vector<std::string> MemoryInfo::MemoryInfoProfile::events;
 std::unordered_map<size_t, std::unordered_map<size_t, MemoryInfo::AllocationSummary> > MemoryInfo::MemoryInfoProfile::summary_;
 
+//Create sessions in the profiler. To generate cutomized tensors, feed in the group_name that is recorded previously when building the graph
 void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name, const size_t pid, const MemoryInfo::MapType& map_type, const std::string& group_name, const size_t top_k) {
   // Metadata.
   std::string pid_name_internal = p_name + group_name;

@@ -285,6 +285,13 @@ class SessionState {
     return parent_;
   }
 
+  inline void SetEnableMemoryProfile(bool enable_m_profile) {
+    enable_mem_profile_ = enable_m_profile;
+  }
+  bool IsEnableMemoryProfile() const {
+    return enable_mem_profile_;
+  }
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
 
@@ -398,7 +405,6 @@ class SessionState {
   // lock for the mem_patterns_
   mutable OrtMutex mem_patterns_lock_;
 
-
   // cache for the generated mem_patterns. key is calculated based on input shapes.
   mutable std::map<int64_t, std::unique_ptr<MemoryPatternGroup>> mem_patterns_;
   mutable std::map<int64_t, std::unordered_map<int, TensorShape>> shape_patterns_;
@@ -430,6 +436,7 @@ class SessionState {
 #endif
 
   SessionState* parent_ = nullptr;
+  bool enable_mem_profile_ = false;
   //Assign each graph in each session an unique id.
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   int graph_id_ = 0;
