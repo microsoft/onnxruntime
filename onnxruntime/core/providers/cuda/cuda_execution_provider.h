@@ -25,6 +25,7 @@ struct CUDAExecutionProviderInfo {
   size_t cuda_mem_limit{std::numeric_limits<size_t>::max()};
   ArenaExtendStrategy arena_extend_strategy{ArenaExtendStrategy::kNextPowerOfTwo};
   OrtCudnnConvAlgoSearch cudnn_conv_algo{OrtCudnnConvAlgoSearch::EXHAUSTIVE};
+  bool do_copy_in_default_stream{true};
 };
 
 // Logical device representation.
@@ -87,6 +88,7 @@ private:
   size_t cuda_mem_limit_;
   ArenaExtendStrategy arena_extend_strategy_;
   int cudnn_conv_algo_;
+  bool do_copy_in_default_stream_;
 
   struct DeferredReleaseCPUPtrs {
     bool recorded = false;

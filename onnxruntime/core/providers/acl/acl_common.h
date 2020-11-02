@@ -19,6 +19,8 @@ void ACLPrintTensorShape(const char*, arm_compute::Tensor& t);
 std::shared_ptr<arm_compute::MemoryManagerOnDemand> ACLCreateMemoryManager();
 arm_compute::Status ACLImportMemory(arm_compute::TensorAllocator* allocator, void* memory, size_t size);
 template <typename T>
+void importDataToTensor(arm_compute::Tensor* tensor, const T* data);
+template <typename T>
 void importDataFromTensor(arm_compute::Tensor* tensor, T* data);
 
 }  // namespace acl

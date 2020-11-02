@@ -13,9 +13,20 @@
 #include <sstream>
 #include <atomic>
 #include <mutex>
+#include <algorithm>
 #include <gtest/gtest.h>
 #include "test_allocator.h"
 #include "test_fixture.h"
+
+#ifdef _WIN32
+#include <Windows.h>
+#else
+#include <dlfcn.h>
+#endif
+
+#ifdef USE_CUDA
+#include <cuda_runtime.h>
+#endif
 
 struct Input {
   const char* name = nullptr;
@@ -68,6 +79,7 @@ void TestInference(Ort::Env& env, T model_uri,
                    int provider_type,
                    OrtCustomOpDomain* custom_op_domain_ptr,
                    const char* custom_op_library_filename,
+                   void** library_handle = nullptr,
                    bool test_session_creation_only = false) {
   Ort::SessionOptions session_options;
 
@@ -100,8 +112,7 @@ void TestInference(Ort::Env& env, T model_uri,
   }
 
   if (custom_op_library_filename) {
-    void* library_handle = nullptr;  // leak this, no harm.
-    Ort::ThrowOnError(Ort::GetApi().RegisterCustomOpsLibrary((OrtSessionOptions*)session_options, custom_op_library_filename, &library_handle));
+    Ort::ThrowOnError(Ort::GetApi().RegisterCustomOpsLibrary((OrtSessionOptions*)session_options, custom_op_library_filename, library_handle));
   }
 
   // if session creation passes, model loads fine
@@ -289,7 +300,7 @@ TEST(CApiTest, custom_op_handler) {
   // It is enough to test for successful session creation because if the custom node wasn't assigned an EP,
   // the session creation would fail. Since the custom node is only tied to the CUDA EP (in CUDA-enabled builds),
   // if the session creation succeeds, it is assumed that the node got assigned to the CUDA EP.
-  TestInference<PATH_TYPE, float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1, custom_op_domain, nullptr, true);
+  TestInference<PATH_TYPE, float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1, custom_op_domain, nullptr, nullptr, true);
 #else
   TestInference<PATH_TYPE, float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, custom_op_domain, nullptr);
 #endif
@@ -317,12 +328,12 @@ TEST(CApiTest, RegisterCustomOpForCPUAndCUDA) {
   custom_op_domain.Add(&custom_op_cuda);
 
   TestInference<PATH_TYPE, float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y,
-                                  expected_values_y, 1, custom_op_domain, nullptr, true);
+                                  expected_values_y, 1, custom_op_domain, nullptr, nullptr, true);
 }
 #endif
 
 //It has memory leak. The OrtCustomOpDomain created in custom_op_library.cc:RegisterCustomOps function was not freed
-#if defined(__ANDROID__) || defined(ONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
+#if defined(__ANDROID__)
 TEST(CApiTest, DISABLED_test_custom_op_library) {
 #else
 TEST(CApiTest, test_custom_op_library) {
@@ -357,7 +368,17 @@ TEST(CApiTest, test_custom_op_library) {
 lib_name = "./libcustom_op_library.so";
 #endif
 
-  TestInference<PATH_TYPE, int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y, expected_values_y, 0, nullptr, lib_name.c_str());
+  void* library_handle = nullptr;
+  TestInference<PATH_TYPE, int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
+                                    expected_values_y, 0, nullptr, lib_name.c_str(), &library_handle);
+
+#ifdef _WIN32
+  bool success = ::FreeLibrary(reinterpret_cast<HMODULE>(library_handle));
+  ORT_ENFORCE(success, "Error while closing custom op shared library");
+#else
+  int retval = dlclose(library_handle);
+  ORT_ENFORCE(retval == 0, "Error while closing custom op shared library");
+#endif
 }
 
 #if defined(ENABLE_LANGUAGE_INTEROP_OPS)
@@ -584,6 +605,113 @@ TEST(CApiTest, io_binding) {
   binding.ClearBoundInputs();
   binding.ClearBoundOutputs();
 }
+
+#ifdef USE_CUDA
+TEST(CApiTest, io_binding_cuda) {
+  struct CudaMemoryDeleter {
+    explicit CudaMemoryDeleter(const Ort::Allocator* alloc) {
+      alloc_ = alloc;
+    }
+    void operator()(void* ptr) const {
+      alloc_->Free(ptr);
+    }
+
+    const Ort::Allocator* alloc_;
+  };
+
+  Ort::SessionOptions session_options;
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+  Ort::Session session(*ort_env, MODEL_URI, session_options);
+
+  Ort::MemoryInfo info_cuda("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
+  Ort::Allocator cuda_allocator(session, info_cuda);
+  auto allocator_info = cuda_allocator.GetInfo();
+  ASSERT_TRUE(info_cuda == allocator_info);
+
+  const std::array<int64_t, 2> x_shape = {3, 2};
+  std::array<float, 3 * 2> x_values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  auto input_data = std::unique_ptr<void, CudaMemoryDeleter>(cuda_allocator.Alloc(x_values.size() * sizeof(float)),
+                                                             CudaMemoryDeleter(&cuda_allocator));
+  ASSERT_NE(input_data.get(), nullptr);
+  cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
+
+  // Create an OrtValue tensor backed by data on CUDA memory
+  Ort::Value bound_x = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(input_data.get()), x_values.size(),
+                                                x_shape.data(), x_shape.size());
+
+  const std::array<int64_t, 2> expected_y_shape = {3, 2};
+  const std::array<float, 3 * 2> expected_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
+  auto output_data = std::unique_ptr<void, CudaMemoryDeleter>(cuda_allocator.Alloc(expected_y.size() * sizeof(float)),
+                                                              CudaMemoryDeleter(&cuda_allocator));
+  ASSERT_NE(output_data.get(), nullptr);
+
+  // Create an OrtValue tensor backed by data on CUDA memory
+  Ort::Value bound_y = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(output_data.get()), expected_y.size(),
+                                                expected_y_shape.data(), expected_y_shape.size());
+
+  Ort::IoBinding binding(session);
+  binding.BindInput("X", bound_x);
+  binding.BindOutput("Y", bound_y);
+
+  session.Run(Ort::RunOptions(), binding);
+
+  // Check the values against the bound raw memory (needs copying from device to host first)
+  std::array<float, 3 * 2> y_values_0;
+  cudaMemcpy(y_values_0.data(), output_data.get(), sizeof(float) * y_values_0.size(), cudaMemcpyDeviceToHost);
+  ASSERT_TRUE(std::equal(std::begin(y_values_0), std::end(y_values_0), std::begin(expected_y)));
+
+  // Now compare values via GetOutputValues
+  {
+    std::vector<Ort::Value> output_values = binding.GetOutputValues();
+    ASSERT_EQ(output_values.size(), 1U);
+    const Ort::Value& Y_value = output_values[0];
+    ASSERT_TRUE(Y_value.IsTensor());
+    Ort::TensorTypeAndShapeInfo type_info = Y_value.GetTensorTypeAndShapeInfo();
+    ASSERT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, type_info.GetElementType());
+    auto count = type_info.GetElementCount();
+    ASSERT_EQ(expected_y.size(), count);
+    const float* values = Y_value.GetTensorData<float>();
+
+    std::array<float, 3 * 2> y_values_1;
+    cudaMemcpy(y_values_1.data(), values, sizeof(float) * y_values_1.size(), cudaMemcpyDeviceToHost);
+    ASSERT_TRUE(std::equal(std::begin(y_values_1), std::end(y_values_1), std::begin(expected_y)));
+  }
+
+  {
+    std::vector<std::string> output_names = binding.GetOutputNames();
+    ASSERT_EQ(1U, output_names.size());
+    ASSERT_EQ(output_names[0].compare("Y"), 0);
+  }
+
+  // Now replace binding of Y with an on device binding instead of pre-allocated memory.
+  // This is when we can not allocate an OrtValue due to unknown dimensions
+  {
+    binding.BindOutput("Y", info_cuda);
+    session.Run(Ort::RunOptions(), binding);
+  }
+
+  // Check the output value allocated based on the device binding.
+  {
+    std::vector<Ort::Value> output_values = binding.GetOutputValues();
+    ASSERT_EQ(output_values.size(), 1U);
+    const Ort::Value& Y_value = output_values[0];
+    ASSERT_TRUE(Y_value.IsTensor());
+    Ort::TensorTypeAndShapeInfo type_info = Y_value.GetTensorTypeAndShapeInfo();
+    ASSERT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, type_info.GetElementType());
+    auto count = type_info.GetElementCount();
+    ASSERT_EQ(expected_y.size(), count);
+    const float* values = Y_value.GetTensorData<float>();
+
+    std::array<float, 3 * 2> y_values_2;
+    cudaMemcpy(y_values_2.data(), values, sizeof(float) * y_values_2.size(), cudaMemcpyDeviceToHost);
+    ASSERT_TRUE(std::equal(std::begin(y_values_2), std::end(y_values_2), std::begin(expected_y)));
+  }
+
+  // Clean up
+  binding.ClearBoundInputs();
+  binding.ClearBoundOutputs();
+}
+#endif
 
 TEST(CApiTest, create_tensor) {
   const char* s[] = {"abc", "kmp"};
@@ -881,6 +1009,11 @@ TEST(CApiTest, get_available_providers_cpp) {
   std::vector<std::string> providers = Ort::GetAvailableProviders();
   ASSERT_TRUE(providers.size() > 0);
   ASSERT_TRUE(providers[0] == std::string("CPUExecutionProvider"));
+
+#ifdef USE_CUDA
+  // CUDA EP will exist in the list but its position may vary based on other EPs included in the build
+  ASSERT_TRUE(std::find(providers.begin(), providers.end(), std::string("CUDAExecutionProvider")) != providers.end());
+#endif
 }
 
 // This test uses the CreateAndRegisterAllocator API to register an allocator with the env,
@@ -949,11 +1082,12 @@ TEST(CApiTest, TestSharingOfInitializer) {
 
   // prepare expected inputs and outputs
   std::vector<int64_t> expected_dims_y = {3, 2};
-  std::vector<float> expected_values_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
+  std::vector<float> expected_values_y = {2.0f, 2.0f, 12.0f, 12.0f, 30.0f, 30.0f};
 
   Ort::SessionOptions session_options;
   Ort::MemoryInfo mem_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-  float data[] = {1., 2., 3., 4., 5., 6.};
+  // These values are different from the actual initializer values in the model
+  float data[] = {2., 1., 4., 3., 6., 5.};
   const int data_len = sizeof(data) / sizeof(data[0]);
   const int64_t shape[] = {3, 2};
   const size_t shape_len = sizeof(shape) / sizeof(shape[0]);

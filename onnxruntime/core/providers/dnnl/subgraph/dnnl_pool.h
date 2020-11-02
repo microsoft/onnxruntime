@@ -198,7 +198,7 @@ class DnnlPool : public DnnlKernel {
       }
 
       auto src_size = fwd_primitive_desc_.get()->src_desc().get_size();
-      src_reorder_buffer_ = Provider_IAllocator::MakeUniquePtr<void>(alloc_, src_size);
+      src_reorder_buffer_ = IAllocator::MakeUniquePtr<void>(alloc_, src_size);
       src_mem_->set_data_handle(src_reorder_buffer_.get());
     } else {
       if (mklnode_ptr_->parent_nodes.empty()) {

@@ -187,7 +187,7 @@ Nuget packages are created under <native_build_dir>\nuget-artifacts
     ONNX Runtime can also be built with CUDA versions from 10.1 up to 11.0, and cuDNN versions from 7.6 up to 8.0.
   * The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home` parameter
   * The path to the cuDNN installation (include the `cuda` folder in the path) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home` parameter. The cuDNN path should contain `bin`, `include` and `lib` directories.
-  * The path to the cuDNN bin directory must be added to the PATH environment variable so that cudnn64_7.dll is found.
+  * The path to the cuDNN bin directory must be added to the PATH environment variable so that cudnn64_8.dll is found.
 
 #### Build Instructions
 ##### Windows
@@ -338,20 +338,21 @@ See more information on the nGraph Execution Provider [here](./docs/execution_pr
 See more information on the OpenVINO Execution Provider [here](./docs/execution_providers/OpenVINO-ExecutionProvider.md).
 
 #### Prerequisites
-1. Install the Intel<sup>®</sup> Distribution of OpenVINO<sup>TM</sup> Toolkit **Release 2020.4** for the appropriate OS and target hardware :
+1. Install the Intel<sup>®</sup> Distribution of OpenVINO<sup>TM</sup> Toolkit **Release 2021.1** for the appropriate OS and target hardware :
    * [Linux - CPU, GPU, VPU, VAD-M](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-linux)
    * [Linux - FPGA](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-linux-fpga)
    * [Windows - CPU, GPU, VPU, VAD-M](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-windows).
 
-   Follow [documentation](https://docs.openvinotoolkit.org/2020.4/index.html) for detailed instructions.
+   Follow [documentation](https://docs.openvinotoolkit.org/2021.1/index.html) for detailed instructions.
 
-  *2020.4 is the recommended OpenVINO version. [OpenVINO 2020.2](https://docs.openvinotoolkit.org/2020.2/index.html) is minimal OpenVINO version requirement.*
+  *2021.1 is the recommended OpenVINO version. [OpenVINO 2020.2](https://docs.openvinotoolkit.org/2020.2/index.html) is minimal OpenVINO version requirement.*
+  *The minimum ubuntu version to support 2021.1 is 18.04.*
 
 2. Configure the target hardware with specific follow on instructions:
-   * To configure Intel<sup>®</sup> Processor Graphics(GPU) please follow these instructions: [Windows](https://docs.openvinotoolkit.org/2020.4/openvino_docs_install_guides_installing_openvino_windows.html#Install-GPU), [Linux](https://docs.openvinotoolkit.org/2020.4/openvino_docs_install_guides_installing_openvino_linux.html#additional-GPU-steps)
-   * To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow this getting started guide: [Linux](https://docs.openvinotoolkit.org/2020.4/openvino_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps)
-   * To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow this configuration guide: [Windows](https://docs.openvinotoolkit.org/2020.4/openvino_docs_install_guides_installing_openvino_windows.html#hddl-myriad), [Linux](https://docs.openvinotoolkit.org/2020.4/openvino_docs_install_guides_installing_openvino_linux.html#install-VPU). Follow steps 3 and 4 to complete the configuration.
-   * To configure Intel<sup>®</sup> Vision Accelerator Design with an Intel<sup>®</sup> Arria<sup>®</sup> 10 FPGA, please follow this configuration guide: [Linux](https://docs.openvinotoolkit.org/2020.4/openvino_docs_install_guides_installing_openvino_linux_fpga.html)
+   * To configure Intel<sup>®</sup> Processor Graphics(GPU) please follow these instructions: [Windows](https://docs.openvinotoolkit.org/2021.1/openvino_docs_install_guides_installing_openvino_windows.html#Install-GPU), [Linux](https://docs.openvinotoolkit.org/2021.1/openvino_docs_install_guides_installing_openvino_linux.html#additional-GPU-steps)
+   * To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow this getting started guide: [Linux](https://docs.openvinotoolkit.org/2021.1/openvino_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps)
+   * To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow this configuration guide: [Windows](https://docs.openvinotoolkit.org/2021.1/openvino_docs_install_guides_installing_openvino_windows.html#hddl-myriad), [Linux](https://docs.openvinotoolkit.org/2021.1/openvino_docs_install_guides_installing_openvino_linux.html#install-VPU). Follow steps 3 and 4 to complete the configuration.
+   * To configure Intel<sup>®</sup> Vision Accelerator Design with an Intel<sup>®</sup> Arria<sup>®</sup> 10 FPGA, please follow this configuration guide: [Linux](https://docs.openvinotoolkit.org/2021.1/openvino_docs_install_guides_installing_openvino_linux_fpga.html)
 
 3. Initialize the OpenVINO environment by running the setupvars script as shown below:
    * For Linux run:
@@ -394,6 +395,17 @@ See more information on the OpenVINO Execution Provider [here](./docs/execution_
 | <code>MYRIAD_FP16</code> | Intel<sup>®</sup> Movidius<sup>TM</sup> USB sticks | 
 | <code>VAD-M_FP16</code> | Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs |
 | <code>VAD-F_FP32</code> | Intel<sup>®</sup> Vision Accelerator Design with an Intel<sup>®</sup> Arria<sup>®</sup> 10 FPGA |
+| <code>HETERO:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>...</code> | All Intel<sup>®</sup> silicons mentioned above |
+
+Specifying Hardware Target for HETERO Build:
+
+HETERO:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>...
+The <DEVICE_TYPE> can be any of these devices from this list ['CPU','GPU','MYRIAD','FPGA','HDDL']
+
+A minimum of two DEVICE_TYPE'S should be specified for a valid HETERO Build.
+
+Example:
+HETERO:MYRIAD,CPU        HETERO:HDDL,GPU,CPU
 
 For more information on OpenVINO Execution Provider&#39;s ONNX Layer support, Topology support, and Intel hardware enabled, please refer to the document [OpenVINO-ExecutionProvider.md](./docs/execution_providers/OpenVINO-ExecutionProvider.md) in <code>$onnxruntime_root/docs/execution_providers</code>
 
@@ -509,6 +521,11 @@ cmake ../onnxruntime-arm-upstream/cmake -DONNX_CUSTOM_PROTOC_EXECUTABLE=/usr/bin
 The ```-Donnxruntime_USE_ACL=ON``` option will use, by default, the 19.05 version of the Arm Compute Library. To set the right version you can use:
 ```-Donnxruntime_USE_ACL_1902=ON```, ```-Donnxruntime_USE_ACL_1905=ON```, ```-Donnxruntime_USE_ACL_1908=ON``` or ```-Donnxruntime_USE_ACL_2002=ON```;
 
+To use a library outside the normal environment you can set a custom path by using ```-Donnxruntime_ACL_HOME``` and ```-Donnxruntime_ACL_LIBS``` tags that defines the path to the ComputeLibrary directory and the build directory respectively.
+
+```-Donnxruntime_ACL_HOME=/path/to/ComputeLibrary```, ```-Donnxruntime_ACL_LIBS=/path/to/build```
+
+
 2. Build ONNX Runtime library, test and performance application:
 ```
 make -j 6
@@ -541,6 +558,10 @@ export LD_LIBRARY_PATH=~/ComputeLibrary/build/
 ```
 ./build.sh --use_acl
 ```
+To use a library outside the normal environment you can set a custom path by using --acl_home and --acl_libs tags that defines the path to the ComputeLibrary directory and the build directory respectively.
+```
+./build.sh --use_acl --acl_home /path/to/ComputeLibrary --acl_libs /path/to/build
+```
 
 ---
 
@@ -569,6 +590,11 @@ The Relu operator is set by default to use the CPU execution provider for better
 The Batch Normalization operator is set by default to use the CPU execution provider. To use the ArmNN implementation build with --armnn_bn flag
 ```
 ./build.sh --use_armnn --armnn_bn
+```
+
+To use a library outside the normal environment you can set a custom path by using --armnn_home and --armnn_libs tags that defines the path to the ArmNN home directory and the build directory respectively.
+```
+./build.sh --use_armnn --armnn_home /path/to/ComputeLibrary --armnn_libs /path/to/build
 ```
 
 ---
@@ -681,7 +707,7 @@ ORT_DEBUG_NODE_IO_DUMP_OUTPUT_DATA=1
 To specify that node output data should be dumped to files for nodes with name "Foo" or "Bar", set these environment variables:
 ```
 ORT_DEBUG_NODE_IO_DUMP_OUTPUT_DATA=1
-ORT_DEBUG_NODE_IO_NODE_NAME_FILTER="Foo;Bar"
+ORT_DEBUG_NODE_IO_NAME_FILTER="Foo;Bar"
 ORT_DEBUG_NODE_IO_DUMP_DATA_TO_FILES=1
 ```
 
@@ -1045,6 +1071,17 @@ e.g. using the paths from our example
 ##### Build Android Archive (AAR)
 
 Android Archive (AAR) files, which can be imported directly in Android Studio, will be generated in your_build_dir/java/build/outputs/aar, by using the above building commands with `--build_java`
+
+To build on Windows with `--build_java` enabled you must also:
+  - set JAVA_HOME to the path to your JDK install
+    - this could be the JDK from Android Studio, or a [standalone JDK install](https://www.oracle.com/java/technologies/javase-downloads.html)
+    - e.g. Powershell: `$env:JAVA_HOME="C:\Program Files\Java\jdk-15"`
+           CMD: `set JAVA_HOME=C:\Program Files\Java\jdk-15`
+  - install [Gradle](https://gradle.org/install/) and add the directory to the PATH
+    - e.g. Powershell: `$env:PATH="$env:PATH;C:\Gradle\gradle-6.6.1\bin"`
+           CMD: `set PATH=%PATH%;C:\Gradle\gradle-6.6.1\bin`
+  - run the build from an admin window
+    - the Java build needs permissions to create a symlink, which requires an admin window
 
 #### Android NNAPI Execution Provider
 

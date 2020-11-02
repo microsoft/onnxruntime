@@ -4,6 +4,7 @@
 #include "cxxopts.hpp"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
+#include "core/framework/bfc_arena.h"
 #include "core/platform/env.h"
 #include "core/session/environment.h"
 #include "orttraining/core/session/training_session.h"
@@ -21,7 +22,8 @@ namespace onnxruntime {
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id,
                                                                                OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE,
                                                                                size_t cuda_mem_limit = std::numeric_limits<size_t>::max(),
-                                                                               onnxruntime::ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo);
+                                                                               onnxruntime::ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo,
+                                                                               bool do_copy_in_default_stream = true);
 }
 
 using namespace onnxruntime;
@@ -70,6 +72,9 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
     }
     params.evaluation_period = flags["evaluation_period"].as<size_t>();
 
+    params.shuffle_data = false;
+    params.is_perf_test = false;
+
     auto train_data_dir = flags["train_data_dir"].as<std::string>();
     auto log_dir = flags["log_dir"].as<std::string>();
     params.train_data_dir.assign(train_data_dir.begin(), train_data_dir.end());
@@ -79,7 +84,9 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
 #ifdef USE_CUDA
     bool use_cuda = flags.count("use_cuda") > 0;
     if (use_cuda) {
-      params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(0));
+      // Use local rank as device ID of the associated CUDA EP.
+      OrtDevice::DeviceId device_id = static_cast<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
+      params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(device_id));
     }
 #endif
   } catch (const exception& e) {

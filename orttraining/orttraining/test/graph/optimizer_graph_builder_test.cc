@@ -111,8 +111,10 @@ OptimizerBuilderRegistry& GetOptimizerBuilderRegistry() {
   return OptimizerBuilderRegistry::GetInstance();
 }
 
-int GetOpCount(const std::map<std::string, int>& op_counts, const std::string& op_type) {
-  auto op_count_it = op_counts.find(op_type);
+static int GetOpCount(const std::map<std::string, int>& op_counts, const std::string& op_type) {
+  static std::string ms_domain_prefix{std::string(kMSDomain) + '.'};
+
+  auto op_count_it = op_counts.find(ms_domain_prefix + op_type);
   return op_count_it != op_counts.end() ? op_count_it->second : 0;
 }
 
@@ -219,6 +221,9 @@ static void TestAllreduceOptimizerGraphBuilder(OptimizerGraphConfig config, Grap
   ASSERT_EQ(GetOpCount(op_counts, k_optimizer_op_name), k_weight_names.size());
 }
 
+#endif
+
+#ifdef USE_HOROVOD
 static void TestAdasumOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& graph) {
   AdasumOptimizerGraphBuilder optimizer_graph_builder(
       GetOptimizerBuilderRegistry(), config, GetOptInfoMap());
@@ -253,9 +258,7 @@ static void TestAdasumOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& 
   // verify optimizers exist
   ASSERT_EQ(GetOpCount(op_counts, k_optimizer_op_name), k_weight_names.size());
 }
-#endif
 
-#ifdef USE_HOROVOD
 TEST_F(OptimizerGraphBuilderTest, Allreduce_Horovod_NoGradientAccumulation_NoMixedPrecision) {
   OptimizerGraphConfig config;
   config.data_parallel_group_size = 4;

@@ -925,7 +925,8 @@ template <typename TBroadcastHelper>
 void BroadcastLooper(TBroadcastHelper& helper, const ProcessBroadcastSpanFuncs& functors) {
   ORT_ENFORCE(helper.HaveTwoTensorInputs(), "BroadcastLooper requires two tensors as input.");
 
-  if (helper.Threadpool() != nullptr && helper.SingleSpanOutput()) {
+  bool par_available = concurrency::ThreadPool::ShouldParallelize(helper.Threadpool());
+  if (par_available && helper.SingleSpanOutput()) {
     ParallelizeSingleSpan(helper, functors);
   } else {
     if (helper.IsInput0Scalar()) {
