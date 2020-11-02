@@ -361,12 +361,40 @@ OrtModelTestInfo GetTestInfoForLoadOrtFormatModel() {
   return test_info;
 }
 
+OrtModelTestInfo GetTestInfoForLoadMNISTOrtFormatModel() {
+  OrtModelTestInfo test_info;
+  test_info.model_filename = ORT_TSTR("testdata/mnist/model.ort");
+  test_info.logid = "LoadOrtFormatModel";
+
+  OrtValue ml_value;
+  const std::vector<int64_t>  dims = {1, 1, 28, 28};
+  vector<float> data(28*28, 0.0);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims, data,
+                       &ml_value);
+  test_info.inputs.insert(std::make_pair("state_var_in", ml_value));
+
+  // prepare outputs
+  test_info.output_names = {"state_var_out"};
+  test_info.output_verifier = [](const std::vector<OrtValue>& fetches) {
+    const auto& output = fetches[0].Get<Tensor>();
+    ASSERT_TRUE(output.Shape().Size() == 1);
+    // ASSERT_TRUE(output.Data<float>()[0] == 125.f);
+  };
+
+  return test_info;
+}
+
 // test that we can deserialize and run a previously saved ORT format model
 TEST(OrtModelOnlyTests, LoadOrtFormatModel) {
   OrtModelTestInfo test_info = GetTestInfoForLoadOrtFormatModel();
   RunOrtModel(test_info);
 }
 
+TEST(OrtModelOnlyTests, LoadMNISTOrtFormatModel) {
+  OrtModelTestInfo test_info = GetTestInfoForLoadMNISTOrtFormatModel();
+  test_info.configs.push_back(std::make_pair(kOrtSessionOptionsConfigLoadModelFormat, "ORT"));
+  RunOrtModel(test_info);
+}
 // Load the model from a buffer instead of a file path
 TEST(OrtModelOnlyTests, LoadOrtFormatModelFromBuffer) {
   OrtModelTestInfo test_info = GetTestInfoForLoadOrtFormatModel();

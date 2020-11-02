@@ -294,8 +294,7 @@ int main(int argc, char* argv[])
     
     // Create a stream to hold the model
     //
-    std::ifstream modelStream{modelFile};
-
+    std::ifstream modelStream{modelFile, std::ios::in | std::ios::binary};
     // Create an onnx protobuf object
     //
     onnx::ModelProto model_proto;
