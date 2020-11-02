@@ -96,3 +96,6 @@ def _get_name(name):
     if os.path.exists(res):
         return res
     raise FileNotFoundError("Unable to find '{0}' or '{1}' or '{2}'".format(name, rel, res))
+
+def _get_bert_ckpt_prefix(name):
+    return 'bert_toy_' + name

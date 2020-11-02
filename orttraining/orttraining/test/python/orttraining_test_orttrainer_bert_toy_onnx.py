@@ -7,6 +7,7 @@ import onnx
 import os
 import pytest
 import torch
+import subprocess
 
 import onnxruntime
 from onnxruntime.capi.ort_trainer import IODescription as Legacy_IODescription,\
@@ -19,141 +20,7 @@ from onnxruntime.training import _utils, amp, checkpoint, optim, orttrainer, Tra
 
 import _test_commons, _test_helpers
 
-
-###############################################################################
-# Helper functions ############################################################
-###############################################################################
-
-
-def generate_random_input_from_model_desc(desc, seed=1, device = "cuda:0"):
-    '''Generates a sample input for the BERT model using the model desc'''
-
-    torch.manual_seed(seed)
-    onnxruntime.set_seed(seed)
-    dtype = torch.int64
-    vocab_size = 30528
-    num_classes = [vocab_size, 2, 2, vocab_size, 2]
-    dims = {"batch_size":16, "seq_len":1}
-    sample_input = []
-    for index, input in enumerate(desc['inputs']):
-        size = []
-        for s in input[1]:
-            if isinstance(s, (int)):
-                size.append(s)
-            else:
-                size.append(dims[s] if s in dims else 1)
-        sample_input.append(torch.randint(0, num_classes[index], tuple(size), dtype=dtype).to(device))
-    return sample_input
-
-# EXPERIMENTAL HELPER FUNCTIONS
-
-def bert_model_description(dynamic_shape=True):
-    '''Creates the model description dictionary with static dimensions'''
-
-    if dynamic_shape:
-        model_desc = {'inputs': [('input_ids', ['batch_size', 'seq_len']),
-                                 ('segment_ids', ['batch_size', 'seq_len'],),
-                                 ('input_mask', ['batch_size', 'seq_len'],),
-                                 ('masked_lm_labels', ['batch_size', 'seq_len'],),
-                                 ('next_sentence_labels', ['batch_size', ],)],
-                                 'outputs': [('loss', [], True)]}
-    else:
-        batch_size = 16
-        seq_len = 1
-        model_desc = {'inputs': [('input_ids', [batch_size, seq_len]),
-                                ('segment_ids', [batch_size, seq_len],),
-                                ('input_mask', [batch_size, seq_len],),
-                                ('masked_lm_labels', [batch_size, seq_len],),
-                                ('next_sentence_labels', [batch_size, ],)],
-                    'outputs': [('loss', [], True)]}
-    return model_desc
-
-
-def optimizer_parameters(model):
-    '''A method to assign different hyper parameters for different model parameter groups'''
-
-    no_decay_keys = ["bias", "gamma", "beta", "LayerNorm"]
-    no_decay_param_group = []
-    for initializer in model.graph.initializer:
-        if any(key in initializer.name for key in no_decay_keys):
-            no_decay_param_group.append(initializer.name)
-    params = [{'params': no_decay_param_group, "alpha": 0.9, "beta": 0.999, "lambda_coef": 0.0, "epsilon": 1e-6, "do_bias_correction":False}]
-
-    return params
-
-
-def load_bert_onnx_model():
-    bert_onnx_model_path = os.path.join('testdata', "bert_toy_postprocessed.onnx")
-    model = onnx.load(bert_onnx_model_path)
-    return model
-
-
-class CustomLossScaler(amp.LossScaler):
-    def __init__(self, loss_scale=float(1 << 16)):
-        super().__init__(loss_scale)
-        self._initial_loss_scale = loss_scale
-        self.loss_scale = loss_scale
-
-    def reset(self):
-        self.loss_scale = self._initial_loss_scale
-
-    def update(self, train_step_info):
-        self.loss_scale *= 0.9
-        return self.loss_scale
-
-# LEGACY HELPER FUNCTIONS
-
-class LegacyCustomLossScaler():
-    def __init__(self, loss_scale=float(1 << 16)):
-        self._initial_loss_scale = loss_scale
-        self.loss_scale_ = loss_scale
-
-    def reset(self):
-        self.loss_scale_ = self._initial_loss_scale
-
-    def update_loss_scale(self, is_all_finite):
-        self.loss_scale_ *= 0.9
-
-
-def legacy_model_params(lr, device = torch.device("cuda", 0)):
-    legacy_model_desc = legacy_bert_model_description()
-    learning_rate_description = legacy_ort_trainer_learning_rate_description()
-    learning_rate = torch.tensor([lr]).to(device)
-    return (legacy_model_desc, learning_rate_description, learning_rate)
-
-def legacy_ort_trainer_learning_rate_description():
-    return Legacy_IODescription('Learning_Rate', [1, ], torch.float32)
-
-
-def legacy_bert_model_description():
-    vocab_size = 30528
-    input_ids_desc = Legacy_IODescription('input_ids', ['batch', 'max_seq_len_in_batch'])
-    segment_ids_desc = Legacy_IODescription('segment_ids', ['batch', 'max_seq_len_in_batch'])
-    input_mask_desc = Legacy_IODescription('input_mask', ['batch', 'max_seq_len_in_batch'])
-    masked_lm_labels_desc = Legacy_IODescription('masked_lm_labels', ['batch', 'max_seq_len_in_batch'])
-    next_sentence_labels_desc = Legacy_IODescription('next_sentence_labels', ['batch', ])
-    loss_desc = Legacy_IODescription('loss', [])
-
-    return Legacy_ModelDescription([input_ids_desc, segment_ids_desc, input_mask_desc, masked_lm_labels_desc,
-                             next_sentence_labels_desc], [loss_desc])
-
-
-def legacy_optim_params_a(name):
-    return {"alpha": 0.9, "beta": 0.999, "lambda": 0.01, "epsilon": 1e-6, "do_bias_correction": False}
-
-
-def legacy_optim_params_b(name):
-    params = ['bert.embeddings.LayerNorm.bias', 'bert.embeddings.LayerNorm.weight']
-    if name in params:
-        return {"alpha": 0.9, "beta": 0.999, "lambda": 0.0, "epsilon": 1e-6, "do_bias_correction": False}
-    return {"alpha": 0.9, "beta": 0.999, "lambda": 0.01, "epsilon": 1e-6, "do_bias_correction": False}
-
-
-def legacy_optim_params_c(name):
-    params_group = optimizer_parameters(load_bert_onnx_model())
-    if name in params_group[0]['params']:
-        return {"alpha": 0.9, "beta": 0.999, "lambda": 0.0, "epsilon": 1e-6, "do_bias_correction": False}
-    return {"alpha": 0.9, "beta": 0.999, "lambda": 0.01, "epsilon": 1e-6, "do_bias_correction": False}
+from orttrainer_bert_toy_onnx import *
 
 ###############################################################################
 # Testing starts here #########################################################
@@ -421,125 +288,28 @@ def testToyBertCheckpointBasic():
     for k,v in loaded_sd.items():
         assert torch.all(torch.eq(v, sd[k]))
 
-# checkpointfiles generated using:
-# mpirun -n 4 python3 orttrainer_bert_toy_onnx_ckpt_gen.py
-def testToyBertCheckpointLoadZeroFullprecisionLamb():
+# Test ZeRO checkpoint loading from a distributed Zero stage 1 mixedprecision run to the
+# following configs. This test ensures that the weights as well as the optimizer
+# state are aggregated and loaded correctly into fp32 and fp16 single-node 
+# trainers respectively, for Adam and Lamb optimizers.
+@pytest.mark.parametrize("optimizer, mixedprecision_enabled, expected_eval_loss", [
+    (optim.LambConfig(), False, [11.011026]),
+    (optim.AdamConfig(), False, [10.998348]),
+    (optim.LambConfig(), True, [11.011026]),
+    (optim.AdamConfig(), True, [10.998348]),
+])
+def testToyBertCheckpointLoadZero(optimizer, mixedprecision_enabled, expected_eval_loss):
     # Common setup
     rtol = 1e-03
     device = 'cuda'
     seed = 1
     torch.manual_seed(seed)
     onnxruntime.set_seed(seed)
-    optim_config = optim.LambConfig()
-    opts = orttrainer.ORTTrainerOptions({'debug' : {'deterministic_compute': True},
-                                         'device' : {'id' : device},
-                                         'distributed' : {'allreduce_post_accumulation' : True}})
-
-    # Create ORTTrainer and save initial state in a dict
-    model = load_bert_onnx_model()
-    model_desc = bert_model_description()
-    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
-    ckpt_dir = _test_helpers._get_name("ort_ckpt")
-    checkpoint.experimental_load_checkpoint(trainer, ckpt_dir, 'bert_toy_lamb')
-
-    # Expected values
-    expected_eval_loss = [11.011026]
-    input_ids = torch.tensor([[26598],[21379],[19922],[ 5219],[ 5644],[20559],[23777],[25672],[22969],[16824],[16822],[635],[27399],[20647],[18519],[15546]], device=device)
-    segment_ids = torch.tensor([[0],[1],[0],[1],[0],[0],[1],[0],[0],[1],[1],[0],[0],[1],[1],[1]], device=device)
-    input_mask = torch.tensor([[0],[0],[0],[0],[1],[1],[1],[0],[1],[1],[0],[0],[0],[1],[0],[0]], device=device)
-    masked_lm_labels = torch.tensor([[25496],[16184],[11005],[16228],[14884],[21660],[ 8678],[23083],[ 4027],[ 8397],[11921],[ 1333],[26482],[ 1666],[17925],[27978]], device=device)
-    next_sentence_labels = torch.tensor([0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0], device=device)
-
-    # Actual values
-    actual_eval_loss = trainer.eval_step(input_ids, segment_ids, input_mask, masked_lm_labels, next_sentence_labels)
-    actual_eval_loss = actual_eval_loss.cpu().numpy().item(0)
-
-    checkpoint_files = sorted(checkpoint._list_checkpoint_files(ckpt_dir, 'bert_toy_lamb'))
-    loaded_state_dict = checkpoint.experimental_state_dict(trainer)
-    loaded_state_dict = checkpoint._split_state_dict(loaded_state_dict)
-
-    for f in checkpoint_files:
-        rank_state_dict = torch.load(f, map_location=torch.device("cpu"))
-        rank_state_dict = checkpoint._split_state_dict(rank_state_dict)
-
-        for k,v in rank_state_dict['fp16_param'].items():
-            fp32_name = k.split('_fp16')[0]
-            assert_allclose(v, loaded_state_dict['fp32_param'][fp32_name])
-        
-        for k,v in rank_state_dict['optimizer'].items():
-            if k in loaded_state_dict['optimizer']:
-                assert_allclose(v, loaded_state_dict['optimizer'][k])
-
-    # Check results
-    assert_allclose(expected_eval_loss, actual_eval_loss, rtol=rtol)
-
-# checkpointfiles generated using:
-# mpirun -n 4 python3 orttrainer_bert_toy_onnx_ckpt_gen.py
-def testToyBertCheckpointLoadZeroFullprecisionAdam():
-    # Common setup
-    rtol = 1e-03
-    device = 'cuda'
-    seed = 1
-    torch.manual_seed(seed)
-    onnxruntime.set_seed(seed)
-    optim_config = optim.AdamConfig()
-    opts = orttrainer.ORTTrainerOptions({'debug' : {'deterministic_compute': True},
-                                         'device' : {'id' : device},
-                                         'distributed' : {'allreduce_post_accumulation' : True}})
-
-    # Create ORTTrainer and save initial state in a dict
-    model = load_bert_onnx_model()
-    model_desc = bert_model_description()
-    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
-    ckpt_dir = _test_helpers._get_name("ort_ckpt")
-    checkpoint.experimental_load_checkpoint(trainer, ckpt_dir, 'bert_toy_adam')
-
-    # Expected values
-    expected_eval_loss = [10.998348]
-    input_ids = torch.tensor([[26598],[21379],[19922],[ 5219],[ 5644],[20559],[23777],[25672],[22969],[16824],[16822],[635],[27399],[20647],[18519],[15546]], device=device)
-    segment_ids = torch.tensor([[0],[1],[0],[1],[0],[0],[1],[0],[0],[1],[1],[0],[0],[1],[1],[1]], device=device)
-    input_mask = torch.tensor([[0],[0],[0],[0],[1],[1],[1],[0],[1],[1],[0],[0],[0],[1],[0],[0]], device=device)
-    masked_lm_labels = torch.tensor([[25496],[16184],[11005],[16228],[14884],[21660],[ 8678],[23083],[ 4027],[ 8397],[11921],[ 1333],[26482],[ 1666],[17925],[27978]], device=device)
-    next_sentence_labels = torch.tensor([0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0], device=device)
-
-    # Actual values
-    actual_eval_loss = trainer.eval_step(input_ids, segment_ids, input_mask, masked_lm_labels, next_sentence_labels)
-    actual_eval_loss = actual_eval_loss.cpu().numpy().item(0)
-
-    checkpoint_files = sorted(checkpoint._list_checkpoint_files(ckpt_dir, 'bert_toy_adam'))
-    loaded_state_dict = checkpoint.experimental_state_dict(trainer)
-    loaded_state_dict = checkpoint._split_state_dict(loaded_state_dict)
-
-    for f in checkpoint_files:
-        rank_state_dict = torch.load(f, map_location=torch.device("cpu"))
-        rank_state_dict = checkpoint._split_state_dict(rank_state_dict)
-
-        for k,v in rank_state_dict['fp16_param'].items():
-            fp32_name = k.split('_fp16')[0]
-            assert_allclose(v, loaded_state_dict['fp32_param'][fp32_name])
-        
-        for k,v in rank_state_dict['optimizer'].items():
-            if k in loaded_state_dict['optimizer']:
-                assert_allclose(v, loaded_state_dict['optimizer'][k])
-
-    # Check results
-    assert_allclose(expected_eval_loss, actual_eval_loss, rtol=rtol)
-
-# checkpointfiles generated using:
-# mpirun -n 4 python3 orttrainer_bert_toy_onnx_ckpt_gen.py
-def testToyBertCheckpointLoadZeroMixedprecisionLamb():
-    # Common setup
-    rtol = 1e-03
-    device = 'cuda'
-    seed = 1
-    torch.manual_seed(seed)
-    onnxruntime.set_seed(seed)
-    optim_config = optim.LambConfig()
+    optim_config = optimizer
     opts = orttrainer.ORTTrainerOptions({'debug' : {'deterministic_compute': True},
                                          'device' : {'id' : device},
                                          'mixed_precision': {
-                                                'enabled': True,
-                                                'loss_scaler': None
+                                                'enabled': mixedprecision_enabled,
                                             },
                                          'distributed' : {'allreduce_post_accumulation' : True}})
 
@@ -547,11 +317,19 @@ def testToyBertCheckpointLoadZeroMixedprecisionLamb():
     model = load_bert_onnx_model()
     model_desc = bert_model_description()
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
-    ckpt_dir = _test_helpers._get_name("ort_ckpt")
-    checkpoint.experimental_load_checkpoint(trainer, ckpt_dir, 'bert_toy_lamb')
 
-    # Expected values
-    expected_eval_loss = [11.011026]
+    ckpt_dir = _test_helpers._get_name("ort_ckpt")
+    ckpt_prefix = _test_helpers._get_bert_ckpt_prefix(optimizer.name)
+    try:
+        checkpoint_files = sorted(checkpoint._list_checkpoint_files(ckpt_dir, ckpt_prefix))
+    except(AssertionError):
+        print("No checkpoints found. Generating...")
+        assert subprocess.call(['mpirun', '-n', '4', '-x', 'NCCL_DEBUG=INFO', 'python', 
+            'orttrainer_bert_toy_onnx_ckpt_gen.py']) == 0
+
+    checkpoint.experimental_load_checkpoint(trainer, ckpt_dir, ckpt_prefix)
+
+    # input values
     input_ids = torch.tensor([[26598],[21379],[19922],[ 5219],[ 5644],[20559],[23777],[25672],[22969],[16824],[16822],[635],[27399],[20647],[18519],[15546]], device=device)
     segment_ids = torch.tensor([[0],[1],[0],[1],[0],[0],[1],[0],[0],[1],[1],[0],[0],[1],[1],[1]], device=device)
     input_mask = torch.tensor([[0],[0],[0],[0],[1],[1],[1],[0],[1],[1],[0],[0],[0],[1],[0],[0]], device=device)
@@ -562,80 +340,25 @@ def testToyBertCheckpointLoadZeroMixedprecisionLamb():
     actual_eval_loss = trainer.eval_step(input_ids, segment_ids, input_mask, masked_lm_labels, next_sentence_labels)
     actual_eval_loss = actual_eval_loss.cpu().numpy().item(0)
 
-    checkpoint_files = sorted(checkpoint._list_checkpoint_files(ckpt_dir, 'bert_toy_lamb'))
+    checkpoint_files = sorted(checkpoint._list_checkpoint_files(ckpt_dir, ckpt_prefix))
     loaded_state_dict = checkpoint.experimental_state_dict(trainer)
     loaded_state_dict = checkpoint._split_state_dict(loaded_state_dict)
 
     for f in checkpoint_files:
         rank_state_dict = torch.load(f, map_location=torch.device("cpu"))
-        rank_state_dict = checkpoint._split_state_dict(rank_state_dict)
+        rank_state_dict = checkpoint._split_state_dict(rank_state_dict['model'])
 
         for k,v in rank_state_dict['fp16_param'].items():
             fp32_name = k.split('_fp16')[0]
-            assert_allclose(v, loaded_state_dict['fp32_param'][fp32_name])
-            assert_allclose(v, loaded_state_dict['fp16_param'][k])
+            assert_allclose(v, loaded_state_dict['fp32_param'][fp32_name], rtol=1e-02, atol=1e-02)
+            if mixedprecision_enabled:
+                assert_allclose(v, loaded_state_dict['fp16_param'][k])
         
         for k,v in rank_state_dict['optimizer'].items():
             if k in loaded_state_dict['optimizer']:
                 assert_allclose(v, loaded_state_dict['optimizer'][k])
-
-    # Check results
-    assert_allclose(expected_eval_loss, actual_eval_loss, rtol=rtol)
-
-
-# checkpointfiles generated using:
-# mpirun -n 4 python3 orttrainer_bert_toy_onnx_ckpt_gen.py
-def testToyBertCheckpointLoadZeroMixedprecisionAdam():
-    # Common setup
-    rtol = 1e-03
-    device = 'cuda'
-    seed = 1
-    torch.manual_seed(seed)
-    onnxruntime.set_seed(seed)
-    optim_config = optim.AdamConfig()
-    opts = orttrainer.ORTTrainerOptions({'debug' : {'deterministic_compute': True},
-                                         'device' : {'id' : device},
-                                         'mixed_precision': {
-                                                'enabled': True,
-                                                'loss_scaler': None
-                                            },
-                                         'distributed' : {'allreduce_post_accumulation' : True}})
-
-    # Create ORTTrainer and save initial state in a dict
-    model = load_bert_onnx_model()
-    model_desc = bert_model_description()
-    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
-    ckpt_dir = _test_helpers._get_name("ort_ckpt")
-    checkpoint.experimental_load_checkpoint(trainer, ckpt_dir, 'bert_toy_adam')
-
-    # Expected values
-    expected_eval_loss = [10.998348]
-    input_ids = torch.tensor([[26598],[21379],[19922],[ 5219],[ 5644],[20559],[23777],[25672],[22969],[16824],[16822],[635],[27399],[20647],[18519],[15546]], device=device)
-    segment_ids = torch.tensor([[0],[1],[0],[1],[0],[0],[1],[0],[0],[1],[1],[0],[0],[1],[1],[1]], device=device)
-    input_mask = torch.tensor([[0],[0],[0],[0],[1],[1],[1],[0],[1],[1],[0],[0],[0],[1],[0],[0]], device=device)
-    masked_lm_labels = torch.tensor([[25496],[16184],[11005],[16228],[14884],[21660],[ 8678],[23083],[ 4027],[ 8397],[11921],[ 1333],[26482],[ 1666],[17925],[27978]], device=device)
-    next_sentence_labels = torch.tensor([0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0], device=device)
-
-    # Actual values
-    actual_eval_loss = trainer.eval_step(input_ids, segment_ids, input_mask, masked_lm_labels, next_sentence_labels)
-    actual_eval_loss = actual_eval_loss.cpu().numpy().item(0)
-
-    checkpoint_files = sorted(checkpoint._list_checkpoint_files(ckpt_dir, 'bert_toy_adam'))
-    loaded_state_dict = checkpoint.experimental_state_dict(trainer)
-    loaded_state_dict = checkpoint._split_state_dict(loaded_state_dict)
-
-    for f in checkpoint_files:
-        rank_state_dict = torch.load(f, map_location=torch.device("cpu"))
-        rank_state_dict = checkpoint._split_state_dict(rank_state_dict)
-
-        for k,v in rank_state_dict['fp16_param'].items():
-            fp32_name = k.split('_fp16')[0]
-            assert_allclose(v, loaded_state_dict['fp32_param'][fp32_name])
-            assert_allclose(v, loaded_state_dict['fp16_param'][k])
-        
-        for k,v in rank_state_dict['optimizer'].items():
-            if k in loaded_state_dict['optimizer']:
-                assert_allclose(v, loaded_state_dict['optimizer'][k])
+            else:
+                assert '_view_' in k 
 
     # Check results
     assert_allclose(expected_eval_loss, actual_eval_loss, rtol=rtol)
