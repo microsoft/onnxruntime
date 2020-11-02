@@ -17,15 +17,19 @@ using ExpectResult = OpTester::ExpectResult;
 template <typename T>
 void RunTest(int64_t axis, const std::vector<int64_t> split_sizes, const ShapeAndData<T>& input,
              const std::vector<ShapeAndData<T>>& outputs, bool is_tensorrt_supported = true,
-             bool expect_failure = false, const std::string& err_msg = {}) {
-  OpTester test("Split");
+             bool expect_failure = false, bool split_as_input = false,
+             bool is_initializer = true, const std::string& err_msg = {}) {
+  int opset_version = split_as_input ? 13 : 7;
+  OpTester test("Split", opset_version, onnxruntime::kOnnxDomain);
 
   test.AddAttribute("axis", axis);
-
-  if (!split_sizes.empty())
-    test.AddAttribute("split", split_sizes);
-
   test.AddInput<T>("input", input.first, input.second);
+  if (!split_sizes.empty()){
+    if (split_as_input)
+      test.AddInput<int64_t>("split", {static_cast<int64_t>(split_sizes.size())}, split_sizes, is_initializer);
+    else
+      test.AddAttribute("split", split_sizes);
+  }
 
   int i = 0;
   for (auto& output : outputs) {
@@ -414,7 +418,7 @@ TEST(SplitOperatorTest, InvalidAxis) {
 
   outputs.push_back({{1}, {0.f}});
 
-  RunTest<float>(axis, {}, input, outputs, true, true, "Invalid value of attribute 'axis'");
+  RunTest<float>(axis, {}, input, outputs, true, true, false, true, "Invalid value of attribute 'axis'");
 }
 
 // sum of values in splits is too small
@@ -434,7 +438,7 @@ TEST(SplitOperatorTest, SplitAttributeSumTooSmall) {
   outputs.push_back({{1, 2}, {1.f, 2.f}});
   outputs.push_back({{2, 2}, {3.f, 4.f, 5.f, 6.f}});
 
-  RunTest<float>(axis, splits, input, outputs, false, true, "Cannot split using values in 'split' attribute");  //TensorRT parser: Assertion failed: axis != BATCH_DIM
+  RunTest<float>(axis, splits, input, outputs, false, true, false,true, "Cannot split using values in 'split' attribute");  //TensorRT parser: Assertion failed: axis != BATCH_DIM
 }
 
 TEST(SplitOperatorTest, InvalidValueInSplitAttribute) {
@@ -452,7 +456,55 @@ TEST(SplitOperatorTest, InvalidValueInSplitAttribute) {
   outputs.push_back({{1, 2}, {1.f, 2.f}});
   outputs.push_back({{3, 2}, {3.f, 4.f, 5.f, 6.f, 7.f, 8.f}});
 
-  RunTest<float>(axis, splits, input, outputs, false, true, "in 'split' attribute");  //TensorRT parser: Assertion failed: axis != BATCH_DIM
+  RunTest<float>(axis, splits, input, outputs, false, true, false,true, "in 'split' attribute");  //TensorRT parser: Assertion failed: axis != BATCH_DIM
+}
+
+// split as input
+TEST(SplitOperatorTest, Axis0UnequalSplitInputFloat) {
+  const int64_t axis = 0;
+  std::vector<ShapeAndFloatData> outputs;
+
+  // input shape and data
+  ShapeAndFloatData input = {{4, 2},  // shape
+                             {1.f, 2.f,
+                              3.f, 4.f,
+                              5.f, 6.f,
+                              7.f, 8.f}};
+
+  std::vector<int64_t> splits{1, 3};
+
+  outputs.push_back({{1, 2}, {1.f, 2.f}});
+
+  outputs.push_back({{3, 2},
+                     {3.f, 4.f,
+                      5.f, 6.f,
+                      7.f, 8.f}});
+
+  RunTest<float>(axis, splits, input, outputs, false, false, true);
+}
+
+// split as input
+TEST(SplitOperatorTest, Axis0UnequalSplitInputFloat_not_initializer) {
+  const int64_t axis = 0;
+  std::vector<ShapeAndFloatData> outputs;
+
+  // input shape and data
+  ShapeAndFloatData input = {{4, 2},  // shape
+                             {1.f, 2.f,
+                              3.f, 4.f,
+                              5.f, 6.f,
+                              7.f, 8.f}};
+
+  std::vector<int64_t> splits{1, 3};
+
+  outputs.push_back({{1, 2}, {1.f, 2.f}});
+
+  outputs.push_back({{3, 2},
+                     {3.f, 4.f,
+                      5.f, 6.f,
+                      7.f, 8.f}});
+
+  RunTest<float>(axis, splits, input, outputs, false, false, true, false);
 }
 
 /*
