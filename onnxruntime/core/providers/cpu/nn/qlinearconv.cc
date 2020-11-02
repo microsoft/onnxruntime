@@ -345,15 +345,13 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
 
   for (int64_t image_id = 0; image_id < N; ++image_id) {
     for (int64_t group_id = 0; group_id < group_count; ++group_id) {
-      if (col_buffer_data != nullptr) {
-        // Transpose the input from channels first (NCHW) to channels last (NHWC).
-        MlasTranspose(Xdata,
-                      static_cast<size_t>(input_image_size),
-                      transpose_input,
-                      static_cast<size_t>(group_input_channels),
-                      static_cast<size_t>(group_input_channels),
-                      static_cast<size_t>(input_image_size));
+      // Transpose the input from channels first (NCHW) to channels last (NHWC).
+      MlasTranspose(Xdata,
+                    transpose_input,
+                    static_cast<size_t>(group_input_channels),
+                    static_cast<size_t>(input_image_size));
 
+      if (col_buffer_data != nullptr) {
         if (kernel_rank > 2) {
           math::Im2colNd<uint8_t, StorageOrder::NHWC>()(
               transpose_input,
@@ -422,13 +420,6 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
           }
         } else {
           worker_gemm_input = transpose_input + output_start * kernel_dim;
-          // Transpose the input from channels first (NCHW) to channels last (NHWC).
-          MlasTranspose(Xdata + output_start,
-                        static_cast<size_t>(input_image_size),
-                        worker_gemm_input,
-                        static_cast<size_t>(group_input_channels),
-                        static_cast<size_t>(group_input_channels),
-                        static_cast<size_t>(output_count));
         }
 
         auto* worker_gemm_output = gemm_output + output_start * group_output_channels;
@@ -505,17 +496,15 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
                                      output_scales.data() + group_id * group_output_channels,
                                      Y_zero_point_value);
         }
-
-        // Transpose the output from channels last (NHWC) to channels first (NCHW).
-        MlasTranspose(worker_transpose_output,
-                      static_cast<size_t>(group_output_channels),
-                      Ydata + output_start,
-                      static_cast<size_t>(output_image_size),
-                      static_cast<size_t>(output_count),
-                      static_cast<size_t>(group_output_channels));
       };
 
       concurrency::ThreadPool::TrySimpleParallelFor(thread_pool, thread_count, conv_worker);
+
+      // Transpose the output from channels last (NHWC) to channels first (NCHW).
+      MlasTranspose(transpose_output,
+                    Ydata,
+                    static_cast<size_t>(output_image_size),
+                    static_cast<size_t>(group_output_channels));
 
       Xdata += X_offset;
       Ydata += Y_offset;
