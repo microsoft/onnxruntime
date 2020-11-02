@@ -27,7 +27,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Unsqueeze);
 
-// axes is input instead of attribute, support bfloat16
+// support bfloat16
 ONNX_OPERATOR_KERNEL_EX(
     Unsqueeze,
     kOnnxDomain,
@@ -35,9 +35,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kCudaExecutionProvider,
     KernelDefBuilder()
         .Alias(0, 0)
-        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
-        .InputMemoryType<OrtMemTypeCPUInput>(1),
-        Unsqueeze);
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+    Unsqueeze);
 
 Status Unsqueeze::ComputeInternal(OpKernelContext* ctx) const {
   Prepare p;
