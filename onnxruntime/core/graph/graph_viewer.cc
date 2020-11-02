@@ -86,14 +86,14 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
 #endif
 
   if (filter_info_) {
-    // create set of node indexes as we need quick lookups and don't care about the order
-    filtered_node_indices_ = std::unordered_set<NodeIndex>(filter_info->nodes.cbegin(),
-                                                           filter_info->nodes.cend());
-
     // validate. if something is off here it's a bug in our code
     for (NodeIndex idx : filter_info->nodes) {
       ORT_ENFORCE(graph_->GetNode(idx) != nullptr, "IndexedSubGraph contains values not present in the Graph");
     }
+
+    // create set of node indexes as we need quick lookups and don't care about the order
+    filtered_node_indices_ = std::unordered_set<NodeIndex>(filter_info->nodes.cbegin(),
+                                                           filter_info->nodes.cend());
 
     const auto& metadef = filter_info->GetMetaDef();
 

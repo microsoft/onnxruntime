@@ -101,10 +101,10 @@ class ValidNodes {
 
     /** Construct a NodeInterator and move to the first valid node. */
     NodeIterator<TIterator>(const TIterator current, const TIterator end, const NodeFilterFunc& filter_fn) noexcept
-        : current_{current}, end_{end}, filter_{filter_fn}, filter_func_{&filter_fn} {
+        : current_{current}, end_{end}, apply_filter_{filter_fn != nullptr}, filter_func_{&filter_fn} {
       // skip to next valid node, stopping at end if none are found
       while (current_ < end && (*current_ == nullptr ||
-                                (filter_ && (*filter_func_)((*current_)->Index()) == true))) {
+                                (apply_filter_ && (*filter_func_)((*current_)->Index()) == true))) {
         ++current_;
       }
     }
@@ -120,7 +120,7 @@ class ValidNodes {
     void operator++() {
       if (current_ < end_) {
         while (++current_ != end_) {
-          if (*current_ != nullptr && (!filter_ || (*filter_func_)((*current_)->Index()) == false))
+          if (*current_ != nullptr && (!apply_filter_ || (*filter_func_)((*current_)->Index()) == false))
             break;
         }
       }
@@ -147,7 +147,7 @@ class ValidNodes {
    private:
     TIterator current_;
     TIterator end_;
-    bool filter_;                        // store whether filter_func_ is not nullptr and contains a callable
+    bool apply_filter_;                  // store whether filter_func_ is not nullptr and contains a callable
     const NodeFilterFunc* filter_func_;  // store as pointer so iterator is copyable
   };
 
