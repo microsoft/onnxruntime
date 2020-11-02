@@ -54,7 +54,7 @@ struct BertParameters : public TrainingRunner::Parameters {
   size_t num_train_steps_phase2;
   float warmup_ratio_phase2;
   float cuda_mem_limit_in_gb = -1;
-
+  bool debug_break = false;
   PathString train_data_dir_phase2;
   PathString test_data_dir_phase2;
 
@@ -191,6 +191,8 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       ("number_recompute_layers", "Number of layers to apply recompute.",
         cxxopts::value<int>()->default_value("0"))
       ("use_invertible_layernorm_grad", "Specify whether to use invertible laynorm(dropping the input activation)",
+        cxxopts::value<bool>()->default_value("false"))
+      ("debug_break", "Specify whether to break at app start, useful for multi-gpu debugging.",
         cxxopts::value<bool>()->default_value("false"));
   options
     .add_options("ORT configuration")
@@ -204,6 +206,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
     auto flags = options.parse(argc, argv);
 
     params.model_name = flags["model_name"].as<std::string>();
+    params.debug_break = flags["debug_break"].as<bool>();
     float lr = flags["learning_rate"].as<float>();
     if (lr > 1.f || lr < 0.f) {
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "learning_rate is not in valid range [0.0, 1.0]");
@@ -801,6 +804,8 @@ int main(int argc, char* argv[]) {
   BertParameters params;
   OrtParameters ort_params{};
   RETURN_IF_FAIL(ParseArguments(argc, argv, params, ort_params));
+  bool keep_looping = params.debug_break;
+  while(keep_looping);
 
   // setup logger, be noted: LOGS_DEFAULT must be after logging manager initialization.
   string default_logger_id{"Default"};

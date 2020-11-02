@@ -292,8 +292,7 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
             }
 
             // log size of activation. Keep it commented out for now to avoid log flooding.
-            // VLOGS(session_state_.Logger(), 1) << "Allocated memory for activations, size: "
-            //                                   << mem_patterns_->patterns[i].PeakSize();
+             printf("\n **** Allocated memory for activations, size: %zu ***\n", mem_patterns_->patterns[i].PeakSize());
           }
         }
       }
@@ -350,6 +349,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
   // if we have pre-calculated memory pattern, and the ort_value is not output mlvalue
   // try to allocated on pre-allocated big chunk.
   const auto& per_alloc_plan = GetAllocationPlan(ort_value_index);
+
   if (mem_patterns_ && per_alloc_plan.alloc_kind != AllocKind::kAllocateOutput) {
     auto pattern = mem_patterns_->GetPatterns(location);
     if (pattern) {
