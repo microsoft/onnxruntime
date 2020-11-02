@@ -42,24 +42,21 @@ class MemPatternPlanner {
 
     size_t index_1 = 0;
     size_t index_2 = 0;
-    bool overlap = false;
     while ((index_1 < program_counter_start_1.size()) && (index_2 < program_counter_start_2.size())) {
       if (program_counter_start_1[index_1] <= program_counter_start_2[index_2]) {
         if (program_counter_end_1[index_1] >= program_counter_start_2[index_2]) {
-          overlap = true;
-          break;
+          return true;
         }
         index_1 += 1;
       } else {
         if (program_counter_end_2[index_2] >= program_counter_start_1[index_1]) {
-          overlap = true;
-          break;
+          return true;
         }
         index_2 += 1;
       }
     }
 
-    return overlap;
+    return false;
   }
 
   void TraceAllocation(int ml_value_idx, const std::vector<size_t>& program_counter_start, const std::vector<size_t>& program_counter_end, size_t size) {
