@@ -235,17 +235,23 @@ void TensorrtExecutionProvider::GetSubraphInfoAsMeta(std::unique_ptr<Provider_Gr
 * Note that the hash_value is hashed from versions of onnxruntime, opset, cuda, tensorrt and number of nodes in subgraph.
 */
 std::string TensorrtExecutionProvider::GetUniquePathAndHash(const std::string& subgraph_name) const {
-  std::size_t value = metadata_map_.size();
+  std::size_t value = metadata_map_.size();  
   for (auto i = metadata_map_.begin(); i != metadata_map_.end(); i++) {
     for (char const& c : i->second) {
       value ^= (std::size_t)c + 0x9e3779b9 + (value << 6) + (value >> 2);
     }
   }
 
+  for (char const& c : subgraph_name) {
+    value ^= (std::size_t)c + 0x9e3779b9 + (value << 6) + (value >> 2);
+  }
+
   auto iterator1 = subgraph_node_num_map.find(subgraph_name);
   if (iterator1 != subgraph_node_num_map.end()) {
     value ^= iterator1->second + 0x9e3779b9 + (value << 6) + (value >> 2);
   }
+
+
 
   /*
   fs::path path = "";
@@ -1076,13 +1082,20 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
 
     std::string trt_node_name_with_precision = fused_node->Name();
     std::unordered_map<std::string, float> dynamic_range_map;
-    if (int8_enable_ && trt_builder->platformHasFastInt8()) {  //TODO: enable both FP16 and INT8, or BEST
+    if (fp16_enable_ && int8_enable_ && trt_builder->platformHasFastFp16() && trt_builder->platformHasFastInt8()) {
+	  trt_config->setFlags(1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kFP16) | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kINT8));
+      trt_node_name_with_precision += "_fp16_int8";
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] FP16 and INT8 mode is enabled.";
+      // Read per tensor dynamic range from file
+      if (!ReadPerTensorDynamicRangeValues(dynamic_range_map)) {
+        throw std::runtime_error("Failed to read INT8 calibration table file.");
+      }
+    } else if (int8_enable_ && trt_builder->platformHasFastInt8()) {
       trt_config->setFlag(nvinfer1::BuilderFlag::kINT8);
       trt_node_name_with_precision += "_int8";
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] INT8 mode is enabled.";
       // Read per tensor dynamic range from file
       if (!ReadPerTensorDynamicRangeValues(dynamic_range_map)) {
-        //std::cout << "readPerTensorDynamicRangeValues returns false" << std::endl;
         throw std::runtime_error("Failed to read INT8 calibration table file.");
       }
     } else if (fp16_enable_ && trt_builder->platformHasFastFp16()) {
@@ -1463,7 +1476,15 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
         auto trt_config = tensorrt_ptr::unique_pointer<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
         trt_config->setMaxWorkspaceSize(*(trt_state->max_workspace_size_ptr));
         trt_config->addOptimizationProfile(trt_profile);
-        if (*(trt_state->int8_enable_ptr) && trt_builder->platformHasFastInt8()) {  //TODO:
+        if (*(trt_state->fp16_enable_ptr) && *(trt_state->int8_enable_ptr) && trt_builder->platformHasFastFp16() && trt_builder->platformHasFastInt8()) {
+          //std::cout << "Compute: Generate INT8 engine based on ORT calibration table" << std::endl;
+          trt_config->setFlags(1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kFP16) | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kINT8));
+          trt_config->setInt8Calibrator(nullptr);
+          // set INT8 Per Tensor Dynamic range
+          if (!SetDynamicRange(trt_state->network->get(), trt_state->dynamic_range_map)) {
+            std::cout << "TRT Compute: Unable to set per tensor dynamic range." << std::endl;
+          }
+        } else if (*(trt_state->int8_enable_ptr) && trt_builder->platformHasFastInt8()) {
           //std::cout << "Compute: Generate INT8 engine based on ORT calibration table" << std::endl;
           trt_config->setFlag(nvinfer1::BuilderFlag::kINT8);
           trt_config->setInt8Calibrator(nullptr);
