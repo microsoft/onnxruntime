@@ -245,8 +245,6 @@ std::string TensorrtExecutionProvider::GetUniquePathAndHash(const std::string& s
     value ^= iterator1->second + 0x9e3779b9 + (value << 6) + (value >> 2);
   }
 
-
-
   /*
   fs::path path = "";
   if (!engine_cache_path_.empty()) {
@@ -1778,7 +1776,6 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
         }
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "TensorRT EP execution context enqueue failed.");
       }
-      cudaDeviceSynchronize();
 
       // Cast INT64 input to INT32 because TensorRT doesn't fully support INT64
       for (int i = 0, end = output_binding_names.size(); i < end; ++i) {
