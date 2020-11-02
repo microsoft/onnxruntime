@@ -305,6 +305,8 @@ struct PipelineTensorNames {
 };
 
 struct PipelineContext {
+  // Number of pipeline stages.
+  int num_pipeline_stages;
   // Id of stage handled by this process. Currently, it matches the MPI's rank.
   int pipeline_stage_id;
   // The number of batches per pipeline run. Its value is

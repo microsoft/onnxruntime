@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #include <set>
+#include <thread>
+#include "core/profile/context.h"
 
 #include "orttraining/core/session/training_session.h"
 
@@ -437,6 +439,7 @@ Status TrainingSession::ConfigureForTraining(
     // TODO: keep all other pipeline context fields such as feed_names.
     pipeline_context_.pipeline_tensor_names = pipeline_result.pipeline_tensor_names;
     pipeline_context_.num_pipeline_batches = num_pipeline_steps;
+    pipeline_context_.num_pipeline_stages = config.distributed_config.pipeline_parallel_size;
     pipeline_context_.pipeline_stage_id = pipeline_result.pipeline_stage_id;
     pipeline_context_.slice_input_names = config.distributed_config.slice_input_names;
     pipeline_context_.slice_output_names = config.distributed_config.slice_output_names;
@@ -1217,18 +1220,30 @@ common::Status TrainingSession::RunWithPipeline(const RunOptions& run_options, I
   // TODO: add it to distributed config.
   const bool training_mode = true;
 
+  // pipeline_schedule_ = pipeline::PipelineScheduler(pipeline_context_.num_pipeline_batches, pipeline_context_.num_pipeline_stages);
+  pipeline_schedule_ = pipeline::PipelineScheduler(num_steps, pipeline_context_.num_pipeline_stages);
+  pipeline_worker_pool_ = pipeline::PipelineWorkerPool(pipeline_context_.num_pipeline_stages);
+
+  std::vector<std::unique_ptr<IOBinding>> sub_io_bindings(num_steps);
+
   for (size_t i = 0; i < num_steps; ++i) {
     // TODO: run this code block using a thread.
 
     // Inputs and outputs of a sub-batch run.
-    std::unique_ptr<IOBinding> sub_io_binding;
+    // std::unique_ptr<IOBinding> sub_io_binding;
+    // auto status = NewIOBinding(&sub_io_binding);
+    // ORT_RETURN_IF_ERROR(status);
+
+    auto& sub_io_binding = sub_io_bindings[i];
     auto status = NewIOBinding(&sub_io_binding);
     ORT_RETURN_IF_ERROR(status);
 
     // Add inputs and outputs to the binding.
+    //CreateBatchVariables(io_binding, *sub_io_binding.get(), i, slice_axis, num_steps);
     CreateBatchVariables(io_binding, *sub_io_binding.get(), i, slice_axis, num_steps);
 
     // Add proper events to the binding.
+    //CreatePipelineEvents(training_mode, i, pipeline_context_.pipeline_stage_id, *sub_io_binding.get());
     CreatePipelineEvents(training_mode, i, pipeline_context_.pipeline_stage_id, *sub_io_binding.get());
     //CreatePipelineEvents(training_mode, i, pipeline_context_.pipeline_stage_id, io_binding);
 
@@ -1248,23 +1263,56 @@ common::Status TrainingSession::RunWithPipeline(const RunOptions& run_options, I
       std::cout << "[training_session.cc] sub_io_binding output " << name << std::endl;
     }
 
-    ORT_RETURN_IF_ERROR(
-      InferenceSession::Run(
-          run_options,
-          sub_io_binding->GetInputNames(),
-          sub_io_binding->GetInputs(),
-          sub_io_binding->GetOutputNames(),
-          &sub_io_binding->GetOutputs()));
-    /*
-    ORT_RETURN_IF_ERROR(
-      InferenceSession::Run(
-          run_options,
-          io_binding.GetInputNames(),
-          io_binding.GetInputs(),
-          io_binding.GetOutputNames(),
-          &io_binding.GetOutputs()));
-    */
+    if (true) {
+      // Cyclically pick up a worker ID.
+      const size_t worker_id = i % pipeline_context_.num_pipeline_stages;
+      pipeline_worker_pool_.Join(worker_id);
+      pipeline_worker_pool_.workers[worker_id] = std::thread([&](const size_t step){
+        auto& profile_context = profile::Context::GetInstance();
+        profile_context.SetThreadTag(
+            std::this_thread::get_id(), std::to_string(step));
+
+        auto status = InferenceSession::Run(
+              run_options,
+              sub_io_bindings[step]->GetInputNames(),
+              sub_io_bindings[step]->GetInputs(),
+              sub_io_bindings[step]->GetOutputNames(),
+              &sub_io_bindings[step]->GetOutputs());
+      }, i);
+
+      std::cout << status.ErrorMessage() << std::endl;
+
+      ORT_THROW_IF_ERROR(status);
+    } else {
+      auto status = InferenceSession::Run(
+            run_options,
+            sub_io_binding->GetInputNames(),
+            sub_io_binding->GetInputs(),
+            sub_io_binding->GetOutputNames(),
+            &sub_io_binding->GetOutputs());
+      std::cout << status.ErrorMessage() << std::endl;
+
+      ORT_THROW_IF_ERROR(status);
+    }
+    // worker.join();
+
+    // ORT_RETURN_IF_ERROR(
+    //   InferenceSession::Run(
+    //       run_options,
+    //       sub_io_binding->GetInputNames(),
+    //       sub_io_binding->GetInputs(),
+    //       sub_io_binding->GetOutputNames(),
+    //       &sub_io_binding->GetOutputs()));
+
+    // ORT_RETURN_IF_ERROR(
+    //   InferenceSession::Run(
+    //       run_options,
+    //       io_binding.GetInputNames(),
+    //       io_binding.GetInputs(),
+    //       io_binding.GetOutputNames(),
+    //       &io_binding.GetOutputs()));
   }
+  pipeline_worker_pool_.JoinAll();
 
   return common::Status::OK();
 }

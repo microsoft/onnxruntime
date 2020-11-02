@@ -821,6 +821,7 @@ class ORTTrainer(object):
         # Bind input tensors
         for input, input_desc in zip(inputs, inputs_desc):
             device_index = _utils.get_device_index_from_input(input)
+            print('bind ', ', name: ', input_desc.name, ', type: ', input.device.type, ', index: ', device_index)
             iobinding.bind_input(input_desc.name,
                                  input.device.type,
                                  device_index,

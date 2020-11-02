@@ -119,7 +119,6 @@ namespace onnxruntime {
       }
 
       copied_size = num_strides*copied_size;
-      std::cout << "[inference_session.cc] current GPU device " << device << std::endl;;
       if (std::string(orig_tensor_location.name) == std::string("Cuda")) {
         // Get CPU tensor to be copied.
         const Tensor& copied_tensor = small_cpu_value.Get<Tensor>();
