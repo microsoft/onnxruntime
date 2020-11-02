@@ -756,6 +756,16 @@ TEST(QLinearConvTest, Conv2D_U8S8_DepthwisePointwise) {
   test.Run();
 }
 
+TEST(QLinearConvTest, Conv3D_U8S8_Depthwise) {
+  QLinearConvOpTester<uint8_t, int8_t> test;
+  test.GenerateRandomInput({1, 16, 15, 11, 13}, .02f, 135);
+  test.GenerateRandomWeights({16, 1, 3, 3, 3}, .09f, 0);
+  test.GenerateRandomBias();
+  test.SetGroups(16);
+  test.SetOutputScaleAndZeroPoint(.85f, 112);
+  test.Run();
+}
+
 #endif
 
 }  // namespace
