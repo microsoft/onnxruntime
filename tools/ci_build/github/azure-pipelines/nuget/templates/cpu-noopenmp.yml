@@ -1,6 +1,6 @@
 parameters:
   DoEsrp: 'false'
-  PackageName: 'Microsoft.ML.OnnxRuntime'
+  PackageName: 'Microsoft.ML.OnnxRuntime.NoOpenMP'
   DoCompliance: 'false'
 
 jobs:
