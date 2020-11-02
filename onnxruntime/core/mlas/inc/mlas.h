@@ -393,6 +393,20 @@ MlasConv(
     MLAS_THREADPOOL* ThreadPool
     );
 
+template<typename FilterType>
+void
+MLASCALL
+MlasConvDepthwise(
+    const uint8_t* Input,
+    uint8_t InputZeroPoint,
+    const FilterType* Filter,
+    FilterType FilterZeroPoint,
+    int32_t* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
+    );
+
 //
 // Pooling routines.
 //

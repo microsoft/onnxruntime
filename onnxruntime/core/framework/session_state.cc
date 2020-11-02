@@ -314,14 +314,11 @@ Status ResolveDimParams(const GraphViewer& graph,
   return Status::OK();
 }
 
-Status ResolveSizeAndShape(
+Status TryResolveShape(
     const NodeArg* arg,
     const std::unordered_map<std::string, int64_t>& symbolic_dimensions,
-    size_t& size,  // total number of elements. It's 0 if shape is unknown.
     std::vector<int64_t>& resolved_shape) {
   if (!arg->Shape()) {
-    // 0 means no shape information.
-    size = 0;
     return Status::OK();
   }
 
@@ -345,15 +342,24 @@ Status ResolveSizeAndShape(
     }
   }
 
-  size = safe_size;
-
   // Only assign shape if all symbolic dimensions are resolved.
-  if (size != 0) {
+  if (safe_size != 0) {
     resolved_shape = std::move(shape);
   }
 
   return Status::OK();
 }
+
+void TryCalculateSizeFromResolvedShape(int ml_value_idx, std::unordered_map<int, TensorShape>& resolved_shapes, size_t& size) {
+  size = 0;
+  auto shape = resolved_shapes.find(ml_value_idx);
+  if (shape != resolved_shapes.end()) {
+    size = 1;
+    for (auto dim : shape->second.GetDims())
+      size *= dim;
+  }
+}
+
 }  // namespace
 
 Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_wrapper<const TensorShape>>& input_shape,
@@ -371,7 +377,67 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
   auto* exe_plan = GetExecutionPlan();
   ORT_ENFORCE(exe_plan);
   OrtValuePatternPlanner mem_planner(*exe_plan);
+
+  // Try to resolve shapes for activations.
   auto& node_index_info = GetNodeIndexInfo();
+  for (auto& node_plan : exe_plan->execution_plan) {
+    int node_index = node_index_info.GetNodeOffset(node_plan.node_index);
+    auto* node = graph_viewer_->GetNode(node_plan.node_index);
+    int output_start = node_index + static_cast<int>(node->InputDefs().size()) + static_cast<int>(node->ImplicitInputDefs().size());
+
+    for (int i = 0, end = static_cast<int>(node->OutputDefs().size()); i < end; ++i) {
+      const auto ml_value_idx = node_index_info.GetMLValueIndex(output_start + i);
+      if (ml_value_idx == NodeIndexInfo::kInvalidEntry)
+        continue;
+
+      const auto* ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;
+      if (!ml_type->IsTensorType())
+        continue;
+
+      auto* arg = node->OutputDefs()[i];
+      std::vector<int64_t> resolved_shape;
+      ORT_RETURN_IF_ERROR(TryResolveShape(arg, map, resolved_shape));
+
+      // Store all valid resolved shapes. They will be queried in, for example,
+      // Recv operator to bypass the dependency of output shapes on inputs.
+      if (resolved_shape.size() > 0) {
+        resolved_shapes[ml_value_idx] = resolved_shape;
+      }
+    }
+  }
+
+  // Allocate activations that want to be laid out contigously in memory.
+  for (auto ml_value_idx : exe_plan->activation_allocation_order) {
+    ORT_ENFORCE(ml_value_idx >= 0);
+
+    const auto* ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;
+    if (!ml_type->IsTensorType())
+      continue;
+    const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
+    if (exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate &&
+        ml_data_type != DataTypeImpl::GetType<std::string>()) {
+      size_t size = 0;
+      TryCalculateSizeFromResolvedShape(ml_value_idx, resolved_shapes, size);
+      if (size == 0) {
+        return Status(ONNXRUNTIME, FAIL, "Unknown shape found in memory pattern compute");
+      }
+
+      if (!IAllocator::CalcMemSizeForArrayWithAlignment<64>(size, ml_data_type->Size(), &size)) {
+        return Status(ONNXRUNTIME, FAIL, "Size overflow");
+      }
+
+      ORT_ENFORCE(exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate);
+      ORT_ENFORCE(exe_plan->allocation_plan[ml_value_idx].program_counter_start.size() == exe_plan->allocation_plan[ml_value_idx].program_counter_end.size());
+
+      for (size_t index = 0; index < exe_plan->allocation_plan[ml_value_idx].program_counter_start.size(); index += 1)
+        ORT_ENFORCE(exe_plan->allocation_plan[ml_value_idx].program_counter_start[index] <= exe_plan->allocation_plan[ml_value_idx].program_counter_end[index]);
+
+      mem_planner.TraceAllocation(ml_value_idx, exe_plan->allocation_plan[ml_value_idx].program_counter_start,
+                                  exe_plan->allocation_plan[ml_value_idx].program_counter_end, size);
+    }
+  }
+
+  // Allocate all other activations.
   for (auto& node_plan : exe_plan->execution_plan) {
     int node_index = node_index_info.GetNodeOffset(node_plan.node_index);
     auto* node = graph_viewer_->GetNode(node_plan.node_index);
@@ -379,23 +445,15 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
     //allocate output
     for (int i = 0, end = static_cast<int>(node->OutputDefs().size()); i < end; ++i) {
       const auto ml_value_idx = node_index_info.GetMLValueIndex(output_start + i);
-      if (ml_value_idx == NodeIndexInfo::kInvalidEntry)
+      if (ml_value_idx == NodeIndexInfo::kInvalidEntry ||
+          (std::find(exe_plan->activation_allocation_order.begin(), exe_plan->activation_allocation_order.end(), ml_value_idx) != exe_plan->activation_allocation_order.end()))
         continue;
       const auto* ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;
       if (!ml_type->IsTensorType())
         continue;
       const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
-
-      auto* arg = node->OutputDefs()[i];
       size_t size = 0;
-      std::vector<int64_t> resolved_shape;
-      ORT_RETURN_IF_ERROR(ResolveSizeAndShape(arg, map, size, resolved_shape));
-
-      // Store all valid resolved shapes. They will be queried in, for example,
-      // Recv operator to bypass the dependency of output shapes on inputs.
-      if (size != 0) {
-        resolved_shapes[ml_value_idx] = resolved_shape;
-      }
+      TryCalculateSizeFromResolvedShape(ml_value_idx, resolved_shapes, size);
 
       // Plan memory if conditions are met.
       if (exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate &&
@@ -405,9 +463,17 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
           return Status(ONNXRUNTIME, FAIL, "Size overflow");
         }
 
-        mem_planner.TraceAllocation(ml_value_idx, aligned_size);
+        ORT_ENFORCE(exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate);
+        ORT_ENFORCE(exe_plan->allocation_plan[ml_value_idx].program_counter_start.size() == exe_plan->allocation_plan[ml_value_idx].program_counter_end.size());
+
+        for (size_t index = 0; index < exe_plan->allocation_plan[ml_value_idx].program_counter_start.size(); index += 1)
+          ORT_ENFORCE(exe_plan->allocation_plan[ml_value_idx].program_counter_start[index] <= exe_plan->allocation_plan[ml_value_idx].program_counter_end[index]);
+
+        mem_planner.TraceAllocation(ml_value_idx, exe_plan->allocation_plan[ml_value_idx].program_counter_start,
+                                    exe_plan->allocation_plan[ml_value_idx].program_counter_end, aligned_size);
       }
     }
+
     //release nodes
     for (int index = node_plan.free_from_index; index <= node_plan.free_to_index; ++index) {
       auto ml_value_idx = exe_plan->to_be_freed[index];
@@ -874,12 +940,14 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   std::unique_ptr<ITensorAllocator> tensor_allocator_(
       ITensorAllocator::Create(enable_mem_pattern_, *p_seq_exec_plan_, *this, weights_buffers_));
 
+  const auto& initializer_allocation_order = p_seq_exec_plan_->initializer_allocation_order;
+
   // move initializers from TensorProto instances in Graph to OrtValue instances in SessionState
   ORT_RETURN_IF_ERROR(
       session_state_utils::SaveInitializedTensors(
           Env::Default(), graph_location, *graph_viewer_,
           execution_providers_.GetDefaultCpuMemoryInfo(),
-          ort_value_name_idx_map_, *tensor_allocator_,
+          ort_value_name_idx_map_, initializer_allocation_order, *tensor_allocator_,
           [this](int idx, const OrtValue& value, const OrtCallback& d, bool constant) -> Status {
             return AddInitializedTensor(idx, value, &d, constant);
           },

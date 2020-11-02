@@ -75,7 +75,6 @@ Status QLinearConv<uint8_t>::Compute(OpKernelContext* context) const {
   const Tensor* B = context->Input<Tensor>(8);
 
   const int64_t N = X->Shape()[0];
-  const int64_t C = X->Shape()[1];
   const int64_t M = W->Shape()[0];
   ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X, W));
 
@@ -125,20 +124,12 @@ Status QLinearConv<uint8_t>::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
   BufferUniquePtr col_buffer;
-  std::vector<int64_t> col_buffer_shape;
 
   // Pointwise convolutions can use the original input tensor in place,
   // otherwise a temporary buffer is required for the im2col transform.
   if (kernel_size != 1 || !conv_attrs_.HasStridesOneAndNoPadding()) {
     auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(uint8_t)) * col_buffer_size);
     col_buffer = BufferUniquePtr(col_data, BufferDeleter(alloc));
-
-    if (kernel_rank != 2) {
-      const auto& output_dims = output_shape.GetDims();
-      col_buffer_shape.reserve(1 + output_dims.size());
-      col_buffer_shape.push_back(kernel_dim);
-      col_buffer_shape.insert(col_buffer_shape.end(), output_dims.begin(), output_dims.end());
-    }
   }
 
   auto* col_buffer_data = static_cast<uint8_t*>(col_buffer.get());
@@ -187,10 +178,9 @@ Status QLinearConv<uint8_t>::Compute(OpKernelContext* context) const {
         } else {
           math::Im2colNd<uint8_t, StorageOrder::NCHW>()(
               Xdata,
-              X->Shape().GetDims().data() + 1,
-              col_buffer_shape.data(),
-              C * input_image_size,
-              col_buffer_size,
+              input_shape.GetDims().data(),
+              output_shape.GetDims().data(),
+              kernel_dim,
               kernel_shape.data(),
               strides.data(),
               dilations.data(),
@@ -252,7 +242,11 @@ Status QLinearConv<uint8_t>::Compute(OpKernelContext* context) const {
 template <>
 class QLinearConv<int8_t> : public OpKernel {
  public:
-  explicit QLinearConv<int8_t>(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info), is_W_packed_(false) {}
+  explicit QLinearConv<int8_t>(const OpKernelInfo& info) : OpKernel(info),
+                                                           conv_attrs_(info),
+                                                           is_W_signed_(false),
+                                                           is_W_packed_(false) {
+  }
 
   Status Compute(OpKernelContext* context) const override;
   Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed) override;
@@ -271,6 +265,7 @@ class QLinearConv<int8_t> : public OpKernel {
   size_t packed_W_size_;
 #endif
   BufferUniquePtr reordered_W_buffer_;
+  bool is_W_signed_;
   bool is_W_packed_;
 };
 
@@ -330,36 +325,40 @@ Status QLinearConv<int8_t>::PrePack(const Tensor& tensor, int input_idx, bool& i
 
   const auto* Wdata = static_cast<const uint8_t*>(tensor.DataRaw());
   W_shape_ = shape;
+  is_W_signed_ = tensor.IsDataType<int8_t>();
 
   auto alloc = Info().GetAllocator(0, OrtMemTypeDefault);
 
 #ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
-  packed_W_size_ = MlasGemmPackBSize(group_output_channels, kernel_dim, true);
+  // Don't pack the filter buffer if the MlasConvDepthwise path is used.
+  if (group_input_channels != 1 && group_output_channels != 1) {
+    packed_W_size_ = MlasGemmPackBSize(group_output_channels, kernel_dim, true);
 
-  if (packed_W_size_ != 0) {
-    auto* packed_W = static_cast<uint8_t*>(alloc->Alloc(SafeInt<size_t>(group_count) * packed_W_size_));
-    packed_W_buffer_ = BufferUniquePtr(packed_W, BufferDeleter(alloc));
+    if (packed_W_size_ != 0) {
+      auto* packed_W = static_cast<uint8_t*>(alloc->Alloc(SafeInt<size_t>(group_count) * packed_W_size_));
+      packed_W_buffer_ = BufferUniquePtr(packed_W, BufferDeleter(alloc));
 
-    // Allocate a temporary buffer to hold the reordered oihw->ohwi filter for
-    // a single group.
-    //
-    // Note: The size of this buffer is less than or equal to the size of the original
-    // weight tensor, so the allocation size is guaranteed to fit inside size_t.
-    auto* group_reordered_W = static_cast<uint8_t*>(alloc->Alloc(group_output_channels * group_input_channels * kernel_size));
-    BufferUniquePtr group_reordered_W_buffer(group_reordered_W, BufferDeleter(alloc));
+      // Allocate a temporary buffer to hold the reordered oihw->ohwi filter for
+      // a single group.
+      //
+      // Note: The size of this buffer is less than or equal to the size of the original
+      // weight tensor, so the allocation size is guaranteed to fit inside size_t.
+      auto* group_reordered_W = static_cast<uint8_t*>(alloc->Alloc(group_output_channels * group_input_channels * kernel_size));
+      BufferUniquePtr group_reordered_W_buffer(group_reordered_W, BufferDeleter(alloc));
 
-    const size_t W_offset = group_output_channels * kernel_dim;
+      const size_t W_offset = group_output_channels * kernel_dim;
 
-    for (int64_t group_id = 0; group_id < conv_attrs_.group; ++group_id) {
-      ReorderFilter(Wdata, group_reordered_W, group_output_channels, group_input_channels, kernel_size);
-      MlasGemmPackB(group_output_channels, kernel_dim, group_reordered_W, group_output_channels, true, packed_W);
-      packed_W += packed_W_size_;
-      Wdata += W_offset;
+      for (int64_t group_id = 0; group_id < conv_attrs_.group; ++group_id) {
+        ReorderFilter(Wdata, group_reordered_W, group_output_channels, group_input_channels, kernel_size);
+        MlasGemmPackB(group_output_channels, kernel_dim, group_reordered_W, group_output_channels, is_W_signed_, packed_W);
+        packed_W += packed_W_size_;
+        Wdata += W_offset;
+      }
+
+      is_W_packed_ = true;
+      is_packed = true;
+      return Status::OK();
     }
-
-    is_W_packed_ = true;
-    is_packed = true;
-    return Status::OK();
   }
 #endif
 
@@ -441,7 +440,6 @@ Status QLinearConv<int8_t>::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W_shape, kernel_shape));
 
   const size_t kernel_rank = kernel_shape.size();
-  ORT_ENFORCE(kernel_rank == 2, "QLinearConv : must be 2D convolution");
 
   std::vector<int64_t> pads(conv_attrs_.pads);
   if (pads.empty()) {
@@ -471,17 +469,53 @@ Status QLinearConv<int8_t>::Compute(OpKernelContext* context) const {
   const int64_t output_image_size = output_shape.Size();
   const int64_t kernel_size = TensorShape(kernel_shape).Size();
 
-  const int64_t group_count = conv_attrs_.group;
-  const int64_t group_input_channels = W_shape[1];
-  const int64_t group_output_channels = M / group_count;
+  AllocatorPtr alloc;
+  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
+
+  // Handle the case of a dynamic weight filter.
+  BufferUniquePtr reordered_W_buffer;
+  uint8_t* reordered_W = nullptr;
+  bool use_reordered_W = true;
+  bool is_W_signed = is_W_signed_;
+#ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
+  if (packed_W_buffer_) {
+    use_reordered_W = false;
+  }
+#endif
+  if (use_reordered_W) {
+    if (reordered_W_buffer_) {
+      reordered_W = static_cast<uint8_t*>(reordered_W_buffer_.get());
+    } else {
+      // Weight tensor was not constant or prepacking is disabled.
+      reordered_W = static_cast<uint8_t*>(alloc->Alloc(SafeInt<size_t>(sizeof(uint8_t)) * W_shape.Size()));
+      reordered_W_buffer = BufferUniquePtr(reordered_W, BufferDeleter(alloc));
+      ReorderFilter(static_cast<const uint8_t*>(W->DataRaw()),
+                    reordered_W,
+                    static_cast<size_t>(M),
+                    static_cast<size_t>(W_shape[1]),
+                    static_cast<size_t>(kernel_size));
+      is_W_signed = W->IsDataType<int8_t>();
+    }
+  }
+
+  int64_t group_count = conv_attrs_.group;
+  int64_t group_input_channels = W_shape[1];
+  int64_t group_output_channels = M / group_count;
+
+  // Test for depthwise convolution.
+  const bool is_depthwise_conv = (use_reordered_W && group_input_channels == 1 && group_output_channels == 1);
+  if (is_depthwise_conv) {
+    // Update the input and output channels to the number of groups in order to
+    // reuse as much of the below standard convolution path.
+    group_input_channels = group_count;
+    group_output_channels = group_count;
+    group_count = 1;
+  }
 
   const int64_t X_offset = group_input_channels * input_image_size;
   const int64_t Y_offset = group_output_channels * output_image_size;
   const int64_t kernel_dim = group_input_channels * kernel_size;
   const int64_t col_buffer_size = kernel_dim * output_image_size;
-
-  AllocatorPtr alloc;
-  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
   // Use an intermediate int32_t buffer for the GEMM computation before
   // requantizing to the output type.
@@ -499,33 +533,10 @@ Status QLinearConv<int8_t>::Compute(OpKernelContext* context) const {
   auto* transpose_output = static_cast<uint8_t*>(alloc->Alloc(SafeInt<size_t>(sizeof(uint8_t)) * Y_offset));
   BufferUniquePtr transpose_output_buffer(transpose_output, BufferDeleter(alloc));
 
-  // Handle the case of a dynamic weight filter.
-  BufferUniquePtr reordered_W_buffer;
-  uint8_t* reordered_W = nullptr;
-  bool use_reordered_W = true;
-#ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
-  if (packed_W_buffer_) {
-    use_reordered_W = false;
-  }
-#endif
-  if (use_reordered_W) {
-    if (reordered_W_buffer_) {
-      reordered_W = static_cast<uint8_t*>(reordered_W_buffer_.get());
-    } else {
-      // Weight tensor was not constant or prepacking is disabled.
-      reordered_W = static_cast<uint8_t*>(alloc->Alloc(SafeInt<size_t>(sizeof(uint8_t)) * W_shape.Size()));
-      reordered_W_buffer = BufferUniquePtr(reordered_W, BufferDeleter(alloc));
-      ReorderFilter(static_cast<const uint8_t*>(W->DataRaw()),
-                    reordered_W,
-                    static_cast<size_t>(M),
-                    static_cast<size_t>(group_input_channels),
-                    static_cast<size_t>(kernel_size));
-    }
-  }
+  BufferUniquePtr col_buffer;
 
   // Pointwise convolutions can use the original input tensor in place,
   // otherwise a temporary buffer is required for the im2col transform.
-  BufferUniquePtr col_buffer;
   if (kernel_size != 1 || !conv_attrs_.HasStridesOneAndNoPadding()) {
     auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(uint8_t)) * col_buffer_size);
     col_buffer = BufferUniquePtr(col_data, BufferDeleter(alloc));
@@ -561,6 +572,23 @@ Status QLinearConv<int8_t>::Compute(OpKernelContext* context) const {
                     static_cast<size_t>(group_input_channels),
                     static_cast<size_t>(input_image_size));
 
+      if (kernel_rank != 2 && col_buffer_data != nullptr) {
+        // Try big Im2ColNd in this case, parallel it later if needed
+        math::Im2colNd<uint8_t, StorageOrder::NHWC>()(
+            transpose_input,
+            input_shape.GetDims().data(),
+            output_shape.GetDims().data(),
+            kernel_dim,
+            kernel_shape.data(),
+            strides.data(),
+            dilations.data(),
+            pads.data(),
+            static_cast<int>(kernel_rank),
+            col_buffer_data,
+            false,
+            X_zero_point_value);
+      }
+
       auto conv_worker = [&](ptrdiff_t batch) {
         auto work = concurrency::ThreadPool::PartitionWork(batch, thread_count, static_cast<ptrdiff_t>(output_image_size));
         int64_t output_start = static_cast<int64_t>(work.start);
@@ -571,24 +599,26 @@ Status QLinearConv<int8_t>::Compute(OpKernelContext* context) const {
         uint8_t* worker_gemm_input;
         if (col_buffer_data != nullptr) {
           worker_gemm_input = col_buffer_data + output_start * kernel_dim;
-          math::Im2col<uint8_t, StorageOrder::NHWC>()(
-              transpose_input,
-              group_input_channels,
-              input_shape[0],
-              input_shape[1],
-              kernel_shape[0],
-              kernel_shape[1],
-              dilations[0],
-              dilations[1],
-              pads[0],
-              pads[1],
-              strides[0],
-              strides[1],
-              output_shape[1],
-              output_start,
-              output_count,
-              worker_gemm_input,
-              X_zero_point_value);
+          if (kernel_rank == 2) {
+            math::Im2col<uint8_t, StorageOrder::NHWC>()(
+                transpose_input,
+                group_input_channels,
+                input_shape[0],
+                input_shape[1],
+                kernel_shape[0],
+                kernel_shape[1],
+                dilations[0],
+                dilations[1],
+                pads[0],
+                pads[1],
+                strides[0],
+                strides[1],
+                output_shape[1],
+                output_start,
+                output_count,
+                worker_gemm_input,
+                X_zero_point_value);
+          }
         } else {
           worker_gemm_input = transpose_input + output_start * kernel_dim;
         }
@@ -596,36 +626,58 @@ Status QLinearConv<int8_t>::Compute(OpKernelContext* context) const {
         auto* worker_gemm_output = gemm_output + output_start * group_output_channels;
         auto* worker_transpose_output = transpose_output + output_start * group_output_channels;
 
+        if (is_depthwise_conv) {
+          if (is_W_signed) {
+            MlasConvDepthwise(worker_gemm_input,
+                              X_zero_point_value,
+                              reinterpret_cast<int8_t*>(reordered_W),
+                              static_cast<int8_t>(0),
+                              worker_gemm_output,
+                              static_cast<size_t>(group_output_channels),
+                              static_cast<size_t>(output_count),
+                              static_cast<size_t>(kernel_size));
+          } else {
+            MlasConvDepthwise(worker_gemm_input,
+                              X_zero_point_value,
+                              reordered_W,
+                              static_cast<uint8_t>(0),
+                              worker_gemm_output,
+                              static_cast<size_t>(group_output_channels),
+                              static_cast<size_t>(output_count),
+                              static_cast<size_t>(kernel_size));
+          }
+        } else {
 #ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
-        if (packed_W_buffer_) {
-          MlasGemm(static_cast<size_t>(output_count),
-                   static_cast<size_t>(group_output_channels),
-                   static_cast<size_t>(kernel_dim),
-                   worker_gemm_input,
-                   static_cast<size_t>(kernel_dim),
-                   X_zero_point_value,
-                   static_cast<const int8_t*>(packed_W_buffer_.get()) + group_id * packed_W_size_,
-                   0,
-                   true,
-                   worker_gemm_output,
-                   static_cast<size_t>(group_output_channels),
-                   nullptr);
-        } else
+          if (packed_W_buffer_) {
+            MlasGemm(static_cast<size_t>(output_count),
+                     static_cast<size_t>(group_output_channels),
+                     static_cast<size_t>(kernel_dim),
+                     worker_gemm_input,
+                     static_cast<size_t>(kernel_dim),
+                     X_zero_point_value,
+                     static_cast<const int8_t*>(packed_W_buffer_.get()) + group_id * packed_W_size_,
+                     0,
+                     is_W_signed,
+                     worker_gemm_output,
+                     static_cast<size_t>(group_output_channels),
+                     nullptr);
+          } else
 #endif
-        {
-          MlasGemm(static_cast<size_t>(output_count),
-                   static_cast<size_t>(group_output_channels),
-                   static_cast<size_t>(kernel_dim),
-                   worker_gemm_input,
-                   static_cast<size_t>(kernel_dim),
-                   X_zero_point_value,
-                   reordered_W + group_id * group_output_channels,
-                   static_cast<size_t>(M),
-                   0,
-                   true,
-                   worker_gemm_output,
-                   static_cast<size_t>(group_output_channels),
-                   nullptr);
+          {
+            MlasGemm(static_cast<size_t>(output_count),
+                     static_cast<size_t>(group_output_channels),
+                     static_cast<size_t>(kernel_dim),
+                     worker_gemm_input,
+                     static_cast<size_t>(kernel_dim),
+                     X_zero_point_value,
+                     reordered_W + group_id * group_output_channels,
+                     static_cast<size_t>(M),
+                     0,
+                     is_W_signed,
+                     worker_gemm_output,
+                     static_cast<size_t>(group_output_channels),
+                     nullptr);
+          }
         }
 
         if (output_scales.size() == 1) {

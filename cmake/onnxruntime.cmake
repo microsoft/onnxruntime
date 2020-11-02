@@ -111,6 +111,7 @@ target_link_libraries(onnxruntime PRIVATE
     ${PROVIDERS_ACL}
     ${PROVIDERS_ARMNN}
     ${onnxruntime_winml}
+    ${PROVIDERS_ROCM}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util

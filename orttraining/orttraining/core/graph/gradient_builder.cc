@@ -792,11 +792,19 @@ IMPLEMENT_GRADIENT_BUILDER(GetLogSoftmaxGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetUnsqueezeGradient) {
-  return std::vector<NodeDef>{
-      NodeDef("Squeeze",
-              {GO(0)},
-              {GI(0)},
-              SrcNodeAttributes())};
+  if (SrcNodeOpsetVersion() < 13) {
+    return std::vector<NodeDef>{
+        NodeDef("Squeeze",
+                {GO(0)},
+                {GI(0)},
+                SrcNodeAttributes())};
+  } else { // mandatory input 'axes' since opset 13
+    return std::vector<NodeDef>{
+        NodeDef(OpDef{"Squeeze", kOnnxDomain, 13},
+                {GO(0), I(1)},
+                {GI(0)},
+                SrcNodeAttributes())};
+  }
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetGatherGradient) {
@@ -830,26 +838,34 @@ IMPLEMENT_GRADIENT_BUILDER(GetReluGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetSqueezeGradient) {
   std::vector<NodeDef> result;
-  auto attributes = SrcNodeAttributes();
-  std::vector<int64_t> axes_values;
-  if (attributes.find("axes") != attributes.end()) {
-    axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
+  size_t numInputs = GetSrcNodeInputSize();
+  if (SrcNodeOpsetVersion() < 13) { //axes attribute
+    auto attributes = SrcNodeAttributes();
+    std::vector<int64_t> axes_values;
+    if (attributes.find("axes") != attributes.end()) {
+      axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
+      result.push_back(
+          NodeDef("Unsqueeze",
+                  {GO(0)},
+                  {GI(0)},
+                  {MakeAttribute("axes", axes_values)}));
+    } 
+  } else if(numInputs == 2){ //optional input 'axes' is provided
     result.push_back(
-        NodeDef("Unsqueeze",
-                {GO(0)},
-                {GI(0)},
-                {MakeAttribute("axes", axes_values)}));
-    // if axes attribute not provided for squeeze
-  } else {
-    result.push_back(
-        NodeDef("Shape",
-                {I(0)},
-                {IA("I0_shape")}));
-    result.push_back(
-        NodeDef("Reshape",
-                {GO(0), IA("I0_shape")},
+        NodeDef(OpDef{"Unsqueeze", kOnnxDomain, 13},
+                {GO(0), I(1)},
                 {GI(0)}));
+  } else { // if axes attribute/input not provided for squeeze
+      result.push_back(
+          NodeDef("Shape",
+                  {I(0)},
+                  {IA("I0_shape")}));
+      result.push_back(
+          NodeDef("Reshape",
+                  {GO(0), IA("I0_shape")},
+                  {GI(0)}));
   }
+
   return result;
 }
 
@@ -1119,10 +1135,20 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceSumGradient) {
   }
 
   ArgDef grad = GO(0);
-  if (!keepdims && attributes.find("axes") != attributes.end()) {
-    std::vector<int64_t> axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
-    grad = IA("Unqueezed_Grad");
-    result.push_back(NodeDef("Unsqueeze", {GO(0)}, {grad}, {MakeAttribute("axes", axes_values)}));
+  if (!keepdims) {
+    size_t numInputs = GetSrcNodeInputSize();
+    if (SrcNodeOpsetVersion() < 13) {  //axes is attribute
+      if (attributes.find("axes") != attributes.end()) {
+        std::vector<int64_t> axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
+
+        grad = IA("Unqueezed_Grad");
+        result.push_back(NodeDef("Unsqueeze", {GO(0)}, {grad}, {MakeAttribute("axes", axes_values)}));
+
+      } 
+    } else if (numInputs == 2) {  //optional input 'axes' is available as input I(1)
+      grad = IA("Unqueezed_Grad");
+      result.push_back(NodeDef(OpDef{"Unsqueeze", kOnnxDomain, 13}, {GO(0), I(1)}, {grad}));
+    } //axes is not available, the GO(0) is a scalar which can be expanded to required shape
   }
 
   result.push_back(NodeDef("Shape", {I(0)}, {IA("Shaped_X")}));

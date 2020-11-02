@@ -32,7 +32,7 @@ python3 /onnxruntime_src/tools/python/convert_onnx_models_to_ort.py \
 find /home/onnxruntimedev/.test_data/ort_minimal_e2e_test_data -type f -name "*.onnx" -delete
 
 # Uninstall the ORT python wheel
-python3 -m pip uninstall -y onnxruntime
+python3 -m pip uninstall -y onnxruntime_noopenmp
 
 # Clear the build
 rm -rf /build/Debug
