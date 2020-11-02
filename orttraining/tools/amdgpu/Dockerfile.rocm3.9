@@ -1,15 +1,14 @@
-# docker build --network=host --file Dockerfile.rocm3.9.pytorch --tag ort:rocm3.9-pytorch .
+# docker build --network=host --file Dockerfile.rocm3.9 --tag ort:rocm3.9-ort-dev .
 
-FROM rocm/pytorch:rocm3.9_ubuntu18.04_py3.6_pytorch
+FROM rocm/tensorflow:rocm3.9-tf2.3-dev
 
-RUN apt-get -y install gpg-agent
 RUN wget -q -O - http://repo.radeon.com/rocm/rocm.gpg.key | apt-key add -
 RUN echo 'deb [arch=amd64] http://repo.radeon.com/rocm/apt/3.9/ xenial main' | tee /etc/apt/sources.list.d/rocm.list
 
 RUN apt-get -y update
 RUN apt-get -y install apt-utils
 RUN apt-get -y install build-essential autotools-dev \
-    make git curl vim wget jq openssh-server openssh-client sudo \
+    make git curl vim wget rsync jq openssh-server openssh-client sudo \
     iputils-ping net-tools ethtool libcap2 \
     automake autoconf libtool flex doxygen \
     perl lsb-release iproute2 pciutils graphviz \
@@ -29,12 +28,11 @@ RUN cd /usr/local && \
     wget -q -O - https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-Linux-x86_64.tar.gz | tar zxf -
 ENV PATH=/usr/local/cmake-${CMAKE_VERSION}-Linux-x86_64/bin:${PATH}
 
+# WORKSPACE_DIR
 ENV WORKSPACE_DIR=/workspace
 RUN mkdir -p $WORKSPACE_DIR
 WORKDIR $WORKSPACE_DIR
 
-ENV OLD_PATH=${PATH}
-ENV PATH=/usr/bin:${PATH}
 # Infiniband setup, openmpi installed under /usr/mpi/gcc/openmpi-4.0.4rc3 doesn't support multi-thread
 ENV MOFED_VERSION=5.1-0.6.6.0
 ENV MOFED_OS=ubuntu18.04
@@ -45,17 +43,28 @@ RUN cd MLNX_OFED_LINUX-${MOFED_VERSION}-${MOFED_OS}-x86_64 && \
     cd .. && \
     rm -r MLNX_OFED_LINUX-${MOFED_VERSION}-${MOFED_OS}-x86_64
 
-ENV PATH=${OLD_PATH}
-ENV unset OLD_PATH
+# install miniconda (comes with python 3.9 default)
+ARG CONDA_VERSION=4.7.10
+ARG CONDA_URL=https://repo.anaconda.com/miniconda/Miniconda3-${CONDA_VERSION}-Linux-x86_64.sh
+RUN curl -fSsL --insecure ${CONDA_URL} -o install-conda.sh &&\
+    /bin/bash ./install-conda.sh -b -p /opt/conda &&\
+    /opt/conda/bin/conda clean -ya
+ENV PATH=/opt/conda/bin:${PATH}
 
-# python env
 ARG NUMPY_VERSION=1.18.5
 ARG ONNX_VERSION=1.7.0
-RUN pip3 install --no-cache-dir wheel tqdm boto3 requests six ipdb h5py html2text nltk progressbar pyyaml \
+RUN conda install -y \
+        numpy=${NUMPY_VERSION} \
+        cmake \
+        ninja \
+        pyyaml \
+        cffi \
+        setuptools \
+    && pip install --no-cache-dir wheel tqdm boto3 requests six ipdb h5py html2text nltk progressbar \
         git+https://github.com/NVIDIA/dllogger \
-        numpy==${NUMPY_VERSION} \
         onnx=="${ONNX_VERSION}"
 
+# GITHUB_DIR
 ENV GITHUB_DIR=$WORKSPACE_DIR/github
 RUN mkdir -p $GITHUB_DIR
 
@@ -107,8 +116,6 @@ RUN mv $OPENMPI_DIR/bin/mpirun $OPENMPI_DIR/bin/mpirun.real && \
 # install mpi4py (be sure to link existing /opt/openmpi-xxx)
 RUN CC=mpicc MPICC=mpicc pip install mpi4py --no-binary mpi4py
 
-ARG CACHE_DATA=2020-10-31
-
 # ONNX Runtime
 WORKDIR $GITHUB_DIR
 ENV ORT_DIR=$GITHUB_DIR/onnxruntime
@@ -128,7 +135,10 @@ RUN git clone --recursive -b wezhan/amdgpu https://github.com/microsoft/onnxrunt
   && test -f $ORT_DIR/build/RelWithDebInfo/onnxruntime_training_bert \
   && pip install $ORT_DIR/build/RelWithDebInfo/dist/*.whl \
   && ldconfig
-RUN apt-get -y install unzip
+
+# Instructions to pull and install the nightly ROCm3.8 PyTorch whl pacakge
+RUN pip3 install --pre torch -f https://download.pytorch.org/whl/nightly/rocm3.9/torch_nightly.html
+
 # ONNX Runtime Training Examples
 WORKDIR $GITHUB_DIR
 ARG GPT2_DATASET=wikitext-103
@@ -155,7 +165,7 @@ RUN git clone -b wezhan/amdgpu https://github.com/microsoft/onnxruntime-training
   && cp -r $GITHUB_DIR/onnxruntime-training-examples/huggingface-gpt2/ort_addon/ort_supplement/* ./ \
   && python3 -m pip install --no-cache-dir -e . \
   && python3 -m pip install --no-cache-dir -r examples/requirements.txt \
-  && python3 -m pip install cerberus \
+  && python3 -m pip install cerberus sympy packaging \
   && cd .. \
   && wget https://s3.amazonaws.com/research.metamind.io/wikitext/${GPT2_DATASET}-v1.zip \
   && unzip ${GPT2_DATASET}-v1.zip
