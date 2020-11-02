@@ -31,6 +31,8 @@ def main():
 
     # run BERT training
     subprocess.run([
+        "/bert_ort/openmpi/bin/mpirun",
+        "-n", "2",
         os.path.join(args.binary_dir, "onnxruntime_training_bert"),
         "--model_name", os.path.join(
             args.model_root, "nv/bert-base/bert-base-uncased_L_12_H_768_A_12_V_30528_S_512_Dp_0.1_optimized_layer_norm_opset12"),
