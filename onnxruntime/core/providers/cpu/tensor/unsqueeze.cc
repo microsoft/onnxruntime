@@ -18,9 +18,19 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
     Unsqueeze);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Unsqueeze,
     11,
+    12,
+    KernelDefBuilder()
+        .Alias(0, 0)
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
+    Unsqueeze);
+
+// axes is input instead of attribute
+ONNX_CPU_OPERATOR_KERNEL(
+    Unsqueeze,
+    13,
     KernelDefBuilder()
         .Alias(0, 0)
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
@@ -31,12 +41,25 @@ Status UnsqueezeBase::PrepareCompute(OpKernelContext* ctx, Prepare& p) const {
   ORT_ENFORCE(X != nullptr);
   auto& input_tensor = *X;
 
-  // New dimension count is the current dimensions + the number of entries in axes_
-  // Initialize output_dims to 0 in each axis initially
-  std::vector<int64_t> output_dims(axes_.size() + input_tensor.Shape().NumDimensions(), 0);
+  const auto* axes = ctx->Input<Tensor>(1);
+  std::vector<int64_t> axes_input = axes_;
+  if (axes != nullptr) {
+    axes_input.resize(0);
+    size_t num_elements = axes->Shape().Size();
 
-  // Set all axes_ indices to 1 in output_dims and check for duplicates
-  for (int64_t axis : axes_) {
+    const int64_t* axes_data = axes->Data<int64_t>();
+
+    for (size_t i = 0; i < num_elements; ++i) {
+      axes_input.push_back(axes_data[i]);
+    }
+  }
+
+  // New dimension count is the current dimensions + the number of entries in axes
+  // Initialize output_dims to 0 in each axis initially
+  std::vector<int64_t> output_dims(axes_input.size() + input_tensor.Shape().NumDimensions(), 0);
+
+  // Set all axes_input indices to 1 in output_dims and check for duplicates
+  for (int64_t axis : axes_input) {
     // Valid axis range is [0, output_rank - 1]
     axis = HandleNegativeAxis(axis, output_dims.size());
     if (axis < 0 || axis >= static_cast<int64_t>(output_dims.size()))

@@ -477,7 +477,7 @@ inline SessionOptions& SessionOptions::AddInitializer(const char* name, const Or
   return *this;
 }
 
-inline OrtStatus* SessionOptions::OrtSessionOptionsAppendExecutionProvider_CUDA(OrtSessionOptions * options, OrtCUDAProviderOptions * cuda_options) {
+inline OrtStatus* SessionOptions::OrtSessionOptionsAppendExecutionProvider_CUDA(OrtSessionOptions* options, OrtCUDAProviderOptions* cuda_options) {
   ThrowOnError(GetApi().OrtSessionOptionsAppendExecutionProvider_CUDA(options, cuda_options));
   return nullptr;
 }
@@ -733,6 +733,19 @@ inline Value Value::CreateSequence(std::vector<Value>& values) {
   OrtValue* out;
   std::vector<OrtValue*> values_ort{values.data(), values.data() + values.size()};
   ThrowOnError(GetApi().CreateValue(values_ort.data(), values_ort.size(), ONNX_TYPE_SEQUENCE, &out));
+  return Value{out};
+}
+
+inline Value Value::CreateEmptyTensorSequence(ONNXTensorElementDataType tensor_type) {
+  OrtValue* out;
+  ThrowOnError(GetApi().CreateEmptyTensorSequence(tensor_type, &out));
+  return Value{out};
+}
+
+template <typename T>
+inline Value Value::CreateEmptyTensorSequence() {
+  OrtValue* out;
+  ThrowOnError(GetApi().CreateEmptyTensorSequence(TypeToTensorType<T>::type, &out));
   return Value{out};
 }
 

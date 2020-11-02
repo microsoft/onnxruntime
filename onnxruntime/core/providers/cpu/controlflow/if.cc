@@ -19,7 +19,7 @@ namespace onnxruntime {
 /*
 ONNX_OPERATOR_SET_SCHEMA(
     If,
-    1,
+    13,
     OpSchema()
         .SetDoc("If conditional")
         .Input(0, "cond", "Condition for the if", "B")
@@ -27,10 +27,24 @@ ONNX_OPERATOR_SET_SCHEMA(
             0,
             "outputs",
             "Values that are live-out to the enclosing scope. The return values in "
-            "the `then_branch` and `else_branch` must be of the same shape and same "
-            "data type.",
+            "the `then_branch` and `else_branch` must be of the same data type. "
+            "The `then_branch` and `else_branch` may produce tensors with the same "
+            "element type and different shapes. "
+            "If corresponding outputs from the then-branch and the else-branch have "
+            "static shapes S1 and S2, then the shape of the corresponding output "
+            "variable of the if-node (if present) must be compatible with both S1 "
+            "and S2 as it represents the union of both possible shapes."
+            "For example, if in a model file, the the first "
+            "output of `then_branch` is typed float tensor with shape [2] and the "
+            "first output of `else_branch` is another float tensor with shape [3], "
+            "If's first output should have (a) no shape set, or (b) "
+            "a shape of rank 1 with neither `dim_value` nor `dim_param` set, or (c) "
+            "a shape of rank 1 with a unique `dim_param`. "
+            "In contrast, the first output cannot have the shape [2] since [2] and "
+            "[3] are not compatible.",
             "V",
-            OpSchema::Variadic)
+            OpSchema::Variadic,
+            false)
         .Attr(
             "then_branch",
             "Graph to run if condition is true. Has N outputs: values you wish to "
@@ -43,8 +57,17 @@ ONNX_OPERATOR_SET_SCHEMA(
             " be live-out to the enclosing scope. The number of outputs must match"
             " the number of outputs in the then_branch.",
             AttributeProto::GRAPH)
-        .TypeConstraint("V", OpSchema::all_tensor_types(), "All Tensor types")
-        .TypeConstraint("B", {"tensor(bool)"}, "Only bool"));
+        .TypeConstraint(
+            "V",
+            [](){
+              auto t = OpSchema::all_tensor_types();
+              auto s = OpSchema::all_tensor_sequence_types();
+              t.insert(t.end(), s.begin(), s.end());
+              return t;
+            }(),
+            "All Tensor and Sequence types")
+        .TypeConstraint("B", {"tensor(bool)"}, "Only bool")
+        .TypeAndShapeInferenceFunction(IfInferenceFunction));
 */
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(If,
@@ -56,11 +79,19 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(If,
 
 // output shape rules requiring the output shapes of the 'THEN' and 'ELSE'
 // branches to be the same were relaxed in opset-11
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(If,
+                                   11, 12,
+                                   KernelDefBuilder()
+                                       .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+                                       .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
+                                   If);
+
+// sequence tensors were also supported in addition to existing support for tensors in opset-13
 ONNX_CPU_OPERATOR_KERNEL(If,
-                         11,
+                         13,
                          KernelDefBuilder()
                              .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                             .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
+                             .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
                          If);
 
 struct If::Info {
@@ -247,28 +278,40 @@ Status IfImpl::AllocateOutputTensors() {
   int index = 0;
 
   for (auto& graph_output : info_.subgraph.GetOutputs()) {
-    auto* graph_output_shape = graph_output->Shape();
-    bool symbolic_dim_in_shape = false;
+    const auto* graph_output_type = graph_output->TypeAsProto();
 
-    if (graph_output_shape) {
-      TensorShape output_shape = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*graph_output_shape);
+    if (graph_output_type->has_tensor_type()) {
+      auto* graph_output_shape = graph_output->Shape();
+      bool symbolic_dim_in_shape = false;
 
-      // if size < 0 we have a symbolic dimension and need to use a temporary OrtValue in the subgraph execution
-      if (output_shape.Size() < 0) {
-        symbolic_dim_in_shape = true;
-      } else {
-        auto* tensor = context_.Output(index, output_shape);
+      if (graph_output_shape) {
+        TensorShape output_shape = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*graph_output_shape);
 
-        if (!tensor)
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create output tensor for ", graph_output->Name());
+        // if size < 0 we have a symbolic dimension and need to use a temporary OrtValue in the subgraph execution
+        if (output_shape.Size() < 0) {
+          symbolic_dim_in_shape = true;
+        } else {
+          auto* tensor = context_.Output(index, output_shape);
 
-        outputs_.push_back({AllocationType::IfOutput, *context_.GetOutputMLValue(index)});
+          if (!tensor)
+            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create output tensor for ", graph_output->Name());
+
+          outputs_.push_back({AllocationType::IfOutput, *context_.GetOutputMLValue(index)});
+        }
       }
-    }
 
-    if (!graph_output_shape || symbolic_dim_in_shape) {
-      // we still need a value to put in the feeds we give to the execution frame, so just use an empty MLValue
-      outputs_.push_back({AllocationType::Delayed, {}});
+      if (!graph_output_shape || symbolic_dim_in_shape) {
+        // we still need a value to put in the feeds we give to the execution frame, so just use an empty MLValue
+        outputs_.push_back({AllocationType::Delayed, {}});
+      }
+    } else if (graph_output_type->has_sequence_type()) {
+      auto* seq_tensor = context_.Output<TensorSeq>(index);
+      if (!seq_tensor)
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create output tensor for ", graph_output->Name());
+      outputs_.push_back({AllocationType::IfOutput, *context_.GetOutputMLValue(index)});
+    } else {
+      // Shouldn't hit this
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Only tensors or sequence of tensors are suppported");
     }
 
     ++index;
@@ -311,6 +354,7 @@ Status IfImpl::Execute(const FeedsFetchesManager& ffm) {
         // we don't update the provided OrtValue and return false for 'allocated'.
         // the execution frame will allocate a buffer on the required device, and the fetches copy
         // logic in utils::ExecuteSubgraph will handle moving it into the tensor we allocated here.
+
         auto* tensor = context_.Output(i, shape);
         if (!tensor)
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create output tensor for If output ", i);

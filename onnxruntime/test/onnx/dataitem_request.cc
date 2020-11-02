@@ -23,6 +23,7 @@ std::pair<EXECUTE_RESULT, TIME_SPEC> DataTaskRequestContext::Run(const ITestCase
   std::pair<EXECUTE_RESULT, TIME_SPEC> result;
   Callback empty_cb;
   DataTaskRequestContext ctx(empty_cb, c, session, allocator, task_id);
+  result = ctx.RunImpl();
   ORT_TRY {
     result = ctx.RunImpl();
   }

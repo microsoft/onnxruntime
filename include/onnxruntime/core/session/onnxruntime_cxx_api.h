@@ -252,7 +252,6 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions& AddConfigEntry(const char* config_key, const char* config_value);
   SessionOptions& AddInitializer(const char* name, const OrtValue* ort_val);
   OrtStatus* OrtSessionOptionsAppendExecutionProvider_CUDA(OrtSessionOptions* options, OrtCUDAProviderOptions* cuda_options);
-
 };
 
 struct ModelMetadata : Base<OrtModelMetadata> {
@@ -349,6 +348,10 @@ struct Value : Base<OrtValue> {
 
   static Value CreateMap(Value& keys, Value& values);
   static Value CreateSequence(std::vector<Value>& values);
+
+  template <typename T>
+  static Value CreateEmptyTensorSequence();
+  static Value CreateEmptyTensorSequence(ONNXTensorElementDataType tensor_type);
 
   template <typename T>
   static Value CreateOpaque(const char* domain, const char* type_name, const T&);

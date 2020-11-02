@@ -678,8 +678,7 @@ void OpTester::Run(
     run_called_ = true;
 #endif
 
-    static bool allow_released_onnx_opset_only =
-        model_load_utils::IsAllowReleasedONNXOpsetsOnlySet();
+    static bool allow_released_onnx_opset_only = false;
     if (allow_released_onnx_opset_only) {
       auto& onnx_released_versions =
           ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().LastReleaseVersionMap();
@@ -749,8 +748,7 @@ void OpTester::Run(
         kAclExecutionProvider,
         kArmNNExecutionProvider,
         kNnapiExecutionProvider,
-        kRocmExecutionProvider
-    };
+        kRocmExecutionProvider};
 
     bool has_run = false;
 
@@ -849,8 +847,7 @@ void OpTester::Run(
               }
             }
 
-            if (!valid)
-            {
+            if (!valid) {
               std::cerr << "No kernel registered from EP: " << provider_type << "for node: " << node.OpType() << std::endl;
               break;
             }

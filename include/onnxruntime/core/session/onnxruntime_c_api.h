@@ -1103,6 +1103,11 @@ struct OrtApi {
    * and that's recommended because turning this option on may hurt model accuracy.
    */
   ORT_API2_STATUS(SetGlobalDenormalAsZero, _Inout_ OrtThreadingOptions* tp_options);
+
+  /**
+   * To construct an empty sequence of tensors
+   */
+  ORT_API2_STATUS(CreateEmptyTensorSequence, ONNXTensorElementDataType tensor_type, _Outptr_ OrtValue** out);
 };
 
 /*
