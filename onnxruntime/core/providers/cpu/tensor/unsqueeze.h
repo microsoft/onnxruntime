@@ -11,7 +11,7 @@ namespace onnxruntime {
 class UnsqueezeBase {
  protected:
   UnsqueezeBase(const OpKernelInfo& info) {
-    info.GetAttrs("axes", axes_);
+    ORT_ENFORCE(info.GetAttrs("axes", axes_).IsOK(), "Missing/Invalid 'axes' attribute value");
   }
 
   struct Prepare {
@@ -22,7 +22,7 @@ class UnsqueezeBase {
   Status PrepareCompute(OpKernelContext* context, Prepare& p) const;
 
  private:
-  mutable std::vector<int64_t> axes_;
+  std::vector<int64_t> axes_;
 };
 
 class Unsqueeze final : public OpKernel, public UnsqueezeBase {
