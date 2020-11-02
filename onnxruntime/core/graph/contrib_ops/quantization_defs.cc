@@ -819,7 +819,7 @@ Wwhere the function `Sigmoid(x) = 1 / (1 + exp(-x))` )DOC";
           "R",
           "The recurrence weight tensor. Concatenation of `R[iofc]` and "
           "`RB[iofc]` (if bidirectional) along dimension 0. This tensor has shape "
-          "`[num_directions, 4*hidden_size, hidden_size]`.",
+          "`[num_directions, hidden_size, 4*hidden_size]`.",
           "T2")
       .Input(
           3,
