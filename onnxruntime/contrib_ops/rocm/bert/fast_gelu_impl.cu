@@ -1,4 +1,3 @@
-#include "hip/hip_runtime.h"
 /*
  The implementation of this file is based on gelu plugin in TensorRT demo:
  https://github.com/NVIDIA/TensorRT/tree/release/5.1/demo/BERT/

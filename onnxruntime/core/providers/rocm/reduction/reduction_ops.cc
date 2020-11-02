@@ -406,5 +406,5 @@ REGISTER_KERNEL_INT32(ReduceMean)
 REGISTER_KERNEL_INT32(ReduceProd)
 REGISTER_KERNEL_INT32(ReduceSum)
 
-}  // namespace cuda
+}  // namespace rocm
 }  // namespace onnxruntime
