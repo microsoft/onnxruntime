@@ -411,10 +411,58 @@ struct TensorBase : TBase {
       winrt::array_view<int64_t const> shape,
       wss::IBuffer const& buffer) try {
     std::vector<int64_t> vecShape(shape.begin(), shape.end());
+    if (HasFreeDimensions(vecShape)) {
+      // If the tensor is being created with a free dimension, the data needs to
+      // provide its actual size so that the free dimension can be computed.
+      // In the case of IIterable<T>, there is no Size accessor, and so we require that
+      // in this case the underlying object also implement IVectorView, so that we may
+      // efficiently query the size of the data.
+      auto size_in_bytes = buffer.Length();
+      auto num_elements = size_in_bytes / sizeof(T); 
+      vecShape = GetAdjustedShape(vecShape, num_elements);
+    }
+
     typename TBase::class_type tensorValue = winrt::make<TDerived>();
     auto tensorValueImpl = tensorValue.as<TDerived>();
     tensorValueImpl->shape_ = vecShape;
     tensorValueImpl->GetCpuResource() = std::make_shared<_winml::Tensor<T>>(vecShape, buffer);
+    return tensorValue;
+  }
+  WINML_CATCH_ALL
+
+  // ITensor<T>::CreateAndCopyFromBatchedBuffers
+  static typename TBase::class_type CreateAndCopyFromBatchedBuffers(
+      wfc::IIterable<int64_t> shape,
+      wfc::IIterable<wss::IBuffer> const& data) try {
+    return CreateFromBatchedBuffers(shape, data);
+  }
+  WINML_CATCH_ALL
+
+  // ITensor<T>::CreateFromBatchedBuffers
+  static typename TBase::class_type CreateFromBatchedBuffers(
+      wfc::IIterable<int64_t> shape,
+      wfc::IIterable<wss::IBuffer> const& buffers) try {
+    std::vector<int64_t> vecShape(begin(shape), end(shape));
+    if (HasFreeDimensions(vecShape)) {
+      // If the tensor is being created with a free dimension, the data needs to
+      // provide its actual size so that the free dimension can be computed.
+      // In the case of IIterable<T>, there is no Size accessor, and so we require that
+      // in this case the underlying object also implement IVectorView, so that we may
+      // efficiently query the size of the data.
+      auto size_in_bytes = 0;
+      for (auto buffer : buffers) {
+        size_in_bytes += buffer.Length();
+      }
+
+      auto num_elements = size_in_bytes / sizeof(T); 
+      vecShape = GetAdjustedShape(vecShape, num_elements);
+    }
+
+
+    typename TBase::class_type tensorValue = winrt::make<TDerived>();
+    auto tensorValueImpl = tensorValue.as<TDerived>();
+    tensorValueImpl->shape_ = vecShape;
+    tensorValueImpl->GetCpuResource() = std::make_shared<_winml::Tensor<T>>(vecShape, buffers);
     return tensorValue;
   }
   WINML_CATCH_ALL

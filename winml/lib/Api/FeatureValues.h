@@ -156,6 +156,25 @@ inline winml::ILearningModelFeatureValue CreateTensorValueFromInspectable(
       }
     }
   }
+
+  // Vector of IBuffer Input should be copied into the appropriate Tensor
+  if (bindingType == _winml::BindingType::kInput) {
+    if (auto buffers = inspectable.try_as<wfc::IVector<wss::IBuffer>>()) {
+      return TValueType::CreateAndCopyFromBatchedBuffers(descriptor.Shape(), buffers);
+    }
+
+    if (auto buffers = inspectable.try_as<wfc::IVectorView<wss::IBuffer>>()) {
+      return TValueType::CreateAndCopyFromBatchedBuffers(descriptor.Shape(), buffers);
+    }
+  }
+
+  // Vector of IBuffer Output should be copied into the appropriate Tensor
+  if (bindingType == _winml::BindingType::kOutput) {
+    if (auto buffers = inspectable.try_as<wfc::IVector<wss::IBuffer>>()) {
+      return TValueType::CreateFromBatchedBuffers(descriptor.Shape(), buffers);
+    }
+  }
+
   return nullptr;
 }
 
@@ -211,6 +230,7 @@ inline winml::ILearningModelFeatureValue CreateFeatureValueFromInspectable(
     return featureValue;
   }
 
+  // Batched video frames
   if (auto videoFrames = inspectable.try_as<wfc::IVector<wm::VideoFrame>>()) {
     return (0 == videoFrames.Size()) ? nullptr : winrt::make<winmlp::ImageFeatureValue>(videoFrames);
   }
