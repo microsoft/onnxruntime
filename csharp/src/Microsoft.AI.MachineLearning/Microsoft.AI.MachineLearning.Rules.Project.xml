@@ -21,5 +21,6 @@
   <BoolProperty Name="UseWindowsMLStaticRuntime"
                 DisplayName="Use a dll that links statically to runtimes"
                 Description="Use a larger DLL that doesn't depend on installed versions of the vcruntime and CRT."
-                Category="General" />
+                Category="General"
+                Condition="'$(WindowsStoreApp)' != 'true'" />
 </Rule>
