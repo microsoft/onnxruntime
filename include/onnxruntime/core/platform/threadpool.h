@@ -113,21 +113,6 @@ class ThreadPool {
   // Parallel sections may not be nested, and may not be used inside
   // parallel loops.
 
-#ifdef _OPENMP
-  class ParallelSection {
-  public:
-    ParallelSection(ThreadPool *) {
-      // Nothing
-    }
-
-    ~ParallelSection() {
-      // Nothing
-    }
-
-  private:
-    ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ParallelSection);
-  };
-#else
   class ParallelSection {
   public:
     ParallelSection(ThreadPool *tp);
@@ -144,7 +129,6 @@ class ThreadPool {
     static_assert(std::is_trivially_destructible<typeof(ParallelSection::current_parallel_section)>::value,
                   "Per-thread state should be trivially destructible");
   };
-#endif
 
   // ParallelFor shards the "total" units of work assuming each unit of work
   // having roughly "cost_per_unit" cost, in cycles. Each unit of work is

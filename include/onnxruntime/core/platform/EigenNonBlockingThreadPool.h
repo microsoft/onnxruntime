@@ -40,12 +40,11 @@
 #include "core/platform/Barrier.h"
 
 namespace onnxruntime {
-
- namespace concurrency {
+namespace concurrency {
 
 struct PerLoop {
-PerLoop(std::function<void(unsigned)> f, unsigned t) : fn(std::move(f)), threads_needed(t) {
-}
+   PerLoop(std::function<void(unsigned)> f, unsigned t) : fn(std::move(f)), threads_needed(t) {
+   }
   
   const std::function<void(unsigned)> fn;
   const unsigned threads_needed;
@@ -55,13 +54,34 @@ private:
 };
 
 struct ThreadPoolParallelSection {
-  // Per-parallel section state
-  unsigned workers_started{0};
-  std::atomic<unsigned> workers_finished{0};
-  std::atomic<unsigned> workers_in_loop{0};
-  std::atomic<PerLoop *> current_loop{nullptr};
+  // State accessed only by the main thread
+  // --------------------------------------
+
+  // Tasks successfully submitted to the work queues.  This sets the
+  // maximum degree of parallelism that the section will support.
+  std::vector<std::pair<int,unsigned>> tasks;
+
+  // State shared between the main thread and worker threads
+  // -------------------------------------------------------
+
+  // Flag to signal termination of the parallel section
   std::atomic<bool> active{false};
-  std::vector<std::pair<int,unsigned>> pending_items;
+
+  // Count of the number of tasks that completed normally.  Other tasks
+  // may be present in work queues, or may have been removed from the
+  // queues by RunQueue::RevokeWithTag.
+  std::atomic<unsigned> tasks_finished{0};
+
+  // If non-null, the current loop that tasks should be executing.  We
+  // need to be careful on access to the contents of current_loop
+  // because it can be stack allocated on the thread entering the
+  // loop:
+  //
+  // - Readers increment workers_in_loop and then read current_loop
+  //
+  // - Writers clear current_loop and then wait for workers_in_loop==0
+  std::atomic<PerLoop *> current_loop{nullptr};
+  std::atomic<unsigned> workers_in_loop{0};
 };
 
 
@@ -620,7 +640,6 @@ void EndParallelSection(ThreadPoolParallelSection &ps) override {
   PerThread* pt = GetPerThread();
   ORT_ENFORCE(pt->in_parallel_section, "Ending parallel section, but none started");
   ORT_ENFORCE(ps.active, "Ending parallel section, but not active");
-
   pt->in_parallel_section = false;
 
   // Notify workers to exit from ParLoopWorker
@@ -628,23 +647,24 @@ void EndParallelSection(ThreadPoolParallelSection &ps) override {
 
   // Attempt to cancel any tasks that were sent to workers but not
   // started.
-  for (auto& item : ps.pending_items) {
+  unsigned tasks_started = ps.tasks.size();
+  unsigned tasks_revoked = 0;
+  for (auto& item : ps.tasks) {
     Queue& q = worker_data_[item.first].queue;
     if (q.RevokeWithTag(pt->tag, item.second)) {
-      ps.workers_finished++;
+      tasks_revoked++;
     }
   }
-  ps.pending_items.clear();
 
   // Wait for workers to exit ParLoopWorker
-  while (ps.workers_finished < ps.workers_started) {
+  auto tasks_to_wait_for = tasks_started - tasks_revoked;
+  while (ps.tasks_finished < tasks_to_wait_for) {
     onnxruntime::concurrency::SpinPause();
   }
 
   // Clear status for next loop
-  ps.workers_started = 0;
-  ps.workers_finished = 0;
-
+  ps.tasks.clear();
+  ps.tasks_finished = 0;
  }
 
  void RunInParallel(ThreadPoolParallelSection &ps,
@@ -658,15 +678,17 @@ void EndParallelSection(ThreadPoolParallelSection &ps) override {
   PerLoop loop{std::move(fn), n};
   ps.current_loop = &loop;
 
-  if (n > (ps.workers_started+1)) {
-    unsigned extra_needed = n - (ps.workers_started+1);
-    // We build a list of <thread,idx> pairs for each of the queues that accepts a work
-    // item.  This lets us remove any work items that do not get executed by the threads
+  auto current_dop = ps.tasks.size() + 1;
+  if (n > current_dop) {
+    unsigned extra_needed = n - current_dop;
+    // We build a list of <thread,idx> pairs for each of the queues
+    // that accepts a task.  This lets us reduce waiting on loop-exit
+    // by removing any tasks that do not get executed by the threads
     // that we push them to.
     std::vector<unsigned> good_hints, alt_hints;
     GetGoodWorkerHints(n - 1, good_hints, alt_hints);
     for (unsigned i = 0; i < extra_needed; i++) {
-      int new_idx = ps.workers_started+1;
+      int new_idx = ps.tasks.size() + 1;
       Task t = env_.CreateTask([&ps, new_idx, this]{
           ParLoopWorker(ps, new_idx);
         });
@@ -687,8 +709,7 @@ void EndParallelSection(ThreadPoolParallelSection &ps) override {
       t = q.PushBackWithTag(std::move(t), pt->tag, w_idx);
       if (!t.f) {
         // The queue accepted the work, ensure that the thread is servicing the queue
-        ps.workers_started++;
-        ps.pending_items.push_back({q_idx, w_idx});
+        ps.tasks.push_back({q_idx, w_idx});
         td.EnsureAwake();
       }
     }
@@ -1107,7 +1128,7 @@ int CurrentThreadId() const EIGEN_FINAL {
     }
   }
 
-  ps.workers_finished++;
+  ps.tasks_finished++;
   my_pt->in_parallel_section = false;
 }
 

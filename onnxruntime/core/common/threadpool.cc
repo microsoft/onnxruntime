@@ -216,6 +216,9 @@ void ThreadPool::Schedule(std::function<void()> fn) {
 thread_local ThreadPool::ParallelSection *ThreadPool::ParallelSection::current_parallel_section;
 
 ThreadPool::ParallelSection::ParallelSection(ThreadPool *tp) : _tp(tp) {
+#ifdef _OPENMP
+  // Nothing
+#else
   ORT_ENFORCE(!current_parallel_section, "Nested parallelism not supported");
   ORT_ENFORCE(!_ps);//.get());
   if (tp->underlying_threadpool_) {
@@ -223,14 +226,19 @@ ThreadPool::ParallelSection::ParallelSection(ThreadPool *tp) : _tp(tp) {
     _tp->underlying_threadpool_->StartParallelSection(*_ps);//.get());
     current_parallel_section = this;
   }
+#endif
 }
 
 ThreadPool::ParallelSection::~ParallelSection() {
+#ifdef _OPENMP
+  // Nothing
+#else
   if (current_parallel_section) {
     _tp->underlying_threadpool_->EndParallelSection(*_ps);//.get());
     delete _ps;
     current_parallel_section = nullptr;
   }
+#endif
 }
 
 void ThreadPool::RunInParallel(std::function<void(unsigned idx)> fn, unsigned n) {
