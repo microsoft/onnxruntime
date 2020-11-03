@@ -8,12 +8,23 @@
 #include <climits>
 #include <string>
 #include "core/common/path.h"
-#include "core/flatbuffers/ort.fbs.h"
 #include "core/graph/graph_viewer.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "gsl/gsl"
 
+namespace flatbuffers {
+class FlatBufferBuilder;
+template <typename T>
+struct Offset;
+}  // namespace flatbuffers
+
 namespace onnxruntime {
+
+namespace experimental {
+namespace fbs {
+struct Model;
+}  // namespace fbs
+}  // namespace experimental
 
 typedef std::unordered_map<std::string, std::string> ModelMetaData;
 using IOnnxRuntimeOpSchemaRegistryList = std::list<std::shared_ptr<IOnnxRuntimeOpSchemaCollection>>;
@@ -233,7 +244,7 @@ class Model {
   // properties that would normally come from ModelProto
   std::string producer_version_;
   std::string producer_name_;
-  int64_t model_version_ = 0;
+  int64_t model_version_ = kNoVersion;
   int64_t ir_version_ = kNoVersion;
   std::string domain_;
   std::string doc_string_;

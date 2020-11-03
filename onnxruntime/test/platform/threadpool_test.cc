@@ -52,7 +52,7 @@ void CreateThreadPoolAndTest(const std::string&, int num_threads, const std::fun
 void TestParallelFor(const std::string& name, int num_threads, int num_tasks) {
   auto test_data = CreateTestData(num_tasks);
   CreateThreadPoolAndTest(name, num_threads, [&](ThreadPool* tp) {
-    tp->SimpleParallelFor(num_tasks, [&](std::ptrdiff_t i) { IncrementElement(*test_data, i); });
+      ThreadPool::TrySimpleParallelFor(tp, num_tasks, [&](std::ptrdiff_t i) { IncrementElement(*test_data, i); });
   });
   ValidateTestData(*test_data);
 }
@@ -82,15 +82,15 @@ void TestMultipleParallelFor(const std::string& name, int num_threads, int num_c
 
       // For a range of scenarios, run some tests via the thread pool, and one directly
       for (int c = 0; c < num_concurrent - 1; c++) {
-        tp->Schedule([&, c]() {
-          tp->SimpleParallelFor(num_tasks, [&](std::ptrdiff_t i) {
-            IncrementElement(*td[c], i);
+        ThreadPool::Schedule(tp, [&, c]() {
+            ThreadPool::TrySimpleParallelFor(tp, num_tasks, [&](std::ptrdiff_t i) {
+                IncrementElement(*td[c], i);
+              });
+            b.Notify();
           });
-          b.Notify();
-        });
       }
 
-      tp->SimpleParallelFor(num_tasks, [&](std::ptrdiff_t i) {
+      ThreadPool::TrySimpleParallelFor(tp, num_tasks, [&](std::ptrdiff_t i) {
         IncrementElement(*td[num_concurrent - 1], i);
       });
 
@@ -117,7 +117,7 @@ void TestBurstScheduling(const std::string& name, int num_tasks) {
     CreateThreadPoolAndTest(name, 2, [&](ThreadPool* tp) {
       // First variant : schedule from outside the pool
       for (int tasks = 0; tasks < num_tasks; tasks++) {
-        tp->Schedule([&]() {
+        ThreadPool::Schedule(tp, [&]() {
           ctr++;
         });
       }
@@ -125,9 +125,9 @@ void TestBurstScheduling(const std::string& name, int num_tasks) {
     ASSERT_TRUE(ctr == num_tasks);
     CreateThreadPoolAndTest(name, 2, [&](ThreadPool* tp) {
       // Second variant : schedule from inside the pool
-      tp->Schedule([&, tp]() {
+      ThreadPool::Schedule(tp, [&, tp]() {
         for (int tasks = 0; tasks < num_tasks; tasks++) {
-          tp->Schedule([&]() {
+          ThreadPool::Schedule(tp, [&]() {
             ctr++;
           });
         }
@@ -135,6 +135,30 @@ void TestBurstScheduling(const std::string& name, int num_tasks) {
     });
     ASSERT_TRUE(ctr == num_tasks*2);
   }
+}
+
+void TestPoolCreation(const std::string&, int iter) {
+  // Test creating and destroying thread pools.  This can be used with Valgrind to help
+  // check for memory leaks related to the initialization and clean-up code.  For instance
+  //
+  //  valgrind --leak-check=full ./onnxruntime_test_all --gtest_filter=ThreadPoolTest.TestPoolCreation_10Iter
+  //
+  // We create #iter thread pools, and within each of them run a loop of #per_iter steps.
+  std::atomic<std::ptrdiff_t> ctr{0};
+  constexpr std::ptrdiff_t per_iter = 1024;
+  constexpr int num_threads = 4;
+  for (auto i = 0; i < iter; i++) {
+    auto tp = onnxruntime::make_unique<ThreadPool>(&onnxruntime::Env::Default(),
+                                                   onnxruntime::ThreadOptions(),
+                                                   nullptr,
+                                                   num_threads,
+                                                   true);
+    ThreadPool::TryParallelFor(tp.get(), per_iter, 0.0,
+                    [&](std::ptrdiff_t s, std::ptrdiff_t e) {
+                      ctr += e - s;
+                    });
+  }
+  ASSERT_EQ(ctr, iter * per_iter);
 }
 
 }  // namespace
@@ -253,6 +277,19 @@ TEST(ThreadPoolTest, TestBurstScheduling_65536Task) {
   // buffer tasks.
   TestBurstScheduling("TestBurstScheduling_65536Tasks", 65536);
 }
+
+TEST(ThreadPoolTest, TestPoolCreation_1Iter) {
+  TestPoolCreation("TestPoolCreation_1Iter", 1);
+}
+
+TEST(ThreadPoolTest, TestPoolCreation_10Iter) {
+  TestPoolCreation("TestPoolCreation_10Iter", 10);
+}
+
+TEST(ThreadPoolTest, TestPoolCreation_100Iter) {
+  TestPoolCreation("TestPoolCreation_100Iter", 100);
+}
+
 #ifdef _WIN32
 TEST(ThreadPoolTest, TestStackSize) {
   ThreadOptions to;
@@ -265,7 +302,7 @@ TEST(ThreadPoolTest, TestStackSize) {
   Notification n;
   ULONG_PTR low_limit, high_limit;
   bool has_thread_limit_info = false;
-  tp->Schedule([&]() {
+  ThreadPool::Schedule(tp.get(), [&]() {
     HMODULE kernel32_module = GetModuleHandle(TEXT("kernel32.dll"));
     assert(kernel32_module != nullptr);
     FnGetCurrentThreadStackLimits GetTS =

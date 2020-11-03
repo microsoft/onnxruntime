@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <core/session/onnxruntime_cxx_api.h>
 #include <set>
 #include <iostream>
 #include <fstream>
@@ -106,6 +105,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   int device_id = 0;
   GraphOptimizationLevel graph_optimization_level = ORT_ENABLE_ALL;
   bool user_graph_optimization_level_set = false;
+  bool set_denormal_as_zero = false;
 
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_ERROR;
   bool verbose_logging_required = false;
@@ -113,7 +113,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool pause = false;
   {
     int ch;
-    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:xvo:d:p"))) != -1) {
+    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:xvo:d:pz"))) != -1) {
       switch (ch) {
         case 'A':
           enable_cpu_mem_arena = false;
@@ -221,6 +221,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             return -1;
           }
           break;
+        case 'z':
+          set_denormal_as_zero = true;
+          break;
         case '?':
         case 'h':
         default:
@@ -284,7 +287,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     double per_sample_tolerance = 1e-3;
     // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
     // when openvino is enabled, set it to a larger value for resolving MNIST accuracy mismatch
-    double relative_per_sample_tolerance = enable_cuda ? 0.017 : enable_openvino ? 0.009 : 1e-3;
+    double relative_per_sample_tolerance = enable_cuda ? 0.017 : enable_openvino ? 0.009
+                                                                                 : 1e-3;
 
     Ort::SessionOptions sf;
 
@@ -297,6 +301,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     else
       sf.DisableMemPattern();
     sf.SetExecutionMode(execution_mode);
+    if (set_denormal_as_zero)
+      sf.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "1");
 
     if (enable_tensorrt) {
 #ifdef USE_TENSORRT
@@ -311,20 +317,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #ifdef USE_OPENVINO
       //Setting default optimization level for OpenVINO can be overriden with -o option
       sf.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
-      if (p_models != 1) {
-        fprintf(stderr, "OpenVINO doesn't support more than 1 model running simultaneously default value of 1 will be set \n");
-        p_models = 1;
-      }
-      if (concurrent_session_runs != 1) {
-        fprintf(stderr, "OpenVINO doesn't support more than 1 session running simultaneously default value of 1 will be set \n");
-        concurrent_session_runs = 1;
-      }
-      if (execution_mode == ExecutionMode::ORT_PARALLEL) {
-        fprintf(stderr, "OpenVINO doesn't support parallel executor switching to sequential executor\n");
-        sf.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
-      }
-
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(sf, ""));
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProviderEx_OpenVINO(sf, ""));
 #else
       fprintf(stderr, "OpenVINO is not supported in this build");
       return -1;
@@ -332,7 +325,14 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
     if (enable_cuda) {
 #ifdef USE_CUDA
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, device_id));
+      OrtCUDAProviderOptions cuda_options{
+          0,
+          OrtCudnnConvAlgoSearch::EXHAUSTIVE,
+          std::numeric_limits<size_t>::max(),
+          0,
+          true
+      };
+      Ort::ThrowOnError(sf.OrtSessionOptionsAppendExecutionProvider_CUDA(sf, &cuda_options));
 #else
       fprintf(stderr, "CUDA is not supported in this build");
       return -1;

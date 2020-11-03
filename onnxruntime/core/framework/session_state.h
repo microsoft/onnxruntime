@@ -13,7 +13,6 @@
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/common/profiler.h"
-#include "core/flatbuffers/ort.fbs.h"
 #include "core/framework/allocation_planner.h"
 #include "core/framework/callback.h"
 #include "core/framework/data_transfer_manager.h"
@@ -33,7 +32,19 @@
 #include "core/platform/path_lib.h"
 #include "core/platform/threadpool.h"
 
+namespace flatbuffers {
+class FlatBufferBuilder;
+template <typename T>
+struct Offset;
+}  // namespace flatbuffers
+
 namespace onnxruntime {
+
+namespace experimental {
+namespace fbs {
+struct SessionState;
+}  // namespace fbs
+}  // namespace experimental
 
 class ExecutionProviders;
 class KernelDef;
@@ -268,6 +279,10 @@ class SessionState {
                               const onnxruntime::experimental::fbs::SessionState* serialized_session_state = nullptr,
                               bool remove_initializers = true);
 
+  SessionState* Parent() {
+    return parent_;
+  }
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
 
@@ -287,7 +302,7 @@ class SessionState {
   * Prepack the constant initialized tensors for better performance.
   * The original constant initialized tensors will be removed to save memory.
   */
-  Status PrepackInitializedConstantTensors();
+  Status PrepackConstantInitializedTensors(std::unordered_map<std::string, size_t>& constant_initializers_use_count);
 
   SessionState* GetMutableSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name);
 
@@ -304,7 +319,8 @@ class SessionState {
                                   KernelRegistryManager& kernel_registry_manager,
                                   _In_opt_ const Node* parent_node,
                                   const SessionOptions& session_options,
-                                  bool remove_initializers);
+                                  bool remove_initializers,
+                                  std::unordered_map<std::string, size_t>& constant_initializers_use_count);
 
 #ifdef ENABLE_TRAINING
   Status GeneratePatternGroupCache(
@@ -410,9 +426,9 @@ class SessionState {
   std::map<std::vector<int>, std::unordered_set<NodeIndex>> to_be_executed_nodes_;
 #endif
 
-#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   SessionState* parent_ = nullptr;
   //Assign each graph in each session an unique id.
+#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   int graph_id_ = 0;
   int next_graph_id_ = 1;
 

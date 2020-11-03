@@ -32,19 +32,11 @@ While the nGraph Compiler stack supports various operating systems and backends 
 
 ## Using the nGraph execution provider
 ### C/C++
-To use nGraph as execution provider for inferencing, please register it as below.
 ```
-string log_id = "Foo";
-auto logging_manager = std::make_unique<LoggingManager>
-(std::unique_ptr<ISink>{new CLogSink{}},
-                                  static_cast<Severity>(lm_info.default_warning_level),
-                                  false,
-                                  LoggingManager::InstanceType::Default,
-                                  &log_id)
-Environment::Create(std::move(logging_manager), env)
-InferenceSession session_object{so,env};
-session_object.RegisterExecutionProvider(std::make_unique<::onnxruntime::NGRAPHExecutionProvider>());
-status = session_object.Load(model_file_name);
+Ort::Env env = Ort::Env{ORT_LOGGING_LEVEL_ERROR, "Default"};
+Ort::SessionOptions sf;
+Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Ngraph(sf, "cpu"));
+Ort::Session session(env, model_path, sf);
 ```
 The C API details are [here](../C_API.md#c-api).
 

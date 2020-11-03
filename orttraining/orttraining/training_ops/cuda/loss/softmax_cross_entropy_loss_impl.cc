@@ -107,7 +107,7 @@ Status SoftmaxCrossEntropyLoss<T, Tin>::ComputeInternal(OpKernelContext* ctx) co
 
   IAllocatorUniquePtr<T> weight_data_nd = GetScratchBuffer<T>(N_D);
   T* weight_data_nd_data = weight_data_nd.get();
-  ORT_ENFORCE(cudaMemset(weight_data_nd_data, 0, N_D * sizeof(T)) == cudaSuccess);
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(weight_data_nd_data, 0, N_D * sizeof(T)));
   ComputeWeightsSoftmaxCrossEntropyImpl(label_data, weight_data, N_D, C, ignore_index_, weight_data_nd_data);
 
   auto normalize_factor_data = GetScratchBuffer<T>(1);
@@ -125,7 +125,7 @@ Status SoftmaxCrossEntropyLoss<T, Tin>::ComputeInternal(OpKernelContext* ctx) co
                reinterpret_cast<T*>(reduction_buffer.get()));
   } else {
     const T normalize_factor = static_cast<T>(1);
-    cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), cudaMemcpyHostToDevice);
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), cudaMemcpyHostToDevice));
   }
 
   SoftmaxCrossEntropyLossImpl(log_prob_data,
@@ -147,7 +147,7 @@ Status SoftmaxCrossEntropyLoss<T, Tin>::ComputeInternal(OpKernelContext* ctx) co
     transpose_output.GetMutable<Tensor>()->Reshape(log_prob->Shape());
     log_prob->Reshape(log_prob_shape);
     ORT_RETURN_IF_ERROR(cuda::Transpose::DoTranspose(cuda::Transpose(info), permutations, *log_prob, *transpose_output.GetMutable<Tensor>()));
-    cudaMemcpyAsync(log_prob_data, transposed_data, sizeof(T) * logit_shape.Size(), cudaMemcpyDeviceToDevice);
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(log_prob_data, transposed_data, sizeof(T) * logit_shape.Size(), cudaMemcpyDeviceToDevice));
     log_prob->Reshape(new_shape);
   }
 
@@ -208,7 +208,7 @@ Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx
 
   IAllocatorUniquePtr<T> weight_data_nd = GetScratchBuffer<T>(N_D);
   T* weight_data_nd_data = weight_data_nd.get();
-  ORT_ENFORCE(cudaMemset(weight_data_nd_data, 0, N_D * sizeof(T)) == cudaSuccess);
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(weight_data_nd_data, 0, N_D * sizeof(T)));
   ComputeWeightsSoftmaxCrossEntropyImpl(label_data, weight_data, N_D, C, ignore_index_, weight_data_nd_data);
   auto normalize_factor_data = GetScratchBuffer<T>(1);
   if (reduction_ == ReductionType::MEAN) {
@@ -225,7 +225,7 @@ Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx
                reinterpret_cast<T*>(reduction_buffer.get()));
   } else {
     const T normalize_factor = static_cast<T>(1);
-    cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), cudaMemcpyHostToDevice);
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), cudaMemcpyHostToDevice));
   }
 
   SoftmaxCrossEntropyLossGradImpl(dY_data,
@@ -248,7 +248,7 @@ Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx
     d_logit->Reshape(logit_shape);
     ORT_RETURN_IF_ERROR(cuda::Transpose::DoTranspose(cuda::Transpose(info), permutations, *d_logit, *transpose_output.GetMutable<Tensor>()));
     auto* transposed_data = (*transpose_output.GetMutable<Tensor>()).template Data<T>();
-    cudaMemcpyAsync(d_logit_data, transposed_data, sizeof(T) * probability_shape.Size(), cudaMemcpyDeviceToDevice);
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(d_logit_data, transposed_data, sizeof(T) * probability_shape.Size(), cudaMemcpyDeviceToDevice));
     d_logit->Reshape(new_shape);
   }
 

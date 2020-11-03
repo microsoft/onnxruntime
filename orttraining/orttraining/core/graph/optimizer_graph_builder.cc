@@ -129,6 +129,45 @@ Status OptimizerGraphBuilder::AddGradientScalingNodes(
   return Status::OK();
 }
 
+Status OptimizerGraphBuilder::AddGradientScalingNodes(
+    const NodeArgNameGeneratorFn& nodearg_name_generator,
+    const float scale,
+    std::vector<ArgDef>& input_gradient_argdefs,       // update argdefs in place
+    std::vector<ArgDef>& output_gradient_argdef,  // update argdef in place
+    GraphAugmenter::GraphDefs& graph_defs,
+    ONNX_NAMESPACE::TensorProto_DataType target_type) {
+  ArgDef pre_allreduce_scale(nodearg_name_generator("pre_allreduce_scale"),
+                             graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+                             
+  graph_defs.AddInitializers({CreateTensorProto<float>(pre_allreduce_scale.name, scale, {})});
+
+  TypeProto* fused_gradient_type_proto = graph_defs.CreateTypeProto();
+  fused_gradient_type_proto->mutable_tensor_type()->set_elem_type(target_type);
+
+  std::vector<ArgDef> inputs;
+  inputs.emplace_back(pre_allreduce_scale);
+  for (size_t i = 0; i < input_gradient_argdefs.size(); ++i) {
+    inputs.emplace_back(input_gradient_argdefs[i]);
+  }
+  
+  for (size_t i = 0; i < input_gradient_argdefs.size(); ++i) {
+    ArgDef& gradient_argdef = input_gradient_argdefs[i];
+
+    TypeProto* scaled_gradient_type_proto = graph_defs.CopyTypeProto(gradient_argdef);
+    scaled_gradient_type_proto->mutable_tensor_type()->set_elem_type(target_type);
+
+    output_gradient_argdef.emplace_back(ArgDef(nodearg_name_generator(gradient_argdef.name + "_scaled"), scaled_gradient_type_proto));
+  }
+
+  graph_defs.AddNodeDefs({NodeDef(OpDef{"MixedPrecisionScale", kMSDomain, 1},
+                                  inputs,
+                                  output_gradient_argdef,
+                                  std::vector<AttributeProto>({ONNX_NAMESPACE::MakeAttribute("to", static_cast<int64_t>(target_type))}),
+                                  pre_allreduce_scale.name)});
+
+  return Status::OK();
+}
+
 ArgDef AddGradientAccumulationNodes(const NodeArgNameGeneratorFn& nodearg_name_generator,
                                     std::vector<ArgDef>& gradient_argdefs,               // update argdefs in place
                                     std::vector<ArgDef>& gradient_accumulation_buffers,  // output
@@ -163,7 +202,7 @@ Status AddZeroGradientNodes(const NodeArgNameGeneratorFn& nodearg_name_generator
                             const std::vector<ArgDef>& control_signals,
                             std::vector<ArgDef>& gradient_argdefs,  // update argdefs in place
                             GraphAugmenter::GraphDefs& graph_defs) {
-  assert(gradient_argdefs.size() == control_signals.size());
+  //assert(gradient_argdefs.size() == control_signals.size());
   for (size_t i = 0; i < gradient_argdefs.size(); ++i) {
     gradient_argdefs[i] = BuildZeroGradientNode(nodearg_name_generator, control_signals[i], gradient_argdefs[i], graph_defs);
   }
@@ -256,7 +295,7 @@ Status OptimizerGraphBuilder::AddGradientNorm(
                   "Unsupport gradient type: it has to be either float, MLFloat16 or BFloat16.");
   }
 
-  for (const auto argdef : grad_argdefs) {
+  for (const auto& argdef : grad_argdefs) {
     ONNX_NAMESPACE::TensorProto_DataType elem_type =
         static_cast<ONNX_NAMESPACE::TensorProto_DataType>(argdef.type_proto->tensor_type().elem_type());
     if (elem_type != grad_type) {
@@ -324,8 +363,7 @@ OptimizerGraphBuilder::OptimizerGraphBuilder(
   std::transform(
       weight_names_.begin(), weight_names_.end(), std::back_inserter(gradient_names_),
       [&weight_names_to_opt_configs](const std::string& weight_name) {
-        return GradientBuilderBase::GradientName(weight_names_to_opt_configs.at(weight_name).mixed_precision_weight_arg != nullptr ?
-                                                 weight_names_to_opt_configs.at(weight_name).mixed_precision_weight_arg->Name() : weight_name);
+        return GradientBuilderBase::GradientName(weight_names_to_opt_configs.at(weight_name).mixed_precision_weight_arg != nullptr ? weight_names_to_opt_configs.at(weight_name).mixed_precision_weight_arg->Name() : weight_name);
       });
 
   // add optimizer configurations
@@ -412,9 +450,9 @@ Status OptimizerGraphBuilder::BuildInternal(
       ORT_RETURN_IF_ERROR(AddGradientNorm(
           nodearg_name_generator, gradient_argdefs, graph_defs, global_grad_norm_argdef));
       optimizer_graph_outputs[OptimizerOutputKey::GlobalGradientNorm] = global_grad_norm_argdef.name;
-        ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
-            nodearg_name_generator, {global_grad_norm_argdef}, graph_defs, global_grad_norm_finite_argdef));
-        optimizer_graph_outputs[OptimizerOutputKey::GradientAllIsFinite] = global_grad_norm_finite_argdef.name;
+      ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
+          nodearg_name_generator, {global_grad_norm_argdef}, graph_defs, global_grad_norm_finite_argdef));
+      optimizer_graph_outputs[OptimizerOutputKey::GradientAllIsFinite] = global_grad_norm_finite_argdef.name;
     }
   }
 

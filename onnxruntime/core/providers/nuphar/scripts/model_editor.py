@@ -831,5 +831,7 @@ if __name__ == '__main__':
     else:
         raise NotImplementedError('Unknown mode')
     print('Running symbolic shape inference on output model')
-    SymbolicShapeInference.infer_shapes(args.output, args.output, auto_merge=True)
+    mp = onnx.load(args.output)
+    mp = SymbolicShapeInference.infer_shapes(mp, auto_merge=True)
+    onnx.save(mp, args.output)
     print('Done!')

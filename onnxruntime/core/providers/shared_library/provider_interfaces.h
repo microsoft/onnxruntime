@@ -25,49 +25,12 @@ using DataType = const std::string*;
 
 namespace onnxruntime {
 
-// onnx Protobuf types (all of these are actually just Provider_<type> -> ONNX_NAMESPACE::<type>)
-#ifndef PROVIDER_BRIDGE_ORT
-struct Provider_AttributeProto;
-struct Provider_GraphProto;
-struct Provider_ModelProto;
-struct Provider_NodeProto;
-struct Provider_TensorProto;
-struct Provider_TensorProtos;
-struct Provider_TensorShapeProto_Dimension;
-struct Provider_TensorShapeProto_Dimensions;
-struct Provider_TensorShapeProto;
-struct Provider_TypeProto_Tensor;
-struct Provider_TypeProto;
-struct Provider_ValueInfoProto;
-struct Provider_ValueInfoProtos;
-#endif
-
-// OnnxRuntime Types (all of these are actually just Provider_<type> -> <type>)
-#ifndef PROVIDER_BRIDGE_ORT
-struct Provider_ComputeCapability;
-struct Provider_DataTransferManager;
-struct Provider_IDataTransfer;
-struct Provider_IndexedSubGraph;
-struct Provider_IndexedSubGraph_MetaDef;
-struct Provider_KernelDef;
-struct Provider_KernelDefBuilder;
-struct Provider_KernelRegistry;
-struct Provider_Function;
-struct Provider_Graph;
-struct Provider_GraphViewer;
-struct Provider_Model;
-struct Provider_Node;
-struct Provider_NodeArg;
-struct Provider_NodeAttributes;
-struct Provider_OpKernelContext;
-struct Provider_OpKernelInfo;
-struct Provider_Tensor;
-#endif
-
+// These types don't directly map to internal types
 struct Provider_IExecutionProvider;
 struct Provider_KernelCreateInfo;
 struct Provider_OpKernel_Base;
 struct ProviderHost;
+
 class TensorShape;
 
 template <typename T, typename TResult>
@@ -111,62 +74,6 @@ struct Provider_IExecutionProviderFactory {
 class DataTypeImpl;
 using MLDataType = const DataTypeImpl*;
 
-template <typename T>
-using Provider_IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
-
-struct Provider_IAllocator {
-  Provider_IAllocator(const OrtMemoryInfo& info) : memory_info_{info} {}
-  virtual ~Provider_IAllocator() {}
-
-  virtual void* Alloc(size_t size) = 0;
-  virtual void Free(void* p) = 0;
-  const OrtMemoryInfo& Info() const { return memory_info_; };
-
-  virtual bool IsProviderInterface() const { return true; }
-
-  template <typename T>
-  static Provider_IAllocatorUniquePtr<T> MakeUniquePtr(std::shared_ptr<Provider_IAllocator> allocator, size_t count_or_bytes) {
-    if (allocator == nullptr) return nullptr;
-
-    size_t alloc_size = count_or_bytes;
-
-    // if T is not void, 'count_or_bytes' == number of items so allow for that
-    if (!std::is_void<T>::value) {
-      // TODO: Use internal implementation to get correct sizes
-      return nullptr;
-    }
-    return Provider_IAllocatorUniquePtr<T>{
-        static_cast<T*>(allocator->Alloc(alloc_size)),  // allocate
-        [=](T* ptr) { allocator->Free(ptr); }};         // capture IAllocator so it's always valid, and use as deleter
-  }
-
-  const OrtMemoryInfo memory_info_;
-
-  Provider_IAllocator(const Provider_IAllocator&) = delete;
-  void operator=(const Provider_IAllocator&) = delete;
-};
-
-using Provider_AllocatorPtr = std::shared_ptr<Provider_IAllocator>;
-using Provider_AllocatorFactory = std::function<std::unique_ptr<Provider_IAllocator>(int)>;
-
-using DeviceId = int16_t;
-struct Provider_AllocatorCreationInfo {
-  Provider_AllocatorCreationInfo(Provider_AllocatorFactory device_alloc_factory0,
-                                 DeviceId device_id0 = 0,
-                                 bool use_arena0 = true,
-                                 OrtArenaCfg arena_cfg0 = {0, -1, -1, -1})
-      : factory(device_alloc_factory0),
-        device_id(device_id0),
-        use_arena(use_arena0),
-        arena_cfg(arena_cfg0) {
-  }
-
-  Provider_AllocatorFactory factory;
-  DeviceId device_id;
-  bool use_arena;
-  OrtArenaCfg arena_cfg;
-};
-
 struct Provider_OpKernel {
   Provider_OpKernel() {}
   virtual ~Provider_OpKernel() = default;
@@ -180,7 +87,7 @@ struct Provider_OpKernel {
 using NodeIndex = size_t;
 using Provider_NodeArgInfo = Provider_ValueInfoProto;
 // We can't just reinterpret_cast this one, since it's an unordered_map of object BY VALUE (can't do anything by value on the real types)
-//using Provider_NodeAttributes = std::unordered_map<std::string, ONNX_NAMESPACE::Provider_AttributeProto_Copyable>;
+// using Provider_NodeAttributes = std::unordered_map<std::string, ONNX_NAMESPACE::Provider_AttributeProto_Copyable>;
 
 using Provider_InitializedTensorSet = std::unordered_map<std::string, const Provider_TensorProto*>;
 
@@ -216,10 +123,6 @@ struct NodeComputeInfo {
 };
 #endif
 
-namespace logging {
-class Logger;
-}
-
 // Provides the base class implementations, since Provider_IExecutionProvider is just an interface. This is to fake the C++ inheritance used by internal IExecutionProvider implementations
 struct Provider_IExecutionProvider_Router {
   virtual ~Provider_IExecutionProvider_Router() {}
@@ -229,9 +132,9 @@ struct Provider_IExecutionProvider_Router {
   virtual std::vector<std::unique_ptr<Provider_ComputeCapability>> Provider_GetCapability(const onnxruntime::Provider_GraphViewer& graph,
                                                                                           const std::vector<const Provider_KernelRegistry*>& kernel_registries) const = 0;
 
-  virtual Provider_AllocatorPtr Provider_GetAllocator(int id, OrtMemType mem_type) const = 0;
+  virtual AllocatorPtr Provider_GetAllocator(int id, OrtMemType mem_type) const = 0;
   virtual std::unique_ptr<Provider_IDataTransfer> Provider_GetDataTransfer() const = 0;
-  virtual void Provider_InsertAllocator(Provider_AllocatorPtr allocator) = 0;
+  virtual void Provider_InsertAllocator(AllocatorPtr allocator) = 0;
   virtual const logging::Logger* GetLogger() const = 0;
 
   void operator=(const Provider_IExecutionProvider_Router&) = delete;
@@ -250,8 +153,8 @@ struct Provider_IExecutionProvider {
 
   virtual common::Status Provider_Compile(const std::vector<Provider_Node*>& fused_nodes, std::vector<NodeComputeInfo>& node_compute_funcs) = 0;
 
-  virtual Provider_AllocatorPtr Provider_GetAllocator(int id, OrtMemType mem_type) const { return p_->Provider_GetAllocator(id, mem_type); }
-  virtual void Provider_InsertAllocator(Provider_AllocatorPtr allocator) { return p_->Provider_InsertAllocator(allocator); }
+  virtual AllocatorPtr Provider_GetAllocator(int id, OrtMemType mem_type) const { return p_->Provider_GetAllocator(id, mem_type); }
+  virtual void Provider_InsertAllocator(AllocatorPtr allocator) { return p_->Provider_InsertAllocator(allocator); }
 
   virtual const logging::Logger* GetLogger() const { return p_->GetLogger(); }
 
@@ -262,6 +165,7 @@ struct Provider_IExecutionProvider {
 
 struct Provider {
   virtual std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory(int device_id) = 0;
+  virtual void Shutdown() = 0;
 };
 
 // There are two ways to route a function, one is a virtual method and the other is a function pointer (or pointer to member function)
@@ -270,15 +174,15 @@ struct Provider {
 // calls the virtual function (which will lead to infinite recursion in the bridge). There is no known way to get the non virtual member
 // function pointer implementation in this case.
 struct ProviderHost {
-  virtual Provider_AllocatorPtr CreateAllocator(const Provider_AllocatorCreationInfo& info) = 0;
+  virtual AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) = 0;
 
   virtual logging::Logger* LoggingManager_GetDefaultLogger() = 0;
 
-  virtual std::unique_ptr<Provider_IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info) = 0;
+  virtual std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info) = 0;
 
 #ifdef USE_TENSORRT
-  virtual std::unique_ptr<Provider_IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) = 0;
-  virtual std::unique_ptr<Provider_IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) = 0;
+  virtual std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) = 0;
+  virtual std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) = 0;
   virtual std::unique_ptr<Provider_IDataTransfer> CreateGPUDataTransfer() = 0;
 
   virtual void cuda__Impl_Cast(const int64_t* input_data, int32_t* output_data, size_t count) = 0;
@@ -300,11 +204,38 @@ struct ProviderHost {
   virtual void* HeapAllocate(size_t size) = 0;
   virtual void HeapFree(void*) = 0;
 
+  virtual AutoPadType StringToAutoPadType(const std::string& str) = 0;
+
   virtual void LogRuntimeError(uint32_t session_id, const common::Status& status,
                                const char* file, const char* function, uint32_t line) = 0;
 
-  virtual bool CPU_HasAVX2() = 0;
-  virtual bool CPU_HasAVX512f() = 0;
+  virtual std::vector<std::string> GetStackTrace() = 0;
+
+  // IAllocator
+  virtual bool IAllocator__CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) = 0;
+
+  // Status
+  virtual std::string Status__ToString(const Status* p) = 0;
+
+  // TensorShape
+  virtual int64_t TensorShape__SizeHelper(const TensorShape* p, size_t start, size_t end) = 0;
+  virtual std::string TensorShape__ToString(const TensorShape* p) = 0;
+
+  // CPUIDInfo
+  virtual const CPUIDInfo& CPUIDInfo__GetCPUIDInfo() = 0;
+  virtual bool CPUIDInfo__HasAVX2(const CPUIDInfo* p) = 0;
+  virtual bool CPUIDInfo__HasAVX512f(const CPUIDInfo* p) = 0;
+
+  // logging::Logger
+  virtual bool logging__Logger__OutputIsEnabled(const logging::Logger* p, logging::Severity severity, logging::DataType data_type) = 0;
+
+  // logging::LoggingManager
+  virtual const logging::Logger& logging__LoggingManager__DefaultLogger() = 0;
+
+  // logging::Capture
+  virtual std::unique_ptr<logging::Capture> logging__Capture__construct(const logging::Logger& logger, logging::Severity severity, const char* category, logging::DataType dataType, const CodeLocation& location) = 0;
+  virtual void logging__Capture__operator_delete(logging::Capture* p) noexcept = 0;
+  virtual std::ostream& logging__Capture__Stream(logging::Capture* p) noexcept = 0;
 
   // Provider_TypeProto_Tensor
   virtual int32_t Provider_TypeProto_Tensor__elem_type(const Provider_TypeProto_Tensor* p) = 0;
@@ -560,6 +491,42 @@ struct ProviderHost {
 extern ProviderHost* g_host;
 
 #ifndef PROVIDER_BRIDGE_ORT
+
+struct CPUIDInfo {
+  static const CPUIDInfo& GetCPUIDInfo() { return g_host->CPUIDInfo__GetCPUIDInfo(); }
+
+  bool HasAVX2() const { return g_host->CPUIDInfo__HasAVX2(this); }
+  bool HasAVX512f() const { return g_host->CPUIDInfo__HasAVX512f(this); }
+
+  PROVIDER_DISALLOW_ALL(CPUIDInfo)
+};
+
+namespace logging {
+
+struct Logger {
+  bool OutputIsEnabled(Severity severity, DataType data_type) const noexcept { return g_host->logging__Logger__OutputIsEnabled(this, severity, data_type); }
+
+  PROVIDER_DISALLOW_ALL(Logger)
+};
+
+struct LoggingManager {
+  static const Logger& DefaultLogger() { return g_host->logging__LoggingManager__DefaultLogger(); }
+
+  PROVIDER_DISALLOW_ALL(LoggingManager)
+};
+
+struct Capture {
+  static std::unique_ptr<Capture> Create(const Logger& logger, logging::Severity severity, const char* category,
+                                         logging::DataType dataType, const CodeLocation& location) { return g_host->logging__Capture__construct(logger, severity, category, dataType, location); }
+  static void operator delete(void* p) { g_host->logging__Capture__operator_delete(reinterpret_cast<Capture*>(p)); }
+
+  std::ostream& Stream() noexcept { return g_host->logging__Capture__Stream(this); }
+
+  Capture() = delete;
+  Capture(const Capture&) = delete;
+  void operator=(const Capture&) = delete;
+};
+}  // namespace logging
 
 struct Provider_TypeProto_Tensor {
   int32_t elem_type() const { return g_host->Provider_TypeProto_Tensor__elem_type(this); }

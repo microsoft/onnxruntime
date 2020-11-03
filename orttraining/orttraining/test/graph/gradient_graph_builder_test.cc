@@ -187,8 +187,8 @@ TEST(GradientGraphBuilderTest, BuildConcatGradientGraphTest) {
 
   ASSERT_EQ(op_to_count["Concat"], 0);
   ASSERT_EQ(op_to_count["Split"], 0);
-  ASSERT_EQ(op_to_count["ConcatTraining"], 1);
-  ASSERT_EQ(op_to_count["SplitTraining"], 1);
+  ASSERT_EQ(op_to_count["com.microsoft.ConcatTraining"], 1);
+  ASSERT_EQ(op_to_count["com.microsoft.SplitTraining"], 1);
 }
 
 TEST(GradientGraphBuilderTest, TrainingSession_Basic) {
@@ -1628,10 +1628,8 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
         {},
         {}},
        {{
-            "MeanSquaredError_reduce_mean_Grad/Scale_Denominator",
-            "MeanSquaredError_reduce_mean_Grad/Casted_Scale_Denominator",
-            "MeanSquaredError_reduce_mean_Grad/Scale_Numerator",
-            "MeanSquaredError_reduce_mean_Grad/Casted_Scale_Numerator",
+            "MeanSquaredError_reduce_mean_Grad/Sized_X",
+            "MeanSquaredError_reduce_mean_Grad/Sized_Grad",
             "MeanSquaredError_reduce_mean_Grad/Scale",
             "MeanSquaredError_reduce_mean_Grad/Scaled_Grad",
             "MeanSquaredError_reduce_mean_Grad/Shaped_X",

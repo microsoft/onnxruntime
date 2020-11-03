@@ -6,6 +6,7 @@
 #include "core/framework/debug_node_inputs_outputs_utils.h"
 
 #include <iomanip>
+#include <cctype>
 
 #include "core/common/path_utils.h"
 #include "core/framework/tensorprotoutils.h"
@@ -89,14 +90,14 @@ void DumpTensorToStdOut(const Tensor& tensor) {
   std::cout << std::endl;
 }
 
-PathString MakeTensorFileName(const std::string& tensor_name) {
+PathString MakeTensorFileName(const std::string& tensor_name, const NodeDumpOptions& dump_options) {
   auto make_valid_name = [](std::string name) {
     std::replace_if(
         name.begin(), name.end(), [](char c) { return !std::isalnum(c); }, '_');
     return name;
   };
 
-  return path_utils::MakePathString(make_valid_name(tensor_name), ".tensorproto");
+  return path_utils::MakePathString(make_valid_name(tensor_name), dump_options.file_suffix, ".tensorproto");
 }
 
 void DumpTensorToFile(const Tensor& tensor, const std::string& tensor_name, const Path& file_path) {
@@ -124,7 +125,7 @@ void DumpCpuTensor(
       break;
     }
     case NodeDumpOptions::DataDestination::TensorProtoFiles: {
-      const Path tensor_file = dump_options.output_dir / Path::Parse(MakeTensorFileName(tensor_name));
+      const Path tensor_file = dump_options.output_dir / Path::Parse(MakeTensorFileName(tensor_name, dump_options));
       DumpTensorToFile(tensor, tensor_name, tensor_file);
       break;
     }
@@ -139,7 +140,6 @@ void DumpTensor(
     const SessionState& session_state) {
   // check tensor is on CPU before dumping it
   auto& tensor_location = tensor.Location();
-  const auto data_type = tensor.DataType();
   if (tensor_location.device.Type() == OrtDevice::CPU ||
       tensor_location.mem_type == OrtMemTypeCPUInput ||
       tensor_location.mem_type == OrtMemTypeCPUOutput) {
@@ -147,7 +147,8 @@ void DumpTensor(
   } else {
     std::cout << tensor_location << "\n";
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
+    const auto data_type = tensor.DataType();
     // Dumping GPU only when cuda is enabled.
     if (tensor_location.device.Type() == OrtDevice::GPU) {
       const auto& execution_providers = session_state.GetExecutionProviders();
@@ -200,6 +201,15 @@ const NodeDumpOptions& NodeDumpOptionsFromEnvironmentVariables() {
 
     if (get_bool_env_var(env_vars::kDumpDataToFiles)) {
       opts.data_destination = NodeDumpOptions::DataDestination::TensorProtoFiles;
+    }
+
+    if (get_bool_env_var(env_vars::kAppendRankToFileName)) {
+      std::string rank = Env::Default().GetEnvironmentVar("OMPI_COMM_WORLD_RANK");
+      if (rank.empty()) {
+        opts.file_suffix = "_default_rank_0";
+      } else {
+        opts.file_suffix = "_rank_" + rank;
+      }
     }
 
     opts.output_dir = Path::Parse(ToPathString(Env::Default().GetEnvironmentVar(env_vars::kOutputDir)));

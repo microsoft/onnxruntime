@@ -16,10 +16,22 @@ namespace cuda {
           .InputMemoryType<OrtMemTypeCPUInput>(1)                  \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),  \
       Resize<T>);                                                  \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                         \
+      Resize,                                                      \
+      kOnnxDomain,                                                 \
+      11, 12,                                                      \
+      T,                                                           \
+      kCudaExecutionProvider,                                      \
+      KernelDefBuilder()                                           \
+          .InputMemoryType<OrtMemTypeCPUInput>(1)                  \
+          .InputMemoryType<OrtMemTypeCPUInput>(2)                  \
+          .InputMemoryType<OrtMemTypeCPUInput>(3)                  \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()), \
+      Resize<T>);                                                  \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                   \
       Resize,                                                      \
       kOnnxDomain,                                                 \
-      11,                                                          \
+      13,                                                          \
       T,                                                           \
       kCudaExecutionProvider,                                      \
       KernelDefBuilder()                                           \

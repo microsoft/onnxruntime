@@ -42,6 +42,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # Enable CTest
 enable_testing()
+include(Dart)
 
 if(NOT CMAKE_BUILD_TYPE)
   message(STATUS "Build type not set - using RelWithDebInfo")
@@ -61,7 +62,6 @@ option(onnxruntime_USE_EIGEN_FOR_BLAS "Use eign for blas" ON)
 option(onnxruntime_USE_NNAPI_BUILTIN "Build with builtin NNAPI lib for Android NNAPI support" OFF)
 option(onnxruntime_USE_RKNPU "Build with RKNPU support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
-option(onnxruntime_USE_MKLML "Build the default cpu provider with MKL-ML binary dependency" OFF)
 option(onnxruntime_USE_FEATURIZERS "Build ML Featurizers support" OFF)
 option(onnxruntime_USE_NGRAPH "Build with nGraph support" OFF)
 option(onnxruntime_USE_OPENBLAS "Use openblas" OFF)
@@ -111,6 +111,7 @@ option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
 #If you have already installed protobuf(or the others) in your system at the default system paths(like /usr/include), then it's better to set onnxruntime_PREFER_SYSTEM_LIB ON. Otherwise onnxruntime may see two different protobuf versions and we won't know which one will be used, the worst case could be onnxruntime picked up header files from one of them but the binaries from the other one.
 #It's default OFF because it's experimental now.
 option(onnxruntime_PREFER_SYSTEM_LIB "Experimental: Build with the preinstalled libraries in your system" OFF)
+option(onnxruntime_USE_ROCM "Build with AMD GPU support" OFF)
 
 # Options related to reducing the binary size produced by the build
 option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF)
@@ -128,6 +129,9 @@ option(onnxruntime_ENABLE_TRAINING "Enable training functionality." OFF)
 option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
 option(onnxruntime_USE_HOROVOD "Build with HOROVOD support" OFF)
 option(onnxruntime_USE_NCCL "Build with NCCL support" ON)
+#A special option just for debugging and sanitize check. Please do not enable in option in retail builds.
+#The option has no effect on Windows.
+option(onnxruntime_USE_VALGRIND "Build with valgrind hacks" OFF)
 
 # A special build option only used for gathering code coverage info
 option(onnxruntime_RUN_MODELTEST_IN_DEBUG_MODE "Run model tests even in debug mode" OFF)
@@ -142,6 +146,10 @@ if(MSVC AND WIN32 AND onnxruntime_FUZZ_TEST AND onnxruntime_BUILD_SHARED_LIB AND
   # Fuzz test library dependency, protobuf-mutator,
   # needs the onnx message to be compiled using "non-lite protobuf version"
   set(onnxruntime_FUZZ_ENABLED ON)
+endif()
+
+if(onnxruntime_USE_VALGRIND AND NOT WIN32)
+  add_definitions(-DRE2_ON_VALGRIND=1)
 endif()
 
 if (onnxruntime_ENABLE_NVTX_PROFILE)
@@ -190,12 +198,7 @@ if(onnxruntime_USE_OPENMP)
   if (OPENMP_FOUND)
     set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
-    include_directories(${OpenMP_CXX_INCLUDE_DIR})
-    # MKLML and NGraph depend on their own OpenMP library that may be different with the compiler's.
-    # Disable the options to build mklml/NGraph and OpenMP together.
-    if((WIN32 OR APPLE) AND onnxruntime_USE_MKLML)
-      message(FATAL_ERROR "Please use only one of onnxruntime_USE_MKLML, onnxruntime_USE_OPENMP")
-    endif()
+    include_directories(${OpenMP_CXX_INCLUDE_DIR})    
     if(onnxruntime_USE_NGRAPH)
       message(FATAL_ERROR "Please use only one of onnxruntime_USE_NGRAPH, onnxruntime_USE_OPENMP")
     endif()
@@ -210,7 +213,7 @@ endif()
 if(onnxruntime_MINIMAL_BUILD)
   add_compile_definitions(ORT_MINIMAL_BUILD)
   add_compile_definitions(ENABLE_ORT_FORMAT_LOAD)
-  
+
   set(onnxruntime_REDUCED_OPS_BUILD ON)
 
   if (NOT onnxruntime_ENABLE_PYTHON)
@@ -296,6 +299,26 @@ if(onnxruntime_DISABLE_EXCEPTIONS)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-exceptions -fno-unwind-tables -fno-asynchronous-unwind-tables")
   endif()
 endif()
+
+# We need to link with libatomic on systems that do not have built-in atomics, or
+# don't have built-in support for 8 byte atomics
+# Derived from https://github.com/protocolbuffers/protobuf/blob/master/cmake/CMakeLists.txt
+set(onnxruntime_LINK_LIBATOMIC false)
+if (NOT MSVC)
+  include(CheckCXXSourceCompiles)
+  set(OLD_CMAKE_REQUIRED_FLAGS ${CMAKE_REQUIRED_FLAGS})
+  set(CMAKE_REQUIRED_FLAGS ${CMAKE_REQUIRED_FLAGS} -std=c++11)
+  check_cxx_source_compiles("
+    #include <atomic>
+    int main() {
+      return std::atomic<int64_t>{};
+    }
+  " onnxruntime_HAVE_BUILTIN_ATOMICS)
+  if (NOT onnxruntime_HAVE_BUILTIN_ATOMICS)
+    set(onnxruntime_LINK_LIBATOMIC true)
+  endif ()
+  set(CMAKE_REQUIRED_FLAGS ${OLD_CMAKE_REQUIRED_FLAGS})
+endif ()
 
 set(REPO_ROOT ${PROJECT_SOURCE_DIR}/..)
 set(ONNXRUNTIME_ROOT ${PROJECT_SOURCE_DIR}/../onnxruntime)
@@ -598,6 +621,11 @@ set(SAFEINT_INCLUDE_DIR ${REPO_ROOT}/cmake/external/SafeInt)
 add_library(safeint_interface INTERFACE)
 target_include_directories(safeint_interface INTERFACE ${SAFEINT_INCLUDE_DIR})
 
+set(OPTIONAL_LITE_INCLUDE_DIR ${REPO_ROOT}/cmake/external/optional-lite/include)
+if(onnxruntime_DISABLE_EXCEPTIONS)
+  add_compile_definitions(optional_CONFIG_NO_EXCEPTIONS=1)
+endif()
+
 if(NOT TARGET re2::re2)
   add_subdirectory(external/re2 EXCLUDE_FROM_ALL)
   set_target_properties(re2 PROPERTIES FOLDER "External/re2")
@@ -653,7 +681,28 @@ if (onnxruntime_USE_ACL OR onnxruntime_USE_ACL_1902 OR onnxruntime_USE_ACL_1905 
     endif()
   endif()
 
+  if (NOT ${onnxruntime_ACL_LIBS} STREQUAL "")
+
+    add_library(arm_compute SHARED IMPORTED)
+    set_target_properties(arm_compute PROPERTIES
+        IMPORTED_NO_SONAME 1
+        IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute.so")
+
+    add_library(arm_compute_core SHARED IMPORTED)
+    set_target_properties(arm_compute_core PROPERTIES
+        IMPORTED_NO_SONAME 1
+        IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute_core.so")
+
+    add_library(arm_compute_graph SHARED IMPORTED)
+    set_target_properties(arm_compute_graph PROPERTIES
+        IMPORTED_NO_SONAME 1
+        IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute_graph.so")
+
+    link_libraries(arm_compute arm_compute_core arm_compute_graph)
+  endif()
+
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES arm_compute arm_compute_graph arm_compute_core)
+
 endif()
 
 # ArmNN
@@ -665,11 +714,39 @@ if (onnxruntime_USE_ARMNN)
     add_definitions(-DBN_ARMNN=1)
   endif()
 
+  if (NOT onnxruntime_USE_ACL AND NOT ${onnxruntime_ACL_LIBS} STREQUAL "")
+
+    add_library(arm_compute SHARED IMPORTED)
+    set_target_properties(arm_compute PROPERTIES
+        IMPORTED_NO_SONAME 1
+        IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute.so")
+
+    add_library(arm_compute_core SHARED IMPORTED)
+    set_target_properties(arm_compute_core PROPERTIES
+        IMPORTED_NO_SONAME 1
+        IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute_core.so")
+
+    add_library(arm_compute_graph SHARED IMPORTED)
+    set_target_properties(arm_compute_graph PROPERTIES
+        IMPORTED_NO_SONAME 1
+        IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute_graph.so")
+
+    link_libraries(arm_compute arm_compute_core arm_compute_graph)
+  endif()
+
+  if (NOT ${onnxruntime_ARMNN_LIBS} STREQUAL "")
+
+    find_library(ARMNN_LIBRARY NAMES armnn
+                     PATHS ${onnxruntime_ARMNN_LIBS}
+                     NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
+
+    link_libraries(armnn)
+  endif()
+
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES armnn pthread arm_compute_core arm_compute arm_compute_graph)
 endif()
 
-# MKLML
-if (onnxruntime_USE_DNNL OR onnxruntime_USE_MKLML)
+if (onnxruntime_USE_DNNL)
   include(dnnl)
 endif()
 
@@ -685,28 +762,12 @@ if (onnxruntime_USE_TVM)
   if (onnxruntime_USE_OPENMP)
     set(USE_OPENMP "gnu")
   endif()
-  if (onnxruntime_USE_MKLML)
-    set(USE_OPENMP "intel")
-    # make sure MKLML in ORT is used by TVM
-    if (WIN32)
-      set(OMP_LIBRARY ${MKLML_LIB_DIR}/${IOMP5MD_IMPORT_LIB})
-    else()
-      set(OMP_LIBRARY ${MKLML_LIB_DIR}/${IOMP5MD_SHARED_LIB})
-    endif()
-  endif()
 
   add_subdirectory(${PROJECT_SOURCE_DIR}/external/tvm EXCLUDE_FROM_ALL)
   set_target_properties(tvm PROPERTIES FOLDER "External/tvm")
   set_target_properties(tvm_topi PROPERTIES FOLDER "External/tvm")
   set_target_properties(tvm_runtime PROPERTIES FOLDER "External/tvm")
   set_target_properties(nnvm_compiler PROPERTIES FOLDER "External/tvm")
-
-  if (onnxruntime_USE_MKLML)
-    add_dependencies(tvm project_mklml)
-    add_dependencies(tvm_topi project_mklml)
-    add_dependencies(tvm_runtime project_mklml)
-    add_dependencies(nnvm_compiler project_mklml)
-  endif()
 
   set(TVM_INCLUDES ${PROJECT_SOURCE_DIR}/external/tvm/include
     ${PROJECT_SOURCE_DIR}/external/tvm/3rdparty/dmlc-core/include
@@ -755,22 +816,6 @@ if (NOT onnxruntime_USE_FULL_PROTOBUF)
 endif()
 set_target_properties(onnx PROPERTIES FOLDER "External/ONNX")
 set_target_properties(onnx_proto PROPERTIES FOLDER "External/ONNX")
-
-if (onnxruntime_USE_MKLML)
-  add_definitions(-DUSE_MKLML=1 -DUSE_MKLML_FOR_BLAS=1)
-  if (WIN32 OR APPLE)
-    list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml)
-  else()
-    if(onnxruntime_USE_OPENMP)
-      list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml_gnu)
-    else()
-      list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml_intel)
-    endif()
-  endif()
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_mklml)
-  include_directories(${MKLML_INCLUDE_DIR})
-  link_directories(${MKLML_LIB_DIR})
-endif()
 
 if (onnxruntime_USE_NGRAPH)
   if (NOT onnxruntime_USE_FULL_PROTOBUF)
@@ -843,12 +888,16 @@ if (WIN32)
     if (MSVC)
       foreach(type EXE STATIC SHARED)
         if (NOT type MATCHES STATIC)
-          set(CMAKE_${type}_LINKER_FLAGS_RELEASE "${CMAKE_${type}_LINKER_FLAGS_RELEASE} /OPT:REF,ICF,LBR")
-          set(CMAKE_${type}_LINKER_FLAGS_RELEASE "${CMAKE_${type}_LINKER_FLAGS_RELEASE} /INCREMENTAL:NO")
-          set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /OPT:REF,ICF,LBR")
-          set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /INCREMENTAL:NO")
-          set(CMAKE_${type}_LINKER_FLAGS_MINSIZEREL "${CMAKE_${type}_LINKER_FLAGS_MINSIZEREL} /OPT:REF,ICF,LBR")
-          set(CMAKE_${type}_LINKER_FLAGS_MINSIZEREL "${CMAKE_${type}_LINKER_FLAGS_MINSIZEREL} /INCREMENTAL:NO")
+          # The WinML internal toolchain does not allow link's "additional options" to contain optimization
+          # flags (/OPT#); these are already specified using msbuild properties.
+          if (NOT DEFINED onnxruntime_DISABLE_LINKER_OPT_FLAGS)
+            set(CMAKE_${type}_LINKER_FLAGS_RELEASE "${CMAKE_${type}_LINKER_FLAGS_RELEASE} /OPT:REF,ICF,LBR")
+            set(CMAKE_${type}_LINKER_FLAGS_RELEASE "${CMAKE_${type}_LINKER_FLAGS_RELEASE} /INCREMENTAL:NO")
+            set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /OPT:REF,ICF,LBR")
+            set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /INCREMENTAL:NO")
+            set(CMAKE_${type}_LINKER_FLAGS_MINSIZEREL "${CMAKE_${type}_LINKER_FLAGS_MINSIZEREL} /OPT:REF,ICF,LBR")
+            set(CMAKE_${type}_LINKER_FLAGS_MINSIZEREL "${CMAKE_${type}_LINKER_FLAGS_MINSIZEREL} /INCREMENTAL:NO")
+          endif()
         endif()
         if (onnxruntime_ENABLE_LTO AND NOT onnxruntime_USE_CUDA)
           set(CMAKE_${type}_LINKER_FLAGS_RELEASE "${CMAKE_${type}_LINKER_FLAGS_RELEASE} /LTCG")
@@ -936,6 +985,9 @@ if(onnxruntime_USE_OPENVINO)
   elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "2020.4")
     set(OPENVINO_VERSION "2020.4")
     add_definitions(-DOPENVINO_2020_4=1)
+  elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "2021.1")
+    set(OPENVINO_VERSION "2021.1")
+    add_definitions(-DOPENVINO_2021_1=1)
   else()
     message(FATAL_ERROR "Unsupported OpenVINO version: ${INTEL_OPENVINO_DIR}")
   endif()
@@ -970,6 +1022,11 @@ if(onnxruntime_USE_OPENVINO)
 
   if(onnxruntime_USE_OPENVINO_VAD_F)
     add_definitions(-DOPENVINO_CONFIG_VAD_F=1)
+  endif()
+
+  if(onnxruntime_USE_OPENVINO_HETERO)
+    add_definitions(-DOPENVINO_CONFIG_HETERO=1)
+    add_definitions(-DDEVICE_NAME="${onnxruntime_USE_OPENVINO_DEVICE}")
   endif()
 
 endif()
@@ -1031,8 +1088,9 @@ if (onnxruntime_USE_CUDA)
     link_directories(${onnxruntime_CUDNN_HOME}/lib/x64)
 
     # delayload causes crash on exit, so disable for now
+    # please update cudaDelayLoadedLibs in Microsoft.ML.OnnxRuntime/SessionOptions.cs if you change delayload
     #file(GLOB cuda_dll_paths "${onnxruntime_CUDA_HOME}/bin/cublas64_*" "${onnxruntime_CUDA_HOME}/bin/cudart64_*" "${onnxruntime_CUDA_HOME}/bin/curand64_*" "${onnxruntime_CUDA_HOME}/bin/cufft64_*")
-    #set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:cudnn64_7.dll")
+    #set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:cudnn64_8.dll")
     #foreach(cuda_dll_path ${cuda_dll_paths})
     #    get_filename_component(cuda_dll_file_name ${cuda_dll_path} NAME)
     #    set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:${cuda_dll_file_name}")
@@ -1081,6 +1139,15 @@ if (onnxruntime_USE_MIGRAPHX)
   endif()
   set(AMD_MIGRAPHX_HOME ${onnxruntime_MIGRAPHX_HOME})
   add_definitions(-DUSE_MIGRAPHX=1)
+endif()
+
+if (onnxruntime_USE_ROCM)
+  if (WIN32)
+    message(FATAL_ERROR "ROCM does not support build in Windows!")
+  endif()
+  if (onnxruntime_USE_CUDA)
+    message(FATAL_ERROR "ROCM does not support build with CUDA!")
+  endif()
 endif()
 
 if (onnxruntime_USE_TVM)
@@ -1164,13 +1231,17 @@ if (onnxruntime_ENABLE_TRAINING)
 
     # Find NCCL and MPI
     if (onnxruntime_USE_NCCL AND MPI_FOUND)
+      if (onnxruntime_USE_CUDA)
+        set(NCCL_LIBNAME "nccl")
+      elseif (onnxruntime_USE_ROCM)
+        set(NCCL_LIBNAME "rccl")
+      endif()
+
       find_path(NCCL_INCLUDE_DIR
-        NAMES nccl.h
+        NAMES ${NCCL_LIBNAME}.h
         HINTS
         ${onnxruntime_NCCL_HOME}/include
         $ENV{CUDA_ROOT}/include)
-
-      set(NCCL_LIBNAME "nccl")
 
       find_library(NCCL_LIBRARY
         NAMES ${NCCL_LIBNAME}
@@ -1183,7 +1254,7 @@ if (onnxruntime_ENABLE_TRAINING)
       find_package_handle_standard_args(NCCL DEFAULT_MSG NCCL_INCLUDE_DIR NCCL_LIBRARY)
 
       if (NCCL_FOUND)
-        set(NCCL_HEADER_FILE "${NCCL_INCLUDE_DIR}/nccl.h")
+        set(NCCL_HEADER_FILE "${NCCL_INCLUDE_DIR}/${NCCL_LIBNAME}.h")
         message( STATUS "Determining NCCL version from the header file: ${NCCL_HEADER_FILE}" )
         file (STRINGS ${NCCL_HEADER_FILE} NCCL_MAJOR_VERSION_DEFINED
               REGEX "^[ \t]*#define[ \t]+NCCL_MAJOR[ \t]+[0-9]+.*$" LIMIT_COUNT 1)
@@ -1244,7 +1315,7 @@ endif()
 
 #names in this var must match the directory names under onnxruntime/core/providers
 set(ONNXRUNTIME_PROVIDER_NAMES cpu)
-foreach(target_name onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session onnxruntime_mlas)
+foreach(target_name onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session onnxruntime_mlas onnxruntime_flatbuffers)
   include(${target_name}.cmake)
   if (MSVC)
     target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")

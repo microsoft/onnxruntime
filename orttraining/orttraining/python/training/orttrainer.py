@@ -10,6 +10,8 @@ import onnxruntime as ort
 from . import _utils, amp, checkpoint, optim, postprocess, ORTTrainerOptions
 from .model_desc_validation import _ORTTrainerModelDesc
 
+from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
+
 class TrainStepInfo(object):
     r"""Private class used to store runtime information from current train step.
 
@@ -631,9 +633,18 @@ class ORTTrainer(object):
         ort_parameters.optimizer_attributes_map = optimizer_attributes_map
         ort_parameters.optimizer_int_attributes_map = optimizer_int_attributes_map
 
+        ort_parameters.attn_dropout_recompute = self.options.graph_transformer.attn_dropout_recompute
+        ort_parameters.gelu_recompute = self.options.graph_transformer.gelu_recompute
+        ort_parameters.transformer_layer_recompute = self.options.graph_transformer.transformer_layer_recompute
+        ort_parameters.number_recompute_layers = self.options.graph_transformer.number_recompute_layers
+
         # SessionOptions
         session_options = ort.SessionOptions()
         session_options.use_deterministic_compute = self.options.debug.deterministic_compute
+        if (self.options.graph_transformer.attn_dropout_recompute or 
+            self.options.graph_transformer.gelu_recompute or 
+            self.options.graph_transformer.transformer_layer_recompute):
+            session_options.execution_order = ort.ExecutionOrder.PRIORITY_BASED
 
         # TrainingSession
         self._training_session = ort.TrainingSession(self._onnx_model.SerializeToString(),
@@ -670,6 +681,9 @@ class ORTTrainer(object):
     def _init_session(self):
         if self._onnx_model is None:
             return
+
+        if self.options.utils.run_symbolic_shape_infer:
+            self._onnx_model = SymbolicShapeInference.infer_shapes(self._onnx_model, auto_merge=True, guess_output_rank=True)
 
         # Create training session used by train_step
         self._create_ort_training_session()
@@ -787,7 +801,12 @@ class ORTTrainer(object):
         outputs_desc_resolved = self._resolve_symbolic_dimensions(inputs, inputs_desc, outputs_desc)
         result = {}
         for output_desc in outputs_desc_resolved:
-            torch_tensor = torch.zeros(output_desc.shape, device=self.options.device.id,
+            target_device = self.options.device.id
+            if self.options.mixed_precision.enabled and output_desc.name == self.model_desc.all_finite.name:
+                # Keep all finite flag on CPU to match backend implementation
+                # This prevents CPU -> GPU -> CPU copies between frontend and backend
+                target_device = 'cpu'
+            torch_tensor = torch.zeros(output_desc.shape, device=target_device,
                                        dtype=output_desc.dtype_amp if output_desc.dtype_amp else output_desc.dtype)
             iobinding.bind_output(output_desc.name, torch_tensor.device.type, _utils.get_device_index(self.options.device.id),
                                   _utils.dtype_torch_to_numpy(torch_tensor.dtype),

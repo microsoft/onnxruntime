@@ -25,6 +25,9 @@ struct OrtThreadPoolParams {
   size_t* affinity_vec = nullptr;
   size_t affinity_vec_len = 0;
   const ORTCHAR_T* name = nullptr;
+
+  // Set or unset denormal as zero
+  bool set_denormal_as_zero = false;
 };
 
 struct OrtThreadingOptions {

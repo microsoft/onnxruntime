@@ -6,7 +6,7 @@ trigger: none
 jobs:
 - job: Onnxruntime_Linux_GPU_Training_FrontEnd
 
-  timeoutInMinutes: 240
+  timeoutInMinutes: 300
 
   steps:
   - checkout: self
@@ -25,8 +25,6 @@ jobs:
       workingDirectory: $(Build.BinariesDirectory)
     continueOnError: true
     condition: always()
-
-  # insert a python frontend test data preparation step here
 
   - script: >
       tools/ci_build/github/linux/run_dockerbuild.sh

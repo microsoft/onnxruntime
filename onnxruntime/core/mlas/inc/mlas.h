@@ -31,6 +31,49 @@ Abstract:
 #endif
 
 //
+// Define the target architecture.
+//
+
+#if defined(_M_AMD64) || defined(__x86_64__)
+#define MLAS_TARGET_AMD64
+#endif
+#if defined(_M_IX86) || defined(__i386__)
+#define MLAS_TARGET_IX86
+#endif
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_IX86)
+#define MLAS_TARGET_AMD64_IX86
+#endif
+#if defined(_M_ARM64) || defined(__aarch64__)
+#define MLAS_TARGET_ARM64
+#endif
+#if defined(_M_ARM) || defined(__arm__)
+#define MLAS_TARGET_ARM
+#endif
+#if defined(__VSX__)
+#define MLAS_TARGET_POWER
+#endif
+
+//
+// Define the support levels for the target architecture.
+//
+
+#if defined(MLAS_TARGET_AMD64)
+#define MLAS_SUPPORTS_GEMM_DOUBLE
+#endif
+
+#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_ARM64) || (defined(MLAS_TARGET_ARM) && !defined(_MSC_VER))
+#define MLAS_SUPPORTS_GEMM_U8X8
+#endif
+
+#if defined(MLAS_TARGET_AMD64_IX86)
+#define MLAS_SUPPORTS_GEMM_U8X8_AND_REQUANTIZE_OUTPUT
+#endif
+
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_ARM64) || (defined(MLAS_TARGET_ARM) && !defined(_MSC_VER))
+#define MLAS_SUPPORTS_PACKED_GEMM_U8X8
+#endif
+
+//
 // Basic Linear Algebra Subprograms (BLAS) types.
 //
 
@@ -350,6 +393,20 @@ MlasConv(
     MLAS_THREADPOOL* ThreadPool
     );
 
+template<typename FilterType>
+void
+MLASCALL
+MlasConvDepthwise(
+    const uint8_t* Input,
+    uint8_t InputZeroPoint,
+    const FilterType* Filter,
+    FilterType FilterZeroPoint,
+    int32_t* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
+    );
+
 //
 // Pooling routines.
 //
@@ -434,6 +491,28 @@ MlasConvertHalfToFloatBuffer(
     const unsigned short* Source,
     float* Destination,
     size_t Count
+    );
+
+//
+// Transpose routines.
+//
+
+void
+MLASCALL
+MlasTranspose(
+    const uint8_t* Input,
+    uint8_t* Output,
+    size_t M,
+    size_t N
+    );
+
+void
+MLASCALL
+MlasTranspose(
+    const uint32_t* Input,
+    uint32_t* Output,
+    size_t M,
+    size_t N
     );
 
 //
@@ -557,6 +636,30 @@ MlasRequantizeOutput(
     size_t M,
     size_t N,
     float Scale,
+    uint8_t ZeroPoint
+    );
+
+void
+MLASCALL
+MlasRequantizeOutputColumn(
+    const int32_t* Input,
+    uint8_t* Output,
+    const int32_t* Bias,
+    size_t M,
+    size_t N,
+    const float Scale,
+    uint8_t ZeroPoint
+    );
+
+void
+MLASCALL
+MlasRequantizeOutputColumn(
+    const int32_t* Input,
+    uint8_t* Output,
+    const int32_t* Bias,
+    size_t M,
+    size_t N,
+    const float* Scale,
     uint8_t ZeroPoint
     );
 
