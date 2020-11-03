@@ -207,7 +207,7 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
           const auto* packed_weight =
               static_cast<const uint8_t*>(packed_weights_.get()) + packed_weights_size_ * (weights_offset / head_size);
 
-          SCALE_BIAS_PROCESSOR scale_bias_processor(&dequant_scale, bias_data + weights_offset, QuantizationGranularity::PerMatrix);
+          SCALE_BIAS_PROCESSOR scale_bias_processor(&dequant_scale, bias_data + weights_offset);
           MlasGemm(
               sequence_length,                                    // M      = S
               head_size,                                          // N      = H

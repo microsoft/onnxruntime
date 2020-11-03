@@ -230,6 +230,11 @@ enum class QuantizationGranularity {
     PerColumn,
 };
 
+enum class OutputMode {
+    ZeroMode,       // overwrite the output buffer
+    AccumulateMode, // accumulate to the output buffer
+};
+
 class OUTPUT_PROCESSOR {
 public:
     inline
@@ -255,7 +260,8 @@ public:
     SCALE_BIAS_PROCESSOR(
         const float* Scale,
         const float* Bias,
-        QuantizationGranularity QuantGran);
+        OutputMode Mode = OutputMode::ZeroMode,
+        QuantizationGranularity QuantGran = QuantizationGranularity::PerMatrix);
 
     inline
     void
@@ -270,7 +276,7 @@ public:
     size_t ldcBuffer) const override;
 
 private:
-    template<bool HASBIAS, QuantizationGranularity QUANTGRAN>
+    template<bool HASBIAS, OutputMode MODE, QuantizationGranularity QUANTGRAN>
     inline
     void
     ProcessImpl(
@@ -286,6 +292,7 @@ private:
 private:
     const float* Scale_;
     const float* Bias_;
+    OutputMode OutputMode_;
     QuantizationGranularity QuantGran_;
 };
 

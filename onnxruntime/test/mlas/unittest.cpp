@@ -573,7 +573,7 @@ protected:
         const float* Bias
         )
     {
-        SCALE_BIAS_PROCESSOR scale_bias_processor(&CScale, Bias, QuantizationGranularity::PerMatrix);
+        SCALE_BIAS_PROCESSOR scale_bias_processor(&CScale, Bias);
         MlasGemm(M, N, K,
                  A, lda, offa,
                  B, ldb, offb, BIsSigned,
@@ -645,7 +645,7 @@ protected:
         )
     {
         const void* PackedB = PackB(N, K, B, ldb, BIsSigned);
-        SCALE_BIAS_PROCESSOR scale_bias_processor(&CScale, Bias, QuantizationGranularity::PerMatrix);
+        SCALE_BIAS_PROCESSOR scale_bias_processor(&CScale, Bias);
         MlasGemm(M, N, K,
                  A, lda, offa,
                  PackedB, offb, BIsSigned,
@@ -2826,17 +2826,21 @@ private:
         // Compute Output with MLAS
         if (AccumulateMode) {
             if (PerColumn) {
-                MlasScaleOutputColumn<true>(Input, Output, M, N, Scale);
+                SCALE_BIAS_PROCESSOR OutputProcessor(Scale, nullptr, OutputMode::AccumulateMode, QuantizationGranularity::PerColumn);
+                OutputProcessor.Process(Output, Input, 0, 0, M, N, N, N);
             }
             else {
-                MlasScaleOutput<true>(Input, Output, M, N, Scale[0]);
+                SCALE_BIAS_PROCESSOR OutputProcessor(Scale, nullptr, OutputMode::AccumulateMode, QuantizationGranularity::PerMatrix);
+                OutputProcessor.Process(Output, Input, 0, 0, M, N, N, N);
             }
         }
         else if (PerColumn) {
-            MlasScaleOutputColumn<false>(Input, Output, M, N, Scale);
+            SCALE_BIAS_PROCESSOR OutputProcessor(Scale, nullptr, OutputMode::ZeroMode, QuantizationGranularity::PerColumn);
+            OutputProcessor.Process(Output, Input, 0, 0, M, N, N, N);
         }
         else {
-            MlasScaleOutput<false>(Input, Output, M, N, Scale[0]);
+            SCALE_BIAS_PROCESSOR OutputProcessor(Scale, nullptr, OutputMode::ZeroMode, QuantizationGranularity::PerMatrix);
+            OutputProcessor.Process(Output, Input, 0, 0, M, N, N, N);
         }
 
         constexpr float epsilon = 1e-6f;
@@ -2874,14 +2878,14 @@ RunThreadedTests(
     void
     )
 {
-//    printf("SGEMM tests.\n");
-//    onnxruntime::make_unique<MlasFgemmTest<float, false>>()->ExecuteShort();
-//    printf("SGEMM packed tests.\n");
-//    onnxruntime::make_unique<MlasFgemmTest<float, true>>()->ExecuteShort();
-//#ifdef MLAS_SUPPORTS_GEMM_DOUBLE
-//    printf("DGEMM tests.\n");
-//    onnxruntime::make_unique<MlasFgemmTest<double, false>>()->ExecuteShort();
-//#endif
+    printf("SGEMM tests.\n");
+    onnxruntime::make_unique<MlasFgemmTest<float, false>>()->ExecuteShort();
+    printf("SGEMM packed tests.\n");
+    onnxruntime::make_unique<MlasFgemmTest<float, true>>()->ExecuteShort();
+#ifdef MLAS_SUPPORTS_GEMM_DOUBLE
+    printf("DGEMM tests.\n");
+    onnxruntime::make_unique<MlasFgemmTest<double, false>>()->ExecuteShort();
+#endif
 
 #ifdef MLAS_SUPPORTS_GEMM_U8X8
     printf("QGEMM U8S8=int32_t tests.\n");
