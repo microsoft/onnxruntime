@@ -80,7 +80,7 @@ ApplicableMatrixReduction get_applicable_matrix_reduction(
     int& m, int& n);
 
 /**
- * Reduces the rows in a matrix to a single row containing the sum of each column.
+ * Reduces the rows in a row-major matrix to a single row containing the sum of each column.
  * @param input The input data.
  * @param output The output data.
  * @param m The number of matrix rows.
@@ -91,7 +91,7 @@ template <typename TIn, typename TOut>
 Status reduce_matrix_rows(const TIn* input, TOut* output, int m, int n, bool reset_initial_output = true);
 
 /**
- * Reduces the columns in a matrix to a single column containing the sum of each row.
+ * Reduces the columns in a row-major matrix to a single column containing the sum of each row.
  * @param input The input data.
  * @param output The output data.
  * @param m The number of matrix rows.
