@@ -248,7 +248,8 @@ public:
         size_t /*RangeCountM*/,
         size_t /*RangeCountN*/,
         size_t /*ldc*/,
-        size_t /*ldcBuffer*/) const
+        size_t /*ldcBuffer*/
+        ) const
     {
         return;
     }
@@ -260,7 +261,8 @@ public:
         const float* Scale,
         const float* Bias,
         MLAS_QGEMM_OUTPUT_MODE Mode = MLAS_QGEMM_OUTPUT_MODE::ZeroMode,
-        MLAS_QUANTIZATION_GRANULARITY QuantGran = MLAS_QUANTIZATION_GRANULARITY::PerMatrix);
+        MLAS_QUANTIZATION_GRANULARITY QuantGran = MLAS_QUANTIZATION_GRANULARITY::PerMatrix
+        );
 
     inline
     void

@@ -280,36 +280,32 @@ Return Value:
             MLAS_FLOAT32X4 FloatVector = MlasCastToFloat32x4(MlasLoadInt32x4(c_buf));
 
             if (QUANTGRAN == MLAS_QUANTIZATION_GRANULARITY::PerColumn) {
+
                 if (MODE == MLAS_QGEMM_OUTPUT_MODE::AccumulateMode) {
                     FloatVector = MlasMultiplyAddFloat32x4(FloatVector, MlasLoadFloat32x4(scale), MlasLoadFloat32x4(c_out));
                 }
                 else {
                     FloatVector = MlasMultiplyFloat32x4(FloatVector, MlasLoadFloat32x4(scale));
                 }
+
+                scale += 4;
             }
             else if (MODE == MLAS_QGEMM_OUTPUT_MODE::AccumulateMode) {
                 FloatVector = MlasMultiplyAddFloat32x4(FloatVector, ScaleVector, MlasLoadFloat32x4(c_out));
             }
             else {
-                    FloatVector = MlasMultiplyFloat32x4(FloatVector, ScaleVector);
+                FloatVector = MlasMultiplyFloat32x4(FloatVector, ScaleVector);
             }
 
             if (HASBIAS) {
                 FloatVector = MlasAddFloat32x4(FloatVector, MlasLoadFloat32x4(bias));
+                bias += 4;
             }
+
             MlasStoreFloat32x4(c_out, FloatVector);
 
             c_out +=4;
             c_buf += 4;
-
-            if (HASBIAS) {
-                bias += 4;
-            }
-
-            if (QUANTGRAN == MLAS_QUANTIZATION_GRANULARITY::PerColumn){
-                scale += 4;
-            }
-
             n -= 4;
         }
 
@@ -333,6 +329,7 @@ Return Value:
             if (HASBIAS) {
                 FloatVector = _mm_add_ss(FloatVector, _mm_load_ss(&bias[offset]));
             }
+
             _mm_store_ss(&c_out[offset], FloatVector);
 #else
             if (QUANTGRAN == MLAS_QUANTIZATION_GRANULARITY::PerColumn) {
