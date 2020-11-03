@@ -385,7 +385,6 @@ Status SessionState::GenerateActivationMemoryPatterns(MemoryPatternGroup* output
   OrtValuePatternPlanner mem_planner(*exe_plan);
 
   // Try to resolve shapes for activations.
-  auto& node_index_info = GetNodeIndexInfo();
   for (auto& node_plan : exe_plan->execution_plan) {
     auto* node = graph_viewer_->GetNode(node_plan.node_index);
     //allocate output
@@ -444,12 +443,12 @@ Status SessionState::GenerateActivationMemoryPatterns(MemoryPatternGroup* output
 
   // Allocate all other activations.
   for (auto& node_plan : exe_plan->execution_plan) {
-    int node_index = node_index_info.GetNodeOffset(node_plan.node_index);
     auto* node = graph_viewer_->GetNode(node_plan.node_index);
-    int output_start = node_index + static_cast<int>(node->InputDefs().size()) + static_cast<int>(node->ImplicitInputDefs().size());
     //allocate output
     for (int i = 0, end = static_cast<int>(node->OutputDefs().size()); i < end; ++i) {
-      const auto ml_value_idx = node_index_info.GetMLValueIndex(output_start + i);
+      int ml_value_idx = NodeIndexInfo::kInvalidEntry;
+      ort_value_name_idx_map_.GetIdx(node->OutputDefs()[i]->Name(), ml_value_idx);
+
       if (ml_value_idx == NodeIndexInfo::kInvalidEntry ||
           (std::find(exe_plan->activation_allocation_order.begin(), exe_plan->activation_allocation_order.end(), ml_value_idx) != exe_plan->activation_allocation_order.end()))
         continue;

@@ -176,23 +176,19 @@ Status AllreduceOptimizerGraphBuilder::BuildInternal(
         gradient_norm_inputs = gradient_argdefs;
       }
     } else {
-      gradient_norm_inputs = GetGradientNormInputs(gradient_argdefs, reduced_fused_gradient_argdef);
+        gradient_norm_inputs = gradient_argdefs;
     }
-
-    ORT_RETURN_IF_ERROR(AddGradientNorm(
-        nodearg_name_generator, gradient_norm_inputs, graph_defs, global_grad_norm_argdef));
-    if (DistributedRunContext::GroupSize(WorkerGroupType::HorizontalParallel) > 1) {
-      ORT_RETURN_IF_ERROR(AddL2NormBetweenMegatronRanksNcclAllReduce(global_grad_norm_argdef, graph_defs));
-    }
-    graph_defs.AddGraphOutputs({global_grad_norm_argdef.name});
     ORT_RETURN_IF_ERROR(AddGradientNorm(
         nodearg_name_generator, gradient_norm_inputs, graph_defs, global_grad_norm_argdef));
     optimizer_graph_outputs[OptimizerOutputKey::GlobalGradientNorm] = global_grad_norm_argdef.name;
-
+    if (DistributedRunContext::GroupSize(WorkerGroupType::HorizontalParallel) > 1) {
+      ORT_RETURN_IF_ERROR(AddL2NormBetweenMegatronRanksNcclAllReduce(global_grad_norm_argdef, graph_defs));
+    }
     ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
         nodearg_name_generator, {global_grad_norm_argdef}, graph_defs, global_grad_norm_finite_argdef));
     optimizer_graph_outputs[OptimizerOutputKey::GradientAllIsFinite] = global_grad_norm_finite_argdef.name;
   }
+
 
   // add weight update
   ORT_RETURN_IF_ERROR(AddDirectWeightUpdate(

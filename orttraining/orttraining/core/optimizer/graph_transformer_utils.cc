@@ -61,6 +61,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
   std::vector<std::unique_ptr<GraphTransformer>> transformers;
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer = nullptr;
 
+
   // MUST be empty here, because this is called before partition, so the node's execution type is not decided yet.
   // If we give values here, the check in transformer will fail.
   std::unordered_set<std::string> compatible_eps = {};
