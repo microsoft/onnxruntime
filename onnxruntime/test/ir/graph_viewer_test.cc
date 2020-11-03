@@ -58,32 +58,32 @@ TEST(GraphViewer, FilteredGraph) {
   };
 
   // first node
-  auto nodes = graph.Nodes().cbegin();
-  add_node(*nodes++);
+  auto cur_node = graph.Nodes().cbegin();
+  add_node(*cur_node++);
 
   // second node
-  add_node(*nodes++);
+  add_node(*cur_node++);
 
   subgraph.SetMetaDef(std::move(metadef));
 
   GraphViewer viewer{graph, subgraph};
 
   EXPECT_EQ(viewer.NumberOfNodes(), 2);
-  // we added nodes in the topo order so that should still be the case
+  // we added the first two nodes in the topo order so that should still be the case
   EXPECT_THAT(subgraph.nodes, testing::ContainerEq(viewer.GetNodesInTopologicalOrder()));
 
-  nodes = graph.Nodes().cbegin();
+  cur_node = graph.Nodes().cbegin();
   auto end_nodes = graph.Nodes().cend();
-  int cur = 0;
-  while (nodes != end_nodes) {
-    if (cur < 2) {
-      EXPECT_NE(viewer.GetNode(nodes->Index()), nullptr);
+  int cur_idx = 0;
+  while (cur_node != end_nodes) {
+    if (cur_idx < 2) {
+      EXPECT_NE(viewer.GetNode(cur_node->Index()), nullptr);
     } else {
-      EXPECT_EQ(viewer.GetNode(nodes->Index()), nullptr);
+      EXPECT_EQ(viewer.GetNode(cur_node->Index()), nullptr);
     }
 
-    ++cur;
-    ++nodes;
+    ++cur_idx;
+    ++cur_node;
   }
 
   const auto* final_metadef = subgraph.GetMetaDef();
