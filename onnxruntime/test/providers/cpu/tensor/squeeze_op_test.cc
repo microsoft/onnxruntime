@@ -115,7 +115,9 @@ TEST(SqueezeOpTest, Squeeze_2_axes_input) {
   test.AddInput<int64_t>("axes", {3}, std::vector<int64_t>{0, 2, 3});
   test.AddOutput<float>("squeezed", {4, 2},
                         std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",  {kOpenVINOExecutionProvider}); //Incorrect precision. Will be re-enabled after it's fixed
+  // Incorrect precision for OpenVINO EP. Will be re-enabled after it's fixed
+  // TensorRT expects 'axes' attribute
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",  {kOpenVINOExecutionProvider, kTensorrtExecutionProvider});
 }
 
 TEST(SqueezeOpTest, Squeeze_Empty_Axes_opset13) {
@@ -137,7 +139,8 @@ TEST(SqueezeOpTest, SqueezeNegAxis_axes_input) {
 
   // nGraph does not support neg axis.
   // OpenVINO EP Incorrect precision. Will be re-enabled after its fixed
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider, kOpenVINOExecutionProvider});
+  // TensorRT expects 'axes' attribute
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider, kOpenVINOExecutionProvider, kTensorrtExecutionProvider});
 }
 
 }  // namespace test

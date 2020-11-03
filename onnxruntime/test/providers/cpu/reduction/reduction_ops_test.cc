@@ -1344,7 +1344,8 @@ TEST(ReductionOpTest, ReduceSum_int32_axes_input) {
                           11, 12});
   test.AddInput<int64_t>("axes", {2}, std::vector<int64_t>{0, 2}, true);
   test.AddOutput<int32_t>("reduced", {1, 2, 1}, {33, 45});
-  test.Run();
+  // TensorRT doesn't support "axes" input
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",  {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceSum_do_not_keepdims_axes_input_initializer) {
@@ -1355,7 +1356,8 @@ TEST(ReductionOpTest, ReduceSum_do_not_keepdims_axes_input_initializer) {
                         3.0f, 4.0f});
   test.AddInput<int64_t>("axes", {1}, std::vector<int64_t>{1}, true);
   test.AddOutput<float>("reduced", {1, 2}, {4.0f, 6.0f});
-  test.Run();
+  // TensorRT doesn't support "axes" input
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",  {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceSum_do_not_keepdims_axes_input_not_initializer) {
@@ -1366,7 +1368,8 @@ TEST(ReductionOpTest, ReduceSum_do_not_keepdims_axes_input_not_initializer) {
                         3.0f, 4.0f});
   test.AddInput<int64_t>("axes", {1}, std::vector<int64_t>{1}, false);
   test.AddOutput<float>("reduced", {1, 2}, {4.0f, 6.0f});
-  test.Run();
+  // TensorRT doesnt support "axes" input
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",  {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceSum_noop_axes_input_initializer) {
@@ -1378,7 +1381,8 @@ TEST(ReductionOpTest, ReduceSum_noop_axes_input_initializer) {
                         3.0f, 4.0f});
   test.AddInput<int64_t>("axes", {0}, {}, true);
   test.AddOutput<float>("reduced", {1, 2, 2}, {1.0f, 2.0f, 3.0f, 4.0f});
-  test.Run();
+  // TensorRT doesnt support "noop_with_empty_axes"
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",  {kTensorrtExecutionProvider});
 }
 
 #if !(defined USE_TENSORRT) && !(defined USE_TVM)

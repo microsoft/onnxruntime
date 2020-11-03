@@ -84,7 +84,8 @@ TEST(TensorOpTest, Unsqueeze_OutOfRange) {
     test.AddOutput<float>("output", {2, 1, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
     // nGraph and TensorRT does not support negative axis.
     test.Run(OpTester::ExpectResult::kExpectFailure,
-             "[ShapeInferenceError] values in 'axes' are beyond the bounds of the computed output shape");
+             "[ShapeInferenceError] values in 'axes' are beyond the bounds of the computed output shape",
+             {kTensorrtExecutionProvider}); //TensorRT expects 'axes' attribute
   }
 }
 
@@ -113,6 +114,7 @@ TEST(TensorOpTest, Unsqueeze_1_int32_axes_input) {
   test.AddInput<int32_t>("input", {2, 3, 4}, std::vector<int32_t>(2 * 3 * 4, 1));
   test.AddInput<int64_t>("axes", {1}, std::vector<int64_t>{1});
   test.AddOutput<int32_t>("output", {2, 1, 3, 4}, std::vector<int32_t>(2 * 3 * 4, 1));
+  // TensorRT does not support missing 'axes' attribute
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
@@ -122,7 +124,8 @@ TEST(TensorOpTest, Unsqueeze_3_axes_input) {
   test.AddInput<float>("input", {2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
   test.AddInput<int64_t>("axes", {3}, std::vector<int64_t>{2, 1, 0});
   test.AddOutput<float>("output", {1, 1, 1, 2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
-  test.Run();
+  // TensorRT does not support missing 'axes' attribute
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 }  // namespace test
