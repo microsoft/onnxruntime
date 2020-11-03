@@ -25,6 +25,8 @@ namespace onnxruntime {
 
 namespace concurrency {
 
+class ThreadPoolParallelSection;
+
 // A sharded loop counter distributes loop iterations between a set of worker threads.  The iteration space of
 // the loop is divided (perhaps unevenly) between the shards.  Each thread has a home shard (perhaps not uniquely
 // to it), and it claims iterations via atomic operations on its home shard.  It then proceeds through the other
@@ -211,35 +213,36 @@ void ThreadPool::Schedule(std::function<void()> fn) {
   }
 }
 
-static thread_local bool is_parallel{false};
+thread_local ThreadPool::ParallelSection *ThreadPool::ParallelSection::current_parallel_section;
 
-void ThreadPool::StartParallelSection() {
-  ORT_ENFORCE(!is_parallel);
-  if (underlying_threadpool_) {
-    underlying_threadpool_->StartParallelSection();
+ThreadPool::ParallelSection::ParallelSection(ThreadPool *tp) : _tp(tp) {
+  ORT_ENFORCE(!current_parallel_section, "Nested parallelism not supported");
+  ORT_ENFORCE(!_ps);//.get());
+  if (tp->underlying_threadpool_) {
+    _ps = tp->underlying_threadpool_->MakeParallelSection();
+    _tp->underlying_threadpool_->StartParallelSection(*_ps);//.get());
+    current_parallel_section = this;
   }
-  is_parallel = true;
 }
 
-void ThreadPool::EndParallelSection() {
-  ORT_ENFORCE(is_parallel);
-  if (underlying_threadpool_) {
-    underlying_threadpool_->EndParallelSection();
+ThreadPool::ParallelSection::~ParallelSection() {
+  if (current_parallel_section) {
+    _tp->underlying_threadpool_->EndParallelSection(*_ps);//.get());
+    delete _ps;
+    current_parallel_section = nullptr;
   }
-  is_parallel = false;
 }
 
 void ThreadPool::RunInParallel(std::function<void(unsigned idx)> fn, unsigned n) {
   ORT_ENFORCE(fn != nullptr);
   if (underlying_threadpool_) {
-    bool started = false;
-    if (!is_parallel) {
-      started = true;
-      StartParallelSection();
-    }
-    underlying_threadpool_->RunInParallelSection(std::move(fn), n);
-    if (started) {
-      EndParallelSection();
+    if (ThreadPool::ParallelSection::current_parallel_section) {
+      underlying_threadpool_->RunInParallel(*(ThreadPool::ParallelSection::current_parallel_section->_ps),//.get(),
+                                            std::move(fn),
+                                            n);
+    } else {
+      underlying_threadpool_->RunInParallel(std::move(fn),
+                                            n);
     }
   } else {
     fn(0);

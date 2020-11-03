@@ -42,13 +42,15 @@ struct TensorOpCost {
   double compute_cycles;
 };
 
-template <typename Environment>
-class ThreadPoolTempl;
 
 namespace concurrency {
 
+template <typename Environment>
+class ThreadPoolTempl;
+
 class ExtendedThreadPoolInterface;
 class LoopCounter;
+class ThreadPoolParallelSection;
 
 class ThreadPool {
  public:
@@ -128,26 +130,21 @@ class ThreadPool {
 #else
   class ParallelSection {
   public:
-    ParallelSection(ThreadPool *tp) : _tp(tp) {
-      if (tp) {
-        tp->StartParallelSection();
-      }
-    }
-
-    ~ParallelSection() {
-      if (_tp) {
-        _tp->EndParallelSection();
-      }
-    }
+    ParallelSection(ThreadPool *tp);
+    ~ParallelSection();
 
   private:
-    ThreadPool* const _tp;
+    friend class ThreadPool;
+    ThreadPool *_tp;
+    ThreadPoolParallelSection *_ps{nullptr};
+    //    std::unique_ptr<ThreadPoolParallelSection> _ps{nullptr};
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ParallelSection);
+
+    static thread_local ParallelSection *current_parallel_section;
+    static_assert(std::is_trivially_destructible<typeof(ParallelSection::current_parallel_section)>::value,
+                  "Per-thread state should be trivially destructible");
   };
 #endif
-
-  static void StartParallelSection(ThreadPool *tp);
-  static void EndParallelSection(ThreadPool *tp);
 
   // ParallelFor shards the "total" units of work assuming each unit of work
   // having roughly "cost_per_unit" cost, in cycles. Each unit of work is
@@ -311,10 +308,6 @@ class ThreadPool {
   // synchronization is handled in the thread pool, and so any state captured
   // by fn() is safe from concurrent access once RunWithHelp returns.
   void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n);
-
-  // Start and end a multi-loop parallel section.
-  void StartParallelSection();
-  void EndParallelSection();
 
   // Divides the work represented by the range [0, total) into k shards.
   // Calls fn(i*block_size, (i+1)*block_size) from the ith shard (0 <= i < k).

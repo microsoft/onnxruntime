@@ -41,7 +41,29 @@
 
 namespace onnxruntime {
 
-namespace concurrency {
+ namespace concurrency {
+
+struct PerLoop {
+PerLoop(std::function<void(unsigned)> f, unsigned t) : fn(std::move(f)), threads_needed(t) {
+}
+  
+  const std::function<void(unsigned)> fn;
+  const unsigned threads_needed;
+  
+private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PerLoop);
+};
+
+struct ThreadPoolParallelSection {
+  // Per-parallel section state
+  unsigned workers_started{0};
+  std::atomic<unsigned> workers_finished{0};
+  std::atomic<unsigned> workers_in_loop{0};
+  std::atomic<PerLoop *> current_loop{nullptr};
+  std::atomic<bool> active{false};
+  std::vector<std::pair<int,unsigned>> pending_items;
+};
+
 
 // Extended Eigen thread pool interface, avoiding the need to modify the ThreadPoolInterface.h
 // header from the external Eigen repository.
@@ -51,8 +73,10 @@ class ExtendedThreadPoolInterface : public Eigen::ThreadPoolInterface {
   // Start/end a parallel section, within which calls to
   // RunInParallelSection may be made.  Parallel sections are
   // non-nesting.
-  virtual void StartParallelSection() = 0;
-  virtual void EndParallelSection() = 0;
+  //  virtual std::unique_ptr<ThreadPoolParallelSection> MakeParallelSection() = 0;
+  virtual ThreadPoolParallelSection *MakeParallelSection() = 0;
+  virtual void StartParallelSection(ThreadPoolParallelSection &ps) = 0;
+  virtual void EndParallelSection(ThreadPoolParallelSection &ps) = 0;
 
   // Run fn with up to n degree-of-parallelism enlisting the thread
   // pool for help.  The degree-of-parallelism includes the caller,
@@ -62,13 +86,17 @@ class ExtendedThreadPoolInterface : public Eigen::ThreadPoolInterface {
   // so any state captured by fn() is safe from concurrent access once
   // RunInParallelSection returns.
   //
-  // The parameter idx provides a loop-local thread ID, densely
-  // numbered in the range [0,k) where k<=n.
-  virtual void RunInParallelSection(std::function<void(unsigned idx)> fn,
-                                    unsigned n) = 0;
+  // The parameter idx provides a loop-local thread ID in the range
+  // [0,k) where k<=n.
+  virtual void RunInParallel(std::function<void(unsigned idx)> fn,
+                             unsigned n) = 0;
+
+  virtual void RunInParallel(ThreadPoolParallelSection &ps,
+                             std::function<void(unsigned idx)> fn,
+                             unsigned n) = 0;
 };
 
-}  // namespace concurrency
+
 
 template <typename Work, typename Tag, unsigned kSize>
 class RunQueue {
@@ -569,66 +597,78 @@ void GetGoodWorkerHints(int n, std::vector<unsigned>& good_hints, std::vector<un
   }
 }
 
-void StartParallelSection() override {
-  PerThread* leader_pt = GetPerThread();
-  ORT_ENFORCE(!leader_pt->in_parallel_section, "Nested parallelism not supported");
-  ORT_ENFORCE(leader_pt->workers_started == 0);
-  ORT_ENFORCE(leader_pt->workers_finished == 0);
-  ORT_ENFORCE(leader_pt->pending_items.size() == 0);
-  leader_pt->in_parallel_section = true;
-  if (!leader_pt->tag.Get()) {
-    leader_pt->tag = Tag::GetNext();
+//std::unique_ptr<ThreadPoolParallelSection> MakeParallelSection() override {
+//  return onnxruntime::make_unique<ThreadPoolParallelSection>();
+//}
+   
+ThreadPoolParallelSection *MakeParallelSection() override {
+  return new ThreadPoolParallelSection();
+}
+   
+void StartParallelSection(ThreadPoolParallelSection &ps) override {
+  PerThread* pt = GetPerThread();
+  ORT_ENFORCE(!pt->in_parallel_section, "Nested parallelism not supported");
+  ORT_ENFORCE(!ps.active, "Starting parallel section, but active already");
+  pt->in_parallel_section = true;
+  if (!pt->tag.Get()) {
+    pt->tag = Tag::GetNext();
   }
+  ps.active = true;
 }
 
-void EndParallelSection() override {
-  PerThread* leader_pt = GetPerThread();
-  ORT_ENFORCE(leader_pt->in_parallel_section, "Ending parallel section, but none started");
-  ORT_ENFORCE(leader_pt->workers_finished == 0, "Workers finished while parallel section active");
+void EndParallelSection(ThreadPoolParallelSection &ps) override {
+  PerThread* pt = GetPerThread();
+  ORT_ENFORCE(pt->in_parallel_section, "Ending parallel section, but none started");
+  ORT_ENFORCE(ps.active, "Ending parallel section, but not active");
+
+  pt->in_parallel_section = false;
 
   // Notify workers to exit from ParLoopWorker
-  leader_pt->in_parallel_section = false;
+  ps.active = false;
 
   // Attempt to cancel any tasks that were sent to workers but not
   // started.
-  for (auto& item : leader_pt->pending_items) {
+  for (auto& item : ps.pending_items) {
     Queue& q = worker_data_[item.first].queue;
-    if (q.RevokeWithTag(leader_pt->tag, item.second)) {
-      leader_pt->workers_finished++;
+    if (q.RevokeWithTag(pt->tag, item.second)) {
+      ps.workers_finished++;
     }
   }
-  leader_pt->pending_items.clear();
+  ps.pending_items.clear();
 
   // Wait for workers to exit ParLoopWorker
-  while (leader_pt->workers_finished < leader_pt->workers_started) {
+  while (ps.workers_finished < ps.workers_started) {
     onnxruntime::concurrency::SpinPause();
   }
 
   // Clear status for next loop
-  leader_pt->workers_started = 0;
-  leader_pt->workers_finished = 0;
-}
+  ps.workers_started = 0;
+  ps.workers_finished = 0;
 
- void RunInParallelSection(std::function<void(unsigned idx)> fn, unsigned n) override {
-  PerThread* leader_pt = GetPerThread();
-  ORT_ENFORCE(leader_pt->in_parallel_section, "RunInParallel, but not in parallel section");
+ }
+
+ void RunInParallel(ThreadPoolParallelSection &ps,
+                    std::function<void(unsigned idx)> fn,
+                    unsigned n) override {
+  PerThread* pt = GetPerThread();
+  ORT_ENFORCE(pt->in_parallel_section, "RunInParallel, but not in parallel section");
   ORT_ENFORCE(n > 1, "Trivial parallel section; should be avoided by caller");
 
-  ORT_ENFORCE(!leader_pt->current_loop);
+  ORT_ENFORCE(!ps.current_loop, "RunInParallel, but loop already active");
   PerLoop loop{std::move(fn), n};
-  leader_pt->current_loop = &loop;
+  ps.current_loop = &loop;
 
-  if (n > (leader_pt->workers_started+1)) {
-    unsigned extra_needed = n - (leader_pt->workers_started+1);
+  if (n > (ps.workers_started+1)) {
+    unsigned extra_needed = n - (ps.workers_started+1);
     // We build a list of <thread,idx> pairs for each of the queues that accepts a work
     // item.  This lets us remove any work items that do not get executed by the threads
     // that we push them to.
     std::vector<unsigned> good_hints, alt_hints;
     GetGoodWorkerHints(n - 1, good_hints, alt_hints);
     for (unsigned i = 0; i < extra_needed; i++) {
-      int new_idx = leader_pt->workers_started+1;
-      Task t = env_.CreateTask([leader_pt, new_idx, this]{
-          ParLoopWorker(leader_pt, new_idx);
+      int new_idx = ps.workers_started+1;
+      Task t = env_.CreateTask([&ps, new_idx, this]{
+          ParLoopWorker(ps, new_idx);
         });
       int q_idx;
       if (i < good_hints.size()) {
@@ -638,17 +678,17 @@ void EndParallelSection() override {
         if (alt_i < alt_hints.size()) {
           q_idx = alt_hints[alt_i];
         } else {
-          q_idx = Rand(&leader_pt->rand) % num_threads_;
+          q_idx = Rand(&pt->rand) % num_threads_;
         }
       }
       WorkerData& td = worker_data_[q_idx];
       Queue& q = td.queue;
       unsigned w_idx;
-      t = q.PushBackWithTag(std::move(t), leader_pt->tag, w_idx);
+      t = q.PushBackWithTag(std::move(t), pt->tag, w_idx);
       if (!t.f) {
         // The queue accepted the work, ensure that the thread is servicing the queue
-        leader_pt->workers_started++;
-        leader_pt->pending_items.push_back({q_idx, w_idx});
+        ps.workers_started++;
+        ps.pending_items.push_back({q_idx, w_idx});
         td.EnsureAwake();
       }
     }
@@ -658,10 +698,17 @@ void EndParallelSection() override {
   loop.fn(0);
 
   // Wait for workers to exit the work item
-  leader_pt->current_loop = 0;
-  while (leader_pt->workers_in_loop) {
+  ps.current_loop = 0;
+  while (ps.workers_in_loop) {
     onnxruntime::concurrency::SpinPause();
   }
+ }
+
+ void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n) override {
+   onnxruntime::concurrency::ThreadPoolParallelSection ps;
+   StartParallelSection(ps);
+   RunInParallel(ps, fn, n);
+   EndParallelSection(ps);
 }
 
 void Cancel() override {
@@ -725,17 +772,6 @@ int CurrentThreadId() const EIGEN_FINAL {
   typedef typename Environment::EnvThread Thread;
   struct WorkerData;
 
-  struct PerLoop {
-    PerLoop(std::function<void(unsigned)> f, unsigned t) : fn(std::move(f)), threads_needed(t) {
-    }
-
-    const std::function<void(unsigned)> fn;
-    const unsigned threads_needed;
-
-  private:
-    ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PerLoop);
-  };
-
   // PerThread objects are allocated in thread-local storage and allocated
   // on the thread's first call to GetPerThread.  The object should
   // remain trivially-destructable, with other state placed in the
@@ -755,17 +791,11 @@ int CurrentThreadId() const EIGEN_FINAL {
     uint64_t rand{0};                  // Random generator state.
     int thread_id{-1};                 // Worker thread index in pool.
     Tag tag{};                         // Work item tag used to identify this thread.
-
-    std::atomic<bool> in_parallel_section{false};   // Inside a parallel section (either as leader or worker)
-    unsigned workers_started{0};
-    std::vector<std::pair<int, unsigned>> pending_items;
-
-    std::atomic<unsigned> workers_finished{0};
-    std::atomic<unsigned> workers_in_loop{0};
-    std::atomic<PerLoop *> current_loop{0};
+    bool in_parallel_section{false};   // Inside a parallel section (either as leader or worker)
   };
 
-  //  static_assert(std::is_trivially_destructible<PerThread>::value, "Per-thread state should be trivially destructible");
+  static_assert(std::is_trivially_destructible<PerThread>::value,
+                "Per-thread state should be trivially destructible");
 
   struct WorkerData {
     constexpr WorkerData() : thread(), queue() {
@@ -1058,29 +1088,26 @@ int CurrentThreadId() const EIGEN_FINAL {
     return -1;
   }
 
-  void ParLoopWorker(PerThread *leader_pt, unsigned my_idx) {
+  void ParLoopWorker(ThreadPoolParallelSection &ps, unsigned my_idx) {
   PerThread* my_pt = GetPerThread();
   ORT_ENFORCE(!my_pt->in_parallel_section);
-  ORT_ENFORCE(leader_pt->in_parallel_section);
-  ORT_ENFORCE(leader_pt != my_pt);
   ORT_ENFORCE(my_idx > 0);
-
   my_pt->in_parallel_section = true;
 
-  while (leader_pt->in_parallel_section) {
-    if (!leader_pt->current_loop) {
+  while (ps.active) {
+    if (!ps.current_loop) {
       onnxruntime::concurrency::SpinPause();
     } else {
-      leader_pt->workers_in_loop++;
-      PerLoop *work_item = leader_pt->current_loop;
+      ps.workers_in_loop++;
+      PerLoop *work_item = ps.current_loop;
       if (work_item && my_idx < work_item->threads_needed) {
 	work_item->fn(my_idx);
       }
-      leader_pt->workers_in_loop--;
+      ps.workers_in_loop--;
     }
   }
 
-  leader_pt->workers_finished++;
+  ps.workers_finished++;
   my_pt->in_parallel_section = false;
 }
 
@@ -1102,5 +1129,7 @@ int CurrentThreadId() const EIGEN_FINAL {
     return static_cast<unsigned>((current ^ (current >> 22)) >> (22 + (current >> 61)));
   }
 };
+
+ }  // namespace concurrency
 
 }  // namespace onnxruntime
