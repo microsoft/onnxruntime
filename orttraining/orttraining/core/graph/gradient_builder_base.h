@@ -181,10 +181,6 @@ class GradientBuilderBase {
     return node_->OpType();
   }
 
-  int SrcNodeOpsetVersion() const {
-    return node_->Op()->since_version();
-  }
-
   template <typename T>
   static NodeDef ConstantVectorNode(const std::vector<T>& values, const std::string& arg_name) {
     auto t_proto = ONNX_NAMESPACE::ToTensor<T>(values);

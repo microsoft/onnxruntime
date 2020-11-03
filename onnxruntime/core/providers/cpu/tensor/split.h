@@ -15,14 +15,11 @@ class SplitBase {
   SplitBase(const OpKernelInfo& info) {
     axis_ = info.GetAttrOrDefault<int64_t>("axis", 0);
 
-    size_t numInputs = info.GetInputCount();
-    if(numInputs == 1){
-      // optional
-      if (info.GetAttrs("split", split_sizes_).IsOK()) {
-        split_size_sum_ = std::accumulate(split_sizes_.cbegin(), split_sizes_.cend(), 0LL);
-        ORT_ENFORCE(std::all_of(split_sizes_.cbegin(), split_sizes_.cend(), [](int64_t value) { return value >= 0; }),
-                    "Invalid value in 'split' attribute. All values must be > 0");
-      }
+    // optional
+    if (info.GetAttrs("split", split_sizes_).IsOK()) {
+      split_size_sum_ = std::accumulate(split_sizes_.cbegin(), split_sizes_.cend(), 0LL);
+      ORT_ENFORCE(std::all_of(split_sizes_.cbegin(), split_sizes_.cend(), [](int64_t value) { return value >= 0; }),
+                  "Invalid value in 'split' attribute. All values must be > 0");
     }
   }
 
@@ -35,7 +32,7 @@ class SplitBase {
 
   int64_t axis_;
   std::vector<int64_t> split_sizes_;
-  int64_t split_size_sum_ = -1;
+  int64_t split_size_sum_ = 0;
 };
 
 class Split final : public OpKernel, public SplitBase {

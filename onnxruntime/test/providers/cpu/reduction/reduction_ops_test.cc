@@ -1330,57 +1330,6 @@ TEST(ReductionOpTest, ReduceSum_keepdims) {
   test.Run();
 }
 
-TEST(ReductionOpTest, ReduceSum_int32_axes_input) {
-  OpTester test("ReduceSum", 13, onnxruntime::kOnnxDomain);
-  test.AddAttribute("keepdims", (int64_t)1);
-  test.AddInput<int32_t>("data", {3, 2, 2},
-                         {1, 2,
-                          3, 4,
-
-                          5, 6,
-                          7, 8,
-
-                          9, 10,
-                          11, 12});
-  test.AddInput<int64_t>("axes", {2}, std::vector<int64_t>{0, 2}, true);
-  test.AddOutput<int32_t>("reduced", {1, 2, 1}, {33, 45});
-  test.Run();
-}
-
-TEST(ReductionOpTest, ReduceSum_do_not_keepdims_axes_input_initializer) {
-  OpTester test("ReduceSum", 13, onnxruntime::kOnnxDomain);
-  test.AddAttribute("keepdims", (int64_t)0);
-  test.AddInput<float>("data", {1, 2, 2},
-                       {1.0f, 2.0f,
-                        3.0f, 4.0f});
-  test.AddInput<int64_t>("axes", {1}, std::vector<int64_t>{1}, true);
-  test.AddOutput<float>("reduced", {1, 2}, {4.0f, 6.0f});
-  test.Run();
-}
-
-TEST(ReductionOpTest, ReduceSum_do_not_keepdims_axes_input_not_initializer) {
-  OpTester test("ReduceSum", 13, onnxruntime::kOnnxDomain);
-  test.AddAttribute("keepdims", (int64_t)0);
-  test.AddInput<float>("data", {1, 2, 2},
-                       {1.0f, 2.0f,
-                        3.0f, 4.0f});
-  test.AddInput<int64_t>("axes", {1}, std::vector<int64_t>{1}, false);
-  test.AddOutput<float>("reduced", {1, 2}, {4.0f, 6.0f});
-  test.Run();
-}
-
-TEST(ReductionOpTest, ReduceSum_noop_axes_input_initializer) {
-  OpTester test("ReduceSum", 13, onnxruntime::kOnnxDomain);
-  test.AddAttribute("keepdims", (int64_t)0);
-  test.AddAttribute("noop_with_empty_axes", (int64_t)1);
-  test.AddInput<float>("data", {1, 2, 2},
-                       {1.0f, 2.0f,
-                        3.0f, 4.0f});
-  test.AddInput<int64_t>("axes", {0}, {}, true);
-  test.AddOutput<float>("reduced", {1, 2, 2}, {1.0f, 2.0f, 3.0f, 4.0f});
-  test.Run();
-}
-
 #if !(defined USE_TENSORRT) && !(defined USE_TVM)
 TEST(ReductionOpTest, ReduceSum0DTensor) {
   OpTester test("ReduceSum");
