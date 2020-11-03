@@ -25,8 +25,6 @@ namespace onnxruntime {
 
 namespace concurrency {
 
-class ThreadPoolParallelSection;
-
 // A sharded loop counter distributes loop iterations between a set of worker threads.  The iteration space of
 // the loop is divided (perhaps unevenly) between the shards.  Each thread has a home shard (perhaps not uniquely
 // to it), and it claims iterations via atomic operations on its home shard.  It then proceeds through the other

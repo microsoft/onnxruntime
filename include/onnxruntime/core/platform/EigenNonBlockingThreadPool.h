@@ -649,7 +649,7 @@ void EndParallelSection(ThreadPoolParallelSection &ps) override {
 
   // Attempt to cancel any tasks that were sent to workers but not
   // started.
-  unsigned tasks_started = ps.tasks.size();
+  unsigned tasks_started = static_cast<unsigned>(ps.tasks.size());
   unsigned tasks_revoked = 0;
   for (auto& item : ps.tasks) {
     Queue& q = worker_data_[item.first].queue;
