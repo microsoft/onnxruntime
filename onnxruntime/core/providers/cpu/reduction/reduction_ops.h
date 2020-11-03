@@ -64,6 +64,36 @@ inline int32_t reduce_log<int32_t>(int32_t value) { return static_cast<int32_t>(
 template <typename T>
 inline T reduce_exp(T value) { return static_cast<T>(std::exp(value)); }
 
+template <typename T>
+inline bool reduce_isinf(T value) { return std::isinf(value); }
+
+template <>
+inline bool reduce_isinf<int8_t>(int8_t) { return false; }
+
+template <>
+inline bool reduce_isinf<uint8_t>(uint8_t) { return false; }
+
+template <>
+inline bool reduce_isinf<int32_t>(int32_t) { return false; }
+
+template <>
+inline bool reduce_isinf<int64_t>(int64_t) { return false; }
+
+template <typename T>
+inline bool reduce_isnan(T value) { return std::isnan(value); }
+
+template <>
+inline bool reduce_isnan<int8_t>(int8_t) { return false; }
+
+template <>
+inline bool reduce_isnan<uint8_t>(uint8_t) { return false; }
+
+template <>
+inline bool reduce_isnan<int32_t>(int32_t) { return false; }
+
+template <>
+inline bool reduce_isnan<int64_t>(int64_t) { return false; }
+
 template <typename T, typename TVAL = T>
 class ReduceAggregator {
  public:
@@ -273,7 +303,9 @@ class ReduceAggregatorLogSumExp : public ReduceAggregator<T, TVAL> {
   T max_;
 
  public:
-  inline ReduceAggregatorLogSumExp(int64_t N, const T&) : ReduceAggregator<T, TVAL>(N, 0) { max_ = this->accumulator_; }
+  inline ReduceAggregatorLogSumExp(int64_t N, const T& init) : ReduceAggregator<T, TVAL>(N, 0) {
+    max_ = reduce_isinf(init) ? this->accumulator_ : init;
+  }
   inline TVAL aggall(const T* from_data) {
     max_ = Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, this->N_).maxCoeff();
     for (int64_t i = 0; i < this->N_; ++i) {
@@ -281,7 +313,9 @@ class ReduceAggregatorLogSumExp : public ReduceAggregator<T, TVAL> {
     }
     return get_value();
   }
-  inline void update0(const T& v) { max_ = v > max_ ? v : max_; }
+  inline void update0(const T& v) {
+    max_ = (reduce_isinf(v) || reduce_isnan(v) || v < max_) ? max_ : v;
+  }
   inline void update(const T& v) { this->accumulator_ += reduce_exp(v - max_); }
   inline TVAL get_value() { return reduce_log<T>(this->accumulator_) + max_; }
   static inline bool two_loops() { return true; }

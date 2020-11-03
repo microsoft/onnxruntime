@@ -60,6 +60,8 @@ ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>()).MayInplace(0, 0),
     ScalerOp<int32_t>);
 
+static constexpr int kParallelizationThreshold = 10 * 1000;
+
 template <typename T>
 ScalerOp<T>::ScalerOp(const OpKernelInfo& info) : OpKernel(info),
                                                   scale_(info.GetAttrsOrDefault<float>("scale")),
@@ -84,29 +86,27 @@ common::Status ScalerOp<T>::Compute(OpKernelContext* context) const {
   size_t x_size = x_shape.Size();
   int64_t stride = x_dims.size() == 1 ? x_dims[0] : x_dims[1];
   auto* ttp = context->GetOperatorThreadPool();
-  auto num_threads = std::min<int>(concurrency::ThreadPool::DegreeOfParallelism(ttp), static_cast<int>(x_size));
+  auto conditional_batch_call = [ttp, x_size](std::function<void(ptrdiff_t)> f) {
+    if (x_size < kParallelizationThreshold) {  // TODO: tune this, arbitrary threshold
+      for (size_t i = 0; i < x_size; ++i) {
+        f(i);
+      }
+    } else {
+      concurrency::ThreadPool::TryBatchParallelFor(ttp, x_size, f, 0);
+    }
+  };
 
   if (static_cast<int64_t>(offset_.size()) == stride &&
       static_cast<int64_t>(scale_.size()) == stride) {
-    concurrency::ThreadPool::TrySimpleParallelFor(
-        ttp,
-        num_threads,
-        [this, num_threads, y_data, x_data, stride, x_size](ptrdiff_t batch_num) {
-          auto work = concurrency::ThreadPool::PartitionWork(batch_num, num_threads, x_size);
-          for (auto i = work.start; i < work.end; ++i) {
-            y_data[i] = static_cast<float>((x_data[i] - offset_[i % stride]) * scale_[i % stride]);
-          }
-        });
+    auto fn = [this, y_data, x_data, stride](ptrdiff_t i) {
+      y_data[i] = static_cast<float>((x_data[i] - offset_[i % stride]) * scale_[i % stride]);
+    };
+    conditional_batch_call(fn);
   } else if (offset_.size() == 1 && scale_.size() == 1) {
-    concurrency::ThreadPool::TrySimpleParallelFor(
-        ttp,
-        num_threads,
-        [this, num_threads, y_data, x_data, x_size](ptrdiff_t batch_num) {
-          auto work = concurrency::ThreadPool::PartitionWork(batch_num, num_threads, x_size);
-          for (auto i = work.start; i < work.end; ++i) {
-            y_data[i] = static_cast<float>((x_data[i] - offset_[0]) * scale_[0]);
-          }
-        });
+    auto fn = [this, y_data, x_data](ptrdiff_t i) {
+      y_data[i] = static_cast<float>((x_data[i] - offset_[0]) * scale_[0]);
+    };
+    conditional_batch_call(fn);
   } else {
     std::ostringstream err_msg;
     err_msg << "Either both scale and offset can be of feature size (" << stride << ") or 1";

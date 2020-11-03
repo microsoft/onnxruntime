@@ -278,6 +278,8 @@ def load_pt_model_from_tf(model_name):
     config, model = tf2pt_pipeline(model_name)
 
     return config, model
+
+
 def validate_and_optimize_onnx(model_name, use_external_data_format, model_type, onnx_dir, input_names, use_gpu,
                                precision, optimize_onnx, validate_onnx, use_raw_attention_mask, overwrite, config,
                                model_fusion_statistics, onnx_model_path, example_inputs, example_outputs_flatten):

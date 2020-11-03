@@ -655,15 +655,22 @@ TEST_P(ModelTest, Run) {
 
   static const ORTCHAR_T* cuda_flaky_tests[] = {
       ORT_TSTR("fp16_inception_v1"),
-      ORT_TSTR("fp16_shufflenet"), ORT_TSTR("fp16_tiny_yolov2"), ORT_TSTR("candy"),
+      ORT_TSTR("fp16_shufflenet"),
+      ORT_TSTR("fp16_tiny_yolov2"),
+      ORT_TSTR("candy"),
       ORT_TSTR("tinyyolov3"),
       ORT_TSTR("mlperf_ssd_mobilenet_300"),
       ORT_TSTR("mlperf_ssd_resnet34_1200"),
       ORT_TSTR("tf_inception_v1"),
       ORT_TSTR("faster_rcnn"),
       ORT_TSTR("split_zero_size_splits"),
-      ORT_TSTR("convtranspose_3d")};
+      ORT_TSTR("convtranspose_3d"),
+      ORT_TSTR("fp16_test_tiny_yolov2-Candy"),
+      ORT_TSTR("fp16_coreml_FNS-Candy"),
+      ORT_TSTR("fp16_test_tiny_yolov2"),
+      ORT_TSTR("fp16_test_shufflenet")};
   static const ORTCHAR_T* openvino_disabled_tests[] = {ORT_TSTR("tf_mobilenet_v1_1.0_224"),
+                                                       ORT_TSTR("bertsquad"),
                                                        ORT_TSTR("yolov3"),
                                                        ORT_TSTR("LSTM_Seq_lens_unpacked"),
                                                        ORT_TSTR("tinyyolov3"),

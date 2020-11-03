@@ -8,7 +8,20 @@ static const std::string disabledx86TestDefaultReason = "Model not working on x8
 
 // {"model test name", "reason for why it is happening and bug filed for it."}
 std::unordered_map<std::string, std::string> disabledTests(
-    {// Tier 3 models
+    {// Onnx zoo models
+     {"test_bertsquad_opset8", disabledTestDefaultReason},
+     {"test_bidaf_opset9", "Strings haven't been implemented in model testing yet. Need to file a bug."},
+
+     // Tier 2 models
+     {"coreml_VGG16_ImageNet_opset8", disabledTestDefaultReason},
+     {"coreml_VGG16_ImageNet_opset9", disabledTestDefaultReason},
+     {"coreml_Resnet50_opset9", disabledTestDefaultReason},
+     {"coreml_inceptionv3_opset9", disabledTestDefaultReason},
+     {"coreml_VGG16_ImageNet_opset10", disabledTestDefaultReason},
+     {"coreml_Resnet50_opset10", disabledTestDefaultReason},
+     {"coreml_inceptionv3_opset10", disabledTestDefaultReason},
+
+     // Tier 3 models
      {"mxnet_arcface_opset8", disabledTestDefaultReason},
      {"XGBoost_XGClassifier_sklearn_load_wine_opset7", disabledTestDefaultReason},
      {"XGBoost_XGClassifier_sklearn_load_breast_cancer_opset7", disabledTestDefaultReason},
@@ -109,24 +122,37 @@ std::unordered_map<std::string, std::string> disabledTests(
      {"coreml_DecisionTreeClassifier_sklearn_load_breast_cancer_opset7", disabledTestDefaultReason},
      {"coreml_DecisionTreeClassifier_OpenML_312_scene_opset7", disabledTestDefaultReason},
      {"coreml_DecisionTreeClassifier_OpenML_1464_blood_transfusion_opset7", disabledTestDefaultReason},
-     {"coreml_AgeNet_ImageNet_opset7", disabledTestDefaultReason}});
+     {"coreml_AgeNet_ImageNet_opset7", disabledTestDefaultReason}
+    });
 
 std::unordered_map<std::string, std::string> disabledGpuTests(
-    {{"LSTM_Seq_lens_unpacked_opset9", disabledGpuTestDefaultReason},
-     {"fp16_inception_v1_opset8", disabledGpuTestDefaultReason},
-     {"fp16_inception_v1_opset7", disabledGpuTestDefaultReason},
-     {"mlperf_ssd_mobilenet_300_opset10", disabledGpuTestDefaultReason},
+    {
+     // Onnx zoo models
      {"mask_rcnn_opset10", disabledGpuTestDefaultReason},
      {"faster_rcnn_opset10", disabledGpuTestDefaultReason},
-     {"BERT_Squad_opset10", disabledGpuTestDefaultReason}});
+     {"BERT_Squad_opset10", disabledGpuTestDefaultReason},
+
+     // Tier 2 models
+     {"fp16_inception_v1_opset7", disabledGpuTestDefaultReason},
+     {"fp16_test_tiny_yolov2_opset7", "Result of evaluation isn't accurate enough. Please file bug"},
+     {"fp16_coreml_FNS_Candy_opset7", "Result of evaluation isn't accurate enough. Please file bug"},
+     {"fp16_inception_v1_opset8", disabledGpuTestDefaultReason},
+     {"LSTM_Seq_lens_unpacked_opset9", disabledGpuTestDefaultReason},
+     {"mlperf_ssd_mobilenet_300_opset10", disabledGpuTestDefaultReason}
+    });
 
 std::unordered_map<std::string, std::string> disabledx86Tests(
-    {{"mlperf_ssd_resnet34_1200_opset10", disabledx86TestDefaultReason},
+    {
+     // Onnx zoo
      {"mask_rcnn_opset10", disabledx86TestDefaultReason},
      {"faster_rcnn_opset10", disabledx86TestDefaultReason},
+     {"GPT2_LM_HEAD_opset10", disabledx86TestDefaultReason},
+     {"GPT2_opset10", disabledx86TestDefaultReason},
+     {"BERT_Squad_opset10", disabledx86TestDefaultReason},
+
+     // Tier 2 Models
      {"test_vgg19_opset7", disabledx86TestDefaultReason},
      {"test_vgg19_opset8", disabledx86TestDefaultReason},
      {"coreml_VGG16_ImageNet_opset7", disabledx86TestDefaultReason},
-     {"GPT2_LM_HEAD_opset10", disabledx86TestDefaultReason},
-     {"GPT2_opset10", disabledx86TestDefaultReason},
-     {"BERT_Squad_opset10", disabledx86TestDefaultReason}});
+     {"mlperf_ssd_resnet34_1200_opset10", disabledx86TestDefaultReason},
+    });

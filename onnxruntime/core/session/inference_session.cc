@@ -102,15 +102,19 @@ std::atomic<uint32_t> InferenceSession::global_session_id_{1};
 // Only update this version when there is a file format change which will break the compatibilites
 // Once this model version is updated, the kSupportedOrtModelVersions in IsOrtModelVersionSupported
 // below will also need to be updated.
-static constexpr const char* kOrtModelVersion = "1";
+// See onnxruntime/core/session/flatbuffers/schema/README.md for more details on versioning.
+// Version 1 - history begins
+// Version 2 - add serailization/deserialization of sparse_initializer
+static constexpr const char* kOrtModelVersion = "2";
 
 #if defined(ENABLE_ORT_FORMAT_LOAD)
-// Check if the givne ort model version is supported in this build
+// Check if the given ort model version is supported in this build
 static bool IsOrtModelVersionSupported(const std::string& ort_model_version) {
   // The ort model versions we will support in this build
   // This may contain more versions than the kOrtModelVersion, based on the compatibilities
   static const std::unordered_set<std::string> kSupportedOrtModelVersions{
       std::string("1.4.0"),  // This is a special model version for existing converted model
+      std::string("1"),
       std::string(kOrtModelVersion),
   };
 
@@ -1340,20 +1344,20 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
         ORT_RETURN_IF_ERROR_SESSIONID_(CheckShapes(feed_name, input_shape, expected_shape));
       }
     } else if (input_ml_value.IsSparseTensor()) {
-#if !defined(ORT_MINIMAL_BUILD)
       if (!expected_type->IsSparseTensorType()) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input with name: ", feed_name,
                                " is not expected to be of type sparse tensor.");
       }
       auto expected_element_type = expected_type->AsSparseTensorType()->GetElementType();
-      auto input_element_type = input_ml_value.Get<SparseTensor>().Values().DataType();
-      // TODO: In the future, when sparsetensors are in use, find out how to properly verify the shape
+      const SparseTensor& sparse_tensor = input_ml_value.Get<SparseTensor>();
+      auto input_element_type = sparse_tensor.Values().DataType();
       ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type));
-#else
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input with name ", feed_name,
-                             " is a sparse tensor, which is not supported in this build.");
-#endif
-
+      // Check shape
+      const auto& expected_shape = iter->second.tensor_shape;
+      if (expected_shape.NumDimensions() > 0) {
+        const auto& input_shape = sparse_tensor.Shape();
+        ORT_RETURN_IF_ERROR_SESSIONID_(CheckShapes(feed_name, input_shape, expected_shape));
+      }
     } else if (input_ml_value.IsTensorSequence()) {
       if (!expected_type->IsTensorSequenceType()) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input with name: ", feed_name,

@@ -10,11 +10,15 @@
 #include "gtest/gtest.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/utils.h"
+#include "core/optimizer/bias_gelu_fusion.h"
+#include "core/optimizer/gelu_fusion.h"
+#include "core/optimizer/dropout_elimination.h"
 #include "orttraining/core/optimizer/bias_dropout_fusion.h"
 #include "orttraining/core/optimizer/gist_encode_decode.h"
 #include "orttraining/core/optimizer/nonzero_shape_setter.h"
 #include "orttraining/core/optimizer/megatron_transformer.h"
 #include "orttraining/core/optimizer/concat_replacement.h"
+#include "orttraining/core/optimizer/localized_recompute.h"
 #include "test/optimizer/graph_transform_test_fixture.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/asserts.h"
@@ -29,6 +33,27 @@ namespace onnxruntime {
 namespace test {
 
 #define MODEL_FOLDER ORT_TSTR("testdata/transform/")
+
+TEST_F(GraphTransformationTests, DropoutWithZeroRatioElimination) {
+  auto model_uri = MODEL_FOLDER "dropout_ratio.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Identity"] == 10);
+  ASSERT_TRUE(op_to_count["Dropout"] == 5);
+
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(onnxruntime::make_unique<EliminateDropout>());
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+
+  ASSERT_TRUE(op_to_count["Identity"] == 10);
+  ASSERT_TRUE(op_to_count["Dropout"] == 2);
+}
 
 TEST_F(GraphTransformationTests, GistEncodeDecode) {
   auto model_uri = MODEL_FOLDER "../test_training_model.onnx";
@@ -392,6 +417,33 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionRank1) {
     ORT_ENFORCE(node->OpType().compare("MegatronF") == 0);
     node = graph.GetNode(GetNodeByName(graph, "add2")->InputNodesBegin()->Index());
     ORT_ENFORCE(node->OpType().compare("MegatronG") == 0);
+  }
+}
+
+TEST_F(GraphTransformationTests, BiasGeluRecomputeTest) {
+  auto model_uri = MODEL_FOLDER "fusion/bias_gelu_fusion_recompute.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<GeluFusion>(), TransformerLevel::Level2);
+  graph_transformation_mgr.Register(onnxruntime::make_unique<BiasGeluFusion>(), TransformerLevel::Level2);
+  graph_transformation_mgr.Register(onnxruntime::make_unique<GeluRecompute>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_);
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Div"] == 0);
+  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["Erf"] == 0);
+  ASSERT_TRUE(op_to_count["Mul"] == 0);
+  ASSERT_TRUE(op_to_count["com.microsoft.Gelu"] == 0);
+  ASSERT_TRUE(op_to_count["com.microsoft.BiasGelu"] == 2);
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "com.microsoft.BiasGelu") {
+      ASSERT_TRUE(node.InputDefs().size() == 2);
+    }
   }
 }
 
