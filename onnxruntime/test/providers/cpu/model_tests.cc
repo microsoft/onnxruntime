@@ -430,6 +430,17 @@ TEST_P(ModelTest, Run) {
   broken_tests.insert({"cdist_float64_sqeuclidean_1000_2000_1", "This model uses contrib ops."});
   broken_tests.insert({"cdist_float64_sqeuclidean_1000_2000_500", "This model uses contrib ops."});
   broken_tests.insert({"cdist_float64_sqeuclidean_1_1_1", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_Average_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"bidaf", "This model uses contrib ops."});
+  broken_tests.insert({"fp16_test_tiny_yolov2", "This model uses contrib ops."});
+  broken_tests.insert({"fp16_coreml_FNS-Candy", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_Repeat_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_BiDirectional_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"fp16_coreml_LinearRegression_NYCTaxi", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_Average_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_GRU_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_SimpleRNN_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_Dot_imageNet", "This model uses contrib ops."});
 #endif
 
   std::basic_string<ORTCHAR_T> model_dir;
