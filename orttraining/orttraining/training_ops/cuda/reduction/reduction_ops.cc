@@ -119,7 +119,7 @@ Status ReduceKernel<true>::ComputeImplEx<int32_t, CUDNN_REDUCE_TENSOR_NO_INDICES
 
   // This reduction keep adding values to this buffer. If a non-zero value, say 1000, is here, the sum will start with 1000.
   // Therefore zeroing out the memory is required
-  CUDA_RETURN_IF_ERROR(cudaMemset(Y->MutableDataRaw(), 0, Y->SizeInBytes()));
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(Y->MutableDataRaw(), 0, Y->SizeInBytes()));
 
   size_t indices_bytes = 0;
   size_t workspace_bytes = 0;

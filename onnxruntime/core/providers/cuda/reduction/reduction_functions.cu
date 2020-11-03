@@ -293,16 +293,15 @@ Status call_reduce_all_in_rows_kernel(
 
   // If more than one block is used per grid row, then inter-block reduction is needed.
   if (grid_dim.x > 1) {
-    CUDA_RETURN_IF_ERROR(cudaMemset(block_done_counts_buffer, 0, num_rows * sizeof(int)));
+    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(block_done_counts_buffer, 0, num_rows * sizeof(int)));
+
+    const int shared_mem_size = sizeof(TBuf) * block_dim.x * block_dim.y / GPU_WARP_SIZE;
+    reduce_all_in_rows_kernel<TIn, TOut, TBuf, TOp, TFinalOp, DivideResultBySize>
+        <<<grid_dim, block_dim, shared_mem_size>>>(
+            num_rows, row_size, input, output, block_reductions_buffer, block_done_counts_buffer);
+
+    return Status::OK();
   }
-
-  const int shared_mem_size = sizeof(TBuf) * block_dim.x * block_dim.y / GPU_WARP_SIZE;
-  reduce_all_in_rows_kernel<TIn, TOut, TBuf, TOp, TFinalOp, DivideResultBySize>
-      <<<grid_dim, block_dim, shared_mem_size>>>(
-          num_rows, row_size, input, output, block_reductions_buffer, block_done_counts_buffer);
-
-  return Status::OK();
-}
 }  // namespace detail
 
 template <typename TIn, typename TOut>
@@ -444,7 +443,7 @@ void call_reduce_matrix_rows(const TIn* input, TOut* output, int m, int n) {
 template <typename TIn, typename TOut>
 Status reduce_matrix_rows(const TIn* input, TOut* output, int m, int n, bool reset_initial_output) {
   if (reset_initial_output) {
-    CUDA_RETURN_IF_ERROR(cudaMemset(output, 0, n * sizeof(TOut)));
+    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output, 0, n * sizeof(TOut)));
   }
 
   using TBuf = AccumulationType_t<TIn>;
@@ -472,5 +471,5 @@ INSTANTIATE_REDUCE_MATRIX_COLUMNS(float);
 INSTANTIATE_REDUCE_MATRIX_COLUMNS(double);
 #undef INSTANTIATE_REDUCE_MATRIX_COLUMNS
 
+}  // namespace detail
 }  // namespace cuda
-}  // namespace onnxruntime

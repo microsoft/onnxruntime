@@ -44,7 +44,7 @@ Status ReduceAllL2<TIn, TOut>::ComputeInternal(OpKernelContext* ctx) const {
   // Allocate output tensor.
   Tensor* output = ctx->Output(0, {});
   CudaTOut* p_output = reinterpret_cast<CudaTOut*>(output->template MutableData<TOut>());
-  ORT_ENFORCE(cudaMemset(p_output, 0, sizeof(CudaTOut)) == cudaSuccess);
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(p_output, 0, sizeof(CudaTOut)));
 
   auto ctx_internal = dynamic_cast<OpKernelContextInternal*>(ctx);
   bool deterministic = ctx_internal && ctx_internal->GetUseDeterministicCompute();
@@ -82,7 +82,7 @@ Status ReduceAllL2<TIn, TOut>::ComputeInternal(OpKernelContext* ctx) const {
     // buffer for final output and square norms of each tensor
     auto results_buffer = GetScratchBuffer<CudaTAcc>(1 + total_tensor_count);
 
-    CUDA_CALL_THROW(cudaMemset(results_buffer.get(), 0, sizeof(CudaTAcc) * (1 + total_tensor_count)));
+    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(results_buffer.get(), 0, sizeof(CudaTAcc) * (1 + total_tensor_count)));
 
     CudaTAcc* p_global_sqnorm = results_buffer.get();
     CudaTAcc* p_tensor_sqnorm = p_global_sqnorm + 1;
