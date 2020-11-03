@@ -181,7 +181,7 @@ stages:
               --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
-              onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecpubuild:ch9j \
+              onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecpubuild:chan \
                 $(python.manylinux.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build --cmake_generator Ninja \
                   --config Release \
