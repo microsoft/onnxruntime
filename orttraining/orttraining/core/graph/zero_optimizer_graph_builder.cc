@@ -51,7 +51,6 @@ static Status AddNcclAllGatherForWeights(
   // Add NCCL AllGather node.
   auto nd = NodeDef(OpDef{"NcclAllGather", kMSDomain, 1}, weight_argdefs,
                                   allgather_outputs, NodeAttributes(), "NcclAllGather");
-  nd.priority = -1;
   graph_defs.AddNodeDefs({nd});
 
   weight_argdefs = std::move(allgather_outputs);

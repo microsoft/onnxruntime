@@ -76,7 +76,6 @@ Status GraphAugmenter::AugmentGraph(Graph& graph,
                   node_def.domain);
     if(node_def.priority != 0){
       n.SetPriority(node_def.priority);
-      std::cout << "node name " << n.Name() << ", priority "  << n.Priority() << "\n";
     }
 
   }
