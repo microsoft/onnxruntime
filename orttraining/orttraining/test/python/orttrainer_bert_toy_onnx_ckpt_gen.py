@@ -1,12 +1,4 @@
-import copy
-from functools import partial
-import inspect
-import math
-import numpy as np
-from numpy.testing import assert_allclose
-import onnx
 import os
-import pytest
 import torch
 
 import onnxruntime
@@ -33,7 +25,7 @@ def testToyBERTModelMixedPrecisionLossScaler(optimizer):
     # Common setup
     local_rank = max(0, int(os.environ['OMPI_COMM_WORLD_LOCAL_RANK']))
     world_size = max(1, int(os.environ["OMPI_COMM_WORLD_SIZE"]))
-    total_steps = int(np.ceil(float(10)/world_size))
+    total_steps = 3
 
     # set 0 instead of local_rank in order to run on a single GPU on CI.
     torch.cuda.set_device(0)
