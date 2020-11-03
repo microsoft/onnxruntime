@@ -7,6 +7,7 @@
 namespace onnxruntime {
 namespace test {
 
+/*
 // Disable TensorRT on the tests because of SegFault errors in the parser
 // DIsable OpenVINO for opset-13 because it expects axes to be an attribute
 TEST(TensorOpTest, Unsqueeze_1) {
@@ -124,6 +125,7 @@ TEST(TensorOpTest, Unsqueeze_3_axes_input) {
   test.AddOutput<float>("output", {1, 1, 1, 2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 }
+*/
 
 }  // namespace test
 }  // namespace onnxruntime
