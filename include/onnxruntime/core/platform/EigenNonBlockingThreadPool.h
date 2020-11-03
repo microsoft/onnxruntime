@@ -10,6 +10,7 @@
 /* Modifications Copyright (c) Microsoft. */
 
 #include <type_traits>
+#include <iostream>
 
 #pragma once
 #include "onnxruntime_config.h"
@@ -224,6 +225,11 @@ class RunQueue {
     std::unique_lock<OrtMutex> lock(mutex_);
     Elem& e = array_[w_idx];
     ElemState s = e.state.load(std::memory_order_relaxed);
+
+    // We have acquired a lock on the queue, synchronizing with
+    // operations aside from the PopFront fast-path.  Synchronize with
+    // that by attempting the same kReady->kBusy transition via CAS.
+
     if (s == ElemState::kReady &&
         e.state.compare_exchange_strong(s, ElemState::kBusy, std::memory_order_acquire)) {
       if (e.tag == tag) {
@@ -564,70 +570,66 @@ void GetGoodWorkerHints(int n, std::vector<unsigned>& good_hints, std::vector<un
 }
 
 void StartParallelSection() override {
-  PerThread* my_pt = GetPerThread();
-  ORT_ENFORCE(!my_pt->in_parallel, "Nested parallelism not supported");
-  ORT_ENFORCE(my_pt->num_workers == 0);
-  ORT_ENFORCE(my_pt->pending_items.size() == 0);
-  ORT_ENFORCE(my_pt->workers_started == 0);
-  my_pt->in_parallel=true;
-  if (!my_pt->tag.Get()) {
-    my_pt->tag = Tag::GetNext();
+  PerThread* leader_pt = GetPerThread();
+  ORT_ENFORCE(!leader_pt->in_parallel_section, "Nested parallelism not supported");
+  ORT_ENFORCE(leader_pt->workers_started == 0);
+  ORT_ENFORCE(leader_pt->workers_finished == 0);
+  ORT_ENFORCE(leader_pt->pending_items.size() == 0);
+  leader_pt->in_parallel_section = true;
+  if (!leader_pt->tag.Get()) {
+    leader_pt->tag = Tag::GetNext();
   }
-  my_pt->par_section_active = true;
 }
 
 void EndParallelSection() override {
-  PerThread* my_pt = GetPerThread();
-  ORT_ENFORCE(my_pt->in_parallel, "Ending parallel section, but none started");
+  PerThread* leader_pt = GetPerThread();
+  ORT_ENFORCE(leader_pt->in_parallel_section, "Ending parallel section, but none started");
+  ORT_ENFORCE(leader_pt->workers_finished == 0, "Workers finished while parallel section active");
 
   // Notify workers to exit from ParLoopWorker
-  my_pt->par_section_active = false;
+  leader_pt->in_parallel_section = false;
 
   // Attempt to cancel any tasks that were sent to workers but not
   // started.
-  for (auto& item : my_pt->pending_items) {
+  for (auto& item : leader_pt->pending_items) {
     Queue& q = worker_data_[item.first].queue;
-    if (q.RevokeWithTag(my_pt->tag, item.second)) {
-      my_pt->num_workers--;
+    if (q.RevokeWithTag(leader_pt->tag, item.second)) {
+      leader_pt->workers_finished++;
     }
   }
-  my_pt->pending_items.clear();
+  leader_pt->pending_items.clear();
 
   // Wait for workers to exit ParLoopWorker
-  while (my_pt->num_workers) {
+  while (leader_pt->workers_finished < leader_pt->workers_started) {
     onnxruntime::concurrency::SpinPause();
   }
 
-  ORT_ENFORCE(my_pt->num_workers == 0);
-  my_pt->workers_started = 0;
-  my_pt->in_parallel=false;
+  // Clear status for next loop
+  leader_pt->workers_started = 0;
+  leader_pt->workers_finished = 0;
 }
 
  void RunInParallelSection(std::function<void(unsigned idx)> fn, unsigned n) override {
-  PerThread* my_pt = GetPerThread();
-  ORT_ENFORCE(my_pt->in_parallel, "RunInParallel, but not in parallel section");
+  PerThread* leader_pt = GetPerThread();
+  ORT_ENFORCE(leader_pt->in_parallel_section, "RunInParallel, but not in parallel section");
   ORT_ENFORCE(n > 1, "Trivial parallel section; should be avoided by caller");
 
-  ORT_ENFORCE(!my_pt->current_work_item);
-  std::function<void(unsigned idx)> work_item{
-    [&](unsigned idx) {
-      if (idx < n) {
-	fn(idx);
-      }
-    }
-  };
+  ORT_ENFORCE(!leader_pt->current_loop);
+  PerLoop loop{std::move(fn), n};
+  leader_pt->current_loop = &loop;
 
-  my_pt->current_work_item = &work_item;
-
-  if (n > (my_pt->num_workers+1)) {
-    unsigned extra_needed = n - (my_pt->num_workers+1);
+  if (n > (leader_pt->workers_started+1)) {
+    unsigned extra_needed = n - (leader_pt->workers_started+1);
     // We build a list of <thread,idx> pairs for each of the queues that accepts a work
     // item.  This lets us remove any work items that do not get executed by the threads
     // that we push them to.
     std::vector<unsigned> good_hints, alt_hints;
     GetGoodWorkerHints(n - 1, good_hints, alt_hints);
     for (unsigned i = 0; i < extra_needed; i++) {
-      Task t = env_.CreateTask([my_pt, this]{ ParLoopWorker(my_pt); });
+      int new_idx = leader_pt->workers_started+1;
+      Task t = env_.CreateTask([leader_pt, new_idx, this]{
+          ParLoopWorker(leader_pt, new_idx);
+        });
       int q_idx;
       if (i < good_hints.size()) {
         q_idx = good_hints[i];
@@ -636,28 +638,28 @@ void EndParallelSection() override {
         if (alt_i < alt_hints.size()) {
           q_idx = alt_hints[alt_i];
         } else {
-          q_idx = Rand(&my_pt->rand) % num_threads_;
+          q_idx = Rand(&leader_pt->rand) % num_threads_;
         }
       }
       WorkerData& td = worker_data_[q_idx];
       Queue& q = td.queue;
       unsigned w_idx;
-      t = q.PushBackWithTag(std::move(t), my_pt->tag, w_idx);
+      t = q.PushBackWithTag(std::move(t), leader_pt->tag, w_idx);
       if (!t.f) {
         // The queue accepted the work, ensure that the thread is servicing the queue
-        my_pt->num_workers++;
-        my_pt->pending_items.push_back({q_idx, w_idx});
+        leader_pt->workers_started++;
+        leader_pt->pending_items.push_back({q_idx, w_idx});
         td.EnsureAwake();
       }
     }
   }
 
   // Run the work ourselves, for the total of max-n degree-of-parallelism
-  work_item(0);
+  loop.fn(0);
 
   // Wait for workers to exit the work item
-  my_pt->current_work_item = 0;
-  while (my_pt->workers_in_loop) {
+  leader_pt->current_loop = 0;
+  while (leader_pt->workers_in_loop) {
     onnxruntime::concurrency::SpinPause();
   }
 }
@@ -723,6 +725,17 @@ int CurrentThreadId() const EIGEN_FINAL {
   typedef typename Environment::EnvThread Thread;
   struct WorkerData;
 
+  struct PerLoop {
+    PerLoop(std::function<void(unsigned)> f, unsigned t) : fn(std::move(f)), threads_needed(t) {
+    }
+
+    const std::function<void(unsigned)> fn;
+    const unsigned threads_needed;
+
+  private:
+    ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PerLoop);
+  };
+
   // PerThread objects are allocated in thread-local storage and allocated
   // on the thread's first call to GetPerThread.  The object should
   // remain trivially-destructable, with other state placed in the
@@ -742,13 +755,14 @@ int CurrentThreadId() const EIGEN_FINAL {
     uint64_t rand{0};                  // Random generator state.
     int thread_id{-1};                 // Worker thread index in pool.
     Tag tag{};                         // Work item tag used to identify this thread.
-    bool in_parallel{false};           // Inside a parallel section (hence tag not unique if we re-use)
-    std::atomic<unsigned> num_workers{0}; // Could merge with in_parallel
-    std::atomic<unsigned> workers_started{0}; // Could merge with in_parallel
-    std::atomic<bool> par_section_active{false};
-    std::atomic<unsigned> workers_in_loop{0};
+
+    std::atomic<bool> in_parallel_section{false};   // Inside a parallel section (either as leader or worker)
+    unsigned workers_started{0};
     std::vector<std::pair<int, unsigned>> pending_items;
-    std::atomic<std::function<void(unsigned)> *> current_work_item{0};
+
+    std::atomic<unsigned> workers_finished{0};
+    std::atomic<unsigned> workers_in_loop{0};
+    std::atomic<PerLoop *> current_loop{0};
   };
 
   //  static_assert(std::is_trivially_destructible<PerThread>::value, "Per-thread state should be trivially destructible");
@@ -1044,28 +1058,30 @@ int CurrentThreadId() const EIGEN_FINAL {
     return -1;
   }
 
-void ParLoopWorker(PerThread* leader_pt) {
+  void ParLoopWorker(PerThread *leader_pt, unsigned my_idx) {
   PerThread* my_pt = GetPerThread();
-  ORT_ENFORCE(!my_pt->in_parallel);
-  ORT_ENFORCE(leader_pt);
-  ORT_ENFORCE(leader_pt->in_parallel);
-  my_pt->in_parallel = true;
+  ORT_ENFORCE(!my_pt->in_parallel_section);
+  ORT_ENFORCE(leader_pt->in_parallel_section);
+  ORT_ENFORCE(leader_pt != my_pt);
+  ORT_ENFORCE(my_idx > 0);
 
-  int my_idx = (++leader_pt->workers_started);
+  my_pt->in_parallel_section = true;
 
-  while (leader_pt->par_section_active) {
-    if (leader_pt->current_work_item) {
+  while (leader_pt->in_parallel_section) {
+    if (!leader_pt->current_loop) {
+      onnxruntime::concurrency::SpinPause();
+    } else {
       leader_pt->workers_in_loop++;
-      std::function<void(unsigned)> *work_item = leader_pt->current_work_item;
-      if (work_item) {
-	(*work_item)(my_idx);
+      PerLoop *work_item = leader_pt->current_loop;
+      if (work_item && my_idx < work_item->threads_needed) {
+	work_item->fn(my_idx);
       }
       leader_pt->workers_in_loop--;
     }
   }
 
-  my_pt->in_parallel = false;
-  leader_pt->num_workers--;
+  leader_pt->workers_finished++;
+  my_pt->in_parallel_section = false;
 }
 
   static EIGEN_STRONG_INLINE uint64_t GlobalThreadIdHash() {
