@@ -59,6 +59,34 @@ class MemPatternPlanner {
     return false;
   }
 
+  // Returns true if there is an intersection between two time schedules.
+  // ASSUMES EACH TIME SCHEDULE IS SORTED. THIS IS VALIDATED AT THE END OF MEMORY PLANNING.
+  bool OverlappingTimeSchedules2(const std::vector<size_t>& program_counter_start_1, const std::vector<size_t>& program_counter_end_1,
+                                 const std::vector<size_t>& program_counter_start_2, const std::vector<size_t>& program_counter_end_2) {
+    ORT_ENFORCE(program_counter_start_1.size() > 0);
+    ORT_ENFORCE(program_counter_start_2.size() > 0);
+    ORT_ENFORCE(program_counter_start_1.size() == program_counter_end_1.size());
+    ORT_ENFORCE(program_counter_start_2.size() == program_counter_end_2.size());
+
+    size_t index_1 = 0;
+    size_t index_2 = 0;
+    while ((index_1 < program_counter_start_1.size()) && (index_2 < program_counter_start_2.size())) {
+      if (program_counter_start_1[index_1] <= program_counter_start_2[index_2]) {
+        if (program_counter_end_1[index_1] >= program_counter_start_2[index_2]) {
+          return true;
+        }
+        index_1 += 1;
+      } else {
+        if (program_counter_end_2[index_2] >= program_counter_start_1[index_1]) {
+          return true;
+        }
+        index_2 += 1;
+      }
+    }
+
+    return false;
+  }
+
   void TraceAllocation(int ml_value_idx, const std::vector<size_t>& program_counter_start, const std::vector<size_t>& program_counter_end, size_t size) {
     std::lock_guard<OrtMutex> lock(lock_);
 
@@ -70,11 +98,7 @@ class MemPatternPlanner {
     size_t current = 0;
     size_t waste_bytes = std::numeric_limits<size_t>::max();
     size_t best_offset = 0;
-    if (!blocks_.empty()) {
-      auto last_block = allocs_[*blocks_.rbegin()];
-      best_offset = last_block.block_.offset_ + last_block.block_.size_;
-    }
-
+    bool best_offset_found = false;
     for (auto it = blocks_.begin(); it != blocks_.end(); it++) {
       // Memory block can be re-used as long as there is no overlap between their time schedules.
       if (allocs_[*it].reuse_ && !OverlappingTimeSchedules(program_counter_start, program_counter_end,
@@ -87,16 +111,25 @@ class MemPatternPlanner {
         if (gap >= size && (gap - size) < waste_bytes) {
           waste_bytes = gap - size;
           best_offset = current;
+          best_offset_found = true;
         }
       }
 
       current = std::max(current, allocs_[*it].block_.offset_ + allocs_[*it].block_.size_);
     }
 
+    ORT_ENFORCE(current <= buffer_size_);
+
     if (current < buffer_size_) {
       auto gap = buffer_size_ - current;
-      if ((gap >= size) && ((gap - size) < waste_bytes))
+      if ((gap >= size) && ((gap - size) < waste_bytes)) {
         best_offset = current;
+        best_offset_found = true;
+      }
+    }
+
+    if(!best_offset_found) {
+      best_offset = current;
     }
 
     // we only need to bounds check the addition of size to best_offset as that is the only time we extend
@@ -128,10 +161,7 @@ class MemPatternPlanner {
     size_t current = 0;
     size_t waste_bytes = std::numeric_limits<size_t>::max();
     size_t best_offset = 0;
-    if (!blocks_.empty()) {
-      auto last_block = allocs_[*blocks_.rbegin()];
-      best_offset = last_block.block_.offset_ + last_block.block_.size_;
-    }
+    bool best_offset_found = false;
 
     for (auto it = blocks_.begin(); it != blocks_.end(); it++) {
       if (allocs_[*it].block_.offset_ >= current) {
@@ -139,15 +169,24 @@ class MemPatternPlanner {
         if (gap >= size && (gap - size) < waste_bytes) {
           waste_bytes = gap - size;
           best_offset = current;
+          best_offset_found = true;
         }
       }
       current = std::max(current, allocs_[*it].block_.offset_ + allocs_[*it].block_.size_);
     }
 
+    ORT_ENFORCE(current <= buffer_size_);
+
     if (current < buffer_size_) {
       auto gap = buffer_size_ - current;
-      if ((gap >= size) && ((gap - size) < waste_bytes))
+      if ((gap >= size) && ((gap - size) < waste_bytes)) {
         best_offset = current;
+        best_offset_found = true;
+      }
+    }
+
+    if(!best_offset_found) {
+      best_offset = current;
     }
 
     // we only need to bounds check the addition of size to best_offset as that is the only time we extend
@@ -203,8 +242,8 @@ class MemPatternPlanner {
 
         if (((alloc_1_start >= alloc_2_start) && (alloc_1_start <= alloc_2_end)) ||
             ((alloc_2_start >= alloc_1_start) && (alloc_2_start <= alloc_1_end))) {
-          ORT_ENFORCE(!OverlappingTimeSchedules(allocs_[index_1].program_counter_start_, allocs_[index_1].program_counter_end_,
-                                                allocs_[index_2].program_counter_start_, allocs_[index_2].program_counter_end_));
+          ORT_ENFORCE(!OverlappingTimeSchedules2(allocs_[index_1].program_counter_start_, allocs_[index_1].program_counter_end_,
+                                                 allocs_[index_2].program_counter_start_, allocs_[index_2].program_counter_end_));
         }
       }
     }
