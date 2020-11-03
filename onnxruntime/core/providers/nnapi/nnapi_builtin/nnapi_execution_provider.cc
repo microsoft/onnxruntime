@@ -55,7 +55,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
   // Find inputs, initializers and outputs for each supported subgraph
   const std::vector<NodeIndex>& node_index = graph_view.GetNodesInTopologicalOrder();
-  const auto graph_outputs = graph_view.GetOutputs();
+  const auto& graph_outputs = graph_view.GetOutputs();
   int counter = 0;
   for (const auto& group : supported_nodes_vector) {
     if (group.empty())
