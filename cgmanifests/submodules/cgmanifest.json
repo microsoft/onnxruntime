@@ -435,6 +435,16 @@
       "component": {
         "type": "git",
         "git": {
+          "commitHash": "4acf4553baa886e10e6613fe1452b706b0250e78",
+          "repositoryUrl": "https://github.com/martinmoene/optional-lite.git"
+        },
+        "comments": "git submodule at cmake/external/optional-lite"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
           "commitHash": "498de9f761bef56a032815ee44b6e6dbe0892cc4",
           "repositoryUrl": "https://github.com/protocolbuffers/protobuf.git"
         },
