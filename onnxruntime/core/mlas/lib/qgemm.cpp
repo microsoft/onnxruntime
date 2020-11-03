@@ -46,7 +46,7 @@ struct MLAS_GEMM_U8X8_WORK_BLOCK {
     uint8_t offb;
     bool BIsPacked;
     bool BIsSigned;
-    const OUTPUT_PROCESSOR* OutputProcessor;
+    const MLAS_QGEMM_OUTPUT_PROCESSOR* OutputProcessor;
 };
 
 //
@@ -84,11 +84,11 @@ MlasGemmU8X8ScaleSumBuffer(
     return MlasGemmU8X8ScaleSumBuffer(SumBuffer, SumBuffer, N, Scale);
 }
 
-SCALE_BIAS_PROCESSOR::SCALE_BIAS_PROCESSOR(
+MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR::MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR(
     const float* Scale,
     const float* Bias,
-    OutputMode Mode,
-    QuantizationGranularity QuantGran) : 
+    MLAS_QGEMM_OUTPUT_MODE Mode,
+    MLAS_QUANTIZATION_GRANULARITY QuantGran) : 
         Scale_(Scale),
         Bias_(Bias),
         OutputMode_(Mode),
@@ -96,7 +96,7 @@ SCALE_BIAS_PROCESSOR::SCALE_BIAS_PROCESSOR(
 {
 }
 
-void SCALE_BIAS_PROCESSOR::Process(
+void MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR::Process(
     float* C,
     const int32_t* CBuffer,
     size_t StartM,
@@ -108,40 +108,104 @@ void SCALE_BIAS_PROCESSOR::Process(
     ) const
 {
     if(Bias_){
-        if (QuantGran_ == QuantizationGranularity::PerColumn) {
-            if(OutputMode_ == OutputMode::AccumulateMode){
-            ProcessImpl<true, OutputMode::AccumulateMode, QuantizationGranularity::PerColumn>(C, CBuffer, StartM, StartN, CountM, CountN, ldc, ldcBuffer);
+        if (QuantGran_ == MLAS_QUANTIZATION_GRANULARITY::PerColumn) {
+            if(OutputMode_ == MLAS_QGEMM_OUTPUT_MODE::AccumulateMode){
+                ProcessImpl<true, MLAS_QGEMM_OUTPUT_MODE::AccumulateMode, MLAS_QUANTIZATION_GRANULARITY::PerColumn>(
+                    C,
+                    CBuffer,
+                    StartM,
+                    StartN,
+                    CountM,
+                    CountN,
+                    ldc,
+                    ldcBuffer);
             }
             else {
-                ProcessImpl<true, OutputMode::ZeroMode, QuantizationGranularity::PerColumn>(C, CBuffer, StartM, StartN, CountM, CountN, ldc, ldcBuffer);
+                ProcessImpl<true, MLAS_QGEMM_OUTPUT_MODE::ZeroMode, MLAS_QUANTIZATION_GRANULARITY::PerColumn>(
+                    C,
+                    CBuffer,
+                    StartM,
+                    StartN,
+                    CountM,
+                    CountN,
+                    ldc,
+                    ldcBuffer);
             }
-        } else if(OutputMode_ == OutputMode::AccumulateMode){
-            ProcessImpl<true, OutputMode::AccumulateMode, QuantizationGranularity::PerMatrix>(C, CBuffer, StartM, StartN, CountM, CountN, ldc, ldcBuffer);
+        } else if(OutputMode_ == MLAS_QGEMM_OUTPUT_MODE::AccumulateMode){
+            ProcessImpl<true, MLAS_QGEMM_OUTPUT_MODE::AccumulateMode, MLAS_QUANTIZATION_GRANULARITY::PerMatrix>(
+                C,
+                CBuffer,
+                StartM,
+                StartN,
+                CountM,
+                CountN,
+                ldc,
+                ldcBuffer);
         } else{
-            ProcessImpl<true, OutputMode::ZeroMode, QuantizationGranularity::PerMatrix>(C, CBuffer, StartM, StartN, CountM, CountN, ldc, ldcBuffer);
+            ProcessImpl<true, MLAS_QGEMM_OUTPUT_MODE::ZeroMode, MLAS_QUANTIZATION_GRANULARITY::PerMatrix>(
+                C,
+                CBuffer,
+                StartM,
+                StartN,
+                CountM,
+                CountN,
+                ldc,
+                ldcBuffer);
         }
     } else{
-        if (QuantGran_ == QuantizationGranularity::PerColumn) {
-            if (OutputMode_ == OutputMode::AccumulateMode) {
-                ProcessImpl<false, OutputMode::AccumulateMode, QuantizationGranularity::PerColumn>(C, CBuffer, StartM, StartN, CountM, CountN, ldc, ldcBuffer);
+        if (QuantGran_ == MLAS_QUANTIZATION_GRANULARITY::PerColumn) {
+            if (OutputMode_ == MLAS_QGEMM_OUTPUT_MODE::AccumulateMode) {
+                ProcessImpl<false, MLAS_QGEMM_OUTPUT_MODE::AccumulateMode, MLAS_QUANTIZATION_GRANULARITY::PerColumn>(
+                    C,
+                    CBuffer,
+                    StartM,
+                    StartN,
+                    CountM,
+                    CountN,
+                    ldc,
+                    ldcBuffer);
             }
             else {
-                ProcessImpl<false, OutputMode::ZeroMode, QuantizationGranularity::PerColumn>(C, CBuffer, StartM, StartN, CountM, CountN, ldc, ldcBuffer);
+                ProcessImpl<false, MLAS_QGEMM_OUTPUT_MODE::ZeroMode, MLAS_QUANTIZATION_GRANULARITY::PerColumn>(
+                    C,
+                    CBuffer,
+                    StartM,
+                    StartN,
+                    CountM,
+                    CountN,
+                    ldc,
+                    ldcBuffer);
             }
         }
-        else if (OutputMode_ == OutputMode::AccumulateMode) {
-            ProcessImpl<false, OutputMode::AccumulateMode, QuantizationGranularity::PerMatrix>(C, CBuffer, StartM, StartN, CountM, CountN, ldc, ldcBuffer);
+        else if (OutputMode_ == MLAS_QGEMM_OUTPUT_MODE::AccumulateMode) {
+            ProcessImpl<false, MLAS_QGEMM_OUTPUT_MODE::AccumulateMode, MLAS_QUANTIZATION_GRANULARITY::PerMatrix>(
+                C,
+                CBuffer,
+                StartM,
+                StartN,
+                CountM,
+                CountN,
+                ldc,
+                ldcBuffer);
         }
         else {
-            ProcessImpl<false, OutputMode::ZeroMode, QuantizationGranularity::PerMatrix>(C, CBuffer, StartM, StartN, CountM, CountN, ldc, ldcBuffer);
+            ProcessImpl<false, MLAS_QGEMM_OUTPUT_MODE::ZeroMode, MLAS_QUANTIZATION_GRANULARITY::PerMatrix>(
+                C,
+                CBuffer,
+                StartM,
+                StartN,
+                CountM,
+                CountN,
+                ldc,
+                ldcBuffer);
         }
     }
 }
 
-template<bool HASBIAS, OutputMode MODE, QuantizationGranularity QUANTGRAN>
+template<bool HASBIAS, MLAS_QGEMM_OUTPUT_MODE MODE, MLAS_QUANTIZATION_GRANULARITY QUANTGRAN>
 inline
 void
-SCALE_BIAS_PROCESSOR::ProcessImpl(
+MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR::ProcessImpl(
     float* C,
     const int32_t* CBuffer,
     size_t StartM,
@@ -154,8 +218,7 @@ SCALE_BIAS_PROCESSOR::ProcessImpl(
 
 Routine Description:
 
-    This routine converts the output matrix to a floating point format using
-    the supplied scale and bias parameters.
+    This routine process the output of quantized GEMM.
 
 Arguments:
 
@@ -163,13 +226,19 @@ Arguments:
 
     C - Supplies the address of matrix C.
 
-    StartN - Supplies the starting column offset relative to the base of the
-        work block. This is used to offset into column vectors accessed via the
-        work block.
+    CBuffer - Supplies the address of quantized GEMM result.
+
+    StartM - Supplies the starting row offset relative to the matrix.
+
+    StartN - Supplies the starting column offset relative to the matrix.
 
     CountM - Supplies the number of rows of the output matrix to process.
 
     CountN - Supplies the number of columns of the output matrix to process.
+
+    ldc - Supplies the leading dimension of C.
+
+    ldcBuffer - Supplies the leading dimension of CBuffer.
 
 Return Value:
 
@@ -184,7 +253,7 @@ Return Value:
         Bias += StartN;
     }
 
-    if(QUANTGRAN == QuantizationGranularity::PerColumn){
+    if(QUANTGRAN == MLAS_QUANTIZATION_GRANULARITY::PerColumn){
         Scale += StartN;
     }
 
@@ -210,15 +279,15 @@ Return Value:
 
             MLAS_FLOAT32X4 FloatVector = MlasCastToFloat32x4(MlasLoadInt32x4(c_buf));
 
-            if (QUANTGRAN == QuantizationGranularity::PerColumn) {
-                if (MODE == OutputMode::AccumulateMode) {
+            if (QUANTGRAN == MLAS_QUANTIZATION_GRANULARITY::PerColumn) {
+                if (MODE == MLAS_QGEMM_OUTPUT_MODE::AccumulateMode) {
                     FloatVector = MlasMultiplyAddFloat32x4(FloatVector, MlasLoadFloat32x4(scale), MlasLoadFloat32x4(c_out));
                 }
                 else {
                     FloatVector = MlasMultiplyFloat32x4(FloatVector, MlasLoadFloat32x4(scale));
                 }
             }
-            else if (MODE == OutputMode::AccumulateMode) {
+            else if (MODE == MLAS_QGEMM_OUTPUT_MODE::AccumulateMode) {
                 FloatVector = MlasMultiplyAddFloat32x4(FloatVector, ScaleVector, MlasLoadFloat32x4(c_out));
             }
             else {
@@ -237,7 +306,7 @@ Return Value:
                 bias += 4;
             }
 
-            if (QUANTGRAN == QuantizationGranularity::PerColumn){
+            if (QUANTGRAN == MLAS_QUANTIZATION_GRANULARITY::PerColumn){
                 scale += 4;
             }
 
@@ -249,13 +318,13 @@ Return Value:
 #if defined(MLAS_SSE2_INTRINSICS)
             __m128 FloatVector = _mm_set_ss(float(c_buf[offset]));
 
-            if (QUANTGRAN == QuantizationGranularity::PerColumn) {
-                if (MODE == OutputMode::AccumulateMode) {
+            if (QUANTGRAN == MLAS_QUANTIZATION_GRANULARITY::PerColumn) {
+                if (MODE == MLAS_QGEMM_OUTPUT_MODE::AccumulateMode) {
                     FloatVector = _mm_add_ps(_mm_mul_ss(FloatVector, _mm_load_ss(&scale[offset])), _mm_load_ss(&c_out[offset]));
                 } else{
                     FloatVector = _mm_mul_ss(FloatVector, _mm_load_ss(&scale[offset]));
                 }
-            } else if (MODE == OutputMode::AccumulateMode) {
+            } else if (MODE == MLAS_QGEMM_OUTPUT_MODE::AccumulateMode) {
                 FloatVector = _mm_add_ps(_mm_mul_ss(FloatVector, ScaleVector), _mm_load_ss(&c_out[offset]));
             } else{
                 FloatVector = _mm_mul_ss(FloatVector, ScaleVector);
@@ -266,14 +335,14 @@ Return Value:
             }
             _mm_store_ss(&c_out[offset], FloatVector);
 #else
-            if (QUANTGRAN == QuantizationGranularity::PerColumn) {
-                if(MODE == OutputMode::AccumulateMode){
+            if (QUANTGRAN == MLAS_QUANTIZATION_GRANULARITY::PerColumn) {
+                if(MODE == MLAS_QGEMM_OUTPUT_MODE::AccumulateMode){
                     c_out[offset]) += float(c_buf[offset]) * scale[offset];
                 } else{
                     c_out[offset]) = float(c_buf[offset]) * scale[offset];
                 }
             }
-            else if (MODE == OutputMode::AccumulateMode) {
+            else if (MODE == MLAS_QGEMM_OUTPUT_MODE::AccumulateMode) {
                 c_out[offset]) += float(c_buf[offset]) * ScaleValue;
             }
             else{
@@ -2383,7 +2452,7 @@ MlasGemm(
     size_t ldc,
     float* output,
     size_t ldOutput,
-    const OUTPUT_PROCESSOR* OutputProcessor,
+    const MLAS_QGEMM_OUTPUT_PROCESSOR* OutputProcessor,
     MLAS_THREADPOOL* ThreadPool
     )
 /*++
@@ -2574,7 +2643,7 @@ MlasGemm(
     size_t ldc,
     float* output,
     size_t ldOutput,
-    const OUTPUT_PROCESSOR* OutputProcessor,
+    const MLAS_QGEMM_OUTPUT_PROCESSOR* OutputProcessor,
     MLAS_THREADPOOL* ThreadPool
     )
 /*++

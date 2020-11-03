@@ -85,7 +85,7 @@ void QGemm(
     const float* bias,
     concurrency::ThreadPool* thread_pool) {
 #ifdef MLAS_SUPPORTS_GEMM_U8X8
-  SCALE_BIAS_PROCESSOR scale_bias_processor(result_scale, bias);
+  MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR scale_bias_processor(result_scale, bias);
   MlasGemm(M, N, K,
            lhs_data, lda, lhs_offset,
            rhs_data, ldb, rhs_offset, rhs_signed,

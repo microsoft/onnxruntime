@@ -225,17 +225,17 @@ MlasGemm(
     MLAS_THREADPOOL* ThreadPool
     );
 
-enum class QuantizationGranularity {
+enum class MLAS_QUANTIZATION_GRANULARITY {
     PerMatrix,
     PerColumn,
 };
 
-enum class OutputMode {
+enum class MLAS_QGEMM_OUTPUT_MODE {
     ZeroMode,       // overwrite the output buffer
     AccumulateMode, // accumulate to the output buffer
 };
 
-class OUTPUT_PROCESSOR {
+class MLAS_QGEMM_OUTPUT_PROCESSOR {
 public:
     inline
     virtual
@@ -254,46 +254,47 @@ public:
     }
 };
 
-class SCALE_BIAS_PROCESSOR : public OUTPUT_PROCESSOR {
+class MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR : public MLAS_QGEMM_OUTPUT_PROCESSOR {
 public:
-
-    SCALE_BIAS_PROCESSOR(
+    MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR(
         const float* Scale,
         const float* Bias,
-        OutputMode Mode = OutputMode::ZeroMode,
-        QuantizationGranularity QuantGran = QuantizationGranularity::PerMatrix);
+        MLAS_QGEMM_OUTPUT_MODE Mode = MLAS_QGEMM_OUTPUT_MODE::ZeroMode,
+        MLAS_QUANTIZATION_GRANULARITY QuantGran = MLAS_QUANTIZATION_GRANULARITY::PerMatrix);
 
     inline
     void
     Process(
-    float* C,
-    const int32_t* CBuffer,
-    size_t StartM,
-    size_t StartN,
-    size_t CountM,
-    size_t CountN,
-    size_t ldc,
-    size_t ldcBuffer) const override;
+        float* C,
+        const int32_t* CBuffer,
+        size_t StartM,
+        size_t StartN,
+        size_t CountM,
+        size_t CountN,
+        size_t ldc,
+        size_t ldcBuffer
+        ) const override;
 
 private:
-    template<bool HASBIAS, OutputMode MODE, QuantizationGranularity QUANTGRAN>
+    template<bool HASBIAS, MLAS_QGEMM_OUTPUT_MODE MODE, MLAS_QUANTIZATION_GRANULARITY QUANTGRAN>
     inline
     void
     ProcessImpl(
-    float* C,
-    const int32_t* CBuffer,
-    size_t StartM,
-    size_t StartN,
-    size_t CountM,
-    size_t CountN,
-    size_t ldc,
-    size_t ldcBuffer) const;
+        float* C,
+        const int32_t* CBuffer,
+        size_t StartM,
+        size_t StartN,
+        size_t CountM,
+        size_t CountN,
+        size_t ldc,
+        size_t ldcBuffer
+        ) const;
 
 private:
     const float* Scale_;
     const float* Bias_;
-    OutputMode OutputMode_;
-    QuantizationGranularity QuantGran_;
+    MLAS_QGEMM_OUTPUT_MODE OutputMode_;
+    MLAS_QUANTIZATION_GRANULARITY QuantGran_;
 };
 
 void
@@ -313,9 +314,9 @@ MlasGemm(
     size_t ldc,
     float* output,
     size_t ldOutput,
-    const OUTPUT_PROCESSOR* OutputProcessor,
+    const MLAS_QGEMM_OUTPUT_PROCESSOR* OutputProcessor,
     MLAS_THREADPOOL* ThreadPool
-);
+    );
 
 void
 MLASCALL
@@ -350,9 +351,9 @@ MlasGemm(
     size_t ldc,
     float* output,
     size_t ldOutput,
-    const OUTPUT_PROCESSOR* OutputProcessor,
+    const MLAS_QGEMM_OUTPUT_PROCESSOR* OutputProcessor,
     MLAS_THREADPOOL* ThreadPool
-);
+    );
 
 //
 // Buffer packing routines.
@@ -720,28 +721,6 @@ MlasRequantizeOutputColumn(
     size_t N,
     const float* Scale,
     uint8_t ZeroPoint
-    );
-
-template <bool AccumulateMode>
-void
-MLASCALL
-MlasScaleOutput(
-    const int32_t* Input,
-    float* Output,
-    size_t M,
-    size_t N,
-    const float Scale
-    );
-
-template <bool AccumulateMode>
-void
-MLASCALL
-MlasScaleOutputColumn(
-    const int32_t* Input,
-    float* Output,
-    size_t M,
-    size_t N,
-    const float* Scale
     );
 
 void

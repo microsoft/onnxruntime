@@ -52,7 +52,7 @@ Status MatMulIntegerToFloatBase::ComputeCommon(OpKernelContext* ctx,
   for (size_t i = 0; i < helper.OutputOffsets().size(); i++) {
 #ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
     if (packed_b_) {
-      SCALE_BIAS_PROCESSOR scale_bias_processor(&multiplier, bias_data);
+      MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR scale_bias_processor(&multiplier, bias_data);
       MlasGemm(static_cast<size_t>(helper.M()),
                static_cast<size_t>(helper.N()),
                static_cast<size_t>(helper.K()),

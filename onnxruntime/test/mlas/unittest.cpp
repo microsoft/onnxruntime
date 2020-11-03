@@ -573,7 +573,7 @@ protected:
         const float* Bias
         )
     {
-        SCALE_BIAS_PROCESSOR scale_bias_processor(&CScale, Bias);
+        MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR scale_bias_processor(&CScale, Bias);
         MlasGemm(M, N, K,
                  A, lda, offa,
                  B, ldb, offb, BIsSigned,
@@ -645,7 +645,7 @@ protected:
         )
     {
         const void* PackedB = PackB(N, K, B, ldb, BIsSigned);
-        SCALE_BIAS_PROCESSOR scale_bias_processor(&CScale, Bias);
+        MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR scale_bias_processor(&CScale, Bias);
         MlasGemm(M, N, K,
                  A, lda, offa,
                  PackedB, offb, BIsSigned,
@@ -2826,20 +2826,20 @@ private:
         // Compute Output with MLAS
         if (AccumulateMode) {
             if (PerColumn) {
-                SCALE_BIAS_PROCESSOR OutputProcessor(Scale, nullptr, OutputMode::AccumulateMode, QuantizationGranularity::PerColumn);
+                MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR OutputProcessor(Scale, nullptr, MLAS_QGEMM_OUTPUT_MODE::AccumulateMode, MLAS_QUANTIZATION_GRANULARITY::PerColumn);
                 OutputProcessor.Process(Output, Input, 0, 0, M, N, N, N);
             }
             else {
-                SCALE_BIAS_PROCESSOR OutputProcessor(Scale, nullptr, OutputMode::AccumulateMode, QuantizationGranularity::PerMatrix);
+                MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR OutputProcessor(Scale, nullptr, MLAS_QGEMM_OUTPUT_MODE::AccumulateMode, MLAS_QUANTIZATION_GRANULARITY::PerMatrix);
                 OutputProcessor.Process(Output, Input, 0, 0, M, N, N, N);
             }
         }
         else if (PerColumn) {
-            SCALE_BIAS_PROCESSOR OutputProcessor(Scale, nullptr, OutputMode::ZeroMode, QuantizationGranularity::PerColumn);
+            MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR OutputProcessor(Scale, nullptr, MLAS_QGEMM_OUTPUT_MODE::ZeroMode, MLAS_QUANTIZATION_GRANULARITY::PerColumn);
             OutputProcessor.Process(Output, Input, 0, 0, M, N, N, N);
         }
         else {
-            SCALE_BIAS_PROCESSOR OutputProcessor(Scale, nullptr, OutputMode::ZeroMode, QuantizationGranularity::PerMatrix);
+            MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR OutputProcessor(Scale, nullptr, MLAS_QGEMM_OUTPUT_MODE::ZeroMode, MLAS_QUANTIZATION_GRANULARITY::PerMatrix);
             OutputProcessor.Process(Output, Input, 0, 0, M, N, N, N);
         }
 
