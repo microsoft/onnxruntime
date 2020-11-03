@@ -50,7 +50,7 @@ class ThreadPoolTempl;
 
 class ExtendedThreadPoolInterface;
 class LoopCounter;
-class ThreadPoolParallelSection;
+struct ThreadPoolParallelSection;
 
 class ThreadPool {
  public:

@@ -682,15 +682,15 @@ void EndParallelSection(ThreadPoolParallelSection &ps) override {
 
   auto current_dop = ps.tasks.size() + 1;
   if (n > current_dop) {
-    unsigned extra_needed = n - current_dop;
+    auto extra_needed = n - current_dop;
     // We build a list of <thread,idx> pairs for each of the queues
     // that accepts a task.  This lets us reduce waiting on loop-exit
     // by removing any tasks that do not get executed by the threads
     // that we push them to.
     std::vector<unsigned> good_hints, alt_hints;
     GetGoodWorkerHints(n - 1, good_hints, alt_hints);
-    for (unsigned i = 0; i < extra_needed; i++) {
-      int new_idx = ps.tasks.size() + 1;
+    for (auto i = 0u; i < extra_needed; i++) {
+      auto new_idx = static_cast<unsigned>(ps.tasks.size() + 1);
       Task t = env_.CreateTask([&ps, new_idx, this]{
           ParLoopWorker(ps, new_idx);
         });
