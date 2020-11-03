@@ -136,6 +136,10 @@ def main():
         print('Training MNIST on ORTModule....')
         model = ORTModule(model)
 
+        # TODO: change it to False to stop saving ONNX models
+        model._save_onnx = True
+        model._save_onnx_prefix = 'MNIST'
+
         # Set log level
         numeric_level = getattr(logging, args.log_level.upper(), None)
         if not isinstance(numeric_level, int):
