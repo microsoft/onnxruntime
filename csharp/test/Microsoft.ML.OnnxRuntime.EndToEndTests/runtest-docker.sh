@@ -35,6 +35,6 @@ docker run --rm \
         -e "DisableMlOps=$DISABLEMLOPS" \
         -e "RunTestCsharp=$RunTestCsharp" \
         -e "RunTestNative=$RunTestNative" \
-        onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecentoscpubuild:ch9m \
+        onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecentoscpubuild:chaq \
         /bin/bash /onnxruntime_src/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh \
         /home/onnxruntimedev/$NUGET_REPO_DIRNAME /onnxruntime_src /home/onnxruntimedev $CurrentOnnxRuntimeVersion

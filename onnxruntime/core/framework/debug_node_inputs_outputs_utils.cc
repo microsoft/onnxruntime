@@ -97,7 +97,7 @@ PathString MakeTensorFileName(const std::string& tensor_name, const NodeDumpOpti
     return name;
   };
 
-  return path_utils::MakePathString(make_valid_name(tensor_name) + dump_options.file_suffix, ".tensorproto");
+  return path_utils::MakePathString(make_valid_name(tensor_name), dump_options.file_suffix, ".tensorproto");
 }
 
 void DumpTensorToFile(const Tensor& tensor, const std::string& tensor_name, const Path& file_path) {
@@ -199,17 +199,26 @@ const NodeDumpOptions NodeDumpOptionsFromEnvironmentVariables() {
   opts.filter.name_pattern = Env::Default().GetEnvironmentVar(env_vars::kNameFilter);
   opts.filter.op_type_pattern = Env::Default().GetEnvironmentVar(env_vars::kOpTypeFilter);
 
-  if (get_bool_env_var(env_vars::kDumpDataToFiles)) {
-    opts.data_destination = NodeDumpOptions::DataDestination::TensorProtoFiles;
-  }
+    if (get_bool_env_var(env_vars::kAppendRankToFileName)) {
+      std::string rank = Env::Default().GetEnvironmentVar("OMPI_COMM_WORLD_RANK");
+      if (rank.empty()) {
+        opts.file_suffix = "_default_rank_0";
+      } else {
+        opts.file_suffix = "_rank_" + rank;
+      }
+    }
 
-  if (get_bool_env_var(env_vars::kRankToFileName)) {
-    char const* tmp = getenv("OMPI_COMM_WORLD_RANK");
-    if (tmp == NULL) {
-      opts.file_suffix = "_default_rank_0";
-    } else {
-      std::string s(tmp);
-      opts.file_suffix = "_rank_" + s;
+    opts.output_dir = Path::Parse(ToPathString(Env::Default().GetEnvironmentVar(env_vars::kOutputDir)));
+
+    // check for confirmation for dumping data to files for all nodes
+    if (opts.dump_flags != NodeDumpOptions::DumpFlags::ShapeOnly &&
+        opts.data_destination == NodeDumpOptions::DataDestination::TensorProtoFiles &&
+        opts.filter.name_pattern.empty() && opts.filter.op_type_pattern.empty()) {
+      ORT_ENFORCE(
+          get_bool_env_var(env_vars::kDumpingDataToFilesForAllNodesIsOk),
+          "The current environment variable configuration will dump node input or output data to files for every node. "
+          "This may cause a lot of files to be generated. Set the environment variable ",
+          env_vars::kDumpingDataToFilesForAllNodesIsOk, " to confirm this is what you want.");
     }
   }
 

@@ -74,9 +74,6 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
   const T* filter_data = p.F->template Data<T>();
   T* Ydata = p.Y->template MutableData<T>();
 
-  std::vector<int64_t> col_buffer_shape{kernel_dim};
-  col_buffer_shape.insert(col_buffer_shape.end(), p.input_shape.GetDims().begin(), p.input_shape.GetDims().end());
-
   if (p.X->Shape().NumDimensions() == 4) {
     for (auto image_id = 0; image_id < p.N; ++image_id) {
       for (int group_id = 0; group_id < conv_transpose_attrs_.group; ++group_id) {
@@ -124,8 +121,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
       Ydata += Y_offset * conv_transpose_attrs_.group;
     }
   } else {
-    TensorShape output_shape = p.Y->Shape().Slice(1);
-    output_shape[0] = output_shape[0] / conv_transpose_attrs_.group;
+    TensorShape output_shape = p.Y->Shape().Slice(2);
 
     for (auto image_id = 0; image_id < p.N; ++image_id) {
       for (int group_id = 0; group_id < conv_transpose_attrs_.group; ++group_id) {
@@ -147,9 +143,9 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
         math::Col2imNd<T, CPUMathUtil, StorageOrder::NCHW>(
             col_buffer_data,
             output_shape.GetDims().data(),
-            col_buffer_shape.data(),
-            output_shape.Size(),
-            col_buffer_size,
+            p.input_shape.GetDims().data(),
+            kernel_dim,
+            Y_offset,
             p.kernel_shape.data(),
             p.strides.data(),
             p.dilations.data(),
