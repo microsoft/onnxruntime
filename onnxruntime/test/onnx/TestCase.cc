@@ -177,23 +177,6 @@ Ort::Value TensorToOrtValue(const ONNX_NAMESPACE::TensorProto& t, onnxruntime::t
   return temp_value;
 }
 
-Ort::Value SequenceToOrtValue(const ONNX_NAMESPACE::SequenceProto& t, onnxruntime::test::HeapBuffer& b) {
-  ORT_ENFORCE(t.elem_type() == 1, "Only parsing sequence of tensors is supported");
-
-  auto num_tensors = t.tensor_values_size();
-
-  std::vector<Ort::Value> seq;
-  seq.reserve(num_tensors);
-
-  const auto& tensors = t.tensor_values();
-  for (auto it = tensors.cbegin(); it != tensors.cend(); ++it) {
-    auto value = TensorToOrtValue(*it, b);
-    seq.push_back(std::move(value));
-  }
-
-  return Ort::Value::CreateSequence(seq);
-}
-
 void LoopDataFile(int test_data_pb_fd, bool is_input, const TestModelInfo& modelinfo,
                   std::unordered_map<std::string, Ort::Value>& name_data_map, onnxruntime::test::HeapBuffer& b,
                   std::ostringstream& oss) {
@@ -318,15 +301,15 @@ class OnnxTestCase : public ITestCase {
     return std::string();
   }
 
-  Status ConvertTestData(const ONNX_NAMESPACE::TensorProto& test_data_pb,
-                         onnxruntime::test::HeapBuffer& b,
-                         bool is_input, size_t i,
-                         std::unordered_map<std::string, Ort::Value>& out) const;
+  void ConvertTestData(const ONNX_NAMESPACE::TensorProto& test_data_pb,
+                       onnxruntime::test::HeapBuffer& b,
+                       bool is_input, size_t i,
+                       std::unordered_map<std::string, Ort::Value>& out) const;
 
-  Status ConvertTestData(const ONNX_NAMESPACE::SequenceProto& test_data_pb,
-                         onnxruntime::test::HeapBuffer& b,
-                         bool is_input, size_t i,
-                         std::unordered_map<std::string, Ort::Value>& out) const;
+  void ConvertTestData(const ONNX_NAMESPACE::SequenceProto& test_data_pb,
+                       onnxruntime::test::HeapBuffer& b,
+                       bool is_input, size_t i,
+                       std::unordered_map<std::string, Ort::Value>& out) const;
   std::once_flag model_parsed_;
   std::once_flag config_parsed_;
   double per_sample_tolerance_;
@@ -341,6 +324,10 @@ class OnnxTestCase : public ITestCase {
   void GetPerSampleTolerance(double* value) const override;
   void GetRelativePerSampleTolerance(double* value) const override;
   void GetPostProcessing(bool* value) const override;
+
+  const ONNX_NAMESPACE::ValueInfoProto* GetInputInfoFromModel(size_t i) const override {
+    return model_info_->GetInputInfoFromModel(i);
+  }
 
   const ONNX_NAMESPACE::ValueInfoProto* GetOutputInfoFromModel(size_t i) const override {
     return model_info_->GetOutputInfoFromModel(i);
@@ -511,30 +498,26 @@ void OnnxTestCase::LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b,
   SortFileNames(test_data_pb_files);
 
   for (size_t i = 0; i < test_data_pb_files.size(); ++i) {
-    // First try to de-serialize the pb message into a TensorProto (most cases will fall into this category)
-    ONNX_NAMESPACE::TensorProto test_pb;
-    LoadTensor(test_data_pb_files[i], test_pb);
-    auto status = ConvertTestData(test_pb, b, is_input, i, name_data_map);
-
-    if (!status.IsOK()) {
-      // Ok - so that wasn't a TensorProto - perhaps it is a SequenceProto
-      ONNX_NAMESPACE::SequenceProto sequence_test_pb;
-      LoadSequenceTensor(test_data_pb_files[i], sequence_test_pb);
-      status = ConvertTestData(sequence_test_pb, b, is_input, i, name_data_map);
-    }
-
-    if (!status.IsOK()) {
-      // We had trouble de-serializing the message into a TensorProto and a SequenceProto
-      // We don't support any other de-serializations
-      ORT_THROW("Given pb message could not be de-serialized into a TensorProto or a SequenceProto");
+    const ONNX_NAMESPACE::ValueInfoProto* value_info_proto = is_input ? model_info_->GetInputInfoFromModel(i) : model_info_->GetOutputInfoFromModel(i);
+    ORT_ENFORCE(value_info_proto->has_type(), "Model ", is_input ? "input " : "output ", i, " is missing type info");
+    if (value_info_proto->type().has_tensor_type()) {
+      ONNX_NAMESPACE::TensorProto test_pb;
+      LoadTensor(test_data_pb_files[i], test_pb);
+      ConvertTestData(test_pb, b, is_input, i, name_data_map);
+    } else if (value_info_proto->type().has_sequence_type()) {
+      ONNX_NAMESPACE::SequenceProto test_pb;
+      LoadSequenceTensor(test_data_pb_files[i], test_pb);
+      ConvertTestData(test_pb, b, is_input, i, name_data_map);
+    } else {
+      ORT_THROW("Unsupported type for the ", is_input ? "input " : "output ", i, " in the test runner");
     }
   }
 }
 
-Status OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::TensorProto& test_data_pb,
-                                     onnxruntime::test::HeapBuffer& b,
-                                     bool is_input, size_t i,
-                                     std::unordered_map<std::string, Ort::Value>& out) const {
+void OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::TensorProto& test_data_pb,
+                                   onnxruntime::test::HeapBuffer& b,
+                                   bool is_input, size_t i,
+                                   std::unordered_map<std::string, Ort::Value>& out) const {
   std::string name = test_data_pb.name();
   std::string name_finalized = !name.empty() ? name : (is_input ? model_info_->GetInputName(i) : model_info_->GetOutputName(i));
 
@@ -542,7 +525,7 @@ Status OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::TensorProto& test_dat
 
   auto status = onnxruntime::test::GetSizeInBytesFromTensorProto<0>(test_data_pb, &len);
   if (!status.IsOK()) {
-    return status;
+    ORT_THROW(status.ToString());
   }
   void* p = len == 0 ? nullptr : b.AllocMemory(len);
   Ort::Value v1{nullptr};
@@ -551,19 +534,18 @@ Status OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::TensorProto& test_dat
   status = onnxruntime::test::TensorProtoToMLValue(test_data_pb, onnxruntime::test::MemBuffer(p, len, cpu_memory_info),
                                                    v1, d);
   if (!status.IsOK()) {
-    return status;
+    ORT_THROW(status.ToString());
   }
   if (d.f) {
     b.AddDeleter(d);
   }
   out.emplace(name_finalized, std::move(v1));
-  return Status::OK();
 }
 
-Status OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::SequenceProto& test_data_pb,
-                                     onnxruntime::test::HeapBuffer& b,
-                                     bool is_input, size_t i,
-                                     std::unordered_map<std::string, Ort::Value>& out) const {
+void OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::SequenceProto& test_data_pb,
+                                   onnxruntime::test::HeapBuffer& b,
+                                   bool is_input, size_t i,
+                                   std::unordered_map<std::string, Ort::Value>& out) const {
   std::string name = test_data_pb.name();
   std::string name_finalized = !name.empty() ? name : (is_input ? model_info_->GetInputName(i) : model_info_->GetOutputName(i));
 
@@ -577,7 +559,7 @@ Status OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::SequenceProto& test_d
   for (auto it = tensors.cbegin(); it != tensors.cend(); ++it) {
     auto status = onnxruntime::test::GetSizeInBytesFromTensorProto<0>(*it, &len);
     if (!status.IsOK()) {
-      return status;
+      ORT_THROW(status.ToString());
     }
     void* p = len == 0 ? nullptr : b.AllocMemory(len);
     Ort::Value v1{nullptr};
@@ -586,7 +568,7 @@ Status OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::SequenceProto& test_d
     status = onnxruntime::test::TensorProtoToMLValue(*it, onnxruntime::test::MemBuffer(p, len, cpu_memory_info),
                                                      v1, d);
     if (!status.IsOK()) {
-      return status;
+      ORT_THROW(status.ToString());
     }
     if (d.f) {
       b.AddDeleter(d);
@@ -607,8 +589,6 @@ Status OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::SequenceProto& test_d
   } else {
     out.emplace(name_finalized, Ort::Value::CreateSequence(seq));
   }
-
-  return Status::OK();
 }
 
 OnnxTestCase::OnnxTestCase(const std::string& test_case_name, _In_ std::unique_ptr<TestModelInfo> model,
