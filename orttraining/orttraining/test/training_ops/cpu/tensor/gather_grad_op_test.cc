@@ -8,6 +8,7 @@
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/test_random_seed.h"
 
 namespace onnxruntime {
 namespace test {
@@ -46,6 +47,7 @@ void ConfigureGatherGradRandomDataOpTester(
     int64_t axis,
     const TensorShape& X_shape,
     const TensorShape& indices_shape,
+    optional<RandomValueGenerator::RandomSeedType> random_seed,
     OpTester& test) {
   ASSERT_LE(0, axis);
   ASSERT_LT(static_cast<size_t>(axis), X_shape.NumDimensions());
@@ -58,7 +60,7 @@ void ConfigureGatherGradRandomDataOpTester(
     return TensorShape(dY_dims);
   }();
 
-  RandomValueGenerator random{};
+  RandomValueGenerator random{random_seed};
   const auto grad = random.Uniform<T>(dY_shape.GetDims(), T{1}, T{10});
   const auto indices = random.Uniform<int64_t>(indices_shape.GetDims(), 0, X_shape[axis]);
   const auto output = CalculateOutput(axis, X_shape, grad, indices);
@@ -69,6 +71,15 @@ void ConfigureGatherGradRandomDataOpTester(
   test.AddInput<int64_t>("indices", indices_shape.GetDims(), indices);
   test.AddInput<T>("grad", dY_shape.GetDims(), grad);
   test.AddOutput<T>("output", X_shape.GetDims(), output);
+}
+
+template <typename T>
+void ConfigureGatherGradRandomDataOpTester(
+    int64_t axis,
+    const TensorShape& X_shape,
+    const TensorShape& indices_shape,
+    OpTester& test) {
+  ConfigureGatherGradRandomDataOpTester<T>(axis, X_shape, indices_shape, {}, test);
 }
 
 template <typename T>
@@ -165,10 +176,11 @@ void RunGatherGradConsistentOutputTest(
     int64_t axis,
     const TensorShape& X_shape,
     const TensorShape& indices_shape) {
+  const auto random_seed = static_cast<RandomValueGenerator::RandomSeedType>(GetTestRandomSeed());
   std::map<std::string, std::vector<std::vector<float>>> provider_outputs;
   for (int i = 0; i < 2; ++i) {
     OpTester test("GatherGrad", 1, kMSDomain);
-    ConfigureGatherGradRandomDataOpTester<float>(axis, X_shape, indices_shape, test);
+    ConfigureGatherGradRandomDataOpTester<float>(axis, X_shape, indices_shape, random_seed, test);
 
     auto output_handler =
         [&provider_outputs](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
