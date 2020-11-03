@@ -42,12 +42,13 @@ class VectorBuffer : public winrt::implements<
 
 template <typename T>
 class TensorBuffer {
-  wss::IBuffer m_buffer;
-  uint32_t m_size;
+  std::vector<wss::IBuffer> buffers_;
+  size_t size_;
 
-  TensorBuffer(uint32_t size) : m_size(size),
-                                m_buffer(winrt::make<VectorBuffer>(size * sizeof(T))) {
-    auto buffer = Buffer();
+  TensorBuffer(size_t size) : size_(size), buffers_(1) {
+    buffers_[0] = winrt::make<VectorBuffer>(size * sizeof(T));
+    
+    auto buffer = Buffer(0);
 
     // The initial release of WinML (RS5) shipped with behavior that would
     // zero-initialize uninitialized tensors. After measuring, the performance impact
@@ -57,50 +58,100 @@ class TensorBuffer {
   }
 
   TensorBuffer(
-      uint32_t size,
-      wss::IBuffer buffer) : m_size(size),
-                                                          m_buffer(buffer) {}
+      size_t size,
+      wfc::IIterable<wss::IBuffer> const& buffers) :
+        size_(size),
+        buffers_(begin(buffers), end(buffers)) { }
 
  public:
   typedef std::shared_ptr<TensorBuffer> TensorBufferPtr;
 
-  static auto Create(uint32_t size) {
+  static auto Create(size_t size) {
     return std::shared_ptr<TensorBuffer>(new TensorBuffer(size));
   }
 
   static auto Create(
-      uint32_t size,
+      size_t size,
       wss::IBuffer buffer) {
     return std::shared_ptr<TensorBuffer>(new TensorBuffer(size, buffer));
   }
 
+  static auto Create(
+      size_t size,
+      wfc::IIterable<wss::IBuffer> const& buffers) {
+    return std::shared_ptr<TensorBuffer>(new TensorBuffer(size, buffers));
+  }
+
   // this is the count of elements
   auto Size() {
-    return m_size;
+    return size_;
   }
 
   // this is the size in bytes
   auto SizeInBytes() {
-    return m_size * sizeof(T);
+    return size_ * sizeof(T);
+  }
+
+  auto Buffer(size_t index) {
+    size_t size =
+        buffers_.size() == 1 ?
+        size_ :
+        static_cast<size_t>(buffers_[index].Capacity());
+
+    T* current_data = nullptr;
+    auto bufferByteAccess = buffers_[0].as<Windows::Storage::Streams::IBufferByteAccess>();
+    bufferByteAccess->Buffer(reinterpret_cast<BYTE**>(&current_data));
+    return std::make_pair(size, current_data);
   }
 
   auto Buffer() {
-    T* pData;
-    auto bufferByteAccess = m_buffer.as<Windows::Storage::Streams::IBufferByteAccess>();
-    bufferByteAccess->Buffer(reinterpret_cast<BYTE**>(&pData));
+    if (buffers_.size() == 1) {
+      auto pair = Buffer(0);
+      using Resource = std::unique_ptr<void, std::function<void(void*)>>;
+      return std::make_pair(size_, Resource(pair.second, [](void*){}));
+    }
 
-    return std::make_pair(m_size, pData);
+    size_t start = 0;
+
+    T* raw_buffer = new T[size_];
+    for (size_t i = 0; i < buffers_.size() && start < size_; i++) {
+      auto pair = Buffer(i);
+      auto current_size = pair.first;
+      auto current_buffer = pair.second;
+
+      if (start + current_size > size_) {
+        current_size = size_ - start;
+      }
+
+      memcpy(raw_buffer + start, current_buffer, current_size);
+      start += current_size;
+    }
+
+    return std::make_pair(size_, Resource(raw_buffer, [](void* data) { delete[] data; }));
   }
 
-  auto Set(uint32_t size, const T* pData) {
+  auto Set(size_t size, const T* data) {
     WINML_THROW_HR_IF_FALSE_MSG(
         E_INVALIDARG,
-        size <= m_size,
-        "Argument size (%u) exceeds the tensor size (%u).",
+        size <= size_,
+        "Argument size (%llu) exceeds the tensor size (%llu).",
         size,
-        m_size);
+        size_);
 
-    memcpy(Buffer().second, pData, m_buffer.Capacity());
+    
+    size_t start = 0;
+    for (size_t i = 0; i < buffers_.size() && size > start; i++) {
+      auto pair = Buffer(i);
+      auto current_size = pair.first;
+      auto current_buffer = pair.second;
+
+      if (size - start < current_size) {
+        current_size = size - start;
+      }
+
+      memcpy(current_buffer, data + start, current_size);
+      start += current_size;
+    }
   }
 
   auto Set(std::vector<T>&& moveableData) {
@@ -112,12 +163,12 @@ template <>
 class TensorBuffer<std::string> {
   std::vector<std::string> m_buffer;
 
-  TensorBuffer(uint32_t size) : m_buffer(size) {}
+  TensorBuffer(size_t size) : m_buffer(size) {}
 
  public:
   typedef std::shared_ptr<TensorBuffer> TensorBufferPtr;
 
-  static auto Create(uint32_t size) {
+  static auto Create(size_t size) {
     return std::shared_ptr<TensorBuffer>(new TensorBuffer(size));
   }
 
@@ -131,10 +182,12 @@ class TensorBuffer<std::string> {
   }
 
   auto Buffer() {
-    return std::make_pair(gsl::narrow_cast<uint32_t>(m_buffer.size()), m_buffer.data());
+    auto size = m_buffer.size();
+    using Resource = std::unique_ptr<void, std::function<void(void*)>>;
+    return std::make_pair(size, Resource(new std::string[size], [](void* data) { delete[] data; }));
   }
 
-  auto Set(uint32_t size, std::string_view* data) {
+  auto Set(size_t size, std::string_view* data) {
     WINML_THROW_HR_IF_FALSE_MSG(
         E_INVALIDARG,
         size <= m_buffer.size(),

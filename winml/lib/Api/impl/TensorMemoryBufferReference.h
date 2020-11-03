@@ -34,13 +34,13 @@ struct TensorResources {
       }
 
       // Get the data pointer and size
-      T* data;
-      uint32_t size;
+      _winml::Resource data;
+      size_t size;
       std::tie(size, data) = CpuResource->buffer();
 
       // Set out parameters
       *capacity = static_cast<UINT32>(size * sizeof(T));
-      *value = (BYTE*)data;
+      *value = (BYTE*)data.get();
       return S_OK;
     }
     WINML_CATCH_ALL_COM

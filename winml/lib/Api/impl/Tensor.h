@@ -26,23 +26,24 @@ class Tensor {
 
   Tensor(
       std::vector<int64_t> const& shape,
-      wss::IBuffer buffer) : shape_(shape),
-                             m_buffer(
+      wfc::IIterable<wss::IBuffer> const& buffers) :
+                            shape_(shape),
+                            m_buffer(
                                  TensorBuffer::Create(
-                                     static_cast<uint32_t>(
+                                     static_cast<size_t>(
                                          std::accumulate(
                                              std::begin(shape),
                                              std::end(shape),
                                              static_cast<int64_t>(1),
                                              std::multiplies<int64_t>())),
-                                     buffer)) {
+                                     buffers)) {
   }
 
   Tensor(
       std::vector<int64_t> const& shape) : shape_(shape),
                                            m_buffer(
                                                TensorBuffer::Create(
-                                                   static_cast<uint32_t>(
+                                                   static_cast<size_t>(
                                                        std::accumulate(
                                                            std::begin(shape),
                                                            std::end(shape),
@@ -54,7 +55,7 @@ class Tensor {
       std::vector<int64_t> const&& shape) : shape_(std::move(shape)),
                                             m_buffer(
                                                 TensorBuffer::Create(
-                                                    static_cast<uint32_t>(
+                                                    static_cast<size_t>(
                                                         std::accumulate(
                                                             std::begin(shape),
                                                             std::end(shape),
@@ -74,7 +75,7 @@ class Tensor {
     return m_buffer->Buffer();
   }
 
-  void set(uint32_t size, const T* pData) {
+  void set(size_t size, const T* pData) {
     m_buffer->Set(size, pData);
   }
 

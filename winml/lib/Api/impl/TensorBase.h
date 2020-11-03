@@ -233,7 +233,7 @@ struct TensorBase : TBase {
   }
 
   template <typename ElementType = T, typename ElementViewType = ViewT>
-  void SetBufferFromValueResourceBuffer(uint32_t size, void* data) {
+  void SetBufferFromValueResourceBuffer(size_t size, void* data) {
     // This adds compile time checks that ensure that the API can only be called when
     // the conditions of ASSERT_TEMPLATE_PARAMETERS_EXACT() are met.
     ASSERT_TEMPLATE_PARAMETERS<ElementType, ElementViewType>();
@@ -242,7 +242,7 @@ struct TensorBase : TBase {
   }
 
   template <>
-  void SetBufferFromValueResourceBuffer<std::string, winrt::hstring>(uint32_t size, void* data) {
+  void SetBufferFromValueResourceBuffer<std::string, winrt::hstring>(size_t size, void* data) {
     // Ensure that this call is being called with the correct template parameters
     ASSERT_TEMPLATE_PARAMETERS<std::string, winrt::hstring>();
 
@@ -256,7 +256,7 @@ struct TensorBase : TBase {
     ASSERT_TEMPLATE_PARAMETERS<ElementType, ElementViewType>();
 
     RETURN_IF_FAILED_MSG(engine->CreateTensorValueFromExternalBuffer(
-                             GetCpuResource()->buffer().second, GetCpuResource()->size_in_bytes(), GetCpuResource()->shape().data(),
+                             GetCpuResource()->buffer().second.get(), GetCpuResource()->size_in_bytes(), GetCpuResource()->shape().data(),
                              GetCpuResource()->shape().size(), TensorKind(), value),
                          "Failed to prepare buffer for copy back from device resource.");
     return S_OK;
@@ -268,7 +268,7 @@ struct TensorBase : TBase {
     ASSERT_TEMPLATE_PARAMETERS<std::string, winrt::hstring>();
 
     std::vector<const char*> raw_values;
-    auto string_array = GetCpuResource()->buffer().second;
+    auto string_array = static_cast<std::string*>(GetCpuResource()->buffer().second.get());
     std::transform(
         string_array,
         string_array + GetCpuResource()->size_in_bytes(),
@@ -304,15 +304,15 @@ struct TensorBase : TBase {
     bool is_cpu;
     if (SUCCEEDED(value->IsCpu(&is_cpu)) && is_cpu) {
       // Get the data pointer and size
-      T* data;
-      uint32_t size;
-      std::tie(size, data) = GetCpuResource()->buffer();
+      _winml::Resource buffer;
+      size_t size;
+      std::tie(size, buffer) = GetCpuResource()->buffer();
 
-      if (updated_resource.get() != reinterpret_cast<void*>(data)) {
+      if (updated_resource.get() != reinterpret_cast<void*>(buffer.get())) {
         // Only copy the data if the source and destination are not the same!
         // The engine provided buffer will not match the tensor buffer when
         // the tensor is created as a placeholder output, or as an unbound output.
-        auto shape_size = static_cast<uint32_t>(ShapeSize(shape_));
+        auto shape_size = static_cast<size_t>(ShapeSize(shape_));
         SetBufferFromValueResourceBuffer(shape_size, updated_resource.get());
       }
     } else {
@@ -410,31 +410,10 @@ struct TensorBase : TBase {
   static typename TBase::class_type CreateFromBuffer(
       winrt::array_view<int64_t const> shape,
       wss::IBuffer const& buffer) try {
-    std::vector<int64_t> vecShape(shape.begin(), shape.end());
-    if (HasFreeDimensions(vecShape)) {
-      // If the tensor is being created with a free dimension, the data needs to
-      // provide its actual size so that the free dimension can be computed.
-      // In the case of IIterable<T>, there is no Size accessor, and so we require that
-      // in this case the underlying object also implement IVectorView, so that we may
-      // efficiently query the size of the data.
-      auto size_in_bytes = buffer.Length();
-      auto num_elements = size_in_bytes / sizeof(T); 
-      vecShape = GetAdjustedShape(vecShape, num_elements);
-    }
-
-    typename TBase::class_type tensorValue = winrt::make<TDerived>();
-    auto tensorValueImpl = tensorValue.as<TDerived>();
-    tensorValueImpl->shape_ = vecShape;
-    tensorValueImpl->GetCpuResource() = std::make_shared<_winml::Tensor<T>>(vecShape, buffer);
-    return tensorValue;
-  }
-  WINML_CATCH_ALL
-
-  // ITensor<T>::CreateAndCopyFromBatchedBuffers
-  static typename TBase::class_type CreateAndCopyFromBatchedBuffers(
-      wfc::IIterable<int64_t> shape,
-      wfc::IIterable<wss::IBuffer> const& data) try {
-    return CreateFromBatchedBuffers(shape, data);
+    std::vector<int64_t> vec_shape(std::begin(shape), std::end(shape));
+    auto buffers = winrt::single_threaded_vector<wss::IBuffer>();
+    buffers.Append(buffer);
+    return TensorBase::CreateFromBatchedBuffersInternal(vec_shape, buffers);
   }
   WINML_CATCH_ALL
 
@@ -442,8 +421,17 @@ struct TensorBase : TBase {
   static typename TBase::class_type CreateFromBatchedBuffers(
       wfc::IIterable<int64_t> shape,
       wfc::IIterable<wss::IBuffer> const& buffers) try {
-    std::vector<int64_t> vecShape(begin(shape), end(shape));
-    if (HasFreeDimensions(vecShape)) {
+    std::vector<int64_t> vec_shape(begin(shape), end(shape));
+    return TensorBase::CreateFromBatchedBuffersInternal(vec_shape, buffers);
+  }
+  WINML_CATCH_ALL
+
+  
+  // ITensor<T>::CreateFromBatchedBuffersInternal
+  static typename TBase::class_type CreateFromBatchedBuffersInternal(
+      std::vector<int64_t> shape,
+      wfc::IIterable<wss::IBuffer> const& buffers) {
+    if (HasFreeDimensions(shape)) {
       // If the tensor is being created with a free dimension, the data needs to
       // provide its actual size so that the free dimension can be computed.
       // In the case of IIterable<T>, there is no Size accessor, and so we require that
@@ -454,18 +442,15 @@ struct TensorBase : TBase {
         size_in_bytes += buffer.Length();
       }
 
-      auto num_elements = size_in_bytes / sizeof(T); 
-      vecShape = GetAdjustedShape(vecShape, num_elements);
+      auto num_elements = size_in_bytes / sizeof(T);
+      shape = GetAdjustedShape(shape, num_elements);
     }
-
 
     typename TBase::class_type tensorValue = winrt::make<TDerived>();
     auto tensorValueImpl = tensorValue.as<TDerived>();
-    tensorValueImpl->shape_ = vecShape;
-    tensorValueImpl->GetCpuResource() = std::make_shared<_winml::Tensor<T>>(vecShape, buffers);
+    tensorValueImpl->SetBufferFromIterableOfBuffers(shape, buffers);
     return tensorValue;
   }
-  WINML_CATCH_ALL
 
   // ITensorNative::CreateFromD3D12Resource
   static HRESULT CreateFromD3D12Resource(
@@ -622,12 +607,13 @@ struct TensorBase : TBase {
     // owned IVectorView object.
 
     // Get the raw buffer pointer from the native tensor implementation.
-    uint32_t size;
-    ElementType* pData;
-    std::tie(size, pData) = GetCpuResource()->buffer();
+    size_t size;
+    _winml::Resource buffer;
+    std::tie(size, buffer) = GetCpuResource()->buffer();
+    auto element_data = static_cast<ElementType*>(buffer.get());
 
     // Copy data that will be passed back to caller.
-    auto copy = std::vector<ElementType>(pData, pData + size);
+    auto copy = std::vector<ElementType>(element_data, element_data + size);
 
     // Create IVectorView from copied data.
     return winrt::single_threaded_vector<ElementViewType>(std::move(copy)).GetView();
@@ -640,18 +626,19 @@ struct TensorBase : TBase {
     // Ensure that this call is being called with the correct template parameters
     ASSERT_TEMPLATE_PARAMETERS<_winml::Half, float>();
 
-    uint32_t size;
-    _winml::Half* pBuffer;
+    size_t size;
+    _winml::Resource buffer;
 
     // Get the data pointer and size
-    std::tie(size, pBuffer) = GetCpuResource()->buffer();
+    std::tie(size, buffer) = GetCpuResource()->buffer();
+    auto element_data = static_cast<_winml::Half*>(buffer.get());
 
     // Copy the HALFs to floats
     std::vector<float> floatValue(size);
     DirectX::PackedVector::XMConvertHalfToFloatStream(
         floatValue.data(),
         sizeof(float) /* output stride */,
-        reinterpret_cast<DirectX::PackedVector::HALF*>(pBuffer),
+        reinterpret_cast<DirectX::PackedVector::HALF*>(element_data),
         sizeof(_winml::Half) /* input stride */,
         size);
 
@@ -666,16 +653,18 @@ struct TensorBase : TBase {
     // Ensure that this call is being called with the correct template parameters
     ASSERT_TEMPLATE_PARAMETERS<std::string, winrt::hstring>();
 
-    uint32_t size;
-    std::string* pData;
-    std::tie(size, pData) = GetCpuResource()->buffer();
+    size_t size;
+    _winml::Resource buffer;
+
+    std::tie(size, buffer) = GetCpuResource()->buffer();
+    auto element_data = static_cast<std::string*>(buffer.get());
 
     auto copy = std::vector<winrt::hstring>(size, L"");
     std::generate(
         copy.begin(),
         copy.end(),
-        [n = 0, &pData]() mutable {
-          return _winml::Strings::HStringFromUTF8(pData[n++]);
+        [n = 0, &element_data]() mutable {
+          return _winml::Strings::HStringFromUTF8(element_data[n++]);
         });
 
     return winrt::single_threaded_vector<winrt::hstring>(std::move(copy)).GetView();
@@ -687,13 +676,15 @@ struct TensorBase : TBase {
   wfc::IVectorView<uint8_t> GetAsVectorView<int8_t, uint8_t>() try {
     ASSERT_TEMPLATE_PARAMETERS<int8_t, uint8_t>();
 
-    uint32_t size;
-    int8_t* pData;
-    std::tie(size, pData) = GetCpuResource()->buffer();
+    size_t size;
+    _winml::Resource buffer;
+
+    std::tie(size, buffer) = GetCpuResource()->buffer();
+    auto element_data = static_cast<int8_t*>(buffer.get());
 
     // Copy data that will be passed back to caller.
 
-    gsl::span<uint8_t> span(reinterpret_cast<uint8_t*>(pData), size);
+    gsl::span<uint8_t> span(reinterpret_cast<uint8_t*>(element_data), size);
     std::vector<uint8_t> copy(span.begin(), span.begin() + size);
 
     // Create IVectorView from copied data.
@@ -756,6 +747,53 @@ struct TensorBase : TBase {
   /// SetBufferFromArray and parameterized specializations for MLFloat16, int8_t, and std::string
   ///
   template <typename ElementType = T, typename ElementViewType = ViewT>
+  void SetBufferFromIterableOfBuffers(const std::vector<int64_t>& shape, wfc::IIterable<wss::IBuffer> const& buffers) {
+    // This adds compile time checks that ensure that the API can only be called when
+    // the conditions of ASSERT_TEMPLATE_PARAMETERS_EXACT() are met.
+    ASSERT_TEMPLATE_PARAMETERS_EXACT<ElementType, ElementViewType>();
+
+    shape_ = shape;
+    GetCpuResource() = std::make_shared<_winml::Tensor<T>>(shape, buffers);
+  }
+
+  template <>
+  void SetBufferFromIterableOfBuffers<_winml::Half, float>(
+      const std::vector<int64_t>& shape, wfc::IIterable<wss::IBuffer> const& buffers) {
+    // Ensure that this call is being called with the correct template parameters
+    ASSERT_TEMPLATE_PARAMETERS<_winml::Half, float>();
+
+    shape_ = shape;
+    GetCpuResource() = std::make_shared<_winml::Tensor<T>>(shape, buffers);
+  }
+
+  template <>
+  void SetBufferFromIterableOfBuffers<int8_t, uint8_t>(
+      const std::vector<int64_t>& shape, wfc::IIterable<wss::IBuffer> const& buffers) {
+    // Ensure that this call is being called with the correct template parameters
+    ASSERT_TEMPLATE_PARAMETERS<int8_t, uint8_t>();
+
+    shape_ = shape;
+    GetCpuResource() = std::make_shared<_winml::Tensor<T>>(shape, buffers);
+  }
+
+  // Specialized version to convert hstring to string
+  template <>
+  void SetBufferFromIterableOfBuffers<std::string, winrt::hstring>(
+      const std::vector<int64_t>& /*shape*/, wfc::IIterable<wss::IBuffer> const& /*buffers*/) {
+    // Ensure that this call is being called with the correct template parameters
+    ASSERT_TEMPLATE_PARAMETERS<std::string, winrt::hstring>();
+
+    // Dont know why this is throwing warnings for unreachable code...
+    //WINML_THROW_HR_IF_TRUE_MSG(
+    //    E_ILLEGAL_METHOD_CALL,
+    //    (std::is_same<T, std::string>::value),
+    //    "TensorString objects cannot be created from IBuffers!");
+  }
+
+  ///
+  /// SetBufferFromArray and parameterized specializations for MLFloat16, int8_t, and std::string
+  ///
+  template <typename ElementType = T, typename ElementViewType = ViewT>
   void SetBufferFromArray(winrt::array_view<ElementViewType const> data) {
     // This adds compile time checks that ensure that the API can only be called when
     // the conditions of ASSERT_TEMPLATE_PARAMETERS_EXACT() are met.
@@ -773,15 +811,16 @@ struct TensorBase : TBase {
     // Ensure that this call is being called with the correct template parameters
     ASSERT_TEMPLATE_PARAMETERS<_winml::Half, float>();
 
-    uint32_t size;
-    _winml::Half* pBuffer;
+    size_t size;
+    _winml::Resource buffer;
 
     // Get the data pointer and size
-    std::tie(size, pBuffer) = GetCpuResource()->buffer();
+    std::tie(size, buffer) = GetCpuResource()->buffer();
+    auto element_data = static_cast<_winml::Half*>(buffer.get());
 
     THROW_HR_IF(E_UNEXPECTED, data.size() != size);
     DirectX::PackedVector::XMConvertFloatToHalfStream(
-        reinterpret_cast<DirectX::PackedVector::HALF*>(pBuffer),
+        reinterpret_cast<DirectX::PackedVector::HALF*>(element_data),
         sizeof(_winml::Half) /* output stride */,
         data.data(),
         sizeof(float) /* input stride */,
@@ -806,16 +845,18 @@ struct TensorBase : TBase {
     // Ensure that this call is being called with the correct template parameters
     ASSERT_TEMPLATE_PARAMETERS<std::string, winrt::hstring>();
 
-    uint32_t size;
-    std::string* pBuffer;
+    size_t size;
+    _winml::Resource buffer;
 
     // Get the data pointer and size
-    std::tie(size, pBuffer) = GetCpuResource()->buffer();
+    std::tie(size, buffer) = GetCpuResource()->buffer();
     THROW_HR_IF(E_UNEXPECTED, data.size() > size);
+
+    auto element_data = static_cast<std::string*>(buffer.get());
 
     // Convert and copy into the underlying buffer
     std::transform(
-        data.begin(), data.end(), pBuffer,
+        data.begin(), data.end(), element_data,
         [](auto& element) mutable {
           return _winml::Strings::UTF8FromHString(element);
         });
@@ -831,16 +872,17 @@ struct TensorBase : TBase {
     // the conditions of ASSERT_TEMPLATE_PARAMETERS_EXACT() are met.
     ASSERT_TEMPLATE_PARAMETERS_EXACT<ElementType, ElementViewType>();
 
-    uint32_t size;
-    ElementType* pBuffer;
+    size_t size;
+    _winml::Resource buffer;
 
     // Get the data pointer and size
-    std::tie(size, pBuffer) = GetCpuResource()->buffer();
+    std::tie(size, buffer) = GetCpuResource()->buffer();
+    auto element_data = static_cast<ElementType*>(buffer.get());
 
     // This method accepts data as an IVectorView<T>.
     // This is a non-destructive API, so the caller data is
     // left untouched, and the data is copied into internal buffers.
-    std::copy(begin(data), end(data), pBuffer);
+    std::copy(begin(data), end(data), element_data);
   }
 
   // Specialized version to convert floats to float16
@@ -850,11 +892,12 @@ struct TensorBase : TBase {
     // Ensure that this call is being called with the correct template parameters
     ASSERT_TEMPLATE_PARAMETERS<_winml::Half, float>();
 
-    uint32_t size;
-    _winml::Half* pBuffer;
+    size_t size;
+    _winml::Resource buffer;
 
     // Get the data pointer and size
-    std::tie(size, pBuffer) = GetCpuResource()->buffer();
+    std::tie(size, buffer) = GetCpuResource()->buffer();
+    auto element_data = static_cast<_winml::Half*>(buffer.get());
 
     // Now that we take in IIterables and not vector views
     // how do we validate size???
@@ -863,7 +906,7 @@ struct TensorBase : TBase {
     std::transform(
         begin(data),
         end(data),
-        reinterpret_cast<DirectX::PackedVector::HALF*>(pBuffer),
+        reinterpret_cast<DirectX::PackedVector::HALF*>(element_data),
         DirectX::PackedVector::XMConvertFloatToHalf);
   }
 
@@ -874,13 +917,14 @@ struct TensorBase : TBase {
     // Ensure that this call is being called with the correct template parameters
     ASSERT_TEMPLATE_PARAMETERS<int8_t, uint8_t>();
 
-    uint32_t size;
-    int8_t* pBuffer;
+    size_t size;
+    _winml::Resource buffer;
 
     // Get the data pointer and size
-    std::tie(size, pBuffer) = GetCpuResource()->buffer();
+    std::tie(size, buffer) = GetCpuResource()->buffer();
+    auto element_data = static_cast<int8_t*>(buffer.get());
 
-    std::transform(begin(data), end(data), pBuffer, [](auto element) { return static_cast<int8_t>(element); });
+    std::transform(begin(data), end(data), element_data, [](auto element) { return static_cast<int8_t>(element); });
   }
 
   // Specialized version to convert hstring to string
@@ -890,14 +934,15 @@ struct TensorBase : TBase {
     // Ensure that this call is being called with the correct template parameters
     ASSERT_TEMPLATE_PARAMETERS<std::string, winrt::hstring>();
 
-    uint32_t size;
-    std::string* pBuffer;
+    size_t size;
+    _winml::Resource buffer;
 
     // Get the data pointer and size
-    std::tie(size, pBuffer) = GetCpuResource()->buffer();
+    std::tie(size, buffer) = GetCpuResource()->buffer();
+    auto element_data = static_cast<std::string*>(buffer.get());
 
     // Convert and copy into the underlying buffer
-    std::transform(begin(data), end(data), pBuffer, [](const auto& element) {
+    std::transform(begin(data), end(data), element_data, [](const auto& element) {
       return _winml::Strings::UTF8FromHString(element);
     });
   }

@@ -160,11 +160,11 @@ inline winml::ILearningModelFeatureValue CreateTensorValueFromInspectable(
   // Vector of IBuffer Input should be copied into the appropriate Tensor
   if (bindingType == _winml::BindingType::kInput) {
     if (auto buffers = inspectable.try_as<wfc::IVector<wss::IBuffer>>()) {
-      return TValueType::CreateAndCopyFromBatchedBuffers(descriptor.Shape(), buffers);
+      return TValueType::CreateFromBatchedBuffers(descriptor.Shape(), buffers);
     }
 
     if (auto buffers = inspectable.try_as<wfc::IVectorView<wss::IBuffer>>()) {
-      return TValueType::CreateAndCopyFromBatchedBuffers(descriptor.Shape(), buffers);
+      return TValueType::CreateFromBatchedBuffers(descriptor.Shape(), buffers);
     }
   }
 
