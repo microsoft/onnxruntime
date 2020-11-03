@@ -254,7 +254,7 @@ struct MyCustomKernel {
 
 struct MyCustomOp : Ort::CustomOpBase<MyCustomOp, MyCustomKernel> {
   explicit MyCustomOp(const char* provider) : provider_(provider) {}
-  void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo* info) { return new MyCustomKernel(api, info); };
+  void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo* info) const { return new MyCustomKernel(api, info); };
   const char* GetName() const { return "Foo"; };
 
   const char* GetExecutionProviderType() const { return provider_; };
