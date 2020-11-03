@@ -20,7 +20,6 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/allocator.h"
 #include "core/framework/TensorSeq.h"
-#include "core/framework/ml_value.h"
 #include "re2/re2.h"
 
 #include <cctype>
@@ -499,7 +498,10 @@ void OnnxTestCase::LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b,
 
   for (size_t i = 0; i < test_data_pb_files.size(); ++i) {
     const ONNX_NAMESPACE::ValueInfoProto* value_info_proto = is_input ? model_info_->GetInputInfoFromModel(i) : model_info_->GetOutputInfoFromModel(i);
-    ORT_ENFORCE(value_info_proto->has_type(), "Model ", is_input ? "input " : "output ", i, " is missing type info");
+    if (!value_info_proto->has_type()) {
+      ORT_THROW("Model ", is_input ? "input " : "output ", i, " is missing type info");
+    }
+
     if (value_info_proto->type().has_tensor_type()) {
       ONNX_NAMESPACE::TensorProto test_pb;
       LoadTensor(test_data_pb_files[i], test_pb);
@@ -552,8 +554,9 @@ void OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::SequenceProto& test_dat
   size_t len = 0;
 
   std::vector<Ort::Value> seq;
-  ORT_ENFORCE(test_data_pb.elem_type() == ONNX_NAMESPACE::SequenceProto_DataType_TENSOR,
-              "Only parsing a sequence of tensors is currently supported");
+  if (test_data_pb.elem_type() != ONNX_NAMESPACE::SequenceProto_DataType_TENSOR) {
+    ORT_THROW("Only parsing a sequence of tensors is currently supported");
+  }
   const auto& tensors = test_data_pb.tensor_values();
   const size_t val = tensors.size();
   seq.reserve(val);

@@ -44,7 +44,6 @@ inline void ValidateOpsetForDomain(const std::unordered_map<std::string, int>& o
   if (it != onnx_released_versions.end() && version > it->second) {
     auto current_domain = domain.empty() ? kOnnxDomainAlias : domain;
     if (allow_official_onnx_release_only) {
-      /*
       ORT_THROW(
           "ONNX Runtime only *guarantees* support for models stamped "
           "with official released onnx opset versions. "
@@ -56,7 +55,6 @@ inline void ValidateOpsetForDomain(const std::unordered_map<std::string, int>& o
           "Current official support for domain ",
           current_domain, " is till opset ",
           it->second, ".");
-      */
     } else {
       LOGS(logger, WARNING) << "ONNX Runtime only *guarantees* support for models stamped "
                                "with official released onnx opset versions. "
