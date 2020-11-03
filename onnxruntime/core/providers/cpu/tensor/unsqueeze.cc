@@ -18,19 +18,9 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
     Unsqueeze);
 
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
-    Unsqueeze,
-    11,
-    12,
-    KernelDefBuilder()
-        .Alias(0, 0)
-        .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
-    Unsqueeze);
-
-// axes is input instead of attribute
 ONNX_CPU_OPERATOR_KERNEL(
     Unsqueeze,
-    13,
+    11,
     KernelDefBuilder()
         .Alias(0, 0)
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
@@ -41,26 +31,12 @@ Status UnsqueezeBase::PrepareCompute(OpKernelContext* ctx, Prepare& p) const {
   ORT_ENFORCE(X != nullptr);
   auto& input_tensor = *X;
 
-  std::vector<int64_t> axes;
-  size_t num_inputs = ctx->InputCount();
-  if (num_inputs == 2) { //axes is an input
-    const Tensor* axes_tensor = ctx->Input<Tensor>(1);
-    ORT_ENFORCE(axes_tensor != nullptr, "Axes input is null");
-    ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1,
-                "An axes tensor must be a vector tensor.");
-    auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);
-    const auto* data = axes_tensor->template Data<int64_t>();
-    axes.assign(data, data + nDims);
-  } else {
-    axes.assign(axes_.begin(), axes_.end());
-  }
-
-  // New dimension count is the current dimensions + the number of entries in axes
+  // New dimension count is the current dimensions + the number of entries in axes_
   // Initialize output_dims to 0 in each axis initially
-  std::vector<int64_t> output_dims(axes.size() + input_tensor.Shape().NumDimensions(), 0);
+  std::vector<int64_t> output_dims(axes_.size() + input_tensor.Shape().NumDimensions(), 0);
 
-  // Set all axes indices to 1 in output_dims and check for duplicates
-  for (int64_t axis : axes) {
+  // Set all axes_ indices to 1 in output_dims and check for duplicates
+  for (int64_t axis : axes_) {
     // Valid axis range is [0, output_rank - 1]
     axis = HandleNegativeAxis(axis, output_dims.size());
     if (axis < 0 || axis >= static_cast<int64_t>(output_dims.size()))

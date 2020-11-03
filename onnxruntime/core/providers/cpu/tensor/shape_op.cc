@@ -17,4 +17,5 @@ ONNX_CPU_OPERATOR_KERNEL(
     13,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()).TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
     Shape);
+
 }  // namespace onnxruntime

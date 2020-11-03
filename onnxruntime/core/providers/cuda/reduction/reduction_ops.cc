@@ -95,35 +95,6 @@ namespace cuda {
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       name<T>);
 
-// Register with the latest version 13
-#define REGISTER_KERNEL_TYPED_13(name, T)                                       \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
-      name,                                                                     \
-      kOnnxDomain,                                                              \
-      1, 10,                                                                    \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      name<T>);                                                                 \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
-      name,                                                                     \
-      kOnnxDomain,                                                              \
-      11, 12,                                                                   \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      name<T>);                                                                 \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      name,                                                                     \
-      kOnnxDomain,                                                              \
-      13,                                                                       \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder()                                                        \
-          .InputMemoryType<OrtMemTypeCPUInput>(1)                               \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),               \
-      name<T>);
-
 // TODO ReduceKernel::ReduceKernelShared() is still used by some other training classes though it's not used here - this should be refactored.
 template <bool allow_multi_axes>
 template <typename T, typename OutT, cudnnReduceTensorIndices_t ReduceTensorIndices>
@@ -647,32 +618,11 @@ template <bool allow_multi_axes>
 template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices>
 Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnReduceTensorOp_t cudnn_reduce_op) const {
   const Tensor* X = ctx->Input<Tensor>(0);
-  std::vector<int64_t> axes;
-
-  size_t num_inputs = ctx->InputCount();
-  if (num_inputs == 2) {
-    //override the attribute value with the input value for reduction_axes
-    const Tensor* axes_tensor = ctx->Input<Tensor>(1);
-    ORT_ENFORCE(axes_tensor != nullptr, "Axes input is null");
-    ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1, "An axes tensor must be a vector tensor.");
-    auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);
-    const auto* data = axes_tensor->template Data<int64_t>();
-    axes.assign(data, data + nDims);
-  } else {
-    axes.assign(axes_.begin(), axes_.end());
-  }
-
-  // empty axes and no-op
-  if (axes.empty() && noop_with_empty_axes_) {
-    auto* Y = ctx->Output(0, X->Shape());
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y->template MutableData<T>(), X->template Data<T>(), X->SizeInBytes(), cudaMemcpyDeviceToDevice));
-    return Status::OK();
-  }
 
   PrepareReduceMetadata prepare_reduce_metadata;
   ORT_RETURN_IF_ERROR(PrepareForReduce(X,
                                        keepdims_,
-                                       axes,
+                                       axes_,
                                        prepare_reduce_metadata));
   Tensor* Y = ctx->Output(0, prepare_reduce_metadata.squeezed_output_dims);
   bool fast_reduction = fast_reduction_;
@@ -692,33 +642,12 @@ Status ReduceKernel<true>::ComputeImpl<int32_t, CUDNN_REDUCE_TENSOR_NO_INDICES>(
   typedef typename ToCudaType<int32_t>::MappedType CudaT;
 
   const Tensor* X = ctx->Input<Tensor>(0);
-  std::vector<int64_t> axes;
-
-  size_t num_inputs = ctx->InputCount();
-  if (num_inputs == 2) {
-    //override the attribute value with the input value for reduction_axes
-    const Tensor* axes_tensor = ctx->Input<Tensor>(1);
-    ORT_ENFORCE(axes_tensor != nullptr, "Axes input is null");
-    ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1, "An axes tensor must be a vector tensor.");
-    auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);
-    const auto* data = axes_tensor->template Data<int64_t>();
-    axes.assign(data, data + nDims);
-  } else {
-    axes.assign(axes_.begin(), axes_.end());
-  }
-
-  // empty axes and no-op
-  if (axes.empty() && noop_with_empty_axes_) {
-    auto* Y = ctx->Output(0, X->Shape());
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y->template MutableData<int32_t>(), X->template Data<int32_t>(), X->SizeInBytes(), cudaMemcpyDeviceToDevice));
-    return Status::OK();
-  }
 
   PrepareReduceMetadata prepare_reduce_metadata;
 
   ORT_RETURN_IF_ERROR(PrepareForReduce(X,
                                        keepdims_,
-                                       axes,
+                                       axes_,
                                        prepare_reduce_metadata));
 
   Tensor* Y = ctx->Output(0, prepare_reduce_metadata.squeezed_output_dims);
@@ -1023,12 +952,7 @@ REGISTER_KERNEL_TYPED_12(ReduceMin, int8_t)
 REGISTER_KERNEL_TYPED_12(ReduceMin, uint8_t)
 
 REGISTER_KERNEL_HFD(ReduceProd)
-
-REGISTER_KERNEL_TYPED_13(ReduceSum, MLFloat16)
-REGISTER_KERNEL_TYPED_13(ReduceSum, float)
-REGISTER_KERNEL_TYPED_13(ReduceSum, double)
-REGISTER_KERNEL_TYPED_13(ReduceSum, int32_t)
-
+REGISTER_KERNEL_HFD(ReduceSum)
 REGISTER_KERNEL_HFD(ReduceLogSum)
 REGISTER_KERNEL_HFD(ReduceSumSquare)
 REGISTER_KERNEL_HFD(ReduceLogSumExp)
@@ -1041,6 +965,7 @@ REGISTER_KERNEL_INT32(ReduceL2)
 REGISTER_KERNEL_INT32(ReduceMean)
 
 REGISTER_KERNEL_INT32(ReduceProd)
+REGISTER_KERNEL_INT32(ReduceSum)
 
 }  // namespace cuda
 }  // namespace onnxruntime
