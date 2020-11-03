@@ -1708,6 +1708,9 @@ static ORT_STATUS_PTR OrtCreateValueImplMap(const OrtValue* const* in, size_t nu
 
 static ORT_STATUS_PTR OrtCreateValueImpl(_In_reads_(num_values) const OrtValue* const* in, size_t num_values,
                                          enum ONNXType value_type, _Outptr_ OrtValue** out) {
+  if (num_values <= 0) {
+    return OrtApis::CreateStatus(ORT_FAIL, "Number of values should be at least 1.");
+  }
   if (value_type == ONNX_TYPE_MAP) {
 #if !defined(DISABLE_ML_OPS)
     return OrtCreateValueImplMap(in, num_values, out);
