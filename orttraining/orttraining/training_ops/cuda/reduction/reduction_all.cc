@@ -44,7 +44,7 @@ Status ReduceAllL2<TIn, TOut>::ComputeInternal(OpKernelContext* ctx) const {
   // Allocate output tensor.
   Tensor* output = ctx->Output(0, {});
   CudaTOut* p_output = reinterpret_cast<CudaTOut*>(output->template MutableData<TOut>());
-  ORT_ENFORCE(cudaMemset(p_output, 0, sizeof(CudaTOut)) == cudaSuccess);
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(p_output, 0, sizeof(CudaTOut)));
 
   auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
   bool deterministic = ctx_internal && ctx_internal->GetUseDeterministicCompute();
@@ -78,10 +78,10 @@ Status ReduceAllL2<TIn, TOut>::ComputeInternal(OpKernelContext* ctx) const {
     scratch_size += (1 + total_tensor_count) * sizeof(CudaTAcc);
 
     // create GPU scratch space and zero target for each tensor square norm
-    uint8_t* p_scratch = GetScratchBuffer<uint8_t>(scratch_size).get();
-    ORT_ENFORCE(cudaMemset(p_scratch, 0, sizeof(CudaTAcc) * (1 + total_tensor_count)) == cudaSuccess);
+    auto scratch_buffer = GetScratchBuffer<uint8_t>(scratch_size);
+    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(scratch_buffer.get(), 0, sizeof(CudaTAcc) * (1 + total_tensor_count)));
 
-    CudaTAcc* p_global_sqnorm = reinterpret_cast<CudaTAcc*>(p_scratch);
+    CudaTAcc* p_global_sqnorm = reinterpret_cast<CudaTAcc*>(scratch_buffer.get());
     CudaTAcc* p_tensor_sqnorm = p_global_sqnorm + 1;
     CudaTAcc* p_reduce_buffer = p_tensor_sqnorm + total_tensor_count;
 
