@@ -247,7 +247,7 @@ class TrainingSession : public InferenceSession {
     optional<PipelineConfigurationResult> pipeline_config_result;
 
     // Mapped initilized names after weight partitioning for example MegatronTransformer
-    std::unordered_map<std::string, std::string> updated_weight_names{};
+    std::unordered_map<std::string, std::string> weight_name_map_after_graph_transform{};
   };
 
   /**
@@ -486,7 +486,6 @@ class TrainingSession : public InferenceSession {
 
   GradientGraphConfiguration gradient_graph_config_;
   static const std::string training_mode_string_;
-  std::string model_output_path = "";
 };
 }  // namespace training
 }  // namespace onnxruntime

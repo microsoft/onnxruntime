@@ -462,20 +462,20 @@ const logging::Logger& logger,
 const int total_rank, 
 std::vector<std::string> input_names,
 std::vector<std::vector<int64_t>> input_dims) {
-  auto model_uri = model_path + ".onnx";
+  const PathString model_uri = model_path + ".onnx";
   // const int total_rank = 4;
   std::vector<Graph*> graphs;
   std::vector<std::shared_ptr<Model>> p_models(total_rank);
   for (auto i = 0; i < total_rank; i++) {
-    auto ret = Model::Load(model_uri, p_models[i], nullptr, logger);
-    ASSERT_TRUE(ret.IsOK());
+    Status ret = Model::Load(model_uri, p_models[i], nullptr, logger);
+    ORT_ENFORCE(ret.IsOK());
     Graph& graph = p_models[i]->MainGraph();
     onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
     std::unordered_map<std::string, std::string> updated_weight_names;
     std::unordered_set<std::string> weights_to_train;
     graph_transformation_mgr.Register(onnxruntime::make_unique<MegatronTransformer>(i, total_rank, updated_weight_names, weights_to_train), TransformerLevel::Level1);
     ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, logger);
-    ASSERT_TRUE(ret.IsOK());
+    ORT_ENFORCE(ret.IsOK());
     graphs.push_back(&graph);
     auto model_uri2 = model_path + "_partition_rank" + std::to_string(i) + ".onnx";
     Model::Save(*p_models[i], model_uri2);

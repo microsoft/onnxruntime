@@ -44,12 +44,15 @@ Status SetupOptimizerParams(
     const TrainingSession::TrainingConfiguration& config,
     OptimizerGraphConfig& opt_graph_config_result,
     std::unordered_map<std::string, OptimizerNodeConfig>& opt_node_configs_result,
-    std::unordered_map<std::string, std::string>& updated_weight_names) {
+    std::unordered_map<std::string, std::string>& weight_name_map_after_graph_transform) {
   ORT_RETURN_IF_NOT(config.optimizer_config.has_value());
   const auto& optimizer_config = config.optimizer_config.value();
 
+  // This is the mapping from the new weight name to the original weight name
+  // It is required to look up the optimizer config for the original weight
+  // passed in the training session config
   std::unordered_map<std::string, std::string> reversed_weight_names_map;
-  for (auto& p : updated_weight_names) {
+  for (auto& p : weight_name_map_after_graph_transform) {
     reversed_weight_names_map.insert({p.second, p.first});
   }
 
@@ -58,18 +61,18 @@ Status SetupOptimizerParams(
     OptimizerNodeConfig opt_node_config{};
     opt_node_config.name = optimizer_config.name;
     opt_node_config.lr_feed_name = optimizer_config.learning_rate_input_name;
-    std::string w_n = weight_name;
-    if (reversed_weight_names_map.find(w_n) != reversed_weight_names_map.end()) {
-      w_n = reversed_weight_names_map.at(w_n);
+    std::string original_weight_name = weight_name;
+    if (reversed_weight_names_map.find(original_weight_name) != reversed_weight_names_map.end()) {
+      original_weight_name = reversed_weight_names_map.at(original_weight_name);
     }
     try {
-      opt_node_config.attributes = optimizer_config.weight_attributes_generator(w_n);
+      opt_node_config.attributes = optimizer_config.weight_attributes_generator(original_weight_name);
     } catch (const std::exception& ex) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
     }
 
     try {
-      opt_node_config.int_attributes = optimizer_config.weight_int_attributes_generator(w_n);
+      opt_node_config.int_attributes = optimizer_config.weight_int_attributes_generator(original_weight_name);
     } catch (const std::exception& ex) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
     }
@@ -79,7 +82,7 @@ Status SetupOptimizerParams(
         loss_scale_input_name.has_value() ? loss_scale_input_name.value() : "";
     opt_node_config.use_mixed_precision_moments = optimizer_config.use_mixed_precision_moments;
 
-    const auto mixed_precision_weight_name_it = fp32_weight_names_to_mixed_precision_node_args.find(w_n);
+    const auto mixed_precision_weight_name_it = fp32_weight_names_to_mixed_precision_node_args.find(original_weight_name);
     if (mixed_precision_weight_name_it != fp32_weight_names_to_mixed_precision_node_args.end()) {
       opt_node_config.mixed_precision_weight_arg = mixed_precision_weight_name_it->second;
     } else {
@@ -249,14 +252,14 @@ Status TrainingSession::ConfigureForTraining(
   ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(trainable_initializers, config.graph_transformer_config,
                                                       config_result));
 
-  std::unordered_set<std::string> furthur_filtered_weight_to_train;
-  for (auto& filtered_weight_name : filtered_config_weight_names_to_train) {
-    if (config_result.updated_weight_names.find(filtered_weight_name) !=
-        config_result.updated_weight_names.end()) {
-      auto& updated_weight_name = config_result.updated_weight_names.at(filtered_weight_name);
-      furthur_filtered_weight_to_train.insert(updated_weight_name);
+  std::unordered_set<std::string> all_trainable_weights;
+  for (auto& filtered_weight_name : trainable_initializers) {
+    if (config_result.weight_name_map_after_graph_transform.find(filtered_weight_name) !=
+        config_result.weight_name_map_after_graph_transform.end()) {
+      auto& updated_weight_name = config_result.weight_name_map_after_graph_transform.at(filtered_weight_name);
+      all_trainable_weights.insert(updated_weight_name);
     } else {
-      furthur_filtered_weight_to_train.insert(filtered_weight_name);
+      all_trainable_weights.insert(filtered_weight_name);
     }
   }
 
@@ -267,14 +270,14 @@ Status TrainingSession::ConfigureForTraining(
 
   // derive actual set of weights to train
   std::unordered_set<std::string> weight_names_to_train =
-      !furthur_filtered_weight_to_train.empty()
-          ? furthur_filtered_weight_to_train
+      !all_trainable_weights.empty()
+          ? all_trainable_weights
           : GetTrainableModelInitializers(config.immutable_weights, loss_name);
 
   for (const auto& weight_name_to_not_train : config.weight_names_to_not_train) {
-    if (config_result.updated_weight_names.find(weight_name_to_not_train) !=
-        config_result.updated_weight_names.end()) {
-      weight_names_to_train.erase(config_result.updated_weight_names.at(weight_name_to_not_train));
+    if (config_result.weight_name_map_after_graph_transform.find(weight_name_to_not_train) !=
+        config_result.weight_name_map_after_graph_transform.end()) {
+      weight_names_to_train.erase(config_result.weight_name_map_after_graph_transform.at(weight_name_to_not_train));
     } else {
       weight_names_to_train.erase(weight_name_to_not_train);
     }
@@ -348,7 +351,7 @@ Status TrainingSession::ConfigureForTraining(
     std::unordered_map<std::string, OptimizerNodeConfig> opt_node_configs{};
     ORT_RETURN_IF_ERROR(SetupOptimizerParams(
         weights_to_train_, fp32_weight_name_to_mixed_precision_node_arg,
-        loss_scale_input_name, config, opt_graph_config, opt_node_configs, config_result.updated_weight_names));
+        loss_scale_input_name, config, opt_graph_config, opt_node_configs, config_result.weight_name_map_after_graph_transform));
     TrainingConfigurationResult::OptimizerConfigurationResult optimizer_config_result{};
     ORT_RETURN_IF_ERROR(BuildOptimizer(
         opt_graph_config, opt_node_configs,
@@ -578,7 +581,7 @@ void TrainingSession::AddPreTrainingTransformers(const IExecutionProvider& execu
     // Generate and register transformers for level
 
     auto transformers_to_register = transformer_utils::GeneratePreTrainingTransformers(
-        level, weights_to_train, config, execution_provider, config_result_out.updated_weight_names, custom_list);
+        level, weights_to_train, config, execution_provider, config_result_out.weight_name_map_after_graph_transform, custom_list);
     for (auto& entry : transformers_to_register) {
       transformer_manager.Register(std::move(entry), level);
     }
