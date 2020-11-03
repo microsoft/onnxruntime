@@ -513,7 +513,7 @@ class PlannerImpl {
   Status GeneratePlanForWeights() {
     auto& weights = graph_viewer_.GetAllInitializedTensors();
     std::vector<std::vector<OrtMemoryInfo>> locations(plan_.allocation_plan.size());
-    for (auto& node : graph_viewer_.Nodes()) {
+    for (const auto& node : graph_viewer_.Nodes()) {
       auto status = onnxruntime::Node::ForEachWithIndex(
           node.InputDefs(), [this, &locations, &node, &weights](const onnxruntime::NodeArg& def, size_t index) {
             auto sub_status = Status::OK();
