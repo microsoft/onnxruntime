@@ -213,12 +213,13 @@ void ThreadPool::Schedule(std::function<void()> fn) {
 
 thread_local ThreadPool::ParallelSection *ThreadPool::ParallelSection::current_parallel_section;
 
-ThreadPool::ParallelSection::ParallelSection(ThreadPool *tp) : _tp(tp) {
+ThreadPool::ParallelSection::ParallelSection(ThreadPool *tp) {
 #ifdef _OPENMP
   // Nothing
 #else
   ORT_ENFORCE(!current_parallel_section, "Nested parallelism not supported");
   ORT_ENFORCE(!_ps);//.get());
+  _tp = tp;
   if (tp->underlying_threadpool_) {
     _ps = tp->underlying_threadpool_->MakeParallelSection();
     _tp->underlying_threadpool_->StartParallelSection(*_ps);//.get());
