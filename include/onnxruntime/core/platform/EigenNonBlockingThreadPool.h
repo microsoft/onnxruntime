@@ -67,9 +67,10 @@ struct ThreadPoolParallelSection {
   // Flag to signal termination of the parallel section
   std::atomic<bool> active{false};
 
-  // Count of the number of tasks that completed normally.  Other tasks
-  // may be present in work queues, or may have been removed from the
-  // queues by RunQueue::RevokeWithTag.
+  // Count of the number of tasks that completed normally.  Other
+  // tasks may be running currently, or may be present in work queues,
+  // or may have been removed from the queues by
+  // RunQueue::RevokeWithTag.
   std::atomic<unsigned> tasks_finished{0};
 
   // If non-null, the current loop that tasks should be executing.  We
@@ -79,7 +80,8 @@ struct ThreadPoolParallelSection {
   //
   // - Readers increment workers_in_loop and then read current_loop
   //
-  // - Writers clear current_loop and then wait for workers_in_loop==0
+  // - Writers wishing to deallocate *current_loop must first clear
+  //   current_loop and then wait for workers_in_loop==0
   std::atomic<PerLoop *> current_loop{nullptr};
   std::atomic<unsigned> workers_in_loop{0};
 };

@@ -126,7 +126,7 @@ class ThreadPool {
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ParallelSection);
 
     static thread_local ParallelSection *current_parallel_section;
-    static_assert(std::is_trivially_destructible<typeof(ParallelSection::current_parallel_section)>::value,
+    static_assert(std::is_trivially_destructible<decltype(ParallelSection::current_parallel_section)>::value,
                   "Per-thread state should be trivially destructible");
   };
 
