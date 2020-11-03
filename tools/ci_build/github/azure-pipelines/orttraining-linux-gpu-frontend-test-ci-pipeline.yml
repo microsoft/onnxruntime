@@ -10,7 +10,7 @@ jobs:
     clean: true
     submodules: recursive
 
-    - script: |
+  - script: |
     orttraining/tools/ci_test/download_e2e_test_data.py \
     --azure_blob_url https://onnxruntimetestdata.blob.core.windows.net/training/onnxruntime_training_data.zip?snapshot=2020-06-15T23:17:35.8314853Z \
     --target_dir $(Build.BinariesDirectory)/training_e2e_test_data \
