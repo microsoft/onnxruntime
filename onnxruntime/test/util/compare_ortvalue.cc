@@ -328,7 +328,7 @@ std::pair<COMPARE_RESULT, std::string> CompareOrtValue(const OrtValue& o, const 
       std::ostringstream oss;
       oss << "expected tensor count in the sequence: " << expected_tensor_count << " got "
           << actual_tensor_count;
-      return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, oss.str());
+      return std::make_pair(COMPARE_RESULT::RESULT_DIFFERS, oss.str());
     }
 
     if (!expected_tensor_seq.IsSameDataType(actual_tensor_seq)) {
