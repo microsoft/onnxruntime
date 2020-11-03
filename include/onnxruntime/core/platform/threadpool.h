@@ -120,7 +120,9 @@ class ThreadPool {
 
   private:
     friend class ThreadPool;
+#ifndef _OPENMP
     ThreadPool *_tp;
+#endif
     ThreadPoolParallelSection *_ps{nullptr};
     //    std::unique_ptr<ThreadPoolParallelSection> _ps{nullptr};
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ParallelSection);
