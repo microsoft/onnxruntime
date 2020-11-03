@@ -225,6 +225,70 @@ MlasGemm(
     MLAS_THREADPOOL* ThreadPool
     );
 
+enum class QuantizationGranularity {
+    PerMatrix,
+    PerColumn,
+};
+
+class OUTPUT_PROCESSOR {
+public:
+    inline
+    virtual
+    void
+    Process(
+        float* /*C*/,
+        const int32_t* /*CBuffer*/,
+        size_t /*RangeStartM*/,
+        size_t /*RangeStartN*/,
+        size_t /*RangeCountM*/,
+        size_t /*RangeCountN*/,
+        size_t /*ldc*/,
+        size_t /*ldcBuffer*/) const
+    {
+        return;
+    }
+};
+
+class SCALE_BIAS_PROCESSOR : public OUTPUT_PROCESSOR {
+public:
+
+    SCALE_BIAS_PROCESSOR(
+        const float* Scale,
+        const float* Bias,
+        QuantizationGranularity QuantGran);
+
+    inline
+    void
+    Process(
+    float* C,
+    const int32_t* CBuffer,
+    size_t StartM,
+    size_t StartN,
+    size_t CountM,
+    size_t CountN,
+    size_t ldc,
+    size_t ldcBuffer) const override;
+
+private:
+    template<bool HASBIAS, QuantizationGranularity QUANTGRAN>
+    inline
+    void
+    ProcessImpl(
+    float* C,
+    const int32_t* CBuffer,
+    size_t StartM,
+    size_t StartN,
+    size_t CountM,
+    size_t CountN,
+    size_t ldc,
+    size_t ldcBuffer) const;
+
+private:
+    const float* Scale_;
+    const float* Bias_;
+    QuantizationGranularity QuantGran_;
+};
+
 void
 MLASCALL
 MlasGemm(
@@ -238,12 +302,13 @@ MlasGemm(
     size_t ldb,
     uint8_t offb,
     bool BIsSigned,
-    float* C,
+    int32_t* C,
     size_t ldc,
-    const float* Scale,
-    const float* Bias,
+    float* output,
+    size_t ldOutput,
+    const OUTPUT_PROCESSOR* OutputProcessor,
     MLAS_THREADPOOL* ThreadPool
-    );
+);
 
 void
 MLASCALL
@@ -274,12 +339,13 @@ MlasGemm(
     const void* PackedB,
     uint8_t offb,
     bool BIsSigned,
-    float* C,
+    int32_t* C,
     size_t ldc,
-    const float* Scale,
-    const float* Bias,
+    float* output,
+    size_t ldOutput,
+    const OUTPUT_PROCESSOR* OutputProcessor,
     MLAS_THREADPOOL* ThreadPool
-    );
+);
 
 //
 // Buffer packing routines.

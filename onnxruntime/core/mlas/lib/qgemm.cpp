@@ -40,13 +40,13 @@ struct MLAS_GEMM_U8X8_WORK_BLOCK {
     size_t ldb;
     int32_t* C;
     size_t ldc;
-    const float* Scale;
-    const float* BiasFloat;
+    float* Output;
+    size_t ldOutput;
     uint8_t offa;
     uint8_t offb;
     bool BIsPacked;
     bool BIsSigned;
-    bool CIsFloat;
+    const OUTPUT_PROCESSOR* OutputProcessor;
 };
 
 //
@@ -66,7 +66,7 @@ MlasGemmU8X8ScaleSumBuffer(
     const int32_t* Input,
     size_t N,
     int32_t Scale
-    )
+)
 {
     for (size_t n = 0; n < N; n++) {
         Output[n] = Input[n] * Scale;
@@ -79,19 +79,54 @@ MlasGemmU8X8ScaleSumBuffer(
     int32_t* SumBuffer,
     size_t N,
     int32_t Scale
-    )
+)
 {
     return MlasGemmU8X8ScaleSumBuffer(SumBuffer, SumBuffer, N, Scale);
 }
 
-void
-MlasGemmU8X8OutputFloat(
-    const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock,
-    int32_t* C,
+SCALE_BIAS_PROCESSOR::SCALE_BIAS_PROCESSOR(
+    const float* Scale,
+    const float* Bias,
+    QuantizationGranularity QuantGran) : Scale_(Scale), Bias_(Bias), QuantGran_(QuantGran)
+{
+}
+
+void SCALE_BIAS_PROCESSOR::Process(
+    float* C,
+    const int32_t* CBuffer,
+    size_t StartM,
     size_t StartN,
     size_t CountM,
-    size_t CountN
-    )
+    size_t CountN,
+    size_t ldc,
+    size_t ldcBuffer
+    ) const{
+    if(Bias_){
+        if (QuantGran_ == QuantizationGranularity::PerColumn) {
+            ProcessImpl<true, QuantizationGranularity::PerColumn>(C, CBuffer, StartM, StartN, CountM, CountN, ldc, ldcBuffer);
+        } else{
+            ProcessImpl<true, QuantizationGranularity::PerMatrix>(C, CBuffer, StartM, StartN, CountM, CountN, ldc, ldcBuffer);
+        }
+    } else if (QuantGran_ == QuantizationGranularity::PerColumn) {
+        ProcessImpl<false, QuantizationGranularity::PerColumn>(C, CBuffer, StartM, StartN, CountM, CountN, ldc, ldcBuffer);
+    }
+    else {
+        ProcessImpl<false, QuantizationGranularity::PerMatrix>(C, CBuffer, StartM, StartN, CountM, CountN, ldc, ldcBuffer);
+    }
+}
+
+template<bool HASBIAS, QuantizationGranularity QUANTGRAN>
+inline
+void
+SCALE_BIAS_PROCESSOR::ProcessImpl(
+    float* C,
+    const int32_t* CBuffer,
+    size_t StartM,
+    size_t StartN,
+    size_t CountM,
+    size_t CountN,
+    size_t ldc,
+    size_t ldcBuffer) const
 /*++
 
 Routine Description:
@@ -119,85 +154,96 @@ Return Value:
 
 --*/
 {
-    const size_t ldc = WorkBlock->ldc;
-    const MLAS_FLOAT32X4 ScaleVector = MlasBroadcastFloat32x4(WorkBlock->Scale);
+    const float* Bias = Bias_;
+    const float* Scale = Scale_;
+
+    if (HASBIAS) {
+        Bias += StartN;
+    }
+
+    if(QUANTGRAN == QuantizationGranularity::PerColumn){
+        Scale += StartN;
+    }
+
+    const MLAS_FLOAT32X4 ScaleVector = MlasBroadcastFloat32x4(Scale_);
 #if !defined(MLAS_SSE2_INTRINSICS)
     const float ScaleValue = MlasExtractLaneFloat32x4<0>(ScaleVector);
 #endif
 
-    //
-    // Check if the optional bias vector was supplied.
-    //
+    C += StartM * ldc + StartN;
+    CBuffer += StartM * ldcBuffer + StartN;
 
-    const float* BiasFloat = WorkBlock->BiasFloat;
 
-    if (BiasFloat != nullptr) {
+    while (CountM-- > 0) {
 
-        BiasFloat += WorkBlock->RangeStartN + StartN;
+        float* c_out = C;
+        const int32_t* c_buf = CBuffer;
+        const float* bias = Bias;
+        const float* scale = Scale;
 
-        while (CountM-- > 0) {
+        size_t n = CountN;
 
-            const float* bias = BiasFloat;
-            int32_t* c = C;
-            size_t n = CountN;
+        while (n >= 4) {
 
-            while (n >= 4) {
+            MLAS_FLOAT32X4 FloatVector = MlasCastToFloat32x4(MlasLoadInt32x4(c_buf));
 
-                MLAS_FLOAT32X4 FloatVector = MlasCastToFloat32x4(MlasLoadInt32x4(c));
+            if (QUANTGRAN == QuantizationGranularity::PerColumn) {
+                FloatVector = MlasMultiplyFloat32x4(FloatVector, MlasLoadFloat32x4(scale));
+            }
+            else {
                 FloatVector = MlasMultiplyFloat32x4(FloatVector, ScaleVector);
+            }
+
+            if (HASBIAS) {
                 FloatVector = MlasAddFloat32x4(FloatVector, MlasLoadFloat32x4(bias));
-                MlasStoreFloat32x4(reinterpret_cast<float*>(c), FloatVector);
+            }
+            MlasStoreFloat32x4(c_out, FloatVector);
 
+            c_out +=4;
+            c_buf += 4;
+
+            if (HASBIAS) {
                 bias += 4;
-                c += 4;
-                n -= 4;
             }
 
-            for (size_t offset = 0; offset < n; offset++) {
+            if (QUANTGRAN == QuantizationGranularity::PerColumn){
+                scale += 4;
+            }
+
+            n -= 4;
+        }
+
+        for (size_t offset = 0; offset < n; offset++) {
 
 #if defined(MLAS_SSE2_INTRINSICS)
-                __m128 FloatVector = _mm_set_ss(float(c[offset]));
+            __m128 FloatVector = _mm_set_ss(float(c_buf[offset]));
+
+            if (QUANTGRAN == QuantizationGranularity::PerColumn) {
+                FloatVector = _mm_mul_ss(FloatVector, _mm_load_ss(&scale[offset]));
+            } else {
                 FloatVector = _mm_mul_ss(FloatVector, ScaleVector);
+            }
+
+            if (HASBIAS) {
                 FloatVector = _mm_add_ss(FloatVector, _mm_load_ss(&bias[offset]));
-                _mm_store_ss(reinterpret_cast<float*>(&c[offset]), FloatVector);
+            }
+            _mm_store_ss(&c_out[offset], FloatVector);
 #else
-                *reinterpret_cast<float*>(&c[offset]) = float(c[offset]) * ScaleValue + bias[offset];
-#endif
+            if (QUANTGRAN == QuantizationGranularity::PerColumn) {
+                c_out[offset]) = float(c_buf[offset]) * scale[offset];
+            }
+            else {
+                c_out[offset]) = float(c_buf[offset]) * ScaleValue;
             }
 
-            C += ldc;
+            if (HASBIAS) {
+                c_out[offset]) += bias[offset];
+            }
+#endif
         }
 
-    } else {
-
-        while (CountM-- > 0) {
-
-            int32_t* c = C;
-            size_t n = CountN;
-
-            while (n >= 4) {
-
-                MLAS_FLOAT32X4 FloatVector = MlasCastToFloat32x4(MlasLoadInt32x4(c));
-                FloatVector = MlasMultiplyFloat32x4(FloatVector, ScaleVector);
-                MlasStoreFloat32x4(reinterpret_cast<float*>(c), FloatVector);
-
-                c += 4;
-                n -= 4;
-            }
-
-            for (size_t offset = 0; offset < n; offset++) {
-
-#if defined(MLAS_SSE2_INTRINSICS)
-                __m128 FloatVector = _mm_set_ss((float)c[offset]);
-                FloatVector = _mm_mul_ss(FloatVector, ScaleVector);
-                _mm_store_ss(reinterpret_cast<float*>(&c[offset]), FloatVector);
-#else
-                *reinterpret_cast<float*>(&c[offset]) = float(c[offset]) * ScaleValue;
-#endif
-            }
-
-            C += ldc;
-        }
+        C += ldc;
+        CBuffer += ldcBuffer;
     }
 }
 
@@ -251,7 +297,7 @@ Return Value:
     // Try to use a GEMV kernel if supported by this kernel type.
     //
 
-    if ((M == 1) && (offa == 0) && (offb == 0) && !WorkBlock->CIsFloat) {
+    if ((M == 1) && (offa == 0) && (offb == 0) && !WorkBlock->OutputProcessor) {
         if (KernelType::TryGemvKernel(A, B, ldb, C, K, N, WorkBlock->BIsSigned)) {
             return;
         }
@@ -346,8 +392,15 @@ Return Value:
                         RowsRemaining, CountN, ldc, RowSums, ColumnSumBuffer,
                         DepthValue, ZeroMode);
 
-                    if (PostProcess && WorkBlock->CIsFloat) {
-                        MlasGemmU8X8OutputFloat(WorkBlock, c, n, RowsHandled, CountN);
+                    if (PostProcess && WorkBlock->OutputProcessor) {
+                        WorkBlock->OutputProcessor->Process(WorkBlock->Output,
+                                                            WorkBlock->C,
+                                                            WorkBlock->RangeStartM + m + CountM - RowsRemaining,
+                                                            WorkBlock->RangeStartN + n,
+                                                            RowsHandled,
+                                                            CountN,
+                                                            WorkBlock->ldc,
+                                                            WorkBlock->ldOutput);
                     }
 
                     c += ldc * RowsHandled;
@@ -508,8 +561,16 @@ Return Value:
                         RowsRemaining, CountN, ldc, RowSums, ColumnSumBuffer,
                         DepthValue, ZeroMode);
 
-                    if (PostProcess && WorkBlock->CIsFloat) {
-                        MlasGemmU8X8OutputFloat(WorkBlock, c, n, RowsHandled, CountN);
+                    if (PostProcess && WorkBlock->OutputProcessor) {
+                        WorkBlock->OutputProcessor->Process(
+                            WorkBlock->Output,
+                            WorkBlock->C,
+                            WorkBlock->RangeStartM + m + CountM - RowsRemaining,
+                            WorkBlock->RangeStartN + n,
+                            RowsHandled,
+                            CountN,
+                            WorkBlock->ldc,
+                            WorkBlock->ldOutput);
                     }
 
                     c += ldc * RowsHandled;
@@ -2274,10 +2335,11 @@ MlasGemm(
     size_t ldb,
     uint8_t offb,
     bool BIsSigned,
-    float* C,
+    int32_t* C,
     size_t ldc,
-    const float* Scale,
-    const float* Bias,
+    float* output,
+    size_t ldOutput,
+    const OUTPUT_PROCESSOR* OutputProcessor,
     MLAS_THREADPOOL* ThreadPool
     )
 /*++
@@ -2346,14 +2408,14 @@ Return Value:
     WorkBlock.lda = lda;
     WorkBlock.B = B;
     WorkBlock.ldb = ldb;
-    WorkBlock.C = (int32_t*)C;
+    WorkBlock.C = C;
     WorkBlock.ldc = ldc;
-    WorkBlock.Scale = Scale;
-    WorkBlock.BiasFloat = Bias;
+    WorkBlock.Output = output;
+    WorkBlock.ldOutput = ldOutput;
+    WorkBlock.OutputProcessor = OutputProcessor;
     WorkBlock.offa = offa;
     WorkBlock.offb = offb;
     WorkBlock.BIsSigned = BIsSigned;
-    WorkBlock.CIsFloat = true;
 
     //
     // Schedule the operation across a set of worker threads.
@@ -2464,10 +2526,11 @@ MlasGemm(
     const void* PackedB,
     uint8_t offb,
     bool BIsSigned,
-    float* C,
+    int32_t* C,
     size_t ldc,
-    const float* Scale,
-    const float* Bias,
+    float* output,
+    size_t ldOutput,
+    const OUTPUT_PROCESSOR* OutputProcessor,
     MLAS_THREADPOOL* ThreadPool
     )
 /*++
@@ -2535,13 +2598,13 @@ Return Value:
     WorkBlock.B = PackedB;
     WorkBlock.C = (int32_t*)C;
     WorkBlock.ldc = ldc;
-    WorkBlock.Scale = Scale;
-    WorkBlock.BiasFloat = Bias;
+    WorkBlock.Output = output;
+    WorkBlock.ldOutput = ldOutput;
+    WorkBlock.OutputProcessor = OutputProcessor,
     WorkBlock.offa = offa;
     WorkBlock.offb = offb;
     WorkBlock.BIsPacked = true;
     WorkBlock.BIsSigned = BIsSigned;
-    WorkBlock.CIsFloat = true;
 
     //
     // Schedule the operation across a set of worker threads.
