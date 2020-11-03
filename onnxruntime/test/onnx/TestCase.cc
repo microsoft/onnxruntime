@@ -552,6 +552,8 @@ void OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::SequenceProto& test_dat
   size_t len = 0;
 
   std::vector<Ort::Value> seq;
+  ORT_ENFORCE(test_data_pb.elem_type() == ONNX_NAMESPACE::SequenceProto_DataType_TENSOR,
+              "Only parsing a sequence of tensors is currently supported");
   const auto& tensors = test_data_pb.tensor_values();
   const size_t val = tensors.size();
   seq.reserve(val);
