@@ -1289,7 +1289,7 @@ Status Expand_8<T>::Compute(OpKernelContext* context) const {
     int64_t output_dim = 1;
     int64_t input_dim_count = 1;
 
-    while (input_dims_size > 0) {
+    while (input_dims_size >= 0) {
         input_dim *= input_dims[--input_dims_size];
         output_dim *= output_dims[--output_dims_size];
         input_dim_count = input_dims_prod / input_dim;
@@ -1298,6 +1298,7 @@ Status Expand_8<T>::Compute(OpKernelContext* context) const {
         }
     }//while
 
+/*
     auto copy_len = input_dim;
     auto copy_byte = copy_len * sizeof(T);
 
@@ -1306,15 +1307,29 @@ Status Expand_8<T>::Compute(OpKernelContext* context) const {
                                                   [&] (ptrdiff_t i) {
         memcpy(output_data + i * output_dim, input_data + i * input_dim, copy_byte);
     });
+*/
+
+    auto input_addr = input_data;
+    auto output_addr = output_data;
+    auto copy_len = input_dim;
+    auto copy_byte = copy_len * sizeof(T);
+    auto output_len = output_dim;
+
+    for (auto i = 0; i < input_dim_count; ++i) {
+        memcpy(output_addr, input_addr, copy_byte);
+        input_addr += copy_len;
+        output_addr += output_len;
+    }//for
 
     while (true) {
         if (input_dims_size < 0 ||
             input_dims[input_dims_size] == 1 &&
             output_dims[output_dims_size] > 1) {
 
+
             copy_len = output_dim / output_dims[output_dims_size];
             copy_byte = copy_len * sizeof(T);
-
+/*
             concurrency::ThreadPool::TrySimpleParallelFor(context->GetOperatorThreadPool(),
                                                           output_dims_prod / output_dim,
                                                           [&] (ptrdiff_t i) {
@@ -1325,6 +1340,17 @@ Status Expand_8<T>::Compute(OpKernelContext* context) const {
                     output_addr += copy_len;
                 }//for
             });
+*/
+            //auto output_addr = output_data;
+            auto base_addr = output_data;
+            for (auto i = 0; i < output_dims_prod / output_dim; ++i) {
+                output_addr = base_addr + copy_len;
+                for (auto j = 1; j < output_dims[output_dims_size]; ++j) {
+                    memcpy(output_addr, base_addr, copy_byte);
+                    output_addr += copy_len;
+                }//for
+                base_addr = output_addr;
+            }//for
         }//if
 
         output_dims_size--;
