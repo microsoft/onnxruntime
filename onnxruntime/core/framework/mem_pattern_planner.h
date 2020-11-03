@@ -59,34 +59,6 @@ class MemPatternPlanner {
     return false;
   }
 
-  // Returns true if there is an intersection between two time schedules.
-  // ASSUMES EACH TIME SCHEDULE IS SORTED. THIS IS VALIDATED AT THE END OF MEMORY PLANNING.
-  bool OverlappingTimeSchedules2(const std::vector<size_t>& program_counter_start_1, const std::vector<size_t>& program_counter_end_1,
-                                 const std::vector<size_t>& program_counter_start_2, const std::vector<size_t>& program_counter_end_2) {
-    ORT_ENFORCE(program_counter_start_1.size() > 0);
-    ORT_ENFORCE(program_counter_start_2.size() > 0);
-    ORT_ENFORCE(program_counter_start_1.size() == program_counter_end_1.size());
-    ORT_ENFORCE(program_counter_start_2.size() == program_counter_end_2.size());
-
-    size_t index_1 = 0;
-    size_t index_2 = 0;
-    while ((index_1 < program_counter_start_1.size()) && (index_2 < program_counter_start_2.size())) {
-      if (program_counter_start_1[index_1] <= program_counter_start_2[index_2]) {
-        if (program_counter_end_1[index_1] >= program_counter_start_2[index_2]) {
-          return true;
-        }
-        index_1 += 1;
-      } else {
-        if (program_counter_end_2[index_2] >= program_counter_start_1[index_1]) {
-          return true;
-        }
-        index_2 += 1;
-      }
-    }
-
-    return false;
-  }
-
   void TraceAllocation(int ml_value_idx, const std::vector<size_t>& program_counter_start, const std::vector<size_t>& program_counter_end, size_t size) {
     std::lock_guard<OrtMutex> lock(lock_);
 
@@ -128,7 +100,7 @@ class MemPatternPlanner {
       }
     }
 
-    if(!best_offset_found) {
+    if (!best_offset_found) {
       best_offset = current;
     }
 
@@ -185,7 +157,7 @@ class MemPatternPlanner {
       }
     }
 
-    if(!best_offset_found) {
+    if (!best_offset_found) {
       best_offset = current;
     }
 
@@ -242,8 +214,8 @@ class MemPatternPlanner {
 
         if (((alloc_1_start >= alloc_2_start) && (alloc_1_start <= alloc_2_end)) ||
             ((alloc_2_start >= alloc_1_start) && (alloc_2_start <= alloc_1_end))) {
-          ORT_ENFORCE(!OverlappingTimeSchedules2(allocs_[index_1].program_counter_start_, allocs_[index_1].program_counter_end_,
-                                                 allocs_[index_2].program_counter_start_, allocs_[index_2].program_counter_end_));
+          ORT_ENFORCE(!OverlappingTimeSchedules(allocs_[index_1].program_counter_start_, allocs_[index_1].program_counter_end_,
+                                                allocs_[index_2].program_counter_start_, allocs_[index_2].program_counter_end_));
         }
       }
     }
