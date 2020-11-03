@@ -49,6 +49,10 @@ class ORTModule(torch.nn.Module):
         # Log level
         self._loglevel = getattr(logging, 'WARNING')
 
+        # TODO: debug flags
+        self._save_onnx = False
+        self._save_onnx_prefix = ''
+
 
     def forward(self, *inputs, **kwargs):
         '''Forward pass starts here and continues at `_ORTModuleFunction.forward`
@@ -65,6 +69,13 @@ class ORTModule(torch.nn.Module):
             self._onnx_training = ORTModule._get_forward_graph(self._original_module, *inputs, **kwargs)
             self._onnx_gradient = ORTModule._build_gradient_graph(self._onnx_training, self._grad_builder_config)
             self._onnx_forward, self._onnx_backward = ORTModule._split_forward_and_backward(self._onnx_gradient, self._grad_builder_config.weight_names_to_train)
+
+            if self._save_onnx:
+                onnx.save(self._onnx_training, self._save_onnx_prefix + '_full_training.onnx')
+                onnx.save(self._onnx_gradient, self._save_onnx_prefix + '_with_grad.onnx')
+                onnx.save(self._onnx_forward, self._save_onnx_prefix + '_forward.onnx')
+                onnx.save(self._onnx_backward, self._save_onnx_prefix + '_backward.onnx')
+
             # TODO: hard-coding to CPU only
             self._forward_session = onnxruntime.InferenceSession(self._onnx_forward.SerializeToString(), providers=['CPUExecutionProvider'])
             self._backward_session = onnxruntime.InferenceSession(self._onnx_backward.SerializeToString(), providers=['CPUExecutionProvider'])
@@ -319,7 +330,6 @@ class ORTModule(torch.nn.Module):
     def _get_forward_graph(module, *inputs, **kwargs):
         '''Exports PyTorch `module` to ONNX with training flag, using `*inputs` as input
 
-        TODO: Support contrib OPs support? user model has no hint
         TODO: How to support dynamic axes? Dimensions are determined by samples
         TODO: How to ingest **kwargs in proper order during export?
         '''
@@ -328,6 +338,10 @@ class ORTModule(torch.nn.Module):
 
         # Deepcopy inputs, since input values may change after model run.
         sample_inputs_copy = copy.deepcopy(inputs)
+
+        # TODO: Support contrib OPs support? user model has no hint
+        # from onnxruntime.training import register_custom_ops_pytorch_exporter
+        # register_custom_ops_pytorch_exporter.register_custom_op()
 
         # Export torch.nn.Module to ONNX
         torch.onnx.export(module,
