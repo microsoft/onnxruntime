@@ -221,7 +221,7 @@ ThreadPool::ParallelSection::ParallelSection(ThreadPool *tp) {
   ORT_ENFORCE(!current_parallel_section, "Nested parallelism not supported");
   ORT_ENFORCE(!_ps.get());
   _tp = tp;
-  if (tp->underlying_threadpool_) {
+  if (tp && tp->underlying_threadpool_) {
     _ps = tp->underlying_threadpool_->AllocateParallelSection();
     _tp->underlying_threadpool_->StartParallelSection(*_ps.get());
     current_parallel_section = this;
