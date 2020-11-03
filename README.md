@@ -1,5 +1,5 @@
 
-Please help us improve ONNX Runtime by participating in our customer survey: http://aka.ms/ort-survey. 
+Please help us improve ONNX Runtime by participating in our customer survey: http://aka.ms/ort-survey 
 
 <p align="center"><img width="50%" src="docs/images/ONNX_Runtime_logo_dark.png" /></p>
 
