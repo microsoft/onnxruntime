@@ -35,6 +35,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kCudaExecutionProvider,
     KernelDefBuilder()
         .Alias(0, 0)
+        .InputMemoryType<OrtMemTypeCPUInput>(1)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Unsqueeze);
 
