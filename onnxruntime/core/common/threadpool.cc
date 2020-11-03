@@ -216,6 +216,7 @@ thread_local ThreadPool::ParallelSection *ThreadPool::ParallelSection::current_p
 ThreadPool::ParallelSection::ParallelSection(ThreadPool *tp) {
 #ifdef _OPENMP
   // Nothing
+  ORT_UNUSED_PARAMETER(tp);
 #else
   ORT_ENFORCE(!current_parallel_section, "Nested parallelism not supported");
   ORT_ENFORCE(!_ps);//.get());
