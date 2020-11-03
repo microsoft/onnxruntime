@@ -70,11 +70,7 @@ class MemPatternPlanner {
     size_t current = 0;
     size_t waste_bytes = std::numeric_limits<size_t>::max();
     size_t best_offset = 0;
-    if (!blocks_.empty()) {
-      auto last_block = allocs_[*blocks_.rbegin()];
-      best_offset = last_block.block_.offset_ + last_block.block_.size_;
-    }
-
+    bool best_offset_found = false;
     for (auto it = blocks_.begin(); it != blocks_.end(); it++) {
       // Memory block can be re-used as long as there is no overlap between their time schedules.
       if (allocs_[*it].reuse_ && !OverlappingTimeSchedules(program_counter_start, program_counter_end,
@@ -87,16 +83,25 @@ class MemPatternPlanner {
         if (gap >= size && (gap - size) < waste_bytes) {
           waste_bytes = gap - size;
           best_offset = current;
+          best_offset_found = true;
         }
       }
 
       current = std::max(current, allocs_[*it].block_.offset_ + allocs_[*it].block_.size_);
     }
 
+    ORT_ENFORCE(current <= buffer_size_);
+
     if (current < buffer_size_) {
       auto gap = buffer_size_ - current;
-      if ((gap >= size) && ((gap - size) < waste_bytes))
+      if ((gap >= size) && ((gap - size) < waste_bytes)) {
         best_offset = current;
+        best_offset_found = true;
+      }
+    }
+
+    if (!best_offset_found) {
+      best_offset = current;
     }
 
     // we only need to bounds check the addition of size to best_offset as that is the only time we extend
@@ -128,10 +133,7 @@ class MemPatternPlanner {
     size_t current = 0;
     size_t waste_bytes = std::numeric_limits<size_t>::max();
     size_t best_offset = 0;
-    if (!blocks_.empty()) {
-      auto last_block = allocs_[*blocks_.rbegin()];
-      best_offset = last_block.block_.offset_ + last_block.block_.size_;
-    }
+    bool best_offset_found = false;
 
     for (auto it = blocks_.begin(); it != blocks_.end(); it++) {
       if (allocs_[*it].block_.offset_ >= current) {
@@ -139,15 +141,24 @@ class MemPatternPlanner {
         if (gap >= size && (gap - size) < waste_bytes) {
           waste_bytes = gap - size;
           best_offset = current;
+          best_offset_found = true;
         }
       }
       current = std::max(current, allocs_[*it].block_.offset_ + allocs_[*it].block_.size_);
     }
 
+    ORT_ENFORCE(current <= buffer_size_);
+
     if (current < buffer_size_) {
       auto gap = buffer_size_ - current;
-      if ((gap >= size) && ((gap - size) < waste_bytes))
+      if ((gap >= size) && ((gap - size) < waste_bytes)) {
         best_offset = current;
+        best_offset_found = true;
+      }
+    }
+
+    if (!best_offset_found) {
+      best_offset = current;
     }
 
     // we only need to bounds check the addition of size to best_offset as that is the only time we extend

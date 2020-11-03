@@ -787,7 +787,7 @@ class PlannerImpl {
         for (size_t index = 0; index < current_plan.program_counter_start.size(); index += 1) {
           ORT_ENFORCE((current_plan.program_counter_start[index] > start) || (start == 0));
           ORT_ENFORCE(current_plan.program_counter_start[index] <= current_plan.program_counter_end[index]);
-          ORT_ENFORCE((current_plan.program_counter_start[index] < SIZE_MAX) || (index == 0));
+          ORT_ENFORCE(current_plan.program_counter_start[index] < SIZE_MAX);
           ORT_ENFORCE((current_plan.program_counter_end[index] > 0) || (index == 0));
 
           start = current_plan.program_counter_start[index];

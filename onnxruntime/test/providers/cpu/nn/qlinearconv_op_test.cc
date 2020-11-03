@@ -401,6 +401,7 @@ class QLinearConvOpTester {
     const int64_t kernel_size = std::accumulate(
         kernel_shape, kernel_shape + kernel_rank, 1LL, std::multiplies<int64_t>());
     const int32_t X_zero_point = X_.zero_point_;
+    const int32_t W_zero_point = W_.zero_point_;
 
     const T1* Xdata = X_.data_.data();
     T1* Ydata = Y_data.data();
@@ -434,7 +435,7 @@ class QLinearConvOpTester {
                   input_offset *= input_shape[axis];
                   input_offset += input_dim;
                 }
-                int32_t w_value = static_cast<int32_t>(*weight_data++);
+                int32_t w_value = static_cast<int32_t>(*weight_data++) - W_zero_point;
                 if (!is_padding) {
                   int32_t x_value = static_cast<int32_t>(input_image[input_offset]) - X_zero_point;
                   sum += x_value * w_value;
@@ -507,7 +508,11 @@ class QLinearConvOpTester {
   }
 
   void GenerateRandomWeights(const std::vector<int64_t>& shape, float scale, T2 zero_point) {
-    GenerateRandom(W_, shape, scale, zero_point, -63, 63);
+    if (std::is_signed<T2>::value) {
+      GenerateRandom(W_, shape, scale, zero_point, -63, 63);
+    } else {
+      GenerateRandom(W_, shape, scale, zero_point, 0, 255);
+    }
   }
 
   void SetWeightScales(const std::vector<float>& scales) {
@@ -597,6 +602,15 @@ TEST(QLinearConvTest, Conv2D_U8S8_Pointwise) {
   test.GenerateRandomWeights({32, 24, 1, 1}, .125f, 0);
   test.GenerateRandomBias();
   test.SetOutputScaleAndZeroPoint(.55f, 54);
+  test.Run();
+}
+
+TEST(QLinearConvTest, Conv2D_U8U8_Pointwise) {
+  QLinearConvOpTester<uint8_t, uint8_t> test;
+  test.GenerateRandomInput({3, 24, 19, 19}, .05f, 4);
+  test.GenerateRandomWeights({32, 24, 1, 1}, .105f, 126);
+  test.GenerateRandomBias();
+  test.SetOutputScaleAndZeroPoint(.75f, 114);
   test.Run();
 }
 
@@ -708,7 +722,7 @@ TEST(QLinearConvTest, Conv2D_U8S8_Groups_PerChannel) {
   test.Run();
 }
 
-TEST(QLinearConvTest, Conv2D_U8S8_Depthwise5x5) {
+TEST(QLinearConvTest, Conv2D_U8S8_Depthwise) {
   QLinearConvOpTester<uint8_t, int8_t> test;
   test.GenerateRandomInput({1, 24, 25, 25}, .03f, 12);
   test.GenerateRandomWeights({24, 1, 5, 5}, .10f, 0);
@@ -719,16 +733,36 @@ TEST(QLinearConvTest, Conv2D_U8S8_Depthwise5x5) {
   test.Run();
 }
 
-TEST(QLinearConvTest, Conv2D_U8S8_Depthwise1x1) {
+TEST(QLinearConvTest, Conv2D_U8U8_Depthwise) {
+  QLinearConvOpTester<uint8_t, uint8_t> test;
+  test.GenerateRandomInput({1, 30, 25, 25}, .03f, 12);
+  test.GenerateRandomWeights({30, 1, 3, 3}, .10f, 167);
+  test.GenerateRandomBias();
+  test.SetPads({2, 0, 2, 0});
+  test.SetGroups(30);
+  test.SetOutputScaleAndZeroPoint(.76f, 88);
+  test.Run();
+}
+
+TEST(QLinearConvTest, Conv2D_U8S8_DepthwisePointwise) {
   // Tests the combination of using the depthwise convolution path along with the
   // pointed convolution optimization that avoids im2col.
   QLinearConvOpTester<uint8_t, int8_t> test;
   test.GenerateRandomInput({1, 27, 18, 18}, .03f, 12);
-  test.GenerateRandomInput({1, 27, 4, 4}, .03f, 12);
   test.GenerateRandomWeights({27, 1, 1, 1}, .05f, 0);
   test.GenerateRandomBias();
   test.SetGroups(27);
   test.SetOutputScaleAndZeroPoint(.24f, 88);
+  test.Run();
+}
+
+TEST(QLinearConvTest, Conv3D_U8S8_Depthwise) {
+  QLinearConvOpTester<uint8_t, int8_t> test;
+  test.GenerateRandomInput({1, 16, 15, 11, 13}, .02f, 135);
+  test.GenerateRandomWeights({16, 1, 3, 3, 3}, .09f, 0);
+  test.GenerateRandomBias();
+  test.SetGroups(16);
+  test.SetOutputScaleAndZeroPoint(.85f, 112);
   test.Run();
 }
 

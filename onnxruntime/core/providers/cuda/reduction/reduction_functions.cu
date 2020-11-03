@@ -207,7 +207,7 @@ void call_reduce_all_kernel(const TIn *data, TOut *output, int size, TOut *buffe
 
   // If more than one blocks are used, then inter-blocks reduction is needed.
   if (num_blocks != 1) {
-    cudaMemset(buffer + num_blocks, 0, sizeof(int));
+    CUDA_CALL_THROW(cudaMemsetAsync(buffer + num_blocks, 0, sizeof(int)));
   }
 
   const int shared_mem_size = sizeof(TOut) * block_size.first * block_size.second / GPU_WARP_SIZE;
