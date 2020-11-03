@@ -219,11 +219,11 @@ ThreadPool::ParallelSection::ParallelSection(ThreadPool *tp) {
   ORT_UNUSED_PARAMETER(tp);
 #else
   ORT_ENFORCE(!current_parallel_section, "Nested parallelism not supported");
-  ORT_ENFORCE(!_ps);//.get());
+  ORT_ENFORCE(!_ps.get());
   _tp = tp;
   if (tp->underlying_threadpool_) {
-    _ps = tp->underlying_threadpool_->MakeParallelSection();
-    _tp->underlying_threadpool_->StartParallelSection(*_ps);//.get());
+    _ps = tp->underlying_threadpool_->AllocateParallelSection();
+    _tp->underlying_threadpool_->StartParallelSection(*_ps.get());
     current_parallel_section = this;
   }
 #endif
@@ -234,8 +234,8 @@ ThreadPool::ParallelSection::~ParallelSection() {
   // Nothing
 #else
   if (current_parallel_section) {
-    _tp->underlying_threadpool_->EndParallelSection(*_ps);//.get());
-    delete _ps;
+    _tp->underlying_threadpool_->EndParallelSection(*_ps.get());
+    _ps.reset();
     current_parallel_section = nullptr;
   }
 #endif
@@ -245,7 +245,7 @@ void ThreadPool::RunInParallel(std::function<void(unsigned idx)> fn, unsigned n)
   ORT_ENFORCE(fn != nullptr);
   if (underlying_threadpool_) {
     if (ThreadPool::ParallelSection::current_parallel_section) {
-      underlying_threadpool_->RunInParallel(*(ThreadPool::ParallelSection::current_parallel_section->_ps),//.get(),
+      underlying_threadpool_->RunInParallel(*(ThreadPool::ParallelSection::current_parallel_section->_ps.get()),
                                             std::move(fn),
                                             n);
     } else {

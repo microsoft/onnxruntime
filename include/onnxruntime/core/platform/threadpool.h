@@ -50,7 +50,7 @@ class ThreadPoolTempl;
 
 class ExtendedThreadPoolInterface;
 class LoopCounter;
-struct ThreadPoolParallelSection;
+class ThreadPoolParallelSection;
 
 class ThreadPool {
  public:
@@ -120,11 +120,12 @@ class ThreadPool {
 
   private:
     friend class ThreadPool;
+
+    std::unique_ptr<ThreadPoolParallelSection, void(*)(ThreadPoolParallelSection*)>
+      _ps{nullptr, [](ThreadPoolParallelSection*){}};
 #ifndef _OPENMP
     ThreadPool *_tp;
 #endif
-    ThreadPoolParallelSection *_ps{nullptr};
-    //    std::unique_ptr<ThreadPoolParallelSection> _ps{nullptr};
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ParallelSection);
 
     static thread_local ParallelSection *current_parallel_section;

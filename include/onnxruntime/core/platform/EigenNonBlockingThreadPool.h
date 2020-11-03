@@ -53,7 +53,8 @@ private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PerLoop);
 };
 
-struct ThreadPoolParallelSection {
+class ThreadPoolParallelSection {
+ public:
   // State accessed only by the main thread
   // --------------------------------------
 
@@ -86,7 +87,6 @@ struct ThreadPoolParallelSection {
   std::atomic<unsigned> workers_in_loop{0};
 };
 
-
 // Extended Eigen thread pool interface, avoiding the need to modify the ThreadPoolInterface.h
 // header from the external Eigen repository.
 
@@ -95,8 +95,7 @@ class ExtendedThreadPoolInterface : public Eigen::ThreadPoolInterface {
   // Start/end a parallel section, within which calls to
   // RunInParallelSection may be made.  Parallel sections are
   // non-nesting.
-  //  virtual std::unique_ptr<ThreadPoolParallelSection> MakeParallelSection() = 0;
-  virtual ThreadPoolParallelSection *MakeParallelSection() = 0;
+  virtual std::unique_ptr<ThreadPoolParallelSection, void(*)(ThreadPoolParallelSection*)> AllocateParallelSection() = 0;
   virtual void StartParallelSection(ThreadPoolParallelSection &ps) = 0;
   virtual void EndParallelSection(ThreadPoolParallelSection &ps) = 0;
 
@@ -619,12 +618,11 @@ void GetGoodWorkerHints(int n, std::vector<unsigned>& good_hints, std::vector<un
   }
 }
 
-//std::unique_ptr<ThreadPoolParallelSection> MakeParallelSection() override {
-//  return onnxruntime::make_unique<ThreadPoolParallelSection>();
-//}
-   
-ThreadPoolParallelSection *MakeParallelSection() override {
-  return new ThreadPoolParallelSection();
+std::unique_ptr<ThreadPoolParallelSection, void(*)(ThreadPoolParallelSection*)> AllocateParallelSection() override {
+  return std::unique_ptr<ThreadPoolParallelSection, void(*)(ThreadPoolParallelSection*)>(new ThreadPoolParallelSection,
+                                                                                         [](ThreadPoolParallelSection *tps) {
+                                                                                           delete tps;
+                                                                                         });
 }
    
 void StartParallelSection(ThreadPoolParallelSection &ps) override {
