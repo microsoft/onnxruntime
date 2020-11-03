@@ -16,7 +16,7 @@ from onnxruntime.capi._pybind_state import get_all_providers, get_available_prov
 
 try:
     from onnxruntime.capi._pybind_state import set_cuda_mem_limit, set_cuda_device_id, set_cudnn_conv_algo_search, \
-    set_do_copy_in_default_stream, set_arena_extend_strategy
+        set_do_copy_in_default_stream, set_arena_extend_strategy
 except ImportError:
     pass
 
