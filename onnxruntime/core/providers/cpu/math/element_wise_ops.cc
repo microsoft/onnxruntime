@@ -1194,6 +1194,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     PRelu<float>);
 
+/*
 static void ExpandBroadcastLooper(BroadcastHelper& helper, const ProcessBroadcastSpanFuncs& functors) {
   ORT_ENFORCE(!helper.HaveTwoTensorInputs(), "ExpandBroadcastLooper should only have a shape for the second input.");
 
@@ -1202,10 +1203,6 @@ static void ExpandBroadcastLooper(BroadcastHelper& helper, const ProcessBroadcas
       functors.input0scalar(helper);
       helper.Next();
     }
-    /*
-  } else if (helper.IsInput0Scalar()) {
-    // not possible as we only have one tensor as input
-  */
   } else {
     while (helper.NeedMoreOutput()) {
       functors.general(helper);
@@ -1248,6 +1245,97 @@ Status Expand_8<T>::Compute(OpKernelContext* context) const {
 
   UntypedExpand(*context, funcs);
   return Status::OK();
+}*/
+
+template <typename T>
+Status Expand_8<T>::Compute(OpKernelContext* context) const {
+
+    auto input_tensor = context->Input<Tensor>(0);
+    auto input_data = input_tensor->template Data<T>();
+    auto input_shape = input_tensor->Shape().GetDims();
+    auto input_dims = input_shape.data();
+    auto input_dims_size = static_cast<int64_t>(input_shape.size());
+    auto input_dims_prod = input_tensor->Shape().Size();
+
+    auto shape_tensor = context->Input<Tensor>(1);
+    auto shape_dims = shape_tensor->Data<int64_t>();
+    std::vector<int64_t> output_shape{shape_dims, shape_dims + shape_tensor->Shape().Size()};
+
+    auto input_shape_iter = input_shape.rbegin();
+    auto output_shape_iter = output_shape.rbegin();
+    while (input_shape_iter != input_shape.rend() &&
+           output_shape_iter != output_shape.rend()) {
+        if(*input_shape_iter > 1) {
+            if (*input_shape_iter == *output_shape_iter) {
+                continue;
+            } else if (1 == *output_shape_iter) {
+                *output_shape_iter = *input_shape_iter;
+            } else {
+                ORT_THROW("Invalid expand shape");
+            }
+        }
+        input_shape_iter++;
+        output_shape_iter++;
+    }
+
+    TensorShape output_tensor_shape(output_shape);
+    auto output_tensor = context->Output(0, output_tensor_shape);
+    auto output_data = output_tensor->template MutableData<T>();
+    auto output_dims = output_shape.data();
+    auto output_dims_size = static_cast<int64_t>(output_shape.size());
+    auto output_dims_prod = output_tensor_shape.Size();
+
+    int64_t input_dim = 1;
+    int64_t output_dim = 1;
+    int64_t input_dim_count = 1;
+
+    while (input_dims_size > 0) {
+        input_dim *= input_dims[--input_dims_size];
+        output_dim *= output_dims[--output_dims_size];
+        input_dim_count = input_dims_prod / input_dim;
+        if (1 == input_dims[input_dims_size] && output_dims[output_dims_size] > 1) { 
+            break;
+        }
+    }//while
+
+    auto copy_len = input_dim;
+    auto copy_byte = copy_len * sizeof(T);
+
+    concurrency::ThreadPool::TrySimpleParallelFor(context->GetOperatorThreadPool(),
+                                                  input_dim_count,
+                                                  [&] (ptrdiff_t i) {
+        memcpy(output_data + i * output_dim, input_data + i * input_dim, copy_byte);
+    });
+
+    while (true) {
+        if (input_dims_size < 0 ||
+            input_dims[input_dims_size] == 1 &&
+            output_dims[output_dims_size] > 1) {
+
+            copy_len = output_dim / output_dims[output_dims_size];
+            copy_byte = copy_len * sizeof(T);
+
+            concurrency::ThreadPool::TrySimpleParallelFor(context->GetOperatorThreadPool(),
+                                                          output_dims_prod / output_dim,
+                                                          [&] (ptrdiff_t i) {
+                auto base_addr = output_data + i * output_dim;
+                auto output_addr = base_addr + copy_len;
+                for (auto j = 1; j < output_dims[output_dims_size]; ++j) {
+                    memcpy(output_addr, base_addr, copy_byte);
+                    output_addr += copy_len;
+                }//for
+            });
+        }//if
+
+        output_dims_size--;
+        input_dims_size--;
+        if (output_dims_size < 0) {
+            break;
+        } else {
+            output_dim *= output_dims[output_dims_size];
+        }
+    }//while
+    return Status::OK();
 }
 
 #define REG_EXPAND_KERNEL(TYPE)                                                    \
