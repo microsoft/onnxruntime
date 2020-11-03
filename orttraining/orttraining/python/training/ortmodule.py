@@ -616,7 +616,12 @@ class ORTModule(torch.nn.Module):
         for input in backward_graph_inputs:
             if input in forward_graph_outputs:
                 # inputs of backward graph that are also outputs from forward graph need to be added to backward graph input
-                add_input(backward_model, input, tensor_elem_types[input] if input in tensor_elem_types else 1)
+                # TODO: thiagofc: BERT: Remove this once graph splitter can handle unspecified optional input (without type)
+                input_type = tensor_elem_types[input] if input in tensor_elem_types else 1
+                if input in {'1835', '1813', '1781','1760', '1683','1651','1630','1553','1521','1500','1423','1391','1370','1293','1261','1240','1163','1131','1110','1033','1001','980','871',
+                             '267','330','351','383','460','481','513','590','611','643','720','741','773','850','903'}:
+                    input_type = 9
+                add_input(backward_model, input, input_type)
             elif input in forward_graph_initializer_names:
                 # inputs from forward graph initializers need to be added to backward graph input
                 add_input_from_initializer(backward_model, initializers[input])
