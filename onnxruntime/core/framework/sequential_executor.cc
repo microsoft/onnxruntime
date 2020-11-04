@@ -309,7 +309,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       ORT_TRY {
         if (p_op_kernel->KernelDef().AllocateInputsContiguously())
           utils::VerifyInputTensorsAllocatedContiguously(&op_kernel_context);
-          
+
         compute_status = p_op_kernel->Compute(&op_kernel_context);
       }
       ORT_CATCH(const std::exception& ex) {
@@ -469,12 +469,12 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
   for (auto i : frame.GetStaticMemorySizeInfo()) {
     LOGS(logger, INFO) << "[Memory] ExecutionFrame statically allocates "
-              << i.second << " bytes for " << i.first << std::endl;
+                       << i.second << " bytes for " << i.first << std::endl;
   }
 
   for (auto i : frame.GetDynamicMemorySizeInfo()) {
     LOGS(logger, INFO) << "[Memory] ExecutionFrame dynamically allocates "
-              << i.second << " bytes for " << i.first << std::endl;
+                       << i.second << " bytes for " << i.first << std::endl;
   }
 
   return Status::OK();
