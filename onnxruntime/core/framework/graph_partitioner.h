@@ -10,7 +10,6 @@
 
 namespace onnxruntime {
 
-class IExecutionProvider;
 class ExecutionProviders;
 class KernelRegistryManager;
 
