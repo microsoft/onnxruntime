@@ -97,7 +97,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 opt.AppendExecutionProvider_CUDA(0);
 #endif
 #if USE_DML
-                // Explicitly set dll probe path so that the (potentially) stale system DirectML.dll 
+                // Explicitly set dll probe path so that the (potentially) stale system DirectML.dll
                 // doesn't get loaded by the test process when it is eventually delay loaded by onnruntime.dll
                 // The managed tests binary path already contains the right DirectML.dll, so use that
 
@@ -122,7 +122,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 opt.AppendExecutionProvider_MIGraphX(0);
 #endif
 #if USE_NNAPI
-                opt.AppendExecutionProvider_Nnapi();
+                opt.AppendExecutionProvider_Nnapi(0);
 #endif
 
 
@@ -1770,7 +1770,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        // TestGpu() will test the CUDA EP on CUDA enabled builds and 
+        // TestGpu() will test the CUDA EP on CUDA enabled builds and
         // the DML EP on DML enabled builds
         [GpuFact]
         private void TestGpu()
@@ -1979,9 +1979,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var dims = new long[] { 3, 2 };
             var dataBuffer = new float[] { 1.0F, 2.0F, 3.0F, 4.0F, 5.0F, 6.0F };
             var dataHandle = GCHandle.Alloc(dataBuffer, GCHandleType.Pinned);
-            
+
             try
-            {            
+            {
                 unsafe
                 {
                     float* p = (float*)dataHandle.AddrOfPinnedObject();
@@ -2354,7 +2354,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
 #if USE_DML
-            // Explicitly set dll probe path so that the (potentially) stale system DirectML.dll 
+            // Explicitly set dll probe path so that the (potentially) stale system DirectML.dll
             // doesn't get loaded by the test process when it is eventually delay loaded by onnruntime.dll
             // The managed tests binary path already contains the right DirectML.dll, so use that
 
