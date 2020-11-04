@@ -30,25 +30,23 @@ ApplicableMatrixReduction get_applicable_matrix_reduction(
       return std::make_pair(int64_t{0}, rank - 1);
     }
 
-    // normalize axis values, sort, and remove duplicates
+    // normalize axis values and sort
     const std::vector<int64_t> axes = [&original_axes, rank]() {
       std::vector<int64_t> result(original_axes);
       std::for_each(
           result.begin(), result.end(),
           [rank](int64_t& axis) { axis = HandleNegativeAxis(axis, rank); });
       std::sort(result.begin(), result.end());
-      const auto last = std::unique(result.begin(), result.end());
-      result.erase(last, result.end());
       return result;
     }();
 
-    const bool are_axes_contiguous =
-        std::adjacent_find(
-            axes.begin(), axes.end(),
-            [](int64_t a, int64_t b) { return a + 1 != b; }) == axes.end();
-
-    if (!are_axes_contiguous) {
-      return {};
+    for (auto a = axes.begin(), b = axes.begin() + 1;
+         b != axes.end();
+         ++a, ++b) {
+      ORT_ENFORCE(*a != *b, "axes must not contain duplicate values");
+      if (*a + 1 != *b) {  // not contiguous
+        return {};
+      }
     }
 
     return std::make_pair(axes.front(), axes.back());
@@ -61,6 +59,8 @@ ApplicableMatrixReduction get_applicable_matrix_reduction(
   const auto& min_axis = minmax_axes.value().first;
   const auto& max_axis = minmax_axes.value().second;
 
+  // axes from beginning means row reduction, axes to end means column reduction
+  // currently we don't handle axes from beginning to end, but that could be either
   const bool axes_from_beginning = min_axis == 0;
   const bool axes_to_end = max_axis == rank - 1;
 
