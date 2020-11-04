@@ -6,6 +6,8 @@ Start by reading the [Engineering Design](./docs/InferenceHighLevelDesign.md). Y
 ## Proposing new public APIs
 
  ONNX Runtime has a collection of [public APIs](./README.md#api-documentation).  Some of these APIs make their way back into the Windows OS.  We make compatibility commitments for these APIs and follow a structured process when adding to them.  Please use the [Feature Request issue template](https://github.com/microsoft/onnxruntime/issues/new?template=feature_request.md) before starting any PRs that affect any of the public APIs.
+ 
+ If your proposal contributes the Windows Machine Learning WinRT API and will affect the Windows.AI.MachineLearning namespace, please review [Windows ML main principles](./docs/WinML_principles.md) before you submit your request. 
 
 ## Process details
 
@@ -23,12 +25,9 @@ Note that if an issue isn't a high priority or has many open questions then it m
 The ONNX Runtime team will review the proposal and either approve or close the issue based on whether it broadly aligns with the [Onnx Runtime Roadmap - High Level Goals section](./docs/Roadmap.md) and contribution guidelines.
 
 4. **API Review**  
-If the feature adds new APIs then we'll start an API review.
-All new public APIs must be reviewed before merging.  
-For making changes to the C API refer to guidance [here](onnxruntime/core/session/onnxruntime_c_api.cc#L1326).
-For making changes to the WinRT API someone from the ONNX Runtime team will work with you.
+If the feature adds new APIs then we'll start an API review. All new public APIs must be reviewed before merging. For making changes to the C API refer to guidance [here](onnxruntime/core/session/onnxruntime_c_api.cc#L1326). For making changes to the Windows Machine Learning WinRT API, please label your request as *api:WinML*, and someone from the Windows ML team will work with you. 
 
-1. **Implementation**
+5. **Implementation**
 * A feature can be implemented by you, the ONNX Runtime team, or other community members.  Code contributions are greatly appreciated: feel free to work on any reviewed feature you proposed, or choose one in the backlog and send us a PR. If you are new to the project and want to work on an existing issue, we recommend starting with issues that are tagged with “good first issue”. Please let us know in the issue comments if you are actively working on implementing a feature so we can ensure it's assigned to you.  
 * Unit tests: New code *must* be accompanied by unit tests.
 * Documentation and sample updates: If the PR affects any of the documentation or samples then include those updates in the same PR.
