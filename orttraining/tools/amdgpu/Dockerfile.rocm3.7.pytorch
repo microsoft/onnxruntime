@@ -157,7 +157,7 @@ RUN git clone -b wezhan/amdgpu https://github.com/microsoft/onnxruntime-training
   && cp -r $GITHUB_DIR/onnxruntime-training-examples/huggingface-gpt2/ort_addon/ort_supplement/* ./ \
   && python3 -m pip install --no-cache-dir -e . \
   && python3 -m pip install --no-cache-dir -r examples/requirements.txt \
-  && python3 -m pip install cerberus \
+  && python3 -m pip install cerberus sympy \
   && cd .. \
   && wget https://s3.amazonaws.com/research.metamind.io/wikitext/${GPT2_DATASET}-v1.zip \
   && unzip ${GPT2_DATASET}-v1.zip

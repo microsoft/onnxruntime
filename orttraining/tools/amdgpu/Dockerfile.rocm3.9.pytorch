@@ -9,16 +9,20 @@ RUN echo 'deb [arch=amd64] http://repo.radeon.com/rocm/apt/3.9/ xenial main' | t
 RUN apt-get -y update
 RUN apt-get -y install apt-utils
 RUN apt-get -y install build-essential autotools-dev \
-    make git curl vim wget jq openssh-server openssh-client sudo \
+    make git curl vim wget rsync jq openssh-server openssh-client sudo \
     iputils-ping net-tools ethtool libcap2 \
     automake autoconf libtool flex doxygen \
     perl lsb-release iproute2 pciutils graphviz \
-    bc tar git bash pbzip2 pv bzip2 cabextract \
+    bc tar git bash pbzip2 pv bzip2 unzip cabextract \
     g++ gcc \
     && apt-get autoremove
 
 # sh
 RUN rm /bin/sh && ln -s /bin/bash /bin/sh
+RUN rm /opt/cache/bin/c++ && \
+    rm /opt/cache/bin/cc && \
+    rm /opt/cache/bin/g++ && \
+    rm /opt/cache/bin/gcc
 
 # Labels for the docker
 LABEL description="This docker sets up the environment to run ORT Training with AMD GPU"
@@ -128,7 +132,7 @@ RUN git clone --recursive -b wezhan/amdgpu https://github.com/microsoft/onnxrunt
   && test -f $ORT_DIR/build/RelWithDebInfo/onnxruntime_training_bert \
   && pip install $ORT_DIR/build/RelWithDebInfo/dist/*.whl \
   && ldconfig
-RUN apt-get -y install unzip
+
 # ONNX Runtime Training Examples
 WORKDIR $GITHUB_DIR
 ARG GPT2_DATASET=wikitext-103
@@ -155,7 +159,7 @@ RUN git clone -b wezhan/amdgpu https://github.com/microsoft/onnxruntime-training
   && cp -r $GITHUB_DIR/onnxruntime-training-examples/huggingface-gpt2/ort_addon/ort_supplement/* ./ \
   && python3 -m pip install --no-cache-dir -e . \
   && python3 -m pip install --no-cache-dir -r examples/requirements.txt \
-  && python3 -m pip install cerberus \
+  && python3 -m pip install cerberus sympy \
   && cd .. \
   && wget https://s3.amazonaws.com/research.metamind.io/wikitext/${GPT2_DATASET}-v1.zip \
   && unzip ${GPT2_DATASET}-v1.zip
