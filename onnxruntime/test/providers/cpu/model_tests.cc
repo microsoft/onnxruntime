@@ -796,6 +796,7 @@ TEST_P(ModelTest, Run) {
                                                     ORT_TSTR("vgg19"),
                                                     ORT_TSTR("zfnet512"),
                                                     ORT_TSTR("GPT2_LM_HEAD"),
+                                                    ORT_TSTR("ssd"),
                                                     ORT_TSTR("coreml_VGG16_ImageNet")};
     all_disabled_tests.insert(std::begin(x86_disabled_tests), std::end(x86_disabled_tests));
 #endif
