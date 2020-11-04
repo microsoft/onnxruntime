@@ -62,7 +62,8 @@ TEST(CudaKernelTest, ReduceSum_MidTensor) {
   std::vector<int64_t> Y_dims{3072};
   std::vector<int64_t> axes{0, 1};
   bool keepdims = false;
-  TestReduceSum(X_dims, Y_dims, axes, keepdims);
+  double per_sample_tolerance = 4e-4;
+  TestReduceSum(X_dims, Y_dims, axes, keepdims, per_sample_tolerance);
 }
 
 TEST(CudaKernelTest, ReduceSum_LargeTensor) {
