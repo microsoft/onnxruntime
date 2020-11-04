@@ -1184,20 +1184,20 @@ def run_training_python_frontend_e2e_tests(cwd):
         [sys.executable, 'orttraining_run_frontend_batch_size_test.py', '-v'],
         cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'})
 
-    # import torch
-    # ngpus = torch.cuda.device_count()
-    # if ngpus > 1:
-    #     bert_pretrain_script = 'orttraining_run_bert_pretrain.py'
-    #     # TODO: this test will be replaced with convergence test ported from backend
-    #     log.debug('RUN: mpirun -n {} ''-x' 'NCCL_DEBUG=INFO'' {} {} {}'.format(
-    #         ngpus, sys.executable, bert_pretrain_script, 'ORTBertPretrainTest.test_pretrain_convergence'))
-    #     run_subprocess([
-    #         'mpirun', '-n', str(ngpus), '-x', 'NCCL_DEBUG=INFO', sys.executable,
-    #         bert_pretrain_script, 'ORTBertPretrainTest.test_pretrain_convergence'], cwd=cwd)
+    import torch
+    ngpus = torch.cuda.device_count()
+    if ngpus > 1:
+        bert_pretrain_script = 'orttraining_run_bert_pretrain.py'
+        # TODO: this test will be replaced with convergence test ported from backend
+        log.debug('RUN: mpirun -n {} ''-x' 'NCCL_DEBUG=INFO'' {} {} {}'.format(
+            ngpus, sys.executable, bert_pretrain_script, 'ORTBertPretrainTest.test_pretrain_convergence'))
+        run_subprocess([
+            'mpirun', '-n', str(ngpus), '-x', 'NCCL_DEBUG=INFO', sys.executable,
+            bert_pretrain_script, 'ORTBertPretrainTest.test_pretrain_convergence'], cwd=cwd)
 
-    #     log.debug('RUN: mpirun -n {} {} orttraining_run_glue.py'.format(ngpus, sys.executable))
-    #     run_subprocess([
-    #         'mpirun', '-n', str(ngpus), '-x', 'NCCL_DEBUG=INFO', sys.executable, 'orttraining_run_glue.py'], cwd=cwd)
+        log.debug('RUN: mpirun -n {} {} orttraining_run_glue.py'.format(ngpus, sys.executable))
+        run_subprocess([
+            'mpirun', '-n', str(ngpus), '-x', 'NCCL_DEBUG=INFO', sys.executable, 'orttraining_run_glue.py'], cwd=cwd)
 
     # with orttraining_run_glue.py.
     # 1. we like to force to use single GPU (with CUDA_VISIBLE_DEVICES)
@@ -1293,13 +1293,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
     for config in configs:
         log.info("Running tests for %s configuration", config)
         cwd = get_config_build_dir(build_dir, config)
-
-        if args.enable_training and args.use_cuda and args.enable_training_python_frontend_e2e_tests:
-            # run frontend tests for orttraining-linux-gpu-frontend_test-ci-pipeline.
-            # this is not a PR merge test so skip other non-frontend tests.
-            run_training_python_frontend_e2e_tests(cwd=cwd)
-            run_training_python_frontend_tests(cwd=cwd)
-            continue
 
         if args.enable_training and args.use_cuda and args.enable_training_pipeline_e2e_tests:
             # run distributed pipeline test on 4-GPU CI machine.
