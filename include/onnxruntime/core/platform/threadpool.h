@@ -68,7 +68,6 @@ class ThreadPool {
   // operations like I/O the hint should be set to false.
   //
   // REQUIRES: degree_of_parallelism > 0
-  // The allocator parameter is only used for creating a Eigen::ThreadPoolDevice to be used with Eigen Tensor classes.
   ThreadPool(Env* env,
              const ThreadOptions& thread_options,
              const NAME_CHAR_TYPE* name,

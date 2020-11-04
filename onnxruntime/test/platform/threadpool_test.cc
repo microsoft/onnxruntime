@@ -43,10 +43,19 @@ void ValidateTestData(TestData& test_data, int expected=1) {
   ASSERT_TRUE(std::count_if(test_data.data.cbegin(), test_data.data.cend(), [&](int i) { return i != expected; }) == 0);
 }
 
+// Run a test with a new thread pool created with num_threads threads
+// in total (including the main thread).  If num_threads is 0 then we
+// test the function with a null pointer, reflecting scenarios where we
+// run with just the main thread.  Note that the thread pool API uses
+// static methods and should operate across all of these cases.
 void CreateThreadPoolAndTest(const std::string&, int num_threads, const std::function<void(ThreadPool*)>& test_body) {
-  auto tp = onnxruntime::make_unique<ThreadPool>(&onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), nullptr,
-                                                 num_threads, true);
-  test_body(tp.get());
+  if (num_threads > 0) {
+    auto tp = onnxruntime::make_unique<ThreadPool>(&onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), nullptr,
+                                                   num_threads, true);
+    test_body(tp.get());
+  } else {
+    test_body(nullptr);
+  }
 }
 
 void TestParallelFor(const std::string& name, int num_threads, int num_tasks) {
@@ -182,6 +191,14 @@ void TestMultiLoopSections(const std::string& name, int num_threads, int num_loo
 }  // namespace
 
 namespace onnxruntime {
+TEST(ThreadPoolTest, TestParallelFor_0_Thread_NoTask) {
+  TestParallelFor("TestParallelFor_0_Thread_NoTask", 0, 0);
+}
+
+TEST(ThreadPoolTest, TestParallelFor_0_Thread_50_Task) {
+  TestParallelFor("TestParallelFor_0_Thread_50_Task", 0, 50);
+}
+
 TEST(ThreadPoolTest, TestParallelFor_2_Thread_NoTask) {
   TestParallelFor("TestParallelFor_2_Thread_NoTask", 2, 0);
 }
@@ -192,6 +209,10 @@ TEST(ThreadPoolTest, TestParallelFor_2_Thread_50_Task) {
 
 TEST(ThreadPoolTest, TestParallelFor_1_Thread_50_Task) {
   TestParallelFor("TestParallelFor_1_Thread_50_Task", 1, 50);
+}
+
+TEST(ThreadPoolTest, TestBatchParallelFor_0_Thread_50_Task_10_Batch) {
+  TestBatchParallelFor("TestBatchParallelFor_0_Thread_50_Task_10_Batch", 0, 50, 10);
 }
 
 TEST(ThreadPoolTest, TestBatchParallelFor_2_Thread_50_Task_10_Batch) {
@@ -212,6 +233,10 @@ TEST(ThreadPoolTest, TestBatchParallelFor_2_Thread_50_Task_100_Batch) {
 
 TEST(ThreadPoolTest, TestBatchParallelFor_2_Thread_81_Task_20_Batch) {
   TestBatchParallelFor("TestBatchParallelFor_2_Thread_81_Task_20_Batch", 2, 81, 20);
+}
+
+TEST(ThreadPoolTest, TestConcurrentParallelFor_0Thread_1Conc_0Tasks) {
+  TestConcurrentParallelFor("TestConcurrentParallelFor_0Thread_1Conc_0Tasks", 0, 1, 0);
 }
 
 TEST(ThreadPoolTest, TestConcurrentParallelFor_1Thread_1Conc_0Tasks) {
@@ -306,6 +331,18 @@ TEST(ThreadPoolTest, TestPoolCreation_10Iter) {
 
 TEST(ThreadPoolTest, TestPoolCreation_100Iter) {
   TestPoolCreation("TestPoolCreation_100Iter", 100);
+}
+
+TEST(ThreadPoolTest, TestMultiLoopSections_0Thread_0Loop) {
+  TestMultiLoopSections("TestMultiLoopSections_0Thread_0Loop", 0, 0);
+}
+
+TEST(ThreadPoolTest, TestMultiLoopSections_0Thread_1Loop) {
+  TestMultiLoopSections("TestMultiLoopSections_0Thread_1Loop", 0, 1);
+}
+
+TEST(ThreadPoolTest, TestMultiLoopSections_0Thread_100Loop) {
+  TestMultiLoopSections("TestMultiLoopSections_0Thread_100Loop", 0, 100);
 }
 
 TEST(ThreadPoolTest, TestMultiLoopSections_1Thread_0Loop) {
