@@ -627,9 +627,9 @@ std::unique_ptr<ThreadPoolParallelSection, void(*)(ThreadPoolParallelSection*)> 
    
 void StartParallelSection(ThreadPoolParallelSection &ps) override {
   PerThread* pt = GetPerThread();
-  ORT_ENFORCE(!pt->in_parallel_section, "Nested parallelism not supported");
+  ORT_ENFORCE(!pt->leading_par_section, "Nested parallelism not supported");
   ORT_ENFORCE(!ps.active, "Starting parallel section, but active already");
-  pt->in_parallel_section = true;
+  pt->leading_par_section = true;
   if (!pt->tag.Get()) {
     pt->tag = Tag::GetNext();
   }
@@ -638,9 +638,9 @@ void StartParallelSection(ThreadPoolParallelSection &ps) override {
 
 void EndParallelSection(ThreadPoolParallelSection &ps) override {
   PerThread* pt = GetPerThread();
-  ORT_ENFORCE(pt->in_parallel_section, "Ending parallel section, but none started");
+  ORT_ENFORCE(pt->leading_par_section, "Ending parallel section, but none started");
   ORT_ENFORCE(ps.active, "Ending parallel section, but not active");
-  pt->in_parallel_section = false;
+  pt->leading_par_section = false;
 
   // Notify workers to exit from ParLoopWorker
   ps.active = false;
@@ -649,11 +649,13 @@ void EndParallelSection(ThreadPoolParallelSection &ps) override {
   // started.
   unsigned tasks_started = static_cast<unsigned>(ps.tasks.size());
   unsigned tasks_revoked = 0;
-  for (auto& item : ps.tasks) {
+  while (!ps.tasks.empty()) {
+    const auto& item = ps.tasks.back();
     Queue& q = worker_data_[item.first].queue;
     if (q.RevokeWithTag(pt->tag, item.second)) {
       tasks_revoked++;
     }
+    ps.tasks.pop_back();
   }
 
   // Wait for workers to exit ParLoopWorker
@@ -663,7 +665,6 @@ void EndParallelSection(ThreadPoolParallelSection &ps) override {
   }
 
   // Clear status for next loop
-  ps.tasks.clear();
   ps.tasks_finished = 0;
  }
 
@@ -671,7 +672,7 @@ void EndParallelSection(ThreadPoolParallelSection &ps) override {
                     std::function<void(unsigned idx)> fn,
                     unsigned n) override {
   PerThread* pt = GetPerThread();
-  ORT_ENFORCE(pt->in_parallel_section, "RunInParallel, but not in parallel section");
+  ORT_ENFORCE(pt->leading_par_section, "RunInParallel, but not in parallel section");
   ORT_ENFORCE(n > 1, "Trivial parallel section; should be avoided by caller");
 
   ORT_ENFORCE(!ps.current_loop, "RunInParallel, but loop already active");
@@ -808,11 +809,11 @@ int CurrentThreadId() const EIGEN_FINAL {
   struct PerThread {
     constexpr PerThread() : pool(nullptr) {
     }
-    ThreadPoolTempl* pool;             // Parent pool, or null for normal threads.
-    uint64_t rand{0};                  // Random generator state.
-    int thread_id{-1};                 // Worker thread index in pool.
-    Tag tag{};                         // Work item tag used to identify this thread.
-    bool in_parallel_section{false};   // Inside a parallel section (either as leader or worker)
+    ThreadPoolTempl* pool;            // Parent pool, or null for normal threads.
+    uint64_t rand{0};                 // Random generator state.
+    int thread_id{-1};                // Worker thread index in pool.
+    Tag tag{};                        // Work item tag used to identify this thread.
+    bool leading_par_section{false};  // Leading a parallel section (used only for asserts)
   };
 
   static_assert(std::is_trivially_destructible<PerThread>::value,
@@ -1110,10 +1111,7 @@ int CurrentThreadId() const EIGEN_FINAL {
   }
 
   void ParLoopWorker(ThreadPoolParallelSection &ps, unsigned my_idx) {
-  PerThread* my_pt = GetPerThread();
-  ORT_ENFORCE(!my_pt->in_parallel_section);
   ORT_ENFORCE(my_idx > 0);
-  my_pt->in_parallel_section = true;
 
   while (ps.active) {
     if (!ps.current_loop) {
@@ -1129,7 +1127,6 @@ int CurrentThreadId() const EIGEN_FINAL {
   }
 
   ps.tasks_finished++;
-  my_pt->in_parallel_section = false;
 }
 
   static EIGEN_STRONG_INLINE uint64_t GlobalThreadIdHash() {
