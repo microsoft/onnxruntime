@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cpu/tensor/upsample.h"
 #include "core/common/safeint.h"
+#include "core/platform/threadpool.h"
+#include "core/providers/cpu/tensor/upsample.h"
 #include <sstream>
 
 using namespace onnxruntime::common;
@@ -29,6 +30,13 @@ ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     uint8_t,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<uint8_t>()),
     Upsample<uint8_t>);
+
+struct counter {
+  size_t cnt{};
+  ~counter() { std::cout << "counter = " << cnt << std::endl; }
+};
+
+counter g_counter;
 
 template <typename T>
 void UpsampleNearest2x(int64_t batch_size,
@@ -319,7 +327,8 @@ void UpsampleBilinear(int64_t batch_size,
                       const T* Xdata,
                       T* Ydata,
                       AllocatorPtr& alloc,
-                      GetOriginalCoordinateFunc get_original_coordinate) {
+                      GetOriginalCoordinateFunc get_original_coordinate,
+                      concurrency::ThreadPool* tp) {
   std::vector<float> y_original;
   y_original.reserve(output_height);
 
@@ -408,11 +417,12 @@ void UpsampleBilinear(int64_t batch_size,
       dx2[x] = 0.5f;
     }
   }
-
+  
   for (int64_t n = 0; n < batch_size; ++n) {
     for (int64_t c = 0; c < num_channels; ++c) {
       for (int64_t y = 0; y < output_height; ++y) {
         for (int64_t x = 0; x < output_width; ++x) {
+          g_counter.cnt++;
           // when use_extrapolation is set and original index of x or y is out of the dim range
           // then use extrapolation_value as the output value.
           if (use_extrapolation &&
@@ -438,6 +448,41 @@ void UpsampleBilinear(int64_t batch_size,
       Ydata += output_width * output_height;
     }
   }
+  tp;
+  /*
+  int64_t total = batch_size * num_channels * output_height * output_width;
+
+  concurrency::ThreadPool::TryParallelFor(tp, total, 1, [=, &Ydata](ptrdiff_t begin, ptrdiff_t end) {
+    for (int64_t index = begin; index < end; ++index) {
+      int64_t output_size = output_height * output_width;
+      int64_t nc = index / output_size;
+      int64_t input_size = input_height * input_width;
+      int64_t hw = index % output_size;
+      int64_t y = hw / output_width;
+      int64_t x = hw % output_width;
+
+      // when use_extrapolation is set and original index of x or y is out of the dim range
+      // then use extrapolation_value as the output value.
+      if (use_extrapolation &&
+          ((y_original[y] < 0 || y_original[y] > static_cast<float>(input_height - 1)) ||
+           (x_original[x] < 0 || x_original[x] > static_cast<float>(input_width - 1)))) {
+        Ydata[output_size * nc + output_width * y + x] = static_cast<T>(extrapolation_value);
+        continue;
+      }
+
+      // subscript ordering in the variable - (xy)
+      T X11 = Xdata[input_size * nc + input_width_mul_y1[y] + in_x1[x]];
+      T X21 = Xdata[input_size * nc + input_width_mul_y1[y] + in_x2[x]];
+      T X12 = Xdata[input_size * nc + input_width_mul_y2[y] + in_x1[x]];
+      T X22 = Xdata[input_size * nc + input_width_mul_y2[y] + in_x2[x]];
+
+      Ydata[output_size * nc + output_width * y + x] = static_cast<T>(dx2[x] * dy2[y] * X11 +
+                                                   dx1[x] * dy2[y] * X21 +
+                                                   dx2[x] * dy1[y] * X12 +
+                                                   dx1[x] * dy1[y] * X22);
+    }
+  });
+  */
 }
 
 // The following method supports a 5-D input in 'Linear mode'
@@ -895,10 +940,11 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
 
         AllocatorPtr alloc;
         ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
+        concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
         UpsampleBilinear(batch_size, num_channels, input_height, input_width, output_height, output_width,
                          is_2D ? scales[0] : scales[2], is_2D ? scales[1] : scales[3], roi,
                          use_extrapolation_, extrapolation_value_, X->template Data<T>(),
-                         Y->template MutableData<T>(), alloc, get_original_coordinate_);
+                         Y->template MutableData<T>(), alloc, get_original_coordinate_, tp);
         return Status::OK();
       } else if (dims.size() == 3 || dims.size() == 5) {
         //'trilinear' == 3-D input or 5-D input with outermost 2 scales as 1
