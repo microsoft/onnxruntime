@@ -177,6 +177,20 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
         [Fact]
+        public void GetAvailableProviders()
+        {
+            var ortEnvInstance = OrtEnv.Instance();
+            string[] providers = ortEnvInstance.GetAvailableProviders();
+
+            Assert.True(providers.Length > 0);
+            Assert.Equal("CPUExecutionProvider", providers[0]);
+
+# if USE_CUDA
+            Assert.True(Array.Exists(providers, provider => provider == "CUDAExecutionProvider"););
+#endif
+        }
+
+        [Fact]
         public void CanCreateAndDisposeSessionWithModelPath()
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
@@ -409,6 +423,48 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             Assert.True(startTime1 <= startTime2 && startTime2 <= startTime3);
         }
 
+        [Fact]
+        public void SessionOptionsFreeDimensionOverrides()
+        {
+
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "abs_free_dimensions.onnx");
+
+            // By Name
+            using (SessionOptions options = new SessionOptions())
+            {
+                options.AddFreeDimensionOverrideByName("Dim1", 4);
+                options.AddFreeDimensionOverrideByName("Dim2", 6);
+
+                using (var session = new InferenceSession(modelPath, options))
+                {
+                    var inputMetadata = session.InputMetadata;
+                    var dims = inputMetadata["x"].Dimensions;
+                    Assert.Equal(3, dims.Length);
+                    Assert.Equal(4, dims[0]);
+                    Assert.Equal(6, dims[1]);
+                    Assert.Equal(5, dims[2]);
+                }
+            }
+
+            // By Denotation
+            using (SessionOptions options = new SessionOptions())
+            {
+                options.AddFreeDimensionOverride("DATA_BATCH", 3);
+                options.AddFreeDimensionOverride("DATA_CHANNEL", 5);
+
+                using (var session = new InferenceSession(modelPath, options))
+                {
+                    var inputMetadata = session.InputMetadata;
+                    var dims = inputMetadata["x"].Dimensions;
+                    Assert.Equal(3, dims.Length);
+                    Assert.Equal(3, dims[0]);
+                    Assert.Equal(5, dims[1]);
+                    Assert.Equal(5, dims[2]);
+                }
+            }
+
+        }
+
         private void validateRunResults(IReadOnlyCollection<NamedOnnxValue> results)
         {
             // validate the results
@@ -623,6 +679,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "fp16_inception_v1", "16-bit float not supported type in C#." },
                 { "fp16_shufflenet", "16-bit float not supported type in C#." },
                 { "fp16_tiny_yolov2", "16-bit float not supported type in C#." },
+                { "fp16_coreml_FNS-Candy", "16-bit float not supported type in C#." },
+                { "test_mnist", "16-bit float not supported type in C#." },
+                { "fp16_test_shufflenet", "16-bit float not supported type in C#." },
+                { "fp16_coreml_LinearRegression_NYCTaxi", "16-bit float not supported type in C#." },
+                { "test_bidaf", "16-bit float not supported type in C#." },
+                { "fp16_test_tiny_yolov2", "16-bit float not supported type in C#." },
                 { "BERT_Squad", "Could not find an implementation for the node bert / embeddings / one_hot:OneHot(9)" },
                 { "mlperf_ssd_mobilenet_300", "Could not find file output_0.pb" },
                 { "tf_resnet_v1_50", "result mismatch when Conv BN Fusion is applied" },
@@ -903,6 +965,26 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
+        // Hint: .NET Core 3.1 has a 'NativeLibrary' class that can be used to free the library handle
+        private void UnloadLibrary(IntPtr libraryHandle)
+        {
+            if (libraryHandle != IntPtr.Zero)
+            {
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                {
+                    if(!FreeLibrary(libraryHandle))
+                    {
+                        throw new Exception("Could not unload the provided shared library using its handle");
+                    }
+                }
+
+                else
+                {
+                    // TODO: Deal with non-Windows platforms for the .NET Core use-case
+                }
+            }
+        }
+
         [SkipNonPackageTests]
         private void TestRegisterCustomOpLibrary()
         {
@@ -926,9 +1008,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 string libFullPath = Path.Combine(Directory.GetCurrentDirectory(), libName);
                 Assert.True(File.Exists(libFullPath), $"Expected lib {libFullPath} does not exist.");
 
+                IntPtr libraryHandle = IntPtr.Zero;
                 try
                 {
-                    option.RegisterCustomOpLibrary(libFullPath);
+
+                    option.RegisterCustomOpLibraryV2(libFullPath, out libraryHandle);
                 }
                 catch (Exception ex)
                 {
@@ -979,6 +1063,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         Assert.True(tensorOut.SequenceEqual(expectedOut));
                     }
                 }
+
+                // Safe to unload the custom op shared library now
+                UnloadLibrary(libraryHandle);
             }
         }
 
@@ -1962,6 +2049,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [DllImport("kernel32", CharSet = CharSet.Ansi)]
         static extern UIntPtr GetProcAddress(IntPtr hModule, string procName);
 
+        [DllImport("kernel32.dll", CharSet = CharSet.Ansi)]
+        private static extern bool FreeLibrary(IntPtr hModule);
+
         [Fact]
         private void VerifyNativeMethodsExist()
         {
@@ -1996,12 +2086,20 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             ,"OrtSessionOptionsAppendExecutionProvider_Nnapi"
 #endif
     };
-
-            var hModule = LoadLibrary(module);
-            foreach (var ep in entryPointNames)
+            IntPtr libraryHandle = IntPtr.Zero;
+            try
             {
-                var x = GetProcAddress(hModule, ep);
-                Assert.False(x == UIntPtr.Zero, $"Entrypoint {ep} not found in module {module}");
+                libraryHandle = LoadLibrary(module);
+                foreach (var ep in entryPointNames)
+                {
+                    var x = GetProcAddress(libraryHandle, ep);
+                    Assert.False(x == UIntPtr.Zero, $"Entrypoint {ep} not found in module {module}");
+                }
+            }
+
+            finally
+            {
+                UnloadLibrary(libraryHandle);
             }
         }
 
