@@ -75,6 +75,8 @@ class KernelDef {
 
   bool IsOutputOnCpu(size_t output_index) const { return MemTypeOnCpuExplicitly(OutputMemoryType(output_index)); }
 
+  bool AllocateInputsContiguously() const { return allocate_inputs_contiguously_; }
+
   OrtMemType OutputMemoryType(size_t output_index) const {
     auto it = output_memory_type_args_.find(output_index);
     if (it == output_memory_type_args_.end())
@@ -128,6 +130,9 @@ class KernelDef {
 
   // An element <i, j> means that output j is an alias of input i.
   std::vector<std::pair<int, int>> alias_map_;
+  
+  // Require input tensors to be allocated contiguously.
+  bool allocate_inputs_contiguously_ = false;
 
   // The memory types of inputs/outputs of this kernel
   MemTypeMap input_memory_type_args_;
@@ -215,6 +220,16 @@ class KernelDefBuilder {
   KernelDefBuilder& Alias(const std::vector<std::pair<int, int>>& aliases);
   KernelDefBuilder& Alias(int input_index, int output_index);
 
+  /**
+     Specify that this kernel requires input tensors to be allocated
+     contiguously. This allows kernels to execute as a single large
+     computation, rather than numerous smaller computations.
+  */
+  KernelDefBuilder& AllocateInputsContiguously() {
+    kernel_def_->allocate_inputs_contiguously_ = true;
+    return *this;
+  }
+  
   /**
      Specify that this kernel requires an input arg
      in certain memory type (instead of the default, device memory).

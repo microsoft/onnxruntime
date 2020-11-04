@@ -6,6 +6,12 @@
 namespace onnxruntime {
 namespace test {
 
+#if USE_CUDA
+constexpr const char* kGpuExecutionProvider = kCudaExecutionProvider;
+#elif USE_ROCM
+constexpr const char* kGpuExecutionProvider = kRocmExecutionProvider;
+#endif
+
 static void TestReduceSum(const std::vector<int64_t>& X_dims,
                           const std::vector<int64_t>& Y_dims,
                           const std::vector<int64_t>& axes,
@@ -24,7 +30,7 @@ static void TestReduceSum(const std::vector<int64_t>& X_dims,
   std::vector<float> Y_data = FillZeros<float>(Y_dims);
   test.AddOutput<float>("Y", Y_dims, Y_data);
 
-  test.CompareWithCPU(kCudaExecutionProvider, per_sample_tolerance, relative_per_sample_tolerance);
+  test.CompareWithCPU(kGpuExecutionProvider, per_sample_tolerance, relative_per_sample_tolerance);
 }
 
 TEST(CudaKernelTest, ReduceSum_Scalar) {
@@ -56,7 +62,8 @@ TEST(CudaKernelTest, ReduceSum_MidTensor) {
   std::vector<int64_t> Y_dims{3072};
   std::vector<int64_t> axes{0, 1};
   bool keepdims = false;
-  TestReduceSum(X_dims, Y_dims, axes, keepdims);
+  double per_sample_tolerance = 4e-4;
+  TestReduceSum(X_dims, Y_dims, axes, keepdims, per_sample_tolerance);
 }
 
 TEST(CudaKernelTest, ReduceSum_LargeTensor) {
