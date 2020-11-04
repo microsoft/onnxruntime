@@ -16,9 +16,9 @@ All APIs must have a proper documentation header that includes:
 * Description of each of its arguments and whether it is an in, out or in/out argument. Please, document if the user is responsible for memory deallocation or object destruction and how that can be done. Document that strings are UTF-8 encoded.
 * Describe its return value.
 
-Microsoft recommends XML format. Such a format is automatically suggested by Visual Studio when one types 3 consecutive slashes. Both C++ and C# compilers can generate XML documentation with /doc switch as described here. The documentation then can be converted to HTML pages using tools such as Sandcastle.
+XML format is automatically supported by Visual Studio when one types 3 consecutive slashes. Both C++ and C# compilers can generate XML documentation with /doc switch as described here. The documentation then can be converted to HTML pages using tools such as Sandcastle. We will use XML format to document C#.
 
-However, XML format does not seem to be supported in C. Current style looks like Doxygen but the amount of documentation is so small and the amount of effort to document it is big so we might as well change the style of it if we have other suggestions. Otherwise, we need to try and properly document all of it.
+XML format does not support C. We will use Doxygen style to document C API and C++ warappers.
 
 ### 2. Public API must be declared using appropriate macros to ensure that they all have proper calling convention
 
@@ -72,7 +72,7 @@ Consider established patterns when APIs return multiple allocations.
 
 ### 7. Public API must document that all strings they accept, and return are UTF-8 encoded
 
-All API return and accept strings in UTF-8 encodings. We must be mindful of that when maintaining language bindings.
+All APIs must return and accept strings in UTF-8 encodings. We must be mindful of that when maintaining language bindings.
 
 ### 8. Use appropriate types
 
