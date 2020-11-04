@@ -104,7 +104,9 @@ TEST(TensorOpTest, UnsqueezeNegAxis_3) {
     test.AddInput<int64_t>("axes", {3}, std::vector<int64_t>{-4, 1, -6});
     test.AddOutput<float>("output", {1, 1, 1, 2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
     // nGraph and TensorRT does not support negative axis.
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider, kTensorrtExecutionProvider});
+    // TODO: TensorRT, OpenVINO dont support "axes" input in opset 13, re-enable after
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider, 
+              kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
   }
 }
 
@@ -114,8 +116,8 @@ TEST(TensorOpTest, Unsqueeze_1_int32_axes_input) {
   test.AddInput<int32_t>("input", {2, 3, 4}, std::vector<int32_t>(2 * 3 * 4, 1));
   test.AddInput<int64_t>("axes", {1}, std::vector<int64_t>{1});
   test.AddOutput<int32_t>("output", {2, 1, 3, 4}, std::vector<int32_t>(2 * 3 * 4, 1));
-  // TensorRT does not support missing 'axes' attribute
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  // TODO: TensorRT and OpenVINO dont support "axes" input in opset 13, re-enable after
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(TensorOpTest, Unsqueeze_3_axes_input) {
@@ -124,8 +126,8 @@ TEST(TensorOpTest, Unsqueeze_3_axes_input) {
   test.AddInput<float>("input", {2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
   test.AddInput<int64_t>("axes", {3}, std::vector<int64_t>{2, 1, 0});
   test.AddOutput<float>("output", {1, 1, 1, 2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
-  // TensorRT does not support missing 'axes' attribute
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  // TODO: TensorRT and OpenVINO dont support "axes" input in opset 13, re-enable after
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 }  // namespace test
