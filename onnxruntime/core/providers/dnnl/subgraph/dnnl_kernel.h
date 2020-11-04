@@ -111,7 +111,7 @@ class DnnlKernel {
 
   // memory used for reorders
   std::unique_ptr<dnnl::memory> reorder_dst_mem_to_;
-  AllocatorPtr alloc_;
+  Provider_AllocatorPtr alloc_;
   DNNLExecutionProvider* provider_;
 };
 

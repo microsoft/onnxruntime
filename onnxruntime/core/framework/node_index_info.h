@@ -7,7 +7,6 @@
 
 #include "core/common/common.h"
 #include "core/framework/ml_value.h"
-#include "core/graph/basic_types.h"
 
 namespace onnxruntime {
 class GraphNodes;
