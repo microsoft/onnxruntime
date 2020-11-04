@@ -323,10 +323,29 @@ def testToyBertCheckpointLoadZero(optimizer, mixedprecision_enabled, expected_ev
     try:
         checkpoint_files = sorted(checkpoint._list_checkpoint_files(ckpt_dir, ckpt_prefix))
     except(AssertionError):
-        print("No checkpoints found. Generating...")
+        # No checkpoints found. Generating...
         assert subprocess.call(['mpirun', '-n', '4', '-x', 'NCCL_DEBUG=INFO', 'python', 
             'orttrainer_bert_toy_onnx_ckpt_gen.py']) == 0
+        checkpoint_files = sorted(checkpoint._list_checkpoint_files(ckpt_dir, ckpt_prefix))
 
+    ########################################
+    # Test the aggregation code individually
+    ########################################
+    ckpt_agg = checkpoint._CombineZeroCheckpoint(checkpoint_files)
+    aggregate_state_dict = ckpt_agg.aggregate_checkpoints()
+
+    expected_state_name = 'aggregated_' + ckpt_prefix + '.pt'
+    expected_state_dict = torch.load(os.path.join(ckpt_dir, expected_state_name), map_location=torch.device("cpu"))
+
+    assert expected_state_dict.keys() == aggregate_state_dict.keys()
+
+    for k,v in aggregate_state_dict.items():
+        assert_allclose(v, expected_state_dict[k])
+
+    ##########################################################
+    # Test the experimental_load_checkpoint functionality that 
+    # does the aggregation under the hood
+    ##########################################################
     checkpoint.experimental_load_checkpoint(trainer, ckpt_dir, ckpt_prefix)
 
     # input values
