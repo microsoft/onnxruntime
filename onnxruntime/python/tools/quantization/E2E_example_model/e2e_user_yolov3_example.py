@@ -10,10 +10,24 @@ from PIL import Image
 import onnx
 import onnxruntime
 from onnx import helper, TensorProto, numpy_helper
-from onnxruntime.quantization import quantize_static, calibrate, CalibrationDataReader, get_dynamic_range_table
+from onnxruntime.quantization import quantize_static, calibrate, CalibrationDataReader, get_dynamic_range_table, ONNXValidator 
+
+def parse_annotations(filename):
+    import json
+    annotations = {}
+    with open(filename, 'r') as f:
+        annotations = json.load(f)
+
+
+    img_name_to_img_id = {}
+    for image in annotations["images"]:
+        file_name = image["file_name"]
+        img_name_to_img_id[file_name] = image["id"]
+
+    return img_name_to_img_id
 
 class YoloV3OnnxModelZooDataReader(CalibrationDataReader):
-    def __init__(self, calibration_image_folder, start_index=0, size_limit=0, augmented_model_path='augmented_model.onnx'):
+    def __init__(self, calibration_image_folder, start_index=0, size_limit=0, augmented_model_path='augmented_model.onnx', is_validation=False):
         self.image_folder = calibration_image_folder
         self.augmented_model_path = augmented_model_path
         self.preprocess_flag = True
@@ -21,26 +35,43 @@ class YoloV3OnnxModelZooDataReader(CalibrationDataReader):
         self.datasize = 0
         self.start_index = start_index
         self.size_limit = size_limit
+        self.is_validation = is_validation
 
     def get_next(self):
         if self.preprocess_flag:
             self.preprocess_flag = False
             session = onnxruntime.InferenceSession(self.augmented_model_path, None)
             print(session.get_inputs()[0].shape)
-            height = 416
             width = 416
-            nhwc_data_list = yolov3_preprocess_func(self.image_folder, height, width, self.start_index, self.size_limit)
+            height = 416
+            nhwc_data_list, filename_list, image_size_list = yolov3_preprocess_func(self.image_folder, height, width, self.start_index, self.size_limit)
             input_name = session.get_inputs()[0].name
             self.datasize = len(nhwc_data_list)
-            arr = np.full((1,2), 0, dtype="float32")
-            arr[0][0] = 506.0
-            arr[0][1] = 640.0
-            # self.enum_data_dicts["image_shape"] = arr
-            self.enum_data_dicts = iter([{input_name: nhwc_data, "image_shape": arr} for nhwc_data in nhwc_data_list])
+
+            # if self.is_validation:
+                # annotations = './annotations/instances_val2017.json'
+                # img_name_to_img_id = parse_annotations(annotations)
+                # data = []
+                # for i in range(len(nhwc_data_list)):
+                    # nhwc_data = nhwc_data_list[i]
+                    # file_name = filename_list[i]
+                    # data.append({input_name: nhwc_data, "image_shape": arr, "id": img_name_to_img_id[file_name]})
+                # self.enum_data_dicts = iter(data)
+            # else:
+                # self.enum_data_dicts = iter([{input_name: nhwc_data, "image_shape": arr} for nhwc_data in nhwc_data_list])
+
+            annotations = './annotations/instances_val2017.json'
+            img_name_to_img_id = parse_annotations(annotations)
+            data = []
+            for i in range(len(nhwc_data_list)):
+                nhwc_data = nhwc_data_list[i]
+                file_name = filename_list[i]
+                data.append({input_name: nhwc_data, "image_shape": image_size_list[i], "id": img_name_to_img_id[file_name]})
+            self.enum_data_dicts = iter(data)
         return next(self.enum_data_dicts, None)
 
 class YoloV3DataReader(CalibrationDataReader):
-    def __init__(self, calibration_image_folder, start_index=0, size_limit=0, augmented_model_path='augmented_model.onnx'):
+    def __init__(self, calibration_image_folder, start_index=0, size_limit=0, augmented_model_path='augmented_model.onnx', is_validation=False):
         self.image_folder = calibration_image_folder
         self.augmented_model_path = augmented_model_path
         self.preprocess_flag = True
@@ -48,6 +79,7 @@ class YoloV3DataReader(CalibrationDataReader):
         self.datasize = 0
         self.start_index = start_index
         self.size_limit = size_limit
+        self.is_validation = is_validation
 
     def get_next(self):
         if self.preprocess_flag:
@@ -55,10 +87,21 @@ class YoloV3DataReader(CalibrationDataReader):
             session = onnxruntime.InferenceSession(self.augmented_model_path, None)
             (_, _, height, width) = session.get_inputs()[0].shape
             print(session.get_inputs()[0].shape)
-            nhwc_data_list = yolov3_preprocess_func(self.image_folder, height, width, self.start_index, self.size_limit)
+            nhwc_data_list, filename_list, _ = yolov3_preprocess_func(self.image_folder, height, width, self.start_index, self.size_limit)
             input_name = session.get_inputs()[0].name
             self.datasize = len(nhwc_data_list)
-            self.enum_data_dicts = iter([{input_name: nhwc_data} for nhwc_data in nhwc_data_list])
+
+            if self.is_validation:
+                annotations = './annotations/instances_val2017.json'
+                img_name_to_img_id, img_name_to_width_height = parse_annotations(annotations)
+                data = []
+                for i in range(len(nhwc_data_list)):
+                    nhwc_data = nhwc_data_list[i]
+                    file_name = filename_list[i]
+                    data.append({input_name: nhwc_data, "id": img_name_to_img_id[file_name], "width_height": img_name_to_width_height[file_name]})
+                self.enum_data_dicts = iter(data)
+            else:
+                self.enum_data_dicts = iter([{input_name: nhwc_data} for nhwc_data in nhwc_data_list])
         return next(self.enum_data_dicts, None)
 
 
@@ -95,7 +138,10 @@ def yolov3_preprocess_func(images_folder, height, width, start_index=0, size_lim
         batch_filenames = [image_names[i] for i in range(start_index, end_index)]
     else:
         batch_filenames = image_names
+
+
     unconcatenated_batch_data = []
+    image_size_list = []
 
     print(batch_filenames)
 
@@ -109,37 +155,11 @@ def yolov3_preprocess_func(images_folder, height, width, start_index=0, size_lim
         image_data = np.transpose(image_data, [2, 0, 1])
         image_data = np.expand_dims(image_data, 0)
         unconcatenated_batch_data.append(image_data)
+        image_size_list.append(np.array([img.size[1], img.size[0]], dtype=np.float32).reshape(1, 2))
 
 
     batch_data = np.concatenate(np.expand_dims(unconcatenated_batch_data, axis=0), axis=0)
-    return batch_data
-
-def preprocess_func(images_folder, height, width, size_limit=0):
-    '''
-    Loads a batch of images and preprocess them
-    parameter images_folder: path to folder storing images
-    parameter height: image height in pixels
-    parameter width: image width in pixels
-    parameter size_limit: number of images to load. Default is 0 which means all images are picked.
-    return: list of matrices characterizing multiple images
-    '''
-    image_names = os.listdir(images_folder)
-    if size_limit > 0 and len(image_names) >= size_limit:
-        batch_filenames = [image_names[i] for i in range(size_limit)]
-    else:
-        batch_filenames = image_names
-    unconcatenated_batch_data = []
-
-    for image_name in batch_filenames:
-        image_filepath = images_folder + '/' + image_name
-        pillow_img = Image.new("RGB", (width, height))
-        pillow_img.paste(Image.open(image_filepath).resize((width, height)))
-        input_data = np.float32(pillow_img) - \
-        np.array([123.68, 116.78, 103.94], dtype=np.float32)
-        nhwc_data = np.expand_dims(input_data, axis=0)
-        unconcatenated_batch_data.append(nhwc_data)
-    batch_data = np.concatenate(np.expand_dims(unconcatenated_batch_data, axis=0), axis=0)
-    return batch_data
+    return batch_data, batch_filenames, image_size_list
 
 def json_to_plain_text(json_file, plain_text_file):
     import json
@@ -160,9 +180,34 @@ def json_to_plain_text(json_file, plain_text_file):
     # with open(b_file, 'w') as file:
         # for s in sorted(Lines):
             # file.write(s)
-    
 
-def main():
+
+    
+def start_to_generate_prediction_result_for_validation():
+    input_model_path = './yolov3_new.onnx'
+    validate_dataset = './val2017'
+    annotations = './annotations/instances_val2017.json'
+    image_names = os.listdir(validate_dataset)
+    length = len(image_names)
+    length = 3
+    stride = 3000
+    stride = 3
+    end_index = stride
+    
+    results = []
+    for i in range(0, length, stride):
+        dr = YoloV3OnnxModelZooDataReader(validate_dataset, augmented_model_path=input_model_path, start_index=i, size_limit=stride, is_validation=True)
+        validator = ONNXValidator(input_model_path, dr)
+        validator.generate()
+        results += validator.get_result()
+
+    print(results)
+    with open('prediction.json', 'w') as file:
+        file.write(json.dumps(results)) # use `json.loads` to do the reverse
+
+
+
+def start_to_generate_cal_table():
 
     # sort_dynamic_range_file("final_dynamic_range", "final_dynamic_range_sort")
 
@@ -186,4 +231,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    start_to_generate_prediction_result_for_validation()
+    # start_to_generate_cal_table()
