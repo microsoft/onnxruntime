@@ -34,5 +34,4 @@ common::Status SimpleTensorAllocator::GetPreallocatedBuffer(int ort_value_index,
   out = onnxruntime::make_unique<MemBuffer>(buffer, len, location);
   return Status::OK();
 }
-
 }  // namespace onnxruntime

@@ -140,7 +140,7 @@ common::Status SaveInitializedTensors(
     }
     id_to_initialized_tensor[ort_value_index] = entry.second;
   }
-  
+
   // tensors requiring a specific allocation order are traced first, to ensure they are allocated in order
   auto initialized_tensors_to_allocate = id_to_initialized_tensor;
   for (int ort_value_index : initializer_allocation_order) {
@@ -163,8 +163,8 @@ common::Status SaveInitializedTensors(
   std::unordered_map<std::string, size_t> planned_initializers_memory_sizes_in_byte;
   ORT_RETURN_IF_ERROR(
       planner.FinalizePlan(planned_initializers_memory_sizes_in_byte));
-  if(session_options.enable_memory_profile)
-	  MemoryInfo::RecordInitializerPatternInfo(planner.GetMemPatterns());
+  if (session_options.enable_memory_profile)
+    MemoryInfo::RecordInitializerPatternInfo(planner.GetMemPatterns());
 
   for (auto i : planned_initializers_memory_sizes_in_byte) {
     LOGS(logger, INFO) << "[Memory] SessionStateInitializer statically allocates "

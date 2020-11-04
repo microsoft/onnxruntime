@@ -10,16 +10,17 @@
 #include <iomanip>
 
 namespace onnxruntime {
-using IntervalT = std::pair<size_t, size_t>;
 using OrtValueIndex = int;
 using OrtValueName = std::string;
 
 struct MemoryInfoPerTensor {
   MemoryBlock planned_block;
-  MemoryBlock alloced_block;
+  MemoryBlock allocated_block;
 };
 
 struct MemoryInfoMap {
+  using MemoryInfoMapT = std::unordered_map<onnxruntime::OrtValueIndex, onnxruntime::MemoryInfoPerTensor>;
+
  public:
   MemoryInfoMap() = default;
 
@@ -28,41 +29,36 @@ struct MemoryInfoMap {
   }
 
   inline void AddAllocMemory(const OrtValueIndex& idx, MemoryBlock& mb) {
-    map_[idx].alloced_block = mb;
+    map_[idx].allocated_block = mb;
     if (ptr_offset == 0 || (ptr_offset > mb.offset_ && mb.offset_ != 0)) {
       ptr_offset = mb.offset_;
     }
   }
 
   inline const MemoryBlock& GetPlannedMemory(const OrtValueIndex& idx) const {
-    ORT_ENFORCE(map_.find(idx) != map_.end());
     return map_.at(idx).planned_block;
   }
 
   inline size_t GetPlannedAddress(const OrtValueIndex& idx) const {
-    ORT_ENFORCE(map_.find(idx) != map_.end());
     return map_.at(idx).planned_block.offset_;
   }
 
   inline size_t GetPlannedSize(const OrtValueIndex& idx) const {
-    ORT_ENFORCE(map_.find(idx) != map_.end());
     return map_.at(idx).planned_block.size_;
   }
   size_t GetAllocAddress(const OrtValueIndex& idx, bool raw = false) const {
-    ORT_ENFORCE(map_.find(idx) != map_.end());
     if (raw) {
-      return map_.at(idx).alloced_block.offset_;
+      return map_.at(idx).allocated_block.offset_;
     } else {
-      return map_.at(idx).alloced_block.offset_ - ptr_offset;
+      return map_.at(idx).allocated_block.offset_ - ptr_offset;
     }
   }
 
   inline size_t GetAllocSize(const OrtValueIndex& idx) const {
-    ORT_ENFORCE(map_.find(idx) != map_.end());
-    return map_.at(idx).alloced_block.size_;
+    return map_.at(idx).allocated_block.size_;
   }
 
-  inline bool Contain(const OrtValueIndex& idx) {
+  inline bool Contain(const OrtValueIndex& idx) const {
     return map_.find(idx) != map_.end();
   }
 
@@ -70,14 +66,14 @@ struct MemoryInfoMap {
     map_.clear();
   }
 
-  std::unordered_map<onnxruntime::OrtValueIndex, onnxruntime::MemoryInfoPerTensor>::iterator begin() { return map_.begin(); }
-  std::unordered_map<onnxruntime::OrtValueIndex, onnxruntime::MemoryInfoPerTensor>::const_iterator begin() const { return map_.begin(); }
-  std::unordered_map<onnxruntime::OrtValueIndex, onnxruntime::MemoryInfoPerTensor>::iterator end() { return map_.end(); }
-  std::unordered_map<onnxruntime::OrtValueIndex, onnxruntime::MemoryInfoPerTensor>::const_iterator end() const { return map_.end(); }
+  MemoryInfoMapT::iterator begin() { return map_.begin(); }
+  MemoryInfoMapT::const_iterator begin() const { return map_.begin(); }
+  MemoryInfoMapT::iterator end() { return map_.end(); }
+  MemoryInfoMapT::const_iterator end() const { return map_.end(); }
   onnxruntime::MemoryInfoPerTensor& operator[](const OrtValueIndex& k) { return map_[k]; }
 
  private:
-  std::unordered_map<OrtValueIndex, MemoryInfoPerTensor> map_;
+  MemoryInfoMapT map_;
   size_t ptr_offset{0};  //The start ptr of the raw data
 };
 

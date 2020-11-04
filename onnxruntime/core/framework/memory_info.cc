@@ -52,7 +52,6 @@ void MemoryInfo::RecordMemoryPatternInfo(const MemoryPatternGroup& mem_patterns,
   for (const auto& location : mem_patterns.locations) {
     for (const auto& p : mem_patterns.GetPatterns(location)->GetPatternsMap()) {
       ORT_ENFORCE(AllocPlan(p.first));
-      ORT_ENFORCE(tensors_memory_info_map_.find(location) != tensors_memory_info_map_.end());
       tensors_memory_info_map_.at(location)[type].AddPlannedMemory(p.first, p.second);
     }
   }
@@ -142,8 +141,8 @@ void PrintInforPerTensor(const MemoryInfo::AllocInfoPerTensor& alloc_info, const
             << (mem_info.planned_block.offset_ + mem_info.planned_block.size_) << "), ";
   std::cout << "planned Size: " << mem_info.planned_block.size_ << ", ";
   std::cout << "allocated block: (" << rel_addr << ", "
-            << (rel_addr + mem_info.alloced_block.size_) << "), ";
-  std::cout << "allocated Size: " << mem_info.alloced_block.size_ << "\n";
+            << (rel_addr + mem_info.allocated_block.size_) << "), ";
+  std::cout << "allocated Size: " << mem_info.allocated_block.size_ << "\n";
 }
 
 void MemoryInfo::PrintMemoryInfoForLocation(const logging::Logger& /*logger*/, const OrtDevice::DeviceType location) {

@@ -468,12 +468,12 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   }
 
   for (auto i : frame.GetStaticMemorySizeInfo()) {
-    std::cout << "[Memory] ExecutionFrame statically allocates "
+    LOGS(logger, INFO) << "[Memory] ExecutionFrame statically allocates "
               << i.second << " bytes for " << i.first << std::endl;
   }
 
   for (auto i : frame.GetDynamicMemorySizeInfo()) {
-    std::cout << "[Memory] ExecutionFrame dynamically allocates "
+    LOGS(logger, INFO) << "[Memory] ExecutionFrame dynamically allocates "
               << i.second << " bytes for " << i.first << std::endl;
   }
 
