@@ -19,6 +19,7 @@
 #include "orttraining/core/optimizer/megatron_transformer.h"
 #include "orttraining/core/optimizer/concat_replacement.h"
 #include "orttraining/core/optimizer/localized_recompute.h"
+#include "orttraining/core/optimizer/mainz_multitask_coloring.h"
 #include "test/optimizer/graph_transform_test_fixture.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/asserts.h"
@@ -446,6 +447,19 @@ TEST_F(GraphTransformationTests, BiasGeluRecomputeTest) {
     }
   }
 }
+
+TEST_F(GraphTransformationTests, DISABLED_MainzMultitaskColoringTest) {
+  auto model_uri = MODEL_FOLDER "mainz-ort-tiny-fw.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{2};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<MainzMultitaskColoring>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_);
+  ASSERT_TRUE(ret.IsOK());
+}
+
 
 // We only tested on CUDA run.
 #if defined(USE_CUDA)
