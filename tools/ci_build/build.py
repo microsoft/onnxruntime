@@ -1277,10 +1277,6 @@ def run_training_python_frontend_tests(cwd):
     run_orttraining_test_orttrainer_frontend_separately(cwd)
     # run_subprocess([sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_orttrainer_frontend.py'], cwd=cwd)
 
-    # generate checkpoint files required in orttraining_test_orttrainer_bert_toy_onnx.py
-    run_subprocess(['mpirun', '-n', '4', '-x', 'NCCL_DEBUG=INFO', sys.executable,
-                    'orttrainer_bert_toy_onnx_ckpt_gen.py'], cwd=cwd)
-
     run_subprocess([sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_orttrainer_bert_toy_onnx.py'], cwd=cwd)
 
 
@@ -1302,6 +1298,17 @@ def run_training_python_frontend_e2e_tests(cwd):
         run_subprocess([
             'mpirun', '-n', str(ngpus), '-x', 'NCCL_DEBUG=INFO', sys.executable,
             bert_pretrain_script, 'ORTBertPretrainTest.test_pretrain_convergence'], cwd=cwd)
+
+        # TODO: testing in e2e pipeline until multi-node CI is available.
+        log.debug('RUN: mpirun -n {} ''-x' 'NCCL_DEBUG=INFO'' {} {} {}'.format(
+            ngpus, sys.executable, bert_pretrain_script, 'ORTBertPretrainTest.test_pretrain_zero'))
+        run_subprocess([
+            'mpirun', '-n', str(ngpus), '-x', 'NCCL_DEBUG=INFO', sys.executable,
+            bert_pretrain_script, 'ORTBertPretrainTest.test_pretrain_zero'], cwd=cwd)
+
+        # regenerate checkpoint files required in orttraining_test_orttrainer_bert_toy_onnx.py
+        run_subprocess(['mpirun', '-n', str(ngpus), '-x', 'NCCL_DEBUG=INFO', sys.executable,
+                        'orttrainer_bert_toy_onnx_ckpt_gen.py'], cwd=cwd)
 
         log.debug('RUN: mpirun -n {} {} orttraining_run_glue.py'.format(ngpus, sys.executable))
         run_subprocess([

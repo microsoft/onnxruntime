@@ -320,13 +320,7 @@ def testToyBertCheckpointLoadZero(optimizer, mixedprecision_enabled, expected_ev
 
     ckpt_dir = _test_helpers._get_name("ort_ckpt")
     ckpt_prefix = _test_helpers._get_bert_ckpt_prefix(optimizer.name)
-    try:
-        checkpoint_files = sorted(checkpoint._list_checkpoint_files(ckpt_dir, ckpt_prefix))
-    except(AssertionError):
-        print("No checkpoint files found. Attempting to generate...")
-        assert subprocess.call(['mpirun', '-n', '4', '-x', 'NCCL_DEBUG=INFO', 'python', 
-            'orttrainer_bert_toy_onnx_ckpt_gen.py']) == 0
-        checkpoint_files = sorted(checkpoint._list_checkpoint_files(ckpt_dir, ckpt_prefix))
+    checkpoint_files = sorted(checkpoint._list_checkpoint_files(ckpt_dir, ckpt_prefix))
 
     ########################################
     # Test the aggregation code individually
