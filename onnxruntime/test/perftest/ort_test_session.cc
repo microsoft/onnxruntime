@@ -78,7 +78,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #endif
   } else if (provider_name == onnxruntime::kNnapiExecutionProvider) {
 #ifdef USE_NNAPI
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(session_options));
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(session_options, 0));
 #else
     ORT_THROW("NNAPI is not supported in this build\n");
 #endif
