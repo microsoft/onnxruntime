@@ -90,7 +90,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
 common::Status SaveInitializedTensors(
     const Env& env, const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
     const GraphViewer& graph, const OrtMemoryInfo& default_cpu_memory_info,
-    const OrtValueNameIdxMap& ort_value_name_idx_map, ITensorAllocator& planner,
+    const OrtValueNameIdxMap& ort_value_name_idx_map, const std::vector<OrtValueIndex>& initializer_allocation_order, ITensorAllocator& planner,
     const std::function<Status(int idx, const OrtValue& value, const OrtCallback& d, bool constant)>& save_tensor_func,
     const logging::Logger& logger, const DataTransferManager& data_transfer_mgr,
     const ExecutionPlanBase& exec_plan,
@@ -138,6 +138,15 @@ common::Status SaveInitializedTensors(
       user_supplied_initializer_ids.insert(ort_value_index);
     }
     id_to_initialized_tensor[ort_value_index] = entry.second;
+  }
+  
+  // tensors requiring a specific allocation order are traced first, to ensure they are allocated in order
+  auto initialized_tensors_to_allocate = id_to_initialized_tensor;
+  for (int ort_value_index : initializer_allocation_order) {
+    const auto entry = initialized_tensors_to_allocate.find(ort_value_index);
+    ORT_ENFORCE(entry != initialized_tensors_to_allocate.end());
+    ORT_RETURN_IF_ERROR(planner.Trace(entry->first, entry->second));
+    initialized_tensors_to_allocate.erase(entry);
   }
 
   for (const auto& entry : id_to_initialized_tensor) {

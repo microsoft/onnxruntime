@@ -703,6 +703,21 @@ TEST(GradientCheckerTest, ConvGrad) {
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
+  //conv3d
+  {
+    TensorShape x_shape({2, 1, 5, 5, 5});
+    TensorShape w_shape({1, 1, 3, 3, 3});
+    TensorShape b_shape({1});
+    TensorShape y_shape({2, 1, 5, 5, 5});
+    gradient_checker.ComputeGradientError(op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
+                                          {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3, 3}),
+                                           MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1, 1, 1})},
+                                          // TODO: ConvGrad does not handle the case where W does not have gradient.
+                                          // Check for not has_gradient need to be disabled to pass this test.
+                                          false);
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+  }
+
   //conv_with_strides
   {
     TensorShape x_shape({2, 1, 7, 5});
@@ -713,6 +728,22 @@ TEST(GradientCheckerTest, ConvGrad) {
                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),
                                            MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1}),
                                            MakeAttribute("strides", std::vector<int64_t>{2, 2})},
+                                          // TODO: ConvGrad does not handle the case where W does not have gradient.
+                                          // Check for not has_gradient need to be disabled to pass this test.
+                                          false);
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+  }
+
+  //conv3d_with_strides
+  {
+    TensorShape x_shape({2, 1, 7, 5, 5});
+    TensorShape w_shape({1, 1, 3, 3, 3});
+    TensorShape b_shape({1});
+    TensorShape y_shape({2, 1, 4, 3, 3});
+    gradient_checker.ComputeGradientError(op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
+                                          {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3, 3}),
+                                           MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1, 1, 1}),
+                                           MakeAttribute("strides", std::vector<int64_t>{2, 2, 2})},
                                           // TODO: ConvGrad does not handle the case where W does not have gradient.
                                           // Check for not has_gradient need to be disabled to pass this test.
                                           false);
