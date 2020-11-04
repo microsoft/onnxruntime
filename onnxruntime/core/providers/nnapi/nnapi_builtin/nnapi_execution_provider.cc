@@ -13,8 +13,9 @@ namespace onnxruntime {
 
 constexpr const char* NNAPI = "Nnapi";
 
-NnapiExecutionProvider::NnapiExecutionProvider()
-    : IExecutionProvider{onnxruntime::kNnapiExecutionProvider} {
+NnapiExecutionProvider::NnapiExecutionProvider(unsigned long nnapi_flags)
+    : IExecutionProvider{onnxruntime::kNnapiExecutionProvider},
+      nnapi_flags_(nnapi_flags) {
   AllocatorCreationInfo device_info(
       [](int) {
         return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo(NNAPI, OrtAllocatorType::OrtDeviceAllocator));
@@ -224,8 +225,8 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
     {
       onnxruntime::GraphViewer graph_viewer(graph_body);
       nnapi::ModelBuilder builder(graph_viewer);
-      builder.SetUseNCHW(false);
-      builder.SetUseFp16(false);
+      builder.SetUseNCHW(nnapi_flags_ & NNAPI_FLAG_USE_NCHW);
+      builder.SetUseFp16(nnapi_flags_ & NNAPI_FLAG_USE_FP16);
       std::unique_ptr<nnapi::Model> nnapi_model;
       ORT_RETURN_IF_ERROR(builder.Compile(nnapi_model));
 
