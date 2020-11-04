@@ -52,16 +52,4 @@ cwd = launch_args.cwd
 
 env = list_to_dict(launch_args.env.split()) if launch_args.env else {}
 
-# ['mpirun', '-n', str(ngpus), '-x', 'NCCL_DEBUG=INFO', sys.executable, orttraining_run_bert_pretrain.py, 'ORTBertPretrainTest.test_pretrain_convergence']
-# [sys.executable, 'orttraining_run_frontend_batch_size_test.py', '-v']
-# 
-# python launch_test.py --process_args "mpirun -n 4 -x NCCL_DEBUG=INFO python orttraining_run_bert_pretrain.py ORTBertPretrainTest.test_pretrain_convergence"\
-#   --cwd ~/onnxruntime/orttraining/orttraining/test/python"
-
-# [sys.executable, 'orttraining_run_glue.py', 'ORTGlueTest.test_bert_with_mrpc', '-v'], cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'}
-# python launch_test.py --process_args "python orttraining_run_glue.py ORTGlueTest.test_bert_with_mrpc -v" --cwd ~/onnxruntime/orttraining/orttraining/test/python --env "CUDA_VISIBLE_DEVICES 0"
-
 run_subprocess(process_args, cwd=cwd, env=env)
-
-
-
