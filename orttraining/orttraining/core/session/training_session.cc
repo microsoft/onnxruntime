@@ -82,14 +82,9 @@ Status SetupOptimizerParams(
         loss_scale_input_name.has_value() ? loss_scale_input_name.value() : "";
     opt_node_config.use_mixed_precision_moments = optimizer_config.use_mixed_precision_moments;
 
-    const auto mixed_precision_weight_name_it = fp32_weight_names_to_mixed_precision_node_args.find(original_weight_name);
+    const auto mixed_precision_weight_name_it = fp32_weight_names_to_mixed_precision_node_args.find(weight_name);
     if (mixed_precision_weight_name_it != fp32_weight_names_to_mixed_precision_node_args.end()) {
       opt_node_config.mixed_precision_weight_arg = mixed_precision_weight_name_it->second;
-    } else {
-      const auto new_mixed_precision_weight_name_it = fp32_weight_names_to_mixed_precision_node_args.find(weight_name);
-      if (new_mixed_precision_weight_name_it != fp32_weight_names_to_mixed_precision_node_args.end()) {
-        opt_node_config.mixed_precision_weight_arg = new_mixed_precision_weight_name_it->second;
-      }
     }
     opt_node_configs.emplace(weight_name, std::move(opt_node_config));
   }
@@ -253,13 +248,13 @@ Status TrainingSession::ConfigureForTraining(
                                                       config_result));
 
   std::unordered_set<std::string> all_trainable_weights;
-  for (auto& filtered_weight_name : trainable_initializers) {
-    if (config_result.weight_name_map_after_graph_transform.find(filtered_weight_name) !=
+  for (auto& trainable_initializer_name : trainable_initializers) {
+    if (config_result.weight_name_map_after_graph_transform.find(trainable_initializer_name) !=
         config_result.weight_name_map_after_graph_transform.end()) {
-      auto& updated_weight_name = config_result.weight_name_map_after_graph_transform.at(filtered_weight_name);
+      auto& updated_weight_name = config_result.weight_name_map_after_graph_transform.at(trainable_initializer_name);
       all_trainable_weights.insert(updated_weight_name);
     } else {
-      all_trainable_weights.insert(filtered_weight_name);
+      all_trainable_weights.insert(trainable_initializer_name);
     }
   }
 

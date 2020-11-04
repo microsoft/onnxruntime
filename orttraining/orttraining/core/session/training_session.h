@@ -246,7 +246,7 @@ class TrainingSession : public InferenceSession {
     // This is only set if an pipeline is enabled.
     optional<PipelineConfigurationResult> pipeline_config_result;
 
-    // Mapped initilized names after weight partitioning for example MegatronTransformer
+    // Mapped initialized names after weight partitioning for example MegatronTransformer
     std::unordered_map<std::string, std::string> weight_name_map_after_graph_transform{};
   };
 
