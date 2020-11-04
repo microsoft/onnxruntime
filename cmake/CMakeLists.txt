@@ -1037,6 +1037,11 @@ if(onnxruntime_USE_OPENVINO)
     add_definitions(-DDEVICE_NAME="${onnxruntime_USE_OPENVINO_DEVICE}")
   endif()
 
+  if(onnxruntime_USE_OPENVINO_MULTI)
+    add_definitions(-DOPENVINO_CONFIG_MULTI=1)
+    add_definitions(-DDEVICE_NAME="${onnxruntime_USE_OPENVINO_DEVICE}")
+  endif()
+
 endif()
 
 if (onnxruntime_USE_VITISAI)
