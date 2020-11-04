@@ -31,7 +31,12 @@ class Precision(Enum):
         return self.value
 
 
-def create_onnxruntime_session(onnx_model_path, use_gpu, enable_all_optimization=True, num_threads=-1, verbose=False):
+def create_onnxruntime_session(onnx_model_path,
+                               use_gpu,
+                               enable_all_optimization=True,
+                               num_threads=-1,
+                               enable_profiling=False,
+                               verbose=False):
     session = None
     try:
         from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel, __version__ as onnxruntime_version
@@ -41,6 +46,9 @@ def create_onnxruntime_session(onnx_model_path, use_gpu, enable_all_optimization
             sess_options.graph_optimization_level = GraphOptimizationLevel.ORT_ENABLE_ALL
         else:
             sess_options.graph_optimization_level = GraphOptimizationLevel.ORT_ENABLE_BASIC
+
+        if enable_profiling:
+            sess_options.enable_profiling = True
 
         if num_threads > 0:
             sess_options.intra_op_num_threads = num_threads
@@ -52,6 +60,8 @@ def create_onnxruntime_session(onnx_model_path, use_gpu, enable_all_optimization
 
         if verbose:
             sess_options.log_severity_level = 0
+        else:
+            sess_options.log_severity_level = 4
 
         logger.debug(f"Create session for onnx model: {onnx_model_path}")
         execution_providers = ['CPUExecutionProvider'

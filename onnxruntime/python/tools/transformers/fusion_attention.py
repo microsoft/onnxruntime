@@ -85,7 +85,7 @@ class FusionAttention(Fusion):
     Fuse Attention subgraph into one Attention node.
     """
     def __init__(self, model: OnnxModel, hidden_size: int, num_heads: int, attention_mask: AttentionMask):
-        super().__init__(model, "Attention", "SkipLayerNormalization")
+        super().__init__(model, "Attention", ["SkipLayerNormalization", "LayerNormalization"])
         self.hidden_size = hidden_size
         self.num_heads = num_heads
         self.attention_mask = attention_mask
@@ -154,15 +154,25 @@ class FusionAttention(Fusion):
         return attention_node
 
     def fuse(self, normalize_node, input_name_to_nodes, output_name_to_node):
+        # Sometimes we can not fuse skiplayernormalization since the add before layernorm has an output that used by nodes outside skiplayernorm
+        # Conceptually we treat add before layernorm as skiplayernorm node since they share the same pattern
+        start_node = normalize_node
+        if normalize_node.op_type == 'LayerNormalization':
+            add_before_layernorm = self.model.match_parent(normalize_node, 'Add', 0)
+            if add_before_layernorm is not None:
+                start_node = add_before_layernorm
+            else:
+                return
+
         # SkipLayerNormalization has two inputs, and one of them is the root input for attention.
-        qkv_nodes = self.model.match_parent_path(normalize_node, ['Add', 'MatMul', 'Reshape', 'Transpose', 'MatMul'],
+        qkv_nodes = self.model.match_parent_path(start_node, ['Add', 'MatMul', 'Reshape', 'Transpose', 'MatMul'],
                                                  [None, 0, 0, 0, 0])
         einsum_node = None
         if qkv_nodes is not None:
             (_, matmul_qkv, reshape_qkv, transpose_qkv, matmul_qkv) = qkv_nodes
         else:
             # Match Albert
-            qkv_nodes = self.model.match_parent_path(normalize_node, ['Add', 'Einsum', 'Transpose', 'MatMul'],
+            qkv_nodes = self.model.match_parent_path(start_node, ['Add', 'Einsum', 'Transpose', 'MatMul'],
                                                      [1, 0, 0, 0])
             if qkv_nodes is not None:
                 (_, einsum_node, transpose_qkv, matmul_qkv) = qkv_nodes
@@ -170,7 +180,7 @@ class FusionAttention(Fusion):
                 return
 
         other_inputs = []
-        for i, input in enumerate(normalize_node.input):
+        for i, input in enumerate(start_node.input):
             if input not in output_name_to_node:
                 continue
 
@@ -181,6 +191,26 @@ class FusionAttention(Fusion):
             return
 
         root_input = other_inputs[0]
+        """
+        Match flaubert                     Mask
+                                            |
+        Mul --> LayerNormalization -->  Attention --> MatMul --> Add
+         |                                                        |
+         |                                                        |
+         +---------------------------------------------------------
+        """
+        mul_before_layernorm = self.model.match_parent(start_node, 'Mul', 0)
+        if mul_before_layernorm is not None:
+            mul_children = input_name_to_nodes[mul_before_layernorm.output[0]]
+            if mul_children is not None and len(mul_children) == 2:
+                layernorm_node = mul_children[1]
+                if layernorm_node.op_type == 'LayerNormalization':
+                    root_input = layernorm_node.output[0]
+                else:
+                    return
+            else:
+                return
+
         children = input_name_to_nodes[root_input]
         children_types = [child.op_type for child in children]
         if children_types.count('MatMul') != 3:
