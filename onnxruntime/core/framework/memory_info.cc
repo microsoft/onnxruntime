@@ -52,6 +52,7 @@ void MemoryInfo::RecordMemoryPatternInfo(const MemoryPatternGroup& mem_patterns,
   for (const auto& location : mem_patterns.locations) {
     for (const auto& p : mem_patterns.GetPatterns(location)->GetPatternsMap()) {
       ORT_ENFORCE(AllocPlan(p.first));
+      ORT_ENFORCE(tensors_memory_info_map_.find(location) != tensors_memory_info_map_.end());
       tensors_memory_info_map_.at(location)[type].AddPlannedMemory(p.first, p.second);
     }
   }

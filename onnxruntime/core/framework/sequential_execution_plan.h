@@ -7,6 +7,7 @@
 #include "core/framework/alloc_kind.h"
 #include "core/framework/data_types.h"
 #include "core/framework/execution_plan_base.h"
+#include "core/graph/graph.h"
 
 namespace onnxruntime {
 // Every ml-value has a unique name and is assigned a unique integral number.
@@ -34,6 +35,8 @@ struct AllocPlanPerValue {
   IntervalT life_interval{0, 0};
   IntervalT allocate_interval{0, 0};
   OrtValueIndex inplace_reuse{-1}; //No in-place reuse
+  std::vector<size_t> program_counter_start;
+  std::vector<size_t> program_counter_end;
 
  public:
   AllocPlanPerValue() : location(CPU, Invalid) {}
@@ -48,6 +51,12 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
 
   // The following vector is indexed by OrtValueIndex
   std::vector<AllocPlanPerValue> allocation_plan;
+
+  // The following vector contains any initializer tensors that must be allocated sequentially.
+  std::vector<OrtValueIndex> initializer_allocation_order;
+
+  // The following vector contains any activation tensors that must be allocated sequentially.
+  std::vector<OrtValueIndex> activation_allocation_order;
 
   // The following indicates the order in which nodes should be executed and the
   // ml-values to be free after each node's execution:
