@@ -14,14 +14,17 @@ extern "C" {
  * CPU_FP32, GPU_FP32, GPU_FP16, MYRIAD_FP16, VAD-M_FP16 or VAD-F_FP32.
  */
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_OpenVINO,
-    _In_ OrtSessionOptions* options, _In_ const char* device_type);
+               _In_ OrtSessionOptions* options, _In_ const char* device_type);
 
 /**
  * \param settings_str string of Key-Value pairs with '\n' used to delimit
  * pairs and '|' used to delimit key and value within a pair.
  */
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProviderEx_OpenVINO,
-    _In_ OrtSessionOptions* options, _In_ const char* settings_str);
+               _In_ OrtSessionOptions* options, _In_ const char* settings_str);
+
+struct OpenVINO_Create {
+};
 
 #ifdef __cplusplus
 }

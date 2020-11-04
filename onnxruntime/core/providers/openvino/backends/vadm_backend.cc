@@ -5,12 +5,14 @@
 #include <memory>
 #include <sstream>
 #include <fstream>
+#include <mutex>
 
 #include <inference_engine.hpp>
 
+#include "core/providers/shared_library/provider_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/graph/graph.h"
-#include "core/common/logging/logging.h"
+//#include "core/graph/graph.h"
+//#include "core/common/logging/logging.h"
 
 #include "../contexts.h"
 #include "../backend_utils.h"
@@ -26,7 +28,7 @@ namespace openvino_ep {
 
 using namespace backend_utils;
 
-VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
+VADMBackend::VADMBackend(const Provider_ModelProto& model_proto,
                          GlobalContext& global_context,
                          const SubGraphContext& subgraph_context)
     : global_context_(global_context), subgraph_context_(subgraph_context) {
@@ -50,24 +52,24 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   std::map<std::string, std::string> config;
 
 #if defined(OPENVINO_2020_4)
-  if(const_outputs_map_.size() == subgraph_context_.output_names.size())
+  if (const_outputs_map_.size() == subgraph_context_.output_names.size())
     subgraph_context_.is_constant = true;
 #endif
 
   int i = 0;
-  if(subgraph_context_.is_constant)
+  if (subgraph_context_.is_constant)
     return;
   // Loading model to the plugin
   //If graph is fully supported and batching is enabled, load the network onto all VPU's and infer
   std::vector<InferenceEngine::ExecutableNetwork> exe_networks;
-  if(global_context_.is_wholly_supported_graph && subgraph_context_.enable_batching){
-    for(int j = 0; j < 8; j++){
+  if (global_context_.is_wholly_supported_graph && subgraph_context_.enable_batching) {
+    for (int j = 0; j < 8; j++) {
       InferenceEngine::ExecutableNetwork exe_network;
-    #if defined(OPENVINO_2021_1)
+#if defined(OPENVINO_2021_1)
       config[InferenceEngine::HDDL_DEVICE_TAG] = global_context_.deviceTags[j];
-    #else
+#else
       config[VPU_HDDL_CONFIG_KEY(DEVICE_TAG)] = global_context_.deviceTags[j];
-    #endif
+#endif
       try {
         exe_network = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, "HDDL", config);
       } catch (InferenceEngine::details::InferenceEngineException e) {
@@ -78,11 +80,11 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
       exe_networks.push_back(exe_network);
     }
     LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
-    for(size_t j = 0; j < num_inf_reqs_; j++) {
+    for (size_t j = 0; j < num_inf_reqs_; j++) {
       InferenceEngine::InferRequest::Ptr infRequest;
       try {
         infRequest = exe_networks[j].CreateInferRequestPtr();
-      } catch(InferenceEngine::details::InferenceEngineException e) {
+      } catch (InferenceEngine::details::InferenceEngineException e) {
         ORT_THROW(log_tag + "Exception while creating InferRequest object: " + e.what());
       } catch (...) {
         ORT_THROW(log_tag + "Exception while creating InferRequest object.");
@@ -96,11 +98,11 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   else {
     i = GetFirstAvailableDevice(global_context);
     LOGS_DEFAULT(INFO) << log_tag << "Device Tag is: " << i;
-  #if defined(OPENVINO_2021_1)
+#if defined(OPENVINO_2021_1)
     config[InferenceEngine::HDDL_DEVICE_TAG] = global_context_.deviceTags[i];
-  #else
+#else
     config[VPU_HDDL_CONFIG_KEY(DEVICE_TAG)] = global_context_.deviceTags[i];
-  #endif
+#endif
     InferenceEngine::ExecutableNetwork exe_network;
     try {
       exe_network = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, "HDDL", config);
@@ -111,9 +113,9 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
     }
     LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
     InferenceEngine::InferRequest::Ptr infRequest;
-    try{
+    try {
       infRequest = exe_network.CreateInferRequestPtr();
-    } catch(InferenceEngine::details::InferenceEngineException e) {
+    } catch (InferenceEngine::details::InferenceEngineException e) {
       ORT_THROW(log_tag + "Exception while creating InferRequest object: " + e.what());
     } catch (...) {
       ORT_THROW(log_tag + "Exception while creating InferRequest object.");
@@ -162,7 +164,6 @@ void VADMBackend::StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* c
 void VADMBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* context,
                                          size_t batch_slice_idx, size_t infer_req_idx,
                                          size_t batch_size) {
-
   auto infer_request = infer_requests_[infer_req_idx];
 
   // Wait for Async inference completion
@@ -194,17 +195,15 @@ void VADMBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext
     FillOutputBlob(graph_output_blob, output_tensor, ort, precision, batch_slice_idx);
   }
 #if defined(OPENVINO_2020_4)
-  if(!const_outputs_map_.empty()){
-    for(auto item : const_outputs_map_){
-
+  if (!const_outputs_map_.empty()) {
+    for (auto item : const_outputs_map_) {
       auto out_name = item.first;
       auto node = item.second;
       auto output_tensor = GetOutputTensor(ort, context, out_name, subgraph_context_.output_names, node);
-      FillOutputsWithConstantData(ort,node,output_tensor);
+      FillOutputsWithConstantData(ort, node, output_tensor);
     }
   }
 #endif
-
 }
 size_t DeduceBatchSize(Ort::CustomOpApi ort, const OrtValue* input_tensor,
                        InferenceEngine::SizeVector graph_dims) {
@@ -233,13 +232,13 @@ void VADMBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   size_t batch_size = 1;
 
   if (subgraph_context_.enable_batching) {
-    // Calculate the batch_size from the input tensor shape.
-    #if (defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
+// Calculate the batch_size from the input tensor shape.
+#if (defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
     const OrtValue* tensor = ort.KernelContext_GetInput(context, subgraph_context_.input_indexes[0]);
-    #else
+#else
     auto iter = subgraph_context_.input_names.begin();
     const OrtValue* tensor = ort.KernelContext_GetInput(context, subgraph_context_.input_names.at(iter->first));
-    #endif
+#endif
 
     batch_size = DeduceBatchSize(ort, tensor,
                                  ie_cnn_network_->getInputsInfo().begin()->second->getTensorDesc().getDims());
@@ -248,17 +247,16 @@ void VADMBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   size_t full_parallel_runs = batch_size / num_inf_reqs_;
   size_t remainder_parallel_runs = batch_size % num_inf_reqs_;
 
-  if(subgraph_context_.is_constant){
+  if (subgraph_context_.is_constant) {
 #if defined(OPENVINO_2020_4) || defined(OPENVINO_2021_1)
-    for(auto item : const_outputs_map_){
+    for (auto item : const_outputs_map_) {
       auto out_name = item.first;
       auto node = item.second;
       auto output_tensor = GetOutputTensor(ort, context, out_name, subgraph_context_.output_names, node);
-      FillOutputsWithConstantData(ort,node, output_tensor);
+      FillOutputsWithConstantData(ort, node, output_tensor);
     }
 #endif
-  }
-  else{
+  } else {
     // Distribute the batched inputs among available Infer Requests
     // for parallel inference.
 

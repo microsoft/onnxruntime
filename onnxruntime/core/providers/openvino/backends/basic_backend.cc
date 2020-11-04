@@ -9,9 +9,10 @@
 
 #include <inference_engine.hpp>
 
+#include "core/providers/shared_library/provider_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/graph/graph.h"
-#include "core/common/logging/logging.h"
+//#include "core/graph/graph.h"
+//#include "core/common/logging/logging.h"
 
 #include "../backend_utils.h"
 #include <ngraph/frontend/onnx_import/onnx.hpp>
@@ -24,42 +25,40 @@ namespace openvino_ep {
 
 using namespace backend_utils;
 
-BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
+BasicBackend::BasicBackend(const Provider_ModelProto& model_proto,
                            GlobalContext& global_context,
                            const SubGraphContext& subgraph_context)
     : global_context_(global_context), subgraph_context_(subgraph_context) {
-
   ie_cnn_network_ = CreateCNNNetwork(model_proto, global_context_, subgraph_context_, const_outputs_map_);
   SetIODefs(model_proto, ie_cnn_network_, subgraph_context_.output_names, const_outputs_map_, global_context_.device_type);
 
   InferenceEngine::ExecutableNetwork exe_network;
 
 #if defined(OPENVINO_2020_4) || defined(OPENVINO_2021_1)
-  if(const_outputs_map_.size() == subgraph_context_.output_names.size())
+  if (const_outputs_map_.size() == subgraph_context_.output_names.size())
     subgraph_context_.is_constant = true;
 #endif
 
   // Loading model to the plugin
-  if(subgraph_context_.is_constant)
+  if (subgraph_context_.is_constant)
     return;
   std::map<std::string, std::string> config;
-  if(global_context_.device_type == "MYRIAD"){
-
-#if defined(OPENVINO_2021_1) 
-    if(subgraph_context_.set_vpu_config) {
+  if (global_context_.device_type == "MYRIAD") {
+#if defined(OPENVINO_2021_1)
+    if (subgraph_context_.set_vpu_config) {
       config["MYRIAD_DETECT_NETWORK_BATCH"] = CONFIG_VALUE(NO);
     }
 
-    if(global_context_.enable_vpu_fast_compile) {
+    if (global_context_.enable_vpu_fast_compile) {
       config["MYRIAD_HW_INJECT_STAGES"] = CONFIG_VALUE(NO);
       config["MYRIAD_COPY_OPTIMIZATION"] = CONFIG_VALUE(NO);
     }
-#else    
-    if(subgraph_context_.set_vpu_config) {
+#else
+    if (subgraph_context_.set_vpu_config) {
       config["VPU_DETECT_NETWORK_BATCH"] = CONFIG_VALUE(NO);
     }
 
-    if(global_context_.enable_vpu_fast_compile) {
+    if (global_context_.enable_vpu_fast_compile) {
       config["VPU_HW_INJECT_STAGES"] = CONFIG_VALUE(NO);
       config["VPU_COPY_OPTIMIZATION"] = CONFIG_VALUE(NO);
     }
@@ -69,7 +68,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   try {
     exe_network = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, hw_target, config);
   } catch (InferenceEngine::details::InferenceEngineException e) {
-    ORT_THROW(log_tag + " Exception while Loading Network for graph: " + subgraph_context_.subgraph_name + ": " +  e.what());
+    ORT_THROW(log_tag + " Exception while Loading Network for graph: " + subgraph_context_.subgraph_name + ": " + e.what());
   } catch (...) {
     ORT_THROW(log_tag + " Exception while Loading Network for graph " + subgraph_context_.subgraph_name);
   }
@@ -80,7 +79,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   LOGS_DEFAULT(INFO) << "The value of nireq being used is: " << nireq;
 #ifndef NDEBUG
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
-      std::cout << "The value of nireq being used is: " << nireq << std::endl;
+    std::cout << "The value of nireq being used is: " << nireq << std::endl;
   }
 #endif
   inferRequestsQueue_ = std::unique_ptr<InferRequestsQueue>(new InferRequestsQueue(exe_network, nireq));
@@ -89,7 +88,6 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
 // Starts an asynchronous inference request for data in slice indexed by batch_slice_idx on
 // an Infer Request indexed by infer_req_idx
 void BasicBackend::StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* context, std::shared_ptr<InferenceEngine::InferRequest> infer_request) {
-
   auto graph_input_info = ie_cnn_network_->getInputsInfo();
 
   size_t index = 0;
@@ -153,13 +151,12 @@ void BasicBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContex
     FillOutputBlob(graph_output_blob, output_tensor, ort, precision, batch_slice);
   }
 #if defined(OPENVINO_2020_4) || defined(OPENVINO_2021_1)
-  if(!const_outputs_map_.empty()){
-    for(auto item : const_outputs_map_){
-
+  if (!const_outputs_map_.empty()) {
+    for (auto item : const_outputs_map_) {
       auto out_name = item.first;
       auto node = item.second;
       auto output_tensor = GetOutputTensor(ort, context, out_name, subgraph_context_.output_names, node);
-      FillOutputsWithConstantData(ort,node,output_tensor);
+      FillOutputsWithConstantData(ort, node, output_tensor);
     }
   }
 #endif
@@ -179,27 +176,26 @@ void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   LOGS_DEFAULT(INFO) << log_tag << "Running graph " << subgraph_context_.subgraph_name;
   LOGS_DEFAULT(INFO) << log_tag << "In Infer";
 
-  if(subgraph_context_.is_constant){
+  if (subgraph_context_.is_constant) {
 #if defined(OPENVINO_2020_4) || defined(OPENVINO_2021_1)
-    for(auto item : const_outputs_map_){
+    for (auto item : const_outputs_map_) {
       auto out_name = item.first;
       auto node = item.second;
       auto output_tensor = GetOutputTensor(ort, context, out_name, subgraph_context_.output_names, node);
-      FillOutputsWithConstantData(ort,node, output_tensor);
+      FillOutputsWithConstantData(ort, node, output_tensor);
     }
 #endif
-  }
-  else{
+  } else {
     StartAsyncInference(ort, context, infer_request);
     CompleteAsyncInference(ort, context, infer_request);
   }
   // Get Output tensors
   LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
   //Once the inference is completed, the infer_request becomes free and is placed back into pool of infer_requests_
-  inferRequestsQueue_->putIdleRequest(infer_request); 
+  inferRequestsQueue_->putIdleRequest(infer_request);
 #ifndef NDEBUG
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
-      inferRequestsQueue_->printstatus(); //Printing the elements of infer_requests_ vector pool only in debug mode
+    inferRequestsQueue_->printstatus();  //Printing the elements of infer_requests_ vector pool only in debug mode
   }
 #endif
 }
