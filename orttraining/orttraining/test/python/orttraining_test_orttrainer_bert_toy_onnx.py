@@ -323,7 +323,7 @@ def testToyBertCheckpointLoadZero(optimizer, mixedprecision_enabled, expected_ev
     try:
         checkpoint_files = sorted(checkpoint._list_checkpoint_files(ckpt_dir, ckpt_prefix))
     except(AssertionError):
-        # No checkpoints found. Generating...
+        print("No checkpoint files found. Attempting to generate...")
         assert subprocess.call(['mpirun', '-n', '4', '-x', 'NCCL_DEBUG=INFO', 'python', 
             'orttrainer_bert_toy_onnx_ckpt_gen.py']) == 0
         checkpoint_files = sorted(checkpoint._list_checkpoint_files(ckpt_dir, ckpt_prefix))
@@ -361,6 +361,14 @@ def testToyBertCheckpointLoadZero(optimizer, mixedprecision_enabled, expected_ev
 
     checkpoint_files = sorted(checkpoint._list_checkpoint_files(ckpt_dir, ckpt_prefix))
     loaded_state_dict = checkpoint.experimental_state_dict(trainer)
+
+    # check if the loaded state dict is as expected
+    if mixedprecision_enabled:
+        assert expected_state_dict.keys() == loaded_state_dict.keys()
+    for k,v in loaded_state_dict.items():
+        assert_allclose(v, expected_state_dict[k])
+
+    # compare loaded state dict to rank state dicts
     loaded_state_dict = checkpoint._split_state_dict(loaded_state_dict)
 
     for f in checkpoint_files:

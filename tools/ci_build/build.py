@@ -1277,6 +1277,10 @@ def run_training_python_frontend_tests(cwd):
     run_orttraining_test_orttrainer_frontend_separately(cwd)
     # run_subprocess([sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_orttrainer_frontend.py'], cwd=cwd)
 
+    # generate checkpoint files required in orttraining_test_orttrainer_bert_toy_onnx.py
+    run_subprocess(['mpirun', '-n', '4', '-x', 'NCCL_DEBUG=INFO', sys.executable,
+                    'orttrainer_bert_toy_onnx_ckpt_gen.py'], cwd=cwd)
+
     run_subprocess([sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_orttrainer_bert_toy_onnx.py'], cwd=cwd)
 
 
