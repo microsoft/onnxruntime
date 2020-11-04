@@ -22,7 +22,7 @@ GlobalContext& BackendManager::GetGlobalContext() {
   return global_context;
 }
 
-BackendManager::BackendManager(const onnxruntime::Node* fused_node, const logging::Logger& logger) {
+BackendManager::BackendManager(const Provider_Node* fused_node, const logging::Logger& logger) {
   auto prec_str = GetGlobalContext().precision_str;
   if (prec_str == "FP32") {
     subgraph_context_.precision = InferenceEngine::Precision::FP32;
@@ -43,7 +43,7 @@ BackendManager::BackendManager(const onnxruntime::Node* fused_node, const loggin
 
   auto graph_inputs = fused_node->GetFunctionBody()->Body().GetInputs();
   for (auto input : graph_inputs) {
-    if(GetGlobalContext().device_type.find("MYRIAD") != std::string::npos){
+    if (GetGlobalContext().device_type.find("MYRIAD") != std::string::npos) {
       auto shape = input->Shape();
       if (shape != nullptr) {
         if (shape->dim_size() != 4) {
@@ -52,7 +52,7 @@ BackendManager::BackendManager(const onnxruntime::Node* fused_node, const loggin
       }
     }
     auto it = subgraph_context_.input_names.find(input->Name());
-    if(it == subgraph_context_.input_names.end()){
+    if (it == subgraph_context_.input_names.end()) {
       ORT_THROW("Input not found in the input defs list");
     }
     int index = it->second;
@@ -92,7 +92,7 @@ bool BackendManager::ModelHasBatchedInputs(const ONNX_NAMESPACE::Provider_ModelP
   bool has_batched_inputs = true;
 
   for (int i = 0; i < (int)subgraph_context_.input_indexes.size(); i++) {
-    auto input = model_proto.graph().input(subgraph_context_.input_indexes[i]);
+    auto& input = model_proto.graph().input(subgraph_context_.input_indexes[i]);
 
     // Batch-process only raw image inputs (NCHW or NHWC layouts)
     auto& shape = input.type().tensor_type().shape();
@@ -254,10 +254,9 @@ void BackendManager::Compute(Ort::CustomOpApi api, OrtKernelContext* context) {
     std::vector<std::vector<int64_t>> tensor_shapes = GetInputTensorShapes(api, context);
     auto key = MakeMapKeyString(tensor_shapes, GetGlobalContext().device_type);
 
-    if(GetGlobalContext().device_type.find("MYRIAD") != std::string::npos){
-
-      for(size_t i = 0; i < subgraph_context_.input_indexes.size(); i++){
-        if(tensor_shapes[i].size() != 4)
+    if (GetGlobalContext().device_type.find("MYRIAD") != std::string::npos) {
+      for (size_t i = 0; i < subgraph_context_.input_indexes.size(); i++) {
+        if (tensor_shapes[i].size() != 4)
           subgraph_context_.set_vpu_config = true;
       }
     }

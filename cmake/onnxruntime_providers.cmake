@@ -311,7 +311,7 @@ if (onnxruntime_USE_CUDA)
   endif()
 endif()
 
-if (onnxruntime_USE_TENSORRT OR onnxruntime_USE_DNNL)
+if (onnxruntime_USE_TENSORRT OR onnxruntime_USE_DNNL OR onnxruntime_USE_OPENVINO)
   file(GLOB_RECURSE onnxruntime_providers_shared_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/shared/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/shared/*.cc"
@@ -547,6 +547,16 @@ endif()
 
 if (onnxruntime_USE_OPENVINO)
 
+  if (NOT WIN32)
+    if(OPENVINO_VERSION STREQUAL "2020.2")
+      include(openvino)
+#      list(APPEND OPENVINO_LIB_LIST onnxruntime_EXTERNAL_LIBRARIES ovep_ngraph)
+      target_link_libraries(onnxruntime_providers_openvino ovep_ngraph)
+#      list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_ngraph)
+      add_dependencies(onnxruntime_providers_openvino project_ngraph)
+    endif()
+  endif()
+
   include_directories("${CMAKE_CURRENT_BINARY_DIR}/onnx")
   file(GLOB_RECURSE onnxruntime_providers_openvino_cc_srcs
     "${ONNXRUNTIME_ROOT}/core/providers/openvino/*.h"
@@ -606,18 +616,28 @@ if (onnxruntime_USE_OPENVINO)
   endif()
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_openvino_cc_srcs})
-  add_library(onnxruntime_providers_openvino ${onnxruntime_providers_openvino_cc_srcs})
+  add_library(onnxruntime_providers_openvino SHARED ${onnxruntime_providers_openvino_cc_srcs})
   onnxruntime_add_include_to_target(onnxruntime_providers_openvino onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf flatbuffers)
   set_target_properties(onnxruntime_providers_openvino PROPERTIES FOLDER "ONNXRuntime")
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/openvino  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_openvino PROPERTIES LINKER_LANGUAGE CXX)
   link_directories(onnxruntime_providers_openvino ${OPENVINO_LIB_DIR_LIST})
-  add_dependencies(onnxruntime_providers_openvino onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  add_dependencies(onnxruntime_providers_openvino onnxruntime_providers_shared onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
   target_include_directories(onnxruntime_providers_openvino SYSTEM PUBLIC ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${OPENVINO_INCLUDE_DIR_LIST} ${PYTHON_INCLUDE_DIRS})
-  target_link_libraries(onnxruntime_providers_openvino ${OPENVINO_LIB_LIST})
+  target_link_libraries(onnxruntime_providers_openvino onnxruntime_providers_shared ${OPENVINO_LIB_LIST})
 
   if(MSVC)
     target_compile_options(onnxruntime_providers_openvino PUBLIC /wd4275 /wd4100 /wd4005 /wd4244 /wd4267)
+  endif()
+
+  if(APPLE)
+    set_property(TARGET onnxruntime_providers_openvino APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker -exported_symbols_list ${ONNXRUNTIME_ROOT}/core/providers/openvino/exported_symbols.lst")
+  elseif(UNIX)
+    set_property(TARGET onnxruntime_providers_openvino APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/openvino/version_script.lds -Xlinker --gc-sections")
+  elseif(WIN32)
+    set_property(TARGET onnxruntime_providers_openvino APPEND_STRING PROPERTY LINK_FLAGS "-DEF:${ONNXRUNTIME_ROOT}/core/providers/openvino/symbols.def")
+  else()
+    message(FATAL_ERROR "onnxruntime_providers_openvino unknown platform, need to specify shared library exports for it")
   endif()
 
 endif()
