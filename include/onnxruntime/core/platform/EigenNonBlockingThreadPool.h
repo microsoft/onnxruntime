@@ -10,7 +10,6 @@
 /* Modifications Copyright (c) Microsoft. */
 
 #include <type_traits>
-#include <iostream>
 
 #pragma once
 #include "onnxruntime_config.h"
