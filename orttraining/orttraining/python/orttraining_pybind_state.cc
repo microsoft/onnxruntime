@@ -494,12 +494,18 @@ void addObjectMethodsForTraining(py::module& m) {
       .def(py::init([]() {
         return onnxruntime::make_unique<ModuleGradientGraphBuilder>();
       }))
-      .def("build", [](ModuleGradientGraphBuilder* module_gradient_graph_builder,
-                       const py::bytes& serialized_model,
-                       const ModuleGradientGraphBuilderConfiguration& config) {
+      .def("build_and_split", [](ModuleGradientGraphBuilder* module_gradient_graph_builder,
+                                 const py::bytes& serialized_model,
+                                 const ModuleGradientGraphBuilderConfiguration& config) {
         std::istringstream buffer(serialized_model);
-        std::string model_as_string = module_gradient_graph_builder->Build(buffer, config);
-        return py::bytes(model_as_string);
+        std::vector<std::string> models_as_string;
+        ORT_THROW_IF_ERROR(module_gradient_graph_builder->BuildAndSplit(buffer, config, models_as_string));
+        std::vector<py::bytes> models_as_bytes;
+        for (size_t i = 0; i < 3; i++) {
+          models_as_bytes.push_back(py::bytes(models_as_string[i]));
+        }
+
+        return models_as_bytes;
       });
 }
 }  // namespace python
