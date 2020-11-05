@@ -175,16 +175,17 @@ Status SparseSoftmaxCrossEntropy<T, Tin>::ComputeInternal(OpKernelContext* ctx) 
       cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), cudaMemcpyHostToDevice);
     } else {
       // Compute buffer size in byte for reduction APIs.
-      const auto buffer_size = static_cast<size_t>(
-          compute_reduction_buffer_size(
-              static_cast<int>(sizeof(T)), static_cast<int>(N)));
+      const auto buffer_size =
+          compute_reduction_buffer_size<T>(static_cast<int>(N));
       // Allocate reduction buffer whose size is buffer_size bytes.
       IAllocatorUniquePtr<void> reduction_buffer = GetScratchBuffer<void>(
           buffer_size);
-      reduce_sum(weight_data,
-                 normalize_factor_data.get(),
-                 static_cast<int>(N),
-                 reinterpret_cast<T*>(reduction_buffer.get()));
+      ORT_RETURN_IF_ERROR(reduce_sum(
+          weight_data,
+          normalize_factor_data.get(),
+          static_cast<int>(N),
+          reduction_buffer.get(),
+          buffer_size));
     }
   }
 
@@ -251,16 +252,17 @@ Status SparseSoftmaxCrossEntropyGrad<T, Tin>::ComputeInternal(OpKernelContext* c
       cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), cudaMemcpyHostToDevice);
     } else {
       // Compute buffer size in byte for reduction APIs.
-      const auto buffer_size = static_cast<size_t>(
-          compute_reduction_buffer_size(
-              static_cast<int>(sizeof(T)), static_cast<int>(N)));
+      const auto buffer_size =
+          compute_reduction_buffer_size<T>(static_cast<int>(N));
       // Allocate reduction buffer whose size is buffer_size bytes.
       IAllocatorUniquePtr<void> reduction_buffer = GetScratchBuffer<void>(
           buffer_size);
-      reduce_sum(weight_data,
-                 normalize_factor_data.get(),
-                 static_cast<int>(N),
-                 reinterpret_cast<T*>(reduction_buffer.get()));
+      ORT_RETURN_IF_ERROR(reduce_sum(
+          weight_data,
+          normalize_factor_data.get(),
+          static_cast<int>(N),
+          reduction_buffer.get(),
+          buffer_size));
     }
   }
 
