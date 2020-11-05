@@ -790,7 +790,7 @@ public class OrtSession implements AutoCloseable {
      */
     public void addNnapi() throws OrtException {
       checkClosed();
-      addNnapi(OnnxRuntime.ortApiHandle, nativeHandle);
+      addNnapi(OnnxRuntime.ortApiHandle, nativeHandle, 0);
     }
 
     /**
@@ -904,7 +904,8 @@ public class OrtSession implements AutoCloseable {
     private native void addTensorrt(long apiHandle, long nativeHandle, int deviceNum)
         throws OrtException;
 
-    private native void addNnapi(long apiHandle, long nativeHandle) throws OrtException;
+    private native void addNnapi(long apiHandle, long nativeHandle, long nnapiFlags)
+        throws OrtException;
 
     private native void addNuphar(
         long apiHandle, long nativeHandle, int allowUnalignedBuffers, String settings)

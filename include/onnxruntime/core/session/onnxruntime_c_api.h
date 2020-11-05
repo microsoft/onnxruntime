@@ -399,7 +399,7 @@ struct OrtApi {
      * Add custom ops to the OrtCustomOpDomain
      *  Note: The OrtCustomOp* pointer must remain valid until the OrtCustomOpDomain using it is released
     */
-  ORT_API2_STATUS(CustomOpDomain_Add, _Inout_ OrtCustomOpDomain* custom_op_domain, _In_ OrtCustomOp* op);
+  ORT_API2_STATUS(CustomOpDomain_Add, _Inout_ OrtCustomOpDomain* custom_op_domain, _In_ const OrtCustomOp* op);
 
   /*
      * Add a custom op domain to the OrtSessionOptions
@@ -1121,20 +1121,20 @@ struct OrtCustomOp {
   uint32_t version;  // Initialize to ORT_API_VERSION
 
   // This callback creates the kernel, which is a user defined parameter that is passed to the Kernel* callbacks below.
-  void*(ORT_API_CALL* CreateKernel)(_In_ struct OrtCustomOp* op, _In_ const OrtApi* api,
+  void*(ORT_API_CALL* CreateKernel)(_In_ const struct OrtCustomOp* op, _In_ const OrtApi* api,
                                     _In_ const OrtKernelInfo* info);
 
   // Returns the name of the op
-  const char*(ORT_API_CALL* GetName)(_In_ struct OrtCustomOp* op);
+  const char*(ORT_API_CALL* GetName)(_In_ const struct OrtCustomOp* op);
 
   // Returns the type of the execution provider, return nullptr to use CPU execution provider
-  const char*(ORT_API_CALL* GetExecutionProviderType)(_In_ struct OrtCustomOp* op);
+  const char*(ORT_API_CALL* GetExecutionProviderType)(_In_ const struct OrtCustomOp* op);
 
   // Returns the count and types of the input & output tensors
-  ONNXTensorElementDataType(ORT_API_CALL* GetInputType)(_In_ struct OrtCustomOp* op, _In_ size_t index);
-  size_t(ORT_API_CALL* GetInputTypeCount)(_In_ struct OrtCustomOp* op);
-  ONNXTensorElementDataType(ORT_API_CALL* GetOutputType)(_In_ struct OrtCustomOp* op, _In_ size_t index);
-  size_t(ORT_API_CALL* GetOutputTypeCount)(_In_ struct OrtCustomOp* op);
+  ONNXTensorElementDataType(ORT_API_CALL* GetInputType)(_In_ const struct OrtCustomOp* op, _In_ size_t index);
+  size_t(ORT_API_CALL* GetInputTypeCount)(_In_ const struct OrtCustomOp* op);
+  ONNXTensorElementDataType(ORT_API_CALL* GetOutputType)(_In_ const struct OrtCustomOp* op, _In_ size_t index);
+  size_t(ORT_API_CALL* GetOutputTypeCount)(_In_ const struct OrtCustomOp* op);
 
   // Op kernel callbacks
   void(ORT_API_CALL* KernelCompute)(_In_ void* op_kernel, _In_ OrtKernelContext* context);

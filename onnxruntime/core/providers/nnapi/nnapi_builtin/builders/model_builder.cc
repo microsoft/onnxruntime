@@ -57,10 +57,10 @@ std::vector<std::vector<int>> ModelBuilder::GetSupportedNodes() {
   std::vector<std::vector<int>> supported_node_vecs;
   int32_t android_sdk_ver = GetAndroidSdkVer();
 #ifdef __ANDROID__
-  if (android_sdk_ver < 27) {
-    LOGS_DEFAULT(VERBOSE) << "Android API level "
-                          << android_sdk_ver
-                          << " is lower than 27";
+  if (android_sdk_ver < ORT_NNAPI_MIN_API_LEVEL) {
+    LOGS_DEFAULT(WARNING) << "All ops will fallback to CPU EP, because Android API level [" << android_sdk_ver
+                          << "] is lower than minimal supported API level [" << ORT_NNAPI_MIN_API_LEVEL
+                          << "] of this build for NNAPI";
     return supported_node_vecs;
   }
 #endif

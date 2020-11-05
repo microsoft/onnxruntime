@@ -5,11 +5,13 @@
 
 #include "core/framework/execution_provider.h"
 #include "core/providers/nnapi/nnapi_builtin/model.h"
+#include "core/providers/nnapi/nnapi_provider_factory.h"
 
 namespace onnxruntime {
+
 class NnapiExecutionProvider : public IExecutionProvider {
  public:
-  NnapiExecutionProvider();
+  NnapiExecutionProvider(unsigned long nnapi_flags);
   virtual ~NnapiExecutionProvider();
 
   std::vector<std::unique_ptr<ComputeCapability>>
@@ -17,8 +19,13 @@ class NnapiExecutionProvider : public IExecutionProvider {
                 const std::vector<const KernelRegistry*>& /*kernel_registries*/) const override;
   common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
+  unsigned long GetNNAPIFlags() const { return nnapi_flags_; }
 
  private:
   std::unordered_map<std::string, std::unique_ptr<onnxruntime::nnapi::Model>> nnapi_models_;
+
+  // The bit flags which define bool options for NNAPI EP, bits are defined as
+  // NNAPIFlags in include/onnxruntime/core/providers/nnapi/nnapi_provider_factory.h
+  const unsigned long nnapi_flags_;
 };
 }  // namespace onnxruntime
