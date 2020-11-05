@@ -361,7 +361,7 @@ OrtModelTestInfo GetTestInfoForLoadOrtFormatModel() {
   return test_info;
 }
 
-OrtModelTestInfo GetTestInfoForLoadMNISTOrtFormatModel() {
+OrtModelTestInfo GetTestInfoForLoadMnistOrtFormatModel() {
   OrtModelTestInfo test_info;
   test_info.model_filename = ORT_TSTR("testdata/mnist/model.ort");
   test_info.logid = "LoadOrtFormatModel";
@@ -390,8 +390,8 @@ TEST(OrtModelOnlyTests, LoadOrtFormatModel) {
   RunOrtModel(test_info);
 }
 
-TEST(OrtModelOnlyTests, LoadMNISTOrtFormatModel) {
-  OrtModelTestInfo test_info = GetTestInfoForLoadMNISTOrtFormatModel();
+TEST(OrtModelOnlyTests, LoadMnistOrtFormatModel) {
+  OrtModelTestInfo test_info = GetTestInfoForLoadMnistOrtFormatModel();
   test_info.configs.push_back(std::make_pair(kOrtSessionOptionsConfigLoadModelFormat, "ORT"));
   RunOrtModel(test_info);
 }
