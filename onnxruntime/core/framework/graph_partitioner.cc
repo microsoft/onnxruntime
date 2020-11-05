@@ -60,28 +60,25 @@ static KernelDefBuilder& BuildFusedKernelDef(KernelDefBuilder& builder, const on
  * \param count A counter for generating fused node names. Should be unique within this subgraph
  * \return Fused node. Return nullptr if there is no fuse
  */
-static Node* PlaceNode(Graph& graph, std::unique_ptr<IndexedSubGraph> capability,
-                       const KernelRegistryManager& kernel_registry_mgr, const std::string& provider_type, int& count) {
-  if (nullptr == capability) {
-    return nullptr;
-  }
-
-  if (nullptr == capability->GetMetaDef()) {
+static Node* PlaceNode(Graph& graph, const IndexedSubGraph& capability,
+                       const KernelRegistryManager& kernel_registry_mgr, const std::string& provider_type,
+                       int& count) {
+  if (nullptr == capability.GetMetaDef()) {
     // The <provider> can run a single node in the <graph> if not using meta-defs.
     // A fused kernel is not supported in this case.
-    ORT_ENFORCE(1 == capability->nodes.size());
+    ORT_ENFORCE(1 == capability.nodes.size());
 
-    auto* node = graph.GetNode(capability->nodes[0]);
+    auto* node = graph.GetNode(capability.nodes[0]);
     if (nullptr != node && node->GetExecutionProviderType().empty()) {
       // The node was not fused or assigned. Assign it to this <provider>.
       node->SetExecutionProviderType(provider_type);
     }
   } else {
     // The <provider> can run a fused <sub_graph> in the <graph>.
-    ORT_ENFORCE(nullptr != capability->GetMetaDef());
+    ORT_ENFORCE(nullptr != capability.GetMetaDef());
     // Check whether any node in the <sub_graph> was already assigned.
     bool sub_graph_available_for_assignment = true;
-    for (auto node_index : capability->nodes) {
+    for (auto node_index : capability.nodes) {
       auto node = graph.GetNode(node_index);
       if (nullptr == node || !node->GetExecutionProviderType().empty()) {
         // The node was fused or assigned, so that the whole sub-graph will not be assigned to this <provider>
@@ -92,9 +89,9 @@ static Node* PlaceNode(Graph& graph, std::unique_ptr<IndexedSubGraph> capability
     }
     if (sub_graph_available_for_assignment) {
       std::ostringstream oss;
-      oss << provider_type << "_" << capability->GetMetaDef()->name << "_" << count++;
+      oss << provider_type << "_" << capability.GetMetaDef()->name << "_" << count++;
       std::string node_name = oss.str();
-      auto& fused_node = graph.FuseSubGraph(std::move(capability), node_name);
+      auto& fused_node = graph.FuseSubGraph(capability, node_name);
       fused_node.SetExecutionProviderType(provider_type);
       // searching in kernel registries, if no kernel registered for the fused_node, use compile approach
       if (!KernelRegistryManager::HasImplementationOf(kernel_registry_mgr, fused_node, provider_type)) {
@@ -145,7 +142,11 @@ static Status PartitionImpl(Graph& graph, bool export_dll, FuncManager& func_mgr
       current_ep.GetCapability(graph_viewer, kernel_registry_mgr.GetKernelRegistriesByProviderType(current_ep.Type()));
 
   for (auto& capability : capabilities) {
-    Node* n = PlaceNode(graph, std::move(capability->sub_graph), kernel_registry_mgr, current_ep.Type(), count);
+    if (!capability || !capability->sub_graph) {  // in theory an EP could return an empty value...
+      continue;
+    }
+
+    Node* n = PlaceNode(graph, *capability->sub_graph, kernel_registry_mgr, current_ep.Type(), count);
     if (n != nullptr) {
       nodes_need_compile.push_back(n);
     }
