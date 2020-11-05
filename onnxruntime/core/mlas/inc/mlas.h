@@ -207,24 +207,6 @@ MlasGemm(
     MLAS_THREADPOOL* ThreadPool
     );
 
-void
-MLASCALL
-MlasGemm(
-    size_t M,
-    size_t N,
-    size_t K,
-    const uint8_t* A,
-    size_t lda,
-    uint8_t offa,
-    const uint8_t* B,
-    size_t ldb,
-    uint8_t offb,
-    bool BIsSigned,
-    int32_t* C,
-    size_t ldc,
-    MLAS_THREADPOOL* ThreadPool
-    );
-
 enum class MLAS_QUANTIZATION_GRANULARITY {
     PerMatrix,
     PerColumn,
@@ -241,14 +223,12 @@ public:
     virtual
     void
     Process(
-        float* /*C*/,
         const int32_t* /*CBuffer*/,
         size_t /*RangeStartM*/,
         size_t /*RangeStartN*/,
         size_t /*RangeCountM*/,
         size_t /*RangeCountN*/,
-        size_t /*ldc*/,
-        size_t /*ldcBuffer*/
+        size_t /*ldc*/
         ) const
     {
         return;
@@ -258,6 +238,8 @@ public:
 class MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR : public MLAS_QGEMM_OUTPUT_PROCESSOR {
 public:
     MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR(
+        float* Output,
+        size_t LeadingDimensionOutput,
         const float* Scale,
         const float* Bias,
         MLAS_QGEMM_OUTPUT_MODE Mode = MLAS_QGEMM_OUTPUT_MODE::ZeroMode,
@@ -267,14 +249,12 @@ public:
     inline
     void
     Process(
-        float* C,
         const int32_t* CBuffer,
         size_t StartM,
         size_t StartN,
         size_t CountM,
         size_t CountN,
-        size_t ldc,
-        size_t ldcBuffer
+        size_t ldc
         ) const override;
 
 private:
@@ -282,17 +262,17 @@ private:
     inline
     void
     ProcessImpl(
-        float* C,
         const int32_t* CBuffer,
         size_t StartM,
         size_t StartN,
         size_t CountM,
         size_t CountN,
-        size_t ldc,
-        size_t ldcBuffer
+        size_t ldc
         ) const;
 
 private:
+    float* Output_;
+    size_t LeadingDimensionOutput_;
     const float* Scale_;
     const float* Bias_;
     MLAS_QGEMM_OUTPUT_MODE OutputMode_;
@@ -314,10 +294,8 @@ MlasGemm(
     bool BIsSigned,
     int32_t* C,
     size_t ldc,
-    float* output,
-    size_t ldOutput,
-    const MLAS_QGEMM_OUTPUT_PROCESSOR* OutputProcessor,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_QGEMM_OUTPUT_PROCESSOR* OutputProcessor = nullptr
     );
 
 void
@@ -334,27 +312,8 @@ MlasGemm(
     bool BIsSigned,
     int32_t* C,
     size_t ldc,
-    MLAS_THREADPOOL* ThreadPool
-    );
-
-void
-MLASCALL
-MlasGemm(
-    size_t M,
-    size_t N,
-    size_t K,
-    const uint8_t* A,
-    size_t lda,
-    uint8_t offa,
-    const void* PackedB,
-    uint8_t offb,
-    bool BIsSigned,
-    int32_t* C,
-    size_t ldc,
-    float* output,
-    size_t ldOutput,
-    const MLAS_QGEMM_OUTPUT_PROCESSOR* OutputProcessor,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_QGEMM_OUTPUT_PROCESSOR* OutputProcessor = nullptr
     );
 
 //

@@ -40,8 +40,6 @@ struct MLAS_GEMM_U8X8_WORK_BLOCK {
     size_t ldb;
     int32_t* C;
     size_t ldc;
-    float* Output;
-    size_t ldOutput;
     uint8_t offa;
     uint8_t offb;
     bool BIsPacked;
@@ -85,10 +83,14 @@ MlasGemmU8X8ScaleSumBuffer(
 }
 
 MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR::MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR(
+    float* Output,
+    size_t LeadingDimensionOutput,
     const float* Scale,
     const float* Bias,
     MLAS_QGEMM_OUTPUT_MODE Mode,
     MLAS_QUANTIZATION_GRANULARITY QuantGran) : 
+        Output_(Output),
+        LeadingDimensionOutput_(LeadingDimensionOutput),
         Scale_(Scale),
         Bias_(Bias),
         OutputMode_(Mode),
@@ -97,14 +99,12 @@ MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR::MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR(
 }
 
 void MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR::Process(
-    float* C,
-    const int32_t* CBuffer,
+    const int32_t* C,
     size_t StartM,
     size_t StartN,
     size_t CountM,
     size_t CountN,
-    size_t ldc,
-    size_t ldcBuffer
+    size_t ldc
     ) const
 {
     if(Bias_){
@@ -112,92 +112,76 @@ void MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR::Process(
             if(OutputMode_ == MLAS_QGEMM_OUTPUT_MODE::AccumulateMode){
                 ProcessImpl<true, MLAS_QGEMM_OUTPUT_MODE::AccumulateMode, MLAS_QUANTIZATION_GRANULARITY::PerColumn>(
                     C,
-                    CBuffer,
                     StartM,
                     StartN,
                     CountM,
                     CountN,
-                    ldc,
-                    ldcBuffer);
+                    ldc);
             }
             else {
                 ProcessImpl<true, MLAS_QGEMM_OUTPUT_MODE::ZeroMode, MLAS_QUANTIZATION_GRANULARITY::PerColumn>(
                     C,
-                    CBuffer,
                     StartM,
                     StartN,
                     CountM,
                     CountN,
-                    ldc,
-                    ldcBuffer);
+                    ldc);
             }
         } else if(OutputMode_ == MLAS_QGEMM_OUTPUT_MODE::AccumulateMode){
             ProcessImpl<true, MLAS_QGEMM_OUTPUT_MODE::AccumulateMode, MLAS_QUANTIZATION_GRANULARITY::PerMatrix>(
                 C,
-                CBuffer,
                 StartM,
                 StartN,
                 CountM,
                 CountN,
-                ldc,
-                ldcBuffer);
+                ldc);
         } else{
             ProcessImpl<true, MLAS_QGEMM_OUTPUT_MODE::ZeroMode, MLAS_QUANTIZATION_GRANULARITY::PerMatrix>(
                 C,
-                CBuffer,
                 StartM,
                 StartN,
                 CountM,
                 CountN,
-                ldc,
-                ldcBuffer);
+                ldc);
         }
     } else{
         if (QuantGran_ == MLAS_QUANTIZATION_GRANULARITY::PerColumn) {
             if (OutputMode_ == MLAS_QGEMM_OUTPUT_MODE::AccumulateMode) {
                 ProcessImpl<false, MLAS_QGEMM_OUTPUT_MODE::AccumulateMode, MLAS_QUANTIZATION_GRANULARITY::PerColumn>(
                     C,
-                    CBuffer,
                     StartM,
                     StartN,
                     CountM,
                     CountN,
-                    ldc,
-                    ldcBuffer);
+                    ldc);
             }
             else {
                 ProcessImpl<false, MLAS_QGEMM_OUTPUT_MODE::ZeroMode, MLAS_QUANTIZATION_GRANULARITY::PerColumn>(
                     C,
-                    CBuffer,
                     StartM,
                     StartN,
                     CountM,
                     CountN,
-                    ldc,
-                    ldcBuffer);
+                    ldc);
             }
         }
         else if (OutputMode_ == MLAS_QGEMM_OUTPUT_MODE::AccumulateMode) {
             ProcessImpl<false, MLAS_QGEMM_OUTPUT_MODE::AccumulateMode, MLAS_QUANTIZATION_GRANULARITY::PerMatrix>(
                 C,
-                CBuffer,
                 StartM,
                 StartN,
                 CountM,
                 CountN,
-                ldc,
-                ldcBuffer);
+                ldc);
         }
         else {
             ProcessImpl<false, MLAS_QGEMM_OUTPUT_MODE::ZeroMode, MLAS_QUANTIZATION_GRANULARITY::PerMatrix>(
                 C,
-                CBuffer,
                 StartM,
                 StartN,
                 CountM,
                 CountN,
-                ldc,
-                ldcBuffer);
+                ldc);
         }
     }
 }
@@ -206,14 +190,12 @@ template<bool HASBIAS, MLAS_QGEMM_OUTPUT_MODE MODE, MLAS_QUANTIZATION_GRANULARIT
 inline
 void
 MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR::ProcessImpl(
-    float* C,
-    const int32_t* CBuffer,
+    const int32_t* C,
     size_t StartM,
     size_t StartN,
     size_t CountM,
     size_t CountN,
-    size_t ldc,
-    size_t ldcBuffer) const
+    size_t ldc) const
 /*++
 
 Routine Description:
@@ -246,6 +228,7 @@ Return Value:
 
 --*/
 {
+    float* Output = Output_;
     const float* Bias = Bias_;
     const float* Scale = Scale_;
 
@@ -263,13 +246,13 @@ Return Value:
 #endif
 
     C += StartM * ldc + StartN;
-    CBuffer += StartM * ldcBuffer + StartN;
+    Output += StartM * LeadingDimensionOutput_ + StartN;
 
 
     while (CountM-- > 0) {
 
-        float* c_out = C;
-        const int32_t* c_buf = CBuffer;
+        float* c_out = Output;
+        const int32_t* c = C;
         const float* bias = Bias;
         const float* scale = Scale;
 
@@ -277,7 +260,7 @@ Return Value:
 
         while (n >= 4) {
 
-            MLAS_FLOAT32X4 FloatVector = MlasCastToFloat32x4(MlasLoadInt32x4(c_buf));
+            MLAS_FLOAT32X4 FloatVector = MlasCastToFloat32x4(MlasLoadInt32x4(c));
 
             if (QUANTGRAN == MLAS_QUANTIZATION_GRANULARITY::PerColumn) {
 
@@ -305,14 +288,14 @@ Return Value:
             MlasStoreFloat32x4(c_out, FloatVector);
 
             c_out +=4;
-            c_buf += 4;
+            c += 4;
             n -= 4;
         }
 
         for (size_t offset = 0; offset < n; offset++) {
 
 #if defined(MLAS_SSE2_INTRINSICS)
-            __m128 FloatVector = _mm_set_ss(float(c_buf[offset]));
+            __m128 FloatVector = _mm_set_ss(float(c[offset]));
 
             if (QUANTGRAN == MLAS_QUANTIZATION_GRANULARITY::PerColumn) {
                 if (MODE == MLAS_QGEMM_OUTPUT_MODE::AccumulateMode) {
@@ -334,16 +317,16 @@ Return Value:
 #else
             if (QUANTGRAN == MLAS_QUANTIZATION_GRANULARITY::PerColumn) {
                 if(MODE == MLAS_QGEMM_OUTPUT_MODE::AccumulateMode){
-                    c_out[offset]) += float(c_buf[offset]) * scale[offset];
+                    c_out[offset]) += float(c[offset]) * scale[offset];
                 } else{
-                    c_out[offset]) = float(c_buf[offset]) * scale[offset];
+                    c_out[offset]) = float(c[offset]) * scale[offset];
                 }
             }
             else if (MODE == MLAS_QGEMM_OUTPUT_MODE::AccumulateMode) {
-                c_out[offset]) += float(c_buf[offset]) * ScaleValue;
+                c_out[offset]) += float(c[offset]) * ScaleValue;
             }
             else{
-                c_out[offset]) = float(c_buf[offset]) * ScaleValue;
+                c_out[offset]) = float(c[offset]) * ScaleValue;
             }
 
             if (HASBIAS) {
@@ -353,7 +336,7 @@ Return Value:
         }
 
         C += ldc;
-        CBuffer += ldcBuffer;
+        Output += LeadingDimensionOutput_;
     }
 }
 
@@ -503,14 +486,12 @@ Return Value:
                         DepthValue, ZeroMode);
 
                     if (PostProcess && WorkBlock->OutputProcessor) {
-                        WorkBlock->OutputProcessor->Process(WorkBlock->Output,
-                                                            WorkBlock->C,
+                        WorkBlock->OutputProcessor->Process(WorkBlock->C,
                                                             WorkBlock->RangeStartM + m + CountM - RowsRemaining,
                                                             WorkBlock->RangeStartN + n,
                                                             RowsHandled,
                                                             CountN,
-                                                            WorkBlock->ldc,
-                                                            WorkBlock->ldOutput);
+                                                            WorkBlock->ldc);
                     }
 
                     c += ldc * RowsHandled;
@@ -673,14 +654,12 @@ Return Value:
 
                     if (PostProcess && WorkBlock->OutputProcessor) {
                         WorkBlock->OutputProcessor->Process(
-                            WorkBlock->Output,
                             WorkBlock->C,
                             WorkBlock->RangeStartM + m + CountM - RowsRemaining,
                             WorkBlock->RangeStartN + n,
                             RowsHandled,
                             CountN,
-                            WorkBlock->ldc,
-                            WorkBlock->ldOutput);
+                            WorkBlock->ldc);
                     }
 
                     c += ldc * RowsHandled;
@@ -2358,99 +2337,8 @@ MlasGemm(
     bool BIsSigned,
     int32_t* C,
     size_t ldc,
-    MLAS_THREADPOOL* ThreadPool
-    )
-/*++
-
-Routine Description:
-
-    This routine implements the quantized integer matrix/matrix multiply
-    operation (QGEMM).
-
-Arguments:
-
-    M - Supplies the number of rows of matrix A and matrix C.
-
-    N - Supplies the number of columns of matrix B and matrix C.
-
-    K - Supplies the number of columns of matrix A and the number of rows of
-        matrix B.
-
-    A - Supplies the address of matrix A.
-
-    lda - Supplies the first dimension of matrix A.
-
-    offa - Supplies the zero point offset of matrix A.
-
-    B - Supplies the address of matrix B.
-
-    ldb - Supplies the first dimension of matrix B.
-
-    offb - Supplies the zero point offset of matrix B.
-
-    BIsSigned - Supplies true if matrix B is signed data, else false if matrix
-        B is unsigned data.
-
-    C - Supplies the address of matrix C.
-
-    ldc - Supplies the first dimension of matrix C.
-
-    ThreadPool - Supplies the thread pool object to use, else nullptr if the
-        base library threading support should be used.
-
-Return Value:
-
-    None.
-
---*/
-{
-    MLAS_GEMM_U8X8_WORK_BLOCK WorkBlock;
-
-    //
-    // Capture the GEMM parameters to the work block.
-    //
-
-    memset(&WorkBlock, 0, sizeof(MLAS_GEMM_U8X8_WORK_BLOCK));
-
-    WorkBlock.M = M;
-    WorkBlock.N = N;
-    WorkBlock.K = K;
-    WorkBlock.A = A;
-    WorkBlock.lda = lda;
-    WorkBlock.B = B;
-    WorkBlock.ldb = ldb;
-    WorkBlock.C = C;
-    WorkBlock.ldc = ldc;
-    WorkBlock.offa = offa;
-    WorkBlock.offb = offb;
-    WorkBlock.BIsSigned = BIsSigned;
-
-    //
-    // Schedule the operation across a set of worker threads.
-    //
-
-    MlasGemmU8X8Schedule(&WorkBlock, ThreadPool);
-}
-
-void
-MLASCALL
-MlasGemm(
-    size_t M,
-    size_t N,
-    size_t K,
-    const uint8_t* A,
-    size_t lda,
-    uint8_t offa,
-    const uint8_t* B,
-    size_t ldb,
-    uint8_t offb,
-    bool BIsSigned,
-    int32_t* C,
-    size_t ldc,
-    float* output,
-    size_t ldOutput,
-    const MLAS_QGEMM_OUTPUT_PROCESSOR* OutputProcessor,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_QGEMM_OUTPUT_PROCESSOR* OutputProcessor
     )
 /*++
 
@@ -2497,6 +2385,8 @@ Arguments:
     ThreadPool - Supplies the thread pool object to use, else nullptr if the
         base library threading support should be used.
 
+    OutputProcessor - Post Processor on C
+
 Return Value:
 
     None.
@@ -2520,8 +2410,6 @@ Return Value:
     WorkBlock.ldb = ldb;
     WorkBlock.C = C;
     WorkBlock.ldc = ldc;
-    WorkBlock.Output = output;
-    WorkBlock.ldOutput = ldOutput;
     WorkBlock.OutputProcessor = OutputProcessor;
     WorkBlock.offa = offa;
     WorkBlock.offb = offb;
@@ -2552,96 +2440,8 @@ MlasGemm(
     bool BIsSigned,
     int32_t* C,
     size_t ldc,
-    MLAS_THREADPOOL* ThreadPool
-    )
-/*++
-
-Routine Description:
-
-    This routine implements the quantized integer matrix/matrix multiply
-    operation (QGEMM).
-
-Arguments:
-
-    M - Supplies the number of rows of matrix A and matrix C.
-
-    N - Supplies the number of columns of matrix B and matrix C.
-
-    K - Supplies the number of columns of matrix A and the number of rows of
-        matrix B.
-
-    A - Supplies the address of matrix A.
-
-    lda - Supplies the first dimension of matrix A.
-
-    offa - Supplies the zero point offset of matrix A.
-
-    PackedB - Supplies the address of packed matrix B.
-
-    offb - Supplies the zero point offset of matrix B.
-
-    BIsSigned - Supplies true if matrix B is signed data, else false if matrix
-        B is unsigned data.
-
-    C - Supplies the address of matrix C.
-
-    ldc - Supplies the first dimension of matrix C.
-
-    ThreadPool - Supplies the thread pool object to use, else nullptr if the
-        base library threading support should be used.
-
-Return Value:
-
-    None.
-
---*/
-{
-    MLAS_GEMM_U8X8_WORK_BLOCK WorkBlock;
-
-    //
-    // Capture the GEMM parameters to the work block.
-    //
-
-    memset(&WorkBlock, 0, sizeof(MLAS_GEMM_U8X8_WORK_BLOCK));
-
-    WorkBlock.M = M;
-    WorkBlock.N = N;
-    WorkBlock.K = K;
-    WorkBlock.A = A;
-    WorkBlock.lda = lda;
-    WorkBlock.B = PackedB;
-    WorkBlock.C = C;
-    WorkBlock.ldc = ldc;
-    WorkBlock.offa = offa;
-    WorkBlock.offb = offb;
-    WorkBlock.BIsPacked = true;
-    WorkBlock.BIsSigned = BIsSigned;
-
-    //
-    // Schedule the operation across a set of worker threads.
-    //
-
-    MlasGemmU8X8Schedule(&WorkBlock, ThreadPool);
-}
-
-void
-MLASCALL
-MlasGemm(
-    size_t M,
-    size_t N,
-    size_t K,
-    const uint8_t* A,
-    size_t lda,
-    uint8_t offa,
-    const void* PackedB,
-    uint8_t offb,
-    bool BIsSigned,
-    int32_t* C,
-    size_t ldc,
-    float* output,
-    size_t ldOutput,
-    const MLAS_QGEMM_OUTPUT_PROCESSOR* OutputProcessor,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_QGEMM_OUTPUT_PROCESSOR* OutputProcessor
     )
 /*++
 
@@ -2686,6 +2486,8 @@ Arguments:
     ThreadPool - Supplies the thread pool object to use, else nullptr if the
         base library threading support should be used.
 
+    OutputProcessor - Post Processor on C
+
 Return Value:
 
     None.
@@ -2708,8 +2510,6 @@ Return Value:
     WorkBlock.B = PackedB;
     WorkBlock.C = (int32_t*)C;
     WorkBlock.ldc = ldc;
-    WorkBlock.Output = output;
-    WorkBlock.ldOutput = ldOutput;
     WorkBlock.OutputProcessor = OutputProcessor,
     WorkBlock.offa = offa;
     WorkBlock.offb = offb;

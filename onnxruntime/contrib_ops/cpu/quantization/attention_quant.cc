@@ -207,7 +207,7 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
           const auto* packed_weight =
               static_cast<const uint8_t*>(packed_weights_.get()) + packed_weights_size_ * (weights_offset / head_size);
 
-          MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR scale_bias_processor(&dequant_scale, bias_data + weights_offset);
+          MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR scale_bias_processor(qkv_dest + qkv_offset, head_size, &dequant_scale, bias_data + weights_offset);
           MlasGemm(
               sequence_length,                                    // M      = S
               head_size,                                          // N      = H
@@ -220,10 +220,9 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
               weights_is_signed,                                  // weight data type
               reinterpret_cast<int32_t*>(qkv_dest + qkv_offset),  // C
               head_size,                                          // ldc
-              qkv_dest + qkv_offset,                              // Output
-              head_size,                                          // ldOutput
-              &scale_bias_processor,                              // output processor
-              nullptr);                                           // use single-thread
+              nullptr,                                            // use single-thread
+              &scale_bias_processor);                             // output processor
+
           continue;
         }
 #endif
