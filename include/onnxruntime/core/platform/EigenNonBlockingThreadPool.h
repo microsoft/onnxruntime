@@ -595,9 +595,9 @@ void SetGoodWorkerHint(int idx, bool is_good) {
 // good_hints, letting the caller avoid distributing more than one work item to
 // any individual thread.
 
-void GetGoodWorkerHints(int n, std::vector<unsigned>& good_hints, std::vector<unsigned>& alt_hints) {
+void GetGoodWorkerHints(unsigned n, std::vector<unsigned>& good_hints, std::vector<unsigned>& alt_hints) {
   PerThread* pt = GetPerThread();
-  int need_alt = n;
+  unsigned need_alt = n;
   good_hints.clear();
   alt_hints.clear();
 
@@ -606,14 +606,14 @@ void GetGoodWorkerHints(int n, std::vector<unsigned>& good_hints, std::vector<un
   // have multiple threads scheduling work concurrently.
 
   unsigned base = Rand(&pt->rand) % num_hint_words_;
-  for (int i = 0; n && (i < num_hint_words_); i++) {
+  for (unsigned i = 0u; n && (i < num_hint_words_); i++) {
     int u64_idx = (base + i) % num_hint_words_;
     std::atomic<uint64_t>* u64 = &good_worker_hints_[u64_idx];
     uint64_t saw = u64->load();
     uint64_t want = saw;
 
     // Pick up to n bits that are set in the current word
-    for (int j = 0; n && (j < bits_per_hint_word_); j++) {
+    for (unsigned j = 0u; n && (j < bits_per_hint_word_); j++) {
       uint64_t bit = 1ull << j;
       int thread = u64_idx * bits_per_hint_word_ + j;
       if (saw & bit) {
@@ -711,9 +711,9 @@ void EndParallelSection(ThreadPoolParallelSection &ps) override {
    // Throughout the threadpool implementation, degrees of parallelism
    // ("n" here) refer to the total parallelism including the main
    // thread.  Hence we consider the number of existing tasks + 1.
-   auto current_dop = ps.tasks.size() + 1;
+   unsigned current_dop = static_cast<unsigned>(ps.tasks.size()) + 1;
    if (n > current_dop) {
-     auto extra_needed = n - current_dop;
+     unsigned extra_needed = n - current_dop;
 
      // Obtain hints for which worker threads to push the tasks to.
      // This uses a best-effort assessment of which threads are
@@ -1012,8 +1012,8 @@ int CurrentThreadId() const EIGEN_FINAL {
   // reduce contention by having different threads start work searching for hints
   // at different locations in the bitmap.
 
-  static const int bits_per_hint_word_ = 4;
-  int num_hint_words_;
+  static const unsigned bits_per_hint_word_ = 4;
+  unsigned num_hint_words_;
   std::unique_ptr<std::atomic<uint64_t>[]> good_worker_hints_;
 
   // Wake any blocked workers so that they can cleanly exit WorkerLoop().  For an
