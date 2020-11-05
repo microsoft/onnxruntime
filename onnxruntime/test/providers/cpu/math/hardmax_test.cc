@@ -15,7 +15,7 @@ static void RunTest(const std::vector<float>& x_vals,
                     int64_t axis = 1,
                     OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
                     const std::string& expected_err_str = "") {
-  OpTester test("Hardmax");
+  OpTester test("Hardmax", opset);
 
   if (opset < 13) {
     if (axis != 1) {  // opset-12 and below : default axis value is 1
@@ -139,6 +139,52 @@ TEST(HardmaxOperator, ThreeDimsAxis2) {
       0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
 
   RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 7, /*axis*/ 2);
+}
+
+TEST(HardmaxOperator, ThreeDimsAxis2_opset13) {
+  // x = <see x_vals_3dims>
+  // import cntk as C
+  // expected = C.hardmax(x.reshape(12,5)).eval().reshape(3, 4, 5)
+  std::vector<float> expected_vals = {
+      0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+      0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+      0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+      0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+
+      0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+      0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+      0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+      0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+
+      0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+      0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+      0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+      0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
+
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 13, /*axis*/ 2);
+}
+
+TEST(HardmaxOperator, ThreeDimsDefaultAxis_opset13) {
+  // x = <see x_vals_3dims>
+  // import cntk as C
+  // expected = C.hardmax(x.reshape(12,5)).eval().reshape(3, 4, 5)
+  std::vector<float> expected_vals = {
+      0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+      0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+      0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+      0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+
+      0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+      0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+      0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+      0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+
+      0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+      0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+      0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+      0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
+
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 13, /*default axis*/ -1);
 }
 
 TEST(HardmaxOperator, ThreeDimsNegAxis2) {

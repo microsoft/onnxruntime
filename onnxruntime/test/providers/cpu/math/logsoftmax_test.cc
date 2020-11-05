@@ -107,7 +107,7 @@ TEST(LogSoftmaxOperator, ThreeDimsAxis0) {
       -4.042971f, -4.2982683f, -3.5933442f, -4.538994f, -5.307373f,
       -4.2677402f, -4.44635f, -3.5821702f, -3.8414123f, -4.267664f};
 
-  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*axis*/ 0, false);  // axis=0 is not supported by TensorRT
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 7, /*axis*/ 0, false);  // axis=0 is not supported by TensorRT
 }
 
 TEST(LogSoftmaxOperator, ThreeDimsAxis1) {
@@ -133,7 +133,7 @@ TEST(LogSoftmaxOperator, ThreeDimsAxis1) {
       -2.9822054f, -3.2375026f, -2.5325785f, -3.4782279f, -4.246608f,
       -3.2069747f, -3.3855844f, -2.5214045f, -2.7806466f, -3.206898f};
 
-  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*axis*/ 1, false);  // This test failed on TensorRT
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 7, /*axis*/ 1, false);  // This test failed on TensorRT
 }
 
 TEST(LogSoftmaxOperator, ThreeDimsAxis2) {
@@ -159,9 +159,60 @@ TEST(LogSoftmaxOperator, ThreeDimsAxis2) {
       -1.4430928f, -1.6983899f, -0.9934659f, -1.9391153f, -2.7074947f,
       -1.8489327f, -2.027542f, -1.1633625f, -1.4226046f, -1.848856f};
 
-  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*axis*/ 2);
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 7, /*axis*/ 2);
 }
 
+TEST(LogSoftmaxOperator, ThreeDimsAxis2_opset13) {
+  // x = <see x_vals_3dims>
+  // node = onnx.helper.make_node('LogSoftmax', inputs = ['x'], outputs = ['y'], axis = 2)
+  // y = logsoftmax_2d(x.reshape(12, 5)).reshape(3, 4, 5)
+  // expect(node, inputs = [x], outputs = [y],
+  //       name = 'test_logsoftmax_axis_2')
+
+  std::vector<float> expected_vals = {
+      -1.5016061f, -1.5898913f, -2.3042583f, -1.080942f, -2.0086365f,
+      -1.5264852f, -0.7512426f, -2.7490091f, -1.9119854f, -2.3111813f,
+      -1.716058f, -2.3002353f, -0.9035546f, -1.7560422f, -1.9509623f,
+      -2.7323837f, -0.96080494f, -0.97994876f, -2.162681f, -2.7805486f,
+
+      -2.024213f, -1.2708496f, -1.8257477f, -1.5857526f, -1.507701f,
+      -1.8521607f, -1.582807f, -1.0612315f, -2.3498435f, -1.6281573f,
+      -3.0813656f, -0.538396f, -1.5654519f, -2.6371078f, -2.4095225f,
+      -1.8958019f, -2.0665917f, -1.3812149f, -1.1899012f, -1.7858102f,
+
+      -1.7220669f, -0.79976386f, -2.1365335f, -1.9536276f, -2.1888442f,
+      -3.2268262f, -0.84629166f, -2.8257446f, -2.259921f, -1.0005134f,
+      -1.4430928f, -1.6983899f, -0.9934659f, -1.9391153f, -2.7074947f,
+      -1.8489327f, -2.027542f, -1.1633625f, -1.4226046f, -1.848856f};
+
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 13, /*axis*/ 2);
+}
+
+TEST(LogSoftmaxOperator, ThreeDimsDefaultAxis_opset13) {
+  // x = <see x_vals_3dims>
+  // node = onnx.helper.make_node('LogSoftmax', inputs = ['x'], outputs = ['y'], axis = 2)
+  // y = logsoftmax_2d(x.reshape(12, 5)).reshape(3, 4, 5)
+  // expect(node, inputs = [x], outputs = [y],
+  //       name = 'test_logsoftmax_axis_2')
+
+  std::vector<float> expected_vals = {
+      -1.5016061f, -1.5898913f, -2.3042583f, -1.080942f, -2.0086365f,
+      -1.5264852f, -0.7512426f, -2.7490091f, -1.9119854f, -2.3111813f,
+      -1.716058f, -2.3002353f, -0.9035546f, -1.7560422f, -1.9509623f,
+      -2.7323837f, -0.96080494f, -0.97994876f, -2.162681f, -2.7805486f,
+
+      -2.024213f, -1.2708496f, -1.8257477f, -1.5857526f, -1.507701f,
+      -1.8521607f, -1.582807f, -1.0612315f, -2.3498435f, -1.6281573f,
+      -3.0813656f, -0.538396f, -1.5654519f, -2.6371078f, -2.4095225f,
+      -1.8958019f, -2.0665917f, -1.3812149f, -1.1899012f, -1.7858102f,
+
+      -1.7220669f, -0.79976386f, -2.1365335f, -1.9536276f, -2.1888442f,
+      -3.2268262f, -0.84629166f, -2.8257446f, -2.259921f, -1.0005134f,
+      -1.4430928f, -1.6983899f, -0.9934659f, -1.9391153f, -2.7074947f,
+      -1.8489327f, -2.027542f, -1.1633625f, -1.4226046f, -1.848856f};
+
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 13, /*default axis*/ -1);
+}
 TEST(LogSoftmaxOperator, ThreeDimsNegativeAxis) {
   // x = <see x_vals_3dims>
   // node = onnx.helper.make_node('LogSoftmax', inputs = ['x'], outputs = ['y'], axis = 2)
@@ -186,7 +237,7 @@ TEST(LogSoftmaxOperator, ThreeDimsNegativeAxis) {
       -1.8489327f, -2.027542f, -1.1633625f, -1.4226046f, -1.848856f};
 
   // -1 is last axis so same as axis == 2
-  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*axis*/ -1);
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 12, /*axis*/ -1);
 }
 
 TEST(LogSoftmaxOperator, InvalidAxis) {

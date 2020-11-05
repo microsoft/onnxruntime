@@ -231,7 +231,7 @@ TEST(SoftmaxOperator, ThreeDimsNegativeAxis) {
   RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 12, /*axis*/ -1);
 }
 
-TEST(SoftmaxOperator, InvalidAxis_opset12) {
+TEST(SoftmaxOperator, InvalidAxis) {
   std::vector<float> x_vals = {-1.0f, 0.0f, 1.0f};
   std::vector<float> expected_vals = {0.0f, 0.0f, 0.0f};
   std::vector<int64_t> dimensions = {1, 3};
@@ -247,7 +247,7 @@ TEST(SoftmaxOperator, InvalidAxis_opset12) {
           ", 1]. Its actual value is: -10");
 }
 
-TEST(SoftmaxOperator, InvalidAxis) {
+TEST(SoftmaxOperator, InvalidAxis_opset13) {
   std::vector<float> x_vals = {-1.0f, 0.0f, 1.0f};
   std::vector<float> expected_vals = {0.0f, 0.0f, 0.0f};
   std::vector<int64_t> dimensions = {1, 3};
