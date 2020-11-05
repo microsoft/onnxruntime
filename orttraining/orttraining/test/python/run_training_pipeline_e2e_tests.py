@@ -1,28 +1,19 @@
 import os
 import argparse
-import subprocess
+
+from _test_commons import run_subprocess
 
 import logging
 
 logging.basicConfig(
     format="%(asctime)s %(name)s [%(levelname)s] - %(message)s",
     level=logging.DEBUG)
-
 log = logging.getLogger("Build")
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument("--cwd", help="cwd")
     return parser.parse_args()
-
-def run_subprocess(args, cwd=None, env={}):
-    log.info("Running subprocess in '{0}'\n{1}".format(cwd or os.getcwd(), args))
-    my_env = os.environ.copy()
-    my_env.update(env)
-    completed_process = subprocess.run(args, cwd=cwd, check=True, env=my_env)
-    log.debug("Subprocess completed. Return code=" +
-              str(completed_process.returncode))
-    return completed_process
 
 def run_training_pipeline_e2e_tests(cwd):
     # pipeline tests are to be added here:
@@ -63,7 +54,7 @@ def run_training_pipeline_e2e_tests(cwd):
                                                            '2613:407-2683/2805/2927/3049/3171/3293']
     command_str = ', '.join(pp_command)
     log.debug('RUN: ' + command_str)
-    run_subprocess(pp_command, cwd=cwd)
+    run_subprocess(pp_command, cwd=cwd, log=log)
 
     # Test 2-way data parallel + 2-way pipeline parallel
     pp_dp_command = ['mpirun', '-n', str(ngpus)]
@@ -73,7 +64,7 @@ def run_training_pipeline_e2e_tests(cwd):
                                      '1881:407-1951/2073/2195/2317/2439/2561/2683/2805/2927/3049/3171/3293']
     command_str = ', '.join(pp_dp_command)
     log.debug('RUN: ' + command_str)
-    run_subprocess(pp_dp_command, cwd=cwd)
+    run_subprocess(pp_dp_command, cwd=cwd, log=log)
 
 
 args = parse_arguments()

@@ -77,11 +77,12 @@ jobs:
         --volume /bert_data:/bert_data \
         onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
           /build/RelWithDebInfo/launch_test.py \
-            --process_args "python orttraining_run_frontend_batch_size_test.py -v" \
+            --cmd_line_with_args "python orttraining_run_frontend_batch_size_test.py -v" \
             --cwd /build/RelWithDebInfo \
             --env "CUDA_VISIBLE_DEVICES 2"
     displayName: 'Run orttraining_run_frontend_batch_size_test.py'
     condition: succeededOrFailed() # ensure all tests are run
+    timeoutInMinutes: 2
 
   - script: |
       docker run \
@@ -93,7 +94,7 @@ jobs:
         --volume /bert_data:/bert_data \
         onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
           /build/RelWithDebInfo/launch_test.py \
-            --process_args "mpirun -n 4 -x NCCL_DEBUG=INFO python orttraining_run_glue.py" \
+            --cmd_line_with_args "mpirun -n 4 -x NCCL_DEBUG=INFO python orttraining_run_glue.py" \
             --cwd /build/RelWithDebInfo
     displayName: 'mpirun -n 4 -x NCCL_DEBUG=INFO python orttraining_run_glue.py'
     condition: succeededOrFailed() # ensure all tests are run
@@ -108,7 +109,7 @@ jobs:
         --volume /bert_data:/bert_data \
         onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
           /build/RelWithDebInfo/launch_test.py \
-            --process_args "python orttraining_run_glue.py ORTGlueTest.test_bert_with_mrpc -v" \
+            --cmd_line_with_args "python orttraining_run_glue.py ORTGlueTest.test_bert_with_mrpc -v" \
             --cwd /build/RelWithDebInfo \
             --env "CUDA_VISIBLE_DEVICES 2"
     displayName: 'Run orttraining_run_glue.py ORTGlueTest.test_bert_with_mrpc'
@@ -124,7 +125,7 @@ jobs:
         --volume /bert_data:/bert_data \
         onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
           /build/RelWithDebInfo/launch_test.py \
-            --process_args "python orttraining_run_glue.py ORTGlueTest.test_bert_fp16_with_mrpc -v" \
+            --cmd_line_with_args "python orttraining_run_glue.py ORTGlueTest.test_bert_fp16_with_mrpc -v" \
             --cwd /build/RelWithDebInfo \
             --env "CUDA_VISIBLE_DEVICES 2"
     displayName: 'Run orttraining_run_glue.py ORTGlueTest.test_bert_fp16_with_mrpc'
@@ -140,7 +141,7 @@ jobs:
         --volume /bert_data:/bert_data \
         onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
           /build/RelWithDebInfo/launch_test.py \
-            --process_args "python orttraining_run_glue.py ORTGlueTest.test_roberta_with_mrpc -v" \
+            --cmd_line_with_args "python orttraining_run_glue.py ORTGlueTest.test_roberta_with_mrpc -v" \
             --cwd /build/RelWithDebInfo \
             --env "CUDA_VISIBLE_DEVICES 2"
     displayName: 'Run orttraining_run_glue.py ORTGlueTest.test_roberta_with_mrpc'
@@ -156,7 +157,7 @@ jobs:
         --volume /bert_data:/bert_data \
         onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
           /build/RelWithDebInfo/launch_test.py \
-            --process_args "python orttraining_run_glue.py ORTGlueTest.test_roberta_fp16_with_mrpc -v" \
+            --cmd_line_with_args "python orttraining_run_glue.py ORTGlueTest.test_roberta_fp16_with_mrpc -v" \
             --cwd /build/RelWithDebInfo \
             --env "CUDA_VISIBLE_DEVICES 2"
     displayName: 'Run orttraining_run_glue.py ORTGlueTest.test_roberta_fp16_with_mrpc'
@@ -172,7 +173,7 @@ jobs:
         --volume /bert_data:/bert_data \
         onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
           /build/RelWithDebInfo/launch_test.py \
-            --process_args "python orttraining_run_multiple_choice.py ORTMultipleChoiceTest.test_bert_fp16_with_swag -v" \
+            --cmd_line_with_args "python orttraining_run_multiple_choice.py ORTMultipleChoiceTest.test_bert_fp16_with_swag -v" \
             --cwd /build/RelWithDebInfo \
             --env "CUDA_VISIBLE_DEVICES 2"
     displayName: 'Run orttraining_run_multiple_choice.py ORTMultipleChoiceTest.test_bert_fp16_with_swag'
@@ -188,7 +189,7 @@ jobs:
         --volume /bert_data:/bert_data \
         onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
           /build/RelWithDebInfo/launch_test.py \
-            --process_args "python onnxruntime_test_ort_trainer_with_mixed_precision.py -v" \
+            --cmd_line_with_args "python onnxruntime_test_ort_trainer_with_mixed_precision.py -v" \
             --cwd /build/RelWithDebInfo
     displayName: 'Run onnxruntime_test_ort_trainer_with_mixed_precision.py'
     condition: succeededOrFailed() # ensure all tests are run
@@ -202,7 +203,7 @@ jobs:
         --volume /bert_data:/bert_data \
         onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
           /build/RelWithDebInfo/launch_test.py \
-            --process_args "python orttraining_test_transformers.py BertModelTest.test_for_pretraining_mixed_precision -v" \
+            --cmd_line_with_args "python orttraining_test_transformers.py BertModelTest.test_for_pretraining_mixed_precision -v" \
             --cwd /build/RelWithDebInfo
     displayName: 'Run orttraining_test_transformers.py BertModelTest.test_for_pretraining_mixed_precision'
     condition: succeededOrFailed() # ensure all tests are run
@@ -217,10 +218,11 @@ jobs:
         --volume /bert_data:/bert_data \
         onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
           /build/RelWithDebInfo/launch_test.py \
-            --process_args "mpirun -n 4 -x NCCL_DEBUG=INFO python orttraining_run_bert_pretrain.py ORTBertPretrainTest.test_pretrain_convergence" \
+            --cmd_line_with_args "mpirun -n 4 -x NCCL_DEBUG=INFO python orttraining_run_bert_pretrain.py ORTBertPretrainTest.test_pretrain_convergence" \
             --cwd /build/RelWithDebInfo
     displayName: 'Run orttraining_run_bert_pretrain.py ORTBertPretrainTest.test_pretrain_convergence'
     condition: succeededOrFailed() # ensure all tests are run
+    timeoutInMinutes: 20
 
   # I have tried following to ways to run run_training_pipeline_e2e_tests. both failed.
   # For now, the --enable_training_pipeline_e2e_tests flag still triggles
@@ -249,7 +251,7 @@ jobs:
   #       --volume /bert_ort:/bert_ort \
   #       onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
   #         /build/RelWithDebInfo/launch_test.py \
-  #         --process_args "python run_training_pipeline_e2e_tests.py" \
+  #         --cmd_line_with_args "python run_training_pipeline_e2e_tests.py" \
   #         --cwd /build/RelWithDebInfo
   #   displayName: 'Run run_training_pipeline_e2e_tests.py'
   #   condition: succeededOrFailed() # ensure all tests are run
