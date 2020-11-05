@@ -559,7 +559,6 @@ class PlannerImpl {
       plan_.allocation_plan[i].value_type = utils::GetMLDataType(*node_arg);
       plan_.allocation_plan[i].location = loc[0];
       plan_.allocation_plan[i].life_interval = std::pair<size_t, size_t>(0, max_pc);
-      plan_.allocation_plan[i].allocate_interval = std::pair<size_t, size_t>(0, max_pc);
       for (size_t j = 0; j != loc.size(); ++j) {
         if (loc[j] != loc[0]) {
           // set the location to CPU
@@ -588,7 +587,6 @@ class PlannerImpl {
       AllocPlanPerValue& thisplan = AllocPlan(input_index);
       thisplan.alloc_kind = AllocKind::kPreExisting;
       thisplan.value_type = utils::GetMLDataType(*node_arg);
-      thisplan.allocate_interval = std::pair<size_t, size_t>(0, max_pc);
       thisplan.life_interval = std::pair<size_t, size_t>(0, max_pc);
     };
 
@@ -626,7 +624,6 @@ class PlannerImpl {
         const auto current = Index(node_output->Name());
         AllocPlan(current).value_type = utils::GetMLDataType(*node_output);
         AllocPlan(current).life_interval.first = program_counter;
-        AllocPlan(current).allocate_interval.first = program_counter;
         // Declare OrtValue index of the reused buffer.
         // The the OrtValue indexed by current may reuse the memory in the OrtValue indexed by reused.
         OrtValueIndex reused;
@@ -634,7 +631,6 @@ class PlannerImpl {
           // node_output is graph's output, so we can't reuse intermediate buffer
           AllocPlan(current).alloc_kind = AllocKind::kAllocateOutput;
           AllocPlan(current).life_interval.second = execution_plan.size();
-          AllocPlan(current).allocate_interval.second = execution_plan.size();
 
           // hacky perf optimization to not copy a pre-existing value to an output if this is a Loop subgraph and
           // the value is not being changed in the subgraph.
@@ -713,7 +709,6 @@ class PlannerImpl {
           }
           if ((original != -1) && (0 == DecrementUseCount(original))) {
             freelist_.push_front(FreeBufferInfo(original, program_counter));
-            AllocPlan(original).allocate_interval.second = program_counter;
             if (AllocPlan(original).alloc_kind == AllocKind::kAllocate) {
               ORT_ENFORCE(AllocPlan(original).program_counter_end.size() > 0);
               ORT_ENFORCE(AllocPlan(original).program_counter_end.back() == SIZE_MAX);
@@ -738,7 +733,6 @@ class PlannerImpl {
           // See comments in the OrtValueInfo definition.
           if ((original != -1) && (0 == DecrementUseCount(original))) {
             freelist_.push_front(FreeBufferInfo(original, program_counter));
-            AllocPlan(original).allocate_interval.second = program_counter;
             if (AllocPlan(original).alloc_kind == AllocKind::kAllocate) {
               ORT_ENFORCE(AllocPlan(original).program_counter_end.size() > 0);
               ORT_ENFORCE(AllocPlan(original).program_counter_end.back() == SIZE_MAX);
@@ -761,7 +755,6 @@ class PlannerImpl {
           }
           if (0 == DecrementUseCount(original)) {
             freelist_.push_front(FreeBufferInfo(original, program_counter));
-            AllocPlan(original).allocate_interval.second = program_counter;
             if (AllocPlan(original).alloc_kind == AllocKind::kAllocate) {
               ORT_ENFORCE(AllocPlan(original).program_counter_end.size() > 0);
               ORT_ENFORCE(AllocPlan(original).program_counter_end.back() == SIZE_MAX);
@@ -949,15 +942,6 @@ class PlannerImpl {
     return !utils::HasTensorType(type_proto);
   }
 
-  //For reuse tensors, the alloc-time is equal to the allocate time of the allocated tensor
-  void AdjustAllocateIntervals() {
-    for (size_t i = 0; i < ort_value_info_.size(); ++i) {
-      if (OrtValueIndex(i) != ort_value_info_[i].reused_buffer_index) {
-        AllocPlan(OrtValueIndex(i)).allocate_interval = AllocPlan(ort_value_info_[i].reused_buffer_index).allocate_interval;
-      }
-    }
-  }
-
   //For in-place reuse tensors, the lifetime is the union of all the tensor that tensors that use that buffer
   void AdjustInplaceLifeIntervals() {
     std::unordered_map<OrtValueIndex, std::vector<OrtValueIndex>> inplace_reuse_buffer;
@@ -1004,7 +988,6 @@ Status PlannerImpl::CreatePlan() {
   ORT_RETURN_IF_ERROR(ComputeFenceCheck());
 
   //Adjust the allocate and lifetime intervals for all ml-values, based on their allocation kind.
-  AdjustAllocateIntervals();
   AdjustInplaceLifeIntervals();
   // Determine allocation order for weights and activations. This needs to be done after ComputeReusePlan.
   ORT_RETURN_IF_ERROR(ComputeAllocationOrder());

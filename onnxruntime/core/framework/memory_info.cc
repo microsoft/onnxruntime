@@ -29,7 +29,6 @@ void MemoryInfo::GenerateTensorMap(const SequentialExecutionPlan* execution_plan
     mem_info.mlvalue_index = value_idx;
     value_name_idx_map.GetName(mem_info.mlvalue_index, mem_info.mlvalue_name);
     mem_info.lifetime_interval = execution_plan->allocation_plan[value_idx].life_interval;
-    mem_info.alloctime_interval = execution_plan->allocation_plan[value_idx].allocate_interval;
     mem_info.reused_buffer = (execution_plan->allocation_plan[value_idx].alloc_kind != AllocKind::kReuse) ? value_idx : execution_plan->allocation_plan[value_idx].reused_buffer;
     //If the tensor is using memory outside of the scope, do not store it
     if (execution_plan->allocation_plan[mem_info.reused_buffer].alloc_kind == AllocKind::kPreExisting) continue;
@@ -39,8 +38,6 @@ void MemoryInfo::GenerateTensorMap(const SequentialExecutionPlan* execution_plan
     mem_info.location = execution_plan->allocation_plan[value_idx].location;
 
     ORT_ENFORCE(mem_info.lifetime_interval.first <= mem_info.lifetime_interval.second);
-    ORT_ENFORCE(mem_info.lifetime_interval.first >= mem_info.alloctime_interval.first &&
-                mem_info.lifetime_interval.second <= mem_info.alloctime_interval.second);
     tensor_alloc_info_map_[value_idx] = std::move(mem_info);
     tensors_memory_info_map_[mem_info.location];
   }
@@ -136,7 +133,6 @@ void PrintInforPerTensor(const MemoryInfo::AllocInfoPerTensor& alloc_info, const
   std::cout << "Alloc type " << alloc_info.alloc_kind << ", ";
   std::cout << "Location: " << alloc_info.location.name << ", ";
   std::cout << "lifetime: (" << alloc_info.lifetime_interval.first << ", " << alloc_info.lifetime_interval.second << "), ";
-  std::cout << "alloc time: (" << alloc_info.alloctime_interval.first << ", " << alloc_info.alloctime_interval.second << "), ";
   std::cout << "planned block: (" << mem_info.planned_block.offset_ << ", "
             << (mem_info.planned_block.offset_ + mem_info.planned_block.size_) << "), ";
   std::cout << "planned Size: " << mem_info.planned_block.size_ << ", ";
@@ -145,8 +141,9 @@ void PrintInforPerTensor(const MemoryInfo::AllocInfoPerTensor& alloc_info, const
   std::cout << "allocated Size: " << mem_info.allocated_block.size_ << "\n";
 }
 
-void MemoryInfo::PrintMemoryInfoForLocation(const logging::Logger& /*logger*/, const OrtDevice::DeviceType location) {
+void MemoryInfo::PrintMemoryInfoForLocation(const OrtDevice::DeviceType location) {
   for (const auto& map : tensors_memory_info_map_) {
+    if (map.first.device.Type() != location) continue;
     std::cout << "Initializer in " << map.first.name << "\n";
     const auto& initailizer_map = map.second.at(MapType::Initializer);
     for (const auto& item : initailizer_map) {
@@ -273,7 +270,7 @@ size_t MemoryInfo::MemoryInfoProfile::pid_ = 0;
 std::vector<std::string> MemoryInfo::MemoryInfoProfile::events;
 std::unordered_map<size_t, std::unordered_map<size_t, MemoryInfo::AllocationSummary> > MemoryInfo::MemoryInfoProfile::summary_;
 
-//Create sessions in the profiler. 
+//Create sessions in the profiler.
 //p_name: session name
 //pid: sessionid
 //map_type: Initalizer, static_activation, dynamic_activation. We have this separtion because they are using different memory offsets.
@@ -354,17 +351,18 @@ void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name, cons
         has_other_tensors = true;
       }
       //If for that time steps, we have other tensors to plot other than just summary, add summary events.  These will show up visually as 10% of the max width in a section.
-      if(has_other_tensors){
-      summary_size = std::max(summary_size, item.second.total_size / 10);
-      events.push_back(CreateSummaryEvent(pid, item.first, item.second, summary_size, alloc_size_for_pattern));
+      if (has_other_tensors) {
+        summary_size = std::max(summary_size, item.second.total_size / 10);
+        events.push_back(CreateSummaryEvent(pid, item.first, item.second, summary_size, alloc_size_for_pattern));
       }
     }
   }
 }
 
 void MemoryInfo::GenerateMemoryProfile() {
-  MemoryInfoProfile::CreateEvents("GPU (static activations)", MemoryInfoProfile::GetAndIncreasePid(), MapType::StaticActivation, "", 1);
-  MemoryInfoProfile::CreateEvents("GPU (dynamic activations)", MemoryInfoProfile::GetAndIncreasePid(), MapType::DynamicActivation, "", 1);
+  MemoryInfoProfile::CreateEvents("GPU (initializer)", MemoryInfoProfile::GetAndIncreasePid(), MapType::Initializer, "", 0);
+  MemoryInfoProfile::CreateEvents("GPU (static activations)", MemoryInfoProfile::GetAndIncreasePid(), MapType::StaticActivation, "", 0);
+  MemoryInfoProfile::CreateEvents("GPU (dynamic activations)", MemoryInfoProfile::GetAndIncreasePid(), MapType::DynamicActivation, "", 0);
 
   // Write memory profile .json
   std::ofstream memory_profile("memory_profile_" + std::to_string(local_rank_) + ".json", std::ios::trunc);
@@ -376,6 +374,7 @@ void MemoryInfo::GenerateMemoryProfile() {
   }
   memory_profile << "]" << std::endl;
   memory_profile.close();
+  PrintMemoryInfoForLocation(OrtDevice::GPU);
 }
 
 }  // namespace onnxruntime

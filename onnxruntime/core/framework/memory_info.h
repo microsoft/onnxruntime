@@ -97,7 +97,6 @@ class MemoryInfo {
     OrtValueName mlvalue_name{""};
 
     IntervalT lifetime_interval{0, 0};
-    IntervalT alloctime_interval{0, 0};
     bool inplace_reuse{false};
     OrtValueIndex reused_buffer{0};  //The index of the reused tensor, if no reuse, it is its own tensor.
     AllocKind alloc_kind{AllocKind::kAllocate};
@@ -152,7 +151,7 @@ class MemoryInfo {
 
   static inline void SetIteration(size_t iteration) { iteration_ = iteration; }
 
-  static void PrintMemoryInfoForLocation(const logging::Logger& /*logger*/, const OrtDevice::DeviceType location);
+  static void PrintMemoryInfoForLocation(const OrtDevice::DeviceType location);
   static void GenerateMemoryProfile();
   static inline void ClearMemoryInfoPerExecution() {
     for (auto& location_map : tensors_memory_info_map_) {
