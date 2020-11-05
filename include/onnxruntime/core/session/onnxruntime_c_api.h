@@ -90,7 +90,7 @@ extern "C" {
 #endif
 
 // Copied from TensorProto::DataType
-// Currently, Ort doesn't support complex64, complex128, bfloat16 types
+// Currently, Ort doesn't support complex64, complex128
 typedef enum ONNXTensorElementDataType {
   ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED,
   ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,   // maps to c type float
