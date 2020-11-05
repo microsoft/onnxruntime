@@ -82,7 +82,7 @@ jobs:
             --env CUDA_VISIBLE_DEVICES 2
     displayName: 'Run orttraining_run_frontend_batch_size_test.py'
     condition: succeededOrFailed() # ensure all tests are run
-    timeoutInMinutes: 2
+    timeoutInMinutes: 30
 
   - script: |
       docker run \
