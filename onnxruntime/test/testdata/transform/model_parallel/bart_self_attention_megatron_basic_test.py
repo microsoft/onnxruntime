@@ -52,7 +52,7 @@ where_shape_initializer = numpy_helper.from_array(np.asarray([batch*attention_he
 dropout_np_vals = np.asarray([0.1], dtype=np.float32).reshape(())
 dropout_initializer = numpy_helper.from_array(dropout_np_vals, "ratio")
  
-dropout_mode_np_vals = np.array([True], dtype=np.bool).reshape(())
+dropout_mode_np_vals = np.array([False], dtype=np.bool).reshape(())
 dropout_mode_initializer = numpy_helper.from_array(dropout_mode_np_vals, "mode")
 
 shape_initializer3 = numpy_helper.from_array(np.array([input_len, batch, attention_head * hidden_per_attention], dtype=np.int64), 'concat_shape_3')
