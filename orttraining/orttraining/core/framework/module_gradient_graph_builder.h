@@ -29,7 +29,16 @@ bool set_gradients_as_graph_outputs = false;
 
 class ModuleGradientGraphBuilder {
  public:
-  std::string Build(std::istream& model_istream, const ModuleGradientGraphBuilderConfiguration& config);
+  Status BuildAndSplit(std::istream& model_istream,
+                       const ModuleGradientGraphBuilderConfiguration& config,
+                       std::vector<std::string>& models_as_string);
+ private:
+  Status Split(const ModuleGradientGraphBuilderConfiguration& config);
+
+  std::shared_ptr<onnxruntime::Model> model_;
+  std::shared_ptr<onnxruntime::Model> forward_model_;
+  std::shared_ptr<onnxruntime::Model> backward_model_;
+  const logging::Logger* logger_;
 };
 
 }  // namespace training
