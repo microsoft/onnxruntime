@@ -68,6 +68,8 @@ class ThreadPoolParallelSection {
   // Flag to signal termination of the parallel section
   std::atomic<bool> active{false};
 
+  std::atomic<unsigned> tasks_started{0};
+
   // Count of the number of tasks that completed normally.  Other
   // tasks may be running currently, or may be present in work queues,
   // or may have been removed from the queues by
@@ -683,14 +685,11 @@ void EndParallelSection(ThreadPoolParallelSection &ps) override {
  }
 
  void StartParallelLoop(ThreadPoolParallelSection &ps,
-                        PerLoop &loop,
-                        std::function<void(unsigned idx)> worker) {
+                        unsigned n,
+                        std::function<void()> worker) {
    PerThread* pt = GetPerThread();
-   ORT_ENFORCE(!ps.current_loop, "RunInParallel, but loop already active");
-   ps.current_loop = &loop;
 
    auto current_dop = ps.tasks.size() + 1;
-   auto n = loop.threads_needed;
    if (n > current_dop) {
      auto extra_needed = n - current_dop;
      // We build a list of <thread,idx> pairs for each of the queues
@@ -700,10 +699,7 @@ void EndParallelSection(ThreadPoolParallelSection &ps) override {
      std::vector<unsigned> good_hints, alt_hints;
      GetGoodWorkerHints(n - 1, good_hints, alt_hints);
      for (auto i = 0u; i < extra_needed; i++) {
-       auto new_idx = static_cast<unsigned>(ps.tasks.size() + 1);
-       Task t = env_.CreateTask([worker, new_idx]{
-           worker(new_idx);
-         });
+       Task t = env_.CreateTask(worker);
        int q_idx;
        if (i < good_hints.size()) {
          q_idx = good_hints[i];
@@ -743,14 +739,14 @@ void EndParallelSection(ThreadPoolParallelSection &ps) override {
    PerThread* pt = GetPerThread();
    ORT_ENFORCE(pt->leading_par_section, "RunInParallel, but not in parallel section");
    ORT_ENFORCE(n > 1, "Trivial parallel section; should be avoided by caller");
+   ORT_ENFORCE(!ps.current_loop, "RunInParallelSection, but loop already active");
 
    PerLoop loop{std::move(fn), n};
+   ps.current_loop = &loop;
    
    StartParallelLoop(ps,
-                     loop,
-                     [&ps](unsigned idx) {
-                       ParLoopWorker(ps, idx);
-                     });
+                     n,
+                     [&ps](){ ParLoopWorker(ps); });
    
    loop.fn(0);
 
@@ -761,7 +757,17 @@ void EndParallelSection(ThreadPoolParallelSection &ps) override {
 void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n) override {
   ThreadPoolParallelSection ps;
   StartParallelSection(ps);
-  RunInParallelSection(ps, fn, n);
+
+  auto body = [&]() {
+    unsigned my_idx = ++ps.tasks_started;
+    fn(my_idx);
+    ps.tasks_finished++;
+  };
+
+  StartParallelLoop(ps, n, body);
+
+  fn(0);
+
   EndParallelSection(ps);
 }
 
@@ -1142,8 +1148,8 @@ int CurrentThreadId() const EIGEN_FINAL {
     return -1;
   }
 
-  static void ParLoopWorker(ThreadPoolParallelSection &ps, unsigned my_idx) {
-  ORT_ENFORCE(my_idx > 0);
+  static void ParLoopWorker(ThreadPoolParallelSection &ps) {
+    unsigned my_idx = ++ps.tasks_started;
 
   while (ps.active) {
     if (!ps.current_loop) {
