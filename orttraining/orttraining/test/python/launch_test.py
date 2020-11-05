@@ -35,8 +35,4 @@ for n, arg in enumerate(cmd_line_with_args):
     if arg == 'python':
         cmd_line_with_args[n] = sys.executable
 
-cwd = launch_args.cwd
-
-env = dict(launch_args.env) if launch_args.env else {}
-
-run_subprocess(cmd_line_with_args, cwd=cwd, env=env, log=log)
+run_subprocess(cmd_line_with_args, cwd=launch_args.cwd, env=dict(launch_args.env), log=log)

@@ -8,8 +8,9 @@ def is_windows():
 
 def run_subprocess(args, cwd=None, capture=False, dll_path=None,
                    shell=False, env={}, log=None):
-    log.info("Running subprocess in '{0}'\n{1}".format(
-        cwd or os.getcwd(), args))
+    if log:
+        log.info("Running subprocess in '{0}'\n{1}".format(
+            cwd or os.getcwd(), args))
     my_env = os.environ.copy()
     if dll_path:
         if is_windows():
@@ -26,21 +27,10 @@ def run_subprocess(args, cwd=None, capture=False, dll_path=None,
     completed_process = subprocess.run(
         args, cwd=cwd, check=True, stdout=stdout, stderr=stderr,
         env=my_env, shell=shell)
-    log.debug("Subprocess completed. Return code=" +
-              str(completed_process.returncode))
-    return completed_process
-
-
-def run_subprocess(args, cwd=None, env={}, log=None):
+    
     if log:
-        log.info("Running subprocess in '{0}'\n{1}".format(cwd or os.getcwd(), args))
-
-    my_env = os.environ.copy()
-    my_env.update(env)
-    completed_process = subprocess.run(args, cwd=cwd, check=True, env=my_env)
-    if log:
-        log.debug("Subprocess completed. Return code=" + str(completed_process.returncode))
-
+        log.debug("Subprocess completed. Return code=" +
+                str(completed_process.returncode))
     return completed_process
 
 
