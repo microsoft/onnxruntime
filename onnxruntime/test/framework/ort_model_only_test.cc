@@ -391,8 +391,8 @@ OrtModelTestInfo GetTestInfoForLoadOrtFormatModel() {
 
 OrtModelTestInfo GetTestInfoForLoadMnistOrtFormatModel() {
   OrtModelTestInfo test_info;
-  test_info.model_filename = ORT_TSTR("testdata/mnist/model.ort");
   test_info.logid = "LoadOrtFormatModel";
+  test_info.model_filename = ORT_TSTR("testdata/mnist/mnist.onnx.ort");
 
   OrtValue ml_value;
   const std::vector<int64_t>  dims = {1, 1, 28, 28};
