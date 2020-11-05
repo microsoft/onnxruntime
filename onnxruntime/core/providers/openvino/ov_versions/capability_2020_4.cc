@@ -57,10 +57,10 @@ bool IsOpInNgSupportedList(std::string name) {
   std::set<std::string> ng_supported_ops = {
     "Abs", "Acos", "Acosh", "Add", "And", "ArgMax", "ArgMin", "Asin",
     "Asinh", "Atanh", "AveragePool", "BatchNormalization",
-    "Cast", "Ceil", "Clip", "Concat", "Constant", "ConstantOfShape", 
-    "Conv", "ConvInteger", "ConvTranspose", "Cos", "Cosh", 
-    "Cumsum", "DepthToSpace", "DequantizeLinear", "Div", "Dropout", 
-    "Elu", "Equal", "Erf", "Exp", "Expand", "EyeLike", "Flatten", "Floor", 
+    "Cast", "Ceil", "Clip", "Concat", "Constant", "ConstantOfShape",
+    "Conv", "ConvInteger", "ConvTranspose", "Cos", "Cosh",
+    "Cumsum", "DepthToSpace", "DequantizeLinear", "Div", "Dropout",
+    "Elu", "Equal", "Erf", "Exp", "Expand", "EyeLike", "Flatten", "Floor",
     "GRU", "Gather", "GatherND", "Gemm", "GlobalAveragePool", "GlobalLpPool", "GlobalMaxPool", "Greater",
     "HardSigmoid", "Hardmax", "Identity", "InstanceNoramalization", "LRN", "LeakyRelu", "Less",
     "Log", "LogSoftmax", "LpNormalization", "Matmul", "MatMulInteger", "Max", "MaxPool", "Mean",
@@ -69,13 +69,13 @@ bool IsOpInNgSupportedList(std::string name) {
     "Range", "Reciprocal", "ReduceL1", "ReduceL2", "ReduceLogSum", "ReduceLogSumExp", "ReduceMax",
     "ReduceMean", "ReduceMin", "ReduceProd", "ReduceSum", "ReduceSumSquare", "Relu", "Reshape", "Resize",
     "ReverseSequence", "RoiAlign", "Round", "Scatter", "ScatterElements", "ScatterND", "Selu", "Shape",
-    "Shrink", "Sigmoid", "Sign", "Sin", "Sinh", "Slice", "Softmax", "Softplus", "Softsign", "SpaceToDepth", 
-    "Split", "Sqrt", "Squeeze", "Sub", "Sum", "Tan", "Tanh", "ThresholdRelu", "Tile", "TopK", "Transpose", 
-    "Unsqueeze", "Where", "Xor" 
+    "Shrink", "Sigmoid", "Sign", "Sin", "Sinh", "Slice", "Softmax", "Softplus", "Softsign", "SpaceToDepth",
+    "Split", "Sqrt", "Squeeze", "Sub", "Sum", "Tan", "Tanh", "ThresholdRelu", "Tile", "TopK", "Transpose",
+    "Unsqueeze", "Where", "Xor"
   };
 
   return ng_supported_ops.find(name) != ng_supported_ops.end();
-}  
+}
 
 //Ops which are not supported by OpenVINO EP
 bool IsOpSupported(std::string name, std::string device) {
@@ -625,7 +625,6 @@ static bool IsNodeSupported(const onnxruntime::GraphViewer& graph_viewer,
 
 static std::vector<NodeIndex>
 GetUnsupportedNodeIndices(const GraphViewer& graph_viewer, std::string device, /*out*/ std::unordered_set<std::string>& ng_required_initializers) {
-//const auto ng_supported_ops = GetNgSupportedOps(GetOnnxOpSet(graph_viewer));
 
   std::vector<NodeIndex> unsupported_nodes_idx;
 

@@ -12,8 +12,6 @@ void AppendClusterToSubGraph(const std::vector<NodeIndex>& nodes,
 
 int GetOnnxOpSet(const GraphViewer& graph_viewer);
 
-std::map<std::string, std::set<std::string>> GetNgSupportedOps(const int onnx_opset);
-
 std::vector<std::vector<NodeIndex>>
 GetPartitionedClusters(const std::vector<NodeIndex>& topological_order, const std::vector<NodeIndex>& unsupported_nodes);
 
