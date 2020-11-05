@@ -109,11 +109,25 @@ class ExtendedThreadPoolInterface : public Eigen::ThreadPoolInterface {
   //
   // The parameter idx provides a loop-local thread ID in the range
   // [0,k) where k<=n.
-  virtual void RunInParallel(std::function<void(unsigned idx)> fn,
-                             unsigned n) = 0;
+  virtual void RunInParallelSection(ThreadPoolParallelSection &ps,
+                                    std::function<void(unsigned idx)> fn,
+                                    unsigned n) = 0;
 
-  virtual void RunInParallel(ThreadPoolParallelSection &ps,
-                             std::function<void(unsigned idx)> fn,
+  // Special case alternative to RunInParallelSection for use without
+  // an existing parallel section.  Ideally we would use a single
+  // iplemenation and a stack-allocated ThreadPoolParallelSection.
+  //
+  // However, on the BM_ThreadPoolParallelFor microbenchmark I saw
+  // ~20% overhead on the resulting single-loop parallel sections.
+  // There are some additional costs (~5%) for additional invocations
+  // through lambda functions on loop entry.  Most significantly, on
+  // loop exit, we incurred ~15% cost by no longer being able to
+  // overlap clean-up of unused Task objects in EndParallelSection
+  // with waiting for loop iterations to complete.
+  //
+  // [ Note that this 20% overhead is more than paid for when we have
+  // two loops execute in series in a parallel section. ]
+  virtual void RunInParallel(std::function<void(unsigned idx)> fn,
                              unsigned n) = 0;
 };
 
@@ -668,69 +682,87 @@ void EndParallelSection(ThreadPoolParallelSection &ps) override {
   ps.tasks_finished = 0;
  }
 
- void RunInParallel(ThreadPoolParallelSection &ps,
-                    std::function<void(unsigned idx)> fn,
-                    unsigned n) override {
-  PerThread* pt = GetPerThread();
-  ORT_ENFORCE(pt->leading_par_section, "RunInParallel, but not in parallel section");
-  ORT_ENFORCE(n > 1, "Trivial parallel section; should be avoided by caller");
+ void StartParallelLoop(ThreadPoolParallelSection &ps,
+                        PerLoop &loop,
+                        std::function<void(unsigned idx)> worker) {
+   PerThread* pt = GetPerThread();
+   ORT_ENFORCE(!ps.current_loop, "RunInParallel, but loop already active");
+   ps.current_loop = &loop;
 
-  ORT_ENFORCE(!ps.current_loop, "RunInParallel, but loop already active");
-  PerLoop loop{std::move(fn), n};
-  ps.current_loop = &loop;
-
-  auto current_dop = ps.tasks.size() + 1;
-  if (n > current_dop) {
-    auto extra_needed = n - current_dop;
-    // We build a list of <thread,idx> pairs for each of the queues
-    // that accepts a task.  This lets us reduce waiting on loop-exit
-    // by removing any tasks that do not get executed by the threads
-    // that we push them to.
-    std::vector<unsigned> good_hints, alt_hints;
-    GetGoodWorkerHints(n - 1, good_hints, alt_hints);
-    for (auto i = 0u; i < extra_needed; i++) {
-      auto new_idx = static_cast<unsigned>(ps.tasks.size() + 1);
-      Task t = env_.CreateTask([&ps, new_idx, this]{
-          ParLoopWorker(ps, new_idx);
-        });
-      int q_idx;
-      if (i < good_hints.size()) {
-        q_idx = good_hints[i];
-      } else {
-        auto alt_i = i - static_cast<unsigned>(good_hints.size());
-        if (alt_i < alt_hints.size()) {
-          q_idx = alt_hints[alt_i];
-        } else {
-          q_idx = Rand(&pt->rand) % num_threads_;
-        }
-      }
-      WorkerData& td = worker_data_[q_idx];
-      Queue& q = td.queue;
-      unsigned w_idx;
-      t = q.PushBackWithTag(std::move(t), pt->tag, w_idx);
-      if (!t.f) {
-        // The queue accepted the work, ensure that the thread is servicing the queue
-        ps.tasks.push_back({q_idx, w_idx});
-        td.EnsureAwake();
-      }
-    }
-  }
-
-  // Run the work ourselves, for the total of max-n degree-of-parallelism
-  loop.fn(0);
-
-  // Wait for workers to exit the work item
-  ps.current_loop = 0;
-  while (ps.workers_in_loop) {
-    onnxruntime::concurrency::SpinPause();
-  }
+   auto current_dop = ps.tasks.size() + 1;
+   auto n = loop.threads_needed;
+   if (n > current_dop) {
+     auto extra_needed = n - current_dop;
+     // We build a list of <thread,idx> pairs for each of the queues
+     // that accepts a task.  This lets us reduce waiting on loop-exit
+     // by removing any tasks that do not get executed by the threads
+     // that we push them to.
+     std::vector<unsigned> good_hints, alt_hints;
+     GetGoodWorkerHints(n - 1, good_hints, alt_hints);
+     for (auto i = 0u; i < extra_needed; i++) {
+       auto new_idx = static_cast<unsigned>(ps.tasks.size() + 1);
+       Task t = env_.CreateTask([worker, new_idx]{
+           worker(new_idx);
+         });
+       int q_idx;
+       if (i < good_hints.size()) {
+         q_idx = good_hints[i];
+       } else {
+         auto alt_i = i - static_cast<unsigned>(good_hints.size());
+         if (alt_i < alt_hints.size()) {
+           q_idx = alt_hints[alt_i];
+         } else {
+           q_idx = Rand(&pt->rand) % num_threads_;
+         }
+       }
+       WorkerData& td = worker_data_[q_idx];
+       Queue& q = td.queue;
+       unsigned w_idx;
+       t = q.PushBackWithTag(std::move(t), pt->tag, w_idx);
+       if (!t.f) {
+         // The queue accepted the work, ensure that the thread is servicing the queue
+         ps.tasks.push_back({q_idx, w_idx});
+         td.EnsureAwake();
+       }
+     }
+   }
  }
 
- void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n) override {
-   onnxruntime::concurrency::ThreadPoolParallelSection ps;
-   StartParallelSection(ps);
-   RunInParallel(ps, fn, n);
-   EndParallelSection(ps);
+ void EndParallelLoop(ThreadPoolParallelSection &ps) {
+   // Wait for workers to exit the work item
+   ORT_ENFORCE(ps.current_loop, "EndParallelLoop but no parallel loop");
+   ps.current_loop = 0;
+   while (ps.workers_in_loop) {
+     onnxruntime::concurrency::SpinPause();
+   }
+ }
+
+ void RunInParallelSection(ThreadPoolParallelSection &ps,
+                           std::function<void(unsigned idx)> fn,
+                           unsigned n) override {
+   PerThread* pt = GetPerThread();
+   ORT_ENFORCE(pt->leading_par_section, "RunInParallel, but not in parallel section");
+   ORT_ENFORCE(n > 1, "Trivial parallel section; should be avoided by caller");
+
+   PerLoop loop{std::move(fn), n};
+   
+   StartParallelLoop(ps,
+                     loop,
+                     [&ps](unsigned idx) {
+                       ParLoopWorker(ps, idx);
+                     });
+   
+   loop.fn(0);
+
+   EndParallelLoop(ps);
+ }
+
+// Single-loop special case of RunInParallelSection.
+void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n) override {
+  ThreadPoolParallelSection ps;
+  StartParallelSection(ps);
+  RunInParallelSection(ps, fn, n);
+  EndParallelSection(ps);
 }
 
 void Cancel() override {
@@ -1110,7 +1142,7 @@ int CurrentThreadId() const EIGEN_FINAL {
     return -1;
   }
 
-  void ParLoopWorker(ThreadPoolParallelSection &ps, unsigned my_idx) {
+  static void ParLoopWorker(ThreadPoolParallelSection &ps, unsigned my_idx) {
   ORT_ENFORCE(my_idx > 0);
 
   while (ps.active) {

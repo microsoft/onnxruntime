@@ -246,9 +246,9 @@ void ThreadPool::RunInParallel(std::function<void(unsigned idx)> fn, unsigned n)
   ORT_ENFORCE(fn != nullptr);
   if (underlying_threadpool_) {
     if (ThreadPool::ParallelSection::current_parallel_section) {
-      underlying_threadpool_->RunInParallel(*(ThreadPool::ParallelSection::current_parallel_section->_ps.get()),
-                                            std::move(fn),
-                                            n);
+      underlying_threadpool_->RunInParallelSection(*(ThreadPool::ParallelSection::current_parallel_section->_ps.get()),
+                                                   std::move(fn),
+                                                   n);
     } else {
       underlying_threadpool_->RunInParallel(std::move(fn),
                                             n);
