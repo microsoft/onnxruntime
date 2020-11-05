@@ -63,42 +63,45 @@ Status Hardmax<float>::Compute(OpKernelContext* ctx) const {
     intermediate_output = std::move(temp_output);
   }
 
-  size_t tmpN = is_transpose_required ? TensorShape(transposed_input_dims).SizeToDimension(rank - 1) : X_shape.SizeToDimension(axis);
-  size_t tmpD = is_transpose_required ? TensorShape(transposed_input_dims).SizeFromDimension(rank - 1) : X_shape.SizeFromDimension(axis);
+  size_t tmp_N = is_transpose_required ? TensorShape(transposed_input_dims).SizeToDimension(rank - 1) : X_shape.SizeToDimension(axis);
+  size_t tmp_D = is_transpose_required ? TensorShape(transposed_input_dims).SizeFromDimension(rank - 1) : X_shape.SizeFromDimension(axis);
 
   // Math::RowwiseMax expects int N and D.
-  if (tmpN * tmpD > INT32_MAX || tmpN > INT32_MAX || tmpD > INT32_MAX) {
+  if (tmp_N * tmp_D > INT32_MAX || tmp_N > INT32_MAX || tmp_D > INT32_MAX) {
     std::ostringstream ss;
-    ss << "Hardmax inputs N, D and N * D must be < " << INT32_MAX << ". N=" << tmpN << ", D=" << tmpD;
+    ss << "Hardmax inputs N, D and N * D must be < " << INT32_MAX << ". N=" << tmp_N << ", D=" << tmp_D;
     std::string msg = ss.str();
 
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, msg);
   }
 
-  const int N = gsl::narrow_cast<int>(tmpN);
-  const int D = gsl::narrow_cast<int>(tmpD);
+  const int N = gsl::narrow_cast<int>(tmp_N);
+  const int D = gsl::narrow_cast<int>(tmp_D);
 
   std::vector<float> rowmax_(N);
   float* rowmax_data = rowmax_.data();
-  float* Ydata = nullptr;
-  const float* Xdata = X->template Data<float>();
+  float* Y_data = nullptr;
+  const float* X_data = nullptr;
 
   if (is_transpose_required) {  // use intermediate buffers to compute the hardmax values
-    Xdata = transposed_input.template Data<float>();
-    Ydata = intermediate_output.template MutableData<float>();
+    X_data = transposed_input.template Data<float>();
+    Y_data = intermediate_output.template MutableData<float>();
   } else {  // use the node input/output directly
-    Xdata = X->template Data<float>();
-    Ydata = Y->template MutableData<float>();
+    X_data = X->template Data<float>();
+    Y_data = Y->template MutableData<float>();
   }
 
-  math::RowwiseMax<float, CPUMathUtil>(N, D, Xdata, rowmax_data, nullptr);
+  math::RowwiseMax<float, CPUMathUtil>(N, D, X_data, rowmax_data, nullptr);
 
-  math::Set<float, CPUMathUtil>(X_shape.Size(), 0.f, Ydata, &CPUMathUtil::Instance());
+  // Even if we had to transpose the input, it is safe to go with X_shape.Size() which computes
+  // the size of the buffer from the original input's shape as even if we do transpose, the size
+  // of the transposed buffer will be the same as the original input's buffer
+  math::Set<float, CPUMathUtil>(X_shape.Size(), 0.f, Y_data, &CPUMathUtil::Instance());
 
   for (int i = 0; i < N; ++i) {
     for (int j = 0; j < D; ++j) {
-      if (Xdata[i * D + j] == rowmax_data[i]) {
-        Ydata[i * D + j] = 1;
+      if (X_data[i * D + j] == rowmax_data[i]) {
+        Y_data[i * D + j] = 1;
         break;
       }
     }
