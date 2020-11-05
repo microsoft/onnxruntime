@@ -216,16 +216,18 @@ static Status InlineNodes(Graph& graph, bool& modified_graph) {
 
   // See if the node with no provider can be inlined. If one such nodes can be
   // successfully inlined, we re-run the partitioner on the modified graph.
+  // NOTE: Inlining the function will change the nodes in the Graph instance, so we can't do that while iterating
+  // using graph.Nodes().
+  std::vector<Node*> nodes_to_inline;
   for (auto& node : graph.Nodes()) {
-    if (node.GetExecutionProviderType().empty()) {
-      const auto* node_func = node.GetFunctionBody();
-      if (nullptr == node_func) {
-        continue;
-      }
-
-      ORT_RETURN_IF_ERROR(graph.InlineFunction(node));
-      modified_graph = true;
+    if (node.GetExecutionProviderType().empty() && node.GetFunctionBody() != nullptr) {
+      nodes_to_inline.push_back(&node);
     }
+  }
+
+  for (auto* node : nodes_to_inline) {
+    ORT_RETURN_IF_ERROR(graph.InlineFunction(*node));
+    modified_graph = true;
   }
 
   return Status::OK();
