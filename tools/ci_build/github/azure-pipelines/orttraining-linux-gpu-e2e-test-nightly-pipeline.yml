@@ -208,17 +208,17 @@ jobs:
     condition: succeededOrFailed() # ensure all tests are run
 
     - script: |
-    docker run \
-      --gpus all \
-      --shm-size=1024m \
-      --rm \
-      --volume $(Build.SourcesDirectory):/onnxruntime_src \
-      --volume $(Build.BinariesDirectory):/build \
-      --volume /bert_data:/bert_data \
-      onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
-        /build/RelWithDebInfo/launch_test.py \
-          --process_args "mpirun -n 4 -x NCCL_DEBUG=INFO python orttraining_run_bert_pretrain.py ORTBertPretrainTest.test_pretrain_convergence" \
-          --cwd /build/RelWithDebInfo
+      docker run \
+        --gpus all \
+        --shm-size=1024m \
+        --rm \
+        --volume $(Build.SourcesDirectory):/onnxruntime_src \
+        --volume $(Build.BinariesDirectory):/build \
+        --volume /bert_data:/bert_data \
+        onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
+          /build/RelWithDebInfo/launch_test.py \
+            --process_args "mpirun -n 4 -x NCCL_DEBUG=INFO python orttraining_run_bert_pretrain.py ORTBertPretrainTest.test_pretrain_convergence" \
+            --cwd /build/RelWithDebInfo
   displayName: 'Run orttraining_run_bert_pretrain.py ORTBertPretrainTest.test_pretrain_convergence'
   condition: succeededOrFailed() # ensure all tests are run
 
