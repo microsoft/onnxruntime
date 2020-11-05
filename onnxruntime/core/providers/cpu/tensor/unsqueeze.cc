@@ -43,14 +43,14 @@ Status UnsqueezeBase::PrepareCompute(OpKernelContext* ctx, Prepare& p) const {
 
   std::vector<int64_t> axes;
   size_t num_inputs = ctx->InputCount();
-  if (num_inputs == 2) {  //axes is an input
+  if (num_inputs == 2) { //axes is an input
     const Tensor* axes_tensor = ctx->Input<Tensor>(1);
     ORT_ENFORCE(axes_tensor != nullptr, "Axes input is null");
-    ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 0 || axes_tensor->Shape().NumDimensions() == 1,
-                "An axes tensor must be a scalar or a 1-D tensor.");
-    auto num_elements = static_cast<size_t>(axes_tensor->Shape().Size());
+    ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1,
+                "An axes tensor must be a vector tensor.");
+    auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);
     const auto* data = axes_tensor->template Data<int64_t>();
-    axes.assign(data, data + num_elements);
+    axes.assign(data, data + nDims);
   } else {
     axes.assign(axes_.begin(), axes_.end());
   }
