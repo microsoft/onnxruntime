@@ -8,9 +8,6 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/providers/cpu/reduction/reduction_test_cases.h"
-#ifdef USE_CUDA
-#include "core/providers/cuda/reduction/reduction_functions.h"
-#endif
 
 namespace onnxruntime {
 namespace test {
@@ -1888,80 +1885,6 @@ TEST(ReductionOpTest, ArgMin_int32_select_last) {
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNGraphExecutionProvider});
 }
-
-#ifdef USE_CUDA
-
-void test_reduce_apis(int64_t size, float relative_error_tolerance = 1e-4f) {
-  float output_sum = 0;
-  float output_square_sum = 0;
-  float output_mean = 0;
-  float expected_output_sum = 0;
-  float expected_output_square_sum = 0;
-  float expected_output_mean = 0;
-  const std::vector<int64_t> shape = {size};
-  RandomValueGenerator random_value_generator{};
-  const auto input = random_value_generator.Uniform<float>(shape, 0.1f, 1.0f);
-  for (const auto input_value : input) {
-    expected_output_sum += input_value;
-    expected_output_square_sum += input_value * input_value;
-    expected_output_mean += input_value / float(size);
-  }
-  const int buffer_size_in_byte = onnxruntime::cuda::compute_reduction_buffer_size(
-      static_cast<int>(sizeof(float)), static_cast<int>(size));
-
-  float* device_input = NULL;
-  float* device_output_sum = NULL;
-  float* device_output_square_sum = NULL;
-  float* device_output_mean = NULL;
-  float* buffer = NULL;
-
-  cudaMalloc((void**)&device_input, size * sizeof(float));
-  cudaMalloc((void**)&device_output_sum, 1 * sizeof(float));
-  cudaMalloc((void**)&device_output_square_sum, 1 * sizeof(float));
-  cudaMalloc((void**)&device_output_mean, 1 * sizeof(float));
-  cudaMalloc((void**)&buffer, buffer_size_in_byte);
-
-  cudaMemcpy(device_input, input.data(), size * sizeof(float), cudaMemcpyHostToDevice);
-
-  onnxruntime::cuda::reduce_sum(device_input,
-                                device_output_sum,
-                                static_cast<int>(size),
-                                buffer);
-  onnxruntime::cuda::reduce_square_sum(device_input,
-                                       device_output_square_sum,
-                                       static_cast<int>(size), buffer);
-  onnxruntime::cuda::reduce_mean(
-      device_input,
-      device_output_mean,
-      static_cast<int>(size),
-      buffer);
-
-  cudaMemcpy(&output_sum, device_output_sum, 1 * sizeof(float), cudaMemcpyDeviceToHost);
-  cudaMemcpy(&output_square_sum, device_output_square_sum, 1 * sizeof(float), cudaMemcpyDeviceToHost);
-  cudaMemcpy(&output_mean, device_output_mean, 1 * sizeof(float), cudaMemcpyDeviceToHost);
-
-  cudaFree(device_input);
-  cudaFree(buffer);
-  cudaFree(device_output_sum);
-  cudaFree(device_output_square_sum);
-  cudaFree(device_output_mean);
-
-  EXPECT_LT(std::abs(output_sum - expected_output_sum) / expected_output_sum, relative_error_tolerance);
-  EXPECT_LT(std::abs(output_square_sum - expected_output_square_sum) / expected_output_square_sum,
-            relative_error_tolerance);
-  EXPECT_LT(std::abs(output_mean - expected_output_mean) / expected_output_mean, relative_error_tolerance);
-}
-
-TEST(ReduceApiTest, Sum) {
-  test_reduce_apis(3);
-  test_reduce_apis(19);
-  test_reduce_apis(123);
-  test_reduce_apis(1128);
-  test_reduce_apis(5566);
-  test_reduce_apis(941736, 2e-4f);
-}
-
-#endif
 
 TEST(ReductionOpTest, ArgMin_int32_neg_axis) {
   OpTester test("ArgMin");
