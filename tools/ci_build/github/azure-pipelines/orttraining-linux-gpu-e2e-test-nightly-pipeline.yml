@@ -207,7 +207,7 @@ jobs:
     displayName: 'Run orttraining_test_transformers.py BertModelTest.test_for_pretraining_mixed_precision'
     condition: succeededOrFailed() # ensure all tests are run
 
-    - script: |
+  - script: |
       docker run \
         --gpus all \
         --shm-size=1024m \
