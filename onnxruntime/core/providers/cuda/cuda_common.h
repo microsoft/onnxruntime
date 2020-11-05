@@ -4,6 +4,8 @@
 #pragma once
 #include "cuda_pch.h"
 #include "core/common/status.h"
+#include "core/framework/arena.h"
+#include "core/framework/bfc_arena.h"
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/op_kernel.h"
 #include "core/graph/graph_viewer.h"
@@ -221,7 +223,7 @@ inline bool CalculateFdmStrides(gsl::span<fast_divmod> p, const std::vector<int6
 
 class CublasMathModeSetter {
  public:
-  CublasMathModeSetter(const cudaDeviceProp& prop,cublasHandle_t handle, cublasMath_t mode) : prop_(prop), handle_(handle) {
+  CublasMathModeSetter(const cudaDeviceProp& prop, cublasHandle_t handle, cublasMath_t mode) : prop_(prop), handle_(handle) {
     cublasGetMathMode(handle, &mode_);
 #if defined(CUDA_VERSION) && CUDA_VERSION < 11000
     if (prop.major >= 7 && mode == CUBLAS_TENSOR_OP_MATH) {
