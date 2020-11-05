@@ -6,6 +6,9 @@ schedules:
     - master
   always: true
 
+variables:
+  PackageName: 'Microsoft.ML.OnnxRuntime.NoOpenMP'
+
 jobs: 
 - template: templates/cpu-noopenmp.yml
   parameters:
