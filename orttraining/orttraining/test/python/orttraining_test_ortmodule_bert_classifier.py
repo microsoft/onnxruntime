@@ -82,11 +82,8 @@ def train(model, optimizer, scheduler, train_dataloader, epoch, device, args):
         # have provided the `labels`.
         # The documentation for this `model` function is here:
         # https://huggingface.co/transformers/v2.2.0/model_doc/bert.html#transformers.BertForSequenceClassification
-        outputs = model(b_input_ids,
-                    token_type_ids=None,
-                    attention_mask=b_input_mask,
-                    labels=b_labels)
-
+        # TODO: explicitly setting (optional) inputs to workaround *input, **kwargs limitation on ORTModule
+        outputs = model(b_input_ids, b_input_mask, None, None, None, None, b_labels)
         if args.view_graphs:
             import torchviz
             pytorch_backward_graph = torchviz.make_dot(outputs[0], params=dict(list(model.named_parameters())))
@@ -163,9 +160,14 @@ def test(model, validation_dataloader, device):
             # differentiates sentence 1 and 2 in 2-sentence tasks.
             # The documentation for this `model` function is here:
             # https://huggingface.co/transformers/v2.2.0/model_doc/bert.html#transformers.BertForSequenceClassification
+            # TODO: explicitly setting (optional) inputs to workaround *input, **kwargs limitation on ORTModule
             outputs = model(b_input_ids,
-                            token_type_ids=None,
-                            attention_mask=b_input_mask)
+                            b_input_mask,
+                            None,
+                            None,
+                            None,
+                            None,
+                            None)
 
         # Get the "logits" output by the model. The "logits" are the output
         # values prior to applying an activation function like the softmax.
