@@ -2474,12 +2474,34 @@ class SqueezeOpBuilder : public BaseOpBuilder {
 
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override ORT_MUST_USE_RESULT;
 
-  // Squeeze opset 13+ uses input for axes, which is not supported yet
-  // TODO add support for squeeze opset 13+
-  int GetMaxSupportedOpSet(const Node& /* node */) override { return 12; }
+  static vector<int32_t> GetAxes(ModelBuilder& model_builder, const Node& node);
 };
 
-bool SqueezeOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, const Node& node) {
+/* static */ vector<int32_t> SqueezeOpBuilder::GetAxes(ModelBuilder& model_builder, const Node& node) {
+  vector<int32_t> axes;
+  // Squeeze opset 13 use input as axes
+  if (node.SinceVersion() > 12) {
+    // If axes is not supplied, return an empty axes as default to squeeze all
+    if (node.InputDefs().size() > 1) {
+      const auto& initializers(model_builder.GetInitializerTensors());
+      const auto& axes_tensor = initializers.at(node.InputDefs()[1]->Name());
+      const int64_t* raw_axes = GetTensorInt64Data(axes_tensor);
+      const auto size = SafeInt<uint32_t>(axes_tensor.dims()[0]);
+      axes.resize(size);
+      for (uint32_t i = 0; i < size; i++) {
+        // it is unlikely we have a axis value overflow for int32
+        axes[i] = static_cast<int32_t>(raw_axes[i]);
+      }
+    }
+  } else {
+    NodeAttrHelper helper(node);
+    axes = helper.Get("axes", vector<int32_t>());
+  }
+
+  return axes;
+}
+
+bool SqueezeOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) {
   Shape input_shape;
   if (!GetShape(*node.InputDefs()[0], input_shape))
     return false;
@@ -2489,6 +2511,18 @@ bool SqueezeOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, cons
     LOGS_DEFAULT(VERBOSE) << "Squeeze only supports 1-4d shape, input is "
                           << input_size << "d shape";
     return false;
+  }
+
+  // Squeeze opset 13 use input 1 as axes, it need to be an initializer
+  if (node.SinceVersion() > 12) {
+    if (node.InputDefs().size() > 1) {
+      const auto& initializers(model_builder.GetInitializerTensors());
+      const auto& axes_name = node.InputDefs()[1]->Name();
+      if (!Contains(initializers, axes_name)) {
+        LOGS_DEFAULT(VERBOSE) << "Input axes of Squeeze must be known";
+        return false;
+      }
+    }
   }
 
   return true;
@@ -2506,7 +2540,7 @@ Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   }
 
   NodeAttrHelper helper(node);
-  vector<int32_t> axes = helper.Get("axes", vector<int32_t>());
+  vector<int32_t> axes = GetAxes(model_builder, node);
   const auto& input_shape(shaper[input]);
   auto input_dims = input_shape.size();
   for (auto& axis : axes) {

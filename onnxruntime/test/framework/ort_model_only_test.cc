@@ -237,7 +237,6 @@ static void DumpOrtModelAsJson(const std::string& model_uri) {
 }
 */
 
-
 TEST(OrtModelOnlyTests, SerializeToOrtFormat) {
   const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("ort_github_issue_4031.onnx.ort");
   SaveAndCompareModels("testdata/ort_github_issue_4031.onnx", ort_file);
@@ -267,7 +266,7 @@ TEST(OrtModelOnlyTests, SerializeToOrtFormat) {
 
 TEST(OrtModelOnlyTests, SparseInitializerHandling) {
   const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("sparse_initializer_handling.onnx.ort");
-  SaveAndCompareModels("testdata/sparse_initializer_handling.onnx", ort_file);
+  SaveAndCompareModels("testdata/ort_minimal_test_models/sparse_initializer_handling.onnx", ort_file);
 
   SessionOptions so;
   so.session_logid = "LoadOrtFormat";
@@ -331,7 +330,7 @@ TEST(OrtModelOnlyTests, SerializeToOrtFormatMLOps) {
 
 // test loading ORT format model with sparse initializers
 TEST(OrtModelOnlyTests, LoadSparseInitializersOrtFormat) {
-  const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/sparse_initializer_handling.onnx.ort");
+  const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/ort_minimal_test_models/sparse_initializer_handling.onnx.ort");
   SessionOptions so;
   so.session_logid = "LoadOrtFormat";
   so.AddConfigEntry(kOrtSessionOptionsConfigLoadModelFormat, "ORT");
