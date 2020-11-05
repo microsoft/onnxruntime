@@ -59,7 +59,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeImplEx(OpKernelContext* ctx, cudnn
   Tensor* Y = ctx->Output(0, prepare_reduce_metadata.squeezed_output_dims);
   bool fast_reduction = fast_reduction_;
   if (fast_reduction) {
-    auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
+    auto ctx_internal = dynamic_cast<OpKernelContextInternal*>(ctx);
     if (ctx_internal && ctx_internal->GetUseDeterministicCompute())
       fast_reduction = false;
   }

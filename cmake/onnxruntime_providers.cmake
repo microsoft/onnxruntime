@@ -597,6 +597,8 @@ if (onnxruntime_USE_OPENVINO)
 
     if(WIN32)
       list(APPEND OPENVINO_LIB_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64/Release)
+    elseif(CMAKE_LIBRARY_ARCHITECTURE STREQUAL "aarch64-linux-gnu")
+      list(APPEND OPENVINO_LIB_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/aarch64)
     else()
       list(APPEND OPENVINO_LIB_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64)
     endif()

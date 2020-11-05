@@ -9,8 +9,8 @@
 #include "gtest/gtest.h"
 
 #include "core/common/common.h"
+#include "core/common/optional.h"
 #include "core/util/math.h"
-#include "test/util/include/test_random_seed.h"
 
 namespace onnxruntime {
 namespace test {
@@ -26,7 +26,14 @@ inline int64_t SizeFromDims(const std::vector<int64_t>& dims) {
 
 class RandomValueGenerator {
  public:
-  RandomValueGenerator();
+  using RandomEngine = std::default_random_engine;
+  using RandomSeedType = RandomEngine::result_type;
+
+  explicit RandomValueGenerator(optional<RandomSeedType> seed = {});
+
+  RandomSeedType GetRandomSeed() const {
+    return random_seed_;
+  }
 
   // Random values generated are in the range [min, max).
   template <typename TFloat>
@@ -112,7 +119,7 @@ class RandomValueGenerator {
 
  private:
   const RandomSeedType random_seed_;
-  std::default_random_engine generator_;
+  RandomEngine generator_;
   // while this instance is in scope, output some context information on test failure like the random seed value
   const ::testing::ScopedTrace output_trace_;
 };
