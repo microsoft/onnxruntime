@@ -63,7 +63,6 @@ static void BM_BatchNormEigenTensor(benchmark::State& state) {
 
 BENCHMARK(BM_BatchNormEigenTensor)->Arg(1)->Arg(16)->Arg(64)->UseRealTime()->Unit(benchmark::TimeUnit::kMicrosecond);
 #endif
-
 static void BM_BatchNormEigenTensorSingleThread(benchmark::State& state) {
   const size_t batch_size = state.range(0);
 

@@ -28,7 +28,6 @@
 
 #include <benchmark/benchmark.h>
 
-#if 0
 static void BM_EigenBroadCast(benchmark::State& state) {
   Eigen::ThreadPool threadpool(4);
   Eigen::ThreadPoolDevice device(&threadpool, 4);
@@ -68,4 +67,3 @@ static void BM_EigenBroadCast_SingleThread(benchmark::State& state) {
 BENCHMARK(BM_EigenBroadCast_SingleThread)
     ->UseRealTime()
     ->Unit(benchmark::TimeUnit::kMicrosecond);
-#endif
