@@ -240,6 +240,7 @@ jobs:
   - script: |
       docker run \
         --gpus all \
+        --shm-size=1024m \
         --rm \
         --volume $(Build.BinariesDirectory):/build \
         --volume /bert_data:/bert_data \
@@ -254,6 +255,18 @@ jobs:
   - script: |
       docker run \
         --gpus all \
+        --shm-size=1024m \
+        --rm \
+        onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
+          nvidia-smi --gpu-reset
+    displayName: 'nvidia-smi --gpu-reset'
+    condition: succeededOrFailed() # ensure all tests are run
+    timeoutInMinutes: 2
+    
+  - script: |
+      docker run \
+        --gpus all \
+        --shm-size=1024m \
         --rm \
         --volume $(Build.BinariesDirectory):/build \
         --volume /bert_data:/bert_data \
