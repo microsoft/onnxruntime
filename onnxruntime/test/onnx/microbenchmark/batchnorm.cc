@@ -1,7 +1,17 @@
 #include "core/platform/threadpool.h"
-#include "core/common/eigen_common_wrapper.h"
 #include "core/util/thread_utils.h"
 #include <benchmark/benchmark.h>
+
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
+
+#include "core/common/eigen_common_wrapper.h"
+
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 using namespace onnxruntime;
 #if 0
@@ -50,6 +60,7 @@ static void BM_BatchNormEigenTensor(benchmark::State& state) {
                                          (bias_arr - mean_arr * inv_std).eval().reshape(batch_by_one).broadcast(bcast);
   }
 }
+#endif
 
 BENCHMARK(BM_BatchNormEigenTensor)->Arg(1)->Arg(16)->Arg(64)->UseRealTime()->Unit(benchmark::TimeUnit::kMicrosecond);
 
@@ -100,4 +111,3 @@ BENCHMARK(BM_BatchNormEigenTensorSingleThread)
     ->Arg(64)
     ->UseRealTime()
     ->Unit(benchmark::TimeUnit::kMicrosecond);
-#endif
