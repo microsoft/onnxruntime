@@ -25,7 +25,10 @@ Note that if an issue isn't a high priority or has many open questions then it m
 The ONNX Runtime team will review the proposal and either approve or close the issue based on whether it broadly aligns with the [Onnx Runtime Roadmap - High Level Goals section](./docs/Roadmap.md) and contribution guidelines.
 
 4. **API Review**  
-If the feature adds new APIs then we'll start an API review. All new public APIs must be reviewed before merging. For making changes to the C API refer to guidance [here](onnxruntime/core/session/onnxruntime_c_api.cc#L1326). For making changes to the Windows Machine Learning WinRT API, please label your request as *api:WinML*, and someone from the Windows ML team will work with you. 
+
+If the feature adds new APIs then we'll start an API review. All new public APIs must be reviewed before merging. 
+For making changes to the C API refer to guidance [here](./docs/C_API_Guidelines.md).
+For making changes to the Windows Machine Learning WinRT API, please label your request as *api:WinML*, and someone from the Windows ML team will work with you. 
 
 5. **Implementation**
 * A feature can be implemented by you, the ONNX Runtime team, or other community members.  Code contributions are greatly appreciated: feel free to work on any reviewed feature you proposed, or choose one in the backlog and send us a PR. If you are new to the project and want to work on an existing issue, we recommend starting with issues that are tagged with “good first issue”. Please let us know in the issue comments if you are actively working on implementing a feature so we can ensure it's assigned to you.  
