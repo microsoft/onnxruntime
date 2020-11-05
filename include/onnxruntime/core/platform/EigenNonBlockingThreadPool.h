@@ -41,52 +41,8 @@
 namespace onnxruntime {
 namespace concurrency {
 
-struct PerLoop {
-   PerLoop(std::function<void(unsigned)> f, unsigned t) : fn(std::move(f)), threads_needed(t) {
-   }
-  
-  const std::function<void(unsigned)> fn;
-  const unsigned threads_needed;
-  
-private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PerLoop);
-};
-
-class ThreadPoolParallelSection {
- public:
-  // State accessed only by the main thread
-  // --------------------------------------
-
-  // Tasks successfully submitted to the work queues.  This sets the
-  // maximum degree of parallelism that the section will support.
-  std::vector<std::pair<int,unsigned>> tasks;
-
-  // State shared between the main thread and worker threads
-  // -------------------------------------------------------
-
-  // Flag to signal termination of the parallel section
-  std::atomic<bool> active{false};
-
-  std::atomic<unsigned> worker_idx{0};
-
-  // Count of the number of tasks that completed normally.  Other
-  // tasks may be running currently, or may be present in work queues,
-  // or may have been removed from the queues by
-  // RunQueue::RevokeWithTag.
-  std::atomic<unsigned> tasks_finished{0};
-
-  // If non-null, the current loop that tasks should be executing.  We
-  // need to be careful on access to the contents of current_loop
-  // because it can be stack allocated on the thread entering the
-  // loop:
-  //
-  // - Readers increment workers_in_loop and then read current_loop
-  //
-  // - Writers wishing to deallocate *current_loop must first clear
-  //   current_loop and then wait for workers_in_loop==0
-  std::atomic<PerLoop *> current_loop{nullptr};
-  std::atomic<unsigned> workers_in_loop{0};
-};
+class ThreadPoolParallelSection;
+class ThreadPoolLoop;
 
 // Extended Eigen thread pool interface, avoiding the need to modify the ThreadPoolInterface.h
 // header from the external Eigen repository.
@@ -133,6 +89,53 @@ class ExtendedThreadPoolInterface : public Eigen::ThreadPoolInterface {
 };
 
 
+class ThreadPoolParallelSection {
+ public:
+  // State accessed only by the main thread
+  // --------------------------------------
+
+  // Tasks successfully submitted to the work queues.  This sets the
+  // maximum degree of parallelism that the section will support.
+  std::vector<std::pair<int,unsigned>> tasks;
+
+  // State shared between the main thread and worker threads
+  // -------------------------------------------------------
+
+  // Flag to signal termination of the parallel section
+  std::atomic<bool> active{false};
+
+  std::atomic<unsigned> worker_idx{0};
+
+  // Count of the number of tasks that completed normally.  Other
+  // tasks may be running currently, or may be present in work queues,
+  // or may have been removed from the queues by
+  // RunQueue::RevokeWithTag.
+  std::atomic<unsigned> tasks_finished{0};
+
+  // If non-null, the current loop that tasks should be executing.  We
+  // need to be careful on access to the contents of current_loop
+  // because it can be stack allocated on the thread entering the
+  // loop:
+  //
+  // - Readers increment workers_in_loop and then read current_loop
+  //
+  // - Writers wishing to deallocate *current_loop must first clear
+  //   current_loop and then wait for workers_in_loop==0
+  std::atomic<ThreadPoolLoop *> current_loop{nullptr};
+  std::atomic<unsigned> workers_in_loop{0};
+};
+
+class ThreadPoolLoop {
+ public:
+   ThreadPoolLoop(std::function<void(unsigned)> f, unsigned t) : fn(std::move(f)), threads_needed(t) {
+   }
+
+  const std::function<void(unsigned)> fn;
+  const unsigned threads_needed;
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ThreadPoolLoop);
+};
 
 template <typename Work, typename Tag, unsigned kSize>
 class RunQueue {
@@ -633,13 +636,31 @@ void GetGoodWorkerHints(unsigned n, std::vector<unsigned>& good_hints, std::vect
   }
 }
 
+//......................................................................
+//
+// Parallel sections
+// -----------------
+//
+// Allocate a new ThreadPoolParallelSection, owned by the returned
+// unique_ptr.  The explicit deleter avoids the Eigen-specific
+// definition of ThreadPoolParallelSection needing to be avilable in
+// threadpool.h where the user-facing parallel section API is defined.
+
 std::unique_ptr<ThreadPoolParallelSection, void(*)(ThreadPoolParallelSection*)> AllocateParallelSection() override {
-  return std::unique_ptr<ThreadPoolParallelSection, void(*)(ThreadPoolParallelSection*)>(new ThreadPoolParallelSection,
-                                                                                         [](ThreadPoolParallelSection *tps) {
-                                                                                           delete tps;
-                                                                                         });
+  return std::unique_ptr<ThreadPoolParallelSection, void(*)(ThreadPoolParallelSection*)>
+    (new ThreadPoolParallelSection,
+     [](ThreadPoolParallelSection *tps) {
+      delete tps;
+    });
 }
-   
+
+// Start a parallel section, using a caller-provided
+// ThreadPoolParallelSection for maintaining the per-section state.
+// Starting a parallel section is just book-keeping; threads are
+// "summoned" to help with the paralell section once it enters
+// parallel loops.  The threads are then retained until the end of the
+// section, being re-used over subsequent loops.
+
 void StartParallelSection(ThreadPoolParallelSection &ps) override {
   PerThread* pt = GetPerThread();
   ORT_ENFORCE(!pt->leading_par_section, "Nested parallelism not supported");
@@ -651,16 +672,20 @@ void StartParallelSection(ThreadPoolParallelSection &ps) override {
   ps.active = true;
 }
 
+// End a parallel section, waiting for all worker threads to exit from
+// section.  Hence, on return, the ThreadPoolParallelSection object
+// can be dealloacted.
+
 void EndParallelSection(ThreadPoolParallelSection &ps) override {
   PerThread* pt = GetPerThread();
   ORT_ENFORCE(pt->leading_par_section, "Ending parallel section, but none started");
   ORT_ENFORCE(ps.active, "Ending parallel section, but not active");
   pt->leading_par_section = false;
 
-  // Notify workers to exit from ParLoopWorker
+  // Notify workers to exit from the section
   ps.active = false;
 
-  // Attempt to cancel any tasks that were sent to workers but not
+  // Attempt to revoke any tasks that were sent to workers but not
   // started.
   unsigned tasks_started = static_cast<unsigned>(ps.tasks.size());
   unsigned tasks_revoked = 0;
@@ -679,122 +704,152 @@ void EndParallelSection(ThreadPoolParallelSection &ps) override {
     onnxruntime::concurrency::SpinPause();
   }
 
-  // Clear status for next loop
+  // Clear status to allow the ThreadPoolParallelSection to be
+  // re-used.
   ps.tasks_finished = 0;
- }
+}
 
- void SummonWorkers(ThreadPoolParallelSection &ps,
-                    unsigned n,
-                    std::function<void(unsigned)> worker_fn) {
-   PerThread* pt = GetPerThread();
+//......................................................................
+//
+// Parallel loops
+// --------------
+//
+// Ensure that the ThreadPoolParallelSection has sufficient workers to
+// execute a loop with degree of parallelism n.  We track the number
+// of workers already avaiable to the parallel section, prior to
+// submitting tasks to the work queues to make up the total.
+//
+// Each worker will call in to worker_fn(idx) with a per-worker thread
+// ID.  Note there are different levels of indirection here:
+//
+// - In a single-loop parallel section, worker_fn will directly
+//   execute the threadpool.cc code that implements the parallel loop.
+//
+// - In a multi-loop parallel section, worker_fn is an intermediate
+//   function that is long-lived (i.e., that lasts until the end of
+//   the parallel section, as opposed to just a single loop's
+//   duration).
 
-   // Wrap the user's worker function with one that allocates a unique
-   // worker index for the loop, and synchronizes (as the last step)
-   // with the exit path in EndParallelSection.  In principle we could
-   // allocate worker IDs during the loop below and capture them by
-   // value.  However, the costs of creating distinct lambda for each
-   // iteration appeared more costly than the cost of synchronization
-   // on a shared counter.
-   //
-   // [ We could use C++14 lambda capture initializers to capture
-   // std::move(worker_fn) here ]
-   auto call_worker_fn = [&ps, worker_fn]() {
-     unsigned my_idx = ++ps.worker_idx;
-     worker_fn(my_idx);
-     // After the assignment to ps.tasks_finished, the stack-allocated
-     // ThreadPoolParallelSection object may be destroyed.
-     ps.tasks_finished++;
-   };
+void SummonWorkers(ThreadPoolParallelSection &ps,
+                   unsigned n,
+                   std::function<void(unsigned)> worker_fn) {
+  PerThread* pt = GetPerThread();
 
-   // Identify whether we need to create additional workers.
-   // Throughout the threadpool implementation, degrees of parallelism
-   // ("n" here) refer to the total parallelism including the main
-   // thread.  Hence we consider the number of existing tasks + 1.
-   unsigned current_dop = static_cast<unsigned>(ps.tasks.size()) + 1;
-   if (n > current_dop) {
-     unsigned extra_needed = n - current_dop;
+  // Wrap the user's worker function with one that allocates a unique
+  // worker index for the loop, and synchronizes (as the last step)
+  // with the exit path in EndParallelSection.  In principle we could
+  // allocate worker IDs during the loop below and capture them by
+  // value.  However, the costs of creating distinct lambda for each
+  // iteration appeared more costly than the cost of synchronization
+  // on a shared counter.
+  //
+  // [ We could use C++14 lambda capture initializers to capture
+  // std::move(worker_fn) here ]
+  auto call_worker_fn = [&ps, worker_fn]() {
+    unsigned my_idx = ++ps.worker_idx;
+    worker_fn(my_idx);
+    // After the assignment to ps.tasks_finished, the stack-allocated
+    // ThreadPoolParallelSection object may be destroyed.
+    ps.tasks_finished++;
+  };
 
-     // Obtain hints for which worker threads to push the tasks to.
-     // This uses a best-effort assessment of which threads are
-     // spinning.
-     std::vector<unsigned> good_hints, alt_hints;
-     GetGoodWorkerHints(extra_needed, good_hints, alt_hints);
+  // Identify whether we need to create additional workers.
+  // Throughout the threadpool implementation, degrees of parallelism
+  // ("n" here) refer to the total parallelism including the main
+  // thread.  Hence we consider the number of existing tasks + 1.
+  unsigned current_dop = static_cast<unsigned>(ps.tasks.size()) + 1;
+  if (n > current_dop) {
+    unsigned extra_needed = n - current_dop;
 
-     // Create the additional tasks, and push them to workers.
-     for (auto i = 0u; i < extra_needed; i++) {
-       Task t = env_.CreateTask(call_worker_fn);
-       int q_idx;
-       if (i < good_hints.size()) {
-         q_idx = good_hints[i];
-       } else {
-         auto alt_i = i - static_cast<unsigned>(good_hints.size());
-         if (alt_i < alt_hints.size()) {
-           q_idx = alt_hints[alt_i];
-         } else {
-           q_idx = Rand(&pt->rand) % num_threads_;
-         }
-       }
+    // Obtain hints for which worker threads to push the tasks to.
+    // This uses a best-effort assessment of which threads are
+    // spinning.
+    std::vector<unsigned> good_hints, alt_hints;
+    GetGoodWorkerHints(extra_needed, good_hints, alt_hints);
 
-       // If the worker's queue accepts the task, then record it in
-       // the vector of tasks that we will need to synchronize with on
-       // exiting the parallel section.  If the queue rejects the task
-       // (perhaps because it is full) then we take no further action:
-       // in a parallel loop we will always be running work on the
-       // main thread, providing progress.
-       WorkerData& td = worker_data_[q_idx];
-       Queue& q = td.queue;
-       unsigned w_idx;
-       t = q.PushBackWithTag(std::move(t), pt->tag, w_idx);
-       if (!t.f) {
-         ps.tasks.push_back({q_idx, w_idx});
-         td.EnsureAwake();
-       }
-     }
-   }
- }
+    // Create the additional tasks, and push them to workers.
+    for (auto i = 0u; i < extra_needed; i++) {
+      Task t = env_.CreateTask(call_worker_fn);
+      int q_idx;
+      if (i < good_hints.size()) {
+        q_idx = good_hints[i];
+      } else {
+        auto alt_i = i - static_cast<unsigned>(good_hints.size());
+        if (alt_i < alt_hints.size()) {
+          q_idx = alt_hints[alt_i];
+        } else {
+          q_idx = Rand(&pt->rand) % num_threads_;
+        }
+      }
 
- void RunInParallelSection(ThreadPoolParallelSection &ps,
-                           std::function<void(unsigned idx)> fn,
-                           unsigned n) override {
-   PerThread* pt = GetPerThread();
-   ORT_ENFORCE(pt->leading_par_section, "RunInParallel, but not in parallel section");
-   ORT_ENFORCE(n > 1, "Trivial parallel section; should be avoided by caller");
+      // If the worker's queue accepts the task, then record it in
+      // the vector of tasks that we will need to synchronize with on
+      // exiting the parallel section.  If the queue rejects the task
+      // (perhaps because it is full) then we take no further action:
+      // in a parallel loop we will always be running work on the
+      // main thread, providing progress.
+      WorkerData& td = worker_data_[q_idx];
+      Queue& q = td.queue;
+      unsigned w_idx;
+      t = q.PushBackWithTag(std::move(t), pt->tag, w_idx);
+      if (!t.f) {
+        ps.tasks.push_back({q_idx, w_idx});
+        td.EnsureAwake();
+      }
+    }
+  }
+}
 
-   // Publish the work to any existing workers in the parallel
-   // section, and ensure it is visible to any new threads created
-   // below.
-   ORT_ENFORCE(!ps.current_loop, "RunInParallelSection, but loop already active");
-   PerLoop loop{std::move(fn), n};
-   ps.current_loop = &loop;
+// Run a single parallel loop in an existing parallel section.  This
+// maps directly onto SummonWorkers to create sufficient worker
+// threads for the desired degree of parallelism, followed by
+// dispatching the loop to those workers.
 
-   // Increase the worker count if needed.  Each worker will pick up
-   // loops to execute from the current parallel section.
-   SummonWorkers(ps, n, [&ps](unsigned my_idx){
-       while (ps.active) {
-         if (!ps.current_loop) {
-           onnxruntime::concurrency::SpinPause();
-         } else {
-           ps.workers_in_loop++;
-           PerLoop *work_item = ps.current_loop;
-           if (work_item && my_idx < work_item->threads_needed) {
-             work_item->fn(my_idx);
-           }
-           ps.workers_in_loop--;
-         }
-       }
-     });
+void RunInParallelSection(ThreadPoolParallelSection &ps,
+                          std::function<void(unsigned idx)> fn,
+                          unsigned n) override {
+  PerThread* pt = GetPerThread();
+  ORT_ENFORCE(pt->leading_par_section, "RunInParallel, but not in parallel section");
+  ORT_ENFORCE(n > 1, "Trivial parallel section; should be avoided by caller");
 
-   // Run work in the main thread
-   loop.fn(0);
+  // Publish the work to any existing workers in the parallel
+  // section, and ensure it is visible to any new threads created
+  // below.
+  ORT_ENFORCE(!ps.current_loop, "RunInParallelSection, but loop already active");
+  ThreadPoolLoop loop{std::move(fn), n};
+  ps.current_loop = &loop;
 
-   // Wait for workers to exit the loop
-   ps.current_loop = 0;
-   while (ps.workers_in_loop) {
-     onnxruntime::concurrency::SpinPause();
-   }
- }
+  // Increase the worker count if needed.  Each worker will pick up
+  // loops to execute from the current parallel section.
+  SummonWorkers(ps, n, [&ps](unsigned my_idx){
+      while (ps.active) {
+        if (!ps.current_loop) {
+          onnxruntime::concurrency::SpinPause();
+        } else {
+          ps.workers_in_loop++;
+          ThreadPoolLoop *work_item = ps.current_loop;
+          if (work_item && my_idx < work_item->threads_needed) {
+            work_item->fn(my_idx);
+          }
+          ps.workers_in_loop--;
+        }
+      }
+    });
 
-// Single-loop special case of RunInParallelSection.
+  // Run work in the main thread
+  loop.fn(0);
+
+  // Wait for workers to exit the loop
+  ps.current_loop = 0;
+  while (ps.workers_in_loop) {
+    onnxruntime::concurrency::SpinPause();
+  }
+}
+
+// Run a single parallel loop _without_ a parallel section.  This is a
+// special case of RunInParallelSection, avoiding code paths for
+// handing off multiple loops to the pool of workers.
+
 void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n) override {
   ThreadPoolParallelSection ps;
   StartParallelSection(ps);
