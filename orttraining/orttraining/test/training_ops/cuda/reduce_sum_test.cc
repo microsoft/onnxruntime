@@ -24,10 +24,13 @@ static void TestReduceSum(const std::vector<int64_t>& X_dims,
 
   // create rand inputs
   RandomValueGenerator random{};
-  std::vector<float> X_data = random.Uniform<float>(X_dims, -10.0f, 10.0f);
+  const bool is_positive = random.Uniform<int>({1}, 0, 2)[0] == 0;
+  const float range_begin = is_positive ? 1.0f : -10.0f;
+  const float range_end = is_positive ? 10.0f : -1.0f;
+  const std::vector<float> X_data = random.Uniform<float>(X_dims, range_begin, range_end);
   test.AddInput<float>("X", X_dims, X_data);
 
-  std::vector<float> Y_data = FillZeros<float>(Y_dims);
+  const std::vector<float> Y_data = FillZeros<float>(Y_dims);
   test.AddOutput<float>("Y", Y_dims, Y_data);
 
   test.CompareWithCPU(kGpuExecutionProvider, per_sample_tolerance, relative_per_sample_tolerance);
@@ -62,8 +65,7 @@ TEST(CudaKernelTest, ReduceSum_MidTensor) {
   std::vector<int64_t> Y_dims{3072};
   std::vector<int64_t> axes{0, 1};
   bool keepdims = false;
-  double per_sample_tolerance = 4e-4;
-  TestReduceSum(X_dims, Y_dims, axes, keepdims, per_sample_tolerance);
+  TestReduceSum(X_dims, Y_dims, axes, keepdims);
 }
 
 TEST(CudaKernelTest, ReduceSum_LargeTensor) {
@@ -71,9 +73,31 @@ TEST(CudaKernelTest, ReduceSum_LargeTensor) {
   std::vector<int64_t> Y_dims{30528};
   std::vector<int64_t> axes{0, 1};
   bool keepdims = false;
-  double per_sample_tolerance = 5e-4;
-  double relative_per_sample_tolerance = 5e-2;
-  TestReduceSum(X_dims, Y_dims, axes, keepdims, per_sample_tolerance, relative_per_sample_tolerance);
+  TestReduceSum(X_dims, Y_dims, axes, keepdims);
+}
+
+TEST(CudaKernelTest, ReduceSum_SmallTensorTrailingAxes) {
+  std::vector<int64_t> X_dims{128, 2, 128};
+  std::vector<int64_t> Y_dims{128};
+  std::vector<int64_t> axes{1, 2};
+  bool keepdims = false;
+  TestReduceSum(X_dims, Y_dims, axes, keepdims);
+}
+
+TEST(CudaKernelTest, ReduceSum_MidTensorTrailingAxes) {
+  std::vector<int64_t> X_dims{3072, 2, 512};
+  std::vector<int64_t> Y_dims{3072};
+  std::vector<int64_t> axes{1, 2};
+  bool keepdims = false;
+  TestReduceSum(X_dims, Y_dims, axes, keepdims);
+}
+
+TEST(CudaKernelTest, ReduceSum_LargeTensorTrailingAxes) {
+  std::vector<int64_t> X_dims{30528, 4, 512};
+  std::vector<int64_t> Y_dims{30528};
+  std::vector<int64_t> axes{1, 2};
+  bool keepdims = false;
+  TestReduceSum(X_dims, Y_dims, axes, keepdims);
 }
 
 }  // namespace test

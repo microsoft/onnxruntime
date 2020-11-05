@@ -11,16 +11,16 @@
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_KERNEL_VERSIONED_TYPED_TWO_TYPES(Class, T, Tin, domain, startver, endver)  \
-  ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_EX(                                              \
-      Class,                                                                                \
-      domain,                                                                               \
-      startver, endver,                                                                     \
-      T, Tin,                                                                               \
-      kCudaExecutionProvider,                                                               \
-      KernelDefBuilder()                                                                    \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                            \
-          .TypeConstraint("Tin", DataTypeImpl::GetTensorType<Tin>()),                       \
+#define REGISTER_KERNEL_VERSIONED_TYPED_TWO_TYPES(Class, T, Tin, domain, startver, endver) \
+  ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_EX(                                             \
+      Class,                                                                               \
+      domain,                                                                              \
+      startver, endver,                                                                    \
+      T, Tin,                                                                              \
+      kCudaExecutionProvider,                                                              \
+      KernelDefBuilder()                                                                   \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                           \
+          .TypeConstraint("Tin", DataTypeImpl::GetTensorType<Tin>()),                      \
       Class<T, Tin>);
 
 #define REGISTER_KERNEL_TYPED_TWO_TYPES(Class, T, Tin, domain, version) \
@@ -113,16 +113,17 @@ Status SoftmaxCrossEntropyLoss<T, Tin>::ComputeInternal(OpKernelContext* ctx) co
   auto normalize_factor_data = GetScratchBuffer<T>(1);
   if (reduction_ == ReductionType::MEAN) {
     // Compute buffer size in byte for reduction APIs.
-    const auto buffer_size = static_cast<size_t>(
-        compute_reduction_buffer_size(
-            static_cast<int>(sizeof(T)), static_cast<int>(N_D)));
+    const auto buffer_size =
+        compute_reduction_buffer_size<T>(static_cast<int>(N_D));
     // Allocate reduction buffer whose size is buffer_size bytes.
     IAllocatorUniquePtr<void> reduction_buffer = GetScratchBuffer<void>(
         buffer_size);
-    reduce_sum(weight_data_nd_data,
-               normalize_factor_data.get(),
-               static_cast<int>(N_D),
-               reinterpret_cast<T*>(reduction_buffer.get()));
+    ORT_RETURN_IF_ERROR(reduce_sum(
+        weight_data_nd_data,
+        normalize_factor_data.get(),
+        static_cast<int>(N_D),
+        reduction_buffer.get(),
+        buffer_size));
   } else {
     const T normalize_factor = static_cast<T>(1);
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), cudaMemcpyHostToDevice));
@@ -213,16 +214,17 @@ Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx
   auto normalize_factor_data = GetScratchBuffer<T>(1);
   if (reduction_ == ReductionType::MEAN) {
     // Compute buffer size in byte for reduction APIs.
-    const auto buffer_size = static_cast<size_t>(
-        compute_reduction_buffer_size(
-            static_cast<int>(sizeof(T)), static_cast<int>(N_D)));
+    const auto buffer_size =
+        compute_reduction_buffer_size<T>(static_cast<int>(N_D));
     // Allocate reduction buffer whose size is buffer_size bytes.
     IAllocatorUniquePtr<void> reduction_buffer = GetScratchBuffer<void>(
         buffer_size);
-    reduce_sum(weight_data_nd_data,
-               normalize_factor_data.get(),
-               static_cast<int>(N_D),
-               reinterpret_cast<T*>(reduction_buffer.get()));
+    ORT_RETURN_IF_ERROR(reduce_sum(
+        weight_data_nd_data,
+        normalize_factor_data.get(),
+        static_cast<int>(N_D),
+        reduction_buffer.get(),
+        buffer_size));
   } else {
     const T normalize_factor = static_cast<T>(1);
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), cudaMemcpyHostToDevice));
