@@ -473,6 +473,40 @@ public:
         return 0;
     }
 
+    template <typename T = float>
+    int32_t bind_as_references(
+        const wchar_t* feature_name, size_t feature_name_size,
+        T** p_data, size_t* data_sizes,
+        size_t num_buffers) {
+      using ITensor = typename Tensor<T>::Type;
+      using ITensorFactory = typename TensorFactory2<T>::Factory;
+
+      std::vector<Microsoft::WRL::ComPtr<ABI::Windows::Storage::Streams::IBuffer>> vec_buffers(num_buffers);
+      for (size_t i = 0; i < num_buffers; i++) {
+        RETURN_HR_IF_FAILED(
+            Microsoft::WRL::MakeAndInitialize<weak_buffer<T>>(
+                &vec_buffers.at(i), p_data[i], p_data[i] + data_sizes[i]));
+      }
+
+      std::vector<ABI::Windows::Storage::Streams::IBuffer*> raw_buffers(num_buffers);
+      std::transform(std::begin(vec_buffers), std::end(vec_buffers), std::begin(raw_buffers),
+                     [](auto buffer) { return buffer.Detach(); });
+
+      Microsoft::WRL::ComPtr<weak_single_threaded_iterable<ABI::Windows::Storage::Streams::IBuffer*>> buffers;
+      RETURN_HR_IF_FAILED(
+          Microsoft::WRL::MakeAndInitialize<weak_single_threaded_iterable<ABI::Windows::Storage::Streams::IBuffer*>>(
+              &buffers, raw_buffers.data(), raw_buffers.data() + num_buffers));
+
+      Microsoft::WRL::ComPtr<IInspectable> inspectable_tensor;
+      RETURN_HR_IF_FAILED(buffers.As(&inspectable_tensor));
+
+      RETURN_HR_IF_FAILED(
+          m_learning_model_binding->Bind(
+              Microsoft::WRL::Wrappers::HStringReference(feature_name, static_cast<unsigned int>(feature_name_size)).Get(),
+              inspectable_tensor.Get()));
+      return 0;
+    }
+
 private:
     inline int32_t Initialize(const WinMLLearningModelSession& session);
 

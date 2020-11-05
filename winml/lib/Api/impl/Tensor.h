@@ -71,8 +71,16 @@ class Tensor {
     return m_buffer->SizeInBytes();
   }
 
+  auto num_buffers() {
+    return m_buffer->NumBuffers();
+  }
+
   auto buffer() {
     return m_buffer->Buffer();
+  }
+
+  auto flush() {
+    return m_buffer->Flush();
   }
 
   void set(size_t size, const T* pData) {

@@ -42,12 +42,14 @@ class VectorBuffer : public winrt::implements<
 
 template <typename T>
 class TensorBuffer {
+  wss::IBuffer combined_buffer_;
   std::vector<wss::IBuffer> buffers_;
   size_t size_;
 
-  TensorBuffer(size_t size) : size_(size), buffers_(1) {
-    buffers_[0] = winrt::make<VectorBuffer>(size * sizeof(T));
-    
+  TensorBuffer(size_t size) :
+      size_(size),
+      combined_buffer_(winrt::make<VectorBuffer>(size * sizeof(T))),
+      buffers_ { combined_buffer_ } {
     auto buffer = Buffer(0);
 
     // The initial release of WinML (RS5) shipped with behavior that would
@@ -59,9 +61,23 @@ class TensorBuffer {
 
   TensorBuffer(
       size_t size,
-      wfc::IIterable<wss::IBuffer> const& buffers) :
-        size_(size),
-        buffers_(begin(buffers), end(buffers)) { }
+      wfc::IIterable<wss::IBuffer> const& buffers) : size_(size),
+                                                     combined_buffer_(nullptr),
+                                                     buffers_(begin(buffers), end(buffers)) {
+    if (buffers_.size() == 1) {
+      combined_buffer_ = buffers_[0];
+    } else {
+      // If there are many buffers, then the combined buffer will be a separately allocated value that combines all of the buffers.
+      // This needs to be lazily done however, as the extra memory should not be allocated when not needed (GPU).
+    }
+  }
+
+  auto CombinedBuffer() {
+    if (combined_buffer_ == nullptr) {
+      combined_buffer_ = winrt::make<VectorBuffer>(size_ * sizeof(T));
+    }
+    return Buffer(combined_buffer_);
+  }
 
  public:
   typedef std::shared_ptr<TensorBuffer> TensorBufferPtr;
@@ -92,42 +108,55 @@ class TensorBuffer {
     return size_ * sizeof(T);
   }
 
-  auto Buffer(size_t index) {
-    size_t size =
-        buffers_.size() == 1 ?
-        size_ :
-        static_cast<size_t>(buffers_[index].Capacity());
+  auto NumBuffers() {
+    return buffers_.size();
+  }
 
+  auto Buffer(wss::IBuffer buffer) {
     T* current_data = nullptr;
-    auto bufferByteAccess = buffers_[0].as<Windows::Storage::Streams::IBufferByteAccess>();
+    auto bufferByteAccess = buffer.as<Windows::Storage::Streams::IBufferByteAccess>();
     bufferByteAccess->Buffer(reinterpret_cast<BYTE**>(&current_data));
-    return std::make_pair(size, current_data);
+    return std::make_pair(
+        static_cast<size_t>(buffer.Capacity()),
+        current_data);
+  }
+
+  auto Buffer(size_t index) {
+    return Buffer(buffers_[index]);
+  }
+
+  auto Flush() {
+    auto should_flush = buffers_.size() != 1;
+    if (should_flush) {
+      auto combined_buffer = CombinedBuffer();
+      Set(combined_buffer.first, combined_buffer.second);
+    }
+    return should_flush;
   }
 
   auto Buffer() {
     if (buffers_.size() == 1) {
-      auto pair = Buffer(0);
-      using Resource = std::unique_ptr<void, std::function<void(void*)>>;
-      return std::make_pair(size_, Resource(pair.second, [](void*){}));
+      // Single buffer optimization to not create a temporary buffer that concatenates disjoint buffers into one.
+      return Buffer(0);
     }
 
+    auto combined_buffer = CombinedBuffer();
     size_t start = 0;
-
-    T* raw_buffer = new T[size_];
     for (size_t i = 0; i < buffers_.size() && start < size_; i++) {
-      auto pair = Buffer(i);
-      auto current_size = pair.first;
-      auto current_buffer = pair.second;
+      size_t current_size;
+      T* current_buffer;
+      std::tie(current_size, current_buffer) = Buffer(i);
 
-      if (start + current_size > size_) {
+      if (size_ - start < current_size) {
         current_size = size_ - start;
       }
 
-      memcpy(raw_buffer + start, current_buffer, current_size);
+      auto buffer_start = static_cast<T*>(combined_buffer.second) + start;
+      memcpy(buffer_start, current_buffer, current_size * sizeof(T));
       start += current_size;
     }
 
-    return std::make_pair(size_, Resource(raw_buffer, [](void* data) { delete[] data; }));
+    return combined_buffer;
   }
 
   auto Set(size_t size, const T* data) {
@@ -137,19 +166,18 @@ class TensorBuffer {
         "Argument size (%llu) exceeds the tensor size (%llu).",
         size,
         size_);
-
     
     size_t start = 0;
     for (size_t i = 0; i < buffers_.size() && size > start; i++) {
-      auto pair = Buffer(i);
-      auto current_size = pair.first;
-      auto current_buffer = pair.second;
+      size_t current_size;
+      T* current_buffer;
+      std::tie(current_size, current_buffer) = Buffer(i);
 
       if (size - start < current_size) {
         current_size = size - start;
       }
 
-      memcpy(current_buffer, data + start, current_size);
+      memcpy(current_buffer, data + start, current_size * sizeof(T));
       start += current_size;
     }
   }
@@ -181,10 +209,16 @@ class TensorBuffer<std::string> {
     return m_buffer.size();
   }
 
+  auto NumBuffers() {
+    return 1;
+  }
+
+  auto Flush() {
+    return false;
+  }
+
   auto Buffer() {
-    auto size = m_buffer.size();
-    using Resource = std::unique_ptr<void, std::function<void(void*)>>;
-    return std::make_pair(size, Resource(new std::string[size], [](void* data) { delete[] data; }));
+    return std::make_pair(m_buffer.size(), m_buffer.data());
   }
 
   auto Set(size_t size, std::string_view* data) {
