@@ -11,13 +11,20 @@ namespace test {
 static void RunTest(const std::vector<float>& x_vals,
                     const std::vector<float>& expected_vals,
                     const std::vector<int64_t>& dimensions,
+                    int opset = 7,
                     int64_t axis = 1,
                     OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
                     const std::string& expected_err_str = "") {
   OpTester test("Hardmax");
 
-  if (axis != 1) {
-    test.AddAttribute("axis", axis);
+  if (opset < 13) {
+    if (axis != 1) {  // opset-12 and below : default axis value is 1
+      test.AddAttribute("axis", axis);
+    }
+  } else {
+    if (axis != -1) {  // opset-13 : default axis value is -1
+      test.AddAttribute("axis", axis);
+    }
   }
 
   test.AddInput<float>("X", dimensions, x_vals);
@@ -85,7 +92,7 @@ TEST(HardmaxOperator, ThreeDimsAxis0) {
       0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
       0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
 
-  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*axis*/ 0);
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 7, /*axis*/ 0);
 }
 
 TEST(HardmaxOperator, ThreeDimsAxis1) {
@@ -108,7 +115,7 @@ TEST(HardmaxOperator, ThreeDimsAxis1) {
       0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
       0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
 
-  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*axis*/ 1);
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 7, /*axis*/ 1);
 }
 
 TEST(HardmaxOperator, ThreeDimsAxis2) {
@@ -131,7 +138,7 @@ TEST(HardmaxOperator, ThreeDimsAxis2) {
       0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
       0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
 
-  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*axis*/ 2);
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 7, /*axis*/ 2);
 }
 
 TEST(HardmaxOperator, ThreeDimsNegAxis2) {
@@ -154,7 +161,7 @@ TEST(HardmaxOperator, ThreeDimsNegAxis2) {
       0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
       0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
 
-  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*axis*/ -1);
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 7, /*axis*/ -1);
 }
 
 }  // namespace test
