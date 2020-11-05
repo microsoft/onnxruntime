@@ -67,8 +67,8 @@ class ORTModule(torch.nn.Module):
         '''
         if not self._onnx_forward:
             self._onnx_training = ORTModule._get_forward_graph(self._original_module, *inputs, **kwargs)
-            self._onnx_gradient = ORTModule._build_gradient_graph(self._onnx_training, self._grad_builder_config)
-            self._onnx_forward, self._onnx_backward = ORTModule._split_forward_and_backward(self._onnx_gradient, self._grad_builder_config.weight_names_to_train)
+            self._onnx_gradient, self._onnx_forward, self._onnx_backward = ORTModule._build_gradient_graph(self._onnx_training, self._grad_builder_config)
+            #self._onnx_forward, self._onnx_backward = ORTModule._split_forward_and_backward(self._onnx_gradient, self._grad_builder_config.weight_names_to_train)
 
             if self._save_onnx:
                 onnx.save(self._onnx_training, self._save_onnx_prefix + '_full_training.onnx')
@@ -514,7 +514,9 @@ class ORTModule(torch.nn.Module):
             for output in forward_graph.graph.output:
                 output_names.add(output.name)
             config.output_names = output_names
-        return onnx.load_model_from_string(C.ModuleGradientGraphBuilder().build(forward_graph.SerializeToString(), config))
+        models = [onnx.load_model_from_string(model_as_string)
+                  for model_as_string in C.ModuleGradientGraphBuilder().build_and_split(forward_graph.SerializeToString(), config)]
+        return models[0], models[1], models[2]
 
     @staticmethod
     def _split_forward_and_backward(onnx_model, weight_names_to_train):
