@@ -219,20 +219,16 @@ enum class MLAS_QGEMM_OUTPUT_MODE {
 
 class MLAS_QGEMM_OUTPUT_PROCESSOR {
 public:
-    inline
     virtual
     void
     Process(
-        const int32_t* /*CBuffer*/,
-        size_t /*RangeStartM*/,
-        size_t /*RangeStartN*/,
-        size_t /*RangeCountM*/,
-        size_t /*RangeCountN*/,
-        size_t /*ldc*/
-        ) const
-    {
-        return;
-    }
+        const int32_t*, // Supplies the address of matrix to process
+        size_t,         // Supplies the start row index of matrix
+        size_t,         // Supplies the start col index of matrix
+        size_t,         // Supplies the element count per row to process
+        size_t,         // Supplies the element count per col to process
+        size_t          // Supplies the leading dimension of matrix
+        ) const = 0;
 };
 
 class MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR : public MLAS_QGEMM_OUTPUT_PROCESSOR {
@@ -243,13 +239,19 @@ public:
         const float* Scale,
         const float* Bias,
         MLAS_QGEMM_OUTPUT_MODE Mode = MLAS_QGEMM_OUTPUT_MODE::ZeroMode,
-        MLAS_QUANTIZATION_GRANULARITY QuantGran = MLAS_QUANTIZATION_GRANULARITY::PerMatrix
-        );
+        MLAS_QUANTIZATION_GRANULARITY QuantGran = MLAS_QUANTIZATION_GRANULARITY::PerMatrix) :
+            Output_(Output),
+            LeadingDimensionOutput_(LeadingDimensionOutput),
+            Scale_(Scale),
+            Bias_(Bias),
+            OutputMode_(Mode),
+            QuantGran_(QuantGran)
+    {
+    }
 
-    inline
     void
     Process(
-        const int32_t* CBuffer,
+        const int32_t* C,
         size_t StartM,
         size_t StartN,
         size_t CountM,

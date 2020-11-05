@@ -64,7 +64,7 @@ MlasGemmU8X8ScaleSumBuffer(
     const int32_t* Input,
     size_t N,
     int32_t Scale
-)
+    )
 {
     for (size_t n = 0; n < N; n++) {
         Output[n] = Input[n] * Scale;
@@ -77,25 +77,9 @@ MlasGemmU8X8ScaleSumBuffer(
     int32_t* SumBuffer,
     size_t N,
     int32_t Scale
-)
+    )
 {
     return MlasGemmU8X8ScaleSumBuffer(SumBuffer, SumBuffer, N, Scale);
-}
-
-MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR::MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR(
-    float* Output,
-    size_t LeadingDimensionOutput,
-    const float* Scale,
-    const float* Bias,
-    MLAS_QGEMM_OUTPUT_MODE Mode,
-    MLAS_QUANTIZATION_GRANULARITY QuantGran) : 
-        Output_(Output),
-        LeadingDimensionOutput_(LeadingDimensionOutput),
-        Scale_(Scale),
-        Bias_(Bias),
-        OutputMode_(Mode),
-        QuantGran_(QuantGran)
-{
 }
 
 void MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR::Process(
@@ -186,7 +170,7 @@ void MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR::Process(
     }
 }
 
-template<bool HASBIAS, MLAS_QGEMM_OUTPUT_MODE MODE, MLAS_QUANTIZATION_GRANULARITY QUANTGRAN>
+template<bool HasBias, MLAS_QGEMM_OUTPUT_MODE Mode, MLAS_QUANTIZATION_GRANULARITY QuantGran>
 inline
 void
 MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR::ProcessImpl(
@@ -200,15 +184,12 @@ MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR::ProcessImpl(
 
 Routine Description:
 
-    This routine process the output of quantized GEMM.
+    This routine converts the output matrix C to a floating point format using
+    the stored scale and bias parameters.
 
 Arguments:
 
-    WorkBlock - Supplies the structure containing the GEMM parameters.
-
     C - Supplies the address of matrix C.
-
-    CBuffer - Supplies the address of quantized GEMM result.
 
     StartM - Supplies the starting row offset relative to the matrix.
 
@@ -220,8 +201,6 @@ Arguments:
 
     ldc - Supplies the leading dimension of C.
 
-    ldcBuffer - Supplies the leading dimension of CBuffer.
-
 Return Value:
 
     None.
@@ -232,11 +211,11 @@ Return Value:
     const float* Bias = Bias_;
     const float* Scale = Scale_;
 
-    if (HASBIAS) {
+    if (HasBias) {
         Bias += StartN;
     }
 
-    if(QUANTGRAN == MLAS_QUANTIZATION_GRANULARITY::PerColumn){
+    if(QuantGran == MLAS_QUANTIZATION_GRANULARITY::PerColumn){
         Scale += StartN;
     }
 
@@ -262,9 +241,9 @@ Return Value:
 
             MLAS_FLOAT32X4 FloatVector = MlasCastToFloat32x4(MlasLoadInt32x4(c));
 
-            if (QUANTGRAN == MLAS_QUANTIZATION_GRANULARITY::PerColumn) {
+            if (QuantGran == MLAS_QUANTIZATION_GRANULARITY::PerColumn) {
 
-                if (MODE == MLAS_QGEMM_OUTPUT_MODE::AccumulateMode) {
+                if (Mode == MLAS_QGEMM_OUTPUT_MODE::AccumulateMode) {
                     FloatVector = MlasMultiplyAddFloat32x4(FloatVector, MlasLoadFloat32x4(scale), MlasLoadFloat32x4(c_out));
                 }
                 else {
@@ -273,14 +252,14 @@ Return Value:
 
                 scale += 4;
             }
-            else if (MODE == MLAS_QGEMM_OUTPUT_MODE::AccumulateMode) {
+            else if (Mode == MLAS_QGEMM_OUTPUT_MODE::AccumulateMode) {
                 FloatVector = MlasMultiplyAddFloat32x4(FloatVector, ScaleVector, MlasLoadFloat32x4(c_out));
             }
             else {
                 FloatVector = MlasMultiplyFloat32x4(FloatVector, ScaleVector);
             }
 
-            if (HASBIAS) {
+            if (HasBias) {
                 FloatVector = MlasAddFloat32x4(FloatVector, MlasLoadFloat32x4(bias));
                 bias += 4;
             }
@@ -297,39 +276,39 @@ Return Value:
 #if defined(MLAS_SSE2_INTRINSICS)
             __m128 FloatVector = _mm_set_ss(float(c[offset]));
 
-            if (QUANTGRAN == MLAS_QUANTIZATION_GRANULARITY::PerColumn) {
-                if (MODE == MLAS_QGEMM_OUTPUT_MODE::AccumulateMode) {
+            if (QuantGran == MLAS_QUANTIZATION_GRANULARITY::PerColumn) {
+                if (Mode == MLAS_QGEMM_OUTPUT_MODE::AccumulateMode) {
                     FloatVector = _mm_add_ps(_mm_mul_ss(FloatVector, _mm_load_ss(&scale[offset])), _mm_load_ss(&c_out[offset]));
                 } else{
                     FloatVector = _mm_mul_ss(FloatVector, _mm_load_ss(&scale[offset]));
                 }
-            } else if (MODE == MLAS_QGEMM_OUTPUT_MODE::AccumulateMode) {
+            } else if (Mode == MLAS_QGEMM_OUTPUT_MODE::AccumulateMode) {
                 FloatVector = _mm_add_ps(_mm_mul_ss(FloatVector, ScaleVector), _mm_load_ss(&c_out[offset]));
             } else{
                 FloatVector = _mm_mul_ss(FloatVector, ScaleVector);
             }
 
-            if (HASBIAS) {
+            if (HasBias) {
                 FloatVector = _mm_add_ss(FloatVector, _mm_load_ss(&bias[offset]));
             }
 
             _mm_store_ss(&c_out[offset], FloatVector);
 #else
-            if (QUANTGRAN == MLAS_QUANTIZATION_GRANULARITY::PerColumn) {
-                if(MODE == MLAS_QGEMM_OUTPUT_MODE::AccumulateMode){
+            if (QuantGran == MLAS_QUANTIZATION_GRANULARITY::PerColumn) {
+                if(Mode == MLAS_QGEMM_OUTPUT_MODE::AccumulateMode){
                     c_out[offset]) += float(c[offset]) * scale[offset];
                 } else{
                     c_out[offset]) = float(c[offset]) * scale[offset];
                 }
             }
-            else if (MODE == MLAS_QGEMM_OUTPUT_MODE::AccumulateMode) {
+            else if (Mode == MLAS_QGEMM_OUTPUT_MODE::AccumulateMode) {
                 c_out[offset]) += float(c[offset]) * ScaleValue;
             }
             else{
                 c_out[offset]) = float(c[offset]) * ScaleValue;
             }
 
-            if (HASBIAS) {
+            if (HasBias) {
                 c_out[offset]) += bias[offset];
             }
 #endif
@@ -390,7 +369,7 @@ Return Value:
     // Try to use a GEMV kernel if supported by this kernel type.
     //
 
-    if ((M == 1) && (offa == 0) && (offb == 0) && !WorkBlock->OutputProcessor) {
+    if ((M == 1) && (offa == 0) && (offb == 0) && WorkBlock->OutputProcessor == nullptr) {
         if (KernelType::TryGemvKernel(A, B, ldb, C, K, N, WorkBlock->BIsSigned)) {
             return;
         }
