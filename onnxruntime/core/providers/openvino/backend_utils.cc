@@ -313,6 +313,7 @@ void FillInputBlob(InferenceEngine::Blob::Ptr& inputBlob, size_t request_id, siz
   size_t input_data_size = inputBlob->byteSize();
 
 #if (defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
+  ORT_UNUSED_PARAMETER(input_name);
   const OrtValue* tensor = ort.KernelContext_GetInput(context, subgraph_context.input_indexes[request_id]);
 #else
   ORT_UNUSED_PARAMETER(request_id);
