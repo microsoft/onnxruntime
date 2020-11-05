@@ -46,16 +46,31 @@ uintptr_t round_up_to_aligned(uintptr_t original, size_t alignment) {
   return (original + alignment - 1) & alignment_mask;
 }
 
-size_t compute_reduce_all_in_rows_buffer_size(int element_size, int num_rows, int num_cols) {
+/**
+ * call_reduce_matrix_columns() intermediate buffer layout
+ *
+ * Given buffer element type TBuf, the intermediate buffer layout looks like this:
+ *
+ * -----
+ * m * num_blocks_per_row * sizeof(TBuf) bytes for block reductions per row
+ * alignment padding bytes as needed
+ * m * sizeof(int) bytes for block done counts per row
+ * -----
+ */
+
+size_t compute_reduce_matrix_columns_intermediate_buffer_size(
+    int element_size, int num_rows, int num_cols) {
+  ORT_ENFORCE(element_size >= 0 && num_rows >= 0 && num_cols >= 0);
+
   const auto grid_dim = compute_grid_and_block_dims(num_rows, num_cols).first;
 
   size_t buffer_size{};
 
   // at the beginning, for sizing purposes, assume we are aligned
-  buffer_size += num_rows * grid_dim.x * element_size;
+  buffer_size += static_cast<size_t>(num_rows) * grid_dim.x * element_size;
 
   buffer_size = round_up_to_aligned(buffer_size, alignof(int));
-  buffer_size += num_rows * sizeof(int);
+  buffer_size += static_cast<size_t>(num_rows) * sizeof(int);
 
   // add padding to give us room to align
   buffer_size += alignof(max_align_t) - 1;
@@ -68,16 +83,15 @@ Status get_reduction_buffers(
     int num_rows, int num_cols, void* buffer, size_t buffer_size,
     TBuf*& block_reductions_buffer, int*& block_done_counts_buffer) {
   const auto grid_dim = compute_grid_and_block_dims(num_rows, num_cols).first;
-  const int64_t num_rows_int64 = num_rows;  // avoid int overflow in offset calculations
 
   const uintptr_t begin_addr = reinterpret_cast<uintptr_t>(buffer);
   const uintptr_t block_reductions_addr =
       round_up_to_aligned(begin_addr, alignof(TBuf));
   const uintptr_t block_done_counts_buffer_addr =
       round_up_to_aligned(
-          block_reductions_addr + num_rows_int64 * grid_dim.x * sizeof(TBuf), alignof(int));
+          block_reductions_addr + static_cast<size_t>(num_rows) * grid_dim.x * sizeof(TBuf), alignof(int));
   const uintptr_t end_addr =
-      block_done_counts_buffer_addr + num_rows_int64 * sizeof(int);
+      block_done_counts_buffer_addr + static_cast<size_t>(num_rows) * sizeof(int);
   const size_t required_size = end_addr - begin_addr;
 
   ORT_RETURN_IF_NOT(
@@ -279,6 +293,8 @@ __global__ void reduce_matrix_columns_kernel(
 template <typename TIn, typename TOut, typename TOp, typename TFinalOp, bool DivideResultBySize>
 Status call_reduce_matrix_columns(
     const TIn* input, TOut* output, const int num_rows, const int num_cols, void* buffer, size_t buffer_size) {
+  ORT_ENFORCE(num_rows >= 0 && num_cols >= 0);
+
   using TBuf = AccumulationType_t<TIn>;
 
   const auto grid_and_block_dims = compute_grid_and_block_dims(num_rows, num_cols);
@@ -419,11 +435,14 @@ __global__ void reduce_matrix_rows_kernel(const TIn* input, TOut* output, int m,
   }
 }
 
-// This function reduces the given input tensor along all but the last axis.
-// For example, [N, C, H, W]-tensor may lead to a output [W]-tensor.
-// It's implementation is in reduction_ops.cu and called in reduction_ops.cc.
 template <typename TIn, typename TOut, typename TBuf>
-void call_reduce_matrix_rows(const TIn* input, TOut* output, int m, int n) {
+Status call_reduce_matrix_rows(const TIn* input, TOut* output, int m, int n, bool reset_initial_output) {
+  ORT_ENFORCE(m >= 0 && n >= 0);
+
+  if (reset_initial_output) {
+    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output, 0, n * sizeof(TOut)));
+  }
+
   constexpr int max_num_threads_in_block = 512;
   constexpr int max_num_blocks_in_grid = 512;
   constexpr int load_count_per_thread = 4;
@@ -438,18 +457,15 @@ void call_reduce_matrix_rows(const TIn* input, TOut* output, int m, int n) {
 
   reduce_matrix_rows_kernel<TIn, TOut, TBuf><<<grid, block, block.y * block.x * sizeof(TBuf)>>>(
       input, output, m, n);
+
+  return Status::OK();
 }
 }  // namespace detail
 
 template <typename TIn, typename TOut>
 Status reduce_matrix_rows(const TIn* input, TOut* output, int m, int n, bool reset_initial_output) {
-  if (reset_initial_output) {
-    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output, 0, n * sizeof(TOut)));
-  }
-
   using TBuf = AccumulationType_t<TIn>;
-  detail::call_reduce_matrix_rows<TIn, TOut, TBuf>(input, output, m, n);
-  return Status::OK();
+  return detail::call_reduce_matrix_rows<TIn, TOut, TBuf>(input, output, m, n, reset_initial_output);
 }
 
 #define INSTANTIATE_REDUCE_MATRIX_ROWS(T) \

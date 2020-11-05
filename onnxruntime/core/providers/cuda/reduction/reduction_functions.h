@@ -10,7 +10,8 @@ namespace onnxruntime {
 namespace cuda {
 
 namespace detail {
-size_t compute_reduce_all_in_rows_buffer_size(int element_size, int num_rows, int num_cols);
+size_t compute_reduce_matrix_columns_intermediate_buffer_size(
+    int element_size, int num_rows, int num_cols);
 }
 
 /**
@@ -23,7 +24,7 @@ size_t compute_reduce_all_in_rows_buffer_size(int element_size, int num_rows, in
 template <typename TIn>
 size_t compute_reduce_matrix_columns_buffer_size(int m, int n) {
   using TBuf = AccumulationType_t<TIn>;
-  return detail::compute_reduce_all_in_rows_buffer_size(
+  return detail::compute_reduce_matrix_columns_intermediate_buffer_size(
       sizeof(TBuf), m, n);
 }
 
@@ -36,7 +37,7 @@ size_t compute_reduce_matrix_columns_buffer_size(int m, int n) {
 template <typename TIn>
 size_t compute_reduction_buffer_size(int size) {
   using TBuf = AccumulationType_t<TIn>;
-  return detail::compute_reduce_all_in_rows_buffer_size(
+  return detail::compute_reduce_matrix_columns_intermediate_buffer_size(
       sizeof(TBuf), 1, size);
 }
 
