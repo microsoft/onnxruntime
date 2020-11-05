@@ -696,7 +696,10 @@ void EndParallelSection(ThreadPoolParallelSection &ps) override {
    // value.  However, the costs of creating distinct lambda for each
    // iteration appeared more costly than the cost of synchronization
    // on a shared counter.
-   auto call_worker_fn = [&ps, worker_fn{std::move(worker_fn)}]() {
+   //
+   // [ We could use C++14 lambda capture initializers to capture
+   // std::move(worker_fn) here ]
+   auto call_worker_fn = [&ps, worker_fn]() {
      unsigned my_idx = ++ps.worker_idx;
      worker_fn(my_idx);
      // After the assignment to ps.tasks_finished, the stack-allocated
