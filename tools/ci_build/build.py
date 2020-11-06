@@ -1064,7 +1064,7 @@ def setup_dml_build(args, cmake_path, build_dir, configs):
             run_subprocess(cmd_args)
 
 
-def setup_rocm_build(args):
+def setup_rocm_build(args, configs):
 
     rocm_home = None
 
@@ -1079,7 +1079,8 @@ def setup_rocm_build(args):
                              "rocm_home='{}' valid={}."
                              .format(rocm_home, rocm_home_not_valid))
 
-        amd_hipify()
+        for config in configs:
+            amd_hipify(get_config_build_dir(args.build_dir, config))
     return rocm_home or ''
 
 
@@ -1811,7 +1812,7 @@ def main():
     migraphx_home = setup_migraphx_vars(args)
 
     # if using rocm, setup rocm paths
-    rocm_home = setup_rocm_build(args)
+    rocm_home = setup_rocm_build(args, configs)
 
     os.makedirs(build_dir, exist_ok=True)
 

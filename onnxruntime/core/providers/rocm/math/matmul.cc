@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "matmul.h"
+#include "core/providers/rocm/math/matmul.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/rocm/shared_inc/fpgeneric.h"
 #include "core/providers/rocm/rocm_allocator.h"

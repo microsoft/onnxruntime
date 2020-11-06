@@ -3,7 +3,7 @@
 
 #include "core/providers/cuda/reduction/reduction_functions.h"
 #include "core/providers/cuda/math/softmax.h"
-#include "softmaxcrossentropy_impl.h"
+#include "orttraining/training_ops/cuda/loss/softmaxcrossentropy_impl.h"
 
 namespace onnxruntime {
 namespace cuda {

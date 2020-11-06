@@ -4,7 +4,7 @@
 #pragma once
 #include <stdint.h>
 #include "core/providers/rocm/shared_inc/rocm_utils.h"
-#include "common.cuh"
+#include "core/providers/rocm/cu_inc/common.cuh"
 
 namespace onnxruntime {
 namespace rocm {

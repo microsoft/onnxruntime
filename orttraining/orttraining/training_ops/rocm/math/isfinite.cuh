@@ -3,7 +3,7 @@
 
 #include <hip/hip_fp16.h>
 #include "core/providers/rocm/cu_inc/common.cuh"
-#include "isfinite.h"
+#include "orttraining/training_ops/rocm/math/isfinite.h"
 
 namespace onnxruntime {
 namespace rocm {

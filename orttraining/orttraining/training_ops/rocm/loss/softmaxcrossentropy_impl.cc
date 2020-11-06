@@ -3,7 +3,7 @@
 
 #include "core/providers/rocm/reduction/reduction_functions.h"
 #include "core/providers/rocm/math/softmax.h"
-#include "softmaxcrossentropy_impl.h"
+#include "orttraining/training_ops/rocm/loss/softmaxcrossentropy_impl.h"
 
 namespace onnxruntime {
 namespace rocm {

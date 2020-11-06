@@ -277,7 +277,7 @@ def hipify(src_file_path, dst_file_path):
     dst_file_path = dst_file_path.replace('cuda', 'rocm')
     dir_name = os.path.dirname(dst_file_path)
     if not os.path.exists(dir_name):
-        os.mkdir(dir_name)
+        os.makedirs(dir_name, exist_ok=True)
     with open(dst_file_path, 'w') as f:
         subprocess.run([HIPIFY_PERL, src_file_path], stdout=f)
     with open(dst_file_path) as f:
@@ -344,9 +344,9 @@ def list_files(prefix, path):
     return all_files
 
 
-def amd_hipify():
-    cuda_contrib_path = contrib_ops_path + '/cuda'
-    rocm_contrib_path = contrib_ops_path + '/rocm'
+def amd_hipify(config_build_dir):
+    cuda_contrib_path = os.path.join(contrib_ops_path, 'cuda')
+    rocm_contrib_path = os.path.join(config_build_dir, 'amdgpu', contrib_ops_path, 'rocm')
     contrib_files = list_files(cuda_contrib_path, '')
     for file in contrib_files:
         if file not in contrib_ops_files:
@@ -354,8 +354,8 @@ def amd_hipify():
             dst_file_path = os.path.join(rocm_contrib_path, file)
             hipify(src_file_path, dst_file_path)
 
-    cuda_core_path = core_ops_path + '/cuda'
-    rocm_core_path = core_ops_path + '/rocm'
+    cuda_core_path = os.path.join(core_ops_path, 'cuda')
+    rocm_core_path = os.path.join(config_build_dir, 'amdgpu', core_ops_path, 'rocm')
     core_files = list_files(cuda_core_path, '')
     for file in core_files:
         if file not in core_ops_files:
@@ -363,8 +363,8 @@ def amd_hipify():
             dst_file_path = os.path.join(rocm_core_path, file)
             hipify(src_file_path, dst_file_path)
 
-    cuda_training_path = training_ops_path + '/cuda'
-    rocm_training_path = training_ops_path + '/rocm'
+    cuda_training_path = os.path.join(training_ops_path, 'cuda')
+    rocm_training_path = os.path.join(config_build_dir, 'amdgpu', training_ops_path, 'rocm')
     training_files = list_files(cuda_training_path, '')
     for file in training_files:
         if file not in training_ops_files:

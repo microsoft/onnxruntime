@@ -6,8 +6,8 @@
 #include <hip/hip_fp16.h>
 #include "core/providers/rocm/cu_inc/common.cuh"
 #include "core/providers/rocm/atomic/common.cuh"
-#include "reduction_functions.h"
-#include "reduction_utils.cuh"
+#include "core/providers/rocm/reduction/reduction_functions.h"
+#include "core/providers/rocm/reduction/reduction_utils.cuh"
 
 #define NUM_ELEMENTS_PER_THREAD 4
 #define NUM_WARPS_PER_BLOCK 8
