@@ -166,7 +166,7 @@ static std::vector<ITestCase*> GetAllTestCases() {
       ORT_TSTR("coreml_VGG16_ImageNet"),
       ORT_TSTR("faster_rcnn"),
       ORT_TSTR("fp16_test_tiny_yolov2"),
-      ORT_TSTR("GPT2"),
+      ORT_TSTR("GPT2_LM_HEAD"),
       ORT_TSTR("keras_lotus_resnet3D"),
       ORT_TSTR("mask_rcnn_keras"),
       ORT_TSTR("mask_rcnn"),
