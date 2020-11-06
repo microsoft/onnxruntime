@@ -67,4 +67,6 @@ size_t findIndex(std::vector<int64_t> dims, std::vector<int64_t> indices);
 OrtValue SliceTensor(const OrtValue& orig_value, const size_t slice_id,
                     const size_t slice_axis, const size_t num_slices, TrainingSession& session_state);
 
+OrtValue ConcatTensor(const std::vector<OrtValue>& orig_values, const size_t n, const size_t axis, TrainingSession& session_state);
+
 }

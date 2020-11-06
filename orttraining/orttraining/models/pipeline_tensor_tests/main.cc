@@ -186,7 +186,7 @@ void setup_training_params(TrainingRunner::Parameters& params) {
 
 void test_tensor_slicing(TrainingSession& session_object){
 
-
+  /******************** test 1 ************************************************/
    // Prepare inputs and outputs.
     OrtValue input;
     std::vector<int64_t> shape = {2, 6, 3};
@@ -214,6 +214,77 @@ void test_tensor_slicing(TrainingSession& session_object){
     std::cout<<std::endl;
   }
 
+  void test_tensor_concatenation1(TrainingSession& session_object){
+
+    cout<<"******************* test 1 ************************************************"<<std::endl;
+    // Prepare inputs and outputs.
+    std::vector<OrtValue> inputs;
+    OrtValue inp[3];
+    std::vector<int64_t> shape = {2,1,4};
+    std::vector<std::vector<float>> values;
+    std::vector<float> value1 = {1.0f,2.0f,3.0f,4.0f,
+                                 13.0f,14.0f,15.0f,16.0f};
+    std::vector<float> value2 = {5.0f,6.0f,7.0f,8.0f,
+                                 17.0f,18.0f,19.0f,20.0f};
+    std::vector<float> value3 = {9.0f,10.0f,11.0f,12.0f,
+                                 21.0f,22.0f,23.0f,24.0f};   
+    values.push_back(value1);
+    values.push_back(value2);
+    values.push_back(value3);                         
+    // expected res = { 1.0f,2.0f,3.0f,4.0f, 5.0f,6.0f,7.0f,8.0f, 9.0f,10.0f,11.0f,12.0f,   
+    //                  13.0f,14.0f,15.0f,16.0f, 17.0f,18.0f,19.0f,20.0f,  21.0f,22.0f,23.0f,24.0f }
+    for(int i = 0 ; i < 3;i++){
+      TrainingUtil::CreateCpuMLValue(shape, values[i], &inp[i]);
+      inputs.push_back(inp[i]);  
+    }
+
+    //OrtValue ConcatTensor(const std::vector<OrtValue>& orig_values, const size_t n, const size_t axis, TrainingSession& session_state)
+    OrtValue res = ConcatTensor(inputs, 3, 1, session_object);
+    // res shape = 2,2,3
+    const Tensor& resTensor = res.Get<Tensor>();
+    const float* resTensor_ptr = resTensor.template Data<float>();
+    std::cout<<"shape: " << resTensor.Shape() <<std::endl << "Results : ";
+    for (int i = 0; i < resTensor.Shape().Size(); ++i) {
+      std::cout << resTensor_ptr[i] << " ";
+
+    }  
+    std::cout<<std::endl;
+  }
+
+void test_tensor_concatenation2(TrainingSession& session_object){
+
+    cout<<"******************** test 2 ************************************************"<<std::endl;
+    // Prepare inputs and outputs.
+    std::vector<OrtValue> inputs;
+    OrtValue inp[2];
+    std::vector<int64_t> shape = {2,3,2};
+    std::vector<std::vector<float>> values;
+    std::vector<float> value1 = {1.0f,2.0f,5.0f,6.0f,9.0f,10.0f,
+                                 13.0f,14.0f, 17.0f,18.0f,21.0f,22.0f};
+    std::vector<float> value2 = {3.0f,4.0f,7.0f,8.0f, 11.0f,12.0f,
+                                 15.0f,16.0f,19.0f,20.0f,23.0f,24.0f};
+      
+    values.push_back(value1);
+    values.push_back(value2);                        
+    // expected res = { 1.0f,2.0f,3.0f,4.0f, 5.0f,6.0f,7.0f,8.0f, 9.0f,10.0f,11.0f,12.0f,   
+    //                  13.0f,14.0f,15.0f,16.0f, 17.0f,18.0f,19.0f,20.0f,  21.0f,22.0f,23.0f,24.0f }
+    for(int i = 0 ; i < 2;i++){
+      TrainingUtil::CreateCpuMLValue(shape, values[i], &inp[i]);
+      inputs.push_back(inp[i]);  
+    }
+
+    //OrtValue ConcatTensor(const std::vector<OrtValue>& orig_values, const size_t n, const size_t axis, TrainingSession& session_state)
+    OrtValue res = ConcatTensor(inputs, 2, 2, session_object);
+    // res shape = 2,2,3
+    const Tensor& resTensor = res.Get<Tensor>();
+    const float* resTensor_ptr = resTensor.template Data<float>();
+    std::cout<<"shape: " << resTensor.Shape() <<std::endl << "Results : ";
+    for (int i = 0; i < resTensor.Shape().Size(); ++i) {
+      std::cout << resTensor_ptr[i] << " ";
+
+    }  
+    std::cout<<std::endl;
+}
 
 int main(int argc, char* args[]) {
   // setup logger
@@ -257,5 +328,9 @@ int main(int argc, char* args[]) {
   TrainingSession& session = runner->GetSession();
   std::cout<<"Calling tensor slice function" <<std::endl;
   test_tensor_slicing(session);
+  std::cout<<"Calling tensor concat function 1" <<std::endl;
+  test_tensor_concatenation1(session);
+  std::cout<<"Calling tensor concat function 2" <<std::endl;
+  test_tensor_concatenation2(session);
 
 }

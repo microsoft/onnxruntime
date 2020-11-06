@@ -20,7 +20,7 @@ namespace onnxruntime {
                       const size_t slice_axis, const size_t num_slices, TrainingSession& session_state) {      
       
       // Get tensor from OrtValue
-      const Tensor& orig_tensor = orig_value.Get<Tensor>();;
+      const Tensor& orig_tensor = orig_value.Get<Tensor>();
       // Get the tensor shape
       const TensorShape& orig_tensor_shape = orig_tensor.Shape();
       const MLDataType orig_tensor_type = orig_tensor.DataType();
@@ -158,5 +158,121 @@ namespace onnxruntime {
       
   } // slice func ends
 
+  // concat tensors
+  OrtValue ConcatTensor(const std::vector<OrtValue>& orig_values, const size_t n, const size_t axis, TrainingSession& session_state){
+    if(orig_values.size() == 0){
+      ORT_ENFORCE(false, "the input tensors array is empty"); 
+    }
+    if(n != orig_values.size()){
+      ORT_ENFORCE(false, "number of tensors in array not equal to target number of sub-batches"); 
+    }
+    const Tensor& inp_tensor = orig_values.at(0).Get<Tensor>();
+    const TensorShape& inp_tensor_shape = inp_tensor.Shape();
+    const MLDataType inp_tensor_type = inp_tensor.DataType();
+    const OrtMemoryInfo inp_tensor_location = inp_tensor.Location();
+    // allocate a pointer for concated tensor
+    std::vector<int64_t> concatenated_dims;
+    size_t contiguous_slice_size = 1;
+    size_t total_num_elements = 1;
+    std::vector<int64_t> inp_dims = inp_tensor_shape.GetDims();
+    for (size_t i_shape = 0; i_shape < inp_dims.size(); ++i_shape) {
+      if(i_shape == axis){
+        concatenated_dims.push_back(inp_dims[i_shape]*n);
+      }else{
+        concatenated_dims.push_back(inp_dims[i_shape]);
+      }
+      if(i_shape >= axis){
+          contiguous_slice_size *= inp_dims[i_shape]; // includes the size of current chunk (batch/n)
+      }
+      total_num_elements *= inp_dims[i_shape];    
+    }
+    total_num_elements *= n; // size of concatenated tensor is total elements of one batch * number of batches
+    TensorShape concatenated_shape(concatenated_dims); 
+    // allocate a pointer for concatenated tensor
+    int device; 
+    cudaGetDevice(&device);
+    OrtMemoryInfo cpu_location(onnxruntime::CPU, OrtDeviceAllocator); // ??
+    AllocatorPtr cpu_allocator = session_state.GetAllocator(cpu_location);
+    auto concatenated_cpu_tensor = onnxruntime::make_unique<Tensor>(inp_tensor_type, concatenated_shape, cpu_allocator); 
+
+    auto tensor_type = DataTypeImpl::GetType<Tensor>();
+    OrtValue concatenated_cpu_value{concatenated_cpu_tensor.release(), tensor_type, tensor_type->GetDeleteFunc()}; //
+    auto concatenated_cpu_ptr = concatenated_cpu_value.GetMutable<Tensor>()->MutableDataRaw(); // ???..
+
+    size_t elements_read_so_far = 0; // number of elements copied to concatenated tensor
+    size_t num_strides = 0;
+    while(elements_read_so_far <= total_num_elements){
+      for(size_t i = 0; i < orig_values.size(); ++i){
+        auto& orig_value = orig_values.at(i); 
+        // Get tensor from OrtValue
+        const Tensor& orig_tensor = orig_value.Get<Tensor>();
+        // Get the tensor shape
+        //const TensorShape& orig_tensor_shape = orig_tensor.Shape();
+        const MLDataType orig_tensor_type = orig_tensor.DataType();
+        const OrtMemoryInfo orig_tensor_location = orig_tensor.Location();
+
+        auto orig_ptr = orig_value.Get<Tensor>().DataRaw(); //get cpu or gpu pointer from original tensor
+
+        size_t copied_size = contiguous_slice_size*orig_tensor_type->Size();//number of slices
+        size_t bias = (contiguous_slice_size * num_strides) * orig_tensor_type->Size();  
+        if (std::string(orig_tensor_location.name) == std::string("Cuda")) {
+          if (device != orig_tensor_location.id) {
+            cudaSetDevice(orig_tensor_location.id);
+          }
+
+          cudaMemcpy(static_cast<char*>((void*)concatenated_cpu_ptr) + elements_read_so_far*orig_tensor_type->Size(), static_cast<const char*>(orig_ptr) + bias, copied_size, cudaMemcpyDeviceToHost);                  
+
+          if (device != orig_tensor_location.id) {
+            cudaSetDevice(device);
+          }
+        } else {
+          memcpy(static_cast<char*>((void*)concatenated_cpu_ptr) + elements_read_so_far*orig_tensor_type->Size(), static_cast<const char*>(orig_ptr) + bias, copied_size);                  
+        }
+        elements_read_so_far += contiguous_slice_size;
+      }
+      num_strides += 1;
+
+    } // while ends
+
+    size_t copied_size = elements_read_so_far*inp_tensor_type->Size();
+    std::cout << "final copied size =  " << copied_size << ", elements_read_so_far = " << elements_read_so_far << ", orig_tensor_type->Size() = " << inp_tensor_type->Size() << std::endl;;
+    std::cout << "[inference_session.cc] current GPU device " << device << std::endl;;
+    if (std::string(inp_tensor_location.name) == std::string("Cuda")) {
+      // Get CPU tensor to be copied.
+      const Tensor& copied_tensor = concatenated_cpu_value.Get<Tensor>();
+
+      // Create GPU tensor to capture CPU data.
+      AllocatorPtr allocator = session_state.GetAllocator(inp_tensor_location);
+      auto concatenated_tensor = onnxruntime::make_unique<Tensor>(inp_tensor_type, concatenated_shape, allocator);
+      OrtValue concatenated_value{concatenated_tensor.release(), tensor_type, tensor_type->GetDeleteFunc()}; 
+      Tensor* capturing_tensor = concatenated_value.GetMutable<Tensor>();
+
+      if (device != inp_tensor_location.id) {
+        cudaSetDevice(inp_tensor_location.id);
+      }
+
+      cudaMemcpy(capturing_tensor->MutableDataRaw(), copied_tensor.DataRaw(), copied_size, cudaMemcpyHostToDevice);
+
+      if (device != inp_tensor_location.id) {
+        cudaSetDevice(device);
+      }
+      return concatenated_value;
+      //new_feeds.push_back(small_value);
+    } else if (std::string(inp_tensor_location.name) == std::string("Cpu")) {
+      const Tensor& copied_tensor = concatenated_cpu_value.Get<Tensor>();
+
+      AllocatorPtr allocator = session_state.GetAllocator(inp_tensor_location);
+      auto concatenated_tensor = onnxruntime::make_unique<Tensor>(inp_tensor_type, concatenated_shape, allocator);
+      OrtValue concatenated_value{concatenated_tensor.release(), tensor_type, tensor_type->GetDeleteFunc()}; 
+      Tensor* capturing_tensor = concatenated_value.GetMutable<Tensor>();
+
+      memcpy(capturing_tensor->MutableDataRaw(), copied_tensor.DataRaw(), copied_size);
+      //new_feeds.push_back(small_value);
+      return concatenated_value;
+    } else {
+      ORT_ENFORCE(false, "This shouldn't happen.");
+    }
+
+  } // ConcatTensor func ends
   
 }
