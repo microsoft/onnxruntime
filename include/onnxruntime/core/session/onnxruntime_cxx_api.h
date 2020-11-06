@@ -99,32 +99,40 @@ ORT_DEFINE_RELEASE(ModelMetadata);
 ORT_DEFINE_RELEASE(ThreadingOptions);
 ORT_DEFINE_RELEASE(IoBinding);
 
-/// Ort::Float16_t/BFloat16_t are a structures that represents float16/bfloat16 data.
-/// They are necessary for type dispatching to work within C++ API so one can feed/fetch
-/// data via C++ API.
-/// Both types are implicitly convertible to/from uint16_t.
-/// The size of the structs should align with uint16_t and one can freely cast
-/// uint16_t buffers to/from Ort::Float16/BFloat16 to feed and retrieve data.
+/*! \class Ort::Float16_t
+  * \brief it is a structure that represents float16 data.
+  * It is necessary for type dispatching to make use of C++ API
+  * The type is implicitly convertible to/from uint16_t.
+  * The size of the structure should align with uint16_t and one can freely cast
+  * uint16_t buffers to/from Ort::Float16_t to feed and retrieve data.
+  */
 struct Float16_t {
   uint16_t v_;
   constexpr Float16_t() noexcept : v_(0) {}
   constexpr Float16_t(uint16_t v) noexcept : v_(v) {}
   constexpr operator uint16_t() const noexcept { return v_; }
   constexpr uint16_t get() const noexcept { return v_;  }
-  constexpr bool operator==(Float16_t rhs) const noexcept { return v_ == rhs.v_; };
-  constexpr bool operator!=(Float16_t rhs) const noexcept { return v_ != rhs.v_; };
+  constexpr bool operator==(const Float16_t& rhs) const noexcept { return v_ == rhs.v_; };
+  constexpr bool operator!=(const Float16_t& rhs) const noexcept { return v_ != rhs.v_; };
 };
 
 static_assert(sizeof(Float16_t) == sizeof(uint16_t), "Sizes must match");
 
+/*! \class Ort::BFloat16_t
+  * \brief is a structure that represents bfloat16 data.
+  * It is necessary for type dispatching to make use of C++ API
+  * The type is implicitly convertible to/from uint16_t.
+  * The size of the structure should align with uint16_t and one can freely cast
+  * uint16_t buffers to/from Ort::BFloat16_t to feed and retrieve data.
+  */
 struct BFloat16_t {
   uint16_t v_;
   constexpr BFloat16_t() noexcept : v_(0) {}
   constexpr BFloat16_t(uint16_t v) noexcept : v_(v) {}
   constexpr operator uint16_t() const noexcept { return v_; }
   constexpr uint16_t get() const noexcept { return v_; }
-  constexpr bool operator==(BFloat16_t rhs) const noexcept { return v_ == rhs.v_; };
-  constexpr bool operator!=(BFloat16_t rhs) const noexcept { return v_ != rhs.v_; };
+  constexpr bool operator==(const BFloat16_t& rhs) const noexcept { return v_ == rhs.v_; };
+  constexpr bool operator!=(const BFloat16_t& rhs) const noexcept { return v_ != rhs.v_; };
 };
 
 static_assert(sizeof(BFloat16_t) == sizeof(uint16_t), "Sizes must match");
