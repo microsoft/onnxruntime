@@ -150,8 +150,6 @@ struct Float16_t {
   constexpr uint16_t value() const noexcept { return v_; }
   constexpr bool operator==(const Float16_t& rhs) const noexcept { return v_ == rhs.v_; };
   constexpr bool operator!=(const Float16_t& rhs) const noexcept { return v_ != rhs.v_; };
-  constexpr bool operator<(const Float16_t& rhs) const noexcept { return v_ < rhs.v_; };
-  constexpr bool operator>(const Float16_t& rhs) const noexcept { return v_ > rhs.v_; };
 };
 
 static_assert(sizeof(Float16_t) == sizeof(uint16_t), "Sizes must match");
@@ -176,8 +174,6 @@ struct BFloat16_t {
   constexpr uint16_t value() const noexcept { return v_; }
   constexpr bool operator==(const BFloat16_t& rhs) const noexcept { return v_ == rhs.v_; };
   constexpr bool operator!=(const BFloat16_t& rhs) const noexcept { return v_ != rhs.v_; };
-  constexpr bool operator<(const BFloat16_t& rhs) const noexcept { return v_ < rhs.v_; };
-  constexpr bool operator>(const BFloat16_t& rhs) const noexcept { return v_ > rhs.v_; };
 };
 
 static_assert(sizeof(BFloat16_t) == sizeof(uint16_t), "Sizes must match");
