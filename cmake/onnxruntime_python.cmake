@@ -95,11 +95,11 @@ set(onnxruntime_pybind11_state_libs
     onnxruntime_session
     ${onnxruntime_libs}
     ${PROVIDERS_CUDA}
-    ${PROVIDERS_DNNL}
-    ${PROVIDERS_TENSORRT}
+#    ${PROVIDERS_DNNL}
+#    ${PROVIDERS_TENSORRT}
+#    ${PROVIDERS_OPENVINO}
     ${PROVIDERS_MIGRAPHX}
     ${PROVIDERS_NGRAPH}
-    ${PROVIDERS_OPENVINO}
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_VITISAI}
     ${PROVIDERS_NNAPI}
