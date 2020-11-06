@@ -97,7 +97,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 opt.AppendExecutionProvider_CUDA(0);
 #endif
 #if USE_DML
-                // Explicitly set dll probe path so that the (potentially) stale system DirectML.dll 
+                // Explicitly set dll probe path so that the (potentially) stale system DirectML.dll
                 // doesn't get loaded by the test process when it is eventually delay loaded by onnruntime.dll
                 // The managed tests binary path already contains the right DirectML.dll, so use that
 
@@ -122,7 +122,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 opt.AppendExecutionProvider_MIGraphX(0);
 #endif
 #if USE_NNAPI
-                opt.AppendExecutionProvider_Nnapi();
+                opt.AppendExecutionProvider_Nnapi(0);
 #endif
 
 
@@ -679,6 +679,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "fp16_inception_v1", "16-bit float not supported type in C#." },
                 { "fp16_shufflenet", "16-bit float not supported type in C#." },
                 { "fp16_tiny_yolov2", "16-bit float not supported type in C#." },
+                { "fp16_coreml_FNS-Candy", "16-bit float not supported type in C#." },
+                { "test_mnist", "16-bit float not supported type in C#." },
+                { "fp16_test_shufflenet", "16-bit float not supported type in C#." },
+                { "fp16_coreml_LinearRegression_NYCTaxi", "16-bit float not supported type in C#." },
+                { "test_bidaf", "16-bit float not supported type in C#." },
+                { "fp16_test_tiny_yolov2", "16-bit float not supported type in C#." },
                 { "BERT_Squad", "Could not find an implementation for the node bert / embeddings / one_hot:OneHot(9)" },
                 { "mlperf_ssd_mobilenet_300", "Could not find file output_0.pb" },
                 { "tf_resnet_v1_50", "result mismatch when Conv BN Fusion is applied" },
@@ -730,6 +736,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 skipModels["test_zfnet512"] = "System out of memory";
                 skipModels["test_bvlc_reference_caffenet"] = "System out of memory";
                 skipModels["coreml_VGG16_ImageNet"] = "System out of memory";
+                skipModels["test_ssd"] = "System out of memory";
             }
 
             return skipModels;
@@ -1764,7 +1771,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        // TestGpu() will test the CUDA EP on CUDA enabled builds and 
+        // TestGpu() will test the CUDA EP on CUDA enabled builds and
         // the DML EP on DML enabled builds
         [GpuFact]
         private void TestGpu()
@@ -1973,9 +1980,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var dims = new long[] { 3, 2 };
             var dataBuffer = new float[] { 1.0F, 2.0F, 3.0F, 4.0F, 5.0F, 6.0F };
             var dataHandle = GCHandle.Alloc(dataBuffer, GCHandleType.Pinned);
-            
+
             try
-            {            
+            {
                 unsafe
                 {
                     float* p = (float*)dataHandle.AddrOfPinnedObject();
@@ -2348,7 +2355,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
 #if USE_DML
-            // Explicitly set dll probe path so that the (potentially) stale system DirectML.dll 
+            // Explicitly set dll probe path so that the (potentially) stale system DirectML.dll
             // doesn't get loaded by the test process when it is eventually delay loaded by onnruntime.dll
             // The managed tests binary path already contains the right DirectML.dll, so use that
 

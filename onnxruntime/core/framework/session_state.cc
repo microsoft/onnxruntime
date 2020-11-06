@@ -149,15 +149,15 @@ const KernelCreateInfo& SessionState::GetNodeKernelCreateInfo(NodeIndex node_ind
 }
 
 Status SessionState::CreateKernels(const KernelRegistryManager& kernel_registry_manager) {
-  const GraphNodes& nodes = graph_viewer_->Nodes();
+  const auto& nodes = graph_viewer_->Nodes();
   if (!nodes.empty()) {
     size_t max_nodeid = 0;
-    for (auto& node : graph_viewer_->Nodes()) {
+    for (const auto& node : nodes) {
       max_nodeid = std::max(max_nodeid, node.Index());
     }
     session_kernels_.clear();
     session_kernels_.resize(max_nodeid + 1, nullptr);
-    for (auto& node : graph_viewer_->Nodes()) {
+    for (const auto& node : nodes) {
       // construct and save the kernels
       const KernelCreateInfo& kci = GetNodeKernelCreateInfo(node.Index());
 

@@ -70,6 +70,8 @@ There are several environment variables for TensorRT execution provider.
 
 * ORT_TENSORRT_ENGINE_CACHE_PATH: Specify path for TensorRT engine files if ORT_TENSORRT_ENGINE_CACHE_ENABLE is 1
 
+* ORT_TENSORRT_DUMP_SUBGRAPHS: Dumps the subgraphs that are transformed into TRT engines in onnx format to the filesystem. This can help debugging subgraphs, e.g. by using  `trtexec --onnx my_model.onnx` and check the outputs of the parser.
+
 By default TensorRT execution provider builds an ICudaEngine with max workspace size = 1 GB, max partition iterations = 1000, min subgraph size = 1, FP16 mode is disabled and TensorRT engine caching is disabled.
 
 One can override these defaults by setting environment variables ORT_TENSORRT_MAX_WORKSPACE_SIZE, ORT_TENSORRT_MAX_PARTITION_ITERATIONS, ORT_TENSORRT_MIN_SUBGRAPH_SIZE,  ORT_TENSORRT_FP16_ENABLE, ORT_TENSORRT_ENGINE_CACHE_ENABLE and ORT_TENSORRT_ENGINE_CACHE_PATH.

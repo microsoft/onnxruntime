@@ -699,6 +699,15 @@ class Graph {
   /** Get a GraphNodes instance that provides const access to all valid Nodes in the Graph. */
   const GraphNodes& Nodes() const noexcept { return iterable_nodes_; }
 
+  /** Get a ConstGraphNodes instance that provides access to a filtered set of valid Nodes in the Graph.
+  @remarks We can't use GraphNodes as that would provide mutable access to the nodes by default, and we can't prevent
+           that by returning a const instance of GraphNodes as we're creating a new instance here due to the filter
+           being something we don't control (i.e. we have to return a new instance so it can't be const).
+  */
+  ConstGraphNodes FilteredNodes(GraphNodes::NodeFilterFunc&& filter_func) const noexcept {
+    return ConstGraphNodes(nodes_, std::move(filter_func));
+  }
+
   /** Gets the maximum NodeIndex value used in the Graph. */
   int MaxNodeIndex() const noexcept { return static_cast<int>(nodes_.size()); }  //assume the casting won't overflow
 
@@ -897,7 +906,7 @@ class Graph {
   @param fused_node_name The name for the new Node.
   @returns Node with fused subgraph.
   */
-  Node& FuseSubGraph(std::unique_ptr<IndexedSubGraph> sub_graph, const std::string& fused_node_name);
+  Node& FuseSubGraph(const IndexedSubGraph& sub_graph, const std::string& fused_node_name);
 
   /**
   Directly insert the nodes in the function Node provided into this Graph.

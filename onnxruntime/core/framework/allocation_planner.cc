@@ -528,7 +528,7 @@ class PlannerImpl {
   Status GeneratePlanForWeights() {
     auto& weights = graph_viewer_.GetAllInitializedTensors();
     std::vector<std::vector<OrtMemoryInfo>> locations(plan_.allocation_plan.size());
-    for (auto& node : graph_viewer_.Nodes()) {
+    for (const auto& node : graph_viewer_.Nodes()) {
       auto status = onnxruntime::Node::ForEachWithIndex(
           node.InputDefs(), [this, &locations, &node, &weights](const onnxruntime::NodeArg& def, size_t index) {
             auto sub_status = Status::OK();
@@ -837,7 +837,7 @@ class PlannerImpl {
         for (size_t index = 0; index < current_plan.program_counter_start.size(); index += 1) {
           ORT_ENFORCE((current_plan.program_counter_start[index] > start) || (start == 0));
           ORT_ENFORCE(current_plan.program_counter_start[index] <= current_plan.program_counter_end[index]);
-          ORT_ENFORCE((current_plan.program_counter_start[index] < SIZE_MAX) || (index == 0));
+          ORT_ENFORCE(current_plan.program_counter_start[index] < SIZE_MAX);
           ORT_ENFORCE((current_plan.program_counter_end[index] > 0) || (index == 0));
 
           start = current_plan.program_counter_start[index];

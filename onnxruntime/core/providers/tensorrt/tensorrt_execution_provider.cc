@@ -872,7 +872,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
             &engines_[context->node_name], &contexts_[context->node_name], builders_[context->node_name].get(),
             networks_[context->node_name].get(), input_info_[context->node_name], output_info_[context->node_name],
             input_shape_ranges_[context->node_name], &tensorrt_mu_, &fp16_enable_,
-            &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, engine_cache_path_, runtime_};
+            &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, engine_cache_path_, runtime_, allocator_};
       *state = p.release();
       return 0;
     };
@@ -895,6 +895,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
       auto trt_builder = trt_state->builder;
       auto trt_engine = trt_state->engine->get();
       auto trt_context = trt_state->context->get();
+      auto alloc = trt_state->scratch_allocator;
       int num_inputs = input_indexes.size();
       int num_outputs = output_indexes.size();
       bool engine_update = false;
@@ -1107,7 +1108,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
       }
 
       // Set input shapes and assign input buffers
-      std::vector<int> binding_buffers_to_freeup;
+      std::vector<IAllocatorUniquePtr<void>> scratch_buffers;
       for (int i = 0, end = input_binding_names.size(); i < end; ++i) {
         const std::string& input_name = input_binding_names[i];
         int binding_index = trt_engine->getBindingIndex(input_name.c_str());
@@ -1143,8 +1144,8 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: {
             auto input_tensor_ptr = ort.GetTensorData<float>(input_tensor);
             if (input_tensor_ptr == nullptr) {
-              CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(float)));
-              binding_buffers_to_freeup.push_back(binding_index);
+              scratch_buffers.push_back(IAllocator::MakeUniquePtr<void>(alloc, sizeof(float)));
+              buffers[binding_index] = scratch_buffers.back().get();
             } else {
               buffers[binding_index] = const_cast<float*>(input_tensor_ptr);
             }
@@ -1153,8 +1154,8 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: {
             auto input_tensor_ptr = ort.GetTensorData<uint16_t>(input_tensor);
             if (input_tensor_ptr == nullptr) {
-              CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(uint16_t)));
-              binding_buffers_to_freeup.push_back(binding_index);
+              scratch_buffers.push_back(IAllocator::MakeUniquePtr<void>(alloc, sizeof(uint16_t)));
+              buffers[binding_index] = scratch_buffers.back().get();
             } else {
               buffers[binding_index] = const_cast<uint16_t*>(input_tensor_ptr);
             }
@@ -1163,8 +1164,8 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL: {
             auto input_tensor_ptr = ort.GetTensorData<bool>(input_tensor);
             if (input_tensor_ptr == nullptr) {
-              CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(bool)));
-              binding_buffers_to_freeup.push_back(binding_index);
+              scratch_buffers.push_back(IAllocator::MakeUniquePtr<void>(alloc, sizeof(bool)));
+              buffers[binding_index] = scratch_buffers.back().get();
             } else {
               buffers[binding_index] = const_cast<bool*>(input_tensor_ptr);
             }
@@ -1173,8 +1174,8 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8: {
             auto input_tensor_ptr = ort.GetTensorData<int8_t>(input_tensor);
             if (input_tensor_ptr == nullptr) {
-              CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(int8_t)));
-              binding_buffers_to_freeup.push_back(binding_index);
+              scratch_buffers.push_back(IAllocator::MakeUniquePtr<void>(alloc, sizeof(int8_t)));
+              buffers[binding_index] = scratch_buffers.back().get();
             } else {
               buffers[binding_index] = const_cast<int8_t*>(input_tensor_ptr);
             }
@@ -1183,8 +1184,8 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
             auto input_tensor_ptr = ort.GetTensorData<int32_t>(input_tensor);
             if (input_tensor_ptr == nullptr) {
-              CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(int32_t)));
-              binding_buffers_to_freeup.push_back(binding_index);
+              scratch_buffers.push_back(IAllocator::MakeUniquePtr<void>(alloc, sizeof(int32_t)));
+              buffers[binding_index] = scratch_buffers.back().get();
             } else {
               buffers[binding_index] = const_cast<int32_t*>(input_tensor_ptr);
             }
@@ -1194,7 +1195,8 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
             // Cast INT64 input to INT32 because TensorRT doesn't fully support INT64
             auto input_tensor_ptr = ort.GetTensorData<int64_t>(input_tensor);
             if (input_tensor_ptr == nullptr) {
-              CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(int32_t)));
+              scratch_buffers.push_back(IAllocator::MakeUniquePtr<void>(alloc, sizeof(int32_t)));
+              buffers[binding_index] = scratch_buffers.back().get();
             } else {
               SafeInt<int> input_dim_size = 1;
               for (int j = 0, end = nb_dims; j < end; ++j) {
@@ -1205,10 +1207,10 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
                   input_dim_size *= tensor_shapes[j];
                 }
               }
-              CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], input_dim_size * sizeof(int32_t)));
+              scratch_buffers.push_back(IAllocator::MakeUniquePtr<void>(alloc, input_dim_size * sizeof(int32_t)));
+              buffers[binding_index] = scratch_buffers.back().get();
               cuda::Impl_Cast<int64_t, int32_t>(input_tensor_ptr, reinterpret_cast<int32_t*>(buffers[binding_index]), input_dim_size);
             }
-            binding_buffers_to_freeup.push_back(binding_index);
             break;
           }
           default: {
@@ -1253,8 +1255,8 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: {
             auto output_tensor_ptr = ort.GetTensorMutableData<float>(output_tensor[i]);
             if (output_tensor_ptr == nullptr) {
-              CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(float)));
-              binding_buffers_to_freeup.push_back(binding_index);
+              scratch_buffers.push_back(IAllocator::MakeUniquePtr<void>(alloc, sizeof(float)));
+              buffers[binding_index] = scratch_buffers.back().get();
             } else {
               buffers[binding_index] = output_tensor_ptr;
             }
@@ -1263,8 +1265,8 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: {
             auto output_tensor_ptr = ort.GetTensorMutableData<uint16_t>(output_tensor[i]);
             if (output_tensor_ptr == nullptr) {
-              CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(uint16_t)));
-              binding_buffers_to_freeup.push_back(binding_index);
+              scratch_buffers.push_back(IAllocator::MakeUniquePtr<void>(alloc, sizeof(uint16_t)));
+              buffers[binding_index] = scratch_buffers.back().get();
             } else {
               buffers[binding_index] = output_tensor_ptr;
             }
@@ -1273,8 +1275,8 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL: {
             auto output_tensor_ptr = ort.GetTensorMutableData<bool>(output_tensor[i]);
             if (output_tensor_ptr == nullptr) {
-              CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(bool)));
-              binding_buffers_to_freeup.push_back(binding_index);
+              scratch_buffers.push_back(IAllocator::MakeUniquePtr<void>(alloc, sizeof(bool)));
+              buffers[binding_index] = scratch_buffers.back().get();
             } else {
               buffers[binding_index] = output_tensor_ptr;
             }
@@ -1283,8 +1285,8 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8: {
             auto output_tensor_ptr = ort.GetTensorMutableData<int8_t>(output_tensor[i]);
             if (output_tensor_ptr == nullptr) {
-              CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(int8_t)));
-              binding_buffers_to_freeup.push_back(binding_index);
+              scratch_buffers.push_back(IAllocator::MakeUniquePtr<void>(alloc, sizeof(int8_t)));
+              buffers[binding_index] = scratch_buffers.back().get();
             } else {
               buffers[binding_index] = output_tensor_ptr;
             }
@@ -1293,8 +1295,8 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
             auto output_tensor_ptr = ort.GetTensorMutableData<int32_t>(output_tensor[i]);
             if (output_tensor_ptr == nullptr) {
-              CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(int32_t)));
-              binding_buffers_to_freeup.push_back(binding_index);
+              scratch_buffers.push_back(IAllocator::MakeUniquePtr<void>(alloc, sizeof(int32_t)));
+              buffers[binding_index] = scratch_buffers.back().get();
             } else {
               buffers[binding_index] = output_tensor_ptr;
             }
@@ -1304,7 +1306,8 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
             // Allocate INT32 CUDA memory for INT64 output type because TensorRT doesn't fully support INT64
             auto output_tensor_ptr = ort.GetTensorMutableData<int64_t>(output_tensor[i]);
             if (output_tensor_ptr == nullptr) {
-              CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(int32_t)));
+              scratch_buffers.push_back(IAllocator::MakeUniquePtr<void>(alloc, sizeof(int32_t)));
+              buffers[binding_index] = scratch_buffers.back().get();
               output_dim_sizes[i] = 1;
             } else {
               SafeInt<int> output_dim_size(output_dim_sizes[i]);
@@ -1316,10 +1319,10 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
                   output_dim_size *= dimensions.d[j];
                 }
               }
-              CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], output_dim_size * sizeof(int32_t)));
+              scratch_buffers.push_back(IAllocator::MakeUniquePtr<void>(alloc, output_dim_size * sizeof(int32_t)));
+              buffers[binding_index] = scratch_buffers.back().get();
               output_dim_sizes[i] = output_dim_size;
             }
-            binding_buffers_to_freeup.push_back(binding_index);
             break;
           }
           default: {
@@ -1331,12 +1334,8 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
 
       // Run TRT inference
       if (!trt_context->enqueueV2(&buffers[0], nullptr, nullptr)) {
-        for (const auto& binding_index : binding_buffers_to_freeup) {
-          cudaFree(buffers[binding_index]);
-        }
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "TensorRT EP execution context enqueue failed.");
       }
-      cudaDeviceSynchronize();
 
       // Cast INT64 input to INT32 because TensorRT doesn't fully support INT64
       for (int i = 0, end = output_binding_names.size(); i < end; ++i) {
@@ -1353,10 +1352,6 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
             cuda::Impl_Cast<int32_t, int64_t>(reinterpret_cast<int32_t*>(buffers[binding_index]), output_tensor_ptr, output_dim_sizes[i]);
           }
         }
-      }
-
-      for (const auto& binding_index : binding_buffers_to_freeup) {
-        cudaFree(buffers[binding_index]);
       }
 
       return Status::OK();

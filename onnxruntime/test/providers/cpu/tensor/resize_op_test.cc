@@ -393,6 +393,28 @@ TEST(ResizeOpTest, ResizeOpNearestDownSampleTest) {
   test.Run();
 }
 
+TEST(ResizeOpTest, ResizeOpNearestDownSampleTest_Opset12) {
+  OpTester test("Resize", 12);
+  std::vector<float> scales{1.0f, 1.0f, 0.6f, 0.6f};
+  std::vector<float> roi{};
+
+  test.AddAttribute("mode", "nearest");
+
+  const int64_t N = 1, C = 1, H = 2, W = 4;
+  std::vector<float> X = {
+      1.0f, 2.0f, 3.0f, 4.0f,
+      5.0f, 6.0f, 7.0f, 8.0f};
+
+  test.AddInput<float>("X", {N, C, H, W}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("scales", {4}, scales);
+
+  std::vector<float> Y = {1.0f, 3.0f};
+
+  test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
+  test.Run();
+}
+
 TEST(ResizeOpTest, ResizeOpNearestDownSampleTest_WithSizes) {
   OpTester test("Resize", 13);
   std::vector<float> scales{};

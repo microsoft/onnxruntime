@@ -848,21 +848,15 @@ THE POSSIBILITY OF SUCH DAMAGE.
 
 _____
 
-Microsoft/GSL
+gsl-lite
 
+gsl-lite is based on GSL: Guidelines Support Library.
+For more information see https://github.com/martinmoene/gsl-lite
+
+Copyright (c) 2015 Martin Moene
 Copyright (c) 2015 Microsoft Corporation. All rights reserved.
 
 This code is licensed under the MIT License (MIT).
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
-of the Software, and to permit persons to whom the Software is furnished to do
-so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -1657,7 +1651,7 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-____
+_____
 
 Distributed Machine Learning Common Codebase
 
@@ -1881,7 +1875,7 @@ DLPack: Open In Memory Tensor Structure
    See the License for the specific language governing permissions and
    limitations under the License.
 
-____
+_____
 
 HowardHinnant/date
 
@@ -1917,7 +1911,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-____
+_____
 
 TVM Open Deep Learning Compiler Stack
 
@@ -2204,7 +2198,7 @@ OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 --------------------------------------------------------------------------------
 
-____
+_____
 
 FreeBSD: getopt.c file
 
@@ -3048,7 +3042,7 @@ ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
------
+_____
 
 JDAI-CV/DNNLibrary
 
@@ -3255,7 +3249,7 @@ JDAI-CV/DNNLibrary
    limitations under the License.
 
 
------
+_____
 
 google/flatbuffers
 
@@ -3463,7 +3457,7 @@ google/flatbuffers
    limitations under the License.
 
 
------
+_____
 
 google/glog
 
@@ -3533,7 +3527,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-----
+_____
 
 abseil-cpp
 https://github.com/abseil/abseil-cpp
@@ -3741,7 +3735,7 @@ https://github.com/abseil/abseil-cpp
    limitations under the License.
 
 
------
+_____
 
 NVlabs/cub
 
@@ -3770,7 +3764,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
------
+_____
 
 microsoft/wil
 
@@ -3796,7 +3790,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE
 
------
+_____
 
 nlohmann/json
 
@@ -3822,7 +3816,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
------
+_____
 
 dcleblanc/SafeInt
 
@@ -3848,7 +3842,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
------
+_____
 Open MPI
 
 3-Clause BSD License
@@ -3954,7 +3948,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
------
+_____
 
 The Android Open Source Project
 
@@ -4293,7 +4287,7 @@ libprotobuf-mutator
    ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
    POSSIBILITY OF SUCH DAMAGE.
 
---
+_____
 
    mpi4py
    https://github.com/mpi4py/mpi4py/
@@ -4805,7 +4799,7 @@ LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
 OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 
------
+_____
 
 MurmurHash3
 
@@ -4820,7 +4814,7 @@ SMHasher test suite used to verify them.
 SMHasher is released under the MIT license. 
 All MurmurHash versions are public domain software, and the author disclaims all copyright to their code.
 
------
+_____
 
 gtest-ios-framework
 
@@ -4847,4 +4841,38 @@ LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
------
+_____
+
+optional-lite
+
+Copyright (c) 2014-2018 Martin Moene
+
+https://github.com/martinmoene/optional-lite
+
+Distributed under the Boost Software License, Version 1.0.
+
+Boost Software License - Version 1.0 - August 17th, 2003
+
+Permission is hereby granted, free of charge, to any person or organization
+obtaining a copy of the software and accompanying documentation covered by
+this license (the "Software") to use, reproduce, display, distribute,
+execute, and transmit the Software, and to prepare derivative works of the
+Software, and to permit third-parties to whom the Software is furnished to
+do so, all subject to the following:
+
+The copyright notices in the Software and this entire statement, including
+the above license grant, this restriction and the following disclaimer,
+must be included in all copies of the Software, in whole or in part, and
+all derivative works of the Software, unless such copies or derivative
+works are solely in the form of machine-executable object code generated by
+a source language processor.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, TITLE AND NON-INFRINGEMENT. IN NO EVENT
+SHALL THE COPYRIGHT HOLDERS OR ANYONE DISTRIBUTING THE SOFTWARE BE LIABLE
+FOR ANY DAMAGES OR OTHER LIABILITY, WHETHER IN CONTRACT, TORT OR OTHERWISE,
+ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+_____

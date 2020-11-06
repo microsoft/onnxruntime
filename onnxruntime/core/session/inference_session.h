@@ -39,7 +39,7 @@ class ModelProto;
 
 struct OrtCustomOpDomain {
   std::string domain_;
-  std::vector<OrtCustomOp*> custom_ops_;
+  std::vector<const OrtCustomOp*> custom_ops_;
 };
 
 namespace onnxruntime {
