@@ -190,22 +190,22 @@ bool IsOpSupported(std::string name, std::string device) {
   } else if (device.find("HETERO") == 0) {
     std::vector<std::string> devices;
     std::stringstream s_stream(device);
-    while(s_stream.good()) {
+    while (s_stream.good()) {
       std::string substr;
       getline(s_stream, substr, ',');
       devices.push_back(substr);
     }
     supported_ops.insert(common_supported_ops.begin(), common_supported_ops.end());
     for (auto& it : devices) {
-      if(it == "MYRIAD" || "HDDL") {
+      if (it == "MYRIAD" || "HDDL") {
         supported_ops.insert(supported_ops_vpu.begin(), supported_ops_vpu.end());
       }
-      if(it == "GPU") {
+      if (it == "GPU") {
         supported_ops.insert(supported_ops_gpu.begin(), supported_ops_gpu.end());
       }
-      if(it == "CPU") {
+      if (it == "CPU") {
         supported_ops.insert(supported_ops_cpu.begin(), supported_ops_cpu.end());
-     }
+      }
     }
   }
   return supported_ops.find(name) != supported_ops.end();
@@ -859,16 +859,16 @@ GetCapability_2021_1(const Provider_GraphViewer& graph_viewer, std::string devic
           if (optype == "Identity" && device_id != "CPU")
             continue;
 
-            if((optype == "Div" || optype == "Sub") && (device_id.find("MYRIAD") == std::string::npos &&  device_id.find("GPU") == std::string::npos))
-              continue;
-            for (const auto& input : node->InputDefs()) {
-              auto input_name = input->Name();
-              auto it = find(cluster_graph_inputs.begin(), cluster_graph_inputs.end(), input_name);
-              if (it != cluster_graph_inputs.end()) {
-                  omit_subgraph = true;
-                  break;
-              }
+          if ((optype == "Div" || optype == "Sub") && (device_id.find("MYRIAD") == std::string::npos && device_id.find("GPU") == std::string::npos))
+            continue;
+          for (const auto& input : node->InputDefs()) {
+            auto input_name = input->Name();
+            auto it = find(cluster_graph_inputs.begin(), cluster_graph_inputs.end(), input_name);
+            if (it != cluster_graph_inputs.end()) {
+              omit_subgraph = true;
+              break;
             }
+          }
         }
 
         if (optype == "Conv" || optype == "Identity") {
@@ -885,8 +885,8 @@ GetCapability_2021_1(const Provider_GraphViewer& graph_viewer, std::string devic
           auto input_name = input->Name();
           const bool is_data_int32 = input->Type()->find("int32") != std::string::npos;
           auto it = find(cluster_graph_inputs.begin(), cluster_graph_inputs.end(), input_name);
-          if(it != cluster_graph_inputs.end()){
-            if(device_id.find("MYRIAD") != std::string::npos && is_data_int32){
+          if (it != cluster_graph_inputs.end()) {
+            if (device_id.find("MYRIAD") != std::string::npos && is_data_int32) {
               omit_subgraph = true;
               break;
             }
