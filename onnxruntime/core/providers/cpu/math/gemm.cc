@@ -123,8 +123,17 @@ void Gemm<T>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
                 thread_pool);
 }
 
+template void Gemm<float>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
+                                       int64_t M, int64_t N, int64_t K,
+                                       float alpha,
+                                       const float* a_data, const float* b_data,
+                                       float beta,
+                                       const float* c_data, const TensorShape* c_shape,
+                                       float* y_data,
+                                       concurrency::ThreadPool* thread_pool);
+
 template <typename T>
-Status Gemm<T>::PrePack(const Tensor& tensor, int input_idx, bool& is_packed) {
+Status Gemm<T>::PrePack(const Tensor& /* tensor */, int /* input_idx */, bool& is_packed) {
   is_packed = false;
   return Status::OK();
 }
