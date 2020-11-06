@@ -13,7 +13,7 @@ from transformers import AutoConfig, AutoTokenizer, AutoModel
 from benchmark_helper import create_onnxruntime_session, Precision
 from gpt2_helper import GPT2ModelNoPastState, PRETRAINED_GPT2_MODELS
 from quantize_helper import QuantizeHelper
-from huggingface_models import MODEL_CLASSES
+from huggingface_models import MODEL_CLASSES, EXEMPT_MODELS
 
 logger = logging.getLogger(__name__)
 
@@ -169,8 +169,8 @@ def optimize_onnx_model_by_ort(onnx_model_path, ort_model_path, use_gpu, overwri
         logger.info(f"Skip optimization since model existed: {ort_model_path}")
 
 
-def optimize_onnx_model(onnx_model_path, optimized_model_path, model_type, num_attention_heads, hidden_size, use_gpu,
-                        precision, use_raw_attention_mask, overwrite, model_fusion_statistics,
+def optimize_onnx_model(model_name, onnx_model_path, optimized_model_path, model_type, num_attention_heads, hidden_size,
+                        use_gpu, precision, use_raw_attention_mask, overwrite, model_fusion_statistics,
                         use_external_data_format):
     if overwrite or not os.path.exists(optimized_model_path):
         Path(optimized_model_path).parent.mkdir(parents=True, exist_ok=True)
@@ -202,6 +202,10 @@ def optimize_onnx_model(onnx_model_path, optimized_model_path, model_type, num_a
 
         if Precision.FLOAT16 == precision:
             opt_model.convert_model_float32_to_float16()
+
+        if model_name in EXEMPT_MODELS:
+            use_external_data_format = False
+
         opt_model.save_model_to_file(optimized_model_path, use_external_data_format)
     else:
         logger.info(f"Skip optimization since model existed: {optimized_model_path}")
@@ -291,7 +295,7 @@ def validate_and_optimize_onnx(model_name, use_external_data_format, model_type,
     if optimize_onnx or precision == Precision.FLOAT16 or precision == Precision.INT8:  # Use script (optimizer.py) to optimize
         optimized_model_path = get_onnx_file_path(onnx_dir, model_name, len(input_names), True, use_gpu, precision,
                                                   False, use_external_data_format)
-        optimize_onnx_model(onnx_model_path, optimized_model_path, model_type, config.num_attention_heads,
+        optimize_onnx_model(model_name, onnx_model_path, optimized_model_path, model_type, config.num_attention_heads,
                             config.hidden_size, use_gpu, precision, use_raw_attention_mask, overwrite,
                             model_fusion_statistics, use_external_data_format)
 
@@ -419,4 +423,3 @@ def export_onnx_model_from_tf(model_name, opset_version, use_external_data_forma
         example_inputs, example_outputs_flatten)
 
     return onnx_model_file, is_valid_onnx_model, vocab_size, max_input_size
-

@@ -83,7 +83,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   //The infer_requests_ pool will be intialized with a default value of 8 infer_request's
   //The nireq value can also be configured to any num_of_threads during runtime
   size_t nireq = global_context_.num_of_threads;
-  LOGS_DEFAULT(INFO) << "The value of nireq being used is: " << nireq;
+  LOGS_DEFAULT(INFO) << log_tag << "The value of nireq being used is: " << nireq;
 #ifndef NDEBUG
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
       std::cout << "The value of nireq being used is: " << nireq << std::endl;
