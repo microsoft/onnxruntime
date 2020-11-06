@@ -2465,6 +2465,9 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 #pragma region op_squeeze
 
 class SqueezeOpBuilder : public BaseOpBuilder {
+ public:
+  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) override;
+
  private:
   bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
 
@@ -2501,6 +2504,12 @@ class SqueezeOpBuilder : public BaseOpBuilder {
   return axes;
 }
 
+void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) {
+  if (node.SinceVersion() > 12 && node.InputDefs().size() > 1) {
+    model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());
+  }
+}
+
 bool SqueezeOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) {
   Shape input_shape;
   if (!GetShape(*node.InputDefs()[0], input_shape))
@@ -2513,15 +2522,13 @@ bool SqueezeOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node
     return false;
   }
 
-  // Squeeze opset 13 use input 1 as axes, it need to be an initializer
-  if (node.SinceVersion() > 12) {
-    if (node.InputDefs().size() > 1) {
-      const auto& initializers(model_builder.GetInitializerTensors());
-      const auto& axes_name = node.InputDefs()[1]->Name();
-      if (!Contains(initializers, axes_name)) {
-        LOGS_DEFAULT(VERBOSE) << "Input axes of Squeeze must be known";
-        return false;
-      }
+  // Squeeze opset 13 use input 1 as axes, if we have input 1 then it need to be an initializer
+  if (node.SinceVersion() > 12 && node.InputDefs().size() > 1) {
+    const auto& initializers(model_builder.GetInitializerTensors());
+    const auto& axes_name = node.InputDefs()[1]->Name();
+    if (!Contains(initializers, axes_name)) {
+      LOGS_DEFAULT(VERBOSE) << "Input axes of Squeeze must be known";
+      return false;
     }
   }
 
