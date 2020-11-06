@@ -302,10 +302,10 @@ Return Value:
                 }
             }
             else if (Mode == MLAS_QGEMM_OUTPUT_MODE::AccumulateMode) {
-                c_out[offset] += float(c[offset]) * (*Scale_);
+                c_out[offset] += float(c[offset]) * ScaleValue;
             }
             else{
-                c_out[offset] = float(c[offset]) * (*Scale_);
+                c_out[offset] = float(c[offset]) * ScaleValue;
             }
 
             if (HasBias) {
