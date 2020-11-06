@@ -460,9 +460,10 @@ def get_linux_distro():
         return '', ''
 
 
-def is_ubuntu_1604():
+def is_ubuntu():
+    # check if we're one of supported Ubuntu versions.
     dist, ver = get_linux_distro()
-    return dist == 'Ubuntu' and ver.startswith('16.04')
+    return dist == 'Ubuntu' and ver.startswith(('16.04', '18.04'))
 
 
 def get_config_build_dir(build_dir, config):
@@ -1931,7 +1932,7 @@ def main():
             path_to_protoc_exe = build_protoc_for_host(
                 cmake_path, source_dir, build_dir, args)
 
-        if is_ubuntu_1604():
+        if is_ubuntu():
             if (args.arm or args.arm64):
                 raise BuildError(
                     "Only Windows ARM(64) cross-compiled builds supported "
