@@ -284,10 +284,9 @@ These instructions are for JetPack SDK 4.4.
       libpython3.6-dev python3-pip python3-dev python3-setuptools python3-wheel
     ```
 
-4. Cmake is needed by ONNX Runtime build. The version available with Ubuntu 18.04 is 3.10
-   but the minimum version required is 3.13 it is necessary to build from source. Download 
-   Unix/Linux sources from https://cmake.org/download/
-   3.17.5 and 3.18.4 have been tested on Jetson. 
+4. Cmake is needed to build ONNX Runtime. Because the minimum required version is 3.13,
+   it is necessary to build CMake from source. Download Unix/Linux sources from https://cmake.org/download/
+   and follow https://cmake.org/install/ to build from source. Version 3.17.5 and 3.18.4 have been tested on Jetson.
 
 5. Build the ONNX Runtime Python wheel:
 
