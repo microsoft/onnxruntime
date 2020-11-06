@@ -180,7 +180,35 @@
         "^test_gather_negative_indices.*",
         "^test_sce.*",
         "^test_nllloss.*",
-        "^test_upsample_nearest.*"
+        "^test_upsample_nearest.*",
+        "^test_logsoftmax_axis_0_cpu", // LogSoftmax: Does not support opset-13 spec yet
+        "^test_logsoftmax_axis_0_expanded_cpu", 
+        "^test_logsoftmax_axis_1_cpu",
+        "^test_logsoftmax_axis_1_expanded_cpu",
+        "^test_logsoftmax_axis_2_cpu",
+        "^test_logsoftmax_axis_2_expanded_cpu",
+        "^test_logsoftmax_default_axis_cpu",
+        "^test_logsoftmax_default_axis_expanded_cpu",
+        "^test_logsoftmax_example_1_cpu",
+        "^test_logsoftmax_example_1_expanded_cpu",
+        "^test_logsoftmax_large_number_cpu",
+        "^test_logsoftmax_large_number_expanded_cpu",
+        "^test_logsoftmax_negative_axis_cpu",
+        "^test_logsoftmax_negative_axis_expanded_cpu",
+        "^test_softmax_axis_0_cpu",  // Softmax: Does not support opset-13 spec yet
+        "^test_softmax_axis_0_expanded_cpu",
+        "^test_softmax_axis_1_cpu",
+        "^test_softmax_axis_1_expanded_cpu",
+        "^test_softmax_axis_2_cpu",
+        "^test_softmax_axis_2_expanded_cpu",
+        "^test_softmax_default_axis_cpu",
+        "^test_softmax_default_axis_expanded_cpu",
+        "^test_softmax_example_cpu",
+        "^test_softmax_example_expanded_cpu",
+        "^test_softmax_large_number_cpu", 
+        "^test_softmax_large_number_expanded_cpu", 
+        "^test_softmax_negative_axis_cpu", 
+        "^test_softmax_negative_axis_expanded_cpu"
     ],
     // ORT first supported opset 7, so models with nodes that require versions prior to opset 7 are not supported
     "tests_with_pre_opset7_dependencies": [
