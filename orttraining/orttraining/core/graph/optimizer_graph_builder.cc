@@ -445,7 +445,7 @@ Status OptimizerGraphBuilder::BuildInternal(
   ArgDef global_grad_norm_finite_argdef;
 
   if (opt_graph_config_.use_mixed_precision &&
-      opt_graph_config_.mixed_precision_type == MixedPrecisionDataType::BP16) {
+      opt_graph_config_.mixed_precision_type == MixedPrecisionDataType::BF16) {
     //gradient norm for bfloat16 is not ready yet. skip it to unblock the testing
     //will add it back when it is ready
     ;
@@ -455,12 +455,11 @@ Status OptimizerGraphBuilder::BuildInternal(
     optimizer_graph_outputs[OptimizerOutputKey::GlobalGradientNorm] = global_grad_norm_argdef.name;
   }
 
-  if (opt_graph_config_.use_mixed_precision) {
-    if (opt_graph_config_.mixed_precision_type == MixedPrecisionDataType::FP16) {
-      ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
-          nodearg_name_generator, {global_grad_norm_argdef}, graph_defs, global_grad_norm_finite_argdef));
-      optimizer_graph_outputs[OptimizerOutputKey::GradientAllIsFinite] = global_grad_norm_finite_argdef.name;
-    }
+  if (opt_graph_config_.use_mixed_precision &&
+      opt_graph_config_.mixed_precision_type == MixedPrecisionDataType::FP16) {
+    ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
+        nodearg_name_generator, {global_grad_norm_argdef}, graph_defs, global_grad_norm_finite_argdef));
+    optimizer_graph_outputs[OptimizerOutputKey::GradientAllIsFinite] = global_grad_norm_finite_argdef.name;
   }
 
   // add weight update
