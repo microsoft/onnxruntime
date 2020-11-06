@@ -84,6 +84,7 @@ struct TensorrtFuncState {
   bool engine_cache_enable;
   std::string engine_cache_path;
   nvinfer1::IRuntime* runtime = nullptr;
+  AllocatorPtr scratch_allocator;
 };
 
 // Logical device representation.
