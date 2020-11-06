@@ -412,6 +412,13 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     int8_enable_ = (std::stoi(int8_enable_env) == 0 ? false : true);
   }
 
+  if (int8_enable_) {
+    const std::string int8_calibration_file_name_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kINT8CalibrationFileName);
+    if (!int8_calibration_file_name_env.empty()) {
+      int8_calibration_file_name_ = int8_calibration_file_name_env;
+    }
+  }
+
   metadata_map_["onnxruntime"] = ORT_VERSION;
   metadata_map_["tensorrt"] = std::to_string(NV_TENSORRT_VERSION);
   metadata_map_["cuda"] = std::to_string(CUDA_VERSION);
@@ -478,16 +485,13 @@ bool FindCycleHelper(int i, const std::list<int>* adjacency_map, bool visited[],
   return false;
 }
 
-bool ReadPerTensorDynamicRangeValues(std::unordered_map<std::string, float>& per_tensor_dynamic_range_map) {
-  //std::cout << "readPerTensorDynamicRangeValues from file" << std::endl;
-  std::string dynamic_range_file = "INT8_calibration_table";
-  std::ifstream dynamic_range_stream(dynamic_range_file);
+bool ReadPerTensorDynamicRangeValues(std::unordered_map<std::string, float>& per_tensor_dynamic_range_map, const std::string file_name) {
+  std::ifstream dynamic_range_stream(file_name);
   if (!dynamic_range_stream) {
-    //std::cout << "Could not find per tensor scales file: " << dynamic_range_file << std::endl;
     return false;
   }
   std::string line;
-  char delim = ' ';  ///':';
+  char delim = ' ';
   while (std::getline(dynamic_range_stream, line)) {
     std::istringstream iline(line);
     std::string token;
@@ -496,7 +500,6 @@ bool ReadPerTensorDynamicRangeValues(std::unordered_map<std::string, float>& per
     std::getline(iline, token, delim);
     float dynamic_range = std::stof(token);
     per_tensor_dynamic_range_map[tensor_name] = dynamic_range;
-    //std::cout << "tensor_name: " << tensor_name << ", dynamic_range: " << dynamic_range << std::endl;
   }
   return true;
 }
@@ -505,11 +508,8 @@ bool SetDynamicRange(nvinfer1::INetworkDefinition* network, std::unordered_map<s
   // set dynamic range for network input tensors
   for (int i = 0; i < network->getNbInputs(); ++i) {
     std::string tensor_name = network->getInput(i)->getName();
-    //std::cout << "network input: " << tensor_name << std::endl;
     if (dynamic_range_map.find(tensor_name) != dynamic_range_map.end()) {
-      //std::cout << "network input: " << tensor_name << std::endl;
       if (!network->getInput(i)->setDynamicRange(-dynamic_range_map.at(tensor_name), dynamic_range_map.at(tensor_name))) {
-        //std::cout << "network->getInput(i)->setDynamicRange returns false" << std::endl;
         return false;
       }
     }
@@ -521,7 +521,6 @@ bool SetDynamicRange(nvinfer1::INetworkDefinition* network, std::unordered_map<s
     for (int j = 0, e = lyr->getNbOutputs(); j < e; ++j) {
       std::string tensor_name = lyr->getOutput(j)->getName();
       if (dynamic_range_map.find(tensor_name) != dynamic_range_map.end()) {
-        //std::cout << "layer output: " << tensor_name << std::endl;
         // Calibrator generated dynamic range for network tensor can be overriden or set using below API
         if (!lyr->getOutput(j)->setDynamicRange(-dynamic_range_map.at(tensor_name), dynamic_range_map.at(tensor_name))) {
           std::cout << "lyr->getOutput(j)->setDynamicRange returns false" << std::endl;
@@ -529,7 +528,6 @@ bool SetDynamicRange(nvinfer1::INetworkDefinition* network, std::unordered_map<s
         }
       } else if (lyr->getType() == nvinfer1::LayerType::kCONSTANT) {
         nvinfer1::IConstantLayer* const_layer = static_cast<nvinfer1::IConstantLayer*>(lyr);
-        //std::cout << "Computing missing dynamic range for tensor, " << tensor_name << ", from weights." << std::endl;
         auto wts = const_layer->getWeights();
         double max = std::numeric_limits<double>::min();
         for (int64_t wb = 0, we = wts.count; wb < we; ++wb) {
@@ -557,9 +555,9 @@ bool SetDynamicRange(nvinfer1::INetworkDefinition* network, std::unordered_map<s
           std::cout << "lyr->getOutput(j)->setDynamicRange returns false" << std::endl;
           return false;
         }
-      } else {
-        //std::cout << "Missing dynamic range for tensor: " << tensor_name << std::endl;
-      }
+      }// else {
+      //  std::cout << "Missing dynamic range for tensor: " << tensor_name << std::endl;
+      //}
     }
   }
 
@@ -568,7 +566,6 @@ bool SetDynamicRange(nvinfer1::INetworkDefinition* network, std::unordered_map<s
     for (int j = 0; j < network->getLayer(i)->getNbOutputs(); ++j) {
       std::string tensor_name = network->getLayer(i)->getOutput(j)->getName();
       if (dynamic_range_map.find(tensor_name) != dynamic_range_map.end()) {
-        //std::cout << "?layer output: " << tensor_name << std::endl;
         // Calibrator generated dynamic range for network tensor can be overriden or set using below API
         if (!network->getLayer(i)->getOutput(j)->setDynamicRange(-dynamic_range_map.at(tensor_name), dynamic_range_map.at(tensor_name))) {
           std::cout << "network->getLayer(i)->getOutput(j)->setDynamicRange returns false" << std::endl;
@@ -1084,7 +1081,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
       trt_node_name_with_precision += "_fp16_int8";
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] FP16 and INT8 mode is enabled.";
       // Read per tensor dynamic range from file
-      if (!ReadPerTensorDynamicRangeValues(dynamic_range_map)) {
+      if (!ReadPerTensorDynamicRangeValues(dynamic_range_map, int8_calibration_file_name_)) {
         throw std::runtime_error("Failed to read INT8 calibration table file.");
       }
     } else if (int8_enable_ && trt_builder->platformHasFastInt8()) {
@@ -1092,7 +1089,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
       trt_node_name_with_precision += "_int8";
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] INT8 mode is enabled.";
       // Read per tensor dynamic range from file
-      if (!ReadPerTensorDynamicRangeValues(dynamic_range_map)) {
+      if (!ReadPerTensorDynamicRangeValues(dynamic_range_map, int8_calibration_file_name_)) {
         throw std::runtime_error("Failed to read INT8 calibration table file.");
       }
     } else if (fp16_enable_ && trt_builder->platformHasFastFp16()) {
@@ -1153,12 +1150,12 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
         }
       } else {
         if (int8_enable_ && trt_builder->platformHasFastInt8()) {
-          //std::cout << "Compile: Generate INT8 engine based on ORT calibration table" << std::endl;
           ///trt_config->setFlag(nvinfer1::BuilderFlag::kINT8);
           trt_config->setInt8Calibrator(nullptr);
           // set INT8 Per Tensor Dynamic range
-          if (!SetDynamicRange(&*trt_network, dynamic_range_map)) {  //TODO!!!!!
-            //std::cout << "Compile: Unable to set per tensor dynamic range." << std::endl;
+          if (!SetDynamicRange(&*trt_network, dynamic_range_map)) {  //TODO!!
+            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                   "TensorRT EP could not set INT8 dynamic range for fused node: " + fused_node->Name());
           }
         }
         trt_engine = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildEngineWithConfig(*trt_network, *trt_config));
@@ -1264,7 +1261,6 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
       std::string cached_path = GetEnginePath(trt_state->engine_cache_path, trt_state->unique_prefix_hashed_filename);
       std::ifstream plan_file(cached_path, std::ios::binary | std::ios::in);
       if (profile_file && plan_file && (trt_state->engine_cache_always_load_enable || (trt_state->engine_cache_enable && trt_engine == nullptr))) {
-        //std::cout << "Compute: load engine and profile: " << cached_path << std::endl;
         // Load engine profile from file
         shape_ranges = ReadProfile(profile_path);
         // Load engine from file
@@ -1290,7 +1286,6 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
         }
         trt_context = trt_state->context->get();
       } else if (trt_state->engine_decryption_enable && trt_state->engine_cache_enable && trt_engine == nullptr && profile_file && !plan_file) {
-        //std::cout << "Compute: decrypt/load engine and profile: " << cached_path << std::endl;
         // Load engine profile from file
         shape_ranges = ReadProfile(profile_path);
         // Decrypt engine file
@@ -1474,20 +1469,18 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
         trt_config->setMaxWorkspaceSize(*(trt_state->max_workspace_size_ptr));
         trt_config->addOptimizationProfile(trt_profile);
         if (*(trt_state->fp16_enable_ptr) && *(trt_state->int8_enable_ptr) && trt_builder->platformHasFastFp16() && trt_builder->platformHasFastInt8()) {
-          //std::cout << "Compute: Generate INT8 engine based on ORT calibration table" << std::endl;
           trt_config->setFlags(1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kFP16) | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kINT8));
           trt_config->setInt8Calibrator(nullptr);
           // set INT8 Per Tensor Dynamic range
           if (!SetDynamicRange(trt_state->network->get(), trt_state->dynamic_range_map)) {
-            std::cout << "TRT Compute: Unable to set per tensor dynamic range." << std::endl;
+            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to set INT8 dynamic range.");
           }
         } else if (*(trt_state->int8_enable_ptr) && trt_builder->platformHasFastInt8()) {
-          //std::cout << "Compute: Generate INT8 engine based on ORT calibration table" << std::endl;
           trt_config->setFlag(nvinfer1::BuilderFlag::kINT8);
           trt_config->setInt8Calibrator(nullptr);
           // set INT8 Per Tensor Dynamic range
           if (!SetDynamicRange(trt_state->network->get(), trt_state->dynamic_range_map)) {
-            std::cout << "TRT Compute: Unable to set per tensor dynamic range." << std::endl;
+            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to set INT8 dynamic range.");
           }
         } else if (*(trt_state->fp16_enable_ptr) && trt_builder->platformHasFastFp16()) {
           trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
@@ -1500,7 +1493,6 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
         }
         trt_engine = trt_state->engine->get();
         if (trt_state->engine_cache_enable) {
-          //std::cout << "Compute: write engine and profile: " << cached_path << std::endl;
           // Save engine profile to file
           WriteProfile(profile_path, shape_ranges);
           // Save engine to file
@@ -1568,7 +1560,6 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: {
             auto input_tensor_ptr = ort.GetTensorData<float>(input_tensor);
             if (input_tensor_ptr == nullptr) {
-              //CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(float)));
               buffers[binding_index] = scratch_allocator->Alloc(sizeof(float));
               binding_buffers_to_freeup.push_back(binding_index);
             } else {
@@ -1579,7 +1570,6 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: {
             auto input_tensor_ptr = ort.GetTensorData<uint16_t>(input_tensor);
             if (input_tensor_ptr == nullptr) {
-              //CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(uint16_t)));
               buffers[binding_index] = scratch_allocator->Alloc(sizeof(uint16_t));
               binding_buffers_to_freeup.push_back(binding_index);
             } else {
@@ -1590,7 +1580,6 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL: {
             auto input_tensor_ptr = ort.GetTensorData<bool>(input_tensor);
             if (input_tensor_ptr == nullptr) {
-              //CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(bool)));
               buffers[binding_index] = scratch_allocator->Alloc(sizeof(bool));
               binding_buffers_to_freeup.push_back(binding_index);
             } else {
@@ -1601,7 +1590,6 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8: {
             auto input_tensor_ptr = ort.GetTensorData<int8_t>(input_tensor);
             if (input_tensor_ptr == nullptr) {
-              //CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(int8_t)));
               buffers[binding_index] = scratch_allocator->Alloc(sizeof(int8_t));
               binding_buffers_to_freeup.push_back(binding_index);
             } else {
@@ -1612,7 +1600,6 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
             auto input_tensor_ptr = ort.GetTensorData<int32_t>(input_tensor);
             if (input_tensor_ptr == nullptr) {
-              //CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(int32_t)));
               buffers[binding_index] = scratch_allocator->Alloc(sizeof(int32_t));
               binding_buffers_to_freeup.push_back(binding_index);
             } else {
@@ -1624,7 +1611,6 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
             // Cast INT64 input to INT32 because TensorRT doesn't fully support INT64
             auto input_tensor_ptr = ort.GetTensorData<int64_t>(input_tensor);
             if (input_tensor_ptr == nullptr) {
-              //CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(int32_t)));
               buffers[binding_index] = scratch_allocator->Alloc(sizeof(int32_t));
             } else {
               SafeInt<int> input_dim_size = 1;
@@ -1636,7 +1622,6 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
                   input_dim_size *= tensor_shapes[j];
                 }
               }
-              //CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], input_dim_size * sizeof(int32_t)));
               buffers[binding_index] = scratch_allocator->Alloc(input_dim_size * sizeof(int32_t));
               cuda::Impl_Cast<int64_t, int32_t>(input_tensor_ptr, reinterpret_cast<int32_t*>(buffers[binding_index]), input_dim_size);
             }
@@ -1685,7 +1670,6 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: {
             auto output_tensor_ptr = ort.GetTensorMutableData<float>(output_tensor[i]);
             if (output_tensor_ptr == nullptr) {
-              //CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(float)));
               buffers[binding_index] = scratch_allocator->Alloc(sizeof(float));
               binding_buffers_to_freeup.push_back(binding_index);
             } else {
@@ -1696,7 +1680,6 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: {
             auto output_tensor_ptr = ort.GetTensorMutableData<uint16_t>(output_tensor[i]);
             if (output_tensor_ptr == nullptr) {
-              //CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(uint16_t)));
               buffers[binding_index] = scratch_allocator->Alloc(sizeof(uint16_t));
               binding_buffers_to_freeup.push_back(binding_index);
             } else {
@@ -1707,7 +1690,6 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL: {
             auto output_tensor_ptr = ort.GetTensorMutableData<bool>(output_tensor[i]);
             if (output_tensor_ptr == nullptr) {
-              //CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(bool)));
               buffers[binding_index] = scratch_allocator->Alloc(sizeof(bool));
               binding_buffers_to_freeup.push_back(binding_index);
             } else {
@@ -1718,7 +1700,6 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8: {
             auto output_tensor_ptr = ort.GetTensorMutableData<int8_t>(output_tensor[i]);
             if (output_tensor_ptr == nullptr) {
-              //CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(int8_t)));
               buffers[binding_index] = scratch_allocator->Alloc(sizeof(int8_t));
               binding_buffers_to_freeup.push_back(binding_index);
             } else {
@@ -1729,7 +1710,6 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
             auto output_tensor_ptr = ort.GetTensorMutableData<int32_t>(output_tensor[i]);
             if (output_tensor_ptr == nullptr) {
-              //CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(int32_t)));
               buffers[binding_index] = scratch_allocator->Alloc(sizeof(int32_t));
               binding_buffers_to_freeup.push_back(binding_index);
             } else {
@@ -1741,7 +1721,6 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
             // Allocate INT32 CUDA memory for INT64 output type because TensorRT doesn't fully support INT64
             auto output_tensor_ptr = ort.GetTensorMutableData<int64_t>(output_tensor[i]);
             if (output_tensor_ptr == nullptr) {
-              //CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(int32_t)));
               buffers[binding_index] = scratch_allocator->Alloc(sizeof(int32_t));
               output_dim_sizes[i] = 1;
             } else {
@@ -1754,7 +1733,6 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
                   output_dim_size *= dimensions.d[j];
                 }
               }
-              //CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], output_dim_size * sizeof(int32_t)));
               buffers[binding_index] = scratch_allocator->Alloc(output_dim_size * sizeof(int32_t));
               output_dim_sizes[i] = output_dim_size;
             }
@@ -1771,7 +1749,6 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
       // Run TRT inference
       if (!trt_context->enqueueV2(&buffers[0], nullptr, nullptr)) {
         for (const auto& binding_index : binding_buffers_to_freeup) {
-          //cudaFree(buffers[binding_index]);
           scratch_allocator->Free(buffers[binding_index]);
         }
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "TensorRT EP execution context enqueue failed.");
@@ -1795,7 +1772,6 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
       }
 
       for (const auto& binding_index : binding_buffers_to_freeup) {
-        //cudaFree(buffers[binding_index]);
         scratch_allocator->Free(buffers[binding_index]);
       }
 

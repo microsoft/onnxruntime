@@ -15,6 +15,7 @@ static const std::string kMinSubgraphSize = "ORT_TENSORRT_MIN_SUBGRAPH_SIZE";
 static const std::string kMaxWorkspaceSize = "ORT_TENSORRT_MAX_WORKSPACE_SIZE";
 static const std::string kFP16Enable = "ORT_TENSORRT_FP16_ENABLE";
 static const std::string kINT8Enable = "ORT_TENSORRT_INT8_ENABLE";
+static const std::string kINT8CalibrationFileName = "ORT_TENSORRT_INT8_CALIBRATION_FILE_NAME";
 static const std::string kDumpSubgraphs = "ORT_TENSORRT_DUMP_SUBGRAPHS";
 static const std::string kEngineCacheEnable = "ORT_TENSORRT_ENGINE_CACHE_ENABLE";
 static const std::string kEngineCachePath = "ORT_TENSORRT_ENGINE_CACHE_PATH";
@@ -130,6 +131,7 @@ class TensorrtExecutionProvider : public Provider_IExecutionProvider {
   bool engine_cache_always_load_enable_ = false;
   bool engine_decryption_enable_ = false;
   std::string engine_decryption_lib_path_;
+  std::string int8_calibration_file_name_ = "INT8_calibration_table";
 
   OrtMutex tensorrt_mu_;
   int device_id_;
