@@ -121,6 +121,7 @@ TEST(HardmaxOperator, ThreeDimsAxis1) {
 TEST(HardmaxOperator, ThreeDimsAxis1_opset13) {
   // For the same input, opset-13's behavior is different from an earlier opset
   // and we see different expected results for the same test input
+
   std::vector<float> expected_vals = {
       0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
       1.0f, 1.0f, 0.0f, 0.0f, 1.0f,

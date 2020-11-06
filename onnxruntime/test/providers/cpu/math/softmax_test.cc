@@ -127,6 +127,29 @@ TEST(SoftmaxOperator, ThreeDimsAxis1) {
   RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 7, /*axis*/ 1, {kTensorrtExecutionProvider});
 }
 
+TEST(SoftmaxOperator, ThreeDimsAxis1_opset13) {
+  // For the same input, opset-13's behavior is different from an earlier opset
+  // and we see different expected results for the same test input
+
+  std::vector<float> expected_vals = {
+      0.253289f, 0.11198013f, 0.08185529f, 0.35567388f, 0.24795689f,
+      0.44600812f, 0.46761957f, 0.09471639f, 0.2796827f, 0.3307607f,
+      0.16864346f, 0.04540785f, 0.27406466f, 0.14939913f, 0.2167266f,
+      0.1320594f, 0.3749925f, 0.5493636f, 0.21524426f, 0.20455585f,
+
+      0.32341874f, 0.18241648f, 0.1747012f, 0.36767146f, 0.36021632f,
+      0.29275346f, 0.10176494f, 0.28598055f, 0.13050734f, 0.24336906f,
+      0.19977638f, 0.67461985f, 0.40293545f, 0.22843185f, 0.25989732f,
+      0.18405138f, 0.04119869f, 0.13638285f, 0.27338937f, 0.13651732f,
+
+      0.22807457f, 0.2577944f, 0.10201685f, 0.15962972f, 0.09529332f,
+      0.10314508f, 0.5011263f, 0.10428739f, 0.23931651f, 0.63683724f,
+      0.37181312f, 0.12944824f, 0.3946307f, 0.19975942f, 0.0699691f,
+      0.29696727f, 0.11163106f, 0.39906505f, 0.4012943f, 0.1979003f};
+
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 13, /*axis*/ 1, {kTensorrtExecutionProvider});
+}
+
 TEST(SoftmaxOperator, ThreeDimsAxis2) {
   // x = <see x_vals_3dims>
   // node = onnx.helper.make_node('Softmax', inputs = ['x'], outputs = ['y'], axis = 2)

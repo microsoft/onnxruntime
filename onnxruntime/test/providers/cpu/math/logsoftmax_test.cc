@@ -136,6 +136,29 @@ TEST(LogSoftmaxOperator, ThreeDimsAxis1) {
   RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 7, /*axis*/ 1, false);  // This test failed on TensorRT
 }
 
+TEST(LogSoftmaxOperator, ThreeDimsAxis1_opset13) {
+  // For the same input, opset-13's behavior is different from an earlier opset
+  // and we see different expected results for the same test input
+
+  std::vector<float> expected_vals = {
+      -1.373224f, -2.1894338f, -2.5028024f, -1.0337411f, -1.3945004f,
+      -0.8074181f, -0.7601002f, -2.3568683f, -1.2740996f, -1.1063602f,
+      -1.7799685f, -3.0920703f, -1.2943912f, -1.9011338f, -1.5291187f,
+      -2.0245035f, -0.9808493f, -0.5989947f, -1.5359819f, -1.5869142f,
+
+      -1.1288074f, -1.7014627f, -1.7446783f, -1.0005655f, -1.0210506f,
+      -1.2284245f, -2.2850897f, -1.2518314f, -2.036326f, -1.4131763f,
+      -1.6105566f, -0.3936059f, -0.90897894f, -1.4765173f, -1.3474687f,
+      -1.6925404f, -3.189349f, -1.9922893f, -1.2968583f, -1.9913039f,
+
+      -1.4780827f, -1.355593f, -2.2826173f, -1.8348985f, -2.3507955f,
+      -2.2716188f, -0.69089717f, -2.2606049f, -1.4299684f, -0.45124117f,
+      -0.9893639f, -2.0444741f, -0.92980486f, -1.6106415f, -2.6597016f,
+      -1.2141333f, -2.192556f, -0.9186309f, -0.9130602f, -1.6199919f};
+
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 13, /*axis*/ 1, false);  // This test failed on TensorRT
+}
+
 TEST(LogSoftmaxOperator, ThreeDimsAxis2) {
   // x = <see x_vals_3dims>
   // node = onnx.helper.make_node('LogSoftmax', inputs = ['x'], outputs = ['y'], axis = 2)
