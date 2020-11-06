@@ -28,10 +28,20 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Flatten);
 
 // explicitly support negative axis
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Flatten,
+    kOnnxDomain,
+    11, 12,
+    kCudaExecutionProvider,
+    KernelDefBuilder()
+        .Alias(0, 0)
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+    Flatten);
+
 ONNX_OPERATOR_KERNEL_EX(
     Flatten,
     kOnnxDomain,
-    11,
+    13,
     kCudaExecutionProvider,
     KernelDefBuilder()
         .Alias(0, 0)

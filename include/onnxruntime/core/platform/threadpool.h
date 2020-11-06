@@ -22,7 +22,6 @@ limitations under the License.
 #include <memory>
 #include "core/common/common.h"
 #include "core/platform/env.h"
-#include "core/common/optional.h"
 
 #include <functional>
 #include <memory>
@@ -81,7 +80,7 @@ class ThreadPool {
   // synchronously if it cannot be enqueued.  This will occur if the thread pool's
   // degree-of-parallelism is 1, but it may also occur for implementation-dependent
   // reasons such as if queues used for buffering work are full.
-  static void Schedule(ThreadPool *tp,
+  static void Schedule(ThreadPool* tp,
                        std::function<void()> fn) {
     if (tp) {
       tp->Schedule(fn);
@@ -108,7 +107,7 @@ class ThreadPool {
   }
 
   static void TryParallelFor(ThreadPool* tp, std::ptrdiff_t total, const TensorOpCost& cost_per_unit,
-                             const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn); 
+                             const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn);
 
   // Directly schedule the 'total' tasks to the underlying threadpool, without
   // cutting them by halves
@@ -221,8 +220,8 @@ class ThreadPool {
   // Provide a hint to the caller for whether or not to parallelize
   // work.  This lets a caller switch to a sequential version of an
   // algorithm rather than using calls via the ParallelFor functions.
-  
-  static bool ShouldParallelize(const ThreadPool *tp);
+
+  static bool ShouldParallelize(const ThreadPool* tp);
 
   // Return the degree of parallelism that code should assume when using the thread pool.
   // It decouples the degree of parallelism for use with the thread pool from
@@ -261,7 +260,6 @@ class ThreadPool {
   // Requires 0 < block_size <= total.
   void ParallelForFixedBlockSizeScheduling(std::ptrdiff_t total, std::ptrdiff_t block_size,
                                            const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn);
-
 
   // Return whether or not the calling thread should run a loop of
   // num_iterations divided in chunks of block_size in parallel.  If not,

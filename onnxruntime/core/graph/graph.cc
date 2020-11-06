@@ -991,7 +991,7 @@ Graph::Graph(const Model& owning_model,
 
   // For now we convert sparse_intializer to dense tensors
   // since there are currently no supported ops that consume sparse
-  // initializers directly. We remove them from graph_proto. We will reconstitute them 
+  // initializers directly. We remove them from graph_proto. We will reconstitute them
   // when saving to ORT format to save space on disk.
   if (graph_proto_->sparse_initializer_size() > 0) {
     for (const auto& sparse_tensor : graph_proto_->sparse_initializer()) {
@@ -1037,8 +1037,8 @@ Graph::Graph(const Model& owning_model,
     auto p = name_to_initial_tensor_.emplace(tensor.name(), &tensor);
     if (!p.second) {
       LOGS(logger_, WARNING) << "Duplicate initializer (dense, sparse or ConstantNode): '" << tensor.name()
-                            << "' the model will use the latest encountered initializer"
-                            << ". Please, fix your model.";
+                             << "' the model will use the latest encountered initializer"
+                             << ". Please, fix your model.";
       p.first->second = &tensor;
     }
 
@@ -3317,12 +3317,10 @@ IOnnxRuntimeOpSchemaCollectionPtr Graph::GetSchemaRegistry() const {
   return schema_registry_;
 }
 
-Node& Graph::FuseSubGraph(std::unique_ptr<::onnxruntime::IndexedSubGraph> sub_graph,
-                          const std::string& fused_node_name) {
-  ORT_ENFORCE(nullptr != sub_graph && nullptr != sub_graph->GetMetaDef());
-
-  auto func_meta_def = sub_graph->GetMetaDef();
+Node& Graph::FuseSubGraph(const IndexedSubGraph& sub_graph, const std::string& fused_node_name) {
+  auto* func_meta_def = sub_graph.GetMetaDef();
   ORT_ENFORCE(nullptr != func_meta_def);
+
   std::vector<NodeArg*> input_args;
   std::vector<NodeArg*> output_args;
   for (auto& arg_name : func_meta_def->inputs) {
@@ -3341,12 +3339,11 @@ Node& Graph::FuseSubGraph(std::unique_ptr<::onnxruntime::IndexedSubGraph> sub_gr
                              func_meta_def->domain);
 
   fused_node.SetNodeType(Node::Type::Fused);
-  function_container_.emplace_back(MakeFunction(*this, std::move(sub_graph), logger_));
+  function_container_.emplace_back(MakeFunction(*this, sub_graph, logger_));
   fused_node.SetFunctionBody(*function_container_.back());
 
   // Remove nodes fused above.
-  auto& sub_graph_ref = function_container_.back()->GetIndexedSubGraph();
-  for (auto node_index : sub_graph_ref.nodes) {
+  for (auto node_index : sub_graph.nodes) {
     auto node = GetNode(node_index);
     if (nullptr == node) {
       continue;
@@ -3357,6 +3354,7 @@ Node& Graph::FuseSubGraph(std::unique_ptr<::onnxruntime::IndexedSubGraph> sub_gr
     }
     RemoveNode(node_index);
   }
+
   return fused_node;
 }
 
@@ -3578,8 +3576,8 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Gr
       auto p = name_to_initial_tensor_.emplace(initializer->name(), initializer);
       if (!p.second) {
         LOGS(logger_, WARNING) << "Duplicate initializer (dense or ConstantNode): '" << initializer->name()
-                              << "' the model will use the latest encountered initializer"
-                              << ". Please, fix your model.";
+                               << "' the model will use the latest encountered initializer"
+                               << ". Please, fix your model.";
         p.first->second = initializer;
       }
     }

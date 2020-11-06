@@ -430,6 +430,17 @@ TEST_P(ModelTest, Run) {
   broken_tests.insert({"cdist_float64_sqeuclidean_1000_2000_1", "This model uses contrib ops."});
   broken_tests.insert({"cdist_float64_sqeuclidean_1000_2000_500", "This model uses contrib ops."});
   broken_tests.insert({"cdist_float64_sqeuclidean_1_1_1", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_Average_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"bidaf", "This model uses contrib ops."});
+  broken_tests.insert({"fp16_test_tiny_yolov2", "This model uses contrib ops."});
+  broken_tests.insert({"fp16_coreml_FNS-Candy", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_Repeat_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_BiDirectional_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"fp16_coreml_LinearRegression_NYCTaxi", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_Average_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_GRU_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_SimpleRNN_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_Dot_imageNet", "This model uses contrib ops."});
 #endif
 
   std::basic_string<ORTCHAR_T> model_dir;
@@ -655,15 +666,22 @@ TEST_P(ModelTest, Run) {
 
   static const ORTCHAR_T* cuda_flaky_tests[] = {
       ORT_TSTR("fp16_inception_v1"),
-      ORT_TSTR("fp16_shufflenet"), ORT_TSTR("fp16_tiny_yolov2"), ORT_TSTR("candy"),
+      ORT_TSTR("fp16_shufflenet"),
+      ORT_TSTR("fp16_tiny_yolov2"),
+      ORT_TSTR("candy"),
       ORT_TSTR("tinyyolov3"),
       ORT_TSTR("mlperf_ssd_mobilenet_300"),
       ORT_TSTR("mlperf_ssd_resnet34_1200"),
       ORT_TSTR("tf_inception_v1"),
       ORT_TSTR("faster_rcnn"),
       ORT_TSTR("split_zero_size_splits"),
-      ORT_TSTR("convtranspose_3d")};
+      ORT_TSTR("convtranspose_3d"),
+      ORT_TSTR("fp16_test_tiny_yolov2-Candy"),
+      ORT_TSTR("fp16_coreml_FNS-Candy"),
+      ORT_TSTR("fp16_test_tiny_yolov2"),
+      ORT_TSTR("fp16_test_shufflenet")};
   static const ORTCHAR_T* openvino_disabled_tests[] = {ORT_TSTR("tf_mobilenet_v1_1.0_224"),
+                                                       ORT_TSTR("bertsquad"),
                                                        ORT_TSTR("yolov3"),
                                                        ORT_TSTR("LSTM_Seq_lens_unpacked"),
                                                        ORT_TSTR("tinyyolov3"),
@@ -778,6 +796,7 @@ TEST_P(ModelTest, Run) {
                                                     ORT_TSTR("vgg19"),
                                                     ORT_TSTR("zfnet512"),
                                                     ORT_TSTR("GPT2_LM_HEAD"),
+                                                    ORT_TSTR("ssd"),
                                                     ORT_TSTR("coreml_VGG16_ImageNet")};
     all_disabled_tests.insert(std::begin(x86_disabled_tests), std::end(x86_disabled_tests));
 #endif
