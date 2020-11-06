@@ -13,15 +13,15 @@ from onnxruntime.training import _utils, amp, checkpoint, optim, orttrainer, Tra
 import _test_commons, _test_helpers
 
 from orttrainer_bert_toy_onnx import bert_model_description, \
-                                                        load_bert_onnx_model, \
-                                                        generate_random_input_from_model_desc
+                                     load_bert_onnx_model, \
+                                     generate_random_input_from_model_desc
+
 
 ###############################################################################
-# This method is used to generate checkpoints for ZeRO
+# This method is used to generate bert checkpoints for ZeRO
 # eg: mpirun -n 4 python3 orttrainer_bert_toy_onnx_ckpt_gen.py
 ###############################################################################
-
-def testToyBERTModelMixedPrecisionLossScaler(optimizer):
+def testToyBERTModelMixedPrecision(optimizer):
     # Common setup
     local_rank = max(0, int(os.environ['OMPI_COMM_WORLD_LOCAL_RANK']))
     world_size = max(1, int(os.environ["OMPI_COMM_WORLD_SIZE"]))
@@ -32,7 +32,6 @@ def testToyBERTModelMixedPrecisionLossScaler(optimizer):
     device = torch.device("cuda", 0)
 
     seed = 1
-    rtol = 1e-3
     torch.manual_seed(seed)
     onnxruntime.set_seed(seed)
 
@@ -49,7 +48,6 @@ def testToyBERTModelMixedPrecisionLossScaler(optimizer):
         },
         'mixed_precision': {
             'enabled': True,
-            'loss_scaler': None
         },
         'distributed': {
             'world_rank': local_rank,
@@ -65,11 +63,11 @@ def testToyBERTModelMixedPrecisionLossScaler(optimizer):
     for i in range(total_steps):
         sample_input = generate_random_input_from_model_desc(model_desc, world_size * i+local_rank)
         losses.append(trainer.train_step(*sample_input).cpu().item())
-    
+
     ckpt_dir = _test_helpers._get_name("ort_ckpt")
     ckpt_prefix = _test_helpers._get_bert_ckpt_prefix(optimizer.name)
     checkpoint.experimental_save_checkpoint(trainer, ckpt_dir, ckpt_prefix)
 
 if __name__ == "__main__":
-    testToyBERTModelMixedPrecisionLossScaler(optim.AdamConfig())
-    testToyBERTModelMixedPrecisionLossScaler(optim.LambConfig())
+    testToyBERTModelMixedPrecision(optim.AdamConfig())
+    testToyBERTModelMixedPrecision(optim.LambConfig())
