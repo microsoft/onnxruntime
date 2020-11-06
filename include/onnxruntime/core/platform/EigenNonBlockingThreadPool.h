@@ -948,9 +948,7 @@ void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n) override {
   // degree of parallelism, including the main thread).  Unlike the
   // multi-loop RunInParallelSection, this single-loop worker can run
   // fn directly without needing to receive it via ps.current_loop.
-  SummonWorkers(ps, n, [&fn](unsigned int my_idx) {
-      fn(my_idx);
-    });
+  SummonWorkers(ps, n, fn);
 
   // Run work in the main thread
   fn(0);
