@@ -4,6 +4,7 @@
 #include "cxxopts.hpp"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
+#include "core/framework/bfc_arena.h"
 #include "core/platform/env.h"
 #include "core/session/environment.h"
 #include "orttraining/core/session/training_session.h"
