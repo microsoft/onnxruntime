@@ -55,14 +55,15 @@ const NcclTask* NcclTaskGroup::EqueueTask(
 
   for (auto& task : batch) {
     if (!task.Compare(scheduled_task)) {
+      // "scheduled_task" doesn't match "task" in task "batch" in this time slot.
+      // Go checking if "scheduled_task" matches next one.
       continue;
     }
 
-    // We cannot enqueue the same task.
-    ORT_ENFORCE(!task.is_finished);
-    // We cannot enqueue the same task.
-    ORT_ENFORCE(!task.is_enqueued);
+    ORT_ENFORCE(!task.is_finished, "Cannot enqueue finished NCCL P2P task again before calling ResetAllTasks in a time slot.");
+    ORT_ENFORCE(!task.is_enqueued, "Cannot enqueue duplicated NCCL P2P tasks in a time slot.");
 
+    // "scheduled_task" matches "task", so we add the task details for launching NCCL call.
     task.ptr = ptr;
     task.size = size;
     task.is_enqueued = true;
@@ -260,7 +261,7 @@ void NcclService::Launch() {
     Initialize();
 
     while (is_running_) {
-      // Enter critical region.
+      // Enter critical region of performing concurrent NCCL P2P operations (for example, Send's and Recv's).
       // The state of this class cannot be modified by other threads.
       {
         std::lock_guard<std::mutex> guard(mutex_);

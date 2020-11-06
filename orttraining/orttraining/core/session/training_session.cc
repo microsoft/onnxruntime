@@ -39,38 +39,14 @@
 #include "orttraining/core/graph/horovod_adapters.h"
 #endif
 
+#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+#include "orttraining/training_ops/cuda/communication/nccl_service.h"
+#endif
+
 namespace onnxruntime {
 namespace training {
 
 namespace {
-// void CreateFakeOutput(Graph& graph, std::string output_name, const ONNX_NAMESPACE::TensorShapeProto* reference_shape_proto) {
-//   const int32_t element_type = ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
-//   ONNX_NAMESPACE::TypeProto type_proto;
-//   type_proto.mutable_tensor_type()->set_elem_type(element_type);
-//   ONNX_NAMESPACE::TensorShapeProto* tensor_shape_proto = type_proto.mutable_tensor_type()->mutable_shape();
-//   tensor_shape_proto->CopyFrom(*reference_shape_proto);
-//   auto& seed_node_arg = graph.GetOrCreateNodeArg(output_name + "_seed", &type_proto);
-// 
-//   ONNX_NAMESPACE::TensorProto tensor_proto;
-//   tensor_proto.set_name(seed_node_arg.Name());
-//   tensor_proto.set_data_type(element_type);
-//   int64_t reference_size = 1;
-//   for (auto d: reference_shape_proto->dim()) {
-//     tensor_proto.add_dims(d.dim_value());
-//     reference_size *= d.dim_value();
-//   }
-//   for (int64_t i = 0; i < reference_size; ++i) {
-//     tensor_proto.add_float_data(1.0f);
-//   }
-//   graph.AddInitializedTensor(tensor_proto);
-// 
-//   auto output_node_arg = graph.GetNodeArg(output_name);
-//   std::vector<NodeArg*> input_args{&seed_node_arg};
-//   std::vector<NodeArg*> output_args{output_node_arg};
-//   auto node_name = graph.GenerateNodeName("Identity");
-//   graph.AddNode(node_name, "Identity", "Fake loss node.", input_args, output_args);
-// }
-
 Status SetupOptimizerParams(
     const std::unordered_set<std::string>& weight_names_to_train,
     const std::unordered_map<std::string, NodeArg*>& fp32_weight_names_to_mixed_precision_node_args,
@@ -206,9 +182,6 @@ Status TrainingSession::ConfigureForTraining(
 
   std::unordered_set<std::string> filtered_config_weight_names_to_train;
   FilterUnusedWeights(config.weight_names_to_train, filtered_config_weight_names_to_train);
-  //for (auto name : filtered_config_weight_names_to_train) {
-  //  std::cout << "[training_session.cc, ConfigureForTraining] train weight with consumer: " << name << std::endl;
-  //}
 
   TrainingConfigurationResult config_result{};
 
@@ -249,7 +222,6 @@ Status TrainingSession::ConfigureForTraining(
     for (auto& output_node_arg : model_->MainGraph().GetOutputs()) {
       std::string name = output_node_arg->Name();
       graph_output_names.push_back(name);
-      //std::cout << "[pipeline_transformer.cc, ApplyPipelinePartitionToMainGraph] See graph output: " << name << std::endl;
       graph_output_shapes.push_back(*output_node_arg->Shape());
     }
 
@@ -280,10 +252,6 @@ Status TrainingSession::ConfigureForTraining(
       filtered_config_weight_names_to_train.insert(first_send_input_name);
     }
   }
-
-  //for (auto name : filtered_config_weight_names_to_train) {
-  //  std::cout << "[training_session.cc, ConfigureForTraining] train weight with consumer (new): " << name << std::endl;
-  //}
 
   is_mixed_precision_enabled_ = config.mixed_precision_config.has_value();
 
@@ -380,25 +348,8 @@ Status TrainingSession::ConfigureForTraining(
                                              fp32_weight_name_to_mixed_precision_node_arg));
   }
 
-  ORT_IGNORE_RETURN_VALUE(Save(std::string("simple_forward_stage_") + std::to_string(config.distributed_config.world_rank) + std::string(".onnx"), SaveOption::NO_RELOAD));
-
   ORT_RETURN_IF_ERROR(BuildGradientGraph(
       weight_names_to_train, loss_name, config.gradient_graph_config, *session_logger_));
-
-  // for (size_t i = 0; i < graph_output_names.size(); ++i) {
-  //   const std::string name = graph_output_names[i];
-  //   const ONNX_NAMESPACE::TensorShapeProto shape = graph_output_shapes[i];
-
-  //   auto producer = model_->MainGraph().GetProducerNode(name);
-  //   if (producer) {
-  //     std::cout << "[pipeline_transformer.cc, ApplyPipelinePartitionToMainGraph] kept output " << name << " has producer " << producer->Name() << std::endl;
-  //   } else {
-  //     std::cout << "[pipeline_transformer.cc, ApplyPipelinePartitionToMainGraph] kept output " << name << " has producer " << "None" << std::endl;
-  //     CreateFakeOutput(model_->MainGraph(), name, &shape); 
-  //   }
-  // }
-
-  ORT_IGNORE_RETURN_VALUE(Save(std::string("simple_backward_stage_") + std::to_string(config.distributed_config.world_rank) + std::string(".onnx"), SaveOption::NO_RELOAD));
 
   if (config.pipeline_config.has_value()) {
     // TODO: The number of pipeline steps should be passed in from Python API.
@@ -438,7 +389,7 @@ Status TrainingSession::ConfigureForTraining(
 
     // TODO: keep all other pipeline context fields such as feed_names.
     pipeline_context_.pipeline_tensor_names = pipeline_result.pipeline_tensor_names;
-    pipeline_context_.num_pipeline_batches = num_pipeline_steps;
+    pipeline_context_.num_pipeline_steps = num_pipeline_steps;
     pipeline_context_.num_pipeline_stages = config.distributed_config.pipeline_parallel_size;
     pipeline_context_.pipeline_stage_id = pipeline_result.pipeline_stage_id;
     pipeline_context_.slice_input_names = config.distributed_config.slice_input_names;
@@ -548,6 +499,31 @@ Status TrainingSession::ConfigureForTraining(
       const auto name = allowed_outputs[i]->Name();
       config_result.pipeline_config_result.value().fetch_names.push_back(name);
     }
+
+#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+    // Create NCCL communication plan.
+    auto& nccl_service = cuda::NcclService::GetInstance();
+
+    nccl_service.PlanStart();
+    for (auto& slot : pipeline_schedule_.GetSchedule(config_result.pipeline_config_result.value().pipeline_stage_id)) {
+      if (!slot.HasCommute()) {
+        continue;
+      }
+      nccl_service.PlanNewGroupStart();
+      for (auto& task : slot.GetTasks()) {
+        if (task.type == pipeline::PipelineTask::Type::Send) {
+          nccl_service.PlanSend(task.peer_rank);
+        } else if (task.type == pipeline::PipelineTask::Type::Recv) {
+          nccl_service.PlanRecv(task.peer_rank);
+        }
+      }
+      nccl_service.PlanNewGroupEnd();
+    }
+    nccl_service.PlanEnd();
+
+    // Launch NCCL service to execute the plan.
+    nccl_service.Launch();
+#endif
   }
 
   config_result_out = std::move(config_result);
@@ -1154,12 +1130,12 @@ void TrainingSession::CreatePipelineEvents(
     ORT_ENFORCE(event_value >= -1, "Got event_value ", event_value);
 
     // Check uniqueness of event names.
-    // for (auto name : io_binding.GetInputNames()) {
-    //   ORT_ENFORCE(event_name != name, "Two variable cannot have the same name.");
-    // }
-    // for (auto name : io_binding.GetOutputNames()) {
-    //   ORT_ENFORCE(event_name != name, "Two variable cannot have the same name.");
-    // }
+    for (auto name : io_binding.GetInputNames()) {
+      ORT_ENFORCE(event_name != name, "Two variables cannot have the same name.");
+    }
+    for (auto name : io_binding.GetOutputNames()) {
+      ORT_ENFORCE(event_name != name, "Two variables cannot have the same name.");
+    }
 
     const auto* cpu_ep = GetSessionState().GetExecutionProviders().Get(onnxruntime::kCpuExecutionProvider);
     const auto cpu_allocator = cpu_ep->GetAllocator(0, OrtMemTypeDefault);
@@ -1216,54 +1192,25 @@ common::Status TrainingSession::RunWithPipeline(const RunOptions& run_options, I
   // TODO: add it to distributed config.
   const size_t slice_axis = 0;
   // TODO: add it to distributed config.
-  const size_t num_steps = 5;
+  const size_t num_steps = pipeline_context_.num_pipeline_steps;
+  const size_t stage_id = pipeline_context_.pipeline_stage_id;
   // TODO: add it to distributed config.
   const bool training_mode = true;
-
-  // pipeline_schedule_ = pipeline::PipelineScheduler(pipeline_context_.num_pipeline_batches, pipeline_context_.num_pipeline_stages);
-  pipeline_schedule_ = pipeline::PipelineScheduler(num_steps, pipeline_context_.num_pipeline_stages);
-  pipeline_worker_pool_ = pipeline::PipelineWorkerPool(pipeline_context_.num_pipeline_stages);
 
   std::vector<std::unique_ptr<IOBinding>> sub_io_bindings(num_steps);
 
   for (size_t i = 0; i < num_steps; ++i) {
-    // TODO: run this code block using a thread.
-
-    // Inputs and outputs of a sub-batch run.
-    // std::unique_ptr<IOBinding> sub_io_binding;
-    // auto status = NewIOBinding(&sub_io_binding);
-    // ORT_RETURN_IF_ERROR(status);
-
     auto& sub_io_binding = sub_io_bindings[i];
     auto status = NewIOBinding(&sub_io_binding);
     ORT_RETURN_IF_ERROR(status);
 
     // Add inputs and outputs to the binding.
-    //CreateBatchVariables(io_binding, *sub_io_binding.get(), i, slice_axis, num_steps);
     CreateBatchVariables(io_binding, *sub_io_binding.get(), i, slice_axis, num_steps);
 
     // Add proper events to the binding.
-    //CreatePipelineEvents(training_mode, i, pipeline_context_.pipeline_stage_id, *sub_io_binding.get());
-    CreatePipelineEvents(training_mode, i, pipeline_context_.pipeline_stage_id, *sub_io_binding.get());
-    //CreatePipelineEvents(training_mode, i, pipeline_context_.pipeline_stage_id, io_binding);
+    CreatePipelineEvents(training_mode, i, stage_id, *sub_io_binding.get());
 
-    // TODO: When pipeline parallel is enabled, we need to ensure gradient accumulation
-    // flag is set to true when initializing the session.
-
-    //auto output_names = io_binding.GetOutputNames();
-    //auto output_values = io_binding.GetOutputs();
-    //for (size_t i = 0; i < output_names.size(); ++i) {
-    //  sub_io_binding->BindOutput(output_names[i], output_values[i]);
-    //}
-
-    for (auto name : sub_io_binding->GetInputNames()) {
-      std::cout << "[training_session.cc] sub_io_binding input " << name << std::endl;
-    }
-    for (auto name : sub_io_binding->GetOutputNames()) {
-      std::cout << "[training_session.cc] sub_io_binding output " << name << std::endl;
-    }
-
-    if (true) {
+    if (pipeline_context_.num_pipeline_stages > 1) {
       // Cyclically pick up a worker ID.
       const size_t worker_id = i % pipeline_context_.num_pipeline_stages;
       pipeline_worker_pool_.Join(worker_id);
@@ -1280,8 +1227,6 @@ common::Status TrainingSession::RunWithPipeline(const RunOptions& run_options, I
               &sub_io_bindings[step]->GetOutputs());
       }, i);
 
-      std::cout << status.ErrorMessage() << std::endl;
-
       ORT_THROW_IF_ERROR(status);
     } else {
       auto status = InferenceSession::Run(
@@ -1290,29 +1235,19 @@ common::Status TrainingSession::RunWithPipeline(const RunOptions& run_options, I
             sub_io_binding->GetInputs(),
             sub_io_binding->GetOutputNames(),
             &sub_io_binding->GetOutputs());
-      std::cout << status.ErrorMessage() << std::endl;
 
       ORT_THROW_IF_ERROR(status);
     }
-    // worker.join();
-
-    // ORT_RETURN_IF_ERROR(
-    //   InferenceSession::Run(
-    //       run_options,
-    //       sub_io_binding->GetInputNames(),
-    //       sub_io_binding->GetInputs(),
-    //       sub_io_binding->GetOutputNames(),
-    //       &sub_io_binding->GetOutputs()));
-
-    // ORT_RETURN_IF_ERROR(
-    //   InferenceSession::Run(
-    //       run_options,
-    //       io_binding.GetInputNames(),
-    //       io_binding.GetInputs(),
-    //       io_binding.GetOutputNames(),
-    //       &io_binding.GetOutputs()));
   }
-  pipeline_worker_pool_.JoinAll();
+
+  if (pipeline_context_.num_pipeline_stages > 1) {
+    pipeline_worker_pool_.JoinAll();
+    onnxruntime::contrib::OrtEventPool::GetInstance().ResetAllEvents();
+  }
+#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+    auto& nccl_service = cuda::NcclService::GetInstance();
+    nccl_service.Reset();
+#endif
 
   return common::Status::OK();
 }
@@ -1527,6 +1462,13 @@ std::unordered_set<std::string> TrainingSession::GetTrainableModelInitializers(
   // perform reverse dfs from output node to discover trainable parameters
   graph.ReverseDFSFrom({graph.GetProducerNode(loss_name)}, add_trainable_initializers, {}, {}, stop_at_untrainable);
   return trainable_initializers;
+}
+
+TrainingSession::~TrainingSession() {
+#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+  auto& nccl_service = cuda::NcclService::GetInstance();
+  nccl_service.Terminate();
+#endif
 }
 
 }  // namespace training

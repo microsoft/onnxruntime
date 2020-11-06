@@ -309,11 +309,10 @@ struct PipelineContext {
   int num_pipeline_stages;
   // Id of stage handled by this process. Currently, it matches the MPI's rank.
   int pipeline_stage_id;
-  // The number of batches per pipeline run. Its value is
-  // num_gradient_accumulation_steps.
+  // The number of batches per pipeline round.
   // Only the last step among num_gradient_accumulation_steps steps may call
   // optimizer to update the model.
-  int num_pipeline_batches;
+  int num_pipeline_steps;
   // Names of scheduling event in graph's input list and
   // names of event ops' outputs. If an event name is an
   // empty string, it means no event should be waited or recorded.

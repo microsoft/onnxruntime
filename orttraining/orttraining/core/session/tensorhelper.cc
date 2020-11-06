@@ -50,9 +50,6 @@ namespace onnxruntime {
         
       TensorShape small_shape(small_dims); 
 
-      std::cout << "[inference_session.cc] Old shape " << orig_tensor_shape << std::endl;
-      std::cout << "[inference_session.cc] Small shape " << small_shape << std::endl;
-
       OrtMemoryInfo cpu_location(onnxruntime::CPU, OrtDeviceAllocator); // ??
       AllocatorPtr cpu_allocator = session_state.GetAllocator(cpu_location);
       auto small_cpu_tensor = onnxruntime::make_unique<Tensor>(orig_tensor_type, small_shape, cpu_allocator); // make tensor variable along the CPU

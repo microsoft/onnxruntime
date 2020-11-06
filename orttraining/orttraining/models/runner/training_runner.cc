@@ -236,7 +236,7 @@ Status TrainingRunner::Initialize() {
     pipeline_context_.fetch_names = fetch_names;
 
     pipeline_context_.pipeline_stage_id = config_result.pipeline_config_result.value().pipeline_stage_id;
-    pipeline_context_.num_pipeline_batches = params_.gradient_accumulation_steps;
+    pipeline_context_.num_pipeline_steps = params_.gradient_accumulation_steps;
   } else {
     fetch_names = params_.fetch_names;
     pipeline_context_.pipeline_stage_id = 0;
@@ -370,7 +370,7 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
 
   // Add event IDs to feeds.
   if (params_.pipeline_parallel_size > 1) {
-    const auto batch_id = static_cast<int>(step_) % pipeline_context_.num_pipeline_batches;
+    const auto batch_id = static_cast<int>(step_) % pipeline_context_.num_pipeline_steps;
     const auto stage_id = pipeline_context_.pipeline_stage_id;
 
     int64_t id = -1;

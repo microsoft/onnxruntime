@@ -29,6 +29,7 @@ class TrainingSession : public InferenceSession {
                              NameMLValMap /* 'Moment_1': OrtValue, 'Moment_2': OrtValue etc...*/>
                             OptimizerState;
 
+  ~TrainingSession();
   TrainingSession(const SessionOptions& session_options, const Environment& env)
       : InferenceSession(session_options, env) {  std::cout << "[training_session.h] Call ctor TrainingSession" << std::endl; }
 
