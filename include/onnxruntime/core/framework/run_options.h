@@ -33,14 +33,6 @@ struct OrtRunOptions {
 
   OrtRunOptions() = default;
   ~OrtRunOptions() = default;
-
-  // Disable copy, move and assignment. we don't want accidental copies, to
-  // ensure that the instance provided to the Run() call never changes and the
-  // terminate mechanism will work.
-  OrtRunOptions(const OrtRunOptions&) = delete;
-  OrtRunOptions(OrtRunOptions&&) = delete;
-  OrtRunOptions& operator=(const OrtRunOptions&) = delete;
-  OrtRunOptions& operator=(OrtRunOptions&&) = delete;
 };
 
 namespace onnxruntime {

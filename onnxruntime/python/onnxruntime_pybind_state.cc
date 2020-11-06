@@ -1323,10 +1323,8 @@ void addObjectMethods(py::module& m, Environment& env) {
         Py_DECREF(dtype);
 
         OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device, device.Id());
-        std::cout << "[onnxruntime_pybind_state.cc] bind input name: " << name << ", device: " << device.ToString() << std::endl;
         std::unique_ptr<Tensor> p_tensor =
             onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, reinterpret_cast<void*>(data_ptr), info);
-        std::cout << "[onnxruntime_pybind_state.cc] bind input name: " << name << ", device: " << p_tensor->Location().ToString() << std::endl;
 
         OrtValue ml_value;
         ml_value.Init(p_tensor.release(),

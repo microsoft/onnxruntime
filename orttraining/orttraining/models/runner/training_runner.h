@@ -11,10 +11,10 @@
 #include "core/providers/providers.h"
 #include "orttraining/core/framework/checkpoint_registry.h"
 #include "orttraining/core/framework/mpi_context.h"
+#include "orttraining/core/framework/pipeline.h"
 #include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/models/runner/data_loader.h"
-#include "orttraining/models/runner/pipeline.h"
 
 namespace onnxruntime {
 namespace training {

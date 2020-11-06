@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "orttraining/models/runner/pipeline.h"
+#include "orttraining/core/framework/pipeline.h"
 
 #include <algorithm>
 #include <iostream>
@@ -11,10 +11,6 @@
 #include <stdexcept>
 #include <thread>
 #include <iomanip>
-
-#include "gsl/gsl"
-#include "core/framework/ml_value.h"
-#include "orttraining/training_ops/cpu/controlflow/event_pool.h"
 
 namespace onnxruntime {
 namespace training {
@@ -92,7 +88,7 @@ PipelineScheduler::PipelineScheduler() {
   num_batches_ = 0;
 }
 
-PipelineScheduler::PipelineScheduler(const int num_batches, const int num_stages) {
+PipelineScheduler::PipelineScheduler(int num_batches, const int num_stages) {
   num_stages_ = num_stages;
   num_batches_ = num_batches;
   CreateComputeSchedule();
@@ -102,6 +98,9 @@ PipelineScheduler::PipelineScheduler(const int num_batches, const int num_stages
   InsertEvents(compute_table_, num_events_per_slot_compute_side, compute_default_events);
 
   CreateFullSchedule();
+
+  // Change the pipeline stage ID to actual MPI rank in Send and Recv.
+  MapStageIdToMpiRank();
 
   const size_t num_events_per_slot_side = 1;
   std::vector<int> default_events(num_events_per_slot_side, -1);
@@ -349,6 +348,31 @@ void PipelineScheduler::CreateFullSchedule() {
 
     // Copy compute actions from compute-only schedule to compute-commute schedule.
     compute_commute_table_.push_back(compute_table_[t]);
+  }
+}
+
+void PipelineScheduler::MapStageIdToMpiRank() {
+  for (int t = 0; static_cast<size_t>(t) < compute_commute_table_.size(); ++t) {
+    for (int s = 0; s < num_stages_; ++s) {
+      // Slot at time t and pipeline stage s. It's a collection of tasks.
+      auto& slot = compute_commute_table_[t][s];
+      for (int k = 0; k < slot.Size(); ++k) {
+        auto& task = slot[k];
+        if (!task.IsCommute()) {
+          continue;
+        }
+
+        // task.this_rank is actually the stage ID.
+        // task.this_rank=0 means this stage is the first pipeline stage.
+        // If data parallel is enabled, we may have multiple pipeline parallel groups.
+        // The code below maps stage ID to MPI's world rank.
+        task.this_rank = DistributedRunContext::GetRanks(WorkerGroupType::ModelParallel)[task.this_rank];
+
+        // Similarly, We do the mapping for peer's rank to know which process to communicate with
+        // in runtime.
+        task.peer_rank = DistributedRunContext::GetRanks(WorkerGroupType::ModelParallel)[task.peer_rank];
+      }
+    }
   }
 }
 

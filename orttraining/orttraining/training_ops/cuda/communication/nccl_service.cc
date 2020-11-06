@@ -5,6 +5,7 @@
 
 #include "core/common/common.h"
 #include "core/profile/context.h"
+#include "core/providers/cuda/cuda_check_memory.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "orttraining/core/framework/mpi_context.h"
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
@@ -186,6 +187,8 @@ void NcclService::SubmitSendAndWait(void* ptr, size_t size, int peer) {
     const std::string tag = "";
 #endif
     task = schedule_[time_].EqueueTask(NcclTask::Type::SEND, std::vector<int>{peer}, ptr, size, tag);
+
+    ORT_ENFORCE(task, "Unplanned NCCL Send encountered.");
   }
 
   // Wait for task to be finished.
@@ -210,6 +213,7 @@ void NcclService::SubmitRecvAndWait(void* ptr, size_t size, int peer) {
     const std::string tag = "";
 #endif
     task = schedule_[time_].EqueueTask(NcclTask::Type::RECV, std::vector<int>{peer}, ptr, size, tag);
+    ORT_ENFORCE(task, "Unplanned NCCL Send encountered.");
   }
 
   // Wait for task to be finished.
@@ -276,7 +280,12 @@ void NcclService::Launch() {
         // Start NCCL parallel communication.
         NCCL_CALL(ncclGroupStart());
         for (auto& task : schedule_[time_].batch) {
-          ORT_ENFORCE(task.is_enqueued, "Unscheduled task cannot be run. Use SubmitSendAndWait or SubmitRecvAndWait to schedule tasks.");
+          ORT_ENFORCE(task.is_enqueued,
+                      "Unscheduled task cannot be run.",
+                      " Use PlanTask to schedule tasks before executing the graph.");
+#ifndef NDEBUG
+          CheckIfMemoryOnCurrentCudaDevice(task.ptr);
+#endif
           switch (task.type) {
             case NcclTask::Type::SEND:
               ORT_ENFORCE(task.peers.size() == 1, "Send can only send data to one rank.");

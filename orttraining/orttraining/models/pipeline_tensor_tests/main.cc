@@ -17,6 +17,8 @@
 #include <mutex>
 #include <tuple>
 #include "orttraining/core/session/tensorhelper.h"
+#include "core/providers/cuda/cuda_allocator.h"
+#include "core/framework/bfc_arena.h"
 
 namespace onnxruntime {
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id,

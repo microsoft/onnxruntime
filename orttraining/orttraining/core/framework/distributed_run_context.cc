@@ -3,6 +3,7 @@
 
 #include "distributed_run_context.h"
 #include "core/common/common.h"
+#include <iostream>
 
 namespace onnxruntime {
 namespace training {
@@ -104,6 +105,9 @@ DistributedRunContext::DistributedRunContext(int32_t world_rank,
   }
   groups_[WorkerGroupType::DataParallel] = {data_group_ranks, data_group_id,
                                             WorkerGroupType::DataParallel, y};
+  for (size_t i = 0; i < data_group_ranks.size(); ++i) {
+    std::cout << "[distributed_run_context.cc] data_group[" << i << "]=" << data_group_ranks[i] << std::endl;
+  }
 
   // Horizontal Model Parallel Group
   const int32_t hori_group_start_index = calculate_linear_index(horizontal_parallel_size, data_parallel_size, 0, y, z);
@@ -113,6 +117,9 @@ DistributedRunContext::DistributedRunContext(int32_t world_rank,
   }
   groups_[WorkerGroupType::HorizontalParallel] = {hori_group_ranks, hori_group_id,
                                                   WorkerGroupType::HorizontalParallel, x};
+  for (size_t i = 0; i < hori_group_ranks.size(); ++i) {
+    std::cout << "[distributed_run_context.cc] hori_group[" << i << "]=" << hori_group_ranks[i] << std::endl;
+  }
 
   // Model Parallel Group
   // Note: Pipeline parallel group is different than Data and horizontal parallel in a way that ranks in the same
@@ -126,6 +133,9 @@ DistributedRunContext::DistributedRunContext(int32_t world_rank,
   }
   groups_[WorkerGroupType::ModelParallel] = {pipeline_group_ranks, pipe_group_id,
                                              WorkerGroupType::ModelParallel, z};
+  for (size_t i = 0; i < pipeline_group_ranks.size(); ++i) {
+    std::cout << "[distributed_run_context.cc] pipe_group[" << i << "]=" << pipeline_group_ranks[i] << std::endl;
+  }
 }
 
 }  // namespace training

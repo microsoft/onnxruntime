@@ -23,9 +23,19 @@ struct WorkerGroup {
   int32_t rank_in_group{-1};  // current worker' relative rank within this group, ranging from 0 to size-1
 
   std::string ToString() const {
-    return "group_type: " + std::to_string(group_type) + ", group_id: " + std::to_string(group_id) +
+    auto msg = "group_type: " + std::to_string(group_type) + ", group_id: " + std::to_string(group_id) +
            ", rank in group:" + std::to_string(rank_in_group) + ", world-rank:" +
            std::to_string(ranks[rank_in_group]);
+    msg += ", ranks: [";
+    for (size_t i = 0; i < ranks.size(); ++i) {
+      msg += std::to_string(ranks[i]);
+      if (i != ranks.size() - 1) {
+        msg += ", ";
+      }
+    }
+    msg += "]";
+
+    return msg;
   }
 };
 

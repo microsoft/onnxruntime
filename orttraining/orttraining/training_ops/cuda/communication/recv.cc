@@ -8,6 +8,7 @@
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
 #include "core/profile/profile.h"
 #include "core/profile/context.h"
+#include "core/providers/cuda/cuda_check_memory.h"
 #include "core/providers/cuda/cuda_common.h"
 #include <mpi.h>
 
@@ -50,6 +51,9 @@ void Recv::ReceiveData(
 // The following NCCL call is equivalent to the following MPI call. User can
 // uncomment the MPI call to debug.
 #if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+#ifndef NDEBUG
+  CheckIfMemoryOnCurrentCudaDevice(info_data.buffer);
+#endif
   auto& nccl_service = cuda::NcclService::GetInstance();
   nccl_service.SubmitRecvAndWait(info_data.buffer, info_data.size, info_data.rank);
 #else
@@ -88,6 +92,12 @@ void Recv::ReceiveData(
 #else
     CUDA_CALL(cudaMemcpy(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
                          tensor->SizeInBytes(), cudaMemcpyHostToDevice));
+#endif
+
+#ifndef NDEBUG
+  // In addition to the first output, other tensors are allocated on GPU.
+  // We check if the allocated memory is on the current CUDA device.
+  CheckIfMemoryOnCurrentCudaDevice(tensor->DataRaw());
 #endif
     tensor_offset_in_bytes += tensor->SizeInBytes();
   }

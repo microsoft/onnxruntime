@@ -64,8 +64,6 @@ void MPIContext::setup_mpi() {
   char version[MPI_MAX_LIBRARY_VERSION_STRING];
   MPI_Get_library_version(version, &len);
 
-  printf("Using cuda local_rank: %d, world_rank: %d, world_size: %d, local_size: %d\n(version: %s)\n",
-         local_rank, world_rank, world_size, local_size, version);
   this->world_rank_ = world_rank;
   this->local_rank_ = local_rank;
   this->world_size_ = world_size;

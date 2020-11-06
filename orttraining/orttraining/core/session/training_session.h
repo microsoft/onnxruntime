@@ -6,13 +6,12 @@
 #include "core/common/optional.h"
 #include "core/common/path_string.h"
 #include "core/session/inference_session.h"
+#include "orttraining/core/framework/pipeline.h"
 #include "orttraining/core/graph/loss_func/loss_func_common.h"
 #include "orttraining/core/graph/loss_function_registry.h"
 #include "orttraining/core/graph/optimizer_graph_output_key.h"
 #include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/graph/gradient_config.h"
-#include "orttraining/models/runner/pipeline.h"
-//#include "core/session/tensorhelper.h"
 
 namespace onnxruntime {
 namespace training {
@@ -29,13 +28,10 @@ class TrainingSession : public InferenceSession {
                              NameMLValMap /* 'Moment_1': OrtValue, 'Moment_2': OrtValue etc...*/>
                             OptimizerState;
 
-  ~TrainingSession();
   TrainingSession(const SessionOptions& session_options, const Environment& env)
-      : InferenceSession(session_options, env) {  std::cout << "[training_session.h] Call ctor TrainingSession" << std::endl; }
+      : InferenceSession(session_options, env) {}
+  ~TrainingSession();
 
-  // define friend function
-  //friend OrtValue SliceTensor(const OrtValue& orig_value, const size_t slice_id,
-  //                    const size_t slice_axis, const size_t num_slices, const TrainingSession& session_state);
   /**
    * The training configuration options.
    */
@@ -81,11 +77,11 @@ class TrainingSession : public InferenceSession {
 
       int pipeline_stage_id{0};
 
-      // This field contains ONNX model's names for input tensors to be sliced. 
-      std::unordered_set<std::string> slice_input_names;
-
-      // This field contains ONNX model's names for output tensors to be sliced. 
-      std::unordered_set<std::string> slice_output_names;
+      // This field contains ONNX model's names for input and output tensors to be sliced.
+      std::vector<std::string> sliced_tensor_names;
+      // Shapes of sliced inputs and outputs.
+      std::unordered_map<std::string, std::vector<int>> sliced_schema;
+      std::unordered_map<std::string, int> sliced_axes;
     };
     // The distributed training configuration.
     DistributedConfiguration distributed_config{};
@@ -354,6 +350,7 @@ class TrainingSession : public InferenceSession {
   using InferenceSession::Run;  // For overload resolution.
   common::Status Run(const RunOptions& run_options, IOBinding& io_binding) override;
 
+  common::Status RunWithoutPipeline(const RunOptions& run_options, IOBinding& io_binding);
   common::Status RunWithPipeline(const RunOptions& run_options, IOBinding& io_binding);
 
  private:
@@ -365,9 +362,9 @@ class TrainingSession : public InferenceSession {
 
   void CreateBatchVariables(
       IOBinding& io_binding, IOBinding& sub_io_binding,
-      const size_t slice_id, const size_t slice_axis,
-      const size_t num_slices);
-  // Slice inputs into sub-tensors along a specified axis.
+      const size_t slice_id, const size_t num_slices);
+
+  void LaunchNcclService(const int pipeline_stage_id);
 
   /** Configures the loss function.
   The loss function can either be provided externally or built from the provided loss function information.
@@ -438,10 +435,7 @@ class TrainingSession : public InferenceSession {
   //  3. Backward operators' descriptions are all "Backward pass". This assumption is used to
   //     identify backward nodes.
   //  4. No event operator is inserted by other graph transform.
-  common::Status InsertPipelineOps(const std::unordered_set<std::string>& initializer_names_to_preserve,
-                                   std::vector<std::string> graph_output_names,
-                                   std::vector<ONNX_NAMESPACE::TensorShapeProto> graph_output_shapes,
-                                   pipeline::PipelineTensorNames& pipeline_tensor_names);
+  common::Status InsertPipelineOps(const std::unordered_set<std::string>& initializer_names_to_preserve);
 
   common::Status ApplyTransformationsToMainGraph(std::unordered_set<std::string>& weights_to_train,
                                                  const TrainingConfiguration::GraphTransformerConfiguration& config,

@@ -10,9 +10,10 @@
 #include <cstdlib>
 #include <stdexcept>
 #include <thread>
+#include <unordered_map>
 
 #include "gsl/gsl"
-#include "orttraining/training_ops/cpu/controlflow/event_pool.h"
+#include "orttraining/core/framework/distributed_run_context.h"
 #include "core/framework/ml_value.h"
 
 namespace onnxruntime {
@@ -131,6 +132,8 @@ class PipelineSlot {
 
   std::vector<PipelineTask> GetTasks() { return tasks_; }
 
+  int Size() const { return static_cast<int>(tasks_.size()); }
+
  private:
   // Actions which can be executed in parallel in this time slot.
   std::vector<PipelineTask> tasks_;
@@ -197,6 +200,7 @@ class PipelineScheduler {
   void CreateComputeSchedule();
   void InsertEvents(std::vector<std::vector<PipelineSlot>>& schedule, const size_t num_events_per_slot, const std::vector<int> initial_events);
   void CreateFullSchedule();
+  void MapStageIdToMpiRank();
   int FindSendRecvTime(const int upstream_compute_time, const int upstream_stage, const int stage) const;
   void InsertForwardCompute(const int batch_id, const std::vector<int> forward_time);
   void InsertBackwardCompute(const int batch_id, const std::vector<int> forward_time, const std::vector<int> backward_time);
@@ -306,13 +310,13 @@ struct PipelineTensorNames {
 
 struct PipelineContext {
   // Number of pipeline stages.
-  int num_pipeline_stages;
+  int num_pipeline_stages{1};
   // Id of stage handled by this process. Currently, it matches the MPI's rank.
-  int pipeline_stage_id;
-  // The number of batches per pipeline round.
+  int pipeline_stage_id{0};
+  // The number of sub-batches per pipeline round.
   // Only the last step among num_gradient_accumulation_steps steps may call
   // optimizer to update the model.
-  int num_pipeline_steps;
+  int num_pipeline_steps{1};
   // Names of scheduling event in graph's input list and
   // names of event ops' outputs. If an event name is an
   // empty string, it means no event should be waited or recorded.
@@ -324,8 +328,23 @@ struct PipelineContext {
   // Values can be fetched at this pipeline stage.
   std::vector<std::string> fetch_names;
 
-  std::unordered_set<std::string> slice_input_names;
-  std::unordered_set<std::string> slice_output_names;
+  // When running training session with multiple sub-batches, only the last sub-batch run
+  // should execute the optimizer nodes and update the model. All non-last sub-batches should
+  // only execute until gradient accumulation step.
+  std::vector<std::string> accumulation_step_fetches;
+
+  // Outputs of the graph before graph partition.
+  std::vector<std::string> expected_output_names;
+
+  // Input and output names of sliced tensors in the original graph.
+  std::vector<std::string> sliced_tensor_names;
+
+  // sliced_axes["name"] is the axis to slice along for the tensor called "name".
+  std::unordered_map<std::string, int> sliced_axes;
+
+  // sliced_axes["name"] is the shape of sliced version of tensor "name".
+  // It's the shape when running sub-batches with pipeline parallel.
+  std::unordered_map<std::string, std::vector<int>> sliced_schema;
 };
 
 }  // namespace pipeline

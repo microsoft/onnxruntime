@@ -161,8 +161,6 @@ class ORTTrainer(object):
         self.optim_config = optim_config
 
         # ORTTrainerOptions
-        self.slice_input_names = set()
-        self.slice_output_names = set()
         if not options:
             options = ORTTrainerOptions()
         self.options = options
@@ -636,8 +634,6 @@ class ORTTrainer(object):
         ort_parameters.training_optimizer_name = self.optim_config.name
         ort_parameters.lr_params_feed_name = self.model_desc.learning_rate.name
         ort_parameters.weights_to_train = trainable_params
-        ort_parameters.slice_input_names = self.slice_input_names
-        ort_parameters.slice_output_names = self.slice_output_names
         ort_parameters.optimizer_attributes_map = optimizer_attributes_map
         ort_parameters.optimizer_int_attributes_map = optimizer_int_attributes_map
         if bool(self._optim_state_dict):
@@ -655,11 +651,9 @@ class ORTTrainer(object):
         ort_parameters.pipeline_parallel_size = self.options.distributed.pipeline_parallel_size
         ort_parameters.num_pipeline_steps = self.options.distributed.num_pipeline_steps
         ort_parameters.pipeline_cut_info_string = self.options.distributed.pipeline_cut_info_string
-
-        print('[orttrainer.py] ort_parameters.data_parallel_size=', ort_parameters.data_parallel_size)
-        print('[orttrainer.py] ort_parameters.horizontal_parallel_size=', ort_parameters.horizontal_parallel_size)
-        print('[orttrainer.py] ort_parameters.pipeline_parallel_size=', ort_parameters.pipeline_parallel_size)
-        print('[orttrainer.py] ort_parameters.num_pipeline_steps=', ort_parameters.num_pipeline_steps)
+        ort_parameters.sliced_schema = self.options.distributed.sliced_schema
+        ort_parameters.sliced_axes = self.options.distributed.sliced_axes
+        ort_parameters.sliced_tensor_names = self.options.distributed.sliced_tensor_names
 
         # SessionOptions
         session_options = ort.SessionOptions()
@@ -821,7 +815,6 @@ class ORTTrainer(object):
         # Bind input tensors
         for input, input_desc in zip(inputs, inputs_desc):
             device_index = _utils.get_device_index_from_input(input)
-            print('bind ', ', name: ', input_desc.name, ', type: ', input.device.type, ', index: ', device_index)
             iobinding.bind_input(input_desc.name,
                                  input.device.type,
                                  device_index,
