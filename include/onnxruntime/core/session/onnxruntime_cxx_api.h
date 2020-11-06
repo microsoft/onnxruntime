@@ -140,16 +140,12 @@ ORT_DEFINE_RELEASE(IoBinding);
   *  \endcode
   */
 struct Float16_t {
- private:
-  uint16_t v_;
-
- public:
-  constexpr Float16_t() noexcept : v_(0) {}
-  constexpr Float16_t(uint16_t v) noexcept : v_(v) {}
-  constexpr operator uint16_t() const noexcept { return v_; }
-  constexpr uint16_t value() const noexcept { return v_; }
-  constexpr bool operator==(const Float16_t& rhs) const noexcept { return v_ == rhs.v_; };
-  constexpr bool operator!=(const Float16_t& rhs) const noexcept { return v_ != rhs.v_; };
+  uint16_t value;
+  constexpr Float16_t() noexcept : value(0) {}
+  constexpr Float16_t(uint16_t v) noexcept : value(v) {}
+  constexpr operator uint16_t() const noexcept { return value; }
+  constexpr bool operator==(const Float16_t& rhs) const noexcept { return value == rhs.value; };
+  constexpr bool operator!=(const Float16_t& rhs) const noexcept { return value != rhs.value; };
 };
 
 static_assert(sizeof(Float16_t) == sizeof(uint16_t), "Sizes must match");
@@ -164,16 +160,12 @@ static_assert(sizeof(Float16_t) == sizeof(uint16_t), "Sizes must match");
   * See also code examples for Float16_t above.
   */
 struct BFloat16_t {
- private:
-  uint16_t v_;
-
- public:
-  constexpr BFloat16_t() noexcept : v_(0) {}
-  constexpr BFloat16_t(uint16_t v) noexcept : v_(v) {}
-  constexpr operator uint16_t() const noexcept { return v_; }
-  constexpr uint16_t value() const noexcept { return v_; }
-  constexpr bool operator==(const BFloat16_t& rhs) const noexcept { return v_ == rhs.v_; };
-  constexpr bool operator!=(const BFloat16_t& rhs) const noexcept { return v_ != rhs.v_; };
+  uint16_t value;
+  constexpr BFloat16_t() noexcept : value(0) {}
+  constexpr BFloat16_t(uint16_t v) noexcept : value(v) {}
+  constexpr operator uint16_t() const noexcept { return value; }
+  constexpr bool operator==(const BFloat16_t& rhs) const noexcept { return value == rhs.value; };
+  constexpr bool operator!=(const BFloat16_t& rhs) const noexcept { return value != rhs.value; };
 };
 
 static_assert(sizeof(BFloat16_t) == sizeof(uint16_t), "Sizes must match");
