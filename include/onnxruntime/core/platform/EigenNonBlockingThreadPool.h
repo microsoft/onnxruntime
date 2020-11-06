@@ -38,14 +38,104 @@
 #include "core/platform/ort_mutex.h"
 #include "core/platform/Barrier.h"
 
+// ORT thread pool overview
+// ------------------------
+//
+// The ORT thread pool implementation is split into two layers.  This
+// file provides the low-level component.  See the accompanying
+// comments in threadpool.h for the high-level component.
+//
+// The code here is derived from the Eigen non-blocking thread pool,
+// although many parts have been updated over time.  The main
+// abstractions used here are:
+//
+// - The thread pool maintains a set of OS threads running
+//   ThreadPoolTempl::WorkerLoop.
+//
+//   Each thread has its own RunQueue object, holding a queue of tasks
+//   that have been pushed to the thread for execution.  The main work
+//   loop is to pop a task from the head of the queue, and to execute
+//   it to completion.  If the worker's run queue is empty then it
+//   will spin waiting for work, then attempt to steal tasks from
+//   other threads' queues, and then block in the OS if it cannot find
+//   work.
+//
+//   This spin-then-block behavior is configured via a flag provided
+//   when creating the thread pool, and by the constant spin_count.
+//
+// - Although all tasks are simple void()->void functions,
+//   conceptually there are three different kinds:
+//
+//   - One-shot tasks submitted externally via the Schedule() method.
+//     These tasks are used to support asynchronous work.  These are
+//     used in the parallel executor, but otherwise are not widely
+//     used outside of test harnesses (see threadpool_test.cc for some
+//     examples).
+//
+//   - Tasks for running a parallel loop.
+//
+//     The tasks themselves are defined in threadpool.cc, and are
+//     submitted to the run queues via RunInParallel->SummonWorkers.
+//     Each task will loop internally, picking off iterations from the
+//     user's code via atoic-fetch-and-add, until the loop is
+//     complete.
+//
+//     This two-layer approach lets us separate out the
+//     super-lightweight per-iteration-batch work from the more
+//     costsly per-loop work of managing Task objects.
+//
+//   - Tasks for running a parallel section.  This is an extension of
+//     the approach taken for parallel loops.  However, the Tasks are
+//     defined in this file, and can pick up iterations from a series
+//     of different parallel loops.  The tasks are defined in
+//     RunInParallelSection->SummonWorkers.
+//
+//     The additional layer of parallel sections is a further way to
+//     amortize costs: the work done creating the tasks can be
+//     performed once, and then exploited over a series of loops.
+//
+// There are a few aspects of the modified Eigen thread pool to
+// highlight:
+//
+// - The run queues follow the usual approach of having push/pop
+//   operations on the front/back, and optimizing the PopFront case
+//   for single-threaded use by the thread owning the run queue.
+//
+//   However, we support an additional Revoke operation to replace an
+//   item in the middle of a queue with a tombstone.  This operation
+//   is used at the end of parallel loops and parallel sections to
+//   remove any tasks that were created but not yet executed.  Once
+//   revoked, a thread can rely on the fact that the task will no
+//   longer execute.  Revocation helps manage captured state in
+//   parallel loops: the alternatives would be (i) waiting for all
+//   tasks that captured state to reach the head of their queues and
+//   execute, or (ii) use heap-allocated state in tasks, and use a
+//   technique such as reference counting to de-allocate it.
+//
+//   To support revoation, each thread has a unique "Tag" to identify
+//   the items that it adds to the work queues.  A thread can revoke
+//   an item only if it has the thread's own tag.
+//
+// - The worker threads maintain a best-effort bitmap in
+//   good_worker_hints_ of which threads to push work to.  A thread
+//   controls its status via SetGoodWorkerHint.  A thread is a "good"
+//   worker when it is actively spinning for work, meaning both that
+//   it is not blocked in the OS, and that it is not busy with work
+//   already.
+//
+//   This heuristic aims to avoid waking additional sleeping threads
+//   where possible, and in a series of parallel loops or parallel
+//   sections to push the work to the same set of threads each time.
+
 namespace onnxruntime {
 namespace concurrency {
 
 class ThreadPoolParallelSection;
 class ThreadPoolLoop;
 
-// Extended Eigen thread pool interface, avoiding the need to modify the ThreadPoolInterface.h
-// header from the external Eigen repository.
+// Extended Eigen thread pool interface, avoiding the need to modify
+// the ThreadPoolInterface.h header from the external Eigen
+// repository.
 
 class ExtendedThreadPoolInterface : public Eigen::ThreadPoolInterface {
  public:
@@ -657,7 +747,7 @@ std::unique_ptr<ThreadPoolParallelSection, void(*)(ThreadPoolParallelSection*)> 
 // Start a parallel section, using a caller-provided
 // ThreadPoolParallelSection for maintaining the per-section state.
 // Starting a parallel section is just book-keeping; threads are
-// "summoned" to help with the paralell section once it enters
+// "summoned" to help with the parallel section once it enters
 // parallel loops.  The threads are then retained until the end of the
 // section, being re-used over subsequent loops.
 

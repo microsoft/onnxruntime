@@ -212,7 +212,7 @@ void ThreadPool::Schedule(std::function<void()> fn) {
   }
 }
 
-thread_local ThreadPool::ParallelSection *ThreadPool::ParallelSection::current_parallel_section;
+thread_local ThreadPool::ParallelSection *ThreadPool::ParallelSection::current_parallel_section{nullptr};
 
 ThreadPool::ParallelSection::ParallelSection(ThreadPool *tp) {
 #ifdef _OPENMP
