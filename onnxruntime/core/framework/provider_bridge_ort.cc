@@ -732,11 +732,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVI
   return nullptr;
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* device_type, bool enable_vpu_fast_compile, const char* device_id, size_t num_of_threads) {
-  device_type;
-  enable_vpu_fast_compile;
-  device_id;
-  num_of_threads;
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* /*device_type*/, bool /*enable_vpu_fast_compile*/, const char* /*device_id*/, size_t /*num_of_threads*/) {
   return nullptr;
 }
 

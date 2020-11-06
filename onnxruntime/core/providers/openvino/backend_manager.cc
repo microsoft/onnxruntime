@@ -3,9 +3,9 @@
 
 #include "core/providers/shared_library/provider_api.h"
 #include <inference_engine.hpp>
+#include <fstream>
 
-#include <google/protobuf/io/zero_copy_stream_impl.h>
-
+//#include <google/protobuf/io/zero_copy_stream_impl.h>
 //#include "core/graph/graph.h"
 //#include "core/graph/model.h"
 //#include "core/platform/env.h"
@@ -126,9 +126,10 @@ bool BackendManager::ModelHasBatchedInputs(const ONNX_NAMESPACE::Provider_ModelP
   return has_batched_inputs;
 }
 
+#if 0
 #ifndef NDEBUG
 //Save ONNX Model
-static common::Status SaveModel(ONNX_NAMESPACE::ModelProto& model_proto,
+static common::Status SaveModel(Provider_ModelProto& model_proto,
                                 const std::string& file_path) {
   int fd;
   Status status = Env::Default().FileOpenWr(file_path, fd);
@@ -139,6 +140,7 @@ static common::Status SaveModel(ONNX_NAMESPACE::ModelProto& model_proto,
   else
     return Status::OK();
 }
+#endif
 #endif
 
 bool BackendManager::ModelHasSymbolicInputDims(const onnxruntime::Provider_Node* fused_node) const {
@@ -183,7 +185,9 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Provider_Node* fus
 
 #ifndef NDEBUG
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
-    SaveModel(model_proto, name + ".onnx");
+    std::fstream dump(name + ".onnx", std::ios::out | std::ios::trunc | std::ios::binary);
+    model_proto->SerializeToOstream(dump);
+    // TODO:    SaveModel(*model_proto, name + ".onnx");
   }
 #endif
 
