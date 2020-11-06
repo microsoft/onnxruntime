@@ -1247,30 +1247,39 @@ Status Expand_8<T>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }*/
 
+template<typename T>
+void Print(const std::vector<T>& A)
+{
+    for(auto a: A) std::cout << a << " ";
+    std::cout << std::endl;
+}
+
 template <typename T>
 Status Expand_8<T>::Compute(OpKernelContext* context) const {
 
     auto input_tensor = context->Input<Tensor>(0);
     auto input_data = input_tensor->template Data<T>();
     auto input_shape = input_tensor->Shape().GetDims();
+
     auto input_dims = input_shape.data();
     auto input_dims_size = static_cast<int64_t>(input_shape.size());
-    auto input_dims_prod = input_tensor->Shape().Size();
 
     auto shape_tensor = context->Input<Tensor>(1);
     auto shape_dims = shape_tensor->Data<int64_t>();
     std::vector<int64_t> output_shape{shape_dims, shape_dims + shape_tensor->Shape().Size()};
 
+    if (input_shape.size() > output_shape.size()) {
+        ORT_THROW("Invalid expand shape");
+    }
+
     auto input_shape_iter = input_shape.rbegin();
     auto output_shape_iter = output_shape.rbegin();
     while (input_shape_iter != input_shape.rend() &&
            output_shape_iter != output_shape.rend()) {
-        if(*input_shape_iter > 1) {
-            if (*input_shape_iter == *output_shape_iter) {
-                continue;
-            } else if (1 == *output_shape_iter) {
+        if(*input_shape_iter != *output_shape_iter) {
+            if (1 == *output_shape_iter) {
                 *output_shape_iter = *input_shape_iter;
-            } else {
+            } else if (1 != *input_shape_iter){
                 ORT_THROW("Invalid expand shape");
             }
         }
@@ -1283,60 +1292,70 @@ Status Expand_8<T>::Compute(OpKernelContext* context) const {
     auto output_data = output_tensor->template MutableData<T>();
     auto output_dims = output_shape.data();
     auto output_dims_size = static_cast<int64_t>(output_shape.size());
-    auto output_dims_prod = output_tensor_shape.Size();
+    auto max_dims_size = std::max(input_dims_size, output_dims_size);
+    std::unique_ptr<int64_t[]> input_dim_group{new int64_t[max_dims_size]};
+    std::unique_ptr<int64_t[]> output_dim_group{new int64_t[max_dims_size]};
+    std::unique_ptr<int64_t[]> expand_dim_size{new int64_t[max_dims_size]};
+    auto dim_group_start = max_dims_size;
 
-    int64_t input_dim = 1;
-    int64_t output_dim = 1;
-    int64_t input_dim_count = 1;
+    //single threaded
+    for (int64_t input_dims_iter = input_dims_size - 1,
+         output_dims_iter = output_dims_size - 1, last_dim_size = 1,
+         input_count = 1, output_count = 1;
+         output_dims_iter > -1;
+         input_dims_iter--, output_dims_iter--) {
 
-    while (input_dims_size > 0) {
-        input_dim *= input_dims[--input_dims_size];
-        output_dim *= output_dims[--output_dims_size];
-        input_dim_count = input_dims_prod / input_dim;
-        if (1 == input_dims[input_dims_size] && output_dims[output_dims_size] > 1) { 
-            break;
+        auto input_dim = input_dims_iter > -1 ? input_dims[input_dims_iter] : 1;
+        auto output_dim = output_dims[output_dims_iter];
+
+        input_count *= input_dim;
+        output_count *= output_dim;
+
+        if (input_dim == 1 && output_dim > 1 || output_dims_iter == 0) {
+            --dim_group_start;
+            input_dim_group[dim_group_start] = input_count;
+            output_dim_group[dim_group_start] = output_count;
+            expand_dim_size[dim_group_start] = output_count/input_count/last_dim_size;
+            last_dim_size *= expand_dim_size[dim_group_start];
         }
-    }//while
-
-    auto input_addr = input_data;
-    auto output_addr = output_data;
-    auto copy_len = input_dim;
-    auto copy_byte = copy_len * sizeof(T);
-    auto output_len = output_dim;
-
-    for (auto i = 0; i < input_dim_count; ++i) {
-        memcpy(output_addr, input_addr, copy_byte);
-        input_addr += copy_len;
-        output_addr += output_len;
     }//for
 
-    while (true) {
-        if (input_dims_size < 0 ||
-            input_dims[input_dims_size] == 1 &&
-            output_dims[output_dims_size] > 1) {
+    auto distribute_count = input_dim_group[dim_group_start]/input_dim_group[max_dims_size-1];
+    std::vector<int64_t> output_offsets(distribute_count, 0);
+    int64_t copy_len = input_dim_group[max_dims_size - 1];
+    auto copy_byte = copy_len * sizeof(T);
 
-            copy_len = output_dim / output_dims[output_dims_size];
-            copy_byte = copy_len * sizeof(T);
-            auto base_addr = output_data;
+    concurrency::ThreadPool::TrySimpleParallelFor(context->GetOperatorThreadPool(),
+                                                  distribute_count,
+                                                  [&] (ptrdiff_t i) {
+        auto input_offset = i * copy_len;
+        int64_t output_offset = 0;
+        for (auto j = dim_group_start + 1, remains = input_offset; j < max_dims_size; ++j) {
+            auto current_count = remains/input_dim_group[j];
+            output_offset += current_count * output_dim_group[j];
+            remains = remains % input_dim_group[j];
+         }//for
+        memcpy(output_data + output_offset, input_data + input_offset, copy_byte);
+        output_offsets[i] = output_offset;
+    });
 
-            for (auto i = 0; i < output_dims_prod / output_dim; ++i) {
-                output_addr = base_addr + copy_len;
-                for (auto j = 1; j < output_dims[output_dims_size]; ++j) {
-                    memcpy(output_addr, base_addr, copy_byte);
-                    output_addr += copy_len;
+    for (auto i = max_dims_size - 1; i >= dim_group_start; --i) {
+        copy_len = output_dim_group[i]/expand_dim_size[i];
+        copy_byte = copy_len * sizeof(T);
+        concurrency::ThreadPool::TrySimpleParallelFor(context->GetOperatorThreadPool(),
+                                                      distribute_count,
+                                                      [&] (ptrdiff_t j) {
+            auto output_offset = output_offsets[j];
+            if (output_offset % output_dim_group[i] == 0) {
+                for (auto k = 1; k < expand_dim_size[i]; ++k) {
+                    memcpy(output_data + output_offset + k * copy_len,
+                           output_data + output_offset,
+                           copy_byte);
                 }//for
-                base_addr = output_addr;
-            }//for
-        }//if
+            }
+        });
+    }//for
 
-        output_dims_size--;
-        input_dims_size--;
-        if (output_dims_size < 0) {
-            break;
-        } else {
-            output_dim *= output_dims[output_dims_size];
-        }
-    }//while
     return Status::OK();
 }
 
