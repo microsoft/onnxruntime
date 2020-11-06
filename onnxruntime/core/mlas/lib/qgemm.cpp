@@ -279,7 +279,7 @@ Return Value:
             if (QuantGran == MLAS_QUANTIZATION_GRANULARITY::PerColumn) {
                 if (Mode == MLAS_QGEMM_OUTPUT_MODE::AccumulateMode) {
                     FloatVector = _mm_add_ps(_mm_mul_ss(FloatVector, _mm_load_ss(&scale[offset])), _mm_load_ss(&c_out[offset]));
-                } else{
+                } else {
                     FloatVector = _mm_mul_ss(FloatVector, _mm_load_ss(&scale[offset]));
                 }
             } else if (Mode == MLAS_QGEMM_OUTPUT_MODE::AccumulateMode) {
@@ -295,21 +295,21 @@ Return Value:
             _mm_store_ss(&c_out[offset], FloatVector);
 #else
             if (QuantGran == MLAS_QUANTIZATION_GRANULARITY::PerColumn) {
-                if(Mode == MLAS_QGEMM_OUTPUT_MODE::AccumulateMode){
-                    c_out[offset]) += float(c[offset]) * scale[offset];
-                } else{
-                    c_out[offset]) = float(c[offset]) * scale[offset];
+                if (Mode == MLAS_QGEMM_OUTPUT_MODE::AccumulateMode){
+                    c_out[offset] += float(c[offset]) * scale[offset];
+                } else {
+                    c_out[offset] = float(c[offset]) * scale[offset];
                 }
             }
             else if (Mode == MLAS_QGEMM_OUTPUT_MODE::AccumulateMode) {
-                c_out[offset]) += float(c[offset]) * ScaleValue;
+                c_out[offset] += float(c[offset]) * (*Scale_);
             }
             else{
-                c_out[offset]) = float(c[offset]) * ScaleValue;
+                c_out[offset] = float(c[offset]) * (*Scale_);
             }
 
             if (HasBias) {
-                c_out[offset]) += bias[offset];
+                c_out[offset] += bias[offset];
             }
 #endif
         }
