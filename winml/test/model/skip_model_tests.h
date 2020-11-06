@@ -140,19 +140,3 @@ std::unordered_map<std::string, std::string> disabledGpuTests(
      {"LSTM_Seq_lens_unpacked_opset9", disabledGpuTestDefaultReason},
      {"mlperf_ssd_mobilenet_300_opset10", disabledGpuTestDefaultReason}
     });
-
-std::unordered_map<std::string, std::string> disabledx86Tests(
-    {
-     // Onnx zoo
-     {"mask_rcnn_opset10", disabledx86TestDefaultReason},
-     {"faster_rcnn_opset10", disabledx86TestDefaultReason},
-     {"GPT2_LM_HEAD_opset10", disabledx86TestDefaultReason},
-     {"GPT2_opset10", disabledx86TestDefaultReason},
-     {"BERT_Squad_opset10", disabledx86TestDefaultReason},
-
-     // Tier 2 Models
-     {"test_vgg19_opset7", disabledx86TestDefaultReason},
-     {"test_vgg19_opset8", disabledx86TestDefaultReason},
-     {"coreml_VGG16_ImageNet_opset7", disabledx86TestDefaultReason},
-     {"mlperf_ssd_resnet34_1200_opset10", disabledx86TestDefaultReason},
-    });
