@@ -47,7 +47,7 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_OpenVINO, _In_ OrtS
 
 namespace onnxruntime {
 struct OpenVINO_Provider : Provider {
-  std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory(int device_id) override { return nullptr; }
+  std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory(int /*device_id*/) override { return nullptr; }
 
   std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory(const char* settings_str) override {
     std::string device_type = "";
