@@ -35,27 +35,6 @@
         "^test_training_dropout.*", // NOT_IMPLEMENTED : Could not find an implementation for the node Dropout(12) (Temporary, subsequent PR will add this -- we need training_mode change in the kernel)
         "^test_if_seq_cpu", // NOT_IMPLEMENTED : Could not find an implementation for the node If(13)
         "^test_loop13_seq_cpu", // NOT_IMPLEMENTED : Could not find an implementation for the node Loop(13)
-        "^test_hardmax_axis_0_cpu", // NOT_IMPLEMENTED : Could not find an implementation for the node Hardmax(13)
-        "^test_hardmax_axis_1_cpu",
-        "^test_hardmax_axis_2_cpu", 
-        "^test_hardmax_default_axis_cpu",
-        "^test_hardmax_example_cpu",
-        "^test_hardmax_negative_axis_cpu",
-        "^test_hardmax_one_hot_cpu",
-        "^test_logsoftmax_axis_0_cpu", // NOT_IMPLEMENTED : Could not find an implementation for the node Logsoftmax(13)
-        "^test_logsoftmax_axis_0_expanded_cpu", 
-        "^test_logsoftmax_axis_1_cpu",
-        "^test_logsoftmax_axis_1_expanded_cpu",
-        "^test_logsoftmax_axis_2_cpu",
-        "^test_logsoftmax_axis_2_expanded_cpu",
-        "^test_logsoftmax_default_axis_cpu",
-        "^test_logsoftmax_default_axis_expanded_cpu",
-        "^test_logsoftmax_example_1_cpu",
-        "^test_logsoftmax_example_1_expanded_cpu",
-        "^test_logsoftmax_large_number_cpu",
-        "^test_logsoftmax_large_number_expanded_cpu",
-        "^test_logsoftmax_negative_axis_cpu",
-        "^test_logsoftmax_negative_axis_expanded_cpu",
         "^test_reduce_sum_default_axes_keepdims_example_cpu", // NOT_IMPLEMENTED : Could not find an implementation for the node ReduceSum(13)
         "^test_reduce_sum_default_axes_keepdims_random_cpu",
         "^test_reduce_sum_do_not_keepdims_example_cpu",
@@ -90,20 +69,6 @@
         "^test_sce_NCd1_mean_weight_negative_ii_expanded_cpu",
         "^test_sce_NCd1_mean_weight_negative_ii_log_prob_cpu",
         "^test_sce_NCd1_mean_weight_negative_ii_log_prob_expanded_cpu",
-        "^test_softmax_axis_0_cpu", // NOT_IMPLEMENTED : Could not find an implementation for the node Softmax(13)
-        "^test_softmax_axis_0_expanded_cpu",
-        "^test_softmax_axis_1_cpu",
-        "^test_softmax_axis_1_expanded_cpu",
-        "^test_softmax_axis_2_cpu",
-        "^test_softmax_axis_2_expanded_cpu",
-        "^test_softmax_default_axis_cpu",
-        "^test_softmax_default_axis_expanded_cpu",
-        "^test_softmax_example_cpu",
-        "^test_softmax_example_expanded_cpu",
-        "^test_softmax_large_number_cpu", 
-        "^test_softmax_large_number_expanded_cpu", 
-        "^test_softmax_negative_axis_cpu", 
-        "^test_softmax_negative_axis_expanded_cpu", 
         "^test_split_equal_parts_1d_cpu", // NOT_IMPLEMENTED : Could not find an implementation for the node Split(13)
         "^test_split_equal_parts_2d_cpu", 
         "^test_split_equal_parts_default_axis_cpu", 
