@@ -246,7 +246,7 @@ jobs:
         --volume /bert_data:/bert_data \
         --volume /bert_ort:/bert_ort \
         onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
-          /python3 \
+          python3 \
           /build/RelWithDebInfo/run_training_pipeline_e2e_tests.py \
             --cwd /build/RelWithDebInfo
     displayName: 'Run run_training_pipeline_e2e_tests.py'
