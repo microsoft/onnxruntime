@@ -15,7 +15,7 @@ Window Machine Learning is a high-performance, reliable API for deploying hardwa
 
 **Windows ML is a core component of Windows.**
     
-  The Windows ML source code is packaged and distributed with each new release of Windows. To provide consumers with high-quality products, Microsoft is responsible for distributing Windows ML and related binaries as part of Windows or standalone distributable packages.
+  The Windows ML code is packaged and distributed with each new release of Windows. To provide consumers with high-quality products, Microsoft is responsible for distributing Windows ML and related binaries as part of Windows or standalone distributable packages.
 
 
 ## Open for Community Contributions
