@@ -130,14 +130,19 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
   // check if all gradients are finite
   ArgDef global_grad_norm_argdef;
   ArgDef global_grad_norm_finite_argdef;
+
   ORT_RETURN_IF_ERROR(AddGradientNorm(
       nodearg_name_generator, gradient_argdefs, graph_defs, global_grad_norm_argdef));
   optimizer_graph_outputs[OptimizerOutputKey::GlobalGradientNorm] = global_grad_norm_argdef.name;
 
   if (opt_graph_config_.use_mixed_precision) {
-    ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
-        nodearg_name_generator, {global_grad_norm_argdef}, graph_defs, global_grad_norm_finite_argdef));
-    optimizer_graph_outputs[OptimizerOutputKey::GradientAllIsFinite] = global_grad_norm_finite_argdef.name;
+    //gradient norm for bfloat is not ready yet. skip it to unblock the testing
+    //will add it back when it is ready
+    if (opt_graph_config_.mixed_precision_type == MixedPrecisionDataType::FP16) {
+      ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
+          nodearg_name_generator, {global_grad_norm_argdef}, graph_defs, global_grad_norm_finite_argdef));
+      optimizer_graph_outputs[OptimizerOutputKey::GradientAllIsFinite] = global_grad_norm_finite_argdef.name;
+    }
   }
 
   // add weight update
@@ -159,10 +164,14 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
   //check if allreduced deltas are finite
   ArgDef adasum_global_grad_finite_argdef;
   if (opt_graph_config_.use_mixed_precision) {
-    ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
-        nodearg_name_generator, gradient_argdefs, graph_defs, adasum_global_grad_finite_argdef,
-        "adasum_all_gradients_finite"));
-    optimizer_graph_outputs[OptimizerOutputKey::DeltaAllIsFinite] = adasum_global_grad_finite_argdef.name;
+    //gradient norm for bfloat is not ready yet. skip it to unblock the testing
+    //will add it back when it is ready
+    if (opt_graph_config_.mixed_precision_type == MixedPrecisionDataType::FP16) {
+      ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
+          nodearg_name_generator, gradient_argdefs, graph_defs, adasum_global_grad_finite_argdef,
+          "adasum_all_gradients_finite"));
+      optimizer_graph_outputs[OptimizerOutputKey::DeltaAllIsFinite] = adasum_global_grad_finite_argdef.name;
+    }
   }
   //Add weight update.
   std::vector<ArgDef> output_weight_args;
