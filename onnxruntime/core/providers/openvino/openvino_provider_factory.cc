@@ -93,7 +93,7 @@ struct OpenVINO_Provider : Provider {
   }
 
   void Shutdown() override {
-    //    Shutdown_DeleteRegistry();
+    openvino_ep::BackendManager::ReleaseGlobalContext();
   }
 
 } g_provider;
@@ -102,7 +102,7 @@ struct OpenVINO_Provider : Provider {
 
 extern "C" {
 
-ORT_API(onnxruntime::Provider*, GetProvider_OpenVINO) {
+ORT_API(onnxruntime::Provider*, GetProvider) {
   return &onnxruntime::g_provider;
 }
 }

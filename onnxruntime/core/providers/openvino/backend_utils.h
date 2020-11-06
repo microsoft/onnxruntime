@@ -5,6 +5,7 @@
 
 #include <inference_engine.hpp>
 
+#define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
 #include "contexts.h"
 #include <iomanip>
@@ -59,14 +60,14 @@ void FillOutputBlob(InferenceEngine::Blob::Ptr& outputBlob, OrtValue* output_ten
                     Ort::CustomOpApi& ort, InferenceEngine::Precision precision, size_t batch_slice_idx);
 
 std::vector<std::pair<std::string, InferenceEngine::InferenceEngineProfileInfo>>
-  perfCountersSorted(std::map<std::string, InferenceEngine::InferenceEngineProfileInfo> perfMap);
+perfCountersSorted(std::map<std::string, InferenceEngine::InferenceEngineProfileInfo> perfMap);
 
 void printPerformanceCounts(const std::map<std::string, InferenceEngine::InferenceEngineProfileInfo>& performanceMap,
-                                          std::ostream &stream, std::string deviceName);
+                            std::ostream& stream, std::string deviceName);
 
-void printPerformanceCounts(InferenceEngine::InferRequest::Ptr request, std::ostream &stream, std::string deviceName);
+void printPerformanceCounts(InferenceEngine::InferRequest::Ptr request, std::ostream& stream, std::string deviceName);
 
-void printPerformanceCounts(InferenceEngine::InferRequest request, std::ostream &stream, std::string deviceName);
+void printPerformanceCounts(InferenceEngine::InferRequest request, std::ostream& stream, std::string deviceName);
 
 }  // namespace backend_utils
 }  // namespace openvino_ep

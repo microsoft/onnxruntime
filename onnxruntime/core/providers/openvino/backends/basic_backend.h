@@ -6,6 +6,7 @@
 #include <memory>
 #include <inference_engine.hpp>
 
+#define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/openvino/contexts.h"
 #include "core/providers/openvino/ibackend.h"

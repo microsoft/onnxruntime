@@ -433,7 +433,7 @@ if (onnxruntime_USE_TENSORRT)
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_tensorrt_cc_srcs})
   add_library(onnxruntime_providers_tensorrt SHARED ${onnxruntime_providers_tensorrt_cc_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_tensorrt onnxruntime_common onnx )
+  onnxruntime_add_include_to_target(onnxruntime_providers_tensorrt onnxruntime_common onnx)
   add_dependencies(onnxruntime_providers_tensorrt onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
   if(WIN32)
     target_link_directories(onnxruntime_providers_tensorrt PRIVATE ${onnxruntime_CUDA_HOME}/x64/lib64)
@@ -557,12 +557,14 @@ if (onnxruntime_USE_OPENVINO)
     endif()
   endif()
 
-  include_directories("${CMAKE_CURRENT_BINARY_DIR}/onnx")
-  file(GLOB_RECURSE onnxruntime_providers_openvino_cc_srcs
+#  include_directories("${CMAKE_CURRENT_BINARY_DIR}/onnx")
+  file(GLOB_RECURSE onnxruntime_providers_openvino_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/openvino/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/openvino/*.cc"
     "${ONNXRUNTIME_ROOT}/core/providers/openvino/*.hpp"
     "${ONNXRUNTIME_ROOT}/core/providers/openvino/*.cpp"
+    "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
   )
 
   if (onnxruntime_USE_OPENVINO_BINARY)
@@ -617,13 +619,14 @@ if (onnxruntime_USE_OPENVINO)
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_openvino_cc_srcs})
   add_library(onnxruntime_providers_openvino SHARED ${onnxruntime_providers_openvino_cc_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_openvino onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf flatbuffers)
-  set_target_properties(onnxruntime_providers_openvino PROPERTIES FOLDER "ONNXRuntime")
+  onnxruntime_add_include_to_target(onnxruntime_providers_openvino onnxruntime_common onnx)
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/openvino  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_openvino PROPERTIES LINKER_LANGUAGE CXX)
-  link_directories(onnxruntime_providers_openvino ${OPENVINO_LIB_DIR_LIST})
-  add_dependencies(onnxruntime_providers_openvino onnxruntime_providers_shared onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  target_include_directories(onnxruntime_providers_openvino SYSTEM PUBLIC ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${OPENVINO_INCLUDE_DIR_LIST} ${PYTHON_INCLUDE_DIRS})
+  set_target_properties(onnxruntime_providers_openvino PROPERTIES FOLDER "ONNXRuntime")
+  target_link_directories(onnxruntime_providers_openvino PRIVATE ${OPENVINO_LIB_DIR_LIST})
+  add_dependencies(onnxruntime_providers_openvino onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  target_include_directories(onnxruntime_providers_openvino SYSTEM PUBLIC ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${eigen_INCLUDE_DIRS} ${OPENVINO_INCLUDE_DIR_LIST} ${PYTHON_INCLUDE_DIRS})
+  # ${CMAKE_CURRENT_BINARY_DIR} is so that #include "onnxruntime_config.h" inside tensor_shape.h is found
   target_link_libraries(onnxruntime_providers_openvino onnxruntime_providers_shared ${OPENVINO_LIB_LIST})
 
   if(MSVC)

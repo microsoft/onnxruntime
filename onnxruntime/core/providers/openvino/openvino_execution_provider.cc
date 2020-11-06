@@ -51,7 +51,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
 
   AllocatorCreationInfo device_info(
       [](int) {
-        return std::make_unique<CPUAllocator>(OrtMemoryInfo(OpenVINO, OrtDeviceAllocator));
+        return CreateCPUAllocator(OrtMemoryInfo(OpenVINO, OrtDeviceAllocator));
       });
 
   Provider_InsertAllocator(CreateAllocator(device_info));

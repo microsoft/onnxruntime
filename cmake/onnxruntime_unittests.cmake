@@ -13,9 +13,9 @@ if (onnxruntime_USE_TVM)
   list(APPEND TEST_INC_DIR ${TVM_INCLUDES})
 endif()
 
-if (onnxruntime_USE_OPENVINO)
-    list(APPEND TEST_INC_DIR ${OPENVINO_INCLUDE_DIR})
-endif()
+#if (onnxruntime_USE_OPENVINO)
+#    list(APPEND TEST_INC_DIR ${OPENVINO_INCLUDE_DIR})
+#endif()
 
 set(disabled_warnings)
 function(AddTest)
@@ -453,10 +453,9 @@ set(ONNXRUNTIME_TEST_LIBS
     ${ONNXRUNTIME_INTEROP_TEST_LIBS}
     ${onnxruntime_libs}
     ${PROVIDERS_CUDA}
-    # TENSORRT and DNNL are explicitly linked at runtime
+    # TENSORRT, DNNL, and OpenVINO are explicitly linked at runtime
     ${PROVIDERS_MIGRAPHX}
     ${PROVIDERS_NGRAPH}
-    ${PROVIDERS_OPENVINO}
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_RKNPU}

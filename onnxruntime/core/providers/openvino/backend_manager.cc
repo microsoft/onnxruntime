@@ -17,9 +17,16 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
+static std::unique_ptr<GlobalContext> g_global_context;
+
 GlobalContext& BackendManager::GetGlobalContext() {
-  static GlobalContext global_context;
-  return global_context;
+  if (!g_global_context)
+    g_global_context = std::make_unique<GlobalContext>();
+  return *g_global_context;
+}
+
+void BackendManager::ReleaseGlobalContext() {
+  g_global_context.reset();
 }
 
 BackendManager::BackendManager(const Provider_Node* fused_node, const logging::Logger& logger) {

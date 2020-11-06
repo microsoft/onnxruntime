@@ -10,7 +10,7 @@
 #include <inference_engine.hpp>
 
 #include "core/providers/shared_library/provider_api.h"
-#include "core/session/onnxruntime_cxx_api.h"
+//#include "core/session/onnxruntime_cxx_api.h"
 //#include "core/graph/graph.h"
 //#include "core/common/logging/logging.h"
 
@@ -51,9 +51,9 @@ VADMBackend::VADMBackend(const Provider_ModelProto& model_proto,
   SetIODefs(model_proto, ie_cnn_network_, subgraph_context_.output_names, const_outputs_map_, global_context_.device_type);
   std::map<std::string, std::string> config;
 #ifndef NDEBUG
-    if (openvino_ep::backend_utils::IsDebugEnabled()) {
+  if (openvino_ep::backend_utils::IsDebugEnabled()) {
     config["PERF_COUNT"] = CONFIG_VALUE(YES);
-    }
+  }
 #endif
 
 #if defined(OPENVINO_2020_4)
@@ -270,12 +270,12 @@ void VADMBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
       for (size_t inf_req_idx = 0; inf_req_idx < num_inf_reqs_; inf_req_idx++) {
         size_t batch_slice_idx = set * num_inf_reqs_ + inf_req_idx;
         CompleteAsyncInference(ort, context, batch_slice_idx, inf_req_idx, batch_size);
-      #ifndef NDEBUG
+#ifndef NDEBUG
         if (openvino_ep::backend_utils::IsDebugEnabled()) {
-           std::string& hw_target = (global_context_.device_id != "") ? global_context_.device_id : global_context_.device_type;
-           printPerformanceCounts(*infer_requests_[inf_req_idx], std::cout, hw_target);
+          std::string& hw_target = (global_context_.device_id != "") ? global_context_.device_id : global_context_.device_type;
+          printPerformanceCounts(*infer_requests_[inf_req_idx], std::cout, hw_target);
         }
-      #endif
+#endif
       }
     }
 
@@ -287,12 +287,12 @@ void VADMBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
     for (size_t inf_req_idx = 0; inf_req_idx < remainder_parallel_runs; inf_req_idx++) {
       size_t batch_slice_idx = full_parallel_runs * num_inf_reqs_ + inf_req_idx;
       CompleteAsyncInference(ort, context, batch_slice_idx, inf_req_idx, batch_size);
-    #ifndef NDEBUG
+#ifndef NDEBUG
       if (openvino_ep::backend_utils::IsDebugEnabled()) {
         std::string& hw_target = (global_context_.device_id != "") ? global_context_.device_id : global_context_.device_type;
         printPerformanceCounts(*infer_requests_[inf_req_idx], std::cout, hw_target);
       }
-    #endif
+#endif
     }
   }
   LOGS_DEFAULT(INFO) << log_tag << "Inference successful";

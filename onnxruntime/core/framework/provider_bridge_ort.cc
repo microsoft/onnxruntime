@@ -73,8 +73,6 @@ using Provider_Tensor = Tensor;
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
 #include "core/providers/openvino/openvino_provider_factory.h"
 
-extern "C" onnxruntime::Provider* GetProvider_OpenVINO();
-
 // The filename extension for a shared library is different per platform
 #ifdef _WIN32
 #define LIBRARY_PREFIX
@@ -161,7 +159,7 @@ struct Provider_IExecutionProvider_Router_Impl : Provider_IExecutionProvider_Rou
 
   virtual ~Provider_IExecutionProvider_Router_Impl() {}
 
-  std::shared_ptr<Provider_KernelRegistry> Provider_GetKernelRegistry() const override { return GetKernelRegistry(); }
+  std::shared_ptr<Provider_KernelRegistry> Provider_GetKernelRegistry() const override { return IExecutionProvider::GetKernelRegistry(); }
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override { return outer_->Provider_GetKernelRegistry(); }
 
   std::vector<std::unique_ptr<Provider_ComputeCapability>> Provider_GetCapability(const onnxruntime::Provider_GraphViewer& graph,
@@ -691,10 +689,12 @@ struct ProviderLibrary {
 };
 
 static ProviderLibrary s_library_dnnl(LIBRARY_PREFIX "onnxruntime_providers_dnnl" LIBRARY_EXTENSION);
+static ProviderLibrary s_library_openvino(LIBRARY_PREFIX "onnxruntime_providers_openvino" LIBRARY_EXTENSION);
 static ProviderLibrary s_library_tensorrt(LIBRARY_PREFIX "onnxruntime_providers_tensorrt" LIBRARY_EXTENSION);
 
 void UnloadSharedProviders() {
   s_library_dnnl.Unload();
+  s_library_openvino.Unload();
   s_library_tensorrt.Unload();
   s_library_shared.Unload();
 }
@@ -726,10 +726,17 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensor
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* settings_str) {
-  if (auto provider = GetProvider_OpenVINO())
-    //  if (auto provider = s_library_tensorrt.Get())
+  if (auto provider = s_library_openvino.Get())
     return std::make_shared<IExecutionProviderFactory_Translator>(provider->CreateExecutionProviderFactory(settings_str));
 
+  return nullptr;
+}
+
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* device_type, bool enable_vpu_fast_compile, const char* device_id, size_t num_of_threads) {
+  device_type;
+  enable_vpu_fast_compile;
+  device_id;
+  num_of_threads;
   return nullptr;
 }
 
