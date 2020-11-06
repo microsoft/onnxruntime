@@ -405,7 +405,7 @@ OrtModelTestInfo GetTestInfoForLoadMnistOrtFormatModel() {
   test_info.output_names = {"Plus214_Output_0"};
   test_info.output_verifier = [](const std::vector<OrtValue>& fetches) {
     const auto& output = fetches[0].Get<Tensor>();
-    ASSERT_TRUE(output.Shape().Size() == 1);
+    ASSERT_TRUE(output.Shape().NumDimensions() == 2);
     // ASSERT_TRUE(output.Data<float>()[0] == 125.f);
   };
 
