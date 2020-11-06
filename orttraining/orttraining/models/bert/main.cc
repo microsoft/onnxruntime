@@ -8,8 +8,14 @@
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/common/profiler.h"
 #include "core/session/environment.h"
+#include "core/framework/bfc_arena.h"
 #include "core/framework/random_seed.h"
+#ifdef USE_CUDA
 #include "core/providers/cuda/cuda_allocator.h"
+#endif
+#ifdef USE_ROCM
+#include "core/providers/rocm/rocm_allocator.h"
+#endif
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
 #include "orttraining/core/framework/mpi_context.h"
@@ -19,11 +25,18 @@
 #include "orttraining/models/runner/data_loader.h"
 
 namespace onnxruntime {
+#ifdef USE_CUDA
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id,
                                                                                OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE,
                                                                                size_t cuda_mem_limit = std::numeric_limits<size_t>::max(),
                                                                                onnxruntime::ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo,
                                                                                bool do_copy_in_default_stream = true);
+#endif
+#ifdef USE_ROCM
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ROCM(OrtDevice::DeviceId device_id,
+                                                                              size_t hip_mem_limit = std::numeric_limits<size_t>::max(),
+                                                                              onnxruntime::ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo);
+#endif
 }
 
 using namespace onnxruntime;
@@ -41,7 +54,7 @@ struct BertParameters : public TrainingRunner::Parameters {
   size_t num_train_steps_phase2;
   float warmup_ratio_phase2;
   float cuda_mem_limit_in_gb = -1;
-
+  bool debug_break = false;
   PathString train_data_dir_phase2;
   PathString test_data_dir_phase2;
 
@@ -178,6 +191,8 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       ("number_recompute_layers", "Number of layers to apply recompute.",
         cxxopts::value<int>()->default_value("0"))
       ("use_invertible_layernorm_grad", "Specify whether to use invertible laynorm(dropping the input activation)",
+        cxxopts::value<bool>()->default_value("false"))
+      ("debug_break", "Specify whether to break at app start, useful for multi-gpu debugging.",
         cxxopts::value<bool>()->default_value("false"));
   options
     .add_options("ORT configuration")
@@ -191,6 +206,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
     auto flags = options.parse(argc, argv);
 
     params.model_name = flags["model_name"].as<std::string>();
+    params.debug_break = flags["debug_break"].as<bool>();
     float lr = flags["learning_rate"].as<float>();
     if (lr > 1.f || lr < 0.f) {
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "learning_rate is not in valid range [0.0, 1.0]");
@@ -575,6 +591,13 @@ void setup_training_params(BertParameters& params) {
   params.input_allocator = std::make_shared<CUDAPinnedAllocator>(device_id, CUDA_PINNED);
 #endif
 
+#ifdef USE_ROCM
+  OrtDevice::DeviceId device_id = static_cast<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
+  size_t hip_mem_limit = std::numeric_limits<size_t>::max();
+  params.providers.emplace(kRocmExecutionProvider, CreateExecutionProviderFactory_ROCM(device_id, hip_mem_limit));
+  params.input_allocator = std::make_shared<ROCMPinnedAllocator>(device_id, CUDA_PINNED);
+#endif
+
   params.loss_func_info = LossFunctionInfo(OpDef("BertLoss", kOnnxDomain),
                                            "total_loss",
                                            {/*prediction_masked_lm*/ "output1",
@@ -781,6 +804,8 @@ int main(int argc, char* argv[]) {
   BertParameters params;
   OrtParameters ort_params{};
   RETURN_IF_FAIL(ParseArguments(argc, argv, params, ort_params));
+  bool keep_looping = params.debug_break;
+  while(keep_looping);
 
   // setup logger, be noted: LOGS_DEFAULT must be after logging manager initialization.
   string default_logger_id{"Default"};

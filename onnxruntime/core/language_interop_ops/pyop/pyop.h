@@ -75,7 +75,7 @@ struct PyCustomOp: Ort::CustomOpBase<PyCustomOp, PyCustomKernel> {
                const std::string&  class_name,
                const std::string&  compute      = "compute",
                PyOpLogFunc         logging_func = [](const char*){});
-    void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo*);
+    void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo*) const;
     const char* GetName() const;
     size_t GetInputTypeCount() const;
     ONNXTensorElementDataType GetInputType(size_t index) const;

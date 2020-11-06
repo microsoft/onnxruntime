@@ -15,7 +15,7 @@ Key-Value pairs for config options can be set using the Session.set_providers AP
 
 ```
 session = onnxruntime.InferenceSession(<path_to_model_file>, options)
-session.set_providers(['OpenVINOExecutionProviders'], [{Key1 : Value1, Key2 : Value2, ...}])
+session.set_providers(['OpenVINOExecutionProvider'], [{Key1 : Value1, Key2 : Value2, ...}])
 ```
 *Note that this causes the InferenceSession to be re-initialized, which may cause model recompilation and hardware re-initialization*
 
@@ -27,7 +27,7 @@ std::string settings_str;
 settings_str.append("Key1|Value1\n");
 settings_str.append("Key2|Value2\n");
 settings_str.append("Key3|Value3\n");
-Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProviderEx_OpenVINO(sf, settings_str));
+Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProviderEx_OpenVINO(sf, settings_str.c_str()));
 ```
 
 ### Available configuration options
@@ -35,9 +35,19 @@ The following table lists all the available configuratoin optoins and the Key-Va
 
 | **Key** | **Key type** | **Allowable Values** | **Value type** | **Description** |
 | --- | --- | --- | --- | --- |
-| device_type | string | CPU_FP32, GPU_FP32, GPU_FP16, MYRIAD_FP16, VAD-M_FP16, VAD-F_FP32 | string | Overrides the accelerator hardware type and precision with these values at runtime. If this option is not explicitly set, default hardware and precision specified during build time is used. |
+| device_type | string | CPU_FP32, GPU_FP32, GPU_FP16, MYRIAD_FP16, VAD-M_FP16, VAD-F_FP32, Any valid Hetero combination | string | Overrides the accelerator hardware type and precision with these values at runtime. If this option is not explicitly set, default hardware and precision specified during build time is used. |
 | device_id   | string | Any valid OpenVINO device ID | string | Selects a particular hardware device for inference. The list of valid OpenVINO device ID's available on a platform can be obtained either by Python API (`onnxruntime.capi._pybind_state.get_available_openvino_device_ids()`) or by [OpenVINO C/C++ API](https://docs.openvinotoolkit.org/latest/classInferenceEngine_1_1Core.html#acb212aa879e1234f51b845d2befae41c). If this option is not explicitly set, an arbitrary free device will be automatically selected by OpenVINO runtime.|
 | enable_vpu_fast_compile | string | True/False | boolean | This option is only available for MYRIAD_FP16 VPU devices. During initialization of the VPU device with compiled model, Fast-compile may be optionally enabled to speeds up the model's compilation to VPU device specific format. This in-turn speeds up model initialization time. However, enabling this option may slowdown inference due to some of the optimizations not being fully applied, so caution is to be exercised while enabling this option. |
+| num_of_threads | string | Any unsigned positive number other than 0 | size_t | Overrides the accelerator default value of number of threads with this value at runtime. If this option is not explicitly set, default value of 8 is used during build time. |
+
+Valid Hetero combination's:
+HETERO:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>...
+The <DEVICE_TYPE> can be any of these devices from this list ['CPU','GPU','MYRIAD','FPGA','HDDL']
+
+A minimum of two DEVICE_TYPE'S should be specified for a valid HETERO Build.
+
+Example:
+HETERO:MYRIAD,CPU         HETERO:HDDL,GPU,CPU
 
 ## Other configuration settings
 ### Onnxruntime Graph Optimization level
@@ -76,7 +86,7 @@ Append the settings string "device_type|<hardware_option>\n" to the EP settings 
 std::string settings_str;
 ...
 settings_str.append("device_type|CPU_FP32\n");
-Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProviderEx_OpenVINO(sf, settings_str));
+Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProviderEx_OpenVINO(sf, settings_str.c_str()));
 ```
 
 
@@ -86,7 +96,7 @@ Append the settings string "device_id|<device_id>\n" to the EP settings string, 
 std::string settings_str;
 ...
 settings_str.append("device_id|<device_id>\n");
-Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProviderEx_OpenVINO(sf, settings_str));
+Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProviderEx_OpenVINO(sf, settings_str.c_str()));
 ```
 
 ## ONNX Layers supported using OpenVINO
@@ -246,3 +256,18 @@ Below topologies from ONNX open model zoo are fully supported on OpenVINO Execut
 ## CSharp API
 
 To use csharp api for openvino execution provider create a custom nuget package. Follow the instructions [here](../../BUILD.md##build-nuget-packages) to install prerequisites for nuget creation. Once prerequisites are installed follow the instructions to [build openvino](../../BUILD.md#openvino) and add an extra flag `--build_nuget` to create nuget packages. Two nuget packages will be created Microsoft.ML.OnnxRuntime.Managed and Microsoft.ML.OnnxRuntime.Openvino.
+
+## Multi-threading for OpenVINO EP
+
+OpenVINO Execution Provider enables thread-safe deep learning inference
+
+## Heterogeneous Execution for OpenVINO EP
+
+The heterogeneous Execution enables computing for inference on one network on several devices. Purposes to execute networks in heterogeneous mode
+
+To utilize accelerators power and calculate heaviest parts of network on accelerator and execute not supported layers on fallback devices like CPU
+To utilize all available hardware more efficiently during one inference
+
+For more information on Heterogeneous plugin of OpenVINO, please refer to the following
+[documentation](https://docs.openvinotoolkit.org/latest/openvino_docs_IE_DG_supported_plugins_HETERO.html).
+

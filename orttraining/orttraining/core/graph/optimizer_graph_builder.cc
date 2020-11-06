@@ -129,6 +129,45 @@ Status OptimizerGraphBuilder::AddGradientScalingNodes(
   return Status::OK();
 }
 
+Status OptimizerGraphBuilder::AddGradientScalingNodes(
+    const NodeArgNameGeneratorFn& nodearg_name_generator,
+    const float scale,
+    std::vector<ArgDef>& input_gradient_argdefs,       // update argdefs in place
+    std::vector<ArgDef>& output_gradient_argdef,  // update argdef in place
+    GraphAugmenter::GraphDefs& graph_defs,
+    ONNX_NAMESPACE::TensorProto_DataType target_type) {
+  ArgDef pre_allreduce_scale(nodearg_name_generator("pre_allreduce_scale"),
+                             graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+                             
+  graph_defs.AddInitializers({CreateTensorProto<float>(pre_allreduce_scale.name, scale, {})});
+
+  TypeProto* fused_gradient_type_proto = graph_defs.CreateTypeProto();
+  fused_gradient_type_proto->mutable_tensor_type()->set_elem_type(target_type);
+
+  std::vector<ArgDef> inputs;
+  inputs.emplace_back(pre_allreduce_scale);
+  for (size_t i = 0; i < input_gradient_argdefs.size(); ++i) {
+    inputs.emplace_back(input_gradient_argdefs[i]);
+  }
+  
+  for (size_t i = 0; i < input_gradient_argdefs.size(); ++i) {
+    ArgDef& gradient_argdef = input_gradient_argdefs[i];
+
+    TypeProto* scaled_gradient_type_proto = graph_defs.CopyTypeProto(gradient_argdef);
+    scaled_gradient_type_proto->mutable_tensor_type()->set_elem_type(target_type);
+
+    output_gradient_argdef.emplace_back(ArgDef(nodearg_name_generator(gradient_argdef.name + "_scaled"), scaled_gradient_type_proto));
+  }
+
+  graph_defs.AddNodeDefs({NodeDef(OpDef{"MixedPrecisionScale", kMSDomain, 1},
+                                  inputs,
+                                  output_gradient_argdef,
+                                  std::vector<AttributeProto>({ONNX_NAMESPACE::MakeAttribute("to", static_cast<int64_t>(target_type))}),
+                                  pre_allreduce_scale.name)});
+
+  return Status::OK();
+}
+
 ArgDef AddGradientAccumulationNodes(const NodeArgNameGeneratorFn& nodearg_name_generator,
                                     std::vector<ArgDef>& gradient_argdefs,               // update argdefs in place
                                     std::vector<ArgDef>& gradient_accumulation_buffers,  // output
@@ -163,7 +202,7 @@ Status AddZeroGradientNodes(const NodeArgNameGeneratorFn& nodearg_name_generator
                             const std::vector<ArgDef>& control_signals,
                             std::vector<ArgDef>& gradient_argdefs,  // update argdefs in place
                             GraphAugmenter::GraphDefs& graph_defs) {
-  assert(gradient_argdefs.size() == control_signals.size());
+  //assert(gradient_argdefs.size() == control_signals.size());
   for (size_t i = 0; i < gradient_argdefs.size(); ++i) {
     gradient_argdefs[i] = BuildZeroGradientNode(nodearg_name_generator, control_signals[i], gradient_argdefs[i], graph_defs);
   }
