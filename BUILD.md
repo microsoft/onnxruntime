@@ -280,18 +280,27 @@ These instructions are for JetPack SDK 4.4.
 
     ```bash
     sudo apt install -y --no-install-recommends \
-      build-essential software-properties-common cmake libopenblas-dev \
-      libpython3.6-dev python3-pip python3-dev
+      build-essential software-properties-common libopenblas-dev \
+      libpython3.6-dev python3-pip python3-dev python3-setuptools python3-wheel
     ```
 
-4. Build the ONNX Runtime Python wheel:
+4. Cmake is needed to build ONNX Runtime. Because the minimum required version is 3.13,
+   it is necessary to build CMake from source. Download Unix/Linux sources from https://cmake.org/download/
+   and follow https://cmake.org/install/ to build from source. Version 3.17.5 and 3.18.4 have been tested on Jetson.
+
+5. Build the ONNX Runtime Python wheel:
 
     ```bash
-    ./build.sh --update --config Release --build --build_wheel \
+    ./build.sh --config Release --update --build --parallel --build_wheel \
     --use_cuda --cuda_home /usr/local/cuda --cudnn_home /usr/lib/aarch64-linux-gnu
     ```
 
-    Note: You may add --use_tensorrt and --tensorrt_home options if you wish to use NVIDIA TensorRT (support is experimental), as well as any other options supported by build.sh script.
+    Note: You may optionally build with experimental TensorRT support.
+    ```bash
+    ./build.sh --config Release --update --build --parallel --build_wheel \
+    --use_tensorrt --cuda_home /usr/local/cuda --cudnn_home /usr/lib/aarch64-linux-gnu \
+    --tensorrt_home /usr/lib/aarch64-linux-gnu
+    ```
 
 ---
 
