@@ -260,11 +260,11 @@ public:
         ) const override;
 
 private:
-    template<bool HASBIAS, MLAS_QGEMM_OUTPUT_MODE MODE, MLAS_QUANTIZATION_GRANULARITY QUANTGRAN>
+    template<bool HasBias, MLAS_QGEMM_OUTPUT_MODE Mode, MLAS_QUANTIZATION_GRANULARITY QuantGran>
     inline
     void
     ProcessImpl(
-        const int32_t* CBuffer,
+        const int32_t* C,
         size_t StartM,
         size_t StartN,
         size_t CountM,

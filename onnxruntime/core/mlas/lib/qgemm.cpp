@@ -2354,17 +2354,10 @@ Arguments:
 
     ldc - Supplies the first dimension of matrix C.
 
-    Scale - Supplies the scale multiplier to apply to each element of matrix C.
-        Used to scale the integer output of the QGEMM back to a floating point
-        number.
-
-    Bias - Supplies the bias vector to apply to element of matrix C. The vector
-        is of length N.
-
     ThreadPool - Supplies the thread pool object to use, else nullptr if the
         base library threading support should be used.
 
-    OutputProcessor - Post Processor on C
+    OutputProcessor - Post Processor on C.
 
 Return Value:
 
@@ -2454,13 +2447,6 @@ Arguments:
     C - Supplies the address of matrix C.
 
     ldc - Supplies the first dimension of matrix C.
-
-    Scale - Supplies the scale multiplier to apply to each element of matrix C.
-        Used to scale the integer output of the QGEMM back to a floating point
-        number.
-
-    Bias - Supplies the bias vector to apply to element of matrix C. The vector
-        is of length N.
 
     ThreadPool - Supplies the thread pool object to use, else nullptr if the
         base library threading support should be used.
