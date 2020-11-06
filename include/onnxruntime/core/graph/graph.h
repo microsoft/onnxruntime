@@ -906,7 +906,7 @@ class Graph {
   @param fused_node_name The name for the new Node.
   @returns Node with fused subgraph.
   */
-  Node& FuseSubGraph(std::unique_ptr<IndexedSubGraph> sub_graph, const std::string& fused_node_name);
+  Node& FuseSubGraph(const IndexedSubGraph& sub_graph, const std::string& fused_node_name);
 
   /**
   Directly insert the nodes in the function Node provided into this Graph.

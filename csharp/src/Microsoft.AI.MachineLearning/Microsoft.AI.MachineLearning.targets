@@ -8,11 +8,12 @@
   <PropertyGroup>
     <RuntimesDirectory Condition="'$(OutputType)' == 'AppContainerExe'">$(MSBuildThisFileDirectory)..\..\runtimes\win-$(WindowsAI-Platform)\uap</RuntimesDirectory>
     <RuntimesDirectory Condition="'$(RuntimesDirectory)' == ''">$(MSBuildThisFileDirectory)..\..\runtimes\win-$(WindowsAI-Platform)\native</RuntimesDirectory>
-    <WindowsAIBinary>$(RuntimesDirectory)\Microsoft.AI.MachineLearning.dll</WindowsAIBinary>
+    <WindowsAIBinarySubfolder Condition="'$(UseWindowsMLStaticRuntime)' == 'true'">static\</WindowsAIBinarySubfolder>
+    <WindowsAIBinary>$(RuntimesDirectory)\$(WindowsAIBinarySubfolder)Microsoft.AI.MachineLearning.dll</WindowsAIBinary>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(DisableOnnxRuntimeDllCopy)' != 'true'">
-    <OnnxRuntimeBinary Condition="'$(OnnxRuntimeBinary)' == ''">$(RuntimesDirectory)\onnxruntime.dll</OnnxRuntimeBinary>
+    <OnnxRuntimeBinary Condition="'$(OnnxRuntimeBinary)' == ''">$(RuntimesDirectory)\$(WindowsAIBinarySubfolder)onnxruntime.dll</OnnxRuntimeBinary>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(DisableDirectMLDllCopy)' != 'true'">

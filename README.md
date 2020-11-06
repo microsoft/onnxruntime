@@ -1,3 +1,6 @@
+
+Please help us improve ONNX Runtime by participating in our customer survey: http://aka.ms/ort-survey 
+
 <p align="center"><img width="50%" src="docs/images/ONNX_Runtime_logo_dark.png" /></p>
 
 [![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/Windows%20CPU%20CI%20Pipeline?label=Windows+CPU)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=9)
@@ -137,7 +140,7 @@ For production scenarios, it's strongly recommended to build only from an [offic
 |[WinRT](docs/WinRT_API.md) | [Windows.AI.MachineLearning](https://docs.microsoft.com/en-us/windows/ai/windows-ml/api-reference)| [Samples](https://github.com/microsoft/windows-Machine-Learning)|
 |[Java](docs/Java_API.md)|8+|[Samples](./samples#Java)| 
 [Ruby](https://github.com/ankane/onnxruntime) (external project)| 2.4-2.7| [Samples](https://ankane.org/tensorflow-ruby)|
-|[Javascript (node.js)](./nodejs) |12.x | [Samples](./nodejs/examples/README.md) |
+|[Javascript (node.js)](./nodejs) |12.x | [Samples](./samples/nodejs) |
 
 ### Supported Accelerators
 
