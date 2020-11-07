@@ -280,11 +280,6 @@ int main(int argc, char* argv[])
     }
 
     std::wstring& modelFileName{opt.modelFileName};
-    std::filesystem::path p(modelFileName);
-
-    std::wstring modelOutFileName = (p.parent_path() / p.stem()).wstring();
-    modelOutFileName += L".out";
-    modelOutFileName += p.extension().wstring();
     std::wstring& mutateModelDirName{opt.mutateModelDirName};
     bool& repoMode{opt.repoMode};
     int& testTimeOut{opt.testTimeOut};
@@ -300,7 +295,6 @@ int main(int argc, char* argv[])
     // Create a stream to hold the model
     //
     std::ifstream modelStream{modelFile, std::ios::in | std::ios::binary};
-    std::ofstream modelOutStream{modelOutFileName, std::ios::out | std::ios::binary};
     // Create an onnx protobuf object
     //
     onnx::ModelProto model_proto;
@@ -309,7 +303,6 @@ int main(int argc, char* argv[])
     //
     if( model_proto.ParseFromIstream(&modelStream) )
     {
-      model_proto.SerializeToOstream(&modelOutStream);
       if(repoMode)
       {
         Logger::testLog<< L"Running Prediction for: " << modelFileName 
