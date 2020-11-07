@@ -23,9 +23,9 @@
 #include "core/session/abi_session_options_impl.h"
 #include "core/platform/env.h"
 
-#if USE_OPENVINO
-#include <inference_engine.hpp>
-#endif
+//#if USE_OPENVINO
+//#include <inference_engine.hpp>
+//#endif
 
 struct OrtStatus {
   OrtErrorCode code;
@@ -647,10 +647,10 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
 #endif
     } else if (type == kRocmExecutionProvider) {
 #ifdef USE_ROCM
-    RegisterExecutionProvider(
-        sess, *onnxruntime::CreateExecutionProviderFactory_ROCM(cuda_device_id,
-                                                                cuda_mem_limit,
-                                                                arena_extend_strategy));
+      RegisterExecutionProvider(
+          sess, *onnxruntime::CreateExecutionProviderFactory_ROCM(cuda_device_id,
+                                                                  cuda_mem_limit,
+                                                                  arena_extend_strategy));
 #endif
     } else if (type == kDnnlExecutionProvider) {
 #ifdef USE_DNNL
@@ -682,11 +682,9 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
 
           } else if (option.first == "device_id") {
             openvino_device_id = option.second;
-          }
-            else if (option.first == "num_of_threads") {
+          } else if (option.first == "num_of_threads") {
             num_of_threads = std::stoi(option.second);
-          }
-          else {
+          } else {
             ORT_THROW("Invalid OpenVINO EP option: ", option.first);
           }
         }
@@ -849,6 +847,7 @@ void addGlobalMethods(py::module& m, const Environment& env) {
   });
 #endif
 
+#if 0
 #ifdef USE_OPENVINO
   m.def(
       "get_available_openvino_device_ids", []() -> std::vector<std::string> {
@@ -867,6 +866,7 @@ void addGlobalMethods(py::module& m, const Environment& env) {
         return openvino_device_type;
       },
       "Gets the dynamically selected OpenVINO device type for inference.");
+#endif
 #endif
 
 #ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
@@ -943,7 +943,7 @@ void addGlobalMethods(py::module& m, const Environment& env) {
     ORT_UNUSED_PARAMETER(algo);
     ORT_THROW("set_cudnn_conv_algo_search is not supported in ROCM");
 #else
-    cudnn_conv_algo_search = algo;
+        cudnn_conv_algo_search = algo;
 #endif
   });
   m.def("set_do_copy_in_default_stream", [](const bool use_single_stream) {
@@ -951,7 +951,7 @@ void addGlobalMethods(py::module& m, const Environment& env) {
     ORT_UNUSED_PARAMETER(use_single_stream);
     ORT_THROW("set_do_copy_in_default_stream is not supported in ROCM");
 #else
-    do_copy_in_default_stream = use_single_stream;
+        do_copy_in_default_stream = use_single_stream;
 #endif
   });
   m.def("set_cuda_mem_limit", [](const int64_t limit) { cuda_mem_limit = static_cast<size_t>(limit); });
@@ -1731,7 +1731,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .def("end_profiling", [](PyInferenceSession* sess) -> std::string {
         return sess->GetSessionHandle()->EndProfiling();
       })
-      .def_property_readonly("get_profiling_start_time_ns", [](const PyInferenceSession* sess) -> uint64_t{
+      .def_property_readonly("get_profiling_start_time_ns", [](const PyInferenceSession* sess) -> uint64_t {
         return sess->GetSessionHandle()->GetProfiling().GetStartTimeNs();
       })
       .def("get_providers", [](PyInferenceSession* sess) -> const std::vector<std::string>& {
