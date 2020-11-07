@@ -17,7 +17,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(O
                                                                                bool do_copy_in_default_stream = true);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_NGraph(const char* ng_backend_type);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* device_type, bool enable_vpu_fast_compile, const char* device_id, size_t num_of_threads);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const Ort_OpenVINO_FactoryParams* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi();
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rknpu();
@@ -53,7 +53,8 @@ std::unique_ptr<IExecutionProvider> DefaultMIGraphXExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider() {
 #ifdef USE_OPENVINO
-  return CreateExecutionProviderFactory_OpenVINO("", false, "", 8)->CreateProvider();
+  Ort_OpenVINO_FactoryParams params{"", false, "", 8};
+  return CreateExecutionProviderFactory_OpenVINO(&params)->CreateProvider();
 #else
   return nullptr;
 #endif

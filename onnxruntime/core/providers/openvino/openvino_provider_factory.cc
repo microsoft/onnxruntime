@@ -37,19 +37,17 @@ std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFacto
 
 }  // namespace onnxruntime
 
-#if 0
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_OpenVINO, _In_ OrtSessionOptions* options, _In_ const char* device_type) {
-  options->provider_factories.push_back(
-      onnxruntime::CreateExecutionProviderFactory_OpenVINO(device_type, false, "", 8));
-  return nullptr;
-}
-#endif
-
 namespace onnxruntime {
 struct OpenVINO_Provider : Provider {
-  std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory(int /*device_id*/) override { return nullptr; }
+  std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const Ort_OpenVINO_FactoryParams* params) override {
+    return std::make_shared<OpenVINOProviderFactory>(params->device_type, params->enable_vpu_fast_compile, params->device_id, params->num_of_threads);
+  }
 
-  std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory(const char* settings_str) override {
+  std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO1(const char* device_type) override {
+    return std::make_shared<OpenVINOProviderFactory>(device_type, false, "", 8);
+  }
+
+  std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO2(const char* settings_str) override {
     std::string device_type = "";
     bool enable_vpu_fast_compile = false;
     std::string device_id = "";

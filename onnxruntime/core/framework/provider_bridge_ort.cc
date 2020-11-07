@@ -725,14 +725,24 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensor
   return nullptr;
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* settings_str) {
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const Ort_OpenVINO_FactoryParams* params) {
   if (auto provider = s_library_openvino.Get())
-    return std::make_shared<IExecutionProviderFactory_Translator>(provider->CreateExecutionProviderFactory(settings_str));
+    return std::make_shared<IExecutionProviderFactory_Translator>(provider->CreateExecutionProviderFactory_OpenVINO(params));
 
   return nullptr;
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* /*device_type*/, bool /*enable_vpu_fast_compile*/, const char* /*device_id*/, size_t /*num_of_threads*/) {
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO1(const char* device_type) {
+  if (auto provider = s_library_openvino.Get())
+    return std::make_shared<IExecutionProviderFactory_Translator>(provider->CreateExecutionProviderFactory_OpenVINO1(device_type));
+
+  return nullptr;
+}
+
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO2(const char* settings_str) {
+  if (auto provider = s_library_openvino.Get())
+    return std::make_shared<IExecutionProviderFactory_Translator>(provider->CreateExecutionProviderFactory_OpenVINO2(settings_str));
+
   return nullptr;
 }
 
@@ -759,7 +769,7 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Tensorrt, _In_ OrtS
 }
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_OpenVINO, _In_ OrtSessionOptions* options, _In_ const char* device_type) {
-  auto factory = onnxruntime::CreateExecutionProviderFactory_OpenVINO(device_type);
+  auto factory = onnxruntime::CreateExecutionProviderFactory_OpenVINO1(device_type);
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_OpenVINO: Failed to load shared library");
   }
@@ -769,7 +779,7 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_OpenVINO, _In_ OrtS
 }
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProviderEx_OpenVINO, _In_ OrtSessionOptions* options, _In_ const char* settings_str) {
-  auto factory = onnxruntime::CreateExecutionProviderFactory_OpenVINO(settings_str);
+  auto factory = onnxruntime::CreateExecutionProviderFactory_OpenVINO2(settings_str);
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_Tensorrt: Failed to load shared library");
   }

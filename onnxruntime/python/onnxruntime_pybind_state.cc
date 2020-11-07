@@ -200,10 +200,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensor
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_NGraph(const char* ng_backend_type);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* device_type,
-                                                                                   bool enable_vpu_fast_compile,
-                                                                                   const char* device_id,
-                                                                                   size_t num_of_threads);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const Ort_OpenVINO_FactoryParams* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VITISAI(const char* backend_type, int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena);
@@ -689,10 +686,9 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
           }
         }
       }
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_OpenVINO(openvino_device_type.c_str(),
-                                                                                            enable_vpu_fast_compile,
-                                                                                            openvino_device_id.c_str(),
-                                                                                            num_of_threads));
+
+      Ort_OpenVINO_FactoryParams params{openvino_device_type.c_str(), enable_vpu_fast_compile, openvino_device_id.c_str(), num_of_threads};
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_OpenVINO(&params);
       // Reset global variables config to avoid it being accidentally passed on to the next session
       openvino_device_type.clear();
 #endif

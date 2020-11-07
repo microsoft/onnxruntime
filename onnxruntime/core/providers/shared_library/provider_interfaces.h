@@ -12,6 +12,8 @@
   void operator=(const TypeName&) = delete; \
   static void operator delete(void*) = delete;
 
+struct Ort_OpenVINO_FactoryParams;
+
 namespace ONNX_NAMESPACE {
 using namespace onnxruntime;
 
@@ -166,8 +168,10 @@ struct Provider_IExecutionProvider {
 };
 
 struct Provider {
-  virtual std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory(int device_id) = 0;
-  virtual std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory(const char* settings_str) = 0;
+  virtual std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory(int /*device_id*/) { return nullptr; }
+  virtual std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const Ort_OpenVINO_FactoryParams* /*params*/) { return nullptr; }
+  virtual std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO1(const char* /*device_Type*/) { return nullptr; }
+  virtual std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO2(const char* /*settings_str*/) { return nullptr; }
 
   virtual void Shutdown() = 0;
 };
