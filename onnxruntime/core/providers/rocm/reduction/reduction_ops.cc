@@ -27,7 +27,7 @@ namespace rocm {
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
       name,                                                                     \
       kOnnxDomain,                                                              \
-      11, 12,                                                                    \
+      11, 12,                                                                   \
       T,                                                                        \
       kRocmExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
@@ -133,20 +133,19 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
   typedef typename ToHipType<T>::MappedType HipT;
   const auto rank = input_shape.NumDimensions();
 
-// Block of fast matrix row reduction.
-// It relies on new atomicAdd for half type, so old hip can't use it.
+  // Block of fast matrix row reduction.
+  // It relies on new atomicAdd for half type, so old hip can't use it.
   const auto stride = input_shape[input_shape.NumDimensions() - 1];
   const auto reduction_size = input_shape.Size() / stride;
   if (fast_reduction_ && reduction_size <= std::numeric_limits<int>::max() && stride <= std::numeric_limits<int>::max() &&
       is_matrix_row_reduction(miopen_reduce_op,
-        static_cast<int>(reduction_size),
-        static_cast<int>(stride), rank, axes_)) {
-
+                              static_cast<int>(reduction_size),
+                              static_cast<int>(stride), rank, axes_)) {
     reduce_matrix_rows(
-      reinterpret_cast<const HipT*>(X),
-      reinterpret_cast<HipT*>(Y),
-      static_cast<int>(reduction_size),
-      static_cast<int>(stride));
+        reinterpret_cast<const HipT*>(X),
+        reinterpret_cast<HipT*>(Y),
+        static_cast<int>(reduction_size),
+        static_cast<int>(stride));
     return Status::OK();
   }
 
@@ -330,7 +329,6 @@ Status ReduceComputeCore(const Tensor& input, PrepareReduceMetadata& prepare_red
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "reduction2 is not supported");
 }
 
-
 template <bool allow_multi_axes>
 template <typename T>
 Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, miopenReduceTensorOp_t miopen_reduce_op) const {
@@ -342,12 +340,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, miopenR
                                        axes_,
                                        prepare_reduce_metadata));
   Tensor* Y = ctx->Output(0, prepare_reduce_metadata.squeezed_output_dims);
-  bool fast_reduction = fast_reduction_;
-  if (fast_reduction) {
-    auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
-    if (ctx_internal && ctx_internal->GetUseDeterministicCompute())
-      fast_reduction = false;
-  }
+  const bool fast_reduction = fast_reduction_ && !ctx->GetUseDeterministicCompute();
 
   return ReduceComputeCore<T>(*X, prepare_reduce_metadata, *Y, miopen_reduce_op, axes_,
                               calculate_log_, calculate_sqt_, log_sum_exp_, fast_reduction);
