@@ -7,5 +7,4 @@ obj-tracking=on
 ></defaults>
 <metric
   name=VALUUtilization,VALUBusy,SALUBusy,MemUnitBusy,MemUnitStalled,WriteUnitStalled
-  kernel="_TransposeKernel,_BinaryElementWise"
 ></metric>
