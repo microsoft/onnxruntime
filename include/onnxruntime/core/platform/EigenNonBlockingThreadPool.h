@@ -34,6 +34,7 @@
 #endif
 #include "core/common/denormal.h"
 #include "core/common/make_unique.h"
+#include "core/common/spin_pause.h"
 #include "core/platform/ort_mutex.h"
 #include "core/platform/Barrier.h"
 
@@ -861,7 +862,8 @@ int CurrentThreadId() const EIGEN_FINAL {
 
           SetGoodWorkerHint(thread_id, true);
           for (int i = 0; i < spin_count && !t.f && !cancelled_ && !done_; i++) {
-            t = (i%steal_count == 0) ? TrySteal() : q.PopFront();
+            t = ((i+1)%steal_count == 0) ? TrySteal() : q.PopFront();
+            onnxruntime::concurrency::SpinPause();
           }
           SetGoodWorkerHint(thread_id, false);
 
