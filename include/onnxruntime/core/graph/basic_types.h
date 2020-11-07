@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <unordered_map>
+#include <unordered_set>
 #include <string>
 #include <cstdint>
 #include <memory>
@@ -10,6 +11,7 @@
 namespace ONNX_NAMESPACE {
 class ValueInfoProto;
 class TensorProto;
+class SparseTensorProto;
 class TypeProto;
 class AttributeProto;
 // define types that would come from the ONNX library if we were building against it.

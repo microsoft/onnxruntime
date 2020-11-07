@@ -10,8 +10,49 @@
 #include "core/framework/allocatormgr.h"
 #include "backend_manager.h"
 #include <map>
+#include <algorithm>
 
 namespace onnxruntime {
+
+static void print_build_options()
+{
+    std::cout << "[ERROR] INVALID DEVICE BUILD TYPE SPECIFIED" << std::endl;
+    std::cout << "Specify the keyword HETERO followed by the devices in the order of priority you want to build" << std::endl;
+    std::cout << "The different hardware devices that can be added with HETERO build ";
+    std::cout << "are ['CPU','GPU','MYRIAD','FPGA','HDDL']" << std::endl;
+    std::cout << "An example of how to specify the HETERO build type. Ex: HETERO:GPU,CPU" << std::endl;
+}
+
+static std::vector<std::string> split(const std::string &s, char delim) {
+    std::vector<std::string> result;
+    std::stringstream ss(s);
+    std::string item;
+
+    while (getline(ss, item, delim)) {
+        result.push_back(item);
+    }
+    return result;
+}
+
+static std::vector<std::string> parseDevices(const std::string& device_string) {
+    std::string comma_separated_devices = device_string;
+    if (comma_separated_devices.find(":") != std::string::npos) {
+        comma_separated_devices = comma_separated_devices.substr(comma_separated_devices.find(":") + 1);
+    }
+    auto devices = split(comma_separated_devices, ',');
+    if (devices.size() < 2) {
+      print_build_options();
+      ORT_THROW("Invalid device string: " + device_string);
+    }
+    std::vector<std::string> dev_options = {"CPU", "GPU", "MYRIAD", "FPGA", "HDDL"};
+    for (std::string dev : devices) {
+      if (!std::count(dev_options.begin(), dev_options.end() , dev)) {
+        print_build_options();
+        ORT_THROW("Invalid device string: " + device_string);
+      }
+    }
+    return devices;
+}
 
 // Information needed to construct OpenVINO execution providers.
 struct OpenVINOExecutionProviderInfo {
@@ -19,9 +60,10 @@ struct OpenVINOExecutionProviderInfo {
   std::string precision_;
   bool enable_vpu_fast_compile_;
   std::string device_id_;
+  size_t num_of_threads_;
 
-  explicit OpenVINOExecutionProviderInfo(std::string dev_type, bool enable_vpu_fast_compile, std::string dev_id)
-            : enable_vpu_fast_compile_(enable_vpu_fast_compile), device_id_(dev_id) {
+  explicit OpenVINOExecutionProviderInfo(std::string dev_type, bool enable_vpu_fast_compile, std::string dev_id, size_t num_of_threads)
+            : enable_vpu_fast_compile_(enable_vpu_fast_compile), device_id_(dev_id), num_of_threads_(num_of_threads) {
 
     if (dev_type == "") {
       LOGS_DEFAULT(INFO) << "[OpenVINO-EP]"
@@ -44,6 +86,19 @@ struct OpenVINOExecutionProviderInfo {
       #elif defined OPENVINO_CONFIG_VAD_F
       device_type_ = "HETERO:FPGA,CPU";
       precision_ = "FP32";
+      #elif defined OPENVINO_CONFIG_HETERO
+        #ifdef DEVICE_NAME
+          #define DEVICE DEVICE_NAME
+        #endif
+      dev_type = DEVICE;
+      if (dev_type.find("HETERO") == 0) {
+          std::vector<std::string> devices = parseDevices(dev_type);
+          precision_ = "FP16";
+          if(devices[0] == "CPU" || devices[0] == "GPU") {
+            precision_ = "FP32";
+          }
+          device_type_ = dev_type;
+      }
       #endif
     } else if (dev_type == "CPU_FP32") {
       device_type_ = "CPU";
@@ -63,6 +118,13 @@ struct OpenVINOExecutionProviderInfo {
     } else if (dev_type == "VAD-F_FP32") {
       device_type_ = "HETERO:FPGA,CPU";
       precision_ = "FP32";
+    } else if (dev_type.find("HETERO") == 0) {
+      std::vector<std::string> devices = parseDevices(dev_type);
+      precision_ = "FP16";
+      if(devices[0] == "CPU" || devices[0] == "GPU") {
+        precision_ = "FP32";
+      }
+      device_type_ = dev_type;
     } else {
       ORT_THROW("Invalid device string: " + dev_type);
     }
@@ -70,7 +132,7 @@ struct OpenVINOExecutionProviderInfo {
                        << "Choosing Device: " << device_type_ << " , Precision: " << precision_;
   }
   OpenVINOExecutionProviderInfo() {
-    OpenVINOExecutionProviderInfo("", false, "");
+    OpenVINOExecutionProviderInfo("", false, "", 0);
   }
 };
 

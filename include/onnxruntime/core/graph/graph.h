@@ -108,7 +108,7 @@ class Node {
   /** Gets the domain of the OperatorSet that specifies the operator returned by #OpType. */
   const std::string& Domain() const noexcept { return domain_; }
 
-  /** Gets the Node's exection priority. 
+  /** Gets the Node's execution priority.
   @remarks Lower value means higher priority  */
   int Priority() const noexcept { return priority_; };
 
@@ -121,7 +121,7 @@ class Node {
 
   /** Gets the Node's Node::Type. */
   Node::Type NodeType() const noexcept { return node_type_; }
-  
+
   /** Gets the opset version that the Node's operator was first defined in.
   @returns Opset version. If -1 the Node's operator has not been set.
   @remarks Prefer over Op()->SinceVersion() as Op() is disabled in a minimal build
@@ -320,10 +320,7 @@ class Node {
   ADD_ATTR_INTERFACES(std::string)
   ADD_ATTR_INTERFACES(ONNX_NAMESPACE::TensorProto)
   ADD_ATTR_INTERFACES(ONNX_NAMESPACE::GraphProto)
-
-#if !defined(ORT_MINIMAL_BUILD)
   ADD_ATTR_INTERFACES(ONNX_NAMESPACE::SparseTensorProto)
-#endif
 
   /** Gets the Node's attributes. */
   const NodeAttributes& GetAttributes() const noexcept { return attributes_; }
@@ -702,6 +699,15 @@ class Graph {
   /** Get a GraphNodes instance that provides const access to all valid Nodes in the Graph. */
   const GraphNodes& Nodes() const noexcept { return iterable_nodes_; }
 
+  /** Get a ConstGraphNodes instance that provides access to a filtered set of valid Nodes in the Graph.
+  @remarks We can't use GraphNodes as that would provide mutable access to the nodes by default, and we can't prevent
+           that by returning a const instance of GraphNodes as we're creating a new instance here due to the filter
+           being something we don't control (i.e. we have to return a new instance so it can't be const).
+  */
+  ConstGraphNodes FilteredNodes(GraphNodes::NodeFilterFunc&& filter_func) const noexcept {
+    return ConstGraphNodes(nodes_, std::move(filter_func));
+  }
+
   /** Gets the maximum NodeIndex value used in the Graph. */
   int MaxNodeIndex() const noexcept { return static_cast<int>(nodes_.size()); }  //assume the casting won't overflow
 
@@ -900,7 +906,7 @@ class Graph {
   @param fused_node_name The name for the new Node.
   @returns Node with fused subgraph.
   */
-  Node& FuseSubGraph(std::unique_ptr<IndexedSubGraph> sub_graph, const std::string& fused_node_name);
+  Node& FuseSubGraph(const IndexedSubGraph& sub_graph, const std::string& fused_node_name);
 
   /**
   Directly insert the nodes in the function Node provided into this Graph.
@@ -1029,13 +1035,12 @@ class Graph {
 
   /** Returns true if the name is for a value that is coming from outer scope */
   bool IsOuterScopeValue(const std::string& name) const {
-#if !defined(ORT_MINIMAL_BUILD)
-    return resolve_context_.outer_scope_node_args.find(name) != resolve_context_.outer_scope_node_args.cend();
-#else
-    // we shouldn't have code that calls this in a minimal build
-    ORT_UNUSED_PARAMETER(name);
-    ORT_THROW("Internal error. Outer scope value lookup is not currently supported in a minimal build.");
-#endif
+    if (!parent_node_) return false;
+    const auto& implicit_input_defs = parent_node_->ImplicitInputDefs();
+    return std::any_of(implicit_input_defs.cbegin(), implicit_input_defs.cend(),
+                       [&name](const NodeArg* implicit_input) {
+                         return implicit_input->Name() == name;
+                       });
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -1265,6 +1270,10 @@ class Graph {
   ONNX_NAMESPACE::GraphProto deserialized_proto_data_;
 
   InitializedTensorSet name_to_initial_tensor_;
+
+  std::unordered_set<std::reference_wrapper<const std::string>,
+                     std::hash<std::string>, std::equal_to<std::string>>
+      sparse_tensor_names_;
 
 #if !defined(ORT_MINIMAL_BUILD)
 

@@ -22,7 +22,8 @@ void ComputeBroadcastBackwardAxes(
     const std::vector<Dimension>& A_dims,
     const std::vector<Dimension>& B_dims,
     std::vector<int64_t>* A_axes,
-    std::vector<int64_t>* B_axes);
+    std::vector<int64_t>* B_axes,
+    const std::string& node_name = "");
 
 void ComputeBroadcastBackwardAxesDynamic(const ArgDef& a,
                                          const ArgDef& b,
@@ -180,6 +181,10 @@ class GradientBuilderBase {
     return node_->OpType();
   }
 
+  int SrcNodeOpsetVersion() const {
+    return node_->Op()->since_version();
+  }
+
   template <typename T>
   static NodeDef ConstantVectorNode(const std::vector<T>& values, const std::string& arg_name) {
     auto t_proto = ONNX_NAMESPACE::ToTensor<T>(values);
@@ -211,24 +216,24 @@ class GradientBuilderBase {
     if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
       return ConstantScalarNode(MLFloat16(math::floatToHalf(value)), {1}, arg_name);
     }
-    
+
     if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16) {
       return ConstantScalarNode(BFloat16(value), {1}, arg_name);
     }
-    
+
     return ConstantScalarNode(value, {1}, arg_name);
   }
 
   static NodeDef ZeroConstantNode(int elem_type) {
-    return ConstantScalarNode(0.0f, "ZeroConstant", elem_type);
+    return ConstantScalarNode(0.0f, "ZeroConstant_Type" + std::to_string(elem_type), elem_type);
   }
 
   static NodeDef HalfConstantNode(int elem_type) {
-    return ConstantScalarNode(0.5f, "HalfConstant", elem_type);
+    return ConstantScalarNode(0.5f, "HalfConstant_Type" + std::to_string(elem_type), elem_type);
   }
 
   static NodeDef OneConstantNode(int elem_type) {
-    return ConstantScalarNode(1.0f, "OneConstant", elem_type);
+    return ConstantScalarNode(1.0f, "OneConstant_Type" + std::to_string(elem_type), elem_type);
   }
 
   void HandleBroadcasting(const ArgDef& input_grad,
@@ -243,6 +248,8 @@ class GradientBuilderBase {
                                  const ArgDef& output_grad,
                                  const ArgDef& reduce_axes,
                                  std::vector<NodeDef>& output) const;
+
+  const std::string& NodeName() const { return node_->Name(); }
 
  private:
   friend class GradientGraphBuilder;

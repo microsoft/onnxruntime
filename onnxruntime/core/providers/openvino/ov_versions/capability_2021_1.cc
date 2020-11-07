@@ -188,8 +188,27 @@ bool IsOpSupported(std::string name, std::string device) {
     std::merge(common_supported_ops.begin(), common_supported_ops.end(),
                supported_ops_vpu.begin(), supported_ops_vpu.end(),
                std::inserter(supported_ops, supported_ops.begin()));
+  } else if (device.find("HETERO") == 0) {
+    std::vector<std::string> devices;
+    std::stringstream s_stream(device);
+    while(s_stream.good()) {
+      std::string substr;
+      getline(s_stream, substr, ',');
+      devices.push_back(substr);
+    }
+    supported_ops.insert(common_supported_ops.begin(), common_supported_ops.end());
+    for (auto& it : devices) {
+      if(it == "MYRIAD" || "HDDL") {
+        supported_ops.insert(supported_ops_vpu.begin(), supported_ops_vpu.end());
+      }
+      if(it == "GPU") {
+        supported_ops.insert(supported_ops_gpu.begin(), supported_ops_gpu.end());
+      }
+      if(it == "CPU") {
+        supported_ops.insert(supported_ops_cpu.begin(), supported_ops_cpu.end());
+     }
+    }
   }
-
   return supported_ops.find(name) != supported_ops.end();
 }
 
@@ -526,7 +545,7 @@ static bool IsTypeSupported(const NodeArg* node_arg, bool is_initializer, const 
     };
     auto dtype = type_proto->tensor_type().elem_type();
 
-    if (device_id == "CPU" || device_id == "MYRIAD" || device_id == "HDDL") {
+    if (device_id == "CPU" || device_id == "MYRIAD" || device_id == "HDDL" || device_id.find("HETERO") != std::string::npos) {
       if (supported_types_cpu.find(dtype) != supported_types_cpu.end())
         return true;
       else {
@@ -818,7 +837,7 @@ GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, std::string d
     auto connected_clusters = GetConnectedClusters(graph_viewer, ng_clusters);
 
     //Myriad plugin can only load 10 subgraphs
-    if (device_id == "MYRIAD" && connected_clusters.size() > 10) {
+    if (device_id.find("MYRIAD") != std::string::npos && connected_clusters.size() > 10) {
       std::sort(connected_clusters.begin(), connected_clusters.end(),
                 [](const std::vector<NodeIndex>& v1, const std::vector<NodeIndex>& v2) -> bool {
                   return v1.size() > v2.size();
@@ -827,7 +846,7 @@ GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, std::string d
     int no_of_clusters = 0;
 
     for (auto this_cluster : connected_clusters) {
-      if (device_id == "MYRIAD" && no_of_clusters == 10) {
+      if (device_id.find("MYRIAD") != std::string::npos && no_of_clusters == 10) {
         break;
       }
       std::vector<std::string> cluster_graph_inputs, cluster_inputs, const_inputs, cluster_outputs;
@@ -850,7 +869,7 @@ GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, std::string d
             if(optype == "Identity" && device_id != "CPU")
               continue;
 
-            if((optype == "Div" || optype == "Sub") && (device_id != "MYRIAD" &&  device_id != "GPU"))
+            if((optype == "Div" || optype == "Sub") && (device_id.find("MYRIAD") == std::string::npos &&  device_id.find("GPU") == std::string::npos))
               continue;
             for (const auto& input : node->InputDefs()) {
               auto input_name = input->Name();
@@ -877,7 +896,7 @@ GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, std::string d
           const bool is_data_int32 = input->Type()->find("int32") != std::string::npos;
           auto it = find(cluster_graph_inputs.begin(), cluster_graph_inputs.end(), input_name);
           if(it != cluster_graph_inputs.end()){
-            if(device_id == "MYRIAD" && is_data_int32){
+            if(device_id.find("MYRIAD") != std::string::npos && is_data_int32){
               omit_subgraph = true;
               break;
             }

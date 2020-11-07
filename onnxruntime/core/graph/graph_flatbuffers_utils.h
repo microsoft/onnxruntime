@@ -5,6 +5,7 @@
 
 namespace ONNX_NAMESPACE {
 class TensorProto;
+class SparseTensorProto;
 class AttributeProto;
 }  // namespace ONNX_NAMESPACE
 
@@ -37,6 +38,10 @@ onnxruntime::common::Status SaveInitializerOrtFormat(
     flatbuffers::FlatBufferBuilder& builder, const ONNX_NAMESPACE::TensorProto& initializer,
     flatbuffers::Offset<fbs::Tensor>& fbs_tensor);
 
+onnxruntime::common::Status SaveSparseInitializerOrtFormat(
+    flatbuffers::FlatBufferBuilder& builder, const ONNX_NAMESPACE::SparseTensorProto& initializer,
+    flatbuffers::Offset<fbs::SparseTensor>& fbs_sparse_tensor);
+
 // Convert a given AttributeProto into fbs::Attribute
 // Note, we current do not support graphs, and sparse_tensor(s)
 //       If the attribute type is a graph, we need to use the supplied graph,
@@ -49,6 +54,9 @@ onnxruntime::common::Status SaveAttributeOrtFormat(
 
 onnxruntime::common::Status LoadInitializerOrtFormat(
     const fbs::Tensor& fbs_tensor, ONNX_NAMESPACE::TensorProto& initializer);
+
+onnxruntime::common::Status LoadSparseInitializerOrtFormat(const fbs::SparseTensor& fbs_sparse_tensor,
+                                                           ONNX_NAMESPACE::SparseTensorProto& initializer);
 
 // Load a give fbs::Attribute into AttributeProto
 // Note, If the attribute type is a graph, we will leave an empty graph in attr_proto,

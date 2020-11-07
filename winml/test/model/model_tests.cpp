@@ -30,7 +30,7 @@ class ModelTest : public testing::TestWithParam<std::tuple<ITestCase*, winml::Le
     // DirectML runs needs a higher relativePerSampleTolerance to handle GPU variability in results.
 #ifdef USE_DML
     if (m_deviceKind == winml::LearningModelDeviceKind::DirectX) {
-      m_relativePerSampleTolerance = 0.009; // tolerate up to 0.9% difference of expected result.
+      m_relativePerSampleTolerance = 0.009;  // tolerate up to 0.9% difference of expected result.
     }
 #endif
   }
@@ -121,12 +121,20 @@ std::string GetTestDataPath() {
   if (environmentVariableFetchSuceeded == 0 && GetLastError() == ERROR_ENVVAR_NOT_FOUND || environmentVariableFetchSuceeded > MAX_PATH) {
     // if the WINML_TEST_DATA_PATH environment variable cannot be found, attempt to find the hardcoded models folder
     std::wstring modulePath = FileHelpers::GetModulePath();
-    std::filesystem::path currPath = modulePath.substr(0,modulePath.find_last_of(L"\\"));
+    std::filesystem::path currPath = modulePath.substr(0, modulePath.find_last_of(L"\\"));
     std::filesystem::path parentPath = currPath.parent_path();
     auto hardcodedModelPath = parentPath.string() + "\\models";
     if (std::filesystem::exists(hardcodedModelPath) && hardcodedModelPath.length() <= MAX_PATH) {
       return hardcodedModelPath;
     }
+  }
+  const std::string testDataPathFolderName = "\\testData\\";
+  if (MAX_PATH - environmentVariableFetchSuceeded >= testDataPathFolderName.length()) {
+    testDataPath.replace(environmentVariableFetchSuceeded,
+        testDataPathFolderName.length(),
+        testDataPathFolderName);
+  } else {
+    throw std::exception("WINML_TEST_DATA_PATH environment variable path needs to be shorter to accomodate the maximum path size of %d\n", MAX_PATH);
   }
   return testDataPath;
 }
@@ -141,12 +149,40 @@ static std::vector<ITestCase*> GetAllTestCases() {
   std::vector<std::basic_string<PATH_CHAR_TYPE>> dataDirs;
   auto testDataPath = GetTestDataPath();
   if (testDataPath == "") return tests;
-
   for (auto& p : std::filesystem::directory_iterator(testDataPath.c_str())) {
     if (p.is_directory()) {
       dataDirs.push_back(std::move(p.path()));
     }
   }
+  
+  #if !defined(__amd64__) && !defined(_M_AMD64)
+  // Should match "x86_disabled_tests" in onnxruntime/test/providers/cpu/model_tests.cc
+  // However there are more tests skipped. TODO: bugs must be filed for difference in models.
+  static const ORTCHAR_T* x86DisabledTests[] = {
+      ORT_TSTR("BERT_Squad"),
+      ORT_TSTR("bvlc_reference_rcnn_ilsvrc13"),
+      ORT_TSTR("bvlc_reference_caffenet"),
+      ORT_TSTR("bvlc_alexnet"),
+      ORT_TSTR("coreml_VGG16_ImageNet"),
+      ORT_TSTR("faster_rcnn"),
+      ORT_TSTR("fp16_test_tiny_yolov2"),
+      ORT_TSTR("GPT2"),
+      ORT_TSTR("GPT2_LM_HEAD"),
+      ORT_TSTR("keras_lotus_resnet3D"),
+      ORT_TSTR("mask_rcnn_keras"),
+      ORT_TSTR("mask_rcnn"),
+      ORT_TSTR("mlperf_ssd_resnet34_1200"),
+      ORT_TSTR("resnet50"),
+      ORT_TSTR("resnet50v2"),
+      ORT_TSTR("resnet152v2"),
+      ORT_TSTR("resnet101v2"),
+      ORT_TSTR("resnet34v2"),
+      ORT_TSTR("ssd"),
+      ORT_TSTR("vgg19"),
+      ORT_TSTR("zfnet512")
+  };
+  allDisabledTests.insert(std::begin(x86DisabledTests), std::end(x86DisabledTests));
+#endif
 
   WINML_EXPECT_NO_THROW(LoadTests(dataDirs, whitelistedTestCases, perSampleTolerance, relativePerSampleTolerance,
                                   allDisabledTests,
@@ -172,11 +208,6 @@ void DetermineIfDisableTest(std::string& testName, winml::LearningModelDeviceKin
       reason = disabledGpuTests.at(testName);
       shouldSkip = true;
     }
-  } else if (disabledx86Tests.find(testName) != disabledx86Tests.end()) {
-#if !defined(__amd64__) && !defined(_M_AMD64)
-    reason = disabledx86Tests.at(testName);
-    shouldSkip = true;
-#endif
   }
   if (shouldSkip) {
     printf("Disabling %s test because : %s\n", testName.c_str(), reason.c_str());

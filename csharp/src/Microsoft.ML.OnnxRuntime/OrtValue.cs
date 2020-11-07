@@ -120,7 +120,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// However, it re-uses managed memory if possible.
         /// </summary>
         /// <param name="value">Tensor object</param>
-        /// <param name="memoryHandle">For all tensor types but string tensors we endevour to use managed memory
+        /// <param name="memoryHandle">For all tensor types but string tensors we endeavor to use managed memory
         ///  to avoid additional allocation and copy. This out parameter represents a chunk of pinned memory
         /// </param>
         /// <param name="elementType">discovered tensor element type</param>
