@@ -688,7 +688,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
       }
 
       Ort_OpenVINO_FactoryParams params{openvino_device_type.c_str(), enable_vpu_fast_compile, openvino_device_id.c_str(), num_of_threads};
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_OpenVINO(&params);
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_OpenVINO(&params));
       // Reset global variables config to avoid it being accidentally passed on to the next session
       openvino_device_type.clear();
 #endif
