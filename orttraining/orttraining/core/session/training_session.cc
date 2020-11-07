@@ -247,17 +247,6 @@ Status TrainingSession::ConfigureForTraining(
   ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(trainable_initializers, config.graph_transformer_config,
                                                       config_result));
 
-  std::unordered_set<std::string> all_trainable_weights;
-  for (auto& trainable_initializer_name : trainable_initializers) {
-    if (config_result.weight_name_map_after_graph_transform.find(trainable_initializer_name) !=
-        config_result.weight_name_map_after_graph_transform.end()) {
-      auto& updated_weight_name = config_result.weight_name_map_after_graph_transform.at(trainable_initializer_name);
-      all_trainable_weights.insert(updated_weight_name);
-    } else {
-      all_trainable_weights.insert(trainable_initializer_name);
-    }
-  }
-
   if (IsRootNode(config) && config.model_with_loss_function_path.has_value()) {
     ORT_IGNORE_RETURN_VALUE(Save(
         config.model_with_loss_function_path.value(), SaveOption::NO_RELOAD));
@@ -265,8 +254,8 @@ Status TrainingSession::ConfigureForTraining(
 
   // derive actual set of weights to train
   std::unordered_set<std::string> weight_names_to_train =
-      !all_trainable_weights.empty()
-          ? all_trainable_weights
+      !filtered_config_weight_names_to_train.empty()
+          ? filtered_config_weight_names_to_train
           : GetTrainableModelInitializers(config.immutable_weights, loss_name);
 
   for (const auto& weight_name_to_not_train : config.weight_names_to_not_train) {
