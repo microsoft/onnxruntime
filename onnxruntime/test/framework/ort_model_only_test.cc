@@ -240,7 +240,7 @@ static void DumpOrtModelAsJson(const std::string& model_uri) {
 
 TEST(OrtModelOnlyTests, SerializeMnistToOrtFormat) {
   const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("mnist.onnx.ort");
-  SaveAndCompareModels("testdata/mnist/model.onnx", ort_file);
+  SaveAndCompareModels("testdata/mnist.onnx", ort_file);
 
   // DumpOrtModelAsJson(ToMBString(ort_file));
 
@@ -391,7 +391,7 @@ OrtModelTestInfo GetTestInfoForLoadOrtFormatModel() {
 
 OrtModelTestInfo GetTestInfoForLoadMnistOrtFormatModel() {
   OrtModelTestInfo test_info;
-  test_info.model_filename = ORT_TSTR("testdata/mnist/mnist.onnx.ort");
+  test_info.model_filename = ORT_TSTR("testdata/mnist.onnx.ort");
   test_info.logid = "LoadMnistOrtFormatModel";
 
   OrtValue ml_value;
