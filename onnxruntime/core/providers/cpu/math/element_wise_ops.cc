@@ -191,10 +191,8 @@ REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Min, 12, 12, Min_8, float, double, MLFloat
 // Supposed to add BFloat16 but we are not supporting now, however, separate registration
 REG_ELEMENTWISE_KERNEL_NONT(Min, 13, Min_8, float, double, MLFloat16, int32_t, uint32_t, int64_t, uint64_t);
 
-REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 7, 8, float, Less);
-REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 7, 8, double, Less);
-REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 9, 12, float, Less);
-REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 9, 12, double, Less);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 7, 12, float, Less);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 7, 12, double, Less);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 9, 12, int32_t, Less);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 9, 12, int64_t, Less);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Less, 13, float, Less);
@@ -202,10 +200,8 @@ REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Less, 13, double, Less);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Less, 13, int32_t, Less);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Less, 13, int64_t, Less);
 
-REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Greater, 7, 8, float, Greater);
-REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Greater, 7, 8, double, Greater);
-REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Greater, 9, 12, float, Greater);
-REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Greater, 9, 12, double, Greater);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Greater, 7, 12, float, Greater);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Greater, 7, 12, double, Greater);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Greater, 9, 12, int32_t, Greater);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Greater, 9, 12, int64_t, Greater);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Greater, 13, float, Greater);
@@ -213,16 +209,11 @@ REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Greater, 13, double, Greater);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Greater, 13, int32_t, Greater);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Greater, 13, int64_t, Greater);
 
-REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 7, 10, bool, Equal);
-REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 7, 10, int32_t, Equal);
-REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 7, 10, int64_t, Equal);
-REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 7, 10, float, Equal);
-REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 7, 10, double, Equal);
-REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 11, 12, bool, Equal);
-REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 11, 12, int32_t, Equal);
-REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 11, 12, int64_t, Equal);
-REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 11, 12, float, Equal);
-REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 11, 12, double, Equal);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 7, 12, bool, Equal);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 7, 12, int32_t, Equal);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 7, 12, int64_t, Equal);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 7, 12, float, Equal);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 7, 12, double, Equal);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 13, bool, Equal);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 13, int32_t, Equal);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 13, int64_t, Equal);
@@ -1203,59 +1194,108 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     PRelu<float>);
 
-static void ExpandBroadcastLooper(BroadcastHelper& helper, const ProcessBroadcastSpanFuncs& functors) {
-  ORT_ENFORCE(!helper.HaveTwoTensorInputs(), "ExpandBroadcastLooper should only have a shape for the second input.");
-
-  if (helper.IsInput0Scalar()) {
-    while (helper.NeedMoreOutput()) {
-      functors.input0scalar(helper);
-      helper.Next();
-    }
-    /*
-  } else if (helper.IsInput0Scalar()) {
-    // not possible as we only have one tensor as input
-  */
-  } else {
-    while (helper.NeedMoreOutput()) {
-      functors.general(helper);
-      helper.Next();
-    }
-  }
-}
-
-// Split out the untyped processing from the type specific work to minimize binary size
-static void UntypedExpand(OpKernelContext& context, const ProcessBroadcastSpanFuncs& funcs) {
-  // Input 1 is a 1-dimensional tensor containing the dimension values to exapnd to
-  const auto& shape_data_tensor = *context.Input<Tensor>(1);
-  ORT_ENFORCE(shape_data_tensor.Shape().GetDims().size() == 1,
-              "Tensor with shape information must be 1 dimensional.");
-
-  // Turn the shape tensor data into an actual shape
-  const auto* p_dims = shape_data_tensor.Data<int64_t>();
-  TensorShape shape(std::vector<int64_t>{p_dims, p_dims + shape_data_tensor.Shape().Size()});
-
-  InputBroadcaster input_broadcaster(*context.Input<Tensor>(0), shape);
-  OutputBroadcaster output_broadcaster(input_broadcaster.GetSpanSize(),
-                                       *context.Output(0, input_broadcaster.GetOutputShape()));
-  BroadcastHelper broadcast_helper(input_broadcaster, output_broadcaster);
-
-  ExpandBroadcastLooper(broadcast_helper, funcs);
-}
-
 template <typename T>
 Status Expand_8<T>::Compute(OpKernelContext* context) const {
-  ProcessBroadcastSpanFuncs funcs{
-      [](BroadcastHelper& per_iter_bh) {
-        per_iter_bh.OutputEigen<T>().array() = per_iter_bh.ScalarInput0<T>();
-      },
-      [](BroadcastHelper&) {
-        ORT_THROW("Invalid usage. Input 1 is a shape with no data.");
-      },
-      [](BroadcastHelper& per_iter_bh) {
-        per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>();
-      }};
+  auto input_tensor = context->Input<Tensor>(0);
+  auto input_data = input_tensor->template Data<T>();
+  auto input_shape = input_tensor->Shape().GetDims();
 
-  UntypedExpand(*context, funcs);
+  auto input_dims = input_shape.data();
+  auto input_dims_size = static_cast<int64_t>(input_shape.size());
+
+  auto shape_tensor = context->Input<Tensor>(1);
+  auto shape_dims = shape_tensor->Data<int64_t>();
+  std::vector<int64_t> output_shape{shape_dims, shape_dims + shape_tensor->Shape().Size()};
+
+  if (input_shape.size() > output_shape.size()) {
+    ORT_THROW("Invalid expand shape");
+  }
+
+  auto input_shape_iter = input_shape.rbegin();
+  auto output_shape_iter = output_shape.rbegin();
+  while (input_shape_iter != input_shape.rend() &&
+         output_shape_iter != output_shape.rend()) {
+    if (*input_shape_iter != *output_shape_iter) {
+      if (1 == *output_shape_iter) {
+        *output_shape_iter = *input_shape_iter;
+      } else if (1 != *input_shape_iter) {
+        ORT_THROW("Invalid expand shape");
+      }
+    }
+    input_shape_iter++;
+    output_shape_iter++;
+  }
+
+  TensorShape output_tensor_shape(output_shape);
+  auto output_tensor = context->Output(0, output_tensor_shape);
+  auto output_data = output_tensor->template MutableData<T>();
+  auto output_dims = output_shape.data();
+  auto output_dims_size = static_cast<int64_t>(output_shape.size());
+  auto max_dims_size = std::max(input_dims_size, output_dims_size);
+  std::unique_ptr<int64_t[]> input_dim_group{new int64_t[max_dims_size]};
+  std::unique_ptr<int64_t[]> output_dim_group{new int64_t[max_dims_size]};
+  std::unique_ptr<int64_t[]> expand_dim_size{new int64_t[max_dims_size]};
+  auto dim_group_start = max_dims_size;
+
+  //single threaded
+  for (int64_t input_dims_iter = input_dims_size - 1,
+               output_dims_iter = output_dims_size - 1, last_dim_size = 1,
+               input_count = 1, output_count = 1;
+       output_dims_iter > -1;
+       input_dims_iter--, output_dims_iter--) {
+    auto input_dim = input_dims_iter > -1 ? input_dims[input_dims_iter] : 1;
+    auto output_dim = output_dims[output_dims_iter];
+
+    input_count *= input_dim;
+    output_count *= output_dim;
+
+    if (input_dim == 1 && output_dim > 1 || output_dims_iter == 0) {
+      --dim_group_start;
+      input_dim_group[dim_group_start] = input_count;
+      output_dim_group[dim_group_start] = output_count;
+      expand_dim_size[dim_group_start] = output_count / input_count / last_dim_size;
+      last_dim_size *= expand_dim_size[dim_group_start];
+    }
+  }  //for
+
+  auto distribute_count = input_dim_group[dim_group_start] / input_dim_group[max_dims_size - 1];
+  std::vector<int64_t> output_offsets(distribute_count, 0);
+  int64_t copy_len = input_dim_group[max_dims_size - 1];
+  auto copy_byte = copy_len * sizeof(T);
+
+  concurrency::ThreadPool::TrySimpleParallelFor(
+      context->GetOperatorThreadPool(),
+      distribute_count,
+      [&](ptrdiff_t i) {
+        auto input_offset = i * copy_len;
+        int64_t output_offset = 0;
+        for (auto j = dim_group_start + 1, remains = input_offset; j < max_dims_size; ++j) {
+          auto current_count = remains / input_dim_group[j];
+          output_offset += current_count * output_dim_group[j];
+          remains = remains % input_dim_group[j];
+        }  //for
+        memcpy(output_data + output_offset, input_data + input_offset, copy_byte);
+        output_offsets[i] = output_offset;
+      });
+
+  for (auto i = max_dims_size - 1; i >= dim_group_start; --i) {
+    copy_len = output_dim_group[i] / expand_dim_size[i];
+    copy_byte = copy_len * sizeof(T);
+    concurrency::ThreadPool::TrySimpleParallelFor(
+        context->GetOperatorThreadPool(),
+        distribute_count,
+        [&](ptrdiff_t j) {
+          auto output_offset = output_offsets[j];
+          if (output_offset % output_dim_group[i] == 0) {
+            for (auto k = 1; k < expand_dim_size[i]; ++k) {
+              memcpy(output_data + output_offset + k * copy_len,
+                     output_data + output_offset,
+                     copy_byte);
+            }  //for
+          }
+        });
+  }  //for
+
   return Status::OK();
 }
 
