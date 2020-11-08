@@ -4,8 +4,6 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "core/util/math.h"
-//#include "core/providers/cpu/tensor/expand.h"
-//#include "core/providers/common.h"
 
 namespace onnxruntime {
 namespace test {
