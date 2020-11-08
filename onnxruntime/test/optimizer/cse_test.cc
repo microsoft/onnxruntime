@@ -97,7 +97,7 @@ TEST(CseTests, SimpleInitializerTest) {
   ASSERT_EQ(graph_inputs, (std::vector<std::string>{"x"}));
   
   const auto& graph_outputs = GetSortedNames(graph.GetOutputs());
-  
+
   ASSERT_EQ(graph_outputs, (std::vector<std::string>{
     "x_padding_conv_0",
     "x_padding_conv_1",
@@ -106,9 +106,8 @@ TEST(CseTests, SimpleInitializerTest) {
     "x_padding_conv_4"
   }));
   
-  
   auto op_count = CountOpsInGraph(graph);
-  
+    
   // 5 pad nodes in the source graph should map to
   // 2 seperate EquivalenceClasses as some have padding
   // with 1, and others padding with 2
@@ -147,7 +146,7 @@ TEST(CseTests, NoSimplifyCommutativeOperator) {
   // the ordering of nodes as well, so commutative operations like
   // Mul in this case are not compared accurately when determining
   // the representative object of the equivalence class
-  ASSERT_EQ(op_count.at("Mul"), 2);
+  ASSERT_EQ(op_count.at("Div"), 2);
   ASSERT_EQ(op_count.at("Conv"), 4);
 }
 

@@ -59,12 +59,12 @@ def cse_initializer_simple():
     padding = helper.make_node(
       op_type = "Constant",
       inputs = [],
-      outputs = ['padding_{}'.format(i)],
+      outputs = ['pad_val_{}'.format(i)],
       value=numpy_helper.from_array(numpy_helper.np.array([0, 0, pad_val_, pad_val_, 0, 0, pad_val_, pad_val_])))
       
     pad_node = helper.make_node(
       op_type = "Pad",
-      inputs = ['x', 'padding_{}'.format(i)],
+      inputs = ['x', 'pad_val_{}'.format(i)],
       outputs = [padding_output_name],
       name = 'padding_{}'.format(i)
     )
@@ -124,7 +124,7 @@ def cse_initializer_commutative_ops():
       ['x', 'mul_constants'] if i%2 == 0 else ['mul_constants', 'x']
       
     mult_node = helper.make_node(
-      op_type = "Mul",
+      op_type = "Div",
       inputs = mul_inputs,
       outputs = [mul_output_name],
       name = mul_output_name,
