@@ -78,15 +78,15 @@ public:
  // tend to run the same iterations in the next loop.  This helps
  // operators with a series of short loops, such as GRU.
 
- int GetHomeShard(unsigned idx) const {
+ unsigned GetHomeShard(unsigned idx) const {
    return idx % _num_shards;
  }
 
   // Attempt to claim iterations from the sharded counter.  The function either
   // returns true, along with a block of exactly block_size iterations, or it returns false
   // if all of the iterations have been claimed.
-  bool ClaimIterations(int my_home_shard,
-                       int& my_shard,
+  bool ClaimIterations(unsigned my_home_shard,
+                       unsigned& my_shard,
                        uint64_t& my_start,
                        uint64_t& my_end) {
     do {
@@ -180,8 +180,8 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
 
   LoopCounter lc(total, block_size);
   std::function<void(unsigned)> run_work = [&](unsigned idx) {
-    int my_home_shard = lc.GetHomeShard(idx);
-    int my_shard = my_home_shard;
+    unsigned my_home_shard = lc.GetHomeShard(idx);
+    unsigned my_shard = my_home_shard;
     uint64_t my_iter_start, my_iter_end;
     while (lc.ClaimIterations(my_home_shard, my_shard, my_iter_start, my_iter_end)) {
       fn(static_cast<std::ptrdiff_t>(my_iter_start),
@@ -243,7 +243,6 @@ ThreadPool::ParallelSection::~ParallelSection() {
 }
 
 void ThreadPool::RunInParallel(std::function<void(unsigned idx)> fn, unsigned n) {
-  ORT_ENFORCE(fn != nullptr);
   if (underlying_threadpool_) {
     if (ThreadPool::ParallelSection::current_parallel_section) {
       underlying_threadpool_->RunInParallelSection(*(ThreadPool::ParallelSection::current_parallel_section->_ps.get()),
