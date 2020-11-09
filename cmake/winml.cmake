@@ -102,7 +102,6 @@ target_cppwinrt(winml_api_experimental
   ${winml_api_use_ns_prefix}                   # set ns_prefix
 )
 
-
 target_midl(winml_api_native
   ${idl_native}             # winml native idl to compile
   ${idl_native_output_name} # outputs name
@@ -507,6 +506,10 @@ endif(onnxruntime_USE_DML)
 add_library(winml_lib_api_experimental STATIC
   ${winml_lib_api_experimental_dir}/Dummy.cpp
   ${winml_lib_api_experimental_dir}/Dummy.h
+  ${winml_lib_api_experimental_dir}/LearningModelSessionExperimental.cpp
+  ${winml_lib_api_experimental_dir}/LearningModelSessionExperimental.h
+  ${winml_lib_api_experimental_dir}/LearningModelSessionOptionsExperimental.cpp
+  ${winml_lib_api_experimental_dir}/LearningModelSessionOptionsExperimental.h
 )
 
 # Compiler options
@@ -528,6 +531,7 @@ target_precompiled_header(winml_lib_api_experimental pch.h)
 # Includes
 target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api)                   # windows machine learning generated component headers
 target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated)    # windows machine learning generated component headers
+target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api_experimental) # windows machine learning generated component headers
 target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api_experimental/comp_generated) # windows machine learning generated component headers
 target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include)  # sdk cppwinrt headers
 
