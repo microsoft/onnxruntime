@@ -220,13 +220,13 @@ static void RunQuantLSTM(int64_t input_size,
 
   // X
   std::vector<int64_t> X_dims = {seq_len, batch_size, input_size};
-  std::vector<float> X_data = rand_gen.Gaussian<float>({seq_len, batch_size, input_size}, -0.3f, 0.3f);
+  std::vector<float> X_data = rand_gen.Gaussian<float>({seq_len, batch_size, input_size}, 0.0f, 0.3f);
   test.AddInput<float>("X", X_dims, X_data);
 
   // W
 
   std::vector<int64_t> W_dims = {num_directions, input_size, 4 * hidden_size};
-  std::vector<float> W_data = rand_gen.Gaussian<float>({num_directions, 4 * hidden_size, input_size}, -0.5f, 0.5f);
+  std::vector<float> W_data = rand_gen.Gaussian<float>({num_directions, 4 * hidden_size, input_size}, 0.0f, 0.3f);
 
   float w_scale;
   uint8_t w_zp;
@@ -236,7 +236,7 @@ static void RunQuantLSTM(int64_t input_size,
 
   // R
   std::vector<int64_t> R_dims = {num_directions, hidden_size, 4 * hidden_size};
-  std::vector<float> R_data = rand_gen.Gaussian<float>({num_directions, 4 * hidden_size, hidden_size}, -0.5f, 0.5f);
+  std::vector<float> R_data = rand_gen.Gaussian<float>({num_directions, 4 * hidden_size, hidden_size}, 0.0f, 0.3f);
 
   float r_scale = 1.f;
   uint8_t r_zp = 128;
@@ -247,7 +247,7 @@ static void RunQuantLSTM(int64_t input_size,
   std::vector<float> B_data;
   if (has_bias) {
     std::vector<int64_t> B_dims = {num_directions, 8 * hidden_size};
-    B_data = rand_gen.Gaussian<float>(B_dims, -1.f, 1.f);
+    B_data = rand_gen.Gaussian<float>(B_dims, 0.0f, 0.3f);
 
     test.AddInput<float>("B", B_dims, B_data);
   } else {
@@ -259,18 +259,18 @@ static void RunQuantLSTM(int64_t input_size,
 
   // initial_h
   std::vector<int64_t> initial_h_dims = {num_directions, batch_size, hidden_size};
-  std::vector<float> initial_h_data = rand_gen.Gaussian<float>(initial_h_dims, -1.f, 1.f);
+  std::vector<float> initial_h_data = rand_gen.Gaussian<float>(initial_h_dims, 0.0f, 0.3f);
   test.AddInput<float>("initial_h", initial_h_dims, initial_h_data);
 
   // initial_c
   std::vector<int64_t> initial_c_dims = {num_directions, batch_size, hidden_size};
-  std::vector<float> initial_c_data = rand_gen.Gaussian<float>(initial_c_dims, -1.f, 1.f);
+  std::vector<float> initial_c_data = rand_gen.Gaussian<float>(initial_c_dims, 0.0f, 0.3f);
   test.AddInput<float>("initial_c", initial_c_dims, initial_c_data);
 
   std::vector<float> P_data;
   if (has_P) {
     std::vector<int64_t> P_dims = {num_directions, 3 * hidden_size};
-    P_data = rand_gen.Gaussian<float>(P_dims, -1.f, 1.f);
+    P_data = rand_gen.Gaussian<float>(P_dims, 0.0f, 0.3f);
     test.AddInput<float>("P", P_dims, P_data);
   } else {
     test.AddMissingOptionalInput<float>();
@@ -316,6 +316,15 @@ static void RunQuantLSTM(int64_t input_size,
   test.AddOutput<float>("Y_c", Y_c_dims, Y_c_data);
 
   test.Run();
+}
+
+TEST(DynamicQuantLSTMTest, Forward_Bias_P_NoClip_simplest)
+{
+    int batch_size = 1;
+    int64_t input_size = 1;
+    int64_t hidden_size = 2;
+
+    RunQuantLSTM(input_size, batch_size, hidden_size, true, true, false);
 }
 
 TEST(DynamicQuantLSTMTest, Bidirectional_NoBias_NoP_NoClip)
