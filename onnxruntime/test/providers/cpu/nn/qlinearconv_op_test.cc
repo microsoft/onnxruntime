@@ -701,7 +701,7 @@ TEST(QLinearConvTest, Conv2D_U8S8_Groups) {
 
 TEST(QLinearConvTest, Conv3D_U8S8_Groups) {
   QLinearConvOpTester<uint8_t, int8_t> test;
-  test.GenerateRandomInput({1, 4, 13, 17, 13}, .03f, 7);
+  test.GenerateRandomInput({2, 4, 13, 17, 13}, .03f, 7);
   test.GenerateRandomWeights({6, 2, 3, 3, 3}, .10f, 0);
   test.GenerateRandomBias();
   test.SetPads({1, 1, 1, 1, 1, 1});
