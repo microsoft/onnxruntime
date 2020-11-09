@@ -135,10 +135,10 @@ inline void CopyPrim(uint8_t* target, const uint8_t* source) {
   *reinterpret_cast<T*>(target) = *reinterpret_cast<const T*>(source);
 }
 
+// The function does not check num_axes > 0 but this is expected.
 template <class T>
 static void TypedDoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_dims, size_t num_blocks,
                                     const std::vector<size_t>& stride, const uint8_t* source, uint8_t* target) {
-  ORT_ENFORCE(num_axes > 0, "Transpose not implemented for empty tensors.");
   MultiIndex* mindex = (MultiIndex*)alloca(num_axes * sizeof(MultiIndex));
   size_t naxes = IncrementIndexAndComputeOffsetSetup(mindex, num_axes, target_dims, stride, sizeof(T));
 
