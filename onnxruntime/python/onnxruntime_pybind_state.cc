@@ -32,7 +32,7 @@ struct OrtStatus {
   char msg[1];  // a null-terminated string
 };
 
-#if USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 #define BACKEND_PROC "GPU"
 #else
 #define BACKEND_PROC "CPU"
@@ -81,6 +81,9 @@ struct OrtStatus {
 
 #elif OPENVINO_CONFIG_VAD_F
 #define BACKEND_OPENVINO "-OPENVINO_VAD_F"
+
+#elif OPENVINO_CONFIG_HETERO
+#define BACKEND_OPENVINO "-OPENVINO_HETERO"
 #endif
 #else
 #define BACKEND_OPENVINO ""
@@ -129,19 +132,22 @@ struct OrtStatus {
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/providers/cpu/cpu_provider_factory.h"
 
+#if defined(USE_CUDA) || defined(USE_ROCM)
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_allocator.h"
-
-OrtDevice::DeviceId cuda_device_id = 0;
 OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE;
+bool do_copy_in_default_stream = true;
+#elif USE_ROCM
+#include "core/providers/rocm/rocm_provider_factory.h"
+#endif
+OrtDevice::DeviceId cuda_device_id = 0;
 size_t cuda_mem_limit = std::numeric_limits<size_t>::max();
 onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
-bool do_copy_in_default_stream = true;
-
 #endif
+
 #ifdef USE_TENSORRT
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
 #endif
@@ -187,13 +193,17 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(O
                                                                                size_t cuda_mem_limit,
                                                                                onnxruntime::ArenaExtendStrategy arena_extend_strategy,
                                                                                bool do_copy_in_default_stream);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ROCM(OrtDevice::DeviceId device_id,
+                                                                               size_t cuda_mem_limit,
+                                                                               onnxruntime::ArenaExtendStrategy arena_extend_strategy);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_NGraph(const char* ng_backend_type);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* device_type,
                                                                                    bool enable_vpu_fast_compile,
-                                                                                   const char* device_id);
+                                                                                   const char* device_id,
+                                                                                   size_t num_of_threads);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VITISAI(const char* backend_type, int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena);
@@ -425,7 +435,8 @@ static inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime
 
 // ordered by default priority from highest to lowest. kCpuExecutionProvider should always be last.
 static const std::vector<std::string>& GetAllProviders() {
-  static std::vector<std::string> all_providers = {kTensorrtExecutionProvider, kCudaExecutionProvider, kMIGraphXExecutionProvider,
+  static std::vector<std::string> all_providers = {kTensorrtExecutionProvider, kCudaExecutionProvider,
+                                                   kMIGraphXExecutionProvider, kRocmExecutionProvider,
                                                    kNGraphExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider,
                                                    kNupharExecutionProvider, kVitisAIExecutionProvider, kArmNNExecutionProvider,
                                                    kAclExecutionProvider, kDmlExecutionProvider, kCpuExecutionProvider};
@@ -634,6 +645,13 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
                                                                     do_copy_in_default_stream));
       }
 #endif
+    } else if (type == kRocmExecutionProvider) {
+#ifdef USE_ROCM
+    RegisterExecutionProvider(
+        sess, *onnxruntime::CreateExecutionProviderFactory_ROCM(cuda_device_id,
+                                                                cuda_mem_limit,
+                                                                arena_extend_strategy));
+#endif
     } else if (type == kDnnlExecutionProvider) {
 #ifdef USE_DNNL
       RegisterExecutionProvider(
@@ -646,6 +664,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
     } else if (type == kOpenVINOExecutionProvider) {
 #ifdef USE_OPENVINO
       bool enable_vpu_fast_compile = false;
+      size_t num_of_threads = 8;
       std::string openvino_device_id;
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
@@ -661,8 +680,12 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
               ORT_THROW("Invalid value passed for enable_vpu_fast_compile: ", option.second);
             }
 
-          } else if (option.first == "device_id")
+          } else if (option.first == "device_id") {
             openvino_device_id = option.second;
+          }
+            else if (option.first == "num_of_threads") {
+            num_of_threads = std::stoi(option.second);
+          }
           else {
             ORT_THROW("Invalid OpenVINO EP option: ", option.first);
           }
@@ -670,7 +693,8 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
       }
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_OpenVINO(openvino_device_type.c_str(),
                                                                                             enable_vpu_fast_compile,
-                                                                                            openvino_device_id.c_str()));
+                                                                                            openvino_device_id.c_str(),
+                                                                                            num_of_threads));
       // Reset global variables config to avoid it being accidentally passed on to the next session
       openvino_device_type.clear();
 #endif
@@ -860,6 +884,9 @@ void addGlobalMethods(py::module& m, const Environment& env) {
 #ifdef USE_CUDA
             onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_device_id, cudnn_conv_algo_search, cuda_mem_limit, arena_extend_strategy, do_copy_in_default_stream),
 #endif
+#ifdef USE_ROCM
+            onnxruntime::CreateExecutionProviderFactory_ROCM(cuda_device_id, cuda_mem_limit, arena_extend_strategy),
+#endif
 #ifdef USE_DNNL
             onnxruntime::CreateExecutionProviderFactory_Dnnl(1),
 #endif
@@ -867,7 +894,7 @@ void addGlobalMethods(py::module& m, const Environment& env) {
             onnxruntime::CreateExecutionProviderFactory_NGraph("CPU"),
 #endif
 #ifdef USE_OPENVINO
-            onnxruntime::CreateExecutionProviderFactory_OpenVINO(openvino_device_type, false, ""),
+            onnxruntime::CreateExecutionProviderFactory_OpenVINO(openvino_device_type, false, "", 8),
 #endif
 #ifdef USE_TENSORRT
             onnxruntime::CreateExecutionProviderFactory_Tensorrt(0),
@@ -902,7 +929,7 @@ void addGlobalMethods(py::module& m, const Environment& env) {
       "Return a vector of KernelDef for all registered OpKernels");
 #endif  //onnxruntime_PYBIND_EXPORT_OPSCHEMA
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
   /*
    * The following set_* methods are deprecated.
    *
@@ -911,10 +938,24 @@ void addGlobalMethods(py::module& m, const Environment& env) {
    *
    */
   m.def("set_cuda_device_id", [](const int id) { cuda_device_id = static_cast<OrtDevice::DeviceId>(id); });
-  m.def("set_cudnn_conv_algo_search", [](const OrtCudnnConvAlgoSearch algo) { cudnn_conv_algo_search = algo; });
+  m.def("set_cudnn_conv_algo_search", [](const OrtCudnnConvAlgoSearch algo) {
+#ifdef USE_ROCM
+    ORT_UNUSED_PARAMETER(algo);
+    ORT_THROW("set_cudnn_conv_algo_search is not supported in ROCM");
+#else
+    cudnn_conv_algo_search = algo;
+#endif
+  });
+  m.def("set_do_copy_in_default_stream", [](const bool use_single_stream) {
+#ifdef USE_ROCM
+    ORT_UNUSED_PARAMETER(use_single_stream);
+    ORT_THROW("set_do_copy_in_default_stream is not supported in ROCM");
+#else
+    do_copy_in_default_stream = use_single_stream;
+#endif
+  });
   m.def("set_cuda_mem_limit", [](const int64_t limit) { cuda_mem_limit = static_cast<size_t>(limit); });
   m.def("set_arena_extend_strategy", [](const onnxruntime::ArenaExtendStrategy strategy) { arena_extend_strategy = strategy; });
-  m.def("set_do_copy_in_default_stream", [](const bool use_single_stream) { do_copy_in_default_stream = use_single_stream; });
 #endif
 }
 
@@ -1248,7 +1289,7 @@ void addObjectMethods(py::module& m, Environment& env) {
         int type_num = dtype->type_num;
         Py_DECREF(dtype);
 
-        OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device);
+        OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device, device.Id());
         std::unique_ptr<Tensor> p_tensor =
             onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, reinterpret_cast<void*>(data_ptr), info);
 
@@ -1297,7 +1338,7 @@ void addObjectMethods(py::module& m, Environment& env) {
         int type_num = dtype->type_num;
         Py_DECREF(dtype);
 
-        OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device);
+        OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device, device.Id());
 
         std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, reinterpret_cast<void*>(data_ptr), info);
 

@@ -335,6 +335,8 @@ class TestBertOptimization(unittest.TestCase):
         # output not close issue
         self.test_optimizer_on_huggingface_model("flaubert/flaubert_base_cased", [0, 12, 0, 0, 12, 0, 25],
                                                  validate_model=False)
+        self.test_optimizer_on_huggingface_model("flaubert/flaubert_small_cased", [0, 6, 0, 0, 6, 12, 1],
+                                                 validate_model=False)
 
     def test_huggingface_dialogpt_fusion(self):
         self.test_optimizer_on_huggingface_model("microsoft/DialoGPT-small", [0, 12, 0, 12, 0, 25, 0])

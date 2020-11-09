@@ -32,11 +32,14 @@ class TensorrtLogger : public nvinfer1::ILogger {
       strftime(&buf[0], 256,
                "%Y-%m-%d %H:%M:%S",
                std::gmtime(&rawtime));
-      const char* sevstr = (severity == Severity::kINTERNAL_ERROR ? "    BUG" : severity == Severity::kERROR ? "  ERROR" : severity == Severity::kWARNING ? "WARNING" : severity == Severity::kINFO ? "   INFO" : "UNKNOWN");
-      if(severity <= Severity::kERROR)
-          LOGS_DEFAULT(ERROR) << "[" << buf << " " << sevstr << "] " << msg;
+      const char* sevstr = (severity == Severity::kINTERNAL_ERROR ? "    BUG" : severity == Severity::kERROR ? "  ERROR"
+                                                                            : severity == Severity::kWARNING ? "WARNING"
+                                                                            : severity == Severity::kINFO    ? "   INFO"
+                                                                                                             : "UNKNOWN");
+      if (severity <= Severity::kERROR)
+        LOGS_DEFAULT(ERROR) << "[" << buf << " " << sevstr << "] " << msg;
       else
-          LOGS_DEFAULT(WARNING) << "[" << buf << " " << sevstr << "] " << msg;
+        LOGS_DEFAULT(WARNING) << "[" << buf << " " << sevstr << "] " << msg;
     }
   }
 };
@@ -81,6 +84,7 @@ struct TensorrtFuncState {
   bool engine_cache_enable;
   std::string engine_cache_path;
   nvinfer1::IRuntime* runtime = nullptr;
+  AllocatorPtr scratch_allocator;
 };
 
 // Logical device representation.
@@ -101,7 +105,7 @@ class TensorrtExecutionProvider : public Provider_IExecutionProvider {
   common::Status Provider_Compile(const std::vector<Provider_Node*>& fused_nodes,
                                   std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
-  Provider_AllocatorPtr Provider_GetAllocator(int id, OrtMemType mem_type) const override;
+  AllocatorPtr Provider_GetAllocator(int id, OrtMemType mem_type) const override;
 
  private:
   size_t max_workspace_size_ = 1 << 30;  // 1GB
@@ -140,7 +144,7 @@ class TensorrtExecutionProvider : public Provider_IExecutionProvider {
 
   void RemoveTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const onnxruntime::Provider_GraphViewer& graph) const;
 
-  Provider_AllocatorPtr allocator_;
+  AllocatorPtr allocator_;
 };
 
 }  // namespace onnxruntime

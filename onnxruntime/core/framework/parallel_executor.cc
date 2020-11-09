@@ -191,6 +191,9 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
 
     // Execute the kernel.
     ORT_TRY {
+      if (p_op_kernel->KernelDef().AllocateInputsContiguously())
+        utils::VerifyInputTensorsAllocatedContiguously(&op_kernel_context);
+
       status = p_op_kernel->Compute(&op_kernel_context);
     }
     ORT_CATCH(const std::exception& ex) {
@@ -288,7 +291,7 @@ void ParallelExecutor::EnqueueNode(size_t p_node_index, const SessionState& sess
     out_standings_++;
   }
 
-  executor_pool_->Schedule([this, p_node_index, &session_state, &logger]() {
+  onnxruntime::concurrency::ThreadPool::Schedule(executor_pool_, [this, p_node_index, &session_state, &logger]() {
     auto create_exception_message = [p_node_index, &session_state](const std::exception* ex) {
       const auto* node = session_state.GetGraphViewer().GetNode(p_node_index);
 

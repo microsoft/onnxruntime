@@ -24,6 +24,13 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
   openvino_ep::BackendManager::GetGlobalContext().device_type = info.device_type_;
   openvino_ep::BackendManager::GetGlobalContext().precision_str = info.precision_;
   openvino_ep::BackendManager::GetGlobalContext().enable_vpu_fast_compile = info.enable_vpu_fast_compile_;
+  if((int)info.num_of_threads_ <= 0) {
+    openvino_ep::BackendManager::GetGlobalContext().num_of_threads = 8;
+  }
+  else {
+    openvino_ep::BackendManager::GetGlobalContext().num_of_threads = info.num_of_threads_;
+  }
+  openvino_ep::BackendManager::GetGlobalContext().num_of_threads = info.num_of_threads_;
   if(info.device_id_ != "") {
     bool device_found = false;
     auto available_devices = openvino_ep::BackendManager::GetGlobalContext().ie_core.GetAvailableDevices();

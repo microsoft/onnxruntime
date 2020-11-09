@@ -317,20 +317,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #ifdef USE_OPENVINO
       //Setting default optimization level for OpenVINO can be overriden with -o option
       sf.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
-      if (p_models != 1) {
-        fprintf(stderr, "OpenVINO doesn't support more than 1 model running simultaneously default value of 1 will be set \n");
-        p_models = 1;
-      }
-      if (concurrent_session_runs != 1) {
-        fprintf(stderr, "OpenVINO doesn't support more than 1 session running simultaneously default value of 1 will be set \n");
-        concurrent_session_runs = 1;
-      }
-      if (execution_mode == ExecutionMode::ORT_PARALLEL) {
-        fprintf(stderr, "OpenVINO doesn't support parallel executor switching to sequential executor\n");
-        sf.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
-      }
-
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(sf, ""));
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProviderEx_OpenVINO(sf, ""));
 #else
       fprintf(stderr, "OpenVINO is not supported in this build");
       return -1;
@@ -377,7 +364,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
     if (enable_nnapi) {
 #ifdef USE_NNAPI
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(sf));
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(sf, 0));
 #else
       fprintf(stderr, "NNAPI is not supported in this build");
       return -1;

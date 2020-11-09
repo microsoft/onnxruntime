@@ -96,7 +96,7 @@ Status GatherGrad::ComputeInternal(OpKernelContext* context) const {
   const Tensor* dY = context->Input<Tensor>(2);
 
   Tensor* dX = context->Output(0, X_shape);
-  CUDA_RETURN_IF_ERROR(cudaMemset(dX->MutableDataRaw(), 0, dX->SizeInBytes()));
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(dX->MutableDataRaw(), 0, dX->SizeInBytes()));
 
   if (gathered_indices->Shape().Size() == 0) {
     // nothing else to do

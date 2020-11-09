@@ -41,17 +41,6 @@ int real_main(int argc, char* argv[]) {
     if (failed)
       return -1;
   }
-
-  if (test_config.machine_config.provider_type_name == onnxruntime::kOpenVINOExecutionProvider) {
-    if (test_config.run_config.concurrent_session_runs != 1) {
-      fprintf(stderr, "OpenVINO doesn't support more than 1 session running simultaneously default value of 1 will be set \n");
-      test_config.run_config.concurrent_session_runs = 1;
-    }
-    if (test_config.run_config.execution_mode == ExecutionMode::ORT_PARALLEL) {
-      fprintf(stderr, "OpenVINO doesn't support parallel executor using sequential executor\n");
-      test_config.run_config.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
-    }
-  }
   std::random_device rd;
   perftest::PerformanceRunner perf_runner(env, test_config, rd);
   auto status = perf_runner.Run();

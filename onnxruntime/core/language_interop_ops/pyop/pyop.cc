@@ -344,7 +344,7 @@ PyCustomOp::PyCustomOp(const OnnxAttrs& attrs,
                        const std::string& compute,
                        PyOpLogFunc logging_func) : attrs_(attrs), inputs_type_(inputs_type), outputs_type_(outputs_type), module_(module), class_name_(class_name), compute_(compute), logging_func_(logging_func) { OrtCustomOp::version = ORT_API_VERSION; }
 
-void* PyCustomOp::CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo*) {
+void* PyCustomOp::CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo*) const {
   return new PyCustomKernel(api, attrs_, module_, class_name_, compute_, logging_func_);
 }
 
