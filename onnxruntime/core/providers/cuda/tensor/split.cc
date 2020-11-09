@@ -23,11 +23,14 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Split,
                                   KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
                                   Split);
 
+// explicitly supports 'split' as optional input
 ONNX_OPERATOR_KERNEL_EX(Split,
                         kOnnxDomain,
                         13,
                         kCudaExecutionProvider,
-                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+                        KernelDefBuilder()
+                            .InputMemoryType<OrtMemTypeCPUInput>(1)
+                            .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
                         Split);
 
 Status Split::ComputeInternal(OpKernelContext* ctx) const {
@@ -39,7 +42,18 @@ Status Split::ComputeInternal(OpKernelContext* ctx) const {
   int before_dims = 0;
   int block_size_including_axis_dim = 0;
   int block_size_inside_axis_dim = 0;
-  std::vector<int64_t> split_sizes;
+  std::vector<int64_t> split_sizes(num_outputs);
+
+  size_t num_inputs = ctx->InputCount();
+  if (num_inputs == 2) {
+    const Tensor* split_tensor = ctx->Input<Tensor>(1);
+    ORT_ENFORCE(split_tensor->Shape().NumDimensions() == 1, "An split tensor must be a vector tensor.");
+    auto nDims = static_cast<size_t>(split_tensor->Shape()[0]);
+    const int64_t* data = split_tensor->template Data<int64_t>();
+    split_sizes.assign(data, data + nDims);
+  } else {
+    split_sizes.assign(split_sizes_.begin(), split_sizes_.end());
+  }
 
   ORT_RETURN_IF_ERROR(PrepareForCompute(input_shape,
                                         num_outputs,

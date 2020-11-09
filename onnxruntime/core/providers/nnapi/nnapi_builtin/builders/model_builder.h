@@ -10,6 +10,11 @@
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksWrapper.h"
 #include "shaper.h"
 
+// This is the minimal Android API Level required by ORT NNAPI EP to run
+#ifndef ORT_NNAPI_MIN_API_LEVEL
+#define ORT_NNAPI_MIN_API_LEVEL 27
+#endif
+
 namespace onnxruntime {
 namespace nnapi {
 
