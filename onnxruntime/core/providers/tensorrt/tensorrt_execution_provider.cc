@@ -20,11 +20,6 @@
 #include <limits>
 #include <map>
 #include <memory>
-#include <sys/types.h>
-#include <sys/stat.h>
-#ifdef _WIN32
-#include <direct.h>
-#endif
 #include "flatbuffers/idl.h"
 
 #define CUDA_RETURN_IF_ERROR(expr)               \
@@ -56,50 +51,10 @@ std::string GetProfilePath(const ::std::string& root, const std::string& name) {
   }
 }
 
-void WriteProfile(const ::std::string& file_name, std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>>& shape_ranges) {
-  std::ofstream file(file_name);
-  for (auto outer_it = shape_ranges.begin(); outer_it != shape_ranges.end(); ++outer_it) {
-    file << outer_it->first << ' ';
-    for (auto inner_it = outer_it->second.begin(); inner_it != outer_it->second.end(); ++inner_it) {
-      file << inner_it->first << ' ';
-      file << inner_it->second.first << ' ';
-      if (std::next(inner_it, 1) == outer_it->second.end()) {
-        file << inner_it->second.second;
-      } else {
-        file << inner_it->second.second << ' ';
-      }
-    }
-    file << '\n';
-  }
-  file.close();
-}
-
-std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>> ReadProfile(const std::string& file_name) {
-  std::ifstream file(file_name);
-  std::string line;
-  std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>> shape_ranges;
-  while (std::getline(file, line)) {
-    std::stringstream linestream(line);
-    std::string tensor_name;
-    std::getline(linestream, tensor_name, ' ');
-    std::unordered_map<int, std::pair<int64_t, int64_t>> inner_map;
-    std::string dimension;
-    while (std::getline(linestream, dimension, ' ')) {
-      std::string space, min_range, max_range;
-      std::getline(linestream, min_range, ' ');
-      std::getline(linestream, max_range, ' ');
-      inner_map[std::stoi(dimension)] = std::make_pair(stoi(min_range), stoi(max_range));
-    }
-    shape_ranges[tensor_name] = inner_map;
-  }
-  file.close();
-  return shape_ranges;
-}
-
 void SerializeProfile(const ::std::string& file_name, std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>>& shape_ranges) {
   // Serialize profile
   flexbuffers::Builder builder;
-  auto profile_start = builder.StartMap();  //"profile"
+  auto profile_start = builder.StartMap();
   for (auto outer_it = shape_ranges.begin(); outer_it != shape_ranges.end(); ++outer_it) {
     builder.TypedVector(outer_it->first.c_str(), [&] {
       for (auto inner_it = outer_it->second.begin(); inner_it != outer_it->second.end(); ++inner_it) {
@@ -147,40 +102,13 @@ std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64
   }
   return shape_ranges;
 }
-/*
-std::string GetVecHash(const ::std::vector<int>& vec) {
-  std::size_t ret = vec.size();
-  for (auto i : vec) {
-    ret ^= i + 0x9e3779b9 + (ret << 6) + (ret >> 2);
-  }
-  return std::to_string(ret);
-}
-*/
+
 std::string GetVecHash(const ::std::string& vec) {
   std::size_t ret = vec.size();
   for (auto i : vec) {
     ret ^= static_cast<int>(i) + 0x9e3779b9 + (ret << 6) + (ret >> 2);
   }
   return std::to_string(ret);
-}
-
-inline bool FileExists(const std::string& name) {
-  struct stat buffer;
-  return (stat(name.c_str(), &buffer) == 0);
-}
-
-int CreateMetaDirectory(const std::string path) {
-#ifdef _WIN32
-  return mkdir(path.c_str());
-
-#else
-  int status = mkdir(path.c_str(), 0777);
-  if (status != -1) {
-    return 0;
-  }
-  return 1;
-#endif
-  return -1;
 }
 }  // namespace
 
@@ -864,7 +792,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
       return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Function body is empty");
     }
     const Provider_Graph& graph_body = func_body->Body();
-	auto graph_body_viewer = graph_body.CreateGraphViewer();
+    auto graph_body_viewer = graph_body.CreateGraphViewer();
     auto model = graph_body_viewer->CreateModel(*GetLogger());
     auto model_proto = model->ToProto();
 
@@ -1047,9 +975,9 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
       std::string cached_path = GetEnginePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
       std::ifstream plan_file(cached_path, std::ios::binary | std::ios::in);
       if (profile_file && plan_file && (trt_state->engine_cache_enable && trt_engine == nullptr)) {
-        // Load engine profile from file
+        // Load engine profile
         shape_ranges = DeserializeProfile(profile_path);
-        // Load engine from file
+        // Load engine
         trt_state->context->reset();
         trt_state->engine->reset();
         plan_file.seekg(0, std::ios::end);

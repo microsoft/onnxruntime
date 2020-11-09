@@ -32,7 +32,10 @@ class TensorrtLogger : public nvinfer1::ILogger {
       strftime(&buf[0], 256,
                "%Y-%m-%d %H:%M:%S",
                std::gmtime(&rawtime));
-      const char* sevstr = (severity == Severity::kINTERNAL_ERROR ? "    BUG" : severity == Severity::kERROR ? "  ERROR" : severity == Severity::kWARNING ? "WARNING" : severity == Severity::kINFO ? "   INFO" : "UNKNOWN");
+      const char* sevstr = (severity == Severity::kINTERNAL_ERROR ? "    BUG" : severity == Severity::kERROR ? "  ERROR"
+                                                                            : severity == Severity::kWARNING ? "WARNING"
+                                                                            : severity == Severity::kINFO    ? "   INFO"
+                                                                                                             : "UNKNOWN");
       if (severity <= Severity::kERROR)
         LOGS_DEFAULT(ERROR) << "[" << buf << " " << sevstr << "] " << msg;
       else
@@ -141,8 +144,6 @@ class TensorrtExecutionProvider : public Provider_IExecutionProvider {
 
   void RemoveTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const onnxruntime::Provider_GraphViewer& graph) const;
 
-  void GetSubraphInfoAsMeta(std::unique_ptr<Provider_GraphViewer> graph, std::string subgraph_name);
-  std::string GetUniquePathAndHash(const std::string& name) const;
   AllocatorPtr allocator_;
 };
 
