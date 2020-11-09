@@ -462,7 +462,7 @@ const logging::Logger& logger,
 const int total_rank, 
 std::vector<std::string> input_names,
 std::vector<std::vector<int64_t>> input_dims) {
-  const PathString model_uri = model_path + ".onnx";
+  const PathString model_uri = ToPathString(model_path) + ORT_TSTR(".onnx");
   // const int total_rank = 4;
   std::vector<Graph*> graphs;
   std::vector<std::shared_ptr<Model>> p_models(total_rank);
@@ -477,7 +477,7 @@ std::vector<std::vector<int64_t>> input_dims) {
     ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, logger);
     ORT_ENFORCE(ret.IsOK());
     graphs.push_back(&graph);
-    auto model_uri2 = model_path + "_partition_rank" + std::to_string(i) + ".onnx";
+    auto model_uri2 = ToPathString(model_path) + ORT_TSTR("_partition_rank_") + ToPathString(std::to_string(i)) + ORT_TSTR(".onnx");
     Model::Save(*p_models[i], model_uri2);
   }
 
@@ -485,7 +485,7 @@ std::vector<std::vector<int64_t>> input_dims) {
   auto& combine_graph = combine_model.MainGraph();
   auto ret = horizontal_parallel_test_utils::MergeGraphsOnAllWorkers(graphs, combine_graph);
   ORT_ENFORCE(ret.IsOK());
-  auto model_uri2 = model_path + "_partition_combine.onnx";
+  auto model_uri2 = ToPathString(model_path) + ORT_TSTR("_partition_combine.onnx");
   Model::Save(combine_model, model_uri2);
 
   float scale = 1.f;
@@ -569,19 +569,19 @@ std::vector<std::vector<int64_t>> input_dims) {
 }
 
 TEST_F(GraphTransformationTests, MegatronMLPPartitionCorrectnessTest) {
-  RunPartitionCorrectnessTest(MODEL_FOLDER "model_parallel/mlp_megatron_basic_test", *logger_, 4, {"input"}, {{8, 16, 4}});
+  RunPartitionCorrectnessTest("testdata/transform/model_parallel/mlp_megatron_basic_test", *logger_, 4, {"input"}, {{8, 16, 4}});
 }
 
 TEST_F(GraphTransformationTests, MegatronBARTMLPPartitionCorrectnessTest) {
-  RunPartitionCorrectnessTest(MODEL_FOLDER "model_parallel/bart_mlp_megatron_basic_test", *logger_, 4, {"input"}, {{8, 16, 4}});
+  RunPartitionCorrectnessTest("testdata/transform/model_parallel/bart_mlp_megatron_basic_test", *logger_, 4, {"input"}, {{8, 16, 4}});
 }
 
 TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionCorrectnessTest) {
-  RunPartitionCorrectnessTest(MODEL_FOLDER "model_parallel/self_attention_megatron_basic_test", *logger_, 2, {"input", "mask"}, {{8, 16, 4}, {8, 1, 16, 16}});
+  RunPartitionCorrectnessTest("testdata/transform/model_parallel/self_attention_megatron_basic_test", *logger_, 2, {"input", "mask"}, {{8, 16, 4}, {8, 1, 16, 16}});
 }
 
 TEST_F(GraphTransformationTests, MegatronBARTSelfAttentionPartitionCorrectnessTest) {
-  RunPartitionCorrectnessTest(MODEL_FOLDER "model_parallel/bart_self_attention_megatron_basic_test", *logger_, 2, {"input"}, {{6, 8, 4}});
+  RunPartitionCorrectnessTest("testdata/transform/model_parallel/bart_self_attention_megatron_basic_test", *logger_, 2, {"input"}, {{6, 8, 4}});
 }
 // end of USE_CUDA
 #endif
