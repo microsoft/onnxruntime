@@ -755,8 +755,8 @@ std::unique_ptr<ThreadPoolParallelSection, void(*)(ThreadPoolParallelSection*)> 
 
 void StartParallelSectionInternal(PerThread *pt,
                                   ThreadPoolParallelSection &ps) {
-  ORT_ENFORCE(!pt->leading_par_section, "Nested parallelism not supported");
-  ORT_ENFORCE(!ps.active, "Starting parallel section, but active already");
+  assert((!pt->leading_par_section) && "Nested parallelism not supported");
+  assert((!ps.active) && "Starting parallel section, but active already");
   pt->leading_par_section = true;
   if (!pt->tag.Get()) {
     pt->tag = Tag::GetNext();
@@ -775,8 +775,8 @@ void StartParallelSection(ThreadPoolParallelSection &ps) override {
 
 void EndParallelSectionInternal(PerThread *pt,
                                 ThreadPoolParallelSection &ps) {
-  ORT_ENFORCE(pt->leading_par_section, "Ending parallel section, but none started");
-  ORT_ENFORCE(ps.active, "Ending parallel section, but not active");
+  assert((pt->leading_par_section) && "Ending parallel section, but none started");
+  assert((ps.active) && "Ending parallel section, but not active");
   pt->leading_par_section = false;
 
   // Notify workers to exit from the section
@@ -910,13 +910,13 @@ void RunInParallelSection(ThreadPoolParallelSection &ps,
                           std::function<void(unsigned idx)> fn,
                           unsigned n) override {
   PerThread* pt = GetPerThread();
-  ORT_ENFORCE(pt->leading_par_section, "RunInParallel, but not in parallel section");
-  ORT_ENFORCE(n > 1, "Trivial parallel section; should be avoided by caller");
+  assert(pt->leading_par_section && "RunInParallel, but not in parallel section");
+  assert((n > 1) && "Trivial parallel section; should be avoided by caller");
 
   // Publish the work to any existing workers in the parallel
   // section, and ensure it is visible to any new threads created
   // below.
-  ORT_ENFORCE(!ps.current_loop, "RunInParallelSection, but loop already active");
+  assert((!ps.current_loop) && "RunInParallelSection, but loop already active");
   ThreadPoolLoop loop{std::move(fn), n};
   ps.current_loop = &loop;
 

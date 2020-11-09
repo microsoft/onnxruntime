@@ -145,7 +145,7 @@ ThreadPool::ThreadPool(Env* env,
   // In the current implementation, a thread pool with degree_of_parallelism==1 uses
   // the caller as one of the threads for executing work.  Hence we only create
   // additional thread(s) for degree_of_parallelism>=2.
-  ORT_ENFORCE(degree_of_parallelism >= 1);
+  assert(degree_of_parallelism >= 1);
   if (degree_of_parallelism >= 2) {
     int threads_to_create = degree_of_parallelism - 1;
     extended_eigen_threadpool_ =
@@ -207,7 +207,6 @@ void ThreadPool::SimpleParallelFor(std::ptrdiff_t total, const std::function<voi
 }
 
 void ThreadPool::Schedule(std::function<void()> fn) {
-  ORT_ENFORCE(fn != nullptr);
   if (underlying_threadpool_) {
     underlying_threadpool_->Schedule(std::move(fn));
   } else {
