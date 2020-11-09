@@ -172,6 +172,14 @@ bool IsOpSupported(std::string name, std::string device) {
     "RoiAlign",
     "Scatter",
     "SinFloat",
+    "ArgMax",
+    "Range",
+    "Where",
+    "ArgMin",
+    "Round",
+    "Not",
+    "Equal",
+    "ScatterElements",
   };
 
   std::set<std::string> supported_ops = {};
@@ -220,45 +228,45 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
 
   if (optype == "MaxPool") {
     //MaxPool "indices" output is not currently supported.
-    if (node->OutputDefs().size() > 1) {
-      return true;
-    }
+    // if (node->OutputDefs().size() > 1) {
+    //   return true;
+    // }
 
-    const auto& attributes = node->GetAttributes();
+    // const auto& attributes = node->GetAttributes();
 
-    const auto ceil_attr = attributes.find("ceil_mode");
-    // default value of ceil_mode (0) is supported.
-    if (ceil_attr != attributes.end() && ceil_attr->second.i() != 0) {
-      return true;
-    }
+    // const auto ceil_attr = attributes.find("ceil_mode");
+    // // default value of ceil_mode (0) is supported.
+    // if (ceil_attr != attributes.end() && ceil_attr->second.i() != 0) {
+    //   return true;
+    // }
 
-    //auto pad null value is not supported
-    const auto auto_attr = attributes.find("auto_pad");
-    if (auto_attr->second.s() == "") {
-      return true;
-    }
-    // dilations attrs are not supported in nGraph
-    if (attributes.find("dilations") != attributes.end()) {
-      return true;
-    }
-    if (!IsDimensionSupported(node))
-      return true;
+    // //auto pad null value is not supported
+    // const auto auto_attr = attributes.find("auto_pad");
+    // if (auto_attr->second.s() == "") {
+    //   return true;
+    // }
+    // // dilations attrs are not supported in nGraph
+    // if (attributes.find("dilations") != attributes.end()) {
+    //   return true;
+    // }
+    // if (!IsDimensionSupported(node))
+    //   return true;
   } else if (optype == "Abs") {
     for (size_t i = 0; i < node->InputDefs().size(); i++) {
       if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT)
         return true;
     }
   } else if (optype == "Max" || optype == "Min" || optype == "Mean" || optype == "Sum") {
-    if (GetInputCount(node, initializers) == 1)
-      return true;
-    if (optype == "Max" || optype == "Min") {
-      for (size_t i = 0; i < node->InputDefs().size(); i++) {
-        auto dtype = node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type();
-        if (dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8 ||
-            dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16)
-          return true;
-      }
-    }
+    // if (GetInputCount(node, initializers) == 1)
+    //   return true;
+    // if (optype == "Max" || optype == "Min") {
+    //   for (size_t i = 0; i < node->InputDefs().size(); i++) {
+    //     auto dtype = node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type();
+    //     if (dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8 ||
+    //         dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16)
+    //       return true;
+    //   }
+    // }
   } else if (optype == "Clip") {
     //Only float 16, float and double data types are supported
     const bool data_is_float = node->InputDefs()[0]->Type()->find("float") != std::string::npos;
@@ -274,10 +282,10 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     }
   } else if (optype == "ReduceMin") {
     //Only FP32, INT32 and U8 data types are supported
-    const bool data_is_float = node->InputDefs()[0]->Type()->find("float") != std::string::npos;
-    const bool data_is_int32 = node->InputDefs()[0]->Type()->find("int32") != std::string::npos;
-    const bool data_is_u8 = node->InputDefs()[0]->Type()->find("uint8") != std::string::npos;
-    return !(data_is_float || data_is_int32 || data_is_u8);
+    // const bool data_is_float = node->InputDefs()[0]->Type()->find("float") != std::string::npos;
+    // const bool data_is_int32 = node->InputDefs()[0]->Type()->find("int32") != std::string::npos;
+    // const bool data_is_u8 = node->InputDefs()[0]->Type()->find("uint8") != std::string::npos;
+    // return !(data_is_float || data_is_int32 || data_is_u8);
   } else if (optype == "MatMul") {
     //All matmuls except float have computation missmatch
     const bool A_is_float = node->InputDefs()[0]->Type()->find("float") != std::string::npos;
@@ -314,8 +322,8 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       return true;
   } else if (optype == "Resize") {
     //Resize opset 11 is not supported
-    if(node->InputDefs().size() > 2)
-      return true;
+    // if(node->InputDefs().size() > 2)
+    //   return true;
   } else if (optype == "Unsqueeze") {
     if (!IsDimensionSupported(node))
       return true;
@@ -430,37 +438,37 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     }
 } else if ((optype == "Equal") || (optype == "And"))  {
 
-    using onnx_dtype = ONNX_NAMESPACE::TensorProto_DataType;
-    auto supportedOps = std::set<std::vector<onnx_dtype>>{
-        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT },
-        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_FLOAT },
-        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_INT8 },
-        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_FLOAT },
-        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8 },
-        {onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_INT8 },
-        {onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_UINT8 },
-        {onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_INT8 },
-        {onnx_dtype::TensorProto_DataType_INT32, onnx_dtype::TensorProto_DataType_INT32, onnx_dtype::TensorProto_DataType_INT32 },
-        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_FLOAT },
-        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8 }};
+    // using onnx_dtype = ONNX_NAMESPACE::TensorProto_DataType;
+    // auto supportedOps = std::set<std::vector<onnx_dtype>>{
+    //     {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT },
+    //     {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_FLOAT },
+    //     {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_INT8 },
+    //     {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_FLOAT },
+    //     {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8 },
+    //     {onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_INT8 },
+    //     {onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_UINT8 },
+    //     {onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_INT8 },
+    //     {onnx_dtype::TensorProto_DataType_INT32, onnx_dtype::TensorProto_DataType_INT32, onnx_dtype::TensorProto_DataType_INT32 },
+    //     {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_FLOAT },
+    //     {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8 }};
 
-    if (optype == "Equal") {
-      supportedOps.insert(std::vector<onnx_dtype>{onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_INT32, onnx_dtype::TensorProto_DataType_INT32 }),
-      supportedOps.insert(std::vector<onnx_dtype>{onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_INT64, onnx_dtype::TensorProto_DataType_INT64 });
-      supportedOps.insert(std::vector<onnx_dtype>{onnx_dtype::TensorProto_DataType_BOOL, onnx_dtype::TensorProto_DataType_INT64, onnx_dtype::TensorProto_DataType_INT64 }),
-      supportedOps.insert(std::vector<onnx_dtype>{onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT });
-    }
+    // if (optype == "Equal") {
+    //   supportedOps.insert(std::vector<onnx_dtype>{onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_INT32, onnx_dtype::TensorProto_DataType_INT32 }),
+    //   supportedOps.insert(std::vector<onnx_dtype>{onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_INT64, onnx_dtype::TensorProto_DataType_INT64 });
+    //   supportedOps.insert(std::vector<onnx_dtype>{onnx_dtype::TensorProto_DataType_BOOL, onnx_dtype::TensorProto_DataType_INT64, onnx_dtype::TensorProto_DataType_INT64 }),
+    //   supportedOps.insert(std::vector<onnx_dtype>{onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT });
+    // }
 
-    onnx_dtype input_0_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-    onnx_dtype input_1_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type();
-    onnx_dtype output_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    // onnx_dtype input_0_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    // onnx_dtype input_1_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type();
+    // onnx_dtype output_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
 
-    const std::vector<onnx_dtype> typePair{output_data_type, input_0_data_type, input_1_data_type};
-    const auto match = supportedOps.find(typePair);
-    if (match == supportedOps.end()) {
-      return true;
-    } else
-      return false;
+    // const std::vector<onnx_dtype> typePair{output_data_type, input_0_data_type, input_1_data_type};
+    // const auto match = supportedOps.find(typePair);
+    // if (match == supportedOps.end()) {
+    //   return true;
+    // } else
+    //   return false;
   } else if(optype == "Gather") {
 
     if(device_id == "GPU"){
@@ -536,6 +544,8 @@ static bool IsTypeSupported(const NodeArg* node_arg, bool is_initializer, const 
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8,
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8,
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64,
+        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE,
+
     };
 
     std::set<int> supported_types_gpu = {
@@ -635,7 +645,7 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
       if (shape->dim_size() == 0) {
         if(optype == "Unsqueeze" || optype == "Squeeze" || optype == "Cast" ||
             optype == "Gather" || optype == "Mul" || optype == "Sub" ||
-            optype == "Min" || optype == "Div" || optype == "Floor")
+            optype == "Min" || optype == "Div" || optype == "Floor" || optype == "Range" || optype == "ArgMin" || optype == "Reshape" || optype == "Where")
           return;
         has_unsupported_dimension = true;
         return;
@@ -910,8 +920,9 @@ GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, std::string d
           }
         }
       }
+      std::cout << "Omit subgraph " << omit_subgraph << std::endl;
       if (omit_subgraph)
-        continue;
+        // continue;
 
       /* In scenarios, when there are no inputs or all inputs being initializers,
          ConstantFolding optimization in onnxruntime pre-computes the value.*/
