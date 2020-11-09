@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "expand.h"
+#include <cmath>
 
 namespace onnxruntime {
 
@@ -12,7 +13,7 @@ namespace onnxruntime {
       12,                                                                          \
       TYPE,                                                                        \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>()), \
-      Expand<TYPE>);                                                             \
+      Expand<TYPE>);                                                               \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                  \
       Expand,                                                                      \
       13,                                                                          \
@@ -96,7 +97,7 @@ Status Expand<T>::Compute(OpKernelContext* context) const {
       expand_dim_size[dim_group_start] = output_count / input_count / last_dim_size;
       last_dim_size *= expand_dim_size[dim_group_start];
     }
-  }  //for
+  }
 
   auto distribute_count = input_dim_group[dim_group_start] / input_dim_group[max_dims_size - 1];
   std::vector<int64_t> output_offsets(distribute_count, 0);
@@ -119,19 +120,34 @@ Status Expand<T>::Compute(OpKernelContext* context) const {
       });
 
   for (auto i = max_dims_size - 1; i >= dim_group_start; --i) {
-    copy_len = output_dim_group[i] / expand_dim_size[i];
-    copy_byte = copy_len * sizeof(T);
+    auto base_copy_len = output_dim_group[i] / expand_dim_size[i];
+    auto base_copy_byte = base_copy_len * sizeof(T);
     concurrency::ThreadPool::TrySimpleParallelFor(
         context->GetOperatorThreadPool(),
         distribute_count,
         [&](ptrdiff_t j) {
           auto output_offset = output_offsets[j];
           if (output_offset % output_dim_group[i] == 0) {
-            for (auto k = 1; k < expand_dim_size[i]; ++k) {
-              memcpy(output_data + output_offset + k * copy_len,
-                     output_data + output_offset,
-                     copy_byte);
-            }  //for
+            auto copy_len = base_copy_len;
+            auto copy_byte = base_copy_byte;
+            auto output_from = output_data + output_offset;
+            auto output_at = output_from + copy_len;
+            auto output_end = output_from + output_dim_group[i];
+            while (output_at + copy_len <= output_end) {
+              memcpy(output_at, output_from, copy_byte);
+              output_at += copy_len;
+              copy_len <<= 1;
+              copy_byte <<= 1;
+            }
+            while (output_at < output_end) {
+              if (output_at + copy_len <= output_end) {
+                memcpy(output_at, output_from, copy_byte);
+                output_at += copy_len;
+              } else {
+                copy_len >>= 1;
+                copy_byte >>= 1;
+              }
+            }  //while
           }
         });
   }  //for
