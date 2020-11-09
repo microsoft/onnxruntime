@@ -48,7 +48,7 @@ Status Expand<T>::Compute(OpKernelContext* context) const {
   std::vector<int64_t> output_shape{shape_dims, shape_dims + shape_tensor->Shape().Size()};
 
   if (input_shape.size() > output_shape.size()) {
-    ORT_THROW("Invalid expand shape");
+    ORT_THROW("Invalid expand shape, input rank is lower than output");
   }
 
   auto input_shape_iter = input_shape.rbegin();
@@ -59,7 +59,7 @@ Status Expand<T>::Compute(OpKernelContext* context) const {
       if (1 == *output_shape_iter) {
         *output_shape_iter = *input_shape_iter;
       } else if (1 != *input_shape_iter) {
-        ORT_THROW("Invalid expand shape");
+        ORT_THROW("Invalid expand shape, input dim cannot to expand to output");
       }
     }
     input_shape_iter++;
