@@ -14,14 +14,9 @@ static const std::string kMaxPartitionIterations = "ORT_TENSORRT_MAX_PARTITION_I
 static const std::string kMinSubgraphSize = "ORT_TENSORRT_MIN_SUBGRAPH_SIZE";
 static const std::string kMaxWorkspaceSize = "ORT_TENSORRT_MAX_WORKSPACE_SIZE";
 static const std::string kFP16Enable = "ORT_TENSORRT_FP16_ENABLE";
-static const std::string kINT8Enable = "ORT_TENSORRT_INT8_ENABLE";
-static const std::string kINT8CalibrationFileName = "ORT_TENSORRT_INT8_CALIBRATION_FILE_NAME";
 static const std::string kDumpSubgraphs = "ORT_TENSORRT_DUMP_SUBGRAPHS";
 static const std::string kEngineCacheEnable = "ORT_TENSORRT_ENGINE_CACHE_ENABLE";
 static const std::string kEngineCachePath = "ORT_TENSORRT_ENGINE_CACHE_PATH";
-static const std::string kEngineCacheAlwaysLoad = "ORT_TENSORRT_ENGINE_CACHE_ALWAYS_LOAD_ENABLE";
-static const std::string kDecryptionEnable = "ORT_TENSORRT_ENGINE_DECRYPTION_ENABLE";
-static const std::string kDecryptionLibPath = "ORT_TENSORRT_ENGINE_DECRYPTION_LIB_PATH";
 }  // namespace tensorrt_env_vars
 
 class TensorrtLogger : public nvinfer1::ILogger {
@@ -37,10 +32,7 @@ class TensorrtLogger : public nvinfer1::ILogger {
       strftime(&buf[0], 256,
                "%Y-%m-%d %H:%M:%S",
                std::gmtime(&rawtime));
-      const char* sevstr = (severity == Severity::kINTERNAL_ERROR ? "    BUG" : severity == Severity::kERROR ? "  ERROR"
-                                                                            : severity == Severity::kWARNING ? "WARNING"
-                                                                            : severity == Severity::kINFO    ? "   INFO"
-                                                                                                             : "UNKNOWN");
+      const char* sevstr = (severity == Severity::kINTERNAL_ERROR ? "    BUG" : severity == Severity::kERROR ? "  ERROR" : severity == Severity::kWARNING ? "WARNING" : severity == Severity::kINFO ? "   INFO" : "UNKNOWN");
       if (severity <= Severity::kERROR)
         LOGS_DEFAULT(ERROR) << "[" << buf << " " << sevstr << "] " << msg;
       else
@@ -84,18 +76,12 @@ struct TensorrtFuncState {
   std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>> input_shape_ranges;
   OrtMutex* tensorrt_mu_ptr = nullptr;
   bool* fp16_enable_ptr = nullptr;
-  bool* int8_enable_ptr = nullptr;
   size_t* max_workspace_size_ptr = nullptr;
-  //std::string trt_node_name_with_precision;
-  std::string unique_prefix_hashed_filename;
+  std::string trt_node_name_with_precision;
   bool engine_cache_enable;
   std::string engine_cache_path;
   nvinfer1::IRuntime* runtime = nullptr;
-  bool engine_cache_always_load_enable;
-  bool engine_decryption_enable;
-  std::string engine_decryption_lib_path;
   AllocatorPtr scratch_allocator;
-  std::unordered_map<std::string, float> dynamic_range_map;
 };
 
 // Logical device representation.
@@ -123,15 +109,10 @@ class TensorrtExecutionProvider : public Provider_IExecutionProvider {
   int max_partition_iterations_ = 1000;
   int min_subgraph_size_ = 1;
   bool fp16_enable_ = false;
-  bool int8_enable_ = false;
   bool dump_subgraphs_ = false;
   bool engine_cache_enable_ = false;
   std::string engine_cache_path_;
   nvinfer1::IRuntime* runtime_ = nullptr;
-  bool engine_cache_always_load_enable_ = false;
-  bool engine_decryption_enable_ = false;
-  std::string engine_decryption_lib_path_;
-  std::string int8_calibration_file_name_ = "INT8_calibration_table";
 
   OrtMutex tensorrt_mu_;
   int device_id_;
@@ -143,8 +124,6 @@ class TensorrtExecutionProvider : public Provider_IExecutionProvider {
   std::unordered_map<std::string, std::vector<std::unordered_map<std::string, int>>> input_info_;
   std::unordered_map<std::string, std::vector<std::unordered_map<std::string, int>>> output_info_;
   std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>>> input_shape_ranges_;
-  std::map<std::string, std::string> metadata_map_;            // runtime-lib/meta -> version
-  std::unordered_map<std::string, int> subgraph_node_num_map;  // subgraph -> number of nodes in subgraph
 
   /**Get IndexedSubGraph based on node list of the subgraph*/
   std::unique_ptr<Provider_IndexedSubGraph> GetSubGraph(SubGraph_t graph_nodes_index, int& kernels_index,

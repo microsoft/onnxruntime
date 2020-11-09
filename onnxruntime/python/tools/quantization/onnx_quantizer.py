@@ -130,7 +130,7 @@ class ONNXQuantizer:
             self.model.model.opset_import.remove(ai_onnx_domain[0])
             self.model.model.opset_import.extend([onnx.helper.make_opsetid("", 11)])
             opset_version = 11
-        
+
         self.fuse_dynamic_quant = True
         return opset_version
 
@@ -208,7 +208,7 @@ class ONNXQuantizer:
                     onnx.numpy_helper.to_array(initializer_scale)
                 ]
 
-                #connect the previous and successive node input and output
+                # connect the previous and successive node input and output
                 for succ_node in succ_nodes:
                     succ_idx = get_elem_index(next_node.output[0], succ_node.input)
                     if succ_idx != -1:
@@ -223,11 +223,11 @@ class ONNXQuantizer:
                     self.quantization_params = {}
                 self.quantization_params[param_name] = zp_and_scale
 
-                #remove fake-quantized nodes
+                # remove fake-quantized nodes
                 nodes_to_remove.extend([curr_node])
                 nodes_to_remove.extend([next_node])
 
-                #remove unused initializers in graph
+                # remove unused initializers in graph
                 initializers_to_remove.extend([initializer_scale])
                 initializers_to_remove.extend([initializer_zp])
 
@@ -685,7 +685,7 @@ class ONNXQuantizer:
 
         # Check if DequantizeLinear node needs to be added to graph.
         if len(nodes_using_weight) != 0 and \
-                self.model.find_node_by_name(dequantize_linear_name,self.new_nodes,self.model.graph()) is None:
+                self.model.find_node_by_name(dequantize_linear_name, self.new_nodes, self.model.graph()) is None:
             inputs = [weight.name + "_quantized", weight.name + "_scale", weight.name + "_zero_point"]
             node = onnx.helper.make_node("DequantizeLinear", inputs, [output_name], dequantize_linear_name)
             nodes_list.append(node)
@@ -790,7 +790,7 @@ class ONNXQuantizer:
 
         return quantized_bias_name
 
-    def quantize_inputs(self, node, indices):
+    def quantize_inputs(self, node, indices, initializer_use_weight_qType=True):
         '''
         Given a node, this function quantizes the inputs as follows:
             - If input is an initializer, quantize the initializer data, replace old initializer

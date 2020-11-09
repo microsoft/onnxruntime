@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "isfinite.h"
+#include "orttraining/training_ops/cuda/math/isfinite.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
@@ -60,7 +60,7 @@ Status IsAllFiniteOp<TSrc>::ComputeInternal(OpKernelContext* context) const {
   // The GPU result will be copied later to the output which locates
   // on CPU memory.
   IAllocatorUniquePtr<bool> deviceOutput = GetScratchBuffer<bool>(1);
-  CUDA_RETURN_IF_ERROR(cudaMemset(deviceOutput.get(), int(true), sizeof(bool)));
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(deviceOutput.get(), int(true), sizeof(bool)));
 
   std::vector<std::vector<void*>> grouped_tensor_pointers(total_tensor_count);
   std::vector<int> tensor_sizes(total_tensor_count);

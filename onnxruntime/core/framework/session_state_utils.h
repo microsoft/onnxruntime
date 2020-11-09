@@ -9,6 +9,7 @@
 #include "core/framework/tensor.h"
 #include "core/framework/tensor_allocator.h"
 #include "core/framework/session_options.h"
+#include "core/framework/sequential_execution_plan.h"
 #include "core/platform/path_lib.h"
 
 namespace onnxruntime {
@@ -29,7 +30,7 @@ namespace session_state_utils {
 common::Status SaveInitializedTensors(
     const Env& env, const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
     const GraphViewer& graph, const OrtMemoryInfo& default_cpu_memory_info,
-    const OrtValueNameIdxMap& ort_value_name_idx_map,
+    const OrtValueNameIdxMap& ort_value_name_idx_map, const std::vector<OrtValueIndex>& initializer_allocation_order,
     ITensorAllocator& planner,
     const std::function<Status(int idx, const OrtValue& value, const OrtCallback& d, bool constant)>& save_tensor_func,
     const logging::Logger& logger,
