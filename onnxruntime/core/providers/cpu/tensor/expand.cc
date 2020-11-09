@@ -12,7 +12,7 @@ namespace onnxruntime {
       12,                                                                          \
       TYPE,                                                                        \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>()), \
-      Expand<TYPE>);                                                             \
+      Expand<TYPE>);                                                               \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                  \
       Expand,                                                                      \
       13,                                                                          \
@@ -103,38 +103,43 @@ Status Expand<T>::Compute(OpKernelContext* context) const {
   int64_t copy_len = input_dim_group[max_dims_size - 1];
   auto copy_byte = copy_len * sizeof(T);
 
-  concurrency::ThreadPool::TrySimpleParallelFor(
+  concurrency::ThreadPool::TryParallelFor(
       context->GetOperatorThreadPool(),
       distribute_count,
-      [&](ptrdiff_t i) {
-        auto input_offset = i * copy_len;
-        int64_t output_offset = 0;
-        for (auto j = dim_group_start + 1, remains = input_offset; j < max_dims_size; ++j) {
-          auto current_count = remains / input_dim_group[j];
-          output_offset += current_count * output_dim_group[j];
-          remains = remains % input_dim_group[j];
+      max_dims_size - dim_group_start - 1,
+      [&](ptrdiff_t first, ptrdiff_t last) {
+        for (auto i = first; i < last; ++i) {
+          auto input_offset = i * copy_len;
+          int64_t output_offset = 0;
+          for (auto j = dim_group_start + 1, remains = input_offset; j < max_dims_size; ++j) {
+            auto current_count = remains / input_dim_group[j];
+            output_offset += current_count * output_dim_group[j];
+            remains = remains % input_dim_group[j];
+          }  //for
+          memcpy(output_data + output_offset, input_data + input_offset, copy_byte);
+          output_offsets[i] = output_offset;
         }  //for
-        memcpy(output_data + output_offset, input_data + input_offset, copy_byte);
-        output_offsets[i] = output_offset;
       });
 
   for (auto i = max_dims_size - 1; i >= dim_group_start; --i) {
     copy_len = output_dim_group[i] / expand_dim_size[i];
     copy_byte = copy_len * sizeof(T);
-    concurrency::ThreadPool::TrySimpleParallelFor(
-        context->GetOperatorThreadPool(),
-        distribute_count,
-        [&](ptrdiff_t j) {
-          auto output_offset = output_offsets[j];
-          if (output_offset % output_dim_group[i] == 0) {
-            for (auto k = 1; k < expand_dim_size[i]; ++k) {
-              memcpy(output_data + output_offset + k * copy_len,
-                     output_data + output_offset,
-                     copy_byte);
-            }  //for
-          }
-        });
-  }  //for
+    for (int64_t j = 0; j < distribute_count; ++j) {
+      auto output_offset = output_offsets[j];
+      if (output_offset % output_dim_group[i] == 0) {
+        concurrency::ThreadPool::TryParallelFor(
+            context->GetOperatorThreadPool(),
+            expand_dim_size[i], 1,
+            [&](ptrdiff_t first, ptrdiff_t last) {
+              for (auto k = first; k < last; ++k) {
+                memcpy(output_data + output_offset + k * copy_len,
+                       output_data + output_offset,
+                       copy_byte);
+              }  //for
+            });
+      }  //if
+    }    //for
+  }      //for
   return Status::OK();
 }  //Expand::compute
 
