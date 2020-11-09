@@ -9,7 +9,6 @@
 #endif
 
 #include <hip/hip_runtime.h>
-#include <hip/hip_runtime.h>
 #include <rocblas.h>
 #include <hipsparse.h>
 #include <hiprand.h>

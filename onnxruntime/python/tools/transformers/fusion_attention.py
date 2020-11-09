@@ -131,13 +131,15 @@ class FusionAttention(Fusion):
         weight = helper.make_tensor(name=attention_node_name + '_qkv_weight',
                                     data_type=TensorProto.FLOAT,
                                     dims=[self.hidden_size, 3 * self.hidden_size],
-                                    vals=qkv_weight.flatten().tolist())
+                                    vals=bytes(qkv_weight.flatten()),
+                                    raw=True)
         self.model.add_initializer(weight)
 
         bias = helper.make_tensor(name=attention_node_name + '_qkv_bias',
                                   data_type=TensorProto.FLOAT,
                                   dims=[3 * self.hidden_size],
-                                  vals=qkv_bias.flatten().tolist())
+                                  vals=bytes(qkv_bias.flatten()),
+                                  raw=True)
         self.model.add_initializer(bias)
 
         attnetion_inputs = [input, attention_node_name + '_qkv_weight', attention_node_name + '_qkv_bias']
@@ -291,9 +293,12 @@ class FusionAttention(Fusion):
             if einsum_node is not None:
                 unique_index = einsum_node.input[0]
                 new_edge = "edge_modified_" + unique_index
-                shape_tensor = self.model.convert_list_to_tensor(
-                    "shape_modified_tensor" + unique_index, TensorProto.INT64, [4],
-                    [0, 0, self.num_heads, int(self.hidden_size / self.num_heads)])
+                shape_tensor = helper.make_tensor(
+                    name="shape_modified_tensor" + unique_index,
+                    data_type=TensorProto.INT64,
+                    dims=[4],
+                    vals=np.int64([0, 0, self.num_heads, int(self.hidden_size / self.num_heads)]).tobytes(),
+                    raw=True)
                 self.model.add_initializer(shape_tensor)
                 self.model.add_node(
                     helper.make_node("Reshape", [attention_last_node.output[0], shape_tensor.name], [new_edge],
