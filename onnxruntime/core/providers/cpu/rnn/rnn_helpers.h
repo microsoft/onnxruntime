@@ -79,7 +79,8 @@ Status ValidateCommonRnnInputs(const Tensor& X,
                                const Tensor* sequence_lens,
                                const Tensor* initial_h,
                                int64_t num_directions,
-                               int64_t hidden_size);
+                               int64_t hidden_size,
+                               bool is_quant = false);
 
 /// Copy an input array repeatedly to an output array
 /// @param input_begin Beginning of input

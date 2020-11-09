@@ -31,7 +31,8 @@ Status ValidateCommonRnnInputs(const Tensor& X,
                                const Tensor* sequence_lens,
                                const Tensor* initial_h,
                                int64_t num_directions,
-                               int64_t hidden_size) {
+                               int64_t hidden_size,
+                               bool is_quant) {
   auto& X_shape = X.Shape();
 
   int64_t seq_length = X_shape[0];
@@ -41,21 +42,39 @@ Status ValidateCommonRnnInputs(const Tensor& X,
   if (X_shape.NumDimensions() != 3)
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input X must have 3 dimensions only. Actual:", X_shape);
 
-  if (W_shape.NumDimensions() != 3 ||
-      W_shape[0] != num_directions ||
-      W_shape[1] != hidden_size * WRB_dim_1_multipler ||
-      W_shape[2] != input_size)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input W must have shape {",
-                           num_directions, ",", WRB_dim_1_multipler, "*", hidden_size, ",",
-                           input_size, "}. Actual:", W_shape);
+  if (is_quant) {
+    if (W_shape.NumDimensions() != 3 ||
+        W_shape[0] != num_directions ||
+        W_shape[1] != input_size ||
+        W_shape[2] != hidden_size * WRB_dim_1_multipler)
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input W must have shape {",
+                             num_directions, ",", input_size, ",", WRB_dim_1_multipler,
+                             "*", hidden_size, "}. Actual:", W_shape);
 
-  if (R_shape.NumDimensions() != 3 ||
-      R_shape[0] != num_directions ||
-      R_shape[1] != hidden_size * WRB_dim_1_multipler ||
-      R_shape[2] != hidden_size)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input R must have shape {",
-                           num_directions, ",", WRB_dim_1_multipler, "*", hidden_size, ",",
-                           hidden_size, "}. Actual:", R_shape);
+    if (R_shape.NumDimensions() != 3 ||
+        R_shape[0] != num_directions ||
+        R_shape[1] != hidden_size ||
+        R_shape[2] != hidden_size * WRB_dim_1_multipler)
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input R must have shape {",
+                             num_directions, ",", hidden_size, ",", WRB_dim_1_multipler,
+                             "*", hidden_size, "}. Actual:", R_shape);
+  } else {
+    if (W_shape.NumDimensions() != 3 ||
+        W_shape[0] != num_directions ||
+        W_shape[1] != hidden_size * WRB_dim_1_multipler ||
+        W_shape[2] != input_size)
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input W must have shape {",
+                             num_directions, ",", WRB_dim_1_multipler, "*", hidden_size, ",",
+                             input_size, "}. Actual:", W_shape);
+
+    if (R_shape.NumDimensions() != 3 ||
+        R_shape[0] != num_directions ||
+        R_shape[1] != hidden_size * WRB_dim_1_multipler ||
+        R_shape[2] != hidden_size)
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input R must have shape {",
+                             num_directions, ",", WRB_dim_1_multipler, "*", hidden_size, ",",
+                             hidden_size, "}. Actual:", R_shape);
+  }
 
   if (B != nullptr) {
     auto& B_shape = B->Shape();
@@ -269,6 +288,16 @@ void ComputeGemm(const int M,
   float multiplier = a_scale * (*weights.quant_para_->scale);
   uint8_t b_zero_point = weights.quant_para_->zero_point ? *static_cast<const uint8_t*>(weights.quant_para_->zero_point) : 0;
 
+  float* res = C;
+  size_t ld_res = static_cast<size_t>(ldc);
+  float* tmp_res_buffer = nullptr;
+  if (beta == 1.0f) {
+    tmp_res_buffer = static_cast<float*>(allocator->Alloc(SafeInt<size_t>(M * N) * sizeof(float)));
+    ld_res = static_cast<size_t>(N);
+    res = tmp_res_buffer;
+  }
+  BufferUniquePtr tmp_res_buffer_holder(tmp_res_buffer, BufferDeleter(allocator));
+
   if (weights.is_prepacked_) {
     MlasGemm(static_cast<size_t>(M),
              static_cast<size_t>(N),
@@ -279,8 +308,8 @@ void ComputeGemm(const int M,
              weights.buffer_,
              b_zero_point,
              b_is_signed,
-             C,
-             static_cast<size_t>(ldc),
+             res,
+             static_cast<size_t>(ld_res),
              &multiplier,
              nullptr,
              thread_pool);
@@ -288,9 +317,17 @@ void ComputeGemm(const int M,
     QGemm(M, N, K,
           a_data_quant, K, a_zero_point,
           static_cast<const uint8_t*>(weights.buffer_), N, b_zero_point, b_is_signed,
-          C, ldc,
+          res, ld_res,
           &multiplier, nullptr,
           thread_pool);
+  }
+
+  if (beta == 1.f) {
+    for (int r = 0; r < M; r++) {
+      for (int c = 0; c < N; c++) {
+        C[r * ldc + c] += res[r * N + c];
+      }
+    }
   }
 }
 

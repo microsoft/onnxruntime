@@ -58,7 +58,8 @@ class LSTMBase {
                         const Tensor* initial_h,
                         const Tensor* initial_c,
                         const Tensor* P,
-                        int batch_size) const;
+                        int batch_size,
+                        bool is_quant = false) const;
 
   rnn::detail::Direction direction_;
   int num_directions_;

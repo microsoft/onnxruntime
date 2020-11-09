@@ -6,9 +6,9 @@
 namespace onnxruntime {
 Status LSTMBase::ValidateInputs(const Tensor& X, const TensorShape& W_shape, const TensorShape& R_shape,
                                 const Tensor* B, const Tensor* sequence_lens, const Tensor* initial_h,
-                                const Tensor* initial_c, const Tensor* P, int batch_size) const {
+                                const Tensor* initial_c, const Tensor* P, int batch_size, bool is_quant) const {
   auto status =
-      rnn::detail::ValidateCommonRnnInputs(X, W_shape, R_shape, B, 4, sequence_lens, initial_h, num_directions_, hidden_size_);
+      rnn::detail::ValidateCommonRnnInputs(X, W_shape, R_shape, B, 4, sequence_lens, initial_h, num_directions_, hidden_size_, is_quant);
   ORT_RETURN_IF_ERROR(status);
 
   if (initial_c != nullptr) {

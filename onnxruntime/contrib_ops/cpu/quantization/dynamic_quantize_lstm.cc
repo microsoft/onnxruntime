@@ -119,7 +119,7 @@ Status DynamicQuantizeLSTM::Compute(OpKernelContext* context) const {
   const auto& W_shape = (W != nullptr) ? W->Shape() : packed_W_.shape_;
   const auto& R_shape = (R != nullptr) ? R->Shape() : packed_R_.shape_;
 
-  Status status = ValidateInputs(X, W_shape, R_shape, B, sequence_lens, initial_h, initial_c, P, batch_size);
+  Status status = ValidateInputs(X, W_shape, R_shape, B, sequence_lens, initial_h, initial_c, P, batch_size, true);
   ORT_RETURN_IF_ERROR(status);
 
   // LSTM outputs are optional but must be in the same order
