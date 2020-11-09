@@ -2,7 +2,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-import os
+import sys
 import argparse
 
 from _test_commons import run_subprocess
@@ -19,12 +19,19 @@ def parse_arguments():
     parser.add_argument("--cwd", help="cwd")
     return parser.parse_args()
 
-def run_training_pipeline_e2e_tests(cwd):
-    # pipeline tests are to be added here:
-    log.info("Running pipeline e2e tests.")
-
+def main():
     import torch
     ngpus = torch.cuda.device_count()
+
+    # TODO: currently the CI machine only has 4 GPUs for parallel tests.
+    # Fill in more pipeline partition options when the machine has different GPUs counts.
+    if ngpus != 4:
+        return 0
+
+    log.info("Running pipeline e2e tests.")
+
+    args = parse_arguments()
+    cwd = args.cwd
 
     command = ['./onnxruntime_training_bert',
                '--ort_log_severity', '1',
@@ -46,11 +53,6 @@ def run_training_pipeline_e2e_tests(cwd):
                '--num_train_steps', '96',
                '--train_batch_size', '50']
 
-    # TODO: currently the CI machine only has 4 GPUs for parallel tests.
-    # Fill in more pipeline partition options when the machine has different GPUs counts.
-    if ngpus != 4:
-        return
-
     # Test 4-way pipeline parallel
     pp_command = ['mpirun', '-n', str(ngpus)] + command + ['--pipeline_parallel_size', '4', '--cut_group_info',
                                                            '1149:407-1219/1341/1463/1585/1707/1829,' +
@@ -69,7 +71,8 @@ def run_training_pipeline_e2e_tests(cwd):
     command_str = ', '.join(pp_dp_command)
     log.debug('RUN: ' + command_str)
     run_subprocess(pp_dp_command, cwd=cwd, log=log)
+    return 0
 
 
-args = parse_arguments()
-run_training_pipeline_e2e_tests(cwd=args.cwd)
+if __name__ == "__main__":
+    sys.exit(main())

@@ -40,6 +40,53 @@ jobs:
   - script: |
       docker run \
         --gpus all \
+        --shm-size=256m \
+        --rm \
+        --volume $(Build.BinariesDirectory):/build \
+        --volume /bert_data:/bert_data \
+        --volume /bert_ort:/bert_ort \
+        onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
+          python \
+          /build/RelWithDebInfo/run_training_pipeline_e2e_tests.py \
+            --cwd /build/RelWithDebInfo
+    displayName: 'Run python run_training_pipeline_e2e_tests.py'
+    condition: succeededOrFailed() # ensure all tests are run
+    timeoutInMinutes: 10
+
+  - script: |
+      docker run \
+        --gpus all \
+        --shm-size=256m \
+        --rm \
+        --volume $(Build.BinariesDirectory):/build \
+        --volume /bert_data:/bert_data \
+        --volume /bert_ort:/bert_ort \
+        onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
+          /build/RelWithDebInfo/run_training_pipeline_e2e_tests.py \
+            --cwd /build/RelWithDebInfo
+    displayName: 'Run run_training_pipeline_e2e_tests.py'
+    condition: succeededOrFailed() # ensure all tests are run
+    timeoutInMinutes: 10
+
+  - script: |
+      docker run \
+        --gpus all \
+        --shm-size=256m \
+        --rm \
+        --volume $(Build.BinariesDirectory):/build \
+        --volume /bert_data:/bert_data \
+        --volume /bert_ort:/bert_ort \
+        onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
+          /build/RelWithDebInfo/launch_test.py \
+          --cmd_line_with_args "python run_training_pipeline_e2e_tests.py" \
+          --cwd /build/RelWithDebInfo
+    displayName: 'launch_test.py run_training_pipeline_e2e_tests.py'
+    condition: succeededOrFailed() # ensure all tests are run
+    timeoutInMinutes: 10
+
+  - script: |
+      docker run \
+        --gpus all \
         --rm \
         --volume $(Build.SourcesDirectory):/onnxruntime_src \
         --volume $(Build.BinariesDirectory):/build \
@@ -252,33 +299,5 @@ jobs:
     displayName: 'Run run_training_pipeline_e2e_tests.py'
     condition: succeededOrFailed() # ensure all tests are run
     timeoutInMinutes: 10
-
-  - script: |
-      docker run \
-        -u0 \
-        --gpus all \
-        --shm-size=1024m \
-        --rm \
-        onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
-          nvidia-smi --gpu-reset
-    displayName: 'nvidia-smi --gpu-reset'
-    condition: succeededOrFailed() # ensure all tests are run
-    timeoutInMinutes: 2
-    
-  - script: |
-      docker run \
-        --gpus all \
-        --shm-size=256m \
-        --rm \
-        --volume $(Build.BinariesDirectory):/build \
-        --volume /bert_data:/bert_data \
-        --volume /bert_ort:/bert_ort \
-        onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
-          /build/RelWithDebInfo/launch_test.py \
-          --cmd_line_with_args "python run_training_pipeline_e2e_tests.py" \
-          --cwd /build/RelWithDebInfo
-    displayName: 'Run run_training_pipeline_e2e_tests.py'
-    condition: succeededOrFailed() # ensure all tests are run
-    timeoutInMinutes: 10
-
+        
   # - template: templates/clean-agent-build-directory-step.yml
