@@ -55,8 +55,7 @@ Status ReduceAllL2<TIn, TOut>::ComputeInternal(OpKernelContext* ctx) const {
   HipTOut* p_output = reinterpret_cast<HipTOut*>(output->template MutableData<TOut>());
   HIP_RETURN_IF_ERROR(hipMemsetAsync(p_output, 0, sizeof(HipTOut)));
 
-  // auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
-  // bool deterministic = ctx_internal && ctx_internal->GetUseDeterministicCompute();
+  // bool deterministic = ctx->GetUseDeterministicCompute();
   bool deterministic = true;
   if (!deterministic) {
 
