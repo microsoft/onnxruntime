@@ -9,6 +9,9 @@
 #include "core/graph/onnx_protobuf.h"
 #include "gtest/gtest.h"
 
+#include "core/util/math.h"
+#include <ostream>
+
 #ifdef __GNUC__
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wignored-qualifiers"
@@ -433,7 +436,7 @@ TEST_F(DataTypeTest, BFloat16Test) {
     FloatToBFloat16(sample, converted, sizeof(sample) / sizeof(float));
     for (size_t i = 0; i < sizeof(sample) / sizeof(float); ++i) {
       const double diff = std::fabs(sample[i] - converted[i].ToFloat());
-      if (diff > FLT_EPSILON || (std::isnan(diff) && !std::isnan(sample[i]))) {
+      if ((std::isnan(diff) && !std::isnan(sample[i])) || diff > FLT_EPSILON) {
         EXPECT_TRUE(false);
       }
     }
@@ -442,7 +445,7 @@ TEST_F(DataTypeTest, BFloat16Test) {
     BFloat16ToFloat(converted, back_converted, sizeof(sample) / sizeof(float));
     for (size_t i = 0; i < sizeof(sample) / sizeof(float); ++i) {
       const double diff = std::fabs(sample[i] - back_converted[i]);
-      if (diff > FLT_EPSILON || (std::isnan(diff) && !std::isnan(sample[i]))) {
+      if ((std::isnan(diff) && !std::isnan(sample[i])) || diff > FLT_EPSILON) {
         EXPECT_TRUE(false);
       }
     }
