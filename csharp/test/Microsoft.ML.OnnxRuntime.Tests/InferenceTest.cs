@@ -737,6 +737,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 skipModels["test_bvlc_reference_caffenet"] = "System out of memory";
                 skipModels["coreml_VGG16_ImageNet"] = "System out of memory";
                 skipModels["test_ssd"] = "System out of memory";
+                skipModels["roberta_sequence_classification"] = "System out of memory";
             }
 
             return skipModels;
