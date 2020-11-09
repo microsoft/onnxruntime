@@ -39,11 +39,11 @@ namespace concurrency {
 #endif
 
 static constexpr int CACHE_LINE_BYTES = 64;
-static constexpr uint64_t MAX_SHARDS = 8;
+static constexpr unsigned MAX_SHARDS = 8;
 
 struct alignas(CACHE_LINE_BYTES) LoopCounterShard {
-  ::std::atomic<uint64_t> _next;
-  uint64_t _end;
+  ::std::atomic<uint64_t> _next{0};
+  uint64_t _end{0};
 };
 
 static_assert(sizeof(LoopCounterShard) == CACHE_LINE_BYTES, "Expected loop counter shards to match cache-line size");
@@ -110,14 +110,14 @@ private:
   // Derive the number of shards to use for a given loop.  We require
   // at least one block of work per shard, and subject to that
   // constraint we use [1,MAX_SHARDS) shards.
-  static uint64_t GetNumShards(uint64_t num_iterations,
+  static unsigned GetNumShards(uint64_t num_iterations,
                                uint64_t block_size) {
-    uint64_t num_shards;
+    unsigned num_shards;
     auto num_blocks = num_iterations / block_size;
     if (num_blocks == 0) {
       num_shards = 1;
     } else if (num_blocks < MAX_SHARDS) {
-      num_shards = num_blocks;
+      num_shards = static_cast<unsigned>(num_blocks);
     } else {
       num_shards = MAX_SHARDS;
     }
@@ -126,7 +126,7 @@ private:
 
   alignas(CACHE_LINE_BYTES) LoopCounterShard _shards[MAX_SHARDS];
   const uint64_t _block_size;
-  const uint64_t _num_shards;
+  const unsigned _num_shards;
 };
 
 #ifdef _MSC_VER
