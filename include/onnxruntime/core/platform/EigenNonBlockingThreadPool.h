@@ -570,10 +570,6 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     uint32_t v_ = 0;
   };
 
-  static Tag GetNextTag() {
-    return Tag(next_tag++);
-  }
-
   typedef RunQueue<Task, Tag, 1024> Queue;
 #ifdef _WIN32
   using CHAR_TYPE = wchar_t;
