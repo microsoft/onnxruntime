@@ -3,9 +3,11 @@
 
 #include "core/providers/cpu/tensor/transpose.h"
 #include "core/framework/utils.h"
+#include "core/mlas/inc/mlas.h"
+
 namespace onnxruntime {
 
-/* A permutation [a,b,c,...] indicates that 
+/* A permutation [a,b,c,...] indicates that
    - The 0-th dimension of the output corresponds to the a-th dimension of input
    - The 1-st dimension of the output corresponds to the b-th dimension of input
    - The 2-nd dimension of the output corresponds to the c-th dimension of input
@@ -243,7 +245,7 @@ static Status DoUntypedTranspose(const std::vector<size_t>& permutations, const 
 /*
 Optimizations for moving a single axis either inwards or outwards.
 
-If moving outwards we can use a single reader and multiple writers. The number of writers is equal to the value of 
+If moving outwards we can use a single reader and multiple writers. The number of writers is equal to the value of
 the axis being moved.
 
   e.g. if the input is NHWC with shape {N, 300, 300, 3}, we can transpose to NCHW by reading once and having
@@ -260,7 +262,7 @@ to the value of the axis being moved.
 This can be generalized for any input where only one axis is being moved, with the block size for each read/write
 being dependent on which axis is moving, what direction it's moving in, and where it's moving to.
 
-We use simple pointer arithmetic if the size of each read/write is a power of 2 and between 8 and 64 bits. 
+We use simple pointer arithmetic if the size of each read/write is a power of 2 and between 8 and 64 bits.
 We use memcpy if the block size is larger.
 
 We fall back to the default implementation in all other cases, and if the input is std::string.
@@ -291,9 +293,23 @@ static void SimpleTransposeSingleAxisOutwards(const T* input_data, T* output_dat
   }
 }
 
+#ifdef MLAS_SUPPORTS_TRANSPOSE
+
+static void SimpleTransposeSingleAxisOutwards(const uint8_t* input_data, uint8_t* output_data,
+                                              int64_t num_loops, int64_t num_writers,
+                                              int64_t writes_per_loop, int64_t writes_per_writer_per_loop) {
+  for (int64_t l = 0; l < num_loops; ++l) {
+    MlasTranspose(input_data, output_data, writes_per_writer_per_loop, num_writers);
+    input_data += writes_per_loop;
+    output_data += writes_per_loop;
+  }
+}
+
+#endif
+
 //  `input_shape_override` overrides the shape of `input` for compute purposes.
 static void TransposeSingleAxisOutwards(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
-                                        int64_t from, int64_t to, const TensorShape* input_shape_override = nullptr) {
+                                            int64_t from, int64_t to, const TensorShape* input_shape_override = nullptr) {
   ORT_UNUSED_PARAMETER(permutations);
 
   const auto& input_shape = input_shape_override ? *input_shape_override : input.Shape();
@@ -381,6 +397,20 @@ static void SimpleTransposeSingleAxisInwards(const T* input_data, T* output_data
     input_data += reads_per_loop;
   }
 }
+
+#ifdef MLAS_SUPPORTS_TRANSPOSE
+
+static void SimpleTransposeSingleAxisInwards(const uint8_t* input_data, uint8_t* output_data,
+                                             int64_t num_loops, int64_t num_readers,
+                                             int64_t reads_per_loop, int64_t reads_per_reader_per_loop) {
+  for (int64_t l = 0; l < num_loops; ++l) {
+    MlasTranspose(input_data, output_data, num_readers, reads_per_reader_per_loop);
+    input_data += reads_per_loop;
+    output_data += reads_per_loop;
+  }
+}
+
+#endif
 
 // moving a single axis inwards where the read/write size is a power of 2 and between 8 and 64 bits.
 //  `input_shape_override` overrides the shape of `input` for compute purposes.
