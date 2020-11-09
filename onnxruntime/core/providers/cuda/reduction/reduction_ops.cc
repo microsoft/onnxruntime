@@ -661,12 +661,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
                                        axes,
                                        prepare_reduce_metadata));
   Tensor* Y = ctx->Output(0, prepare_reduce_metadata.squeezed_output_dims);
-  bool fast_reduction = fast_reduction_;
-  if (fast_reduction) {
-    auto ctx_internal = dynamic_cast<OpKernelContextInternal*>(ctx);
-    if (ctx_internal && ctx_internal->GetUseDeterministicCompute())
-      fast_reduction = false;
-  }
+  const bool fast_reduction = fast_reduction_ && !ctx->GetUseDeterministicCompute();
 
   return ReduceComputeCore<T, ReduceTensorIndices>(*cuda_ep_, *X, prepare_reduce_metadata, *Y, cudnn_reduce_op, axes_,
                                                    calculate_log_, calculate_sqt_, log_sum_exp_, fast_reduction);
