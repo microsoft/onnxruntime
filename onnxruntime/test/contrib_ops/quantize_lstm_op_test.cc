@@ -7,6 +7,8 @@
 #include "core/mlas/inc/mlas.h"
 #include "core/util/qmath.h"
 #include "core/providers/cpu/rnn/deep_cpu_lstm.h"
+#include "test/common/tensor_op_test_utils.h"
+#include "test/util/include/default_providers.h"
 #include "test/providers/provider_test_utils.h"
 
 namespace onnxruntime {
@@ -77,7 +79,6 @@ static void CalculateRefResult(std::vector<float>& Y_data,
                                const std::vector<float>* P_data = nullptr,
                                const std::vector<float>* initial_h_data = nullptr,
                                const std::vector<float>* initial_c_data = nullptr,
-                               const std::vector<int>* sequence_lengths = nullptr,
                                const std::string& direction = "forward",
                                float clip = 9999.f,
                                bool input_forget = false,
@@ -112,8 +113,6 @@ static void CalculateRefResult(std::vector<float>& Y_data,
   test.AddInput<float>("X", X_dims, ApplyQDQ(X_data));
   test.AddInput<float>("W", W_dims, ApplyQDQ(W_data));
   test.AddInput<float>("R", R_dims, ApplyQDQ(R_data));
-  // test.AddInput<float>("W", W_dims, W_data);
-  // test.AddInput<float>("R", R_dims, R_data);
 
   if (B_data) {
     std::vector<int64_t> B_dims = {num_directions, 8 * hidden_size};
@@ -122,12 +121,8 @@ static void CalculateRefResult(std::vector<float>& Y_data,
     test.AddMissingOptionalInput<float>();
   }
 
-  if (sequence_lengths) {
-    std::vector<int64_t> sequence_lens_dims{batch_size};
-    test.AddInput<int>("sequence_lens", sequence_lens_dims, *sequence_lengths);
-  } else {
-    test.AddMissingOptionalInput<int>();
-  }
+  // sequence_lens
+  test.AddMissingOptionalInput<int>();
 
   if (initial_h_data && !initial_h_data->empty()) {
     std::vector<int64_t> initial_h_dims = {num_directions, batch_size, hidden_size};
@@ -165,8 +160,9 @@ static void CalculateRefResult(std::vector<float>& Y_data,
   std::vector<int64_t> Y_c_dims{num_directions, batch_size, hidden_size};
   test.AddOutput<float>("Y_c", Y_c_dims, Y_c_data);
 
-  // TensorRT failed on LSTM tests
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 
   std::vector<MLValue> outputs = test.GetFetches();
 
@@ -183,34 +179,30 @@ static void CalculateRefResult(std::vector<float>& Y_data,
 static void RunQuantLSTM(int64_t input_size,
                          int64_t batch_size,
                          int64_t hidden_size,
-                         const std::vector<float>& X_data,
-                         const std::vector<float>& W_data,
-                         const std::vector<float>& R_data,
-                         const std::vector<float>* B_data = nullptr,
-                         const std::vector<float>* P_data = nullptr,
-                         const std::vector<float>* initial_h_data = nullptr,
-                         const std::vector<float>* initial_c_data = nullptr,
-                         const std::vector<int>* sequence_lengths = nullptr,
+                         bool has_bias,
+                         bool has_P,
+                         bool hasClip,
                          const std::string& direction = "forward",
                          float clip = 9999.f,
                          bool input_forget = false,
                          // copy the following vectors as we may modify them
                          std::vector<std::string> activations = {},
                          std::vector<float> activation_alphas = {},
-                         std::vector<float> activation_betas = {},
-                         bool hasClip = true) {
-  int64_t seq_length = 1;  // only use seq length 1
-
-  OpTester test("DynamicQuantizeLSTM", 1 /*opset_version*/, onnxruntime::kMSDomain /*domain*/);
+                         std::vector<float> activation_betas = {}) {
+  int64_t seq_len = 1;  // only use seq length 1 to model the test
 
   int num_directions = (direction == "bidirectional") ? 2 : 1;
 
+  RandomValueGenerator rand_gen;
+
+  OpTester test("DynamicQuantizeLSTM", 1 /*opset_version*/, onnxruntime::kMSDomain /*domain*/);
+
   if (activations.empty()) {
-      activations = { "sigmoid", "tanh", "tanh" };
+    activations = {"sigmoid", "tanh", "tanh"};
   }
 
   if (num_directions == 2 && activations.size() == 3) {
-      activations = DuplicateContainer(activations);
+    activations = DuplicateContainer(activations);
   }
 
   test.AddAttribute<std::vector<std::string>>("activations", activations);
@@ -226,17 +218,25 @@ static void RunQuantLSTM(int64_t input_size,
     test.AddAttribute<float>("clip", clip);
   }
 
-  std::vector<int64_t> X_dims = {seq_length, batch_size, input_size};
-  std::vector<int64_t> W_dims = {num_directions, input_size, 4 * hidden_size};
-  std::vector<int64_t> R_dims = {num_directions, hidden_size, 4 * hidden_size};
-
+  // X
+  std::vector<int64_t> X_dims = {seq_len, batch_size, input_size};
+  std::vector<float> X_data = rand_gen.Gaussian<float>({seq_len, batch_size, input_size}, -0.3f, 0.3f);
   test.AddInput<float>("X", X_dims, X_data);
 
-  float w_scale = 1.f;
-  uint8_t w_zp = 128;
+  // W
+
+  std::vector<int64_t> W_dims = {num_directions, input_size, 4 * hidden_size};
+  std::vector<float> W_data = rand_gen.Gaussian<float>({num_directions, 4 * hidden_size, input_size}, -0.5f, 0.5f);
+
+  float w_scale;
+  uint8_t w_zp;
   std::vector<uint8_t> w_quant;
   QuantizeWeight(w_quant, w_scale, w_zp, W_data, num_directions, 4 * hidden_size, input_size);
   test.AddInput<uint8_t>("W", W_dims, w_quant);
+
+  // R
+  std::vector<int64_t> R_dims = {num_directions, hidden_size, 4 * hidden_size};
+  std::vector<float> R_data = rand_gen.Gaussian<float>({num_directions, 4 * hidden_size, hidden_size}, -0.5f, 0.5f);
 
   float r_scale = 1.f;
   uint8_t r_zp = 128;
@@ -244,32 +244,34 @@ static void RunQuantLSTM(int64_t input_size,
   QuantizeWeight(r_quant, r_scale, r_zp, R_data, num_directions, 4 * hidden_size, hidden_size);
   test.AddInput<uint8_t>("R", R_dims, r_quant);
 
-  if (B_data) {
+  std::vector<float> B_data;
+  if (has_bias) {
     std::vector<int64_t> B_dims = {num_directions, 8 * hidden_size};
-    test.AddInput<float>("B", B_dims, *B_data);
+    B_data = rand_gen.Gaussian<float>(B_dims, -1.f, 1.f);
+
+    test.AddInput<float>("B", B_dims, B_data);
   } else {
     test.AddMissingOptionalInput<float>();
   }
 
+  // sequence_lens
   test.AddMissingOptionalInput<int>();
 
-  if (initial_h_data && !initial_h_data->empty()) {
-    std::vector<int64_t> initial_h_dims = {num_directions, batch_size, hidden_size};
-    test.AddInput<float>("initial_h", initial_h_dims, *initial_h_data);
-  } else {
-    test.AddMissingOptionalInput<float>();
-  }
+  // initial_h
+  std::vector<int64_t> initial_h_dims = {num_directions, batch_size, hidden_size};
+  std::vector<float> initial_h_data = rand_gen.Gaussian<float>(initial_h_dims, -1.f, 1.f);
+  test.AddInput<float>("initial_h", initial_h_dims, initial_h_data);
 
-  if (initial_c_data && !initial_c_data->empty()) {
-    std::vector<int64_t> initial_c_dims = {num_directions, batch_size, hidden_size};
-    test.AddInput<float>("initial_c", initial_c_dims, *initial_c_data);
-  } else {
-    test.AddMissingOptionalInput<float>();
-  }
+  // initial_c
+  std::vector<int64_t> initial_c_dims = {num_directions, batch_size, hidden_size};
+  std::vector<float> initial_c_data = rand_gen.Gaussian<float>(initial_c_dims, -1.f, 1.f);
+  test.AddInput<float>("initial_c", initial_c_dims, initial_c_data);
 
-  if (P_data && !P_data->empty()) {
+  std::vector<float> P_data;
+  if (has_P) {
     std::vector<int64_t> P_dims = {num_directions, 3 * hidden_size};
-    test.AddInput<float>("P", P_dims, *P_data);
+    P_data = rand_gen.Gaussian<float>(P_dims, -1.f, 1.f);
+    test.AddInput<float>("P", P_dims, P_data);
   } else {
     test.AddMissingOptionalInput<float>();
   }
@@ -292,11 +294,10 @@ static void RunQuantLSTM(int64_t input_size,
                      X_data,
                      W_data,
                      R_data,
-                     B_data,
-                     P_data,
-                     initial_h_data,
-                     initial_c_data,
-                     sequence_lengths,
+                     has_bias ? &B_data : nullptr,
+                     has_P ? &P_data : nullptr,
+                     &initial_h_data,
+                     &initial_c_data,
                      direction,
                      clip,
                      input_forget,
@@ -305,7 +306,7 @@ static void RunQuantLSTM(int64_t input_size,
                      activation_betas,
                      hasClip);
 
-  std::vector<int64_t> Y_dims = {seq_length, num_directions, batch_size, hidden_size};
+  std::vector<int64_t> Y_dims = {seq_len, num_directions, batch_size, hidden_size};
   test.AddOutput<float>("Y", Y_dims, Y_data);
 
   std::vector<int64_t> Y_h_dims{num_directions, batch_size, hidden_size};
@@ -317,22 +318,21 @@ static void RunQuantLSTM(int64_t input_size,
   test.Run();
 }
 
-TEST(DynamicQuantLSTMTest, ForwardSimpleWeightsNoBiasTwoRows) {
+TEST(DynamicQuantLSTMTest, Bidirectional_NoBias_NoP_NoClip)
+{
+    int batch_size = 2;
+    int64_t input_size = 3;
+    int64_t hidden_size = 2;
+
+    RunQuantLSTM(input_size, batch_size, hidden_size, false, false, false, "bidirectional");
+}
+
+TEST(DynamicQuantLSTMTest, Bidirectional_Bias_P_NoClip) {
   int batch_size = 2;
-  int64_t input_size = 1;
+  int64_t input_size = 3;
   int64_t hidden_size = 2;
 
-  int num_directions = 1;
-
-  std::vector<float> X_data{1.f, 2.f};
-
-  std::vector<float> W_data{
-      0.1f, 0.2f, 0.3f, 0.4f,
-      1.f, 2.f, 3.f, 4.f};
-
-  std::vector<float> R_data(num_directions * 4 * hidden_size * hidden_size, 0.1f);
-
-  RunQuantLSTM(input_size, batch_size, hidden_size, X_data, W_data, R_data);
+  RunQuantLSTM(input_size, batch_size, hidden_size, true, true, false, "bidirectional");
 }
 
 }  // namespace test
