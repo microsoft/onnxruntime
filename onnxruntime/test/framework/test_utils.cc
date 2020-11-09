@@ -40,7 +40,7 @@ IExecutionProvider* TestOpenVINOExecutionProvider() {
 
 #ifdef USE_NNAPI
 IExecutionProvider* TestNnapiExecutionProvider() {
-  static NnapiExecutionProvider nnapi_provider;
+  static NnapiExecutionProvider nnapi_provider(0);
   return &nnapi_provider;
 }
 #endif
@@ -52,12 +52,13 @@ IExecutionProvider* TestRknpuExecutionProvider() {
 }
 #endif
 
-static void CountOpsInGraphImpl(
-    const Graph& graph, bool recurse_into_subgraphs, std::map<std::string, int>& ops) {
+static void CountOpsInGraphImpl(const Graph& graph, bool recurse_into_subgraphs, std::map<std::string, int>& ops) {
   for (auto& node : graph.Nodes()) {
-    auto pos = ops.find(node.OpType());
+    std::string key = node.Domain() + (node.Domain().empty() ? "" : ".") + node.OpType();
+
+    auto pos = ops.find(key);
     if (pos == ops.end()) {
-      ops[node.OpType()] = 1;
+      ops[key] = 1;
     } else {
       ++pos->second;
     }

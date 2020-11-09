@@ -32,6 +32,8 @@ std::unique_ptr<IExecutionProvider> GetExecutionProvider(const std::string& prov
     execution_provider = DefaultNnapiExecutionProvider();
   else if (provider_type == onnxruntime::kAclExecutionProvider)
     execution_provider = DefaultAclExecutionProvider();
+  else if (provider_type == onnxruntime::kRocmExecutionProvider)
+    execution_provider = DefaultRocmExecutionProvider();
   // skip if execution provider is disabled
   if (execution_provider == nullptr) {
     return nullptr;

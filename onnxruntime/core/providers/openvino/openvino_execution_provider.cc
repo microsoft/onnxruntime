@@ -24,6 +24,13 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
   openvino_ep::BackendManager::GetGlobalContext().device_type = info.device_type_;
   openvino_ep::BackendManager::GetGlobalContext().precision_str = info.precision_;
   openvino_ep::BackendManager::GetGlobalContext().enable_vpu_fast_compile = info.enable_vpu_fast_compile_;
+  if((int)info.num_of_threads_ <= 0) {
+    openvino_ep::BackendManager::GetGlobalContext().num_of_threads = 8;
+  }
+  else {
+    openvino_ep::BackendManager::GetGlobalContext().num_of_threads = info.num_of_threads_;
+  }
+  openvino_ep::BackendManager::GetGlobalContext().num_of_threads = info.num_of_threads_;
   if(info.device_id_ != "") {
     bool device_found = false;
     auto available_devices = openvino_ep::BackendManager::GetGlobalContext().ie_core.GetAvailableDevices();
@@ -63,6 +70,9 @@ OpenVINOExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
                           openvino_ep::BackendManager::GetGlobalContext().device_type);
 #elif defined OPENVINO_2020_4
   result = openvino_ep::GetCapability_2020_4(graph_viewer,
+                          openvino_ep::BackendManager::GetGlobalContext().device_type);
+#elif defined OPENVINO_2021_1
+  result = openvino_ep::GetCapability_2021_1(graph_viewer,
                           openvino_ep::BackendManager::GetGlobalContext().device_type);
 #endif
 

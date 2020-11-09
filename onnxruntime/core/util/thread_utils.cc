@@ -27,6 +27,7 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
     if (options.auto_set_affinity)
       to.affinity = cpu_list;
   }
+  to.set_denormal_as_zero = options.set_denormal_as_zero;
 
   return onnxruntime::make_unique<ThreadPool>(env, to, options.name, options.thread_pool_size,
                                               options.allow_spinning);
@@ -89,4 +90,14 @@ ORT_API_STATUS_IMPL(SetGlobalSpinControl, _Inout_ OrtThreadingOptions* tp_option
   tp_options->inter_op_thread_pool_params.allow_spinning = allow_spinning;
   return nullptr;
 }
+
+ORT_API_STATUS_IMPL(SetGlobalDenormalAsZero, _Inout_ OrtThreadingOptions* tp_options) {
+  if (!tp_options) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Received null OrtThreadingOptions");
+  }
+  tp_options->intra_op_thread_pool_params.set_denormal_as_zero = true;
+  tp_options->inter_op_thread_pool_params.set_denormal_as_zero = true;
+  return nullptr;
+}
+
 }  // namespace OrtApis

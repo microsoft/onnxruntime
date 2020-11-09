@@ -11,6 +11,7 @@
 #include <string>
 #include <thread>
 
+#include "core/common/denormal.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/error_code_helper.h"
@@ -101,15 +102,19 @@ std::atomic<uint32_t> InferenceSession::global_session_id_{1};
 // Only update this version when there is a file format change which will break the compatibilites
 // Once this model version is updated, the kSupportedOrtModelVersions in IsOrtModelVersionSupported
 // below will also need to be updated.
-static constexpr const char* kOrtModelVersion = "1";
+// See onnxruntime/core/session/flatbuffers/schema/README.md for more details on versioning.
+// Version 1 - history begins
+// Version 2 - add serailization/deserialization of sparse_initializer
+static constexpr const char* kOrtModelVersion = "2";
 
 #if defined(ENABLE_ORT_FORMAT_LOAD)
-// Check if the givne ort model version is supported in this build
+// Check if the given ort model version is supported in this build
 static bool IsOrtModelVersionSupported(const std::string& ort_model_version) {
   // The ort model versions we will support in this build
   // This may contain more versions than the kOrtModelVersion, based on the compatibilities
   static const std::unordered_set<std::string> kSupportedOrtModelVersions{
       std::string("1.4.0"),  // This is a special model version for existing converted model
+      std::string("1"),
       std::string(kOrtModelVersion),
   };
 
@@ -202,6 +207,22 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   ORT_ENFORCE(graph_transformation_mgr_.SetSteps(session_options_.max_num_graph_transformation_steps).IsOK());
 #endif
 
+  bool set_denormal_as_zero = session_options_.GetConfigOrDefault(kOrtSessionOptionsConfigSetDenormalAsZero, "0") == "1";
+
+  // The only first session option for flush-to-zero and denormal-as-zero is effective to main thread and OpenMP threads.
+  {
+    static std::once_flag once;
+
+    std::call_once(once, [&] {
+#ifdef _OPENMP
+      InitializeWithDenormalAsZero(set_denormal_as_zero);
+#endif
+      SetDenormalAsZero(set_denormal_as_zero);
+
+      LOGS(*session_logger_, INFO) << "Flush-to-zero and denormal-as-zero are " << ((set_denormal_as_zero) ? "on" : "off");
+    });
+  }
+
   use_per_session_threads_ = session_options.use_per_session_threads;
 
   if (use_per_session_threads_) {
@@ -211,6 +232,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
       if (to.name == nullptr) {
         to.name = ORT_TSTR("intra-op");
       }
+      to.set_denormal_as_zero = set_denormal_as_zero;
       // If the thread pool can use all the processors, then
       // we set affinity of each thread to each processor.
       to.auto_set_affinity = to.thread_pool_size == 0 &&
@@ -227,6 +249,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
           to.thread_pool_size == 0 && session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL;
       if (to.name == nullptr)
         to.name = ORT_TSTR("intra-op");
+      to.set_denormal_as_zero = set_denormal_as_zero;
       inter_op_thread_pool_ =
           concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTER_OP);
       if (inter_op_thread_pool_ == nullptr) {
@@ -1270,7 +1293,6 @@ common::Status InferenceSession::CheckShapes(const std::string& input_name, cons
     ostr << " Please fix either the inputs or the model.";
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, ostr.str());
   }
-
   return Status::OK();
 }
 
@@ -1322,20 +1344,20 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
         ORT_RETURN_IF_ERROR_SESSIONID_(CheckShapes(feed_name, input_shape, expected_shape));
       }
     } else if (input_ml_value.IsSparseTensor()) {
-#if !defined(ORT_MINIMAL_BUILD)
       if (!expected_type->IsSparseTensorType()) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input with name: ", feed_name,
                                " is not expected to be of type sparse tensor.");
       }
       auto expected_element_type = expected_type->AsSparseTensorType()->GetElementType();
-      auto input_element_type = input_ml_value.Get<SparseTensor>().Values().DataType();
-      // TODO: In the future, when sparsetensors are in use, find out how to properly verify the shape
+      const SparseTensor& sparse_tensor = input_ml_value.Get<SparseTensor>();
+      auto input_element_type = sparse_tensor.Values().DataType();
       ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type));
-#else
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input with name ", feed_name,
-                             " is a sparse tensor, which is not supported in this build.");
-#endif
-
+      // Check shape
+      const auto& expected_shape = iter->second.tensor_shape;
+      if (expected_shape.NumDimensions() > 0) {
+        const auto& input_shape = sparse_tensor.Shape();
+        ORT_RETURN_IF_ERROR_SESSIONID_(CheckShapes(feed_name, input_shape, expected_shape));
+      }
     } else if (input_ml_value.IsTensorSequence()) {
       if (!expected_type->IsTensorSequenceType()) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input with name: ", feed_name,

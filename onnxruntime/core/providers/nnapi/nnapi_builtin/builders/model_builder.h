@@ -10,6 +10,11 @@
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksWrapper.h"
 #include "shaper.h"
 
+// This is the minimal Android API Level required by ORT NNAPI EP to run
+#ifndef ORT_NNAPI_MIN_API_LEVEL
+#define ORT_NNAPI_MIN_API_LEVEL 27
+#endif
+
 namespace onnxruntime {
 namespace nnapi {
 
@@ -132,6 +137,9 @@ class ModelBuilder {
   std::unordered_map<std::string, const ONNX_NAMESPACE::TensorProto&> initializers_;
   std::unordered_set<std::string> skipped_initializers_;
 
+  // All activation nodes (Relu, Relu1, Relu6) as a map <NodeIndex, activation_code>
+  std::unordered_map<NodeIndex, int32_t> activation_nodes_;
+
   std::unordered_map<std::string, std::shared_ptr<IOpBuilder>> op_builders_;
 
   // Operands in nhwc
@@ -157,12 +165,18 @@ class ModelBuilder {
   Status Prepare() ORT_MUST_USE_RESULT;
 
   Status GetTargetDevices() ORT_MUST_USE_RESULT;
+  // Get names of all the initializers
   void GetAllInitializers();
+  // If a NNAPI operation will use initializers directly, we will add the initializers to the skip list
   void PreprocessInitializers();
+  // Preprocess all the activation nodes (Relu/Relu1/Relu6) for easy query later
+  void PreprocessActivations();
+  // Copy and process all the initializers to NNAPI model
   Status RegisterInitializers() ORT_MUST_USE_RESULT;
   Status RegisterModelInputs() ORT_MUST_USE_RESULT;
   Status AddOperations() ORT_MUST_USE_RESULT;
   Status RegisterModelOutputs() ORT_MUST_USE_RESULT;
+  // After constructing the NNAPI model, will set the shape inferencing record to the Model
   void RegisterModelShaper();
 
   Status SetOperandValue(uint32_t index, Model::NNMemory* memory,

@@ -11,13 +11,13 @@ This example was adapted from Pytorch's [Sequence-to-Sequence Modeling with nn.T
 ## Running PyTorch version
 
 ```bash
-python pt_model.py
+python pt_train.py
 ```
 
 ## Running ONNX Runtime version
 
 ```bash
-python ort_model.py
+python ort_train.py
 ```
 
 ## Optional arguments

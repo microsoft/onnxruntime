@@ -11,19 +11,13 @@ The TensorRT execution provider for ONNX Runtime is built and tested with Tensor
 
 ## Using the TensorRT execution provider
 ### C/C++
-The TensorRT execution provider needs to be registered with ONNX Runtime to enable in the inference session. 
 ```
-string log_id = "Foo";
-auto logging_manager = std::make_unique<LoggingManager>
-(std::unique_ptr<ISink>{new CLogSink{}},
-                                  static_cast<Severity>(lm_info.default_warning_level),
-                                  false,
-                                  LoggingManager::InstanceType::Default,
-                                  &log_id)
-Environment::Create(std::move(logging_manager), env)
-InferenceSession session_object{so,env};
-session_object.RegisterExecutionProvider(std::make_unique<::onnxruntime::TensorrtExecutionProvider>());
-status = session_object.Load(model_file_name);
+Ort::Env env = Ort::Env{ORT_LOGGING_LEVEL_ERROR, "Default"};
+Ort::SessionOptions sf;
+int device_id = 0;
+Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf, device_id));
+Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, device_id));
+Ort::Session session(env, model_path, sf);
 ```
 The C API details are [here](../C_API.md#c-api).
 
@@ -75,6 +69,8 @@ There are several environment variables for TensorRT execution provider.
   - Hardware changes. (Engine files are not portable and optimized for specific Nvidia hardware)
 
 * ORT_TENSORRT_ENGINE_CACHE_PATH: Specify path for TensorRT engine files if ORT_TENSORRT_ENGINE_CACHE_ENABLE is 1
+
+* ORT_TENSORRT_DUMP_SUBGRAPHS: Dumps the subgraphs that are transformed into TRT engines in onnx format to the filesystem. This can help debugging subgraphs, e.g. by using  `trtexec --onnx my_model.onnx` and check the outputs of the parser.
 
 By default TensorRT execution provider builds an ICudaEngine with max workspace size = 1 GB, max partition iterations = 1000, min subgraph size = 1, FP16 mode is disabled and TensorRT engine caching is disabled.
 

@@ -1,0 +1,33 @@
+trigger: none
+
+name: 'orttraining_ci_$(Date:yyyyMMdd)_$(Rev:r)'
+
+pool: 'Linux-CPU-CorpNet'
+
+variables:
+- group: pai-variables
+- name: pai-user
+  value: onnxrt
+
+steps:
+- checkout: self
+  clean: true
+
+- script: |-
+    python3 -m pip install -r tools/ci_build/github/pai/requirements.txt
+  displayName: 'Install requirements'
+
+- script: |-
+    python3 tools/ci_build/github/pai/run_job.py \
+      tools/ci_build/github/pai/orttraining-ci.yml $(Build.BuildNumber) \
+      --user-env PAI_USER --token-env PAI_TOKEN \
+      --yaml-sub-env docker_user DOCKER_USER \
+      --yaml-sub-env docker_password DOCKER_TOKEN \
+      --yaml-sub-env commit BUILD_SOURCEVERSION
+  displayName: 'Run PAI job'
+  env:
+    # map secret variables to environment variables
+    PAI_USER: $(pai-user)
+    PAI_TOKEN: $(pai-token)
+    DOCKER_USER: $(pai-docker-user)
+    DOCKER_TOKEN: $(pai-docker-token)

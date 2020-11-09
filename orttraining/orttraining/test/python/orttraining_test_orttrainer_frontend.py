@@ -764,7 +764,6 @@ def testORTTrainerRecompute(attn_dropout, gelu, transformer_layer, number_layers
     set_seed(seed)
 
     # Setup ORTTrainer
-    loss_scaler = amp.DynamicLossScaler()
     options = orttrainer.ORTTrainerOptions({'device' : {'id' : device},
                                             'graph_transformer' : {
                                                 'attn_dropout_recompute': attn_dropout,

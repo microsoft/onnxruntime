@@ -111,12 +111,13 @@ static int CompactInputIndicesDims(
   eff_indices_dims.push_back(indices_dims[axis]);
   int new_axis = (int)(eff_input_dims.size());
   if (axis > 0) {
-    if (could_continue_merge) {
+    if (!could_continue_merge) {
       eff_input_dims.push_back(1);
       eff_indices_dims.push_back(1);
+      could_continue_merge = true;
     }
     int i = axis - 1;
-    for (; i >= 0 && could_continue_merge; --i) {
+    for (; i >= 0; --i) {
       if (input_dims[i] == indices_dims[i]) {
         eff_input_dims.back() *= input_dims[i];
         eff_indices_dims.back() *= indices_dims[i];
@@ -130,7 +131,7 @@ static int CompactInputIndicesDims(
       eff_indices_dims.pop_back();
     }
     if (!could_continue_merge) {
-      for (; i >= 0 && could_continue_merge; --i) {
+      for (; i >= 0; --i) {
         eff_input_dims.push_back(input_dims[i]);
         eff_indices_dims.push_back(indices_dims[i]);
       }

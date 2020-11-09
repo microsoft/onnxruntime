@@ -48,9 +48,10 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #ifdef USE_CUDA
     OrtCUDAProviderOptions cuda_options{
         0,
-        OrtCudnnConvAlgoSearch::EXHAUSTIVE,
+        static_cast<OrtCudnnConvAlgoSearch>(performance_test_config.run_config.cudnn_conv_algo),
         std::numeric_limits<size_t>::max(),
         0,
+        !performance_test_config.run_config.do_cuda_copy_in_separate_stream
     };
   Ort::ThrowOnError(session_options.OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, &cuda_options));
 #else
@@ -69,7 +70,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("TensorRT is not supported in this build\n");
 #endif
- } else if (provider_name == onnxruntime::kOpenVINOExecutionProvider) {
+  } else if (provider_name == onnxruntime::kOpenVINOExecutionProvider) {
 #ifdef USE_OPENVINO
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(session_options, ""));
 #else
@@ -77,7 +78,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #endif
   } else if (provider_name == onnxruntime::kNnapiExecutionProvider) {
 #ifdef USE_NNAPI
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(session_options));
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(session_options, 0));
 #else
     ORT_THROW("NNAPI is not supported in this build\n");
 #endif
@@ -98,7 +99,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
   } else if (provider_name == onnxruntime::kArmNNExecutionProvider) {
 #ifdef USE_ARMNN
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ArmNN(session_options,
-                                                                   performance_test_config.run_config.enable_cpu_mem_arena ? 1 : 0));
+                                                                     performance_test_config.run_config.enable_cpu_mem_arena ? 1 : 0));
 #else
     ORT_THROW("ArmNN is not supported in this build\n");
 #endif
@@ -123,8 +124,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     session_options.DisableMemPattern();
   session_options.SetExecutionMode(performance_test_config.run_config.execution_mode);
 
-  if(performance_test_config.run_config.intra_op_num_threads > 0){
-    fprintf(stdout, "Setting intra_op_num_threads to %d\n",   performance_test_config.run_config.intra_op_num_threads);
+  if (performance_test_config.run_config.intra_op_num_threads > 0) {
+    fprintf(stdout, "Setting intra_op_num_threads to %d\n", performance_test_config.run_config.intra_op_num_threads);
     session_options.SetIntraOpNumThreads(performance_test_config.run_config.intra_op_num_threads);
   }
 
@@ -139,6 +140,9 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     session_options.EnableProfiling(performance_test_config.run_config.profile_file.c_str());
   if (!performance_test_config.run_config.optimized_model_path.empty())
     session_options.SetOptimizedModelFilePath(performance_test_config.run_config.optimized_model_path.c_str());
+  if (performance_test_config.run_config.set_denormal_as_zero)
+    session_options.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "1");
+
   session_ = Ort::Session(env, performance_test_config.model_info.model_file_path.c_str(), session_options);
 
   size_t output_count = session_.GetOutputCount();

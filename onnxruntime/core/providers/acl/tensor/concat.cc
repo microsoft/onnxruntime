@@ -87,20 +87,7 @@ Status Concat<T>::Compute(OpKernelContext* ctx) const {
 
     if (X->Shape().Size() != 0 && in->info()->has_padding() ){
       in->allocator()->allocate();
-      arm_compute::Window aclInpuWindow;
-      aclInpuWindow.use_tensor_dimensions(in->info()->tensor_shape());
-
-      arm_compute::Iterator aclInputIt(in, aclInpuWindow);
-      int index = 0;
-
-      // copy input tensor into the larger buffer
-      arm_compute::execute_window_loop(
-        aclInpuWindow,
-        [&](const arm_compute::Coordinates& co) {
-          *reinterpret_cast<float*>(aclInputIt.ptr()) = x_data[index];
-          index++;
-        },
-        aclInputIt);
+      importDataToTensor<T>(in, x_data);
     } else {
       ACLImportMemory(in->allocator(), (void*)x_data, X->Shape().Size() * 4);
     }

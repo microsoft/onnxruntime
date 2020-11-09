@@ -43,16 +43,18 @@ bool IsOpSupportedOnlyInModel(std::string name){
     "ConstantOfShape",
     "Dropout",
     "EyeLike",
+    "Exp",
     "Identity",
+    "NonMaxSuppression",
+    "NonZero",
+    "Not",
     "OneHot",
+    "Pad",
     "ReduceMin",
+    "Resize",
     "Shape",
     "Split",
-    "TopK",
-    "Resize",
-    "Exp",
-    "Pad",
-    "Not"
+    "TopK"
   };
   return ops_supported_only_in_model.find(name) != ops_supported_only_in_model.end();
 }
