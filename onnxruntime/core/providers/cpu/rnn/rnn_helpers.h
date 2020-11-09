@@ -79,8 +79,7 @@ Status ValidateCommonRnnInputs(const Tensor& X,
                                const Tensor* sequence_lens,
                                const Tensor* initial_h,
                                int64_t num_directions,
-                               int64_t hidden_size,
-                               bool is_quant = false);
+                               int64_t hidden_size);
 
 /// Copy an input array repeatedly to an output array
 /// @param input_begin Beginning of input
@@ -186,7 +185,23 @@ struct QuantizationParameter {
 
 template <typename T>
 struct GemmWeights {
-  GemmWeights(int idx, const T* weights_data, size_t weights_size, const PackedWeights& packed_weights, QuantizationParameter* quant_para = nullptr) : quant_para_(quant_para) {
+  GemmWeights() = default;
+
+  GemmWeights(int idx,
+              const T* weights_data,
+              size_t weights_size,
+              const PackedWeights& packed_weights,
+              QuantizationParameter* quant_para = nullptr) {
+    Init(idx, weights_data, weights_size, packed_weights, quant_para);
+  }
+
+  void Init(int idx,
+            const T* weights_data,
+            size_t weights_size,
+            const PackedWeights& packed_weights,
+            QuantizationParameter* quant_para) {
+    quant_para_ = quant_para;
+
     if (packed_weights.buffer_) {
       is_prepacked_ = true;
       buffer_ = static_cast<uint8_t*>(packed_weights.buffer_.get()) + packed_weights.weights_size_ * idx;
@@ -196,9 +211,9 @@ struct GemmWeights {
     }
   }
 
-  bool is_prepacked_;
-  const void* buffer_;
-  QuantizationParameter* quant_para_;
+  bool is_prepacked_{false};
+  const void* buffer_{nullptr};
+  QuantizationParameter* quant_para_{nullptr};
 };
 
 void ComputeGemm(const int M,

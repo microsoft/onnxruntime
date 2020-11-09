@@ -10,7 +10,6 @@
 #endif
 
 #include "deep_cpu_lstm.h"
-#include "uni_directional_lstm.h"
 
 #ifdef _MSC_VER
 #pragma warning(pop)
@@ -226,7 +225,32 @@ Status DeepCpuLstmOp::Compute(OpKernelContext* context) const {
   // auto& logger = context->Logger();
 
   if (X.IsDataType<float>()) {
-    status = ComputeImpl<float>(*context);
+    const Tensor* W = packed_W_.buffer_ ? nullptr : context->Input<Tensor>(1);
+    // weights. [num_directions, 4*hidden_size, input_size]
+    const Tensor* R = packed_R_.buffer_ ? nullptr : context->Input<Tensor>(2);
+    // recurrence weights. [num_directions, 4*hidden_size, hidden_size]
+
+    const auto& W_shape = (W != nullptr) ? W->Shape() : packed_W_.shape_;
+    const auto& R_shape = (R != nullptr) ? R->Shape() : packed_R_.shape_;
+
+    const auto* input_weights = (W != nullptr) ? W->Data<float>() : nullptr;
+    const auto* recurrent_weights = (R != nullptr) ? R->Data<float>() : nullptr;
+
+    // spans for first direction
+    const size_t input_weights_size_per_direction = W_shape[1] * W_shape[2];
+    const size_t hidden_weights_size_per_direction = R_shape[1] * R_shape[2];
+
+    GemmWeights<float> W_1(0, input_weights, input_weights_size_per_direction, packed_W_);
+    GemmWeights<float> R_1(0, recurrent_weights, hidden_weights_size_per_direction, packed_R_);
+
+    GemmWeights<float> W_2;
+    GemmWeights<float> R_2;
+    if (direction_ == Direction::kBidirectional) {
+      W_2.Init(1, input_weights, input_weights_size_per_direction, packed_W_, nullptr);
+      R_2.Init(1, recurrent_weights, hidden_weights_size_per_direction, packed_R_, nullptr);
+    }
+
+    return LSTMBase::ComputeImpl<float, float>(*context, W_1, W_2, R_1, R_2);
   } else if (X.IsDataType<double>()) {
     /* Need to update all the helpers to support double...
     status = ComputeImpl<double>(*context); */
@@ -234,186 +258,6 @@ Status DeepCpuLstmOp::Compute(OpKernelContext* context) const {
   } else {
     ORT_THROW("Invalid data type for LSTM operator of ", X.DataType());
   }
-
-  return status;
 }
 
-// #define DUMP_MATRIXES to provide lots of diagnostic output
-#if defined(DUMP_MATRIXES)
-#define DumpMatrix(...) ::onnxruntime::rnn::detail::DumpMatrixImpl(__VA_ARGS__)
-#else
-#define DumpMatrix(...) ((void)0)
-#endif
-
-template <typename T>
-Status DeepCpuLstmOp::ComputeImpl(OpKernelContext& context) const {
-  concurrency::ThreadPool* thread_pool = context.GetOperatorThreadPool();
-
-  auto& logger = context.Logger();
-
-  const Tensor& X = *context.Input<Tensor>(0);  // inputs. [seq_length, batch_size, input_size]
-  const Tensor* W = packed_W_.buffer_ ? nullptr : context.Input<Tensor>(1);
-  // weights. [num_directions, 4*hidden_size, input_size]
-  const Tensor* R = packed_R_.buffer_ ? nullptr : context.Input<Tensor>(2);
-  // recurrence weights. [num_directions, 4*hidden_size, hidden_size]
-
-  // optional
-  const Tensor* B = context.Input<Tensor>(3);              // bias. [num_directions, 8*hidden_size]
-  const Tensor* sequence_lens = context.Input<Tensor>(4);  // [batch_size]
-  const Tensor* initial_h = context.Input<Tensor>(5);      // initial hidden. [num_directions, batch_size, hidden_size]
-  const Tensor* initial_c = context.Input<Tensor>(6);      // initial cell. [num_directions, batch_size, hidden_size]
-  const Tensor* P = context.Input<Tensor>(7);              // peephole weights. [num_directions, 3*hidden_size]
-
-  const auto& X_shape = X.Shape();
-
-  int seq_length = gsl::narrow<int>(X_shape[0]);
-  int batch_size = gsl::narrow<int>(X_shape[1]);
-  int input_size = gsl::narrow<int>(X_shape[2]);
-
-  const auto& W_shape = (W != nullptr) ? W->Shape() : packed_W_.shape_;
-  const auto& R_shape = (R != nullptr) ? R->Shape() : packed_R_.shape_;
-
-  Status status = ValidateInputs(X, W_shape, R_shape, B, sequence_lens, initial_h, initial_c, P, batch_size);
-  ORT_RETURN_IF_ERROR(status);
-
-  // LSTM outputs are optional but must be in the same order
-  TensorShape Y_dims{seq_length, num_directions_, batch_size, hidden_size_};
-  Tensor* Y = context.Output(/*index*/ 0, Y_dims);
-
-  TensorShape Y_h_dims{num_directions_, batch_size, hidden_size_};
-  Tensor* Y_h = context.Output(/*index*/ 1, Y_h_dims);
-
-  TensorShape Y_c_dims{num_directions_, batch_size, hidden_size_};
-  Tensor* Y_c = context.Output(/*index*/ 2, Y_c_dims);
-
-  // Reset output and return if max sequence length is 0
-  if (sequence_lens != nullptr) {
-    int32_t max_sequence_length = *std::max_element(sequence_lens->Data<int32_t>(),
-                                                    sequence_lens->Data<int32_t>() + sequence_lens->Shape().Size());
-    if (max_sequence_length == 0) {
-      if (Y != nullptr)
-        std::fill_n(Y->MutableData<T>(), Y_dims.Size(), T{});
-      if (Y_h != nullptr)
-        std::fill_n(Y_h->MutableData<T>(), Y_h_dims.Size(), T{});
-      if (Y_c != nullptr)
-        std::fill_n(Y_c->MutableData<T>(), Y_c_dims.Size(), T{});
-      return Status::OK();
-    }
-  }
-
-  AllocatorPtr alloc;
-  status = context.GetTempSpaceAllocator(&alloc);
-  ORT_RETURN_IF_ERROR(status);
-
-  const auto* input_weights = (W != nullptr) ? W->Data<T>() : nullptr;
-  const auto* recurrent_weights = (R != nullptr) ? R->Data<T>() : nullptr;
-
-  gsl::span<const T> bias = B != nullptr ? B->DataAsSpan<T>() : gsl::span<const T>();
-  gsl::span<const T> peephole_weights = P != nullptr ? P->DataAsSpan<T>() : gsl::span<const T>();
-
-  // spans for first direction
-  const size_t input_weights_size_per_direction = 4 * hidden_size_ * input_size;
-  const size_t hidden_weights_size_per_direction = 4 * hidden_size_ * hidden_size_;
-  const size_t bias_size_per_direction = 8 * hidden_size_;
-  const size_t peephole_weights_size_per_direction = 3 * hidden_size_;
-
-  GemmWeights<T> input_weights_1(0, input_weights, input_weights_size_per_direction, packed_W_);
-  GemmWeights<T> recurrent_weights_1(0, recurrent_weights, hidden_weights_size_per_direction, packed_R_);
-
-  gsl::span<const T> bias_1 = bias.empty() ? bias : bias.subspan(0, bias_size_per_direction);
-  gsl::span<const T> peephole_weights_1 =
-      peephole_weights.empty() ? peephole_weights : peephole_weights.subspan(0, peephole_weights_size_per_direction);
-
-  gsl::span<const T> input = X.DataAsSpan<T>();
-  gsl::span<const int> sequence_lens_span =
-      sequence_lens != nullptr ? sequence_lens->DataAsSpan<int>() : gsl::span<const int>();
-
-  const size_t initial_hidden_size_per_direction = batch_size * hidden_size_;
-  gsl::span<const T> initial_hidden = initial_h != nullptr ? initial_h->DataAsSpan<T>() : gsl::span<const T>();
-  gsl::span<const T> initial_hidden_1 =
-      initial_hidden.empty() ? initial_hidden : initial_hidden.subspan(0, initial_hidden_size_per_direction);
-
-  const size_t initial_cell_size_per_direction = batch_size * hidden_size_;
-  gsl::span<const T> initial_cell = initial_c != nullptr ? initial_c->DataAsSpan<T>() : gsl::span<const T>();
-  gsl::span<const T> initial_cell_1 =
-      initial_cell.empty() ? initial_cell : initial_cell.subspan(0, initial_cell_size_per_direction);
-
-  // output shape is [seq_length, num_directions, batch_size, hidden_size]
-  // so it's not a case of all the output for one direction being first.
-  // due to that we can only easily check that the end of the output for each direction is valid.
-  const size_t output_size = Y != nullptr ? Y->Shape().Size() : 0;
-  const size_t per_direction_offset = batch_size * hidden_size_;
-  gsl::span<T> output = Y != nullptr ? Y->MutableDataAsSpan<T>() : gsl::span<T>();
-  gsl::span<T> output_1 =
-      output.empty() ? output : output.subspan(0, output_size - (num_directions_ - 1) * per_direction_offset);
-
-  // UniDirectionalLstm needs somewhere to write output, so even if we aren't returning Y_h and Y_c
-  // we provide an appropriately sized buffer for that purpose.
-  const size_t hidden_output_size_per_direction = batch_size * hidden_size_;
-  IAllocatorUniquePtr<T> local_hidden_output;
-  gsl::span<T> hidden_output =
-      Y_h ? Y_h->MutableDataAsSpan<T>()
-          : Allocate(alloc, hidden_output_size_per_direction * num_directions_, local_hidden_output);
-
-  gsl::span<T> hidden_output_1 = hidden_output.subspan(0, hidden_output_size_per_direction);
-
-  const size_t last_cell_size_per_direction = batch_size * hidden_size_;
-  IAllocatorUniquePtr<T> local_last_cell;
-  gsl::span<T> last_cell = Y_c ? Y_c->MutableDataAsSpan<T>() : Allocate(alloc, last_cell_size_per_direction * num_directions_, local_last_cell);
-
-  gsl::span<T> last_cell_1 = last_cell.subspan(0, last_cell_size_per_direction);
-
-  if (direction_ == Direction::kBidirectional) {
-    GemmWeights<T> input_weights_2(1, input_weights, input_weights_size_per_direction, packed_W_);
-    GemmWeights<T> recurrent_weights_2(1, recurrent_weights, hidden_weights_size_per_direction, packed_R_);
-
-    // spans for second direction
-    gsl::span<const T> bias_2 = bias.empty() ? bias : bias.subspan(bias_size_per_direction, bias_size_per_direction);
-    gsl::span<const T> peephole_weights_2 =
-        peephole_weights.empty() ? peephole_weights : peephole_weights.subspan(peephole_weights_size_per_direction, peephole_weights_size_per_direction);
-
-    gsl::span<const T> initial_hidden_2 =
-        initial_hidden.empty() ? initial_hidden : initial_hidden.subspan(initial_hidden_size_per_direction, initial_hidden_size_per_direction);
-    gsl::span<const T> initial_cell_2 =
-        initial_cell.empty() ? initial_cell : initial_cell.subspan(initial_cell_size_per_direction, initial_cell_size_per_direction);
-    gsl::span<T> output_2 =
-        output.empty() ? output : output.subspan(per_direction_offset, output_size - per_direction_offset);
-
-    gsl::span<T> hidden_output_2 =
-        hidden_output.subspan(hidden_output_size_per_direction, hidden_output_size_per_direction);
-    gsl::span<T> last_cell_2 = last_cell.subspan(last_cell_size_per_direction, last_cell_size_per_direction);
-
-    lstm::UniDirectionalLstm<T> fw(alloc, logger, seq_length, batch_size, input_size, hidden_size_,
-                                   Direction::kForward, input_forget_, bias_1, peephole_weights_1, initial_hidden_1,
-                                   initial_cell_1, activation_funcs_.Entries()[0], activation_funcs_.Entries()[1],
-                                   activation_funcs_.Entries()[2], clip_, thread_pool);
-
-    lstm::UniDirectionalLstm<T> bw(alloc, logger, seq_length, batch_size, input_size, hidden_size_,
-                                   Direction::kReverse, input_forget_, bias_2, peephole_weights_2, initial_hidden_2,
-                                   initial_cell_2, activation_funcs_.Entries()[3], activation_funcs_.Entries()[4],
-                                   activation_funcs_.Entries()[5], clip_, thread_pool);
-
-    fw.Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1,
-               hidden_output_1, last_cell_1);
-    bw.Compute(input, sequence_lens_span, num_directions_, input_weights_2, recurrent_weights_2, output_2,
-               hidden_output_2, last_cell_2);
-  } else {
-    lstm::UniDirectionalLstm<T> fw(alloc, logger, seq_length, batch_size, input_size, hidden_size_, direction_,
-                                   input_forget_, bias_1, peephole_weights_1, initial_hidden_1, initial_cell_1,
-                                   activation_funcs_.Entries()[0], activation_funcs_.Entries()[1],
-                                   activation_funcs_.Entries()[2], clip_, thread_pool);
-
-    fw.Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1,
-               hidden_output_1, last_cell_1);
-  }
-
-  if (!output.empty())
-    DumpMatrix("Y", output.data(), seq_length * num_directions_ * batch_size, hidden_size_);
-
-  // these always get written to regardless of whether we're returning them as optional output or not
-  DumpMatrix("Y_h", hidden_output.data(), num_directions_ * batch_size, hidden_size_);
-  DumpMatrix("Y_c", last_cell.data(), num_directions_ * batch_size, hidden_size_);
-
-  return Status::OK();
-}
 }  // namespace onnxruntime

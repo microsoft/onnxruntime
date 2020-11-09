@@ -50,16 +50,19 @@ class LSTMBase {
 
   ~LSTMBase() = default;
 
+  template <typename InputT, typename WeightT>
+  Status ComputeImpl(OpKernelContext& context,
+                     const rnn::detail::GemmWeights<WeightT>& W_1,
+                     const rnn::detail::GemmWeights<WeightT>& W_2,
+                     const rnn::detail::GemmWeights<WeightT>& R_1,
+                     const rnn::detail::GemmWeights<WeightT>& R_2) const;
+
   Status ValidateInputs(const Tensor& X,
-                        const TensorShape& W,
-                        const TensorShape& R,
                         const Tensor* B,
                         const Tensor* sequence_lens,
                         const Tensor* initial_h,
                         const Tensor* initial_c,
-                        const Tensor* P,
-                        int batch_size,
-                        bool is_quant = false) const;
+                        const Tensor* P) const;
 
   rnn::detail::Direction direction_;
   int num_directions_;
