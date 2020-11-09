@@ -8,6 +8,7 @@ from .operators.conv import QLinearConv, ConvInteger
 from .operators.activation import QLinearActivation
 from .operators.binary_op import QLinearBinaryOp
 from .operators.maxpool import QMaxPool
+from .operators.gavgpool import QGlobalAveragePool
 
 CommonOpsRegistry = {"Gather": GatherQuant, "EmbedLayerNormalization": EmbedLayerNormalizationQuant}
 
@@ -28,6 +29,7 @@ QLinearOpsRegistry = {
     "LeakyRelu" : QLinearActivation,
     "Sigmoid" : QLinearActivation,
     "MaxPool": QMaxPool,
+    "GlobalAveragePool": QGlobalAveragePool,
 }
 QLinearOpsRegistry.update(CommonOpsRegistry)
 
