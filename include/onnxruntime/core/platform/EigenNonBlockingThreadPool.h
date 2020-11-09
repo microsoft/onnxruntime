@@ -749,31 +749,31 @@ std::unique_ptr<ThreadPoolParallelSection, void(*)(ThreadPoolParallelSection*)> 
 // parallel loops.  The threads are then retained until the end of the
 // section, being re-used over subsequent loops.
 
-void StartParallelSectionInternal(PerThread *pt,
+void StartParallelSectionInternal(PerThread &pt,
                                   ThreadPoolParallelSection &ps) {
-  assert((!pt->leading_par_section) && "Nested parallelism not supported");
+  assert((!pt.leading_par_section) && "Nested parallelism not supported");
   assert((!ps.active) && "Starting parallel section, but active already");
-  pt->leading_par_section = true;
-  if (!pt->tag.Get()) {
-    pt->tag = Tag::GetNext();
+  pt.leading_par_section = true;
+  if (!pt.tag.Get()) {
+    pt.tag = Tag::GetNext();
   }
   ps.active = true;
 }
 
 void StartParallelSection(ThreadPoolParallelSection &ps) override {
   PerThread* pt = GetPerThread();
-  StartParallelSectionInternal(pt, ps);
+  StartParallelSectionInternal(*pt, ps);
 }
 
 // End a parallel section, waiting for all worker threads to exit from
 // section.  Hence, on return, the ThreadPoolParallelSection object
 // can be dealloacted.
 
-void EndParallelSectionInternal(PerThread *pt,
+void EndParallelSectionInternal(PerThread &pt,
                                 ThreadPoolParallelSection &ps) {
-  assert((pt->leading_par_section) && "Ending parallel section, but none started");
+  assert((pt.leading_par_section) && "Ending parallel section, but none started");
   assert((ps.active) && "Ending parallel section, but not active");
-  pt->leading_par_section = false;
+  pt.leading_par_section = false;
 
   // Notify workers to exit from the section
   ps.active = false;
@@ -785,7 +785,7 @@ void EndParallelSectionInternal(PerThread *pt,
   while (!ps.tasks.empty()) {
     const auto& item = ps.tasks.back();
     Queue& q = worker_data_[item.first].queue;
-    if (q.RevokeWithTag(pt->tag, item.second)) {
+    if (q.RevokeWithTag(pt.tag, item.second)) {
       tasks_revoked++;
     }
     ps.tasks.pop_back();
@@ -804,7 +804,7 @@ void EndParallelSectionInternal(PerThread *pt,
 
 void EndParallelSection(ThreadPoolParallelSection &ps) override {
   PerThread* pt = GetPerThread();
-  EndParallelSectionInternal(pt, ps);
+  EndParallelSectionInternal(*pt, ps);
 }
 
 //......................................................................
@@ -828,10 +828,10 @@ void EndParallelSection(ThreadPoolParallelSection &ps) override {
 //   the parallel section, as opposed to just a single loop's
 //   duration).
 
-void SummonWorkers(PerThread *pt,
+void SummonWorkers(PerThread &pt,
                    ThreadPoolParallelSection &ps,
                    unsigned n,
-                   std::function<void(unsigned)> worker_fn) {
+                   const std::function<void(unsigned)> &worker_fn) {
   // Wrap the user's worker function with one that allocates a unique
   // worker index for the loop, and synchronizes (as the last step)
   // with the exit path in EndParallelSection.  In principle we could
@@ -839,9 +839,6 @@ void SummonWorkers(PerThread *pt,
   // value.  However, the costs of creating distinct lambda for each
   // iteration appeared more costly than the cost of synchronization
   // on a shared counter.
-  //
-  // [ We could use C++14 lambda capture initializers to capture
-  // std::move(worker_fn) here ]
   auto call_worker_fn = [&ps, worker_fn]() {
     unsigned my_idx = ++ps.worker_idx;
     worker_fn(my_idx);
@@ -875,7 +872,7 @@ void SummonWorkers(PerThread *pt,
         if (alt_i < alt_hints.size()) {
           q_idx = alt_hints[alt_i];
         } else {
-          q_idx = Rand(&pt->rand) % num_threads_;
+          q_idx = Rand(&pt.rand) % num_threads_;
         }
       }
 
@@ -888,7 +885,7 @@ void SummonWorkers(PerThread *pt,
       WorkerData& td = worker_data_[q_idx];
       Queue& q = td.queue;
       unsigned w_idx;
-      t = q.PushBackWithTag(std::move(t), pt->tag, w_idx);
+      t = q.PushBackWithTag(std::move(t), pt.tag, w_idx);
       if (!t.f) {
         ps.tasks.push_back({q_idx, w_idx});
         td.EnsureAwake();
@@ -918,20 +915,21 @@ void RunInParallelSection(ThreadPoolParallelSection &ps,
 
   // Increase the worker count if needed.  Each worker will pick up
   // loops to execute from the current parallel section.
-  SummonWorkers(pt, ps, n, [&ps](unsigned my_idx){
-      while (ps.active) {
-        if (!ps.current_loop) {
-          onnxruntime::concurrency::SpinPause();
-        } else {
-          ps.workers_in_loop++;
-          ThreadPoolLoop *work_item = ps.current_loop;
-          if (work_item && my_idx < work_item->threads_needed) {
-            work_item->fn(my_idx);
-          }
-          ps.workers_in_loop--;
+  const auto worker_fn = [&ps](unsigned my_idx) {
+    while (ps.active) {
+      if (!ps.current_loop) {
+        onnxruntime::concurrency::SpinPause();
+      } else {
+        ps.workers_in_loop++;
+        ThreadPoolLoop *work_item = ps.current_loop;
+        if (work_item && my_idx < work_item->threads_needed) {
+          work_item->fn(my_idx);
         }
+        ps.workers_in_loop--;
       }
-    });
+    }
+  };
+  SummonWorkers(*pt, ps, n, worker_fn);
 
   // Run work in the main thread
   loop.fn(0);
@@ -950,13 +948,13 @@ void RunInParallelSection(ThreadPoolParallelSection &ps,
 void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n) override {
   PerThread *pt = GetPerThread();
   ThreadPoolParallelSection ps;
-  StartParallelSectionInternal(pt, ps);
+  StartParallelSectionInternal(*pt, ps);
 
   // Summon workers to run the function (n is the desired maximum
   // degree of parallelism, including the main thread).  Unlike the
   // multi-loop RunInParallelSection, this single-loop worker can run
   // fn directly without needing to receive it via ps.current_loop.
-  SummonWorkers(pt, ps, n, fn);
+  SummonWorkers(*pt, ps, n, fn);
 
   // Run work in the main thread
   fn(0);
@@ -965,7 +963,7 @@ void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n) override {
   // completed the loop (i.e., ps.tasks_finished matches the number of
   // tasks that have been created less the number successfully
   // revoked).
-  EndParallelSectionInternal(pt, ps);
+  EndParallelSectionInternal(*pt, ps);
 }
 
 void Cancel() override {
