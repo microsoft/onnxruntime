@@ -5,6 +5,7 @@
 
 #include <cassert>
 #include <algorithm>
+#include <iterator>
 #include <utility>
 
 #include "core/common/optional.h"
