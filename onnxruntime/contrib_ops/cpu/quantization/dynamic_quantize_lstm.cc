@@ -7,13 +7,6 @@ namespace contrib {
 
 using namespace rnn::detail;
 
-// #define DUMP_MATRIXES to provide lots of diagnostic output
-#if defined(DUMP_MATRIXES)
-#define DumpMatrix(...) ::onnxruntime::rnn::detail::DumpMatrixImpl(__VA_ARGS__)
-#else
-#define DumpMatrix(...) ((void)0)
-#endif
-
 class DynamicQuantizeLSTM : public OpKernel, public LSTMBase {
  public:
   DynamicQuantizeLSTM(const OpKernelInfo& info) : OpKernel(info), LSTMBase(info) {}
