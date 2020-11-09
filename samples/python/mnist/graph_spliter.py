@@ -136,9 +136,10 @@ onnx.save(models[0], 'minst_gradient_graph.onnx')
 onnx.save(models[1], 'mnist_forward.onnx')
 onnx.save(models[2], 'mnist_backward.onnx')
 
+
 """
 #BERT
-original_model = onnx.load('bert-tiny.onnx')
+original_model = onnx.load('BertForSequenceClassification_full_training.onnx')
 config = C.ModuleGradientGraphBuilderConfiguration()
 weight_names_to_train = set()
 for initializer in original_model.graph.initializer:
@@ -147,6 +148,26 @@ config.weight_names_to_train = weight_names_to_train
 output_names = set()
 for output in original_model.graph.output:
     output_names.add(output.name)
+config.output_names = output_names
+
+models = [onnx.load_model_from_string(model_as_string) for model_as_string in C.ModuleGradientGraphBuilder().build_and_split(original_model.SerializeToString(), config)]
+onnx.save(models[0], 'bert_gradient_graph.onnx')
+onnx.save(models[1], 'bert_forward.onnx')
+onnx.save(models[2], 'bert_backward.onnx')
+
+
+#BERT with loss
+original_model = onnx.load('bert-tiny-loss.onnx')
+config = C.ModuleGradientGraphBuilderConfiguration()
+weight_names_to_train = set()
+for initializer in original_model.graph.initializer:
+    if initializer.name.startswith('bert.') or initializer.name.startswith('cls.'):
+        weight_names_to_train.add(initializer.name)
+config.weight_names_to_train = weight_names_to_train
+output_names = set()
+output_names.add('total_loss')
+#for output in original_model.graph.output:
+#    output_names.add(output.name)
 config.output_names = output_names
 
 models = [onnx.load_model_from_string(model_as_string) for model_as_string in C.ModuleGradientGraphBuilder().build_and_split(original_model.SerializeToString(), config)]
