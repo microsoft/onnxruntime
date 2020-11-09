@@ -62,7 +62,10 @@ public:
    auto iterations_per_shard = blocks_per_shard * block_size;
 
    for (uint64_t shard = 0; shard < _num_shards; shard++) {
-     _shards[shard]._next = shard * iterations_per_shard;
+     // Initialize with a relaxed store; synchronization with worker
+     // threads is provided via the thread pool
+     _shards[shard]._next.store(shard * iterations_per_shard,
+                                ::std::memory_order_relaxed);
      _shards[shard]._end = (shard+1) * iterations_per_shard;
    }
 
