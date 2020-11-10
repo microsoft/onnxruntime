@@ -16,22 +16,8 @@ namespace nnapi {
 
 using namespace android::nn::wrapper;
 using std::vector;
-using Shape = Shaper::Shape;
 
 #pragma region helpers
-
-#define GET_TENSOR_DATA(FUNC_NAME, ELEMENT_TYPE, DATA)                                         \
-  static const ELEMENT_TYPE* GetTensor##FUNC_NAME(const ONNX_NAMESPACE::TensorProto& tensor) { \
-    return tensor.DATA().empty()                                                               \
-               ? reinterpret_cast<const ELEMENT_TYPE*>(tensor.raw_data().data())               \
-               : tensor.DATA().data();                                                         \
-  }
-
-GET_TENSOR_DATA(FloatData, float, float_data)
-GET_TENSOR_DATA(Int32Data, int32_t, int32_data)
-GET_TENSOR_DATA(Int64Data, int64_t, int64_data)
-
-#undef GET_TENSOR_DATA
 
 #define ADD_SCALAR_OPERAND(model_builder, input_indices, scalar_value)             \
   {                                                                                \
@@ -185,34 +171,6 @@ static Status AddBinaryOperator(int32_t op_type,
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_type, input_indices,
                                                  {output}, {output_operand_type}, {output_is_nhwc}));
   return Status::OK();
-}
-
-static bool GetType(const NodeArg& node_arg, int32_t& type) {
-  type = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
-  const auto* type_proto = node_arg.TypeAsProto();
-  if (!type_proto || !type_proto->has_tensor_type() || !type_proto->tensor_type().has_elem_type()) {
-    LOGS_DEFAULT(WARNING) << "NodeArg [" << node_arg.Name() << "] has no input type";
-    return false;
-  }
-
-  type = type_proto->tensor_type().elem_type();
-  return true;
-}
-
-static bool GetShape(const NodeArg& node_arg, Shape& shape) {
-  shape.clear();
-  const auto* shape_proto = node_arg.Shape();
-
-  if (!shape_proto) {
-    LOGS_DEFAULT(WARNING) << "NodeArg [" << node_arg.Name() << "] has no shape info";
-    return false;
-  }
-
-  // NNAPI uses 0 for dynamic dimension, which is the default value for dim.dim_value()
-  for (const auto& dim : shape_proto->dim())
-    shape.push_back(SafeInt<uint32_t>(dim.dim_value()));
-
-  return true;
 }
 
 enum DataLayout {
@@ -440,51 +398,6 @@ static Status HandleAutoPad(const Shape& input_shape,
   return Status::OK();
 }
 
-static bool IsQuantizationScaleSupported(
-    const ModelBuilder& model_builder, const Node& node, const std::vector<size_t>& idx_vec) {
-  const auto& op = node.OpType();
-  for (const auto idx : idx_vec) {
-    const auto scale_name = node.InputDefs()[idx]->Name();
-    if (Contains(model_builder.GetInitializerTensors(), scale_name)) {
-      const auto& tensor = model_builder.GetInitializerTensors().at(scale_name);
-      if (!tensor.dims().empty() && tensor.dims()[0] != 1) {
-        LOGS_DEFAULT(VERBOSE) << op << " does not support per-channel quantization";
-        return false;
-      }
-    } else {
-      LOGS_DEFAULT(VERBOSE) << "The scale of " << op << " must be known";
-      return false;
-    }
-  }
-
-  return true;
-}
-
-static bool IsQuantizationZeroPointSupported(
-    const ModelBuilder& model_builder, const Node& node, const std::vector<size_t>& idx_vec) {
-  const auto& op = node.OpType();
-  for (const auto idx : idx_vec) {
-    const auto zero_point_name = node.InputDefs()[idx]->Name();
-    if (Contains(model_builder.GetInitializerTensors(), zero_point_name)) {
-      const auto& tensor = model_builder.GetInitializerTensors().at(zero_point_name);
-      if (!tensor.dims().empty() && tensor.dims()[0] != 1) {
-        LOGS_DEFAULT(VERBOSE) << op << " does not support per-channel quantization";
-        return false;
-      }
-      if (tensor.data_type() != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
-        LOGS_DEFAULT(VERBOSE) << op << " does not support zero point data type "
-                              << std::to_string(tensor.data_type());
-        return false;
-      }
-    } else {
-      LOGS_DEFAULT(VERBOSE) << "The zero point of " << op << " must be known";
-      return false;
-    }
-  }
-
-  return true;
-}
-
 static float GetQuantizationScale(const ModelBuilder& model_builder, const Node& node, size_t idx) {
   const auto& scale_tensor = model_builder.GetInitializerTensors().at(node.InputDefs()[idx]->Name());
   return GetTensorFloatData(scale_tensor)[0];
@@ -563,24 +476,6 @@ static void AddBinaryOpQuantizationScaleAndZeroPointToSkip(ModelBuilder& model_b
   model_builder.AddInitializerToSkip(input_defs[7]->Name());  // y_zero_point
 }
 
-static bool IsBinaryOpQuantizedInputsSupported(const Node& node) {
-  int32_t a_input_type, b_input_type;
-  if (!GetType(*node.InputDefs()[0], a_input_type))
-    return false;
-  if (!GetType(*node.InputDefs()[3], b_input_type))
-    return false;
-
-  if (a_input_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8 || a_input_type != b_input_type) {
-    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
-                          << "] A Input type: [" << a_input_type
-                          << "] B Input type: [" << b_input_type
-                          << "] is not supported for now";
-    return false;
-  }
-
-  return true;
-}
-
 Status GetQuantizedInputScaleAndZeroPoint(const ModelBuilder& model_builder,
                                           const Node& node,
                                           const std::string& input_name,
@@ -623,38 +518,6 @@ Status GetQuantizedInputScaleAndZeroPoint(const ModelBuilder& model_builder,
   }
 
   return Status::OK();
-}
-
-bool GetClipMinMax(const ModelBuilder& model_builder, const Node& node, float& min, float& max) {
-  min = std::numeric_limits<float>::lowest();
-  max = std::numeric_limits<float>::max();
-  if (node.SinceVersion() < 11) {  // Clip opset 1, 6 is using attributes for min/max
-    NodeAttrHelper helper(node);
-    min = helper.Get("min", std::numeric_limits<float>::lowest());
-    max = helper.Get("max", std::numeric_limits<float>::max());
-  } else {
-    const auto& initializers(model_builder.GetInitializerTensors());
-
-    if (node.InputDefs().size() > 1) {  // we have input min
-      const auto& min_name = node.InputDefs()[1]->Name();
-      if (!Contains(initializers, min_name)) {
-        LOGS_DEFAULT(VERBOSE) << "Input min of Clip must be known";
-        return false;
-      }
-      min = GetTensorFloatData(initializers.at(min_name))[0];
-    }
-
-    if (node.InputDefs().size() > 2) {  // we have input max
-      const auto& max_name = node.InputDefs()[2]->Name();
-      if (!Contains(initializers, max_name)) {
-        LOGS_DEFAULT(VERBOSE) << "Input max of Clip must be known";
-        return false;
-      }
-      max = GetTensorFloatData(initializers.at(max_name))[0];
-    }
-  }
-
-  return true;
 }
 
 #pragma endregion helpers
@@ -743,8 +606,7 @@ bool BaseOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, const N
 }
 
 Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node& node) {
-  ORT_RETURN_IF_NOT(IsOpSupported(model_builder, node), "Unsupported operator ", node.OpType());
-
+  ORT_RETURN_IF_NOT(model_builder.IsNodeSupported(node), "Unsupported operator ", node.OpType());
   ORT_RETURN_IF_ERROR(AddToModelBuilderImpl(model_builder, node));
   LOGS_DEFAULT(VERBOSE) << "Operator name: [" << node.Name()
                         << "] type: [" << node.OpType() << "] was added";
@@ -829,7 +691,7 @@ bool BinaryOpBuilder::HasSupportedInputs(const Node& node) {
     return BaseOpBuilder::HasSupportedInputs(node);
 
   // QLinearAdd
-  if (!IsBinaryOpQuantizedInputsSupported(node))
+  if (!HasValidBinaryOpQuantizedInputs(node))
     return false;
 
   return true;
@@ -872,11 +734,11 @@ bool BinaryOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node&
 
     // All scale/zero points are initializer scalars
     // a/b/y_scale
-    if (!IsQuantizationScaleSupported(model_builder, node, {1, 4, 6}))
+    if (!HasValidQuantizationScale(model_builder.GetInitializerTensors(), node, {1, 4, 6}))
       return false;
 
     // a/b/y_zero_point
-    if (!IsQuantizationZeroPointSupported(model_builder, node, {2, 5, 7}))
+    if (!HasValidQuantizationZeroPoint(model_builder.GetInitializerTensors(), node, {2, 5, 7}))
       return false;
   }
 
@@ -1568,7 +1430,7 @@ bool ConvOpBuilder::HasSupportedInputs(const Node& node) {
     return BaseOpBuilder::HasSupportedInputs(node);
 
   // QLinearConv only supports input of uint8 for now
-  if (!IsBinaryOpQuantizedInputsSupported(node))
+  if (!HasValidBinaryOpQuantizedInputs(node))
     return false;
 
   return true;
@@ -1644,11 +1506,11 @@ bool ConvOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& n
     }
 
     // a/b/y_scale
-    if (!IsQuantizationScaleSupported(model_builder, node, {1, 4, 6}))
+    if (!HasValidQuantizationScale(model_builder.GetInitializerTensors(), node, {1, 4, 6}))
       return false;
 
     // a/b/y_zero_point
-    if (!IsQuantizationZeroPointSupported(model_builder, node, {2, 5, 7}))
+    if (!HasValidQuantizationZeroPoint(model_builder.GetInitializerTensors(), node, {2, 5, 7}))
       return false;
   }
 
@@ -2067,7 +1929,7 @@ bool GemmOpBuilder::HasSupportedInputs(const Node& node) {
     return BaseOpBuilder::HasSupportedInputs(node);
 
   // QLinearMatMul
-  if (!IsBinaryOpQuantizedInputsSupported(node))
+  if (!HasValidBinaryOpQuantizedInputs(node))
     return false;
 
   return true;
@@ -2173,11 +2035,11 @@ bool GemmOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& n
 
       // All scale/zero points are initializer scalars
       // a/b/y_scale
-      if (!IsQuantizationScaleSupported(model_builder, node, {1, 4, 6}))
+      if (!HasValidQuantizationScale(model_builder.GetInitializerTensors(), node, {1, 4, 6}))
         return false;
 
       // a/b/y_zero_point
-      if (!IsQuantizationZeroPointSupported(model_builder, node, {2, 5, 7}))
+      if (!HasValidQuantizationZeroPoint(model_builder.GetInitializerTensors(), node, {2, 5, 7}))
         return false;
     }
   } else {
@@ -2580,11 +2442,11 @@ bool QuantizeLinearOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, con
     return false;
   }
 
-  if (!IsQuantizationScaleSupported(model_builder, node, {1}))
+  if (!HasValidQuantizationScale(model_builder.GetInitializerTensors(), node, {1}))
     return false;
 
   if (input_defs.size() == 3) {  // has zero_point input
-    if (!IsQuantizationZeroPointSupported(model_builder, node, {2}))
+    if (!HasValidQuantizationZeroPoint(model_builder.GetInitializerTensors(), node, {2}))
       return false;
   }
 
@@ -2663,11 +2525,11 @@ void DequantizeLinearOpBuilder::AddInitializersToSkip(ModelBuilder& model_builde
 bool DequantizeLinearOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) {
   const auto input_defs(node.InputDefs());
 
-  if (!IsQuantizationScaleSupported(model_builder, node, {1}))
+  if (!HasValidQuantizationScale(model_builder.GetInitializerTensors(), node, {1}))
     return false;
 
   if (input_defs.size() == 3) {  // has zero_point input
-    if (!IsQuantizationZeroPointSupported(model_builder, node, {2}))
+    if (!HasValidQuantizationZeroPoint(model_builder.GetInitializerTensors(), node, {2}))
       return false;
   }
 
@@ -2803,7 +2665,7 @@ void ClipOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
 
 bool ClipOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) {
   float min, max;
-  if (!GetClipMinMax(model_builder, node, min, max))
+  if (!GetClipMinMax(model_builder.GetInitializerTensors(), node, min, max))
     return false;
 
   // We only supoort relu6 or relu1
@@ -2838,7 +2700,7 @@ Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   }
 
   float min, max;
-  GetClipMinMax(model_builder, node, min, max);
+  GetClipMinMax(model_builder.GetInitializerTensors(), node, min, max);
 
   int32_t op_code;
   if (min == 0.0f && max == 6.0f)
@@ -3152,8 +3014,9 @@ CreateOpBuilders() {
   }
 
   {
-    op_map.emplace("Conv", std::make_shared<ConvOpBuilder>());
-    op_map.emplace("QLinearConv", std::make_shared<ConvOpBuilder>());
+    auto conv_op_builder = std::make_shared<ConvOpBuilder>();
+    op_map.emplace("Conv", conv_op_builder);
+    op_map.emplace("QLinearConv", conv_op_builder);
   }
 
   op_map.emplace("Cast", std::make_shared<CastOpBuilder>());
