@@ -325,14 +325,21 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
   // check if all gradients are finite
   ArgDef global_grad_norm_argdef;
   ArgDef global_grad_norm_finite_argdef;
-  if (opt_graph_config_.use_mixed_precision) {
+
+  if (opt_graph_config_.enable_grad_norm_clip ||
+      (opt_graph_config_.use_mixed_precision &&
+       opt_graph_config_.mixed_precision_type == MixedPrecisionDataType::FP16)) {
+    //gradient norm for bfloat16 is not ready yet. skip it to unblock the testing
+    //will add it back when it is ready
     auto gradient_norm_inputs = GetGradientNormInputs(gradient_argdefs, opt_configs_);
     ORT_RETURN_IF_ERROR(AddGradientNorm(
         nodearg_name_generator, gradient_norm_inputs, graph_defs, global_grad_norm_argdef));
     optimizer_graph_outputs[OptimizerOutputKey::GlobalGradientNorm] = global_grad_norm_argdef.name;
-
     ORT_RETURN_IF_ERROR(AddL2NormNcclAllReduce(global_grad_norm_argdef, graph_defs));
+  }
 
+  if (opt_graph_config_.use_mixed_precision &&
+      opt_graph_config_.mixed_precision_type == MixedPrecisionDataType::FP16) {
     ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
         nodearg_name_generator, {global_grad_norm_argdef}, graph_defs, global_grad_norm_finite_argdef));
     optimizer_graph_outputs[OptimizerOutputKey::GradientAllIsFinite] = global_grad_norm_finite_argdef.name;
