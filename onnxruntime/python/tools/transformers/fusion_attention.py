@@ -132,14 +132,16 @@ class FusionAttention(Fusion):
                                     data_type=TensorProto.FLOAT,
                                     dims=[self.hidden_size, 3 * self.hidden_size],
                                     vals=qkv_weight.flatten().tolist())
-        weight.CopyFrom(numpy_helper.from_array(numpy_helper.to_array(weight).astype(np.float16), weight.name))
+        if q_weight.data_type == 10:
+            weight.CopyFrom(numpy_helper.from_array(numpy_helper.to_array(weight).astype(np.float16), weight.name))
         self.model.add_initializer(weight)
 
         bias = helper.make_tensor(name=attention_node_name + '_qkv_bias',
                                   data_type=TensorProto.FLOAT,
                                   dims=[3 * self.hidden_size],
                                   vals=qkv_bias.flatten().tolist())
-        bias.CopyFrom(numpy_helper.from_array(numpy_helper.to_array(bias).astype(np.float16), bias.name))
+        if q_bias.data_type == 10:
+            bias.CopyFrom(numpy_helper.from_array(numpy_helper.to_array(bias).astype(np.float16), bias.name))
         self.model.add_initializer(bias)
 
         attnetion_inputs = [input, attention_node_name + '_qkv_weight', attention_node_name + '_qkv_bias']
