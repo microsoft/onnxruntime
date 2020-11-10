@@ -502,7 +502,7 @@ namespace Microsoft.ML.OnnxRuntime
                     for (int i = 0; i < outputNames.Length; ++i)
                     {
                         var ortValue = ortValues.ElementAt(i);
-                        result.Add(DisposableNamedOnnxValue.CreateTensorFromOnnxValue(outputNames[i], ortValue));
+                        result.Add(DisposableNamedOnnxValue.CreateFromOrtValue(outputNames[i], ortValue));
                     }
                 } catch(Exception e)
                 {

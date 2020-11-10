@@ -175,28 +175,25 @@ namespace Microsoft.ML.OnnxRuntime
         internal static DisposableNamedOnnxValue CreateFromOrtValue(string name, OrtValue ortValue, OrtAllocator allocator)
         {
             DisposableNamedOnnxValue result = null;
-            Debug.Assert(ortValue.IsOwned);
-            using (var ortValueOwned = new OrtValue(ortValue.Disown()))
+
+            IntPtr valueType;
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetValueType(ortValue.Handle, out valueType));
+            OnnxValueType onnxValueType = (OnnxValueType)valueType;
+            switch (onnxValueType)
             {
-                IntPtr valueType;
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetValueType(ortValueOwned.Handle, out valueType));
-                OnnxValueType onnxValueType = (OnnxValueType)valueType;
-                switch (onnxValueType)
-                {
-                    case OnnxValueType.ONNX_TYPE_TENSOR:
-                        result = CreateTensorFromOnnxValue(name, ortValueOwned);
-                        break;
+                case OnnxValueType.ONNX_TYPE_TENSOR:
+                    result = CreateTensorFromOnnxValue(name, ortValue);
+                    break;
 
-                    case OnnxValueType.ONNX_TYPE_SEQUENCE:
-                        result = DisposableNamedOnnxValueFromSequence(name, ortValueOwned, allocator);
-                        break;
+                case OnnxValueType.ONNX_TYPE_SEQUENCE:
+                    result = DisposableNamedOnnxValueFromSequence(name, ortValue, allocator);
+                    break;
 
-                    case OnnxValueType.ONNX_TYPE_MAP:
-                        result = DisposableNamedOnnxValueFromNativeMap(name, ortValueOwned, allocator);
-                        break;
-                    default:
-                        throw new NotSupportedException("OnnxValueType : " + onnxValueType + " is not supported");
-                }
+                case OnnxValueType.ONNX_TYPE_MAP:
+                    result = DisposableNamedOnnxValueFromNativeMap(name, ortValue, allocator);
+                    break;
+                default:
+                    throw new NotSupportedException("OnnxValueType : " + onnxValueType + " is not supported");
             }
             return result;
         }
