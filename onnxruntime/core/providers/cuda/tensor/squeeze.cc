@@ -27,6 +27,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Squeeze);
 
+// axes is input instead of attribute
 ONNX_OPERATOR_KERNEL_EX(
     Squeeze,
     kOnnxDomain,
@@ -34,13 +35,29 @@ ONNX_OPERATOR_KERNEL_EX(
     kCudaExecutionProvider,
     KernelDefBuilder()
         .Alias(0, 0)
-        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .InputMemoryType<OrtMemTypeCPUInput>(1),
     Squeeze);
 
 Status Squeeze::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* X = ctx->Input<Tensor>(0);
   const TensorShape& X_shape = X->Shape();
-  std::vector<int64_t> output_shape = ComputeOutputShape(X_shape, axes_);
+
+  std::vector<int64_t> axes;
+  size_t num_inputs = ctx->InputCount();
+  if (num_inputs == 2) {  //axes is an input
+    const Tensor* axes_tensor = ctx->Input<Tensor>(1);
+    ORT_ENFORCE(axes_tensor != nullptr, "Axes input is null");
+    ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1,
+                "An axes tensor must be a vector tensor.");
+    auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);
+    const auto* data = axes_tensor->template Data<int64_t>();
+    axes.assign(data, data + nDims);
+  } else {
+    axes.assign(axes_.begin(), axes_.end());
+  }
+
+  std::vector<int64_t> output_shape = ComputeOutputShape(X_shape, axes);
 
   Tensor* Y = ctx->Output(0, TensorShape(output_shape));
 

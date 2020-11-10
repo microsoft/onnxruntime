@@ -145,22 +145,22 @@ static void update_subgraphs_within_function_body(ONNX_NAMESPACE::GraphProto& su
 }
 
 FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
-                           std::unique_ptr<IndexedSubGraph> customized_func,
+                           const IndexedSubGraph& nodes_to_fuse,
                            const logging::Logger& logger)
     : parent_graph_(&graph),
       body_("fused_function_subgraph", false, onnxruntime::ModelMetaData(),
             graph.ModelPath().ToPathString(),
             IOnnxRuntimeOpSchemaRegistryList({graph.GetSchemaRegistry()}),
             graph.DomainToVersionMap(), {}, logger) {
-  customized_func_body_ = std::move(customized_func);
   auto& function_body_graph = body_.MainGraph();
 
-  auto meta_def = customized_func_body_->GetMetaDef();
+  auto meta_def = nodes_to_fuse.GetMetaDef();
   op_schema_ = onnxruntime::make_unique<ONNX_NAMESPACE::OpSchema>();
   op_schema_->SetName(meta_def->name);
   op_schema_->SetDomain(meta_def->domain);
   op_schema_->SetDoc(meta_def->doc_string);
   op_schema_->SinceVersion(meta_def->since_version);
+
   int i = 0;
   std::vector<const NodeArg*> function_body_graph_inputs;
   function_body_graph_inputs.resize(meta_def->inputs.size());
@@ -172,6 +172,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
     op_schema_->Input(i, input, "", *input_arg->Type());
     ++i;
   }
+
   i = 0;
   std::vector<const NodeArg*> function_body_graph_outputs;
   function_body_graph_outputs.resize(meta_def->outputs.size());
@@ -182,14 +183,16 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
     op_schema_->Output(i, output, "", *output_arg->Type());
     ++i;
   }
+
   op_schema_->Finalize();
 
   function_body_graph.SetInputs(function_body_graph_inputs);
   function_body_graph.SetOutputs(function_body_graph_outputs);
+
   //Add node and node args
   //TODO: for better performance, we could try to transfer the nodes in parent graph to sub-graph directly,
   //instead of create new nodes.
-  for (auto& node_index : customized_func_body_->nodes) {
+  for (auto& node_index : nodes_to_fuse.nodes) {
     auto node = parent_graph_->GetNode(node_index);
     std::vector<onnxruntime::NodeArg*> inputs;
     std::vector<onnxruntime::NodeArg*> outputs;
@@ -394,17 +397,13 @@ const onnxruntime::Graph& FunctionImpl::Body() const {
   return body_.MainGraph();
 }
 
-const IndexedSubGraph& FunctionImpl::GetIndexedSubGraph() const {
-  return *customized_func_body_;
-}
-
 const ONNX_NAMESPACE::FunctionProto* FunctionImpl::GetFuncProto() const {
   return &onnx_func_proto_;
 }
 
 std::unique_ptr<Function> MakeFunction(const onnxruntime::Graph& graph,
-                                       std::unique_ptr<IndexedSubGraph> customized_func,
+                                       const IndexedSubGraph& nodes_to_fuse,
                                        const logging::Logger& logger) {
-  return onnxruntime::make_unique<FunctionImpl>(graph, std::move(customized_func), logger);
+  return onnxruntime::make_unique<FunctionImpl>(graph, nodes_to_fuse, logger);
 }
 }  // namespace onnxruntime

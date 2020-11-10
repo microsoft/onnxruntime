@@ -128,7 +128,7 @@ option(onnxruntime_ENABLE_NVTX_PROFILE "Enable NVTX profile." OFF)
 option(onnxruntime_ENABLE_TRAINING "Enable training functionality." OFF)
 option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
 option(onnxruntime_USE_HOROVOD "Build with HOROVOD support" OFF)
-option(onnxruntime_USE_NCCL "Build with NCCL support" ON)
+option(onnxruntime_USE_NCCL "Build with NCCL support" OFF)
 #A special option just for debugging and sanitize check. Please do not enable in option in retail builds.
 #The option has no effect on Windows.
 option(onnxruntime_USE_VALGRIND "Build with valgrind hacks" OFF)
@@ -975,17 +975,25 @@ if(onnxruntime_USE_OPENVINO)
 
   add_definitions(-DUSE_OPENVINO=1)
 
+  if (EXISTS "$ENV{INTEL_OPENVINO_DIR}/inference_engine/version.txt")
+    file(READ $ENV{INTEL_OPENVINO_DIR}/inference_engine/version.txt VER)
+  endif()
+
+  if (NOT DEFINED ENV{INTEL_OPENVINO_DIR})
+    message(FATAL_ERROR "[Couldn't locate OpenVINO] OpenVINO may not have been initialized")
+  endif()
+
   # Check OpenVINO version for support
-  if ($ENV{INTEL_OPENVINO_DIR} MATCHES "2020.2")
+  if (${VER} MATCHES "2020.2" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2020.2")
     set(OPENVINO_VERSION "2020.2")
     add_definitions(-DOPENVINO_2020_2=1)
-  elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "2020.3")
+  elseif (${VER} MATCHES "2020.3" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2020.3")
     set(OPENVINO_VERSION "2020.3")
     add_definitions(-DOPENVINO_2020_3=1)
-  elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "2020.4")
+  elseif (${VER} MATCHES "2020.4" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2020.4")
     set(OPENVINO_VERSION "2020.4")
     add_definitions(-DOPENVINO_2020_4=1)
-  elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "2021.1")
+  elseif (${VER} MATCHES "2021.1" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2021.1")
     set(OPENVINO_VERSION "2021.1")
     add_definitions(-DOPENVINO_2021_1=1)
   else()
@@ -1223,6 +1231,12 @@ if (onnxruntime_ENABLE_TRAINING)
       mark_as_advanced(MPI_INCLUDE_DIRS MPI_LIBRARIES)
 
       list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${MPI_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
+
+      # Enable NCCL only when using CUDA or ROCM.
+      if(${onnxruntime_USE_CUDA} OR ${onnxruntime_USE_ROCM})
+        set(onnxruntime_USE_NCCL ON)
+      endif()
+
     else ()
       set(onnxruntime_USE_NCCL OFF)
       set(onnxruntime_USE_HOROVOD OFF)
