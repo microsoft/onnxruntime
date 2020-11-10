@@ -51,6 +51,22 @@ std::string GetProfilePath(const ::std::string& root, const std::string& name) {
   }
 }
 
+std::string GetVecHash(const ::std::string& vec) {
+  std::size_t ret = vec.size();
+  for (auto i : vec) {
+    ret ^= static_cast<int>(i) + 0x9e3779b9 + (ret << 6) + (ret >> 2);
+  }
+  return std::to_string(ret);
+}
+
+/*
+* Seralize engine profile
+* The profile contains min/max shape ranges of every dynamic shape dimension for each input tensor
+* For example, assume tensor_a has two dynamic shape dimensions: dim_0 and dim_2, and tensor_b
+* has one dynamic shape dimension: dim_1. The data in profile will be,
+* key: tensor_a, value: dim_0 min_shape max_shape dim_2 min_shape max_shape
+* key: tensor_b, value: dim_1 min_shape max_shape
+*/
 void SerializeProfile(const ::std::string& file_name, std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>>& shape_ranges) {
   // Serialize profile
   flexbuffers::Builder builder;
@@ -75,6 +91,7 @@ void SerializeProfile(const ::std::string& file_name, std::unordered_map<std::st
   file.close();
 }
 
+// Deserialize engine profile
 std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>> DeserializeProfile(const std::string& file_name) {
   // Load flexbuffer
   std::ifstream infile;
@@ -101,14 +118,6 @@ std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64
     shape_ranges[keys[i].AsString().c_str()] = inner_map;
   }
   return shape_ranges;
-}
-
-std::string GetVecHash(const ::std::string& vec) {
-  std::size_t ret = vec.size();
-  for (auto i : vec) {
-    ret ^= static_cast<int>(i) + 0x9e3779b9 + (ret << 6) + (ret >> 2);
-  }
-  return std::to_string(ret);
 }
 }  // namespace
 
@@ -852,7 +861,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
       trt_node_name_with_precision += "_fp16";
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] FP16 mode is enabled.";
     }
-	int num_nodes = graph_body_viewer->NumberOfNodes();
+    int num_nodes = graph_body_viewer->NumberOfNodes();
     trt_node_name_with_precision += "_" + GetVecHash(trt_node_name_with_precision + std::to_string(num_nodes));
 	  
     // Build TRT engine here if the graph doesn't have dynamic shape input. Otherwise engine will
@@ -860,7 +869,6 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
     tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine> trt_engine;
     tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext> trt_context;
     if (!has_dynamic_shape) {
-
       std::string profile_path = GetProfilePath(engine_cache_path_, trt_node_name_with_precision);
       std::ifstream profile_file(profile_path, std::ios::binary | std::ios::in);
       std::string cached_path = GetEnginePath(engine_cache_path_, trt_node_name_with_precision);
@@ -975,7 +983,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
       std::string cached_path = GetEnginePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
       std::ifstream plan_file(cached_path, std::ios::binary | std::ios::in);
       if (profile_file && plan_file && (trt_state->engine_cache_enable && trt_engine == nullptr)) {
-        // Load engine profile
+        // Load profile
         shape_ranges = DeserializeProfile(profile_path);
         // Load engine
         trt_state->context->reset();
@@ -1015,7 +1023,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
           if (iter != input_indexes.end()) {
             input_index = iter->second;
           }
-
+		  
           const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index);
           auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
           const auto& tensor_shapes = ort.GetTensorShape(tensor_info);
