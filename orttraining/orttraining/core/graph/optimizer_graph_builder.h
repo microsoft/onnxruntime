@@ -73,6 +73,11 @@ class OptimizerGraphBuilder {
       std::unordered_set<std::string>& optimizer_state_initializer_names,
       OptimizerOutputKeyMap<std::string>& optimizer_graph_outputs);
 
+  Status AddGradientPassThroughNode(
+      const NodeArgNameGeneratorFn& nodearg_name_generator,
+      std::vector<ArgDef>& gradient_argdefs,  // update argdefs in place
+      GraphAugmenter::GraphDefs& graph_defs);
+
   Status AddGradientScalingNodes(
       const NodeArgNameGeneratorFn& nodearg_name_generator,
       const float scale,

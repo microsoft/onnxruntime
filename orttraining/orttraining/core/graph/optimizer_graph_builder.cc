@@ -79,6 +79,29 @@ ArgDef BuildGroupNode(const std::string& group_output_name,
   return group_output;
 }
 
+Status OptimizerGraphBuilder::AddGradientPassThroughNode(
+    const NodeArgNameGeneratorFn& nodearg_name_generator,
+    std::vector<ArgDef>& gradient_argdefs,  // update argdefs in place
+    GraphAugmenter::GraphDefs& graph_defs) {
+  std::vector<ArgDef> outputs_gradient_argdefs;
+  for (size_t i = 0; i < gradient_argdefs.size(); ++i) {
+    ArgDef& gradient_argdef = gradient_argdefs[i];
+    TypeProto* output_gradient_type_proto = graph_defs.CopyTypeProto(gradient_argdef);
+    outputs_gradient_argdefs.emplace_back(nodearg_name_generator(gradient_argdef.name + "_passthrough"),
+                                          output_gradient_type_proto);
+  }
+
+  graph_defs.AddNodeDefs({NodeDef(OpDef{"PassThrough", kMSDomain, 1},
+                                  gradient_argdefs,
+                                  outputs_gradient_argdefs,
+                                  NodeAttributes(),
+                                  nodearg_name_generator("GradientPassThrought"))});
+
+  gradient_argdefs = outputs_gradient_argdefs;
+
+  return Status::OK();
+}
+
 Status OptimizerGraphBuilder::AddGradientScalingNodes(
     const NodeArgNameGeneratorFn& nodearg_name_generator,
     const float scale,
