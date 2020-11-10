@@ -6,9 +6,12 @@ namespace WINML_EXPERIMENTALP {
 
 struct LearningModelSessionOptionsExperimental : LearningModelSessionOptionsExperimentalT<LearningModelSessionOptionsExperimental> 
 {
-  LearningModelSessionOptionsExperimental(LearningModelSessionOptions options);
+  LearningModelSessionOptionsExperimental(LearningModelSession const& options);
 
-  Windows::Foundation::Collections::IMapView<winrt::hstring, uint32_t> GetNamedDimensionOverrides();
+  wfc::IMapView<winrt::hstring, uint32_t> GetNamedDimensionOverrides();
+
+ private:
+  wfc::IMapView<winrt::hstring, uint32_t> overrides_;
 };
 
 }  // namespace WINML_EXPERIMENTALP

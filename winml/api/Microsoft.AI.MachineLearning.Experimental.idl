@@ -36,7 +36,7 @@ namespace ROOT_NS.AI.MachineLearning.Experimental {
   [marshaling_behavior(agile)]
   [dualapipartition(1)]
   runtimeclass LearningModelSessionOptionsExperimental {
-    LearningModelSessionOptionsExperimental(ROOT_NS.AI.MachineLearning.LearningModelSessionOptions options);
+    LearningModelSessionOptionsExperimental(ROOT_NS.AI.MachineLearning.LearningModelSession options);
     Windows.Foundation.Collections.IMapView<String, UINT32> GetNamedDimensionOverrides();
   }
 
@@ -45,7 +45,7 @@ namespace ROOT_NS.AI.MachineLearning.Experimental {
   [dualapipartition(1)]
   runtimeclass LearningModelSessionExperimental {
     LearningModelSessionExperimental(ROOT_NS.AI.MachineLearning.LearningModelSession session);
-    ROOT_NS.AI.MachineLearning.LearningModelSessionOptions Options { get; };
+    LearningModelSessionOptionsExperimental Options { get; };
   }
 
 }  // namespace Microsoft.AI.MachineLearning.Experimental

@@ -7,10 +7,10 @@ namespace WINML_EXPERIMENTALP {
 struct LearningModelSessionExperimental : LearningModelSessionExperimentalT<LearningModelSessionExperimental> {
   LearningModelSessionExperimental(LearningModelSession session);
 
-  LearningModelSessionOptions Options();
+  WINML_EXPERIMENTAL::LearningModelSessionOptionsExperimental Options();
 
 private:
-  LearningModelSession _session;
+  winml::LearningModelSession const& _session;
 };
 
 }  // namespace WINML_EXPERIMENTALP
