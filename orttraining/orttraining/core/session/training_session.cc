@@ -1004,6 +1004,15 @@ std::unordered_set<std::string> TrainingSession::GetStateTensorNames() const {
       opt_state_initializer_names_.begin(), opt_state_initializer_names_.end());
   checkpointed_tensor_names.insert(
       mixed_precision_weight_initializer_names_.begin(), mixed_precision_weight_initializer_names_.end());
+
+  auto& initializers = GetSessionState().GetInitializedTensors();
+  auto& name_map = GetSessionState().GetOrtValueNameIdxMap();
+  for (auto& kv : initializers) {
+    std::string name;
+    if (name_map.GetName(kv.first, name).IsOK() && name.find("accumulate") != std::string::npos) {
+      checkpointed_tensor_names.insert(name);
+    }
+  }
   return checkpointed_tensor_names;
 }
 
