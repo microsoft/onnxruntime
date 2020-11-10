@@ -50,6 +50,33 @@ inline float RoundHalfToEven(float input) {
   return input - std::remainderf(input, 1.f);
 }
 
-void GetQuantizationParameter(const float* data, int64_t num_of_elements, float& scale, uint8_t& zp);
+template <typename T>
+struct is_quant_type : std::false_type {};
+
+template <>
+struct is_quant_type<int8_t> : std::true_type {};
+
+template <>
+struct is_quant_type<uint8_t> : std::true_type {};
+
+template <typename QType,
+          typename std::enable_if<is_quant_type<QType>::value, int>::type = 0>
+void GetQuantizationParameter(const float* data, int64_t num_of_elements, float& scale, QType& zp) {
+  // find input range min and max
+  float min, max;
+  MlasFindMinMaxElement(data, &min, &max, num_of_elements);
+
+  // ensure the input range includes zero
+  min = std::min(min, 0.0f);
+  max = std::max(max, 0.0f);
+
+  // find scale and zero point
+  QType qmin = std::numeric_limits<QType>::min();
+  QType qmax = std::numeric_limits<QType>::max();
+  scale = max == min ? 1.0f : (max - min) / float(qmax - qmin);
+
+  float initial_zero_point = qmin - min / scale;
+  zp = static_cast<QType>(RoundHalfToEven(std::max(float(qmin), std::min(float(qmax), initial_zero_point))));
+}
 
 }  // namespace onnxruntime

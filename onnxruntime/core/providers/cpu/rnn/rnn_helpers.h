@@ -172,8 +172,7 @@ struct PackedWeights {
 
 enum class QuantizationType {
   PerTensor,
-  PerRow,
-  PerCol,
+  PerColumn,
 };
 
 struct QuantizationParameter {

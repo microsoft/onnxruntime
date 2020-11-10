@@ -870,10 +870,9 @@ Wwhere the function `Sigmoid(x) = 1 / (1 + exp(-x))` )DOC";
       .Input(
           9,
           "W_zero_point",
-          "W's zero point. Default value is 0 if it's not specified."
-          "Otherwise its size is [num_directions] for per-tensor/layer quantization, "
+          "W's zero point. Its size is [num_directions] for per-tensor/layer quantization, "
           "or [num_directions, 4*hidden_size] for per-channel quantization on the axis input_size.",
-          "T2", OpSchema::Optional)
+          "T2")
       .Input(
           10,
           "R_scale",
@@ -883,10 +882,9 @@ Wwhere the function `Sigmoid(x) = 1 / (1 + exp(-x))` )DOC";
       .Input(
           11,
           "R_zero_point",
-          "R's zero point. Default value is 0 if it's not specified."
-          "Otherwise its size is [num_directions] for per-tensor/layer quantization, "
+          "R's zero point. Its size is [num_directions] for per-tensor/layer quantization, "
           "or [num_directions, 4*hidden_size] for per-channel quantization on the axis input_size.",
-          "T2", OpSchema::Optional)
+          "T2")
       .Output(
           0,
           "Y",

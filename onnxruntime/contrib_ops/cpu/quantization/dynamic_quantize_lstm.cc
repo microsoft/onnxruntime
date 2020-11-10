@@ -96,40 +96,60 @@ Status DynamicQuantizeLSTM::Compute(OpKernelContext* context) const {
   const Tensor* r_scale = context->Input<Tensor>(10);
   const Tensor* r_zp = context->Input<Tensor>(11);
 
-  QuantizationParameter quant_para_W{w_scale->Data<float>(),
-                                     w_zp ? static_cast<const uint8_t*>(w_zp->DataRaw()) : nullptr,
-                                     weights_signed_};
-  QuantizationParameter quant_para_R{r_scale->Data<float>(),
-                                     r_zp ? static_cast<const uint8_t*>(r_zp->DataRaw()) : nullptr,
-                                     weights_signed_};
+  const auto& W_scale_shape = w_scale->Shape();
+  const auto& R_scale_shape = r_scale->Shape();
 
-  const uint8_t* input_weights = nullptr;
-  const uint8_t* recurrent_weights = nullptr;
+#if 0 // TODO: Enable Per-Column after MLAS kernel change is done
+  int64_t per_column_size = num_directions_ * 4 * hidden_size_;
+  QuantizationType quant_W_type = W_scale_shape.Size() == per_column_size ? QuantizationType::PerColumn : QuantizationType::PerTensor;
+  QuantizationType quant_R_type = R_scale_shape.Size() == per_column_size ? QuantizationType::PerColumn : QuantizationType::PerTensor;
+#else
+  QuantizationType quant_W_type = QuantizationType::PerTensor;
+  QuantizationType quant_R_type = QuantizationType::PerTensor;
+#endif
+  QuantizationParameter quant_para_W_1{w_scale->Data<float>(),
+                                       static_cast<const uint8_t*>(w_zp->DataRaw()),
+                                       weights_signed_,
+                                       quant_W_type};
+  QuantizationParameter quant_para_R_1{r_scale->Data<float>(),
+                                       r_zp ? static_cast<const uint8_t*>(r_zp->DataRaw()) : nullptr,
+                                       weights_signed_,
+                                       quant_R_type};
+
+  const uint8_t* W_data = nullptr;
+  const uint8_t* R_data = nullptr;
   if (W != nullptr) {
-    input_weights = static_cast<const uint8_t*>(W->DataRaw());
-    quant_para_W.b_is_signed = W->IsDataType<int8_t>();
+    W_data = static_cast<const uint8_t*>(W->DataRaw());
+    quant_para_W_1.b_is_signed = W->IsDataType<int8_t>();
   }
 
   if (R != nullptr) {
-    recurrent_weights = static_cast<const uint8_t*>(R->DataRaw());
-    quant_para_R.b_is_signed = R->IsDataType<int8_t>();
+    R_data = static_cast<const uint8_t*>(R->DataRaw());
+    quant_para_R_1.b_is_signed = R->IsDataType<int8_t>();
   }
 
-  // TO DO: Add Per-Row support after changing in MLAS is done
-
   // spans for first direction
-  const size_t input_weights_size_per_direction = W_shape[1] * W_shape[2];
-  const size_t hidden_weights_size_per_direction = R_shape[1] * R_shape[2];
+  const size_t W_size_per_direction = W_shape[1] * W_shape[2];
+  const size_t R_size_per_direction = R_shape[1] * R_shape[2];
 
-  GemmWeights<uint8_t> W_1(0, input_weights, input_weights_size_per_direction, packed_W_, &quant_para_W);
-  GemmWeights<uint8_t> R_1(0, recurrent_weights, hidden_weights_size_per_direction, packed_R_, &quant_para_R);
+  GemmWeights<uint8_t> W_1(0, W_data, W_size_per_direction, packed_W_, &quant_para_W_1);
+  GemmWeights<uint8_t> R_1(0, R_data, R_size_per_direction, packed_R_, &quant_para_R_1);
 
   GemmWeights<uint8_t> W_2;
   GemmWeights<uint8_t> R_2;
 
+  QuantizationParameter quant_para_W_2(quant_para_W_1);
+  QuantizationParameter quant_para_R_2(quant_para_R_1);
+
   if (direction_ == Direction::kBidirectional) {
-    W_2.Init(1, input_weights, input_weights_size_per_direction, packed_W_, &quant_para_W);
-    R_2.Init(1, recurrent_weights, hidden_weights_size_per_direction, packed_R_, &quant_para_R);
+    quant_para_W_2.scale += W_scale_shape.SizeFromDimension(1);
+    quant_para_R_2.scale += R_scale_shape.SizeFromDimension(1);
+
+    quant_para_W_2.zero_point += W_scale_shape.SizeFromDimension(1);
+    quant_para_R_2.zero_point += R_scale_shape.SizeFromDimension(1);
+
+    W_2.Init(1, W_data, W_size_per_direction, packed_W_, &quant_para_W_2);
+    R_2.Init(1, R_data, R_size_per_direction, packed_R_, &quant_para_R_2);
   }
 
   return LSTMBase::ComputeImpl<float, uint8_t>(*context, W_1, W_2, R_1, R_2);
