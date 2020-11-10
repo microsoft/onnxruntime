@@ -3,8 +3,8 @@
 
 #include "core/providers/cuda/reduction/reduction_functions.h"
 
-#include <cassert>
 #include <algorithm>
+#include <cassert>
 #include <iterator>
 #include <utility>
 
@@ -16,11 +16,23 @@ namespace onnxruntime {
 namespace cuda {
 
 namespace {
+// std::make_reverse_iterator is not implemented in older versions of GCC
+#if !defined(__GNUC__) || __GNUC__ >= 5
+using std::make_reverse_iterator;
+#else
+template <typename It>
+std::reverse_iterator<It> make_reverse_iterator(It it) {
+  return std::reverse_iterator<It>(it);
+}
+#endif
+
 // gets min and max of single contiguous range of axes if available
-optional<std::pair<int64_t, int64_t>> GetMinMaxContiguousAxes(
+optional<std::pair<int64_t, int64_t>> GetMinAndMaxContiguousAxes(
     int64_t rank,
     const std::vector<int64_t>& dims,
     const std::vector<int64_t>& original_axes) {
+  assert(rank == static_cast<int64_t>(dims.size()));
+
   // empty axes means reduce all dimensions
   if (original_axes.empty()) {
     return std::make_pair(int64_t{0}, rank - 1);
@@ -66,7 +78,7 @@ optional<std::pair<int64_t, int64_t>> GetMinMaxContiguousAxes(
     // note that std::reverse_iterator(it) refers to the element at (it-1)
     // it -> reverse it: element offset of -1
     const auto before_min_given_axis_rit =
-        std::make_reverse_iterator(dims.begin() + min_given_axis);
+        make_reverse_iterator(dims.begin() + min_given_axis);
     const auto before_min_axis_rit =
         std::find_if_not(before_min_given_axis_rit, dims.rend(), is_dim_one);
     // reverse it -> it: element offset of +1
@@ -94,13 +106,13 @@ ApplicableMatrixReduction get_applicable_matrix_reduction(
   }
 
   const auto rank = gsl::narrow<int64_t>(dims.size());
-  const auto minmax_axes = GetMinMaxContiguousAxes(rank, dims, original_axes);
-  if (!minmax_axes.has_value()) {
+  const auto min_and_max_axes = GetMinAndMaxContiguousAxes(rank, dims, original_axes);
+  if (!min_and_max_axes.has_value()) {
     return ApplicableMatrixReduction::None;
   }
 
-  const auto& min_axis = minmax_axes.value().first;
-  const auto& max_axis = minmax_axes.value().second;
+  const auto& min_axis = min_and_max_axes.value().first;
+  const auto& max_axis = min_and_max_axes.value().second;
 
   // axes from beginning means row reduction, axes to end means column reduction
   // for axes from beginning to end, either works and we do row reduction
@@ -112,6 +124,7 @@ ApplicableMatrixReduction get_applicable_matrix_reduction(
     return ApplicableMatrixReduction::None;
   }
 
+  // the axis index right after the last flattened into matrix rows
   const int64_t m_end_axis = axes_from_beginning ? max_axis + 1 : min_axis;
 
   const TensorShape& shape = TensorShape::ReinterpretBaseType(dims);
