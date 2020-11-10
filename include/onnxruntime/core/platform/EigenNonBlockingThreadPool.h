@@ -534,8 +534,6 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   }
 
  public:
-  typedef typename Environment::Task Task;
-
   struct Tag {
     constexpr Tag() : v_(0) {
     }
@@ -570,6 +568,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     uint32_t v_ = 0;
   };
 
+  typedef std::function<void()> Task;
   typedef RunQueue<Task, Tag, 1024> Queue;
 #ifdef _WIN32
   using CHAR_TYPE = wchar_t;
@@ -638,29 +637,26 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   // reject work if the queue of pending work is full.
 
   void Schedule(std::function<void()> fn) override {
-    Task t = env_.CreateTask(std::move(fn));
     PerThread* pt = GetPerThread();
     if (pt->pool == this) {
       // Worker thread of this pool, push onto the thread's queue.
       Queue& q = worker_data_[pt->thread_id].queue;
-      t = q.PushFront(std::move(t));
+      fn = q.PushFront(std::move(fn));
     } else {
       // A free-standing thread (or worker of another pool), push onto a random
       // queue.
       int q_idx = Rand(&pt->rand) % num_threads_;
       WorkerData &td = worker_data_[q_idx];
       Queue& q = td.queue;
-      t = q.PushBack(std::move(t));
-      if (!t.f) {
+      fn = q.PushBack(std::move(fn));
+      if (!fn) {
         // The queue accepted the work; ensure that the thread will pick it up
         td.EnsureAwake();
       }
     }
 
     // Run the work directly if the queue rejected the work
-    if (t.f) {
-      env_.ExecuteTask(t);
-    }
+    if (fn) fn();
   }
 
 // The thread pool maintains a set of hints for which threads will be good to distribute
@@ -863,7 +859,7 @@ void SummonWorkers(PerThread &pt,
 
     // Create the additional tasks, and push them to workers.
     for (auto i = 0u; i < extra_needed; i++) {
-      Task t = env_.CreateTask(call_worker_fn);
+      Task t;
       int q_idx;
       if (i < good_hints.size()) {
         q_idx = good_hints[i];
@@ -885,8 +881,8 @@ void SummonWorkers(PerThread &pt,
       WorkerData& td = worker_data_[q_idx];
       Queue& q = td.queue;
       unsigned w_idx;
-      t = q.PushBackWithTag(std::move(t), pt.tag, w_idx);
-      if (!t.f) {
+      t = q.PushBackWithTag(call_worker_fn, pt.tag, w_idx);
+      if (!t) {
         ps.tasks.push_back({q_idx, w_idx});
         td.EnsureAwake();
       }
@@ -1197,26 +1193,26 @@ int CurrentThreadId() const EIGEN_FINAL {
 
     while (!cancelled_ && !should_exit) {
         Task t = q.PopFront();
-        if (!t.f) {
+        if (!t) {
           // Spin waiting for work.  We indicate, via SetGOodWorkerHint that we are
           // spinning.  This will bias other threads toward pushing work to our queue.
           // In addition, priodically make a best-effort attempt to steal from other
           // threads which are not themselves spinning.
 
           SetGoodWorkerHint(thread_id, true);
-          for (int i = 0; i < spin_count && !t.f && !cancelled_ && !done_; i++) {
+          for (int i = 0; i < spin_count && !t && !cancelled_ && !done_; i++) {
             t = ((i+1)%steal_count == 0) ? TrySteal() : q.PopFront();
             onnxruntime::concurrency::SpinPause();
           }
           SetGoodWorkerHint(thread_id, false);
 
-          if (!t.f) {
+          if (!t) {
             // No work passed to us while spinning; make a further full attempt to
             // steal work from other threads prior to blocking.
             if (num_threads_ != 1) {
               t = Steal(true /* true => check all queues */);
             }
-            if (!t.f) {
+            if (!t) {
               td.SetBlocked(
                   // Pre-block test
                   [&]() -> bool {
@@ -1264,9 +1260,9 @@ int CurrentThreadId() const EIGEN_FINAL {
             }
           }
         }
-        if (t.f) {
+        if (t) {
           td.SetActive();
-          env_.ExecuteTask(t);
+          t();
           td.SetSpinning();
         }
       }
@@ -1304,7 +1300,7 @@ int CurrentThreadId() const EIGEN_FINAL {
         if (round == 1 ||
             worker_data_[victim].GetStatus() == WorkerData::ThreadStatus::Active) {
           Task t = worker_data_[victim].queue.PopBack();
-          if (t.f) {
+          if (t) {
             return t;
           }
         }
