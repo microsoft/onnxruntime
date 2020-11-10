@@ -51,7 +51,13 @@ namespace Microsoft.ML.OnnxRuntime
     }
 
     /// <summary>
-    /// This class owns an OrtValue that 
+    /// This class serves as a container for model run output values including
+    /// tensors, sequences of tensors, sequences and maps
+    /// It extends NamedOnnxValue, exposes the OnnxValueType and Tensor type
+    /// The class must be disposed of.
+    /// It disposes of _ortValueHolder that owns the underlying Ort output value or
+    /// anything that the class that implements that interfaces needs to dispose.
+    /// Use factory method CreateFromOrtValue to obtain an instance of the class.
     /// </summary>
     public class DisposableNamedOnnxValue : NamedOnnxValue, IDisposable
     {
@@ -80,14 +86,18 @@ namespace Microsoft.ML.OnnxRuntime
         /// Overrides the base class method. Since the instance already owns underlying OrtValue handle,
         /// it returns an instance of OrtValue that does not own the raw handle
         /// that to the output onnxValue. With respect to pinnedMemoryHandle, it has no operation
-        /// to do, as this class maintains a managed buffer via _nativeMememoryManager and the memory will be
+        /// to do, as this class maintains a native buffer via _ortValueHolder and the memory will be
         /// disposed by it. This is the case when we are dealing with an OrtValue that is backed by native memory
-        /// and not by pinned managed memory
+        /// and not by pinned managed memory.
         /// </summary>
         /// <param name="pinnedMemoryHandle">always set to null</param>
         /// <returns>An instance of OrtValue that does not own underlying memory</returns>
         internal override OrtValue ToOrtValue(out MemoryHandle? pinnedMemoryHandle)
         {
+            if(_ortValueHolder == null)
+            {
+                throw new InvalidOperationException("The instance of this class does not own any OrtValues");
+            }
             // PinnedMemoryHandle holds the default value as DisposableNamedOnnxValue
             // doesn't hold any managed buffer (that needs to be pinned)
             pinnedMemoryHandle = null;
@@ -265,7 +275,7 @@ namespace Microsoft.ML.OnnxRuntime
                         sequence.Add(CreateFromOrtValue(string.Empty, ortValueElement, allocator));
                     }
                 }
-                // NativeOrtValueCollectionOwner will take ownership of ortValySequence and will make sure sequence
+                // NativeOrtValueCollectionOwner will take ownership of ortValueSequence and will make sure sequence
                 // is also disposed.
                 var nativeCollectionManager = new NativeOrtValueCollectionOwner(ortValueSequence, sequence);
                 result = new DisposableNamedOnnxValue(name, sequence, OnnxValueType.ONNX_TYPE_SEQUENCE, TensorElementType.DataTypeMax, nativeCollectionManager);
