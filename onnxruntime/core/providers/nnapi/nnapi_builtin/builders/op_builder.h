@@ -20,8 +20,9 @@ class IOpBuilder {
   virtual Status AddToModelBuilder(ModelBuilder& model_builder, const Node& node) ORT_MUST_USE_RESULT = 0;
 };
 
-// Generate a lookup table with IOpBuilder delegates
-// for different onnx operators
+// Generate a lookup table with IOpBuilder delegates for different onnx operators
+// Note, the lookup table should have same number of entries as the result of CreateOpSupportCheckers()
+// in op_support_checker.h
 std::unordered_map<std::string, std::shared_ptr<IOpBuilder>> CreateOpBuilders();
 
 // Transpose the NHWC input to NCHW output

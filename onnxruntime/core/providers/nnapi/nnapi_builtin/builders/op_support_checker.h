@@ -22,8 +22,9 @@ class IOPSupportChecker {
                              const Node& node, const OPSupportCheckParams& params) = 0;
 };
 
-// Generate a lookup table with IOPSupportChecker delegates
-// for different onnx operators
+// Generate a lookup table with IOPSupportChecker delegates for different onnx operators
+// Note, the lookup table should have same number of entries as the result of CreateOpBuilders()
+// in op_builder.h
 std::unordered_map<std::string, std::shared_ptr<IOPSupportChecker>> CreateOpSupportCheckers();
 
 }  // namespace nnapi

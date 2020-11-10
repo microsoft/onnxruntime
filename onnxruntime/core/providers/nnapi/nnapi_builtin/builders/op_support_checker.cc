@@ -201,11 +201,11 @@ bool BinaryOPSupportChecker::IsOpSupportedImpl(
 
     // All scale/zero points are initializer scalars
     // a/b/y_scale
-    if (!HasValidQuantizationScale(initializers, node, {1, 4, 6}))
+    if (!HasValidQuantizationScales(initializers, node, {1, 4, 6}))
       return false;
 
     // a/b/y_zero_point
-    if (!HasValidQuantizationZeroPoint(initializers, node, {2, 5, 7}))
+    if (!HasValidQuantizationZeroPoints(initializers, node, {2, 5, 7}))
       return false;
   }
 
@@ -501,11 +501,11 @@ bool ConvOPSupportChecker::IsOpSupportedImpl(const InitializerMap& initializers,
     }
 
     // a/b/y_scale
-    if (!HasValidQuantizationScale(initializers, node, {1, 4, 6}))
+    if (!HasValidQuantizationScales(initializers, node, {1, 4, 6}))
       return false;
 
     // a/b/y_zero_point
-    if (!HasValidQuantizationZeroPoint(initializers, node, {2, 5, 7}))
+    if (!HasValidQuantizationZeroPoints(initializers, node, {2, 5, 7}))
       return false;
   }
 
@@ -702,11 +702,11 @@ bool GemmOPSupportChecker::IsOpSupportedImpl(const InitializerMap& initializers,
 
       // All scale/zero points are initializer scalars
       // a/b/y_scale
-      if (!HasValidQuantizationScale(initializers, node, {1, 4, 6}))
+      if (!HasValidQuantizationScales(initializers, node, {1, 4, 6}))
         return false;
 
       // a/b/y_zero_point
-      if (!HasValidQuantizationZeroPoint(initializers, node, {2, 5, 7}))
+      if (!HasValidQuantizationZeroPoints(initializers, node, {2, 5, 7}))
         return false;
     }
   } else {
@@ -831,11 +831,11 @@ bool QuantizeLinearOPSupportChecker::IsOpSupportedImpl(
     return false;
   }
 
-  if (!HasValidQuantizationScale(initializers, node, {1}))
+  if (!HasValidQuantizationScales(initializers, node, {1}))
     return false;
 
   if (input_defs.size() == 3) {  // has zero_point input
-    if (!HasValidQuantizationZeroPoint(initializers, node, {2}))
+    if (!HasValidQuantizationZeroPoints(initializers, node, {2}))
       return false;
   }
 
@@ -860,11 +860,11 @@ class DequantizeLinearOPSupportChecker : public BaseOPSupportChecker {
 bool DequantizeLinearOPSupportChecker::IsOpSupportedImpl(
     const InitializerMap& initializers, const Node& node, const OPSupportCheckParams& /* params */) {
   const auto input_defs(node.InputDefs());
-  if (!HasValidQuantizationScale(initializers, node, {1}))
+  if (!HasValidQuantizationScales(initializers, node, {1}))
     return false;
 
   if (input_defs.size() == 3) {  // has zero_point input
-    if (!HasValidQuantizationZeroPoint(initializers, node, {2}))
+    if (!HasValidQuantizationZeroPoints(initializers, node, {2}))
       return false;
   }
 
@@ -1086,7 +1086,7 @@ bool FlattenOPSupportChecker::IsOpSupportedImpl(const InitializerMap& /* initial
   GetFlattenShape(node, input_shape, dim_1, dim_2);
 
   if (dim_1 == 0 && dim_2 == 0) {
-    LOGS_DEFAULT(VERBOSE) << "The dynamical input shape "  // TODO enable this << Shape2String(input_shape)
+    LOGS_DEFAULT(VERBOSE) << "The dynamical input shape " << Shape2String(input_shape)
                           << " is not supported";
     return false;
   }

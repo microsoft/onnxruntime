@@ -21,6 +21,8 @@ ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer)
   GetAllInitializers();
   op_builders_ = CreateOpBuilders();
   op_support_checkers_ = CreateOpSupportCheckers();
+  ORT_ENFORCE(op_builders_.size() == op_support_checkers_.size(),
+              "We should have same number of OpBuilder and OpSupportChecker");
 }
 
 int32_t ModelBuilder::GetAndroidSdkVer() const {

@@ -70,12 +70,12 @@ bool IsQLinearBinaryOp(QLinearOpType qlinear_op_type) {
 
 bool HasValidBinaryOpQuantizedInputs(const Node& node) {
   int32_t a_input_type, b_input_type;
-  const auto input_defs(node.InputDefs());
-  if (input_defs.size() < 4) {
-    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType() << "] has only " << input_defs.size() << " inputs";
+  if (!IsQLinearBinaryOp(GetQLinearOpType(node))) {
+    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType() << "] is not a binary qlinear op";
     return false;
   }
 
+  const auto input_defs(node.InputDefs());
   if (!GetType(*input_defs[0], a_input_type))
     return false;
   if (!GetType(*input_defs[3], b_input_type))
@@ -92,13 +92,13 @@ bool HasValidBinaryOpQuantizedInputs(const Node& node) {
   return true;
 }
 
-bool HasValidQuantizationScale(const InitializerMap& initializers, const Node& node,
-                               const std::vector<size_t>& indices) {
+bool HasValidQuantizationScales(const InitializerMap& initializers, const Node& node,
+                                const std::vector<size_t>& indices) {
   const auto& op = node.OpType();
   const auto input_defs(node.InputDefs());
   for (const auto idx : indices) {
     if (idx >= input_defs.size()) {
-      LOGS_DEFAULT(VERBOSE) << "HasValidQuantizationScale, Input index,  " << idx
+      LOGS_DEFAULT(VERBOSE) << "HasValidQuantizationScales, Input index,  " << idx
                             << " >= input number, " << input_defs.size();
       return false;
     }
@@ -118,13 +118,13 @@ bool HasValidQuantizationScale(const InitializerMap& initializers, const Node& n
   return true;
 }
 
-bool HasValidQuantizationZeroPoint(const InitializerMap& initializers, const Node& node,
-                                   const std::vector<size_t>& indices) {
+bool HasValidQuantizationZeroPoints(const InitializerMap& initializers, const Node& node,
+                                    const std::vector<size_t>& indices) {
   const auto& op = node.OpType();
   const auto input_defs(node.InputDefs());
   for (const auto idx : indices) {
     if (idx >= input_defs.size()) {
-      LOGS_DEFAULT(VERBOSE) << "HasValidQuantizationZeroPoint, Input index,  " << idx
+      LOGS_DEFAULT(VERBOSE) << "HasValidQuantizationZeroPoints, Input index,  " << idx
                             << " >= input number, " << input_defs.size();
       return false;
     }

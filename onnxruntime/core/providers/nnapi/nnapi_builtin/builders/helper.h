@@ -75,16 +75,22 @@ QLinearOpType GetQLinearOpType(const onnxruntime::Node& node);
 // Such as QLinearConv, QLinearMatMul, QLinearAdd, ...
 bool IsQLinearBinaryOp(QLinearOpType qlinear_op_type);
 
+// Check if a qlinear binary op has valid inputs
 bool HasValidBinaryOpQuantizedInputs(const Node& node);
-bool HasValidQuantizationScale(const InitializerMap& initializers, const Node& node,
-                               const std::vector<size_t>& indices);
-bool HasValidQuantizationZeroPoint(const InitializerMap& initializers, const Node& node,
-                                   const std::vector<size_t>& indices);
+// Check if a qlinear op has valid scales for given indices
+bool HasValidQuantizationScales(const InitializerMap& initializers, const Node& node,
+                                const std::vector<size_t>& indices);
+// Check if a qlinear op has valid zero points for given indices
+bool HasValidQuantizationZeroPoints(const InitializerMap& initializers, const Node& node,
+                                    const std::vector<size_t>& indices);
 
+// Get initialize tensort float/int32/int64 data without unpacking
+// TODO, move to ort framework
 const float* GetTensorFloatData(const ONNX_NAMESPACE::TensorProto& tensor);
 const int32_t* GetTensorInt32Data(const ONNX_NAMESPACE::TensorProto& tensor);
 const int64_t* GetTensorInt64Data(const ONNX_NAMESPACE::TensorProto& tensor);
 
+// Get Shape/Type of a NodeArg
 bool GetShape(const NodeArg& node_arg, Shape& shape);
 bool GetType(const NodeArg& node_arg, int32_t& type);
 
@@ -92,6 +98,7 @@ bool GetType(const NodeArg& node_arg, int32_t& type);
 // If the min/max are inputs be not initializers (value not preset), will return false
 bool GetClipMinMax(const InitializerMap& initializers, const Node& node, float& min, float& max);
 
+// Get string representation of a Shape
 std::string Shape2String(const std::vector<uint32_t>& shape);
 
 /**
