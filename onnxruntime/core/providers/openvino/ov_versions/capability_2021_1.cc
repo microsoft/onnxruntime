@@ -46,8 +46,8 @@ bool IsDimensionSupported(const Provider_Node* node) {
 
     if (node->OpType() == "Unsqueeze") {
       auto& attributes = node->GetAttributes();
-      auto& axes = attributes.at("axes").ints();
-      if (input_dims + axes.size() > 5)
+      int64_t axes_size = attributes.count("axes") > 0 ? attributes.at("axes").ints().size() : 0;
+      if (input_dims + axes_size > 5)
         return false;
     }
   }
@@ -268,7 +268,7 @@ static bool IsUnsupportedOpMode(const Provider_Node* node, const Provider_GraphV
     if (GetInputCount(node, initializers) > 1)
       return true;
     auto& attributes = node->GetAttributes();
-    if (attributes.at("auto_pad").s() == "") {
+    if (attributes.count("auto_pad") == 0 || attributes.at("auto_pad").s() == "") {
       return true;
     }
   } else if (optype == "ReduceMin") {
@@ -321,7 +321,7 @@ static bool IsUnsupportedOpMode(const Provider_Node* node, const Provider_GraphV
   } else if (optype == "Mod") {
     //Only fmod=1 is supported
     auto& attributes = node->GetAttributes();
-    auto fmod = attributes.at("fmod").i();
+    auto fmod = attributes.count("fmod") > 0 ? attributes.at("fmod").i() : 0;
     if (fmod != 1)
       return true;
     //Only FP32 data type is allowed
@@ -419,7 +419,7 @@ static bool IsUnsupportedOpMode(const Provider_Node* node, const Provider_GraphV
   } else if (optype == "ArgMax" || optype == "ArgMin") {
     //tensor type does not support select last index
     auto& attributes = node->GetAttributes();
-    auto last_index_arg = attributes.at("select_last_index").i();
+    auto last_index_arg = attributes.count("select_last_index") > 0 ? attributes.at("select_last_index").i() : 0;
     if (last_index_arg != 0)
       return true;
     // tensor type supports float as input for argmax and argmin
@@ -473,10 +473,12 @@ static bool IsUnsupportedOpMode(const Provider_Node* node, const Provider_GraphV
   } else if (optype == "Upsample") {
     //check for attributes
     auto& upsample_attr = node->GetAttributes();
-    auto& upsample_arg = upsample_attr.at("scales");
-    auto float_size = upsample_arg.floats_size();
-    if (float_size > 2 && (upsample_arg.floats(0) != 1.f || upsample_arg.floats(1) != 1.f))
-      return true;
+    if (upsample_attr.count("scales") > 0) {
+      auto& upsample_arg = upsample_attr.at("scales");
+      auto float_size = upsample_arg.floats_size();
+      if (float_size > 2 && (upsample_arg.floats(0) != 1.f || upsample_arg.floats(1) != 1.f))
+        return true;
+    }
 
     //check for input dimensions
     const auto& x_arg = node->InputDefs()[0];
