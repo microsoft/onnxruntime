@@ -358,7 +358,7 @@ class BertOnnxModelTF(BertOnnxModel):
 
             mask_nodes = self.match_parent_path(add_qk, ['Mul', 'Sub', 'Unsqueeze'], [1, 0, 1])
             if mask_nodes is None:
-                mask_nodes = self.match_parent_path(add_qk, ['Mul', 'Sub', 'Cast', 'Unsqueeze'], [1, 0, 1, 0])
+                mask_nodes = self.match_parent_path(add_qk, ['Mul', 'Sub', 'Cast', 'Unsqueeze', 'Mul'], [1, 0, 1, 0, 0])
                 if mask_nodes is None:
                     logger.debug("Failed to match mask path")
                     continue
@@ -368,11 +368,12 @@ class BertOnnxModelTF(BertOnnxModel):
                 continue
 
             # add a squeeze node to convert a 3-d mask to 2-d
+            # bugbug: hardcoded
             squeeze_node = self.match_parent_path(mask_nodes[-1], ['Squeeze'], [0])
             squeeze_node_name = "Squeeze_3d_to_2d_mask"
             squeeze_output_name = squeeze_node_name + "_output"
-            if squeeze_node is None:
-                mask_input = mask_nodes[-1].input[0]
+            if squeeze_node is None and len(mask_nodes) == 5:
+                mask_input = mask_nodes[-1].input[1]
                 self.add_node(
                     helper.make_node("Squeeze", [mask_input], [squeeze_output_name], squeeze_node_name, axes=[1]))
                 mask_nodes[-1].input[0] = squeeze_output_name
@@ -387,8 +388,12 @@ class BertOnnxModelTF(BertOnnxModel):
                 if parent.op_type == 'Reshape':
                     # Temporary work around: we require the skiplayernorm and attention op be fed with 3-d input
                     hidden_size = numpy_helper.to_array(self.get_initializer(parent.input[1]))[1]
-                    tensor = self.convert_list_to_tensor(parent.name + "_modified", TensorProto.INT64, [3],
-                                                         [1, -1, hidden_size])
+                    tensor = helper.make_tensor(
+                        name=parent.name + "_modified",
+                        data_type=TensorProto.INT64,
+                        dims=[3],
+                        vals=np.int64([[1, -1, hidden_size]]).tobytes(),
+                        raw=True)
                     self.add_initializer(tensor)
                     parent.input[1] = parent.name + "_modified"
 
@@ -432,4 +437,5 @@ class BertOnnxModelTF(BertOnnxModel):
     def postprocess(self):
         self.remove_reshape_before_first_attention()
         # Temporary work around for the following comment as it will cause topological issues for a bert model
-        #self.prune_graph()
+        # bugbug
+        self.prune_graph()
