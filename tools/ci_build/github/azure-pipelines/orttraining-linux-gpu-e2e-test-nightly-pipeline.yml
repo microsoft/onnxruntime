@@ -37,52 +37,22 @@ jobs:
           "
     displayName: 'Build'
 
-  - script: |
-      docker run \
-        --gpus all \
-        --shm-size=256m \
-        --rm \
-        --volume $(Build.BinariesDirectory):/build \
-        --volume /bert_data:/bert_data \
-        --volume /bert_ort:/bert_ort \
-        onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
-          python \
-          /build/RelWithDebInfo/run_training_pipeline_e2e_tests.py \
-            --cwd /build/RelWithDebInfo
-    displayName: 'Run python run_training_pipeline_e2e_tests.py'
-    condition: succeededOrFailed() # ensure all tests are run
-    timeoutInMinutes: 10
-
-  - script: |
-      docker run \
-        --gpus all \
-        --shm-size=256m \
-        --rm \
-        --volume $(Build.BinariesDirectory):/build \
-        --volume /bert_data:/bert_data \
-        --volume /bert_ort:/bert_ort \
-        onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
-          /build/RelWithDebInfo/run_training_pipeline_e2e_tests.py \
-            --cwd /build/RelWithDebInfo
-    displayName: 'Run run_training_pipeline_e2e_tests.py'
-    condition: succeededOrFailed() # ensure all tests are run
-    timeoutInMinutes: 10
-
-  - script: |
-      docker run \
-        --gpus all \
-        --shm-size=256m \
-        --rm \
-        --volume $(Build.BinariesDirectory):/build \
-        --volume /bert_data:/bert_data \
-        --volume /bert_ort:/bert_ort \
-        onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
-          /build/RelWithDebInfo/launch_test.py \
-          --cmd_line_with_args "python run_training_pipeline_e2e_tests.py" \
-          --cwd /build/RelWithDebInfo
-    displayName: 'launch_test.py run_training_pipeline_e2e_tests.py'
-    condition: succeededOrFailed() # ensure all tests are run
-    timeoutInMinutes: 10
+  # Hit OOM with run_training_pipeline_e2e_tests.py - slightly above 16GB limit.
+  # leave this code here for further investigation.
+  # - script: |
+  #     docker run \
+  #       --gpus all \
+  #       --shm-size=256m \
+  #       --rm \
+  #       --volume $(Build.BinariesDirectory):/build \
+  #       --volume /bert_data:/bert_data \
+  #       --volume /bert_ort:/bert_ort \
+  #       onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
+  #         /build/RelWithDebInfo/run_training_pipeline_e2e_tests.py \
+  #           --cwd /build/RelWithDebInfo
+  #   displayName: 'Run run_training_pipeline_e2e_tests.py'
+  #   condition: succeededOrFailed() # ensure all tests are run
+  #   timeoutInMinutes: 10
 
   - script: |
       docker run \
@@ -278,26 +248,5 @@ jobs:
     displayName: 'Run orttraining_run_bert_pretrain.py ORTBertPretrainTest.test_pretrain_convergence'
     condition: succeededOrFailed() # ensure all tests are run
     timeoutInMinutes: 20
-
-  # I have tried following to ways to run run_training_pipeline_e2e_tests. both failed.
-  # For now, the --enable_training_pipeline_e2e_tests flag still triggers
-  # call to run_training_pipeline_e2e_tests in build.py.
-  # It is useful to leave this 2 code blocks for further investigation before we fully move
-  # all e2e tests to this build defination.
-  - script: |
-      docker run \
-        --gpus all \
-        --shm-size=256m \
-        --rm \
-        --volume $(Build.BinariesDirectory):/build \
-        --volume /bert_data:/bert_data \
-        --volume /bert_ort:/bert_ort \
-        onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
-          python3 \
-          /build/RelWithDebInfo/run_training_pipeline_e2e_tests.py \
-            --cwd /build/RelWithDebInfo
-    displayName: 'Run run_training_pipeline_e2e_tests.py'
-    condition: succeededOrFailed() # ensure all tests are run
-    timeoutInMinutes: 10
         
-  # - template: templates/clean-agent-build-directory-step.yml
+  - template: templates/clean-agent-build-directory-step.yml
