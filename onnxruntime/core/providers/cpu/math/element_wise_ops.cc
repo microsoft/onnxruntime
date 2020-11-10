@@ -1203,6 +1203,81 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     PRelu<float>);
 
+static void ExpandBroadcastLooper(BroadcastHelper& helper, const ProcessBroadcastSpanFuncs& functors) {
+  ORT_ENFORCE(!helper.HaveTwoTensorInputs(), "ExpandBroadcastLooper should only have a shape for the second input.");
+
+  if (helper.IsInput0Scalar()) {
+    while (helper.NeedMoreOutput()) {
+      functors.input0scalar(helper);
+      helper.Next();
+    }
+    /*
+  } else if (helper.IsInput0Scalar()) {
+    // not possible as we only have one tensor as input
+  */
+  } else {
+    while (helper.NeedMoreOutput()) {
+      functors.general(helper);
+      helper.Next();
+    }
+  }
+}
+
+// Split out the untyped processing from the type specific work to minimize binary size
+static void UntypedExpand(OpKernelContext& context, const ProcessBroadcastSpanFuncs& funcs) {
+  // Input 1 is a 1-dimensional tensor containing the dimension values to exapnd to
+  const auto& shape_data_tensor = *context.Input<Tensor>(1);
+  ORT_ENFORCE(shape_data_tensor.Shape().GetDims().size() == 1,
+              "Tensor with shape information must be 1 dimensional.");
+
+  // Turn the shape tensor data into an actual shape
+  const auto* p_dims = shape_data_tensor.Data<int64_t>();
+  TensorShape shape(std::vector<int64_t>{p_dims, p_dims + shape_data_tensor.Shape().Size()});
+
+  InputBroadcaster input_broadcaster(*context.Input<Tensor>(0), shape);
+  OutputBroadcaster output_broadcaster(input_broadcaster.GetSpanSize(),
+                                       *context.Output(0, input_broadcaster.GetOutputShape()));
+  BroadcastHelper broadcast_helper(input_broadcaster, output_broadcaster);
+
+  ExpandBroadcastLooper(broadcast_helper, funcs);
+}
+
+template <typename T>
+Status Expand_8<T>::Compute(OpKernelContext* context) const {
+  ProcessBroadcastSpanFuncs funcs{
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<T>().array() = per_iter_bh.ScalarInput0<T>();
+      },
+      [](BroadcastHelper&) {
+        ORT_THROW("Invalid usage. Input 1 is a shape with no data.");
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>();
+      }};
+
+  UntypedExpand(*context, funcs);
+  return Status::OK();
+}
+
+#define REG_EXPAND_KERNEL_WITH_TYPE_NAME(TYPE, TYPE_NAME)                          \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                        \
+      Expand,                                                                      \
+      8,                                                                           \
+      12,                                                                          \
+      TYPE_NAME,                                                                   \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>()), \
+      Expand_8<TYPE>);                                                             \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                  \
+      Expand,                                                                      \
+      13,                                                                          \
+      TYPE_NAME,                                                                   \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>()), \
+      Expand_8<TYPE>);
+
+#define REG_EXPAND_KERNEL(TYPE) REG_EXPAND_KERNEL_WITH_TYPE_NAME(TYPE, TYPE)
+
+REG_EXPAND_KERNEL_WITH_TYPE_NAME(std::string, string)
+
 template <>
 Status Erf<float>::Compute(OpKernelContext* context) const {
   const auto* X = context->Input<Tensor>(0);

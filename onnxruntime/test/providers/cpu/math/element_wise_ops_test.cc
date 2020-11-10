@@ -1709,6 +1709,39 @@ TEST(MathOpTest, Atanh) {
   TrigFloatTest<std::atanh>(test, {-1.0f, -0.5f, 0.0f, 0.5f, 1.0f});
 }
 
+TEST(MathOpTest, Expand_8_3x3_string) {
+  OpTester test("Expand", 8);
+  test.AddInput<std::string>("data_0", {1}, {"1"});
+  test.AddInput<int64_t>("data_1", {2}, {3, 3});
+  test.AddOutput<std::string>("result", {3, 3},
+                          {"1", "1", "1",
+                           "1", "1", "1",
+                           "1", "1", "1"});
+  test.Run();
+}
+
+TEST(MathOpTest, Expand_8_3x1_string) {
+  OpTester test("Expand", 8);
+  test.AddInput<std::string>("data_0", {3}, {"1", "2", "3"});
+  test.AddInput<int64_t>("data_1", {2}, {3, 1});
+  test.AddOutput<std::string>("result", {3, 3},
+                          {"1", "2", "3",
+                           "1", "2", "3",
+                           "1", "2", "3"});
+  test.Run();
+}
+
+TEST(MathOpTest, Expand_8_1x3_string) {
+  OpTester test("Expand", 8);
+  test.AddInput<std::string>("data_0", {3, 1}, {"1", "2", "3"});
+  test.AddInput<int64_t>("data_1", {2}, {1, 3});
+  test.AddOutput<std::string>("result", {3, 3},
+                          {"1", "1", "1",
+                           "2", "2", "2",
+                           "3", "3", "3"});
+  test.Run();
+}
+
 TEST(MathOpTest, Erf) {
   OpTester test("Erf", 9);
   std::vector<int64_t> dims{2, 2};

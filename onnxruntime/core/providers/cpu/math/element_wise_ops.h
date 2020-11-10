@@ -413,6 +413,15 @@ class PRelu final : public OpKernel {
 };
 
 template <typename T>
+class Expand_8 final : public OpKernel {
+ public:
+  Expand_8(const OpKernelInfo& info) : OpKernel(info) {
+  }
+
+  Status Compute(OpKernelContext* context) const override;
+};
+
+template <typename T>
 class Erf final : public OpKernel {
  public:
   Erf(const OpKernelInfo& info) : OpKernel(info) {
