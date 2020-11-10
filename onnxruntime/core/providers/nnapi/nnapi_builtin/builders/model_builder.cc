@@ -620,7 +620,7 @@ IOpBuilder* ModelBuilder::GetOpBuilder(const Node& node) {
   return op_builders_[node.OpType()].get();
 }
 
-IOPSupportChecker* ModelBuilder::GetOPSupportChecker(const Node& node) {
+IOpSupportChecker* ModelBuilder::GetOPSupportChecker(const Node& node) {
   if (!Contains(op_support_checkers_, node.OpType()))
     return nullptr;
 

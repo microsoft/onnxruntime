@@ -13,19 +13,19 @@ struct OPSupportCheckParams {
   bool use_nchw = false;
 };
 
-class IOPSupportChecker {
+class IOpSupportChecker {
  public:
-  virtual ~IOPSupportChecker() = default;
+  virtual ~IOpSupportChecker() = default;
 
   // Check if an operator is supported
   virtual bool IsOpSupported(const std::unordered_map<std::string, const ONNX_NAMESPACE::TensorProto&>& initializers,
-                             const Node& node, const OPSupportCheckParams& params) = 0;
+                             const Node& node, const OPSupportCheckParams& params) const = 0;
 };
 
-// Generate a lookup table with IOPSupportChecker delegates for different onnx operators
+// Generate a lookup table with IOpSupportChecker delegates for different onnx operators
 // Note, the lookup table should have same number of entries as the result of CreateOpBuilders()
 // in op_builder.h
-std::unordered_map<std::string, std::shared_ptr<IOPSupportChecker>> CreateOpSupportCheckers();
+std::unordered_map<std::string, std::shared_ptr<IOpSupportChecker>> CreateOpSupportCheckers();
 
 }  // namespace nnapi
 }  // namespace onnxruntime

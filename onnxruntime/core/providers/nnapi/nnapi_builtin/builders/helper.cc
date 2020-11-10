@@ -9,6 +9,7 @@
 #include <core/common/safeint.h>
 #include <core/common/logging/logging.h>
 #include <core/graph/graph.h>
+#include <core/providers/common.h>
 
 #include "helper.h"
 
@@ -218,6 +219,19 @@ bool GetClipMinMax(const InitializerMap& initializers, const Node& node, float& 
   }
 
   return true;
+}
+
+void GetFlattenOutputShape(const Node& node, const Shape& input_shape, int32_t& dim_1, int32_t& dim_2) {
+  int32_t rank = static_cast<int>(input_shape.size());
+  NodeAttrHelper helper(node);
+  int32_t axis = helper.Get("axis", 1);
+  // axis == rank is a valid input, but invalid for HandleNegativeAxis
+  // Skip non-negative axis here
+  if (axis < 0)
+    axis = static_cast<int32_t>(HandleNegativeAxis(axis, rank));
+
+  dim_1 = std::accumulate(input_shape.cbegin(), input_shape.cbegin() + axis, 1, std::multiplies<int32_t>());
+  dim_2 = std::accumulate(input_shape.cbegin() + axis, input_shape.cend(), 1, std::multiplies<int32_t>());
 }
 
 std::string Shape2String(const std::vector<uint32_t>& shape) {

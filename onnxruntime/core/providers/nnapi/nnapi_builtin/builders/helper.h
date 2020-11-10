@@ -98,6 +98,9 @@ bool GetType(const NodeArg& node_arg, int32_t& type);
 // If the min/max are inputs be not initializers (value not preset), will return false
 bool GetClipMinMax(const InitializerMap& initializers, const Node& node, float& min, float& max);
 
+// Get the output shape of Flatten Op
+void GetFlattenOutputShape(const Node& node, const Shape& input_shape, int32_t& dim_1, int32_t& dim_2);
+
 // Get string representation of a Shape
 std::string Shape2String(const std::vector<uint32_t>& shape);
 

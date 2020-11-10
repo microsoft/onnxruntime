@@ -19,7 +19,7 @@ namespace onnxruntime {
 namespace nnapi {
 
 class IOpBuilder;
-class IOPSupportChecker;
+class IOpSupportChecker;
 
 class ModelBuilder {
  public:
@@ -145,7 +145,7 @@ class ModelBuilder {
   std::unordered_map<NodeIndex, int32_t> activation_nodes_;
 
   std::unordered_map<std::string, std::shared_ptr<IOpBuilder>> op_builders_;
-  std::unordered_map<std::string, std::shared_ptr<IOPSupportChecker>> op_support_checkers_;
+  std::unordered_map<std::string, std::shared_ptr<IOpSupportChecker>> op_support_checkers_;
 
   // Operands in nhwc
   std::unordered_set<std::string> nhwc_operands_;
@@ -192,7 +192,7 @@ class ModelBuilder {
                        uint32_t& index) ORT_MUST_USE_RESULT;
 
   IOpBuilder* GetOpBuilder(const Node& node);
-  IOPSupportChecker* GetOPSupportChecker(const Node& node);
+  IOpSupportChecker* GetOPSupportChecker(const Node& node);
 };
 
 }  // namespace nnapi
