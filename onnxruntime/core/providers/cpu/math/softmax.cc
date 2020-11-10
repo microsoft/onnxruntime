@@ -121,7 +121,7 @@ Status Softmax<T>::ComputeImpl(const Tensor& input, Tensor& output, size_t axis,
 
 // opset-13 and above
 template <typename T>
-Status Softmax<T>::ComputeImplOpset13(const Tensor& input, Tensor& output, int64_t axis,
+Status Softmax<T>::ComputeImplOpset13(const Tensor& input, Tensor& output, size_t axis,
                                       concurrency::ThreadPool* thread_pool, OpKernelContext* ctx) const {
   const auto& X_shape = input.Shape();
   size_t rank = X_shape.NumDimensions();
@@ -138,7 +138,7 @@ Status Softmax<T>::ComputeImplOpset13(const Tensor& input, Tensor& output, int64
   // To account for the opset-13 behavior, our plan will be to transpose the "axis" dim to the innermost dim
   // and perform softmax and then reverse the transpose. We can skip the transposing aspect if the axis is already
   // the innermost dim
-  if (axis != (static_cast<int64_t>(rank) - 1)) {
+  if (axis != (rank - 1)) {
     is_transpose_required = true;
   }
 
@@ -151,7 +151,7 @@ Status Softmax<T>::ComputeImplOpset13(const Tensor& input, Tensor& output, int64
     std::iota(std::begin(permutation), std::end(permutation), 0);
 
     // swap the innermost dim with the dim corresponding to axis
-    permutation[axis] = static_cast<int64_t>(rank) - 1;
+    permutation[axis] = rank - 1;
     permutation[rank - 1] = axis;
 
     transposed_input_dims.reserve(rank);
@@ -163,7 +163,7 @@ Status Softmax<T>::ComputeImplOpset13(const Tensor& input, Tensor& output, int64
     Tensor temp_input(input.DataType(), TensorShape(transposed_input_dims), alloc);
 
     // Perform the transpose
-    TransposeBase::DoTranspose(permutation, input, temp_input);
+    ORT_RETURN_IF_ERROR(TransposeBase::DoTranspose(permutation, input, temp_input));
     transposed_input = std::move(temp_input);
 
     // Allocate memory for the intermediate output
@@ -174,13 +174,10 @@ Status Softmax<T>::ComputeImplOpset13(const Tensor& input, Tensor& output, int64
   const size_t N = is_transpose_required ? TensorShape(transposed_input_dims).SizeToDimension(rank - 1) : X_shape.SizeToDimension(rank - 1);
   const size_t D = is_transpose_required ? TensorShape(transposed_input_dims).SizeFromDimension(rank - 1) : X_shape.SizeFromDimension(rank - 1);
 
-  auto status = SoftmaxCPU<T>(N, D,
-                              is_transpose_required ? transposed_input.template Data<T>() : input.template Data<T>(),
-                              is_transpose_required ? intermediate_output.template MutableData<T>() : output.template MutableData<T>(),
-                              log_softmax_, thread_pool);
-  if (!status.IsOK()) {
-    return status;
-  }
+  ORT_RETURN_IF_ERROR(SoftmaxCPU<T>(N, D,
+                                    is_transpose_required ? transposed_input.template Data<T>() : input.template Data<T>(),
+                                    is_transpose_required ? intermediate_output.template MutableData<T>() : output.template MutableData<T>(),
+                                    log_softmax_, thread_pool));
 
   if (is_transpose_required) {
     std::vector<size_t> reverse_permutation(rank);
@@ -188,7 +185,7 @@ Status Softmax<T>::ComputeImplOpset13(const Tensor& input, Tensor& output, int64
       reverse_permutation[permutation[i]] = i;
     }
     // Perform the transpose to get the axes back to the original ordering
-    TransposeBase::DoTranspose(reverse_permutation, intermediate_output, output);
+    ORT_RETURN_IF_ERROR(TransposeBase::DoTranspose(reverse_permutation, intermediate_output, output));
   }
 
   return Status::OK();

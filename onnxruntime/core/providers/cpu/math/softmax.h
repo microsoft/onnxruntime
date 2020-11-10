@@ -40,7 +40,7 @@ class Softmax final : public OpKernel {
   Status ComputeImpl(const Tensor& input, Tensor& output, size_t axis,
                      concurrency::ThreadPool* thread_pool) const;
 
-  Status ComputeImplOpset13(const Tensor& input, Tensor& output, int64_t axis,
+  Status ComputeImplOpset13(const Tensor& input, Tensor& output, size_t axis,
                             concurrency::ThreadPool* thread_pool, OpKernelContext* ctx) const;
 
   int axis_;

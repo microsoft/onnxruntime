@@ -16,7 +16,12 @@ Status Hardmax<float>::Compute(OpKernelContext* ctx) const {
   size_t rank = X_shape.NumDimensions();
   Tensor* Y = ctx->Output(0, X_shape);
 
-  auto axis = HandleNegativeAxis(axis_, X_shape.NumDimensions());  // handle negative and enforce axis is valid
+  // special case when there is a dim value of 0 in the shape.
+  if (X_shape.Size() == 0)
+    return Status::OK();
+
+  // handle negative and enforce axis is valid
+  const size_t axis = static_cast<size_t>(HandleNegativeAxis(axis_, rank));
 
   bool is_transpose_required = false;
   Tensor transposed_input;
@@ -30,7 +35,7 @@ Status Hardmax<float>::Compute(OpKernelContext* ctx) const {
   // To account for the opset-13 behavior, our plan will be to transpose the "axis" dim to the innermost dim
   // and perform softmax and then reverse the transpose. We can skip the transposing aspect if the axis is already
   // the innermost dim
-  if (opset_ >= 13 && axis != (static_cast<int64_t>(rank) - 1)) {
+  if (opset_ >= 13 && axis != (rank - 1)) {
     is_transpose_required = true;
   }
 
@@ -43,7 +48,7 @@ Status Hardmax<float>::Compute(OpKernelContext* ctx) const {
     std::iota(std::begin(permutation), std::end(permutation), 0);
 
     // swap the innermost dim with the dim corresponding to axis
-    permutation[axis] = static_cast<int64_t>(rank) - 1;
+    permutation[axis] = rank - 1;
     permutation[rank - 1] = axis;
 
     transposed_input_dims.reserve(rank);
@@ -55,7 +60,7 @@ Status Hardmax<float>::Compute(OpKernelContext* ctx) const {
     Tensor temp_input(X->DataType(), TensorShape(transposed_input_dims), alloc);
 
     // Perform the transpose
-    TransposeBase::DoTranspose(permutation, *X, temp_input);
+    ORT_RETURN_IF_ERROR(TransposeBase::DoTranspose(permutation, *X, temp_input));
     transposed_input = std::move(temp_input);
 
     // Allocate memory for the intermediate output
@@ -80,8 +85,9 @@ Status Hardmax<float>::Compute(OpKernelContext* ctx) const {
 
   std::vector<float> rowmax_(N);
   float* rowmax_data = rowmax_.data();
-  float* Y_data = nullptr;
+
   const float* X_data = nullptr;
+  float* Y_data = nullptr;
 
   if (is_transpose_required) {  // use intermediate buffers to compute the hardmax values
     X_data = transposed_input.template Data<float>();
@@ -113,7 +119,7 @@ Status Hardmax<float>::Compute(OpKernelContext* ctx) const {
       reverse_permutation[permutation[i]] = i;
     }
     // Perform the transpose to get the axes back to the original ordering
-    TransposeBase::DoTranspose(reverse_permutation, intermediate_output, *Y);
+    ORT_RETURN_IF_ERROR(TransposeBase::DoTranspose(reverse_permutation, intermediate_output, *Y));
   }
 
   return Status::OK();
