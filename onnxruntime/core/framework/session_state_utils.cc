@@ -139,7 +139,7 @@ common::Status SaveInitializedTensors(
     }
     id_to_initialized_tensor[ort_value_index] = entry.second;
   }
-  
+
   // tensors requiring a specific allocation order are traced first, to ensure they are allocated in order
   auto initialized_tensors_to_allocate = id_to_initialized_tensor;
   for (int ort_value_index : initializer_allocation_order) {
@@ -172,7 +172,7 @@ common::Status SaveInitializedTensors(
   OrtCallback deleter{nullptr, nullptr};
 
   //3. create weight tensors based on weights buffer
-  for (const auto& entry : id_to_initialized_tensor) {
+  for (const auto& entry : initialized_tensors_to_allocate) {
     int ort_value_index = entry.first;
     const char* name = (entry.second->name().empty()) ? "" : entry.second->name().c_str();
     OrtValue ort_value;
