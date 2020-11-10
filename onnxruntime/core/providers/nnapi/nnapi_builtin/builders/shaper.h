@@ -128,7 +128,5 @@ class Shaper {
   std::vector<std::function<Status(Shaper&)>> shape_ops_;
 };
 
-std::string Shape2String(const Shaper::Shape& shape);
-
 }  // namespace nnapi
 }  // namespace onnxruntime

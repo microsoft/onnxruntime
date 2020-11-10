@@ -3,12 +3,18 @@
 //
 #pragma once
 
-#include <core/graph/graph.h>
 #include <string>
-
+#include "core/graph/basic_types.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksTypes.h"
 
 namespace onnxruntime {
+
+using Shape = std::vector<uint32_t>;
+using InitializerMap = std::unordered_map<std::string, const ONNX_NAMESPACE::TensorProto&>;
+
+class Node;
+class NodeArg;
+
 namespace nnapi {
 
 #define THROW_ON_ERROR(val)                  \
@@ -68,6 +74,35 @@ QLinearOpType GetQLinearOpType(const onnxruntime::Node& node);
 // This qlinear op is an operator takes 2 input and produces 1 output
 // Such as QLinearConv, QLinearMatMul, QLinearAdd, ...
 bool IsQLinearBinaryOp(QLinearOpType qlinear_op_type);
+
+// Check if a qlinear binary op has valid inputs
+bool HasValidBinaryOpQuantizedInputs(const Node& node);
+// Check if a qlinear op has valid scales for given indices
+bool HasValidQuantizationScales(const InitializerMap& initializers, const Node& node,
+                                const std::vector<size_t>& indices);
+// Check if a qlinear op has valid zero points for given indices
+bool HasValidQuantizationZeroPoints(const InitializerMap& initializers, const Node& node,
+                                    const std::vector<size_t>& indices);
+
+// Get initialize tensort float/int32/int64 data without unpacking
+// TODO, move to ort framework
+const float* GetTensorFloatData(const ONNX_NAMESPACE::TensorProto& tensor);
+const int32_t* GetTensorInt32Data(const ONNX_NAMESPACE::TensorProto& tensor);
+const int64_t* GetTensorInt64Data(const ONNX_NAMESPACE::TensorProto& tensor);
+
+// Get Shape/Type of a NodeArg
+bool GetShape(const NodeArg& node_arg, Shape& shape);
+bool GetType(const NodeArg& node_arg, int32_t& type);
+
+// Get the min/max value from Clip op
+// If the min/max are inputs be not initializers (value not preset), will return false
+bool GetClipMinMax(const InitializerMap& initializers, const Node& node, float& min, float& max);
+
+// Get the output shape of Flatten Op
+void GetFlattenOutputShape(const Node& node, const Shape& input_shape, int32_t& dim_1, int32_t& dim_2);
+
+// Get string representation of a Shape
+std::string Shape2String(const std::vector<uint32_t>& shape);
 
 /**
  * Wrapping onnxruntime::Node for retrieving attribute values
