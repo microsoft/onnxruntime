@@ -413,7 +413,7 @@ static bool read_config_file(const std::basic_string<PATH_CHAR_TYPE>& path, std:
 
 //load tensors from disk
 template <typename PATH_STRING_TYPE>
-static void LoadTensor(PATH_STRING_TYPE& pb_file, ONNX_NAMESPACE::TensorProto& input_pb) {
+static void LoadTensor(const PATH_STRING_TYPE& pb_file, ONNX_NAMESPACE::TensorProto& input_pb) {
   int tensor_fd;
   auto st = Env::Default().FileOpenRd(pb_file, tensor_fd);
   if (!st.IsOK()) {
@@ -428,7 +428,7 @@ static void LoadTensor(PATH_STRING_TYPE& pb_file, ONNX_NAMESPACE::TensorProto& i
 
 //load sequence tensors from disk
 template <typename PATH_STRING_TYPE>
-static void LoadSequenceTensor(PATH_STRING_TYPE& pb_file, ONNX_NAMESPACE::SequenceProto& input_pb) {
+static void LoadSequenceTensor(const PATH_STRING_TYPE& pb_file, ONNX_NAMESPACE::SequenceProto& input_pb) {
   int tensor_fd;
   auto st = Env::Default().FileOpenRd(pb_file, tensor_fd);
   if (!st.IsOK()) {
@@ -520,8 +520,10 @@ void OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::TensorProto& test_data_
                                    onnxruntime::test::HeapBuffer& b,
                                    bool is_input, size_t i,
                                    std::unordered_map<std::string, Ort::Value>& out) const {
-  std::string name = test_data_pb.name();
-  std::string name_finalized = !name.empty() ? name : (is_input ? model_info_->GetInputName(i) : model_info_->GetOutputName(i));
+  const std::string& name = test_data_pb.name();
+  const std::string& name_finalized = !name.empty()
+                                          ? name
+                                          : (is_input ? model_info_->GetInputName(i) : model_info_->GetOutputName(i));
 
   size_t len = 0;
 
@@ -548,8 +550,10 @@ void OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::SequenceProto& test_dat
                                    onnxruntime::test::HeapBuffer& b,
                                    bool is_input, size_t i,
                                    std::unordered_map<std::string, Ort::Value>& out) const {
-  std::string name = test_data_pb.name();
-  std::string name_finalized = !name.empty() ? name : (is_input ? model_info_->GetInputName(i) : model_info_->GetOutputName(i));
+  const std::string& name = test_data_pb.name();
+  const std::string& name_finalized = !name.empty()
+                                          ? name
+                                          : (is_input ? model_info_->GetInputName(i) : model_info_->GetOutputName(i));
 
   size_t len = 0;
 

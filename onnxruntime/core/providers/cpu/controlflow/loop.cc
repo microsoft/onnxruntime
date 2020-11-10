@@ -20,7 +20,7 @@
 #include "core/framework/utils.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/framework/session_options.h"
-#include "core/framework//TensorSeq.h"
+#include "core/framework/TensorSeq.h"
 
 #include "gsl/gsl"
 
@@ -508,7 +508,7 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
       if (!status.IsOK()) {
         ORT_THROW("Unable to get an allocator");
       }
-      for (auto it = data.begin(); it != data.end(); ++it) {
+      for (auto it = data.begin(), end = data.end(); it != end; ++it) {
         Tensor tmp(it->DataType(), onnxruntime::TensorShape(it->Shape()), alloc);
         session_state_.GetDataTransferMgr().CopyTensor(*it, tmp);
         tensors.push_back(std::move(tmp));

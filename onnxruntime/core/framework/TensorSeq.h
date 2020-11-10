@@ -28,9 +28,9 @@ class TensorSeq {
   }
 
   void SetElements(std::vector<Tensor>&& tensors) {
-    // TODO:
-    // (1) Do we want to ensure elem_type is set before accepting tensors ?
-    // (2) Validate all tensors are of the same (primitive) type
+    // The caller of this method ensures that :
+    // (1) `elem_type` is set before invoking this method
+    // (2) All tensors contain elements of the same primitive data type
     assert(tensors_.empty());
     tensors_ = std::move(tensors);
   }

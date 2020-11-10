@@ -56,16 +56,6 @@
         "^test_logsoftmax_large_number_expanded_cpu",
         "^test_logsoftmax_negative_axis_cpu",
         "^test_logsoftmax_negative_axis_expanded_cpu",
-        "^test_reduce_sum_default_axes_keepdims_example_cpu", // NOT_IMPLEMENTED : Could not find an implementation for the node ReduceSum(13)
-        "^test_reduce_sum_default_axes_keepdims_random_cpu",
-        "^test_reduce_sum_do_not_keepdims_example_cpu",
-        "^test_reduce_sum_do_not_keepdims_random_cpu",
-        "^test_reduce_sum_empty_axes_input_noop_example_cpu",
-        "^test_reduce_sum_empty_axes_input_noop_random_cpu",
-        "^test_reduce_sum_keepdims_example_cpu",
-        "^test_reduce_sum_keepdims_random_cpu",
-        "^test_reduce_sum_negative_axes_keepdims_example_cpu",
-        "^test_reduce_sum_negative_axes_keepdims_random_cpu",
         "^test_resize_downsample_scales_cubic_A_n0p5_exclude_outside_cpu", // NOT_IMPLEMENTED : Could not find an implementation for the node Resize(13)
         "^test_resize_downsample_scales_cubic_cpu",
         "^test_resize_downsample_scales_linear_cpu",
@@ -103,23 +93,7 @@
         "^test_softmax_large_number_cpu", 
         "^test_softmax_large_number_expanded_cpu", 
         "^test_softmax_negative_axis_cpu", 
-        "^test_softmax_negative_axis_expanded_cpu", 
-        "^test_split_equal_parts_1d_cpu", // NOT_IMPLEMENTED : Could not find an implementation for the node Split(13)
-        "^test_split_equal_parts_2d_cpu", 
-        "^test_split_equal_parts_default_axis_cpu", 
-        "^test_split_variable_parts_1d_cpu", 
-        "^test_split_variable_parts_2d_cpu", 
-        "^test_split_variable_parts_default_axis_cpu", 
-        "^test_split_zero_size_splits_cpu", 
-        "^test_squeeze_cpu", // NOT_IMPLEMENTED : Could not find an implementation for the node Squeeze(13)
-        "^test_squeeze_negative_axes_cpu", 
-        "^test_unsqueeze_axis_0_cpu", // NOT_IMPLEMENTED : Could not find an implementation for the node Unsqueeze(13)
-        "^test_unsqueeze_axis_1_cpu", 
-        "^test_unsqueeze_axis_2_cpu", 
-        "^test_unsqueeze_negative_axes_cpu", 
-        "^test_unsqueeze_three_axes_cpu", 
-        "^test_unsqueeze_two_axes_cpu", 
-        "^test_unsqueeze_unsorted_axes_cpu"
+        "^test_softmax_negative_axis_expanded_cpu"
     ],
     "current_failing_tests_x86": [
         "^test_vgg19",
@@ -203,7 +177,14 @@
         "^test_softmax_cross_entropy.*", // Does not support 5-D or above tensors for SUB op.
         "^test_sce.*",
         "^test_nllloss.*",
-        "^test_gather_negative_indices.*"
+        "^test_gather_negative_indices.*",
+        "^test_reduce_sum_do_not_keepdims*",  // Does not support axes as input
+        "^test_reduce_sum_keepdims*",
+        "^test_reduce_sum_default_axes_keepdims*",
+        "^test_reduce_sum_negative_axes_keepdims*",
+        "^test_reduce_sum_empty_axes_input_noop*",
+        "^test_unsqueeze_*",  // Does not support axes as input
+        "^test_squeeze_*"   // Does not support axes as input
     ],
     "current_failing_tests_OPENVINO_CPU_FP32": [
         "^test_operator_permute2",
@@ -215,7 +196,14 @@
         "^test_gather_negative_indices.*",
         "^test_sce.*",
         "^test_nllloss.*",
-        "^test_upsample_nearest.*"
+        "^test_upsample_nearest.*",
+        "^test_reduce_sum_do_not_keepdims*",  // Does not support axes as input
+        "^test_reduce_sum_keepdims*",
+        "^test_reduce_sum_default_axes_keepdims*",
+        "^test_reduce_sum_negative_axes_keepdims*",
+        "^test_reduce_sum_empty_axes_input_noop*",
+        "^test_unsqueeze_*",  // Does not support axes as input
+        "^test_squeeze_*"   // Does not support axes as input
     ],
     // ORT first supported opset 7, so models with nodes that require versions prior to opset 7 are not supported
     "tests_with_pre_opset7_dependencies": [

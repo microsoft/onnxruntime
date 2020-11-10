@@ -914,27 +914,13 @@ const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeTensorTypes() {
 }
 
 const std::vector<MLDataType>& DataTypeImpl::AllTensorTypes() {
-  static std::vector<MLDataType> all_tensor_types =
-      {DataTypeImpl::GetTensorType<float>(),
-       DataTypeImpl::GetTensorType<double>(),
-       DataTypeImpl::GetTensorType<int64_t>(),
-       DataTypeImpl::GetTensorType<uint64_t>(),
-       DataTypeImpl::GetTensorType<int32_t>(),
-       DataTypeImpl::GetTensorType<uint32_t>(),
-       DataTypeImpl::GetTensorType<int16_t>(),
-       DataTypeImpl::GetTensorType<uint16_t>(),
-       DataTypeImpl::GetTensorType<int8_t>(),
-       DataTypeImpl::GetTensorType<uint8_t>(),
-       DataTypeImpl::GetTensorType<MLFloat16>(),
-       DataTypeImpl::GetTensorType<BFloat16>(),
-       DataTypeImpl::GetTensorType<bool>(),
-       DataTypeImpl::GetTensorType<std::string>()};
-
+  static std::vector<MLDataType> all_tensor_types = AllFixedSizeTensorTypes();
+  all_tensor_types.emplace_back(DataTypeImpl::GetTensorType<std::string>());
   return all_tensor_types;
 }
 
-const std::vector<MLDataType>& DataTypeImpl::AllSequenceTensorTypes() {
-  static std::vector<MLDataType> all_sequence_tensor_types =
+const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeSequenceTensorTypes() {
+  static std::vector<MLDataType> all_fixed_size_sequence_tensor_types =
       {DataTypeImpl::GetSequenceTensorType<float>(),
        DataTypeImpl::GetSequenceTensorType<double>(),
        DataTypeImpl::GetSequenceTensorType<int64_t>(),
@@ -947,9 +933,14 @@ const std::vector<MLDataType>& DataTypeImpl::AllSequenceTensorTypes() {
        DataTypeImpl::GetSequenceTensorType<uint8_t>(),
        DataTypeImpl::GetSequenceTensorType<MLFloat16>(),
        DataTypeImpl::GetSequenceTensorType<BFloat16>(),
-       DataTypeImpl::GetSequenceTensorType<bool>(),
-       DataTypeImpl::GetSequenceTensorType<std::string>()};
+       DataTypeImpl::GetSequenceTensorType<bool>()};
 
+  return all_fixed_size_sequence_tensor_types;
+}
+
+const std::vector<MLDataType>& DataTypeImpl::AllSequenceTensorTypes() {
+  static std::vector<MLDataType> all_sequence_tensor_types = AllFixedSizeSequenceTensorTypes();
+  all_sequence_tensor_types.emplace_back(DataTypeImpl::GetSequenceTensorType<std::string>());
   return all_sequence_tensor_types;
 }
 
@@ -972,67 +963,25 @@ const std::vector<MLDataType>& DataTypeImpl::AllNumericTensorTypes() {
 }
 
 const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypes() {
-  static std::vector<MLDataType> all_fixed_size_tensor_and_sequence_types =
-      {DataTypeImpl::GetTensorType<float>(),
-       DataTypeImpl::GetTensorType<double>(),
-       DataTypeImpl::GetTensorType<int64_t>(),
-       DataTypeImpl::GetTensorType<uint64_t>(),
-       DataTypeImpl::GetTensorType<int32_t>(),
-       DataTypeImpl::GetTensorType<uint32_t>(),
-       DataTypeImpl::GetTensorType<int16_t>(),
-       DataTypeImpl::GetTensorType<uint16_t>(),
-       DataTypeImpl::GetTensorType<int8_t>(),
-       DataTypeImpl::GetTensorType<uint8_t>(),
-       DataTypeImpl::GetTensorType<MLFloat16>(),
-       DataTypeImpl::GetTensorType<BFloat16>(),
-       DataTypeImpl::GetTensorType<bool>(),
-       DataTypeImpl::GetSequenceTensorType<float>(),
-       DataTypeImpl::GetSequenceTensorType<double>(),
-       DataTypeImpl::GetSequenceTensorType<int64_t>(),
-       DataTypeImpl::GetSequenceTensorType<uint64_t>(),
-       DataTypeImpl::GetSequenceTensorType<int32_t>(),
-       DataTypeImpl::GetSequenceTensorType<uint32_t>(),
-       DataTypeImpl::GetSequenceTensorType<int16_t>(),
-       DataTypeImpl::GetSequenceTensorType<uint16_t>(),
-       DataTypeImpl::GetSequenceTensorType<int8_t>(),
-       DataTypeImpl::GetSequenceTensorType<uint8_t>(),
-       DataTypeImpl::GetSequenceTensorType<MLFloat16>(),
-       DataTypeImpl::GetSequenceTensorType<BFloat16>(),
-       DataTypeImpl::GetSequenceTensorType<bool>()};
+  static std::vector<MLDataType> all_fixed_size_tensor_and_sequence_tensor_types =
+      []() {
+        auto t = AllFixedSizeTensorTypes();
+        const auto& s = AllFixedSizeSequenceTensorTypes();
+        t.insert(t.end(), s.begin(), s.end());
+        return t;
+      }();
 
-  return all_fixed_size_tensor_and_sequence_types;
+  return all_fixed_size_tensor_and_sequence_tensor_types;
 }
 
 const std::vector<MLDataType>& DataTypeImpl::AllTensorAndSequenceTensorTypes() {
   static std::vector<MLDataType> all_tensor_and_sequence_types =
-      {DataTypeImpl::GetTensorType<float>(),
-       DataTypeImpl::GetTensorType<double>(),
-       DataTypeImpl::GetTensorType<int64_t>(),
-       DataTypeImpl::GetTensorType<uint64_t>(),
-       DataTypeImpl::GetTensorType<int32_t>(),
-       DataTypeImpl::GetTensorType<uint32_t>(),
-       DataTypeImpl::GetTensorType<int16_t>(),
-       DataTypeImpl::GetTensorType<uint16_t>(),
-       DataTypeImpl::GetTensorType<int8_t>(),
-       DataTypeImpl::GetTensorType<uint8_t>(),
-       DataTypeImpl::GetTensorType<MLFloat16>(),
-       DataTypeImpl::GetTensorType<BFloat16>(),
-       DataTypeImpl::GetTensorType<bool>(),
-       DataTypeImpl::GetTensorType<std::string>(),
-       DataTypeImpl::GetSequenceTensorType<float>(),
-       DataTypeImpl::GetSequenceTensorType<double>(),
-       DataTypeImpl::GetSequenceTensorType<int64_t>(),
-       DataTypeImpl::GetSequenceTensorType<uint64_t>(),
-       DataTypeImpl::GetSequenceTensorType<int32_t>(),
-       DataTypeImpl::GetSequenceTensorType<uint32_t>(),
-       DataTypeImpl::GetSequenceTensorType<int16_t>(),
-       DataTypeImpl::GetSequenceTensorType<uint16_t>(),
-       DataTypeImpl::GetSequenceTensorType<int8_t>(),
-       DataTypeImpl::GetSequenceTensorType<uint8_t>(),
-       DataTypeImpl::GetSequenceTensorType<MLFloat16>(),
-       DataTypeImpl::GetSequenceTensorType<BFloat16>(),
-       DataTypeImpl::GetSequenceTensorType<bool>(),
-       DataTypeImpl::GetSequenceTensorType<std::string>()};
+      []() {
+        auto t = AllTensorTypes();
+        const auto& s = AllSequenceTensorTypes();
+        t.insert(t.end(), s.begin(), s.end());
+        return t;
+      }();
 
   return all_tensor_and_sequence_types;
 }
