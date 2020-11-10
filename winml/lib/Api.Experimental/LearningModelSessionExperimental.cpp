@@ -5,10 +5,12 @@
 
 namespace WINML_EXPERIMENTALP {
 
-LearningModelSessionExperimental::LearningModelSessionExperimental(Microsoft::AI::MachineLearning::LearningModelSession const& session) : _session(session) {}
+LearningModelSessionExperimental::LearningModelSessionExperimental(LearningModelSession session) {
+  _session = session;
+}
 
-LearningModelSessionOptionsExperimental LearningModelSessionExperimental::Options() {
-  return winrt::make<WINML_EXPERIMENTAL::LearningModelSessionOptionsExperimental>(_session);
+LearningModelSessionOptions LearningModelSessionExperimental::Options() {
+  throw hresult_not_implemented();
 }
 
 }  // namespace WINML_EXPERIMENTALP

@@ -45,7 +45,7 @@ namespace ROOT_NS.AI.MachineLearning.Experimental {
   [dualapipartition(1)]
   runtimeclass LearningModelSessionExperimental {
     LearningModelSessionExperimental(ROOT_NS.AI.MachineLearning.LearningModelSession session);
-    LearningModelSessionOptionsExperimental Options { get; };
+    ROOT_NS.AI.MachineLearning.LearningModelSessionOptions Options { get; };
   }
 
 }  // namespace Microsoft.AI.MachineLearning.Experimental

@@ -332,8 +332,6 @@ static void NamedDimensionOverride()
   LearningModelSession session(nullptr);
   WINML_EXPECT_NO_THROW(session = LearningModelSession(model, device, options));
 
-  
-
   ILearningModelFeatureDescriptor descriptor = model.InputFeatures().GetAt(0);
   TensorFeatureDescriptor tensorDescriptor = nullptr;
   descriptor.as(tensorDescriptor);
@@ -453,10 +451,6 @@ static void SetIntraOpNumThreads() {
     nativeSession = session.as<ILearningModelSessionNative>();
     WINML_EXPECT_NO_THROW(nativeSession->GetIntraOpNumThreads(&numIntraOpThreads));
     WINML_EXPECT_EQUAL(std::thread::hardware_concurrency(), numIntraOpThreads);
- }
-
-static void VerifyNamedDimensionOverrides() {
-
  }
 
 const LearningModelSessionAPITestsApi& getapi() {
