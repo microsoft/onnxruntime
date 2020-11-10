@@ -7,11 +7,15 @@
 
 #include "gtest/gtest.h"
 
+#include "core/common/optional.h"
 #include "core/providers/cuda/reduction/reduction_functions.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/util/include/asserts.h"
 
+using onnxruntime::test::RandomValueGenerator;
+
 namespace onnxruntime {
+namespace cuda {
 namespace test {
 
 namespace {
@@ -55,7 +59,7 @@ void TestReduceRowToScalarApis(int size, float relative_error_tolerance = 1e-4f)
     expected_output_mean += input_value / float(size);
   }
   const auto buffer_size_in_bytes =
-      cuda::compute_reduction_buffer_size<float>(size);
+      compute_reduction_buffer_size<float>(size);
 
   auto device_input = AllocateDeviceMemory<float>(size);
   auto device_output_sum = AllocateDeviceMemory<float>();
@@ -65,19 +69,19 @@ void TestReduceRowToScalarApis(int size, float relative_error_tolerance = 1e-4f)
 
   cudaMemcpy(device_input.get(), input.data(), size * sizeof(float), cudaMemcpyHostToDevice);
 
-  ASSERT_STATUS_OK(cuda::reduce_sum(
+  ASSERT_STATUS_OK(reduce_sum(
       device_input.get(),
       device_output_sum.get(),
       size,
       buffer.get(),
       buffer_size_in_bytes));
-  ASSERT_STATUS_OK(cuda::reduce_square_sum(
+  ASSERT_STATUS_OK(reduce_square_sum(
       device_input.get(),
       device_output_square_sum.get(),
       size,
       buffer.get(),
       buffer_size_in_bytes));
-  ASSERT_STATUS_OK(cuda::reduce_mean(
+  ASSERT_STATUS_OK(reduce_mean(
       device_input.get(),
       device_output_mean.get(),
       size,
@@ -116,10 +120,10 @@ void TestReduceRowsToRow(int m, int n, bool reset_initial_output, float relative
 
   if (!reset_initial_output) {
     // manually initialize output data
-    cuda::Fill(d_out.get(), initial_value, n);
+    Fill(d_out.get(), initial_value, n);
   }
 
-  ASSERT_STATUS_OK(cuda::reduce_matrix_rows(
+  ASSERT_STATUS_OK(reduce_matrix_rows(
       d_in.get(), d_out.get(),
       m, n,
       reset_initial_output));
@@ -155,10 +159,10 @@ void TestReduceColumnsToColumn(int m, int n, float relative_error_tolerance = 1e
   cudaMemcpy(d_in.get(), values.data(), m * n * sizeof(float), cudaMemcpyHostToDevice);
 
   size_t buffer_size_in_bytes =
-      cuda::compute_reduce_matrix_columns_buffer_size<float>(m, n);
+      compute_reduce_matrix_columns_buffer_size<float>(m, n);
   auto d_buffer = AllocateDeviceMemory<char>(buffer_size_in_bytes);
 
-  ASSERT_STATUS_OK(cuda::reduce_matrix_columns(
+  ASSERT_STATUS_OK(reduce_matrix_columns(
       d_in.get(), d_out.get(),
       m, n,
       d_buffer.get(), buffer_size_in_bytes));
@@ -202,7 +206,7 @@ TEST(ReductionFunctionsTest, BufferOffsets) {
   const size_t max_buffer_offset = 15;
 
   const size_t buffer_size_in_bytes =
-      cuda::compute_reduce_matrix_columns_buffer_size<double>(m, n) + max_buffer_offset;
+      compute_reduce_matrix_columns_buffer_size<double>(m, n) + max_buffer_offset;
 
   auto d_input = AllocateDeviceMemory<double>(m * n);
   auto d_output = AllocateDeviceMemory<double>(m);
@@ -217,7 +221,7 @@ TEST(ReductionFunctionsTest, BufferOffsets) {
     const auto input = random.Uniform<double>({m, n}, 1.0, 10.0);
     cudaMemcpy(d_input.get(), input.data(), m * n * sizeof(double), cudaMemcpyHostToDevice);
 
-    ASSERT_STATUS_OK(cuda::reduce_matrix_columns(
+    ASSERT_STATUS_OK(reduce_matrix_columns(
         d_input.get(), d_output.get(),
         m, n,
         d_buffer.get() + buffer_offset,
@@ -234,7 +238,7 @@ TEST(ReductionFunctionsTest, InvalidBufferSize) {
 
   // this should be too small
   const size_t buffer_size_in_bytes =
-      cuda::compute_reduce_matrix_columns_buffer_size<float>(m, n) / 10;
+      compute_reduce_matrix_columns_buffer_size<float>(m, n) / 10;
 
   auto d_input = AllocateDeviceMemory<float>(m * n);
   auto d_output = AllocateDeviceMemory<float>(m);
@@ -245,64 +249,108 @@ TEST(ReductionFunctionsTest, InvalidBufferSize) {
   cudaMemcpy(d_input.get(), input.data(), m * n * sizeof(float), cudaMemcpyHostToDevice);
 
   const auto status =
-      cuda::reduce_matrix_columns(d_input.get(), d_output.get(), m, n, d_buffer.get(), buffer_size_in_bytes);
+      reduce_matrix_columns(d_input.get(), d_output.get(), m, n, d_buffer.get(), buffer_size_in_bytes);
   ASSERT_FALSE(status.IsOK());
 }
 
 TEST(ReductionFunctionsTest, GetApplicableMatrixReduction) {
+  auto test_get_applicable_matrix_reduction =
+      [](cudnnReduceTensorOp_t cudnn_op,
+         const std::vector<int64_t>& dims, const std::vector<int64_t>& axes,
+         ApplicableMatrixReduction expected_reduction,
+         const optional<int>& expected_m = nullopt,
+         const optional<int>& expected_n = nullopt) {
+        SCOPED_TRACE(MakeString(
+            "cudnn_op: ", cudnn_op,
+            ", dims: ", TensorShape::ReinterpretBaseType(dims),
+            ", axes: ", TensorShape::ReinterpretBaseType(axes)));
+        int m{}, n{};
+        EXPECT_EQ(
+            static_cast<int>(get_applicable_matrix_reduction(cudnn_op, dims, axes, m, n)),
+            static_cast<int>(expected_reduction));
+        if (expected_m) {
+          EXPECT_EQ(m, *expected_m);
+        }
+        if (expected_n) {
+          EXPECT_EQ(n, *expected_n);
+        }
+      };
+
   const cudnnReduceTensorOp_t valid_op_type = CUDNN_REDUCE_TENSOR_ADD;
-  int m{}, n{};
 
   // contiguous axes from beginning
-  EXPECT_EQ(
-      cuda::get_applicable_matrix_reduction(
-          valid_op_type, {2, 4, 8, 16}, {0, 1}, m, n),
-      cuda::ApplicableMatrixReduction::Rows);
-  EXPECT_EQ(m, 2 * 4);
-  EXPECT_EQ(n, 8 * 16);
+  test_get_applicable_matrix_reduction(
+      valid_op_type, {2, 4, 8, 16}, {0, 1},
+      ApplicableMatrixReduction::Rows, 2 * 4, 8 * 16);
 
   // contiguous axes to end
-  EXPECT_EQ(
-      cuda::get_applicable_matrix_reduction(
-          valid_op_type, {2, 4, 8, 16}, {1, 2, 3}, m, n),
-      cuda::ApplicableMatrixReduction::Columns);
-  EXPECT_EQ(m, 2);
-  EXPECT_EQ(n, 4 * 8 * 16);
+  test_get_applicable_matrix_reduction(
+      valid_op_type, {2, 4, 8, 16}, {1, 2, 3},
+      ApplicableMatrixReduction::Columns, 2, 4 * 8 * 16);
 
   // single axis
-  EXPECT_EQ(
-      cuda::get_applicable_matrix_reduction(
-          valid_op_type, {2, 4, 8, 16}, {3}, m, n),
-      cuda::ApplicableMatrixReduction::Columns);
-  EXPECT_EQ(m, 2 * 4 * 8);
-  EXPECT_EQ(n, 16);
+  test_get_applicable_matrix_reduction(
+      valid_op_type, {2, 4, 8, 16}, {3},
+      ApplicableMatrixReduction::Columns, 2 * 4 * 8, 16);
+
+  // empty axes
+  test_get_applicable_matrix_reduction(
+      valid_op_type, {2, 4, 8, 16}, {},
+      ApplicableMatrixReduction::Rows, 2 * 4 * 8 * 16, 1);
+
+  // all axes
+  test_get_applicable_matrix_reduction(
+      valid_op_type, {2, 4, 8, 16}, {0, 1, 2, 3},
+      ApplicableMatrixReduction::Rows, 2 * 4 * 8 * 16, 1);
+
+  // handle ones
+  test_get_applicable_matrix_reduction(
+      valid_op_type, {1, 2, 1, 1, 4, 1, 8, 1}, {0},
+      ApplicableMatrixReduction::Rows, 1, 2 * 4 * 8);
+  test_get_applicable_matrix_reduction(
+      valid_op_type, {1, 2, 1, 1, 4, 1, 8, 1}, {1},
+      ApplicableMatrixReduction::Rows, 2, 4 * 8);
+  test_get_applicable_matrix_reduction(
+      valid_op_type, {1, 2, 1, 1, 4, 1, 8, 1}, {1, 3},
+      ApplicableMatrixReduction::Rows, 2, 4 * 8);
+  test_get_applicable_matrix_reduction(
+      valid_op_type, {1, 2, 1, 1, 4, 1, 8, 1}, {1, 3, 4},
+      ApplicableMatrixReduction::Rows, 2 * 4, 8);
+  test_get_applicable_matrix_reduction(
+      valid_op_type, {1, 2, 1, 1, 4, 1, 8, 1}, {1, 3, 4, 6},
+      ApplicableMatrixReduction::Rows, 2 * 4 * 8, 1);
+  test_get_applicable_matrix_reduction(
+      valid_op_type, {1, 2, 1, 1, 4, 1, 8, 1}, {3, 4, 6},
+      ApplicableMatrixReduction::Columns, 2, 4 * 8);
+  test_get_applicable_matrix_reduction(
+      valid_op_type, {1, 2, 1, 1, 4, 1, 8, 1}, {4, 6},
+      ApplicableMatrixReduction::Columns, 2, 4 * 8);
+  test_get_applicable_matrix_reduction(
+      valid_op_type, {1, 2, 1, 1, 4, 1, 8, 1}, {6},
+      ApplicableMatrixReduction::Columns, 2 * 4, 8);
+  test_get_applicable_matrix_reduction(
+      valid_op_type, {1, 2, 1, 1, 4, 1, 8, 1}, {7},
+      ApplicableMatrixReduction::Columns, 2 * 4 * 8, 1);
 
   // unsupported axes
-  EXPECT_EQ(
-      cuda::get_applicable_matrix_reduction(
-          valid_op_type, {2, 4, 8, 16}, {0, 1, 2, 3}, m, n),
-      cuda::ApplicableMatrixReduction::None);
-  EXPECT_EQ(
-      cuda::get_applicable_matrix_reduction(
-          valid_op_type, {2, 4, 8, 16}, {}, m, n),
-      cuda::ApplicableMatrixReduction::None);
-  EXPECT_EQ(
-      cuda::get_applicable_matrix_reduction(
-          valid_op_type, {2, 4, 8, 16, 32, 64}, {0, 1, 3, 4}, m, n),
-      cuda::ApplicableMatrixReduction::None);
-  EXPECT_EQ(
-      cuda::get_applicable_matrix_reduction(
-          valid_op_type, {2, 4, 8, 16}, {1, 2}, m, n),
-      cuda::ApplicableMatrixReduction::None);
+  test_get_applicable_matrix_reduction(
+      valid_op_type, {2, 4, 8, 16, 32, 64}, {0, 1, 3, 4},
+      ApplicableMatrixReduction::None);
+  test_get_applicable_matrix_reduction(
+      valid_op_type, {2, 4, 8, 16}, {1, 2},
+      ApplicableMatrixReduction::None);
+  test_get_applicable_matrix_reduction(
+      valid_op_type, {1, 2, 1, 1, 4, 1, 8, 1}, {3, 6},
+      ApplicableMatrixReduction::None);
 
   // invalid op type
-  EXPECT_EQ(
-      cuda::get_applicable_matrix_reduction(
-          CUDNN_REDUCE_TENSOR_MAX, {2, 4, 8, 16}, {0, 1}, m, n),
-      cuda::ApplicableMatrixReduction::None);
+  test_get_applicable_matrix_reduction(
+      CUDNN_REDUCE_TENSOR_MAX, {2, 4, 8, 16}, {0, 1},
+      ApplicableMatrixReduction::None);
 }
 
 }  // namespace test
+}  // namespace cuda
 }  // namespace onnxruntime
 
 #endif
