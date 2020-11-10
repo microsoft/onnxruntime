@@ -884,9 +884,9 @@ def run_onnxruntime(args, models):
         ep_list.append(args.ep)
     else:
         if args.fp16:
-            ep_list = ["CUDAExecutionProvider", "TensorrtExecutionProvider", "CUDAExecutionProvider_fp16", "TensorrtExecutionProvider_fp16"]
+            ep_list = ["CPUExecutionProvider", "CUDAExecutionProvider", "TensorrtExecutionProvider", "CUDAExecutionProvider_fp16", "TensorrtExecutionProvider_fp16"]
         else:
-            ep_list = ["CUDAExecutionProvider", "TensorrtExecutionProvider"]
+            ep_list = ["CPUExecutionProvider", "CUDAExecutionProvider", "TensorrtExecutionProvider"]
 
     validation_exemption = ["TensorrtExecutionProvider_fp16"]
 
@@ -1004,7 +1004,6 @@ def run_onnxruntime(args, models):
                     logger.info("Model outputs nodes:")
                     for output_meta in sess.get_outputs():
                         logger.info(output_meta)
-
 
                 batch_size = 1
                 result_template = {
@@ -1186,12 +1185,14 @@ def output_latency(results, csv_filename):
 
     with open(csv_filename, mode="a", newline='') as csv_file:
         column_names = ["Model",
-                        "CUDA \nmean (ms)",
-                        "CUDA \n90th percentile (ms)",
-                        "TRT EP \nmean (ms)",
-                        "TRT EP \n90th percentile (ms)",
-                        "Standalone TRT \nmean (ms)",
-                        "Standalone TRT \n90th percentile (ms)",
+                        "CPU \nmean (ms)",
+                        "CPU \n 90th percentile (ms)",
+                        "CUDA fp32 \nmean (ms)",
+                        "CUDA fp32 \n90th percentile (ms)",
+                        "TRT EP fp32 \nmean (ms)",
+                        "TRT EP fp32 \n90th percentile (ms)",
+                        "Standalone TRT fp32 \nmean (ms)",
+                        "Standalone TRT fp32 \n90th percentile (ms)",
                         "CUDA fp16 \nmean (ms)",
                         "CUDA fp16 \n90th percentile (ms)",
                         "TRT EP fp16 \nmean (ms)",
@@ -1206,6 +1207,14 @@ def output_latency(results, csv_filename):
             csv_writer.writerow(column_names)
 
         for key, value in results.items():
+            cpu_average = "" 
+            if "CPUExecutionProvider" in value and "average_latency_ms" in value["CPUExecutionProvider"]:
+                cpu_average = value["CPUExecutionProvider"]["average_latency_ms"]
+
+            cpu_99_percentile = ""
+            if "CPUExecutionProvider" in value and "latency_90_percentile" in value["CPUExecutionProvider"]:
+                cpu_99_percentile = value["CPUExecutionProvider"]["latency_90_percentile"]
+
             cuda_average = ""
             if 'CUDAExecutionProvider' in value and 'average_latency_ms' in value['CUDAExecutionProvider']:
                 cuda_average = value['CUDAExecutionProvider']['average_latency_ms']

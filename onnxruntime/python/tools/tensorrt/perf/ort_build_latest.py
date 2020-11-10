@@ -1,6 +1,7 @@
 import os
 import subprocess
 import argparse
+from perf_utils import get_latest_commit_hash
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
@@ -12,13 +13,6 @@ def parse_arguments():
     parser.add_argument("-s", "--save", required=False, help="Directory to archive wheel file")
     args = parser.parse_args()
     return args
-
-def get_latest_commit_hash(): 
-    p1 = subprocess.Popen(["git", "log"], stdout=subprocess.PIPE)
-    stdout, sterr = p1.communicate()
-    stdout = stdout.decode("utf-8").strip()
-    commit = stdout.split("\n")[0].replace("commit ", "")
-    return commit
 
 def archive_wheel_file(save_path, ort_wheel_file):
     if not os.path.exists(save_path):
@@ -57,7 +51,7 @@ def main():
         p1 = subprocess.Popen(["git", "checkout", commit])
     else: 
         commit = get_latest_commit_hash()
-        p1 = subprocess.Popen(["git", "pull"])
+        p1 = subprocess.Popen(["git", "pull", "origin", "master"])
     p1.wait()
 
     p1 = subprocess.Popen(["./build.sh", "--config", "Release", "--use_tensorrt", "--tensorrt_home", args.tensorrt_home, "--cuda_home", args.cuda_home, "--cudnn", "/usr/lib/x86_64-linux-gnu", "--build_wheel", "--skip_tests"])
