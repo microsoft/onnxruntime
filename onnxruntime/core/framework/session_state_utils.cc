@@ -149,7 +149,7 @@ common::Status SaveInitializedTensors(
     initialized_tensors_to_allocate.erase(entry);
   }
 
-  for (const auto& entry : id_to_initialized_tensor) {
+  for (const auto& entry : initialized_tensors_to_allocate) {
     // We don't want to trace shared initializers since their memory is provided by the user
     if (user_supplied_initializer_ids.find(entry.first) != user_supplied_initializer_ids.end()) {
       continue;
@@ -165,8 +165,8 @@ common::Status SaveInitializedTensors(
       planner.FinalizePlan(planned_initializers_memory_sizes_in_byte));
 
   for (auto i : planned_initializers_memory_sizes_in_byte) {
-    LOGS(logger, INFO) << "[Memory] SessionStateInitializer statically allocates "
-                       << i.second << " bytes for " << i.first << std::endl;
+    LOGS(logger, WARNING) << "[Memory] SessionStateInitializer statically allocates "
+                          << i.second << " bytes for " << i.first << std::endl;
   }
 
   OrtCallback deleter{nullptr, nullptr};

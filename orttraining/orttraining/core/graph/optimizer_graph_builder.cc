@@ -133,13 +133,13 @@ Status OptimizerGraphBuilder::AddGradientScalingNodes(
 Status OptimizerGraphBuilder::AddGradientScalingNodes(
     const NodeArgNameGeneratorFn& nodearg_name_generator,
     const float scale,
-    std::vector<ArgDef>& input_gradient_argdefs,       // update argdefs in place
+    std::vector<ArgDef>& input_gradient_argdefs,  // update argdefs in place
     std::vector<ArgDef>& output_gradient_argdef,  // update argdef in place
     GraphAugmenter::GraphDefs& graph_defs,
     ONNX_NAMESPACE::TensorProto_DataType target_type) {
   ArgDef pre_allreduce_scale(nodearg_name_generator("pre_allreduce_scale"),
                              graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
-                             
+
   graph_defs.AddInitializers({CreateTensorProto<float>(pre_allreduce_scale.name, scale, {})});
 
   TypeProto* fused_gradient_type_proto = graph_defs.CreateTypeProto();
@@ -150,7 +150,7 @@ Status OptimizerGraphBuilder::AddGradientScalingNodes(
   for (size_t i = 0; i < input_gradient_argdefs.size(); ++i) {
     inputs.emplace_back(input_gradient_argdefs[i]);
   }
-  
+
   for (size_t i = 0; i < input_gradient_argdefs.size(); ++i) {
     ArgDef& gradient_argdef = input_gradient_argdefs[i];
 
@@ -267,10 +267,10 @@ Status OptimizerGraphBuilder::AddDirectWeightUpdate(
       new_initializers,
       output_weight_argdefs, output_gradient_argdefs));
 
-  std::cout << "OptimizerGraphBuilder::AddDirectWeightUpdate after BuildOptimizerNode" <<std::endl;
+  std::cout << "OptimizerGraphBuilder::AddDirectWeightUpdate after BuildOptimizerNode" << std::endl;
   graph_defs.AddInitializers(new_initializers);
 
-  std::cout << "OptimizerGraphBuilder::AddDirectWeightUpdate after graph_defs.AddInitializers(new_initializers)" <<std::endl;
+  std::cout << "OptimizerGraphBuilder::AddDirectWeightUpdate after graph_defs.AddInitializers(new_initializers)" << std::endl;
   weight_argdefs = std::move(output_weight_argdefs);
   gradient_argdefs = std::move(output_gradient_argdefs);
 
@@ -350,6 +350,7 @@ Status OptimizerGraphBuilder::AddGradientNorm(
                                   NodeAttributes(),
                                   grad_norm_argdef.name,
                                   static_cast<int>(ExecutionPriority::GLOBAL_LOW)}});
+  graph_defs.AddGraphOutputs({grad_norm_argdef.name});
 
   return Status::OK();
 }
@@ -502,14 +503,13 @@ Status OptimizerGraphBuilder::BuildInternal(
           }
         }
         ORT_RETURN_IF_ERROR(AddGradientNorm(
-          nodearg_name_generator, gradient_norm_inputs, graph_defs, global_grad_norm_argdef));
+            nodearg_name_generator, gradient_norm_inputs, graph_defs, global_grad_norm_argdef));
       } else {
         std::cout << "OptimizerGraphBuilder::BuildInternal 3333 " << std::endl;
-              ORT_RETURN_IF_ERROR(AddGradientNorm(
-          nodearg_name_generator, gradient_argdefs, graph_defs, global_grad_norm_argdef));
+        ORT_RETURN_IF_ERROR(AddGradientNorm(
+            nodearg_name_generator, gradient_argdefs, graph_defs, global_grad_norm_argdef));
         std::cout << "OptimizerGraphBuilder::BuildInternal 4444 " << std::endl;
       }
-
 
       if (DistributedRunContext::GroupSize(WorkerGroupType::HorizontalParallel) > 1) {
         ORT_RETURN_IF_ERROR(AddL2NormBetweenMegatronRanksNcclAllReduce(global_grad_norm_argdef, graph_defs));
