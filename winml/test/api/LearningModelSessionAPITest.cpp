@@ -326,7 +326,8 @@ static void NamedDimensionOverride()
   LearningModelSessionOptions options;
   options.OverrideNamedDimension(L"None", n);
   
-  // Verifies that if a Dim name doesn't exist the named dimension override does nothing
+  // Verifies that if a Dim name doesn't exist the named dimension override does not interfere with successful evaluation
+  // The override is still expected to be present in the internal onnxruntime override data
   options.OverrideNamedDimension(L"DimNameThatDoesntExist", n);
 
   LearningModelSession session(nullptr);
@@ -334,11 +335,9 @@ static void NamedDimensionOverride()
 
   Experimental::LearningModelSessionExperimental experimental_session(session);
   Experimental::LearningModelSessionOptionsExperimental experimental_options = experimental_session.Options();
-
   wfc::IMapView<winrt::hstring, uint32_t> internal_overrides = experimental_options.GetNamedDimensionOverrides();
 
   WINML_EXPECT_EQUAL(internal_overrides.Lookup(L"None"), n);
-
   WINML_EXPECT_EQUAL(internal_overrides.Lookup(L"DimNameThatDoesntExist"), n);
 
   ILearningModelFeatureDescriptor descriptor = model.InputFeatures().GetAt(0);

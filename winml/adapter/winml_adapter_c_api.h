@@ -302,7 +302,7 @@ struct WinmlAdapterApi {
     *
     * WinML uses this to determine that named dimension overrides were set correctly through OrtSessionOptions.
     */
-  OrtStatus*(ORT_API_CALL* SessionGetNamedDimensionsOverrides)(_In_ OrtSession* session, _Out_ winrt::Windows::Foundation::Collections::IMapView<winrt::hstring, uint32_t>* overrides)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* SessionGetNamedDimensionsOverrides)(_In_ OrtSession* session, _Out_ winrt::Windows::Foundation::Collections::IMapView<winrt::hstring, uint32_t>& overrides)NO_EXCEPTION;
 
   /**
     * DmlExecutionProviderSetDefaultRoundingMode

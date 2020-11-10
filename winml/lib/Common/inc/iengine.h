@@ -151,7 +151,7 @@ IEngine : IUnknown {
   (uint32_t * num_threads) PURE;
 
   STDMETHOD(GetNamedDimensionOverrides)
-  (wfc::IMapView<winrt::hstring, uint32_t> overrides) PURE;
+  (wfc::IMapView<winrt::hstring, uint32_t>& overrides) PURE;
 };
 
 MIDL_INTERFACE("8ac0b6b9-4561-492b-b63d-a07bdd8292c6")

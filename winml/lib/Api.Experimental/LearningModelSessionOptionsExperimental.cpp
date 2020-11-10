@@ -5,7 +5,7 @@
 #include "iengine.h"
 
 namespace WINML_EXPERIMENTALP {
-LearningModelSessionOptionsExperimental::LearningModelSessionOptionsExperimental(LearningModelSession const& session) {
+LearningModelSessionOptionsExperimental::LearningModelSessionOptionsExperimental(const winml::LearningModelSession& session) {
   com_ptr<WINMLP::LearningModelSession> session_impl = session.as<WINMLP::LearningModelSession>();
   _winml::IEngine* engine = session_impl->GetEngine();
   engine->GetNamedDimensionOverrides(overrides_);

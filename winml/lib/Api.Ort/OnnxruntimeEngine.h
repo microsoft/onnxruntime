@@ -117,7 +117,7 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
   (uint32_t* num_threads) override;
 
   STDMETHOD(GetNamedDimensionOverrides)
-  (wfc::IMapView<winrt::hstring, uint32_t> overrides) override;
+  (wfc::IMapView<winrt::hstring, uint32_t>& overrides) override;
 
   OrtSession* UseOrtSession();
   const OrtApi* UseOrtApi();
