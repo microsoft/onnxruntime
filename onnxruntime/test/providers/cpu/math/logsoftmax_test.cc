@@ -160,12 +160,6 @@ TEST(LogSoftmaxOperator, ThreeDimsAxis1_opset13) {
 }
 
 TEST(LogSoftmaxOperator, ThreeDimsAxis2) {
-  // x = <see x_vals_3dims>
-  // node = onnx.helper.make_node('LogSoftmax', inputs = ['x'], outputs = ['y'], axis = 2)
-  // y = logsoftmax_2d(x.reshape(12, 5)).reshape(3, 4, 5)
-  // expect(node, inputs = [x], outputs = [y],
-  //       name = 'test_logsoftmax_axis_2')
-
   std::vector<float> expected_vals = {
       -1.5016061f, -1.5898913f, -2.3042583f, -1.080942f, -2.0086365f,
       -1.5264852f, -0.7512426f, -2.7490091f, -1.9119854f, -2.3111813f,
@@ -186,12 +180,6 @@ TEST(LogSoftmaxOperator, ThreeDimsAxis2) {
 }
 
 TEST(LogSoftmaxOperator, ThreeDimsAxis2_opset13) {
-  // x = <see x_vals_3dims>
-  // node = onnx.helper.make_node('LogSoftmax', inputs = ['x'], outputs = ['y'], axis = 2)
-  // y = logsoftmax_2d(x.reshape(12, 5)).reshape(3, 4, 5)
-  // expect(node, inputs = [x], outputs = [y],
-  //       name = 'test_logsoftmax_axis_2')
-
   std::vector<float> expected_vals = {
       -1.5016061f, -1.5898913f, -2.3042583f, -1.080942f, -2.0086365f,
       -1.5264852f, -0.7512426f, -2.7490091f, -1.9119854f, -2.3111813f,
@@ -212,12 +200,6 @@ TEST(LogSoftmaxOperator, ThreeDimsAxis2_opset13) {
 }
 
 TEST(LogSoftmaxOperator, ThreeDimsDefaultAxis_opset13) {
-  // x = <see x_vals_3dims>
-  // node = onnx.helper.make_node('LogSoftmax', inputs = ['x'], outputs = ['y'], axis = 2)
-  // y = logsoftmax_2d(x.reshape(12, 5)).reshape(3, 4, 5)
-  // expect(node, inputs = [x], outputs = [y],
-  //       name = 'test_logsoftmax_axis_2')
-
   std::vector<float> expected_vals = {
       -1.5016061f, -1.5898913f, -2.3042583f, -1.080942f, -2.0086365f,
       -1.5264852f, -0.7512426f, -2.7490091f, -1.9119854f, -2.3111813f,

@@ -164,9 +164,6 @@ TEST(HardmaxOperator, ThreeDimsAxis2) {
 }
 
 TEST(HardmaxOperator, ThreeDimsAxis2_opset13) {
-  // x = <see x_vals_3dims>
-  // import cntk as C
-  // expected = C.hardmax(x.reshape(12,5)).eval().reshape(3, 4, 5)
   std::vector<float> expected_vals = {
       0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
       0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
@@ -187,9 +184,6 @@ TEST(HardmaxOperator, ThreeDimsAxis2_opset13) {
 }
 
 TEST(HardmaxOperator, ThreeDimsDefaultAxis_opset13) {
-  // x = <see x_vals_3dims>
-  // import cntk as C
-  // expected = C.hardmax(x.reshape(12,5)).eval().reshape(3, 4, 5)
   std::vector<float> expected_vals = {
       0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
       0.0f, 1.0f, 0.0f, 0.0f, 0.0f,

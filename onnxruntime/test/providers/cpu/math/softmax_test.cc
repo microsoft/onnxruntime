@@ -177,12 +177,6 @@ TEST(SoftmaxOperator, ThreeDimsAxis2) {
 }
 
 TEST(SoftmaxOperator, ThreeDimsAxis2_opset13) {
-  // x = <see x_vals_3dims>
-  // node = onnx.helper.make_node('Softmax', inputs = ['x'], outputs = ['y'], axis = 2)
-  // y = softmax_2d(x.reshape(12, 5)).reshape(3, 4, 5)
-  // expect(node, inputs = [x], outputs = [y],
-  //       name = 'test_softmax_axis_2')
-
   std::vector<float> expected_vals = {
       0.22277209f, 0.20394778f, 0.09983283f, 0.33927578f, 0.13417149f,
       0.21729809f, 0.47177994f, 0.06399124f, 0.14778666f, 0.099144064f,
@@ -203,12 +197,6 @@ TEST(SoftmaxOperator, ThreeDimsAxis2_opset13) {
 }
 
 TEST(SoftmaxOperator, ThreeDimsDefaultAxis_opset13) {
-  // x = <see x_vals_3dims>
-  // node = onnx.helper.make_node('Softmax', inputs = ['x'], outputs = ['y'], axis = 2)
-  // y = softmax_2d(x.reshape(12, 5)).reshape(3, 4, 5)
-  // expect(node, inputs = [x], outputs = [y],
-  //       name = 'test_softmax_axis_2')
-
   std::vector<float> expected_vals = {
       0.22277209f, 0.20394778f, 0.09983283f, 0.33927578f, 0.13417149f,
       0.21729809f, 0.47177994f, 0.06399124f, 0.14778666f, 0.099144064f,
