@@ -57,12 +57,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeImplEx(OpKernelContext* ctx, miope
                                        axes,
                                        prepare_reduce_metadata));
   Tensor* Y = ctx->Output(0, prepare_reduce_metadata.squeezed_output_dims);
-  bool fast_reduction = fast_reduction_;
-  if (fast_reduction) {
-    auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
-    if (ctx_internal && ctx_internal->GetUseDeterministicCompute())
-      fast_reduction = false;
-  }
+  const bool fast_reduction = fast_reduction_ && !ctx->GetUseDeterministicCompute();
 
   return ReduceComputeCore<T>(*X, prepare_reduce_metadata, *Y, miopen_reduce_op, axes,
                               calculate_log_, calculate_sqt_, log_sum_exp_, fast_reduction);
