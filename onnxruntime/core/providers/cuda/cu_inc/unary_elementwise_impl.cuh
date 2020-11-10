@@ -4,7 +4,7 @@
 #pragma once
 #include <stdint.h>
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
-#include "common.cuh"
+#include "core/providers/cuda/cu_inc/common.cuh"
 
 namespace onnxruntime {
 namespace cuda {

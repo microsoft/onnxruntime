@@ -35,6 +35,16 @@ file(GLOB_RECURSE onnxruntime_rocm_contrib_ops_cu_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/contrib_ops/rocm/*.cuh"
 )
 
+file(GLOB_RECURSE onnxruntime_rocm_generated_contrib_ops_cc_srcs CONFIGURE_DEPENDS
+  "${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime/contrib_ops/rocm/*.h"
+  "${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime/contrib_ops/rocm/*.cc"
+)
+
+file(GLOB_RECURSE onnxruntime_rocm_generated_contrib_ops_cu_srcs CONFIGURE_DEPENDS
+  "${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime/contrib_ops/rocm/*.cu"
+  "${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime/contrib_ops/rocm/*.cuh"
+)
+
 file(GLOB onnxruntime_cpu_featurizers_cc_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/featurizers_ops/cpu/*.h"
   "${ONNXRUNTIME_ROOT}/featurizers_ops/cpu/*.cc"
@@ -829,15 +839,27 @@ if (onnxruntime_USE_ROCM)
     "${ONNXRUNTIME_ROOT}/core/providers/rocm/*.cu"
     "${ONNXRUNTIME_ROOT}/core/providers/rocm/*.cuh"
   )
-  
+
+  file(GLOB_RECURSE onnxruntime_providers_rocm_generated_cc_srcs CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime/core/providers/rocm/*.h"
+    "${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime/core/providers/rocm/*.cc"
+  )
+
+  file(GLOB_RECURSE onnxruntime_providers_rocm_generated_cu_srcs CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime/core/providers/rocm/*.cu"
+    "${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime/core/providers/rocm/*.cuh"
+  )
+
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_rocm_cc_srcs} ${onnxruntime_providers_rocm_cu_srcs})
   set(onnxruntime_providers_rocm_src ${onnxruntime_providers_rocm_cc_srcs} ${onnxruntime_providers_rocm_cu_srcs})
+  list(APPEND onnxruntime_providers_rocm_src ${onnxruntime_providers_rocm_generated_cc_srcs} ${onnxruntime_providers_rocm_generated_cu_srcs})
 
   # disable contrib ops conditionally
   if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
     # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
     source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_rocm_contrib_ops_cc_srcs} ${onnxruntime_rocm_contrib_ops_cu_srcs})
     list(APPEND onnxruntime_providers_rocm_src ${onnxruntime_rocm_contrib_ops_cc_srcs} ${onnxruntime_rocm_contrib_ops_cu_srcs})
+    list(APPEND onnxruntime_providers_rocm_src ${onnxruntime_rocm_generated_contrib_ops_cc_srcs} ${onnxruntime_rocm_generated_contrib_ops_cu_srcs})
   endif()
 
   if (onnxruntime_ENABLE_TRAINING)
@@ -846,28 +868,35 @@ if (onnxruntime_USE_ROCM)
       "${ORTTRAINING_SOURCE_DIR}/training_ops/rocm/*.cc"
     )
 
-    # NCCL is not support in Windows build
-    if (WIN32)
-      list(REMOVE_ITEM onnxruntime_rocm_training_ops_cc_srcs
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/rocm/collective/nccl_common.cc"
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/rocm/collective/nccl_kernels.cc"
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/rocm/collective/megatron.cc"
-      )
-    elseif (NOT onnxruntime_USE_NCCL)
-      list(REMOVE_ITEM onnxruntime_rocm_training_ops_cc_srcs
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/rocm/collective/nccl_common.cc"
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/rocm/collective/nccl_kernels.cc"
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/rocm/collective/megatron.cc"
-      )
-    endif()
-
     file(GLOB_RECURSE onnxruntime_rocm_training_ops_cu_srcs CONFIGURE_DEPENDS
       "${ORTTRAINING_SOURCE_DIR}/training_ops/rocm/*.cu"
       "${ORTTRAINING_SOURCE_DIR}/training_ops/rocm/*.cuh"
     )
 
+    file(GLOB_RECURSE onnxruntime_rocm_generated_training_ops_cc_srcs CONFIGURE_DEPENDS
+      "${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining/orttraining/training_ops/rocm/*.h"
+      "${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining/orttraining/training_ops/rocm/*.cc"
+    )
+
+    file(GLOB_RECURSE onnxruntime_rocm_generated_training_ops_cu_srcs CONFIGURE_DEPENDS
+      "${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining/orttraining/training_ops/rocm/*.cu"
+      "${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining/orttraining/training_ops/rocm/*.cuh"
+    )
+
+    # NCCL is not support in Windows build
+    if (WIN32 OR NOT onnxruntime_USE_NCCL)
+      list(REMOVE_ITEM onnxruntime_rocm_training_ops_cc_srcs
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/rocm/collective/nccl_common.cc"
+      )
+      list(REMOVE_ITEM onnxruntime_rocm_training_ops_cc_srcs
+      "${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining/orttraining/training_ops/rocm/collective/nccl_kernels.cc"
+      "${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining/orttraining/training_ops/rocm/collective/megatron.cc"
+      )
+    endif()
+
     source_group(TREE ${ORTTRAINING_ROOT} FILES ${onnxruntime_rocm_training_ops_cc_srcs} ${onnxruntime_rocm_training_ops_cu_srcs})
     list(APPEND onnxruntime_providers_rocm_src ${onnxruntime_rocm_training_ops_cc_srcs} ${onnxruntime_rocm_training_ops_cu_srcs})
+    list(APPEND onnxruntime_providers_rocm_src ${onnxruntime_rocm_generated_training_ops_cc_srcs} ${onnxruntime_rocm_generated_training_ops_cu_srcs})
   endif()
 
   set(HIP_CXX_FLAGS -fPIC)
@@ -899,10 +928,10 @@ if (onnxruntime_USE_ROCM)
     target_compile_options(onnxruntime_providers_rocm PRIVATE -Wno-undefined-var-template)
   endif()
   target_include_directories(onnxruntime_providers_rocm PRIVATE ${onnxruntime_ROCM_HOME}/include ${onnxruntime_ROCM_HOME}/include/hipcub ${onnxruntime_ROCM_HOME}/include/hiprand ${onnxruntime_ROCM_HOME}/include/rocrand)
-  target_include_directories(onnxruntime_providers_rocm PRIVATE ${ONNXRUNTIME_ROOT} ${MPI_INCLUDE_DIRS} ${SAFEINT_INCLUDE_DIR} ${ONNXRUNTIME_ROOT}/../cmake/external/eigen)
+  target_include_directories(onnxruntime_providers_rocm PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${MPI_INCLUDE_DIRS} ${SAFEINT_INCLUDE_DIR} ${ONNXRUNTIME_ROOT}/../cmake/external/eigen)
 
   if (onnxruntime_ENABLE_TRAINING)
-    target_include_directories(onnxruntime_providers_rocm PRIVATE ${ORTTRAINING_ROOT})
+    target_include_directories(onnxruntime_providers_rocm PRIVATE ${ORTTRAINING_ROOT} ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
   endif()
 
   onnxruntime_add_include_to_target(onnxruntime_providers_rocm onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf flatbuffers)
