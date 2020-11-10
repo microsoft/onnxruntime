@@ -533,8 +533,6 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     return 0;
   }
 
-  typedef std::function<void()> Task;
-
  public:
   struct Tag {
     constexpr Tag() : v_(0) {
@@ -570,6 +568,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     uint32_t v_ = 0;
   };
 
+  typedef std::function<void()> Task;
   typedef RunQueue<Task, Tag, 1024> Queue;
 #ifdef _WIN32
   using CHAR_TYPE = wchar_t;
