@@ -914,8 +914,23 @@ const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeTensorTypes() {
 }
 
 const std::vector<MLDataType>& DataTypeImpl::AllTensorTypes() {
-  static std::vector<MLDataType> all_tensor_types = AllFixedSizeTensorTypes();
-  all_tensor_types.emplace_back(DataTypeImpl::GetTensorType<std::string>());
+  //static std::vector<MLDataType> all_tensor_types = AllFixedSizeTensorTypes();
+  //all_tensor_types.emplace_back(DataTypeImpl::GetTensorType<std::string>());
+  static std::vector<MLDataType> all_tensor_types =
+      {DataTypeImpl::GetTensorType<float>(),
+       DataTypeImpl::GetTensorType<double>(),
+       DataTypeImpl::GetTensorType<int64_t>(),
+       DataTypeImpl::GetTensorType<uint64_t>(),
+       DataTypeImpl::GetTensorType<int32_t>(),
+       DataTypeImpl::GetTensorType<uint32_t>(),
+       DataTypeImpl::GetTensorType<int16_t>(),
+       DataTypeImpl::GetTensorType<uint16_t>(),
+       DataTypeImpl::GetTensorType<int8_t>(),
+       DataTypeImpl::GetTensorType<uint8_t>(),
+       DataTypeImpl::GetTensorType<MLFloat16>(),
+       DataTypeImpl::GetTensorType<BFloat16>(),
+       DataTypeImpl::GetTensorType<bool>(),
+       DataTypeImpl::GetTensorType<std::string>()};
   return all_tensor_types;
 }
 
