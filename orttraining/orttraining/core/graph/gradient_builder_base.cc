@@ -161,8 +161,6 @@ void GradientBuilderBase::AddReduceSumNode(const ArgDef& input_arg_def,
     return;
   }
 
-  auto t_proto = ONNX_NAMESPACE::ToTensor<int64_t>(reduce_axes);
-  t_proto.add_dims(reduce_axes.size());
   output.emplace_back(ConstantVectorNode(reduce_axes, reduce_axes_arg_def.name));
   output.emplace_back(
       NodeDef("ReduceSum",
