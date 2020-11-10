@@ -421,10 +421,6 @@ struct Value : Base<OrtValue> {
   static Value CreateSequence(std::vector<Value>& values);
 
   template <typename T>
-  static Value CreateEmptyTensorSequence();
-  static Value CreateEmptyTensorSequence(ONNXTensorElementDataType tensor_type);
-
-  template <typename T>
   static Value CreateOpaque(const char* domain, const char* type_name, const T&);
 
   template <typename T>

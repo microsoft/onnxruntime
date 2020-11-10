@@ -1502,70 +1502,6 @@ static ORT_STATUS_PTR OrtCreateValueImplSeqHelper(const OrtValue* const* in, siz
   return nullptr;
 }
 
-static ORT_STATUS_PTR OrtCreateEmptyTensorSeqImpl(ONNXTensorElementDataType tensor_type, _Outptr_ OrtValue** out) {
-  auto seq_ptr = onnxruntime::make_unique<TensorSeq>();
-  switch (tensor_type) {
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
-      seq_ptr->SetType(DataTypeImpl::GetType<float>());
-      break;
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
-      seq_ptr->SetType(DataTypeImpl::GetType<uint8_t>());
-      break;
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
-      seq_ptr->SetType(DataTypeImpl::GetType<int8_t>());
-      break;
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:
-      seq_ptr->SetType(DataTypeImpl::GetType<uint16_t>());
-      break;
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:
-      seq_ptr->SetType(DataTypeImpl::GetType<int16_t>());
-      break;
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
-      seq_ptr->SetType(DataTypeImpl::GetType<int32_t>());
-      break;
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:
-      seq_ptr->SetType(DataTypeImpl::GetType<uint32_t>());
-      break;
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
-      seq_ptr->SetType(DataTypeImpl::GetType<int64_t>());
-      break;
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:
-      seq_ptr->SetType(DataTypeImpl::GetType<uint64_t>());
-      break;
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING:
-      seq_ptr->SetType(DataTypeImpl::GetType<std::string>());
-      break;
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
-      seq_ptr->SetType(DataTypeImpl::GetType<bool>());
-      break;
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
-      seq_ptr->SetType(DataTypeImpl::GetType<MLFloat16>());
-      break;
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
-      seq_ptr->SetType(DataTypeImpl::GetType<BFloat16>());
-      break;
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
-      seq_ptr->SetType(DataTypeImpl::GetType<double>());
-      break;
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64:
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128:
-    default: {
-      std::ostringstream oss;
-      oss << "type " << tensor_type << " is not supported in this function";
-      std::string errmsg = oss.str();
-      return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, errmsg.c_str());
-    }
-  }
-
-  auto value = onnxruntime::make_unique<OrtValue>();
-  auto ml_type = DataTypeImpl::GetType<TensorSeq>();
-  value->Init(seq_ptr.release(),
-              ml_type,
-              ml_type->GetDeleteFunc());
-  *out = value.release();
-  return nullptr;
-}
-
 static ORT_STATUS_PTR OrtCreateValueImplSeq(_In_reads_(num_values) const OrtValue* const* in, size_t num_values,
                                             _Outptr_ OrtValue** out) {
   // We only support limited sequence types. For the sake of simplicity the type of the first
@@ -1872,18 +1808,12 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetProfilingStartTimeNs, _In_ const OrtSessi
 
 #ifndef USE_CUDA
 ORT_API_STATUS_IMPL(OrtApis::OrtSessionOptionsAppendExecutionProvider_CUDA,
-                    _In_ OrtSessionOptions* options, _In_ OrtCUDAProviderOptions* cuda_options) {
-  ORT_UNUSED_PARAMETER(options);
-  ORT_UNUSED_PARAMETER(cuda_options);
-  return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled.");
+                    _In_ OrtSessionOptions* options, _In_ OrtCUDAProviderOptions* cuda_options){
+    ORT_UNUSED_PARAMETER(options);
+    ORT_UNUSED_PARAMETER(cuda_options);
+    return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled.");
 }
 #endif
-
-ORT_API_STATUS_IMPL(OrtApis::CreateEmptyTensorSequence, ONNXTensorElementDataType tensor_type, _Outptr_ OrtValue** out) {
-  API_IMPL_BEGIN
-  return OrtCreateEmptyTensorSeqImpl(tensor_type, out);
-  API_IMPL_END
-}
 
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
@@ -2113,7 +2043,6 @@ static constexpr OrtApi ort_api_1_to_6 = {
     &OrtApis::CreateEnvWithCustomLoggerAndGlobalThreadPools,
     &OrtApis::OrtSessionOptionsAppendExecutionProvider_CUDA,
     &OrtApis::SetGlobalDenormalAsZero,
-    &OrtApis::CreateEmptyTensorSequence,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)

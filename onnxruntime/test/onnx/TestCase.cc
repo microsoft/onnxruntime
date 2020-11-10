@@ -587,14 +587,11 @@ void OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::SequenceProto& test_dat
   }
 
   if (seq.size() == 0) {
-    // TODO: We need to enhance the infrastructure to make this more generic.
-    // Since we don't have any TensorProtos in the SequenceProto, we are unable to "infer" the type of the
-    // tensors to place in the tensor sequence (TensorSeq/OrtValue).
-    // We would have to use the loaded model and query the model's input (via InferenceSession's GetModelInputs() API)
-    // to create an empty tensor sequence of that type.
-    // Currently (at opset 13 time), the only test that needs an empty tensor sequence is `test_loop13_seq` and that needs
-    // an empty float tensor sequence, and hence we go with that for now.
-    out.emplace(name_finalized, Ort::Value::CreateEmptyTensorSequence<float>());
+    // TODO: ORT APIs don't support creating empty sequences and we will not invest in it
+    // until there are real world models that require it.
+    // For now, only the single node ONNX test - `test_loop13_seq` requires it.
+    // We will keep it disabled for now.
+    ORT_THROW("Creation of empty sequences is currently not supported in the test runner");
   } else {
     out.emplace(name_finalized, Ort::Value::CreateSequence(seq));
   }

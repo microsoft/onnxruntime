@@ -166,7 +166,6 @@ ORT_API_STATUS_IMPL(GetValue, _In_ const OrtValue* value, int index, _Inout_ Ort
 ORT_API_STATUS_IMPL(GetValueCount, _In_ const OrtValue* value, _Out_ size_t* out);
 ORT_API_STATUS_IMPL(CreateValue, _In_reads_(num_values) const OrtValue* const* in, size_t num_values,
                     enum ONNXType value_type, _Outptr_ OrtValue** out);
-ORT_API_STATUS_IMPL(CreateEmptyTensorSequence, ONNXTensorElementDataType tensor_type, _Outptr_ OrtValue** out);
 ORT_API_STATUS_IMPL(CreateOpaqueValue, _In_z_ const char* domain_name, _In_z_ const char* type_name,
                     _In_ const void* data_container, size_t data_container_size, _Outptr_ OrtValue** out);
 ORT_API_STATUS_IMPL(GetOpaqueValue, _In_ const char* domain_name, _In_ const char* type_name,
