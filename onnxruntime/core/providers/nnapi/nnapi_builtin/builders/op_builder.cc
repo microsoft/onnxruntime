@@ -528,82 +528,11 @@ class BaseOpBuilder : public IOpBuilder {
  public:
   virtual ~BaseOpBuilder() = default;
   virtual void AddInitializersToSkip(ModelBuilder& /* model_builder */, const Node& /* node */) override {}
-
-  bool IsOpSupported(ModelBuilder& model_builder, const Node& node) override final;
-
   Status AddToModelBuilder(ModelBuilder& model_builder, const Node& node) override final ORT_MUST_USE_RESULT;
 
  protected:
-  virtual bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node);
-
-  virtual int32_t GetMinSupportedSdkVer(ModelBuilder& /* model_builder */,
-                                        const Node& /* node */) const { return 27; }
-
-  virtual bool HasSupportedInputs(const Node& node);
-
   virtual Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) ORT_MUST_USE_RESULT = 0;
-
-  bool HasExternalInitializer(ModelBuilder& model_builder, const Node& node);
-
-  virtual int GetMinSupportedOpSet(const Node& /* node */) { return 1; }
-  virtual int GetMaxSupportedOpSet(const Node& /* node */) { return 13; }
-
-  bool HasSupportedOpSet(const Node& node);
 };
-
-bool BaseOpBuilder::IsOpSupported(ModelBuilder& model_builder, const Node& node) {
-#ifdef __ANDROID__
-  int32_t android_sdk_ver = model_builder.GetAndroidSdkVer();
-  int32_t required_sdk_ver = GetMinSupportedSdkVer(model_builder, node);
-  if (required_sdk_ver > android_sdk_ver) {
-    LOGS_DEFAULT(VERBOSE) << "Current Android API level [" << android_sdk_ver
-                          << "], Operator [" << node.OpType()
-                          << "] is only supported on API >" << required_sdk_ver;
-    return false;
-  }
-#endif
-
-  if (!HasSupportedInputs(node))
-    return false;
-
-  // We do not support external initializers for now
-  if (HasExternalInitializer(model_builder, node))
-    return false;
-
-  if (!HasSupportedOpSet(node))
-    return false;
-
-  return IsOpSupportedImpl(model_builder, node);
-}
-
-bool BaseOpBuilder::HasSupportedInputs(const Node& node) {
-  // We only check the type of input 0 by default
-  // specific op builder can override this
-  const auto& input = *node.InputDefs()[0];
-
-  if (nullptr == input.Shape()) {
-    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
-                          << "] Input shape is null";
-    return false;
-  }
-
-  int32_t input_type;
-  if (!GetType(input, input_type))
-    return false;
-
-  if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
-                          << "] Input type: [" << input_type
-                          << "] is not supported for now";
-    return false;
-  }
-
-  return true;
-}
-
-bool BaseOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, const Node& /* node */) {
-  return true;
-}
 
 Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node& node) {
   ORT_RETURN_IF_NOT(model_builder.IsNodeSupported(node), "Unsupported operator ", node.OpType());
@@ -611,37 +540,6 @@ Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node&
   LOGS_DEFAULT(VERBOSE) << "Operator name: [" << node.Name()
                         << "] type: [" << node.OpType() << "] was added";
   return Status::OK();
-}
-
-bool BaseOpBuilder::HasExternalInitializer(ModelBuilder& model_builder, const Node& node) {
-  const auto& initializers(model_builder.GetOnnxGraph().GetAllInitializedTensors());
-  for (const auto* node_arg : node.InputDefs()) {
-    const auto& input_name(node_arg->Name());
-    if (!Contains(initializers, input_name))
-      continue;
-
-    const auto* tensor = initializers.at(input_name);
-    if (tensor->has_data_location() &&
-        tensor->data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
-      LOGS_DEFAULT(VERBOSE) << "Initializer [" << input_name
-                            << "] with external data location are not currently supported";
-      return true;
-    }
-  }
-
-  return false;
-}
-
-bool BaseOpBuilder::HasSupportedOpSet(const Node& node) {
-  auto since_version = node.SinceVersion();
-  if (since_version < GetMinSupportedOpSet(node) || since_version > GetMaxSupportedOpSet(node)) {
-    LOGS_DEFAULT(VERBOSE) << node.OpType() << "is only supported for opset ["
-                          << GetMinSupportedOpSet(node) << ", "
-                          << GetMaxSupportedOpSet(node) << "]";
-    return false;
-  }
-
-  return true;
 }
 
 #pragma endregion op_base
@@ -653,11 +551,7 @@ class BinaryOpBuilder : public BaseOpBuilder {
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) override;
 
  private:
-  int32_t GetMinSupportedSdkVer(ModelBuilder& model_builder, const Node& node) const override;
-  bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
-  bool HasSupportedInputs(const Node& node) override;
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override ORT_MUST_USE_RESULT;
-  int GetMinSupportedOpSet(const Node& node) override;
 };
 
 void BinaryOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) {
@@ -665,84 +559,6 @@ void BinaryOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const N
   if (op == "QLinearAdd") {
     AddBinaryOpQuantizationScaleAndZeroPointToSkip(model_builder, node);
   }
-}
-
-int32_t BinaryOpBuilder::GetMinSupportedSdkVer(ModelBuilder& /* model_builder */, const Node& node) const {
-  const auto& op(node.OpType());
-  if (op == "Sub" || op == "Div") {
-    return 28;
-  }
-
-  return 27;
-}
-
-int BinaryOpBuilder::GetMinSupportedOpSet(const Node& node) {
-  const auto& op(node.OpType());
-
-  // Add/Sub/Mul/Div opset 6- has broadcast attributes we do not support now
-  if (op != "QLinearAdd")
-    return 7;
-
-  return 1;
-}
-
-bool BinaryOpBuilder::HasSupportedInputs(const Node& node) {
-  if (node.OpType() != "QLinearAdd")
-    return BaseOpBuilder::HasSupportedInputs(node);
-
-  // QLinearAdd
-  if (!HasValidBinaryOpQuantizedInputs(node))
-    return false;
-
-  return true;
-}
-
-bool BinaryOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) {
-  const auto& op_type(node.OpType());
-  const auto input_defs(node.InputDefs());
-  bool op_is_qlinear = op_type == "QLinearAdd";
-  size_t a_idx = 0, b_idx = 1;
-  if (op_is_qlinear) {
-    b_idx = 3;
-  }
-  Shape input1_shape, input2_shape;
-  if (!GetShape(*input_defs[a_idx], input1_shape) ||
-      !GetShape(*input_defs[b_idx], input2_shape))
-    return false;
-
-  const auto input1_size = input1_shape.size();
-  const auto input2_size = input2_shape.size();
-  if (input1_size > 4 || input2_size > 4) {
-    LOGS_DEFAULT(VERBOSE) << node.OpType() << " only support up to 4d shape, input1 is "
-                          << input1_size << "d shape, input 2 is "
-                          << input2_size << "d shape";
-    return false;
-  }
-
-  if (op_is_qlinear) {
-    // For QLinearAdd, we only support uint8 output now
-    int32_t output_type;
-    if (!GetType(*node.OutputDefs()[0], output_type))
-      return false;
-
-    if (output_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
-      LOGS_DEFAULT(VERBOSE) << "[" << op_type
-                            << "] output type: [" << output_type
-                            << "] is not supported for now";
-      return false;
-    }
-
-    // All scale/zero points are initializer scalars
-    // a/b/y_scale
-    if (!HasValidQuantizationScale(model_builder.GetInitializerTensors(), node, {1, 4, 6}))
-      return false;
-
-    // a/b/y_zero_point
-    if (!HasValidQuantizationZeroPoint(model_builder.GetInitializerTensors(), node, {2, 5, 7}))
-      return false;
-  }
-
-  return true;
 }
 
 Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
@@ -851,29 +667,8 @@ Status ReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
 class TransposeOpBuilder : public BaseOpBuilder {
  private:
-  bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
-
-  int32_t GetMinSupportedSdkVer(ModelBuilder& /* model_builder */, const Node& /* node */) const override {
-    return 28;
-  }
-
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override ORT_MUST_USE_RESULT;
 };
-
-bool TransposeOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, const Node& node) {
-  Shape input_shape;
-  if (!GetShape(*node.InputDefs()[0], input_shape))
-    return false;
-
-  const auto input_size = input_shape.size();
-  if (input_size > 4 || input_size == 0) {
-    LOGS_DEFAULT(VERBOSE) << "Transpose only supports 1-4d shape, input is "
-                          << input_size << "d shape";
-    return false;
-  }
-
-  return true;
-}
 
 Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
   auto& shaper(model_builder.GetShaper());
@@ -921,12 +716,8 @@ class ReshapeOpBuilder : public BaseOpBuilder {
                                    const std::string& input, const std::vector<int32_t>& shape) ORT_MUST_USE_RESULT;
 
  private:
-  bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override ORT_MUST_USE_RESULT;
   static bool CanSkipReshape(const Node& node, size_t input_rank, size_t output_rank);
-
-  // Reshape opset 4- uses attributes for new shape which we do not support for now
-  int GetMinSupportedOpSet(const Node& /* node */) override { return 5; }
 };
 
 void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) {
@@ -1027,39 +818,6 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
   return Status::OK();
 }
 
-bool ReshapeOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) {
-  const auto& initializers(model_builder.GetInitializerTensors());
-  const auto& perm_name = node.InputDefs()[1]->Name();
-  if (!Contains(initializers, perm_name)) {
-    LOGS_DEFAULT(VERBOSE) << "New shape of reshape must be known";
-    return false;
-  }
-
-  Shape input_shape;
-  if (!GetShape(*node.InputDefs()[0], input_shape))
-    return false;
-
-  if (input_shape.size() > 4 || input_shape.empty()) {
-    LOGS_DEFAULT(VERBOSE) << "Reshape only supports up to 1-4d shape, input is "
-                          << input_shape.size() << "d shape";
-    return false;
-  }
-
-  const auto& shape_tensor = initializers.at(perm_name);
-  const int64_t* rawShape = GetTensorInt64Data(shape_tensor);
-  const auto size = SafeInt<uint32_t>(shape_tensor.dims()[0]);
-
-  for (uint32_t i = 0; i < size; i++) {
-    // NNAPI reshape does not support 0 as dimension
-    if (rawShape[i] == 0 && i < input_shape.size() && input_shape[i] == 0) {
-      LOGS_DEFAULT(VERBOSE) << "Reshape doesn't suppport 0 reshape dimension on a dynamic dimension";
-      return false;
-    }
-  }
-
-  return true;
-}
-
 Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
   auto& shaper(model_builder.GetShaper());
   const auto& initializers(model_builder.GetInitializerTensors());
@@ -1094,12 +852,7 @@ class BatchNormalizationOpBuilder : public BaseOpBuilder {
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) override;
 
  private:
-  bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
-
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override ORT_MUST_USE_RESULT;
-
-  // BatchNormalization opset 6- has unsupported attributes
-  int GetMinSupportedOpSet(const Node& /* node */) override { return 7; }
 };
 
 void BatchNormalizationOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) {
@@ -1108,57 +861,6 @@ void BatchNormalizationOpBuilder::AddInitializersToSkip(ModelBuilder& model_buil
   model_builder.AddInitializerToSkip(node.InputDefs()[2]->Name());  // B
   model_builder.AddInitializerToSkip(node.InputDefs()[3]->Name());  // mean
   model_builder.AddInitializerToSkip(node.InputDefs()[4]->Name());  //var
-}
-
-bool BatchNormalizationOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) {
-  if (node.OutputDefs().size() != 1) {
-    LOGS_DEFAULT(VERBOSE) << "Your onnx model may be in training mode, please export "
-                             "it in test mode.";
-    return false;
-  }
-
-  const auto& input_defs = node.InputDefs();
-  Shape input_shape;
-  if (!GetShape(*input_defs[0], input_shape))
-    return false;
-
-  const auto input_size = input_shape.size();
-  if (input_size > 4) {
-    LOGS_DEFAULT(VERBOSE) << "BN only support up to 4d shape, input is "
-                          << input_size << "d shape";
-    return false;
-  }
-
-  NodeAttrHelper helper(node);
-  const auto spatial = helper.Get("spatial", 1);
-  if (spatial != 1) {
-    LOGS_DEFAULT(VERBOSE) << "Non-spatial BN is not supported";
-    return false;
-  }
-
-  const auto& initializers(model_builder.GetInitializerTensors());
-  const auto& scale_name = input_defs[1]->Name();
-  const auto& b_name = input_defs[2]->Name();
-  const auto& mean_name = input_defs[3]->Name();
-  const auto& var_name = input_defs[4]->Name();
-  if (!Contains(initializers, scale_name)) {
-    LOGS_DEFAULT(VERBOSE) << "Scale of BN must be known";
-    return false;
-  }
-  if (!Contains(initializers, b_name)) {
-    LOGS_DEFAULT(VERBOSE) << "B of BN must be known";
-    return false;
-  }
-  if (!Contains(initializers, mean_name)) {
-    LOGS_DEFAULT(VERBOSE) << "Mean of BN must be known";
-    return false;
-  }
-  if (!Contains(initializers, var_name)) {
-    LOGS_DEFAULT(VERBOSE) << "Var of BN must be known";
-    return false;
-  }
-
-  return true;
 }
 
 Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
@@ -1247,71 +949,8 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
 
 class PoolOpBuilder : public BaseOpBuilder {
  private:
-  bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
-
-  int32_t GetMinSupportedSdkVer(ModelBuilder& model_builder, const Node& /* node */) const override {
-    return model_builder.UseNCHW() ? 29 : 28;
-  }
-
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override ORT_MUST_USE_RESULT;
 };
-
-bool PoolOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, const Node& node) {
-  const auto& op_type = node.OpType();
-  Shape input_shape;
-  if (!GetShape(*node.InputDefs()[0], input_shape))
-    return false;
-
-  const auto input_size = input_shape.size();
-  if (input_size != 4) {
-    LOGS_DEFAULT(VERBOSE)
-        << op_type << " only supports rank-4 tensor, input ["
-        << node.InputDefs()[0]->Name() << "] has actual dim count " << input_size;
-    return false;
-  }
-
-  if (op_type == "AveragePool" || op_type == "MaxPool") {
-    NodeAttrHelper helper(node);
-
-    const auto count_include_pad = helper.Get("count_include_pad", 0);
-    if (count_include_pad == 1) {
-      LOGS_DEFAULT(VERBOSE) << "count_include_pad == 1 is not supported";
-      return false;
-    }
-
-    const auto storage_order = helper.Get("storage_order", 0);
-    if (storage_order == 1) {
-      LOGS_DEFAULT(VERBOSE) << "storage_order == 1 is not supported";
-      return false;
-    }
-
-    if (helper.Get("kernel_shape", std::vector<int32_t>{1, 1}).size() != 2) {
-      LOGS_DEFAULT(VERBOSE) << "Only pooling 2d is supported";
-      return false;
-    }
-
-    if (helper.Get("ceil_mode", 0) == 1) {
-      LOGS_DEFAULT(VERBOSE) << "ceil_mode == 1 is not supported for pooling";
-      return false;
-    }
-
-    if (helper.Get("dilations", std::vector<int32_t>{1, 1}) !=
-        std::vector<int32_t>{1, 1}) {
-      LOGS_DEFAULT(VERBOSE) << "Dilations of pooling is not supported";
-      return false;
-    }
-
-    if (node.OutputDefs().size() != 1) {
-      LOGS_DEFAULT(VERBOSE) << "Argmax in maxpooling is not supported";
-      return false;
-    }
-  } else if (op_type != "GlobalAveragePool" && op_type != "GlobalMaxPool") {
-    LOGS_DEFAULT(VERBOSE) << "PoolOpBuilder, unknown op: " << op_type;
-    return false;
-  }
-
-  return true;
-}
 
 Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
   auto& shaper(model_builder.GetShaper());
@@ -1415,26 +1054,8 @@ class ConvOpBuilder : public BaseOpBuilder {
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) override;
 
  private:
-  bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
-
-  int32_t GetMinSupportedSdkVer(ModelBuilder& model_builder, const Node& /* node */) const override {
-    return model_builder.UseNCHW() ? 29 : 28;
-  }
-
-  bool HasSupportedInputs(const Node& node) override;
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override ORT_MUST_USE_RESULT;
 };
-
-bool ConvOpBuilder::HasSupportedInputs(const Node& node) {
-  if (node.OpType() != "QLinearConv")
-    return BaseOpBuilder::HasSupportedInputs(node);
-
-  // QLinearConv only supports input of uint8 for now
-  if (!HasValidBinaryOpQuantizedInputs(node))
-    return false;
-
-  return true;
-}
 
 void ConvOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) {
   const auto& op = node.OpType();
@@ -1449,72 +1070,6 @@ void ConvOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
   } else {
     model_builder.AddInitializerToSkip(input_defs[1]->Name());  // w
   }
-}
-
-bool ConvOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) {
-  const auto& op_type = node.OpType();
-  const auto input_defs = node.InputDefs();
-  const auto& initializers(model_builder.GetInitializerTensors());
-  NodeAttrHelper helper(node);
-
-  bool is_qlinear_conv = (op_type == "QLinearConv");
-  size_t w_idx = is_qlinear_conv ? 3 : 1;
-  const auto group = helper.Get("group", 1);
-  const auto weight_name = input_defs[w_idx]->Name();
-  if (Contains(initializers, weight_name)) {
-    const auto& tensor = initializers.at(weight_name);
-    if (tensor.dims().size() != 4) {
-      LOGS_DEFAULT(VERBOSE) << "Only conv 2d is supported.";
-      return false;
-    }
-
-    const auto onnx_dilations = helper.Get("dilations", vector<int>{1, 1});
-    if (onnx_dilations != vector<int>{1, 1}) {
-      if (group != 1 && tensor.dims()[1] != 1) {
-        LOGS_DEFAULT(VERBOSE) << "dilation is not supported on grouped conv";
-        return false;
-      }
-
-      const auto android_sdk_ver = model_builder.GetAndroidSdkVer();
-      if (android_sdk_ver < 29) {
-        LOGS_DEFAULT(VERBOSE) << op_type << " dilations is only supported on Android API level 29+, "
-                              << "actual API level: " << android_sdk_ver;
-        return false;
-      }
-    }
-  } else {
-    LOGS_DEFAULT(VERBOSE) << "The weight of convolution must be known";
-    return false;
-  }
-
-  if (is_qlinear_conv) {
-    // For QLinearConv, we only support uint8 output now
-    int32_t output_type;
-    if (!GetType(*node.OutputDefs()[0], output_type))
-      return false;
-
-    if (output_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
-      LOGS_DEFAULT(VERBOSE) << "[" << op_type
-                            << "] output type: [" << output_type
-                            << "] is not supported for now";
-      return false;
-    }
-
-    if (input_defs.size() > 8 && !Contains(initializers, input_defs[8]->Name())) {
-      LOGS_DEFAULT(VERBOSE) << "Bias of QLinearConv must be known";
-      return false;
-    }
-
-    // a/b/y_scale
-    if (!HasValidQuantizationScale(model_builder.GetInitializerTensors(), node, {1, 4, 6}))
-      return false;
-
-    // a/b/y_zero_point
-    if (!HasValidQuantizationZeroPoint(model_builder.GetInitializerTensors(), node, {2, 5, 7}))
-      return false;
-  }
-
-  return true;
 }
 
 Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
@@ -1741,29 +1296,8 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
 class CastOpBuilder : public BaseOpBuilder {
  private:
-  bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
-
-  int32_t GetMinSupportedSdkVer(ModelBuilder& /* model_builder */, const Node& /* node */) const override {
-    return 29;
-  }
-
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override ORT_MUST_USE_RESULT;
-
-  // Cast opset 5- uses string attribute for to type, is not supported for now
-  int GetMinSupportedOpSet(const Node& /* node */) override { return 6; }
 };
-
-bool CastOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, const Node& node) {
-  NodeAttrHelper helper(node);
-  const auto to = helper.Get("to", 0);
-  if (to != ONNX_NAMESPACE::TensorProto::FLOAT &&
-      to != ONNX_NAMESPACE::TensorProto::INT32) {
-    LOGS_DEFAULT(VERBOSE) << "[Cast] Only support cast to int32 or float, actual to type, " << to;
-    return false;
-  }
-
-  return true;
-}
 
 Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
   auto& shaper(model_builder.GetShaper());
@@ -1802,41 +1336,8 @@ Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
 class SoftMaxOpBuilder : public BaseOpBuilder {
  private:
-  bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
-
-  int32_t GetMinSupportedSdkVer(ModelBuilder& /* model_builder */, const Node& /* node */) const override {
-    return 28;
-  }
-
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override ORT_MUST_USE_RESULT;
 };
-
-bool SoftMaxOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) {
-  Shape input_shape;
-  if (!GetShape(*node.InputDefs()[0], input_shape))
-    return false;
-
-  const auto input_size = input_shape.size();
-  if (input_size != 2 && input_size != 4) {
-    LOGS_DEFAULT(VERBOSE) << "SoftMax only support 2d/4d shape, input is "
-                          << input_size << "d shape";
-    return false;
-  }
-
-  const auto android_sdk_ver = model_builder.GetAndroidSdkVer();
-  if (android_sdk_ver < 29) {
-    NodeAttrHelper helper(node);
-    int32_t axis = helper.Get("axis", 1);
-    if (axis != 1) {
-      LOGS_DEFAULT(VERBOSE)
-          << "SoftMax only support axis 1 on Android API level: " << android_sdk_ver
-          << " input axis: " << axis;
-      return false;
-    }
-  }
-
-  return true;
-}
 
 Status SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
   auto& shaper(model_builder.GetShaper());
@@ -1918,136 +1419,8 @@ class GemmOpBuilder : public BaseOpBuilder {
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) override;
 
  private:
-  bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
-  bool HasSupportedInputs(const Node& node) override;
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override ORT_MUST_USE_RESULT;
-  int GetMinSupportedOpSet(const Node& node) override;
 };
-
-bool GemmOpBuilder::HasSupportedInputs(const Node& node) {
-  if (node.OpType() != "QLinearMatMul")
-    return BaseOpBuilder::HasSupportedInputs(node);
-
-  // QLinearMatMul
-  if (!HasValidBinaryOpQuantizedInputs(node))
-    return false;
-
-  return true;
-}
-
-int GemmOpBuilder::GetMinSupportedOpSet(const Node& node) {
-  const auto& op(node.OpType());
-
-  // Gemm opset 6- has broadcast attributes we do not support now
-  if (op == "Gemm")
-    return 7;
-
-  return 1;
-}
-
-bool GemmOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) {
-  const auto& op_type = node.OpType();
-  const auto input_defs(node.InputDefs());
-  const auto& initializers(model_builder.GetInitializerTensors());
-  size_t a_idx = 0, b_idx = 1, c_idx = 2;  // A*B+C
-  bool is_qlinear_matmul = op_type == "QLinearMatMul";
-  if (is_qlinear_matmul) {
-    a_idx = 0;
-    b_idx = 3;
-  }
-
-  Shape a_shape;
-  {
-    if (!GetShape(*input_defs[a_idx], a_shape))
-      return false;
-
-    if (a_shape.size() != 2) {
-      LOGS_DEFAULT(VERBOSE) << "A must be 2D";
-      return false;
-    }
-  }
-
-  Shape b_shape;
-  {
-    if (!GetShape(*input_defs[b_idx], b_shape))
-      return false;
-
-    if (b_shape.size() != 2) {
-      LOGS_DEFAULT(VERBOSE) << "B must be 2D";
-      return false;
-    }
-  }
-
-  if (op_type == "Gemm") {
-    // Only support
-    // 1. A*B'+C
-    // 2. A*B+C and B is an initializer
-    NodeAttrHelper helper(node);
-    const auto transA = helper.Get("transA", 0);
-    const auto transB = helper.Get("transB", 0);
-    const auto alpha = helper.Get("alpha", 1.0f);
-    const auto beta = helper.Get("beta", 1.0f);
-
-    if (!(transA == 0 && alpha == 1.f && beta == 1.f)) {
-      LOGS_DEFAULT(VERBOSE) << "Only transA == 0, alpha == 1.0 "
-                            << "and beta == 1.0 is supported.";
-      return false;
-    }
-
-    if (transB == 0 && !Contains(initializers, input_defs[b_idx]->Name())) {
-      LOGS_DEFAULT(VERBOSE) << "B of Gemm must be known if transB != 1";
-      return false;
-    }
-
-    if (input_defs.size() == 3) {
-      Shape c_shape;
-      if (!GetShape(*input_defs[c_idx], c_shape))
-        return false;
-
-      if (c_shape.size() != 1 ||
-          c_shape[0] != (transB == 0 ? b_shape[1] : b_shape[0])) {
-        LOGS_DEFAULT(VERBOSE) << "C of Gemm must be a vector of b_shape[0]"
-                              << " b_shape: " << Shape2String(b_shape)
-                              << " c_shape: " << Shape2String(c_shape);
-
-        return false;
-      }
-    }
-  } else if (op_type == "MatMul" || is_qlinear_matmul) {
-    // Only support A*B B is an initializer
-    if (!Contains(initializers, input_defs[b_idx]->Name())) {
-      LOGS_DEFAULT(VERBOSE) << "B of MatMul must be known";
-      return false;
-    }
-
-    if (is_qlinear_matmul) {
-      // For QLinearMatMul, we only support uint8 output now
-      int32_t output_type;
-      if (!GetType(*node.OutputDefs()[0], output_type))
-        return false;
-
-      if (output_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
-        LOGS_DEFAULT(VERBOSE) << "[" << op_type
-                              << "] output type: [" << output_type
-                              << "] is not supported for now";
-        return false;
-      }
-
-      // All scale/zero points are initializer scalars
-      // a/b/y_scale
-      if (!HasValidQuantizationScale(model_builder.GetInitializerTensors(), node, {1, 4, 6}))
-        return false;
-
-      // a/b/y_zero_point
-      if (!HasValidQuantizationZeroPoint(model_builder.GetInitializerTensors(), node, {2, 5, 7}))
-        return false;
-    }
-  } else {
-    LOGS_DEFAULT(VERBOSE) << "GemmOpBuilder, unknown op: " << op_type;
-  }
-
-  return true;
-}
 
 void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) {
   const auto& op = node.OpType();
@@ -2167,28 +1540,8 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
 class UnaryOpBuilder : public BaseOpBuilder {
  private:
-  int32_t GetMinSupportedSdkVer(ModelBuilder& model_builder, const Node& node) const override;
-
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override ORT_MUST_USE_RESULT;
-
-  // All ops except "Sin" opset 5- uses consumed_inputs attribute which is not supported for now
-  // "Sin" op has support from opset 7, return 6 here for all ops
-  int GetMinSupportedOpSet(const Node& /* node */) override { return 6; }
 };
-
-int32_t UnaryOpBuilder::GetMinSupportedSdkVer(ModelBuilder& /* model_builder */, const Node& node) const {
-  const auto& op(node.OpType());
-  if (op == "Abs" ||
-      op == "Exp" ||
-      op == "Neg" ||
-      op == "Sin" ||
-      op == "Sqrt" ||
-      op == "Log") {
-    return 29;
-  }
-
-  return 27;
-}
 
 Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
   auto& shaper(model_builder.GetShaper());
@@ -2238,25 +1591,8 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 
 class ConcatOpBuilder : public BaseOpBuilder {
  private:
-  bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
-
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override ORT_MUST_USE_RESULT;
 };
-
-bool ConcatOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, const Node& node) {
-  Shape input_shape;
-  if (!GetShape(*node.InputDefs()[0], input_shape))
-    return false;
-
-  const auto input_size = input_shape.size();
-  if (input_size > 4 || input_size == 0) {
-    LOGS_DEFAULT(VERBOSE) << "Concat only supports up to 1-4d shape, input is "
-                          << input_size << "d shape";
-    return false;
-  }
-
-  return true;
-}
 
 Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
   auto& shaper(model_builder.GetShaper());
@@ -2328,33 +1664,8 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
 class SqueezeOpBuilder : public BaseOpBuilder {
  private:
-  bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
-
-  int32_t GetMinSupportedSdkVer(ModelBuilder& /* model_builder */, const Node& /* node */) const override {
-    return 28;
-  }
-
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override ORT_MUST_USE_RESULT;
-
-  // Squeeze opset 13+ uses input for axes, which is not supported yet
-  // TODO add support for squeeze opset 13+
-  int GetMaxSupportedOpSet(const Node& /* node */) override { return 12; }
 };
-
-bool SqueezeOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, const Node& node) {
-  Shape input_shape;
-  if (!GetShape(*node.InputDefs()[0], input_shape))
-    return false;
-
-  const auto input_size = input_shape.size();
-  if (input_size > 4 || input_size == 0) {
-    LOGS_DEFAULT(VERBOSE) << "Squeeze only supports 1-4d shape, input is "
-                          << input_size << "d shape";
-    return false;
-  }
-
-  return true;
-}
 
 Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
   auto& shaper(model_builder.GetShaper());
@@ -2409,12 +1720,6 @@ class QuantizeLinearOpBuilder : public BaseOpBuilder {
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) override;
 
  private:
-  bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
-
-  int32_t GetMinSupportedSdkVer(ModelBuilder& /* model_builder */, const Node& /* node */) const override {
-    return 27;
-  }
-
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override ORT_MUST_USE_RESULT;
 };
 
@@ -2425,32 +1730,6 @@ void QuantizeLinearOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder,
 
   if (input_defs.size() == 3)  // has zero_point input
     model_builder.AddInitializerToSkip(input_defs[2]->Name());
-}
-
-bool QuantizeLinearOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) {
-  const auto input_defs(node.InputDefs());
-  const auto output_defs(node.OutputDefs());
-
-  int32_t output_type;
-  if (!GetType(*output_defs[0], output_type))
-    return false;
-
-  if (output_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
-    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
-                          << "] output type: [" << output_type
-                          << "] is not supported for now";
-    return false;
-  }
-
-  if (!HasValidQuantizationScale(model_builder.GetInitializerTensors(), node, {1}))
-    return false;
-
-  if (input_defs.size() == 3) {  // has zero_point input
-    if (!HasValidQuantizationZeroPoint(model_builder.GetInitializerTensors(), node, {2}))
-      return false;
-  }
-
-  return true;
 }
 
 Status QuantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
@@ -2488,30 +1767,8 @@ class DequantizeLinearOpBuilder : public BaseOpBuilder {
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) override;
 
  private:
-  bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
-
-  int32_t GetMinSupportedSdkVer(ModelBuilder& /* model_builder */, const Node& /* node */) const override {
-    return 29;
-  }
-
-  bool HasSupportedInputs(const Node& node) override;
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override ORT_MUST_USE_RESULT;
 };
-
-bool DequantizeLinearOpBuilder::HasSupportedInputs(const Node& node) {
-  int32_t input_type;
-  if (!GetType(*node.InputDefs()[0], input_type))
-    return false;
-
-  if (input_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
-    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
-                          << "] Input type: [" << input_type
-                          << "] is not supported for now";
-    return false;
-  }
-
-  return true;
-}
 
 void DequantizeLinearOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) {
   const auto input_defs(node.InputDefs());
@@ -2520,20 +1777,6 @@ void DequantizeLinearOpBuilder::AddInitializersToSkip(ModelBuilder& model_builde
 
   if (input_defs.size() == 3)  // has zero_point input
     model_builder.AddInitializerToSkip(input_defs[2]->Name());
-}
-
-bool DequantizeLinearOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) {
-  const auto input_defs(node.InputDefs());
-
-  if (!HasValidQuantizationScale(model_builder.GetInitializerTensors(), node, {1}))
-    return false;
-
-  if (input_defs.size() == 3) {  // has zero_point input
-    if (!HasValidQuantizationZeroPoint(model_builder.GetInitializerTensors(), node, {2}))
-      return false;
-  }
-
-  return true;
 }
 
 Status DequantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
@@ -2569,29 +1812,8 @@ Status DequantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_buil
 
 class LRNOpBuilder : public BaseOpBuilder {
  private:
-  bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
-
-  int32_t GetMinSupportedSdkVer(ModelBuilder& /* model_builder */, const Node& /* node */) const override {
-    return 28;
-  }
-
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override ORT_MUST_USE_RESULT;
 };
-
-bool LRNOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, const Node& node) {
-  Shape input_shape;
-  if (!GetShape(*node.InputDefs()[0], input_shape))
-    return false;
-
-  const auto input_size = input_shape.size();
-  if (input_size != 4) {
-    LOGS_DEFAULT(VERBOSE) << "LRN only support 4d shape, input is "
-                          << input_size << "d shape";
-    return false;
-  }
-
-  return true;
-}
 
 Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
   auto& shaper(model_builder.GetShaper());
@@ -2651,7 +1873,6 @@ class ClipOpBuilder : public BaseOpBuilder {
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) override;
 
  private:
-  bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override ORT_MUST_USE_RESULT;
 };
 
@@ -2661,24 +1882,6 @@ void ClipOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
 
   if (node.InputDefs().size() > 2)
     model_builder.AddInitializerToSkip(node.InputDefs()[2]->Name());  // max
-}
-
-bool ClipOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) {
-  float min, max;
-  if (!GetClipMinMax(model_builder.GetInitializerTensors(), node, min, max))
-    return false;
-
-  // We only supoort relu6 or relu1
-  // TODO, support clip between 2 arbitrary numbers
-  if ((min == 0.0f && max == 6.0f) || (min == -1.0f && max == 1.0f)) {
-    return true;
-  } else {
-    LOGS_DEFAULT(VERBOSE) << "Clip only supports [min, max] = [0, 6] or [-1, 1], the input is ["
-                          << min << ", " << max << "]";
-    return false;
-  }
-
-  return true;
 }
 
 Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
@@ -2727,20 +1930,8 @@ class ResizeOpBuilder : public BaseOpBuilder {
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) override;
 
  private:
-  bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
-
-  int32_t GetMinSupportedSdkVer(ModelBuilder& model_builder, const Node& node) const override;
-
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override ORT_MUST_USE_RESULT;
-
-  // Resize opset 10- is very different than Resize opset 11+, with many key attributes missing
-  // We only support Resize opset 11+ here
-  int GetMinSupportedOpSet(const Node& /* node */) override { return 11; }
 };
-
-int32_t ResizeOpBuilder::GetMinSupportedSdkVer(ModelBuilder& /* model_builder */, const Node& /* node */) const {
-  return 28;
-}
 
 void ResizeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) {
   // We will still add scales to the skipped list even sizes are present
@@ -2749,95 +1940,6 @@ void ResizeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const N
 
   if (node.InputDefs().size() > 3)
     model_builder.AddInitializerToSkip(node.InputDefs()[3]->Name());  // sizes
-}
-
-bool ResizeOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) {
-  Shape input_shape;
-  if (!GetShape(*node.InputDefs()[0], input_shape))
-    return false;
-
-  const auto input_size = input_shape.size();
-  if (input_size != 4) {
-    LOGS_DEFAULT(VERBOSE) << "Resize only support 4d shape, input is "
-                          << input_size << "d shape";
-    return false;
-  }
-
-  {  // check attributes
-    const auto android_sdk_ver = model_builder.GetAndroidSdkVer();
-
-    NodeAttrHelper helper(node);
-    const auto mode = helper.Get("mode", "nearest");
-    if (mode != "linear") {
-      LOGS_DEFAULT(VERBOSE) << "Resize unsupported input mode, " << mode;
-      return false;
-    }
-
-    const auto coord_trans_mode = helper.Get("coordinate_transformation_mode", "half_pixel");
-    bool using_half_pixel = coord_trans_mode == "half_pixel";
-    bool using_align_corners = coord_trans_mode == "align_corners";
-    if (!using_half_pixel && !using_align_corners && coord_trans_mode != "asymmetric") {
-      LOGS_DEFAULT(VERBOSE) << "Resize, unsupported coord_trans_mode, " << coord_trans_mode;
-      return false;
-    }
-
-    if (android_sdk_ver < 30 && (using_half_pixel || using_align_corners)) {
-      LOGS_DEFAULT(VERBOSE) << "Resize only support half_pixel/align_corners on API level 30+, current API level is "
-                            << android_sdk_ver;
-      return false;
-    }
-
-    const auto exclude_outside = helper.Get("exclude_outside", 0);
-    if (exclude_outside != 0) {
-      LOGS_DEFAULT(VERBOSE) << "Resize does not support exclude_outside for now";
-      return false;
-    }
-  }
-
-  {  // scales and sizes (if present) must be initializers
-    const auto& initializers(model_builder.GetInitializerTensors());
-    const auto input_defs = node.InputDefs();
-    // scales
-    if (input_defs.size() < 3 || !Contains(initializers, input_defs[2]->Name())) {
-      LOGS_DEFAULT(VERBOSE) << "Input scales of Resize must be known";
-      return false;
-    }
-
-    // sizes
-    if (input_defs.size() > 3 && !Contains(initializers, input_defs[3]->Name())) {
-      LOGS_DEFAULT(VERBOSE) << "Input sizes of Resize must be known";
-      return false;
-    }
-
-    // We want to check if the scales or sizes are not trying to resize on N/C channels here
-    if (input_defs.size() == 3) {  // we are using scales
-      const auto& scales_tensor = initializers.at(input_defs[2]->Name());
-      const float* scales_data = GetTensorFloatData(scales_tensor);
-      float scale_n = scales_data[0];
-      float scale_c = scales_data[1];
-      if (scale_n != 1.0f || scale_c != 1.0f) {
-        LOGS_DEFAULT(VERBOSE) << "Scales of N/C channel should be 1"
-                              << "Resize of N/C channels are not supported"
-                              << ", scale_n, " << scale_n << ", scale_c, " << scale_c;
-        return false;
-      }
-    } else {
-      // we are using sizes
-      const auto& sizes_name = input_defs[3]->Name();
-      const auto& sizes_tensor = initializers.at(sizes_name);
-      const int64_t* sizes_data = GetTensorInt64Data(sizes_tensor);
-      uint32_t size_n = SafeInt<uint32_t>(sizes_data[0]);
-      uint32_t size_c = SafeInt<uint32_t>(sizes_data[1]);
-      if (size_n != input_shape[0] || size_c != input_shape[1]) {
-        LOGS_DEFAULT(VERBOSE) << "Output sizes of N/C chanel should match the input sizes, "
-                              << "Resize of N/C channels are not supported"
-                              << ", input_size_n, " << input_shape[0] << ", output_size_n, " << size_n
-                              << ". input_size_c, " << input_shape[1] << ", output_size_c, " << size_c;
-        return false;
-      }
-    }
-  }
-  return true;
 }
 
 Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
@@ -2919,7 +2021,6 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
 class FlattenOpBuilder : public BaseOpBuilder {
  private:
-  bool IsOpSupportedImpl(ModelBuilder& /* model_builder */, const Node& node) override;
   static void GetFlattenShape(const Node& node, const Shape& input_shape, int32_t& dim_1, int32_t& dim_2);
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override ORT_MUST_USE_RESULT;
 };
@@ -2935,30 +2036,6 @@ class FlattenOpBuilder : public BaseOpBuilder {
 
   dim_1 = std::accumulate(input_shape.cbegin(), input_shape.cbegin() + axis, 1, std::multiplies<int32_t>());
   dim_2 = std::accumulate(input_shape.cbegin() + axis, input_shape.cend(), 1, std::multiplies<int32_t>());
-}
-
-bool FlattenOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, const Node& node) {
-  Shape input_shape;
-  if (!GetShape(*node.InputDefs()[0], input_shape))
-    return false;
-
-  if (input_shape.size() > 4 || input_shape.empty()) {
-    LOGS_DEFAULT(VERBOSE) << "Flatten only supports up to 1-4d shape, input is "
-                          << input_shape.size() << "d shape";
-    return false;
-  }
-
-  int32_t dim_1 = 1;
-  int32_t dim_2 = 1;
-  GetFlattenShape(node, input_shape, dim_1, dim_2);
-
-  if (dim_1 == 0 && dim_2 == 0) {
-    LOGS_DEFAULT(VERBOSE) << "The dynamical input shape " << Shape2String(input_shape)
-                          << " is not supported";
-    return false;
-  }
-
-  return true;
 }
 
 Status FlattenOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {

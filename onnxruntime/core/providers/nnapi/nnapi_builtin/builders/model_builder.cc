@@ -37,12 +37,6 @@ bool ModelBuilder::IsNodeSupported(const Node& node) {
   } else {
     return false;
   }
-
-  if (auto* op_builder = GetOpBuilder(node)) {
-    return op_builder->IsOpSupported(*this, node);
-  } else {
-    return false;
-  }
 }
 
 bool IsValidSupportedNodesVec(const std::vector<int>& supported_node_vec, const GraphViewer& graph_viewer) {

@@ -47,7 +47,9 @@ class BaseOPSupportChecker : public IOPSupportChecker {
 
  protected:
   virtual bool IsOpSupportedImpl(const InitializerMap& /* initializers */, const Node& /* node */,
-                                 const OPSupportCheckParams& /* params */) { return true; }
+                                 const OPSupportCheckParams& /* params */) {
+    return true;
+  }
   virtual int32_t GetMinSupportedSdkVer(const Node& /* node */, const OPSupportCheckParams& /* params */) const {
     return 27;
   }
@@ -424,7 +426,8 @@ bool PoolOPSupportChecker::IsOpSupportedImpl(
 
 class ConvOPSupportChecker : public BaseOPSupportChecker {
  private:
-  bool IsOpSupportedImpl(const InitializerMap& initializers, const Node& node, const OPSupportCheckParams& params) override;
+  bool IsOpSupportedImpl(const InitializerMap& initializers, const Node& node,
+                         const OPSupportCheckParams& params) override;
 
   int32_t GetMinSupportedSdkVer(const Node& /* node */, const OPSupportCheckParams& params) const override {
     return params.use_nchw ? 29 : 28;
@@ -517,6 +520,10 @@ class CastOPSupportChecker : public BaseOPSupportChecker {
  private:
   bool IsOpSupportedImpl(const InitializerMap& initializers, const Node& node, const OPSupportCheckParams& params) override;
 
+  int32_t GetMinSupportedSdkVer(const Node& /* node */, const OPSupportCheckParams& /* params */) const override {
+    return 29;
+  }
+
   // Cast opset 5- uses string attribute for to type, is not supported for now
   int GetMinSupportedOpSet(const Node& /* node */) override { return 6; }
 };
@@ -539,7 +546,8 @@ bool CastOPSupportChecker::IsOpSupportedImpl(const InitializerMap& /* initialize
 
 class SoftMaxOPSupportChecker : public BaseOPSupportChecker {
  private:
-  bool IsOpSupportedImpl(const InitializerMap& initializers, const Node& node, const OPSupportCheckParams& params) override;
+  bool IsOpSupportedImpl(const InitializerMap& initializers, const Node& node,
+                         const OPSupportCheckParams& params) override;
 
   int32_t GetMinSupportedSdkVer(const Node& /* node */, const OPSupportCheckParams& /* params */) const override {
     return 28;
@@ -766,8 +774,9 @@ bool ConcatOPSupportChecker::IsOpSupportedImpl(const InitializerMap& /* initiali
 
 class SqueezeOPSupportChecker : public BaseOPSupportChecker {
  private:
-  bool IsOpSupportedImpl(
-      const InitializerMap& initializers, const Node& node, const OPSupportCheckParams& params) override;
+  bool IsOpSupportedImpl(const InitializerMap& initializers, const Node& node,
+                         const OPSupportCheckParams& params) override;
+
   int32_t GetMinSupportedSdkVer(const Node& /* node */, const OPSupportCheckParams& /* params */) const override {
     return 28;
   }
@@ -798,8 +807,9 @@ bool SqueezeOPSupportChecker::IsOpSupportedImpl(const InitializerMap& /* initial
 
 class QuantizeLinearOPSupportChecker : public BaseOPSupportChecker {
  private:
-  bool IsOpSupportedImpl(
-      const InitializerMap& initializers, const Node& node, const OPSupportCheckParams& params) override;
+  bool IsOpSupportedImpl(const InitializerMap& initializers, const Node& node,
+                         const OPSupportCheckParams& params) override;
+
   int32_t GetMinSupportedSdkVer(const Node& /* node */, const OPSupportCheckParams& /* params */) const override {
     return 27;
   }
@@ -838,8 +848,9 @@ bool QuantizeLinearOPSupportChecker::IsOpSupportedImpl(
 
 class DequantizeLinearOPSupportChecker : public BaseOPSupportChecker {
  private:
-  bool IsOpSupportedImpl(
-      const InitializerMap& initializers, const Node& node, const OPSupportCheckParams& params) override;
+  bool IsOpSupportedImpl(const InitializerMap& initializers, const Node& node,
+                         const OPSupportCheckParams& params) override;
+
   int32_t GetMinSupportedSdkVer(const Node& /* node */, const OPSupportCheckParams& /* params */) const override {
     return 29;
   }
@@ -881,8 +892,9 @@ bool DequantizeLinearOPSupportChecker::HasSupportedInputs(const Node& node) {
 
 class LRNOPSupportChecker : public BaseOPSupportChecker {
  private:
-  bool IsOpSupportedImpl(
-      const InitializerMap& initializers, const Node& node, const OPSupportCheckParams& params) override;
+  bool IsOpSupportedImpl(const InitializerMap& initializers, const Node& node,
+                         const OPSupportCheckParams& params) override;
+
   int32_t GetMinSupportedSdkVer(const Node& /* node */, const OPSupportCheckParams& /* params */) const override {
     return 28;
   }
@@ -937,8 +949,9 @@ bool ClipOPSupportChecker::IsOpSupportedImpl(
 
 class ResizeOPSupportChecker : public BaseOPSupportChecker {
  private:
-  bool IsOpSupportedImpl(
-      const InitializerMap& initializers, const Node& node, const OPSupportCheckParams& params) override;
+  bool IsOpSupportedImpl(const InitializerMap& initializers, const Node& node,
+                         const OPSupportCheckParams& params) override;
+
   int32_t GetMinSupportedSdkVer(const Node& /* node */, const OPSupportCheckParams& /* params */) const override {
     return 28;
   }
@@ -1083,6 +1096,8 @@ bool FlattenOPSupportChecker::IsOpSupportedImpl(const InitializerMap& /* initial
 
 #pragma endregion
 
+#pragma region CreateOpSupportCheckers
+
 std::unordered_map<std::string, std::shared_ptr<IOPSupportChecker>> CreateOpSupportCheckers() {
   std::unordered_map<std::string, std::shared_ptr<IOPSupportChecker>> op_map;
 
@@ -1153,6 +1168,8 @@ std::unordered_map<std::string, std::shared_ptr<IOPSupportChecker>> CreateOpSupp
 
   return op_map;
 }
+
+#pragma endregion
 
 }  // namespace nnapi
 }  // namespace onnxruntime

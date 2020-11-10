@@ -12,9 +12,6 @@ class IOpBuilder {
  public:
   virtual ~IOpBuilder() = default;
 
-  // Check if an operator is supported
-  virtual bool IsOpSupported(ModelBuilder& model_builder, const Node& node) = 0;
-
   // Check if the initializers of this operator need preprocess
   // which will not be copied
   virtual void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) = 0;
