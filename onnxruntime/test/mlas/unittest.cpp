@@ -2818,25 +2818,15 @@ private:
         }
 
         // Compute Output with MLAS
-        if (AccumulateMode) {
-            if (PerColumn) {
-                MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR OutputProcessor(Output, N, Scale, nullptr, MLAS_QGEMM_OUTPUT_MODE::AccumulateMode, MLAS_QUANTIZATION_GRANULARITY::PerColumn);
-                OutputProcessor.Process(Input, 0, 0, M, N, N);
-            } else {
-                MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR OutputProcessor(Output, N, Scale, nullptr, MLAS_QGEMM_OUTPUT_MODE::AccumulateMode, MLAS_QUANTIZATION_GRANULARITY::PerMatrix);
-                OutputProcessor.Process(Input, 0, 0, M, N, N);
-            }
-        } else if (PerColumn) {
-            MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR OutputProcessor(Output, N, Scale, nullptr, MLAS_QGEMM_OUTPUT_MODE::ZeroMode, MLAS_QUANTIZATION_GRANULARITY::PerColumn);
-            OutputProcessor.Process(Input, 0, 0, M, N, N);
-        } else {
-            MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR OutputProcessor(Output, N, Scale, nullptr, MLAS_QGEMM_OUTPUT_MODE::ZeroMode, MLAS_QUANTIZATION_GRANULARITY::PerMatrix);
-            OutputProcessor.Process(Input, 0, 0, M, N, N);
-        }
+        MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR OutputProcessor(Output, N, Scale, nullptr,
+                                                               AccumulateMode ? MLAS_QGEMM_OUTPUT_MODE::AccumulateMode : MLAS_QGEMM_OUTPUT_MODE::ZeroMode,
+                                                               PerColumn ? MLAS_QUANTIZATION_GRANULARITY::PerColumn : MLAS_QUANTIZATION_GRANULARITY::PerMatrix);
+        OutputProcessor.Process(Input, 0, 0, M, N, N);
 
         constexpr float epsilon = 1e-6f;
 
         for (size_t n = 0; n < M * N; n++) {
+
             float diff = std::fabs(Output[n] - OutputRef[n]);
             if (diff > epsilon) {
                 printf("MlasScaleOutputTest: Output[%zu][%zu]:%.8f, OutputRef[%zu][%zu]:%.8f, for case M=%zu, N=%zu\n",
