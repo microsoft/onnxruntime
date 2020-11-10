@@ -8,6 +8,8 @@
 #include "LearningModelDevice.h"
 #include "OnnxruntimeProvider.h"
 #include "Dummy.h"
+#include "LearningModelSessionOptionsExperimental.h"
+#include "LearningModelSessionExperimental.h"
 
 #define STRINGIFY(x) #x
 #define XSTRINGIFY(x) STRINGIFY(x)
