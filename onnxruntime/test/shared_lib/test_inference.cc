@@ -794,10 +794,10 @@ TEST(CApiTest, create_tensor_with_data_float16) {
   // Example with C++. However, what we are feeding underneath is really
   // a continuous buffer of uint16_t
   // Use 3rd party libraries such as Eigen to convert floats and doubles to float16 types.
-  Ort::Float16_t values[] = { 15360, 16384, 16896, 17408, 17664}; // 1.f, 2.f, 3.f, 4.f, 5.f
+  Ort::Float16_t values[] = {15360, 16384, 16896, 17408, 17664};  // 1.f, 2.f, 3.f, 4.f, 5.f
   constexpr size_t values_length = sizeof(values) / sizeof(values[0]);
 
-  std::vector<int64_t> dims = {values_length};
+  std::vector<int64_t> dims = {static_cast<int64_t>(values_length)};
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
 
   Ort::Value tensor = Ort::Value::CreateTensor<Ort::Float16_t>(info, values, values_length, dims.data(), dims.size());
@@ -817,9 +817,9 @@ TEST(CApiTest, create_tensor_with_data_bfloat16) {
   // Example with C++. However, what we are feeding underneath is really
   // a continuous buffer of uint16_t
   // Conversion from float to bfloat16 is simple. Strip off half of the bytes from float.
-  Ort::BFloat16_t values[] =  {16256, 16384, 16448, 16512, 16544}; // 1.f, 2.f, 3.f, 4.f, 5.f
+  Ort::BFloat16_t values[] = {16256, 16384, 16448, 16512, 16544};  // 1.f, 2.f, 3.f, 4.f, 5.f
   constexpr size_t values_length = sizeof(values) / sizeof(values[0]);
-  std::vector<int64_t> dims = {values_length};
+  std::vector<int64_t> dims = {static_cast<int64_t>(values_length)};
 
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
 

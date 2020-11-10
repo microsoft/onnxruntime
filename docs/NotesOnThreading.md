@@ -17,6 +17,11 @@ Examples of these abstractions are: ([threadpool.h](https://github.com/microsoft
 
 These static methods abstract over the different implementation choices.  They can run over the ORT thread pool, or run over OpenMP, or run sequentially.
 
+In addition, ThreadPool::ParallelSection allows a series of loops to
+be grouped together in a single parallel section. This allows an
+operator to amortize loop entry/exit costs in cases where it is
+impractical to refactor code into a single large loop.
+
 **Please do not write #ifdef pragma omp in operator code**.
 
 For intra op parallelism ORT users can use either OpenMP or ORT threadpool. The choice of using OpenMP is indicated by building ORT with ```--use_openmp``` switch. For inter op parallelism, however, we always use the ORT threadpool.
