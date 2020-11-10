@@ -193,7 +193,8 @@ TEST(SoftmaxOperator, ThreeDimsAxis2_opset13) {
       0.23619612f, 0.1829779f, 0.37029108f, 0.14383113f, 0.0667037f,
       0.15740506f, 0.13165872f, 0.31243387f, 0.24108529f, 0.15741715f};
 
-  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 13, /*axis*/ 2);
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 13, /*axis*/ 2,
+          {kOpenVINOExecutionProvider});  // OpenVINO doesn't support opset-13 yet
 }
 
 TEST(SoftmaxOperator, ThreeDimsDefaultAxis_opset13) {
@@ -213,7 +214,8 @@ TEST(SoftmaxOperator, ThreeDimsDefaultAxis_opset13) {
       0.23619612f, 0.1829779f, 0.37029108f, 0.14383113f, 0.0667037f,
       0.15740506f, 0.13165872f, 0.31243387f, 0.24108529f, 0.15741715f};
 
-  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 13, /*default axis*/ -1);
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 13, /*default axis*/ -1,
+          {kOpenVINOExecutionProvider});  // OpenVINO doesn't support opset-13 yet
 }
 TEST(SoftmaxOperator, ThreeDimsNegativeAxis) {
   // x = <see x_vals_3dims>
@@ -267,7 +269,7 @@ TEST(SoftmaxOperator, InvalidAxis_opset13) {
           expected_vals,
           dimensions,
           /*opset*/ -1,  // latest opset so we get shape inferencing errors
-          /* invalid axis */ -10, {kTensorrtExecutionProvider},
+          /* invalid axis */ -10, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider},
           OpTester::ExpectResult::kExpectFailure,
           // In opset-13, Softmax is composed as afunction of several other ops,
           // and hence it breaks differently to the test above but the most important thing
