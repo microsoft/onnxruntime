@@ -16,6 +16,7 @@ set(WINML_TEST_INC_DIR
   ${CMAKE_CURRENT_BINARY_DIR}/winml_api
   ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated
   ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include
+  ${CMAKE_CURRENT_BINARY_DIR}/winml_api_experimental
   ${CMAKE_CURRENT_BINARY_DIR}/winml_api_experimental/comp_generated
 )
 

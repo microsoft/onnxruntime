@@ -332,6 +332,15 @@ static void NamedDimensionOverride()
   LearningModelSession session(nullptr);
   WINML_EXPECT_NO_THROW(session = LearningModelSession(model, device, options));
 
+  Experimental::LearningModelSessionExperimental experimental_session(session);
+  Experimental::LearningModelSessionOptionsExperimental experimental_options = experimental_session.Options();
+
+  wfc::IMapView<winrt::hstring, uint32_t> internal_overrides = experimental_options.GetNamedDimensionOverrides();
+
+  WINML_EXPECT_EQUAL(internal_overrides.Lookup(L"None"), n);
+
+  WINML_EXPECT_EQUAL(internal_overrides.Lookup(L"DimNameThatDoesntExist"), n);
+
   ILearningModelFeatureDescriptor descriptor = model.InputFeatures().GetAt(0);
   TensorFeatureDescriptor tensorDescriptor = nullptr;
   descriptor.as(tensorDescriptor);
