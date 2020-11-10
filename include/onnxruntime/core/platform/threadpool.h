@@ -197,7 +197,7 @@ class ThreadPool {
 
   class ParallelSection {
   public:
-    ParallelSection(ThreadPool *tp);
+    explicit ParallelSection(ThreadPool *tp);
     ~ParallelSection();
 
   private:
@@ -209,9 +209,9 @@ class ThreadPool {
     // ThreadPoolParallelSection does not need to be available at this
     // point to avoid a dependence on the Eigen headers.
     std::unique_ptr<ThreadPoolParallelSection, void(*)(ThreadPoolParallelSection*)>
-      _ps{nullptr, [](ThreadPoolParallelSection*){}};
+      ps_{nullptr, [](ThreadPoolParallelSection*){}};
 #ifndef _OPENMP
-    ThreadPool *_tp;
+    ThreadPool *tp_;
 #endif
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ParallelSection);
 
