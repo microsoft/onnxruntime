@@ -17,6 +17,7 @@ typedef struct MultiIndex {
   size_t index;
   size_t upper_bound;
   int64_t stride;
+  MultiIndex() {}
   MultiIndex(size_t i, size_t n, int64_t s) {
     index = i;
     upper_bound = n;
@@ -94,18 +95,13 @@ static void DoTransposeImpl(int64_t num_axes, const std::vector<int64_t>& target
                             size_t num_blocks, size_t num_elts_in_block, const std::vector<size_t>& stride,
                             const uint8_t* source, uint8_t* target, size_t element_size) {
   size_t blocksize = num_elts_in_block * element_size;
-  MultiIndex* mindex = (MultiIndex*)alloca(num_axes * sizeof(MultiIndex));
-  size_t naxes = IncrementIndexAndComputeOffsetSetup(mindex, num_axes, target_dims, stride, element_size);
+  std::vector<MultiIndex> mindex(num_axes);
+  size_t naxes = IncrementIndexAndComputeOffsetSetup(mindex.data(), num_axes, target_dims, stride, element_size);
 
-  // index used to iterate over target iteration-space
-  std::vector<int64_t> target_index(num_axes, 0);
   const uint8_t* local_source = source;
   for (size_t i = 0; i < num_blocks; ++i) {
-    // copy
     memcpy(target, local_source, blocksize);
-
-    // increment target_index:
-    IncrementIndexAndComputeOffset(mindex, naxes, local_source);
+    IncrementIndexAndComputeOffset(mindex.data(), naxes, local_source);
     target += blocksize;
   }
 }
@@ -114,18 +110,13 @@ static void DoTransposeImpl(int64_t num_axes, const std::vector<int64_t>& target
                             size_t num_blocks, size_t num_elts_in_block, const std::vector<size_t>& stride,
                             const std::string* source, std::string* target) {
   ORT_ENFORCE(num_axes > 0, "Transpose not implemented for empty tensors.");
-  MultiIndex* mindex = (MultiIndex*)alloca(num_axes * sizeof(MultiIndex));
-  size_t naxes = IncrementIndexAndComputeOffsetSetup(mindex, num_axes, target_dims, stride, 1);
+  std::vector<MultiIndex> mindex(num_axes);
+  size_t naxes = IncrementIndexAndComputeOffsetSetup(mindex.data(), num_axes, target_dims, stride, 1);
 
-  // index used to iterate over target iteration-space
-  std::vector<int64_t> target_index(num_axes, 0);
   const std::string* local_source = source;
   for (size_t i = 0; i < num_blocks; ++i) {
-    // copy
     DoTransposeSingleBlock(num_elts_in_block, local_source, target);
-
-    // increment target_index:
-    IncrementIndexAndComputeOffset(mindex, naxes, local_source);
+    IncrementIndexAndComputeOffset(mindex.data(), naxes, local_source);
     target += num_elts_in_block;
   }
 }
@@ -139,16 +130,13 @@ inline void CopyPrim(uint8_t* target, const uint8_t* source) {
 template <class T>
 static void TypedDoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_dims, size_t num_blocks,
                                     const std::vector<size_t>& stride, const uint8_t* source, uint8_t* target) {
-  MultiIndex* mindex = (MultiIndex*)alloca(num_axes * sizeof(MultiIndex));
-  size_t naxes = IncrementIndexAndComputeOffsetSetup(mindex, num_axes, target_dims, stride, sizeof(T));
+  std::vector<MultiIndex> mindex(num_axes);
+  size_t naxes = IncrementIndexAndComputeOffsetSetup(mindex.data(), num_axes, target_dims, stride, sizeof(T));
 
   const uint8_t* local_source = source;
   for (size_t i = 0; i < num_blocks; ++i) {
-    // copy
     CopyPrim<uint64_t>(target, local_source);
-
-    // increment target_index:
-    IncrementIndexAndComputeOffset(mindex, naxes, local_source);
+    IncrementIndexAndComputeOffset(mindex.data(), naxes, local_source);
     target += sizeof(T);
   }
 }
@@ -159,9 +147,6 @@ static void TypedDoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>
 static void DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_dims, size_t num_blocks,
                                const std::vector<size_t>& stride, const uint8_t* source, uint8_t* target,
                                size_t element_size) {
-  // index used to iterate over target iteration-space
-  std::vector<int64_t> target_index(num_axes, 0);
-
   switch (element_size) {
     case sizeof(uint64_t):
       TypedDoTransposeEltWise<uint64_t>(num_axes, target_dims, num_blocks, stride, source, target);
@@ -183,18 +168,14 @@ static void DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& tar
 static void DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_dims, size_t num_blocks,
                                const std::vector<size_t>& stride, const std::string* source, std::string* target) {
   ORT_ENFORCE(num_axes > 0, "Transpose not implemented for empty tensors.");
-  MultiIndex* mindex = (MultiIndex*)alloca(num_axes * sizeof(MultiIndex));
-  size_t naxes = IncrementIndexAndComputeOffsetSetup(mindex, num_axes, target_dims, stride, 1);
+  std::vector<MultiIndex> mindex(num_axes);
+  size_t naxes = IncrementIndexAndComputeOffsetSetup(mindex.data(), num_axes, target_dims, stride, 1);
 
   // index used to iterate over target iteration-space
-  std::vector<int64_t> target_index(num_axes, 0);
   const std::string* local_source = source;
   for (size_t i = 0; i < num_blocks; ++i) {
-    // copy
     *target = *local_source;
-
-    // increment target_index:
-    IncrementIndexAndComputeOffset(mindex, naxes, local_source);
+    IncrementIndexAndComputeOffset(mindex.data(), naxes, local_source);
     target++;
   }
 }
