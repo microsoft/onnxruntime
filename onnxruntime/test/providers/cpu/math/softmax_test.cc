@@ -147,7 +147,8 @@ TEST(SoftmaxOperator, ThreeDimsAxis1_opset13) {
       0.37181312f, 0.12944824f, 0.3946307f, 0.19975942f, 0.0699691f,
       0.29696727f, 0.11163106f, 0.39906505f, 0.4012943f, 0.1979003f};
 
-  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 13, /*axis*/ 1, {kTensorrtExecutionProvider});
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 13, /*axis*/ 1,
+          {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO doesn't support opset-13 yet
 }
 
 TEST(SoftmaxOperator, ThreeDimsAxis2) {
