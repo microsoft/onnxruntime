@@ -1650,7 +1650,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     var outNode0 = outputs.ElementAtOrDefault(0);
                     Assert.Equal("label", outNode0.Name);
                     Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, outNode0.ValueType);
-                    Assert.Equal(TensorElementType.Int64, (TensorElementType)outNode0.ElementType);
+                    Assert.Equal(TensorElementType.String, (TensorElementType)outNode0.ElementType);
 
                     // try-cast as a tensor
                     var outLabelTensor = outNode0.AsTensor<string>();
