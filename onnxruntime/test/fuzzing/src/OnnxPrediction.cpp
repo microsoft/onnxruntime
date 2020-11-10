@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "OnnxPrediction.h"
-
+#include <vector>
 // Uses the onnxruntime to load the model
 // into a session.
 //
@@ -36,6 +36,31 @@ session{nullptr}
       rawModel.get(), 
       onnx_model.ByteSizeLong(), 
       emptySessionOption),
+
+  inputNames.resize(ptrSession->GetInputCount());
+  outputNames.resize(ptrSession->GetOutputCount());
+
+  init();
+}
+
+OnnxPrediction::OnnxPrediction(const std::vector<char>& modelData)
+:
+numBytes(modelData.size()),
+session{nullptr}
+{
+  rawModel = std::shared_ptr<void>{alloc.Alloc(numBytes),
+  [this](void * ptr)
+      {
+      this->GetAllocator().Free(ptr);
+      }
+  };
+  memcpy(rawModel.get(), modelData.data(), numBytes);
+  Ort::SessionOptions so;
+  so.AddConfigEntry(kOrtSessionOptionsConfigLoadModelFormat, "ORT");
+  ptrSession = std::make_unique<Ort::Session>(env,
+      rawModel.get(),
+      numBytes,
+      so),
 
   inputNames.resize(ptrSession->GetInputCount());
   outputNames.resize(ptrSession->GetOutputCount());

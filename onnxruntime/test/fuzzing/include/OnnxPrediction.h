@@ -18,7 +18,7 @@
 #include <string_view>
 #include <cwchar>
 #include <filesystem>
-
+#include <memory>
 #include "BetaDistribution.h"
 #include "onnx/onnx_pb.h"
 #include "onnxruntime_cxx_api.h"
@@ -45,6 +45,11 @@ public:
   // environment
   //
   OnnxPrediction(onnx::ModelProto& onnx_model);
+
+  // The following constructor is meant for initializing using flatbuffer model.
+  // Memory buffer pointing to the model
+  //
+  OnnxPrediction(const std::vector<char>& modelData);
 
   // Deletes the prediction object 
   //
@@ -156,6 +161,7 @@ private:
 
   // A pointer to the model
   //
+  size_t numBytes;
   std::shared_ptr<void> rawModel;
 
   // Create RunOptions

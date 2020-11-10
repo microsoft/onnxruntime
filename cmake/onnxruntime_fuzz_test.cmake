@@ -34,16 +34,24 @@ if (onnxruntime_FUZZ_ENABLED)
 					"${SEC_FUZZ_ROOT}/src/OnnxPrediction" 
 					"${SEC_FUZZ_ROOT}/src/testlog.cpp" 
 					"${SEC_FUZZ_ROOT}/src/test.cpp")
+
+	set(SEC_FUZ_ORT_SRC "${SEC_FUZZ_ROOT}/src/BetaDistribution.cpp"
+					"${SEC_FUZZ_ROOT}/src/OnnxPrediction"
+					"${SEC_FUZZ_ROOT}/src/testlog.cpp"
+					"${SEC_FUZZ_ROOT}/src/test_flatbuffer.cpp")
 					
 	# compile the executables
 	add_executable(onnxruntime_security_fuzz ${SEC_FUZ_SRC})
-	
+	add_executable(onnxruntime_security_fuzz_flatbuffer "${SEC_FUZ_ORT_SRC}")
 	# compile with c++17
 	target_compile_features(onnxruntime_security_fuzz PUBLIC cxx_std_17)
+	target_compile_features(onnxruntime_security_fuzz_flatbuffer PUBLIC cxx_std_17)
 	
 	target_compile_options(onnxruntime_security_fuzz PRIVATE "/wd5208")
+	target_compile_options(onnxruntime_security_fuzz_flatbuffer PRIVATE "/wd5208")
 	# Security fuzzing engine header file reference
 	onnxruntime_add_include_to_target(onnxruntime_security_fuzz libprotobuf onnx onnxruntime)
+	onnxruntime_add_include_to_target(onnxruntime_security_fuzz_flatbuffer libprotobuf onnx onnxruntime)
 	
 	# Assign all include to one variable
 	set(SEC_FUZ_INC "${SEC_FUZZ_ROOT}/include")
@@ -51,15 +59,22 @@ if (onnxruntime_FUZZ_ENABLED)
 	
 	# add all these include directory to the Fuzzing engine
 	target_include_directories(onnxruntime_security_fuzz PRIVATE ${INCLUDE_FILES})
+	target_include_directories(onnxruntime_security_fuzz_flatbuffer PRIVATE ${INCLUDE_FILES} "${FLATBUFFER_INCLUDE_DIRS}" "${ONNXRUNTIME_ROOT}/test/util/include")
 	
 	# add link libraries the project
 	target_link_libraries(onnxruntime_security_fuzz libprotobuf onnx_proto onnxruntime protobuf-mutator)
+	target_link_libraries(onnxruntime_security_fuzz_flatbuffer libprotobuf onnx_proto onnxruntime protobuf-mutator)
 	
 	# add the dependencies
 	add_dependencies(onnxruntime_security_fuzz libprotobuf onnx_proto onnxruntime protobuf-mutator)
+	add_dependencies(onnxruntime_security_fuzz_flatbuffer libprotobuf onnx_proto onnxruntime protobuf-mutator)
 	
 	# copy the dlls to the execution directory
 	add_custom_command(TARGET onnxruntime_security_fuzz POST_BUILD
+		COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:onnxruntime>  $<TARGET_FILE_DIR:onnxruntime_security_fuzz>
+		COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:libprotobuf>  $<TARGET_FILE_DIR:onnxruntime_security_fuzz>)
+
+	add_custom_command(TARGET onnxruntime_security_fuzz_flatbuffer POST_BUILD
 		COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:onnxruntime>  $<TARGET_FILE_DIR:onnxruntime_security_fuzz>
 		COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:libprotobuf>  $<TARGET_FILE_DIR:onnxruntime_security_fuzz>)
 endif()
