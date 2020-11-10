@@ -169,7 +169,7 @@
         "^test_reduce_sum_empty_axes_input_noop*",
         "^test_unsqueeze_*",  // Does not support axes as input
         "^test_squeeze_*",   // Does not support axes as input
-        "^test_logsoftmax_*," // Does not support opset-13 yet
+        "^test_logsoftmax_*", // Does not support opset-13 yet
         "^test_softmax_*" // Does not support opset-13 yet
     ],
     // ORT first supported opset 7, so models with nodes that require versions prior to opset 7 are not supported
