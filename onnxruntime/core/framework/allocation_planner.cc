@@ -739,7 +739,7 @@ class PlannerImpl {
       const auto& input_defs = pnode->InputDefs();
       onnxruntime::AllocKind input_kind = AllocKind::kAllocateStatically;
       bool set_input_kind = true;
-      for (const auto& node_input : input_defs.size()) {
+      for (const auto& node_input : input_defs) {
         if (!node_input->Exists()) continue;
         const auto current_idx = Index(node_input->Name());
         const auto& current_plan = AllocPlan(current_idx);
