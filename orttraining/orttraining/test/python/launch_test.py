@@ -20,7 +20,8 @@ def parse_arguments():
     parser.add_argument(
         "--cmd_line_with_args",
         required=True,
-        help="command line with arguments to be executed in a subprocess.")
+        help="command line with arguments to be executed in a subprocess. \
+        it expects a single string containing arguments separated by spaces.")
     parser.add_argument("--cwd", help="working directory")
     # parser.add_argument("--env", help="env variables.")
     parser.add_argument("--env", help="env variables", nargs=2, action="append", default=[])
