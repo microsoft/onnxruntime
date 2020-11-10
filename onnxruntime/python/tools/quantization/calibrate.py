@@ -12,6 +12,7 @@ import onnxruntime
 from onnx import helper, TensorProto
 
 import abc
+import itertools
 
 
 class CalibrationDataReader(metaclass=abc.ABCMeta):
@@ -54,6 +55,9 @@ class ONNXCalibrater:
         '''
 
         model = onnx.load(self.model_path)
+        model = onnx.shape_inference.infer_shapes(model)
+        value_infos = {vi.name: vi for vi in model.graph.value_info}
+        value_infos.update({ot.name: ot for ot in model.graph.output})
 
         added_nodes = []
         added_outputs = []
@@ -63,12 +67,12 @@ class ONNXCalibrater:
             should_be_calibrate = ((node.op_type in self.calibrate_op_types) and
                                    (node.name not in self.black_nodes)) or (node.name in self.white_nodes)
             if should_be_calibrate:
-                tensors_to_calibrate.update(node.input)
-                tensors_to_calibrate.update(node.output)
-
-            for tensor in tensors_to_calibrate:
-                if tensor in model.graph.initializer:
-                    tensors_to_calibrate.remove(tensor)
+                for tensor_name in itertools.chain(node.input, node.output):
+                    if tensor_name in value_infos.keys():
+                        vi = value_infos[tensor_name]
+                        if vi.type.HasField('tensor_type') and vi.type.tensor_type.elem_type == TensorProto.FLOAT and (
+                                tensor_name not in model.graph.initializer):
+                            tensors_to_calibrate.add(tensor_name)
 
         for tensor in tensors_to_calibrate:
             # Adding ReduceMin nodes

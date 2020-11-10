@@ -35,7 +35,7 @@ void RunAndVerifyOutputs(const std::string& model_file_name,
   run_options.run_tag = so.session_logid;
 
   InferenceSessionWrapper session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(onnxruntime::make_unique<::onnxruntime::NnapiExecutionProvider>()));
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(onnxruntime::make_unique<::onnxruntime::NnapiExecutionProvider>(0)));
   ASSERT_STATUS_OK(session_object.Load(model_file_name));
   ASSERT_STATUS_OK(session_object.Initialize());
 
@@ -141,5 +141,15 @@ TEST(NnapiExecutionProviderTest, FunctionTest) {
 
   RunAndVerifyOutputs(model_file_name, "NnapiExecutionProviderTest.FunctionTest", feeds, output_names, expected_dims_mul_m, expected_values_mul_m);
 }
+
+TEST(NnapiExecutionProviderTest, NNAPIFlagsTest) {
+  unsigned long nnapi_flags = NNAPI_FLAG_USE_NONE;
+  nnapi_flags |= NNAPI_FLAG_USE_FP16;
+  onnxruntime::NnapiExecutionProvider nnapi_ep(nnapi_flags);
+  const auto flags = nnapi_ep.GetNNAPIFlags();
+  ASSERT_TRUE(flags & NNAPI_FLAG_USE_FP16);
+  ASSERT_FALSE(flags & NNAPI_FLAG_USE_NCHW);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
