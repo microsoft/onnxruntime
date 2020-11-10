@@ -2787,7 +2787,7 @@ private:
         int32_t* Input = BufferInput.GetBuffer(M * N);
         float* Output = BufferOutput.GetBuffer(M * N);
         float* OutputRef = BufferOutputRef.GetBuffer(M * N);
-        float* Scale = BufferScale.GetBuffer(N);
+        float* Scale = BufferScale.GetBuffer(PerColumn ? N : 1);
 
         std::default_random_engine generator(static_cast<unsigned>(M * N));
         std::uniform_real_distribution<float> real_distribution(-1.0f, 1.0f);
@@ -2800,11 +2800,8 @@ private:
             Output[s] = OutputRef[s] = real_distribution(generator);
         }
 
-        Scale[0] = real_distribution(generator);
-        if (PerColumn) {
-            for (size_t s = 1; s < N; s++) {
-                Scale[s] = real_distribution(generator);
-            }
+        for (size_t s = 0; s < (PerColumn ? N : 1); s++) {
+            Scale[s] = real_distribution(generator);
         }
 
         // Compute Reference Value
@@ -2814,8 +2811,7 @@ private:
                 float current_scale = PerColumn ? Scale[n] : Scale[0];
                 if (AccumulateMode) {
                     OutputRef[m * N + n] += Input[m * N + n] * current_scale;
-                }
-                else {
+                } else {
                     OutputRef[m * N + n] = Input[m * N + n] * current_scale;
                 }
             }
@@ -2826,17 +2822,14 @@ private:
             if (PerColumn) {
                 MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR OutputProcessor(Output, N, Scale, nullptr, MLAS_QGEMM_OUTPUT_MODE::AccumulateMode, MLAS_QUANTIZATION_GRANULARITY::PerColumn);
                 OutputProcessor.Process(Input, 0, 0, M, N, N);
-            }
-            else {
+            } else {
                 MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR OutputProcessor(Output, N, Scale, nullptr, MLAS_QGEMM_OUTPUT_MODE::AccumulateMode, MLAS_QUANTIZATION_GRANULARITY::PerMatrix);
                 OutputProcessor.Process(Input, 0, 0, M, N, N);
             }
-        }
-        else if (PerColumn) {
+        } else if (PerColumn) {
             MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR OutputProcessor(Output, N, Scale, nullptr, MLAS_QGEMM_OUTPUT_MODE::ZeroMode, MLAS_QUANTIZATION_GRANULARITY::PerColumn);
             OutputProcessor.Process(Input, 0, 0, M, N, N);
-        }
-        else {
+        } else {
             MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR OutputProcessor(Output, N, Scale, nullptr, MLAS_QGEMM_OUTPUT_MODE::ZeroMode, MLAS_QUANTIZATION_GRANULARITY::PerMatrix);
             OutputProcessor.Process(Input, 0, 0, M, N, N);
         }
