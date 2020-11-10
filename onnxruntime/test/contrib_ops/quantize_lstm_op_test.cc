@@ -3,7 +3,6 @@
 
 #include <algorithm>
 #include <vector>
-#include <iostream>
 
 #include "core/mlas/inc/mlas.h"
 #include "core/util/qmath.h"
@@ -25,17 +24,10 @@ static std::vector<float> ApplyQDQ(const std::vector<float>& data, size_t num_di
     QType zp = 0;
     float scale = 1.0f;
     const float* data_buf = data.data() + size_per_dir * dir_idx;
-    GetQuantizationParameter(data_buf, size_per_dir, scale, zp);
+    GetQuantizationParameter<QType, true>(data_buf, size_per_dir, scale, zp);
 
     std::vector<QType> quant_data(size_per_dir);
     MlasQuantizeLinear(data_buf, quant_data.data(), size_per_dir, scale, zp);
-
-    std::cout << "ApplyQDQ" << std::endl;
-    for (auto itr = quant_data.begin(); itr < quant_data.end(); itr++) {
-      std::cout << int(*itr) << ",";
-    }
-    std::cout << std::endl
-              << std::endl;
 
     std::transform(quant_data.begin(),
                    quant_data.end(),
@@ -75,20 +67,13 @@ void QuantizeWeight(std::vector<QType>& w_quant,
 
   size_t size_per_dir = row * col;
   for (size_t dir_idx = 0; dir_idx < num_direction; dir_idx++) {
-    GetQuantizationParameter(w_transpose.data() + dir_idx * size_per_dir, size_per_dir, scale[dir_idx], zp[dir_idx]);
+    GetQuantizationParameter<QType, true>(w_transpose.data() + dir_idx * size_per_dir, size_per_dir, scale[dir_idx], zp[dir_idx]);
     MlasQuantizeLinear(w_transpose.data() + dir_idx * size_per_dir,
                        w_quant.data() + dir_idx * size_per_dir,
                        size_per_dir,
                        scale[dir_idx],
                        zp[dir_idx]);
   }
-
-  std::cout << "QuantizeWeight" << std::endl;
-  for (auto itr = w_quant.begin(); itr < w_quant.end(); itr++) {
-    std::cout << int(*itr) << ",";
-  }
-  std::cout << std::endl
-            << std::endl;
 }
 
 template <typename QType,
@@ -348,60 +333,15 @@ static void RunQuantLSTM(int64_t input_size,
                       "bidirectional");
 }
 
-//TEST(DynamicQuantLSTMTest, Input_2_Batch_1_Hidden_2) {
-//  RunQuantLSTM<int8_t>(2, 1, 2);
-//  RunQuantLSTM<uint8_t>(2, 1, 2);
-//}
-
-TEST(DynamicQuantLSTMTest, Input_2_Batch_3_Hidden_2) {
+TEST(DynamicQuantLSTMTest, SmallSize) {
   RunQuantLSTM<int8_t>(2, 3, 2);
   RunQuantLSTM<uint8_t>(2, 3, 2);
 }
-//
-//TEST(DynamicQuantLSTMTest, Input_2_Batch_3_Hidden_2_uint8_t) {
-//  RunQuantLSTM<uint8_t>(2, 3, 2);
-//}
 
-TEST(DynamicQuantLSTMTest, Input_2_Batch_3_Hidden_2_int8_t) {
-  RunQuantLSTM<int8_t>(2, 3, 2,
-                       false /*has_bias*/, false /*has_P*/,
-                       false /*is_initializer_W*/, false /*is_initializer_R*/,
-                       "forward");
+TEST(DynamicQuantLSTMTest, LargeSize) {
+  RunQuantLSTM<int8_t>(12, 3, 18);
+  RunQuantLSTM<uint8_t>(12, 3, 18);
 }
-
-//TEST(DynamicQuantLSTMTest, Input_2_Batch_3_Hidden_2_uint8_t) {
-//  RunQuantLSTM<uint8_t>(2, 3, 2);
-//}
-
-//TEST(DynamicQuantLSTMTest, Input_12_Batch_3_Hidden_18)
-//{
-//    RunQuantLSTM<int8_t>(12, 3, 18);
-//    RunQuantLSTM<uint8_t>(12, 3, 18);
-//}
-
-// TEST(DynamicQuantLSTMTest, Bidirectional_NoBias_NoP_NoClip) {
-//   int batch_size = 2;
-//   int64_t input_size = 3;
-//   int64_t hidden_size = 2;
-//
-//   RunQuantLSTM(input_size, batch_size, hidden_size, false, false, false, "bidirectional");
-// }
-//
-// TEST(DynamicQuantLSTMTest, Bidirectional_Bias_P_NoClip) {
-//   int batch_size = 2;
-//   int64_t input_size = 3;
-//   int64_t hidden_size = 2;
-//
-//   RunQuantLSTM(input_size, batch_size, hidden_size, true, true, false, "bidirectional");
-// }
-//
-// TEST(DynamicQuantLSTMTest, Bidirectional_Bias_P_Clip) {
-//   int batch_size = 4;
-//   int64_t input_size = 16;
-//   int64_t hidden_size = 18;
-//
-//   RunQuantLSTM(input_size, batch_size, hidden_size, true, true, false, "bidirectional");
-// }
 
 }  // namespace test
 }  // namespace onnxruntime
