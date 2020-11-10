@@ -36,19 +36,19 @@ REG_EXPAND_KERNEL(MLFloat16)
 
 template <typename T>
 Status Expand<T>::Compute(OpKernelContext* context) const {
-  auto input_tensor = context->Input<Tensor>(0);
-  auto input_data = input_tensor->template Data<T>();
-  auto input_shape = input_tensor->Shape().GetDims();
+  const auto* input_tensor = context->Input<Tensor>(0);
+  const auto* input_data = input_tensor->template Data<T>();
+  const auto& input_shape = input_tensor->Shape().GetDims();
 
-  auto input_dims = input_shape.data();
+  const auto* input_dims = input_shape.data();
   auto input_dims_size = static_cast<int64_t>(input_shape.size());
 
-  auto shape_tensor = context->Input<Tensor>(1);
-  auto shape_dims = shape_tensor->Data<int64_t>();
+  const auto* shape_tensor = context->Input<Tensor>(1);
+  const auto* shape_dims = shape_tensor->Data<int64_t>();
   std::vector<int64_t> output_shape{shape_dims, shape_dims + shape_tensor->Shape().Size()};
 
   if (input_shape.size() > output_shape.size()) {
-    ORT_THROW("Invalid expand shape");
+    output_shape.insert(output_shape.begin(), input_shape.size() - output_shape.size(), 1);
   }
 
   auto input_shape_iter = input_shape.rbegin();
@@ -59,7 +59,7 @@ Status Expand<T>::Compute(OpKernelContext* context) const {
       if (1 == *output_shape_iter) {
         *output_shape_iter = *input_shape_iter;
       } else if (1 != *input_shape_iter) {
-        ORT_THROW("Invalid expand shape");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid expand shape");
       }
     }
     input_shape_iter++;
@@ -67,9 +67,9 @@ Status Expand<T>::Compute(OpKernelContext* context) const {
   }
 
   TensorShape output_tensor_shape(output_shape);
-  auto output_tensor = context->Output(0, output_tensor_shape);
-  auto output_data = output_tensor->template MutableData<T>();
-  auto output_dims = output_shape.data();
+  auto* output_tensor = context->Output(0, output_tensor_shape);
+  auto* output_data = output_tensor->template MutableData<T>();
+  auto* output_dims = output_shape.data();
   auto output_dims_size = static_cast<int64_t>(output_shape.size());
   auto max_dims_size = std::max(input_dims_size, output_dims_size);
   std::unique_ptr<int64_t[]> input_dim_group{new int64_t[max_dims_size]};
