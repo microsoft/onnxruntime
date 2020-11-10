@@ -1259,20 +1259,22 @@ Status Expand_8<T>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-#define REG_EXPAND_KERNEL(TYPE)                                                    \
+#define REG_EXPAND_KERNEL_WITH_TYPE_NAME(TYPE, TYPE_NAME)                          \
   ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                        \
       Expand,                                                                      \
       8,                                                                           \
       12,                                                                          \
-      TYPE,                                                                        \
+      TYPE_NAME,                                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>()), \
       Expand_8<TYPE>);                                                             \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                  \
       Expand,                                                                      \
       13,                                                                          \
-      TYPE,                                                                        \
+      TYPE_NAME,                                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>()), \
       Expand_8<TYPE>);
+
+#define REG_EXPAND_KERNEL(TYPE) REG_EXPAND_KERNEL_WITH_TYPE_NAME(TYPE, TYPE)
 
 REG_EXPAND_KERNEL(float)
 REG_EXPAND_KERNEL(double)
@@ -1286,6 +1288,7 @@ REG_EXPAND_KERNEL(uint32_t)
 REG_EXPAND_KERNEL(uint64_t)
 REG_EXPAND_KERNEL(bool)
 REG_EXPAND_KERNEL(MLFloat16)
+REG_EXPAND_KERNEL_WITH_TYPE_NAME(std::string, string)
 
 template <>
 Status Erf<float>::Compute(OpKernelContext* context) const {
