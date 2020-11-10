@@ -12,19 +12,17 @@ class IOpBuilder {
  public:
   virtual ~IOpBuilder() = default;
 
-  // Check if an operator is supported
-  virtual bool IsOpSupported(ModelBuilder& model_builder, const Node& node) = 0;
-
   // Check if the initializers of this operator need preprocess
   // which will not be copied
-  virtual void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) = 0;
+  virtual void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const = 0;
 
   // Add the operator to NNAPI model
-  virtual Status AddToModelBuilder(ModelBuilder& model_builder, const Node& node) ORT_MUST_USE_RESULT = 0;
+  virtual Status AddToModelBuilder(ModelBuilder& model_builder, const Node& node) const ORT_MUST_USE_RESULT = 0;
 };
 
-// Generate a lookup table with IOpBuilder delegates
-// for different onnx operators
+// Generate a lookup table with IOpBuilder delegates for different onnx operators
+// Note, the lookup table should have same number of entries as the result of CreateOpSupportCheckers()
+// in op_support_checker.h
 std::unordered_map<std::string, std::shared_ptr<IOpBuilder>> CreateOpBuilders();
 
 // Transpose the NHWC input to NCHW output
@@ -35,10 +33,6 @@ Status TransposeNHWCToNCHW(ModelBuilder& model_builder, const std::string& input
 Status GetQuantizedInputScaleAndZeroPoint(const ModelBuilder& model_builder,
                                           const Node& node, const std::string& input_name,
                                           float& scale, int32_t& zero_point) ORT_MUST_USE_RESULT;
-
-// Get the min/max value from Clip op
-// If the min/max are inputs be not initializers (value not preset), will return false
-bool GetClipMinMax(const ModelBuilder& model_builder, const Node& node, float& min, float& max);
 
 }  // namespace nnapi
 }  // namespace onnxruntime
