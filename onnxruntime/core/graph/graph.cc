@@ -454,6 +454,10 @@ void Node::SetExecutionProviderType(ProviderType execution_provider_type) {
   execution_provider_type_ = execution_provider_type;
 }
 
+void Node::SetExecutionProviderType(const char* execution_provider_type) {
+  SetExecutionProviderType(std::string(execution_provider_type));
+}
+
 void Node::ToProto(NodeProto& proto, bool update_subgraphs) const {
   proto.set_name(name_);
   proto.set_op_type(op_type_);
