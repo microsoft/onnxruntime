@@ -274,6 +274,13 @@ typedef struct OrtCUDAProviderOptions {
   int do_copy_in_default_stream;
 } OrtCUDAProviderOptions;
 
+typedef struct OrtOpenVINOProviderOptions {
+  const char* device_type;       // CPU_FP32, GPU_FP32, GPU_FP16, MYRIAD_FP16, VAD-M_FP16 or VAD-F_FP32
+  bool enable_vpu_fast_compile;  // Default false
+  const char* device_id;         // Default ""
+  size_t num_of_threads;         // Default 8
+} OrtOpenVINOProviderOptions;
+
 struct OrtApi;
 typedef struct OrtApi OrtApi;
 
@@ -1093,8 +1100,11 @@ struct OrtApi {
   /**
    * Append CUDA execution provider
    */
-  ORT_API2_STATUS(OrtSessionOptionsAppendExecutionProvider_CUDA,
-                  _In_ OrtSessionOptions* options, _In_ OrtCUDAProviderOptions* cuda_options);
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_CUDA,
+                  _In_ OrtSessionOptions* options, _In_ const OrtCUDAProviderOptions* cuda_options);
+
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_OpenVINO,
+                  _In_ OrtSessionOptions* options, _In_ const OrtOpenVINOProviderOptions* provider_options);
 
   /**
    * Use this API to configure the global thread pool options to be used in the call to CreateEnvWithGlobalThreadPools.

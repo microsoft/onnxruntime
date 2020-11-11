@@ -1,12 +1,6 @@
 // Copyright(C) 2019 Intel Corporation
 // Licensed under the MIT License
 
-//#include "core/common/common.h"
-//#include "core/common/logging/logging.h"
-//#include "core/framework/compute_capability.h"
-//#include "core/framework/allocatormgr.h"
-//#include "core/framework/kernel_registry.h"
-//#include "core/graph/graph_viewer.h"
 #include "core/providers/shared_library/provider_api.h"
 #include "openvino_execution_provider.h"
 #include "contexts.h"

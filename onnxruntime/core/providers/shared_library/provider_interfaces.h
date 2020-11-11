@@ -169,9 +169,8 @@ struct Provider_IExecutionProvider {
 
 struct Provider {
   virtual std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory(int /*device_id*/) { return nullptr; }
-  virtual std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const Ort_OpenVINO_FactoryParams* /*params*/) { return nullptr; }
-  virtual std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO1(const char* /*device_Type*/) { return nullptr; }
-  virtual std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO2(const char* /*settings_str*/) { return nullptr; }
+  virtual std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory(const void* /*provider_options*/) { return nullptr; }
+  virtual std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* /*settings_str*/) { return nullptr; }
 
   virtual void Shutdown() = 0;
 };
@@ -250,6 +249,7 @@ struct ProviderHost {
 
   // Provider_int64s
   virtual int Provider_int64s__size(const Provider_int64s* p) = 0;
+  virtual const int64_t& Provider_int64s__Get(const Provider_int64s* p, int index) = 0;
 
   // Provider_TypeProto_Tensor
   virtual const Provider_TensorShapeProto& Provider_TypeProto_Tensor__shape(const Provider_TypeProto_Tensor* p) = 0;
@@ -587,6 +587,7 @@ struct DataTypeUtils {
 
 struct Provider_int64s {
   int size() const { return g_host->Provider_int64s__size(this); }
+  const int64_t& Get(int index) const { return g_host->Provider_int64s__Get(this, index); }
 
   PROVIDER_DISALLOW_ALL(Provider_int64s)
 };

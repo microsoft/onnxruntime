@@ -8,7 +8,6 @@
 
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
-//#include "core/graph/onnx_protobuf.h"
 
 namespace onnxruntime {
 namespace openvino_ep {

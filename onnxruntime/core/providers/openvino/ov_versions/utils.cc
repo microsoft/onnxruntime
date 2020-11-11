@@ -1,9 +1,4 @@
 #include "core/providers/shared_library/provider_api.h"
-//#include "core/framework/compute_capability.h"
-//#include "core/framework/tensorprotoutils.h"
-//#include "core/graph/graph_viewer.h"
-//#include "core/graph/model.h"
-//#include "core/graph/graph_utils.h"
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4244 4245 5208)

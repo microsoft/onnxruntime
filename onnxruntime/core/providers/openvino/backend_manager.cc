@@ -5,10 +5,6 @@
 #include <inference_engine.hpp>
 #include <fstream>
 
-//#include <google/protobuf/io/zero_copy_stream_impl.h>
-//#include "core/graph/graph.h"
-//#include "core/graph/model.h"
-//#include "core/platform/env.h"
 #include "contexts.h"
 #include "backend_manager.h"
 #include "ibackend.h"

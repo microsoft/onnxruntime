@@ -10,9 +10,6 @@
 #include <inference_engine.hpp>
 
 #include "core/providers/shared_library/provider_api.h"
-//#include "core/session/onnxruntime_cxx_api.h"
-//#include "core/graph/graph.h"
-//#include "core/common/logging/logging.h"
 
 #include "../backend_utils.h"
 #include <ngraph/frontend/onnx_import/onnx.hpp>

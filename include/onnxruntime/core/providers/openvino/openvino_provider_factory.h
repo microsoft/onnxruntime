@@ -9,13 +9,6 @@ extern "C" {
 #include <stdbool.h>
 #endif
 
-typedef struct Ort_OpenVINO_FactoryParams {
-  const char* device_type;
-  bool enable_vpu_fast_compile;
-  const char* device_id;
-  size_t num_of_threads;
-} Ort_OpenVINO_FactoryParams;
-
 /**
  * \param device_type openvino device type and precision. Could be any of
  * CPU_FP32, GPU_FP32, GPU_FP16, MYRIAD_FP16, VAD-M_FP16 or VAD-F_FP32.

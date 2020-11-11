@@ -3,12 +3,6 @@
 
 #pragma once
 
-//#include "core/common/common.h"
-//#include "core/graph/graph_viewer.h"
-//#include "core/framework/execution_provider.h"
-//#include "core/framework/kernel_registry.h"
-//#include "core/framework/allocatormgr.h"
-//#include "core/session/onnxruntime_cxx_api.h"
 #include <inference_engine.hpp>
 
 #include "contexts.h"
