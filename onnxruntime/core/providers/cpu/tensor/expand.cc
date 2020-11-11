@@ -123,38 +123,42 @@ Status Expand<T>::Compute(OpKernelContext* context) const {
         output_offsets[i] = output_offset;
       });
 
-  for (auto i = max_dims_size - 1; i >= dim_group_start; --i) {
-    auto base_copy_len = output_dim_group[i] / expand_dim_size[i];
-    auto base_copy_byte = base_copy_len * sizeof(T);
-    concurrency::ThreadPool::TrySimpleParallelFor(
-        context->GetOperatorThreadPool(),
-        distribute_count,
-        [&](ptrdiff_t j) {
-          auto output_offset = output_offsets[j];
-          if (output_offset % output_dim_group[i] == 0) {
-            auto copy_len = base_copy_len;
-            auto copy_byte = base_copy_byte;
-            auto output_from = output_data + output_offset;
-            auto output_at = output_from + copy_len;
-            auto output_end = output_from + output_dim_group[i];
-            while (output_at + copy_len <= output_end) {
-              memcpy(output_at, output_from, copy_byte);
-              output_at += copy_len;
-              copy_len <<= 1;
-              copy_byte <<= 1;
-            }
-            while (output_at < output_end) {
-              if (output_at + copy_len <= output_end) {
+  {
+    onnxruntime::concurrency::ThreadPool::ParallelSection ps(context->GetOperatorThreadPool());
+
+    for (auto i = max_dims_size - 1; i >= dim_group_start; --i) {
+      auto base_copy_len = output_dim_group[i] / expand_dim_size[i];
+      auto base_copy_byte = base_copy_len * sizeof(T);
+      concurrency::ThreadPool::TrySimpleParallelFor(
+          context->GetOperatorThreadPool(),
+          distribute_count,
+          [&](ptrdiff_t j) {
+            auto output_offset = output_offsets[j];
+            if (output_offset % output_dim_group[i] == 0) {
+              auto copy_len = base_copy_len;
+              auto copy_byte = base_copy_byte;
+              auto output_from = output_data + output_offset;
+              auto output_at = output_from + copy_len;
+              auto output_end = output_from + output_dim_group[i];
+              while (output_at + copy_len <= output_end) {
                 memcpy(output_at, output_from, copy_byte);
                 output_at += copy_len;
-              } else {
-                copy_len >>= 1;
-                copy_byte >>= 1;
+                copy_len <<= 1;
+                copy_byte <<= 1;
               }
-            }  //while
-          }
-        });
-  }  //for
+              while (output_at < output_end) {
+                if (output_at + copy_len <= output_end) {
+                  memcpy(output_at, output_from, copy_byte);
+                  output_at += copy_len;
+                } else {
+                  copy_len >>= 1;
+                  copy_byte >>= 1;
+                }
+              }  //while
+            }
+          });
+    }  //for
+  }
   return Status::OK();
 }  //Expand::compute
 
