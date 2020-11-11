@@ -699,7 +699,7 @@ Set onnxruntime_DEBUG_NODE_INPUTS_OUTPUT to build with this enabled.
 
 #### Configuration
 The debug dump behavior can be controlled with several environment variables.
-See [onnxruntime/core/framework/debug_node_inputs_outputs_utils.h](./onnxruntime/core/framework/debug_node_inputs_outputs_utils.h) for details.
+See [onnxruntime/core/framework/debug_node_inputs_outputs_utils.h](./onnxruntime/core/framework/debug_node_inputs_outputs_utils.h) for details. Shape is printed by default unless it's turned OFF by setting environment variable ORT_DEBUG_NODE_IO_DUMP_SHAPE_DATA to 0.
 
 ##### Examples
 

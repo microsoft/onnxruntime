@@ -18,6 +18,8 @@ namespace utils {
 
 // environment variables that control debug node dumping behavior
 namespace debug_node_inputs_outputs_env_vars {
+// set to non-zero to dump shape data
+constexpr const char* kDumpShapeData = "ORT_DEBUG_NODE_IO_DUMP_SHAPE_DATA";
 // set to non-zero to dump node input data
 constexpr const char* kDumpInputData = "ORT_DEBUG_NODE_IO_DUMP_INPUT_DATA";
 // set to non-zero to dump node output data
@@ -43,10 +45,10 @@ constexpr char kFilterPatternDelimiter = ';';
 
 struct NodeDumpOptions {
   enum DumpFlags {
-    ShapeOnly = 0,
-    InputData = 1 << 0,
-    OutputData = 1 << 1,
-    AllData = InputData | OutputData,
+    ShapeOnly = 1 << 0,
+    InputData = 1 << 1,
+    OutputData = 1 << 2,
+    AllData = ShapeOnly | InputData | OutputData,
   };
 
   // specifies the information to dump per node
