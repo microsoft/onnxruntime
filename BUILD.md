@@ -547,29 +547,24 @@ onnxruntime_perf_test
 onnxruntime_test_all
 ```
 
-#### Build Instructions (Jetson Nano)
+#### Native Build Instructions (validated on Jetson Nano and Jetson Xavier)
 
 1. Build ACL Library (skip if already built)
 ```
 cd ~
-git clone https://github.com/Arm-software/ComputeLibrary.git
+git clone -b v20.02 https://github.com/Arm-software/ComputeLibrary.git
 cd ComputeLibrary
-sudo apt install scons
-sudo apt install g++-arm-linux-gnueabihf
+sudo apt-get install -y scons g++-arm-linux-gnueabihf
 scons -j8 arch=arm64-v8a  Werror=1 debug=0 asserts=0 neon=1 opencl=1 examples=1 build=native
 ```
-2. Set environment variables to set include directory and shared object library path.
+
+2. Cmake is needed to build ONNX Runtime. Because the minimum required version is 3.13,
+   it is necessary to build CMake from source. Download Unix/Linux sources from https://cmake.org/download/
+   and follow https://cmake.org/install/ to build from source. Version 3.17.5 and 3.18.4 have been tested on Jetson.
+
+3. Build onnxruntime with --use_acl flag with one of the supported ACL version flags. (ACL_1902 | ACL_1905 | ACL_1908 | ACL_2002)
 ```
-export CPATH=~/ComputeLibrary/include/:~/ComputeLibrary/
-export LD_LIBRARY_PATH=~/ComputeLibrary/build/
-```
-3. Build onnxruntime with --use_acl flag
-```
-./build.sh --use_acl
-```
-To use a library outside the normal environment you can set a custom path by using --acl_home and --acl_libs tags that defines the path to the ComputeLibrary directory and the build directory respectively.
-```
-./build.sh --use_acl --acl_home /path/to/ComputeLibrary --acl_libs /path/to/build
+./build.sh --config RelWithDebInfo --use_acl ACL_2002 --update --build --build_wheel --parallel --acl_home ~/ComputeLibrary --acl_libs ~/ComputeLibrary/build
 ```
 
 ---

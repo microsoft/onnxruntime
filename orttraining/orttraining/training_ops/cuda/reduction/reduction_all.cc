@@ -46,8 +46,7 @@ Status ReduceAllL2<TIn, TOut>::ComputeInternal(OpKernelContext* ctx) const {
   CudaTOut* p_output = reinterpret_cast<CudaTOut*>(output->template MutableData<TOut>());
   CUDA_RETURN_IF_ERROR(cudaMemsetAsync(p_output, 0, sizeof(CudaTOut)));
 
-  auto ctx_internal = dynamic_cast<OpKernelContextInternal*>(ctx);
-  bool deterministic = ctx_internal && ctx_internal->GetUseDeterministicCompute();
+  const bool deterministic = ctx->GetUseDeterministicCompute();
 
   if (!deterministic) {
     typedef MultiTensorReduceL2<CudaTIn, CudaTOut> TFunctor;

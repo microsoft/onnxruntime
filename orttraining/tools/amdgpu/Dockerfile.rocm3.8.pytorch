@@ -108,7 +108,7 @@ RUN mv $OPENMPI_DIR/bin/mpirun $OPENMPI_DIR/bin/mpirun.real && \
 # install mpi4py (be sure to link existing /opt/openmpi-xxx)
 RUN CC=mpicc MPICC=mpicc pip install mpi4py --no-binary mpi4py
 
-ARG CACHE_DATA=2020-09-22
+ARG CACHE_DATA=2020-10-28
 
 # ONNX Runtime
 WORKDIR $GITHUB_DIR
@@ -118,16 +118,16 @@ RUN git clone --recursive -b wezhan/amdgpu https://github.com/microsoft/onnxrunt
   && python3 tools/ci_build/build.py \
     --cmake_extra_defines ONNXRUNTIME_VERSION=`cat ./VERSION_NUMBER` \
     --build_dir build \
-    --config Release \
+    --config RelWithDebInfo \
     --parallel \
     --skip_tests \
     --build_wheel \
     --use_rocm --rocm_home /opt/rocm \
     --mpi_home $OPENMPI_DIR \
     --nccl_home /opt/rocm \
-	--enable_training \
-  && test -f $ORT_DIR/build/Release/onnxruntime_training_bert \
-  && pip install $ORT_DIR/build/Release/dist/*.whl \
+    --enable_training \
+  && test -f $ORT_DIR/build/RelWithDebInfo/onnxruntime_training_bert \
+  && pip install $ORT_DIR/build/RelWithDebInfo/dist/*.whl \
   && ldconfig
 
 # ONNX Runtime Training Examples
@@ -180,9 +180,8 @@ ADD model ${WORKSPACE_DIR}/model
 ADD script ${WORKSPACE_DIR}/script
 RUN chmod a+x ${WORKSPACE_DIR}/script/run_bert.sh
 
-ADD lib ${WORKSPACE_DIR}/lib
-ENV LD_PERLOAD=${WORKSPACE_DIR}/lib/libpsl.so
-
-ENV LOG_DIR=/data/wezhan/logs
+# add locale en_US.UTF-8
+RUN apt-get install -y locales
+RUN locale-gen en_US.UTF-8
 
 WORKDIR ${WORKSPACE_DIR}/script

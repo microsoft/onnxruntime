@@ -10,15 +10,11 @@
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksWrapper.h"
 #include "shaper.h"
 
-// This is the minimal Android API Level required by ORT NNAPI EP to run
-#ifndef ORT_NNAPI_MIN_API_LEVEL
-#define ORT_NNAPI_MIN_API_LEVEL 27
-#endif
-
 namespace onnxruntime {
 namespace nnapi {
 
 class IOpBuilder;
+class IOpSupportChecker;
 
 class ModelBuilder {
  public:
@@ -35,8 +31,6 @@ class ModelBuilder {
 
   ModelBuilder(const GraphViewer& graph_viewer);
   ~ModelBuilder() = default;
-
-  std::vector<std::vector<int>> GetSupportedNodes();
 
   Status Compile(std::unique_ptr<Model>& model) ORT_MUST_USE_RESULT;
 
@@ -97,10 +91,9 @@ class ModelBuilder {
   const std::unordered_set<std::string>&
   GetFusedActivations() const { return fused_activations_; }
 
-  const std::unordered_map<std::string, const ONNX_NAMESPACE::TensorProto&>&
-  GetInitializerTensors() const { return initializers_; }
+  const InitializedTensorSet& GetInitializerTensors() const { return graph_viewer_.GetAllInitializedTensors(); }
 
-  const Graph& GetOnnxGraph() const { return graph_viewer_.GetGraph(); }
+  const GraphViewer& GetGraphViewer() const { return graph_viewer_; }
 
   void RegisterNHWCOperand(const std::string& name);
   bool IsOperandNHWC(const std::string& name);
@@ -140,7 +133,7 @@ class ModelBuilder {
   // All activation nodes (Relu, Relu1, Relu6) as a map <NodeIndex, activation_code>
   std::unordered_map<NodeIndex, int32_t> activation_nodes_;
 
-  std::unordered_map<std::string, std::shared_ptr<IOpBuilder>> op_builders_;
+  std::unordered_map<std::string, std::shared_ptr<IOpSupportChecker>> op_support_checkers_;
 
   // Operands in nhwc
   std::unordered_set<std::string> nhwc_operands_;
@@ -158,8 +151,6 @@ class ModelBuilder {
   std::vector<ANeuralNetworksDevice*> nnapi_target_devices_;
 
   uint32_t next_index_ = 0;
-
-  bool IsNodeSupported(const Node& node);
 
   // Convert the onnx model to ANeuralNetworksModel
   Status Prepare() ORT_MUST_USE_RESULT;
@@ -189,6 +180,7 @@ class ModelBuilder {
                        uint32_t& index) ORT_MUST_USE_RESULT;
 
   IOpBuilder* GetOpBuilder(const Node& node);
+  IOpSupportChecker* GetOPSupportChecker(const Node& node);
 };
 
 }  // namespace nnapi

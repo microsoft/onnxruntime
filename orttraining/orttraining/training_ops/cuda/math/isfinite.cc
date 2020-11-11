@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "isfinite.h"
+#include "orttraining/training_ops/cuda/math/isfinite.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;

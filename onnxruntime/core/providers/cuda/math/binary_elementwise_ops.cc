@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "binary_elementwise_ops.h"
-#include "binary_elementwise_ops_impl.h"
-#include "unary_elementwise_ops_impl.h"
+#include "core/providers/cuda/math/binary_elementwise_ops.h"
+#include "core/providers/cuda/math/binary_elementwise_ops_impl.h"
+#include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 
 using namespace onnxruntime::common;
 namespace onnxruntime {
