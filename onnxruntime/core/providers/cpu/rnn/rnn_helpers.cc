@@ -265,7 +265,7 @@ void ComputeGemm(const int M,
   // quantize the data
   MlasQuantizeLinear(A, a_data_quant, M * K, a_scale, a_zero_point);
 
-  bool b_is_signed = weights.quant_para_->b_is_signed;
+  bool b_is_signed = weights.quant_para_->is_signed;
   float multiplier = a_scale * (*weights.quant_para_->scale);
   uint8_t b_zero_point = weights.quant_para_->zero_point ? *static_cast<const uint8_t*>(weights.quant_para_->zero_point) : 0;
 

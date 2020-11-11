@@ -6,7 +6,6 @@
 #include "core/util/qmath.h"
 #include "core/common/common.h"
 #include "core/util/math_cpuonly.h"
-#include "core/mlas/inc/mlas.h"
 
 // fallback to gemmlowp when building for arm devices
 #ifndef MLAS_SUPPORTS_GEMM_U8X8

@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/platform/threadpool.h"
+#include "core/mlas/inc/mlas.h"
 
 #include <cfenv>
 #include <cmath>

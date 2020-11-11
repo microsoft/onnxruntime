@@ -99,7 +99,7 @@ Status DynamicQuantizeLSTM::Compute(OpKernelContext* context) const {
   const auto& W_scale_shape = w_scale->Shape();
   const auto& R_scale_shape = r_scale->Shape();
 
-#if 0 // TODO: Enable Per-Column after MLAS kernel change is done
+#if 0  // TODO: Enable Per-Column after MLAS kernel change is done
   int64_t per_column_size = num_directions_ * 4 * hidden_size_;
   QuantizationType quant_W_type = W_scale_shape.Size() == per_column_size ? QuantizationType::PerColumn : QuantizationType::PerTensor;
   QuantizationType quant_R_type = R_scale_shape.Size() == per_column_size ? QuantizationType::PerColumn : QuantizationType::PerTensor;
@@ -107,25 +107,25 @@ Status DynamicQuantizeLSTM::Compute(OpKernelContext* context) const {
   QuantizationType quant_W_type = QuantizationType::PerTensor;
   QuantizationType quant_R_type = QuantizationType::PerTensor;
 #endif
-  QuantizationParameter quant_para_W_1{w_scale->Data<float>(),
+  QuantizationParameter quant_para_W_1(w_scale->Data<float>(),
                                        static_cast<const uint8_t*>(w_zp->DataRaw()),
                                        weights_signed_,
-                                       quant_W_type};
-  QuantizationParameter quant_para_R_1{r_scale->Data<float>(),
+                                       quant_W_type);
+  QuantizationParameter quant_para_R_1(r_scale->Data<float>(),
                                        r_zp ? static_cast<const uint8_t*>(r_zp->DataRaw()) : nullptr,
                                        weights_signed_,
-                                       quant_R_type};
+                                       quant_R_type);
 
   const uint8_t* W_data = nullptr;
   const uint8_t* R_data = nullptr;
   if (W != nullptr) {
     W_data = static_cast<const uint8_t*>(W->DataRaw());
-    quant_para_W_1.b_is_signed = W->IsDataType<int8_t>();
+    quant_para_W_1.is_signed = W->IsDataType<int8_t>();
   }
 
   if (R != nullptr) {
     R_data = static_cast<const uint8_t*>(R->DataRaw());
-    quant_para_R_1.b_is_signed = R->IsDataType<int8_t>();
+    quant_para_R_1.is_signed = R->IsDataType<int8_t>();
   }
 
   // spans for first direction

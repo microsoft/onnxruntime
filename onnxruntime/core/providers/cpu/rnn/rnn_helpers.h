@@ -176,9 +176,17 @@ enum class QuantizationType {
 };
 
 struct QuantizationParameter {
+  QuantizationParameter(const float* scale,
+                        const uint8_t* zero_point,
+                        bool is_signed,
+                        QuantizationType quant_type) : scale(scale),
+                                                       zero_point(zero_point),
+                                                       is_signed(is_signed),
+                                                       quant_type(quant_type) {}
+
   const float* scale{nullptr};
   const uint8_t* zero_point{nullptr};
-  bool b_is_signed{false};
+  bool is_signed{false};
   QuantizationType quant_type{QuantizationType::PerTensor};
 };
 
