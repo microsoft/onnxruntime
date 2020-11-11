@@ -975,8 +975,8 @@ if(onnxruntime_USE_OPENVINO)
 
   add_definitions(-DUSE_OPENVINO=1)
 
-  if (EXISTS "$ENV{INTEL_OPENVINO_DIR}/inference_engine/version.txt")
-    file(READ $ENV{INTEL_OPENVINO_DIR}/inference_engine/version.txt VER)
+  if (EXISTS "$ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/version.txt")
+    file(READ $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/version.txt VER)
   endif()
 
   if (NOT DEFINED ENV{INTEL_OPENVINO_DIR})
