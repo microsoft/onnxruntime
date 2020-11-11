@@ -536,7 +536,7 @@ int32_t ModelBuilder::FindActivation(const Node& node, const NodeArg& output) {
 }
 
 IOpBuilder* ModelBuilder::GetOpBuilder(const Node& node) {
-  const auto op_builders = GetOpBuilders();
+  const auto& op_builders = GetOpBuilders();
   if (!Contains(op_builders, node.OpType()))
     return nullptr;
 
@@ -544,7 +544,7 @@ IOpBuilder* ModelBuilder::GetOpBuilder(const Node& node) {
 }
 
 IOpSupportChecker* ModelBuilder::GetOPSupportChecker(const Node& node) {
-  const auto op_support_checkers = GetOpSupportCheckers();
+  const auto& op_support_checkers = GetOpSupportCheckers();
   if (!Contains(op_support_checkers, node.OpType()))
     return nullptr;
 
