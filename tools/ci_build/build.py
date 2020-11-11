@@ -1355,13 +1355,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
         log.info("Running tests for %s configuration", config)
         cwd = get_config_build_dir(build_dir, config)
 
-        if args.enable_training and args.use_cuda and args.enable_training_python_frontend_e2e_tests:
-            # run frontend tests for orttraining-linux-gpu-frontend_test-ci-pipeline.
-            # this is not a PR merge test so skip other non-frontend tests.
-            run_training_python_frontend_e2e_tests(cwd=cwd)
-            run_training_python_frontend_tests(cwd=cwd)
-            continue
-
         if args.enable_training and args.use_cuda and args.enable_training_pipeline_e2e_tests:
             # run distributed pipeline test on 4-GPU CI machine.
             run_training_pipeline_e2e_tests(cwd=cwd)
