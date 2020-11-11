@@ -25,7 +25,7 @@ class TensorrtLogger : public nvinfer1::ILogger {
  public:
   TensorrtLogger(Severity verbosity = Severity::kWARNING)
       : verbosity_(verbosity) {}
-  void log(Severity severity, const char* msg) override {
+  void log(Severity severity, const char* msg) noexcept override {
     if (severity <= verbosity_) {
       time_t rawtime = std::time(0);
       char buf[256];

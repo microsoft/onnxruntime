@@ -31,22 +31,12 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::logging;
 namespace fs = std::experimental::filesystem;
 namespace {
-std::string GetEnginePath(const ::std::string& root, const std::string& name) {
+std::string GetCachePath(const ::std::string& root, const std::string& name) {
   if (root.empty()) {
-    return name + ".engine";
+    return name;
   } else {
     fs::path path = root;
-    path.append(name + ".engine");
-    return path.string();
-  }
-}
-
-std::string GetProfilePath(const ::std::string& root, const std::string& name) {
-  if (root.empty()) {
-    return name + ".profile";
-  } else {
-    fs::path path = root;
-    path.append(name + ".profile");
+    path.append(name);
     return path.string();
   }
 }
@@ -67,7 +57,7 @@ std::string GetVecHash(const ::std::string& vec) {
 * key: tensor_a, value: dim_0 min_shape max_shape dim_2 min_shape max_shape
 * key: tensor_b, value: dim_1 min_shape max_shape
 */
-void SerializeProfile(const ::std::string& file_name, std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>>& shape_ranges) {
+void SerializeProfile(const std::string& file_name, std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>>& shape_ranges) {
   // Serialize profile
   flexbuffers::Builder builder;
   auto profile_start = builder.StartMap();
@@ -84,7 +74,7 @@ void SerializeProfile(const ::std::string& file_name, std::unordered_map<std::st
   builder.Finish();
 
   // Save flexbuffer
-  std::ofstream file(file_name, std::ios::binary);
+  std::ofstream file(file_name, std::ios::binary | std::ios::out);
   auto buf = builder.GetBuffer();
   size_t size = builder.GetSize();
   file.write(reinterpret_cast<const char*>(&buf[0]), size);
@@ -92,10 +82,10 @@ void SerializeProfile(const ::std::string& file_name, std::unordered_map<std::st
 }
 
 // Deserialize engine profile
-std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>> DeserializeProfile(const std::string& file_name) {
+std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>> DeserializeProfile(std::ifstream& infile) {
   // Load flexbuffer
-  std::ifstream infile;
-  infile.open(file_name, std::ios::binary | std::ios::in);
+  ///std::ifstream infile;
+  ///infile.open(file_name, std::ios::binary | std::ios::in);
   infile.seekg(0, std::ios::end);
   int length = infile.tellg();
   infile.seekg(0, std::ios::beg);
@@ -869,18 +859,17 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
     tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine> trt_engine;
     tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext> trt_context;
     if (!has_dynamic_shape) {
-      std::string profile_path = GetProfilePath(engine_cache_path_, trt_node_name_with_precision);
-      std::ifstream profile_file(profile_path, std::ios::binary | std::ios::in);
-      std::string cached_path = GetEnginePath(engine_cache_path_, trt_node_name_with_precision);
-      std::ifstream plan_file(cached_path, std::ios::binary | std::ios::in);
-      if (engine_cache_enable_ && profile_file && plan_file) {
-        plan_file.seekg(0, std::ios::end);
-        int engine_size = plan_file.tellg();
-        plan_file.seekg(0, std::ios::beg);
+      std::string cache_path = GetCachePath(engine_cache_path_, trt_node_name_with_precision);
+	  std::string engine_cache_path = cache_path + ".engine";
+      std::ifstream engine_file(engine_cache_path, std::ios::binary | std::ios::in);
+      if (engine_cache_enable_ && engine_file) {
+        engine_file.seekg(0, std::ios::end);
+        int engine_size = engine_file.tellg();
+        engine_file.seekg(0, std::ios::beg);
         std::unique_ptr<char[]> engine_buf{new char[engine_size]};
-        plan_file.read((char*)engine_buf.get(), engine_size);
+        engine_file.read((char*)engine_buf.get(), engine_size);
         trt_engine = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
-        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + cached_path;
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path;
       } else {
         trt_engine = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildEngineWithConfig(*trt_network, *trt_config));
         if (trt_engine == nullptr) {
@@ -888,12 +877,11 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
                                  "TensorRT EP could not build engine for fused node: " + fused_node->Name());
         }
         if (engine_cache_enable_) {
-          SerializeProfile(profile_path, input_shape_ranges);
           nvinfer1::IHostMemory* serializedModel = trt_engine->serialize();
-          std::ofstream file(cached_path, std::ios::binary | std::ios::out);
+          std::ofstream file(engine_cache_path, std::ios::binary | std::ios::out);
           file.write(reinterpret_cast<char*>(serializedModel->data()), serializedModel->size());
           serializedModel->destroy();
-          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + cached_path;
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + engine_cache_path;
         }
       }
       trt_context = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
@@ -978,28 +966,30 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
       nvinfer1::IOptimizationProfile* trt_profile = nullptr;
 
       // Load serialized engine
-      std::string profile_path = GetProfilePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
-      std::ifstream profile_file(profile_path, std::ios::binary | std::ios::in);
-      std::string cached_path = GetEnginePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
-      std::ifstream plan_file(cached_path, std::ios::binary | std::ios::in);
-      if (profile_file && plan_file && (trt_state->engine_cache_enable && trt_engine == nullptr)) {
-        // Load profile
-        shape_ranges = DeserializeProfile(profile_path);
-        // Load engine
+      std::string cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
+	  std::string engine_cache_path = cache_path + ".engine";
+	  std::string profile_cache_path = cache_path + ".profile";
+      std::ifstream engine_file(engine_cache_path, std::ios::binary | std::ios::in);	  
+      std::ifstream profile_file(profile_cache_path, std::ios::binary | std::ios::in);
+      if (engine_file && profile_file && (trt_state->engine_cache_enable && trt_engine == nullptr)) {
+        // Deserialize profile
+        shape_ranges = DeserializeProfile(profile_file);
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + profile_cache_path;
+        // Deserialize engine
         trt_state->context->reset();
         trt_state->engine->reset();
-        plan_file.seekg(0, std::ios::end);
-        int engine_size = plan_file.tellg();
-        plan_file.seekg(0, std::ios::beg);
+        engine_file.seekg(0, std::ios::end);
+        int engine_size = engine_file.tellg();
+        engine_file.seekg(0, std::ios::beg);
         std::unique_ptr<char[]> engine_buf{new char[engine_size]};
-        plan_file.read((char*)engine_buf.get(), engine_size);
+        engine_file.read((char*)engine_buf.get(), engine_size);
         auto runtime_ = trt_state->runtime;
         *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(
             runtime_->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
         if (trt_state->engine->get() == nullptr) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
         }
-        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + cached_path;
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path;
         trt_engine = trt_state->engine->get();
         *(trt_state->context) = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(
             trt_state->engine->get()->createExecutionContext());
@@ -1163,14 +1153,15 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
         }
         trt_engine = trt_state->engine->get();
         if (trt_state->engine_cache_enable) {
-          // Save engine profile to file
-          SerializeProfile(profile_path, shape_ranges);
-          // Save engine to file
+          // Serialize engine profile
+          SerializeProfile(profile_cache_path, shape_ranges);
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + profile_cache_path;
+          // Serialize engine
           nvinfer1::IHostMemory* serializedModel = trt_engine->serialize();
-          std::ofstream file(cached_path, std::ios::binary | std::ios::out);
+          std::ofstream file(engine_cache_path, std::ios::binary | std::ios::out);
           file.write(reinterpret_cast<char*>(serializedModel->data()), serializedModel->size());
           serializedModel->destroy();
-          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + cached_path;
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + engine_cache_path;
         }
 
         *(trt_state->context) = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(
