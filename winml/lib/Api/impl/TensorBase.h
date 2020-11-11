@@ -14,6 +14,11 @@
 
 #include "core/session/onnxruntime_c_api.h"
 
+#include "ConverterResourceStore.h"
+#include "VideoFrameToTensorConverter.h"
+#include "TensorToVideoFrameConverter.h"
+#include "D3DDeviceCache.h"
+
 namespace _winml {
 
 // TensorBase
@@ -130,11 +135,54 @@ struct TensorBase : TBase {
 
     // Get engine
     auto session = context.session.as<winmlp::LearningModelSession>();
+    auto device = session->Device().as<winmlp::LearningModelDevice>();
     auto engine = session->GetEngine();
 
     // If there is no matching gpu resource, then fallback to a cpu resource
     if (GetCpuResource() != nullptr) {
-      return CreateTensorValueFromExternalBuffer(engine, out);
+      auto num_backing_buffers = GetCpuResource()->num_buffers(); 
+      if (num_backing_buffers == 1) {
+        // If we have a single backing cpu buffer, there is no need to create GPU resources.
+        // The engine will use the buffer provided, and perform the needed copies into the GPU context as needed.
+        return CreateTensorValueFromExternalBuffer(engine, out);
+      } else {
+        // If we have multiple backing cpu buffers, then...
+        if (context.type == _winml::BindingType::kInput) {
+          // If we are binding inputs, then a GPU resource needs to be allocated, and individual buffer contents need
+          // to be copied directly into a gpu resource.
+
+          if (GetGpuResource() == nullptr) {
+            GetGpuResource() = CreateD3D12Resource(session);
+          }
+
+          _winml::ConverterResourceDescription descriptor = {};
+          descriptor.pixel_format = static_cast<DWORD>(wgdx::DirectXPixelFormat::Unknown);
+          descriptor.width = static_cast<int>(GetCpuResource()->size_in_bytes());
+          descriptor.height = static_cast<int>(1);
+          descriptor.luid = device->GetD3DDevice()->GetAdapterLuid();  // Converted image on GPU
+
+          context.converter = _winml::PoolObjectWrapper::Create(device->TensorizerStore()->Fetch(descriptor));
+          context.converter->Get()->Tensorizer->ConvertBuffersToBatchedGPUTensor(
+            GetCpuResource()->buffers(),
+            GetCpuResource()->size_in_bytes(),
+            sizeof(T),
+            *device->GetD3DDeviceCache(),
+            GetGpuResource().get());
+
+          return CreateGPUMLValue(GetGpuResource().get(), context, out);
+
+        } else if (context.type == _winml::BindingType::kOutput) {
+          // If we are binding outputs, then the buffers do not need to bound. If the engine produces a output on the gpu
+          // we already have a detensorize path which will need to copy the allocated output d3d12resource
+          // into the output buffers without temporary intermediary buffers! No binding here is necessary.
+          // If the output produces a cpu buffer (even in the GPU case), we will already have a cpu buffer, and just need
+          // to copy back to the output buffers, no binding is necessary.
+
+          // Figure out of we need to bind anything here...
+          GetGpuResource() = CreateD3D12Resource(session);
+          return CreateGPUMLValue(GetGpuResource().get(), context, out);
+        }
+      }
     }
 
     if (TensorKind() == winml::TensorKind::String) {
@@ -143,49 +191,52 @@ struct TensorBase : TBase {
       GetCpuResource() = std::make_shared<_winml::Tensor<T>>(shape_);
       return CreateTensorValueFromExternalBuffer(engine, out);
     } else {
-      // Try to allocate the backing memory for the caller
-      auto bufferSize = std::accumulate(std::begin(shape_), std::end(shape_), static_cast<int64_t>(1), std::multiplies<int64_t>());
-      auto bufferByteSize = sizeof(T) * bufferSize;
-
-      // DML needs the resources' sizes to be a multiple of 4 bytes
-      if (bufferByteSize % 4 != 0) {
-        bufferByteSize += 4 - (bufferByteSize % 4);
-      }
-
-      D3D12_HEAP_PROPERTIES heapProperties = {
-          D3D12_HEAP_TYPE_DEFAULT,
-          D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
-          D3D12_MEMORY_POOL_UNKNOWN,
-          0,
-          0};
-      D3D12_RESOURCE_DESC resourceDesc = {
-          D3D12_RESOURCE_DIMENSION_BUFFER,
-          0,
-          static_cast<uint64_t>(bufferByteSize),
-          1,
-          1,
-          1,
-          DXGI_FORMAT_UNKNOWN,
-          {1, 0},
-          D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
-          D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS};
-
-      auto device = session->Device().as<winmlp::LearningModelDevice>();
-
-      winrt::com_ptr<ID3D12Resource> gpu_resource = nullptr;
-      device->GetD3DDevice()->CreateCommittedResource(
-          &heapProperties,
-          D3D12_HEAP_FLAG_NONE,
-          &resourceDesc,
-          D3D12_RESOURCE_STATE_COMMON,
-          nullptr,
-          __uuidof(ID3D12Resource),
-          gpu_resource.put_void());
-
-      GetGpuResource() = gpu_resource;
-
+      GetGpuResource() = CreateD3D12Resource(session);
       return CreateGPUMLValue(GetGpuResource().get(), context, out);
     }
+  }
+
+  winrt::com_ptr<ID3D12Resource> CreateD3D12Resource(winrt::com_ptr<winmlp::LearningModelSession> session) {
+    // Try to allocate the backing memory for the caller
+    auto bufferSize = std::accumulate(std::begin(shape_), std::end(shape_), static_cast<int64_t>(1), std::multiplies<int64_t>());
+    auto bufferByteSize = sizeof(T) * bufferSize;
+
+    // DML needs the resources' sizes to be a multiple of 4 bytes
+    if (bufferByteSize % 4 != 0) {
+      bufferByteSize += 4 - (bufferByteSize % 4);
+    }
+
+    D3D12_HEAP_PROPERTIES heapProperties = {
+        D3D12_HEAP_TYPE_DEFAULT,
+        D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
+        D3D12_MEMORY_POOL_UNKNOWN,
+        0,
+        0};
+    D3D12_RESOURCE_DESC resourceDesc = {
+        D3D12_RESOURCE_DIMENSION_BUFFER,
+        0,
+        static_cast<uint64_t>(bufferByteSize),
+        1,
+        1,
+        1,
+        DXGI_FORMAT_UNKNOWN,
+        {1, 0},
+        D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
+        D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS};
+
+    auto device = session->Device().as<winmlp::LearningModelDevice>();
+
+    winrt::com_ptr<ID3D12Resource> gpu_resource = nullptr;
+    device->GetD3DDevice()->CreateCommittedResource(
+        &heapProperties,
+        D3D12_HEAP_FLAG_NONE,
+        &resourceDesc,
+        D3D12_RESOURCE_STATE_COMMON,
+        nullptr,
+        __uuidof(ID3D12Resource),
+        gpu_resource.put_void());
+
+    return gpu_resource;
   }
 
   void EnsureBufferNotInUse() {
@@ -324,8 +375,9 @@ struct TensorBase : TBase {
       // We don't need to copy the engine provided dx resource into a local copy since we always preallocate gpu
       // resources for tensors. Therefore we are certain that the returned dxresource is the same as the one we passed in
       // and was updated in place.
-      auto spSession = context.session.as<winmlp::LearningModelSession>();
-      auto engine = spSession->GetEngine();
+      auto session = context.session.as<winmlp::LearningModelSession>();
+      auto device = session->Device().as<winmlp::LearningModelDevice>();
+      auto engine = session->GetEngine();
 
       if (GetCpuResource()->num_buffers() == 1) {
         winrt::com_ptr<IValue> dest;
@@ -333,10 +385,28 @@ struct TensorBase : TBase {
                              "Failed to prepare buffer for copy back from device resource.");
         RETURN_IF_FAILED(engine->CopyValueAcrossDevices(value, dest.get()));
       } else {
-          // This needs to be implemented so that a temporary buffer can be passed in and then copied back to the underlying buffers, when backed by many buffers.
-       // WINML_THROW_HR(E_NOTIMPL);
+        auto buffer_size_in_bytes = static_cast<size_t>(ShapeSize(shape_));
+
+        _winml::ConverterResourceDescription descriptor = {};
+        descriptor.pixel_format = static_cast<DWORD>(wgdx::DirectXPixelFormat::Unknown);
+        descriptor.luid = device->GetD3DDevice()->GetAdapterLuid();  // Converted image on GPU
+
+        auto pooled_converter = _winml::PoolObjectWrapper::Create(device->DetensorizerStore()->Fetch(descriptor));
+        auto d3dResource = reinterpret_cast<ID3D12Resource*>(updated_resource.get());
+        pooled_converter->Get()->Detensorizer->ConvertBatchedDX12TensorToBuffers(
+            d3dResource,
+            buffer_size_in_bytes,
+            *device->GetD3DDeviceCache(),
+            GetCpuResource()->buffers());
+
+        // Reset the Allocator before return to the Cache. Must Sync this background thread to that completion before we do.
+        device->GetD3DDeviceCache()->SyncD3D12ToCPU();
+        pooled_converter->Get()->Detensorizer->ResetAllocator();
       }
     }
+
+    // release any converter resources and return to the pool
+    context.converter = nullptr;
 
     return S_OK;
   }

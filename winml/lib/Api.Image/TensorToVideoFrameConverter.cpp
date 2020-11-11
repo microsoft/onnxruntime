@@ -593,6 +593,14 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToSoftwareBitmap(
   readback_heap_->Unmap(0, &CD3DX12_RANGE(0, 0));
 }
 
+void TensorToVideoFrameConverter::ConvertBatchedDX12TensorToBuffers(
+    ID3D12Resource* /*input_tensor*/,
+    size_t /*buffer_size_in_bytes*/,
+    _winml::D3DDeviceCache& /*device_cache*/,
+    const std::vector<wss::IBuffer>& /*buffers*/) {
+
+}
+
 D3D12_SHADER_RESOURCE_VIEW_DESC TensorToVideoFrameConverter::CreateSRVDescriptor(
     const UINT32 batchIdx,
     const D3D12_RESOURCE_DESC& resourceDesc,

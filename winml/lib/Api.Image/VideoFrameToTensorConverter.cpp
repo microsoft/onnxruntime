@@ -16,6 +16,8 @@
 #include "LearningModelDevice.h"
 #include "EventTimer.h"
 
+#include "robuffer.h"
+
 using namespace Microsoft::WRL;
 using namespace Windows::Graphics::DirectX::Direct3D11;
 
@@ -534,6 +536,60 @@ void VideoFrameToTensorConverter::ConvertSoftwareBitmapToGPUTensor(
   WINML_THROW_IF_FAILED(command_list_->Close());
   ID3D12CommandList* ppCommandLists[] = {command_list_.Get()};
   device_cache.GetCommandQueue()->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
+}
+
+void VideoFrameToTensorConverter::ConvertBuffersToBatchedGPUTensor(
+    const std::vector<wss::IBuffer>& buffers,
+    size_t buffer_size_in_bytes,
+    size_t element_size_in_bytes,
+    _winml::D3DDeviceCache& device_cache,
+    ID3D12Resource* output_resource) {
+  // Copy the cpu memory into the gpu resource
+
+  winrt::com_ptr<ID3D12Resource> upload_resource;
+
+  WINML_THROW_IF_FAILED(
+      device_cache.GetD3D12Device()->CreateCommittedResource(
+      &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD), D3D12_HEAP_FLAG_NONE, &CD3DX12_RESOURCE_DESC::Buffer(buffer_size_in_bytes),
+      D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(upload_resource.put())));
+
+  if (!upload_heap_ || upload_heap_->GetDesc().Width < buffer_size_in_bytes) {
+    WINML_THROW_IF_FAILED(device_cache.GetD3D12Device()->CreateCommittedResource(
+        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+        D3D12_HEAP_FLAG_NONE,
+        &CD3DX12_RESOURCE_DESC::Buffer(buffer_size_in_bytes),
+        D3D12_RESOURCE_STATE_GENERIC_READ,
+        nullptr,
+        IID_PPV_ARGS(&upload_heap_)));
+  }
+
+  BYTE* gpu_buffer = nullptr;
+  WINML_THROW_IF_FAILED(upload_heap_->Map(0, &CD3DX12_RANGE(0, 0), reinterpret_cast<void**>(&gpu_buffer)));
+
+  size_t offset_in_bytes = 0;
+  for (size_t i = 0; i < buffers.size(); i++) {
+    size_t size_in_bytes = static_cast<size_t>(buffers[i].Capacity()) * element_size_in_bytes;
+    
+    BYTE* buffer_start = nullptr;
+    auto byte_access = buffers[i].as<Windows::Storage::Streams::IBufferByteAccess>();
+    byte_access->Buffer(&buffer_start);
+
+    memcpy(gpu_buffer + offset_in_bytes, buffer_start, size_in_bytes);
+    offset_in_bytes += size_in_bytes;
+  }
+
+  upload_heap_->Unmap(0, &CD3DX12_RANGE(0, buffer_size_in_bytes));
+  
+  ResetCommandList(device_cache);
+  
+  auto barrier1 = CD3DX12_RESOURCE_BARRIER::Transition(output_resource, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST);
+  command_list_->ResourceBarrier(1, &barrier1);
+  command_list_->CopyBufferRegion(output_resource, 0, upload_resource.get(), 0, buffer_size_in_bytes);
+  auto barrier2 = CD3DX12_RESOURCE_BARRIER::Transition(output_resource, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+  command_list_->ResourceBarrier(1, &barrier2);
+  WINML_THROW_IF_FAILED(command_list_->Close());
+  ID3D12CommandList* lists[] = {command_list_.Get()};
+  device_cache.GetCommandQueue()->ExecuteCommandLists(_countof(lists), lists);
 }
 
 D3D12_UNORDERED_ACCESS_VIEW_DESC VideoFrameToTensorConverter::CreateUAVDescription(

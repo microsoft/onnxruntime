@@ -13,12 +13,10 @@ class VectorBuffer : public winrt::implements<
                          wss::IBuffer,
                          Windows::Storage::Streams::IBufferByteAccess> {
  public:
-  VectorBuffer(size_t size) : m_buffer(size) {}
-
-  ~VectorBuffer() {}
+  VectorBuffer(size_t size) : buffer_(size) {}
 
   uint32_t Capacity() const {
-    return static_cast<uint32_t>(m_buffer.size());
+    return static_cast<uint32_t>(buffer_.size());
   }
 
   uint32_t Length() const {
@@ -32,12 +30,12 @@ class VectorBuffer : public winrt::implements<
   STDMETHOD(Buffer)
   (uint8_t** value) {
     RETURN_HR_IF_NULL(E_POINTER, value);
-    *value = m_buffer.data();
+    *value = buffer_.data();
     return S_OK;
   }
 
  private:
-  std::vector<BYTE> m_buffer;
+  std::vector<BYTE> buffer_;
 };
 
 template <typename T>
@@ -80,8 +78,6 @@ class TensorBuffer {
   }
 
  public:
-  typedef std::shared_ptr<TensorBuffer> TensorBufferPtr;
-
   static auto Create(size_t size) {
     return std::shared_ptr<TensorBuffer>(new TensorBuffer(size));
   }
@@ -110,6 +106,10 @@ class TensorBuffer {
 
   auto NumBuffers() {
     return buffers_.size();
+  }
+
+  auto& Buffers() {
+    return buffers_;
   }
 
   auto Buffer(wss::IBuffer buffer) {
@@ -189,24 +189,22 @@ class TensorBuffer {
 
 template <>
 class TensorBuffer<std::string> {
-  std::vector<std::string> m_buffer;
+  std::vector<std::string> buffer_;
 
-  TensorBuffer(size_t size) : m_buffer(size) {}
+  TensorBuffer(size_t size) : buffer_(size) {}
 
  public:
-  typedef std::shared_ptr<TensorBuffer> TensorBufferPtr;
-
   static auto Create(size_t size) {
     return std::shared_ptr<TensorBuffer>(new TensorBuffer(size));
   }
 
   auto Size() {
-    return m_buffer.size();
+    return buffer_.size();
   }
 
   // this is the size in bytes
   auto SizeInBytes() {
-    return m_buffer.size();
+    return buffer_.size();
   }
 
   auto NumBuffers() {
@@ -217,20 +215,32 @@ class TensorBuffer<std::string> {
     return false;
   }
 
+  auto Buffers() -> std::vector<wss::IBuffer>& {
+    WINML_THROW_HR(E_UNEXPECTED);
+  }
+
+  auto Buffer(size_t index) {
+    WINML_THROW_HR_IF_FALSE_MSG(
+        E_INVALIDARG,
+        index == 0,
+        "TensorString can only be backed by a single buffer!");
+    return std::make_pair(buffer_.size(), buffer_.data());
+  }
+
   auto Buffer() {
-    return std::make_pair(m_buffer.size(), m_buffer.data());
+    return std::make_pair(buffer_.size(), buffer_.data());
   }
 
   auto Set(size_t size, std::string_view* data) {
     WINML_THROW_HR_IF_FALSE_MSG(
         E_INVALIDARG,
-        size <= m_buffer.size(),
+        size <= buffer_.size(),
         "Argument size (%d) exceeds the tensor size (%d).",
         static_cast<int>(size),
-        static_cast<int>(m_buffer.size()));
+        static_cast<int>(buffer_.size()));
 
     // Copy
-    std::copy(data, data + size, m_buffer.begin());
+    std::copy(data, data + size, buffer_.begin());
   }
 };
 }  // namespace _winml
