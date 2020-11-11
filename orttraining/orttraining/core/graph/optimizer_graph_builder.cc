@@ -467,11 +467,18 @@ Status OptimizerGraphBuilder::BuildInternal(
   ArgDef global_grad_norm_argdef;
   ArgDef global_grad_norm_finite_argdef;
 
+  std::cout << "opt_graph_config_.enable_grad_norm_clip:" << opt_graph_config_.enable_grad_norm_clip << "\n";
+  std::cout << "opt_graph_config_.use_mixed_precision:" << opt_graph_config_.use_mixed_precision << "\n";
+  std::cout << "opt_graph_config_.mixed_precision_type == MixedPrecisionDataType::FP16:" << opt_graph_config_.mixed_precision_type == MixedPrecisionDataType::FP16 << "\n";
+
   if (opt_graph_config_.enable_grad_norm_clip ||
       (opt_graph_config_.use_mixed_precision &&
        opt_graph_config_.mixed_precision_type == MixedPrecisionDataType::FP16)) {
     //gradient norm for bfloat16 is not ready yet. skip it to unblock the testing
     //will add it back when it is ready
+
+    std::cout << "GradientNorm node is added to the graph\n";
+
     ORT_RETURN_IF_ERROR(AddGradientNorm(
         nodearg_name_generator, gradient_argdefs, graph_defs, global_grad_norm_argdef));
     optimizer_graph_outputs[OptimizerOutputKey::GlobalGradientNorm] = global_grad_norm_argdef.name;
