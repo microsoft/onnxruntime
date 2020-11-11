@@ -2,7 +2,7 @@
 title: AMD MI GraphX
 parent: Execution Providers
 grand_parent: Reference
-nav_order: 7
+nav_order: 6
 ---
 
 # MIGraphX Execution Provider

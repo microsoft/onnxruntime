@@ -56,7 +56,7 @@ int[] dimensions;    // and the dimensions of the input is stored here
 Tensor<float> t1 = new DenseTensor<float>(sourceData, dimensions);
 ```
 
-Here is a [complete sample code](../csharp/sample/Microsoft.ML.OnnxRuntime.InferenceSample) that runs inference on a pretrained model.
+Here is a [complete sample code](https://github.com/microsoft/onnxruntime/blob/master/csharp/sample/Microsoft.ML.OnnxRuntime.InferenceSample) that runs inference on a pretrained model.
 
 ## Reuse input/output tensor buffers
 
@@ -127,7 +127,7 @@ Returns an instance of the singlton class `OrtEnv`.
 ```cs
 void EnableTelemetryEvents();
 ```
-Enables platform-specific telemetry collection where applicable. Please see [Privacy](./Privacy.md) for more details.    
+Enables platform-specific telemetry collection where applicable. Please see [Privacy](https://github.com/microsoft/onnxruntime/blob/master/Privacy.md) for more details.    
 
 ```cs
 void DisableTelemetryEvents();

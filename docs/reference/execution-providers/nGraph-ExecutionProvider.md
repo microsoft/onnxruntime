@@ -2,7 +2,7 @@
 title: nGraph
 parent: Execution Providers
 grand_parent: Reference
-nav_order: 11
+nav_order: 9
 ---
 
 # nGraph Execution Provider

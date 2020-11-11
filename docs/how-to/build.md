@@ -57,7 +57,7 @@ If you would like to use [Xcode](https://developer.apple.com/xcode/) to build th
 #### Notes
 
 * Please note that these instructions build the debug build, which may have performance tradeoffs
-* To build the version from each release (which include Windows, Linux, and Mac variants), see these .yml files for reference: [CPU](./tools/ci_build/github/azure-pipelines/nuget/cpu-esrp-pipeline.yml), [GPU](./tools/ci_build/github/azure-pipelines/nuget/gpu-esrp-pipeline.yml)
+* To build the version from each release (which include Windows, Linux, and Mac variants), see these .yml files for reference: [CPU](https://github.com/microsoft/onnxruntime/blob/master/tools/ci_build/github/azure-pipelines/nuget/cpu-esrp-pipeline.yml), [GPU](https://github.com/microsoft/onnxruntime/blob/master/tools/ci_build/github/azure-pipelines/nuget/gpu-esrp-pipeline.yml)
 * The build script runs all unit tests by default (for native builds and skips tests by default for cross-compiled builds).
 * If you need to install protobuf 3.6.1 from source code (cmake/external/protobuf), please note:
    * CMake flag protobuf\_BUILD\_SHARED\_LIBS must be turned OFF. After the installation, you should have the 'protoc' executable in your PATH. It is recommended to run `ldconfig` to make sure protobuf libraries are found.
@@ -121,15 +121,15 @@ GCC 4.x and below are not supported.
 
 ---
 ## Reduced Operator Kernel Build
-Reduced Operator Kernel builds allow you to customize the kernels in the build to provide smaller binary sizes - [see instructions](./docs/Reduced_Operator_Kernel_build.md).
+Reduced Operator Kernel builds allow you to customize the kernels in the build to provide smaller binary sizes - [see instructions](https://github.com/microsoft/onnxruntime/blob/master/docs/Reduced_Operator_Kernel_build.md).
 
 ## ONNX Runtime for Mobile Platforms
-For builds compatible with mobile platforms, see more details in [ONNX_Runtime_for_Mobile_Platforms.md](./docs/ONNX_Runtime_for_Mobile_Platforms.md). Android and iOS build instructions can be found below on this page - [Android](#Android), [iOS](#iOS)
+For builds compatible with mobile platforms, see more details in [ONNX_Runtime_for_Mobile_Platforms.md](https://github.com/microsoft/onnxruntime/blob/master/docs/ONNX_Runtime_for_Mobile_Platforms.md). Android and iOS build instructions can be found below on this page - [Android](#Android), [iOS](#iOS)
 
 ## Build ONNX Runtime Server on Linux
-Read more about ONNX Runtime Server [here](./docs/ONNX_Runtime_Server_Usage.md).
+Read more about ONNX Runtime Server [here](https://github.com/microsoft/onnxruntime/blob/master/docs/ONNX_Runtime_Server_Usage.md).
 
-Build instructions are [here](./docs/Server.md)
+Build instructions are [here](https://github.com/microsoft/onnxruntime/blob/master/docs/Server.md)
 
 ## Build Nuget packages
 Currently only supported on Windows and Linux.
@@ -176,7 +176,7 @@ Nuget packages are created under <native_build_dir>\nuget-artifacts
 ./build.sh --use_cuda --cudnn_home <cudnn home path> --cuda_home <cuda home path>
 ```
 
-A Dockerfile is available [here](./dockerfiles#cuda).
+A Dockerfile is available [here](https://github.com/microsoft/onnxruntime/blob/master/dockerfiles#cuda).
 
 
 #### Notes
@@ -198,7 +198,7 @@ If you want to build with an earlier version, you must temporarily remove the 'C
 
 ### TensorRT
 
-See more information on the TensorRT Execution Provider [here](./docs/execution_providers/TensorRT-ExecutionProvider.md).
+See more information on the TensorRT Execution Provider [here](../reference/execution-providers/TensorRT-ExecutionProvider.md).
 
 #### Prerequisites
 * Install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn)
@@ -472,7 +472,7 @@ Dockerfile instructions are available [here](https://github.com/microsoft/onnxru
 ---
 
 ### DirectML
-See more information on the DirectML execution provider [here](./docs/execution_providers/DirectML-ExecutionProvider.md).
+See more information on the DirectML execution provider [here](../reference/execution-providers/DirectML-ExecutionProvider.md).
 #### Windows
 ```
 .\build.bat --use_dml
@@ -679,7 +679,7 @@ Set onnxruntime_DEBUG_NODE_INPUTS_OUTPUT to build with this enabled.
 
 #### Configuration
 The debug dump behavior can be controlled with several environment variables.
-See [onnxruntime/core/framework/debug_node_inputs_outputs_utils.h](./onnxruntime/core/framework/debug_node_inputs_outputs_utils.h) for details.
+See [onnxruntime/core/framework/debug_node_inputs_outputs_utils.h](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/framework/debug_node_inputs_outputs_utils.h) for details.
 
 ##### Examples
 
@@ -1069,7 +1069,7 @@ To build on Windows with `--build_java` enabled you must also:
 
 #### Android NNAPI Execution Provider
 
-If you want to use NNAPI Execution Provider on Android, see [NNAPI Execution Provider](/docs/execution_providers/NNAPI-ExecutionProvider.md).
+If you want to use NNAPI Execution Provider on Android, see [NNAPI Execution Provider](../reference/execution-providers/NNAPI-ExecutionProvider.md).
 
 ##### Build Instructions
 
@@ -1124,7 +1124,7 @@ Run one of the following build scripts from the ONNX Runtime repository root,
 
 ### AMD MIGraphX
 
-See more information on the MIGraphX Execution Provider [here](./docs/execution_providers/MIGraphX-ExecutionProvider.md).
+See more information on the MIGraphX Execution Provider [here](../reference/execution-providers/MIGraphX-ExecutionProvider.md).
 
 #### Prerequisites
 * Install [ROCM](https://rocmdocs.amd.com/en/latest/Installation_Guide/Installation-Guide.html)
@@ -1153,9 +1153,9 @@ The default NVIDIA GPU build requires CUDA runtime libraries installed on the sy
 * [cuDNN](https://developer.nvidia.com/cudnn) 8.0
 * [NCCL](https://developer.nvidia.com/nccl) 2.7
 * [OpenMPI](https://www.open-mpi.org/) 4.0.4
-  * See [install_openmpi.sh](./tools/ci_build/github/linux/docker/scripts/install_openmpi.sh)
+  * See [install_openmpi.sh](https://github.com/microsoft/onnxruntime/blob/master/tools/ci_build/github/linux/docker/scripts/install_openmpi.sh)
 
-These dependency versions should reflect what is in [Dockerfile.training](./dockerfiles/Dockerfile.training).
+These dependency versions should reflect what is in [Dockerfile.training](https://github.com/microsoft/onnxruntime/blob/master/dockerfiles/Dockerfile.training).
 
 ## Build instructions
 

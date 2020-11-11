@@ -34,7 +34,7 @@ DirectML is compatible with Windows 10, version 1709 (10.0.16299; RS3, "Fall Cre
 
 ## Building from source
 
-For general information about building onnxruntime, see [BUILD.md](../../how-to/build.md).
+For general information about building onnxruntime, see [BUILD](../../how-to/build.md).
 
 Requirements for building the DirectML execution provider:
 1. Visual Studio 2017 toolchain (see [cmake configuration instructions](../../how-to/build.md))
