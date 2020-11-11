@@ -115,7 +115,7 @@ Status Hardmax<float>::Compute(OpKernelContext* ctx) const {
 
   if (is_transpose_required) {
     std::vector<size_t> reverse_permutation(rank);
-    for (size_t i = 0; i < permutation.size(); ++i) {
+    for (size_t i = 0, end = permutation.size(); i < end; ++i) {
       reverse_permutation[permutation[i]] = i;
     }
     // Perform the transpose to get the axes back to the original ordering

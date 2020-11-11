@@ -4,6 +4,7 @@
 #include "nnapi_execution_provider.h"
 
 #include "builders/model_builder.h"
+#include "builders/helper.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/compute_capability.h"
 #include "core/graph/model.h"

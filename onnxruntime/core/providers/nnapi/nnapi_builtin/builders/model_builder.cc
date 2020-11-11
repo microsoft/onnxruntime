@@ -8,6 +8,7 @@
 #include "helper.h"
 #include "model_builder.h"
 #include "op_builder.h"
+#include "op_support_checker.h"
 
 namespace onnxruntime {
 namespace nnapi {
@@ -19,6 +20,9 @@ ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer)
     : nnapi_(NnApiImplementation()), graph_viewer_(graph_viewer) {
   GetAllInitializers();
   op_builders_ = CreateOpBuilders();
+  op_support_checkers_ = CreateOpSupportCheckers();
+  ORT_ENFORCE(op_builders_.size() == op_support_checkers_.size(),
+              "We should have same number of OpBuilder and OpSupportChecker");
 }
 
 int32_t ModelBuilder::GetAndroidSdkVer() const {
@@ -26,8 +30,12 @@ int32_t ModelBuilder::GetAndroidSdkVer() const {
 }
 
 bool ModelBuilder::IsNodeSupported(const Node& node) {
-  if (auto* op_builder = GetOpBuilder(node)) {
-    return op_builder->IsOpSupported(*this, node);
+  if (auto* op_support_checker = GetOPSupportChecker(node)) {
+    OPSupportCheckParams param{
+        GetAndroidSdkVer(),  // android_sdk_ver
+        UseNCHW(),           // use_nchw
+    };
+    return op_support_checker->IsOpSupported(GetInitializerTensors(), node, param);
   } else {
     return false;
   }
@@ -201,7 +209,7 @@ void ModelBuilder::PreprocessActivations() {
       activation_nodes_.emplace(node->Index(), ANEURALNETWORKS_FUSED_RELU);
     } else if (op_type == "Clip") {  // Relu1 or Relu6
       float min, max;
-      if (!GetClipMinMax(*this, *node, min, max))
+      if (!GetClipMinMax(GetInitializerTensors(), *node, min, max))
         continue;
 
       if (min == -1.0f && max == 1.0f) {
@@ -610,6 +618,13 @@ IOpBuilder* ModelBuilder::GetOpBuilder(const Node& node) {
     return nullptr;
 
   return op_builders_[node.OpType()].get();
+}
+
+IOpSupportChecker* ModelBuilder::GetOPSupportChecker(const Node& node) {
+  if (!Contains(op_support_checkers_, node.OpType()))
+    return nullptr;
+
+  return op_support_checkers_[node.OpType()].get();
 }
 
 std::string ModelBuilder::GetUniqueName(const std::string& base_name) {
