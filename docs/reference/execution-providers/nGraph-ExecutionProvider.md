@@ -50,7 +50,7 @@ Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Ngraph(sf, "cpu"));
 Ort::Session session(env, model_path, sf);
 ```
 
-The C API details are [here](../C_API.md#c-api).
+The C API details are [here](../../api/c-api.md#c-api).
 
 ### Python
 

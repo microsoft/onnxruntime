@@ -11,7 +11,7 @@ Intel® Math Kernel Library for Deep Neural Networks (Intel® DNNL) is an open-s
 
 Intel and Microsoft have developed DNNL Execution Provider (EP) for ONNX Runtime to accelerate performance of ONNX Runtime using Intel® Math Kernel Library for Deep Neural Networks (Intel® DNNL) optimized primitives.
 
-For information on how DNNL optimizes subgraphs, see [Subgraph Optimization](./MKL-DNN-Subgraphs.md)
+For information on how DNNL optimizes subgraphs, see [Subgraph Optimization](#Subgraph-Optimization)
 
 ## Build
 For build instructions, please see the [BUILD page](../../how-to/build.md#dnnl-and-mklml).
@@ -129,7 +129,7 @@ Subgraph optimization achieves this in the following steps.
 
 #### Subgraph (IR) Internal Representation
 
-DnnlExecutionProvicer::GetCapability() parses ONNX model graph and creates IR (Internal Representation) of subgraphs of DNNL operators.
+DnnlExecutionProvider::GetCapability() parses ONNX model graph and creates IR (Internal Representation) of subgraphs of DNNL operators.
 Each subgraph contains a vector DnnlNodes, inputs, outputs and attributes for all its DnnlNodes. There can be attributes of same name. So, we prefix attribute names with Node name and its index. 
 Unique id for subgraph is set as an attribute. 
 

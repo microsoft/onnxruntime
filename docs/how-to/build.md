@@ -114,7 +114,7 @@ GCC 4.x and below are not supported.
 |API|Command|Additional details|
 |-----------|-----------|-----------|
 |**Python**|--build_wheel||
-|**C# and C packages**|--build_nuget|Builds C# bindings and creates nuget package. Currently supported on Windows and Linux only. Implies `--build_shared_lib` <br> Detailed instructions can be found [below](./BUILD.md#build-nuget-packages).|
+|**C# and C packages**|--build_nuget|Builds C# bindings and creates nuget package. Currently supported on Windows and Linux only. Implies `--build_shared_lib` <br> Detailed instructions can be found [below](#build-nuget-packages).|
 |**WindowsML**|--use_winml<br>--use_dml<br>--build_shared_lib|WindowsML depends on DirectML and the OnnxRuntime shared library|
 |**Java**|--build_java|Creates an onnxruntime4j.jar in the build directory, implies `--build_shared_lib`<br>Compiling the Java API requires [gradle](https://gradle.org) v6.1+ to be installed in addition to the usual requirements.|
 |**Node.js**|--build_nodejs|Build Node.js binding. Implies `--build_shared_lib`|
@@ -1140,7 +1140,7 @@ See more information on the MIGraphX Execution Provider [here](../reference/exec
 ./build.sh --config <Release|Debug|RelWithDebInfo> --use_migraphx --migraphx_home <path to MIGraphX home>
 ```
 
-Dockerfile instructions are available [here](./dockerfiles#migraphx)
+Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/blob/master/dockerfiles#migraphx)
 
 ***
 
