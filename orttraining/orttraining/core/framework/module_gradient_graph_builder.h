@@ -15,6 +15,8 @@ namespace training {
 struct ModuleGradientGraphBuilderConfiguration {
 // The names of the weights to train.
 std::unordered_set<std::string> weight_names_to_train{};
+// The names of inputs that require gradient.
+std::unordered_set<std::string> input_names_require_grad{};
 // The names of module outputs.
 std::unordered_set<std::string> output_names{};
 
@@ -33,7 +35,8 @@ class ModuleGradientGraphBuilder {
                        const ModuleGradientGraphBuilderConfiguration& config,
                        std::vector<std::string>& models_as_string);
  private:
-  Status Split(const ModuleGradientGraphBuilderConfiguration& config);
+  Status Split(const ModuleGradientGraphBuilderConfiguration& config,
+               const std::vector<std::string>& graph_output_names);
 
   std::shared_ptr<onnxruntime::Model> model_;
   std::shared_ptr<onnxruntime::Model> forward_model_;

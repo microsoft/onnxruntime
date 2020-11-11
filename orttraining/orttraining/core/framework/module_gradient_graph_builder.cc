@@ -85,9 +85,13 @@ Status ModuleGradientGraphBuilder::BuildAndSplit(std::istream& model_istream,
   GradientGraphConfiguration gradient_graph_config{};
   gradient_graph_config.use_invertible_layernorm_grad = config.use_invertible_layernorm_grad;
   gradient_graph_config.set_gradients_as_graph_outputs = config.set_gradients_as_graph_outputs;
+  std::unordered_set<std::string> x_node_arg_names;
+  std::set_union(config.weight_names_to_train.begin(), config.weight_names_to_train.end(),
+                 config.input_names_require_grad.begin(), config.input_names_require_grad.end(),
+                 std::inserter(x_node_arg_names, x_node_arg_names.begin()));
   GradientGraphBuilder grad_graph_builder(&model_->MainGraph(),
                                           config.output_names,
-                                          config.weight_names_to_train,
+                                          x_node_arg_names,
                                           "", // not support loss name for now.
                                           gradient_graph_config,
                                           *logger_);
@@ -112,8 +116,20 @@ Status ModuleGradientGraphBuilder::BuildAndSplit(std::istream& model_istream,
     graph_input_names.push_back(node_arg->Name());
   }
 
-  // Add the entry points of gradients (normally loss_gard) to the graph inputs.
-  for (const auto& output_name : config.output_names) {
+  const std::vector<const NodeArg*>& gradient_graph_outputs = gradient_graph.GetOutputs();
+  std::vector<std::string> graph_output_names;
+  std::vector<const NodeArg*> output_args;
+  for (auto& node_arg : gradient_graph_outputs) {
+    output_args.push_back(node_arg);
+    graph_output_names.push_back(node_arg->Name());
+  }
+
+  // Add the entry points of gradients (normally loss_gard) to the graph inputs. Using the order of graph outputs.
+  for (const auto& output_name : graph_output_names) {
+    if (config.output_names.find(output_name) == config.output_names.end()) {
+      continue;
+    }
+
     std::string output_gradient_name = output_name + "_grad";
     if (input_names.find(output_gradient_name) != input_names.end() &&
         output_names.find(output_gradient_name) == output_names.end()) {
@@ -125,12 +141,6 @@ Status ModuleGradientGraphBuilder::BuildAndSplit(std::istream& model_istream,
 
   gradient_graph.SetInputs(input_args);
 
-  const std::vector<const NodeArg*>& gradient_graph_outputs = gradient_graph.GetOutputs();
-  std::vector<const NodeArg*> output_args;
-  for (auto& node_arg : gradient_graph_outputs) {
-    output_args.push_back(node_arg);
-  }
-
   // Add weight gradients to graph outputs.
   for (const auto& weight_name : config.weight_names_to_train) {
     std::string weight_gradient_name = weight_name + "_grad";
@@ -139,9 +149,9 @@ Status ModuleGradientGraphBuilder::BuildAndSplit(std::istream& model_istream,
     }
   }
 
-  // Add input gradients to graph outputs if it's calculated.
-  for (const auto& graph_input_name : graph_input_names) {
-    std::string input_gradient_name = graph_input_name + "_grad";
+  // Add input gradients to graph outputs if it's required.
+  for (const auto& input_name : config.input_names_require_grad) {
+    std::string input_gradient_name = input_name + "_grad";
     if (output_names.find(input_gradient_name) != output_names.end()) {
       output_args.push_back(gradient_graph.GetNodeArg(input_gradient_name));
     }
@@ -157,7 +167,7 @@ Status ModuleGradientGraphBuilder::BuildAndSplit(std::istream& model_istream,
   ORT_RETURN_IF_ERROR(Model::Load(gradient_model_proto, backward_model_, nullptr, *logger_));
 
   // Split the graph in the copies of gradient model.
-  ORT_RETURN_IF_ERROR(Split(config));
+  ORT_RETURN_IF_ERROR(Split(config, graph_output_names));
 
   // Serialize the models as output to frontend.
   std::string gradient_model_str;
@@ -182,7 +192,8 @@ Status ModuleGradientGraphBuilder::BuildAndSplit(std::istream& model_istream,
   return Status::OK();
 }
 
-Status ModuleGradientGraphBuilder::Split(const ModuleGradientGraphBuilderConfiguration& config) {
+Status ModuleGradientGraphBuilder::Split(const ModuleGradientGraphBuilderConfiguration& config,
+                                         const std::vector<std::string>& graph_output_names) {
   // Get forward model, also collect some information for backward model generation.
   Graph& forward_graph = forward_model_->MainGraph();
   GraphViewer forward_graph_viewer(forward_graph);
@@ -229,7 +240,7 @@ Status ModuleGradientGraphBuilder::Split(const ModuleGradientGraphBuilderConfigu
   forward_graph.SetInputs(forward_input_args);
 
   std::vector<const NodeArg*> forward_output_args;
-  for (const auto& output_name : config.output_names) {
+  for (const auto& output_name : graph_output_names) {
     forward_output_args.push_back(forward_graph.GetNodeArg(output_name));
   }
 
