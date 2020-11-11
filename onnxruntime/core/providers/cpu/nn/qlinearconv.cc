@@ -88,10 +88,6 @@ Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, bool& is_packed
   const size_t kernel_size =
     static_cast<size_t>(std::accumulate(shape.data() + 2, shape.data() + rank, 1LL, std::multiplies<int64_t>()));
 
-  const size_t group_count = static_cast<size_t>(conv_attrs_.group);
-  const size_t group_output_channels = output_channels / group_count;
-  const size_t kernel_dim = group_input_channels * kernel_size;
-
   const auto* Wdata = static_cast<const uint8_t*>(tensor.DataRaw());
   W_shape_ = shape;
   is_W_signed_ = tensor.IsDataType<int8_t>();
@@ -99,6 +95,10 @@ Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, bool& is_packed
   auto alloc = Info().GetAllocator(0, OrtMemTypeDefault);
 
 #ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
+  const size_t group_count = static_cast<size_t>(conv_attrs_.group);
+  const size_t group_output_channels = output_channels / group_count;
+  const size_t kernel_dim = group_input_channels * kernel_size;
+
   // Don't pack the filter buffer if the MlasConvDepthwise path is used.
   if (group_input_channels != 1 && group_output_channels != 1) {
     packed_W_size_ = MlasGemmPackBSize(group_output_channels, kernel_dim, true);
