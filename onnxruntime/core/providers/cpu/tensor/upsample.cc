@@ -31,13 +31,6 @@ ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<uint8_t>()),
     Upsample<uint8_t>);
 
-struct counter {
-  size_t cnt{};
-  ~counter() { std::cout << "counter = " << cnt << std::endl; }
-};
-
-counter g_counter;
-
 template <typename T>
 void UpsampleNearest2x(int64_t batch_size,
                        int64_t num_channels,
@@ -417,42 +410,10 @@ void UpsampleBilinear(int64_t batch_size,
       dx2[x] = 0.5f;
     }
   }
-  
-  for (int64_t n = 0; n < batch_size; ++n) {
-    for (int64_t c = 0; c < num_channels; ++c) {
-      for (int64_t y = 0; y < output_height; ++y) {
-        for (int64_t x = 0; x < output_width; ++x) {
-          g_counter.cnt++;
-          // when use_extrapolation is set and original index of x or y is out of the dim range
-          // then use extrapolation_value as the output value.
-          if (use_extrapolation &&
-              ((y_original[y] < 0 || y_original[y] > static_cast<float>(input_height - 1)) ||
-               (x_original[x] < 0 || x_original[x] > static_cast<float>(input_width - 1)))) {
-            Ydata[output_width * y + x] = static_cast<T>(extrapolation_value);
-            continue;
-          }
 
-          // subscript ordering in the variable - (xy)
-          T X11 = Xdata[input_width_mul_y1[y] + in_x1[x]];
-          T X21 = Xdata[input_width_mul_y1[y] + in_x2[x]];
-          T X12 = Xdata[input_width_mul_y2[y] + in_x1[x]];
-          T X22 = Xdata[input_width_mul_y2[y] + in_x2[x]];
-
-          Ydata[output_width * y + x] = static_cast<T>(dx2[x] * dy2[y] * X11 +
-                                                       dx1[x] * dy2[y] * X21 +
-                                                       dx2[x] * dy1[y] * X12 +
-                                                       dx1[x] * dy1[y] * X22);
-        }
-      }
-      Xdata += input_height * input_width;
-      Ydata += output_width * output_height;
-    }
-  }
-  tp;
-  /*
   int64_t total = batch_size * num_channels * output_height * output_width;
 
-  concurrency::ThreadPool::TryParallelFor(tp, total, 1, [=, &Ydata](ptrdiff_t begin, ptrdiff_t end) {
+  concurrency::ThreadPool::TryParallelFor(tp, total, 1000, [=, &Ydata](ptrdiff_t begin, ptrdiff_t end) {
     for (int64_t index = begin; index < end; ++index) {
       int64_t output_size = output_height * output_width;
       int64_t nc = index / output_size;
@@ -482,7 +443,6 @@ void UpsampleBilinear(int64_t batch_size,
                                                    dx1[x] * dy1[y] * X22);
     }
   });
-  */
 }
 
 // The following method supports a 5-D input in 'Linear mode'
