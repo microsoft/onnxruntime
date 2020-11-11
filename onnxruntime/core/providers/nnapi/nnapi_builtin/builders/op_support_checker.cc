@@ -1101,7 +1101,7 @@ bool FlattenOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* i
 
 #pragma endregion
 
-#pragma region CreateOpSupportCheckers
+#pragma region CreateGetOpSupportCheckers
 
 static std::unordered_map<std::string, std::shared_ptr<IOpSupportChecker>> CreateOpSupportCheckers() {
   std::unordered_map<std::string, std::shared_ptr<IOpSupportChecker>> op_map;

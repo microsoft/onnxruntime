@@ -3,12 +3,12 @@
 
 #include "nnapi_execution_provider.h"
 
+#include "model.h"
 #include "builders/helper.h"
 #include "builders/model_builder.h"
 #include "builders/op_support_checker.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/compute_capability.h"
-#include "core/graph/model.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
 namespace onnxruntime {
