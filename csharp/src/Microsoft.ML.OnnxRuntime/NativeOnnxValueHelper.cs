@@ -133,6 +133,14 @@ namespace Microsoft.ML.OnnxRuntime
                     type = typeof(bool);
                     width = sizeof(bool);
                     break;
+                case TensorElementType.Float16:
+                    type = typeof(Float16);
+                    width = sizeof(ushort);
+                    break;
+                case TensorElementType.BFloat16:
+                    type = typeof(BFloat16);
+                    width = sizeof(ushort);
+                    break;
                 default:
                     type = null;
                     width = 0;

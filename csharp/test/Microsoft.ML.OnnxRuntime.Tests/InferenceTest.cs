@@ -1520,20 +1520,47 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        [Fact(Skip = "FLOAT16 not available in C#")]
+        [Fact]
         private void TestModelInputFLOAT16()
         {
             // model takes 1x5 input of fixed type, echoes back
-            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_FLOAT16.pb");
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_FLOAT16.onnx");
             using (var session = new InferenceSession(modelPath))
             {
                 var container = new List<NamedOnnxValue>();
-                var tensorIn = new DenseTensor<float>(new float[] { 1.0f, 2.0f, -3.0f, float.MinValue, float.MaxValue }, new int[] { 1, 5 });
+                var tensorIn = new DenseTensor<Float16>(
+                    new Float16[] { 15360, 16384, 16896, 17408, 17664 }, new int[] { 1, 5 });
                 var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
                 container.Add(nov);
                 using (var res = session.Run(container))
                 {
-                    var tensorOut = res.First().AsTensor<float>();
+                    var valueOut = res.First();
+                    Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, valueOut.ValueType);
+                    Assert.Equal(Tensors.TensorElementType.Float16, valueOut.ElementType);
+                    var tensorOut = res.First().AsTensor<Float16>();
+                    Assert.True(tensorOut.SequenceEqual(tensorIn));
+                }
+            }
+        }
+
+        [Fact]
+        private void TestModelInputBFLOAT16()
+        {
+            // model takes 1x5 input of fixed type, echoes back
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_BFLOAT16.onnx");
+            using (var session = new InferenceSession(modelPath))
+            {
+                var container = new List<NamedOnnxValue>();
+                var tensorIn = new DenseTensor<BFloat16>(
+                    new BFloat16[] { 16256, 16384, 16448, 16512, 16544 }, new int[] { 1, 5 });
+                var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
+                container.Add(nov);
+                using (var res = session.Run(container))
+                {
+                    var valueOut = res.First();
+                    Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, valueOut.ValueType);
+                    Assert.Equal(Tensors.TensorElementType.BFloat16, valueOut.ElementType);
+                    var tensorOut = res.First().AsTensor<BFloat16>();
                     Assert.True(tensorOut.SequenceEqual(tensorIn));
                 }
             }

@@ -11,14 +11,13 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Text;
-using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Reflection;
+using System.Text;
 
 // Making this assembly's internals visible to the internal Test assembly
 [assembly: InternalsVisibleTo("Microsoft.ML.OnnxRuntime.Tests," +
@@ -55,23 +54,163 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         DataTypeMax = 17
     }
 
-    [StructLayout(LayoutKind.Sequential)]
-    internal struct Float16
+    /// <summary>
+    /// This value type represents A Float16 value
+    /// it is blittable as defined in https://docs.microsoft.com/en-us/dotnet/framework/interop/blittable-and-non-blittable-types
+    /// and as such, represented the same way in managed and native memories. This means that arrays of this type
+    /// do not have to be copied to be passed to native memory but simply pinnned and read by native code. Thus,
+    /// one can create a Tensor on top of an array of these structures and feed it directly to Onnxruntime library.
+    /// Binary wise, it is the same as ushort[] (uint16_t in C++). However, we would like a separate type for type dispatching.
+    /// </summary>
+    public struct Float16
     {
-        public ushort Value { get; private set; }
-        public Float16(ushort val)
+        public ushort value;
+        /// <summary>
+        /// Ctor
+        /// </summary>
+        /// <param name="v"></param>
+        public Float16(ushort v)
         {
-            Value = val;
+            value = v;
+        }
+        /// <summary>
+        /// Converts to ushort
+        /// </summary>
+        /// <param name="f">instance of Float16</param>
+        public static implicit operator ushort (Float16 f) { return f.value; }
+        /// <summary>
+        /// Converts a 16-bit unsigned integer to a Float16.
+        /// </summary>
+        /// <param name="value">A 16-bit unsigned integer.</param>
+        /// <returns>A Float16 that represents the converted 16-bit unsigned integer.</returns>
+        public static implicit operator Float16(ushort value) { return new Float16(value); }
+        /// <summary>
+        /// Compares values of two Float16 for binary equality
+        /// </summary>
+        /// <param name="lhs"></param>
+        /// <param name="rhs"></param>
+        /// <returns>result of value comparisons</returns>
+        public static bool operator ==(Float16 lhs, Float16 rhs) { return lhs.value == rhs.value; }
+        /// <summary>
+        /// Compares values of two Float16 for binary inequality
+        /// </summary>
+        /// <param name="lhs"></param>
+        /// <param name="rhs"></param>
+        /// <returns>result of value comparisons</returns>
+        public static bool operator !=(Float16 lhs, Float16 rhs) { return lhs.value != rhs.value; }
+        /// <summary>
+        /// Returns a value indicating whether this instance and other Float16 represent the same value.
+        /// </summary>
+        /// <param name="other">A Float16 object to compare to this instance.</param>
+        /// <returns>true if other.value is equal to this instance; otherwise, false.</returns>
+        public bool Equals(Float16 other)
+        {
+            return (other == this);
+        }
+        /// <summary>
+        /// Returns a value indicating whether this instance and a specified System.Object
+        /// represent the same type and value.
+        /// </summary>
+        /// <param name="obj">An System.Object.</param>
+        /// <returns>true if obj is Float16 and its value is equal to this instance; otherwise, false.</returns>
+        public override bool Equals(object obj)
+        {
+            bool result = false;
+            if (obj is Float16)
+            {
+                Float16 fl16 = (Float16)obj;
+                result = (fl16 == this);
+            }
+            return result;
+        }
+        /// <summary>
+        /// Returns the hash code for this instance.
+        /// </summary>
+        /// <returns>A 32-bit signed integer hash code.</returns>
+        public override int GetHashCode()
+        {
+            return value.GetHashCode();
         }
     }
 
-    [StructLayout(LayoutKind.Sequential)]
-    internal struct BFloat16
+    /// <summary>
+    /// This value type represents A BFloat16 value
+    /// it is blittable as defined in https://docs.microsoft.com/en-us/dotnet/framework/interop/blittable-and-non-blittable-types
+    /// and as such, represented the same way in managed and native memories. This means that arrays of this type
+    /// do not have to be copied to be passed to native memory but simply pinnned and read by native code. Thus,
+    /// one can create a Tensor on top of an array of these structures and feed it directly to Onnxruntime library.
+    /// Binary wise, it is the same as ushort[] (uint16_t in C++). However, we would like a separate type for type dispatching.
+    /// </summary>
+    public struct BFloat16
     {
-        public ushort Value { get; private set; }
-        public BFloat16(ushort val)
+        public ushort value;
+        /// <summary>
+        /// Ctor
+        /// </summary>
+        /// <param name="v"></param>
+        public BFloat16(ushort v)
         {
-            Value = val;
+            value = v;
+        }
+        /// <summary>
+        /// Converts to ushort
+        /// </summary>
+        /// <param name="bf">instance of BFloat16</param>
+        public static implicit operator ushort(BFloat16 bf) { return bf.value; }
+        /// <summary>
+        /// Converts a 16-bit unsigned integer to a BFloat16.
+        /// </summary>
+        /// <param name="value">A 16-bit unsigned integer.</param>
+        /// <returns>A BFloat16 that represents the converted 16-bit unsigned integer.</returns>
+        public static implicit operator BFloat16(ushort value) { return new BFloat16(value); }
+        /// <summary>
+        /// Compares values of two BFloat16 for binary equality
+        /// </summary>
+        /// <param name="lhs"></param>
+        /// <param name="rhs"></param>
+        /// <returns>result of value comparisons</returns>
+        public static bool operator ==(BFloat16 lhs, BFloat16 rhs) { return lhs.value == rhs.value; }
+        /// <summary>
+        /// Compares values of two BFloat16 for binary inequality
+        /// </summary>
+        /// <param name="lhs"></param>
+        /// <param name="rhs"></param>
+        /// <returns>result of value comparisons</returns>
+        public static bool operator !=(BFloat16 lhs, BFloat16 rhs) { return lhs.value != rhs.value; }
+
+        /// <summary>
+        /// Returns a value indicating whether this instance and other BFloat16 represent the same value.
+        /// </summary>
+        /// <param name="other">A BFloat16 object to compare to this instance.</param>
+        /// <returns>true if other.value is equal to this instance; otherwise, false.</returns>
+        public bool Equals(BFloat16 other)
+        {
+            return (other == this);
+        }
+
+        /// <summary>
+        /// Returns a value indicating whether this instance and a specified System.Object
+        /// represent the same type and value.
+        /// </summary>
+        /// <param name="obj">An System.Object.</param>
+       /// <returns>true if obj is BFloat16 its value is equal to this instance; otherwise, false.</returns>
+        public override bool Equals(object obj)
+        {
+            bool result = false;
+            if (obj is BFloat16)
+            {
+                BFloat16 bfl16 = (BFloat16)obj;
+                result = (bfl16 == this);
+            }
+            return result;
+        }
+        /// <summary>
+        /// Returns the hash code for this instance.
+        /// </summary>
+        /// <returns>A 32-bit signed integer hash code.</returns>
+        public override int GetHashCode()
+        {
+            return value.GetHashCode();
         }
     }
 
@@ -114,6 +253,13 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         private readonly Type _primitiveType;
         protected TensorBase(Type primitiveType)
         {
+            // Should hold as we rely on this to pass arrays of these
+            // types to native code
+            unsafe
+            {
+                Debug.Assert(sizeof(ushort) == sizeof(Float16));
+                Debug.Assert(sizeof(ushort) == sizeof(BFloat16));
+            }
             _primitiveType = primitiveType;
         }
         /// <summary>
@@ -312,6 +458,14 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
                 {
                     return (T)(object)(ushort)(0);
                 }
+                else if (typeof(T) == typeof(Float16))
+                {
+                    return (T)(object)(ushort)(0);
+                }
+                else if (typeof(T) == typeof(BFloat16))
+                {
+                    return (T)(object)(ushort)(0);
+                }
 
                 throw new NotSupportedException();
             }
@@ -372,6 +526,14 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
                 else if (typeof(T) == typeof(ushort))
                 {
                     return (T)(object)(ushort)(1);
+                } 
+                else if(typeof(T) == typeof(Float16))
+                {
+                    return (T)(object)(ushort)(15360);
+                }
+                else if (typeof(T) == typeof(BFloat16))
+                {
+                    return (T)(object)(ushort)(16256);
                 }
 
                 throw new NotSupportedException();
