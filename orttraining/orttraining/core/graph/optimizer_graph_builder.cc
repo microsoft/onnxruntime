@@ -430,8 +430,18 @@ Status OptimizerGraphBuilder::Build(
     optimizer_graph_outputs[OptimizerOutputKey::GradientAccumulation] = group_accumulate_gradient_output.name;
   }
 
+  //gradient norm for bfloat16 is not ready yet. skip it to unblock the testing
+  //will add it back when it is ready
+  bool should_add_gradient_norm =
+      opt_graph_config_.enable_grad_norm_clip ||
+      (opt_graph_config_.use_mixed_precision && opt_graph_config_.mixed_precision_type == MixedPrecisionDataType::FP16);
+  bool should_add_gradient_finite_check =
+      opt_graph_config_.use_mixed_precision && opt_graph_config_.mixed_precision_type == MixedPrecisionDataType::FP16;
+
   // add configuration-specific graph changes
-  ORT_RETURN_IF_ERROR(BuildInternal(graph, graph_defs, weight_argdefs, gradient_argdefs, optimizer_state_initializer_names, optimizer_graph_outputs));
+  ORT_RETURN_IF_ERROR(BuildInternal(
+      should_add_gradient_norm, should_add_gradient_finite_check,
+      graph, graph_defs, weight_argdefs, gradient_argdefs, optimizer_state_initializer_names, optimizer_graph_outputs));
 
   // add zero gradient
   if (is_gradient_accumulation_enabled) {
@@ -443,6 +453,8 @@ Status OptimizerGraphBuilder::Build(
 }
 
 Status OptimizerGraphBuilder::BuildInternal(
+    bool should_add_gradient_norm,
+    bool should_add_gradient_finite_check,
     Graph& graph,
     GraphAugmenter::GraphDefs& graph_defs,
     std::vector<ArgDef>& weight_argdefs,
@@ -467,24 +479,19 @@ Status OptimizerGraphBuilder::BuildInternal(
   ArgDef global_grad_norm_argdef;
   ArgDef global_grad_norm_finite_argdef;
 
-  if (opt_graph_config_.enable_grad_norm_clip ||
-      (opt_graph_config_.use_mixed_precision &&
-       opt_graph_config_.mixed_precision_type == MixedPrecisionDataType::FP16)) {
-    //gradient norm for bfloat16 is not ready yet. skip it to unblock the testing
-    //will add it back when it is ready
-    ORT_RETURN_IF_ERROR(AddGradientNorm(
-        nodearg_name_generator, gradient_argdefs, graph_defs, global_grad_norm_argdef));
-    optimizer_graph_outputs[OptimizerOutputKey::GlobalGradientNorm] = global_grad_norm_argdef.name;
-  }
+  if (should_add_gradient_norm) {
+      ORT_RETURN_IF_ERROR(AddGradientNorm(
+          nodearg_name_generator, gradient_argdefs, graph_defs, global_grad_norm_argdef));
+      optimizer_graph_outputs[OptimizerOutputKey::GlobalGradientNorm] = global_grad_norm_argdef.name;
+    }
 
-  if (opt_graph_config_.use_mixed_precision &&
-      opt_graph_config_.mixed_precision_type == MixedPrecisionDataType::FP16) {
+  if (should_add_gradient_finite_check) {
     ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
         nodearg_name_generator, {global_grad_norm_argdef}, graph_defs, global_grad_norm_finite_argdef));
     optimizer_graph_outputs[OptimizerOutputKey::GradientAllIsFinite] = global_grad_norm_finite_argdef.name;
   }
 
-  if (global_grad_norm_argdef.name.empty() && global_grad_norm_finite_argdef.name.empty()) {
+  if (!global_grad_norm_argdef.Exists() && !global_grad_norm_finite_argdef.Exists()) {
     ORT_RETURN_IF_ERROR(AddGradientPassThroughNode(nodearg_name_generator, gradient_argdefs, graph_defs));
   }
 
