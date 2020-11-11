@@ -587,10 +587,8 @@ void OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::SequenceProto& test_dat
   }
 
   if (seq.size() == 0) {
-    // TODO: ORT APIs don't support creating empty sequences and we will not invest in it
-    // until there are real world models that require it.
-    // For now, only the single node ONNX test - `test_loop13_seq` requires it.
-    // We will keep it disabled for now.
+    // TODO: implement support for creating empty sequences. Not urgent yet since we don't have real world models.
+    // For now, only the single node ONNX test - `test_loop13_seq` requires it (will keep it disabled for now).
     ORT_THROW("Creation of empty sequences is currently not supported in the test runner");
   } else {
     out.emplace(name_finalized, Ort::Value::CreateSequence(seq));
