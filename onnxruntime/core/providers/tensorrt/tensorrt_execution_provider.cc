@@ -31,7 +31,7 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::logging;
 namespace fs = std::experimental::filesystem;
 namespace {
-std::string GetCachePath(const ::std::string& root, const std::string& name) {
+std::string GetCachePath(const std::string& root, const std::string& name) {
   if (root.empty()) {
     return name;
   } else {
@@ -41,7 +41,7 @@ std::string GetCachePath(const ::std::string& root, const std::string& name) {
   }
 }
 
-std::string GetVecHash(const ::std::string& vec) {
+std::string GetVecHash(const std::string& vec) {
   std::size_t ret = vec.size();
   for (auto i : vec) {
     ret ^= static_cast<int>(i) + 0x9e3779b9 + (ret << 6) + (ret >> 2);
@@ -84,8 +84,6 @@ void SerializeProfile(const std::string& file_name, std::unordered_map<std::stri
 // Deserialize engine profile
 std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>> DeserializeProfile(std::ifstream& infile) {
   // Load flexbuffer
-  ///std::ifstream infile;
-  ///infile.open(file_name, std::ios::binary | std::ios::in);
   infile.seekg(0, std::ios::end);
   int length = infile.tellg();
   infile.seekg(0, std::ios::beg);
@@ -651,7 +649,7 @@ void TensorrtExecutionProvider::RemoveTensorRTGraphCycles(SubGraphCollection_t& 
     // Add non TensorRT nodes to the maps
     for (const auto& index : non_trt_node_index) {
       const auto& node = graph.GetNode(index);
-      std::string node_name = node->Name();
+      const std::string node_name = node->Name();
       if (node_to_index_map.find(node_name) == node_to_index_map.end()) {
         index_to_node_map[id] = node_name;
         node_to_index_map[node_name] = id++;
@@ -859,8 +857,8 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
     tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine> trt_engine;
     tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext> trt_context;
     if (!has_dynamic_shape) {
-      std::string cache_path = GetCachePath(engine_cache_path_, trt_node_name_with_precision);
-	  std::string engine_cache_path = cache_path + ".engine";
+      const std::string cache_path = GetCachePath(engine_cache_path_, trt_node_name_with_precision);
+      const std::string engine_cache_path = cache_path + ".engine";
       std::ifstream engine_file(engine_cache_path, std::ios::binary | std::ios::in);
       if (engine_cache_enable_ && engine_file) {
         engine_file.seekg(0, std::ios::end);
@@ -966,9 +964,9 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
       nvinfer1::IOptimizationProfile* trt_profile = nullptr;
 
       // Load serialized engine
-      std::string cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
-	  std::string engine_cache_path = cache_path + ".engine";
-	  std::string profile_cache_path = cache_path + ".profile";
+      const std::string cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
+      const std::string engine_cache_path = cache_path + ".engine";
+      const std::string profile_cache_path = cache_path + ".profile";
       std::ifstream engine_file(engine_cache_path, std::ios::binary | std::ios::in);	  
       std::ifstream profile_file(profile_cache_path, std::ios::binary | std::ios::in);
       if (engine_file && profile_file && (trt_state->engine_cache_enable && trt_engine == nullptr)) {
