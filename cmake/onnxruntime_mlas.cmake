@@ -145,7 +145,7 @@ else()
     endif()
   else()
     execute_process(
-      COMMAND ${CMAKE_C_COMPILER} -dumpmachine
+      COMMAND ${CMAKE_CXX_COMPILER} -dumpmachine
       OUTPUT_VARIABLE dumpmachine_output
       ERROR_QUIET
     )
