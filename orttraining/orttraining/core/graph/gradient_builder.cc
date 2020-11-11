@@ -262,7 +262,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
                     {matmul_out}));
 
         if (A_axes.size() > 0) {
-          AddReduceSumNode(IA("PreReduceGrad0"), IA("ReduceGrad0"), IA("ReduceAxes_" + A.name), A_axes, true, result);
+          AddReduceSumNode(IA("PreReduceGrad0"), IA("ReduceGrad0"), A_axes, true, result);
           result.push_back(NodeDef("Shape", {A}, {IA("A_shape")}));
           result.push_back(NodeDef("Reshape", {IA("ReduceGrad0"), IA("A_shape")}, {GI(0)}));
         }
@@ -302,7 +302,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
                       {matmul_out}));
 
           if (B_axes.size() > 0) {
-            AddReduceSumNode(IA("PreReduceGrad1"), IA("ReduceGrad1"), IA("ReduceAxes_" + B.name), B_axes, false, result);
+            AddReduceSumNode(IA("PreReduceGrad1"), IA("ReduceGrad1"), B_axes, false, result);
             result.push_back(NodeDef("Shape", {B}, {IA("B_shape")}));
             result.push_back(NodeDef("Reshape", {IA("ReduceGrad1"), IA("B_shape")}, {GI(1)}));
           }
@@ -452,7 +452,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
       ComputeBroadcastBackwardAxes(C_shape, dY_shape, &C_axes, &dY_axes, NodeName());
 
       if (C_axes.size() > 0) {
-        HandleBroadcasting(dY, C, IA("dC_reduced"), IA("ReduceAxes_" + C.name), C_axes, result);
+        HandleBroadcasting(dY, C, IA("dC_reduced"), C_axes, result);
 
         if (has_beta && beta != 1.0f) {
           NodeDef scale_node = ConstantScalarNode(beta, Name("Scale"), elem_type);
@@ -856,7 +856,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetAddSubGradient) {
     ComputeBroadcastBackwardAxes(a_shape, b_shape, &a_axes, &b_axes, NodeName());
     if (IsGradientRequiredForSrcNodeInput(0)) {
       if (a_axes.size() > 0) {
-        HandleBroadcasting(GO(0), a, GI(0), IA("ReduceAxes_" + a.name), a_axes, output);
+        HandleBroadcasting(GO(0), a, GI(0), a_axes, output);
       } else {
         output.push_back(
             NodeDef("Identity",
@@ -868,7 +868,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetAddSubGradient) {
     if (IsGradientRequiredForSrcNodeInput(1)) {
       if (b_axes.size() > 0) {
         ArgDef reshape_output = is_sub ? IA("ReshapeReduceSum_2", IType(1)) : GI(1);
-        HandleBroadcasting(GO(0), b, reshape_output, IA("ReduceAxes_" + b.name), b_axes, output);
+        HandleBroadcasting(GO(0), b, reshape_output, b_axes, output);
 
         if (is_sub) {
           output.push_back(
@@ -933,7 +933,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetMulGradient) {
                   {IA("PreReduceGrad0", OType(0))}));
 
       if (a_axes.size() > 0) {
-        HandleBroadcasting(IA("PreReduceGrad0", OType(0)), a, GI(0), IA("ReduceAxes_" + a.name), a_axes, output);
+        HandleBroadcasting(IA("PreReduceGrad0", OType(0)), a, GI(0), a_axes, output);
       } else {
         output.push_back(
             NodeDef("Identity",
@@ -949,7 +949,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetMulGradient) {
                   {IA("PreReduceGrad1", OType(0))}));
 
       if (b_axes.size() > 0) {
-        HandleBroadcasting(IA("PreReduceGrad1", OType(0)), b, GI(1), IA("ReduceAxes_" + b.name), b_axes, output);
+        HandleBroadcasting(IA("PreReduceGrad1", OType(0)), b, GI(1), b_axes, output);
       } else {
         output.push_back(
             NodeDef("Identity",
@@ -1005,7 +1005,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetDivGradient) {
       ArgDef tmp_grad = IA("PreReduceGrad0", OType(0));
       output.push_back(NodeDef("Div", {GO(0), I(1)}, {tmp_grad}));
       if (a_axes.size() > 0) {
-        HandleBroadcasting(tmp_grad, a, GI(0), IA("ReduceAxes_" + a.name), a_axes, output);
+        HandleBroadcasting(tmp_grad, a, GI(0), a_axes, output);
       } else {
         output.push_back(NodeDef("Identity", {tmp_grad}, {GI(0)}));
       }
@@ -1396,7 +1396,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetExpandGradient) {
     ComputeBroadcastBackwardAxes(a_shape, y_shape, &a_axes, nullptr, NodeName());
 
     if (a_axes.size() > 0) {
-      HandleBroadcasting(GO(0), a, GI(0), IA("ReduceAxes_" + a.name), a_axes, output);
+      HandleBroadcasting(GO(0), a, GI(0), a_axes, output);
     } else {
       output.push_back(
           NodeDef("Identity",

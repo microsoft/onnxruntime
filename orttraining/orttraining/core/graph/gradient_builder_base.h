@@ -247,7 +247,6 @@ class GradientBuilderBase {
 
   void AddReduceSumNode(const ArgDef& input_arg_def,
                         const ArgDef& output_arg_def,
-                        const ArgDef& reduce_axes_arg_def,
                         const std::vector<int64_t>& reduce_axes,
                         bool keep_dims,
                         std::vector<NodeDef>& output) const;
@@ -255,7 +254,6 @@ class GradientBuilderBase {
   void HandleBroadcasting(const ArgDef& input_grad,
                           const ArgDef& target,
                           const ArgDef& output_grad,
-                          const ArgDef& reduce_axes_arg_def,
                           const std::vector<int64_t>& reduce_axes,
                           std::vector<NodeDef>& output) const;
 

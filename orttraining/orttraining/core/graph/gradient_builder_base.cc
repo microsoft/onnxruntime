@@ -145,7 +145,6 @@ void ComputeBroadcastBackwardAxesDynamic(const ArgDef& a,
 
 void GradientBuilderBase::AddReduceSumNode(const ArgDef& input_arg_def,
                                            const ArgDef& output_arg_def,
-                                           const ArgDef& reduce_axes_arg_def,
                                            const std::vector<int64_t>& reduce_axes,
                                            bool keep_dims,
                                            std::vector<NodeDef>& output) const {
@@ -161,9 +160,10 @@ void GradientBuilderBase::AddReduceSumNode(const ArgDef& input_arg_def,
     return;
   }
 
+  ArgDef reduce_axes_arg_def = IA("ReduceAxes_for_" + output_arg_def.name);
   output.emplace_back(ConstantVectorNode(reduce_axes, reduce_axes_arg_def.name));
   output.emplace_back(
-      NodeDef("ReduceSum",
+      NodeDef(OpDef{"ReduceSum", kOnnxDomain, opset_version},
               {input_arg_def, reduce_axes_arg_def},
               {output_arg_def},
               {{"keepdims", ONNX_NAMESPACE::MakeAttribute("keepdims", static_cast<int64_t>(keep_dims))}}));
@@ -172,7 +172,6 @@ void GradientBuilderBase::AddReduceSumNode(const ArgDef& input_arg_def,
 void GradientBuilderBase::HandleBroadcasting(const ArgDef& input_grad,
                                              const ArgDef& target,
                                              const ArgDef& output_grad,
-                                             const ArgDef& reduce_axes_arg_def,
                                              const std::vector<int64_t>& reduce_axes,
                                              std::vector<NodeDef>& output) const {
   std::unordered_set<size_t> reduce_axes_set(reduce_axes.begin(), reduce_axes.end());
@@ -209,10 +208,10 @@ void GradientBuilderBase::HandleBroadcasting(const ArgDef& input_grad,
   }
 
   if (skip_reshape) {
-    AddReduceSumNode(input_grad, output_grad, reduce_axes_arg_def, reduce_axes, keep_dims, output);
+    AddReduceSumNode(input_grad, output_grad, reduce_axes, keep_dims, output);
   } else {
     ArgDef reduce_grad_arg = IA("ReduceSum_" + input_grad.name + "_for_" + target.name);
-    AddReduceSumNode(input_grad, reduce_grad_arg, reduce_axes_arg_def, reduce_axes, true, output);
+    AddReduceSumNode(input_grad, reduce_grad_arg, reduce_axes, true, output);
     ArgDef target_shape_arg = IA(target.name + "_shape");
     output.push_back(
         NodeDef("Shape",
@@ -232,9 +231,10 @@ void GradientBuilderBase::HandleBroadcastingDynamic(const ArgDef& input_grad,
                                                     const ArgDef& output_grad,
                                                     const ArgDef& reduce_axes,
                                                     std::vector<NodeDef>& output) const {
-  ArgDef reduce_grad_arg = IA("ReduceSumTraining_" + input_grad.name + "_for_" + target.name);
+  ArgDef reduce_grad_arg = IA("ReduceSum_" + input_grad.name + "_for_" + target.name);
+  int opset_version = SrcNodeDomain() == kOnnxDomain ? SrcNodeOpsetVersion() : OnnxOpSetVersion();
   output.push_back(
-      NodeDef(OpDef{"ReduceSumTraining", kMSDomain, 1},
+      NodeDef(opset_version >= 13 ? OpDef{"ReduceSum", kOnnxDomain, opset_version} : OpDef{"ReduceSumTraining", kMSDomain, 1},
               {input_grad,
                reduce_axes},
               {reduce_grad_arg},
@@ -268,17 +268,17 @@ std::vector<NodeDef> GradientBuilderBase::GetBiasGeluGradNodes(
         NodeDef(OpDef{use_approximation ? "BiasFastGeluGrad_dX" : "BiasGeluGrad_dX", kMSDomain, 1},
                 {dY, X, B},
                 {dX}));
-    AddReduceSumNode(dX, dB, IA("ReduceAxes_" + B.name), B_axes, false, result);
+    AddReduceSumNode(dX, dB, B_axes, false, result);
   } else {
     ComputeBroadcastBackwardAxesDynamic(B, X, b_shape, x_shape, &b_axes, nullptr, result);
     result.push_back(
         NodeDef(OpDef{use_approximation ? "BiasFastGeluGrad_dX" : "BiasGeluGrad_dX", kMSDomain, 1},
                 {dY, X, B},
                 {dX}));
+    int opset_version = SrcNodeDomain() == kOnnxDomain ? SrcNodeOpsetVersion() : OnnxOpSetVersion();
     result.push_back(
-        NodeDef(OpDef{"ReduceSumTraining", kMSDomain, 1},
-                {dX,
-                 b_axes},
+        NodeDef(opset_version >= 13 ? OpDef{"ReduceSum", kOnnxDomain, opset_version} : OpDef{"ReduceSumTraining", kMSDomain, 1},
+                {dX, b_axes},
                 {dB},
                 {{"keepdims", ONNX_NAMESPACE::MakeAttribute("keepdims", int64_t{0})}}));
   }
