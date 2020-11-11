@@ -1,6 +1,6 @@
 ---
 title: Tune performance
-parent: Recipes
+parent: How to
 nav_order: 1
 ---
 

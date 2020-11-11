@@ -1,6 +1,6 @@
 ---
 title: Build from source
-parent: Recipes
+parent: How to
 nav_order: 5
 ---
 

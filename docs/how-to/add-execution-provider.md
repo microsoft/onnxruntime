@@ -1,6 +1,6 @@
 ---
 title: Add a new execution provider
-parent: Recipes
+parent: How to
 nav_order: 3
 ---
 

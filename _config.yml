@@ -11,7 +11,7 @@ aux_links:
     - "/docs/get-started/"
   "Tutorials":
     - "/docs/tutorials/"
-  "Recipes":
+  "How to":
     - "/docs/how-to/"
   "Reference":
     - "/docs/reference/"

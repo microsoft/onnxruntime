@@ -1,6 +1,6 @@
 ---
 title: Add a new operator
-parent: Recipes
+parent: How to
 nav_order: 2
 ---
 
