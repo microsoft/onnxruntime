@@ -149,7 +149,7 @@ common::Status SaveInitializedTensors(
     initialized_tensors_to_allocate.erase(entry);
   }
 
-  for (const auto& entry : id_to_initialized_tensor) {
+  for (const auto& entry : initialized_tensors_to_allocate) {
     // We don't want to trace shared initializers since their memory is provided by the user
     if (user_supplied_initializer_ids.find(entry.first) != user_supplied_initializer_ids.end()) {
       continue;
@@ -172,7 +172,7 @@ common::Status SaveInitializedTensors(
   OrtCallback deleter{nullptr, nullptr};
 
   //3. create weight tensors based on weights buffer
-  for (const auto& entry : initialized_tensors_to_allocate) {
+  for (const auto& entry : id_to_initialized_tensor) {
     int ort_value_index = entry.first;
     const char* name = (entry.second->name().empty()) ? "" : entry.second->name().c_str();
     OrtValue ort_value;
