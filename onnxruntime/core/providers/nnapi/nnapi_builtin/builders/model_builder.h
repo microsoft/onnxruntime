@@ -19,6 +19,7 @@ namespace onnxruntime {
 namespace nnapi {
 
 class IOpBuilder;
+class IOpSupportChecker;
 
 class ModelBuilder {
  public:
@@ -114,6 +115,9 @@ class ModelBuilder {
   Status SetNCHWToNHWCOperandMap(const std::string& nchw_name,
                                  const std::string& nhwc_name) ORT_MUST_USE_RESULT;
 
+  // Is the given node supported by NNAPI
+  bool IsNodeSupported(const Node& node);
+
  private:
   const NnApi* nnapi_{nullptr};
   const GraphViewer& graph_viewer_;
@@ -141,6 +145,7 @@ class ModelBuilder {
   std::unordered_map<NodeIndex, int32_t> activation_nodes_;
 
   std::unordered_map<std::string, std::shared_ptr<IOpBuilder>> op_builders_;
+  std::unordered_map<std::string, std::shared_ptr<IOpSupportChecker>> op_support_checkers_;
 
   // Operands in nhwc
   std::unordered_set<std::string> nhwc_operands_;
@@ -158,8 +163,6 @@ class ModelBuilder {
   std::vector<ANeuralNetworksDevice*> nnapi_target_devices_;
 
   uint32_t next_index_ = 0;
-
-  bool IsNodeSupported(const Node& node);
 
   // Convert the onnx model to ANeuralNetworksModel
   Status Prepare() ORT_MUST_USE_RESULT;
@@ -189,6 +192,7 @@ class ModelBuilder {
                        uint32_t& index) ORT_MUST_USE_RESULT;
 
   IOpBuilder* GetOpBuilder(const Node& node);
+  IOpSupportChecker* GetOPSupportChecker(const Node& node);
 };
 
 }  // namespace nnapi
