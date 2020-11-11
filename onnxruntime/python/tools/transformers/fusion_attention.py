@@ -257,8 +257,8 @@ class FusionAttention(Fusion):
             return
 
         # bugbug
-        if no_mask:
-            return
+        #if no_mask:
+        #    return
 
         if matmul_v.input[0] == root_input and matmul_q.input[0] == root_input and matmul_v.input[0] == root_input:
             mask_index = None if no_mask else self.attention_mask.process_mask(mask_nodes[-1].input[0])
@@ -269,6 +269,7 @@ class FusionAttention(Fusion):
                                                   root_input, attention_last_node.output[0])
             if new_node is None:
                 return
+            new_node.attribute.extend([helper.make_attribute("input_dimension_swaped", 1)])
 
             self.nodes_to_add.append(new_node)
 
