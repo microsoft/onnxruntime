@@ -35,27 +35,6 @@
         "^test_training_dropout.*", // NOT_IMPLEMENTED : Could not find an implementation for the node Dropout(12) (Temporary, subsequent PR will add this -- we need training_mode change in the kernel)
         "^test_if_seq_cpu", // NOT_IMPLEMENTED : Could not find an implementation for the node If(13)
         "^test_loop13_seq_cpu", // NOT_IMPLEMENTED : Could not find an implementation for the node Loop(13)
-        "^test_hardmax_axis_0_cpu", // NOT_IMPLEMENTED : Could not find an implementation for the node Hardmax(13)
-        "^test_hardmax_axis_1_cpu",
-        "^test_hardmax_axis_2_cpu", 
-        "^test_hardmax_default_axis_cpu",
-        "^test_hardmax_example_cpu",
-        "^test_hardmax_negative_axis_cpu",
-        "^test_hardmax_one_hot_cpu",
-        "^test_logsoftmax_axis_0_cpu", // NOT_IMPLEMENTED : Could not find an implementation for the node Logsoftmax(13)
-        "^test_logsoftmax_axis_0_expanded_cpu", 
-        "^test_logsoftmax_axis_1_cpu",
-        "^test_logsoftmax_axis_1_expanded_cpu",
-        "^test_logsoftmax_axis_2_cpu",
-        "^test_logsoftmax_axis_2_expanded_cpu",
-        "^test_logsoftmax_default_axis_cpu",
-        "^test_logsoftmax_default_axis_expanded_cpu",
-        "^test_logsoftmax_example_1_cpu",
-        "^test_logsoftmax_example_1_expanded_cpu",
-        "^test_logsoftmax_large_number_cpu",
-        "^test_logsoftmax_large_number_expanded_cpu",
-        "^test_logsoftmax_negative_axis_cpu",
-        "^test_logsoftmax_negative_axis_expanded_cpu",
         "^test_resize_downsample_scales_cubic_A_n0p5_exclude_outside_cpu", // NOT_IMPLEMENTED : Could not find an implementation for the node Resize(13)
         "^test_resize_downsample_scales_cubic_cpu",
         "^test_resize_downsample_scales_linear_cpu",
@@ -75,21 +54,7 @@
         "^test_resize_upsample_sizes_nearest_ceil_half_pixel_cpu",
         "^test_resize_upsample_sizes_nearest_cpu",
         "^test_resize_upsample_sizes_nearest_floor_align_corners_cpu",
-        "^test_resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric_cpu",
-        "^test_softmax_axis_0_cpu", // NOT_IMPLEMENTED : Could not find an implementation for the node Softmax(13)
-        "^test_softmax_axis_0_expanded_cpu",
-        "^test_softmax_axis_1_cpu",
-        "^test_softmax_axis_1_expanded_cpu",
-        "^test_softmax_axis_2_cpu",
-        "^test_softmax_axis_2_expanded_cpu",
-        "^test_softmax_default_axis_cpu",
-        "^test_softmax_default_axis_expanded_cpu",
-        "^test_softmax_example_cpu",
-        "^test_softmax_example_expanded_cpu",
-        "^test_softmax_large_number_cpu", 
-        "^test_softmax_large_number_expanded_cpu", 
-        "^test_softmax_negative_axis_cpu", 
-        "^test_softmax_negative_axis_expanded_cpu"
+        "^test_resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric_cpu"
     ],
     "current_failing_tests_x86": [
         "^test_vgg19",
@@ -199,7 +164,9 @@
         "^test_reduce_sum_negative_axes_keepdims*",
         "^test_reduce_sum_empty_axes_input_noop*",
         "^test_unsqueeze_*",  // Does not support axes as input
-        "^test_squeeze_*"   // Does not support axes as input
+        "^test_squeeze_*",   // Does not support axes as input
+        "^test_logsoftmax_*", // Does not support opset-13 yet
+        "^test_softmax_*" // Does not support opset-13 yet
     ],
     // ORT first supported opset 7, so models with nodes that require versions prior to opset 7 are not supported
     "tests_with_pre_opset7_dependencies": [
