@@ -1,35 +1,29 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#if defined(USE_MPI)
+#include "orttraining/training_ops/cpu/communication/send.h"
 
-#if defined(USE_NCCL) || defined(USE_HOROVOD)
-
-#include "orttraining/training_ops/cuda/communication/send.h"
-#include "orttraining/training_ops/communication_common.h"
-#include "orttraining/training_ops/cuda/communication/nccl_service.h"
-#include "core/profile/profile.h"
-#include "core/profile/context.h"
-#include "core/providers/cuda/cuda_common.h"
 #include <mpi.h>
 
+#include "orttraining/training_ops/communication_common.h"
 #include "orttraining/core/framework/mpi_context.h"
 
 namespace onnxruntime {
-namespace cuda {
+namespace contrib {
 
 ONNX_OPERATOR_KERNEL_EX(
     Send,
     kMSDomain,
     1,
-    kCudaExecutionProvider,
+    kCpuExecutionProvider,
     KernelDefBuilder()
-        .InputMemoryType<OrtMemTypeCPUInput>(0)   /* CPU variable */
-        .InputMemoryType<OrtMemTypeCPUInput>(1)   /* CPU variable */
-        .OutputMemoryType<OrtMemTypeCPUOutput>(0) /* CPU variable */
+        .InputMemoryType<OrtMemTypeDefault>(0)  /* CPU variable */
+        .InputMemoryType<OrtMemTypeDefault>(1)  /* CPU variable */
+        .OutputMemoryType<OrtMemTypeDefault>(0) /* CPU variable */
         .TypeConstraint("TBool", DataTypeImpl::GetTensorType<bool>())
         .TypeConstraint("TInt64", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
     Send);
-
 
 void Send::SendData(
     OpKernelContext* ctx,
@@ -38,74 +32,25 @@ void Send::SendData(
     size_t aggregated_aligned_tensor_bytes,
     std::vector<size_t> tensor_offsets_in_bytes,
     std::vector<size_t> tensor_sizes_in_bytes) const {
-#ifdef ENABLE_NVTX_PROFILE
-  auto& profile_context = profile::Context::GetInstance();
-  const auto tag = profile_context.GetThreadTagOrDefault(std::this_thread::get_id());
-
-  profile::NvtxRangeCreator memcpyRange(
-      "Batch-" + tag +
-          " SendMemcpy-" + std::to_string(dst),
-      profile::Color::Red);
-  // Begin of major communication tasks.
-  // The previous MPI_Send's are not included because we don't want to
-  // count waiting time before setting up the actual communication.
-  memcpyRange.Begin();
-#endif
-
-#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
-  IAllocatorUniquePtr<char> buffer = GetScratchBuffer<char>(aggregated_aligned_tensor_bytes);
-#else
-  IAllocatorUniquePtr<char> buffer = AllocateBufferOnCPUPinned<char>(
-      aggregated_aligned_tensor_bytes);
-#endif
+  std::vector<char> buffer;
+  buffer.reserve(aggregated_aligned_tensor_bytes);
 
   for (int i = 0; i < num_tensors; ++i) {
     const Tensor* tensor = ctx->Input<Tensor>(i + 2);
-#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
-    CUDA_CALL(cudaMemcpy(buffer.get() + tensor_offsets_in_bytes[i], tensor->DataRaw(),
-                         tensor_sizes_in_bytes[i], cudaMemcpyDeviceToDevice));
-#else
-    CUDA_CALL(cudaMemcpy(buffer.get() + tensor_offsets_in_bytes[i], tensor->DataRaw(),
-                         tensor_sizes_in_bytes[i], cudaMemcpyDeviceToHost));
-#endif
+    memcpy(buffer.data() + tensor_offsets_in_bytes[i], tensor->DataRaw(), tensor_sizes_in_bytes[i]);
   }
 
-#ifdef ENABLE_NVTX_PROFILE
-  memcpyRange.End();
-#endif
-
-#ifdef ENABLE_NVTX_PROFILE
-  profile::NvtxRangeCreator sendRange(
-      "Batch-" + tag +
-          " Send-" + std::to_string(dst),
-      profile::Color::Red);
-  // Begin of major communication tasks.
-  // The previous MPI_Send's are not included because we don't want to
-  // count waiting time before setting up the actual communication.
-  sendRange.Begin();
-#endif
-
-  CommInfo_t info_data{buffer.get(),
+  CommInfo_t info_data{buffer.data(),
                        static_cast<int>(aggregated_aligned_tensor_bytes),
                        dst,
                        static_cast<int>(tag_)};
 
-#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
-  auto& nccl_service = cuda::NcclService::GetInstance();
-  nccl_service.SubmitSendAndWait(info_data.buffer, info_data.size, info_data.rank);
-#else
   MPI_CHECK(MPI_Send(
       info_data.buffer, info_data.size, MPI_CHAR,
       info_data.rank, info_data.tag, MPI_COMM_WORLD));
-#endif
-
-#ifdef ENABLE_NVTX_PROFILE
-  // End of major communication tasks.
-  sendRange.End();
-#endif
 }
 
-Status Send::ComputeInternal(OpKernelContext* ctx) const {
+Status Send::Compute(OpKernelContext* ctx) const {
   // Check if control signal is true.
   const Tensor* input_signal_tensor = ctx->Input<Tensor>(0);
   const bool* input_signal = input_signal_tensor->template Data<bool>();
@@ -120,19 +65,6 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
   int world_rank;
   MPI_CHECK(MPI_Comm_rank(MPI_COMM_WORLD, &world_rank));
   ORT_ENFORCE(world_rank != dst, "Sending data to rank ", dst, " on the rank ", world_rank, ".");
-
-#ifdef ENABLE_NVTX_PROFILE
-  auto& profile_context = profile::Context::GetInstance();
-  const auto tag = profile_context.GetThreadTagOrDefault(std::this_thread::get_id());
-
-  profile::NvtxRangeCreator preRange(
-      "Batch-" + tag +
-          " PreSend-" + std::to_string(dst),
-      profile::Color::Red);
-  // Begin of preparation for sending data. This time range includes
-  // the time for sending a scalar.
-  preRange.Begin();
-#endif
 
   const int num_tensors = static_cast<int>(element_types_.size());
   std::vector<size_t> tensor_sizes_in_bytes;
@@ -177,37 +109,18 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
   if (!all_shapes_inferred) {
     SendShapeInfo(dst, tag_, num_tensors, aggregated_aligned_tensor_bytes, prefix_tensor_shape_sizes, aggregated_tensor_shapes);
   }
-#ifdef ENABLE_NVTX_PROFILE
-  // End of data preparation and shape communication.
-  preRange.End();
-#endif
 
   // Send tensors.
   SendData(ctx, dst, num_tensors, aggregated_aligned_tensor_bytes, tensor_offsets_in_bytes, tensor_sizes_in_bytes);
-
-#ifdef ENABLE_NVTX_PROFILE
-  profile::NvtxRangeCreator postRange(
-      "Batch-" + tag +
-          " PostSend-" + std::to_string(dst),
-      profile::Color::Red);
-  // Begin of post communication tasks.
-  postRange.Begin();
-#endif
 
   // Communication is done, so output control signal can be set to true.
   Tensor* output_signal_tensor = ctx->Output(0, {});
   bool* output_signal = output_signal_tensor->MutableData<bool>();
   *output_signal = true;
 
-#ifdef ENABLE_NVTX_PROFILE
-  // End of post communication tasks.
-  postRange.End();
-#endif
-
   return Status::OK();
 }
 
-}  // namespace cuda
+}  // namespace contrib
 }  // namespace onnxruntime
-
 #endif
