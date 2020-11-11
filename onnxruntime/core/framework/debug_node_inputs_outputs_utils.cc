@@ -191,8 +191,10 @@ const NodeDumpOptions& NodeDumpOptionsFromEnvironmentVariables() {
 
     // Preserve existing behavior of printing the shapes by default. Turn it off only if the user has requested so
     // explicitly by setting the value of the env variable to 0.
-    const int default_dump_flags = NodeDumpOptions::DumpFlags::Shape;
-    opts.dump_flags = ParseEnvironmentVariable<int>(env_vars::kDumpShapeData, default_dump_flags);
+    opts.dump_flags = NodeDumpOptions::DumpFlags::None;
+    if (ParseEnvironmentVariable<bool>(env_vars::kDumpShapeData, true)) {
+      opts.dump_flags |= NodeDumpOptions::DumpFlags::Shape;
+    }
 
     if (get_bool_env_var(env_vars::kDumpInputData)) {
       opts.dump_flags |= NodeDumpOptions::DumpFlags::InputData;
@@ -220,7 +222,10 @@ const NodeDumpOptions& NodeDumpOptionsFromEnvironmentVariables() {
     opts.output_dir = Path::Parse(ToPathString(Env::Default().GetEnvironmentVar(env_vars::kOutputDir)));
 
     // check for confirmation for dumping data to files for all nodes
-    if (opts.dump_flags != NodeDumpOptions::DumpFlags::Shape &&
+    const bool is_input_or_output_requested = ((opts.dump_flags & NodeDumpOptions::DumpFlags::InputData) != 0) ||
+                                              ((opts.dump_flags & NodeDumpOptions::DumpFlags::OutputData) != 0);
+
+    if (is_input_or_output_requested &&
         opts.data_destination == NodeDumpOptions::DataDestination::TensorProtoFiles &&
         opts.filter.name_pattern.empty() && opts.filter.op_type_pattern.empty()) {
       ORT_ENFORCE(
@@ -236,7 +241,7 @@ const NodeDumpOptions& NodeDumpOptionsFromEnvironmentVariables() {
   return node_dump_options;
 }
 
-static bool AnyOptionIsSet(const NodeDumpOptions& dump_options) {
+static bool IsAnyOutputDumped(const NodeDumpOptions& dump_options) {
   return dump_options.dump_flags != NodeDumpOptions::DumpFlags::None;
 }
 
@@ -249,20 +254,21 @@ static void PrintIf(bool boolean_expression, const std::string& message) {
 void DumpNodeInputs(
     const NodeDumpOptions& dump_options,
     const OpKernelContext& context, const Node& node, const SessionState& session_state) {
-  const bool is_any_option_set = AnyOptionIsSet(dump_options);
-  if (!is_any_option_set) {
+  const bool is_any_output_dumped = IsAnyOutputDumped(dump_options);
+  if (!is_any_output_dumped) {
     return;
   }
 
   if (!FilterNode(dump_options, node)) return;
 
-  PrintIf(is_any_option_set, MakeString("-----------\n", node.OpType(), " node: ", node.Name(), "\n"));
+  std::cout << "-----------\n";
+  std::cout << node.OpType() << " node: " << node.Name() << "\n";
 
   const auto& input_defs = node.InputDefs();
 
   for (auto i = 0, end = context.InputCount(); i < end; ++i) {
     if (input_defs[i]->Exists()) {
-      PrintIf(is_any_option_set, MakeString("Input ", i, " Name: ", input_defs[i]->Name()));
+      std::cout << "Input " << i << " Name: " << input_defs[i]->Name();
 
       const auto* type = context.InputType(i);
 
@@ -278,14 +284,14 @@ void DumpNodeInputs(
             DumpTensor(dump_options, tensor, input_defs[i]->Name(), session_state);
           }
         } else {
-          PrintIf(is_any_option_set, MakeString(" is non-tensor type.\n"));
+          std::cout << " is non-tensor type.\n";
         }
       } else {
         // should never happen...
-        PrintIf(is_any_option_set, MakeString(" was missing data type\n"));
+        std::cout << " was missing data type\n";
       }
     } else {
-      PrintIf(is_any_option_set, MakeString("Input ", i, " is optional and was not provided.\n"));
+      std::cout << "Input " << i << " is optional and was not provided.\n";
     }
   }
 }
@@ -296,20 +302,19 @@ void DumpNodeInputs(
 }
 
 void DumpNodeOutputs(const NodeDumpOptions& dump_options, OpKernelContext& context, const Node& node, const SessionState& session_state) {
-  const bool is_any_option_set = AnyOptionIsSet(dump_options);
-  if (!is_any_option_set) {
+  const bool is_any_output_dumped = IsAnyOutputDumped(dump_options);
+  if (!is_any_output_dumped) {
     return;
   }
 
   if (!FilterNode(dump_options, node)) return;
 
-  PrintIf(is_any_option_set, MakeString("-----------\n"));
-
+  std::cout << "-----------\n";
   const auto& output_defs = node.OutputDefs();
 
   for (auto i = 0, end = context.OutputCount(); i < end; ++i) {
     if (output_defs[i]->Exists()) {
-      PrintIf(is_any_option_set, MakeString("Output ", i, " Name: ", output_defs[i]->Name()));
+      std::cout << "Output " << i << " Name: " << output_defs[i]->Name();
 
       const auto* type = context.OutputType(i);
       if (type) {
@@ -324,19 +329,17 @@ void DumpNodeOutputs(const NodeDumpOptions& dump_options, OpKernelContext& conte
             DumpTensor(dump_options, tensor, output_defs[i]->Name(), session_state);
           }
         } else {
-          PrintIf(is_any_option_set, MakeString(" is non-tensor type.\n"));
+          std::cout << " is non-tensor type.\n";
         }
       } else {
         // should never happen...
-        PrintIf(is_any_option_set, MakeString("missing data type\n"));
+        std::cout << "missing data type\n";
       }
     } else {
-      PrintIf(is_any_option_set, MakeString("Output ", i, " is optional and was not produced.\n"));
+      std::cout << "Output " << i << " is optional and was not produced.\n";
     }
 
-    if (is_any_option_set) {
-      std::cout << std::endl;
-    }
+    std::cout << std::endl;
   }
 }
 
