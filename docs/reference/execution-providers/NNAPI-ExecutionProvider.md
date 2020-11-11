@@ -2,7 +2,7 @@
 title: NNAPI
 parent: Execution Providers
 grand_parent: Reference
-nav_order: 7
+nav_order: 8
 ---
 
 
@@ -27,18 +27,11 @@ For build instructions, please see the [BUILD page](../../how-to/build.md#Androi
 
 ## Using NNAPI EP in C/C++
 
-To use NNAPI EP for inferencing, please register it as below.
+```c++
+Ort::Env env = Ort::Env{ORT_LOGGING_LEVEL_ERROR, "Default"};
+Ort::SessionOptions sf;
+Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(sf));
+Ort::Session session(env, model_path, sf);
 ```
-string log_id = "Foo";
-auto logging_manager = std::make_unique<LoggingManager>
-(std::unique_ptr<ISink>{new CLogSink{}},
-                                  static_cast<Severity>(lm_info.default_warning_level),
-                                  false,
-                                  LoggingManager::InstanceType::Default,
-                                  &log_id)
-Environment::Create(std::move(logging_manager), env)
-InferenceSession session_object{so,env};
-session_object.RegisterExecutionProvider(std::make_unique<::onnxruntime::NnapiExecutionProvider>());
-status = session_object.Load(model_file_name);
-```
+
 The C API details are [here](../api/c-api.md).

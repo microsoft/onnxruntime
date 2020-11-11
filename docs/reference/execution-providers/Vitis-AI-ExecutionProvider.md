@@ -2,7 +2,7 @@
 title: Vitis AI
 parent: Execution Providers
 grand_parent: Reference
-nav_order: 13
+nav_order: 12
 ---
 
 # Vitis-AI Execution Provider
@@ -103,7 +103,7 @@ A couple of environment variables can be used to customize the Vitis-AI executio
 
 When using python, you can base yourself on the following example:
 
-```python
+```
 # Import pyxir before onnxruntime
 import pyxir
 import pyxir.frontend.onnx
@@ -111,7 +111,7 @@ import pyxir.contrib.dpuv1.dpuv1
 
 import onnxruntime
 
-# Add other imports
+# Add other imports 
 # ...
 
 # Load inputs and do preprocessing

@@ -10,11 +10,11 @@ nav_order: 3
 
 DirectML is a high-performance, hardware-accelerated DirectX 12 library for machine learning on Windows.  DirectML provides GPU acceleration for common machine learning tasks across a broad range of supported hardware and drivers.
 
-When used standalone, the DirectML API is a low-level DirectX 12 library and is suitable for high-performance, low-latency applications such as frameworks, games, and other real-time applications. The seamless interoperability of DirectML with Direct3D 12 as well as its low overhead and conformance across hardware makes DirectML ideal for accelerating machine learning when both high performance is desired, and the reliability and predictabiltiy of results across hardware is critical.
+When used standalone, the DirectML API is a low-level DirectX 12 library and is suitable for high-performance, low-latency applications such as frameworks, games, and other real-time applications. The seamless interoperability of DirectML with Direct3D 12 as well as its low overhead and conformance across hardware makes DirectML ideal for accelerating machine learning when both high performance is desired, and the reliability and predictability of results across hardware is critical.
 
 The *DirectML Execution Provider* is an optional component of ONNX Runtime that uses DirectML to accelerate inference of ONNX models. The DirectML execution provider is capable of greatly improving evaluation time of models using commodity GPU hardware, without sacrificing broad hardware support or requiring vendor-specific extensions to be installed.
 
-The DirectML Execution Provider currently uses DirectML version 2.1.0.
+The DirectML Execution Provider currently uses DirectML version 1.3.0.
 
 ## Contents
 {: .no_toc }
@@ -43,7 +43,7 @@ Requirements for building the DirectML execution provider:
 To build onnxruntime with the DML EP included, supply the `--use_dml` parameter to `build.bat`. e.g.
 
 ```powershell
-build.bat --config RelWithDebInfo --build_shared_lib --parallel --use_dml
+    build.bat --config RelWithDebInfo --build_shared_lib --parallel --use_dml
 ```
 
 The DirectML execution provider supports building for both x64 (default) and x86 architectures.
@@ -120,6 +120,7 @@ In this case, there are three options:
 - Edit the model to replace an input's free dimension (specified through ONNX using "dim_param") with a fixed size (specified through ONNX using "dim_value").
 - Specify values of named dimensions within model inputs when creating the session using the OnnxRuntime *AddFreeDimensionOverrideByName* ABI.
 - Edit the model to ensure that an input's free dimension has a [denotation](https://github.com/onnx/onnx/blob/master/docs/DimensionDenotation.md) (such as "DATA_BATCH," or a custom denotation).  Then when creating the session, specify the dimension size for each denotation.  This can be done using the OnnxRuntime *AddFreeDimensionOverride* ABI.
+
 
 ## See also
 
