@@ -236,9 +236,35 @@ int processCommandLine(int argc, char* argv[], runtimeOpt& opt) {
 
   return 0;
 }
+static size_t num_ort_exception{0};
+static size_t num_std_exception{0};
+static size_t num_unknown_exception{0};
+static size_t num_successful_runs{0};
+static size_t iteration{0};
+
+static void fuzz_handle_exception() {
+  try {
+    throw;
+  } catch (const Ort::Exception& ortException) {
+    num_ort_exception++;
+    Logger::testLog << L"onnx runtime exception: " << ortException.what() << Logger::endl;
+    Logger::testLog << "Failed Test iteration: " << iteration++ << Logger::endl;
+  } catch (const std::exception& e) {
+    num_std_exception++;
+    Logger::testLog << L"standard exception: " << e.what() << Logger::endl;
+    Logger::testLog << "Failed Test iteration: " << iteration++ << Logger::endl;
+  } catch (...) {
+    num_unknown_exception++;
+    Logger::testLog << L"unknown exception: " << Logger::endl;
+    Logger::testLog << "Failed Test iteration: " << iteration++ << Logger::endl;
+    throw;
+  }
+}
 
 int main(int argc, char* argv[]) {
   runtimeOpt opt{};
+  userOptions& userOpt{opt.userOpt};
+  Logger::wcstream& werrStreamBuf{opt.werrStreamBuf};
   try {
     // Initialize the runtime options
     //
@@ -254,8 +280,6 @@ int main(int argc, char* argv[]) {
     int& testTimeOut{opt.testTimeOut};
     unsigned int& seed{opt.seed};
     timeScale& scale{opt.scale};
-    userOptions& userOpt{opt.userOpt};
-    Logger::wcstream& werrStreamBuf{opt.werrStreamBuf};
 
     // Model file
     //
@@ -278,6 +302,7 @@ int main(int argc, char* argv[]) {
           mutateModelTest(model_proto, mutateModelDirName, userOpt, seed);
           Logger::testLog << L"Finished Prediction for: " << modelFileName
                           << L" with seed " << seed << Logger::endl;
+          return 0;
         } else {
           // Call the mutateModelTest
           //
@@ -290,11 +315,6 @@ int main(int argc, char* argv[]) {
           endTime += scale == timeScale::Hrs ? timeInHrs
                                              : scale == timeScale::Min ? timeInMin : timeInSec;
           Logger::testLog << "Starting Test" << Logger::endl;
-          size_t num_ort_exception{0};
-          size_t num_std_exception{0};
-          size_t num_unknown_exception{0};
-          size_t num_successful_runs{0};
-          size_t iteration{0};
           while (currTime < endTime) {
             try {
               onnx::ModelProto bad_model = model_proto;
@@ -302,40 +322,12 @@ int main(int argc, char* argv[]) {
               mutateModelTest(bad_model, mutateModelDirName, userOpt);
               num_successful_runs++;
               Logger::testLog << "Completed Test iteration: " << iteration++ << Logger::endl;
-            } catch (const Ort::Exception& ortException) {
-              num_ort_exception++;
-              Logger::testLog << L"onnx runtime exception: " << ortException.what() << Logger::endl;
-              Logger::testLog << "Failed Test iteration: " << iteration++ << Logger::endl;
-            } catch (const std::exception& e) {
-              num_std_exception++;
-              Logger::testLog << L"standard exception: " << e.what() << Logger::endl;
-              Logger::testLog << "Failed Test iteration: " << iteration++ << Logger::endl;
             } catch (...) {
-              num_unknown_exception++;
-              Logger::testLog << L"unknown exception: " << Logger::endl;
-              Logger::testLog << "Failed Test iteration: " << iteration++ << Logger::endl;
-              throw;
+              fuzz_handle_exception();
             }
-
             // Update current time
             //
             currTime = std::chrono::system_clock::now();
-          }
-          Logger::testLog << "Ending Test" << Logger::endl;
-
-          if (userOpt.stress) {
-            Logger::testLog.enable();
-          }
-
-          Logger::testLog << L"Total number of exceptions: " << num_unknown_exception + num_std_exception + num_ort_exception << Logger::endl;
-          Logger::testLog << L"Number of Unknown exceptions: " << num_unknown_exception << Logger::endl;
-          Logger::testLog << L"Number of ort exceptions: " << num_ort_exception << Logger::endl;
-          Logger::testLog << L"Number of std exceptions: " << num_std_exception << Logger::endl;
-          Logger::testLog << L"Number of unique errors: " << werrStreamBuf.get_unique_errors() << L"\n";
-
-          if (userOpt.stress) {
-            Logger::testLog.disable();
-            Logger::testLog.flush();
           }
         }
       } else {
@@ -354,10 +346,6 @@ int main(int argc, char* argv[]) {
       std::ifstream ortModelStream(ortModelFile, std::ifstream::in | std::ifstream::binary);
       ortModelStream.read(modelData.data(), numBytes);
       ortModelStream.close();
-      size_t num_ort_exception{0};
-      size_t num_std_exception{0};
-      size_t num_unknown_exception{0};
-      size_t num_successful_runs{0};
       for (int i = 8; i < numBytes; i++) {
         char tmp = modelData[i];
         int j = (numBytes - i - 1) ? (i + 1) : 0;  // j = (i+1) % (numBytes -1)
@@ -371,21 +359,26 @@ int main(int argc, char* argv[]) {
           predict.PrintOutputValues();
           num_successful_runs++;
           Logger::testLog << "Completed Test iteration: " << i << Logger::endl;
-        } catch (const Ort::Exception& ortException) {
-          num_ort_exception++;
-          Logger::testLog << L"onnx runtime exception: " << ortException.what() << Logger::endl;
-          Logger::testLog << "Failed Test iteration: " << i << Logger::endl;
-        } catch (const std::exception& e) {
-          num_std_exception++;
-          Logger::testLog << L"standard exception: " << e.what() << Logger::endl;
-          Logger::testLog << "Failed Test iteration: " << i << Logger::endl;
         } catch (...) {
-          num_unknown_exception++;
-          Logger::testLog << L"unknown exception: " << Logger::endl;
-          Logger::testLog << "Failed Test iteration: " << i << Logger::endl;
-          throw;
+          fuzz_handle_exception();
         }
       }
+    }
+    Logger::testLog << "Ending Test" << Logger::endl;
+
+    if (userOpt.stress) {
+      Logger::testLog.enable();
+    }
+
+    Logger::testLog << L"Total number of exceptions: " << num_unknown_exception + num_std_exception + num_ort_exception << Logger::endl;
+    Logger::testLog << L"Number of Unknown exceptions: " << num_unknown_exception << Logger::endl;
+    Logger::testLog << L"Number of ort exceptions: " << num_ort_exception << Logger::endl;
+    Logger::testLog << L"Number of std exceptions: " << num_std_exception << Logger::endl;
+    Logger::testLog << L"Number of unique errors: " << werrStreamBuf.get_unique_errors() << L"\n";
+
+    if (userOpt.stress) {
+      Logger::testLog.disable();
+      Logger::testLog.flush();
     }
     return 0;
   } catch (const Ort::Exception& ortException) {
