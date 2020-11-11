@@ -685,6 +685,9 @@ class ORTTrainer(object):
         if self.options.utils.run_symbolic_shape_infer:
             self._onnx_model = SymbolicShapeInference.infer_shapes(self._onnx_model, auto_merge=True, guess_output_rank=True)
 
+        # old ort session may already exists and occupies GPU memory when creating new session, this may cause OOM error.
+        # for example, load_state_dict will be called before returing the function, and it calls _init_session again
+        del self._training_session
         # Create training session used by train_step
         self._create_ort_training_session()
 
