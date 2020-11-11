@@ -1213,9 +1213,9 @@ common::Status InferenceSession::Initialize() {
     // option and ignore the serialized session state.
     const experimental::fbs::SessionState* serialized_session_state = nullptr;
 #if defined(ORT_MINIMAL_BUILD)
-    auto* serialized_session_state = !ort_format_model_bytes_.empty()
-                                         ? fbs::GetInferenceSession(ort_format_model_bytes_.data())->session_state()
-                                         : nullptr;
+    serialized_session_state = !ort_format_model_bytes_.empty()
+                                   ? fbs::GetInferenceSession(ort_format_model_bytes_.data())->session_state()
+                                   : nullptr;
 #endif
 
     ORT_RETURN_IF_ERROR_SESSIONID_(
