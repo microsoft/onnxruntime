@@ -19,8 +19,6 @@ using std::vector;
 ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer)
     : nnapi_(NnApiImplementation()), graph_viewer_(graph_viewer) {
   GetAllInitializers();
-  // ORT_ENFORCE(op_builders_.size() == op_support_checkers_.size(),
-  //             "We should have same number of OpBuilder and OpSupportChecker");
 }
 
 int32_t ModelBuilder::GetAndroidSdkVer() const {

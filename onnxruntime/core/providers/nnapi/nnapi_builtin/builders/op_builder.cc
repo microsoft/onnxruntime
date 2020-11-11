@@ -2120,6 +2120,9 @@ static std::unordered_map<std::string, std::shared_ptr<IOpBuilder>> CreateOpBuil
   op_map.emplace("Resize", std::make_shared<ResizeOpBuilder>());
   op_map.emplace("Flatten", std::make_shared<FlattenOpBuilder>());
 
+  ORT_ENFORCE(op_map.size() == GetOpSupportCheckers().size(),
+              "We should have same number of OpBuilder and OpSupportChecker");
+
   return op_map;
 }
 
