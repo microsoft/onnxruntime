@@ -363,7 +363,7 @@ TEST(EmbedLayerNormTest, EmbedLayerNormBatch2_NoMask) {
           sequence_length,
           hidden_size,
           false,
-          false); // no mask
+          false);  // no mask
 }
 
 // BatchSize > HiddenSize to reproduce mask processing bug

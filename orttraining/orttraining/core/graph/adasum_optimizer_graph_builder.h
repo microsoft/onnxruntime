@@ -32,11 +32,11 @@ class AdasumOptimizerGraphBuilder : public AllreduceOptimizerGraphBuilder {
       GraphAugmenter::GraphDefs& graph_defs);
 
   Status AddWeightUpdateNodes(const NodeArgNameGeneratorFn& nodearg_name_generator,
-      std::vector<ArgDef>& gradient_argdefs,
-      std::vector<ArgDef>& weight_argdefs,
-      const ArgDef& adasum_gradient_finite_argdef,
-      GraphAugmenter::GraphDefs& graph_defs,
-      std::vector<ArgDef>& output_weight_argdefs);
+                              std::vector<ArgDef>& gradient_argdefs,
+                              std::vector<ArgDef>& weight_argdefs,
+                              const ArgDef& adasum_gradient_finite_argdef,
+                              GraphAugmenter::GraphDefs& graph_defs,
+                              std::vector<ArgDef>& output_weight_argdefs);
 
   virtual Status BuildOptimizerNode(
       const std::unique_ptr<OptimizerBuilder>& opt_builder,
@@ -49,7 +49,6 @@ class AdasumOptimizerGraphBuilder : public AllreduceOptimizerGraphBuilder {
       std::vector<TensorProto>& new_initializers,
       std::vector<ArgDef>& output_weight_argdefs,
       std::vector<ArgDef>& output_gradient_argdefs) override;
-
 };
 
 }  // namespace training

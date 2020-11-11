@@ -39,7 +39,7 @@ class LambOptimizer final : public CudaKernel {
 };
 
 // Implementation can be found in cuda file, optimizers_impl.cu
-// T1's precision should be higher than T2. It's used for 
+// T1's precision should be higher than T2. It's used for
 // large tensors. Small tensors should use multi-tensor version
 // of this.
 template <typename T1, typename T2, typename T3, typename T_GRAD_NORM>
@@ -63,7 +63,7 @@ void LambComputeDirection(
 
 // Implementation can be found in cuda file, optimizers_impl.cu
 // T2's precision should be higher than T1. It's used for
-// large tensors. Small tensors should use multi-tensor version 
+// large tensors. Small tensors should use multi-tensor version
 // of this.
 template <typename T1, typename T2, typename T3, typename T_MIXED_PRECISION_FP>
 void LambUpdate(

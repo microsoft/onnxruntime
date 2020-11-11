@@ -139,7 +139,7 @@ static void TestInvertibleLayerNormGrad(
     const std::vector<int64_t>& x_dims,
     int64_t axis = -1,
     double error_tolerance = 1e-4,
-    bool test_fp16=false) {
+    bool test_fp16 = false) {
   const std::vector<int64_t>& n_x_m_dims = x_dims;
   std::vector<int64_t> n_dims, m_dims;
   ASSERT_TRUE(SplitDims(n_x_m_dims, axis, n_dims, m_dims).IsOK());
@@ -160,7 +160,7 @@ static void TestInvertibleLayerNormGrad(
   // these inputs are dependent on X_data
   std::vector<float> mean_data(N);         // mean(X)
   std::vector<float> inv_std_var_data(N);  // 1 / sqrt(mean(X^2) - mean(X)^2 + epsilon)
-  std::vector<float> Y_data(N*M);
+  std::vector<float> Y_data(N * M);
   {
     using ConstEigenArrayMap = Eigen::Map<const Eigen::ArrayXX<float>>;
     using EigenArrayMap = Eigen::Map<Eigen::ArrayXX<float>>;
@@ -193,8 +193,8 @@ static void TestInvertibleLayerNormGrad(
     std::vector<MLFloat16> Y_data_half(Y_data.size());
     std::vector<MLFloat16> scale_data_half(scale_data.size());
     std::vector<MLFloat16> bias_data_half(bias_data.size());
-    ConvertFloatToMLFloat16(Y_grad_data.data(),Y_grad_data_half.data(), int(Y_grad_data.size()));
-    ConvertFloatToMLFloat16(Y_data.data(),Y_data_half.data(), int(Y_data.size()));
+    ConvertFloatToMLFloat16(Y_grad_data.data(), Y_grad_data_half.data(), int(Y_grad_data.size()));
+    ConvertFloatToMLFloat16(Y_data.data(), Y_data_half.data(), int(Y_data.size()));
     ConvertFloatToMLFloat16(scale_data.data(), scale_data_half.data(), int(scale_data.size()));
     ConvertFloatToMLFloat16(bias_data.data(), bias_data_half.data(), int(bias_data.size()));
 

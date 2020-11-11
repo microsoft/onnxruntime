@@ -44,10 +44,10 @@ void SetTensorProtoExternalData(
 
 TEST(OptimizerInitializerTest, LoadExternalData) {
   const std::vector<int32_t> tensor_data = []() {
-        std::vector<int32_t> tensor_data(100);
-        std::iota(tensor_data.begin(), tensor_data.end(), 0);
-        return tensor_data;
-      }();
+    std::vector<int32_t> tensor_data(100);
+    std::iota(tensor_data.begin(), tensor_data.end(), 0);
+    return tensor_data;
+  }();
   const gsl::span<const int> tensor_data_span = gsl::make_span(tensor_data);
   const auto tensor_data_dir_path = Path::Parse(ToPathString("."));
   const auto tensor_data_dir_relative_path = Path::Parse(ToPathString("OptimizerInitializerTest_LoadExternalData.bin"));

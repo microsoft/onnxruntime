@@ -175,7 +175,7 @@ TEST(FastGeluTest, FastGeluWithoutBiasFloat16) {
 
   std::vector<float> output_data = {
       0.63037109375f, -0.154296875f, 0.0f, 0.8408203125f,
-      0.345703125f, 0.11578369140625f, 0.1854248046875f, -0.1646728515625f };
+      0.345703125f, 0.11578369140625f, 0.1854248046875f, -0.1646728515625f};
 
   std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
   std::vector<int64_t> bias_dims = {};

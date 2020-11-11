@@ -132,13 +132,13 @@ Status OptimizerGraphBuilder::AddGradientScalingNodes(
 Status OptimizerGraphBuilder::AddGradientScalingNodes(
     const NodeArgNameGeneratorFn& nodearg_name_generator,
     const float scale,
-    std::vector<ArgDef>& input_gradient_argdefs,       // update argdefs in place
+    std::vector<ArgDef>& input_gradient_argdefs,  // update argdefs in place
     std::vector<ArgDef>& output_gradient_argdef,  // update argdef in place
     GraphAugmenter::GraphDefs& graph_defs,
     ONNX_NAMESPACE::TensorProto_DataType target_type) {
   ArgDef pre_allreduce_scale(nodearg_name_generator("pre_allreduce_scale"),
                              graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
-                             
+
   graph_defs.AddInitializers({CreateTensorProto<float>(pre_allreduce_scale.name, scale, {})});
 
   TypeProto* fused_gradient_type_proto = graph_defs.CreateTypeProto();
@@ -149,7 +149,7 @@ Status OptimizerGraphBuilder::AddGradientScalingNodes(
   for (size_t i = 0; i < input_gradient_argdefs.size(); ++i) {
     inputs.emplace_back(input_gradient_argdefs[i]);
   }
-  
+
   for (size_t i = 0; i < input_gradient_argdefs.size(); ++i) {
     ArgDef& gradient_argdef = input_gradient_argdefs[i];
 

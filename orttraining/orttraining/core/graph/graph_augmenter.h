@@ -102,7 +102,7 @@ struct NodeDef {
   NodeAttributes attributes;
   std::string name;
   int priority;
-}; 
+};
 
 /** GraphAugmenter is a stateless class to add new elements into a Graph.
     The elements to be added could be:

@@ -48,7 +48,6 @@ bool IsDimensionSupported(const Node* node) {
       if (input_dims + axes.size() > 5)
         return false;
     }
-
   }
   return true;
 }
@@ -122,56 +121,54 @@ bool IsOpSupported(std::string name, std::string device) {
   };
 
   std::set<std::string> supported_ops_cpu = {
-    "Abs",
-    "Acos",
-    "Acosh",
-    "ArgMax",
-    "ArgMin",
-    "Asin",
-    "Asinh",
-    "Atan",
-    "Atanh",
-    "Cos",
-    "Cosh",
-    "GlobalLpPool",
-    "HardSigmoid",
-    "Not",
-    "ReduceLogSum",
-    "ReduceProd",
-    "ReduceSumSquare",
-    "Resize",
-    "Selu",
-    "Sign",
-    "Sinh",
-    "Softsign",
-    "Tan",
-    "NonZero",
-    "Upsample"
-  };
-
+      "Abs",
+      "Acos",
+      "Acosh",
+      "ArgMax",
+      "ArgMin",
+      "Asin",
+      "Asinh",
+      "Atan",
+      "Atanh",
+      "Cos",
+      "Cosh",
+      "GlobalLpPool",
+      "HardSigmoid",
+      "Not",
+      "ReduceLogSum",
+      "ReduceProd",
+      "ReduceSumSquare",
+      "Resize",
+      "Selu",
+      "Sign",
+      "Sinh",
+      "Softsign",
+      "Tan",
+      "NonZero",
+      "Upsample"};
 
   std::set<std::string> supported_ops_gpu = {
-    "Abs",
-    "Asin",
-    "Asinh",
-    "Atan",
-    "Ceil",
-    "GlobalLpPool",
-    "HardSigmoid",
-    "Not",
-    "Selu",
-    "Tan",
+      "Abs",
+      "Asin",
+      "Asinh",
+      "Atan",
+      "Ceil",
+      "GlobalLpPool",
+      "HardSigmoid",
+      "Not",
+      "Selu",
+      "Tan",
   };
   std::set<std::string> supported_ops_vpu = {
-    "Expand",
-    "NonMaxSuppression",
-    "NonZero",
-    "ReduceLogSum",
-    "ReduceSumSquare",
-    "Resize",
-    "RoiAlign",
-    "Scatter",
-    "SinFloat",
+      "Expand",
+      "NonMaxSuppression",
+      "NonZero",
+      "ReduceLogSum",
+      "ReduceSumSquare",
+      "Resize",
+      "RoiAlign",
+      "Scatter",
+      "SinFloat",
   };
 
   std::set<std::string> supported_ops = {};
@@ -179,7 +176,7 @@ bool IsOpSupported(std::string name, std::string device) {
   if (device == "CPU") {
     std::merge(common_supported_ops.begin(), common_supported_ops.end(),
                supported_ops_cpu.begin(), supported_ops_cpu.end(),
-               std::inserter(supported_ops,supported_ops.begin()));
+               std::inserter(supported_ops, supported_ops.begin()));
   } else if (device == "GPU") {
     std::merge(common_supported_ops.begin(), common_supported_ops.end(),
                supported_ops_gpu.begin(), supported_ops_gpu.end(),
@@ -191,22 +188,22 @@ bool IsOpSupported(std::string name, std::string device) {
   } else if (device.find("HETERO") == 0) {
     std::vector<std::string> devices;
     std::stringstream s_stream(device);
-    while(s_stream.good()) {
+    while (s_stream.good()) {
       std::string substr;
       getline(s_stream, substr, ',');
       devices.push_back(substr);
     }
     supported_ops.insert(common_supported_ops.begin(), common_supported_ops.end());
     for (auto& it : devices) {
-      if(it == "MYRIAD" || "HDDL") {
+      if (it == "MYRIAD" || "HDDL") {
         supported_ops.insert(supported_ops_vpu.begin(), supported_ops_vpu.end());
       }
-      if(it == "GPU") {
+      if (it == "GPU") {
         supported_ops.insert(supported_ops_gpu.begin(), supported_ops_gpu.end());
       }
-      if(it == "CPU") {
+      if (it == "CPU") {
         supported_ops.insert(supported_ops_cpu.begin(), supported_ops_cpu.end());
-     }
+      }
     }
   }
   return supported_ops.find(name) != supported_ops.end();
@@ -310,11 +307,11 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     auto graph_outputs = graph_viewer.GetOutputs();
     auto input_it = find(graph_inputs.begin(), graph_inputs.end(), input);
     auto output_it = find(graph_outputs.begin(), graph_outputs.end(), output);
-    if(input_it != graph_inputs.end() && output_it != graph_outputs.end())
+    if (input_it != graph_inputs.end() && output_it != graph_outputs.end())
       return true;
   } else if (optype == "Resize") {
     //Resize opset 11 is not supported
-    if(node->InputDefs().size() > 2)
+    if (node->InputDefs().size() > 2)
       return true;
   } else if (optype == "Unsqueeze") {
     if (!IsDimensionSupported(node))
@@ -337,20 +334,20 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       return true;
   } else if (optype == "Slice") {
     //start, end, axes need to be a initializer
-    const auto &data_arg = node->InputDefs()[0];
+    const auto& data_arg = node->InputDefs()[0];
     auto graph_inputs = graph_viewer.GetInputs();
     bool cond_for_slice = false;
 
     auto it = find(graph_inputs.begin(), graph_inputs.end(), data_arg);
-    if(it != graph_inputs.end()){
-      if(node->InputDefs().size() > 1){
-        const auto &start_arg = node->InputDefs()[1];
-        const auto &end_arg = node->InputDefs()[2];
+    if (it != graph_inputs.end()) {
+      if (node->InputDefs().size() > 1) {
+        const auto& start_arg = node->InputDefs()[1];
+        const auto& end_arg = node->InputDefs()[2];
         cond_for_slice |= initializers.find(start_arg->Name()) == initializers.end();
         cond_for_slice |= initializers.find(end_arg->Name()) == initializers.end();
       }
       if (node->InputDefs().size() > 3) {
-        const auto &axes_arg = node->InputDefs()[3];
+        const auto& axes_arg = node->InputDefs()[3];
         cond_for_slice |= initializers.find(axes_arg->Name()) == initializers.end();
       }
     }
@@ -428,27 +425,26 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     if (dtype != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) {
       return true;
     }
-} else if ((optype == "Equal") || (optype == "And"))  {
-
+  } else if ((optype == "Equal") || (optype == "And")) {
     using onnx_dtype = ONNX_NAMESPACE::TensorProto_DataType;
     auto supportedOps = std::set<std::vector<onnx_dtype>>{
-        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT },
-        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_FLOAT },
-        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_INT8 },
-        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_FLOAT },
-        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8 },
-        {onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_INT8 },
-        {onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_UINT8 },
-        {onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_INT8 },
-        {onnx_dtype::TensorProto_DataType_INT32, onnx_dtype::TensorProto_DataType_INT32, onnx_dtype::TensorProto_DataType_INT32 },
-        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_FLOAT },
-        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8 }};
+        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT},
+        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_FLOAT},
+        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_INT8},
+        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_FLOAT},
+        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8},
+        {onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_INT8},
+        {onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_UINT8},
+        {onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_INT8},
+        {onnx_dtype::TensorProto_DataType_INT32, onnx_dtype::TensorProto_DataType_INT32, onnx_dtype::TensorProto_DataType_INT32},
+        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_FLOAT},
+        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8}};
 
     if (optype == "Equal") {
-      supportedOps.insert(std::vector<onnx_dtype>{onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_INT32, onnx_dtype::TensorProto_DataType_INT32 }),
-      supportedOps.insert(std::vector<onnx_dtype>{onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_INT64, onnx_dtype::TensorProto_DataType_INT64 });
-      supportedOps.insert(std::vector<onnx_dtype>{onnx_dtype::TensorProto_DataType_BOOL, onnx_dtype::TensorProto_DataType_INT64, onnx_dtype::TensorProto_DataType_INT64 }),
-      supportedOps.insert(std::vector<onnx_dtype>{onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT });
+      supportedOps.insert(std::vector<onnx_dtype>{onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_INT32, onnx_dtype::TensorProto_DataType_INT32}),
+          supportedOps.insert(std::vector<onnx_dtype>{onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_INT64, onnx_dtype::TensorProto_DataType_INT64});
+      supportedOps.insert(std::vector<onnx_dtype>{onnx_dtype::TensorProto_DataType_BOOL, onnx_dtype::TensorProto_DataType_INT64, onnx_dtype::TensorProto_DataType_INT64}),
+          supportedOps.insert(std::vector<onnx_dtype>{onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT});
     }
 
     onnx_dtype input_0_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
@@ -461,20 +457,18 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       return true;
     } else
       return false;
-  } else if(optype == "Gather") {
-
-    if(device_id == "GPU"){
+  } else if (optype == "Gather") {
+    if (device_id == "GPU") {
       const auto& input = node->InputDefs()[0];
       auto graph_inputs = graph_viewer.GetInputs();
       auto it = find(graph_inputs.begin(), graph_inputs.end(), input);
-      if(it != graph_inputs.end()){
-        const auto &indices_arg = node->InputDefs()[1];
+      if (it != graph_inputs.end()) {
+        const auto& indices_arg = node->InputDefs()[1];
         if (indices_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64)
           return true;
       }
     }
-  } else if(optype == "Upsample") {
-
+  } else if (optype == "Upsample") {
     //check for attributes
     auto upsample_attr = node->GetAttributes();
     auto upsample_arg = upsample_attr["scales"];
@@ -483,13 +477,13 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       return true;
 
     //check for input dimensions
-    const auto &x_arg = node->InputDefs()[0];
+    const auto& x_arg = node->InputDefs()[0];
 
     auto shape = x_arg->Shape();
     if (shape != nullptr) {
       //input tensor rank cannot be of one dimension
       if (shape->dim_size() == 1) {
-         return true;
+        return true;
       }
     }
     // x_arg supports only float, int8 and float16 type
@@ -633,7 +627,7 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
     if (shape != nullptr) {
       //Can't have no dimensions
       if (shape->dim_size() == 0) {
-        if(optype == "Unsqueeze" || optype == "Squeeze" || optype == "Cast" ||
+        if (optype == "Unsqueeze" || optype == "Squeeze" || optype == "Cast" ||
             optype == "Gather" || optype == "Mul" || optype == "Sub" ||
             optype == "Min" || optype == "Div" || optype == "Floor")
           return;
@@ -701,10 +695,8 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer, std::string device, /
   return unsupported_nodes_idx;
 }
 
-
 std::vector<std::unique_ptr<ComputeCapability>>
 GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, std::string device_id) {
-
   std::vector<std::unique_ptr<ComputeCapability>> result;
   if (graph_viewer.IsSubgraph()) {
     return result;
@@ -722,15 +714,15 @@ GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, std::string d
   std::unordered_set<std::string> ng_required_initializers;
 
   const auto unsupported_nodes = GetUnsupportedNodeIndices(graph_viewer, device_id, ng_required_initializers);
-  #ifndef NDEBUG
-    if(openvino_ep::backend_utils::IsDebugEnabled()){
-      std::cout << "No of unsupported nodes " << unsupported_nodes.size() << std::endl;
-      for(size_t i = 0; i < unsupported_nodes.size(); i++){
-        const auto& node = graph_viewer.GetNode(unsupported_nodes[i]);
-        std::cout << "Unsupported node op " << node->OpType() << std::endl;
-      }
+#ifndef NDEBUG
+  if (openvino_ep::backend_utils::IsDebugEnabled()) {
+    std::cout << "No of unsupported nodes " << unsupported_nodes.size() << std::endl;
+    for (size_t i = 0; i < unsupported_nodes.size(); i++) {
+      const auto& node = graph_viewer.GetNode(unsupported_nodes[i]);
+      std::cout << "Unsupported node op " << node->OpType() << std::endl;
     }
-  #endif
+  }
+#endif
 
   //If all ops are supported, no partitioning is required. Short-circuit and avoid splitting.
   if (unsupported_nodes.empty()) {
@@ -750,13 +742,13 @@ GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, std::string d
     //Nodes that work well in models but not as a single node
     if (nodes.size() == 1) {
       const auto& node = graph_viewer.GetNode(nodes[0]);
-      if(IsOpSupportedOnlyInModel(node->OpType()))
+      if (IsOpSupportedOnlyInModel(node->OpType()))
         return result;
       //If reshape is not an intermediate node, shape needs to be an initializer
-      if(node->OpType() == "Reshape"){
+      if (node->OpType() == "Reshape") {
         const auto& shape_arg = node->InputDefs()[1];
-        if(ng_required_initializers.find(shape_arg->Name()) == ng_required_initializers.end())
-        return result;
+        if (ng_required_initializers.find(shape_arg->Name()) == ng_required_initializers.end())
+          return result;
       } else if (node->OpType() == "Expand") {
         const auto& output = node->OutputDefs()[0];
         if (output->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16)
@@ -775,20 +767,18 @@ GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, std::string d
             (output_data_type != onnx_dtype::TensorProto_DataType_FLOAT16))
           return result;
       } else if ((node->OpType() == "Greater") || (node->OpType() == "Less")) {
-
         if (device_id == "MYRIAD") {
-
           auto input_0_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
           auto input_1_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type();
           auto output_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
 
           if (!((output_data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) ||
-            (output_data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16))) {
+                (output_data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16))) {
             return result;
           }
 
           if ((input_0_data_type != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) ||
-            (input_1_data_type != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16)) {
+              (input_1_data_type != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16)) {
             return result;
           }
         }
@@ -813,19 +803,18 @@ GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, std::string d
 
     std::vector<NodeIndex> modified_unsupported_nodes;
     for (const auto& node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
-      if(find(unsupported_nodes.begin(), unsupported_nodes.end(), node_idx) != unsupported_nodes.end()){
+      if (find(unsupported_nodes.begin(), unsupported_nodes.end(), node_idx) != unsupported_nodes.end()) {
         modified_unsupported_nodes.push_back(node_idx);
-      }
-      else{
+      } else {
         const auto& node = graph_viewer.GetNode(node_idx);
         const auto& optype = node->OpType();
-        if(optype == "TopK" || optype == "NonZero"){
+        if (optype == "TopK" || optype == "NonZero") {
           modified_unsupported_nodes.push_back(node_idx);
         }
-        if(optype == "Gather"){
-          if(device_id == "MYRIAD"){
+        if (optype == "Gather") {
+          if (device_id == "MYRIAD") {
             auto input_data_type = node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-            if(input_data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8){
+            if (input_data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8) {
               modified_unsupported_nodes.push_back(node_idx);
             }
           }
@@ -865,45 +854,43 @@ GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, std::string d
         if (optype == "Mul" || optype == "Transpose" || optype == "Unsqueeze" ||
             optype == "Cast" || optype == "Concat" || optype == "Gather" ||
             optype == "Div" || optype == "Sub" || optype == "Identity") {
+          if (optype == "Identity" && device_id != "CPU")
+            continue;
 
-            if(optype == "Identity" && device_id != "CPU")
-              continue;
-
-            if((optype == "Div" || optype == "Sub") && (device_id.find("MYRIAD") == std::string::npos &&  device_id.find("GPU") == std::string::npos))
-              continue;
-            for (const auto& input : node->InputDefs()) {
-              auto input_name = input->Name();
-              auto it = find(cluster_graph_inputs.begin(), cluster_graph_inputs.end(), input_name);
-              if (it != cluster_graph_inputs.end()) {
-                  omit_subgraph = true;
-                  break;
-              }
+          if ((optype == "Div" || optype == "Sub") && (device_id.find("MYRIAD") == std::string::npos && device_id.find("GPU") == std::string::npos))
+            continue;
+          for (const auto& input : node->InputDefs()) {
+            auto input_name = input->Name();
+            auto it = find(cluster_graph_inputs.begin(), cluster_graph_inputs.end(), input_name);
+            if (it != cluster_graph_inputs.end()) {
+              omit_subgraph = true;
+              break;
             }
+          }
         }
 
-        if(optype == "Conv" || optype == "Identity"){
+        if (optype == "Conv" || optype == "Identity") {
           auto output_name = node->OutputDefs()[0]->Name();
           auto it = find(cluster_outputs.begin(), cluster_outputs.end(), output_name);
-          if(it != cluster_outputs.end() && node->GetOutputEdgesCount() != 0){
+          if (it != cluster_outputs.end() && node->GetOutputEdgesCount() != 0) {
             omit_subgraph = true;
             break;
           }
         }
 
-        if(optype == "Slice"){
+        if (optype == "Slice") {
           auto input = node->InputDefs()[0];
           auto input_name = input->Name();
           const bool is_data_int32 = input->Type()->find("int32") != std::string::npos;
           auto it = find(cluster_graph_inputs.begin(), cluster_graph_inputs.end(), input_name);
-          if(it != cluster_graph_inputs.end()){
-            if(device_id.find("MYRIAD") != std::string::npos && is_data_int32){
+          if (it != cluster_graph_inputs.end()) {
+            if (device_id.find("MYRIAD") != std::string::npos && is_data_int32) {
               omit_subgraph = true;
               break;
             }
-            if(slice_map.count(input_name) == 0){
+            if (slice_map.count(input_name) == 0) {
               slice_map[input_name] = 1;
-            }
-            else{
+            } else {
               omit_subgraph = true;
               break;
             }
@@ -915,7 +902,7 @@ GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, std::string d
 
       /* In scenarios, when there are no inputs or all inputs being initializers,
          ConstantFolding optimization in onnxruntime pre-computes the value.*/
-      if (!cluster_inputs.empty()){
+      if (!cluster_inputs.empty()) {
         AppendClusterToSubGraph(this_cluster, cluster_inputs, cluster_outputs, result);
         no_of_clusters++;
       }
@@ -926,7 +913,7 @@ GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, std::string d
   return result;
 }
 
-} // namespace onnxruntime
-} // namespace openvino_ep
+}  // namespace openvino_ep
+}  // namespace onnxruntime
 
-#endif //defined OPENVINO_2021_1
+#endif  //defined OPENVINO_2021_1

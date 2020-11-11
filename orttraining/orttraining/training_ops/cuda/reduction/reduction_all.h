@@ -21,7 +21,7 @@ struct MultiTensorReduceL2 {
   void operator()(ChunkGroup<1> chunk_group, TOut* output);
 };
 
-template<typename Tin, typename Tout>
+template <typename Tin, typename Tout>
 void ScalarSqrt(Tin* input, Tout* output);
 
 }  // namespace cuda

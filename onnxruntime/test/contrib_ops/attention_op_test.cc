@@ -17,8 +17,8 @@ enum MaskIndexType {
 };
 
 static void RunAttentionTest(
-    const std::vector<float>& input_data,         // input:      [batch_size, sequence_length, hidden_size]
-    const std::vector<float>& weights_data,       // weights:    [hidden_size, 3 * hidden_size]
+    const std::vector<float>& input_data,    // input:      [batch_size, sequence_length, hidden_size]
+    const std::vector<float>& weights_data,  // weights:    [hidden_size, 3 * hidden_size]
     bool is_weights_constant,
     const std::vector<float>& bias_data,          // bias:       [3 * hidden_size]
     const std::vector<int32_t>& mask_index_data,  // mask_index: [batch_size] or [batch_size, past_sequence_length + sequence_length] or empty
@@ -67,7 +67,7 @@ static void RunAttentionTest(
         mask_index_dims = mask_index_dims_4;
         break;
       default:
-        assert(0); // shall not reach here.
+        assert(0);  // shall not reach here.
         break;
     }
 
@@ -1180,7 +1180,6 @@ TEST(AttentionTest, AttentionMask2DNoWord) {
                    batch_size, sequence_length, hidden_size, number_of_heads,
                    use_float16, is_unidirectional, use_past_state, past_sequence_length, past_data, present_data, kMaskRaw);
 }
-
 
 TEST(AttentionTest, AttentionDummyMask2D) {
   int batch_size = 2;

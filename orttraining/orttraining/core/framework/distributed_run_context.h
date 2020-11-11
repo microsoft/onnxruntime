@@ -82,7 +82,7 @@ class DistributedRunContext {
     return DistributedRunContext::GetInstance().GetWorkerGroup(group_type).group_id;
   }
 
-  static std::vector<int32_t> GetRanks(WorkerGroupType group_type){
+  static std::vector<int32_t> GetRanks(WorkerGroupType group_type) {
     return DistributedRunContext::GetInstance().GetWorkerGroup(group_type).ranks;
   }
 

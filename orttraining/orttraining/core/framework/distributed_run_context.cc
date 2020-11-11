@@ -25,18 +25,28 @@ DistributedRunContext::DistributedRunContext(int32_t world_rank,
                   std::to_string(horizontal_parallel_size) + ") MUST range from 0 ~ world_size(" + std::to_string(world_size) + ")");
 
   ORT_ENFORCE(world_size % horizontal_parallel_size == 0,
-              "world_size(" + std::to_string(world_size) + ") is not divisible by "
-              "horizontal_parallel_size(" + std::to_string(horizontal_parallel_size) + ").");
+              "world_size(" + std::to_string(world_size) +
+                  ") is not divisible by "
+                  "horizontal_parallel_size(" +
+                  std::to_string(horizontal_parallel_size) + ").");
 
   ORT_ENFORCE(world_size % data_parallel_size == 0,
-              "world_size(" + std::to_string(world_size) + ") is not divisible by "
-              "data_parallel_size(" + std::to_string(data_parallel_size) + ").");
+              "world_size(" + std::to_string(world_size) +
+                  ") is not divisible by "
+                  "data_parallel_size(" +
+                  std::to_string(data_parallel_size) + ").");
 
   ORT_ENFORCE(data_parallel_size * horizontal_parallel_size * pipeline_stage_size == world_size,
-              "data_parallel_size(" + std::to_string(data_parallel_size) + ") "
-              "* horizontal_parallel_size(" + std::to_string(horizontal_parallel_size) + ") "
-              "* pipeline_stage_size(" + std::to_string(pipeline_stage_size) + ") "
-              "!= world_size(" + std::to_string(world_size) + ").");
+              "data_parallel_size(" + std::to_string(data_parallel_size) +
+                  ") "
+                  "* horizontal_parallel_size(" +
+                  std::to_string(horizontal_parallel_size) +
+                  ") "
+                  "* pipeline_stage_size(" +
+                  std::to_string(pipeline_stage_size) +
+                  ") "
+                  "!= world_size(" +
+                  std::to_string(world_size) + ").");
 
   params_.world_rank = world_rank;
   params_.world_size = world_size;

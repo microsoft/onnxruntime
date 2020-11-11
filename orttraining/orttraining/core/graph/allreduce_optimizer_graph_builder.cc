@@ -94,7 +94,6 @@ static Status AddNcclAllReduceForGradients(
     std::vector<ArgDef>& gradient_argdefs,
     std::vector<ArgDef>& input_gradient_argdef,
     GraphAugmenter::GraphDefs& graph_defs) {
-
   std::vector<ArgDef> allreduce_outputs(gradient_argdefs.size());
   for (size_t i = 0; i < gradient_argdefs.size(); i++) {
     TypeProto* allreduced_gradient_type_proto = graph_defs.CopyTypeProto(gradient_argdefs[i]);

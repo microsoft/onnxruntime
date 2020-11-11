@@ -5,12 +5,10 @@
 
 namespace onnxruntime {
 namespace training {
-MPIContext::MPIContext() :
-world_rank_(0),
-local_rank_(0),
-world_size_(1),
-local_size_(1)
-{
+MPIContext::MPIContext() : world_rank_(0),
+                           local_rank_(0),
+                           world_size_(1),
+                           local_size_(1) {
 #if defined(USE_NCCL)
   setup_mpi();
 #endif

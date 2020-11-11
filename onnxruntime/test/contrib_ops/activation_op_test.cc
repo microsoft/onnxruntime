@@ -11,7 +11,7 @@ using namespace onnxruntime::test;
 
 namespace onnxruntime {
 
-namespace test{
+namespace test {
 
 TEST_F(ActivationOpTest, ThresholdedRelu_version_1_to_9) {
   float alpha = 0.1f;
@@ -24,22 +24,23 @@ TEST_F(ActivationOpTest, ScaledTanh) {
   static constexpr float beta = 1.5f;
 
   TestActivationOp("ScaledTanh", input_values, [](float x) { return alpha * tanh(beta * x); },
-                          {{"alpha", alpha}, {"beta", beta}});
+                   {{"alpha", alpha}, {"beta", beta}});
 }
 
 TEST_F(ActivationOpTest, ParametricSoftplus) {
   static constexpr float alpha = 2.0f;
   static constexpr float beta = 1.5f;
 
-  TestActivationOp("ParametricSoftplus", input_values,
-                          [](float x) {
-                            float bx = beta * x;
-                            if (bx > 0)
-                              return alpha * (bx + logf(expf(-bx) + 1));
-                            else
-                              return alpha * logf(expf(bx) + 1);
-                          },
-                          {{"alpha", alpha}, {"beta", beta}}, false); // Disable TensorRT due to result mismatch
+  TestActivationOp(
+      "ParametricSoftplus", input_values,
+      [](float x) {
+        float bx = beta * x;
+        if (bx > 0)
+          return alpha * (bx + logf(expf(-bx) + 1));
+        else
+          return alpha * logf(expf(bx) + 1);
+      },
+      {{"alpha", alpha}, {"beta", beta}}, false);  // Disable TensorRT due to result mismatch
 }
 
 TEST_F(ActivationOpTest, Gelu) {
