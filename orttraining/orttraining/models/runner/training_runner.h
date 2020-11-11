@@ -166,6 +166,10 @@ class TrainingRunner {
     // pipeline partition information to do online-partition. If the graph is
     // pre-partitioned, no need to fill this value.
     std::vector<TrainingSession::TrainingConfiguration::CutInfo> pipeline_partition_cut_list;
+    // Alternative for partition: we map operators to rank ids. We identify operators using
+    // the name of a tensor produced.
+    std::map<std::string, int> op_id_to_rank;
+
     // model_paths[i] is the name of the pipeline stage for i-th process.
     // The i-th file is run by the i-th MPI rank.
     // If model_paths is not empty, model partition transformation may not be internally invoked.

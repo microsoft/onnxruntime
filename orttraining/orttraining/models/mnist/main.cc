@@ -36,6 +36,22 @@ const static int NUM_CLASS = 10;
 const static vector<int64_t> IMAGE_DIMS = {784};  //{1, 28, 28} for mnist_conv
 const static vector<int64_t> LABEL_DIMS = {10};
 
+Status ReadOpToRankMap(const std::string& filename,
+                       std::map<std::string, int>& op_id_to_stage) {
+  std::ifstream mfile;
+  mfile.open(filename);
+  const std::string delimiter = " ";
+  std::string line;
+  if (mfile.is_open()) {
+    while (std::getline(mfile, line)) {
+      op_id_to_stage.insert({line.substr(0, line.find(delimiter)),
+                             std::stoi(line.substr(line.find(delimiter), line.size()))});
+    }
+    mfile.close();
+  }
+  return Status::OK();
+}
+
 Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params) {
   cxxopts::Options options("POC Training", "Main Program to train on MNIST");
   // clang-format off
@@ -64,7 +80,9 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
       "seperated by ':'. If consumer nodes need to be specified, specify them after producer node with a '-' delimiter and "
       "separate each consumer node with a '/'. ", cxxopts::value<std::vector<std::string>>()->default_value(""))
       ("evaluation_period", "How many training steps to make before making an evaluation.",
-        cxxopts::value<size_t>()->default_value("1"));
+        cxxopts::value<size_t>()->default_value("1"))
+      ("mapping_file", "Text file with assignment of ops to devices", cxxopts::value<std::string>()->default_value(""))
+      ;
   // clang-format on
 
   try {
@@ -105,9 +123,13 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
     // online. If the pipeline contains n stages, the cut list should be of length (n-1), in order to cut the
     // graph into n partitions.
     if (params.pipeline_parallel_size > 1) {
+      
+      const std::string filename = flags["mapping_file"].as<std::string>();
+      ReadOpToRankMap(filename, params.op_id_to_rank);
+
       auto cut_info_groups = flags["cut_group_info"].as<std::vector<std::string>>();
 
-      ORT_RETURN_IF_NOT(static_cast<int>(cut_info_groups.size() + 1) == params.pipeline_parallel_size,
+      ORT_RETURN_IF_NOT(filename.size() > 0 || static_cast<int>(cut_info_groups.size() + 1) == params.pipeline_parallel_size,
                         "cut_info length plus one must match pipeline parallel size");
 
       auto process_with_delimiter = [](std::string& input_str, const std::string& delimiter) {
@@ -262,12 +284,12 @@ int main(int argc, char* args[]) {
   setup_training_params(params);
 
   // setup data
-  auto device_count = MPIContext::GetInstance().GetWorldSize();
+  // auto device_count = MPIContext::GetInstance().GetWorldSize();
   std::vector<string> feeds{"X", "labels"};
   auto trainingData = std::make_shared<DataSet>(feeds);
   auto testData = std::make_shared<DataSet>(feeds);
   std::string mnist_data_path = ToMBString(params.train_data_dir);
-  PrepareMNISTData(mnist_data_path, IMAGE_DIMS, LABEL_DIMS, *trainingData, *testData, MPIContext::GetInstance().GetWorldRank() /* shard_to_load */, device_count /* total_shards */);
+  PrepareMNISTData(mnist_data_path, IMAGE_DIMS, LABEL_DIMS, *trainingData, *testData);
 
   if (testData->NumSamples() == 0) {
     printf("Warning: No data loaded - run cancelled.\n");
@@ -280,5 +302,6 @@ int main(int argc, char* args[]) {
   auto runner = onnxruntime::make_unique<TrainingRunner>(params, *env);
   RETURN_IF_FAIL(runner->Initialize());
   RETURN_IF_FAIL(runner->Run(training_data_loader.get(), test_data_loader.get()));
+
   RETURN_IF_FAIL(runner->EndTraining(test_data_loader.get()));
 }

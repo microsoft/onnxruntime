@@ -175,10 +175,30 @@ Status TrainingSession::ConfigureForTraining(
     // transportation which may alter node_arg and invalidate cut_list info from the original graph.
     ORT_ENFORCE(pipeline_stage_id >= 0, "invalid pipelie stage id (", pipeline_stage_id, ") before doing online partition.");
 
-    ORT_RETURN_IF_ERROR(ApplyPipelinePartitionToMainGraph(model_->MainGraph(),
-                                                          config.pipeline_config.value().cut_list,
-                                                          pipeline_stage_id,
-                                                          config.distributed_config.pipeline_parallel_size));
+
+    std::map<Node*, int> op_to_rank = {};
+    { // TODO: This is temporary. It will be a call to Themis.
+      auto& op_id_to_rank = config.pipeline_config.value().op_id_to_rank;
+      Graph& graph = model_->MainGraph();
+      for (size_t i = 0, t = graph.MaxNodeIndex(); i < t; ++i) {
+        Node* node = graph.GetNode(i);
+        bool found = false;
+        std::vector<NodeArg*>& node_outputs = node->MutableOutputDefs();
+        for (NodeArg* arg : node_outputs) {
+          if (op_id_to_rank.find(arg->Name()) != op_id_to_rank.end()) {
+            int rank = op_id_to_rank.at(arg->Name());
+            op_to_rank.insert({node, rank});
+            found = true;
+            break;
+          }
+        }
+        ORT_ENFORCE(found, "Can't find node's rank " + node->Name());
+      }
+    }
+    int n_stages = config.distributed_config.pipeline_parallel_size;
+    ORT_RETURN_IF_ERROR(
+      ApplyPipelinePartitionToMainGraph(model_->MainGraph(), op_to_rank, false,
+                                        pipeline_stage_id, n_stages));
 
     if (config.pipeline_config.value().partitioned_model_path.has_value()) {
       // Save the partitioned file out.

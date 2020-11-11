@@ -182,6 +182,8 @@ class TrainingSession : public InferenceSession {
       // cut_list contains the list of CutInfo to make the graph partitions.
       // cut_list[i] contains the CutInfo to make the partition between stage i and stage i+1
       std::vector<CutInfo> cut_list;
+      // Alternative for partition. We map operators to rank ids. 
+      std::map<std::string, int> op_id_to_rank;
 
       // The base path at which to save the intermediate partitioned input model (forward pass only).
       optional<PathString> partitioned_model_path{};

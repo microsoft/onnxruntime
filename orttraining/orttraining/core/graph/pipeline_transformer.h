@@ -16,10 +16,11 @@ Status TransformGraphForPipeline(
     const std::unordered_set<std::string>& initializer_names_to_preserve,
     pipeline::PipelineTensorNames& pipeline_tensor_names);
 
-Status ApplyPipelinePartitionToMainGraph(
-    Graph& graph,
-    const std::vector<TrainingSession::TrainingConfiguration::CutInfo>& cut_info,
-    size_t pipeline_stage_id,
-    size_t num_pipeline_stage);
+Status ApplyPipelinePartitionToMainGraph(Graph& graph,
+    std::map<Node*, int>& op_to_rank,
+    bool is_training,
+    int pipeline_stage_id,
+    int nstages);
+
 }  // namespace training
 }  // namespace onnxruntime

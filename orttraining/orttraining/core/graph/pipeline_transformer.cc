@@ -869,89 +869,219 @@ common::Status HandleSharedInitializer(Graph& graph,
   return Status::OK();
 }
 
-// split the graph into disconnected subgraph based on provided CutInfo
-common::Status SplitGraph(Graph& graph,
-                          std::vector<TrainingSession::TrainingConfiguration::CutInfo> split_edge_groups,
-                          std::vector<Node*>& send_nodes,
-                          std::vector<Node*>& recv_nodes) {
+// Returns all the pointers to NodeArg in the graph, before applying any 
+// partition transformation. 
+std::vector<const NodeArg*> GetAllNodeArgs(Graph& graph) {
+  std::vector<const NodeArg*> initial_node_args;
+  for (size_t i = 0, t = graph.MaxNodeIndex(); i < t; ++i) {
+    Node* node = graph.GetNode(i);
+    auto& node_outputs = node->MutableOutputDefs();
+    for (NodeArg* arg : node_outputs) {
+      if (arg == nullptr || !arg->HasTensorOrScalarShape()) 
+        continue;
+      initial_node_args.push_back(arg);
+    }
+  }
+  return initial_node_args;
+}
+
+common::Status AddMetaTensors(int current_rank, int next_rank,
+                              Graph& graph,
+                              std::vector<std::string>& new_input_names,
+                              std::vector<std::string>& new_output_names,
+                              std::vector<NodeArg*>& send_input_args,
+                              std::vector<NodeArg*>& send_output_args,
+                              std::vector<NodeArg*>& recv_input_args,
+                              std::vector<NodeArg*>& recv_output_args) {
+  std::string cut_index_str = std::to_string(current_rank);
+
+  ORT_RETURN_IF_ERROR(
+    AddNewScalarNodeArgAndInitializer<bool>(graph,
+                                            "send_input_signal" + cut_index_str,
+                                            ONNX_NAMESPACE::TensorProto_DataType_BOOL,
+                                            true, /* initializer data */
+                                            send_input_args,
+                                            new_input_names));
+  ORT_RETURN_IF_ERROR(
+    AddNewScalarNodeArgAndInitializer<size_t>(graph,
+                                              "send_dst_rank" + cut_index_str,
+                                              ONNX_NAMESPACE::TensorProto_DataType_INT64,
+                                              next_rank, /* initializer data */
+                                              send_input_args,
+                                              new_input_names));
+  ORT_RETURN_IF_ERROR(
+    AddNewScalarNodeArgAndInitializer<bool>(graph,
+                                            "recv_input_signal" + cut_index_str,
+                                            ONNX_NAMESPACE::TensorProto_DataType_BOOL,
+                                            true, /* initializer data */
+                                            recv_input_args,
+                                            new_input_names));
+  ORT_RETURN_IF_ERROR(
+    AddNewScalarNodeArgAndInitializer<size_t>(graph,
+                                              "recv_src_rank" + cut_index_str,
+                                              ONNX_NAMESPACE::TensorProto_DataType_INT64,
+                                              current_rank, /* initializer data */
+                                              recv_input_args,
+                                              new_input_names));
+
+  // add output node_arg for send/recv
+  AddNewNodeArg(graph, "send_output_signal" + cut_index_str,
+                ONNX_NAMESPACE::TensorProto_DataType_BOOL,
+                send_output_args, new_output_names);
+
+  AddNewNodeArg(graph, "receive_output_signal" + cut_index_str,
+                ONNX_NAMESPACE::TensorProto_DataType_BOOL,
+                recv_output_args, new_output_names);
+
+  return Status::OK();
+}
+
+common::Status SplitGraphWithMap(Graph& graph,
+                                 std::map<Node*, int>& op_to_rank,
+                                 int nstages,
+                                 std::vector<std::pair<int, int>>& messages,
+                                 std::vector<std::pair<Node*, Node*>>& send_nodes,
+                                 std::vector<std::pair<Node*, Node*>>& recv_nodes) {
+
+  // forward_messages[s]: all the tensors sent by stage s while executing
+  // forward computation.
+  std::vector<std::set<const NodeArg*>> forward_messages(nstages);
+  // backward_messages[s]: all the tensors sent by stage s while executing
+  // backward computation.
+  // This may be empty, if the graph is forward only.
+  std::vector<std::set<const NodeArg*>> backward_messages(nstages);
+
+  // Tensors that need to be sent from one device to the other.
+  // TODO: Should I consider weights here too? 
+  // forwarded_tensors[i] = {t, {rank of producer, rank of the last consumer}}
+  std::vector<std::pair<const NodeArg*, std::pair<int, int>>> forwarded_tensors;
+
+  // All the tensors that are produced and consumed in the graph.
+  auto initial_node_args = GetAllNodeArgs(graph);
+
+  // We create all the tensor replicas in advance using this fuction.
+  // A tensor produced in rank r and consumed in rank r', such that r' > r,
+  // will have a replica in all ranks r'', such that r'' > r and r'' < r'.
+  // tensor_replicas[t][r] contains a pointer to the the replica of t in rank r, 
+  // it if exists, or to itself if r is the rank of the producer of r.
+  std::map<const NodeArg*, std::vector<NodeArg*>> tensor_replicas;
+  auto create_tensor_replica = [&tensor_replicas, &graph](const NodeArg* tensor,
+                                                          int consumer_rank) {
+    NodeArg& new_receive_output = CreateNodeArg(graph, *tensor);
+    const auto* old_shape = tensor->Shape();
+    if (old_shape != nullptr) {
+      new_receive_output.SetShape(*old_shape);
+    }
+    // Add value info for this newly added receive_output, for shape propagation
+    // when training this partition.
+    graph.AddValueInfo(&new_receive_output);
+    tensor_replicas[tensor][consumer_rank] = &new_receive_output;
+  };
+
+  // Checks whether the tensor is produced and consumed in the forward stage of
+  // the computation. 
+  auto is_forward = [](const int producer_rank, const int consumer_rank) {
+    return producer_rank < consumer_rank;
+  };
+
+  // Checks whether the tensor is produced and consumed in the backward stage of
+  // the computation. 
+  auto is_backward = [](const int producer_rank, const int consumer_rank) {
+    return producer_rank > consumer_rank;
+  };
+
+  // Find tensors that need to be sent and forwarded.
+  for (const NodeArg* node_arg : initial_node_args) {
+    // Initialize tensor_replicas data structure.
+    auto inserted = tensor_replicas.emplace(
+                      std::make_pair(node_arg, std::vector<NodeArg*>(nstages)));
+    auto& replicas = (*inserted.first).second;
+
+    // TODO: for now we pretend that inputs are produced in rank 0,
+    // but I need to double check how they are handled.
+    int producer_rank = 0;
+    Node* producer_node = graph.GetMutableProducerNode(node_arg->Name());
+    assert(producer_node != nullptr);
+    producer_rank = op_to_rank.find(producer_node)->second;
+    
+    auto consumers = graph.GetMutableConsumerNodes(node_arg->Name());
+    if (consumers.size() == 0) { // producer_node == nullptr || ?
+      continue;
+    }
+    
+    // This is only handling forwarding in the forward part of the graph.
+    int last_consumer_rank_fwd = -1; 
+    int last_consumer_rank_bwd = INT_MAX;
+    for (Node* consumer : consumers) {
+      auto found_rank = op_to_rank.find(consumer);
+      assert(found_rank != op_to_rank.end());
+      int consumer_rank = found_rank->second;
+      // TODO: test case in which a tensor is produced by a fwd op, stashed and
+      // sent to the previous rank by a bwd op.
+      // For now, I'm assuming that if a tensor is produced by a fwd op and
+      // consumed by a bwd op, then producer and consumer are both in the same
+      // device. This will not always be the case though. 
+      if (!IsBackward(*producer_node) && IsBackward(*consumer)) {
+        // They must be on the same device. 
+        ORT_ENFORCE(producer_rank == consumer_rank,
+                    "Fwd producer and bwd consumer of a tensor must be in the same device.");
+      }
+
+      // It is impossible to have a bwd operator producing a tensor consumed
+      // by a fwd operator. So, at this point, either both producer and consumer
+      // are fwd or both are bwd. Either way, we want to know where are the last
+      // consumers of a tensor. 
+      if (is_forward(producer_rank, consumer_rank)) {
+        last_consumer_rank_fwd = std::max(last_consumer_rank_fwd, consumer_rank);
+      } else if (is_backward(producer_rank, consumer_rank)) {
+        last_consumer_rank_bwd = std::min(last_consumer_rank_bwd, consumer_rank);
+      }
+
+      // Find which tensors need to be sent to the next rank (if it is a forward
+      // message) and to previous rank (if it is a backward message).
+      if (producer_rank + 1 == consumer_rank) {
+        forward_messages.at(producer_rank).insert(node_arg);
+      } else if (producer_rank - 1 == consumer_rank) { 
+        backward_messages.at(producer_rank).insert(node_arg);
+      } 
+    }
+
+    // Create all the replicas for this tensor now. We also keep track of which
+    // tensors need to be forwarded, and their producer-consumer rank range.
+    // The replica of the tensor in the producer rank, is the tensor itself.
+    replicas[producer_rank] = const_cast<NodeArg *>(node_arg);
+    if (is_forward(producer_rank, last_consumer_rank_fwd)) { 
+      for (int r = producer_rank + 1; r <= last_consumer_rank_fwd; ++r) {
+        create_tensor_replica(node_arg, r);
+      }
+      if (last_consumer_rank_fwd - producer_rank > 1) {
+        forwarded_tensors.push_back({node_arg, 
+                                    {producer_rank, last_consumer_rank_fwd}});
+      }
+    } else if (is_backward(producer_rank, last_consumer_rank_bwd)) {
+      for (int r = producer_rank - 1; r >= last_consumer_rank_bwd; --r) {
+        create_tensor_replica(node_arg, r);
+      }
+      if (producer_rank - last_consumer_rank_bwd > 1) {
+        forwarded_tensors.push_back({node_arg, 
+                                    {producer_rank, last_consumer_rank_bwd}});
+      }
+    }
+  }
+
   std::vector<std::string> new_input_names;
   std::vector<std::string> new_output_names;
 
-  // updated_node_args keeps track of the mapping between the original node_arg and its corresponding updated
-  // node_arg after send and recv node is added. As multiple partitions can happen, and a single node_arg
-  // can belong to different partition, updated_node_args always keeps track of the latest updated node_arg.
-  // Below is one example of how this works using update_node_args:
-  //    there are three edges in graph, specified as nodeA->nodeB, nodeA->nodeC, and nodeA->nodeD.
-  //    those edges all share the same node_arg.
-  //    but nodeA, nodeB belong to parition0, nodeC belongs to parition1, and nodeD belongs to parition2.
-  //    This means we need to cut edge nodeA->nodeC for the first partition and nodeA->nodeD for the second partition.
-  //
-  //    During the first cut, we identify the edge nodeA->nodeC, for this edge, based on the origional node_arg,
-  //    we create a new node_arg, called updated_node_arg. The inserted send node will take the original node_arg
-  //    as input and the inserted recv node will take the updated_node_arg as the output.
-  //    And we update updated_node_args with updated_node_args[original_node_arg] = updated_node_arg
-  //
-  //    Now during the second cut, we need to cut the edge nodeA->nodeD. Noted that as the cut is performed in sequential,
-  //    the second cut is performed based on the graph modified after the first cut. This means, the input node_arg for
-  //    nodeD shouldn't come from nodeA anymore, as nodeA now residents in partition0, which is a disconnected partition.
-  //    Instead, the input node_arg of nodeD should come from the updated version: updated_node_arg from partition1.
-  //    By using the updated_node_args map, we can retrieve updated_node_arg from original_node_arg, and use that as the
-  //    newly inserted send's input. Also, to keep this on going for any following cut, we create an updated_node_arg_v2,
-  //    and update updated_node_args with updated_node_args[original_node_arg] = updated_node_arg_v2
-  std::map<NodeArg*, NodeArg*> updated_node_args;
+  for (auto& message : messages) {
+    auto current_rank = message.first;
+    auto next_rank = message.second;
 
-  // Retrieve all ranks in this particular pipeline group that the current rank belongs to.
-  // We will use this data to figure out, for each inserted send/recv pair, what's the corresponding
-  // source and destination rank.
-  // Noted: currently assume each stage has the same number of data parallel size. Variable data parallel
-  // size between different pipeline stages is not supported.
-  auto ranks = DistributedRunContext::GetRanks(WorkerGroupType::ModelParallel);
-
-  for (size_t index = 0; index < split_edge_groups.size(); ++index) {
-    // each entry in split_edge_groups represents a partition cut. Each cut can contain the split of
-    // several edges.
-    auto& edgeIds = split_edge_groups[index];
-
-    // for each cut, record the inserted input/output args.
+    // for each pair of ranks, record the inserted input/output args.
     std::vector<NodeArg*> send_input_args;
     std::vector<NodeArg*> send_output_args;
     std::vector<NodeArg*> recv_input_args;
     std::vector<NodeArg*> recv_output_args;
-
-    auto cut_index_str = std::to_string(index);
-    // add input node_arg and initializer for send/recv
-    ORT_RETURN_IF_ERROR(AddNewScalarNodeArgAndInitializer<bool>(graph,
-                                                                "send_input_signal" + cut_index_str,
-                                                                ONNX_NAMESPACE::TensorProto_DataType_BOOL,
-                                                                true, /* initializer data */
-                                                                send_input_args,
-                                                                new_input_names));
-    ORT_RETURN_IF_ERROR(AddNewScalarNodeArgAndInitializer<bool>(graph,
-                                                                "recv_input_signal" + cut_index_str,
-                                                                ONNX_NAMESPACE::TensorProto_DataType_BOOL,
-                                                                true, /* initializer data */
-                                                                recv_input_args,
-                                                                new_input_names));
-
-    ORT_RETURN_IF_ERROR(AddNewScalarNodeArgAndInitializer<size_t>(graph,
-                                                                  "send_dst_rank" + cut_index_str,
-                                                                  ONNX_NAMESPACE::TensorProto_DataType_INT64,
-                                                                  ranks[index + 1], /* initializer data */
-                                                                  send_input_args,
-                                                                  new_input_names));
-    ORT_RETURN_IF_ERROR(AddNewScalarNodeArgAndInitializer<size_t>(graph,
-                                                                  "recv_src_rank" + cut_index_str,
-                                                                  ONNX_NAMESPACE::TensorProto_DataType_INT64,
-                                                                  ranks[index], /* initializer data */
-                                                                  recv_input_args,
-                                                                  new_input_names));
-
-    // add output node_arg for send/recv
-    AddNewNodeArg(graph, "send_output_signal" + cut_index_str, ONNX_NAMESPACE::TensorProto_DataType_BOOL,
-                  send_output_args, new_output_names);
-    AddNewNodeArg(graph, "receive_output_signal" + cut_index_str, ONNX_NAMESPACE::TensorProto_DataType_BOOL,
-                  recv_output_args, new_output_names);
-
+    
     // add attribute data for send/recv
     ONNX_NAMESPACE::AttributeProto tag;
     tag.set_name("tag");
@@ -963,229 +1093,276 @@ common::Status SplitGraph(Graph& graph,
     element_types.set_name("element_types");
     element_types.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
 
-    // for each edge in this group, perform edge cut
-    for (auto& id : edgeIds) {
-      // find node whose output contains id.node_arg_name
-      auto producer_node = graph.GetMutableProducerNode(id.node_arg_name);
-      if (!producer_node) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cannot find producer node of node_arg with name: ", id.node_arg_name,
-                               ". Wrong cutting infomation.");
-      }
+    ORT_RETURN_IF_ERROR(
+      AddMetaTensors(current_rank, next_rank, graph, new_input_names,
+                     new_output_names, send_input_args, send_output_args,
+                     recv_input_args, recv_output_args));
 
-      // once we find out the producer node for id.node_arg_name, find which output index that leads
-      // to id.node_arg_name
-      int upstream_nodes_output_index{-1};
-      producer_node->ForEachWithIndex(
-          producer_node->OutputDefs(),
-          [&](const NodeArg& def, size_t index) {
-            if (def.Name() == id.node_arg_name) {
-              upstream_nodes_output_index = static_cast<int>(index);
-            }
-            return Status::OK();
-          });
+    // Get all the node_args that need to be sent to the next rank.
+    auto& tensors_sent_in_fwd = forward_messages.at(current_rank);
+    auto& tensors_sent_in_bwd = backward_messages.at(current_rank);
+    auto& tensors_sent = current_rank + 1 == next_rank ? tensors_sent_in_fwd : tensors_sent_in_bwd;
 
-      if (upstream_nodes_output_index < 0) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node with name: ", producer_node->Name(),
-                               " doesn't have an output node_arg with name ", id.node_arg_name);
-      }
+    // Take care of tensors that need to be sent from one device to the other.
+    for (const NodeArg* arg : tensors_sent) {
+      send_input_args.push_back(const_cast<NodeArg *>(arg));
 
-      size_t idx = static_cast<size_t>(upstream_nodes_output_index);
+      // The tensor replica has been created in advance. We query it now
+      // because it will be one of the outputs of the receive node in this
+      // rank. We also need to add it to the graph.
+      NodeArg* new_receive_output = tensor_replicas.at(arg).at(next_rank);
+      recv_output_args.push_back(new_receive_output);
 
-      // original node_arg pointer from the origin graph. This serves as the key in the
-      // updated_node_arg map and any reference for original node_arg name
-      auto* original_node_arg = producer_node->MutableOutputDefs()[idx];
-
-      // updated node_arg pointer from previous partition. This is the new arg_node the
-      // current inserted send node will take as input node_arg.
-      auto updated_node_arg = producer_node->MutableOutputDefs()[idx];
-      auto exiting_updated_node_arg = updated_node_args.find(original_node_arg);
-      if (exiting_updated_node_arg != updated_node_args.end()) {
-        updated_node_arg = exiting_updated_node_arg->second;
-      }
-      assert(updated_node_arg);
-
-      send_input_args.push_back(updated_node_arg);
-
-      auto dtype = original_node_arg->TypeAsProto()->tensor_type().elem_type();
-
+      auto dtype = arg->TypeAsProto()->tensor_type().elem_type();
       element_types.add_ints(static_cast<int64_t>(dtype));
+    }
 
-      auto& new_receive_output = CreateNodeArg(graph, *updated_node_arg);
-      const auto old_shape = *(updated_node_arg->Shape());
-      new_receive_output.SetShape(old_shape);
-      recv_output_args.push_back(&new_receive_output);
+    // Take care of tensors that need to be forwarded.
+    for (auto& fwding_entry : forwarded_tensors) {
+      const NodeArg* tensor = fwding_entry.first;
+      auto& range = fwding_entry.second;
+      int start = range.first;
+      int end = range.second; 
 
-      // add value info for this newly added receive_output, for shape propagation
-      // when training this partition.
-      graph.AddValueInfo(&new_receive_output);
-
-      // update updated_node_args with the newly created node_arg
-      updated_node_args[original_node_arg] = &new_receive_output;
-
-      // deal with shape inference for newly added edge
-      auto& output_edge_name = original_node_arg->Name();
-
-      // deal with updating the consumer's input node_args
-      std::vector<Node*> consumer_nodes;
-      if (id.consumer_nodes.has_value()) {
-        for (auto& consumer_node_id : id.consumer_nodes.value()) {
-          consumer_nodes.push_back(graph.GetMutableProducerNode(consumer_node_id));
-        }
-      } else {
-        consumer_nodes = graph.GetMutableConsumerNodes(output_edge_name);
+      if (start != current_rank) {
+        continue; 
       }
 
-      for (auto consumer_node : consumer_nodes) {
-        for (auto& input : consumer_node->MutableInputDefs()) {
-          if (input->Name() == output_edge_name) {
-            input = &new_receive_output;
+      if (start == end) {
+        continue; // Nothing else to do.
+      }
+
+      NodeArg* replica = tensor_replicas.at(tensor).at(current_rank);
+      NodeArg* next_replica = tensor_replicas.at(tensor).at(next_rank);
+      
+      ORT_ENFORCE(replica != nullptr && next_replica != nullptr,
+                  "Couldn't find replicas of tensor " + tensor->Name());
+      if (!std::count(send_input_args.begin(), send_input_args.end(), replica)) {
+        send_input_args.push_back(replica);
+        recv_output_args.push_back(next_replica);
+        auto dtype = tensor->TypeAsProto()->tensor_type().elem_type();
+        element_types.add_ints(static_cast<int64_t>(dtype));
+      } 
+
+      if (start < end) {
+        // Forwarding in forward stage of pipeline
+        range.first = start + 1;
+      } else if (start > end) {
+        // Forwarding in backward stage of pipeline
+        range.first = start - 1;
+      } 
+    }
+
+    // Update the inputs of the next_rank consumers with the right replicas.
+    for (auto& it : tensor_replicas) {
+      const NodeArg* tensor = it.first; 
+      auto& replicas = it.second;
+      auto consumers = graph.GetMutableConsumerNodes(tensor->Name());
+      for (Node* consumer : consumers) {
+        auto found_rank = op_to_rank.find(consumer);
+        if (found_rank->second != next_rank) {
+          continue;
+        }
+        NodeArg* replica = replicas.at(next_rank);
+        if (replica == nullptr) {
+          continue;
+        }
+        for (auto& input : consumer->MutableInputDefs()) {
+          if (input->Name() == tensor->Name()) {
+            input = replica;
             break;
           }
         }
       }
     }
+
     const int num_attributes = 2;  // two attributes: tag and element_types
     NodeAttributes attributes;
     attributes.reserve(num_attributes);
     attributes[tag.name()] = tag;
     attributes[element_types.name()] = element_types;
 
+    // Add pair of Send?receive nodes.
     auto& send_node = graph.AddNode(graph.GenerateNodeName("Send"),
-                                    "Send",
-                                    "",
-                                    send_input_args,
+                                    "Send", "", send_input_args,
                                     send_output_args, /* output */
                                     &attributes,      /* attribute */
                                     kMSDomain);
 
-    send_nodes.push_back(&send_node);
-
     auto& recv_node = graph.AddNode(graph.GenerateNodeName("Recv"),
-                                    "Recv",
-                                    "",
-                                    recv_input_args,
+                                    "Recv", "", recv_input_args,
                                     recv_output_args, /* output */
                                     &attributes,      /* attribute */
                                     kMSDomain);
-    recv_nodes.push_back(&recv_node);
+
+    ORT_ENFORCE(current_rank != next_rank,
+                "Rank cannot send message to itself.");
+    if (current_rank < next_rank) {
+      send_nodes[current_rank].first = &send_node;
+      recv_nodes[next_rank].first = &recv_node;
+    } else if (current_rank > next_rank) {
+      send_nodes[current_rank].second = &send_node;
+      recv_nodes[next_rank].second = &recv_node;
+    } 
   }
 
-  ORT_RETURN_IF_ERROR(SetInputsOutputsAndResolve(graph, {} /* weights_to_train */, new_input_names, new_output_names));
+  ORT_RETURN_IF_ERROR(SetInputsOutputsAndResolve(graph, {}/* weights_to_train*/,
+                                                 new_input_names,
+                                                 new_output_names));
+
   return Status::OK();
 }
 
-// traverse the graph from start_node to get the set of nodes contains in this disconnected subgraph
-common::Status GenerateSubgraph(Graph& graph, Node* start_node) {
-  assert(start_node);
-  std::set<Node*> visited_nodes;
-  std::set<NodeArg*> visited_inputs;
-  std::set<NodeArg*> visited_outputs;
+Status ApplyPipelinePartitionToMainGraph(Graph& graph,
+                                         std::map<Node*, int>& op_to_rank,
+                                         bool is_training,
+                                         int pipeline_stage_id,
+                                         int nstages) {
 
-  // BFS graph traverse
-  ORT_RETURN_IF_ERROR(TraverseGraphWithConnectedElement(graph, start_node,
-                                                        visited_nodes, visited_inputs, visited_outputs));
-
-  std::set<NodeIndex> visited_node_index;
-  for (auto n : visited_nodes) {
-    visited_node_index.insert(n->Index());
+  // TODO: we need to do some analysis on the graph and assignment of
+  // operators to ranks, to find which messages will happen. For now, we assume
+  // that 1) there are always tensors being copied from stage s to s+1,
+  // or vice-versa, and that 2) if is_training, then the graph should always be
+  //  partitioned into a pipeline in the shape of a V. 
+  std::vector<std::pair<int, int>> messages;
+  for (int s = 0; s < nstages - 1; ++s) {
+    messages.emplace_back(s, s+1);
+  }
+  if (is_training) {
+    for (int s = nstages - 1; s > 0; --s) {
+      messages.emplace_back(s, s-1);
+    }
   }
 
+  // Get the nodes in topological order before spliting the graph.
+  // This ordering will be useful later to remove nodes from the partition.
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
-  // reverse iterate the nodes in tolopogical order, and delete those not visited
-  for (auto it = node_topology_list.rbegin(); it != node_topology_list.rend(); it++) {
-    if (visited_node_index.count(*it) == 0) {
-      graph.RemoveNode(*it);
+  // The first Node* of the pair in send_nodes[s] is the Send from s to s+1,
+  // i.e., the send for the forward stage. The second is the Send from s to 
+  // s-1, i.e., the send for the backward stage. 
+  std::vector<std::pair<Node*, Node*>> send_nodes(nstages);
+  std::vector<std::pair<Node*, Node*>> recv_nodes(nstages);
+
+  // Split the graph given the mapping of operations to ranks.
+  ORT_RETURN_IF_ERROR(
+    SplitGraphWithMap(graph, op_to_rank, nstages, messages, send_nodes, recv_nodes));
+
+  // TODO: handle weights that are shared accross many ranks
+  // HandleSharedInitializer
+
+  // Generate subgraph / Projection.
+  // First remove Send nodes that do not belong to the `pipeline_stage_id`
+  // partition. They don't have outgoing edges. Then remove computation nodes
+  // that do not belong to the `pipeline_stage_id` partition, in their
+  // topological order. Finally, remove Receive nodes that do not belong to the
+  // `pipeline_stage_id` partition. At this point, they don't have outgoing
+  // edges either.
+  for (int s = 0; s < nstages; ++s) { 
+    if (s == pipeline_stage_id) {
+      continue; // These sends must be kept.
+    }
+    auto& pair = send_nodes.at(s);
+    Node* fwd_send = pair.first;
+    if (fwd_send != nullptr) {
+      graph.RemoveNode(fwd_send->Index());
+    } 
+    Node* bwd_send = pair.second;
+    if (bwd_send != nullptr) {
+      graph.RemoveNode(bwd_send->Index());
+    } 
+  }
+
+  // Collect all outputs of this partition too.
+  std::set<NodeArg*> visited_outputs;
+  for (auto it = node_topology_list.rbegin(); it != node_topology_list.rend(); ++it) {
+    NodeIndex ni = *it;
+    auto found = op_to_rank.find(graph.GetNode(ni));
+    ORT_ENFORCE(found != op_to_rank.end(),
+                "Found an op without rank.");
+    
+    if (found->second != pipeline_stage_id) {
+      graph.RemoveNode(ni);
+    } else {
+      auto* node = graph.GetNode(ni);
+      auto& consumers = node->MutableOutputDefs();
+      for (auto consumer : consumers) {
+        if (graph.IsOutput(consumer)) {
+          visited_outputs.insert(consumer);
+        }
+      }
     }
   }
 
-  // If the following line is uncommented, middle and last pipeline stages may
-  // have unresolved symbolic shapes. The reason is that some symbolic shapes
-  // are defined for the original inputs, if original inputs are removed, we
-  // lose the hint to resolve symbolic shapes. For example, if an original
-  // input's shape is [batch, sequence, 1024], that input should be provided as
-  // a feed to all pipeline stages. Otherwise, we don't know the actual values
-  // of "batch" and "sequence".
-  //
-  // graph.SetInputs({visited_inputs.begin(), visited_inputs.end()});
+  for (int s = 0; s < nstages; ++s) {
+    if (s == pipeline_stage_id) {
+      // These receives must be kept.
+      continue;
+    }
+    auto& pair = recv_nodes.at(s);
+    Node* fwd_recv = pair.first;
+    if (fwd_recv != nullptr) {
+      graph.RemoveNode(fwd_recv->Index());
+    } 
+    Node* bwd_recv = pair.second;
+    if (bwd_recv != nullptr) {
+      graph.RemoveNode(bwd_recv->Index());
+    } 
+  }
 
-  // update the grah with only visited outputs
   graph.SetOutputs({visited_outputs.begin(), visited_outputs.end()});
   graph.SetGraphResolveNeeded();
   graph.SetGraphProtoSyncNeeded();
+  graph.Resolve();
 
-  return graph.Resolve();
-}
-
-Status ApplyPipelinePartitionToMainGraph(
-    Graph& graph,
-    const std::vector<TrainingSession::TrainingConfiguration::CutInfo>& cut_info,
-    size_t pipeline_stage_id,
-    size_t num_pipeline_stage) {
-  size_t split_count = cut_info.size();
-
-  if (num_pipeline_stage != split_count + 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Wrong pipeline partition cutting info. Total pipeline stage number is ",
-                           num_pipeline_stage,
-                           ", cut info length is: ",
-                           split_count);
+  if (!is_training) {
+    // In that case, we are done here. The remaining work is only needed when
+    // partitioning training graphs.
+    return Status::OK();
   }
 
-  std::vector<Node *> send_nodes, recv_nodes;
-  send_nodes.reserve(split_count);
-  recv_nodes.reserve(split_count);
+  // Keep some information about the pipeline.
+  auto forward_send = send_nodes.at(pipeline_stage_id).first;
+  auto backward_recv = recv_nodes.at(pipeline_stage_id).second;
 
-  // Split the graph by cutting edges specified in cut_info. After this function, the graph will be
-  // composed of several disconnected partitions.
-  ORT_RETURN_IF_ERROR(SplitGraph(graph, cut_info, send_nodes, recv_nodes));
+  if (pipeline_stage_id < nstages - 1) {
+    ORT_ENFORCE(forward_send != nullptr, 
+                "Something went wrong. Can't find fwd send in rank " +
+                std::to_string(pipeline_stage_id));
+    ORT_ENFORCE(backward_recv != nullptr,
+                "Something went wrong. Can't find bwd recv in rank " + 
+                std::to_string(pipeline_stage_id));
 
-  if (send_nodes.size() != split_count || recv_nodes.size() != split_count) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Split error: not all cut has Send and Recv inserted. Send node count: ",
-                           send_nodes.size(), ", Recv node count: ", recv_nodes.size(), ", split count: ", split_count);
-  }
-
-  // Check to see if there are any initializers that is being shared between different partitions. If there
-  // is, keep the initializer in the first seen partition and have it pass through by send/recv to the others.
-  ORT_RETURN_IF_ERROR(HandleSharedInitializer(graph, send_nodes, recv_nodes));
-
-  // Now remove the partitions that are not tie to the current pipeline stage and generate the sub-graph.
-  if (pipeline_stage_id < split_count) {
-    ORT_RETURN_IF_ERROR(GenerateSubgraph(graph, send_nodes[pipeline_stage_id]));
-  } else {
-    ORT_RETURN_IF_ERROR(GenerateSubgraph(graph, recv_nodes.back()));
-  }
-
-  // Post check to ensure the curent partition is correct and matches with Send/Recv nodes inserted during split.
-  Node* send_node{nullptr};
-  Node* recv_node{nullptr};
-  for (auto& node : graph.Nodes()) {
-    if (node.OpType() == "Send") {
-      send_node = &node;
-    } else if (node.OpType() == "Recv") {
-      recv_node = &node;
+    // We need to make sure that the backward receive starts after the forward
+    // send, or otherwise the computation will get stuck. We can do this by 
+    // adding a control dependency between those two nodes.
+    // graph.AddControlEdge(forward_send->Index(), backward_recv->Index());
+    //
+    // Or we could use the nodes' priorities. By default all the nodes seem to 
+    // have a priority of 0, so we could give a high priority to the send and
+    // a low priority to the receive. 
+    // info.forward_send->SetPriority(static_cast<int>(ExecutionPriority::LOCAL_HIGH));
+    // info.backward_recv->SetPriority(static_cast<int>(ExecutionPriority::LOCAL_LOW));
+    //
+    // However, none of these options seem to be enough. We need to check how 
+    // these nodes are being handled in the InsertPipelineOps code. For now, we 
+    // use a "hacky" solution, in which we add the output of the forward send 
+    // as an input to the backward receive. 
+    auto& send_outputs = forward_send->MutableOutputDefs();
+    auto& recv_inputs = backward_recv->MutableInputDefs();
+    for (int i = 0, s = recv_inputs.size(); i < s; ++s) {
+      auto input = recv_inputs.at(i);
+      if (input->Name().find("recv_input_signal") != std::string::npos) {
+        for (auto output : send_outputs) {
+          if (output->Name().find("send_output_signal") != std::string::npos) {
+            recv_inputs[i] = output;
+            break;
+          }
+        }
+        break;
+      }
     }
-  }
-
-  if (pipeline_stage_id == 0) {
-    // For the first stage, there should be no recv node, and the send node contained in graph should match the first
-    // send_node inserted during split.
-    ORT_RETURN_IF_NOT(recv_node == nullptr, "Error: first stage contains Recv node in forward pass.");
-    ORT_RETURN_IF_NOT(send_node == send_nodes[0],
-                "Error: first stage doesn't contain the right Send node. Possibly CutInfo data is wrong.");
-  } else if (pipeline_stage_id == split_count) {
-    // For the last stage, there should be no send node, and the recv node contained in graph should match the last
-    // recv_node inserted during split.
-    ORT_RETURN_IF_NOT(recv_node == recv_nodes.back(),
-                "Error: last stage doesn't contain the right Recv node. Possibly CutInfo data is wrong.");
-    ORT_RETURN_IF_NOT(send_node == nullptr, "Error: last stage contains Send node in forward pass.");
-  } else {
-    // For stages in the middle, i-th stage should contain recv node that matches the (i-1)-th inserted recv node, and the i-th
-    // inserted send node.
-    ORT_RETURN_IF_NOT(recv_node == recv_nodes[pipeline_stage_id - 1],
-                "Error: stage ", pipeline_stage_id, " doesn't contain the right Recv node. Possibly CutInfo data is wrong.");
-    ORT_RETURN_IF_NOT(send_node == send_nodes[pipeline_stage_id],
-                "Error: stage ", pipeline_stage_id, " doesn't contain the right Send node. Possibly CutInfo data is wrong.");
   }
 
   return Status::OK();
