@@ -1,26 +1,23 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
-#if defined(USE_NCCL) || defined(USE_HOROVOD)
-
+#if defined(USE_MPI)
 #pragma once
 #include "core/common/common.h"
-#include "core/providers/cuda/cuda_common.h"
-
+#include "core/framework/op_kernel.h"
 
 namespace onnxruntime {
-namespace cuda {
+namespace contrib {
 
-class Send final : public CudaKernel {
-public:
-  Send(const OpKernelInfo& info) : CudaKernel(info) {
+class Send final : public OpKernel {
+ public:
+  Send(const OpKernelInfo& info) : OpKernel(info) {
     ORT_ENFORCE(info.GetAttr<int64_t>("tag", &tag_).IsOK());
     ORT_ENFORCE(info.GetAttrs<int64_t>("element_types", element_types_).IsOK());
   }
 
-  Status ComputeInternal(OpKernelContext* context) const override;
+  Status Compute(OpKernelContext* context) const override;
 
-private:
+ private:
   void SendData(
       OpKernelContext* ctx,
       const int dst,
@@ -33,7 +30,6 @@ private:
   std::vector<int64_t> element_types_;
 };
 
-}  // namespace cuda
+}  // namespace contrib
 }  // namespace onnxruntime
-
 #endif

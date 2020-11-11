@@ -476,8 +476,10 @@ class PlannerImpl {
         OrtValueIndex index = Index(node_output->Name());
         ProcessDef(index, node_output);
         ++UseCount(index);
+        auto allocator = exec_provider->GetAllocator(0, p_kernel_def->OutputMemoryType(i));
+        ORT_ENFORCE(allocator);
         plan_.SetLocation(static_cast<size_t>(index),
-                          exec_provider->GetAllocator(0, p_kernel_def->OutputMemoryType(i))->Info());
+                          allocator->Info());
       }
 
       // if sync is needed, mark allocation plan as create_fence_if_async=true

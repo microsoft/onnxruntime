@@ -4,10 +4,12 @@
 #pragma once
 
 #include "core/framework/execution_provider.h"
-#include "core/providers/nnapi/nnapi_builtin/model.h"
 #include "core/providers/nnapi/nnapi_provider_factory.h"
 
 namespace onnxruntime {
+namespace nnapi {
+class Model;
+}
 
 class NnapiExecutionProvider : public IExecutionProvider {
  public:
