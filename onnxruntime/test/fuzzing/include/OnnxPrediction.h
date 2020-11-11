@@ -145,7 +145,6 @@ class OnnxPrediction {
 
   // A pointer to the model
   //
-  size_t numBytes;
   std::shared_ptr<void> rawModel;
 
   // Create RunOptions

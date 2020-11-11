@@ -40,8 +40,8 @@ OnnxPrediction::OnnxPrediction(onnx::ModelProto& onnx_model)
 }
 
 OnnxPrediction::OnnxPrediction(const std::vector<char>& modelData)
-    : numBytes(modelData.size()),
-      session{nullptr} {
+    : session{nullptr} {
+  size_t numBytes = modelData.size();
   rawModel = std::shared_ptr<void>{alloc.Alloc(numBytes),
                                    [this](void* ptr) {
                                      this->GetAllocator().Free(ptr);
