@@ -76,10 +76,6 @@
         "^test_resize_upsample_sizes_nearest_cpu",
         "^test_resize_upsample_sizes_nearest_floor_align_corners_cpu",
         "^test_resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric_cpu",
-        "^test_sce_NCd1_mean_weight_negative_ii_cpu", // NOT_IMPLEMENTED : Could not find an implementation for the node NegaticeLogLikelihoodLoss(13)
-        "^test_sce_NCd1_mean_weight_negative_ii_expanded_cpu",
-        "^test_sce_NCd1_mean_weight_negative_ii_log_prob_cpu",
-        "^test_sce_NCd1_mean_weight_negative_ii_log_prob_expanded_cpu",
         "^test_softmax_axis_0_cpu", // NOT_IMPLEMENTED : Could not find an implementation for the node Softmax(13)
         "^test_softmax_axis_0_expanded_cpu",
         "^test_softmax_axis_1_cpu",
