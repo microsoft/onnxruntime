@@ -21,9 +21,9 @@ Ort::SessionOptions sf;
 bool enable_cpu_mem_arena = true;
 Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ArmNN(sf, enable_cpu_mem_arena));
 ```
-The C API details are [here](../api/c-api.md#c-api).
+The C API details are [here](../api/c-api.md).
 
 ### Performance Tuning
 For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](../../how-to/tune-performance.md)
 
-When/if using [onnxruntime_perf_test](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/test/perftest), use the flag -e armnn
+When/if using [onnxruntime_perf_test](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/test/perftest), use the flag -e armnn

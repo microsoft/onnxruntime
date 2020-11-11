@@ -12,6 +12,12 @@ The TensorRT execution provider in the ONNX Runtime makes use of NVIDIA's [Tenso
 
 With the TensorRT execution provider, the ONNX Runtime delivers better inferencing performance on the same hardware compared to generic GPU acceleration. 
 
+## Contents
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
+
 ## Build
 
 The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 7.1.3.4.
