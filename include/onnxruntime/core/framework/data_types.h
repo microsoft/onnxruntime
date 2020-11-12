@@ -284,12 +284,15 @@ class DataTypeImpl {
   static MLDataType GetDataType(const std::string&);
 
   static const std::vector<MLDataType>& AllTensorTypes();
-  static const std::vector<MLDataType>& AllSequenceTensorTypes();
   static const std::vector<MLDataType>& AllFixedSizeTensorTypes();
+  static const std::vector<MLDataType>& AllSequenceTensorTypes();
+  static const std::vector<MLDataType>& AllFixedSizeSequenceTensorTypes();
   static const std::vector<MLDataType>& AllNumericTensorTypes();
   static const std::vector<MLDataType>& AllIEEEFloatTensorTypes();
   static const std::vector<MLDataType>& AllFixedSizeTensorExceptHalfTypes();
   static const std::vector<MLDataType>& AllIEEEFloatTensorExceptHalfTypes();
+  static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypes();
+  static const std::vector<MLDataType>& AllFixedSizeTensorAndSequenceTensorTypes();
 };
 
 std::ostream& operator<<(std::ostream& out, MLDataType data_type);
