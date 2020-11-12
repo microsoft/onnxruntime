@@ -31,6 +31,12 @@
     <OnnxRuntimeBinary>$(MSBuildThisFileDirectory)..\..\runtimes\win-$(EnginePlatform)\native\onnxruntime.dll</OnnxRuntimeBinary>
   </PropertyGroup>
 
+  <!-- Assume apps using the Microsoft.ML.OnnxRuntime.DirectML package only want the DirectML binaries (no need for a build dependency). -->
+  <PropertyGroup Label="Globals" Condition="Exists('$(MSBuildThisFileDirectory)include\dml_provider_factory.h')">
+    <Microsoft_AI_DirectML_SkipLink>true</Microsoft_AI_DirectML_SkipLink>
+    <Microsoft_AI_DirectML_SkipIncludeDir>true</Microsoft_AI_DirectML_SkipIncludeDir>
+  </PropertyGroup>
+
   <ItemGroup>
     <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime.dll"
           Condition="'$(PlatformTarget)' == 'x64' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' != 'true')">
