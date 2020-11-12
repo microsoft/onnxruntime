@@ -61,12 +61,12 @@ There are several environment variables for TensorRT execution provider.
 
 * ORT_TENSORRT_FP16_ENABLE: Enable FP16 mode in TensorRT
 
-* ORT_TENSORRT_ENGINE_CACHE_ENABLE: Enable TensorRT engine caching. The purpose of using engine caching is to save engine build time in the cases that TensorRT may take long time to optimize and build engine. Engine will be cached after it's built at the first time so that next time when inference session is created the engine can be loaded directly from cache. Note each engine is created for specific settings such as precision (FP32/FP16/INT8 etc), workspace, profiles etc, and specific GPUs and it's not portable, so it's essential to make sure those settings are not changing, otherwise the engines need to be rebuilt and cached again.
-**Warning: Please clean up any old engine cache files (.engine) if any of the following changes:**
+* ORT_TENSORRT_ENGINE_CACHE_ENABLE: Enable TensorRT engine caching. The purpose of using engine caching is to save engine build time in the cases that TensorRT may take long time to optimize and build engine. Engine will be cached after it's built at the first time so that next time when inference session is created the engine can be loaded directly from cache. In order to validate that the loaded engine is usable for current inference, engine profile is also cached and loaded along with engine. If current input shapes are in the range of the engine profile, that means the loaded engine can be safely used. Otherwise if input shapes are out of range, profile cache will be updated to cover the new shape and engine will be recreated based on the new profile (and also refreshed in the engine cache). Note each engine is created for specific settings such as precision (FP32/FP16/INT8 etc), workspace, profiles etc, and specific GPUs and it's not portable, so it's essential to make sure those settings are not changing, otherwise the engines need to be rebuilt and cached again.
+**Warning: Please clean up any old engine and profile cache files (.engine and .profile) if any of the following changes:**
   - Model changes (if there are any changes to the model topology, opset version etc.)
   - ORT version changes (i.e. moving from ORT version 1.4 to 1.5)
   - TensorRT version changes (i.e. moving from TensorRT 7.0 to 7.1)
-  - Hardware changes. (Engine files are not portable and optimized for specific Nvidia hardware)
+  - Hardware changes. (Engine and profile files are not portable and optimized for specific Nvidia hardware)
 
 * ORT_TENSORRT_ENGINE_CACHE_PATH: Specify path for TensorRT engine files if ORT_TENSORRT_ENGINE_CACHE_ENABLE is 1
 
