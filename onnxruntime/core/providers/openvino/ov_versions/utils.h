@@ -1,3 +1,6 @@
+// Copyright(C) 2019 Intel Corporation
+// Licensed under the MIT License
+
 namespace onnxruntime {
 namespace openvino_ep {
 
