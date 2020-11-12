@@ -411,7 +411,6 @@ Status SessionState::GenerateActivationMemoryPatterns(MemoryPatternGroup* output
       // Store all valid resolved shapes. They will be queried in, for example,
       // Recv operator to bypass the dependency of output shapes on inputs.
       if (is_resolved != 0) {
-        std::cout << "pengwa is_resolved != 0 " << node->Name() << std::endl;
         resolved_shapes[ml_value_idx] = resolved_shape;
       }
     }
