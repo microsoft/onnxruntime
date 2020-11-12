@@ -231,6 +231,8 @@ static Status InlineNodes(Graph& graph, bool& modified_graph) {
     modified_graph = true;
   }
 
+  ORT_RETURN_IF_ERROR(graph.Resolve());
+
   return Status::OK();
 }
 
@@ -251,23 +253,21 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
   // It is only visible for current session.
   std::shared_ptr<KernelRegistry> fused_kernel_registry = std::make_shared<KernelRegistry>();
 
-  // process full graph with each EP
-  for (const auto& ep : providers_) {
-    ORT_RETURN_IF_ERROR(PartitionImpl(graph, export_dll, func_mgr, kernel_registry_mgr_,
-                                      *fused_kernel_registry, *ep));
-  }
-
   bool modified_graph = false;
-  ORT_RETURN_IF_ERROR(InlineNodes(graph, modified_graph));
-
-  // Resolve and rerun graph partition
-  if (modified_graph) {
-    ORT_RETURN_IF_ERROR(graph.Resolve());
+  do {
+    // process full graph with each EP
     for (const auto& ep : providers_) {
       ORT_RETURN_IF_ERROR(PartitionImpl(graph, export_dll, func_mgr, kernel_registry_mgr_,
                                         *fused_kernel_registry, *ep));
     }
-  }
+
+    modified_graph = false;
+    // expand any nodes that have an ONNX function definition
+    // but no matching ORT kernel
+    ORT_RETURN_IF_ERROR(InlineNodes(graph, modified_graph));
+    // rerun graph partition to assign nodes added as part of
+    // function expansion.
+  } while (modified_graph);
 
   if (!fused_kernel_registry->IsEmpty()) {
     kernel_registry_mgr_.RegisterKernelRegistry(fused_kernel_registry);
