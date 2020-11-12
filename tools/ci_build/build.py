@@ -312,6 +312,12 @@ def parse_arguments():
     parser.add_argument(
         "--use_nnapi", action='store_true', help="Build with NNAPI support.")
     parser.add_argument(
+        "--nnapi_minimal_api", type=int,
+        help="Minimal Android API level to enable NNAPI, should be no less thant 27")
+    parser.add_argument(
+        "--nnapi_host_api", type=int,
+        help="Host Android API level to use with NNAPI model converter")
+    parser.add_argument(
         "--use_rknpu", action='store_true', help="Build with RKNPU.")
     parser.add_argument(
         "--use_preinstalled_eigen", action='store_true',
@@ -808,10 +814,12 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         cmake_args += ["-Donnxruntime_USE_PREINSTALLED_EIGEN=ON",
                        "-Deigen_SOURCE_PATH=" + args.eigen_path]
 
+    if args.nnapi_minimal_api:
+        cmake_args += ["-Donnxruntime_NNAPI_MINIMAL_API=" + str(args.nnapi_minimal_api)]
+
     if args.android:
         cmake_args += [
-            "-DCMAKE_TOOLCHAIN_FILE=" + args.android_ndk_path +
-            "/build/cmake/android.toolchain.cmake",
+            "-DCMAKE_TOOLCHAIN_FILE=" + args.android_ndk_path + "/build/cmake/android.toolchain.cmake",
             "-DANDROID_PLATFORM=android-" + str(args.android_api),
             "-DANDROID_ABI=" + str(args.android_abi)
         ]
@@ -1820,6 +1828,12 @@ def main():
 
     if args.minimal_build and args.disable_ort_format_load:
         raise BuildError('Minimal build requires loading ORT format models.')
+
+    if args.nnapi_minimal_api:
+        if not args.use_nnapi:
+            raise BuildError("Using --nnapi_minimal_api requires --use_nnapi")
+        if args.nnapi_minimal_api < 27:
+            raise BuildError("--nnapi_minimal_api should be 27+")
 
     # Disabling unit tests for VAD-F as FPGA only supports
     # models with NCHW layout

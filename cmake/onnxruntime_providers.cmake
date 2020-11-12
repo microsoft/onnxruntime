@@ -635,15 +635,47 @@ endif()
 
 if (onnxruntime_USE_NNAPI_BUILTIN)
   add_definitions(-DUSE_NNAPI=1)
+
+  # This is the minimal Android API Level required by ORT NNAPI EP to run
+  # ORT running on any host system with Android API level less than this will fall back to CPU EP
+  if(onnxruntime_NNAPI_MINIMAL_API)
+    add_definitions(-DORT_NNAPI_MIN_API_LEVEL=${onnxruntime_NNAPI_MINIMAL_API})
+  endif()
+
+  # This is the API level of the host Android system
+  # Note: This is only for running NNAPI for ort format model conversion on non-Android system since we cannot
+  #       get the actually Android system version.
+  if(onnxruntime_NNAPI_HOST_API)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Android")
+      message(FATAL_ERROR "onnxruntime_NNAPI_HOST_API should only be set for non-Android target")
+    endif()
+    add_definitions(-DORT_NNAPI_HOST_API_LEVEL=${onnxruntime_NNAPI_HOST_API})
+  endif()
+
   file(GLOB
     onnxruntime_providers_nnapi_cc_srcs_top CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/nnapi/*.cc"
   )
-  file(GLOB_RECURSE
-    onnxruntime_providers_nnapi_cc_srcs_nested CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/*.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/*.cc"
-  )
+
+  if(CMAKE_SYSTEM_NAME STREQUAL "Android")
+    file(GLOB_RECURSE
+      onnxruntime_providers_nnapi_cc_srcs_nested CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/*.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/*.cc"
+    )
+  else()
+    file(GLOB
+      onnxruntime_providers_nnapi_cc_srcs_nested CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/nnapi_execution_provider.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/nnapi_execution_provider.cc"
+      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/builders/helper.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/builders/helper.cc"
+      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/builders/op_support_checker.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/builders/op_support_checker.cc"
+      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksTypes.h"
+    )
+  endif()
+
   set(onnxruntime_providers_nnapi_cc_srcs ${onnxruntime_providers_nnapi_cc_srcs_top} ${onnxruntime_providers_nnapi_cc_srcs_nested})
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_nnapi_cc_srcs})
   add_library(onnxruntime_providers_nnapi ${onnxruntime_providers_nnapi_cc_srcs})

@@ -8,8 +8,17 @@
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksTypes.h"
 
 // This is the minimal Android API Level required by ORT NNAPI EP to run
+// ORT running on any host system with Android API level less than this will fall back to CPU EP
 #ifndef ORT_NNAPI_MIN_API_LEVEL
 #define ORT_NNAPI_MIN_API_LEVEL 27
+#endif
+
+// This is the API level of the host Android system
+// Note: This is only for running NNAPI for ort format model conversion on non-Android system since we cannot
+//       get the actually Android system version.
+//       If running on an actual Android system, this value will be ignored
+#ifndef ORT_NNAPI_HOST_API_LEVEL
+#define ORT_NNAPI_HOST_API_LEVEL 30
 #endif
 
 namespace onnxruntime {

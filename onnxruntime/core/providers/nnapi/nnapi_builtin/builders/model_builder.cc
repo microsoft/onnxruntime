@@ -17,9 +17,7 @@ using namespace android::nn::wrapper;
 using std::vector;
 
 ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer)
-    : nnapi_(NnApiImplementation()), graph_viewer_(graph_viewer) {
-  GetAllInitializers();
-}
+    : nnapi_(NnApiImplementation()), graph_viewer_(graph_viewer) {}
 
 int32_t ModelBuilder::GetAndroidSdkVer() const {
   return nnapi_ ? nnapi_->android_sdk_version : 0;
@@ -105,12 +103,6 @@ Status ModelBuilder::GetTargetDevices() {
   return Status::OK();
 }
 
-void ModelBuilder::GetAllInitializers() {
-  for (const auto& pair : graph_viewer_.GetAllInitializedTensors()) {
-    initializers_.emplace(pair.first, *pair.second);
-  }
-}
-
 void ModelBuilder::PreprocessInitializers() {
   const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
   for (size_t i = 0; i < node_indices.size(); i++) {
@@ -172,13 +164,14 @@ std::unordered_map<std::string, vector<const Node*>> GetAllQuantizedOpInputs(con
 
 Status ModelBuilder::RegisterInitializers() {
   // First pass to get all the stats of the initializers
-  auto initializer_size = initializers_.size();
+  const auto& initializer_tensors(GetInitializerTensors());
+  auto initializer_size = initializer_tensors.size();
   std::vector<std::tuple<uint32_t, size_t, size_t>> initializers(initializer_size);
   size_t sizeAll = 0;
 
   int i = 0;
-  for (const auto& pair : initializers_) {
-    const auto& tensor = pair.second;
+  for (const auto& pair : initializer_tensors) {
+    const auto& tensor = *pair.second;
     const auto& name = tensor.name();
     if (Contains(skipped_initializers_, name))
       continue;
@@ -221,8 +214,8 @@ Status ModelBuilder::RegisterInitializers() {
 
   // 2nd pass to copy all the initializers into shared memory
   size_t offset = 0;
-  for (const auto& pair : initializers_) {
-    const auto& tensor = pair.second;
+  for (const auto& pair : initializer_tensors) {
+    const auto& tensor = *pair.second;
     if (Contains(skipped_initializers_, tensor.name()))
       continue;
 
@@ -254,7 +247,7 @@ Status ModelBuilder::RegisterModelInputs() {
       if (Contains(operands_, input_name))
         continue;
 
-      if (Contains(initializers_, input_name))
+      if (Contains(GetInitializerTensors(), input_name))
         continue;
     }
 
@@ -566,7 +559,7 @@ void ModelBuilder::RegisterNHWCOperand(const std::string& name) {
   nhwc_operands_.insert(name);
 }
 
-bool ModelBuilder::IsOperandNHWC(const std::string& name) {
+bool ModelBuilder::IsOperandNHWC(const std::string& name) const {
   return Contains(nhwc_operands_, name);
 }
 
