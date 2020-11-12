@@ -14,10 +14,10 @@ using user_options = struct
   bool flatbuffer;
 };
 
-void predict(onnx::ModelProto& model_proto, unsigned int seed) {
+void predict(onnx::ModelProto& model_proto, unsigned int seed, Ort::Env& env) {
   // Create object for prediction
   //
-  OnnxPrediction predict{model_proto};
+  OnnxPrediction predict(model_proto, env);
 
   // Give predict a function to generate the data
   // to run prediction on.
@@ -36,6 +36,7 @@ void predict(onnx::ModelProto& model_proto, unsigned int seed) {
 void mutateModelTest(onnx::ModelProto& model_proto,
                      std::wstring mutatedModelDirName,
                      user_options opt,
+                     Ort::Env& env,
                      unsigned int seed = 0) {
   // Used to initialize all random engines
   //
@@ -88,7 +89,7 @@ void mutateModelTest(onnx::ModelProto& model_proto,
 
   // run prediction on model
   //
-  predict(model_proto, seed);
+  predict(model_proto, seed, env);
 
   // print out all output before next test
   //
@@ -262,6 +263,11 @@ static void fuzz_handle_exception() {
 }
 
 int main(int argc, char* argv[]) {
+  Ort::Env env;
+  // Enable telemetry events
+  //
+  env.EnableTelemetryEvents();
+
   runtimeOpt opt{};
   user_options& user_opt{opt.user_opt};
   Logger::wcstream& werr_stream_buf{opt.werr_stream_buf};
@@ -299,7 +305,7 @@ int main(int argc, char* argv[]) {
         if (repo_mode) {
           Logger::testLog << L"Running Prediction for: " << model_file_name
                           << L" with seed " << seed << Logger::endl;
-          mutateModelTest(model_proto, mutate_model_dir_name, user_opt, seed);
+          mutateModelTest(model_proto, mutate_model_dir_name, user_opt, env, seed);
           Logger::testLog << L"Finished Prediction for: " << model_file_name
                           << L" with seed " << seed << Logger::endl;
           return 0;
@@ -319,7 +325,7 @@ int main(int argc, char* argv[]) {
             try {
               onnx::ModelProto bad_model = model_proto;
               Logger::testLog << "Starting Test iteration: " << iteration << Logger::endl;
-              mutateModelTest(bad_model, mutate_model_dir_name, user_opt);
+              mutateModelTest(bad_model, mutate_model_dir_name, user_opt, env);
               num_successful_runs++;
               Logger::testLog << "Completed Test iteration: " << iteration++ << Logger::endl;
             } catch (...) {
@@ -336,7 +342,6 @@ int main(int argc, char* argv[]) {
     } else {
       std::wstring ort_model_file = model_file + L".ort";
       Ort::SessionOptions so;
-      Ort::Env env;
       so.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
       so.SetOptimizedModelFilePath(ort_model_file.c_str());
       so.AddConfigEntry(kOrtSessionOptionsConfigSaveModelFormat, "ORT");
@@ -353,7 +358,7 @@ int main(int argc, char* argv[]) {
         model_data[i] = tmp;
         try {
           Logger::testLog << "Starting Test" << Logger::endl;
-          OnnxPrediction predict(model_data);
+          OnnxPrediction predict(model_data, env);
           predict.SetupInput(GenerateDataForInputTypeTensor, 0);
           predict.RunInference();
           predict.PrintOutputValues();

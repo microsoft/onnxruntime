@@ -7,7 +7,7 @@
 // Uses the onnxruntime to load the modelmodelData
 // into a session.
 //
-OnnxPrediction::OnnxPrediction(std::wstring& onnx_model_file)
+OnnxPrediction::OnnxPrediction(std::wstring& onnx_model_file, Ort::Env& env)
     : raw_model{nullptr},
       ptr_session{std::make_unique<Ort::Session>(env, onnx_model_file.c_str(), empty_session_option)},
       input_names(ptr_session->GetInputCount()),
@@ -17,7 +17,7 @@ OnnxPrediction::OnnxPrediction(std::wstring& onnx_model_file)
 
 // Uses the onnx to seri
 //
-OnnxPrediction::OnnxPrediction(onnx::ModelProto& onnx_model) {
+OnnxPrediction::OnnxPrediction(onnx::ModelProto& onnx_model, Ort::Env& env) {
   raw_model = std::shared_ptr<void>(alloc.Alloc(onnx_model.ByteSizeLong()), [this](void* ptr) {
     this->GetAllocator().Free(ptr);
   });
@@ -35,7 +35,7 @@ OnnxPrediction::OnnxPrediction(onnx::ModelProto& onnx_model) {
   init();
 }
 
-OnnxPrediction::OnnxPrediction(const std::vector<char>& model_data) {
+OnnxPrediction::OnnxPrediction(const std::vector<char>& model_data, Ort::Env& env) {
   Ort::SessionOptions so;
   so.AddConfigEntry(kOrtSessionOptionsConfigLoadModelFormat, "ORT");
   ptr_session = std::make_unique<Ort::Session>(env,
@@ -137,10 +137,6 @@ void OnnxPrediction::PrintOutputValues() {
 // Common initilization amongst constructors
 //
 void OnnxPrediction::init() {
-  // Enable telemetry events
-  //
-  env.EnableTelemetryEvents();
-
   // Initialize model input names
   //
   for (int i = 0; i < ptr_session->GetInputCount(); i++) {

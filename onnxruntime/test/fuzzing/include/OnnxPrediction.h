@@ -39,17 +39,17 @@ class OnnxPrediction {
   // Uses the onnxruntime to load the model
   // into a session.
   //
-  OnnxPrediction(std::wstring& onnx_model_file);
+  OnnxPrediction(std::wstring& onnx_model_file, Ort::Env& env);
 
   // Uses the onnx model to create a prediction
   // environment
   //
-  OnnxPrediction(onnx::ModelProto& onnx_model);
+  OnnxPrediction(onnx::ModelProto& onnx_model, Ort::Env& env);
 
   // The following constructor is meant for initializing using flatbuffer model.
   // Memory buffer pointing to the model
   //
-  OnnxPrediction(const std::vector<char>& model_data);
+  OnnxPrediction(const std::vector<char>& model_data, Ort::Env& env);
 
   // Data to run prediction on
   //
@@ -130,10 +130,6 @@ class OnnxPrediction {
   // Create an allocator for the runtime to use
   //
   Ort::AllocatorWithDefaultOptions alloc;
-
-  // Create Environment
-  //
-  Ort::Env env;
 
   // Create Options for the Session
   //
