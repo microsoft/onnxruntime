@@ -200,6 +200,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGrap
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_NGraph(const char* ng_backend_type);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const OrtOpenVINOProviderOptions* params);
+const ProviderInfo_OpenVINO* GetProviderInfo_OpenVINO();
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VITISAI(const char* backend_type, int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena);
@@ -842,12 +843,13 @@ void addGlobalMethods(py::module& m, const Environment& env) {
   });
 #endif
 
-#if 0  // TODO: RyanHill - Add interface to shared providers so that this information can be queried
 #ifdef USE_OPENVINO
   m.def(
       "get_available_openvino_device_ids", []() -> std::vector<std::string> {
-        InferenceEngine::Core ie_core;
-        return ie_core.GetAvailableDevices();
+        if (auto* info = GetProviderInfo_OpenVINO()) {
+          return info->GetAvailableDevices();
+        }
+        return {};
       },
       "Lists all OpenVINO device ids available.");
   /*
@@ -861,7 +863,6 @@ void addGlobalMethods(py::module& m, const Environment& env) {
         return openvino_device_type;
       },
       "Gets the dynamically selected OpenVINO device type for inference.");
-#endif
 #endif
 
 #ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA

@@ -12,8 +12,6 @@
 
 #ifdef __cplusplus
 extern "C" {
-#else
-#include <stdbool.h>
 #endif
 
 // SAL2 Definitions
@@ -277,10 +275,10 @@ typedef struct OrtCUDAProviderOptions {
 } OrtCUDAProviderOptions;
 
 typedef struct OrtOpenVINOProviderOptions {
-  const char* device_type;       // CPU_FP32, GPU_FP32, GPU_FP16, MYRIAD_FP16, VAD-M_FP16 or VAD-F_FP32
-  bool enable_vpu_fast_compile;  // Default false
-  const char* device_id;         // Default ""
-  size_t num_of_threads;         // Default 8
+  const char* device_type;                // CPU_FP32, GPU_FP32, GPU_FP16, MYRIAD_FP16, VAD-M_FP16 or VAD-F_FP32
+  unsigned char enable_vpu_fast_compile;  // Default false (0=false, nonzero=true)
+  const char* device_id;                  // Default ""
+  size_t num_of_threads;                  // Default 8
 } OrtOpenVINOProviderOptions;
 
 struct OrtApi;

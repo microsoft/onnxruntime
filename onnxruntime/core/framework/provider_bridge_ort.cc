@@ -740,6 +740,12 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVI
   return nullptr;
 }
 
+const ProviderInfo_OpenVINO* GetProviderInfo_OpenVINO() {
+  if (auto provider = s_library_openvino.Get())
+    return reinterpret_cast<const ProviderInfo_OpenVINO*>(provider->GetInfo());
+  return nullptr;
+}
+
 }  // namespace onnxruntime
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOptions* options, int use_arena) {

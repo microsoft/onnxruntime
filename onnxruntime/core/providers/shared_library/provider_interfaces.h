@@ -172,6 +172,7 @@ struct Provider {
   virtual std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory(const void* /*provider_options*/) { return nullptr; }
   virtual std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* /*settings_str*/) { return nullptr; }
 
+  virtual const void* GetInfo() { return nullptr; }  // Returns a provider specific information interface if it exists
   virtual void Shutdown() = 0;
 };
 

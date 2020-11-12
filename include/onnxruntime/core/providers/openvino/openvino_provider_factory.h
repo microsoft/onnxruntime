@@ -4,6 +4,10 @@
 #include "onnxruntime_c_api.h"
 
 #ifdef __cplusplus
+struct ProviderInfo_OpenVINO {
+  virtual std::vector<std::string> GetAvailableDevices() const = 0;
+};
+
 extern "C" {
 #endif
 

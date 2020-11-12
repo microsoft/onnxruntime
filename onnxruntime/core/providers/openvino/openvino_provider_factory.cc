@@ -38,7 +38,16 @@ std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFacto
 }  // namespace onnxruntime
 
 namespace onnxruntime {
+struct ProviderInfo_OpenVINO_Impl : ProviderInfo_OpenVINO {
+  std::vector<std::string> GetAvailableDevices() const override {
+    InferenceEngine::Core ie_core;
+    return ie_core.GetAvailableDevices();
+  }
+} g_info;
+
 struct OpenVINO_Provider : Provider {
+  const void* GetInfo() override { return &g_info; }
+
   std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory(const void* void_params) override {
     auto& params = *reinterpret_cast<const OrtOpenVINOProviderOptions*>(void_params);
     return std::make_shared<OpenVINOProviderFactory>(params.device_type, params.enable_vpu_fast_compile, params.device_id, params.num_of_threads);
