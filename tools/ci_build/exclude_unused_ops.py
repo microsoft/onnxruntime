@@ -9,8 +9,10 @@ import argparse
 import shutil
 import onnx
 from onnx import AttributeProto as AP
-from logger import log
+from logger import get_logger
 
+
+log = get_logger("exclude_unused_ops")
 
 domain_map = {'': 'kOnnxDomain',
               'ai.onnx': 'kOnnxDomain',

@@ -10,8 +10,11 @@ import shutil
 import subprocess
 import sys
 import hashlib
-from logger import log
+from logger import get_logger
 from amd_hipify import amd_hipify
+
+
+log = get_logger("build")
 
 
 class BaseError(Exception):
