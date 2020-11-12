@@ -25,6 +25,8 @@ class AllreduceOptimizerGraphBuilder : public OptimizerGraphBuilder {
 
  protected:
   virtual Status BuildInternal(
+      bool should_add_gradient_norm,
+      bool should_add_gradient_finite_check,
       Graph& graph,
       GraphAugmenter::GraphDefs& graph_defs,
       std::vector<ArgDef>& weight_argdefs,
