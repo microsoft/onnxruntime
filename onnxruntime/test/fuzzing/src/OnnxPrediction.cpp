@@ -3,35 +3,31 @@
 
 #include "OnnxPrediction.h"
 #include <vector>
-#include <memory>
 
 // Uses the onnxruntime to load the modelmodelData
 // into a session.
 //
 OnnxPrediction::OnnxPrediction(std::wstring& onnx_model_file)
     : raw_model{nullptr},
-      ptr_session{nullptr},
-      session{env, onnx_model_file.c_str(), empty_session_option},
-      input_names{session.GetInputCount()},
-      output_names{session.GetOutputCount()} {
+      ptr_session{std::make_unique<Ort::Session>(env, onnx_model_file.c_str(), empty_session_option)},
+      input_names(ptr_session->GetInputCount()),
+      output_names(ptr_session->GetOutputCount()) {
   init();
 }
 
 // Uses the onnx to seri
 //
-OnnxPrediction::OnnxPrediction(onnx::ModelProto& onnx_model)
-    : session{nullptr} {
-  raw_model = std::shared_ptr<void>{alloc.Alloc(onnx_model.ByteSizeLong()),
-                                   [this](void* ptr) {
-                                     this->GetAllocator().Free(ptr);
-                                   }};
+OnnxPrediction::OnnxPrediction(onnx::ModelProto& onnx_model) {
+  raw_model = std::shared_ptr<void>(alloc.Alloc(onnx_model.ByteSizeLong()), [this](void* ptr) {
+    this->GetAllocator().Free(ptr);
+  });
 
   onnx_model.SerializeToArray(raw_model.get(), static_cast<int>(onnx_model.ByteSizeLong()));
 
   ptr_session = std::make_unique<Ort::Session>(env,
-                                              raw_model.get(),
-                                              onnx_model.ByteSizeLong(),
-                                              empty_session_option),
+                                               static_cast<void*>(raw_model.get()),
+                                               onnx_model.ByteSizeLong(),
+                                               empty_session_option),
 
   input_names.resize(ptr_session->GetInputCount());
   output_names.resize(ptr_session->GetOutputCount());
@@ -39,36 +35,18 @@ OnnxPrediction::OnnxPrediction(onnx::ModelProto& onnx_model)
   init();
 }
 
-OnnxPrediction::OnnxPrediction(const std::vector<char>& model_data)
-    : session{nullptr} {
-  size_t num_bytes = model_data.size();
-  raw_model = std::shared_ptr<void>{alloc.Alloc(num_bytes),
-                                   [this](void* ptr) {
-                                     this->GetAllocator().Free(ptr);
-                                   }};
-  memcpy(raw_model.get(), model_data.data(), num_bytes);
+OnnxPrediction::OnnxPrediction(const std::vector<char>& model_data) {
   Ort::SessionOptions so;
   so.AddConfigEntry(kOrtSessionOptionsConfigLoadModelFormat, "ORT");
   ptr_session = std::make_unique<Ort::Session>(env,
-                                              raw_model.get(),
-                                              num_bytes,
-                                              so),
+                                               model_data.data(),
+                                               model_data.size(),
+                                               so);
 
   input_names.resize(ptr_session->GetInputCount());
   output_names.resize(ptr_session->GetOutputCount());
 
   init();
-}
-
-// Destructor
-//
-OnnxPrediction::~OnnxPrediction() {
-  if (ptr_session.get() == &session) {
-    // Ensure the session is not deleted
-    // by the unique_ptr. Because it will be deleting the stack
-    //
-    ptr_session.release();
-  }
 }
 
 // OnnxPrediction console output format
@@ -135,9 +113,9 @@ void OnnxPrediction::RunInference() {
 
   try {
     ptr_session->Run(run_options,
-                    input_names.data(), input_values.data(),
-                    input_values.size(), output_names.data(), output_values.data(),
-                    output_names.size());
+                     input_names.data(), input_values.data(),
+                     input_values.size(), output_names.data(), output_values.data(),
+                     output_names.size());
   } catch (...) {
     Logger::testLog << L"Something went wrong in inference " << Logger::endl;
     Logger::testLog.flush();
@@ -162,13 +140,6 @@ void OnnxPrediction::init() {
   // Enable telemetry events
   //
   env.EnableTelemetryEvents();
-
-  if (!ptr_session) {
-    // To use one consistent value
-    // across the class
-    //
-    ptr_session.reset(&session);
-  }
 
   // Initialize model input names
   //

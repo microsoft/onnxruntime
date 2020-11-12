@@ -51,10 +51,6 @@ class OnnxPrediction {
   //
   OnnxPrediction(const std::vector<char>& model_data);
 
-  // Deletes the prediction object
-  //
-  ~OnnxPrediction();
-
   // Data to run prediction on
   //
   template <typename T>
@@ -69,9 +65,9 @@ class OnnxPrediction {
     // Copy the raw input data and control the lifetime.
     //
     input_data.emplace_back(alloc.Alloc(data_size_in_bytes),
-                           [this](void* ptr1) {
-                             this->GetAllocator().Free(ptr1);
-                           });
+                            [this](void* ptr1) {
+                              this->GetAllocator().Free(ptr1);
+                            });
 
     std::copy(raw_data.begin(), raw_data.end(), reinterpret_cast<T*>(input_data[curr_input_index].get()));
     auto input_type = ptr_session->GetInputTypeInfo(curr_input_index);
@@ -79,10 +75,10 @@ class OnnxPrediction {
     auto elem_type = input_type.GetTensorTypeAndShapeInfo().GetElementType();
     if (elem_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
       input_value = Ort::Value::CreateTensor(alloc.GetInfo(),
-                                            input_data[curr_input_index].get(), data_size_in_bytes, shapeInfo.data(), shapeInfo.size(), elem_type);
+                                             input_data[curr_input_index].get(), data_size_in_bytes, shapeInfo.data(), shapeInfo.size(), elem_type);
     } else if (elem_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32) {
       input_value = Ort::Value::CreateTensor(alloc.GetInfo(),
-                                            input_data[curr_input_index].get(), data_size_in_bytes, shapeInfo.data(), shapeInfo.size(), elem_type);
+                                             input_data[curr_input_index].get(), data_size_in_bytes, shapeInfo.data(), shapeInfo.size(), elem_type);
     } else {
       throw std::exception("only floats are implemented");
     }
@@ -150,10 +146,6 @@ class OnnxPrediction {
   // Create RunOptions
   //
   Ort::RunOptions run_options;
-
-  // Create a Session to run
-  //
-  Ort::Session session;
 
   // Pointer to the current session object
   //
