@@ -1,5 +1,6 @@
 #include "ort_test_session.h"
 #include <core/session/onnxruntime_cxx_api.h>
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include <assert.h>
 #include "providers.h"
 #include "TestCase.h"
