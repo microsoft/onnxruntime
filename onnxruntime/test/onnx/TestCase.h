@@ -33,6 +33,7 @@ class ITestCase {
                             bool is_input) const = 0;
   virtual const PATH_CHAR_TYPE* GetModelUrl() const = 0;
   virtual const std::string& GetNodeName() const = 0;
+  virtual const ONNX_NAMESPACE::ValueInfoProto* GetInputInfoFromModel(size_t i) const = 0;
   virtual const ONNX_NAMESPACE::ValueInfoProto* GetOutputInfoFromModel(size_t i) const = 0;
 
   virtual const std::string& GetTestCaseName() const = 0;
@@ -59,6 +60,7 @@ class TestModelInfo {
     return test_case_dir;
   }
   virtual const std::string& GetNodeName() const = 0;
+  virtual const ONNX_NAMESPACE::ValueInfoProto* GetInputInfoFromModel(size_t i) const = 0;
   virtual const ONNX_NAMESPACE::ValueInfoProto* GetOutputInfoFromModel(size_t i) const = 0;
   virtual int GetInputCount() const = 0;
   virtual int GetOutputCount() const = 0;
