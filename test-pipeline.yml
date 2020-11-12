@@ -1,9 +1,10 @@
 trigger: none
 
-pool: 'Linux-CPU-CorpNet'
+pool: 'Linux-CPU'
 
 jobs:
 - job: Job
 
   steps:
-  - script: python --version
+  - script: docker info
+  - script: az --version
