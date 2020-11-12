@@ -240,7 +240,7 @@ def parse_arguments():
 
     def verify_device_type(device_read):
         choices = ["CPU_FP32", "GPU_FP32", "GPU_FP16", "VAD-M_FP16", "MYRIAD_FP16", "VAD-F_FP32"]
-        status_Hetero = True
+        status_hetero = True
         res = False
         if(device_read in choices):
             res = True
@@ -250,14 +250,14 @@ def parse_arguments():
             comma_separated_devices = comma_separated_devices[1].split(',')
             if(len(comma_separated_devices) < 2):
                 print("Atleast two devices required in Hetero Mode")
-                status_Hetero = False
+                status_hetero = False
             dev_options = ["CPU", "GPU", "MYRIAD", "FPGA", "HDDL"]
             for dev in comma_separated_devices:
                 if(dev not in dev_options):
-                    status_Hetero = False
+                    status_hetero = False
                     break
 
-        def Invalid_Hetero_Build():
+        def invalid_hetero_build():
             print("\n" + "If trying to build Hetero or Multi, specifiy the supported devices along with it." + + "\n")
             print("specify the keyword HETERO or MULTI followed by the devices ")
             print("in the order of priority you want to build" + "\n")
@@ -272,11 +272,11 @@ def parse_arguments():
             print("pick the build type for specific Hardware Device from following options: ", choices)
             print("\n")
             if not (device_read.startswith("HETERO:") or device_read.startswith("MULTI:")):
-                Invalid_Hetero_Build()
+                invalid_hetero_build()
             sys.exit("Wrong Build Type selected")
 
-        if(status_Hetero is False):
-            Invalid_Hetero_Build()
+        if(status_hetero is False):
+            invalid_hetero_build()
 
         return device_read
 
@@ -408,10 +408,13 @@ def parse_arguments():
         help="Build ONNXRuntime micro-benchmarks.")
 
     # options to reduce binary size
-    parser.add_argument("--minimal_build", action='store_true',
+    parser.add_argument("--minimal_build", action='store',
+                        const='on', default='off', nargs='?', type=str.lower,
                         help="Create a build that only supports ORT format models. "
                         "See /docs/ONNX_Runtime_Format_Model_Usage.md for more information. "
-                        "RTTI is automatically disabled in a minimal build.")
+                        "RTTI is automatically disabled in a minimal build. "
+                        "To enable execution providers that compile kernels at runtime (e.g. NNAPI) pass 'extended' "
+                        "as a parameter. e.g. `--minimal_build extended`.")
     parser.add_argument("--include_ops_by_model", type=str, help="include ops from model(s) under designated path.")
     parser.add_argument("--include_ops_by_config", type=str,
                         help="include ops from config file. "
@@ -697,7 +700,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_DISABLE_RTTI=" + ("ON" if args.disable_rtti else "OFF"),
         "-Donnxruntime_DISABLE_EXCEPTIONS=" + ("ON" if args.disable_exceptions else "OFF"),
         "-Donnxruntime_DISABLE_ORT_FORMAT_LOAD=" + ("ON" if args.disable_ort_format_load else "OFF"),
-        "-Donnxruntime_MINIMAL_BUILD=" + ("ON" if args.minimal_build else "OFF"),
+        "-Donnxruntime_MINIMAL_BUILD=" + ("ON" if args.minimal_build != 'off' else "OFF"),
+        "-Donnxruntime_EXTENDED_MINIMAL_BUILD=" + ("ON" if args.minimal_build == 'extended' else "OFF"),
         "-Donnxruntime_REDUCED_OPS_BUILD=" + (
             "ON" if args.include_ops_by_config or args.include_ops_by_model else "OFF"),
         "-Donnxruntime_MSVC_STATIC_RUNTIME=" + (

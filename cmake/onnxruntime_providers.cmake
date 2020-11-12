@@ -112,6 +112,12 @@ if(onnxruntime_USE_ROCM)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES rocm)
 endif()
 
+# internal testing only
+if(onnxruntime_USE_INTERNAL_TESTING_EP)
+  set(PROVIDERS_INTERNAL_TESTING onnxruntime_providers_internal_testing)
+  list(APPEND ONNXRUNTIME_PROVIDER_NAMES internal_testing)
+endif()
+
 source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
 
 set(onnxruntime_providers_src ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
@@ -723,7 +729,7 @@ if (onnxruntime_USE_DML)
     else()
       add_dependencies(${target} RESTORE_PACKAGES)
       target_link_libraries(${target} PRIVATE "${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}/DirectML.lib")
-	  target_compile_definitions(${target} PRIVATE DML_TARGET_VERSION_USE_LATEST)
+      target_compile_definitions(${target} PRIVATE DML_TARGET_VERSION_USE_LATEST)
     endif()
   endfunction()
 
@@ -939,4 +945,21 @@ if (onnxruntime_USE_ROCM)
   add_dependencies(onnxruntime_providers_rocm ${onnxruntime_EXTERNAL_DEPENDENCIES})
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/hip  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_rocm PROPERTIES LINKER_LANGUAGE CXX)
+endif()
+
+if (onnxruntime_USE_INTERNAL_TESTING_EP)
+  add_definitions(-DUSE_INTERNAL_TESTING_EP=1)
+  file(GLOB
+    onnxruntime_providers_internal_testing_ep_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/internal_testing/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/internal_testing/*.cc"
+  )
+
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_internal_testing_ep_srcs})
+  add_library(onnxruntime_providers_internal_testing ${onnxruntime_providers_internal_testing_ep_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_internal_testing onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf flatbuffers)
+  add_dependencies(onnxruntime_providers_internal_testing ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  target_include_directories(onnxruntime_providers_internal_testing PRIVATE ${ONNXRUNTIME_ROOT})
+  set_target_properties(onnxruntime_providers_internal_testing PROPERTIES FOLDER "ONNXRuntime")
+  set_target_properties(onnxruntime_providers_internal_testing PROPERTIES LINKER_LANGUAGE CXX)
 endif()

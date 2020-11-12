@@ -19,8 +19,13 @@ class NnapiExecutionProvider : public IExecutionProvider {
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph_view,
                 const std::vector<const KernelRegistry*>& /*kernel_registries*/) const override;
-  common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
+
+  // we implement the Compile that takes FusedNodeAndGraph instances
+  FusionStyle GetFusionStyle() const override { return FusionStyle::FilteredGraphViewer; }
+
+  common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
+
   unsigned long GetNNAPIFlags() const { return nnapi_flags_; }
 
  private:

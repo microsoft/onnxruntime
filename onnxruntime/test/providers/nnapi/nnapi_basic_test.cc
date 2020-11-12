@@ -1,3 +1,4 @@
+#if !defined(ORT_MINIMAL_BUILD)
 #include "core/common/logging/logging.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_execution_provider.h"
 #include "core/session/inference_session.h"
@@ -153,3 +154,4 @@ TEST(NnapiExecutionProviderTest, NNAPIFlagsTest) {
 
 }  // namespace test
 }  // namespace onnxruntime
+#endif // !defined(ORT_MINIMAL_BUILD)

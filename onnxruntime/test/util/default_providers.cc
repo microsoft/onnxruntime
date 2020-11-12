@@ -10,14 +10,19 @@
 namespace onnxruntime {
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(int use_arena);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id,
-                                                                               OrtCudnnConvAlgoSearch cudnn_conv_algo = OrtCudnnConvAlgoSearch::EXHAUSTIVE,
-                                                                               size_t cuda_mem_limit = std::numeric_limits<size_t>::max(),
-                                                                               ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo,
-                                                                               bool do_copy_in_default_stream = true);
+
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(
+    OrtDevice::DeviceId device_id,
+    OrtCudnnConvAlgoSearch cudnn_conv_algo = OrtCudnnConvAlgoSearch::EXHAUSTIVE,
+    size_t cuda_mem_limit = std::numeric_limits<size_t>::max(),
+    ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo,
+    bool do_copy_in_default_stream = true);
+
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(
+    const char* device_type, bool enable_vpu_fast_compile, const char* device_id, size_t num_of_threads);
+
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_NGraph(const char* ng_backend_type);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* device_type, bool enable_vpu_fast_compile, const char* device_id, size_t num_of_threads);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(unsigned long);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rknpu();
@@ -28,6 +33,10 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ArmNN(
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ROCM(OrtDevice::DeviceId device_id,
                                                                                size_t hip_mem_limit = std::numeric_limits<size_t>::max(),
                                                                                ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo);
+
+// EP for internal testing
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_InternalTesting(
+    const std::unordered_set<std::string>& supported_ops);
 
 namespace test {
 
@@ -132,6 +141,16 @@ std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider() {
 #ifdef USE_ROCM
   return CreateExecutionProviderFactory_ROCM(0)->CreateProvider();
 #else
+  return nullptr;
+#endif
+}
+
+std::unique_ptr<IExecutionProvider> DefaultInternalTestingExecutionProvider(
+    const std::unordered_set<std::string>& supported_ops) {
+#ifdef USE_INTERNAL_TESTING_EP
+  return CreateExecutionProviderFactory_InternalTesting(supported_ops)->CreateProvider();
+#else
+  ORT_UNUSED_PARAMETER(supported_ops);
   return nullptr;
 #endif
 }
