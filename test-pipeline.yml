@@ -6,5 +6,9 @@ jobs:
 - job: Job
 
   steps:
-  - script: docker info
-  - script: az --version
+  - task: AzureCLI@2
+    inputs:
+      azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
+      scriptType: 'bash'
+      scriptLocation: 'inlineScript'
+      inlineScript: 'az --version'
