@@ -48,8 +48,7 @@ def parse_args():
         "--container-registry", required=True,
         help="The Azure container registry name.")
     parser.add_argument(
-        "--repository", required=True,
-        help="The repository name within the Azure container registry.")
+        "--repository", required=True, help="The image repository name.")
 
     parser.add_argument(
         "--docker-path", default="docker", help="Path to docker.")
@@ -179,6 +178,9 @@ def main():
 
         with docker_login_logout(args.container_registry, args.docker_path):
             run(args.docker_path, "push", full_image_name)
+
+    # tag so we can refer to the image by repository name
+    run(args.docker_path, "tag", full_image_name, args.repository)
 
     return 0
 
