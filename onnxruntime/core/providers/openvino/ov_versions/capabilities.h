@@ -1,7 +1,5 @@
 #pragma once
 
-//#include "core/framework/compute_capability.h"
-
 namespace onnxruntime {
 namespace openvino_ep {
 

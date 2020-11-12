@@ -5,11 +5,6 @@
 
 #include "core/providers/shared_library/provider_api.h"
 
-//#include "core/framework/compute_capability.h"
-//#include "core/framework/tensorprotoutils.h"
-//#include "core/graph/graph_viewer.h"
-//#include "core/graph/model.h"
-//#include "core/graph/graph_utils.h"
 #include "../backend_utils.h"
 #include "../backend_manager.h"
 #include "capabilities.h"

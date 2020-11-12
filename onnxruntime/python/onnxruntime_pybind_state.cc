@@ -23,10 +23,6 @@
 #include "core/session/abi_session_options_impl.h"
 #include "core/platform/env.h"
 
-//#if USE_OPENVINO
-//#include <inference_engine.hpp>
-//#endif
-
 struct OrtStatus {
   OrtErrorCode code;
   char msg[1];  // a null-terminated string
@@ -846,7 +842,7 @@ void addGlobalMethods(py::module& m, const Environment& env) {
   });
 #endif
 
-#if 0
+#if 0  // TODO: RyanHill - Add interface to shared providers so that this information can be queried
 #ifdef USE_OPENVINO
   m.def(
       "get_available_openvino_device_ids", []() -> std::vector<std::string> {

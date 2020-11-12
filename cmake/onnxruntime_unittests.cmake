@@ -13,10 +13,6 @@ if (onnxruntime_USE_TVM)
   list(APPEND TEST_INC_DIR ${TVM_INCLUDES})
 endif()
 
-#if (onnxruntime_USE_OPENVINO)
-#    list(APPEND TEST_INC_DIR ${OPENVINO_INCLUDE_DIR})
-#endif()
-
 set(disabled_warnings)
 function(AddTest)
   cmake_parse_arguments(_UT "DYN" "TARGET" "LIBS;SOURCES;DEPENDS" ${ARGN})

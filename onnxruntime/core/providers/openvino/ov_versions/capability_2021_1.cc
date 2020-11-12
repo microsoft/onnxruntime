@@ -5,11 +5,6 @@
 
 #include <unordered_set>
 #include "core/providers/shared_library/provider_api.h"
-//#include "core/framework/compute_capability.h"
-//#include "core/framework/tensorprotoutils.h"
-//#include "core/graph/graph_viewer.h"
-//#include "core/graph/model.h"
-//#include "core/graph/graph_utils.h"
 #include "../backend_utils.h"
 #include "../backend_manager.h"
 #include "capabilities.h"
@@ -210,7 +205,7 @@ bool IsOpSupported(std::string name, std::string device) {
   } else if (device.find("MULTI") == 0) {
     std::vector<std::string> devices;
     std::stringstream s_stream(device);
-    while(s_stream.good()) {
+    while (s_stream.good()) {
       std::string substr;
       getline(s_stream, substr, ',');
       devices.push_back(substr);
@@ -219,21 +214,21 @@ bool IsOpSupported(std::string name, std::string device) {
       return true;
     }
     for (auto& it : devices) {
-      if(it == "MYRIAD" || "HDDL") {
-        if (supported_ops_vpu.count(name) == 0)  {
+      if (it == "MYRIAD" || "HDDL") {
+        if (supported_ops_vpu.count(name) == 0) {
           return false;
         }
       }
-      if(it == "GPU") {
-       if (supported_ops_gpu.count(name) == 0)  {
+      if (it == "GPU") {
+        if (supported_ops_gpu.count(name) == 0) {
           return false;
         }
       }
-      if(it == "CPU") {
-        if (supported_ops_cpu.count(name) == 0)  {
+      if (it == "CPU") {
+        if (supported_ops_cpu.count(name) == 0) {
           return false;
         }
-     }
+      }
     }
     return true;
   }
