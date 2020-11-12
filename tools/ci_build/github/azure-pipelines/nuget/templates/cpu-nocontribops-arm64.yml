@@ -8,7 +8,7 @@ jobs:
     ArtifactName: 'drop-nuget'
     JobName: 'Windows_CI_Dev'
     BuildCommand:  '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --cmake_generator "Visual Studio 16 2019" --disable_contrib_ops --disable_ml_ops --enable_msvc_static_runtime'
-    BuildArch: 'x64'    
+    BuildArch: 'x64'
     EnvSetupScript: 'setup_env.bat'
     sln_platform: 'x64'
     DoDebugBuild: 'false'

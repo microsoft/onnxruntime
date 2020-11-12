@@ -1,5 +1,6 @@
 #include "common.h"
 
+#include "core/common/status.h"
 #include "core/session/ort_env.h"
 #include "core/graph/model.h"
 #include "core/graph/graph.h"
@@ -15,6 +16,7 @@
 #include <benchmark/benchmark.h>
 #include <random>
 
+using namespace onnxruntime::common;
 using namespace onnxruntime;
 using namespace onnx;
 extern OrtEnv* env;
@@ -380,7 +382,7 @@ static void BM_Powx(benchmark::State& state) {
   f.input2 = input2;
   f.output = output;
   for (auto _ : state) {
-    tp->ParallelFor(batch_size, TensorOpCost{2, 1, static_cast<double>(cost)}, f);
+    concurrency::ThreadPool::TryParallelFor(tp.get(), batch_size, TensorOpCost{2, 1, static_cast<double>(cost)}, f);
   }
   aligned_free(input1);
   aligned_free(input2);
