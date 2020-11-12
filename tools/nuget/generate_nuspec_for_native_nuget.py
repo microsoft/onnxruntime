@@ -118,9 +118,10 @@ def generate_dependencies(list, package_name, version):
         list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
         list.append('</group>')
         # DirectML Redistributable
-        list.append('<group targetFramework="native">')
-        list.append('<dependency id="Microsoft.AI.DirectML"' + ' version="1.4.0-rc1"/>')
-        list.append('</group>')
+        if package_name == 'Microsoft.ML.OnnxRuntime.DirectML':
+            list.append('<group targetFramework="native">')
+            list.append('<dependency id="Microsoft.AI.DirectML"' + ' version="1.4.0-rc1"/>')
+            list.append('</group>')
 
         list.append('</dependencies>')
 
@@ -296,14 +297,6 @@ def generate_files(list, args):
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'nuget-staging/usr/local/lib',
                           'libonnxruntime.so') + '" target="runtimes\\linux-' + args.target_architecture +
                           '\\native" />')
-
-    if includes_directml:
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'DirectML.dll') +
-                          runtimes + ' />')
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'DirectML.pdb') +
-                          runtimes + ' />')
-        files_list.append('<file src=' + '"' + os.path.join(args.packages_path, 'Microsoft.AI.DirectML.1.4.0-rc1\\LICENSE.txt') +
-                          '" target="DirectML_LICENSE.txt" />')
 
     if includes_winml:
         # Process microsoft.ai.machinelearning import lib, dll, and pdb
