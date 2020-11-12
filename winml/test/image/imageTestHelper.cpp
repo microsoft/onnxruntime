@@ -30,7 +30,8 @@ namespace ImageTestHelper {
             throw std::invalid_argument("Unsupported pixelFormat");
         }
     }
-    
+
+
     TensorFloat LoadInputImageFromCPU(
         SoftwareBitmap softwareBitmap,
         const std::wstring& modelPixelFormat) {
