@@ -9,10 +9,9 @@ debug = False
 debug_verbose = False 
 
 def get_latest_commit_hash():
-    p1 = subprocess.Popen(["git", "log"], stdout = subprocess.PIPE)
+    p1 = subprocess.Popen(["git", "rev-parse", "--short", "HEAD"], stdout = subprocess.PIPE)
     stdout, sterr = p1.communicate()
-    stdout = stdout.decode("utf-8").strip()
-    commit = stdout.split("\n")[0].replace("commit ","")
+    commit = stdout.decode("utf-8").strip()
     return commit
 
 def parse_single_file(f):
