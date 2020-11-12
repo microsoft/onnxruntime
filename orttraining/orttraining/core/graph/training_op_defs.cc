@@ -513,8 +513,7 @@ void RegisterTrainingOpSchemas() {
 
              // dA = reshape(reduce_sum(dY / B, axes_A), shape_A)
              {{"dY_over_B"}, "Div", {"dY", "B"}},
-             {{"reduce_dA"}, "ReduceSumTraining", {"dY_over_B", "axes_A"}, 
-              {ONNX_NAMESPACE::MakeAttribute("noop_with_empty_axes", int64_t(1))}},
+             {{"reduce_dA"}, "ReduceSumTraining", {"dY_over_B", "axes_A"}, {ONNX_NAMESPACE::MakeAttribute("noop_with_empty_axes", int64_t(1))}},
              {{"dA"}, "Reshape", {"reduce_dA", "shape_A"}},
 
              // dB = reshape(reduce_sum(dY * -A / (B * B)), axes_B), shape_B)
@@ -522,8 +521,7 @@ void RegisterTrainingOpSchemas() {
              {{"minus_A"}, "Neg", {"A"}},
              {{"minus_A_over_B_squared"}, "Div", {"minus_A", "B_squared"}},
              {{"pre_reduce_dB"}, "Mul", {"dY", "minus_A_over_B_squared"}},
-             {{"reduce_dB"}, "ReduceSumTraining", {"pre_reduce_dB", "axes_B"},
-              {ONNX_NAMESPACE::MakeAttribute("noop_with_empty_axes", int64_t(1))}},
+             {{"reduce_dB"}, "ReduceSumTraining", {"pre_reduce_dB", "axes_B"}, {ONNX_NAMESPACE::MakeAttribute("noop_with_empty_axes", int64_t(1))}},
              {{"dB"}, "Reshape", {"reduce_dB", "shape_B"}}});
 
         for (size_t contrib_node_index : {2, 4, 10}) {
@@ -1929,7 +1927,10 @@ Return true if all elements are true and false otherwise.
       .TypeConstraint(
           "TOut",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain scale types to float tensors.");
+          "Constrain scale types to float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        updateOutputShape(ctx, 0, {});
+      });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(Send)
       .SetDomain(kMSDomain)
