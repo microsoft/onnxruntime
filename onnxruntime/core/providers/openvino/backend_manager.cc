@@ -122,23 +122,6 @@ bool BackendManager::ModelHasBatchedInputs(const ONNX_NAMESPACE::Provider_ModelP
   return has_batched_inputs;
 }
 
-#if 0
-#ifndef NDEBUG
-//Save ONNX Model
-static common::Status SaveModel(Provider_ModelProto& model_proto,
-                                const std::string& file_path) {
-  int fd;
-  Status status = Env::Default().FileOpenWr(file_path, fd);
-  google::protobuf::io::FileOutputStream output(fd);
-  const bool result = model_proto.SerializeToZeroCopyStream(&output) && output.Flush();
-  if (result)
-    return Status::OK();
-  else
-    return Status::OK();
-}
-#endif
-#endif
-
 bool BackendManager::ModelHasSymbolicInputDims(const onnxruntime::Provider_Node* fused_node) const {
   bool has_sym_dims = false;
   auto graph_inputs = fused_node->GetFunctionBody()->Body().GetInputs();
@@ -170,10 +153,6 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Provider_Node* fus
   const onnxruntime::Provider_Graph& node_subgraph = node_function->Body();
   auto model = node_subgraph.CreateGraphViewer()->CreateModel(logger);
 
-  //  onnxruntime::Model model(node_subgraph.Name(), true, ModelMetaData{}, onnxruntime::ToPathString(""),
-  //                           IOnnxRuntimeOpSchemaRegistryList{}, node_subgraph.DomainToVersionMap(),
-  //                           std::vector<ONNX_NAMESPACE::FunctionProto>(), logger);
-
   auto model_proto = model->ToProto();
   model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
@@ -183,7 +162,6 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Provider_Node* fus
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
     std::fstream dump(name + ".onnx", std::ios::out | std::ios::trunc | std::ios::binary);
     model_proto->SerializeToOstream(dump);
-    // TODO:    SaveModel(*model_proto, name + ".onnx");
   }
 #endif
 
