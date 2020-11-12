@@ -97,6 +97,10 @@ def generate_dependencies(list, package_name, version):
         # UAP10.0.16299, This is the earliest release of the OS that supports .NET Standard apps
         list.append('<group targetFramework="UAP10.0.16299">')
         list.append('</group>')
+        # DirectML Redistributable
+        list.append('<group targetFramework="native">')
+        list.append('<dependency id="Microsoft.AI.DirectML"' + ' version="1.4.0-rc1"/>')
+        list.append('</group>')
 
         list.append('</dependencies>')
     else:
@@ -112,6 +116,10 @@ def generate_dependencies(list, package_name, version):
         # Support .Net Framework
         list.append('<group targetFramework="NETFRAMEWORK">')
         list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+        list.append('</group>')
+        # DirectML Redistributable
+        list.append('<group targetFramework="native">')
+        list.append('<dependency id="Microsoft.AI.DirectML"' + ' version="1.4.0-rc1"/>')
         list.append('</group>')
 
         list.append('</dependencies>')
