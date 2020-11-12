@@ -31,7 +31,6 @@ namespace ImageTestHelper {
         }
     }
 
-
     TensorFloat LoadInputImageFromCPU(
         SoftwareBitmap softwareBitmap,
         const std::wstring& modelPixelFormat) {
