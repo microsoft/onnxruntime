@@ -871,6 +871,34 @@ Example 4:
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain to float, float16 and double tensors.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        std::string reduction = getAttribute(ctx, "reduction", "mean");
+        if (reduction.compare("none") == 0) {
+          if (hasInputShape(ctx, 1)) {
+            // If no reduction is performed the shape of the loss looks
+            // like the shape of the labels, without the onehot dimension.
+
+            TensorShapeProto loss_shape;
+            const TensorShapeProto& label_shape = ctx.getInputType(1)->tensor_type().shape();
+
+            for (int i = 0; i != label_shape.dim_size() - 1; ++i) {
+              *loss_shape.add_dim() = label_shape.dim(i);
+            }
+
+            *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape() =
+                loss_shape;
+          }
+
+        } else {
+          updateOutputShape(ctx, 0, {});
+        }
+
+        if (ctx.getNumOutputs() == 2) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 1);
+          propagateShapeFromInputToOutput(ctx, 0, 1);
+        }
+      })
       .SetDoc(R"DOC(SoftmaxCrossEntropy)DOC");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SoftmaxCrossEntropyGrad)
@@ -888,6 +916,10 @@ Example 4:
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain to float, float16 and double tensors.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 1, 0);
+        propagateShapeFromInputToOutput(ctx, 1, 0);
+      })
       .SetDoc(R"DOC(SoftmaxCrossEntropyGrad)DOC");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(HorovodAllReduce)
@@ -1062,6 +1094,10 @@ Example 4:
       .TypeConstraint("Tind",
                       {"tensor(int32)", "tensor(int64)"},
                       "Constrain indices to integer types")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 1, 0);
+        propagateShapeFromInputToOutput(ctx, 1, 0);
+      })
       .SetDoc(R"DOC(SoftmaxCrossEntropyLossGrad)DOC");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(BiasDropout)
@@ -1652,7 +1688,16 @@ Example 4:
       .TypeConstraint(
           "U",
           {"tensor(float)", "tensor(bfloat16)"},
-          "Constrain mean and inv_std_var to float tensors.");
+          "Constrain mean and inv_std_var to float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 1, 0);
+        propagateShapeFromInputToOutput(ctx, 1, 0);
+        propagateElemTypeFromInputToOutput(ctx, 2, 1);
+        propagateShapeFromInputToOutput(ctx, 2, 1);
+        // The bias tensor has the same shape of the scale tensor.
+        propagateElemTypeFromInputToOutput(ctx, 2, 2);
+        propagateShapeFromInputToOutput(ctx, 2, 2);
+      });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SimplifiedLayerNormalizationGrad)
       .SetDomain(kMSDomain)
