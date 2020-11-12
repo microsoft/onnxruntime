@@ -1737,6 +1737,22 @@ Example 4:
         updateOutputShape(ctx, 0, {});
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(PassThrough)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("Barrier op with value pass through, outputs = inputs")
+      .Input(0, "inputs", "input tensors", "T", OpSchema::Variadic, false)
+      .Output(0, "outputs", "output tensors", "T", OpSchema::Variadic, false)
+      .TypeConstraint("T", OpSchema::all_tensor_types_with_bfloat(), "All Tensor types")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        for (size_t i = 0; i < ctx.getNumInputs(); ++i) {
+          propagateElemTypeFromInputToOutput(ctx, i, i);
+          if (hasInputShape(ctx, i)) {
+            propagateShapeFromInputToOutput(ctx, i, i);
+          }
+        }
+      });
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(IsFinite)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("IsFinite")
