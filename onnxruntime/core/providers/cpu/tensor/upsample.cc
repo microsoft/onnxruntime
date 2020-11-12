@@ -317,8 +317,8 @@ void UpsampleBilinear(int64_t batch_size,
                       const std::vector<float>& roi,
                       bool use_extrapolation,
                       float extrapolation_value,
-                      const T* Xdata,
-                      T* Ydata,
+                      const T* XdataBase,
+                      T* YdataBase,
                       AllocatorPtr& alloc,
                       GetOriginalCoordinateFunc get_original_coordinate,
                       concurrency::ThreadPool* tp) {
@@ -410,42 +410,41 @@ void UpsampleBilinear(int64_t batch_size,
       dx2[x] = 0.5f;
     }
   }
+  
+ for (int64_t n = 0; n < batch_size; ++n) {
+    concurrency::ThreadPool::TrySimpleParallelFor(tp, num_channels,
+                                                  [&](std::ptrdiff_t c) {
+                                                    const T* Xdata = XdataBase + (n * num_channels + c) * (input_height * input_width);
+                                                    T* Ydata = YdataBase + (n * num_channels + c) * (output_height * output_width);
+                                                    for (int64_t y = 0; y < output_height; ++y) {
+                                                      for (int64_t x = 0; x < output_width; ++x) {
+                                                        // when use_extrapolation is set and original index of x or y is out of the dim range
+                                                        // then use extrapolation_value as the output value.
+                                                        if (use_extrapolation &&
+                                                            ((y_original[y] < 0 || y_original[y] > static_cast<float>(input_height - 1)) ||
+                                                             (x_original[x] < 0 || x_original[x] > static_cast<float>(input_width - 1)))) {
+                                                          Ydata[output_width * y + x] = static_cast<T>(extrapolation_value);
+                                                          continue;
+                                                        }
 
-  int64_t total = batch_size * num_channels * output_height * output_width;
+                                                        T X11 = Xdata[input_width_mul_y1[y] + in_x1[x]];
+                                                        T X21 = Xdata[input_width_mul_y1[y] + in_x2[x]];
+                                                        T X12 = Xdata[input_width_mul_y2[y] + in_x1[x]];
+                                                        T X22 = Xdata[input_width_mul_y2[y] + in_x2[x]];
 
-  concurrency::ThreadPool::TryParallelFor(tp, total, 1000, [=, &Ydata](ptrdiff_t begin, ptrdiff_t end) {
-    for (int64_t index = begin; index < end; ++index) {
-      int64_t output_size = output_height * output_width;
-      int64_t nc = index / output_size;
-      int64_t input_size = input_height * input_width;
-      int64_t hw = index % output_size;
-      int64_t y = hw / output_width;
-      int64_t x = hw % output_width;
-
-      // when use_extrapolation is set and original index of x or y is out of the dim range
-      // then use extrapolation_value as the output value.
-      if (use_extrapolation &&
-          ((y_original[y] < 0 || y_original[y] > static_cast<float>(input_height - 1)) ||
-           (x_original[x] < 0 || x_original[x] > static_cast<float>(input_width - 1)))) {
-        Ydata[output_size * nc + output_width * y + x] = static_cast<T>(extrapolation_value);
-        continue;
-      }
-
-      // subscript ordering in the variable - (xy)
-      T X11 = Xdata[input_size * nc + input_width_mul_y1[y] + in_x1[x]];
-      T X21 = Xdata[input_size * nc + input_width_mul_y1[y] + in_x2[x]];
-      T X12 = Xdata[input_size * nc + input_width_mul_y2[y] + in_x1[x]];
-      T X22 = Xdata[input_size * nc + input_width_mul_y2[y] + in_x2[x]];
-
-      Ydata[output_size * nc + output_width * y + x] = static_cast<T>(dx2[x] * dy2[y] * X11 +
-                                                   dx1[x] * dy2[y] * X21 +
-                                                   dx2[x] * dy1[y] * X12 +
-                                                   dx1[x] * dy1[y] * X22);
-    }
-  });
+                                                        Ydata[output_width * y + x] = static_cast<T>(dx2[x] * dy2[y] * X11 +
+                                                                                                     dx1[x] * dy2[y] * X21 +
+                                                                                                     dx2[x] * dy1[y] * X12 +
+                                                                                                     dx1[x] * dy1[y] * X22);
+                                                      }
+                                                    }
+                                                    Xdata += input_height * input_width;
+                                                    Ydata += output_width * output_height;
+                                                  });
+  }
 }
 
-// The following method supports a 5-D input in 'Linear mode'
+  // The following method supports a 5-D input in 'Linear mode'
 // that amounts to 'Trilinear' Upsampling/Resizing in the sense that it assumes
 // the scale values for the outermost 2 dimensions are 1.
 // This is the common use-case where the 5-D input (batched multi-channel volumes)
@@ -465,10 +464,11 @@ void UpsampleTrilinear(int64_t batch_size,
                        const std::vector<float>& roi,
                        bool use_extrapolation,
                        float extrapolation_value,
-                       const T* Xdata,
-                       T* Ydata,
+                       const T* XdataBase,
+                       T* YdataBase,
                        AllocatorPtr& alloc,
-                       GetOriginalCoordinateFunc get_original_coordinate) {
+                       GetOriginalCoordinateFunc get_original_coordinate,
+                       concurrency::ThreadPool* tp) {
   std::vector<float> z_original;
   z_original.reserve(output_depth);
 
@@ -592,48 +592,51 @@ void UpsampleTrilinear(int64_t batch_size,
   }
 
   for (int64_t n = 0; n < batch_size; ++n) {
-    for (int64_t c = 0; c < num_channels; ++c) {
-      for (int64_t z = 0; z < output_depth; ++z) {
-        for (int64_t y = 0; y < output_height; ++y) {
-          for (int64_t x = 0; x < output_width; ++x) {
-            // when use_extrapolation is set and original index of x or y is out of the dim range
-            // then use extrapolation_value as the output value.
-            if (use_extrapolation &&
-                ((z_original[z] < 0 || z_original[z] > static_cast<float>(input_depth - 1)) ||
-                 (y_original[y] < 0 || y_original[y] > static_cast<float>(input_height - 1)) ||
-                 (x_original[x] < 0 || x_original[x] > static_cast<float>(input_width - 1)))) {
-              Ydata[output_width * output_height * z + output_width * y + x] =
-                  static_cast<T>(extrapolation_value);
-              continue;
-            }
+    concurrency::ThreadPool::TrySimpleParallelFor(tp, num_channels,
+                                                  [&](std::ptrdiff_t c) {
+                                                    const T* Xdata = XdataBase + (n * num_channels + c) * (input_depth * input_height * input_width);
+                                                    T* Ydata = YdataBase + (n * num_channels + c) * (output_depth * output_height * output_width);
+                                                    for (int64_t z = 0; z < output_depth; ++z) {
+                                                      for (int64_t y = 0; y < output_height; ++y) {
+                                                        for (int64_t x = 0; x < output_width; ++x) {
+                                                          // when use_extrapolation is set and original index of x or y is out of the dim range
+                                                          // then use extrapolation_value as the output value.
+                                                          if (use_extrapolation &&
+                                                              ((z_original[z] < 0 || z_original[z] > static_cast<float>(input_depth - 1)) ||
+                                                               (y_original[y] < 0 || y_original[y] > static_cast<float>(input_height - 1)) ||
+                                                               (x_original[x] < 0 || x_original[x] > static_cast<float>(input_width - 1)))) {
+                                                            Ydata[output_width * output_height * z + output_width * y + x] =
+                                                                static_cast<T>(extrapolation_value);
+                                                            continue;
+                                                          }
 
-            // subscript ordering in the variable - (xyz)
-            T X111 = Xdata[input_height_width_mul_z1[z] + input_width_mul_y1[y] + in_x1[x]];
-            T X211 = Xdata[input_height_width_mul_z1[z] + input_width_mul_y1[y] + in_x2[x]];
-            T X121 = Xdata[input_height_width_mul_z1[z] + input_width_mul_y2[y] + in_x1[x]];
-            T X221 = Xdata[input_height_width_mul_z1[z] + input_width_mul_y2[y] + in_x2[x]];
+                                                          // subscript ordering in the variable - (xyz)
+                                                          T X111 = Xdata[input_height_width_mul_z1[z] + input_width_mul_y1[y] + in_x1[x]];
+                                                          T X211 = Xdata[input_height_width_mul_z1[z] + input_width_mul_y1[y] + in_x2[x]];
+                                                          T X121 = Xdata[input_height_width_mul_z1[z] + input_width_mul_y2[y] + in_x1[x]];
+                                                          T X221 = Xdata[input_height_width_mul_z1[z] + input_width_mul_y2[y] + in_x2[x]];
 
-            T X112 = Xdata[input_height_width_mul_z2[z] + input_width_mul_y1[y] + in_x1[x]];
-            T X212 = Xdata[input_height_width_mul_z2[z] + input_width_mul_y1[y] + in_x2[x]];
-            T X122 = Xdata[input_height_width_mul_z2[z] + input_width_mul_y2[y] + in_x1[x]];
-            T X222 = Xdata[input_height_width_mul_z2[z] + input_width_mul_y2[y] + in_x2[x]];
+                                                          T X112 = Xdata[input_height_width_mul_z2[z] + input_width_mul_y1[y] + in_x1[x]];
+                                                          T X212 = Xdata[input_height_width_mul_z2[z] + input_width_mul_y1[y] + in_x2[x]];
+                                                          T X122 = Xdata[input_height_width_mul_z2[z] + input_width_mul_y2[y] + in_x1[x]];
+                                                          T X222 = Xdata[input_height_width_mul_z2[z] + input_width_mul_y2[y] + in_x2[x]];
 
-            Ydata[output_width * output_height * z + output_width * y + x] =
-                static_cast<T>(dx2[x] * dy2[y] * dz2[z] * X111 +
-                               dx1[x] * dy2[y] * dz2[z] * X211 +
-                               dx2[x] * dy1[y] * dz2[z] * X121 +
-                               dx1[x] * dy1[y] * dz2[z] * X221 +
+                                                          Ydata[output_width * output_height * z + output_width * y + x] =
+                                                              static_cast<T>(dx2[x] * dy2[y] * dz2[z] * X111 +
+                                                                             dx1[x] * dy2[y] * dz2[z] * X211 +
+                                                                             dx2[x] * dy1[y] * dz2[z] * X121 +
+                                                                             dx1[x] * dy1[y] * dz2[z] * X221 +
 
-                               dx2[x] * dy2[y] * dz1[z] * X112 +
-                               dx1[x] * dy2[y] * dz1[z] * X212 +
-                               dx2[x] * dy1[y] * dz1[z] * X122 +
-                               dx1[x] * dy1[y] * dz1[z] * X222);
-          }
-        }
-      }
-      Xdata += input_depth * input_height * input_width;
-      Ydata += output_depth * output_width * output_height;
-    }
+                                                                             dx2[x] * dy2[y] * dz1[z] * X112 +
+                                                                             dx1[x] * dy2[y] * dz1[z] * X212 +
+                                                                             dx2[x] * dy1[y] * dz1[z] * X122 +
+                                                                             dx1[x] * dy1[y] * dz1[z] * X222);
+                                                        }
+                                                      }
+                                                    }
+                                                    Xdata += input_depth * input_height * input_width;
+                                                    Ydata += output_depth * output_width * output_height;
+                                                  });
   }
 }
 
@@ -884,7 +887,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                                 scales, roi, is_resize_, use_extrapolation_, extrapolation_value_,
                                 use_nearest2x_optimization_, get_original_coordinate_, get_nearest_pixel_);
     case UpsampleMode::LINEAR: {
-      // Supports 'bilinear' and 'trilinear' sampling only
+      // Supports 'bilinear' and 'trilinear' sampling onl
 
       //'bilinear' == 2-D input or 4-D input with outermost 2 scales as 1
       if (dims.size() == 2 || dims.size() == 4) {
@@ -900,11 +903,11 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
 
         AllocatorPtr alloc;
         ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
-        concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
         UpsampleBilinear(batch_size, num_channels, input_height, input_width, output_height, output_width,
                          is_2D ? scales[0] : scales[2], is_2D ? scales[1] : scales[3], roi,
                          use_extrapolation_, extrapolation_value_, X->template Data<T>(),
-                         Y->template MutableData<T>(), alloc, get_original_coordinate_, tp);
+                         Y->template MutableData<T>(), alloc, get_original_coordinate_, 
+                         context->GetOperatorThreadPool());
         return Status::OK();
       } else if (dims.size() == 3 || dims.size() == 5) {
         //'trilinear' == 3-D input or 5-D input with outermost 2 scales as 1
@@ -926,7 +929,8 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                           output_depth, output_height, output_width,
                           is_3D ? scales[0] : scales[2], is_3D ? scales[1] : scales[3],
                           is_3D ? scales[2] : scales[4], roi, use_extrapolation_, extrapolation_value_,
-                          X->template Data<T>(), Y->template MutableData<T>(), alloc, get_original_coordinate_);
+                          X->template Data<T>(), Y->template MutableData<T>(), alloc, get_original_coordinate_, 
+                          context->GetOperatorThreadPool());
         return Status::OK();
       } else {
         // User shouldn't hit this as the check has been performed in ScalesValidation()
