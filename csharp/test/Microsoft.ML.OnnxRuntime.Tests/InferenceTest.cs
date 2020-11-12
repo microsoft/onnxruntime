@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 using Microsoft.ML.OnnxRuntime.Tensors;
+using Microsoft.VisualBasic.CompilerServices;
+using Onnx;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -676,15 +678,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var skipModels = new Dictionary<string, string>() {
                 { "mxnet_arcface", "Model is an invalid ONNX model"},
                 { "tf_inception_v2", "TODO: Debug failing model, skipping for now" },
-                { "fp16_inception_v1", "16-bit float not supported type in C#." },
-                { "fp16_shufflenet", "16-bit float not supported type in C#." },
-                { "fp16_tiny_yolov2", "16-bit float not supported type in C#." },
-                { "fp16_coreml_FNS-Candy", "16-bit float not supported type in C#." },
-                { "test_mnist", "16-bit float not supported type in C#." },
-                { "fp16_test_shufflenet", "16-bit float not supported type in C#." },
-                { "fp16_coreml_LinearRegression_NYCTaxi", "16-bit float not supported type in C#." },
-                { "test_bidaf", "16-bit float not supported type in C#." },
-                { "fp16_test_tiny_yolov2", "16-bit float not supported type in C#." },
                 { "BERT_Squad", "Could not find an implementation for the node bert / embeddings / one_hot:OneHot(9)" },
                 { "mlperf_ssd_mobilenet_300", "Could not find file output_0.pb" },
                 { "tf_resnet_v1_50", "result mismatch when Conv BN Fusion is applied" },
@@ -2252,6 +2245,14 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     type = typeof(bool);
                     width = sizeof(bool);
                     break;
+                case TensorElementType.Float16:
+                    type = typeof(Float16);
+                    width = sizeof(ushort);
+                    break;
+                case TensorElementType.BFloat16:
+                    type = typeof(BFloat16);
+                    width = sizeof(ushort);
+                    break;
                 default:
                     type = null;
                     width = 0;
@@ -2379,6 +2380,14 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             else if (nodeMeta.ElementType == typeof(bool))
             {
                 return CreateNamedOnnxValueFromRawData<bool>(nodeName, tensor.RawData.ToArray(), sizeof(bool), intDims);
+            }
+            else if (nodeMeta.ElementType == typeof(Float16))
+            {
+                return CreateNamedOnnxValueFromRawData<Float16>(nodeName, tensor.RawData.ToArray(), sizeof(ushort), intDims);
+            }
+            else if (nodeMeta.ElementType == typeof(BFloat16))
+            {
+                return CreateNamedOnnxValueFromRawData<BFloat16>(nodeName, tensor.RawData.ToArray(), sizeof(ushort), intDims);
             }
             else
             {
