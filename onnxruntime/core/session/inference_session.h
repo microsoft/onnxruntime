@@ -57,7 +57,7 @@ class LoggingManager;
   */
 struct ModelMetadata {
   ModelMetadata() = default;
-  ModelMetadata(const ModelMetadata& other) = default;
+  ModelMetadata(const ModelMetadata&) = default;
   ~ModelMetadata() = default;
   ModelMetadata& operator=(const ModelMetadata&) = delete;
 

@@ -6,7 +6,7 @@ Status FuncManager::AddFuncInfo(const std::string& name, const std::string& dll_
   auto it = fused_funcs_->find(name);
   if (it != fused_funcs_->end())
     return Status(common::ONNXRUNTIME, common::FAIL, "func info for node: " + name + " already exist.");
-  (*fused_funcs_)[name] = {dll_path, {}};
+  (*fused_funcs_)[name] = {dll_path, NodeComputeInfo()};
   return Status::OK();
 }
 
