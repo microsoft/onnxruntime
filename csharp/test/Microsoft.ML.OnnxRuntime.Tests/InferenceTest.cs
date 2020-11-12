@@ -678,6 +678,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var skipModels = new Dictionary<string, string>() {
                 { "mxnet_arcface", "Model is an invalid ONNX model"},
                 { "tf_inception_v2", "TODO: Debug failing model, skipping for now" },
+                { "fp16_tiny_yolov2", "Tolerance level for float16 is not known" },
                 { "BERT_Squad", "Could not find an implementation for the node bert / embeddings / one_hot:OneHot(9)" },
                 { "mlperf_ssd_mobilenet_300", "Could not find file output_0.pb" },
                 { "tf_resnet_v1_50", "result mismatch when Conv BN Fusion is applied" },
@@ -819,7 +820,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     string testDataDirNamePattern = "test_data*";
                     if (opset == "opset9" && modelName == "LSTM_Seq_lens_unpacked")
                     {
-                        testDataDirNamePattern = "seq_lens*"; // discrepency in data directory
+                        testDataDirNamePattern = "seq_lens*"; // discrepancy in data directory
                     }
                     foreach (var testDataDir in modelDir.EnumerateDirectories(testDataDirNamePattern))
                     {
@@ -890,6 +891,14 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                                     else if (outputMeta.ElementType == typeof(bool))
                                     {
                                         Assert.Equal(result.AsTensor<bool>(), outputValue.AsTensor<bool>(), new ExactComparer<bool>());
+                                    }
+                                    else if (outputMeta.ElementType == typeof(Float16))
+                                    {
+                                        Assert.Equal(result.AsTensor<Float16>(), outputValue.AsTensor<Float16>(), new Float16Comparer { tolerance = 2 });
+                                    }
+                                    else if (outputMeta.ElementType == typeof(BFloat16))
+                                    {
+                                        Assert.Equal(result.AsTensor<BFloat16>(), outputValue.AsTensor<BFloat16>(), new BFloat16Comparer { tolerance = 2 });
                                     }
                                     else
                                     {
@@ -1600,7 +1609,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     var outNode0 = outputs.ElementAtOrDefault(0);
                     Assert.Equal("label", outNode0.Name);
                     Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, outNode0.ValueType);
-                    Assert.Equal(TensorElementType.Int64, (TensorElementType)outNode0.ElementType);
+                    Assert.Equal(Tensors.TensorElementType.Int64, outNode0.ElementType);
 
                     // try-cast as a tensor
                     var outLabelTensor = outNode0.AsTensor<long>();
@@ -2171,94 +2180,21 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             return tensorData.ToArray();
         }
 
-
-        private enum TensorElementType
+        private static void GetTypeAndWidth(Tensors.TensorElementType elemType, out Type type, out int width)
         {
-            Float = 1,
-            UInt8 = 2,
-            Int8 = 3,
-            UInt16 = 4,
-            Int16 = 5,
-            Int32 = 6,
-            Int64 = 7,
-            String = 8,
-            Bool = 9,
-            Float16 = 10,
-            Double = 11,
-            UInt32 = 12,
-            UInt64 = 13,
-            Complex64 = 14,
-            Complex128 = 15,
-            BFloat16 = 16,
-            DataTypeMax = 17
-        }
-
-        private static void GetTypeAndWidth(TensorElementType elemType, out Type type, out int width)
-        {
-            switch (elemType)
+            TensorElementTypeInfo result = TensorBase.GetElementTypeInfo(elemType);
+            if (result != null)
             {
-                case TensorElementType.Float:
-                    type = typeof(float);
-                    width = sizeof(float);
-                    break;
-                case TensorElementType.Double:
-                    type = typeof(double);
-                    width = sizeof(double);
-                    break;
-                case TensorElementType.Int16:
-                    type = typeof(short);
-                    width = sizeof(short);
-                    break;
-                case TensorElementType.UInt16:
-                    type = typeof(ushort);
-                    width = sizeof(ushort);
-                    break;
-                case TensorElementType.Int32:
-                    type = typeof(int);
-                    width = sizeof(int);
-                    break;
-                case TensorElementType.UInt32:
-                    type = typeof(uint);
-                    width = sizeof(uint);
-                    break;
-                case TensorElementType.Int64:
-                    type = typeof(long);
-                    width = sizeof(long);
-                    break;
-                case TensorElementType.UInt64:
-                    type = typeof(ulong);
-                    width = sizeof(ulong);
-                    break;
-                case TensorElementType.UInt8:
-                    type = typeof(byte);
-                    width = sizeof(byte);
-                    break;
-                case TensorElementType.Int8:
-                    type = typeof(sbyte);
-                    width = sizeof(sbyte);
-                    break;
-                case TensorElementType.String:
-                    type = typeof(byte);
-                    width = sizeof(byte);
-                    break;
-                case TensorElementType.Bool:
-                    type = typeof(bool);
-                    width = sizeof(bool);
-                    break;
-                case TensorElementType.Float16:
-                    type = typeof(Float16);
-                    width = sizeof(ushort);
-                    break;
-                case TensorElementType.BFloat16:
-                    type = typeof(BFloat16);
-                    width = sizeof(ushort);
-                    break;
-                default:
-                    type = null;
-                    width = 0;
-                    break;
+                type = result.TensorType;
+                width = result.TypeSize;
+            }
+            else
+            {
+                type = null;
+                width = 0;
             }
         }
+
         static NamedOnnxValue LoadTensorFromFilePb(string filename, IReadOnlyDictionary<string, NodeMetadata> nodeMetaDict)
         {
             //Set buffer size to 4MB
@@ -2271,7 +2207,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
             Type tensorElemType = null;
             int width = 0;
-            GetTypeAndWidth((TensorElementType)tensor.DataType, out tensorElemType, out width);
+            GetTypeAndWidth((Tensors.TensorElementType)tensor.DataType, out tensorElemType, out width);
             var intDims = new int[tensor.Dims.Count];
             for (int i = 0; i < tensor.Dims.Count; i++)
             {
@@ -2279,7 +2215,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
 
             NodeMetadata nodeMeta = null;
-            string nodeName = "";
+            string nodeName = string.Empty;
             if (nodeMetaDict.Count == 1)
             {
                 nodeMeta = nodeMetaDict.Values.First();
@@ -2287,7 +2223,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
             else if (nodeMetaDict.Count > 1)
             {
-                if (tensor.Name != "")
+                if (tensor.Name.Length > 0)
                 {
                     nodeMeta = nodeMetaDict[tensor.Name];
                     nodeName = tensor.Name;
@@ -2399,9 +2335,24 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
         static NamedOnnxValue CreateNamedOnnxValueFromRawData<T>(string name, byte[] rawData, int elemWidth, int[] dimensions)
         {
-            T[] floatArr = new T[rawData.Length / elemWidth];
-            Buffer.BlockCopy(rawData, 0, floatArr, 0, rawData.Length);
-            var dt = new DenseTensor<T>(floatArr, dimensions);
+            T[] typedArr = new T[rawData.Length / elemWidth];
+            var typeOf = typeof(T);
+            if(typeOf == typeof(Float16) || typeOf == typeof(BFloat16))
+            {
+                using (var memSrcHandle = new Memory<byte>(rawData).Pin())
+                using (var memDstHandle = new Memory<T>(typedArr).Pin())
+                {
+                    unsafe
+                    {
+                        Buffer.MemoryCopy(memSrcHandle.Pointer, memDstHandle.Pointer, typedArr.Length * elemWidth, rawData.Length);
+                    }
+                }
+            }
+            else
+            {
+                Buffer.BlockCopy(rawData, 0, typedArr, 0, rawData.Length);
+            }
+            var dt = new DenseTensor<T>(typedArr, dimensions);
             return NamedOnnxValue.CreateFromTensor<T>(name, dt);
         }
 
@@ -2466,7 +2417,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
             public int GetHashCode(float x)
             {
-                return 0;
+                return x.GetHashCode();
             }
         }
 
@@ -2478,7 +2429,36 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
             public int GetHashCode(T x)
             {
-                return 0;
+                return x.GetHashCode();
+            }
+        }
+
+        /// <summary>
+        /// Use it to compare Float16 and BFloat16
+        /// </summary>
+        internal class Float16Comparer : IEqualityComparer<Float16>
+        {
+            public ushort tolerance;
+            public bool Equals(Float16 x, Float16 y)
+            {
+                return Math.Abs(x - y) <= (tolerance + y);
+            }
+            public int GetHashCode(Float16 x)
+            {
+                return x.GetHashCode();
+            }
+        }
+
+        internal class BFloat16Comparer : IEqualityComparer<BFloat16>
+        {
+            public ushort tolerance;
+            public bool Equals(BFloat16 x, BFloat16 y)
+            {
+                return Math.Abs(x - y) <= (tolerance + y);
+            }
+            public int GetHashCode(BFloat16 x)
+            {
+                return x.GetHashCode();
             }
         }
 

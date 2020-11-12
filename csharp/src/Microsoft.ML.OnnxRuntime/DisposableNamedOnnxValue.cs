@@ -70,7 +70,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="value">Managed object created to represent output value, such as DenseTensor<T>
         /// List or Dictionary
         /// </param>
-        /// <param name="onnxValueType">Use this to decided what you want to call to fetch data, AsTensor(), AsDictionary()
+        /// <param name="onnxValueType">Use this to decide what you want to call to fetch data, AsTensor(), AsDictionary()
         /// or AsEnumerable()</param>
         /// <param name="elementType">Tensor element type if value type is a Tensor</param>
         /// <param name="ortValueHolder">Object that holds native resources. 

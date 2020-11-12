@@ -215,7 +215,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
     }
 
     /// <summary>
-    /// Helps typecasting. Holds primitive type information
+    /// Helps typecasting. Holds Tensor element type traits.
     /// </summary>
     public class TensorTypeInfo
     {
@@ -229,10 +229,33 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         }
     }
 
+    /// <summary>
+    /// Holds TensorElement traits
+    /// </summary>
+    public class TensorElementTypeInfo
+    {
+        public Type TensorType { get; private set; }
+        public int TypeSize { get; private set; }
+        public bool IsString { get; private set; }
+        public TensorElementTypeInfo(Type type, int typeSize)
+        {
+            TensorType = type;
+            TypeSize = typeSize;
+            IsString = type == typeof(string);
+        }
+    }
+
+    /// <summary>
+    /// This class is a base for all Tensors. It hosts maps with type traits.
+    /// </summary>
     public class TensorBase
     {
-        private static readonly Dictionary<Type, TensorTypeInfo> typeInfoMap =
-            new Dictionary<Type, TensorTypeInfo>()
+        private static readonly Dictionary<Type, TensorTypeInfo> typeInfoMap;
+
+        private static readonly Dictionary<TensorElementType, TensorElementTypeInfo> tensorElementTypeInfoMap;
+
+        static TensorBase () {
+            typeInfoMap = new Dictionary<Type, TensorTypeInfo>()
             {
                 { typeof(float), new TensorTypeInfo( TensorElementType.Float, sizeof(float)) },
                 { typeof(byte), new TensorTypeInfo( TensorElementType.UInt8, sizeof(byte)) },
@@ -250,6 +273,13 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
                 { typeof(BFloat16), new TensorTypeInfo( TensorElementType.BFloat16, sizeof(ushort)) }
             };
 
+            tensorElementTypeInfoMap = new Dictionary<TensorElementType, TensorElementTypeInfo>();
+            foreach(var info in typeInfoMap)
+            {
+                tensorElementTypeInfoMap.Add(info.Value.ElementType, new TensorElementTypeInfo(info.Key, info.Value.TypeSize));
+            }
+         }
+
         private readonly Type _primitiveType;
         protected TensorBase(Type primitiveType)
         {
@@ -262,15 +292,38 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
             }
             _primitiveType = primitiveType;
         }
+
         /// <summary>
-        /// Queries the map returns result or null
+        /// Query TensorTypeInfo by one of the supported types
+        /// </summary>
+        /// <param name="type"></param>
+        /// <returns>TensorTypeInfo or null if not supported</returns>
+        public static TensorTypeInfo GetTypeInfo(Type type)
+        {
+            TensorTypeInfo result = null;
+            typeInfoMap.TryGetValue(type, out result);
+            return result;
+        }
+
+        /// <summary>
+        /// Query TensorElementTypeInfo by enum
+        /// </summary>
+        /// <param name="elementType">type enum</param>
+        /// <returns>instance of TensorElementTypeInfo or null if not found</returns>
+        public static TensorElementTypeInfo GetElementTypeInfo(TensorElementType elementType)
+        {
+            TensorElementTypeInfo result = null;
+            tensorElementTypeInfoMap.TryGetValue(elementType, out result);
+            return result;
+        }
+
+        /// <summary>
+        /// Query TensorTypeInfo using this Tensor type
         /// </summary>
         /// <returns></returns>
         public TensorTypeInfo GetTypeInfo()
         {
-            TensorTypeInfo result = null;
-            typeInfoMap.TryGetValue(_primitiveType, out result);
-            return result;
+            return GetTypeInfo(_primitiveType);
         }
     }
 
