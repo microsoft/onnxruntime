@@ -10,6 +10,7 @@
 #include "helper.h"
 #include "model_builder.h"
 #include "op_builder.h"
+#include "op_support_checker.h"
 
 namespace onnxruntime {
 namespace nnapi {
@@ -187,7 +188,7 @@ static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
                                         const std::string& name,
                                         const OperandType& source_operand_type,
                                         DataLayout new_layout) {
-  const auto& tensor = model_builder.GetInitializerTensors().at(name);
+  const auto& tensor = *model_builder.GetInitializerTensors().at(name);
   const Shape& shape = source_operand_type.dimensions;
   ORT_RETURN_IF_NOT(shape.size() == 4,
                     "The initializer is not 4D: ", name, " actual dim ", shape.size());
@@ -267,7 +268,7 @@ static Status AddInitializerTransposed(ModelBuilder& model_builder,
 static Status AddInitializerTransposed(ModelBuilder& model_builder,
                                        const OperandType& source_operand_type,
                                        const std::string& name) {
-  const auto& tensor = model_builder.GetInitializerTensors().at(name);
+  const auto& tensor = *model_builder.GetInitializerTensors().at(name);
   const Shape& shape = source_operand_type.dimensions;
 
   ORT_RETURN_IF_NOT(shape.size() == 2,
@@ -399,7 +400,7 @@ static Status HandleAutoPad(const Shape& input_shape,
 }
 
 static float GetQuantizationScale(const ModelBuilder& model_builder, const Node& node, size_t idx) {
-  const auto& scale_tensor = model_builder.GetInitializerTensors().at(node.InputDefs()[idx]->Name());
+  const auto& scale_tensor = *model_builder.GetInitializerTensors().at(node.InputDefs()[idx]->Name());
   return GetTensorFloatData(scale_tensor)[0];
 }
 
@@ -408,7 +409,7 @@ static Status GetQuantizationZeroPoint(const ModelBuilder& model_builder, const 
 static Status GetQuantizationZeroPoint(const ModelBuilder& model_builder, const Node& node, size_t idx, int32_t& zero_point) {
   std::unique_ptr<uint8_t[]> unpacked_tensor;
   size_t tensor_byte_size;
-  const auto& zero_point_tensor = model_builder.GetInitializerTensors().at(node.InputDefs()[idx]->Name());
+  const auto& zero_point_tensor = *model_builder.GetInitializerTensors().at(node.InputDefs()[idx]->Name());
   ORT_RETURN_IF_ERROR(
       onnxruntime::utils::UnpackInitializerData(zero_point_tensor, unpacked_tensor, tensor_byte_size));
   zero_point = static_cast<int32_t>(unpacked_tensor.get()[0]);
@@ -535,7 +536,12 @@ class BaseOpBuilder : public IOpBuilder {
 };
 
 Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node& node) const {
-  ORT_RETURN_IF_NOT(model_builder.IsNodeSupported(node), "Unsupported operator ", node.OpType());
+  OpSupportCheckParams params{
+      model_builder.GetAndroidSdkVer(),
+      model_builder.UseNCHW(),
+  };
+
+  ORT_RETURN_IF_NOT(IsNodeSupported(node, model_builder.GetGraphViewer(), params), "Unsupported operator ", node.OpType());
   ORT_RETURN_IF_ERROR(AddToModelBuilderImpl(model_builder, node));
   LOGS_DEFAULT(VERBOSE) << "Operator name: [" << node.Name()
                         << "] type: [" << node.OpType() << "] was added";
@@ -828,7 +834,7 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
     ORT_RETURN_IF_ERROR(GetNCHWInput(model_builder, node, 0, input));
   }
 
-  const auto& shape_tensor = initializers.at(node.InputDefs()[1]->Name());
+  const auto& shape_tensor = *initializers.at(node.InputDefs()[1]->Name());
   const int64_t* raw_shape = GetTensorInt64Data(shape_tensor);
   const auto size = SafeInt<uint32_t>(shape_tensor.dims()[0]);
 
@@ -874,10 +880,10 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   const auto& input = node.InputDefs()[0]->Name();
   const auto& output = node.OutputDefs()[0]->Name();
 
-  const auto& scale_tensor = initializers.at(node.InputDefs()[1]->Name());
-  const auto& bias_tensor = initializers.at(node.InputDefs()[2]->Name());
-  const auto& mean_tensor = initializers.at(node.InputDefs()[3]->Name());
-  const auto& var_tensor = initializers.at(node.InputDefs()[4]->Name());
+  const auto& scale_tensor = *initializers.at(node.InputDefs()[1]->Name());
+  const auto& bias_tensor = *initializers.at(node.InputDefs()[2]->Name());
+  const auto& mean_tensor = *initializers.at(node.InputDefs()[3]->Name());
+  const auto& var_tensor = *initializers.at(node.InputDefs()[4]->Name());
   const auto eps = helper.Get("epsilon", 1e-5f);
 
   const auto size = SafeInt<uint32_t>(scale_tensor.dims()[0]);
@@ -1126,7 +1132,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   }
 
   const auto& weight = input_defs[w_idx]->Name();
-  const auto& weight_tensor = initializers.at(weight);
+  const auto& weight_tensor = *initializers.at(weight);
   bool conv_2d = false,
        depthwise_conv_2d = false,
        grouped_conv_2d = false;
@@ -1199,7 +1205,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unknown weight type ", TypeToStr(weight_type));
     }
   } else if (is_qlinear_conv) {  // QLinearConv's bias type need special handling
-    const auto& bias_tensor = model_builder.GetInitializerTensors().at(bias);
+    const auto& bias_tensor = *model_builder.GetInitializerTensors().at(bias);
     ORT_RETURN_IF_NOT(bias_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT32,
                       "bias of QLinearConv should be int32, actual type: ", bias_tensor.data_type());
     Shape bias_dimen;
@@ -1479,7 +1485,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     else
       onnx_mat_b_type = Type::TENSOR_QUANT8_ASYMM;
 
-    const auto& mat_b_tensor = initializers.at(input2);
+    const auto& mat_b_tensor = *initializers.at(input2);
     Shape onnx_mat_b_shape;
     for (auto dim : mat_b_tensor.dims())
       onnx_mat_b_shape.push_back(SafeInt<uint32_t>(dim));
@@ -1974,7 +1980,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
   if (input_defs.size() == 3) {  // we are using scales
     const auto& scales_name = input_defs[2]->Name();
-    const auto& scales_tensor = initializers.at(scales_name);
+    const auto& scales_tensor = *initializers.at(scales_name);
     const float* scales_data = GetTensorFloatData(scales_tensor);
     float scale_h = scales_data[2];
     float scale_w = scales_data[3];
@@ -1982,7 +1988,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
         shaper.ResizeUsingScales(input, scale_h, scale_w, use_nchw, output));
   } else {  // we are using sizes
     const auto& sizes_name = input_defs[3]->Name();
-    const auto& sizes_tensor = initializers.at(sizes_name);
+    const auto& sizes_tensor = *initializers.at(sizes_name);
     const int64_t* sizes_data = GetTensorInt64Data(sizes_tensor);
     ORT_RETURN_IF_ERROR(
         shaper.ResizeUsingOutputSizes(input, SafeInt<uint32_t>(sizes_data[2]), SafeInt<uint32_t>(sizes_data[3]), use_nchw, output));
@@ -2048,10 +2054,9 @@ Status FlattenOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
 
 #pragma endregion op_reshape
 
-#pragma region CreateOpBuilders
+#pragma region CreateGetOpBuilders
 
-std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>
-CreateOpBuilders() {
+static std::unordered_map<std::string, std::shared_ptr<IOpBuilder>> CreateOpBuilders() {
   std::unordered_map<std::string, std::shared_ptr<IOpBuilder>> op_map;
 
   {
@@ -2115,6 +2120,14 @@ CreateOpBuilders() {
   op_map.emplace("Resize", std::make_shared<ResizeOpBuilder>());
   op_map.emplace("Flatten", std::make_shared<FlattenOpBuilder>());
 
+  ORT_ENFORCE(op_map.size() == GetOpSupportCheckers().size(),
+              "We should have same number of OpBuilder and OpSupportChecker");
+
+  return op_map;
+}
+
+const std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>& GetOpBuilders() {
+  static const std::unordered_map<std::string, std::shared_ptr<IOpBuilder>> op_map = CreateOpBuilders();
   return op_map;
 }
 

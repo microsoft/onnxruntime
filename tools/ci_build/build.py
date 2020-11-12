@@ -98,6 +98,8 @@ def parse_arguments():
     parser.add_argument(
         "--use_horovod", action='store_true', help="Enable Horovod.")
     parser.add_argument(
+        "--disable_nccl", action='store_true', help="Disable Nccl.")
+    parser.add_argument(
         "--mpi_home", help="Path to MPI installation dir")
     parser.add_argument(
         "--nccl_home", help="Path to NCCL installation dir")
@@ -242,7 +244,7 @@ def parse_arguments():
         res = False
         if(device_read in choices):
             res = True
-        elif(device_read.startswith("HETERO:")):
+        elif(device_read.startswith("HETERO:") or device_read.startswith("MULTI:")):
             res = True
             comma_separated_devices = device_read.split(":")
             comma_separated_devices = comma_separated_devices[1].split(',')
@@ -256,18 +258,20 @@ def parse_arguments():
                     break
 
         def Invalid_Hetero_Build():
-            print("\n" + "If trying to build Hetero, specifiy the supported devices along with it")
-            print("specify the keyword HETERO followed by the devices in the order of priority you want to build")
-            print("The different hardware devices that can be added in HETERO ")
+            print("\n" + "If trying to build Hetero or Multi, specifiy the supported devices along with it." + + "\n")
+            print("specify the keyword HETERO or MULTI followed by the devices ")
+            print("in the order of priority you want to build" + "\n")
+            print("The different hardware devices that can be added in HETERO or MULTI")
             print("are ['CPU','GPU','MYRIAD','FPGA','HDDL']" + "\n")
             print("An example of how to specify the hetero build type. Ex: HETERO:GPU,CPU" + "\n")
+            print("An example of how to specify the MULTI build type. Ex: MULTI:MYRIAD,CPU" + "\n")
             sys.exit("Wrong Build Type selected")
 
         if(res is False):
             print("\n" + "You have selcted wrong configuration for the build.")
             print("pick the build type for specific Hardware Device from following options: ", choices)
             print("\n")
-            if not device_read.startswith("HETERO:"):
+            if not (device_read.startswith("HETERO:") or device_read.startswith("MULTI:")):
                 Invalid_Hetero_Build()
             sys.exit("Wrong Build Type selected")
 
@@ -728,6 +732,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "ON" if args.enable_training else "OFF"),
         "-Donnxruntime_USE_HOROVOD=" + (
             "ON" if args.use_horovod else "OFF"),
+        "-Donnxruntime_USE_NCCL=" + (
+            "OFF" if args.disable_nccl else "ON"),
         "-Donnxruntime_BUILD_BENCHMARKS=" + (
             "ON" if args.build_micro_benchmarks else "OFF"),
         "-Donnxruntime_USE_ROCM=" + ("ON" if args.use_rocm else "OFF"),
@@ -772,6 +778,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                        "-Donnxruntime_USE_OPENVINO_HETERO=" + (
                            "ON" if args.use_openvino.startswith("HETERO") else "OFF"),
                        "-Donnxruntime_USE_OPENVINO_DEVICE=" + (args.use_openvino),
+                       "-Donnxruntime_USE_OPENVINO_MULTI=" + (
+                           "ON" if args.use_openvino.startswith("MULTI") else "OFF"),
                        "-Donnxruntime_USE_OPENVINO_BINARY=" + (
                            "ON" if args.use_openvino else "OFF")]
     # temp turn on only for linux gpu build

@@ -11,13 +11,13 @@ local_rank_(0),
 world_size_(1),
 local_size_(1)
 {
-#if defined(USE_NCCL)
+#if defined(USE_MPI)
   setup_mpi();
 #endif
 }
 
 MPIContext::~MPIContext() {
-#if defined(USE_NCCL)
+#if defined(USE_MPI)
 #ifndef _WIN32
   shutdown_mpi();
 #endif
@@ -29,7 +29,7 @@ const MPIContext& MPIContext::GetInstance() {
   return context;
 }
 
-#if defined(USE_NCCL)
+#if defined(USE_MPI)
 void MPIContext::setup_mpi() {
   // setup MPI amd horovod
   int is_mpi_initialized = 0;

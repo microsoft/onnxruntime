@@ -60,7 +60,8 @@ static std::unordered_map<std::string, std::unordered_set<size_t>>
         {"Where", {0}},
         {"Range", {0, 1, 2}},
         {"Tile", {1}},
-        {"BroadcastGradientArgs", {0, 1}}};
+        {"BroadcastGradientArgs", {0, 1}},
+        {"TopK", {1}}};
 
 class GradientGraphBuilder {
  public:

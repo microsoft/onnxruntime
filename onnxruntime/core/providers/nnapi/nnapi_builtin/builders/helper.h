@@ -7,6 +7,11 @@
 #include "core/graph/basic_types.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksTypes.h"
 
+// This is the minimal Android API Level required by ORT NNAPI EP to run
+#ifndef ORT_NNAPI_MIN_API_LEVEL
+#define ORT_NNAPI_MIN_API_LEVEL 27
+#endif
+
 namespace onnxruntime {
 
 using Shape = std::vector<uint32_t>;
@@ -14,8 +19,12 @@ using InitializerMap = std::unordered_map<std::string, const ONNX_NAMESPACE::Ten
 
 class Node;
 class NodeArg;
+class GraphViewer;
 
 namespace nnapi {
+
+class IOpSupportChecker;
+struct OpSupportCheckParams;
 
 #define THROW_ON_ERROR(val)                  \
   {                                          \
@@ -78,10 +87,10 @@ bool IsQLinearBinaryOp(QLinearOpType qlinear_op_type);
 // Check if a qlinear binary op has valid inputs
 bool HasValidBinaryOpQuantizedInputs(const Node& node);
 // Check if a qlinear op has valid scales for given indices
-bool HasValidQuantizationScales(const InitializerMap& initializers, const Node& node,
+bool HasValidQuantizationScales(const InitializedTensorSet& initializers, const Node& node,
                                 const std::vector<size_t>& indices);
 // Check if a qlinear op has valid zero points for given indices
-bool HasValidQuantizationZeroPoints(const InitializerMap& initializers, const Node& node,
+bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, const Node& node,
                                     const std::vector<size_t>& indices);
 
 // Get initialize tensort float/int32/int64 data without unpacking
@@ -96,10 +105,16 @@ bool GetType(const NodeArg& node_arg, int32_t& type);
 
 // Get the min/max value from Clip op
 // If the min/max are inputs be not initializers (value not preset), will return false
-bool GetClipMinMax(const InitializerMap& initializers, const Node& node, float& min, float& max);
+bool GetClipMinMax(const InitializedTensorSet& initializers, const Node& node, float& min, float& max);
 
 // Get the output shape of Flatten Op
 void GetFlattenOutputShape(const Node& node, const Shape& input_shape, int32_t& dim_1, int32_t& dim_2);
+
+// If a node is supported by NNAPI
+bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const OpSupportCheckParams& params);
+
+// Get a list of groups of supported nodes, each group represents a subgraph supported by NNAPI EP
+std::vector<std::vector<int>> GetSupportedNodes(const GraphViewer& graph_viewer, const OpSupportCheckParams& params);
 
 // Get string representation of a Shape
 std::string Shape2String(const std::vector<uint32_t>& shape);
