@@ -53,49 +53,6 @@ struct OpenVINO_Provider : Provider {
     return std::make_shared<OpenVINOProviderFactory>(params.device_type, params.enable_vpu_fast_compile, params.device_id, params.num_of_threads);
   }
 
-  std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* settings_str) override {
-    std::string device_type = "";
-    bool enable_vpu_fast_compile = false;
-    std::string device_id = "";
-    size_t num_of_threads = 8;
-
-    // Parse settings string
-    std::stringstream iss;
-    iss << settings_str;
-    std::string token;
-    while (std::getline(iss, token)) {
-      if (token == "") {
-        continue;
-      }
-      auto pos = token.find("|");
-      if (pos == std::string::npos || pos == 0 || pos == token.length()) {
-        continue;
-      }
-
-      auto key = token.substr(0, pos);
-      auto value = token.substr(pos + 1);
-
-      if (key == "device_type") {
-        device_type = value;
-      } else if (key == "enable_vpu_fast_compile") {
-        if (value == "true" || value == "True") {
-          enable_vpu_fast_compile = true;
-        }
-      } else if (key == "device_id") {
-        device_id = value;
-      } else if (key == "num_of_threads") {
-        size_t n_t = std::stoi(value);
-        if ((int)n_t <= 0) {
-          num_of_threads = 8;
-        } else {
-          num_of_threads = n_t;
-        }
-      }
-    }
-
-    return std::make_shared<OpenVINOProviderFactory>(device_type.c_str(), enable_vpu_fast_compile, device_id.c_str(), num_of_threads);
-  }
-
   void Shutdown() override {
     openvino_ep::BackendManager::ReleaseGlobalContext();
   }

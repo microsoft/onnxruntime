@@ -168,9 +168,11 @@ struct Provider_IExecutionProvider {
 };
 
 struct Provider {
-  virtual std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory(int /*device_id*/) { return nullptr; }
+  // Takes a pointer to a provider specific structure to create the factory. For example, with OpenVINO it is a pointer to an OrtOpenVINOProviderOptions structure
   virtual std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory(const void* /*provider_options*/) { return nullptr; }
-  virtual std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* /*settings_str*/) { return nullptr; }
+
+  // Old simple device_id API to create provider factories, currently used by DNNL And TensorRT
+  virtual std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory(int /*device_id*/) { return nullptr; }
 
   virtual const void* GetInfo() { return nullptr; }  // Returns a provider specific information interface if it exists
   virtual void Shutdown() = 0;
