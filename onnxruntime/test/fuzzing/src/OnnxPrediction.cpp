@@ -5,15 +5,15 @@
 #include <vector>
 #include <memory>
 
-// Uses the onnxruntime to load the model
+// Uses the onnxruntime to load the modelmodelData
 // into a session.
 //
 OnnxPrediction::OnnxPrediction(std::wstring& onnx_model_file)
-    : rawModel{nullptr},
-      ptrSession{nullptr},
-      session{env, onnx_model_file.c_str(), emptySessionOption},
-      inputNames{session.GetInputCount()},
-      outputNames{session.GetOutputCount()} {
+    : raw_model{nullptr},
+      ptr_session{nullptr},
+      session{env, onnx_model_file.c_str(), empty_session_option},
+      input_names{session.GetInputCount()},
+      output_names{session.GetOutputCount()} {
   init();
 }
 
@@ -21,41 +21,41 @@ OnnxPrediction::OnnxPrediction(std::wstring& onnx_model_file)
 //
 OnnxPrediction::OnnxPrediction(onnx::ModelProto& onnx_model)
     : session{nullptr} {
-  rawModel = std::shared_ptr<void>{alloc.Alloc(onnx_model.ByteSizeLong()),
+  raw_model = std::shared_ptr<void>{alloc.Alloc(onnx_model.ByteSizeLong()),
                                    [this](void* ptr) {
                                      this->GetAllocator().Free(ptr);
                                    }};
 
-  onnx_model.SerializeToArray(rawModel.get(), static_cast<int>(onnx_model.ByteSizeLong()));
+  onnx_model.SerializeToArray(raw_model.get(), static_cast<int>(onnx_model.ByteSizeLong()));
 
-  ptrSession = std::make_unique<Ort::Session>(env,
-                                              rawModel.get(),
+  ptr_session = std::make_unique<Ort::Session>(env,
+                                              raw_model.get(),
                                               onnx_model.ByteSizeLong(),
-                                              emptySessionOption),
+                                              empty_session_option),
 
-  inputNames.resize(ptrSession->GetInputCount());
-  outputNames.resize(ptrSession->GetOutputCount());
+  input_names.resize(ptr_session->GetInputCount());
+  output_names.resize(ptr_session->GetOutputCount());
 
   init();
 }
 
-OnnxPrediction::OnnxPrediction(const std::vector<char>& modelData)
+OnnxPrediction::OnnxPrediction(const std::vector<char>& model_data)
     : session{nullptr} {
-  size_t numBytes = modelData.size();
-  rawModel = std::shared_ptr<void>{alloc.Alloc(numBytes),
+  size_t num_bytes = model_data.size();
+  raw_model = std::shared_ptr<void>{alloc.Alloc(num_bytes),
                                    [this](void* ptr) {
                                      this->GetAllocator().Free(ptr);
                                    }};
-  memcpy(rawModel.get(), modelData.data(), numBytes);
+  memcpy(raw_model.get(), model_data.data(), num_bytes);
   Ort::SessionOptions so;
   so.AddConfigEntry(kOrtSessionOptionsConfigLoadModelFormat, "ORT");
-  ptrSession = std::make_unique<Ort::Session>(env,
-                                              rawModel.get(),
-                                              numBytes,
+  ptr_session = std::make_unique<Ort::Session>(env,
+                                              raw_model.get(),
+                                              num_bytes,
                                               so),
 
-  inputNames.resize(ptrSession->GetInputCount());
-  outputNames.resize(ptrSession->GetOutputCount());
+  input_names.resize(ptr_session->GetInputCount());
+  output_names.resize(ptr_session->GetOutputCount());
 
   init();
 }
@@ -63,11 +63,11 @@ OnnxPrediction::OnnxPrediction(const std::vector<char>& modelData)
 // Destructor
 //
 OnnxPrediction::~OnnxPrediction() {
-  if (ptrSession.get() == &session) {
+  if (ptr_session.get() == &session) {
     // Ensure the session is not deleted
     // by the unique_ptr. Because it will be deleting the stack
     //
-    ptrSession.release();
+    ptr_session.release();
   }
 }
 
@@ -86,8 +86,8 @@ std::wostream& operator<<(std::wostream& out, OnnxPrediction& pred) {
   };
 
   size_t index{0};
-  for (auto& val : pred.outputValues) {
-    out << pred.outputNames[index++] << L" = ";
+  for (auto& val : pred.output_values) {
+    out << pred.output_names[index++] << L" = ";
     pred.ProcessOutputData(pretty_print, val);
   }
 
@@ -134,10 +134,10 @@ void OnnxPrediction::RunInference() {
   Logger::testLog.flush();
 
   try {
-    ptrSession->Run(runOptions,
-                    inputNames.data(), inputValues.data(),
-                    inputValues.size(), outputNames.data(), outputValues.data(),
-                    outputNames.size());
+    ptr_session->Run(run_options,
+                    input_names.data(), input_values.data(),
+                    input_values.size(), output_names.data(), output_values.data(),
+                    output_names.size());
   } catch (...) {
     Logger::testLog << L"Something went wrong in inference " << Logger::endl;
     Logger::testLog.flush();
@@ -163,25 +163,25 @@ void OnnxPrediction::init() {
   //
   env.EnableTelemetryEvents();
 
-  if (!ptrSession) {
+  if (!ptr_session) {
     // To use one consistent value
     // across the class
     //
-    ptrSession.reset(&session);
+    ptr_session.reset(&session);
   }
 
   // Initialize model input names
   //
-  for (int i = 0; i < ptrSession->GetInputCount(); i++) {
-    inputNames[i] = ptrSession->GetInputName(i, alloc);
-    inputValues.emplace_back(nullptr);
+  for (int i = 0; i < ptr_session->GetInputCount(); i++) {
+    input_names[i] = ptr_session->GetInputName(i, alloc);
+    input_values.emplace_back(nullptr);
   }
 
   // Initialize model output names
   //
-  for (int i = 0; i < ptrSession->GetOutputCount(); i++) {
-    outputNames[i] = ptrSession->GetOutputName(i, alloc);
-    outputValues.emplace_back(nullptr);
+  for (int i = 0; i < ptr_session->GetOutputCount(); i++) {
+    output_names[i] = ptr_session->GetOutputName(i, alloc);
+    output_values.emplace_back(nullptr);
   }
 }
 
@@ -195,8 +195,8 @@ void OnnxPrediction::SetupInput(
     InputGeneratorFunctionType GenerateData,
     size_t seed) {
   Logger::testLog << L"input data:\n";
-  for (int i = 0; i < ptrSession->GetInputCount(); i++) {
-    auto inputType = ptrSession->GetInputTypeInfo(i);
+  for (int i = 0; i < ptr_session->GetInputCount(); i++) {
+    auto inputType = ptr_session->GetInputTypeInfo(i);
 
     if (inputType.GetONNXType() == ONNX_TYPE_TENSOR) {
       auto elem_type = inputType.GetTensorTypeAndShapeInfo().GetElementType();
@@ -204,7 +204,7 @@ void OnnxPrediction::SetupInput(
 
       // This can be any generic function to generate inputs
       //
-      GenerateData(*this, i, std::string(inputNames[i]), elem_type, elem_count, seed);
+      GenerateData(*this, i, std::string(input_names[i]), elem_type, elem_count, seed);
 
       // Update the seed in a predicatable way to get other values for different inputs
       //

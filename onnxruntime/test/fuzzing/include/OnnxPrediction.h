@@ -49,7 +49,7 @@ class OnnxPrediction {
   // The following constructor is meant for initializing using flatbuffer model.
   // Memory buffer pointing to the model
   //
-  OnnxPrediction(const std::vector<char>& modelData);
+  OnnxPrediction(const std::vector<char>& model_data);
 
   // Deletes the prediction object
   //
@@ -59,37 +59,37 @@ class OnnxPrediction {
   //
   template <typename T>
   void operator<<(std::vector<T>&& raw_data) {
-    if (currInputIndex >= ptrSession->GetInputCount()) {
+    if (curr_input_index >= ptr_session->GetInputCount()) {
       return;
     }
 
-    Ort::Value& inputValue = inputValues[currInputIndex];
+    Ort::Value& input_value = input_values[curr_input_index];
     auto data_size_in_bytes = raw_data.size() * sizeof(T);
 
     // Copy the raw input data and control the lifetime.
     //
-    inputData.emplace_back(alloc.Alloc(data_size_in_bytes),
+    input_data.emplace_back(alloc.Alloc(data_size_in_bytes),
                            [this](void* ptr1) {
                              this->GetAllocator().Free(ptr1);
                            });
 
-    std::copy(raw_data.begin(), raw_data.end(), reinterpret_cast<T*>(inputData[currInputIndex].get()));
-    auto inputType = ptrSession->GetInputTypeInfo(currInputIndex);
-    auto shapeInfo = inputType.GetTensorTypeAndShapeInfo().GetShape();
-    auto elem_type = inputType.GetTensorTypeAndShapeInfo().GetElementType();
+    std::copy(raw_data.begin(), raw_data.end(), reinterpret_cast<T*>(input_data[curr_input_index].get()));
+    auto input_type = ptr_session->GetInputTypeInfo(curr_input_index);
+    auto shapeInfo = input_type.GetTensorTypeAndShapeInfo().GetShape();
+    auto elem_type = input_type.GetTensorTypeAndShapeInfo().GetElementType();
     if (elem_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
-      inputValue = Ort::Value::CreateTensor(alloc.GetInfo(),
-                                            inputData[currInputIndex].get(), data_size_in_bytes, shapeInfo.data(), shapeInfo.size(), elem_type);
+      input_value = Ort::Value::CreateTensor(alloc.GetInfo(),
+                                            input_data[curr_input_index].get(), data_size_in_bytes, shapeInfo.data(), shapeInfo.size(), elem_type);
     } else if (elem_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32) {
-      inputValue = Ort::Value::CreateTensor(alloc.GetInfo(),
-                                            inputData[currInputIndex].get(), data_size_in_bytes, shapeInfo.data(), shapeInfo.size(), elem_type);
+      input_value = Ort::Value::CreateTensor(alloc.GetInfo(),
+                                            input_data[curr_input_index].get(), data_size_in_bytes, shapeInfo.data(), shapeInfo.size(), elem_type);
     } else {
       throw std::exception("only floats are implemented");
     }
 
     // Insert data into the next input type
     //
-    currInputIndex++;
+    curr_input_index++;
   }
 
   // Used to generate
@@ -141,15 +141,15 @@ class OnnxPrediction {
 
   // Create Options for the Session
   //
-  Ort::SessionOptions emptySessionOption;
+  Ort::SessionOptions empty_session_option;
 
   // A pointer to the model
   //
-  std::shared_ptr<void> rawModel;
+  std::shared_ptr<void> raw_model;
 
   // Create RunOptions
   //
-  Ort::RunOptions runOptions;
+  Ort::RunOptions run_options;
 
   // Create a Session to run
   //
@@ -157,32 +157,32 @@ class OnnxPrediction {
 
   // Pointer to the current session object
   //
-  std::unique_ptr<Ort::Session> ptrSession;
+  std::unique_ptr<Ort::Session> ptr_session;
 
   // Create a list of input values
   //
-  std::vector<Ort::Value> inputValues{};
+  std::vector<Ort::Value> input_values{};
 
   // Stores the input names
   //
-  std::vector<char*> inputNames;
+  std::vector<char*> input_names;
 
   // Stores the output names
   //
-  std::vector<char*> outputNames;
+  std::vector<char*> output_names;
 
   // Create a list of output values
   //
-  std::vector<Ort::Value> outputValues{};
+  std::vector<Ort::Value> output_values{};
 
   // We own the lifetime of the input data
   //
-  std::vector<std::shared_ptr<void>> inputData;
+  std::vector<std::shared_ptr<void>> input_data;
 
   // Keeps track of number of columns/dimensions data
   // given for predicition
   //
-  size_t currInputIndex{0};
+  size_t curr_input_index{0};
 };
 
 // OnnxPrediction console output format

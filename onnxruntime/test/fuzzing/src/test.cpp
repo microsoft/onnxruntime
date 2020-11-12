@@ -6,9 +6,9 @@
 #include "OnnxPrediction.h"
 #include <type_traits>
 
-using userOptions = struct
+using user_options = struct
 {
-  bool writeModel;
+  bool write_model;
   bool verbose;
   bool stress;
   bool flatbuffer;
@@ -35,7 +35,7 @@ void predict(onnx::ModelProto& model_proto, unsigned int seed) {
 
 void mutateModelTest(onnx::ModelProto& model_proto,
                      std::wstring mutatedModelDirName,
-                     userOptions opt,
+                     user_options opt,
                      unsigned int seed = 0) {
   // Used to initialize all random engines
   //
@@ -62,7 +62,7 @@ void mutateModelTest(onnx::ModelProto& model_proto,
   mutator.Seed(seed);
   mutator.Mutate(&model_proto, model_proto.ByteSizeLong());
 
-  if (opt.writeModel) {
+  if (opt.write_model) {
     // Create file to store model
     //
     std::wstringstream mutateModelName;
@@ -116,15 +116,15 @@ enum class timeScale : char {
 
 struct runtimeOpt
 {
-  std::wstring modelFileName{};
-  std::wstring mutateModelDirName{};
-  Logger::ccstream errStreamBuf{};
-  Logger::wcstream werrStreamBuf{};
-  bool repoMode{false};
-  int testTimeOut{0};
+  std::wstring model_file_name{};
+  std::wstring mutate_model_dir_name{};
+  Logger::ccstream err_stream_buf{};
+  Logger::wcstream werr_stream_buf{};
+  bool repo_mode{false};
+  int test_time_out{0};
   unsigned int seed{0};
   timeScale scale{timeScale::Sec};
-  userOptions userOpt{false, false, false, false};
+  user_options user_opt{false, false, false, false};
 };
 
 int processCommandLine(int argc, char* argv[], runtimeOpt& opt) {
@@ -136,15 +136,15 @@ int processCommandLine(int argc, char* argv[], runtimeOpt& opt) {
     bool isRepo = std::string{argv[1]} == "/r";
 
     if (isRepo) {
-      opt.repoMode = true;
-      opt.mutateModelDirName = L"./repromodel";
-      std::filesystem::path mutateModelDir{opt.mutateModelDirName};
-      if (!std::filesystem::exists(mutateModelDir)) {
-        std::filesystem::create_directory(mutateModelDir);
+      opt.repo_mode = true;
+      opt.mutate_model_dir_name = L"./repromodel";
+      std::filesystem::path mutate_model_dir{opt.mutate_model_dir_name};
+      if (!std::filesystem::exists(mutate_model_dir)) {
+        std::filesystem::create_directory(mutate_model_dir);
       }
 
-      opt.modelFileName = Logger::towstr(argv[2]);
-      Logger::testLog << L"Repo Model file: " << opt.modelFileName << Logger::endl;
+      opt.model_file_name = Logger::towstr(argv[2]);
+      Logger::testLog << L"Repo Model file: " << opt.model_file_name << Logger::endl;
 
       // Get seed
       //
@@ -162,15 +162,15 @@ int processCommandLine(int argc, char* argv[], runtimeOpt& opt) {
       // Parse right to left
       //
       std::stringstream parser;
-      char desiredScale;
+      char desired_scale;
       parser << argv[index--];
-      parser >> desiredScale;
+      parser >> desired_scale;
 
       if (parser.bad()) {
         throw std::exception("Could not parse the time scale from the command line");
       }
 
-      opt.scale = static_cast<timeScale>(std::tolower(desiredScale));
+      opt.scale = static_cast<timeScale>(std::tolower(desired_scale));
       switch (opt.scale) {
         case timeScale::Hrs:
         case timeScale::Min:
@@ -181,16 +181,16 @@ int processCommandLine(int argc, char* argv[], runtimeOpt& opt) {
       }
 
       parser << argv[index--];
-      parser >> opt.testTimeOut;
+      parser >> opt.test_time_out;
       if (parser.bad()) {
         throw std::exception("Could not parse the time value from the command line");
       }
 
-      Logger::testLog << L"Running Test for: " << opt.testTimeOut << desiredScale << Logger::endl;
-      opt.modelFileName = Logger::towstr(argv[index--]);
-      Logger::testLog << L"Model file: " << opt.modelFileName << Logger::endl;
-      std::filesystem::path modelFileNamePath{opt.modelFileName};
-      if (!std::filesystem::exists(modelFileNamePath)) {
+      Logger::testLog << L"Running Test for: " << opt.test_time_out << desired_scale << Logger::endl;
+      opt.model_file_name = Logger::towstr(argv[index--]);
+      Logger::testLog << L"Model file: " << opt.model_file_name << Logger::endl;
+      std::filesystem::path model_file_namePath{opt.model_file_name};
+      if (!std::filesystem::exists(model_file_namePath)) {
         throw std::exception("Cannot find model file");
       }
 
@@ -199,33 +199,33 @@ int processCommandLine(int argc, char* argv[], runtimeOpt& opt) {
       while (index > 0) {
         auto option{std::string{argv[index]}};
         if (option == "/m") {
-          opt.userOpt.writeModel = true;
+          opt.user_opt.write_model = true;
         } else if (option == "/v") {
-          opt.userOpt.verbose = true;
+          opt.user_opt.verbose = true;
         } else if (option == "/s") {
-          opt.userOpt.stress = true;
+          opt.user_opt.stress = true;
         } else if (option == "/f") {
-          opt.userOpt.flatbuffer = true;
+          opt.user_opt.flatbuffer = true;
         }
         index--;
       }
 
-      if (opt.userOpt.stress) {
-        std::cerr.rdbuf(&opt.errStreamBuf);
-        std::wcerr.rdbuf(&opt.werrStreamBuf);
-        opt.userOpt.writeModel = false;
-        opt.userOpt.verbose = false;
+      if (opt.user_opt.stress) {
+        std::cerr.rdbuf(&opt.err_stream_buf);
+        std::wcerr.rdbuf(&opt.werr_stream_buf);
+        opt.user_opt.write_model = false;
+        opt.user_opt.verbose = false;
         Logger::testLog.disable();
         Logger::testLog.minLog();
       }
 
       // create directory for mutated model output
       //
-      if (opt.userOpt.writeModel) {
-        opt.mutateModelDirName = L"./mutatemodel";
-        std::filesystem::path mutateModelDir{opt.mutateModelDirName};
-        if (!std::filesystem::exists(mutateModelDir)) {
-          std::filesystem::create_directory(mutateModelDir);
+      if (opt.user_opt.write_model) {
+        opt.mutate_model_dir_name = L"./mutatemodel";
+        std::filesystem::path mutate_model_dir{opt.mutate_model_dir_name};
+        if (!std::filesystem::exists(mutate_model_dir)) {
+          std::filesystem::create_directory(mutate_model_dir);
         }
       }
     } else {
@@ -263,8 +263,8 @@ static void fuzz_handle_exception() {
 
 int main(int argc, char* argv[]) {
   runtimeOpt opt{};
-  userOptions& userOpt{opt.userOpt};
-  Logger::wcstream& werrStreamBuf{opt.werrStreamBuf};
+  user_options& user_opt{opt.user_opt};
+  Logger::wcstream& werr_stream_buf{opt.werr_stream_buf};
   try {
     // Initialize the runtime options
     //
@@ -274,21 +274,21 @@ int main(int argc, char* argv[]) {
       return -1;
     }
 
-    std::wstring& modelFileName{opt.modelFileName};
-    std::wstring& mutateModelDirName{opt.mutateModelDirName};
-    bool& repoMode{opt.repoMode};
-    int& testTimeOut{opt.testTimeOut};
+    std::wstring& model_file_name{opt.model_file_name};
+    std::wstring& mutate_model_dir_name{opt.mutate_model_dir_name};
+    bool& repo_mode{opt.repo_mode};
+    int& test_time_out{opt.test_time_out};
     unsigned int& seed{opt.seed};
     timeScale& scale{opt.scale};
 
     // Model file
     //
-    std::wstring modelFile{modelFileName};
+    std::wstring model_file{model_file_name};
 
     // Create a stream to hold the model
     //
-    std::ifstream modelStream{modelFile, std::ios::in | std::ios::binary};
-    if (opt.userOpt.flatbuffer == false) {
+    std::ifstream modelStream{model_file, std::ios::in | std::ios::binary};
+    if (opt.user_opt.flatbuffer == false) {
       // Create an onnx protobuf object
       //
       onnx::ModelProto model_proto;
@@ -296,30 +296,30 @@ int main(int argc, char* argv[]) {
       // Initialize the model
       //
       if (model_proto.ParseFromIstream(&modelStream)) {
-        if (repoMode) {
-          Logger::testLog << L"Running Prediction for: " << modelFileName
+        if (repo_mode) {
+          Logger::testLog << L"Running Prediction for: " << model_file_name
                           << L" with seed " << seed << Logger::endl;
-          mutateModelTest(model_proto, mutateModelDirName, userOpt, seed);
-          Logger::testLog << L"Finished Prediction for: " << modelFileName
+          mutateModelTest(model_proto, mutate_model_dir_name, user_opt, seed);
+          Logger::testLog << L"Finished Prediction for: " << model_file_name
                           << L" with seed " << seed << Logger::endl;
           return 0;
         } else {
           // Call the mutateModelTest
           //
-          std::chrono::system_clock::time_point currTime{std::chrono::system_clock::now()};
+          std::chrono::system_clock::time_point curr_time{std::chrono::system_clock::now()};
 
-          std::chrono::minutes timeInMin{testTimeOut};
-          std::chrono::seconds timeInSec{testTimeOut};
-          std::chrono::hours timeInHrs{testTimeOut};
-          std::chrono::system_clock::time_point endTime{currTime};
-          endTime += scale == timeScale::Hrs ? timeInHrs
-                                             : scale == timeScale::Min ? timeInMin : timeInSec;
+          std::chrono::minutes time_in_min{test_time_out};
+          std::chrono::seconds time_in_sec{test_time_out};
+          std::chrono::hours time_in_hrs{test_time_out};
+          std::chrono::system_clock::time_point end_time{curr_time};
+          end_time += scale == timeScale::Hrs ? time_in_hrs
+                                             : scale == timeScale::Min ? time_in_min : time_in_sec;
           Logger::testLog << "Starting Test" << Logger::endl;
-          while (currTime < endTime) {
+          while (curr_time < end_time) {
             try {
               onnx::ModelProto bad_model = model_proto;
               Logger::testLog << "Starting Test iteration: " << iteration << Logger::endl;
-              mutateModelTest(bad_model, mutateModelDirName, userOpt);
+              mutateModelTest(bad_model, mutate_model_dir_name, user_opt);
               num_successful_runs++;
               Logger::testLog << "Completed Test iteration: " << iteration++ << Logger::endl;
             } catch (...) {
@@ -327,33 +327,33 @@ int main(int argc, char* argv[]) {
             }
             // Update current time
             //
-            currTime = std::chrono::system_clock::now();
+            curr_time = std::chrono::system_clock::now();
           }
         }
       } else {
         throw std::exception("Unable to initialize the Onnx model in memory");
       }
     } else {
-      std::wstring ortModelFile = modelFile + L".ort";
+      std::wstring ort_model_file = model_file + L".ort";
       Ort::SessionOptions so;
       Ort::Env env;
       so.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
-      so.SetOptimizedModelFilePath(ortModelFile.c_str());
+      so.SetOptimizedModelFilePath(ort_model_file.c_str());
       so.AddConfigEntry(kOrtSessionOptionsConfigSaveModelFormat, "ORT");
-      Ort::Session session(env, modelFile.c_str(), so);
-      size_t numBytes = std::filesystem::file_size(ortModelFile);
-      std::vector<char> modelData(numBytes);
-      std::ifstream ortModelStream(ortModelFile, std::ifstream::in | std::ifstream::binary);
-      ortModelStream.read(modelData.data(), numBytes);
+      Ort::Session session(env, model_file.c_str(), so);
+      size_t num_bytes = std::filesystem::file_size(ort_model_file);
+      std::vector<char> model_data(num_bytes);
+      std::ifstream ortModelStream(ort_model_file, std::ifstream::in | std::ifstream::binary);
+      ortModelStream.read(model_data.data(), num_bytes);
       ortModelStream.close();
-      for (int i = 8; i < numBytes; i++) {
-        char tmp = modelData[i];
-        int j = (numBytes - i - 1) ? (i + 1) : 0;  // j = (i+1) % (numBytes -1)
-        modelData[i] ^= modelData[j];
-        modelData[i] = tmp;
+      for (int i = 8; i < num_bytes; i++) {
+        char tmp = model_data[i];
+        int j = (num_bytes - i - 1) ? (i + 1) : 0;  // j = (i+1) % (num_bytes -1)
+        model_data[i] ^= model_data[j];
+        model_data[i] = tmp;
         try {
           Logger::testLog << "Starting Test" << Logger::endl;
-          OnnxPrediction predict(modelData);
+          OnnxPrediction predict(model_data);
           predict.SetupInput(GenerateDataForInputTypeTensor, 0);
           predict.RunInference();
           predict.PrintOutputValues();
@@ -366,7 +366,7 @@ int main(int argc, char* argv[]) {
     }
     Logger::testLog << "Ending Test" << Logger::endl;
 
-    if (userOpt.stress) {
+    if (user_opt.stress) {
       Logger::testLog.enable();
     }
 
@@ -374,15 +374,15 @@ int main(int argc, char* argv[]) {
     Logger::testLog << L"Number of Unknown exceptions: " << num_unknown_exception << Logger::endl;
     Logger::testLog << L"Number of ort exceptions: " << num_ort_exception << Logger::endl;
     Logger::testLog << L"Number of std exceptions: " << num_std_exception << Logger::endl;
-    Logger::testLog << L"Number of unique errors: " << werrStreamBuf.get_unique_errors() << L"\n";
+    Logger::testLog << L"Number of unique errors: " << werr_stream_buf.get_unique_errors() << L"\n";
 
-    if (userOpt.stress) {
+    if (user_opt.stress) {
       Logger::testLog.disable();
       Logger::testLog.flush();
     }
     return 0;
-  } catch (const Ort::Exception& ortException) {
-    Logger::testLog << L"onnx runtime exception: " << ortException.what() << Logger::endl;
+  } catch (const Ort::Exception& ort_exception) {
+    Logger::testLog << L"onnx runtime exception: " << ort_exception.what() << Logger::endl;
   } catch (const std::exception& e) {
     Logger::testLog << L"standard exception: " << e.what() << Logger::endl;
   } catch (...) {
