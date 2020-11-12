@@ -3,18 +3,21 @@
 
 #include "nnapi_execution_provider.h"
 
+#include "model.h"
+#include "builders/helper.h"
 #include "builders/model_builder.h"
+#include "builders/op_support_checker.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/compute_capability.h"
-#include "core/graph/model.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
 namespace onnxruntime {
 
 constexpr const char* NNAPI = "Nnapi";
 
-NnapiExecutionProvider::NnapiExecutionProvider()
-    : IExecutionProvider{onnxruntime::kNnapiExecutionProvider} {
+NnapiExecutionProvider::NnapiExecutionProvider(unsigned long nnapi_flags)
+    : IExecutionProvider{onnxruntime::kNnapiExecutionProvider},
+      nnapi_flags_(nnapi_flags) {
   AllocatorCreationInfo device_info(
       [](int) {
         return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo(NNAPI, OrtAllocatorType::OrtDeviceAllocator));
@@ -51,11 +54,15 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   }
 
   nnapi::ModelBuilder builder(graph_view);
-  const auto supported_nodes_vector = builder.GetSupportedNodes();
+  nnapi::OpSupportCheckParams params{
+      builder.GetAndroidSdkVer(),
+      !!(nnapi_flags_ & NNAPI_FLAG_USE_NCHW),
+  };
+  const auto supported_nodes_vector = GetSupportedNodes(graph_view, params);
 
   // Find inputs, initializers and outputs for each supported subgraph
   const std::vector<NodeIndex>& node_index = graph_view.GetNodesInTopologicalOrder();
-  const auto graph_outputs = graph_view.GetOutputs();
+  const auto& graph_outputs = graph_view.GetOutputs();
   int counter = 0;
   for (const auto& group : supported_nodes_vector) {
     if (group.empty())
@@ -224,8 +231,8 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
     {
       onnxruntime::GraphViewer graph_viewer(graph_body);
       nnapi::ModelBuilder builder(graph_viewer);
-      builder.SetUseNCHW(false);
-      builder.SetUseFp16(false);
+      builder.SetUseNCHW(nnapi_flags_ & NNAPI_FLAG_USE_NCHW);
+      builder.SetUseFp16(nnapi_flags_ & NNAPI_FLAG_USE_FP16);
       std::unique_ptr<nnapi::Model> nnapi_model;
       ORT_RETURN_IF_ERROR(builder.Compile(nnapi_model));
 

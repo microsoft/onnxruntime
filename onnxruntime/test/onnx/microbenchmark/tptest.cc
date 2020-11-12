@@ -10,9 +10,17 @@
 using namespace onnxruntime;
 using namespace onnxruntime::concurrency;
 
+// Thread pool configuration to test.
+constexpr int NUM_THREADS = 8;
+constexpr bool ALLOW_SPINNING = true;
+
 static void BM_CreateThreadPool(benchmark::State& state) {
   for (auto _ : state) {
-    ThreadPool tp(&onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), ORT_TSTR(""), 48, true);
+    ThreadPool tp(&onnxruntime::Env::Default(),
+                  onnxruntime::ThreadOptions(),
+                  ORT_TSTR(""),
+                  NUM_THREADS,
+                  ALLOW_SPINNING);
   }
 }
 BENCHMARK(BM_CreateThreadPool)
@@ -42,10 +50,12 @@ static void BM_ThreadPoolParallelFor(benchmark::State& state) {
   const size_t len = state.range(0);
   const int cost = static_cast<int>(state.range(1));
   OrtThreadPoolParams tpo;
-  std::unique_ptr<concurrency::ThreadPool> tp(
-      concurrency::CreateThreadPool(&onnxruntime::Env::Default(), tpo, ThreadPoolType::INTRA_OP));
+  auto tp = onnxruntime::make_unique<ThreadPool>(&onnxruntime::Env::Default(),
+                                                 onnxruntime::ThreadOptions(),
+                                                 nullptr,
+                                                 NUM_THREADS, ALLOW_SPINNING);
   for (auto _ : state) {
-    tp->ParallelFor(len, cost, SimpleForLoop);
+    ThreadPool::TryParallelFor(tp.get(), len, cost, SimpleForLoop);
   }
 }
 BENCHMARK(BM_ThreadPoolParallelFor)
@@ -115,7 +125,7 @@ static void BM_SimpleScheduleWait(benchmark::State& state) {
   for (auto _ : state) {
     onnxruntime::Barrier barrier(static_cast<unsigned int>(threads));
     for (std::ptrdiff_t id = 0; id < threads; ++id) {
-      tp->Schedule([id, threads, len, &barrier]() {
+      ThreadPool::Schedule(tp.get(), [id, threads, len, &barrier]() {
         std::ptrdiff_t start, work_remaining;
         TestPartitionWork(id, threads, len, &start, &work_remaining);
         SimpleForLoop(start, start + work_remaining);

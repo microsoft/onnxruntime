@@ -18,6 +18,10 @@ namespace utils {
 
 // environment variables that control debug node dumping behavior
 namespace debug_node_inputs_outputs_env_vars {
+// Shape is printed by default unless it's turned OFF by setting environment
+// variable ORT_DEBUG_NODE_IO_DUMP_SHAPE_DATA to 0.
+// set to non-zero to dump shape data
+constexpr const char* kDumpShapeData = "ORT_DEBUG_NODE_IO_DUMP_SHAPE_DATA";
 // set to non-zero to dump node input data
 constexpr const char* kDumpInputData = "ORT_DEBUG_NODE_IO_DUMP_INPUT_DATA";
 // set to non-zero to dump node output data
@@ -30,6 +34,8 @@ constexpr const char* kNameFilter = "ORT_DEBUG_NODE_IO_NAME_FILTER";
 constexpr const char* kOpTypeFilter = "ORT_DEBUG_NODE_IO_OP_TYPE_FILTER";
 // set to non-zero to dump data to files instead of stdout
 constexpr const char* kDumpDataToFiles = "ORT_DEBUG_NODE_IO_DUMP_DATA_TO_FILES";
+// set to non-zero to append OpenMPI world rank to filename
+constexpr const char* kAppendRankToFileName = "ORT_DEBUG_NODE_IO_APPEND_RANK_TO_FILE_NAME";
 // specify the output directory for any data files produced
 constexpr const char* kOutputDir = "ORT_DEBUG_NODE_IO_OUTPUT_DIR";
 // set to non-zero to confirm that dumping data files for all nodes is acceptable
@@ -41,10 +47,11 @@ constexpr char kFilterPatternDelimiter = ';';
 
 struct NodeDumpOptions {
   enum DumpFlags {
-    ShapeOnly = 0,
-    InputData = 1 << 0,
-    OutputData = 1 << 1,
-    AllData = InputData | OutputData,
+    None = 0,
+    Shape = 1 << 0,
+    InputData = 1 << 1,
+    OutputData = 1 << 2,
+    AllData = Shape | InputData | OutputData,
   };
 
   // specifies the information to dump per node
@@ -52,7 +59,7 @@ struct NodeDumpOptions {
   // Note:
   // When dumping every node, dumping both input and output may be redundant.
   // Doing that may be more useful when dumping a subset of all nodes.
-  int dump_flags{DumpFlags::ShapeOnly};
+  int dump_flags{DumpFlags::Shape};
 
   // filters the nodes that are dumped
   // Note:
@@ -75,6 +82,7 @@ struct NodeDumpOptions {
     TensorProtoFiles,
   } data_destination{DataDestination::StdOut};
 
+  std::string file_suffix;
   // the output directory for dumped data files
   Path output_dir;
 };
