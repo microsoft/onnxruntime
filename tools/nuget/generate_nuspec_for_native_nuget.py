@@ -98,9 +98,7 @@ def generate_dependencies(list, package_name, version):
         list.append('<group targetFramework="UAP10.0.16299">')
         list.append('</group>')
         # DirectML Redistributable
-        list.append('<group targetFramework="native">')
         list.append('<dependency id="Microsoft.AI.DirectML"' + ' version="1.4.0-rc1"/>')
-        list.append('</group>')
 
         list.append('</dependencies>')
     else:
@@ -119,9 +117,7 @@ def generate_dependencies(list, package_name, version):
         list.append('</group>')
         # DirectML Redistributable
         if package_name == 'Microsoft.ML.OnnxRuntime.DirectML':
-            list.append('<group targetFramework="native">')
             list.append('<dependency id="Microsoft.AI.DirectML"' + ' version="1.4.0-rc1"/>')
-            list.append('</group>')
 
         list.append('</dependencies>')
 
