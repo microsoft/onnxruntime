@@ -4,6 +4,8 @@
 #include "orttraining/core/graph/optimizer/adam_optimizer_builder.h"
 #include "orttraining/core/graph/graph_augmenter.h"
 #include "core/util/math.h"
+#include "core/framework/ml_value.h"
+#include "core/framework/tensorprotoutils.h"
 
 namespace onnxruntime {
 namespace training {
@@ -18,12 +20,32 @@ Status AdamOptimizerBuilder::Build(
     std::vector<ArgDef>& output_weight_argdefs,
     std::vector<ArgDef>& output_gradient_argdefs) const {
   return Build(weight_argdefs, gradient_argdefs,
-        gradient_norm_argdef, gradient_norm_finite_argdef,
-        opt_configs, graph_defs,
-        new_external_initializers, output_weight_argdefs,
-        output_gradient_argdefs,
-        // gradient clipping is disabled by default for Adam.
-        false /*enable_grad_clipping*/);
+               gradient_norm_argdef, gradient_norm_finite_argdef,
+               opt_configs, graph_defs,
+               new_external_initializers, output_weight_argdefs,
+               output_gradient_argdefs,
+               // gradient clipping is disabled by default for Adam.
+               false /*enable_grad_clipping*/,
+               nullptr /* default shared initital states*/);
+}
+
+Status AdamOptimizerBuilder::Build(
+    const std::vector<ArgDef>& weight_argdefs,
+    const std::vector<ArgDef>& gradient_argdefs,
+    const ArgDef* gradient_norm_argdef,
+    const ArgDef* gradient_norm_finite_argdef,
+    const std::vector<OptimizerNodeConfig>& opt_configs,
+    GraphAugmenter::GraphDefs& graph_defs,
+    std::vector<ONNX_NAMESPACE::TensorProto>& new_external_initializers,
+    std::vector<ArgDef>& output_weight_argdefs,
+    std::vector<ArgDef>& output_gradient_argdefs,    
+    bool enable_grad_clipping) const {
+  return Build(weight_argdefs, gradient_argdefs,
+               gradient_norm_argdef, gradient_norm_finite_argdef,
+               opt_configs, graph_defs,
+               new_external_initializers, output_weight_argdefs,
+               output_gradient_argdefs, enable_grad_clipping,
+               nullptr /* default shared initital states*/);
 }
 
 Status AdamOptimizerBuilder::Build(
@@ -36,7 +58,8 @@ Status AdamOptimizerBuilder::Build(
     std::vector<TensorProto>& new_external_initializers,
     std::vector<ArgDef>& output_weight_argdefs,
     std::vector<ArgDef>& output_gradient_argdefs,
-    bool enable_grad_clipping) const {
+    bool enable_grad_clipping,
+    const NameMLValMap*) const {
   for (size_t i = 0; i < weight_argdefs.size(); ++i) {
     const std::string& weight_name = weight_argdefs[i].name;
     const std::string& gradient_name = gradient_argdefs[i].name;
@@ -52,8 +75,22 @@ Status AdamOptimizerBuilder::Build(
     // In distributed training, some weights may not be updated by all ranks.
     if (opt_configs[i].enabled) {
       // The type proto initializer for Update Count
-      const std::string update_count_string = "Update_Count_" + weight_name;  // per weight optimizer requires a per weight update count
-      TensorProto uc_tensor_proto = CreateTensorProto<int64_t>(update_count_string, 1);
+      std::string uc_prefix = "Update_Count";
+      const std::string update_count_string = uc_prefix + "_" + weight_name;  // per weight optimizer requires a per weight update count
+      TensorProto uc_tensor_proto;
+
+      // Update 'Update_Count' initializer with init value
+      const auto* initial_states = opt_configs[i].initial_states;
+      if (initial_states != nullptr && initial_states->find(uc_prefix) != initial_states->end()) {
+        std::cout << "Adam: Updating Update_Count...\n";
+        const auto& initial_state_it = initial_states->find(uc_prefix);
+        const auto& init_tensor = initial_state_it->second.Get<Tensor>();
+        ORT_ENFORCE(IsMatchingTypeAndShape(init_tensor, ONNX_NAMESPACE::TensorProto_DataType_INT64, {1}).IsOK());
+        uc_tensor_proto = utils::TensorToTensorProto(init_tensor, update_count_string);
+      } else {
+        uc_tensor_proto = CreateTensorProto<int64_t>(update_count_string, 1);
+      }
+
       // Add uc tensorproto as initializers
       new_external_initializers.emplace_back(uc_tensor_proto);
 
@@ -79,16 +116,32 @@ Status AdamOptimizerBuilder::Build(
         weight_dims.push_back(dim.dim_value());
       }
 
+      auto element_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT;
+      if (opt_configs[i].use_mixed_precision_moments) {
+        element_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16;
+      }
+
       // Add first- and second-order momentums to input list.
-      const std::vector<std::string> moments_prefixes({"Moment_1_", "Moment_2_"});
+      const std::vector<std::string> moments_prefixes({"Moment_1", "Moment_2"});
       for (const auto& moments_prefix : moments_prefixes) {
-        const std::string gradient_moment_name = moments_prefix + weight_name;
+        const std::string gradient_moment_name = moments_prefix + "_" + weight_name;
 
         TensorProto moment_tensor_proto;
         TypeProto* moment_type_proto = graph_defs.CopyTypeProto(weight_argdefs[i]);
-        if (opt_configs[i].use_mixed_precision_moments) {
+
+        // Update moment initializer with init value
+        if (initial_states != nullptr && initial_states->find(moments_prefix) != initial_states->end()) {
+          //update moment_tensor_proto
+          std::cout << "Adam: Updating moment_tensor_proto...\n";
+          const auto& initial_state_it = initial_states->find(moments_prefix);
+          const auto& init_tensor = initial_state_it->second.Get<Tensor>();
+
+          //TODO: need to support float -> float16 and float16-> float conversion
+          ORT_ENFORCE(IsMatchingTypeAndShape(init_tensor, element_type, weight_dims).IsOK());
+          moment_tensor_proto = utils::TensorToTensorProto(init_tensor, gradient_moment_name);
+        } else if (opt_configs[i].use_mixed_precision_moments) {
           moment_tensor_proto = CreateTensorProto<MLFloat16>(gradient_moment_name, MLFloat16(math::floatToHalf(0.f)), weight_dims);
-          moment_type_proto->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16);
+          moment_type_proto->mutable_tensor_type()->set_elem_type(element_type);
         } else {
           moment_tensor_proto = CreateTensorProto<float>(gradient_moment_name, 0.f, weight_dims);
         }
@@ -103,10 +156,10 @@ Status AdamOptimizerBuilder::Build(
       if (opt_configs[i].update_weight) {
         output_weight_argdef = ArgDef(weight_name + "_Adam_out", weight_type_proto);
         output_args.push_back(output_weight_argdef);  // w_new
-        output_args.push_back(ArgDef());  // g_new
+        output_args.push_back(ArgDef());              // g_new
       } else {
         output_gradient_argdef = ArgDef(gradient_name + "_Adam_out", gradient_type_proto);
-        output_args.push_back(ArgDef());  // w_new
+        output_args.push_back(ArgDef());                // w_new
         output_args.push_back(output_gradient_argdef);  // g_new
       }
 

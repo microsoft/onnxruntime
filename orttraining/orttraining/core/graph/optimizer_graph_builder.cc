@@ -249,7 +249,8 @@ Status OptimizerGraphBuilder::BuildOptimizerNode(
       global_gradient_norm_argdef, global_gradient_norm_finite_argdef,
       opt_configs, graph_defs,
       new_initializers,
-      output_weight_argdefs, output_gradient_argdefs, opt_graph_config_.enable_grad_norm_clip));
+      output_weight_argdefs, output_gradient_argdefs, opt_graph_config_.enable_grad_norm_clip,
+      opt_graph_config_.shared_optimizer_states));
 
   return Status::OK();
 }

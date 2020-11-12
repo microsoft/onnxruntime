@@ -39,6 +39,11 @@ ONNX_NAMESPACE::TensorProto CreateTensorProto(
   return tensor_proto;
 }
 
+Status IsMatchingTypeAndShape(
+    const onnxruntime::Tensor& tensor,
+    const int32_t& element_type,
+    const std::vector<int64_t>& expected_shape);
+
 class OptimizerBuilder {
  public:
   OptimizerBuilder(const OpDef& op_def, const std::vector<std::string>& attribute_names = {})
@@ -122,6 +127,49 @@ class OptimizerBuilder {
       std::vector<ArgDef>& output_weight_argdefs,
       std::vector<ArgDef>& output_gradient_argdefs,
       const bool enable_grad_clipping) const = 0;
+  
+    /**
+   * Adds the optimizer node to the graph.
+   * This component may be placed into an If node subgraph to enable
+   * conditional execution.
+   *
+   * @param weight_argdef The ArgDef of the weight to optimize.
+   * @param gradient_argdef The ArgDef of the gradient of the weight to
+            optimize.
+   * @param enable_grad_clipping The flag to force gradient clipping. If planning
+   *        to use the default behavior of each sub-class, use the other Build()
+   *        function without this argument.
+   * @param gradient_norm_argdef (Optional) The ArgDef of gradient norm.
+   * @param gradient_norm_finite_argdef (Optional) The ArgDef indicates whether
+            the passed-in gradient norm is finite.
+   * @param shared_optim_state (Optional) The initial state for optimizer params
+   *        shared by all weights.
+   * @param opt_config The optimizer configuration.
+   * @param[out] graph_defs The GraphDefs corresponding to the graph (possibly
+   *             a subgraph) that the component is to be added to.
+   * @param[out] new_external_initializers Any initializers that should be
+   *             placed in the parent graph, if there is one.
+   *             Other initializers are treated as local to the current
+   *             (sub)graph.
+   * @param[out] output_weight_argdefs The output weight ArgDef. All optimizers
+                 should have this output.
+   * @param[out] output_gradient_argdefs The output gradient ArgDef. All optimizers
+                 should have this output.
+   *
+   * @return The status of the optimizer node addition.
+   */
+  virtual Status Build(
+      const std::vector<ArgDef>& weight_argdefs,
+      const std::vector<ArgDef>& gradient_argdefs,
+      const ArgDef* gradient_norm_argdef,
+      const ArgDef* gradient_norm_finite_argdef,
+      const std::vector<OptimizerNodeConfig>& opt_configs,
+      GraphAugmenter::GraphDefs& graph_defs,
+      std::vector<ONNX_NAMESPACE::TensorProto>& new_external_initializers,
+      std::vector<ArgDef>& output_weight_argdefs,
+      std::vector<ArgDef>& output_gradient_argdefs,
+      const bool enable_grad_clipping,      
+      const NameMLValMap* shared_optim_state) const = 0;
 
   const OpDef& OpDefinition() const { return op_def_; }
 
