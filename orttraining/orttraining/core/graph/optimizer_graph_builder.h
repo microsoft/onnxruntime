@@ -66,6 +66,8 @@ class OptimizerGraphBuilder {
 
  protected:
   virtual Status BuildInternal(
+      bool should_add_gradient_norm,
+      bool should_add_gradient_finite_check,
       Graph& graph,
       GraphAugmenter::GraphDefs& graph_defs,
       std::vector<ArgDef>& weight_argdefs,
@@ -73,14 +75,27 @@ class OptimizerGraphBuilder {
       std::unordered_set<std::string>& optimizer_state_initializer_names,
       OptimizerOutputKeyMap<std::string>& optimizer_graph_outputs);
 
+  Status AddGradientPassThroughNode(
+      const NodeArgNameGeneratorFn& nodearg_name_generator,
+      std::vector<ArgDef>& gradient_argdefs,  // update argdefs in place
+      GraphAugmenter::GraphDefs& graph_defs);
+
   Status AddGradientScalingNodes(
       const NodeArgNameGeneratorFn& nodearg_name_generator,
       const float scale,
       std::vector<ArgDef>& gradient_argdefs,
       ArgDef& fused_gradient_argdef,
       GraphAugmenter::GraphDefs& graph_defs,
-      const bool allreduce_in_fp16,
+      ONNX_NAMESPACE::TensorProto_DataType allreduce_element_type,
       const bool fuse_scaling_outputs);
+
+  Status AddGradientScalingNodes(
+      const NodeArgNameGeneratorFn& nodearg_name_generator,
+      const float scale,
+      std::vector<ArgDef>& gradient_argdefs,        // update argdefs in place
+      std::vector<ArgDef>& output_gradient_argdef,  // update argdef in place
+      GraphAugmenter::GraphDefs& graph_defs,
+      ONNX_NAMESPACE::TensorProto_DataType target_type);
 
   Status AddGradientNorm(
       const NodeArgNameGeneratorFn& nodearg_name_generator,

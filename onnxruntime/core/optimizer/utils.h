@@ -34,6 +34,11 @@ bool IsInitializerWithExpectedValue(const onnxruntime::Graph& graph, const onnxr
 */
 bool IsAttributeWithExpectedValue(const Node& node, const std::string& attr_name, int64_t expected_value);
 
+/** Check whether an attribute of node has specified float value.
+@param expected_value is the expected value of the attribute.
+*/
+bool IsAttributeWithExpectedValue(const Node& node, const std::string& attr_name, float expected_value, float eps = 1e-5f);
+
 /** Check whether an attribute of node has specified integer values.
 @param expected_values is the expected values of the attribute.
 */

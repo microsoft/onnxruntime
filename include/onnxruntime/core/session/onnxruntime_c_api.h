@@ -5,7 +5,6 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
-#include "onnxruntime_session_options_config_keys.h"
 
 // This value is used in structures passed to ORT so that a newer version of ORT will still work with them
 #define ORT_API_VERSION 5
@@ -90,7 +89,7 @@ extern "C" {
 #endif
 
 // Copied from TensorProto::DataType
-// Currently, Ort doesn't support complex64, complex128, bfloat16 types
+// Currently, Ort doesn't support complex64, complex128
 typedef enum ONNXTensorElementDataType {
   ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED,
   ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,   // maps to c type float
@@ -146,12 +145,11 @@ typedef enum OrtErrorCode {
 
 // This configures the arena based allocator used by ORT
 // See ONNX_Runtime_Perf_Tuning.md for details on what these mean and how to choose these values
-// Use -1 to allow ORT to choose defaults for all the options below
 typedef struct OrtArenaCfg {
-  int max_mem;
-  int arena_extend_strategy;  // 0 = kNextPowerOfTwo, 1 = kSameAsRequested
-  int initial_chunk_size_bytes;
-  int max_dead_bytes_per_chunk;
+  size_t max_mem;                // use 0 to allow ORT to choose the default
+  int arena_extend_strategy;     // use -1 to allow ORT to choose the default, 0 = kNextPowerOfTwo, 1 = kSameAsRequested
+  int initial_chunk_size_bytes;  // use -1 to allow ORT to choose the default
+  int max_dead_bytes_per_chunk;  // use -1 to allow ORT to choose the default
 } OrtArenaCfg;
 
 #define ORT_RUNTIME_CLASS(X) \
@@ -226,6 +224,17 @@ typedef enum ExecutionMode {
   ORT_PARALLEL = 1,
 } ExecutionMode;
 
+// Set the language projection, default is C, which means it will classify the language not in the list to C also.
+typedef enum OrtLanguageProjection {
+  ORT_PROJECTION_C = 0,  // default
+  ORT_PROJECTION_CPLUSPLUS = 1,
+  ORT_PROJECTION_CSHARP = 2,
+  ORT_PROJECTION_PYTHON = 3,
+  ORT_PROJECTION_JAVA = 4,
+  ORT_PROJECTION_WINML = 5,
+  ORT_PROJECTION_NODEJS = 6,
+} OrtLanguageProjection;
+
 struct OrtKernelInfo;
 typedef struct OrtKernelInfo OrtKernelInfo;
 struct OrtKernelContext;
@@ -249,6 +258,20 @@ typedef enum OrtMemType {
   OrtMemTypeCPU = OrtMemTypeCPUOutput,  // temporary CPU accessible memory allocated by non-CPU execution provider, i.e. CUDA_PINNED
   OrtMemTypeDefault = 0,                // the default allocator for execution provider
 } OrtMemType;
+
+typedef enum OrtCudnnConvAlgoSearch {
+  EXHAUSTIVE,  // expensive exhaustive benchmarking using cudnnFindConvolutionForwardAlgorithmEx
+  HEURISTIC,   // lightweight heuristic based search using cudnnGetConvolutionForwardAlgorithm_v7
+  DEFAULT,     // default algorithm using CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM
+} OrtCudnnConvAlgoSearch;
+
+typedef struct OrtCUDAProviderOptions {
+  int device_id;                                  // cuda device with id=0 as default device.
+  OrtCudnnConvAlgoSearch cudnn_conv_algo_search;  // cudnn conv algo search option
+  size_t cuda_mem_limit;                          // default cuda memory limitation to maximum finite value of size_t.
+  int arena_extend_strategy;                      // default area extend strategy to KNextPowerOfTwo.
+  int do_copy_in_default_stream;
+} OrtCUDAProviderOptions;
 
 struct OrtApi;
 typedef struct OrtApi OrtApi;
@@ -280,13 +303,13 @@ struct OrtApi {
   /**
      * \param out Should be freed by `OrtReleaseEnv` after use
      */
-  ORT_API2_STATUS(CreateEnv, OrtLoggingLevel default_logging_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
+  ORT_API2_STATUS(CreateEnv, OrtLoggingLevel logging_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
 
   /**
    * \param out Should be freed by `OrtReleaseEnv` after use
    */
   ORT_API2_STATUS(CreateEnvWithCustomLogger, OrtLoggingFunction logging_function, _In_opt_ void* logger_param,
-                  OrtLoggingLevel default_warning_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
+                  OrtLoggingLevel logging_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
 
   // Platform telemetry events are on by default since they are lightweight.  You can manually turn them off.
   ORT_API2_STATUS(EnableTelemetryEvents, _In_ const OrtEnv* env);
@@ -375,7 +398,7 @@ struct OrtApi {
      * Add custom ops to the OrtCustomOpDomain
      *  Note: The OrtCustomOp* pointer must remain valid until the OrtCustomOpDomain using it is released
     */
-  ORT_API2_STATUS(CustomOpDomain_Add, _Inout_ OrtCustomOpDomain* custom_op_domain, _In_ OrtCustomOp* op);
+  ORT_API2_STATUS(CustomOpDomain_Add, _Inout_ OrtCustomOpDomain* custom_op_domain, _In_ const OrtCustomOp* op);
 
   /*
      * Add a custom op domain to the OrtSessionOptions
@@ -810,10 +833,8 @@ struct OrtApi {
   * Use this in conjunction with DisablePerSessionThreads API or else the session will use
   * its own thread pools.
   */
-  ORT_API2_STATUS(CreateEnvWithGlobalThreadPools, OrtLoggingLevel default_logging_level, _In_ const char* logid,
+  ORT_API2_STATUS(CreateEnvWithGlobalThreadPools, OrtLoggingLevel logging_level, _In_ const char* logid,
                   _In_ const OrtThreadingOptions* t_options, _Outptr_ OrtEnv** out);
-
-  /* TODO: Should there be a version of CreateEnvWithGlobalThreadPools with custom logging function? */
 
   /*
   * Calling this API will make the session use the global threadpools shared across sessions.
@@ -1000,7 +1021,7 @@ struct OrtApi {
    * This function only works for numeric tensors.
    * This is a no-copy method whose pointer is only valid until the backing OrtValue is free'd.
    */
-  ORT_API2_STATUS(TensorAt, _Inout_ OrtValue* value, size_t* location_values, size_t location_values_count, _Outptr_ void** out);
+  ORT_API2_STATUS(TensorAt, _Inout_ OrtValue* value, const int64_t* location_values, size_t location_values_count, _Outptr_ void** out);
 
   /**
    * Creates an allocator instance and registers it with the env to enable
@@ -1013,6 +1034,74 @@ struct OrtApi {
   */
   ORT_API2_STATUS(CreateAndRegisterAllocator, _Inout_ OrtEnv* env, _In_ const OrtMemoryInfo* mem_info,
                   _In_ const OrtArenaCfg* arena_cfg);
+
+  /**
+   * Set the language projection for collecting telemetry data when Env is created
+   * \param projection the source projected language.
+  */
+  ORT_API2_STATUS(SetLanguageProjection, _In_ const OrtEnv* ort_env, _In_ OrtLanguageProjection projection);
+
+  /**
+   * On some platforms, this timer may not be as precise as nanoseconds
+   * For instance, on Windows and MacOS, the precision will be ~100ns
+   * \param out is set to the nanoseconds of profiling's start time
+   */
+  ORT_API2_STATUS(SessionGetProfilingStartTimeNs, _In_ const OrtSession* sess, _Outptr_ uint64_t* out);
+
+  /**
+   * Use this API to configure the global thread pool options to be used in the call to CreateEnvWithGlobalThreadPools.
+   * A value of 0 means ORT will pick the default.
+   * A value of 1 means the invoking thread will be used; no threads will be created in the thread pool.
+   */
+  ORT_API2_STATUS(SetGlobalIntraOpNumThreads, _Inout_ OrtThreadingOptions* tp_options, int intra_op_num_threads);
+  ORT_API2_STATUS(SetGlobalInterOpNumThreads, _Inout_ OrtThreadingOptions* tp_options, int inter_op_num_threads);
+
+  /**
+   * Use this API to configure the global thread pool options to be used in the call to CreateEnvWithGlobalThreadPools.
+   * Allow spinning of thread pools when their queues are empty. This API will set the value for both
+   * inter_op and intra_op threadpools.
+   * \param allow_spinning valid values are 1 and 0.
+   * 1: threadpool will spin to wait for queue to become non-empty, 0: it won't spin.
+   * Prefer a value of 0 if your CPU usage is very high.
+   */
+  ORT_API2_STATUS(SetGlobalSpinControl, _Inout_ OrtThreadingOptions* tp_options, int allow_spinning);
+
+  /**
+   * Add a pre-allocated initializer to a session. If a model contains an initializer with a name
+   * that is same as the name passed to this API call, ORT will use this initializer instance
+   * instead of deserializing one from the model file. This is useful when you want to share
+   * the same initializer across sessions.
+   * \param name name of the initializer
+   * \param val OrtValue containing the initializer. Lifetime of 'val' and the underlying initializer buffer must be
+   * managed by the user (created using the CreateTensorWithDataAsOrtValue API) and it must outlive the session object
+   * to which it is added.
+   */
+  ORT_API2_STATUS(AddInitializer, _Inout_ OrtSessionOptions* options, _In_z_ const char* name,
+                  _In_ const OrtValue* val);
+
+  /**
+   * Creates a custom environment with global threadpools and logger that will be shared across sessions.
+   * Use this in conjunction with DisablePerSessionThreads API or else the session will use
+   * its own thread pools.
+   *
+   * \param out should be freed by `OrtReleaseEnv` after use
+   */
+  ORT_API2_STATUS(CreateEnvWithCustomLoggerAndGlobalThreadPools, OrtLoggingFunction logging_function, _In_opt_ void* logger_param, OrtLoggingLevel logging_level,
+                  _In_ const char* logid, _In_ const struct OrtThreadingOptions* tp_options, _Outptr_ OrtEnv** out);
+
+  /**
+   * Append CUDA execution provider
+   */
+  ORT_API2_STATUS(OrtSessionOptionsAppendExecutionProvider_CUDA,
+                  _In_ OrtSessionOptions* options, _In_ OrtCUDAProviderOptions* cuda_options);
+
+  /**
+   * Use this API to configure the global thread pool options to be used in the call to CreateEnvWithGlobalThreadPools.
+   * When this API is called, flush-to-zero and denormal-as-zero are applied to threads in both intra and inter global thread pool.
+   * Note that an alternative way not using this option at runtime is to train and export a model without denormals
+   * and that's recommended because turning this option on may hurt model accuracy.
+   */
+  ORT_API2_STATUS(SetGlobalDenormalAsZero, _Inout_ OrtThreadingOptions* tp_options);
 };
 
 /*
@@ -1031,20 +1120,20 @@ struct OrtCustomOp {
   uint32_t version;  // Initialize to ORT_API_VERSION
 
   // This callback creates the kernel, which is a user defined parameter that is passed to the Kernel* callbacks below.
-  void*(ORT_API_CALL* CreateKernel)(_In_ struct OrtCustomOp* op, _In_ const OrtApi* api,
+  void*(ORT_API_CALL* CreateKernel)(_In_ const struct OrtCustomOp* op, _In_ const OrtApi* api,
                                     _In_ const OrtKernelInfo* info);
 
   // Returns the name of the op
-  const char*(ORT_API_CALL* GetName)(_In_ struct OrtCustomOp* op);
+  const char*(ORT_API_CALL* GetName)(_In_ const struct OrtCustomOp* op);
 
   // Returns the type of the execution provider, return nullptr to use CPU execution provider
-  const char*(ORT_API_CALL* GetExecutionProviderType)(_In_ struct OrtCustomOp* op);
+  const char*(ORT_API_CALL* GetExecutionProviderType)(_In_ const struct OrtCustomOp* op);
 
   // Returns the count and types of the input & output tensors
-  ONNXTensorElementDataType(ORT_API_CALL* GetInputType)(_In_ struct OrtCustomOp* op, _In_ size_t index);
-  size_t(ORT_API_CALL* GetInputTypeCount)(_In_ struct OrtCustomOp* op);
-  ONNXTensorElementDataType(ORT_API_CALL* GetOutputType)(_In_ struct OrtCustomOp* op, _In_ size_t index);
-  size_t(ORT_API_CALL* GetOutputTypeCount)(_In_ struct OrtCustomOp* op);
+  ONNXTensorElementDataType(ORT_API_CALL* GetInputType)(_In_ const struct OrtCustomOp* op, _In_ size_t index);
+  size_t(ORT_API_CALL* GetInputTypeCount)(_In_ const struct OrtCustomOp* op);
+  ONNXTensorElementDataType(ORT_API_CALL* GetOutputType)(_In_ const struct OrtCustomOp* op, _In_ size_t index);
+  size_t(ORT_API_CALL* GetOutputTypeCount)(_In_ const struct OrtCustomOp* op);
 
   // Op kernel callbacks
   void(ORT_API_CALL* KernelCompute)(_In_ void* op_kernel, _In_ OrtKernelContext* context);

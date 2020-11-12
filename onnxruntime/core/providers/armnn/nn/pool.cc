@@ -22,13 +22,13 @@ template <typename T, typename PoolType>
 thread_local std::map<OpKernel*, armnn::NetworkId> Pool<T, PoolType>::poolLayers;
 
 template <typename T, typename PoolType>
-armnn::IRuntimePtr Pool<T, PoolType>::run = Pool<T, PoolType>::initRuntime();
+armnn::IRuntimePtr Pool<T, PoolType>::run = armnn::IRuntimePtr(nullptr, nullptr);
 
 template <typename T>
 thread_local std::map<OpKernel*, armnn::NetworkId> MaxPoolV8<T>::maxPoolLayers;
 
 template <typename T>
-armnn::IRuntimePtr MaxPoolV8<T>::run = MaxPoolV8<T>::initRuntime();
+armnn::IRuntimePtr MaxPoolV8<T>::run = armnn::IRuntimePtr(nullptr, nullptr);
 
 armnn::Pooling2dDescriptor createDescriptor(std::vector<int64_t> pads, std::vector<int64_t> strides, std::vector<int64_t> kernel_shape, armnn::PoolingAlgorithm pool_type, onnxruntime::PoolAttributes pool_attrs){
 
@@ -322,6 +322,22 @@ ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                        
       kArmNNExecutionProvider,                                                      \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), \
       MaxPoolV8<float>);
+
+ONNX_OPERATOR_KERNEL_EX(
+    MaxPool,
+    kOnnxDomain,
+    12,
+    kArmNNExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    MaxPoolV8<float>);
+
+ONNX_OPERATOR_KERNEL_EX(
+    AveragePool,
+    kOnnxDomain,
+    11,
+    kArmNNExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    Pool<float, AveragePool>);
 
 }  // namespace armnn_ep
 }  // namespace onnxruntime

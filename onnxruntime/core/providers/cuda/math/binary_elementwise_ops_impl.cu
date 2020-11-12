@@ -21,7 +21,7 @@ namespace cuda {
                           fdm_H,                           \
                           fdm_C,                           \
                           output_data,                     \
-                          OP_##name<T, T>(),               \
+                          OP_##name<T, T, T>(),            \
                           count);                          \
   }
 
@@ -36,7 +36,22 @@ namespace cuda {
                           fdm_H,                           \
                           fdm_C,                           \
                           output_data,                     \
-                          OP_##name<T, T1>(),              \
+                          OP_##name<T, T, T1>(),           \
+                          count);                          \
+  }
+
+#define BINARY_ELEMENTWISE_IMPL_T2(name)                   \
+  BINARY_ELEMENTWISE_IMPL_DECLARATION_T2(name) {           \
+    BinaryElementWiseImpl(output_rank_or_simple_broadcast, \
+                          lhs_padded_strides,              \
+                          lhs_data,                        \
+                          rhs_padded_strides,              \
+                          rhs_data,                        \
+                          fdm_output_strides,              \
+                          fdm_H,                           \
+                          fdm_C,                           \
+                          output_data,                     \
+                          OP_##name<T, T1, T2>(),          \
                           count);                          \
   }
 
@@ -52,6 +67,12 @@ namespace cuda {
                                   const TArray<int64_t>* rhs_padded_strides, const T1* rhs_data, \
                                   const TArray<fast_divmod>* fdm_output_strides, const fast_divmod& fdm_H, const fast_divmod& fdm_C, T* output_data, size_t count);
 
+#define SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T2(x, T, T1, T2)                                         \
+  template void ImplT2_##x<T, T1, T2>(int32_t output_rank,                                           \
+                                      const TArray<int64_t>* lhs_padded_strides, const T1* lhs_data, \
+                                      const TArray<int64_t>* rhs_padded_strides, const T2* rhs_data, \
+                                      const TArray<fast_divmod>* fdm_output_strides, const fast_divmod& fdm_H, const fast_divmod& fdm_C, T* output_data, size_t count);
+
 #define SPECIALIZED_BINARY_ELEMENTWISE_IMPL_UZILHFD(x) \
   SPECIALIZED_BINARY_ELEMENTWISE_IMPL(x, uint32_t)     \
   SPECIALIZED_BINARY_ELEMENTWISE_IMPL(x, uint64_t)     \
@@ -60,6 +81,13 @@ namespace cuda {
   SPECIALIZED_BINARY_ELEMENTWISE_IMPL(x, half)         \
   SPECIALIZED_BINARY_ELEMENTWISE_IMPL(x, float)        \
   SPECIALIZED_BINARY_ELEMENTWISE_IMPL(x, double)
+
+#define SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T1_ILHFD(x, T) \
+  SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T1(x, T, int32_t)    \
+  SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T1(x, T, int64_t)    \
+  SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T1(x, T, half)       \
+  SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T1(x, T, float)      \
+  SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T1(x, T, double)
 
 #define SPECIALIZED_BINARY_ELEMENTWISE_IMPL_OIL(x) \
   SPECIALIZED_BINARY_ELEMENTWISE_IMPL(x, bool)     \
@@ -103,34 +131,41 @@ SPECIALIZED_BINARY_ELEMENTWISE_IMPL(And, bool)
 SPECIALIZED_BINARY_ELEMENTWISE_IMPL(Or, bool)
 SPECIALIZED_BINARY_ELEMENTWISE_IMPL(Xor, bool)
 SPECIALIZED_BINARY_ELEMENTWISE_IMPL_HFD(PRelu)
-SPECIALIZED_BINARY_ELEMENTWISE_IMPL_UZILHFD(Greater)
-SPECIALIZED_BINARY_ELEMENTWISE_IMPL_OIL(Equal)
 SPECIALIZED_BINARY_ELEMENTWISE_IMPL_UZILHFD(Max)
 SPECIALIZED_BINARY_ELEMENTWISE_IMPL_UZILHFD(Min)
-SPECIALIZED_BINARY_ELEMENTWISE_IMPL_UZILHFD(Less)
 
 // create declarations for impl for Pow
 BINARY_ELEMENTWISE_IMPL_T1(Pow)
 
-SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T1(Pow, int32_t, int32_t)
-SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T1(Pow, int32_t, int64_t)
-SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T1(Pow, int32_t, float)
-SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T1(Pow, int32_t, double)
+SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T1_ILHFD(Pow, int32_t)
+SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T1_ILHFD(Pow, int64_t)
+SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T1_ILHFD(Pow, float)
+SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T1_ILHFD(Pow, double)
+SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T1_ILHFD(Pow, half)
 
-SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T1(Pow, int64_t, int32_t)
-SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T1(Pow, int64_t, int64_t)
-SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T1(Pow, int64_t, float)
-SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T1(Pow, int64_t, double)
+// create declarations for impl2
+#define BINARY_OP_NAME_EXPR2(name, expr) \
+  BINARY_ELEMENTWISE_IMPL_T2(name)
 
-SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T1(Pow, float, int32_t)
-SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T1(Pow, float, int64_t)
-SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T1(Pow, float, float)
-SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T1(Pow, float, double)
+BINARY_OPS2()
+#undef BINARY_OP_NAME_EXPR2
 
-SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T1(Pow, double, int32_t)
-SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T1(Pow, double, int64_t)
-SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T1(Pow, double, float)
-SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T1(Pow, double, double)
+#define SPECIALIZED_BINARY_ELEMENTWISE_IMPL_UZILHFD2(name)               \
+  SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T2(name, bool, uint32_t, uint32_t) \
+  SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T2(name, bool, uint64_t, uint64_t) \
+  SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T2(name, bool, int32_t, int32_t)   \
+  SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T2(name, bool, int64_t, int64_t)   \
+  SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T2(name, bool, half, half)         \
+  SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T2(name, bool, float, float)       \
+  SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T2(name, bool, double, double)
+
+SPECIALIZED_BINARY_ELEMENTWISE_IMPL_UZILHFD2(Greater)
+
+SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T2(Equal, bool, bool, bool)
+SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T2(Equal, bool, int32_t, int32_t)
+SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T2(Equal, bool, int64_t, int64_t)
+
+SPECIALIZED_BINARY_ELEMENTWISE_IMPL_UZILHFD2(Less)
 
 }  // namespace cuda
 }  // namespace onnxruntime

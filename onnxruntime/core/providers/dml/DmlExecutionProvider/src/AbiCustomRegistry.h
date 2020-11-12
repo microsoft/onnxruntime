@@ -42,6 +42,9 @@ class AbiCustomRegistry : public WRL::Base<IMLOperatorRegistry, IMLOperatorRegis
         bool supportsGraph,
         const uint32_t* requiredInputCountForGraph = nullptr,
         bool requiresFloatFormatsForGraph = false,
+        bool supportedWith64BitTensorsVia32BitStrides = false,
+        bool supportedWith64BitTensorsVia32BitStridesFromAnyEp = false,
+        bool prefer64BitTensorsDirectly = false,
         _In_reads_(constantCpuInputCount) const uint32_t* requiredConstantCpuInputs = nullptr,
         uint32_t constantCpuInputCount = 0) const noexcept override;
 

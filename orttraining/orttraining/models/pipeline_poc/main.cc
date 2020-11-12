@@ -55,7 +55,7 @@ Status parse_arguments(int argc, char* argv[], Parameters& params) {
     const std::string msg = "Failed to parse the command line arguments";
     cerr << msg << ": " << e.what() << "\n"
          << options.help() << "\n";
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, msg);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, msg);
   }
   return Status::OK();
 }
@@ -86,6 +86,7 @@ int main(int argc, char* argv[]) {
   std::vector<FreeDimensionOverride> overrides = {};
   SessionOptions so = {
       ExecutionMode::ORT_SEQUENTIAL,     //execution_mode
+      ExecutionOrder::DEFAULT,           //execution_order
       false,                             //enable_profiling
       ORT_TSTR(""),                      //optimized_model_filepath
       true,                              //enable_mem_pattern
@@ -100,7 +101,10 @@ int main(int argc, char* argv[]) {
       {},                                //inter_op_param
       overrides,                         //free_dimension_overrides
       true,                              //use_per_session_threads
-      true                               //thread_pool_allow_spinning
+      true,                              //thread_pool_allow_spinning
+      false,                             //use_deterministic_compute
+      {},                                //session_configurations
+      {}                                 //initializers_to_share_map
   };
 
   InferenceSession session_object{so, *env};
@@ -211,7 +215,7 @@ int main(int argc, char* argv[]) {
 
 #else
 
-int main(int, char* []) {
+int main(int, char*[]) {
   ORT_NOT_IMPLEMENTED("P2P demo currently requires CUDA to run.");
 }
 

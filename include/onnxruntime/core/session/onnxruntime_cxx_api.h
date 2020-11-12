@@ -23,6 +23,10 @@
 #include <utility>
 #include <type_traits>
 
+#ifdef ORT_NO_EXCEPTIONS
+#include <iostream>
+#endif
+
 namespace Ort {
 
 // All C++ methods that can fail will throw an exception of this type
@@ -36,6 +40,19 @@ struct Exception : std::exception {
   std::string message_;
   OrtErrorCode code_;
 };
+
+#ifdef ORT_NO_EXCEPTIONS
+#define ORT_CXX_API_THROW(string, code)       \
+  do {                                        \
+    std::cerr << Ort::Exception(string, code) \
+                     .what()                  \
+              << std::endl;                   \
+    abort();                                  \
+  } while (false)
+#else
+#define ORT_CXX_API_THROW(string, code) \
+  throw Ort::Exception(string, code)
+#endif
 
 // This is used internally by the C++ API. This class holds the global variable that points to the OrtApi, it's in a template so that we can define a global variable in a header and make
 // it transparent to the users of the API.
@@ -74,11 +91,84 @@ ORT_DEFINE_RELEASE(RunOptions);
 ORT_DEFINE_RELEASE(Session);
 ORT_DEFINE_RELEASE(SessionOptions);
 ORT_DEFINE_RELEASE(TensorTypeAndShapeInfo);
+ORT_DEFINE_RELEASE(SequenceTypeInfo);
+ORT_DEFINE_RELEASE(MapTypeInfo);
 ORT_DEFINE_RELEASE(TypeInfo);
 ORT_DEFINE_RELEASE(Value);
 ORT_DEFINE_RELEASE(ModelMetadata);
 ORT_DEFINE_RELEASE(ThreadingOptions);
 ORT_DEFINE_RELEASE(IoBinding);
+
+/*! \class Ort::Float16_t
+  * \brief it is a structure that represents float16 data.
+  * \details It is necessary for type dispatching to make use of C++ API
+  * The type is implicitly convertible to/from uint16_t.
+  * The size of the structure should align with uint16_t and one can freely cast
+  * uint16_t buffers to/from Ort::Float16_t to feed and retrieve data.
+  * 
+  * Generally, you can feed any of your types as float16/blfoat16 data to create a tensor
+  * on top of it, providing it can form a continuous buffer with 16-bit elements with no padding.
+  * And you can also feed a array of uint16_t elements directly. For example,
+  * 
+  * \code{.unparsed}
+  * uint16_t values[] = { 15360, 16384, 16896, 17408, 17664};
+  * constexpr size_t values_length = sizeof(values) / sizeof(values[0]);
+  * std::vector<int64_t> dims = {values_length};  // one dimensional example
+  * Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  * // Note we are passing bytes count in this api, not number of elements -> sizeof(values)
+  * auto float16_tensor = Ort::Value::CreateTensor(info, values, sizeof(values), 
+  *                                                dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16);
+  * \endcode
+  * 
+  * Here is another example, a little bit more elaborate. Let's assume that you use your own float16 type and you want to use
+  * a templated version of the API above so the type is automatically set based on your type. You will need to supply an extra
+  * template specialization.
+  * 
+  * \code{.unparsed}
+  * namespace yours { struct half {}; } // assume this is your type, define this:
+  * namespace Ort { 
+  * template<>
+  * struct TypeToTensorType<yours::half> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16; };
+  * } //namespace Ort
+  * 
+  * std::vector<yours::half> values;
+  * std::vector<int64_t> dims = {values.size()}; // one dimensional example
+  * Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  * // Here we are passing element count -> values.size()
+  * auto float16_tensor = Ort::Value::CreateTensor<yours::half>(info, values.data(), values.size(), dims.data(), dims.size());
+  * 
+  *  \endcode
+  */
+struct Float16_t {
+  uint16_t value;
+  constexpr Float16_t() noexcept : value(0) {}
+  constexpr Float16_t(uint16_t v) noexcept : value(v) {}
+  constexpr operator uint16_t() const noexcept { return value; }
+  constexpr bool operator==(const Float16_t& rhs) const noexcept { return value == rhs.value; };
+  constexpr bool operator!=(const Float16_t& rhs) const noexcept { return value != rhs.value; };
+};
+
+static_assert(sizeof(Float16_t) == sizeof(uint16_t), "Sizes must match");
+
+/*! \class Ort::BFloat16_t
+  * \brief is a structure that represents bfloat16 data.
+  * \details It is necessary for type dispatching to make use of C++ API
+  * The type is implicitly convertible to/from uint16_t.
+  * The size of the structure should align with uint16_t and one can freely cast
+  * uint16_t buffers to/from Ort::BFloat16_t to feed and retrieve data.
+  * 
+  * See also code examples for Float16_t above.
+  */
+struct BFloat16_t {
+  uint16_t value;
+  constexpr BFloat16_t() noexcept : value(0) {}
+  constexpr BFloat16_t(uint16_t v) noexcept : value(v) {}
+  constexpr operator uint16_t() const noexcept { return value; }
+  constexpr bool operator==(const BFloat16_t& rhs) const noexcept { return value == rhs.value; };
+  constexpr bool operator!=(const BFloat16_t& rhs) const noexcept { return value != rhs.value; };
+};
+
+static_assert(sizeof(BFloat16_t) == sizeof(uint16_t), "Sizes must match");
 
 // This is used internally by the C++ API. This is the common base class used by the wrapper objects.
 template <typename T>
@@ -87,7 +177,8 @@ struct Base {
 
   Base() = default;
   Base(T* p) : p_{p} {
-    if (!p) throw Ort::Exception("Allocation failure", ORT_FAIL);
+    if (!p)
+      ORT_CXX_API_THROW("Allocation failure", ORT_FAIL);
   }
   ~Base() { OrtRelease(p_); }
 
@@ -122,7 +213,8 @@ struct Base<const T> {
 
   Base() = default;
   Base(const T* p) : p_{p} {
-    if (!p) throw Ort::Exception("Invalid instance ptr", ORT_INVALID_ARGUMENT);
+    if (!p)
+      ORT_CXX_API_THROW("Invalid instance ptr", ORT_INVALID_ARGUMENT);
   }
   ~Base() = default;
 
@@ -156,9 +248,11 @@ struct ModelMetadata;
 
 struct Env : Base<OrtEnv> {
   Env(std::nullptr_t) {}
-  Env(OrtLoggingLevel default_logging_level = ORT_LOGGING_LEVEL_WARNING, _In_ const char* logid = "");
-  Env(const OrtThreadingOptions* tp_options, OrtLoggingLevel default_logging_level = ORT_LOGGING_LEVEL_WARNING, _In_ const char* logid = "");
-  Env(OrtLoggingLevel default_logging_level, const char* logid, OrtLoggingFunction logging_function, void* logger_param);
+  Env(OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING, _In_ const char* logid = "");
+  Env(const OrtThreadingOptions* tp_options, OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING, _In_ const char* logid = "");
+  Env(OrtLoggingLevel logging_level, const char* logid, OrtLoggingFunction logging_function, void* logger_param);
+  Env(const OrtThreadingOptions* tp_options, OrtLoggingFunction logging_function, void* logger_param,
+      OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING, _In_ const char* logid = "");
   explicit Env(OrtEnv* p) : Base<OrtEnv>{p} {}
 
   Env& EnableTelemetryEvents();
@@ -227,6 +321,8 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions& DisablePerSessionThreads();
 
   SessionOptions& AddConfigEntry(const char* config_key, const char* config_value);
+  SessionOptions& AddInitializer(const char* name, const OrtValue* ort_val);
+  OrtStatus* OrtSessionOptionsAppendExecutionProvider_CUDA(OrtSessionOptions* options, OrtCUDAProviderOptions* cuda_options);
 };
 
 struct ModelMetadata : Base<OrtModelMetadata> {
@@ -264,6 +360,7 @@ struct Session : Base<OrtSession> {
   char* GetOutputName(size_t index, OrtAllocator* allocator) const;
   char* GetOverridableInitializerName(size_t index, OrtAllocator* allocator) const;
   char* EndProfiling(OrtAllocator* allocator) const;
+  uint64_t GetProfilingStartTimeNs() const;
   ModelMetadata GetModelMetadata() const;
 
   TypeInfo GetInputTypeInfo(size_t index) const;
@@ -285,11 +382,29 @@ struct TensorTypeAndShapeInfo : Base<OrtTensorTypeAndShapeInfo> {
   std::vector<int64_t> GetShape() const;
 };
 
+struct SequenceTypeInfo : Base<OrtSequenceTypeInfo> {
+  explicit SequenceTypeInfo(std::nullptr_t) {}
+  explicit SequenceTypeInfo(OrtSequenceTypeInfo* p) : Base<OrtSequenceTypeInfo>{p} {}
+
+  TypeInfo GetSequenceElementType() const;
+};
+
+struct MapTypeInfo : Base<OrtMapTypeInfo> {
+  explicit MapTypeInfo(std::nullptr_t) {}
+  explicit MapTypeInfo(OrtMapTypeInfo* p) : Base<OrtMapTypeInfo>{p} {}
+
+  ONNXTensorElementDataType GetMapKeyType() const;
+  TypeInfo GetMapValueType() const;
+};
+
 struct TypeInfo : Base<OrtTypeInfo> {
   explicit TypeInfo(std::nullptr_t) {}
   explicit TypeInfo(OrtTypeInfo* p) : Base<OrtTypeInfo>{p} {}
 
   Unowned<TensorTypeAndShapeInfo> GetTensorTypeAndShapeInfo() const;
+  Unowned<SequenceTypeInfo> GetSequenceTypeInfo() const;
+  Unowned<MapTypeInfo> GetMapTypeInfo() const;
+
   ONNXType GetONNXType() const;
 };
 
@@ -330,7 +445,7 @@ struct Value : Base<OrtValue> {
   const T* GetTensorData() const;
 
   template <typename T>
-  T At(const std::initializer_list<size_t>& location);
+  T& At(const std::vector<int64_t>& location);
 
   TypeInfo GetTypeInfo() const;
   TensorTypeAndShapeInfo GetTensorTypeAndShapeInfo() const;
@@ -473,16 +588,16 @@ template <typename TOp, typename TKernel>
 struct CustomOpBase : OrtCustomOp {
   CustomOpBase() {
     OrtCustomOp::version = ORT_API_VERSION;
-    OrtCustomOp::CreateKernel = [](OrtCustomOp* this_, const OrtApi* api, const OrtKernelInfo* info) { return static_cast<TOp*>(this_)->CreateKernel(*api, info); };
-    OrtCustomOp::GetName = [](OrtCustomOp* this_) { return static_cast<TOp*>(this_)->GetName(); };
+    OrtCustomOp::CreateKernel = [](const OrtCustomOp* this_, const OrtApi* api, const OrtKernelInfo* info) { return static_cast<const TOp*>(this_)->CreateKernel(*api, info); };
+    OrtCustomOp::GetName = [](const OrtCustomOp* this_) { return static_cast<const TOp*>(this_)->GetName(); };
 
-    OrtCustomOp::GetExecutionProviderType = [](OrtCustomOp* this_) { return static_cast<TOp*>(this_)->GetExecutionProviderType(); };
+    OrtCustomOp::GetExecutionProviderType = [](const OrtCustomOp* this_) { return static_cast<const TOp*>(this_)->GetExecutionProviderType(); };
 
-    OrtCustomOp::GetInputTypeCount = [](OrtCustomOp* this_) { return static_cast<TOp*>(this_)->GetInputTypeCount(); };
-    OrtCustomOp::GetInputType = [](OrtCustomOp* this_, size_t index) { return static_cast<TOp*>(this_)->GetInputType(index); };
+    OrtCustomOp::GetInputTypeCount = [](const OrtCustomOp* this_) { return static_cast<const TOp*>(this_)->GetInputTypeCount(); };
+    OrtCustomOp::GetInputType = [](const OrtCustomOp* this_, size_t index) { return static_cast<const TOp*>(this_)->GetInputType(index); };
 
-    OrtCustomOp::GetOutputTypeCount = [](OrtCustomOp* this_) { return static_cast<TOp*>(this_)->GetOutputTypeCount(); };
-    OrtCustomOp::GetOutputType = [](OrtCustomOp* this_, size_t index) { return static_cast<TOp*>(this_)->GetOutputType(index); };
+    OrtCustomOp::GetOutputTypeCount = [](const OrtCustomOp* this_) { return static_cast<const TOp*>(this_)->GetOutputTypeCount(); };
+    OrtCustomOp::GetOutputType = [](const OrtCustomOp* this_, size_t index) { return static_cast<const TOp*>(this_)->GetOutputType(index); };
 
     OrtCustomOp::KernelCompute = [](void* op_kernel, OrtKernelContext* context) { static_cast<TKernel*>(op_kernel)->Compute(context); };
     OrtCustomOp::KernelDestroy = [](void* op_kernel) { delete static_cast<TKernel*>(op_kernel); };

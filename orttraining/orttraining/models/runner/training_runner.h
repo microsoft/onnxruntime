@@ -27,6 +27,10 @@ class TrainingRunner {
     PathString model_with_training_graph_path;   // To save the model after adding loss func and backward graph.
     PathString model_actual_running_graph_path;  // To save the model with the actual running graph after transformations.
     PathString model_gist_encode_path;           // To save the model with gist encoding.
+    PathString pipeline_partitioned_model_path;  // To save the model after pipeline partition. Note: in the pipeline case,
+                                                 // different ranks may resident in the same node. This could lead to a
+                                                 // potential write conflict. It is user's responsibility to make sure
+                                                 // different rank is passed in with different pipeline_partitioned_model_path value.
 
     PathString train_data_dir;
     PathString test_data_dir;
@@ -104,9 +108,10 @@ class TrainingRunner {
     bool use_mixed_precision = false;
     bool use_bfloat16 = false;
     float loss_scale = 1.0f;
-    bool use_fp16_moments = false;
-    bool use_fp16_initializer = true;
-    bool allreduce_in_fp16 = false;
+    bool use_mixed_precision_moments = false;
+    bool use_mixed_precision_initializer = true;
+    bool allreduce_in_mixed_precision_type = false;
+    bool layernorm_stash_as_fp32 = true;
 
     // Tensorboard configuration.
     PathString log_dir;  // Path to write Tensorboard events to.
@@ -123,7 +128,8 @@ class TrainingRunner {
     }
 
     bool UseCuda() const {
-      return providers.find(kCudaExecutionProvider) != providers.end();
+      return providers.find(kCudaExecutionProvider) != providers.end() ||
+             providers.find(kRocmExecutionProvider) != providers.end();
     }
 
     AdasumReductionType GetAdasumReductionType() const {
@@ -170,9 +176,13 @@ class TrainingRunner {
     // Enable GELU approximation
     bool enable_gelu_approximation = false;
     // Enable checkpointing of attention dropout to save memory
-    bool attn_dropout_checkpoint = false;
+    bool attn_dropout_recompute = false;
     // Enable checkpointing of Gelu activation output to save memory
-    bool gelu_checkpoint = false;
+    bool gelu_recompute = false;
+    // Enable checkpointing of transformer layer output to save memory
+    bool transformer_layer_recompute = false;
+    // Number of layers to apply recompute
+    int number_recompute_layers = 0;
     // Use invertible layernorm grad
     bool use_invertible_layernorm_grad = false;
   };

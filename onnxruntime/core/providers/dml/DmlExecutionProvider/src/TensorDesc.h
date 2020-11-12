@@ -36,15 +36,17 @@ namespace Dml
 
         inline DML_TENSOR_DATA_TYPE GetDmlDataType() const { return m_bufferTensorDesc.DataType; }
         inline MLOperatorTensorDataType GetMlOperatorDataType() const { return m_mlOperatorTensorDataType; }
-        inline gsl::span<const uint32_t> GetDmlSizes() const { return m_sizes; }
         void ForceUnsignedDataType();
+        void Remap64bitDmlDataTypeTo32bit();
+        bool WasRemapped64bitTo32bit() const;
 
         inline bool IsValid() const { return m_tensorType != DML_TENSOR_TYPE_INVALID; }
         inline uint32_t GetDimensionCount() const { return m_bufferTensorDesc.DimensionCount; }
+        void SetDimensionCount(uint32_t newDimensionCount, TensorAxis alignment);
         gsl::span<const uint32_t> GetSizes() const { return { m_sizes, m_sizes + m_bufferTensorDesc.DimensionCount }; }
         gsl::span<const uint32_t> GetStrides() const;
   
-        inline UINT64 GetBufferSizeInBytes() const
+        inline uint64_t GetBufferSizeInBytes() const
         { 
             assert(m_tensorType == DML_TENSOR_TYPE_BUFFER);
             return m_bufferTensorDesc.TotalTensorSizeInBytes;
@@ -57,8 +59,6 @@ namespace Dml
         uint32_t m_strides[MaximumDimensionCount] = {};
         DML_BUFFER_TENSOR_DESC m_bufferTensorDesc = {};
     };
-
-
 
     class TensorDescBuilder
     {

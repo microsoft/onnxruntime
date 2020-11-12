@@ -36,6 +36,7 @@ class Telemetry {
 
   virtual void EnableTelemetryEvents() const;
   virtual void DisableTelemetryEvents() const;
+  virtual void SetLanguageProjection(uint32_t projection) const;
 
   virtual void LogProcessInfo() const;
 

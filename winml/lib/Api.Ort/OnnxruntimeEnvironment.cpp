@@ -30,12 +30,16 @@ static bool IsCurrentModuleInSystem32() {
 }
 
 static HRESULT GetOnnxruntimeLibrary(HMODULE& module) {
+#if WINAPI_FAMILY == WINAPI_FAMILY_PC_APP
+  auto out_module = LoadPackagedLibrary(L"onnxruntime.dll", 0);
+#else
   DWORD flags = 0;
 #ifdef BUILD_INBOX
   flags |= IsCurrentModuleInSystem32() ? LOAD_LIBRARY_SEARCH_SYSTEM32 : 0;
 #endif
 
   auto out_module = LoadLibraryExA("onnxruntime.dll", nullptr, flags);
+#endif
   if (out_module == nullptr) {
     return HRESULT_FROM_WIN32(GetLastError());
   }
@@ -190,8 +194,8 @@ OnnxruntimeEnvironment::OnnxruntimeEnvironment(const OrtApi* ort_api) : ort_env_
   OrtEnv* ort_env = nullptr;
   THROW_IF_NOT_OK_MSG(ort_api->CreateEnv(OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Default", &ort_env),
                       ort_api);
+  THROW_IF_NOT_OK_MSG(ort_api->SetLanguageProjection(ort_env, OrtLanguageProjection::ORT_PROJECTION_WINML), ort_api);
   ort_env_ = UniqueOrtEnv(ort_env, ort_api->ReleaseEnv);
-
   // Configure the environment with the winml logger
   auto winml_adapter_api = GetVersionedWinmlAdapterApi(ort_api);
   THROW_IF_NOT_OK_MSG(winml_adapter_api->EnvConfigureCustomLoggerAndProfiler(ort_env_.get(),

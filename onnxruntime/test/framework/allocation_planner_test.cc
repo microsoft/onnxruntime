@@ -257,8 +257,7 @@ class PlannerTest : public ::testing::Test {
     // CreatePlan is called inside FinalizeSessionState and usually the initializers are removed following that.
     // Leave initializers so we can duplicate the call to CreatePlan from here to validate.
     const bool remove_initializers = false;
-    status = state_->FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager, {},
-                                          remove_initializers);
+    status = state_->FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager, {}, nullptr, remove_initializers);
 
     EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
     SequentialPlannerTestContext test_context(&shape_map_);
@@ -456,14 +455,17 @@ TEST_F(PlannerTest, PlanOutputTest) {
 
   CreatePlan();
 
-  try {
+  ORT_TRY {
     std::ostringstream output;
     output << std::make_pair(&GetPlan(), &GetState());
     auto output_size = output.str().size();
     // Currently, we don't check details of the output, as it may change over time.
     EXPECT_GT(output_size, 0u);
-  } catch (const std::exception& ex) {
-    EXPECT_TRUE(false) << "Exception in producing output: " << ex.what();
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&ex]() {
+      EXPECT_TRUE(false) << "Exception in producing output: " << ex.what();
+    });
   }
 }
 

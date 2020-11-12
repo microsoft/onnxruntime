@@ -23,6 +23,7 @@ Abstract:
 #include <limits>
 #include <cmath>
 #include <type_traits>
+#include <stdexcept>
 
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -89,29 +90,6 @@ Abstract:
 #define MLAS_UNREFERENCED_PARAMETER(parameter) ((void)(parameter))
 
 //
-// Select the target architecture.
-//
-
-#if defined(_M_AMD64) || defined(__x86_64__)
-#define MLAS_TARGET_AMD64
-#endif
-#if defined(_M_IX86) || defined(__i386__)
-#define MLAS_TARGET_IX86
-#endif
-#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_IX86)
-#define MLAS_TARGET_AMD64_IX86
-#endif
-#if defined(_M_ARM64) || defined(__aarch64__)
-#define MLAS_TARGET_ARM64
-#endif
-#if defined(_M_ARM) || defined(__arm__)
-#define MLAS_TARGET_ARM
-#endif
-#if defined(__VSX__)
-#define MLAS_TARGET_POWER
-#endif
-
-//
 // Select the threading model.
 //
 // N.B. MLAS_NO_ONNXRUNTIME_THREADPOOL is used to build MLAS test code outside
@@ -139,6 +117,8 @@ Abstract:
 
 #define MLAS_SGEMM_STRIDEN                          128
 #define MLAS_SGEMM_STRIDEK                          128
+#define MLAS_SGEMM_PACKED_STRIDEN                   128
+#define MLAS_SGEMM_PACKED_STRIDEK                   256
 #define MLAS_DGEMM_STRIDEN                          64
 #define MLAS_DGEMM_STRIDEK                          128
 
@@ -550,6 +530,8 @@ extern "C" {
     MLAS_GEMV_U8S8_KERNEL MlasGemvU8S8KernelAvx512Core;
     MLAS_GEMM_U8S8_KERNEL MlasGemmU8S8KernelAvx512Vnni;
     MLAS_GEMV_U8S8_KERNEL MlasGemvU8S8KernelAvx512Vnni;
+    MLAS_GEMM_U8S8_KERNEL MlasGemmU8S8KernelAvxVnni;
+    MLAS_GEMV_U8S8_KERNEL MlasGemvU8S8KernelAvxVnni;
     MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelAvx2;
     MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelAvx512Core;
 #endif
@@ -884,6 +866,21 @@ MlasCastToInt32x4(MLAS_FLOAT32X4 Vector)
     return vec_cts(Vector, 0);
 #else
     return MLAS_INT32X4{int32_t(Vector[0]), int32_t(Vector[1]), int32_t(Vector[2]), int32_t(Vector[3])};
+#endif
+}
+
+MLAS_FORCEINLINE
+MLAS_FLOAT32X4
+MlasCastToFloat32x4(MLAS_INT32X4 Vector)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    return vcvtq_f32_s32(Vector);
+#elif defined(MLAS_SSE2_INTRINSICS)
+    return _mm_cvtepi32_ps(Vector);
+#elif defined(MLAS_VSX_INTRINSICS)
+    return vec_ctf(Vector, 0);
+#else
+    return MLAS_FLOAT32X4{float(Vector[0]), float(Vector[1]), float(Vector[2]), float(Vector[3])};
 #endif
 }
 

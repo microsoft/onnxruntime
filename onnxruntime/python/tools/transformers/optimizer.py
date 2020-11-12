@@ -186,11 +186,11 @@ def _parse_arguments():
                         help="enable Gelu/BiasGelu to FastGelu conversion")
     parser.set_defaults(enable_gelu_approximation=False)
 
-    parser.add_argument('--use_raw_attention_mask',
+    parser.add_argument('--use_mask_index',
                         required=False,
                         action='store_true',
-                        help="use raw attention mask instead of mask index in attention operator")
-    parser.set_defaults(use_raw_attention_mask=False)
+                        help="use mask index instead of raw attention mask in attention operator")
+    parser.set_defaults(use_mask_index=False)
 
     parser.add_argument('--no_attention_mask',
                         required=False,
@@ -237,8 +237,8 @@ def _get_optimization_options(args):
         optimization_options.enable_bias_gelu = False
     if args.enable_gelu_approximation:
         optimization_options.enable_gelu_approximation = True
-    if args.use_raw_attention_mask:
-        optimization_options.use_raw_attention_mask()
+    if args.use_mask_index:
+        optimization_options.use_raw_attention_mask(False)
     if args.no_attention_mask:
         optimization_options.disable_attention_mask()
 
@@ -304,7 +304,7 @@ def optimize_model(input,
         logger.debug("Remove tempoary model: {}".format(temp_model_path))
 
     optimizer.model.producer_name = "onnxruntime_tools"
-    optimizer.model.producer_version = "1.4"
+    optimizer.model.producer_version = "1.5.2"
 
     return optimizer
 

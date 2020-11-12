@@ -144,11 +144,11 @@ static Status AddViewForParameters(
   std::vector<ArgDef> gradient_views = AddViewForParameter(graph_defs, gradient_argdef, view_shapes);
   gradient_argdefs.insert(gradient_argdefs.end(), gradient_views.begin(), gradient_views.end());
 
-  // (Optional) Add View for FP16 weight.
-  std::vector<ArgDef> fp16_weight_views;
-  if (opt_config.fp16_weight_arg != nullptr) {
-    ArgDef fp16_weight_argdef(opt_config.fp16_weight_arg->Name(), opt_config.fp16_weight_arg->TypeAsProto());
-    fp16_weight_views = AddViewForParameter(graph_defs, fp16_weight_argdef, view_shapes);
+  // (Optional) Add View for mixed precision weight.
+  std::vector<ArgDef> mixed_precision_weight_views;
+  if (opt_config.mixed_precision_weight_arg != nullptr) {
+    ArgDef mixed_precision_weight_argdef(opt_config.mixed_precision_weight_arg->Name(), opt_config.mixed_precision_weight_arg->TypeAsProto());
+    mixed_precision_weight_views = AddViewForParameter(graph_defs, mixed_precision_weight_argdef, view_shapes);
   }
 
   // Update Optimizer node configs.
@@ -157,8 +157,8 @@ static Status AddViewForParameters(
     OptimizerNodeConfig new_config = opt_config;
     new_config.enabled = enabled[i];
 
-    if (opt_config.fp16_weight_arg != nullptr) {
-      new_config.fp16_weight_arg = &graph.GetOrCreateNodeArg(fp16_weight_views[i].name, fp16_weight_views[i].type_proto);
+    if (opt_config.mixed_precision_weight_arg != nullptr) {
+      new_config.mixed_precision_weight_arg = &graph.GetOrCreateNodeArg(mixed_precision_weight_views[i].name, mixed_precision_weight_views[i].type_proto);
     }
 
     opt_configs.push_back(new_config);
@@ -297,6 +297,8 @@ ZeROOptimizerGraphBuilder::ZeROOptimizerGraphBuilder(
 }
 
 Status ZeROOptimizerGraphBuilder::BuildInternal(
+    bool should_add_gradient_norm,
+    bool should_add_gradient_finite_check,
     Graph& graph,
     GraphAugmenter::GraphDefs& graph_defs,
     std::vector<ArgDef>& weight_argdefs,
@@ -317,7 +319,7 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
   ORT_RETURN_IF_NOT(total_num_accumulations > 0);
   const float scale = 1.0f / total_num_accumulations;
   ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, fused_gradient_argdef, graph_defs,
-                                              opt_graph_config_.allreduce_in_fp16, false));
+                                              opt_graph_config_.AllReduceDataType(), false));
 
   // add Reducescatter for gradients
   ORT_RETURN_IF_ERROR(AddNcclReduceScatterForGradients(gradient_argdefs, graph_defs));
@@ -325,14 +327,16 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
   // check if all gradients are finite
   ArgDef global_grad_norm_argdef;
   ArgDef global_grad_norm_finite_argdef;
-  if (opt_graph_config_.use_mixed_precision) {
+
+  if (should_add_gradient_norm) {
     auto gradient_norm_inputs = GetGradientNormInputs(gradient_argdefs, opt_configs_);
     ORT_RETURN_IF_ERROR(AddGradientNorm(
         nodearg_name_generator, gradient_norm_inputs, graph_defs, global_grad_norm_argdef));
     optimizer_graph_outputs[OptimizerOutputKey::GlobalGradientNorm] = global_grad_norm_argdef.name;
-
     ORT_RETURN_IF_ERROR(AddL2NormNcclAllReduce(global_grad_norm_argdef, graph_defs));
+  }
 
+  if (should_add_gradient_finite_check) {
     ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
         nodearg_name_generator, {global_grad_norm_argdef}, graph_defs, global_grad_norm_finite_argdef));
     optimizer_graph_outputs[OptimizerOutputKey::GradientAllIsFinite] = global_grad_norm_finite_argdef.name;

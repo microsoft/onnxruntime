@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "gemm.h"
+#include "core/providers/cuda/math/gemm.h"
 #include "core/providers/cpu/math/gemm_helper.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
@@ -30,10 +30,20 @@ namespace cuda {
       KernelDefBuilder()                                          \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Gemm<T>);                                                   \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
       Gemm,                                                       \
       kOnnxDomain,                                                \
       11,                                                         \
+      12,                                                         \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      KernelDefBuilder()                                          \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Gemm<T>);                                                   \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+      Gemm,                                                       \
+      kOnnxDomain,                                                \
+      13,                                                         \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       KernelDefBuilder()                                          \

@@ -103,10 +103,11 @@ class OpKernelContext {
   template <typename T>
   const T* Input(int index) const {
     const OrtValue* p_ml_value = GetInputMLValue(index);
-    try {
+    ORT_TRY {
       return p_ml_value ? &(p_ml_value->Get<T>()) : nullptr;
-    } catch (const std::exception& /*e*/) {
-      throw OnnxRuntimeException(ORT_WHERE_WITH_STACK, "Missing Input: " + kernel_->Node().InputDefs()[index]->Name());
+    }
+    ORT_CATCH(const std::exception& /*e*/) {
+      ORT_THROW("Missing Input: " + kernel_->Node().InputDefs()[index]->Name());
     }
   }
 
@@ -225,6 +226,13 @@ class OpKernelContext {
   */
   _Ret_maybenull_ onnxruntime::concurrency::ThreadPool* GetOperatorThreadPool() const { return threadpool_; }
 
+  /**
+  Returns whether deterministic computation is preferred.
+  */
+  virtual bool GetUseDeterministicCompute() const {
+    return true;
+  }
+
  protected:
   onnxruntime::NodeIndex GetNodeIndex() const;
 
@@ -311,6 +319,13 @@ namespace cuda {
 template <typename T>
 KernelCreateInfo BuildKernelCreateInfo();
 }  // namespace cuda
+}  // namespace contrib
+
+namespace contrib {
+namespace rocm {
+template <typename T>
+KernelCreateInfo BuildKernelCreateInfo();
+}  // namespace rocm
 }  // namespace contrib
 
 using BuildKernelCreateInfoFn = KernelCreateInfo (*)();
@@ -429,6 +444,23 @@ using BuildKernelCreateInfoFn = KernelCreateInfo (*)();
             .Provider(provider)                                                                                              \
             .Build(),                                                                                                        \
         static_cast<KernelCreatePtrFn>([](const OpKernelInfo& info) -> OpKernel* { return new __VA_ARGS__(info); }));        \
+  }
+
+#define ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type1, type2, name) \
+  provider##_##name##_##domain##_ver##startver##_##endver##_##type1##_##type2
+
+#define ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_EX(name, domain, startver, endver, type1, type2, provider, builder, ...)                \
+  class ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type1, type2, name);                     \
+  template <>                                                                                                                            \
+  KernelCreateInfo                                                                                                                       \
+  BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type1, type2, name)>() { \
+    return KernelCreateInfo(                                                                                                             \
+        builder.SetName(#name)                                                                                                           \
+            .SetDomain(domain)                                                                                                           \
+            .SinceVersion(startver, endver)                                                                                              \
+            .Provider(provider)                                                                                                          \
+            .Build(),                                                                                                                    \
+        static_cast<KernelCreatePtrFn>([](const OpKernelInfo& info) -> OpKernel* { return new __VA_ARGS__(info); }));                    \
   }
 
 // Use within macro definitions to create a custom vector of constraints.

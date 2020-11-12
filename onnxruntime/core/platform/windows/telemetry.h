@@ -20,15 +20,16 @@ class WindowsTelemetry : public Telemetry {
 
   void EnableTelemetryEvents() const override;
   void DisableTelemetryEvents() const override;
+  void SetLanguageProjection(uint32_t projection) const override;
 
   void LogProcessInfo() const override;
 
   void LogSessionCreationStart() const override;
-  
+
   void LogEvaluationStop() const override;
 
   void LogEvaluationStart() const override;
-  
+
   void LogSessionCreation(uint32_t session_id, int64_t ir_version, const std::string& model_producer_name,
                           const std::string& model_producer_version, const std::string& model_domain,
                           const std::unordered_map<std::string, int>& domain_to_version_map,
@@ -48,6 +49,7 @@ class WindowsTelemetry : public Telemetry {
   static OrtMutex mutex_;
   static uint32_t global_register_count_;
   static bool enabled_;
+  static uint32_t projection_;
 };
 
 }  // namespace onnxruntime

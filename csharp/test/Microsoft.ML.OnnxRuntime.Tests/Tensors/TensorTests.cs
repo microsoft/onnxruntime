@@ -159,9 +159,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(24, tensor.Length);
             Assert.Equal(tensorConstructor.IsReversedStride, tensor.IsReversedStride);
 
-            //Assert.Throws<ArgumentNullException>("dimensions", () => tensorConstructor.CreateFromDimensions<int>(dimensions: null));
-            Assert.Throws<ArgumentException>("dimensions", () => tensorConstructor.CreateFromDimensions<int>(dimensions: new int[0]));
-
+            Assert.Throws<ArgumentNullException>("dimensions", () => tensorConstructor.CreateFromDimensions<int>(dimensions: null));
             Assert.Throws<ArgumentOutOfRangeException>("dimensions", () => tensorConstructor.CreateFromDimensions<int>(dimensions: new[] { 1, -1 }));
 
             // ensure dimensions are immutable
@@ -224,12 +222,88 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.True(StructuralComparisons.StructuralEqualityComparer.Equals(emptyTensor1, emptyTensor4));
             Assert.True(StructuralComparisons.StructuralEqualityComparer.Equals(emptyTensor4, emptyTensor1));
 
-            // create an empty DenseTensor 
+            // create an empty DenseTensor from dimensions
             dimensions = new[] { 0, 2, 1 };
-            var emptyDenseTensor = new DenseTensor<int>(new Span<int>(dimensions));
+            var emptyDenseTensor1 = new DenseTensor<int>(new Span<int>(dimensions));
+            Assert.Equal(0, emptyDenseTensor1.Length);
             // accessing any index in the underlying buffer should result in an IndexOutOfRangeException
-            Assert.Throws<IndexOutOfRangeException>(() => emptyDenseTensor.GetValue(0));
-            Assert.Throws<IndexOutOfRangeException>(() => emptyDenseTensor.GetValue(5));
+            Assert.Throws<IndexOutOfRangeException>(() => emptyDenseTensor1.GetValue(0));
+            Assert.Throws<IndexOutOfRangeException>(() => emptyDenseTensor1.GetValue(5));
+
+            // create an empty DenseTensor from memory
+            var memory = new Memory<int>(new int[] { });
+            var emptyDenseTensor2 = new DenseTensor<int>(memory, new int[] {2, 0, 2 });
+            Assert.Equal(0, emptyDenseTensor2.Length);
+            // accessing any index in the underlying buffer should result in an IndexOutOfRangeException
+            Assert.Throws<IndexOutOfRangeException>(() => emptyDenseTensor2.GetValue(0));
+            Assert.Throws<IndexOutOfRangeException>(() => emptyDenseTensor2.GetValue(5));
+
+        }
+
+        [Theory()]
+        [MemberData(nameof(GetSingleTensorConstructors))]
+        public void ConstructScalarTensors(TensorConstructor tensorConstructor)
+        {
+            // tests associated with scalar tensors (i.e.) tensors with no dimensions
+
+            // test creation of scalar tensors (from dimensions)
+            var dimensions = new int[] { };
+            var scalarTensor1 = tensorConstructor.CreateFromDimensions<int>(dimensions: dimensions);
+            Assert.Equal(0, scalarTensor1.Dimensions.Length);
+            Assert.Equal(0, scalarTensor1.Rank);
+
+            dimensions = new int[0];
+            var scalarTensor2 = tensorConstructor.CreateFromDimensions<int>(dimensions: dimensions);
+            Assert.Equal(0, scalarTensor2.Dimensions.Length);
+            Assert.Equal(0, scalarTensor2.Rank);
+
+            // TODO: Create from Array ?
+
+            // ensure the lengths of the scalar tensors is 1
+            Assert.Equal(1, scalarTensor1.Length);
+            Assert.Equal(1, scalarTensor2.Length);
+
+            // equality comparison of scalar tensors with non-scalar tensors throws an ArgumentException
+            dimensions = new int[] { 2, 2 };
+            var nonScalarTensor1 = tensorConstructor.CreateFromDimensions<int>(dimensions: dimensions);
+
+            dimensions = new int[] { 0, 2, 4 };
+            var nonScalarTensor2 = tensorConstructor.CreateFromDimensions<int>(dimensions: dimensions);
+
+            Assert.Throws<ArgumentException>("other", () => StructuralComparisons.StructuralComparer.Compare(nonScalarTensor1, scalarTensor1));
+            Assert.Throws<ArgumentException>("other", () => StructuralComparisons.StructuralComparer.Compare(scalarTensor1, nonScalarTensor1));
+            Assert.Throws<ArgumentException>("other", () => StructuralComparisons.StructuralComparer.Compare(nonScalarTensor2, scalarTensor1));
+            Assert.Throws<ArgumentException>("other", () => StructuralComparisons.StructuralComparer.Compare(scalarTensor1, nonScalarTensor2));
+
+            // equality comparison of scalar tensors is true
+            // equality comparison of a scalar tensor with itself
+            Assert.Equal(0, StructuralComparisons.StructuralComparer.Compare(scalarTensor1, scalarTensor1));
+            Assert.True(StructuralComparisons.StructuralEqualityComparer.Equals(scalarTensor1, scalarTensor1));
+            // equality comparison of a scalar tensor with another scalar tensor
+            Assert.Equal(0, StructuralComparisons.StructuralComparer.Compare(scalarTensor1, scalarTensor2));
+            Assert.Equal(0, StructuralComparisons.StructuralComparer.Compare(scalarTensor2, scalarTensor1));
+            Assert.True(StructuralComparisons.StructuralEqualityComparer.Equals(scalarTensor1, scalarTensor2));
+            Assert.True(StructuralComparisons.StructuralEqualityComparer.Equals(scalarTensor2, scalarTensor1));
+
+            // create a scalar DenseTensor from dimensions
+            dimensions = new int[] { };
+            var scalarDenseTensor1 = new DenseTensor<int>(new Span<int>(dimensions));
+            Assert.Equal(1, scalarDenseTensor1.Length);
+            // set and get values in the scalar tensor
+            scalarDenseTensor1.SetValue(0, 100);
+            Assert.Equal(100, scalarDenseTensor1.GetValue(0));
+
+            // setting a non-zero in the underlying buffer should result in an IndexOutOfRangeException
+            Assert.Throws<IndexOutOfRangeException>(() => scalarDenseTensor1.SetValue(6, 100));
+
+            // accessing a non-zero index in the underlying buffer should result in an IndexOutOfRangeException
+            Assert.Throws<IndexOutOfRangeException>(() => scalarDenseTensor1.GetValue(5));
+
+            // create a scalar DenseTensor from memory
+            var memory = new Memory<int>(new int[] { 1 });
+            var scalarDenseTensor2 = new DenseTensor<int>(memory, new int[] { });
+            Assert.Equal(1, scalarDenseTensor2.Length);
+            Assert.Equal(1, scalarDenseTensor2.GetValue(0));
         }
 
         [Theory()]

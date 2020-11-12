@@ -4,6 +4,7 @@
 #--------------------------------------------------------------------------
 
 from logging import getLogger
+from typing import List
 from onnx import TensorProto, helper
 from onnx_model import OnnxModel
 from fusion_reshape import FusionReshape
@@ -30,14 +31,16 @@ class BertOptimizationOptions:
         self.enable_bias_skip_layer_norm = True
         self.enable_bias_gelu = True
         self.enable_gelu_approximation = False
-        self.attention_mask_format = AttentionMaskFormat.MaskIndexEnd
+        self.attention_mask_format = AttentionMaskFormat.AttentionMask
 
         if model_type == 'gpt2':
             self.enable_skip_layer_norm = False
-            self.attention_mask_format = AttentionMaskFormat.AttentionMask
 
-    def use_raw_attention_mask(self):
-        self.attention_mask_format = AttentionMaskFormat.AttentionMask
+    def use_raw_attention_mask(self, use_raw_mask=True):
+        if use_raw_mask:
+            self.attention_mask_format = AttentionMaskFormat.AttentionMask
+        else:
+            self.attention_mask_format = AttentionMaskFormat.MaskIndexEnd
 
     def disable_attention_mask(self):
         self.attention_mask_format = AttentionMaskFormat.NoMask
@@ -95,35 +98,39 @@ class BertOnnxModel(OnnxModel):
         fusion = FusionSkipLayerNormalization(self)
         fusion.apply()
 
-    def get_graph_inputs_from_embed_nodes(self, casted=False):
+    def get_graph_inputs_from_node_type(self, op_type: str, input_indices: List[int], casted: bool):
         """
-        Get graph inputs that feed into EmbedLayerNormaliazation.
+        Get graph inputs that feed into node type (like EmbedLayerNormalization or Attention).
         Returns a list of the graph input names based on the filter whether it is casted or not.
         """
-        embed_graph_inputs = []
+        graph_inputs = []
 
         output_name_to_node = self.output_name_to_node()
-        embed_nodes = self.get_nodes_by_op_type('EmbedLayerNormalization')
-        for embed_node in embed_nodes:
-            bert_inputs = embed_node.input[:2] + embed_node.input[
-                7:]  # inputs 0, 1 and 7 are input_ids, segment_ids and attention mask
+        nodes = self.get_nodes_by_op_type(op_type)
+        for node in nodes:
+            bert_inputs = [node.input[i] for i in input_indices if i < len(node.input)]
             for bert_input in bert_inputs:
                 if self.find_graph_input(bert_input):
                     if not casted:
-                        embed_graph_inputs.append(bert_input)
+                        graph_inputs.append(bert_input)
                 elif bert_input in output_name_to_node:
                     parent = output_name_to_node[bert_input]
                     if parent.op_type == 'Cast' and self.find_graph_input(parent.input[0]) is not None:
                         if casted:
-                            embed_graph_inputs.append(parent.input[0])
-        return embed_graph_inputs
+                            graph_inputs.append(parent.input[0])
+        return graph_inputs
+
+    def get_graph_inputs_from_fused_nodes(self, casted: bool):
+        inputs = self.get_graph_inputs_from_node_type('EmbedLayerNormalization', [0, 1, 7], casted)
+        inputs += self.get_graph_inputs_from_node_type('Attention', [3], casted)
+        return inputs
 
     def change_input_to_int32(self):
         original_opset_version = self.model.opset_import[0].version
         graph = self.graph()
 
         new_graph_inputs = []
-        casted_bert_graph_inputs = self.get_graph_inputs_from_embed_nodes(casted=True)
+        casted_bert_graph_inputs = self.get_graph_inputs_from_fused_nodes(casted=True)
         utils = FusionUtils(self)
 
         for input in graph.input:
@@ -151,8 +158,8 @@ class BertOnnxModel(OnnxModel):
         """
         Update input and output shape to use dynamic axes.
         """
-        bert_graph_inputs = self.get_graph_inputs_from_embed_nodes(
-            casted=True) + self.get_graph_inputs_from_embed_nodes(casted=False)
+        bert_graph_inputs = self.get_graph_inputs_from_fused_nodes(
+            casted=True) + self.get_graph_inputs_from_fused_nodes(casted=False)
 
         dynamic_batch_inputs = {}
         for input in self.model.graph.input:

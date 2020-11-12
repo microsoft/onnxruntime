@@ -6,13 +6,13 @@ trigger: none
 jobs:
 - job: Onnxruntime_Linux_GPU_Training_FrontEnd
 
-  timeoutInMinutes: 240
-  
+  timeoutInMinutes: 300
+
   steps:
   - checkout: self
     clean: true
     submodules: recursive
-  
+
   - template: templates/set-test-data-variables-step.yml
 
   - task: CmdLine@2
@@ -26,8 +26,6 @@ jobs:
     continueOnError: true
     condition: always()
 
-  # insert a python frontend test data preparation step here
-
   - script: >
       tools/ci_build/github/linux/run_dockerbuild.sh
       -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory)
@@ -37,6 +35,7 @@ jobs:
       --skip_onnx_tests
       --build_wheel
       --enable_training_python_frontend_e2e_tests
+      --enable_training_pipeline_e2e_tests
       "
     displayName: 'Build and run frontend tests'
 

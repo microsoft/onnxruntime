@@ -24,7 +24,7 @@ static void CreateModelFromFilePath() {
 
 static void CreateModelFromUnicodeFilePath() {
   LearningModel learningModel = nullptr;
-  WINML_EXPECT_NO_THROW(APITest::LoadModel(L"UnicodePath\\こんにちは maçã\\foo.onnx", learningModel));
+  WINML_EXPECT_NO_THROW(APITest::LoadModel(L"UnicodePath\\\u3053\u3093\u306B\u3061\u306F maçã\\foo.onnx", learningModel));
 }
 
 static void CreateModelFileNotFound() {
@@ -45,7 +45,6 @@ static void CreateCorruptModel() {
     APITest::LoadModel(L"corrupt-model.onnx", learningModel),
     winrt::hresult_error,
     [](const winrt::hresult_error& e) -> bool {
-        auto f = __HRESULT_FROM_WIN32(e.code());
           return e.code() == __HRESULT_FROM_WIN32(ERROR_FILE_CORRUPT);
     });
 }

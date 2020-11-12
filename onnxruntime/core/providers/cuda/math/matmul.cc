@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "matmul.h"
+#include "core/providers/cuda/math/matmul.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/cuda_allocator.h"
@@ -19,10 +19,19 @@ namespace cuda {
       KernelDefBuilder()                                          \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       MatMul<T>);                                                 \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
+      MatMul,                                                     \
+      kOnnxDomain,                                                \
+      9, 12,                                                       \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      KernelDefBuilder()                                          \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      MatMul<T>);                                                 \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       MatMul,                                                     \
       kOnnxDomain,                                                \
-      9,                                                          \
+      13,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       KernelDefBuilder()                                          \

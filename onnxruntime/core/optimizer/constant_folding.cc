@@ -104,8 +104,7 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       }
 
       // Create execution frame for executing constant nodes.
-      // Create execution frame for executing constant nodes.
-      OptimizerExecutionFrame::Info info({node}, constant_inputs, execution_provider_);
+      OptimizerExecutionFrame::Info info({node}, constant_inputs, graph.ModelPath(), execution_provider_);
 
       std::vector<int> fetch_mlvalue_idxs;
       for (const auto* node_out : node->OutputDefs()) {

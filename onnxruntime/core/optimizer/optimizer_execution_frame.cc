@@ -19,6 +19,7 @@ namespace onnxruntime {
 
 OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
                                     const InitializedTensorSet& initialized_tensor_set,
+                                    const Path& model_path,
                                     const IExecutionProvider& execution_provider)
     : execution_provider_(execution_provider) {
   allocator_ptr_ = execution_provider_.GetAllocator(device_id_, mem_type_);
@@ -27,7 +28,7 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
   data_transfer_mgr_.RegisterDataTransfer(onnxruntime::make_unique<CPUDataTransfer>());
 
   // Create MLValues related maps
-  auto initialize_maps = [this, &initialized_tensor_set](const NodeArg& arg, size_t /*index*/) -> Status {
+  auto initialize_maps = [this, &initialized_tensor_set, &model_path](const NodeArg& arg, size_t /*index*/) -> Status {
     int idx = ort_value_name_idx_map_.Add(arg.Name());
     ort_value_idx_nodearg_map_[idx] = &arg;
 
@@ -41,9 +42,12 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
       std::unique_ptr<char[]> data(new char[cpu_tensor_length]);
       std::unique_ptr<Tensor> p_tensor;
       OrtCallback d;
-      ORT_RETURN_IF_ERROR(utils::TensorProtoToMLValue(Env::Default(), nullptr, tensor_proto,
+      ORT_RETURN_IF_ERROR(utils::TensorProtoToMLValue(Env::Default(),
+                                                      model_path.IsEmpty() ? nullptr : model_path.ToPathString().c_str(),
+                                                      tensor_proto,
                                                       MemBuffer(data.get(), cpu_tensor_length, allocator_ptr_->Info()),
-                                                      ort_value, d));
+                                                      ort_value,
+                                                      d));
 
       initializers_[idx] = ort_value;
       buffer_for_initialized_tensors_[idx] = std::move(data);

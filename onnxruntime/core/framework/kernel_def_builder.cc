@@ -2,6 +2,9 @@
 // Licensed under the MIT License.
 
 #include "core/framework/kernel_def_builder.h"
+#include "core/framework/murmurhash3.h"
+#include "gsl/gsl"
+
 #include <unordered_set>
 #include <string>
 
@@ -22,7 +25,43 @@ inline bool AreVectorsOverlap(const std::vector<T>& v1, const std::vector<T>& v2
   }
   return false;
 }
+
 }  // namespace
+
+void KernelDef::CalculateHash() {
+  uint32_t hash[4] = {0, 0, 0, 0};
+
+  auto hash_int = [&hash](int i) { MurmurHash3::x86_128(&i, sizeof(i), hash[0], &hash); };
+  auto hash_str = [&hash](const std::string& str) {
+    MurmurHash3::x86_128(str.data(), gsl::narrow_cast<int32_t>(str.size()), hash[0], &hash);
+  };
+
+  // use name, start/end, domain, provider and the type constraints.
+  // we wouldn't have two kernels that only differed by the inplace or alias info or memory types.
+  // currently nothing sets exec_queue_id either (and would assumably be a runtime thing and not part of the base
+  // kernel definition)
+
+  hash_str(op_name_);
+  hash_int(op_since_version_start_);
+
+  // If we include op_since_version_end_ the hash of an existing op changes when it's superseded.
+  // e.g. Unsqueeze 11 had no end version until Unsqueeze 13, at which point the existing op is changed to have
+  // an end version of 12. That would result in a new ORT build having a different hash for Unsqueeze 11 and a
+  // previously serialized ORT format model wouldn't find the kernel. In order to select the kernel to include
+  // in the ORT model the full OpSchema info is used, so it's safe to exclude op_since_version_end_ from the hash.
+
+  hash_str(op_domain_);
+  hash_str(provider_type_);
+  for (const auto& key_value : type_constraints_) {
+    hash_str(key_value.first);
+    for (const auto& data_type : key_value.second) {
+      hash_str(std::string(DataTypeImpl::ToString(data_type)));
+    }
+  }
+
+  hash_ = hash[0] & 0xfffffff8;  // save low 3 bits for hash version info in case we need it in the future
+  hash_ |= uint64_t(hash[1]) << 32;
+}
 
 // TODO: Tell user why it has conflicts
 // TODO: Investigate why IsConflict() was not triggered when there were duplicate Tile CUDA

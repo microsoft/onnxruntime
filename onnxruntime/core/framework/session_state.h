@@ -32,7 +32,19 @@
 #include "core/platform/path_lib.h"
 #include "core/platform/threadpool.h"
 
+namespace flatbuffers {
+class FlatBufferBuilder;
+template <typename T>
+struct Offset;
+}  // namespace flatbuffers
+
 namespace onnxruntime {
+
+namespace experimental {
+namespace fbs {
+struct SessionState;
+}  // namespace fbs
+}  // namespace experimental
 
 class ExecutionProviders;
 class KernelDef;
@@ -52,7 +64,7 @@ struct MemoryPatternGroup;
  *   for(...) // copy initializers from GraphProto format in Graph to OrtValue format in SessionState
         s.AddInitializedTensor(...);
  *   s.CleanInitializedTensorsFromGraph(); // remove GraphProto instances from Graph if not needed
- * 
+ *
  *   s.CreateGraphInfo();
  *   s.CreateKernels(...);
  * Then you can use:
@@ -252,12 +264,24 @@ class SessionState {
 #if !defined(ORT_MINIMAL_BUILD)
   void UpdateToBeExecutedNodes(const std::vector<int>& fetch_mlvalue_idxs);
   const std::unordered_set<NodeIndex>* GetToBeExecutedNodes(const std::vector<int>& fetch_mlvalue_idxs) const;
+  Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
+                         flatbuffers::Offset<onnxruntime::experimental::fbs::SessionState>& fbs_session_state) const;
+#endif
+
+#if defined(ENABLE_ORT_FORMAT_LOAD)
+  Status LoadFromOrtFormat(const onnxruntime::experimental::fbs::SessionState& fbs_session_state,
+                           const KernelRegistryManager& kernel_registry_manager);
 #endif
 
   Status FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
                               KernelRegistryManager& kernel_registry_manager,
                               const SessionOptions& session_options = {},
+                              const onnxruntime::experimental::fbs::SessionState* serialized_session_state = nullptr,
                               bool remove_initializers = true);
+
+  SessionState* Parent() {
+    return parent_;
+  }
 
 #ifdef ENABLE_TRAINING
   Status GenerateActivationMemoryPatterns(MemoryPatternGroup* output,
@@ -284,7 +308,7 @@ class SessionState {
   * Prepack the constant initialized tensors for better performance.
   * The original constant initialized tensors will be removed to save memory.
   */
-  Status PrepackInitializedConstantTensors();
+  Status PrepackConstantInitializedTensors(std::unordered_map<std::string, size_t>& constant_initializers_use_count);
 
   SessionState* GetMutableSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name);
 
@@ -301,7 +325,8 @@ class SessionState {
                                   KernelRegistryManager& kernel_registry_manager,
                                   _In_opt_ const Node* parent_node,
                                   const SessionOptions& session_options,
-                                  bool remove_initializers);
+                                  bool remove_initializers,
+                                  std::unordered_map<std::string, size_t>& constant_initializers_use_count);
 
 #ifdef ENABLE_TRAINING
   Status GeneratePatternGroupCache(
@@ -407,9 +432,9 @@ class SessionState {
   std::map<std::vector<int>, std::unordered_set<NodeIndex>> to_be_executed_nodes_;
 #endif
 
-#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   SessionState* parent_ = nullptr;
   //Assign each graph in each session an unique id.
+#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   int graph_id_ = 0;
   int next_graph_id_ = 1;
 

@@ -7,7 +7,6 @@
 // pybind11/stl.h is needed to support std::unordered_set, etc.
 #include <pybind11/stl.h>
 
-#include "core/framework/session_options.h"
 #include "core/session/environment.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/graph/optimizer_config.h"
@@ -44,10 +43,17 @@ struct TrainingParameters {
   int gradient_accumulation_steps = 1;
   int data_parallel_size = 1;
   int horizontal_parallel_size = 1;
+  int pipeline_parallel_size = 1;
   int deepspeed_zero_stage = 0;
   bool enable_grad_norm_clip = true;
   bool set_gradients_as_graph_outputs = false;
   bool use_invertible_layernorm_grad = false;
+
+  // recompute
+  bool attn_dropout_recompute = false;
+  bool gelu_recompute = false;
+  bool transformer_layer_recompute = false;
+  int number_recompute_layers = 0;
 };
 
 struct TrainingConfigurationResult {
@@ -60,14 +66,19 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   //TODO tix, refactor the mpi related code to populate all fields correctly by default.
   ORT_ENFORCE(parameters.horizontal_parallel_size <= parameters.world_size);
   ORT_ENFORCE(parameters.data_parallel_size <= parameters.world_size);
+
+  if (parameters.world_size % parameters.data_parallel_size != 0) {
+    throw std::runtime_error("Cannot split data parallel group because world_size is not divisible");
+  }
+
   if (parameters.world_size % parameters.horizontal_parallel_size != 0) {
     throw std::runtime_error("Cannot split horizontal parallel group because world_size is not divisible");
   }
 
-  auto data_group_size = parameters.world_size / parameters.horizontal_parallel_size;
+  auto data_group_size = parameters.world_size / (parameters.horizontal_parallel_size * parameters.pipeline_parallel_size);
   if (data_group_size != parameters.data_parallel_size) {
     LOGS(*(sess->GetLogger()), WARNING) << "data_parallel_size is not correct, tuned automatically to "
-              << data_group_size;
+                                        << data_group_size;
     parameters.data_parallel_size = data_group_size;
   }
 
@@ -87,7 +98,7 @@ TrainingConfigurationResult ConfigureSessionForTraining(
 
   if (parameters.use_mixed_precision) {
     training::TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mp{};
-    mp.use_fp16_initializers = true;
+    mp.use_mixed_precision_initializers = true;
 
     config.mixed_precision_config = mp;
   }
@@ -112,8 +123,8 @@ TrainingConfigurationResult ConfigureSessionForTraining(
           "Failed to find int attribute map for weight ", weight_name);
       return it->second;
     };
-    opt.use_fp16_moments = parameters.use_fp16_moments;
-    opt.do_all_reduce_in_fp16 = true;
+    opt.use_mixed_precision_moments = parameters.use_fp16_moments;
+    opt.do_all_reduce_in_mixed_precision_type = true;
     // TODO: this mapping is temporary.
     // For now, nccl allreduce kernel only implements for allreduce_post_accumulation
     // hovorod allreduce kernel only implements for not allreduce_post_accumulation.
@@ -131,6 +142,11 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   config.gradient_graph_config.use_invertible_layernorm_grad = parameters.use_invertible_layernorm_grad;
   config.gradient_graph_config.set_gradients_as_graph_outputs = parameters.set_gradients_as_graph_outputs;
 
+  config.graph_transformer_config.attn_dropout_recompute = parameters.attn_dropout_recompute;
+  config.graph_transformer_config.gelu_recompute = parameters.gelu_recompute;
+  config.graph_transformer_config.transformer_layer_recompute = parameters.transformer_layer_recompute;
+  config.graph_transformer_config.number_recompute_layers = parameters.number_recompute_layers;
+
   training::TrainingSession::TrainingConfigurationResult config_result{};
 
   OrtPybindThrowIfError(sess->ConfigureForTraining(config, config_result));
@@ -144,25 +160,25 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   return python_config_result;
 }
 
-#if defined(USE_NCCL)
+#if defined(USE_MPI)
 void CopyMPIContextToTrainingParameters(TrainingParameters& parameters, const logging::Logger* logger) {
-    LOGS(*logger, INFO) << "MPIContext::GetInstance().GetWorldRank(): " << MPIContext::GetInstance().GetWorldRank();
-    LOGS(*logger, INFO) << "MPIContext::GetInstance().GetLocalRank(): " << MPIContext::GetInstance().GetLocalRank();
-    LOGS(*logger, INFO) << "MPIContext::GetInstance().GetWorldSize(): " << MPIContext::GetInstance().GetWorldSize();
-    LOGS(*logger, INFO) << "MPIContext::GetInstance().GetLocalSize(): " << MPIContext::GetInstance().GetLocalSize();
+  LOGS(*logger, INFO) << "MPIContext::GetInstance().GetWorldRank(): " << MPIContext::GetInstance().GetWorldRank();
+  LOGS(*logger, INFO) << "MPIContext::GetInstance().GetLocalRank(): " << MPIContext::GetInstance().GetLocalRank();
+  LOGS(*logger, INFO) << "MPIContext::GetInstance().GetWorldSize(): " << MPIContext::GetInstance().GetWorldSize();
+  LOGS(*logger, INFO) << "MPIContext::GetInstance().GetLocalSize(): " << MPIContext::GetInstance().GetLocalSize();
 
-    parameters.local_rank = MPIContext::GetInstance().GetLocalRank();
-    parameters.local_size = MPIContext::GetInstance().GetLocalSize();
-    if (parameters.world_rank != MPIContext::GetInstance().GetWorldRank()) {
-      if (parameters.world_rank != 0)
-        LOGS(*logger, WARNING) << "TrainingParameters world_rank is not correct, tuned automatically to " << MPIContext::GetInstance().GetWorldRank();
-      parameters.world_rank = MPIContext::GetInstance().GetWorldRank();
-    }
-    if (parameters.world_size != MPIContext::GetInstance().GetWorldSize()) {
-      if (parameters.world_size != 1)
-        LOGS(*logger, WARNING) << "TrainingParameters world_size is not correct, tuned automatically to " << MPIContext::GetInstance().GetWorldSize();
-      parameters.world_size = MPIContext::GetInstance().GetWorldSize();
-    }
+  parameters.local_rank = MPIContext::GetInstance().GetLocalRank();
+  parameters.local_size = MPIContext::GetInstance().GetLocalSize();
+  if (parameters.world_rank != MPIContext::GetInstance().GetWorldRank()) {
+    if (parameters.world_rank != 0)
+      LOGS(*logger, WARNING) << "TrainingParameters world_rank is not correct, tuned automatically to " << MPIContext::GetInstance().GetWorldRank();
+    parameters.world_rank = MPIContext::GetInstance().GetWorldRank();
+  }
+  if (parameters.world_size != MPIContext::GetInstance().GetWorldSize()) {
+    if (parameters.world_size != 1)
+      LOGS(*logger, WARNING) << "TrainingParameters world_size is not correct, tuned automatically to " << MPIContext::GetInstance().GetWorldSize();
+    parameters.world_size = MPIContext::GetInstance().GetWorldSize();
+  }
 }
 #endif
 
@@ -187,9 +203,16 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("deepspeed_zero_stage", &TrainingParameters::deepspeed_zero_stage)
       .def_readwrite("enable_grad_norm_clip", &TrainingParameters::enable_grad_norm_clip)
       .def_readwrite("set_gradients_as_graph_outputs", &TrainingParameters::set_gradients_as_graph_outputs)
-      .def_readwrite("use_invertible_layernorm_grad", &TrainingParameters::use_invertible_layernorm_grad);
+      .def_readwrite("use_invertible_layernorm_grad", &TrainingParameters::use_invertible_layernorm_grad)
+      .def_readwrite("attn_dropout_recompute", &TrainingParameters::attn_dropout_recompute)
+      .def_readwrite("gelu_recompute", &TrainingParameters::gelu_recompute)
+      .def_readwrite("transformer_layer_recompute", &TrainingParameters::transformer_layer_recompute)
+      .def_readwrite("number_recompute_layers", &TrainingParameters::number_recompute_layers)
+      .def_readwrite("data_parallel_size", &TrainingParameters::data_parallel_size)
+      .def_readwrite("horizontal_parallel_size", &TrainingParameters::horizontal_parallel_size)
+      .def_readwrite("pipeline_parallel_size", &TrainingParameters::pipeline_parallel_size);
 
-#if defined(USE_NCCL)
+#if defined(USE_MPI)
   m.def("get_mpi_context_local_rank", []() -> int { return MPIContext::GetInstance().GetLocalRank(); });
   m.def("get_mpi_context_local_size", []() -> int { return MPIContext::GetInstance().GetLocalSize(); });
   m.def("get_mpi_context_world_rank", []() -> int { return MPIContext::GetInstance().GetWorldRank(); });
@@ -205,17 +228,25 @@ void addObjectMethodsForTraining(py::module& m) {
         return py::none();
       });
 
-  py::class_<onnxruntime::training::TrainingSession, InferenceSession> training_session(m, "TrainingSession");
-  training_session.def(py::init([](const SessionOptions& so) {
-                    Environment& env = get_env();
-                    return onnxruntime::make_unique<onnxruntime::training::TrainingSession>(so, env);
-                  }))
+  // Thin wrapper over internal C++ InferenceSession to accommodate custom op library management for the Python user
+  struct PyTrainingSession : public PyInferenceSession {
+    PyTrainingSession(Environment& env, const PySessionOptions& so)
+        : PyInferenceSession(onnxruntime::make_unique<TrainingSession>(so, env)) {
+    }
+  };
+
+  py::class_<PyTrainingSession, PyInferenceSession> training_session(m, "TrainingSession");
+  training_session
+      .def(py::init([](const PySessionOptions& so) {
+        Environment& env = GetEnv();
+        return onnxruntime::make_unique<PyTrainingSession>(env, so);
+      }))
       .def(py::init([]() {
-        Environment& env = get_env();
-        return onnxruntime::make_unique<onnxruntime::training::TrainingSession>(GetDefaultCPUSessionOptions(), env);
+        Environment& env = GetEnv();
+        return onnxruntime::make_unique<PyTrainingSession>(env, GetDefaultCPUSessionOptions());
       }))
       .def("finalize", [](py::object) {
-#if defined(USE_NCCL)
+#if defined(USE_MPI)
 #ifdef _WIN32
         // https://docs.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-best-practices
         // shutdown_mpi() is not called within MPIContext destructor because of DllMain's restriction
@@ -224,37 +255,41 @@ void addObjectMethodsForTraining(py::module& m) {
 #endif
 #endif
       })
-      .def("load_model", [](onnxruntime::training::TrainingSession* sess, const std::string& path, TrainingParameters& parameters) {
-        OrtPybindThrowIfError(sess->Load(path));
+      .def("load_model", [](PyTrainingSession* sess, const std::string& path, TrainingParameters& parameters) {
+        OrtPybindThrowIfError(sess->GetSessionHandle()->Load(path));
 
-#if defined(USE_NCCL)
-        CopyMPIContextToTrainingParameters(parameters, sess->GetLogger());
+#if defined(USE_MPI)
+        bool use_nccl = parameters.allreduce_post_accumulation;
+        if (!use_nccl && parameters.world_size > 1)
+          CopyMPIContextToTrainingParameters(parameters, sess->GetSessionHandle()->GetLogger());
 #endif
-        const auto config_result = ConfigureSessionForTraining(sess, parameters);
+        const auto config_result = ConfigureSessionForTraining(static_cast<TrainingSession*>(sess->GetSessionHandle()), parameters);
 
         std::vector<std::string> provider_types = {};
-        InitializeSession(sess, provider_types);
+        InitializeSession(sess->GetSessionHandle(), provider_types);
 
         return config_result;
       })
-      .def("read_bytes", [](onnxruntime::training::TrainingSession* sess, const py::bytes& serialized_model, TrainingParameters& parameters) {
+      .def("read_bytes", [](PyTrainingSession* sess, const py::bytes& serialized_model, TrainingParameters& parameters) {
         std::istringstream buffer(serialized_model);
-        OrtPybindThrowIfError(sess->Load(buffer));
+        OrtPybindThrowIfError(sess->GetSessionHandle()->Load(buffer));
 
-#if defined(USE_NCCL)
-        CopyMPIContextToTrainingParameters(parameters, sess->GetLogger());
+#if defined(USE_MPI)
+        bool use_nccl = parameters.allreduce_post_accumulation;
+        if (!use_nccl && parameters.world_size > 1)
+          CopyMPIContextToTrainingParameters(parameters, sess->GetSessionHandle()->GetLogger());
 #endif
-        const auto config_result = ConfigureSessionForTraining(sess, parameters);
+        const auto config_result = ConfigureSessionForTraining(static_cast<TrainingSession*>(sess->GetSessionHandle()), parameters);
 
         std::vector<std::string> provider_types = {};
-        InitializeSession(sess, provider_types);
+        InitializeSession(sess->GetSessionHandle(), provider_types);
 
         return config_result;
       })
-      .def("get_state", [](onnxruntime::training::TrainingSession* sess) {
+      .def("get_state", [](PyTrainingSession* sess) {
         NameMLValMap state_tensors;
-        ORT_THROW_IF_ERROR(sess->GetStateTensors(state_tensors));
-        auto& data_transfer_manager = sess->GetDataTransferManager();
+        ORT_THROW_IF_ERROR(static_cast<TrainingSession*>(sess->GetSessionHandle())->GetStateTensors(state_tensors));
+        auto& data_transfer_manager = sess->GetSessionHandle()->GetDataTransferManager();
         //convert to numpy array
         std::map<std::string, py::object> rmap;
         for (auto& kv : state_tensors) {
@@ -269,11 +304,11 @@ void addObjectMethodsForTraining(py::module& m) {
         }
         return rmap;
       })
-      .def("load_state", [](onnxruntime::training::TrainingSession* sess, std::unordered_map<std::string, py::object>& state, bool strict) {
+      .def("load_state", [](PyTrainingSession* sess, std::unordered_map<std::string, py::object>& state, bool strict) {
         NameMLValMap state_tensors;
         for (auto initializer : state) {
           OrtValue ml_value;
-          auto px = sess->GetModelInputs();
+          auto px = sess->GetSessionHandle()->GetModelInputs();
           if (!px.first.IsOK() || !px.second) {
             throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
           }
@@ -293,10 +328,10 @@ void addObjectMethodsForTraining(py::module& m) {
           }
           state_tensors.insert(std::make_pair(initializer.first, ml_value));
         }
-        ORT_THROW_IF_ERROR(sess->SetStateTensors(state_tensors, strict));
+        ORT_THROW_IF_ERROR(static_cast<TrainingSession*>(sess->GetSessionHandle())->SetStateTensors(state_tensors, strict));
       })
-      .def("is_output_fp32_node", [](onnxruntime::training::TrainingSession* sess, const std::string& output_name) {
-        return sess->IsGraphOutputFp32Node(output_name);
+      .def("is_output_fp32_node", [](PyTrainingSession* sess, const std::string& output_name) {
+        return static_cast<TrainingSession*>(sess->GetSessionHandle())->IsGraphOutputFp32Node(output_name);
       });
 }
 }  // namespace python

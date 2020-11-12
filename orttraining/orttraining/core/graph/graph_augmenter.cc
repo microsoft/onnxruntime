@@ -41,7 +41,9 @@ Status AddToExistingNodeArgs(
 };
 }  // namespace
 
-Status GraphAugmenter::AugmentGraph(Graph& graph, const GraphDefs& graph_element_defs) {
+Status GraphAugmenter::AugmentGraph(Graph& graph,
+                                    const GraphDefs& graph_element_defs,
+                                    const std::unordered_set<std::string>* p_initializer_names_to_preserve) {
   // Add new initializers to the graph. - no op if it already exists
   for (const auto& tensor_proto : graph_element_defs.Initializers()) {
     const ONNX_NAMESPACE::TensorProto* exist_initializer = nullptr;
@@ -65,13 +67,17 @@ Status GraphAugmenter::AugmentGraph(Graph& graph, const GraphDefs& graph_element
       output_args.push_back(&node_arg);
     }
 
-    graph.AddNode(node_def.name,
+    auto& n = graph.AddNode(node_def.name,
                   node_def.op_type,
                   "Backward pass",
                   input_args,
                   output_args,
                   &node_def.attributes,
                   node_def.domain);
+    if(node_def.priority != 0){
+      n.SetPriority(node_def.priority);
+    }
+
   }
 
   // Add new inputs to the graph.
@@ -92,7 +98,9 @@ Status GraphAugmenter::AugmentGraph(Graph& graph, const GraphDefs& graph_element
   }
 
   graph.SetGraphResolveNeeded();
-  return graph.Resolve();
+  Graph::ResolveOptions options;
+  options.initializer_names_to_preserve = p_initializer_names_to_preserve;
+  return graph.Resolve(options);
 }
 
 Status GraphAugmenter::OverrideGraphOutputs(Graph& graph, const std::vector<std::string>& graph_outputs) {

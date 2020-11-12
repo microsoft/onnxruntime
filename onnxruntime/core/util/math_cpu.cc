@@ -59,8 +59,6 @@ EIGEN_MATMUL_FUNCTION(uint64_t)
 // will delegate the Caffe math functions that are BLAS-related to either the
 // CBLAS call or the Eigen implementation.
 ////////////////////////////////////////////////////////////////////////////////
-// when USE_MKLML is defined, use cblas APIs for MKLML
-#if !defined(USE_MKLML_FOR_BLAS)
 
 // Caffe2 gemm provides a simpler interface to the gemm functions, with the
 // limitation that the data has to be contiguous in memory.
@@ -86,7 +84,7 @@ void Gemm<float, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE
   MlasGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, N, threadpool);
 }
 
-#if defined(_M_AMD64) || defined(__x86_64__)
+#ifdef MLAS_SUPPORTS_GEMM_DOUBLE
 template <>
 void Gemm<double, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
                               const int64_t N, const int64_t K, double alpha, const double* A, const double* B, double beta,
@@ -146,7 +144,7 @@ void MatMul<float>(int M, int N, int K, const float* A, const float* B, float* C
   MlasGemm(CblasNoTrans, CblasNoTrans, M, N, K, 1.f, A, K, B, N, 0.f, C, N, threadpool);
 }
 
-#if defined(_M_AMD64) || defined(__x86_64__)
+#ifdef MLAS_SUPPORTS_GEMM_DOUBLE
 template <>
 void MatMul<double>(int M, int N, int K, const double* A, const double* B, double* C, ThreadPool* threadpool) {
   MlasGemm(CblasNoTrans, CblasNoTrans, M, N, K, 1.f, A, K, B, N, 0.f, C, N, threadpool);
@@ -212,80 +210,6 @@ template void Gemv<double, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, int M, int
 SPECIALIZED_AXPY(float)
 #undef SPECIALIZED_AXPY
 
-#else
-
-template <>
-void Gemm<float, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
-                             const int64_t N, const int64_t K, float alpha, const float* A, const float* B, float beta,
-                             float* C, ThreadPool* /*context*/) {
-  int lda = gsl::narrow_cast<int>((TransA == CblasNoTrans) ? K : M);
-  int ldb = gsl::narrow_cast<int>((TransB == CblasNoTrans) ? N : K);
-  cblas_sgemm(CblasRowMajor, TransA, TransB,
-              gsl::narrow_cast<int>(M),
-              gsl::narrow_cast<int>(N),
-              gsl::narrow_cast<int>(K),
-              alpha, A, lda, B, ldb,
-              beta, C, gsl::narrow_cast<int>(N));
-}
-
-template <>
-void Gemm<double, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
-                              const int64_t N, const int64_t K, double alpha, const double* A, const double* B, double beta,
-                              double* C, ThreadPool* /*context*/) {
-  int lda = gsl::narrow_cast<int>((TransA == CblasNoTrans) ? K : M);
-  int ldb = gsl::narrow_cast<int>((TransB == CblasNoTrans) ? N : K);
-  cblas_dgemm(CblasRowMajor, TransA, TransB,
-              gsl::narrow_cast<int>(M),
-              gsl::narrow_cast<int>(N),
-              gsl::narrow_cast<int>(K),
-              alpha, A, lda, B, ldb,
-              beta, C, gsl::narrow_cast<int>(N));
-}
-
-template <>
-void MatMul<float>(int M, int N, int K, const float* A, const float* B, float* C, ThreadPool*) {
-  cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, M, N, K, 1, A, K, B, N, 0, C, N);
-}
-
-template <>
-void MatMul<double>(int M, int N, int K, const double* A, const double* B, double* C, ThreadPool*) {
-  cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, M, N, K, 1, A, K, B, N, 0, C, N);
-}
-
-template <>
-void GemmEx<float, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, int M, int N, int K,
-                               float alpha, const float* A, int lda, const float* B, int ldb, float beta, float* C,
-                               int ldc, ThreadPool* /*context*/) {
-  cblas_sgemm(CblasRowMajor, TransA, TransB, M, N, K, alpha, A, lda, B, ldb,
-              beta, C, ldc);
-}
-
-template <>
-void Gemv<float, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, int M, int N, float alpha, const float* A, const float* x,
-                              float beta, float* y, CPUMathUtil* /*context*/) {
-  cblas_sgemv(CblasRowMajor, TransA, M, N, alpha, A, N, x, 1, beta, y, 1);
-}
-
-template <>
-void Gemv<double, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, int M, int N, float alpha, const double* A, const double* x,
-                               float beta, double* y, CPUMathUtil* /*context*/) {
-  cblas_dgemv(CblasRowMajor, TransA, M, N, alpha, A, N, x, 1, beta, y, 1);
-}
-
-#define CAFFE2_SPECIALIZED_AXPY(T, prefix)                                           \
-  template <>                                                                        \
-  void Axpy<T, CPUMathUtil>(int N, const T alpha, const T* x, T* y, CPUMathUtil*) {  \
-    cblas_##prefix##axpy(N, alpha, x, 1, y, 1);                                      \
-  }                                                                                  \
-  template <>                                                                        \
-  void Axpy<T, CPUMathUtil>(int N, const T* alpha, const T* x, T* y, CPUMathUtil*) { \
-    cblas_##prefix##axpy(N, *alpha, x, 1, y, 1);                                     \
-  }
-CAFFE2_SPECIALIZED_AXPY(float, s)
-#undef CAFFE2_SPECIALIZED_AXPY
-
-#endif
-
 #define DELEGATE_SIMPLE_UNARY_FUNCTION(T, Funcname, expr)                  \
   template <>                                                              \
   void Funcname<T, CPUMathUtil>(int N, const T* x, T* y, CPUMathUtil*) {   \
@@ -296,7 +220,6 @@ DELEGATE_SIMPLE_UNARY_FUNCTION(double, Exp, exp)
 DELEGATE_SIMPLE_UNARY_FUNCTION(float, Log, log)
 DELEGATE_SIMPLE_UNARY_FUNCTION(float, Sqr, square)
 #undef DELEGATE_SIMPLE_UNARY_FUNCTION
-
 
 #define EIGEN_SIMPLE_BINARY_FUNCTION(T, Funcname, expr)                                                       \
   template <>                                                                                                 \
@@ -412,12 +335,12 @@ void Im2col<T, StorageOrder::NCHW>::operator()(const T* data_im, int64_t channel
 template struct Im2col<float, StorageOrder::NCHW>;
 template struct Im2col<uint8_t, StorageOrder::NCHW>;
 
-template <>
-void Im2col<float, StorageOrder::NHWC>::operator()(const float* data_im, int64_t channels, int64_t height,
-                                                   int64_t width, int64_t kernel_h, int64_t kernel_w,
-                                                   int64_t dilation_h, int64_t dilation_w, int64_t pad_t,
-                                                   int64_t pad_l, int64_t pad_b, int64_t pad_r, int64_t stride_h,
-                                                   int64_t stride_w, float* data_col, float padding_value) {
+template <typename T>
+void Im2col<T, StorageOrder::NHWC>::operator()(const T* data_im, int64_t channels, int64_t height,
+                                               int64_t width, int64_t kernel_h, int64_t kernel_w,
+                                               int64_t dilation_h, int64_t dilation_w, int64_t pad_t,
+                                               int64_t pad_l, int64_t pad_b, int64_t pad_r, int64_t stride_h,
+                                               int64_t stride_w, T* data_col, T padding_value) {
   const int64_t dkernel_h = dilation_h * (kernel_h - 1) + 1;
   const int64_t dkernel_w = dilation_w * (kernel_w - 1) + 1;
 
@@ -430,13 +353,11 @@ void Im2col<float, StorageOrder::NHWC>::operator()(const float* data_im, int64_t
     for (int64_t w = 0; w < width_col; ++w) {
       for (int64_t ih = h_pad; ih < h_pad + dkernel_h; ih += dilation_h) {
         for (int64_t iw = w_pad; iw < w_pad + dkernel_w; iw += dilation_w) {
-          if (ih >= 0 && ih < height && iw >= 0 && iw < width) {
-            memcpy(data_col, data_im + (ih * width + iw) * channels,
-                   sizeof(float) * channels);
+          if (is_a_ge_zero_and_a_lt_b(ih, height) && is_a_ge_zero_and_a_lt_b(iw, width)) {
+            data_col = std::copy_n(data_im + (ih * width + iw) * channels, channels, data_col);
           } else {
-            std::fill_n(data_col, channels, padding_value);
+            data_col = std::fill_n(data_col, channels, padding_value);
           }
-          data_col += channels;
         }
       }
       w_pad += stride_w;
@@ -444,6 +365,183 @@ void Im2col<float, StorageOrder::NHWC>::operator()(const float* data_im, int64_t
     h_pad += stride_h;
   }
 }
+
+template <typename T>
+void Im2col<T, StorageOrder::NHWC>::operator()(const T* data_im, int64_t channels, int64_t input_h,
+                                               int64_t input_w, int64_t kernel_h, int64_t kernel_w,
+                                               int64_t dilation_h, int64_t dilation_w, int64_t pad_t,
+                                               int64_t pad_l, int64_t stride_h, int64_t stride_w,
+                                               int64_t output_w, int64_t output_start, int64_t output_count,
+                                               T* data_col, T padding_value) {
+  for (int64_t m = output_start; m < output_start + output_count; m++) {
+    int64_t mh = m / output_w;
+    int64_t mw = m % output_w;
+
+    int64_t oh = mh * stride_h;
+    int64_t ow = mw * stride_w;
+
+    for (int64_t kh = 0; kh < kernel_h; kh++) {
+      int64_t ih = kh * dilation_h + oh - pad_t;
+
+      if (is_a_ge_zero_and_a_lt_b(ih, input_h)) {
+        if (dilation_w == 1) {
+          int64_t kw = kernel_w;
+          int64_t iw = ow - pad_l;
+          while (kw > 0) {
+            if (is_a_ge_zero_and_a_lt_b(iw, input_w)) {
+              // Increase the copy count size to reduce the number of copy calls.
+              int64_t batch_w = std::min(kw, input_w - iw);
+              data_col = std::copy_n(data_im + (ih * input_w + iw) * channels, batch_w * channels, data_col);
+              iw += batch_w;
+              kw -= batch_w;
+            } else {
+              data_col = std::fill_n(data_col, channels, padding_value);
+              iw++;
+              kw--;
+            }
+          }
+        } else {
+          for (int64_t kw = 0; kw < kernel_w; kw++) {
+            int64_t iw = kw * dilation_w + ow - pad_l;
+            if (is_a_ge_zero_and_a_lt_b(iw, input_w)) {
+              data_col = std::copy_n(data_im + (ih * input_w + iw) * channels, channels, data_col);
+            } else {
+              data_col = std::fill_n(data_col, channels, padding_value);
+            }
+          }
+        }
+      } else {
+        data_col = std::fill_n(data_col, kernel_w * channels, padding_value);
+      }
+    }
+  }
+}
+
+template struct Im2col<uint8_t, StorageOrder::NHWC>;
+
+// Loop over spatial axes in reverse order to choose an index, like counting.
+static inline bool NextPosition(int64_t N, const int64_t* shape, int64_t* dims) {
+  bool has_next_output = false;
+  for (int64_t d_i = N - 1; d_i >= 0; --d_i) {
+    int64_t d_max = shape[d_i];
+    ORT_ENFORCE(dims[d_i] < d_max);
+    if (dims[d_i] == d_max - 1) {
+      dims[d_i] = 0;
+    } else {  // dims[d_i] < d_max - 1
+      ++dims[d_i];
+      has_next_output = true;
+      break;
+    }
+  }
+  return has_next_output;
+}
+
+template <typename T>
+struct Im2colNd<T, StorageOrder::NCHW> {
+  void operator()(const T* data_img, const int64_t* im_shape, const int64_t* output_shape, int64_t channels_col,
+                  const int64_t* kernel_shape, const int64_t* stride, const int64_t* dilation,
+                  const int64_t* pad, int64_t N, T* data_col, bool accumulate_output = false,
+                  T padding_value = 0) {
+    int64_t kernel_size = std::accumulate(kernel_shape, kernel_shape + N, 1LL, std::multiplies<int64_t>());
+    std::vector<int64_t> d_offset(N, 0);
+    std::vector<int64_t> d_iter(N, 0);
+    for (int64_t c_col = 0; c_col < channels_col; ++c_col) {
+      // Loop over spatial axes in reverse order to compute a per-axis offset.
+      int64_t offset = c_col;
+      for (int64_t d_i = N - 1; d_i >= 0; --d_i) {
+        if (d_i < N - 1) {
+          offset /= kernel_shape[d_i + 1];
+        }
+        d_offset[d_i] = offset % kernel_shape[d_i];
+      }
+      do {
+        // Loop over spatial axes in forward order to compute the indices in the
+        // image and column, and whether the index lies in the padding.
+        int64_t index_col = c_col;
+        int64_t index_im = c_col / kernel_size;
+        bool is_padding = false;
+        for (int64_t d_i = 0; d_i < N; ++d_i) {
+          int64_t d = d_iter[d_i];
+          int64_t d_im = d * stride[d_i] - pad[d_i] + d_offset[d_i] * dilation[d_i];
+          is_padding |= !is_a_ge_zero_and_a_lt_b(d_im, im_shape[d_i]);
+          index_col *= output_shape[d_i];
+          index_col += d;
+          index_im *= im_shape[d_i];
+          index_im += d_im;
+        }
+        if (!accumulate_output) {
+          if (is_padding) {
+            data_col[index_col] = padding_value;
+          } else {
+            data_col[index_col] = data_img[index_im];
+          }
+        } else if (!is_padding) {  // col2im
+          data_col[index_im] += data_img[index_col];
+        }
+      } while (NextPosition(N, output_shape, d_iter.data()));
+    }  // for (int c = 0; c < channels_col; ++c) {
+  }
+};
+
+template struct Im2colNd<float, StorageOrder::NCHW>;
+template struct Im2colNd<uint8_t, StorageOrder::NCHW>;
+
+template <typename T>
+struct Im2colNd<T, StorageOrder::NHWC> {
+  void operator()(const T* data_img, const int64_t* im_shape, const int64_t* output_shape, int64_t channels_col,
+                  const int64_t* kernel_shape, const int64_t* stride, const int64_t* dilation,
+                  const int64_t* pad, int64_t N, T* data_col, bool accumulate_output = false,
+                  T padding_value = 0) {
+    int64_t kernel_size = std::accumulate(kernel_shape, kernel_shape + N, 1LL, std::multiplies<int64_t>());
+    int64_t input_channels = channels_col / kernel_size;
+    ORT_ENFORCE(input_channels * kernel_size == channels_col, "Dimensions not match!");
+
+    // iterate dimensions on output image shape (without Batch and Channel)
+    std::vector<int64_t> d_output(N, 0);
+    // inner iterate dimensions on kernel shape (without output channel and input channel)
+    std::vector<int64_t> d_kernel(N, 0);
+
+    // Loop over spatial axes along the output image shape
+    int64_t outer_col_index = 0;
+    do {
+      // Loop over spatial axes in reverse order to choose an index on kernel dimensions
+      int64_t inner_col_index = 0;
+      do {
+        // Loop over spatial axes in forward order to compute the indices in the image
+        // and the inner col, and whether the index lies in the padding.
+        int64_t index_im = 0;
+        bool is_padding = false;
+        for (int64_t d_i = 0; d_i < N; ++d_i) {
+          int64_t d_im = d_output[d_i] * stride[d_i] - pad[d_i] + d_kernel[d_i] * dilation[d_i];
+          is_padding |= !is_a_ge_zero_and_a_lt_b(d_im, im_shape[d_i]);
+          index_im *= im_shape[d_i];
+          index_im += d_im;
+        }
+        index_im *= input_channels;
+        auto index_col = outer_col_index + inner_col_index;
+
+        if (!accumulate_output) {
+          if (is_padding) {
+            std::fill_n(data_col + index_col, input_channels, padding_value);
+          } else {
+            std::copy_n(data_img + index_im, input_channels, data_col + index_col);
+          }
+        } else if (!is_padding) {  // col2im
+          const T* ptr_im = data_img + index_col;
+          T* ptr_col = data_col + index_im;
+          for (int64_t i = 0; i < input_channels; ++i) {
+            *ptr_col++ += *ptr_im++;
+          }
+        }
+        inner_col_index += input_channels;
+      } while (NextPosition(N, kernel_shape, d_kernel.data()));
+
+      outer_col_index += channels_col;
+    } while (NextPosition(N, output_shape, d_output.data()));
+  }
+};
+
+template struct Im2colNd<uint8_t, StorageOrder::NHWC>;
 
 template <>
 void Col2im<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, int64_t channels, int64_t height,
@@ -583,7 +681,7 @@ void Col2im<float, CPUMathUtil, StorageOrder::NHWC>(const float* data_col, int64
 
 template <>
 void Col2imNd<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, const int64_t* img_shape,
-                                                      const int64_t* col_shape, int64_t img_size, int64_t col_size,
+                                                      const int64_t* output_shape, int64_t channels_col, int64_t img_size,
                                                       const int64_t* kernel_shape, const int64_t* stride,
                                                       const int64_t* dilation, const int64_t* pad, int64_t N,
                                                       float* data_img, CPUMathUtil* context) {
@@ -591,9 +689,8 @@ void Col2imNd<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, con
   Im2colNd<float, StorageOrder::NCHW>()(
       data_col,
       img_shape,
-      col_shape,
-      img_size,
-      col_size,
+      output_shape,
+      channels_col,
       kernel_shape,
       stride,
       dilation,

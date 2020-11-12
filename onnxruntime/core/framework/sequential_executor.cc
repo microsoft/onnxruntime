@@ -13,9 +13,10 @@
 #include "core/framework/execution_frame.h"
 #include "core/framework/session_state.h"
 #include "core/framework/op_kernel_context_internal.h"
+#include "core/framework/utils.h"
 
 #if defined DEBUG_NODE_INPUTS_OUTPUTS
-#include "core/framework/utils.h"
+#include "core/framework/debug_node_inputs_outputs_utils.h"
 #endif
 
 #ifdef ENABLE_NVTX_PROFILE
@@ -149,6 +150,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     VLOGS(logger, 1) << to_be_executed_nodes->size() << " nodes to be executed\n";
   }
 #else
+  ORT_UNUSED_PARAMETER(only_execute_path_to_fetches_);
   const bool only_execute_path_to_fetches = false;
 #endif
 
@@ -179,10 +181,10 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   auto& profile_context = profile::Context::GetInstance();
   const auto tag = profile_context.GetThreadTagOrDefault(std::this_thread::get_id());
   profile::NvtxRangeCreator forward_range(
-      "forward-" + tag,
+      "Batch-" + tag + " Forward",
       profile::Color::White);
   profile::NvtxRangeCreator backward_range(
-      "backward-" + tag,
+      "Batch-" + tag + " Backward",
       profile::Color::Black);
 #endif
 
@@ -268,8 +270,8 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
         }
       }
     }
-#if defined DEBUG_NODE_INPUTS_OUTPUTS
-    utils::DumpNodeInputs(op_kernel_context, p_op_kernel->Node());
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
+    utils::DumpNodeInputs(op_kernel_context, p_op_kernel->Node(), session_state);
 #endif
 
     const std::string node_name_for_profiling = [&]() -> std::string {
@@ -294,30 +296,41 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                                input_activation_sizes, input_parameter_sizes, node_name_for_profiling);
     }
 
-#ifdef CONCURRENCY_VISUALIZER
+    Status compute_status;
     {
+#ifdef CONCURRENCY_VISUALIZER
       diagnostic::span span(series, "%s.%d", node.OpType().c_str(), node.Index());
 #endif
-      Status compute_status;
-
-      try {
-        compute_status = p_op_kernel->Compute(&op_kernel_context);
-      } catch (const std::exception& ex) {
-        compute_status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, ex.what());
-      }
-
-      if (!compute_status.IsOK()) {
-        std::ostringstream ss;
-        ss << "Non-zero status code returned while running " << node.OpType() << " node. Name:'" << node.Name()
-           << "' Status Message: " << compute_status.ErrorMessage();
-        const auto msg_string = ss.str();
-        LOGS(logger, ERROR) << msg_string;
-        return Status(compute_status.Category(), compute_status.Code(), msg_string);
-      }
-
-#ifdef CONCURRENCY_VISUALIZER
-    }
+#ifdef ENABLE_NVTX_PROFILE
+      profile::NvtxRangeCreator node_compute_range(
+          MakeString(node.OpType(), ".", node.Index(), "(", node.Name(), ")"), profile::Color::Blue);
+      node_compute_range.Begin();
 #endif
+      ORT_TRY {
+        if (p_op_kernel->KernelDef().AllocateInputsContiguously())
+          utils::VerifyInputTensorsAllocatedContiguously(&op_kernel_context);
+          
+        compute_status = p_op_kernel->Compute(&op_kernel_context);
+      }
+      ORT_CATCH(const std::exception& ex) {
+        ORT_HANDLE_EXCEPTION([&]() {
+          compute_status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, ex.what());
+        });
+      }
+
+#ifdef ENABLE_NVTX_PROFILE
+      node_compute_range.End();
+#endif
+    }
+
+    if (!compute_status.IsOK()) {
+      std::ostringstream ss;
+      ss << "Non-zero status code returned while running " << node.OpType() << " node. Name:'" << node.Name()
+         << "' Status Message: " << compute_status.ErrorMessage();
+      const auto msg_string = ss.str();
+      LOGS(logger, ERROR) << msg_string;
+      return Status(compute_status.Category(), compute_status.Code(), msg_string);
+    }
 
     if (is_profiler_enabled) {
       // Calculate total output sizes for this operation.
@@ -396,7 +409,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                                                      {{"op_name", p_op_kernel->KernelDef().OpName()}});
     }
 
-#if defined(DEBUG_NODE_INPUTS_OUTPUTS)
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
     utils::DumpNodeOutputs(op_kernel_context, p_op_kernel->Node(), session_state);
 #endif
 

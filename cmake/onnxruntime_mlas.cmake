@@ -9,6 +9,7 @@ set(mlas_common_srcs
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/qgemm.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/convolve.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/pooling.cpp
+  ${ONNXRUNTIME_ROOT}/core/mlas/lib/transpose.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/reorder.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/snchwc.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/activate.cpp
@@ -18,13 +19,16 @@ set(mlas_common_srcs
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/compute.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/quantize.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/qladd.cpp
+  ${ONNXRUNTIME_ROOT}/core/mlas/lib/qlmul.cpp
+  ${ONNXRUNTIME_ROOT}/core/mlas/lib/qpostprocessor.cpp
 )
 
 if(MSVC)
   if(onnxruntime_target_platform STREQUAL "ARM64")
-    set(asm_filename ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm64/SgemmKernelNeon.asm)
-    set(pre_filename ${CMAKE_CURRENT_BINARY_DIR}/SgemmKernelNeon.i)
-    set(obj_filename ${CMAKE_CURRENT_BINARY_DIR}/SgemmKernelNeon.obj)
+    set(mlas_platform_preprocess_srcs
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm64/QgemmU8X8KernelNeon.asm
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm64/SgemmKernelNeon.asm
+    )
 
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")
       set(ARMASM_FLAGS "-g")
@@ -32,14 +36,22 @@ if(MSVC)
       set(ARMASM_FLAGS "")
     endif()
 
-    add_custom_command(
-      OUTPUT ${obj_filename}
-        COMMAND
-            cl.exe /P ${asm_filename}
-        COMMAND
-            armasm64.exe ${ARMASM_FLAGS} ${pre_filename} ${obj_filename}
-    )
-    set(mlas_platform_srcs ${obj_filename})
+    # Run the C precompiler on each input before the assembler.
+    foreach(asm_filename ${mlas_platform_preprocess_srcs})
+      get_filename_component(asm_filename_base ${asm_filename} NAME_WLE)
+      set(preprocess_filename ${CMAKE_CURRENT_BINARY_DIR}/${asm_filename_base}.i)
+      set(obj_filename ${CMAKE_CURRENT_BINARY_DIR}/${asm_filename_base}.obj)
+      add_custom_command(
+        OUTPUT ${obj_filename}
+          COMMAND
+              cl.exe /P ${asm_filename} /Fi${preprocess_filename}
+          COMMAND
+              armasm64.exe ${ARMASM_FLAGS} ${preprocess_filename} ${obj_filename}
+        DEPENDS ${asm_filename}
+        BYPRODUCTS ${preprocess_filename}
+      )
+      list(APPEND mlas_platform_srcs ${obj_filename})
+    endforeach()
   elseif(onnxruntime_target_platform STREQUAL "ARM")
     set(mlas_platform_srcs
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm/sgemmc.cpp
@@ -57,6 +69,11 @@ if(MSVC)
     )
     set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "/arch:AVX2")
 
+    if (onnxruntime_MINIMAL_BUILD)
+      # exclude AVX512 in minimal build
+      set_source_files_properties(${mlas_common_srcs} PROPERTIES COMPILE_FLAGS "-DMLAS_AVX512F_UNSUPPORTED")
+    endif()
+
     set(mlas_platform_srcs
       ${mlas_platform_srcs_avx}
       ${mlas_platform_srcs_avx2}
@@ -66,6 +83,8 @@ if(MSVC)
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/QgemvU8S8KernelAvx512Core.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/QgemmU8S8KernelAvx512Vnni.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/QgemvU8S8KernelAvx512Vnni.asm
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/QgemmU8S8KernelAvxVnni.asm
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/QgemvU8S8KernelAvxVnni.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/QgemmU8U8KernelAvx2.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/QgemmU8U8KernelAvx512Core.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/DgemmKernelSse2.asm
@@ -145,14 +164,20 @@ else()
   endif()
 
   if(ARM)
+    enable_language(ASM)
+
+    set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -mfpu=neon")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mfpu=neon")
 
     set(mlas_platform_srcs
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/aarch32/QgemmU8X8KernelNeon.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm/sgemmc.cpp
     )
   elseif(ARM64)
     enable_language(ASM)
+
     set(mlas_platform_srcs
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/aarch64/QgemmU8X8KernelNeon.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/aarch64/SgemmKernelNeon.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/aarch64/SgemvKernelNeon.S
     )
@@ -162,6 +187,7 @@ else()
     )
   elseif(X86)
     enable_language(ASM)
+
     set(mlas_platform_srcs_sse2
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86/SgemmKernelSse2.S
     )
@@ -170,7 +196,11 @@ else()
     set(mlas_platform_srcs_avx
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86/SgemmKernelAvx.S
     )
-    set_source_files_properties(${mlas_platform_srcs_avx} PROPERTIES COMPILE_FLAGS "-mavx")
+    if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+      set_source_files_properties(${mlas_platform_srcs_avx} PROPERTIES COMPILE_FLAGS "-mavx -fno-integrated-as")
+    else()
+      set_source_files_properties(${mlas_platform_srcs_avx} PROPERTIES COMPILE_FLAGS "-mavx")
+    endif()
 
     set(mlas_platform_srcs
       ${mlas_platform_srcs_sse2}
@@ -215,6 +245,8 @@ else()
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemmU8S8KernelAvx2.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemvU8S8KernelAvx2.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemmU8U8KernelAvx2.S
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemmU8S8KernelAvxVnni.S
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemvU8S8KernelAvxVnni.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/DgemmKernelFma3.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SgemmKernelFma3.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SconvKernelFma3.S
@@ -243,7 +275,7 @@ else()
       COMPILES_AVX512F
     )
 
-    if(COMPILES_AVX512F)
+    if(COMPILES_AVX512F AND NOT onnxruntime_MINIMAL_BUILD)
       set(mlas_platform_srcs_avx512f
         ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/DgemmKernelAvx512F.S
         ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SgemmKernelAvx512F.S

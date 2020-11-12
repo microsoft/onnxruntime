@@ -20,6 +20,8 @@ parameters:
   BuildConfigurations: ['RelWithDebInfo'] # Options: Debug, RelWithDebInfo
   RunTests : 'true'
   EnableLto: true
+  # Controls whether unreleased onnx opsets are allowed. Default is set to 1
+  AllowReleasedOpsetOnly: '0'
 jobs:
 - job: ${{ parameters.JobName }}
   timeoutInMinutes: 160
@@ -42,6 +44,7 @@ jobs:
     CUDA_VERSION: ${{ parameters.CudaVersion }}
     runCodesignValidationInjection: and(${{ parameters.DoNodejsPack }},${{ parameters. DoEsrp}}) #For the others, code sign is in a separated job
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+    ALLOW_RELEASED_ONNX_OPSET_ONLY: ${{ parameters.AllowReleasedOpsetOnly }}
     ${{ if eq(parameters.EnableLto, true) }}:
       build_py_lto_flag: --enable_lto
 
@@ -128,9 +131,9 @@ jobs:
 
     - ${{ if eq(parameters.BuildCSharp, true) }}:
       - task: NuGetToolInstaller@0
-        displayName: Use Nuget 4.9
+        displayName: Use Nuget 5.7.0
         inputs:
-          versionSpec: 4.9.4
+          versionSpec: 5.7.0
 
     - ${{ if eq(parameters.BuildCSharp, true) }}:
       - task: DotNetCoreCLI@2

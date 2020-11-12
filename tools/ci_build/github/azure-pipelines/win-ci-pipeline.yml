@@ -15,7 +15,8 @@ jobs:
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
     EnvSetupScript: setup_env.bat
     buildArch: x64
-    setVcvars: true    
+    setVcvars: true
+    ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
   timeoutInMinutes: 120
   workspace:
     clean: all
@@ -52,9 +53,9 @@ jobs:
     displayName: 'Install ONNX'
 
   - task: NuGetToolInstaller@0
-    displayName: Use Nuget 4.9
+    displayName: Use Nuget 5.7.0
     inputs:
-      versionSpec: 4.9.4
+      versionSpec: 5.7.0
 
   - task: NuGetCommand@2
     displayName: 'NuGet restore'
@@ -166,7 +167,8 @@ jobs:
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
     EnvSetupScript: setup_env_x86.bat
     buildArch: x86
-    setVcvars: true    
+    setVcvars: true
+    ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
   timeoutInMinutes: 120
   workspace:
     clean: all
@@ -228,9 +230,9 @@ jobs:
   - template: templates/set-test-data-variables-step.yml
 
   - task: NuGetToolInstaller@0
-    displayName: Use Nuget 4.9
+    displayName: Use Nuget 5.7.0
     inputs:
-      versionSpec: 4.9.4  
+      versionSpec: 5.7.0
 
 
   - task: DotNetCoreCLI@2
@@ -304,7 +306,8 @@ jobs:
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
     EnvSetupScript: setup_env_x86.bat
     buildArch: x86
-    setVcvars: true    
+    setVcvars: true
+    ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
   timeoutInMinutes: 120
   workspace:
     clean: all
@@ -366,9 +369,9 @@ jobs:
   - template: templates/set-test-data-variables-step.yml
 
   - task: NuGetToolInstaller@0
-    displayName: Use Nuget 4.9
+    displayName: Use Nuget 5.7.0
     inputs:
-      versionSpec: 4.9.4  
+      versionSpec: 5.7.0
    
   - task: DotNetCoreCLI@2
     displayName: 'Restore nuget packages'
@@ -431,7 +434,8 @@ jobs:
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
     EnvSetupScript: setup_env.bat
     buildArch: x64
-    setVcvars: true    
+    setVcvars: true
+    ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
   timeoutInMinutes: 120
   workspace:
     clean: all
@@ -493,9 +497,9 @@ jobs:
   - template: templates/set-test-data-variables-step.yml
 
   - task: NuGetToolInstaller@0
-    displayName: Use Nuget 4.9
+    displayName: Use Nuget 5.7.0
     inputs:
-      versionSpec: 4.9.4  
+      versionSpec: 5.7.0
 
    
   - task: DotNetCoreCLI@2

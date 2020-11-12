@@ -8,6 +8,7 @@
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/session/environment.h"
 #include "core/framework/random_seed.h"
+#include "core/framework/bfc_arena.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "orttraining/core/framework/mpi_context.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
@@ -19,11 +20,14 @@
 
 namespace onnxruntime {
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id,
+                                                                               OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE,
                                                                                size_t cuda_mem_limit = std::numeric_limits<size_t>::max(),
-                                                                               onnxruntime::ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo);
+                                                                               onnxruntime::ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo,
+                                                                               bool do_copy_in_default_stream = true);
 }
 
 using namespace onnxruntime;
+using namespace onnxruntime::common;
 using namespace onnxruntime::training;
 using namespace onnxruntime::training::tensorboard;
 
@@ -151,12 +155,12 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
     }
 
     params.use_mixed_precision = flags["use_mixed_precision"].as<bool>();
-    params.allreduce_in_fp16 = flags["allreduce_in_fp16"].as<bool>() && params.use_mixed_precision;
+    params.allreduce_in_mixed_precision_type = flags["allreduce_in_fp16"].as<bool>() && params.use_mixed_precision;
     if (params.use_mixed_precision) {
       printf("Mixed precision training is enabled.\n");
     }
-    if (params.allreduce_in_fp16) {
-      printf("Performing AllReduce in fp16 \n");
+    if (params.allreduce_in_mixed_precision_type) {
+      printf("Performing AllReduce in mixed precision type \n");
     } else {
       printf("Performing AllReduce in fp32 \n");
     }
@@ -174,13 +178,13 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
       }
     }
 
-    params.use_fp16_moments = flags["use_fp16_moments"].as<bool>();
-    if (params.use_fp16_moments) {
-      printf("Using fp16 version of moments.\n");
+    params.use_mixed_precision_moments = flags["use_fp16_moments"].as<bool>();
+    if (params.use_mixed_precision_moments) {
+      printf("Using mixed precision version of moments.\n");
     }
-    params.use_fp16_initializer = flags["use_fp16_initializer"].as<bool>();
-    if (params.use_mixed_precision && params.use_fp16_initializer) {
-      printf("FP16 initializer is enabled.\n");
+    params.use_mixed_precision_initializer = flags["use_fp16_initializer"].as<bool>();
+    if (params.use_mixed_precision && params.use_mixed_precision_initializer) {
+      printf("Mixed precision initializer is enabled.\n");
     }
 
     std::string warmup_mode = flags["warmup_mode"].as<std::string>();
@@ -293,7 +297,7 @@ void setup_training_params(GPT2Parameters& params) {
                                            {/*prediction_name*/ "output",
                                             /*label_name*/ "labels"});
 
-#if defined(USE_NCCL) || defined(USE_HOROVOD)
+#if defined(USE_MPI)
   ORT_ENFORCE(params.horizontal_parallel_size <= MPIContext::GetInstance().GetWorldSize());
   ORT_ENFORCE(params.data_parallel_size <= MPIContext::GetInstance().GetWorldSize());
   if (MPIContext::GetInstance().GetWorldSize() % params.horizontal_parallel_size != 0) {
@@ -477,7 +481,7 @@ int main(int argc, char* argv[]) {
     RETURN_IF_FAIL(RunTraining(params, *env));
   }
 
-#if defined(USE_NCCL)
+#if defined(USE_MPI)
 #ifdef _WIN32
   // https://docs.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-best-practices
   // shutdown_mpi() is not called within MPIContext destructor because of DllMain's restriction

@@ -16,6 +16,7 @@ jobs:
     EnvSetupScript: setup_env_trt.bat
     buildArch: x64
     setVcvars: true
+    ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
   timeoutInMinutes: 120
   workspace:
     clean: all

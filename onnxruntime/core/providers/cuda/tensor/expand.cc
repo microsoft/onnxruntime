@@ -108,10 +108,20 @@ Status Expand::ComputeInternal(OpKernelContext* ctx) const {
 }
 
 
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Expand,
+    kOnnxDomain,
+    8, 12,
+    kCudaExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .InputMemoryType<OrtMemTypeCPUInput>(1),
+    Expand);
+
 ONNX_OPERATOR_KERNEL_EX(
     Expand,
     kOnnxDomain,
-    8,
+    13,
     kCudaExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())

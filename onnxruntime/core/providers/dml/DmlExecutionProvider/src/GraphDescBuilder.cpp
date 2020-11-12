@@ -60,7 +60,8 @@ namespace Dml::GraphDescBuilder
 
     GraphDesc BuildGraphDesc(
         const onnxruntime::OpKernelInfo& kernelInfo,
-        gsl::span<const uint8_t> isConstGpuGraphInput,
+        const uint8_t* isConstGpuGraphInput,
+        const size_t isConstGpuGraphInputCount,
         std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap,
         const onnxruntime::Graph& graph,
         const onnxruntime::ConstPointerContainer<std::vector<onnxruntime::NodeArg*>>& fusedNodeInputDefs,
@@ -226,7 +227,7 @@ namespace Dml::GraphDescBuilder
                         graphInputEdges.push_back(edge);
 
                         // If this is a constant input, set the appropriate flags on the desc
-                        if (isConstGpuGraphInput[fusedNodeInputIndex])
+                        if (fusedNodeInputIndex < isConstGpuGraphInputCount && isConstGpuGraphInput[fusedNodeInputIndex])
                         {
                             DmlBufferTensorDesc* tensorDesc = inputTensorDescs[inputIndex];
 

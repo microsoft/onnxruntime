@@ -65,6 +65,9 @@ struct ThreadOptions {
   // its process can run on. NOTE: When hyperthreading is enabled, for example, on a 4 cores 8 physical threads CPU,
   // processor group [0,1,2,3] may only contain half of the physical cores.
   std::vector<size_t> affinity;
+
+  // Set or unset denormal as zero.
+  bool set_denormal_as_zero = false;
 };
 /// \brief An interface used by the onnxruntime implementation to
 /// access operating system functionality like the filesystem etc.
@@ -76,9 +79,6 @@ struct ThreadOptions {
 /// multiple threads without any external synchronization.
 class Env {
  public:
-  struct Task {
-    std::function<void()> f;
-  };
   using EnvThread = onnxruntime::EnvThread;
   virtual ~Env() = default;
   // clang-format off
@@ -96,11 +96,6 @@ class Env {
   virtual EnvThread* CreateThread(_In_opt_z_ const ORTCHAR_T* name_prefix, int index,
                                   _In_ unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param),
                                   Eigen::ThreadPoolInterface* threadpool, const ThreadOptions& thread_options) = 0;
-  virtual Task CreateTask(std::function<void()> f) = 0;
-  /**
-   * Execute the task 't' in current thread
-   */
-  virtual void ExecuteTask(const Task& t) = 0;
 
   /// \brief Returns a default environment suitable for the current operating
   /// system.

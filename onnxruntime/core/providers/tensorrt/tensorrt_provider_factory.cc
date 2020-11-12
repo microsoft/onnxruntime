@@ -5,11 +5,12 @@
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
 #include <atomic>
 #include "tensorrt_execution_provider.h"
-//#include "core/session/abi_session_options_impl.h"
 
 using namespace onnxruntime;
 
 namespace onnxruntime {
+
+void Shutdown_DeleteRegistry();
 
 struct TensorrtProviderFactory : Provider_IExecutionProviderFactory {
   TensorrtProviderFactory(int device_id) : device_id_(device_id) {}
@@ -38,9 +39,10 @@ struct Tensorrt_Provider : Provider {
     return std::make_shared<TensorrtProviderFactory>(device_id);
   }
 
-  void SetProviderHost(ProviderHost& host) {
-    onnxruntime::SetProviderHost(host);
+  void Shutdown() override {
+    Shutdown_DeleteRegistry();
   }
+
 } g_provider;
 
 }  // namespace onnxruntime

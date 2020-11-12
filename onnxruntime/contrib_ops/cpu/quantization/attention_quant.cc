@@ -107,7 +107,7 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
   //   Input  2 - bias              : (3 * hidden_size)
   //   Input  3 - input_scale       : scalar
   //   Input  4 - weight_scale      : scalar
-  //   Input  5 - mask_index        : (batch_size)
+  //   Input  5 - mask_index        : nullptr, (batch_size), (2 * batch_size), (batch_size, 1), (1, 1) or (batch_size, past_sequence_length + sequence_length)
   //   Input  6 - input_zero_point  : scalar
   //   Input  7 - weight_zero_point : scalar
   //   Input  8 - past              : (2, batch_size, num_heads, past_sequence_length, head_size)
@@ -206,21 +206,26 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
         if (packed_weights_) {
           const auto* packed_weight =
               static_cast<const uint8_t*>(packed_weights_.get()) + packed_weights_size_ * (weights_offset / head_size);
+
+          MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR scale_bias_processor(qkv_dest + qkv_offset,
+                                                                      head_size,
+                                                                      &dequant_scale,
+                                                                      bias_data + weights_offset);
           MlasGemm(
-              sequence_length,             // M      = S
-              head_size,                   // N      = H
-              hidden_size,                 // K      = NH
-              input_data + input_offset,   // A
-              hidden_size,                 // lda    = NH
-              input_zero_point,            // input zero point
-              packed_weight,               // B
-              weight_zero_point,           // weight zero point
-              weights_is_signed,           // weight data type
-              qkv_dest + qkv_offset,       // C
-              head_size,                   // ldc
-              &dequant_scale,              // output scale
-              bias_data + weights_offset,  // bias
-              nullptr);                    // use single-thread
+              sequence_length,                                    // M      = S
+              head_size,                                          // N      = H
+              hidden_size,                                        // K      = NH
+              input_data + input_offset,                          // A
+              hidden_size,                                        // lda    = NH
+              input_zero_point,                                   // input zero point
+              packed_weight,                                      // B
+              weight_zero_point,                                  // weight zero point
+              weights_is_signed,                                  // weight data type
+              reinterpret_cast<int32_t*>(qkv_dest + qkv_offset),  // C
+              head_size,                                          // ldc
+              nullptr,                                            // use single-thread
+              &scale_bias_processor);                             // output processor
+
           continue;
         }
 #endif

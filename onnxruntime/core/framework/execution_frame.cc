@@ -260,15 +260,15 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
             // due to that we can still run and use those blocks (inside the arena logic) instead of one large one.
             // it's less efficient (the arena will add some overhead to coalesce individual allocations
             // back into blocks on 'free'), but better than failing completely.
-            try {
+            ORT_TRY {
               auto peak_size = mem_patterns_->patterns[i].PeakSize();
               // Planning of one memory type should only happen once.
               ORT_ENFORCE(
-                static_activation_memory_sizes_in_byte_.find(location.name) ==
-                static_activation_memory_sizes_in_byte_.end(),
-                "Memory type ",
-                location.name,
-                " should only appear once.");
+                  static_activation_memory_sizes_in_byte_.find(location.name) ==
+                      static_activation_memory_sizes_in_byte_.end(),
+                  "Memory type ",
+                  location.name,
+                  " should only appear once.");
               // static_activation_memory_in_bytes_ is max virtual memory size the planner computes.
               // Memory dynamically allocated when executing kernels is not recorded using this field.
               static_activation_memory_sizes_in_byte_[location.name] = peak_size;
@@ -279,10 +279,12 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
                 LOGS(session_state_.Logger(), INFO) << "Allocation of memory pattern buffer for "
                                                     << location.ToString() << " returned nullptr";
               }
-
-            } catch (const OnnxRuntimeException& ex) {
-              LOGS(session_state_.Logger(), INFO) << "Allocation of memory pattern buffer for "
-                                                  << location.ToString() << " failed. Error:" << ex.what();
+            }
+            ORT_CATCH(const OnnxRuntimeException& ex) {
+              ORT_HANDLE_EXCEPTION([&]() {
+                LOGS(session_state_.Logger(), INFO) << "Allocation of memory pattern buffer for "
+                                                    << location.ToString() << " failed. Error:" << ex.what();
+              });
             }
 
             if (buffer != nullptr) {
@@ -290,8 +292,7 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
             }
 
             // log size of activation. Keep it commented out for now to avoid log flooding.
-            // VLOGS(session_state_.Logger(), 1) << "Allocated memory for activations, size: "
-            //                                   << mem_patterns_->patterns[i].PeakSize();
+            // VLOGS(session_state_.Logger(), 1) << "**** Allocated memory for activations, size: " <<mem_patterns_->patterns[i].PeakSize();
           }
         }
       }
@@ -348,6 +349,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
   // if we have pre-calculated memory pattern, and the ort_value is not output mlvalue
   // try to allocated on pre-allocated big chunk.
   const auto& per_alloc_plan = GetAllocationPlan(ort_value_index);
+
   if (mem_patterns_ && per_alloc_plan.alloc_kind != AllocKind::kAllocateOutput) {
     auto pattern = mem_patterns_->GetPatterns(location);
     if (pattern) {
@@ -395,7 +397,6 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
     TraceAllocate(ort_value_index, size);
   }
 
-  
   {
     // This code block is not thread-safe.
     // Dynamic activation size would be accessed by multiple threads
