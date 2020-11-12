@@ -139,7 +139,7 @@ common::Status SaveInitializedTensors(
     }
     id_to_initialized_tensor[ort_value_index] = entry.second;
   }
-  
+
   // tensors requiring a specific allocation order are traced first, to ensure they are allocated in order
   auto initialized_tensors_to_allocate = id_to_initialized_tensor;
   for (int ort_value_index : initializer_allocation_order) {
@@ -149,7 +149,7 @@ common::Status SaveInitializedTensors(
     initialized_tensors_to_allocate.erase(entry);
   }
 
-  for (const auto& entry : id_to_initialized_tensor) {
+  for (const auto& entry : initialized_tensors_to_allocate) {
     // We don't want to trace shared initializers since their memory is provided by the user
     if (user_supplied_initializer_ids.find(entry.first) != user_supplied_initializer_ids.end()) {
       continue;

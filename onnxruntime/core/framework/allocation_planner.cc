@@ -733,8 +733,7 @@ class PlannerImpl {
     std::vector<SequentialExecutionPlan::NodeExecutionPlan>& execution_plan(plan_.execution_plan);
     std::vector<OrtValueIndex>& initializer_allocation_order(plan_.initializer_allocation_order);
     std::vector<OrtValueIndex>& activation_allocation_order(plan_.activation_allocation_order);
-    for (size_t program_counter = 0; program_counter < execution_plan.size(); ++program_counter) {
-      SequentialExecutionPlan::NodeExecutionPlan step = execution_plan[program_counter];
+    for (auto& step : execution_plan) {
       const auto* pnode = graph_viewer_.GetNode(step.node_index);
       if (pnode == nullptr) return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cannot find the node ", step.node_index);
       if (!AllocateInputsContiguously(*pnode)) continue;
@@ -742,8 +741,7 @@ class PlannerImpl {
       const auto& input_defs = pnode->InputDefs();
       onnxruntime::AllocKind input_kind = AllocKind::kAllocateStatically;
       bool set_input_kind = true;
-      for (int input_arg_def_index = 0; static_cast<size_t>(input_arg_def_index) < input_defs.size(); ++input_arg_def_index) {
-        const auto& node_input = input_defs[input_arg_def_index];
+      for (const auto& node_input : input_defs) {
         if (!node_input->Exists()) continue;
         const auto current_idx = Index(node_input->Name());
         const auto& current_plan = AllocPlan(current_idx);
@@ -784,7 +782,7 @@ class PlannerImpl {
         if (current_plan.alloc_kind != AllocKind::kAllocate) continue;
 
         ORT_ENFORCE(current_plan.program_counter_start.size() == current_plan.program_counter_end.size());
-        
+
         size_t start = 0;
         for (size_t index = 0; index < current_plan.program_counter_start.size(); index += 1) {
           ORT_ENFORCE((current_plan.program_counter_start[index] > start) || (start == 0));

@@ -33,8 +33,8 @@
         "^test_adam", // NOT_IMPLEMENTED : Could not find an implementation for the node Adam(1)
         "^test_adam_multiple", // NOT_IMPLEMENTED : Could not find an implementation for the node Adam(1)
         "^test_training_dropout.*", // NOT_IMPLEMENTED : Could not find an implementation for the node Dropout(12) (Temporary, subsequent PR will add this -- we need training_mode change in the kernel)
-        "^test_if_seq_cpu", // NOT_IMPLEMENTED : Could not find an implementation for the node If(13)
-        "^test_loop13_seq_cpu", // NOT_IMPLEMENTED : Could not find an implementation for the node Loop(13)
+        "^test_if_seq_cpu", // ONNX backend test runner doesn't handle sequences: https://github.com/onnx/onnx/issues/3086
+        "^test_loop13_seq_cpu", // ONNX backend test runner doesn't handle sequences: https://github.com/onnx/onnx/issues/3086
         "^test_resize_downsample_scales_cubic_A_n0p5_exclude_outside_cpu", // NOT_IMPLEMENTED : Could not find an implementation for the node Resize(13)
         "^test_resize_downsample_scales_cubic_cpu",
         "^test_resize_downsample_scales_linear_cpu",

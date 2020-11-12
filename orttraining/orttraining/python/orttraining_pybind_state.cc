@@ -43,6 +43,7 @@ struct TrainingParameters {
   int gradient_accumulation_steps = 1;
   int data_parallel_size = 1;
   int horizontal_parallel_size = 1;
+  int pipeline_parallel_size = 1;
   int deepspeed_zero_stage = 0;
   bool enable_grad_norm_clip = true;
   bool set_gradients_as_graph_outputs = false;
@@ -65,11 +66,16 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   //TODO tix, refactor the mpi related code to populate all fields correctly by default.
   ORT_ENFORCE(parameters.horizontal_parallel_size <= parameters.world_size);
   ORT_ENFORCE(parameters.data_parallel_size <= parameters.world_size);
+
+  if (parameters.world_size % parameters.data_parallel_size != 0) {
+    throw std::runtime_error("Cannot split data parallel group because world_size is not divisible");
+  }
+
   if (parameters.world_size % parameters.horizontal_parallel_size != 0) {
     throw std::runtime_error("Cannot split horizontal parallel group because world_size is not divisible");
   }
 
-  auto data_group_size = parameters.world_size / parameters.horizontal_parallel_size;
+  auto data_group_size = parameters.world_size / (parameters.horizontal_parallel_size * parameters.pipeline_parallel_size);
   if (data_group_size != parameters.data_parallel_size) {
     LOGS(*(sess->GetLogger()), WARNING) << "data_parallel_size is not correct, tuned automatically to "
                                         << data_group_size;
@@ -201,7 +207,10 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("attn_dropout_recompute", &TrainingParameters::attn_dropout_recompute)
       .def_readwrite("gelu_recompute", &TrainingParameters::gelu_recompute)
       .def_readwrite("transformer_layer_recompute", &TrainingParameters::transformer_layer_recompute)
-      .def_readwrite("number_recompute_layers", &TrainingParameters::number_recompute_layers);
+      .def_readwrite("number_recompute_layers", &TrainingParameters::number_recompute_layers)
+      .def_readwrite("data_parallel_size", &TrainingParameters::data_parallel_size)
+      .def_readwrite("horizontal_parallel_size", &TrainingParameters::horizontal_parallel_size)
+      .def_readwrite("pipeline_parallel_size", &TrainingParameters::pipeline_parallel_size);
 
 #if defined(USE_MPI)
   m.def("get_mpi_context_local_rank", []() -> int { return MPIContext::GetInstance().GetLocalRank(); });
