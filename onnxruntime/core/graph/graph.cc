@@ -3368,7 +3368,7 @@ Node& Graph::BeginFuseSubGraph(const IndexedSubGraph& sub_graph, const std::stri
 
 #if !defined(ORT_MINIMAL_BUILD)
   // if this is a full build create the lightweight Function implementation that provides the schema so that
-  // kernel lookup works as per usual. in an extended minimal build we do the lookup via a hash so don't 
+  // kernel lookup works as per usual. in an extended minimal build we do the lookup via a hash so don't
   // need to create the schema.
   auto func = onnxruntime::make_unique<ViewerFunctionImpl>(*this, sub_graph, logger_);
   function_container_.push_back(std::move(func));
@@ -3405,7 +3405,7 @@ void Graph::FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_n
     }
 
     // move any applicable input edges to the new node. remove all others
-    auto& input_edges = node->GetRelationships().input_edges;
+    auto input_edges = node->GetRelationships().input_edges;  // copy so RemoveEdge doesn't invalidate iterator
     for (const auto& input_edge : input_edges) {
       const auto& producer = input_edge.GetNode();
       auto producer_idx = producer.Index();
@@ -3422,7 +3422,7 @@ void Graph::FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_n
     }
 
     // move any applicable output edges to the new node
-    auto& output_edges = node->GetRelationships().output_edges;
+    auto output_edges = node->GetRelationships().output_edges;  // copy so RemoveEdge doesn't invalidate iterator
     for (const auto& output_edge : output_edges) {
       const auto& consumer = output_edge.GetNode();
       auto consumer_idx = consumer.Index();
@@ -3448,10 +3448,13 @@ void Graph::FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_n
 Node& Graph::FuseSubGraph(const IndexedSubGraph& sub_graph,
                           const std::string& fused_node_name) {
   Node& fused_node = CreateFusedSubGraphNode(sub_graph, fused_node_name);
-  FinalizeFuseSubGraph(sub_graph, fused_node);
 
+  // create Function before we remove nodes
   function_container_.emplace_back(MakeFunction(*this, sub_graph, logger_));
   fused_node.SetFunctionBody(*function_container_.back());
+
+  // remove nodes and update edges
+  FinalizeFuseSubGraph(sub_graph, fused_node);
 
   return fused_node;
 }
