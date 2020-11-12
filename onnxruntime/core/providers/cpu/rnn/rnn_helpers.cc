@@ -269,16 +269,20 @@ void ComputeGemm(const int M,
   float multiplier = a_scale * (*weights.quant_para_->scale);
   uint8_t b_zero_point = weights.quant_para_->zero_point ? *static_cast<const uint8_t*>(weights.quant_para_->zero_point) : 0;
 
-  float* res = C;
-  size_t ld_res = static_cast<size_t>(ldc);
-  float* tmp_res_buffer = nullptr;
+  size_t ld_C_buffer = ldc;
+  int32_t* C_buffer = reinterpret_cast<int32_t*>(C);
+  BufferUniquePtr tmp_res_buffer_holder;
   if (beta == 1.0f) {
-    tmp_res_buffer = static_cast<float*>(allocator->Alloc(SafeInt<size_t>(M * N) * sizeof(float)));
-    ld_res = static_cast<size_t>(N);
-    res = tmp_res_buffer;
+    C_buffer = static_cast<int32_t*>(allocator->Alloc(SafeInt<size_t>(M * N) * sizeof(int32_t)));
+    ld_C_buffer = static_cast<size_t>(N);
+    tmp_res_buffer_holder = BufferUniquePtr(C_buffer, BufferDeleter(allocator));
   }
-  BufferUniquePtr tmp_res_buffer_holder(tmp_res_buffer, BufferDeleter(allocator));
 
+  MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR output_processor(
+      C, ldc, &multiplier, nullptr,
+      beta == 1.0f ? MLAS_QGEMM_OUTPUT_MODE::AccumulateMode : MLAS_QGEMM_OUTPUT_MODE::ZeroMode,
+      MLAS_QUANTIZATION_GRANULARITY::PerMatrix);
+#ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
   if (weights.is_prepacked_) {
     MlasGemm(static_cast<size_t>(M),
              static_cast<size_t>(N),
@@ -289,27 +293,28 @@ void ComputeGemm(const int M,
              weights.buffer_,
              b_zero_point,
              b_is_signed,
-             res,
-             static_cast<size_t>(ld_res),
-             &multiplier,
-             nullptr,
-             thread_pool);
-  } else {
-    QGemm(M, N, K,
-          a_data_quant, K, a_zero_point,
-          static_cast<const uint8_t*>(weights.buffer_), N, b_zero_point, b_is_signed,
-          res, ld_res,
-          &multiplier, nullptr,
-          thread_pool);
+             C_buffer,
+             ld_C_buffer,
+             thread_pool,
+             &output_processor);
+    return;
   }
+#endif
 
-  if (beta == 1.f) {
-    for (int r = 0; r < M; r++) {
-      for (int c = 0; c < N; c++) {
-        C[r * ldc + c] += res[r * N + c];
-      }
-    }
-  }
+  QGemm(static_cast<size_t>(M),
+        static_cast<size_t>(N),
+        static_cast<size_t>(K),
+        a_data_quant,
+        static_cast<size_t>(K),
+        a_zero_point,
+        static_cast<const uint8_t*>(weights.buffer_),
+        static_cast<size_t>(N),
+        b_zero_point,
+        b_is_signed,
+        C_buffer,
+        ld_C_buffer,
+        thread_pool,
+        &output_processor);
 }
 
 namespace deepcpu {

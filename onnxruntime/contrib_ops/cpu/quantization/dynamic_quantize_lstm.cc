@@ -20,7 +20,9 @@ class DynamicQuantizeLSTM : public OpKernel, public LSTMBase {
   ~DynamicQuantizeLSTM() override = default;
 
  private:
+#ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
   Status TryPackWeights(const Tensor& weights, PackedWeights& packed_weights, bool& is_packed);
+#endif
 
   template <typename T>
   Status ComputeImpl(OpKernelContext& context) const;
@@ -30,6 +32,7 @@ class DynamicQuantizeLSTM : public OpKernel, public LSTMBase {
   bool weights_signed_;
 };
 
+#ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
 Status DynamicQuantizeLSTM::TryPackWeights(const Tensor& weights, PackedWeights& packed_weights, bool& is_packed) {
   const auto& shape = weights.Shape();
   if (shape.NumDimensions() != 3) {
@@ -68,7 +71,6 @@ Status DynamicQuantizeLSTM::TryPackWeights(const Tensor& weights, PackedWeights&
   return Status::OK();
 }
 
-#ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
 Status DynamicQuantizeLSTM::PrePack(const Tensor& tensor, int input_idx, bool& is_packed) {
   is_packed = false;
 
