@@ -114,7 +114,7 @@ enum class timeScale : char {
   Sec = 's'
 };
 
-using runtimeOpt = struct
+struct runtimeOpt
 {
   std::wstring modelFileName{};
   std::wstring mutateModelDirName{};

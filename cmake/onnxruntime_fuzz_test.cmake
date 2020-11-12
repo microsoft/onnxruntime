@@ -40,7 +40,6 @@ if (onnxruntime_FUZZ_ENABLED)
 	
 	# compile with c++17
 	target_compile_features(onnxruntime_security_fuzz PUBLIC cxx_std_17)
-	target_compile_options(onnxruntime_security_fuzz PRIVATE "/wd5208")
 	
 	# Security fuzzing engine header file reference
 	onnxruntime_add_include_to_target(onnxruntime_security_fuzz libprotobuf onnx onnxruntime)
