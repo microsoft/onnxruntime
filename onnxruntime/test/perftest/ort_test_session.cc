@@ -1,5 +1,6 @@
 #include "ort_test_session.h"
 #include <core/session/onnxruntime_cxx_api.h>
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include <assert.h>
 #include "providers.h"
 #include "TestCase.h"
@@ -51,9 +52,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         static_cast<OrtCudnnConvAlgoSearch>(performance_test_config.run_config.cudnn_conv_algo),
         std::numeric_limits<size_t>::max(),
         0,
-        !performance_test_config.run_config.do_cuda_copy_in_separate_stream
-    };
-  Ort::ThrowOnError(session_options.OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, &cuda_options));
+        !performance_test_config.run_config.do_cuda_copy_in_separate_stream};
+    Ort::ThrowOnError(session_options.OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, &cuda_options));
 #else
     ORT_THROW("CUDA is not supported in this build\n");
 #endif

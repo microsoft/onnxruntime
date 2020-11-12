@@ -15,6 +15,7 @@
 #include "core/framework/session_state_utils.h"
 #include "core/framework/utils.h"
 #include "core/providers/cpu/controlflow/utils.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 using namespace ::onnxruntime::common;
 using namespace ::onnxruntime::experimental;
