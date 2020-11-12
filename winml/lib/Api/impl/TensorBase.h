@@ -179,8 +179,6 @@ struct TensorBase : TBase {
           // into the output buffers without temporary intermediary buffers! No binding here is necessary.
           // If the output produces a cpu buffer (even in the GPU case), we will already have a cpu buffer, and just need
           // to copy back to the output buffers, no binding is necessary.
-
-          // Figure out of we need to bind anything here...
           GetGpuResource() = CreateD3D12Resource(session);
           return CreateGPUMLValue(GetGpuResource().get(), context, out);
         }

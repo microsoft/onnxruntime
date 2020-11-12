@@ -12,7 +12,7 @@
 enum OutputBindingStrategy { Bound, Unbound, Empty };
 enum EvaluationStrategy { Async, Sync };
 enum ModelInputOutputType { Image, Tensor };
-enum InputImageSource { FromVideoFrame, FromImageFeatureValue, FromCPUResource, FromManyCPUBuffers, FromGPUResource };
+enum InputImageSource { FromVideoFrame, FromImageFeatureValue, FromCPUResource, FromGPUResource };
 enum VideoFrameSource { FromSoftwareBitmap, FromDirect3DSurface, FromUnsupportedD3DSurface };
 
 namespace ImageTestHelper

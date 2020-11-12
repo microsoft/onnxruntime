@@ -156,7 +156,6 @@ inline winml::ILearningModelFeatureValue CreateTensorValueFromInspectable(
       }
     }
   }
-
   return nullptr;
 }
 
@@ -212,7 +211,6 @@ inline winml::ILearningModelFeatureValue CreateFeatureValueFromInspectable(
     return featureValue;
   }
 
-  // Batched video frames
   if (auto videoFrames = inspectable.try_as<wfc::IVector<wm::VideoFrame>>()) {
     return (0 == videoFrames.Size()) ? nullptr : winrt::make<winmlp::ImageFeatureValue>(videoFrames);
   }
