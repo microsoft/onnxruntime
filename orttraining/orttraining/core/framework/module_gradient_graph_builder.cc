@@ -282,6 +282,7 @@ Status ModuleGradientGraphBuilder::Split() {
 
   RemoveNodes(backward_graph, backward_nodes_to_remove);
 
+  // User inputs to backward graph inputs.
   std::vector<const NodeArg*> backward_input_args;
   for (const auto& input_name : split_graphs_info_.user_input_names) {
     // Only takes those in the backward inputs.
@@ -289,6 +290,11 @@ Status ModuleGradientGraphBuilder::Split() {
       split_graphs_info_.backward_user_input_names.emplace_back(input_name);
       backward_input_args.emplace_back(backward_graph.GetNodeArg(input_name));
     }
+  }
+
+  // Grad of user outputs to backward graph inputs.
+  for (const auto& output_grad_name : split_graphs_info_.backward_output_grad_names) {
+    backward_input_args.emplace_back(backward_graph.GetNodeArg(output_grad_name));
   }
 
   // Add initializer args to backward graph inputs if any node uses them.
