@@ -1577,27 +1577,35 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 using (var outputs = session.Run(container))
                 {
                     // first output is a tensor containing label
-                    var outNode1 = outputs.ElementAtOrDefault(0);
-                    Assert.Equal("label", outNode1.Name);
+                    var outNode0 = outputs.ElementAtOrDefault(0);
+                    Assert.Equal("label", outNode0.Name);
+                    Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, outNode0.ValueType);
+                    Assert.Equal(TensorElementType.Int64, (TensorElementType)outNode0.ElementType);
 
                     // try-cast as a tensor
-                    var outLabelTensor = outNode1.AsTensor<Int64>();
+                    var outLabelTensor = outNode0.AsTensor<long>();
+                    Assert.NotNull(outLabelTensor);
 
-                    // Label 1 should have highest probaility
+                    // Label 1 should have highest probability
                     Assert.Equal(1, outLabelTensor[0]);
 
                     // second output is a sequence<map<int64, float>>
                     // try-cast to an sequence of NOV
-                    var outNode2 = outputs.ElementAtOrDefault(1);
-                    Assert.Equal("probabilities", outNode2.Name);
+                    var outNode1 = outputs.ElementAtOrDefault(1);
+                    Assert.Equal("probabilities", outNode1.Name);
+                    Assert.Equal(OnnxValueType.ONNX_TYPE_SEQUENCE, outNode1.ValueType);
 
                     // try-cast to an sequence of NOV
-                    var seq = outNode2.AsEnumerable<NamedOnnxValue>();
+                    var seq = outNode1.AsEnumerable<NamedOnnxValue>();
+                    Assert.NotNull(seq);
+                    // Try-cast into DisposableNov so we can control and check the process
+
 
                     // try-cast first element in sequence to map/dictionary type
                     if (System.Environment.Is64BitProcess)
                     {
                         var map = seq.First().AsDictionary<Int64, float>();
+                        Assert.NotNull(map);
                         Assert.Equal(0.25938290, map[0], 6);
                         Assert.Equal(0.40904793, map[1], 6);
                         Assert.Equal(0.33156919, map[2], 6);
@@ -1605,6 +1613,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     else // 32-bit
                     {
                         var map = seq.First().AsDictionary<long, float>();
+                        Assert.NotNull(map);
                         Assert.Equal(0.25938290, map[0], 6);
                         Assert.Equal(0.40904793, map[1], 6);
                         Assert.Equal(0.33156919, map[2], 6);
@@ -1638,25 +1647,30 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 using (var outputs = session.Run(container))
                 {
                     // first output is a tensor containing label
-                    var outNode1 = outputs.ElementAtOrDefault(0);
-                    Assert.Equal("label", outNode1.Name);
+                    var outNode0 = outputs.ElementAtOrDefault(0);
+                    Assert.Equal("label", outNode0.Name);
+                    Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, outNode0.ValueType);
+                    Assert.Equal(TensorElementType.String, (TensorElementType)outNode0.ElementType);
 
                     // try-cast as a tensor
-                    var outLabelTensor = outNode1.AsTensor<string>();
+                    var outLabelTensor = outNode0.AsTensor<string>();
+                    Assert.NotNull(outLabelTensor);
 
-                    // Label 1 should have highest probaility
+                    // Label 1 should have highest probability
                     Assert.Equal("1", outLabelTensor[0]);
 
                     // second output is a sequence<map<int64, float>>
                     // try-cast to an sequence of NOV
-                    var outNode2 = outputs.ElementAtOrDefault(1);
-                    Assert.Equal("probabilities", outNode2.Name);
+                    var outNode1 = outputs.ElementAtOrDefault(1);
+                    Assert.Equal("probabilities", outNode1.Name);
+                    Assert.Equal(OnnxValueType.ONNX_TYPE_SEQUENCE, outNode1.ValueType);
 
                     // try-cast to an sequence of NOV
-                    var seq = outNode2.AsEnumerable<NamedOnnxValue>();
+                    var seq = outNode1.AsEnumerable<NamedOnnxValue>();
 
                     // try-cast first element in sequence to map/dictionary type
                     var map = seq.First().AsDictionary<string, float>();
+                    Assert.NotNull(map);
                     //verify values are valid
                     Assert.Equal(0.25938290, map["0"], 6);
                     Assert.Equal(0.40904793, map["1"], 6);
@@ -1693,6 +1707,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     // try-cast to an sequence of NOV
                     var outNode = outputs.ElementAtOrDefault(0);
                     Assert.Equal("output_sequence", outNode.Name);
+                    Assert.Equal(OnnxValueType.ONNX_TYPE_SEQUENCE, outNode.ValueType);
 
                     // try-cast to an sequence of NOV
                     var seq = outNode.AsEnumerable<NamedOnnxValue>();
@@ -1703,6 +1718,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     // try-cast the elements in sequence to tensor type
                     var firstTensorInOuputSequence = seq.First().AsTensor<Int64>();
                     var secondTensorInOuputSequence = seq.Last().AsTensor<Int64>();
+                    Assert.NotNull(firstTensorInOuputSequence);
+                    Assert.NotNull(secondTensorInOuputSequence);
 
                     // make sure the tensors in the output sequence hold the correct values
                     Assert.True(firstTensorInOuputSequence.GetValue(0) == 1);

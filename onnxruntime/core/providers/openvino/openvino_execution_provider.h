@@ -17,10 +17,10 @@ namespace onnxruntime {
 static void print_build_options()
 {
     std::cout << "[ERROR] INVALID DEVICE BUILD TYPE SPECIFIED" << std::endl;
-    std::cout << "Specify the keyword HETERO followed by the devices in the order of priority you want to build" << std::endl;
-    std::cout << "The different hardware devices that can be added with HETERO build ";
+    std::cout << "Specify the keyword HETERO (or) MULTI followed by the devices in the order of priority you want to build" << std::endl;
+    std::cout << "The different hardware devices that can be added with HETERO/MULTI build ";
     std::cout << "are ['CPU','GPU','MYRIAD','FPGA','HDDL']" << std::endl;
-    std::cout << "An example of how to specify the HETERO build type. Ex: HETERO:GPU,CPU" << std::endl;
+    std::cout << "An example of how to specify the HETERO or MULTI build type. Ex: HETERO:GPU,CPU  Ex: MULTI:MYRIAD,CPU" << std::endl;
 }
 
 static std::vector<std::string> split(const std::string &s, char delim) {
@@ -86,12 +86,12 @@ struct OpenVINOExecutionProviderInfo {
       #elif defined OPENVINO_CONFIG_VAD_F
       device_type_ = "HETERO:FPGA,CPU";
       precision_ = "FP32";
-      #elif defined OPENVINO_CONFIG_HETERO
+      #elif defined OPENVINO_CONFIG_HETERO || defined OPENVINO_CONFIG_MULTI
         #ifdef DEVICE_NAME
           #define DEVICE DEVICE_NAME
         #endif
       dev_type = DEVICE;
-      if (dev_type.find("HETERO") == 0) {
+      if (dev_type.find("HETERO") == 0 || dev_type.find("MULTI") == 0) {
           std::vector<std::string> devices = parseDevices(dev_type);
           precision_ = "FP16";
           if(devices[0] == "CPU" || devices[0] == "GPU") {
@@ -118,7 +118,7 @@ struct OpenVINOExecutionProviderInfo {
     } else if (dev_type == "VAD-F_FP32") {
       device_type_ = "HETERO:FPGA,CPU";
       precision_ = "FP32";
-    } else if (dev_type.find("HETERO") == 0) {
+    } else if (dev_type.find("HETERO") == 0 || dev_type.find("MULTI") == 0) {
       std::vector<std::string> devices = parseDevices(dev_type);
       precision_ = "FP16";
       if(devices[0] == "CPU" || devices[0] == "GPU") {

@@ -12,7 +12,6 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 #include "test/framework/test_utils.h"
-#include "test/onnx/pb_helper.h"
 
 using namespace ONNX_NAMESPACE;
 
