@@ -48,7 +48,7 @@ class TensorBuffer {
       size_(size),
       combined_buffer_(winrt::make<VectorBuffer>(size * sizeof(T))),
       buffers_ { combined_buffer_ } {
-    auto buffer = Buffer(0);
+    auto buffer = BufferAt(0);
 
     // The initial release of WinML (RS5) shipped with behavior that would
     // zero-initialize uninitialized tensors. After measuring, the performance impact
@@ -74,7 +74,7 @@ class TensorBuffer {
     if (combined_buffer_ == nullptr) {
       combined_buffer_ = winrt::make<VectorBuffer>(size_ * sizeof(T));
     }
-    return Buffer(combined_buffer_);
+    return BufferFrom(combined_buffer_);
   }
 
  public:
@@ -94,11 +94,6 @@ class TensorBuffer {
     return std::shared_ptr<TensorBuffer>(new TensorBuffer(size, buffers));
   }
 
-  // this is the count of elements
-  auto Size() {
-    return size_;
-  }
-
   // this is the size in bytes
   auto SizeInBytes() {
     return size_ * sizeof(T);
@@ -112,17 +107,32 @@ class TensorBuffer {
     return buffers_;
   }
 
-  auto Buffer(wss::IBuffer buffer) {
-    T* current_data = nullptr;
-    auto bufferByteAccess = buffer.as<Windows::Storage::Streams::IBufferByteAccess>();
-    bufferByteAccess->Buffer(reinterpret_cast<BYTE**>(&current_data));
-    return std::make_pair(
-        static_cast<size_t>(buffer.Capacity()),
-        current_data);
-  }
+  auto Buffer(bool should_sync_buffer) {
+    if (buffers_.size() == 1) {
+      // Single buffer optimization to not create a temporary buffer that concatenates disjoint buffers into one.
+      return BufferAt(0);
+    }
 
-  auto Buffer(size_t index) {
-    return Buffer(buffers_[index]);
+    auto combined_buffer = CombinedBuffer();
+    if (should_sync_buffer) {
+      auto size_in_bytes = combined_buffer.first;
+      size_t offset_in_bytes = 0;
+      for (size_t i = 0; i < buffers_.size() && offset_in_bytes < size_in_bytes; i++) {
+        size_t current_size_in_bytes;
+        T* current_buffer;
+        std::tie(current_size_in_bytes, current_buffer) = BufferAt(i);
+
+        if (size_in_bytes - offset_in_bytes < current_size_in_bytes) {
+          current_size_in_bytes = size_in_bytes - offset_in_bytes;
+        }
+
+        auto buffer_start = reinterpret_cast<BYTE*>(combined_buffer.second) + offset_in_bytes;
+        memcpy(buffer_start, current_buffer, current_size_in_bytes);
+        offset_in_bytes += current_size_in_bytes;
+      }
+    }
+
+    return combined_buffer;
   }
 
   auto Flush() {
@@ -132,32 +142,6 @@ class TensorBuffer {
       Set(combined_buffer.first, combined_buffer.second);
     }
     return should_flush;
-  }
-
-  auto Buffer() {
-    if (buffers_.size() == 1) {
-      // Single buffer optimization to not create a temporary buffer that concatenates disjoint buffers into one.
-      return Buffer(0);
-    }
-
-    auto combined_buffer = CombinedBuffer();
-    auto size_in_bytes = combined_buffer.first;
-    size_t offset_in_bytes = 0;
-    for (size_t i = 0; i < buffers_.size() && offset_in_bytes < size_in_bytes; i++) {
-      size_t current_size_in_bytes;
-      T* current_buffer;
-      std::tie(current_size_in_bytes, current_buffer) = Buffer(i);
-
-      if (size_in_bytes - offset_in_bytes < current_size_in_bytes) {
-        current_size_in_bytes = size_in_bytes - offset_in_bytes;
-      }
-
-      auto buffer_start = reinterpret_cast<BYTE*>(combined_buffer.second) + offset_in_bytes;
-      memcpy(buffer_start, current_buffer, current_size_in_bytes);
-      offset_in_bytes += current_size_in_bytes;
-    }
-
-    return combined_buffer;
   }
 
   auto Set(size_t size_in_bytes, const T* data) {
@@ -172,7 +156,7 @@ class TensorBuffer {
     for (size_t i = 0; i < buffers_.size() && size_in_bytes > offset_in_bytes; i++) {
       size_t current_size_in_bytes;
       T* current_buffer;
-      std::tie(current_size_in_bytes, current_buffer) = Buffer(i);
+      std::tie(current_size_in_bytes, current_buffer) = BufferAt(i);
 
       if (size_in_bytes - offset_in_bytes < current_size_in_bytes) {
         current_size_in_bytes = size_in_bytes - offset_in_bytes;
@@ -186,6 +170,20 @@ class TensorBuffer {
   auto Set(std::vector<T>&& moveableData) {
     Set(moveableData.size(), moveableData.data());
   }
+
+ private:
+  auto BufferFrom(wss::IBuffer buffer) {
+    T* current_data = nullptr;
+    auto bufferByteAccess = buffer.as<Windows::Storage::Streams::IBufferByteAccess>();
+    bufferByteAccess->Buffer(reinterpret_cast<BYTE**>(&current_data));
+    return std::make_pair(
+        static_cast<size_t>(buffer.Capacity()),
+        current_data);
+  }
+
+  auto BufferAt(size_t index) {
+    return BufferFrom(buffers_[index]);
+  }
 };
 
 template <>
@@ -197,10 +195,6 @@ class TensorBuffer<std::string> {
  public:
   static auto Create(size_t size) {
     return std::shared_ptr<TensorBuffer>(new TensorBuffer(size));
-  }
-
-  auto Size() {
-    return buffer_.size();
   }
 
   // this is the size in bytes
@@ -220,7 +214,7 @@ class TensorBuffer<std::string> {
     WINML_THROW_HR(E_UNEXPECTED);
   }
 
-  auto Buffer(size_t index) {
+  auto BufferAt(size_t index) {
     WINML_THROW_HR_IF_FALSE_MSG(
         E_INVALIDARG,
         index == 0,
@@ -228,7 +222,7 @@ class TensorBuffer<std::string> {
     return std::make_pair(buffer_.size(), buffer_.data());
   }
 
-  auto Buffer() {
+  auto Buffer(bool /*should_sync_buffer*/) {
     return std::make_pair(buffer_.size(), buffer_.data());
   }
 

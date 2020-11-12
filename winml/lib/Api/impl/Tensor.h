@@ -48,10 +48,6 @@ class Tensor {
                                                             std::multiplies<int64_t>())))) {
   }
 
-  auto size() const {
-    return buffer_->Size();
-  }
-
   auto size_in_bytes() const {
     return buffer_->SizeInBytes();
   }
@@ -64,12 +60,8 @@ class Tensor {
     return buffer_->Buffers();
   }
 
-  auto buffer(size_t index) {
-    return buffer_->Buffer(index);
-  }
-
-  auto buffer() {
-    return buffer_->Buffer();
+  auto buffer(bool should_sync_buffer = true) {
+    return buffer_->Buffer(should_sync_buffer);
   }
 
   auto flush() {

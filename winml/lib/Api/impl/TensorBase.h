@@ -115,9 +115,10 @@ struct TensorBase : TBase {
   HRESULT CPUTensorize(_winml::BindingContext& context, IValue** out) {
     auto session = context.session.as<winmlp::LearningModelSession>();
     auto engine = session->GetEngine();
+    auto should_sync_buffer = context.type == _winml::BindingType::kInput;
 
     if (GetCpuResource() != nullptr) {
-      return CreateTensorValueFromExternalBuffer(engine, out);
+      return CreateTensorValueFromExternalBuffer(engine, should_sync_buffer, out);
     }
 
     // If there is no matching cpu resource, then fallback to a gpu resource
@@ -138,13 +139,15 @@ struct TensorBase : TBase {
     auto device = session->Device().as<winmlp::LearningModelDevice>();
     auto engine = session->GetEngine();
 
+    auto should_sync_buffer = context.type == _winml::BindingType::kInput;
+
     // If there is no matching gpu resource, then fallback to a cpu resource
     if (GetCpuResource() != nullptr) {
       auto num_backing_buffers = GetCpuResource()->num_buffers(); 
       if (num_backing_buffers == 1) {
         // If we have a single backing cpu buffer, there is no need to create GPU resources.
         // The engine will use the buffer provided, and perform the needed copies into the GPU context as needed.
-        return CreateTensorValueFromExternalBuffer(engine, out);
+        return CreateTensorValueFromExternalBuffer(engine, should_sync_buffer, out);
       } else {
         // If we have multiple backing cpu buffers, then...
         if (context.type == _winml::BindingType::kInput) {
@@ -188,7 +191,7 @@ struct TensorBase : TBase {
       // Lazily allocate the cpu TensorString resource
       // TensorStrings are CPU only, and so a gpu resource cannot be allocated for them.
       GetCpuResource() = std::make_shared<_winml::Tensor<T>>(shape_);
-      return CreateTensorValueFromExternalBuffer(engine, out);
+      return CreateTensorValueFromExternalBuffer(engine, should_sync_buffer, out);
     } else {
       GetGpuResource() = CreateD3D12Resource(session);
       return CreateGPUMLValue(GetGpuResource().get(), context, out);
@@ -300,20 +303,20 @@ struct TensorBase : TBase {
   }
 
   template <typename ElementType = T, typename ElementViewType = ViewT>
-  HRESULT CreateTensorValueFromExternalBuffer(_winml::IEngine* engine, IValue** value) {
+  HRESULT CreateTensorValueFromExternalBuffer(_winml::IEngine* engine, bool sync_buffer, IValue** value) {
     // This adds compile time checks that ensure that the API can only be called when
     // the conditions of ASSERT_TEMPLATE_PARAMETERS_EXACT() are met.
     ASSERT_TEMPLATE_PARAMETERS<ElementType, ElementViewType>();
 
     RETURN_IF_FAILED_MSG(engine->CreateTensorValueFromExternalBuffer(
-                             GetCpuResource()->buffer().second, GetCpuResource()->size_in_bytes(), GetCpuResource()->shape().data(),
+                             GetCpuResource()->buffer(sync_buffer).second, GetCpuResource()->size_in_bytes(), GetCpuResource()->shape().data(),
                              GetCpuResource()->shape().size(), TensorKind(), value),
                          "Failed to prepare buffer for copy back from device resource.");
     return S_OK;
   }
 
   template <>
-  HRESULT CreateTensorValueFromExternalBuffer<std::string, winrt::hstring>(_winml::IEngine* engine, IValue** value) {
+  HRESULT CreateTensorValueFromExternalBuffer<std::string, winrt::hstring>(_winml::IEngine* engine, bool /*sync_buffer*/, IValue** value) {
     // Ensure that this call is being called with the correct template parameters
     ASSERT_TEMPLATE_PARAMETERS<std::string, winrt::hstring>();
 
@@ -356,7 +359,7 @@ struct TensorBase : TBase {
       // Get the data pointer and size
       T* buffer;
       size_t size;
-      std::tie(size, buffer) = GetCpuResource()->buffer();
+      std::tie(size, buffer) = GetCpuResource()->buffer(false);
 
       if (updated_resource.get() != reinterpret_cast<void*>(buffer)) {
         // Only copy the data if the source and destination are not the same!
@@ -380,7 +383,7 @@ struct TensorBase : TBase {
 
       if (GetCpuResource()->num_buffers() == 1) {
         winrt::com_ptr<IValue> dest;
-        RETURN_IF_FAILED_MSG(CreateTensorValueFromExternalBuffer(engine, dest.put()),
+        RETURN_IF_FAILED_MSG(CreateTensorValueFromExternalBuffer(engine, false, dest.put()),
                              "Failed to prepare buffer for copy back from device resource.");
         RETURN_IF_FAILED(engine->CopyValueAcrossDevices(value, dest.get()));
       } else {
