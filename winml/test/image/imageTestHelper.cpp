@@ -30,49 +30,49 @@ namespace ImageTestHelper {
             throw std::invalid_argument("Unsupported pixelFormat");
         }
     }
-
+    
     TensorFloat LoadInputImageFromCPU(
         SoftwareBitmap softwareBitmap,
         const std::wstring& modelPixelFormat) {
-      softwareBitmap = SoftwareBitmap::Convert(softwareBitmap, BitmapPixelFormat::Bgra8);
-      BYTE* pData = nullptr;
-      UINT32 size = 0;
-      wgi::BitmapBuffer spBitmapBuffer(softwareBitmap.LockBuffer(wgi::BitmapBufferAccessMode::Read));
-      wf::IMemoryBufferReference reference = spBitmapBuffer.CreateReference();
-      auto spByteAccess = reference.as<::Windows::Foundation::IMemoryBufferByteAccess>();
-      spByteAccess->GetBuffer(&pData, &size);
+        softwareBitmap = SoftwareBitmap::Convert(softwareBitmap, BitmapPixelFormat::Bgra8);
+        BYTE* pData = nullptr;
+        UINT32 size = 0;
+        wgi::BitmapBuffer spBitmapBuffer(softwareBitmap.LockBuffer(wgi::BitmapBufferAccessMode::Read));
+        wf::IMemoryBufferReference reference = spBitmapBuffer.CreateReference();
+        auto spByteAccess = reference.as<::Windows::Foundation::IMemoryBufferByteAccess>();
+        spByteAccess->GetBuffer(&pData, &size);
 
-      uint32_t height = softwareBitmap.PixelHeight();
-      uint32_t width = softwareBitmap.PixelWidth();
+        uint32_t height = softwareBitmap.PixelHeight();
+        uint32_t width = softwareBitmap.PixelWidth();
 
-      // TODO: Need modification for Gray8
-      std::vector<int64_t> shape = {1, 3, height, width};
-      float* pCPUTensor;
-      uint32_t uCapacity;
-      TensorFloat tf = TensorFloat::Create(shape);
-      com_ptr<ITensorNative> itn = tf.as<ITensorNative>();
-      itn->GetBuffer(reinterpret_cast<BYTE**>(&pCPUTensor), &uCapacity);
-      if (BitmapPixelFormat::Bgra8 == GetPixelFormat(modelPixelFormat)) {
-        for (UINT32 i = 0; i < size; i += 4) {
-          UINT32 pixelInd = i / 4;
-          pCPUTensor[pixelInd] = (float)pData[i];
-          pCPUTensor[(height * width) + pixelInd] = (float)pData[i + 1];
-          pCPUTensor[(height * width * 2) + pixelInd] = (float)pData[i + 2];
+        // TODO: Need modification for Gray8
+        std::vector<int64_t> shape = { 1, 3, height , width };
+        float* pCPUTensor;
+        uint32_t uCapacity;
+        TensorFloat tf = TensorFloat::Create(shape);
+        com_ptr<ITensorNative> itn = tf.as<ITensorNative>();
+        itn->GetBuffer(reinterpret_cast<BYTE**>(&pCPUTensor), &uCapacity);
+        if (BitmapPixelFormat::Bgra8 == GetPixelFormat(modelPixelFormat)) {
+            for (UINT32 i = 0; i < size; i += 4) {
+                UINT32 pixelInd = i / 4;
+                pCPUTensor[pixelInd] = (float)pData[i];
+                pCPUTensor[(height * width) + pixelInd] = (float)pData[i + 1];
+                pCPUTensor[(height * width * 2) + pixelInd] = (float)pData[i + 2];
+            }
+        } else if (BitmapPixelFormat::Rgba8 == GetPixelFormat(modelPixelFormat)) {
+            for (UINT32 i = 0; i < size; i += 4) {
+                UINT32 pixelInd = i / 4;
+                pCPUTensor[pixelInd] = (float)pData[i + 2];
+                pCPUTensor[(height * width) + pixelInd] = (float)pData[i + 1];
+                pCPUTensor[(height * width * 2) + pixelInd] = (float)pData[i];
+            }
         }
-      } else if (BitmapPixelFormat::Rgba8 == GetPixelFormat(modelPixelFormat)) {
-        for (UINT32 i = 0; i < size; i += 4) {
-          UINT32 pixelInd = i / 4;
-          pCPUTensor[pixelInd] = (float)pData[i + 2];
-          pCPUTensor[(height * width) + pixelInd] = (float)pData[i + 1];
-          pCPUTensor[(height * width * 2) + pixelInd] = (float)pData[i];
+        // else if()
+        // TODO: for Gray8
+        else {
+            std::cerr << "Unsupportted pixelFormat";
         }
-      }
-      // else if()
-      // TODO: for Gray8
-      else {
-        std::cerr << "Unsupportted pixelFormat";
-      }
-      return tf;
+        return tf;
     }
 
     TensorFloat LoadInputImageFromGPU(
