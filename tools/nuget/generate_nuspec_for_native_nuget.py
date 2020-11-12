@@ -76,6 +76,8 @@ def generate_repo_url(list, repo_url, commit_id):
 
 
 def generate_dependencies(list, package_name, version):
+    dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.4.0-rc2"/>'
+
     if (package_name == 'Microsoft.AI.MachineLearning'):
         list.append('<dependencies>')
 
@@ -97,27 +99,39 @@ def generate_dependencies(list, package_name, version):
         # UAP10.0.16299, This is the earliest release of the OS that supports .NET Standard apps
         list.append('<group targetFramework="UAP10.0.16299">')
         list.append('</group>')
-        # DirectML Redistributable
-        list.append('<dependency id="Microsoft.AI.DirectML"' + ' version="1.4.0-rc1"/>')
+        # Support Native C++
+        list.append('<group targetFramework="native">')
+        list.append(dml_dependency)
+        list.append('</group>')
 
         list.append('</dependencies>')
     else:
+        include_dml = package_name == 'Microsoft.ML.OnnxRuntime.DirectML'
+
         list.append('<dependencies>')
         # Support .Net Core
         list.append('<group targetFramework="NETCOREAPP">')
         list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+        if include_dml:
+            list.append(dml_dependency)
         list.append('</group>')
         # Support .Net Standard
         list.append('<group targetFramework="NETSTANDARD">')
         list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+        if include_dml:
+            list.append(dml_dependency)
         list.append('</group>')
         # Support .Net Framework
         list.append('<group targetFramework="NETFRAMEWORK">')
         list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+        if include_dml:
+            list.append(dml_dependency)
         list.append('</group>')
-        # DirectML Redistributable
-        if package_name == 'Microsoft.ML.OnnxRuntime.DirectML':
-            list.append('<dependency id="Microsoft.AI.DirectML"' + ' version="1.4.0-rc1"/>')
+        # Support Native C++
+        if include_dml:
+            list.append('<group targetFramework="native">')
+            list.append(dml_dependency)
+            list.append('</group>')
 
         list.append('</dependencies>')
 
