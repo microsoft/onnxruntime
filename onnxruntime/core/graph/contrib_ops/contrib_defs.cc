@@ -5,7 +5,6 @@
 #include "core/graph/constants.h"
 #include "core/graph/contrib_ops/attn_lstm_schema_defs.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
-#include "core/graph/contrib_ops/nchwc_schema_defs.h"
 #include "core/graph/contrib_ops/range_schema_defs.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/graph/op.h"
@@ -1879,7 +1878,7 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
       });
 
   static const char* TransposeMatMul_doc = R"DOC(
-Duplicate of FusedMatMul. Going forward FusedMatMul should be used. This OP will be supported for backward compatibility. 
+Duplicate of FusedMatMul. Going forward FusedMatMul should be used. This OP will be supported for backward compatibility.
 Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html
 )DOC";
 
@@ -2305,7 +2304,7 @@ and produces one output data (Tensor<T>) where the function `f(x) = quantize(alp
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
   const char* QLinearSigmoidDoc_ver1 = R"DOC(
-QLinearSigmoid takes quantized input data (Tensor), and quantize parameter for output, and produces one output data 
+QLinearSigmoid takes quantized input data (Tensor), and quantize parameter for output, and produces one output data
 (Tensor<T>) where the function `f(x) = quantize(Sigmoid(dequantize(x)))`, is applied to the data tensor elementwise.
 Wwhere the function `Sigmoid(x) = 1 / (1 + exp(-x))` )DOC";
 
@@ -2875,6 +2874,8 @@ Example 4:
   if (MlasNchwcGetBlockSize() > 1) {
     RegisterNchwcSchemas();
   }
+
+  RegisterNhwcSchemas();
 
   static const char* Gelu_ver1_doc =
       R"DOC(Gaussian Error Linear Unit.
