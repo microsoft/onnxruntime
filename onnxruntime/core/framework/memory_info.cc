@@ -231,10 +231,14 @@ std::string MemoryInfo::MemoryInfoProfile::CreateSummaryEvent(size_t pid, size_t
   return evt.str();
 }
 
+static bool IsStaticType(const MemoryInfo::MapType& map_type) {
+  return map_type == MemoryInfo::MapType::Initializer || map_type == MemoryInfo::MapType::StaticActivation;
+}
+
 static void UpdateSummary(MemoryInfo::AllocationSummary& summary, size_t alloc_offset, size_t alloc_size, const OrtValueIndex idx, const MemoryInfo::MapType& map_type) {
   summary.total_size = std::max(summary.total_size, alloc_offset + alloc_size);
   summary.used_size += alloc_size;
-  if (map_type == MemoryInfo::MapType::DynamicActivation) {
+  if (!IsStaticType(map_type)) {
     summary.total_size = summary.used_size;
   } else {
     summary.total_size = std::max(summary.total_size, alloc_offset + alloc_size);
@@ -286,6 +290,8 @@ void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name, cons
   //Create Event for each tensor
   for (const auto& location_map : tensors_memory_info_map_) {
     if (location_map.first.device.Type() != OrtDevice::GPU) continue;
+    //If there is no tensor of a map_type, we skip creating event for that map_type
+    if(location_map.second.find(map_type) == location_map.second.end()) continue;
     auto summary_key = str_hash(location_map.first.ToString() + std::to_string(map_type));
     //Preprocessing
     if (time_step_trace_[map_type].empty()) {
@@ -301,8 +307,8 @@ void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name, cons
       for (const auto& item : map) {
         const auto info = AllocPlan(item.first);
         if (info->inplace_reuse) continue;
-        size_t offset = map_type == MemoryInfo::MapType::StaticActivation ? map.GetPlannedAddress(item.first) : map.GetAllocAddress(item.first);
-        size_t size = map_type == MemoryInfo::MapType::StaticActivation ? map.GetPlannedSize(item.first) : map.GetAllocSize(item.first);
+        size_t offset = IsStaticType(map_type) ? map.GetPlannedAddress(item.first) : map.GetAllocAddress(item.first);
+        size_t size = IsStaticType(map_type) ? map.GetPlannedSize(item.first) : map.GetAllocSize(item.first);
         size_t alloc_step = AllocPlan(item.first)->lifetime_interval.first;
         size_t dealloc_step = AllocPlan(item.first)->lifetime_interval.second;
         const auto& ts_map = time_step_trace_[map_type];
@@ -344,8 +350,8 @@ void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name, cons
         }
         const std::string cname = color_names[str_hash(name) % color_names.size()];
         //Sometimes a tensor can be both statically planned and dynamically allocated, so we need to use planned address/size in static_activation type
-        size_t offset = map_type == MemoryInfo::MapType::StaticActivation ? map.GetPlannedAddress(live_tensor) : map.GetAllocAddress(live_tensor);
-        size_t size = map_type == MemoryInfo::MapType::StaticActivation ? map.GetPlannedSize(live_tensor) : map.GetAllocSize(live_tensor);
+        size_t offset = IsStaticType(map_type) ? map.GetPlannedAddress(live_tensor) : map.GetAllocAddress(live_tensor);
+        size_t size = IsStaticType(map_type) ? map.GetPlannedSize(live_tensor) : map.GetAllocSize(live_tensor);
         alloc_size_for_pattern += size;
         events.push_back(CreateMemoryEvent(pid, item.first, name, offset, size, cname));
         has_other_tensors = true;
@@ -360,9 +366,9 @@ void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name, cons
 }
 
 void MemoryInfo::GenerateMemoryProfile() {
-  MemoryInfoProfile::CreateEvents("GPU (initializer)", MemoryInfoProfile::GetAndIncreasePid(), MapType::Initializer, "", 0);
-  MemoryInfoProfile::CreateEvents("GPU (static activations)", MemoryInfoProfile::GetAndIncreasePid(), MapType::StaticActivation, "", 0);
-  MemoryInfoProfile::CreateEvents("GPU (dynamic activations)", MemoryInfoProfile::GetAndIncreasePid(), MapType::DynamicActivation, "", 0);
+  MemoryInfoProfile::CreateEvents("GPU (initializer)", MemoryInfoProfile::GetAndIncreasePid(), MapType::Initializer, "", 1);
+  MemoryInfoProfile::CreateEvents("GPU (static activations)", MemoryInfoProfile::GetAndIncreasePid(), MapType::StaticActivation, "", 1);
+  MemoryInfoProfile::CreateEvents("GPU (dynamic activations)", MemoryInfoProfile::GetAndIncreasePid(), MapType::DynamicActivation, "", 1);
 
   // Write memory profile .json
   std::ofstream memory_profile("memory_profile_" + std::to_string(local_rank_) + ".json", std::ios::trunc);
@@ -374,7 +380,7 @@ void MemoryInfo::GenerateMemoryProfile() {
   }
   memory_profile << "]" << std::endl;
   memory_profile.close();
-  PrintMemoryInfoForLocation(OrtDevice::GPU);
+  //PrintMemoryInfoForLocation(OrtDevice::GPU);
 }
 
 }  // namespace onnxruntime
