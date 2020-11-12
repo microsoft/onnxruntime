@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// ReduceAllL2 op only have the CUDA implementation
+#ifdef USE_CUDA
+
 #include "orttraining/models/runner/training_runner.h"
 
 #include "gtest/gtest.h"
@@ -8,6 +11,7 @@
 #include "core/common/path_string.h"
 #include "core/platform/path_lib.h"
 #include "core/session/environment.h"
+#include "core/providers/cuda/cuda_execution_provider.h"
 #include "orttraining/models/runner/data_loader.h"
 #include "orttraining/models/runner/training_util.h"
 
@@ -38,7 +42,11 @@ TEST(TrainingRunnerTest, Basic) {
 
   std::unique_ptr<Environment> env;
   ASSERT_TRUE(Environment::Create(nullptr, env).IsOK());
+
   TrainingRunner runner{params, *env};
+
+  CUDAExecutionProviderInfo xp_info;
+  ASSERT_TRUE(runner.GetSession().RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info)).IsOK());
 
   auto status = runner.Initialize();
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
@@ -113,3 +121,5 @@ TEST(TrainingRunnerTest, DISABLED_PipelineRun) {
 }  // namespace test
 }  // namespace training
 }  // namespace onnxruntime
+
+#endif
