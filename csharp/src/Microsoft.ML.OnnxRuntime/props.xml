@@ -29,7 +29,6 @@
 
   <PropertyGroup>
     <OnnxRuntimeBinary>$(MSBuildThisFileDirectory)..\..\runtimes\win-$(EnginePlatform)\native\onnxruntime.dll</OnnxRuntimeBinary>
-    <DirectMLBinary Condition="Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-$(EnginePlatform)\native\directml.dll')">$(MSBuildThisFileDirectory)..\..\runtimes\win-$(EnginePlatform)\native\directml.dll</DirectMLBinary>
   </PropertyGroup>
 
   <ItemGroup>
