@@ -107,9 +107,6 @@ class ModelBuilder {
   Status SetNCHWToNHWCOperandMap(const std::string& nchw_name,
                                  const std::string& nhwc_name) ORT_MUST_USE_RESULT;
 
-  // Is the given node supported by NNAPI
-  bool IsNodeSupported(const Node& node) const;
-
  private:
   const NnApi* nnapi_{nullptr};
   const GraphViewer& graph_viewer_;
