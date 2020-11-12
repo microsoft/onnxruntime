@@ -141,44 +141,45 @@ class TensorBuffer {
     }
 
     auto combined_buffer = CombinedBuffer();
-    size_t start = 0;
-    for (size_t i = 0; i < buffers_.size() && start < size_; i++) {
-      size_t current_size;
+    auto size_in_bytes = combined_buffer.first;
+    size_t offset_in_bytes = 0;
+    for (size_t i = 0; i < buffers_.size() && offset_in_bytes < size_in_bytes; i++) {
+      size_t current_size_in_bytes;
       T* current_buffer;
-      std::tie(current_size, current_buffer) = Buffer(i);
+      std::tie(current_size_in_bytes, current_buffer) = Buffer(i);
 
-      if (size_ - start < current_size) {
-        current_size = size_ - start;
+      if (size_in_bytes - offset_in_bytes < current_size_in_bytes) {
+        current_size_in_bytes = size_in_bytes - offset_in_bytes;
       }
 
-      auto buffer_start = static_cast<T*>(combined_buffer.second) + start;
-      memcpy(buffer_start, current_buffer, current_size * sizeof(T));
-      start += current_size;
+      auto buffer_start = reinterpret_cast<BYTE*>(combined_buffer.second) + offset_in_bytes;
+      memcpy(buffer_start, current_buffer, current_size_in_bytes);
+      offset_in_bytes += current_size_in_bytes;
     }
 
     return combined_buffer;
   }
 
-  auto Set(size_t size, const T* data) {
+  auto Set(size_t size_in_bytes, const T* data) {
     WINML_THROW_HR_IF_FALSE_MSG(
         E_INVALIDARG,
-        size <= size_,
+        size_in_bytes <= (size_ * sizeof(T)),
         "Argument size (%llu) exceeds the tensor size (%llu).",
-        size,
-        size_);
+        size_in_bytes,
+        size_ * sizeof(T));
     
-    size_t start = 0;
-    for (size_t i = 0; i < buffers_.size() && size > start; i++) {
-      size_t current_size;
+    size_t offset_in_bytes = 0;
+    for (size_t i = 0; i < buffers_.size() && size_in_bytes > offset_in_bytes; i++) {
+      size_t current_size_in_bytes;
       T* current_buffer;
-      std::tie(current_size, current_buffer) = Buffer(i);
+      std::tie(current_size_in_bytes, current_buffer) = Buffer(i);
 
-      if (size - start < current_size) {
-        current_size = size - start;
+      if (size_in_bytes - offset_in_bytes < current_size_in_bytes) {
+        current_size_in_bytes = size_in_bytes - offset_in_bytes;
       }
 
-      memcpy(current_buffer, data + start, current_size * sizeof(T));
-      start += current_size;
+      memcpy(current_buffer, reinterpret_cast<const BYTE*>(data) + offset_in_bytes, current_size_in_bytes);
+      offset_in_bytes += current_size_in_bytes;
     }
   }
 

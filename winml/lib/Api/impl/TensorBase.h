@@ -165,7 +165,6 @@ struct TensorBase : TBase {
           context.converter->Get()->Tensorizer->ConvertBuffersToBatchedGPUTensor(
             GetCpuResource()->buffers(),
             GetCpuResource()->size_in_bytes(),
-            sizeof(T),
             *device->GetD3DDeviceCache(),
             GetGpuResource().get());
 
@@ -385,7 +384,7 @@ struct TensorBase : TBase {
                              "Failed to prepare buffer for copy back from device resource.");
         RETURN_IF_FAILED(engine->CopyValueAcrossDevices(value, dest.get()));
       } else {
-        auto buffer_size_in_bytes = static_cast<size_t>(ShapeSize(shape_));
+        auto buffer_size_in_bytes = static_cast<size_t>(ShapeSize(shape_)) * sizeof(T);
 
         _winml::ConverterResourceDescription descriptor = {};
         descriptor.pixel_format = static_cast<DWORD>(wgdx::DirectXPixelFormat::Unknown);
@@ -518,7 +517,7 @@ struct TensorBase : TBase {
       // efficiently query the size of the data.
       auto size_in_bytes = 0;
       for (auto buffer : buffers) {
-        size_in_bytes += buffer.Length();
+        size_in_bytes += buffer.Capacity();
       }
 
       auto num_elements = size_in_bytes / sizeof(T);

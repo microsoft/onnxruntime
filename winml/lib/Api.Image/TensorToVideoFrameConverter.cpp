@@ -17,6 +17,8 @@
 #include "LearningModelDevice.h"
 #include "EventTimer.h"
 
+#include "robuffer.h"
+
 using namespace Microsoft::WRL;
 using namespace Windows::Graphics::DirectX::Direct3D11;
 
@@ -594,11 +596,56 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToSoftwareBitmap(
 }
 
 void TensorToVideoFrameConverter::ConvertBatchedDX12TensorToBuffers(
-    ID3D12Resource* /*input_tensor*/,
-    size_t /*buffer_size_in_bytes*/,
-    _winml::D3DDeviceCache& /*device_cache*/,
-    const std::vector<wss::IBuffer>& /*buffers*/) {
+    ID3D12Resource* input_tensor,
+    size_t buffer_size_in_bytes,
+    _winml::D3DDeviceCache& device_cache,
+    const std::vector<wss::IBuffer>& buffers) {
+  assert(input_tensor != nullptr);
 
+  // TODO: Make an allocator for readback heaps
+  if (!readback_heap_ || readback_heap_->GetDesc().Width < buffer_size_in_bytes) {
+    WINML_THROW_IF_FAILED(device_cache.GetD3D12Device()->CreateCommittedResource(
+        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK),
+        D3D12_HEAP_FLAG_NONE,
+        &CD3DX12_RESOURCE_DESC::Buffer(buffer_size_in_bytes),
+        D3D12_RESOURCE_STATE_COPY_DEST,
+        nullptr,
+        IID_PPV_ARGS(&readback_heap_)));
+  }
+
+  ResetCommandList(device_cache);
+
+  auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(input_tensor, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
+  command_list_->ResourceBarrier(1, &barrier);
+  command_list_->CopyBufferRegion(readback_heap_.Get(), 0, input_tensor, 0, buffer_size_in_bytes);
+
+  WINML_THROW_IF_FAILED(command_list_->Close());
+  ID3D12CommandList* ppCommandLists[] = {command_list_.Get()};
+  device_cache.GetCommandQueue()->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
+
+  // Sync to make sure the the heap received all the data
+  device_cache.SyncD3D12ToCPU();
+
+  void* readback_buffer = nullptr;
+  WINML_THROW_IF_FAILED(readback_heap_->Map(0, &CD3DX12_RANGE(0, buffer_size_in_bytes), &readback_buffer));
+
+  size_t offset_in_bytes = 0;
+  for (size_t i = 0; i < buffers.size() && offset_in_bytes < buffer_size_in_bytes; i++) {
+    auto size_in_bytes = static_cast<size_t>(buffers[i].Capacity());
+    if (buffer_size_in_bytes - offset_in_bytes < size_in_bytes) {
+      size_in_bytes = buffer_size_in_bytes - offset_in_bytes;
+    }
+
+    BYTE* buffer_start = nullptr;
+    auto byte_access = buffers[i].as<Windows::Storage::Streams::IBufferByteAccess>();
+    byte_access->Buffer(&buffer_start);
+
+    auto readback_buffer_start = reinterpret_cast<BYTE*>(readback_buffer) + offset_in_bytes;
+    memcpy(buffer_start, readback_buffer_start, size_in_bytes);
+    offset_in_bytes += size_in_bytes;
+  }
+
+  readback_heap_->Unmap(0, &CD3DX12_RANGE(0, 0));
 }
 
 D3D12_SHADER_RESOURCE_VIEW_DESC TensorToVideoFrameConverter::CreateSRVDescriptor(

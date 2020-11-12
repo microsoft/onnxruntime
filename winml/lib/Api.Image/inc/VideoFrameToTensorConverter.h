@@ -42,7 +42,6 @@ class VideoFrameToTensorConverter : public ImageConverter {
   void ConvertBuffersToBatchedGPUTensor(
       _In_ const std::vector<wss::IBuffer>& buffers,
       _In_ size_t buffer_size_in_bytes,
-      _In_ size_t element_size_in_bytes,
       _In_ _winml::D3DDeviceCache& device_cache,
       _Inout_ ID3D12Resource* output_resource);
 
