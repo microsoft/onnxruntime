@@ -170,6 +170,7 @@ def main():
         log.info("Image not found, building and pushing...")
 
         run(args.docker_path, "build",
+            "--pull",
             *shlex.split(args.docker_build_args),
             *shlex.split(args.docker_build_args_not_affecting_image_content),
             "--tag", full_image_name,

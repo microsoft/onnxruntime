@@ -39,6 +39,7 @@ DOCKER_IMAGE_CACHE_CONTAINER_REGISTRY_NAME="onnxruntimebuildcache"
 COMMON_GET_DOCKER_IMAGE_ARGS="--container-registry ${DOCKER_IMAGE_CACHE_CONTAINER_REGISTRY_NAME}"
 
 # If not in docker group, prepend commands with "sudo".
+# TODO necessary?
 if id -Gnz | grep -zq "^docker$" ; then
     GET_DOCKER_IMAGE_CMD="${SOURCE_ROOT}/tools/ci_build/get_docker_image.py ${COMMON_GET_DOCKER_IMAGE_ARGS}"
     DOCKER_CMD="docker"
