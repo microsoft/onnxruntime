@@ -17,7 +17,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>())
         .InputMemoryType<OrtMemTypeCPUInput>(1)
         .InputMemoryType<OrtMemTypeCPUInput>(2),
-    Dropout<false>);
+    Dropout);
 
 ONNX_OPERATOR_KERNEL_EX(
     Dropout,
@@ -30,7 +30,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>())
         .InputMemoryType<OrtMemTypeCPUInput>(1)
         .InputMemoryType<OrtMemTypeCPUInput>(2),
-    Dropout<false>);
+    Dropout);
 
 }  // namespace cuda
 }  // namespace onnxruntime

@@ -10,19 +10,6 @@
 namespace onnxruntime {
 namespace cuda {
 
-// Temporary for backward compatibility, will eventually get rid of TrainableDropout when PyTorch exporter will move to
-// opset-12.
-ONNX_OPERATOR_KERNEL_EX(
-    TrainableDropout,
-    kOnnxDomain,
-    9,
-    kCudaExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes())
-        .TypeConstraint("T1", DataTypeImpl::AllIEEEFloatTensorTypes())
-        .InputMemoryType<OrtMemTypeCPUInput>(1),
-    Dropout<true>);
-
 #define REGISTER_GRADIENT_KERNEL(OpName)                                 \
   ONNX_OPERATOR_KERNEL_EX(                                               \
       OpName,                                                            \
@@ -37,10 +24,6 @@ ONNX_OPERATOR_KERNEL_EX(
       DropoutGrad);
 
 REGISTER_GRADIENT_KERNEL(DropoutGrad)
-
-// Temporary for backward compatibility, will eventually get rid of TrainableDropout when PyTorch exporter will move to
-// opset-12.
-REGISTER_GRADIENT_KERNEL(TrainableDropoutGrad)
 
 template <typename T>
 struct DropoutGradComputeImpl {
