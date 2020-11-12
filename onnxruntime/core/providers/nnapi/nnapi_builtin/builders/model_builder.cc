@@ -8,6 +8,7 @@
 #include "helper.h"
 #include "model_builder.h"
 #include "op_builder.h"
+#include "op_support_checker.h"
 
 namespace onnxruntime {
 namespace nnapi {
@@ -18,81 +19,10 @@ using std::vector;
 ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer)
     : nnapi_(NnApiImplementation()), graph_viewer_(graph_viewer) {
   GetAllInitializers();
-  op_builders_ = CreateOpBuilders();
 }
 
 int32_t ModelBuilder::GetAndroidSdkVer() const {
   return nnapi_ ? nnapi_->android_sdk_version : 0;
-}
-
-bool ModelBuilder::IsNodeSupported(const Node& node) {
-  if (auto* op_builder = GetOpBuilder(node)) {
-    return op_builder->IsOpSupported(*this, node);
-  } else {
-    return false;
-  }
-}
-
-bool IsValidSupportedNodesVec(const std::vector<int>& supported_node_vec, const GraphViewer& graph_viewer) {
-  if (supported_node_vec.empty())
-    return false;
-
-  if (supported_node_vec.size() == 1) {
-    const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
-    const auto* node(graph_viewer.GetNode(node_indices[supported_node_vec[0]]));
-    const auto& op = node->OpType();
-    // It is not worth it to perform a single Reshape/Flatten/Identity operator
-    // which is only copying the data in NNAPI
-    // If this is the case, let it fall back
-    if (op == "Reshape" ||
-        op == "Flatten" ||
-        op == "Identity") {
-      return false;
-    }
-  }
-  return true;
-}
-
-std::vector<std::vector<int>> ModelBuilder::GetSupportedNodes() {
-  std::vector<std::vector<int>> supported_node_vecs;
-  int32_t android_sdk_ver = GetAndroidSdkVer();
-#ifdef __ANDROID__
-  if (android_sdk_ver < ORT_NNAPI_MIN_API_LEVEL) {
-    LOGS_DEFAULT(WARNING) << "All ops will fallback to CPU EP, because Android API level [" << android_sdk_ver
-                          << "] is lower than minimal supported API level [" << ORT_NNAPI_MIN_API_LEVEL
-                          << "] of this build for NNAPI";
-    return supported_node_vecs;
-  }
-#endif
-
-  std::vector<int> supported_node_vec;
-  const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
-  for (size_t i = 0; i < node_indices.size(); i++) {
-    const auto* node(graph_viewer_.GetNode(node_indices[i]));
-    bool supported = IsNodeSupported(*node);
-    LOGS_DEFAULT(VERBOSE) << "Operator type: [" << node->OpType()
-                          << "] index: [" << i
-                          << "] name: [" << node->Name()
-                          << "] supported: [" << supported
-                          << "]";
-    if (supported) {
-      supported_node_vec.push_back(i);
-    } else {
-      if (IsValidSupportedNodesVec(supported_node_vec, graph_viewer_)) {
-        supported_node_vecs.push_back(supported_node_vec);
-        supported_node_vec.clear();
-      }
-    }
-  }
-
-  if (IsValidSupportedNodesVec(supported_node_vec, graph_viewer_))
-    supported_node_vecs.push_back(supported_node_vec);
-
-  LOGS_DEFAULT(VERBOSE) << "Support vectors size is " << supported_node_vecs.size();
-  for (const auto& group : supported_node_vecs)
-    LOGS_DEFAULT(VERBOSE) << "Support vector size is " << group.size();
-
-  return supported_node_vecs;
 }
 
 // Scalar operand is copied into the model, no need to persist
@@ -201,7 +131,7 @@ void ModelBuilder::PreprocessActivations() {
       activation_nodes_.emplace(node->Index(), ANEURALNETWORKS_FUSED_RELU);
     } else if (op_type == "Clip") {  // Relu1 or Relu6
       float min, max;
-      if (!GetClipMinMax(*this, *node, min, max))
+      if (!GetClipMinMax(GetInitializerTensors(), *node, min, max))
         continue;
 
       if (min == -1.0f && max == 1.0f) {
@@ -606,10 +536,19 @@ int32_t ModelBuilder::FindActivation(const Node& node, const NodeArg& output) {
 }
 
 IOpBuilder* ModelBuilder::GetOpBuilder(const Node& node) {
-  if (!Contains(op_builders_, node.OpType()))
+  const auto& op_builders = GetOpBuilders();
+  if (!Contains(op_builders, node.OpType()))
     return nullptr;
 
-  return op_builders_[node.OpType()].get();
+  return op_builders.at(node.OpType()).get();
+}
+
+IOpSupportChecker* ModelBuilder::GetOPSupportChecker(const Node& node) {
+  const auto& op_support_checkers = GetOpSupportCheckers();
+  if (!Contains(op_support_checkers, node.OpType()))
+    return nullptr;
+
+  return op_support_checkers.at(node.OpType()).get();
 }
 
 std::string ModelBuilder::GetUniqueName(const std::string& base_name) {

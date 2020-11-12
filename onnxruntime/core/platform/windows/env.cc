@@ -118,12 +118,6 @@ class WindowsEnv : public Env {
                           Eigen::ThreadPoolInterface* param, const ThreadOptions& thread_options) {
     return new WindowsThread(name_prefix, index, start_address, param, thread_options);
   }
-  Task CreateTask(std::function<void()> f) {
-    return Task{std::move(f)};
-  }
-  void ExecuteTask(const Task& t) {
-    t.f();
-  }
 
   void SleepForMicroseconds(int64_t micros) const override {
     Sleep(static_cast<DWORD>(micros) / 1000);
