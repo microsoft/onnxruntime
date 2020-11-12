@@ -3,7 +3,6 @@
 
 #include "core/framework/random_seed.h"
 #include "orttraining/training_ops/cuda/nn/dropout.h"
-#include "core/providers/cuda/nn/dropout.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/common.h"
 
@@ -37,6 +36,15 @@ struct DropoutGradComputeImpl {
     const CudaT* dY_data = reinterpret_cast<const CudaT*>(dY.template Data<T>());
     CudaT* dX_data = reinterpret_cast<CudaT*>(dX.template MutableData<T>());
     DropoutGradientKernelImpl<CudaT>(N, dY_data, mask_data, ratio_data, dX_data);
+  }
+};
+
+// REVIEW(codemzs): Common out this structure because it is also used in Dropout forward op.
+template <typename T>
+struct GetRatioDataImpl {
+  void operator()(const Tensor* ratio, float& ratio_data) const {
+    ratio_data = static_cast<float>(*(ratio->template Data<T>()));
+    ORT_ENFORCE(ratio_data >= 0.0f && ratio_data < 1.0f, "ratio_data is outside range [0, 1)");
   }
 };
 
