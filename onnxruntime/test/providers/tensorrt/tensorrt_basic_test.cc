@@ -15,30 +15,6 @@ using namespace ::onnxruntime::logging;
 namespace onnxruntime {
 
 namespace test {
-namespace {
-#ifndef _WIN32
-Status SetEnvironmentVar(const std::string& name, const optional<std::string>& value) {
-  if (value.has_value()) {
-    ORT_RETURN_IF_NOT(
-        setenv(name.c_str(), value.value().c_str(), 1) == 0,
-        "setenv() failed: ", errno);
-  } else {
-    ORT_RETURN_IF_NOT(
-        unsetenv(name.c_str()) == 0,
-        "unsetenv() failed: ", errno);
-  }
-  return Status::OK();
-}
-#else  // _WIN32
-Status SetEnvironmentVar(const std::string& name, const optional<std::string>& value) {
-  ORT_RETURN_IF_NOT(
-      SetEnvironmentVariableA(name.c_str(), value.has_value() ? value.value().c_str() : nullptr) != 0,
-      "SetEnvironmentVariableA() failed: ", GetLastError());
-  return Status::OK();
-}
-#endif
-}  // namespace
-
 template <typename T>
 void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64_t>& expected_dims,
                    const std::vector<T>& expected_values) {
@@ -51,7 +27,7 @@ void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64
 }
 
 TEST(TensorrtExecutionProviderTest, EngineCachingTest) {
-  ASSERT_TRUE(SetEnvironmentVar("ORT_TENSORRT_ENGINE_CACHE_ENABLE", "1").IsOK());
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_TENSORRT_ENGINE_CACHE_ENABLE", {"1"}},}};
   onnxruntime::Model model("enginecachingtest", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
   std::vector<onnxruntime::NodeArg*> inputs;
@@ -156,7 +132,6 @@ TEST(TensorrtExecutionProviderTest, EngineCachingTest) {
   status = session_object.Run(run_options, feeds, output_names, &fetches);
   ASSERT_TRUE(status.IsOK());
   VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
-  ASSERT_TRUE(SetEnvironmentVar("ORT_TENSORRT_ENGINE_CACHE_ENABLE", "0").IsOK());
 }
 
 TEST(TensorrtExecutionProviderTest, FunctionTest) {
