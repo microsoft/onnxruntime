@@ -796,14 +796,10 @@ TEST_P(ModelTest, Run) {
                                                     ORT_TSTR("faster_rcnn"),
                                                     ORT_TSTR("GPT2"),
                                                     ORT_TSTR("GPT2_LM_HEAD"),
-<<<<<<< HEAD
                                                     ORT_TSTR("keras_lotus_resnet3D"),
                                                     ORT_TSTR("mlperf_ssd_resnet34_1200"),
                                                     ORT_TSTR("mask_rcnn_keras"),
                                                     ORT_TSTR("mask_rcnn"),
-=======
-                                                    ORT_TSTR("GPT2"),
->>>>>>> origin/master
                                                     ORT_TSTR("ssd"),
                                                     ORT_TSTR("vgg19"),
                                                     ORT_TSTR("zfnet512")};
