@@ -554,6 +554,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"cast_BFLOAT16_to_FLOAT", "onnx generate bfloat tensor as uint16 type", {}},
       {"sequence_insert_at_back", "onnx currently not supporting loading segment", {}},
       {"sequence_insert_at_front", "onnx currently not supporting loading segment", {}},
+      {"loop13_seq", "ORT api does not currently support creating empty sequences (needed for this test)", {}},
   };
 
 #ifdef DISABLE_ML_OPS
