@@ -324,8 +324,6 @@ Status TryResolveShape(
     // 0 means no shape information.
     is_resolved = 0;
     return Status::OK();
-  } else {
-    std::cout << "pengwa shape is found for arg " << arg->Name() << std::endl;
   }
 
   std::vector<int64_t> shape;
