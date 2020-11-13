@@ -49,9 +49,9 @@ def main():
                '--use_nccl',
                '--use_mixed_precision',
                '--allreduce_in_fp16',
-               '--gradient_accumulation_steps', '48',
-               '--num_train_steps', '96',
-               '--train_batch_size', '50']
+               '--gradient_accumulation_steps', '16',
+               '--num_train_steps', '48',
+               '--train_batch_size', '40']
 
     # Test 4-way pipeline parallel
     pp_command = ['mpirun', '-n', str(ngpus)] + command + ['--pipeline_parallel_size', '4', '--cut_group_info',
