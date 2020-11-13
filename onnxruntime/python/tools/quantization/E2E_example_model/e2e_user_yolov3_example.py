@@ -57,7 +57,7 @@ def get_prediction_evaluation(model_path, augmented_model_path, validation_datas
     
     results = []
     for i in range(0, len(image_list), stride):
-        print("Total %s images.\nStart to process from %s ..." % (str(len(image_list)), str(i)))
+        print("Total %s images\nStart to process from %s ..." % (str(len(image_list)), str(i)))
         dr = YoloV3DataReader(validation_dataset, augmented_model_path=model_path, start_index=i, size_limit=stride, is_validation=True)
         validator = YoloV3Validator(model_path, dr, providers=providers)
 
@@ -84,7 +84,7 @@ def generate_calibration_table(model_path, augmented_model_path, calibration_dat
 
     stride = 1000 
     for i in range(0, len(image_list), stride):
-        print("Total %s images.\nStart to process from %s ..." % (str(len(image_list)), str(i)))
+        print("Total %s images\nStart to process from %s ..." % (str(len(image_list)), str(i)))
         dr = YoloV3DataReader(calibration_dataset, start_index=i, size_limit=stride)
 
         if not calibrator:
@@ -109,7 +109,7 @@ if __name__ == '__main__':
     validation_dataset = './val2017'
 
     generate_calibration_table(model_path, augmented_model_path, calibration_dataset)
-    get_prediction_evaluation()
+    get_prediction_evaluation(model_path, augmented_model_path, validation_dataset, ["CUDAExecutionProvider"])
 
 
 
