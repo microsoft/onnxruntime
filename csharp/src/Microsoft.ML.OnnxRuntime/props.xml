@@ -33,6 +33,7 @@
 
   <!-- Assume apps using the Microsoft.ML.OnnxRuntime.DirectML package only want the DirectML binaries (no need for a build dependency). -->
   <PropertyGroup Label="Globals" Condition="Exists('$(MSBuildThisFileDirectory)include\dml_provider_factory.h')">
+    <Microsoft_AI_DirectML_SkipDebugLayerCopy>true</Microsoft_AI_DirectML_SkipDebugLayerCopy>
     <Microsoft_AI_DirectML_SkipLink>true</Microsoft_AI_DirectML_SkipLink>
     <Microsoft_AI_DirectML_SkipIncludeDir>true</Microsoft_AI_DirectML_SkipIncludeDir>
   </PropertyGroup>
