@@ -679,6 +679,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "fp16_tiny_yolov2", "Tolerance level for float16 is not known. We now support fp16." },
                 { "fp16_test_tiny_yolov2", "ImageScaler is not a registered function/op"},
                 { "fp16_coreml_FNS-Candy", "ImageScaler is not a registered function/op" },
+                { "fp16_coreml_LinearRegression_NYCTaxi", "Error in Node:featureVectorizer : No Op registered for FeatureVectorizer with domain_version of 1"},
                 { "test_bidaf", "Does not run in opset9, runs in other opsets. The model runs but I don't have a data set to debug output locally. Tensors of type ElementType not currently supported in the LoadTensorFromFile." },
                 { "test_mnist", "Does not run in opset9, runs in other opsets. The model runs but I don't have a data set to debug output locally. Tensors of type ElementType not currently supported in the LoadTensorFromFile" },
                 { "BERT_Squad", "Could not find an implementation for the node bert / embeddings / one_hot:OneHot(9)" },
