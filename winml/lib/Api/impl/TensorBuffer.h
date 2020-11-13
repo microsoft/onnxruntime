@@ -5,6 +5,7 @@
 
 #include "robuffer.h"
 #include "winrt/Windows.Storage.Streams.h"
+#include "DisjointBufferHelpers.h"
 
 namespace _winml {
 
@@ -54,7 +55,7 @@ class TensorBuffer {
     // zero-initialize uninitialized tensors. After measuring, the performance impact
     // of memsetting the memory buffer is quite small (<1ms for 3channel 720x720 TensorFloats).
     // To maintain parity with RS5 behavior, we always zero out the memory buffer.
-    memset(buffer.second, 0, buffer.first);
+    memset(buffer.data(), 0, buffer.size_bytes());
   }
 
   TensorBuffer(
@@ -94,7 +95,10 @@ class TensorBuffer {
     return std::shared_ptr<TensorBuffer>(new TensorBuffer(size, buffers));
   }
 
-  // this is the size in bytes
+  auto NumElements() {
+    return size_;
+  }
+
   auto SizeInBytes() {
     return size_ * sizeof(T);
   }
@@ -112,34 +116,27 @@ class TensorBuffer {
       // Single buffer optimization to not create a temporary buffer that concatenates disjoint buffers into one.
       return BufferAt(0);
     }
-
-    auto combined_buffer = CombinedBuffer();
+    auto span = CombinedBuffer();
     if (should_sync_buffer) {
-      auto size_in_bytes = combined_buffer.first;
-      size_t offset_in_bytes = 0;
-      for (size_t i = 0; i < buffers_.size() && offset_in_bytes < size_in_bytes; i++) {
-        size_t current_size_in_bytes;
-        T* current_buffer;
-        std::tie(current_size_in_bytes, current_buffer) = BufferAt(i);
-
-        if (size_in_bytes - offset_in_bytes < current_size_in_bytes) {
-          current_size_in_bytes = size_in_bytes - offset_in_bytes;
-        }
-
-        auto buffer_start = reinterpret_cast<BYTE*>(combined_buffer.second) + offset_in_bytes;
-        memcpy(buffer_start, current_buffer, current_size_in_bytes);
-        offset_in_bytes += current_size_in_bytes;
-      }
+      _winml::LoadOrStoreDisjointBuffers(
+        true /*load buffer*/,
+        buffers_.size(),
+        [this](size_t i) { return BufferAt(i); },
+        span);
     }
 
-    return combined_buffer;
+    return span;
   }
 
   auto Flush() {
     auto should_flush = buffers_.size() != 1;
     if (should_flush) {
-      auto combined_buffer = CombinedBuffer();
-      Set(combined_buffer.first, combined_buffer.second);
+      auto span = CombinedBuffer();
+      _winml::LoadOrStoreDisjointBuffers(
+          false /*store buffer*/,
+          buffers_.size(),
+          [this](size_t i) { return BufferAt(i); },
+          span);
     }
     return should_flush;
   }
@@ -152,33 +149,26 @@ class TensorBuffer {
         size_in_bytes,
         size_ * sizeof(T));
     
-    size_t offset_in_bytes = 0;
-    for (size_t i = 0; i < buffers_.size() && size_in_bytes > offset_in_bytes; i++) {
-      size_t current_size_in_bytes;
-      T* current_buffer;
-      std::tie(current_size_in_bytes, current_buffer) = BufferAt(i);
-
-      if (size_in_bytes - offset_in_bytes < current_size_in_bytes) {
-        current_size_in_bytes = size_in_bytes - offset_in_bytes;
-      }
-
-      memcpy(current_buffer, reinterpret_cast<const BYTE*>(data) + offset_in_bytes, current_size_in_bytes);
-      offset_in_bytes += current_size_in_bytes;
-    }
+    gsl::span<byte> span(reinterpret_cast<byte*>(const_cast<T*>(data)), size_in_bytes);
+    _winml::LoadOrStoreDisjointBuffers(
+      false /*store buffer*/,
+      buffers_.size(),
+      [this](size_t i) { return BufferAt(i); },
+      span);
   }
 
   auto Set(std::vector<T>&& moveableData) {
-    Set(moveableData.size(), moveableData.data());
+    Set(moveableData.size() * sizeof(T), moveableData.data());
   }
 
  private:
   auto BufferFrom(wss::IBuffer buffer) {
-    T* current_data = nullptr;
+    byte* current_data = nullptr;
     auto bufferByteAccess = buffer.as<Windows::Storage::Streams::IBufferByteAccess>();
-    bufferByteAccess->Buffer(reinterpret_cast<BYTE**>(&current_data));
-    return std::make_pair(
-        static_cast<size_t>(buffer.Capacity()),
-        current_data);
+    bufferByteAccess->Buffer(&current_data);
+    return gsl::span<byte>(
+        current_data,
+        static_cast<size_t>(buffer.Capacity()));
   }
 
   auto BufferAt(size_t index) {
@@ -197,7 +187,10 @@ class TensorBuffer<std::string> {
     return std::shared_ptr<TensorBuffer>(new TensorBuffer(size));
   }
 
-  // this is the size in bytes
+  auto NumElements() {
+    return buffer_.size();
+  }
+
   auto SizeInBytes() {
     return buffer_.size();
   }
@@ -219,11 +212,11 @@ class TensorBuffer<std::string> {
         E_INVALIDARG,
         index == 0,
         "TensorString can only be backed by a single buffer!");
-    return std::make_pair(buffer_.size(), buffer_.data());
+    return gsl::span<byte>(reinterpret_cast<byte*>(buffer_.data()), buffer_.size());
   }
 
   auto Buffer(bool /*should_sync_buffer*/) {
-    return std::make_pair(buffer_.size(), buffer_.data());
+    return BufferAt(0);
   }
 
   auto Set(size_t size, std::string_view* data) {

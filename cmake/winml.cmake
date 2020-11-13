@@ -318,6 +318,7 @@ add_library(winml_lib_image STATIC
   ${winml_lib_api_image_dir}/inc/ConverterResourceStore.h
   ${winml_lib_api_image_dir}/inc/D3DDeviceCache.h
   ${winml_lib_api_image_dir}/inc/DeviceHelpers.h
+  ${winml_lib_api_image_dir}/inc/DisjointBufferHelpers.h
   ${winml_lib_api_image_dir}/inc/ImageConversionHelpers.h
   ${winml_lib_api_image_dir}/inc/ImageConversionTypes.h
   ${winml_lib_api_image_dir}/inc/ImageConverter.h
@@ -330,6 +331,7 @@ add_library(winml_lib_image STATIC
   ${winml_lib_api_image_dir}/ConverterResourceStore.cpp
   ${winml_lib_api_image_dir}/D3DDeviceCache.cpp
   ${winml_lib_api_image_dir}/DeviceHelpers.cpp
+  ${winml_lib_api_image_dir}/DisjointBufferHelpers.cpp
   ${winml_lib_api_image_dir}/ImageConversionHelpers.cpp
   ${winml_lib_api_image_dir}/ImageConverter.cpp
   ${winml_lib_api_image_dir}/TensorToVideoFrameConverter.cpp

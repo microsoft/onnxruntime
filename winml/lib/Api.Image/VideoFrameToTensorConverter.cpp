@@ -17,6 +17,7 @@
 #include "EventTimer.h"
 
 #include "robuffer.h"
+#include "inc/DisjointBufferHelpers.h"
 
 using namespace Microsoft::WRL;
 using namespace Windows::Graphics::DirectX::Direct3D11;
@@ -554,23 +555,20 @@ void VideoFrameToTensorConverter::ConvertBuffersToBatchedGPUTensor(
         IID_PPV_ARGS(&upload_heap_)));
   }
 
-  BYTE* gpu_buffer = nullptr;
+  byte* gpu_buffer = nullptr;
   WINML_THROW_IF_FAILED(upload_heap_->Map(0, &CD3DX12_RANGE(0, 0), reinterpret_cast<void**>(&gpu_buffer)));
+  auto gpu_buffer_span = gsl::span<byte>(gpu_buffer, buffer_size_in_bytes);
 
-  size_t offset_in_bytes = 0;
-  for (size_t i = 0; i < buffers.size() && offset_in_bytes < buffer_size_in_bytes; i++) {
-    auto size_in_bytes = static_cast<size_t>(buffers[i].Capacity());
-    if (buffer_size_in_bytes - offset_in_bytes < size_in_bytes) {
-      size_in_bytes = buffer_size_in_bytes - offset_in_bytes;
-    }
-
-    BYTE* buffer_start = nullptr;
-    auto byte_access = buffers[i].as<Windows::Storage::Streams::IBufferByteAccess>();
-    byte_access->Buffer(&buffer_start);
-
-    memcpy(gpu_buffer + offset_in_bytes, buffer_start, size_in_bytes);
-    offset_in_bytes += size_in_bytes;
-  }
+  _winml::LoadOrStoreDisjointBuffers(
+      true /*load disjoint buffers into*/,
+      buffers.size(),
+      [&](size_t i) {
+        byte* buffer_start = nullptr;
+        auto byte_access = buffers[i].as<Windows::Storage::Streams::IBufferByteAccess>();
+        byte_access->Buffer(&buffer_start);
+        return gsl::span<byte>(buffer_start, static_cast<size_t>(buffers[i].Capacity()));
+      },
+      gpu_buffer_span);
 
   upload_heap_->Unmap(0, &CD3DX12_RANGE(0, buffer_size_in_bytes));
   

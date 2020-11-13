@@ -48,6 +48,10 @@ class Tensor {
                                                             std::multiplies<int64_t>())))) {
   }
 
+  auto number_of_elements() const {
+    return buffer_->NumElements();
+  }
+
   auto size_in_bytes() const {
     return buffer_->SizeInBytes();
   }
@@ -61,7 +65,8 @@ class Tensor {
   }
 
   auto buffer(bool should_sync_buffer = true) {
-    return buffer_->Buffer(should_sync_buffer);
+    auto span = buffer_->Buffer(should_sync_buffer);
+    return gsl::span<T>(reinterpret_cast<T*>(span.data()), buffer_->NumElements());
   }
 
   auto flush() {
@@ -69,7 +74,7 @@ class Tensor {
   }
 
   void set(size_t size, const T* pData) {
-    buffer_->Set(size, pData);
+    buffer_->Set(size * sizeof(T), pData);
   }
 
   void set(std::vector<T>&& other) {

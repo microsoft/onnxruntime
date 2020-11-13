@@ -18,6 +18,7 @@
 #include "EventTimer.h"
 
 #include "robuffer.h"
+#include "inc/DisjointBufferHelpers.h"
 
 using namespace Microsoft::WRL;
 using namespace Windows::Graphics::DirectX::Direct3D11;
@@ -626,24 +627,19 @@ void TensorToVideoFrameConverter::ConvertBatchedDX12TensorToBuffers(
   // Sync to make sure the the heap received all the data
   device_cache.SyncD3D12ToCPU();
 
-  void* readback_buffer = nullptr;
-  WINML_THROW_IF_FAILED(readback_heap_->Map(0, &CD3DX12_RANGE(0, buffer_size_in_bytes), &readback_buffer));
-
-  size_t offset_in_bytes = 0;
-  for (size_t i = 0; i < buffers.size() && offset_in_bytes < buffer_size_in_bytes; i++) {
-    auto size_in_bytes = static_cast<size_t>(buffers[i].Capacity());
-    if (buffer_size_in_bytes - offset_in_bytes < size_in_bytes) {
-      size_in_bytes = buffer_size_in_bytes - offset_in_bytes;
-    }
-
-    BYTE* buffer_start = nullptr;
-    auto byte_access = buffers[i].as<Windows::Storage::Streams::IBufferByteAccess>();
-    byte_access->Buffer(&buffer_start);
-
-    auto readback_buffer_start = reinterpret_cast<BYTE*>(readback_buffer) + offset_in_bytes;
-    memcpy(buffer_start, readback_buffer_start, size_in_bytes);
-    offset_in_bytes += size_in_bytes;
-  }
+  byte* readback_buffer = nullptr;
+  WINML_THROW_IF_FAILED(readback_heap_->Map(0, &CD3DX12_RANGE(0, buffer_size_in_bytes), reinterpret_cast<void**>(&readback_buffer)));
+  auto readback_buffer_span = gsl::span<byte>(readback_buffer, buffer_size_in_bytes);
+  _winml::LoadOrStoreDisjointBuffers(
+      false /*load disjoint buffers into*/,
+      buffers.size(),
+      [&](size_t i) {
+        byte* buffer_start = nullptr;
+        auto byte_access = buffers[i].as<Windows::Storage::Streams::IBufferByteAccess>();
+        byte_access->Buffer(&buffer_start);
+        return gsl::span<byte>(buffer_start, static_cast<size_t>(buffers[i].Capacity()));
+      },
+      readback_buffer_span);
 
   readback_heap_->Unmap(0, &CD3DX12_RANGE(0, 0));
 }
