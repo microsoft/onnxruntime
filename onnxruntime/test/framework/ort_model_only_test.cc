@@ -237,8 +237,13 @@ static void DumpOrtModelAsJson(const std::string& model_uri) {
   std::ofstream(model_uri + ".json") << json;
 }
 */
+/* The full build was causing the following error because the graph node array has some empyt (blan) node at some indices for certain ORT designs
+       onnx runtime exception : Satisfied, but should not be : node == nullptr
+       session_state.cc : 814 onnxruntime::SessionState::LoadFromOrtFormatCan't find node with index 4. Invalid ORT format model.
+  The build has been fixed in InferenceSession code. The following test case to catch this error.
+*/
 
-TEST(OrtModelOnlyTests, SerializeMnistToOrtFormat) {
+TEST(OrtModelOnlyTests, ValidateOrtFormatModelDoesNotRunOptimizersInFullBuild) {
   const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("mnist.onnx.ort");
   SaveAndCompareModels("testdata/mnist.onnx", ort_file);
 
@@ -246,7 +251,7 @@ TEST(OrtModelOnlyTests, SerializeMnistToOrtFormat) {
 
   OrtModelTestInfo test_info;
   test_info.model_filename = ort_file;
-  test_info.logid = "SerializeMnistToOrtFormat";
+  test_info.logid = "ValidateOrtFormatModelDoesNotRunOptimizersInFullBuild";
   test_info.configs.push_back(std::make_pair(kOrtSessionOptionsConfigLoadModelFormat, "ORT"));
 
   OrtValue ml_value;
@@ -389,40 +394,12 @@ OrtModelTestInfo GetTestInfoForLoadOrtFormatModel() {
   return test_info;
 }
 
-OrtModelTestInfo GetTestInfoForLoadMnistOrtFormatModel() {
-  OrtModelTestInfo test_info;
-  test_info.model_filename = ORT_TSTR("testdata/mnist.onnx.ort");
-  test_info.logid = "LoadMnistOrtFormatModel";
-
-  OrtValue ml_value;
-  const std::vector<int64_t>  dims = {1, 1, 28, 28};
-  vector<float> data(28*28, 0.0);
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims, data,
-                       &ml_value);
-  test_info.inputs.insert(std::make_pair("Input3", ml_value));
-
-  // prepare outputs
-  test_info.output_names = {"Plus214_Output_0"};
-  test_info.output_verifier = [](const std::vector<OrtValue>& fetches) {
-    const auto& output = fetches[0].Get<Tensor>();
-    ASSERT_TRUE(output.Shape().NumDimensions() == 2);
-    // ASSERT_TRUE(output.Data<float>()[0] == 125.f);
-  };
-
-  return test_info;
-}
-
 // test that we can deserialize and run a previously saved ORT format model
 TEST(OrtModelOnlyTests, LoadOrtFormatModel) {
   OrtModelTestInfo test_info = GetTestInfoForLoadOrtFormatModel();
   RunOrtModel(test_info);
 }
 
-TEST(OrtModelOnlyTests, LoadMnistOrtFormatModel) {
-  OrtModelTestInfo test_info = GetTestInfoForLoadMnistOrtFormatModel();
-  test_info.configs.push_back(std::make_pair(kOrtSessionOptionsConfigLoadModelFormat, "ORT"));
-  RunOrtModel(test_info);
-}
 // Load the model from a buffer instead of a file path
 TEST(OrtModelOnlyTests, LoadOrtFormatModelFromBuffer) {
   OrtModelTestInfo test_info = GetTestInfoForLoadOrtFormatModel();
