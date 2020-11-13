@@ -45,7 +45,7 @@ void RunAndVerifyOutputs(const std::string& model_file_name,
   run_options.run_tag = so.session_logid;
 
   InferenceSessionWrapper session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultNnapiExecutionProvider())));
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultNnapiExecutionProvider()));
   ASSERT_STATUS_OK(session_object.Load(model_file_name));
   ASSERT_STATUS_OK(session_object.Initialize());
 
