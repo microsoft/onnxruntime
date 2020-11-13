@@ -33,6 +33,7 @@ struct ModuleGradientGraphBuilderConfiguration {
 struct SplitGraphsInfo {
   std::vector<std::string> user_input_names{};
   std::vector<std::string> initializer_names_to_train{};
+  std::vector<std::string> initializer_grad_names_to_train{};
   std::vector<std::string> user_output_names{};
   std::vector<std::string> backward_user_input_names{};
   std::vector<std::string> backward_intializer_names_as_input{};
