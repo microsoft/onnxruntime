@@ -51,7 +51,7 @@ def main():
                '--allreduce_in_fp16',
                '--gradient_accumulation_steps', '16',
                '--num_train_steps', '48',
-               '--train_batch_size', '40']
+               '--train_batch_size', '20']
 
     # Test 4-way pipeline parallel
     pp_command = ['mpirun', '-n', str(ngpus)] + command + ['--pipeline_parallel_size', '4', '--cut_group_info',
