@@ -58,6 +58,11 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
     }
   }
 
+  // We need to get the Android system API level to ensure the GetCapability giving the correct result
+  // based on the system.
+  // If we are actually running on Android system, we can get the API level by querying the system
+  // However, since we also allow the NNAPI EP run GetCapability for model conversion on a non-Android system,
+  // since we cannot get the runtime system API level, we have to specify it using complie definition.
   int32_t android_sdk_ver;
 #ifdef __ANDROID__
   const auto* _nnapi = NnApiImplementation();

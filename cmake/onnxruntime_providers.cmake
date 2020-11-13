@@ -638,8 +638,8 @@ if (onnxruntime_USE_NNAPI_BUILTIN)
 
   # This is the minimal Android API Level required by ORT NNAPI EP to run
   # ORT running on any host system with Android API level less than this will fall back to CPU EP
-  if(onnxruntime_NNAPI_MINIMAL_API)
-    add_definitions(-DORT_NNAPI_MIN_API_LEVEL=${onnxruntime_NNAPI_MINIMAL_API})
+  if(onnxruntime_NNAPI_MIN_API)
+    add_compile_definitions(ORT_NNAPI_MIN_API_LEVEL=${onnxruntime_NNAPI_MIN_API})
   endif()
 
   # This is the API level of the host Android system
@@ -649,7 +649,7 @@ if (onnxruntime_USE_NNAPI_BUILTIN)
     if(CMAKE_SYSTEM_NAME STREQUAL "Android")
       message(FATAL_ERROR "onnxruntime_NNAPI_HOST_API should only be set for non-Android target")
     endif()
-    add_definitions(-DORT_NNAPI_HOST_API_LEVEL=${onnxruntime_NNAPI_HOST_API})
+    add_compile_definitions(ORT_NNAPI_HOST_API_LEVEL=${onnxruntime_NNAPI_HOST_API})
   endif()
 
   file(GLOB

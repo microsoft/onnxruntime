@@ -312,11 +312,13 @@ def parse_arguments():
     parser.add_argument(
         "--use_nnapi", action='store_true', help="Build with NNAPI support.")
     parser.add_argument(
-        "--nnapi_minimal_api", type=int,
-        help="Minimal Android API level to enable NNAPI, should be no less thant 27")
+        "--nnapi_min_api", type=int,
+        help="Minimum Android API level to enable NNAPI, should be no less than 27")
     parser.add_argument(
         "--nnapi_host_api", type=int,
-        help="Host Android API level to use with NNAPI model converter")
+        help="Host Android API level to use with NNAPI model converter. "
+        "This is only for running NNAPI for ort format model conversion on non-Android system, "
+        "since we cannot get the actually Android system version.")
     parser.add_argument(
         "--use_rknpu", action='store_true', help="Build with RKNPU.")
     parser.add_argument(
@@ -814,8 +816,11 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         cmake_args += ["-Donnxruntime_USE_PREINSTALLED_EIGEN=ON",
                        "-Deigen_SOURCE_PATH=" + args.eigen_path]
 
-    if args.nnapi_minimal_api:
-        cmake_args += ["-Donnxruntime_NNAPI_MINIMAL_API=" + str(args.nnapi_minimal_api)]
+    if args.nnapi_min_api:
+        cmake_args += ["-Donnxruntime_NNAPI_MIN_API=" + str(args.nnapi_min_api)]
+
+    if args.nnapi_host_api:
+        cmake_args += ["-Donnxruntime_NNAPI_HOST_API=" + str(args.nnapi_host_api)]
 
     if args.android:
         cmake_args += [
@@ -1829,11 +1834,11 @@ def main():
     if args.minimal_build and args.disable_ort_format_load:
         raise BuildError('Minimal build requires loading ORT format models.')
 
-    if args.nnapi_minimal_api:
+    if args.nnapi_min_api:
         if not args.use_nnapi:
-            raise BuildError("Using --nnapi_minimal_api requires --use_nnapi")
-        if args.nnapi_minimal_api < 27:
-            raise BuildError("--nnapi_minimal_api should be 27+")
+            raise BuildError("Using --nnapi_min_api requires --use_nnapi")
+        if args.nnapi_min_api < 27:
+            raise BuildError("--nnapi_min_api should be 27+")
 
     # Disabling unit tests for VAD-F as FPGA only supports
     # models with NCHW layout
