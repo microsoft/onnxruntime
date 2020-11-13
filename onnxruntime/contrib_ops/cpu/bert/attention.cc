@@ -46,7 +46,7 @@ AttentionBase::AttentionBase(const OpKernelInfo& info) {
   num_heads_ = static_cast<int>(num_heads);
 
   is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 0) == 1;
-  is_input_dim_swaped_ = info.GetAttrOrDefault<int64_t>("input_dimension_swaped", 0) == 1;
+  is_input_dim_swapped_ = info.GetAttrOrDefault<int64_t>("input_dimension_swapped", 0) == 1;
 }
 
 Status AttentionBase::CheckInputs(const TensorShape& input_shape,
@@ -66,8 +66,8 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'input' is expected to have 3 dimensions, got ",
                            dims.size());
   }
-  int batch_size = is_input_dim_swaped_ ? static_cast<int>(dims[1]) : static_cast<int>(dims[0]);
-  int sequence_length = is_input_dim_swaped_ ? static_cast<int>(dims[0]) : static_cast<int>(dims[1]);
+  int batch_size = is_input_dim_swapped_ ? static_cast<int>(dims[1]) : static_cast<int>(dims[0]);
+  int sequence_length = is_input_dim_swapped_ ? static_cast<int>(dims[0]) : static_cast<int>(dims[1]);
   int hidden_size = static_cast<int>(dims[2]);
   if (hidden_size % num_heads_ != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -234,8 +234,8 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
                                   past));
 
   const auto& shape = input->Shape().GetDims();
-  const int batch_size = is_input_dim_swaped_ ? static_cast<int>(shape[1]) : static_cast<int>(shape[0]);
-  const int sequence_length = is_input_dim_swaped_ ? static_cast<int>(shape[0]) : static_cast<int>(shape[1]);
+  const int batch_size = is_input_dim_swapped_ ? static_cast<int>(shape[1]) : static_cast<int>(shape[0]);
+  const int sequence_length = is_input_dim_swapped_ ? static_cast<int>(shape[0]) : static_cast<int>(shape[1]);
   const int hidden_size = static_cast<int>(shape[2]);
   const int head_size = hidden_size / num_heads_;
 

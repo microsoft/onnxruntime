@@ -45,8 +45,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   //   Input 0 - input       : (batch_size, sequence_length, hidden_size) or (sequence_length, batch_size, hidden_size)
   //   Output 0 - output     : (batch_size, sequence_length, hidden_size) or (sequence_length, batch_size, hidden_size)
   const auto& shape = input->Shape();
-  int batch_size = is_input_dim_swaped_ ? static_cast<int>(shape[1]) : static_cast<int>(shape[0]);
-  int sequence_length = is_input_dim_swaped_ ? static_cast<int>(shape[0]) : static_cast<int>(shape[1]);
+  int batch_size = is_input_dim_swapped_ ? static_cast<int>(shape[1]) : static_cast<int>(shape[0]);
+  int sequence_length = is_input_dim_swapped_ ? static_cast<int>(shape[0]) : static_cast<int>(shape[1]);
   int hidden_size = static_cast<int>(shape[2]);
   int head_size = hidden_size / num_heads_;
 

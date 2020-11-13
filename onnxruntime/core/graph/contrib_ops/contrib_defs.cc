@@ -407,7 +407,7 @@ where value of each element is the end position, or valid length of actual seque
 left-side padding, mask_index has shape (2 * batch_size), where the values are the exclusive end positions followed by
 the inclusive start positions. When unidirectional is 1, and each token only attend to previous tokens. For GPT-2, both past
 and present state are optional. Present state could appear in output even when past state is not in input. When
-input_dimension_swaped is 1, the input shape is (sequence_length, batch_size, hidden_size) which happens in Bart models, etc.
+input_dimension_swapped is 1, the input shape is (sequence_length, batch_size, hidden_size) which happens in Bart models, etc.
 )DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(Attention)
@@ -419,7 +419,7 @@ input_dimension_swaped is 1, the input shape is (sequence_length, batch_size, hi
             "Whether every token can only attend to previous tokens. Default value is 0.",
             AttributeProto::INT,
             static_cast<int64_t>(0))
-      .Attr("input_dimension_swaped",
+      .Attr("input_dimension_swapped",
             "Whether input shape is (sequence_length, batch_size, hidden_size) instead of (batch_size, sequence_length, hidden_size). Default value is 0.",
             AttributeProto::INT,
             static_cast<int64_t>(0))
@@ -456,6 +456,9 @@ input_dimension_swaped is 1, the input shape is (sequence_length, batch_size, hi
               }
 
               if (past_dims[3].has_dim_value() && input_dims[1].has_dim_value()) {
+                if (input_dimension_swapped != 0) {
+                  fail_shape_inference("Past shall be work with input_dimension_swapped=0. aka when input shape equals to (B,S,NH)");
+                }
                 auto all_sequence_length = past_shape.dim(3).dim_value() + input_shape.dim(1).dim_value();
 
                 ONNX_NAMESPACE::TensorShapeProto present_shape;
