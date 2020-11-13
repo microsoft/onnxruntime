@@ -300,6 +300,7 @@ Status ModuleGradientGraphBuilder::Split() {
   // Add initializer args to backward graph inputs if any node uses them.
   for (const auto& initializer_name : split_graphs_info_.initializer_names_to_train) {
     // Some initializers will be inputs for backward graph.
+    split_graphs_info_.initializer_grad_names_to_train.emplace_back(initializer_name + "_grad");
     if (backward_input_names.find(initializer_name) != backward_input_names.end()) {
       split_graphs_info_.backward_intializer_names_as_input.emplace_back(initializer_name);
       backward_input_args.emplace_back(backward_graph.GetNodeArg(initializer_name));
