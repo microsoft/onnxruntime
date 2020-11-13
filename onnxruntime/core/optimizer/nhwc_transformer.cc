@@ -130,6 +130,18 @@ void NhwcTransformerImpl::TransformQLinearConv(Node& node) {
     return;
   }
 
+  // If the output is immediately dequantized, then skip wrapping QLinearConv
+  // with Transpose nodes and use the NCHW variant that does this internally.
+  auto* nhwc_input = LookupNhwcArgument(input_defs[0]);
+  if (nhwc_input == nullptr) {
+    if (node.GetOutputEdgesCount() == 1) {
+      const auto& next_node = *node.OutputNodesBegin();
+      if (graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "DequantizeLinear", {10, 13})) {
+        return;
+      }
+    }
+  }
+
   // Create the replacement node.
   std::string nhwc_node_name = graph_.GenerateNodeName(output_defs[0]->Name() + "_nhwc");
   Node& nhwc_node = graph_.AddNode(nhwc_node_name,
@@ -142,7 +154,6 @@ void NhwcTransformerImpl::TransformQLinearConv(Node& node) {
   nhwc_node.SetExecutionProviderType(kCpuExecutionProvider);
   nhwc_node.AddAttribute("channels_last", static_cast<int64_t>(1));
 
-  auto* nhwc_input = LookupNhwcArgument(input_defs[0]);
   if (nhwc_input == nullptr) {
     InsertReorderInput(nhwc_node, weights_shape->dim_size());
   } else {
