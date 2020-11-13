@@ -170,24 +170,19 @@ struct PackedWeights {
   TensorShape shape_;
 };
 
-enum class QuantizationType {
-  PerTensor,
-  PerColumn,
-};
-
 struct QuantizationParameter {
   QuantizationParameter(const float* scale,
                         const uint8_t* zero_point,
                         bool is_signed,
-                        QuantizationType quant_type) : scale(scale),
-                                                       zero_point(zero_point),
-                                                       is_signed(is_signed),
-                                                       quant_type(quant_type) {}
+                        size_t scale_size) : scale(scale),
+                                             zero_point(zero_point),
+                                             is_signed(is_signed),
+                                             scale_size(scale_size) {}
 
-  const float* scale{nullptr};
-  const uint8_t* zero_point{nullptr};
-  bool is_signed{false};
-  QuantizationType quant_type{QuantizationType::PerTensor};
+  const float* scale;
+  const uint8_t* zero_point;
+  bool is_signed;
+  size_t scale_size;
 };
 
 template <typename T>

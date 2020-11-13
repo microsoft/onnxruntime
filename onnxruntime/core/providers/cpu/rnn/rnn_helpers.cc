@@ -266,8 +266,12 @@ void ComputeGemm(const int M,
   MlasQuantizeLinear(A, a_data_quant, M * K, a_scale, a_zero_point);
 
   bool b_is_signed = weights.quant_para_->is_signed;
-  float multiplier = a_scale * (*weights.quant_para_->scale);
   uint8_t b_zero_point = weights.quant_para_->zero_point ? *static_cast<const uint8_t*>(weights.quant_para_->zero_point) : 0;
+
+  std::vector<float> scale_multiplier(weights.quant_para_->scale_size);
+  for (size_t s = 0; s < weights.quant_para_->scale_size; s++) {
+    scale_multiplier[s] = a_scale * (weights.quant_para_->scale[s]);
+  }
 
   size_t ld_C_buffer = ldc;
   int32_t* C_buffer = reinterpret_cast<int32_t*>(C);
@@ -279,9 +283,9 @@ void ComputeGemm(const int M,
   }
 
   MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR output_processor(
-      C, ldc, &multiplier, nullptr,
+      C, ldc, scale_multiplier.data(), nullptr,
       beta == 1.0f ? MLAS_QGEMM_OUTPUT_MODE::AccumulateMode : MLAS_QGEMM_OUTPUT_MODE::ZeroMode,
-      MLAS_QUANTIZATION_GRANULARITY::PerMatrix);
+      scale_multiplier.size() == 1 ? MLAS_QUANTIZATION_GRANULARITY::PerMatrix : MLAS_QUANTIZATION_GRANULARITY::PerColumn);
 #ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
   if (weights.is_prepacked_) {
     MlasGemm(static_cast<size_t>(M),

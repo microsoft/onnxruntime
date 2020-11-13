@@ -21,7 +21,7 @@ class DynamicQuantizeLSTM : public OpKernel, public LSTMBase {
 
  private:
 #ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
-  Status TryPackWeights(const Tensor& weights, PackedWeights& packed_weights, bool& is_packed);
+  Status TryPackWeights(const Tensor& weights, PackedWeights& packed_weights, bool& is_packed, bool& is_weight_signed);
 #endif
 
   template <typename T>
@@ -29,11 +29,12 @@ class DynamicQuantizeLSTM : public OpKernel, public LSTMBase {
 
   PackedWeights packed_W_;
   PackedWeights packed_R_;
-  bool weights_signed_;
+  bool is_W_signed_;
+  bool is_R_signed_;
 };
 
 #ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
-Status DynamicQuantizeLSTM::TryPackWeights(const Tensor& weights, PackedWeights& packed_weights, bool& is_packed) {
+Status DynamicQuantizeLSTM::TryPackWeights(const Tensor& weights, PackedWeights& packed_weights, bool& is_packed, bool& is_weight_signed) {
   const auto& shape = weights.Shape();
   if (shape.NumDimensions() != 3) {
     return Status::OK();
@@ -48,8 +49,8 @@ Status DynamicQuantizeLSTM::TryPackWeights(const Tensor& weights, PackedWeights&
     return Status::OK();
   }
 
-  weights_signed_ = weights.IsDataType<int8_t>();
-  const size_t packed_weights_size = MlasGemmPackBSize(N, K, weights_signed_);
+  is_weight_signed = weights.IsDataType<int8_t>();
+  const size_t packed_weights_size = MlasGemmPackBSize(N, K, is_weight_signed);
   if (packed_weights_size == 0) {
     return Status::OK();
   }
@@ -62,7 +63,7 @@ Status DynamicQuantizeLSTM::TryPackWeights(const Tensor& weights, PackedWeights&
 
   const auto* weights_data = static_cast<const uint8_t*>(weights.DataRaw());
   for (int i = 0; i < num_directions_; i++) {
-    MlasGemmPackB(N, K, weights_data, N, weights_signed_, packed_weights_data);
+    MlasGemmPackB(N, K, weights_data, N, is_weight_signed, packed_weights_data);
     packed_weights_data = static_cast<uint8_t*>(packed_weights_data) + packed_weights_size;
     weights_data += N * K;
   }
@@ -75,20 +76,49 @@ Status DynamicQuantizeLSTM::PrePack(const Tensor& tensor, int input_idx, bool& i
   is_packed = false;
 
   if (input_idx == 1) {
-    return TryPackWeights(tensor, packed_W_, is_packed);
+    return TryPackWeights(tensor, packed_W_, is_packed, is_W_signed_);
   } else if (input_idx == 2) {
-    return TryPackWeights(tensor, packed_R_, is_packed);
+    return TryPackWeights(tensor, packed_R_, is_packed, is_R_signed_);
   }
 
   return Status::OK();
 }
 #endif
 
+#define WeightCheck(weight_shape, weight_name)                                                                                              \
+  if (weight_shape.NumDimensions() != 1 && weight_shape.NumDimensions() != 2 ||                                                             \
+      weight_shape.NumDimensions() == 2 && weight_shape[1] != hidden_size_ * 4 ||                                                           \
+      weight_shape[0] != num_directions_) {                                                                                                 \
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,                                                                                   \
+                           "Input ", #weight_name, " must have shape {", num_directions_, "} for per-tensor/layer quantization or shape {", \
+                           num_directions_, ", 4*", hidden_size_, "} for per-channel quantization. Actual:", weight_shape);                 \
+  }
+
+#define ZeroPointCheck(w_zp, zp_shape, is_W_signed, weight_name)                                                                           \
+  if (zp_shape.NumDimensions() == 2) {                                                                                                     \
+    const int64_t zp_size = zp_shape.Size();                                                                                               \
+    const uint8_t* w_zp_data = static_cast<const uint8_t*>(w_zp->DataRaw());                                                               \
+    if (is_W_signed) {                                                                                                                     \
+      for (int64_t i = 0; i < zp_size; i++) {                                                                                              \
+        if (w_zp_data[i] != 0) {                                                                                                           \
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "DynamicQuantizeLSTM : ", #weight_name, "Weight zero point must be zero"); \
+        }                                                                                                                                  \
+      }                                                                                                                                    \
+    } else {                                                                                                                               \
+      const uint8_t W_zero_point_value = w_zp_data[0];                                                                                     \
+      for (int64_t i = 1; i < zp_size; i++) {                                                                                              \
+        if (w_zp_data[i] != W_zero_point_value) {                                                                                          \
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "DynamicQuantizeLSTM : ", #weight_name, "Weight point must be constant");  \
+        }                                                                                                                                  \
+      }                                                                                                                                    \
+    }                                                                                                                                      \
+  }
+
 Status DynamicQuantizeLSTM::Compute(OpKernelContext* context) const {
-  const Tensor* W = packed_W_.buffer_ ? nullptr : context->Input<Tensor>(1);
   // weights. [num_directions, input_size, 4*hidden_size]
+  const Tensor* W = packed_W_.buffer_ ? nullptr : context->Input<Tensor>(1);
+  // recurrence weights. [num_directionshidden_size, 4*hidden_size]
   const Tensor* R = packed_R_.buffer_ ? nullptr : context->Input<Tensor>(2);
-  // recurrence weights. [num_directionshidden_size, 4*hidden_size, ]
 
   const auto& W_shape = (W != nullptr) ? W->Shape() : packed_W_.shape_;
   const auto& R_shape = (R != nullptr) ? R->Shape() : packed_R_.shape_;
@@ -98,37 +128,36 @@ Status DynamicQuantizeLSTM::Compute(OpKernelContext* context) const {
   const Tensor* r_scale = context->Input<Tensor>(10);
   const Tensor* r_zp = context->Input<Tensor>(11);
 
-  const auto& W_scale_shape = w_scale->Shape();
-  const auto& R_scale_shape = r_scale->Shape();
+  const TensorShape& W_zp_shape = w_zp->Shape();
+  const TensorShape& R_zp_shape = w_zp->Shape();
+  const TensorShape& W_scale_shape = w_scale->Shape();
+  const TensorShape& R_scale_shape = r_scale->Shape();
 
-#if 0  // TODO: Enable Per-Column after MLAS kernel change is done
-  int64_t per_column_size = num_directions_ * 4 * hidden_size_;
-  QuantizationType quant_W_type = W_scale_shape.Size() == per_column_size ? QuantizationType::PerColumn : QuantizationType::PerTensor;
-  QuantizationType quant_R_type = R_scale_shape.Size() == per_column_size ? QuantizationType::PerColumn : QuantizationType::PerTensor;
-#else
-  QuantizationType quant_W_type = QuantizationType::PerTensor;
-  QuantizationType quant_R_type = QuantizationType::PerTensor;
-#endif
+  WeightCheck(W_zp_shape, W_zero_point);
+  WeightCheck(R_zp_shape, R_zero_point);
+  WeightCheck(W_scale_shape, W_scale);
+  WeightCheck(W_scale_shape, R_scale);
+
+  const bool is_W_signed = (W != nullptr) ? W->IsDataType<int8_t>() : is_W_signed_;
+  const bool is_R_signed = (W != nullptr) ? R->IsDataType<int8_t>() : is_R_signed_;
+
+  ZeroPointCheck(w_zp, W_zp_shape, is_W_signed, Input);
+  ZeroPointCheck(r_zp, R_zp_shape, is_R_signed, Recurrent);
+
+  size_t W_scale_size = W_scale_shape.NumDimensions() == 2 ? W_scale_shape[1] : 1;
+  size_t R_scale_size = R_scale_shape.NumDimensions() == 2 ? R_scale_shape[1] : 1;
+
   QuantizationParameter quant_para_W_1(w_scale->Data<float>(),
                                        static_cast<const uint8_t*>(w_zp->DataRaw()),
-                                       weights_signed_,
-                                       quant_W_type);
+                                       is_W_signed,
+                                       W_scale_size);
   QuantizationParameter quant_para_R_1(r_scale->Data<float>(),
-                                       r_zp ? static_cast<const uint8_t*>(r_zp->DataRaw()) : nullptr,
-                                       weights_signed_,
-                                       quant_R_type);
+                                       static_cast<const uint8_t*>(r_zp->DataRaw()),
+                                       is_R_signed,
+                                       R_scale_size);
 
-  const uint8_t* W_data = nullptr;
-  const uint8_t* R_data = nullptr;
-  if (W != nullptr) {
-    W_data = static_cast<const uint8_t*>(W->DataRaw());
-    quant_para_W_1.is_signed = W->IsDataType<int8_t>();
-  }
-
-  if (R != nullptr) {
-    R_data = static_cast<const uint8_t*>(R->DataRaw());
-    quant_para_R_1.is_signed = R->IsDataType<int8_t>();
-  }
+  const uint8_t* W_data = W != nullptr ? static_cast<const uint8_t*>(W->DataRaw()) : nullptr;
+  const uint8_t* R_data = R != nullptr ? static_cast<const uint8_t*>(R->DataRaw()) : nullptr;
 
   // spans for first direction
   const size_t W_size_per_direction = W_shape[1] * W_shape[2];
@@ -144,11 +173,11 @@ Status DynamicQuantizeLSTM::Compute(OpKernelContext* context) const {
   QuantizationParameter quant_para_R_2(quant_para_R_1);
 
   if (direction_ == Direction::kBidirectional) {
-    quant_para_W_2.scale += W_scale_shape.SizeFromDimension(1);
-    quant_para_R_2.scale += R_scale_shape.SizeFromDimension(1);
+    quant_para_W_2.scale += W_scale_size;
+    quant_para_R_2.scale += R_scale_size;
 
-    quant_para_W_2.zero_point += W_scale_shape.SizeFromDimension(1);
-    quant_para_R_2.zero_point += R_scale_shape.SizeFromDimension(1);
+    quant_para_W_2.zero_point += W_scale_size;  // zero_point and scale have same size
+    quant_para_R_2.zero_point += R_scale_size;  // zero_point and scale have same size
 
     W_2.Init(1, W_data, W_size_per_direction, packed_W_, &quant_para_W_2);
     R_2.Init(1, R_data, R_size_per_direction, packed_R_, &quant_para_R_2);
