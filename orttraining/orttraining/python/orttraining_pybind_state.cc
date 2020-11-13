@@ -361,12 +361,13 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("input_names_require_grad", &ModuleGradientGraphBuilderConfiguration::input_names_require_grad)
       .def_readwrite("use_invertible_layernorm_grad", &ModuleGradientGraphBuilderConfiguration::use_invertible_layernorm_grad)
       .def_readwrite("set_gradients_as_graph_outputs", &ModuleGradientGraphBuilderConfiguration::set_gradients_as_graph_outputs);
-  
+
   py::class_<SplitGraphsInfo> split_graphs_info(
       m, "SplitGraphsInfo", R"pbdoc(The information of split graphs for frontend.)pbdoc");
   split_graphs_info.def(py::init())
       .def_readwrite("user_input_names", &SplitGraphsInfo::user_input_names)
       .def_readwrite("initializer_names_to_train", &SplitGraphsInfo::initializer_names_to_train)
+      .def_readwrite("initializer_grad_names_to_train", &SplitGraphsInfo::initializer_grad_names_to_train)
       .def_readwrite("user_output_names", &SplitGraphsInfo::user_output_names)
       .def_readwrite("backward_user_input_names", &SplitGraphsInfo::backward_user_input_names)
       .def_readwrite("backward_intializer_names_as_input", &SplitGraphsInfo::backward_intializer_names_as_input)
