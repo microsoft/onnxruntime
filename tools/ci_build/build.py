@@ -315,11 +315,6 @@ def parse_arguments():
         "--nnapi_min_api", type=int,
         help="Minimum Android API level to enable NNAPI, should be no less than 27")
     parser.add_argument(
-        "--nnapi_host_api", type=int,
-        help="Host Android API level to use with NNAPI model converter. "
-        "This is only for running NNAPI for ort format model conversion on non-Android system, "
-        "since we cannot get the actually Android system version.")
-    parser.add_argument(
         "--use_rknpu", action='store_true', help="Build with RKNPU.")
     parser.add_argument(
         "--use_preinstalled_eigen", action='store_true',
@@ -818,9 +813,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
 
     if args.nnapi_min_api:
         cmake_args += ["-Donnxruntime_NNAPI_MIN_API=" + str(args.nnapi_min_api)]
-
-    if args.nnapi_host_api:
-        cmake_args += ["-Donnxruntime_NNAPI_HOST_API=" + str(args.nnapi_host_api)]
 
     if args.android:
         cmake_args += [

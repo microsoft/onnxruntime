@@ -68,7 +68,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   const auto* _nnapi = NnApiImplementation();
   android_sdk_ver = _nnapi->android_sdk_version;
 #else
-  android_sdk_ver = ORT_NNAPI_HOST_API_LEVEL;
+  android_sdk_ver = ORT_NNAPI_MAX_SUPPORTED_API_LEVEL;
 #endif
 
   nnapi::OpSupportCheckParams params{
