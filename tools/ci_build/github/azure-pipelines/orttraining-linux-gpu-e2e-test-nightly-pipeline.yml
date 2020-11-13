@@ -37,9 +37,9 @@ jobs:
           "
     displayName: 'Build'
 
-  Hit OOM with run_training_pipeline_e2e_tests.py - slightly above 16GB limit.
-  leave this code here for further investigation.
-  https://msdata.visualstudio.com/Vienna/_workitems/edit/956642
+  # Hit OOM with run_training_pipeline_e2e_tests.py - slightly above 16GB limit.
+  # leave this code here for further investigation.
+  # https://msdata.visualstudio.com/Vienna/_workitems/edit/956642
   - script: |
       docker run \
         --gpus all \
