@@ -100,6 +100,8 @@ Status AdasumOptimizerGraphBuilder::BuildOptimizerNode(
 }
 
 Status AdasumOptimizerGraphBuilder::BuildInternal(
+    bool should_add_gradient_norm,
+    bool should_add_gradient_finite_check,
     Graph& graph,
     GraphAugmenter::GraphDefs& graph_defs,
     std::vector<ArgDef>& weight_argdefs,
@@ -130,11 +132,14 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
   // check if all gradients are finite
   ArgDef global_grad_norm_argdef;
   ArgDef global_grad_norm_finite_argdef;
-  ORT_RETURN_IF_ERROR(AddGradientNorm(
-      nodearg_name_generator, gradient_argdefs, graph_defs, global_grad_norm_argdef));
-  optimizer_graph_outputs[OptimizerOutputKey::GlobalGradientNorm] = global_grad_norm_argdef.name;
 
-  if (opt_graph_config_.use_mixed_precision) {
+  if (should_add_gradient_norm) {
+    ORT_RETURN_IF_ERROR(AddGradientNorm(
+        nodearg_name_generator, gradient_argdefs, graph_defs, global_grad_norm_argdef));
+    optimizer_graph_outputs[OptimizerOutputKey::GlobalGradientNorm] = global_grad_norm_argdef.name;
+  }
+
+  if (should_add_gradient_finite_check) {
     ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
         nodearg_name_generator, {global_grad_norm_argdef}, graph_defs, global_grad_norm_finite_argdef));
     optimizer_graph_outputs[OptimizerOutputKey::GradientAllIsFinite] = global_grad_norm_finite_argdef.name;
