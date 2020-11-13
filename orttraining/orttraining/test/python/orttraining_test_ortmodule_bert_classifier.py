@@ -1,13 +1,11 @@
-
-import pdb
-
+import logging
 import argparse
 import torch
 import wget
 import os
 import pandas as pd
 import zipfile
-from transformers import BertTokenizer
+from transformers import BertTokenizer, AutoConfig
 from keras.preprocessing.sequence import pad_sequences
 from sklearn.model_selection import train_test_split
 from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler
@@ -50,13 +48,10 @@ def train(model, optimizer, scheduler, train_dataloader, epoch, device, args):
         if step == args.train_steps:
             break
 
-        # Progress update every 40 batches.
-        if step % args.log_interval == 0 and not step == 0:
-            # Calculate elapsed time in minutes.
-            elapsed = format_time(time.time() - t0)
-
-            # Report progress.
-            print('  Batch {:>5,}  of  {:>5,}.    Elapsed: {:}.'.format(step, len(train_dataloader), elapsed))
+        # TODO: Dynamic axis is not supported yet
+        if batch[0].shape[0] != args.batch_size:
+            logging.warning(f'Dynamic axis is not supported yet {len(batch)}/{args.batch_size}')
+            continue
 
         # Unpack this training batch from our dataloader.
         #
@@ -78,12 +73,23 @@ def train(model, optimizer, scheduler, train_dataloader, epoch, device, args):
         model.zero_grad()
 
         # Perform a forward pass (evaluate the model on this training batch).
-        # This will return the loss (rather than the model output) because we
-        # have provided the `labels`.
+        # This will return the loss (rather than the model output) because we have provided the `labels`.
         # The documentation for this `model` function is here:
-        # https://huggingface.co/transformers/v2.2.0/model_doc/bert.html#transformers.BertForSequenceClassification
+        #   https://huggingface.co/transformers/v2.2.0/model_doc/bert.html#transformers.BertForSequenceClassification
+
         # TODO: explicitly setting (optional) inputs to workaround *input, **kwargs limitation on ORTModule
-        outputs = model(b_input_ids, b_input_mask, None, None, None, None, b_labels)
+        # outputs = model(b_input_ids,
+        #                 token_type_ids = None,
+        #                 attention_mask = b_input_mask,
+        #                 labels = b_labels)
+        outputs = model(b_input_ids,
+                        b_input_mask,
+                        None,
+                        None,
+                        None,
+                        None,
+                        b_labels)
+
         if args.view_graphs:
             import torchviz
             pytorch_backward_graph = torchviz.make_dot(outputs[0], params=dict(list(model.named_parameters())))
@@ -91,15 +97,21 @@ def train(model, optimizer, scheduler, train_dataloader, epoch, device, args):
 
         # The call to `model` always returns a tuple, so we need to pull the
         # loss value out of the tuple.
-        # pdb.set_trace()
         loss = outputs[0]
+
+        # Progress update every 40 batches.
+        if step % args.log_interval == 0 and not step == 0:
+            # Calculate elapsed time in minutes.
+            elapsed = format_time(time.time() - t0)
+
+            # Report progress.
+            print(f'Batch {step} of {len(train_dataloader)}. Elapsed: {elapsed}. Loss: {loss.item()}')
 
         # Accumulate the training loss over all of the batches so that we can
         # calculate the average loss at the end. `loss` is a Tensor containing a
         # single value; the `.item()` function just returns the Python value
         # from the tensor.
         total_loss += loss.item()
-        # total_loss += loss
 
         # Perform a backward pass to calculate the gradients.
         loss.backward()
@@ -122,7 +134,7 @@ def train(model, optimizer, scheduler, train_dataloader, epoch, device, args):
     print("\n  Average training loss: {0:.2f}".format(avg_train_loss))
     print("  Training epoch took: {:}".format(format_time(time.time() - t0)))
 
-def test(model, validation_dataloader, device):
+def test(model, validation_dataloader, device, args):
     # ========================================
     #               Validation
     # ========================================
@@ -143,12 +155,16 @@ def test(model, validation_dataloader, device):
     # Evaluate data for one epoch
     for batch in validation_dataloader:
 
+        # TODO: Dynamic axis is not supported yet
+        if batch[0].shape[0] != args.test_batch_size:
+            logging.warning(f'Dynamic axis is not supported yet {len(batch)}/{args.batch_size}')
+            continue
+
         # Add batch to GPU
         batch = tuple(t.to(device) for t in batch)
 
         # Unpack the inputs from our dataloader
         b_input_ids, b_input_mask, b_labels = batch
-
         # Telling the model not to compute or store gradients, saving memory and
         # speeding up validation
         with torch.no_grad():
@@ -160,18 +176,22 @@ def test(model, validation_dataloader, device):
             # differentiates sentence 1 and 2 in 2-sentence tasks.
             # The documentation for this `model` function is here:
             # https://huggingface.co/transformers/v2.2.0/model_doc/bert.html#transformers.BertForSequenceClassification
+
             # TODO: explicitly setting (optional) inputs to workaround *input, **kwargs limitation on ORTModule
+            # TODO: original sample had the last argument equal to None, but b_labels is because model was
+            #       exported using 3 inputs for training, so validation must follow.
+            #       Another approach would be checkpoint the trained model, re-export the model for validation with the checkpoint
             outputs = model(b_input_ids,
                             b_input_mask,
                             None,
                             None,
                             None,
                             None,
-                            None)
+                            b_labels)
 
         # Get the "logits" output by the model. The "logits" are the output
         # values prior to applying an activation function like the softmax.
-        logits = outputs[0]
+        logits = outputs[1]
 
         # Move logits and labels to CPU
         logits = logits.detach().cpu().numpy()
@@ -190,7 +210,7 @@ def test(model, validation_dataloader, device):
     print("  Accuracy: {0:.2f}".format(eval_accuracy/nb_eval_steps))
     print("  Validation took: {:}".format(format_time(time.time() - t0)))
 
-def load_dataset():
+def load_dataset(args):
     # 2. Loading CoLA Dataset
     print('Downloading dataset...')
 
@@ -276,18 +296,15 @@ def load_dataset():
     train_masks = torch.tensor(train_masks)
     validation_masks = torch.tensor(validation_masks)
 
-    # The DataLoader needs to know our batch size for training, so we specify it
-    batch_size = 32
-
     # Create the DataLoader for our training set.
     train_data = TensorDataset(train_inputs, train_masks, train_labels)
     train_sampler = RandomSampler(train_data)
-    train_dataloader = DataLoader(train_data, sampler=train_sampler, batch_size=batch_size)
+    train_dataloader = DataLoader(train_data, sampler=train_sampler, batch_size=args.batch_size)
 
     # Create the DataLoader for our validation set.
     validation_data = TensorDataset(validation_inputs, validation_masks, validation_labels)
     validation_sampler = SequentialSampler(validation_data)
-    validation_dataloader = DataLoader(validation_data, sampler=validation_sampler, batch_size=batch_size)
+    validation_dataloader = DataLoader(validation_data, sampler=validation_sampler, batch_size=args.test_batch_size)
 
     return train_dataloader, validation_dataloader
 
@@ -310,6 +327,10 @@ def main():
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
     parser.add_argument('--pytorch-only', action='store_true', default=False,
                         help='disables ONNX Runtime training')
+    parser.add_argument('--batch-size', type=int, default=32, metavar='N',
+                        help='input batch size for training (default: 32)')
+    parser.add_argument('--test-batch-size', type=int, default=32, metavar='N',
+                        help='input batch size for testing (default: 32)')
     parser.add_argument('--view-graphs', action='store_true', default=False,
                         help='views forward and backward graphs')
     parser.add_argument('--no-cuda', action='store_true', default=False,
@@ -322,6 +343,11 @@ def main():
                         help='how many batches to wait before logging training status (default: 40)')
     parser.add_argument('--train-steps', type=int, default=-1, metavar='N',
                         help='number of steps to train. Set -1 to run through whole dataset (default: -1)')
+    parser.add_argument('--log-level', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], default='WARNING',
+                        help='Log level (default: WARNING)')
+    parser.add_argument('--num-hidden-layers', type=int, default=1, metavar='H',
+                        help='Number of hidden layers for the BERT model. A vanila BERT has 12 hidden layers (default: 1)')
+
     args = parser.parse_args()
 
     # Device (CPU vs CUDA)
@@ -333,17 +359,28 @@ def main():
         print('No GPU available, using the CPU instead.')
         device = torch.device("cpu")
 
+    # Set log level
+    numeric_level = getattr(logging, args.log_level.upper(), None)
+    if not isinstance(numeric_level, int):
+        raise ValueError('Invalid log level: %s' % args.log_level)
+    logging.basicConfig(level=numeric_level)
+
     # 2. Dataloader
-    train_dataloader, validation_dataloader = load_dataset()
+    train_dataloader, validation_dataloader = load_dataset(args)
 
     # 3. Modeling
     # Load BertForSequenceClassification, the pretrained BERT model with a single
     # linear classification layer on top.
+    config = AutoConfig.from_pretrained(
+            "bert-base-uncased",
+            num_labels=2,
+            num_hidden_layers=args.num_hidden_layers,
+            output_attentions = False, # Whether the model returns attentions weights.
+            output_hidden_states = False, # Whether the model returns all hidden-states.
+    )
     model = BertForSequenceClassification.from_pretrained(
         "bert-base-uncased", # Use the 12-layer BERT model, with an uncased vocab.
-        num_labels = 2, # The number of output labels--2 for binary classification.
-        output_attentions = False, # Whether the model returns attentions weights.
-        output_hidden_states = False, # Whether the model returns all hidden-states.
+        config=config,
     )
 
     if not args.pytorch_only:
@@ -382,7 +419,7 @@ def main():
     # 4. Train loop (fine-tune)
     for epoch_i in range(0, args.epochs):
         train(model, optimizer, scheduler, train_dataloader, epoch_i, device, args)
-        test(model, validation_dataloader, device)
+        test(model, validation_dataloader, device, args)
 
 if __name__ == '__main__':
     main()
