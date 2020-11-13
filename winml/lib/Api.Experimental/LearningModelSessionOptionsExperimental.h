@@ -15,10 +15,3 @@ struct LearningModelSessionOptionsExperimental : LearningModelSessionOptionsExpe
 };
 
 }  // namespace WINML_EXPERIMENTALP
-
-namespace WINML_EXPERIMENTAL::factory_implementation {
-
-struct LearningModelSessionOptionsExperimental : LearningModelSessionOptionsExperimentalT<LearningModelSessionOptionsExperimental, implementation::LearningModelSessionOptionsExperimental> {
-};
-
-}  // namespace WINML_EXPERIMENTAL::factory_implementation
