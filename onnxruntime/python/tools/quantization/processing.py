@@ -42,8 +42,7 @@ def yolov3_preprocess_func(images_folder, height, width, start_index=0, size_lim
     image_size_list = []
 
     print(batch_filenames)
-    print("total images:")
-    print(len(batch_filenames))
+    print("batch size: %s" % str(len(batch_filenames)))
 
     for image_name in batch_filenames:
         image_filepath = images_folder + '/' + image_name
