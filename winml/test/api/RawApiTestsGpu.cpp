@@ -184,7 +184,7 @@ const RawApiTestsGpuApi& getapi() {
     api.CreateDirectXMinPowerDevice = SkipTest;
     api.Evaluate = SkipTest;
     api.EvaluateNoInputCopy = SkipTest;
-//    api.EvaluateManyBuffers = SkipTest;
+    api.EvaluateManyBuffers = SkipTest;
   }
   return api;
 }
