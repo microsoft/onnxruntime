@@ -4,7 +4,7 @@
 #include "OnnxPrediction.h"
 #include <vector>
 
-// Uses the onnxruntime to load the modelmodelData
+// Uses the onnxruntime to load the model
 // into a session.
 //
 OnnxPrediction::OnnxPrediction(std::wstring& onnx_model_file, Ort::Env& env)
