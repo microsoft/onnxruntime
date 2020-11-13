@@ -333,8 +333,8 @@ TEST(AttentionTest, AttentionNoMaskIndex) {
 }
 
 TEST(AttentionTest, AttentionNoMaskInputShapeSwapped) {
-  int batch_size = 1;
-  int sequence_length = 2;
+  int batch_size_as_sequence_length = 1;
+  int sequence_length_as_batch_size = 2;
   int hidden_size = 4;
   int number_of_heads = 2;
 
@@ -363,8 +363,8 @@ TEST(AttentionTest, AttentionNoMaskInputShapeSwapped) {
   bool is_input_dimension_swapped = true;
 
   RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
-                   batch_size, sequence_length, hidden_size, number_of_heads, use_float16,
-                   is_unidirectional, is_input_dimension_swapped);
+                   batch_size_as_sequence_length, sequence_length_as_batch_size, hidden_size,
+                   number_of_heads, use_float16, is_unidirectional, is_input_dimension_swapped);
 }
 
 TEST(AttentionTest, AttentionUnidirectional) {
