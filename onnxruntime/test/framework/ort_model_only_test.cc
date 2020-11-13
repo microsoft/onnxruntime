@@ -240,6 +240,8 @@ static void DumpOrtModelAsJson(const std::string& model_uri) {
 /* The full build was causing the following error because the graph node array has some empyt (blan) node at some indices for certain ORT designs
        onnx runtime exception : Satisfied, but should not be : node == nullptr
        session_state.cc : 814 onnxruntime::SessionState::LoadFromOrtFormatCan't find node with index 4. Invalid ORT format model.
+  The bug was due to loading an ORT format model in a full build, allowing optimizers to run, but trying to use the saved kernel information.
+  As the optimizer removed some leaving gaps in the graph node vector.
   The build has been fixed in InferenceSession code. The following test case to catch this error.
 */
 
