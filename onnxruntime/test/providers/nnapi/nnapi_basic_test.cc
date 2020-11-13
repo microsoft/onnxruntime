@@ -1,10 +1,16 @@
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 #include "core/common/logging/logging.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_execution_provider.h"
 #include "core/session/inference_session.h"
 #include "test/framework/test_utils.h"
-#include "test/providers/provider_test_utils.h"
+#include "test/util/include/asserts.h"
+#include "test/util/include/default_providers.h"
 #include "test/util/include/inference_session_wrapper.h"
+#include "test/util/include/test/test_environment.h"
+
+#if !defined(ORT_MINIMAL_BUILD)
+#include "test/providers/provider_test_utils.h"
+#endif
 
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
@@ -14,8 +20,9 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::logging;
 
 namespace onnxruntime {
-
 namespace test {
+
+#if !defined(ORT_MINIMAL_BUILD)
 static void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64_t>& expected_dims,
                           const std::vector<float>& expected_values) {
   ASSERT_EQ(1, fetches.size());
@@ -162,8 +169,8 @@ TEST(NnapiExecutionProviderTest, NNAPIFlagsTest) {
   ASSERT_TRUE(flags & NNAPI_FLAG_USE_FP16);
   ASSERT_FALSE(flags & NNAPI_FLAG_USE_NCHW);
 }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 // TODO: We could use this approach of diff'ing the output vs. the CPU EP in a full build as well
 static void VerifyOutputs(const std::vector<std::string>& output_names,
                           const std::vector<OrtValue>& expected_fetches,
@@ -228,7 +235,7 @@ static void RunAndVerifyOutputs(const std::string& model_file_name, const char* 
   // get output with NNAPI enabled
   //
   InferenceSessionWrapper session_object2{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object2.RegisterExecutionProvider(DefaultNnapiExecutionProvider())));
+  ASSERT_STATUS_OK(session_object2.RegisterExecutionProvider(DefaultNnapiExecutionProvider()));
   ASSERT_STATUS_OK(session_object2.Load(model_file_name));
   ASSERT_STATUS_OK(session_object2.Initialize());
 
@@ -264,8 +271,7 @@ TEST(NnapiExecutionProviderTest, TestOrtFormatModel) {
 
   RunAndVerifyOutputs(model_file_name, "NnapiExecutionProviderTest.ReshapeFlattenTest", feeds);
 }
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 }  // namespace test
 }  // namespace onnxruntime
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
