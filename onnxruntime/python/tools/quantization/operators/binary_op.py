@@ -17,7 +17,7 @@ class QLinearBinaryOp(QuantOperatorBase):
             return super().quantize()
 
         (quantized_input_names, zero_point_names, scale_names, nodes) = \
-            self.quantizer.quantize_inputs(node, [0, 1])
+            self.quantizer.quantize_inputs(node, [0, 1], initializer_use_weight_qType=False)
 
         qlinear_binary_math_output = node.output[0] + "_quantized"
         qlinear_binary_math_name = node.name + "_quant" if node.name != "" else ""

@@ -240,8 +240,15 @@ const Graph& Model::MainGraph() const noexcept {
 
 #if !defined(ORT_MINIMAL_BUILD)
 ModelProto Model::ToProto() {
-  *(model_proto_.mutable_graph()) = graph_->ToGraphProto();
-  return model_proto_;
+  // We want to return back the original proto
+  // To that end invoke const overload of ToGraphProto()
+  // that returns by value and, therefore, allows us to filter
+  // out dense duplicates of sparse initializers and leave the original
+  // proto intact.
+  ModelProto result(model_proto_);
+  const auto& graph = *graph_;
+  *(result.mutable_graph()) = graph.ToGraphProto();
+  return result;
 }
 
 Status Model::Load(std::istream& model_istream, ModelProto* p_model_proto) {

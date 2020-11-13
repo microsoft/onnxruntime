@@ -8,6 +8,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/graph/model.h"
 #include "test/test_environment.h"
 #include "test_utils.h"
@@ -264,6 +265,26 @@ TEST(OrtModelOnlyTests, SerializeToOrtFormat) {
   RunOrtModel(test_info);
 }
 
+TEST(OrtModelOnlyTests, SparseInitializerHandling) {
+  const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("sparse_initializer_handling.onnx.ort");
+  SaveAndCompareModels("testdata/sparse_initializer_handling.onnx", ort_file);
+
+  SessionOptions so;
+  so.session_logid = "LoadOrtFormat";
+  // not strictly necessary - type should be inferred from the filename, but to be sure we're testing what we
+  // think we're testing set it.
+  so.AddConfigEntry(kOrtSessionOptionsConfigLoadModelFormat, "ORT");
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(ort_file));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  // Check that there are no duplicates for initializers
+  const auto* init_list = session_object.GetOverridableInitializers().second;
+  ASSERT_EQ(init_list->size(), 1U);
+  const auto& init_def = *init_list->front();
+  ASSERT_EQ(init_def.Name(), "x");
+}
+
 #if !defined(DISABLE_ML_OPS)
 TEST(OrtModelOnlyTests, SerializeToOrtFormatMLOps) {
   const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("sklearn_bin_voting_classifier_soft_converted.ort");
@@ -307,6 +328,17 @@ TEST(OrtModelOnlyTests, SerializeToOrtFormatMLOps) {
 }
 #endif  // #if !defined(DISABLE_ML_OPS)
 #endif  // #if !defined(ORT_MINIMAL_BUILD)
+
+// test loading ORT format model with sparse initializers
+TEST(OrtModelOnlyTests, LoadSparseInitializersOrtFormat) {
+  const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/sparse_initializer_handling.onnx.ort");
+  SessionOptions so;
+  so.session_logid = "LoadOrtFormat";
+  so.AddConfigEntry(kOrtSessionOptionsConfigLoadModelFormat, "ORT");
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(ort_file));
+  ASSERT_STATUS_OK(session_object.Initialize());
+}
 
 OrtModelTestInfo GetTestInfoForLoadOrtFormatModel() {
   OrtModelTestInfo test_info;

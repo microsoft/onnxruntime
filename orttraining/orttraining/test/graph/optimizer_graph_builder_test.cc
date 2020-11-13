@@ -221,6 +221,9 @@ static void TestAllreduceOptimizerGraphBuilder(OptimizerGraphConfig config, Grap
   ASSERT_EQ(GetOpCount(op_counts, k_optimizer_op_name), k_weight_names.size());
 }
 
+#endif
+
+#ifdef USE_HOROVOD
 static void TestAdasumOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& graph) {
   AdasumOptimizerGraphBuilder optimizer_graph_builder(
       GetOptimizerBuilderRegistry(), config, GetOptInfoMap());
@@ -255,9 +258,7 @@ static void TestAdasumOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& 
   // verify optimizers exist
   ASSERT_EQ(GetOpCount(op_counts, k_optimizer_op_name), k_weight_names.size());
 }
-#endif
 
-#ifdef USE_HOROVOD
 TEST_F(OptimizerGraphBuilderTest, Allreduce_Horovod_NoGradientAccumulation_NoMixedPrecision) {
   OptimizerGraphConfig config;
   config.data_parallel_group_size = 4;

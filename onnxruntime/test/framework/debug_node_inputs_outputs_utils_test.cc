@@ -66,9 +66,9 @@ TEST(DebugNodeInputsOutputs, BasicFileOutput) {
             gsl::make_span(output));
       };
 
-  tester.Run(
-      OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, nullptr,
-      ExecutionMode::ORT_SEQUENTIAL, verify_file_data);
+  tester.SetCustomOutputVerifier(verify_file_data);
+
+  tester.Run();
 }
 
 }  // namespace test

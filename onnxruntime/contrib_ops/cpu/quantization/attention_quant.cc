@@ -206,21 +206,26 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
         if (packed_weights_) {
           const auto* packed_weight =
               static_cast<const uint8_t*>(packed_weights_.get()) + packed_weights_size_ * (weights_offset / head_size);
+
+          MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR scale_bias_processor(qkv_dest + qkv_offset,
+                                                                      head_size,
+                                                                      &dequant_scale,
+                                                                      bias_data + weights_offset);
           MlasGemm(
-              sequence_length,             // M      = S
-              head_size,                   // N      = H
-              hidden_size,                 // K      = NH
-              input_data + input_offset,   // A
-              hidden_size,                 // lda    = NH
-              input_zero_point,            // input zero point
-              packed_weight,               // B
-              weight_zero_point,           // weight zero point
-              weights_is_signed,           // weight data type
-              qkv_dest + qkv_offset,       // C
-              head_size,                   // ldc
-              &dequant_scale,              // output scale
-              bias_data + weights_offset,  // bias
-              nullptr);                    // use single-thread
+              sequence_length,                                    // M      = S
+              head_size,                                          // N      = H
+              hidden_size,                                        // K      = NH
+              input_data + input_offset,                          // A
+              hidden_size,                                        // lda    = NH
+              input_zero_point,                                   // input zero point
+              packed_weight,                                      // B
+              weight_zero_point,                                  // weight zero point
+              weights_is_signed,                                  // weight data type
+              reinterpret_cast<int32_t*>(qkv_dest + qkv_offset),  // C
+              head_size,                                          // ldc
+              nullptr,                                            // use single-thread
+              &scale_bias_processor);                             // output processor
+
           continue;
         }
 #endif

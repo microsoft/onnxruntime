@@ -186,12 +186,6 @@ class PosixEnv : public Env {
                           Eigen::ThreadPoolInterface* param, const ThreadOptions& thread_options) override {
     return new PosixThread(name_prefix, index, start_address, param, thread_options);
   }
-  Task CreateTask(std::function<void()> f) override {
-    return Task{std::move(f)};
-  }
-  void ExecuteTask(const Task& t) override {
-    t.f();
-  }
 
   int GetNumCpuCores() const override {
     // TODO if you need the number of physical cores you'll need to parse

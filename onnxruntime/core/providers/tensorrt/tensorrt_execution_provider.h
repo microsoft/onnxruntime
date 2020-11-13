@@ -25,18 +25,21 @@ class TensorrtLogger : public nvinfer1::ILogger {
  public:
   TensorrtLogger(Severity verbosity = Severity::kWARNING)
       : verbosity_(verbosity) {}
-  void log(Severity severity, const char* msg) override {
+  void log(Severity severity, const char* msg) noexcept override {
     if (severity <= verbosity_) {
       time_t rawtime = std::time(0);
       char buf[256];
       strftime(&buf[0], 256,
                "%Y-%m-%d %H:%M:%S",
                std::gmtime(&rawtime));
-      const char* sevstr = (severity == Severity::kINTERNAL_ERROR ? "    BUG" : severity == Severity::kERROR ? "  ERROR" : severity == Severity::kWARNING ? "WARNING" : severity == Severity::kINFO ? "   INFO" : "UNKNOWN");
-      if(severity <= Severity::kERROR)
-          LOGS_DEFAULT(ERROR) << "[" << buf << " " << sevstr << "] " << msg;
+      const char* sevstr = (severity == Severity::kINTERNAL_ERROR ? "    BUG" : severity == Severity::kERROR ? "  ERROR"
+                                                                            : severity == Severity::kWARNING ? "WARNING"
+                                                                            : severity == Severity::kINFO    ? "   INFO"
+                                                                                                             : "UNKNOWN");
+      if (severity <= Severity::kERROR)
+        LOGS_DEFAULT(ERROR) << "[" << buf << " " << sevstr << "] " << msg;
       else
-          LOGS_DEFAULT(WARNING) << "[" << buf << " " << sevstr << "] " << msg;
+        LOGS_DEFAULT(WARNING) << "[" << buf << " " << sevstr << "] " << msg;
     }
   }
 };
@@ -66,11 +69,11 @@ struct TensorrtFuncState {
   AllocateFunc test_allocate_func = nullptr;
   DestroyFunc test_release_func = nullptr;
   AllocatorHandle allocator = nullptr;
-  nvonnxparser::IParser* parser = nullptr;
+  tensorrt_ptr::unique_pointer<nvonnxparser::IParser>* parser = nullptr;
   tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>* engine = nullptr;
   tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>* context = nullptr;
-  nvinfer1::IBuilder* builder = nullptr;
-  nvinfer1::INetworkDefinition* network = nullptr;
+  tensorrt_ptr::unique_pointer<nvinfer1::IBuilder>* builder = nullptr;
+  tensorrt_ptr::unique_pointer<nvinfer1::INetworkDefinition>* network = nullptr;
   std::vector<std::unordered_map<std::string, int>> input_info;
   std::vector<std::unordered_map<std::string, int>> output_info;
   std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>> input_shape_ranges;
@@ -81,6 +84,7 @@ struct TensorrtFuncState {
   bool engine_cache_enable;
   std::string engine_cache_path;
   nvinfer1::IRuntime* runtime = nullptr;
+  AllocatorPtr scratch_allocator;
 };
 
 // Logical device representation.
@@ -101,7 +105,7 @@ class TensorrtExecutionProvider : public Provider_IExecutionProvider {
   common::Status Provider_Compile(const std::vector<Provider_Node*>& fused_nodes,
                                   std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
-  Provider_AllocatorPtr Provider_GetAllocator(int id, OrtMemType mem_type) const override;
+  AllocatorPtr Provider_GetAllocator(int id, OrtMemType mem_type) const override;
 
  private:
   size_t max_workspace_size_ = 1 << 30;  // 1GB
@@ -140,7 +144,7 @@ class TensorrtExecutionProvider : public Provider_IExecutionProvider {
 
   void RemoveTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const onnxruntime::Provider_GraphViewer& graph) const;
 
-  Provider_AllocatorPtr allocator_;
+  AllocatorPtr allocator_;
 };
 
 }  // namespace onnxruntime

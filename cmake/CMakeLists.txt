@@ -111,6 +111,7 @@ option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
 #If you have already installed protobuf(or the others) in your system at the default system paths(like /usr/include), then it's better to set onnxruntime_PREFER_SYSTEM_LIB ON. Otherwise onnxruntime may see two different protobuf versions and we won't know which one will be used, the worst case could be onnxruntime picked up header files from one of them but the binaries from the other one.
 #It's default OFF because it's experimental now.
 option(onnxruntime_PREFER_SYSTEM_LIB "Experimental: Build with the preinstalled libraries in your system" OFF)
+option(onnxruntime_USE_ROCM "Build with AMD GPU support" OFF)
 
 # Options related to reducing the binary size produced by the build
 option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF)
@@ -127,7 +128,7 @@ option(onnxruntime_ENABLE_NVTX_PROFILE "Enable NVTX profile." OFF)
 option(onnxruntime_ENABLE_TRAINING "Enable training functionality." OFF)
 option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
 option(onnxruntime_USE_HOROVOD "Build with HOROVOD support" OFF)
-option(onnxruntime_USE_NCCL "Build with NCCL support" ON)
+option(onnxruntime_USE_NCCL "Build with NCCL support" OFF)
 #A special option just for debugging and sanitize check. Please do not enable in option in retail builds.
 #The option has no effect on Windows.
 option(onnxruntime_USE_VALGRIND "Build with valgrind hacks" OFF)
@@ -620,6 +621,11 @@ set(SAFEINT_INCLUDE_DIR ${REPO_ROOT}/cmake/external/SafeInt)
 add_library(safeint_interface INTERFACE)
 target_include_directories(safeint_interface INTERFACE ${SAFEINT_INCLUDE_DIR})
 
+set(OPTIONAL_LITE_INCLUDE_DIR ${REPO_ROOT}/cmake/external/optional-lite/include)
+if(onnxruntime_DISABLE_EXCEPTIONS)
+  add_compile_definitions(optional_CONFIG_NO_EXCEPTIONS=1)
+endif()
+
 if(NOT TARGET re2::re2)
   add_subdirectory(external/re2 EXCLUDE_FROM_ALL)
   set_target_properties(re2 PROPERTIES FOLDER "External/re2")
@@ -675,7 +681,28 @@ if (onnxruntime_USE_ACL OR onnxruntime_USE_ACL_1902 OR onnxruntime_USE_ACL_1905 
     endif()
   endif()
 
+  if (NOT ${onnxruntime_ACL_LIBS} STREQUAL "")
+
+    add_library(arm_compute SHARED IMPORTED)
+    set_target_properties(arm_compute PROPERTIES
+        IMPORTED_NO_SONAME 1
+        IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute.so")
+
+    add_library(arm_compute_core SHARED IMPORTED)
+    set_target_properties(arm_compute_core PROPERTIES
+        IMPORTED_NO_SONAME 1
+        IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute_core.so")
+
+    add_library(arm_compute_graph SHARED IMPORTED)
+    set_target_properties(arm_compute_graph PROPERTIES
+        IMPORTED_NO_SONAME 1
+        IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute_graph.so")
+
+    link_libraries(arm_compute arm_compute_core arm_compute_graph)
+  endif()
+
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES arm_compute arm_compute_graph arm_compute_core)
+
 endif()
 
 # ArmNN
@@ -685,6 +712,35 @@ if (onnxruntime_USE_ARMNN)
   endif()
   if (NOT onnxruntime_ARMNN_BN_USE_CPU)
     add_definitions(-DBN_ARMNN=1)
+  endif()
+
+  if (NOT onnxruntime_USE_ACL AND NOT ${onnxruntime_ACL_LIBS} STREQUAL "")
+
+    add_library(arm_compute SHARED IMPORTED)
+    set_target_properties(arm_compute PROPERTIES
+        IMPORTED_NO_SONAME 1
+        IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute.so")
+
+    add_library(arm_compute_core SHARED IMPORTED)
+    set_target_properties(arm_compute_core PROPERTIES
+        IMPORTED_NO_SONAME 1
+        IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute_core.so")
+
+    add_library(arm_compute_graph SHARED IMPORTED)
+    set_target_properties(arm_compute_graph PROPERTIES
+        IMPORTED_NO_SONAME 1
+        IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute_graph.so")
+
+    link_libraries(arm_compute arm_compute_core arm_compute_graph)
+  endif()
+
+  if (NOT ${onnxruntime_ARMNN_LIBS} STREQUAL "")
+
+    find_library(ARMNN_LIBRARY NAMES armnn
+                     PATHS ${onnxruntime_ARMNN_LIBS}
+                     NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
+
+    link_libraries(armnn)
   endif()
 
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES armnn pthread arm_compute_core arm_compute arm_compute_graph)
@@ -919,17 +975,25 @@ if(onnxruntime_USE_OPENVINO)
 
   add_definitions(-DUSE_OPENVINO=1)
 
+  if (EXISTS "$ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/version.txt")
+    file(READ $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/version.txt VER)
+  endif()
+
+  if (NOT DEFINED ENV{INTEL_OPENVINO_DIR})
+    message(FATAL_ERROR "[Couldn't locate OpenVINO] OpenVINO may not have been initialized")
+  endif()
+
   # Check OpenVINO version for support
-  if ($ENV{INTEL_OPENVINO_DIR} MATCHES "2020.2")
+  if (${VER} MATCHES "2020.2" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2020.2")
     set(OPENVINO_VERSION "2020.2")
     add_definitions(-DOPENVINO_2020_2=1)
-  elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "2020.3")
+  elseif (${VER} MATCHES "2020.3" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2020.3")
     set(OPENVINO_VERSION "2020.3")
     add_definitions(-DOPENVINO_2020_3=1)
-  elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "2020.4")
+  elseif (${VER} MATCHES "2020.4" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2020.4")
     set(OPENVINO_VERSION "2020.4")
     add_definitions(-DOPENVINO_2020_4=1)
-  elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "2021.1")
+  elseif (${VER} MATCHES "2021.1" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2021.1")
     set(OPENVINO_VERSION "2021.1")
     add_definitions(-DOPENVINO_2021_1=1)
   else()
@@ -966,6 +1030,16 @@ if(onnxruntime_USE_OPENVINO)
 
   if(onnxruntime_USE_OPENVINO_VAD_F)
     add_definitions(-DOPENVINO_CONFIG_VAD_F=1)
+  endif()
+
+  if(onnxruntime_USE_OPENVINO_HETERO)
+    add_definitions(-DOPENVINO_CONFIG_HETERO=1)
+    add_definitions(-DDEVICE_NAME="${onnxruntime_USE_OPENVINO_DEVICE}")
+  endif()
+
+  if(onnxruntime_USE_OPENVINO_MULTI)
+    add_definitions(-DOPENVINO_CONFIG_MULTI=1)
+    add_definitions(-DDEVICE_NAME="${onnxruntime_USE_OPENVINO_DEVICE}")
   endif()
 
 endif()
@@ -1080,6 +1154,15 @@ if (onnxruntime_USE_MIGRAPHX)
   add_definitions(-DUSE_MIGRAPHX=1)
 endif()
 
+if (onnxruntime_USE_ROCM)
+  if (WIN32)
+    message(FATAL_ERROR "ROCM does not support build in Windows!")
+  endif()
+  if (onnxruntime_USE_CUDA)
+    message(FATAL_ERROR "ROCM does not support build with CUDA!")
+  endif()
+endif()
+
 if (onnxruntime_USE_TVM)
   if (WIN32 AND MSVC)
     # wd4100: identifier' : unreferenced formal parameter
@@ -1138,6 +1221,7 @@ if (onnxruntime_ENABLE_TRAINING)
     include(FindPackageHandleStandardArgs)
     find_package_handle_standard_args(MPI DEFAULT_MSG MPI_INCLUDE_DIR MPI_LIBRARY)
 
+    set(onnxruntime_USE_MPI ON)
     if (MPI_FOUND)
       if(NOT DEFINED onnxruntime_MPI_HOME)
         execute_process(COMMAND mpirun --version OUTPUT_VARIABLE MPIRUN_OUTPUT)
@@ -1153,7 +1237,14 @@ if (onnxruntime_ENABLE_TRAINING)
       mark_as_advanced(MPI_INCLUDE_DIRS MPI_LIBRARIES)
 
       list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${MPI_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
+
+      # Enable NCCL only when using CUDA or ROCM.
+      if(${onnxruntime_USE_CUDA} OR ${onnxruntime_USE_ROCM})
+        set(onnxruntime_USE_NCCL ON)
+      endif()
+
     else ()
+      set(onnxruntime_USE_MPI OFF)
       set(onnxruntime_USE_NCCL OFF)
       set(onnxruntime_USE_HOROVOD OFF)
       message( WARNING "MPI is not found. Please use --mpi_home to specify the path of MPI. Otherwise, NCCL or HOROVOD will be disabled." )
@@ -1161,13 +1252,17 @@ if (onnxruntime_ENABLE_TRAINING)
 
     # Find NCCL and MPI
     if (onnxruntime_USE_NCCL AND MPI_FOUND)
+      if (onnxruntime_USE_CUDA)
+        set(NCCL_LIBNAME "nccl")
+      elseif (onnxruntime_USE_ROCM)
+        set(NCCL_LIBNAME "rccl")
+      endif()
+
       find_path(NCCL_INCLUDE_DIR
-        NAMES nccl.h
+        NAMES ${NCCL_LIBNAME}.h
         HINTS
         ${onnxruntime_NCCL_HOME}/include
         $ENV{CUDA_ROOT}/include)
-
-      set(NCCL_LIBNAME "nccl")
 
       find_library(NCCL_LIBRARY
         NAMES ${NCCL_LIBNAME}
@@ -1180,7 +1275,7 @@ if (onnxruntime_ENABLE_TRAINING)
       find_package_handle_standard_args(NCCL DEFAULT_MSG NCCL_INCLUDE_DIR NCCL_LIBRARY)
 
       if (NCCL_FOUND)
-        set(NCCL_HEADER_FILE "${NCCL_INCLUDE_DIR}/nccl.h")
+        set(NCCL_HEADER_FILE "${NCCL_INCLUDE_DIR}/${NCCL_LIBNAME}.h")
         message( STATUS "Determining NCCL version from the header file: ${NCCL_HEADER_FILE}" )
         file (STRINGS ${NCCL_HEADER_FILE} NCCL_MAJOR_VERSION_DEFINED
               REGEX "^[ \t]*#define[ \t]+NCCL_MAJOR[ \t]+[0-9]+.*$" LIMIT_COUNT 1)
@@ -1218,6 +1313,10 @@ if (onnxruntime_ENABLE_TRAINING)
         message( WARNING "NCCL is not found. Please use --nccl_home to specify the path of NCCL. Otherwise, NCCL is disabled." )
       endif()
     endif()
+  endif()
+
+  if (onnxruntime_USE_MPI AND MPI_FOUND)
+    add_definitions(-DUSE_MPI=1)
   endif()
 
   if (onnxruntime_USE_HOROVOD AND MPI_FOUND)

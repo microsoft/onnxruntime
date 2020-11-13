@@ -18,6 +18,7 @@
 
 namespace onnxruntime {
 namespace ort_dnnl {
+DnnlEngineInstance* DnnlEngineInstance::instance = 0;
 
 namespace {
 template <typename T>
@@ -25,9 +26,14 @@ class SubgraphPrimitive : public PrimitiveBase {
  public:
   SubgraphPrimitive(const OrtCustomOpApi* api,
                     OrtKernelContext* context,
-                    const SubgraphParams& params)
-      : cpu_engine_(GetEngine()) {
-    context_.stream = onnxruntime::make_unique<dnnl::stream>(dnnl::stream(cpu_engine_));
+                    const SubgraphParams& params) {
+    dnnl_engine_instance_ = DnnlEngineInstance::getInstance();
+    std::unordered_map<dnnl::engine::kind, dnnl::engine>::const_iterator iter = dnnl_engine_instance_->getEngineMap().find(dnnl::engine::kind::gpu);
+    if (iter != dnnl_engine_instance_->getEngineMap().end()) {
+      context_.stream = onnxruntime::make_unique<dnnl::stream>(dnnl::stream(dnnl_engine_instance_->getEngine(dnnl::engine::kind::gpu)));
+    } else {
+      context_.stream = onnxruntime::make_unique<dnnl::stream>(dnnl::stream(dnnl_engine_instance_->getEngine(dnnl::engine::kind::cpu)));
+    }
 
     if (context_.net.size() == 0) {
       CreateKernels(params);
@@ -196,15 +202,15 @@ class SubgraphPrimitive : public PrimitiveBase {
     // Propagate Dnnl block format
     // dst format of current node to src format of next node
     for (auto& kernel : context_.kernels) {
-      kernel->CreatePrimitives(api, context, cpu_engine_, context_.net, context_.net_args);
+      kernel->CreatePrimitives(api, context, dnnl_engine_instance_->getEngineMap(), context_.net, context_.net_args);
       if (kernel->primitive_created_status_.IsOK()) {
-        kernel->ReorderWeights(api, context, cpu_engine_);
+        kernel->ReorderWeights(api, context, dnnl_engine_instance_->getEngine(dnnl::engine::kind::cpu));
       }
     }
   }
 
   SubgraphContext context_;
-  dnnl::engine& cpu_engine_;
+  DnnlEngineInstance* dnnl_engine_instance_;
 };
 
 // Pool which allows for reuse of DNNL Conv primitives which are expensive to instantiate.

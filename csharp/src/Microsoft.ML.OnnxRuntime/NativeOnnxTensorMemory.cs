@@ -4,39 +4,100 @@
 using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
 using System.Buffers;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text;
-using System.Threading;
 
 namespace Microsoft.ML.OnnxRuntime
 {
     /// <summary>
-    /// TODO: dmitrism -> Get rid of this class.
-    /// A non-public interface detailing the contract to be honored by NativeOnnxTensorMemory
+    /// Provides access from the underlying object that owns disposable OrtValue
+    /// The returned value does not own the actual memory and does nothing on Dispose()
     /// </summary>
-    internal interface NativeMemoryHandler : IDisposable
+    internal interface IOrtValueOwner : IDisposable
     {
-        IntPtr Handle { get; }
+        OrtValue Value { get; }
     }
 
-    internal class NativeOnnxTensorMemory<T> : MemoryManager<T>, NativeMemoryHandler
+    /// <summary>
+    /// This class is used in conjunction with DisposableNamedOnnxValue to 
+    /// own native collection OrtValue and dispose of it along with any DisposableNamedOnnxValues
+    /// </summary>
+    internal class NativeOrtValueCollectionOwner : IOrtValueOwner, IDisposable
     {
-        private bool _disposed;
-        private IntPtr _onnxValueHandle;      // pointer to onnxvalue object in native
+        private OrtValue _ortValue;
+        private DisposableList<DisposableNamedOnnxValue> _disposables;
+        bool _disposed = false;
+
+        internal NativeOrtValueCollectionOwner(OrtValue ortValue, DisposableList<DisposableNamedOnnxValue> disposables)
+        {
+            Debug.Assert(ortValue.IsOwned);
+            _ortValue = new OrtValue(ortValue.Disown());
+            _disposables = disposables;
+        }
+
+        #region IOrtValueOwner
+        /// <summary>
+        /// Returns a non-owning ortValue
+        /// </summary>
+        public OrtValue Value { get { return new OrtValue(_ortValue.Handle, false); } }
+        #endregion IOrtValueOwner
+
+        #region Disposable
+        protected virtual void Dispose(bool disposing)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            // dispose managed state (managed objects).
+            if (disposing)
+            {
+                if(_disposables != null)
+                {
+                    _disposables.Dispose();
+                    _disposables = null;
+                }
+                // _ortValueHolder can be null when no native memory is involved
+                if (_ortValue != null)
+                {
+                    _ortValue.Dispose();
+                    _ortValue = null;
+                }
+                _disposed = true;
+            }
+        }
+        public void Dispose()
+        {
+            // Do not change this code. Put cleanup code in Dispose(bool disposing) above.
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+        #endregion Disposable
+    }
+
+    /// <summary>
+    /// This helper class owns the underlying OrtValue that is assumed to be a Tensor,
+    /// it does not support any other ortValues and caches Tensor properties.
+    /// </summary>
+    /// <typeparam name="T"></typeparam>
+    internal class NativeOnnxTensorMemory<T> : MemoryManager<T>, IOrtValueOwner
+    {
+        private OrtValue _ortValue; // Disposable
         private IntPtr _dataBufferPointer;    // pointer to mutable tensor data in native memory
         private string[] _dataBufferAsString; // string tensor values copied into managed memory
-        private Tensors.TensorElementType _elementType;
-        private int _elementCount;
-        private int _elementWidth;
-        private int[] _dimensions;
 
-        public NativeOnnxTensorMemory(IntPtr onnxValueHandle)
+        /// <summary>
+        /// Constructs an instance and takes ownership of ortValue on success
+        /// </summary>
+        /// <param name="ortValue">ortValue that is a Tensor</param>
+        public NativeOnnxTensorMemory(OrtValue ortValue)
         {
             Type type = null;
             int width = 0;
-            _onnxValueHandle = onnxValueHandle;
-            _disposed = false;
             IntPtr typeAndShape = IntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorTypeAndShape(onnxValueHandle, out typeAndShape));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorTypeAndShape(ortValue.Handle, out typeAndShape));
             try
             {
                 TensorElementType elemType;
@@ -50,8 +111,8 @@ namespace Microsoft.ML.OnnxRuntime
                 if (typeof(T) != type)
                     throw new NotSupportedException(nameof(NativeOnnxTensorMemory<T>) + " does not support T = " + nameof(T));
 
-                _elementType = elemType;
-                _elementWidth = width;
+                ElementType = elemType;
+                ElementWidth = width;
                 UIntPtr dimension;
                 long count;
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtGetDimensionsCount(typeAndShape, out dimension));
@@ -66,24 +127,24 @@ namespace Microsoft.ML.OnnxRuntime
                 }
 
                 long[] shape = new long[dimension.ToUInt64()];
-                 NativeApiStatus.VerifySuccess(NativeMethods.OrtGetDimensions(typeAndShape, shape, dimension)); //Note: shape must be alive during the call
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetDimensions(typeAndShape, shape, dimension)); //Note: shape must be alive during the call
 
-                _elementCount = (int)count;
-                _dimensions = new int[dimension.ToUInt64()];
+                Count = (int)count;
+                Dimensions = new int[dimension.ToUInt64()];
                 for (ulong i = 0; i < dimension.ToUInt64(); i++)
                 {
-                    _dimensions[i] = (int)shape[i];
+                    Dimensions[i] = (int)shape[i];
                 }
 
                 if (typeof(T) != typeof(string))
                 {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorMutableData(_onnxValueHandle, out _dataBufferPointer));
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorMutableData(ortValue.Handle, out _dataBufferPointer));
                 }
                 else
                 {
                     UIntPtr strLen;
-                    var offsets = new UIntPtr[_elementCount];
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtGetStringTensorDataLength(_onnxValueHandle, out strLen));
+                    var offsets = new UIntPtr[Count];
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtGetStringTensorDataLength(ortValue.Handle, out strLen));
                     var dataBuffer = new byte[strLen.ToUInt64()];
 
                     using (var dataBufferHandle = new Memory<byte>(dataBuffer).Pin())
@@ -94,11 +155,11 @@ namespace Microsoft.ML.OnnxRuntime
                             _dataBufferPointer = (IntPtr)dataBufferHandle.Pointer;
                             NativeApiStatus.VerifySuccess(
                                 NativeMethods.OrtGetStringTensorContent(
-                                _onnxValueHandle, _dataBufferPointer, strLen,
+                                ortValue.Handle, _dataBufferPointer, strLen,
                                 (IntPtr)offsetMemoryHandle.Pointer,
-                                (UIntPtr)_elementCount));
+                                (UIntPtr)Count));
                         }
-                        _dataBufferAsString = new string[_elementCount];
+                        _dataBufferAsString = new string[Count];
 
                         for (var i = 0; i < offsets.Length; i++)
                         {
@@ -110,6 +171,8 @@ namespace Microsoft.ML.OnnxRuntime
                         }
                     }
                 }
+                // Transfer ownership
+                _ortValue = new OrtValue(ortValue.Disown());
             }
             finally
             {
@@ -117,20 +180,28 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-        public IntPtr Handle { get { return _onnxValueHandle; } }
+        /// <summary>
+        /// Returns a non-owning copy of OrtValue so the
+        /// result can not release native memory
+        /// </summary>
+        public OrtValue Value { get { return new OrtValue(_ortValue.Handle, false); } }
 
-        public bool IsDisposed => _disposed;
+        public bool IsDisposed { get; private set; } = false;
 
-        public int[] Dimensions => _dimensions;
+        public int[] Dimensions { get; }
 
-        public int Rank => _dimensions.Length;
+        public int Rank => Dimensions.Length;
 
-        public int Count => _elementCount;
+        public int Count { get; }
 
-        public int ElementWidth => _elementWidth;
+        public int ElementWidth { get; }
 
-        public Tensors.TensorElementType ElementType => _elementType;
+        public Tensors.TensorElementType ElementType { get; }
 
+        /// <summary>
+        /// Used by MemoryManager to produce Memory Property
+        /// </summary>
+        /// <returns>SpanT</returns>
         public override Span<T> GetSpan()
         {
             if (IsDisposed)
@@ -138,12 +209,11 @@ namespace Microsoft.ML.OnnxRuntime
             Span<T> span = null;
             unsafe
             {
-                span = new Span<T>((void*)_dataBufferPointer, _elementCount);
+                span = new Span<T>((void*)_dataBufferPointer, Count);
             }
 
             return span;
         }
-
         public Memory<String> GetBytesAsStringMemory()
         {
             if (IsDisposed)
@@ -155,23 +225,26 @@ namespace Microsoft.ML.OnnxRuntime
             return (_dataBufferAsString == null) ? new Memory<string>() : new Memory<string>(_dataBufferAsString);
         }
 
+        /// <summary>
+        /// Satisfy MemoryManager abstract implementation
+        /// </summary>
+        /// <param name="elementIndex"></param>
+        /// <returns></returns>
         public override MemoryHandle Pin(int elementIndex = 0)
         {
             //Note: always pin the full buffer and return
             unsafe
             {
-                if (elementIndex >= _elementCount)
+                if (elementIndex >= Count)
                 {
                     throw new ArgumentOutOfRangeException(nameof(elementIndex));
                 }
-                return new MemoryHandle((void*)((int)_dataBufferPointer + elementIndex * _elementWidth)); //could not use Unsafe.Add
+                return new MemoryHandle((void*)((int)_dataBufferPointer + elementIndex * ElementWidth)); //could not use Unsafe.Add
             }
         }
 
         // MemoryHandle returned above by Pin() should be disposed.
         // Unpin() is purely to satisfy the interface.
-        // TODO: This class needs work. It is not clear what happens
-        // if the MemoryHandle remains alive and this class gets Disposed.
         public override void Unpin() { }
 
         public void Dispose()
@@ -182,25 +255,17 @@ namespace Microsoft.ML.OnnxRuntime
 
         protected override void Dispose(bool disposing)
         {
-            if(_disposed)
+            if (IsDisposed)
             {
                 return;
             }
 
-            if (_onnxValueHandle != IntPtr.Zero)
+            if (_ortValue != null)
             {
-                NativeMethods.OrtReleaseValue(_onnxValueHandle);
-                _onnxValueHandle = IntPtr.Zero;
+                _ortValue.Dispose();
+                _ortValue = null;
             }
-
-            _disposed = true;
-        }
-
-        protected override bool TryGetArray(out ArraySegment<T> arraySegment)
-        {
-            // cannot expose managed array
-            arraySegment = default(ArraySegment<T>);
-            return false;
+            IsDisposed = true;
         }
     }
 }
