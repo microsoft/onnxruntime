@@ -686,6 +686,8 @@ if (onnxruntime_USE_NNAPI_BUILTIN)
   set_target_properties(onnxruntime_providers_nnapi PROPERTIES FOLDER "ONNXRuntime")
   target_include_directories(onnxruntime_providers_nnapi PRIVATE ${ONNXRUNTIME_ROOT} ${nnapi_INCLUDE_DIRS})
   set_target_properties(onnxruntime_providers_nnapi PROPERTIES LINKER_LANGUAGE CXX)
+  # ignore the warning unknown-pragmas on "pragma region"
+  target_compile_options(onnxruntime_providers_nnapi PRIVATE "-Wno-unknown-pragmas")
 endif()
 
 if (onnxruntime_USE_RKNPU)
