@@ -387,7 +387,7 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
 
     if (col_buffer) {
       if (kernel_rank > 2) {
-        // Threaded implemenation of ND convolution is not yet supported, so
+        // Threaded implementation of ND convolution is not yet supported, so
         // prepare all im2col transformations here.
         for (int64_t group_id = 0; group_id < group_count; ++group_id) {
           math::Im2col<uint8_t, StorageOrder::NHWC>()(
