@@ -61,7 +61,7 @@ class OnnxPrediction {
 
     Ort::Value& input_value = input_values[curr_input_index];
     auto data_size_in_bytes = raw_data.size() * sizeof(T);
-
+    // TODO The following allocation may be unnecessary
     // Copy the raw input data and control the lifetime.
     //
     input_data.emplace_back(alloc.Alloc(data_size_in_bytes),

@@ -27,8 +27,9 @@ OnnxPrediction::OnnxPrediction(onnx::ModelProto& onnx_model, Ort::Env& env) {
   ptr_session = std::make_unique<Ort::Session>(env,
                                                static_cast<void*>(raw_model.get()),
                                                onnx_model.ByteSizeLong(),
-                                               empty_session_option),
+                                               empty_session_option);
 
+  // TODO Use reserve instead of resize
   input_names.resize(ptr_session->GetInputCount());
   output_names.resize(ptr_session->GetOutputCount());
 
@@ -43,6 +44,7 @@ OnnxPrediction::OnnxPrediction(const std::vector<char>& model_data, Ort::Env& en
                                                model_data.size(),
                                                so);
 
+  // TODO Use reserve instead of resize
   input_names.resize(ptr_session->GetInputCount());
   output_names.resize(ptr_session->GetOutputCount());
 
@@ -140,6 +142,7 @@ void OnnxPrediction::init() {
   // Initialize model input names
   //
   for (int i = 0; i < ptr_session->GetInputCount(); i++) {
+    // TODO Use push_back on input_names instead of assignment
     input_names[i] = ptr_session->GetInputName(i, alloc);
     input_values.emplace_back(nullptr);
   }
@@ -147,6 +150,7 @@ void OnnxPrediction::init() {
   // Initialize model output names
   //
   for (int i = 0; i < ptr_session->GetOutputCount(); i++) {
+    // TODO Use push_back on output_names instead of assignment
     output_names[i] = ptr_session->GetOutputName(i, alloc);
     output_values.emplace_back(nullptr);
   }
