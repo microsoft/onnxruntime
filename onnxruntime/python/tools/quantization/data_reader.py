@@ -16,7 +16,7 @@ def parse_annotations(filename):
 
     return img_name_to_img_id
 
-class YoloV3OnnxModelZooDataReader(CalibrationDataReader):
+class YoloV3DataReader(CalibrationDataReader):
     def __init__(self, calibration_image_folder,
                        start_index=0,
                        size_limit=0,

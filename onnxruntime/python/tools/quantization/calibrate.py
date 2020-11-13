@@ -58,10 +58,8 @@ class ONNXCalibrater:
 
         for value_info in value_info_proto:
             elem_type = value_info.type.tensor_type.elem_type
-            # if elem_type == onnx_proto.TensorProto.FLOAT or elem_type == onnx_proto.TensorProto.FLOAT16:  
 
             if elem_type in type_list:
-                # print(value_info)
                 value_info_to_type[value_info.name] = elem_type
 
         return value_info_to_type
@@ -116,15 +114,7 @@ class ONNXCalibrater:
                 # # for value_info in node.attribute[0].g.value_info:
                     # # print(value_info)
                     # # if value_info.type in [onnx_proto.TensorProto.FLOAT, onnx_proto.TensorProto.FLOAT16]:
-                        # # print("!!!!!!!!!")
-
-                # # print(node.attribute[0].g.value_info)
-                # # print(node.attribute[0].g.input)
-                # # print(node.attribute[0].g.output)
-                # # print(isinstance(node.attribute[0].g, onnx_proto.GraphProto))
-                # # print(node.attribute[0].g)
-                # # print(node.attribute[0].graphs)
-
+                    # #     pass
             if implicitly_quantize_all_ops:
                 for i in node.input:
                     if i in tensor_initializer:
@@ -172,91 +162,6 @@ class ONNXCalibrater:
         model.graph.output.extend(added_outputs)
 
         return model
-
-    #Using augmented outputs to generate inputs for quantization
-    def get_intermediate_outputs_ori(self, dynamic_range_file, calib_mode='naive', save_dynamic_range_to_file=True):
-        ''' 
-            Gather intermediate model outputs after running inference
-            parameter calib_mode: type 'naive' gives (ReduceMin, ReduceMax) pairs
-                                for each augmented node across test data sets, where
-                                the first element is a minimum of all ReduceMin values
-                                and the second element is a maximum of all ReduceMax
-                                values;
-            :return: dictionary mapping: {added node names: (ReduceMin, ReduceMax) pairs }
-        '''
-
-        #conduct inference session and get intermediate outputs
-        session = onnxruntime.InferenceSession(self.augmented_model_path, None)
-
-        intermediate_outputs = []
-        while True:
-            inputs = self.data_reader.get_next()
-            if not inputs:
-                break
-            intermediate_outputs.append(session.run(None, inputs))
-        node_output_names = [session.get_outputs()[i].name for i in range(len(intermediate_outputs[0]))]
-        output_dicts_list = [
-            dict(zip(node_output_names, intermediate_output)) for intermediate_output in intermediate_outputs
-        ]
-
-        #number of outputs in original model
-        model = onnx.load(self.model_path)
-        num_model_outputs = len(model.graph.output)
-        merged_dict = {}
-        for d in output_dicts_list:
-            for k, v in d.items():
-                merged_dict.setdefault(k, []).append(v)
-        added_node_output_names = node_output_names[num_model_outputs:]
-        node_names = [added_node_output_names[i].rpartition('_')[0]
-                      for i in range(0, len(added_node_output_names), 2)]  #output names
-
-        # Characterizing distribution of a node's values across test data sets
-        clean_merged_dict = dict((i, merged_dict[i]) for i in merged_dict if i != list(merged_dict.keys())[0])
-        if calib_mode == 'naive':
-            pairs = [
-                tuple([
-                    float(min(clean_merged_dict[added_node_output_names[i]])),
-                    float(max(clean_merged_dict[added_node_output_names[i + 1]]))
-                ]) for i in range(0, len(added_node_output_names), 2)
-            ]
-        else:
-            raise ValueError('Unknown value for calib_mode. Currently only naive mode is supported.')
-
-        final_dict = dict(zip(node_names, pairs))
-
-        if save_dynamic_range_to_file:
-            import json
-            import os
-            table_path = "table"
-            if not os.path.exists(table_path):
-                os.mkdir(table_path)
-            table_names = os.listdir(table_path)
-            if len(table_names) > 0:
-                with open("./table/"+table_names[-1], 'r') as file:
-                    data = json.load(file)
-
-                    for key, value in data.items():
-                        # min_value = final_dict[key][0]
-                        # max_value = final_dict[key][1]
-                        # if float(value[0]) < min_value:
-                            # min_value = float(value[0])
-
-                        # if float(value[1]) > max_value:
-                            # max_value = float(value[1])
-
-                        min_value = min(value[0], final_dict[key][0])
-                        max_value = max(value[1], final_dict[key][1])
-                        final_dict[key] = (min_value, max_value)
-
-                    print(data)
-                    print(table_names[-1])
-
-                os.remove("./table/"+table_names[-1])
-
-            with open(dynamic_range_file, 'w') as file:
-                file.write(json.dumps(final_dict)) # use `json.loads` to do the reverse
-
-        return final_dict
 
     #Using augmented outputs to generate inputs for quantization
     def get_intermediate_outputs(self, calib_mode='naive'):

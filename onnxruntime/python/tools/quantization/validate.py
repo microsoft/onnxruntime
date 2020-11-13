@@ -80,12 +80,6 @@ class YoloV3VisionValidator:
             print(output[1])
             print(output[2])
 
-            # for idx_ in indices:
-                # out_classes.append(idx_[1])
-                # out_scores.append(scores[tuple(idx_)])
-                # idx_1 = (idx_[0], idx_[2])
-                # out_boxes.append(boxes[idx_1])
-
             for i in range(len(out_classes)):
                 out_class = out_classes[i]
                 class_name = self.onnx_class_list[int(out_class)]
