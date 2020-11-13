@@ -146,8 +146,8 @@ class TensorBuffer {
         E_INVALIDARG,
         size_in_bytes <= (size_ * sizeof(T)),
         "Argument size (%llu) exceeds the tensor size (%llu).",
-        size_in_bytes,
-        size_ * sizeof(T));
+        static_cast<uint64_t>(size_in_bytes),
+        static_cast<uint64_t>(size_ * sizeof(T)));
     
     gsl::span<byte> span(reinterpret_cast<byte*>(const_cast<T*>(data)), size_in_bytes);
     _winml::LoadOrStoreDisjointBuffers(
