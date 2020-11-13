@@ -128,7 +128,7 @@ static void RunAttentionTest(
     const std::vector<float>& weights_data,       // weights:    [hidden_size, 3 * hidden_size]
     const std::vector<float>& bias_data,          // bias:       [3 * hidden_size]
     const std::vector<int32_t>& mask_index_data,  // mask_index: [batch_size] or [batch_size, past_sequence_length + sequence_length] or empty
-    const std::vector<float>& output_data,        // output:     [batch_size, sequence_length, hidden_size]
+    const std::vector<float>& output_data,        // output:     [batch_size, sequence_length, hidden_size] or [sequence_length, batch_size, hidden_size]
     int batch_size,
     int sequence_length,
     int hidden_size,
