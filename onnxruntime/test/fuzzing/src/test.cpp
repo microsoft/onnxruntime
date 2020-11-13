@@ -237,27 +237,30 @@ int processCommandLine(int argc, char* argv[], runtimeOpt& opt) {
 
   return 0;
 }
-static size_t num_ort_exception{0};
-static size_t num_std_exception{0};
-static size_t num_unknown_exception{0};
-static size_t num_successful_runs{0};
-static size_t iteration{0};
 
-static void fuzz_handle_exception() {
+struct RunStats {
+  size_t num_ort_exception;
+  size_t num_std_exception;
+  size_t num_unknown_exception;
+  size_t num_successful_runs;
+  size_t iteration;
+};
+
+static void fuzz_handle_exception(struct RunStats& run_stats) {
   try {
     throw;
   } catch (const Ort::Exception& ortException) {
-    num_ort_exception++;
+    run_stats.num_ort_exception++;
     Logger::testLog << L"onnx runtime exception: " << ortException.what() << Logger::endl;
-    Logger::testLog << "Failed Test iteration: " << iteration++ << Logger::endl;
+    Logger::testLog << "Failed Test iteration: " << run_stats.iteration++ << Logger::endl;
   } catch (const std::exception& e) {
-    num_std_exception++;
+    run_stats.num_std_exception++;
     Logger::testLog << L"standard exception: " << e.what() << Logger::endl;
-    Logger::testLog << "Failed Test iteration: " << iteration++ << Logger::endl;
+    Logger::testLog << "Failed Test iteration: " << run_stats.iteration++ << Logger::endl;
   } catch (...) {
-    num_unknown_exception++;
+    run_stats.num_unknown_exception++;
     Logger::testLog << L"unknown exception: " << Logger::endl;
-    Logger::testLog << "Failed Test iteration: " << iteration++ << Logger::endl;
+    Logger::testLog << "Failed Test iteration: " << run_stats.iteration++ << Logger::endl;
     throw;
   }
 }
@@ -267,7 +270,7 @@ int main(int argc, char* argv[]) {
   // Enable telemetry events
   //
   env.EnableTelemetryEvents();
-
+  struct RunStats run_stats = {0, 0, 0, 0, 0};
   runtimeOpt opt{};
   user_options& user_opt{opt.user_opt};
   Logger::wcstream& werr_stream_buf{opt.werr_stream_buf};
@@ -319,17 +322,17 @@ int main(int argc, char* argv[]) {
           std::chrono::hours time_in_hrs{test_time_out};
           std::chrono::system_clock::time_point end_time{curr_time};
           end_time += scale == timeScale::Hrs ? time_in_hrs
-                                             : scale == timeScale::Min ? time_in_min : time_in_sec;
+                                              : scale == timeScale::Min ? time_in_min : time_in_sec;
           Logger::testLog << "Starting Test" << Logger::endl;
           while (curr_time < end_time) {
             try {
               onnx::ModelProto bad_model = model_proto;
-              Logger::testLog << "Starting Test iteration: " << iteration << Logger::endl;
+              Logger::testLog << "Starting Test iteration: " << run_stats.iteration << Logger::endl;
               mutateModelTest(bad_model, mutate_model_dir_name, user_opt, env);
-              num_successful_runs++;
-              Logger::testLog << "Completed Test iteration: " << iteration++ << Logger::endl;
+              run_stats.num_successful_runs++;
+              Logger::testLog << "Completed Test iteration: " << run_stats.iteration++ << Logger::endl;
             } catch (...) {
-              fuzz_handle_exception();
+              fuzz_handle_exception(run_stats);
             }
             // Update current time
             //
@@ -375,11 +378,11 @@ int main(int argc, char* argv[]) {
     if (user_opt.stress) {
       Logger::testLog.enable();
     }
-
-    Logger::testLog << L"Total number of exceptions: " << num_unknown_exception + num_std_exception + num_ort_exception << Logger::endl;
-    Logger::testLog << L"Number of Unknown exceptions: " << num_unknown_exception << Logger::endl;
-    Logger::testLog << L"Number of ort exceptions: " << num_ort_exception << Logger::endl;
-    Logger::testLog << L"Number of std exceptions: " << num_std_exception << Logger::endl;
+    size_t toal_num_exception = run_stats.num_unknown_exception + run_stats.num_std_exception + run_stats.num_ort_exception;
+    Logger::testLog << L"Total number of exceptions: " << toal_num_exception << Logger::endl;
+    Logger::testLog << L"Number of Unknown exceptions: " << run_stats.num_unknown_exception << Logger::endl;
+    Logger::testLog << L"Number of ort exceptions: " << run_stats.num_ort_exception << Logger::endl;
+    Logger::testLog << L"Number of std exceptions: " << run_stats.num_std_exception << Logger::endl;
     Logger::testLog << L"Number of unique errors: " << werr_stream_buf.get_unique_errors() << L"\n";
 
     if (user_opt.stress) {
