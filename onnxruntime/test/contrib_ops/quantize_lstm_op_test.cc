@@ -15,15 +15,19 @@ namespace test {
 
 template <typename QType,
           typename std::enable_if<is_quant_type<QType>::value, int>::type = 0>
-static std::vector<float> ApplyQDQ(const std::vector<float>& data, size_t num_direction) {
+static std::vector<float> ApplyQDQ(const std::vector<float>& data, size_t channel_count, bool per_channel = false) {
   std::vector<float> result(data.size());
-  size_t size_per_dir = data.size() / num_direction;
+  size_t size_per_dir = data.size() / channel_count;
 
-  for (size_t dir_idx = 0; dir_idx < num_direction; dir_idx++) {
+  for (size_t dir_idx = 0; dir_idx < channel_count; dir_idx++) {
     QType zp = 0;
     float scale = 1.0f;
     const float* data_buf = data.data() + size_per_dir * dir_idx;
-    GetQuantizationParameter<QType, true>(data_buf, size_per_dir, scale, zp);
+    if (per_channel) {
+      GetQuantizationParameter<QType, true, true>(data_buf, size_per_dir, scale, zp);
+    } else {
+      GetQuantizationParameter<QType, true, false>(data_buf, size_per_dir, scale, zp);
+    }
 
     std::vector<QType> quant_data(size_per_dir);
     MlasQuantizeLinear(data_buf, quant_data.data(), size_per_dir, scale, zp);
@@ -47,32 +51,41 @@ void QuantizeWeight(std::vector<QType>& w_quant,
                     const std::vector<float>& w,
                     size_t num_direction,
                     size_t row,
-                    size_t col) {
-  std::vector<float> w_transpose(w.size());
+                    size_t col,
+                    bool per_channel) {
+  std::vector<QType> w_quant_tmp(w.size());
 
+  size_t quant_param_size = per_channel ? num_direction * row : num_direction;
+  size_t quant_span = per_channel ? col : row * col;
+  scale.resize(quant_param_size);
+  zp.resize(quant_param_size);
+
+  for (size_t quant_param_idx = 0; quant_param_idx < quant_param_size; quant_param_idx++) {
+    if (per_channel) {
+      GetQuantizationParameter<QType, true, true>(w.data() + quant_param_idx * quant_span, quant_span, scale[quant_param_idx], zp[quant_param_idx]);
+    } else {
+      GetQuantizationParameter<QType, true, false>(w.data() + quant_param_idx * quant_span, quant_span, scale[quant_param_idx], zp[quant_param_idx]);
+    }
+
+    MlasQuantizeLinear(w.data() + quant_param_idx * quant_span,
+                       w_quant_tmp.data() + quant_param_idx * quant_span,
+                       quant_span,
+                       scale[quant_param_idx],
+                       zp[quant_param_idx]);
+  }
+
+  w_quant.resize(w.size());
   for (size_t dir_idx = 0; dir_idx < num_direction; dir_idx++) {
-    const float* w_buffer = w.data() + dir_idx * row * col;
-    float* w_transpose_buffer = w_transpose.data() + dir_idx * row * col;
-    for (size_t r = 0; r < row; r++) {
-      for (size_t c = 0; c < col; c++) {
-        *(w_transpose_buffer + r + c * row) = *w_buffer++;
+    QType* w_quant_tmp_buf = w_quant_tmp.data() + dir_idx * row * col;
+    QType* w_quant_buf = w_quant.data() + dir_idx * row * col;
+    for (size_t c = 0; c < col; c++) {
+      for (size_t r = 0; r < row; r++) {
+        *w_quant_buf++ = *(w_quant_tmp_buf + r * col + c);
       }
     }
   }
 
-  w_quant.resize(w.size());
-  scale.resize(num_direction);
-  zp.resize(num_direction);
-
-  size_t size_per_dir = row * col;
-  for (size_t dir_idx = 0; dir_idx < num_direction; dir_idx++) {
-    GetQuantizationParameter<QType, true>(w_transpose.data() + dir_idx * size_per_dir, size_per_dir, scale[dir_idx], zp[dir_idx]);
-    MlasQuantizeLinear(w_transpose.data() + dir_idx * size_per_dir,
-                       w_quant.data() + dir_idx * size_per_dir,
-                       size_per_dir,
-                       scale[dir_idx],
-                       zp[dir_idx]);
-  }
+  // transpose row and col
 }
 
 template <typename QType,
@@ -91,7 +104,8 @@ static void ComputeRefOutput(std::vector<float>& Y_data,
                              const std::vector<float> initial_h_data,
                              const std::vector<float> initial_c_data,
                              const std::string& direction,
-                             const std::vector<std::string>& activations) {
+                             const std::vector<std::string>& activations,
+                             bool per_channel) {
   OpTester test("LSTM", 7 /*opset_version*/, onnxruntime::kOnnxDomain /*domain*/, false /*verify_output*/);
 
   test.AddAttribute<std::vector<std::string>>("activations", activations);
@@ -106,8 +120,8 @@ static void ComputeRefOutput(std::vector<float>& Y_data,
   std::vector<int64_t> R_dims = {num_directions, 4 * hidden_size, hidden_size};
 
   test.AddInput<float>("X", X_dims, ApplyQDQ<uint8_t>(X_data, 1));
-  test.AddInput<float>("W", W_dims, ApplyQDQ<QType>(W_data, num_directions));
-  test.AddInput<float>("R", R_dims, ApplyQDQ<QType>(R_data, num_directions));
+  test.AddInput<float>("W", W_dims, ApplyQDQ<QType>(W_data, per_channel ? num_directions * 4 * hidden_size : num_directions, per_channel));
+  test.AddInput<float>("R", R_dims, ApplyQDQ<QType>(R_data, per_channel ? num_directions * 4 * hidden_size : num_directions, per_channel));
 
   if (B_data) {
     std::vector<int64_t> B_dims = {num_directions, 8 * hidden_size};
@@ -172,6 +186,7 @@ static void RunQuantLSTM(int64_t input_size,
                          bool has_P,
                          bool is_initializer_W,
                          bool is_initializer_R,
+                         bool per_channel,
                          const std::string& direction) {
   OpTester test("DynamicQuantizeLSTM", 1 /*opset_version*/, onnxruntime::kMSDomain /*domain*/);
 
@@ -204,7 +219,7 @@ static void RunQuantLSTM(int64_t input_size,
   std::vector<float> w_scale;
   std::vector<QType> w_zp;
   std::vector<QType> w_quant;
-  QuantizeWeight(w_quant, w_scale, w_zp, W_data, num_directions, 4 * hidden_size, input_size);
+  QuantizeWeight(w_quant, w_scale, w_zp, W_data, num_directions, 4 * hidden_size, input_size, per_channel);
   test.AddInput<QType>("W", W_dims, w_quant, is_initializer_W);
 
   // R
@@ -214,7 +229,7 @@ static void RunQuantLSTM(int64_t input_size,
   std::vector<float> r_scale;
   std::vector<QType> r_zp;
   std::vector<QType> r_quant;
-  QuantizeWeight(r_quant, r_scale, r_zp, R_data, num_directions, 4 * hidden_size, hidden_size);
+  QuantizeWeight(r_quant, r_scale, r_zp, R_data, num_directions, 4 * hidden_size, hidden_size, per_channel);
   test.AddInput<QType>("R", R_dims, r_quant, is_initializer_R);
 
   std::vector<float> B_data;
@@ -249,11 +264,13 @@ static void RunQuantLSTM(int64_t input_size,
     test.AddMissingOptionalInput<float>();
   }
 
-  test.AddInput<float>("W_scale", {num_directions}, w_scale);
-  test.AddInput<QType>("W_zero_point", {num_directions}, w_zp);
+  std::vector<int64_t> per_tensor_dims = {num_directions};
+  std::vector<int64_t> per_channel_dims = {num_directions, 4 * hidden_size};
+  test.AddInput<float>("W_scale", per_channel ? per_channel_dims : per_tensor_dims, w_scale);
+  test.AddInput<QType>("W_zero_point", per_channel ? per_channel_dims : per_tensor_dims, w_zp);
 
-  test.AddInput<float>("R_scale", {num_directions}, r_scale);
-  test.AddInput<QType>("R_zero_point", {num_directions}, r_zp);
+  test.AddInput<float>("R_scale", per_channel ? per_channel_dims : per_tensor_dims, r_scale);
+  test.AddInput<QType>("R_zero_point", per_channel ? per_channel_dims : per_tensor_dims, r_zp);
 
   std::vector<float> Y_data;
   std::vector<float> Y_h_data;
@@ -264,7 +281,7 @@ static void RunQuantLSTM(int64_t input_size,
                           has_bias ? &B_data : nullptr,
                           has_P ? &P_data : nullptr,
                           initial_h_data, initial_c_data,
-                          direction, activations);
+                          direction, activations, per_channel);
 
   std::vector<int64_t> Y_dims = {seq_len, num_directions, batch_size, hidden_size};
   test.AddOutput<float>("Y", Y_dims, Y_data);
@@ -282,63 +299,66 @@ template <typename QType,
           typename std::enable_if<std::is_same<QType, uint8_t>::value || std::is_same<QType, int8_t>::value, int>::type = 0>
 static void RunQuantLSTM(int64_t input_size,
                          int64_t batch_size,
-                         int64_t hidden_size) {
+                         int64_t hidden_size,
+                         bool per_channel = false) {
   // bias + P: 0, prepacking: 0, bidirectional: 0
   RunQuantLSTM<QType>(input_size, batch_size, hidden_size,
                       false /*has_bias*/, false /*has_P*/,
                       false /*is_initializer_W*/, false /*is_initializer_R*/,
-                      "forward");
+                      per_channel, "forward");
 
   // bias + P: 0, prepacking: 0, bidirectional: 1
   RunQuantLSTM<QType>(input_size, batch_size, hidden_size,
                       false /*has_bias*/, false /*has_P*/,
                       false /*is_initializer_W*/, false /*is_initializer_R*/,
-                      "bidirectional");
+                      per_channel, "bidirectional");
 
   // bias + P: 0, prepacking: 1, bidirectional: 0
   RunQuantLSTM<QType>(input_size, batch_size, hidden_size,
                       false /*has_bias*/, false /*has_P*/,
                       true /*is_initializer_W*/, true /*is_initializer_R*/,
-                      "forward");
+                      per_channel, "forward");
 
   // bias + P: 0, prepacking: 1, bidirectional: 1
   RunQuantLSTM<QType>(input_size, batch_size, hidden_size,
                       false /*has_bias*/, false /*has_P*/,
                       true /*is_initializer_W*/, true /*is_initializer_R*/,
-                      "bidirectional");
+                      per_channel, "bidirectional");
 
   // bias + P: 1, prepacking: 0, bidirectional: 0
   RunQuantLSTM<QType>(input_size, batch_size, hidden_size,
                       true /*has_bias*/, true /*has_P*/,
                       false /*is_initializer_W*/, false /*is_initializer_R*/,
-                      "forward");
+                      per_channel, "forward");
 
   // bias + P: 1, prepacking: 0, bidirectional: 1
   RunQuantLSTM<QType>(input_size, batch_size, hidden_size,
                       true /*has_bias*/, true /*has_P*/,
                       false /*is_initializer_W*/, false /*is_initializer_R*/,
-                      "bidirectional");
+                      per_channel, "bidirectional");
 
   // bias + P: 1, prepacking: 1, bidirectional: 0
   RunQuantLSTM<QType>(input_size, batch_size, hidden_size,
                       true /*has_bias*/, true /*has_P*/,
                       true /*is_initializer_W*/, true /*is_initializer_R*/,
-                      "forward");
+                      per_channel, "forward");
 
   // bias + P: 1, prepacking: 1, bidirectional: 1
   RunQuantLSTM<QType>(input_size, batch_size, hidden_size,
                       true /*has_bias*/, true /*has_P*/,
                       true /*is_initializer_W*/, true /*is_initializer_R*/,
-                      "bidirectional");
+                      per_channel, "bidirectional");
 }
 
 TEST(DynamicQuantLSTMTest, SmallSize) {
   RunQuantLSTM<int8_t>(2, 3, 2);
+  RunQuantLSTM<int8_t>(2, 3, 2, true /*per_channel*/);
   RunQuantLSTM<uint8_t>(2, 3, 2);
 }
 
 TEST(DynamicQuantLSTMTest, LargeSize) {
   RunQuantLSTM<int8_t>(12, 3, 18);
+  RunQuantLSTM<int8_t>(12, 3, 18, true /*per_channel*/);
   RunQuantLSTM<uint8_t>(12, 3, 18);
 }
 
