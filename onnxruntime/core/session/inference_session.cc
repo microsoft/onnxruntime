@@ -1206,17 +1206,10 @@ common::Status InferenceSession::Initialize() {
     // need to keep the initializers if we're going to save the optimized model
     bool keep_initializers = !session_options_.optimized_model_filepath.empty();
 
-    // we only want to use the serialized session state in a minimal build.
-    // in a full build, even if we loaded from an ORT format model, optimizers may have run and changed the
-    // graph, which would result in it no longer matching the saved session state.
-    // as it's a full build we can create the SessionState as per usual using kernel lookups, so we can take the safe
-    // option and ignore the serialized session state.
-    const experimental::fbs::SessionState* serialized_session_state = nullptr;
-#if defined(ORT_MINIMAL_BUILD)
-    serialized_session_state = !ort_format_model_bytes_.empty()
-                                   ? fbs::GetInferenceSession(ort_format_model_bytes_.data())->session_state()
-                                   : nullptr;
-#endif
+    const experimental::fbs::SessionState* serialized_session_state =
+        loading_ort_format
+            ? fbs::GetInferenceSession(ort_format_model_bytes_.data())->session_state()
+            : nullptr;
 
     ORT_RETURN_IF_ERROR_SESSIONID_(
         session_state_->FinalizeSessionState(model_location_, kernel_registry_manager_,
