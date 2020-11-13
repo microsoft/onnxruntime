@@ -383,7 +383,7 @@ if(onnxruntime_USE_CUDA)
 endif()
 
 if(onnxruntime_USE_DNNL)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_dnnl)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_dnnl onnxruntime_providers_shared)
 endif()
 
 if(onnxruntime_USE_NGRAPH)
@@ -391,7 +391,7 @@ if(onnxruntime_USE_NGRAPH)
 endif()
 
 if(onnxruntime_USE_OPENVINO)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_openvino)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_openvino onnxruntime_providers_shared)
 endif()
 
 if(onnxruntime_USE_NNAPI_BUILTIN)
