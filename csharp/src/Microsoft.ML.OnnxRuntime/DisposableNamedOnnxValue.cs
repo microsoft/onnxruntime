@@ -5,7 +5,6 @@ using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
 using System.Buffers;
 using System.Collections.Generic;
-using System.Diagnostics;
 
 namespace Microsoft.ML.OnnxRuntime
 {
@@ -55,8 +54,8 @@ namespace Microsoft.ML.OnnxRuntime
     /// tensors, sequences of tensors, sequences and maps
     /// It extends NamedOnnxValue, exposes the OnnxValueType and Tensor type
     /// The class must be disposed of.
-    /// It disposes of _ortValueHolder that owns the underlying Ort output value or
-    /// anything that the class that implements that interfaces needs to dispose.
+    /// It disposes of _ortValueHolder that owns the underlying Ort output value and
+    /// anything else that would need to be disposed by the instance of the class.
     /// Use factory method CreateFromOrtValue to obtain an instance of the class.
     /// </summary>
     public class DisposableNamedOnnxValue : NamedOnnxValue, IDisposable
@@ -64,6 +63,19 @@ namespace Microsoft.ML.OnnxRuntime
         private IOrtValueOwner _ortValueHolder;
         private bool _disposed = false;
 
+        /// <summary>
+        /// Ctor
+        /// </summary>
+        /// <param name="name">Name of the output value</param>
+        /// <param name="value">Managed object created to represent output value, such as DenseTensor<T>
+        /// List or Dictionary
+        /// </param>
+        /// <param name="onnxValueType">Use this to decide what you want to call to fetch data, AsTensor(), AsDictionary()
+        /// or AsEnumerable()</param>
+        /// <param name="elementType">Tensor element type if value type is a Tensor</param>
+        /// <param name="ortValueHolder">Object that holds native resources. 
+        /// Typically, this is an output OrtValue that holds native memory where Tensor is mapped but may also be
+        /// other things that would need to be disposed by this instance depending on how IOrtValueOwner is implemented.</param>
         private DisposableNamedOnnxValue(string name, Object value, OnnxValueType onnxValueType, TensorElementType elementType, IOrtValueOwner ortValueHolder)
             : base(name, value)
         {
@@ -168,6 +180,12 @@ namespace Microsoft.ML.OnnxRuntime
                     break;
                 case TensorElementType.Bool:
                     result = DisposableNamedOnnxValueFromNativeTensor<bool>(name, ortValue);
+                    break;
+                case TensorElementType.Float16:
+                    result = DisposableNamedOnnxValueFromNativeTensor<Float16>(name, ortValue);
+                    break;
+                case TensorElementType.BFloat16:
+                    result = DisposableNamedOnnxValueFromNativeTensor<BFloat16>(name, ortValue);
                     break;
                 default:
                     throw new NotSupportedException("Tensor of element type: " + elemType + " is not supported");
