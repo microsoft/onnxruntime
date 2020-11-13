@@ -86,22 +86,22 @@ class ONNXCalibrater:
             value_info_to_type = self.get_value_info_to_type(model.graph.value_info, type_list)
 
         for node in model.graph.node:
-            if len(node.attribute) > 0 and node.attribute[0].g.node: 
-                print(node.name)
-                print(node.attribute[0].g)
-                print("\n")
-                # for value_info in node.attribute[0].g.value_info:
-                    # print(value_info)
-                    # if value_info.type in [onnx_proto.TensorProto.FLOAT, onnx_proto.TensorProto.FLOAT16]:
-                        # print("!!!!!!!!!")
-
-
-                # print(node.attribute[0].g.value_info)
-                # print(node.attribute[0].g.input)
-                # print(node.attribute[0].g.output)
-                # print(isinstance(node.attribute[0].g, onnx_proto.GraphProto))
+            # if len(node.attribute) > 0 and node.attribute[0].g.node: 
+                # print(node.name)
                 # print(node.attribute[0].g)
-                # print(node.attribute[0].graphs)
+                # print("\n")
+                # # for value_info in node.attribute[0].g.value_info:
+                    # # print(value_info)
+                    # # if value_info.type in [onnx_proto.TensorProto.FLOAT, onnx_proto.TensorProto.FLOAT16]:
+                        # # print("!!!!!!!!!")
+
+
+                # # print(node.attribute[0].g.value_info)
+                # # print(node.attribute[0].g.input)
+                # # print(node.attribute[0].g.output)
+                # # print(isinstance(node.attribute[0].g, onnx_proto.GraphProto))
+                # # print(node.attribute[0].g)
+                # # print(node.attribute[0].graphs)
 
             if implicitly_quantize_all_ops:
                 for i in node.input:
