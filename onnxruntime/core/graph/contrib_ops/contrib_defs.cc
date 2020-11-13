@@ -456,8 +456,8 @@ input_dimension_swapped is 1, the input shape is (sequence_length, batch_size, h
               }
 
               if (past_dims[3].has_dim_value() && input_dims[1].has_dim_value()) {
-                if (input_dimension_swapped != 0) {
-                  fail_shape_inference("Past shall be work with input_dimension_swapped=0. aka when input shape equals to (B,S,NH)");
+                if (ctx.getAttribute("input_dimension_swapped")->i() != 0) {
+                  fail_shape_inference("Past shall be work with input_dimension_swapped=0. aka when input shape equals to (B,S,NH)", ctx.getAttribute("input_dimension_swapped")->i());
                 }
                 auto all_sequence_length = past_shape.dim(3).dim_value() + input_shape.dim(1).dim_value();
 
