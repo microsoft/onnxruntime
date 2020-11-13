@@ -15,7 +15,7 @@ class SGDOptimizerBuilder final : public OptimizerBuilder {
   virtual Status Build(
       const OptimizerBuilderConfig& config,
       GraphAugmenter::GraphDefs& graph_defs,
-      std::vector<ONNX_NAMESPACE::TensorProto>& new_external_initializers,
+      std::unordered_map<std::string, std::vector<ONNX_NAMESPACE::TensorProto>>& weight_to_opt_mapping,
       std::vector<ArgDef>& output_weight_argdefs,
       std::vector<ArgDef>& output_gradient_argdefs) const override;
 };

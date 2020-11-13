@@ -139,7 +139,7 @@ Status AllreduceOptimizerGraphBuilder::BuildInternal(
     GraphAugmenter::GraphDefs& graph_defs,
     std::vector<ArgDef>& weight_argdefs,
     std::vector<ArgDef>& gradient_argdefs,
-    std::unordered_set<std::string>& optimizer_state_initializer_names,
+    std::unordered_map<std::string, std::vector<std::string>>& weight_to_opt_mapping,
     OptimizerOutputKeyMap<std::string>& optimizer_graph_outputs) {
   auto nodearg_name_generator = [&graph](const std::string& base_name) {
     return graph.GenerateNodeArgName(base_name);
@@ -185,7 +185,7 @@ Status AllreduceOptimizerGraphBuilder::BuildInternal(
       &global_grad_norm_argdef,
       &global_grad_norm_finite_argdef,
       opt_configs_, graph_defs,
-      optimizer_state_initializer_names));
+      weight_to_opt_mapping));
 
   return Status::OK();
 }

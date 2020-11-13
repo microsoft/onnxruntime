@@ -302,12 +302,22 @@ class TrainingSession : public InferenceSession {
    */
   common::Status SetStateTensors(const NameMLValMap& state_tensors, bool strict = false);
 
+  //common::Status SetStateTensors(const NameMLValMap& model_tensors, const NameMLValMap& optimizer_tensors, bool strict = false);
+
   /**
    * Gets the state tensors.
    * @param[out] The state tensors.
    * @return The status of the operation.
    */
   common::Status GetStateTensors(NameMLValMap& state_tensors);
+
+  common::Status PrintWeights();
+
+  common::Status GetOptimizerState(std::unordered_map<std::string, NameMLValMap>& opt_state_tensors);
+
+  common::Status GetModelState(std::unordered_map<std::string, NameMLValMap>& model_state_tensors, bool incl_mp_weights = false);
+
+  common::Status GetPartitionInfoMap(std::unordered_map<std::string, NameMLValMap>& part_info_map);
 
   /** Gets the DataTransferManager instance. */
   const DataTransferManager& GetDataTransferManager() const;
@@ -486,6 +496,7 @@ class TrainingSession : public InferenceSession {
   std::unordered_map<std::string, std::string> updated_weight_names_map_;
   std::unordered_set<std::string> opt_state_initializer_names_;
   std::unordered_set<std::string> mixed_precision_weight_initializer_names_;
+  std::unordered_map<std::string, std::vector<std::string>> weight_to_opt_mapping_;
 
   bool is_mixed_precision_enabled_;
   optional<std::string> external_loss_name_;

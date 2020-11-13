@@ -203,6 +203,7 @@ file(GLOB onnxruntime_test_training_src
   "${ORTTRAINING_SOURCE_DIR}/test/optimizer/*.cc"
   "${ORTTRAINING_SOURCE_DIR}/test/framework/*.cc"
   "${ORTTRAINING_SOURCE_DIR}/test/distributed/*.cc"
+  "${ORTTRAINING_SOURCE_DIR}/test/session/*.cc"
   )
 
 if(WIN32)

@@ -12,7 +12,7 @@ namespace training {
 Status AdamOptimizerBuilder::Build(
     const OptimizerBuilderConfig& config,
     GraphAugmenter::GraphDefs& graph_defs,
-    std::vector<TensorProto>& new_external_initializers,
+    std::unordered_map<std::string, std::vector<ONNX_NAMESPACE::TensorProto>>& weight_to_opt_mapping,
     std::vector<ArgDef>& output_weight_argdefs,
     std::vector<ArgDef>& output_gradient_argdefs) const {
   const auto& weight_argdefs = config.weight_argdefs;
@@ -27,6 +27,7 @@ Status AdamOptimizerBuilder::Build(
     const std::string& gradient_name = gradient_argdefs[i].name;
     const TypeProto* const weight_type_proto = weight_argdefs[i].type_proto;
     const TypeProto* const gradient_type_proto = gradient_argdefs[i].type_proto;
+    std::vector<ONNX_NAMESPACE::TensorProto> curr_optimizers_set;
 
     // Return either the input gradient/weight/mixed-precision-weight or updated gradient/weight/mixed-precision-weight.
     ArgDef output_gradient_argdef = gradient_argdefs[i];
@@ -52,7 +53,7 @@ Status AdamOptimizerBuilder::Build(
       }
 
       // Add uc tensorproto as initializers
-      new_external_initializers.emplace_back(uc_tensor_proto);
+      curr_optimizers_set.emplace_back(uc_tensor_proto);
 
       std::vector<ArgDef> input_args;
       input_args.push_back(ArgDef(opt_configs[i].lr_feed_name, CreateLearningRateTypeProto(graph_defs)));
@@ -104,7 +105,7 @@ Status AdamOptimizerBuilder::Build(
 
         moment_type_proto->mutable_tensor_type()->set_elem_type(element_type);
 
-        new_external_initializers.emplace_back(moment_tensor_proto);
+        curr_optimizers_set.emplace_back(moment_tensor_proto);
 
         input_args.push_back(ArgDef(gradient_moment_name, moment_type_proto));
         output_args.push_back(ArgDef(gradient_moment_name + "_Out", moment_type_proto));
@@ -156,6 +157,7 @@ Status AdamOptimizerBuilder::Build(
                                       BuildAttributeProto(opt_configs[i]),
                                       OptimizerNodeName(weight_name))});
     }
+    weight_to_opt_mapping[weight_name] = curr_optimizers_set;
 
     output_weight_argdefs.push_back(output_weight_argdef);
     output_gradient_argdefs.push_back(output_gradient_argdef);

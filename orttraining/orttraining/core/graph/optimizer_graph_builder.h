@@ -57,14 +57,13 @@ class OptimizerGraphBuilder {
   /**
    * Builds the optimizer components on top of the graph.
    * @param graph The graph to build upon.
-   * @param[out] optimizer_state_initializer_names The names of the
-   *             initializers representing the optimizer state.
+   * @param[out] weight_to_opt_mapping weight -> optimizer state mapping.
    * @param[out] optimizer_graph_outputs The outputs introduced in optimizer graph
    * @return The status of the graph modification.
    */
   Status Build(
       Graph& graph,
-      std::unordered_set<std::string>& optimizer_state_initializer_names,
+      std::unordered_map<std::string, std::vector<std::string>>& weight_to_opt_mapping,
       OptimizerOutputKeyMap<std::string>& optimizer_graph_outputs);
 
  protected:
@@ -75,7 +74,7 @@ class OptimizerGraphBuilder {
       GraphAugmenter::GraphDefs& graph_defs,
       std::vector<ArgDef>& weight_argdefs,
       std::vector<ArgDef>& gradient_argdefs,
-      std::unordered_set<std::string>& optimizer_state_initializer_names,
+      std::unordered_map<std::string, std::vector<std::string>>& weight_to_opt_mapping,
       OptimizerOutputKeyMap<std::string>& optimizer_graph_outputs);
 
   Status AddGradientPassThroughNode(
@@ -121,7 +120,7 @@ class OptimizerGraphBuilder {
       const ArgDef* global_gradient_norm_finite_argdef,
       const std::vector<OptimizerNodeConfig>& opt_configs,
       GraphAugmenter::GraphDefs& graph_defs,
-      std::unordered_set<std::string>& optimizer_state_initializer_names);
+      std::unordered_map<std::string, std::vector<std::string>>& weight_to_opt_mapping);
 
   // This function can be overriden by child classes to have different logic
   // for building optimizers.
@@ -133,7 +132,7 @@ class OptimizerGraphBuilder {
       const ArgDef* global_gradient_norm_finite_argdef,
       const std::vector<OptimizerNodeConfig>& opt_configs,
       GraphAugmenter::GraphDefs& graph_defs,
-      std::vector<TensorProto>& new_initializers,
+      std::unordered_map<std::string, std::vector<TensorProto>>& weight_to_opt_mapping,
       std::vector<ArgDef>& output_weight_argdefs,
       std::vector<ArgDef>& output_gradient_argdefs);
 
