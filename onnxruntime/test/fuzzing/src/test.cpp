@@ -115,8 +115,7 @@ enum class timeScale : char {
   Sec = 's'
 };
 
-struct runtimeOpt
-{
+struct runtimeOpt {
   std::wstring model_file_name{};
   std::wstring mutate_model_dir_name{};
   Logger::ccstream err_stream_buf{};
@@ -343,12 +342,18 @@ int main(int argc, char* argv[]) {
         throw std::exception("Unable to initialize the Onnx model in memory");
       }
     } else {
-      std::wstring ort_model_file = model_file + L".ort";
-      Ort::SessionOptions so;
-      so.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
-      so.SetOptimizedModelFilePath(ort_model_file.c_str());
-      so.AddConfigEntry(kOrtSessionOptionsConfigSaveModelFormat, "ORT");
-      Ort::Session session(env, model_file.c_str(), so);
+      std::wstring ort_model_file = model_file;
+      if (model_file.substr(model_file.find_last_of(L".") + 1) == L"onnx") {
+        ort_model_file = model_file + L".ort";
+        Ort::SessionOptions so;
+        so.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
+        so.SetOptimizedModelFilePath(ort_model_file.c_str());
+        so.AddConfigEntry(kOrtSessionOptionsConfigSaveModelFormat, "ORT");
+        Ort::Session session(env, model_file.c_str(), so);
+      } else if (model_file.substr(model_file.find_last_of(L".") + 1) != L"ort") {
+        Logger::testLog << L"Input file name extension is not 'onnx' or 'ort' " << Logger::endl;
+        return 1;
+      }
       size_t num_bytes = std::filesystem::file_size(ort_model_file);
       std::vector<char> model_data(num_bytes);
       std::ifstream ortModelStream(ort_model_file, std::ifstream::in | std::ifstream::binary);
@@ -358,17 +363,16 @@ int main(int argc, char* argv[]) {
       // Other possible ways may be considered in future, for example swaping two bytes randomly at a time.
       for (size_t i = 1; i < num_bytes; i++) {
         char tmp = model_data[i];
-        model_data[i] ^= model_data[i-1];
+        model_data[i] ^= model_data[i - 1];
         try {
           Logger::testLog << "Starting Test" << Logger::endl;
           OnnxPrediction predict(model_data, env);
           predict.SetupInput(GenerateDataForInputTypeTensor, 0);
           predict.RunInference();
-          predict.PrintOutputValues();
-          num_successful_runs++;
+          run_stats.num_successful_runs++;
           Logger::testLog << "Completed Test iteration: " << i << Logger::endl;
         } catch (...) {
-          fuzz_handle_exception();
+          fuzz_handle_exception(run_stats);
         }
         model_data[i] = tmp;
       }
