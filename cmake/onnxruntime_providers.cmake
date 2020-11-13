@@ -636,20 +636,20 @@ endif()
 if (onnxruntime_USE_NNAPI_BUILTIN)
   add_definitions(-DUSE_NNAPI=1)
 
-  # This is the minimal Android API Level required by ORT NNAPI EP to run
+  # This is the minimum Android API Level required by ORT NNAPI EP to run
   # ORT running on any host system with Android API level less than this will fall back to CPU EP
   if(onnxruntime_NNAPI_MIN_API)
     add_compile_definitions(ORT_NNAPI_MIN_API_LEVEL=${onnxruntime_NNAPI_MIN_API})
   endif()
 
-  # This is the API level of the host Android system
+  # This is the maximum Android API level supported in the ort model conversion for NNAPI EP
   # Note: This is only for running NNAPI for ort format model conversion on non-Android system since we cannot
   #       get the actually Android system version.
   if(onnxruntime_NNAPI_HOST_API)
     if(CMAKE_SYSTEM_NAME STREQUAL "Android")
       message(FATAL_ERROR "onnxruntime_NNAPI_HOST_API should only be set for non-Android target")
     endif()
-    add_compile_definitions(ORT_NNAPI_HOST_API_LEVEL=${onnxruntime_NNAPI_HOST_API})
+    add_compile_definitions(ORT_NNAPI_MAX_SUPPORTED_API_LEVEL=${onnxruntime_NNAPI_HOST_API})
   endif()
 
   file(GLOB
