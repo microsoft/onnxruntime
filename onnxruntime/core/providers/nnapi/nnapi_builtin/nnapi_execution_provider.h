@@ -23,8 +23,10 @@ class NnapiExecutionProvider : public IExecutionProvider {
   // we implement the Compile that takes FusedNodeAndGraph instances
   FusionStyle GetFusionStyle() const override { return FusionStyle::FilteredGraphViewer; }
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
+#endif
 
   unsigned long GetNNAPIFlags() const { return nnapi_flags_; }
 

@@ -133,7 +133,7 @@ static TypeProto TypeProtoFromTensorProto(const TensorProto& tensor) {
 
   return t;
 }
-#endif
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 NodeArg::NodeArg(const std::string& name, const TypeProto* p_node_arg_type) {
@@ -663,7 +663,7 @@ Status Node::LoadEdgesFromOrtFormat(const onnxruntime::experimental::fbs::NodeEd
 
   return Status::OK();
 }
-#endif
+#endif  // defined(ENABLE_ORT_FORMAT_LOAD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 void Node::Init(const std::string& name,
@@ -2903,7 +2903,7 @@ std::string Graph::GenerateNodeName(const std::string& base_name) {
 
   return new_name;
 }
-#endif
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 Node& Graph::AddNode(const std::string& name,

@@ -177,6 +177,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   return result;
 }
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 static Status GetOutputBuffer(Ort::CustomOpApi& ort,
                               OrtKernelContext* context,
                               const nnapi::Model& model,
@@ -407,4 +408,6 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
   }
   return Status::OK();
 }
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
 }  // namespace onnxruntime

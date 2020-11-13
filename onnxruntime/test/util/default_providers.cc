@@ -145,15 +145,5 @@ std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider() {
 #endif
 }
 
-std::unique_ptr<IExecutionProvider> DefaultInternalTestingExecutionProvider(
-    const std::unordered_set<std::string>& supported_ops) {
-#ifdef USE_INTERNAL_TESTING_EP
-  return CreateExecutionProviderFactory_InternalTesting(supported_ops)->CreateProvider();
-#else
-  ORT_UNUSED_PARAMETER(supported_ops);
-  return nullptr;
-#endif
-}
-
 }  // namespace test
 }  // namespace onnxruntime

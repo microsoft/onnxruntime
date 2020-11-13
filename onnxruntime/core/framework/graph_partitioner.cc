@@ -44,23 +44,21 @@ using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
 // minimal KernelDef based on MetaDef instead of a Function based node
-static KernelDefBuilder& BuildFusedKernelDef(KernelDefBuilder& builder, const IndexedSubGraph::MetaDef& metadef,
-                                             const std::string& provider_type) {
+static void BuildFusedKernelDef(KernelDefBuilder& builder, const IndexedSubGraph::MetaDef& metadef,
+                                const std::string& provider_type) {
   builder.SetName(metadef.name)
       .SetDomain(metadef.domain)
       .SinceVersion(metadef.since_version)
       .Provider(provider_type);
-  return builder;
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
-static KernelDefBuilder& BuildFusedKernelDef(KernelDefBuilder& builder, const onnxruntime::Node& node) {
+static void BuildFusedKernelDef(KernelDefBuilder& builder, const onnxruntime::Node& node) {
   auto schema = node.Op();
   builder.SetName(schema->Name())
       .SetDomain(schema->domain())
       .SinceVersion(schema->SinceVersion())
       .Provider(node.GetExecutionProviderType());
-  return builder;
 }
 
 /**

@@ -1,19 +1,16 @@
 #include "core/common/logging/logging.h"
-#include "core/providers/internal_testing/internal_testing_execution_provider.h"
 #include "core/session/inference_session.h"
-// #include "test/providers/provider_test_utils.h"
 #include "test/framework/test_utils.h"
 #include "test/test_environment.h"
+#include "test/providers/internal_testing/internal_testing_execution_provider.h"
 #include "test/util/include/asserts.h"
-#include "test/util/include/default_providers.h"
 #include "test/util/include/inference_session_wrapper.h"
 
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 
-using namespace std;
 using namespace ONNX_NAMESPACE;
-using namespace ::onnxruntime::logging;
+using namespace onnxruntime::logging;
 
 namespace onnxruntime {
 
@@ -34,7 +31,8 @@ static void CreateSession(const SessionOptions& so, std::unique_ptr<InferenceSes
                                                                                 : &default_supported_ops;
 
   if (enable_custom_ep) {
-    ASSERT_STATUS_OK(session->RegisterExecutionProvider(DefaultInternalTestingExecutionProvider(*supported_ops)));
+    ASSERT_STATUS_OK(session->RegisterExecutionProvider(
+        onnxruntime::make_unique<InternalTestingExecutionProvider>(*supported_ops)));
   }
 
   ASSERT_STATUS_OK(session->Load(model_path));
@@ -61,7 +59,7 @@ static void ExecuteModel(InferenceSessionWrapper& session, bool custom_ep_enable
   ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
 
   if (custom_ep_enabled) {
-    // check that the output is all zeros. the dummy EP produces output of the correct shape will all zeros, so any
+    // check that the output is all zeros. the dummy EP produces output of the correct shape with all zeros, so any
     // downstream operations should still result in zeros for this model
     // OR it should equal the bias in the final Add operation, which is in the Parameter194 initializer
     const auto& t = fetches[0].Get<Tensor>();
@@ -154,7 +152,8 @@ TEST(InternalTestingEP, TestLoadOrtModelWithReducedOpCoverage) {
   NodeComputeInfo* compute_func = nullptr;
 
   for (const auto& node : graph.Nodes()) {
-    EXPECT_EQ(supported_ops.count(node.OpType()), 0) << "Supported op types should have been fused into custom op";
+    EXPECT_EQ(supported_ops.count(node.OpType()), size_t(0))
+        << "Nodes with supported op types should have been replaced. Node with type " << node.OpType() << " was not.";
     if (node.GetExecutionProviderType() == kInternalTestingExecutionProvider) {
       EXPECT_STATUS_OK(func_mgr.GetFuncs(node.Name(), compute_func));
       EXPECT_NE(compute_func, nullptr);

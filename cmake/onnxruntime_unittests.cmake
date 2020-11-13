@@ -312,7 +312,7 @@ if (onnxruntime_USE_RKNPU)
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_rknpu_src})
 endif()
 
-if (onnxruntime_USE_INTERNAL_TESTING_EP)
+if (NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_EXTENDED_MINIMAL_BUILD)
   file(GLOB_RECURSE onnxruntime_test_providers_internal_testing_src CONFIGURE_DEPENDS
     "${TEST_SRC_DIR}/providers/internal_testing/*"
     )
@@ -413,10 +413,6 @@ if(onnxruntime_USE_RKNPU)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_rknpu)
 endif()
 
-if(onnxruntime_USE_INTERNAL_TESTING_EP)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_internal_testing)
-endif()
-
 if(onnxruntime_USE_FEATURIZERS)
    list(APPEND onnxruntime_test_providers_dependencies onnxruntime_featurizers)
    list(APPEND onnxruntime_test_providers_libs onnxruntime_featurizers re2)
@@ -514,13 +510,6 @@ if(onnxruntime_USE_RKNPU)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_rknpu)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_rknpu)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_rknpu)
-endif()
-
-if (onnxruntime_USE_INTERNAL_TESTING_EP)
-  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/internal_testing/*)
-  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_internal_testing)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_internal_testing)
-  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_internal_testing)
 endif()
 
 if(WIN32)
