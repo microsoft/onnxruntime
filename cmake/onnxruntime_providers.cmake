@@ -636,6 +636,8 @@ endif()
 if (onnxruntime_USE_NNAPI_BUILTIN)
   if(CMAKE_SYSTEM_NAME STREQUAL "Android")
     add_definitions(-DUSE_NNAPI=1)
+  else()
+    add_definitions(-DUSE_NNAPI_FOR_CONVERTER_ONLY=1)
   endif()
 
   # This is the minimum Android API Level required by ORT NNAPI EP to run

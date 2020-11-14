@@ -38,7 +38,7 @@ IExecutionProvider* TestOpenVINOExecutionProvider() {
 }
 #endif
 
-#ifdef USE_NNAPI
+#if defined(USE_NNAPI) || defined(USE_NNAPI_FOR_CONVERTER_ONLY)
 IExecutionProvider* TestNnapiExecutionProvider() {
   static NnapiExecutionProvider nnapi_provider(0);
   return &nnapi_provider;

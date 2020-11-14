@@ -18,7 +18,7 @@
 #ifdef USE_OPENVINO
 #include "core/providers/openvino/openvino_execution_provider.h"
 #endif
-#ifdef USE_NNAPI
+#if defined(USE_NNAPI) || defined(USE_NNAPI_FOR_CONVERTER_ONLY)
 #include "core/providers/nnapi/nnapi_builtin/nnapi_execution_provider.h"
 #endif
 #ifdef USE_RKNPU
@@ -46,7 +46,7 @@ IExecutionProvider* TestTensorrtExecutionProvider();
 IExecutionProvider* TestOpenVINOExecutionProvider();
 #endif
 
-#ifdef USE_NNAPI
+#if defined(USE_NNAPI) || defined(USE_NNAPI_FOR_CONVERTER_ONLY)
 IExecutionProvider* TestNnapiExecutionProvider();
 #endif
 
