@@ -170,24 +170,33 @@ def convert_loop_to_scan(node, out_main_graph):
             subgraph_input_names = [*subgraph_input_names, n.output[0]]
             gather_input_nodes = [*gather_input_nodes, n]
     
-    scan_output_names = [o for o in node.output]
+    if len(gather_input_nodes) == 0:
+        raise RuntimeError("To convert a Loop op to a Scan. the loop's trip count (i) must be used to index input data. Node name: " + node.name)
 
-    # 2. remove cond (first input and output) and all linked to it. Check cond input is a constant
     scan_subgraph = copy.deepcopy(node.attribute[0].g)
-
-    # remove case node that follow i. also remove value_info of the case node's output
-    for n in scan_subgraph.node:
-        if n.input[0] == scan_subgraph.input[0].name:
-            scan_subgraph.node.remove(n)
-            for value_info in scan_subgraph.value_info:
-                if value_info.name == n.output[0]:
-                    scan_subgraph.value_info.remove(value_info)
 
     # remove i
     scan_subgraph.input.remove(scan_subgraph.input[0])
 
     # remove keepgoing_in
     scan_subgraph.input.remove(scan_subgraph.input[0])
+
+    # remove cast node linked to keepgoing_out
+    cast_node_to_remove = []
+    for n in scan_subgraph.node:
+        if n.op_type == "Cast" and n.output[0] == scan_subgraph.output[0].name:
+            cast_node_to_remove = [*cast_node_to_remove, n]
+    
+    for n in cast_node_to_remove:
+        scan_subgraph.node.remove(n)
+        for value_info in scan_subgraph.value_info:
+            if value_info.name == n.input[0]:
+                scan_subgraph.value_info.remove(value_info)
+                break
+        for value_info in scan_subgraph.value_info:
+            if value_info.name == n.output[0]:
+                scan_subgraph.value_info.remove(value_info)
+                break
 
     # remove keepgoing_out
     scan_subgraph.output.remove(scan_subgraph.output[0])
@@ -206,10 +215,7 @@ def convert_loop_to_scan(node, out_main_graph):
                 value_info2.CopyFrom(value_info)
                 break
 
-    # TODO: remove nodes linked to cond
-    # TODO: remove unused value_infos
-
-    # if subgraph any output duplicate, extent with an identity op to differenciate
+    # if any output duplicate in subgraph, extent with an identity op to differenciate
     for output_index in range(len(scan_subgraph.output)):
         count = 0
         for output_index2 in range(output_index + 1, len(scan_subgraph.output)):
@@ -227,6 +233,7 @@ def convert_loop_to_scan(node, out_main_graph):
 
     nf = NodeFactory(out_main_graph)
     new_input_names = [*initial_state_names, *scan_input_names]
+    scan_output_names = [o for o in node.output]
     scan = nf.make_node(
         'Scan',
         new_input_names,
@@ -700,7 +707,7 @@ def validate_with_ort(input_model, output_model):
     def run_with_ort(model_path, inputs):
         model = onnx.load(model_path)
         
-        extract_loop_outputs_as_model_outputs(model)
+        # extract_loop_outputs_as_model_outputs(model)
         session = ort.InferenceSession(model.SerializeToString())
 
         input_names = [input.name for input in model.graph.input]
@@ -724,9 +731,12 @@ def validate_with_ort(input_model, output_model):
     input = generate_random_data((seq_len, batch_size, feature_size))
     hi0 = generate_random_data((12, 1, 600))
     ci0 = generate_random_data((12, 1, 600))
-    output_0 = run_with_ort(input_model, [input, hi0, ci0])
+    outputs_with_loop = run_with_ort(input_model, [input, hi0, ci0])
 
-    output_1 = run_with_ort(output_model, [input, hi0, ci0])
+    outputs_with_scan = run_with_ort(output_model, [input, hi0, ci0])
+
+    for output_with_loop, output_with_scan in zip(outputs_with_loop, outputs_with_scan):
+        print("loop and scan run diff: ", np.max(output_with_loop - output_with_scan))
 
     print("")
 
@@ -759,16 +769,63 @@ def convert_loop_to_scan_model(input_model, output_model):
     ensure_opset(out_mp, 9) # bump up to ONNX opset 9, which is required for Scan
     out_mp.graph.ClearField('node')
     cast_node_to_remove = []
+    loop_cond_initializer_to_remove = []
+    loop_cond_const_node_to_remove = []
     for in_n in in_mp.graph.node:
         if in_n.op_type == 'Loop':
-            # save_subgraph(in_n, copy.deepcopy(out_mp), 'c:/temp')
             scan_op = convert_loop_to_scan(in_n, out_mp.graph)
 
             # for debugging to make scan output as model graph output
-            set_op_output_as_model_output(scan_op, out_mp.graph)
+            # set_op_output_as_model_output(scan_op, out_mp.graph)
+
+            cast_node = None
+            cond_initializer = None
+            cond_const_node = None
+            for n in in_mp.graph.node:
+                if n.op_type == "Cast" and n.output[0] == in_n.input[1]:
+                    cond_initializers = [initializer for initializer in in_mp.graph.initializer if initializer.name == n.input[0]]
+                    cond_const_nodes = [n_c for n_c in in_mp.graph.node if n_c.op_type == "Constant" and n_c.output[0] == n.input[0]]
+                    if len(cond_initializers) == 1:
+                        # TODO: assert the the initializer raw data is not 0 (False)
+                        cast_node = n
+                        cond_initializer = cond_initializers[0]
+                        break
+                    elif len(cond_const_nodes) == 1:
+                        cast_node = n
+                        cond_const_node = cond_const_nodes[0]
+                        break
+                    else:
+                        print("")
+                    
+            if cast_node:
+                cast_node_to_remove = [*cast_node_to_remove, cast_node]
+                if cond_initializer:
+                    loop_cond_initializer_to_remove = [*loop_cond_initializer_to_remove, cond_initializer]
+                elif cond_const_node:
+                    loop_cond_const_node_to_remove = [*loop_cond_const_node_to_remove, cond_const_node]
+            else:
+                raise RuntimeError("Cannot convert a Loop op to Scan: loop cond should be fixed True. Op name = " + cast_n.name)
+
             continue
         out_n = out_mp.graph.node.add()
         out_n.CopyFrom(in_n)
+    
+    for cast_n in cast_node_to_remove:
+        out_mp.graph.node.remove(cast_n)
+        for value_info in out_mp.graph.value_info:
+            if value_info.name == n.input[0]:
+                out_mp.graph.value_info.remove(value_info)
+                break
+        for value_info in out_mp.graph.value_info:
+            if value_info.name == n.output[0]:
+                out_mp.graph.value_info.remove(value_info)
+                break
+
+    for loop_cond_initializer in loop_cond_initializer_to_remove:
+        out_mp.graph.initializer.remove(loop_cond_initializer)
+
+    for cond_const_node in loop_cond_const_node_to_remove:
+        out_mp.graph.node.remove(cond_const_node)
 
     onnx.save(out_mp, output_model)
 
