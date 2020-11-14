@@ -615,7 +615,7 @@ struct TensorBase : TBase {
     // Ensure that CreateReference is only called when there is 1 buffer.
     WINML_THROW_HR_IF_TRUE_MSG(
         E_ILLEGAL_METHOD_CALL,
-        GetCpuResource()->num_buffers() != 1, "A single buffer reference cannot be retrieved when the tensor is backed by multiple buffers!");
+        GetCpuResource() != nullptr && GetCpuResource()->num_buffers() != 1, "A single buffer reference cannot be retrieved when the tensor is backed by multiple buffers!");
 
     // Create a TensorMemoryBufferReference<T>
 
