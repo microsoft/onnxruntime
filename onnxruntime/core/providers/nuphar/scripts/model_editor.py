@@ -6,8 +6,12 @@ import argparse
 from enum import Enum
 import numpy as np
 import onnx
-from .node_factory import NodeFactory, ensure_opset
-from ..tools.symbolic_shape_infer import SymbolicShapeInference, get_shape_from_type_proto
+
+import sys
+sys.path.append("C:/LiqunWA/onnxruntime/onnxruntime/core/providers/nuphar/scripts")
+sys.path.append("C:/LiqunWA/onnxruntime/onnxruntime/python/tools")
+from node_factory import NodeFactory, ensure_opset
+from symbolic_shape_infer import SymbolicShapeInference, get_shape_from_type_proto
 
 # trim outputs of LSTM/GRU/RNN if not used or outputed
 def trim_unused_outputs(node, graph):
@@ -142,6 +146,96 @@ def handle_final_scan_outputs(node, nf, scan_outputs, state_outputs, num_directi
             nf.make_node('Unsqueeze', scan_outputs[0], {'axes':[1]}, output_names=node.output[0])
         for i_o in range(1, len(node.output)):
             nf.make_node('Unsqueeze', state_outputs[i_o - 1], {'axes':[0]}, output_names=node.output[i_o])
+
+import os
+from onnx import helper
+def save_subgraph(node, out_mp, out_path):
+    out_mp.graph.CopyFrom(node.attribute[0].g)
+    onnx.save(out_mp, os.path.join(out_path, node.name + '_subgraph.onnx'))
+
+def convert_loop_to_scan(node, out_main_graph):
+
+    initial_state_names = node.input[2:]   # exclude M and cond
+
+    loop_subgraph_input_i = node.attribute[0].g.input[0]
+    subgraph_input_names = []
+    scan_input_names = []
+
+    # 1. find Gather with i as input, Gather.input[0] to be Scan op's scaninputs
+    #   Gather ops are to be removed from the subgraph
+    gather_input_nodes = []
+    for n in node.attribute[0].g.node:
+        if n.op_type == 'Gather' and n.input[1] == loop_subgraph_input_i.name:
+            scan_input_names = [*scan_input_names, n.input[0]]
+            subgraph_input_names = [*subgraph_input_names, n.output[0]]
+            gather_input_nodes = [*gather_input_nodes, n]
+    
+    scan_output_names = [o for o in node.output]
+
+    # 2. remove cond (first input and output) and all linked to it. Check cond input is a constant
+    scan_subgraph = copy.deepcopy(node.attribute[0].g)
+
+    # remove case node that follow i. also remove value_info of the case node's output
+    for n in scan_subgraph.node:
+        if n.input[0] == scan_subgraph.input[0].name:
+            scan_subgraph.node.remove(n)
+            for value_info in scan_subgraph.value_info:
+                if value_info.name == n.output[0]:
+                    scan_subgraph.value_info.remove(value_info)
+
+    # remove i
+    scan_subgraph.input.remove(scan_subgraph.input[0])
+
+    # remove keepgoing_in
+    scan_subgraph.input.remove(scan_subgraph.input[0])
+
+    # remove keepgoing_out
+    scan_subgraph.output.remove(scan_subgraph.output[0])
+
+    # remove gather input nodes
+    for g_i in gather_input_nodes:
+        scan_subgraph.node.remove(g_i)
+
+    # scan subgraph inputs are outputs from gather input nodes
+    # TODO: will input order get messed up
+    for input_name in subgraph_input_names:
+        for value_info in scan_subgraph.value_info:
+            if value_info.name == input_name:
+                scan_subgraph.value_info.remove(value_info)
+                value_info2 = scan_subgraph.input.add()
+                value_info2.CopyFrom(value_info)
+                break
+
+    # TODO: remove nodes linked to cond
+    # TODO: remove unused value_infos
+
+    # if subgraph any output duplicate, extent with an identity op to differenciate
+    for output_index in range(len(scan_subgraph.output)):
+        count = 0
+        for output_index2 in range(output_index + 1, len(scan_subgraph.output)):
+            if scan_subgraph.output[output_index].name == scan_subgraph.output[output_index2].name:
+                new_output_name = scan_subgraph.output[output_index].name + '_extend_' + str(count)
+                count = count + 1
+                identity_node = helper.make_node(
+                    'Identity',
+                    [scan_subgraph.output[output_index].name],
+                    [new_output_name], 
+                    scan_subgraph.output[output_index].name + '_identity')
+                new_identity_node = scan_subgraph.node.add()                
+                new_identity_node.CopyFrom(identity_node)
+                scan_subgraph.output[output_index2].name = new_output_name
+
+    nf = NodeFactory(out_main_graph)
+    new_input_names = [*initial_state_names, *scan_input_names]
+    scan = nf.make_node(
+        'Scan',
+        new_input_names,
+        {
+            'body': scan_subgraph,
+            'num_scan_inputs': len(scan_input_names)},
+            output_names=scan_output_names)
+
+    return scan 
 
 def convert_lstm_to_scan(node, out_main_graph):
     assert node.op_type == 'LSTM'
@@ -566,6 +660,118 @@ def convert_rnn_to_scan(node, out_main_graph):
         nf.remove_initializer(node.input[5])
     return True
 
+
+import onnxruntime as ort
+
+def SaveTensorProto(file_path, tp_name, data, data_type = np.float32):
+    tp = onnx.TensorProto()
+    tp.name = tp_name
+    
+    shape = np.shape(data)
+    for i in range(0, len(shape)):
+        tp.dims.append(shape[i])
+
+    if data_type == np.float32:
+        tp.data_type = onnx.TensorProto.FLOAT
+        tp.raw_data = data.tobytes()
+    elif data_type == np.int64:
+        tp.data_type = onnx.TensorProto.INT64
+        data=data.astype(np.int64)
+        tp.raw_data = data.tobytes()
+    elif data_type == np.int:
+        tp.data_type = onnx.TensorProto.INT32
+        data=data.astype(np.int)
+        tp.raw_data = data.tobytes()
+
+    with open(file_path, 'wb') as f:
+        f.write(tp.SerializeToString())
+
+def extract_loop_outputs_as_model_outputs(model):
+    for node in model.graph.node:
+        if node.op_type == 'Loop':
+            # for debugging to make scan output as model graph output
+            set_op_output_as_model_output(node, model.graph)
+
+def validate_with_ort(input_model, output_model):
+    def generate_random_data(tensor_shape, data_type = np.float32):
+        np.random.seed(0)
+        return np.random.rand(*tensor_shape).astype(data_type)
+
+    def run_with_ort(model_path, inputs):
+        model = onnx.load(model_path)
+        
+        extract_loop_outputs_as_model_outputs(model)
+        session = ort.InferenceSession(model.SerializeToString())
+
+        input_names = [input.name for input in model.graph.input]
+        input_dict = dict(zip(input_names, inputs))
+        outputs = session.run(None, input_dict) # {'input': input, 'hi0': hi0, 'ci0': ci0}
+
+        # test_data_dir = 'C:/LiqunWA/onnx/ort/training/speech-model-with-loops/test_models/test_data/tmp3_loop_to_scan'
+        # for i, (input_name, input) in enumerate(input_dict.items()):
+        #     SaveTensorProto(os.path.join(test_data_dir, 'input_{0}.pb'.format(i)),
+        #                     input_name, input)
+
+        # output_names = [output.name for output in model.graph.output]
+        # output_dict = dict(zip(output_names, outputs))
+        # for i, (output_name, output) in enumerate(output_dict.items()):
+        #     SaveTensorProto(os.path.join(test_data_dir, 'output_{0}.pb'.format(i)), output_name, output)
+
+        return outputs
+
+    batch_size, seq_len, feature_size = 1, 21, 160
+
+    input = generate_random_data((seq_len, batch_size, feature_size))
+    hi0 = generate_random_data((12, 1, 600))
+    ci0 = generate_random_data((12, 1, 600))
+    output_0 = run_with_ort(input_model, [input, hi0, ci0])
+
+    output_1 = run_with_ort(output_model, [input, hi0, ci0])
+
+    print("")
+
+import copy
+def save_scan_sub_graph(input_model, output_folder):
+    in_mp = onnx.load(input_model)
+    out_mp = onnx.ModelProto()
+    out_mp.CopyFrom(in_mp)
+    out_mp.ir_version = 5 # update ir version to avoid requirement of initializer in graph input
+    ensure_opset(out_mp, 9) # bump up to ONNX opset 9, which is required for Scan
+    out_mp.graph.ClearField('node')
+    for in_n in in_mp.graph.node:
+        if in_n.op_type == 'Scan':
+            save_subgraph(in_n, copy.deepcopy(out_mp), output_folder)
+
+def set_op_output_as_model_output(node, graph):
+    for output in node.output:
+        for value_info in graph.value_info:
+            if value_info.name == output:
+                graph.value_info.remove(value_info)
+                output_value_info = graph.output.add()
+                output_value_info.CopyFrom(value_info)
+                break;                
+
+def convert_loop_to_scan_model(input_model, output_model):
+    in_mp = onnx.load(input_model)
+    out_mp = onnx.ModelProto()
+    out_mp.CopyFrom(in_mp)
+    out_mp.ir_version = 5 # update ir version to avoid requirement of initializer in graph input
+    ensure_opset(out_mp, 9) # bump up to ONNX opset 9, which is required for Scan
+    out_mp.graph.ClearField('node')
+    cast_node_to_remove = []
+    for in_n in in_mp.graph.node:
+        if in_n.op_type == 'Loop':
+            # save_subgraph(in_n, copy.deepcopy(out_mp), 'c:/temp')
+            scan_op = convert_loop_to_scan(in_n, out_mp.graph)
+
+            # for debugging to make scan output as model graph output
+            set_op_output_as_model_output(scan_op, out_mp.graph)
+            continue
+        out_n = out_mp.graph.node.add()
+        out_n.CopyFrom(in_n)
+
+    onnx.save(out_mp, output_model)
+
 def convert_to_scan_model(input_model, output_model):
     in_mp = onnx.load(input_model)
     out_mp = onnx.ModelProto()
@@ -807,7 +1013,9 @@ def parse_arguments():
                         choices=['to_scan',
                                  'opt_inproj',
                                  'gemm_to_matmul',
-                                 'remove_initializers_from_inputs'])
+                                 'remove_initializers_from_inputs',
+                                 'loop_to_scan',
+                                 'save_scan_sub_graph'])
     parser.add_argument('--input', help='The input model file', default=None)
     parser.add_argument('--output', help='The output model file', default=None)
     return parser.parse_args()
@@ -828,6 +1036,13 @@ if __name__ == '__main__':
     elif args.mode == 'remove_initializers_from_inputs':
         print('Remove all initializers from input for model with IR version >= 4...')
         remove_initializers_from_inputs(args.input, args.output)
+    elif args.mode == 'loop_to_scan':
+        print('Convert Loop to Scan')
+        convert_loop_to_scan_model(args.input, args.output)
+        validate_with_ort(args.input, args.output)
+    elif args.mode == 'save_scan_sub_graph':
+        print('save_scan_sub_graph')
+        save_scan_sub_graph(args.input, args.output)
     else:
         raise NotImplementedError('Unknown mode')
     print('Running symbolic shape inference on output model')
