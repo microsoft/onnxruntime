@@ -857,11 +857,10 @@ struct TensorBase : TBase {
     // Ensure that this call is being called with the correct template parameters
     ASSERT_TEMPLATE_PARAMETERS<std::string, winrt::hstring>();
 
-    // Dont know why this is throwing warnings for unreachable code...
-    //WINML_THROW_HR_IF_TRUE_MSG(
-    //    E_ILLEGAL_METHOD_CALL,
-    //    (std::is_same<T, std::string>::value),
-    //    "TensorString objects cannot be created from IBuffers!");
+    WINML_THROW_HR_IF_TRUE_MSG(
+        E_ILLEGAL_METHOD_CALL,
+        std::is_same<T, std::string>::value,
+        "TensorString objects cannot be created from IBuffers!");
   }
 
   ///
