@@ -975,8 +975,8 @@ if(onnxruntime_USE_OPENVINO)
 
   add_definitions(-DUSE_OPENVINO=1)
 
-  if (EXISTS "$ENV{INTEL_OPENVINO_DIR}/inference_engine/version.txt")
-    file(READ $ENV{INTEL_OPENVINO_DIR}/inference_engine/version.txt VER)
+  if (EXISTS "$ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/version.txt")
+    file(READ $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/version.txt VER)
   endif()
 
   if (NOT DEFINED ENV{INTEL_OPENVINO_DIR})
@@ -1034,6 +1034,11 @@ if(onnxruntime_USE_OPENVINO)
 
   if(onnxruntime_USE_OPENVINO_HETERO)
     add_definitions(-DOPENVINO_CONFIG_HETERO=1)
+    add_definitions(-DDEVICE_NAME="${onnxruntime_USE_OPENVINO_DEVICE}")
+  endif()
+
+  if(onnxruntime_USE_OPENVINO_MULTI)
+    add_definitions(-DOPENVINO_CONFIG_MULTI=1)
     add_definitions(-DDEVICE_NAME="${onnxruntime_USE_OPENVINO_DEVICE}")
   endif()
 
@@ -1216,6 +1221,7 @@ if (onnxruntime_ENABLE_TRAINING)
     include(FindPackageHandleStandardArgs)
     find_package_handle_standard_args(MPI DEFAULT_MSG MPI_INCLUDE_DIR MPI_LIBRARY)
 
+    set(onnxruntime_USE_MPI ON)
     if (MPI_FOUND)
       if(NOT DEFINED onnxruntime_MPI_HOME)
         execute_process(COMMAND mpirun --version OUTPUT_VARIABLE MPIRUN_OUTPUT)
@@ -1238,6 +1244,7 @@ if (onnxruntime_ENABLE_TRAINING)
       endif()
 
     else ()
+      set(onnxruntime_USE_MPI OFF)
       set(onnxruntime_USE_NCCL OFF)
       set(onnxruntime_USE_HOROVOD OFF)
       message( WARNING "MPI is not found. Please use --mpi_home to specify the path of MPI. Otherwise, NCCL or HOROVOD will be disabled." )
@@ -1306,6 +1313,10 @@ if (onnxruntime_ENABLE_TRAINING)
         message( WARNING "NCCL is not found. Please use --nccl_home to specify the path of NCCL. Otherwise, NCCL is disabled." )
       endif()
     endif()
+  endif()
+
+  if (onnxruntime_USE_MPI AND MPI_FOUND)
+    add_definitions(-DUSE_MPI=1)
   endif()
 
   if (onnxruntime_USE_HOROVOD AND MPI_FOUND)

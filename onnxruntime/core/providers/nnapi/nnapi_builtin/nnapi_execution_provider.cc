@@ -3,11 +3,12 @@
 
 #include "nnapi_execution_provider.h"
 
-#include "builders/model_builder.h"
+#include "model.h"
 #include "builders/helper.h"
+#include "builders/model_builder.h"
+#include "builders/op_support_checker.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/compute_capability.h"
-#include "core/graph/model.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
 namespace onnxruntime {
@@ -53,7 +54,11 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   }
 
   nnapi::ModelBuilder builder(graph_view);
-  const auto supported_nodes_vector = builder.GetSupportedNodes();
+  nnapi::OpSupportCheckParams params{
+      builder.GetAndroidSdkVer(),
+      !!(nnapi_flags_ & NNAPI_FLAG_USE_NCHW),
+  };
+  const auto supported_nodes_vector = GetSupportedNodes(graph_view, params);
 
   // Find inputs, initializers and outputs for each supported subgraph
   const std::vector<NodeIndex>& node_index = graph_view.GetNodesInTopologicalOrder();

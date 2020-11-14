@@ -127,13 +127,27 @@ Therefore, ONNX RT Execution Provider for **nGraph** will be deprecated starting
 
 2. DEVICE: Specifies the hardware target for building OpenVINO Execution Provider. Below are the options for different Intel target devices.
 
-	| Device Option | Target Device |
-	| --------- | -------- |
-	| <code>CPU_FP32</code> | Intel<sup></sup> CPUs |
-	| <code>GPU_FP32</code> |Intel<sup></sup> Integrated Graphics |
-	| <code>GPU_FP16</code> | Intel<sup></sup> Integrated Graphics |
-	| <code>MYRIAD_FP16</code> | Intel<sup></sup> Movidius<sup>TM</sup> USB sticks |
-	| <code>VAD-M_FP16</code> | Intel<sup></sup> Vision Accelerator Design based on Movidius<sup>TM</sup> MyriadX VPUs |
+  | Device Option | Target Device |
+  | --------- | -------- |
+  | <code>CPU_FP32</code> | Intel<sup></sup> CPUs |
+  | <code>GPU_FP32</code> |Intel<sup></sup> Integrated Graphics |
+  | <code>GPU_FP16</code> | Intel<sup></sup> Integrated Graphics |
+  | <code>MYRIAD_FP16</code> | Intel<sup></sup> Movidius<sup>TM</sup> USB sticks |
+  | <code>VAD-M_FP16</code> | Intel<sup></sup> Vision Accelerator Design based on Movidius<sup>TM</sup> MyriadX VPUs |
+  | <code>HETERO:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>...</code> | All Intel<sup>®</sup> silicons mentioned above |
+  | <code>MULTI:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>...</code> | All Intel<sup>®</sup> silicons mentioned above | 
+
+  Specifying Hardware Target for HETERO or Multi-Device Build:
+
+  HETERO:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>..
+  MULTI:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>..
+  The <DEVICE_TYPE> can be any of these devices from this list ['CPU','GPU','MYRIAD','FPGA','HDDL']
+
+  A minimum of two DEVICE_TYPE'S should be specified for a valid HETERO or Multi-Device Build.
+
+  Example:
+  HETERO:MYRIAD,CPU  HETERO:HDDL,GPU,CPU  MULTI:MYRIAD,GPU,CPU
+
 *This is the hardware accelerator target that is enabled by **default** in the container image. After building the container image for one default target, the application may explicitly choose a different target at run time with the same container by using the [Dynamic device selction API](https://github.com/microsoft/onnxruntime/blob/master/docs/execution_providers/OpenVINO-ExecutionProvider.md#dynamic-device-selection).*
 
 
@@ -192,6 +206,25 @@ Therefore, ONNX RT Execution Provider for **nGraph** will be deprecated starting
     docker run -it --device --mount type=bind,source=/var/tmp,destination=/var/tmp --device /dev/ion:/dev/ion  onnxruntime-vadm:latest
 
     ```
+
+### OpenVINO on HETERO or Multi-Device Build
+
+1. Build the docker image from the DockerFile in this repository.
+
+     for HETERO:
+     ```
+      docker build --rm -t onnxruntime-HETERO --build-arg DEVICE=HETERO:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>... --network host -f <Dockerfile> .
+     ```
+
+     for MULTI:
+     ```
+      docker build --rm -t onnxruntime-MULTI --build-arg DEVICE=MULTI:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>... --network host -f <Dockerfile> .
+     ```
+
+2. Install the required rules, drivers and other packages as required from the steps above for each of the DEVICE_TYPE accordingly that would be added for the HETERO or MULTI Device build type.
+
+3. Run the docker image as mentioned in the above steps
+
 ## ARM 32v7
 *Public Preview*
 

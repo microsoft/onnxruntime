@@ -4,6 +4,7 @@
 #include <core/common/make_unique.h>
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/graph/constants.h"
 #include "providers.h"
 #include <memory>
@@ -839,7 +840,7 @@ TEST(CApiTest, create_tensor_with_data_bfloat16) {
 TEST(CApiTest, access_tensor_data_elements) {
   /**
    * Create a 2x3 data blob that looks like:
-   *  
+   *
    *  0 1 2
    *  3 4 5
    */

@@ -15,6 +15,7 @@
 #include "core/framework/session_state_utils.h"
 #include "core/framework/utils.h"
 #include "core/providers/cpu/controlflow/utils.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 using namespace ::onnxruntime::common;
 using namespace ::onnxruntime::experimental;
@@ -317,8 +318,10 @@ Status ResolveDimParams(const GraphViewer& graph,
 Status TryResolveShape(
     const NodeArg* arg,
     const std::unordered_map<std::string, int64_t>& symbolic_dimensions,
+    size_t& is_resolved,  // indicate whether resolve successfully or not.
     std::vector<int64_t>& resolved_shape) {
   if (!arg->Shape()) {
+    is_resolved = 0;
     return Status::OK();
   }
 
@@ -342,8 +345,9 @@ Status TryResolveShape(
     }
   }
 
+  is_resolved = safe_size;
   // Only assign shape if all symbolic dimensions are resolved.
-  if (safe_size != 0) {
+  if (is_resolved != 0) {
     resolved_shape = std::move(shape);
   }
 
@@ -395,12 +399,13 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
         continue;
 
       auto* arg = node->OutputDefs()[i];
+      size_t is_resolved = 0;
       std::vector<int64_t> resolved_shape;
-      ORT_RETURN_IF_ERROR(TryResolveShape(arg, map, resolved_shape));
+      ORT_RETURN_IF_ERROR(TryResolveShape(arg, map, is_resolved, resolved_shape));
 
       // Store all valid resolved shapes. They will be queried in, for example,
       // Recv operator to bypass the dependency of output shapes on inputs.
-      if (resolved_shape.size() > 0) {
+      if (is_resolved != 0) {
         resolved_shapes[ml_value_idx] = resolved_shape;
       }
     }
@@ -419,7 +424,9 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
       size_t size = 0;
       TryCalculateSizeFromResolvedShape(ml_value_idx, resolved_shapes, size);
       if (size == 0) {
-        return Status(ONNXRUNTIME, FAIL, "Unknown shape found in memory pattern compute");
+        std::string node_name;
+        ORT_RETURN_IF_ERROR(this->ort_value_name_idx_map_.GetName(ml_value_idx, node_name));
+        return Status(ONNXRUNTIME, FAIL, "Unknown shape found in memory pattern compute, node name is : " + node_name);
       }
 
       if (!IAllocator::CalcMemSizeForArrayWithAlignment<64>(size, ml_data_type->Size(), &size)) {
