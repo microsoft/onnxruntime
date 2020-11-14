@@ -25,19 +25,19 @@ jobs:
     displayName: 'Download glue_MRPC_data.zip data'
 
   - template: templates/run-docker-build-steps.yml
-      parameters:
-        RunDockerBuildArgs: |
-          -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory) \
-          -t onnxruntime_e2e_test_image
-          -x " \
-            --config RelWithDebInfo \
-            --enable_training \
-            --update --build \
-            --build_wheel \
-            --enable_training_python_frontend_e2e_tests \
-            --enable_training_pipeline_e2e_tests \
-            "
-        DisplayName: 'Build'
+    parameters:
+      RunDockerBuildArgs: |
+        -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory) \
+        -t onnxruntime_e2e_test_image
+        -x " \
+          --config RelWithDebInfo \
+          --enable_training \
+          --update --build \
+          --build_wheel \
+          --enable_training_python_frontend_e2e_tests \
+          --enable_training_pipeline_e2e_tests \
+          "
+      DisplayName: 'Build'
 
   # Hit OOM with run_training_pipeline_e2e_tests.py - slightly above 16GB limit.
   # leave this code here for further investigation.

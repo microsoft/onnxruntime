@@ -19,16 +19,16 @@ jobs:
     displayName: 'Download onnxruntime_training_data.zip data'
 
   - template: templates/run-docker-build-steps.yml
-      parameters:
-        RunDockerBuildArgs: |
-          -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory) \
-          -t onnxruntime_e2e_test_image
-          -x " \
-            --config RelWithDebInfo \
-            --enable_training \
-            --update --build \
-            "
-        DisplayName: 'Build'
+    parameters:
+      RunDockerBuildArgs: |
+        -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory) \
+        -t onnxruntime_e2e_test_image
+        -x " \
+          --config RelWithDebInfo \
+          --enable_training \
+          --update --build \
+          "
+      DisplayName: 'Build'
 
   - script: |
       docker run \
