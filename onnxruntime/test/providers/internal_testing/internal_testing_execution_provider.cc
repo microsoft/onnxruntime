@@ -74,8 +74,6 @@ InternalTestingExecutionProvider::GetCapability(const onnxruntime::GraphViewer& 
     return result;
   }
 
-  int fused_subgraphs_counter = 0;
-
   const auto& graph_output_list = graph_viewer.GetOutputs();
   std::unordered_set<const NodeArg*> graph_outputs(graph_output_list.cbegin(), graph_output_list.cend());
 
@@ -131,7 +129,7 @@ InternalTestingExecutionProvider::GetCapability(const onnxruntime::GraphViewer& 
 
     // Assign inputs and outputs to subgraph's meta_def
     auto meta_def = onnxruntime::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
-    meta_def->name = "InternalTestingEP_" + std::to_string(fused_subgraphs_counter++);
+    meta_def->name = "InternalTestingEP_" + std::to_string(metadef_id_++);
     meta_def->domain = kMSDomain;
     meta_def->since_version = 1;
     meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;

@@ -33,6 +33,9 @@ class NnapiExecutionProvider : public IExecutionProvider {
  private:
   std::unordered_map<std::string, std::unique_ptr<onnxruntime::nnapi::Model>> nnapi_models_;
 
+  // unique counter to name each fused kernel across the entire model
+  mutable int metadef_id_{0};
+
   // The bit flags which define bool options for NNAPI EP, bits are defined as
   // NNAPIFlags in include/onnxruntime/core/providers/nnapi/nnapi_provider_factory.h
   const unsigned long nnapi_flags_;

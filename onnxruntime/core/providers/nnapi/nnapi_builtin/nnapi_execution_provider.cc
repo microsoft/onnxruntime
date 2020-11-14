@@ -63,7 +63,6 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   // Find inputs, initializers and outputs for each supported subgraph
   const std::vector<NodeIndex>& node_index = graph_view.GetNodesInTopologicalOrder();
   const auto& graph_outputs = graph_view.GetOutputs();
-  int counter = 0;
   for (const auto& group : supported_nodes_vector) {
     if (group.empty())
       continue;
@@ -156,7 +155,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
     // Assign inputs and outputs to subgraph's meta_def
     auto meta_def = onnxruntime::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
-    meta_def->name = "NNAPI_" + std::to_string(counter++);
+    meta_def->name = "NNAPI_" + std::to_string(metadef_id_++);
     meta_def->domain = kMSDomain;
 
     for (const auto& input : inputs) {

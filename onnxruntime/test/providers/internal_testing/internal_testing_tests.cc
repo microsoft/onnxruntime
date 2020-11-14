@@ -1,10 +1,12 @@
 #include "core/common/logging/logging.h"
 #include "core/session/inference_session.h"
+
 #include "test/framework/test_utils.h"
 #include "test/test_environment.h"
 #include "test/providers/internal_testing/internal_testing_execution_provider.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
+#include "test/util/include/test_utils.h"
 
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
@@ -39,7 +41,7 @@ static void CreateSession(const SessionOptions& so, std::unique_ptr<InferenceSes
   ASSERT_STATUS_OK(session->Initialize());
 }
 
-static void ExecuteModel(InferenceSessionWrapper& session, bool custom_ep_enabled) {
+static void ExecuteMnist(InferenceSessionWrapper& session, bool custom_ep_enabled) {
   // validate that we can execute the model. the dummy internal testing EP just creates empty output so the
   // values in the output aren't relevant. all we care about is that we can execute the model and produce output.
   OrtValue ml_value_x;
@@ -104,7 +106,7 @@ TEST(InternalTestingEP, TestSaveAndLoadOrtModel) {
   const auto& graph1 = session2->GetGraph();
   // model should have all the original nodes and we should be able to execute with the fallback to CPU EP
   ASSERT_EQ(graph1.NumberOfNodes(), num_nodes);
-  ExecuteModel(*session2, enable_custom_ep);
+  ExecuteMnist(*session2, enable_custom_ep);
   session2 = nullptr;
 
   //
@@ -117,7 +119,7 @@ TEST(InternalTestingEP, TestSaveAndLoadOrtModel) {
   // model should be able to be loaded, and we should compile using custom ep. that will result in one node for the
   // custom EP (with Conv/Add/Relu/MaxPool), one for a reshape, and one for the fused MatMul+Add.
   ASSERT_EQ(graph2.NumberOfNodes(), 3);
-  ExecuteModel(*session2, enable_custom_ep);
+  ExecuteMnist(*session2, enable_custom_ep);
 }
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -130,7 +132,7 @@ TEST(InternalTestingEP, TestLoadOrtModel) {
   bool enable_custom_ep = true;
 
   CreateSession(SessionOptions{}, session, ort_model_path, enable_custom_ep);
-  ExecuteModel(*session, enable_custom_ep);
+  ExecuteMnist(*session, enable_custom_ep);
 }
 
 // test that is the custom EP cannot take all nodes due to device limitations
@@ -160,7 +162,7 @@ TEST(InternalTestingEP, TestLoadOrtModelWithReducedOpCoverage) {
     }
   }
 
-  ExecuteModel(*session, enable_custom_ep);
+  ExecuteMnist(*session, enable_custom_ep);
 }
 
 TEST(InternalTestingEP, TestMinimalRegistrationOfEPwithGetCapability) {
@@ -170,8 +172,66 @@ TEST(InternalTestingEP, TestMinimalRegistrationOfEPwithGetCapability) {
   // to execute a model in that InferenceSession.
 }
 
+// count nodes assigned to the test EP and make sure they all have valid compute funcs
+static int CountAndValidateAssignedNodes(const Graph& current_graph,
+                                         const std::unordered_set<std::string>& supported_ops,
+                                         const FuncManager& func_mgr) {
+  int count = 0;
+
+  for (const auto& node : current_graph.Nodes()) {
+    EXPECT_EQ(supported_ops.count(node.OpType()), size_t(0))
+        << "Nodes with supported op types should have been replaced. Node with type " << node.OpType() << " was not.";
+    if (node.GetExecutionProviderType() == kInternalTestingExecutionProvider) {
+      NodeComputeInfo* compute_func = nullptr;
+      EXPECT_STATUS_OK(func_mgr.GetFuncs(node.Name(), compute_func));
+      EXPECT_NE(compute_func, nullptr);
+      ++count;
+    }
+
+    if (node.ContainsSubgraph()) {
+      for (const auto& entry : node.GetSubgraphs()) {
+        count += CountAndValidateAssignedNodes(*entry, supported_ops, func_mgr);
+      }
+    }
+  }
+
+  return count;
+}
+
+// Test model that contains a subgraph. This model has a Loop and an If so multiple layers of nested subgraphs.
+// There are Add nodes in the Loop and If subgraphs so we should see the custom EP taking nodes at both these levels.
 TEST(InternalTestingEP, TestModelWithSubgraph) {
-  // TODO: Need to validate that the partitioning works correctly for a model with subgraphs
+  const ORTCHAR_T* ort_model_path = ORT_TSTR("testdata/ort_github_issue_4031.onnx.ort");
+  const std::unordered_set<std::string> supported_ops{"Add"};
+
+  std::unique_ptr<InferenceSessionWrapper> session;
+  bool enable_custom_ep = true;
+
+  CreateSession(SessionOptions{}, session, ort_model_path, enable_custom_ep, &supported_ops);
+
+  const auto& graph = session->GetGraph();
+  const auto& func_mgr = session->GetSessionState().GetFuncMgr();
+
+  int num_replaced_nodes = CountAndValidateAssignedNodes(graph, supported_ops, func_mgr);
+
+  // One Add node in the Loop. One Add node in each branch of the If inside the Loop body
+  ASSERT_EQ(num_replaced_nodes, 3);
+
+  OrtValue ml_value;
+
+  // this is a bit of a hack. the correct output is the input value + 2, so if we start with -2 the result is 0.
+  // the output from fused nodes using the testing EP is always 0, so we should match the expected output this way
+  // as we replace all the Add nodes with something that returns 0.
+  // RunAndVerifyOutputsWithEP checks that nodes are assigned to the EP so we know it's being used to execute the model
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), {1}, {-2.f},
+                       &ml_value);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("state_var_in", ml_value));
+  // compare outputs from CPU EP vs custom EP
+  RunAndVerifyOutputsWithEP(ort_model_path,
+                            "InternalTestingEP.TestModelWithSubgraph",
+                            onnxruntime::make_unique<InternalTestingExecutionProvider>(supported_ops),
+                            feeds);
 }
 
 }  // namespace test

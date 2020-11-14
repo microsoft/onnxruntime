@@ -335,6 +335,11 @@ class SessionState {
       std::unordered_map<int, TensorShape>& inferred_shapes) const;
 #endif
 
+  // the SessionState for the main Graph contains the compiled kernel hashes for the entire model
+  const std::unordered_map<std::string, uint64_t>& GetCompiledKernelHashes() const {
+    return parent_ ? parent_->GetCompiledKernelHashes() : compiled_kernel_hashes_;
+  }
+
   // KernelCreateInfo for each node so we do kernel lookup once
   std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>> kernel_create_info_map_;
 

@@ -139,7 +139,7 @@ Status SessionState::PopulateKernelCreateInfo(KernelRegistryManager& kernel_regi
       node.SetExecutionProviderType(kCpuExecutionProvider);
       status = kernel_registry_manager.SearchKernelRegistry(node, &kci);
     }
-    
+
     ORT_RETURN_IF_ERROR(status);
 
     ORT_IGNORE_RETURN_VALUE(
@@ -837,6 +837,9 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
         return Status::OK();
       };
 
+  // kernel hashes for model are in top level SessionState
+  const auto& compiled_kernel_hashes = GetCompiledKernelHashes();
+
   // process the nodes that existed when the model was created
   for (flatbuffers::uoffset_t i = 0; i < node_indices->size(); i++) {
     auto node_idx = node_indices->Get(i);
@@ -845,7 +848,7 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
     const Node* node = graph_.GetNode(node_idx);
     if (node == nullptr) {
       // this is OK if we have compiled kernels and the original node was replaced. if not the model is invalid.
-      ORT_RETURN_IF(compiled_kernel_hashes_.empty(),
+      ORT_RETURN_IF(compiled_kernel_hashes.empty(),
                     "Can't find node with index ", node_idx, ". Invalid ORT format model.");
       continue;
     }
@@ -853,12 +856,13 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
     ORT_RETURN_IF_ERROR(add_kernel_by_hash(*node, kernel_hash));
   }
 
-  // lookup the hashes for any nodes we compiled.
-  if (!compiled_kernel_hashes_.empty()) {
+  // lookup the hashes for any nodes we compiled. the nodes indexes for compiled nodes are not in node_indices
+  // as they were created at runtime.
+  if (!compiled_kernel_hashes.empty()) {
     for (const auto& node : graph_.Nodes()) {
       if (kernel_create_info_map_.count(node.Index()) == 0) {
-        auto hash_info = compiled_kernel_hashes_.find(node.OpType());
-        ORT_RETURN_IF(hash_info == compiled_kernel_hashes_.cend(),
+        auto hash_info = compiled_kernel_hashes.find(node.OpType());
+        ORT_RETURN_IF(hash_info == compiled_kernel_hashes.cend(),
                       "Unable to find compiled kernel hash for node '", node.Name(), "'.")
 
         ORT_RETURN_IF_ERROR(add_kernel_by_hash(node, hash_info->second));
