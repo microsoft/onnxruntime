@@ -1670,11 +1670,42 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
 class SqueezeOpBuilder : public BaseOpBuilder {
  public:
-  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) override;
+  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  static vector<int32_t> GetAxes(ModelBuilder& model_builder, const Node& node);
 };
+
+void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+  if (node.SinceVersion() > 12 && node.InputDefs().size() > 1) {
+    model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());
+  }
+}
+
+/* static */ vector<int32_t> SqueezeOpBuilder::GetAxes(ModelBuilder& model_builder, const Node& node) {
+  vector<int32_t> axes;
+  // Squeeze opset 13 use input as axes
+  if (node.SinceVersion() > 12) {
+    // If axes is not supplied, return an empty axes as default to squeeze all
+    if (node.InputDefs().size() > 1) {
+      const auto& initializers(model_builder.GetInitializerTensors());
+      const auto& axes_tensor = initializers.at(node.InputDefs()[1]->Name());
+      const int64_t* raw_axes = GetTensorInt64Data(axes_tensor);
+      const auto size = SafeInt<uint32_t>(axes_tensor.dims()[0]);
+      axes.resize(size);
+      for (uint32_t i = 0; i < size; i++) {
+        // it is unlikely we have a axis value overflow for int32
+        axes[i] = static_cast<int32_t>(raw_axes[i]);
+      }
+    }
+  } else {
+    NodeAttrHelper helper(node);
+    axes = helper.Get("axes", vector<int32_t>());
+  }
+
+  return axes;
+}
 
 Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
   auto& shaper(model_builder.GetShaper());
