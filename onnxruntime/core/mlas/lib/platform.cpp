@@ -197,7 +197,7 @@ Return Value:
 #else
             __cpuid_count(7, 0, Cpuid7[0], Cpuid7[1], Cpuid7[2], Cpuid7[3]);
 #endif
-/*
+
             if (((Cpuid1[2] & 0x1000) != 0) && ((Cpuid7[1] & 0x20) != 0)) {
 
                 this->GemmU8S8Operation = MlasGemmU8X8Operation<MLAS_GEMM_U8S8_KERNEL_AVX2>;
@@ -240,7 +240,7 @@ Return Value:
                     this->GemmU8S8Kernel = MlasGemmU8S8KernelAvxVnni;
                     this->GemvU8S8Kernel = MlasGemvU8S8KernelAvxVnni;
                 }
-
+/*
 #if !defined(MLAS_AVX512F_UNSUPPORTED)
 
                 //
@@ -295,9 +295,8 @@ Return Value:
                 }
 
 #endif // MLAS_AVX512F_UNSUPPORTED
-
-            }
 */
+            }
 #endif // MLAS_TARGET_AMD64
 
         }
