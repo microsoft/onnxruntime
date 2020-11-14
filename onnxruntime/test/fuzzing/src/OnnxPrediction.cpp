@@ -95,12 +95,12 @@ void GenerateDataForInputTypeTensor(OnnxPrediction& predict,
 
   if (elem_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
     auto raw_data = GenerateRandomData(0.0f, elem_count, seed);
-    pretty_print(raw_data);
+    // pretty_print(raw_data);
     predict << std::move(raw_data);
   } else if (elem_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32) {
     int32_t initial = 0;
     auto raw_data = GenerateRandomData(initial, elem_count, seed);
-    pretty_print(raw_data);
+    // pretty_print(raw_data);
     predict << std::move(raw_data);
   } else {
     throw std::exception("only floats are implemented");
