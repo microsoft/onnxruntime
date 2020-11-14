@@ -28,7 +28,7 @@ jobs:
     parameters:
       RunDockerBuildArgs: |
         -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory) \
-        -t onnxruntime_e2e_test_image
+        -t onnxruntime_e2e_test_image \
         -x " \
           --config RelWithDebInfo \
           --enable_training \
