@@ -1971,8 +1971,10 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     }
   }
 
-  // TODO, add support for nearest neighbor
-  int32_t operationCode = ANEURALNETWORKS_RESIZE_BILINEAR;
+  bool is_linear_resize = helper.Get("mode", "nearest") == "linear";
+
+  int32_t operationCode = is_linear_resize ? ANEURALNETWORKS_RESIZE_BILINEAR
+                                           : ANEURALNETWORKS_RESIZE_NEAREST_NEIGHBOR;
 
   const auto coord_trans_mode = helper.Get("coordinate_transformation_mode", "half_pixel");
   bool using_half_pixel = coord_trans_mode == "half_pixel";
@@ -2008,10 +2010,14 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     ADD_SCALAR_OPERAND(model_builder, input_indices, use_nchw);
   }
 
-  if (android_sdk_ver > 29 && (using_align_corners || using_half_pixel)) {
-    ADD_SCALAR_OPERAND(model_builder, input_indices, using_align_corners);
-    if (using_half_pixel)
-      ADD_SCALAR_OPERAND(model_builder, input_indices, using_half_pixel);
+  // Currently we only support align_corners and half_pixel on bilinear resize
+  // TODO, investigate nearest neighbor resize difference between NNAPI(based on TF) and ONNX
+  if (is_linear_resize) {
+    if (android_sdk_ver > 29 && (using_align_corners || using_half_pixel)) {
+      ADD_SCALAR_OPERAND(model_builder, input_indices, using_align_corners);
+      if (using_half_pixel)
+        ADD_SCALAR_OPERAND(model_builder, input_indices, using_half_pixel);
+    }
   }
 
   const OperandType output_operand_type(operand_types.at(input).type, output_shape);
