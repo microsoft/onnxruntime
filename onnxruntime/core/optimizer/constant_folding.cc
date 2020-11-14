@@ -14,7 +14,7 @@ namespace onnxruntime {
 
 ConstantFolding::ConstantFolding(const IExecutionProvider& execution_provider,
                                  const std::unordered_set<std::string>& compatible_execution_providers,
-                                 const std::unordered_set<std::string>& excluded_initializers) noexcept
+                                 std::unordered_set<std::string>& excluded_initializers) noexcept
     : GraphTransformer("ConstantFolding", compatible_execution_providers),
       excluded_initializers_(excluded_initializers),
       execution_provider_(execution_provider) {
