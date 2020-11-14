@@ -20,6 +20,7 @@ import "Windows.AI.MachineLearning.idl";
 #define ROOT_NS Microsoft
 #endif
 
+
 namespace ROOT_NS.AI.MachineLearning.Experimental {
 
   [threading(both)]
@@ -30,4 +31,19 @@ namespace ROOT_NS.AI.MachineLearning.Experimental {
 
     void Test();
   }
+
+  [marshaling_behavior(agile)]
+  [dualapipartition(1)]
+  runtimeclass LearningModelSessionOptionsExperimental {
+    Windows.Foundation.Collections.IMapView<String, UINT32> GetNamedDimensionOverrides();
+  }
+
+  [threading(both)]
+  [marshaling_behavior(agile)]
+  [dualapipartition(1)]
+  runtimeclass LearningModelSessionExperimental {
+    LearningModelSessionExperimental(ROOT_NS.AI.MachineLearning.LearningModelSession session);
+    LearningModelSessionOptionsExperimental Options { get; };
+  }
+
 }  // namespace Microsoft.AI.MachineLearning.Experimental
