@@ -634,11 +634,7 @@ if (onnxruntime_USE_OPENVINO)
 endif()
 
 if (onnxruntime_USE_NNAPI_BUILTIN)
-  if(CMAKE_SYSTEM_NAME STREQUAL "Android")
-    add_compile_definitions(USE_NNAPI=1)
-  else()
-    add_compile_definitions(USE_NNAPI_FOR_CONVERTER_ONLY=1)
-  endif()
+  add_compile_definitions(USE_NNAPI=1)
 
   # This is the minimum Android API Level required by ORT NNAPI EP to run
   # ORT running on any host system with Android API level less than this will fall back to CPU EP
