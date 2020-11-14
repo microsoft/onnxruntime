@@ -634,7 +634,11 @@ if (onnxruntime_USE_OPENVINO)
 endif()
 
 if (onnxruntime_USE_NNAPI_BUILTIN)
-  add_definitions(-DUSE_NNAPI=1)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Android")
+    add_compile_definitions(USE_NNAPI=1)
+  else()
+    add_compile_definitions(USE_NNAPI_FOR_CONVERTER_ONLY=1)
+  endif()
 
   # This is the minimum Android API Level required by ORT NNAPI EP to run
   # ORT running on any host system with Android API level less than this will fall back to CPU EP
@@ -687,7 +691,9 @@ if (onnxruntime_USE_NNAPI_BUILTIN)
   target_include_directories(onnxruntime_providers_nnapi PRIVATE ${ONNXRUNTIME_ROOT} ${nnapi_INCLUDE_DIRS})
   set_target_properties(onnxruntime_providers_nnapi PROPERTIES LINKER_LANGUAGE CXX)
   # ignore the warning unknown-pragmas on "pragma region"
-  target_compile_options(onnxruntime_providers_nnapi PRIVATE "-Wno-unknown-pragmas")
+  if(NOT MSVC)
+    target_compile_options(onnxruntime_providers_nnapi PRIVATE "-Wno-unknown-pragmas")
+  endif()
 endif()
 
 if (onnxruntime_USE_RKNPU)
