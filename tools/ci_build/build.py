@@ -14,6 +14,15 @@ from logger import get_logger
 from amd_hipify import amd_hipify
 
 
+SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
+REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
+
+sys.path.append(os.path.join(REPO_DIR, "tools", "python"))
+
+
+from util import run  # noqa: E402
+
+
 log = get_logger("build")
 
 
@@ -475,8 +484,6 @@ def get_config_build_dir(build_dir, config):
 
 def run_subprocess(args, cwd=None, capture=False, dll_path=None,
                    shell=False, env={}):
-    log.info("Running subprocess in '{0}'\n{1}".format(
-        cwd or os.getcwd(), args))
     my_env = os.environ.copy()
     if dll_path:
         if is_windows():
@@ -487,15 +494,9 @@ def run_subprocess(args, cwd=None, capture=False, dll_path=None,
             else:
                 my_env["LD_LIBRARY_PATH"] = dll_path
 
-    stdout, stderr = (subprocess.PIPE, subprocess.STDOUT) if capture else (
-        None, None)
     my_env.update(env)
-    completed_process = subprocess.run(
-        args, cwd=cwd, check=True, stdout=stdout, stderr=stderr,
-        env=my_env, shell=shell)
-    log.debug("Subprocess completed. Return code=" +
-              str(completed_process.returncode))
-    return completed_process
+
+    return run(*args, cwd=cwd, capture=capture, shell=shell, env=my_env)
 
 
 def update_submodules(source_dir):
@@ -901,7 +902,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                 args.cmake_generator == 'Visual Studio 16 2019' and
                 args.use_full_protobuf):
             raise BuildError(
-             "Fuzz test has only be tested with build shared libs option using MSVC on windows")
+                "Fuzz test has only be tested with build shared libs option using MSVC on windows")
         cmake_args += [
             "-Donnxruntime_BUILD_UNIT_TESTS=ON",
             "-Donnxruntime_FUZZ_TEST=ON",

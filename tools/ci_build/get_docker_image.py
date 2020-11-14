@@ -19,7 +19,7 @@ REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
 sys.path.append(os.path.join(REPO_DIR, "tools", "python"))
 
 
-from util import az  # noqa: E402
+from util import run  # noqa: E402
 
 
 log = get_logger("get_docker_image")
@@ -28,7 +28,8 @@ log = get_logger("get_docker_image")
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Gets a docker image, either by building it locally or "
-        "pulling it from a container registry.")
+        "pulling it from a container registry. "
+        "The user must be logged in to the container registry.")
 
     parser.add_argument(
         "--dockerfile", default="Dockerfile", help="Path to the Dockerfile.")
@@ -52,8 +53,6 @@ def parse_args():
 
     parser.add_argument(
         "--docker-path", default="docker", help="Path to docker.")
-    parser.add_argument(
-        "--az-path", default="az", help="Path to az client.")
 
     return parser.parse_args()
 
@@ -116,38 +115,13 @@ def generate_tag(dockerfile_path, context_path, docker_build_args_str):
     return "image_content_digest_{}".format(hash_obj.hexdigest())
 
 
-def container_registry_has_image(container_registry, repository, tag, az_path):
-    existing_repositories = az(
-        "acr", "repository", "list", "--name", container_registry,
-        az_path=az_path)
-
-    if not repository in existing_repositories:
-        return False
-
-    existing_tags = az(
-        "acr", "repository", "show-tags",
-        "--name", container_registry, "--repository", repository,
-        az_path=az_path)
-
-    if not tag in existing_tags:
-        return False
-
-    return True
-
-
-def run(*args):
-    cmd = [*args]
-    log.debug("Running command: {}".format(cmd))
-    subprocess.run(cmd, check=True)
-
-
-@contextlib.contextmanager
-def docker_login_logout(container_registry, docker_path):
-    az("acr", "login", "--name", container_registry, parse_output=False)
-    try:
-        yield
-    finally:
-        run(docker_path, "logout")
+def container_registry_has_image(full_image_name, docker_path):
+    env = os.environ.copy()
+    env["DOCKER_CLI_EXPERIMENTAL"] = "enabled"  # needed for "docker manifest"
+    proc = run(
+        docker_path, "manifest", "inspect", "--insecure", full_image_name,
+        env=env, check=False, quiet=True)
+    return proc.returncode == 0
 
 
 def main():
@@ -160,12 +134,10 @@ def main():
 
     log.info("Image: {}".format(full_image_name))
 
-    if container_registry_has_image(
-            args.container_registry, args.repository, tag, args.az_path):
+    if container_registry_has_image(full_image_name, args.docker_path):
         log.info("Image found, pulling...")
 
-        with docker_login_logout(args.container_registry, args.docker_path):
-            run(args.docker_path, "pull", full_image_name)
+        run(args.docker_path, "pull", full_image_name)
     else:
         log.info("Image not found, building and pushing...")
 
@@ -177,8 +149,7 @@ def main():
             "--file", args.dockerfile,
             args.context)
 
-        with docker_login_logout(args.container_registry, args.docker_path):
-            run(args.docker_path, "push", full_image_name)
+        run(args.docker_path, "push", full_image_name)
 
     # tag so we can refer to the image by repository name
     run(args.docker_path, "tag", full_image_name, args.repository)

@@ -8,7 +8,7 @@ YOCTO_VERSION="4.19"
 ALLOW_RELEASED_ONNX_OPSET_ONLY_ENV="ALLOW_RELEASED_ONNX_OPSET_ONLY="$ALLOW_RELEASED_ONNX_OPSET_ONLY
 echo "ALLOW_RELEASED_ONNX_OPSET_ONLY environment variable is set as "$ALLOW_RELEASED_ONNX_OPSET_ONLY_ENV
 
-while getopts c:o:d:r:p:x:a:v:y: parameter_Option
+while getopts c:o:d:r:p:x:a:v:y:t: parameter_Option
 do case "${parameter_Option}"
 in
 #android, ubuntu16.04, manylinux2010, ubuntu18.04, CentOS7
@@ -28,6 +28,9 @@ a) BUILD_ARCH=${OPTARG};;
 v) OPENVINO_VERSION=${OPTARG};;
 # YOCTO 4.19 + ACL 19.05, YOCTO 4.14 + ACL 19.02
 y) YOCTO_VERSION=${OPTARG};;
+# an additional name for the resulting docker image (created with "docker tag")
+# this is useful for referencing the image outside of this script
+t) EXTRA_IMAGE_TAG=${OPTARG};;
 esac
 done
 
@@ -119,6 +122,10 @@ else
                 --dockerfile Dockerfile.ubuntu --context .
         fi
     fi
+fi
+
+if [ -v EXTRA_IMAGE_TAG ]; then
+    ${DOCKER_CMD} tag "onnxruntime-$IMAGE" "${EXTRA_IMAGE_TAG}"
 fi
 
 set +e
