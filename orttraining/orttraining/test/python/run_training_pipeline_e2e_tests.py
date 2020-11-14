@@ -49,8 +49,8 @@ def main():
                '--use_nccl',
                '--use_mixed_precision',
                '--allreduce_in_fp16',
-               '--gradient_accumulation_steps', '16',
-               '--num_train_steps', '48',
+               '--gradient_accumulation_steps', '1',
+               '--num_train_steps', '10',
                '--train_batch_size', '20']
 
     # Test 4-way pipeline parallel
