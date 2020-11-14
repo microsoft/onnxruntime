@@ -396,7 +396,7 @@ if (onnxruntime_USE_DML)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
-        ${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}/${DML_SHARED_LIB}
+        ${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}-win/${DML_SHARED_LIB}
         $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
   )
 endif()
