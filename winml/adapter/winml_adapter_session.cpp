@@ -252,3 +252,20 @@ ORT_API_STATUS_IMPL(winmla::SessionGetNumberOfIntraOpThreads, _In_ OrtSession* s
   return nullptr;
   API_IMPL_END
 }
+
+ORT_API_STATUS_IMPL(winmla::SessionGetNamedDimensionsOverrides, _In_ OrtSession* session, _Out_ winrt::Windows::Foundation::Collections::IMapView<winrt::hstring, uint32_t>& named_dimension_overrides) {
+  API_IMPL_BEGIN
+  auto inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
+  auto session_options = inference_session->GetSessionOptions();
+  winrt::Windows::Foundation::Collections::IMap<winrt::hstring, uint32_t> override_map = winrt::single_threaded_map<winrt::hstring, uint32_t>();
+  for (auto freeDimOverride : session_options.free_dimension_overrides)
+  {
+    if (freeDimOverride.dim_identifer_type == onnxruntime::FreeDimensionOverrideType::Name) 
+    {
+      override_map.Insert(winrt::to_hstring(freeDimOverride.dim_identifier), static_cast<uint32_t>(freeDimOverride.dim_value));
+    }
+  }
+  named_dimension_overrides = override_map.GetView();
+  return nullptr;
+  API_IMPL_END
+}

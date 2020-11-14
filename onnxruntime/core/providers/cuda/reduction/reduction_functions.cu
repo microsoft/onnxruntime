@@ -7,7 +7,6 @@
 
 #include <cuda.h>
 #include <cuda_fp16.h>
-
 #include "core/common/common.h"
 #include "core/providers/cuda/atomic/common.cuh"
 #include "core/providers/cuda/cu_inc/common.cuh"

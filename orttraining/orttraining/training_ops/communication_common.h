@@ -2,11 +2,11 @@
 // Licensed under the MIT License.
 
 #include "core/common/common.h"
-#include "core/providers/cuda/cuda_common.h"
 #pragma once
 
+#include "orttraining/core/framework/mpi_context.h"
+
 namespace onnxruntime {
-namespace cuda {
 
 typedef struct {
   // Pointer to ONNX tensor's data on CPU.
@@ -102,5 +102,92 @@ inline void ComputeShapeRelatedInfo(
   }
 }
 
-}  // namespace cuda
+inline void SendShapeInfo(
+    const int dst,
+    const int64_t tag,      // mpi send tag
+    const int num_tensors,  // Number of sent tensors.
+    size_t aggregated_aligned_tensor_bytes,
+    std::vector<size_t> prefix_tensor_shape_sizes,
+    std::vector<int64_t> aggregated_tensor_shapes) {
+  const int num_tensors_in_bytes = num_tensors * static_cast<int>(sizeof(size_t));
+  ORT_ENFORCE(num_tensors_in_bytes < INT_MAX,
+              "Total tensor number larger than MPI size limit");
+
+  CommInfo_t info_shape_sizes{prefix_tensor_shape_sizes.data(),
+                              num_tensors_in_bytes,
+                              dst,
+                              static_cast<int>(tag)};
+  ORT_ENFORCE(aggregated_aligned_tensor_bytes < INT_MAX,
+              "Aggregated tensor size larger than MPI size limit");
+
+  CommInfo_t info_aggregated_size{&aggregated_aligned_tensor_bytes,
+                                  static_cast<int>(sizeof(size_t)),
+                                  dst,
+                                  static_cast<int>(tag)};
+
+  int total_tensor_dim_in_bytes = static_cast<int>(
+                                      aggregated_tensor_shapes.size()) *
+                                  static_cast<int>(sizeof(int64_t));
+  ORT_ENFORCE(total_tensor_dim_in_bytes < INT_MAX,
+              "Total dimensions of tensors larger than MPI size limit");
+
+  CommInfo_t info_shapes{aggregated_tensor_shapes.data(),
+                         total_tensor_dim_in_bytes,
+                         dst,
+                         static_cast<int>(tag)};
+
+  // Directly use CPU to wait MPI_Send. We cannot use GPU callback because
+  // MPI_Send may block the entire GPU until it returns.
+  MPI_CHECK(MPI_Send(
+      info_shape_sizes.buffer, info_shape_sizes.size, MPI_CHAR,
+      info_shape_sizes.rank, info_shape_sizes.tag, MPI_COMM_WORLD));
+
+  MPI_CHECK(MPI_Send(
+      info_aggregated_size.buffer, info_aggregated_size.size, MPI_CHAR,
+      info_aggregated_size.rank, info_aggregated_size.tag, MPI_COMM_WORLD));
+
+  MPI_CHECK(MPI_Send(
+      info_shapes.buffer, info_shapes.size, MPI_CHAR,
+      info_shapes.rank, info_shapes.tag, MPI_COMM_WORLD));
+}
+
+inline void ReceiveShapeInfo(
+    const int src,
+    const int64_t tag,  // mpi recv tag
+    const int num_tensors,
+    size_t& aggregated_aligned_tensor_bytes,
+    std::vector<size_t>& prefix_tensor_shape_sizes,
+    std::vector<int64_t>& aggregated_tensor_shapes) {
+  // Resize vector so that the following .data() returns meaningful pointer.
+  prefix_tensor_shape_sizes.resize(num_tensors);
+  CommInfo_t info_shape_sizes{prefix_tensor_shape_sizes.data(),
+                              num_tensors * static_cast<int>(sizeof(size_t)),
+                              src,
+                              static_cast<int>(tag)};
+  CommInfo_t info_aggregated_size{&aggregated_aligned_tensor_bytes,
+                                  static_cast<int>(sizeof(size_t)),
+                                  src,
+                                  static_cast<int>(tag)};
+  // Directly use CPU to wait MPI_Recv. We cannot use GPU callback because
+  // MPI_Recv may block the entire GPU until it returns.
+  MPI_CHECK(MPI_Recv(
+      info_shape_sizes.buffer, info_shape_sizes.size, MPI_CHAR,
+      info_shape_sizes.rank, info_shape_sizes.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
+
+  MPI_CHECK(MPI_Recv(
+      info_aggregated_size.buffer, info_aggregated_size.size, MPI_CHAR,
+      info_aggregated_size.rank, info_aggregated_size.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
+
+  // prefix_tensor_shape_sizes's last element is the number of total dimensions.
+  // If a 3-D tensor and a 2-D tensor are sent, its value is 2 + 3 = 5.
+  aggregated_tensor_shapes.resize(prefix_tensor_shape_sizes[num_tensors - 1]);
+  CommInfo_t info_shapes{aggregated_tensor_shapes.data(),
+                         static_cast<int>(aggregated_tensor_shapes.size()) * static_cast<int>(sizeof(int64_t)),
+                         src,
+                         static_cast<int>(tag)};
+  MPI_CHECK(MPI_Recv(
+      info_shapes.buffer, info_shapes.size, MPI_CHAR,
+      info_shapes.rank, info_shapes.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
+}
+
 }  // namespace onnxruntime
