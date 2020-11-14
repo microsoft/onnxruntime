@@ -22,7 +22,7 @@ static void VerifyOutputs(const std::vector<std::string>& output_names,
   for (size_t i = 0, end = expected_fetches.size(); i < end; ++i) {
     auto& ltensor = expected_fetches[i].Get<Tensor>();
     auto& rtensor = fetches[i].Get<Tensor>();
-    ASSERT_EQ(ltensor.Shape(), rtensor.Shape());
+    ASSERT_EQ(ltensor.Shape().GetDims(), rtensor.Shape().GetDims());
     auto element_type = ltensor.GetElementType();
     switch (element_type) {
       case ONNX_NAMESPACE::TensorProto_DataType_INT32:
