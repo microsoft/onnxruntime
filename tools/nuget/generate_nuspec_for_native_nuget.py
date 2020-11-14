@@ -98,6 +98,7 @@ def generate_dependencies(list, package_name, version):
         list.append('</group>')
         # UAP10.0.16299, This is the earliest release of the OS that supports .NET Standard apps
         list.append('<group targetFramework="UAP10.0.16299">')
+        list.append(dml_dependency)
         list.append('</group>')
         # Support Native C++
         list.append('<group targetFramework="native">')
