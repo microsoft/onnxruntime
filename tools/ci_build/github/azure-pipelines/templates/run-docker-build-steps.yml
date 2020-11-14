@@ -12,7 +12,7 @@ steps:
 - template: with-build-docker-image-cache-steps.yml
   parameters:
     Steps:
-    - script: >
-        tools/ci_build/github/linux/run_dockerbuild.sh
+    - script: |
+        tools/ci_build/github/linux/run_dockerbuild.sh \
           ${{ parameters.RunDockerBuildArgs }}
       displayName: "${{ parameters.DisplayName }}"
