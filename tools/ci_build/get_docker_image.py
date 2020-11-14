@@ -4,11 +4,9 @@
 
 import argparse
 import collections
-import contextlib
 import hashlib
 import os
 import shlex
-import subprocess
 import sys
 from logger import get_logger
 
