@@ -572,6 +572,12 @@ set(all_tests ${onnxruntime_test_common_src} ${onnxruntime_test_ir_src} ${onnxru
 if(NOT TARGET onnxruntime)
   list(APPEND all_tests ${onnxruntime_shared_lib_test_SRC})
 endif()
+
+if (onnxruntime_USE_CUDA)
+  add_library(onnxruntime_test_cuda_add_lib ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cuda_add.cu)
+  list(APPEND onnxruntime_test_common_libs onnxruntime_test_cuda_add_lib)
+endif()
+
 set(all_dependencies ${onnxruntime_test_providers_dependencies} )
 
   if (onnxruntime_ENABLE_TRAINING)
@@ -855,10 +861,6 @@ if (onnxruntime_USE_TVM)
   endif()
 endif()
 
-if (onnxruntime_USE_CUDA)
-    add_library(onnxruntime_shared_lib_test_cuda ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cuda_add.cu)
-endif()
-
 # shared lib
 if (onnxruntime_BUILD_SHARED_LIB)
   add_library(onnxruntime_mocked_allocator ${ONNXRUNTIME_ROOT}/test/util/test_allocator.cc)
@@ -872,7 +874,7 @@ if (onnxruntime_BUILD_SHARED_LIB)
     list(APPEND onnxruntime_shared_lib_test_LIBS nsync_cpp)
   endif()
   if (onnxruntime_USE_CUDA)
-    list(APPEND onnxruntime_shared_lib_test_LIBS onnxruntime_shared_lib_test_cuda cudart)
+    list(APPEND onnxruntime_shared_lib_test_LIBS onnxruntime_test_cuda_add_lib cudart)
   endif()
   if (CMAKE_SYSTEM_NAME STREQUAL "Android")
     list(APPEND onnxruntime_shared_lib_test_LIBS ${android_shared_libs})
