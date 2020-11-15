@@ -26,8 +26,9 @@ class AttentionBase {
                      int sequence_length,
                      int& past_sequence_length) const;
 
-  int num_heads_;           // number of attention heads
-  bool is_unidirectional_;  // whether every token can only attend to previous tokens.
+  int num_heads_;             // number of attention heads
+  bool is_unidirectional_;    // whether every token can only attend to previous tokens.
+  bool is_input_dim_swapped_;  // whether the input_shape is (S, B, NH) instead of (B, S, NH)
 };
 
 }  // namespace contrib

@@ -477,13 +477,13 @@ TEST(ReducedOpsBuildTest, test_excluded_ops) {
   // In reduce-ops build, test a model containing
   // ops not referred by reduced_ops_via_config.config
   constexpr PATH_TYPE model_uri = TSTR("testdata/reduced_ops_via_config.onnx_model_with_excluded_ops");
-  std::vector<Input> inputs = {{"X", {3}, {-1.0f, 2.0f, -3.0f}},
-                               {"Y", {3}, {-1.0f, 2.0f, -3.0f}}};
-  std::vector<int64_t> expected_dims_z = {3};
-  std::vector<float> expected_values_z = {0.1f, 0.1f, 0.1f};
+  std::vector<Input> inputs = {{"X", {3}, {-1.0f, 2.0f, -3.0f}}};
+  std::vector<int64_t> expected_dims_y = {3};
+  std::vector<float> expected_values_y = {0.1f, 0.1f, 0.1f};
   bool failed = false;
   try {
-    TestInference<PATH_TYPE, float>(*ort_env, model_uri, inputs, "Z", expected_dims_z, expected_values_z, 0, nullptr, nullptr);
+    //only test model loading, exception expected
+    TestInference<PATH_TYPE, float>(*ort_env, model_uri, inputs, "Y", expected_dims_y, expected_values_y, 0, nullptr, nullptr, nullptr, true);
   } catch (const Ort::Exception& e) {
     failed = e.GetOrtErrorCode() == ORT_NOT_IMPLEMENTED;
   }
