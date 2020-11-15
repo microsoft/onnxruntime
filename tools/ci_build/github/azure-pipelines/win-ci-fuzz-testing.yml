@@ -17,7 +17,7 @@ jobs:
     buildArch: x64
     setVcvars: true
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
-  timeoutInMinutes: 120
+  timeoutInMinutes: 2160
   workspace:
     clean: all
   steps:    
