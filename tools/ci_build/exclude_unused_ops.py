@@ -24,6 +24,17 @@ domain_map = {'': 'kOnnxDomain',
               'com.intel.ai': 'kNGraphDomain',
               'com.xilinx': 'kVitisAIDomain'}
 
+# deprecated ops where the last registration should have an end version.
+# value for each entry is the opset when it was deprecated. end version of last registration should equal value - 1.
+deprecated_ops = {'kOnnxDomain:Scatter': 11,
+                  'kOnnxDomain:Upsample': 10,
+                  # MeanVarianceNormalization and ThresholdedRelu were in contrib ops and incorrectly registered using
+                  # kOnnxDomain. They became official ONNX operators later and are registered there now. That leaves
+                  # entries in the contrib ops registrations with end versions for when the contrib op was 'deprecated'
+                  # and became an official op.
+                  'kOnnxDomain:MeanVarianceNormalization': 9,
+                  'kOnnxDomain:ThresholdedRelu': 10}
+
 
 def _map_domain(domain):
 
@@ -150,8 +161,43 @@ def _exclude_unused_ops_in_provider(operators, provider_path):
     onnx_versioned_typed_op_len = len(onnx_versioned_typed_op)
     end_marks = tuple([');', ')>', ')>,', ')>,};', ')>};'])
 
-    def should_exclude_op(domain, op_type, opset_from, opset_to=None):
+    # we validate that all the operator registrations are correct whilst running this script.
+    # all operator entries are ordered by opset, so we can just track the most recent entry
+    # for each domain + operator type.
+    # we should only see versioned entries until the last entry and the last entry must always be unversioned.
+    # the end version of the previous entry must always be one less than the start version of the next entry.
+    last_op_registrations = {}
+
+    def validate_registration(domain, op_type, opset_from_str, opset_to_str):
+        key = domain + ':' + op_type
+        prev_from, prev_to = last_op_registrations[key] if key in last_op_registrations else (None, None)
+        opset_from = int(opset_from_str)
+        opset_to = int(opset_to_str) if opset_to_str else None
+
+        if prev_from:
+            # a typed registration where the to/from matches for each entry so nothing to update
+            if prev_from == opset_from and prev_to == opset_to:
+                return
+
+            # previous registration was unversioned but should have been
+            if not prev_to:
+                log.error("Invalid registration for {}. Registration for opset {} has no end version."
+                          .format(key, prev_from))
+                sys.exit(-1)
+
+            # previous registration end opset is not adjacent to the start of the next registration
+            if prev_to != opset_from - 1:
+                log.error("Invalid registration for {}. Registration for opset {} should have end version of {}"
+                          .format(key, prev_from, opset_from - 1))
+                sys.exit(-1)
+
+        last_op_registrations[key] = (opset_from, opset_to)
+
+    def should_exclude_op(domain, op_type, opset_from, opset_to, is_registration):
         '''check if should exclude the op from build'''
+
+        if is_registration:
+            validate_registration(domain, op_type, opset_from, opset_to)
 
         if domain not in operators:
             return True
@@ -163,7 +209,7 @@ def _exclude_unused_ops_in_provider(operators, provider_path):
 
         return True  # end of should_exclude_op(...)
 
-    def process_lines(lines, offset):
+    def process_lines(lines, offset, is_registration):
         '''extract op info from a logic code line start from offset to the line end
            with any of end_marks, then trigger callback(op_type, opset_from, opset_to, domain)
            return next line offset and whether current lines are disabled
@@ -193,6 +239,7 @@ def _exclude_unused_ops_in_provider(operators, provider_path):
 
         trim_at = 0
         should_exclude = False
+
         if onnx_op in code_line:
             # e.g. class ONNX_OPERATOR_KERNEL_CLASS_NAME(
             #          kCpuExecutionProvider, kOnnxDomain, 1, Transpose);
@@ -201,7 +248,7 @@ def _exclude_unused_ops_in_provider(operators, provider_path):
             trim_at = code_line.index(onnx_op) + onnx_op_len + 1
             *_, domain, opset, op_type =\
                 [arg.strip() for arg in code_line[trim_at: -len(end_mark)].split(',')]
-            should_exclude = should_exclude_op(domain, op_type, opset, None)
+            should_exclude = should_exclude_op(domain, op_type, opset, None, is_registration)
 
         elif onnx_typed_op in code_line:
             # e.g. class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(
@@ -211,7 +258,7 @@ def _exclude_unused_ops_in_provider(operators, provider_path):
             trim_at = code_line.index(onnx_typed_op) + onnx_typed_op_len + 1
             *_, domain, opset, _, op_type =\
                 [arg.strip() for arg in code_line[trim_at: -len(end_mark)].split(',')]
-            should_exclude = should_exclude_op(domain, op_type, opset, None)
+            should_exclude = should_exclude_op(domain, op_type, opset, None, is_registration)
 
         elif onnx_versioned_op in code_line:
             # e.g. class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(
@@ -221,7 +268,7 @@ def _exclude_unused_ops_in_provider(operators, provider_path):
             trim_at = code_line.index(onnx_versioned_op) + onnx_versioned_op_len + 1
             *_, domain, opset_from, opset_to, op_type =\
                 [arg.strip() for arg in code_line[trim_at: -len(end_mark)].split(',')]
-            should_exclude = should_exclude_op(domain, op_type, opset_from, opset_to)
+            should_exclude = should_exclude_op(domain, op_type, opset_from, opset_to, is_registration)
 
         elif onnx_versioned_typed_op in code_line:
             # e.g. class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(
@@ -231,7 +278,7 @@ def _exclude_unused_ops_in_provider(operators, provider_path):
             trim_at = code_line.index(onnx_versioned_typed_op) + onnx_versioned_typed_op_len + 1
             *_, domain, opset_from, opset_to, _, op_type =\
                 [arg.strip() for arg in code_line[trim_at: -len(end_mark)].split(',')]
-            should_exclude = should_exclude_op(domain, op_type, opset_from, opset_to)
+            should_exclude = should_exclude_op(domain, op_type, opset_from, opset_to, is_registration)
 
         if should_exclude:
             log.info('Disabling: {}'.format(code_line[trim_at: -len(end_mark)]))
@@ -257,8 +304,8 @@ def _exclude_unused_ops_in_provider(operators, provider_path):
             if stripped.startswith('class ONNX_OPERATOR') or\
                stripped.startswith('BuildKernelCreateInfo<ONNX'):
 
-                next_line_offset, disabled = process_lines(lines,
-                                                           line_offset)
+                is_registration = 'BuildKernelCreateInfo' in stripped
+                next_line_offset, disabled = process_lines(lines, line_offset, is_registration)
 
                 for index in range(line_offset, next_line_offset):
                     if disabled:  # comment out unused
@@ -275,6 +322,16 @@ def _exclude_unused_ops_in_provider(operators, provider_path):
             else:  # leave as it is
                 file_to_write.write(line)
                 line_offset += 1
+
+    # make sure we have an unversioned last entry for each operator unless it's deprecated
+    for entry in last_op_registrations.items():
+        key, value = entry
+        opset_from, opset_to = value
+
+        deprecated = key in deprecated_ops and opset_to == deprecated_ops[key] - 1
+        if opset_to and not deprecated:
+            log.error('Missing unversioned registration for {}'.format(key))
+            sys.exit(-1)
 
     # end of rewrite_cpu_provider(...)
 
