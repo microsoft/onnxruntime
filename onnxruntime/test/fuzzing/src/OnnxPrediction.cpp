@@ -4,6 +4,9 @@
 #include "OnnxPrediction.h"
 #include <vector>
 
+static const char* const kOrtSessionOptionsConfigLoadModelFormat = "session.load_model_format";
+static const char* const kOrtSessionOptionsConfigSaveModelFormat = "session.save_model_format";
+
 // Uses the onnxruntime to load the model
 // into a session.
 //

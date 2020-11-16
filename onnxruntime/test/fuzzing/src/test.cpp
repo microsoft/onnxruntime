@@ -5,6 +5,7 @@
 #include "testlog.h"
 #include "OnnxPrediction.h"
 #include <type_traits>
+static const char* const kOrtSessionOptionsConfigSaveModelFormat = "session.save_model_format";
 
 using user_options = struct
 {
