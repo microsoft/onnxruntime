@@ -301,6 +301,13 @@ def parse_arguments():
     parser.add_argument(
         "--use_dnnl", action='store_true', help="Build with DNNL.")
     parser.add_argument(
+        "--dnnl_gpu_runtime", action='store', default='', type=str.lower,
+        help="e.g. --dnnl_gpu_runtime ocl")
+    parser.add_argument(
+        "--dnnl_opencl_root", action='store', default='',
+        help="Path to OpenCL SDK. "
+        "e.g. --dnnl_opencl_root \"C:/Program Files (x86)/IntelSWTools/sw_dev_tools/OpenCL/sdk\"")
+    parser.add_argument(
         "--use_featurizers", action='store_true',
         help="Build with ML Featurizer support.")
     parser.add_argument(
@@ -311,6 +318,9 @@ def parse_arguments():
         help="Build with OpenVINO for specific hardware.")
     parser.add_argument(
         "--use_nnapi", action='store_true', help="Build with NNAPI support.")
+    parser.add_argument(
+        "--nnapi_min_api", type=int,
+        help="Minimum Android API level to enable NNAPI, should be no less than 27")
     parser.add_argument(
         "--use_rknpu", action='store_true', help="Build with RKNPU.")
     parser.add_argument(
@@ -666,6 +676,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "OFF" if args.use_openblas else "ON"),
         "-Donnxruntime_USE_OPENBLAS=" + ("ON" if args.use_openblas else "OFF"),
         "-Donnxruntime_USE_DNNL=" + ("ON" if args.use_dnnl else "OFF"),
+        "-Donnxruntime_DNNL_GPU_RUNTIME=" + (args.dnnl_gpu_runtime if args.use_dnnl else ""),
+        "-Donnxruntime_DNNL_OPENCL_ROOT=" + (args.dnnl_opencl_root if args.use_dnnl else ""),
         "-Donnxruntime_USE_NGRAPH=" + ("ON" if args.use_ngraph else "OFF"),
         "-Donnxruntime_USE_NNAPI_BUILTIN=" + ("ON" if args.use_nnapi else "OFF"),
         "-Donnxruntime_USE_RKNPU=" + ("ON" if args.use_rknpu else "OFF"),
@@ -808,10 +820,12 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         cmake_args += ["-Donnxruntime_USE_PREINSTALLED_EIGEN=ON",
                        "-Deigen_SOURCE_PATH=" + args.eigen_path]
 
+    if args.nnapi_min_api:
+        cmake_args += ["-Donnxruntime_NNAPI_MIN_API=" + str(args.nnapi_min_api)]
+
     if args.android:
         cmake_args += [
-            "-DCMAKE_TOOLCHAIN_FILE=" + args.android_ndk_path +
-            "/build/cmake/android.toolchain.cmake",
+            "-DCMAKE_TOOLCHAIN_FILE=" + args.android_ndk_path + "/build/cmake/android.toolchain.cmake",
             "-DANDROID_PLATFORM=android-" + str(args.android_api),
             "-DANDROID_ABI=" + str(args.android_abi)
         ]
@@ -1820,6 +1834,12 @@ def main():
 
     if args.minimal_build and args.disable_ort_format_load:
         raise BuildError('Minimal build requires loading ORT format models.')
+
+    if args.nnapi_min_api:
+        if not args.use_nnapi:
+            raise BuildError("Using --nnapi_min_api requires --use_nnapi")
+        if args.nnapi_min_api < 27:
+            raise BuildError("--nnapi_min_api should be 27+")
 
     # Disabling unit tests for VAD-F as FPGA only supports
     # models with NCHW layout

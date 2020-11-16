@@ -308,9 +308,23 @@ These instructions are for JetPack SDK 4.4.
 See more information on DNNL and MKL-ML [here](./docs/execution_providers/DNNL-ExecutionProvider.md).
 
 #### Build Instructions
+The DNNL execution provider can be built for Intel CPU or GPU. To build for Intel GPU, install [Intel SDK for OpenCL Applications](https://software.intel.com/content/www/us/en/develop/tools/opencl-sdk.html). Install the latest GPU driver - [Windows graphics driver](https://downloadcenter.intel.com/product/80939/Graphics), [Linux graphics compute runtime and OpenCL driver](https://github.com/intel/compute-runtime/releases).
+
+##### Windows
+`.\build.bat --use_dnnl`
+
+##### Linux
+`./build.sh --use_dnnl`
+
+To build for Intel GPU, replace dnnl_opencl_root with the path of the Intel SDK for OpenCL Applications.
+
+##### Windows 
+
+`.\build.bat --use_dnnl --dnnl_gpu_runtime ocl --dnnl_opencl_root "c:\program files (x86)\intelswtools\sw_dev_tools\opencl\sdk"`
+
 ##### Linux
 
-DNNL: `./build.sh --use_dnnl`
+`./build.sh --use_dnnl --dnnl_gpu_runtime ocl --dnnl_opencl_root "/opt/intel/sw_dev_tools/opencl-sdk"`
 
 ---
 

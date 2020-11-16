@@ -1,10 +1,10 @@
-# docker build --network=host --file Dockerfile.rocm3.7 --tag ort:rocm3.7-ort-dev .
+# docker build --network=host --file Dockerfile.rocm3.9.pytorch --tag ort:rocm3.9-pytorch .
 
-FROM rocm/tensorflow:rocm3.7-tf2.1-dev
+FROM rocm/pytorch:rocm3.9_ubuntu18.04_py3.6_pytorch
 
-RUN curl https://bazel.build/bazel-release.pub.gpg | apt-key add -
-RUN cat /dev/null > /etc/apt/sources.list.d/rocm.list
-RUN echo 'deb [arch=amd64] http://repo.radeon.com/rocm/apt/3.7/ xenial main' | tee /etc/apt/sources.list.d/rocm.list
+RUN apt-get -y install gpg-agent
+RUN wget -q -O - http://repo.radeon.com/rocm/rocm.gpg.key | apt-key add -
+RUN echo 'deb [arch=amd64] http://repo.radeon.com/rocm/apt/3.9/ xenial main' | tee /etc/apt/sources.list.d/rocm.list
 
 RUN apt-get -y update
 RUN apt-get -y install apt-utils
@@ -13,12 +13,16 @@ RUN apt-get -y install build-essential autotools-dev \
     iputils-ping net-tools ethtool libcap2 \
     automake autoconf libtool flex doxygen \
     perl lsb-release iproute2 pciutils graphviz \
-    bc tar git bash pbzip2 pv bzip2 cabextract \
+    bc tar git bash pbzip2 pv bzip2 unzip cabextract \
     g++ gcc \
     && apt-get autoremove
 
 # sh
 RUN rm /bin/sh && ln -s /bin/bash /bin/sh
+RUN rm /opt/cache/bin/c++ && \
+    rm /opt/cache/bin/cc && \
+    rm /opt/cache/bin/g++ && \
+    rm /opt/cache/bin/gcc
 
 # Labels for the docker
 LABEL description="This docker sets up the environment to run ORT Training with AMD GPU"
@@ -29,11 +33,12 @@ RUN cd /usr/local && \
     wget -q -O - https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-Linux-x86_64.tar.gz | tar zxf -
 ENV PATH=/usr/local/cmake-${CMAKE_VERSION}-Linux-x86_64/bin:${PATH}
 
-# WORKSPACE_DIR
 ENV WORKSPACE_DIR=/workspace
 RUN mkdir -p $WORKSPACE_DIR
 WORKDIR $WORKSPACE_DIR
 
+ENV OLD_PATH=${PATH}
+ENV PATH=/usr/bin:${PATH}
 # Infiniband setup, openmpi installed under /usr/mpi/gcc/openmpi-4.0.4rc3 doesn't support multi-thread
 ENV MOFED_VERSION=5.1-0.6.6.0
 ENV MOFED_OS=ubuntu18.04
@@ -44,28 +49,17 @@ RUN cd MLNX_OFED_LINUX-${MOFED_VERSION}-${MOFED_OS}-x86_64 && \
     cd .. && \
     rm -r MLNX_OFED_LINUX-${MOFED_VERSION}-${MOFED_OS}-x86_64
 
-# install miniconda (comes with python 3.7 default)
-ARG CONDA_VERSION=4.7.10
-ARG CONDA_URL=https://repo.anaconda.com/miniconda/Miniconda3-${CONDA_VERSION}-Linux-x86_64.sh
-RUN curl -fSsL --insecure ${CONDA_URL} -o install-conda.sh &&\
-    /bin/bash ./install-conda.sh -b -p /opt/conda &&\
-    /opt/conda/bin/conda clean -ya
-ENV PATH=/opt/conda/bin:${PATH}
+ENV PATH=${OLD_PATH}
+ENV unset OLD_PATH
 
+# python env
 ARG NUMPY_VERSION=1.18.5
 ARG ONNX_VERSION=1.7.0
-RUN conda install -y \
-        numpy=${NUMPY_VERSION} \
-        cmake \
-        ninja \
-        pyyaml \
-        cffi \
-        setuptools \
-    && pip install --no-cache-dir wheel tqdm boto3 requests six ipdb h5py html2text nltk progressbar \
+RUN pip3 install --no-cache-dir wheel tqdm boto3 requests six ipdb h5py html2text nltk progressbar pyyaml \
         git+https://github.com/NVIDIA/dllogger \
+        numpy==${NUMPY_VERSION} \
         onnx=="${ONNX_VERSION}"
 
-# GITHUB_DIR
 ENV GITHUB_DIR=$WORKSPACE_DIR/github
 RUN mkdir -p $GITHUB_DIR
 
@@ -117,6 +111,8 @@ RUN mv $OPENMPI_DIR/bin/mpirun $OPENMPI_DIR/bin/mpirun.real && \
 # install mpi4py (be sure to link existing /opt/openmpi-xxx)
 RUN CC=mpicc MPICC=mpicc pip install mpi4py --no-binary mpi4py
 
+ARG CACHE_DATA=2020-11-09
+
 # ONNX Runtime
 WORKDIR $GITHUB_DIR
 ENV ORT_DIR=$GITHUB_DIR/onnxruntime
@@ -125,53 +121,53 @@ RUN git clone --recursive https://github.com/microsoft/onnxruntime.git \
   && python3 tools/ci_build/build.py \
     --cmake_extra_defines ONNXRUNTIME_VERSION=`cat ./VERSION_NUMBER` \
     --build_dir build \
-    --config Release \
+    --config RelWithDebInfo \
     --parallel \
     --skip_tests \
     --build_wheel \
     --use_rocm --rocm_home /opt/rocm \
     --mpi_home $OPENMPI_DIR \
     --nccl_home /opt/rocm \
-	--enable_training \
-  && test -f $ORT_DIR/build/Release/onnxruntime_training_bert \
-  && pip install $ORT_DIR/build/Release/dist/*.whl \
+    --enable_training \
+  && test -f $ORT_DIR/build/RelWithDebInfo/onnxruntime_training_bert \
+  && pip install $ORT_DIR/build/RelWithDebInfo/dist/*.whl \
   && ldconfig
 
 # ONNX Runtime Training Examples
 WORKDIR $GITHUB_DIR
+ARG GPT2_DATASET=wikitext-103
 RUN git clone -b wezhan/amdgpu https://github.com/microsoft/onnxruntime-training-examples.git \
   && cd onnxruntime-training-examples \
+  # Nvidia BERT
   && git clone --no-checkout https://github.com/NVIDIA/DeepLearningExamples.git \
   && cd DeepLearningExamples \
   && git checkout cf54b787 \
   && cd .. \
-  && mv DeepLearningExamples/PyTorch/LanguageModeling/BERT/ ${WORKSPACE_DIR} \
+  && mv DeepLearningExamples/PyTorch/LanguageModeling/BERT ${WORKSPACE_DIR} \
   && rm -rf DeepLearningExamples \
-  && cp -r ./nvidia-bert/ort_addon/* ${WORKSPACE_DIR}/BERT
+  && cp -r ./nvidia-bert/ort_addon/* ${WORKSPACE_DIR}/BERT \
+  # GPT2 fine-tuning
+  && cd huggingface-gpt2 \
+  && git clone https://github.com/huggingface/transformers.git \
+  && cd transformers \
+  && git checkout 9a0a8c1c6f4f2f0c80ff07d36713a3ada785eec5 \
+  && cd .. \
+  && mkdir -p ${WORKSPACE_DIR}/GPT2 \
+  && cp -r transformers ${WORKSPACE_DIR}/GPT2 \
+  && cd ${WORKSPACE_DIR}/GPT2/transformers \
+  && git apply $GITHUB_DIR/onnxruntime-training-examples/huggingface-gpt2/ort_addon/src_changes.patch \
+  && cp -r $GITHUB_DIR/onnxruntime-training-examples/huggingface-gpt2/ort_addon/ort_supplement/* ./ \
+  && python3 -m pip install --no-cache-dir -e . \
+  && python3 -m pip install --no-cache-dir -r examples/requirements.txt \
+  && python3 -m pip install cerberus sympy \
+  && cd .. \
+  && wget https://s3.amazonaws.com/research.metamind.io/wikitext/${GPT2_DATASET}-v1.zip \
+  && unzip ${GPT2_DATASET}-v1.zip
 
 ENV BERT_DIR=${WORKSPACE_DIR}/BERT
-
-# OpenBLAS
-WORKDIR $GITHUB_DIR
-ARG OpenBLAS_VERSION=0.3.10
-ENV OpenBLAS_DIR=$WORKSPACE_DIR/OpenBLAS-${OpenBLAS_VERSION}
-RUN git clone https://github.com/xianyi/OpenBLAS.git \
-  && cd OpenBLAS \
-  && git checkout v$OpenBLAS_VERSION \
-  && make TARGET=ZEN \
-  && make install PREFIX=$OpenBLAS_DIR
-
-# PyTorch
-RUN pip install pyyaml
-RUN for fn in $(find /opt/rocm/ -name \*.cmake ); do sed --in-place='~' 's/find_dependency(hip)/find_dependency(HIP)/' $fn ; done
-WORKDIR $GITHUB_DIR
-# ARG PYTORCH_VERSION=1.6.0
-# RUN git clone --recursive https://github.com/pytorch/pytorch.git \
-#   && cd pytorch \
-#   && git checkout v$PYTORCH_VERSION \
-#   && git submodule update --recursive \
-#   && python3 tools/amd_build/build_amd.py \
-#   && OpenBLAS_HOME=$OpenBLAS_DIR BLAS="OpenBLAS" RCCL_DIR=/opt/rocm/rccl/lib/cmake/rccl/ hip_DIR=/opt/rocm/hip/cmake/ PYTORCH_ROCM_ARCH=gfx906 USE_ROCM=ON USE_CUDA=OFF BUILD_CAFFE2_OPS=0 BUILD_TEST=0 python3 setup.py install
+ENV GPT2_DIR=${WORKSPACE_DIR}/GPT2
+ENV TRAIN_FILE=${WORKSPACE_DIR}/GPT2/${GPT2_DATASET}/wiki.train.tokens
+ENV TEST_FILE=${WORKSPACE_DIR}/GPT2/${GPT2_DATASET}/wiki.test.tokens
 
 # Enable ssh access without password needed
 RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/g' /etc/ssh/sshd_config
@@ -183,13 +179,12 @@ RUN sed -i 's/#PermitEmptyPasswords no/PermitEmptyPasswords yes/g' /etc/ssh/sshd
 ENTRYPOINT service ssh restart && /bin/bash
 
 # Add model and scripts
-ADD model $WORKSPACE_DIR/model
-ADD script $WORKSPACE_DIR/script
-RUN chmod a+x $WORKSPACE_DIR/script/run_bert.sh
+ADD model ${WORKSPACE_DIR}/model
+ADD script ${WORKSPACE_DIR}/script
+RUN chmod a+x ${WORKSPACE_DIR}/script/run_bert.sh
 
-ADD lib $WORKSPACE_DIR/lib
-ENV LD_PERLOAD=$WORKSPACE_DIR/lib/libpsl.so
+# add locale en_US.UTF-8
+RUN apt-get install -y locales
+RUN locale-gen en_US.UTF-8
 
-ENV LOG_DIR=/data/wezhan/logs
-
-WORKDIR $WORKSPACE_DIR/script
+WORKDIR ${WORKSPACE_DIR}/script

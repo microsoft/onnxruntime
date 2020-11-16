@@ -1121,6 +1121,13 @@ HRESULT OnnxruntimeEngine::GetNumberOfIntraOpThreads(uint32_t* num_threads)
   return S_OK;
 }
 
+HRESULT OnnxruntimeEngine::GetNamedDimensionOverrides(wfc::IMapView<winrt::hstring, uint32_t>& overrides) {
+  auto ort_api = engine_factory_->UseOrtApi();
+  auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
+  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->SessionGetNamedDimensionsOverrides(session_.get(), overrides), ort_api);
+  return S_OK;
+}
+
 HRESULT OnnxruntimeEngine::CreateOneInputAcrossDevices(const char* name, IValue* src, IValue** out) {
   auto ort_api = engine_factory_->UseOrtApi();
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
