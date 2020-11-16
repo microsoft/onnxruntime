@@ -53,7 +53,7 @@ class LambOptimizerBuilder final : public OptimizerBuilder {
       std::vector<ArgDef>& output_weight_argdefs,
       std::vector<ArgDef>& output_gradient_argdefs,
       const bool enable_grad_clipping,
-      const NameMLValMap* shared_optim_state) const override;
+      const NameMLValMap shared_optim_state) const override;
 };
 
 }  // namespace training

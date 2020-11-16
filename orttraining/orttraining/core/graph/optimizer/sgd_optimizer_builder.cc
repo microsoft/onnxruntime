@@ -23,7 +23,7 @@ Status SGDOptimizerBuilder::Build(
         output_gradient_argdefs,
         // gradient clipping is disabled by default for SGD.
         false /*enable_grad_clipping*/,
-        nullptr /* shared_optim_state */);
+        {} /* shared_optim_state */);
 }
 
 Status SGDOptimizerBuilder::Build(
@@ -44,7 +44,7 @@ Status SGDOptimizerBuilder::Build(
         output_gradient_argdefs,
         // gradient clipping is disabled by default for SGD.
         false /*enable_grad_clipping*/,
-        nullptr /* shared_optim_state */);
+        {} /* shared_optim_state */);
 }
 
 Status SGDOptimizerBuilder::Build(
@@ -58,7 +58,7 @@ Status SGDOptimizerBuilder::Build(
     std::vector<ArgDef>& output_weight_argdefs,
     std::vector<ArgDef>& output_gradient_argdefs,
     bool /* enable_grad_clipping */,
-    const NameMLValMap* /* shared_optim_state */) const {
+    const NameMLValMap /* shared_optim_state */) const {
 
   for (size_t i = 0; i < weight_argdefs.size(); ++i) {
     const std::string& weight_name = weight_argdefs[i].name;

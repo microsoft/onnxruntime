@@ -143,7 +143,8 @@ void VerifyOutputs(const std::vector<float>& expected, const std::vector<float>&
     } else {
       double diff = fabs(expected_value - actual_value);
       if (use_threshold_compare) {
-        ASSERT_TRUE(diff <= threshold);
+        ASSERT_TRUE(diff <= threshold) << "value mismatch at index "
+                                       << i << "; diff: " << diff << ", threshold: " << threshold;
       } else {
         ASSERT_TRUE(diff <= (atol + rtol * fabs(expected_value))) << "value mismatch at index "
                                                                   << i << "; expected: " << expected_value << ", actual: " << actual_value;

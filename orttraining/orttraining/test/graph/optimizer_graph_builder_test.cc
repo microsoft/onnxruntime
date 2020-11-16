@@ -22,6 +22,7 @@
 #include "test/framework/test_utils.h"
 #include "test/util/include/asserts.h"
 #include "test/test_environment.h"
+#include "orttraining/test/graph/training_session_test_utils.h"
 
 using onnxruntime::test::CountOpsInGraph;
 using onnxruntime::test::CreateMLValue;
@@ -148,28 +149,29 @@ static void TestOptimizerGraphBuilderWithInitialStates(OptimizerGraphConfig conf
                                                        std::string optimizer_op_name) {
   std::unordered_map<std::string, OptimizerNodeConfig> weight_names_to_opt_configs = GetOptInfoMap(optimizer_op_name);
 
-  std::vector<std::string> moment_keys = {"Moment_1", "Moment_2"};
-  NameMLValMap per_weight_states, shared_states;
-  OrtValue ml_value;
   std::vector<int64_t> dims = {1};
   std::vector<float> values = {4.f};
   std::vector<int64_t> uc_value = {3};
-  for (const auto key : moment_keys) {
-    CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims, values, &ml_value);
-    per_weight_states.insert(std::make_pair(key, ml_value));
-  }
-  if (optimizer_op_name == k_adam_optimizer_op_name) {
-    CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims, uc_value, &ml_value);
-    per_weight_states.insert(std::make_pair("Update_Count", ml_value));
-  } else if (optimizer_op_name == k_lamb_optimizer_op_name) {
-    // add "Step" for lamb
-    CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims, uc_value, &ml_value);
-    shared_states.insert(std::make_pair("Step", ml_value));
-    config.shared_optimizer_states = &(shared_states);
-  }
-
+  NameMLValMap shared_states;
+  
   for (auto& opt_config_it : weight_names_to_opt_configs) {
-    opt_config_it.second.initial_states = &(per_weight_states);
+    NameMLValMap per_weight_states;
+    OrtValue ml_value;
+
+    for (const auto key : onnxruntime::test::MOMENT_PREFIX) {
+      CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims, values, &ml_value);
+      per_weight_states.insert(std::make_pair(key, std::move(ml_value)));
+    }
+    if (optimizer_op_name == k_adam_optimizer_op_name) {
+      CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims, uc_value, &ml_value);
+      per_weight_states.insert(std::make_pair(onnxruntime::test::UC_TENSOR_NAME, std::move(ml_value)));
+    } else if (optimizer_op_name == k_lamb_optimizer_op_name) {
+      // add "Step" for lamb
+      CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims, uc_value, &ml_value);
+      shared_states.insert(std::make_pair(onnxruntime::test::STEP_TENSOR_NAME, std::move(ml_value)));
+      config.shared_optimizer_states = std::move(shared_states);
+    }
+    opt_config_it.second.initial_states = std::move(per_weight_states);
   }
   OptimizerGraphBuilder optimizer_graph_builder(GetOptimizerBuilderRegistry(), config, weight_names_to_opt_configs);
 
@@ -189,14 +191,14 @@ static void TestOptimizerGraphBuilderWithInitialStates(OptimizerGraphConfig conf
   }
 }
 
-TEST_F(OptimizerGraphBuilderTest, Default_NoMixedPrecision_Adam) {
+TEST_F(OptimizerGraphBuilderTest, Default_FullPrecision_Adam) {
   OptimizerGraphConfig config;
   config.gradient_accumulation_steps = 1;
   config.use_mixed_precision = false;
   TestOptimizerGraphBuilderWithInitialStates(config, graph_, k_adam_optimizer_op_name);
 }
 
-TEST_F(OptimizerGraphBuilderTest, Default_NoMixedPrecision_Lamb) {
+TEST_F(OptimizerGraphBuilderTest, Default_FullPrecision_Lamb) {
   OptimizerGraphConfig config;
   config.gradient_accumulation_steps = 1;
   config.use_mixed_precision = false;

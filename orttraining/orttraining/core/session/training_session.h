@@ -16,11 +16,17 @@
 namespace onnxruntime {
 namespace training {
 
+constexpr char SHARED_STATES_KEY[] = "shared_optimizer_state";
+
 class TrainingSession : public InferenceSession {
  public:
   typedef std::unordered_map<std::string /*OpType*/,
                              std::vector<std::pair<size_t /*InputIndex*/, float /*value*/>>>
       ImmutableWeights;
+    
+  typedef std::unordered_map<std::string /* Model weight name*/,
+                             NameMLValMap /* 'Moment_1': OrtValue, 'Moment_2': OrtValue etc...*/>
+                            OptimizerState;
 
   TrainingSession(const SessionOptions& session_options, const Environment& env)
       : InferenceSession(session_options, env) {}
@@ -149,6 +155,11 @@ class TrainingSession : public InferenceSession {
     // The optimizer configuration.
     // If not provided, no optimizer is added.
     optional<OptimizerConfiguration> optimizer_config{};
+
+    // optional initial states for optimizer
+    // These states are partitioned wherever the weights are partitioned for eg in Zero, Megatron
+    // This is loaded into the optimizer initializers when the optimizer graph is created
+    optional<OptimizerState> init_optimizer_states{};
 
     // struct to describe a specific edge. An edge is not the same as a node_arg. Edge represents a connection between two operators.
     // For example, an operator A's output tensor T is connecting to another operator B's input, then this constructs

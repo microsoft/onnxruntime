@@ -26,7 +26,7 @@ Status AdamOptimizerBuilder::Build(
                output_gradient_argdefs,
                // gradient clipping is disabled by default for Adam.
                false /*enable_grad_clipping*/,
-               nullptr /* default shared initital states*/);
+               {} /* default shared initital states*/);
 }
 
 Status AdamOptimizerBuilder::Build(
@@ -38,14 +38,14 @@ Status AdamOptimizerBuilder::Build(
     GraphAugmenter::GraphDefs& graph_defs,
     std::vector<ONNX_NAMESPACE::TensorProto>& new_external_initializers,
     std::vector<ArgDef>& output_weight_argdefs,
-    std::vector<ArgDef>& output_gradient_argdefs,    
+    std::vector<ArgDef>& output_gradient_argdefs,
     bool enable_grad_clipping) const {
   return Build(weight_argdefs, gradient_argdefs,
                gradient_norm_argdef, gradient_norm_finite_argdef,
                opt_configs, graph_defs,
                new_external_initializers, output_weight_argdefs,
                output_gradient_argdefs, enable_grad_clipping,
-               nullptr /* default shared initital states*/);
+               {} /* default shared initital states*/);
 }
 
 Status AdamOptimizerBuilder::Build(
@@ -59,7 +59,7 @@ Status AdamOptimizerBuilder::Build(
     std::vector<ArgDef>& output_weight_argdefs,
     std::vector<ArgDef>& output_gradient_argdefs,
     bool enable_grad_clipping,
-    const NameMLValMap*) const {
+    const NameMLValMap) const {
   for (size_t i = 0; i < weight_argdefs.size(); ++i) {
     const std::string& weight_name = weight_argdefs[i].name;
     const std::string& gradient_name = gradient_argdefs[i].name;
@@ -80,10 +80,10 @@ Status AdamOptimizerBuilder::Build(
       TensorProto uc_tensor_proto;
 
       // Update 'Update_Count' initializer with init value
-      const auto* initial_states = opt_configs[i].initial_states;
-      if (initial_states != nullptr && initial_states->find(uc_prefix) != initial_states->end()) {
+      const auto initial_states = opt_configs[i].initial_states;
+      if (initial_states.find(uc_prefix) != initial_states.end()) {
         std::cout << "Adam: Updating Update_Count...\n";
-        const auto& initial_state_it = initial_states->find(uc_prefix);
+        const auto& initial_state_it = initial_states.find(uc_prefix);
         const auto& init_tensor = initial_state_it->second.Get<Tensor>();
         ORT_ENFORCE(IsMatchingTypeAndShape(init_tensor, ONNX_NAMESPACE::TensorProto_DataType_INT64, {1}).IsOK());
         uc_tensor_proto = utils::TensorToTensorProto(init_tensor, update_count_string);
@@ -130,10 +130,10 @@ Status AdamOptimizerBuilder::Build(
         TypeProto* moment_type_proto = graph_defs.CopyTypeProto(weight_argdefs[i]);
 
         // Update moment initializer with init value
-        if (initial_states != nullptr && initial_states->find(moments_prefix) != initial_states->end()) {
+        if (initial_states.find(moments_prefix) != initial_states.end()) {
           //update moment_tensor_proto
           std::cout << "Adam: Updating moment_tensor_proto...\n";
-          const auto& initial_state_it = initial_states->find(moments_prefix);
+          const auto& initial_state_it = initial_states.find(moments_prefix);
           const auto& init_tensor = initial_state_it->second.Get<Tensor>();
 
           //TODO: need to support float -> float16 and float16-> float conversion
