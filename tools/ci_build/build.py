@@ -495,6 +495,9 @@ def get_config_build_dir(build_dir, config):
 
 def run_subprocess(args, cwd=None, capture=False, dll_path=None,
                    shell=False, env={}):
+    if isinstance(args, str):
+        raise ValueError("args should be a sequence of strings, not a string")
+
     my_env = os.environ.copy()
     if dll_path:
         if is_windows():
@@ -1157,9 +1160,9 @@ def adb_shell(*args, **kwargs):
 
 def run_android_tests(args, source_dir, config, cwd):
     if args.android_abi == 'x86_64':
-        run_subprocess(os.path.join(
+        run_subprocess([os.path.join(
             source_dir, 'tools', 'ci_build', 'github', 'android',
-            'start_android_emulator.sh'))
+            'start_android_emulator.sh')])
         adb_push('testdata', '/data/local/tmp/', cwd=cwd)
         adb_push(
             os.path.join(source_dir, 'cmake', 'external', 'onnx', 'onnx', 'backend', 'test'),
