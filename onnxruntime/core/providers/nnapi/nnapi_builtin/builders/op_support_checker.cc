@@ -991,22 +991,10 @@ bool ResizeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
   {  // check attributes
     NodeAttrHelper helper(node);
     const auto mode = helper.Get("mode", "nearest");
-    if (mode != "linear") {
+    bool is_linear_resize = mode == "linear";
+    bool is_nearest_resize = mode == "nearest";
+    if (!is_linear_resize && !is_nearest_resize) {
       LOGS_DEFAULT(VERBOSE) << "Resize unsupported input mode, " << mode;
-      return false;
-    }
-
-    const auto coord_trans_mode = helper.Get("coordinate_transformation_mode", "half_pixel");
-    bool using_half_pixel = coord_trans_mode == "half_pixel";
-    bool using_align_corners = coord_trans_mode == "align_corners";
-    if (!using_half_pixel && !using_align_corners && coord_trans_mode != "asymmetric") {
-      LOGS_DEFAULT(VERBOSE) << "Resize, unsupported coord_trans_mode, " << coord_trans_mode;
-      return false;
-    }
-
-    if (params.android_sdk_ver < 30 && (using_half_pixel || using_align_corners)) {
-      LOGS_DEFAULT(VERBOSE) << "Resize only support half_pixel/align_corners on API level 30+, current API level is "
-                            << params.android_sdk_ver;
       return false;
     }
 
@@ -1015,12 +1003,47 @@ bool ResizeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
       LOGS_DEFAULT(VERBOSE) << "Resize does not support exclude_outside for now";
       return false;
     }
+
+    const auto coord_trans_mode = helper.Get("coordinate_transformation_mode", "half_pixel");
+    bool using_half_pixel = coord_trans_mode == "half_pixel";
+    bool using_align_corners = coord_trans_mode == "align_corners";
+    bool using_asymmetric = coord_trans_mode == "asymmetric";
+    if (is_linear_resize) {
+      if (!using_half_pixel && !using_align_corners && !using_asymmetric) {
+        LOGS_DEFAULT(VERBOSE) << "Resize bilinear, unsupported coord_trans_mode, " << coord_trans_mode;
+        return false;
+      }
+
+      if (params.android_sdk_ver < 30 && (using_half_pixel || using_align_corners)) {
+        LOGS_DEFAULT(VERBOSE) << "Resize bilinear only support half_pixel/align_corners on API level 30+, current API level is "
+                              << params.android_sdk_ver;
+        return false;
+      }
+    } else {
+      // nearest neighbor resizing
+      // For resize using nearest neighbor, we only support coord_trans_mode == "asymmetric" && nearest_mode == "floor"
+      if (!using_asymmetric) {
+        LOGS_DEFAULT(VERBOSE) << "Resize nearest neighbor, unsupported coord_trans_mode, " << coord_trans_mode;
+        return false;
+      }
+
+      const auto nearest_mode = helper.Get("nearest_mode", "round_prefer_floor");
+      if (nearest_mode != "floor") {
+        LOGS_DEFAULT(VERBOSE) << "Resize nearest neighbor, unsupported nearest_mode, " << nearest_mode;
+        return false;
+      }
+    }
   }
 
   {  // scales and sizes (if present) must be initializers
     const auto input_defs = node.InputDefs();
+    if (input_defs.size() < 3) {
+      LOGS_DEFAULT(VERBOSE) << "Input scales or sizes of Resize must be known";
+      return false;
+    }
+
     // scales
-    if (input_defs.size() < 3 || !Contains(initializers, input_defs[2]->Name())) {
+    if (input_defs.size() == 3 && !Contains(initializers, input_defs[2]->Name())) {
       LOGS_DEFAULT(VERBOSE) << "Input scales of Resize must be known";
       return false;
     }
