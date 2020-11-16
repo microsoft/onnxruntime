@@ -771,7 +771,7 @@ bool VerifyHelper(ImageFeatureValue actual, ImageFeatureValue expected) {
 
   UINT errors = 0;
   for (uint32_t i = 0; i < size; i++, pActualByte++, pExpectedByte++) {
-    auto diff = (*pActualByte - *pExpectedByte);
+    auto diff = std::abs(*pActualByte - *pExpectedByte);
     if (diff > epsilon) {
       errors++;
     }
@@ -1439,6 +1439,226 @@ static void D2DInterop() {
       renderTarget.put()));
 }
 
+static void BindMultipleCPUBuffersAsInputs(LearningModelDeviceKind kind) {
+  std::wstring module_path = FileHelpers::GetModulePath();
+  std::wstring model_path = module_path + L"fns-candy.onnx";
+
+  // init session
+  auto device = LearningModelDevice(kind);
+  auto model = LearningModel::LoadFromFilePath(model_path);
+  auto session = LearningModelSession(model, device);
+  auto binding = LearningModelBinding(session);
+
+  // Load input
+  std::wstring input_image_path = module_path + L"fish_720.png";
+  std::wstring image_path = module_path + L"bm_fish_720.jpg";
+  auto software_bitmap = FileHelpers::GetSoftwareBitmapFromFile(input_image_path);
+  auto bgra8_bitmap = SoftwareBitmap::Convert(software_bitmap, BitmapPixelFormat::Bgra8);
+
+  uint32_t height = bgra8_bitmap.PixelHeight();
+  uint32_t width = bgra8_bitmap.PixelWidth();
+  uint32_t frame_size = height * width * sizeof(float);
+
+  // Declare raw pointers
+  UINT32 size = 0;
+  BYTE* data = nullptr;
+  float* red_data = nullptr;
+  float* green_data = nullptr;
+  float* blue_data = nullptr;
+
+  // Get memory buffers
+  wgi::BitmapBuffer bitmap(bgra8_bitmap.LockBuffer(wgi::BitmapBufferAccessMode::Read));
+  wf::MemoryBuffer red(frame_size);
+  wf::MemoryBuffer green(frame_size);
+  wf::MemoryBuffer blue(frame_size);
+
+  // Create references
+  auto bitmap_reference = bitmap.CreateReference();
+  auto red_reference = red.CreateReference();
+  auto green_reference = green.CreateReference();
+  auto blue_reference = blue.CreateReference();
+
+  // Get byte access objects
+  auto bitmap_byteaccess = bitmap_reference.as<::Windows::Foundation::IMemoryBufferByteAccess>();
+  auto red_byteaccess = red_reference.as<::Windows::Foundation::IMemoryBufferByteAccess>();
+  auto green_byteaccess = green_reference.as<::Windows::Foundation::IMemoryBufferByteAccess>();
+  auto blue_byteaccess = blue_reference.as<::Windows::Foundation::IMemoryBufferByteAccess>();
+
+  // Get raw buffers
+  bitmap_byteaccess->GetBuffer(&data, &size);
+  red_byteaccess->GetBuffer(reinterpret_cast<BYTE**>(&red_data), &frame_size);
+  green_byteaccess->GetBuffer(reinterpret_cast<BYTE**>(&green_data), &frame_size);
+  blue_byteaccess->GetBuffer(reinterpret_cast<BYTE**>(&blue_data), &frame_size);
+
+  for (UINT32 i = 0; i < size; i += 4) {
+    UINT32 pixelInd = i / 4;
+    red_data[pixelInd] = (float)data[i];
+    green_data[pixelInd] = (float)data[i + 1];
+    blue_data[pixelInd] = (float)data[i + 2];
+  }
+
+  auto buffers = winrt::single_threaded_vector<wss::IBuffer>();
+  buffers.Append(wss::Buffer::CreateCopyFromMemoryBuffer(red));
+  buffers.Append(wss::Buffer::CreateCopyFromMemoryBuffer(green));
+  buffers.Append(wss::Buffer::CreateCopyFromMemoryBuffer(blue));
+  // second batch
+  buffers.Append(wss::Buffer::CreateCopyFromMemoryBuffer(red));
+  buffers.Append(wss::Buffer::CreateCopyFromMemoryBuffer(green));
+  buffers.Append(wss::Buffer::CreateCopyFromMemoryBuffer(blue));
+  
+  // Bind input
+  binding.Bind(model.InputFeatures().First().Current().Name(), buffers);
+
+  // Bind output
+  auto output_descriptor = model.OutputFeatures().First().Current().as<ITensorFeatureDescriptor>();
+  auto output_shape = output_descriptor.Shape();
+  VideoFrame outputimage1(
+      BitmapPixelFormat::Bgra8,
+      static_cast<int32_t>(output_shape.GetAt(3)),
+      static_cast<int32_t>(output_shape.GetAt(2)));
+  VideoFrame outputimage2(
+      BitmapPixelFormat::Bgra8,
+      static_cast<int32_t>(output_shape.GetAt(3)),
+      static_cast<int32_t>(output_shape.GetAt(2)));
+
+  auto output_frames = winrt::single_threaded_vector<wm::VideoFrame>();
+  output_frames.Append(outputimage1);
+  output_frames.Append(outputimage2);
+  WINML_EXPECT_NO_THROW(binding.Bind(model.OutputFeatures().First().Current().Name(), output_frames));
+
+  // Evaluate the model
+  winrt::hstring correlationId;
+  WINML_EXPECT_NO_THROW(session.EvaluateAsync(binding, correlationId).get());
+
+  // Verify the output by comparing with the benchmark image
+  SoftwareBitmap benchmark_output_bitmap = FileHelpers::GetSoftwareBitmapFromFile(image_path);
+  benchmark_output_bitmap = SoftwareBitmap::Convert(benchmark_output_bitmap, BitmapPixelFormat::Bgra8);
+  VideoFrame benchmark_output_frame = VideoFrame::CreateWithSoftwareBitmap(benchmark_output_bitmap);
+  ImageFeatureValue benchmark_output_featurevalue = ImageFeatureValue::CreateFromVideoFrame(benchmark_output_frame);
+  WINML_EXPECT_TRUE(VerifyHelper(benchmark_output_featurevalue, ImageFeatureValue::CreateFromVideoFrame(outputimage1)));
+  WINML_EXPECT_TRUE(VerifyHelper(benchmark_output_featurevalue, ImageFeatureValue::CreateFromVideoFrame(outputimage2)));
+
+  // check the output video frame object by saving output image to disk
+  std::wstring output_filename = L"out_cpu_tensor_fish_720.jpg";
+  StorageFolder current_folder = StorageFolder::GetFolderFromPathAsync(module_path).get();
+  StorageFile output_file = current_folder.CreateFileAsync(output_filename, CreationCollisionOption::ReplaceExisting).get();
+  IRandomAccessStream output_stream = output_file.OpenAsync(FileAccessMode::ReadWrite).get();
+  BitmapEncoder encoder = BitmapEncoder::CreateAsync(BitmapEncoder::JpegEncoderId(), output_stream).get();
+  // Set the software bitmap
+  encoder.SetSoftwareBitmap(outputimage2.SoftwareBitmap());
+  encoder.FlushAsync().get();
+}
+
+static void BindMultipleCPUBuffersInputsOnCpu() {
+  BindMultipleCPUBuffersAsInputs(LearningModelDeviceKind::Cpu);
+}
+
+static void BindMultipleCPUBuffersInputsOnGpu() {
+  BindMultipleCPUBuffersAsInputs(LearningModelDeviceKind::DirectX);
+}
+
+static void BindMultipleCPUBuffersAsOutputs(LearningModelDeviceKind kind) {
+  std::wstring modulePath = FileHelpers::GetModulePath();
+  std::wstring inputImagePath = modulePath + L"fish_720.png";
+  std::wstring bmImagePath = modulePath + L"bm_fish_720.jpg";
+  std::wstring modelPath = modulePath + L"fns-candy.onnx";
+
+  auto device = LearningModelDevice(kind);
+  auto model = LearningModel::LoadFromFilePath(modelPath);
+  auto session = LearningModelSession(model, device);
+  auto binding = LearningModelBinding(session);
+
+  auto software_bitmap = FileHelpers::GetSoftwareBitmapFromFile(inputImagePath);
+  auto video_frame = VideoFrame::CreateWithSoftwareBitmap(software_bitmap);
+
+  // Bind input
+  binding.Bind(model.InputFeatures().First().Current().Name(), video_frame);
+
+  // Bind output
+  uint32_t height = software_bitmap.PixelHeight();
+  uint32_t width = software_bitmap.PixelWidth();
+  uint32_t channel_frame_size = height * width * sizeof(float);
+
+  wf::MemoryBuffer red(channel_frame_size);
+  wf::MemoryBuffer green(channel_frame_size);
+  wf::MemoryBuffer blue(channel_frame_size);
+
+  auto output_descriptor = model.OutputFeatures().First().Current().as<ITensorFeatureDescriptor>();
+  auto output_shape = output_descriptor.Shape();
+
+  auto red_buffer = wss::Buffer::CreateCopyFromMemoryBuffer(red);
+  auto green_buffer = wss::Buffer::CreateCopyFromMemoryBuffer(green);
+  auto blue_buffer = wss::Buffer::CreateCopyFromMemoryBuffer(blue);
+
+  auto output_frames = winrt::single_threaded_vector<wss::IBuffer>();
+  output_frames.Append(red_buffer);
+  output_frames.Append(green_buffer);
+  output_frames.Append(blue_buffer);
+  WINML_EXPECT_NO_THROW(binding.Bind(model.OutputFeatures().First().Current().Name(), output_frames));
+
+  // Evaluate the model
+  winrt::hstring correlationId;
+  WINML_EXPECT_NO_THROW(session.EvaluateAsync(binding, correlationId).get());
+
+  auto output_bitmap = SoftwareBitmap(BitmapPixelFormat::Bgra8, 720, 720);
+  float* red_bytes;
+  float* green_bytes;
+  float* blue_bytes;
+  red_buffer.try_as<::Windows::Storage::Streams::IBufferByteAccess>()->Buffer(reinterpret_cast<byte**>(&red_bytes));
+  green_buffer.try_as<::Windows::Storage::Streams::IBufferByteAccess>()->Buffer(reinterpret_cast<byte**>(&green_bytes));
+  blue_buffer.try_as<::Windows::Storage::Streams::IBufferByteAccess>()->Buffer(reinterpret_cast<byte**>(&blue_bytes));
+  
+  // Verify the output by comparing with the benchmark image
+  SoftwareBitmap benchmark_bitmap = FileHelpers::GetSoftwareBitmapFromFile(bmImagePath);
+  benchmark_bitmap = SoftwareBitmap::Convert(benchmark_bitmap, BitmapPixelFormat::Bgra8);
+
+  BYTE* benchmark_data = nullptr;
+  UINT32 benchmark_size = 0;
+  wgi::BitmapBuffer benchmark_bitmap_buffer(benchmark_bitmap.LockBuffer(wgi::BitmapBufferAccessMode::Read));
+  wf::IMemoryBufferReference benchmark_reference = benchmark_bitmap_buffer.CreateReference();
+  auto benchmark_byte_access = benchmark_reference.as<::Windows::Foundation::IMemoryBufferByteAccess>();
+  benchmark_byte_access->GetBuffer(&benchmark_data, &benchmark_size);
+  
+  // hard code, might need to be modified later.
+  const float cMaxErrorRate = 0.06f;
+  byte epsilon = 20;
+  UINT errors = 0;
+  for (UINT32 i = 0; i < height * width; i ++) {
+    if (std::abs(red_bytes[i] - benchmark_data[i * 4]) > epsilon) {
+      errors++;
+    }
+    if (std::abs(green_bytes[i] - benchmark_data[i * 4 + 1]) > epsilon) {
+      errors++;
+    }
+    if (std::abs(blue_bytes[i] - benchmark_data[i * 4 + 2]) > epsilon) {
+      errors++;
+    }
+  }
+  auto total_size = height * width * 3;
+  std::cout << "total errors is " << errors << "/" << total_size << ", errors rate is " << (float)errors / total_size << "\n";
+
+  WINML_EXPECT_TRUE((float)errors / total_size < cMaxErrorRate);
+
+
+  // check the output video frame object by saving output image to disk
+  std::wstring outputDataImageFileName = L"out_cpu_tensor_fish_720.jpg";
+  StorageFolder currentfolder = StorageFolder::GetFolderFromPathAsync(modulePath).get();
+  StorageFile outimagefile = currentfolder.CreateFileAsync(outputDataImageFileName, CreationCollisionOption::ReplaceExisting).get();
+  IRandomAccessStream writestream = outimagefile.OpenAsync(FileAccessMode::ReadWrite).get();
+  BitmapEncoder encoder = BitmapEncoder::CreateAsync(BitmapEncoder::JpegEncoderId(), writestream).get();
+  // Set the software bitmap
+  encoder.SetSoftwareBitmap(output_bitmap);
+  encoder.FlushAsync().get();
+}
+
+static void BindMultipleCPUBuffersOutputsOnCpu() {
+  BindMultipleCPUBuffersAsOutputs(LearningModelDeviceKind::Cpu);
+}
+
+static void BindMultipleCPUBuffersOutputsOnGpu() {
+  BindMultipleCPUBuffersAsOutputs(LearningModelDeviceKind::DirectX);
+}
+
 const ScenarioTestsApi& getapi() {
   static ScenarioTestsApi api =
       {
@@ -1478,6 +1698,10 @@ const ScenarioTestsApi& getapi() {
           DeviceLostRecovery,
           Scenario8SetDeviceSampleD3D11Device,
           D2DInterop,
+          BindMultipleCPUBuffersInputsOnCpu,
+          BindMultipleCPUBuffersInputsOnGpu,
+          BindMultipleCPUBuffersOutputsOnCpu,
+          BindMultipleCPUBuffersOutputsOnGpu,
       };
 
   if (SkipGpuTests()) {
@@ -1503,6 +1727,8 @@ const ScenarioTestsApi& getapi() {
     api.DeviceLostRecovery = SkipTest;
     api.Scenario8SetDeviceSampleD3D11Device = SkipTest;
     api.D2DInterop = SkipTest;
+    api.BindMultipleCPUBuffersInputsOnGpu = SkipTest;
+    api.BindMultipleCPUBuffersOutputsOnGpu = SkipTest;
   }
 
   if (RuntimeParameterExists(L"EdgeCore")) {
@@ -1533,6 +1759,10 @@ const ScenarioTestsApi& getapi() {
     api.DeviceLostRecovery = SkipTest;
     api.QuantizedModels = SkipTest;
     api.MsftQuantizedModels = SkipTest;
+    api.BindMultipleCPUBuffersInputsOnCpu = SkipTest;
+    api.BindMultipleCPUBuffersInputsOnGpu = SkipTest;
+    api.BindMultipleCPUBuffersOutputsOnCpu = SkipTest;
+    api.BindMultipleCPUBuffersOutputsOnGpu = SkipTest;
   }
   if (RuntimeParameterExists(L"noIDXGIFactory6Tests")) {
     api.Scenario8SetDeviceSampleMinPower = SkipTest;

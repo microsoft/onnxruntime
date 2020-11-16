@@ -8,13 +8,13 @@
 #include <core/graph/graph_viewer.h>
 #include "core/providers/nnapi/nnapi_builtin/model.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksWrapper.h"
+#include "op_support_checker.h"
 #include "shaper.h"
 
 namespace onnxruntime {
 namespace nnapi {
 
 class IOpBuilder;
-class IOpSupportChecker;
 
 class ModelBuilder {
  public:
@@ -96,7 +96,7 @@ class ModelBuilder {
   const GraphViewer& GetGraphViewer() const { return graph_viewer_; }
 
   void RegisterNHWCOperand(const std::string& name);
-  bool IsOperandNHWC(const std::string& name);
+  bool IsOperandNHWC(const std::string& name) const;
 
   // Get the operand transposed to nchw/nhwc from given nhwc/nchw operand, if it exists
   bool GetNCHWOperand(const std::string& nhwc_name, std::string& nchw_name);
@@ -127,7 +127,6 @@ class ModelBuilder {
   std::unordered_set<std::string> operands_;
   std::unordered_set<std::string> fused_activations_;
 
-  std::unordered_map<std::string, const ONNX_NAMESPACE::TensorProto&> initializers_;
   std::unordered_set<std::string> skipped_initializers_;
 
   // All activation nodes (Relu, Relu1, Relu6) as a map <NodeIndex, activation_code>
@@ -156,8 +155,7 @@ class ModelBuilder {
   Status Prepare() ORT_MUST_USE_RESULT;
 
   Status GetTargetDevices() ORT_MUST_USE_RESULT;
-  // Get names of all the initializers
-  void GetAllInitializers();
+
   // If a NNAPI operation will use initializers directly, we will add the initializers to the skip list
   void PreprocessInitializers();
   // Preprocess all the activation nodes (Relu/Relu1/Relu6) for easy query later

@@ -7,23 +7,8 @@
 #include "ImageConversionTypes.h"
 
 namespace _winml {
-class ITensorToVideoFrameConverter {
- public:
-  virtual void DX12TensorToVideoFrame(
-      _In_ UINT32 batch_index,
-      _In_ winml::LearningModelSession& session,
-      _In_ ID3D12Resource* input_tensor,
-      _In_ const ImageTensorDescription& tensor_description,
-      _Inout_ wm::VideoFrame& destination_video_frame) = 0;
 
-  virtual void SoftwareTensorToVideoFrame(
-      _In_ winml::LearningModelSession& session,
-      _In_ BYTE* CPU_tensor_to_convert,
-      _In_ ImageTensorDescription tensor_description,
-      _Inout_ wm::VideoFrame& destination_video_frame) = 0;
-};
-
-class TensorToVideoFrameConverter : ITensorToVideoFrameConverter, public ImageConverter {
+class TensorToVideoFrameConverter : public ImageConverter {
  public:
   TensorToVideoFrameConverter() : shared_handle_(nullptr) {}
 
@@ -43,6 +28,12 @@ class TensorToVideoFrameConverter : ITensorToVideoFrameConverter, public ImageCo
       _In_ BYTE* CPU_tensor_to_convert,
       _In_ ImageTensorDescription tensor_description,
       _Inout_ wm::VideoFrame& destination_video_frame);
+
+  void ConvertBatchedDX12TensorToBuffers(
+      _In_ ID3D12Resource* input_tensor,
+      _In_ size_t buffer_size_in_bytes,
+      _In_ _winml::D3DDeviceCache& device_cache,
+      _Inout_ const std::vector<wss::IBuffer>& buffers);
 
  private:
   GUID _d3d11TextureGUID = {0x14bf1054, 0x6ce7, 0x4c00, {0xa1, 0x32, 0xb0, 0xf2, 0x11, 0x5D, 0xE0, 0x7f}};  // {14BF1054-6CE7-4C00-A132-B0F2115DE07F}

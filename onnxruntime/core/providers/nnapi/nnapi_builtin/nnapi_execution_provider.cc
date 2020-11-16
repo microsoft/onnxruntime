@@ -3,13 +3,18 @@
 
 #include "nnapi_execution_provider.h"
 
-#include "model.h"
 #include "builders/helper.h"
-#include "builders/model_builder.h"
 #include "builders/op_support_checker.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/compute_capability.h"
+#include "core/graph/graph_viewer.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "nnapi_lib/nnapi_implementation.h"
+
+#ifdef __ANDROID__
+#include "model.h"
+#include "builders/model_builder.h"
+#endif
 
 namespace onnxruntime {
 
@@ -53,9 +58,21 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
     }
   }
 
-  nnapi::ModelBuilder builder(graph_view);
+  // We need to get the Android system API level to ensure the GetCapability giving the correct result
+  // based on the system.
+  // If we are actually running on Android system, we can get the API level by querying the system
+  // However, since we also allow the NNAPI EP run GetCapability for model conversion on a non-Android system,
+  // since we cannot get the runtime system API level, we have to specify it using complie definition.
+  int32_t android_sdk_ver;
+#ifdef __ANDROID__
+  const auto* _nnapi = NnApiImplementation();
+  android_sdk_ver = _nnapi->android_sdk_version;
+#else
+  android_sdk_ver = ORT_NNAPI_MAX_SUPPORTED_API_LEVEL;
+#endif
+
   nnapi::OpSupportCheckParams params{
-      builder.GetAndroidSdkVer(),
+      android_sdk_ver,
       !!(nnapi_flags_ & NNAPI_FLAG_USE_NCHW),
   };
   const auto supported_nodes_vector = GetSupportedNodes(graph_view, params);
@@ -177,6 +194,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   return result;
 }
 
+#ifdef __ANDROID__
 static Status GetOutputBuffer(Ort::CustomOpApi& ort,
                               OrtKernelContext* context,
                               const nnapi::Model& model,
@@ -412,5 +430,22 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
     node_compute_funcs.push_back(compute_info);
   }
   return Status::OK();
-}  // namespace onnxruntime
+}
+#else
+common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
+                                               std::vector<NodeComputeInfo>& node_compute_funcs) {
+  for (const auto* fused_node : fused_nodes) {
+    ORT_UNUSED_PARAMETER(fused_node);
+    NodeComputeInfo compute_info;
+    compute_info.create_state_func = [](ComputeContext* /*context*/, FunctionState* /*state*/) { return 0; };
+    compute_info.release_state_func = [](FunctionState /*state*/) {};
+    compute_info.compute_func = [](FunctionState /* state */, const OrtCustomOpApi* /* api */, OrtKernelContext* /* context */) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Compute is not supported in this build.");
+    };
+    node_compute_funcs.push_back(compute_info);
+  }
+  return Status::OK();
+}
+#endif
+
 }  // namespace onnxruntime
