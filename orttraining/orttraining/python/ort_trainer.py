@@ -16,6 +16,10 @@ import warnings
 from .checkpointing_utils import list_checkpoint_files, get_checkpoint_name, CombineZeroCheckpoint
 import onnxruntime.capi.pt_patch
 
+from filelock import Timeout, FileLock
+from os import path
+import gc
+import psutil
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 
 DEFAULT_OPSET_VERSION = 12
@@ -73,6 +77,14 @@ def input_get_device_index(input):
         device_index = get_device_index(input.device)
 
     return device_index
+
+def get_global_gradient_norm_arg_name(session):
+    global_gradient_norm_node_args = [x for x in session._outputs_meta if 'global_gradient_norm' in x.name]
+    if len(global_gradient_norm_node_args) != 1:
+        raise RuntimeError("Failed to find a group NodeArg with name that matches 'global_gradient_norm'\
+             from the training session.")
+
+    return global_gradient_norm_node_args[0].name
 
 def get_all_gradients_finite_arg_name(session):
     all_fp16_or_fp32_gradients_finite_node_args = [x for x in session._outputs_meta if 'all_gradients_finite' in x.name]
@@ -281,7 +293,9 @@ def wrap_for_input_match(model, loss_fn, input_names):
 
     return model
 
-def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, opset_version=DEFAULT_OPSET_VERSION):
+def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs,
+                                  opset_version=DEFAULT_OPSET_VERSION,
+                                  use_external_data_format=False):
     # example: {input0:{0:'batch'}, input1:{0:'batch'}}
     dynamic_axes = {}
     for input in model_desc.inputs_:
@@ -317,6 +331,19 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
     # this is a problem because the model graph depends on inputs provided.
     model = wrap_for_input_match(model, loss_fn, input_names)
 
+    # model.eval()
+    # with torch.no_grad():
+    #     import copy
+    #     # Deepcopy inputs, since input values may change after model run.
+    #     sample_inputs_copy = copy.deepcopy(sample_inputs)
+    #     # Deepcopy model, in case model is stateful and changes after model run.
+    #     model_copy = copy.deepcopy(model)
+    #     sample_outputs = model_copy(*sample_inputs_copy)
+    # if isinstance(sample_outputs, torch.Tensor):
+    #     sample_outputs = [sample_outputs]
+    # for sample_output, output_desc in zip(sample_outputs, model_desc.outputs_):
+    #     output_desc.dtype_ = sample_output.dtype
+
     model.eval()
     with torch.no_grad():
         import copy
@@ -337,8 +364,6 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
         output_desc.dtype_ = sample_output.dtype
     model.train()
 
-    f = io.BytesIO()
-
     # Other export options to use(this is for backward compatibility).
     other_export_options = {}
     other_export_options['training'] = True
@@ -358,17 +383,44 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
     from onnxruntime.training import register_custom_ops_pytorch_exporter
     register_custom_ops_pytorch_exporter.register_custom_op()
 
-    torch.onnx._export(model, tuple(sample_inputs_copy), f,
-                       input_names=input_names,
-                       output_names=output_names,
-                       opset_version=opset_version,
-                       dynamic_axes=dynamic_axes,
-                       _retain_param_name=True,
-                       example_outputs=tuple(sample_outputs),
-                       do_constant_folding=False,
-                       **other_export_options)
+    if use_external_data_format:
+        exported_model_dir = os.path.join(str(os.environ['ORT_MODEL_CACHE_ROOT_DIR']), "ort_cache/models/" + str(os.environ['ORT_TRAIN_MODEL_NAME']))
+        lock_file = os.path.join(str(os.environ['ORT_MODEL_CACHE_ROOT_DIR']), str(os.environ['ORT_TRAIN_MODEL_NAME']) + ".exported_model.lock")
+        exported_model_file_name = os.path.join(exported_model_dir, str(os.environ['ORT_TRAIN_MODEL_NAME']) + ".onnx")
 
-    onnx_model = onnx.load_model_from_string(f.getvalue())
+        lock = FileLock(lock_file)
+        lock.acquire()
+
+        if path.exists(exported_model_file_name):
+            print("reuse existing exported model at ", exported_model_file_name)
+        else:
+            print("start exporting model to ", exported_model_file_name)
+            os.makedirs(exported_model_dir, exist_ok=True)
+            torch.onnx._export(model, tuple(sample_inputs_copy), exported_model_file_name,
+                        input_names=input_names,
+                        output_names=output_names,
+                        opset_version=opset_version,
+                        dynamic_axes=dynamic_axes,
+                        _retain_param_name=True,
+                        example_outputs=tuple(sample_outputs),
+                        do_constant_folding=False,
+                        use_external_data_format=True,
+                        **other_export_options)
+        lock.release()
+        onnx_model = onnx.load(exported_model_file_name)
+    else:
+        f = io.BytesIO()
+        torch.onnx._export(model, tuple(sample_inputs_copy), f,
+                    input_names=input_names,
+                    output_names=output_names,
+                    opset_version=opset_version,
+                    dynamic_axes=dynamic_axes,
+                    _retain_param_name=True,
+                    example_outputs=tuple(sample_outputs),
+                    do_constant_folding=False,
+                    **other_export_options)
+
+        onnx_model = onnx.load_model_from_string(f.getvalue())
 
     # Remove 'model_.' prefix introduced by model wrapper for initializers.
     if isinstance(model, WrapModel) or isinstance(model, model_loss_cls):
@@ -384,6 +436,11 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
 
     return onnx_model
 
+def check_onnx_model_exists():
+    exported_model_dir = os.path.join(str(os.environ['ORT_MODEL_CACHE_ROOT_DIR']), "ort_cache/models_to_train/" + str(os.environ['ORT_TRAIN_MODEL_NAME']))
+    exported_model_file_name = os.path.join(exported_model_dir, str(os.environ['ORT_TRAIN_MODEL_NAME']) + ".onnx")
+    return [os.path.exists(exported_model_file_name), exported_model_file_name]
+
 def create_ort_training_session_with_optimizer(model, device, training_optimizer_name, lr_params_feed_name,
                                                map_optimizer_attributes, world_rank=-1, world_size=1,
                                                gradient_accumulation_steps=1, bind_parameters=False,
@@ -392,7 +449,12 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
                                                enable_grad_norm_clip=True,
                                                frozen_weights=[], opset_version=DEFAULT_OPSET_VERSION,
                                                use_deterministic_compute=False,
-                                               use_invertible_layernorm_grad=False):
+                                               use_invertible_layernorm_grad=False,
+                                               data_parallel_size=1,
+                                               horizontal_parallel_size=1,
+                                               pipeline_parallel_size=1,
+                                               output_model_path="",
+                                               use_external_data_format=True):
     output_name = model.graph.output[0].name
     ort_parameters = ort.TrainingParameters()
     ort_parameters.loss_output_name = output_name
@@ -401,10 +463,29 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     ort_parameters.world_size = world_size
     ort_parameters.gradient_accumulation_steps = gradient_accumulation_steps
     ort_parameters.allreduce_post_accumulation = allreduce_post_accumulation
+    ort_parameters.data_parallel_size = data_parallel_size
+    ort_parameters.horizontal_parallel_size = horizontal_parallel_size
+    ort_parameters.pipeline_parallel_size = pipeline_parallel_size
     ort_parameters.deepspeed_zero_stage = deepspeed_zero_stage
     ort_parameters.enable_grad_norm_clip = enable_grad_norm_clip
     ort_parameters.set_gradients_as_graph_outputs = False
     ort_parameters.use_invertible_layernorm_grad = use_invertible_layernorm_grad
+    ort_parameters.output_model_path = output_model_path
+    ort_parameters.use_external_data_format = use_external_data_format
+
+    if ort_parameters.data_parallel_size > world_size or ort_parameters.horizontal_parallel_size > world_size:
+        raise ValueError("data_parallel_size or horizontal_parallel_size large than world size")
+
+    if world_size % ort_parameters.data_parallel_size != 0 or world_size % ort_parameters.horizontal_parallel_size != 0:
+        raise ValueError("Cannot split data/horizontal parallel group because world size is not divisible")
+
+    data_group_size = world_size // (ort_parameters.horizontal_parallel_size * ort_parameters.pipeline_parallel_size)
+    if data_group_size <= 0:
+        raise ValueError("Insufficient processes lead to zero-way data parallelism, which should be at least one-way.")
+
+    if data_group_size != ort_parameters.data_parallel_size:
+        print("WARNING: data_parallel_size is not correct, tuned automatically to ", str(data_group_size))
+        ort_parameters.data_parallel_size = data_group_size
 
     output_types = {}
     for output in model.graph.output:
@@ -456,9 +537,51 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     ort_parameters.optimizer_attributes_map = optimizer_attributes_map
     ort_parameters.optimizer_int_attributes_map = optimizer_int_attributes_map
 
+    file_name_or_serialized_string = None
+    if ort_parameters.use_external_data_format:
+        if check_onnx_model_exists()[0] is True:
+            file_name_or_serialized_string = check_onnx_model_exists()[1]
+            print("reuse models to train model from ", file_name_or_serialized_string)
+        else:
+            exported_model_dir = os.path.join(str(os.environ['ORT_MODEL_CACHE_ROOT_DIR']), "ort_cache/models_to_train/" + str(os.environ['ORT_TRAIN_MODEL_NAME']))
+            lock_file = os.path.join(str(os.environ['ORT_MODEL_CACHE_ROOT_DIR']), str(os.environ['ORT_TRAIN_MODEL_NAME']) + ".model_to_train.lock")
+            exported_model_file_name = os.path.join(exported_model_dir, str(os.environ['ORT_TRAIN_MODEL_NAME']) + ".onnx")
+            lock = FileLock(lock_file)
+            lock.acquire()
+            if path.exists(exported_model_file_name):
+                print("reuse existing saved model at ", exported_model_file_name)
+            else:
+                print("start saving model to ", exported_model_file_name)
+                os.makedirs(exported_model_dir, exist_ok=True)
+                onnx.save_model(model, exported_model_file_name)
+                print("finish saving model to ", exported_model_file_name)
+            lock.release()
+            file_name_or_serialized_string = exported_model_file_name
+    else:
+        file_name_or_serialized_string = model.SerializeToString()
+
+
+    del model.graph.initializer[:]
+    # print("before sleep ", psutil.virtual_memory())
+    # import time
+    # time.sleep(30) # wait for GC
+    print("before start session", psutil.virtual_memory())
+
     sessionOptions = ort.SessionOptions()
     sessionOptions.use_deterministic_compute = use_deterministic_compute
-    session = ort.TrainingSession(model.SerializeToString(), ort_parameters, sessionOptions)
+
+    if "LOG_SEVERITY" not in os.environ:
+        os.environ["LOG_SEVERITY"] = "0" # 2, warning
+    sessionOptions.log_severity_level = int(os.environ['LOG_SEVERITY'])
+    # hard  code temoira
+    if ort_parameters.data_parallel_size == 1 and  ort_parameters.horizontal_parallel_size > 1:
+        # If no data prallel, the last gradient norm reduce across megatron ranks will make the excution hang
+        # The reason is: rank 0's all reduce will depend on all grads, but other ranks only depend on partitioned grads
+        # so other ranks will hit the graident norm reduce earlier, at the same time rank 0 is doing other all reduce. 
+        #sessionOptions.execution_order = ort.ExecutionOrder.PRIORITY_BASED
+        pass
+
+    session = ort.TrainingSession(file_name_or_serialized_string, ort_parameters, sessionOptions)
     train_io_binding = session.io_binding()
     eval_io_binding = session.io_binding()
 
@@ -483,7 +606,8 @@ def save_checkpoint(model, checkpoint_dir, checkpoint_prefix="ORT_checkpoint", c
 
     assert os.path.exists(checkpoint_dir), "ERROR: Checkpoint directory doesn't exist: {}".format(checkpoint_dir)
 
-    checkpoint_name = get_checkpoint_name(checkpoint_prefix, model.deepspeed_zero_stage_, model.world_rank, model.world_size)
+    checkpoint_name = get_checkpoint_name(checkpoint_prefix, model.deepspeed_zero_stage_, model.world_rank, model.world_size, 
+        model.horizontal_parallel_size, model.pipeline_parallel_size)
     checkpoint_file = os.path.join(checkpoint_dir, checkpoint_name)
 
     if os.path.exists(checkpoint_file):
@@ -492,7 +616,8 @@ def save_checkpoint(model, checkpoint_dir, checkpoint_prefix="ORT_checkpoint", c
     torch.save(checkpoint_state_dict, checkpoint_file)
 
 def _load_single_checkpoint(model, checkpoint_dir, checkpoint_prefix, is_partitioned, strict):
-    checkpoint_name = get_checkpoint_name(checkpoint_prefix, is_partitioned, model.world_rank, model.world_size)
+    checkpoint_name = get_checkpoint_name(checkpoint_prefix, is_partitioned, model.world_rank, model.world_size, 
+        model.horizontal_parallel_size, model.pipeline_parallel_size)
     checkpoint_file = os.path.join(checkpoint_dir, checkpoint_name)
 
     if is_partitioned:
@@ -547,7 +672,9 @@ class ORTTrainer():
                  global_step=0, get_lr_this_step=None, loss_scaler=None, deepspeed_zero_stage=0,
                  enable_grad_norm_clip=True, frozen_weights=[], _opset_version=DEFAULT_OPSET_VERSION,
                  _enable_internal_postprocess=True, _extra_postprocess=None, _use_deterministic_compute=False,
-                 use_invertible_layernorm_grad=False, run_symbolic_shape_infer=False):
+                 use_invertible_layernorm_grad=False, run_symbolic_shape_infer=False,
+                 data_parallel_size=1, horizontal_parallel_size=1,
+                 pipeline_parallel_size=1, output_model_path="", use_external_data_format=True):
         super(ORTTrainer, self).__init__()
         """
         Initialize ORTTrainer.
@@ -679,6 +806,11 @@ class ORTTrainer():
         self.state_dict_ = None
         self._use_deterministic_compute = _use_deterministic_compute
         self.use_invertible_layernorm_grad = use_invertible_layernorm_grad
+        self.data_parallel_size=data_parallel_size
+        self.horizontal_parallel_size=horizontal_parallel_size
+        self.pipeline_parallel_size=pipeline_parallel_size
+        self.output_model_path = output_model_path
+        self.use_external_data_format = use_external_data_format
         self.run_symbolic_shape_infer = run_symbolic_shape_infer
 
         # use this special string to workaround a corner case that external loss_scale is passed into train_step as kwargs.
@@ -710,7 +842,12 @@ class ORTTrainer():
                 enable_grad_norm_clip=self.enable_grad_norm_clip_,
                 frozen_weights=self.frozen_weights_, opset_version=self.opset_version_,
                 use_deterministic_compute=self._use_deterministic_compute,
-                use_invertible_layernorm_grad=self.use_invertible_layernorm_grad)
+                use_invertible_layernorm_grad=self.use_invertible_layernorm_grad,
+                data_parallel_size=self.data_parallel_size,
+                horizontal_parallel_size=self.horizontal_parallel_size,
+                pipeline_parallel_size=self.pipeline_parallel_size,
+                output_model_path=self.output_model_path,
+                use_external_data_format=self.use_external_data_format)
 
         self.loss_scale_input_name = self.session.loss_scale_input_name
 
@@ -731,14 +868,17 @@ class ORTTrainer():
         if self.gradient_accumulation_steps > 1:
             self.output_desc_with_group_accumulated_gradients = [
                 *self.model_desc_.outputs_,
-                IODescription(get_group_accumulated_gradients_output_node_arg_name(self.session), [1], torch.bool)]
+                IODescription(get_group_accumulated_gradients_output_node_arg_name(self.session), [1], torch.bool),
+                IODescription(get_global_gradient_norm_arg_name(self.session), [], torch.float),
+                IODescription(get_all_gradients_finite_arg_name(self.session), [1], torch.bool),]
 
         if self.use_mixed_precision:
             # when ready to use accumulated gradient with mixed precision, we need to fetch all_infinite to determine
             # if the gradient is usable.
             self.output_desc_with_all_fp_16_or_fp32_gradients_finite = [
                 *self.model_desc_.outputs_,
-                IODescription(get_all_gradients_finite_arg_name(self.session), [1], torch.bool)]
+                IODescription(get_global_gradient_norm_arg_name(self.session), [], torch.float),
+                IODescription(get_all_gradients_finite_arg_name(self.session), [1], torch.bool),]
 
         if self.state_dict_:
             self.load_state_dict(self.state_dict_, self.strict_)
@@ -755,7 +895,9 @@ class ORTTrainer():
             torch_buffers = list(dict(self.torch_model_.named_buffers()).keys())
             self.frozen_weights_ = self.frozen_weights_ + torch_buffers
             self.onnx_model_ = convert_model_loss_fn_to_onnx(
-                self.torch_model_, self.loss_fn_, self.model_desc_, torch.device('cpu'), inputs, opset_version=self.opset_version_)
+                self.torch_model_, self.loss_fn_, self.model_desc_, torch.device('cpu'), inputs, 
+                opset_version=self.opset_version_,
+                use_external_data_format=self.use_external_data_format)
 
             if self._enable_internal_postprocess:
                 postprocess.run_postprocess(self.onnx_model_)
@@ -970,7 +1112,7 @@ class ORTTrainer():
             # return descripted outputs plus the all_finite flag so that the training script can handle loss scaling.
             results = [session_run_results[output_desc.name_] for output_desc in self.output_desc_with_all_fp_16_or_fp32_gradients_finite]
         else:
-            results = [session_run_results[output_desc.name_] for output_desc in self.model_desc_.outputs_]
+            results = [session_run_results[output_desc_.name_] for output_desc_ in output_desc]
 
         return results[0] if len(results) == 1 else results
 

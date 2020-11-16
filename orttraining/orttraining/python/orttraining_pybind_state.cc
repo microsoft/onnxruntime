@@ -48,6 +48,8 @@ struct TrainingParameters {
   bool enable_grad_norm_clip = true;
   bool set_gradients_as_graph_outputs = false;
   bool use_invertible_layernorm_grad = false;
+  std::string output_model_path;
+  bool use_external_data_format = false;
 
   // recompute
   bool attn_dropout_recompute = false;
@@ -104,6 +106,11 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   }
 
   config.loss_name = parameters.loss_output_name;
+
+  if (!parameters.output_model_path.empty()) {
+    config.model_with_loss_function_path = parameters.output_model_path + ORT_TSTR("_with_cost.onnx");
+    config.model_with_training_graph_path = parameters.output_model_path + ORT_TSTR("_bw.onnx");
+  }
 
   if (!parameters.training_optimizer_name.empty()) {
     training::TrainingSession::TrainingConfiguration::OptimizerConfiguration opt{};
@@ -210,7 +217,10 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("number_recompute_layers", &TrainingParameters::number_recompute_layers)
       .def_readwrite("data_parallel_size", &TrainingParameters::data_parallel_size)
       .def_readwrite("horizontal_parallel_size", &TrainingParameters::horizontal_parallel_size)
-      .def_readwrite("pipeline_parallel_size", &TrainingParameters::pipeline_parallel_size);
+      .def_readwrite("pipeline_parallel_size", &TrainingParameters::pipeline_parallel_size)
+      .def_readwrite("output_model_path", &TrainingParameters::output_model_path)
+      .def_readwrite("use_external_data_format", &TrainingParameters::use_external_data_format);
+  ;
 
 #if defined(USE_MPI)
   m.def("get_mpi_context_local_rank", []() -> int { return MPIContext::GetInstance().GetLocalRank(); });
@@ -264,11 +274,11 @@ void addObjectMethodsForTraining(py::module& m) {
           CopyMPIContextToTrainingParameters(parameters, sess->GetSessionHandle()->GetLogger());
 #endif
         const auto config_result = ConfigureSessionForTraining(static_cast<TrainingSession*>(sess->GetSessionHandle()), parameters);
-
+        return config_result;
+      })
+      .def("init_train_session", [](PyTrainingSession* sess) {
         std::vector<std::string> provider_types = {};
         InitializeSession(sess->GetSessionHandle(), provider_types);
-
-        return config_result;
       })
       .def("read_bytes", [](PyTrainingSession* sess, const py::bytes& serialized_model, TrainingParameters& parameters) {
         std::istringstream buffer(serialized_model);
