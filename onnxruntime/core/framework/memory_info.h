@@ -24,45 +24,55 @@ struct MemoryInfoMap {
  public:
   MemoryInfoMap() = default;
 
-  inline void AddPlannedMemory(const OrtValueIndex& idx, const MemoryBlock& mb) {
+  void AddPlannedMemory(const OrtValueIndex& idx, const MemoryBlock& mb) {
     map_[idx].planned_block = mb;
   }
 
-  inline void AddAllocMemory(const OrtValueIndex& idx, MemoryBlock& mb) {
+  void AddAllocMemory(const OrtValueIndex& idx, MemoryBlock& mb) {
     map_[idx].allocated_block = mb;
     if (ptr_offset == 0 || (ptr_offset > mb.offset_ && mb.offset_ != 0)) {
       ptr_offset = mb.offset_;
     }
   }
 
-  inline const MemoryBlock& GetPlannedMemory(const OrtValueIndex& idx) const {
-    return map_.at(idx).planned_block;
+  const MemoryBlock& GetPlannedMemory(const OrtValueIndex& idx) const {
+    auto itr = map_.find(idx);
+    ORT_ENFORCE(itr != map_.end());
+    return itr->second.planned_block;
   }
 
-  inline size_t GetPlannedAddress(const OrtValueIndex& idx) const {
-    return map_.at(idx).planned_block.offset_;
+  size_t GetPlannedAddress(const OrtValueIndex& idx) const {
+    auto itr = map_.find(idx);
+    ORT_ENFORCE(itr != map_.end());
+    return itr->second.planned_block.offset_;
   }
 
-  inline size_t GetPlannedSize(const OrtValueIndex& idx) const {
-    return map_.at(idx).planned_block.size_;
+  size_t GetPlannedSize(const OrtValueIndex& idx) const {
+    auto itr = map_.find(idx);
+    ORT_ENFORCE(itr != map_.end());
+    return itr->second.planned_block.size_;
   }
   size_t GetAllocAddress(const OrtValueIndex& idx, bool raw = false) const {
+    auto itr = map_.find(idx);
+    ORT_ENFORCE(itr != map_.end());
     if (raw) {
-      return map_.at(idx).allocated_block.offset_;
+      return itr->second.allocated_block.offset_;
     } else {
-      return map_.at(idx).allocated_block.offset_ - ptr_offset;
+      return itr->second.allocated_block.offset_ - ptr_offset;
     }
   }
 
-  inline size_t GetAllocSize(const OrtValueIndex& idx) const {
-    return map_.at(idx).allocated_block.size_;
+  size_t GetAllocSize(const OrtValueIndex& idx) const {
+    auto itr = map_.find(idx);
+    ORT_ENFORCE(itr != map_.end());
+    return itr->second.allocated_block.size_;
   }
 
-  inline bool Contain(const OrtValueIndex& idx) const {
+  bool Contain(const OrtValueIndex& idx) const {
     return map_.find(idx) != map_.end();
   }
 
-  inline void clear() {
+  void clear() {
     map_.clear();
   }
 
@@ -106,7 +116,7 @@ class MemoryInfo {
   struct AllocationSummary {
     size_t total_size = 0;
     size_t used_size = 0;
-    std::vector<OrtValueIndex> life_tensosrs;
+    std::vector<OrtValueIndex> live_tensors;
   };
 
   struct MemoryInfoProfile {
@@ -124,6 +134,10 @@ class MemoryInfo {
     static size_t GetAndIncreasePid() {
       size_t val = pid_++;
       return val;
+    }
+
+    static void Clear() {
+      summary_.clear();
     }
 
    private:
@@ -149,11 +163,11 @@ class MemoryInfo {
   static void SetDynamicAllocation(const OrtValueIndex idx);
   static void SetLocalRank(const int rank) { local_rank_ = rank; }
 
-  static inline void SetIteration(size_t iteration) { iteration_ = iteration; }
+  static void SetIteration(size_t iteration) { iteration_ = iteration; }
 
   static void PrintMemoryInfoForLocation(const OrtDevice::DeviceType location);
   static void GenerateMemoryProfile();
-  static inline void ClearMemoryInfoPerExecution() {
+  static void ClearMemoryInfoPerExecution() {
     for (auto& location_map : tensors_memory_info_map_) {
       location_map.second[MapType::DynamicActivation].clear();
       location_map.second[MapType::StaticActivation].clear();

@@ -243,7 +243,7 @@ static void UpdateSummary(MemoryInfo::AllocationSummary& summary, size_t alloc_o
   } else {
     summary.total_size = std::max(summary.total_size, alloc_offset + alloc_size);
   }
-  summary.life_tensosrs.push_back(idx);
+  summary.live_tensors.push_back(idx);
 }
 
 const std::vector<std::string> MemoryInfo::MemoryInfoProfile::color_names = {
@@ -291,7 +291,7 @@ void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name, cons
   for (const auto& location_map : tensors_memory_info_map_) {
     if (location_map.first.device.Type() != OrtDevice::GPU) continue;
     //If there is no tensor of a map_type, we skip creating event for that map_type
-    if(location_map.second.find(map_type) == location_map.second.end()) continue;
+    if (location_map.second.find(map_type) == location_map.second.end()) continue;
     auto summary_key = str_hash(location_map.first.ToString() + std::to_string(map_type));
     //Preprocessing
     if (time_step_trace_[map_type].empty()) {
@@ -340,7 +340,7 @@ void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name, cons
       bool has_other_tensors = false;
       if (top_k != 0 && item.second.total_size < top_kth_total_size) continue;
       size_t alloc_size_for_pattern = 0;
-      for (const auto& live_tensor : item.second.life_tensosrs) {
+      for (const auto& live_tensor : item.second.live_tensors) {
         const auto info = AllocPlan(live_tensor);
         if (info->inplace_reuse) continue;
         const std::string& name = info->mlvalue_name;
@@ -380,7 +380,7 @@ void MemoryInfo::GenerateMemoryProfile() {
   }
   memory_profile << "]" << std::endl;
   memory_profile.close();
-  //PrintMemoryInfoForLocation(OrtDevice::GPU);
+  MemoryInfoProfile::Clear();
 }
 
 }  // namespace onnxruntime
