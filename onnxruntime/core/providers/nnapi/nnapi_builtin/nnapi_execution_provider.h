@@ -24,10 +24,12 @@ class NnapiExecutionProvider : public IExecutionProvider {
   unsigned long GetNNAPIFlags() const { return nnapi_flags_; }
 
  private:
-  std::unordered_map<std::string, std::unique_ptr<onnxruntime::nnapi::Model>> nnapi_models_;
-
   // The bit flags which define bool options for NNAPI EP, bits are defined as
   // NNAPIFlags in include/onnxruntime/core/providers/nnapi/nnapi_provider_factory.h
   const unsigned long nnapi_flags_;
+
+#ifdef __ANDROID__
+  std::unordered_map<std::string, std::unique_ptr<onnxruntime::nnapi::Model>> nnapi_models_;
+#endif
 };
 }  // namespace onnxruntime
