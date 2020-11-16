@@ -444,7 +444,7 @@ void UpsampleBilinear(int64_t batch_size,
   }
 }
 
-  // The following method supports a 5-D input in 'Linear mode'
+// The following method supports a 5-D input in 'Linear mode'
 // that amounts to 'Trilinear' Upsampling/Resizing in the sense that it assumes
 // the scale values for the outermost 2 dimensions are 1.
 // This is the common use-case where the 5-D input (batched multi-channel volumes)
@@ -887,7 +887,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                                 scales, roi, is_resize_, use_extrapolation_, extrapolation_value_,
                                 use_nearest2x_optimization_, get_original_coordinate_, get_nearest_pixel_);
     case UpsampleMode::LINEAR: {
-      // Supports 'bilinear' and 'trilinear' sampling onl
+      // Supports 'bilinear' and 'trilinear' sampling only
 
       //'bilinear' == 2-D input or 4-D input with outermost 2 scales as 1
       if (dims.size() == 2 || dims.size() == 4) {
@@ -907,7 +907,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                          is_2D ? scales[0] : scales[2], is_2D ? scales[1] : scales[3], roi,
                          use_extrapolation_, extrapolation_value_, X->template Data<T>(),
                          Y->template MutableData<T>(), alloc, get_original_coordinate_, 
-                         context->GetOperatorThreadPool());
+                         output_height*output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
         return Status::OK();
       } else if (dims.size() == 3 || dims.size() == 5) {
         //'trilinear' == 3-D input or 5-D input with outermost 2 scales as 1
@@ -930,7 +930,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                           is_3D ? scales[0] : scales[2], is_3D ? scales[1] : scales[3],
                           is_3D ? scales[2] : scales[4], roi, use_extrapolation_, extrapolation_value_,
                           X->template Data<T>(), Y->template MutableData<T>(), alloc, get_original_coordinate_, 
-                          context->GetOperatorThreadPool());
+                          output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
         return Status::OK();
       } else {
         // User shouldn't hit this as the check has been performed in ScalesValidation()
