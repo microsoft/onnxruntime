@@ -32,7 +32,6 @@ bool FilterNode(const NodeDumpOptions& dump_options, const Node& node) {
           if (std::equal(value.begin(), value.end(), pattern_begin, pattern_end)) return true;
 
           if (pattern_end == delimited_patterns.end()) break;
-
           pattern_begin = pattern_end + 1;
         }
 
@@ -198,28 +197,27 @@ const NodeDumpOptions NodeDumpOptionsFromEnvironmentVariables() {
 
   opts.filter.name_pattern = Env::Default().GetEnvironmentVar(env_vars::kNameFilter);
   opts.filter.op_type_pattern = Env::Default().GetEnvironmentVar(env_vars::kOpTypeFilter);
-
-    if (get_bool_env_var(env_vars::kAppendRankToFileName)) {
-      std::string rank = Env::Default().GetEnvironmentVar("OMPI_COMM_WORLD_RANK");
-      if (rank.empty()) {
-        opts.file_suffix = "_default_rank_0";
-      } else {
-        opts.file_suffix = "_rank_" + rank;
-      }
+  opts.data_destination = NodeDumpOptions::DataDestination::TensorProtoFiles;
+  if (get_bool_env_var(env_vars::kAppendRankToFileName)) {
+    std::string rank = Env::Default().GetEnvironmentVar("OMPI_COMM_WORLD_RANK");
+    if (rank.empty()) {
+      opts.file_suffix = "_default_rank_0";
+    } else {
+      opts.file_suffix = "_rank_" + rank;
     }
+  }
 
-    opts.output_dir = Path::Parse(ToPathString(Env::Default().GetEnvironmentVar(env_vars::kOutputDir)));
+  opts.output_dir = Path::Parse(ToPathString(Env::Default().GetEnvironmentVar(env_vars::kOutputDir)));
 
-    // check for confirmation for dumping data to files for all nodes
-    if (opts.dump_flags != NodeDumpOptions::DumpFlags::ShapeOnly &&
-        opts.data_destination == NodeDumpOptions::DataDestination::TensorProtoFiles &&
-        opts.filter.name_pattern.empty() && opts.filter.op_type_pattern.empty()) {
-      ORT_ENFORCE(
-          get_bool_env_var(env_vars::kDumpingDataToFilesForAllNodesIsOk),
-          "The current environment variable configuration will dump node input or output data to files for every node. "
-          "This may cause a lot of files to be generated. Set the environment variable ",
-          env_vars::kDumpingDataToFilesForAllNodesIsOk, " to confirm this is what you want.");
-    }
+  // check for confirmation for dumping data to files for all nodes
+  if (opts.dump_flags != NodeDumpOptions::DumpFlags::ShapeOnly &&
+      opts.data_destination == NodeDumpOptions::DataDestination::TensorProtoFiles &&
+      opts.filter.name_pattern.empty() && opts.filter.op_type_pattern.empty()) {
+    ORT_ENFORCE(
+        get_bool_env_var(env_vars::kDumpingDataToFilesForAllNodesIsOk),
+        "The current environment variable configuration will dump node input or output data to files for every node. "
+        "This may cause a lot of files to be generated. Set the environment variable ",
+        env_vars::kDumpingDataToFilesForAllNodesIsOk, " to confirm this is what you want.");
   }
 
   opts.output_dir = Path::Parse(ToPathString(Env::Default().GetEnvironmentVar(env_vars::kOutputDir)));

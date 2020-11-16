@@ -31,8 +31,8 @@ struct TrainingParameters {
   std::string lr_params_feed_name = "Learning_Rate";
   std::unordered_map<std::string, std::unordered_map<std::string, float>> optimizer_attributes_map;
   std::unordered_map<std::string, std::unordered_map<std::string, int64_t>> optimizer_int_attributes_map;
-  bool use_fp16_moments = false;
 
+  bool use_fp16_moments = false;
   bool use_mixed_precision = false;
   bool allreduce_post_accumulation = false;
   float loss_scale = 0.0f;

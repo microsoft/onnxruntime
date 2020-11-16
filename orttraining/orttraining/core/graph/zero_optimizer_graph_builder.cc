@@ -214,7 +214,8 @@ static Status ModifyParametersForOptimizerPartitioning(
   int64_t offset = 0;
   for (size_t i = 0; i < weight_argdefs.size(); i++) {
     bool is_shared_weight = false;
-    if (std::find(megatron_partitioned_weight_grad_index.begin(), megatron_partitioned_weight_grad_index.end(), i) == megatron_partitioned_weight_grad_index.end()) {
+    if (std::find(megatron_partitioned_weight_grad_index.begin(), megatron_partitioned_weight_grad_index.end(), i) ==
+        megatron_partitioned_weight_grad_index.end()) {
       is_shared_weight = true;
     }
 

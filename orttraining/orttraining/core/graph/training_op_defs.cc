@@ -1941,6 +1941,8 @@ Return true if all elements are true and false otherwise.
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain scale types to float tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // ONNX_NAMESPACE::TensorShapeProto out_shape;
+        // out_shape.add_dim()->set_dim_value(1);
         updateOutputShape(ctx, 0, {});
       });
 

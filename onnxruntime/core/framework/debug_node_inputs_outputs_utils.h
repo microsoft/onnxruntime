@@ -98,8 +98,7 @@ void DumpNodeOutputs(
     const NodeDumpOptions& dump_options,
     OpKernelContext& context, const Node& node, const SessionState& session_state);
 
-void DumpNodeOutputs(
-    OpKernelContext& context, const Node& node, const SessionState& session_state);
+void DumpNodeOutputs(OpKernelContext& context, const Node& node, const SessionState& session_state);
 
 }  // namespace utils
 }  // namespace onnxruntime

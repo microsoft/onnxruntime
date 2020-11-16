@@ -80,6 +80,14 @@ def input_get_device_index(input):
 
     return device_index
 
+def get_global_gradient_norm_arg_name(session):
+    global_gradient_norm_node_args = [x for x in session._outputs_meta if 'global_gradient_norm' in x.name]
+    if len(global_gradient_norm_node_args) != 1:
+        raise RuntimeError("Failed to find a group NodeArg with name that matches 'global_gradient_norm'\
+             from the training session.")
+
+    return global_gradient_norm_node_args[0].name
+
 def get_all_gradients_finite_arg_name(session):
     all_fp16_or_fp32_gradients_finite_node_args = [x for x in session._outputs_meta if 'all_gradients_finite' in x.name]
     if len(all_fp16_or_fp32_gradients_finite_node_args) != 1:
@@ -378,9 +386,9 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs,
     register_custom_ops_pytorch_exporter.register_custom_op()
 
     if use_external_data_format:
-        exported_model_dir = os.path.join(str(os.environ['T5_MODEL_PATH']), "t5/models/" + str(os.environ['T5_MODEL_NAME']))
-        lock_file = os.path.join(str(os.environ['T5_MODEL_PATH']), str(os.environ['T5_MODEL_NAME']) + ".exported_model.lock")
-        exported_model_file_name = os.path.join(exported_model_dir, str(os.environ['T5_MODEL_NAME']) + ".onnx")
+        exported_model_dir = os.path.join(str(os.environ['ORT_MODEL_CACHE_ROOT_DIR']), "ort_cache/models/" + str(os.environ['ORT_TRAIN_MODEL_NAME']))
+        lock_file = os.path.join(str(os.environ['ORT_MODEL_CACHE_ROOT_DIR']), str(os.environ['ORT_TRAIN_MODEL_NAME']) + ".exported_model.lock")
+        exported_model_file_name = os.path.join(exported_model_dir, str(os.environ['ORT_TRAIN_MODEL_NAME']) + ".onnx")
 
         lock = FileLock(lock_file)
         lock.acquire()
@@ -431,8 +439,8 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs,
     return onnx_model
 
 def check_onnx_model_exists():
-    exported_model_dir = os.path.join(str(os.environ['T5_MODEL_PATH']), "t5/models_to_train/" + str(os.environ['T5_MODEL_NAME']))
-    exported_model_file_name = os.path.join(exported_model_dir, str(os.environ['T5_MODEL_NAME']) + ".onnx")
+    exported_model_dir = os.path.join(str(os.environ['ORT_MODEL_CACHE_ROOT_DIR']), "ort_cache/models_to_train/" + str(os.environ['ORT_TRAIN_MODEL_NAME']))
+    exported_model_file_name = os.path.join(exported_model_dir, str(os.environ['ORT_TRAIN_MODEL_NAME']) + ".onnx")
     return [os.path.exists(exported_model_file_name), exported_model_file_name]
 
 def create_ort_training_session_with_optimizer(model, device, training_optimizer_name, lr_params_feed_name,
@@ -537,9 +545,9 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
             file_name_or_serialized_string = check_onnx_model_exists()[1]
             print("reuse models to train model from ", file_name_or_serialized_string)
         else:
-            exported_model_dir = os.path.join(str(os.environ['T5_MODEL_PATH']), "t5/models_to_train/" + str(os.environ['T5_MODEL_NAME']))
-            lock_file = os.path.join(str(os.environ['T5_MODEL_PATH']), str(os.environ['T5_MODEL_NAME']) + ".model_to_train.lock")
-            exported_model_file_name = os.path.join(exported_model_dir, str(os.environ['T5_MODEL_NAME']) + ".onnx")
+            exported_model_dir = os.path.join(str(os.environ['ORT_MODEL_CACHE_ROOT_DIR']), "ort_cache/models_to_train/" + str(os.environ['ORT_TRAIN_MODEL_NAME']))
+            lock_file = os.path.join(str(os.environ['ORT_MODEL_CACHE_ROOT_DIR']), str(os.environ['ORT_TRAIN_MODEL_NAME']) + ".model_to_train.lock")
+            exported_model_file_name = os.path.join(exported_model_dir, str(os.environ['ORT_TRAIN_MODEL_NAME']) + ".onnx")
             lock = FileLock(lock_file)
             lock.acquire()
             if path.exists(exported_model_file_name):
@@ -859,14 +867,17 @@ class ORTTrainer():
         if self.gradient_accumulation_steps > 1:
             self.output_desc_with_group_accumulated_gradients = [
                 *self.model_desc_.outputs_,
-                IODescription(get_group_accumulated_gradients_output_node_arg_name(self.session), [1], torch.bool)]
+                IODescription(get_group_accumulated_gradients_output_node_arg_name(self.session), [1], torch.bool),
+                IODescription(get_global_gradient_norm_arg_name(self.session), [], torch.float),
+                IODescription(get_all_gradients_finite_arg_name(self.session), [1], torch.bool),]
 
         if self.use_mixed_precision:
             # when ready to use accumulated gradient with mixed precision, we need to fetch all_infinite to determine
             # if the gradient is usable.
             self.output_desc_with_all_fp_16_or_fp32_gradients_finite = [
                 *self.model_desc_.outputs_,
-                IODescription(get_all_gradients_finite_arg_name(self.session), [1], torch.bool)]
+                IODescription(get_global_gradient_norm_arg_name(self.session), [], torch.float),
+                IODescription(get_all_gradients_finite_arg_name(self.session), [1], torch.bool),]
 
         if self.state_dict_:
             self.load_state_dict(self.state_dict_, self.strict_)
@@ -1100,7 +1111,7 @@ class ORTTrainer():
             # return descripted outputs plus the all_finite flag so that the training script can handle loss scaling.
             results = [session_run_results[output_desc.name_] for output_desc in self.output_desc_with_all_fp_16_or_fp32_gradients_finite]
         else:
-            results = [session_run_results[output_desc.name_] for output_desc in self.model_desc_.outputs_]
+            results = [session_run_results[output_desc_.name_] for output_desc_ in output_desc]
 
         return results[0] if len(results) == 1 else results
 

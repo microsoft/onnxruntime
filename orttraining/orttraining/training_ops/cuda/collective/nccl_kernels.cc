@@ -139,7 +139,7 @@ Status NcclReduceScatter::ComputeInternal(OpKernelContext* context) const {
   }
 
   // ReduceScatter requires every rank to receive the same amount of data, and significantly
-  // slows down significantly if the data is not aligned.  Nvidia recommends 32-byte alignment,
+  // slows down if the data is not aligned.  Nvidia recommends 32-byte alignment,
   // so pad to multiple of 32 and world size.
   // Note: the alignment here needs to be kept in-sync with the alignment in zero_optimizer_graph_builder.cc
   const int64_t alignment = size * 32;
