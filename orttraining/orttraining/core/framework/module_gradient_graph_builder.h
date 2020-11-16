@@ -44,15 +44,12 @@ struct SplitGraphsInfo {
 
 class ModuleGradientGraphBuilder {
  public:
-  Status BuildAndSplit(std::istream& model_istream,
-                       const ModuleGradientGraphBuilderConfiguration& config);
+  Status BuildAndSplit(std::istream& model_istream, const ModuleGradientGraphBuilderConfiguration& config);
 
   std::string GetGradientModel() const;
   std::string GetForwardModel() const;
   std::string GetBackwardModel() const;
-  SplitGraphsInfo GetSplitGraphsInfo() const {
-    return split_graphs_info_;
-  }
+  SplitGraphsInfo GetSplitGraphsInfo() const { return split_graphs_info_; }
 
  private:
   Status Split();
