@@ -12,6 +12,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph.h"
 #include "core/graph/model.h"
+#include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/graph/gradient_builder_base.h"
 #include "orttraining/core/graph/graph_augmenter.h"
 #include "orttraining/core/graph/optimizer_builder.h"
@@ -289,8 +290,10 @@ Status OptimizerGraphBuilder::AddDirectWeightUpdate(
       new_initializers,
       output_weight_argdefs, output_gradient_argdefs));
 
+  std::cout << "OptimizerGraphBuilder::AddDirectWeightUpdate after BuildOptimizerNode" << std::endl;
   graph_defs.AddInitializers(new_initializers);
 
+  std::cout << "OptimizerGraphBuilder::AddDirectWeightUpdate after graph_defs.AddInitializers(new_initializers)" << std::endl;
   weight_argdefs = std::move(output_weight_argdefs);
   gradient_argdefs = std::move(output_gradient_argdefs);
 
@@ -301,6 +304,40 @@ Status OptimizerGraphBuilder::AddDirectWeightUpdate(
       [](const TensorProto& initializer) { return initializer.name(); });
   optimizer_state_initializer_names = std::move(all_new_initializer_names);
 
+  return Status::OK();
+}
+
+Status OptimizerGraphBuilder::AddL2NormBetweenMegatronRanksNcclAllReduce(
+    ArgDef& norm_argdef,
+    GraphAugmenter::GraphDefs& graph_defs) {
+  // Square the L2 norm.
+  ArgDef exponent(norm_argdef.name + "_pow2",
+                  graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+  graph_defs.AddInitializers({CreateTensorProto<float>(exponent.name, 2.0f, {})});
+  ArgDef norm_squared(norm_argdef.name + "_squared", norm_argdef.type_proto);
+  graph_defs.AddNodeDefs({NodeDef("Pow",
+                                  {norm_argdef, exponent},
+                                  {norm_squared},
+                                  NodeAttributes(),
+                                  norm_squared.name)});
+
+  //AllReduce the squared L2 norms.
+  ArgDef allreduce_output(norm_argdef.name + "_AllReduce_Out", norm_argdef.type_proto);
+  graph_defs.AddNodeDefs({NodeDef(OpDef{"NcclAllReduce", kMSDomain, 1},
+                                  {norm_squared},
+                                  {allreduce_output},
+                                  {ONNX_NAMESPACE::MakeAttribute("group_type", static_cast<int64_t>(training::WorkerGroupType::HorizontalParallel))},
+                                  allreduce_output.name)});
+
+  // Sqrt the reduced L2 norm.
+  ArgDef sqrt_output(norm_argdef.name + "_sqrt", norm_argdef.type_proto);
+  graph_defs.AddNodeDefs({NodeDef("Sqrt",
+                                  {allreduce_output},
+                                  {sqrt_output},
+                                  NodeAttributes(),
+                                  sqrt_output.name)});
+
+  norm_argdef = sqrt_output;
   return Status::OK();
 }
 
@@ -334,8 +371,8 @@ Status OptimizerGraphBuilder::AddGradientNorm(
                                   grad_argdefs,
                                   {grad_norm_argdef},
                                   NodeAttributes(),
-                                  grad_norm_argdef.name}});
-
+                                  grad_norm_argdef.name,
+                                  static_cast<int>(ExecutionPriority::GLOBAL_LOW)}});
   graph_defs.AddGraphOutputs({grad_norm_argdef.name});
 
   return Status::OK();
@@ -389,6 +426,11 @@ OptimizerGraphBuilder::OptimizerGraphBuilder(
         return GradientBuilderBase::GradientName(weight_names_to_opt_configs.at(weight_name).mixed_precision_weight_arg != nullptr ? weight_names_to_opt_configs.at(weight_name).mixed_precision_weight_arg->Name() : weight_name);
       });
 
+  for (size_t i = 0; i < weight_names_.size(); ++i) {
+    if (weight_names_to_opt_configs.at(weight_names_[i]).megatron_partitioned == true) {
+      megatron_partitioned_weight_grad_index_.push_back(i);
+    }
+  }
   // add optimizer configurations
   opt_configs_.reserve(weight_names_.size());
   std::transform(
@@ -466,7 +508,6 @@ Status OptimizerGraphBuilder::BuildInternal(
   };
 
   const bool is_gradient_accumulation_enabled = opt_graph_config_.gradient_accumulation_steps > 1;
-
   // add gradient scaling
   ArgDef fused_gradient_argdef;
   if (is_gradient_accumulation_enabled) {
@@ -480,10 +521,26 @@ Status OptimizerGraphBuilder::BuildInternal(
   ArgDef global_grad_norm_finite_argdef;
 
   if (should_add_gradient_norm) {
+    std::vector<ArgDef> gradient_norm_inputs;
+    if (DistributedRunContext::GroupSize(WorkerGroupType::HorizontalParallel) > 1) {
+      int rank_in_hori_group = DistributedRunContext::RankInGroup(WorkerGroupType::HorizontalParallel);
+      if (rank_in_hori_group != 0) {
+        for (size_t i = 0; i < megatron_partitioned_weight_grad_index_.size(); ++i) {
+          gradient_norm_inputs.push_back(gradient_argdefs[megatron_partitioned_weight_grad_index_[i]]);
+        }
+      }
+      ORT_RETURN_IF_ERROR(AddGradientNorm(
+          nodearg_name_generator, gradient_norm_inputs, graph_defs, global_grad_norm_argdef));
+    } else {
       ORT_RETURN_IF_ERROR(AddGradientNorm(
           nodearg_name_generator, gradient_argdefs, graph_defs, global_grad_norm_argdef));
-      optimizer_graph_outputs[OptimizerOutputKey::GlobalGradientNorm] = global_grad_norm_argdef.name;
     }
+
+    if (DistributedRunContext::GroupSize(WorkerGroupType::HorizontalParallel) > 1) {
+      ORT_RETURN_IF_ERROR(AddL2NormBetweenMegatronRanksNcclAllReduce(global_grad_norm_argdef, graph_defs));
+    }
+    optimizer_graph_outputs[OptimizerOutputKey::GlobalGradientNorm] = global_grad_norm_argdef.name;
+  }
 
   if (should_add_gradient_finite_check) {
     ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
@@ -502,7 +559,6 @@ Status OptimizerGraphBuilder::BuildInternal(
       &global_grad_norm_finite_argdef,
       opt_configs_, graph_defs,
       optimizer_state_initializer_names));
-
   return Status::OK();
 }
 

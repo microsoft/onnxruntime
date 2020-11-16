@@ -23,7 +23,7 @@ class ConstantFolding : public GraphTransformer {
       \param execution_provider Execution provider instance to execute constant folding.
   */
   ConstantFolding(const IExecutionProvider& execution_provider,
-                  const std::unordered_set<std::string>& compatible_execution_providers = {},
+                  const std::unordered_set<std::string>& compatible_execution_providers,
                   std::unordered_set<std::string>& excluded_initializers) noexcept;
 
  private:

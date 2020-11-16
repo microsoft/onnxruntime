@@ -89,6 +89,10 @@ class OptimizerGraphBuilder {
       ONNX_NAMESPACE::TensorProto_DataType allreduce_element_type,
       const bool fuse_scaling_outputs);
 
+  Status AddL2NormBetweenMegatronRanksNcclAllReduce(
+      ArgDef& norm_argdef,
+      GraphAugmenter::GraphDefs& graph_defs);
+
   Status AddGradientScalingNodes(
       const NodeArgNameGeneratorFn& nodearg_name_generator,
       const float scale,
@@ -139,6 +143,7 @@ class OptimizerGraphBuilder {
   const OptimizerBuilderRegistry& opt_builder_registry_;
   const OptimizerGraphConfig opt_graph_config_;
   std::vector<std::string> weight_names_;
+  std::vector<size_t> megatron_partitioned_weight_grad_index_;
   std::vector<std::string> gradient_names_;
   std::vector<OptimizerNodeConfig> opt_configs_;
 };

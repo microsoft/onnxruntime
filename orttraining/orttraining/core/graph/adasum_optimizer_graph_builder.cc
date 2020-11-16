@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/core/graph/adasum_optimizer_graph_builder.h"
-
+#include "orttraining/core/framework/distributed_run_context.h"
 namespace onnxruntime {
 namespace training {
 
@@ -134,8 +134,28 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
   ArgDef global_grad_norm_finite_argdef;
 
   if (should_add_gradient_norm) {
+    std::vector<ArgDef> gradient_norm_inputs;
+    if (DistributedRunContext::GroupSize(WorkerGroupType::HorizontalParallel) > 1) {
+      ORT_ENFORCE(gradient_argdefs.size() > 1, "Using fused gradient to calcuate gradient norm is not supported when megatron enabled");
+      int rank_in_hori_group = DistributedRunContext::RankInGroup(WorkerGroupType::HorizontalParallel);
+      if (rank_in_hori_group != 0) {
+        for (size_t i = 0; i < megatron_partitioned_weight_grad_index_.size(); ++i) {
+          gradient_norm_inputs.push_back(gradient_argdefs[megatron_partitioned_weight_grad_index_[i]]);
+        }
+      } else {
+        gradient_norm_inputs = gradient_argdefs;
+      }
+    } else {
+      gradient_norm_inputs = gradient_argdefs;
+    }
+
     ORT_RETURN_IF_ERROR(AddGradientNorm(
-        nodearg_name_generator, gradient_argdefs, graph_defs, global_grad_norm_argdef));
+        nodearg_name_generator, gradient_norm_inputs, graph_defs, global_grad_norm_argdef));
+    optimizer_graph_outputs[OptimizerOutputKey::GlobalGradientNorm] = global_grad_norm_argdef.name;
+
+    if (DistributedRunContext::GroupSize(WorkerGroupType::HorizontalParallel) > 1) {
+      ORT_RETURN_IF_ERROR(AddL2NormBetweenMegatronRanksNcclAllReduce(global_grad_norm_argdef, graph_defs));
+    }
     optimizer_graph_outputs[OptimizerOutputKey::GlobalGradientNorm] = global_grad_norm_argdef.name;
   }
 
