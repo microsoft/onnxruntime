@@ -46,7 +46,7 @@ static void VerifyOutputs(const std::vector<std::string>& output_names,
   }
 }
 
-static int CountAssignedNodes(const Graph& current_graph, const std::string& ep_type) {
+int CountAssignedNodes(const Graph& current_graph, const std::string& ep_type) {
   int count = 0;
 
   for (const auto& node : current_graph.Nodes()) {

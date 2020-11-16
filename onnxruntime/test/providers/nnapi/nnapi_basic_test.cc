@@ -14,6 +14,7 @@
 #include "test/util/include/test_utils.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
+// if this is a full build we need the provider test utils
 #include "test/providers/provider_test_utils.h"
 #endif
 
@@ -35,6 +36,7 @@ namespace test {
 TEST(NnapiExecutionProviderTest, ReshapeFlattenTest) {
   const ORTCHAR_T* model_file_name = "testdata/nnapi_reshape_flatten_test.onnx";
 
+#if defined(__ANDROID__)
   std::vector<int64_t> dims_mul_x = {2, 1, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f};
   std::vector<int64_t> dims_mul_y = {3, 2, 2};
@@ -52,6 +54,14 @@ TEST(NnapiExecutionProviderTest, ReshapeFlattenTest) {
   RunAndVerifyOutputsWithEP(model_file_name, "NnapiExecutionProviderTest.ReshapeFlattenTest",
                             onnxruntime::make_unique<NnapiExecutionProvider>(0),
                             feeds);
+#else
+  // test load only
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(model_file_name));
+  ASSERT_STATUS_OK(session_object.Initialize());
+  ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), NnapiExecutionProvider), 0)
+      << "Some nodes should have been taken by the NNAPI EP";
+#endif
 }
 
 TEST(NnapiExecutionProviderTest, FunctionTest) {
@@ -92,6 +102,7 @@ TEST(NnapiExecutionProviderTest, FunctionTest) {
     ASSERT_STATUS_OK(onnxruntime::Model::Save(model, model_file_name));
   }
 
+#if defined(__ANDROID__)
   std::vector<int64_t> dims_mul_x = {1, 1, 3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   OrtValue ml_value_x;
@@ -111,6 +122,14 @@ TEST(NnapiExecutionProviderTest, FunctionTest) {
   RunAndVerifyOutputsWithEP(model_file_name, "NnapiExecutionProviderTest.FunctionTest",
                             onnxruntime::make_unique<NnapiExecutionProvider>(0),
                             feeds);
+#else
+  // test load only
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(model_file_name));
+  ASSERT_STATUS_OK(session_object.Initialize());
+  ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), NnapiExecutionProvider), 0)
+      << "Some nodes should have been taken by the NNAPI EP";
+#endif
 }
 
 TEST(NnapiExecutionProviderTest, NNAPIFlagsTest) {
@@ -127,6 +146,8 @@ TEST(NnapiExecutionProviderTest, TestOrtFormatModel) {
   // mnist model that has only had basic optimizations applied. nnapi should be able to take at least some of the nodes
   const ORTCHAR_T* model_file_name = "testdata/mnist.level1_opt.ort";
 
+// The execution can only be performed on Android
+#if defined(__ANDROID__)
   RandomValueGenerator random{};
   const std::vector<int64_t> dims = {1, 1, 28, 28};
   std::vector<float> data = random.Gaussian<float>(dims, 0.0f, 1.f);
@@ -141,6 +162,14 @@ TEST(NnapiExecutionProviderTest, TestOrtFormatModel) {
   RunAndVerifyOutputsWithEP(model_file_name, "NnapiExecutionProviderTest.TestOrtFormatModel",
                             onnxruntime::make_unique<NnapiExecutionProvider>(0),
                             feeds);
+#else
+  // test load only
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(model_path));
+  ASSERT_STATUS_OK(session_object.Initialize());
+  ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), NnapiExecutionProvider), 0)
+      << "Some nodes should have been taken by the NNAPI EP";
+#endif
 }
 
 }  // namespace test
