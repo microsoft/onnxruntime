@@ -9,6 +9,7 @@
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/session_state.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/framework/utils.h"
 #include "core/graph/model.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
@@ -17,7 +18,7 @@ namespace onnxruntime {
 constexpr const char* INTERNAL_TESTING_EP = "InternalTestingEP";
 
 InternalTestingExecutionProvider::InternalTestingExecutionProvider(const std::unordered_set<std::string>& ops)
-    : IExecutionProvider{onnxruntime::kInternalTestingExecutionProvider},
+    : IExecutionProvider{utils::kInternalTestingExecutionProvider},
       ops_{ops} {
   // TODO: Allocation planner calls GetAllocator for the individual EP. It would be better if it goes through
   // the session state to get the allocator so it's per-device (or for the allocation planner to try the EP first

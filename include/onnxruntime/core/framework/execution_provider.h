@@ -217,7 +217,7 @@ class IExecutionProvider {
     Function,
 
     // The node fusion will create a new Node that defines the inputs and outputs using the IndexedSubGraph
-    // that GetCapability returned. The Node will note be onnxruntime::Function based so will have no Body().
+    // that GetCapability returned. The Node will not be onnxruntime::Function based so will have no Body().
     // Instead a GraphViewer that filters the full Graph to the fused Nodes will be created.
     // This is significantly cheaper as it doesn't incur the cost of creating a new Graph instance,
     // and can be supported in a minimal build.
