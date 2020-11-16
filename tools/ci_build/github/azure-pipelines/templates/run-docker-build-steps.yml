@@ -13,6 +13,5 @@ steps:
   parameters:
     Steps:
     - script: |
-        tools/ci_build/github/linux/run_dockerbuild.sh \
-          ${{ parameters.RunDockerBuildArgs }}
+        tools/ci_build/github/linux/run_dockerbuild.sh ${{ parameters.RunDockerBuildArgs }}
       displayName: "${{ parameters.DisplayName }}"
