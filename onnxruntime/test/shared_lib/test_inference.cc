@@ -223,6 +223,8 @@ struct OrtTensorDimensions : std::vector<int64_t> {
 template <typename T, size_t N>
 constexpr size_t countof(T (&)[N]) { return N; }
 
+void cuda_add(int64_t, float*, const float*, const float*);
+
 struct MyCustomKernel {
   MyCustomKernel(Ort::CustomOpApi ort, const OrtKernelInfo* /*info*/) : ort_(ort) {
   }
@@ -244,9 +246,13 @@ struct MyCustomKernel {
     ort_.ReleaseTensorTypeAndShapeInfo(output_info);
 
     // Do computation
+#ifdef USE_CUDA
+    cuda_add(size, out, X, Y); 
+#else
     for (int64_t i = 0; i < size; i++) {
       out[i] = X[i] + Y[i];
     }
+#endif
   }
 
  private:
@@ -293,15 +299,7 @@ TEST(CApiTest, custom_op_handler) {
   custom_op_domain.Add(&custom_op);
 
 #ifdef USE_CUDA
-  // The custom op kernel has a Compute() method that doesn't really use CUDA and can't be used as is
-  // because it uses the contents of the inputs and writes to the output of the node
-  // (not possible as is because they are on the device).
-  // For the purpose of this exercise, it is not really needed to have a Compute() method that uses CUDA.
-  // We only need to verify if model load succeeds == session creation succeeds == the node is assigned to the CUDA EP.
-  // It is enough to test for successful session creation because if the custom node wasn't assigned an EP,
-  // the session creation would fail. Since the custom node is only tied to the CUDA EP (in CUDA-enabled builds),
-  // if the session creation succeeds, it is assumed that the node got assigned to the CUDA EP.
-  TestInference<PATH_TYPE, float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1, custom_op_domain, nullptr, nullptr, true);
+  TestInference<PATH_TYPE, float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1, custom_op_domain, nullptr, nullptr);
 #else
   TestInference<PATH_TYPE, float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, custom_op_domain, nullptr);
 #endif

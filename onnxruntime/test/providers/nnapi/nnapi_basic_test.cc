@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "core/common/logging/logging.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_execution_provider.h"
 #include "core/session/inference_session.h"
@@ -11,8 +14,9 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::logging;
 
 namespace onnxruntime {
-
 namespace test {
+
+#ifdef __ANDROID__
 void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64_t>& expected_dims,
                    const std::vector<float>& expected_values) {
   ASSERT_EQ(1, fetches.size());
@@ -22,6 +26,7 @@ void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64
   const std::vector<float> found(rtensor.template Data<float>(), rtensor.template Data<float>() + expected_values.size());
   ASSERT_EQ(expected_values, found);
 }
+#endif
 
 void RunAndVerifyOutputs(const std::string& model_file_name,
                          const char* log_id,
@@ -45,10 +50,18 @@ void RunAndVerifyOutputs(const std::string& model_file_name,
   ASSERT_EQ(1, graph.NumberOfNodes());  // Make sure the graph has 1 fused node
   ASSERT_EQ(onnxruntime::kNnapiExecutionProvider, graph.Nodes().cbegin()->GetExecutionProviderType());
 
+// The execution can only be performed on Android
+#ifdef __ANDROID__
   // Now run and verify the result
   std::vector<OrtValue> fetches;
   ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &fetches));
   VerifyOutputs(fetches, expected_dims, expected_values);
+#else
+  ORT_UNUSED_PARAMETER(feeds);
+  ORT_UNUSED_PARAMETER(output_names);
+  ORT_UNUSED_PARAMETER(expected_dims);
+  ORT_UNUSED_PARAMETER(expected_values);
+#endif
 }
 
 // Since NNAPI EP handles Reshape and Flatten differently,

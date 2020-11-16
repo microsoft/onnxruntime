@@ -11,7 +11,9 @@ You can also compile the custom ops into a shared library and use that to run a 
 The source code for a sample custom op shared library containing two custom kernels is [here](../onnxruntime/test/testdata/custom_op_library/custom_op_library.cc).
 See [this](../onnxruntime/test/python/onnxruntime_test_python.py) for an example called testRegisterCustomOpsLibrary that uses the Python API
 to register a shared library that contains custom op kernels.
-Currently, the only supported Execution Providers (EPs) for custom ops registered via this approach are the `CUDA` and the `CPU` EPs. 
+Currently, the only supported Execution Providers (EPs) for custom ops registered via this approach are the `CUDA` and the `CPU` EPs.
+
+Note that when a model being inferred on gpu, onnxruntime will insert MemcpyToHost op before a cpu custom op and append MemcpyFromHost after to make sure tensor(s) are accessible throughout calling, meaning there are no extra efforts required from custom op developer for the case.
 
 ### 2. Using RegisterCustomRegistry API
 * Implement your kernel and schema (if required) using the OpKernel and OpSchema APIs (headers are in the include folder).

@@ -950,13 +950,11 @@ bool ClipOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
   // TODO, support clip between 2 arbitrary numbers
   if ((min == 0.0f && max == 6.0f) || (min == -1.0f && max == 1.0f)) {
     return true;
-  } else {
-    LOGS_DEFAULT(VERBOSE) << "Clip only supports [min, max] = [0, 6] or [-1, 1], the input is ["
-                          << min << ", " << max << "]";
-    return false;
   }
 
-  return true;
+  LOGS_DEFAULT(VERBOSE) << "Clip only supports [min, max] = [0, 6] or [-1, 1], the input is ["
+                        << min << ", " << max << "]";
+  return false;
 }
 
 #pragma endregion
