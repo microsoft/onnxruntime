@@ -40,11 +40,12 @@ class GraphPartitioner {
 
 #if !defined(ORT_MINIMAL_BUILD)
   Status PartitionOnnxFormatModel(Graph& graph, bool export_dll, FuncManager& func_mgr,
-                                  KernelRegistry& fused_kernel_registry, Mode mode) const;
+                                  KernelRegistry& fused_kernel_registry, Mode mode, int& fused_node_unique_id) const;
 #endif
 
   Status PartitionOrtFormatModel(Graph& graph, FuncManager& func_mgr, KernelRegistry& fused_kernel_registry,
-                                 std::unordered_map<std::string, uint64_t>& compiled_kernel_hashes) const;
+                                 std::unordered_map<std::string, uint64_t>& compiled_kernel_hashes,
+                                 int& fused_node_unique_id) const;
 
   KernelRegistryManager& kernel_registry_mgr_;
   const ExecutionProviders& providers_;

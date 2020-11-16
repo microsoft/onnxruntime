@@ -29,12 +29,13 @@ namespace onnxruntime {
 namespace test {
 
 #if !defined(ORT_MINIMAL_BUILD)
+
 // Since NNAPI EP handles Reshape and Flatten differently,
 // Please see ReshapeOpBuilder::CanSkipReshape in
 // <repo_root>/onnxruntime/core/providers/nnapi/nnapi_builtin/builders/op_builder.cc
 // We have a separated test for these skip reshape scenarios
 TEST(NnapiExecutionProviderTest, ReshapeFlattenTest) {
-  const ORTCHAR_T* model_file_name = "testdata/nnapi_reshape_flatten_test.onnx";
+  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/nnapi_reshape_flatten_test.onnx");
 
 #if defined(__ANDROID__)
   std::vector<int64_t> dims_mul_x = {2, 1, 2};
@@ -56,16 +57,18 @@ TEST(NnapiExecutionProviderTest, ReshapeFlattenTest) {
                             feeds);
 #else
   // test load only
+  SessionOptions so;
   InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(onnxruntime::make_unique<NnapiExecutionProvider>(0)));
   ASSERT_STATUS_OK(session_object.Load(model_file_name));
   ASSERT_STATUS_OK(session_object.Initialize());
-  ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), NnapiExecutionProvider), 0)
+  ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 0)
       << "Some nodes should have been taken by the NNAPI EP";
 #endif
 }
 
 TEST(NnapiExecutionProviderTest, FunctionTest) {
-  const ORTCHAR_T* model_file_name = "nnapi_execution_provider_test_graph.onnx";
+  const ORTCHAR_T* model_file_name = ORT_TSTR("nnapi_execution_provider_test_graph.onnx");
 
   {  // Create the model with 2 add nodes
     onnxruntime::Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
@@ -124,13 +127,16 @@ TEST(NnapiExecutionProviderTest, FunctionTest) {
                             feeds);
 #else
   // test load only
+  SessionOptions so;
   InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(onnxruntime::make_unique<NnapiExecutionProvider>(0)));
   ASSERT_STATUS_OK(session_object.Load(model_file_name));
   ASSERT_STATUS_OK(session_object.Initialize());
-  ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), NnapiExecutionProvider), 0)
+  ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 0)
       << "Some nodes should have been taken by the NNAPI EP";
 #endif
 }
+#endif  // !(ORT_MINIMAL_BUILD
 
 TEST(NnapiExecutionProviderTest, NNAPIFlagsTest) {
   unsigned long nnapi_flags = NNAPI_FLAG_USE_NONE;
@@ -140,11 +146,10 @@ TEST(NnapiExecutionProviderTest, NNAPIFlagsTest) {
   ASSERT_TRUE(flags & NNAPI_FLAG_USE_FP16);
   ASSERT_FALSE(flags & NNAPI_FLAG_USE_NCHW);
 }
-#endif  // !defined(ORT_MINIMAL_BUILD)
 
 TEST(NnapiExecutionProviderTest, TestOrtFormatModel) {
   // mnist model that has only had basic optimizations applied. nnapi should be able to take at least some of the nodes
-  const ORTCHAR_T* model_file_name = "testdata/mnist.level1_opt.ort";
+  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/mnist.level1_opt.ort");
 
 // The execution can only be performed on Android
 #if defined(__ANDROID__)
@@ -164,10 +169,12 @@ TEST(NnapiExecutionProviderTest, TestOrtFormatModel) {
                             feeds);
 #else
   // test load only
+  SessionOptions so;
   InferenceSessionWrapper session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.Load(model_path));
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(onnxruntime::make_unique<NnapiExecutionProvider>(0)));
+  ASSERT_STATUS_OK(session_object.Load(model_file_name));
   ASSERT_STATUS_OK(session_object.Initialize());
-  ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), NnapiExecutionProvider), 0)
+  ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 0)
       << "Some nodes should have been taken by the NNAPI EP";
 #endif
 }

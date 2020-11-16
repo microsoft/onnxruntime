@@ -75,7 +75,7 @@ static Node* PlaceNode(Graph& graph, const IndexedSubGraph& capability,
                        const KernelRegistryManager& kernel_registry_mgr, const std::string& provider_type,
                        IExecutionProvider::FusionStyle fusion_style,
                        GraphPartitioner::Mode mode,
-                       int& unique_id) {
+                       int& fused_node_unique_id) {
   Node* result = nullptr;
 
   if (nullptr == capability.GetMetaDef()) {
@@ -122,7 +122,7 @@ static Node* PlaceNode(Graph& graph, const IndexedSubGraph& capability,
     if (sub_graph_available_for_assignment) {
       if (mode == GraphPartitioner::Mode::kNormal) {
         std::ostringstream oss;
-        oss << provider_type << "_" << capability.GetMetaDef()->name << "_" << unique_id++;
+        oss << provider_type << "_" << capability.GetMetaDef()->name << "_" << fused_node_unique_id++;
         std::string node_name = oss.str();
 
         Node* fused_node = nullptr;
@@ -165,7 +165,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, bool export_dll, FuncMa
                                            KernelRegistry& fused_kernel_registry,
                                            IExecutionProvider& current_ep,
                                            GraphPartitioner::Mode mode,
-                                           int& unique_id) {
+                                           int& fused_node_unique_id) {
   // handle testing edge case where optimizers or constant lifting results in graph with no nodes.
   // doing it here saves all providers checking for this in GetCapability
   if (graph.NumberOfNodes() == 0) {
@@ -178,7 +178,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, bool export_dll, FuncMa
       Graph* subgraph = entry.second;
       // we pass through the export_dll value and FuncManager from the top level graph
       ORT_RETURN_IF_ERROR(PartitionOnnxFormatModelImpl(*subgraph, export_dll, func_mgr, kernel_registry_mgr,
-                                                       fused_kernel_registry, current_ep, mode, unique_id));
+                                                       fused_kernel_registry, current_ep, mode, fused_node_unique_id));
     }
   }
 
@@ -215,7 +215,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, bool export_dll, FuncMa
       continue;
     }
 
-    Node* n = PlaceNode(graph, *capability->sub_graph, kernel_registry_mgr, type, fusion_style, mode, unique_id);
+    Node* n = PlaceNode(graph, *capability->sub_graph, kernel_registry_mgr, type, fusion_style, mode, fused_node_unique_id);
     if (n != nullptr) {
       nodes_to_compile.push_back(n);
       capabilities_to_compile.push_back(std::move(capability));
@@ -363,15 +363,15 @@ static Status InlineNodes(Graph& graph, bool& modified_graph) {
 }
 
 Status GraphPartitioner::PartitionOnnxFormatModel(Graph& graph, bool export_dll, FuncManager& func_mgr,
-                                                  KernelRegistry& fused_kernel_registry, Mode mode) const {
+                                                  KernelRegistry& fused_kernel_registry, Mode mode,
+                                                  int& fused_node_unique_id) const {
   bool modified_graph = false;
-  int unique_id = 0;
 
   do {
     // process full graph with each EP
     for (const auto& ep : providers_) {
       ORT_RETURN_IF_ERROR(PartitionOnnxFormatModelImpl(graph, export_dll, func_mgr, kernel_registry_mgr_,
-                                                       fused_kernel_registry, *ep, mode, unique_id));
+                                                       fused_kernel_registry, *ep, mode, fused_node_unique_id));
     }
 
     // expand any nodes that have an ONNX function definition but no matching ORT kernel.
@@ -394,13 +394,13 @@ static Status PartitionOrtFormatModelImpl(Graph& graph, FuncManager& func_mgr,
                                           KernelRegistry& fused_kernel_registry,
                                           IExecutionProvider& current_ep,
                                           std::unordered_map<std::string, uint64_t>& compiled_kernel_hashes,
-                                          int& unique_id) {
+                                          int& fused_node_unique_id) {
   // recurse into nested graphs first to partition bottom up.
   for (auto& node : graph.Nodes()) {
     for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
       Graph* subgraph = entry.second;
       ORT_RETURN_IF_ERROR(PartitionOrtFormatModelImpl(*subgraph, func_mgr, kernel_registry_mgr, fused_kernel_registry,
-                                                      current_ep, compiled_kernel_hashes, unique_id));
+                                                      current_ep, compiled_kernel_hashes, fused_node_unique_id));
     }
   }
 
@@ -430,7 +430,7 @@ static Status PartitionOrtFormatModelImpl(Graph& graph, FuncManager& func_mgr,
     }
 
     std::ostringstream oss;
-    oss << type << "_" << metadef->name << "_" << unique_id++;
+    oss << type << "_" << metadef->name << "_" << fused_node_unique_id++;
     std::string node_name = oss.str();
 
     Node& fused_node = graph.BeginFuseSubGraph(indexed_sub_graph, node_name);
@@ -491,9 +491,8 @@ static Status PartitionOrtFormatModelImpl(Graph& graph, FuncManager& func_mgr,
 Status GraphPartitioner::PartitionOrtFormatModel(
     Graph& graph, FuncManager& func_mgr,
     KernelRegistry& fused_kernel_registry,
-    std::unordered_map<std::string, uint64_t>& compiled_kernel_hashes) const {
-  int unique_id = 0;
-
+    std::unordered_map<std::string, uint64_t>& compiled_kernel_hashes,
+    int& fused_node_unique_id) const {
   // process full graph with each EP
   for (const auto& ep : providers_) {
     if (ep->Type() == kCpuExecutionProvider) {
@@ -503,7 +502,7 @@ Status GraphPartitioner::PartitionOrtFormatModel(
     }
 
     ORT_RETURN_IF_ERROR(PartitionOrtFormatModelImpl(graph, func_mgr, kernel_registry_mgr_, fused_kernel_registry,
-                                                    *ep, compiled_kernel_hashes, unique_id));
+                                                    *ep, compiled_kernel_hashes, fused_node_unique_id));
   }
 
   return Status::OK();
@@ -527,9 +526,13 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
   // It is only visible for current session.
   std::shared_ptr<KernelRegistry> fused_kernel_registry = std::make_shared<KernelRegistry>();
 
+  // we make sure each fused node name is unique across the entire model for clarity
+  int fused_node_unique_id = 0;
+
   if (mode == Mode::kNormal || mode == Mode::kAssignOnly) {
 #if !defined(ORT_MINIMAL_BUILD)
-    ORT_RETURN_IF_ERROR(PartitionOnnxFormatModel(graph, export_dll, func_mgr, *fused_kernel_registry, mode));
+    ORT_RETURN_IF_ERROR(PartitionOnnxFormatModel(graph, export_dll, func_mgr, *fused_kernel_registry, mode,
+                                                 fused_node_unique_id));
 #else
     ORT_UNUSED_PARAMETER(export_dll);
     ORT_THROW("Not supported in this build.");
@@ -537,7 +540,8 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
   } else {
     ORT_ENFORCE(compiled_kernel_hashes != nullptr, "Compiled kernel hashes must be provided");
 
-    ORT_RETURN_IF_ERROR(PartitionOrtFormatModel(graph, func_mgr, *fused_kernel_registry, *compiled_kernel_hashes));
+    ORT_RETURN_IF_ERROR(PartitionOrtFormatModel(graph, func_mgr, *fused_kernel_registry, *compiled_kernel_hashes,
+                                                fused_node_unique_id));
   }
 
   if (!fused_kernel_registry->IsEmpty()) {

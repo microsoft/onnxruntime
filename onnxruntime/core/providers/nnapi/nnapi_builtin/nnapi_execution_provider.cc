@@ -194,7 +194,6 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 }
 
 #ifdef __ANDROID__
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 static Status GetOutputBuffer(Ort::CustomOpApi& ort,
                               OrtKernelContext* context,
                               const nnapi::Model& model,
@@ -426,20 +425,21 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
   return Status::OK();
 }
 #else
-common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
+common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                                std::vector<NodeComputeInfo>& node_compute_funcs) {
-  for (const auto* fused_node : fused_nodes) {
-    ORT_UNUSED_PARAMETER(fused_node);
+  for (const auto& fused_node_and_graph : fused_nodes_and_graphs) {
+    ORT_UNUSED_PARAMETER(fused_node_and_graph);
     NodeComputeInfo compute_info;
     compute_info.create_state_func = [](ComputeContext* /*context*/, FunctionState* /*state*/) { return 0; };
     compute_info.release_state_func = [](FunctionState /*state*/) {};
-    compute_info.compute_func = [](FunctionState /* state */, const OrtCustomOpApi* /* api */, OrtKernelContext* /* context */) {
+    compute_info.compute_func = [](FunctionState /* state */, const OrtCustomOpApi* /* api */,
+                                   OrtKernelContext* /* context */) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Compute is not supported in this build.");
     };
     node_compute_funcs.push_back(compute_info);
   }
   return Status::OK();
 }
-#endif
+#endif  // __ANDROID__
 
 }  // namespace onnxruntime

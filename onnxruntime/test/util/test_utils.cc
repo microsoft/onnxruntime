@@ -104,7 +104,7 @@ void RunAndVerifyOutputsWithEP(const ORTCHAR_T* model_path, const char* log_id,
   ASSERT_STATUS_OK(session_object2.Load(model_path));
   ASSERT_STATUS_OK(session_object2.Initialize());
 
-  // make sure at some nodes are assigned to the EP, otherwise this test is pointless...
+  // make sure that some nodes are assigned to the EP, otherwise this test is pointless...
   const auto& graph2 = session_object2.GetGraph();
   auto ep_nodes = CountAssignedNodes(graph2, provider_type);
   ASSERT_GT(ep_nodes, 0) << "No nodes were assigned to " << provider_type << " for " << model_path;
