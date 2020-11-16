@@ -4,6 +4,7 @@
 #include <random>
 #include "core/graph/model.h"
 #include "core/graph/onnx_protobuf.h"
+#include "core/mlas/inc/mlas.h"
 #include "core/session/environment.h"
 #include "core/session/inference_session.h"
 #include "test/compare_ortvalue.h"
@@ -15,6 +16,19 @@
 
 namespace onnxruntime {
 namespace test {
+
+template <typename T>
+struct NhwcWeightsRange {
+  static constexpr T min_value = std::numeric_limits<T>::min();
+  static constexpr T max_value = std::numeric_limits<T>::max();
+};
+
+template <>
+struct NhwcWeightsRange<int8_t> {
+  // Avoid saturation from u8s8 math.
+  static constexpr int8_t min_value = -63;
+  static constexpr int8_t max_value = +63;
+};
 
 struct NhwcTestHelper {
   NhwcTestHelper(Graph& graph) : graph_(graph) {
@@ -87,17 +101,8 @@ struct NhwcTestHelper {
   }
 
   template <typename T>
-  NodeArg* MakeWeightsInitializer(const std::vector<int64_t>& shape);
-
-  template <>
-  NodeArg* MakeWeightsInitializer<int8_t>(const std::vector<int64_t>& shape) {
-    // Avoid saturation from u8s8 math.
-    return MakeInitializer<int8_t>(shape, -63, 63);
-  }
-
-  template <>
-  NodeArg* MakeWeightsInitializer<uint8_t>(const std::vector<int64_t>& shape) {
-    return MakeInitializer<uint8_t>(shape, 0, 255);
+  NodeArg* MakeWeightsInitializer(const std::vector<int64_t>& shape) {
+    return MakeInitializer<T>(shape, NhwcWeightsRange<T>::min_value, NhwcWeightsRange<T>::max_value);
   }
 
   Node& AddNode(const std::string& op_type,
@@ -292,6 +297,8 @@ void NhwcTransformerTester(const std::function<void(NhwcTestHelper& helper)>& bu
 
 #ifndef DISABLE_CONTRIB_OPS
 
+#if defined(MLAS_TARGET_AMD64_IX86)
+
 TEST(NhwcTransformerTests, Conv) {
   auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape) {
     auto build_test_case = [&](NhwcTestHelper& helper) {
@@ -476,6 +483,8 @@ TEST(NhwcTransformerTests, ConvMixTensorRanks) {
   // 2D tensor and verify that the transformer handles the mixed tensor ranks.
   NhwcTransformerTester(build_test_case, check_nhwc_graph);
 }
+
+#endif
 
 #endif // DISABLE_CONTRIB_OPS
 
