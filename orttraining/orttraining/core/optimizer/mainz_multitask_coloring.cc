@@ -16,13 +16,18 @@ const Node* MainzMultitaskColoring::SatisfyCondition(const Node& node) const {
     if (next_node != node.OutputNodesEnd() && next_node->OpType() == "Div") {
       return next_node.operator->();
     }
-  } else if (node.OpType() == "ReduceSum") {
-    const auto next_node = node.OutputNodesBegin();
-    if (next_node != node.OutputNodesEnd() && next_node->OpType() == "Add") {
-      const auto next_next_node = next_node->OutputNodesBegin();
-      if (next_next_node != next_node->OutputNodesEnd() && next_next_node->OpType() == "Div") {
-        return next_next_node.operator->();
+  } else if (node.OpType() == "Add") {
+    int reducesum_count = 0;
+    for (auto prev_node = node.InputNodesBegin(); prev_node != node.InputNodesEnd(); ++prev_node) {
+      if (prev_node->OpType() == "ReduceSum") {
+        if (prev_node->InputNodesBegin() != prev_node->InputNodesEnd() &&
+            prev_node->InputNodesBegin()->OpType() == "Div") {
+          reducesum_count++;
+        }
       }
+    }
+    if (reducesum_count == 2) {
+      return &node;
     }
   }
   return nullptr;
