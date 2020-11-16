@@ -1690,7 +1690,7 @@ void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
     // If axes is not supplied, return an empty axes as default to squeeze all
     if (node.InputDefs().size() > 1) {
       const auto& initializers(model_builder.GetInitializerTensors());
-      const auto& axes_tensor = initializers.at(node.InputDefs()[1]->Name());
+      const auto& axes_tensor = *initializers.at(node.InputDefs()[1]->Name());
       const int64_t* raw_axes = GetTensorInt64Data(axes_tensor);
       const auto size = SafeInt<uint32_t>(axes_tensor.dims()[0]);
       axes.resize(size);
