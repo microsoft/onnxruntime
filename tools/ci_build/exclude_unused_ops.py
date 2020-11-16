@@ -1,7 +1,9 @@
-'''exclude unused ops from build'''
 # !/usr/bin/env python3
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
+'''
+Exclude operators that are unused/not required from build to reduce binary size.
+'''
 
 import argparse
 import onnx

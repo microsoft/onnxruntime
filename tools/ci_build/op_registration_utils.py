@@ -1,10 +1,11 @@
-'''exclude unused ops from build'''
 # !/usr/bin/env python3
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
+'''
+Utilities to help process files containing kernel registrations.
+'''
 
 import os
-import shutil
 import sys
 import typing
 
