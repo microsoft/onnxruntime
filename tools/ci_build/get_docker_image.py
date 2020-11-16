@@ -25,8 +25,15 @@ log = get_logger("get_docker_image")
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Gets a docker image, either by building it locally or "
-        "pulling it from a container registry. "
+        description="Gets a docker image, either by pulling it from a "
+        "container registry or building it locally and then pushing it. "
+        "The uniqueness of the docker image is determined by a hash digest of "
+        "the Dockerfile, the build context directory, and arguments to "
+        "'docker build' affecting the image content. "
+        "This digest value is used in the image tag. "
+        "This script checks whether an image with that tag is initially "
+        "present in the container registry to determine whether to pull or "
+        "build the image. "
         "The user must be logged in to the container registry.")
 
     parser.add_argument(
@@ -36,7 +43,7 @@ def parse_args():
     parser.add_argument(
         "--docker-build-args", default="",
         help="String of Docker build args which may affect the image content. "
-        "These will be used in differentiating images from one another."
+        "These will be used in differentiating images from one another. "
         "For example, '--build-arg'.")
     parser.add_argument(
         "--docker-build-args-not-affecting-image-content", default="",
@@ -58,7 +65,7 @@ def parse_args():
 FileInfo = collections.namedtuple('FileInfo', ['path', 'mode'])
 
 
-def file_info_metadata_str(file_info: FileInfo):
+def file_info_str(file_info: FileInfo):
     return "{} {}".format(file_info.path, file_info.mode)
 
 
@@ -67,7 +74,7 @@ def make_file_info_from_path(file_path: str):
 
 
 def update_hash_with_directory(dir_file_info: FileInfo, hash_obj):
-    hash_obj.update(file_info_metadata_str(dir_file_info).encode())
+    hash_obj.update(file_info_str(dir_file_info).encode())
 
     files, dirs = [], []
     with os.scandir(dir_file_info.path) as dir_it:
@@ -92,7 +99,7 @@ def update_hash_with_directory(dir_file_info: FileInfo, hash_obj):
 
 
 def update_hash_with_file(file_info: FileInfo, hash_obj):
-    hash_obj.update(file_info_metadata_str(file_info).encode())
+    hash_obj.update(file_info_str(file_info).encode())
 
     read_bytes_length = 8192
     with open(file_info.path, mode="rb") as file_data:
