@@ -44,6 +44,7 @@ AttentionBase::AttentionBase(const OpKernelInfo& info) {
   int64_t num_heads = 0;
   ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
   num_heads_ = static_cast<int>(num_heads);
+  head_size_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("head_size", 96));
 
   is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 0) == 1;
   is_input_dim_swapped_ = info.GetAttrOrDefault<int64_t>("input_dimension_swapped", 0) == 1;
@@ -69,10 +70,13 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
   int batch_size = is_input_dim_swapped_ ? static_cast<int>(dims[1]) : static_cast<int>(dims[0]);
   int sequence_length = is_input_dim_swapped_ ? static_cast<int>(dims[0]) : static_cast<int>(dims[1]);
   int hidden_size = static_cast<int>(dims[2]);
+#ifndef USE_FBGEMM
+  // This is not true for head-pruned transformers - e.g. FastFormers
   if (hidden_size % num_heads_ != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 0 dimension 2 should be divisiable by value of the num_heads attribute.");
   }
+#endif // USE_FBGEMM
 
   const auto& weights_dims = weights_shape.GetDims();
   if (weights_dims.size() != 2) {
@@ -83,9 +87,12 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 1 dimension 0 should have same length as dimension 2 of input 0");
   }
+#ifndef USE_FBGEMM
+  // This is not true for head-pruned transformers - e.g. FastFormers
   if (weights_dims[1] != 3 * weights_dims[0]) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'weights' dimension 1 should be 3 times of dimension 0");
   }
+#endif // USE_FBGEMM
 
   const auto& bias_dims = bias_shape.GetDims();
   if (bias_dims.size() != 1) {
@@ -190,7 +197,6 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, bool& is_pack
 
   const size_t hidden_size = static_cast<size_t>(weights_dims[0]);
   const size_t hidden_size_x3 = static_cast<size_t>(weights_dims[1]);
-  const size_t head_size = hidden_size / num_heads_;
 
   // Bail out if the weights shape has an expected shape.
   if ((hidden_size == 0) || ((hidden_size % num_heads_) != 0) || (hidden_size_x3 != 3 * hidden_size)) {
@@ -199,7 +205,7 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, bool& is_pack
 
   const auto* weights_data = weights.Data<T>();
 
-  packed_weights_size_ = MlasGemmPackBSize(head_size, hidden_size);
+  packed_weights_size_ = MlasGemmPackBSize(head_size_, hidden_size);
   if (packed_weights_size_ == 0) {
     return Status::OK();
   }
@@ -210,9 +216,9 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, bool& is_pack
   packed_weights_ = BufferUniquePtr(packed_weights_data, BufferDeleter(alloc));
 
   for (size_t i = 0; i < loop_len; i++) {
-    MlasGemmPackB(CblasNoTrans, head_size, hidden_size, weights_data, hidden_size_x3, packed_weights_data);
+    MlasGemmPackB(CblasNoTrans, head_size_, hidden_size, weights_data, hidden_size_x3, packed_weights_data);
     packed_weights_data += packed_weights_size_;
-    weights_data += head_size;
+    weights_data += head_size_;
   }
 
   is_packed = true;
@@ -237,9 +243,11 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   const int batch_size = is_input_dim_swapped_ ? static_cast<int>(shape[1]) : static_cast<int>(shape[0]);
   const int sequence_length = is_input_dim_swapped_ ? static_cast<int>(shape[0]) : static_cast<int>(shape[1]);
   const int hidden_size = static_cast<int>(shape[2]);
-  const int head_size = hidden_size / num_heads_;
 
-  Tensor* output = context->Output(0, shape);
+  // For the head-pruned transformers, hidden_size != head_size_ * num_heads_
+  int64_t output_shape_arr[] = {batch_size, sequence_length, head_size_ * num_heads_};
+  TensorShape output_shape(output_shape_arr, 3);
+  Tensor* output = context->Output(0, output_shape);
 
   constexpr size_t element_size = sizeof(T);
 
@@ -264,7 +272,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
     const auto* bias_data = bias->template Data<T>();
 
     const double cost =
-        static_cast<double>(sequence_length) * static_cast<double>(head_size) * static_cast<double>(hidden_size);
+        static_cast<double>(sequence_length) * static_cast<double>(head_size_) * static_cast<double>(hidden_size);
     ThreadPool::TryParallelFor(tp, loop_len, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
       for (std::ptrdiff_t i = begin; i != end; ++i) {
         const int batch_index = static_cast<int>((i / 3) / num_heads_);
@@ -272,16 +280,16 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
         const int qkv_index = static_cast<int>(i % 3);
 
         int input_offset = batch_index * sequence_length * hidden_size;
-        int weights_offset = qkv_index * hidden_size + head_index * head_size;
+        int weights_offset = qkv_index * hidden_size + head_index * head_size_;
         T* qkv_dest = QKV[qkv_index];
-        int qkv_offset = (batch_index * num_heads_ + head_index) * (sequence_length * head_size);
+        int qkv_offset = (batch_index * num_heads_ + head_index) * (sequence_length * head_size_);
 
         // broadcast 3NH -> (3.B.N.S.H)
         const T* broadcast_data_src = bias_data + weights_offset;
         T* broadcast_data_dest = QKV[qkv_index] + qkv_offset;
         for (int seq_index = 0; seq_index < sequence_length; seq_index++) {
-          memcpy(broadcast_data_dest, broadcast_data_src, head_size * sizeof(T));
-          broadcast_data_dest += head_size;
+          memcpy(broadcast_data_dest, broadcast_data_src, head_size_ * sizeof(T));
+          broadcast_data_dest += head_size_;
         }
 
         //                   original           transposed            iteration
@@ -290,11 +298,11 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
         // C: QKV[qkv_index] (3xBxNxSxH)        (3.B.N.)S x H         S x H
         if (packed_weights_) {
           const auto* packed_weight =
-              static_cast<const uint8_t*>(packed_weights_.get()) + packed_weights_size_ * (weights_offset / head_size);
+              static_cast<const uint8_t*>(packed_weights_.get()) + packed_weights_size_ * (weights_offset / head_size_);
           MlasGemm(
               CblasNoTrans,               // TransA = no
               sequence_length,            // M      = S
-              head_size,                  // N      = H
+              head_size_,                 // N      = H
               hidden_size,                // K      = NH
               1.0f,                       // alpha
               input_data + input_offset,  // A
@@ -302,13 +310,13 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
               packed_weight,              // B
               1.0f,                       // beta
               qkv_dest + qkv_offset,      // C
-              head_size,                  // ldc
+              head_size_,                 // ldc
               nullptr);                   // use single-thread
         } else {
           math::GemmEx<float, ThreadPool>(CblasNoTrans,                   // TransA = no
                                           CblasNoTrans,                   // TransB = no
                                           sequence_length,                // M      = S
-                                          head_size,                      // N      = H
+                                          head_size_,                     // N      = H
                                           hidden_size,                    // K      = NH
                                           1.0f,                           // alpha
                                           input_data + input_offset,      // A
@@ -317,7 +325,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
                                           3 * hidden_size,                // ldb    = 3NH
                                           1.0f,                           // beta
                                           qkv_dest + qkv_offset,          // C
-                                          head_size,                      // ldc
+                                          head_size_,                     // ldc
                                           nullptr                         // use single-thread
           );
         }
@@ -328,7 +336,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   // Compute the attention score and apply the score to V
   return ApplyAttention(Q, K, V, mask_index, past, output,
                         batch_size, sequence_length,
-                        head_size, hidden_size, context);
+                        head_size_, hidden_size, context);
 }
 
 }  // namespace contrib
