@@ -14,8 +14,7 @@ namespace training {
 
 using namespace onnxruntime::common;
 
-void GetInputAndOutputNames(const Node& node,
-                            std::unordered_set<std::string>& input_names,
+void GetInputAndOutputNames(const Node& node, std::unordered_set<std::string>& input_names,
                             std::unordered_set<std::string>& output_names) {
   std::for_each(node.InputDefs().begin(), node.InputDefs().end(),
                 [&input_names](const NodeArg* node_arg) { input_names.insert(node_arg->Name()); });
@@ -63,7 +62,8 @@ Status ModuleGradientGraphBuilder::BuildAndSplit(std::istream& model_istream,
     split_graphs_info_.user_output_names.emplace_back(node_arg->Name());
   }
 
-  split_graphs_info_.initializer_names_to_train.assign(config.initializer_names_to_train.begin(), config.initializer_names_to_train.end());
+  split_graphs_info_.initializer_names_to_train.assign(config.initializer_names_to_train.begin(),
+                                                       config.initializer_names_to_train.end());
 
   // Register and apply transformers for pre-training.
   const TrainingSession::TrainingConfiguration::GraphTransformerConfiguration graph_transformer_config{};
@@ -76,8 +76,9 @@ Status ModuleGradientGraphBuilder::BuildAndSplit(std::istream& model_istream,
                  config.input_names_require_grad.begin(), config.input_names_require_grad.end(),
                  std::inserter(x_node_arg_names, x_node_arg_names.begin()));
   auto add_transformers = [&](TransformerLevel level) {
+    std::unordered_map<std::string, std::string> updated_weight_names{};
     auto transformers_to_register = transformer_utils::GeneratePreTrainingTransformers(
-        level, x_node_arg_names, graph_transformer_config, *cpu_execution_provider, {});
+        level, x_node_arg_names, graph_transformer_config, *cpu_execution_provider, updated_weight_names, {});
     for (auto& entry : transformers_to_register) {
       graph_transformation_mgr.Register(std::move(entry), level);
     }
@@ -101,13 +102,11 @@ Status ModuleGradientGraphBuilder::BuildAndSplit(std::istream& model_istream,
   GradientGraphConfiguration gradient_graph_config{};
   gradient_graph_config.use_invertible_layernorm_grad = config.use_invertible_layernorm_grad;
   gradient_graph_config.set_gradients_as_graph_outputs = config.set_gradients_as_graph_outputs;
-  std::unordered_set<std::string> y_node_arg_names(split_graphs_info_.user_output_names.begin(), split_graphs_info_.user_output_names.end());
-  GradientGraphBuilder grad_graph_builder(&model_->MainGraph(),
-                                          y_node_arg_names,
-                                          x_node_arg_names,
-                                          "", // not support loss name for now.
-                                          gradient_graph_config,
-                                          *logger_);
+  std::unordered_set<std::string> y_node_arg_names(split_graphs_info_.user_output_names.begin(),
+                                                   split_graphs_info_.user_output_names.end());
+  GradientGraphBuilder grad_graph_builder(&model_->MainGraph(), y_node_arg_names, x_node_arg_names,
+                                          "",  // not support loss name for now.
+                                          gradient_graph_config, *logger_);
   ORT_RETURN_IF_ERROR(grad_graph_builder.Build());
 
   // Fix inputs/outputs related to gradients.
@@ -152,6 +151,7 @@ Status ModuleGradientGraphBuilder::BuildAndSplit(std::istream& model_istream,
   for (const auto& initializer_name : split_graphs_info_.initializer_names_to_train) {
     std::string initializer_gradient_name = initializer_name + "_grad";
     if (output_names.find(initializer_gradient_name) != output_names.end()) {
+      split_graphs_info_.initializer_grad_names_to_train.emplace_back(initializer_gradient_name);
       output_args.emplace_back(gradient_graph.GetNodeArg(initializer_gradient_name));
     }
   }
@@ -188,17 +188,11 @@ std::string SerializeModel(const std::shared_ptr<onnxruntime::Model>& model, con
   return model_str;
 }
 
-std::string ModuleGradientGraphBuilder::GetGradientModel() const {
-  return SerializeModel(model_, "gradient");
-}
+std::string ModuleGradientGraphBuilder::GetGradientModel() const { return SerializeModel(model_, "gradient"); }
 
-std::string ModuleGradientGraphBuilder::GetForwardModel() const {
-  return SerializeModel(forward_model_, "forward");
-}
+std::string ModuleGradientGraphBuilder::GetForwardModel() const { return SerializeModel(forward_model_, "forward"); }
 
-std::string ModuleGradientGraphBuilder::GetBackwardModel() const {
-  return SerializeModel(backward_model_, "backward");
-}
+std::string ModuleGradientGraphBuilder::GetBackwardModel() const { return SerializeModel(backward_model_, "backward"); }
 
 Status ModuleGradientGraphBuilder::Split() {
   // Get forward model, also collect some information for backward model generation.
@@ -253,8 +247,8 @@ Status ModuleGradientGraphBuilder::Split() {
   // Add intermediate args to forward graph outputs.
   for (const auto& intermediate_arg_name : intermediate_arg_names) {
     // Ignore the user outputs.
-    if (std::find(split_graphs_info_.user_output_names.begin(), split_graphs_info_.user_output_names.end(), intermediate_arg_name)
-            == split_graphs_info_.user_output_names.end()) {
+    if (std::find(split_graphs_info_.user_output_names.begin(), split_graphs_info_.user_output_names.end(),
+                  intermediate_arg_name) == split_graphs_info_.user_output_names.end()) {
       split_graphs_info_.intermediate_tensor_names.emplace_back(intermediate_arg_name);
       forward_output_args.emplace_back(forward_graph.GetNodeArg(intermediate_arg_name));
     }
@@ -264,7 +258,8 @@ Status ModuleGradientGraphBuilder::Split() {
 
   // Resolve the forward graph, keep the trainable initializers for now.
   Graph::ResolveOptions options;
-  std::unordered_set<std::string> initializer_names_to_train_set(split_graphs_info_.initializer_names_to_train.begin(), split_graphs_info_.initializer_names_to_train.end());
+  std::unordered_set<std::string> initializer_names_to_train_set(split_graphs_info_.initializer_names_to_train.begin(),
+                                                                 split_graphs_info_.initializer_names_to_train.end());
   options.initializer_names_to_preserve = &initializer_names_to_train_set;
   forward_graph.Resolve(options);
 
@@ -292,15 +287,9 @@ Status ModuleGradientGraphBuilder::Split() {
     }
   }
 
-  // Grad of user outputs to backward graph inputs.
-  for (const auto& output_grad_name : split_graphs_info_.backward_output_grad_names) {
-    backward_input_args.emplace_back(backward_graph.GetNodeArg(output_grad_name));
-  }
-
   // Add initializer args to backward graph inputs if any node uses them.
   for (const auto& initializer_name : split_graphs_info_.initializer_names_to_train) {
     // Some initializers will be inputs for backward graph.
-    split_graphs_info_.initializer_grad_names_to_train.emplace_back(initializer_name + "_grad");
     if (backward_input_names.find(initializer_name) != backward_input_names.end()) {
       split_graphs_info_.backward_intializer_names_as_input.emplace_back(initializer_name);
       backward_input_args.emplace_back(backward_graph.GetNodeArg(initializer_name));
@@ -313,6 +302,11 @@ Status ModuleGradientGraphBuilder::Split() {
     NodeArg* intermediate_node_arg = backward_graph.GetNodeArg(intermediate_arg_name);
     intermediate_node_arg->UpdateTypeAndShape(*forward_graph.GetNodeArg(intermediate_arg_name), true, true, *logger_);
     backward_input_args.emplace_back(intermediate_node_arg);
+  }
+
+  // Grad of user outputs to backward graph inputs.
+  for (const auto& output_grad_name : split_graphs_info_.backward_output_grad_names) {
+    backward_input_args.emplace_back(backward_graph.GetNodeArg(output_grad_name));
   }
 
   backward_graph.SetInputs(backward_input_args);
