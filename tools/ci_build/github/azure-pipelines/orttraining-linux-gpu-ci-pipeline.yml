@@ -3,7 +3,7 @@ trigger: none
 jobs:
 - template: templates/linux-ci.yml
   parameters:
-    AgentPool : 'Linux-GPU-CUDA10'
+    AgentPool : 'Linux-Single-GPU-V100'
     JobName: 'Onnxruntime_Linux_GPU_Training'
     SubmoduleCheckoutMode: 'recursive'
     BuildCommand: >
