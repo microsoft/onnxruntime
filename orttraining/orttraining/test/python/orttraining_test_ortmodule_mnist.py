@@ -1,3 +1,5 @@
+import pdb
+
 import argparse
 import logging
 import torch
@@ -90,8 +92,6 @@ def main():
                         help='input batch size for testing (default: 20)')
     parser.add_argument('--no-cuda', action='store_true', default=False,
                         help='disables CUDA training')
-    parser.add_argument('--use_iobinding', action='store_true', default=False,
-                        help='use IO binding')
     parser.add_argument('--seed', type=int, default=42, metavar='S',
                         help='random seed (default: 42)')
     parser.add_argument('--pytorch-only', action='store_true', default=False,
@@ -117,12 +117,11 @@ def main():
         device = "cuda"
     else:
         device = "cpu"
-    # device = 'cpu'
 
     ## Data loader
     train_loader = torch.utils.data.DataLoader(datasets.MNIST('./data', train=True, download=True,
                                             transform=transforms.Compose([transforms.ToTensor(),
-                                            transforms.Normalize((0.1307,), (0.3081,))])),
+                                                                          transforms.Normalize((0.1307,), (0.3081,))])),
                                             batch_size=args.batch_size,
                                             shuffle=True)
     if args.test_batch_size > 0:
@@ -135,7 +134,7 @@ def main():
     model = NeuralNet(input_size=784, hidden_size=500, num_classes=10).to(device)
     if not args.pytorch_only:
         print('Training MNIST on ORTModule....')
-        model = ORTModule(model, device, args.use_iobinding)
+        model = ORTModule(model)
 
         # TODO: change it to False to stop saving ONNX models
         model._save_onnx = True
