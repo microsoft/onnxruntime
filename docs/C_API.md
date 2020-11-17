@@ -21,13 +21,22 @@ is as follows
    * Create env using ```CreateEnvWithGlobalThreadPools()```
    * Create session and call ```DisablePerSessionThreads()``` on the session options object
    * Call ```Run()``` as usual
-* **Share allocator(s) between sessions:** Allow multiple sessions in the same process to use the same allocator(s). This
-allocator is first registered in the env and then reused by all sessions that use the same env instance unless a session
-chooses to override this by setting ```session_state.use_env_allocators``` to "0". Usage of this feature is as follows
-   * Register an allocator created by ORT using the ```CreateAndRegisterAllocator``` API.
-   * Set ```session.use_env_allocators``` to "1" for each session that wants to use the env registered allocators.
-   * See test ```TestSharedAllocatorUsingCreateAndRegisterAllocator``` in
+* **Share allocator(s) between sessions:**
+   * *Description*: This feature allows multiple sessions in the same process to use the same allocator(s).
+   * *Scenario*: You've several sessions in the same process and see high memory usage. One of the reasons for this is as follows. Each session creates its own CPU allocator which is arena based by default. [ORT implements](onnxruntime/core/framework/bfc_arena.h) a simplified version of an arena allocator that is based on [Doug Lea's best-first with coalescing algorithm](http://gee.cs.oswego.edu/dl/html/malloc.html). This allocator allocates a large region of memory during init time and threafter it chunks, coalesces and extends this initial region as per allocation/deallocation demands. Since each allocator lives in its own session, there is no knowledge of memory allocations/deallocations across sessions. This leads to fragmentation and increased memory usage.
+   * *Usage*:
+      * Create and register a shared allocator with the env using the ```CreateAndRegisterAllocator``` API. This allocator is then reused by all sessions that use the same env instance unless a session
+chooses to override this by setting ```session_state.use_env_allocators``` to "0".
+      * Set ```session.use_env_allocators``` to "1" for each session that wants to use the env registered allocators.
+      * See test ```TestSharedAllocatorUsingCreateAndRegisterAllocator``` in
      onnxruntime/test/shared_lib/test_inference.cc for an example.
+      * Configuring *OrtArenaCfg*:
+         * Default values for these configs can be found in the [BFCArena class](onnxruntime/core/framework/bfc_arena.h).
+         * ```initial_chunk_size_bytes```: This is the size of the region that the arena allocates first. Chunks are handed over to allocation requests from this region. If the logs show that the arena is getting extended a lot more than expected, you're better off choosing a big enough initial size for this.
+         * ```max_mem```: This is the maximum amount of memory the arena allocates. If a chunk cannot be serviced by any existing region, the arena tries to extend upto this value and if it cannot extend, it throws an error.
+         * ```arena_extend_strategy```: This can take only 2 values currently: kSameAsRequested or kNextPowerOfTwo. kNextPowerOfTwo (the default) has the potential to cause internal fragmentation, while reducing the number of allocations. Hence, use kSameAsRequested if you're very sensitive to even the slightest internal fragmentation.
+         * ```max_dead_bytes_per_chunk```: This controls the maximum amount of fragmentation allowed per chunk. Currently if the difference between the chunk size and requested size is less than this value, the chunk is not split. This has the potential to cause fragmentation by keeping a part of the chunk unused throughout the process thereby increasing the memory usage (until this chunk is returned to the arena).
+
 * **Share initializer(s) between sessions:**
    * *Description*: This feature allows a user to share the same instance of an initializer across
 multiple sessions.
