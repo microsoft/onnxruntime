@@ -161,27 +161,23 @@ Status Transpose::DoTranspose(const Transpose& kernel,
   // }
 
   size_t element_size = input.DataType()->Size();
-  if (CanDoTranspose3D(new_rank, new_input_dims, new_permutations)) {
-    RocmAsyncBuffer<int64_t> input_shape(&kernel, new_rank);
-    for (auto i = 0; i < new_rank; i++) {
-      input_shape.CpuPtr()[i] = new_input_dims[i];
-      std::cout << "input_shape.CpuPtr()[i] = " << input_shape.CpuPtr()[i] << std::endl;
-    }
-    RocmAsyncBuffer<int64_t> tmp_input_strides(&kernel, new_rank);
-    for (auto i = 0; i < new_rank; i++) {
-      tmp_input_strides.CpuPtr()[i] = new_input_strides[i];
-      std::cout << "tmp_input_strides.CpuPtr()[i] = " << tmp_input_strides.CpuPtr()[i] << std::endl;
-    }
-    ORT_RETURN_IF_ERROR(input_shape.CopyToGpu());
-    ORT_RETURN_IF_ERROR(tmp_input_strides.CopyToGpu());
-    std::cout << "Transpose3dImpl(...)\n" << std::flush;
+  std::vector<int64_t> input_shape(new_rank);
+  std::vector<int64_t> tmp_input_strides(new_rank);
+  std::vector<int64_t> tmp_output_strides(new_rank);  
+  for (auto i = 0; i < new_rank; i++) {
+    input_shape[i] = new_input_dims[i];    
+    tmp_input_strides[i] = new_input_strides[i];
+    tmp_output_strides[i] = new_output_strides[new_permutations[i]];    
+  }
 
-    auto status = Transpose3DImpl(element_size, input_shape.GpuPtr(), tmp_input_strides.GpuPtr(),
+  if (CanDoTranspose3D(new_rank, new_input_dims, new_permutations)) {
+    return Transpose3DImpl(kernel, element_size, input_shape, tmp_input_strides,
                            input.DataRaw(), output.MutableDataRaw(), output.Shape().Size());
 
-    std::cout << "done\n" << std::flush;
-    return status;
-  }
+  } else if (CanDoTranspose4D(kernel.GetDeviceProp(), element_size, new_rank, new_input_dims, new_permutations)) {
+    return Transpose4DImpl(kernel, element_size, input_shape, tmp_input_strides, input.DataRaw(),
+                           tmp_output_strides, output.MutableDataRaw(), output.Shape().Size());
+  } 
 
   RocmAsyncBuffer<int64_t> input_strides(&kernel, new_rank);
   for (auto i = 0; i < new_rank; i++) {
@@ -201,7 +197,6 @@ Status Transpose::DoTranspose(const Transpose& kernel,
   ORT_RETURN_IF_ERROR(input_strides.CopyToGpu());
   ORT_RETURN_IF_ERROR(output_strides.CopyToGpu());
 
-  std::cout << "TransposeImpl(...)\n" << std::flush;
   auto status = TransposeImpl(element_size, new_rank, input_strides.GpuPtr(), input.DataRaw(),
                               output_strides.GpuPtr(), output.MutableDataRaw(), output.Shape().Size());
 

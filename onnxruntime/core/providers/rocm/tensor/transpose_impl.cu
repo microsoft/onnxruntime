@@ -4,6 +4,8 @@
 #include "core/providers/rocm/cu_inc/common.cuh"
 #include "core/providers/rocm/tensor/transpose_impl.h"
 
+#define HCC_ENABLE_PRINTF
+
 namespace onnxruntime {
 namespace rocm {
 
@@ -16,7 +18,8 @@ template <typename T>
                                   const T* input_data, T* output_data) { */
 __global__ void Transpose3DKernel(const int64_t* input_shape,
                                       const int64_t* input_strides,
-                                      const T* __restrict__ input_data, T* __restrict__ output_data) {                                    
+                                      const T* __restrict__ input_data, T* __restrict__ output_data) {  
+
   __shared__ T tile[TILE_DIM * (TILE_DIM + 1)];
 
   int x = blockIdx.x * TILE_DIM + threadIdx.x;
@@ -47,36 +50,46 @@ bool CanDoTranspose3D(int32_t rank,
 /* Status Transpose3DImpl(size_t element_size,
                        const TArray<int64_t>& input_shape, const TArray<int64_t>& input_strides,
                        const void* input_data, void* output_data, int64_t N) { */
-Status Transpose3DImpl(size_t element_size,
-                          const int64_t* input_shape, const int64_t* input_strides,
-                          const void* input_data, void* output_data, int64_t N) {                         
+Status Transpose3DImpl(const Transpose& kernel, size_t element_size,
+    const std::vector<int64_t>& input_shape, const std::vector<int64_t>& input_strides,
+    const void* input_data, void* output_data, int64_t N) {                         
   dim3 block_size(TILE_DIM, TILE_DIM);
   dim3 grid_size(input_shape[2] / TILE_DIM, input_shape[1] / TILE_DIM, input_shape[0]);
+
+  RocmAsyncBuffer<int64_t> input_shape_buffer(input_shape.size());
+  RocmAsyncBuffer<int64_t> input_strides_buffer(input_strides.size());
+  for (int i = 0; i < input_shape.size(); i++) {
+    input_shape_buffer.CpuPtr()[i] = input_shape[i];
+    input_strides_buffer.CpuPtr()[i] = input_strides[i];
+  }
+
+  ORT_RETURN_IF_ERROR(input_shape_buffer->CopyToGpu());
+  ORT_RETURN_IF_ERROR(input_strides_buffer->CopyToGpu());
 
   switch (element_size) {
     case sizeof(int8_t):
       hipLaunchKernelGGL(Transpose3DKernel<int8_t>, grid_size, block_size, 0, 0,
-          input_shape, input_strides,
+          input_shape_buffer.GpuPtr(), input_strides_buffer.GpuPtr(),
           reinterpret_cast<const ToHipType<int8_t>::MappedType*>(input_data),
           reinterpret_cast<ToHipType<int8_t>::MappedType*>(output_data));
       break;
     case sizeof(int16_t):
       hipLaunchKernelGGL(Transpose3DKernel<int16_t>, grid_size, block_size, 0, 0,
-          input_shape, input_strides,
-          reinterpret_cast<const ToHipType<int16_t>::MappedType*>(input_data),
-          reinterpret_cast<ToHipType<int16_t>::MappedType*>(output_data));
+        input_shape_buffer.GpuPtr(), input_strides_buffer.GpuPtr(),
+        reinterpret_cast<const ToHipType<int16_t>::MappedType*>(input_data),
+        reinterpret_cast<ToHipType<int16_t>::MappedType*>(output_data));
       break;
     case sizeof(int32_t):
       hipLaunchKernelGGL(Transpose3DKernel<int32_t>, grid_size, block_size, 0, 0,
-          input_shape, input_strides,
-          reinterpret_cast<const ToHipType<int32_t>::MappedType*>(input_data),
-          reinterpret_cast<ToHipType<int32_t>::MappedType*>(output_data));
+        input_shape_buffer.GpuPtr(), input_strides_buffer.GpuPtr(),
+        reinterpret_cast<const ToHipType<int32_t>::MappedType*>(input_data),
+        reinterpret_cast<ToHipType<int32_t>::MappedType*>(output_data));
       break;
     case sizeof(int64_t):
       hipLaunchKernelGGL(Transpose3DKernel<int64_t>, grid_size, block_size, 0, 0,    
-          input_shape, input_strides,
-          reinterpret_cast<const ToHipType<int64_t>::MappedType*>(input_data),
-          reinterpret_cast<ToHipType<int64_t>::MappedType*>(output_data));
+        input_shape_buffer.GpuPtr(), input_strides_buffer.GpuPtr(),
+        reinterpret_cast<const ToHipType<int64_t>::MappedType*>(input_data),
+        reinterpret_cast<ToHipType<int64_t>::MappedType*>(output_data));
       break;
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type not supported for transpose on CUDA. Element size was ",
@@ -86,19 +99,22 @@ Status Transpose3DImpl(size_t element_size,
   return Status::OK();
 }
 
-/* 
+
 template <int element_size>
-__global__ void Transpose4DKernel(const TArray<int64_t> input_strides, const void* input_data,
-                                  const TArray<int64_t> output_strides, void* output_data,
-                                  CUDA_LONG N) {
+// __global__ void Transpose4DKernel(const TArray<int64_t> input_strides, const void* input_data,
+//                                   const TArray<int64_t> output_strides, void* output_data,
+//                                   HIP_LONG N) {
+__global__ void Transpose4DKernel(const int64_t* input_strides, const void* input_data,
+                                  const int64_t* output_strides, void* output_data,
+                                  HIP_LONG N) {                                    
   // output coordinates will be: blockIdx.y, blockIdx.x, threadIdx.y, threadIdx.x
-  CUDA_LONG input_index = (blockIdx.y * input_strides[0] +
+  HIP_LONG input_index = (blockIdx.y * input_strides[0] +
                            blockIdx.x * input_strides[1] +
                            threadIdx.y * input_strides[2]) /
                               (4 * sizeof(int) / element_size) +
                           threadIdx.x * input_strides[3];
 
-  CUDA_LONG output_index = (blockIdx.y * output_strides[0] +
+  HIP_LONG output_index = (blockIdx.y * output_strides[0] +
                             blockIdx.x * output_strides[1] +
                             threadIdx.y * output_strides[2]) /
                                (4 * sizeof(int) / element_size) +
@@ -112,7 +128,7 @@ __global__ void Transpose4DKernel(const TArray<int64_t> input_strides, const voi
   }
 }
 
-bool CanDoTranspose4D(const cudaDeviceProp& prop,
+bool CanDoTranspose4D(const hipDeviceProp_t& prop,
                       size_t element_size,
                       int32_t rank,
                       const std::vector<int64_t>& input_dims,
@@ -131,38 +147,52 @@ bool CanDoTranspose4D(const cudaDeviceProp& prop,
         num_threads_per_block >= prop.warpSize &&
         // num_threads_per_block must be aligned with warp size: 32
         ((num_threads_per_block & (prop.warpSize - 1)) == 0)) {
+
       return true;
     }
   }
   return false;
 }
 
-Status Transpose4DImpl(size_t element_size, const TArray<int64_t>& input_shape, const TArray<int64_t>& input_strides, const void* input_data,
-                       const TArray<int64_t>& output_strides, void* output_data, int64_t N) {
+// Status Transpose4DImpl(size_t element_size, const TArray<int64_t>& input_shape, const TArray<int64_t>& input_strides, const void* input_data,
+//                        const TArray<int64_t>& output_strides, void* output_data, int64_t N) {
+Status Transpose4DImpl(const Transpose& kernel, size_t element_size, const std::vector<int64_t>& input_shape, const std::vector<int64_t>& input_strides, const void* input_data,
+  const std::vector<int64_t>& output_strides, void* output_data, int64_t N) {
+
   int num_elements_per_thread = 4 * sizeof(int) / element_size;  // int4 is used in the kernel to access data.
   dim3 block_size(input_shape[3] / num_elements_per_thread, input_shape[2]);
   dim3 grid_size(input_shape[1], input_shape[0]);
 
+  RocmAsyncBuffer<int64_t> input_strides_buffer(input_strides.size());
+  RocmAsyncBuffer<int64_t> output_strides_buffer(output_strides.size());
+  for (int i = 0; i < input_strides.size(); i++) {
+    input_strides_buffer.CpuPtr()[i] =  input_strides[i];
+    output_strides_buffer.CpuPtr()[i] = output_strides[i];
+  }
+
+  ORT_RETURN_IF_ERROR(input_strides_buffer->CopyToGpu());
+  ORT_RETURN_IF_ERROR(output_strides_buffer->CopyToGpu());
+
   switch (element_size) {
     case sizeof(int8_t):
-      Transpose4DKernel<sizeof(int8_t)><<<grid_size, block_size, 0>>>(
-          input_strides, input_data,
-          output_strides, output_data, N / num_elements_per_thread);
+      hipLaunchKernelGGL(Transpose4DKernel<sizeof(int8_t)>, grid_size, block_size, 0, 0,
+          input_strides_buffer.GpuPtr(), input_data,
+          output_strides_buffer.GpuPtr(), output_data, N / num_elements_per_thread);
       break;
     case sizeof(int16_t):
-      Transpose4DKernel<sizeof(int16_t)><<<grid_size, block_size, 0>>>(
-          input_strides, input_data,
-          output_strides, output_data, N / num_elements_per_thread);
+      hipLaunchKernelGGL(Transpose4DKernel<sizeof(int16_t)>, grid_size, block_size, 0, 0,
+          input_strides_buffer.GpuPtr(), input_data,
+          output_strides_buffer.GpuPtr(), output_data, N / num_elements_per_thread);
       break;
     case sizeof(int32_t):
-      Transpose4DKernel<sizeof(int32_t)><<<grid_size, block_size, 0>>>(
-          input_strides, input_data,
-          output_strides, output_data, N / num_elements_per_thread);
+      hipLaunchKernelGGL(Transpose4DKernel<sizeof(int32_t)>, grid_size, block_size, 0, 0,
+          input_strides_buffer.GpuPtr(), input_data,
+          output_strides_buffer.GpuPtr(), output_data, N / num_elements_per_thread);
       break;
     case sizeof(int64_t):
-      Transpose4DKernel<sizeof(int64_t)><<<grid_size, block_size, 0>>>(
-          input_strides, input_data,
-          output_strides, output_data, N / num_elements_per_thread);
+      hipLaunchKernelGGL(Transpose4DKernel<sizeof(int64_t)>, grid_size, block_size, 0, 0,
+          input_strides_buffer.GpuPtr(), input_data,
+          output_strides_buffer.GpuPtr(), output_data, N / num_elements_per_thread);
       break;
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type not supported for transpose on CUDA. Element size was ",
@@ -170,7 +200,7 @@ Status Transpose4DImpl(size_t element_size, const TArray<int64_t>& input_shape, 
   }
 
   return Status::OK();
-} */
+} 
 
 template <typename T>
 // __global__ void _TransposeKernel(int32_t shape_rank, const TArray<int64_t> input_strides,
