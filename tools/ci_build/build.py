@@ -50,6 +50,49 @@ def _check_python_version():
 _check_python_version()
 
 
+def _openvino_verify_device_type(device_read):
+    choices = ["CPU_FP32", "GPU_FP32", "GPU_FP16", "VAD-M_FP16", "MYRIAD_FP16", "VAD-F_FP32"]
+    status_hetero = True
+    res = False
+    if (device_read in choices):
+        res = True
+    elif (device_read.startswith("HETERO:") or device_read.startswith("MULTI:")):
+        res = True
+        comma_separated_devices = device_read.split(":")
+        comma_separated_devices = comma_separated_devices[1].split(',')
+        if (len(comma_separated_devices) < 2):
+            print("Atleast two devices required in Hetero Mode")
+            status_hetero = False
+        dev_options = ["CPU", "GPU", "MYRIAD", "FPGA", "HDDL"]
+        for dev in comma_separated_devices:
+            if (dev not in dev_options):
+                status_hetero = False
+                break
+
+    def invalid_hetero_build():
+        print("\n" + "If trying to build Hetero or Multi, specifiy the supported devices along with it." + + "\n")
+        print("specify the keyword HETERO or MULTI followed by the devices ")
+        print("in the order of priority you want to build" + "\n")
+        print("The different hardware devices that can be added in HETERO or MULTI")
+        print("are ['CPU','GPU','MYRIAD','FPGA','HDDL']" + "\n")
+        print("An example of how to specify the hetero build type. Ex: HETERO:GPU,CPU" + "\n")
+        print("An example of how to specify the MULTI build type. Ex: MULTI:MYRIAD,CPU" + "\n")
+        sys.exit("Wrong Build Type selected")
+
+    if (res is False):
+        print("\n" + "You have selcted wrong configuration for the build.")
+        print("pick the build type for specific Hardware Device from following options: ", choices)
+        print("\n")
+        if not (device_read.startswith("HETERO:") or device_read.startswith("MULTI:")):
+            invalid_hetero_build()
+        sys.exit("Wrong Build Type selected")
+
+    if (status_hetero is False):
+        invalid_hetero_build()
+
+    return device_read
+
+
 def parse_arguments():
     parser = argparse.ArgumentParser(
         description="ONNXRuntime CI build driver.",
@@ -238,48 +281,6 @@ def parse_arguments():
         "(e.g. macOS or iOS)"
         "This is only supported on MacOS")
 
-    def verify_device_type(device_read):
-        choices = ["CPU_FP32", "GPU_FP32", "GPU_FP16", "VAD-M_FP16", "MYRIAD_FP16", "VAD-F_FP32"]
-        status_Hetero = True
-        res = False
-        if(device_read in choices):
-            res = True
-        elif(device_read.startswith("HETERO:") or device_read.startswith("MULTI:")):
-            res = True
-            comma_separated_devices = device_read.split(":")
-            comma_separated_devices = comma_separated_devices[1].split(',')
-            if(len(comma_separated_devices) < 2):
-                print("Atleast two devices required in Hetero Mode")
-                status_Hetero = False
-            dev_options = ["CPU", "GPU", "MYRIAD", "FPGA", "HDDL"]
-            for dev in comma_separated_devices:
-                if(dev not in dev_options):
-                    status_Hetero = False
-                    break
-
-        def Invalid_Hetero_Build():
-            print("\n" + "If trying to build Hetero or Multi, specifiy the supported devices along with it." + + "\n")
-            print("specify the keyword HETERO or MULTI followed by the devices ")
-            print("in the order of priority you want to build" + "\n")
-            print("The different hardware devices that can be added in HETERO or MULTI")
-            print("are ['CPU','GPU','MYRIAD','FPGA','HDDL']" + "\n")
-            print("An example of how to specify the hetero build type. Ex: HETERO:GPU,CPU" + "\n")
-            print("An example of how to specify the MULTI build type. Ex: MULTI:MYRIAD,CPU" + "\n")
-            sys.exit("Wrong Build Type selected")
-
-        if(res is False):
-            print("\n" + "You have selcted wrong configuration for the build.")
-            print("pick the build type for specific Hardware Device from following options: ", choices)
-            print("\n")
-            if not (device_read.startswith("HETERO:") or device_read.startswith("MULTI:")):
-                Invalid_Hetero_Build()
-            sys.exit("Wrong Build Type selected")
-
-        if(status_Hetero is False):
-            Invalid_Hetero_Build()
-
-        return device_read
-
     # Arguments needed by CI
     parser.add_argument(
         "--cmake_path", default="cmake", help="Path to the CMake program.")
@@ -314,7 +315,7 @@ def parse_arguments():
         "--use_ngraph", action='store_true', help="Build with nGraph.")
     parser.add_argument(
         "--use_openvino", nargs="?", const="CPU_FP32",
-        type=verify_device_type,
+        type=_openvino_verify_device_type,
         help="Build with OpenVINO for specific hardware.")
     parser.add_argument(
         "--use_nnapi", action='store_true', help="Build with NNAPI support.")
