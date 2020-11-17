@@ -236,7 +236,7 @@ void GetFlattenOutputShape(const Node& node, const Shape& input_shape, int32_t& 
   dim_2 = std::accumulate(input_shape.cbegin() + axis, input_shape.cend(), 1, std::multiplies<int32_t>());
 }
 
-bool IsValidSupportedNodesVec(const std::vector<int>& supported_node_vec, const GraphViewer& graph_viewer) {
+bool IsValidSupportedNodesVec(const std::vector<size_t>& supported_node_vec, const GraphViewer& graph_viewer) {
   if (supported_node_vec.empty())
     return false;
 
@@ -266,8 +266,8 @@ bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const Op
   }
 }
 
-std::vector<std::vector<int>> GetSupportedNodes(const GraphViewer& graph_viewer, const OpSupportCheckParams& params) {
-  std::vector<std::vector<int>> supported_node_vecs;
+std::vector<std::vector<size_t>> GetSupportedNodes(const GraphViewer& graph_viewer, const OpSupportCheckParams& params) {
+  std::vector<std::vector<size_t>> supported_node_vecs;
   if (params.android_sdk_ver < ORT_NNAPI_MIN_API_LEVEL) {
     LOGS_DEFAULT(WARNING) << "All ops will fallback to CPU EP, because Android API level [" << params.android_sdk_ver
                           << "] is lower than minimal supported API level [" << ORT_NNAPI_MIN_API_LEVEL
@@ -275,7 +275,7 @@ std::vector<std::vector<int>> GetSupportedNodes(const GraphViewer& graph_viewer,
     return supported_node_vecs;
   }
 
-  std::vector<int> supported_node_vec;
+  std::vector<size_t> supported_node_vec;
   const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
   for (size_t i = 0; i < node_indices.size(); i++) {
     const auto* node(graph_viewer.GetNode(node_indices[i]));

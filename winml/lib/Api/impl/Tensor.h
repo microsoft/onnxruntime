@@ -15,10 +15,7 @@ namespace _winml {
 template <typename T>
 class Tensor {
  private:
-  using TensorBuffer = TensorBuffer<T>;
-  using TensorBufferPtr = typename TensorBuffer::TensorBufferPtr;
-
-  TensorBufferPtr m_buffer;
+  std::shared_ptr<TensorBuffer<T>> buffer_;
   std::vector<int64_t> shape_;
 
  public:
@@ -26,60 +23,62 @@ class Tensor {
 
   Tensor(
       std::vector<int64_t> const& shape,
-      wss::IBuffer buffer) : shape_(shape),
-                             m_buffer(
-                                 TensorBuffer::Create(
-                                     static_cast<uint32_t>(
-                                         std::accumulate(
-                                             std::begin(shape),
-                                             std::end(shape),
-                                             static_cast<int64_t>(1),
-                                             std::multiplies<int64_t>())),
-                                     buffer)) {
-  }
+      wfc::IIterable<wss::IBuffer> const& buffers) :
+                            shape_(shape),
+                            buffer_(TensorBuffer<T>::Create(
+                                        static_cast<size_t>(std::accumulate(
+                                             std::begin(shape), std::end(shape),
+                                             static_cast<int64_t>(1), std::multiplies<int64_t>())),
+                                        buffers)) {}
 
   Tensor(
       std::vector<int64_t> const& shape) : shape_(shape),
-                                           m_buffer(
-                                               TensorBuffer::Create(
-                                                   static_cast<uint32_t>(
-                                                       std::accumulate(
-                                                           std::begin(shape),
-                                                           std::end(shape),
-                                                           static_cast<int64_t>(1),
-                                                           std::multiplies<int64_t>())))) {
-  }
+                                           buffer_(TensorBuffer<T>::Create(
+                                                        static_cast<size_t>(std::accumulate(
+                                                            std::begin(shape), std::end(shape),
+                                                            static_cast<int64_t>(1),
+                                                            std::multiplies<int64_t>())))) {}
 
   Tensor(
       std::vector<int64_t> const&& shape) : shape_(std::move(shape)),
-                                            m_buffer(
-                                                TensorBuffer::Create(
-                                                    static_cast<uint32_t>(
-                                                        std::accumulate(
-                                                            std::begin(shape),
-                                                            std::end(shape),
+                                            buffer_(TensorBuffer<T>::Create(
+                                                        static_cast<size_t>(std::accumulate(
+                                                            std::begin(shape), std::end(shape),
                                                             static_cast<int64_t>(1),
                                                             std::multiplies<int64_t>())))) {
   }
 
-  auto size() const {
-    return m_buffer->Size();
+  auto number_of_elements() const {
+    return buffer_->NumElements();
   }
 
   auto size_in_bytes() const {
-    return m_buffer->SizeInBytes();
+    return buffer_->SizeInBytes();
   }
 
-  auto buffer() {
-    return m_buffer->Buffer();
+  auto num_buffers() {
+    return buffer_->NumBuffers();
   }
 
-  void set(uint32_t size, const T* pData) {
-    m_buffer->Set(size, pData);
+  auto& buffers() {
+    return buffer_->Buffers();
+  }
+
+  auto buffer(bool should_sync_buffer = true) {
+    auto span = buffer_->Buffer(should_sync_buffer);
+    return gsl::span<T>(reinterpret_cast<T*>(span.data()), buffer_->NumElements());
+  }
+
+  auto flush() {
+    return buffer_->Flush();
+  }
+
+  void set(size_t size, const T* pData) {
+    buffer_->Set(size * sizeof(T), pData);
   }
 
   void set(std::vector<T>&& other) {
-    m_buffer->Set(other);
+    buffer_->Set(other);
   }
 
   const std::vector<int64_t>& shape() const {
@@ -87,7 +86,7 @@ class Tensor {
   }
 
   auto get_tensor_buffer() {
-    return m_buffer;
+    return buffer_;
   }
 };
 }  // namespace _winml

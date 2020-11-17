@@ -16,9 +16,10 @@
 // Provides C++ classes to more easily use the Neural Networks API.
 #ifndef ANDROID_ML_NN_RUNTIME_NEURAL_NETWORKS_WRAPPER_H
 #define ANDROID_ML_NN_RUNTIME_NEURAL_NETWORKS_WRAPPER_H
-#include "nnapi_implementation.h"
 #include <vector>
 #include <numeric>
+
+#include "NeuralNetworksTypes.h"
 
 template <typename T>
 T Product(const std::vector<T>& v) {

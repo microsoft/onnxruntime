@@ -8,8 +8,17 @@
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksTypes.h"
 
 // This is the minimal Android API Level required by ORT NNAPI EP to run
+// ORT running on any host system with Android API level less than this will fall back to CPU EP
 #ifndef ORT_NNAPI_MIN_API_LEVEL
 #define ORT_NNAPI_MIN_API_LEVEL 27
+#endif
+
+// This is the maximum Android API level supported in the ort model conversion for NNAPI EP
+// Note: This is only for running NNAPI for ort format model conversion on non-Android system since we cannot
+//       get the actually Android system version.
+//       If running on an actual Android system, this value will be ignored
+#ifndef ORT_NNAPI_MAX_SUPPORTED_API_LEVEL
+#define ORT_NNAPI_MAX_SUPPORTED_API_LEVEL 30
 #endif
 
 namespace onnxruntime {
@@ -114,7 +123,7 @@ void GetFlattenOutputShape(const Node& node, const Shape& input_shape, int32_t& 
 bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const OpSupportCheckParams& params);
 
 // Get a list of groups of supported nodes, each group represents a subgraph supported by NNAPI EP
-std::vector<std::vector<int>> GetSupportedNodes(const GraphViewer& graph_viewer, const OpSupportCheckParams& params);
+std::vector<std::vector<size_t>> GetSupportedNodes(const GraphViewer& graph_viewer, const OpSupportCheckParams& params);
 
 // Get string representation of a Shape
 std::string Shape2String(const std::vector<uint32_t>& shape);

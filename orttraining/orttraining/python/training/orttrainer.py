@@ -646,6 +646,9 @@ class ORTTrainer(object):
             self.options.graph_transformer.transformer_layer_recompute):
             session_options.execution_order = ort.ExecutionOrder.PRIORITY_BASED
 
+        # old ort session may already exists and occupies GPU memory when creating new session, this may cause OOM error.
+        # for example, load_state_dict will be called before returing the function, and it calls _init_session again
+        del self._training_session
         # TrainingSession
         self._training_session = ort.TrainingSession(self._onnx_model.SerializeToString(),
                                                      ort_parameters,
