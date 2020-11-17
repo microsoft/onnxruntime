@@ -3735,8 +3735,9 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Gr
       if (node->Index() < fbs_graph.max_node_index()) {
         nodes_[node->Index()] = std::move(node);
       } else {
-        throw(std::out_of_range("Node index is out of range"));
+        ORT_THROW("Node index is out of range");
       }
+      ORT_RETURN_IF(node->Index() >= fbs_graph.max_node_index(), "Node index is out of range");  // Return with error if the exceptions are disabled.
       ++num_of_nodes_;
     }
   }
@@ -3746,11 +3747,12 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Gr
   if (fbs_node_edges != nullptr) {
     for (const auto* fbs_node_edge : *fbs_node_edges) {
       ORT_RETURN_IF(nullptr == fbs_node_edge, "NodeEdge is missing. Invalid ORT format model.");
-      if (fbs_node_edge->node_index() < static_cast<size_t>(num_of_nodes_)) {
+      if (fbs_node_edge->node_index() < fbs_graph.max_node_index()) {
         ORT_RETURN_IF_ERROR(nodes_[fbs_node_edge->node_index()]->LoadEdgesFromOrtFormat(*fbs_node_edge, *this));
       } else {
-        throw(std::out_of_range("Node index is out of range"));
+        ORT_THROW("Node index is out of range");
       }
+      ORT_RETURN_IF(fbs_node_edge->node_index() >= fbs_graph.max_node_index(), "Node index is out of range");  // Return with error if the exceptions are disabled.
     }
   }
 
