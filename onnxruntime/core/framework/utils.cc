@@ -101,7 +101,10 @@ bool ProviderIsCpuBased(const std::string& provider_type) {
          provider_type == onnxruntime::kVitisAIExecutionProvider ||
          provider_type == onnxruntime::kOpenVINOExecutionProvider ||
          provider_type == onnxruntime::kNnapiExecutionProvider ||
-         provider_type == onnxruntime::kRknpuExecutionProvider;
+         provider_type == onnxruntime::kAclExecutionProvider ||
+         provider_type == onnxruntime::kArmNNExecutionProvider ||
+         provider_type == onnxruntime::kRknpuExecutionProvider ||
+         provider_type == onnxruntime::utils::kInternalTestingExecutionProvider;
 }
 
 static common::Status AllocateHelper(const AllocatorPtr& allocator,
@@ -574,16 +577,16 @@ common::Status VerifyInputTensorsAllocatedContiguously(OpKernelContext* context)
     const Tensor* curr_input = context->Input<Tensor>(i);
 
     ORT_ENFORCE(prev_input->Shape().Size() >= 0);
-    
+
     size_t input_element_count = static_cast<size_t>(prev_input->Shape().Size());
     size_t input_element_size = prev_input->DataType()->Size();
     size_t input_aligned_bytes = 0;
-    
+
     ORT_RETURN_IF_NOT(IAllocator::CalcMemSizeForArrayWithAlignment<256>(input_element_count, input_element_size, &input_aligned_bytes));
-    
+
     ORT_RETURN_IF_NOT(curr_input->DataRaw() == static_cast<const int8_t*>(prev_input->DataRaw()) + input_aligned_bytes ||
                       curr_input->DataRaw() == static_cast<const int8_t*>(prev_input->DataRaw()) + prev_input->SizeInBytes());
-    
+
     prev_input = curr_input;
   }
   return Status::OK();

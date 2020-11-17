@@ -1,13 +1,25 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 #include "core/common/logging/logging.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_execution_provider.h"
 #include "core/session/inference_session.h"
-#include "gtest/gtest.h"
+#include "test/common/tensor_op_test_utils.h"
 #include "test/framework/test_utils.h"
-#include "test/providers/provider_test_utils.h"
+#include "test/util/include/asserts.h"
+#include "test/util/include/default_providers.h"
 #include "test/util/include/inference_session_wrapper.h"
+#include "test/util/include/test/test_environment.h"
+#include "test/util/include/test_utils.h"
+
+#if !defined(ORT_MINIMAL_BUILD)
+// if this is a full build we need the provider test utils
+#include "test/providers/provider_test_utils.h"
+#endif
+
+#include "gtest/gtest.h"
+#include "gmock/gmock.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -16,85 +28,48 @@ using namespace ::onnxruntime::logging;
 namespace onnxruntime {
 namespace test {
 
-#ifdef __ANDROID__
-void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64_t>& expected_dims,
-                   const std::vector<float>& expected_values) {
-  ASSERT_EQ(1, fetches.size());
-  auto& rtensor = fetches.front().Get<Tensor>();
-  TensorShape expected_shape(expected_dims);
-  ASSERT_EQ(expected_shape, rtensor.Shape());
-  const std::vector<float> found(rtensor.template Data<float>(), rtensor.template Data<float>() + expected_values.size());
-  ASSERT_EQ(expected_values, found);
-}
-#endif
-
-void RunAndVerifyOutputs(const std::string& model_file_name,
-                         const char* log_id,
-                         const NameMLValMap& feeds,
-                         const std::vector<std::string>& output_names,
-                         const std::vector<int64_t>& expected_dims,
-                         const std::vector<float>& expected_values) {
-  SessionOptions so;
-  so.session_logid = log_id;
-  RunOptions run_options;
-  run_options.run_tag = so.session_logid;
-
-  InferenceSessionWrapper session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(onnxruntime::make_unique<::onnxruntime::NnapiExecutionProvider>(0)));
-  ASSERT_STATUS_OK(session_object.Load(model_file_name));
-  ASSERT_STATUS_OK(session_object.Initialize());
-
-  // Since we already know the model is entirely supported by NNAPI, all nodes (2 Add nodes here) will be fused
-  // Get the graph after session is initialized, and verify the fused node (the only node in the graph) is using NNAPI EP
-  const auto& graph = session_object.GetGraph();
-  ASSERT_EQ(1, graph.NumberOfNodes());  // Make sure the graph has 1 fused node
-  ASSERT_EQ(onnxruntime::kNnapiExecutionProvider, graph.Nodes().cbegin()->GetExecutionProviderType());
-
-// The execution can only be performed on Android
-#ifdef __ANDROID__
-  // Now run and verify the result
-  std::vector<OrtValue> fetches;
-  ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &fetches));
-  VerifyOutputs(fetches, expected_dims, expected_values);
-#else
-  ORT_UNUSED_PARAMETER(feeds);
-  ORT_UNUSED_PARAMETER(output_names);
-  ORT_UNUSED_PARAMETER(expected_dims);
-  ORT_UNUSED_PARAMETER(expected_values);
-#endif
-}
+#if !defined(ORT_MINIMAL_BUILD)
 
 // Since NNAPI EP handles Reshape and Flatten differently,
-// Please see ReshapeOpBuilder::CanSkipReshape in <repo_root>/onnxruntime/core/providers/nnapi/nnapi_builtin/builders/op_builder.cc
+// Please see ReshapeOpBuilder::CanSkipReshape in
+// <repo_root>/onnxruntime/core/providers/nnapi/nnapi_builtin/builders/op_builder.cc
 // We have a separated test for these skip reshape scenarios
 TEST(NnapiExecutionProviderTest, ReshapeFlattenTest) {
-  std::string model_file_name = "testdata/nnapi_reshape_flatten_test.onnx";
+  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/nnapi_reshape_flatten_test.onnx");
 
+#if defined(__ANDROID__)
   std::vector<int64_t> dims_mul_x = {2, 1, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f};
   std::vector<int64_t> dims_mul_y = {3, 2, 2};
   std::vector<float> values_mul_y = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
   OrtValue ml_value_x;
-  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_x);
+  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+                       &ml_value_x);
   OrtValue ml_value_y;
-  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_y, values_mul_y, &ml_value_y);
+  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_y, values_mul_y,
+                       &ml_value_y);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
   feeds.insert(std::make_pair("Y", ml_value_y));
 
-  // prepare outputs
-  std::vector<std::string> output_names;
-  output_names.push_back("Z");
-
-  // prepare expected inputs and outputs
-  std::vector<int64_t> expected_dims_mul_z = {1, 6};
-  std::vector<float> expected_values_mul_z = {59.0f, 72.0f, 129.0f, 159.0f, 204.0f, 253.0f};
-
-  RunAndVerifyOutputs(model_file_name, "NnapiExecutionProviderTest.ReshapeFlattenTest", feeds, output_names, expected_dims_mul_z, expected_values_mul_z);
+  RunAndVerifyOutputsWithEP(model_file_name, "NnapiExecutionProviderTest.ReshapeFlattenTest",
+                            onnxruntime::make_unique<NnapiExecutionProvider>(0),
+                            feeds);
+#else
+  // test load only
+  SessionOptions so;
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(onnxruntime::make_unique<NnapiExecutionProvider>(0)));
+  ASSERT_STATUS_OK(session_object.Load(model_file_name));
+  ASSERT_STATUS_OK(session_object.Initialize());
+  ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 0)
+      << "Some nodes should have been taken by the NNAPI EP";
+#endif
 }
 
 TEST(NnapiExecutionProviderTest, FunctionTest) {
-  std::string model_file_name = "nnapi_execution_provider_test_graph.onnx";
+  const ORTCHAR_T* model_file_name = ORT_TSTR("nnapi_execution_provider_test_graph.onnx");
+
   {  // Create the model with 2 add nodes
     onnxruntime::Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
     auto& graph = model.MainGraph();
@@ -130,30 +105,38 @@ TEST(NnapiExecutionProviderTest, FunctionTest) {
     ASSERT_STATUS_OK(onnxruntime::Model::Save(model, model_file_name));
   }
 
+#if defined(__ANDROID__)
   std::vector<int64_t> dims_mul_x = {1, 1, 3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   OrtValue ml_value_x;
-  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_x);
+  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+                       &ml_value_x);
   OrtValue ml_value_y;
-  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_y);
+  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+                       &ml_value_y);
   OrtValue ml_value_z;
-  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_z);
+  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+                       &ml_value_z);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
   feeds.insert(std::make_pair("Y", ml_value_y));
   feeds.insert(std::make_pair("Z", ml_value_z));
 
-  // prepare outputs
-  std::vector<std::string> output_names;
-  output_names.push_back("M");
-  std::vector<OrtValue> fetches;
-
-  // prepare expected inputs and outputs
-  std::vector<int64_t> expected_dims_mul_m = {1, 1, 3, 2};
-  std::vector<float> expected_values_mul_m = {3.0f, 6.0f, 9.0f, 12.0f, 15.0f, 18.0f};
-
-  RunAndVerifyOutputs(model_file_name, "NnapiExecutionProviderTest.FunctionTest", feeds, output_names, expected_dims_mul_m, expected_values_mul_m);
+  RunAndVerifyOutputsWithEP(model_file_name, "NnapiExecutionProviderTest.FunctionTest",
+                            onnxruntime::make_unique<NnapiExecutionProvider>(0),
+                            feeds);
+#else
+  // test load only
+  SessionOptions so;
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(onnxruntime::make_unique<NnapiExecutionProvider>(0)));
+  ASSERT_STATUS_OK(session_object.Load(model_file_name));
+  ASSERT_STATUS_OK(session_object.Initialize());
+  ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 0)
+      << "Some nodes should have been taken by the NNAPI EP";
+#endif
 }
+#endif  // !(ORT_MINIMAL_BUILD
 
 TEST(NnapiExecutionProviderTest, NNAPIFlagsTest) {
   unsigned long nnapi_flags = NNAPI_FLAG_USE_NONE;
@@ -164,5 +147,38 @@ TEST(NnapiExecutionProviderTest, NNAPIFlagsTest) {
   ASSERT_FALSE(flags & NNAPI_FLAG_USE_NCHW);
 }
 
+TEST(NnapiExecutionProviderTest, TestOrtFormatModel) {
+  // mnist model that has only had basic optimizations applied. nnapi should be able to take at least some of the nodes
+  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/mnist.level1_opt.ort");
+
+// The execution can only be performed on Android
+#if defined(__ANDROID__)
+  RandomValueGenerator random{};
+  const std::vector<int64_t> dims = {1, 1, 28, 28};
+  std::vector<float> data = random.Gaussian<float>(dims, 0.0f, 1.f);
+
+  OrtValue ml_value;
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims, data,
+                       &ml_value);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("Input3", ml_value));
+
+  RunAndVerifyOutputsWithEP(model_file_name, "NnapiExecutionProviderTest.TestOrtFormatModel",
+                            onnxruntime::make_unique<NnapiExecutionProvider>(0),
+                            feeds);
+#else
+  // test load only
+  SessionOptions so;
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(onnxruntime::make_unique<NnapiExecutionProvider>(0)));
+  ASSERT_STATUS_OK(session_object.Load(model_file_name));
+  ASSERT_STATUS_OK(session_object.Initialize());
+  ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 0)
+      << "Some nodes should have been taken by the NNAPI EP";
+#endif
+}
+
 }  // namespace test
 }  // namespace onnxruntime
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
