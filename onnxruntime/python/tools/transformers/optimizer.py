@@ -125,6 +125,12 @@ def _parse_arguments():
                         default=12,
                         help="number of attention heads. 12 for bert-base model and 16 for bert-large")
 
+    parser.add_argument('--head_size',
+                        required=False,
+                        type=int,
+                        default=0,
+                        help="size of each attention head. 0 means head_size = hidden_size / num_heads.")
+
     parser.add_argument('--hidden_size',
                         required=False,
                         type=int,
@@ -248,6 +254,7 @@ def _get_optimization_options(args):
 def optimize_model(input,
                    model_type='bert',
                    num_heads=12,
+                   head_size=0,
                    hidden_size=768,
                    optimization_options=None,
                    opt_level=0,
@@ -264,6 +271,7 @@ def optimize_model(input,
         input (str): input model path.
         model_type (str): model type - like bert, bert_tf, bert_keras or gpt2.
         num_heads (int): number of attention heads.
+        head_size (int): size of each head. if it's 0, it's hidden_size / num_heads.
         hidden_size (int): hidden size.
         optimization_options (OptimizationOptions or None): optimization options that can use to turn on/off some fusions.
         opt_level (int): onnxruntime graph optimization level (0, 1, 2 or 99). When the level > 0, onnxruntime will be used to optimize model first.
@@ -293,7 +301,9 @@ def optimize_model(input,
     if optimization_options is None:
         optimization_options = BertOptimizationOptions(model_type)
 
-    optimizer = optimizer_class(model, num_heads, hidden_size)
+    if head_size <= 0:
+        head_size = hidden_size / num_heads
+    optimizer = optimizer_class(model, num_heads, hidden_size, head_size)
 
     if not only_onnxruntime:
         optimizer.optimize(optimization_options)
@@ -326,6 +336,7 @@ def main():
     optimizer = optimize_model(args.input,
                                args.model_type,
                                args.num_heads,
+                               args.head_size,
                                args.hidden_size,
                                opt_level=args.opt_level,
                                optimization_options=optimization_options,

@@ -47,16 +47,16 @@ class BertOptimizationOptions:
 
 
 class BertOnnxModel(OnnxModel):
-    def __init__(self, model, num_heads, hidden_size):
+    def __init__(self, model, num_heads, hidden_size, head_size):
         assert num_heads > 0
-        assert hidden_size % num_heads == 0
 
         super().__init__(model)
         self.num_heads = num_heads
+        self.head_size = head_size
         self.hidden_size = hidden_size
 
         self.attention_mask = AttentionMask(self)
-        self.attention_fusion = FusionAttention(self, self.hidden_size, self.num_heads, self.attention_mask)
+        self.attention_fusion = FusionAttention(self, self.hidden_size, self.num_heads, self.head_size, self.attention_mask)
 
     def fuse_attention(self):
         self.attention_fusion.apply()

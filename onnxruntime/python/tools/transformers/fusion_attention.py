@@ -84,10 +84,11 @@ class FusionAttention(Fusion):
     """
     Fuse Attention subgraph into one Attention node.
     """
-    def __init__(self, model: OnnxModel, hidden_size: int, num_heads: int, attention_mask: AttentionMask):
+    def __init__(self, model: OnnxModel, hidden_size: int, num_heads: int, head_size: int, attention_mask: AttentionMask):
         super().__init__(model, "Attention", ["SkipLayerNormalization", "LayerNormalization"])
         self.hidden_size = hidden_size
         self.num_heads = num_heads
+        self.head_size = head_size
         self.attention_mask = attention_mask
 
     def create_attention_node(self, mask_index, q_matmul, k_matmul, v_matmul, q_add, k_add, v_add, input, output):
@@ -105,24 +106,24 @@ class FusionAttention(Fusion):
             return None
 
         qw = numpy_helper.to_array(q_weight)
-        assert qw.shape == (self.hidden_size, self.hidden_size)
+        assert qw.shape == (self.hidden_size, self.num_heads * self.head_size)
 
         kw = numpy_helper.to_array(k_weight)
-        assert kw.shape == (self.hidden_size, self.hidden_size)
+        assert kw.shape == (self.hidden_size, self.num_heads * self.head_size)
 
         vw = numpy_helper.to_array(v_weight)
-        assert vw.shape == (self.hidden_size, self.hidden_size)
+        assert vw.shape == (self.hidden_size, self.num_heads * self.head_size)
 
         qkv_weight = np.stack((qw, kw, vw), axis=-2)
 
         qb = numpy_helper.to_array(q_bias)
-        assert qb.shape == (self.hidden_size, )
+        assert qb.shape == (self.num_heads * self.head_size, )
 
         kb = numpy_helper.to_array(k_bias)
-        assert kb.shape == (self.hidden_size, )
+        assert kb.shape == (self.num_heads * self.head_size, )
 
         vb = numpy_helper.to_array(v_bias)
-        assert vb.shape == (self.hidden_size, )
+        assert vb.shape == (self.num_heads * self.head_size, )
 
         qkv_bias = np.stack((qb, kb, vb), axis=-2)
 
@@ -130,7 +131,7 @@ class FusionAttention(Fusion):
 
         weight = helper.make_tensor(name=attention_node_name + '_qkv_weight',
                                     data_type=TensorProto.FLOAT,
-                                    dims=[self.hidden_size, 3 * self.hidden_size],
+                                    dims=[self.hidden_size, 3 * self.num_heads * self.head_size],
                                     vals=bytes(qkv_weight.flatten()),
                                     raw=True)
         self.model.add_initializer(weight)
@@ -152,6 +153,7 @@ class FusionAttention(Fusion):
                                           name=attention_node_name)
         attention_node.domain = "com.microsoft"
         attention_node.attribute.extend([helper.make_attribute("num_heads", self.num_heads)])
+        attention_node.attribute.extend([helper.make_attribute("head_size", int(self.head_size))])
 
         return attention_node
 
