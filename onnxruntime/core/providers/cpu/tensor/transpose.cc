@@ -320,7 +320,7 @@ static void SimpleTransposeSingleAxisOutwards(const uint8_t* input_data, uint8_t
 
 //  `input_shape_override` overrides the shape of `input` for compute purposes.
 static void TransposeSingleAxisOutwards(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
-                                            int64_t from, int64_t to, const TensorShape* input_shape_override = nullptr) {
+                                        int64_t from, int64_t to, const TensorShape* input_shape_override = nullptr) {
   ORT_UNUSED_PARAMETER(permutations);
 
   const auto& input_shape = input_shape_override ? *input_shape_override : input.Shape();
