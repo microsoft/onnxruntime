@@ -10,7 +10,7 @@ template <int input_start, int output_start>
 std::vector<std::pair<int, int>> AliasRange(int start, int end) {
   std::vector<std::pair<int, int>> aliases;
   for (int i = start; i < end; i++) {
-    aliases.push_back(std::pair<int, int>(input_start + i, output_start + i));
+    aliases.emplace_back(std::pair<int, int>(input_start + i, output_start + i));
   }
   return aliases;
 }

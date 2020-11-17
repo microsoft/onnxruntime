@@ -21,12 +21,19 @@
 namespace onnxruntime {
 // spec: https://github.com/onnx/onnx/blob/master/docs/Operators.md#BatchNormalization
 
-ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(BatchNormalization, 7, 9, float,
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(BatchNormalization, 7, 8, float,
                                          KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
                                          BatchNorm<float>);
 
-ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(BatchNormalization, 7, 9, double,
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(BatchNormalization, 7, 8, double,
                                          KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
                                          BatchNorm<double>);
 
+ONNX_CPU_OPERATOR_TYPED_KERNEL(BatchNormalization, 9, float,
+                               KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+                               BatchNorm<float>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(BatchNormalization, 9, double,
+                               KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+                               BatchNorm<double>);
 }  // namespace onnxruntime

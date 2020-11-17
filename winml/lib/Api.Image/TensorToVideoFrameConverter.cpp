@@ -17,6 +17,9 @@
 #include "LearningModelDevice.h"
 #include "EventTimer.h"
 
+#include "robuffer.h"
+#include "inc/DisjointBufferHelpers.h"
+
 using namespace Microsoft::WRL;
 using namespace Windows::Graphics::DirectX::Direct3D11;
 
@@ -589,6 +592,54 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToSoftwareBitmap(
 
   // We avoid the Video Frame pipeline by manually downloading the GPU data to the CPU and detensorize while we are filling the readback heap
   ConvertCPUTensorToSoftwareBitmap(pCPUTensorBuffer, tensorDesc, softwareBitmap);
+
+  readback_heap_->Unmap(0, &CD3DX12_RANGE(0, 0));
+}
+
+void TensorToVideoFrameConverter::ConvertBatchedDX12TensorToBuffers(
+    ID3D12Resource* input_tensor,
+    size_t buffer_size_in_bytes,
+    _winml::D3DDeviceCache& device_cache,
+    const std::vector<wss::IBuffer>& buffers) {
+  assert(input_tensor != nullptr);
+
+  // TODO: Make an allocator for readback heaps
+  if (!readback_heap_ || readback_heap_->GetDesc().Width < buffer_size_in_bytes) {
+    WINML_THROW_IF_FAILED(device_cache.GetD3D12Device()->CreateCommittedResource(
+        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK),
+        D3D12_HEAP_FLAG_NONE,
+        &CD3DX12_RESOURCE_DESC::Buffer(buffer_size_in_bytes),
+        D3D12_RESOURCE_STATE_COPY_DEST,
+        nullptr,
+        IID_PPV_ARGS(&readback_heap_)));
+  }
+
+  ResetCommandList(device_cache);
+
+  auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(input_tensor, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
+  command_list_->ResourceBarrier(1, &barrier);
+  command_list_->CopyBufferRegion(readback_heap_.Get(), 0, input_tensor, 0, buffer_size_in_bytes);
+
+  WINML_THROW_IF_FAILED(command_list_->Close());
+  ID3D12CommandList* ppCommandLists[] = {command_list_.Get()};
+  device_cache.GetCommandQueue()->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
+
+  // Sync to make sure the the heap received all the data
+  device_cache.SyncD3D12ToCPU();
+
+  byte* readback_buffer = nullptr;
+  WINML_THROW_IF_FAILED(readback_heap_->Map(0, &CD3DX12_RANGE(0, buffer_size_in_bytes), reinterpret_cast<void**>(&readback_buffer)));
+  auto readback_buffer_span = gsl::span<byte>(readback_buffer, buffer_size_in_bytes);
+  _winml::LoadOrStoreDisjointBuffers(
+      false /*load disjoint buffers into*/,
+      buffers.size(),
+      [&](size_t i) {
+        byte* buffer_start = nullptr;
+        auto byte_access = buffers[i].as<Windows::Storage::Streams::IBufferByteAccess>();
+        byte_access->Buffer(&buffer_start);
+        return gsl::span<byte>(buffer_start, static_cast<size_t>(buffers[i].Capacity()));
+      },
+      readback_buffer_span);
 
   readback_heap_->Unmap(0, &CD3DX12_RANGE(0, 0));
 }

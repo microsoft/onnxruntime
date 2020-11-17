@@ -50,6 +50,49 @@ def _check_python_version():
 _check_python_version()
 
 
+def _openvino_verify_device_type(device_read):
+    choices = ["CPU_FP32", "GPU_FP32", "GPU_FP16", "VAD-M_FP16", "MYRIAD_FP16", "VAD-F_FP32"]
+    status_hetero = True
+    res = False
+    if (device_read in choices):
+        res = True
+    elif (device_read.startswith("HETERO:") or device_read.startswith("MULTI:")):
+        res = True
+        comma_separated_devices = device_read.split(":")
+        comma_separated_devices = comma_separated_devices[1].split(',')
+        if (len(comma_separated_devices) < 2):
+            print("Atleast two devices required in Hetero Mode")
+            status_hetero = False
+        dev_options = ["CPU", "GPU", "MYRIAD", "FPGA", "HDDL"]
+        for dev in comma_separated_devices:
+            if (dev not in dev_options):
+                status_hetero = False
+                break
+
+    def invalid_hetero_build():
+        print("\n" + "If trying to build Hetero or Multi, specifiy the supported devices along with it." + + "\n")
+        print("specify the keyword HETERO or MULTI followed by the devices ")
+        print("in the order of priority you want to build" + "\n")
+        print("The different hardware devices that can be added in HETERO or MULTI")
+        print("are ['CPU','GPU','MYRIAD','FPGA','HDDL']" + "\n")
+        print("An example of how to specify the hetero build type. Ex: HETERO:GPU,CPU" + "\n")
+        print("An example of how to specify the MULTI build type. Ex: MULTI:MYRIAD,CPU" + "\n")
+        sys.exit("Wrong Build Type selected")
+
+    if (res is False):
+        print("\n" + "You have selcted wrong configuration for the build.")
+        print("pick the build type for specific Hardware Device from following options: ", choices)
+        print("\n")
+        if not (device_read.startswith("HETERO:") or device_read.startswith("MULTI:")):
+            invalid_hetero_build()
+        sys.exit("Wrong Build Type selected")
+
+    if (status_hetero is False):
+        invalid_hetero_build()
+
+    return device_read
+
+
 def parse_arguments():
     parser = argparse.ArgumentParser(
         description="ONNXRuntime CI build driver.",
@@ -97,6 +140,8 @@ def parse_arguments():
         help="Enable the pipeline c++ e2e tests.")
     parser.add_argument(
         "--use_horovod", action='store_true', help="Enable Horovod.")
+    parser.add_argument(
+        "--disable_nccl", action='store_true', help="Disable Nccl.")
     parser.add_argument(
         "--mpi_home", help="Path to MPI installation dir")
     parser.add_argument(
@@ -236,46 +281,6 @@ def parse_arguments():
         "(e.g. macOS or iOS)"
         "This is only supported on MacOS")
 
-    def verify_device_type(device_read):
-        choices = ["CPU_FP32", "GPU_FP32", "GPU_FP16", "VAD-M_FP16", "MYRIAD_FP16", "VAD-F_FP32"]
-        status_Hetero = True
-        res = False
-        if(device_read in choices):
-            res = True
-        elif(device_read.startswith("HETERO:")):
-            res = True
-            comma_separated_devices = device_read.split(":")
-            comma_separated_devices = comma_separated_devices[1].split(',')
-            if(len(comma_separated_devices) < 2):
-                print("Atleast two devices required in Hetero Mode")
-                status_Hetero = False
-            dev_options = ["CPU", "GPU", "MYRIAD", "FPGA", "HDDL"]
-            for dev in comma_separated_devices:
-                if(dev not in dev_options):
-                    status_Hetero = False
-                    break
-
-        def Invalid_Hetero_Build():
-            print("\n" + "If trying to build Hetero, specifiy the supported devices along with it")
-            print("specify the keyword HETERO followed by the devices in the order of priority you want to build")
-            print("The different hardware devices that can be added in HETERO ")
-            print("are ['CPU','GPU','MYRIAD','FPGA','HDDL']" + "\n")
-            print("An example of how to specify the hetero build type. Ex: HETERO:GPU,CPU" + "\n")
-            sys.exit("Wrong Build Type selected")
-
-        if(res is False):
-            print("\n" + "You have selcted wrong configuration for the build.")
-            print("pick the build type for specific Hardware Device from following options: ", choices)
-            print("\n")
-            if not device_read.startswith("HETERO:"):
-                Invalid_Hetero_Build()
-            sys.exit("Wrong Build Type selected")
-
-        if(status_Hetero is False):
-            Invalid_Hetero_Build()
-
-        return device_read
-
     # Arguments needed by CI
     parser.add_argument(
         "--cmake_path", default="cmake", help="Path to the CMake program.")
@@ -297,16 +302,26 @@ def parse_arguments():
     parser.add_argument(
         "--use_dnnl", action='store_true', help="Build with DNNL.")
     parser.add_argument(
+        "--dnnl_gpu_runtime", action='store', default='', type=str.lower,
+        help="e.g. --dnnl_gpu_runtime ocl")
+    parser.add_argument(
+        "--dnnl_opencl_root", action='store', default='',
+        help="Path to OpenCL SDK. "
+        "e.g. --dnnl_opencl_root \"C:/Program Files (x86)/IntelSWTools/sw_dev_tools/OpenCL/sdk\"")
+    parser.add_argument(
         "--use_featurizers", action='store_true',
         help="Build with ML Featurizer support.")
     parser.add_argument(
         "--use_ngraph", action='store_true', help="Build with nGraph.")
     parser.add_argument(
         "--use_openvino", nargs="?", const="CPU_FP32",
-        type=verify_device_type,
+        type=_openvino_verify_device_type,
         help="Build with OpenVINO for specific hardware.")
     parser.add_argument(
         "--use_nnapi", action='store_true', help="Build with NNAPI support.")
+    parser.add_argument(
+        "--nnapi_min_api", type=int,
+        help="Minimum Android API level to enable NNAPI, should be no less than 27")
     parser.add_argument(
         "--use_rknpu", action='store_true', help="Build with RKNPU.")
     parser.add_argument(
@@ -662,6 +677,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "OFF" if args.use_openblas else "ON"),
         "-Donnxruntime_USE_OPENBLAS=" + ("ON" if args.use_openblas else "OFF"),
         "-Donnxruntime_USE_DNNL=" + ("ON" if args.use_dnnl else "OFF"),
+        "-Donnxruntime_DNNL_GPU_RUNTIME=" + (args.dnnl_gpu_runtime if args.use_dnnl else ""),
+        "-Donnxruntime_DNNL_OPENCL_ROOT=" + (args.dnnl_opencl_root if args.use_dnnl else ""),
         "-Donnxruntime_USE_NGRAPH=" + ("ON" if args.use_ngraph else "OFF"),
         "-Donnxruntime_USE_NNAPI_BUILTIN=" + ("ON" if args.use_nnapi else "OFF"),
         "-Donnxruntime_USE_RKNPU=" + ("ON" if args.use_rknpu else "OFF"),
@@ -728,6 +745,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "ON" if args.enable_training else "OFF"),
         "-Donnxruntime_USE_HOROVOD=" + (
             "ON" if args.use_horovod else "OFF"),
+        "-Donnxruntime_USE_NCCL=" + (
+            "OFF" if args.disable_nccl else "ON"),
         "-Donnxruntime_BUILD_BENCHMARKS=" + (
             "ON" if args.build_micro_benchmarks else "OFF"),
         "-Donnxruntime_USE_ROCM=" + ("ON" if args.use_rocm else "OFF"),
@@ -772,6 +791,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                        "-Donnxruntime_USE_OPENVINO_HETERO=" + (
                            "ON" if args.use_openvino.startswith("HETERO") else "OFF"),
                        "-Donnxruntime_USE_OPENVINO_DEVICE=" + (args.use_openvino),
+                       "-Donnxruntime_USE_OPENVINO_MULTI=" + (
+                           "ON" if args.use_openvino.startswith("MULTI") else "OFF"),
                        "-Donnxruntime_USE_OPENVINO_BINARY=" + (
                            "ON" if args.use_openvino else "OFF")]
     # temp turn on only for linux gpu build
@@ -800,10 +821,12 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         cmake_args += ["-Donnxruntime_USE_PREINSTALLED_EIGEN=ON",
                        "-Deigen_SOURCE_PATH=" + args.eigen_path]
 
+    if args.nnapi_min_api:
+        cmake_args += ["-Donnxruntime_NNAPI_MIN_API=" + str(args.nnapi_min_api)]
+
     if args.android:
         cmake_args += [
-            "-DCMAKE_TOOLCHAIN_FILE=" + args.android_ndk_path +
-            "/build/cmake/android.toolchain.cmake",
+            "-DCMAKE_TOOLCHAIN_FILE=" + args.android_ndk_path + "/build/cmake/android.toolchain.cmake",
             "-DANDROID_PLATFORM=android-" + str(args.android_api),
             "-DANDROID_ABI=" + str(args.android_abi)
         ]
@@ -1355,13 +1378,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
         log.info("Running tests for %s configuration", config)
         cwd = get_config_build_dir(build_dir, config)
 
-        if args.enable_training and args.use_cuda and args.enable_training_python_frontend_e2e_tests:
-            # run frontend tests for orttraining-linux-gpu-frontend_test-ci-pipeline.
-            # this is not a PR merge test so skip other non-frontend tests.
-            run_training_python_frontend_e2e_tests(cwd=cwd)
-            run_training_python_frontend_tests(cwd=cwd)
-            continue
-
         if args.enable_training and args.use_cuda and args.enable_training_pipeline_e2e_tests:
             # run distributed pipeline test on 4-GPU CI machine.
             run_training_pipeline_e2e_tests(cwd=cwd)
@@ -1819,6 +1835,12 @@ def main():
 
     if args.minimal_build and args.disable_ort_format_load:
         raise BuildError('Minimal build requires loading ORT format models.')
+
+    if args.nnapi_min_api:
+        if not args.use_nnapi:
+            raise BuildError("Using --nnapi_min_api requires --use_nnapi")
+        if args.nnapi_min_api < 27:
+            raise BuildError("--nnapi_min_api should be 27+")
 
     # Disabling unit tests for VAD-F as FPGA only supports
     # models with NCHW layout
