@@ -62,6 +62,10 @@ struct OrtEnv {
   */
   onnxruntime::common::Status RegisterAllocator(onnxruntime::AllocatorPtr allocator);
 
+  /**
+   * Creates and registers an arena-based allocator for sharing between multiple sessions.
+   * Return an error if an allocator with the same OrtMemoryInfo is already registered.
+  */
   onnxruntime::common::Status CreateAndRegisterAlloctor(const OrtMemoryInfo& mem_info,
                                                         const OrtArenaCfg* arena_cfg = nullptr);
 

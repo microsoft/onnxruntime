@@ -842,7 +842,9 @@ void addGlobalMethods(py::module& m, const Environment& env) {
       "Disables platform-specific telemetry collection.");
   m.def(
       "create_and_register_allocator", [&env](const OrtMemoryInfo& mem_info, const OrtArenaCfg& arena_cfg) -> void {
-        //TODO: const_cast ?
+        //TODO: Remove the const qualifier for the environment instance in the function parameter ?
+        // It strictly needn't be const and would save the casting away the const in this method
+        // CreateAndRegisterAlloctor() method mutates the environment and is hence a non-const method
         auto st = const_cast<Environment&>(env).CreateAndRegisterAlloctor(mem_info, &arena_cfg);
         if (!st.IsOK()) {
           throw std::runtime_error("Error when creating and registering arena based allocator: " + st.ErrorMessage());
@@ -1146,9 +1148,7 @@ void addObjectMethods(py::module& m, Environment& env) {
           onnxruntime::CUDA_PINNED, type, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, static_cast<OrtDevice::DeviceId>(id)),
           id, mem_type);
     } else {
-      return onnxruntime::make_unique<OrtMemoryInfo>();
-      //TODO: Throw
-      //return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Specified device is not supported.");
+      throw std::runtime_error("Specified device is not supported.");
     }
   }));
 

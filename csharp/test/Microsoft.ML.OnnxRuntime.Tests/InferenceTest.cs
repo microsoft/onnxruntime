@@ -2165,8 +2165,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         }
                     }
                 }
-
-
             }
         }
 
