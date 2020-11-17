@@ -28,13 +28,15 @@ namespace Microsoft.ML.OnnxRuntime
     }
 
     /// <summary>
-    /// This class encapsulates an arena configuration information that will be used to define the behavior
+    /// This class encapsulates arena configuration information that will be used to define the behavior
     /// of an arena based allocator
+    /// See ONNX_Runtime_Perf_Tuning.md for more details
     /// </summary>
     public class OrtArenaCfg : SafeHandle
     {
         /// <summary>
         /// Create an instance of arena configuration which will be used to create an arena based allocator
+        /// See ONNX_Runtime_Perf_Tuning.md for more details on how to choose these values
         /// </summary>
         /// <param name="maxMemory">TODO</param>
         /// <param name="arenaExtendStrategy">TODO</param>

@@ -155,9 +155,9 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
-        public void AppendExecutionProvider_Nnapi()
+        public void AppendExecutionProvider_Nnapi(ulong nnapi_flags)
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nnapi(handle));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nnapi(handle, nnapi_flags));
         }
 
         /// <summary>
@@ -170,10 +170,41 @@ namespace Microsoft.ML.OnnxRuntime
         #endregion //ExecutionProviderAppends
 
         #region Public Methods
+
+        /// <summary>
+        /// (Deprecated) Loads a DLL named 'libraryPath' and looks for this entry point:
+        /// OrtStatus* RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api);
+        /// It then passes in the provided session options to this function along with the api base.
+        /// Deprecated in favor of RegisterCustomOpLibraryV2() because it provides users with the library handle 
+        /// to release when all sessions relying on it are destroyed
+        /// </summary>
+        [ObsoleteAttribute("RegisterCustomOpLibrary(...) is obsolete. Use RegisterCustomOpLibraryV2(...) instead.", false)]
         public void RegisterCustomOpLibrary(string libraryPath)
         {
             IntPtr libraryHandle = IntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsLibrary(handle, libraryPath, out libraryHandle));
+            var libraryPathPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(libraryPath), GCHandleType.Pinned);
+            using (var pinnedlibraryPath = new PinnedGCHandle(libraryPathPinned))
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsLibrary(handle, pinnedlibraryPath.Pointer, out libraryHandle));
+            }
+        }
+
+        /// <summary>
+        /// Loads a DLL named 'libraryPath' and looks for this entry point:
+        /// OrtStatus* RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api);
+        /// It then passes in the provided session options to this function along with the api base.
+        /// The handle to the loaded library is returned in 'libraryHandle'. 
+        /// It can be unloaded by the caller after all sessions using the passed in
+        /// session options are destroyed, or if an error occurs and it is non null.
+        /// Hint: .NET Core 3.1 has a 'NativeLibrary' class that can be used to free the library handle
+        /// </summary>
+        public void RegisterCustomOpLibraryV2(string libraryPath, out IntPtr libraryHandle)
+        {
+            var libraryPathPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(libraryPath), GCHandleType.Pinned);
+            using (var pinnedlibraryPath = new PinnedGCHandle(libraryPathPinned))
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsLibrary(handle, pinnedlibraryPath.Pointer, out libraryHandle));
+            }
         }
 
         /// <summary>
@@ -186,18 +217,60 @@ namespace Microsoft.ML.OnnxRuntime
         /// managed by the user (created using the CreateTensorWithDataAsOrtValue API) and it must outlive the session object
         /// to which it is added.
         /// </summary>
-        public void AddInitializer(string name, OrtValue ort_value)
+        public void AddInitializer(string name, OrtValue ortValue)
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtAddInitializer(handle, name, ort_value.Handle));
+            var utf8NamePinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(name), GCHandleType.Pinned);
+            using (var pinnedName = new PinnedGCHandle(utf8NamePinned))
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtAddInitializer(handle, pinnedName.Pointer, ortValue.Handle));
+            }
         }
 
+        /// <summary>
+        /// Set a single session configuration entry as a pair of strings
+        /// If a configuration with same key exists, this will overwrite the configuration with the given configValue
+        /// </summary>
         public void AddSessionConfigEntry(string configKey, string configValue)
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtAddSessionConfigEntry(handle, configKey, configValue));
-        }
-        #endregion
+            var utf8NameConfigKeyPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(configKey), GCHandleType.Pinned);
+            var utf8NameConfigValuePinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(configValue), GCHandleType.Pinned);
 
-        internal IntPtr Handle
+            using (var pinnedConfigKeyName = new PinnedGCHandle(utf8NameConfigKeyPinned))
+            using (var pinnedConfigValueName = new PinnedGCHandle(utf8NameConfigValuePinned))
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtAddSessionConfigEntry(handle, 
+                                              pinnedConfigKeyName.Pointer, pinnedConfigValueName.Pointer));
+            }
+        }
+
+        /// <summary>
+        /// Override symbolic dimensions (by specific denotation strings) with actual values if known at session initialization time to enable
+        /// optimizations that can take advantage of fixed values (such as memory planning, etc)
+        /// </summary>
+        public void AddFreeDimensionOverride(string dimDenotation, long dimValue)
+        {
+            var utf8DimDenotationPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(dimDenotation), GCHandleType.Pinned);
+            using (var pinnedDimDenotation = new PinnedGCHandle(utf8DimDenotationPinned))
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtAddFreeDimensionOverride(handle, pinnedDimDenotation.Pointer, dimValue));
+            }
+        }
+
+        /// <summary>
+        /// Override symbolic dimensions (by specific name strings) with actual values if known at session initialization time to enable 
+        /// optimizations that can take advantage of fixed values (such as memory planning, etc)
+        /// </summary>
+        public void AddFreeDimensionOverrideByName(string dimName, long dimValue)
+        {
+            var utf8DimNamePinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(dimName), GCHandleType.Pinned);
+            using (var pinnedDimName = new PinnedGCHandle(utf8DimNamePinned))
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtAddFreeDimensionOverrideByName(handle, pinnedDimName.Pointer, dimValue));
+            }
+        }
+    #endregion
+
+    internal IntPtr Handle
         {
             get
             {

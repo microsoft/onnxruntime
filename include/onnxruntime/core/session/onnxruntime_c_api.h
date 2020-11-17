@@ -5,7 +5,6 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
-#include "onnxruntime_session_options_config_keys.h"
 
 // This value is used in structures passed to ORT so that a newer version of ORT will still work with them
 #define ORT_API_VERSION 5
@@ -90,7 +89,7 @@ extern "C" {
 #endif
 
 // Copied from TensorProto::DataType
-// Currently, Ort doesn't support complex64, complex128, bfloat16 types
+// Currently, Ort doesn't support complex64, complex128
 typedef enum ONNXTensorElementDataType {
   ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED,
   ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,   // maps to c type float
@@ -399,7 +398,7 @@ struct OrtApi {
      * Add custom ops to the OrtCustomOpDomain
      *  Note: The OrtCustomOp* pointer must remain valid until the OrtCustomOpDomain using it is released
     */
-  ORT_API2_STATUS(CustomOpDomain_Add, _Inout_ OrtCustomOpDomain* custom_op_domain, _In_ OrtCustomOp* op);
+  ORT_API2_STATUS(CustomOpDomain_Add, _Inout_ OrtCustomOpDomain* custom_op_domain, _In_ const OrtCustomOp* op);
 
   /*
      * Add a custom op domain to the OrtSessionOptions
@@ -1084,7 +1083,7 @@ struct OrtApi {
    * Creates a custom environment with global threadpools and logger that will be shared across sessions.
    * Use this in conjunction with DisablePerSessionThreads API or else the session will use
    * its own thread pools.
-   * 
+   *
    * \param out should be freed by `OrtReleaseEnv` after use
    */
   ORT_API2_STATUS(CreateEnvWithCustomLoggerAndGlobalThreadPools, OrtLoggingFunction logging_function, _In_opt_ void* logger_param, OrtLoggingLevel logging_level,
@@ -1107,10 +1106,10 @@ struct OrtApi {
   /**
   * Use this API to create the configuration of an arena that can eventually be used to define 
   * an arena based allocator's behavior
-  * max_mem : use 0 to allow ORT to choose the default
-  * arena_extend_strategy :  use -1 to allow ORT to choose the default, 0 = kNextPowerOfTwo, 1 = kSameAsRequested
-  * initial_chunk_size_bytes : use -1 to allow ORT to choose the default
-  * max_dead_bytes_per_chunk : use -1 to allow ORT to choose the default
+  * \param max_mem - use 0 to allow ORT to choose the default
+  * \param arena_extend_strategy -  use -1 to allow ORT to choose the default, 0 = kNextPowerOfTwo, 1 = kSameAsRequested
+  * \param initial_chunk_size_bytes - use -1 to allow ORT to choose the default
+  * \param max_dead_bytes_per_chunk - use -1 to allow ORT to choose the default
   * See ONNX_Runtime_Perf_Tuning.md for details on what these mean and how to choose these values
   */
   ORT_API2_STATUS(CreateArenaCfg, _In_ size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes,
@@ -1135,20 +1134,20 @@ struct OrtCustomOp {
   uint32_t version;  // Initialize to ORT_API_VERSION
 
   // This callback creates the kernel, which is a user defined parameter that is passed to the Kernel* callbacks below.
-  void*(ORT_API_CALL* CreateKernel)(_In_ struct OrtCustomOp* op, _In_ const OrtApi* api,
+  void*(ORT_API_CALL* CreateKernel)(_In_ const struct OrtCustomOp* op, _In_ const OrtApi* api,
                                     _In_ const OrtKernelInfo* info);
 
   // Returns the name of the op
-  const char*(ORT_API_CALL* GetName)(_In_ struct OrtCustomOp* op);
+  const char*(ORT_API_CALL* GetName)(_In_ const struct OrtCustomOp* op);
 
   // Returns the type of the execution provider, return nullptr to use CPU execution provider
-  const char*(ORT_API_CALL* GetExecutionProviderType)(_In_ struct OrtCustomOp* op);
+  const char*(ORT_API_CALL* GetExecutionProviderType)(_In_ const struct OrtCustomOp* op);
 
   // Returns the count and types of the input & output tensors
-  ONNXTensorElementDataType(ORT_API_CALL* GetInputType)(_In_ struct OrtCustomOp* op, _In_ size_t index);
-  size_t(ORT_API_CALL* GetInputTypeCount)(_In_ struct OrtCustomOp* op);
-  ONNXTensorElementDataType(ORT_API_CALL* GetOutputType)(_In_ struct OrtCustomOp* op, _In_ size_t index);
-  size_t(ORT_API_CALL* GetOutputTypeCount)(_In_ struct OrtCustomOp* op);
+  ONNXTensorElementDataType(ORT_API_CALL* GetInputType)(_In_ const struct OrtCustomOp* op, _In_ size_t index);
+  size_t(ORT_API_CALL* GetInputTypeCount)(_In_ const struct OrtCustomOp* op);
+  ONNXTensorElementDataType(ORT_API_CALL* GetOutputType)(_In_ const struct OrtCustomOp* op, _In_ size_t index);
+  size_t(ORT_API_CALL* GetOutputTypeCount)(_In_ const struct OrtCustomOp* op);
 
   // Op kernel callbacks
   void(ORT_API_CALL* KernelCompute)(_In_ void* op_kernel, _In_ OrtKernelContext* context);

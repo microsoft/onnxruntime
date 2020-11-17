@@ -17,7 +17,7 @@ jobs:
       "
     DoNugetPack: 'false'
     ArtifactName: 'drop-linux'
-    TimeoutInMinutes: 90
+    TimeoutInMinutes: 120
     # Enable unreleased onnx opsets in CI builds
     # This facilitates testing the implementation for the new opsets
     AllowReleasedOpsetOnly: '0'

@@ -6,6 +6,12 @@
 namespace onnxruntime {
 namespace test {
 
+#if USE_CUDA
+constexpr const char* kGpuExecutionProvider = kCudaExecutionProvider;
+#elif USE_ROCM
+constexpr const char* kGpuExecutionProvider = kRocmExecutionProvider;
+#endif
+
 static void TestSoftmax(const std::vector<int64_t>& X_dims,
                         const std::vector<int64_t>& Y_dims,
                         int axis = 1,
@@ -25,7 +31,7 @@ static void TestSoftmax(const std::vector<int64_t>& X_dims,
   std::vector<float> Y_data = FillZeros<float>(Y_dims);
   test.AddOutput<float>("Y", Y_dims, Y_data);
 
-  test.CompareWithCPU(kCudaExecutionProvider, per_sample_tolerance, relative_per_sample_tolerance);
+  test.CompareWithCPU(kGpuExecutionProvider, per_sample_tolerance, relative_per_sample_tolerance);
 }
 
 // small tensor to check softmax_warp_forward
@@ -107,7 +113,7 @@ static void TestSoftmaxGrad(const std::vector<int64_t>& dY_dims,
   std::vector<float> dX_data = FillZeros<float>(dX_dims);
   test.AddOutput<float>("dX", dX_dims, dX_data);
 
-  test.CompareWithCPU(kCudaExecutionProvider, per_sample_tolerance, relative_per_sample_tolerance);
+  test.CompareWithCPU(kGpuExecutionProvider, per_sample_tolerance, relative_per_sample_tolerance);
 }
 
 // small tensor to check dispatch_softmax_backward

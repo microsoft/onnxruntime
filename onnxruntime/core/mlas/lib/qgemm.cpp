@@ -40,13 +40,11 @@ struct MLAS_GEMM_U8X8_WORK_BLOCK {
     size_t ldb;
     int32_t* C;
     size_t ldc;
-    const float* Scale;
-    const float* BiasFloat;
     uint8_t offa;
     uint8_t offb;
     bool BIsPacked;
     bool BIsSigned;
-    bool CIsFloat;
+    const MLAS_QGEMM_OUTPUT_PROCESSOR* OutputProcessor;
 };
 
 //
@@ -82,123 +80,6 @@ MlasGemmU8X8ScaleSumBuffer(
     )
 {
     return MlasGemmU8X8ScaleSumBuffer(SumBuffer, SumBuffer, N, Scale);
-}
-
-void
-MlasGemmU8X8OutputFloat(
-    const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock,
-    int32_t* C,
-    size_t StartN,
-    size_t CountM,
-    size_t CountN
-    )
-/*++
-
-Routine Description:
-
-    This routine converts the output matrix to a floating point format using
-    the supplied scale and bias parameters.
-
-Arguments:
-
-    WorkBlock - Supplies the structure containing the GEMM parameters.
-
-    C - Supplies the address of matrix C.
-
-    StartN - Supplies the starting column offset relative to the base of the
-        work block. This is used to offset into column vectors accessed via the
-        work block.
-
-    CountM - Supplies the number of rows of the output matrix to process.
-
-    CountN - Supplies the number of columns of the output matrix to process.
-
-Return Value:
-
-    None.
-
---*/
-{
-    const size_t ldc = WorkBlock->ldc;
-    const MLAS_FLOAT32X4 ScaleVector = MlasBroadcastFloat32x4(WorkBlock->Scale);
-#if !defined(MLAS_SSE2_INTRINSICS)
-    const float ScaleValue = MlasExtractLaneFloat32x4<0>(ScaleVector);
-#endif
-
-    //
-    // Check if the optional bias vector was supplied.
-    //
-
-    const float* BiasFloat = WorkBlock->BiasFloat;
-
-    if (BiasFloat != nullptr) {
-
-        BiasFloat += WorkBlock->RangeStartN + StartN;
-
-        while (CountM-- > 0) {
-
-            const float* bias = BiasFloat;
-            int32_t* c = C;
-            size_t n = CountN;
-
-            while (n >= 4) {
-
-                MLAS_FLOAT32X4 FloatVector = MlasCastToFloat32x4(MlasLoadInt32x4(c));
-                FloatVector = MlasMultiplyFloat32x4(FloatVector, ScaleVector);
-                FloatVector = MlasAddFloat32x4(FloatVector, MlasLoadFloat32x4(bias));
-                MlasStoreFloat32x4(reinterpret_cast<float*>(c), FloatVector);
-
-                bias += 4;
-                c += 4;
-                n -= 4;
-            }
-
-            for (size_t offset = 0; offset < n; offset++) {
-
-#if defined(MLAS_SSE2_INTRINSICS)
-                __m128 FloatVector = _mm_set_ss(float(c[offset]));
-                FloatVector = _mm_mul_ss(FloatVector, ScaleVector);
-                FloatVector = _mm_add_ss(FloatVector, _mm_load_ss(&bias[offset]));
-                _mm_store_ss(reinterpret_cast<float*>(&c[offset]), FloatVector);
-#else
-                *reinterpret_cast<float*>(&c[offset]) = float(c[offset]) * ScaleValue + bias[offset];
-#endif
-            }
-
-            C += ldc;
-        }
-
-    } else {
-
-        while (CountM-- > 0) {
-
-            int32_t* c = C;
-            size_t n = CountN;
-
-            while (n >= 4) {
-
-                MLAS_FLOAT32X4 FloatVector = MlasCastToFloat32x4(MlasLoadInt32x4(c));
-                FloatVector = MlasMultiplyFloat32x4(FloatVector, ScaleVector);
-                MlasStoreFloat32x4(reinterpret_cast<float*>(c), FloatVector);
-
-                c += 4;
-                n -= 4;
-            }
-
-            for (size_t offset = 0; offset < n; offset++) {
-
-#if defined(MLAS_SSE2_INTRINSICS)
-                __m128 FloatVector = _mm_set_ss((float)c[offset]);
-                FloatVector = _mm_mul_ss(FloatVector, ScaleVector);
-                _mm_store_ss(reinterpret_cast<float*>(&c[offset]), FloatVector);
-#else
-                *reinterpret_cast<float*>(&c[offset]) = float(c[offset]) * ScaleValue;
-#endif
-            }
-
-            C += ldc;
-        }
-    }
 }
 
 template<typename KernelType>
@@ -251,7 +132,7 @@ Return Value:
     // Try to use a GEMV kernel if supported by this kernel type.
     //
 
-    if ((M == 1) && (offa == 0) && (offb == 0) && !WorkBlock->CIsFloat) {
+    if ((M == 1) && (offa == 0) && (offb == 0) && WorkBlock->OutputProcessor == nullptr) {
         if (KernelType::TryGemvKernel(A, B, ldb, C, K, N, WorkBlock->BIsSigned)) {
             return;
         }
@@ -346,8 +227,13 @@ Return Value:
                         RowsRemaining, CountN, ldc, RowSums, ColumnSumBuffer,
                         DepthValue, ZeroMode);
 
-                    if (PostProcess && WorkBlock->CIsFloat) {
-                        MlasGemmU8X8OutputFloat(WorkBlock, c, n, RowsHandled, CountN);
+                    if (PostProcess && WorkBlock->OutputProcessor != nullptr) {
+                        WorkBlock->OutputProcessor->Process(WorkBlock->C,
+                                                            WorkBlock->RangeStartM + m + CountM - RowsRemaining,
+                                                            WorkBlock->RangeStartN + n,
+                                                            RowsHandled,
+                                                            CountN,
+                                                            WorkBlock->ldc);
                     }
 
                     c += ldc * RowsHandled;
@@ -508,8 +394,14 @@ Return Value:
                         RowsRemaining, CountN, ldc, RowSums, ColumnSumBuffer,
                         DepthValue, ZeroMode);
 
-                    if (PostProcess && WorkBlock->CIsFloat) {
-                        MlasGemmU8X8OutputFloat(WorkBlock, c, n, RowsHandled, CountN);
+                    if (PostProcess && WorkBlock->OutputProcessor != nullptr) {
+                        WorkBlock->OutputProcessor->Process(
+                            WorkBlock->C,
+                            WorkBlock->RangeStartM + m + CountM - RowsRemaining,
+                            WorkBlock->RangeStartN + n,
+                            RowsHandled,
+                            CountN,
+                            WorkBlock->ldc);
                     }
 
                     c += ldc * RowsHandled;
@@ -2187,7 +2079,8 @@ MlasGemm(
     bool BIsSigned,
     int32_t* C,
     size_t ldc,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_QGEMM_OUTPUT_PROCESSOR* OutputProcessor
     )
 /*++
 
@@ -2226,6 +2119,8 @@ Arguments:
 
     ThreadPool - Supplies the thread pool object to use, else nullptr if the
         base library threading support should be used.
+
+    OutputProcessor - Post Processor on C.
 
 Return Value:
 
@@ -2250,110 +2145,10 @@ Return Value:
     WorkBlock.ldb = ldb;
     WorkBlock.C = C;
     WorkBlock.ldc = ldc;
+    WorkBlock.OutputProcessor = OutputProcessor;
     WorkBlock.offa = offa;
     WorkBlock.offb = offb;
     WorkBlock.BIsSigned = BIsSigned;
-
-    //
-    // Schedule the operation across a set of worker threads.
-    //
-
-    MlasGemmU8X8Schedule(&WorkBlock, ThreadPool);
-}
-
-void
-MLASCALL
-MlasGemm(
-    size_t M,
-    size_t N,
-    size_t K,
-    const uint8_t* A,
-    size_t lda,
-    uint8_t offa,
-    const uint8_t* B,
-    size_t ldb,
-    uint8_t offb,
-    bool BIsSigned,
-    float* C,
-    size_t ldc,
-    const float* Scale,
-    const float* Bias,
-    MLAS_THREADPOOL* ThreadPool
-    )
-/*++
-
-Routine Description:
-
-    This routine implements the quantized integer matrix/matrix multiply
-    operation (QGEMM).
-
-Arguments:
-
-    M - Supplies the number of rows of matrix A and matrix C.
-
-    N - Supplies the number of columns of matrix B and matrix C.
-
-    K - Supplies the number of columns of matrix A and the number of rows of
-        matrix B.
-
-    A - Supplies the address of matrix A.
-
-    lda - Supplies the first dimension of matrix A.
-
-    offa - Supplies the zero point offset of matrix A.
-
-    B - Supplies the address of matrix B.
-
-    ldb - Supplies the first dimension of matrix B.
-
-    offb - Supplies the zero point offset of matrix B.
-
-    BIsSigned - Supplies true if matrix B is signed data, else false if matrix
-        B is unsigned data.
-
-    C - Supplies the address of matrix C.
-
-    ldc - Supplies the first dimension of matrix C.
-
-    Scale - Supplies the scale multiplier to apply to each element of matrix C.
-        Used to scale the integer output of the QGEMM back to a floating point
-        number.
-
-    Bias - Supplies the bias vector to apply to element of matrix C. The vector
-        is of length N.
-
-    ThreadPool - Supplies the thread pool object to use, else nullptr if the
-        base library threading support should be used.
-
-Return Value:
-
-    None.
-
---*/
-{
-    MLAS_GEMM_U8X8_WORK_BLOCK WorkBlock;
-
-    //
-    // Capture the GEMM parameters to the work block.
-    //
-
-    memset(&WorkBlock, 0, sizeof(MLAS_GEMM_U8X8_WORK_BLOCK));
-
-    WorkBlock.M = M;
-    WorkBlock.N = N;
-    WorkBlock.K = K;
-    WorkBlock.A = A;
-    WorkBlock.lda = lda;
-    WorkBlock.B = B;
-    WorkBlock.ldb = ldb;
-    WorkBlock.C = (int32_t*)C;
-    WorkBlock.ldc = ldc;
-    WorkBlock.Scale = Scale;
-    WorkBlock.BiasFloat = Bias;
-    WorkBlock.offa = offa;
-    WorkBlock.offb = offb;
-    WorkBlock.BIsSigned = BIsSigned;
-    WorkBlock.CIsFloat = true;
 
     //
     // Schedule the operation across a set of worker threads.
@@ -2380,7 +2175,8 @@ MlasGemm(
     bool BIsSigned,
     int32_t* C,
     size_t ldc,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_QGEMM_OUTPUT_PROCESSOR* OutputProcessor
     )
 /*++
 
@@ -2418,100 +2214,7 @@ Arguments:
     ThreadPool - Supplies the thread pool object to use, else nullptr if the
         base library threading support should be used.
 
-Return Value:
-
-    None.
-
---*/
-{
-    MLAS_GEMM_U8X8_WORK_BLOCK WorkBlock;
-
-    //
-    // Capture the GEMM parameters to the work block.
-    //
-
-    memset(&WorkBlock, 0, sizeof(MLAS_GEMM_U8X8_WORK_BLOCK));
-
-    WorkBlock.M = M;
-    WorkBlock.N = N;
-    WorkBlock.K = K;
-    WorkBlock.A = A;
-    WorkBlock.lda = lda;
-    WorkBlock.B = PackedB;
-    WorkBlock.C = C;
-    WorkBlock.ldc = ldc;
-    WorkBlock.offa = offa;
-    WorkBlock.offb = offb;
-    WorkBlock.BIsPacked = true;
-    WorkBlock.BIsSigned = BIsSigned;
-
-    //
-    // Schedule the operation across a set of worker threads.
-    //
-
-    MlasGemmU8X8Schedule(&WorkBlock, ThreadPool);
-}
-
-void
-MLASCALL
-MlasGemm(
-    size_t M,
-    size_t N,
-    size_t K,
-    const uint8_t* A,
-    size_t lda,
-    uint8_t offa,
-    const void* PackedB,
-    uint8_t offb,
-    bool BIsSigned,
-    float* C,
-    size_t ldc,
-    const float* Scale,
-    const float* Bias,
-    MLAS_THREADPOOL* ThreadPool
-    )
-/*++
-
-Routine Description:
-
-    This routine implements the quantized integer matrix/matrix multiply
-    operation (QGEMM).
-
-Arguments:
-
-    M - Supplies the number of rows of matrix A and matrix C.
-
-    N - Supplies the number of columns of matrix B and matrix C.
-
-    K - Supplies the number of columns of matrix A and the number of rows of
-        matrix B.
-
-    A - Supplies the address of matrix A.
-
-    lda - Supplies the first dimension of matrix A.
-
-    offa - Supplies the zero point offset of matrix A.
-
-    PackedB - Supplies the address of packed matrix B.
-
-    offb - Supplies the zero point offset of matrix B.
-
-    BIsSigned - Supplies true if matrix B is signed data, else false if matrix
-        B is unsigned data.
-
-    C - Supplies the address of matrix C.
-
-    ldc - Supplies the first dimension of matrix C.
-
-    Scale - Supplies the scale multiplier to apply to each element of matrix C.
-        Used to scale the integer output of the QGEMM back to a floating point
-        number.
-
-    Bias - Supplies the bias vector to apply to element of matrix C. The vector
-        is of length N.
-
-    ThreadPool - Supplies the thread pool object to use, else nullptr if the
-        base library threading support should be used.
+    OutputProcessor - Post Processor on C
 
 Return Value:
 
@@ -2535,13 +2238,11 @@ Return Value:
     WorkBlock.B = PackedB;
     WorkBlock.C = (int32_t*)C;
     WorkBlock.ldc = ldc;
-    WorkBlock.Scale = Scale;
-    WorkBlock.BiasFloat = Bias;
+    WorkBlock.OutputProcessor = OutputProcessor,
     WorkBlock.offa = offa;
     WorkBlock.offb = offb;
     WorkBlock.BIsPacked = true;
     WorkBlock.BIsSigned = BIsSigned;
-    WorkBlock.CIsFloat = true;
 
     //
     // Schedule the operation across a set of worker threads.

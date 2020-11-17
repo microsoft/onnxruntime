@@ -73,10 +73,10 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_string, _In_ const OrtKernel
 namespace onnxruntime {
 
 struct CustomOpKernel : OpKernel {
-  CustomOpKernel(const OpKernelInfo& info, OrtCustomOp& op) : OpKernel(info), op_(op) {
+  CustomOpKernel(const OpKernelInfo& info, const OrtCustomOp& op) : OpKernel(info), op_(op) {
     if (op_.version > ORT_API_VERSION)
       ORT_THROW("Unsupported version '" + std::to_string(op_.version) + "' in custom op '" + op.GetName(&op));
-    op_kernel_ = op_.CreateKernel(&op_, OrtGetApiBase()->GetApi(op_.version), reinterpret_cast<OrtKernelInfo*>(const_cast<OpKernelInfo*>(&info)));
+    op_kernel_ = op_.CreateKernel(&op_, OrtGetApiBase()->GetApi(op_.version), reinterpret_cast<const OrtKernelInfo*>(&info));
   }
 
   ~CustomOpKernel() override { op_.KernelDestroy(op_kernel_); }
@@ -90,7 +90,7 @@ struct CustomOpKernel : OpKernel {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CustomOpKernel);
 
-  OrtCustomOp& op_;
+  const OrtCustomOp& op_;
   void* op_kernel_;
 };
 

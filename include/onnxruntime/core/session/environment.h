@@ -61,6 +61,8 @@ class Environment {
   */
   Status RegisterAllocator(AllocatorPtr allocator);
 
+  Status CreateAndRegisterAlloctor(const OrtMemoryInfo& mem_info, const OrtArenaCfg* arena_cfg = nullptr);
+
   /**
    * Returns the list of registered allocators in this env.
   */
