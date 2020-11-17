@@ -307,7 +307,10 @@ static void SimpleTransposeSingleAxisOutwards(const uint8_t* input_data, uint8_t
                                               int64_t num_loops, int64_t num_writers,
                                               int64_t writes_per_loop, int64_t writes_per_writer_per_loop) {
   for (int64_t l = 0; l < num_loops; ++l) {
-    MlasTranspose(input_data, output_data, writes_per_writer_per_loop, num_writers);
+    MlasTranspose(input_data,
+                  output_data,
+                  static_cast<size_t>(writes_per_writer_per_loop),
+                  static_cast<size_t>(num_writers));
     input_data += writes_per_loop;
     output_data += writes_per_loop;
   }
@@ -414,7 +417,10 @@ static void SimpleTransposeSingleAxisInwards(const uint8_t* input_data, uint8_t*
                                              int64_t num_loops, int64_t num_readers,
                                              int64_t reads_per_loop, int64_t reads_per_reader_per_loop) {
   for (int64_t l = 0; l < num_loops; ++l) {
-    MlasTranspose(input_data, output_data, num_readers, reads_per_reader_per_loop);
+    MlasTranspose(input_data,
+                  output_data,
+                  static_cast<size_t>(num_readers),
+                  static_cast<size_t>(reads_per_reader_per_loop));
     input_data += reads_per_loop;
     output_data += reads_per_loop;
   }
