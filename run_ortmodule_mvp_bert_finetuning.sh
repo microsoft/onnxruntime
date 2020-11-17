@@ -15,4 +15,5 @@ echo "Copying PyTorch frontend source-code to build folder"
 cp -Rf ../../../orttraining/orttraining/python/training/* ../../../build/Linux/RelWithDebInfo/onnxruntime/training/
 
 echo "Running Flexible API (ORTModule)"
-python ../../../orttraining/orttraining/test/python/orttraining_test_ortmodule_bert_classifier.py --no-cuda --epochs 4 --log-interval 20 --log-level=DEBUG
+python ../../../orttraining/orttraining/test/python/orttraining_test_ortmodule_bert_classifier.py --help
+python ../../../orttraining/orttraining/test/python/orttraining_test_ortmodule_bert_classifier.py $@
