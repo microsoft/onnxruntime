@@ -12,11 +12,11 @@ jobs:
 
   # update these if the E2E test data changes
   - script: |
-      orttraining/tools/ci_test/download_e2e_test_data.py \
+      orttraining/tools/ci_test/download_azure_blob.py \
       --azure_blob_url https://onnxruntimetestdata.blob.core.windows.net/training/onnxruntime_training_data.zip?snapshot=2020-06-15T23:17:35.8314853Z \
       --target_dir $(Build.BinariesDirectory)/training_e2e_test_data \
       --archive_sha256_digest B01C169B6550D1A0A6F1B4E2F34AE2A8714B52DBB70AC04DA85D371F691BDFF9
-    displayName: 'Download training end-to-end test data'
+    displayName: 'Download onnxruntime_training_data.zip data'
 
   - script: |
       tools/ci_build/github/linux/run_dockerbuild.sh \

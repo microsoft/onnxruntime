@@ -262,22 +262,9 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
                     {matmul_out}));
 
         if (A_axes.size() > 0) {
-          result.push_back(
-              NodeDef("ReduceSum",
-                      {IA("PreReduceGrad0")},
-                      {IA("ReduceGrad0")},
-                      {{"keepdims", MakeAttribute("keepdims", int64_t(1))},
-                       {"axes", MakeAttribute("axes", A_axes)}}));
-
-          result.push_back(
-              NodeDef("Shape",
-                      {A},
-                      {IA("A_shape")}));
-
-          result.push_back(
-              NodeDef("Reshape",
-                      {IA("ReduceGrad0"), IA("A_shape")},
-                      {GI(0)}));
+          AddReduceSumNode(IA("PreReduceGrad0"), IA("ReduceGrad0"), A_axes, true, result);
+          result.push_back(NodeDef("Shape", {A}, {IA("A_shape")}));
+          result.push_back(NodeDef("Reshape", {IA("ReduceGrad0"), IA("A_shape")}, {GI(0)}));
         }
       }
       if (IsGradientRequiredForSrcNodeInput(1)) {
@@ -315,20 +302,9 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
                       {matmul_out}));
 
           if (B_axes.size() > 0) {
-            result.push_back(
-                NodeDef("ReduceSum",
-                        {IA("PreReduceGrad1")},
-                        {IA("ReduceGrad1")},
-                        {{"keepdims", MakeAttribute("keepdims", int64_t(0))},
-                         {"axes", MakeAttribute("axes", B_axes)}}));
-            result.push_back(
-                NodeDef("Shape",
-                        {B},
-                        {IA("B_shape")}));
-            result.push_back(
-                NodeDef("Reshape",
-                        {IA("ReduceGrad1"), IA("B_shape")},
-                        {GI(1)}));
+            AddReduceSumNode(IA("PreReduceGrad1"), IA("ReduceGrad1"), B_axes, false, result);
+            result.push_back(NodeDef("Shape", {B}, {IA("B_shape")}));
+            result.push_back(NodeDef("Reshape", {IA("ReduceGrad1"), IA("B_shape")}, {GI(1)}));
           }
         }
       }
@@ -1256,49 +1232,6 @@ IMPLEMENT_GRADIENT_BUILDER(GetGeluGradient) {
               {GO(0), I(0)},
               {GI(0)})};
 }
-
-namespace {
-std::vector<NodeDef> GetBiasGeluGradNodes(
-    bool use_approximation,
-    const ArgDef& dY, const ArgDef& X, const ArgDef& B,  // inputs
-    const ArgDef& dX, const ArgDef& dB,                  // outputs
-    const ArgDef& b_axes, const ArgDef& b_shape, const ArgDef& x_shape,  //intermediate args
-    const std::string& node_name) {
-  std::vector<Dimension> B_shape, X_shape;
-  if (GetShape(B, B_shape).IsOK() && GetShape(X, X_shape).IsOK()) {
-    ORT_ENFORCE(B_shape.size() == 1, "B must have exactly one dimension.");
-
-    const std::vector<int64_t> B_axes = [&B_shape, &X_shape, &node_name]() {
-      std::vector<int64_t> result{};
-      ComputeBroadcastBackwardAxes(B_shape, X_shape, &result, nullptr, node_name);
-      return result;
-    }();
-    return std::vector<NodeDef>{
-        NodeDef(OpDef{use_approximation ? "BiasFastGeluGrad_dX" : "BiasGeluGrad_dX", kMSDomain, 1},
-                {dY, X, B},
-                {dX}),
-        NodeDef("ReduceSum",
-                {dX},
-                {dB},
-                {{"keepdims", MakeAttribute("keepdims", int64_t{0})},
-                 {"axes", MakeAttribute("axes", B_axes)}})};
-  } else {
-    std::vector<NodeDef> result;
-    ComputeBroadcastBackwardAxesDynamic(B, X, b_shape, x_shape, &b_axes, nullptr, result);
-    result.push_back(
-        NodeDef(OpDef{use_approximation ? "BiasFastGeluGrad_dX" : "BiasGeluGrad_dX", kMSDomain, 1},
-                {dY, X, B},
-                {dX}));
-    result.push_back(
-        NodeDef(OpDef{"ReduceSumTraining", kMSDomain, 1},
-                {dX,
-                 b_axes},
-                {dB},
-                {{"keepdims", MakeAttribute("keepdims", int64_t{0})}}));
-    return result;
-  }
-}
-}  // namespace
 
 IMPLEMENT_GRADIENT_BUILDER(GetBiasGeluGradient) {
   const auto dY = GO(0), X = I(0), B = I(1),

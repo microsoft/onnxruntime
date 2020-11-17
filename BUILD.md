@@ -308,9 +308,23 @@ These instructions are for JetPack SDK 4.4.
 See more information on DNNL and MKL-ML [here](./docs/execution_providers/DNNL-ExecutionProvider.md).
 
 #### Build Instructions
+The DNNL execution provider can be built for Intel CPU or GPU. To build for Intel GPU, install [Intel SDK for OpenCL Applications](https://software.intel.com/content/www/us/en/develop/tools/opencl-sdk.html). Install the latest GPU driver - [Windows graphics driver](https://downloadcenter.intel.com/product/80939/Graphics), [Linux graphics compute runtime and OpenCL driver](https://github.com/intel/compute-runtime/releases).
+
+##### Windows
+`.\build.bat --use_dnnl`
+
+##### Linux
+`./build.sh --use_dnnl`
+
+To build for Intel GPU, replace dnnl_opencl_root with the path of the Intel SDK for OpenCL Applications.
+
+##### Windows 
+
+`.\build.bat --use_dnnl --dnnl_gpu_runtime ocl --dnnl_opencl_root "c:\program files (x86)\intelswtools\sw_dev_tools\opencl\sdk"`
+
 ##### Linux
 
-DNNL: `./build.sh --use_dnnl`
+`./build.sh --use_dnnl --dnnl_gpu_runtime ocl --dnnl_opencl_root "/opt/intel/sw_dev_tools/opencl-sdk"`
 
 ---
 
@@ -405,16 +419,18 @@ See more information on the OpenVINO Execution Provider [here](./docs/execution_
 | <code>VAD-M_FP16</code> | Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs |
 | <code>VAD-F_FP32</code> | Intel<sup>®</sup> Vision Accelerator Design with an Intel<sup>®</sup> Arria<sup>®</sup> 10 FPGA |
 | <code>HETERO:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>...</code> | All Intel<sup>®</sup> silicons mentioned above |
+| <code>MULTI:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>...</code> | All Intel<sup>®</sup> silicons mentioned above |
 
-Specifying Hardware Target for HETERO Build:
+Specifying Hardware Target for HETERO or Multi-Device Build:
 
 HETERO:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>...
+MULTI:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>...
 The <DEVICE_TYPE> can be any of these devices from this list ['CPU','GPU','MYRIAD','FPGA','HDDL']
 
-A minimum of two DEVICE_TYPE'S should be specified for a valid HETERO Build.
+A minimum of two DEVICE_TYPE'S should be specified for a valid HETERO or Multi-Device Build.
 
 Example:
-HETERO:MYRIAD,CPU        HETERO:HDDL,GPU,CPU
+HETERO:MYRIAD,CPU  HETERO:HDDL,GPU,CPU  MULTI:MYRIAD,GPU,CPU
 
 For more information on OpenVINO Execution Provider&#39;s ONNX Layer support, Topology support, and Intel hardware enabled, please refer to the document [OpenVINO-ExecutionProvider.md](./docs/execution_providers/OpenVINO-ExecutionProvider.md) in <code>$onnxruntime_root/docs/execution_providers</code>
 
@@ -547,29 +563,24 @@ onnxruntime_perf_test
 onnxruntime_test_all
 ```
 
-#### Build Instructions (Jetson Nano)
+#### Native Build Instructions (validated on Jetson Nano and Jetson Xavier)
 
 1. Build ACL Library (skip if already built)
 ```
 cd ~
-git clone https://github.com/Arm-software/ComputeLibrary.git
+git clone -b v20.02 https://github.com/Arm-software/ComputeLibrary.git
 cd ComputeLibrary
-sudo apt install scons
-sudo apt install g++-arm-linux-gnueabihf
+sudo apt-get install -y scons g++-arm-linux-gnueabihf
 scons -j8 arch=arm64-v8a  Werror=1 debug=0 asserts=0 neon=1 opencl=1 examples=1 build=native
 ```
-2. Set environment variables to set include directory and shared object library path.
+
+2. Cmake is needed to build ONNX Runtime. Because the minimum required version is 3.13,
+   it is necessary to build CMake from source. Download Unix/Linux sources from https://cmake.org/download/
+   and follow https://cmake.org/install/ to build from source. Version 3.17.5 and 3.18.4 have been tested on Jetson.
+
+3. Build onnxruntime with --use_acl flag with one of the supported ACL version flags. (ACL_1902 | ACL_1905 | ACL_1908 | ACL_2002)
 ```
-export CPATH=~/ComputeLibrary/include/:~/ComputeLibrary/
-export LD_LIBRARY_PATH=~/ComputeLibrary/build/
-```
-3. Build onnxruntime with --use_acl flag
-```
-./build.sh --use_acl
-```
-To use a library outside the normal environment you can set a custom path by using --acl_home and --acl_libs tags that defines the path to the ComputeLibrary directory and the build directory respectively.
-```
-./build.sh --use_acl --acl_home /path/to/ComputeLibrary --acl_libs /path/to/build
+./build.sh --config RelWithDebInfo --use_acl ACL_2002 --update --build --build_wheel --parallel --acl_home ~/ComputeLibrary --acl_libs ~/ComputeLibrary/build
 ```
 
 ---

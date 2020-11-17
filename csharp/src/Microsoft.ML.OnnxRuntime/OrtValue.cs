@@ -208,6 +208,16 @@ namespace Microsoft.ML.OnnxRuntime
                                     out memHandle, out dataBufferLength,
                                     out shape, out rank);
                         break;
+                    case TensorElementType.Float16:
+                        PinAsTensor(value as Tensor<Float16>, typeSize,
+                                    out memHandle, out dataBufferLength,
+                                    out shape, out rank);
+                        break;
+                    case TensorElementType.BFloat16:
+                        PinAsTensor(value as Tensor<BFloat16>, typeSize,
+                                    out memHandle, out dataBufferLength,
+                                    out shape, out rank);
+                        break;
                     default:
                         throw new NotSupportedException("Element type: " + elType + " is not of a supported type");
                 }

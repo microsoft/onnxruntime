@@ -406,7 +406,8 @@ we also support other two formats: When input has right-side padding, mask_index
 where value of each element is the end position, or valid length of actual sequence excluding padding. When input has
 left-side padding, mask_index has shape (2 * batch_size), where the values are the exclusive end positions followed by
 the inclusive start positions. When unidirectional is 1, and each token only attend to previous tokens. For GPT-2, both past
-and present state are optional. Present state could appear in output even when past state is not in input.
+and present state are optional. Present state could appear in output even when past state is not in input. When
+input_dimension_swapped is 1, the input shape is (sequence_length, batch_size, hidden_size) which happens in Bart models, etc.
 )DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(Attention)
@@ -418,12 +419,16 @@ and present state are optional. Present state could appear in output even when p
             "Whether every token can only attend to previous tokens. Default value is 0.",
             AttributeProto::INT,
             static_cast<int64_t>(0))
-      .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size), hidden_size = num_heads * head_size", "T")
+      .Attr("input_dimension_swapped",
+            "Whether input shape is (sequence_length, batch_size, hidden_size) instead of (batch_size, sequence_length, hidden_size). Default value is 0.",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
+      .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size) or (sequence_length, batch_size, hidden_size), hidden_size = num_heads * head_size", "T")
       .Input(1, "weight", "2D input tensor with shape (hidden_size, 3 * hidden_size)", "T")
       .Input(2, "bias", "1D input tensor with shape (3 * hidden_size)", "T")
       .Input(3, "mask_index", "Attention mask with shape (batch_size, past_sequence_length + sequence_length), or index with shape (batch_size) or (2 * batch_size).", "M", OpSchema::Optional)
       .Input(4, "past", "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).", "T", OpSchema::Optional)
-      .Output(0, "output", "3D output tensor with shape (batch_size, append_length, hidden_size)", "T")
+      .Output(0, "output", "3D output tensor with shape (batch_size, append_length, hidden_size) or (sequence_length, batch_size, hidden_size)", "T")
       .Output(1, "present", "present state for key and value with shape (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)", "T", OpSchema::Optional)
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
       .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask index to integer types")
@@ -451,6 +456,9 @@ and present state are optional. Present state could appear in output even when p
               }
 
               if (past_dims[3].has_dim_value() && input_dims[1].has_dim_value()) {
+                if (ctx.getAttribute("input_dimension_swapped")->i() != 0) {
+                  fail_shape_inference("Past shall be work with input_dimension_swapped=0. aka when input shape equals to (B,S,NH)");
+                }
                 auto all_sequence_length = past_shape.dim(3).dim_value() + input_shape.dim(1).dim_value();
 
                 ONNX_NAMESPACE::TensorShapeProto present_shape;
@@ -1879,7 +1887,7 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
       });
 
   static const char* TransposeMatMul_doc = R"DOC(
-Duplicate of FusedMatMul. Going forward FusedMatMul should be used. This OP will be supported for backward compatibility. 
+Duplicate of FusedMatMul. Going forward FusedMatMul should be used. This OP will be supported for backward compatibility.
 Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html
 )DOC";
 
@@ -2305,7 +2313,7 @@ and produces one output data (Tensor<T>) where the function `f(x) = quantize(alp
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
   const char* QLinearSigmoidDoc_ver1 = R"DOC(
-QLinearSigmoid takes quantized input data (Tensor), and quantize parameter for output, and produces one output data 
+QLinearSigmoid takes quantized input data (Tensor), and quantize parameter for output, and produces one output data
 (Tensor<T>) where the function `f(x) = quantize(Sigmoid(dequantize(x)))`, is applied to the data tensor elementwise.
 Wwhere the function `Sigmoid(x) = 1 / (1 + exp(-x))` )DOC";
 

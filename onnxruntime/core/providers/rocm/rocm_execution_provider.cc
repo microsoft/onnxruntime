@@ -57,16 +57,30 @@ ONNX_OPERATOR_KERNEL_EX(
 
 }  // namespace rocm
 
-ROCMExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id) {
+ROCMExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, size_t hip_mem_limit, ArenaExtendStrategy arena_extend_strategy) {
   HIP_CALL_THROW(hipSetDevice(device_id));
   ROCBLAS_CALL_THROW(rocblas_create_handle(&rocblas_handle_));
   MIOPEN_CALL_THROW(miopenCreate(&miopen_handle_));
+
+  AllocatorCreationInfo default_memory_info(
+      [](OrtDevice::DeviceId id) {
+        return onnxruntime::make_unique<ROCMAllocator>(id, CUDA);
+      },
+      device_id,
+      true,
+      {hip_mem_limit,
+       static_cast<int>(arena_extend_strategy),
+       -1, -1});
+
+  // HIP malloc/free is expensive so always use an arena
+  allocator_ = CreateAllocator(default_memory_info);
 }
 
 ROCMExecutionProvider::PerThreadContext::~PerThreadContext() {
   // dtor shouldn't throw. if something went wrong earlier (e.g. out of HIP memory) the handles
   // here may be bad, and the destroy calls can throw.
   // https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rc-dtor-noexcept
+
   try {
     ROCBLAS_CALL(rocblas_destroy_handle(rocblas_handle_));
   } catch (const std::exception& ex) {
@@ -200,7 +214,7 @@ ROCMExecutionProvider::PerThreadContext& ROCMExecutionProvider::GetPerThreadCont
 
     // get or create a context
     if (context_state_.retired_context_pool.empty()) {
-      context = std::make_shared<PerThreadContext>(device_id_);
+      context = std::make_shared<PerThreadContext>(device_id_, hip_mem_limit_, arena_extend_strategy_);
     } else {
       context = context_state_.retired_context_pool.back();
       context_state_.retired_context_pool.pop_back();
@@ -234,6 +248,17 @@ void ROCMExecutionProvider::ReleasePerThreadContext() const {
   }
 
   per_thread_context_cache->erase(cached_context_it);
+}
+
+AllocatorPtr ROCMExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
+  // Pinned memory allocator is shared between threads, but HIP memory allocator is per-thread or it may cause result changes
+  // A hypothesis is that arena allocator is not aligned with HIP output cache, and data from different kernel writes may
+  // cause cacheline to contain dirty data.
+  if (mem_type == OrtMemTypeDefault) {
+    return GetPerThreadContext().GetAllocator();
+  } else {
+    return IExecutionProvider::GetAllocator(id, mem_type);
+  }
 }
 
 Status ROCMExecutionProvider::Sync() const {
@@ -302,7 +327,7 @@ class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDom
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 1, 10, Unsqueeze);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 1, 8, Flatten);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 1, 10, Squeeze);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 1, Identity);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 1, 12, Identity);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 7, 9, Dropout);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 1, 10, Gather);
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 7, 8, float, Gemm);
@@ -984,7 +1009,7 @@ static Status RegisterRocmKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 1, 10, Unsqueeze)>,
       // BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 1, 8, Flatten)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 1, 10, Squeeze)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 1, Identity)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 1, 12, Identity)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 7, 9, Dropout)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 1, 10, Gather)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 7, 8, float, Gemm)>,
