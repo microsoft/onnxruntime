@@ -793,13 +793,9 @@ class SqueezeOpSupportChecker : public BaseOpSupportChecker {
   int32_t GetMinSupportedSdkVer(const Node& /* node */, const OpSupportCheckParams& /* params */) const override {
     return 28;
   }
-
-  // Squeeze opset 13+ uses input for axes, which is not supported yet
-  // TODO add support for squeeze opset 13+
-  int GetMaxSupportedOpSet(const Node& /* node */) const override { return 12; }
 };
 
-bool SqueezeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+bool SqueezeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                                                 const OpSupportCheckParams& /* params */) const {
   Shape input_shape;
   if (!GetShape(*node.InputDefs()[0], input_shape))
@@ -810,6 +806,15 @@ bool SqueezeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* i
     LOGS_DEFAULT(VERBOSE) << "Squeeze only supports 1-4d shape, input is "
                           << input_size << "d shape";
     return false;
+  }
+
+  // Squeeze opset 13 use input 1 as axes, if we have input 1 then it need to be an initializer
+  if (node.SinceVersion() > 12 && node.InputDefs().size() > 1) {
+    const auto& axes_name = node.InputDefs()[1]->Name();
+    if (!Contains(initializers, axes_name)) {
+      LOGS_DEFAULT(VERBOSE) << "Input axes of Squeeze must be known";
+      return false;
+    }
   }
 
   return true;
