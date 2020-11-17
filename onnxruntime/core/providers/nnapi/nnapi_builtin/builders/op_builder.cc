@@ -787,11 +787,11 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
   // LOGS_DEFAULT(VERBOSE) << "Skipping Reshape/Flatten node ["
   //                       << node.Name() << "] with output, " << output;
   // return true;
-  
+
   ORT_UNUSED_PARAMETER(node);
   ORT_UNUSED_PARAMETER(input_rank);
   ORT_UNUSED_PARAMETER(output_rank);
-  return false;  
+  return false;
 }
 
 /* static */ Status ReshapeOpBuilder::AddReshapeOperator(ModelBuilder& model_builder,
@@ -2104,69 +2104,164 @@ Status FlattenOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
 
 #pragma region CreateGetOpBuilders
 
+std::shared_ptr<IOpBuilder> FindOpBuilder(const std::vector<const std::string>& op_types,
+                                          std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>& op_map) {
+  for (const auto& op_type : op_types) {
+    const auto it = op_map.find(op_type);
+    if (it != op_map.cend())
+      return it->second;
+  }
+
+  return nullptr;
+}
+
+void CreateBinaryOpBuilder(const std::string& op_type,
+                           std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>& op_map) {
+  // We only need one BinaryOpBuilder, if it exists we will only add an entry in to op_map with the same Builder
+  auto op_builder = FindOpBuilder({
+                                      "Add",
+                                      "Sub",
+                                      "Mul",
+                                      "Div",
+                                      "QLinearAdd",
+                                  },
+                                  op_map);
+  if (!op_builder) {
+    op_builder = std::make_shared<BinaryOpBuilder>();
+  }
+
+  op_map.emplace(op_type, op_builder);
+}
+
+void CreatePoolOpBuilder(const std::string& op_type,
+                         std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>& op_map) {
+  // We only need one BinaryOpBuilder, if it exists we will only add an entry in to op_map with the same Builder
+  auto op_builder = FindOpBuilder({
+                                      "GlobalAveragePool",
+                                      "GlobalMaxPool",
+                                      "AveragePool",
+                                      "MaxPool",
+                                  },
+                                  op_map);
+  if (!op_builder) {
+    op_builder = std::make_shared<PoolOpBuilder>();
+  }
+
+  op_map.emplace(op_type, op_builder);
+}
+
+void CreateConvOpBuilder(const std::string& op_type,
+                         std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>& op_map) {
+  // We only need one BinaryOpBuilder, if it exists we will only add an entry in to op_map with the same Builder
+  auto op_builder = FindOpBuilder({
+                                      "Conv",
+                                      "QLinearConv",
+                                  },
+                                  op_map);
+  if (!op_builder) {
+    op_builder = std::make_shared<ConvOpBuilder>();
+  }
+
+  op_map.emplace(op_type, op_builder);
+}
+
+void CreateGemmOpBuilder(const std::string& op_type,
+                         std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>& op_map) {
+  // We only need one BinaryOpBuilder, if it exists we will only add an entry in to op_map with the same Builder
+  auto op_builder = FindOpBuilder({"Gemm", "MatMul", "QLinearMatMul"}, op_map);
+  if (!op_builder) {
+    op_builder = std::make_shared<GemmOpBuilder>();
+  }
+
+  op_map.emplace(op_type, op_builder);
+}
+
+void CreateUnaryOpBuilder(const std::string& op_type,
+                          std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>& op_map) {
+  // We only need one BinaryOpBuilder, if it exists we will only add an entry in to op_map with the same Builder
+  auto op_builder = FindOpBuilder({
+                                      "Abs",
+                                      "Exp",
+                                      "Floor",
+                                      "Log",
+                                      "Sigmoid",
+                                      "Neg",
+                                      "Sin",
+                                      "Sqrt",
+                                      "Tanh",
+                                  },
+                                  op_map);
+  if (!op_builder) {
+    op_builder = std::make_shared<UnaryOpBuilder>();
+  }
+
+  op_map.emplace(op_type, op_builder);
+}
+
+#define NNAPI_EP_ADD_SHARED_OP_BUILDER(OP_TYPE, BUILDER_NAME) \
+  Create##BUILDER_NAME(OP_TYPE, op_map);
+
+#define NNAPI_EP_ADD_SINGLE_OP_BUILDER(OP_TYPE, BUILDER_NAME) \
+  op_map.emplace(OP_TYPE, std::make_shared<BUILDER_NAME>());
+
 static std::unordered_map<std::string, std::shared_ptr<IOpBuilder>> CreateOpBuilders() {
   std::unordered_map<std::string, std::shared_ptr<IOpBuilder>> op_map;
 
   {
-    auto binary_op_builder = std::make_shared<BinaryOpBuilder>();
-    op_map.emplace("Add", binary_op_builder);
-    op_map.emplace("Sub", binary_op_builder);
-    op_map.emplace("Mul", binary_op_builder);
-    op_map.emplace("Div", binary_op_builder);
-    op_map.emplace("QLinearAdd", binary_op_builder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Add", BinaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Sub", BinaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Mul", BinaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Div", BinaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("QLinearAdd", BinaryOpBuilder);
   }
 
-  op_map.emplace("Relu", std::make_shared<ReluOpBuilder>());
-  op_map.emplace("Transpose", std::make_shared<TransposeOpBuilder>());
-  op_map.emplace("Reshape", std::make_shared<ReshapeOpBuilder>());
-  op_map.emplace("BatchNormalization", std::make_shared<BatchNormalizationOpBuilder>());
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Relu", ReluOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Transpose", TransposeOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Reshape", ReshapeOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("BatchNormalization", BatchNormalizationOpBuilder);
 
   {
-    auto pool_op_builder = std::make_shared<PoolOpBuilder>();
-    op_map.emplace("GlobalAveragePool", pool_op_builder);
-    op_map.emplace("GlobalMaxPool", pool_op_builder);
-    op_map.emplace("AveragePool", pool_op_builder);
-    op_map.emplace("MaxPool", pool_op_builder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("GlobalAveragePool", PoolOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("GlobalMaxPool", PoolOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("AveragePool", PoolOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("MaxPool", PoolOpBuilder);
   }
 
   {
-    auto conv_op_builder = std::make_shared<ConvOpBuilder>();
-    op_map.emplace("Conv", conv_op_builder);
-    op_map.emplace("QLinearConv", conv_op_builder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Conv", ConvOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("QLinearConv", ConvOpBuilder);
   }
 
-  op_map.emplace("Cast", std::make_shared<CastOpBuilder>());
-  op_map.emplace("Softmax", std::make_shared<SoftMaxOpBuilder>());
-  op_map.emplace("Identity", std::make_shared<IdentityOpBuilder>());
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Cast", CastOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Softmax", SoftMaxOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Identity", IdentityOpBuilder);
 
   {
-    auto gemm_op_builder = std::make_shared<GemmOpBuilder>();
-    op_map.emplace("Gemm", gemm_op_builder);
-    op_map.emplace("MatMul", gemm_op_builder);
-    op_map.emplace("QLinearMatMul", gemm_op_builder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Gemm", GemmOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("MatMul", GemmOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("QLinearMatMul", GemmOpBuilder);
   }
 
   {
-    auto unary_op_builder = std::make_shared<UnaryOpBuilder>();
-    op_map.emplace("Abs", unary_op_builder);
-    op_map.emplace("Exp", unary_op_builder);
-    op_map.emplace("Floor", unary_op_builder);
-    op_map.emplace("Log", unary_op_builder);
-    op_map.emplace("Sigmoid", unary_op_builder);
-    op_map.emplace("Neg", unary_op_builder);
-    op_map.emplace("Sin", unary_op_builder);
-    op_map.emplace("Sqrt", unary_op_builder);
-    op_map.emplace("Tanh", unary_op_builder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Abs", UnaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Exp", UnaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Floor", UnaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Log", UnaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Sigmoid", UnaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Neg", UnaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Sin", UnaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Sqrt", UnaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Tanh", UnaryOpBuilder);
   }
 
-  op_map.emplace("Concat", std::make_shared<ConcatOpBuilder>());
-  op_map.emplace("Squeeze", std::make_shared<SqueezeOpBuilder>());
-  op_map.emplace("QuantizeLinear", std::make_shared<QuantizeLinearOpBuilder>());
-  op_map.emplace("DequantizeLinear", std::make_shared<DequantizeLinearOpBuilder>());
-  op_map.emplace("LRN", std::make_shared<LRNOpBuilder>());
-  op_map.emplace("Clip", std::make_shared<ClipOpBuilder>());
-  op_map.emplace("Resize", std::make_shared<ResizeOpBuilder>());
-  op_map.emplace("Flatten", std::make_shared<FlattenOpBuilder>());
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Concat", ConcatOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Squeeze", SqueezeOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("QuantizeLinear", QuantizeLinearOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("DequantizeLinear", DequantizeLinearOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("LRN", LRNOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Clip", ClipOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Resize", ResizeOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Flatten", FlattenOpBuilder);
 
   ORT_ENFORCE(op_map.size() == GetOpSupportCheckers().size(),
               "We should have same number of OpBuilder and OpSupportChecker");
