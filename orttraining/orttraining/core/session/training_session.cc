@@ -254,7 +254,7 @@ Status TrainingSession::ConfigureForTraining(
   // derive actual set of weights to train
   std::unordered_set<std::string> weight_names_to_train =
       !filtered_config_weight_names_to_train.empty()
-          ? filtered_config_weight_names_to_train
+          ? trainable_initializers
           : GetTrainableModelInitializers(config.immutable_weights, loss_name);
 
   for (const auto& weight_name_to_not_train : config.weight_names_to_not_train) {
@@ -284,13 +284,15 @@ Status TrainingSession::ConfigureForTraining(
                                              fp32_weight_name_to_mixed_precision_node_arg));
   }
 
-  ORT_RETURN_IF_ERROR(BuildGradientGraph(
-      weight_names_to_train, loss_name, config.gradient_graph_config, *session_logger_));
+  // Fill weights_to_train_ according to weights_to_train
+  // weights should NOT be changed from now.
+  weights_to_train_ = weight_names_to_train;
+
+  ORT_RETURN_IF_ERROR(BuildGradientGraph(loss_name, config.gradient_graph_config, *session_logger_));
 
   if (config.pipeline_config.has_value()) {
     TrainingConfigurationResult::PipelineConfigurationResult pipeline_result{};
-    ORT_RETURN_IF_ERROR(InsertPipelineOps(weight_names_to_train,
-                                          pipeline_result.pipeline_tensor_names));
+    ORT_RETURN_IF_ERROR(InsertPipelineOps(pipeline_result.pipeline_tensor_names));
     // Records which which tensors can be fed into the graph.
     // It may be different than the original graph because of extra event tensors.
     for (auto& node_arg : model_->MainGraph().GetInputsIncludingInitializers()) {
@@ -633,12 +635,10 @@ Status TrainingSession::AddTensorboard(const std::string& summary_name,
   return DoPostLoadProcessing(*model_);
 }
 
-Status TrainingSession::InsertPipelineOps(
-    const std::unordered_set<std::string>& initializer_names_to_preserve,
-    pipeline::PipelineTensorNames& pipeline_tensor_names) {
+Status TrainingSession::InsertPipelineOps(pipeline::PipelineTensorNames& pipeline_tensor_names) {
   ORT_RETURN_IF_ERROR(TransformGraphForPipeline(
       model_->MainGraph(),
-      initializer_names_to_preserve,
+      weights_to_train_,
       pipeline_tensor_names));
   return DoPostLoadProcessing(*model_);
 }
@@ -696,12 +696,9 @@ Status TrainingSession::EnableMixedPrecision(
   return Status::OK();
 }
 
-Status TrainingSession::BuildGradientGraph(const std::unordered_set<std::string>& weights_to_train,
-                                           const std::string& loss_function_output_name,
+Status TrainingSession::BuildGradientGraph(const std::string& loss_function_output_name,
                                            const GradientGraphConfiguration& gradient_graph_config,
                                            const logging::Logger& logger) {
-  // Fill weights_to_train_ according to weights_to_train
-  weights_to_train_ = weights_to_train;
   gradient_graph_config_ = gradient_graph_config;
 
   ORT_RETURN_IF_ERROR(BuildGradientGraphInternal(model_->MainGraph(),
