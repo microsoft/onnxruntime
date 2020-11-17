@@ -11,7 +11,7 @@
 namespace _winml {
 
 struct idata {
-  ~idata(){}
+  virtual ~idata(){}
   
   virtual size_t num_elements() = 0;
   virtual size_t size_in_bytes() = 0;
