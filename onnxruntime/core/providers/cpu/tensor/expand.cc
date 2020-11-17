@@ -108,57 +108,71 @@ Status Expand<T>::Compute(OpKernelContext* context) const {
   int64_t copy_len = input_dim_group[max_dims_size - 1];
   auto copy_byte = copy_len * sizeof(T);
 
-  concurrency::ThreadPool::TrySimpleParallelFor(
+  auto distribute_fn =
+    [&](ptrdiff_t i) {
+      auto input_offset = i * copy_len;
+      int64_t output_offset = 0;
+      for (auto j = dim_group_start + 1, remains = input_offset; j < max_dims_size; ++j) {
+        auto current_count = remains / input_dim_group[j];
+        output_offset += current_count * output_dim_group[j];
+        remains = remains % input_dim_group[j];
+      }  //for
+      memcpy(output_data + output_offset, input_data + input_offset, copy_byte);
+      output_offsets[i] = output_offset;
+    };  //distribute_fn
+
+  auto per_thread_tasks =
+    distribute_count / concurrency::ThreadPool::DegreeOfParallelism(context->GetOperatorThreadPool());
+
+  if (per_thread_tasks > 4) {
+    concurrency::ThreadPool::TrySimpleParallelFor(
       context->GetOperatorThreadPool(),
       distribute_count,
-      [&](ptrdiff_t i) {
-        auto input_offset = i * copy_len;
-        int64_t output_offset = 0;
-        for (auto j = dim_group_start + 1, remains = input_offset; j < max_dims_size; ++j) {
-          auto current_count = remains / input_dim_group[j];
-          output_offset += current_count * output_dim_group[j];
-          remains = remains % input_dim_group[j];
-        }  //for
-        memcpy(output_data + output_offset, input_data + input_offset, copy_byte);
-        output_offsets[i] = output_offset;
-      });
+      std::move(distribute_fn));
+  } else {
+    for (int64_t i = 0; i < distribute_count; ++i) {
+      distribute_fn(i);
+    }
+  }  //else
 
-  {
-    onnxruntime::concurrency::ThreadPool::ParallelSection ps(context->GetOperatorThreadPool());
-
-    for (auto i = max_dims_size - 1; i >= dim_group_start; --i) {
-      auto base_copy_len = output_dim_group[i] / expand_dim_size[i];
-      auto base_copy_byte = base_copy_len * sizeof(T);
+  for (auto i = max_dims_size - 1; i >= dim_group_start; --i) {
+    auto copy_fn =
+    [&](ptrdiff_t j) {
+      auto output_offset = output_offsets[j];
+      if (output_offset % output_dim_group[i] == 0) {
+        auto copy_len = output_dim_group[i] / expand_dim_size[i];
+        auto copy_byte = copy_len * sizeof(T);
+        auto output_from = output_data + output_offset;
+        auto output_at = output_from + copy_len;
+        auto output_end = output_from + output_dim_group[i];
+        while (output_at + copy_len <= output_end) {
+          memcpy(output_at, output_from, copy_byte);
+          output_at += copy_len;
+          copy_len <<= 1;
+          copy_byte <<= 1;
+        }  //while
+        while (output_at < output_end) {
+          if (output_at + copy_len <= output_end) {
+            memcpy(output_at, output_from, copy_byte);
+            output_at += copy_len;
+          } else {
+            copy_len >>= 1;
+            copy_byte >>= 1;
+          }
+        }  //while
+      }  //if
+    };  //copy_fn
+    if (per_thread_tasks > 20) {
       concurrency::ThreadPool::TrySimpleParallelFor(
-          context->GetOperatorThreadPool(),
-          distribute_count,
-          [&](ptrdiff_t j) {
-            auto output_offset = output_offsets[j];
-            if (output_offset % output_dim_group[i] == 0) {
-              auto copy_len = base_copy_len;
-              auto copy_byte = base_copy_byte;
-              auto output_from = output_data + output_offset;
-              auto output_at = output_from + copy_len;
-              auto output_end = output_from + output_dim_group[i];
-              while (output_at + copy_len <= output_end) {
-                memcpy(output_at, output_from, copy_byte);
-                output_at += copy_len;
-                copy_len <<= 1;
-                copy_byte <<= 1;
-              }
-              while (output_at < output_end) {
-                if (output_at + copy_len <= output_end) {
-                  memcpy(output_at, output_from, copy_byte);
-                  output_at += copy_len;
-                } else {
-                  copy_len >>= 1;
-                  copy_byte >>= 1;
-                }
-              }  //while
-            }
-          });
-    }  //for
-  }
+        context->GetOperatorThreadPool(),
+        distribute_count,
+        copy_fn);
+    } else {
+      for (int64_t j = 0; j < distribute_count; ++j) {
+        copy_fn(j);
+      }
+    }  //else
+  }  //for
   return Status::OK();
 }  //Expand::compute
 
