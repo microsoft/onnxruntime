@@ -99,8 +99,9 @@ TEST(CseTests, SimpleTestTraining) {
   // weights_to_train and updated_weight_names as non-const
   std::unordered_set<std::string> weights_to_train;
   std::unordered_map<std::string, std::string> updated_weight_names;
+  std::unordered_map<std::string, bool> partition_by_row;
   auto transformers_to_register = onnxruntime::training::transformer_utils::GeneratePreTrainingTransformers(
-      TransformerLevel::Level1, weights_to_train, {}, CPUExecutionProvider(CPUExecutionProviderInfo()), updated_weight_names);
+      TransformerLevel::Level1, weights_to_train, {}, CPUExecutionProvider(CPUExecutionProviderInfo()), updated_weight_names, partition_by_row);
   for (auto& entry : transformers_to_register) {
     ASSERT_TRUE(
         graph_transformation_mgr.Register(std::move(entry), TransformerLevel::Level1).IsOK());

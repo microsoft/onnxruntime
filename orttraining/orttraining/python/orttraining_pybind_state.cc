@@ -350,6 +350,50 @@ void addObjectMethodsForTraining(py::module& m) {
         }
         return rmap;
       })
+      .def("get_optimizer_state", [](PyTrainingSession* sess) {
+        std::unordered_map<std::string, NameMLValMap> opt_state_tensors;
+        ORT_THROW_IF_ERROR(static_cast<TrainingSession*>(sess->GetSessionHandle())->GetOptimizerState(opt_state_tensors));
+        auto& data_transfer_manager = sess->GetSessionHandle()->GetDataTransferManager();
+        //convert to numpy array
+        std::map<std::string, std::map<std::string, py::object>> rmap;
+        for (auto& kv1 : opt_state_tensors) {
+          std::map<std::string, py::object> weight_tensor_map;
+          for (auto& kv2 : kv1.second) {
+            if (kv2.second.IsTensor()) {
+              py::object obj;
+              const Tensor& rtensor = kv2.second.Get<Tensor>();
+              GetPyObjFromTensor(rtensor, obj, &data_transfer_manager);
+              weight_tensor_map.insert({kv2.first, obj});
+            } else {
+              throw std::runtime_error("Non tensor type in session state tensors is not expected.");
+            }
+          }
+          rmap.insert({kv1.first, weight_tensor_map});
+        }
+        return rmap;
+      })
+      .def("get_optimizer_state", [](PyTrainingSession* sess) {
+        std::unordered_map<std::string, NameMLValMap> opt_state_tensors;
+        ORT_THROW_IF_ERROR(static_cast<TrainingSession*>(sess->GetSessionHandle())->GetOptimizerState(opt_state_tensors));
+        auto& data_transfer_manager = sess->GetSessionHandle()->GetDataTransferManager();
+        //convert to numpy array
+        std::map<std::string, std::map<std::string, py::object>> rmap;
+        for (auto& kv1 : opt_state_tensors) {
+          std::map<std::string, py::object> weight_tensor_map;
+          for (auto& kv2 : kv1.second) {
+            if (kv2.second.IsTensor()) {
+              py::object obj;
+              const Tensor& rtensor = kv2.second.Get<Tensor>();
+              GetPyObjFromTensor(rtensor, obj, &data_transfer_manager);
+              weight_tensor_map.insert({kv2.first, obj});
+            } else {
+              throw std::runtime_error("Non tensor type in session state tensors is not expected.");
+            }
+          }
+          rmap.insert({kv1.first, weight_tensor_map});
+        }
+        return rmap;
+      })
       .def("load_state", [](PyTrainingSession* sess, std::unordered_map<std::string, py::object>& state, bool strict) {
         NameMLValMap state_tensors;
         for (auto initializer : state) {

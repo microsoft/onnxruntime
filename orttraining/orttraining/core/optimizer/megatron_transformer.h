@@ -13,12 +13,14 @@ class MegatronTransformer : public GraphTransformer {
   MegatronTransformer(int32_t horizontal_parallel_rank, int32_t horizontal_parallel_size,
                       std::unordered_map<std::string, std::string>& updated_weight_names,
                       std::unordered_set<std::string>& weights_to_train,
+                      std::unordered_map<std::string, bool>& partition_by_row,
                       const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
       : GraphTransformer("MegatronTransformer", compatible_execution_providers),
         horizontal_parallel_rank_(horizontal_parallel_rank),
         horizontal_parallel_size_(horizontal_parallel_size),
         updated_weight_names_(updated_weight_names),
-        weights_to_train_(weights_to_train) {}
+        weights_to_train_(weights_to_train),
+        partition_by_row_(partition_by_row) {}
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level,
                    const logging::Logger& logger) const override;
@@ -55,6 +57,7 @@ class MegatronTransformer : public GraphTransformer {
   const int32_t horizontal_parallel_size_;
   std::unordered_map<std::string, std::string>& updated_weight_names_;
   std::unordered_set<std::string>& weights_to_train_;
+  std::unordered_map<std::string, bool>& partition_by_row_;
 };
 
 }  // namespace onnxruntime

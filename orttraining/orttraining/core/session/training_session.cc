@@ -262,7 +262,7 @@ Status TrainingSession::ConfigureForTraining(
   }
 
   ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(trainable_initializers, config.graph_transformer_config,
-                                                      config_result));
+                                                      config_result, partition_by_row_));
 
   std::cout << "trainable_initializers after transformation:" << std::endl;
   for (auto& kv : trainable_initializers) {
@@ -577,7 +577,8 @@ static Status AddGradientAccumulationNodes(Graph& graph,
 
 Status TrainingSession::ApplyTransformationsToMainGraph(std::unordered_set<std::string>& weights_to_train,
                                                         const TrainingConfiguration::GraphTransformerConfiguration& config,
-                                                        TrainingConfigurationResult& config_result_out) {
+                                                        TrainingConfigurationResult& config_result_out,
+                                                        std::unordered_map<std::string, bool>& partition_by_row) {
   GraphTransformerManager graph_transformation_mgr{2};
   // TODO: ideally we can just reuse the CPU EP registered with the session, but in the training session case
   // the EPs are registered after ConfigureForTraining and before Initialize is called. Hence we don't have access
@@ -586,7 +587,7 @@ Status TrainingSession::ApplyTransformationsToMainGraph(std::unordered_set<std::
   // Create execution frame for executing constant nodes.
   std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
       onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
-  AddPreTrainingTransformers(*cpu_execution_provider, graph_transformation_mgr, weights_to_train, config, config_result_out);
+  AddPreTrainingTransformers(*cpu_execution_provider, graph_transformation_mgr, weights_to_train, config, config_result_out, partition_by_row);
 
   // apply transformers
   Graph& graph = model_->MainGraph();
@@ -603,13 +604,14 @@ void TrainingSession::AddPreTrainingTransformers(const IExecutionProvider& execu
                                                  std::unordered_set<std::string>& weights_to_train,
                                                  const TrainingConfiguration::GraphTransformerConfiguration& config,
                                                  TrainingConfigurationResult& config_result_out,
+                                                 std::unordered_map<std::string, bool>& partition_by_row,
                                                  TransformerLevel graph_optimization_level,
                                                  const std::vector<std::string>& custom_list) {
   auto add_transformers = [&](TransformerLevel level) {
     // Generate and register transformers for level
 
     auto transformers_to_register = transformer_utils::GeneratePreTrainingTransformers(
-        level, weights_to_train, config, execution_provider, config_result_out.weight_name_map_after_graph_transform, custom_list);
+        level, weights_to_train, config, execution_provider, config_result_out.weight_name_map_after_graph_transform, partition_by_row, custom_list);
     for (auto& entry : transformers_to_register) {
       transformer_manager.Register(std::move(entry), level);
     }
@@ -951,6 +953,23 @@ common::Status TrainingSession::GetModelState(std::unordered_map<std::string, Na
     NameMLValMap mp_weights;
     GetSessionState().GetInitializedTensors(mp_tensor_names, allow_missing, mp_weights);
     model_state_tensors.emplace("mixed_precision", mp_weights);
+  }
+  return Status::OK();
+}
+
+// use dimension of fp32 weights
+common::Status TrainingSession::GetPartitionInfoMap(std::unordered_map<std::string, std::unordered_map<std::string, std::vector<int>>>& part_info_map) {
+  bool allow_missing = (opt_graph_config_.deepspeed_zero.stage != 0);
+  std::unordered_set<std::string> fp_tensor_names{};
+  fp_tensor_names.insert(
+      weights_to_train_.begin(), weights_to_train_.end());
+  NameMLValMap fp_weights;
+  GetSessionState().GetInitializedTensors(fp_tensor_names, allow_missing, fp_weights);
+  for (auto& kv : fp_weights) {
+    std::unordered_map<std::string, std::vector<int>> feeds;
+    //feeds.insert(std::make_pair("original_dim", kv.second.size()));
+    feeds.insert(std::make_pair("megatron_row_partition", std::vector<int>{partition_by_row_[kv.first]}));
+    part_info_map[kv.first] = feeds;
   }
   return Status::OK();
 }

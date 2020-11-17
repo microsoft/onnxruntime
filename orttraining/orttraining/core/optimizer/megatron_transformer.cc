@@ -177,6 +177,7 @@ bool MegatronTransformer::PartitionWeightByColumn(const Graph& graph, const Node
   }
 
   initializer_partition.set_raw_data(result.data(), element_count * sizeof(float));
+  partition_by_row_[new_initializer_name] = false;
   return true;
 }
 
@@ -233,6 +234,7 @@ bool MegatronTransformer::PartitionWeightByRow(const Graph& graph, const NodeArg
   const int64_t row_index_offset = horizontal_parallel_rank_ * row_partition;
   memcpy(result.data(), a_weight + row_index_offset * column_count, sizeof(float) * element_count);
   initializer_partition.set_raw_data(result.data(), element_count * sizeof(float));
+  partition_by_row_[new_initializer_name] = true;
   return true;
 }
 

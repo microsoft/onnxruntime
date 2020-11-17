@@ -317,7 +317,7 @@ class TrainingSession : public InferenceSession {
 
   common::Status GetModelState(std::unordered_map<std::string, NameMLValMap>& model_state_tensors, bool incl_mp_weights = false);
 
-  common::Status GetPartitionInfoMap(std::unordered_map<std::string, NameMLValMap>& part_info_map);
+  common::Status GetPartitionInfoMap(std::unordered_map<std::string, std::unordered_map<std::string, std::vector<int>>>& part_info_map);
 
   /** Gets the DataTransferManager instance. */
   const DataTransferManager& GetDataTransferManager() const;
@@ -418,7 +418,8 @@ class TrainingSession : public InferenceSession {
 
   common::Status ApplyTransformationsToMainGraph(std::unordered_set<std::string>& weights_to_train,
                                                  const TrainingConfiguration::GraphTransformerConfiguration& config,
-                                                 TrainingConfigurationResult& config_result_out);
+                                                 TrainingConfigurationResult& config_result_out, 
+                                                 std::unordered_map<std::string, bool>& partition_by_row);
 
   /** configure initial transformers for training */
   void AddPreTrainingTransformers(const IExecutionProvider& execution_provider,  // for constant folding
@@ -426,6 +427,7 @@ class TrainingSession : public InferenceSession {
                                   std::unordered_set<std::string>& weights_to_train,
                                   const TrainingConfiguration::GraphTransformerConfiguration& config,
                                   TrainingConfigurationResult& config_result_out,
+                                  std::unordered_map<std::string, bool>& partition_by_row,
                                   TransformerLevel graph_optimization_level = TransformerLevel::MaxLevel,
                                   const std::vector<std::string>& custom_list = {});
 
@@ -497,6 +499,7 @@ class TrainingSession : public InferenceSession {
   std::unordered_set<std::string> opt_state_initializer_names_;
   std::unordered_set<std::string> mixed_precision_weight_initializer_names_;
   std::unordered_map<std::string, std::vector<std::string>> weight_to_opt_mapping_;
+  std::unordered_map<std::string, bool> partition_by_row_;
 
   bool is_mixed_precision_enabled_;
   optional<std::string> external_loss_name_;
