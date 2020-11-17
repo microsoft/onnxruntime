@@ -12,4 +12,11 @@
   <ItemGroup>
     <PropertyPageSchema Include="$(MSBuildThisFileDirectory)\Microsoft.AI.MachineLearning.Rules.Project.xml"/>
   </ItemGroup>
+
+  <PropertyGroup Label="Globals">
+    <!-- Assume apps using the WinML package only want the DirectML binaries (no need for a build dependency). -->
+    <Microsoft_AI_DirectML_SkipDebugLayerCopy>true</Microsoft_AI_DirectML_SkipDebugLayerCopy>
+    <Microsoft_AI_DirectML_SkipLink>true</Microsoft_AI_DirectML_SkipLink>
+    <Microsoft_AI_DirectML_SkipIncludeDir>true</Microsoft_AI_DirectML_SkipIncludeDir>
+  </PropertyGroup>
 </Project>
