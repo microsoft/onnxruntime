@@ -2,10 +2,9 @@
 // Licensed under the MIT License.
 
 #include "OnnxPrediction.h"
-#include <vector>
+#include "onnxruntime_session_options_config_keys.h"
 
-static const char* const kOrtSessionOptionsConfigLoadModelFormat = "session.load_model_format";
-static const char* const kOrtSessionOptionsConfigSaveModelFormat = "session.save_model_format";
+#include <vector>
 
 // Uses the onnxruntime to load the model
 // into a session.
