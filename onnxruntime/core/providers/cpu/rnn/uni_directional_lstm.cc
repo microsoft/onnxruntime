@@ -274,7 +274,7 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
   const span_T_iter C_prev_clipped_end = batched_internal_state_clipped_one_step.end();
 
   int num_seq_to_compute = batch_size_;
-  if (batch_parallel_ && input_weights.quant_para_ == nullptr) {
+  if (batch_parallel_) {
     num_seq_to_compute = batch_size_ / num_threads_;
     if (batch_size_ % num_threads_ != 0)
       num_seq_to_compute++;
@@ -359,7 +359,7 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
     }
   };
 
-  if (batch_parallel_ && input_weights.quant_para_ == nullptr) {
+  if (batch_parallel_) {
     double gemm_cost = num_seq_to_compute * hidden_size_x4 * hidden_size_;
     double cost = max_sequence_length * (gemm_cost + num_seq_to_compute);
     ExecuteLambdaInParallel(sequences_calculator, batch_size_, num_seq_to_compute, cost, thread_pool_);

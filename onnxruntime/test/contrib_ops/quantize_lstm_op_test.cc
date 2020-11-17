@@ -351,15 +351,15 @@ static void RunQuantLSTM(int64_t input_size,
 }
 
 TEST(DynamicQuantLSTMTest, SmallSize) {
-  RunQuantLSTM<int8_t>(2, 3, 2);
-  RunQuantLSTM<int8_t>(2, 3, 2, true /*per_channel*/);
-  RunQuantLSTM<uint8_t>(2, 3, 2);
+  RunQuantLSTM<int8_t>(2, 1, 16);
+  RunQuantLSTM<int8_t>(2, 1, 16, true /*per_channel*/);
+  RunQuantLSTM<uint8_t>(2, 1, 16);
 }
 
 TEST(DynamicQuantLSTMTest, LargeSize) {
-  RunQuantLSTM<int8_t>(12, 3, 18);
-  RunQuantLSTM<int8_t>(12, 3, 18, true /*per_channel*/);
-  RunQuantLSTM<uint8_t>(12, 3, 18);
+  RunQuantLSTM<int8_t>(12, 3, 278);
+  RunQuantLSTM<int8_t>(12, 3, 278, true /*per_channel*/);
+  RunQuantLSTM<uint8_t>(12, 3, 278);
 }
 
 }  // namespace test
