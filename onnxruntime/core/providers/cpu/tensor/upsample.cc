@@ -9,26 +9,23 @@ using namespace onnxruntime::common;
 using namespace std;
 namespace onnxruntime {
 
-ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
-    Upsample,
-    7, 9,
-    float,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Upsample<float>);
+#define REGISTER_VERSIONED_TYPED_KERNEL(T, start, end)                          \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                     \
+      Upsample,                                                                 \
+      start,                                                                    \
+      end,                                                                      \
+      T,                                                                        \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Upsample<T>)
 
-ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
-    Upsample,
-    7, 9,
-    int32_t,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>()),
-    Upsample<int32_t>);
+REGISTER_VERSIONED_TYPED_KERNEL(float, 7, 8);
+REGISTER_VERSIONED_TYPED_KERNEL(int32_t, 7, 8);
+REGISTER_VERSIONED_TYPED_KERNEL(uint8_t, 7, 8);
 
-ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
-    Upsample,
-    7, 9,
-    uint8_t,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<uint8_t>()),
-    Upsample<uint8_t>);
+// Upsample was deprecated in opset 10
+REGISTER_VERSIONED_TYPED_KERNEL(float, 9, 9);
+REGISTER_VERSIONED_TYPED_KERNEL(int32_t, 9, 9);
+REGISTER_VERSIONED_TYPED_KERNEL(uint8_t, 9, 9);
 
 template <typename T>
 void UpsampleNearest2x(int64_t batch_size,
