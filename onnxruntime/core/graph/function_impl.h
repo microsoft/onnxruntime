@@ -31,13 +31,29 @@ class FunctionImpl final : public Function {
 
   const onnxruntime::Graph& Body() const override;
 
-  const ONNX_NAMESPACE::FunctionProto* GetFuncProto() const;
-
  private:
   const onnxruntime::Graph* const parent_graph_;
   std::unique_ptr<ONNX_NAMESPACE::OpSchema> op_schema_;
   onnxruntime::Model body_;
   ONNX_NAMESPACE::FunctionProto onnx_func_proto_;
+};
+
+// Function that uses a GraphViewer so does not need to build a new Model. We still need the OpSchema to be available
+// though so we just create that.
+class ViewerFunctionImpl final : public Function {
+ public:
+  ViewerFunctionImpl(const onnxruntime::Graph& graph,
+                     const IndexedSubGraph& nodes_to_fuse,
+                     const logging::Logger& logger);
+
+  ~ViewerFunctionImpl() override;
+
+  const ONNX_NAMESPACE::OpSchema& OpSchema() const override { return *op_schema_; }
+
+  const onnxruntime::Graph& Body() const override { ORT_THROW("Not supported"); }
+
+ private:
+  std::unique_ptr<ONNX_NAMESPACE::OpSchema> op_schema_;
 };
 
 }  // namespace onnxruntime

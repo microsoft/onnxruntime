@@ -28,21 +28,21 @@ class ValidNodes {
   Construct a ValidNodes instance to provide iteration over all valid nodes in the TNodesCollection
   @param[in] nodes Nodes to iterate, skipping invalid entries.
   */
-  explicit ValidNodes(TNodesContainer& nodes) noexcept : nodes_(nodes) {}
+  explicit ValidNodes(TNodesContainer& nodes) noexcept : nodes_(&nodes) {}
 
   explicit ValidNodes(TNodesContainer& nodes, NodeFilterFunc&& filter_node_fn) noexcept
-      : nodes_(nodes), filter_node_fn_{std::move(filter_node_fn)} {}
+      : nodes_(&nodes), filter_node_fn_{std::move(filter_node_fn)} {}
 
   using ConstNodeIterator = NodeIterator<typename TNodesContainer::const_iterator>;
   using MutableNodeIterator = NodeIterator<typename TNodesContainer::iterator>;
   using ConstReverseNodeIterator = NodeIterator<typename TNodesContainer::const_reverse_iterator>;
 
   ConstNodeIterator cbegin() const noexcept {
-    return {nodes_.cbegin(), nodes_.cend(), filter_node_fn_};
+    return {nodes_->cbegin(), nodes_->cend(), filter_node_fn_};
   }
 
   ConstNodeIterator cend() const noexcept {
-    return {nodes_.cend(), nodes_.cend(), filter_node_fn_};
+    return {nodes_->cend(), nodes_->cend(), filter_node_fn_};
   }
 
   ConstNodeIterator begin() const noexcept {
@@ -54,11 +54,11 @@ class ValidNodes {
   }
 
   ConstReverseNodeIterator rbegin() const noexcept {
-    return {nodes_.crbegin(), nodes_.crend(), filter_node_fn_};
+    return {nodes_->crbegin(), nodes_->crend(), filter_node_fn_};
   }
 
   ConstReverseNodeIterator rend() const noexcept {
-    return {nodes_.crend(), nodes_.crend(), filter_node_fn_};
+    return {nodes_->crend(), nodes_->crend(), filter_node_fn_};
   }
 
   // we only allow mutable access if the container is non-const.
@@ -66,16 +66,16 @@ class ValidNodes {
   template <typename T2 = TNodesContainer>
   typename std::enable_if<!std::is_const<T2>::value, MutableNodeIterator>::type begin() noexcept {
     static_assert(std::is_same<T2, TNodesContainer>::value, "Explicit specialization is not allowed");
-    return MutableNodeIterator(nodes_.begin(), nodes_.end(), filter_node_fn_);
+    return MutableNodeIterator(nodes_->begin(), nodes_->end(), filter_node_fn_);
   }
 
   template <typename T2 = TNodesContainer>
   typename std::enable_if<!std::is_const<T2>::value, MutableNodeIterator>::type end() noexcept {
     static_assert(std::is_same<T2, TNodesContainer>::value, "Explicit specialization is not allowed");
-    return MutableNodeIterator(nodes_.end(), nodes_.end(), filter_node_fn_);
+    return MutableNodeIterator(nodes_->end(), nodes_->end(), filter_node_fn_);
   }
 
-  bool empty() const noexcept { return nodes_.empty(); }
+  bool empty() const noexcept { return nodes_->empty(); }
 
   /**
   @class NodeIterator
@@ -152,7 +152,7 @@ class ValidNodes {
   };
 
  private:
-  TNodesContainer& nodes_;
+  gsl::not_null<TNodesContainer*> nodes_;  // always set by ctor
 
   // no filtering if not set. this instance owns the filter func if set.
   NodeFilterFunc filter_node_fn_;
