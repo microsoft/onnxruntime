@@ -139,7 +139,7 @@ Status DynamicQuantizeLSTM::Compute(OpKernelContext* context) const {
   WeightCheck(W_scale_shape, R_scale);
 
   const bool is_W_signed = (W != nullptr) ? W->IsDataType<int8_t>() : is_W_signed_;
-  const bool is_R_signed = (W != nullptr) ? R->IsDataType<int8_t>() : is_R_signed_;
+  const bool is_R_signed = (R != nullptr) ? R->IsDataType<int8_t>() : is_R_signed_;
 
   ZeroPointCheck(w_zp, W_zp_shape, is_W_signed, Input);
   ZeroPointCheck(r_zp, R_zp_shape, is_R_signed, Recurrent);
