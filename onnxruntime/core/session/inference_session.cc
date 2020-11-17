@@ -1203,9 +1203,6 @@ common::Status InferenceSession::Initialize() {
 #endif
     }
 
-    // need to keep the initializers if we're going to save the optimized model
-    bool keep_initializers = !session_options_.optimized_model_filepath.empty();
-
     const experimental::fbs::SessionState* serialized_session_state =
         loading_ort_format
             ? fbs::GetInferenceSession(ort_format_model_bytes_.data())->session_state()
