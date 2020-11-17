@@ -110,6 +110,7 @@ target_link_libraries(onnxruntime PRIVATE
     ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
     ${PROVIDERS_ARMNN}
+    ${PROVIDERS_INTERNAL_TESTING}
     ${onnxruntime_winml}
     ${PROVIDERS_ROCM}
     onnxruntime_optimizer

@@ -21,5 +21,9 @@ std::unique_ptr<IExecutionProvider> DefaultAclExecutionProvider(bool enable_aren
 std::unique_ptr<IExecutionProvider> DefaultArmNNExecutionProvider(bool enable_arena = true);
 std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider();
 
+// EP for internal testing
+std::unique_ptr<IExecutionProvider> DefaultInternalTestingExecutionProvider(
+    const std::unordered_set<std::string>& supported_ops);
+
 }  // namespace test
 }  // namespace onnxruntime
