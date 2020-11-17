@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 #include "pch.h"
 
-#include "DataBufferContainer.h"
+#include "impl/NumericData.h"
 #include "VectorBackedBuffer.h"
 #include "robuffer.h"
 #include "winrt/Windows.Storage.Streams.h"
@@ -10,14 +10,15 @@
 
 namespace _winml {
 
-std::shared_ptr<data_buffer_container> data_buffer_container::create(
+std::shared_ptr<_winml::idata> numeric_data::create(
   size_t num_elements,
   size_t element_size_in_bytes,
   wfc::IIterable<wss::IBuffer> const& buffers) {
-  return std::make_shared<data_buffer_container>(num_elements, element_size_in_bytes, buffers));
+  auto container = std::make_shared<numeric_data>(num_elements, element_size_in_bytes, buffers);
+  return std::static_pointer_cast<_winml::idata>(container);
 }
 
-data_buffer_container::data_buffer_container(
+numeric_data::numeric_data(
   size_t num_elements, size_t element_size_in_bytes, wfc::IIterable<wss::IBuffer> const& buffers) :
   num_elements_(num_elements),
   element_size_in_bytes_(element_size_in_bytes),
@@ -47,23 +48,23 @@ data_buffer_container::data_buffer_container(
   }
 }
 
-size_t data_buffer_container::num_elements() {
+size_t numeric_data::num_elements() {
   return num_elements_;
 }
 
-size_t data_buffer_container::size_in_bytes() {
+size_t numeric_data::size_in_bytes() {
   return num_elements_ * element_size_in_bytes_;
 }
 
-size_t data_buffer_container::num_buffers() {
+size_t numeric_data::num_buffers() {
   return buffers_.size();
 }
 
-std::vector<wss::IBuffer>& data_buffer_container::buffers() {
+std::vector<wss::IBuffer>& numeric_data::buffers() {
   return buffers_;
 }
 
-gsl::span<byte> data_buffer_container::buffer(bool should_sync_buffer) {
+gsl::span<byte> numeric_data::buffer(bool should_sync_buffer) {
   if (buffers_.size() == 1) {
     // Single buffer optimization to not create a temporary buffer that concatenates disjoint buffers into one.
     return buffer_at(0);
@@ -79,11 +80,11 @@ gsl::span<byte> data_buffer_container::buffer(bool should_sync_buffer) {
   return span;
 }
 
-bool data_buffer_container::flush() {
+bool numeric_data::flush() {
   auto should_flush = buffers_.size() != 1;
   if (should_flush) {
     auto span = combined_buffer();
-    _winml::LoadSpanFromDisjointBuffers(
+    _winml::StoreSpanIntoDisjointBuffers(
         buffers_.size(),
         [this](size_t i) { return buffer_at(i); },
         span);
@@ -91,16 +92,16 @@ bool data_buffer_container::flush() {
   return should_flush;
 }
 
-void data_buffer_container::set(size_t size_in_bytes, const T* data) {
+void numeric_data::set(size_t data_size, const byte* data) {
   WINML_THROW_HR_IF_FALSE_MSG(
       E_INVALIDARG,
-      size_in_bytes <= (num_elements_ * element_size_in_bytes_),
+      data_size <= (num_elements_ * element_size_in_bytes_),
       "Argument size (%llu) exceeds the tensor size (%llu).",
-      static_cast<uint64_t>(size_in_bytes),
+      static_cast<uint64_t>(data_size),
       static_cast<uint64_t>(num_elements_ * element_size_in_bytes_));
   
-  gsl::span<byte> span(reinterpret_cast<byte*>(const_cast<T*>(data)), size_in_bytes);
-  _winml::LoadSpanFromDisjointBuffers(
+  gsl::span<byte> span(const_cast<byte*>(data), data_size);
+  _winml::StoreSpanIntoDisjointBuffers(
     buffers_.size(),
     [this](size_t i) { return buffer_at(i); },
     span);
@@ -115,11 +116,11 @@ static gsl::span<byte> get_span_from_ibuffer(wss::IBuffer buffer) {
       static_cast<size_t>(buffer.Capacity()));
 }
 
-gsl::span<byte> data_buffer_container::buffer_at(size_t index) {
+gsl::span<byte> numeric_data::buffer_at(size_t index) {
   return get_span_from_ibuffer(buffers_[index]);
 }
 
-gsl::span<byte> data_buffer_container::combined_buffer() {
+gsl::span<byte> numeric_data::combined_buffer() {
   if (combined_buffer_ == nullptr) {
     combined_buffer_ = winrt::make<vector_backed_buffer>(num_elements_ * element_size_in_bytes_);
   }
