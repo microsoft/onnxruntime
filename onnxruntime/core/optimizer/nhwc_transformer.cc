@@ -134,7 +134,7 @@ void NhwcTransformerImpl::TransformQLinearConv(Node& node) {
   // with Transpose nodes and use the NCHW variant that does this internally.
   auto* nhwc_input = LookupNhwcArgument(input_defs[0]);
   if (nhwc_input == nullptr) {
-    if (node.GetOutputEdgesCount() == 1) {
+    if (optimizer_utils::CheckOutputEdges(graph_, node, 1)) {
       const auto& next_node = *node.OutputNodesBegin();
       if (graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "DequantizeLinear", {10, 13})) {
         return;
