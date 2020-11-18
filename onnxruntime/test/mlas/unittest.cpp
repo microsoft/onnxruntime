@@ -3147,5 +3147,5 @@ TEST(ScaleOutput, Short) {
 
 // TODO, split more test cases into detailed small tests and seperate in different file.
 TEST(QLinearGlobalAveragePool, Short) {
-  onnxruntime::make_unique<MlasQLinearGlobalAveragePoolU8Test>()->ExecuteShort();
+    onnxruntime::make_unique<MlasQLinearGlobalAveragePoolU8Test>()->ExecuteShort();
 }
