@@ -9,13 +9,23 @@
 #include <deque>
 
 namespace onnxruntime {
+
+namespace {
+bool IsOpType(const Node& node, const std::unordered_set<std::string>& op_types) {
+  return op_types.count(node.OpType()) > 0;
+}
+
+}  // namespace
+
 Status TransformerLayerRecompute::IdentifyTransformerLayerEdges(
     const Graph& graph,
     std::vector<std::pair<const NodeArg*, const NodeArg*>>& start_end_edges,
     const logging::Logger& logger) const {
   const std::unordered_set<std::string> gelu_ops{"Gelu", "BiasGelu", "FastGelu"};
   const std::unordered_set<std::string> dropout_ops{"Dropout", "BiasDropout"};
-  const std::unordered_set<std::string> layernorm_ops{"LayerNormalization", "SkipLayerNormalization"};
+  const std::unordered_set<std::string> layernorm_ops{"LayerNormalization", "SkipLayerNormalization", "SimplifiedLayerNormalization"};
+  const std::unordered_set<std::string> matmul_ops{"MatMul", "FusedMatMul", "TransposeMatMul"};
+  const std::unordered_set<std::string> transpose_ops{"Transpose"};
 
   std::vector<const NodeArg*> layer_start_edges, layer_end_edges;
   GraphViewer graph_viewer(graph);
@@ -23,28 +33,55 @@ Status TransformerLayerRecompute::IdentifyTransformerLayerEdges(
   for (auto node_index : node_topology_list) {
     auto& node = *graph.GetNode(node_index);
 
-    // Look for start of a transformer layer
-    if ((layernorm_ops.find(node.OpType()) != layernorm_ops.end() ||
-         dropout_ops.find(node.OpType()) != dropout_ops.end()) &&
+    /*
+    Look for start of a transformer layer
+          [LayerNorm|Dropout|Transpose]
+         /       |         |           \       <----- Start of the transformer layer
+       (.)    MatMul    MatMul       MatMul
+    */
+    if ((IsOpType(node, layernorm_ops) || IsOpType(node, dropout_ops) || IsOpType(node, transpose_ops)) &&
         node.GetOutputEdgesCount() == 4) {
-      layer_start_edges.push_back(node.OutputDefs()[0]);
+      int matmul_count = 0;
+      for (auto next_node = node.OutputNodesBegin(); next_node != node.OutputNodesEnd(); ++next_node) {
+        if (IsOpType(*next_node, matmul_ops)) {
+          matmul_count++;
+        }
+      }
+
+      // Three following MatMul nodes for QKV projection
+      if (matmul_count == 3) {
+        layer_start_edges.push_back(node.OutputDefs()[0]);
+      }
     }
 
     // Look for end of a transformer layer
-    if (gelu_ops.find(node.OpType()) != gelu_ops.end()) {
+    // Pattern:  Gelu -> (.*) -> MatMul -> (.*) -> Dropout -> (.*) -> LayerNorm
+    // The output of LayerNorm is the end of a transformer layer
+    if (IsOpType(node, gelu_ops)) {
       auto next_node = node.OutputNodesBegin();
 
+      if (next_node == node.OutputNodesEnd()) {
+        continue;
+      }
+
       while (next_node->OutputNodesBegin() != next_node->OutputNodesEnd() &&
-             dropout_ops.find(next_node->OpType()) == dropout_ops.end()) {
+             !IsOpType(*next_node, matmul_ops)) {
         next_node = next_node->OutputNodesBegin();
       }
 
       while (next_node->OutputNodesBegin() != next_node->OutputNodesEnd() &&
-             layernorm_ops.find(next_node->OpType()) == layernorm_ops.end()) {
+             !IsOpType(*next_node, dropout_ops)) {
         next_node = next_node->OutputNodesBegin();
       }
 
-      if (layernorm_ops.find(next_node->OpType()) != layernorm_ops.end()) {
+      while (next_node->OutputNodesBegin() != next_node->OutputNodesEnd() &&
+             !IsOpType(*next_node, layernorm_ops)) {
+        next_node = next_node->OutputNodesBegin();
+      }
+
+      if (next_node->OutputNodesBegin() == next_node->OutputNodesEnd()) {
+        continue;
+      } else if (IsOpType(*next_node, layernorm_ops)) {
         layer_end_edges.push_back(next_node->OutputDefs()[0]);
       }
     }
@@ -179,7 +216,7 @@ Status TransformerLayerRecompute::ApplyImpl(Graph& graph, bool& modified, int /*
   // otherwise, take user specified 'number_recompute_layers_'
 
   int n_layers;
-  const int n_layers_limit = static_cast<int>(start_end_edges.size() - 1); 
+  const int n_layers_limit = static_cast<int>(start_end_edges.size() - 1);
   if (number_recompute_layers_ > n_layers_limit) {
     LOGS(logger, WARNING) << "User specified number_recompute_layers " << number_recompute_layers_
                           << " is larger than limit " << n_layers_limit << "."
