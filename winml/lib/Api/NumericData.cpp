@@ -14,8 +14,7 @@ std::shared_ptr<_winml::idata> numeric_data::create(
   size_t num_elements,
   size_t element_size_in_bytes,
   wfc::IIterable<wss::IBuffer> const& buffers) {
-  auto container = std::make_shared<numeric_data>(num_elements, element_size_in_bytes, buffers);
-  return std::static_pointer_cast<_winml::idata>(container);
+  return std::make_shared<numeric_data>(num_elements, element_size_in_bytes, buffers);
 }
 
 numeric_data::numeric_data(

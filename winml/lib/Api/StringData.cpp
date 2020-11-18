@@ -11,8 +11,7 @@ string_data::string_data(size_t size) :
     buffer_(size) {}
 
 std::shared_ptr<_winml::idata> string_data::create(size_t size) {
-  auto container = std::make_shared<string_data>(size);
-  return std::static_pointer_cast<_winml::idata>(container);
+  return std::make_shared<string_data>(size);
 }
 
 size_t string_data::num_elements() {
