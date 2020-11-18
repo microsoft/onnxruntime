@@ -1,4 +1,37 @@
 import math
+import os
+import sys
+import subprocess
+
+def is_windows():
+    return sys.platform.startswith("win")
+
+def run_subprocess(args, cwd=None, capture=False, dll_path=None,
+                   shell=False, env={}, log=None):
+    if log:
+        log.info("Running subprocess in '{0}'\n{1}".format(
+            cwd or os.getcwd(), args))
+    my_env = os.environ.copy()
+    if dll_path:
+        if is_windows():
+            my_env["PATH"] = dll_path + os.pathsep + my_env["PATH"]
+        else:
+            if "LD_LIBRARY_PATH" in my_env:
+                my_env["LD_LIBRARY_PATH"] += os.pathsep + dll_path
+            else:
+                my_env["LD_LIBRARY_PATH"] = dll_path
+
+    stdout, stderr = (subprocess.PIPE, subprocess.STDOUT) if capture else (
+        None, None)
+    my_env.update(env)
+    completed_process = subprocess.run(
+        args, cwd=cwd, check=True, stdout=stdout, stderr=stderr,
+        env=my_env, shell=shell)
+    
+    if log:
+        log.debug("Subprocess completed. Return code=" +
+                str(completed_process.returncode))
+    return completed_process
 
 
 def legacy_constant_lr_scheduler(global_step, initial_lr, total_steps, warmup):

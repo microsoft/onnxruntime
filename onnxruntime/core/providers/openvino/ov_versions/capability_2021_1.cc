@@ -208,6 +208,35 @@ bool IsOpSupported(std::string name, std::string device) {
         supported_ops.insert(supported_ops_cpu.begin(), supported_ops_cpu.end());
      }
     }
+  } else if (device.find("MULTI") == 0) {
+    std::vector<std::string> devices;
+    std::stringstream s_stream(device);
+    while(s_stream.good()) {
+      std::string substr;
+      getline(s_stream, substr, ',');
+      devices.push_back(substr);
+    }
+    if (!common_supported_ops.count(name) == 0) {
+      return true;
+    }
+    for (auto& it : devices) {
+      if(it == "MYRIAD" || "HDDL") {
+        if (supported_ops_vpu.count(name) == 0)  {
+          return false;
+        }
+      }
+      if(it == "GPU") {
+       if (supported_ops_gpu.count(name) == 0)  {
+          return false;
+        }
+      }
+      if(it == "CPU") {
+        if (supported_ops_cpu.count(name) == 0)  {
+          return false;
+        }
+     }
+    }
+    return true;
   }
   return supported_ops.find(name) != supported_ops.end();
 }

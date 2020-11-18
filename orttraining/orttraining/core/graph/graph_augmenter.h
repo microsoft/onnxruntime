@@ -18,12 +18,14 @@ struct ArgDef {
   ArgDef() : name(""), type_proto(nullptr) {}
   ArgDef(std::string name, const TypeProto* type = nullptr) : name(name), type_proto(type) {}
 
-  std::string name;
-  const TypeProto* type_proto;
-
   bool operator==(const ArgDef& other) const {
     return name == other.name;
   }
+
+  bool Exists() { return !name.empty(); }
+
+  std::string name;
+  const TypeProto* type_proto;
 };
 
 struct OpDef {
@@ -102,7 +104,7 @@ struct NodeDef {
   NodeAttributes attributes;
   std::string name;
   int priority;
-}; 
+};
 
 /** GraphAugmenter is a stateless class to add new elements into a Graph.
     The elements to be added could be:

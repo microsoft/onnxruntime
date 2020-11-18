@@ -8,6 +8,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/graph/model.h"
 #include "test/test_environment.h"
 #include "test_utils.h"
@@ -237,7 +238,6 @@ static void DumpOrtModelAsJson(const std::string& model_uri) {
 }
 */
 
-
 TEST(OrtModelOnlyTests, SerializeToOrtFormat) {
   const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("ort_github_issue_4031.onnx.ort");
   SaveAndCompareModels("testdata/ort_github_issue_4031.onnx", ort_file);
@@ -267,7 +267,7 @@ TEST(OrtModelOnlyTests, SerializeToOrtFormat) {
 
 TEST(OrtModelOnlyTests, SparseInitializerHandling) {
   const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("sparse_initializer_handling.onnx.ort");
-  SaveAndCompareModels("testdata/sparse_initializer_handling.onnx", ort_file);
+  SaveAndCompareModels("testdata/ort_minimal_test_models/sparse_initializer_handling.onnx", ort_file);
 
   SessionOptions so;
   so.session_logid = "LoadOrtFormat";

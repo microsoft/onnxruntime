@@ -4,6 +4,7 @@
 #include <core/common/make_unique.h>
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/graph/constants.h"
 #include "providers.h"
 #include <memory>
@@ -222,6 +223,8 @@ struct OrtTensorDimensions : std::vector<int64_t> {
 template <typename T, size_t N>
 constexpr size_t countof(T (&)[N]) { return N; }
 
+void cuda_add(int64_t, float*, const float*, const float*);
+
 struct MyCustomKernel {
   MyCustomKernel(Ort::CustomOpApi ort, const OrtKernelInfo* /*info*/) : ort_(ort) {
   }
@@ -243,9 +246,13 @@ struct MyCustomKernel {
     ort_.ReleaseTensorTypeAndShapeInfo(output_info);
 
     // Do computation
+#ifdef USE_CUDA
+    cuda_add(size, out, X, Y); 
+#else
     for (int64_t i = 0; i < size; i++) {
       out[i] = X[i] + Y[i];
     }
+#endif
   }
 
  private:
@@ -292,15 +299,7 @@ TEST(CApiTest, custom_op_handler) {
   custom_op_domain.Add(&custom_op);
 
 #ifdef USE_CUDA
-  // The custom op kernel has a Compute() method that doesn't really use CUDA and can't be used as is
-  // because it uses the contents of the inputs and writes to the output of the node
-  // (not possible as is because they are on the device).
-  // For the purpose of this exercise, it is not really needed to have a Compute() method that uses CUDA.
-  // We only need to verify if model load succeeds == session creation succeeds == the node is assigned to the CUDA EP.
-  // It is enough to test for successful session creation because if the custom node wasn't assigned an EP,
-  // the session creation would fail. Since the custom node is only tied to the CUDA EP (in CUDA-enabled builds),
-  // if the session creation succeeds, it is assumed that the node got assigned to the CUDA EP.
-  TestInference<PATH_TYPE, float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1, custom_op_domain, nullptr, nullptr, true);
+  TestInference<PATH_TYPE, float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1, custom_op_domain, nullptr, nullptr);
 #else
   TestInference<PATH_TYPE, float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, custom_op_domain, nullptr);
 #endif
@@ -476,13 +475,13 @@ TEST(ReducedOpsBuildTest, test_excluded_ops) {
   // In reduce-ops build, test a model containing
   // ops not referred by reduced_ops_via_config.config
   constexpr PATH_TYPE model_uri = TSTR("testdata/reduced_ops_via_config.onnx_model_with_excluded_ops");
-  std::vector<Input> inputs = {{"X", {3}, {-1.0f, 2.0f, -3.0f}},
-                               {"Y", {3}, {-1.0f, 2.0f, -3.0f}}};
-  std::vector<int64_t> expected_dims_z = {3};
-  std::vector<float> expected_values_z = {0.1f, 0.1f, 0.1f};
+  std::vector<Input> inputs = {{"X", {3}, {-1.0f, 2.0f, -3.0f}}};
+  std::vector<int64_t> expected_dims_y = {3};
+  std::vector<float> expected_values_y = {0.1f, 0.1f, 0.1f};
   bool failed = false;
   try {
-    TestInference<PATH_TYPE, float>(*ort_env, model_uri, inputs, "Z", expected_dims_z, expected_values_z, 0, nullptr, nullptr);
+    //only test model loading, exception expected
+    TestInference<PATH_TYPE, float>(*ort_env, model_uri, inputs, "Y", expected_dims_y, expected_values_y, 0, nullptr, nullptr, nullptr, true);
   } catch (const Ort::Exception& e) {
     failed = e.GetOrtErrorCode() == ORT_NOT_IMPLEMENTED;
   }
@@ -794,10 +793,10 @@ TEST(CApiTest, create_tensor_with_data_float16) {
   // Example with C++. However, what we are feeding underneath is really
   // a continuous buffer of uint16_t
   // Use 3rd party libraries such as Eigen to convert floats and doubles to float16 types.
-  Ort::Float16_t values[] = { 15360, 16384, 16896, 17408, 17664}; // 1.f, 2.f, 3.f, 4.f, 5.f
+  Ort::Float16_t values[] = {15360, 16384, 16896, 17408, 17664};  // 1.f, 2.f, 3.f, 4.f, 5.f
   constexpr size_t values_length = sizeof(values) / sizeof(values[0]);
 
-  std::vector<int64_t> dims = {values_length};
+  std::vector<int64_t> dims = {static_cast<int64_t>(values_length)};
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
 
   Ort::Value tensor = Ort::Value::CreateTensor<Ort::Float16_t>(info, values, values_length, dims.data(), dims.size());
@@ -817,9 +816,9 @@ TEST(CApiTest, create_tensor_with_data_bfloat16) {
   // Example with C++. However, what we are feeding underneath is really
   // a continuous buffer of uint16_t
   // Conversion from float to bfloat16 is simple. Strip off half of the bytes from float.
-  Ort::BFloat16_t values[] =  {16256, 16384, 16448, 16512, 16544}; // 1.f, 2.f, 3.f, 4.f, 5.f
+  Ort::BFloat16_t values[] = {16256, 16384, 16448, 16512, 16544};  // 1.f, 2.f, 3.f, 4.f, 5.f
   constexpr size_t values_length = sizeof(values) / sizeof(values[0]);
-  std::vector<int64_t> dims = {values_length};
+  std::vector<int64_t> dims = {static_cast<int64_t>(values_length)};
 
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
 
@@ -839,7 +838,7 @@ TEST(CApiTest, create_tensor_with_data_bfloat16) {
 TEST(CApiTest, access_tensor_data_elements) {
   /**
    * Create a 2x3 data blob that looks like:
-   *  
+   *
    *  0 1 2
    *  3 4 5
    */

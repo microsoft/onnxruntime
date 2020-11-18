@@ -24,7 +24,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     Reshape);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
-    Reshape_1,
+    Reshape,
     1,
     4,
     KernelDefBuilder()
