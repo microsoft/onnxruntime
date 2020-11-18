@@ -772,7 +772,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO, _In
 }
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_OpenVINO, _In_ OrtSessionOptions* options, _In_ const char* device_type) {
-  OrtOpenVINOProviderOptions provider_options{device_type, false, "", 0};
+  OrtOpenVINOProviderOptions provider_options;
+  provider_options.device_type = device_type;
   auto factory = onnxruntime::CreateExecutionProviderFactory_OpenVINO(&provider_options);
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_OpenVINO: Failed to load shared library");

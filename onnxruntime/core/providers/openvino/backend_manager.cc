@@ -16,6 +16,7 @@ namespace openvino_ep {
 static std::unique_ptr<GlobalContext> g_global_context;
 
 GlobalContext& BackendManager::GetGlobalContext() {
+  // This is not thread safe to call for the first time, but it is first called on the main thread by the constructor so it is safe.
   if (!g_global_context)
     g_global_context = std::make_unique<GlobalContext>();
   return *g_global_context;

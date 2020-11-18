@@ -63,7 +63,7 @@ std::unique_ptr<IExecutionProvider> DefaultMIGraphXExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider() {
 #ifdef USE_OPENVINO
-  OrtOpenVINOProviderOptions params{"", false, "", 8};
+  OrtOpenVINOProviderOptions params;
   return CreateExecutionProviderFactory_OpenVINO(&params)->CreateProvider();
 #else
   return nullptr;
