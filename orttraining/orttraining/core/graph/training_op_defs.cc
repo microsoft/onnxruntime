@@ -1843,7 +1843,11 @@ Example 4:
           "The output scalar. Its value is true if all input "
           "tensors are finite. Otherwise, the output value would "
           "be false.",
-          "T");
+          "T")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        updateOutputShape(ctx, 0, {});
+        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
+      });
 
   static const char* All_doc = R"DOC(
 Return true if all elements are true and false otherwise.
