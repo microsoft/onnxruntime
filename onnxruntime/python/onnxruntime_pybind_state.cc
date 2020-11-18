@@ -842,7 +842,7 @@ void addGlobalMethods(py::module& m, const Environment& env) {
       "Disables platform-specific telemetry collection.");
   m.def(
       "create_and_register_allocator", [&env](const OrtMemoryInfo& mem_info, const OrtArenaCfg& arena_cfg) -> void {
-        //TODO: Remove the const qualifier for the environment instance in the function parameter ?
+        // TODO: Remove the const qualifier for the environment instance in the function parameter ?
         // It strictly needn't be const and would save the casting away the const in this method
         // CreateAndRegisterAlloctor() method mutates the environment and is hence a non-const method
         auto st = const_cast<Environment&>(env).CreateAndRegisterAlloctor(mem_info, &arena_cfg);
@@ -1123,7 +1123,7 @@ void addObjectMethods(py::module& m, Environment& env) {
       .def_static("cuda", []() { return OrtDevice::GPU; })
       .def_static("default_memory", []() { return OrtDevice::MemType::DEFAULT; });
 
-  // See ONNX_Runtime_Perf_Tuning.md for details on what these mean and how to choose these values
+  // See docs/C_API.md for details on what the following parameters mean and how to choose these values
   py::class_<OrtArenaCfg> ort_arena_cfg_binding(m, "OrtArenaCfg");
   // There is a global var: arena_extend_strategy, which means we can't use that var name here
   ort_arena_cfg_binding.def(py::init([](size_t max_mem, int arena_extend_strategy_local,

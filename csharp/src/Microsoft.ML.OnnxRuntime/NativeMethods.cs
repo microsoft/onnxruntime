@@ -720,11 +720,13 @@ namespace Microsoft.ML.OnnxRuntime
 
         /// <summary>
         /// Create an instance of arena configuration which will be used to create an arena based allocator
+        /// See docs/C_API.md for details on what the following parameters mean and how to choose these values
         /// </summary>
-        /// <param name="maxMemory">TODO</param>
-        /// <param name="arenaExtendStrategy">TODO</param>
-        /// <param name="initialChunkSizeBytes">TODO</param>
-        /// <param name="maxDeadBytesPerChunk">TODO</param>
+        /// <param name="maxMemory">Maximum amount of memory the arena allocates</param>
+        /// <param name="arenaExtendStrategy">Strategy for arena expansion</param>
+        /// <param name="initialChunkSizeBytes">Size of the region that the arena allocates first</param>
+        /// <param name="maxDeadBytesPerChunk">Maximum amount of fragmentation allowed per chunk</param>
+        /// <returns>Pointer to a native OrtStatus instance indicating success/failure of config creation</returns>
         public delegate IntPtr /*(OrtStatus*)*/ DOrtCreateArenaCfg(UIntPtr /*(size_t)*/ maxMemory, int /*(int)*/ arenaExtendStrategy,
                                                                   int /*(int)*/ initialChunkSizeBytes, int /*(int)*/ maxDeadBytesPerChunk,
                                                                   out IntPtr /*(OrtArenaCfg**)*/ arenaCfg);
@@ -896,6 +898,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="env">Native OrtEnv instance</param>
         /// <param name="memInfo">Native OrtMemoryInfo instance</param>
         /// <param name="arenaCfg">Native OrtArenaCfg instance</param>
+        /// <retruns>A pointer to native ortStatus indicating success/failure</retruns>
         public delegate IntPtr /*(OrtStatus*)*/ DOrtCreateAndRegisterAllocator(IntPtr /*(OrtEnv*)*/ env,
                                                                                IntPtr /*(const OrtMemoryInfo*)*/ memInfo,
                                                                                IntPtr/*(const OrtArenaCfg*)*/ arenaCfg);

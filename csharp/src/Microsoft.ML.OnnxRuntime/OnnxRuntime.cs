@@ -104,6 +104,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Create and register an arena based allocator to the OrtEnv instance
         /// so as to enable sharing across all sessions using the OrtEnv instance
+        /// <param name="memInfo">OrtMemoryInfo instance to be used for allocator creation</param>
+        /// <param name="="arenaCfg"">OrtArenaCfg instance that will be used to define the behavior of the arena based allocator</param>
         /// </summary>
         public void CreateAndRegisterAllocator(OrtMemoryInfo memInfo, OrtArenaCfg arenaCfg)
         {

@@ -1110,7 +1110,7 @@ struct OrtApi {
   * \param arena_extend_strategy -  use -1 to allow ORT to choose the default, 0 = kNextPowerOfTwo, 1 = kSameAsRequested
   * \param initial_chunk_size_bytes - use -1 to allow ORT to choose the default
   * \param max_dead_bytes_per_chunk - use -1 to allow ORT to choose the default
-  * See ONNX_Runtime_Perf_Tuning.md for details on what these mean and how to choose these values
+  * See docs/C_API.md for details on what the following parameters mean and how to choose these values
   */
   ORT_API2_STATUS(CreateArenaCfg, _In_ size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes,
                   int max_dead_bytes_per_chunk, _Outptr_ OrtArenaCfg** out);

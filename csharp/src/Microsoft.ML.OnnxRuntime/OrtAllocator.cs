@@ -36,12 +36,13 @@ namespace Microsoft.ML.OnnxRuntime
     {
         /// <summary>
         /// Create an instance of arena configuration which will be used to create an arena based allocator
-        /// See ONNX_Runtime_Perf_Tuning.md for more details on how to choose these values
+        /// See docs/C_API.md for details on what the following parameters mean and how to choose these values
         /// </summary>
-        /// <param name="maxMemory">TODO</param>
-        /// <param name="arenaExtendStrategy">TODO</param>
-        /// <param name="initialChunkSizeBytes">TODO</param>
-        /// <param name="maxDeadBytesPerChunk">TODO</param>
+        /// <param name="maxMemory">Maximum amount of memory the arena allocates</param>
+        /// <param name="arenaExtendStrategy">Strategy for arena expansion</param>
+        /// <param name="initialChunkSizeBytes">Size of the region that the arena allocates first</param>
+        /// <param name="maxDeadBytesPerChunk">Maximum amount of fragmentation allowed per chunk</param>
+        /// <returns>An instance of OrtArenaCfg</returns>
         public OrtArenaCfg(uint maxMemory, int arenaExtendStrategy, int initialChunkSizeBytes, int maxDeadBytesPerChunk)
             : base(IntPtr.Zero, true)
         {
