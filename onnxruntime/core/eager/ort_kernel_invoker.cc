@@ -39,6 +39,9 @@ common::Status ORTInvoker::Invoke(const std::string& op_name,
   ONNX_NAMESPACE::TypeProto tensor_type;
   //TODO: set type according to input tensors
   tensor_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  ONNX_NAMESPACE::TypeProto int64_tensor_type;
+  //TODO: set type according to input tensors
+  int64_tensor_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
 
   Graph& graph = model.MainGraph();
   std::unordered_map<std::string, OrtValue> initializer_map;
@@ -46,12 +49,15 @@ common::Status ORTInvoker::Invoke(const std::string& op_name,
   
   for (auto input : inputs) {
     std::string name = "I" + std::to_string(i++);
-    auto& arg = graph.GetOrCreateNodeArg(name, &tensor_type);
+    const Tensor& input_tensor = input.Get<Tensor>();
+    auto* type = input_tensor.DataType() == DataTypeImpl::GetType<int64_t>() ? &int64_tensor_type : &tensor_type;
+    auto& arg = graph.GetOrCreateNodeArg(name, type);
     input_args.push_back(&arg);
     initializer_map[name] = input;
   }
   
   for (i = 0; i < outputs.size(); ++i) {
+    //TODO: set correct output type
     auto& arg = graph.GetOrCreateNodeArg("O" + std::to_string(i), &tensor_type);
     output_args.push_back(&arg);
   }
