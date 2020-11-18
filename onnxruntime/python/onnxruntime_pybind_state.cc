@@ -663,9 +663,9 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
 #endif
     } else if (type == kOpenVINOExecutionProvider) {
 #ifdef USE_OPENVINO
-      bool enable_vpu_fast_compile = false;
-      size_t num_of_threads = 8;
-      std::string openvino_device_id;
+      OrtOpenVINOProviderOptions params;
+      params.device_type = openvino_device_type.c_str();
+
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
         for (auto option : it->second) {
@@ -673,28 +673,22 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
             openvino_device_type = option.second;
           else if (option.first == "enable_vpu_fast_compile") {
             if (option.second == "True") {
-              enable_vpu_fast_compile = true;
+              params.enable_vpu_fast_compile = true;
             } else if (option.second == "False") {
-              enable_vpu_fast_compile = false;
+              params.enable_vpu_fast_compile = false;
             } else {
               ORT_THROW("Invalid value passed for enable_vpu_fast_compile: ", option.second);
             }
 
           } else if (option.first == "device_id") {
-            openvino_device_id = option.second;
+            params.device_id = option.second.c_str();
           } else if (option.first == "num_of_threads") {
-            num_of_threads = std::stoi(option.second);
+            params.num_of_threads = std::stoi(option.second);
           } else {
             ORT_THROW("Invalid OpenVINO EP option: ", option.first);
           }
         }
       }
-
-      OrtOpenVINOProviderOptions params;
-      params.device_type = openvino_device_type.c_str();
-      params.enable_vpu_fast_compile = enable_vpu_fast_compile;
-      params.device_id = openvino_device_id.c_str();
-      params.num_of_threads = num_of_threads;
 
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_OpenVINO(&params));
       // Reset global variables config to avoid it being accidentally passed on to the next session
