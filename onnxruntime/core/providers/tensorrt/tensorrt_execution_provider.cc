@@ -61,7 +61,7 @@ float ConvertSinglePrecisionIEEE754ToFloat(unsigned long input) {
 
 /*
 * Seralize engine profile
-* The profile contains min/max shape ranges of every dynamic shape dimension for each input tensor
+* The profile contains min/max shape ranges of dynamic shape dimensions of each input tensor
 * For example, assume tensor_a has two dynamic shape dimensions: dim_0 and dim_2, and tensor_b
 * has one dynamic shape dimension: dim_1. The data in profile will be,
 * key: tensor_a, value: dim_0 min_shape max_shape dim_2 min_shape max_shape
@@ -141,11 +141,17 @@ bool FindCycleHelper(int i, const std::list<int>* adjacency_map, bool visited[],
 * Read calibration table for INT8 quantization
 * Two kind of calibration tables are supported,
 * 1. ORT generated calibration table
-* The table is serialized by flexbuffers. Data is organized as a map,
+* The table is pre-serialized by flexbuffers. Data entry in the table is a key-value pair,
 * key: tensor name, value: maximum absolute value in floating point
+* For example,
+*   data_0 2.008338
 * 2. Native TensorRT generated calibration table
-* Data entry in the table follows TensorRT's definition,
+* Data format in the table is defined by TensorRT,
 * tensor name : maximum absolute value in 32-bit single precision IEEE754 format
+* For example,
+*   TRT-7103-EntropyCalibration2
+*   data_0: 4000889d
+*   ...
 */
 bool ReadDynamicRange(const std::string file_name, const bool is_trt_calibration_table, std::unordered_map<std::string, float>& dynamic_range_map) {
   std::ifstream infile(file_name, std::ios::binary | std::ios::in);
@@ -153,9 +159,8 @@ bool ReadDynamicRange(const std::string file_name, const bool is_trt_calibration
     return false;
   }
 
-  // Load calibration table
   if (is_trt_calibration_table) {
-    // TensorRT generated calibration table
+    // Native TensorRT generated calibration table
     std::string line;
     char delim = ':';
     if (std::getline(infile, line)) {
@@ -866,7 +871,7 @@ std::vector<std::unique_ptr<Provider_ComputeCapability>>
 TensorrtExecutionProvider::Provider_GetCapability(const onnxruntime::Provider_GraphViewer& graph,
                                                   const std::vector<const Provider_KernelRegistry*>& /*kernel_registries*/) const {
   // Get supported node list from TensorRT parser
-  int number_of_ort_nodes = graph.NumberOfNodes();
+  const int number_of_ort_nodes = graph.NumberOfNodes();
   std::vector<size_t> nodes_vector(number_of_ort_nodes);
   std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
   SubGraphCollection_t supported_nodes_vector, parser_nodes_vector = {{nodes_vector, false}};
@@ -904,7 +909,7 @@ TensorrtExecutionProvider::Provider_GetCapability(const onnxruntime::Provider_Gr
   } else if (number_of_trt_nodes == number_of_ort_nodes) {
     LOGS_DEFAULT(INFO) << "Whole graph will run on TensorRT exeuction provider";
   } else {
-    LOGS_DEFAULT(INFO) << "Graph is partitioned and the number of subgraphs running on TensorRT exeuction provider is " << number_of_subgraphs;
+    LOGS_DEFAULT(INFO) << "Graph is partitioned and number of subgraphs running on TensorRT exeuction provider is " << number_of_subgraphs;
   }
 
   return result;
@@ -1317,10 +1322,10 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
 
         // Set INT8 Per Tensor Dynamic range
         if (*(trt_state->int8_enable_ptr) && trt_builder->platformHasFastInt8()) {
+          trt_config->setInt8Calibrator(nullptr);
           if (!SetDynamicRange(*trt_state->network->get(), trt_state->dynamic_range_map)) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to set INT8 dynamic range.");
           }
-          trt_config->setInt8Calibrator(nullptr);
         }
 
         // Set precision
