@@ -279,14 +279,7 @@ def _exclude_unused_ops_in_provider(operators, provider_path):
     # end of rewrite_cpu_provider(...)
 
 
-def _exclude_unused_ops_in_providers(required_operators, provider_paths):
-    '''rewrite multiple provider files'''
-
-    for provider_path in provider_paths:
-        _exclude_unused_ops_in_provider(required_operators, provider_path)
-
-
-def _get_provider_paths(ort_root=None, use_cuda=False):
+def _get_provider_paths(ort_root=None, use_cuda=False, use_nnapi=False):
     '''return paths to cpu and cuda providers'''
 
     if not ort_root:
@@ -301,7 +294,24 @@ def _get_provider_paths(ort_root=None, use_cuda=False):
         provider_paths.append(provider_path.format(ep='cuda'))
         provider_paths.append(contrib_provider_path.format(ep='cuda'))
 
-    return provider_paths  # end of get_provider_paths
+    nnapi_provider_paths = []
+    if use_nnapi:
+        nnapi_path = ort_root + '/onnxruntime/core/providers/nnapi/nnapi_builtin/builders/'
+        nnapi_provider_paths.append(nnapi_path + 'op_builder.cc')
+        nnapi_provider_paths.append(nnapi_path + 'op_support_checker.cc')
+
+    return provider_paths, nnapi_provider_paths  # end of get_provider_paths
+
+
+def _exclude_unused_ops_in_providers(required_operators, ort_root=None, use_cuda=False, use_nnapi=False):
+    '''rewrite multiple provider files'''
+    provider_paths, nnapi_provider_paths = _get_provider_paths(ort_root, use_cuda, use_nnapi)
+
+    for provider_path in provider_paths:
+        _exclude_unused_ops_in_provider(required_operators, provider_path)
+
+    for nnapi_path in nnapi_provider_paths:
+        _exclude_unused_ops_in_provider(required_operators, provider_path)
 
 
 def _create_config_file_with_required_ops(required_operators, model_path, config_path, output_file):
@@ -337,7 +347,7 @@ def _create_config_file_with_required_ops(required_operators, model_path, config
     log.info("Wrote set of required operators to {}".format(output_file))
 
 
-def exclude_unused_ops(models_path, config_path, ort_root=None, use_cuda=True, output_config_path=None):
+def exclude_unused_ops(models_path, config_path, ort_root=None, use_cuda=True, use_nnapi=True, output_config_path=None):
     '''Determine operators that are used, and either exclude them or create a configuration file that will.
     Note that this called directly from build.py'''
 
@@ -351,7 +361,7 @@ def exclude_unused_ops(models_path, config_path, ort_root=None, use_cuda=True, o
     required_ops = _extract_ops_from_config(config_path, _extract_ops_from_model(models_path, {}))
 
     if not output_config_path:
-        _exclude_unused_ops_in_providers(required_ops, _get_provider_paths(ort_root, use_cuda))
+        _exclude_unused_ops_in_providers(required_ops, ort_root, use_cuda, use_nnapi)
     else:
         _create_config_file_with_required_ops(required_ops, models_path, config_path, output_config_path)
 
@@ -391,5 +401,5 @@ if __name__ == "__main__":
         parser.print_help()
         sys.exit(-1)
 
-    exclude_unused_ops(models_path, config_path, ort_root, use_cuda=True,
+    exclude_unused_ops(models_path, config_path, ort_root, use_cuda=True, use_nnapi=True,
                        output_config_path=args.write_combined_config_to)
