@@ -11,7 +11,9 @@ import os
 import sys
 import typing
 
-from logger import log
+from logger import get_logger
+
+log = get_logger("op_registration_validator")
 
 # deprecated ops where the last registration should have an end version.
 # value for each entry is the opset when it was deprecated. end version of last registration should equal value - 1.

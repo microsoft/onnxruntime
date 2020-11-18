@@ -2,7 +2,7 @@ parameters:
   AgentPool : 'Linux-CPU'
   JobName : 'Linux_CI_Dev'
   SubmoduleCheckoutMode: ''
-  BuildCommand: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--use_tvm --build_wheel"'
+  RunDockerBuildArgs: '-o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--use_tvm --build_wheel"'
   DoNodejsPack: 'false'
   DoNugetPack: 'false'
   NuPackScript: ''
@@ -34,8 +34,9 @@ jobs:
     - task: NodeTool@0
       inputs:
         versionSpec: '12.16.3'
-    - script: ${{ parameters.BuildCommand }}
-      displayName: 'Command Line Script'
+    - template: run-docker-build-steps.yml
+      parameters:
+        RunDockerBuildArgs: '${{ parameters.RunDockerBuildArgs }}'
     - task: PublishTestResults@2
       displayName: 'Publish unit test results'
       inputs:
