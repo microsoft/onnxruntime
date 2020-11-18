@@ -126,6 +126,24 @@ TEST(InternalTestingEP, TestSaveAndLoadOrtModel) {
   ExecuteMnist(*session2, enable_custom_ep);
 }
 
+TEST(InternalTestingEP, PreventSaveOfModelWithCompiledOps) {
+  const ORTCHAR_T* ort_model_path = ORT_TSTR("testdata/mnist.ort");
+
+  // make sure we can't save a model with compiled ops. input/output model format doesn't matter
+  SessionOptions so;
+  so.optimized_model_filepath = ORT_TSTR("invalid_model.ort");
+
+  auto session = onnxruntime::make_unique<InferenceSessionWrapper>(so, GetEnvironment());
+
+  const std::unordered_set<std::string> supported_ops{"Conv", "Add", "Relu", "MaxPool"};
+  ASSERT_STATUS_OK(session->RegisterExecutionProvider(
+      onnxruntime::make_unique<InternalTestingExecutionProvider>(supported_ops)));
+
+  ASSERT_STATUS_OK(session->Load(ort_model_path));
+  auto status = session->Initialize();
+  ASSERT_FALSE(status.IsOK()) << "Initialize should have failed when trying to save model with compiled kernels";
+  ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Unable to serialize model as it contains compiled nodes"));
+}
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 // test to validate a minimal build
