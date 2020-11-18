@@ -333,13 +333,15 @@ TEST(AttentionTest, AttentionNoMaskIndex) {
 }
 
 TEST(AttentionTest, AttentionNoMaskInputShapeSwapped) {
-  int batch_size_as_sequence_length = 1;
+  int batch_size_as_sequence_length = 2;
   int sequence_length_as_batch_size = 2;
   int hidden_size = 4;
   int number_of_heads = 2;
 
   std::vector<float> input_data = {
       0.8f, -0.5f, 0.0f, 1.f,
+      0.8f, -0.5f, 0.0f, 1.f,
+      0.5f, 0.2f, 0.3f, -0.6f,
       0.5f, 0.2f, 0.3f, -0.6f};
 
   std::vector<float> weight_data = {
@@ -355,12 +357,18 @@ TEST(AttentionTest, AttentionNoMaskInputShapeSwapped) {
   std::vector<int32_t> mask_index_data = {};
 
   std::vector<float> output_data = {
-      8.6899995803833008f, -0.13000002503395081f, 4.25f, 5.6499996185302734f,
-      -4.0900001525878906f, 0.42000001668930054f, -0.10999995470046997f, 0.56999993324279785f};
+      3.1495983600616455f, 0.10843668878078461f, 4.25f, 5.6499996185302734f,
+      3.1495983600616455f, 0.10843668878078461f, 4.25f, 5.6499996185302734f,
+      3.9696791172027588f, 0.073143675923347473f, 4.2499995231628418f, 5.6499991416931152f,
+      3.9696791172027588f, 0.073143675923347473f, 4.2499995231628418f, 5.6499991416931152f};
+
+  //std::vector<float> output_data = {
+  //    8.6899995803833008f, -0.13000002503395081f, 4.25f, 5.6499996185302734f,
+  //    -4.0900001525878906f, 0.42000001668930054f, -0.10999995470046997f, 0.56999993324279785f};
 
   bool use_float16 = false;
   bool is_unidirectional = false;
-  bool is_input_dimension_swapped = true;
+  bool is_input_dimension_swapped = false;
 
   RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
                    batch_size_as_sequence_length, sequence_length_as_batch_size, hidden_size,

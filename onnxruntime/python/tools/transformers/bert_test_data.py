@@ -25,7 +25,7 @@ def fake_input_ids_data(input_ids, batch_size, sequence_length, dictionary_size)
     """
     assert input_ids.type.tensor_type.elem_type in [TensorProto.FLOAT, TensorProto.INT32, TensorProto.INT64]
 
-    data = np.random.randint(dictionary_size, size=(batch_size, sequence_length), dtype=np.int32)
+    data = np.random.randint(dictionary_size, size=(sequence_length, batch_size, 160), dtype=np.int32)
 
     if input_ids.type.tensor_type.elem_type == TensorProto.FLOAT:
         data = np.float32(data)
@@ -181,8 +181,8 @@ def get_bert_inputs(onnx_file, input_ids_name=None, segment_ids_name=None, input
                 raise ValueError(f"Graph does not have input named {input_mask_name}")
 
         expected_inputs = 1 + (1 if segment_ids else 0) + (1 if input_mask else 0)
-        if len(graph_inputs) != expected_inputs:
-            raise ValueError(f"Expect the graph to have {expected_inputs} inputs. Got {len(graph_inputs)}")
+        #if len(graph_inputs) != expected_inputs:
+        #    raise ValueError(f"Expect the graph to have {expected_inputs} inputs. Got {len(graph_inputs)}")
 
         return input_ids, segment_ids, input_mask
 
