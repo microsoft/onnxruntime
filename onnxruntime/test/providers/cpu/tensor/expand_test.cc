@@ -163,5 +163,23 @@ TEST(ExpandOpTest, Expand_2x2x1x2x1_float) {
   test.Run();
 }
 
+TEST(ExpandOpTest, Expand_scalar_double) {
+  OpTester test("Expand", 8);
+  test.AddInput<double>("data_0", {}, {3.0f});
+  test.AddInput<int64_t>("data_1", {0}, {});
+  test.AddOutput<double>("result", {}, {3.0f});
+  test.Run();
+}
+
+TEST(ExpandOpTest, Expand_scalar_int8) {
+  OpTester test("Expand", 8);
+  test.AddInput<int8_t>("data_0", {}, {9});
+  test.AddInput<int64_t>("data_1", {3}, {2, 3, 4});
+  test.AddOutput<int8_t>("result", {2, 3, 4},
+                         {9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+                          9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9});
+  test.Run();
+}
+
 }  //namespace test
 }  //namespace onnxruntime
