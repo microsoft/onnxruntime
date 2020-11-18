@@ -14,6 +14,7 @@
 #include "TestCase.h"
 #include "testenv.h"
 #include "providers.h"
+#include "test_filters.h"
 #include <google/protobuf/stubs/common.h>
 #include "core/platform/path_lib.h"
 #include "core/session/onnxruntime_cxx_api.h"
@@ -21,6 +22,7 @@
 #include "core/framework/session_options.h"
 
 using namespace onnxruntime;
+using namespace onnxruntime::test;
 
 namespace {
 void usage() {
@@ -287,8 +289,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     double per_sample_tolerance = 1e-3;
     // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
     // when openvino is enabled, set it to a larger value for resolving MNIST accuracy mismatch
-    double relative_per_sample_tolerance = enable_cuda ? 0.017 : enable_openvino ? 0.009
-                                                                                 : 1e-3;
+    double relative_per_sample_tolerance = enable_cuda ? 0.017 : enable_openvino ? 0.009 : 1e-3;
 
     Ort::SessionOptions sf;
 
@@ -330,8 +331,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           OrtCudnnConvAlgoSearch::EXHAUSTIVE,
           std::numeric_limits<size_t>::max(),
           0,
-          true
-      };
+          true};
       Ort::ThrowOnError(sf.OrtSessionOptionsAppendExecutionProvider_CUDA(sf, &cuda_options));
 #else
       fprintf(stderr, "CUDA is not supported in this build");
@@ -412,55 +412,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       sf.SetGraphOptimizationLevel(graph_optimization_level);
     }
 
-    // Permanently exclude following tests because ORT support only opset staring from 7,
-    // Please make no more changes to the list
-    static const ORTCHAR_T* immutable_broken_tests[] =
-        {
-            ORT_TSTR("AvgPool1d"),
-            ORT_TSTR("AvgPool1d_stride"),
-            ORT_TSTR("AvgPool2d"),
-            ORT_TSTR("AvgPool2d_stride"),
-            ORT_TSTR("AvgPool3d"),
-            ORT_TSTR("AvgPool3d_stride"),
-            ORT_TSTR("AvgPool3d_stride1_pad0_gpu_input"),
-            ORT_TSTR("BatchNorm1d_3d_input_eval"),
-            ORT_TSTR("BatchNorm2d_eval"),
-            ORT_TSTR("BatchNorm2d_momentum_eval"),
-            ORT_TSTR("BatchNorm3d_eval"),
-            ORT_TSTR("BatchNorm3d_momentum_eval"),
-            ORT_TSTR("GLU"),
-            ORT_TSTR("GLU_dim"),
-            ORT_TSTR("Linear"),
-            ORT_TSTR("PReLU_1d"),
-            ORT_TSTR("PReLU_1d_multiparam"),
-            ORT_TSTR("PReLU_2d"),
-            ORT_TSTR("PReLU_2d_multiparam"),
-            ORT_TSTR("PReLU_3d"),
-            ORT_TSTR("PReLU_3d_multiparam"),
-            ORT_TSTR("PoissonNLLLLoss_no_reduce"),
-            ORT_TSTR("Softsign"),
-            ORT_TSTR("operator_add_broadcast"),
-            ORT_TSTR("operator_add_size1_broadcast"),
-            ORT_TSTR("operator_add_size1_right_broadcast"),
-            ORT_TSTR("operator_add_size1_singleton_broadcast"),
-            ORT_TSTR("operator_addconstant"),
-            ORT_TSTR("operator_addmm"),
-            ORT_TSTR("operator_basic"),
-            ORT_TSTR("operator_mm"),
-            ORT_TSTR("operator_non_float_params"),
-            ORT_TSTR("operator_params"),
-            ORT_TSTR("operator_pow"),
-        };
-
-    static const ORTCHAR_T* cuda_flaky_tests[] = {
-        ORT_TSTR("fp16_inception_v1"),
-        ORT_TSTR("fp16_shufflenet"), ORT_TSTR("fp16_tiny_yolov2")};
-    static const ORTCHAR_T* dml_disabled_tests[] = {ORT_TSTR("mlperf_ssd_resnet34_1200"), ORT_TSTR("mlperf_ssd_mobilenet_300"), ORT_TSTR("mask_rcnn"), ORT_TSTR("faster_rcnn"), ORT_TSTR("tf_pnasnet_large"), ORT_TSTR("zfnet512"), ORT_TSTR("keras2coreml_Dense_ImageNet")};
-    static const ORTCHAR_T* dnnl_disabled_tests[] = {ORT_TSTR("test_densenet121"), ORT_TSTR("test_resnet18v2"), ORT_TSTR("test_resnet34v2"), ORT_TSTR("test_resnet50v2"), ORT_TSTR("test_resnet101v2"),
-                                                     ORT_TSTR("test_resnet101v2"), ORT_TSTR("test_vgg19"), ORT_TSTR("tf_inception_resnet_v2"), ORT_TSTR("tf_inception_v1"), ORT_TSTR("tf_inception_v3"), ORT_TSTR("tf_inception_v4"), ORT_TSTR("tf_mobilenet_v1_1.0_224"),
-                                                     ORT_TSTR("tf_mobilenet_v2_1.0_224"), ORT_TSTR("tf_mobilenet_v2_1.4_224"), ORT_TSTR("tf_nasnet_large"), ORT_TSTR("tf_pnasnet_large"), ORT_TSTR("tf_resnet_v1_50"), ORT_TSTR("tf_resnet_v1_101"), ORT_TSTR("tf_resnet_v1_101"),
-                                                     ORT_TSTR("tf_resnet_v2_101"), ORT_TSTR("tf_resnet_v2_152"), ORT_TSTR("batchnorm_example_training_mode"), ORT_TSTR("batchnorm_epsilon_training_mode")};
-
     std::unordered_set<std::basic_string<ORTCHAR_T>> all_disabled_tests(std::begin(immutable_broken_tests), std::end(immutable_broken_tests));
     if (enable_cuda) {
       all_disabled_tests.insert(std::begin(cuda_flaky_tests), std::end(cuda_flaky_tests));
@@ -475,7 +426,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
 #if !defined(__amd64__) && !defined(_M_AMD64)
     //out of memory
-    static const ORTCHAR_T* x86_disabled_tests[] = {ORT_TSTR("mlperf_ssd_resnet34_1200"), ORT_TSTR("mask_rcnn_keras"), ORT_TSTR("mask_rcnn"), ORT_TSTR("faster_rcnn"), ORT_TSTR("vgg19"), ORT_TSTR("coreml_VGG16_ImageNet")};
     all_disabled_tests.insert(std::begin(x86_disabled_tests), std::end(x86_disabled_tests));
 #endif
 
@@ -496,68 +446,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     std::string res = stat.ToString();
     fwrite(res.c_str(), 1, res.size(), stdout);
   }
-
-  struct BrokenTest {
-    std::string test_name_;
-    std::string reason_;
-    std::set<std::string> broken_versions_ = {};  // apply to all versions if empty
-    BrokenTest(std::string name, std::string reason) : test_name_(std::move(name)), reason_(std::move(reason)) {}
-    BrokenTest(std::string name, std::string reason, const std::initializer_list<std::string>& versions) : test_name_(std::move(name)), reason_(std::move(reason)), broken_versions_(versions) {}
-    bool operator<(const struct BrokenTest& test) const {
-      return strcmp(test_name_.c_str(), test.test_name_.c_str()) < 0;
-    }
-  };
-
-  std::set<BrokenTest> broken_tests = {
-      {"BERT_Squad", "test data bug"},
-      {"constantofshape_float_ones", "test data bug", {"onnx141", "onnx150"}},
-      {"constantofshape_int_zeros", "test data bug", {"onnx141", "onnx150"}},
-      {"cast_STRING_to_FLOAT", "Linux CI has old ONNX python package with bad test data", {"onnx141"}},
-      // Numpy float to string has unexpected rounding for some results given numpy default precision is meant to be 8.
-      // "e.g. 0.296140194 -> '0.2961402' not '0.29614019'. ORT produces the latter with precision set to 8,
-      // which doesn't match the expected output that was generated with numpy.
-      {"cast_FLOAT_to_STRING", "Numpy float to string has unexpected rounding for some results."},
-      {"tf_nasnet_large", "disable temporarily"},
-      {"tf_nasnet_mobile", "disable temporarily"},
-      {"tf_pnasnet_large", "disable temporarily"},
-      {"shrink", "test case is wrong", {"onnx141"}},
-      {"maxpool_with_argmax_2d_precomputed_strides", "ShapeInferenceError"},
-      {"tf_inception_v2", "result mismatch"},
-      {"tf_resnet_v1_50", "result mismatch when Conv BN Fusion is applied"},
-      {"tf_resnet_v1_101", "result mismatch when Conv BN Fusion is applied"},
-      {"tf_resnet_v1_152", "result mismatch when Conv BN Fusion is applied"},
-      {"mxnet_arcface", "Model is an invalid ONNX model"},
-      {"unique_not_sorted_without_axis", "Expected data for 'Y' is incorrect and in sorted order."},
-      {"cumsum_1d_reverse_exclusive", "only failing linux GPU CI. Likely build error."},
-      {"resize_downsample_scales_cubic_align_corners", "results mismatch with onnx tests"},
-      {"resize_downsample_scales_linear_align_corners", "results mismatch with onnx tests"},
-      {"resize_tf_crop_and_resize", "Bad onnx test output. Needs test fix."},
-      {"resize_upsample_sizes_nearest_ceil_half_pixel", "Bad onnx test output. Needs test fix."},
-      {"resize_upsample_sizes_nearest_floor_align_corners", "Bad onnx test output. Needs test fix."},
-      {"resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric", "Bad onnx test output. Needs test fix."},
-      {"bitshift_right_uint16", "BitShift(11) uint16 support not enabled currently"},
-      {"bitshift_left_uint16", "BitShift(11) uint16 support not enabled currently"},
-      {"maxunpool_export_with_output_shape", "Invalid output in ONNX test. See https://github.com/onnx/onnx/issues/2398"},
-      {"training_dropout", "result differs", {}},                       // Temporary, subsequent PR will remove this.
-      {"training_dropout_default", "result differs", {}},               // Temporary, subsequent PR will remove this.
-      {"training_dropout_default_mask", "result differs", {}},          // Temporary, subsequent PR will remove this.
-      {"training_dropout_mask", "result differs", {}},                  // Temporary, subsequent PR will remove this.
-      {"adagrad", "not a registered function/op", {}},                  // Op not registered.
-      {"adagrad_multiple", "not a registered function/op", {}},         // Op not registered.
-      {"adam", "not a registered function/op", {}},                     // Op not registered.
-      {"adam_multiple", "not a registered function/op", {}},            // Op not registered.
-      {"gradient_of_add", "not a registered function/op", {}},          // Op not registered.
-      {"gradient_of_add_and_mul", "not a registered function/op", {}},  // Op not registered.
-      {"momentum", "not a registered function/op", {}},                 // Op not registered.
-      {"momentum_multiple", "not a registered function/op", {}},        // Op not registered.
-      {"nesterov_momentum", "not a registered function/op", {}},        // Op not registered.
-      {"cast_FLOAT_to_BFLOAT16", "onnx generate bfloat tensor as uint16 type", {}},
-      {"cast_BFLOAT16_to_FLOAT", "onnx generate bfloat tensor as uint16 type", {}},
-      {"sequence_insert_at_back", "onnx currently not supporting loading segment", {}},
-      {"sequence_insert_at_front", "onnx currently not supporting loading segment", {}},
-      {"if_seq", "NOT_IMPLEMENTED : Could not find an implementation for the node If(13)", {}},
-      {"loop13_seq", "NOT_IMPLEMENTED : Could not find an implementation for the node Loop(13)", {}},
-  };
+  std::string provider_name = enable_ngraph ? "ngraph" : enable_nnapi ? "nnapi" : enable_dml ? "dml" : "";
+  std::set<BrokenTest> broken_tests = GetBrokenTestsForProvider(provider_name);
 
 #ifdef DISABLE_ML_OPS
   auto starts_with = [](const std::string& find_in, const std::string& find_what) {
@@ -572,342 +462,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       broken_tests.insert({test_name, "Traditional ML ops are disabled in this build."});
     }
   }
-#endif
-
-  if (enable_ngraph) {
-    broken_tests.insert({"qlinearconv", "ambiguity in scalar dimensions [] vs [1]"});
-    broken_tests.insert({"clip_splitbounds", "not implemented yet for opset 11"});
-    broken_tests.insert({"clip_outbounds", "not implemented yet for opset 11"});
-    broken_tests.insert({"clip_example", "not implemented yet for opset 11"});
-    broken_tests.insert({"clip_default_min", "not implemented yet for opset 11"});
-    broken_tests.insert({"clip_default_max", "not implemented yet for opset 11"});
-    broken_tests.insert({"clip", "not implemented yet for opset 11"});
-    broken_tests.insert({"depthtospace_crd_mode_example", "NGraph does not support CRD mode"});
-    broken_tests.insert({"depthtospace_crd_mode", "NGraph does not support CRD mode"});
-    broken_tests.insert({"gemm_default_no_bias", "not implemented yet for opset 11"});
-    broken_tests.insert({"quantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
-    broken_tests.insert({"dequantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
-    broken_tests.insert({"mlperf_ssd_resnet34_1200", "Results mismatch"});
-    broken_tests.insert({"BERT_Squad", "Invalid Feed Input Name:input4"});
-    broken_tests.insert({"candy", "Results mismatch: 2 of 150528"});
-    broken_tests.insert({"tf_mobilenet_v1_1.0_224", "Results mismatch"});
-    broken_tests.insert({"tf_mobilenet_v2_1.0_224", "Results mismatch"});
-    broken_tests.insert({"tf_mobilenet_v2_1.4_224", "Results mismatch"});
-    broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
-    broken_tests.insert({"convtranspose_3d", "3d convtranspose not supported yet"});
-  }
-
-  if (enable_openvino) {
-    broken_tests.insert({"operator_permute2", "Disabled temporariliy"});
-    broken_tests.insert({"operator_repeat", "Disabled temporariliy"});
-    broken_tests.insert({"operator_repeat_dim_overflow", "Disabled temporariliy"});
-    broken_tests.insert({"mlperf_ssd_resnet34_1200", "Disabled temporariliy"});
-    broken_tests.insert({"candy", "Results mismatch: 1 of 150528"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2d3d4d5_mean_weight", "OpenVino does not support 5D+ tensors"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2d3d4d5_mean_weight_expanded", "OpenVino does not support 5D+ tensors"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2d3d4d5_none_no_weight", "OpenVino does not support 5D+ tensors"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2d3d4d5_none_no_weight_expanded", "OpenVino does not support 5D+ tensors"});
-    broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight", "OpenVino does not support 5D+ tensors"});
-    broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight_expanded", "OpenVino does not support 5D+ tensors"});
-    broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight_log_prob", "OpenVino does not support 5D+ tensors"});
-    broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight_log_prob_expanded", "OpenVino does not support 5D+ tensors"});
-    broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight", "OpenVino does not support 5D+ tensors"});
-    broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_expanded", "OpenVino does not support 5D+ tensors"});
-    broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_log_prob", "OpenVino does not support 5D+ tensors"});
-    broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_log_prob_expanded", "OpenVino does not support 5D+ tensors"});
-  }
-
-  if (enable_dnnl) {
-    broken_tests.insert({"tf_mobilenet_v2_1.0_224", "result mismatch"});
-    broken_tests.insert({"tf_mobilenet_v2_1.4_224", "result mismatch"});
-    broken_tests.insert({"tf_mobilenet_v1_1.0_224", "result mismatch"});
-    broken_tests.insert({"mobilenetv2-1.0", "result mismatch"});
-    broken_tests.insert({"candy", "result mismatch"});
-    broken_tests.insert({"range_float_type_positive_delta_expanded", "get unknown exception from DNNL EP"});
-    broken_tests.insert({"range_int32_type_negative_delta_expanded", "get unknown exception from DNNL EP"});
-    broken_tests.insert({"averagepool_2d_ceil", "maxpool ceiling not supported"});
-    broken_tests.insert({"maxpool_2d_ceil", "maxpool ceiling not supported"});
-    broken_tests.insert({"maxpool_2d_dilations", "maxpool dilations not supported"});
-    broken_tests.insert({"mlperf_ssd_resnet34_1200", "test pass on dev box but fails on CI build"});
-    broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
-    broken_tests.insert({"convtranspose_3d", "3d convtranspose not supported yet"});
-    broken_tests.insert({"maxpool_2d_uint8", "Does not work on DNNL, NNAPI"});
-  }
-
-  if (enable_nnapi) {
-    broken_tests.insert({"scan9_sum", "Error with the extra graph"});
-    broken_tests.insert({"scan_sum", "Error with the extra graph"});
-    broken_tests.insert({"mvn_expanded", "Failed to find kernel for MemcpyFromHost(1) (node Memcpy_1)"});
-    broken_tests.insert({"dynamicquantizelinear_expanded", "Temporarily disabled pending investigation"});
-    broken_tests.insert({"dynamicquantizelinear_max_adjusted_expanded", "Temporarily disabled pending investigation"});
-    broken_tests.insert({"dynamicquantizelinear_min_adjusted_expanded", "Temporarily disabled pending investigation"});
-    broken_tests.insert({"gemm_transposeB", "Temporarily disabled pending investigation"});
-    broken_tests.insert({"range_float_type_positive_delta_expanded", "Temporarily disabled pending investigation"});
-    broken_tests.insert({"range_int32_type_negative_delta_expanded", "Temporarily disabled pending investigation"});
-    broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
-    broken_tests.insert({"convtranspose_3d", "3d convtranspose not supported yet"});
-    broken_tests.insert({"maxpool_2d_uint8", "result mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NC_expanded", "shape mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2_expanded", "shape mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2_reduction_mean_expanded", "shape mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2_reduction_sum_expanded", "shape mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_expanded", "shape mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_reduction_mean_expanded", "shape mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_reduction_sum_expanded", "shape mismatch"});
-    // Disable based on George Wu's recommendation.
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_reduction_sum_ignore_index_expanded", "shape mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_iinput_shape_is_NCd1_weight_ignore_index", "Shape mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_iinput_shape_is_NCd1_weight_ignore_index_expanded", "Shape mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NC", "Shape mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1", "Shape mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1_expanded", "Shape mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1_ignore_index", "Shape mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1_ignore_index_expanded", "Shape mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1_mean_weight_negative_ignore_index", "Shape mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1_mean_weight_negative_ignore_index_expanded", "Shape mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1_weight", "Shape mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1_weight_expanded", "Shape mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2", "Shape mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2_no_weight_reduction_mean_ignore_index", "Shape mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2_no_weight_reduction_mean_ignore_index_expanded", "Shape mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2_reduction_mean", "Shape mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2_reduction_sum", "Shape mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight", "Shape mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_reduction_mean", "Shape mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_reduction_sum", "Shape mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_reduction_sum_ignore_index", "Shape mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index", "Shape mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_expanded", "Shape mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2d3_sum_weight_high_ignore_index", "Shape mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2d3_sum_weight_high_ignore_index_expanded", "Shape mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2d3d4d5_mean_weight", "Shape mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2d3d4d5_mean_weight_expanded", "Shape mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2d3d4d5_none_no_weight", "Shape mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2d3d4d5_none_no_weight_expanded", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1_mean_weight_negative_ignore_index", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1_mean_weight_negative_ignore_index_expanded", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1_mean_weight_negative_ignore_index_log_prob", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1_mean_weight_negative_ignore_index_log_prob_expanded", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_expanded", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_log_prob", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_log_prob_expanded", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3_sum_weight_high_ignore_index", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3_sum_weight_high_ignore_index_expanded", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3_sum_weight_high_ignore_index_log_prob", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3_sum_weight_high_ignore_index_log_prob_expanded", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight_expanded", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight_log_prob", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight_log_prob_expanded", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_expanded", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_log_prob", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_log_prob_expanded", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_mean", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_mean_3d", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_mean_3d_expanded", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_mean_3d_log_prob", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_mean_3d_log_prob_expanded", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_mean_expanded", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_mean_log_prob", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_mean_log_prob_expanded", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_mean_no_weight_ignore_index", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_mean_no_weight_ignore_index_3d", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_mean_no_weight_ignore_index_3d_expanded", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_mean_no_weight_ignore_index_3d_log_prob", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_mean_no_weight_ignore_index_3d_log_prob_expanded", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_mean_no_weight_ignore_index_4d", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_mean_no_weight_ignore_index_4d_expanded", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_mean_no_weight_ignore_index_4d_log_prob", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_mean_no_weight_ignore_index_4d_log_prob_expanded", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_mean_no_weight_ignore_index_expanded", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_mean_no_weight_ignore_index_log_prob", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_mean_no_weight_ignore_index_log_prob_expanded", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_mean_weight", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_mean_weight_expanded", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_mean_weight_ignore_index", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_mean_weight_ignore_index_3d", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_mean_weight_ignore_index_3d_expanded", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_mean_weight_ignore_index_3d_log_prob", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_mean_weight_ignore_index_3d_log_prob_expanded", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_mean_weight_ignore_index_4d", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_mean_weight_ignore_index_4d_expanded", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_mean_weight_ignore_index_4d_log_prob", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_mean_weight_ignore_index_4d_log_prob_expanded", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_mean_weight_ignore_index_expanded", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_mean_weight_ignore_index_log_prob", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_mean_weight_ignore_index_log_prob_expanded", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_mean_weight_log_prob", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_mean_weight_log_prob_expanded", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_none", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_none_expanded", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_none_log_prob", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_none_log_prob_expanded", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_none_weights", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_none_weights_expanded", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_none_weights_log_prob", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_none_weights_log_prob_expanded", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_sum", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_sum_expanded", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_sum_log_prob", "Shape mismatch"});
-    broken_tests.insert({"softmax_cross_entropy_sum_log_prob_expanded", "Shape mismatch"});
-    broken_tests.insert({"nllloss_NCd1_ignore_index", "wait for investigation"});
-    broken_tests.insert({"nllloss_NCd1_ignore_index_expanded", "wait for investigation"});
-    broken_tests.insert({"nllloss_NCd1_mean_weight_negative_ignore_index", "wait for investigation"});
-    broken_tests.insert({"nllloss_NCd1_mean_weight_negative_ignore_index_expanded", "wait for investigation"});
-    broken_tests.insert({"nllloss_NCd1_weight", "wait for investigation"});
-    broken_tests.insert({"nllloss_NCd1_weight_expanded", "wait for investigation"});
-    broken_tests.insert({"nllloss_NCd1_weight_ignore_index", "wait for investigation"});
-    broken_tests.insert({"nllloss_NCd1_weight_ignore_index_expanded", "wait for investigation"});
-    broken_tests.insert({"nllloss_NCd1d2_no_weight_reduction_mean_ignore_index", "wait for investigation"});
-    broken_tests.insert({"nllloss_NCd1d2_no_weight_reduction_mean_ignore_index_expanded", "wait for investigation"});
-    broken_tests.insert({"nllloss_NCd1d2_with_weight_reduction_mean", "wait for investigation"});
-    broken_tests.insert({"nllloss_NCd1d2_with_weight_reduction_mean_expanded", "wait for investigation"});
-    broken_tests.insert({"nllloss_NCd1d2d3d4d5_mean_weight", "wait for investigation"});
-    broken_tests.insert({"nllloss_NCd1d2d3d4d5_mean_weight_expanded", "wait for investigation"});
-    broken_tests.insert({"nllloss_NCd1_ii", "wait for investigation"});
-    broken_tests.insert({"nllloss_NCd1_ii_expanded", "wait for investigation"});
-    broken_tests.insert({"nllloss_NCd1_mean_weight_negative_ii", "wait for investigation"});
-    broken_tests.insert({"nllloss_NCd1_mean_weight_negative_ii_expanded", "wait for investigation"});
-    broken_tests.insert({"nllloss_NCd1_weight_ii", "wait for investigation"});
-    broken_tests.insert({"nllloss_NCd1_weight_ii_expanded", "wait for investigation"});
-    broken_tests.insert({"nllloss_NCd1d2_no_weight_reduction_mean_ii", "wait for investigation"});
-    broken_tests.insert({"nllloss_NCd1d2_no_weight_reduction_mean_ii_expanded", "wait for investigation"});
-  }
-
-  if (enable_tensorrt) {
-    broken_tests.insert({"fp16_shufflenet", "TRT EP bug"});
-    broken_tests.insert({"fp16_inception_v1", "TRT EP bug"});
-    broken_tests.insert({"fp16_tiny_yolov2", "TRT EP bug"});
-    broken_tests.insert({"tf_inception_v3", "TRT Engine couldn't be created"});
-    broken_tests.insert({"tf_mobilenet_v1_1.0_224", "TRT Engine couldn't be created"});
-    broken_tests.insert({"tf_mobilenet_v2_1.0_224", "TRT Engine couldn't be created"});
-    broken_tests.insert({"tf_mobilenet_v2_1.4_224", "TRT Engine couldn't be created"});
-    broken_tests.insert({"tf_resnet_v1_101", "TRT Engine couldn't be created"});
-    broken_tests.insert({"tf_resnet_v1_152", "TRT Engine couldn't be created"});
-    broken_tests.insert({"tf_resnet_v1_50", "TRT Engine couldn't be created"});
-    broken_tests.insert({"tf_resnet_v2_101", "TRT Engine couldn't be created"});
-    broken_tests.insert({"tf_resnet_v2_152", "TRT Engine couldn't be created"});
-    broken_tests.insert({"tf_resnet_v2_50", "TRT Engine couldn't be created"});
-    broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
-    broken_tests.insert({"convtranspose_3d", "3d convtranspose not supported yet"});
-  }
-
-  if (enable_cuda) {
-    broken_tests.insert({"candy", "result mismatch"});
-    broken_tests.insert({"tinyyolov3", "The parameter is incorrect"});
-    broken_tests.insert({"mlperf_ssd_mobilenet_300", "unknown error"});
-    broken_tests.insert({"mlperf_ssd_resnet34_1200", "unknown error"});
-    broken_tests.insert({"tf_inception_v1", "flaky test"});  //TODO: Investigate cause for flakiness
-    broken_tests.insert({"faster_rcnn", "Linux: faster_rcnn:output=6383:shape mismatch, expect {77} got {57}"});
-    broken_tests.insert({"split_zero_size_splits", "alloc failed"});
-    broken_tests.insert({"convtranspose_3d", "3d convtranspose not supported yet"});
-  }
-
-  if (enable_dml) {
-    broken_tests.insert({"tinyyolov3", "The parameter is incorrect"});
-    broken_tests.insert({"PixelShuffle", "Test requires 6D Reshape, which isn't supported by DirectML"});
-    broken_tests.insert({"operator_permute2", "Test requires 6D Transpose, which isn't supported by DirectML"});
-    broken_tests.insert({"resize_downsample_linear", "ORT 0.4 uses asymmetric but will conform to half_pixel in the next ONNX version."});
-    broken_tests.insert({"resize_upsample_linear", "ORT 0.4 uses asymmetric but will conform to half_pixel in the next ONNX version."});
-    broken_tests.insert({"resize_upsample_linear", "ORT 0.4 uses asymmetric but will conform to half_pixel in the next ONNX version."});
-
-    // These tests are temporarily disabled pending investigation
-    broken_tests.insert({"dynamicquantizelinear_expanded", "Temporarily disabled pending investigation"});
-    broken_tests.insert({"dynamicquantizelinear_max_adjusted_expanded", "Temporarily disabled pending investigation"});
-    broken_tests.insert({"dynamicquantizelinear_min_adjusted_expanded", "Temporarily disabled pending investigation"});
-    broken_tests.insert({"mxnet_arcface", "Temporarily disabled pending investigation"});
-    broken_tests.insert({"yolov3", "Temporarily disabled pending investigation"});
-    broken_tests.insert({"tf_inception_v2", "Temporarily disabled pending investigation"});
-    broken_tests.insert({"fp16_inception_v1", "Temporarily disabled pending investigation"});
-    broken_tests.insert({"candy", "Temporarily disabled pending investigation"});
-    broken_tests.insert({"BERT_Squad", "Temporarily disabled pending investigation"});
-    broken_tests.insert({"LSTM_Seq_lens_unpacked", "The parameter is incorrect"});
-
-    broken_tests.insert({"resize_downsample_scales_linear", "DML uses half_pixel and this test assumed \"asymmetric\" but does not include \"mode\""});
-    broken_tests.insert({"resize_downsample_sizes_linear_pytorch_half_pixel", "DML does not support downsampling by such a large factor - skips input pixels"});
-    broken_tests.insert({"resize_downsample_sizes_nearest", "DML uses pixel centers for nearest, rounding 1 value off for the middle column"});
-    broken_tests.insert({"resize_upsample_sizes_nearest", "DML uses pixel centers for nearest, which makes more sense (the 3rd row mismatches)"});
-    broken_tests.insert({"unsqueeze_three_axes", "DML does not support 6D tensors"});
-    broken_tests.insert({"unsqueeze_unsorted_axes", "DMLdoes not support 6D tensors"});
-
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index", "DML does not support 5D+ tensors"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_expanded", "DML does not support 5D+ tensors"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2d3d4d5_mean_weight", "DML does not support 5D+ tensors"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2d3d4d5_mean_weight_expanded", "DML does not support 5D+ tensors"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2d3d4d5_none_no_weight", "DML does not support 5D+ tensors"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2d3d4d5_none_no_weight_expanded", "DML does not support 5D+ tensors"});
-    broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index", "DML does not support 5D+ tensors"});
-    broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_expanded", "DML does not support 5D+ tensors"});
-    broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_log_prob", "DML does not support 5D+ tensors"});
-    broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_log_prob_expanded", "DML does not support 5D+ tensors"});
-    broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight", "DML does not support 5D+ tensors"});
-    broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight_expanded", "DML does not support 5D+ tensors"});
-    broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight_log_prob", "DML does not support 5D+ tensors"});
-    broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight_log_prob_expanded", "DML does not support 5D+ tensors"});
-    broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight", "DML does not support 5D+ tensors"});
-    broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_expanded", "DML does not support 5D+ tensors"});
-    broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_log_prob", "DML does not support 5D+ tensors"});
-    broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_log_prob_expanded", "DML does not support 5D+ tensors"});
-  }
-
-#if defined(_WIN32) && !defined(_WIN64)
-  broken_tests.insert({"vgg19", "failed: bad allocation"});
-#endif
-
-  // Disable mask_rcnn_keras as this model currently has an invalid contrib op version set to 10
-  broken_tests.insert({"mask_rcnn_keras", "This model uses contrib ops."});
-
-#ifdef DISABLE_CONTRIB_OPS
-  broken_tests.insert({"coreml_SqueezeNet_ImageNet", "This model uses contrib ops."});
-  broken_tests.insert({"keras2coreml_Permute_ImageNet", "This model uses contrib ops."});
-  broken_tests.insert({"keras2coreml_ReLU_ImageNet", "This model uses contrib ops."});
-  broken_tests.insert({"keras2coreml_Padding-Upsampling-Normalizer_ImageNet", "This model uses contrib ops."});
-  broken_tests.insert({"tiny_yolov2", "This model uses contrib ops."});
-  broken_tests.insert({"fp16_tiny_yolov2", "This model uses contrib ops."});
-  broken_tests.insert({"keras2coreml_Pooling_ImageNet", "This model uses contrib ops."});
-  broken_tests.insert({"keras2coreml_Padding_ImageNet", "This model uses contrib ops."});
-  broken_tests.insert({"keras2coreml_Normalizer_ImageNet", "This model uses contrib ops."});
-  broken_tests.insert({"keras2coreml_linear_sklearn_load_breast_cancer", "This model uses contrib ops."});
-  broken_tests.insert({"keras2coreml_linear_ImageNet_small", "This model uses contrib ops."});
-  broken_tests.insert({"keras2coreml_linear_ImageNet_large", "This model uses contrib ops."});
-  broken_tests.insert({"keras2coreml_linear_ImageNet", "This model uses contrib ops."});
-  broken_tests.insert({"keras2coreml_leakyrelu_ImageNet", "This model uses contrib ops."});
-  broken_tests.insert({"keras2coreml_hard_sigmoid_ImageNet", "This model uses contrib ops."});
-  broken_tests.insert({"keras2coreml_elu_ImageNet", "This model uses contrib ops."});
-  broken_tests.insert({"keras2coreml_Dense_ImageNet", "This model uses contrib ops."});
-  broken_tests.insert({"keras2coreml_Conv2D_ImageNet", "This model uses contrib ops."});
-  broken_tests.insert({"coreml_VGG16_ImageNet", "This model uses contrib ops."});
-  broken_tests.insert({"coreml_Resnet50_ImageNet", "This model uses contrib ops."});
-  broken_tests.insert({"coreml_Inceptionv3_ImageNet", "This model uses contrib ops."});
-  broken_tests.insert({"coreml_FNS-Candy_ImageNet", "This model uses contrib ops."});
-  broken_tests.insert({"coreml_AgeNet_ImageNet", "This model uses contrib ops."});
-  broken_tests.insert({"keras2coreml_thresholdedrelu_ImageNet_large", "This model uses contrib ops."});
-  broken_tests.insert({"keras2coreml_thresholdedrelu_ImageNet_small", "This model uses contrib ops."});
-  broken_tests.insert({"keras2coreml_thresholdedrelu_sklearn_load_breast_cancer", "This model uses contrib ops."});
-  broken_tests.insert({"thresholdedrelu", "This model uses contrib ops."});
-  broken_tests.insert({"thresholdedrelu_default", "This model uses contrib ops."});
-  broken_tests.insert({"dynamic_slice_default_axes", "This model uses contrib ops."});
-  broken_tests.insert({"thresholdedrelu_example", "This model uses contrib ops."});
-  broken_tests.insert({"dynamic_slice_neg failed", "This model uses contrib ops."});
-  broken_tests.insert({"dynamic_slice_start_out_of_bounds", "This model uses contrib ops."});
-  broken_tests.insert({"dynamic_slice", "This model uses contrib ops."});
-  broken_tests.insert({"dynamic_slice_end_out_of_bounds", "This model uses contrib ops."});
-  broken_tests.insert({"dynamic_slice_neg", "This model uses contrib ops."});
-  broken_tests.insert({"mvn", "This model uses contrib ops.", {"onnx130"}});
-  broken_tests.insert({"cdist_float32_euclidean_1000_2000_1", "This model uses contrib ops."});
-  broken_tests.insert({"cdist_float32_euclidean_1000_2000_500", "This model uses contrib ops."});
-  broken_tests.insert({"cdist_float32_euclidean_1_1_1", "This model uses contrib ops."});
-  broken_tests.insert({"cdist_float32_sqeuclidean_1000_2000_1", "This model uses contrib ops."});
-  broken_tests.insert({"cdist_float32_sqeuclidean_1000_2000_500", "This model uses contrib ops."});
-  broken_tests.insert({"cdist_float32_sqeuclidean_1_1_1", "This model uses contrib ops."});
-  broken_tests.insert({"cdist_float64_euclidean_1000_2000_1", "This model uses contrib ops."});
-  broken_tests.insert({"cdist_float64_euclidean_1000_2000_500", "This model uses contrib ops."});
-  broken_tests.insert({"cdist_float64_euclidean_1_1_1", "This model uses contrib ops."});
-  broken_tests.insert({"cdist_float64_sqeuclidean_1000_2000_1", "This model uses contrib ops."});
-  broken_tests.insert({"cdist_float64_sqeuclidean_1000_2000_500", "This model uses contrib ops."});
-  broken_tests.insert({"cdist_float64_sqeuclidean_1_1_1", "This model uses contrib ops."});
 #endif
 
   int result = 0;

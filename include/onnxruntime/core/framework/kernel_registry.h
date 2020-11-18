@@ -41,6 +41,13 @@ class KernelRegistry {
   Status TryFindKernel(const onnxruntime::Node& node, onnxruntime::ProviderType exec_provider,
                        const KernelCreateInfo** out) const;
 
+  // This is used by the opkernel doc generator to enlist all registered operators for a given provider's opkernel
+  // This is also used by kernel_registry unit test to verify all the onnx operators 
+  // have kernel registrations.
+  const KernelCreateMap& GetKernelCreateMap() const {
+    return kernel_creator_fn_map_;
+  }
+
 #endif
 
   // Check if an execution provider can create kernel for a node and return the kernel if so.
@@ -50,13 +57,6 @@ class KernelRegistry {
                        const KernelCreateInfo** out) const;
 
   bool IsEmpty() const { return kernel_creator_fn_map_.empty(); }
-
-#ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
-  // This is used by the opkernel doc generator to enlist all registered operators for a given provider's opkernel
-  const KernelCreateMap& GetKernelCreateMap() const {
-    return kernel_creator_fn_map_;
-  }
-#endif
 
  private:
 #if !defined(ORT_MINIMAL_BUILD)
