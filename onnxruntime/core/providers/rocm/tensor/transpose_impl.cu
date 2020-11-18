@@ -4,8 +4,6 @@
 #include "core/providers/rocm/cu_inc/common.cuh"
 #include "core/providers/rocm/tensor/transpose_impl.h"
 
-#define HCC_ENABLE_PRINTF
-
 namespace onnxruntime {
 namespace rocm {
 
