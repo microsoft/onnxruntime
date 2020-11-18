@@ -8,6 +8,7 @@ from .operators.conv import QLinearConv, ConvInteger
 from .operators.activation import QLinearActivation
 from .operators.binary_op import QLinearBinaryOp
 from .operators.maxpool import QMaxPool
+from. operators.lstm import LSTMQuant
 
 CommonOpsRegistry = {"Gather": GatherQuant, "EmbedLayerNormalization": EmbedLayerNormalizationQuant}
 
@@ -15,6 +16,7 @@ IntegerOpsRegistry = {
     "Conv": ConvInteger,
     "MatMul": MatMulInteger,
     "Attention": AttentionQuant,
+    "LSTM": LSTMQuant,
 }
 IntegerOpsRegistry.update(CommonOpsRegistry)
 
