@@ -102,7 +102,17 @@ jobs:
       projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
       configuration: '$(BuildConfig)'
       arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OrtPackageId=$(OrtPackageId)'
-      workingDirectory: '$(Build.SourcesDirectory)\csharp'      
+      workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+  - script: |
+     mkdir $(Build.SourcesDirectory)\csharp\docs
+     mklink /D /J  c:\doxygen_out $(Build.SourcesDirectory)\csharp\docs
+     mklink /D /J  c:\doxygen_src $(Build.SourcesDirectory)
+     "C:\Program Files\doxygen\bin\doxygen.exe" $(Build.SourcesDirectory)\tools\ci_build\github\Doxyfile_csharp.cfg
+     
+    workingDirectory: '$(Build.SourcesDirectory)\csharp'
+    displayName: 'C# API Documentation Check and generate'
+
 
   - task: DotNetCoreCLI@2
     displayName: 'Build C#'    
