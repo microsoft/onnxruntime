@@ -15,9 +15,22 @@ namespace Microsoft.ML.OnnxRuntime
     /// </summary>
     public class NamedOnnxValue
     {
+        /// <summary>
+        /// Managed Tensor, Dictionary or IList
+        /// </summary>
         protected Object _value;
+        /// <summary>
+        /// Name of the instance, model input/output
+        /// </summary>
         protected string _name;
 
+        /// <summary>
+        /// Constructs an instance of NamedOnnxValue and represents
+        /// a model input to an inference session. It also represents a modle output
+        /// when serves as a base for DisposablenamedOnnxvalue
+        /// </summary>
+        /// <param name="name">input/output name</param>
+        /// <param name="value">Object that may be a tensor, Dictionary, IList</param>
         protected NamedOnnxValue(string name, Object value)
         {
             _name = name;
@@ -37,7 +50,15 @@ namespace Microsoft.ML.OnnxRuntime
             return new NamedOnnxValue(name, value);
         }
 
+        /// <summary>
+        /// Exposes the name of the of the model input/output
+        /// </summary>
+        /// <value>name string</value>
         public string Name { get { return _name; } set { _name = value; } }
+        /// <summary>
+        /// Exposes the underlying managed object
+        /// </summary>
+        /// <value>object</value>
         public Object Value { get { return _value; } set { _value = value; } }
 
         /// <summary>

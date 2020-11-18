@@ -9,26 +9,32 @@ using System.Runtime.InteropServices;
 
 namespace Microsoft.ML.OnnxRuntime
 {
+    /// <summary>
+    /// A type of data that OrtValue encapsulates.
+    /// </summary>
     public enum OnnxValueType
     {
-        ONNX_TYPE_UNKNOWN = 0,
-        ONNX_TYPE_TENSOR = 1,
-        ONNX_TYPE_SEQUENCE = 2,
-        ONNX_TYPE_MAP = 3,
-        ONNX_TYPE_OPAQUE = 4,
-        ONNX_TYPE_SPARSETENSOR = 5,
+        ONNX_TYPE_UNKNOWN = 0, // Not set
+        ONNX_TYPE_TENSOR = 1, // It's a Tensor
+        ONNX_TYPE_SEQUENCE = 2, // It's an Onnx sequence which may be a sequence of Tensors/Maps/Sequences
+        ONNX_TYPE_MAP = 3,  // It's a map
+        ONNX_TYPE_OPAQUE = 4, // It's an experiemntal Opaque object
+        ONNX_TYPE_SPARSETENSOR = 5, // It's a Sparse Tensor
     }
 
     /// <summary>
-    /// Represents a disposable OrtValue
+    /// Represents a disposable OrtValue.
+    /// This class exposes a native instance of OrtValue.
+    /// The class implements IDisposable via SafeHandle and must
+    /// be disposed.
     /// </summary>
     public class OrtValue : SafeHandle
     {
         /// <summary>
-        /// Use factory methods to instantiate
+        /// Use factory methods to instantiate this class
         /// </summary>
-        /// <param name="handle"></param>
-        /// <param name="owned">Default true, own the raw handle
+        /// <param name="handle">Pointer to a native instance of OrtValue</param>
+        /// <param name="owned">Default true, own the raw handle. Otherwise, the handle is owned by another instance
         /// However, we use this class to expose OrtValue that is owned by DisposableNamedOnnxValue
         /// </param>
         internal OrtValue(IntPtr handle, bool owned = true)
@@ -39,21 +45,19 @@ namespace Microsoft.ML.OnnxRuntime
 
         internal IntPtr Handle { get { return handle; } }
 
+        /// <summary>
+        /// Overrides SafeHandle.IsInvalid
+        /// </summary>
+        /// <value>returns true if handle is equal to Zero</value>
         public override bool IsInvalid { get { return handle == IntPtr.Zero; } }
 
         #region NamedOnnxValue/DisposableOnnxValue accommodations
 
-        // DisposableOnnxValue class owns Native handle to OrtValue
-        // NamedOnnxValue does not own anything but creates a new one
-        // which presents a fundamental semantic difference to ToOrtValue interface.
-        //
-        // We provide a way to relinquish ownership as well as return an instance of
-        // OrtValue that is still disposable but does not have ownership
-        //
         /// <summary>
         /// This internal interface is used to transfer ownership elsewhere.
         /// This instance must still be disposed in case there are other native
-        /// objects still owned.
+        /// objects still owned. This is a convince method to ensure that an underlying
+        /// OrtValue is disposed exactly once when exception is thrown.
         /// </summary>
         /// <returns></returns>
         internal IntPtr Disown()
@@ -74,7 +78,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// or a piece of pinned managed memory.
         /// 
         /// The resulting OrtValue does not own the underlying memory buffer and will not attempt to
-        /// deallocated it.
+        /// deallocate it.
         /// </summary>
         /// <param name="memInfo">Memory Info. For managed memory it is a default cpu.
         ///                       For Native memory must be obtained from the allocator or OrtMemoryAllocation instance</param>
@@ -117,14 +121,17 @@ namespace Microsoft.ML.OnnxRuntime
 
         /// <summary>
         /// This is a factory method creates a native Onnxruntime OrtValue containing a tensor.
-        /// However, it re-uses managed memory if possible.
+        /// The method will attempt to pin managed memory so no copying occurs when data is passed down
+        /// to native code.
         /// </summary>
         /// <param name="value">Tensor object</param>
         /// <param name="memoryHandle">For all tensor types but string tensors we endeavor to use managed memory
-        ///  to avoid additional allocation and copy. This out parameter represents a chunk of pinned memory
+        ///  to avoid additional allocation and copy. This out parameter represents a chunk of pinned memory which will need
+        ///  to be disposed when no longer needed. The lifespan of memoryHandle should eclipse the lifespan of the corresponding
+        ///  OrtValue.
         /// </param>
         /// <param name="elementType">discovered tensor element type</param>
-        /// <returns></returns>
+        /// <returns>And instance of OrtValue constructed on top of the object</returns>
         public static OrtValue CreateFromTensorObject(Object value, out MemoryHandle? memoryHandle,
                                                                     out TensorElementType elementType)
         {
@@ -352,6 +359,11 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         #region SafeHandle
+        /// <summary>
+        /// Overrides SafeHandle.ReleaseHandle() to properly dispose of
+        /// the native instance of OrtValue
+        /// </summary>
+        /// <returns>always returns true</returns>
         protected override bool ReleaseHandle()
         {
             // We have to surrender ownership to some legacy classes

@@ -15,13 +15,19 @@ namespace Microsoft.ML.OnnxRuntime
         public LogLevel LogLevel { get; set; }
     }
 
+    /// <summary>
+    /// Logging level used to specify amount of logging when
+    /// creating environment. The lower the value is the more logging
+    /// will be output. A specific value output includes everything
+    /// that higher values output.
+    /// </summary>
     public enum LogLevel
     {
-        Verbose = 0,
-        Info = 1,
-        Warning = 2,
-        Error = 3,
-        Fatal = 4
+        Verbose = 0, // Everything
+        Info = 1,    // Informational
+        Warning = 2, // Warnings
+        Error = 3,   // Errors
+        Fatal = 4    // This is it
     }
 
     /// <summary>
@@ -82,6 +88,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Returns an instance of OrtEnv
         /// It returns the same instance on every call - `OrtEnv` is singleton
         /// </summary>
+        /// <returns>Returns a singleton instance or OrtEnv that represents native OrtEnv object</returns>
         public static OrtEnv Instance() { return _instance.Value; }
 
         /// <summary>
@@ -104,6 +111,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Queries all the execution providers supported in the native onnxruntime shared library
         /// </summary>
+        /// <returns>an array of strings that represent execution provider names</returns>
         public string[] GetAvailableProviders()
         {
             IntPtr availableProvidersHandle = IntPtr.Zero;
@@ -134,6 +142,10 @@ namespace Microsoft.ML.OnnxRuntime
         #endregion
 
         #region SafeHandle
+        /// <summary>
+        /// Overrides SafeHandle.IsInvalid
+        /// </summary>
+        /// <value>returns true if handle is equal to Zero</value>
         public override bool IsInvalid
         {
             get
@@ -142,6 +154,11 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+        /// <summary>
+        /// Overrides SafeHandle.ReleaseHandle() to properly dispose of
+        /// the native instance of OrtEnv
+        /// </summary>
+        /// <returns>always returns true</returns>
         protected override bool ReleaseHandle()
         {
             NativeMethods.OrtReleaseEnv(handle);
