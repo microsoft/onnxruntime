@@ -20,6 +20,11 @@ using std::vector;
 
 #pragma region helpers
 
+struct OpBuilderRegistrations {
+  std::vector<std::unique_ptr<IOpBuilder>> builders;
+  std::unordered_map<std::string, const IOpBuilder*> op_builder_map;
+};
+
 #define ADD_SCALAR_OPERAND(model_builder, input_indices, scalar_value)             \
   {                                                                                \
     uint32_t _index = 0;                                                           \
@@ -566,8 +571,7 @@ Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node&
 class BinaryOpBuilder : public BaseOpBuilder {
  public:
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
-  static void CreateSharedOpBuilder(
-      const std::string& op_type, std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>& op_map);
+  static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
@@ -581,20 +585,23 @@ void BinaryOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const N
 }
 
 /* static */ void BinaryOpBuilder::CreateSharedOpBuilder(
-    const std::string& op_type, std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>& op_map) {
-  auto op_builder = FindOpBuilder({
-                                      "Add",
-                                      "Sub",
-                                      "Mul",
-                                      "Div",
-                                      "QLinearAdd",
-                                  },
-                                  op_map);
-  if (!op_builder) {
-    op_builder = std::make_shared<BinaryOpBuilder>();
-  }
+    const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  // The shared OpBuilder is already in the OpBuilderRegistrations
+  if (op_registrations.op_builder_map.find(op_type) != op_registrations.op_builder_map.cend())
+    return;
 
-  op_map.emplace(op_type, op_builder);
+  // Add all supported ops
+  const std::vector<std::string> ops = {
+      "Add",
+      "Sub",
+      "Mul",
+      "Div",
+      "QLinearAdd",
+  };
+  op_registrations.builders.push_back(onnxruntime::make_unique<BinaryOpBuilder>());
+  for (const auto& op : ops) {
+    op_registrations.op_builder_map.emplace(op, op_registrations.builders.back().get());
+  }
 }
 
 Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
@@ -993,27 +1000,29 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
 
 class PoolOpBuilder : public BaseOpBuilder {
  public:
-  static void CreateSharedOpBuilder(
-      const std::string& op_type, std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>& op_map);
+  static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
 };
 
 /* static */ void PoolOpBuilder::CreateSharedOpBuilder(
-    const std::string& op_type, std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>& op_map) {
-  auto op_builder = FindOpBuilder({
-                                      "GlobalAveragePool",
-                                      "GlobalMaxPool",
-                                      "AveragePool",
-                                      "MaxPool",
-                                  },
-                                  op_map);
-  if (!op_builder) {
-    op_builder = std::make_shared<PoolOpBuilder>();
-  }
+    const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  // The shared OpBuilder is already in the OpBuilderRegistrations
+  if (op_registrations.op_builder_map.find(op_type) != op_registrations.op_builder_map.cend())
+    return;
 
-  op_map.emplace(op_type, op_builder);
+  // Add all supported ops
+  const std::vector<std::string> ops = {
+      "GlobalAveragePool",
+      "GlobalMaxPool",
+      "AveragePool",
+      "MaxPool",
+  };
+  op_registrations.builders.push_back(onnxruntime::make_unique<PoolOpBuilder>());
+  for (const auto& op : ops) {
+    op_registrations.op_builder_map.emplace(op, op_registrations.builders.back().get());
+  }
 }
 
 Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
@@ -1116,25 +1125,27 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 class ConvOpBuilder : public BaseOpBuilder {
  public:
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
-  static void CreateSharedOpBuilder(
-      const std::string& op_type, std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>& op_map);
+  static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
 };
 
 /* static */ void ConvOpBuilder::CreateSharedOpBuilder(
-    const std::string& op_type, std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>& op_map) {
-  auto op_builder = FindOpBuilder({
-                                      "Conv",
-                                      "QLinearConv",
-                                  },
-                                  op_map);
-  if (!op_builder) {
-    op_builder = std::make_shared<ConvOpBuilder>();
-  }
+    const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  // The shared OpBuilder is already in the OpBuilderRegistrations
+  if (op_registrations.op_builder_map.find(op_type) != op_registrations.op_builder_map.cend())
+    return;
 
-  op_map.emplace(op_type, op_builder);
+  // Add all supported ops
+  const std::vector<std::string> ops = {
+      "Conv",
+      "QLinearConv",
+  };
+  op_registrations.builders.push_back(onnxruntime::make_unique<ConvOpBuilder>());
+  for (const auto& op : ops) {
+    op_registrations.op_builder_map.emplace(op, op_registrations.builders.back().get());
+  }
 }
 
 void ConvOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
@@ -1497,26 +1508,28 @@ Status IdentityOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, con
 class GemmOpBuilder : public BaseOpBuilder {
  public:
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
-  static void CreateSharedOpBuilder(
-      const std::string& op_type, std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>& op_map);
+  static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
 };
 
 /* static */ void GemmOpBuilder::CreateSharedOpBuilder(
-    const std::string& op_type, std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>& op_map) {
-  auto op_builder = FindOpBuilder({
-                                      "Gemm",
-                                      "MatMul",
-                                      "QLinearMatMul",
-                                  },
-                                  op_map);
-  if (!op_builder) {
-    op_builder = std::make_shared<GemmOpBuilder>();
-  }
+    const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  // The shared OpBuilder is already in the OpBuilderRegistrations
+  if (op_registrations.op_builder_map.find(op_type) != op_registrations.op_builder_map.cend())
+    return;
 
-  op_map.emplace(op_type, op_builder);
+  // Add all supported ops
+  const std::vector<std::string> ops = {
+      "Gemm",
+      "MatMul",
+      "QLinearMatMul",
+  };
+  op_registrations.builders.push_back(onnxruntime::make_unique<GemmOpBuilder>());
+  for (const auto& op : ops) {
+    op_registrations.op_builder_map.emplace(op, op_registrations.builders.back().get());
+  }
 }
 
 void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
@@ -1637,32 +1650,34 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
 class UnaryOpBuilder : public BaseOpBuilder {
  public:
-  static void CreateSharedOpBuilder(
-      const std::string& op_type, std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>& op_map);
+  static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
 };
 
 /* static */ void UnaryOpBuilder::CreateSharedOpBuilder(
-    const std::string& op_type, std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>& op_map) {
-  auto op_builder = FindOpBuilder({
-                                      "Abs",
-                                      "Exp",
-                                      "Floor",
-                                      "Log",
-                                      "Sigmoid",
-                                      "Neg",
-                                      "Sin",
-                                      "Sqrt",
-                                      "Tanh",
-                                  },
-                                  op_map);
-  if (!op_builder) {
-    op_builder = std::make_shared<UnaryOpBuilder>();
-  }
+    const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  // The shared OpBuilder is already in the OpBuilderRegistrations
+  if (op_registrations.op_builder_map.find(op_type) != op_registrations.op_builder_map.cend())
+    return;
 
-  op_map.emplace(op_type, op_builder);
+  // Add all supported ops
+  const std::vector<std::string> ops = {
+      "Abs",
+      "Exp",
+      "Floor",
+      "Log",
+      "Sigmoid",
+      "Neg",
+      "Sin",
+      "Sqrt",
+      "Tanh",
+  };
+  op_registrations.builders.push_back(onnxruntime::make_unique<UnaryOpBuilder>());
+  for (const auto& op : ops) {
+    op_registrations.op_builder_map.emplace(op, op_registrations.builders.back().get());
+  }
 }
 
 Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
@@ -2216,14 +2231,17 @@ Status FlattenOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
 // such that we can reduce binary size.
 // This is for multiple ops share the same OpBuilder, we only need create one for all of them
 #define NNAPI_EP_ADD_SHARED_OP_BUILDER(OP_TYPE, BUILDER_NAME) \
-  BUILDER_NAME::CreateSharedOpBuilder(OP_TYPE, op_map);
+  BUILDER_NAME::CreateSharedOpBuilder(OP_TYPE, op_registrations);
 
 // This is for ops with dedicated OpBuilder
-#define NNAPI_EP_ADD_SINGLE_OP_BUILDER(OP_TYPE, BUILDER_NAME) \
-  op_map.emplace(OP_TYPE, std::make_shared<BUILDER_NAME>());
+#define NNAPI_EP_ADD_SINGLE_OP_BUILDER(OP_TYPE, BUILDER_NAME)                                 \
+  {                                                                                           \
+    op_registrations.builders.push_back(onnxruntime::make_unique<BUILDER_NAME>());            \
+    op_registrations.op_builder_map.emplace(OP_TYPE, op_registrations.builders.back().get()); \
+  }
 
-static std::unordered_map<std::string, std::shared_ptr<IOpBuilder>> CreateOpBuilders() {
-  std::unordered_map<std::string, std::shared_ptr<IOpBuilder>> op_map;
+static OpBuilderRegistrations CreateOpBuilderRegistrations() {
+  OpBuilderRegistrations op_registrations;
 
   {
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Add", BinaryOpBuilder);
@@ -2281,12 +2299,12 @@ static std::unordered_map<std::string, std::shared_ptr<IOpBuilder>> CreateOpBuil
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Resize", ResizeOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Flatten", FlattenOpBuilder);
 
-  return op_map;
+  return op_registrations;
 }
 
-const std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>& GetOpBuilders() {
-  static const std::unordered_map<std::string, std::shared_ptr<IOpBuilder>> op_map = CreateOpBuilders();
-  return op_map;
+const std::unordered_map<std::string, const IOpBuilder*>& GetOpBuilders() {
+  static const OpBuilderRegistrations op_registrations = CreateOpBuilderRegistrations();
+  return op_registrations.op_builder_map;
 }
 
 #pragma endregion

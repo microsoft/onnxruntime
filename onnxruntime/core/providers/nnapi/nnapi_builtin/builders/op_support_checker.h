@@ -29,7 +29,7 @@ class IOpSupportChecker {
 // Get the lookup table with IOpSupportChecker delegates for different onnx operators
 // Note, the lookup table should have same number of entries as the result of CreateOpBuilders()
 // in op_builder.h
-const std::unordered_map<std::string, std::shared_ptr<IOpSupportChecker>>& GetOpSupportCheckers();
+const std::unordered_map<std::string, const IOpSupportChecker*>& GetOpSupportCheckers();
 
 }  // namespace nnapi
 }  // namespace onnxruntime
