@@ -56,15 +56,15 @@ Status Transpose3DImpl(const Transpose& kernel, size_t element_size,
   dim3 block_size(TILE_DIM, TILE_DIM);
   dim3 grid_size(input_shape[2] / TILE_DIM, input_shape[1] / TILE_DIM, input_shape[0]);
 
-  RocmAsyncBuffer<int64_t> input_shape_buffer(input_shape.size());
-  RocmAsyncBuffer<int64_t> input_strides_buffer(input_strides.size());
+  RocmKernel::RocmAsyncBuffer<int64_t> input_shape_buffer(&kernel, input_shape.size());
+  RocmKernel::RocmAsyncBuffer<int64_t> input_strides_buffer(&kernel, input_strides.size());
   for (int i = 0; i < input_shape.size(); i++) {
     input_shape_buffer.CpuPtr()[i] = input_shape[i];
     input_strides_buffer.CpuPtr()[i] = input_strides[i];
   }
 
-  ORT_RETURN_IF_ERROR(input_shape_buffer->CopyToGpu());
-  ORT_RETURN_IF_ERROR(input_strides_buffer->CopyToGpu());
+  ORT_RETURN_IF_ERROR(input_shape_buffer.CopyToGpu());
+  ORT_RETURN_IF_ERROR(input_strides_buffer.CopyToGpu());
 
   switch (element_size) {
     case sizeof(int8_t):
@@ -163,15 +163,15 @@ Status Transpose4DImpl(const Transpose& kernel, size_t element_size, const std::
   dim3 block_size(input_shape[3] / num_elements_per_thread, input_shape[2]);
   dim3 grid_size(input_shape[1], input_shape[0]);
 
-  RocmAsyncBuffer<int64_t> input_strides_buffer(input_strides.size());
-  RocmAsyncBuffer<int64_t> output_strides_buffer(output_strides.size());
+  RocmKernel::RocmAsyncBuffer<int64_t> input_strides_buffer(&kernel, input_strides.size());
+  RocmKernel::RocmAsyncBuffer<int64_t> output_strides_buffer(&kernel, output_strides.size());
   for (int i = 0; i < input_strides.size(); i++) {
     input_strides_buffer.CpuPtr()[i] =  input_strides[i];
     output_strides_buffer.CpuPtr()[i] = output_strides[i];
   }
 
-  ORT_RETURN_IF_ERROR(input_strides_buffer->CopyToGpu());
-  ORT_RETURN_IF_ERROR(output_strides_buffer->CopyToGpu());
+  ORT_RETURN_IF_ERROR(input_strides_buffer.CopyToGpu());
+  ORT_RETURN_IF_ERROR(output_strides_buffer.CopyToGpu());
 
   switch (element_size) {
     case sizeof(int8_t):

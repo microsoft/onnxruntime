@@ -4,6 +4,7 @@
 #pragma once
 #include <stdint.h>
 #include "core/providers/rocm/shared_inc/rocm_utils.h"
+#include "core/providers/rocm/tensor/transpose.h"
 
 namespace onnxruntime {
 namespace rocm {
@@ -11,7 +12,7 @@ namespace rocm {
 bool CanDoTranspose3D(int32_t rank, const std::vector<int64_t>& input_dims, const std::vector<size_t>& permutations);
 // Status Transpose3DImpl(size_t element_size, const TArray<int64_t>& input_shape, const TArray<int64_t>& input_strides, const void* input_data,
 //                        void* output_data, int64_t N);
-Status Transpose3DImpl(size_t element_size, const std::vector<int64_t>& input_shape, const std::vector<int64_t>& input_strides, const void* input_data,
+Status Transpose3DImpl(const Transpose& kernel, size_t element_size, const std::vector<int64_t>& input_shape, const std::vector<int64_t>& input_strides, const void* input_data,
                        void* output_data, int64_t N);
 
 
@@ -21,7 +22,7 @@ bool CanDoTranspose4D(const hipDeviceProp_t& prop,
                       const std::vector<int64_t>& input_dims,
                       const std::vector<size_t>& permutations);
 
-Status Transpose4DImpl(size_t element_size, const std::vector<int64_t>& input_shape, const std::vector<int64_t>& input_strides, const void* input_data,
+Status Transpose4DImpl(const Transpose& kernel, size_t element_size, const std::vector<int64_t>& input_shape, const std::vector<int64_t>& input_strides, const void* input_data,
                        const std::vector<int64_t>& output_strides, void* output_data, int64_t N);
 
 // Status TransposeImpl(size_t element_size, int32_t shape_rank, const TArray<int64_t>& input_strides,
