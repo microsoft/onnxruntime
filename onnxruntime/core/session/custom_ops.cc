@@ -117,19 +117,26 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
       ONNX_NAMESPACE::OpSchema schema(op->GetName(op), "unknown", 0);
 
       auto input_count = op->GetInputTypeCount(op);
-      for (size_t i = 0; i < input_count; i++) {
-        auto type = op->GetInputType(op, i);
+      if (0 == input_count) {
+        schema.Input(0, "inputs", "Description", "tensor(float)", ONNX_NAMESPACE::OpSchema::Variadic);
+      } else {
+        for (size_t i = 0; i < input_count; i++) {
+          auto type = op->GetInputType(op, i);
 
-        schema.Input(i, "A", "Description",
-                     DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)));
-      }
+          schema.Input(i, "A", "Description",
+                       DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)));
+        }
+      }  //else
 
       auto output_count = op->GetOutputTypeCount(op);
-      for (size_t i = 0; i < output_count; i++) {
-        auto type = op->GetOutputType(op, i);
-
-        schema.Output(i, "A", "Description",
-                      DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)));
+      if (0 == output_count) {
+        schema.Output(0, "outputs", "Description", "tensor(float)", ONNX_NAMESPACE::OpSchema::Variadic);
+      } else {
+        for (size_t i = 0; i < output_count; i++) {
+          auto type = op->GetOutputType(op, i);
+          schema.Output(i, "A", "Description",
+                        DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)));
+        }
       }
 
       schema.SetDomain(domain->domain_);
