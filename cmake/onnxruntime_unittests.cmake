@@ -943,7 +943,7 @@ if(MSVC)
 endif()
 target_include_directories(onnxruntime_mlas_test PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT}
         ${CMAKE_CURRENT_BINARY_DIR})
-set(onnxruntime_mlas_test_libs onnxruntime_mlas onnxruntime_common)
+set(onnxruntime_mlas_test_libs onnxruntime_mlas onnxruntime_common  GTest::gtest GTest::gtest_main)
 if(NOT WIN32)
   list(APPEND onnxruntime_mlas_test_libs nsync_cpp ${CMAKE_DL_LIBS})
 endif()
