@@ -1218,6 +1218,13 @@ common::Status InferenceSession::Initialize() {
 
 #if !defined(ORT_MINIMAL_BUILD)
     if (saving_model) {
+      if (session_state_->GetFuncMgr().NumFuncs() > 0) {
+        ORT_RETURN_IF_ERROR_SESSIONID_(
+            ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                            "Unable to serialize model as it contains compiled nodes. "
+                            "Please disable any execution providers which generate compiled nodes."));
+      }
+
       if (session_options_.graph_optimization_level >= TransformerLevel::Level3) {
         LOGS(*session_logger_, WARNING)
             << "Serializing optimized model with Graph Optimization level greater than ORT_ENABLE_EXTENDED. "

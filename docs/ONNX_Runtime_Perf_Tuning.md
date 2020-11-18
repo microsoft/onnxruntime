@@ -151,6 +151,8 @@ The most widely used environment variables are:
   * ACTIVE will not yield CPU, instead it will have a while loop to check whether the next task is ready
   * Use PASSIVE if your CPU usage already high, and use ACTIVE when you want to trade CPU with latency
 
+## Using and configuring shared arena based allocator to reduce memory consumption between multiple sessions
+See `Share allocator(s) between sessions` section in [C API documentation](C_API.md).
 
 ## Troubleshooting model performance issues
 The answers below are troubleshooting suggestions based on common previous user-filed issues and questions. This list is by no means exhaustive and there is a lot of case-by-case fluctuation depending on the model and specific usage scenario. Please use this information to guide your troubleshooting, search through previously filed issues for related topics, and/or file a new issue if your problem is still not resolved.

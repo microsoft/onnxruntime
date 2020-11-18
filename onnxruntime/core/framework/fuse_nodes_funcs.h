@@ -18,6 +18,8 @@ class FuncManager {
 
   Status GetFuncs(const std::string& name, NodeComputeInfo*& compute_info) const;
 
+  size_t NumFuncs() const { return fused_funcs_->size(); }
+
   void SetFusedFuncs(const FuncManager& func_mgr) {
     fused_funcs_ = func_mgr.fused_funcs_;
   }
