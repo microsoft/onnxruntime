@@ -118,7 +118,9 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
 
       auto input_count = op->GetInputTypeCount(op);
       if (0 == input_count) {
-        schema.Input(0, "inputs", "Description", "tensor(float)", ONNX_NAMESPACE::OpSchema::Variadic);
+        //schema.Input(0, "inputs", "Description", "tensor(float)", ONNX_NAMESPACE::OpSchema::Variadic);
+        schema.Input(0, "inputs", "Description", "T", ONNX_NAMESPACE::OpSchema::Variadic);
+        schema.TypeConstraint("T", ONNX_NAMESPACE::OpSchema::all_tensor_types(), "support all types");
       } else {
         for (size_t i = 0; i < input_count; i++) {
           auto type = op->GetInputType(op, i);
@@ -130,7 +132,8 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
 
       auto output_count = op->GetOutputTypeCount(op);
       if (0 == output_count) {
-        schema.Output(0, "outputs", "Description", "tensor(float)", ONNX_NAMESPACE::OpSchema::Variadic);
+        //schema.Output(0, "outputs", "Description", "tensor(float)", ONNX_NAMESPACE::OpSchema::Variadic);
+        schema.Output(0, "outputs", "Description", "T", ONNX_NAMESPACE::OpSchema::Variadic);
       } else {
         for (size_t i = 0; i < output_count; i++) {
           auto type = op->GetOutputType(op, i);
@@ -152,6 +155,10 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
         def_builder.Provider(provider_type);
       else
         def_builder.Provider(onnxruntime::kCpuExecutionProvider);
+
+      if (0 == input_count) {
+        def_builder.TypeConstraint("T", DataTypeImpl::GetTensorType<float>());
+      }
 
       KernelCreateFn kernel_create_fn = [&op](const OpKernelInfo& info) -> OpKernel* { return new CustomOpKernel(info, *op); };
       KernelCreateInfo create_info(def_builder.Build(), kernel_create_fn);
