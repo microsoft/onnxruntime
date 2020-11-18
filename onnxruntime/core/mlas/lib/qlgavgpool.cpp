@@ -334,18 +334,18 @@ MlasNhwcQLinearGlobalAveragePoolSingleBatch(
             acc += 8;
         }
         if (c > 0) {
-          const uint8x8_t vi0 = vld1_u8(i0 >= LastOf8 ? MlasCopyTailBytes(tail, i0, c) : i0);
-          const uint8x8_t vi1 = vld1_u8(i1 >= LastOf8 ? MlasCopyTailBytes(tail, i1, c) : i1);
-          const uint8x8_t vi2 = vld1_u8(i2 >= LastOf8 ? MlasCopyTailBytes(tail, i2, c) : i2);
-          const uint8x8_t vi3 = vld1_u8(i3 >= LastOf8 ? MlasCopyTailBytes(tail, i3, c) : i3);
-          const uint8x8_t vi4 = vld1_u8(i4 >= LastOf8 ? MlasCopyTailBytes(tail, i4, c) : i4);
-          const uint8x8_t vi5 = vld1_u8(i5 >= LastOf8 ? MlasCopyTailBytes(tail, i5, c) : i5);
-          const uint8x8_t vi6 = vld1_u8(i6 >= LastOf8 ? MlasCopyTailBytes(tail, i6, c) : i6);
+            const uint8x8_t vi0 = vld1_u8(((i0 >= LastOf8) ? MlasCopyTailBytes(tail, i0, c) : i0));
+            const uint8x8_t vi1 = vld1_u8(((i1 >= LastOf8) ? MlasCopyTailBytes(tail, i1, c) : i1));
+            const uint8x8_t vi2 = vld1_u8(((i2 >= LastOf8) ? MlasCopyTailBytes(tail, i2, c) : i2));
+            const uint8x8_t vi3 = vld1_u8(((i3 >= LastOf8) ? MlasCopyTailBytes(tail, i3, c) : i3));
+            const uint8x8_t vi4 = vld1_u8(((i4 >= LastOf8) ? MlasCopyTailBytes(tail, i4, c) : i4));
+            const uint8x8_t vi5 = vld1_u8(((i5 >= LastOf8) ? MlasCopyTailBytes(tail, i5, c) : i5));
+            const uint8x8_t vi6 = vld1_u8(((i6 >= LastOf8) ? MlasCopyTailBytes(tail, i6, c) : i6));
 
-          CACULATE_ACCUMULATE_VECTORS();
+            CACULATE_ACCUMULATE_VECTORS();
 
-          vst1q_s32(acc, vacc_lo);
-          vst1q_s32(acc + 4, vacc_hi);
+            vst1q_s32(acc, vacc_lo);
+            vst1q_s32(acc + 4, vacc_hi);
         }
         finish_one_pass = true;
 
@@ -382,18 +382,18 @@ MlasNhwcQLinearGlobalAveragePoolSingleBatch(
         }
 
         if (Channels > 0) {
-          const uint8x8_t vi0 = vld1_u8(i0 >= LastOf8 ? MlasCopyTailBytes(tail, i0, Channels) : i0);
-          const uint8x8_t vi1 = vld1_u8(1 < ImageSize && i1 >= LastOf8 ? MlasCopyTailBytes(tail, i1, Channels) : i1);
-          const uint8x8_t vi2 = vld1_u8(2 < ImageSize && i2 >= LastOf8 ? MlasCopyTailBytes(tail, i2, Channels) : i2);
-          const uint8x8_t vi3 = vld1_u8(3 < ImageSize && i3 >= LastOf8 ? MlasCopyTailBytes(tail, i3, Channels) : i3);
-          const uint8x8_t vi4 = vld1_u8(4 < ImageSize && i4 >= LastOf8 ? MlasCopyTailBytes(tail, i4, Channels) : i4);
-          const uint8x8_t vi5 = vld1_u8(5 < ImageSize && i5 >= LastOf8 ? MlasCopyTailBytes(tail, i5, Channels) : i5);
-          const uint8x8_t vi6 = vld1_u8(6 < ImageSize && i6 >= LastOf8 ? MlasCopyTailBytes(tail, i6, Channels) : i6);
+            const uint8x8_t vi0 = vld1_u8(((i0 >= LastOf8) ? MlasCopyTailBytes(tail, i0, Channels) : i0));
+            const uint8x8_t vi1 = vld1_u8(((1 < ImageSize && i1 >= LastOf8) ? MlasCopyTailBytes(tail, i1, Channels) : i1));
+            const uint8x8_t vi2 = vld1_u8(((2 < ImageSize && i2 >= LastOf8) ? MlasCopyTailBytes(tail, i2, Channels) : i2));
+            const uint8x8_t vi3 = vld1_u8(((3 < ImageSize && i3 >= LastOf8) ? MlasCopyTailBytes(tail, i3, Channels) : i3));
+            const uint8x8_t vi4 = vld1_u8(((4 < ImageSize && i4 >= LastOf8) ? MlasCopyTailBytes(tail, i4, Channels) : i4));
+            const uint8x8_t vi5 = vld1_u8(((5 < ImageSize && i5 >= LastOf8) ? MlasCopyTailBytes(tail, i5, Channels) : i5));
+            const uint8x8_t vi6 = vld1_u8(((6 < ImageSize && i6 >= LastOf8) ? MlasCopyTailBytes(tail, i6, Channels) : i6));
 
-          CACULATE_ACCUMULATE_VECTORS();
+            CACULATE_ACCUMULATE_VECTORS();
 
-          uint8x8_t vresult = RequantizeBiasedSum(vacc_lo, vacc_hi, vmultiplier, vleft_shift, voutput_zero_point);
-          StoreTailBytes(Output, vresult, Channels);
+            uint8x8_t vresult = RequantizeBiasedSum(vacc_lo, vacc_hi, vmultiplier, vleft_shift, voutput_zero_point);
+            StoreTailBytes(Output, vresult, Channels);
         }
     }
 }
