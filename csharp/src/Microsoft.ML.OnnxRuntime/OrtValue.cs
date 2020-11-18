@@ -18,7 +18,7 @@ namespace Microsoft.ML.OnnxRuntime
         ONNX_TYPE_TENSOR = 1, // It's a Tensor
         ONNX_TYPE_SEQUENCE = 2, // It's an Onnx sequence which may be a sequence of Tensors/Maps/Sequences
         ONNX_TYPE_MAP = 3,  // It's a map
-        ONNX_TYPE_OPAQUE = 4, // It's an experiemntal Opaque object
+        ONNX_TYPE_OPAQUE = 4, // It's an experimental Opaque object
         ONNX_TYPE_SPARSETENSOR = 5, // It's a Sparse Tensor
     }
 
@@ -56,7 +56,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// This internal interface is used to transfer ownership elsewhere.
         /// This instance must still be disposed in case there are other native
-        /// objects still owned. This is a convince method to ensure that an underlying
+        /// objects still owned. This is a convenience method to ensure that an underlying
         /// OrtValue is disposed exactly once when exception is thrown.
         /// </summary>
         /// <returns></returns>
