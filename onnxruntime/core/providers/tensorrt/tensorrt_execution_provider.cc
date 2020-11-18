@@ -8,7 +8,6 @@
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/common/safeint.h"
-
 #include "tensorrt_execution_provider.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
@@ -47,6 +46,17 @@ std::string GetVecHash(const std::string& vec) {
     ret ^= static_cast<int>(i) + 0x9e3779b9 + (ret << 6) + (ret >> 2);
   }
   return std::to_string(ret);
+}
+
+float ConvertSinglePrecisionIEEE754ToFloat(unsigned long input) {
+  int s = (input >> 31) & 0x01;
+  int e = ((input & 0x7f800000) >> 23) - 127;
+  int p = -1;
+  double m = 0.0;
+  for (int i = 0; i < 23; ++i) {
+    m += ((input >> (23 - i - 1)) & 0x01) * pow(2.0, p--);
+  }
+  return (s ? -1 : 1) * pow(2.0, e) * (m + 1.0);
 }
 
 /*
@@ -106,6 +116,141 @@ std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64
     shape_ranges[keys[i].AsString().c_str()] = inner_map;
   }
   return shape_ranges;
+}
+
+// Check if cycle exists in the graph after partitioning
+bool FindCycleHelper(int i, const std::list<int>* adjacency_map, bool visited[], bool* st, std::vector<int>& cycles) {
+  if (!visited[i]) {
+    visited[i] = true;
+    st[i] = true;
+    for (auto iter = adjacency_map[i].begin(); iter != adjacency_map[i].end(); ++iter) {
+      if (!visited[*iter] && FindCycleHelper(*iter, adjacency_map, visited, st, cycles)) {
+        cycles.push_back(*iter);
+        return true;
+      } else if (st[*iter]) {
+        cycles.push_back(*iter);
+        return true;
+      }
+    }
+  }
+  st[i] = false;
+  return false;
+}
+
+/*
+* Read calibration table for INT8 quantization
+* Two kind of calibration tables are supported,
+* 1. ORT generated calibration table
+* The table is serialized by flexbuffers. Data is organized as a map,
+* key: tensor name, value: maximum absolute value in floating point
+* 2. Native TensorRT generated calibration table
+* Data entry in the table follows TensorRT's definition,
+* tensor name : maximum absolute value in 32-bit single precision IEEE754 format
+*/
+bool ReadDynamicRange(const std::string file_name, const bool is_trt_calibration_table, std::unordered_map<std::string, float>& dynamic_range_map) {
+  std::ifstream infile(file_name, std::ios::binary | std::ios::in);
+  if (!infile) {
+    return false;
+  }
+
+  // Load calibration table
+  if (is_trt_calibration_table) {
+    // TensorRT generated calibration table
+    std::string line;
+    char delim = ':';
+    if (std::getline(infile, line)) {
+      std::istringstream first_line(line);
+      std::string version;
+      std::getline(first_line, version, delim);
+      std::size_t found = version.find("TRT-");
+      if (found != std::string::npos) {
+        while (std::getline(infile, line)) {
+          std::istringstream in_line(line);
+          std::string str;
+          std::getline(in_line, str, delim);
+          std::string tensor_name = str;
+          std::getline(in_line, str, delim);
+          unsigned long scale_int = std::strtoul(str.c_str(), nullptr, 16);
+          float scale_float = ConvertSinglePrecisionIEEE754ToFloat(scale_int);
+          float dynamic_range = scale_float * 127.0;
+          dynamic_range_map[tensor_name] = dynamic_range;
+        }
+      } else {
+        throw std::runtime_error("This is not a TensorRT generated calibration table " + file_name);
+      }
+    }
+  } else {
+    // ORT generated calibration table
+    infile.seekg(0, std::ios::end);
+    int length = infile.tellg();
+    infile.seekg(0, std::ios::beg);
+    std::unique_ptr<char[]> data{new char[length]};
+    infile.read((char*)data.get(), length);
+    infile.close();
+    auto dynamic_range_entries = flexbuffers::GetRoot((const uint8_t*)data.get(), length).AsMap();
+    auto keys = dynamic_range_entries.Keys();
+    auto values = dynamic_range_entries.Values();
+    for (size_t i = 0, end = keys.size(); i < end; ++i) {
+      dynamic_range_map[keys[i].AsString().c_str()] = values[i].AsFloat();
+    }
+  }
+  return true;
+}
+
+bool SetDynamicRange(nvinfer1::INetworkDefinition& network, std::unordered_map<std::string, float>& dynamic_range_map) {
+  // Set dynamic range for input tensors
+  for (int i = 0; i < network.getNbInputs(); ++i) {
+    const std::string tensor_name = network.getInput(i)->getName();
+    auto dynamic_range_iter = dynamic_range_map.find(tensor_name);
+    if (dynamic_range_iter != dynamic_range_map.end()) {
+      if (!network.getInput(i)->setDynamicRange(-dynamic_range_iter->second, dynamic_range_iter->second)) {
+        return false;
+      }
+    }
+  }
+
+  // Set dynamic range for activation tensors and weights
+  for (int i = 0; i < network.getNbLayers(); ++i) {
+    auto trt_layer = network.getLayer(i);
+    for (int j = 0, e = trt_layer->getNbOutputs(); j < e; ++j) {
+      const std::string tensor_name = trt_layer->getOutput(j)->getName();
+      auto dynamic_range_iter = dynamic_range_map.find(tensor_name);
+      if (dynamic_range_iter != dynamic_range_map.end()) {
+        if (!trt_layer->getOutput(j)->setDynamicRange(-dynamic_range_iter->second, dynamic_range_iter->second)) {
+          return false;
+        }
+      } else if (trt_layer->getType() == nvinfer1::LayerType::kCONSTANT) {
+        nvinfer1::IConstantLayer* const_layer = static_cast<nvinfer1::IConstantLayer*>(trt_layer);
+        auto trt_weights = const_layer->getWeights();
+        double max_weight = std::numeric_limits<double>::min();
+        for (int64_t k = 0, end = trt_weights.count; k < end; ++k) {
+          double weight{};
+          switch (trt_weights.type) {
+            case nvinfer1::DataType::kFLOAT:
+              weight = static_cast<const float*>(trt_weights.values)[k];
+              break;
+            case nvinfer1::DataType::kBOOL:
+              weight = static_cast<const bool*>(trt_weights.values)[k];
+              break;
+            case nvinfer1::DataType::kINT8:
+              weight = static_cast<const int8_t*>(trt_weights.values)[k];
+              break;
+            case nvinfer1::DataType::kHALF:
+              weight = static_cast<const uint16_t*>(trt_weights.values)[k];
+              break;
+            case nvinfer1::DataType::kINT32:
+              weight = static_cast<const int32_t*>(trt_weights.values)[k];
+              break;
+          }
+          max_weight = std::max(max_weight, std::abs(weight));
+        }
+        if (!trt_layer->getOutput(j)->setDynamicRange(-max_weight, max_weight)) {
+          return false;
+        }
+      }
+    }
+  }
+  return true;
 }
 }  // namespace
 
@@ -269,9 +414,14 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   }
 
   if (int8_enable_) {
-    const std::string int8_calibration_file_name_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kINT8CalibrationFileName);
-    if (!int8_calibration_file_name_env.empty()) {
-      int8_calibration_file_name_ = int8_calibration_file_name_env;
+    const std::string int8_calibration_cache_name_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kINT8CalibrationTableName);
+    if (!int8_calibration_cache_name_env.empty()) {
+      int8_calibration_cache_name_ = int8_calibration_cache_name_env;
+    }
+
+    const std::string int8_use_tensorrt_calibration_table_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kINT8UseTensorrtCalibrationTable);
+    if (!int8_use_tensorrt_calibration_table_env.empty()) {
+      int8_use_tensorrt_calibration_table_ = (std::stoi(int8_use_tensorrt_calibration_table_env) == 0 ? false : true);
     }
   }
 
@@ -285,11 +435,11 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     engine_cache_enable_ = (std::stoi(engine_cache_enable_env) == 0 ? false : true);
   }
 
-  if (engine_cache_enable_) {
-    engine_cache_path_ = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEngineCachePath);
-    if (!engine_cache_path_.empty() && !fs::is_directory(engine_cache_path_)) {
-      if (!fs::create_directory(engine_cache_path_)) {
-        throw std::runtime_error("Failed to create directory " + engine_cache_path_);
+  if (engine_cache_enable_ || int8_enable_) {
+    cache_path_ = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kCachePath);
+    if (!cache_path_.empty() && !fs::is_directory(cache_path_)) {
+      if (!fs::create_directory(cache_path_)) {
+        throw std::runtime_error("Failed to create directory " + cache_path_);
       }
     }
     runtime_ = nvinfer1::createInferRuntime(GetTensorrtLogger());
@@ -338,116 +488,6 @@ void ToGraphProtoInternal(const onnxruntime::Provider_GraphViewer& graph, Provid
   }
 }
 
-// Check if cycle exists in the graph after partitioning
-bool FindCycleHelper(int i, const std::list<int>* adjacency_map, bool visited[], bool* st, std::vector<int>& cycles) {
-  if (!visited[i]) {
-    visited[i] = true;
-    st[i] = true;
-    for (auto iter = adjacency_map[i].begin(); iter != adjacency_map[i].end(); ++iter) {
-      if (!visited[*iter] && FindCycleHelper(*iter, adjacency_map, visited, st, cycles)) {
-        cycles.push_back(*iter);
-        return true;
-      } else if (st[*iter]) {
-        cycles.push_back(*iter);
-        return true;
-      }
-    }
-  }
-  st[i] = false;
-  return false;
-}
-
-bool ReadPerTensorDynamicRangeValues(std::unordered_map<std::string, float>& per_tensor_dynamic_range_map, const std::string file_name) {
-  std::ifstream dynamic_range_stream(file_name);
-  if (!dynamic_range_stream) {
-    return false;
-  }
-  std::string line;
-  char delim = ' ';
-  while (std::getline(dynamic_range_stream, line)) {
-    std::istringstream iline(line);
-    std::string token;
-    std::getline(iline, token, delim);
-    std::string tensor_name = token;
-    std::getline(iline, token, delim);
-    float dynamic_range = std::stof(token);
-    per_tensor_dynamic_range_map[tensor_name] = dynamic_range;
-  }
-  return true;
-}
-
-bool SetDynamicRange(nvinfer1::INetworkDefinition* network, std::unordered_map<std::string, float>& dynamic_range_map) {
-  // set dynamic range for network input tensors
-  for (int i = 0; i < network->getNbInputs(); ++i) {
-    std::string tensor_name = network->getInput(i)->getName();
-    if (dynamic_range_map.find(tensor_name) != dynamic_range_map.end()) {
-      if (!network->getInput(i)->setDynamicRange(-dynamic_range_map.at(tensor_name), dynamic_range_map.at(tensor_name))) {
-        return false;
-      }
-    }
-  }
-
-  // set dynamic range for layer output tensors
-  for (int i = 0; i < network->getNbLayers(); ++i) {
-    auto lyr = network->getLayer(i);
-    for (int j = 0, e = lyr->getNbOutputs(); j < e; ++j) {
-      std::string tensor_name = lyr->getOutput(j)->getName();
-      if (dynamic_range_map.find(tensor_name) != dynamic_range_map.end()) {
-        // Calibrator generated dynamic range for network tensor can be overriden or set using below API
-        if (!lyr->getOutput(j)->setDynamicRange(-dynamic_range_map.at(tensor_name), dynamic_range_map.at(tensor_name))) {
-          std::cout << "lyr->getOutput(j)->setDynamicRange returns false" << std::endl;
-          return false;
-        }
-      } else if (lyr->getType() == nvinfer1::LayerType::kCONSTANT) {
-        nvinfer1::IConstantLayer* const_layer = static_cast<nvinfer1::IConstantLayer*>(lyr);
-        auto wts = const_layer->getWeights();
-        double max = std::numeric_limits<double>::min();
-        for (int64_t wb = 0, we = wts.count; wb < we; ++wb) {
-          double val{};
-          switch (wts.type) {
-            case nvinfer1::DataType::kFLOAT:
-              val = static_cast<const float*>(wts.values)[wb];
-              break;
-            case nvinfer1::DataType::kBOOL:
-              val = static_cast<const bool*>(wts.values)[wb];
-              break;
-            case nvinfer1::DataType::kINT8:
-              val = static_cast<const int8_t*>(wts.values)[wb];
-              break;
-            case nvinfer1::DataType::kHALF:
-              val = static_cast<const uint16_t*>(wts.values)[wb];
-              break;
-            case nvinfer1::DataType::kINT32:
-              val = static_cast<const int32_t*>(wts.values)[wb];
-              break;
-          }
-          max = std::max(max, std::abs(val));
-        }
-        if (!lyr->getOutput(j)->setDynamicRange(-max, max)) {
-          std::cout << "lyr->getOutput(j)->setDynamicRange returns false" << std::endl;
-          return false;
-        }
-      }// else {
-      //  std::cout << "Missing dynamic range for tensor: " << tensor_name << std::endl;
-      //}
-    }
-  }
-
-  // set dynamic range for layer output tensors
-  for (int i = 0; i < network->getNbLayers(); ++i) {
-    for (int j = 0; j < network->getLayer(i)->getNbOutputs(); ++j) {
-      std::string tensor_name = network->getLayer(i)->getOutput(j)->getName();
-      if (dynamic_range_map.find(tensor_name) != dynamic_range_map.end()) {
-        // Calibrator generated dynamic range for network tensor can be overriden or set using below API
-        if (!network->getLayer(i)->getOutput(j)->setDynamicRange(-dynamic_range_map.at(tensor_name), dynamic_range_map.at(tensor_name))) {
-          std::cout << "network->getLayer(i)->getOutput(j)->setDynamicRange returns false" << std::endl;
-          return false;
-        }
-      }
-    }
-  }
-  return true;
-}																																																												  
 std::unique_ptr<Provider_IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph_t graph_nodes_index, int& kernels_index, const onnxruntime::Provider_GraphViewer& graph) const {
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
   std::unordered_set<size_t> node_set;
@@ -826,7 +866,8 @@ std::vector<std::unique_ptr<Provider_ComputeCapability>>
 TensorrtExecutionProvider::Provider_GetCapability(const onnxruntime::Provider_GraphViewer& graph,
                                                   const std::vector<const Provider_KernelRegistry*>& /*kernel_registries*/) const {
   // Get supported node list from TensorRT parser
-  std::vector<size_t> nodes_vector(graph.NumberOfNodes());
+  int number_of_ort_nodes = graph.NumberOfNodes();
+  std::vector<size_t> nodes_vector(number_of_ort_nodes);
   std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
   SubGraphCollection_t supported_nodes_vector, parser_nodes_vector = {{nodes_vector, false}};
   bool early_termination = false;
@@ -858,10 +899,12 @@ TensorrtExecutionProvider::Provider_GetCapability(const onnxruntime::Provider_Gr
   }
 
   const int number_of_subgraphs = supported_nodes_vector.size();
-  if (number_of_subgraphs == 0) {
-    LOGS_DEFAULT(WARNING) << "No graph is running on TensorRT exeuction provider.";
+  if (number_of_trt_nodes == 0) {
+    LOGS_DEFAULT(WARNING) << "No graph will run on TensorRT exeuction provider";
+  } else if (number_of_trt_nodes == number_of_ort_nodes) {
+    LOGS_DEFAULT(INFO) << "Whole graph will run on TensorRT exeuction provider";
   } else {
-    LOGS_DEFAULT(INFO) << "Number of subgraphs running on TensorRT exeuction provider: " << number_of_subgraphs;
+    LOGS_DEFAULT(INFO) << "Graph is partitioned and the number of subgraphs running on TensorRT exeuction provider is " << number_of_subgraphs;
   }
 
   return result;
@@ -907,7 +950,6 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
       model_proto->SerializeToOstream(dump);
     }
 
-    // Create TensorRT engine
     TensorrtLogger& trt_logger = GetTensorrtLogger();
     auto trt_builder = tensorrt_ptr::unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
     const auto explicitBatch = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
@@ -946,39 +988,38 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
       }
     }
 
-    std::string trt_node_name_with_precision = fused_node->Name();
+    // Load calibration table for INT8 quantization
     std::unordered_map<std::string, float> dynamic_range_map;
+    if (int8_enable_ && trt_builder->platformHasFastInt8()) {
+      const std::string calibration_cache_path = GetCachePath(cache_path_, int8_calibration_cache_name_);
+      if (!ReadDynamicRange(calibration_cache_path, int8_use_tensorrt_calibration_table_, dynamic_range_map)) {
+        throw std::runtime_error("Failed to read INT8 calibration table " + calibration_cache_path);
+      }
+    }
+
+    std::string trt_node_name_with_precision = fused_node->Name();
     if (fp16_enable_ && int8_enable_ && trt_builder->platformHasFastFp16() && trt_builder->platformHasFastInt8()) {
-	  trt_config->setFlags(1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kFP16) | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kINT8));
+      trt_config->setFlags(1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kFP16) | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kINT8));
       trt_node_name_with_precision += "_fp16_int8";
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] FP16 and INT8 mode is enabled.";
-      // Read per tensor dynamic range from file
-      if (!ReadPerTensorDynamicRangeValues(dynamic_range_map, int8_calibration_file_name_)) {
-        throw std::runtime_error("Failed to read INT8 calibration table file.");
-      }
     } else if (int8_enable_ && trt_builder->platformHasFastInt8()) {
       trt_config->setFlag(nvinfer1::BuilderFlag::kINT8);
       trt_node_name_with_precision += "_int8";
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] INT8 mode is enabled.";
-      // Read per tensor dynamic range from file
-      if (!ReadPerTensorDynamicRangeValues(dynamic_range_map, int8_calibration_file_name_)) {
-        throw std::runtime_error("Failed to read INT8 calibration table file.");
-      }
-    } 															 
-    else if (fp16_enable_ && trt_builder->platformHasFastFp16()) {
+    } else if (fp16_enable_ && trt_builder->platformHasFastFp16()) {
       trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
       trt_node_name_with_precision += "_fp16";
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] FP16 mode is enabled.";
     }
     int num_nodes = graph_body_viewer->NumberOfNodes();
     trt_node_name_with_precision += "_" + GetVecHash(trt_node_name_with_precision + std::to_string(num_nodes));
-	  
+
     // Build TRT engine here if the graph doesn't have dynamic shape input. Otherwise engine will
     // be built at runtime
     tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine> trt_engine;
     tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext> trt_context;
     if (!has_dynamic_shape) {
-      const std::string cache_path = GetCachePath(engine_cache_path_, trt_node_name_with_precision);
+      const std::string cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
       const std::string engine_cache_path = cache_path + ".engine";
       std::ifstream engine_file(engine_cache_path, std::ios::binary | std::ios::in);
       if (engine_cache_enable_ && engine_file) {
@@ -990,29 +1031,16 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
         trt_engine = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
         LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path;
       } else {
+        // Set INT8 per tensor dynamic range
         if (int8_enable_ && trt_builder->platformHasFastInt8()) {
-          // Option 1: Load TRT calibration cache
-		  // TODO: 1. move to outside: alway load cal table during compile and pass trt_config to compute;
-          // TODO: 2. only load cal table, no calibration
-          // TODO: 3. INT8 for dynamic shape model: regenerate INT8 engine during runtime but based on the same cal table
-          std::unique_ptr<nvinfer1::IInt8Calibrator> calibrator;
-          std::vector<void*> input_bindings(1);
-		  std::vector<std::string> input_tensor_names(1);
-          std::string networkName = "test";
-          //std::cout << "input_tensor_names[0]: " << input_tensor_names[0] << std::endl;
-          ///calibrator.reset(new MyInt8EntropyCalibrator2(1, 1, input_bindings[0], networkName.c_str(), input_tensor_names[0].c_str()));
-          calibrator.reset(new MyInt8EntropyCalibrator2(1, 1, input_bindings[0], networkName.c_str(), input_tensor_names[0].c_str()));
-          //MyInt8EntropyCalibrator2(/*ImageStream& stream,*/ int batchSize, int maxBatches, void* input_bindings[], const string networkName, const char* inputBlobName, bool readCache = true)
-		  trt_config->setInt8Calibrator(calibrator.get());
-	  
-		  // Option 2: Set per tensor dynamic range
           trt_config->setInt8Calibrator(nullptr);
-          // set INT8 Per Tensor Dynamic range
-          if (!SetDynamicRange(&*trt_network, dynamic_range_map)) {  //TODO!!
+          if (!SetDynamicRange(*trt_network, dynamic_range_map)) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                    "TensorRT EP could not set INT8 dynamic range for fused node: " + fused_node->Name());
           }
-        }																 
+        }
+
+        // Build engine
         trt_engine = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildEngineWithConfig(*trt_network, *trt_config));
         if (trt_engine == nullptr) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
@@ -1026,6 +1054,8 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + engine_cache_path;
         }
       }
+
+      // Build context
       trt_context = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
       if (trt_context == nullptr) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
@@ -1075,7 +1105,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
             &engines_[context->node_name], &contexts_[context->node_name], &builders_[context->node_name],
             &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
             input_shape_ranges_[context->node_name], &tensorrt_mu_, &fp16_enable_, &int8_enable_, &max_workspace_size_,
-            trt_node_name_with_precision, engine_cache_enable_, engine_cache_path_, runtime_,
+            trt_node_name_with_precision, engine_cache_enable_, cache_path_, runtime_,
             allocator_, dynamic_range_map};
       *state = p.release();
       return 0;
@@ -1111,7 +1141,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
       const std::string cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
       const std::string engine_cache_path = cache_path + ".engine";
       const std::string profile_cache_path = cache_path + ".profile";
-      std::ifstream engine_file(engine_cache_path, std::ios::binary | std::ios::in);	  
+      std::ifstream engine_file(engine_cache_path, std::ios::binary | std::ios::in);
       std::ifstream profile_file(profile_cache_path, std::ios::binary | std::ios::in);
       if (engine_file && profile_file && (trt_state->engine_cache_enable && trt_engine == nullptr)) {
         // Deserialize profile
@@ -1155,7 +1185,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
           if (iter != input_indexes.end()) {
             input_index = iter->second;
           }
-		  
+
           const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index);
           auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
           const auto& tensor_shapes = ort.GetTensorShape(tensor_info);
@@ -1284,24 +1314,25 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
         auto trt_config = tensorrt_ptr::unique_pointer<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
         trt_config->setMaxWorkspaceSize(*(trt_state->max_workspace_size_ptr));
         trt_config->addOptimizationProfile(trt_profile);
+
+        // Set INT8 Per Tensor Dynamic range
+        if (*(trt_state->int8_enable_ptr) && trt_builder->platformHasFastInt8()) {
+          if (!SetDynamicRange(*trt_state->network->get(), trt_state->dynamic_range_map)) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to set INT8 dynamic range.");
+          }
+          trt_config->setInt8Calibrator(nullptr);
+        }
+
+        // Set precision
         if (*(trt_state->fp16_enable_ptr) && *(trt_state->int8_enable_ptr) && trt_builder->platformHasFastFp16() && trt_builder->platformHasFastInt8()) {
           trt_config->setFlags(1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kFP16) | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kINT8));
-          trt_config->setInt8Calibrator(nullptr);
-          // set INT8 Per Tensor Dynamic range
-          if (!SetDynamicRange(trt_state->network->get(), trt_state->dynamic_range_map)) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to set INT8 dynamic range.");
-          }
         } else if (*(trt_state->int8_enable_ptr) && trt_builder->platformHasFastInt8()) {
           trt_config->setFlag(nvinfer1::BuilderFlag::kINT8);
-          trt_config->setInt8Calibrator(nullptr);
-          // set INT8 Per Tensor Dynamic range
-          if (!SetDynamicRange(trt_state->network->get(), trt_state->dynamic_range_map)) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to set INT8 dynamic range.");
-          }
         } else if (*(trt_state->fp16_enable_ptr) && trt_builder->platformHasFastFp16()) {
           trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
         }
 
+        // Build engine
         *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(
             trt_builder->buildEngineWithConfig(*trt_state->network->get(), *trt_config));
         if (trt_state->engine->get() == nullptr) {
@@ -1312,6 +1343,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
           // Serialize engine profile
           SerializeProfile(profile_cache_path, shape_ranges);
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + profile_cache_path;
+
           // Serialize engine
           nvinfer1::IHostMemory* serializedModel = trt_engine->serialize();
           std::ofstream file(engine_cache_path, std::ios::binary | std::ios::out);
@@ -1320,6 +1352,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + engine_cache_path;
         }
 
+        // Build context
         *(trt_state->context) = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(
             trt_state->engine->get()->createExecutionContext());
         if (trt_state->context->get() == nullptr) {
