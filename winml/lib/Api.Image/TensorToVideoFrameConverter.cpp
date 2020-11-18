@@ -630,8 +630,7 @@ void TensorToVideoFrameConverter::ConvertBatchedDX12TensorToBuffers(
   byte* readback_buffer = nullptr;
   WINML_THROW_IF_FAILED(readback_heap_->Map(0, &CD3DX12_RANGE(0, buffer_size_in_bytes), reinterpret_cast<void**>(&readback_buffer)));
   auto readback_buffer_span = gsl::span<byte>(readback_buffer, buffer_size_in_bytes);
-  _winml::LoadOrStoreDisjointBuffers(
-      false /*load disjoint buffers into*/,
+  _winml::StoreSpanIntoDisjointBuffers(
       buffers.size(),
       [&](size_t i) {
         byte* buffer_start = nullptr;
