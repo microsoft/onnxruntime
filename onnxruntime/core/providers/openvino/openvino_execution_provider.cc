@@ -23,7 +23,6 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
   } else {
     openvino_ep::BackendManager::GetGlobalContext().num_of_threads = info.num_of_threads_;
   }
-  openvino_ep::BackendManager::GetGlobalContext().num_of_threads = info.num_of_threads_;
   if (info.device_id_ != "") {
     bool device_found = false;
     auto available_devices = openvino_ep::BackendManager::GetGlobalContext().ie_core.GetAvailableDevices();
