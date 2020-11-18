@@ -675,6 +675,10 @@ if (onnxruntime_USE_OPENVINO)
     message(FATAL_ERROR "onnxruntime_providers_openvino unknown platform, need to specify shared library exports for it")
   endif()
 
+  install(TARGETS onnxruntime_providers_openvino
+          ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+          LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+          RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 
 if (onnxruntime_USE_NNAPI_BUILTIN)

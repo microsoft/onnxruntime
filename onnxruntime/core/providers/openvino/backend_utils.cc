@@ -97,7 +97,7 @@ CreateCNNNetwork(const Provider_ModelProto& model_proto, const GlobalContext& gl
 
   try {
     return std::make_shared<InferenceEngine::CNNNetwork>(ng_function);
-  } catch (InferenceEngine::details::InferenceEngineException e) {
+  } catch (const InferenceEngine::details::InferenceEngineException& e) {
     ORT_THROW(log_tag + " Exception thrown while making IE::CNNNetwork: " + e.what());
   } catch (...) {
     ORT_THROW(log_tag + " Exception thrown while making IE::CNNNetwork");
