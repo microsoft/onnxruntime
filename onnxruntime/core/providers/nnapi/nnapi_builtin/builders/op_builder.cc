@@ -521,6 +521,17 @@ Status GetQuantizedInputScaleAndZeroPoint(const ModelBuilder& model_builder,
   return Status::OK();
 }
 
+std::shared_ptr<IOpBuilder> FindOpBuilder(const std::vector<const std::string>& op_types,
+                                          std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>& op_map) {
+  for (const auto& op_type : op_types) {
+    const auto it = op_map.find(op_type);
+    if (it != op_map.cend())
+      return it->second;
+  }
+
+  return nullptr;
+}
+
 #pragma endregion helpers
 
 #pragma region op_base
@@ -555,6 +566,8 @@ Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node&
 class BinaryOpBuilder : public BaseOpBuilder {
  public:
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+  static void CreateSharedOpBuilder(
+      const std::string& op_type, std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>& op_map);
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
@@ -565,6 +578,23 @@ void BinaryOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const N
   if (op == "QLinearAdd") {
     AddBinaryOpQuantizationScaleAndZeroPointToSkip(model_builder, node);
   }
+}
+
+/* static */ void BinaryOpBuilder::CreateSharedOpBuilder(
+    const std::string& op_type, std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>& op_map) {
+  auto op_builder = FindOpBuilder({
+                                      "Add",
+                                      "Sub",
+                                      "Mul",
+                                      "Div",
+                                      "QLinearAdd",
+                                  },
+                                  op_map);
+  if (!op_builder) {
+    op_builder = std::make_shared<BinaryOpBuilder>();
+  }
+
+  op_map.emplace(op_type, op_builder);
 }
 
 Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
@@ -962,9 +992,29 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
 #pragma region op_pool
 
 class PoolOpBuilder : public BaseOpBuilder {
+ public:
+  static void CreateSharedOpBuilder(
+      const std::string& op_type, std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>& op_map);
+
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
 };
+
+/* static */ void PoolOpBuilder::CreateSharedOpBuilder(
+    const std::string& op_type, std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>& op_map) {
+  auto op_builder = FindOpBuilder({
+                                      "GlobalAveragePool",
+                                      "GlobalMaxPool",
+                                      "AveragePool",
+                                      "MaxPool",
+                                  },
+                                  op_map);
+  if (!op_builder) {
+    op_builder = std::make_shared<PoolOpBuilder>();
+  }
+
+  op_map.emplace(op_type, op_builder);
+}
 
 Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
   auto& shaper(model_builder.GetShaper());
@@ -1066,10 +1116,26 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 class ConvOpBuilder : public BaseOpBuilder {
  public:
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+  static void CreateSharedOpBuilder(
+      const std::string& op_type, std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>& op_map);
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
 };
+
+/* static */ void ConvOpBuilder::CreateSharedOpBuilder(
+    const std::string& op_type, std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>& op_map) {
+  auto op_builder = FindOpBuilder({
+                                      "Conv",
+                                      "QLinearConv",
+                                  },
+                                  op_map);
+  if (!op_builder) {
+    op_builder = std::make_shared<ConvOpBuilder>();
+  }
+
+  op_map.emplace(op_type, op_builder);
+}
 
 void ConvOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
   const auto& op = node.OpType();
@@ -1431,10 +1497,27 @@ Status IdentityOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, con
 class GemmOpBuilder : public BaseOpBuilder {
  public:
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+  static void CreateSharedOpBuilder(
+      const std::string& op_type, std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>& op_map);
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
 };
+
+/* static */ void GemmOpBuilder::CreateSharedOpBuilder(
+    const std::string& op_type, std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>& op_map) {
+  auto op_builder = FindOpBuilder({
+                                      "Gemm",
+                                      "MatMul",
+                                      "QLinearMatMul",
+                                  },
+                                  op_map);
+  if (!op_builder) {
+    op_builder = std::make_shared<GemmOpBuilder>();
+  }
+
+  op_map.emplace(op_type, op_builder);
+}
 
 void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
   const auto& op = node.OpType();
@@ -1553,9 +1636,34 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 #pragma region op_unary
 
 class UnaryOpBuilder : public BaseOpBuilder {
+ public:
+  static void CreateSharedOpBuilder(
+      const std::string& op_type, std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>& op_map);
+
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
 };
+
+/* static */ void UnaryOpBuilder::CreateSharedOpBuilder(
+    const std::string& op_type, std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>& op_map) {
+  auto op_builder = FindOpBuilder({
+                                      "Abs",
+                                      "Exp",
+                                      "Floor",
+                                      "Log",
+                                      "Sigmoid",
+                                      "Neg",
+                                      "Sin",
+                                      "Sqrt",
+                                      "Tanh",
+                                  },
+                                  op_map);
+  if (!op_builder) {
+    op_builder = std::make_shared<UnaryOpBuilder>();
+  }
+
+  op_map.emplace(op_type, op_builder);
+}
 
 Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
   auto& shaper(model_builder.GetShaper());
@@ -2104,103 +2212,13 @@ Status FlattenOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
 
 #pragma region CreateGetOpBuilders
 
-std::shared_ptr<IOpBuilder> FindOpBuilder(const std::vector<const std::string>& op_types,
-                                          std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>& op_map) {
-  for (const auto& op_type : op_types) {
-    const auto it = op_map.find(op_type);
-    if (it != op_map.cend())
-      return it->second;
-  }
-
-  return nullptr;
-}
-
-void CreateBinaryOpBuilder(const std::string& op_type,
-                           std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>& op_map) {
-  // We only need one BinaryOpBuilder, if it exists we will only add an entry in to op_map with the same Builder
-  auto op_builder = FindOpBuilder({
-                                      "Add",
-                                      "Sub",
-                                      "Mul",
-                                      "Div",
-                                      "QLinearAdd",
-                                  },
-                                  op_map);
-  if (!op_builder) {
-    op_builder = std::make_shared<BinaryOpBuilder>();
-  }
-
-  op_map.emplace(op_type, op_builder);
-}
-
-void CreatePoolOpBuilder(const std::string& op_type,
-                         std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>& op_map) {
-  // We only need one BinaryOpBuilder, if it exists we will only add an entry in to op_map with the same Builder
-  auto op_builder = FindOpBuilder({
-                                      "GlobalAveragePool",
-                                      "GlobalMaxPool",
-                                      "AveragePool",
-                                      "MaxPool",
-                                  },
-                                  op_map);
-  if (!op_builder) {
-    op_builder = std::make_shared<PoolOpBuilder>();
-  }
-
-  op_map.emplace(op_type, op_builder);
-}
-
-void CreateConvOpBuilder(const std::string& op_type,
-                         std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>& op_map) {
-  // We only need one BinaryOpBuilder, if it exists we will only add an entry in to op_map with the same Builder
-  auto op_builder = FindOpBuilder({
-                                      "Conv",
-                                      "QLinearConv",
-                                  },
-                                  op_map);
-  if (!op_builder) {
-    op_builder = std::make_shared<ConvOpBuilder>();
-  }
-
-  op_map.emplace(op_type, op_builder);
-}
-
-void CreateGemmOpBuilder(const std::string& op_type,
-                         std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>& op_map) {
-  // We only need one BinaryOpBuilder, if it exists we will only add an entry in to op_map with the same Builder
-  auto op_builder = FindOpBuilder({"Gemm", "MatMul", "QLinearMatMul"}, op_map);
-  if (!op_builder) {
-    op_builder = std::make_shared<GemmOpBuilder>();
-  }
-
-  op_map.emplace(op_type, op_builder);
-}
-
-void CreateUnaryOpBuilder(const std::string& op_type,
-                          std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>& op_map) {
-  // We only need one BinaryOpBuilder, if it exists we will only add an entry in to op_map with the same Builder
-  auto op_builder = FindOpBuilder({
-                                      "Abs",
-                                      "Exp",
-                                      "Floor",
-                                      "Log",
-                                      "Sigmoid",
-                                      "Neg",
-                                      "Sin",
-                                      "Sqrt",
-                                      "Tanh",
-                                  },
-                                  op_map);
-  if (!op_builder) {
-    op_builder = std::make_shared<UnaryOpBuilder>();
-  }
-
-  op_map.emplace(op_type, op_builder);
-}
-
+// The reason we use macros to create OpBuilders is for easy exclusion in build if certain op(s) are not used
+// such that we can reduce binary size.
+// This is for multiple ops share the same OpBuilder, we only need create one for all of them
 #define NNAPI_EP_ADD_SHARED_OP_BUILDER(OP_TYPE, BUILDER_NAME) \
-  Create##BUILDER_NAME(OP_TYPE, op_map);
+  BUILDER_NAME::CreateSharedOpBuilder(OP_TYPE, op_map);
 
+// This is for ops with dedicated OpBuilder
 #define NNAPI_EP_ADD_SINGLE_OP_BUILDER(OP_TYPE, BUILDER_NAME) \
   op_map.emplace(OP_TYPE, std::make_shared<BUILDER_NAME>());
 
