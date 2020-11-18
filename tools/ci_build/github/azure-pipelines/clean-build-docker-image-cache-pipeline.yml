@@ -16,5 +16,4 @@ jobs:
         tools/ci_build/clean_docker_image_cache.py \
           --container-registry $(buildcache-container-registry) \
           --log-storage-account $(buildcache-log-storage-account) \
-          --log-storage-container $(buildcache-log-storage-account-container) \
-          --dry-run
+          --log-storage-container $(buildcache-log-storage-account-container)
