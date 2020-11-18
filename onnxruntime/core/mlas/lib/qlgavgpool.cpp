@@ -28,7 +28,11 @@ MlasQLinearSafePaddingElementCount(
     )
 {
     if (!(ElementSize == 1 || ElementSize == 2 || ElementSize == 4 || ElementSize == 8 || ElementSize == 16)) {
+#ifdef MLAS_NO_EXCEPTION
+        abort();
+#else
         throw std::invalid_argument("ElementSize must be power of 2 and less or equal than 16!");
+#endif
     }
     return ElementCount + (size_t{256} / ElementSize - 1);
 }
@@ -43,7 +47,11 @@ CheckQLinearGlobalAveragePoolScaleAndSize(
 {
     float scale = ScaleInput / (ScaleOutput * (float)gsl::narrow_cast<int>(ImageSize));
     if (ImageSize >= 0x1000000 || scale < 0x1.0p-32f || scale >= 256.0f) {
+#ifdef MLAS_NO_EXCEPTION
+        abort();
+#else
         throw std::invalid_argument("QLinearGlobalAveragePool parameter out of computation range!");
+#endif
     }
     return scale;
 }
