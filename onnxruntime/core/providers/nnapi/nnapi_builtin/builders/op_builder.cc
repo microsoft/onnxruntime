@@ -2281,9 +2281,6 @@ static std::unordered_map<std::string, std::shared_ptr<IOpBuilder>> CreateOpBuil
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Resize", ResizeOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Flatten", FlattenOpBuilder);
 
-  ORT_ENFORCE(op_map.size() == GetOpSupportCheckers().size(),
-              "We should have same number of OpBuilder and OpSupportChecker");
-
   return op_map;
 }
 
