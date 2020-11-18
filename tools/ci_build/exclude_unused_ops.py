@@ -14,7 +14,10 @@ import sys
 import typing
 
 from onnx import AttributeProto
-from logger import log
+from logger import get_logger
+
+
+log = get_logger("exclude_unused_ops")
 
 
 def _extract_ops_from_config(file_path, required_ops):

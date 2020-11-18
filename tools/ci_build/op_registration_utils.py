@@ -9,7 +9,9 @@ import os
 import sys
 import typing
 
-from logger import log
+from logger import get_logger
+
+log = get_logger("op_registration_utils")
 
 domain_map = {'': 'kOnnxDomain',
               'ai.onnx': 'kOnnxDomain',

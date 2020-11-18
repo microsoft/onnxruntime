@@ -118,7 +118,7 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
             strides[1],
             col_buffer_data);
       } else {
-        math::Im2colNd<T, StorageOrder::NCHW>()(
+        math::Im2col<T, StorageOrder::NCHW>()(
             Xdata + group_id * X_offset,
             input_shape.GetDims().data(),
             output_shape.GetDims().data(),

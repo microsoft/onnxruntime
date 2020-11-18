@@ -21,6 +21,7 @@ class QLinearConv : public OpKernel {
                                                    conv_attrs_(info),
                                                    is_W_signed_(false),
                                                    is_W_packed_(false) {
+    channels_last_ = (info.GetAttrOrDefault<int64_t>("channels_last", static_cast<int64_t>(0)) != 0);
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -51,6 +52,7 @@ class QLinearConv : public OpKernel {
   BufferUniquePtr reordered_W_buffer_;
   bool is_W_signed_;
   bool is_W_packed_;
+  bool channels_last_;
 };
 
 ONNX_CPU_OPERATOR_KERNEL(
@@ -62,6 +64,26 @@ ONNX_CPU_OPERATOR_KERNEL(
         .TypeConstraint("T3", DataTypeImpl::GetTensorType<uint8_t>())
         .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
     QLinearConv);
+
+#ifndef DISABLE_CONTRIB_OPS
+
+namespace contrib {
+
+ONNX_OPERATOR_KERNEL_EX(
+    QLinearConv,
+    kMSDomain,
+    1,
+    kCpuExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("T2", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<int8_t>()})
+        .TypeConstraint("T3", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
+    QLinearConv);
+
+}
+
+#endif
 
 Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, bool& is_packed) {
   is_packed = false;
@@ -107,7 +129,7 @@ Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, bool& is_packed
       auto* packed_W = static_cast<uint8_t*>(alloc->Alloc(SafeInt<size_t>(group_count) * packed_W_size_));
       packed_W_buffer_ = BufferUniquePtr(packed_W, BufferDeleter(alloc));
 
-      // Allocate a temporary buffer to hold the reordered oihw->ohwi filter for
+      // Allocate a temporary buffer to hold the reordered oihw->hwio filter for
       // a single group.
       //
       // Note: The size of this buffer is less than or equal to the size of the original
@@ -168,19 +190,10 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
       (W_zero_point_shape.NumDimensions() == 1 && (W_zero_point_shape[0] == 1 || W_zero_point_shape[0] == M))) {
     const int64_t W_zero_point_size = W_zero_point_shape.Size();
     const auto* W_zero_point_data = static_cast<const uint8_t*>(W_zero_point->DataRaw());
-    if (is_W_signed) {
-      W_zero_point_value = 0;
-      for (int64_t i = 0; i < W_zero_point_size; i++) {
-        if (W_zero_point_data[i] != 0) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "QLinearConv : filter zero point must be zero");
-        }
-      }
-    } else {
-      W_zero_point_value = W_zero_point_data[0];
-      for (int64_t i = 1; i < W_zero_point_size; i++) {
-        if (W_zero_point_data[i] != W_zero_point_value) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "QLinearConv : filter zero point must be constant");
-        }
+    W_zero_point_value = W_zero_point_data[0];
+    for (int64_t i = 1; i < W_zero_point_size; i++) {
+      if (W_zero_point_data[i] != W_zero_point_value) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "QLinearConv : filter zero point must be constant");
       }
     }
   } else {
@@ -215,7 +228,7 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
 
   const Tensor* B = context->Input<Tensor>(8);
 
-  ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X->Shape(), W_shape));
+  ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X->Shape(), W_shape, channels_last_));
 
   std::vector<int64_t> kernel_shape;
   ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W_shape, kernel_shape));
@@ -235,11 +248,21 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
     strides.resize(kernel_rank, 1);
   }
 
-  std::vector<int64_t> Y_dims({N, M});
-  TensorShape input_shape = X->Shape().Slice(2);
+  const int64_t C = X->Shape()[channels_last_ ? 1 + kernel_rank : 1];
+  const size_t spatial_dim_start = channels_last_ ? 1 : 2;
+  const size_t spatial_dim_end = spatial_dim_start + kernel_rank;
+
+  std::vector<int64_t> Y_dims({N});
+  if (!channels_last_) {
+    Y_dims.push_back(M);
+  }
+  TensorShape input_shape = X->Shape().Slice(spatial_dim_start, spatial_dim_end);
   ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape(input_shape, kernel_shape, strides, dilations, pads, Y_dims));
+  if (channels_last_) {
+    Y_dims.push_back(M);
+  }
   Tensor* Y = context->Output(0, TensorShape(Y_dims));
-  TensorShape output_shape = Y->Shape().Slice(2);
+  TensorShape output_shape = Y->Shape().Slice(spatial_dim_start, spatial_dim_end);
 
   // Bail out early if one of the dimensions is zero.
   if (Y->Shape().Size() == 0) {
@@ -291,14 +314,14 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
     group_count = 1;
   }
 
-  const int64_t X_offset = group_input_channels * input_image_size;
-  const int64_t Y_offset = group_output_channels * output_image_size;
+  const int64_t X_offset = C * input_image_size;
+  const int64_t Y_offset = M * output_image_size;
   const int64_t kernel_dim = group_input_channels * kernel_size;
   const int64_t col_buffer_size = kernel_dim * output_image_size;
 
   // Use an intermediate int32_t buffer for the GEMM computation before
   // requantizing to the output type.
-  auto gemm_output_data = alloc->Alloc(SafeInt<size_t>(sizeof(int32_t)) * Y_offset);
+  auto* gemm_output_data = alloc->Alloc(SafeInt<size_t>(sizeof(int32_t)) * Y_offset);
   BufferUniquePtr gemm_output_buffer(gemm_output_data, BufferDeleter(alloc));
   auto* gemm_output = static_cast<int32_t*>(gemm_output_buffer.get());
 
@@ -306,21 +329,26 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
   const auto* Bdata = B != nullptr ? B->template Data<int32_t>() : nullptr;
   auto* Ydata = Y->template MutableData<uint8_t>();
 
-  auto* transpose_input = static_cast<uint8_t*>(alloc->Alloc(SafeInt<size_t>(sizeof(uint8_t)) * X_offset));
-  BufferUniquePtr transpose_input_buffer(transpose_input, BufferDeleter(alloc));
+  BufferUniquePtr transpose_input_buffer;
+  BufferUniquePtr transpose_output_buffer;
 
-  auto* transpose_output = static_cast<uint8_t*>(alloc->Alloc(SafeInt<size_t>(sizeof(uint8_t)) * Y_offset));
-  BufferUniquePtr transpose_output_buffer(transpose_output, BufferDeleter(alloc));
+  // Allocate temporary buffers for transposing to channels last format.
+  if (!channels_last_) {
+    auto* transpose_input = alloc->Alloc(SafeInt<size_t>(sizeof(uint8_t)) * X_offset);
+    transpose_input_buffer = BufferUniquePtr(transpose_input, BufferDeleter(alloc));
+    auto* transpose_output = alloc->Alloc(SafeInt<size_t>(sizeof(uint8_t)) * Y_offset);
+    transpose_output_buffer = BufferUniquePtr(transpose_output, BufferDeleter(alloc));
+  }
 
   BufferUniquePtr col_buffer;
 
   // Pointwise convolutions can use the original input tensor in place,
   // otherwise a temporary buffer is required for the im2col transform.
   if (kernel_size != 1 || !conv_attrs_.HasStridesOneAndNoPadding()) {
-    auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(uint8_t)) * col_buffer_size);
+    int64_t group_col_buffer_size = (kernel_rank > 2) ? group_count * col_buffer_size : col_buffer_size;
+    auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(uint8_t)) * group_col_buffer_size);
     col_buffer = BufferUniquePtr(col_data, BufferDeleter(alloc));
   }
-  auto* col_buffer_data = static_cast<uint8_t*>(col_buffer.get());
 
   // Replicate the logic from MlasGemmU8X8Schedule to control the number of
   // worker threads used for the convolution.
@@ -344,45 +372,60 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
   thread_count = std::min(thread_count, concurrency::ThreadPool::DegreeOfParallelism(thread_pool));
 
   for (int64_t image_id = 0; image_id < N; ++image_id) {
-    for (int64_t group_id = 0; group_id < group_count; ++group_id) {
+    const auto* input_data = Xdata;
+    auto* output_data = Ydata;
+
+    if (!channels_last_) {
       // Transpose the input from channels first (NCHW) to channels last (NHWC).
       MlasTranspose(Xdata,
-                    transpose_input,
-                    static_cast<size_t>(group_input_channels),
+                    static_cast<uint8_t*>(transpose_input_buffer.get()),
+                    static_cast<size_t>(C),
                     static_cast<size_t>(input_image_size));
+      input_data = static_cast<uint8_t*>(transpose_input_buffer.get());
+      output_data = static_cast<uint8_t*>(transpose_output_buffer.get());
+    }
 
-      if (col_buffer_data != nullptr) {
-        if (kernel_rank > 2) {
-          math::Im2colNd<uint8_t, StorageOrder::NHWC>()(
-              transpose_input,
+    if (col_buffer) {
+      if (kernel_rank > 2) {
+        // Threaded implementation of ND convolution is not yet supported, so
+        // prepare all im2col transformations here.
+        for (int64_t group_id = 0; group_id < group_count; ++group_id) {
+          math::Im2col<uint8_t, StorageOrder::NHWC>()(
+              input_data + group_id * group_input_channels,
+              group_input_channels,
+              C,
               input_shape.GetDims().data(),
               output_shape.GetDims().data(),
-              kernel_dim,
               kernel_shape.data(),
               strides.data(),
               dilations.data(),
               pads.data(),
-              static_cast<int>(kernel_rank),
-              col_buffer_data,
-              false,
+              static_cast<int64_t>(kernel_rank),
+              static_cast<uint8_t*>(col_buffer.get()) + group_id * col_buffer_size,
               X_zero_point_value);
-        }
+         }
       }
+    }
 
-      auto conv_worker = [&](ptrdiff_t batch) {
-        auto work = concurrency::ThreadPool::PartitionWork(batch, thread_count, static_cast<ptrdiff_t>(output_image_size));
-        int64_t output_start = static_cast<int64_t>(work.start);
-        int64_t output_count = static_cast<int64_t>(work.end - work.start);
+    auto conv_worker = [&](ptrdiff_t batch) {
+      auto work = concurrency::ThreadPool::PartitionWork(batch, thread_count, static_cast<ptrdiff_t>(output_image_size));
+      int64_t output_start = static_cast<int64_t>(work.start);
+      int64_t output_count = static_cast<int64_t>(work.end - work.start);
 
+      auto* worker_gemm_output = gemm_output + output_start * M;
+      auto* worker_requantize_output = output_data + output_start * M;
+
+      for (int64_t group_id = 0; group_id < group_count; ++group_id) {
         // Prepare the im2col transformation or use the input buffer directly for
         // pointwise convolutions.
-        uint8_t* worker_gemm_input;
-        if (col_buffer_data != nullptr) {
-          worker_gemm_input = col_buffer_data + output_start * kernel_dim;
+        const uint8_t* worker_gemm_input;
+        if (col_buffer) {
+          auto* worker_col_buffer = static_cast<uint8_t*>(col_buffer.get()) + output_start * kernel_dim;
           if (kernel_rank == 2) {
             math::Im2col<uint8_t, StorageOrder::NHWC>()(
-                transpose_input,
+                input_data + group_id * group_input_channels,
                 group_input_channels,
+                C,
                 input_shape[0],
                 input_shape[1],
                 kernel_shape[0],
@@ -396,12 +439,13 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
                 output_shape[1],
                 output_start,
                 output_count,
-                worker_gemm_input,
+                worker_col_buffer,
                 X_zero_point_value);
           } else if (kernel_rank == 1) {
             math::Im2col<uint8_t, StorageOrder::NHWC>()(
-                transpose_input,
+                input_data + group_id * group_input_channels,
                 group_input_channels,
+                C,
                 1,
                 input_shape[0],
                 1,
@@ -415,15 +459,16 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
                 output_shape[0],
                 output_start,
                 output_count,
-                worker_gemm_input,
+                worker_col_buffer,
                 X_zero_point_value);
+          } else {
+            // Use the im2col buffer prepared outside the thread, indexed by group.
+            worker_col_buffer += group_id * col_buffer_size;
           }
+          worker_gemm_input = worker_col_buffer;
         } else {
-          worker_gemm_input = transpose_input + output_start * kernel_dim;
+          worker_gemm_input = input_data + output_start * kernel_dim;
         }
-
-        auto* worker_gemm_output = gemm_output + output_start * group_output_channels;
-        auto* worker_transpose_output = transpose_output + output_start * group_output_channels;
 
         if (is_depthwise_conv) {
           if (is_W_signed) {
@@ -432,7 +477,7 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
                               reinterpret_cast<int8_t*>(reordered_W),
                               static_cast<int8_t>(W_zero_point_value),
                               worker_gemm_output,
-                              static_cast<size_t>(group_output_channels),
+                              static_cast<size_t>(M),
                               static_cast<size_t>(output_count),
                               static_cast<size_t>(kernel_size));
           } else {
@@ -441,7 +486,7 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
                               reordered_W,
                               W_zero_point_value,
                               worker_gemm_output,
-                              static_cast<size_t>(group_output_channels),
+                              static_cast<size_t>(M),
                               static_cast<size_t>(output_count),
                               static_cast<size_t>(kernel_size));
           }
@@ -457,8 +502,8 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
                      static_cast<const int8_t*>(packed_W_buffer_.get()) + group_id * packed_W_size_,
                      W_zero_point_value,
                      is_W_signed,
-                     worker_gemm_output,
-                     static_cast<size_t>(group_output_channels),
+                     worker_gemm_output + group_id * group_output_channels,
+                     static_cast<size_t>(M),
                      nullptr);
           } else
 #endif
@@ -473,42 +518,44 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
                      static_cast<size_t>(M),
                      W_zero_point_value,
                      is_W_signed,
-                     worker_gemm_output,
-                     static_cast<size_t>(group_output_channels),
+                     worker_gemm_output + group_id * group_output_channels,
+                     static_cast<size_t>(M),
                      nullptr);
           }
         }
+      }
 
-        if (output_scales.size() == 1) {
-          MlasRequantizeOutputColumn(worker_gemm_output,
-                                     worker_transpose_output,
-                                     Bdata != nullptr ? Bdata + group_id * group_output_channels : nullptr,
-                                     static_cast<size_t>(output_count),
-                                     static_cast<size_t>(group_output_channels),
-                                     output_scales[0],
-                                     Y_zero_point_value);
-        } else {
-          MlasRequantizeOutputColumn(worker_gemm_output,
-                                     worker_transpose_output,
-                                     Bdata != nullptr ? Bdata + group_id * group_output_channels : nullptr,
-                                     static_cast<size_t>(output_count),
-                                     static_cast<size_t>(group_output_channels),
-                                     output_scales.data() + group_id * group_output_channels,
-                                     Y_zero_point_value);
-        }
-      };
+      if (output_scales.size() == 1) {
+        MlasRequantizeOutputColumn(worker_gemm_output,
+                                   worker_requantize_output,
+                                   Bdata,
+                                   static_cast<size_t>(output_count),
+                                   static_cast<size_t>(M),
+                                   output_scales[0],
+                                   Y_zero_point_value);
+      } else {
+        MlasRequantizeOutputColumn(worker_gemm_output,
+                                   worker_requantize_output,
+                                   Bdata,
+                                   static_cast<size_t>(output_count),
+                                   static_cast<size_t>(M),
+                                   output_scales.data(),
+                                   Y_zero_point_value);
+      }
+    };
 
-      concurrency::ThreadPool::TrySimpleParallelFor(thread_pool, thread_count, conv_worker);
+    concurrency::ThreadPool::TrySimpleParallelFor(thread_pool, thread_count, conv_worker);
 
+    if (!channels_last_) {
       // Transpose the output from channels last (NHWC) to channels first (NCHW).
-      MlasTranspose(transpose_output,
+      MlasTranspose(output_data,
                     Ydata,
                     static_cast<size_t>(output_image_size),
-                    static_cast<size_t>(group_output_channels));
-
-      Xdata += X_offset;
-      Ydata += Y_offset;
+                    static_cast<size_t>(M));
     }
+
+    Xdata += X_offset;
+    Ydata += Y_offset;
   }
 
   return Status::OK();
@@ -637,7 +684,7 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
 #ifdef MLAS_SUPPORTS_GEMM_U8X8_AND_REQUANTIZE_OUTPUT
   // Use an intermediate int32_t buffer for the GEMM computation before
   // requantizing to the output type.
-  auto gemm_output_data = alloc->Alloc(SafeInt<size_t>(sizeof(int32_t)) * Y_offset);
+  auto* gemm_output_data = alloc->Alloc(SafeInt<size_t>(sizeof(int32_t)) * Y_offset);
   BufferUniquePtr gemm_output_buffer(gemm_output_data, BufferDeleter(alloc));
   auto* gemm_output = static_cast<int32_t*>(gemm_output_buffer.get());
 #else
@@ -674,7 +721,7 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
               col_buffer_data,
               X_zero_point_value);
         } else {
-          math::Im2colNd<uint8_t, StorageOrder::NCHW>()(
+          math::Im2col<uint8_t, StorageOrder::NCHW>()(
               Xdata,
               input_shape.GetDims().data(),
               output_shape.GetDims().data(),

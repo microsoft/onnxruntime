@@ -15,8 +15,9 @@ jobs:
       continueOnError: true
       condition: always()
 
-    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d ngraph -r $(Build.BinariesDirectory) -x "--use_ngraph --build_wheel"'
-      displayName: 'Command Line Script'
+    - template: templates/run-docker-build-steps.yml
+      parameters:
+        RunDockerBuildArgs: '-o ubuntu16.04 -d ngraph -r $(Build.BinariesDirectory) -x "--use_ngraph --build_wheel"'
 
     - template: templates/component-governance-component-detection-steps.yml
       parameters :

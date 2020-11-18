@@ -1,0 +1,17 @@
+# calls tools/ci_build/github/linux/run_dockerbuild.sh
+
+parameters:
+- name: RunDockerBuildArgs
+  type: string
+  default: ""
+- name: DisplayName
+  type: string
+  default: "Call run_dockerbuild.sh"
+
+steps:
+- template: with-build-docker-image-cache-steps.yml
+  parameters:
+    Steps:
+    - script: |
+        tools/ci_build/github/linux/run_dockerbuild.sh ${{ parameters.RunDockerBuildArgs }}
+      displayName: "${{ parameters.DisplayName }}"

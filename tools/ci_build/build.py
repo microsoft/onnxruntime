@@ -10,8 +10,20 @@ import shutil
 import subprocess
 import sys
 import hashlib
-from logger import log
+from logger import get_logger
 from amd_hipify import amd_hipify
+
+
+SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
+REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
+
+sys.path.append(os.path.join(REPO_DIR, "tools", "python"))
+
+
+from util import run  # noqa: E402
+
+
+log = get_logger("build")
 
 
 class BaseError(Exception):
@@ -490,8 +502,9 @@ def get_config_build_dir(build_dir, config):
 
 def run_subprocess(args, cwd=None, capture=False, dll_path=None,
                    shell=False, env={}):
-    log.info("Running subprocess in '{0}'\n{1}".format(
-        cwd or os.getcwd(), args))
+    if isinstance(args, str):
+        raise ValueError("args should be a sequence of strings, not a string")
+
     my_env = os.environ.copy()
     if dll_path:
         if is_windows():
@@ -502,15 +515,9 @@ def run_subprocess(args, cwd=None, capture=False, dll_path=None,
             else:
                 my_env["LD_LIBRARY_PATH"] = dll_path
 
-    stdout, stderr = (subprocess.PIPE, subprocess.STDOUT) if capture else (
-        None, None)
     my_env.update(env)
-    completed_process = subprocess.run(
-        args, cwd=cwd, check=True, stdout=stdout, stderr=stderr,
-        env=my_env, shell=shell)
-    log.debug("Subprocess completed. Return code=" +
-              str(completed_process.returncode))
-    return completed_process
+
+    return run(*args, cwd=cwd, capture=capture, shell=shell, env=my_env)
 
 
 def update_submodules(source_dir):
@@ -925,7 +932,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                 args.cmake_generator == 'Visual Studio 16 2019' and
                 args.use_full_protobuf):
             raise BuildError(
-             "Fuzz test has only be tested with build shared libs option using MSVC on windows")
+                "Fuzz test has only be tested with build shared libs option using MSVC on windows")
         cmake_args += [
             "-Donnxruntime_BUILD_UNIT_TESTS=ON",
             "-Donnxruntime_FUZZ_TEST=ON",
@@ -1163,9 +1170,9 @@ def adb_shell(*args, **kwargs):
 
 def run_android_tests(args, source_dir, config, cwd):
     if args.android_abi == 'x86_64':
-        run_subprocess(os.path.join(
+        run_subprocess([os.path.join(
             source_dir, 'tools', 'ci_build', 'github', 'android',
-            'start_android_emulator.sh'))
+            'start_android_emulator.sh')])
         adb_push('testdata', '/data/local/tmp/', cwd=cwd)
         adb_push(
             os.path.join(source_dir, 'cmake', 'external', 'onnx', 'onnx', 'backend', 'test'),

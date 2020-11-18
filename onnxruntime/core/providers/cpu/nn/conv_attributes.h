@@ -78,15 +78,17 @@ struct ConvAttributes {
     return Status::OK();
   }
 
-  Status ValidateInputShape(const TensorShape& input_shape, const TensorShape& weight_shape) const {
-    const int64_t C = input_shape[1];
-    const int64_t M = weight_shape[0];
-
+  Status ValidateInputShape(const TensorShape& input_shape,
+                            const TensorShape& weight_shape,
+                            bool channels_last = false) const {
     if (input_shape.NumDimensions() != weight_shape.NumDimensions()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "X num_dims does not match W num_dims.",
                              " X: ", input_shape.ToString().c_str(),
                              " W: ", weight_shape.ToString().c_str());
     }
+
+    const int64_t M = weight_shape[0];
+    const int64_t C = channels_last ? input_shape.GetDims().back() : input_shape[1];
 
     if (C != weight_shape[1] * group) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input channels C is not equal to kernel channels * group.",
