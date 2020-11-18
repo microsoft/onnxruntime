@@ -31,6 +31,7 @@ class string_data : public _winml::idata {
 
  public:
   void set(size_t num_elements, const std::string_view* data);
+  std::vector<std::string>& get_backing_vector();
 
  private:
   std::vector<std::string> buffer_;

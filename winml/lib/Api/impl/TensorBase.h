@@ -319,12 +319,13 @@ struct TensorBase : TBase {
     // Ensure that this call is being called with the correct template parameters
     ASSERT_TEMPLATE_PARAMETERS<std::string, winrt::hstring>();
 
+    auto string_data = std::static_pointer_cast<_winml::string_data>(CpuTensor()->get_data());
+    auto& string_vector = string_data->get_backing_vector();
+
     std::vector<const char*> raw_values;
-    auto buffer = CpuTensor()->buffer();
-    auto buffer_as_string_array = static_cast<std::string*>(buffer.data());
     std::transform(
-        buffer_as_string_array,
-        buffer_as_string_array + buffer.size(),
+        std::begin(string_vector),
+        std::end(string_vector),
         std::back_inserter(raw_values),
         [&](auto& str) { return str.c_str(); });
 
@@ -731,15 +732,15 @@ struct TensorBase : TBase {
     // Ensure that this call is being called with the correct template parameters
     ASSERT_TEMPLATE_PARAMETERS<std::string, winrt::hstring>();
 
-    auto buffer = CpuTensor()->buffer();
-    auto element_data = static_cast<std::string*>(buffer.data());
+    auto string_data = std::static_pointer_cast<_winml::string_data>(CpuTensor()->get_data());
+    auto& string_vector = string_data->get_backing_vector();
 
-    auto copy = std::vector<winrt::hstring>(buffer.size(), L"");
+    auto copy = std::vector<winrt::hstring>(string_vector.size(), L"");
     std::generate(
         copy.begin(),
         copy.end(),
-        [n = 0, &element_data]() mutable {
-          return _winml::Strings::HStringFromUTF8(element_data[n++]);
+        [n = 0, &string_vector]() mutable {
+          return _winml::Strings::HStringFromUTF8(string_vector[n++]);
         });
 
     return winrt::single_threaded_vector<winrt::hstring>(std::move(copy)).GetView();
@@ -932,14 +933,14 @@ struct TensorBase : TBase {
     // They should always be backed by a single underlying buffer.
     FAIL_FAST_HR_IF(E_ILLEGAL_METHOD_CALL, CpuTensor()->num_buffers() != 1);
 
-    auto buffer = CpuTensor()->buffer();
-    THROW_HR_IF(E_UNEXPECTED, data.size() > buffer.size());
+    auto string_data = std::static_pointer_cast<_winml::string_data>(CpuTensor()->get_data());
+    auto& string_vector = string_data->get_backing_vector();
 
-    auto element_data = static_cast<std::string*>(buffer.data());
+    THROW_HR_IF(E_UNEXPECTED, data.size() > string_vector.size());
 
     // Convert and copy into the underlying buffer
     std::transform(
-        data.begin(), data.end(), element_data,
+        data.begin(), data.end(), std::begin(string_vector),
         [](auto& element) mutable {
           return _winml::Strings::UTF8FromHString(element);
         });
@@ -1024,11 +1025,11 @@ struct TensorBase : TBase {
     // They should always be backed by a single underlying buffer.
     FAIL_FAST_HR_IF(E_ILLEGAL_METHOD_CALL, CpuTensor()->num_buffers() != 1);
 
-    auto buffer = CpuTensor()->buffer();
-    auto element_data = static_cast<std::string*>(buffer.data());
+    auto string_data = std::static_pointer_cast<_winml::string_data>(CpuTensor()->get_data());
+    auto& string_vector = string_data->get_backing_vector();
 
     // Convert and copy into the underlying buffer
-    std::transform(begin(data), end(data), element_data, [](const auto& element) {
+    std::transform(begin(data), end(data), std::begin(string_vector), [](const auto& element) {
       return _winml::Strings::UTF8FromHString(element);
     });
   }

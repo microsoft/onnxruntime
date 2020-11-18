@@ -55,4 +55,8 @@ void string_data::set(size_t /*data_size*/, const byte* /*data*/) {
   WINML_THROW_HR(E_UNEXPECTED);
 }
 
+std::vector<std::string>& string_data::get_backing_vector() {
+  return buffer_;
+}
+
 }  // namespace _winml
