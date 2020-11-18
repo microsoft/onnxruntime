@@ -500,7 +500,7 @@ def get_config_build_dir(build_dir, config):
     return os.path.join(build_dir, config)
 
 
-def run_subprocess(args, cwd=None, capture=False, dll_path=None,
+def run_subprocess(args, cwd=None, capture_stdout=False, dll_path=None,
                    shell=False, env={}):
     if isinstance(args, str):
         raise ValueError("args should be a sequence of strings, not a string")
@@ -517,7 +517,7 @@ def run_subprocess(args, cwd=None, capture=False, dll_path=None,
 
     my_env.update(env)
 
-    return run(*args, cwd=cwd, capture=capture, shell=shell, env=my_env)
+    return run(*args, cwd=cwd, capture_stdout=capture_stdout, shell=shell, env=my_env)
 
 
 def update_submodules(source_dir):
@@ -540,7 +540,7 @@ def is_sudo():
 
 def install_apt_package(package):
     have = package in str(run_subprocess(
-        ["apt", "list", "--installed", package], capture=True).stdout)
+        ["apt", "list", "--installed", package], capture_stdout=True).stdout)
     if not have:
         if is_sudo():
             run_subprocess(['apt-get', 'install', '-y', package])
