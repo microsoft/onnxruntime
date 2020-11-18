@@ -745,45 +745,53 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
 // If the Reshape output is also a graph output, since NNAPI output is a void* buffer, we can find the shape
 // information in onnxruntime::nnapi::Model and pass the correct shape information back to ORT to be used as output shape
 /* static */ bool ReshapeOpBuilder::CanSkipReshape(const Node& node, size_t input_rank, size_t output_rank) {
-  const auto& output = node.OutputDefs()[0]->Name();
-  // We will go through all the output edges
-  for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
-    const auto& op_type = it->GetNode().OpType();
-    // TODO add quantized matmul when reshape support quantized input
-    if (op_type != "Gemm" && op_type != "MatMul") {
-      LOGS_DEFAULT(VERBOSE) << "Reshape/Flatten can only be skipped when the output is Gemm/Matmul"
-                            << " or no op is using the output (output is graph output)"
-                            << ", output name, " << output
-                            << " is used by " << op_type;
-      return false;
-    }
+  //
+  // TEMPORARILY DISABLED. Needs refinement.
+  //
+  // const auto& output = node.OutputDefs()[0]->Name();
+  // // We will go through all the output edges
+  // for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
+  //   const auto& op_type = it->GetNode().OpType();
+  //   // TODO add quantized matmul when reshape support quantized input
+  //   if (op_type != "Gemm" && op_type != "MatMul") {
+  //     LOGS_DEFAULT(VERBOSE) << "Reshape/Flatten can only be skipped when the output is Gemm/Matmul"
+  //                           << " or no op is using the output (output is graph output)"
+  //                           << ", output name, " << output
+  //                           << " is used by " << op_type;
+  //     return false;
+  //   }
 
-    // NNAPI ANEURALNETWORKS_FULLY_CONNECTED will only flatten the input 0
-    if (it->GetDstArgIndex() != 0) {
-      LOGS_DEFAULT(VERBOSE) << "Reshape/Flatten can only be skipped when the output is input 0 of Gemm/Matmul"
-                            << ", output name, " << output;
-      return false;
-    }
+  //   // NNAPI ANEURALNETWORKS_FULLY_CONNECTED will only flatten the input 0
+  //   if (it->GetDstArgIndex() != 0) {
+  //     LOGS_DEFAULT(VERBOSE) << "Reshape/Flatten can only be skipped when the output is input 0 of Gemm/Matmul"
+  //                           << ", output name, " << output;
+  //     return false;
+  //   }
 
-    // We only support 2d matmul/gemm here
-    // And NNAPI ANEURALNETWORKS_FULLY_CONNECTED will only flatten input rank >= 2
-    if (input_rank < 2 || output_rank != 2) {
-      LOGS_DEFAULT(VERBOSE) << "Reshape/Flatten can only be skipped when input_rank >= 2 and output_rank == 2"
-                            << ", output name, " << output
-                            << ", the actual input_rank, " << input_rank
-                            << ", the actual output_rank, " << output_rank;
-      return false;
-    }
-  }
+  //   // We only support 2d matmul/gemm here
+  //   // And NNAPI ANEURALNETWORKS_FULLY_CONNECTED will only flatten input rank >= 2
+  //   if (input_rank < 2 || output_rank != 2) {
+  //     LOGS_DEFAULT(VERBOSE) << "Reshape/Flatten can only be skipped when input_rank >= 2 and output_rank == 2"
+  //                           << ", output name, " << output
+  //                           << ", the actual input_rank, " << input_rank
+  //                           << ", the actual output_rank, " << output_rank;
+  //     return false;
+  //   }
+  // }
 
-  // If we reach here, we have either,
-  // all the Reshape outputs are used by gemm/matmul, the output can also be a model output [doesn't really matter here]
-  // or
-  // Reshape has no output edge ==> the output is a graph output or a dead end [which we don't care]
-  // we can skip this Reshape now
-  LOGS_DEFAULT(VERBOSE) << "Skipping Reshape/Flatten node ["
-                        << node.Name() << "] with output, " << output;
-  return true;
+  // // If we reach here, we have either,
+  // // all the Reshape outputs are used by gemm/matmul, the output can also be a model output [doesn't really matter here]
+  // // or
+  // // Reshape has no output edge ==> the output is a graph output or a dead end [which we don't care]
+  // // we can skip this Reshape now
+  // LOGS_DEFAULT(VERBOSE) << "Skipping Reshape/Flatten node ["
+  //                       << node.Name() << "] with output, " << output;
+  // return true;
+  
+  ORT_UNUSED_PARAMETER(node);
+  ORT_UNUSED_PARAMETER(input_rank);
+  ORT_UNUSED_PARAMETER(output_rank);
+  return false;  
 }
 
 /* static */ Status ReshapeOpBuilder::AddReshapeOperator(ModelBuilder& model_builder,
@@ -1669,9 +1677,43 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 #pragma region op_squeeze
 
 class SqueezeOpBuilder : public BaseOpBuilder {
+ public:
+  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  static vector<int32_t> GetAxes(ModelBuilder& model_builder, const Node& node);
 };
+
+void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+  if (node.SinceVersion() > 12 && node.InputDefs().size() > 1) {
+    model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());
+  }
+}
+
+/* static */ vector<int32_t> SqueezeOpBuilder::GetAxes(ModelBuilder& model_builder, const Node& node) {
+  vector<int32_t> axes;
+  // Squeeze opset 13 use input as axes
+  if (node.SinceVersion() > 12) {
+    // If axes is not supplied, return an empty axes as default to squeeze all
+    if (node.InputDefs().size() > 1) {
+      const auto& initializers(model_builder.GetInitializerTensors());
+      const auto& axes_tensor = *initializers.at(node.InputDefs()[1]->Name());
+      const int64_t* raw_axes = GetTensorInt64Data(axes_tensor);
+      const auto size = SafeInt<uint32_t>(axes_tensor.dims()[0]);
+      axes.resize(size);
+      for (uint32_t i = 0; i < size; i++) {
+        // it is unlikely we have a axis value overflow for int32
+        axes[i] = static_cast<int32_t>(raw_axes[i]);
+      }
+    }
+  } else {
+    NodeAttrHelper helper(node);
+    axes = helper.Get("axes", vector<int32_t>());
+  }
+
+  return axes;
+}
 
 Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
   auto& shaper(model_builder.GetShaper());
@@ -1685,7 +1727,7 @@ Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   }
 
   NodeAttrHelper helper(node);
-  vector<int32_t> axes = helper.Get("axes", vector<int32_t>());
+  vector<int32_t> axes = GetAxes(model_builder, node);
   const auto& input_shape(shaper[input]);
   auto input_dims = input_shape.size();
   for (auto& axis : axes) {

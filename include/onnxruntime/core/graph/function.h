@@ -31,7 +31,7 @@ class Function {
 /** 
 Create a new Function instance.
 @param graph The graph containing the Function.
-@param customized_func the IndexedSubGraph to use for the Function.
+@param nodes_to_fuse the IndexedSubGraph to use for the Function.
 */
 std::unique_ptr<Function> MakeFunction(const onnxruntime::Graph& graph,
                                        const IndexedSubGraph& nodes_to_fuse,
