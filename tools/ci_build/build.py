@@ -314,16 +314,14 @@ def parse_arguments():
     parser.add_argument(
         "--use_dnnl", action='store_true', help="Build with DNNL.")
     parser.add_argument(
-<<<<<<< HEAD
         "--dnnl_gpu_runtime", action='store', default='', type=str.lower,
         help="e.g. --dnnl_gpu_runtime ocl")
     parser.add_argument(
         "--dnnl_opencl_root", action='store', default='',
         help="Path to OpenCL SDK. "
         "e.g. --dnnl_opencl_root \"C:/Program Files (x86)/IntelSWTools/sw_dev_tools/OpenCL/sdk\"")
-=======
+    parser.add_argument(
         "--use_mklml", action='store_true', help="Build with MKLML.")
->>>>>>> parent of 5802fe169... Remove MKLML build config (#5559)
     parser.add_argument(
         "--use_featurizers", action='store_true',
         help="Build with ML Featurizer support.")
@@ -691,12 +689,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "OFF" if args.use_openblas else "ON"),
         "-Donnxruntime_USE_OPENBLAS=" + ("ON" if args.use_openblas else "OFF"),
         "-Donnxruntime_USE_DNNL=" + ("ON" if args.use_dnnl else "OFF"),
-<<<<<<< HEAD
         "-Donnxruntime_DNNL_GPU_RUNTIME=" + (args.dnnl_gpu_runtime if args.use_dnnl else ""),
         "-Donnxruntime_DNNL_OPENCL_ROOT=" + (args.dnnl_opencl_root if args.use_dnnl else ""),
-=======
         "-Donnxruntime_USE_MKLML=" + ("ON" if args.use_mklml else "OFF"),
->>>>>>> parent of 5802fe169... Remove MKLML build config (#5559)
         "-Donnxruntime_USE_NGRAPH=" + ("ON" if args.use_ngraph else "OFF"),
         "-Donnxruntime_USE_NNAPI_BUILTIN=" + ("ON" if args.use_nnapi else "OFF"),
         "-Donnxruntime_USE_RKNPU=" + ("ON" if args.use_rknpu else "OFF"),
