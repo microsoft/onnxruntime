@@ -12,7 +12,7 @@ jobs:
   - task: Docker@2
     displayName: login
     inputs:
-      containerRegistry: onnxruntimeregistry
+      containerRegistry: onnxruntimebuildcache
       command: login
       addPipelineData: false
   - task: CmdLine@2
@@ -28,7 +28,7 @@ jobs:
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
-          onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecentosgpubuild:char \
+          onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntimecentosgpubuild:ch4 \
             python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build --cmake_generator Ninja \
               --config Debug Release \
@@ -43,7 +43,7 @@ jobs:
   - task: Docker@2
     displayName: logout
     inputs:
-      containerRegistry: onnxruntimeregistry
+      containerRegistry: onnxruntimebuildcache
       command: logout
       addPipelineData: false
   - task: PublishTestResults@2
