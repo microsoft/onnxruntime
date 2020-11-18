@@ -612,7 +612,8 @@ TEST_P(ModelTest, Run) {
 #ifdef USE_NUPHAR
   provider_names.push_back(ORT_TSTR("nuphar"));
 #endif
-#ifdef USE_NNAPI
+// For any non-Android system, NNAPI will only be used for ort model converter
+#if defined(USE_NNAPI) && defined(__ANDROID__)
   provider_names.push_back(ORT_TSTR("nnapi"));
 #endif
 #ifdef USE_RKNPU

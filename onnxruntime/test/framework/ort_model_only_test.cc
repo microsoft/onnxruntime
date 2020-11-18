@@ -267,7 +267,7 @@ TEST(OrtModelOnlyTests, SerializeToOrtFormat) {
 
 TEST(OrtModelOnlyTests, SparseInitializerHandling) {
   const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("sparse_initializer_handling.onnx.ort");
-  SaveAndCompareModels("testdata/sparse_initializer_handling.onnx", ort_file);
+  SaveAndCompareModels("testdata/ort_minimal_test_models/sparse_initializer_handling.onnx", ort_file);
 
   SessionOptions so;
   so.session_logid = "LoadOrtFormat";

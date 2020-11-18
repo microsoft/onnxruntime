@@ -227,9 +227,10 @@ namespace py = pybind11;
 using namespace onnxruntime;
 using namespace onnxruntime::logging;
 
+static Env& platform_env = Env::Default();
+
 #if !defined(ORT_MINIMAL_BUILD)
 // Custom op section starts
-static Env& platform_env = Env::Default();
 
 CustomOpLibrary::CustomOpLibrary(const char* library_path, OrtSessionOptions& ort_so) {
   {

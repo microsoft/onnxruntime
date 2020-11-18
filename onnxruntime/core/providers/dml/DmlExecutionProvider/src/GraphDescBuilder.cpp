@@ -3,43 +3,12 @@
 
 #include "precomp.h"
 #include "GraphDescBuilder.h"
+#include "GraphKernelHelper.h"
 
 using namespace Windows::AI::MachineLearning::Adapter;
 
 namespace Dml::GraphDescBuilder
 {
-    // TODO: This is a hack which strips the suffix added within Lotus transforms that insert mem copies.
-    // This shouldn't be necessary if Lotus exposes the inputs/ouputs in the same order between the kernel
-    // for a function, and the graph for that function exposed as a kernel property.  When the ordering 
-    // mismatch is fixed (WindowsAI: 21114358, Lotus: 1953), this workaround should be removed.
-    static std::string GetFusedNodeArgNameMatchingGraph(const std::string& fusedNodeArgeName)
-    {
-        const char* suffix = nullptr;
-        
-        // The suffix used when inserting mem copies is equal to the below, probably followed by an incrementing number.
-        if (!suffix) {
-            suffix = strstr(fusedNodeArgeName.c_str(), "_DmlExecutionProvider_");
-        }
-
-        // The suffix used when inserting mem copies is equal to the below, not followed by an incrementing number.
-        if (!suffix) {
-            suffix = strstr(fusedNodeArgeName.c_str(), "_DmlExecutionProvider");
-        }
-        
-        if (!suffix) {
-            suffix = strstr(fusedNodeArgeName.c_str(), "_token_");
-        }
-
-        if (suffix)
-        {
-            return std::string(
-                fusedNodeArgeName.begin(),
-                fusedNodeArgeName.begin() + (suffix - fusedNodeArgeName.c_str())
-            );
-        } else {
-            return fusedNodeArgeName;
-        }
-    }
 
     const std::string& GetUniqueNodeName(const onnxruntime::Node& node)
     {
@@ -85,7 +54,7 @@ namespace Dml::GraphDescBuilder
         for (size_t inputIndex = 0; inputIndex < fusedNodeInputDefs.size(); ++inputIndex)
         {
             const onnxruntime::NodeArg* graphInput = graph.GetNodeArg(
-                GetFusedNodeArgNameMatchingGraph(fusedNodeInputDefs[inputIndex]->Name()));
+                GraphKernelHelper::GetFusedNodeArgNameMatchingGraph(fusedNodeInputDefs[inputIndex]->Name()));
 
             if (!graphInput)
             {
@@ -208,10 +177,10 @@ namespace Dml::GraphDescBuilder
                     auto iter = nameToFusedNodeInputIndex.find(arg->Name());
 
                     // The graph input could be missing the suffix, so try to match without it.
-                    // This is part of a temporary workaround; see comments in GetFusedNodeArgNameMatchingGraph.
+                    // This is part of a temporary workaround; see comments in GraphKernelHelper::GetFusedNodeArgNameMatchingGraph.
                     if (iter == nameToFusedNodeInputIndex.end())
                     {
-                        iter = nameToFusedNodeInputIndex.find(GetFusedNodeArgNameMatchingGraph(arg->Name()));
+                        iter = nameToFusedNodeInputIndex.find(GraphKernelHelper::GetFusedNodeArgNameMatchingGraph(arg->Name()));
                     }
 
                     if (iter != nameToFusedNodeInputIndex.end())
@@ -277,7 +246,7 @@ namespace Dml::GraphDescBuilder
         for (size_t outputIndex = 0; outputIndex < fusedNodeOutputDefs.size(); ++outputIndex)
         {
             const onnxruntime::NodeArg* graphOutput = graph.GetNodeArg(
-                GetFusedNodeArgNameMatchingGraph(fusedNodeOutputDefs[outputIndex]->Name()));
+                GraphKernelHelper::GetFusedNodeArgNameMatchingGraph(fusedNodeOutputDefs[outputIndex]->Name()));
 
             const auto& outputNodeAndIndex = nameToNodeAndIndexMap.at(graphOutput->Name());
 

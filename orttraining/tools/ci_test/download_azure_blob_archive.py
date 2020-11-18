@@ -17,7 +17,7 @@ REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "..", ".."))
 
 sys.path.append(os.path.join(REPO_DIR, "tools", "python"))
 
-import get_azcopy  # noqa: E402
+from util import get_azcopy  # noqa: E402
 
 def _download(azcopy_path, url, local_path):
   subprocess.run([azcopy_path, "cp", "--log-level", "NONE", url, local_path], check=True)
@@ -39,19 +39,23 @@ def _check_file_sha256_digest(path, expected_digest):
   match = actual_digest.lower() == expected_digest.lower()
   if not match:
     raise RuntimeError(
-        "SHA256 digest mismatch, expected: {}, actual: {}".format(expected_digest.lower(), actual_digest.lower()))
+        "SHA256 digest mismatch, expected: {}, actual: {}".format(
+            expected_digest.lower(), actual_digest.lower()))
 
 def main():
-  parser = argparse.ArgumentParser(description="Downloads training end-to-end test data.")
-  parser.add_argument("--azure_blob_url", required=True, help="The test data destination directory.")
-  parser.add_argument("--target_dir", required=True, help="The test data destination directory.")
-  parser.add_argument("--archive_sha256_digest", help="The test data destination directory.")
+  parser = argparse.ArgumentParser(
+      description="Downloads an Azure blob archive.")
+  parser.add_argument("--azure_blob_url", required=True,
+                      help="The Azure blob URL.")
+  parser.add_argument("--target_dir", required=True,
+                      help="The destination directory.")
+  parser.add_argument("--archive_sha256_digest",
+                      help="The SHA256 digest of the archive. Verified if provided.")
   args = parser.parse_args()
 
-  with tempfile.TemporaryDirectory() as temp_dir, \
-       get_azcopy.get_azcopy() as azcopy_path:
+  with tempfile.TemporaryDirectory() as temp_dir, get_azcopy() as azcopy_path:
     archive_path = os.path.join(temp_dir, "archive.zip")
-    print("Downloading E2E test data from '{}'...".format(args.azure_blob_url))
+    print("Downloading archive from '{}'...".format(args.azure_blob_url))
     _download(azcopy_path, args.azure_blob_url, archive_path)
     if args.archive_sha256_digest:
       _check_file_sha256_digest(archive_path, args.archive_sha256_digest)

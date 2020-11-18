@@ -12,21 +12,23 @@ jobs:
 
   # update these if the E2E test data changes
   - script: |
-      orttraining/tools/ci_test/download_azure_blob.py \
+      orttraining/tools/ci_test/download_azure_blob_archive.py \
       --azure_blob_url https://onnxruntimetestdata.blob.core.windows.net/training/onnxruntime_training_data.zip?snapshot=2020-06-15T23:17:35.8314853Z \
       --target_dir $(Build.BinariesDirectory)/training_e2e_test_data \
       --archive_sha256_digest B01C169B6550D1A0A6F1B4E2F34AE2A8714B52DBB70AC04DA85D371F691BDFF9
     displayName: 'Download onnxruntime_training_data.zip data'
 
   - script: |
-      orttraining/tools/ci_test/download_azure_blob.py \
+      orttraining/tools/ci_test/download_azure_blob_archive.py \
       --azure_blob_url https://onnxruntimetestdata.blob.core.windows.net/training/glue_MRPC_data.zip \
       --target_dir /bert_data/hf_data/
     displayName: 'Download glue_MRPC_data.zip data'
 
-  - script: |
-      tools/ci_build/github/linux/run_dockerbuild.sh \
+  - template: templates/run-docker-build-steps.yml
+    parameters:
+      RunDockerBuildArgs: |
         -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory) \
+        -t onnxruntime_e2e_test_image \
         -x " \
           --config RelWithDebInfo \
           --enable_training \
@@ -35,7 +37,7 @@ jobs:
           --enable_training_python_frontend_e2e_tests \
           --enable_training_pipeline_e2e_tests \
           "
-    displayName: 'Build'
+      DisplayName: 'Build'
 
   # Hit OOM with run_training_pipeline_e2e_tests.py - slightly above 16GB limit.
   # leave this code here for further investigation.
@@ -48,7 +50,7 @@ jobs:
   #       --volume $(Build.BinariesDirectory):/build \
   #       --volume /bert_data:/bert_data \
   #       --volume /bert_ort:/bert_ort \
-  #       onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
+  #       onnxruntime_e2e_test_image \
   #         /build/RelWithDebInfo/run_training_pipeline_e2e_tests.py \
   #           --cwd /build/RelWithDebInfo
   #   displayName: 'Run run_training_pipeline_e2e_tests.py'
@@ -62,7 +64,7 @@ jobs:
         --volume $(Build.SourcesDirectory):/onnxruntime_src \
         --volume $(Build.BinariesDirectory):/build \
         --volume $(Build.BinariesDirectory)/training_e2e_test_data:/training_e2e_test_data:ro \
-        onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
+        onnxruntime_e2e_test_image \
           /onnxruntime_src/orttraining/tools/ci_test/run_batch_size_test.py \
             --binary_dir /build/RelWithDebInfo \
             --model_root /training_e2e_test_data/models
@@ -76,7 +78,7 @@ jobs:
         --volume $(Build.SourcesDirectory):/onnxruntime_src \
         --volume $(Build.BinariesDirectory):/build \
         --volume $(Build.BinariesDirectory)/training_e2e_test_data:/training_e2e_test_data:ro \
-        onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
+        onnxruntime_e2e_test_image \
           /onnxruntime_src/orttraining/tools/ci_test/run_convergence_test.py \
             --binary_dir /build/RelWithDebInfo \
             --model_root /training_e2e_test_data/models \
@@ -93,7 +95,7 @@ jobs:
         --volume $(Build.SourcesDirectory):/onnxruntime_src \
         --volume $(Build.BinariesDirectory):/build \
         --volume /bert_data:/bert_data \
-        onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
+        onnxruntime_e2e_test_image \
           /build/RelWithDebInfo/launch_test.py \
             --cmd_line_with_args "python orttraining_run_frontend_batch_size_test.py -v" \
             --cwd /build/RelWithDebInfo \
@@ -110,7 +112,7 @@ jobs:
         --volume $(Build.SourcesDirectory):/onnxruntime_src \
         --volume $(Build.BinariesDirectory):/build \
         --volume /bert_data:/bert_data \
-        onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
+        onnxruntime_e2e_test_image \
           /build/RelWithDebInfo/launch_test.py \
             --cmd_line_with_args "mpirun -n 4 -x NCCL_DEBUG=INFO python orttraining_run_glue.py" \
             --cwd /build/RelWithDebInfo
@@ -126,7 +128,7 @@ jobs:
         --volume $(Build.SourcesDirectory):/onnxruntime_src \
         --volume $(Build.BinariesDirectory):/build \
         --volume /bert_data:/bert_data \
-        onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
+        onnxruntime_e2e_test_image \
           /build/RelWithDebInfo/launch_test.py \
             --cmd_line_with_args "python orttraining_run_glue.py ORTGlueTest.test_bert_with_mrpc -v" \
             --cwd /build/RelWithDebInfo \
@@ -143,7 +145,7 @@ jobs:
         --volume $(Build.SourcesDirectory):/onnxruntime_src \
         --volume $(Build.BinariesDirectory):/build \
         --volume /bert_data:/bert_data \
-        onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
+        onnxruntime_e2e_test_image \
           /build/RelWithDebInfo/launch_test.py \
             --cmd_line_with_args "python orttraining_run_glue.py ORTGlueTest.test_bert_fp16_with_mrpc -v" \
             --cwd /build/RelWithDebInfo \
@@ -160,7 +162,7 @@ jobs:
         --volume $(Build.SourcesDirectory):/onnxruntime_src \
         --volume $(Build.BinariesDirectory):/build \
         --volume /bert_data:/bert_data \
-        onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
+        onnxruntime_e2e_test_image \
           /build/RelWithDebInfo/launch_test.py \
             --cmd_line_with_args "python orttraining_run_glue.py ORTGlueTest.test_roberta_with_mrpc -v" \
             --cwd /build/RelWithDebInfo \
@@ -177,7 +179,7 @@ jobs:
         --volume $(Build.SourcesDirectory):/onnxruntime_src \
         --volume $(Build.BinariesDirectory):/build \
         --volume /bert_data:/bert_data \
-        onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
+        onnxruntime_e2e_test_image \
           /build/RelWithDebInfo/launch_test.py \
             --cmd_line_with_args "python orttraining_run_glue.py ORTGlueTest.test_roberta_fp16_with_mrpc -v" \
             --cwd /build/RelWithDebInfo \
@@ -194,7 +196,7 @@ jobs:
         --volume $(Build.SourcesDirectory):/onnxruntime_src \
         --volume $(Build.BinariesDirectory):/build \
         --volume /bert_data:/bert_data \
-        onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
+        onnxruntime_e2e_test_image \
           /build/RelWithDebInfo/launch_test.py \
             --cmd_line_with_args "python orttraining_run_multiple_choice.py ORTMultipleChoiceTest.test_bert_fp16_with_swag -v" \
             --cwd /build/RelWithDebInfo \
@@ -211,7 +213,7 @@ jobs:
         --volume $(Build.SourcesDirectory):/onnxruntime_src \
         --volume $(Build.BinariesDirectory):/build \
         --volume /bert_data:/bert_data \
-        onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
+        onnxruntime_e2e_test_image \
           /build/RelWithDebInfo/launch_test.py \
             --cmd_line_with_args "python onnxruntime_test_ort_trainer_with_mixed_precision.py -v" \
             --cwd /build/RelWithDebInfo
@@ -226,7 +228,7 @@ jobs:
         --volume $(Build.SourcesDirectory):/onnxruntime_src \
         --volume $(Build.BinariesDirectory):/build \
         --volume /bert_data:/bert_data \
-        onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
+        onnxruntime_e2e_test_image \
           /build/RelWithDebInfo/launch_test.py \
             --cmd_line_with_args "python orttraining_test_transformers.py BertModelTest.test_for_pretraining_mixed_precision -v" \
             --cwd /build/RelWithDebInfo
@@ -242,7 +244,7 @@ jobs:
         --volume $(Build.SourcesDirectory):/onnxruntime_src \
         --volume $(Build.BinariesDirectory):/build \
         --volume /bert_data:/bert_data \
-        onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
+        onnxruntime_e2e_test_image \
           /build/RelWithDebInfo/launch_test.py \
             --cmd_line_with_args "mpirun -n 4 -x NCCL_DEBUG=INFO python orttraining_run_bert_pretrain.py ORTBertPretrainTest.test_pretrain_convergence" \
             --cwd /build/RelWithDebInfo
