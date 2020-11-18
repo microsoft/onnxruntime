@@ -657,6 +657,10 @@ if (onnxruntime_USE_OPENVINO)
 endif()
 
 if (onnxruntime_USE_NNAPI_BUILTIN)
+  if (onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD)
+    message(FATAL_ERROR "NNAPI can not be used in a basic minimal build. Please build with '--minimal_build extended'")
+  endif()
+
   add_compile_definitions(USE_NNAPI=1)
 
   # This is the minimum Android API Level required by ORT NNAPI EP to run
@@ -772,7 +776,7 @@ if (onnxruntime_USE_DML)
       add_custom_command(TARGET onnxruntime_providers_dml
         POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-          "${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}/${file}" $<TARGET_FILE_DIR:onnxruntime_providers_dml>)
+          "${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}-win/${file}" $<TARGET_FILE_DIR:onnxruntime_providers_dml>)
     endforeach()
   endif()
 
@@ -781,8 +785,8 @@ if (onnxruntime_USE_DML)
       target_link_libraries(${target} PRIVATE DirectML)
     else()
       add_dependencies(${target} RESTORE_PACKAGES)
-      target_link_libraries(${target} PRIVATE "${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}/DirectML.lib")
-	  target_compile_definitions(${target} PRIVATE DML_TARGET_VERSION_USE_LATEST)
+      target_link_libraries(${target} PRIVATE "${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}-win/DirectML.lib")
+	    target_compile_definitions(${target} PRIVATE DML_TARGET_VERSION_USE_LATEST)
     endif()
   endfunction()
 

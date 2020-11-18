@@ -10,8 +10,20 @@ import shutil
 import subprocess
 import sys
 import hashlib
-from logger import log
+from logger import get_logger
 from amd_hipify import amd_hipify
+
+
+SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
+REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
+
+sys.path.append(os.path.join(REPO_DIR, "tools", "python"))
+
+
+from util import run  # noqa: E402
+
+
+log = get_logger("build")
 
 
 class BaseError(Exception):
@@ -419,10 +431,13 @@ def parse_arguments():
         help="Build ONNXRuntime micro-benchmarks.")
 
     # options to reduce binary size
-    parser.add_argument("--minimal_build", action='store_true',
+    parser.add_argument("--minimal_build", action='store',
+                        const='on', default='off', nargs='?', type=str.lower,
                         help="Create a build that only supports ORT format models. "
                         "See /docs/ONNX_Runtime_Format_Model_Usage.md for more information. "
-                        "RTTI is automatically disabled in a minimal build.")
+                        "RTTI is automatically disabled in a minimal build. "
+                        "To enable execution providers that compile kernels at runtime (e.g. NNAPI) pass 'extended' "
+                        "as a parameter. e.g. '--minimal_build extended'.")
     parser.add_argument("--include_ops_by_model", type=str, help="include ops from model(s) under designated path.")
     parser.add_argument("--include_ops_by_config", type=str,
                         help="include ops from config file. "
@@ -487,8 +502,9 @@ def get_config_build_dir(build_dir, config):
 
 def run_subprocess(args, cwd=None, capture=False, dll_path=None,
                    shell=False, env={}):
-    log.info("Running subprocess in '{0}'\n{1}".format(
-        cwd or os.getcwd(), args))
+    if isinstance(args, str):
+        raise ValueError("args should be a sequence of strings, not a string")
+
     my_env = os.environ.copy()
     if dll_path:
         if is_windows():
@@ -499,15 +515,9 @@ def run_subprocess(args, cwd=None, capture=False, dll_path=None,
             else:
                 my_env["LD_LIBRARY_PATH"] = dll_path
 
-    stdout, stderr = (subprocess.PIPE, subprocess.STDOUT) if capture else (
-        None, None)
     my_env.update(env)
-    completed_process = subprocess.run(
-        args, cwd=cwd, check=True, stdout=stdout, stderr=stderr,
-        env=my_env, shell=shell)
-    log.debug("Subprocess completed. Return code=" +
-              str(completed_process.returncode))
-    return completed_process
+
+    return run(*args, cwd=cwd, capture=capture, shell=shell, env=my_env)
 
 
 def update_submodules(source_dir):
@@ -710,7 +720,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_DISABLE_RTTI=" + ("ON" if args.disable_rtti else "OFF"),
         "-Donnxruntime_DISABLE_EXCEPTIONS=" + ("ON" if args.disable_exceptions else "OFF"),
         "-Donnxruntime_DISABLE_ORT_FORMAT_LOAD=" + ("ON" if args.disable_ort_format_load else "OFF"),
-        "-Donnxruntime_MINIMAL_BUILD=" + ("ON" if args.minimal_build else "OFF"),
+        "-Donnxruntime_MINIMAL_BUILD=" + ("ON" if args.minimal_build != 'off' else "OFF"),
+        "-Donnxruntime_EXTENDED_MINIMAL_BUILD=" + ("ON" if args.minimal_build == 'extended' else "OFF"),
         "-Donnxruntime_REDUCED_OPS_BUILD=" + (
             "ON" if args.include_ops_by_config or args.include_ops_by_model else "OFF"),
         "-Donnxruntime_MSVC_STATIC_RUNTIME=" + (
@@ -921,7 +932,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                 args.cmake_generator == 'Visual Studio 16 2019' and
                 args.use_full_protobuf):
             raise BuildError(
-             "Fuzz test has only be tested with build shared libs option using MSVC on windows")
+                "Fuzz test has only be tested with build shared libs option using MSVC on windows")
         cmake_args += [
             "-Donnxruntime_BUILD_UNIT_TESTS=ON",
             "-Donnxruntime_FUZZ_TEST=ON",
@@ -1159,9 +1170,9 @@ def adb_shell(*args, **kwargs):
 
 def run_android_tests(args, source_dir, config, cwd):
     if args.android_abi == 'x86_64':
-        run_subprocess(os.path.join(
+        run_subprocess([os.path.join(
             source_dir, 'tools', 'ci_build', 'github', 'android',
-            'start_android_emulator.sh'))
+            'start_android_emulator.sh')])
         adb_push('testdata', '/data/local/tmp/', cwd=cwd)
         adb_push(
             os.path.join(source_dir, 'cmake', 'external', 'onnx', 'onnx', 'backend', 'test'),

@@ -144,6 +144,34 @@ static void update_subgraphs_within_function_body(ONNX_NAMESPACE::GraphProto& su
   }
 }
 
+static std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const Graph& graph,
+                                                              const IndexedSubGraph& nodes_to_fuse) {
+  const auto* meta_def = nodes_to_fuse.GetMetaDef();
+  auto op_schema = onnxruntime::make_unique<ONNX_NAMESPACE::OpSchema>();
+  op_schema->SetName(meta_def->name);
+  op_schema->SetDomain(meta_def->domain);
+  op_schema->SetDoc(meta_def->doc_string);
+  op_schema->SinceVersion(meta_def->since_version);
+  int i = 0;
+
+  for (auto& input : meta_def->inputs) {
+    auto input_arg = graph.GetNodeArg(input);
+    // inputs must have a type. can be inferred for outputs.
+    ORT_ENFORCE(input_arg->Type() != nullptr);
+    op_schema->Input(i, input, "", *input_arg->Type());
+    ++i;
+  }
+  i = 0;
+  for (auto& output : meta_def->outputs) {
+    auto output_arg = graph.GetNodeArg(output);
+    op_schema->Output(i, output, "", *output_arg->Type());
+    ++i;
+  }
+  op_schema->Finalize();
+
+  return op_schema;
+}
+
 FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
                            const IndexedSubGraph& nodes_to_fuse,
                            const logging::Logger& logger)
@@ -154,12 +182,8 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
             graph.DomainToVersionMap(), {}, logger) {
   auto& function_body_graph = body_.MainGraph();
 
-  auto meta_def = nodes_to_fuse.GetMetaDef();
-  op_schema_ = onnxruntime::make_unique<ONNX_NAMESPACE::OpSchema>();
-  op_schema_->SetName(meta_def->name);
-  op_schema_->SetDomain(meta_def->domain);
-  op_schema_->SetDoc(meta_def->doc_string);
-  op_schema_->SinceVersion(meta_def->since_version);
+  auto* meta_def = nodes_to_fuse.GetMetaDef();
+  op_schema_ = CreateSchema(graph, nodes_to_fuse);
 
   int i = 0;
   std::vector<const NodeArg*> function_body_graph_inputs;
@@ -168,8 +192,6 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
     auto input_arg = parent_graph_->GetNodeArg(input);
     auto& function_body_graph_input_arg = function_body_graph.GetOrCreateNodeArg(input_arg->Name(), input_arg->TypeAsProto());
     function_body_graph_inputs[i] = &function_body_graph_input_arg;
-    ORT_ENFORCE(input_arg->Type() != nullptr);
-    op_schema_->Input(i, input, "", *input_arg->Type());
     ++i;
   }
 
@@ -180,11 +202,8 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
     auto output_arg = parent_graph_->GetNodeArg(output);
     auto& function_body_graph_output_arg = function_body_graph.GetOrCreateNodeArg(output_arg->Name(), output_arg->TypeAsProto());
     function_body_graph_outputs[i] = &function_body_graph_output_arg;
-    op_schema_->Output(i, output, "", *output_arg->Type());
     ++i;
   }
-
-  op_schema_->Finalize();
 
   function_body_graph.SetInputs(function_body_graph_inputs);
   function_body_graph.SetOutputs(function_body_graph_outputs);
@@ -238,7 +257,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
   // Hence, we make a copy prior to generating the graph representation of the function,
   // as we might make some modifications to the FunctionProto along the way
 
-  auto node_in_parent_graph = parent_graph_->GetNode(node_index);
+  const auto* node_in_parent_graph = parent_graph_->GetNode(node_index);
   op_schema_ = onnxruntime::make_unique<ONNX_NAMESPACE::OpSchema>();
   op_schema_->SetName(onnx_func_proto_.name());
   op_schema_->SetDomain(onnx_func_proto_.node().Get(0).domain());
@@ -256,14 +275,13 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
   auto cached_op_schema = node_in_parent_graph->Op();
   if (!cached_op_schema) {
     // Infer a op_schema for stand-alone functions.
-    IOTypeConstraintHelper(onnx_func_proto_, this->op_schema_, input_name_idx_map, output_name_idx_map);
+    IOTypeConstraintHelper(onnx_func_proto_, op_schema_, input_name_idx_map, output_name_idx_map);
   } else {
     auto type_constraint_params = cached_op_schema->typeConstraintParams();
     for (auto& type_constraint_param : type_constraint_params) {
-      op_schema_->TypeConstraint(
-          type_constraint_param.type_param_str,
-          type_constraint_param.allowed_type_strs,
-          type_constraint_param.description);
+      op_schema_->TypeConstraint(type_constraint_param.type_param_str,
+                                 type_constraint_param.allowed_type_strs,
+                                 type_constraint_param.description);
     }
     int i = 0;
     for (auto& input : cached_op_schema->inputs()) {
@@ -286,10 +304,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
     op_schema_->TypeAndShapeInferenceFunction(
         [this](ONNX_NAMESPACE::InferenceContext& ctx) {
           auto schema_registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
-          const ONNX_NAMESPACE::FunctionProto* func_ptr = this->GetFuncProto();
-          if (nullptr != func_ptr) {
-            ONNX_NAMESPACE::shape_inference::InferShapeForFunctionNode(func_ptr, schema_registry, ctx);
-          }
+          ONNX_NAMESPACE::shape_inference::InferShapeForFunctionNode(&onnx_func_proto_, schema_registry, ctx);
         });
   } else {
     op_schema_->TypeAndShapeInferenceFunction(cached_op_schema->GetTypeAndShapeInferenceFunction());
@@ -321,7 +336,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
     }
 
     for (int idx = 0; idx < (*node).input_size(); ++idx) {
-      std::string tensor_name = (*node).input().Get(idx);
+      const std::string& tensor_name = (*node).input().Get(idx);
       auto iter = input_name_idx_map.find(tensor_name);
       if (iter != input_name_idx_map.end()) {
         // Preserving NodeArg and input/output names
@@ -397,9 +412,13 @@ const onnxruntime::Graph& FunctionImpl::Body() const {
   return body_.MainGraph();
 }
 
-const ONNX_NAMESPACE::FunctionProto* FunctionImpl::GetFuncProto() const {
-  return &onnx_func_proto_;
+ViewerFunctionImpl::ViewerFunctionImpl(const onnxruntime::Graph& graph,
+                                       const IndexedSubGraph& nodes_to_fuse,
+                                       const logging::Logger& /*logger*/) {
+  op_schema_ = CreateSchema(graph, nodes_to_fuse);
 }
+
+ViewerFunctionImpl::~ViewerFunctionImpl() = default;
 
 std::unique_ptr<Function> MakeFunction(const onnxruntime::Graph& graph,
                                        const IndexedSubGraph& nodes_to_fuse,

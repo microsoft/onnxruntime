@@ -133,21 +133,26 @@ static TypeProto TypeProtoFromTensorProto(const TensorProto& tensor) {
 
   return t;
 }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 NodeArg::NodeArg(const std::string& name, const TypeProto* p_node_arg_type) {
   node_arg_info_.set_name(name);
   // If the name is empty, it means the arg does not exist.
   exists_ = !(name.empty());
   if (nullptr != p_node_arg_type) {
     (*node_arg_info_.mutable_type()) = *p_node_arg_type;
+#if !defined(ORT_MINIMAL_BUILD)
+    // should not be possible to have invalid values in the ORT format model, so we don't need this
+    // in a minimal build
     RemoveInvalidValues(*node_arg_info_.mutable_type());
+#endif
     type_ = DataTypeUtils::ToType(node_arg_info_.type());
   } else {
     type_ = nullptr;
   }
 }
-
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 NodeArg::NodeArg(NodeArgInfo&& node_arg_info) {
   node_arg_info_ = std::move(node_arg_info);
@@ -427,10 +432,6 @@ void Node::SetPriority(int priority) noexcept {
 
 #if !defined(ORT_MINIMAL_BUILD)
 
-void Node::SetNodeType(Node::Type node_type) noexcept {
-  node_type_ = node_type;
-}
-
 const Function* Node::GetFunctionBody(bool try_init_func_body) {
   if (nullptr != func_body_) {
     return func_body_;
@@ -448,10 +449,6 @@ void Node::SetFunctionBody(const Function& func) {
   func_body_ = &func;
   op_ = &func.OpSchema();
   since_version_ = op_->since_version();
-}
-
-void Node::SetExecutionProviderType(ProviderType execution_provider_type) {
-  execution_provider_type_ = execution_provider_type;
 }
 
 void Node::ToProto(NodeProto& proto, bool update_subgraphs) const {
@@ -666,9 +663,9 @@ Status Node::LoadEdgesFromOrtFormat(const onnxruntime::experimental::fbs::NodeEd
 
   return Status::OK();
 }
-#endif
+#endif  // defined(ENABLE_ORT_FORMAT_LOAD)
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 void Node::Init(const std::string& name,
                 const std::string& op_type,
                 const std::string& description,
@@ -697,7 +694,11 @@ void Node::Init(const std::string& name,
 
     for (auto& name_to_attr : attributes_) {
       if (utils::HasGraph(name_to_attr.second)) {
+#if !defined(ORT_MINIMAL_BUILD)
         CreateSubgraph(name_to_attr.first);
+#else
+        ORT_THROW("Creating node with a subgraph via AddNode is not supported in this build.");
+#endif
       }
     }
   }
@@ -716,7 +717,9 @@ Node::Relationships& Node::MutableRelationships() noexcept {
   graph_->SetGraphProtoSyncNeeded();
   return relationships_;
 }
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
+#if !defined(ORT_MINIMAL_BUILD)
 void Node::CreateSubgraph(const std::string& attr_name) {
   auto attr = attributes_.find(attr_name);
 
@@ -1264,7 +1267,9 @@ common::Status Graph::SetOuterScopeNodeArgs(const std::unordered_set<std::string
 
   return Status::OK();
 }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 void Graph::AddEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int src_arg_slot, int dst_arg_slot) {
   if (nodes_.size() <= src_node_index || src_arg_slot < 0 || nodes_.size() <= dst_node_index || dst_arg_slot < 0 ||
       nullptr == nodes_[src_node_index] || nullptr == nodes_[dst_node_index]) {
@@ -1349,7 +1354,9 @@ void Graph::RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int s
   nodes_[dst_node_index]->MutableRelationships().input_edges.erase(Node::EdgeEnd(*nodes_[src_node_index], src_arg_slot, dst_arg_slot));
   nodes_[src_node_index]->MutableRelationships().output_edges.erase(Node::EdgeEnd(*nodes_[dst_node_index], src_arg_slot, dst_arg_slot));
 }
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
+#if !defined(ORT_MINIMAL_BUILD)
 GSL_SUPPRESS(es .84)  // ignoring return value from unordered_map::insert causes noisy complaint
 Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node_args_consumed) {
   const std::unordered_set<std::string>& outer_scope_node_args = resolve_context_.outer_scope_node_args;
@@ -1596,6 +1603,7 @@ void Graph::ReverseDFSFrom(const std::vector<const Node*>& from,
   }
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 void Graph::KahnsTopologicalSort(const std::function<void(const Node*)>& enter,
                                  const std::function<bool(const Node*, const Node*)>& comp) const {
   std::unordered_map<NodeIndex, size_t> in_degree;
@@ -1634,7 +1642,6 @@ void Graph::KahnsTopologicalSort(const std::function<void(const Node*)>& enter,
     ORT_THROW("Some nodes are not included in the topological sort, graph have a cycle.");
   }
 }
-#if !defined(ORT_MINIMAL_BUILD)
 
 GSL_SUPPRESS(es .84)  // noisy warning about ignoring return value from insert(...)
 Status Graph::PerformTopologicalSortAndCheckIsAcyclic() {
@@ -2896,7 +2903,9 @@ std::string Graph::GenerateNodeName(const std::string& base_name) {
 
   return new_name;
 }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 Node& Graph::AddNode(const std::string& name,
                      const std::string& op_type,
                      const std::string& description,
@@ -2945,7 +2954,9 @@ bool Graph::RemoveNode(NodeIndex p_index) {
 
   return ReleaseNode(p_index);
 }
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
+#if !defined(ORT_MINIMAL_BUILD)
 bool Graph::AddControlEdge(NodeIndex src_node_index, NodeIndex dst_node_index) {
   if (nodes_.size() <= src_node_index ||
       nodes_.size() <= dst_node_index ||
@@ -3282,6 +3293,12 @@ Status Graph::SetGraphInputsOutputs() {
   return Status::OK();
 }
 
+IOnnxRuntimeOpSchemaCollectionPtr Graph::GetSchemaRegistry() const {
+  return schema_registry_;
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 // calling private ctor
 GSL_SUPPRESS(r .11)
 gsl::not_null<Node*> Graph::AllocateNode() {
@@ -3313,21 +3330,24 @@ bool Graph::ReleaseNode(NodeIndex index) {
   return true;
 }
 
-IOnnxRuntimeOpSchemaCollectionPtr Graph::GetSchemaRegistry() const {
-  return schema_registry_;
-}
-
-Node& Graph::FuseSubGraph(const IndexedSubGraph& sub_graph, const std::string& fused_node_name) {
-  auto* func_meta_def = sub_graph.GetMetaDef();
+Node& Graph::CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std::string& fused_node_name) {
+  const auto* func_meta_def = sub_graph.GetMetaDef();
   ORT_ENFORCE(nullptr != func_meta_def);
-
   std::vector<NodeArg*> input_args;
   std::vector<NodeArg*> output_args;
+  std::unordered_map<std::string, int> input_indexes;
+  std::unordered_map<std::string, int> output_indexes;
+
+  int cur_idx = 0;
   for (auto& arg_name : func_meta_def->inputs) {
     input_args.push_back(GetNodeArg(arg_name));
+    input_indexes[arg_name] = cur_idx++;
   }
+
+  cur_idx = 0;
   for (auto& arg_name : func_meta_def->outputs) {
     output_args.push_back(GetNodeArg(arg_name));
+    output_indexes[arg_name] = cur_idx++;
   }
 
   auto& fused_node = AddNode(fused_node_name,
@@ -3339,21 +3359,102 @@ Node& Graph::FuseSubGraph(const IndexedSubGraph& sub_graph, const std::string& f
                              func_meta_def->domain);
 
   fused_node.SetNodeType(Node::Type::Fused);
-  function_container_.emplace_back(MakeFunction(*this, sub_graph, logger_));
-  fused_node.SetFunctionBody(*function_container_.back());
 
-  // Remove nodes fused above.
+  return fused_node;
+}
+
+Node& Graph::BeginFuseSubGraph(const IndexedSubGraph& sub_graph, const std::string& fused_node_name) {
+  Node& node = CreateFusedSubGraphNode(sub_graph, fused_node_name);
+
+#if !defined(ORT_MINIMAL_BUILD)
+  // if this is a full build create the lightweight Function implementation that provides the schema so that
+  // kernel lookup works as per usual. in an extended minimal build we do the lookup via a hash so don't
+  // need to create the schema.
+  auto func = onnxruntime::make_unique<ViewerFunctionImpl>(*this, sub_graph, logger_);
+  function_container_.push_back(std::move(func));
+  node.SetFunctionBody(*function_container_.back());
+#endif
+
+  return node;
+}
+
+void Graph::FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_node) {
+  const auto* func_meta_def = sub_graph.GetMetaDef();
+  ORT_ENFORCE(nullptr != func_meta_def);
+
+  std::unordered_map<std::string, int> input_indexes;
+  std::unordered_map<std::string, int> output_indexes;
+
+  int cur_idx = 0;
+  for (auto& arg_name : func_meta_def->inputs) {
+    input_indexes[arg_name] = cur_idx++;
+  }
+
+  cur_idx = 0;
+  for (auto& arg_name : func_meta_def->outputs) {
+    output_indexes[arg_name] = cur_idx++;
+  }
+
+  auto new_node_idx = fused_node.Index();
+
+  // Remove nodes that were fused
   for (auto node_index : sub_graph.nodes) {
     auto node = GetNode(node_index);
     if (nullptr == node) {
       continue;
     }
-    auto output_edges = node->GetRelationships().output_edges;
-    for (auto output_edge : output_edges) {
-      RemoveEdge(node->Index(), output_edge.GetNode().Index(), output_edge.GetSrcArgIndex(), output_edge.GetDstArgIndex());
+
+    // move any applicable input edges to the new node. remove all others
+    auto input_edges = node->GetRelationships().input_edges;  // copy so RemoveEdge doesn't invalidate iterator
+    for (const auto& input_edge : input_edges) {
+      const auto& producer = input_edge.GetNode();
+      auto producer_idx = producer.Index();
+      auto src_idx = input_edge.GetSrcArgIndex();
+      auto dst_idx = input_edge.GetDstArgIndex();
+
+      // if this input is an input of the fused node add an edge for that
+      auto it = input_indexes.find(node->InputDefs()[dst_idx]->Name());
+      if (it != input_indexes.cend()) {
+        AddEdge(producer_idx, new_node_idx, src_idx, it->second);
+      }
+
+      RemoveEdge(producer_idx, node_index, src_idx, dst_idx);
     }
+
+    // move any applicable output edges to the new node
+    auto output_edges = node->GetRelationships().output_edges;  // copy so RemoveEdge doesn't invalidate iterator
+    for (const auto& output_edge : output_edges) {
+      const auto& consumer = output_edge.GetNode();
+      auto consumer_idx = consumer.Index();
+      auto src_idx = output_edge.GetSrcArgIndex();
+      auto dst_idx = output_edge.GetDstArgIndex();
+
+      // if this output is an output of the fused node add an edge for that
+      auto it = output_indexes.find(node->OutputDefs()[src_idx]->Name());
+      if (it != output_indexes.cend()) {
+        AddEdge(new_node_idx, consumer_idx, it->second, dst_idx);
+      }
+
+      RemoveEdge(node_index, consumer_idx, src_idx, dst_idx);
+    }
+
     RemoveNode(node_index);
   }
+}
+
+#endif  // #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD)
+Node& Graph::FuseSubGraph(const IndexedSubGraph& sub_graph,
+                          const std::string& fused_node_name) {
+  Node& fused_node = CreateFusedSubGraphNode(sub_graph, fused_node_name);
+
+  // create Function before we remove nodes
+  function_container_.emplace_back(MakeFunction(*this, sub_graph, logger_));
+  fused_node.SetFunctionBody(*function_container_.back());
+
+  // remove nodes and update edges
+  FinalizeFuseSubGraph(sub_graph, fused_node);
 
   return fused_node;
 }
@@ -3541,6 +3642,7 @@ Graph::Graph(const Model& owning_model,
       schema_registry_(std::make_shared<SchemaRegistryManager>()),
 #endif
       domain_to_version_(domain_to_version),
+      ir_version_(owning_model.IrVersion()),
       parent_graph_(parent_graph),
       parent_node_(parent_node),
       logger_(logger),

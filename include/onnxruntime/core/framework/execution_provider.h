@@ -168,10 +168,13 @@ class IExecutionProvider {
   void InsertAllocator(AllocatorPtr allocator);
   void ReplaceAllocator(AllocatorPtr allocator);
 
+  // creation of a fused node is not supported in a minimal build, so any EP enabled in that scenario must support
+  // compilation via GraphViewer instances.
+#if !defined(ORT_MINIMAL_BUILD)
   /**
   Given a list of fused_node, return create_state/compute/release_state func for each node.
   */
-  virtual common::Status Compile(const std::vector<onnxruntime::Node*>& fused_node,
+  virtual common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                                  std::vector<NodeComputeInfo>& node_compute_funcs);
 
   /**
@@ -181,8 +184,52 @@ class IExecutionProvider {
      Compute_${node_name}
      Release_State_${node_name}
   */
-  virtual common::Status Compile(const std::vector<onnxruntime::Node*>& fused_node,
+  virtual common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                                  std::string& dll_path);
+
+#endif
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  struct FusedNodeAndGraph {
+    const std::reference_wrapper<onnxruntime::Node> fused_node;
+    // GraphViewer that filters the full graph to the nodes that are covered by 'node'
+    const std::reference_wrapper<GraphViewer> filtered_graph;
+  };
+
+  /**
+  Given a collection of fused Nodes and the respective GraphViewer instance for the nodes that were fused,
+  return create_state/compute/release_state func for each node.
+  @remarks This is an optional interface that is only needed if the execution provider compiles nodes
+           in a scenario involving the minimal build. i.e. on a mobile or embedded device with ORT format model.
+
+           Do NOT cache the GraphViewer in FusedNodeAndGraph.filtered_graph in any of the NodeComputeInfo functions
+           as it is only valid for the duration of the call to Compile.
+  */
+  virtual common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+                                 std::vector<NodeComputeInfo>& node_compute_funcs);
+#endif
+
+  // Fusion approach that is suppported
+  enum class FusionStyle {
+    // The node fusion will create an onnxruntime::Function based Node that contains a completely new Graph instance
+    // in the Node body. The original nodes and initializers are copied to the new Graph instance in Function::Body().
+    // A GraphProto can be produced from the Node body.
+    Function,
+
+    // The node fusion will create a new Node that defines the inputs and outputs using the IndexedSubGraph
+    // that GetCapability returned. The Node will not be onnxruntime::Function based so will have no Body().
+    // Instead a GraphViewer that filters the full Graph to the fused Nodes will be created.
+    // This is significantly cheaper as it doesn't incur the cost of creating a new Graph instance,
+    // and can be supported in a minimal build.
+    FilteredGraphViewer
+  };
+
+  virtual FusionStyle GetFusionStyle() const {
+    // existing EPs use this mode so default to it.
+    // newer EPs that can use the cheaper approach, or need to run in a minimal build, should override to return
+    // FilteredGraphViewer
+    return FusionStyle::Function;
+  }
 
   void SetLogger(const logging::Logger* logger) {
     logger_ = logger;

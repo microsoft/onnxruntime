@@ -793,7 +793,8 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
                                                 const ExecutionProviders& providers,
                                                 KernelRegistryManager& kernel_registry_manager,
                                                 const InsertCastTransformer& insert_cast_transformer,
-                                                SessionState& session_state) {
+                                                SessionState& session_state,
+                                                bool saving_model_in_ort_format) {
   // The transformer order:
   // 1. built-in graph rewriter
   // 2. each execution provider's transformer
@@ -822,10 +823,17 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
   }
 #endif
 
+  // if saving model to ORT format we only assign nodes a custom EP can handle and don't compile them.
+  // we do this to preserve the original nodes in the model but prevent optimizers from changing them.
+  // at runtime, the ORT format model will re-do the partitioning/compilation of these nodes, which may change
+  // to cover fewer nodes due to device capabilities.
+  auto mode = saving_model_in_ort_format ? GraphPartitioner::Mode::kAssignOnly
+                                         : GraphPartitioner::Mode::kNormal;
+
   // Do partitioning based on execution providers' capability.
   GraphPartitioner partitioner(kernel_registry_manager, providers);
   ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state.ExportDll(),
-                                                       session_state.GetMutableFuncMgr()));
+                                                       session_state.GetMutableFuncMgr(), mode));
 
   // apply transformers except default transformers
   // Default transformers are required for correctness and they are owned and run by inference session
@@ -888,8 +896,28 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
 
   return common::Status::OK();
 }
-
 #endif  // !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+Status InferenceSession::PartitionOrtFormatModel(onnxruntime::Graph& graph,
+                                                 const ExecutionProviders& providers,
+                                                 KernelRegistryManager& kernel_registry_manager,
+                                                 SessionState& session_state) const {
+  std::unordered_map<std::string, uint64_t> compiled_kernel_hashes;
+
+  GraphPartitioner partitioner(kernel_registry_manager, providers);
+  ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state.ExportDll(),
+                                                       session_state.GetMutableFuncMgr(),
+                                                       GraphPartitioner::Mode::kOrtFormatLoad,
+                                                       &compiled_kernel_hashes));
+
+  if (!compiled_kernel_hashes.empty()) {
+    session_state.SetCompiledKernelHashes(std::move(compiled_kernel_hashes));
+  }
+
+  return Status::OK();
+}
+#endif
 
 #if defined(ENABLE_ORT_FORMAT_LOAD)
 template <typename T>
@@ -1131,38 +1159,72 @@ common::Status InferenceSession::Initialize() {
     // Register 2nd registries into KernelRegistryManager.
     ORT_RETURN_IF_ERROR_SESSIONID_(kernel_registry_manager_.RegisterKernels(execution_providers_));
 
+    bool loading_ort_format = !ort_format_model_bytes_.empty();
+    bool saving_model = !session_options_.optimized_model_filepath.empty();
+    bool saving_ort_format = false;
+    if (saving_model) {
+      std::string model_type = session_options_.GetConfigOrDefault(kOrtSessionOptionsConfigSaveModelFormat, "");
+      bool has_explicit_type = !model_type.empty();
+      saving_ort_format = ((has_explicit_type && model_type == "ORT") ||
+                           (!has_explicit_type &&
+                            experimental::utils::IsOrtFormatModel(session_options_.optimized_model_filepath)));
+    }
+
 #if !defined(ORT_MINIMAL_BUILD)
-    // add predefined transformers
-    AddPredefinedTransformers(graph_transformation_mgr_, session_options_.graph_optimization_level,
-                              transformers_to_enable_);
+    if (!loading_ort_format) {
+      // add predefined transformers
+      AddPredefinedTransformers(graph_transformation_mgr_, session_options_.graph_optimization_level,
+                                transformers_to_enable_);
 
-    // apply any transformations to the main graph and any subgraphs
-    ORT_RETURN_IF_ERROR_SESSIONID_(TransformGraph(graph, graph_transformation_mgr_,
-                                                  execution_providers_, kernel_registry_manager_,
-                                                  insert_cast_transformer_,
-                                                  *session_state_));
+      // apply any transformations to the main graph and any subgraphs
+      ORT_RETURN_IF_ERROR_SESSIONID_(TransformGraph(graph, graph_transformation_mgr_,
+                                                    execution_providers_, kernel_registry_manager_,
+                                                    insert_cast_transformer_,
+                                                    *session_state_,
+                                                    saving_ort_format));
 
-    // now that all the transforms are done, call Resolve on the main graph. this will recurse into the subgraphs.
-    ORT_RETURN_IF_ERROR_SESSIONID_(graph.Resolve());
+      // now that all the transforms are done, call Resolve on the main graph. this will recurse into the subgraphs.
+      ORT_RETURN_IF_ERROR_SESSIONID_(graph.Resolve());
 
-    // Update temporary copies of metadata, input- and output definitions to the same state as the resolved graph
-    ORT_RETURN_IF_ERROR_SESSIONID_(SaveModelMetadata(*model_));
+      // Update temporary copies of metadata, input- and output definitions to the same state as the resolved graph
+      ORT_RETURN_IF_ERROR_SESSIONID_(SaveModelMetadata(*model_));
+    } else
 #endif  // !defined(ORT_MINIMAL_BUILD)
+    {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+      // nodes are already partitioned, but a custom EP may compile some at runtime.
+      // run the partitioning to allow that to happen.
+      //
+      // We always have the CPU EP, so only need to run this if some other EP is enabled
+      if (execution_providers_.NumProviders() > 1) {
+        ORT_RETURN_IF_ERROR_SESSIONID_(PartitionOrtFormatModel(graph, execution_providers_, kernel_registry_manager_,
+                                                               *session_state_));
+      }
+#endif
+    }
 
-    // need to keep the initializers if we're going to save the optimized model
-    bool keep_initializers = !session_options_.optimized_model_filepath.empty();
+    const experimental::fbs::SessionState* serialized_session_state =
+        loading_ort_format
+            ? fbs::GetInferenceSession(ort_format_model_bytes_.data())->session_state()
+            : nullptr;
 
-    auto* serialized_session_state = !ort_format_model_bytes_.empty()
-                                         ? fbs::GetInferenceSession(ort_format_model_bytes_.data())->session_state()
-                                         : nullptr;
-
-    ORT_RETURN_IF_ERROR_SESSIONID_(session_state_->FinalizeSessionState(model_location_, kernel_registry_manager_,
-                                                                        session_options_,
-                                                                        serialized_session_state,
-                                                                        !keep_initializers));
+    ORT_RETURN_IF_ERROR_SESSIONID_(
+        session_state_->FinalizeSessionState(model_location_, kernel_registry_manager_,
+                                             session_options_,
+                                             serialized_session_state,
+                                             // need to keep the initializers if saving the optimized model
+                                             !saving_model,
+                                             saving_ort_format));
 
 #if !defined(ORT_MINIMAL_BUILD)
-    if (!session_options_.optimized_model_filepath.empty()) {
+    if (saving_model) {
+      if (session_state_->GetFuncMgr().NumFuncs() > 0) {
+        ORT_RETURN_IF_ERROR_SESSIONID_(
+            ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                            "Unable to serialize model as it contains compiled nodes. "
+                            "Please disable any execution providers which generate compiled nodes."));
+      }
+
       if (session_options_.graph_optimization_level >= TransformerLevel::Level3) {
         LOGS(*session_logger_, WARNING)
             << "Serializing optimized model with Graph Optimization level greater than ORT_ENABLE_EXTENDED. "
@@ -1170,12 +1232,7 @@ common::Status InferenceSession::Initialize() {
                "and should only be used in the same environment the model was optimized for.";
       }
 
-      std::string model_type = session_options_.GetConfigOrDefault(kOrtSessionOptionsConfigSaveModelFormat, "");
-      bool has_explicit_type = !model_type.empty();
-
-      if ((has_explicit_type && model_type == "ORT") ||
-          (!has_explicit_type &&
-           experimental::utils::IsOrtFormatModel(session_options_.optimized_model_filepath))) {
+      if (saving_ort_format) {
         ORT_RETURN_IF_ERROR_SESSIONID_(SaveToOrtFormat(session_options_.optimized_model_filepath));
       } else {
         ORT_RETURN_IF_ERROR_SESSIONID_(Model::Save(*model_, session_options_.optimized_model_filepath));
