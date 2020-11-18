@@ -200,8 +200,6 @@ jobs:
              move win-x86\runtimes\win-x86\native\onnxruntime.dll %%~ni\runtimes\win-x86\native\onnxruntime.dll
              move win-x86\runtimes\win-x86\native\onnxruntime.lib %%~ni\runtimes\win-x86\native\onnxruntime.lib
              move win-x86\runtimes\win-x86\native\onnxruntime.pdb %%~ni\runtimes\win-x86\native\onnxruntime.pdb
-             move win-x86\runtimes\win-x86\native\directml.dll %%~ni\runtimes\win-x86\native\DirectML.dll
-             move win-x86\runtimes\win-x86\native\directml.pdb %%~ni\runtimes\win-x86\native\DirectML.pdb
 
              pushd %%~ni
              zip -r ..\%%~ni.zip .

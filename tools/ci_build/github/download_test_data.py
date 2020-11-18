@@ -14,7 +14,7 @@ SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "..", ".."))
 sys.path.append(os.path.join(REPO_DIR, "tools", "python"))
 
-from get_azcopy import get_azcopy  # noqa: E402
+from util import get_azcopy  # noqa: E402
 
 
 # Hardcoded map of storage account to azure region endpoint

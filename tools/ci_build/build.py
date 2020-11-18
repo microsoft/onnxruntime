@@ -10,8 +10,20 @@ import shutil
 import subprocess
 import sys
 import hashlib
-from logger import log
+from logger import get_logger
 from amd_hipify import amd_hipify
+
+
+SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
+REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
+
+sys.path.append(os.path.join(REPO_DIR, "tools", "python"))
+
+
+from util import run  # noqa: E402
+
+
+log = get_logger("build")
 
 
 class BaseError(Exception):
@@ -48,6 +60,49 @@ def _check_python_version():
 
 
 _check_python_version()
+
+
+def _openvino_verify_device_type(device_read):
+    choices = ["CPU_FP32", "GPU_FP32", "GPU_FP16", "VAD-M_FP16", "MYRIAD_FP16", "VAD-F_FP32"]
+    status_hetero = True
+    res = False
+    if (device_read in choices):
+        res = True
+    elif (device_read.startswith("HETERO:") or device_read.startswith("MULTI:")):
+        res = True
+        comma_separated_devices = device_read.split(":")
+        comma_separated_devices = comma_separated_devices[1].split(',')
+        if (len(comma_separated_devices) < 2):
+            print("Atleast two devices required in Hetero Mode")
+            status_hetero = False
+        dev_options = ["CPU", "GPU", "MYRIAD", "FPGA", "HDDL"]
+        for dev in comma_separated_devices:
+            if (dev not in dev_options):
+                status_hetero = False
+                break
+
+    def invalid_hetero_build():
+        print("\n" + "If trying to build Hetero or Multi, specifiy the supported devices along with it." + + "\n")
+        print("specify the keyword HETERO or MULTI followed by the devices ")
+        print("in the order of priority you want to build" + "\n")
+        print("The different hardware devices that can be added in HETERO or MULTI")
+        print("are ['CPU','GPU','MYRIAD','FPGA','HDDL']" + "\n")
+        print("An example of how to specify the hetero build type. Ex: HETERO:GPU,CPU" + "\n")
+        print("An example of how to specify the MULTI build type. Ex: MULTI:MYRIAD,CPU" + "\n")
+        sys.exit("Wrong Build Type selected")
+
+    if (res is False):
+        print("\n" + "You have selcted wrong configuration for the build.")
+        print("pick the build type for specific Hardware Device from following options: ", choices)
+        print("\n")
+        if not (device_read.startswith("HETERO:") or device_read.startswith("MULTI:")):
+            invalid_hetero_build()
+        sys.exit("Wrong Build Type selected")
+
+    if (status_hetero is False):
+        invalid_hetero_build()
+
+    return device_read
 
 
 def parse_arguments():
@@ -238,48 +293,6 @@ def parse_arguments():
         "(e.g. macOS or iOS)"
         "This is only supported on MacOS")
 
-    def verify_device_type(device_read):
-        choices = ["CPU_FP32", "GPU_FP32", "GPU_FP16", "VAD-M_FP16", "MYRIAD_FP16", "VAD-F_FP32"]
-        status_Hetero = True
-        res = False
-        if(device_read in choices):
-            res = True
-        elif(device_read.startswith("HETERO:") or device_read.startswith("MULTI:")):
-            res = True
-            comma_separated_devices = device_read.split(":")
-            comma_separated_devices = comma_separated_devices[1].split(',')
-            if(len(comma_separated_devices) < 2):
-                print("Atleast two devices required in Hetero Mode")
-                status_Hetero = False
-            dev_options = ["CPU", "GPU", "MYRIAD", "FPGA", "HDDL"]
-            for dev in comma_separated_devices:
-                if(dev not in dev_options):
-                    status_Hetero = False
-                    break
-
-        def Invalid_Hetero_Build():
-            print("\n" + "If trying to build Hetero or Multi, specifiy the supported devices along with it." + + "\n")
-            print("specify the keyword HETERO or MULTI followed by the devices ")
-            print("in the order of priority you want to build" + "\n")
-            print("The different hardware devices that can be added in HETERO or MULTI")
-            print("are ['CPU','GPU','MYRIAD','FPGA','HDDL']" + "\n")
-            print("An example of how to specify the hetero build type. Ex: HETERO:GPU,CPU" + "\n")
-            print("An example of how to specify the MULTI build type. Ex: MULTI:MYRIAD,CPU" + "\n")
-            sys.exit("Wrong Build Type selected")
-
-        if(res is False):
-            print("\n" + "You have selcted wrong configuration for the build.")
-            print("pick the build type for specific Hardware Device from following options: ", choices)
-            print("\n")
-            if not (device_read.startswith("HETERO:") or device_read.startswith("MULTI:")):
-                Invalid_Hetero_Build()
-            sys.exit("Wrong Build Type selected")
-
-        if(status_Hetero is False):
-            Invalid_Hetero_Build()
-
-        return device_read
-
     # Arguments needed by CI
     parser.add_argument(
         "--cmake_path", default="cmake", help="Path to the CMake program.")
@@ -314,10 +327,13 @@ def parse_arguments():
         "--use_ngraph", action='store_true', help="Build with nGraph.")
     parser.add_argument(
         "--use_openvino", nargs="?", const="CPU_FP32",
-        type=verify_device_type,
+        type=_openvino_verify_device_type,
         help="Build with OpenVINO for specific hardware.")
     parser.add_argument(
         "--use_nnapi", action='store_true', help="Build with NNAPI support.")
+    parser.add_argument(
+        "--nnapi_min_api", type=int,
+        help="Minimum Android API level to enable NNAPI, should be no less than 27")
     parser.add_argument(
         "--use_rknpu", action='store_true', help="Build with RKNPU.")
     parser.add_argument(
@@ -415,10 +431,13 @@ def parse_arguments():
         help="Build ONNXRuntime micro-benchmarks.")
 
     # options to reduce binary size
-    parser.add_argument("--minimal_build", action='store_true',
+    parser.add_argument("--minimal_build", action='store',
+                        const='on', default='off', nargs='?', type=str.lower,
                         help="Create a build that only supports ORT format models. "
                         "See /docs/ONNX_Runtime_Format_Model_Usage.md for more information. "
-                        "RTTI is automatically disabled in a minimal build.")
+                        "RTTI is automatically disabled in a minimal build. "
+                        "To enable execution providers that compile kernels at runtime (e.g. NNAPI) pass 'extended' "
+                        "as a parameter. e.g. '--minimal_build extended'.")
     parser.add_argument("--include_ops_by_model", type=str, help="include ops from model(s) under designated path.")
     parser.add_argument("--include_ops_by_config", type=str,
                         help="include ops from config file. "
@@ -483,8 +502,9 @@ def get_config_build_dir(build_dir, config):
 
 def run_subprocess(args, cwd=None, capture=False, dll_path=None,
                    shell=False, env={}):
-    log.info("Running subprocess in '{0}'\n{1}".format(
-        cwd or os.getcwd(), args))
+    if isinstance(args, str):
+        raise ValueError("args should be a sequence of strings, not a string")
+
     my_env = os.environ.copy()
     if dll_path:
         if is_windows():
@@ -495,15 +515,9 @@ def run_subprocess(args, cwd=None, capture=False, dll_path=None,
             else:
                 my_env["LD_LIBRARY_PATH"] = dll_path
 
-    stdout, stderr = (subprocess.PIPE, subprocess.STDOUT) if capture else (
-        None, None)
     my_env.update(env)
-    completed_process = subprocess.run(
-        args, cwd=cwd, check=True, stdout=stdout, stderr=stderr,
-        env=my_env, shell=shell)
-    log.debug("Subprocess completed. Return code=" +
-              str(completed_process.returncode))
-    return completed_process
+
+    return run(*args, cwd=cwd, capture=capture, shell=shell, env=my_env)
 
 
 def update_submodules(source_dir):
@@ -706,7 +720,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_DISABLE_RTTI=" + ("ON" if args.disable_rtti else "OFF"),
         "-Donnxruntime_DISABLE_EXCEPTIONS=" + ("ON" if args.disable_exceptions else "OFF"),
         "-Donnxruntime_DISABLE_ORT_FORMAT_LOAD=" + ("ON" if args.disable_ort_format_load else "OFF"),
-        "-Donnxruntime_MINIMAL_BUILD=" + ("ON" if args.minimal_build else "OFF"),
+        "-Donnxruntime_MINIMAL_BUILD=" + ("ON" if args.minimal_build != 'off' else "OFF"),
+        "-Donnxruntime_EXTENDED_MINIMAL_BUILD=" + ("ON" if args.minimal_build == 'extended' else "OFF"),
         "-Donnxruntime_REDUCED_OPS_BUILD=" + (
             "ON" if args.include_ops_by_config or args.include_ops_by_model else "OFF"),
         "-Donnxruntime_MSVC_STATIC_RUNTIME=" + (
@@ -817,10 +832,12 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         cmake_args += ["-Donnxruntime_USE_PREINSTALLED_EIGEN=ON",
                        "-Deigen_SOURCE_PATH=" + args.eigen_path]
 
+    if args.nnapi_min_api:
+        cmake_args += ["-Donnxruntime_NNAPI_MIN_API=" + str(args.nnapi_min_api)]
+
     if args.android:
         cmake_args += [
-            "-DCMAKE_TOOLCHAIN_FILE=" + args.android_ndk_path +
-            "/build/cmake/android.toolchain.cmake",
+            "-DCMAKE_TOOLCHAIN_FILE=" + args.android_ndk_path + "/build/cmake/android.toolchain.cmake",
             "-DANDROID_PLATFORM=android-" + str(args.android_api),
             "-DANDROID_ABI=" + str(args.android_abi)
         ]
@@ -915,7 +932,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                 args.cmake_generator == 'Visual Studio 16 2019' and
                 args.use_full_protobuf):
             raise BuildError(
-             "Fuzz test has only be tested with build shared libs option using MSVC on windows")
+                "Fuzz test has only be tested with build shared libs option using MSVC on windows")
         cmake_args += [
             "-Donnxruntime_BUILD_UNIT_TESTS=ON",
             "-Donnxruntime_FUZZ_TEST=ON",
@@ -1153,9 +1170,9 @@ def adb_shell(*args, **kwargs):
 
 def run_android_tests(args, source_dir, config, cwd):
     if args.android_abi == 'x86_64':
-        run_subprocess(os.path.join(
+        run_subprocess([os.path.join(
             source_dir, 'tools', 'ci_build', 'github', 'android',
-            'start_android_emulator.sh'))
+            'start_android_emulator.sh')])
         adb_push('testdata', '/data/local/tmp/', cwd=cwd)
         adb_push(
             os.path.join(source_dir, 'cmake', 'external', 'onnx', 'onnx', 'backend', 'test'),
@@ -1829,6 +1846,12 @@ def main():
 
     if args.minimal_build and args.disable_ort_format_load:
         raise BuildError('Minimal build requires loading ORT format models.')
+
+    if args.nnapi_min_api:
+        if not args.use_nnapi:
+            raise BuildError("Using --nnapi_min_api requires --use_nnapi")
+        if args.nnapi_min_api < 27:
+            raise BuildError("--nnapi_min_api should be 27+")
 
     # Disabling unit tests for VAD-F as FPGA only supports
     # models with NCHW layout

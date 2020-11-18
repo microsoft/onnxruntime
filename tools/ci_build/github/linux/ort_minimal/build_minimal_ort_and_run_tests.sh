@@ -16,6 +16,7 @@ rm -rf /build/Debug
 # which will be used as the input of --include_ops_by_model to have ops to be included for the minimal build UT.
 mkdir -p /home/onnxruntimedev/.test_data/models_to_include
 cp /onnxruntime_src/onnxruntime/test/testdata/ort_github_issue_4031.onnx /home/onnxruntimedev/.test_data/models_to_include
+cp /onnxruntime_src/onnxruntime/test/testdata/ort_minimal_test_models/*.onnx /home/onnxruntimedev/.test_data/models_to_include
 
 # Build a minimal build with included ops and models
 # then run ORT minimal UTs

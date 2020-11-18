@@ -1,4 +1,8 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
 import contextlib
+import logging
 import os
 import platform
 import re
@@ -18,6 +22,8 @@ _AZCOPY_DOWNLOAD_URLS = {
     "Darwin": "https://azcopyvnext.azureedge.net/release20200501/azcopy_darwin_amd64_10.4.3.zip",
     "Windows": "https://azcopyvnext.azureedge.net/release20200501/azcopy_windows_amd64_10.4.3.zip",
 }
+
+_log = logging.getLogger("util.get_azcopy")
 
 
 def _check_version(azcopy_path):
@@ -65,7 +71,7 @@ def get_azcopy(local_azcopy_path="azcopy"):
             assert len(download_basename) > 0
             downloaded_path = os.path.join(temp_dir, download_basename)
 
-            print("Downloading azcopy from '{}'...".format(download_url))
+            _log.info("Downloading azcopy from '{}'...".format(download_url))
             urllib.request.urlretrieve(download_url, downloaded_path)
 
             extracted_path = os.path.join(temp_dir, "azcopy")
