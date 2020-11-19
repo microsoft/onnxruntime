@@ -237,7 +237,7 @@ stages:
             python.version: '3.7'
           Python38:
             python.version: '3.8'
-          Python38:
+          Python39:
             python.version: '3.9'
       steps:
       - checkout: self
@@ -315,7 +315,7 @@ stages:
             python.version: '3.7'
           Python38:
             python.version: '3.8'
-          Python38:
+          Python39:
             python.version: '3.9'
       steps:
       - checkout: self
@@ -392,7 +392,7 @@ stages:
             python.version: '3.7'
           Python38:
             python.version: '3.8'
-          Python38:
+          Python39:
             python.version: '3.9'
       variables:
         OrtPackageId: 'Microsoft.ML.OnnxRuntime'
@@ -522,7 +522,7 @@ stages:
             python.version: '3.7'
           Python38:
             python.version: '3.8'
-          Python38:
+          Python39:
             python.version: '3.9'
       variables:
         OrtPackageId: 'Microsoft.ML.OnnxRuntime'
@@ -776,7 +776,7 @@ stages:
             python.version: '3.7'
           Python38:
             python.version: '3.8'
-          Python38:
+          Python39:
             python.version: '3.9'
       steps:
       - checkout: self
