@@ -155,6 +155,7 @@ class ORTModule(torch.nn.Module):
 
             self._onnx_training = ORTModule._get_forward_graph(self._original_module, *inputs, **kwargs)
             grad_builder_config = C.ModuleGradientGraphBuilderConfiguration()
+
             # TODO: PyTorch exporter bug: changes the initializer order
             initializer_names = [p[0] for p in self._original_module.named_parameters()]
             onnx_gradient, self._onnx_forward, self._onnx_backward, self._onnx_graphs_info = \
