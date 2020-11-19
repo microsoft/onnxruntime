@@ -6,12 +6,12 @@ Licensed under the MIT License.
 
 Module Name:
 
-    qladd.h
+    quantize.h
 
 Abstract:
 
     This module contains the private data structures and procedure prototypes
-    for QLinearAdd function usage .
+    shared by general quantization operations.
 
 --*/
 
@@ -70,7 +70,7 @@ MlasCopyTailBytes(
 #if defined(MLAS_SSE2_INTRINSICS)
 
 MLAS_FORCEINLINE
-static MLAS_INT32X4
+MLAS_INT32X4
 MlasRequantizeOutputVector(
     MLAS_INT32X4 IntegerVector,
     MLAS_INT32X4 BiasVector,

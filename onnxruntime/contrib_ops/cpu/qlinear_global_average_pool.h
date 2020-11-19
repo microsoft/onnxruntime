@@ -5,7 +5,6 @@
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
-#include "core/util/math.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -13,15 +12,13 @@ namespace contrib {
 class QLinearGlobalAveragePool final : public OpKernel {
  public:
   QLinearGlobalAveragePool(const OpKernelInfo& info) : OpKernel(info) {
-    int64_t nchw_layout;
-    ORT_ENFORCE(info.GetAttr("nchw", &nchw_layout).IsOK());
-    storage_order_ = nchw_layout ? StorageOrder::NCHW : StorageOrder::NHWC;
+    channels_last_ = (info.GetAttrOrDefault<int64_t>("channels_last", static_cast<int64_t>(0)) != 0);
   }
 
   Status Compute(OpKernelContext* context) const override;
 
  private:
-  StorageOrder storage_order_;
+  bool channels_last_;
 };
 
 }  // namespace contrib

@@ -6,15 +6,11 @@ Licensed under the MIT License.
 
 Module Name:
 
-    quantize.cpp
+    qlgavgpool.cpp
 
 Abstract:
 
-    This module implements routines to quantize buffers.
-
-    For quantization formula as specified in the ONNX operator documentation is:
-
-        Output = Saturate(RoundToEven(Input / Scale) + ZeroPoint)
+    This module implements routines for quantized linear global average pool.
 
 --*/
 
@@ -99,11 +95,33 @@ RequantizeBiasedSum(
     int32x4_t vacc_hi,
     const VMultiplierType vmultiplier,
     const int64x2_t vleft_shift,
-    const int16x8_t voutput_zero_point
-    )
+    const int16x8_t voutput_zero_point)
+/*++
+
+Routine Description:
+
+    This routine requatize two accumulated sum vectors using parameters provided.
+    The implementation is mainly from XNNPACK, https://github.com/google/XNNPACK.
+
+Arguments:
+
+    vacc_lo - lower 4 sum to requantize
+
+    vacc_hi - high 4 sum to requatize
+
+    vmultiplier, vleft_shift - parameter vectors from MlasCalculateParametersForGloabalAveragePool
+
+    voutput_zero_point - output zero point's vector. note the input zero is already
+                         accumulated in the input vectors.
+
+Return Value:
+
+    Returns quantized sum in uint8x8_t.
+
+--*/
 {
-    const int32x4_t vneg_mask_lo = vreinterpretq_s32_u32(vcltq_s32(vacc_lo, vmovq_n_s32(0)));
-    const int32x4_t vneg_mask_hi = vreinterpretq_s32_u32(vcltq_s32(vacc_hi, vmovq_n_s32(0)));
+  const int32x4_t vneg_mask_lo = vreinterpretq_s32_u32(vcltq_s32(vacc_lo, vmovq_n_s32(0)));
+  const int32x4_t vneg_mask_hi = vreinterpretq_s32_u32(vcltq_s32(vacc_hi, vmovq_n_s32(0)));
 
 #if defined(MLAS_NEON64_INTRINSICS)
 
@@ -186,7 +204,7 @@ StoreTailBytes(
 
 void
 MLASCALL
-MlasQLinearGlobalAveragePool(
+MlasQLinearGlobalAveragePoolNchw(
     const uint8_t* Input,
     float ScaleInput,
     int32_t ZeroPointInput,
@@ -267,7 +285,7 @@ MlasQLinearGlobalAveragePool(
 MLAS_FORCEINLINE
 void
 MLASCALL
-MlasNhwcQLinearGlobalAveragePoolSingleBatch(
+MlasQLinearGlobalAveragePoolNhwcSingleBatch(
     const uint8_t* Input,
     uint8_t* Output,
     const uint8_t* LastOf8,
@@ -297,7 +315,7 @@ MlasNhwcQLinearGlobalAveragePoolSingleBatch(
     const uint8x8_t vi6 = vld1_u8(i6); \
     i6 += 8;
 
-#define CACULATE_ACCUMULATE_VECTORS()                                                \
+#define CALCULATE_ACCUMULATE_VECTORS()                                                \
     int32x4_t vacc_lo = finish_one_pass ? vld1q_s32(acc) : vbias;                    \
     int32x4_t vacc_hi = finish_one_pass ? vld1q_s32(acc + 4) : vbias;                \
     const uint16x8_t vsum01 = vaddl_u8(vi0, vi1);                                    \
@@ -327,7 +345,7 @@ MlasNhwcQLinearGlobalAveragePoolSingleBatch(
         for (; c >= 8; c -= 8) {
             LOAD_FULL_CHANNELS();
 
-            CACULATE_ACCUMULATE_VECTORS();
+            CALCULATE_ACCUMULATE_VECTORS();
 
             vst1q_s32(acc, vacc_lo);
             vst1q_s32(acc + 4, vacc_hi);
@@ -342,7 +360,7 @@ MlasNhwcQLinearGlobalAveragePoolSingleBatch(
             const uint8x8_t vi5 = vld1_u8(((i5 >= LastOf8) ? MlasCopyTailBytes(tail, i5, c) : i5));
             const uint8x8_t vi6 = vld1_u8(((i6 >= LastOf8) ? MlasCopyTailBytes(tail, i6, c) : i6));
 
-            CACULATE_ACCUMULATE_VECTORS();
+            CALCULATE_ACCUMULATE_VECTORS();
 
             vst1q_s32(acc, vacc_lo);
             vst1q_s32(acc + 4, vacc_hi);
@@ -373,7 +391,7 @@ MlasNhwcQLinearGlobalAveragePoolSingleBatch(
         for (; Channels >= 8; Channels -= 8) {
             LOAD_FULL_CHANNELS();
 
-            CACULATE_ACCUMULATE_VECTORS();
+            CALCULATE_ACCUMULATE_VECTORS();
 
             uint8x8_t vresult = RequantizeBiasedSum(vacc_lo, vacc_hi, vmultiplier, vleft_shift, voutput_zero_point);
             vst1_u8(Output, vresult);
@@ -390,7 +408,7 @@ MlasNhwcQLinearGlobalAveragePoolSingleBatch(
             const uint8x8_t vi5 = vld1_u8(((5 < ImageSize && i5 >= LastOf8) ? MlasCopyTailBytes(tail, i5, Channels) : i5));
             const uint8x8_t vi6 = vld1_u8(((6 < ImageSize && i6 >= LastOf8) ? MlasCopyTailBytes(tail, i6, Channels) : i6));
 
-            CACULATE_ACCUMULATE_VECTORS();
+            CALCULATE_ACCUMULATE_VECTORS();
 
             uint8x8_t vresult = RequantizeBiasedSum(vacc_lo, vacc_hi, vmultiplier, vleft_shift, voutput_zero_point);
             StoreTailBytes(Output, vresult, Channels);
@@ -400,7 +418,7 @@ MlasNhwcQLinearGlobalAveragePoolSingleBatch(
 
 void
 MLASCALL
-MlasNhwcQLinearGlobalAveragePool(
+MlasQLinearGlobalAveragePoolNhwc(
     const uint8_t* Input,
     float ScaleInput,
     int32_t ZeroPointInput,
@@ -416,8 +434,9 @@ MlasNhwcQLinearGlobalAveragePool(
     )
 {
     if (Stride == 1) {
-        MlasQLinearGlobalAveragePool(Input, ScaleInput, ZeroPointInput, 
-                                    Output, ScaleOutput, ZeroPointOutput, Batch, ImageSize);
+        MlasQLinearGlobalAveragePoolNchw(
+            Input, ScaleInput, ZeroPointInput,
+            Output, ScaleOutput, ZeroPointOutput, Batch, ImageSize);
         return;
     }
 
@@ -434,7 +453,7 @@ MlasNhwcQLinearGlobalAveragePool(
     const uint8_t* InputLastOf8 = Input + (Batch * ImageSize * Stride - Stride + Channels) - 8;
 
     for (; Batch > 0; Batch--) {
-        MlasNhwcQLinearGlobalAveragePoolSingleBatch(
+        MlasQLinearGlobalAveragePoolNhwcSingleBatch(
             Input, Output, InputLastOf8, ImageSize, Channels, Stride,
             vbias, vmultiplier, voutput_zero_point, vleft_shift,
             AccumulateBuffer, ZeroBuffer);
@@ -469,7 +488,7 @@ void StoreTailBytes(
 
 void
 MLASCALL
-MlasQLinearGlobalAveragePool(
+MlasQLinearGlobalAveragePoolNchw(
     const uint8_t* Input,
     float ScaleInput,
     int32_t ZeroPointInput,
@@ -557,7 +576,7 @@ MlasQLinearGlobalAveragePool(
 
 MLAS_FORCEINLINE
 void
-MlasNhwcQLinearGlobalAveragePoolSingleBatch(
+MlasQLinearGlobalAveragePoolNhwcSingleBatch(
     const uint8_t* Input,
     uint8_t* Output,
     const uint8_t* LastOf8,
@@ -588,7 +607,7 @@ MlasNhwcQLinearGlobalAveragePoolSingleBatch(
     const __m128i vi6 = _mm_loadl_epi64((const __m128i*)i6); \
     i6 += 8
 
-#define CACULATE_ACCUMULATE_VECTORS()                                                                  \
+#define CALCULATE_ACCUMULATE_VECTORS()                                                                  \
     __m128i vacc_lo = finish_one_pass ? _mm_load_si128((__m128i*)acc) : vbias;                         \
     __m128i vacc_hi = finish_one_pass ? _mm_load_si128(((__m128i*)acc) + 1) : vbias;                   \
     const __m128i vxi0 = _mm_unpacklo_epi8(vi0, vzero);                                                \
@@ -626,7 +645,7 @@ MlasNhwcQLinearGlobalAveragePoolSingleBatch(
         for (; c >= 8; c -= 8) {
             LOAD_FULL_CHANNELS();
 
-            CACULATE_ACCUMULATE_VECTORS();
+            CALCULATE_ACCUMULATE_VECTORS();
 
             _mm_store_si128((__m128i*)acc, vacc_lo);
             _mm_store_si128(((__m128i*)acc) + 1, vacc_hi);
@@ -641,7 +660,7 @@ MlasNhwcQLinearGlobalAveragePoolSingleBatch(
             const __m128i vi5 = _mm_loadl_epi64((const __m128i*)(i5 >= LastOf8 ? MlasCopyTailBytes(tail, i5, c) : i5));
             const __m128i vi6 = _mm_loadl_epi64((const __m128i*)(i6 >= LastOf8 ? MlasCopyTailBytes(tail, i6, c) : i6));
 
-            CACULATE_ACCUMULATE_VECTORS();
+            CALCULATE_ACCUMULATE_VECTORS();
 
             _mm_store_si128((__m128i*)acc, vacc_lo);
             _mm_store_si128(((__m128i*)acc) + 1, vacc_hi);
@@ -672,7 +691,7 @@ MlasNhwcQLinearGlobalAveragePoolSingleBatch(
         for (; Channels >= 8; Channels -= 8) {
             LOAD_FULL_CHANNELS();
 
-            CACULATE_ACCUMULATE_VECTORS();
+            CALCULATE_ACCUMULATE_VECTORS();
 
             vacc_lo = MlasRequantizeOutputVector(vacc_lo, vzero, vscale, vmin_value, vmax_value, vzero_point);
             vacc_hi = MlasRequantizeOutputVector(vacc_hi, vzero, vscale, vmin_value, vmax_value, vzero_point);
@@ -692,7 +711,7 @@ MlasNhwcQLinearGlobalAveragePoolSingleBatch(
             const __m128i vi5 = _mm_loadl_epi64((const __m128i*)(5 < ImageSize && i5 >= LastOf8 ? MlasCopyTailBytes(tail, i5, Channels) : i5));
             const __m128i vi6 = _mm_loadl_epi64((const __m128i*)(6 < ImageSize && i6 >= LastOf8 ? MlasCopyTailBytes(tail, i6, Channels) : i6));
 
-            CACULATE_ACCUMULATE_VECTORS();
+            CALCULATE_ACCUMULATE_VECTORS();
 
             vacc_lo = MlasRequantizeOutputVector(vacc_lo, vzero, vscale, vmin_value, vmax_value, vzero_point);
             vacc_hi = MlasRequantizeOutputVector(vacc_hi, vzero, vscale, vmin_value, vmax_value, vzero_point);
@@ -705,7 +724,7 @@ MlasNhwcQLinearGlobalAveragePoolSingleBatch(
 
 void
 MLASCALL
-MlasNhwcQLinearGlobalAveragePool(
+MlasQLinearGlobalAveragePoolNhwc(
     const uint8_t* Input,
     float ScaleInput,
     int32_t ZeroPointInput,
@@ -721,8 +740,9 @@ MlasNhwcQLinearGlobalAveragePool(
     )
 {
     if (Stride == 1) {
-        MlasQLinearGlobalAveragePool(Input, ScaleInput, ZeroPointInput, 
-                                    Output, ScaleOutput, ZeroPointOutput, Batch, ImageSize);
+        MlasQLinearGlobalAveragePoolNchw(
+            Input, ScaleInput, ZeroPointInput,
+            Output, ScaleOutput, ZeroPointOutput, Batch, ImageSize);
         return;
     }
 
@@ -736,7 +756,7 @@ MlasNhwcQLinearGlobalAveragePool(
     const uint8_t* InputLastOf8 = Input + (Batch * ImageSize * Stride - Stride + Channels) - 8;
 
     for (; Batch > 0; Batch--) {
-        MlasNhwcQLinearGlobalAveragePoolSingleBatch(
+        MlasQLinearGlobalAveragePoolNhwcSingleBatch(
             Input, Output, InputLastOf8, ImageSize, Channels, Stride,
             vbias, vscale, vmin_value, vmax_value, vzero_point,
             AccumulateBuffer, ZeroBuffer);
@@ -751,7 +771,7 @@ MlasNhwcQLinearGlobalAveragePool(
 
 void
 MLASCALL
-MlasQLinearGlobalAveragePool(
+MlasQLinearGlobalAveragePoolNchw(
     const uint8_t* Input,
     float ScaleInput,
     int32_t ZeroPointInput,
@@ -776,7 +796,7 @@ MlasQLinearGlobalAveragePool(
 
 void
 MLASCALL
-MlasNhwcQLinearGlobalAveragePool(
+MlasQLinearGlobalAveragePoolNhwc(
     const uint8_t* Input,
     float ScaleInput,
     int32_t ZeroPointInput,

@@ -22,8 +22,6 @@ Abstract:
 #include <random>
 #include <mlas.h>
 
-#include "gtest/gtest.h"
-
 #if defined(_WIN32)
 #include <windows.h>
 #else
@@ -2726,13 +2724,13 @@ private:
     static
     void
     CalculateGlobalAvgPoolU8(
-        const uint8_t* x, int64_t batch, int64_t channel, int64_t hw, bool is_nchw, 
+        const uint8_t* x, int64_t batch, int64_t channel, int64_t hw, bool channel_last,
         uint8_t* y, int32_t x_zero_point, float x_scale, int32_t y_zero_point, float y_scale
         )
     {
         int32_t bias = -x_zero_point * gsl::narrow_cast<int32_t>(hw);
-        int64_t stride_image = is_nchw ? 1 : channel;
-        int64_t stride_channel = is_nchw ? hw : 1;
+        int64_t stride_image = channel_last ? channel : 1;
+        int64_t stride_channel = channel_last ? 1 : hw;
 
         for (int64_t b = 0; b < batch; ++b) {
             const uint8_t* bx = x + b * hw * channel;
@@ -2765,7 +2763,9 @@ private:
         for (size_t b =0; b < Batch; ++b) {
             for (size_t c = 0; c < Channel; c++) {
                 int diff = abs((int)Output[n] - (int)OutputReference[n]);
-                EXPECT_LE(diff, 1) << " @[" << b << "," << c << "], Test:" << info;
+                if (diff > 1) {
+                    printf("Diff got %d @[%d,%d], Test:%s\n", diff, (int)b, (int)c, info.c_str());
+                }
             }
         }
     }
@@ -2773,7 +2773,7 @@ private:
     static
     std::string
     GetTestInfo(
-        bool is_nchw,
+        bool channel_last,
         size_t Batch,
         size_t Stride,
         size_t Channel,
@@ -2785,15 +2785,15 @@ private:
         )
     {
         std::stringstream ss;
-        ss << (is_nchw ? "Nchw_" : "Nhwc_");
-        ss << Batch << "x" << Stride << "x" << Channel << "x" << ImageSize << "-";
+        ss << (channel_last ? "Nhwc_" : "Nchw_");
+        ss << Batch << "x [C=" << Stride << "-" << Channel << "] x" << ImageSize << "-";
         ss << "(" << (int)InputZeroPoint << "," << InputScale << "," << (int)OutputZeroPoint << "," << OutputScale << ")";
         return ss.str();
     }
 
     void
     Test(
-        bool is_nchw,
+        bool channel_last,
         size_t Batch,
         size_t Stride,
         size_t Channel,
@@ -2810,7 +2810,7 @@ private:
         uint8_t* Output = BufferOutput.GetBuffer(ResultLen);
         uint8_t* Gold = BufferOutputReference.GetBuffer(ResultLen);
         std::string test_info = GetTestInfo(
-            is_nchw, Batch, Stride, Channel, ImageSize,
+            channel_last, Batch, Stride, Channel, ImageSize,
             InputScale, InputZeroPoint, OutputScale, OutputZeroPoint);
 
         std::default_random_engine generator(static_cast<unsigned>(N));
@@ -2819,25 +2819,25 @@ private:
             Input[n] = static_cast<uint8_t>(distribution(generator));
         }
         CalculateGlobalAvgPoolU8(
-            Input, Batch, Channel, ImageSize, is_nchw,
+            Input, Batch, Stride, ImageSize, channel_last,
             Gold, InputZeroPoint, InputScale, OutputZeroPoint, OutputScale);
 
-        if (is_nchw) {
-            MlasQLinearGlobalAveragePool(
+        if (!channel_last) {
+            MlasQLinearGlobalAveragePoolNchw(
                 Input, InputScale, InputZeroPoint, Output,
                 OutputScale, OutputZeroPoint, ResultLen, ImageSize);
         } else {
             std::vector<int32_t> acc(MlasQLinearSafePaddingElementCount(sizeof(int32_t), Channel));
             std::vector<uint8_t> zero(MlasQLinearSafePaddingElementCount(sizeof(uint8_t), Channel));
             if (Stride == Channel) {
-                MlasNhwcQLinearGlobalAveragePool(
+                MlasQLinearGlobalAveragePoolNhwc(
                     Input, InputScale, InputZeroPoint, Output,
                     OutputScale, OutputZeroPoint, Batch, ImageSize, Stride, Channel,
                     acc.data(), zero.data());
             } else {
                 for (size_t tc = 0; tc < Stride; tc += Channel) {
-                    size_t cg = (tc + Channel <= Stride) ? Channel : (Stride - tc);
-                    MlasNhwcQLinearGlobalAveragePool(
+                    size_t cg = ((tc + Channel <= Stride) ? Channel : (Stride - tc));
+                    MlasQLinearGlobalAveragePoolNhwc(
                         Input + tc, InputScale, InputZeroPoint, Output + tc,
                         OutputScale, OutputZeroPoint, Batch, ImageSize, Stride, cg,
                         acc.data(), zero.data());
@@ -2859,7 +2859,7 @@ private:
         static const size_t Stride[] = {7, 8, 63, 256 };
         static const size_t ImageSize[] = {7, 8, 64};
 
-        for (int nchw = 0; nchw <= 1; ++nchw) {
+        for (int channel_last = 0; channel_last <= 1; ++channel_last) {
             for (size_t b = 0; b < _countof(Batch); b++) {
                 for (size_t xzp = 0; xzp < _countof(zero_points); xzp++) {
                     for (size_t yzp = 0; yzp < _countof(zero_points); yzp++) {
@@ -2867,12 +2867,12 @@ private:
                             for (size_t ys = 0; ys < _countof(scales); ++ys) {
                                 for (size_t i = 0; i < _countof(ImageSize); i++) {
                                     for (size_t s = 0; s < _countof(Stride); s++) {
-                                        Test(nchw != 0, Batch[b], Stride[s], Stride[s], ImageSize[i],
+                                        Test(channel_last, Batch[b], Stride[s], Stride[s], ImageSize[i],
                                              scales[xs], zero_points[xzp], scales[ys], zero_points[yzp]);
-                                        // if (nchw == 0 && Stride[s] > 32) {
-                                        //     Test(nchw != 0, Batch[b], Stride[s], 32, ImageSize[i],
-                                        //         scales[xs], zero_points[xzp], scales[ys], zero_points[yzp]);
-                                        // }
+                                        if (channel_last == 1 && Stride[s] > 32) {
+                                            Test(channel_last, Batch[b], Stride[s], 32, ImageSize[i],
+                                                 scales[xs], zero_points[xzp], scales[ys], zero_points[yzp]);
+                                        }
                                     }
                                 }
                             }
@@ -3082,70 +3082,68 @@ RunThreadedTests(
     onnxruntime::make_unique<MlasSoftmaxTest>()->ExecuteShort();
 }
 
-//
-// Run threaded tests without the thread pool.
-//
+int
+#if defined(_WIN32)
+    __cdecl
+#endif
+    main(
+        void) {
+  //
+  // Run threaded tests without the thread pool.
+  //
 
-TEST(ThreadedTest, NoThreadPool) {
-    RunThreadedTests();
-}
+  RunThreadedTests();
 
 #if !defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
 
-//
-// Run threaded tests using the thread pool.
-//
+  //
+  // Run threaded tests using the thread pool.
+  //
 
-TEST(ThreadedTest, WithThreadPool) {
-    threadpool = new onnxruntime::concurrency::ThreadPool(
-        &onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), nullptr, 2, true);
+  threadpool = new onnxruntime::concurrency::ThreadPool(
+      &onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), nullptr, 2, true);
 
-    RunThreadedTests();
+  RunThreadedTests();
 
-    delete threadpool;
-}
+  delete threadpool;
 
 #endif
 
-//
-// Run remaining tests that do not use the thread pool.
-//
+  //
+  // Run remaining tests that do not use the thread pool.
+  //
 
-TEST(Activation, Short) {
-    onnxruntime::make_unique<MlasActivationTest>()->ExecuteShort();
-}
+  printf("Activation tests.\n");
+  onnxruntime::make_unique<MlasActivationTest>()->ExecuteShort();
 
-TEST(Transcendental, Short) {
-    onnxruntime::make_unique<MlasComputeExpTest>()->ExecuteShort();
-}
+  printf("Transcendental tests.\n");
+  onnxruntime::make_unique<MlasComputeExpTest>()->ExecuteShort();
 
-TEST(MinMaxElements, Short) {
-    onnxruntime::make_unique<MlasFindMinMaxElementsTest>()->ExecuteShort();
-}
+  printf("MinMaxElements tests.\n");
+  onnxruntime::make_unique<MlasFindMinMaxElementsTest>()->ExecuteShort();
 
-TEST(ReorderOutput, Short) {
-    if (MlasNchwcGetBlockSize() > 1) {
-        onnxruntime::make_unique<MlasReorderOutputTest>()->ExecuteShort();
-    }
-}
+  printf("ReorderOutput tests.\n");
+  if (MlasNchwcGetBlockSize() > 1) {
+    onnxruntime::make_unique<MlasReorderOutputTest>()->ExecuteShort();
+  }
 
-TEST(QLinearAdd, Short) {
-    onnxruntime::make_unique<MlasQLinearBinaryOpTest>(
-        [](float a, float b) { return a + b; }, "+", MlasQLinearAdd<int8_t>, MlasQLinearAdd<uint8_t>)
-        ->ExecuteShort();
-}
+  printf("QLinearAdd tests.\n");
+  onnxruntime::make_unique<MlasQLinearBinaryOpTest>(
+      [](float a, float b) { return a + b; }, "+", MlasQLinearAdd<int8_t>, MlasQLinearAdd<uint8_t>)
+      ->ExecuteShort();
 
-TEST(QLinearMul, Short) {
-    onnxruntime::make_unique<MlasQLinearBinaryOpTest>(
-        [](float a, float b) { return a * b; }, "*", MlasQLinearMul<int8_t>, MlasQLinearMul<uint8_t>)
-        ->ExecuteShort();
-}
+  printf("QLinearMul tests.\n");
+  onnxruntime::make_unique<MlasQLinearBinaryOpTest>(
+      [](float a, float b) { return a * b; }, "*", MlasQLinearMul<int8_t>, MlasQLinearMul<uint8_t>)
+      ->ExecuteShort();
 
-TEST(ScaleOutput, Short) {
-    onnxruntime::make_unique<MlasScaleOutputTest>()->ExecuteShort();
-}
+  printf("MlasScaleOutput tests.\n");
+  onnxruntime::make_unique<MlasScaleOutputTest>()->ExecuteShort();
 
-// TODO, split more test cases into detailed small tests and seperate in different file.
-TEST(QLinearGlobalAveragePool, Short) {
-    onnxruntime::make_unique<MlasQLinearGlobalAveragePoolU8Test>()->ExecuteShort();
+  printf("MlasGlobalAveragePool tests.\n");
+  onnxruntime::make_unique<MlasQLinearGlobalAveragePoolU8Test>()->ExecuteShort();
+
+  printf("Done.\n");
+
+  return 0;
 }

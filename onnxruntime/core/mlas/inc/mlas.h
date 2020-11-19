@@ -719,7 +719,7 @@ MlasQLinearSafePaddingElementCount(
 
 void
 MLASCALL
-MlasQLinearGlobalAveragePool(
+MlasQLinearGlobalAveragePoolNchw(
     const uint8_t* Input,
     float ScaleInput,
     int32_t ZeroPointInput,
@@ -732,7 +732,7 @@ MlasQLinearGlobalAveragePool(
 
 void
 MLASCALL
-MlasNhwcQLinearGlobalAveragePool(
+MlasQLinearGlobalAveragePoolNhwc(
     const uint8_t* Input,
     float ScaleInput,
     int32_t ZeroPointInput,

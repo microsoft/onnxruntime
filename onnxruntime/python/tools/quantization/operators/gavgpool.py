@@ -30,7 +30,7 @@ class QGlobalAveragePool(QuantOperatorBase):
         for attribute in node.attribute:
             kwargs.update(attribute_to_kwarg(attribute))
         kwargs["domain"] = ms_domain
-        kwargs["nchw"] = 1
+        kwargs["channels_last"] = 0
         qnode_name = node.name + "_quant" if node.name != "" else ""
 
         qnode = onnx.helper.make_node(

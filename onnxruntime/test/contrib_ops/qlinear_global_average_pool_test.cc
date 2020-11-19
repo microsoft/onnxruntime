@@ -10,11 +10,11 @@ namespace onnxruntime {
 namespace test {
 
 static void CalculateGlobalAvgPoolU8(
-    const uint8_t* x, int64_t batch, int64_t hw, int64_t channel, bool is_nchw, uint8_t* y,
+    const uint8_t* x, int64_t batch, int64_t hw, int64_t channel, bool channels_last, uint8_t* y,
     int32_t x_zero_point, float x_scale, int32_t y_zero_point, float y_scale) {
   int32_t bias = -x_zero_point * gsl::narrow_cast<int32_t>(hw);
-  int64_t stride_image = is_nchw ? 1 : channel;
-  int64_t stride_channel = is_nchw ? hw : 1;
+  int64_t stride_image = channels_last ? channel : 1;
+  int64_t stride_channel = channels_last ? 1 : hw;
 
   for (int64_t b = 0; b < batch; ++b) {
     const uint8_t* bx = x + b * hw * channel;
@@ -37,10 +37,10 @@ static void CalculateGlobalAvgPoolU8(
 }
 
 void RunQLinearGlobalAveragePoolU8(
-    bool is_nchw, int64_t batch, int64_t channel, int64_t h, int64_t w,
+    bool channels_last, int64_t batch, int64_t channel, int64_t h, int64_t w,
     uint8_t x_zero_point, float x_scale, uint8_t y_zero_point, float y_scale, int32_t seed) {
-  std::vector<int64_t> x_dims = is_nchw ? std::vector<int64_t>{batch, channel, h, w} : std::vector<int64_t>{batch, h, w, channel};
-  std::vector<int64_t> y_dims = is_nchw ? std::vector<int64_t>{batch, channel, 1, 1} : std::vector<int64_t>{batch, 1, 1, channel};
+  std::vector<int64_t> x_dims = channels_last ? std::vector<int64_t>{batch, h, w, channel} : std::vector<int64_t>{batch, channel, h, w};
+  std::vector<int64_t> y_dims = channels_last ? std::vector<int64_t>{batch, 1, 1, channel} : std::vector<int64_t>{batch, channel, 1, 1};
   int64_t x_size = batch * channel * h * w;
   int64_t y_size = batch * channel;
   std::vector<uint8_t> x_data((size_t)x_size);
@@ -52,11 +52,11 @@ void RunQLinearGlobalAveragePoolU8(
     return static_cast<uint8_t>(v);
   });
 
-  CalculateGlobalAvgPoolU8(x_data.data(), batch, h * w, channel, is_nchw, y_data.data(),
+  CalculateGlobalAvgPoolU8(x_data.data(), batch, h * w, channel, channels_last, y_data.data(),
                            x_zero_point, x_scale, y_zero_point, y_scale);
 
   OpTester test("QLinearGlobalAveragePool", 1, onnxruntime::kMSDomain);
-  test.AddAttribute<int64_t>("nchw", is_nchw ? 1LL : 0LL);
+  test.AddAttribute<int64_t>("channels_last", channels_last ? 1LL : 0LL);
   test.AddInput<uint8_t>("X", x_dims, x_data);
   test.AddInput<float>("x_scale", {}, {x_scale});
   test.AddInput<uint8_t>("x_zero_point", {}, {x_zero_point});
