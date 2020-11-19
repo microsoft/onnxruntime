@@ -108,22 +108,7 @@ def _extract_ops_from_model(model_path, required_ops):
     return required_ops  # end of _extract_ops_from_model(...)
 
 
-class ExcludeOpsRegistrationProcessor(op_registration_utils.RegistrationProcessor):
-    def __init__(self, required_ops, output_file):
-        self.required_ops = required_ops
-        self.output_file = output_file
-
-    def _should_exclude_op(self, domain, operator, start_version, end_version):
-        if domain not in self.required_ops:
-            return True
-
-        for opset in self.required_ops[domain]:
-            if opset >= start_version and (end_version is None or opset <= end_version):
-                if operator in self.required_ops[domain][opset]:
-                    return False  # found a match, do not exclude
-
-        return True
-
+class BaseExcludeOpsRegistrationProcessor(op_registration_utils.RegistrationProcessor):
     def process_registration(self, lines: typing.List[str], domain: str, operator: str,
                              start_version: int, end_version: int = None, input_type: str = None):
         exclude = self._should_exclude_op(domain, operator, start_version, end_version)
@@ -146,7 +131,39 @@ class ExcludeOpsRegistrationProcessor(op_registration_utils.RegistrationProcesso
         return True
 
 
-def _exclude_unused_ops_in_registrations(required_operators, provider_registration_paths):
+class ExcludeOpsRegistrationProcessor(BaseExcludeOpsRegistrationProcessor):
+    def __init__(self, required_ops, output_file):
+        self.required_ops = required_ops
+        self.output_file = output_file
+
+    def _should_exclude_op(self, domain, operator, start_version, end_version):
+        if domain not in self.required_ops:
+            return True
+
+        for opset in self.required_ops[domain]:
+            if opset >= start_version and (end_version is None or opset <= end_version):
+                if operator in self.required_ops[domain][opset]:
+                    return False  # found a match, do not exclude
+
+        return True
+
+
+class ExcludeNNAPIOpsRegistrationProcessor(BaseExcludeOpsRegistrationProcessor):
+    def __init__(self, required_ops, output_file):
+        # we only care about op_type here in nnapi, put all the op_type into a set
+        self.required_ops = set()
+        for opsets in required_ops.values():
+            for op_types in opsets.values():
+                for op_type in op_types:
+                    self.required_ops.add(op_type)
+
+        self.output_file = output_file
+
+    def _should_exclude_op(self, domain, operator, start_version, end_version):
+        return operator not in self.required_ops
+
+
+def _exclude_unused_ops_in_registrations(required_operators, provider_registration_paths, use_nnapi=False):
     '''rewrite provider registration file to exclude unused ops'''
 
     for kernel_registration_file in provider_registration_paths:
@@ -161,9 +178,12 @@ def _exclude_unused_ops_in_registrations(required_operators, provider_registrati
 
         # read from backup and overwrite original with commented out lines for any kernels that are not required
         with open(kernel_registration_file, 'w') as file_to_write:
-            processor = ExcludeOpsRegistrationProcessor(required_operators, file_to_write)
-
-            op_registration_utils.process_kernel_registration_file(backup_path, processor)
+            if not use_nnapi:
+                processor = ExcludeOpsRegistrationProcessor(required_operators, file_to_write)
+                op_registration_utils.process_kernel_registration_file(backup_path, processor)
+            else:
+                processor = ExcludeNNAPIOpsRegistrationProcessor(required_operators, file_to_write)
+                op_registration_utils.process_kernel_registration_file(backup_path, processor, use_nnapi)
 
             if not processor.ok():
                 # error should have already been logged so just exit
@@ -203,7 +223,7 @@ def _create_config_file_with_required_ops(required_operators, model_path, config
     log.info("Wrote set of required operators to {}".format(output_file))
 
 
-def exclude_unused_ops(models_path, config_path, ort_root=None, use_cuda=True, output_config_path=None):
+def exclude_unused_ops(models_path, config_path, ort_root=None, use_cuda=True, use_nnapi=True, output_config_path=None):
     '''Determine operators that are used, and either exclude them or create a configuration file that will.
     Note that this called directly from build.py'''
 
@@ -219,8 +239,14 @@ def exclude_unused_ops(models_path, config_path, ort_root=None, use_cuda=True, o
     if output_config_path:
         _create_config_file_with_required_ops(required_ops, models_path, config_path, output_config_path)
     else:
+        # exclude kernel registration for cpu and cuda EPs
         registration_files = op_registration_utils.get_kernel_registration_files(ort_root, use_cuda)
         _exclude_unused_ops_in_registrations(required_ops, registration_files)
+
+        # exclude operator registration for NNAPI EP
+        if use_nnapi:
+            nnapi_op_registration_files = op_registration_utils.get_nnapi_registration_files(ort_root)
+            _exclude_unused_ops_in_registrations(required_ops, nnapi_op_registration_files, use_nnapi)
 
 
 if __name__ == "__main__":
@@ -258,5 +284,6 @@ if __name__ == "__main__":
         parser.print_help()
         sys.exit(-1)
 
-    exclude_unused_ops(models_path, config_path, ort_root, use_cuda=True,
+    exclude_unused_ops(models_path, config_path, ort_root,
+                       use_cuda=True, use_nnapi=True,
                        output_config_path=args.write_combined_config_to)
