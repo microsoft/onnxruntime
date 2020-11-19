@@ -11,6 +11,7 @@ namespace Microsoft.ML.OnnxRuntime
 {
     /// <summary>
     /// Graph optimization level to use with SessionOptions
+    ///  [https://github.com/microsoft/onnxruntime/blob/master/docs/ONNX_Runtime_Graph_Optimizations.md]
     /// </summary>
     public enum GraphOptimizationLevel
     {
