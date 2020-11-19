@@ -168,7 +168,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
         /// <param name="nnapi_flags">nnapi specific flag mask</param>
-        public void AppendExecutionProvider_Nnapi(ulong nnapi_flags)
+        public void AppendExecutionProvider_Nnapi(uint nnapi_flags)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nnapi(handle, nnapi_flags));
         }
