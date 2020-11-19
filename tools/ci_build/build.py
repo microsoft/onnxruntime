@@ -1406,9 +1406,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 build_dir, config, "external", "tvm", config))
         if args.use_tensorrt:
             dll_path_list.append(os.path.join(args.tensorrt_home, 'lib'))
-        if not is_windows():
-            # A workaround for making libonnxruntime_providers_shared.so loadable.
-            dll_path_list.append(os.path.join(build_dir, config))
 
         dll_path = None
         if len(dll_path_list) > 0:
