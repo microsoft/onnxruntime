@@ -12,7 +12,6 @@ public enum OrtProvider {
   CPU("CPUExecutionProvider"),
   CUDA("CUDAExecutionProvider"),
   DNNL("DnnlExecutionProvider"),
-  NGRAPH("NGRAPHExecutionProvider"),
   OPEN_VINO("OpenVINOExecutionProvider"),
   NUPHAR("NupharExecutionProvider"),
   VITIS_AI("VitisAIExecutionProvider"),
