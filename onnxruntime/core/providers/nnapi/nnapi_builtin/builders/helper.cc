@@ -259,7 +259,7 @@ bool IsValidSupportedNodesVec(const std::vector<size_t>& supported_node_vec, con
 bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const OpSupportCheckParams& params) {
   const auto& op_support_checkers = GetOpSupportCheckers();
   if (Contains(op_support_checkers, node.OpType())) {
-    const auto op_support_checker = op_support_checkers.at(node.OpType());
+    const auto* op_support_checker = op_support_checkers.at(node.OpType());
     return op_support_checker->IsOpSupported(graph_viewer.GetAllInitializedTensors(), node, params);
   } else {
     return false;

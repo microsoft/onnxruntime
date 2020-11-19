@@ -20,6 +20,11 @@ using std::vector;
 
 #pragma region helpers
 
+struct OpBuilderRegistrations {
+  std::vector<std::unique_ptr<IOpBuilder>> builders;
+  std::unordered_map<std::string, const IOpBuilder*> op_builder_map;
+};
+
 #define ADD_SCALAR_OPERAND(model_builder, input_indices, scalar_value)             \
   {                                                                                \
     uint32_t _index = 0;                                                           \
@@ -521,6 +526,20 @@ Status GetQuantizedInputScaleAndZeroPoint(const ModelBuilder& model_builder,
   return Status::OK();
 }
 
+template <class T>
+void CreateSharedOpBuilderImpl(const std::string& op_type,
+                               OpBuilderRegistrations& op_registrations,
+                               const std::vector<std::string>& op_types) {
+  // The shared OpSupportChecker is already in the OpSupportCheckerRegistrations
+  if (op_registrations.op_builder_map.find(op_type) != op_registrations.op_builder_map.cend())
+    return;
+
+  op_registrations.builders.push_back(onnxruntime::make_unique<T>());
+  for (const auto& op : op_types) {
+    op_registrations.op_builder_map.emplace(op, op_registrations.builders.back().get());
+  }
+}
+
 #pragma endregion helpers
 
 #pragma region op_base
@@ -555,6 +574,7 @@ Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node&
 class BinaryOpBuilder : public BaseOpBuilder {
  public:
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+  static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
@@ -565,6 +585,19 @@ void BinaryOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const N
   if (op == "QLinearAdd") {
     AddBinaryOpQuantizationScaleAndZeroPointToSkip(model_builder, node);
   }
+}
+
+/* static */ void BinaryOpBuilder::CreateSharedOpBuilder(
+    const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  CreateSharedOpBuilderImpl<BinaryOpBuilder>(
+      op_type, op_registrations,
+      {
+          "Add",
+          "Sub",
+          "Mul",
+          "Div",
+          "QLinearAdd",
+      });
 }
 
 Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
@@ -787,11 +820,11 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
   // LOGS_DEFAULT(VERBOSE) << "Skipping Reshape/Flatten node ["
   //                       << node.Name() << "] with output, " << output;
   // return true;
-  
+
   ORT_UNUSED_PARAMETER(node);
   ORT_UNUSED_PARAMETER(input_rank);
   ORT_UNUSED_PARAMETER(output_rank);
-  return false;  
+  return false;
 }
 
 /* static */ Status ReshapeOpBuilder::AddReshapeOperator(ModelBuilder& model_builder,
@@ -962,9 +995,24 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
 #pragma region op_pool
 
 class PoolOpBuilder : public BaseOpBuilder {
+ public:
+  static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
 };
+
+/* static */ void PoolOpBuilder::CreateSharedOpBuilder(
+    const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  CreateSharedOpBuilderImpl<PoolOpBuilder>(
+      op_type, op_registrations,
+      {
+          "GlobalAveragePool",
+          "GlobalMaxPool",
+          "AveragePool",
+          "MaxPool",
+      });
+}
 
 Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
   auto& shaper(model_builder.GetShaper());
@@ -1066,10 +1114,21 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 class ConvOpBuilder : public BaseOpBuilder {
  public:
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+  static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
 };
+
+/* static */ void ConvOpBuilder::CreateSharedOpBuilder(
+    const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  CreateSharedOpBuilderImpl<ConvOpBuilder>(
+      op_type, op_registrations,
+      {
+          "Conv",
+          "QLinearConv",
+      });
+}
 
 void ConvOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
   const auto& op = node.OpType();
@@ -1431,10 +1490,22 @@ Status IdentityOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, con
 class GemmOpBuilder : public BaseOpBuilder {
  public:
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+  static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
 };
+
+/* static */ void GemmOpBuilder::CreateSharedOpBuilder(
+    const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  CreateSharedOpBuilderImpl<GemmOpBuilder>(
+      op_type, op_registrations,
+      {
+          "Gemm",
+          "MatMul",
+          "QLinearMatMul",
+      });
+}
 
 void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
   const auto& op = node.OpType();
@@ -1553,9 +1624,29 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 #pragma region op_unary
 
 class UnaryOpBuilder : public BaseOpBuilder {
+ public:
+  static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
 };
+
+/* static */ void UnaryOpBuilder::CreateSharedOpBuilder(
+    const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  CreateSharedOpBuilderImpl<UnaryOpBuilder>(
+      op_type, op_registrations,
+      {
+          "Abs",
+          "Exp",
+          "Floor",
+          "Log",
+          "Sigmoid",
+          "Neg",
+          "Sin",
+          "Sqrt",
+          "Tanh",
+      });
+}
 
 Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
   auto& shaper(model_builder.GetShaper());
@@ -2104,79 +2195,84 @@ Status FlattenOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
 
 #pragma region CreateGetOpBuilders
 
-static std::unordered_map<std::string, std::shared_ptr<IOpBuilder>> CreateOpBuilders() {
-  std::unordered_map<std::string, std::shared_ptr<IOpBuilder>> op_map;
+// The reason we use macros to create OpBuilders is for easy exclusion in build if certain op(s) are not used
+// such that we can reduce binary size.
+// This is for multiple ops share the same OpBuilder, we only need create one for all of them
+#define NNAPI_EP_ADD_SHARED_OP_BUILDER(OP_TYPE, BUILDER_NAME) \
+  BUILDER_NAME::CreateSharedOpBuilder(OP_TYPE, op_registrations);
 
-  {
-    auto binary_op_builder = std::make_shared<BinaryOpBuilder>();
-    op_map.emplace("Add", binary_op_builder);
-    op_map.emplace("Sub", binary_op_builder);
-    op_map.emplace("Mul", binary_op_builder);
-    op_map.emplace("Div", binary_op_builder);
-    op_map.emplace("QLinearAdd", binary_op_builder);
+// This is for ops with dedicated OpBuilder
+#define NNAPI_EP_ADD_SINGLE_OP_BUILDER(OP_TYPE, BUILDER_NAME)                                 \
+  {                                                                                           \
+    op_registrations.builders.push_back(onnxruntime::make_unique<BUILDER_NAME>());            \
+    op_registrations.op_builder_map.emplace(OP_TYPE, op_registrations.builders.back().get()); \
   }
 
-  op_map.emplace("Relu", std::make_shared<ReluOpBuilder>());
-  op_map.emplace("Transpose", std::make_shared<TransposeOpBuilder>());
-  op_map.emplace("Reshape", std::make_shared<ReshapeOpBuilder>());
-  op_map.emplace("BatchNormalization", std::make_shared<BatchNormalizationOpBuilder>());
+static OpBuilderRegistrations CreateOpBuilderRegistrations() {
+  OpBuilderRegistrations op_registrations;
 
   {
-    auto pool_op_builder = std::make_shared<PoolOpBuilder>();
-    op_map.emplace("GlobalAveragePool", pool_op_builder);
-    op_map.emplace("GlobalMaxPool", pool_op_builder);
-    op_map.emplace("AveragePool", pool_op_builder);
-    op_map.emplace("MaxPool", pool_op_builder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Add", BinaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Sub", BinaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Mul", BinaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Div", BinaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("QLinearAdd", BinaryOpBuilder);
   }
 
-  {
-    auto conv_op_builder = std::make_shared<ConvOpBuilder>();
-    op_map.emplace("Conv", conv_op_builder);
-    op_map.emplace("QLinearConv", conv_op_builder);
-  }
-
-  op_map.emplace("Cast", std::make_shared<CastOpBuilder>());
-  op_map.emplace("Softmax", std::make_shared<SoftMaxOpBuilder>());
-  op_map.emplace("Identity", std::make_shared<IdentityOpBuilder>());
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Relu", ReluOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Transpose", TransposeOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Reshape", ReshapeOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("BatchNormalization", BatchNormalizationOpBuilder);
 
   {
-    auto gemm_op_builder = std::make_shared<GemmOpBuilder>();
-    op_map.emplace("Gemm", gemm_op_builder);
-    op_map.emplace("MatMul", gemm_op_builder);
-    op_map.emplace("QLinearMatMul", gemm_op_builder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("GlobalAveragePool", PoolOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("GlobalMaxPool", PoolOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("AveragePool", PoolOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("MaxPool", PoolOpBuilder);
   }
 
   {
-    auto unary_op_builder = std::make_shared<UnaryOpBuilder>();
-    op_map.emplace("Abs", unary_op_builder);
-    op_map.emplace("Exp", unary_op_builder);
-    op_map.emplace("Floor", unary_op_builder);
-    op_map.emplace("Log", unary_op_builder);
-    op_map.emplace("Sigmoid", unary_op_builder);
-    op_map.emplace("Neg", unary_op_builder);
-    op_map.emplace("Sin", unary_op_builder);
-    op_map.emplace("Sqrt", unary_op_builder);
-    op_map.emplace("Tanh", unary_op_builder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Conv", ConvOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("QLinearConv", ConvOpBuilder);
   }
 
-  op_map.emplace("Concat", std::make_shared<ConcatOpBuilder>());
-  op_map.emplace("Squeeze", std::make_shared<SqueezeOpBuilder>());
-  op_map.emplace("QuantizeLinear", std::make_shared<QuantizeLinearOpBuilder>());
-  op_map.emplace("DequantizeLinear", std::make_shared<DequantizeLinearOpBuilder>());
-  op_map.emplace("LRN", std::make_shared<LRNOpBuilder>());
-  op_map.emplace("Clip", std::make_shared<ClipOpBuilder>());
-  op_map.emplace("Resize", std::make_shared<ResizeOpBuilder>());
-  op_map.emplace("Flatten", std::make_shared<FlattenOpBuilder>());
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Cast", CastOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Softmax", SoftMaxOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Identity", IdentityOpBuilder);
 
-  ORT_ENFORCE(op_map.size() == GetOpSupportCheckers().size(),
-              "We should have same number of OpBuilder and OpSupportChecker");
+  {
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Gemm", GemmOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("MatMul", GemmOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("QLinearMatMul", GemmOpBuilder);
+  }
 
-  return op_map;
+  {
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Abs", UnaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Exp", UnaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Floor", UnaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Log", UnaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Sigmoid", UnaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Neg", UnaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Sin", UnaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Sqrt", UnaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Tanh", UnaryOpBuilder);
+  }
+
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Concat", ConcatOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Squeeze", SqueezeOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("QuantizeLinear", QuantizeLinearOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("DequantizeLinear", DequantizeLinearOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("LRN", LRNOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Clip", ClipOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Resize", ResizeOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Flatten", FlattenOpBuilder);
+
+  return op_registrations;
 }
 
-const std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>& GetOpBuilders() {
-  static const std::unordered_map<std::string, std::shared_ptr<IOpBuilder>> op_map = CreateOpBuilders();
-  return op_map;
+const std::unordered_map<std::string, const IOpBuilder*>& GetOpBuilders() {
+  static const OpBuilderRegistrations op_registrations = CreateOpBuilderRegistrations();
+  return op_registrations.op_builder_map;
 }
 
 #pragma endregion

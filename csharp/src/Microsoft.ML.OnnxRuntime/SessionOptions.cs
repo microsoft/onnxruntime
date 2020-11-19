@@ -155,7 +155,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
-        public void AppendExecutionProvider_Nnapi(ulong nnapi_flags)
+        public void AppendExecutionProvider_Nnapi(uint nnapi_flags)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nnapi(handle, nnapi_flags));
         }
@@ -175,7 +175,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// (Deprecated) Loads a DLL named 'libraryPath' and looks for this entry point:
         /// OrtStatus* RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api);
         /// It then passes in the provided session options to this function along with the api base.
-        /// Deprecated in favor of RegisterCustomOpLibraryV2() because it provides users with the library handle 
+        /// Deprecated in favor of RegisterCustomOpLibraryV2() because it provides users with the library handle
         /// to release when all sessions relying on it are destroyed
         /// </summary>
         [ObsoleteAttribute("RegisterCustomOpLibrary(...) is obsolete. Use RegisterCustomOpLibraryV2(...) instead.", false)]
@@ -193,7 +193,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Loads a DLL named 'libraryPath' and looks for this entry point:
         /// OrtStatus* RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api);
         /// It then passes in the provided session options to this function along with the api base.
-        /// The handle to the loaded library is returned in 'libraryHandle'. 
+        /// The handle to the loaded library is returned in 'libraryHandle'.
         /// It can be unloaded by the caller after all sessions using the passed in
         /// session options are destroyed, or if an error occurs and it is non null.
         /// Hint: .NET Core 3.1 has a 'NativeLibrary' class that can be used to free the library handle
@@ -238,7 +238,7 @@ namespace Microsoft.ML.OnnxRuntime
             using (var pinnedConfigKeyName = new PinnedGCHandle(utf8NameConfigKeyPinned))
             using (var pinnedConfigValueName = new PinnedGCHandle(utf8NameConfigValuePinned))
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtAddSessionConfigEntry(handle, 
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtAddSessionConfigEntry(handle,
                                               pinnedConfigKeyName.Pointer, pinnedConfigValueName.Pointer));
             }
         }
@@ -257,7 +257,7 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Override symbolic dimensions (by specific name strings) with actual values if known at session initialization time to enable 
+        /// Override symbolic dimensions (by specific name strings) with actual values if known at session initialization time to enable
         /// optimizations that can take advantage of fixed values (such as memory planning, etc)
         /// </summary>
         public void AddFreeDimensionOverrideByName(string dimName, long dimValue)
@@ -268,9 +268,9 @@ namespace Microsoft.ML.OnnxRuntime
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtAddFreeDimensionOverrideByName(handle, pinnedDimName.Pointer, dimValue));
             }
         }
-    #endregion
+        #endregion
 
-    internal IntPtr Handle
+        internal IntPtr Handle
         {
             get
             {

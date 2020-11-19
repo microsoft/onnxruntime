@@ -904,7 +904,7 @@ public class OrtSession implements AutoCloseable {
     private native void addTensorrt(long apiHandle, long nativeHandle, int deviceNum)
         throws OrtException;
 
-    private native void addNnapi(long apiHandle, long nativeHandle, long nnapiFlags)
+    private native void addNnapi(long apiHandle, long nativeHandle, int nnapiFlags)
         throws OrtException;
 
     private native void addNuphar(
