@@ -27,7 +27,7 @@ namespace Microsoft.ML.OnnxRuntime
         Info = 1,    // Informational
         Warning = 2, // Warnings
         Error = 3,   // Errors
-        Fatal = 4    // This is it
+        Fatal = 4    // Results in the termination of the application.
     }
 
     /// <summary>
@@ -88,7 +88,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Returns an instance of OrtEnv
         /// It returns the same instance on every call - `OrtEnv` is singleton
         /// </summary>
-        /// <returns>Returns a singleton instance or OrtEnv that represents native OrtEnv object</returns>
+        /// <returns>Returns a singleton instance of OrtEnv that represents native OrtEnv object</returns>
         public static OrtEnv Instance() { return _instance.Value; }
 
         /// <summary>

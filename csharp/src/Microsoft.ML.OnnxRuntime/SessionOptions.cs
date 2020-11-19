@@ -308,7 +308,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Enables the use of the memory allocation patterns in the first Run() call for subsequent runs. Default = true.
         /// </summary>
-        /// <value>returns enableMemoryPatter flag value</value>
+        /// <value>returns enableMemoryPattern flag value</value>
         public bool EnableMemoryPattern
         {
             get
