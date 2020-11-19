@@ -17,11 +17,14 @@ Change to the directory containing this file (onnxruntime/core/flatbuffers) and 
 
 This should result in ort.fbs.h being updated.
 
+You also need to update the ort flatbuffers python package in [ort_root]/tools/python/ort_flatbuffers, using,
+`> ..\..\..\build\Windows\Debug\external\flatbuffers\Debug\flatc.exe --python -o ../../../../tools/python/ort_flatbuffers ort.fbs`
+
 # ORT FB format version history
 `See onnxruntime/core/session/inference_session.cc:IsOrtModelVersionSupported()` for version array and `kOrtModelVersion` for currently supported version.
 
 ## Version 1. History begins
 Initial support for FlatBuffers that includes Model support. Graph support including Attributes, Tensors, Tensor Sequences, Maps and Sequences. Constant initializers are also supported. Constant nodes are converted to constant initializers in the ORT format.
 
-## Version 2. 
+## Version 2.
 Support for sparse initialiers. Sparse intializers are stored within ORT FlatBuffers format, which includes sparse initializers converted from Constant node attribute.
