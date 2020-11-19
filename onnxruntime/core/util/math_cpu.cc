@@ -212,8 +212,6 @@ template void Gemv<double, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, int M, int
 SPECIALIZED_AXPY(float)
 #undef SPECIALIZED_AXPY
 
-<<<<<<< HEAD
-=======
 #else
 
 template <>
@@ -288,7 +286,6 @@ CAFFE2_SPECIALIZED_AXPY(float, s)
 
 #endif
 
->>>>>>> parent of 5802fe169... Remove MKLML build config (#5559)
 #define DELEGATE_SIMPLE_UNARY_FUNCTION(T, Funcname, expr)                  \
   template <>                                                              \
   void Funcname<T, CPUMathUtil>(int N, const T* x, T* y, CPUMathUtil*) {   \
