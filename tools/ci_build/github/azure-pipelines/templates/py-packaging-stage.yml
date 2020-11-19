@@ -89,7 +89,7 @@ stages:
       - task: Docker@2
         displayName: login
         inputs:
-          containerRegistry: onnxruntimeregistry
+          containerRegistry: onnxruntimebuildcache
           command: login
           addPipelineData: false
       - task: CmdLine@2
@@ -104,7 +104,7 @@ stages:
               --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
-              onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecpubuild:chan \
+              onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntimecpubuild:ch1 \
                 $(python.manylinux.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build --cmake_generator Ninja \
                   --config Release \
@@ -120,7 +120,7 @@ stages:
       - task: Docker@2
         displayName: logout
         inputs:
-          containerRegistry: onnxruntimeregistry
+          containerRegistry: onnxruntimebuildcache
           command: logout
           addPipelineData: false
       - task: CopyFiles@2
@@ -166,7 +166,7 @@ stages:
       - task: Docker@2
         displayName: login
         inputs:
-          containerRegistry: onnxruntimeregistry
+          containerRegistry: onnxruntimebuildcache
           command: login
           addPipelineData: false
       - task: CmdLine@2
@@ -181,7 +181,7 @@ stages:
               --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
-              onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecpubuild:chan \
+              onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntimecpubuild:ch1 \
                 $(python.manylinux.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build --cmake_generator Ninja \
                   --config Release \
@@ -196,7 +196,7 @@ stages:
       - task: Docker@2
         displayName: logout
         inputs:
-          containerRegistry: onnxruntimeregistry
+          containerRegistry: onnxruntimebuildcache
           command: logout
           addPipelineData: false
       - task: CopyFiles@2
@@ -243,7 +243,7 @@ stages:
       - task: Docker@2
         displayName: login
         inputs:
-          containerRegistry: onnxruntimeregistry
+          containerRegistry: onnxruntimebuildcache
           command: login
           addPipelineData: false
       - task: CmdLine@2
@@ -258,7 +258,7 @@ stages:
               --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
-              onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimegpubuild:chap \
+              onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntimegpubuild:ch2 \
                 $(python.manylinux.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build --cmake_generator Ninja \
                   --config Release \
@@ -273,7 +273,7 @@ stages:
       - task: Docker@2
         displayName: logout
         inputs:
-          containerRegistry: onnxruntimeregistry
+          containerRegistry: onnxruntimebuildcache
           command: logout
           addPipelineData: false
 
