@@ -15,7 +15,7 @@ from onnx import onnx_pb as onnx_proto
 from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel
 
 from .quant_utils import QuantizationMode, QuantizedValueType, QuantizedInitializer, QuantizedValue, quantization_modes
-from .quant_utils import find_by_name, get_elem_index, get_mul_node, generate_identified_filename, attribute_to_kwarg
+from .quant_utils import find_by_name, get_elem_index, get_mul_node, generate_identified_filename, attribute_to_kwarg, type_to_name
 from .quant_utils import QuantType, onnx_domain, __producer__, __version__
 
 from .registry import CreateOpQuantizer, CreateDefaultOpQuantizer
@@ -317,7 +317,10 @@ class ONNXQuantizer:
         initializer = find_by_name(input_name, self.model.initializer())
         return initializer is not None
 
-    def _is_valid_quantize_weight(self, weight_name):
+    def is_per_channel(self):
+            return self.per_channel
+
+    def is_valid_quantize_weight(self, weight_name):
         weight = find_by_name(weight_name, self.model.initializer())
         return weight is not None and weight.data_type == onnx_proto.TensorProto.FLOAT
 
@@ -389,52 +392,6 @@ class ONNXQuantizer:
                                       qType=qType)
 
         # Log entry for this quantized weight
-        assert (weight.name not in self.quantized_value_map)
-        quantized_value = QuantizedValue(weight.name, weight.name + "_quantized", weight.name + "_scale",
-                                         weight.name + "_zero_point", QuantizedValueType.Initializer, None, qType)
-        self.quantized_value_map[weight.name] = quantized_value
-
-        return weight
-
-    def _get_quantized_weight_per_channel(self, initializer, qType, channel_axis):
-        '''
-            :param initializer: initializer TypeProto to quantize
-            :param qType: type to quantize to
-            :return: Weight class object with quantization information for a given initializer
-        '''
-        if not self.per_channel:
-            return self._get_quantized_weight(initializer, qType)
-
-        weights = self.tensor_proto_to_array(initializer)
-        channel_count = weights.shape[channel_axis]
-        rmin_list = []
-        rmax_list = []
-        zero_point_list = []
-        scale_list = []
-        quantized_per_channel_data_list = []
-        for i in range(channel_count):
-            per_channel_data = weights.take(i, channel_axis)
-            rmin, rmax, zero_point, scale, quantized_per_channel_data = quantize_data(
-                per_channel_data.flatten().tolist(), _get_qrange_for_qType(qType, self.reduce_range), qType)
-            rmin_list.append(rmin)
-            rmax_list.append(rmax)
-            zero_point_list.append(zero_point)
-            scale_list.append(scale)
-            quantized_per_channel_data_list.append(quantized_per_channel_data)
-
-        # combine per_channel_data into one
-        reshape_dims = list(weights.shape)  # deep copy
-        reshape_dims[channel_axis] = 1  # only one per channel for reshape
-        quantized_weights = np.asarray(quantized_per_channel_data_list[0]).reshape(reshape_dims)
-        for i in range(1, len(quantized_per_channel_data_list)):
-            channel_weights = np.asarray(quantized_per_channel_data_list[i]).reshape(reshape_dims)
-            quantized_weights = np.concatenate((quantized_weights, channel_weights), channel_axis)
-
-        weight = QuantizedInitializer(initializer.name, initializer, rmin_list, rmax_list, zero_point_list, scale_list,
-                                      weights,
-                                      quantized_weights.flatten().tolist(), channel_axis, qType)
-
-        # Make entry for this quantized weight
         assert (weight.name not in self.quantized_value_map)
         quantized_value = QuantizedValue(weight.name, weight.name + "_quantized", weight.name + "_scale",
                                          weight.name + "_zero_point", QuantizedValueType.Initializer, None, qType)
@@ -877,19 +834,53 @@ class ONNXQuantizer:
 
         return (quantized_input_names, zero_point_names, scale_names, nodes)
 
-    def quantize_weight_per_channel(self, weight_name, axis):
+    def quantize_weight_per_channel(self, weight_name, weight_qType, channel_axis):
         # Find if this input is already quantized
         if weight_name in self.quantized_value_map:
             quantized_value = self.quantized_value_map[weight_name]
             return (quantized_value.q_name, quantized_value.zp_name, quantized_value.scale_name)
-        else:
-            initializer = find_by_name(weight_name, self.model.initializer())
-            if initializer is None:
-                raise ValueError("{} is not an initializer", weight_name)
+        
+        initializer = find_by_name(weight_name, self.model.initializer())
+        if initializer is None:
+            raise ValueError("{} is not an initializer", weight_name)
 
-            weight = self._get_quantized_weight_per_channel(initializer, self.weight_qType, axis)
-            self._update_weight(weight)
-            return (weight.name + "_quantized", weight.name + "_zero_point", weight.name + "_scale")
+        weights = self.tensor_proto_to_array(initializer)
+        channel_count = weights.shape[channel_axis]
+        rmin_list = []
+        rmax_list = []
+        zero_point_list = []
+        scale_list = []
+        quantized_per_channel_data_list = []
+        for i in range(channel_count):
+            per_channel_data = weights.take(i, channel_axis)
+            rmin, rmax, zero_point, scale, quantized_per_channel_data = quantize_data(
+                per_channel_data.flatten().tolist(), _get_qrange_for_qType(weight_qType, self.reduce_range), weight_qType)
+            rmin_list.append(rmin)
+            rmax_list.append(rmax)
+            zero_point_list.append(zero_point)
+            scale_list.append(scale)
+            quantized_per_channel_data_list.append(quantized_per_channel_data)
+
+        # combine per_channel_data into one
+        reshape_dims = list(weights.shape)  # deep copy
+        reshape_dims[channel_axis] = 1  # only one per channel for reshape
+        quantized_weights = np.asarray(quantized_per_channel_data_list[0]).reshape(reshape_dims)
+        for i in range(1, len(quantized_per_channel_data_list)):
+            channel_weights = np.asarray(quantized_per_channel_data_list[i]).reshape(reshape_dims)
+            quantized_weights = np.concatenate((quantized_weights, channel_weights), channel_axis)
+
+        weight = QuantizedInitializer(initializer.name, initializer, rmin_list, rmax_list, zero_point_list, scale_list,
+                                      weights,
+                                      quantized_weights.flatten().tolist(), channel_axis, weight_qType)
+
+        # Make entry for this quantized weight
+        assert (weight.name not in self.quantized_value_map)
+        quantized_value = QuantizedValue(weight.name, weight.name + "_quantized", weight.name + "_scale",
+                                         weight.name + "_zero_point", QuantizedValueType.Initializer, None, weight_qType)
+        self.quantized_value_map[weight.name] = quantized_value
+
+        self._update_weight(weight)
+        return (weight.name + "_quantized", weight.name + "_zero_point", weight.name + "_scale")
 
     def _dequantize_value(self, value_name):
         '''
