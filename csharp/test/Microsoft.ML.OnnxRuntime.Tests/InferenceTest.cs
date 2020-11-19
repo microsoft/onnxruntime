@@ -109,9 +109,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 SetDllDirectory(null);
 
 #endif
-#if USE_NGRAPH
-                opt.AppendExecutionProvider_NGraph("CPU");  //TODO: this API should be refined
-#endif
 #if USE_OPENVINO
                 opt.AppendExecutionProvider_OpenVINO();
 #endif
@@ -2120,9 +2117,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #endif
 #if USE_DML
             ,"OrtSessionOptionsAppendExecutionProvider_DML"
-#endif
-#if USE_NGRAPH
-            ,"OrtSessionOptionsAppendExecutionProvider_NGraph"
 #endif
 #if USE_OPENVINO
             ,"OrtSessionOptionsAppendExecutionProvider_OpenVINO"

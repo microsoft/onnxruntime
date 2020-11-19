@@ -123,14 +123,6 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
-        public void AppendExecutionProvider_NGraph(string nGraphBackendType)
-        {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_NGraph(handle, nGraphBackendType));
-        }
-
-        /// <summary>
-        /// Use only if you have the onnxruntime package specific to this Execution Provider.
-        /// </summary>
         public void AppendExecutionProvider_OpenVINO(string deviceId = "")
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_OpenVINO(handle, deviceId));

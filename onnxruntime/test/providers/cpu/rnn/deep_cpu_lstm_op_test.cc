@@ -1062,8 +1062,6 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthPartialZeros) {
                   &sequence_length, use_bias, use_peepholes);
 }
 
-// TODO this test fails for nGraph - need to investigate why
-#ifndef USE_NGRAPH
 TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthShorterThanInputSequenceLength) {
   const int seq_len = 2;
   const int batch_size = 1;
@@ -1204,7 +1202,6 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMZeroSeqInMiddle) {
   context.RunTest(X_data, batch_size, seq_len, nullptr, nullptr, Y_data, Y_h_data, Y_c_data,
                   &sequence_length, use_bias, use_peepholes, 0.0f, false, false);
 }
-#endif // USE_NGRAPH
 
 }  // namespace test
 }  // namespace onnxruntime
