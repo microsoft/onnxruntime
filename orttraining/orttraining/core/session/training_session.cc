@@ -104,11 +104,6 @@ Status SetupOptimizerParams(
     opt_node_configs.emplace(weight_name, std::move(opt_node_config));
   }
 
-  // for(const auto& optim_state_it : config.init_optimizer_states){
-  //   auto opt_config = opt_node_configs.at(optim_state_it.first);
-  //   opt_config.initial_states = &(optim_state_it->second)
-  // }
-
   OptimizerGraphConfig opt_graph_config{};
   opt_graph_config.use_mixed_precision = config.mixed_precision_config.has_value();
   if (opt_graph_config.use_mixed_precision) {

@@ -105,7 +105,6 @@ Status LambOptimizerBuilder::Build(
   // Add step as an initializer.
   TensorProto step_tensor_proto;
   if (shared_optim_state.find(step_tensor_name) != shared_optim_state.end()) {
-    std::cout << "Lamb: Updating Step...\n";
     const auto& initial_state_it = shared_optim_state.find(step_tensor_name);
     const auto& init_tensor = initial_state_it->second.Get<Tensor>();
     ORT_ENFORCE(IsMatchingTypeAndShape(init_tensor, ONNX_NAMESPACE::TensorProto_DataType_INT64, {1}).IsOK());
@@ -256,7 +255,6 @@ Status LambOptimizerBuilder::Build(
         const auto initial_states = opt_configs[i].initial_states;
         if (initial_states.find(moment_prefix) != initial_states.end()) {
           //update moment_tensor_proto
-          std::cout << "Lamb: Updating moment_tensor_proto...\n";
           const auto& initial_state_it = initial_states.find(moment_prefix);
           const auto& init_tensor = initial_state_it->second.Get<Tensor>();
 

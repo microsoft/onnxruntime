@@ -82,7 +82,6 @@ Status AdamOptimizerBuilder::Build(
       // Update 'Update_Count' initializer with init value
       const auto initial_states = opt_configs[i].initial_states;
       if (initial_states.find(uc_prefix) != initial_states.end()) {
-        std::cout << "Adam: Updating Update_Count...\n";
         const auto& initial_state_it = initial_states.find(uc_prefix);
         const auto& init_tensor = initial_state_it->second.Get<Tensor>();
         ORT_ENFORCE(IsMatchingTypeAndShape(init_tensor, ONNX_NAMESPACE::TensorProto_DataType_INT64, {1}).IsOK());
@@ -132,7 +131,6 @@ Status AdamOptimizerBuilder::Build(
         // Update moment initializer with init value
         if (initial_states.find(moments_prefix) != initial_states.end()) {
           //update moment_tensor_proto
-          std::cout << "Adam: Updating moment_tensor_proto...\n";
           const auto& initial_state_it = initial_states.find(moments_prefix);
           const auto& init_tensor = initial_state_it->second.Get<Tensor>();
 
