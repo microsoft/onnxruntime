@@ -40,6 +40,9 @@ std::ostream& operator<<(std::ostream& out, AllocKind alloc_kind) {
     case AllocKind::kShare:
       out << "Share";
       break;
+    case AllocKind::kNotSet:
+      out << "NotSet";
+      break;
   }
   return out;
 }

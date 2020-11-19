@@ -22,7 +22,7 @@ class SessionState;
 
 // Captures information required to allocate/reuse buffer for a ml-value
 struct AllocPlanPerValue {
-  AllocKind alloc_kind{AllocKind::kUnset};
+  AllocKind alloc_kind{AllocKind::kNotSet};
   MLDataType value_type{nullptr};
   OrtMemoryInfo location;
   // reused_buffer is valid only if alloc_kind == kReuse. It indicates
@@ -48,7 +48,7 @@ struct AllocPlanPerValue {
     }
 
     // return true if there are entries, and the number of start/end pairs match.
-	// validity of the individual start/end values is checked when they are added.
+    // validity of the individual start/end values is checked when they are added.
     bool HasValidEntries() const {
       return !starts_.empty() && starts_.size() == ends_.size();
     }
