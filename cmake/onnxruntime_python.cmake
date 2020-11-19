@@ -347,13 +347,13 @@ if (onnxruntime_USE_NGRAPH)
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
         ${ngraph_LIBRARIES}/${NGRAPH_SHARED_LIB}
-		${ngraph_LIBRARIES}/${NGRAPH_CODEGEN_SHARED_LIB}
-		${ngraph_LIBRARIES}/${NGRAPH_CPU_BACKEND_SHARED_LIB}
-		${ngraph_LIBRARIES}/${NGRAPH_IOMP5MD_SHARED_LIB}
-		${ngraph_LIBRARIES}/${NGRAPH_MKLDNN_SHARED_LIB}
-		${ngraph_LIBRARIES}/${NGRAPH_MKLML_SHARED_LIB}
-		${ngraph_LIBRARIES}/${NGRAPH_TBB_SHARED_LIB}
-		${ngraph_LIBRARIES}/${NGRAPH_TBB_SHARED_LIB_2}
+        ${ngraph_LIBRARIES}/${NGRAPH_CODEGEN_SHARED_LIB}
+        ${ngraph_LIBRARIES}/${NGRAPH_CPU_BACKEND_SHARED_LIB}
+        ${ngraph_LIBRARIES}/${NGRAPH_IOMP5MD_SHARED_LIB}
+        ${ngraph_LIBRARIES}/${NGRAPH_MKLDNN_SHARED_LIB}
+        ${ngraph_LIBRARIES}/${NGRAPH_MKLML_SHARED_LIB}
+        ${ngraph_LIBRARIES}/${NGRAPH_TBB_SHARED_LIB}
+        ${ngraph_LIBRARIES}/${NGRAPH_TBB_SHARED_LIB_2}
         $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
   )
 endif()
@@ -397,6 +397,15 @@ if (onnxruntime_USE_DML)
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
         ${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}-win/${DML_SHARED_LIB}
+        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
+  )
+endif()
+
+if (onnxruntime_USE_NNAPI_BUILTIN)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        $<TARGET_FILE:onnxruntime_providers_nnapi>
         $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
   )
 endif()
