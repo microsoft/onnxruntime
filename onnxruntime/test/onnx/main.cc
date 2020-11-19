@@ -20,6 +20,7 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/framework/session_options.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 using namespace onnxruntime;
 using namespace onnxruntime::test;

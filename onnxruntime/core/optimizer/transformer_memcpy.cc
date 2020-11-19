@@ -4,6 +4,7 @@
 #include "transformer_memcpy.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/execution_providers.h"
+#include "core/framework/utils.h"
 
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
@@ -62,15 +63,7 @@ static const onnx::TensorProto* GetInitializer(const Graph& graph, const std::st
 // and mainly provides the subgraph recursion functionality
 common::Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   for (auto& provider : provider_types_) {
-    if (provider != onnxruntime::kCpuExecutionProvider &&
-        provider != onnxruntime::kDnnlExecutionProvider &&
-        provider != onnxruntime::kNGraphExecutionProvider &&
-        provider != onnxruntime::kNupharExecutionProvider &&
-        provider != onnxruntime::kVitisAIExecutionProvider &&
-        provider != onnxruntime::kOpenVINOExecutionProvider &&
-        provider != onnxruntime::kNnapiExecutionProvider &&
-        provider != onnxruntime::kAclExecutionProvider &&
-        provider != onnxruntime::kArmNNExecutionProvider) {
+    if (!utils::ProviderIsCpuBased(provider)) {
       TransformerMemcpyImpl copy_impl(graph, provider);
       auto current_modified = copy_impl.ModifyGraph(registry_manager_);
       modified = modified || current_modified;
@@ -163,9 +156,11 @@ bool TransformerMemcpyImpl::ModifyGraph(const KernelRegistryManager& kernel_regi
   return modified;
 }
 
-void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelRegistryManager& kernel_registries, InitializedTensorSet& initializers_consumed) {
+void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelRegistryManager& kernel_registries,
+                                        InitializedTensorSet& initializers_consumed) {
   auto node_provider_type = node.GetExecutionProviderType();
-  if ((node_provider_type == provider_) || (node_provider_type == kCudaExecutionProvider && kTensorrtExecutionProvider == provider_)) {
+  if ((node_provider_type == provider_) ||
+      (node_provider_type == kCudaExecutionProvider && kTensorrtExecutionProvider == provider_)) {
     provider_nodes_.insert(&node);
     // note KernelCreateInfo might be nullptr for custom kernel
     const KernelCreateInfo* kci = nullptr;

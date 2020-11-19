@@ -15,6 +15,7 @@
 #include "core/framework/session_state_utils.h"
 #include "core/framework/utils.h"
 #include "core/providers/cpu/controlflow/utils.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 using namespace ::onnxruntime::common;
 using namespace ::onnxruntime::experimental;
@@ -113,7 +114,8 @@ void SessionState::CreateGraphInfo() {
   for (const auto& output : graph_viewer_->GetOutputs()) {
     if (output->Exists()) {
       idx = ort_value_name_idx_map_.Add(output->Name());
-      VLOGS(logger_, 1) << "Added graph output with name: " << output->Name() << " to OrtValueIndex with index: " << idx;
+      VLOGS(logger_, 1) << "Added graph output with name: " << output->Name()
+                        << " to OrtValueIndex with index: " << idx;
     }
   }
 
@@ -121,10 +123,25 @@ void SessionState::CreateGraphInfo() {
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
-Status SessionState::PopulateKernelCreateInfo(KernelRegistryManager& kernel_registry_manager) {
+Status SessionState::PopulateKernelCreateInfo(KernelRegistryManager& kernel_registry_manager,
+                                              bool saving_ort_format) {
   for (auto& node : graph_.Nodes()) {
     const KernelCreateInfo* kci = nullptr;
-    ORT_RETURN_IF_ERROR(kernel_registry_manager.SearchKernelRegistry(node, &kci));
+
+    auto status = kernel_registry_manager.SearchKernelRegistry(node, &kci);
+    if (!status.IsOK() && saving_ort_format) {
+      // if we didn't find the kernel and are saving to ORT format an EP that compiles nodes is enabled.
+      // in that case we assigned the node to that EP but do not compile it into a fused node.
+      // this keeps the original node and prevents level 2 and level 3 optimizers from modifying it.
+      // we now revert to the CPU EP to include the hash for the kernel as a fallback. at runtime when the model
+      // is loaded in a minimal build, the compiling EP will replace this node if possible. if that's not possible for
+      // some reason we can fallback to the CPU EP implementation via this hash.
+      node.SetExecutionProviderType(kCpuExecutionProvider);
+      status = kernel_registry_manager.SearchKernelRegistry(node, &kci);
+    }
+
+    ORT_RETURN_IF_ERROR(status);
+
     ORT_IGNORE_RETURN_VALUE(
         kernel_create_info_map_.insert({node.Index(), gsl::not_null<const KernelCreateInfo*>(kci)}));
   }
@@ -132,7 +149,7 @@ Status SessionState::PopulateKernelCreateInfo(KernelRegistryManager& kernel_regi
   for (const auto& entry : subgraph_session_states_) {
     for (const auto& name_to_subgraph_session_state : entry.second) {
       SessionState& subgraph_session_state = *name_to_subgraph_session_state.second;
-      ORT_RETURN_IF_ERROR(subgraph_session_state.PopulateKernelCreateInfo(kernel_registry_manager));
+      ORT_RETURN_IF_ERROR(subgraph_session_state.PopulateKernelCreateInfo(kernel_registry_manager, saving_ort_format));
     }
   }
 
@@ -317,8 +334,10 @@ Status ResolveDimParams(const GraphViewer& graph,
 Status TryResolveShape(
     const NodeArg* arg,
     const std::unordered_map<std::string, int64_t>& symbolic_dimensions,
+    size_t& is_resolved,  // indicate whether resolve successfully or not.
     std::vector<int64_t>& resolved_shape) {
   if (!arg->Shape()) {
+    is_resolved = 0;
     return Status::OK();
   }
 
@@ -342,8 +361,9 @@ Status TryResolveShape(
     }
   }
 
+  is_resolved = safe_size;
   // Only assign shape if all symbolic dimensions are resolved.
-  if (safe_size != 0) {
+  if (is_resolved != 0) {
     resolved_shape = std::move(shape);
   }
 
@@ -395,12 +415,13 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
         continue;
 
       auto* arg = node->OutputDefs()[i];
+      size_t is_resolved = 0;
       std::vector<int64_t> resolved_shape;
-      ORT_RETURN_IF_ERROR(TryResolveShape(arg, map, resolved_shape));
+      ORT_RETURN_IF_ERROR(TryResolveShape(arg, map, is_resolved, resolved_shape));
 
       // Store all valid resolved shapes. They will be queried in, for example,
       // Recv operator to bypass the dependency of output shapes on inputs.
-      if (resolved_shape.size() > 0) {
+      if (is_resolved != 0) {
         resolved_shapes[ml_value_idx] = resolved_shape;
       }
     }
@@ -419,7 +440,9 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
       size_t size = 0;
       TryCalculateSizeFromResolvedShape(ml_value_idx, resolved_shapes, size);
       if (size == 0) {
-        return Status(ONNXRUNTIME, FAIL, "Unknown shape found in memory pattern compute");
+        std::string node_name;
+        ORT_RETURN_IF_ERROR(this->ort_value_name_idx_map_.GetName(ml_value_idx, node_name));
+        return Status(ONNXRUNTIME, FAIL, "Unknown shape found in memory pattern compute, node name is : " + node_name);
       }
 
       if (!IAllocator::CalcMemSizeForArrayWithAlignment<64>(size, ml_data_type->Size(), &size)) {
@@ -806,16 +829,45 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
                     "Size mismatch for kernel create info node indexes and hashes. Invalid ORT format model.",
                     node_indices->size(), " != ", kernel_def_hashes->size());
 
+  auto add_kernel_by_hash =
+      [&kernel_registry_manager, this](const Node& node, uint64_t hash) {
+        const KernelCreateInfo* kci = nullptr;
+        ORT_RETURN_IF_ERROR(kernel_registry_manager.SearchKernelRegistry(node, hash, &kci));
+        kernel_create_info_map_.emplace(node.Index(), gsl::not_null<const KernelCreateInfo*>(kci));
+        return Status::OK();
+      };
+
+  // kernel hashes for model are in top level SessionState
+  const auto& compiled_kernel_hashes = GetCompiledKernelHashes();
+
+  // process the nodes that existed when the model was created
   for (flatbuffers::uoffset_t i = 0; i < node_indices->size(); i++) {
     auto node_idx = node_indices->Get(i);
-    auto kernal_hash = kernel_def_hashes->Get(i);
+    auto kernel_hash = kernel_def_hashes->Get(i);
 
     const Node* node = graph_.GetNode(node_idx);
-    ORT_RETURN_IF(node == nullptr, "Can't find node with index ", node_idx, ". Invalid ORT format model.");
+    if (node == nullptr) {
+      // this is OK if we have compiled kernels and the original node was replaced. if not the model is invalid.
+      ORT_RETURN_IF(compiled_kernel_hashes.empty(),
+                    "Can't find node with index ", node_idx, ". Invalid ORT format model.");
+      continue;
+    }
 
-    const KernelCreateInfo* kci = nullptr;
-    ORT_RETURN_IF_ERROR(kernel_registry_manager.SearchKernelRegistry(*node, kernal_hash, &kci));
-    kernel_create_info_map_.emplace(node_idx, gsl::not_null<const KernelCreateInfo*>(kci));
+    ORT_RETURN_IF_ERROR(add_kernel_by_hash(*node, kernel_hash));
+  }
+
+  // lookup the hashes for any nodes we compiled. the nodes indexes for compiled nodes are not in node_indices
+  // as they were created at runtime.
+  if (!compiled_kernel_hashes.empty()) {
+    for (const auto& node : graph_.Nodes()) {
+      if (kernel_create_info_map_.count(node.Index()) == 0) {
+        auto hash_info = compiled_kernel_hashes.find(node.OpType());
+        ORT_RETURN_IF(hash_info == compiled_kernel_hashes.cend(),
+                      "Unable to find compiled kernel hash for node '", node.Name(), "'.")
+
+        ORT_RETURN_IF_ERROR(add_kernel_by_hash(node, hash_info->second));
+      }
+    }
   }
 
   if (!subgraph_session_states_.empty()) {
@@ -873,7 +925,8 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
                                           KernelRegistryManager& kernel_registry_manager,
                                           const SessionOptions& session_options,
                                           const onnxruntime::experimental::fbs::SessionState* serialized_session_state,
-                                          bool remove_initializers) {
+                                          bool remove_initializers,
+                                          bool saving_ort_format) {
   // recursively create the subgraph session state instances and populate the kernel create info in them.
   // it's simpler to handle the kernel create info recursively when deserializing,
   // so also do it recursively when calling PopulateKernelCreateInfo for consistency.
@@ -889,12 +942,13 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
 
   } else {
 #if !defined(ORT_MINIMAL_BUILD)
-    ORT_RETURN_IF_ERROR(PopulateKernelCreateInfo(kernel_registry_manager));
+    ORT_RETURN_IF_ERROR(PopulateKernelCreateInfo(kernel_registry_manager, saving_ort_format));
 #else
     ORT_UNUSED_PARAMETER(graph_location);
     ORT_UNUSED_PARAMETER(kernel_registry_manager);
     ORT_UNUSED_PARAMETER(session_options);
     ORT_UNUSED_PARAMETER(remove_initializers);
+    ORT_UNUSED_PARAMETER(saving_ort_format);
     return Status(ONNXRUNTIME, INVALID_ARGUMENT,
                   "Serialized session state must be provided from an ORT format model in this build.");
 #endif

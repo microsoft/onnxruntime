@@ -157,15 +157,20 @@ static const ORTCHAR_T* tensorrt_disabled_tests[] = {
 
 #if !defined(__amd64__) && !defined(_M_AMD64)
 // out of memory
-static const ORTCHAR_T* x86_disabled_tests[] = {ORT_TSTR("mlperf_ssd_resnet34_1200"),
-                                                ORT_TSTR("mask_rcnn_keras"),
-                                                ORT_TSTR("mask_rcnn"),
-                                                ORT_TSTR("faster_rcnn"),
-                                                ORT_TSTR("vgg19"),
-                                                ORT_TSTR("zfnet512"),
-                                                ORT_TSTR("GPT2_LM_HEAD"),
-                                                ORT_TSTR("ssd"),
-                                                ORT_TSTR("coreml_VGG16_ImageNet")};
+static const ORTCHAR_T* x86_disabled_tests[] = {ORT_TSTR("BERT_Squad"),
+                                                    ORT_TSTR("bvlc_alexnet"),
+                                                    ORT_TSTR("bvlc_reference_caffenet"),
+                                                    ORT_TSTR("coreml_VGG16_ImageNet"),
+                                                    ORT_TSTR("faster_rcnn"),
+                                                    ORT_TSTR("GPT2"),
+                                                    ORT_TSTR("GPT2_LM_HEAD"),
+                                                    ORT_TSTR("keras_lotus_resnet3D"),
+                                                    ORT_TSTR("mlperf_ssd_resnet34_1200"),
+                                                    ORT_TSTR("mask_rcnn_keras"),
+                                                    ORT_TSTR("mask_rcnn"),
+                                                    ORT_TSTR("ssd"),
+                                                    ORT_TSTR("vgg19"),
+                                                    ORT_TSTR("zfnet512")};
 #endif
 
 struct BrokenTest {

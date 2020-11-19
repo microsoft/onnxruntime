@@ -10,6 +10,7 @@
 #include "helper.h"
 #include "model_builder.h"
 #include "op_builder.h"
+#include "op_support_checker.h"
 
 namespace onnxruntime {
 namespace nnapi {
@@ -187,7 +188,7 @@ static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
                                         const std::string& name,
                                         const OperandType& source_operand_type,
                                         DataLayout new_layout) {
-  const auto& tensor = model_builder.GetInitializerTensors().at(name);
+  const auto& tensor = *model_builder.GetInitializerTensors().at(name);
   const Shape& shape = source_operand_type.dimensions;
   ORT_RETURN_IF_NOT(shape.size() == 4,
                     "The initializer is not 4D: ", name, " actual dim ", shape.size());
@@ -267,7 +268,7 @@ static Status AddInitializerTransposed(ModelBuilder& model_builder,
 static Status AddInitializerTransposed(ModelBuilder& model_builder,
                                        const OperandType& source_operand_type,
                                        const std::string& name) {
-  const auto& tensor = model_builder.GetInitializerTensors().at(name);
+  const auto& tensor = *model_builder.GetInitializerTensors().at(name);
   const Shape& shape = source_operand_type.dimensions;
 
   ORT_RETURN_IF_NOT(shape.size() == 2,
@@ -399,7 +400,7 @@ static Status HandleAutoPad(const Shape& input_shape,
 }
 
 static float GetQuantizationScale(const ModelBuilder& model_builder, const Node& node, size_t idx) {
-  const auto& scale_tensor = model_builder.GetInitializerTensors().at(node.InputDefs()[idx]->Name());
+  const auto& scale_tensor = *model_builder.GetInitializerTensors().at(node.InputDefs()[idx]->Name());
   return GetTensorFloatData(scale_tensor)[0];
 }
 
@@ -408,7 +409,7 @@ static Status GetQuantizationZeroPoint(const ModelBuilder& model_builder, const 
 static Status GetQuantizationZeroPoint(const ModelBuilder& model_builder, const Node& node, size_t idx, int32_t& zero_point) {
   std::unique_ptr<uint8_t[]> unpacked_tensor;
   size_t tensor_byte_size;
-  const auto& zero_point_tensor = model_builder.GetInitializerTensors().at(node.InputDefs()[idx]->Name());
+  const auto& zero_point_tensor = *model_builder.GetInitializerTensors().at(node.InputDefs()[idx]->Name());
   ORT_RETURN_IF_ERROR(
       onnxruntime::utils::UnpackInitializerData(zero_point_tensor, unpacked_tensor, tensor_byte_size));
   zero_point = static_cast<int32_t>(unpacked_tensor.get()[0]);
@@ -535,7 +536,12 @@ class BaseOpBuilder : public IOpBuilder {
 };
 
 Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node& node) const {
-  ORT_RETURN_IF_NOT(model_builder.IsNodeSupported(node), "Unsupported operator ", node.OpType());
+  OpSupportCheckParams params{
+      model_builder.GetAndroidSdkVer(),
+      model_builder.UseNCHW(),
+  };
+
+  ORT_RETURN_IF_NOT(IsNodeSupported(node, model_builder.GetGraphViewer(), params), "Unsupported operator ", node.OpType());
   ORT_RETURN_IF_ERROR(AddToModelBuilderImpl(model_builder, node));
   LOGS_DEFAULT(VERBOSE) << "Operator name: [" << node.Name()
                         << "] type: [" << node.OpType() << "] was added";
@@ -739,45 +745,53 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
 // If the Reshape output is also a graph output, since NNAPI output is a void* buffer, we can find the shape
 // information in onnxruntime::nnapi::Model and pass the correct shape information back to ORT to be used as output shape
 /* static */ bool ReshapeOpBuilder::CanSkipReshape(const Node& node, size_t input_rank, size_t output_rank) {
-  const auto& output = node.OutputDefs()[0]->Name();
-  // We will go through all the output edges
-  for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
-    const auto& op_type = it->GetNode().OpType();
-    // TODO add quantized matmul when reshape support quantized input
-    if (op_type != "Gemm" && op_type != "MatMul") {
-      LOGS_DEFAULT(VERBOSE) << "Reshape/Flatten can only be skipped when the output is Gemm/Matmul"
-                            << " or no op is using the output (output is graph output)"
-                            << ", output name, " << output
-                            << " is used by " << op_type;
-      return false;
-    }
+  //
+  // TEMPORARILY DISABLED. Needs refinement.
+  //
+  // const auto& output = node.OutputDefs()[0]->Name();
+  // // We will go through all the output edges
+  // for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
+  //   const auto& op_type = it->GetNode().OpType();
+  //   // TODO add quantized matmul when reshape support quantized input
+  //   if (op_type != "Gemm" && op_type != "MatMul") {
+  //     LOGS_DEFAULT(VERBOSE) << "Reshape/Flatten can only be skipped when the output is Gemm/Matmul"
+  //                           << " or no op is using the output (output is graph output)"
+  //                           << ", output name, " << output
+  //                           << " is used by " << op_type;
+  //     return false;
+  //   }
 
-    // NNAPI ANEURALNETWORKS_FULLY_CONNECTED will only flatten the input 0
-    if (it->GetDstArgIndex() != 0) {
-      LOGS_DEFAULT(VERBOSE) << "Reshape/Flatten can only be skipped when the output is input 0 of Gemm/Matmul"
-                            << ", output name, " << output;
-      return false;
-    }
+  //   // NNAPI ANEURALNETWORKS_FULLY_CONNECTED will only flatten the input 0
+  //   if (it->GetDstArgIndex() != 0) {
+  //     LOGS_DEFAULT(VERBOSE) << "Reshape/Flatten can only be skipped when the output is input 0 of Gemm/Matmul"
+  //                           << ", output name, " << output;
+  //     return false;
+  //   }
 
-    // We only support 2d matmul/gemm here
-    // And NNAPI ANEURALNETWORKS_FULLY_CONNECTED will only flatten input rank >= 2
-    if (input_rank < 2 || output_rank != 2) {
-      LOGS_DEFAULT(VERBOSE) << "Reshape/Flatten can only be skipped when input_rank >= 2 and output_rank == 2"
-                            << ", output name, " << output
-                            << ", the actual input_rank, " << input_rank
-                            << ", the actual output_rank, " << output_rank;
-      return false;
-    }
-  }
+  //   // We only support 2d matmul/gemm here
+  //   // And NNAPI ANEURALNETWORKS_FULLY_CONNECTED will only flatten input rank >= 2
+  //   if (input_rank < 2 || output_rank != 2) {
+  //     LOGS_DEFAULT(VERBOSE) << "Reshape/Flatten can only be skipped when input_rank >= 2 and output_rank == 2"
+  //                           << ", output name, " << output
+  //                           << ", the actual input_rank, " << input_rank
+  //                           << ", the actual output_rank, " << output_rank;
+  //     return false;
+  //   }
+  // }
 
-  // If we reach here, we have either,
-  // all the Reshape outputs are used by gemm/matmul, the output can also be a model output [doesn't really matter here]
-  // or
-  // Reshape has no output edge ==> the output is a graph output or a dead end [which we don't care]
-  // we can skip this Reshape now
-  LOGS_DEFAULT(VERBOSE) << "Skipping Reshape/Flatten node ["
-                        << node.Name() << "] with output, " << output;
-  return true;
+  // // If we reach here, we have either,
+  // // all the Reshape outputs are used by gemm/matmul, the output can also be a model output [doesn't really matter here]
+  // // or
+  // // Reshape has no output edge ==> the output is a graph output or a dead end [which we don't care]
+  // // we can skip this Reshape now
+  // LOGS_DEFAULT(VERBOSE) << "Skipping Reshape/Flatten node ["
+  //                       << node.Name() << "] with output, " << output;
+  // return true;
+  
+  ORT_UNUSED_PARAMETER(node);
+  ORT_UNUSED_PARAMETER(input_rank);
+  ORT_UNUSED_PARAMETER(output_rank);
+  return false;  
 }
 
 /* static */ Status ReshapeOpBuilder::AddReshapeOperator(ModelBuilder& model_builder,
@@ -828,7 +842,7 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
     ORT_RETURN_IF_ERROR(GetNCHWInput(model_builder, node, 0, input));
   }
 
-  const auto& shape_tensor = initializers.at(node.InputDefs()[1]->Name());
+  const auto& shape_tensor = *initializers.at(node.InputDefs()[1]->Name());
   const int64_t* raw_shape = GetTensorInt64Data(shape_tensor);
   const auto size = SafeInt<uint32_t>(shape_tensor.dims()[0]);
 
@@ -874,10 +888,10 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   const auto& input = node.InputDefs()[0]->Name();
   const auto& output = node.OutputDefs()[0]->Name();
 
-  const auto& scale_tensor = initializers.at(node.InputDefs()[1]->Name());
-  const auto& bias_tensor = initializers.at(node.InputDefs()[2]->Name());
-  const auto& mean_tensor = initializers.at(node.InputDefs()[3]->Name());
-  const auto& var_tensor = initializers.at(node.InputDefs()[4]->Name());
+  const auto& scale_tensor = *initializers.at(node.InputDefs()[1]->Name());
+  const auto& bias_tensor = *initializers.at(node.InputDefs()[2]->Name());
+  const auto& mean_tensor = *initializers.at(node.InputDefs()[3]->Name());
+  const auto& var_tensor = *initializers.at(node.InputDefs()[4]->Name());
   const auto eps = helper.Get("epsilon", 1e-5f);
 
   const auto size = SafeInt<uint32_t>(scale_tensor.dims()[0]);
@@ -1126,7 +1140,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   }
 
   const auto& weight = input_defs[w_idx]->Name();
-  const auto& weight_tensor = initializers.at(weight);
+  const auto& weight_tensor = *initializers.at(weight);
   bool conv_2d = false,
        depthwise_conv_2d = false,
        grouped_conv_2d = false;
@@ -1199,7 +1213,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unknown weight type ", TypeToStr(weight_type));
     }
   } else if (is_qlinear_conv) {  // QLinearConv's bias type need special handling
-    const auto& bias_tensor = model_builder.GetInitializerTensors().at(bias);
+    const auto& bias_tensor = *model_builder.GetInitializerTensors().at(bias);
     ORT_RETURN_IF_NOT(bias_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT32,
                       "bias of QLinearConv should be int32, actual type: ", bias_tensor.data_type());
     Shape bias_dimen;
@@ -1479,7 +1493,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     else
       onnx_mat_b_type = Type::TENSOR_QUANT8_ASYMM;
 
-    const auto& mat_b_tensor = initializers.at(input2);
+    const auto& mat_b_tensor = *initializers.at(input2);
     Shape onnx_mat_b_shape;
     for (auto dim : mat_b_tensor.dims())
       onnx_mat_b_shape.push_back(SafeInt<uint32_t>(dim));
@@ -1663,9 +1677,43 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 #pragma region op_squeeze
 
 class SqueezeOpBuilder : public BaseOpBuilder {
+ public:
+  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  static vector<int32_t> GetAxes(ModelBuilder& model_builder, const Node& node);
 };
+
+void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+  if (node.SinceVersion() > 12 && node.InputDefs().size() > 1) {
+    model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());
+  }
+}
+
+/* static */ vector<int32_t> SqueezeOpBuilder::GetAxes(ModelBuilder& model_builder, const Node& node) {
+  vector<int32_t> axes;
+  // Squeeze opset 13 use input as axes
+  if (node.SinceVersion() > 12) {
+    // If axes is not supplied, return an empty axes as default to squeeze all
+    if (node.InputDefs().size() > 1) {
+      const auto& initializers(model_builder.GetInitializerTensors());
+      const auto& axes_tensor = *initializers.at(node.InputDefs()[1]->Name());
+      const int64_t* raw_axes = GetTensorInt64Data(axes_tensor);
+      const auto size = SafeInt<uint32_t>(axes_tensor.dims()[0]);
+      axes.resize(size);
+      for (uint32_t i = 0; i < size; i++) {
+        // it is unlikely we have a axis value overflow for int32
+        axes[i] = static_cast<int32_t>(raw_axes[i]);
+      }
+    }
+  } else {
+    NodeAttrHelper helper(node);
+    axes = helper.Get("axes", vector<int32_t>());
+  }
+
+  return axes;
+}
 
 Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
   auto& shaper(model_builder.GetShaper());
@@ -1679,7 +1727,7 @@ Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   }
 
   NodeAttrHelper helper(node);
-  vector<int32_t> axes = helper.Get("axes", vector<int32_t>());
+  vector<int32_t> axes = GetAxes(model_builder, node);
   const auto& input_shape(shaper[input]);
   auto input_dims = input_shape.size();
   for (auto& axis : axes) {
@@ -1965,8 +2013,10 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     }
   }
 
-  // TODO, add support for nearest neighbor
-  int32_t operationCode = ANEURALNETWORKS_RESIZE_BILINEAR;
+  bool is_linear_resize = helper.Get("mode", "nearest") == "linear";
+
+  int32_t operationCode = is_linear_resize ? ANEURALNETWORKS_RESIZE_BILINEAR
+                                           : ANEURALNETWORKS_RESIZE_NEAREST_NEIGHBOR;
 
   const auto coord_trans_mode = helper.Get("coordinate_transformation_mode", "half_pixel");
   bool using_half_pixel = coord_trans_mode == "half_pixel";
@@ -1974,7 +2024,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
   if (input_defs.size() == 3) {  // we are using scales
     const auto& scales_name = input_defs[2]->Name();
-    const auto& scales_tensor = initializers.at(scales_name);
+    const auto& scales_tensor = *initializers.at(scales_name);
     const float* scales_data = GetTensorFloatData(scales_tensor);
     float scale_h = scales_data[2];
     float scale_w = scales_data[3];
@@ -1982,7 +2032,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
         shaper.ResizeUsingScales(input, scale_h, scale_w, use_nchw, output));
   } else {  // we are using sizes
     const auto& sizes_name = input_defs[3]->Name();
-    const auto& sizes_tensor = initializers.at(sizes_name);
+    const auto& sizes_tensor = *initializers.at(sizes_name);
     const int64_t* sizes_data = GetTensorInt64Data(sizes_tensor);
     ORT_RETURN_IF_ERROR(
         shaper.ResizeUsingOutputSizes(input, SafeInt<uint32_t>(sizes_data[2]), SafeInt<uint32_t>(sizes_data[3]), use_nchw, output));
@@ -2002,10 +2052,14 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     ADD_SCALAR_OPERAND(model_builder, input_indices, use_nchw);
   }
 
-  if (android_sdk_ver > 29 && (using_align_corners || using_half_pixel)) {
-    ADD_SCALAR_OPERAND(model_builder, input_indices, using_align_corners);
-    if (using_half_pixel)
-      ADD_SCALAR_OPERAND(model_builder, input_indices, using_half_pixel);
+  // Currently we only support align_corners and half_pixel on bilinear resize
+  // TODO, investigate nearest neighbor resize difference between NNAPI(based on TF) and ONNX
+  if (is_linear_resize) {
+    if (android_sdk_ver > 29 && (using_align_corners || using_half_pixel)) {
+      ADD_SCALAR_OPERAND(model_builder, input_indices, using_align_corners);
+      if (using_half_pixel)
+        ADD_SCALAR_OPERAND(model_builder, input_indices, using_half_pixel);
+    }
   }
 
   const OperandType output_operand_type(operand_types.at(input).type, output_shape);
@@ -2048,10 +2102,9 @@ Status FlattenOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
 
 #pragma endregion op_reshape
 
-#pragma region CreateOpBuilders
+#pragma region CreateGetOpBuilders
 
-std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>
-CreateOpBuilders() {
+static std::unordered_map<std::string, std::shared_ptr<IOpBuilder>> CreateOpBuilders() {
   std::unordered_map<std::string, std::shared_ptr<IOpBuilder>> op_map;
 
   {
@@ -2115,6 +2168,14 @@ CreateOpBuilders() {
   op_map.emplace("Resize", std::make_shared<ResizeOpBuilder>());
   op_map.emplace("Flatten", std::make_shared<FlattenOpBuilder>());
 
+  ORT_ENFORCE(op_map.size() == GetOpSupportCheckers().size(),
+              "We should have same number of OpBuilder and OpSupportChecker");
+
+  return op_map;
+}
+
+const std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>& GetOpBuilders() {
+  static const std::unordered_map<std::string, std::shared_ptr<IOpBuilder>> op_map = CreateOpBuilders();
   return op_map;
 }
 

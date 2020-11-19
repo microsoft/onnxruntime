@@ -110,7 +110,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
               strides[1],
               col_buffer_data);
         } else {
-          math::Im2colNd<T, StorageOrder::NCHW>()(
+          math::Im2col<T, StorageOrder::NCHW>()(
               Xdata + group_id * X_offset,
               input_shape.GetDims().data(),
               output_shape.GetDims().data(),
@@ -244,7 +244,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
 
     for (int image_id = 0; image_id < N; ++image_id) {
       for (int group_id = 0; group_id < conv_attrs_.group; ++group_id) {
-        math::Im2colNd<float, StorageOrder::NCHW>()(
+        math::Im2col<float, StorageOrder::NCHW>()(
             Xdata + group_id * X_offset,
             input_shape.GetDims().data(),
             output_shape.GetDims().data(),

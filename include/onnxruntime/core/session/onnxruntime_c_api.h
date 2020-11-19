@@ -5,7 +5,6 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
-#include "onnxruntime_session_options_config_keys.h"
 
 // This value is used in structures passed to ORT so that a newer version of ORT will still work with them
 #define ORT_API_VERSION 5
@@ -145,7 +144,7 @@ typedef enum OrtErrorCode {
 } OrtErrorCode;
 
 // This configures the arena based allocator used by ORT
-// See ONNX_Runtime_Perf_Tuning.md for details on what these mean and how to choose these values
+// See docs/C_API.md for details on what these mean and how to choose these values
 typedef struct OrtArenaCfg {
   size_t max_mem;                // use 0 to allow ORT to choose the default
   int arena_extend_strategy;     // use -1 to allow ORT to choose the default, 0 = kNextPowerOfTwo, 1 = kSameAsRequested
@@ -1084,7 +1083,7 @@ struct OrtApi {
    * Creates a custom environment with global threadpools and logger that will be shared across sessions.
    * Use this in conjunction with DisablePerSessionThreads API or else the session will use
    * its own thread pools.
-   * 
+   *
    * \param out should be freed by `OrtReleaseEnv` after use
    */
   ORT_API2_STATUS(CreateEnvWithCustomLoggerAndGlobalThreadPools, OrtLoggingFunction logging_function, _In_opt_ void* logger_param, OrtLoggingLevel logging_level,
