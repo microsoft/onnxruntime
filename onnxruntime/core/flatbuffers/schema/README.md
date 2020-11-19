@@ -18,6 +18,7 @@ Change to the directory containing this file (onnxruntime/core/flatbuffers) and 
 This should result in ort.fbs.h being updated.
 
 You also need to update the ort flatbuffers python package in [ort_root]/tools/python/ort_flatbuffers, using,
+
 `> ..\..\..\build\Windows\Debug\external\flatbuffers\Debug\flatc.exe --python -o ../../../../tools/python/ort_flatbuffers ort.fbs`
 
 # ORT FB format version history
