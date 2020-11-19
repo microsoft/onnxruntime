@@ -34,6 +34,7 @@ BasicBackend::BasicBackend(const Provider_ModelProto& model_proto,
 #if defined(OPENVINO_2020_4) || defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2)
   if (const_outputs_map_.size() == subgraph_context_.output_names.size())
     subgraph_context_.is_constant = true;
+  }
 #endif
 
   // Loading model to the plugin
