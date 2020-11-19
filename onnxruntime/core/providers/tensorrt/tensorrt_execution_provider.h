@@ -16,7 +16,7 @@ static const std::string kMaxWorkspaceSize = "ORT_TENSORRT_MAX_WORKSPACE_SIZE";
 static const std::string kFP16Enable = "ORT_TENSORRT_FP16_ENABLE";
 static const std::string kINT8Enable = "ORT_TENSORRT_INT8_ENABLE";
 static const std::string kINT8CalibrationTableName = "ORT_TENSORRT_INT8_CALIBRATION_TABLE_NAME";
-static const std::string kINT8UseTensorrtCalibrationTable = "ORT_TENSORRT_INT8_USE_TENSORRT_CALIBRATION_TABLE";
+static const std::string kINT8UseNativeTensorrtCalibrationTable = "ORT_TENSORRT_INT8_USE_NATIVE_CALIBRATION_TABLE";
 static const std::string kDumpSubgraphs = "ORT_TENSORRT_DUMP_SUBGRAPHS";
 static const std::string kEngineCacheEnable = "ORT_TENSORRT_ENGINE_CACHE_ENABLE";
 static const std::string kCachePath = "ORT_TENSORRT_CACHE_PATH";
@@ -116,10 +116,10 @@ class TensorrtExecutionProvider : public Provider_IExecutionProvider {
   int max_partition_iterations_ = 1000;
   int min_subgraph_size_ = 1;  
   size_t max_workspace_size_ = 1 << 30;  // 1GB
-  bool fp16_enable_ = false;
-  bool int8_enable_ = false;
+  bool fp16_enable_ = false;  
+  bool int8_enable_ = false;  
   std::string int8_calibration_cache_name_ = "INT8_calibration_table";
-  bool int8_use_tensorrt_calibration_table_ = false;
+  bool int8_use_native_tensorrt_calibration_table_ = false;
   bool dump_subgraphs_ = false;
   bool engine_cache_enable_ = false;
   std::string cache_path_;

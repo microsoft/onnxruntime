@@ -141,13 +141,15 @@ bool FindCycleHelper(int i, const std::list<int>* adjacency_map, bool visited[],
 * Read calibration table for INT8 quantization
 * Two kind of calibration tables are supported,
 * 1. ORT generated calibration table
-* The table is pre-serialized by flexbuffers. Data entry in the table is a key-value pair,
+* The table is pre-serialized by flexbuffers. 
+* Each entry in the table is a key-value pair,
 * key: tensor name, value: maximum absolute value in floating point
 * For example,
 *   data_0 2.008338
+*   ...
 * 2. Native TensorRT generated calibration table
-* Data format in the table is defined by TensorRT,
-* tensor name : maximum absolute value in 32-bit single precision IEEE754 format
+* Data format is defined by TensorRT as,
+* tensor name : scale in 32-bit single precision IEEE754 format
 * For example,
 *   TRT-7103-EntropyCalibration2
 *   data_0: 4000889d
@@ -214,7 +216,7 @@ bool SetDynamicRange(nvinfer1::INetworkDefinition& network, std::unordered_map<s
     }
   }
 
-  // Set dynamic range for activation tensors and weights
+  // Set dynamic range for activations and weights
   for (int i = 0; i < network.getNbLayers(); ++i) {
     auto trt_layer = network.getLayer(i);
     for (int j = 0, e = trt_layer->getNbOutputs(); j < e; ++j) {
@@ -424,9 +426,9 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       int8_calibration_cache_name_ = int8_calibration_cache_name_env;
     }
 
-    const std::string int8_use_tensorrt_calibration_table_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kINT8UseTensorrtCalibrationTable);
-    if (!int8_use_tensorrt_calibration_table_env.empty()) {
-      int8_use_tensorrt_calibration_table_ = (std::stoi(int8_use_tensorrt_calibration_table_env) == 0 ? false : true);
+    const std::string int8_use_native_tensorrt_calibration_table_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kINT8UseNativeTensorrtCalibrationTable);
+    if (!int8_use_native_tensorrt_calibration_table_env.empty()) {
+      int8_use_native_tensorrt_calibration_table_ = (std::stoi(int8_use_native_tensorrt_calibration_table_env) == 0 ? false : true);
     }
   }
 
@@ -905,11 +907,11 @@ TensorrtExecutionProvider::Provider_GetCapability(const onnxruntime::Provider_Gr
 
   const int number_of_subgraphs = supported_nodes_vector.size();
   if (number_of_trt_nodes == 0) {
-    LOGS_DEFAULT(WARNING) << "No graph will run on TensorRT exeuction provider";
+    LOGS_DEFAULT(WARNING) << "[TensorRT EP] No graph will run on TensorRT exeuction provider";
   } else if (number_of_trt_nodes == number_of_ort_nodes) {
-    LOGS_DEFAULT(INFO) << "Whole graph will run on TensorRT exeuction provider";
+    LOGS_DEFAULT(INFO) << "[TensorRT EP] Whole graph will run on TensorRT exeuction provider";
   } else {
-    LOGS_DEFAULT(INFO) << "Graph is partitioned and number of subgraphs running on TensorRT exeuction provider is " << number_of_subgraphs;
+    LOGS_DEFAULT(INFO) << "[TensorRT EP] Graph is partitioned and number of subgraphs running on TensorRT exeuction provider is " << number_of_subgraphs;
   }
 
   return result;
@@ -993,28 +995,44 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
       }
     }
 
-    // Load calibration table for INT8 quantization
+    // Check platform availability for low precision 
+    if (fp16_enable_) {
+      if (!trt_builder->platformHasFastFp16()) {
+        fp16_enable_ = false;
+        LOGS_DEFAULT(WARNING) << "[TensorRT EP] ORT_TENSORRT_FP16_ENABLE is set, but platform doesn't support fast native fp16";
+      }
+    }
+
+    if (int8_enable_) {
+      if (!trt_builder->platformHasFastInt8()) {
+        int8_enable_ = false;
+        LOGS_DEFAULT(WARNING) << "[TensorRT EP] ORT_TENSORRT_INT8_ENABLE is set, but platform doesn't support fast native int8";
+      }
+    }
+
+    // Load INT8 calibration table
     std::unordered_map<std::string, float> dynamic_range_map;
-    if (int8_enable_ && trt_builder->platformHasFastInt8()) {
+    if (int8_enable_) {
       const std::string calibration_cache_path = GetCachePath(cache_path_, int8_calibration_cache_name_);
-      if (!ReadDynamicRange(calibration_cache_path, int8_use_tensorrt_calibration_table_, dynamic_range_map)) {
+      if (!ReadDynamicRange(calibration_cache_path, int8_use_native_tensorrt_calibration_table_, dynamic_range_map)) {
         throw std::runtime_error("Failed to read INT8 calibration table " + calibration_cache_path);
       }
     }
 
+    // Set precision flags
     std::string trt_node_name_with_precision = fused_node->Name();
-    if (fp16_enable_ && int8_enable_ && trt_builder->platformHasFastFp16() && trt_builder->platformHasFastInt8()) {
+    if (fp16_enable_ && int8_enable_) {
       trt_config->setFlags(1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kFP16) | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kINT8));
       trt_node_name_with_precision += "_fp16_int8";
-      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] FP16 and INT8 mode is enabled.";
-    } else if (int8_enable_ && trt_builder->platformHasFastInt8()) {
-      trt_config->setFlag(nvinfer1::BuilderFlag::kINT8);
-      trt_node_name_with_precision += "_int8";
-      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] INT8 mode is enabled.";
-    } else if (fp16_enable_ && trt_builder->platformHasFastFp16()) {
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] FP16 and INT8 mode is enabled";
+    } else if (fp16_enable_) {
       trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
       trt_node_name_with_precision += "_fp16";
-      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] FP16 mode is enabled.";
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] FP16 mode is enabled";
+    } else if (int8_enable_) {
+      trt_config->setFlag(nvinfer1::BuilderFlag::kINT8);
+      trt_node_name_with_precision += "_int8";
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] INT8 mode is enabled";
     }
     int num_nodes = graph_body_viewer->NumberOfNodes();
     trt_node_name_with_precision += "_" + GetVecHash(trt_node_name_with_precision + std::to_string(num_nodes));
@@ -1078,7 +1096,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
       }
     }
 
-    //  Create output to index and type maps
+    // Create output to index and type maps
     const auto& graph_output = model_proto->graph().output();
     for (int i = 0; i < num_outputs; ++i) {
       const std::string& output_name = trt_network->getOutput(i)->getName();
@@ -1271,7 +1289,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
             trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, &shapes_min[0], shape_size);
             trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt[0], shape_size);
             trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_max[0], shape_size);
-          } else {  // execution tensor
+          } else {  // Execution tensor
             nvinfer1::Dims dims_min(dims), dims_opt(dims), dims_max(dims);
             for (int j = 0, end = nb_dims; j < end; ++j) {
               const auto& tensor_shape = tensor_shapes[j];
@@ -1329,12 +1347,12 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
         }
 
         // Set precision
-        if (*(trt_state->fp16_enable_ptr) && *(trt_state->int8_enable_ptr) && trt_builder->platformHasFastFp16() && trt_builder->platformHasFastInt8()) {
+        if (*(trt_state->fp16_enable_ptr) && *(trt_state->int8_enable_ptr)) {
           trt_config->setFlags(1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kFP16) | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kINT8));
-        } else if (*(trt_state->int8_enable_ptr) && trt_builder->platformHasFastInt8()) {
-          trt_config->setFlag(nvinfer1::BuilderFlag::kINT8);
-        } else if (*(trt_state->fp16_enable_ptr) && trt_builder->platformHasFastFp16()) {
+        } else if (*(trt_state->fp16_enable_ptr)) {
           trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
+        } else if (*(trt_state->int8_enable_ptr)) {
+          trt_config->setFlag(nvinfer1::BuilderFlag::kINT8);
         }
 
         // Build engine
