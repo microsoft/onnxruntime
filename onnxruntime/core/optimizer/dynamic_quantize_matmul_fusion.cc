@@ -17,7 +17,7 @@ DynamicQuantizeMatMulFusion will fuse subgraph like below into DynamicQuantizeMa
       (input)
          |
          v
-  DynamicQuantizeLinear  const B,B_Scale,B_Zero  Bias(const)                     (input)
+  DynamicQuantizeLinear       B,B_Scale,B_Zero      Bias                          (input)
    |        |        |               |               |                              |
    |        |        |               |               |                              |
   A| A_Scale| A_Zero |               |               |                              |
@@ -45,31 +45,6 @@ Status DynamicQuantizeMatMulFusion::ApplyImpl(Graph& graph, bool& modified, int 
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(matmul_integer_to_float_node, "MatMulIntegerToFloat", {1}, kMSDomain) ||
         !graph_utils::IsSupportedProvider(matmul_integer_to_float_node, GetCompatibleExecutionProviders())) {
       continue;
-    }
-
-    // check constant
-    const NodeArg& matrix_b = *(matmul_integer_to_float_node.InputDefs()[1]);
-    const NodeArg& b_scale = *(matmul_integer_to_float_node.InputDefs()[3]);
-    if (!graph_utils::IsConstantInitializer(graph, matrix_b.Name(), true) ||
-        !graph_utils::IsConstantInitializer(graph, b_scale.Name(), true)) {
-      continue;
-    }
-
-    if (matmul_integer_to_float_node.InputDefs().size() >= 6) {
-      const NodeArg& b_zero_point = *(matmul_integer_to_float_node.InputDefs()[5]);
-
-      if (b_zero_point.Exists() &&
-          !graph_utils::IsConstantInitializer(graph, b_zero_point.Name(), true)) {
-        continue;
-      }
-
-      if (matmul_integer_to_float_node.InputDefs().size() >= 7) {
-        const NodeArg& add_bias = *(matmul_integer_to_float_node.InputDefs()[6]);
-        if (add_bias.Exists() &&
-            !graph_utils::IsConstantInitializer(graph, add_bias.Name(), true)) {
-          continue;
-        }
-      }
     }
 
     const Node* p_dynamic_quant_linear = graph_utils::FirstParentByType(matmul_integer_to_float_node, "DynamicQuantizeLinear");
