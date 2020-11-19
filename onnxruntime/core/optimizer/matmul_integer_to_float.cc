@@ -134,7 +134,7 @@ Status MatMulIntegerToFloatFusion::ApplyImpl(Graph& graph, bool& modified, int g
     }
 
     std::string op_type = "MatMulIntegerToFloat";
-    Node& fused_node = graph.AddNode(graph.GenerateNodeName(op_type),
+    Node& fused_node = graph.AddNode(matmulinteger_node.Name(),
                                      op_type,
                                      "",
                                      input_defs,

@@ -17,13 +17,13 @@ DynamicQuantizeMatMulFusion will fuse subgraph like below into DynamicQuantizeMa
       (input)
          |
          v
-  DynamicQuantizeLinear       B,B_Scale,B_Zero      Bias                          (input)
-   |        |        |               |               |                              |
-   |        |        |               |               |                              |
-  A| A_Scale| A_Zero |               |               |                              |
-   |        |        |               |               |                              |
-   v        v        v               |               |                              |
-  MatMulIntegerToFloat <-------------+---------------+           ---->       DynamicQuantizeMatMul
+  DynamicQuantizeLinear       B,B_Scale,B_Zero      Bias                          (input)                B,B_Scale,B_Zero      Bias
+   |        |        |               |               |                              |                           |               |
+   |        |        |               |               |                              |                           |               |
+  A| A_Scale| A_Zero |               |               |                              |                           |               |
+   |        |        |               |               |                              |                           |               |
+   v        v        v               |               |                              |                           |               |
+  MatMulIntegerToFloat <-------------+---------------+           ---->       DynamicQuantizeMatMul<-------------+---------------+
          |                                                                          |
          v                                                                          v
       (output)                                                                   (output)
@@ -47,7 +47,7 @@ Status DynamicQuantizeMatMulFusion::ApplyImpl(Graph& graph, bool& modified, int 
       continue;
     }
 
-    const Node* p_dynamic_quant_linear = graph_utils::FirstParentByType(matmul_integer_to_float_node, "DynamicQuantizeLinear");
+    const Node* p_dynamic_quant_linear = graph_utils::GetInputNode(matmul_integer_to_float_node, 0 /*arg_index*/);
     if (p_dynamic_quant_linear == nullptr) {
       continue;
     }
@@ -74,7 +74,7 @@ Status DynamicQuantizeMatMulFusion::ApplyImpl(Graph& graph, bool& modified, int 
       }
     }
 
-    Node* fused_node = &graph.AddNode(graph.GenerateNodeName(op_type_to_fuse),
+    Node* fused_node = &graph.AddNode(matmul_integer_to_float_node.Name(),
                                       op_type_to_fuse,
                                       "",
                                       input_defs,
