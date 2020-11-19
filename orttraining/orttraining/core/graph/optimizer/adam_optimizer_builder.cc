@@ -141,10 +141,11 @@ Status AdamOptimizerBuilder::Build(
           moment_tensor_proto = utils::TensorToTensorProto(init_tensor, gradient_moment_name);
         } else if (opt_configs[i].use_mixed_precision_moments) {
           moment_tensor_proto = CreateTensorProto<MLFloat16>(gradient_moment_name, MLFloat16(math::floatToHalf(0.f)), weight_dims);
-          moment_type_proto->mutable_tensor_type()->set_elem_type(element_type);
         } else {
           moment_tensor_proto = CreateTensorProto<float>(gradient_moment_name, 0.f, weight_dims);
         }
+
+        moment_type_proto->mutable_tensor_type()->set_elem_type(element_type);
 
         new_external_initializers.emplace_back(moment_tensor_proto);
 

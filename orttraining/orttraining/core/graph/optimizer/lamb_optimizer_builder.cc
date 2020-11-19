@@ -28,7 +28,7 @@ Status LambOptimizerBuilder::Build(
                new_external_initializers, output_weight_argdefs,
                output_gradient_argdefs,
                // gradient clipping is enabled by default for Lamb.
-               true, /*enable_grad_clipping*/ 
+               true, /*enable_grad_clipping*/
                {} /* shared_optim_state */);
 }
 
@@ -47,7 +47,7 @@ Status LambOptimizerBuilder::Build(
                gradient_norm_argdef, gradient_norm_finite_argdef,
                opt_configs, graph_defs,
                new_external_initializers, output_weight_argdefs,
-               output_gradient_argdefs,enable_grad_clipping,
+               output_gradient_argdefs, enable_grad_clipping,
                {} /* shared_optim_state */);
 }
 
@@ -265,10 +265,11 @@ Status LambOptimizerBuilder::Build(
           moment_tensor_proto = utils::TensorToTensorProto(init_tensor, gradient_moment_name);
         } else if (opt_configs[i].use_mixed_precision_moments) {
           moment_tensor_proto = CreateTensorProto<MLFloat16>(gradient_moment_name, MLFloat16(math::floatToHalf(0.f)), weight_dims);
-          moment_type_proto->mutable_tensor_type()->set_elem_type(element_type);
         } else {
           moment_tensor_proto = CreateTensorProto<float>(gradient_moment_name, 0.f, weight_dims);
         }
+
+        moment_type_proto->mutable_tensor_type()->set_elem_type(element_type);
 
         // Store momentum tensor to initializer list.
         new_external_initializers.emplace_back(std::move(moment_tensor_proto));

@@ -49,19 +49,20 @@ constexpr char STEP_TENSOR_NAME[] = "Step";
 constexpr char UC_TENSOR_NAME[] = "Update_Count";
 
 void GenerateOptimizerConfig(const std::string optimizer_name,
-                             const bool use_mixed_precision,
+                             const bool use_mixed_precision_moments,
                              TrainingSession::TrainingConfiguration& config) {
   TrainingSession::TrainingConfiguration::OptimizerConfiguration opt{};
   opt.name = optimizer_name;
   opt.learning_rate_input_name = "Learning_Rate";
   opt.weight_attributes_generator = [](const std::string&) { return std::unordered_map<std::string, float>(); };
   opt.weight_int_attributes_generator = [](const std::string&) { return std::unordered_map<std::string, int64_t>(); };
-  opt.use_mixed_precision_moments = use_mixed_precision;
-  opt.do_all_reduce_in_mixed_precision_type = use_mixed_precision;
+  opt.use_mixed_precision_moments = use_mixed_precision_moments;
+  opt.do_all_reduce_in_mixed_precision_type = true;
   opt.use_nccl = true;
   config.optimizer_config = opt;
 }
 
+template <class T>
 void GenerateOpimizerInitialState(const std::string& optimizer_op_name, TrainingSession::OptimizerState& optimizer_state) {
   TrainingSession::OptimizerState result;
   std::vector<int64_t> uc_value = {4};
@@ -73,9 +74,9 @@ void GenerateOpimizerInitialState(const std::string& optimizer_op_name, Training
     std::vector<int64_t> param_dims = WEIGHT_TO_SHAPE_MAP.at(weight_name);
     int64_t num_ele = std::accumulate(param_dims.begin(), param_dims.end(), 1, std::multiplies<int64_t>());
     for (auto& param_prefix : MOMENT_PREFIX) {
-      std::vector<float> param_value(num_ele, 2.5f);
+      std::vector<T> param_value(num_ele, static_cast<T>(2.5f));
 
-      TrainingUtil::CreateCpuMLValue(param_dims, param_value, &mlValue);
+      TrainingUtil::CreateCpuMLValue<T>(param_dims, param_value, &mlValue);
       optim_state.insert(std::make_pair(param_prefix, std::move(mlValue)));
     }
     if (optimizer_op_name == k_adam_optimizer_op_name) {
@@ -149,8 +150,10 @@ void VerifyState(const DataTransferManager& data_transfer_mgr, const NameMLValMa
       const std::vector<int64_t> actual(actual_tensor.template Data<int64_t>(), actual_tensor.template Data<int64_t>() + size);
       // the step value will be incremented by 1 after a train step
       ASSERT_EQ(expected[0] + 1, actual[0]);
-    } else {  // adding a tolerance as after a train step, the moment tensor value will be updated
-      horizontal_parallel_test_utils::VerifyOutputs(expected_tensor, actual_tensor, true, 1e-8, 1e-7, 0.32f);
+    } else if (expected_tensor.GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
+               expected_tensor.GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+      // adding a tolerance as after a train step, the moment tensor value will be updated
+      horizontal_parallel_test_utils::VerifyOutputs(expected_tensor, actual_tensor, true, 1e-8f, 1e-7f, 0.32f);
     }
   }
 }
@@ -239,7 +242,6 @@ static std::unique_ptr<TrainingSession> BuildAndRunTrainingSessionWithChecks(
   CUDAExecutionProviderInfo xp_info;
   ORT_THROW_IF_ERROR(training_session->RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info)));
 #endif
-
   ORT_THROW_IF_ERROR(training_session->Initialize());
 
   std::vector<MLValue> gradient_fetches;
@@ -270,6 +272,16 @@ static std::unique_ptr<TrainingSession> BuildAndRunTrainingSessionWithChecks(
     TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{lr}, &lrMLValue);
     fw_feeds.first.push_back(lr_feed_name);
     fw_feeds.second.push_back(lrMLValue);
+  }
+
+  if (config_result.mixed_precision_config_result.has_value()) {
+    const std::string& loss_scale_input_name =
+        config_result.mixed_precision_config_result.value().loss_scale_input_name;
+    float loss_scale = 2048.0f;
+    MLValue loss_scaleMLValue;
+    TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{loss_scale}, &loss_scaleMLValue);
+    fw_feeds.first.push_back(loss_scale_input_name);
+    fw_feeds.second.push_back(loss_scaleMLValue);
   }
 
   auto output_names_include_gradients = GetModelOutputNames(*training_session);

@@ -125,13 +125,21 @@ void VerifyOutputs(const Tensor& expected_tensor, const Tensor& actual_tensor, b
                    float atol, float rtol, float threshold) {
   ASSERT_EQ(expected_tensor.Shape(), actual_tensor.Shape());
   auto size = expected_tensor.Shape().Size();
-  const std::vector<float> expected(expected_tensor.template Data<float>(), expected_tensor.template Data<float>() + size);
-  const std::vector<float> actual(actual_tensor.template Data<float>(), actual_tensor.template Data<float>() + size);
-  VerifyOutputs(expected, actual, use_threshold_compare, atol, rtol, threshold);
+  if (expected_tensor.GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    const std::vector<float> expected(expected_tensor.template Data<float>(), expected_tensor.template Data<float>() + size);
+    const std::vector<float> actual(actual_tensor.template Data<float>(), actual_tensor.template Data<float>() + size);
+    VerifyOutputs<float>(expected, actual, use_threshold_compare, atol, rtol, threshold);
+  } else if (expected_tensor.GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+    const std::vector<MLFloat16> expected(expected_tensor.template Data<MLFloat16>(), expected_tensor.template Data<MLFloat16>() + size);
+    const std::vector<MLFloat16> actual(actual_tensor.template Data<MLFloat16>(), actual_tensor.template Data<MLFloat16>() + size);
+    VerifyOutputs<MLFloat16>(expected, actual, use_threshold_compare, MLFloat16(math::floatToHalf(atol)),
+                             MLFloat16(math::floatToHalf(rtol)), MLFloat16(math::floatToHalf(threshold)));
+  }
 }
 
-void VerifyOutputs(const std::vector<float>& expected, const std::vector<float>& actual,
-                   bool use_threshold_compare, float atol, float rtol, float threshold) {
+template <typename T>
+void VerifyOutputs(const std::vector<T>& expected, const std::vector<T>& actual,
+                   bool use_threshold_compare, T atol, T rtol, T threshold) {
   auto size = expected.size();
   ORT_ENFORCE(size == actual.size());
   for (auto i = 0u; i < size; ++i) {

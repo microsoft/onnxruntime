@@ -28,12 +28,21 @@ using namespace onnxruntime::path_utils;
 namespace onnxruntime {
 namespace test {
 
-static void RunTrainingSessionLoadOptimTests(std::string optim_name) {
+static void RunTrainingSessionLoadOptimTests(std::string optim_name, bool mixed_precision, bool mixed_precision_moments) {
   auto config = MakeBasicTrainingConfig();
-  GenerateOptimizerConfig(optim_name, false, config);
+  if (mixed_precision) {
+    TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mp{};
+    mp.use_mixed_precision_initializers=true;
+    config.mixed_precision_config = mp;
+  }
+  GenerateOptimizerConfig(optim_name, mixed_precision_moments, config);
 
   TrainingSession::OptimizerState init_optimizer_state{};
-  GenerateOpimizerInitialState(optim_name, init_optimizer_state);
+  if (mixed_precision_moments) {
+    GenerateOpimizerInitialState<MLFloat16>(optim_name, init_optimizer_state);
+  } else {
+    GenerateOpimizerInitialState<float>(optim_name, init_optimizer_state);
+  }
 
   config.init_optimizer_states = init_optimizer_state;
   SessionOptions so{};
@@ -49,14 +58,27 @@ static void RunTrainingSessionLoadOptimTests(std::string optim_name) {
   VerifyOptimizerState(data_transfer_manager, init_optimizer_state, actual_optimizer_state);
 }
 
-TEST(TrainingSessionTest, LoadOptimState_Adam) {
-  RunTrainingSessionLoadOptimTests(k_adam_optimizer_op_name);
+TEST(TrainingSessionTest, LoadOptimState_FullPrecision_FP32Moments_Adam) {
+  RunTrainingSessionLoadOptimTests(k_adam_optimizer_op_name, false, false);
 }
 
 #ifdef USE_CUDA
+TEST(TrainingSessionTest, LoadOptimState_MixedPrecision_FP32Moments_Adam) {
+  RunTrainingSessionLoadOptimTests(k_adam_optimizer_op_name, true, false);
+}
+
+TEST(TrainingSessionTest, LoadOptimState_MixedPrecision_FP16Moments_Adam) {
+  RunTrainingSessionLoadOptimTests(k_adam_optimizer_op_name, true, true);
+}
+
 // LambOptimizer op is registered for Cuda EP only
-TEST(TrainingSessionTest, LoadOptimState_Lamb) {
-  RunTrainingSessionLoadOptimTests(k_lamb_optimizer_op_name);
+TEST(TrainingSessionTest, LoadOptimState_FullPrecision_FP32Moments_Lamb) {
+  RunTrainingSessionLoadOptimTests(k_lamb_optimizer_op_name, false, false);
+}
+
+// FP16 moments are not supported by Lamb
+TEST(TrainingSessionTest, LoadOptimState_MixedPrecision_FP32Moments_Lamb) {
+  RunTrainingSessionLoadOptimTests(k_lamb_optimizer_op_name, true, false);
 }
 #endif
 

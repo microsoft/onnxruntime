@@ -22,8 +22,10 @@ Status MergeGraphsOnAllWorkers(std::vector<Graph*>& graphs, Graph& combine_graph
 void VerifyOutputs(const Tensor& expected_tensor, const Tensor& actual_tensor, bool use_threshold_compare,
                    float atol = 1e-8, float rtol = 1e-5, float threshold = 1e-3);
 
-void VerifyOutputs(const std::vector<float>& expected, const std::vector<float>& actual,
-                   bool use_threshold_compare, float atol = 1e-8, float rtol = 1e-5, float threshold = 1e-3);
+template <typename T>
+void VerifyOutputs(const std::vector<T>& expected, const std::vector<T>& actual,
+                   bool use_threshold_compare, T atol = static_cast<T>(1e-8), 
+                   T rtol = static_cast<T>(1e-5), T threshold = static_cast<T>(1e-3));
 
 Status GetDataAndShapeFromTensorProto(const Graph& graph, const NodeArg* input_arg,
                                       std::vector<float>& data, std::vector<int64_t>& shape);

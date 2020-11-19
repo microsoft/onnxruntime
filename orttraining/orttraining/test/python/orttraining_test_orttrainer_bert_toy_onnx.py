@@ -2,6 +2,7 @@ import copy
 from functools import partial
 import inspect
 import math
+import numpy as np
 from numpy.testing import assert_allclose
 import onnx
 import os
@@ -19,6 +20,12 @@ from onnxruntime.training import _utils, amp, checkpoint, optim, orttrainer, Tra
 
 import _test_commons, _test_helpers
 
+ADAM_OPTIM_NAME = optim.AdamConfig().name
+LAMB_OPTIM_NAME = optim.LambConfig().name
+MOMENT_KEYS = ["Moment_1", "Moment_2"]
+UC_KEY = "Update_Count"
+STEP_KEY = "Step"
+SHARED_STATE_KEY = "shared_optimizer_state"
 
 ###############################################################################
 # Helper functions ############################################################
@@ -44,6 +51,53 @@ def generate_random_input_from_model_desc(desc, seed=1, device = "cuda:0"):
                 size.append(dims[s] if s in dims else 1)
         sample_input.append(torch.randint(0, num_classes[index], tuple(size), dtype=dtype).to(device))
     return sample_input
+
+def generate_dummy_optim_state(model, optimizer):
+    if optimizer.name not in [ADAM_OPTIM_NAME, LAMB_OPTIM_NAME]:
+        return dict()
+
+    optim_state = dict()
+    name_to_initializer_map = {n.name:n for n in model.graph.initializer}
+    initializers_names = name_to_initializer_map.keys()
+    for weight in initializers_names:
+        per_weight_state = dict()
+        weight_shape = name_to_initializer_map[weight].dims
+        for moment in MOMENT_KEYS:
+            per_weight_state[moment] = np.full(weight_shape, 2.5, dtype=np.float32)
+        if optimizer.name == ADAM_OPTIM_NAME:
+            per_weight_state[UC_KEY] = np.full([1], 5, dtype=np.int64)
+        optim_state[weight] = copy.deepcopy(per_weight_state)
+    if optimizer.name == LAMB_OPTIM_NAME:
+        step_val = np.full([1], 5, dtype=np.int64)
+        optim_state[SHARED_STATE_KEY] = {STEP_KEY : step_val}
+    return optim_state
+
+def get_optim_state_from_state_dict(state_dict, optimizer):
+    if optimizer.name not in [ADAM_OPTIM_NAME, LAMB_OPTIM_NAME]:
+        return dict()
+    optim_state = dict()
+    for param_name, v in state_dict.items():
+        for moment in MOMENT_KEYS:
+            if param_name.startswith(moment):
+                fp32_name = param_name.split(moment + '_')[-1]
+                if fp32_name not in optim_state:
+                    optim_state[fp32_name] = dict()
+                optim_state[fp32_name].update({moment: v})
+                break
+        if param_name.startswith(UC_KEY):
+            fp32_name = param_name.split(UC_KEY + '_')[-1]
+            if fp32_name not in optim_state:
+                optim_state[fp32_name] = dict()
+            optim_state[fp32_name].update({UC_KEY: v})
+        elif param_name == STEP_KEY:
+            optim_state[SHARED_STATE_KEY] = {STEP_KEY: v}
+    return optim_state
+
+def assert_optim_state_equal(expected_state, actual_state):
+    assert expected_state.keys() == actual_state.keys()
+    for param_name, state in actual_state.items():
+        for k,v in state.items():
+            assert_allclose(v, expected_state[param_name][k])
 
 # EXPERIMENTAL HELPER FUNCTIONS
 
@@ -461,6 +515,49 @@ def testToyBertCheckpointFrozenWeights():
     assert_allclose(loss.cpu(), ckpt_loss.cpu())
     loaded_state_dict = checkpoint.experimental_state_dict(trainer2)
     assert state_dict.keys() == loaded_state_dict.keys()
+
+@pytest.mark.parametrize("optimizer, mixedprecision_enabled", [
+    (optim.LambConfig(), False),
+    (optim.AdamConfig(), False),
+    (optim.LambConfig(), True),
+    (optim.AdamConfig(), True),
+])
+def testToyBertLoadOptimState(optimizer, mixedprecision_enabled):
+    # Common setup
+    rtol = 1e-03
+    device = 'cuda'
+    seed = 1
+    torch.manual_seed(seed)
+    onnxruntime.set_seed(seed)
+    optim_config = optimizer
+    opts = orttrainer.ORTTrainerOptions({'debug' : {'deterministic_compute': True},
+                                         'device' : {'id' : device},
+                                         'mixed_precision': {
+                                                'enabled': mixedprecision_enabled,
+                                            },
+                                         'distributed' : {'allreduce_post_accumulation' : True}})
+
+    # Create ORTTrainer and save initial state in a dict
+    model = load_bert_onnx_model()
+    model_desc = bert_model_description()
+    dummy_init_state = generate_dummy_optim_state(model, optimizer)
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
+    checkpoint.experimental_load_optimizer_state(trainer, dummy_init_state)
+    
+    # Expected values
+    expected_eval_loss = [10.997552871]
+    input_ids = torch.tensor([[26598],[21379],[19922],[ 5219],[ 5644],[20559],[23777],[25672],[22969],[16824],[16822],[635],[27399],[20647],[18519],[15546]], device=device)
+    segment_ids = torch.tensor([[0],[1],[0],[1],[0],[0],[1],[0],[0],[1],[1],[0],[0],[1],[1],[1]], device=device)
+    input_mask = torch.tensor([[0],[0],[0],[0],[1],[1],[1],[0],[1],[1],[0],[0],[0],[1],[0],[0]], device=device)
+    masked_lm_labels = torch.tensor([[25496],[16184],[11005],[16228],[14884],[21660],[ 8678],[23083],[ 4027],[ 8397],[11921],[ 1333],[26482],[ 1666],[17925],[27978]], device=device)
+    next_sentence_labels = torch.tensor([0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0], device=device)
+
+    # Actual values
+    _ = trainer.eval_step(input_ids, segment_ids, input_mask, masked_lm_labels, next_sentence_labels)
+    
+    actual_state = checkpoint.experimental_state_dict(trainer)
+    actual_optim_state = get_optim_state_from_state_dict(actual_state, optimizer)
+    assert_optim_state_equal(dummy_init_state, actual_optim_state)
 
 @pytest.mark.parametrize("model_params", [
     (['bert.embeddings.LayerNorm.bias']),
