@@ -400,15 +400,18 @@ endif(onnxruntime_USE_DML)
 # Add static library that will be archived/linked for both static/dynamic library
 add_library(winml_lib_api STATIC
   ${winml_lib_api_dir}/impl/FeatureCompatibility.h
+  ${winml_lib_api_dir}/impl/IData.h
   ${winml_lib_api_dir}/impl/IMapFeatureValue.h
   ${winml_lib_api_dir}/impl/ISequenceFeatureValue.h
   ${winml_lib_api_dir}/impl/MapBase.h
+  ${winml_lib_api_dir}/impl/NumericData.h
   ${winml_lib_api_dir}/impl/SequenceBase.h
+  ${winml_lib_api_dir}/impl/StringData.h
   ${winml_lib_api_dir}/impl/Tensor.h
   ${winml_lib_api_dir}/impl/TensorBase.h
-  ${winml_lib_api_dir}/impl/TensorBuffer.h
   ${winml_lib_api_dir}/impl/TensorKindFrom.h
   ${winml_lib_api_dir}/impl/TensorMemoryBufferReference.h
+  ${winml_lib_api_dir}/NumericData.cpp
   ${winml_lib_api_dir}/ImageFeatureDescriptor.cpp
   ${winml_lib_api_dir}/ImageFeatureDescriptor.h
   ${winml_lib_api_dir}/ImageFeatureValue.cpp
@@ -429,8 +432,11 @@ add_library(winml_lib_api STATIC
   ${winml_lib_api_dir}/MapFeatureDescriptor.h
   ${winml_lib_api_dir}/SequenceFeatureDescriptor.cpp
   ${winml_lib_api_dir}/SequenceFeatureDescriptor.h
+  ${winml_lib_api_dir}/StringData.cpp
   ${winml_lib_api_dir}/TensorFeatureDescriptor.cpp
   ${winml_lib_api_dir}/TensorFeatureDescriptor.h
+  ${winml_lib_api_dir}/VectorBackedBuffer.h
+  ${winml_lib_api_dir}/VectorBackedBuffer.cpp
   ${winml_lib_api_dir}/pch/pch.h
 )
 

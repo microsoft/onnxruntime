@@ -559,8 +559,7 @@ void VideoFrameToTensorConverter::ConvertBuffersToBatchedGPUTensor(
   WINML_THROW_IF_FAILED(upload_heap_->Map(0, &CD3DX12_RANGE(0, 0), reinterpret_cast<void**>(&gpu_buffer)));
   auto gpu_buffer_span = gsl::span<byte>(gpu_buffer, buffer_size_in_bytes);
 
-  _winml::LoadOrStoreDisjointBuffers(
-      true /*load disjoint buffers into*/,
+  _winml::LoadSpanFromDisjointBuffers(
       buffers.size(),
       [&](size_t i) {
         byte* buffer_start = nullptr;
