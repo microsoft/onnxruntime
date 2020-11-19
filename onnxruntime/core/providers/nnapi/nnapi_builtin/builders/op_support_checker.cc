@@ -39,6 +39,20 @@ bool HasExternalInitializer(const InitializedTensorSet& initializers, const Node
   return false;
 }
 
+template <class T>
+void CreateSharedOpSupportCheckerImpl(const std::string& op_type,
+                                      OpSupportCheckerRegistrations& op_registrations,
+                                      const std::vector<std::string>& op_types) {
+  // The shared OpSupportChecker is already in the OpSupportCheckerRegistrations
+  if (op_registrations.op_support_checker_map.find(op_type) != op_registrations.op_support_checker_map.cend())
+    return;
+
+  op_registrations.support_checkers.push_back(onnxruntime::make_unique<T>());
+  for (const auto& op : op_types) {
+    op_registrations.op_support_checker_map.emplace(op, op_registrations.support_checkers.back().get());
+  }
+}
+
 #pragma endregion helpers
 
 #pragma region op_base
@@ -75,19 +89,12 @@ class BaseOpSupportChecker : public IOpSupportChecker {
 
 /* static */ void BaseOpSupportChecker::CreateSharedOpSupportChecker(
     const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
-  // The shared OpSupportChecker is already in the OpSupportCheckerRegistrations
-  if (op_registrations.op_support_checker_map.find(op_type) != op_registrations.op_support_checker_map.cend())
-    return;
-
-  // Add all supported ops
-  const std::vector<std::string> ops = {
-      "Relu",
-      "Identity",
-  };
-  op_registrations.support_checkers.push_back(onnxruntime::make_unique<BaseOpSupportChecker>());
-  for (const auto& op : ops) {
-    op_registrations.op_support_checker_map.emplace(op, op_registrations.support_checkers.back().get());
-  }
+  CreateSharedOpSupportCheckerImpl<BaseOpSupportChecker>(
+      op_type, op_registrations,
+      {
+          "Relu",
+          "Identity",
+      });
 }
 
 bool BaseOpSupportChecker::IsOpSupported(const InitializedTensorSet& initializers, const Node& node,
@@ -169,22 +176,15 @@ class BinaryOpSupportChecker : public BaseOpSupportChecker {
 
 /* static */ void BinaryOpSupportChecker::CreateSharedOpSupportChecker(
     const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
-  // The shared OpSupportChecker is already in the OpSupportCheckerRegistrations
-  if (op_registrations.op_support_checker_map.find(op_type) != op_registrations.op_support_checker_map.cend())
-    return;
-
-  // Add all supported ops
-  const std::vector<std::string> ops = {
-      "Add",
-      "Sub",
-      "Mul",
-      "Div",
-      "QLinearAdd",
-  };
-  op_registrations.support_checkers.push_back(onnxruntime::make_unique<BinaryOpSupportChecker>());
-  for (const auto& op : ops) {
-    op_registrations.op_support_checker_map.emplace(op, op_registrations.support_checkers.back().get());
-  }
+  CreateSharedOpSupportCheckerImpl<BinaryOpSupportChecker>(
+      op_type, op_registrations,
+      {
+          "Add",
+          "Sub",
+          "Mul",
+          "Div",
+          "QLinearAdd",
+      });
 }
 
 int32_t BinaryOpSupportChecker::GetMinSupportedSdkVer(
@@ -426,21 +426,14 @@ class PoolOpSupportChecker : public BaseOpSupportChecker {
 
 /* static */ void PoolOpSupportChecker::CreateSharedOpSupportChecker(
     const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
-  // The shared OpSupportChecker is already in the OpSupportCheckerRegistrations
-  if (op_registrations.op_support_checker_map.find(op_type) != op_registrations.op_support_checker_map.cend())
-    return;
-
-  // Add all supported ops
-  const std::vector<std::string> ops = {
-      "GlobalAveragePool",
-      "GlobalMaxPool",
-      "AveragePool",
-      "MaxPool",
-  };
-  op_registrations.support_checkers.push_back(onnxruntime::make_unique<PoolOpSupportChecker>());
-  for (const auto& op : ops) {
-    op_registrations.op_support_checker_map.emplace(op, op_registrations.support_checkers.back().get());
-  }
+  CreateSharedOpSupportCheckerImpl<PoolOpSupportChecker>(
+      op_type, op_registrations,
+      {
+          "GlobalAveragePool",
+          "GlobalMaxPool",
+          "AveragePool",
+          "MaxPool",
+      });
 }
 
 bool PoolOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
@@ -523,19 +516,12 @@ class ConvOpSupportChecker : public BaseOpSupportChecker {
 
 /* static */ void ConvOpSupportChecker::CreateSharedOpSupportChecker(
     const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
-  // The shared OpSupportChecker is already in the OpSupportCheckerRegistrations
-  if (op_registrations.op_support_checker_map.find(op_type) != op_registrations.op_support_checker_map.cend())
-    return;
-
-  // Add all supported ops
-  const std::vector<std::string> ops = {
-      "Conv",
-      "QLinearConv",
-  };
-  op_registrations.support_checkers.push_back(onnxruntime::make_unique<ConvOpSupportChecker>());
-  for (const auto& op : ops) {
-    op_registrations.op_support_checker_map.emplace(op, op_registrations.support_checkers.back().get());
-  }
+  CreateSharedOpSupportCheckerImpl<ConvOpSupportChecker>(
+      op_type, op_registrations,
+      {
+          "Conv",
+          "QLinearConv",
+      });
 }
 
 bool ConvOpSupportChecker::HasSupportedInputs(const Node& node) const {
@@ -714,20 +700,13 @@ bool GemmOpSupportChecker::HasSupportedInputs(const Node& node) const {
 
 /* static */ void GemmOpSupportChecker::CreateSharedOpSupportChecker(
     const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
-  // The shared OpSupportChecker is already in the OpSupportCheckerRegistrations
-  if (op_registrations.op_support_checker_map.find(op_type) != op_registrations.op_support_checker_map.cend())
-    return;
-
-  // Add all supported ops
-  const std::vector<std::string> ops = {
-      "Gemm",
-      "MatMul",
-      "QLinearMatMul",
-  };
-  op_registrations.support_checkers.push_back(onnxruntime::make_unique<GemmOpSupportChecker>());
-  for (const auto& op : ops) {
-    op_registrations.op_support_checker_map.emplace(op, op_registrations.support_checkers.back().get());
-  }
+  CreateSharedOpSupportCheckerImpl<GemmOpSupportChecker>(
+      op_type, op_registrations,
+      {
+          "Gemm",
+          "MatMul",
+          "QLinearMatMul",
+      });
 }
 
 int GemmOpSupportChecker::GetMinSupportedOpSet(const Node& node) const {
@@ -863,26 +842,19 @@ class UnaryOpSupportChecker : public BaseOpSupportChecker {
 
 /* static */ void UnaryOpSupportChecker::CreateSharedOpSupportChecker(
     const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
-  // The shared OpSupportChecker is already in the OpSupportCheckerRegistrations
-  if (op_registrations.op_support_checker_map.find(op_type) != op_registrations.op_support_checker_map.cend())
-    return;
-
-  // Add all supported ops
-  const std::vector<std::string> ops = {
-      "Abs",
-      "Exp",
-      "Floor",
-      "Log",
-      "Sigmoid",
-      "Neg",
-      "Sin",
-      "Sqrt",
-      "Tanh",
-  };
-  op_registrations.support_checkers.push_back(onnxruntime::make_unique<UnaryOpSupportChecker>());
-  for (const auto& op : ops) {
-    op_registrations.op_support_checker_map.emplace(op, op_registrations.support_checkers.back().get());
-  }
+  CreateSharedOpSupportCheckerImpl<UnaryOpSupportChecker>(
+      op_type, op_registrations,
+      {
+          "Abs",
+          "Exp",
+          "Floor",
+          "Log",
+          "Sigmoid",
+          "Neg",
+          "Sin",
+          "Sqrt",
+          "Tanh",
+      });
 }
 
 int32_t UnaryOpSupportChecker::GetMinSupportedSdkVer(

@@ -526,6 +526,20 @@ Status GetQuantizedInputScaleAndZeroPoint(const ModelBuilder& model_builder,
   return Status::OK();
 }
 
+template <class T>
+void CreateSharedOpBuilderImpl(const std::string& op_type,
+                               OpBuilderRegistrations& op_registrations,
+                               const std::vector<std::string>& op_types) {
+  // The shared OpSupportChecker is already in the OpSupportCheckerRegistrations
+  if (op_registrations.op_builder_map.find(op_type) != op_registrations.op_builder_map.cend())
+    return;
+
+  op_registrations.builders.push_back(onnxruntime::make_unique<T>());
+  for (const auto& op : op_types) {
+    op_registrations.op_builder_map.emplace(op, op_registrations.builders.back().get());
+  }
+}
+
 #pragma endregion helpers
 
 #pragma region op_base
@@ -575,22 +589,15 @@ void BinaryOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const N
 
 /* static */ void BinaryOpBuilder::CreateSharedOpBuilder(
     const std::string& op_type, OpBuilderRegistrations& op_registrations) {
-  // The shared OpBuilder is already in the OpBuilderRegistrations
-  if (op_registrations.op_builder_map.find(op_type) != op_registrations.op_builder_map.cend())
-    return;
-
-  // Add all supported ops
-  const std::vector<std::string> ops = {
-      "Add",
-      "Sub",
-      "Mul",
-      "Div",
-      "QLinearAdd",
-  };
-  op_registrations.builders.push_back(onnxruntime::make_unique<BinaryOpBuilder>());
-  for (const auto& op : ops) {
-    op_registrations.op_builder_map.emplace(op, op_registrations.builders.back().get());
-  }
+  CreateSharedOpBuilderImpl<BinaryOpBuilder>(
+      op_type, op_registrations,
+      {
+          "Add",
+          "Sub",
+          "Mul",
+          "Div",
+          "QLinearAdd",
+      });
 }
 
 Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
@@ -997,21 +1004,14 @@ class PoolOpBuilder : public BaseOpBuilder {
 
 /* static */ void PoolOpBuilder::CreateSharedOpBuilder(
     const std::string& op_type, OpBuilderRegistrations& op_registrations) {
-  // The shared OpBuilder is already in the OpBuilderRegistrations
-  if (op_registrations.op_builder_map.find(op_type) != op_registrations.op_builder_map.cend())
-    return;
-
-  // Add all supported ops
-  const std::vector<std::string> ops = {
-      "GlobalAveragePool",
-      "GlobalMaxPool",
-      "AveragePool",
-      "MaxPool",
-  };
-  op_registrations.builders.push_back(onnxruntime::make_unique<PoolOpBuilder>());
-  for (const auto& op : ops) {
-    op_registrations.op_builder_map.emplace(op, op_registrations.builders.back().get());
-  }
+  CreateSharedOpBuilderImpl<PoolOpBuilder>(
+      op_type, op_registrations,
+      {
+          "GlobalAveragePool",
+          "GlobalMaxPool",
+          "AveragePool",
+          "MaxPool",
+      });
 }
 
 Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
@@ -1122,19 +1122,12 @@ class ConvOpBuilder : public BaseOpBuilder {
 
 /* static */ void ConvOpBuilder::CreateSharedOpBuilder(
     const std::string& op_type, OpBuilderRegistrations& op_registrations) {
-  // The shared OpBuilder is already in the OpBuilderRegistrations
-  if (op_registrations.op_builder_map.find(op_type) != op_registrations.op_builder_map.cend())
-    return;
-
-  // Add all supported ops
-  const std::vector<std::string> ops = {
-      "Conv",
-      "QLinearConv",
-  };
-  op_registrations.builders.push_back(onnxruntime::make_unique<ConvOpBuilder>());
-  for (const auto& op : ops) {
-    op_registrations.op_builder_map.emplace(op, op_registrations.builders.back().get());
-  }
+  CreateSharedOpBuilderImpl<ConvOpBuilder>(
+      op_type, op_registrations,
+      {
+          "Conv",
+          "QLinearConv",
+      });
 }
 
 void ConvOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
@@ -1505,20 +1498,13 @@ class GemmOpBuilder : public BaseOpBuilder {
 
 /* static */ void GemmOpBuilder::CreateSharedOpBuilder(
     const std::string& op_type, OpBuilderRegistrations& op_registrations) {
-  // The shared OpBuilder is already in the OpBuilderRegistrations
-  if (op_registrations.op_builder_map.find(op_type) != op_registrations.op_builder_map.cend())
-    return;
-
-  // Add all supported ops
-  const std::vector<std::string> ops = {
-      "Gemm",
-      "MatMul",
-      "QLinearMatMul",
-  };
-  op_registrations.builders.push_back(onnxruntime::make_unique<GemmOpBuilder>());
-  for (const auto& op : ops) {
-    op_registrations.op_builder_map.emplace(op, op_registrations.builders.back().get());
-  }
+  CreateSharedOpBuilderImpl<GemmOpBuilder>(
+      op_type, op_registrations,
+      {
+          "Gemm",
+          "MatMul",
+          "QLinearMatMul",
+      });
 }
 
 void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
@@ -1647,26 +1633,19 @@ class UnaryOpBuilder : public BaseOpBuilder {
 
 /* static */ void UnaryOpBuilder::CreateSharedOpBuilder(
     const std::string& op_type, OpBuilderRegistrations& op_registrations) {
-  // The shared OpBuilder is already in the OpBuilderRegistrations
-  if (op_registrations.op_builder_map.find(op_type) != op_registrations.op_builder_map.cend())
-    return;
-
-  // Add all supported ops
-  const std::vector<std::string> ops = {
-      "Abs",
-      "Exp",
-      "Floor",
-      "Log",
-      "Sigmoid",
-      "Neg",
-      "Sin",
-      "Sqrt",
-      "Tanh",
-  };
-  op_registrations.builders.push_back(onnxruntime::make_unique<UnaryOpBuilder>());
-  for (const auto& op : ops) {
-    op_registrations.op_builder_map.emplace(op, op_registrations.builders.back().get());
-  }
+  CreateSharedOpBuilderImpl<UnaryOpBuilder>(
+      op_type, op_registrations,
+      {
+          "Abs",
+          "Exp",
+          "Floor",
+          "Log",
+          "Sigmoid",
+          "Neg",
+          "Sin",
+          "Sqrt",
+          "Tanh",
+      });
 }
 
 Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
