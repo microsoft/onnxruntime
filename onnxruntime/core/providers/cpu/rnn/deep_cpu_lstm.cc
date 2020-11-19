@@ -204,6 +204,7 @@ Status DeepCpuLstmOp::TryPackWeights(const Tensor& weights, PackedWeights& packe
   return Status::OK();
 }
 
+#if !defined(USE_MKLML_FOR_BLAS)
 Status DeepCpuLstmOp::PrePack(const Tensor& tensor, int input_idx, bool& is_packed) {
   is_packed = false;
 
@@ -217,6 +218,7 @@ Status DeepCpuLstmOp::PrePack(const Tensor& tensor, int input_idx, bool& is_pack
 
   return Status::OK();
 }
+#endif
 
 Status DeepCpuLstmOp::Compute(OpKernelContext* context) const {
   const Tensor& X = *context->Input<Tensor>(0);  // inputs. [seq_length, batch_size, input_size]
