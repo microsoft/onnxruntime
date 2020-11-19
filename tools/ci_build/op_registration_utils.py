@@ -220,8 +220,6 @@ def _process_nnapi_lines(lines: typing.List[str], offset: int, registration_proc
     line_match_pattern = ('^NNAPI_EP_ADD_(SHARED_OP_BUILDER|SINGLE_OP_BUILDER|'
                           'SHARED_OP_SUPPORT_CHECKER|SINGLE_OP_SUPPORT_CHECKER)\\(\\"\\s*(\\w+)\\"')
 
-    print(line_match_pattern)
-
     match = re.match(line_match_pattern, code_line)
     if match:
         op_type = match.group(2)
