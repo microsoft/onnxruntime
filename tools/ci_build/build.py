@@ -1827,7 +1827,7 @@ def main():
         from exclude_unused_ops import exclude_unused_ops
         models_path = args.include_ops_by_model if args.include_ops_by_model else ''
         config_path = args.include_ops_by_config if args.include_ops_by_config else ''
-        exclude_unused_ops(models_path, config_path, use_cuda=args.use_cuda, use_nnapi=args.use_nnapi)
+        exclude_unused_ops(models_path, config_path, use_cuda=args.use_cuda)
 
     if args.use_tensorrt:
         args.use_cuda = True

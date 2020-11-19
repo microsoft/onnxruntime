@@ -8,7 +8,6 @@ Utilities to help process files containing kernel registrations.
 import os
 import sys
 import typing
-import re
 
 from logger import get_logger
 
@@ -59,23 +58,6 @@ def get_kernel_registration_files(ort_root=None, include_cuda=False):
     provider_paths = [os.path.abspath(p) for p in provider_paths]
 
     return provider_paths
-
-
-def get_nnapi_registration_files(ort_root=None):
-    '''
-    Return paths to files containing operator registrations for NNAPI EP.
-    :param ort_root: ORT repository root directory. Inferred from the location of this script if not provided.
-    :return: list[str] containing the operator registration filenames.
-    '''
-    if not ort_root:
-        ort_root = os.path.dirname(os.path.abspath(__file__)) + '/../..'
-
-    nnapi_path = ort_root + '/onnxruntime/core/providers/nnapi/nnapi_builtin/builders/'
-    nnapi_provider_paths = [nnapi_path + 'op_builder.cc',
-                            nnapi_path + 'op_support_checker.cc']
-
-    nnapi_provider_paths = [os.path.abspath(p) for p in nnapi_provider_paths]
-    return nnapi_provider_paths
 
 
 class RegistrationProcessor:
@@ -197,43 +179,11 @@ def _process_lines(lines: typing.List[str], offset: int, registration_processor:
     return offset + 1
 
 
-def _process_nnapi_lines(lines: typing.List[str], offset: int, registration_processor: RegistrationProcessor):
-    end_mark = ';'
-    lines_to_process = []
-
-    # merge line if split over multiple.
-    # original lines will be in lines_to_process. merged and stripped line will be in code_line
-    while True:
-        lines_to_process.append(lines[offset])
-        stripped = lines[offset].strip()
-
-        if stripped.endswith(end_mark):
-            break
-
-        offset += 1
-        if offset > len(lines):
-            log.error('Past end of input lines looking for line terminator.')
-            sys.exit(-1)
-
-    code_line = ''.join([line.strip() for line in lines_to_process])
-
-    line_match_pattern = ('^NNAPI_EP_ADD_(SHARED_OP_BUILDER|SINGLE_OP_BUILDER|'
-                          'SHARED_OP_SUPPORT_CHECKER|SINGLE_OP_SUPPORT_CHECKER)\\(\\"\\s*(\\w+)\\"')
-
-    match = re.match(line_match_pattern, code_line)
-    if match:
-        op_type = match.group(2)
-        registration_processor.process_registration(lines_to_process, None, op_type, None, None, None)
-
-    return offset + 1
-
-
-def process_kernel_registration_file(filename: str, registration_processor: RegistrationProcessor, use_nnapi=False):
+def process_kernel_registration_file(filename: str, registration_processor: RegistrationProcessor):
     '''
     Process a kernel registration file using registration_processor.
     :param filename: Path to file containing kernel registrations.
     :param registration_processor: Processor to be used.
-    :param use_nnapi: Process nnapi registration files if set true, otherwise process cpu[/cuda] registration files
     :return True if processing was successful.
     '''
 
@@ -246,23 +196,13 @@ def process_kernel_registration_file(filename: str, registration_processor: Regi
         lines = file_to_read.readlines()
 
     offset = 0
-
-    if use_nnapi:
-        line_start = 'NNAPI_EP_ADD_'
-    else:
-        line_start = 'BuildKernelCreateInfo<ONNX'
-
     while offset < len(lines):
 
         line = lines[offset]
         stripped = line.strip()
 
-        if stripped.startswith(line_start):
-            if use_nnapi:
-                offset = _process_nnapi_lines(lines, offset, registration_processor)
-            else:
-                offset = _process_lines(lines, offset, registration_processor)
-
+        if stripped.startswith('BuildKernelCreateInfo<ONNX'):
+            offset = _process_lines(lines, offset, registration_processor)
         else:
             registration_processor.process_other_line(line)
             offset += 1
