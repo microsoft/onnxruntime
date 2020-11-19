@@ -163,5 +163,25 @@ TEST(ExpandOpTest, Expand_2x2x1x2x1_float) {
   test.Run();
 }
 
+#ifndef USE_TENSORRT
+TEST(ExpandOpTest, Expand_scalar_float) {
+  OpTester test("Expand", 8);
+  test.AddInput<float>("data_0", {}, {3.0f});
+  test.AddInput<int64_t>("data_1", {0}, {});
+  test.AddOutput<float>("result", {}, {3.0f});
+  test.Run();
+}
+#endif
+
+TEST(ExpandOpTest, Expand_scalar_int32) {
+  OpTester test("Expand", 8);
+  test.AddInput<int32_t>("data_0", {}, {9});
+  test.AddInput<int64_t>("data_1", {3}, {2, 3, 4});
+  test.AddOutput<int32_t>("result", {2, 3, 4},
+                         {9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+                          9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9});
+  test.Run();
+}
+
 }  //namespace test
 }  //namespace onnxruntime
