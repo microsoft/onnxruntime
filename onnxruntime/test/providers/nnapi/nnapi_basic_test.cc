@@ -158,7 +158,7 @@ TEST(NnapiExecutionProviderTest, FunctionTest) {
 #endif  // !(ORT_MINIMAL_BUILD
 
 TEST(NnapiExecutionProviderTest, NNAPIFlagsTest) {
-  unsigned long nnapi_flags = NNAPI_FLAG_USE_NONE;
+  uint32_t nnapi_flags = NNAPI_FLAG_USE_NONE;
   nnapi_flags |= NNAPI_FLAG_USE_FP16;
   onnxruntime::NnapiExecutionProvider nnapi_ep(nnapi_flags);
   const auto flags = nnapi_ep.GetNNAPIFlags();
