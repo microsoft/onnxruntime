@@ -385,6 +385,40 @@ TEST(NhwcTransformerTests, ConvBlockBinary) {
   }
 }
 
+TEST(NhwcTransformerTests, ConvGlobalAveragePool) {
+  auto build_test_case = [&](NhwcTestHelper& helper) {
+    auto* input_arg = helper.MakeInput<uint8_t>({1, 23, 13, 13});
+    auto* conv1_output_arg = helper.MakeIntermediate();
+    auto* conv2_output_arg = helper.MakeIntermediate();
+    auto* gavgpool1_output_arg = helper.MakeIntermediate();
+    auto* gavgpool2_output_arg = helper.MakeIntermediate();
+    auto* output_arg = helper.MakeOutput();
+
+    Node& conv1_node = helper.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135,
+                                                          {30, 23, 3, 3}, .02f, 126,
+                                                          conv1_output_arg, .37f, 131);
+    conv1_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+    helper.AddQLinearActivationNode("QLinearGlobalAveragePool",
+                                    conv1_output_arg, .37f, 131,
+                                    gavgpool1_output_arg, .43f, 111);
+    helper.AddQLinearConvNode<uint8_t>(gavgpool1_output_arg, .43f, 111,
+                                        {16, 30, 1, 1}, .015f, 129,
+                                        conv2_output_arg, .37f, 131);
+    helper.AddQLinearActivationNode("QLinearGlobalAveragePool",
+                                    conv2_output_arg, .37f, 131,
+                                    gavgpool2_output_arg, .37f, 131);
+    helper.AddDequantizeLinearNode(gavgpool2_output_arg, .37f, 131, output_arg);
+  };
+
+  auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.QLinearConv"], 2);
+    EXPECT_EQ(op_to_count["Transpose"], 2);
+  };
+
+  NhwcTransformerTester(build_test_case, check_nhwc_graph);
+}
+
 TEST(NhwcTransformerTests, ConvBlockActivation) {
   auto test_case = [&](uint32_t extra_edges) {
     auto build_test_case = [&](NhwcTestHelper& helper) {
