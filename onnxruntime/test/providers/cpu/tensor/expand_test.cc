@@ -163,7 +163,7 @@ TEST(ExpandOpTest, Expand_2x2x1x2x1_float) {
   test.Run();
 }
 
-#ifndef USE_CUDA
+#ifndef USE_TENSORRT
 TEST(ExpandOpTest, Expand_scalar_float) {
   OpTester test("Expand", 8);
   test.AddInput<float>("data_0", {}, {3.0f});
