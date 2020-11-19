@@ -29,7 +29,7 @@ TEST(Dropout, WithOptionalOutputOpset10) {
   test.AddInput<float>("X", dims, {1.0f, 2.0f, 3.0f, 5.0f});
   test.AddOutput<float>("Y", dims, {1.0f, 2.0f, 3.0f, 5.0f});
   test.AddOutput<bool>("mask", dims, {false, false, false, false});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {});
+  test.Run();
 }
 
 TEST(Dropout, WithOptionalOutputOpset7) {

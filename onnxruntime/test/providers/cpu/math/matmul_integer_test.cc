@@ -307,7 +307,7 @@ void RunMatMulIntegerU8X8Test(const int M, const int N, const int K, bool non_ze
   if (non_zero_zp) {
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNupharExecutionProvider});
   } else {
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {});
+    test.Run();
   }
 }
 

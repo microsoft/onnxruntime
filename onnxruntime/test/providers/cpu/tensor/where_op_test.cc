@@ -119,7 +119,7 @@ TEST(WhereOpTest, BroadcastDimWithZero) {
 
   test.AddOutput<int64_t>("output", {0, 3}, {});
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {});
+  test.Run();
 }
 
 TEST(WhereOpTest, BroadcastWithScalar) {
