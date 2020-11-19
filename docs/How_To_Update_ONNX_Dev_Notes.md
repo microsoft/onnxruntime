@@ -19,6 +19,8 @@ This file should be generated. See [cgmanifests/README](/cgmanifests/README.md) 
 - [manylinux image requirements](onnxruntime/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt)
 - [all other linux image requirements](onnxruntime/tools/ci_build/github/linux/docker/scripts/requirements.txt)
 
-4. Update test filters to filter tests for latest ops (coming in as part of the new ONNX commit bump). These tests need to be added back after ort implements these ops.
+4. Send PR and run CI builds
+
+5. If there are any test failures because of the new ops that are coming in as part of the onnx commit bump, update test filters to filter tests for these ops. These tests need to be added back after ort implements these ops.
 - c++ test filters [onnxruntime/test/onnx/test_filters.h](onnxruntime/test/onnx/test_filters.h)
 - python andf nodejs test filters [onnxruntime/test/testdata/onnx_backend_test_series_filters.jsonc](/onnxruntime/test/testdata/onnx_backend_test_series_filters.jsonc)
