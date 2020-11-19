@@ -44,11 +44,6 @@ void RegisterSignalSchemas() {
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc(R"DOC(DFT)DOC")
-      .Attr("signal_ndim",
-            "The number of dimension of the input signal."
-            "Values can be 1, 2 or 3.",
-            AttributeProto::AttributeType::AttributeProto_AttributeType_INT,
-            static_cast<int64_t>(1))
       .Attr("onesided",
             "If True (default), only values for half of the fft size are returned because the real-to-complex Fourier transform satisfies the conjugate symmetry."
             "The output tensor will return the first floor(n_fft/2) + 1 values from the DFT."
@@ -105,11 +100,6 @@ void RegisterSignalSchemas() {
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc(R"DOC(IDFT)DOC")
-      .Attr("signal_ndim",
-            "The number of dimension of the input signal."
-            "Values can be 1, 2 or 3.",
-            AttributeProto::AttributeType::AttributeProto_AttributeType_INT,
-            static_cast<int64_t>(1))
       .Input(0,
              "input",
              "A complex signal of dimension signal_ndim."
@@ -151,11 +141,6 @@ void RegisterSignalSchemas() {
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc(R"DOC(STFT)DOC")
-      .Attr("signal_ndim",
-            "The number of dimension of the input signal."
-            "Values can be 1, 2 or 3.",
-            AttributeProto::AttributeType::AttributeProto_AttributeType_INT,
-            static_cast<int64_t>(1))
       .Attr("onesided",
             "If True (default), only values for half of the fft size are returned because the real-to-complex Fourier transform satisfies the conjugate symmetry."
             "The output tensor will return the first floor(n_fft/2) + 1 values from the DFT."
@@ -171,17 +156,17 @@ void RegisterSignalSchemas() {
              "The first dimension is the batch dimension.",
              "T1")
       .Input(1,
+             "fft_size",
+             "Size of the fft.",
+             "T2")
+      .Input(2,
              "window",
              "A tensor representing the window that will be slid over the input signal.",
              "T1",
              OpSchema::FormalParameterOption::Optional)
-      .Input(2,
+      .Input(3,
              "hop_length",
              "The number of samples to step between successive DFTs.",
-             "T2")
-      .Input(3,
-             "dft_length",
-             "The number of samples to consider in the DFTs.",
              "T2")
       .Output(0,
               "output",
@@ -195,11 +180,6 @@ void RegisterSignalSchemas() {
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc(R"DOC(ISTFT)DOC")
-      .Attr("signal_ndim",
-            "The number of dimension of the input signal."
-            "Values can be 1, 2 or 3.",
-            AttributeProto::AttributeType::AttributeProto_AttributeType_INT,
-            static_cast<int64_t>(1))
       .Input(0,
              "input",
              "A complex signal of dimension signal_ndim."
@@ -209,17 +189,17 @@ void RegisterSignalSchemas() {
              "The first dimension is the batch dimension.",
              "T1")
       .Input(1,
+             "fft_size",
+             "Size of the fft.",
+             "T2")
+      .Input(2,
              "window",
              "A tensor representing the window that will be slid over the input signal.",
              "T1",
              OpSchema::FormalParameterOption::Optional)
-      .Input(2,
+      .Input(3,
              "hop_length",
              "The number of samples to step between successive DFTs.",
-             "T2")
-      .Input(3,
-             "dft_length",
-             "The number of samples to consider in the DFTs.",
              "T2")
       .Output(0,
               "output",

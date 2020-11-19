@@ -651,6 +651,81 @@ static void TestDFT() {
   }
 }
 
+template <typename T>
+static auto make_middle_c(int64_t signal_size, int64_t sample_rate) {
+  float middle_c_in_hertz = 261.626f;
+  float angular_velocity = middle_c_in_hertz * 2 * 3.1415f;
+  std::vector<T> signal(signal_size);
+  for (int64_t i = 0; i < signal_size; i++) {
+    T time = i / static_cast<T>(sample_rate); 
+    signal[i] = cos(angular_velocity * time);
+  }
+  return signal;
+}
+
+static void TestSTFT(int64_t batch_size, int64_t signal_size, int64_t dft_size, int64_t hop_size) {
+  printf("\nSTFT\n");
+  using namespace winml_experimental;
+  using Operator = winml_experimental::LearningModelOperator;
+
+  static const wchar_t MS_DOMAIN[] = L"com.microsoft";
+
+  auto number_of_dfts = static_cast<int64_t>(ceil((signal_size - dft_size) / hop_size));
+
+  std::vector<int64_t> input_shape = {1, signal_size};
+  int64_t onesided_dft_size = static_cast<int64_t>(floor(dft_size / 2.f) + 1);
+  std::vector<int64_t> output_shape = {
+      batch_size,
+      number_of_dfts,
+      onesided_dft_size,
+      2
+  };
+
+  // input slice
+  auto input_slice_start = TensorInt32Bit::CreateFromShapeArrayAndDataArray({1}, {1});
+  auto input_slice_ends = TensorInt32Bit::CreateFromShapeArrayAndDataArray({1}, {2});
+
+  auto hop_length = TensorInt64Bit::CreateFromShapeArrayAndDataArray({}, {hop_size});
+  auto dft_length = TensorInt64Bit::CreateFromShapeArrayAndDataArray({}, {dft_size});
+
+  auto model =
+      LearningModelBuilder::Create()
+          .Inputs().Add(TensorFeatureDescriptor(L"Input.TimeSignal", L"The input time domain signal", TensorKind::Float, input_shape))
+          .Outputs().Add(TensorFeatureDescriptor(L"Output.STFT", L"The output frequency domain spectra", TensorKind::Float, output_shape))
+          .Operators().Add(Operator(L"HannWindow", L"hann0", MS_DOMAIN)
+              .SetConstant(L"size", dft_length)
+              .SetOutput(L"output", L"hann_window"))
+          .Operators().Add(Operator(L"STFT", L"stft0", MS_DOMAIN)
+              .SetInput(L"input", L"Input.TimeSignal")
+              .SetInput(L"window", L"hann_window")
+              .SetConstant(L"hop_length", hop_length)
+              .SetOutput(L"output", L"Output.STFT"))
+          .CreateModel();
+
+  LearningModelSession session(model);
+  LearningModelBinding binding(session);
+
+
+
+  // Populate binding
+  auto signal = make_middle_c<float>(signal_size, 8192);
+  binding.Bind(L"Input.TimeSignal", TensorFloat::CreateFromShapeArrayAndDataArray(input_shape, signal));
+  binding.Bind(L"hann0.size", dft_length);
+  binding.Bind(L"stft0.hop_length", hop_length);
+
+  // Evaluate
+  auto result = session.Evaluate(binding, L"");
+
+  // Check results
+  auto y_tensor = result.Outputs().Lookup(L"Output").as<TensorFloat>();
+  auto y_ivv = y_tensor.GetAsVectorView();
+  for (int i = 0; i < output_shape[0] * output_shape[1] * 2; i += 2) {
+    printf("%f + %fi\n", y_ivv.GetAt(i), y_ivv.GetAt(i + 1));
+  }
+}
+
+
+
 static void TestGemm() {
   printf("\nGemm\n");
   using namespace winml_experimental;
@@ -686,13 +761,28 @@ static void TestGemm() {
 static void TestModelBuilding() {
   TestDFT();
 
-  
-  int64_t batch_size = 1;
-  int64_t num_samples = 32;
-  int64_t onesided_fft_size = static_cast<int64_t>(std::floor(num_samples / 2) + 1);
-  int64_t n_mel_bins = 10;
-  int64_t sampling_rate = 48000;
-  TestSpectrogram(batch_size, num_samples, onesided_fft_size, n_mel_bins, sampling_rate);
+  {
+    int64_t sample_rate = 8192;
+    float signal_duration_in_seconds = 5.f;
+
+    float frame_duration_in_seconds = .025f;
+    float frame_stride_in_seconds = .01f;
+
+    int64_t batch_size = 1;
+    int64_t signal_size = static_cast<int64_t>(sample_rate * signal_duration_in_seconds);
+    int64_t dft_size = 256; //static_cast<int64_t>(sample_rate * frame_duration_in_seconds);
+    int64_t hop_size = 128; //static_cast<int64_t>(sample_rate * frame_stride_in_seconds);
+    TestSTFT(batch_size, signal_size, dft_size, hop_size);
+  }
+
+  {
+    int64_t batch_size = 1;
+    int64_t num_samples = 32;
+    int64_t onesided_fft_size = static_cast<int64_t>(std::floor(num_samples / 2) + 1);
+    int64_t n_mel_bins = 10;
+    int64_t sampling_rate = 48000;
+    TestSpectrogram(batch_size, num_samples, onesided_fft_size, n_mel_bins, sampling_rate);
+  }
 
   TestWindowFunction(L"HannWindow");
   TestWindowFunction(L"HammingWindow");

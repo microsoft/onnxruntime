@@ -219,7 +219,6 @@ static Status dft(OpKernelContext* ctx, bool is_onesided, bool inverse) {
   Status status;
   const auto* X = ctx->Input<Tensor>(0);
   const auto& X_shape = X->Shape();
-  int64_t X_num_dims = static_cast<int64_t>(X_shape.NumDimensions());
 
   onnxruntime::TensorShape Y_shape;
   int64_t n_fft = is_onesided ? static_cast<int64_t>(std::floor(X_shape[1]/2.f) + 1) : X_shape[1];
@@ -254,11 +253,98 @@ Status DFT::Compute(OpKernelContext* ctx) const {
 }
 
 Status IDFT::Compute(OpKernelContext* ctx) const {
-  return dft(ctx, is_onesided_, true);
+  return dft(ctx, false, true);
 }
 
-Status STFT::Compute(OpKernelContext* /*ctx*/) const {
-  return Status::OK();
+// dedupe with the other one in window_functions.cc
+template <typename T>
+static T get_scalar_value_from_tensor(const Tensor* t) {
+  ORT_ENFORCE(t->Shape().Size() == 1, "ratio input should have a single value.");
+
+  T value;
+
+  auto data_type = t->DataType()->AsPrimitiveDataType()->GetDataType();
+  switch (data_type) {
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+      value = static_cast<T>(*reinterpret_cast<const float*>(t->DataRaw()));
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
+      value = static_cast<T>(*reinterpret_cast<const double*>(t->DataRaw()));
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+      value = static_cast<T>(*reinterpret_cast<const int32_t*>(t->DataRaw()));
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+      value = static_cast<T>(*reinterpret_cast<const int64_t*>(t->DataRaw()));
+      break;
+    default:
+      ORT_THROW("Unsupported input data type of ", data_type);
+  }
+
+  return value;
+}
+
+
+template <typename T, typename U>
+static Status stft(OpKernelContext* ctx, bool is_onesided, bool /*inverse*/) {
+  Status status = Status::OK();
+
+  
+  // Get signal
+  const auto* signal = ctx->Input<Tensor>(0);
+  const auto& signal_shape = signal->Shape();
+
+  const auto* window = ctx->Input<Tensor>(2);
+  const auto& window_shape = window->Shape();
+  const auto window_size = window_shape[0];
+
+  const auto batch_size = signal_shape[0];
+  const auto signal_size = signal_shape[1];
+  const auto dft_size = get_scalar_value_from_tensor<int64_t>(ctx->Input<Tensor>(1));
+  const auto hop_length = get_scalar_value_from_tensor<int64_t>(ctx->Input<Tensor>(3));
+  const auto dft_output_size = is_onesided ? static_cast<int64_t>(std::floor(window_size / 2.f) + 1) : window_size;
+  ORT_ENFORCE(window_size < signal_size, "Ensure that the dft size is smaller than the signal.");
+
+  const auto number_of_dfts = static_cast<int64_t>(std::ceil((signal_size - window_size) / static_cast<float>(hop_length)));
+  onnxruntime::TensorShape spectra_shape({batch_size, number_of_dfts, dft_output_size, 2});
+  auto* Y = ctx->Output(0, spectra_shape);
+  auto* Y_data = reinterpret_cast<T*>(Y->MutableDataRaw());
+  memset(Y_data, 1, sizeof(T) * spectra_shape.Size());
+
+  return status;
+
+}
+
+
+
+Status STFT::Compute(OpKernelContext* ctx) const {
+  Status status;
+  const auto* signal = ctx->Input<Tensor>(0);
+  const auto& signal_shape = signal->Shape();
+  MLDataType data_type = signal->DataType();
+  const auto element_size = data_type->Size();
+  switch (element_size) {
+    case sizeof(float):
+      if (signal_shape.NumDimensions() == 2) {
+        // real
+        status = stft<float, float>(ctx, is_onesided_, false);
+      } else if (signal_shape.NumDimensions() == 3 && signal_shape[2] == 2) {
+        // complex
+        status = stft<float, std::complex<float>>(ctx, is_onesided_, false);
+      }
+      break;
+    case sizeof(double):
+      if (signal_shape.NumDimensions() == 2) {
+        status = stft<double, double>(ctx, is_onesided_, false);
+      } else if (signal_shape.NumDimensions() == 3 && signal_shape[2] == 2) {
+        status = stft<double, std::complex<double>>(ctx, is_onesided_, false);
+      }
+      break;
+    default:
+      ORT_THROW("Unsupported input data type of ", data_type);
+  }
+
+  return status;
 }
 
 Status ISTFT::Compute(OpKernelContext* /*ctx*/) const {

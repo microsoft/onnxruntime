@@ -14,17 +14,17 @@ class DFT final : public OpKernel {
 };
 
 class IDFT final : public OpKernel {
-  bool is_onesided_ = true;
  public:
   explicit IDFT(const OpKernelInfo& info) : OpKernel(info) {
-    is_onesided_ = info.GetAttrOrDefault<int64_t>("onesided", 1);
   }
   Status Compute(OpKernelContext* ctx) const override;
 };
 
 class STFT final : public OpKernel {
+  bool is_onesided_ = true;
  public:
   explicit STFT(const OpKernelInfo& info) : OpKernel(info) {
+    is_onesided_ = info.GetAttrOrDefault<int64_t>("onesided", 1);
   }
   Status Compute(OpKernelContext* ctx) const override;
 };
