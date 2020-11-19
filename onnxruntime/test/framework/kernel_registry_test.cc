@@ -4,10 +4,6 @@
 #include <gtest/gtest.h>
 #include <core/framework/kernel_registry.h>
 #include <core/framework/op_kernel.h>
-#include "core/framework/execution_providers.h"
-#include "core/providers/cpu/cpu_execution_provider.h"
-#include <core/framework/kernel_registry_manager.h>
-#include "asserts.h"
 
 using namespace onnxruntime;
 static Status RegKernels(KernelRegistry& r, std::vector<std::unique_ptr<KernelDef> >& function_table, const KernelCreateFn& kernel_creator) {
@@ -101,8 +97,8 @@ TEST(KernelRegistryTests, two_versions3) {
 TEST(KernelRegistryTests, two_versions4) {
   KernelRegistry r;
   std::vector<std::unique_ptr<KernelDef> > function_table;
-  function_table.emplace_back(KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<float>()).SetName("Elu").SetDomain("").SinceVersion(5, 6).Provider(kCpuExecutionProvider).Build());
-  function_table.emplace_back(KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<float>()).SetName("Elu").SetDomain("").SinceVersion(6, 7).Provider(kCpuExecutionProvider).Build());
+  function_table.emplace_back(KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<float>()).SetName("Elu").SetDomain("").SinceVersion(5,6).Provider(kCpuExecutionProvider).Build());
+  function_table.emplace_back(KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<float>()).SetName("Elu").SetDomain("").SinceVersion(6,7).Provider(kCpuExecutionProvider).Build());
   Status st;
   ASSERT_FALSE((st = RegKernels(r, function_table, CreateFakeKernel)).IsOK());
 }
