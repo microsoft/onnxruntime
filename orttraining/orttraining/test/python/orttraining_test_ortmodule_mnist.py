@@ -1,6 +1,7 @@
 import argparse
 import logging
 import torch
+import time
 from torchvision import datasets, transforms
 
 import onnxruntime
@@ -23,7 +24,15 @@ class NeuralNet(torch.nn.Module):
 
 
 def train(args, model, device, optimizer, loss_fn, train_loader, epoch):
+    print('\n======== Epoch {:} / {:} ========'.format(epoch+1, args.epochs))
     model.train()
+    # Measure how long the training epoch takes.
+    t0 = time.time()
+    start_time = t0
+
+    # Reset the total loss for this epoch.
+    total_loss = 0
+
     for iteration, (data, target) in enumerate(train_loader):
         if iteration == args.train_steps:
             break
@@ -42,18 +51,38 @@ def train(args, model, device, optimizer, loss_fn, train_loader, epoch):
             pytorch_backward_graph.view()
 
         loss = loss_fn(probability, target)
+        # Accumulate the training loss over all of the batches so that we can
+        # calculate the average loss at the end. `loss` is a Tensor containing a
+        # single value; the `.item()` function just returns the Python value
+        # from the tensor.
+        total_loss += loss.item()
+
         loss.backward()
         optimizer.step()
 
         # Stats
         if iteration % args.log_interval == 0:
-            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                epoch, iteration * len(data), len(train_loader.dataset),
-                100. * iteration / len(train_loader), loss))
+            curr_time = time.time()
+            elapsed_time = curr_time - start_time
+            print('[{:5}/{:5} ({:2.0f}%)]\tLoss: {:.6f}\tExecution time: {:.4f}'.format(
+                iteration * len(data), len(train_loader.dataset),
+                100. * iteration / len(train_loader), loss, elapsed_time))
+            start_time = curr_time
+
+    # Calculate the average loss over the training data.
+    avg_train_loss = total_loss / len(train_loader)
+
+    epoch_time = time.time() - t0
+    print("\n  Average training loss: {0:.2f}".format(avg_train_loss))
+    print("  Training epoch took: {:.4f}s".format(epoch_time))
+    return epoch_time
 
 
 def test(args, model, device, loss_fn, test_loader):
     model.eval()
+
+    t0 = time.time()
+
     test_loss = 0
     correct = 0
     with torch.no_grad():
@@ -70,6 +99,12 @@ def test(args, model, device, loss_fn, test_loader):
     print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
         test_loss, correct, len(test_loader.dataset),
         100. * correct / len(test_loader.dataset)))
+
+    # Report the final accuracy for this validation run.
+    epoch_time = time.time() - t0
+    print("  Accuracy: {0:.2f}".format(float(correct)/len(test_loader.dataset)))
+    print("  Validation took: {:.4f}s".format(epoch_time))
+    return epoch_time
 
 def my_loss(x, target, is_train=True):
     if is_train:
@@ -94,8 +129,8 @@ def main():
                         help='random seed (default: 42)')
     parser.add_argument('--pytorch-only', action='store_true', default=False,
                         help='disables ONNX Runtime training')
-    parser.add_argument('--log-interval', type=int, default=100, metavar='N',
-                        help='how many batches to wait before logging training status (default: 100)')
+    parser.add_argument('--log-interval', type=int, default=300, metavar='N',
+                        help='how many batches to wait before logging training status (default: 300)')
     parser.add_argument('--view-graphs', action='store_true', default=False,
                         help='views forward and backward graphs')
     parser.add_argument('--epochs', type=int, default=10, metavar='N',
@@ -148,10 +183,21 @@ def main():
     optimizer = torch.optim.SGD(model.parameters(), lr=args.lr)
 
     # Train loop
-    for epoch in range(1, args.epochs + 1):
-        train(args, model, device, optimizer, my_loss, train_loader, epoch)
+    total_training_time, total_test_time, epoch_0_training = 0, 0, 0
+    for epoch in range(0, args.epochs):
+        total_training_time += train(args, model, device, optimizer, my_loss, train_loader, epoch)
+        if not args.pytorch_only and epoch == 0:
+            epoch_0_training = total_training_time
         if args.test_batch_size > 0:
-            test(args, model, device, my_loss, test_loader)
+            total_test_time += test(args, model, device, my_loss, test_loader)
+
+    print('\n======== Global stats ========')
+    if not args.pytorch_only:
+        estimated_export = epoch_0_training - (total_training_time - epoch_0_training)/(args.epochs-1)
+        print("  Estimated ONNX export took:               {:.4f}s".format(estimated_export))
+        print("  Accumulated training without export took: {:.4f}s".format(total_training_time - estimated_export))
+    print("  Accumulated training took:                {:.4f}s".format(total_training_time))
+    print("  Accumulated validation took:              {:.4f}s".format(total_test_time))
 
 
 if __name__ == '__main__':
