@@ -526,17 +526,6 @@ Status GetQuantizedInputScaleAndZeroPoint(const ModelBuilder& model_builder,
   return Status::OK();
 }
 
-std::shared_ptr<IOpBuilder> FindOpBuilder(const std::vector<const std::string>& op_types,
-                                          std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>& op_map) {
-  for (const auto& op_type : op_types) {
-    const auto it = op_map.find(op_type);
-    if (it != op_map.cend())
-      return it->second;
-  }
-
-  return nullptr;
-}
-
 #pragma endregion helpers
 
 #pragma region op_base

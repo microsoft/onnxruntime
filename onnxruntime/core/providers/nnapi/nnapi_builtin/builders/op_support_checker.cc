@@ -39,17 +39,6 @@ bool HasExternalInitializer(const InitializedTensorSet& initializers, const Node
   return false;
 }
 
-std::shared_ptr<IOpSupportChecker> FindOpSupportChecker(
-    const std::vector<const std::string>& op_types, std::unordered_map<std::string, std::shared_ptr<IOpSupportChecker>>& op_map) {
-  for (const auto& op_type : op_types) {
-    const auto it = op_map.find(op_type);
-    if (it != op_map.cend())
-      return it->second;
-  }
-
-  return nullptr;
-}
-
 #pragma endregion helpers
 
 #pragma region op_base
