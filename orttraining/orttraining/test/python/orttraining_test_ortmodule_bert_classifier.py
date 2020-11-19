@@ -32,6 +32,7 @@ def train(model, optimizer, scheduler, train_dataloader, epoch, device, args):
 
     # Measure how long the training epoch takes.
     t0 = time.time()
+    start_time = t0
 
     # Reset the total loss for this epoch.
     total_loss = 0
@@ -90,11 +91,6 @@ def train(model, optimizer, scheduler, train_dataloader, epoch, device, args):
                         None,
                         b_labels)
 
-        if args.view_graphs:
-            import torchviz
-            pytorch_backward_graph = torchviz.make_dot(outputs[0], params=dict(list(model.named_parameters())))
-            pytorch_backward_graph.view()
-
         # The call to `model` always returns a tuple, so we need to pull the
         # loss value out of the tuple.
         loss = outputs[0]
@@ -102,10 +98,17 @@ def train(model, optimizer, scheduler, train_dataloader, epoch, device, args):
         # Progress update every 40 batches.
         if step % args.log_interval == 0 and not step == 0:
             # Calculate elapsed time in minutes.
-            elapsed = format_time(time.time() - t0)
+            curr_time = time.time()
+            elapsed_time = curr_time - start_time
 
             # Report progress.
-            print(f'Batch {step} of {len(train_dataloader)}. Elapsed: {elapsed}. Loss: {loss.item()}')
+            print(f'Batch {step:4} of {len(train_dataloader):4}. Execution time: {elapsed_time:.4f}. Loss: {loss.item():.4f}')
+            start_time = curr_time
+
+        if args.view_graphs:
+            import torchviz
+            pytorch_backward_graph = torchviz.make_dot(outputs[0], params=dict(list(model.named_parameters())))
+            pytorch_backward_graph.view()
 
         # Accumulate the training loss over all of the batches so that we can
         # calculate the average loss at the end. `loss` is a Tensor containing a
@@ -131,8 +134,10 @@ def train(model, optimizer, scheduler, train_dataloader, epoch, device, args):
     # Calculate the average loss over the training data.
     avg_train_loss = total_loss / len(train_dataloader)
 
+    epoch_time = time.time() - t0
     print("\n  Average training loss: {0:.2f}".format(avg_train_loss))
-    print("  Training epoch took: {:}".format(format_time(time.time() - t0)))
+    print("  Training epoch took: {:.4f}s".format(epoch_time))
+    return epoch_time
 
 def test(model, validation_dataloader, device, args):
     # ========================================
@@ -142,11 +147,11 @@ def test(model, validation_dataloader, device, args):
     # our validation set.
     print("\nRunning Validation...")
 
-    t0 = time.time()
-
     # Put the model in evaluation mode--the dropout layers behave differently
     # during evaluation.
     model.eval()
+
+    t0 = time.time()
 
     # Tracking variables
     eval_loss, eval_accuracy = 0, 0
@@ -207,8 +212,10 @@ def test(model, validation_dataloader, device, args):
         nb_eval_steps += 1
 
     # Report the final accuracy for this validation run.
+    epoch_time = time.time() - t0
     print("  Accuracy: {0:.2f}".format(eval_accuracy/nb_eval_steps))
-    print("  Validation took: {:}".format(format_time(time.time() - t0)))
+    print("  Validation took: {:.4f}s".format(epoch_time))
+    return epoch_time
 
 def load_dataset(args):
     # 2. Loading CoLA Dataset
@@ -417,9 +424,20 @@ def main():
         torch.cuda.manual_seed_all(args.seed)
 
     # 4. Train loop (fine-tune)
+    total_training_time, total_test_time, epoch_0_training = 0, 0, 0
     for epoch_i in range(0, args.epochs):
-        train(model, optimizer, scheduler, train_dataloader, epoch_i, device, args)
-        test(model, validation_dataloader, device, args)
+        total_training_time += train(model, optimizer, scheduler, train_dataloader, epoch_i, device, args)
+        if not args.pytorch_only and epoch_i == 0:
+            epoch_0_training = total_training_time
+        total_test_time += test(model, validation_dataloader, device, args)
+
+    print('\n======== Global stats ========')
+    if not args.pytorch_only:
+        estimated_export = epoch_0_training - (total_training_time - epoch_0_training)/(args.epochs-1)
+        print("  Estimated ONNX export took:               {:.4f}s".format(estimated_export))
+        print("  Accumulated training without export took: {:.4f}s".format(total_training_time - estimated_export))
+    print("  Accumulated training took:                {:.4f}s".format(total_training_time))
+    print("  Accumulated validation took:              {:.4f}s".format(total_test_time))
 
 if __name__ == '__main__':
     main()
