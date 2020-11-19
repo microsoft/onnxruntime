@@ -1,15 +1,9 @@
 include (ExternalProject)
 
-<<<<<<< HEAD
 set(DNNL_URL https://github.com/oneapi-src/onednn)
 # If DNNL_TAG is updated, check if MKLML_VERSION and platform.cmake.patch need to be updated.
 set(DNNL_TAG v1.7)
-=======
-set(DNNL_URL https://github.com/intel/mkl-dnn.git)
-# If DNNL_TAG is updated, check if MKLML_VERSION and platform.cmake.patch need to be updated.
-set(DNNL_TAG v1.1.1)
 set(MKLML_VERSION 2019.0.5.20190502)
->>>>>>> parent of 5802fe169... Remove MKLML build config (#5559)
 
 if(WIN32)
   set(MKLML_OS_VERSION_STR "win")
@@ -47,14 +41,6 @@ else()
   endif()  
 endif()
 
-<<<<<<< HEAD
-if (onnxruntime_USE_DNNL AND onnxruntime_DNNL_GPU_RUNTIME STREQUAL "ocl" AND onnxruntime_DNNL_OPENCL_ROOT STREQUAL "")
-  message(FATAL_ERROR "onnxruntime_DNNL_OPENCL_ROOT required for onnxruntime_DNNL_GPU_RUNTIME")
-elseif(onnxruntime_USE_DNNL AND onnxruntime_DNNL_GPU_RUNTIME STREQUAL "ocl")
-  file(TO_CMAKE_PATH ${onnxruntime_DNNL_OPENCL_ROOT} onnxruntime_DNNL_OPENCL_ROOT)
-  set(DNNL_OCL_INCLUDE_DIR ${onnxruntime_DNNL_OPENCL_ROOT}/include)
-  set(DNNL_GPU_CMAKE_ARGS "-DDNNL_GPU_RUNTIME=OCL " "-DOPENCLROOT=${onnxruntime_DNNL_OPENCL_ROOT}")
-=======
 if (onnxruntime_USE_MKLML)
   set(MKLDNN_VERSION_SHORT v0.20)
   set(MKLML_URL https://github.com/intel/mkl-dnn/releases/download/${MKLDNN_VERSION_SHORT}/mklml_${MKLML_OS_VERSION_STR}_${MKLML_VERSION}.${MKLML_FILE_EXTENSION})
@@ -71,7 +57,14 @@ if (onnxruntime_USE_MKLML)
   set(MKLML_INCLUDE_DIR "${MKML_DIR}/include")
   set(MKLML_LIB_DIR "${MKML_DIR}/lib")
   link_directories(${MKLML_LIB_DIR})
->>>>>>> parent of 5802fe169... Remove MKLML build config (#5559)
+endif()
+
+if (onnxruntime_USE_DNNL AND onnxruntime_DNNL_GPU_RUNTIME STREQUAL "ocl" AND onnxruntime_DNNL_OPENCL_ROOT STREQUAL "")
+  message(FATAL_ERROR "onnxruntime_DNNL_OPENCL_ROOT required for onnxruntime_DNNL_GPU_RUNTIME")
+elseif(onnxruntime_USE_DNNL AND onnxruntime_DNNL_GPU_RUNTIME STREQUAL "ocl")
+  file(TO_CMAKE_PATH ${onnxruntime_DNNL_OPENCL_ROOT} onnxruntime_DNNL_OPENCL_ROOT)
+  set(DNNL_OCL_INCLUDE_DIR ${onnxruntime_DNNL_OPENCL_ROOT}/include)
+  set(DNNL_GPU_CMAKE_ARGS "-DDNNL_GPU_RUNTIME=OCL " "-DOPENCLROOT=${onnxruntime_DNNL_OPENCL_ROOT}")
 endif()
 
 if (onnxruntime_USE_DNNL)
