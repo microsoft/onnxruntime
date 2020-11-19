@@ -1107,12 +1107,14 @@ struct OrtApi {
 
   /**
    * Append CUDA execution provider to the session options
+   * If CUDA is not available (due to a non cuda enabled build), this function will return failure.
    */
   ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_CUDA,
                   _In_ OrtSessionOptions* options, _In_ const OrtCUDAProviderOptions* cuda_options);
 
   /**
    * Append OpenVINO execution provider to the session options
+   * If OpenVINO is not available (due to the OpenVINO provider shared library or its dependencies not being installed), this function will fail.
    */
   ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_OpenVINO,
                   _In_ OrtSessionOptions* options, _In_ const OrtOpenVINOProviderOptions* provider_options);
