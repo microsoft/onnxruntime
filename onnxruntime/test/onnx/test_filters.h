@@ -9,6 +9,13 @@
 
 namespace onnxruntime {
 namespace test {
+
+/*
+Following filters are used by "onnxruntime/onnxruntime/test/providers/cpu/model_tests.cc" and 
+"onnxruntime/onnxruntime/test/onnx/main.cc". Any broken tests or blacklisted tests from onnx backend test data set
+and from model test data set should be added here.
+*/
+
 // Permanently exclude following tests because ORT support only opset starting from 7,
 // Please make no more changes to the list
 static const ORTCHAR_T* immutable_broken_tests[] = {
@@ -158,19 +165,19 @@ static const ORTCHAR_T* tensorrt_disabled_tests[] = {
 #if !defined(__amd64__) && !defined(_M_AMD64)
 // out of memory
 static const ORTCHAR_T* x86_disabled_tests[] = {ORT_TSTR("BERT_Squad"),
-                                                    ORT_TSTR("bvlc_alexnet"),
-                                                    ORT_TSTR("bvlc_reference_caffenet"),
-                                                    ORT_TSTR("coreml_VGG16_ImageNet"),
-                                                    ORT_TSTR("faster_rcnn"),
-                                                    ORT_TSTR("GPT2"),
-                                                    ORT_TSTR("GPT2_LM_HEAD"),
-                                                    ORT_TSTR("keras_lotus_resnet3D"),
-                                                    ORT_TSTR("mlperf_ssd_resnet34_1200"),
-                                                    ORT_TSTR("mask_rcnn_keras"),
-                                                    ORT_TSTR("mask_rcnn"),
-                                                    ORT_TSTR("ssd"),
-                                                    ORT_TSTR("vgg19"),
-                                                    ORT_TSTR("zfnet512")};
+                                                ORT_TSTR("bvlc_alexnet"),
+                                                ORT_TSTR("bvlc_reference_caffenet"),
+                                                ORT_TSTR("coreml_VGG16_ImageNet"),
+                                                ORT_TSTR("faster_rcnn"),
+                                                ORT_TSTR("GPT2"),
+                                                ORT_TSTR("GPT2_LM_HEAD"),
+                                                ORT_TSTR("keras_lotus_resnet3D"),
+                                                ORT_TSTR("mlperf_ssd_resnet34_1200"),
+                                                ORT_TSTR("mask_rcnn_keras"),
+                                                ORT_TSTR("mask_rcnn"),
+                                                ORT_TSTR("ssd"),
+                                                ORT_TSTR("vgg19"),
+                                                ORT_TSTR("zfnet512")};
 #endif
 
 struct BrokenTest {
@@ -590,5 +597,17 @@ inline std::set<BrokenTest> GetBrokenTestsForProvider(const std::string& provide
   return broken_tests;
 }
 
+/*
+This filter is used by KernelRegistryTests.kernels_registered_for_all_onnx_ops. This test
+validates that ort CPU EP has registered kernels for all onnx domain operator schemas.
+When ONNX commit is updated ORT may not have an implementation for the latest updates coming in from ONNX
+in this case the ops which are updated or newly added should be added here so that the test can still pass.
+Before any ORT release all the ops from this filter should be cleared.
+*/
+static const std::vector<std::string> expected_not_registered_ops = {
+    // Following 3 ops are permanently filters since CPU EP does not have kernel for these ops by design.
+    "Constant",
+    "MemcpyToHost",
+    "MemcpyFromHost"};
 }  // namespace test
 }  // namespace onnxruntime

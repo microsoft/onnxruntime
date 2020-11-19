@@ -20,6 +20,6 @@ This file should be generated. See [cgmanifests/README](/cgmanifests/README.md) 
 - [all other linux image requirements](onnxruntime/tools/ci_build/github/linux/docker/scripts/requirements.txt)
 
 4. Update test filters
-Update test filters to filter out tests for latest ops. These tests need to be added back after ort implements these ops.
-- c++ test filters [onnxruntime/test/onnx/test_filters.h](/onnxruntime/test/onnx/main.cc)
+Update test filters to filter tests for latest ops. These tests need to be added back after ort implements these ops.
+- c++ test filters [onnxruntime/test/onnx/test_filters.h](onnxruntime/test/onnx/test_filters.h)
 - python andf nodejs test filters [onnxruntime/test/testdata/onnx_backend_test_series_filters.jsonc](/onnxruntime/test/testdata/onnx_backend_test_series_filters.jsonc)
