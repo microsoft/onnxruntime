@@ -3084,66 +3084,66 @@ RunThreadedTests(
 
 int
 #if defined(_WIN32)
-    __cdecl
+__cdecl
 #endif
-    main(
-        void) {
-  //
-  // Run threaded tests without the thread pool.
-  //
+main(
+    void
+    )
+{
+    //
+    // Run threaded tests without the thread pool.
+    //
 
-  RunThreadedTests();
+    RunThreadedTests();
 
 #if !defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
 
-  //
-  // Run threaded tests using the thread pool.
-  //
+    //
+    // Run threaded tests using the thread pool.
+    //
 
-  threadpool = new onnxruntime::concurrency::ThreadPool(
-      &onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), nullptr, 2, true);
+    threadpool = new onnxruntime::concurrency::ThreadPool(
+        &onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), nullptr, 2, true);
 
-  RunThreadedTests();
+    RunThreadedTests();
 
-  delete threadpool;
+    delete threadpool;
 
 #endif
 
-  //
-  // Run remaining tests that do not use the thread pool.
-  //
+    //
+    // Run remaining tests that do not use the thread pool.
+    //
 
-  printf("Activation tests.\n");
-  onnxruntime::make_unique<MlasActivationTest>()->ExecuteShort();
+    printf("Activation tests.\n");
+    onnxruntime::make_unique<MlasActivationTest>()->ExecuteShort();
 
-  printf("Transcendental tests.\n");
-  onnxruntime::make_unique<MlasComputeExpTest>()->ExecuteShort();
+    printf("Transcendental tests.\n");
+    onnxruntime::make_unique<MlasComputeExpTest>()->ExecuteShort();
 
-  printf("MinMaxElements tests.\n");
-  onnxruntime::make_unique<MlasFindMinMaxElementsTest>()->ExecuteShort();
+    printf("MinMaxElements tests.\n");
+    onnxruntime::make_unique<MlasFindMinMaxElementsTest>()->ExecuteShort();
 
-  printf("ReorderOutput tests.\n");
-  if (MlasNchwcGetBlockSize() > 1) {
-    onnxruntime::make_unique<MlasReorderOutputTest>()->ExecuteShort();
-  }
+    printf("ReorderOutput tests.\n");
+    if (MlasNchwcGetBlockSize() > 1) {
+        onnxruntime::make_unique<MlasReorderOutputTest>()->ExecuteShort();
+    }
 
-  printf("QLinearAdd tests.\n");
-  onnxruntime::make_unique<MlasQLinearBinaryOpTest>(
-      [](float a, float b) { return a + b; }, "+", MlasQLinearAdd<int8_t>, MlasQLinearAdd<uint8_t>)
-      ->ExecuteShort();
+    printf("QLinearAdd tests.\n");
+    onnxruntime::make_unique<MlasQLinearBinaryOpTest>(
+        [](float a, float b) { return a + b; }, "+", MlasQLinearAdd<int8_t>, MlasQLinearAdd<uint8_t>)->ExecuteShort();
 
-  printf("QLinearMul tests.\n");
-  onnxruntime::make_unique<MlasQLinearBinaryOpTest>(
-      [](float a, float b) { return a * b; }, "*", MlasQLinearMul<int8_t>, MlasQLinearMul<uint8_t>)
-      ->ExecuteShort();
+    printf("QLinearMul tests.\n");
+    onnxruntime::make_unique<MlasQLinearBinaryOpTest>(
+        [](float a, float b) { return a * b; }, "*", MlasQLinearMul<int8_t>, MlasQLinearMul<uint8_t>)->ExecuteShort();
 
-  printf("MlasScaleOutput tests.\n");
-  onnxruntime::make_unique<MlasScaleOutputTest>()->ExecuteShort();
+    printf("MlasScaleOutput tests.\n");
+    onnxruntime::make_unique<MlasScaleOutputTest>()->ExecuteShort();
 
-  printf("MlasGlobalAveragePool tests.\n");
-  onnxruntime::make_unique<MlasQLinearGlobalAveragePoolU8Test>()->ExecuteShort();
+    printf("MlasGlobalAveragePool tests.\n");
+    onnxruntime::make_unique<MlasQLinearGlobalAveragePoolU8Test>()->ExecuteShort();
 
-  printf("Done.\n");
+    printf("Done.\n");
 
-  return 0;
+    return 0;
 }
