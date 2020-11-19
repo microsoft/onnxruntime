@@ -139,6 +139,8 @@ class ONNXCalibrater:
                 if tensor in model.graph.initializer:
                     tensors_to_calibrate.remove(tensor)
 
+        print("tensors_to_calibrate:")
+        print(tensors_to_calibrate)
         for tensor in tensors_to_calibrate:
             # Adding ReduceMin nodes
             reduce_min_name = tensor + '_ReduceMin'
@@ -178,6 +180,7 @@ class ONNXCalibrater:
         #conduct inference session and get intermediate outputs
         # session = onnxruntime.InferenceSession(self.augmented_model_path, None)
         session = onnxruntime.InferenceSession(self.augmented_model_path, providers=["CUDAExecutionProvider"])
+        # print(session.get_inputs()[0].name)
 
         intermediate_outputs = []
         while True:
@@ -215,6 +218,8 @@ class ONNXCalibrater:
 
         final_dict = dict(zip(node_names, pairs))
 
+
+        # merge new calibration data with previous calibration data
         if len(self.calibration_cache) > 0:
             for key, value in self.calibration_cache.items():
                 min_value = min(value[0], final_dict[key][0])
@@ -321,7 +326,7 @@ def get_calibrator(model_path,
 
     return calibrator
 
-def calculate_calibration_data(model_input,
+def calculate_calibration_data(model_path,
                                calibrator=None,
                                calibration_data_reader: CalibrationDataReader=None,
                                op_types_to_quantize=[],
@@ -338,20 +343,47 @@ def calculate_calibration_data(model_input,
     if not op_types_to_quantize or len(op_types_to_quantize) == 0:
         op_types_to_quantize = list(QLinearOpsRegistry.keys())
 
+    print("model path: %s" % model_path)
+    print("augmented model path: %s" % augmented_model_path)
+
     if not calibrator:
-        calibrator = get_calibrator(model_input, calibration_data_reader, op_types_to_quantize, nodes_to_quantize, nodes_to_exclude)
+        calibrator = get_calibrator(model_path, calibration_data_reader, op_types_to_quantize, nodes_to_quantize, nodes_to_exclude, augmented_model_path=augmented_model_path)
 
     if not os.path.exists(augmented_model_path):
         augmented_model = calibrator.augment_graph(implicitly_quantize_all_ops)
         onnx.save(augmented_model, augmented_model_path)
 
-    dict_for_quantization = calibrator.get_intermediate_outputs()
+    calibrator.get_intermediate_outputs()
+
+def generate_calibration_table(model_path, augmented_model_path, data_reader, calibration_dataset=None, batch_size=1000):
+
+    if os.path.exists(augmented_model_path):
+        os.remove(augmented_model_path)
+        print("remove previously generated %s and start to generate a new one." % (augmented_model_path))
 
 
-    return dict_for_quantization
+    calibrator = None 
+    stride = batch_size
+    total_data_size = len(os.listdir(calibration_dataset)) if calibration_dataset else stride
 
-    # quantization_params_dict = calibrate(model_input, calibration_data_reader, op_types_to_quantize, nodes_to_quantize,
-                                         # nodes_to_exclude, implicitly_quantize_all_ops=implicitly_quantize_all_ops, calibration_table=calibration_table)
+
+    # Some machines don't have sufficient memeory to load all the images from dataset.
+    # So we handle it by batches. 
+    for i in range(0, total_data_size, stride):
+        if calibration_dataset:
+            print("Total data size %s\nStart to process data from index %s ..." % (str(len(image_list)), str(i)))
+
+        if not calibrator:
+            calibrator = get_calibrator(model_path, data_reader, augmented_model_path=augmented_model_path)
+        else:
+            calibrator.set_data_reader(data_reader)
+
+        calculate_calibration_data(model_path, calibrator, augmented_model_path=augmented_model_path, implicitly_quantize_all_ops=True)
+
+    if calibrator:
+        calibrator.write_calibration_table()
+
+    print('calibration table generated and saved.')
 
 def calibrate(model_path,
               data_reader: CalibrationDataReader,
