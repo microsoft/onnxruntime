@@ -971,7 +971,7 @@ public class InferenceTest {
             assertArrayEquals(flatInput, resultArray);
           }
           // Check that the profiling start time doesn't throw
-          long profilingStartTime = session.getProfilingStartTime();
+          long profilingStartTime = session.getProfilingStartTimeInNs();
 
           // Check the profiling output doesn't throw
           String profilingOutput = session.endProfiling();

@@ -321,8 +321,8 @@ public class OrtSession implements AutoCloseable {
    * @return the profiling start time in ns.
    * @throws OrtException If the native call failed.
    */
-  public long getProfilingStartTime() throws OrtException {
-    return getProfilingStartTime(OnnxRuntime.ortApiHandle, nativeHandle);
+  public long getProfilingStartTimeInNs() throws OrtException {
+    return getProfilingStartTimeInNs(OnnxRuntime.ortApiHandle, nativeHandle);
   }
 
   /**
@@ -424,7 +424,8 @@ public class OrtSession implements AutoCloseable {
       long runOptionsHandle)
       throws OrtException;
 
-  private native long getProfilingStartTime(long apiHandle, long nativeHandle) throws OrtException;
+  private native long getProfilingStartTimeInNs(long apiHandle, long nativeHandle)
+      throws OrtException;
 
   private native String endProfiling(long apiHandle, long nativeHandle, long allocatorHandle)
       throws OrtException;
