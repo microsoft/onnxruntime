@@ -8,24 +8,24 @@ using namespace onnxruntime;
 
 namespace onnxruntime {
 struct NnapiProviderFactory : IExecutionProviderFactory {
-  NnapiProviderFactory(unsigned long nnapi_flags)
+  NnapiProviderFactory(uint32_t nnapi_flags)
       : nnapi_flags_(nnapi_flags) {}
   ~NnapiProviderFactory() override {}
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
-  unsigned long nnapi_flags_;
+  uint32_t nnapi_flags_;
 };
 
 std::unique_ptr<IExecutionProvider> NnapiProviderFactory::CreateProvider() {
   return onnxruntime::make_unique<NnapiExecutionProvider>(nnapi_flags_);
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(unsigned long nnapi_flags) {
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(uint32_t nnapi_flags) {
   return std::make_shared<onnxruntime::NnapiProviderFactory>(nnapi_flags);
 }
 }  // namespace onnxruntime
 
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Nnapi, _In_ OrtSessionOptions* options, unsigned long nnapi_flags) {
+ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Nnapi, _In_ OrtSessionOptions* options, uint32_t nnapi_flags) {
   options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_Nnapi(nnapi_flags));
   return nullptr;
 }

@@ -4,6 +4,8 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Runtime.InteropServices;
+using System.IO;
 
 namespace Microsoft.ML.OnnxRuntime
 {
@@ -206,7 +208,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Loads a DLL named 'libraryPath' and looks for this entry point:
         /// OrtStatus* RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api);
         /// It then passes in the provided session options to this function along with the api base.
-        /// The handle to the loaded library is returned in 'libraryHandle'. 
+        /// The handle to the loaded library is returned in 'libraryHandle'.
         /// It can be unloaded by the caller after all sessions using the passed in
         /// session options are destroyed, or if an error occurs and it is non null.
         /// Hint: .NET Core 3.1 has a 'NativeLibrary' class that can be used to free the library handle
@@ -275,7 +277,7 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Override symbolic dimensions (by specific name strings) with actual values if known at session initialization time to enable 
+        /// Override symbolic dimensions (by specific name strings) with actual values if known at session initialization time to enable
         /// optimizations that can take advantage of fixed values (such as memory planning, etc)
         /// </summary>
         /// <param name="dimName">dimension name</param>
@@ -288,9 +290,9 @@ namespace Microsoft.ML.OnnxRuntime
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtAddFreeDimensionOverrideByName(handle, pinnedDimName.Pointer, dimValue));
             }
         }
-    #endregion
+        #endregion
 
-    internal IntPtr Handle
+        internal IntPtr Handle
         {
             get
             {
