@@ -11,6 +11,7 @@ OptimizerTest.LambOptimizerTestLarge
 OptimizerTest.LambOptimizerTestBiasCorrectionThird
 OptimizerTest.LambOptimizerTestScalarScaling 
 OptimizerTest.LambOptimizerTestExternalBaseline 
+OptimizerTest.LambOptimizerTestExternalBaselineDouble
 OptimizerTest.LambOptimizerMultiTensorRatio
 OptimizerTest.LambOptimizerTestVector
 OptimizerTest.LambOptimizerTestVectorWithZeroWeight
@@ -156,4 +157,7 @@ GradientCheckerTest.ReduceLogSumExpGrad
 GradientCheckerTest.SoftmaxCrossEntropyGrad
 GradientCheckerTest.ExpandGrad
 GradientCheckerTest.DivGrad
-
+GradientCheckerTest.GemmGrad
+GradientCheckerTest.SplitGrad
+GradientCheckerTest.SqueezeGrad
+GradientCheckerTest.UnsqueezeGrad 
