@@ -28,5 +28,10 @@ class ZeROOptimizerGraphBuilder : public OptimizerGraphBuilder {
       OptimizerOutputKeyMap<std::string>& optimizer_graph_outputs) override;
 };
 
+void PartitionOptimizerState(
+    const int64_t partition_offset,
+    const int64_t partition_size,
+    NameMLValMap& initial_states);
+
 }  // namespace training
 }  // namespace onnxruntime
