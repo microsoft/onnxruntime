@@ -17,7 +17,7 @@ cp $ORT_ROOT/onnxruntime/test/testdata/ort_minimal_test_models/*.onnx $TMPDIR/.t
 
 # build minimal package for Android x86_64 Emulator
 # Since this is a minimal build with reduced ops, we will only run e2e test using onnx_test_runner
-python3 $ORT_ROOT/tools/ci_build/build.py \
+python3.8 $ORT_ROOT/tools/ci_build/build.py \
     --build_dir $MIN_BUILD_DIR \
     --config Debug \
     --skip_submodule_sync \
