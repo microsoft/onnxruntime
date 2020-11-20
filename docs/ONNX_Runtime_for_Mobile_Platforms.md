@@ -128,7 +128,7 @@ It is possible to enable execution providers that compile kernels in a minimal b
 Currently the NNAPI execution provider is the only execution provider that has support for running in a minimal build.
 
 #### Create NNAPI aware ORT format model 
-  - Create a 'full' build of ONNX Runtime with NNAPI enabled
+  - Create a 'full' (i.e. no usage of the `--minimal_build` flag) build of ONNX Runtime with NNAPI enabled
     - **NOTE** do this prior to creating the minimal build
       - the process for creating a minimal build will exclude operators that may be needed to load the ONNX model and create the ORT format model
       - if you have previously done a minimal build, run `git reset --hard` to make sure any operator kernel exclusions are reversed
@@ -162,7 +162,7 @@ The generated ORT format model can be used on all platforms, however there is an
 NOTE: A minimal build with full NNAPI support can only be for the Android platform. 
 See [these](https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Android-NNAPI-Execution-Provider) instructions for details on creating an Android build with NNAPI included. 
 
-  - Follow the [above](#2.-Create-the-minimal-build) instructions to create the minimal build, with the following changes:
+  - Follow the [above](#2-Create-the-minimal-build) instructions to create the minimal build, with the following changes:
     - Add `--minimal_build extended` to enable the support for execution providers that compile kernels in the minimal build.
     - Add `--use_nnapi` to include NNAPI in the build
 
