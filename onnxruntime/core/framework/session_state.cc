@@ -396,14 +396,15 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
   ORT_RETURN_IF_ERROR(ResolveDimParams(*graph_viewer_, feeds, map));
   auto* exe_plan = GetExecutionPlan();
   ORT_ENFORCE(exe_plan);
-  OrtValuePatternPlanner mem_planner(*exe_plan);
+  OrtValuePatternPlanner mem_planner(*exe_plan, /*using counters*/ true);
 
   // Try to resolve shapes for activations.
   auto& node_index_info = GetNodeIndexInfo();
   for (auto& node_plan : exe_plan->execution_plan) {
     int node_index = node_index_info.GetNodeOffset(node_plan.node_index);
     auto* node = graph_viewer_->GetNode(node_plan.node_index);
-    int output_start = node_index + static_cast<int>(node->InputDefs().size()) + static_cast<int>(node->ImplicitInputDefs().size());
+    int output_start = node_index + static_cast<int>(node->InputDefs().size()) +
+                       static_cast<int>(node->ImplicitInputDefs().size());
 
     for (int i = 0, end = static_cast<int>(node->OutputDefs().size()); i < end; ++i) {
       const auto ml_value_idx = node_index_info.GetMLValueIndex(output_start + i);
@@ -427,7 +428,7 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
     }
   }
 
-  // Allocate activations that want to be laid out contigously in memory.
+  // Allocate activations that want to be laid out contiguously in memory.
   for (auto ml_value_idx : exe_plan->activation_allocation_order) {
     ORT_ENFORCE(ml_value_idx >= 0);
 
@@ -450,13 +451,9 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
       }
 
       ORT_ENFORCE(exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate);
-      ORT_ENFORCE(exe_plan->allocation_plan[ml_value_idx].program_counter_start.size() == exe_plan->allocation_plan[ml_value_idx].program_counter_end.size());
 
-      for (size_t index = 0; index < exe_plan->allocation_plan[ml_value_idx].program_counter_start.size(); index += 1)
-        ORT_ENFORCE(exe_plan->allocation_plan[ml_value_idx].program_counter_start[index] <= exe_plan->allocation_plan[ml_value_idx].program_counter_end[index]);
-
-      mem_planner.TraceAllocation(ml_value_idx, exe_plan->allocation_plan[ml_value_idx].program_counter_start,
-                                  exe_plan->allocation_plan[ml_value_idx].program_counter_end, size);
+      const auto& counter = exe_plan->allocation_plan[ml_value_idx].program_counter;
+      mem_planner.TraceAllocation(ml_value_idx, counter, size);
     }
   }
 
@@ -464,12 +461,15 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
   for (auto& node_plan : exe_plan->execution_plan) {
     int node_index = node_index_info.GetNodeOffset(node_plan.node_index);
     auto* node = graph_viewer_->GetNode(node_plan.node_index);
-    int output_start = node_index + static_cast<int>(node->InputDefs().size()) + static_cast<int>(node->ImplicitInputDefs().size());
+    int output_start = node_index + static_cast<int>(node->InputDefs().size()) +
+                       static_cast<int>(node->ImplicitInputDefs().size());
     //allocate output
     for (int i = 0, end = static_cast<int>(node->OutputDefs().size()); i < end; ++i) {
       const auto ml_value_idx = node_index_info.GetMLValueIndex(output_start + i);
       if (ml_value_idx == NodeIndexInfo::kInvalidEntry ||
-          (std::find(exe_plan->activation_allocation_order.begin(), exe_plan->activation_allocation_order.end(), ml_value_idx) != exe_plan->activation_allocation_order.end()))
+          (std::find(exe_plan->activation_allocation_order.begin(),
+                     exe_plan->activation_allocation_order.end(), ml_value_idx) !=
+           exe_plan->activation_allocation_order.end()))
         continue;
       const auto* ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;
       if (!ml_type->IsTensorType())
@@ -487,13 +487,9 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
         }
 
         ORT_ENFORCE(exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate);
-        ORT_ENFORCE(exe_plan->allocation_plan[ml_value_idx].program_counter_start.size() == exe_plan->allocation_plan[ml_value_idx].program_counter_end.size());
 
-        for (size_t index = 0; index < exe_plan->allocation_plan[ml_value_idx].program_counter_start.size(); index += 1)
-          ORT_ENFORCE(exe_plan->allocation_plan[ml_value_idx].program_counter_start[index] <= exe_plan->allocation_plan[ml_value_idx].program_counter_end[index]);
-
-        mem_planner.TraceAllocation(ml_value_idx, exe_plan->allocation_plan[ml_value_idx].program_counter_start,
-                                    exe_plan->allocation_plan[ml_value_idx].program_counter_end, aligned_size);
+        const auto& counter = exe_plan->allocation_plan[ml_value_idx].program_counter;
+        mem_planner.TraceAllocation(ml_value_idx, counter, aligned_size);
       }
     }
 
@@ -991,7 +987,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   // Uncomment the below to dump the allocation plan to std::cout
   // LOGS(logger_, VERBOSE) << std::make_pair(p_seq_exec_plan_.get(), this);
 
-  std::unique_ptr<ITensorAllocator> tensor_allocator_(
+  std::unique_ptr<ITensorAllocator> tensor_allocator(
       ITensorAllocator::Create(enable_mem_pattern_, *p_seq_exec_plan_, *this, weights_buffers_));
 
   const auto& initializer_allocation_order = p_seq_exec_plan_->initializer_allocation_order;
@@ -1001,7 +997,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
       session_state_utils::SaveInitializedTensors(
           Env::Default(), graph_location, *graph_viewer_,
           execution_providers_.GetDefaultCpuMemoryInfo(),
-          ort_value_name_idx_map_, initializer_allocation_order, *tensor_allocator_,
+          ort_value_name_idx_map_, initializer_allocation_order, *tensor_allocator,
           [this](int idx, const OrtValue& value, const OrtCallback& d, bool constant) -> Status {
             return AddInitializedTensor(idx, value, &d, constant);
           },

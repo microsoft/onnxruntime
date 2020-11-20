@@ -22,6 +22,7 @@ namespace onnxruntime {
 //     Generalizing this is future work.
 
 enum class AllocKind {
+  kNotSet = -1,
   kAllocate = 0,
   kReuse = 1,
   kPreExisting = 2,
