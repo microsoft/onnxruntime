@@ -75,6 +75,8 @@ There are several environment variables for TensorRT execution provider.
   - TensorRT version changes (i.e. moving from TensorRT 7.0 to 7.1)
   - Hardware changes. (Engine and profile files are not portable and optimized for specific Nvidia hardware)
 
+* ORT_TENSORRT_ENGINE_CACHE_PATH: This variable is deprecated. Please use ORT_TENSORRT_CACHE_PATH instead.
+
 * ORT_TENSORRT_CACHE_PATH: Specify path for TensorRT engine and profile files if ORT_TENSORRT_ENGINE_CACHE_ENABLE is 1, or path for INT8 calibration table file if ORT_TENSORRT_INT8_ENABLE is 1.
 
 * ORT_TENSORRT_DUMP_SUBGRAPHS: Dumps the subgraphs that are transformed into TRT engines in onnx format to the filesystem. This can help debugging subgraphs, e.g. by using  `trtexec --onnx my_model.onnx` and check the outputs of the parser. 1: enabled, 0: disabled. Default value: 0.
