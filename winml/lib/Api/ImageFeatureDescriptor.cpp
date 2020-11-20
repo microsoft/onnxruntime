@@ -18,7 +18,7 @@ ImageFeatureDescriptor::ImageFeatureDescriptor(
     wgi::BitmapAlphaMode alpha_mode,
     uint32_t width,
     uint32_t height,
-    ImageNominalPixelRange nominal_pixel_range,
+    winml::LearningModelPixelRange nominal_pixel_range,
     ImageColorSpaceGamma color_space_gamma) : name_(_winml::Strings::HStringFromUTF8(name)),
                                               description_(_winml::Strings::HStringFromUTF8(description)),
                                               tensor_kind_(tensor_kind),
@@ -111,8 +111,8 @@ ImageFeatureDescriptor::GetDescription(
   return S_OK;
 }
 
-ImageNominalPixelRange
-ImageFeatureDescriptor::GetNominalPixelRange() {
+winml::LearningModelPixelRange
+ImageFeatureDescriptor::LearningModelPixelRange() {
   return nominal_pixel_range_;
 }
 
