@@ -5,12 +5,7 @@
 
 set -e
 
-# Build python package requires numpy
-python3 -m pip install --user numpy
-
-pip3 install --upgrade pip setuptools wheel pep517
-
-# Convert onnx file to ort requires onnx
+# Build python package and convert onnx file to ort requires onnx
 pip3 install -U onnx
 
 ORT_ROOT=$1
