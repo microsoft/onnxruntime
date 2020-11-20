@@ -1072,37 +1072,6 @@ static void Scenario23NominalPixelRange() {
   }
 }
 
-static void CheckLearningModelPixelRange() {
-  std::wstring modulePath = FileHelpers::GetModulePath();
-  std::vector<std::wstring> modelPaths = {
-      // NominalRange_0_255 and image output
-      modulePath + L"fns-candy_Bgr8.onnx",
-      // Normalized_0_1 and image output
-      modulePath + L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_1.onnx",
-      // Normalized_1_1 and image output
-      modulePath + L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_1_1.onnx"};
-  std::vector<LearningModelPixelRange> pixelRanges = {
-      LearningModelPixelRange::ZeroTo255,
-      LearningModelPixelRange::ZeroToOne,
-      LearningModelPixelRange::MinusOneToOne};
-  for (uint32_t model_i = 0; model_i < modelPaths.size(); model_i++) {
-    LearningModel learningModel = nullptr;
-    WINML_EXPECT_NO_THROW(learningModel = LearningModel::LoadFromFilePath(modelPaths[model_i]););
-    auto inputs = learningModel.InputFeatures();
-    for (auto&& input : inputs) {
-      ImageFeatureDescriptor imageDescriptor = nullptr;
-      WINML_EXPECT_NO_THROW(input.as(imageDescriptor));
-      WINML_EXPECT_EQUAL(imageDescriptor.LearningModelPixelRange(), pixelRanges[model_i]);
-    }
-    auto outputs = learningModel.OutputFeatures();
-    for (auto&& output : outputs) {
-      ImageFeatureDescriptor imageDescriptor = nullptr;
-      WINML_EXPECT_NO_THROW(output.as(imageDescriptor));
-      WINML_EXPECT_EQUAL(imageDescriptor.LearningModelPixelRange(), pixelRanges[model_i]);
-    }
-  }
-}
-
 static void QuantizedModels() {
   // load a model
   std::wstring filePath = FileHelpers::GetModulePath() + L"onnxzoo_lotus_inception_v1-dq.onnx";
@@ -1704,7 +1673,6 @@ const ScenarioTestsApi& getapi() {
           Scenario17DevDiagnostics,
           Scenario22ImageBindingAsCPUTensor,
           Scenario23NominalPixelRange,
-          CheckLearningModelPixelRange,
           QuantizedModels,
           EncryptedStream,
           Scenario3SoftwareBitmapInputBinding,

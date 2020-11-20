@@ -15,7 +15,6 @@ struct ScenarioTestsApi
     VoidTest Scenario17DevDiagnostics;
     VoidTest Scenario22ImageBindingAsCPUTensor;
     VoidTest Scenario23NominalPixelRange;
-    VoidTest CheckLearningModelPixelRange;
     VoidTest QuantizedModels;
     VoidTest EncryptedStream;
     VoidTest Scenario3SoftwareBitmapInputBinding;
@@ -61,7 +60,6 @@ WINML_TEST(ScenarioCppWinrtTests, Scenario8SetDeviceSampleCPU)
 WINML_TEST(ScenarioCppWinrtTests, Scenario17DevDiagnostics)
 WINML_TEST(ScenarioCppWinrtTests, Scenario22ImageBindingAsCPUTensor)
 WINML_TEST(ScenarioCppWinrtTests, Scenario23NominalPixelRange)
-WINML_TEST(ScenarioCppWinrtTests, CheckLearningModelPixelRange)
 WINML_TEST(ScenarioCppWinrtTests, QuantizedModels)
 WINML_TEST(ScenarioCppWinrtTests, EncryptedStream)
 WINML_TEST(ScenarioCppWinrtTests, Scenario3SoftwareBitmapInputBinding)
