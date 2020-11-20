@@ -45,7 +45,7 @@ python3 $ORT_ROOT/tools/ci_build/build.py \
 adb push $MIN_BUILD_DIR/Debug/onnx_test_runner /data/local/tmp/
 
 # Push test data to device
-adb push $ORT_ROOT/.test_data/ort_minimal_e2e_test_data /data/local/tmp/
+adb push $TMPDIR/.test_data/ort_minimal_e2e_test_data /data/local/tmp/
 
 # Perform the e2e tests
 adb shell 'cd /data/local/tmp/ && ./onnx_test_runner -e nnapi ./ort_minimal_e2e_test_data'
