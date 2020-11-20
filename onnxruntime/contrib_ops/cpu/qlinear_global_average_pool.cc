@@ -32,7 +32,8 @@ Status ComputeAveragePool(
     auto worker = [=](std::ptrdiff_t first, std::ptrdiff_t last) {
       const uint8_t* input = (const uint8_t*)(x + (first * image_size));
       uint8_t* output = (uint8_t*)(y + first);
-      MlasQLinearGlobalAveragePoolNchw(input, x_scale, x_zero_point, output, y_scale, y_zero_point, last - first, image_size);
+      std::vector<int32_t> acc_buffer(MlasQLinearSafePaddingElementCount(sizeof(int32_t), last - first));
+      MlasQLinearGlobalAveragePoolNchw(input, x_scale, x_zero_point, output, y_scale, y_zero_point, last - first, image_size, acc_buffer.data());
     };
     concurrency::ThreadPool::TryParallelFor(
         tp, static_cast<std::ptrdiff_t>(N * C), {1.0 * image_size, 1.0, 8.0 * image_size}, worker);

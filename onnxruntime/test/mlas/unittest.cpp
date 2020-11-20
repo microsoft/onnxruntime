@@ -2823,9 +2823,10 @@ private:
             Gold, InputZeroPoint, InputScale, OutputZeroPoint, OutputScale);
 
         if (!channel_last) {
+            std::vector<int32_t> acc(MlasQLinearSafePaddingElementCount(sizeof(int32_t), ResultLen));
             MlasQLinearGlobalAveragePoolNchw(
                 Input, InputScale, InputZeroPoint, Output,
-                OutputScale, OutputZeroPoint, ResultLen, ImageSize);
+                OutputScale, OutputZeroPoint, ResultLen, ImageSize, acc.data());
         } else {
             std::vector<int32_t> acc(MlasQLinearSafePaddingElementCount(sizeof(int32_t), Channel));
             std::vector<uint8_t> zero(MlasQLinearSafePaddingElementCount(sizeof(uint8_t), Channel));

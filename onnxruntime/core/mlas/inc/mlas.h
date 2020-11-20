@@ -727,7 +727,8 @@ MlasQLinearGlobalAveragePoolNchw(
     float ScaleOutput,
     int32_t ZeroPointOutput,
     size_t Channels,
-    size_t ImageSize
+    size_t ImageSize,
+    int32_t* AccumulateBuffer
     );
 
 void
