@@ -234,6 +234,7 @@ Status ModuleGradientGraphBuilder::Split() {
   // Add initializers to forward graph inputs.
   for (const auto& initializer_name : split_graphs_info_.initializer_names_to_train) {
     forward_input_args.emplace_back(forward_graph.GetNodeArg(initializer_name));
+    forward_graph.RemoveInitializedTensor(initializer_name);
   }
 
   forward_graph.SetInputs(forward_input_args);
@@ -256,12 +257,7 @@ Status ModuleGradientGraphBuilder::Split() {
 
   forward_graph.SetOutputs(forward_output_args);
 
-  // Resolve the forward graph, keep the trainable initializers for now.
-  Graph::ResolveOptions options;
-  std::unordered_set<std::string> initializer_names_to_train_set(split_graphs_info_.initializer_names_to_train.begin(),
-                                                                 split_graphs_info_.initializer_names_to_train.end());
-  options.initializer_names_to_preserve = &initializer_names_to_train_set;
-  forward_graph.Resolve(options);
+  forward_graph.Resolve();
 
   // Get backward graph.
   Graph& backward_graph = backward_model_->MainGraph();
