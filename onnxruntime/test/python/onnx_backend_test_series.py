@@ -53,9 +53,6 @@ def create_backend_test(testname=None):
         if platform.architecture()[0] == '32bit':
             current_failing_tests += filters['current_failing_tests_x86']
 
-        if c2.supports_device('NGRAPH'):
-            current_failing_tests += filters['current_failing_tests_NGRAPH']
-
         if c2.supports_device('DNNL'):
             current_failing_tests += filters['current_failing_tests_DNNL']
 

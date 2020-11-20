@@ -737,7 +737,7 @@ def testORTTrainerMixedPrecisionLossScaler(seed, device, expected_loss, fetches)
 def _recompute_data():
     device_capability_major = torch.cuda.get_device_capability()[0] 
     if device_capability_major == 7:    # V100 for Dev machine
-        expected_loss = [10.577394, 10.444777, 10.425666, 10.299958, 10.290016]
+        expected_loss = [10.577394, 10.440094, 10.417172, 10.288378, 10.275877]
         return [
             (False, False, False, 0, expected_loss),    # no recompute
             (True, False, False, 0, expected_loss),     # attn_dropout recompute
@@ -746,7 +746,7 @@ def _recompute_data():
             (False, False, True, 1, expected_loss),     # transformer_layer recompute with 1 layer
         ]
     elif device_capability_major == 5:  # M60 for CI machines
-        expected_loss = [10.56341 , 10.461096, 10.364473, 10.297504, 10.249142]
+        expected_loss = [10.56341 , 10.456358, 10.355879, 10.285801, 10.234793]
         return [
             (False, False, False, 0, expected_loss),    # no recompute
             (True, False, False, 0, expected_loss),     # attn_dropout recompute

@@ -46,6 +46,7 @@
 #include "core/session/environment.h"
 #include "core/session/IOBinding.h"
 #include "core/session/inference_session_utils.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/util/protobuf_parsing_utils.h"
 #include "core/util/thread_utils.h"
 
@@ -102,15 +103,19 @@ std::atomic<uint32_t> InferenceSession::global_session_id_{1};
 // Only update this version when there is a file format change which will break the compatibilites
 // Once this model version is updated, the kSupportedOrtModelVersions in IsOrtModelVersionSupported
 // below will also need to be updated.
-static constexpr const char* kOrtModelVersion = "1";
+// See onnxruntime/core/session/flatbuffers/schema/README.md for more details on versioning.
+// Version 1 - history begins
+// Version 2 - add serailization/deserialization of sparse_initializer
+static constexpr const char* kOrtModelVersion = "2";
 
 #if defined(ENABLE_ORT_FORMAT_LOAD)
-// Check if the givne ort model version is supported in this build
+// Check if the given ort model version is supported in this build
 static bool IsOrtModelVersionSupported(const std::string& ort_model_version) {
   // The ort model versions we will support in this build
   // This may contain more versions than the kOrtModelVersion, based on the compatibilities
   static const std::unordered_set<std::string> kSupportedOrtModelVersions{
       std::string("1.4.0"),  // This is a special model version for existing converted model
+      std::string("1"),
       std::string(kOrtModelVersion),
   };
 
@@ -788,7 +793,8 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
                                                 const ExecutionProviders& providers,
                                                 KernelRegistryManager& kernel_registry_manager,
                                                 const InsertCastTransformer& insert_cast_transformer,
-                                                SessionState& session_state) {
+                                                SessionState& session_state,
+                                                bool saving_model_in_ort_format) {
   // The transformer order:
   // 1. built-in graph rewriter
   // 2. each execution provider's transformer
@@ -817,10 +823,17 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
   }
 #endif
 
+  // if saving model to ORT format we only assign nodes a custom EP can handle and don't compile them.
+  // we do this to preserve the original nodes in the model but prevent optimizers from changing them.
+  // at runtime, the ORT format model will re-do the partitioning/compilation of these nodes, which may change
+  // to cover fewer nodes due to device capabilities.
+  auto mode = saving_model_in_ort_format ? GraphPartitioner::Mode::kAssignOnly
+                                         : GraphPartitioner::Mode::kNormal;
+
   // Do partitioning based on execution providers' capability.
   GraphPartitioner partitioner(kernel_registry_manager, providers);
   ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state.ExportDll(),
-                                                       session_state.GetMutableFuncMgr()));
+                                                       session_state.GetMutableFuncMgr(), mode));
 
   // apply transformers except default transformers
   // Default transformers are required for correctness and they are owned and run by inference session
@@ -883,8 +896,28 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
 
   return common::Status::OK();
 }
-
 #endif  // !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+Status InferenceSession::PartitionOrtFormatModel(onnxruntime::Graph& graph,
+                                                 const ExecutionProviders& providers,
+                                                 KernelRegistryManager& kernel_registry_manager,
+                                                 SessionState& session_state) const {
+  std::unordered_map<std::string, uint64_t> compiled_kernel_hashes;
+
+  GraphPartitioner partitioner(kernel_registry_manager, providers);
+  ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state.ExportDll(),
+                                                       session_state.GetMutableFuncMgr(),
+                                                       GraphPartitioner::Mode::kOrtFormatLoad,
+                                                       &compiled_kernel_hashes));
+
+  if (!compiled_kernel_hashes.empty()) {
+    session_state.SetCompiledKernelHashes(std::move(compiled_kernel_hashes));
+  }
+
+  return Status::OK();
+}
+#endif
 
 #if defined(ENABLE_ORT_FORMAT_LOAD)
 template <typename T>
@@ -1126,38 +1159,72 @@ common::Status InferenceSession::Initialize() {
     // Register 2nd registries into KernelRegistryManager.
     ORT_RETURN_IF_ERROR_SESSIONID_(kernel_registry_manager_.RegisterKernels(execution_providers_));
 
+    bool loading_ort_format = !ort_format_model_bytes_.empty();
+    bool saving_model = !session_options_.optimized_model_filepath.empty();
+    bool saving_ort_format = false;
+    if (saving_model) {
+      std::string model_type = session_options_.GetConfigOrDefault(kOrtSessionOptionsConfigSaveModelFormat, "");
+      bool has_explicit_type = !model_type.empty();
+      saving_ort_format = ((has_explicit_type && model_type == "ORT") ||
+                           (!has_explicit_type &&
+                            experimental::utils::IsOrtFormatModel(session_options_.optimized_model_filepath)));
+    }
+
 #if !defined(ORT_MINIMAL_BUILD)
-    // add predefined transformers
-    AddPredefinedTransformers(graph_transformation_mgr_, session_options_.graph_optimization_level,
-                              transformers_to_enable_);
+    if (!loading_ort_format) {
+      // add predefined transformers
+      AddPredefinedTransformers(graph_transformation_mgr_, session_options_.graph_optimization_level,
+                                transformers_to_enable_);
 
-    // apply any transformations to the main graph and any subgraphs
-    ORT_RETURN_IF_ERROR_SESSIONID_(TransformGraph(graph, graph_transformation_mgr_,
-                                                  execution_providers_, kernel_registry_manager_,
-                                                  insert_cast_transformer_,
-                                                  *session_state_));
+      // apply any transformations to the main graph and any subgraphs
+      ORT_RETURN_IF_ERROR_SESSIONID_(TransformGraph(graph, graph_transformation_mgr_,
+                                                    execution_providers_, kernel_registry_manager_,
+                                                    insert_cast_transformer_,
+                                                    *session_state_,
+                                                    saving_ort_format));
 
-    // now that all the transforms are done, call Resolve on the main graph. this will recurse into the subgraphs.
-    ORT_RETURN_IF_ERROR_SESSIONID_(graph.Resolve());
+      // now that all the transforms are done, call Resolve on the main graph. this will recurse into the subgraphs.
+      ORT_RETURN_IF_ERROR_SESSIONID_(graph.Resolve());
 
-    // Update temporary copies of metadata, input- and output definitions to the same state as the resolved graph
-    ORT_RETURN_IF_ERROR_SESSIONID_(SaveModelMetadata(*model_));
+      // Update temporary copies of metadata, input- and output definitions to the same state as the resolved graph
+      ORT_RETURN_IF_ERROR_SESSIONID_(SaveModelMetadata(*model_));
+    } else
 #endif  // !defined(ORT_MINIMAL_BUILD)
+    {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+      // nodes are already partitioned, but a custom EP may compile some at runtime.
+      // run the partitioning to allow that to happen.
+      //
+      // We always have the CPU EP, so only need to run this if some other EP is enabled
+      if (execution_providers_.NumProviders() > 1) {
+        ORT_RETURN_IF_ERROR_SESSIONID_(PartitionOrtFormatModel(graph, execution_providers_, kernel_registry_manager_,
+                                                               *session_state_));
+      }
+#endif
+    }
 
-    // need to keep the initializers if we're going to save the optimized model
-    bool keep_initializers = !session_options_.optimized_model_filepath.empty();
+    const experimental::fbs::SessionState* serialized_session_state =
+        loading_ort_format
+            ? fbs::GetInferenceSession(ort_format_model_bytes_.data())->session_state()
+            : nullptr;
 
-    auto* serialized_session_state = !ort_format_model_bytes_.empty()
-                                         ? fbs::GetInferenceSession(ort_format_model_bytes_.data())->session_state()
-                                         : nullptr;
-
-    ORT_RETURN_IF_ERROR_SESSIONID_(session_state_->FinalizeSessionState(model_location_, kernel_registry_manager_,
-                                                                        session_options_,
-                                                                        serialized_session_state,
-                                                                        !keep_initializers));
+    ORT_RETURN_IF_ERROR_SESSIONID_(
+        session_state_->FinalizeSessionState(model_location_, kernel_registry_manager_,
+                                             session_options_,
+                                             serialized_session_state,
+                                             // need to keep the initializers if saving the optimized model
+                                             !saving_model,
+                                             saving_ort_format));
 
 #if !defined(ORT_MINIMAL_BUILD)
-    if (!session_options_.optimized_model_filepath.empty()) {
+    if (saving_model) {
+      if (session_state_->GetFuncMgr().NumFuncs() > 0) {
+        ORT_RETURN_IF_ERROR_SESSIONID_(
+            ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                            "Unable to serialize model as it contains compiled nodes. "
+                            "Please disable any execution providers which generate compiled nodes."));
+      }
+
       if (session_options_.graph_optimization_level >= TransformerLevel::Level3) {
         LOGS(*session_logger_, WARNING)
             << "Serializing optimized model with Graph Optimization level greater than ORT_ENABLE_EXTENDED. "
@@ -1165,12 +1232,7 @@ common::Status InferenceSession::Initialize() {
                "and should only be used in the same environment the model was optimized for.";
       }
 
-      std::string model_type = session_options_.GetConfigOrDefault(kOrtSessionOptionsConfigSaveModelFormat, "");
-      bool has_explicit_type = !model_type.empty();
-
-      if ((has_explicit_type && model_type == "ORT") ||
-          (!has_explicit_type &&
-           experimental::utils::IsOrtFormatModel(session_options_.optimized_model_filepath))) {
+      if (saving_ort_format) {
         ORT_RETURN_IF_ERROR_SESSIONID_(SaveToOrtFormat(session_options_.optimized_model_filepath));
       } else {
         ORT_RETURN_IF_ERROR_SESSIONID_(Model::Save(*model_, session_options_.optimized_model_filepath));
@@ -1340,20 +1402,20 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
         ORT_RETURN_IF_ERROR_SESSIONID_(CheckShapes(feed_name, input_shape, expected_shape));
       }
     } else if (input_ml_value.IsSparseTensor()) {
-#if !defined(ORT_MINIMAL_BUILD)
       if (!expected_type->IsSparseTensorType()) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input with name: ", feed_name,
                                " is not expected to be of type sparse tensor.");
       }
       auto expected_element_type = expected_type->AsSparseTensorType()->GetElementType();
-      auto input_element_type = input_ml_value.Get<SparseTensor>().Values().DataType();
-      // TODO: In the future, when sparsetensors are in use, find out how to properly verify the shape
+      const SparseTensor& sparse_tensor = input_ml_value.Get<SparseTensor>();
+      auto input_element_type = sparse_tensor.Values().DataType();
       ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type));
-#else
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input with name ", feed_name,
-                             " is a sparse tensor, which is not supported in this build.");
-#endif
-
+      // Check shape
+      const auto& expected_shape = iter->second.tensor_shape;
+      if (expected_shape.NumDimensions() > 0) {
+        const auto& input_shape = sparse_tensor.Shape();
+        ORT_RETURN_IF_ERROR_SESSIONID_(CheckShapes(feed_name, input_shape, expected_shape));
+      }
     } else if (input_ml_value.IsTensorSequence()) {
       if (!expected_type->IsTensorSequenceType()) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input with name: ", feed_name,

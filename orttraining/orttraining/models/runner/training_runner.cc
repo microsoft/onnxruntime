@@ -20,7 +20,7 @@
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/graph/optimizer_graph_builder.h"
 #include "orttraining/models/runner/training_util.h"
-#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_CUDA) && defined(USE_NCCL) && defined(USE_NCCL_P2P)
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
 #endif
 #include "single_include/nlohmann/json.hpp"
@@ -628,13 +628,6 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
     }
   }
 
-  // Wait all workers to finish this around of pipeline parallism.
-  // The last batch in a pipeline collects gradient and update the model.
-  pipeline_worker_pool_.JoinAll();
-  for (auto& status : pipeline_worker_pool_.worker_states) {
-    CheckWorkerException(status.execution_exception);
-  }
-
   // TODO: move this to an operator in graph.
   onnxruntime::contrib::OrtEventPool::GetInstance().ResetAllEvents();
 
@@ -758,7 +751,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
   auto end_to_end_start = std::chrono::high_resolution_clock::now();
   bool end_to_end_measurement_started = false;
 
-#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_CUDA) && defined(USE_NCCL) && defined(USE_NCCL_P2P)
   // Create communication plan.
   auto& nccl_service = cuda::NcclService::GetInstance();
 
@@ -832,7 +825,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
                                           fetch_names,
                                           fetches));
           RunWithUpdate(feed_names, fetch_names, feeds, fetches);
-#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_CUDA) && defined(USE_NCCL) && defined(USE_NCCL_P2P)
           nccl_service.Reset();
 #endif
         } else {
@@ -905,7 +898,9 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
         }
       }  // end of one file/shard
 
-      pipeline_worker_pool_.JoinAll();
+      if (params_.pipeline_parallel_size > 1) {
+        pipeline_worker_pool_.JoinAll();
+      }
       if (step_ < params_.num_train_steps) {
         training_data_loader.MoveToNextDataSet();
       }
@@ -957,7 +952,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
             << "Average Step Time: " << all_steps_duration_seconds.count() / (step_ - step_start) << " Second\n"
             << "Average Step Throughput: " << params_.batch_size * (step_ - step_start) / (all_steps_duration_seconds.count()) << " Examples / Second\n";
 
-#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_CUDA) && defined(USE_NCCL) && defined(USE_NCCL_P2P)
   nccl_service.Terminate();
 #endif
   return Status::OK();

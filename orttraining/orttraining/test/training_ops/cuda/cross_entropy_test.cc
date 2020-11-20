@@ -8,6 +8,12 @@ using namespace std;
 namespace onnxruntime {
 namespace test {
 
+#if USE_CUDA
+constexpr const char* kGpuExecutionProvider = kCudaExecutionProvider;
+#elif USE_ROCM
+constexpr const char* kGpuExecutionProvider = kRocmExecutionProvider;
+#endif
+
 static void TestSoftmaxCrossEntropy(const std::vector<int64_t>& X_dims,
                                     const std::vector<int64_t>& label_dims,
                                     const std::vector<int64_t>& Y_dims,
@@ -30,7 +36,7 @@ static void TestSoftmaxCrossEntropy(const std::vector<int64_t>& X_dims,
   test.AddOutput<float>("output", Y_dims, Y_data);
   test.AddOutput<float>("log_prob", log_prob_dims, log_prob_data);
 
-  test.CompareWithCPU(kCudaExecutionProvider);
+  test.CompareWithCPU(kGpuExecutionProvider);
 }
 
 static void TestSoftmaxCrossEntropyGrad(const std::vector<int64_t>& dY_dims,
@@ -55,7 +61,7 @@ static void TestSoftmaxCrossEntropyGrad(const std::vector<int64_t>& dY_dims,
 
   test.AddOutput<float>("dX", dX_dims, dX_data);
 
-  test.CompareWithCPU(kCudaExecutionProvider);
+  test.CompareWithCPU(kGpuExecutionProvider);
 }
 
 TEST(CudaKernelTest, SoftmaxCrossEntropy_TinySizeTensor) {
@@ -170,7 +176,7 @@ static void TestSparseSoftmaxCrossEntropy(const std::vector<int64_t>* X_dims,
   test.AddOutput<float>("output", *Y_dims, Y_data);
   test.AddOutput<float>("log_prob", *log_prob_dims, log_prob_data);
 
-  test.CompareWithCPU(kCudaExecutionProvider);
+  test.CompareWithCPU(kGpuExecutionProvider);
 }
 
 TEST(CudaKernelTest, SparseSoftmaxCrossEntropy_TinySizeTensor) {
@@ -243,7 +249,7 @@ static void TestSparseSoftmaxCrossEntropyGrad(const std::vector<int64_t>& dY_dim
 
   test.AddOutput<float>("dX", dX_dims, dX_data);
 
-  test.CompareWithCPU(kCudaExecutionProvider);
+  test.CompareWithCPU(kGpuExecutionProvider);
 }
 
 TEST(CudaKernelTest, SparseSoftmaxCrossEntropyGrad_TinySizeTensor) {
@@ -307,7 +313,7 @@ static void TestSoftmaxCrossEntropyLoss(const std::vector<int64_t>* X_dims,
   test.AddOutput<float>("output", *Y_dims, Y_data);
   test.AddOutput<float>("log_prob", *log_prob_dims, log_prob_data);
 
-  test.CompareWithCPU(kCudaExecutionProvider);
+  test.CompareWithCPU(kGpuExecutionProvider);
 }
 
 TEST(CudaKernelTest, SoftmaxCrossEntropyLoss_TinySizeTensor) {
@@ -408,7 +414,7 @@ static void TestSoftmaxCrossEntropyLossGrad(const std::vector<int64_t>& dY_dims,
 
   test.AddOutput<float>("dX", dX_dims, dX_data);
 
-  test.CompareWithCPU(kCudaExecutionProvider);
+  test.CompareWithCPU(kGpuExecutionProvider);
 }
 
 TEST(CudaKernelTest, SoftmaxCrossEntropyLossGrad_TinySizeTensor) {

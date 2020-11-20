@@ -124,29 +124,6 @@ TEST_P(ModelTest, Run) {
 #endif
       {"mask_rcnn_keras", "this model currently has an invalid contrib op version set to 10", {}}};
 
-  if (provider_name == "ngraph") {
-    broken_tests.insert({"qlinearconv", "ambiguity in scalar dimensions [] vs [1]"});
-    broken_tests.insert({"clip_splitbounds", "not implemented yet for opset 11"});
-    broken_tests.insert({"clip_outbounds", "not implemented yet for opset 11"});
-    broken_tests.insert({"clip_example", "not implemented yet for opset 11"});
-    broken_tests.insert({"clip_default_min", "not implemented yet for opset 11"});
-    broken_tests.insert({"clip_default_max", "not implemented yet for opset 11"});
-    broken_tests.insert({"clip", "not implemented yet for opset 11"});
-    broken_tests.insert({"depthtospace_crd_mode_example", "NGraph does not support CRD mode"});
-    broken_tests.insert({"depthtospace_crd_mode", "NGraph does not support CRD mode"});
-    broken_tests.insert({"gemm_default_no_bias", "not implemented yet for opset 11"});
-    broken_tests.insert({"quantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
-    broken_tests.insert({"dequantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
-    broken_tests.insert({"mlperf_ssd_resnet34_1200", "Results mismatch"});
-    broken_tests.insert({"BERT_Squad", "Invalid Feed Input Name:input4"});
-    broken_tests.insert({"candy", "Results mismatch: 2 of 150528"});
-    broken_tests.insert({"tf_mobilenet_v1_1.0_224", "Results mismatch"});
-    broken_tests.insert({"tf_mobilenet_v2_1.0_224", "Results mismatch"});
-    broken_tests.insert({"tf_mobilenet_v2_1.4_224", "Results mismatch"});
-    broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
-    broken_tests.insert({"convtranspose_3d", "3d convtranspose not supported yet"});
-  }
-
   if (provider_name == "nnapi") {
     broken_tests.insert({"scan9_sum", "Error with the extra graph"});
     broken_tests.insert({"scan_sum", "Error with the extra graph"});
@@ -430,6 +407,17 @@ TEST_P(ModelTest, Run) {
   broken_tests.insert({"cdist_float64_sqeuclidean_1000_2000_1", "This model uses contrib ops."});
   broken_tests.insert({"cdist_float64_sqeuclidean_1000_2000_500", "This model uses contrib ops."});
   broken_tests.insert({"cdist_float64_sqeuclidean_1_1_1", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_Average_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"bidaf", "This model uses contrib ops."});
+  broken_tests.insert({"fp16_test_tiny_yolov2", "This model uses contrib ops."});
+  broken_tests.insert({"fp16_coreml_FNS-Candy", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_Repeat_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_BiDirectional_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"fp16_coreml_LinearRegression_NYCTaxi", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_Average_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_GRU_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_SimpleRNN_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_Dot_imageNet", "This model uses contrib ops."});
 #endif
 
   std::basic_string<ORTCHAR_T> model_dir;
@@ -474,8 +462,6 @@ TEST_P(ModelTest, Run) {
         ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
       } else if (provider_name == "dnnl") {
         ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultDnnlExecutionProvider()));
-      } else if (provider_name == "ngraph") {
-        ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultNGraphExecutionProvider()));
       } else if (provider_name == "nuphar") {
         ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultNupharExecutionProvider()));
       } else if (provider_name == "tensorrt") {
@@ -595,13 +581,11 @@ TEST_P(ModelTest, Run) {
 #ifdef USE_DNNL
   provider_names.push_back(ORT_TSTR("dnnl"));
 #endif
-#ifdef USE_NGRAPH
-  provider_names.push_back(ORT_TSTR("ngraph"));
-#endif
 #ifdef USE_NUPHAR
   provider_names.push_back(ORT_TSTR("nuphar"));
 #endif
-#ifdef USE_NNAPI
+// For any non-Android system, NNAPI will only be used for ort model converter
+#if defined(USE_NNAPI) && defined(__ANDROID__)
   provider_names.push_back(ORT_TSTR("nnapi"));
 #endif
 #ifdef USE_RKNPU
@@ -655,15 +639,22 @@ TEST_P(ModelTest, Run) {
 
   static const ORTCHAR_T* cuda_flaky_tests[] = {
       ORT_TSTR("fp16_inception_v1"),
-      ORT_TSTR("fp16_shufflenet"), ORT_TSTR("fp16_tiny_yolov2"), ORT_TSTR("candy"),
+      ORT_TSTR("fp16_shufflenet"),
+      ORT_TSTR("fp16_tiny_yolov2"),
+      ORT_TSTR("candy"),
       ORT_TSTR("tinyyolov3"),
       ORT_TSTR("mlperf_ssd_mobilenet_300"),
       ORT_TSTR("mlperf_ssd_resnet34_1200"),
       ORT_TSTR("tf_inception_v1"),
       ORT_TSTR("faster_rcnn"),
       ORT_TSTR("split_zero_size_splits"),
-      ORT_TSTR("convtranspose_3d")};
+      ORT_TSTR("convtranspose_3d"),
+      ORT_TSTR("fp16_test_tiny_yolov2-Candy"),
+      ORT_TSTR("fp16_coreml_FNS-Candy"),
+      ORT_TSTR("fp16_test_tiny_yolov2"),
+      ORT_TSTR("fp16_test_shufflenet")};
   static const ORTCHAR_T* openvino_disabled_tests[] = {ORT_TSTR("tf_mobilenet_v1_1.0_224"),
+                                                       ORT_TSTR("bertsquad"),
                                                        ORT_TSTR("yolov3"),
                                                        ORT_TSTR("LSTM_Seq_lens_unpacked"),
                                                        ORT_TSTR("tinyyolov3"),
@@ -768,17 +759,23 @@ TEST_P(ModelTest, Run) {
       // This will be removed after LRU implementation
       all_disabled_tests.insert(std::begin(openvino_disabled_tests), std::end(openvino_disabled_tests));
     }
-
+ 
 #if !defined(__amd64__) && !defined(_M_AMD64)
     // out of memory
-    static const ORTCHAR_T* x86_disabled_tests[] = {ORT_TSTR("mlperf_ssd_resnet34_1200"),
+    static const ORTCHAR_T* x86_disabled_tests[] = {ORT_TSTR("BERT_Squad"),
+                                                    ORT_TSTR("bvlc_alexnet"),
+                                                    ORT_TSTR("bvlc_reference_caffenet"),
+                                                    ORT_TSTR("coreml_VGG16_ImageNet"),
+                                                    ORT_TSTR("faster_rcnn"),
+                                                    ORT_TSTR("GPT2"),
+                                                    ORT_TSTR("GPT2_LM_HEAD"),
+                                                    ORT_TSTR("keras_lotus_resnet3D"),
+                                                    ORT_TSTR("mlperf_ssd_resnet34_1200"),
                                                     ORT_TSTR("mask_rcnn_keras"),
                                                     ORT_TSTR("mask_rcnn"),
-                                                    ORT_TSTR("faster_rcnn"),
+                                                    ORT_TSTR("ssd"),
                                                     ORT_TSTR("vgg19"),
-                                                    ORT_TSTR("zfnet512"),
-                                                    ORT_TSTR("GPT2_LM_HEAD"),
-                                                    ORT_TSTR("coreml_VGG16_ImageNet")};
+                                                    ORT_TSTR("zfnet512")};
     all_disabled_tests.insert(std::begin(x86_disabled_tests), std::end(x86_disabled_tests));
 #endif
 

@@ -27,13 +27,6 @@ using namespace onnxruntime::test;
 namespace {
 constexpr auto k_dropout_opset_version = 12;
 
-const Tensor& FetchTensor(const OrtValue& ort_value) {
-  if (ort_value.Fence()) {
-    ort_value.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, 0);
-  }
-  return ort_value.Get<Tensor>();
-}
-
 void RunDropoutTest(const char* op, const bool use_mask, const std::vector<int64_t>& input_shape, float ratio = -1.0f,
                     bool training_mode = true, bool use_float16_ratio = false) {
   OpTester t{op, k_dropout_opset_version, kOnnxDomain};
@@ -116,7 +109,9 @@ void RunDropoutTest(const char* op, const bool use_mask, const std::vector<int64
     }
   };
 
-  t.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, nullptr, ExecutionMode::ORT_SEQUENTIAL, output_verifier);
+  t.SetCustomOutputVerifier(output_verifier);
+
+  t.Run();
 }
 
 }  // namespace
@@ -253,7 +248,9 @@ void RunBiasDropoutTest(const bool use_mask, const std::vector<int64_t>& input_s
     }
   };
 
-  t.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, nullptr, ExecutionMode::ORT_SEQUENTIAL, output_verifier);
+  t.SetCustomOutputVerifier(output_verifier);
+
+  t.Run();
 }
 }  // namespace
 

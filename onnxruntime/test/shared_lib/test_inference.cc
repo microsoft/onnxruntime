@@ -4,6 +4,7 @@
 #include <core/common/make_unique.h>
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/graph/constants.h"
 #include "providers.h"
 #include <memory>
@@ -13,6 +14,7 @@
 #include <sstream>
 #include <atomic>
 #include <mutex>
+#include <algorithm>
 #include <gtest/gtest.h>
 #include "test_allocator.h"
 #include "test_fixture.h"
@@ -21,6 +23,10 @@
 #include <Windows.h>
 #else
 #include <dlfcn.h>
+#endif
+
+#ifdef USE_CUDA
+#include <cuda_runtime.h>
 #endif
 
 struct Input {
@@ -217,6 +223,8 @@ struct OrtTensorDimensions : std::vector<int64_t> {
 template <typename T, size_t N>
 constexpr size_t countof(T (&)[N]) { return N; }
 
+void cuda_add(int64_t, float*, const float*, const float*);
+
 struct MyCustomKernel {
   MyCustomKernel(Ort::CustomOpApi ort, const OrtKernelInfo* /*info*/) : ort_(ort) {
   }
@@ -238,9 +246,13 @@ struct MyCustomKernel {
     ort_.ReleaseTensorTypeAndShapeInfo(output_info);
 
     // Do computation
+#ifdef USE_CUDA
+    cuda_add(size, out, X, Y); 
+#else
     for (int64_t i = 0; i < size; i++) {
       out[i] = X[i] + Y[i];
     }
+#endif
   }
 
  private:
@@ -249,7 +261,7 @@ struct MyCustomKernel {
 
 struct MyCustomOp : Ort::CustomOpBase<MyCustomOp, MyCustomKernel> {
   explicit MyCustomOp(const char* provider) : provider_(provider) {}
-  void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo* info) { return new MyCustomKernel(api, info); };
+  void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo* info) const { return new MyCustomKernel(api, info); };
   const char* GetName() const { return "Foo"; };
 
   const char* GetExecutionProviderType() const { return provider_; };
@@ -287,15 +299,7 @@ TEST(CApiTest, custom_op_handler) {
   custom_op_domain.Add(&custom_op);
 
 #ifdef USE_CUDA
-  // The custom op kernel has a Compute() method that doesn't really use CUDA and can't be used as is
-  // because it uses the contents of the inputs and writes to the output of the node
-  // (not possible as is because they are on the device).
-  // For the purpose of this exercise, it is not really needed to have a Compute() method that uses CUDA.
-  // We only need to verify if model load succeeds == session creation succeeds == the node is assigned to the CUDA EP.
-  // It is enough to test for successful session creation because if the custom node wasn't assigned an EP,
-  // the session creation would fail. Since the custom node is only tied to the CUDA EP (in CUDA-enabled builds),
-  // if the session creation succeeds, it is assumed that the node got assigned to the CUDA EP.
-  TestInference<PATH_TYPE, float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1, custom_op_domain, nullptr, nullptr, true);
+  TestInference<PATH_TYPE, float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1, custom_op_domain, nullptr, nullptr);
 #else
   TestInference<PATH_TYPE, float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, custom_op_domain, nullptr);
 #endif
@@ -471,13 +475,13 @@ TEST(ReducedOpsBuildTest, test_excluded_ops) {
   // In reduce-ops build, test a model containing
   // ops not referred by reduced_ops_via_config.config
   constexpr PATH_TYPE model_uri = TSTR("testdata/reduced_ops_via_config.onnx_model_with_excluded_ops");
-  std::vector<Input> inputs = {{"X", {3}, {-1.0f, 2.0f, -3.0f}},
-                               {"Y", {3}, {-1.0f, 2.0f, -3.0f}}};
-  std::vector<int64_t> expected_dims_z = {3};
-  std::vector<float> expected_values_z = {0.1f, 0.1f, 0.1f};
+  std::vector<Input> inputs = {{"X", {3}, {-1.0f, 2.0f, -3.0f}}};
+  std::vector<int64_t> expected_dims_y = {3};
+  std::vector<float> expected_values_y = {0.1f, 0.1f, 0.1f};
   bool failed = false;
   try {
-    TestInference<PATH_TYPE, float>(*ort_env, model_uri, inputs, "Z", expected_dims_z, expected_values_z, 0, nullptr, nullptr);
+    //only test model loading, exception expected
+    TestInference<PATH_TYPE, float>(*ort_env, model_uri, inputs, "Y", expected_dims_y, expected_values_y, 0, nullptr, nullptr, nullptr, true);
   } catch (const Ort::Exception& e) {
     failed = e.GetOrtErrorCode() == ORT_NOT_IMPLEMENTED;
   }
@@ -601,6 +605,113 @@ TEST(CApiTest, io_binding) {
   binding.ClearBoundOutputs();
 }
 
+#ifdef USE_CUDA
+TEST(CApiTest, io_binding_cuda) {
+  struct CudaMemoryDeleter {
+    explicit CudaMemoryDeleter(const Ort::Allocator* alloc) {
+      alloc_ = alloc;
+    }
+    void operator()(void* ptr) const {
+      alloc_->Free(ptr);
+    }
+
+    const Ort::Allocator* alloc_;
+  };
+
+  Ort::SessionOptions session_options;
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+  Ort::Session session(*ort_env, MODEL_URI, session_options);
+
+  Ort::MemoryInfo info_cuda("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
+  Ort::Allocator cuda_allocator(session, info_cuda);
+  auto allocator_info = cuda_allocator.GetInfo();
+  ASSERT_TRUE(info_cuda == allocator_info);
+
+  const std::array<int64_t, 2> x_shape = {3, 2};
+  std::array<float, 3 * 2> x_values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  auto input_data = std::unique_ptr<void, CudaMemoryDeleter>(cuda_allocator.Alloc(x_values.size() * sizeof(float)),
+                                                             CudaMemoryDeleter(&cuda_allocator));
+  ASSERT_NE(input_data.get(), nullptr);
+  cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
+
+  // Create an OrtValue tensor backed by data on CUDA memory
+  Ort::Value bound_x = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(input_data.get()), x_values.size(),
+                                                x_shape.data(), x_shape.size());
+
+  const std::array<int64_t, 2> expected_y_shape = {3, 2};
+  const std::array<float, 3 * 2> expected_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
+  auto output_data = std::unique_ptr<void, CudaMemoryDeleter>(cuda_allocator.Alloc(expected_y.size() * sizeof(float)),
+                                                              CudaMemoryDeleter(&cuda_allocator));
+  ASSERT_NE(output_data.get(), nullptr);
+
+  // Create an OrtValue tensor backed by data on CUDA memory
+  Ort::Value bound_y = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(output_data.get()), expected_y.size(),
+                                                expected_y_shape.data(), expected_y_shape.size());
+
+  Ort::IoBinding binding(session);
+  binding.BindInput("X", bound_x);
+  binding.BindOutput("Y", bound_y);
+
+  session.Run(Ort::RunOptions(), binding);
+
+  // Check the values against the bound raw memory (needs copying from device to host first)
+  std::array<float, 3 * 2> y_values_0;
+  cudaMemcpy(y_values_0.data(), output_data.get(), sizeof(float) * y_values_0.size(), cudaMemcpyDeviceToHost);
+  ASSERT_TRUE(std::equal(std::begin(y_values_0), std::end(y_values_0), std::begin(expected_y)));
+
+  // Now compare values via GetOutputValues
+  {
+    std::vector<Ort::Value> output_values = binding.GetOutputValues();
+    ASSERT_EQ(output_values.size(), 1U);
+    const Ort::Value& Y_value = output_values[0];
+    ASSERT_TRUE(Y_value.IsTensor());
+    Ort::TensorTypeAndShapeInfo type_info = Y_value.GetTensorTypeAndShapeInfo();
+    ASSERT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, type_info.GetElementType());
+    auto count = type_info.GetElementCount();
+    ASSERT_EQ(expected_y.size(), count);
+    const float* values = Y_value.GetTensorData<float>();
+
+    std::array<float, 3 * 2> y_values_1;
+    cudaMemcpy(y_values_1.data(), values, sizeof(float) * y_values_1.size(), cudaMemcpyDeviceToHost);
+    ASSERT_TRUE(std::equal(std::begin(y_values_1), std::end(y_values_1), std::begin(expected_y)));
+  }
+
+  {
+    std::vector<std::string> output_names = binding.GetOutputNames();
+    ASSERT_EQ(1U, output_names.size());
+    ASSERT_EQ(output_names[0].compare("Y"), 0);
+  }
+
+  // Now replace binding of Y with an on device binding instead of pre-allocated memory.
+  // This is when we can not allocate an OrtValue due to unknown dimensions
+  {
+    binding.BindOutput("Y", info_cuda);
+    session.Run(Ort::RunOptions(), binding);
+  }
+
+  // Check the output value allocated based on the device binding.
+  {
+    std::vector<Ort::Value> output_values = binding.GetOutputValues();
+    ASSERT_EQ(output_values.size(), 1U);
+    const Ort::Value& Y_value = output_values[0];
+    ASSERT_TRUE(Y_value.IsTensor());
+    Ort::TensorTypeAndShapeInfo type_info = Y_value.GetTensorTypeAndShapeInfo();
+    ASSERT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, type_info.GetElementType());
+    auto count = type_info.GetElementCount();
+    ASSERT_EQ(expected_y.size(), count);
+    const float* values = Y_value.GetTensorData<float>();
+
+    std::array<float, 3 * 2> y_values_2;
+    cudaMemcpy(y_values_2.data(), values, sizeof(float) * y_values_2.size(), cudaMemcpyDeviceToHost);
+    ASSERT_TRUE(std::equal(std::begin(y_values_2), std::end(y_values_2), std::begin(expected_y)));
+  }
+
+  // Clean up
+  binding.ClearBoundInputs();
+  binding.ClearBoundOutputs();
+}
+#endif
+
 TEST(CApiTest, create_tensor) {
   const char* s[] = {"abc", "kmp"};
   int64_t expected_len = 2;
@@ -668,7 +779,7 @@ TEST(CApiTest, create_tensor_with_data) {
   std::vector<int64_t> dims = {4};
   Ort::Value tensor = Ort::Value::CreateTensor<float>(info, values, values_length, dims.data(), dims.size());
 
-  float* new_pointer = tensor.GetTensorMutableData<float>();
+  const float* new_pointer = tensor.GetTensorData<float>();
   ASSERT_EQ(new_pointer, values);
 
   auto type_info = tensor.GetTypeInfo();
@@ -678,10 +789,56 @@ TEST(CApiTest, create_tensor_with_data) {
   ASSERT_EQ(1u, tensor_info.GetDimensionsCount());
 }
 
+TEST(CApiTest, create_tensor_with_data_float16) {
+  // Example with C++. However, what we are feeding underneath is really
+  // a continuous buffer of uint16_t
+  // Use 3rd party libraries such as Eigen to convert floats and doubles to float16 types.
+  Ort::Float16_t values[] = {15360, 16384, 16896, 17408, 17664};  // 1.f, 2.f, 3.f, 4.f, 5.f
+  constexpr size_t values_length = sizeof(values) / sizeof(values[0]);
+
+  std::vector<int64_t> dims = {static_cast<int64_t>(values_length)};
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+
+  Ort::Value tensor = Ort::Value::CreateTensor<Ort::Float16_t>(info, values, values_length, dims.data(), dims.size());
+  const auto* new_pointer = tensor.GetTensorData<Ort::Float16_t>();
+  ASSERT_EQ(new_pointer, values);
+  auto type_info = tensor.GetTypeInfo();
+  auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+  ASSERT_NE(tensor_info, nullptr);
+  ASSERT_EQ(1u, tensor_info.GetDimensionsCount());
+  ASSERT_EQ(tensor_info.GetElementType(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16);
+
+  Ort::Float16_t value_at_1 = tensor.At<Ort::Float16_t>({1});
+  ASSERT_EQ(values[1], value_at_1);
+}
+
+TEST(CApiTest, create_tensor_with_data_bfloat16) {
+  // Example with C++. However, what we are feeding underneath is really
+  // a continuous buffer of uint16_t
+  // Conversion from float to bfloat16 is simple. Strip off half of the bytes from float.
+  Ort::BFloat16_t values[] = {16256, 16384, 16448, 16512, 16544};  // 1.f, 2.f, 3.f, 4.f, 5.f
+  constexpr size_t values_length = sizeof(values) / sizeof(values[0]);
+  std::vector<int64_t> dims = {static_cast<int64_t>(values_length)};
+
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+
+  Ort::Value tensor = Ort::Value::CreateTensor<Ort::BFloat16_t>(info, values, values_length, dims.data(), dims.size());
+  const auto* new_pointer = tensor.GetTensorData<Ort::BFloat16_t>();
+  ASSERT_EQ(new_pointer, values);
+  auto type_info = tensor.GetTypeInfo();
+  auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+  ASSERT_NE(tensor_info, nullptr);
+  ASSERT_EQ(1u, tensor_info.GetDimensionsCount());
+  ASSERT_EQ(tensor_info.GetElementType(), ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16);
+
+  Ort::BFloat16_t value_at_1 = tensor.At<Ort::BFloat16_t>({1});
+  ASSERT_EQ(values[1], value_at_1);
+}
+
 TEST(CApiTest, access_tensor_data_elements) {
   /**
    * Create a 2x3 data blob that looks like:
-   *  
+   *
    *  0 1 2
    *  3 4 5
    */
@@ -897,6 +1054,11 @@ TEST(CApiTest, get_available_providers_cpp) {
   std::vector<std::string> providers = Ort::GetAvailableProviders();
   ASSERT_TRUE(providers.size() > 0);
   ASSERT_TRUE(providers[0] == std::string("CPUExecutionProvider"));
+
+#ifdef USE_CUDA
+  // CUDA EP will exist in the list but its position may vary based on other EPs included in the build
+  ASSERT_TRUE(std::find(providers.begin(), providers.end(), std::string("CUDAExecutionProvider")) != providers.end());
+#endif
 }
 
 // This test uses the CreateAndRegisterAllocator API to register an allocator with the env,

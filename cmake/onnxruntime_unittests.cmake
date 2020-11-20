@@ -20,19 +20,28 @@ endif()
 set(disabled_warnings)
 function(AddTest)
   cmake_parse_arguments(_UT "DYN" "TARGET" "LIBS;SOURCES;DEPENDS" ${ARGN})
-  if(_UT_LIBS)
-    list(REMOVE_DUPLICATES _UT_LIBS)
-  endif()
   list(REMOVE_DUPLICATES _UT_SOURCES)
-
-  if (_UT_DEPENDS)
-    list(REMOVE_DUPLICATES _UT_DEPENDS)
-  endif(_UT_DEPENDS)
 
   if (${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
     add_executable(${_UT_TARGET} ${TEST_SRC_DIR}/xctest/orttestmain.m)
   else()
     add_executable(${_UT_TARGET} ${_UT_SOURCES})
+  endif()
+
+  if (_UT_DEPENDS)
+    list(REMOVE_DUPLICATES _UT_DEPENDS)
+  endif(_UT_DEPENDS)
+
+  if(_UT_LIBS)
+    list(REMOVE_DUPLICATES _UT_LIBS)
+    list (FIND _UT_LIBS "cudart" _index)
+    if (${_index} GREATER -1)
+      if(WIN32)
+        target_link_directories(${_UT_TARGET} PRIVATE ${onnxruntime_CUDA_HOME}/x64/lib64)
+      else()
+        target_link_directories(${_UT_TARGET} PRIVATE ${onnxruntime_CUDA_HOME}/lib64)
+      endif()
+    endif()
   endif()
 
   source_group(TREE ${REPO_ROOT} FILES ${_UT_SOURCES})
@@ -59,7 +68,7 @@ function(AddTest)
   onnxruntime_add_include_to_target(${_UT_TARGET} date_interface flatbuffers)
   target_include_directories(${_UT_TARGET} PRIVATE ${TEST_INC_DIR})
   if (onnxruntime_USE_CUDA)
-    target_include_directories(${_UT_TARGET} PRIVATE ${CUDA_INCLUDE_DIRS} ${onnxruntime_CUDNN_HOME}/include)
+    target_include_directories(${_UT_TARGET} PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES} ${onnxruntime_CUDNN_HOME}/include)
   endif()
   if(MSVC)
     target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
@@ -267,7 +276,7 @@ if (onnxruntime_ENABLE_TRAINING)
     )
   list(APPEND onnxruntime_test_providers_src ${orttraining_test_trainingops_cpu_src})
 
-  if (onnxruntime_USE_CUDA)
+  if (onnxruntime_USE_CUDA OR onnxruntime_USE_ROCM)
     file(GLOB_RECURSE orttraining_test_trainingops_cuda_src CONFIGURE_DEPENDS
       "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cuda/*"
       )
@@ -282,13 +291,6 @@ if (onnxruntime_USE_DNNL)
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_dnnl_src})
 endif()
 
-if (onnxruntime_USE_NGRAPH)
-  file(GLOB_RECURSE onnxruntime_test_providers_ngraph_src CONFIGURE_DEPENDS
-    "${TEST_SRC_DIR}/providers/ngraph/*"
-    )
-  list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_ngraph_src})
-endif()
-
 if (onnxruntime_USE_NNAPI_BUILTIN)
   file(GLOB_RECURSE onnxruntime_test_providers_nnapi_src CONFIGURE_DEPENDS
     "${TEST_SRC_DIR}/providers/nnapi/*"
@@ -301,6 +303,13 @@ if (onnxruntime_USE_RKNPU)
     "${TEST_SRC_DIR}/providers/rknpu/*"
     )
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_rknpu_src})
+endif()
+
+if (NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_EXTENDED_MINIMAL_BUILD)
+  file(GLOB_RECURSE onnxruntime_test_providers_internal_testing_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/providers/internal_testing/*"
+    )
+  list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_internal_testing_src})
 endif()
 
 set (ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR "${ONNXRUNTIME_ROOT}/test/shared_lib")
@@ -381,10 +390,6 @@ if(onnxruntime_USE_DNNL)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_dnnl)
 endif()
 
-if(onnxruntime_USE_NGRAPH)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_ngraph)
-endif()
-
 if(onnxruntime_USE_OPENVINO)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_openvino)
 endif()
@@ -411,6 +416,9 @@ if(onnxruntime_USE_MIGRAPHX)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_migraphx)
 endif()
 
+if(onnxruntime_USE_ROCM)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_rocm)
+endif()
 
 file(GLOB_RECURSE onnxruntime_test_tvm_src CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/test/tvm/*.h"
@@ -443,7 +451,6 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_CUDA}
     # TENSORRT and DNNL are explicitly linked at runtime
     ${PROVIDERS_MIGRAPHX}
-    ${PROVIDERS_NGRAPH}
     ${PROVIDERS_OPENVINO}
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_NNAPI}
@@ -451,6 +458,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
     ${PROVIDERS_ARMNN}
+    ${PROVIDERS_ROCM}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -512,7 +520,7 @@ else()
   target_include_directories(onnxruntime_test_utils PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT}
           "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
 endif()
-onnxruntime_add_include_to_target(onnxruntime_test_utils onnxruntime_common onnxruntime_framework GTest::gtest onnx onnx_proto flatbuffers)
+onnxruntime_add_include_to_target(onnxruntime_test_utils onnxruntime_common onnxruntime_framework GTest::gtest GTest::gmock onnx onnx_proto flatbuffers)
 
 if (onnxruntime_USE_DNNL)
   target_compile_definitions(onnxruntime_test_utils PUBLIC USE_DNNL=1)
@@ -559,6 +567,12 @@ set(all_tests ${onnxruntime_test_common_src} ${onnxruntime_test_ir_src} ${onnxru
 if(NOT TARGET onnxruntime)
   list(APPEND all_tests ${onnxruntime_shared_lib_test_SRC})
 endif()
+
+if (onnxruntime_USE_CUDA)
+  add_library(onnxruntime_test_cuda_add_lib ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cuda_add.cu)
+  list(APPEND onnxruntime_test_common_libs onnxruntime_test_cuda_add_lib)
+endif()
+
 set(all_dependencies ${onnxruntime_test_providers_dependencies} )
 
   if (onnxruntime_ENABLE_TRAINING)
@@ -597,7 +611,10 @@ set(all_dependencies ${onnxruntime_test_providers_dependencies} )
   # so skip in this type of
   target_compile_definitions(onnxruntime_test_all PUBLIC -DSKIP_DEFAULT_LOGGER_TESTS)
   if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
-      target_compile_definitions(onnxruntime_test_all_xc PUBLIC -DSKIP_DEFAULT_LOGGER_TESTS)
+    target_compile_definitions(onnxruntime_test_all_xc PUBLIC -DSKIP_DEFAULT_LOGGER_TESTS)
+  endif()
+  if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
+    target_compile_options(onnxruntime_test_all PUBLIC "-Wno-unused-const-variable")
   endif()
   if(onnxruntime_RUN_MODELTEST_IN_DEBUG_MODE)
     target_compile_definitions(onnxruntime_test_all PUBLIC -DRUN_MODELTEST_IN_DEBUG_MODE)
@@ -610,6 +627,10 @@ set(all_dependencies ${onnxruntime_test_providers_dependencies} )
   endif()
   if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
     target_link_libraries(onnxruntime_test_all PRIVATE onnxruntime_language_interop onnxruntime_pyop)
+  endif()
+
+  if (onnxruntime_USE_ROCM)
+    target_include_directories(onnxruntime_test_all PRIVATE ${onnxruntime_ROCM_HOME}/include/hiprand ${onnxruntime_ROCM_HOME}/include/rocrand)
   endif()
 
   set(test_data_target onnxruntime_test_all)
@@ -645,15 +666,15 @@ if (onnxruntime_USE_DNNL)
     COMMAND ${CMAKE_COMMAND} -E copy ${DNNL_DLL_PATH} $<TARGET_FILE_DIR:${test_data_target}>
     )
 endif()
+if (onnxruntime_USE_MKLML)
+  add_custom_command(
+    TARGET ${test_data_target} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+    ${MKLML_LIB_DIR}/${MKLML_SHARED_LIB} ${MKLML_LIB_DIR}/${IOMP5MD_SHARED_LIB}
+    $<TARGET_FILE_DIR:${test_data_target}>
+  )
+endif()
 if(WIN32)
-  if (onnxruntime_USE_NGRAPH)
-    add_custom_command(
-      TARGET ${test_data_target} POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy_directory
-      ${ngraph_LIBRARIES}/
-      $<TARGET_FILE_DIR:${test_data_target}>
-    )
-  endif()
   if (onnxruntime_USE_TVM)
     add_custom_command(
       TARGET ${test_data_target} POST_BUILD
@@ -835,7 +856,6 @@ if (onnxruntime_USE_TVM)
   endif()
 endif()
 
-
 # shared lib
 if (onnxruntime_BUILD_SHARED_LIB)
   add_library(onnxruntime_mocked_allocator ${ONNXRUNTIME_ROOT}/test/util/test_allocator.cc)
@@ -845,9 +865,11 @@ if (onnxruntime_BUILD_SHARED_LIB)
   #################################################################
   # test inference using shared lib
   set(onnxruntime_shared_lib_test_LIBS onnxruntime_mocked_allocator onnxruntime_test_utils onnxruntime_common onnx_proto)
-
   if(NOT WIN32)
     list(APPEND onnxruntime_shared_lib_test_LIBS nsync_cpp)
+  endif()
+  if (onnxruntime_USE_CUDA)
+    list(APPEND onnxruntime_shared_lib_test_LIBS onnxruntime_test_cuda_add_lib cudart)
   endif()
   if (CMAKE_SYSTEM_NAME STREQUAL "Android")
     list(APPEND onnxruntime_shared_lib_test_LIBS ${android_shared_libs})

@@ -413,5 +413,64 @@ TEST(If, ConditionalBranchesOnlyContainConstantNodes_ElseBranchExecution) {
   test.Run();
 }
 
+// This is to test an "If" node with just a "SequenceEmpty" node in the "then" and "else" conditional branches
+class IfOpTesterWithSequencesAsOutput : public OpTester {
+ public:
+  IfOpTesterWithSequencesAsOutput() : OpTester("If", 13) {
+  }
+
+ protected:
+  void AddNodes(onnxruntime::Graph& graph,
+                std::vector<onnxruntime::NodeArg*>& graph_input_defs,
+                std::vector<onnxruntime::NodeArg*>& graph_output_defs,
+                std::vector<std::function<void(onnxruntime::Node& node)>>& /*add_attribute_funcs*/) override {
+    // Graph inputs are 0:Cond
+    ASSERT_EQ(graph_input_defs.size(), 1u);
+    ASSERT_EQ(graph_output_defs.size(), 1u);
+
+    NodeArg* if_cond_input = graph_input_defs[0];
+
+    std::vector<NodeArg*> inputs;
+    std::vector<NodeArg*> outputs;
+
+    // add If node
+    {
+      inputs = {if_cond_input};
+      outputs = {graph_output_defs[0]};
+
+      auto& if_node = graph.AddNode("if", "If", "If node", inputs, outputs);
+
+      auto CreateSubgraphWithSequenceEmptyNode = [](bool then_branch, std::vector<NodeArg*> outputs) {
+        Model subgraph(then_branch ? "Then" : "Else", false, DefaultLoggingManager().DefaultLogger());
+        auto& graph = subgraph.MainGraph();
+
+        // By default, the SequenceEmpty node will create an empty sequence of float tensors
+        ORT_IGNORE_RETURN_VALUE(graph.AddNode(
+            then_branch ? "SequenceEmpty_Then" : "SequenceEmpty_Else",
+            "SequenceEmpty",
+            then_branch ? "SequenceEmpty_Then" : "SequenceEmpty_Else", {}, outputs));
+
+        auto status = graph.Resolve();
+        EXPECT_EQ(status, Status::OK());
+
+        auto& graphproto = graph.ToGraphProto();
+        return graphproto;
+      };
+
+      if_node.AddAttribute("then_branch", CreateSubgraphWithSequenceEmptyNode(true, outputs));
+      if_node.AddAttribute("else_branch", CreateSubgraphWithSequenceEmptyNode(false, outputs));
+    }
+  }
+};
+
+// opset-13 allows sequences as outputs for 'If' nodes
+TEST(If, TestIfWithSequencesAsOutput) {
+  IfOpTesterWithSequencesAsOutput test;
+  test.AddInput<bool>("If_input", {1}, {true});
+  SeqTensors<float> seq;  // empty sequence of float tensors
+  test.AddSeqOutput("If_output", seq);
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime

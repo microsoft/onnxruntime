@@ -101,6 +101,36 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(NativeMethods.OrtDisableTelemetryEvents(Handle));
         }
 
+        /// <summary>
+        /// Queries all the execution providers supported in the native onnxruntime shared library
+        /// </summary>
+        public string[] GetAvailableProviders()
+        {
+            IntPtr availableProvidersHandle = IntPtr.Zero;
+            int numProviders;
+
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetAvailableProviders(out availableProvidersHandle, out numProviders));
+
+            var availableProviders = new string[numProviders];
+
+            try
+            {
+                for(int i=0; i<numProviders; ++i)
+                {
+                    availableProviders[i] = NativeOnnxValueHelper.StringFromNativeUtf8(Marshal.ReadIntPtr(availableProvidersHandle, IntPtr.Size * i));
+                }
+            }
+
+            finally
+            {
+                // Looks a bit weird that we might throw in finally(...)
+                // But the native method OrtReleaseAvailableProviders actually doesn't return a failure status
+                // If it does, it is BUG and we would like to propagate that to the user in the form of an exception
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtReleaseAvailableProviders(availableProvidersHandle, numProviders));
+            }
+
+            return availableProviders;
+        }
         #endregion
 
         #region SafeHandle

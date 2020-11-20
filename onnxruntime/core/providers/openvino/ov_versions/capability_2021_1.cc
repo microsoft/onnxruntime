@@ -188,8 +188,56 @@ bool IsOpSupported(std::string name, std::string device) {
     std::merge(common_supported_ops.begin(), common_supported_ops.end(),
                supported_ops_vpu.begin(), supported_ops_vpu.end(),
                std::inserter(supported_ops, supported_ops.begin()));
+  } else if (device.find("HETERO") == 0) {
+    std::vector<std::string> devices;
+    std::stringstream s_stream(device);
+    while(s_stream.good()) {
+      std::string substr;
+      getline(s_stream, substr, ',');
+      devices.push_back(substr);
+    }
+    supported_ops.insert(common_supported_ops.begin(), common_supported_ops.end());
+    for (auto& it : devices) {
+      if(it == "MYRIAD" || "HDDL") {
+        supported_ops.insert(supported_ops_vpu.begin(), supported_ops_vpu.end());
+      }
+      if(it == "GPU") {
+        supported_ops.insert(supported_ops_gpu.begin(), supported_ops_gpu.end());
+      }
+      if(it == "CPU") {
+        supported_ops.insert(supported_ops_cpu.begin(), supported_ops_cpu.end());
+     }
+    }
+  } else if (device.find("MULTI") == 0) {
+    std::vector<std::string> devices;
+    std::stringstream s_stream(device);
+    while(s_stream.good()) {
+      std::string substr;
+      getline(s_stream, substr, ',');
+      devices.push_back(substr);
+    }
+    if (!common_supported_ops.count(name) == 0) {
+      return true;
+    }
+    for (auto& it : devices) {
+      if(it == "MYRIAD" || "HDDL") {
+        if (supported_ops_vpu.count(name) == 0)  {
+          return false;
+        }
+      }
+      if(it == "GPU") {
+       if (supported_ops_gpu.count(name) == 0)  {
+          return false;
+        }
+      }
+      if(it == "CPU") {
+        if (supported_ops_cpu.count(name) == 0)  {
+          return false;
+        }
+     }
+    }
+    return true;
   }
-
   return supported_ops.find(name) != supported_ops.end();
 }
 
@@ -444,7 +492,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       return false;
   } else if(optype == "Gather") {
 
-    if(device_id == "GPU"){
+    if(device_id.find("GPU") != std::string::npos){
       const auto& input = node->InputDefs()[0];
       auto graph_inputs = graph_viewer.GetInputs();
       auto it = find(graph_inputs.begin(), graph_inputs.end(), input);
@@ -496,6 +544,7 @@ static bool IsTypeSupported(const NodeArg* node_arg, bool is_initializer, const 
     switch (type_proto->tensor_type().elem_type()) {
       case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL:
       case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT:
+      case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16:
       case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32:
       case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64:
         return true;
@@ -509,6 +558,17 @@ static bool IsTypeSupported(const NodeArg* node_arg, bool is_initializer, const 
         return false;
     }
   } else {
+    std::set<int> supported_types_vpu = {
+        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL,
+        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT,
+        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16,
+        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32,
+        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16,
+        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8,
+        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8,
+        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64,
+    };
+
     std::set<int> supported_types_cpu = {
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL,
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT,
@@ -521,12 +581,24 @@ static bool IsTypeSupported(const NodeArg* node_arg, bool is_initializer, const 
 
     std::set<int> supported_types_gpu = {
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT,
+        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16,
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32,
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64,
     };
     auto dtype = type_proto->tensor_type().elem_type();
 
-    if (device_id == "CPU" || device_id == "MYRIAD" || device_id == "HDDL") {
+    if (device_id == "MYRIAD" || device_id == "HDDL" || device_id.find("HETERO") != std::string::npos || device_id.find("MULTI") != std::string::npos) {
+      if (supported_types_vpu.find(dtype) != supported_types_vpu.end())
+        return true;
+      else {
+#ifndef NDEBUG
+        if (openvino_ep::backend_utils::IsDebugEnabled()) {
+          std::cout << "I/O data type is not supported" << std::endl;
+        }
+#endif
+        return false;
+      }
+    } else if (device_id == "CPU") {
       if (supported_types_cpu.find(dtype) != supported_types_cpu.end())
         return true;
       else {
@@ -757,7 +829,7 @@ GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, std::string d
           return result;
       } else if ((node->OpType() == "Greater") || (node->OpType() == "Less")) {
 
-        if (device_id == "MYRIAD") {
+        if (device_id.find("MYRIAD") != std::string::npos) {
 
           auto input_0_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
           auto input_1_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type();
@@ -804,7 +876,7 @@ GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, std::string d
           modified_unsupported_nodes.push_back(node_idx);
         }
         if(optype == "Gather"){
-          if(device_id == "MYRIAD"){
+          if(device_id.find("MYRIAD") != std::string::npos){
             auto input_data_type = node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
             if(input_data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8){
               modified_unsupported_nodes.push_back(node_idx);
@@ -818,7 +890,7 @@ GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, std::string d
     auto connected_clusters = GetConnectedClusters(graph_viewer, ng_clusters);
 
     //Myriad plugin can only load 10 subgraphs
-    if (device_id == "MYRIAD" && connected_clusters.size() > 10) {
+    if (device_id.find("MYRIAD") != std::string::npos && connected_clusters.size() > 10) {
       std::sort(connected_clusters.begin(), connected_clusters.end(),
                 [](const std::vector<NodeIndex>& v1, const std::vector<NodeIndex>& v2) -> bool {
                   return v1.size() > v2.size();
@@ -827,7 +899,7 @@ GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, std::string d
     int no_of_clusters = 0;
 
     for (auto this_cluster : connected_clusters) {
-      if (device_id == "MYRIAD" && no_of_clusters == 10) {
+      if (device_id.find("MYRIAD") != std::string::npos && no_of_clusters == 10) {
         break;
       }
       std::vector<std::string> cluster_graph_inputs, cluster_inputs, const_inputs, cluster_outputs;
@@ -847,10 +919,10 @@ GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, std::string d
             optype == "Cast" || optype == "Concat" || optype == "Gather" ||
             optype == "Div" || optype == "Sub" || optype == "Identity") {
 
-            if(optype == "Identity" && device_id != "CPU")
+            if(optype == "Identity" && device_id.find("CPU") == std::string::npos)
               continue;
 
-            if((optype == "Div" || optype == "Sub") && (device_id != "MYRIAD" &&  device_id != "GPU"))
+            if((optype == "Div" || optype == "Sub") && (device_id.find("MYRIAD") == std::string::npos &&  device_id.find("GPU") == std::string::npos))
               continue;
             for (const auto& input : node->InputDefs()) {
               auto input_name = input->Name();
@@ -877,7 +949,7 @@ GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, std::string d
           const bool is_data_int32 = input->Type()->find("int32") != std::string::npos;
           auto it = find(cluster_graph_inputs.begin(), cluster_graph_inputs.end(), input_name);
           if(it != cluster_graph_inputs.end()){
-            if(device_id == "MYRIAD" && is_data_int32){
+            if(device_id.find("MYRIAD") != std::string::npos && is_data_int32){
               omit_subgraph = true;
               break;
             }
