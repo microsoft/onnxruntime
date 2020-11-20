@@ -35,7 +35,7 @@ cp -Rf $ORT_ROOT/onnxruntime/test/testdata/ort_minimal_e2e_test_data $TMPDIR/.te
 # Convert all the onnx models in the $HOME/.test_data/ort_minimal_e2e_test_data to ort model
 # and generate the included ops config file as $HOME/.test_data/ort_minimal_e2e_test_data/required_operators.config
 python3 $ORT_ROOT/tools/python/convert_onnx_models_to_ort.py --use_nnapi \
-    $ORT_ROOT/.test_data/ort_minimal_e2e_test_data
+    $TMPDIR/.test_data/ort_minimal_e2e_test_data
 
 # Uninstall the ORT python wheel
 pip3 uninstall -y onnxruntime_noopenmp

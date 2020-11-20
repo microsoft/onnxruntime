@@ -12,6 +12,7 @@ MIN_BUILD_DIR=$ORT_ROOT/min_build
 
 mkdir -p $TMPDIR/.test_data/.test_data/models_to_include
 cp $ORT_ROOT/onnxruntime/test/testdata/ort_github_issue_4031.onnx $TMPDIR/.test_data/models_to_include
+cp $ORT_ROOT/onnxruntime/test/testdata/mnist.onnx $TMPDIR/.test_data/models_to_include
 cp $ORT_ROOT/onnxruntime/test/testdata/ort_minimal_test_models/*.onnx $TMPDIR/.test_data/models_to_include
 
 # build minimal package for Android x86_64 Emulator
@@ -30,6 +31,10 @@ python3 $ORT_ROOT/tools/ci_build/build.py \
     --android_abi=x86_64 \
     --android_api=29 \
     --build_java \
+    --minimal_build \
+    --disable_rtti \
+    --disable_ml_ops \
+    --disable_exceptions \
     --include_ops_by_model $TMPDIR/.test_data/models_to_include/ \
     --include_ops_by_config $TMPDIR/.test_data/ort_minimal_e2e_test_data/required_operators.config
 
