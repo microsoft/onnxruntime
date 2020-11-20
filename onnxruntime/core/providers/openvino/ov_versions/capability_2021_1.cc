@@ -483,8 +483,9 @@ static bool IsUnsupportedOpMode(const Provider_Node* node, const Provider_GraphV
       return true;
     } else
       return false;
-  } else if (optype == "Gather") {
-    if (device_id == "GPU") {
+  } else if(optype == "Gather") {
+
+    if(device_id.find("GPU") != std::string::npos){
       const auto& input = node->InputDefs()[0];
       auto graph_inputs = graph_viewer.GetInputs();
       auto it = find(graph_inputs.begin(), graph_inputs.end(), input);
@@ -537,6 +538,7 @@ static bool IsTypeSupported(const Provider_NodeArg* node_arg, bool is_initialize
     switch (type_proto->tensor_type().elem_type()) {
       case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL:
       case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT:
+      case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16:
       case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32:
       case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64:
         return true;
@@ -550,6 +552,17 @@ static bool IsTypeSupported(const Provider_NodeArg* node_arg, bool is_initialize
         return false;
     }
   } else {
+    std::set<int> supported_types_vpu = {
+        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL,
+        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT,
+        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16,
+        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32,
+        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16,
+        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8,
+        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8,
+        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64,
+    };
+
     std::set<int> supported_types_cpu = {
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL,
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT,
@@ -562,12 +575,24 @@ static bool IsTypeSupported(const Provider_NodeArg* node_arg, bool is_initialize
 
     std::set<int> supported_types_gpu = {
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT,
+        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16,
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32,
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64,
     };
     auto dtype = type_proto->tensor_type().elem_type();
 
-    if (device_id == "CPU" || device_id == "MYRIAD" || device_id == "HDDL" || device_id.find("HETERO") != std::string::npos) {
+    if (device_id == "MYRIAD" || device_id == "HDDL" || device_id.find("HETERO") != std::string::npos || device_id.find("MULTI") != std::string::npos) {
+      if (supported_types_vpu.find(dtype) != supported_types_vpu.end())
+        return true;
+      else {
+#ifndef NDEBUG
+        if (openvino_ep::backend_utils::IsDebugEnabled()) {
+          std::cout << "I/O data type is not supported" << std::endl;
+        }
+#endif
+        return false;
+      }
+    } else if (device_id == "CPU") {
       if (supported_types_cpu.find(dtype) != supported_types_cpu.end())
         return true;
       else {
@@ -795,7 +820,9 @@ GetCapability_2021_1(const Provider_GraphViewer& graph_viewer, std::string devic
             (output_data_type != onnx_dtype::TensorProto_DataType_FLOAT16))
           return result;
       } else if ((node->OpType() == "Greater") || (node->OpType() == "Less")) {
-        if (device_id == "MYRIAD") {
+
+        if (device_id.find("MYRIAD") != std::string::npos) {
+
           auto input_0_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
           auto input_1_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type();
           auto output_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
@@ -839,8 +866,8 @@ GetCapability_2021_1(const Provider_GraphViewer& graph_viewer, std::string devic
         if (optype == "TopK" || optype == "NonZero") {
           modified_unsupported_nodes.push_back(node_idx);
         }
-        if (optype == "Gather") {
-          if (device_id == "MYRIAD") {
+        if(optype == "Gather"){
+          if(device_id.find("MYRIAD") != std::string::npos){
             auto input_data_type = node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
             if (input_data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8) {
               modified_unsupported_nodes.push_back(node_idx);
@@ -882,8 +909,9 @@ GetCapability_2021_1(const Provider_GraphViewer& graph_viewer, std::string devic
         if (optype == "Mul" || optype == "Transpose" || optype == "Unsqueeze" ||
             optype == "Cast" || optype == "Concat" || optype == "Gather" ||
             optype == "Div" || optype == "Sub" || optype == "Identity") {
-          if (optype == "Identity" && device_id != "CPU")
-            continue;
+
+            if(optype == "Identity" && device_id.find("CPU") == std::string::npos)
+              continue;
 
           if ((optype == "Div" || optype == "Sub") && (device_id.find("MYRIAD") == std::string::npos && device_id.find("GPU") == std::string::npos))
             continue;

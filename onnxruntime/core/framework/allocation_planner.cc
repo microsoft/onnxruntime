@@ -40,6 +40,9 @@ std::ostream& operator<<(std::ostream& out, AllocKind alloc_kind) {
     case AllocKind::kShare:
       out << "Share";
       break;
+    case AllocKind::kNotSet:
+      out << "NotSet";
+      break;
   }
   return out;
 }
@@ -639,8 +642,7 @@ class PlannerImpl {
         } else if (IsNonTensor(*node_output)) {
           // we do not try sharing-optimization for non-tensors
           AllocPlan(current).alloc_kind = AllocKind::kAllocate;
-          AllocPlan(current).program_counter_start.emplace_back(program_counter);
-          AllocPlan(current).program_counter_end.emplace_back(SIZE_MAX);
+          AllocPlan(current).program_counter.AddStart(program_counter);
         } else if (FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused)) {
           // Reuse one of this node's input buffers as the output buffer (for in-place update)
           Reuse(reused, current, AllocKind::kReuse);
@@ -650,18 +652,12 @@ class PlannerImpl {
           Reuse(reused, current, AllocKind::kReuse);
           OrtValueIndex original = Buffer(reused);
           if (AllocPlan(original).alloc_kind == AllocKind::kAllocate) {
-            ORT_ENFORCE(AllocPlan(original).program_counter_end.size() > 0);
-            ORT_ENFORCE(AllocPlan(original).program_counter_end.back() != SIZE_MAX);
-            ORT_ENFORCE(AllocPlan(original).program_counter_end.back() < program_counter);
-
-            AllocPlan(original).program_counter_start.emplace_back(program_counter);
-            AllocPlan(original).program_counter_end.emplace_back(SIZE_MAX);
+            AllocPlan(original).program_counter.AddStart(program_counter);
           }
         } else {
           // otherwise: allocate a new buffer for this output
           AllocPlan(current).alloc_kind = AllocKind::kAllocate;
-          AllocPlan(current).program_counter_start.emplace_back(program_counter);
-          AllocPlan(current).program_counter_end.emplace_back(SIZE_MAX);
+          AllocPlan(current).program_counter.AddStart(program_counter);
         }
       }
 
@@ -675,9 +671,7 @@ class PlannerImpl {
           if ((original != -1) && (0 == DecrementUseCount(original))) {
             freelist_.push_front(FreeBufferInfo(original, program_counter));
             if (AllocPlan(original).alloc_kind == AllocKind::kAllocate) {
-              ORT_ENFORCE(AllocPlan(original).program_counter_end.size() > 0);
-              ORT_ENFORCE(AllocPlan(original).program_counter_end.back() == SIZE_MAX);
-              AllocPlan(original).program_counter_end.back() = program_counter;
+              AllocPlan(original).program_counter.AddEnd(program_counter);
             }
           }
         }
@@ -692,9 +686,7 @@ class PlannerImpl {
           if ((original != -1) && (0 == DecrementUseCount(original))) {
             freelist_.push_front(FreeBufferInfo(original, program_counter));
             if (AllocPlan(original).alloc_kind == AllocKind::kAllocate) {
-              ORT_ENFORCE(AllocPlan(original).program_counter_end.size() > 0);
-              ORT_ENFORCE(AllocPlan(original).program_counter_end.back() == SIZE_MAX);
-              AllocPlan(original).program_counter_end.back() = program_counter;
+              AllocPlan(original).program_counter.AddEnd(program_counter);
             }
           }
         }
@@ -708,9 +700,7 @@ class PlannerImpl {
           if (0 == DecrementUseCount(original)) {
             freelist_.push_front(FreeBufferInfo(original, program_counter));
             if (AllocPlan(original).alloc_kind == AllocKind::kAllocate) {
-              ORT_ENFORCE(AllocPlan(original).program_counter_end.size() > 0);
-              ORT_ENFORCE(AllocPlan(original).program_counter_end.back() == SIZE_MAX);
-              AllocPlan(original).program_counter_end.back() = program_counter;
+              AllocPlan(original).program_counter.AddEnd(program_counter);
             }
           }
         }
@@ -719,6 +709,7 @@ class PlannerImpl {
     return Status::OK();
   }
 
+#ifdef ENABLE_TRAINING
   bool AllocateInputsContiguously(const Node& node) const {
     const KernelCreateInfo& ci = GetKernelCreateInfo(kernel_create_info_map_, node.Index());
     if (ci.kernel_def == nullptr) {
@@ -766,37 +757,19 @@ class PlannerImpl {
     }
     return Status::OK();
   }
+#endif
 
-  // Ensure memory time schedule is sorted.
-  Status VerifyMemoryTimeSchedule() {
-    std::vector<SequentialExecutionPlan::NodeExecutionPlan>& execution_plan(plan_.execution_plan);
-    for (size_t program_counter = 0; program_counter < execution_plan.size(); ++program_counter) {
-      SequentialExecutionPlan::NodeExecutionPlan step = execution_plan[program_counter];
-      const auto* pnode = graph_viewer_.GetNode(step.node_index);
-      if (pnode == nullptr) return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cannot find the node ", step.node_index);
-      const auto& input_defs = pnode->InputDefs();
-      for (int input_arg_def_index = 0; static_cast<size_t>(input_arg_def_index) < input_defs.size(); ++input_arg_def_index) {
-        const auto& node_input = input_defs[input_arg_def_index];
-        if (!node_input->Exists()) continue;
-        const auto& current_plan = AllocPlan(Index(node_input->Name()));
-        if (current_plan.alloc_kind != AllocKind::kAllocate) continue;
-
-        ORT_ENFORCE(current_plan.program_counter_start.size() == current_plan.program_counter_end.size());
-
-        size_t start = 0;
-        for (size_t index = 0; index < current_plan.program_counter_start.size(); index += 1) {
-          ORT_ENFORCE((current_plan.program_counter_start[index] > start) || (start == 0));
-          ORT_ENFORCE(current_plan.program_counter_start[index] <= current_plan.program_counter_end[index]);
-          ORT_ENFORCE(current_plan.program_counter_start[index] < SIZE_MAX);
-          ORT_ENFORCE((current_plan.program_counter_end[index] > 0) || (index == 0));
-
-          start = current_plan.program_counter_start[index];
-        }
+  void VerifyMemoryTimeSchedule() {
+    size_t idx = 0;
+    for (const auto& entry : plan_.allocation_plan) {
+      if (entry.alloc_kind == AllocKind::kAllocate) {
+        ORT_ENFORCE(entry.program_counter.HasValidEntries(), "Invalid program_counter entries at index ", idx);
       }
-    }
 
-    return Status::OK();
+      ++idx;
+    }
   }
+
 
   // Whether a given NodeArg has fence or not.
   // If the buffer is reused, need to check whether original OrtValue has fence or not.
@@ -875,8 +848,7 @@ class PlannerImpl {
       for (int index = node_plan.free_from_index; index <= node_plan.free_to_index; ++index) {
         auto ml_value_idx = plan_.to_be_freed[index];
         if (AllocPlan(ml_value_idx).alloc_kind == AllocKind::kAllocate) {
-          ORT_ENFORCE(AllocPlan(ml_value_idx).program_counter_start.back() <= program_counter);
-          ORT_ENFORCE(AllocPlan(ml_value_idx).program_counter_end.back() == program_counter);
+          ORT_ENFORCE(AllocPlan(ml_value_idx).program_counter.Ends().back() == program_counter);
         }
       }
 
@@ -914,15 +886,17 @@ Status PlannerImpl::CreatePlan() {
   // Determine nodes that need fence check. This needs to be done after ComputeUseCounts and ComputeReusePlan.
   ORT_RETURN_IF_ERROR(ComputeFenceCheck());
 
+#ifdef ENABLE_TRAINING
   // Determine allocation order for weights and activations. This needs to be done after ComputeReusePlan.
   ORT_RETURN_IF_ERROR(ComputeAllocationOrder());
+#endif
 
   // convert information in the freelist_ into a deallocation plan in required format
   GenerateDeallocationPlan();
 
-  // Ensure Memory-Time schedule is sorted. This should be called at the end because memory start/end timestamps
+  // Ensure Memory-Time schedule is valid. This should be called at the end because memory start/end timestamps
   // are updated until GenerateDeallocationPlan is finished.
-  ORT_RETURN_IF_ERROR(VerifyMemoryTimeSchedule());
+  VerifyMemoryTimeSchedule();
 
   return Status::OK();
 }
