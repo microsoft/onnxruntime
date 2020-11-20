@@ -9,14 +9,15 @@ import subprocess
 _log = logging.getLogger("util.run")
 
 
-def run(*args, cwd=None, capture=False, shell=False, env=None, check=True,
-        quiet=False):
+def run(*args, cwd=None, capture_stdout=False, capture_stderr=False,
+        shell=False, env=None, check=True, quiet=False):
     """Runs a subprocess.
 
     Args:
         *args: The subprocess arguments.
         cwd: The working directory. If None, specifies the current directory.
-        capture: Whether to capture stdout and stderr.
+        capture_stdout: Whether to capture stdout.
+        capture_stderr: Whether to capture stderr.
         shell: Whether to run using the shell.
         env: The environment variables as a dict. If None, inherits the current
             environment.
@@ -31,11 +32,14 @@ def run(*args, cwd=None, capture=False, shell=False, env=None, check=True,
     _log.info("Running subprocess in '{0}'\n{1}".format(
         cwd or os.getcwd(), cmd))
 
-    output = \
-        subprocess.PIPE if capture else (subprocess.DEVNULL if quiet else None)
+    def output(is_stream_captured):
+        return subprocess.PIPE if is_stream_captured else \
+            (subprocess.DEVNULL if quiet else None)
+
     completed_process = subprocess.run(
-        cmd, cwd=cwd, check=check, stdout=output, stderr=output, env=env,
-        shell=shell)
+        cmd, cwd=cwd, check=check,
+        stdout=output(capture_stdout), stderr=output(capture_stderr),
+        env=env, shell=shell)
 
     _log.debug("Subprocess completed. Return code: {}".format(
         completed_process.returncode))
