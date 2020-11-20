@@ -6,8 +6,8 @@
 set -e
 set -x
 
-# Convert onnx file to ort requires onnx
-python3 -m pip install -U --user --prefer-binary onnx
+# Convert onnx file to ort requires setuptools wheel onnx
+python3 -m pip install -U --user setuptools wheel onnx
 
 ORT_ROOT=$1
 FULL_BUILD_DIR=$ORT_ROOT/full_build

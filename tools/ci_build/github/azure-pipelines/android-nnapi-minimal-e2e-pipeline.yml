@@ -4,12 +4,15 @@ jobs:
     vmImage: 'macOS-10.15'
   timeoutInMinutes: 120
   steps:
+    # need to use python 3.8 since onnx has not 3.9 python package available yet
+    # pythonVersion can be updated in Azure pipeline settings
+    # https://dev.azure.com/onnxruntime/onnxruntime/_build?definitionId=141
     - task: UsePythonVersion@0
       displayName: Use Python $(pythonVersion)
       inputs:
         versionSpec: $(pythonVersion)
-    - script: brew install coreutils ninja protobuf
-      displayName: Install coreutils, ninja, protobuf
+    - script: brew install coreutils ninja
+      displayName: Install coreutils, ninja
     - script: /bin/bash tools/ci_build/github/linux/ort_nnapi_minimal/nnapi_minimal_build_full_ort_and_create_ort_files.sh $(pwd)
       displayName: Build Full ORT with Python and NNAPI EP
     - script: /bin/bash tools/ci_build/github/linux/ort_nnapi_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh $(pwd)
