@@ -133,7 +133,7 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
     }
 
     // Now filtered the initializers
-    for (const auto pair : GetAllInitializedTensors()) {
+    for (const auto pair : graph.GetAllInitializedTensors()) {
       const auto& tensor_name = pair.first;
       if (filtered_node_input_names.count(tensor_name)) {
         filtered_initializers_.emplace(tensor_name, pair.second);
