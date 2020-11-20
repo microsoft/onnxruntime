@@ -31,7 +31,7 @@ python3 $ORT_ROOT/tools/ci_build/build.py \
     --android_abi=x86_64 \
     --android_api=29 \
     --build_java \
-    --minimal_build \
+    --minimal_build extended \
     --disable_rtti \
     --disable_ml_ops \
     --disable_exceptions \
