@@ -4,6 +4,7 @@
 # and the exclude ops config file, which will be used in the build_minimal_ort_and_run_tests.sh
 
 set -e
+set -x
 
 # Build python package and convert onnx file to ort requires onnx
 pip3 install -U onnx
