@@ -134,8 +134,8 @@ Currently the NNAPI execution provider is the only execution provider that has s
       - if you have previously done a minimal build, run `git reset --hard` to make sure any operator kernel exclusions are reversed
     - we can not use the ONNX Runtime prebuilt package as NNAPI is not enabled in it
     - the 'full' build can be done on any platform
-      - you do NOT need to create an Android build of ONNX Runtime
-      - when the NNAPI execution provider is enabled on non-Android platforms it can only specify which nodes can be assigned to NNAPI. it can NOT be used to execute the model.
+      - you do NOT need to create an Android build of ONNX Runtime in order to create an ORT format model that is optimized for usage with NNAPI.
+      - when the NNAPI execution provider is enabled on non-Android platforms it can only specify which nodes can be assigned to NNAPI. it can NOT be used to execute the model
     - perform a standard build as per the [common build instructions](https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions), and add `--use_nnapi --build_shared_lib --build_wheel` to the build flags if any of those are missing
   - Install the python wheel from the build output directory
     - this is located in `build/Windows/<config>/<config>/dist/<package name>.whl` on Windows, or  `build/Linux/<config>/dist/<package name>.whl` on Linux. 
