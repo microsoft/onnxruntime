@@ -1954,6 +1954,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 var inputTensor = tuple.Item3;
                 var outputData = tuple.Item4;
                 dispList.Add(session);
+                var runOptions = new RunOptions();
+                dispList.Add(runOptions);
+
+                var inputMeta = session.InputMetadata;
                 var outputMeta = session.OutputMetadata;
                 var outputTensor = new DenseTensor<float>(outputData, outputMeta[outputName].Dimensions);
 
@@ -1967,8 +1971,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 {
                     var cyrName = "несуществующийВыход";
                     var longShape = Array.ConvertAll<int, long>(outputMeta[outputName].Dimensions, i => i);
-                    ioBinding.BindOutput(outputName, Tensors.TensorElementType.Float, longShape, ortAllocationOutput);
-                    ioBinding.BindOutput(cyrName, Tensors.TensorElementType.Float, longShape, ortAllocationOutput);
+                    ioBinding.BindOutput(outputName, TensorElementType.Float, longShape, ortAllocationOutput);
+                    ioBinding.BindOutput(cyrName, TensorElementType.Float, longShape, ortAllocationOutput);
                     string[] outputs = ioBinding.GetOutputNames();
                     Assert.Equal(2, outputs.Length);
                     Assert.Equal(outputName, outputs[0]);
@@ -1982,7 +1986,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 {
                     ioBinding.BindInput(inputName, fixeInputBuffer);
                     ioBinding.BindOutput(outputName, fixedOutputBuffer);
-                    using (var outputs = session.RunWithBindingAndNames(new RunOptions(), ioBinding))
+                    using (var outputs = session.RunWithBindingAndNames(runOptions, ioBinding))
                     {
                         Assert.Equal(1, outputs.Count);
                         var output = outputs.First();
@@ -2000,7 +2004,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     ioBinding.BindInput(inputName, fixedInputBuffer);
                     ioBinding.BindOutputToDevice(outputName, allocator.Info);
 
-                    using (var outputs = session.RunWithBindingAndNames(new RunOptions(), ioBinding))
+                    using (var outputs = session.RunWithBindingAndNames(runOptions, ioBinding))
                     {
                         Assert.Equal(1, outputs.Count);
                         var output = outputs.First();
@@ -2010,6 +2014,23 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         Assert.Equal(outputData, tensor.ToArray<float>(), new floatComparer());
                     }
                 }
+
+                // Test 3. Use pinned managed memory
+                float[] outputBoundBuffer = new float[outputData.Length];
+                using(var inputMem = new Memory<float>(inputData).Pin())
+                using(var outputMem = new Memory<float>(outputBoundBuffer).Pin())
+                {
+                    var memInfo = OrtMemoryInfo.DefaultInstance;
+                    var inputShape = Array.ConvertAll<int, long>(inputMeta[inputName].Dimensions, i => i);
+                    var outputShape = Array.ConvertAll<int, long>(outputMeta[outputName].Dimensions, i => i);
+                    ioBinding.BindInput(inputName, TensorElementType.Float, inputShape, memInfo,
+                        inputMem, (uint)inputData.Length * sizeof(float));
+                    ioBinding.BindOutput(outputName, TensorElementType.Float, outputShape, memInfo,
+                        outputMem, (uint)outputData.Length * sizeof(float));
+                    session.RunWithBinding(runOptions, ioBinding);
+                }
+
+                Assert.Equal(outputData, outputBoundBuffer);
 
                 // Rebinding would happen without these but we want run them.
                 ioBinding.ClearBoundInputs();
