@@ -10,7 +10,6 @@ namespace test {
 std::unique_ptr<IExecutionProvider> DefaultCpuExecutionProvider(bool enable_arena = true);
 std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultDnnlExecutionProvider(bool enable_arena = true);
-std::unique_ptr<IExecutionProvider> DefaultNGraphExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultNupharExecutionProvider(bool allow_unaligned_buffers = true);
 std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultMIGraphXExecutionProvider();

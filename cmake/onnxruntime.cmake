@@ -100,7 +100,6 @@ target_link_libraries(onnxruntime PRIVATE
     onnxruntime_session
     ${onnxruntime_libs}
     ${PROVIDERS_CUDA}
-    ${PROVIDERS_NGRAPH}
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_RKNPU}
     ${PROVIDERS_MIGRAPHX}

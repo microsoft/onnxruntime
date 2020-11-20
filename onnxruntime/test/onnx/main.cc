@@ -35,7 +35,7 @@ void usage() {
       "\t-r [repeat]: Specifies the number of times to repeat\n"
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
-      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', 'ngraph', "
+      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', "
       "'openvino', 'nuphar', 'migraphx', 'acl' or 'armnn'. "
       "Default: 'cpu'.\n"
       "\t-p: Pause after launch, can attach debugger and continue\n"
@@ -93,7 +93,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   int p_models = GetNumCpuCores();
   bool enable_cuda = false;
   bool enable_dnnl = false;
-  bool enable_ngraph = false;
   bool enable_openvino = false;
   bool enable_nuphar = false;
   bool enable_tensorrt = false;
@@ -158,8 +157,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             enable_cuda = true;
           } else if (!CompareCString(optarg, ORT_TSTR("dnnl"))) {
             enable_dnnl = true;
-          } else if (!CompareCString(optarg, ORT_TSTR("ngraph"))) {
-            enable_ngraph = true;
           } else if (!CompareCString(optarg, ORT_TSTR("openvino"))) {
             enable_openvino = true;
           } else if (!CompareCString(optarg, ORT_TSTR("nuphar"))) {
@@ -350,14 +347,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Dnnl(sf, enable_cpu_mem_arena ? 1 : 0));
 #else
       fprintf(stderr, "DNNL is not supported in this build");
-      return -1;
-#endif
-    }
-    if (enable_ngraph) {  // TODO: Re-order the priority?
-#ifdef USE_NGRAPH
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_NGraph(sf, "CPU"));
-#else
-      fprintf(stderr, "nGraph is not supported in this build");
       return -1;
 #endif
     }
@@ -571,29 +560,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
   }
 #endif
-
-  if (enable_ngraph) {
-    broken_tests.insert({"qlinearconv", "ambiguity in scalar dimensions [] vs [1]"});
-    broken_tests.insert({"clip_splitbounds", "not implemented yet for opset 11"});
-    broken_tests.insert({"clip_outbounds", "not implemented yet for opset 11"});
-    broken_tests.insert({"clip_example", "not implemented yet for opset 11"});
-    broken_tests.insert({"clip_default_min", "not implemented yet for opset 11"});
-    broken_tests.insert({"clip_default_max", "not implemented yet for opset 11"});
-    broken_tests.insert({"clip", "not implemented yet for opset 11"});
-    broken_tests.insert({"depthtospace_crd_mode_example", "NGraph does not support CRD mode"});
-    broken_tests.insert({"depthtospace_crd_mode", "NGraph does not support CRD mode"});
-    broken_tests.insert({"gemm_default_no_bias", "not implemented yet for opset 11"});
-    broken_tests.insert({"quantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
-    broken_tests.insert({"dequantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
-    broken_tests.insert({"mlperf_ssd_resnet34_1200", "Results mismatch"});
-    broken_tests.insert({"BERT_Squad", "Invalid Feed Input Name:input4"});
-    broken_tests.insert({"candy", "Results mismatch: 2 of 150528"});
-    broken_tests.insert({"tf_mobilenet_v1_1.0_224", "Results mismatch"});
-    broken_tests.insert({"tf_mobilenet_v2_1.0_224", "Results mismatch"});
-    broken_tests.insert({"tf_mobilenet_v2_1.4_224", "Results mismatch"});
-    broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
-    broken_tests.insert({"convtranspose_3d", "3d convtranspose not supported yet"});
-  }
 
   if (enable_openvino) {
     broken_tests.insert({"operator_permute2", "Disabled temporariliy"});
