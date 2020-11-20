@@ -207,6 +207,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VITISA
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ArmNN(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(int device_id);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(uint32_t flags);
 }  // namespace onnxruntime
 
 #if defined(_MSC_VER)
@@ -437,8 +438,10 @@ static const std::vector<std::string>& GetAllProviders() {
   static std::vector<std::string> all_providers = {kTensorrtExecutionProvider, kCudaExecutionProvider,
                                                    kMIGraphXExecutionProvider, kRocmExecutionProvider,
                                                    kOpenVINOExecutionProvider, kDnnlExecutionProvider,
-                                                   kNupharExecutionProvider, kVitisAIExecutionProvider, kArmNNExecutionProvider,
-                                                   kAclExecutionProvider, kDmlExecutionProvider, kCpuExecutionProvider};
+                                                   kNupharExecutionProvider, kVitisAIExecutionProvider, 
+												   kNnapiExecutionProvider,
+                                                   kArmNNExecutionProvider, kAclExecutionProvider,
+                                                   kDmlExecutionProvider, kCpuExecutionProvider};
   return all_providers;
 }
 
@@ -717,6 +720,13 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
 #ifdef USE_DML
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_DML(0));
 #endif
+    } else if (type == kNnapiExecutionProvider) {
+#if defined(USE_NNAPI)
+#if !defined(__ANDROID__)
+      LOGS_DEFAULT(WARNING) << "NNAPI execution provider can only be used to generate ORT format model in this build.";
+#endif
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Nnapi(0));
+#endif
     } else {
       // unknown provider
       throw std::runtime_error("Unknown Provider Type: " + type);
@@ -902,7 +912,10 @@ void addGlobalMethods(py::module& m, const Environment& env) {
             onnxruntime::CreateExecutionProviderFactory_ArmNN(0),
 #endif
 #ifdef USE_DML
-            onnxruntime::CreateExecutionProviderFactory_DML(0)
+            onnxruntime::CreateExecutionProviderFactory_DML(0),
+#endif
+#ifdef USE_NNAPI
+            onnxruntime::CreateExecutionProviderFactory_NNAPI(0),
 #endif
         };
 
