@@ -168,6 +168,11 @@ Status ModuleGradientGraphBuilder::BuildAndSplit(std::istream& model_istream,
 
   gradient_graph.Resolve();
 
+  // Run the transformers again mainly for backward part.
+  for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
+    ORT_RETURN_IF_ERROR(graph_transformation_mgr.ApplyTransformers(gradient_graph, static_cast<TransformerLevel>(i), *logger_));
+  }
+
   // Create two copies of gradient model for forward and backward models respectively.
   auto gradient_model_proto = model_->ToProto();
   ORT_RETURN_IF_ERROR(Model::Load(gradient_model_proto, forward_model_, nullptr, *logger_));
