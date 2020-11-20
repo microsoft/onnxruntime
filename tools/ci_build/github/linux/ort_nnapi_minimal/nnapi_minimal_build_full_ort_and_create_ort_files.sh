@@ -6,7 +6,7 @@
 set -e
 
 # build python package and reduce ops requires onnx
-python3 -m pip install --user onnx
+python3 -m pip install --user numpy
 
 ORT_ROOT=$1
 BUILD_DIR=$ORT_ROOT/full_build
