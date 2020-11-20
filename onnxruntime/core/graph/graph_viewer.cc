@@ -129,14 +129,14 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
       const ONNX_NAMESPACE::TensorProto* tensor = nullptr;
       for (const auto* node_input : node->InputDefs()) {
         if (graph.GetInitializedTensor(node_input->Name(), tensor)) {
-          filtered_initializers_.emplace(node_input->Name(), tensor);
+          filtered_initializers_.insert(node_input->Name(), tensor);
         }
       }
 
       // The implicit inputs for subgraphs (if any)
       for (const auto* node_input : node->ImplicitInputDefs()) {
         if (graph.GetInitializedTensor(node_input->Name(), tensor)) {
-          filtered_initializers_.emplace(node_input->Name(), tensor);
+          filtered_initializers_.insert(node_input->Name(), tensor);
         }
       }
     }
