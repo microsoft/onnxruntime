@@ -29,27 +29,33 @@ namespace onnxruntime {
 // Thread-safe.
 class MemPatternPlanner {
  public:
-  MemPatternPlanner() = default;
+  // only the Training code currently uses the program counter based logic
+  MemPatternPlanner(bool using_counters) : using_counters_{using_counters} {}
 
+#ifdef ENABLE_TRAINING
+  // TODO: OverlappingTimeSchedules should be private
   // Returns true if there is an intersection between two time schedules.
-  // ASSUMES EACH TIME SCHEDULE IS SORTED. THIS IS VALIDATED AT THE END OF MEMORY PLANNING.
-  bool OverlappingTimeSchedules(const std::vector<size_t>& program_counter_start_1, const std::vector<size_t>& program_counter_end_1,
-                                const std::vector<size_t>& program_counter_start_2, const std::vector<size_t>& program_counter_end_2) {
-    ORT_ENFORCE(program_counter_start_1.size() > 0);
-    ORT_ENFORCE(program_counter_start_2.size() > 0);
-    ORT_ENFORCE(program_counter_start_1.size() == program_counter_end_1.size());
-    ORT_ENFORCE(program_counter_start_2.size() == program_counter_end_2.size());
+  // ProgramCounter values are validated when the execution plan is created
+  bool OverlappingTimeSchedules(const AllocPlanPerValue::ProgramCounter& counter1,
+                                const AllocPlanPerValue::ProgramCounter& counter2) const {
+    const auto& starts_1 = counter1.Starts();
+    const auto& ends_1 = counter1.Ends();
+    const auto& starts_2 = counter2.Starts();
+    const auto& ends_2 = counter2.Ends();
 
     size_t index_1 = 0;
     size_t index_2 = 0;
-    while ((index_1 < program_counter_start_1.size()) && (index_2 < program_counter_start_2.size())) {
-      if (program_counter_start_1[index_1] <= program_counter_start_2[index_2]) {
-        if (program_counter_end_1[index_1] >= program_counter_start_2[index_2]) {
+    size_t index_1_end = starts_1.size();
+    size_t index_2_end = starts_2.size();
+
+    while ((index_1 < index_1_end) && (index_2 < index_2_end)) {
+      if (starts_1[index_1] <= starts_2[index_2]) {
+        if (ends_1[index_1] >= starts_2[index_2]) {
           return true;
         }
         index_1 += 1;
       } else {
-        if (program_counter_end_2[index_2] >= program_counter_start_1[index_1]) {
+        if (ends_2[index_2] >= starts_1[index_1]) {
           return true;
         }
         index_2 += 1;
@@ -59,7 +65,9 @@ class MemPatternPlanner {
     return false;
   }
 
-  void TraceAllocation(int ml_value_idx, const std::vector<size_t>& program_counter_start, const std::vector<size_t>& program_counter_end, size_t size) {
+  void TraceAllocation(int ml_value_idx, const AllocPlanPerValue::ProgramCounter& counter, size_t size) {
+    ORT_ENFORCE(using_counters_);
+
     std::lock_guard<OrtMutex> lock(lock_);
 
     if (size == 0) {
@@ -73,8 +81,7 @@ class MemPatternPlanner {
     bool best_offset_found = false;
     for (auto it = blocks_.begin(); it != blocks_.end(); it++) {
       // Memory block can be re-used as long as there is no overlap between their time schedules.
-      if (allocs_[*it].reuse_ && !OverlappingTimeSchedules(program_counter_start, program_counter_end,
-                                                           allocs_[*it].program_counter_start_, allocs_[*it].program_counter_end_)) {
+      if (allocs_[*it].reuse_ && !OverlappingTimeSchedules(counter, *allocs_[*it].counter_)) {
         continue;
       }
 
@@ -107,7 +114,7 @@ class MemPatternPlanner {
     // we only need to bounds check the addition of size to best_offset as that is the only time we extend
     // the maximum size of the buffer.
     buffer_size_ = std::max(buffer_size_, SafeInt<size_t>(best_offset) + size);
-    allocs_.emplace_back(ml_value_idx, program_counter_start, program_counter_end, MemoryBlock(best_offset, size));
+    allocs_.emplace_back(ml_value_idx, counter, MemoryBlock(best_offset, size));
     std::list<int>::iterator best_fit_it = blocks_.end();
     for (auto it = blocks_.begin(); it != blocks_.end(); it++) {
       if (allocs_[*it].block_.offset_ < best_offset)
@@ -121,8 +128,11 @@ class MemPatternPlanner {
 
     blocks_.insert(best_fit_it, (static_cast<int>(allocs_.size()) - 1));
   }
+#endif
 
   void TraceAllocation(int ml_value_idx, size_t size) {
+    ORT_ENFORCE(!using_counters_);
+
     std::lock_guard<OrtMutex> lock(lock_);
 
     if (size == 0) {
@@ -190,35 +200,38 @@ class MemPatternPlanner {
     }
   }
 
-  MemoryPattern GenerateMemPattern() {
+  MemoryPattern GenerateMemPattern() const {
     std::lock_guard<OrtMutex> lock(lock_);
 
-    // Time schedules of overlapping memory blocks SHOULD NOT intersect.
-    for (size_t index_1 = 0; index_1 < allocs_.size(); index_1 += 1) {
-      if (!allocs_[index_1].reuse_)
-        continue;
-
-      for (size_t index_2 = index_1 + 1; index_2 < allocs_.size(); index_2 += 1) {
-        if (!allocs_[index_2].reuse_)
+#ifdef ENABLE_TRAINING
+    if (using_counters_) {
+      // Time schedules of overlapping memory blocks SHOULD NOT intersect.
+      for (size_t index_1 = 0; index_1 < allocs_.size(); index_1 += 1) {
+        if (!allocs_[index_1].reuse_)
           continue;
 
-        size_t alloc_1_start = allocs_[index_1].block_.offset_;
-        size_t alloc_1_end = alloc_1_start + allocs_[index_1].block_.size_ - 1;
+        for (size_t index_2 = index_1 + 1; index_2 < allocs_.size(); index_2 += 1) {
+          if (!allocs_[index_2].reuse_)
+            continue;
 
-        ORT_ENFORCE(alloc_1_start <= alloc_1_end);
+          size_t alloc_1_start = allocs_[index_1].block_.offset_;
+          size_t alloc_1_end = alloc_1_start + allocs_[index_1].block_.size_ - 1;
 
-        size_t alloc_2_start = allocs_[index_2].block_.offset_;
-        size_t alloc_2_end = alloc_2_start + allocs_[index_2].block_.size_ - 1;
+          ORT_ENFORCE(alloc_1_start <= alloc_1_end);
 
-        ORT_ENFORCE(alloc_2_start <= alloc_2_end);
+          size_t alloc_2_start = allocs_[index_2].block_.offset_;
+          size_t alloc_2_end = alloc_2_start + allocs_[index_2].block_.size_ - 1;
 
-        if (((alloc_1_start >= alloc_2_start) && (alloc_1_start <= alloc_2_end)) ||
-            ((alloc_2_start >= alloc_1_start) && (alloc_2_start <= alloc_1_end))) {
-          ORT_ENFORCE(!OverlappingTimeSchedules(allocs_[index_1].program_counter_start_, allocs_[index_1].program_counter_end_,
-                                                allocs_[index_2].program_counter_start_, allocs_[index_2].program_counter_end_));
+          ORT_ENFORCE(alloc_2_start <= alloc_2_end);
+
+          if (((alloc_1_start >= alloc_2_start) && (alloc_1_start <= alloc_2_end)) ||
+              ((alloc_2_start >= alloc_1_start) && (alloc_2_start <= alloc_1_end))) {
+            ORT_ENFORCE(!OverlappingTimeSchedules(*allocs_[index_1].counter_, *allocs_[index_2].counter_));
+          }
         }
       }
     }
+#endif
 
     MemoryPattern pattern;
     pattern.peak_size_ = buffer_size_;
@@ -233,18 +246,20 @@ class MemPatternPlanner {
   struct OrtValueAllocationBlock {
     int index_{-1};
     MemoryBlock block_;
-    const std::vector<size_t> program_counter_start_;
-    const std::vector<size_t> program_counter_end_;
+    const AllocPlanPerValue::ProgramCounter* counter_{nullptr};
     bool reuse_{false};
     OrtValueAllocationBlock() = default;
     OrtValueAllocationBlock(int index, const MemoryBlock& block) : index_(index), block_(block), reuse_{false} {}
-    OrtValueAllocationBlock(int index, std::vector<size_t> program_counter_start, std::vector<size_t> program_counter_end, const MemoryBlock& block) : index_(index), block_(block), program_counter_start_(program_counter_start), program_counter_end_(program_counter_end), reuse_{true} {}
+    OrtValueAllocationBlock(int index, const AllocPlanPerValue::ProgramCounter& counter, const MemoryBlock& block)
+        : index_(index), block_(block), counter_(&counter), reuse_{true} {
+    }
   };
 
   std::vector<OrtValueAllocationBlock> allocs_;
   // blocks_ the list of currently allocated memory blocks, sorted in order of their offset
   std::list<int> blocks_;
   SafeInt<size_t> buffer_size_{0};
+  bool using_counters_;
   mutable OrtMutex lock_;
 };
 
