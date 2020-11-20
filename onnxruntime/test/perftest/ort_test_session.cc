@@ -39,12 +39,6 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("DNNL is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kNGraphExecutionProvider) {
-#ifdef USE_NGRAPH
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_NGraph(session_options, "CPU"));
-#else
-    ORT_THROW("nGraph is not supported in this build");
-#endif
   } else if (provider_name == onnxruntime::kCudaExecutionProvider) {
 #ifdef USE_CUDA
     OrtCUDAProviderOptions cuda_options{

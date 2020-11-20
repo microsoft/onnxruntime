@@ -96,7 +96,6 @@ set(onnxruntime_pybind11_state_libs
     ${onnxruntime_libs}
     ${PROVIDERS_CUDA}
     ${PROVIDERS_MIGRAPHX}
-    ${PROVIDERS_NGRAPH}
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_VITISAI}
     ${PROVIDERS_NNAPI}
@@ -338,23 +337,6 @@ if (onnxruntime_USE_TENSORRT)
         $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
   )
 endif()
-
-if (onnxruntime_USE_NGRAPH)
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${ngraph_LIBRARIES}/${NGRAPH_SHARED_LIB}
-		${ngraph_LIBRARIES}/${NGRAPH_CODEGEN_SHARED_LIB}
-		${ngraph_LIBRARIES}/${NGRAPH_CPU_BACKEND_SHARED_LIB}
-		${ngraph_LIBRARIES}/${NGRAPH_IOMP5MD_SHARED_LIB}
-		${ngraph_LIBRARIES}/${NGRAPH_MKLDNN_SHARED_LIB}
-		${ngraph_LIBRARIES}/${NGRAPH_MKLML_SHARED_LIB}
-		${ngraph_LIBRARIES}/${NGRAPH_TBB_SHARED_LIB}
-		${ngraph_LIBRARIES}/${NGRAPH_TBB_SHARED_LIB_2}
-        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
-  )
-endif()
-
 
 if (onnxruntime_USE_OPENVINO)
   if(NOT WIN32)
