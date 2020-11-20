@@ -307,9 +307,11 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       node_compute_range.Begin();
 #endif
       ORT_TRY {
+#ifdef ENABLE_TRAINING
         if (p_op_kernel->KernelDef().AllocateInputsContiguously())
           utils::VerifyInputTensorsAllocatedContiguously(&op_kernel_context);
-          
+#endif
+
         compute_status = p_op_kernel->Compute(&op_kernel_context);
       }
       ORT_CATCH(const std::exception& ex) {

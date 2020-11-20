@@ -37,7 +37,7 @@ public:
             return E_POINTER;
         }
 
-        *value = static_cast<uint32_t>(m_p_end - m_p_begin);
+        *value = static_cast<uint32_t>(m_p_end - m_p_begin) * sizeof(T);
         return S_OK;
     }
 

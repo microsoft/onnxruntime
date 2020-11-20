@@ -1769,7 +1769,7 @@ TEST(ReductionOpTest, ArgMax_int32_last_index_nodups) {
                           {1, 1,
                            1, 1,
                            1, 1});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNGraphExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ArgMax_int32_last_index_dups) {
@@ -1791,7 +1791,7 @@ TEST(ReductionOpTest, ArgMax_int32_last_index_dups) {
                           {1, 1,
                            0, 1,
                            1, 0});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNGraphExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ArgMax_int32_neg_axis) {
@@ -1839,7 +1839,7 @@ TEST(ReductionOpTest, ArgMax2D_select_last) {
                         9.0f, 10.0f});
   test.AddOutput<int64_t>("reduced", {3, 1},
                           {1, 0, 1});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNGraphExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ArgMin) {
@@ -1898,7 +1898,7 @@ TEST(ReductionOpTest, ArgMin_do_not_keepdims_2_select_last) {
   test.AddInput<float>("data", {3},
                        {1.0f, 2.0f, 3.0f});
   test.AddOutput<int64_t>("reduced", {}, {0});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNGraphExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ArgMin_int32) {
@@ -1938,7 +1938,7 @@ TEST(ReductionOpTest, ArgMin_int32_select_last) {
                           {1, 0,
                            0, 0});
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNGraphExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ArgMin_int32_neg_axis) {
@@ -1967,8 +1967,8 @@ TEST(ReductionOpTest, ReduceDimWithZero) {
     auto expect = error_msg.empty() ? OpTester::ExpectResult::kExpectSuccess
                                     : OpTester::ExpectResult::kExpectFailure;
 
-    // exclude OpenVINO, NGraph and TensorRT as this isn't handled by those EPs
-    tester.Run(expect, error_msg, {kTensorrtExecutionProvider, kNGraphExecutionProvider, kOpenVINOExecutionProvider, kNupharExecutionProvider});
+    // exclude OpenVINO and TensorRT as this isn't handled by those EPs
+    tester.Run(expect, error_msg, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kNupharExecutionProvider});
   };
 
   // reduce on all axes keeping dims. should allow the 0 to be the reduced value

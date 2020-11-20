@@ -67,6 +67,7 @@ Abstract:
 
 #if defined(MLAS_TARGET_AMD64_IX86)
 #define MLAS_SUPPORTS_GEMM_U8X8_AND_REQUANTIZE_OUTPUT
+#define MLAS_SUPPORTS_TRANSPOSE
 #endif
 
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_ARM64) || (defined(MLAS_TARGET_ARM) && !defined(_MSC_VER))

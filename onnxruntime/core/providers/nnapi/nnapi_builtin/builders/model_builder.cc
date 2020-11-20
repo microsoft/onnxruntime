@@ -17,9 +17,7 @@ using namespace android::nn::wrapper;
 using std::vector;
 
 ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer)
-    : nnapi_(NnApiImplementation()), graph_viewer_(graph_viewer) {
-  GetAllInitializers();
-}
+    : nnapi_(NnApiImplementation()), graph_viewer_(graph_viewer) {}
 
 int32_t ModelBuilder::GetAndroidSdkVer() const {
   return nnapi_ ? nnapi_->android_sdk_version : 0;
@@ -105,17 +103,11 @@ Status ModelBuilder::GetTargetDevices() {
   return Status::OK();
 }
 
-void ModelBuilder::GetAllInitializers() {
-  for (const auto& pair : graph_viewer_.GetAllInitializedTensors()) {
-    initializers_.emplace(pair.first, *pair.second);
-  }
-}
-
 void ModelBuilder::PreprocessInitializers() {
   const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
   for (size_t i = 0; i < node_indices.size(); i++) {
     const auto* node(graph_viewer_.GetNode(node_indices[i]));
-    if (auto* op_builder = GetOpBuilder(*node)) {
+    if (const auto* op_builder = GetOpBuilder(*node)) {
       op_builder->AddInitializersToSkip(*this, *node);
     }
   }
@@ -172,13 +164,14 @@ std::unordered_map<std::string, vector<const Node*>> GetAllQuantizedOpInputs(con
 
 Status ModelBuilder::RegisterInitializers() {
   // First pass to get all the stats of the initializers
-  auto initializer_size = initializers_.size();
+  const auto& initializer_tensors(GetInitializerTensors());
+  auto initializer_size = initializer_tensors.size();
   std::vector<std::tuple<uint32_t, size_t, size_t>> initializers(initializer_size);
   size_t sizeAll = 0;
 
   int i = 0;
-  for (const auto& pair : initializers_) {
-    const auto& tensor = pair.second;
+  for (const auto& pair : initializer_tensors) {
+    const auto& tensor = *pair.second;
     const auto& name = tensor.name();
     if (Contains(skipped_initializers_, name))
       continue;
@@ -188,7 +181,10 @@ Status ModelBuilder::RegisterInitializers() {
       shape.push_back(SafeInt<uint32_t>(dim));
     }
 
-    ORT_RETURN_IF_NOT(!shape.empty(), "NNAPI does not support scalar initializer, tensor name, ", name);
+    // If we have an empty shape, this is a scalar initializer, since NNAPI does not allow empty shape,
+    // we will make the scalar initializer a {1} tensor
+    if (shape.empty())
+      shape.push_back(1);
 
     Type type = Type::TENSOR_FLOAT32;
     switch (tensor.data_type()) {
@@ -221,8 +217,8 @@ Status ModelBuilder::RegisterInitializers() {
 
   // 2nd pass to copy all the initializers into shared memory
   size_t offset = 0;
-  for (const auto& pair : initializers_) {
-    const auto& tensor = pair.second;
+  for (const auto& pair : initializer_tensors) {
+    const auto& tensor = *pair.second;
     if (Contains(skipped_initializers_, tensor.name()))
       continue;
 
@@ -254,7 +250,7 @@ Status ModelBuilder::RegisterModelInputs() {
       if (Contains(operands_, input_name))
         continue;
 
-      if (Contains(initializers_, input_name))
+      if (Contains(GetInitializerTensors(), input_name))
         continue;
     }
 
@@ -423,7 +419,7 @@ Status ModelBuilder::AddOperations() {
   const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
   for (size_t i = 0; i < node_indices.size(); i++) {
     const auto* node(graph_viewer_.GetNode(node_indices[i]));
-    if (auto* op_builder = GetOpBuilder(*node)) {
+    if (const auto* op_builder = GetOpBuilder(*node)) {
       ORT_RETURN_IF_ERROR(op_builder->AddToModelBuilder(*this, *node));
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -535,20 +531,12 @@ int32_t ModelBuilder::FindActivation(const Node& node, const NodeArg& output) {
   return fuse_code;
 }
 
-IOpBuilder* ModelBuilder::GetOpBuilder(const Node& node) {
+/* static */ const IOpBuilder* ModelBuilder::GetOpBuilder(const Node& node) {
   const auto& op_builders = GetOpBuilders();
   if (!Contains(op_builders, node.OpType()))
     return nullptr;
 
-  return op_builders.at(node.OpType()).get();
-}
-
-IOpSupportChecker* ModelBuilder::GetOPSupportChecker(const Node& node) {
-  const auto& op_support_checkers = GetOpSupportCheckers();
-  if (!Contains(op_support_checkers, node.OpType()))
-    return nullptr;
-
-  return op_support_checkers.at(node.OpType()).get();
+  return op_builders.at(node.OpType());
 }
 
 std::string ModelBuilder::GetUniqueName(const std::string& base_name) {
@@ -566,7 +554,7 @@ void ModelBuilder::RegisterNHWCOperand(const std::string& name) {
   nhwc_operands_.insert(name);
 }
 
-bool ModelBuilder::IsOperandNHWC(const std::string& name) {
+bool ModelBuilder::IsOperandNHWC(const std::string& name) const {
   return Contains(nhwc_operands_, name);
 }
 

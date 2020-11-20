@@ -120,7 +120,7 @@ RUN CC=mpicc MPICC=mpicc pip install mpi4py --no-binary mpi4py
 # ONNX Runtime
 WORKDIR $GITHUB_DIR
 ENV ORT_DIR=$GITHUB_DIR/onnxruntime
-RUN git clone --recursive -b wezhan/amdgpu https://github.com/microsoft/onnxruntime.git \
+RUN git clone --recursive https://github.com/microsoft/onnxruntime.git \
   && cd onnxruntime \
   && python3 tools/ci_build/build.py \
     --cmake_extra_defines ONNXRUNTIME_VERSION=`cat ./VERSION_NUMBER` \

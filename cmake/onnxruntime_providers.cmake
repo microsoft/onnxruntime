@@ -55,10 +55,6 @@ file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/*.cc"
 )
 
-if(onnxruntime_USE_NGRAPH)
-  set(PROVIDERS_NGRAPH onnxruntime_providers_ngraph)
-  list(APPEND ONNXRUNTIME_PROVIDER_NAMES ngraph)
-endif()
 if(onnxruntime_USE_NUPHAR)
   set(PROVIDERS_NUPHAR onnxruntime_providers_nuphar)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES nuphar)
@@ -485,27 +481,6 @@ if (onnxruntime_USE_TENSORRT)
           RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 
-if (onnxruntime_USE_NGRAPH)
-  include_directories("${CMAKE_CURRENT_BINARY_DIR}/onnx")
-  file(GLOB_RECURSE onnxruntime_providers_ngraph_cc_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/ngraph/*.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/ngraph/*.cc"
-  )
-
-  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_ngraph_cc_srcs})
-  add_library(onnxruntime_providers_ngraph ${onnxruntime_providers_ngraph_cc_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_ngraph onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf flatbuffers)
-  add_dependencies(onnxruntime_providers_ngraph project_ngraph onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  set_target_properties(onnxruntime_providers_ngraph PROPERTIES FOLDER "ONNXRuntime")
-  target_include_directories(onnxruntime_providers_ngraph PRIVATE ${ONNXRUNTIME_ROOT} ${ngraph_INCLUDE_DIRS})
-  set_target_properties(onnxruntime_providers_ngraph PROPERTIES LINKER_LANGUAGE CXX)
-
-  if (NOT MSVC)
-    target_compile_options(onnxruntime_providers_ngraph PRIVATE "SHELL:-Wformat" "SHELL:-Wformat-security" "SHELL:-fstack-protector-strong" "SHELL:-D_FORTIFY_SOURCE=2")
-    target_link_options(onnxruntime_providers_ngraph PRIVATE "LINKER:-z, noexecstack " "LINKER:-z relro" "LINKER:-z now" "LINKER:-pie")
-  endif()
-endif()
-
 if (onnxruntime_USE_NUPHAR)
   add_definitions(-DUSE_NUPHAR=1)
 
@@ -633,7 +608,7 @@ if (onnxruntime_USE_OPENVINO)
       else()
         list(APPEND OPENVINO_LIB_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64/Release)
       endif()
-    elseif(CMAKE_LIBRARY_ARCHITECTURE STREQUAL "aarch64-linux-gnu")
+    elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
       list(APPEND OPENVINO_LIB_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/aarch64)
     else()
       list(APPEND OPENVINO_LIB_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64)
@@ -657,16 +632,52 @@ if (onnxruntime_USE_OPENVINO)
 endif()
 
 if (onnxruntime_USE_NNAPI_BUILTIN)
-  add_definitions(-DUSE_NNAPI=1)
+  if (onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD)
+    message(FATAL_ERROR "NNAPI can not be used in a basic minimal build. Please build with '--minimal_build extended'")
+  endif()
+
+  add_compile_definitions(USE_NNAPI=1)
+
+  # This is the minimum Android API Level required by ORT NNAPI EP to run
+  # ORT running on any host system with Android API level less than this will fall back to CPU EP
+  if(onnxruntime_NNAPI_MIN_API)
+    add_compile_definitions(ORT_NNAPI_MIN_API_LEVEL=${onnxruntime_NNAPI_MIN_API})
+  endif()
+
+  # This is the maximum Android API level supported in the ort model conversion for NNAPI EP
+  # Note: This is only for running NNAPI for ort format model conversion on non-Android system since we cannot
+  #       get the actually Android system version.
+  if(onnxruntime_NNAPI_HOST_API)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Android")
+      message(FATAL_ERROR "onnxruntime_NNAPI_HOST_API should only be set for non-Android target")
+    endif()
+    add_compile_definitions(ORT_NNAPI_MAX_SUPPORTED_API_LEVEL=${onnxruntime_NNAPI_HOST_API})
+  endif()
+
   file(GLOB
     onnxruntime_providers_nnapi_cc_srcs_top CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/nnapi/*.cc"
   )
-  file(GLOB_RECURSE
-    onnxruntime_providers_nnapi_cc_srcs_nested CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/*.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/*.cc"
-  )
+
+  if(CMAKE_SYSTEM_NAME STREQUAL "Android")
+    file(GLOB_RECURSE
+      onnxruntime_providers_nnapi_cc_srcs_nested CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/*.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/*.cc"
+    )
+  else()
+    file(GLOB
+      onnxruntime_providers_nnapi_cc_srcs_nested CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/nnapi_execution_provider.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/nnapi_execution_provider.cc"
+      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/builders/helper.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/builders/helper.cc"
+      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/builders/op_support_checker.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/builders/op_support_checker.cc"
+      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksTypes.h"
+    )
+  endif()
+
   set(onnxruntime_providers_nnapi_cc_srcs ${onnxruntime_providers_nnapi_cc_srcs_top} ${onnxruntime_providers_nnapi_cc_srcs_nested})
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_nnapi_cc_srcs})
   add_library(onnxruntime_providers_nnapi ${onnxruntime_providers_nnapi_cc_srcs})
@@ -677,6 +688,10 @@ if (onnxruntime_USE_NNAPI_BUILTIN)
   set_target_properties(onnxruntime_providers_nnapi PROPERTIES FOLDER "ONNXRuntime")
   target_include_directories(onnxruntime_providers_nnapi PRIVATE ${ONNXRUNTIME_ROOT} ${nnapi_INCLUDE_DIRS})
   set_target_properties(onnxruntime_providers_nnapi PROPERTIES LINKER_LANGUAGE CXX)
+  # ignore the warning unknown-pragmas on "pragma region"
+  if(NOT MSVC)
+    target_compile_options(onnxruntime_providers_nnapi PRIVATE "-Wno-unknown-pragmas")
+  endif()
 endif()
 
 if (onnxruntime_USE_RKNPU)
@@ -736,7 +751,7 @@ if (onnxruntime_USE_DML)
       add_custom_command(TARGET onnxruntime_providers_dml
         POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-          "${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}/${file}" $<TARGET_FILE_DIR:onnxruntime_providers_dml>)
+          "${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}-win/${file}" $<TARGET_FILE_DIR:onnxruntime_providers_dml>)
     endforeach()
   endif()
 
@@ -745,8 +760,8 @@ if (onnxruntime_USE_DML)
       target_link_libraries(${target} PRIVATE DirectML)
     else()
       add_dependencies(${target} RESTORE_PACKAGES)
-      target_link_libraries(${target} PRIVATE "${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}/DirectML.lib")
-	  target_compile_definitions(${target} PRIVATE DML_TARGET_VERSION_USE_LATEST)
+      target_link_libraries(${target} PRIVATE "${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}-win/DirectML.lib")
+	    target_compile_definitions(${target} PRIVATE DML_TARGET_VERSION_USE_LATEST)
     endif()
   endfunction()
 

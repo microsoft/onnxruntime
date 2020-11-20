@@ -538,8 +538,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="options">Native SessionOptions instance</param>
         /// <param name="configKey">Config key</param>
         /// <param name="configValue">Config value</param>
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtAddSessionConfigEntry(IntPtr /* OrtSessionOptions* */ options, 
-                                                                          IntPtr /* const char* */configKey, 
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtAddSessionConfigEntry(IntPtr /* OrtSessionOptions* */ options,
+                                                                          IntPtr /* const char* */configKey,
                                                                           IntPtr /* const char* */ configValue);
         public static DOrtAddSessionConfigEntry OrtAddSessionConfigEntry;
 
@@ -561,9 +561,6 @@ namespace Microsoft.ML.OnnxRuntime
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_DML(IntPtr /*(OrtSessionOptions*) */ options, int device_id);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_NGraph(IntPtr /*(OrtSessionOptions*) */ options, string /*(const char*)*/ ng_backend_type);
-
-        [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_OpenVINO(
                                                     IntPtr /*(OrtSessionOptions*)*/ options, string /*(const char*)*/ device_id);
 
@@ -574,7 +571,7 @@ namespace Microsoft.ML.OnnxRuntime
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_MIGraphX(IntPtr /*(OrtSessionOptions*)*/ options, int device_id);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_Nnapi(IntPtr /*(OrtSessionOptions*)*/ options, ulong nnapi_flags);
+        public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_Nnapi(IntPtr /*(OrtSessionOptions*)*/ options, uint nnapi_flags);
 
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_Nuphar(IntPtr /*(OrtSessionOptions*) */ options, int allow_unaligned_buffers, string settings);
@@ -588,8 +585,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="options">Native SessionOptions instance</param>
         /// <param name="dimDenotation">Dimension denotation</param>
         /// <param name="dimValue">Dimension value</param>
-        public delegate IntPtr /*(OrtStatus*)*/DOrtAddFreeDimensionOverride(IntPtr /*(OrtSessionOptions*)*/ options, 
-                                                                            IntPtr /*(const char*)*/ dimDenotation, 
+        public delegate IntPtr /*(OrtStatus*)*/DOrtAddFreeDimensionOverride(IntPtr /*(OrtSessionOptions*)*/ options,
+                                                                            IntPtr /*(const char*)*/ dimDenotation,
                                                                             long dimValue);
         public static DOrtAddFreeDimensionOverride OrtAddFreeDimensionOverride;
 
@@ -599,8 +596,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="options">Native SessionOptions instance</param>
         /// <param name="dimName">Dimension name</param>
         /// <param name="dimValue">Dimension value</param>
-        public delegate IntPtr /*(OrtStatus*)*/DOrtAddFreeDimensionOverrideByName(IntPtr /*(OrtSessionOptions*)*/ options, 
-                                                                                  IntPtr /*(const char*)*/ dimName, 
+        public delegate IntPtr /*(OrtStatus*)*/DOrtAddFreeDimensionOverrideByName(IntPtr /*(OrtSessionOptions*)*/ options,
+                                                                                  IntPtr /*(const char*)*/ dimName,
                                                                                   long dimValue);
         public static DOrtAddFreeDimensionOverrideByName OrtAddFreeDimensionOverrideByName;
 
@@ -611,8 +608,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="options">Native SessionOptions instance</param>
         /// <param name="libraryPath">Library path</param>
         /// <param name="libraryHandle">(out) Native library handle</param>
-        public delegate IntPtr /*(OrtStatus*)*/DOrtRegisterCustomOpsLibrary(IntPtr /*(OrtSessionOptions*) */ options, 
-                                                                            IntPtr /*(const char*)*/ libraryPath, 
+        public delegate IntPtr /*(OrtStatus*)*/DOrtRegisterCustomOpsLibrary(IntPtr /*(OrtSessionOptions*) */ options,
+                                                                            IntPtr /*(const char*)*/ libraryPath,
                                                                             out IntPtr /*(void**)*/ libraryHandle);
         public static DOrtRegisterCustomOpsLibrary OrtRegisterCustomOpsLibrary;
 
@@ -622,8 +619,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="options">Native SessionOptions instance</param>
         /// <param name="name">Name of the initializer</param>
         /// <param name="ortValue">Native OrtValue instnce</param>
-        public delegate IntPtr /*(OrtStatus*)*/DOrtAddInitializer(IntPtr /*(OrtSessionOptions*)*/ options, 
-                                                                  IntPtr /*(const char*)*/ name, 
+        public delegate IntPtr /*(OrtStatus*)*/DOrtAddInitializer(IntPtr /*(OrtSessionOptions*)*/ options,
+                                                                  IntPtr /*(const char*)*/ name,
                                                                   IntPtr /*(OrtValue*)*/ ortValue);
         public static DOrtAddInitializer OrtAddInitializer;
 
