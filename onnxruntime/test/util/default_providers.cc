@@ -22,7 +22,6 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVI
     const char* device_type, bool enable_vpu_fast_compile, const char* device_id, size_t num_of_threads);
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_NGraph(const char* ng_backend_type);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(uint32_t);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rknpu();
@@ -84,14 +83,6 @@ std::unique_ptr<IExecutionProvider> DefaultDnnlExecutionProvider(bool enable_are
   ORT_UNUSED_PARAMETER(enable_arena);
 #endif
   return nullptr;
-}
-
-std::unique_ptr<IExecutionProvider> DefaultNGraphExecutionProvider() {
-#ifdef USE_NGRAPH
-  return CreateExecutionProviderFactory_NGraph("CPU")->CreateProvider();
-#else
-  return nullptr;
-#endif
 }
 
 std::unique_ptr<IExecutionProvider> DefaultNupharExecutionProvider(bool allow_unaligned_buffers) {
