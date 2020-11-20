@@ -11,6 +11,7 @@ OptimizerTest.LambOptimizerTestLarge
 OptimizerTest.LambOptimizerTestBiasCorrectionThird
 OptimizerTest.LambOptimizerTestScalarScaling 
 OptimizerTest.LambOptimizerTestExternalBaseline 
+OptimizerTest.LambOptimizerMultiTensorRatio
 CudaKernelTest.SoftmaxCrossEntropy_TinySizeTensor 
 CudaKernelTest.SoftmaxCrossEntropy_SmallSizeTensor 
 CudaKernelTest.SoftmaxCrossEntropy_MediumSizeTensor 
@@ -148,3 +149,5 @@ GradientCheckerTest.ReduceSumGrad
 GradientCheckerTest.ReduceLogSumExpGrad
 GradientCheckerTest.SoftmaxCrossEntropyGrad
 GradientCheckerTest.ExpandGrad
+GradientCheckerTest.DivGrad
+
