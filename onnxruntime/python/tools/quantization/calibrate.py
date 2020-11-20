@@ -52,17 +52,6 @@ class ONNXCalibrater:
         self.input_name_to_nodes = {}
         self.calibration_cache = {} # save temporary calibration table
 
-    def get_value_info_to_type(self, value_info_proto, type_list):
-
-        value_info_to_type = {}
-
-        for value_info in value_info_proto:
-            elem_type = value_info.type.tensor_type.elem_type
-
-            if elem_type in type_list:
-                value_info_to_type[value_info.name] = elem_type
-
-        return value_info_to_type
 
     def set_data_reader(self, data_reader):
         self.data_reader = data_reader
@@ -131,6 +120,30 @@ class ONNXCalibrater:
                 file.write(s)
                 file.write('\n')
 
+    # def get_value_info_to_type(self, value_info_proto, type_list):
+
+        # value_info_to_type = {}
+
+        # for value_info in value_info_proto:
+            # elem_type = value_info.type.tensor_type.elem_type
+
+            # if elem_type in type_list:
+                # value_info_to_type[value_info.name] = elem_type
+
+        # return value_info_to_type
+
+    def get_value_info_set_by_type(self, value_info_proto, type_list):
+
+        value_info_set = set()
+
+        for value_info in value_info_proto:
+            elem_type = value_info.type.tensor_type.elem_type
+
+            if elem_type in type_list:
+                value_info_set.add(value_info.name)
+
+        return value_info_set 
+
     def augment_graph(self, implicitly_quantize_all_ops=False):
         '''
         Adds ReduceMin and ReduceMax nodes to all quantization_candidates op type nodes in
@@ -143,37 +156,40 @@ class ONNXCalibrater:
         added_nodes = []
         added_outputs = []
         tensors_to_calibrate = set()
-        value_info_to_type = {} # name of value info -> dtype
+        value_info_set = {} # value info set with specific type 
         tensor_initializer = set()
 
         for init in model.graph.initializer:
             tensor_initializer.add(init.name)
-        print(tensor_initializer)
 
         if implicitly_quantize_all_ops:
             type_list = [onnx_proto.TensorProto.FLOAT, onnx_proto.TensorProto.FLOAT16]
-            value_info_to_type = self.get_value_info_to_type(model.graph.value_info, type_list)
+            value_info_set = self.get_value_info_set_by_type(model.graph.value_info, type_list)
 
         for node in model.graph.node:
-            ## handle subgraph
-            # if len(node.attribute) > 0 and node.attribute[0].g.node: 
-                # print(node.name)
-                # print(node.attribute[0].g)
-                # print("\n")
-                # # for value_info in node.attribute[0].g.value_info:
-                    # # print(value_info)
-                    # # if value_info.type in [onnx_proto.TensorProto.FLOAT, onnx_proto.TensorProto.FLOAT16]:
-                    # #     pass
+
+            ########################
+            ## TODO: handle subgraph
+            ########################
+            '''
+            if len(node.attribute) > 0 and node.attribute[0].g.node: 
+                print(node.name)
+                print(node.attribute[0].g)
+                print("\n")
+                # for value_info in node.attribute[0].g.value_info:
+                    # print(value_info)
+            '''
+
             if implicitly_quantize_all_ops:
                 for i in node.input:
                     if i in tensor_initializer:
                         continue
-                    if i in value_info_to_type:
+                    if i in value_info_set:
                         tensors_to_calibrate.add(i)
                 for o in node.input:
                     if o in tensor_initializer:
                         continue
-                    if o in value_info_to_type:
+                    if o in value_info_set:
                         tensors_to_calibrate.add(o)
             else:
                 should_be_calibrate = ((node.op_type in self.calibrate_op_types) and
@@ -190,6 +206,7 @@ class ONNXCalibrater:
 
         print("tensors_to_calibrate:")
         print(tensors_to_calibrate)
+
         for tensor in tensors_to_calibrate:
             # Adding ReduceMin nodes
             reduce_min_name = tensor + '_ReduceMin'
@@ -404,7 +421,7 @@ def calculate_calibration_data(model_path,
 
     calibrator.get_intermediate_outputs()
 
-def generate_calibration_table(model_path, augmented_model_path, data_reader, calibration_dataset=None, batch_size=1000):
+def generate_calibration_table(model_path, augmented_model_path, data_reader, calibration_dataset=None, batch_size=5000):
 
     if os.path.exists(augmented_model_path):
         os.remove(augmented_model_path)
@@ -413,14 +430,20 @@ def generate_calibration_table(model_path, augmented_model_path, data_reader, ca
 
     calibrator = None 
     stride = batch_size
+
+    # If no dataset is provided upfront, the dataset will be fetched by data reader itself and 
+    # therefore no need to handle batch processing at this moment. Just make the loop to run only once.
     total_data_size = len(os.listdir(calibration_dataset)) if calibration_dataset else stride
 
 
-    # Some machines don't have sufficient memeory to load all the images from dataset.
-    # So we handle it by batches. 
+    # Some machines don't have sufficient memeory to load all dataset. So handle it by batch.
     for i in range(0, total_data_size, stride):
+        print(calibration_dataset)
         if calibration_dataset:
-            print("Total data size %s\nStart to process data from index %s ..." % (str(len(image_list)), str(i)))
+            print("Total data size %s\nStart to process data from index %s with stride %s ..." % (str(total_data_size), str(i), str(stride)))
+            data_reader.set_start_index(i)
+            data_reader.set_size_limit(stride)
+            data_reader.set_preprocess_flag(True)
 
         if not calibrator:
             calibrator = get_calibrator(model_path, data_reader, augmented_model_path=augmented_model_path)
