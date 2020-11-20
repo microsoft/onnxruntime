@@ -123,23 +123,21 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
 
     // Filter the initializers also
     // Get the names of all the inputs and implicit inputs of all the nodes in this subgraph
-    std::unordered_set<std::string> filtered_node_input_names;
     for (const auto node_idx : filtered_node_indices_) {
       const auto* node = GetNode(node_idx);
-      ORT_ENFORCE(node, "Mismatch between Graph and IndexedSubGraph. Node not found:", node_idx);
+      ORT_ENFORCE(node, "Mismatch between Graph and IndexedSubGraph. Node not found: ", node_idx);
+      const ONNX_NAMESPACE::TensorProto* tensor = nullptr;
       for (const auto* node_input : node->InputDefs()) {
-        filtered_node_input_names.insert(node_input->Name());
+        if (graph.GetInitializedTensor(node_input->Name(), tensor)) {
+          filtered_initializers_.emplace(node_input->Name(), tensor);
+        }
       }
-      for (const auto* node_input : node->ImplicitInputDefs()) {
-        filtered_node_input_names.insert(node_input->Name());
-      }
-    }
 
-    // Now filtered the initializers
-    for (const auto pair : graph.GetAllInitializedTensors()) {
-      const auto& tensor_name = pair.first;
-      if (filtered_node_input_names.count(tensor_name)) {
-        filtered_initializers_.emplace(tensor_name, pair.second);
+      // The implicit inputs for subgraphs (if any)
+      for (const auto* node_input : node->ImplicitInputDefs()) {
+        if (graph.GetInitializedTensor(node_input->Name(), tensor)) {
+          filtered_initializers_.emplace(node_input->Name(), tensor);
+        }
       }
     }
 
