@@ -122,12 +122,15 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
                  [this](NodeIndex idx) { return filtered_node_indices_.count(idx) != 0; });
 
     // Filter the initializers also
-    // Get the names of all the inputs of all the nodes in the subgraph
+    // Get the names of all the inputs and implicit inputs of all the nodes in this subgraph
     std::unordered_set<std::string> filtered_node_input_names;
     for (const auto node_idx : filtered_node_indices_) {
       const auto* node = GetNode(node_idx);
       ORT_ENFORCE(node, "Mismatch between Graph and IndexedSubGraph. Node not found:", node_idx);
       for (const auto* node_input : node->InputDefs()) {
+        filtered_node_input_names.insert(node_input->Name());
+      }
+      for (const auto* node_input : node->ImplicitInputDefs()) {
         filtered_node_input_names.insert(node_input->Name());
       }
     }
