@@ -13,6 +13,11 @@
 #include "test/util/include/test/test_environment.h"
 #include "test/util/include/test_utils.h"
 
+#if defined(__ANDROID__)
+#include "core/providers/nnapi/nnapi_builtin/builders/op_builder.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/op_support_checker.h"
+#endif
+
 #if !defined(ORT_MINIMAL_BUILD)
 // if this is a full build we need the provider test utils
 #include "test/providers/provider_test_utils.h"
@@ -66,6 +71,20 @@ TEST(NnapiExecutionProviderTest, ReshapeFlattenTest) {
       << "Some nodes should have been taken by the NNAPI EP";
 #endif
 }
+
+#if defined(__ANDROID__)
+// This is to verify the op_builders and op_support_checkers are consistent
+TEST(NnapiExecutionProviderTest, CreateOpBuilderAndOpSupportCheckerTest) {
+  const auto& op_builders = nnapi::GetOpBuilders();
+  const auto& op_support_checkers = nnapi::GetOpSupportCheckers();
+  for (auto entry : op_builders) {
+    ASSERT_TRUE(op_support_checkers.find(entry.first) != op_support_checkers.cend());
+  }
+  for (auto entry : op_support_checkers) {
+    ASSERT_TRUE(op_builders.find(entry.first) != op_builders.cend());
+  }
+}
+#endif  // #if defined(__ANDROID__)
 
 TEST(NnapiExecutionProviderTest, FunctionTest) {
   const ORTCHAR_T* model_file_name = ORT_TSTR("nnapi_execution_provider_test_graph.onnx");
@@ -139,7 +158,7 @@ TEST(NnapiExecutionProviderTest, FunctionTest) {
 #endif  // !(ORT_MINIMAL_BUILD
 
 TEST(NnapiExecutionProviderTest, NNAPIFlagsTest) {
-  unsigned long nnapi_flags = NNAPI_FLAG_USE_NONE;
+  uint32_t nnapi_flags = NNAPI_FLAG_USE_NONE;
   nnapi_flags |= NNAPI_FLAG_USE_FP16;
   onnxruntime::NnapiExecutionProvider nnapi_ep(nnapi_flags);
   const auto flags = nnapi_ep.GetNNAPIFlags();
