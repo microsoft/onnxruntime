@@ -50,11 +50,10 @@ struct OrtStatus {
 #define BACKEND_DNNL ""
 #endif
 
-#if USE_NGRAPH
-#define BACKEND_NGRAPH "-NGRAPH"
-#include "core/providers/ngraph/ngraph_execution_provider.h"
+#if USE_MKLML
+#define BACKEND_MKLML "-MKL-ML"
 #else
-#define BACKEND_NGRAPH ""
+#define BACKEND_MKLML ""
 #endif
 
 #if USE_MIGRAPHX
@@ -129,7 +128,7 @@ struct OrtStatus {
 #define BACKEND_DML ""
 #endif
 
-#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_NGRAPH BACKEND_OPENVINO BACKEND_NUPHAR BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN BACKEND_DML
+#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_MKLML BACKEND_OPENVINO BACKEND_NUPHAR BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN BACKEND_DML
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/providers.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -156,9 +155,6 @@ onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExten
 #endif
 #ifdef USE_MIGRAPHX
 #include "core/providers/migraphx/migraphx_provider_factory.h"
-#endif
-#ifdef USE_NGRAPH
-#include "core/providers/ngraph/ngraph_provider_factory.h"
 #endif
 #ifdef USE_OPENVINO
 #include "core/providers/openvino/openvino_provider_factory.h"
@@ -202,7 +198,6 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ROCM(O
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_NGraph(const char* ng_backend_type);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* device_type,
                                                                                    bool enable_vpu_fast_compile,
                                                                                    const char* device_id,
@@ -212,7 +207,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VITISA
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ArmNN(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(int device_id);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(unsigned long flags);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(uint32_t flags);
 }  // namespace onnxruntime
 
 #if defined(_MSC_VER)
@@ -442,9 +437,9 @@ static inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime
 static const std::vector<std::string>& GetAllProviders() {
   static std::vector<std::string> all_providers = {kTensorrtExecutionProvider, kCudaExecutionProvider,
                                                    kMIGraphXExecutionProvider, kRocmExecutionProvider,
-                                                   kNGraphExecutionProvider, kOpenVINOExecutionProvider,
-                                                   kDnnlExecutionProvider, kNupharExecutionProvider,
-                                                   kVitisAIExecutionProvider, kNnapiExecutionProvider,
+                                                   kOpenVINOExecutionProvider, kDnnlExecutionProvider,
+                                                   kNupharExecutionProvider, kVitisAIExecutionProvider, 
+												   kNnapiExecutionProvider,
                                                    kArmNNExecutionProvider, kAclExecutionProvider,
                                                    kDmlExecutionProvider, kCpuExecutionProvider};
   return all_providers;
@@ -663,10 +658,6 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
 #ifdef USE_DNNL
       RegisterExecutionProvider(
           sess, *onnxruntime::CreateExecutionProviderFactory_Dnnl(sess->GetSessionOptions().enable_cpu_mem_arena));
-#endif
-    } else if (type == kNGraphExecutionProvider) {
-#if USE_NGRAPH
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_NGraph("CPU"));
 #endif
     } else if (type == kOpenVINOExecutionProvider) {
 #ifdef USE_OPENVINO
@@ -901,9 +892,6 @@ void addGlobalMethods(py::module& m, const Environment& env) {
 #endif
 #ifdef USE_DNNL
             onnxruntime::CreateExecutionProviderFactory_Dnnl(1),
-#endif
-#ifdef USE_NGRAPH
-            onnxruntime::CreateExecutionProviderFactory_NGraph("CPU"),
 #endif
 #ifdef USE_OPENVINO
             onnxruntime::CreateExecutionProviderFactory_OpenVINO(openvino_device_type, false, "", 8),
