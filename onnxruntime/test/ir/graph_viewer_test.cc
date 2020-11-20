@@ -92,6 +92,8 @@ TEST(GraphViewer, FilteredGraph) {
   EXPECT_EQ(viewer.GetOutputs().size(), final_metadef->outputs.size());
   EXPECT_EQ(viewer.IsSubgraph(), false)
       << "GraphViewer is for a filtered set of nodes of a single graph and not a nested subgraph";
+  EXPECT_EQ(viewer.GetAllInitializedTensors().size(), initializers.size());
+  EXPECT_LT(viewer.GetAllInitializedTensors().size(), graph.GetAllInitializedTensors().size());
 }
 }  // namespace test
 }  // namespace onnxruntime
