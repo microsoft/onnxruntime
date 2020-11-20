@@ -4,6 +4,10 @@ jobs:
     vmImage: 'macOS-10.15'
   timeoutInMinutes: 120
   steps:
+    - task: UsePythonVersion@0
+      displayName: Use Python $(pythonVersion)
+      inputs:
+        versionSpec: $(pythonVersion)
     - script: brew install coreutils ninja protobuf
       displayName: Install coreutils, ninja, protobuf
     - script: /bin/bash tools/ci_build/github/linux/ort_nnapi_minimal/nnapi_minimal_build_full_ort_and_create_ort_files.sh $(pwd)
