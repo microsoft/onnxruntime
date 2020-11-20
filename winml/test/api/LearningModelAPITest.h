@@ -19,7 +19,7 @@ struct LearningModelApiTestsApi
   VoidTest EnumerateInputs;
   VoidTest EnumerateOutputs;
   VoidTest CloseModelCheckMetadata;
-  VoidTest CheckLearningModelPixelRange
+  VoidTest CheckLearningModelPixelRange;
   VoidTest CloseModelCheckEval;
   VoidTest CloseModelNoNewSessions;
   VoidTest CheckMetadataCaseInsensitive;
