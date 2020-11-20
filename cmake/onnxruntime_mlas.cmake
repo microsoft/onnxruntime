@@ -4,7 +4,6 @@
 set(mlas_common_srcs
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/platform.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/threading.cpp
-  ${ONNXRUNTIME_ROOT}/core/mlas/lib/dgemm.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/sgemm.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/qgemm.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/convolve.cpp
@@ -76,6 +75,7 @@ if(MSVC)
     endif()
 
     set(mlas_platform_srcs
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/dgemm.cpp
       ${mlas_platform_srcs_avx}
       ${mlas_platform_srcs_avx2}
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/QgemmU8S8KernelAvx2.asm
@@ -320,6 +320,7 @@ else()
     endif()
 
     set(mlas_platform_srcs
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/dgemm.cpp
       ${mlas_platform_srcs_sse2}
       ${mlas_platform_srcs_avx}
       ${mlas_platform_srcs_avx2}

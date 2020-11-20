@@ -616,7 +616,7 @@ MlasQLinearGlobalAveragePoolNhwcSingleBatch(
     uint8_t tail[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
     bool finish_one_pass = false;
     const __m128i vzero = _mm_setzero_si128();
-    size_t step_next_group = 7 * Stride - (Channels & ~size_t{7});
+    size_t step_next_group = PixelsPerIteration * Stride - (Channels & ~size_t{7});
 
     const uint8_t* i0 = Input;
     const uint8_t* i1 = i0 + Stride;
