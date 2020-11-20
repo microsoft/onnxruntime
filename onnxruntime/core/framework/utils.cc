@@ -400,9 +400,6 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state, cons
   }
 
   MLValueCopyInfo copy_info;
-  std::vector<SessionState::NodeInfo> node_info_vec;
-  ORT_RETURN_IF_ERROR(session_state.GetInputNodeInfo(input_name, node_info_vec));
-
   ORT_RETURN_IF_ERROR(CalculateStaticCopyInfoForFeed(session_state, input_name, copy_info));
   copy_info.source_device = orig_mlvalue.Get<Tensor>().Location().device;
 
