@@ -17,7 +17,6 @@
 #include "onnxruntime/core/providers/cpu/cpu_provider_factory.h"
 #include "onnxruntime/core/providers/cuda/cuda_provider_factory.h"
 #include "onnxruntime/core/providers/dnnl/dnnl_provider_factory.h"
-#include "onnxruntime/core/providers/ngraph/ngraph_provider_factory.h"
 #include "onnxruntime/core/providers/nnapi/nnapi_provider_factory.h"
 #include "onnxruntime/core/providers/nuphar/nuphar_provider_factory.h"
 #include "onnxruntime/core/providers/openvino/openvino_provider_factory.h"
@@ -352,24 +351,6 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addDnn
   #else
     (void)apiHandle;(void)handle;(void)useArena; // Parameters used when DNNL is defined.
     throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with DNNL support.");
-  #endif
-}
-
-/*
- * Class:     ai_onnxruntime_OrtSession_SessionOptions
- * Method:    addNGraph
- * Signature: (JJLjava/lang/String;)V
- */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addNGraph
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jstring backendString) {
-    (void)jobj;
-  #ifdef USE_NGRAPH
-    const char* backendType = (*jniEnv)->GetStringUTFChars(jniEnv, backendString, NULL);
-    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_NGraph((OrtSessionOptions*) handle, backendType));
-    (*jniEnv)->ReleaseStringUTFChars(jniEnv,backendString,backendType);
-  #else
-    (void)apiHandle;(void)handle;(void)backendString; // Parameters used when NGraph is defined.
-    throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with NGraph support.");
   #endif
 }
 

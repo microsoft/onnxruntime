@@ -129,14 +129,6 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_DML(handle, deviceId));
         }
 
-        /// <summary>
-        /// Use only if you have the onnxruntime package specific to this Execution Provider.
-        /// </summary>
-        /// <param name="nGraphBackendType">identifies graph backend type</param>
-        public void AppendExecutionProvider_NGraph(string nGraphBackendType)
-        {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_NGraph(handle, nGraphBackendType));
-        }
 
         /// <summary>
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
