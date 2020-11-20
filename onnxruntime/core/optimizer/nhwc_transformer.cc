@@ -215,6 +215,11 @@ void NhwcTransformerImpl::TransformQLinearActivation(Node& node) {
 }
 
 void NhwcTransformerImpl::TransformQLinearGlobalAveragePool(Node& node) {
+  const auto* channels_last_attr = graph_utils::GetNodeAttribute(node, "channels_last");
+  if (channels_last_attr != nullptr && channels_last_attr->ints_size() > 0 && channels_last_attr->ints(0) != 0LL) {
+    // just return on nhwc already.
+    return;
+  }
   auto& input_defs = node.MutableInputDefs();
 
   auto* nhwc_input = LookupNhwcArgument(input_defs[0]);
