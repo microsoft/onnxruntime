@@ -135,7 +135,7 @@ Currently the NNAPI execution provider is the only execution provider that has s
     - we can not use the ONNX Runtime prebuilt package as NNAPI is not enabled in it
     - the 'full' build can be done on any platform
       - you do NOT need to create an Android build of ONNX Runtime in order to create an ORT format model that is optimized for usage with NNAPI.
-      - when the NNAPI execution provider is enabled on non-Android platforms it can only specify which nodes can be assigned to NNAPI. it can NOT be used to execute the model
+      - when the NNAPI execution provider is enabled on non-Android platforms it can only specify which nodes can be assigned to NNAPI. it can NOT be used to execute the model.
     - perform a standard build as per the [common build instructions](https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions), and add `--use_nnapi --build_shared_lib --build_wheel` to the build flags if any of those are missing
   - Install the python wheel from the build output directory
     - this is located in `build/Windows/<config>/<config>/dist/<package name>.whl` on Windows, or  `build/Linux/<config>/dist/<package name>.whl` on Linux. 
@@ -155,6 +155,8 @@ The generated ORT format model can be used on all platforms, however there is an
     - whether there is any performance loss, and/or whether there is significant performance loss, is model dependent
       - please test to ascertain what works best for your scenarios
         - you may want to generate one NNAPI aware ORT format model, and one generic ORT format model
+
+*Side note:* If losing the extended optimizations is not a concern, you can simply generate an ORT format model that can be used with NNAPI using the default ONNX Runtime package. Specify `--optimization_level basic` instead of `--use_nnapi` when running `tools\python\convert_onnx_models_to_ort.py`. This will mean all nodes that NNAPI could potentially will handle remain available, and at runtime the NNAPI execution provider can take them.
 
 #### Create the minimal build with NNAPI support
 NOTE: A minimal build with full NNAPI support can only be for the Android platform. 
