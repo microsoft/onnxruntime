@@ -38,24 +38,3 @@ python3 $ORT_ROOT/tools/python/convert_onnx_models_to_ort.py --use_nnapi \
 
 # Uninstall the ORT python wheel
 pip3 uninstall -y onnxruntime_noopenmp
-
-MIN_BUILD_DIR=$ORT_ROOT/min_build
-
-# build minimal package for Android x86_64 Emulator
-# Since this is a minimal build with reduced ops, we will only run e2e test using onnx_test_runner
-python3 $ORT_ROOT/tools/ci_build/build.py \
-    --build_dir $MIN_BUILD_DIR \
-    --config Debug \
-    --skip_submodule_sync \
-    --parallel \
-    --cmake_generator=Ninja \
-    --skip_tests \
-    --use_nnapi \
-    --android \
-    --android_sdk_path $ANDROID_HOME \
-    --android_ndk_path $ANDROID_HOME/ndk-bundle \
-    --android_abi=x86_64 \
-    --android_api=29 \
-    --build_java \
-    --include_ops_by_config $TMPDIR/.test_data/ort_minimal_e2e_test_data/required_operators.config
-

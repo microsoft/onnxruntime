@@ -5,8 +5,8 @@ jobs:
   timeoutInMinutes: 120
   steps:
     - script: brew install coreutils ninja protobuf
-      displayName: Install coreutils and ninja protobuf
+      displayName: Install coreutils, ninja, protobuf
     - script: /bin/bash tools/ci_build/github/linux/ort_nnapi_minimal/nnapi_minimal_build_full_ort_and_create_ort_files.sh $(pwd)
       displayName: Build Full ORT with Python and NNAPI EP
-#    - script: tools/ci_build/build.py --android --build_dir build_nnapi --android_sdk_path $ANDROID_HOME --android_ndk_path $ANDROID_HOME/ndk-bundle --android_abi=x86_64 --android_api=29 --skip_submodule_sync --parallel --use_nnapi --cmake_generator=Ninja --build_java
-#      displayName: NNAPI EP, Build and Test on Android Emulator
+    - script: /bin/bash tools/ci_build/github/linux/ort_nnapi_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh $(pwd)
+      displayName: Build Minimal ORT with NNAPI and run tests
