@@ -35,3 +35,4 @@ steps:
     cd ./build/RelWithDebInfo &&\
     ../../tools/ci_build/github/pai/pai_test_launcher.sh
   displayName: 'Run unit tests'
+
