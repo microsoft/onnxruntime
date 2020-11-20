@@ -7,7 +7,7 @@ set -e
 set -x
 
 # Build python package and convert onnx file to ort requires onnx
-pip3 install -U onnx
+python3 -m pip install -U onnx
 
 ORT_ROOT=$1
 FULL_BUILD_DIR=$ORT_ROOT/full_build
@@ -27,7 +27,7 @@ python3 $ORT_ROOT/tools/ci_build/build.py \
     --use_nnapi
 
 # Install the ORT python wheel
-pip3 install -U $FULL_BUILD_DIR/Debug/dist/*
+python3 -m pip install -U $FULL_BUILD_DIR/Debug/dist/*
 
 # Copy the test data to a separated folder
 cp -Rf $ORT_ROOT/onnxruntime/test/testdata/ort_minimal_e2e_test_data $TMPDIR/.test_data
@@ -38,4 +38,4 @@ python3 $ORT_ROOT/tools/python/convert_onnx_models_to_ort.py --use_nnapi \
     $TMPDIR/.test_data/ort_minimal_e2e_test_data
 
 # Uninstall the ORT python wheel
-pip3 uninstall -y onnxruntime_noopenmp
+python3 -m pip uninstall -y onnxruntime_noopenmp

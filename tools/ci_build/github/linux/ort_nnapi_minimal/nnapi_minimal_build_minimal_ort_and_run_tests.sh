@@ -50,8 +50,9 @@ adb push $ORT_ROOT/.test_data/ort_minimal_e2e_test_data /data/local/tmp/
 # Perform the e2e tests
 adb shell 'cd /data/local/tmp/ && ./onnx_test_runner -e nnapi ./ort_minimal_e2e_test_data'
 
-# Push onnxruntime_test_all to emulator
+# Push onnxruntime_test_all and testdata to emulator
 adb push $MIN_BUILD_DIR/Debug/onnxruntime_test_all /data/local/tmp/
+adb push $MIN_BUILD_DIR/Debug/testdata /data/local/tmp/
 
 # Perform the ut
 adb shell 'cd /data/local/tmp/ && ./onnxruntime_test_all'
