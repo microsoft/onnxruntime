@@ -8,6 +8,9 @@ set -e
 # Build python package requires numpy
 python3 -m pip install --user numpy
 
+# Convert onnx file to ort requires onnx
+pip3 install -U onnx
+
 ORT_ROOT=$1
 FULL_BUILD_DIR=$ORT_ROOT/full_build
 
@@ -30,9 +33,6 @@ pip3 install -U $FULL_BUILD_DIR/Debug/dist/*
 
 # Copy the test data to a separated folder
 cp -Rf $ORT_ROOT/onnxruntime/test/testdata/ort_minimal_e2e_test_data $TMPDIR/.test_data
-
-# Convert onnx file to ort requires onnx
-pip3 install -U onnx
 
 # Convert all the onnx models in the $HOME/.test_data/ort_minimal_e2e_test_data to ort model
 # and generate the included ops config file as $HOME/.test_data/ort_minimal_e2e_test_data/required_operators.config
