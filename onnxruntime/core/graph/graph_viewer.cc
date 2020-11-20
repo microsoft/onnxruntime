@@ -121,6 +121,25 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
     std::copy_if(orig_order.cbegin(), orig_order.cend(), std::back_inserter(nodes_in_topological_order_),
                  [this](NodeIndex idx) { return filtered_node_indices_.count(idx) != 0; });
 
+    // Filter the initializers also
+    // Get the names of all the inputs of all the nodes in the subgraph
+    std::unordered_set<std::string> filtered_node_input_names;
+    for (const auto node_idx : filtered_node_indices_) {
+      const auto* node = GetNode(node_idx);
+      ORT_ENFORCE(node, "Mismatch between Graph and IndexedSubGraph. Node not found:", node_idx);
+      for (const auto* node_input : node->InputDefs()) {
+        filtered_node_input_names.insert(node_input->Name());
+      }
+    }
+
+    // Now filtered the initializers
+    for (const auto pair : GetAllInitializedTensors()) {
+      const auto& tensor_name = pair.first;
+      if (filtered_node_input_names.count(tensor_name)) {
+        filtered_initializers_.emplace(tensor_name, pair.second);
+      }
+    }
+
 #if !defined(ORT_MINIMAL_BUILD)
     auto orig_priority_order = std::move(nodes_in_topological_order_with_priority_);
     nodes_in_topological_order_with_priority_.reserve(filter_info->nodes.size());
@@ -146,6 +165,10 @@ const std::string& GraphViewer::Description() const noexcept {
 
 bool GraphViewer::GetInitializedTensor(const std::string& tensor_name,
                                        const ONNX_NAMESPACE::TensorProto*& value) const {
+  // if we are using filtered subgraph, the initializer has to be part of the subgraph
+  if (filter_info_ != nullptr && filtered_initializers_.find(tensor_name) == filtered_initializers_.cend())
+    return false;
+
   return graph_->GetInitializedTensor(tensor_name, value);
 }
 
@@ -220,7 +243,9 @@ const std::vector<NodeIndex>& GraphViewer::GetRootNodes() const {
 }
 
 const InitializedTensorSet& GraphViewer::GetAllInitializedTensors() const noexcept {
-  return graph_->GetAllInitializedTensors();
+  return (filter_info_ == nullptr)
+             ? graph_->GetAllInitializedTensors()
+             : filtered_initializers_;
 }
 
 const NodeArg* GraphViewer::GetNodeArg(const std::string& name) const {
