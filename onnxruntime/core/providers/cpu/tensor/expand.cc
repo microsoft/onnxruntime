@@ -72,6 +72,12 @@ Status Expand<T>::Compute(OpKernelContext* context) const {
   auto* output_dims = output_shape.data();
   auto output_dims_size = static_cast<int64_t>(output_shape.size());
   auto max_dims_size = std::max(input_dims_size, output_dims_size);
+
+  if (0 == max_dims_size) {
+    *output_data = *input_data;
+    return Status::OK();
+  }
+
   std::unique_ptr<int64_t[]> input_dim_group{new int64_t[max_dims_size]};
   std::unique_ptr<int64_t[]> output_dim_group{new int64_t[max_dims_size]};
   std::unique_ptr<int64_t[]> expand_dim_size{new int64_t[max_dims_size]};

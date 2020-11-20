@@ -22,9 +22,9 @@ std::vector<MLFloat16> MakeMLFloat16(const std::initializer_list<float>& input) 
 
 TEST(MathOpTest, DimWithZeroHandling) {
   auto run = [](OpTester& tester) {
-    // exclude NGraph, TensorRT and NNAPI as this isn't handled by those EPs
+    // exclude TensorRT and NNAPI as this isn't handled by those EPs
     tester.Run(OpTester::ExpectResult::kExpectSuccess, "",
-               {kTensorrtExecutionProvider, kNGraphExecutionProvider, kNnapiExecutionProvider});
+               {kTensorrtExecutionProvider, kNnapiExecutionProvider});
   };
 
   // test binary element-wise op broadcasting when there's a dim with value of zero
@@ -124,8 +124,7 @@ TEST(MathOpTest, Add_double) {
                          {0.0, 6.4, 431.3,
                           0.0, 5.0, -36.0,
                           -10.8, 18.6, 0.0});
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {});
+  test.Run();
 }
 
 TEST(MathOpTest, Add_Broadcast_Axis) {
@@ -701,7 +700,7 @@ TEST(MathOpTest, Pow_float_int64) {
   test.AddInput<float>("X", dims, {1.0f, 2.0f, 3.0f});
   test.AddInput<int64_t>("Y", dims, {4, 5, 6});
   test.AddOutput<float>("Z", dims, {1.f, 32.f, 729.f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
+  test.Run();
 }
 
 TEST(MathOpTest, Pow_int64_float) {
@@ -710,7 +709,7 @@ TEST(MathOpTest, Pow_int64_float) {
   test.AddInput<int64_t>("X", dims, {1, 2, 3});
   test.AddInput<float>("Y", dims, {4.f, 5.f, 6.f});
   test.AddOutput<int64_t>("Z", dims, {1, 32, 729});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
+  test.Run();
 }
 
 TEST(MathOpTest, Pow_float_int32) {
@@ -719,7 +718,7 @@ TEST(MathOpTest, Pow_float_int32) {
   test.AddInput<float>("X", dims, {1.0f, 2.0f, 3.0f});
   test.AddInput<int32_t>("Y", dims, {4, 5, 6});
   test.AddOutput<float>("Z", dims, {1.f, 32.f, 729.f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
+  test.Run();
 }
 
 TEST(MathOpTest, Pow_int32_float) {
@@ -728,7 +727,7 @@ TEST(MathOpTest, Pow_int32_float) {
   test.AddInput<int32_t>("X", dims, {1, 2, 3});
   test.AddInput<float>("Y", dims, {4.f, 5.f, 6.f});
   test.AddOutput<int32_t>("Z", dims, {1, 32, 729});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
+  test.Run();
 }
 
 TEST(MathOpTest, Pow_int64_double) {
@@ -737,7 +736,7 @@ TEST(MathOpTest, Pow_int64_double) {
   test.AddInput<int64_t>("X", dims, {1, 2, 3});
   test.AddInput<double>("Y", dims, {4.f, 5.f, 6.f});
   test.AddOutput<int64_t>("Z", dims, {1, 32, 729});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
+  test.Run();
 }
 
 TEST(MathOpTest, Pow_double_int64) {
@@ -746,7 +745,7 @@ TEST(MathOpTest, Pow_double_int64) {
   test.AddInput<double>("X", dims, {1., 2., 3.});
   test.AddInput<int64_t>("Y", dims, {4, 5, 6});
   test.AddOutput<double>("Z", dims, {1., 32., 729.});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
+  test.Run();
 }
 
 #ifdef USE_CUDA

@@ -55,10 +55,6 @@ file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/*.cc"
 )
 
-if(onnxruntime_USE_NGRAPH)
-  set(PROVIDERS_NGRAPH onnxruntime_providers_ngraph)
-  list(APPEND ONNXRUNTIME_PROVIDER_NAMES ngraph)
-endif()
 if(onnxruntime_USE_NUPHAR)
   set(PROVIDERS_NUPHAR onnxruntime_providers_nuphar)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES nuphar)
@@ -485,27 +481,6 @@ if (onnxruntime_USE_TENSORRT)
           RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 
-if (onnxruntime_USE_NGRAPH)
-  include_directories("${CMAKE_CURRENT_BINARY_DIR}/onnx")
-  file(GLOB_RECURSE onnxruntime_providers_ngraph_cc_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/ngraph/*.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/ngraph/*.cc"
-  )
-
-  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_ngraph_cc_srcs})
-  add_library(onnxruntime_providers_ngraph ${onnxruntime_providers_ngraph_cc_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_ngraph onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf flatbuffers)
-  add_dependencies(onnxruntime_providers_ngraph project_ngraph onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  set_target_properties(onnxruntime_providers_ngraph PROPERTIES FOLDER "ONNXRuntime")
-  target_include_directories(onnxruntime_providers_ngraph PRIVATE ${ONNXRUNTIME_ROOT} ${ngraph_INCLUDE_DIRS})
-  set_target_properties(onnxruntime_providers_ngraph PROPERTIES LINKER_LANGUAGE CXX)
-
-  if (NOT MSVC)
-    target_compile_options(onnxruntime_providers_ngraph PRIVATE "SHELL:-Wformat" "SHELL:-Wformat-security" "SHELL:-fstack-protector-strong" "SHELL:-D_FORTIFY_SOURCE=2")
-    target_link_options(onnxruntime_providers_ngraph PRIVATE "LINKER:-z, noexecstack " "LINKER:-z relro" "LINKER:-z now" "LINKER:-pie")
-  endif()
-endif()
-
 if (onnxruntime_USE_NUPHAR)
   add_definitions(-DUSE_NUPHAR=1)
 
@@ -633,7 +608,7 @@ if (onnxruntime_USE_OPENVINO)
       else()
         list(APPEND OPENVINO_LIB_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64/Release)
       endif()
-    elseif(CMAKE_LIBRARY_ARCHITECTURE STREQUAL "aarch64-linux-gnu")
+    elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
       list(APPEND OPENVINO_LIB_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/aarch64)
     else()
       list(APPEND OPENVINO_LIB_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64)
