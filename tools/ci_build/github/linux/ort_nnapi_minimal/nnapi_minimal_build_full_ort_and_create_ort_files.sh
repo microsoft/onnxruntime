@@ -5,7 +5,7 @@
 
 set -e
 
-# build python package and reduce ops requires onnx
+# Build python package requires numpy
 python3 -m pip install --user numpy
 
 ORT_ROOT=$1
@@ -25,12 +25,14 @@ python3 $ORT_ROOT/tools/ci_build/build.py \
     --skip_tests \
     --use_nnapi
 
-
 # Install the ORT python wheel
 python3 -m pip install --user $BUILD_DIR/Debug/dist/*
 
 # Copy the test data to a separated folder
-cp -Rf $ORT_ROOT/onnxruntime/test/testdata/ort_minimal_e2e_test_data $TMP/.test_data
+cp -Rf $ORT_ROOT/onnxruntime/test/testdata/ort_minimal_e2e_test_data $TMPDIR/.test_data
+
+# Convert onnx file to ort requires onnx
+python3 -m pip install --user onnx
 
 # Convert all the onnx models in the $HOME/.test_data/ort_minimal_e2e_test_data to ort model
 # and generate the included ops config file as $HOME/.test_data/ort_minimal_e2e_test_data/required_operators.config
