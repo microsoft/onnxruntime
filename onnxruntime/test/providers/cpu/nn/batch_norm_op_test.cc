@@ -43,7 +43,6 @@ void TestBatchNorm(const unordered_map<string, vector<T>>& input_data_map,
   // Weight as input is not supported by TensorRT and spatial == 0 is not supported by Nuphar
   std::unordered_set<std::string> excluded_eps = {kTensorrtExecutionProvider};
   if (spatial_mode == 0) {
-    excluded_eps.insert(kNGraphExecutionProvider);
     excluded_eps.insert(kOpenVINOExecutionProvider);
   }
 

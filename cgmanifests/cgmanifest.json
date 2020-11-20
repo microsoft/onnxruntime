@@ -176,15 +176,6 @@
       },
       {
          "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "950fbf183274ab7d2092f99bab6c809ae87c7054",
-               "repositoryUrl": "https://github.com/NervanaSystems/ngraph.git"
-            }
-         }
-      },
-      {
-         "component": {
             "Type": "other",
             "Other": {
                "Name": "Boost",
