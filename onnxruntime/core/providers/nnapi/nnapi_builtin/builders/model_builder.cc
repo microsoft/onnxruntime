@@ -107,7 +107,7 @@ void ModelBuilder::PreprocessInitializers() {
   const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
   for (size_t i = 0; i < node_indices.size(); i++) {
     const auto* node(graph_viewer_.GetNode(node_indices[i]));
-    if (auto* op_builder = GetOpBuilder(*node)) {
+    if (const auto* op_builder = GetOpBuilder(*node)) {
       op_builder->AddInitializersToSkip(*this, *node);
     }
   }
@@ -416,7 +416,7 @@ Status ModelBuilder::AddOperations() {
   const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
   for (size_t i = 0; i < node_indices.size(); i++) {
     const auto* node(graph_viewer_.GetNode(node_indices[i]));
-    if (auto* op_builder = GetOpBuilder(*node)) {
+    if (const auto* op_builder = GetOpBuilder(*node)) {
       ORT_RETURN_IF_ERROR(op_builder->AddToModelBuilder(*this, *node));
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -528,20 +528,12 @@ int32_t ModelBuilder::FindActivation(const Node& node, const NodeArg& output) {
   return fuse_code;
 }
 
-IOpBuilder* ModelBuilder::GetOpBuilder(const Node& node) {
+/* static */ const IOpBuilder* ModelBuilder::GetOpBuilder(const Node& node) {
   const auto& op_builders = GetOpBuilders();
   if (!Contains(op_builders, node.OpType()))
     return nullptr;
 
-  return op_builders.at(node.OpType()).get();
-}
-
-IOpSupportChecker* ModelBuilder::GetOPSupportChecker(const Node& node) {
-  const auto& op_support_checkers = GetOpSupportCheckers();
-  if (!Contains(op_support_checkers, node.OpType()))
-    return nullptr;
-
-  return op_support_checkers.at(node.OpType()).get();
+  return op_builders.at(node.OpType());
 }
 
 std::string ModelBuilder::GetUniqueName(const std::string& base_name) {
