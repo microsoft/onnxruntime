@@ -1386,6 +1386,8 @@ void addObjectMethods(py::module& m, Environment& env) {
 Set this option to false if you don't want it. Default is True.)pbdoc")
       .def_readwrite("enable_profiling", &PySessionOptions::enable_profiling,
                      R"pbdoc(Enable profiling for this session. Default is false.)pbdoc")
+      .def_readwrite("profile_file_prefix", &PySessionOptions::profile_file_prefix,
+                     R"pbdoc(The prefix of the profile file. The current time will be appended to the file name.)pbdoc")
       .def_readwrite("optimized_model_filepath", &PySessionOptions::optimized_model_filepath,
                      R"pbdoc(
 File path to serialize optimized model to. 
