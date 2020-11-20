@@ -45,6 +45,10 @@ namespace Microsoft.ML.OnnxRuntime
 
         #region IDisposable Support
 
+        /// <summary>
+        /// IDisposable implementation
+        /// </summary>
+        /// <param name="disposing">true if invoked from Dispose()</param>
         protected virtual void Dispose(bool disposing)
         {
             if(_disposed)
@@ -60,6 +64,9 @@ namespace Microsoft.ML.OnnxRuntime
             _disposed = true;
         }
 
+        /// <summary>
+        /// IDisposable implementation
+        /// </summary>
         public void Dispose()
         {
             Dispose(true);
