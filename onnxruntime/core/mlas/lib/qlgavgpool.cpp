@@ -530,7 +530,7 @@ MlasQLinearGlobalAveragePoolNchw(
         vsums = _mm_add_epi32(vsums, vshuf);
         *sum_buffer++ = _mm_cvtsi128_si32(vsums);
     }
-    MlasRequantizeOutput(AccumulateBuffer, Output, &bias, 1, Channels, scale, ZeroPointOutput);
+    MlasRequantizeOutput(AccumulateBuffer, Output, &bias, 1, Channels, scale, static_cast<uint8_t>(ZeroPointOutput));
 }
 
 MLAS_FORCEINLINE
@@ -550,7 +550,7 @@ MlasQLinearGlobalAveragePoolNhwcSingleBatch(
 {
 #if defined(MLAS_TARGET_IX86)
 
-    constexpr size_t kLinesPerIteration = 3;
+    constexpr size_t PixelsPerIteration = 3;
 
 #define LOAD_FULL_CHANNELS()                                 \
     const __m128i vi0 = _mm_loadl_epi64((const __m128i*)i0); \
@@ -573,7 +573,7 @@ MlasQLinearGlobalAveragePoolNhwcSingleBatch(
 
 #else
 
-    constexpr size_t kLinesPerIteration = 7;
+    constexpr size_t PixelsPerIteration = 7;
 
 #define LOAD_FULL_CHANNELS()                                 \
     const __m128i vi0 = _mm_loadl_epi64((const __m128i*)i0); \
@@ -628,7 +628,7 @@ MlasQLinearGlobalAveragePoolNhwcSingleBatch(
     const uint8_t* i6 = i5 + Stride;
 #endif
 
-    for (; ImageSize > kLinesPerIteration; ImageSize -= kLinesPerIteration) {
+    for (; ImageSize > PixelsPerIteration; ImageSize -= PixelsPerIteration) {
         int32_t* acc = AccumulateBuffer;
         size_t c = Channels;
         for (; c >= 8; c -= 8) {
@@ -649,7 +649,7 @@ MlasQLinearGlobalAveragePoolNhwcSingleBatch(
             const __m128i vi4 = _mm_loadl_epi64((const __m128i*)(i4 >= LastOf8 ? memcpy(tail, i4, c) : i4));
             const __m128i vi5 = _mm_loadl_epi64((const __m128i*)(i5 >= LastOf8 ? memcpy(tail, i5, c) : i5));
             const __m128i vi6 = _mm_loadl_epi64((const __m128i*)(i6 >= LastOf8 ? memcpy(tail, i6, c) : i6));
-#endif        
+#endif
 
             CALCULATE_ACCUMULATE_VECTORS();
 
