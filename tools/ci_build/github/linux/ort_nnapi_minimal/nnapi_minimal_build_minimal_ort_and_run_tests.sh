@@ -10,7 +10,7 @@ ORT_ROOT=$1
 
 MIN_BUILD_DIR=$ORT_ROOT/min_build
 
-mkdir -p $TMPDIR/.test_data/.test_data/models_to_include
+mkdir -p $TMPDIR/.test_data/models_to_include
 cp $ORT_ROOT/onnxruntime/test/testdata/ort_github_issue_4031.onnx $TMPDIR/.test_data/models_to_include
 cp $ORT_ROOT/onnxruntime/test/testdata/mnist.onnx $TMPDIR/.test_data/models_to_include
 cp $ORT_ROOT/onnxruntime/test/testdata/ort_minimal_test_models/*.onnx $TMPDIR/.test_data/models_to_include

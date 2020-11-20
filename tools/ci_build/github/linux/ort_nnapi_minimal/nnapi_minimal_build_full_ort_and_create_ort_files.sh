@@ -30,6 +30,7 @@ python3 $ORT_ROOT/tools/ci_build/build.py \
 python3 -m pip install -U --user $FULL_BUILD_DIR/Debug/dist/*
 
 # Copy the test data to a separated folder
+mkdir -p $TMPDIR/.test_data
 cp -Rf $ORT_ROOT/onnxruntime/test/testdata/ort_minimal_e2e_test_data $TMPDIR/.test_data
 
 # Convert all the onnx models in the $HOME/.test_data/ort_minimal_e2e_test_data to ort model
