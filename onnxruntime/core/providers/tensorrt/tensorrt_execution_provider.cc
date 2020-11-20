@@ -156,7 +156,6 @@ bool FindCycleHelper(int i, const std::list<int>* adjacency_map, bool visited[],
 *   data_0: 4000889d
 *   ...
 */
-
 bool ReadDynamicRange(const std::string file_name, const bool is_trt_calibration_table, std::unordered_map<std::string, float>& dynamic_range_map) {
   std::ifstream infile(file_name, std::ios::binary | std::ios::in);
   if (!infile) {
@@ -450,7 +449,6 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       cache_path_ = engine_cache_path;
       LOGS_DEFAULT(WARNING) << "[TensorRT EP] ORT_TENSORRT_ENGINE_CACHE_PATH is deprecated! Please use ORT_TENSORRT_CACHE_PATH to specify engine cache path";
     }
-
     if (!cache_path_.empty() && !fs::is_directory(cache_path_)) {
       if (!fs::create_directory(cache_path_)) {
         throw std::runtime_error("Failed to create directory " + cache_path_);

@@ -237,6 +237,41 @@ static void DumpOrtModelAsJson(const std::string& model_uri) {
   std::ofstream(model_uri + ".json") << json;
 }
 */
+/* The full build was causing the following error because the graph node array has some empyt (blank) node at some indices for certain ORT designs
+       onnx runtime exception : Satisfied, but should not be : node == nullptr
+       session_state.cc : 814 onnxruntime::SessionState::LoadFromOrtFormatCan't find node with index 4. Invalid ORT format model.
+  The bug was due to loading an ORT format model in a full build, allowing optimizers to run, but trying to use the saved kernel information.
+  As the optimizer removed some leaving gaps in the graph node vector.
+  The build has been fixed in InferenceSession code. The following test case to catch this error.
+*/
+
+TEST(OrtModelOnlyTests, ValidateOrtFormatModelDoesNotRunOptimizersInFullBuild) {
+  const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("mnist.onnx.ort");
+  SaveAndCompareModels("testdata/mnist.onnx", ort_file);
+
+  // DumpOrtModelAsJson(ToMBString(ort_file));
+
+  OrtModelTestInfo test_info;
+  test_info.model_filename = ort_file;
+  test_info.logid = "ValidateOrtFormatModelDoesNotRunOptimizersInFullBuild";
+  test_info.configs.push_back(std::make_pair(kOrtSessionOptionsConfigLoadModelFormat, "ORT"));
+
+  OrtValue ml_value;
+  vector<float> data(28*28, 0.0);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), {1,1,28,28}, data,
+                       &ml_value);
+  test_info.inputs.insert(std::make_pair("Input3", ml_value));
+
+  // prepare outputs
+  test_info.output_names = {"Plus214_Output_0"};
+  test_info.output_verifier = [](const std::vector<OrtValue>& fetches) {
+    const auto& output = fetches[0].Get<Tensor>();
+    ASSERT_TRUE(output.Shape().NumDimensions() == 2);
+    // ASSERT_TRUE(output.Data<float>()[0] == 125.f);
+  };
+
+  RunOrtModel(test_info);
+}
 
 TEST(OrtModelOnlyTests, SerializeToOrtFormat) {
   const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("ort_github_issue_4031.onnx.ort");

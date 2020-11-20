@@ -210,14 +210,13 @@ void RunConv2DWithBiasTest(bool all_input_initializer_except_x) {
   OpTester test("QLinearConv", 10);
   test.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
 
-  // TODO: nGraph fails to handle the optional bias vector correctly.
   TestQLinearConvOp(test,
                     X, {1, 2, 5, 5},
                     W, {4, 2, 3, 3},
                     &B,
                     Y, {1, 4, 5, 5},
                     all_input_initializer_except_x,
-                    {kNGraphExecutionProvider});
+                    {});
 }
 
 TEST(QLinearConvTest, WithBias_2D) {
@@ -252,14 +251,13 @@ TEST(QLinearConvTest, WithGroup_2D) {
   test.AddAttribute("pads", std::vector<int64_t>{0, 0, 1, 1});
   test.AddAttribute("strides", std::vector<int64_t>{2, 2});
 
-  // TODO: nGraph rejects grouped convolutions with bias.
   TestQLinearConvOp(test,
                     X, {1, 6, 3, 5},
                     W, {6, 2, 2, 2},
                     &B,
                     Y, {1, 6, 2, 3},
                     false,
-                    {kNGraphExecutionProvider});
+                    {});
 }
 
 #if defined(MLAS_TARGET_AMD64_IX86)
@@ -701,7 +699,7 @@ TEST(QLinearConvTest, Conv2D_U8S8_Groups) {
 
 TEST(QLinearConvTest, Conv3D_U8S8_Groups) {
   QLinearConvOpTester<uint8_t, int8_t> test;
-  test.GenerateRandomInput({1, 4, 13, 17, 13}, .03f, 7);
+  test.GenerateRandomInput({2, 4, 13, 17, 13}, .03f, 7);
   test.GenerateRandomWeights({6, 2, 3, 3, 3}, .10f, 0);
   test.GenerateRandomBias();
   test.SetPads({1, 1, 1, 1, 1, 1});

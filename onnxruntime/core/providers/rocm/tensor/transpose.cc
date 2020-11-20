@@ -103,6 +103,53 @@ Status Transpose::DoTranspose(const Transpose& kernel,
   TensorPitches original_input_strides(input_dims);
   TensorPitches original_output_strides(output_dims);
 
+  // flatten the adjacent dimensions which are contiguous
+  // for example: permutations[0, 2, 3, 1] -> [0, 2, 1], permutations[0, 3, 1, 2] -> [0, 2, 1]
+  auto new_rank = rank;
+  std::vector<size_t> new_permutations(permutations);
+  std::vector<int64_t> new_input_dims(input_dims);
+  std::vector<int64_t> new_output_dims(output_dims);
+
+  for (auto i = rank - 1; i > 0; i--) {
+    auto curr = new_permutations[i];
+    auto prev = new_permutations[i - 1];
+    if (prev + 1 == curr) {
+      // all dims bigger than curr need to be reduced by 1 due to the merging.
+      for (auto j = 0; j < new_rank; j++) {
+        if (new_permutations[j] > curr) {
+          new_permutations[j] -= 1;
+        }
+      }
+      for (auto j = i+1; j < new_rank; j++) {
+        new_permutations[j-1] = new_permutations[j];
+      }
+
+      // update input dims
+      new_input_dims[prev] *= new_input_dims[curr];
+      new_input_dims[curr] = 1;
+      for (auto j = static_cast<int32_t>(curr+1); j < new_rank; j++) {
+        new_input_dims[j-1] = new_input_dims[j];
+      }
+      new_input_dims[new_rank-1] = 1;
+
+      // update output dims
+      new_output_dims[i-1] *= new_output_dims[i];
+      new_output_dims[i] = 1;
+      for (auto j = i+1; j < new_rank; j++) {
+        new_output_dims[j-1] = new_output_dims[j];
+      }
+      new_output_dims[new_rank-1] = 1;
+
+      new_rank--;
+    }
+  }
+  new_permutations.resize(new_rank);
+  new_input_dims.resize(new_rank);
+  new_output_dims.resize(new_rank);
+
+  TensorPitches new_input_strides(new_input_dims);
+  TensorPitches new_output_strides(new_output_dims);
+
   // TArray<int64_t> input_strides(rank);
   // for (auto i = 0; i < rank; i++) {
   //   input_strides[i] = original_input_strides[permutations[i]];
@@ -113,13 +160,32 @@ Status Transpose::DoTranspose(const Transpose& kernel,
   //   output_strides[i] = fast_divmod(gsl::narrow_cast<int>(original_output_strides[i]));
   // }
 
-  RocmAsyncBuffer<int64_t> input_strides(&kernel, rank);
-  for (auto i = 0; i < rank; i++) {
-    input_strides.CpuPtr()[i] = original_input_strides[permutations[i]];
+  size_t element_size = input.DataType()->Size();
+  std::vector<int64_t> input_shape(new_rank);
+  std::vector<int64_t> tmp_input_strides(new_rank);
+  std::vector<int64_t> tmp_output_strides(new_rank);  
+  for (auto i = 0; i < new_rank; i++) {
+    input_shape[i] = new_input_dims[i];    
+    tmp_input_strides[i] = new_input_strides[i];
+    tmp_output_strides[i] = new_output_strides[new_permutations[i]];    
   }
 
-  RocmAsyncBuffer<fast_divmod> output_strides(&kernel, rank);
-  ORT_ENFORCE(CalculateFdmStrides(output_strides.CpuSpan(), output_dims));
+  if (CanDoTranspose3D(new_rank, new_input_dims, new_permutations)) {
+    return Transpose3DImpl(kernel, element_size, input_shape, tmp_input_strides,
+                           input.DataRaw(), output.MutableDataRaw(), output.Shape().Size());
+
+  } else if (CanDoTranspose4D(kernel.GetDeviceProp(), element_size, new_rank, new_input_dims, new_permutations)) {
+    return Transpose4DImpl(kernel, element_size, input_shape, tmp_input_strides, input.DataRaw(),
+                           tmp_output_strides, output.MutableDataRaw(), output.Shape().Size());
+  } 
+
+  RocmAsyncBuffer<int64_t> input_strides(&kernel, new_rank);
+  for (auto i = 0; i < new_rank; i++) {
+    input_strides.CpuPtr()[i] = new_input_strides[new_permutations[i]];
+  }
+
+  RocmAsyncBuffer<fast_divmod> output_strides(&kernel, new_rank);
+  ORT_ENFORCE(CalculateFdmStrides(output_strides.CpuSpan(), new_output_dims));
 
   // TODO: use output shape in reverse order for uint24 math
   // for (auto i = 0; i < rank; i++) {
@@ -131,8 +197,7 @@ Status Transpose::DoTranspose(const Transpose& kernel,
   ORT_RETURN_IF_ERROR(input_strides.CopyToGpu());
   ORT_RETURN_IF_ERROR(output_strides.CopyToGpu());
 
-  size_t element_size = input.DataType()->Size();
-  auto status = TransposeImpl(element_size, rank, input_strides.GpuPtr(), input.DataRaw(),
+  auto status = TransposeImpl(element_size, new_rank, input_strides.GpuPtr(), input.DataRaw(),
                               output_strides.GpuPtr(), output.MutableDataRaw(), output.Shape().Size());
 
   return status;
