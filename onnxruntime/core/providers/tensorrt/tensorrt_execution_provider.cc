@@ -20,6 +20,7 @@
 #include <map>
 #include <memory>
 #include "flatbuffers/idl.h"
+#include "ort_trt_int8_cal_table.fbs.h"
 
 #define CUDA_RETURN_IF_ERROR(expr)               \
   ORT_RETURN_IF_ERROR(CUDA_CALL(expr)            \
@@ -141,7 +142,7 @@ bool FindCycleHelper(int i, const std::list<int>* adjacency_map, bool visited[],
 * Read calibration table for INT8 quantization
 * Two kind of calibration tables are supported,
 * 1. ORT generated calibration table
-* The table is pre-serialized by flexbuffers. 
+* The table is pre-serialized by flatbuffers. 
 * Each entry in the table is a key-value pair,
 * key: tensor name, value: maximum absolute value in floating point
 * For example,
@@ -194,11 +195,10 @@ bool ReadDynamicRange(const std::string file_name, const bool is_trt_calibration
     std::unique_ptr<char[]> data{new char[length]};
     infile.read((char*)data.get(), length);
     infile.close();
-    auto dynamic_range_entries = flexbuffers::GetRoot((const uint8_t*)data.get(), length).AsMap();
-    auto keys = dynamic_range_entries.Keys();
-    auto values = dynamic_range_entries.Values();
-    for (size_t i = 0, end = keys.size(); i < end; ++i) {
-      dynamic_range_map[keys[i].AsString().c_str()] = values[i].AsFloat();
+    auto flat_table = flatbuffers::GetRoot<CalTableFlatBuffers::TrtTable>((const uint8_t*)data.get());
+    auto flat_dict = flat_table->dict();
+    for (size_t i = 0, end = flat_dict->size(); i < end; ++i) {
+      dynamic_range_map[flat_dict->Get(i)->key()->str()] = std::stof(flat_dict->Get(i)->value()->str()); 
     }
   }
   return true;
@@ -443,7 +443,12 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   }
 
   if (engine_cache_enable_ || int8_enable_) {
+    const std::string engine_cache_path = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEngineCachePath);
     cache_path_ = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kCachePath);
+    if (!engine_cache_path.empty() && cache_path_.empty()) {
+      cache_path_ = engine_cache_path;
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] ORT_TENSORRT_ENGINE_CACHE_PATH is deprecated! Please use ORT_TENSORRT_CACHE_PATH to specify engine cache path";
+    }
     if (!cache_path_.empty() && !fs::is_directory(cache_path_)) {
       if (!fs::create_directory(cache_path_)) {
         throw std::runtime_error("Failed to create directory " + cache_path_);
