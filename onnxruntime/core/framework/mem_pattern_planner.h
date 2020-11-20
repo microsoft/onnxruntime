@@ -30,14 +30,14 @@ namespace onnxruntime {
 class MemPatternPlanner {
  public:
   // only the Training code currently uses the program counter based logic
-  MemPatternPlanner(bool using_counters = false) : using_counters_{using_counters} {}
+  MemPatternPlanner(bool using_counters) : using_counters_{using_counters} {}
 
 #ifdef ENABLE_TRAINING
   // TODO: OverlappingTimeSchedules should be private
   // Returns true if there is an intersection between two time schedules.
   // ProgramCounter values are validated when the execution plan is created
-  bool  OverlappingTimeSchedules(const AllocPlanPerValue::ProgramCounter& counter1,
-                                 const AllocPlanPerValue::ProgramCounter& counter2) const {
+  bool OverlappingTimeSchedules(const AllocPlanPerValue::ProgramCounter& counter1,
+                                const AllocPlanPerValue::ProgramCounter& counter2) const {
     const auto& starts_1 = counter1.Starts();
     const auto& ends_1 = counter1.Ends();
     const auto& starts_2 = counter2.Starts();
