@@ -453,9 +453,7 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
       ORT_ENFORCE(exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate);
 
       const auto& counter = exe_plan->allocation_plan[ml_value_idx].program_counter;
-      for (size_t index = 0, end = counter.Starts().size(); index < end; index += 1) {
-        mem_planner.TraceAllocation(ml_value_idx, counter, size);
-      }
+      mem_planner.TraceAllocation(ml_value_idx, counter, size);
     }
   }
 
@@ -491,9 +489,7 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
         ORT_ENFORCE(exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate);
 
         const auto& counter = exe_plan->allocation_plan[ml_value_idx].program_counter;
-        for (size_t index = 0, counter_end = counter.Starts().size(); index < counter_end; ++index) {
-          mem_planner.TraceAllocation(ml_value_idx, counter, aligned_size);
-        }
+        mem_planner.TraceAllocation(ml_value_idx, counter, aligned_size);
       }
     }
 
