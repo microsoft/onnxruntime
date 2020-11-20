@@ -313,7 +313,7 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
    }
 #else // USE_FBGEMM
   int8_t* b_zero_point = nullptr;
-  int32_t b_zero_point_int32[b_shape_[1]];
+  int32_t* b_zero_point_int32 = new int32_t[b_shape_[1]];
   if (b_zero_point_tensor != nullptr) {
     b_zero_point = (int8_t*)(b_zero_point_tensor->DataRaw());
     for (int i = 0; i < b_shape_[1]; i++)
@@ -346,14 +346,16 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
                        a_scale * (*b_scale),
                        ctx->Input<Tensor>(4));
 #else
-  return ComputeCommonFbgemm(ctx,
-                             false,
-                             1.0f,
-                             0,
-                             b,
-                             b_scale,
-                             b_zero_point_int32,
-                             ctx->Input<Tensor>(4));
+  auto status = ComputeCommonFbgemm(ctx,
+                                    false,
+                                    1.0f,
+                                    0,
+                                    b,
+                                    b_scale,
+                                    b_zero_point_int32,
+                                    ctx->Input<Tensor>(4));
+  delete[] b_zero_point_int32;
+  return status;
 #endif
 }
 
@@ -394,7 +396,7 @@ Status MatMulIntegerToFloat::Compute(OpKernelContext* ctx) const {
   }
 #else // USE_FBGEMM
   int8_t* b_zero_point = nullptr;
-  int32_t b_zero_point_int32[b_shape_[1]];
+  int32_t* b_zero_point_int32 = new int32_t[b_shape_[1]];
   if (b_zero_point_tensor != nullptr) {
     b_zero_point = (int8_t*)(b_zero_point_tensor->DataRaw());
     for (int i = 0; i < b_shape_[1]; i++)
@@ -412,14 +414,16 @@ Status MatMulIntegerToFloat::Compute(OpKernelContext* ctx) const {
                        a_scale * (*b_scale),
                        ctx->Input<Tensor>(6));
 #else
-  return ComputeCommonFbgemm(ctx,
-                             true,
-                             a_scale,
-                             a_zero_point,
-                             b,
-                             b_scale,
-                             b_zero_point_int32,
-                             ctx->Input<Tensor>(4));
+  auto status = ComputeCommonFbgemm(ctx,
+                                    false,
+                                    1.0f,
+                                    0,
+                                    b,
+                                    b_scale,
+                                    b_zero_point_int32,
+                                    ctx->Input<Tensor>(4));
+  delete[] b_zero_point_int32;
+  return status;
 #endif // USE_FBGEMM
 }
 

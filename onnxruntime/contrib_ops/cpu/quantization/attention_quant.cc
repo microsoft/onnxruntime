@@ -313,11 +313,6 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
   }
 #else
   const T* weight_scale = (weight_scale_tensor->template Data<T>());
-
-  // std::cout << "weight_scale: " << *(float*)weight_scale << std::endl;
-
-  // T dequant_scale = input_scale * weight_scale;
-
   uint8_t input_zero_point = 0;
   if (i_zp_tensor != nullptr) {
     ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(i_zp_tensor),
@@ -325,9 +320,8 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
     input_zero_point = *i_zp_tensor->template Data<uint8_t>();
   }
 
-  // std::cout << "input_zero_point: " << (int)input_zero_point << std::endl;
-
-  int32_t weight_zero_point[hidden_size*3];
+  // TODO vector instruction
+  int32_t* weight_zero_point = new int32_t[hidden_size*3];
   int8_t* weight_zero_point_int8 = nullptr;
   if (w_zp_tensor != nullptr) {
     weight_zero_point_int8 = (int8_t*)w_zp_tensor->template Data<int8_t>();
@@ -343,17 +337,12 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
   auto gemm_intermediate = reinterpret_cast<T*>(allocator->Alloc(SafeInt<size_t>(batch_size) * sequence_length * 3 * head_size_ * num_heads_ * element_size));
   BufferUniquePtr gemm_buffer1(gemm_intermediate, BufferDeleter(allocator));
 
-  // std::cout << "zero_offset_applied_: " << zero_offset_applied_ << std::endl;
-
   // fbgemm computation
   int32_t* col_offsets = nullptr;
   col_offsets = static_cast<int32_t*>(weight_col_offsets_.get());
   if (!zero_offset_applied_) {
-    // std::cout << "zero point update" << std::endl;
     for (int i = 0; i < hidden_size * 3; i++) {
-      // std::cout << "col_offsets[i] before: " << col_offsets[i] << std::endl;
       col_offsets[i] -= weight_zero_point[i] * hidden_size;
-      // std::cout << "col_offsets[i] after: " << col_offsets[i] << std::endl;
     }
     zero_offset_applied_ = true;
   }
@@ -395,7 +384,6 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
 #else
     int num_threads = 1;
     int tid = 0;
-    // std::cout << "attention_fbgemm - No open MP available" << std::endl;
 #endif
     // TODO check if inplace buffer is okay or not
     fbgemmPacked(
@@ -408,6 +396,8 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
         tid,
         num_threads);
   }
+
+  delete[] weight_zero_point;
 
   // Transpose gemm output
   //size_t m = batch_size * sequence_length;
