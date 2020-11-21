@@ -244,7 +244,9 @@ ORT_API_STATUS_IMPL(SetGlobalSpinControl, _Inout_ OrtThreadingOptions* tp_option
 ORT_API_STATUS_IMPL(AddInitializer, _Inout_ OrtSessionOptions* options, _In_ const char* name,
                     _In_ const OrtValue* val);
 
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_CUDA,
-                    _In_ OrtSessionOptions* options, _In_ OrtCUDAProviderOptions* cuda_options);
+ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_CUDA,
+                    _In_ OrtSessionOptions* options, _In_ const OrtCUDAProviderOptions* cuda_options);
+ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_OpenVINO,
+                    _In_ OrtSessionOptions* options, _In_ const OrtOpenVINOProviderOptions* provider_options);
 ORT_API_STATUS_IMPL(SetGlobalDenormalAsZero, _Inout_ OrtThreadingOptions* options);
 }  // namespace OrtApis
