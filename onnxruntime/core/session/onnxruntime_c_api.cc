@@ -2069,6 +2069,8 @@ static constexpr OrtApi ort_api_1_to_6 = {
     &OrtApis::SessionOptionsAppendExecutionProvider_CUDA,
     &OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO,
     &OrtApis::SetGlobalDenormalAsZero,
+    &OrtApis::CreateArenaCfg,
+    &OrtApis::ReleaseArenaCfg,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
