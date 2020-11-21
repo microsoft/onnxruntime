@@ -35,6 +35,7 @@
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #elif defined(_MSC_VER)
 #pragma warning(push)
+#pragma warning(disable : 4244)
 #pragma warning(disable : 6011)
 #pragma warning(disable : 6387)
 #pragma warning(disable : 28182)
