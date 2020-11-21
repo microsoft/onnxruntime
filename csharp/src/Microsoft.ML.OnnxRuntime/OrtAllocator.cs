@@ -30,7 +30,7 @@ namespace Microsoft.ML.OnnxRuntime
     /// <summary>
     /// This class encapsulates arena configuration information that will be used to define the behavior
     /// of an arena based allocator
-    /// See ONNX_Runtime_Perf_Tuning.md for more details
+    /// See docs/C_API.md for more details
     /// </summary>
     public class OrtArenaCfg : SafeHandle
     {
@@ -53,8 +53,6 @@ namespace Microsoft.ML.OnnxRuntime
                                                                            out handle));
         }
 
-        public override bool IsInvalid { get { return handle == IntPtr.Zero; } }
-
         internal IntPtr Pointer
         {
             get
@@ -64,12 +62,25 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         #region SafeHandle
+        
+        /// <summary>
+        /// Overrides SafeHandle.IsInvalid
+        /// </summary>
+        /// <value>returns true if handle is equal to Zero</value>
+        public override bool IsInvalid { get { return handle == IntPtr.Zero; } }
+
+        /// <summary>
+        /// Overrides SafeHandle.ReleaseHandle() to properly dispose of
+        /// the native instance of OrtEnv
+        /// </summary>
+        /// <returns>always returns true</returns>
         protected override bool ReleaseHandle()
         {
             NativeMethods.OrtReleaseArenaCfg(handle);
             handle = IntPtr.Zero;
             return true;
         }
+
         #endregion
 
     }

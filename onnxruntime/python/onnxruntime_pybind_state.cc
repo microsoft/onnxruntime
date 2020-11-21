@@ -801,7 +801,7 @@ static bool CheckIfTensor(const std::vector<const NodeArg*>& def_list,
   return type_proto.has_tensor_type();
 }
 
-void addGlobalMethods(py::module& m, const Environment& env) {
+void addGlobalMethods(py::module& m, Environment& env) {
   m.def("get_default_session_options", &GetDefaultCPUSessionOptions, "Return a default session_options instance.");
   m.def("get_session_initializer", &SessionObjectInitializer::Get, "Return a default session object initializer.");
   m.def(
@@ -834,10 +834,7 @@ void addGlobalMethods(py::module& m, const Environment& env) {
       "Disables platform-specific telemetry collection.");
   m.def(
       "create_and_register_allocator", [&env](const OrtMemoryInfo& mem_info, const OrtArenaCfg& arena_cfg) -> void {
-        // TODO: Remove the const qualifier for the environment instance in the function parameter ?
-        // It strictly needn't be const and would save the casting away the const in this method
-        // CreateAndRegisterAlloctor() method mutates the environment and is hence a non-const method
-        auto st = const_cast<Environment&>(env).CreateAndRegisterAlloctor(mem_info, &arena_cfg);
+        auto st = env.CreateAndRegisterAlloctor(mem_info, &arena_cfg);
         if (!st.IsOK()) {
           throw std::runtime_error("Error when creating and registering arena based allocator: " + st.ErrorMessage());
         }
