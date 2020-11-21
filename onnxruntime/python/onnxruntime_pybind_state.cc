@@ -23,10 +23,6 @@
 #include "core/session/abi_session_options_impl.h"
 #include "core/platform/env.h"
 
-#if USE_OPENVINO
-#include <inference_engine.hpp>
-#endif
-
 struct OrtStatus {
   OrtErrorCode code;
   char msg[1];  // a null-terminated string
@@ -198,15 +194,16 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ROCM(O
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* device_type,
-                                                                                   bool enable_vpu_fast_compile,
-                                                                                   const char* device_id,
-                                                                                   size_t num_of_threads);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const OrtOpenVINOProviderOptions* params);
+#ifdef USE_OPENVINO
+const ProviderInfo_OpenVINO* GetProviderInfo_OpenVINO();
+#endif
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VITISAI(const char* backend_type, int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ArmNN(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(int device_id);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(uint32_t flags);
 }  // namespace onnxruntime
 
 #if defined(_MSC_VER)
@@ -437,8 +434,10 @@ static const std::vector<std::string>& GetAllProviders() {
   static std::vector<std::string> all_providers = {kTensorrtExecutionProvider, kCudaExecutionProvider,
                                                    kMIGraphXExecutionProvider, kRocmExecutionProvider,
                                                    kOpenVINOExecutionProvider, kDnnlExecutionProvider,
-                                                   kNupharExecutionProvider, kVitisAIExecutionProvider, kArmNNExecutionProvider,
-                                                   kAclExecutionProvider, kDmlExecutionProvider, kCpuExecutionProvider};
+                                                   kNupharExecutionProvider, kVitisAIExecutionProvider, 
+												   kNnapiExecutionProvider,
+                                                   kArmNNExecutionProvider, kAclExecutionProvider,
+                                                   kDmlExecutionProvider, kCpuExecutionProvider};
   return all_providers;
 }
 
@@ -658,9 +657,9 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
 #endif
     } else if (type == kOpenVINOExecutionProvider) {
 #ifdef USE_OPENVINO
-      bool enable_vpu_fast_compile = false;
-      size_t num_of_threads = 8;
-      std::string openvino_device_id;
+      OrtOpenVINOProviderOptions params;
+      params.device_type = openvino_device_type.c_str();
+
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
         for (auto option : it->second) {
@@ -668,26 +667,24 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
             openvino_device_type = option.second;
           else if (option.first == "enable_vpu_fast_compile") {
             if (option.second == "True") {
-              enable_vpu_fast_compile = true;
+              params.enable_vpu_fast_compile = true;
             } else if (option.second == "False") {
-              enable_vpu_fast_compile = false;
+              params.enable_vpu_fast_compile = false;
             } else {
               ORT_THROW("Invalid value passed for enable_vpu_fast_compile: ", option.second);
             }
 
           } else if (option.first == "device_id") {
-            openvino_device_id = option.second;
+            params.device_id = option.second.c_str();
           } else if (option.first == "num_of_threads") {
-            num_of_threads = std::stoi(option.second);
+            params.num_of_threads = std::stoi(option.second);
           } else {
             ORT_THROW("Invalid OpenVINO EP option: ", option.first);
           }
         }
       }
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_OpenVINO(openvino_device_type.c_str(),
-                                                                                            enable_vpu_fast_compile,
-                                                                                            openvino_device_id.c_str(),
-                                                                                            num_of_threads));
+
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_OpenVINO(&params));
       // Reset global variables config to avoid it being accidentally passed on to the next session
       openvino_device_type.clear();
 #endif
@@ -716,6 +713,13 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
     } else if (type == kDmlExecutionProvider) {
 #ifdef USE_DML
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_DML(0));
+#endif
+    } else if (type == kNnapiExecutionProvider) {
+#if defined(USE_NNAPI)
+#if !defined(__ANDROID__)
+      LOGS_DEFAULT(WARNING) << "NNAPI execution provider can only be used to generate ORT format model in this build.";
+#endif
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Nnapi(0));
 #endif
     } else {
       // unknown provider
@@ -852,8 +856,10 @@ void addGlobalMethods(py::module& m, Environment& env) {
 #ifdef USE_OPENVINO
   m.def(
       "get_available_openvino_device_ids", []() -> std::vector<std::string> {
-        InferenceEngine::Core ie_core;
-        return ie_core.GetAvailableDevices();
+        if (auto* info = GetProviderInfo_OpenVINO()) {
+          return info->GetAvailableDevices();
+        }
+        return {};
       },
       "Lists all OpenVINO device ids available.");
   /*
@@ -909,7 +915,10 @@ void addGlobalMethods(py::module& m, Environment& env) {
             onnxruntime::CreateExecutionProviderFactory_ArmNN(0),
 #endif
 #ifdef USE_DML
-            onnxruntime::CreateExecutionProviderFactory_DML(0)
+            onnxruntime::CreateExecutionProviderFactory_DML(0),
+#endif
+#ifdef USE_NNAPI
+            onnxruntime::CreateExecutionProviderFactory_NNAPI(0),
 #endif
         };
 
@@ -1435,6 +1444,8 @@ void addObjectMethods(py::module& m, Environment& env) {
 Set this option to false if you don't want it. Default is True.)pbdoc")
       .def_readwrite("enable_profiling", &PySessionOptions::enable_profiling,
                      R"pbdoc(Enable profiling for this session. Default is false.)pbdoc")
+      .def_readwrite("profile_file_prefix", &PySessionOptions::profile_file_prefix,
+                     R"pbdoc(The prefix of the profile file. The current time will be appended to the file name.)pbdoc")
       .def_readwrite("optimized_model_filepath", &PySessionOptions::optimized_model_filepath,
                      R"pbdoc(
 File path to serialize optimized model to. 
