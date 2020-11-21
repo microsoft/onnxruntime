@@ -1720,7 +1720,6 @@ const ScenarioTestsApi& getapi() {
     api.Scenario21RunModel2ChainZ = SkipTest;
     api.Scenario22ImageBindingAsGPUTensor = SkipTest;
     api.Scenario23NominalPixelRange = SkipTest;
-    api.CheckLearningModelPixelRange = SkipTest;
     api.MsftQuantizedModels = SkipTest;
     api.SyncVsAsync = SkipTest;
     api.CustomCommandQueueWithFence = SkipTest;
