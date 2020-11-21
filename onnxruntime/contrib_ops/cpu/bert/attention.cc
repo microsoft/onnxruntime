@@ -59,7 +59,10 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
   //   input       : (batch_size, sequence_length, hidden_size)
   //   weights     : (hidden_size, 3 * hidden_size)
   //   bias        : (3 * hidden_size)
-  //   mask_index  : nullptr, (batch_size), (2 * batch_size), (batch_size, 1), (1, 1) or (batch_size, past_sequence_length + sequence_length)
+  //   mask_index  : nullptr, (batch_size), (2 * batch_size),
+  //                 or (batch_size, 1), (1, 1) 
+  //                 or (batch_size, past_sequence_length + sequence_length)
+  //                 or (batch_size, sequence_length, past_sequence_length + sequence_length)
   //   past        : (2, batch_size, num_heads, past_sequence_length, head_size)
 
   const auto& dims = input_shape.GetDims();
@@ -136,8 +139,13 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
           return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'mask_index' with raw attention mask shall have shape batch_size x (past_sequence_length + sequence_length)");
         }
       }
-    } else {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'mask_index' is expected to have 1 or 2 dimensions, got ",
+    } else if (mask_dims.size() == 3) {
+      if (static_cast<int>(mask_dims[0]) != batch_size || mask_dims[1] != sequence_length || static_cast<int>(mask_dims[2]) != past_sequence_length + sequence_length) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'mask_index' of 3d shall have shape batch_size x sequence_length x (past_sequence_length + sequence_length)");
+      }
+    }
+    else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'mask_index' is expected to have 1, 2 or 3 dimensions, got ",
                              mask_dims.size());
     }
   }
@@ -174,7 +182,6 @@ template <typename T>
 Attention<T>::Attention(const OpKernelInfo& info) : OpKernel(info), AttentionCPUBase(info) {
 }
 
-#if !defined(USE_MKLML_FOR_BLAS)
 
 template <typename T>
 Status Attention<T>::PrePack(const Tensor& weights, int input_idx, bool& is_packed) {
@@ -220,8 +227,6 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, bool& is_pack
   is_packed = true;
   return Status::OK();
 }
-
-#endif
 
 template <typename T>
 Status Attention<T>::Compute(OpKernelContext* context) const {
