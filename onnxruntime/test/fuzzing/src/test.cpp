@@ -274,7 +274,7 @@ int main(int argc, char* argv[]) {
   // Enable telemetry events
   //
   env.EnableTelemetryEvents();
-  struct RunStats run_stats = {0, 0, 0, 0, 0, 0};
+  struct RunStats run_stats {};
   runtimeOpt opt{};
   user_options& user_opt{opt.user_opt};
   Logger::wcstream& werr_stream_buf{opt.werr_stream_buf};
