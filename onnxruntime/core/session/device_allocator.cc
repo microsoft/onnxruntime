@@ -45,7 +45,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateAndRegisterAllocator, _Inout_ OrtEnv* env, _I
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "OrtMemoryInfo is null");
   }
 
-  auto st = env->CreateAndRegisterAlloctor(*mem_info, arena_cfg);
+  auto st = env->CreateAndRegisterAllocator(*mem_info, arena_cfg);
 
   if (!st.IsOK()) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, st.ErrorMessage().c_str());

@@ -66,7 +66,7 @@ Status Environment::RegisterAllocator(AllocatorPtr allocator) {
   return Status::OK();
 }
 
-Status Environment::CreateAndRegisterAlloctor(const OrtMemoryInfo& mem_info, const OrtArenaCfg* arena_cfg) {
+Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, const OrtArenaCfg* arena_cfg) {
   // TODO should we allow sharing of non-CPU allocators?
   if (mem_info.device.Type() != OrtDevice::CPU) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Only CPU devices are supported for now.");

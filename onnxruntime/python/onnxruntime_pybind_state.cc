@@ -434,8 +434,8 @@ static const std::vector<std::string>& GetAllProviders() {
   static std::vector<std::string> all_providers = {kTensorrtExecutionProvider, kCudaExecutionProvider,
                                                    kMIGraphXExecutionProvider, kRocmExecutionProvider,
                                                    kOpenVINOExecutionProvider, kDnnlExecutionProvider,
-                                                   kNupharExecutionProvider, kVitisAIExecutionProvider, 
-												   kNnapiExecutionProvider,
+                                                   kNupharExecutionProvider, kVitisAIExecutionProvider,
+                                                   kNnapiExecutionProvider,
                                                    kArmNNExecutionProvider, kAclExecutionProvider,
                                                    kDmlExecutionProvider, kCpuExecutionProvider};
   return all_providers;
@@ -837,10 +837,10 @@ void addGlobalMethods(py::module& m, Environment& env) {
       "disable_telemetry_events", []() -> void { platform_env.GetTelemetryProvider().DisableTelemetryEvents(); },
       "Disables platform-specific telemetry collection.");
   m.def(
-      "create_and_register_allocator", [&env](const OrtMemoryInfo& mem_info, const OrtArenaCfg& arena_cfg) -> void {
-        auto st = env.CreateAndRegisterAlloctor(mem_info, &arena_cfg);
+      "create_and_register_allocator", [&env](const OrtMemoryInfo& mem_info, const OrtArenaCfg* arena_cfg = nullptr) -> void {
+        auto st = env.CreateAndRegisterAllocator(mem_info, arena_cfg);
         if (!st.IsOK()) {
-          throw std::runtime_error("Error when creating and registering arena based allocator: " + st.ErrorMessage());
+          throw std::runtime_error("Error when creating and registering allocator: " + st.ErrorMessage());
         }
       });
 
@@ -1118,9 +1118,9 @@ void addObjectMethods(py::module& m, Environment& env) {
       .def_static("cuda", []() { return OrtDevice::GPU; })
       .def_static("default_memory", []() { return OrtDevice::MemType::DEFAULT; });
 
-  // See docs/C_API.md for details on what the following parameters mean and how to choose these values
   py::class_<OrtArenaCfg> ort_arena_cfg_binding(m, "OrtArenaCfg");
   // There is a global var: arena_extend_strategy, which means we can't use that var name here
+  // See docs/C_API.md for details on what the following parameters mean and how to choose these values
   ort_arena_cfg_binding.def(py::init([](size_t max_mem, int arena_extend_strategy_local,
                                         int initial_chunk_size_bytes, int max_dead_bytes_per_chunk) {
     auto ort_arena_cfg = onnxruntime::make_unique<OrtArenaCfg>();

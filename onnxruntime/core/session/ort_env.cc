@@ -116,8 +116,8 @@ onnxruntime::common::Status OrtEnv::RegisterAllocator(AllocatorPtr allocator) {
   return status;
 }
 
-onnxruntime::common::Status OrtEnv::CreateAndRegisterAlloctor(const OrtMemoryInfo& mem_info,
-                                                              const OrtArenaCfg* arena_cfg) {
-  auto status = value_->CreateAndRegisterAlloctor(mem_info, arena_cfg);
+onnxruntime::common::Status OrtEnv::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info,
+                                                               const OrtArenaCfg* arena_cfg) {
+  auto status = value_->CreateAndRegisterAllocator(mem_info, arena_cfg);
   return status;
 }

@@ -42,7 +42,6 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="arenaExtendStrategy">Strategy for arena expansion</param>
         /// <param name="initialChunkSizeBytes">Size of the region that the arena allocates first</param>
         /// <param name="maxDeadBytesPerChunk">Maximum amount of fragmentation allowed per chunk</param>
-        /// <returns>An instance of OrtArenaCfg</returns>
         public OrtArenaCfg(uint maxMemory, int arenaExtendStrategy, int initialChunkSizeBytes, int maxDeadBytesPerChunk)
             : base(IntPtr.Zero, true)
         {

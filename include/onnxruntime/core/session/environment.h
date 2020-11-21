@@ -65,7 +65,7 @@ class Environment {
    * Creates and registers an arena-based allocator for sharing between multiple sessions.
    * Return an error if an allocator with the same OrtMemoryInfo is already registered.
   */
-  Status CreateAndRegisterAlloctor(const OrtMemoryInfo& mem_info, const OrtArenaCfg* arena_cfg = nullptr);
+  Status CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, const OrtArenaCfg* arena_cfg = nullptr);
 
   /**
    * Returns the list of registered allocators in this env.

@@ -810,9 +810,11 @@ class TestInferenceSession(unittest.TestCase):
 
     def testSharedAllocatorUsingCreateAndRegisterAllocator(self):
         # Create and register an arena based allocator
-        ort_arena_cfg = onnxrt.OrtArenaCfg(0, -1, -1, -1)
+        
+        # ort_arena_cfg = onnxrt.OrtArenaCfg(0, -1, -1, -1) (create an OrtArenaCfg like this template if you want to use non-default parameters)
         ort_memory_info = onnxrt.OrtMemoryInfo("Cpu", onnxrt.OrtAllocatorType.ORT_ARENA_ALLOCATOR, 0, onnxrt.OrtMemType.DEFAULT)
-        onnxrt.create_and_register_allocator(ort_memory_info, ort_arena_cfg)
+        # Use this option if using non-default OrtArenaCfg : onnxrt.create_and_register_allocator(ort_memory_info, ort_arena_cfg)
+        onnxrt.create_and_register_allocator(ort_memory_info, None)
 
         # Create a session that will use the registered arena based allocator
         so1 = onnxrt.SessionOptions()
