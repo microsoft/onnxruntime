@@ -2,10 +2,11 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include <onnx/onnx_pb.h>
+
 #include <unordered_set>
 
 #include <core/graph/graph_viewer.h>
+#include <core/graph/onnx_protobuf.h>
 #include "core/providers/nnapi/nnapi_builtin/model.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksWrapper.h"
 #include "op_support_checker.h"

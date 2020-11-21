@@ -7,7 +7,7 @@
 #include "winrt_headers.h"
 #pragma warning(push)
 #pragma warning(disable : 4100)
-
+#pragma warning(disable : 4244)
 #ifndef ONNX_API
 #define ONNX_API
 #endif
