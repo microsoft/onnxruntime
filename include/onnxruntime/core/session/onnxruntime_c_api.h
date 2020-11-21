@@ -265,6 +265,9 @@ typedef enum OrtCudnnConvAlgoSearch {
   DEFAULT,     // default algorithm using CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM
 } OrtCudnnConvAlgoSearch;
 
+/// <summary>
+/// Options for the CUDA provider that are passed to SessionOptionsAppendExecutionProvider_CUDA
+/// </summary>
 typedef struct OrtCUDAProviderOptions {
   int device_id;                                  // cuda device with id=0 as default device.
   OrtCudnnConvAlgoSearch cudnn_conv_algo_search;  // cudnn conv algo search option
@@ -272,6 +275,19 @@ typedef struct OrtCUDAProviderOptions {
   int arena_extend_strategy;                      // default area extend strategy to KNextPowerOfTwo.
   int do_copy_in_default_stream;
 } OrtCUDAProviderOptions;
+
+/// <summary>
+/// Options for the OpenVINO provider that are passed to SessionOptionsAppendExecutionProvider_OpenVINO
+/// </summary>
+typedef struct OrtOpenVINOProviderOptions {
+#ifdef __cplusplus
+  OrtOpenVINOProviderOptions() : device_type{}, enable_vpu_fast_compile{}, device_id{}, num_of_threads{} {}
+#endif
+  const char* device_type;                // CPU_FP32, GPU_FP32, GPU_FP16, MYRIAD_FP16, VAD-M_FP16 or VAD-F_FP32
+  unsigned char enable_vpu_fast_compile;  // 0 = false, nonzero = true
+  const char* device_id;
+  size_t num_of_threads;  // 0 uses default number of threads
+} OrtOpenVINOProviderOptions;
 
 struct OrtApi;
 typedef struct OrtApi OrtApi;
@@ -1090,10 +1106,18 @@ struct OrtApi {
                   _In_ const char* logid, _In_ const struct OrtThreadingOptions* tp_options, _Outptr_ OrtEnv** out);
 
   /**
-   * Append CUDA execution provider
+   * Append CUDA execution provider to the session options
+   * If CUDA is not available (due to a non cuda enabled build), this function will return failure.
    */
-  ORT_API2_STATUS(OrtSessionOptionsAppendExecutionProvider_CUDA,
-                  _In_ OrtSessionOptions* options, _In_ OrtCUDAProviderOptions* cuda_options);
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_CUDA,
+                  _In_ OrtSessionOptions* options, _In_ const OrtCUDAProviderOptions* cuda_options);
+
+  /**
+   * Append OpenVINO execution provider to the session options
+   * If OpenVINO is not available (due to the OpenVINO provider shared library or its dependencies not being installed), this function will fail.
+   */
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_OpenVINO,
+                  _In_ OrtSessionOptions* options, _In_ const OrtOpenVINOProviderOptions* provider_options);
 
   /**
    * Use this API to configure the global thread pool options to be used in the call to CreateEnvWithGlobalThreadPools.
