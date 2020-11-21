@@ -6,14 +6,16 @@
 #include "provider_api.h"
 #include <assert.h>
 #include <mutex>
+#include "core/providers/shared/common.h"
 
-extern "C" {
-void* Provider_GetHost();
-}
+// Override default new/delete so that we match the host's allocator
+void* operator new(size_t n) { return Provider_GetHost()->HeapAllocate(n); }
+void operator delete(void* p) { return Provider_GetHost()->HeapFree(p); }
+void operator delete(void* p, size_t /*size*/) { return Provider_GetHost()->HeapFree(p); }
 
 namespace onnxruntime {
 
-ProviderHost* g_host = reinterpret_cast<ProviderHost*>(Provider_GetHost());
+ProviderHost* g_host = Provider_GetHost();
 
 static std::unique_ptr<std::vector<std::function<void()>>> s_run_on_unload_;
 
@@ -38,15 +40,6 @@ struct OnUnload {
   }
 
 } g_on_unload;
-
-}  // namespace onnxruntime
-
-// Override default new/delete so that we match the host's allocator
-void* operator new(size_t n) { return onnxruntime::g_host->HeapAllocate(n); }
-void operator delete(void* p) { return onnxruntime::g_host->HeapFree(p); }
-void operator delete(void* p, size_t /*size*/) { return onnxruntime::g_host->HeapFree(p); }
-
-namespace onnxruntime {
 
 AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
   return g_host->CreateAllocator(info);

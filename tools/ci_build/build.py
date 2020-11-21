@@ -1408,9 +1408,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             dll_path_list.append(os.path.join(args.tensorrt_home, 'lib'))
         if args.use_mklml:
             dll_path_list.append(os.path.join(build_dir, config, "mklml", "src", "project_mklml", "lib"))
-        if not is_windows():
-            # A workaround for making libonnxruntime_providers_shared.so loadable.
-            dll_path_list.append(os.path.join(build_dir, config))
 
         dll_path = None
         if len(dll_path_list) > 0:

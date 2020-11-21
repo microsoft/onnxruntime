@@ -322,7 +322,9 @@ struct SessionOptions : Base<OrtSessionOptions> {
 
   SessionOptions& AddConfigEntry(const char* config_key, const char* config_value);
   SessionOptions& AddInitializer(const char* name, const OrtValue* ort_val);
-  OrtStatus* OrtSessionOptionsAppendExecutionProvider_CUDA(OrtSessionOptions* options, OrtCUDAProviderOptions* cuda_options);
+
+  SessionOptions& AppendExecutionProvider_CUDA(const OrtCUDAProviderOptions& provider_options);
+  SessionOptions& AppendExecutionProvider_OpenVINO(const OrtOpenVINOProviderOptions& provider_options);
 };
 
 struct ModelMetadata : Base<OrtModelMetadata> {

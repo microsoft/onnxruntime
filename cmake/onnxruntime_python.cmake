@@ -95,10 +95,7 @@ set(onnxruntime_pybind11_state_libs
     onnxruntime_session
     ${onnxruntime_libs}
     ${PROVIDERS_CUDA}
-    ${PROVIDERS_DNNL}
-    ${PROVIDERS_TENSORRT}
     ${PROVIDERS_MIGRAPHX}
-    ${PROVIDERS_OPENVINO}
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_VITISAI}
     ${PROVIDERS_NNAPI}
@@ -347,6 +344,8 @@ if (onnxruntime_USE_OPENVINO)
       TARGET onnxruntime_pybind11_state POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy
           ${ngraph_LIBRARIES}/${NGRAPH_SHARED_LIB}
+          ${OPENVINO_DLL_PATH} $<TARGET_FILE:onnxruntime_providers_openvino>
+          $<TARGET_FILE:onnxruntime_providers_shared>
           $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
     )
   endif()
