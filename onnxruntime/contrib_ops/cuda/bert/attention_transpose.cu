@@ -26,8 +26,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-
-  template <typename T>
+template <typename T>
 __global__ void TransposeCtx(const int H, const T* input, T* output) {
   // Input:  BxNxSxH
   // Output: BxSxNxH

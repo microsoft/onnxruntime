@@ -158,7 +158,6 @@ __device__ inline void SoftmaxSmall(const int all_sequence_length,
   }
 }
 
-
 template <typename T, unsigned TPB>
 __device__ inline void SoftmaxWithRawMaskSmall(const int all_sequence_length,
                                                const int sequence_length,
@@ -217,7 +216,6 @@ __device__ inline void SoftmaxWithRawMaskSmall(const int all_sequence_length,
     output[index] = T(thread_data_exp * sum_reverse_block);
   }
 }
-
 
 template <typename T, unsigned TPB>
 __global__ void SoftmaxKernelSmall(const int all_sequence_length, const int sequence_length, const T* input, T* output, bool is_unidirectional) {
@@ -351,8 +349,8 @@ bool ComputeSoftmaxWithMask1D(cudaStream_t stream, const int all_sequence_length
 
 template <typename T>
 bool ComputeSoftmaxWithRawMask(cudaStream_t stream, const int all_sequence_length, const int sequence_length, const int batch_size, const int num_heads,
-                              const int* attention_mask, const T* input, T* output, const bool is_unidirectional, const float scalar,
-                              const int mask_dimension) {
+                               const int* attention_mask, const T* input, T* output, const bool is_unidirectional, const float scalar,
+                               const int mask_dimension) {
   const dim3 grid(sequence_length * num_heads, batch_size, 1);
 
   if (all_sequence_length <= 32) {

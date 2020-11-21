@@ -10,7 +10,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-
 template <typename T>
 __global__ void ConcatPastToPresent(const int sequence_length,
                                     const T* past,
