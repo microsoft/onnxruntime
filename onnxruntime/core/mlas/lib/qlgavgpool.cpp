@@ -14,7 +14,7 @@ Abstract:
 
 --*/
 
-#include "quantize.h"
+#include "mlasi.h"
 
 size_t
 MLASCALL
