@@ -28,6 +28,63 @@ namespace Microsoft.ML.OnnxRuntime
     }
 
     /// <summary>
+    /// This class encapsulates arena configuration information that will be used to define the behavior
+    /// of an arena based allocator
+    /// See docs/C_API.md for more details
+    /// </summary>
+    public class OrtArenaCfg : SafeHandle
+    {
+        /// <summary>
+        /// Create an instance of arena configuration which will be used to create an arena based allocator
+        /// See docs/C_API.md for details on what the following parameters mean and how to choose these values
+        /// </summary>
+        /// <param name="maxMemory">Maximum amount of memory the arena allocates</param>
+        /// <param name="arenaExtendStrategy">Strategy for arena expansion</param>
+        /// <param name="initialChunkSizeBytes">Size of the region that the arena allocates first</param>
+        /// <param name="maxDeadBytesPerChunk">Maximum amount of fragmentation allowed per chunk</param>
+        public OrtArenaCfg(uint maxMemory, int arenaExtendStrategy, int initialChunkSizeBytes, int maxDeadBytesPerChunk)
+            : base(IntPtr.Zero, true)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateArenaCfg((UIntPtr)maxMemory,
+                                                                           arenaExtendStrategy,
+                                                                           initialChunkSizeBytes,
+                                                                           maxDeadBytesPerChunk,
+                                                                           out handle));
+        }
+
+        internal IntPtr Pointer
+        {
+            get
+            {
+                return handle;
+            }
+        }
+
+        #region SafeHandle
+        
+        /// <summary>
+        /// Overrides SafeHandle.IsInvalid
+        /// </summary>
+        /// <value>returns true if handle is equal to Zero</value>
+        public override bool IsInvalid { get { return handle == IntPtr.Zero; } }
+
+        /// <summary>
+        /// Overrides SafeHandle.ReleaseHandle() to properly dispose of
+        /// the native instance of OrtEnv
+        /// </summary>
+        /// <returns>always returns true</returns>
+        protected override bool ReleaseHandle()
+        {
+            NativeMethods.OrtReleaseArenaCfg(handle);
+            handle = IntPtr.Zero;
+            return true;
+        }
+
+        #endregion
+
+    }
+
+    /// <summary>
     /// This class encapsulates and most of the time owns the underlying native OrtMemoryInfo instance.
     /// Instance returned from OrtAllocator will not own OrtMemoryInfo, the class must be disposed
     /// regardless.

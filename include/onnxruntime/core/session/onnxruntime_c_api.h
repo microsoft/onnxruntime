@@ -143,15 +143,6 @@ typedef enum OrtErrorCode {
   ORT_EP_FAIL,
 } OrtErrorCode;
 
-// This configures the arena based allocator used by ORT
-// See docs/C_API.md for details on what these mean and how to choose these values
-typedef struct OrtArenaCfg {
-  size_t max_mem;                // use 0 to allow ORT to choose the default
-  int arena_extend_strategy;     // use -1 to allow ORT to choose the default, 0 = kNextPowerOfTwo, 1 = kSameAsRequested
-  int initial_chunk_size_bytes;  // use -1 to allow ORT to choose the default
-  int max_dead_bytes_per_chunk;  // use -1 to allow ORT to choose the default
-} OrtArenaCfg;
-
 #define ORT_RUNTIME_CLASS(X) \
   struct Ort##X;             \
   typedef struct Ort##X Ort##X;
@@ -173,6 +164,7 @@ ORT_RUNTIME_CLASS(SequenceTypeInfo);
 ORT_RUNTIME_CLASS(ModelMetadata);
 ORT_RUNTIME_CLASS(ThreadPoolParams);
 ORT_RUNTIME_CLASS(ThreadingOptions);
+ORT_RUNTIME_CLASS(ArenaCfg);
 
 #ifdef _WIN32
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -1126,6 +1118,22 @@ struct OrtApi {
    * and that's recommended because turning this option on may hurt model accuracy.
    */
   ORT_API2_STATUS(SetGlobalDenormalAsZero, _Inout_ OrtThreadingOptions* tp_options);
+
+  /**
+  * Use this API to create the configuration of an arena that can eventually be used to define 
+  * an arena based allocator's behavior
+  * \param max_mem - use 0 to allow ORT to choose the default
+  * \param arena_extend_strategy -  use -1 to allow ORT to choose the default, 0 = kNextPowerOfTwo, 1 = kSameAsRequested
+  * \param initial_chunk_size_bytes - use -1 to allow ORT to choose the default
+  * \param max_dead_bytes_per_chunk - use -1 to allow ORT to choose the default
+  * \param out - a pointer to an OrtArenaCfg instance
+  * \return a nullptr in case of success or a pointer to an OrtStatus instance in case of failure
+  * See docs/C_API.md for details on what the following parameters mean and how to choose these values
+  */
+  ORT_API2_STATUS(CreateArenaCfg, _In_ size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes,
+                  int max_dead_bytes_per_chunk, _Outptr_ OrtArenaCfg** out);
+
+  ORT_CLASS_RELEASE(ArenaCfg);
 };
 
 /*
