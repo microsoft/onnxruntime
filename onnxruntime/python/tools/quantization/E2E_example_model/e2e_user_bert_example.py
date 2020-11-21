@@ -16,6 +16,6 @@ if __name__ == '__main__':
     augmented_model_path = 'augmented_bert.shape.onnx'
 
     get_calibration_table(model_path, augmented_model_path)
-    get_prediction_evaluation(model_path)
+    # get_prediction_evaluation(model_path)
 
 

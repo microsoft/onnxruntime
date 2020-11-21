@@ -120,19 +120,7 @@ class ONNXCalibrater:
                 file.write(s)
                 file.write('\n')
 
-    # def get_value_info_to_type(self, value_info_proto, type_list):
-
-        # value_info_to_type = {}
-
-        # for value_info in value_info_proto:
-            # elem_type = value_info.type.tensor_type.elem_type
-
-            # if elem_type in type_list:
-                # value_info_to_type[value_info.name] = elem_type
-
-        # return value_info_to_type
-
-    def get_value_info_set_by_type(self, value_info_proto, type_list):
+    def get_value_info_by_type(self, value_info_proto, type_list):
 
         value_info_set = set()
 
@@ -148,6 +136,7 @@ class ONNXCalibrater:
         '''
         Adds ReduceMin and ReduceMax nodes to all quantization_candidates op type nodes in
         model and ensures their outputs are stored as part of the graph output
+        :param implicitly_quantize_all_ops: Augment all ops with specific type. Useful when generating calibration data. 
         :return: augmented ONNX model
         '''
 
@@ -162,9 +151,10 @@ class ONNXCalibrater:
         for init in model.graph.initializer:
             tensor_initializer.add(init.name)
 
+        # Target all ops with specific type
         if implicitly_quantize_all_ops:
             type_list = [onnx_proto.TensorProto.FLOAT, onnx_proto.TensorProto.FLOAT16]
-            value_info_set = self.get_value_info_set_by_type(model.graph.value_info, type_list)
+            value_info_set = self.get_value_info_by_type(model.graph.value_info, type_list)
 
         for node in model.graph.node:
 
@@ -212,7 +202,7 @@ class ONNXCalibrater:
             reduce_min_name = tensor + '_ReduceMin'
             reduce_min_node = onnx.helper.make_node('ReduceMin', [tensor], [tensor + '_ReduceMin'],
                                                     reduce_min_name,
-                                                    keepdims=0)
+                                                    keepdims=1)
 
             added_nodes.append(reduce_min_node)
             added_outputs.append(helper.make_tensor_value_info(reduce_min_node.output[0], TensorProto.FLOAT, ()))
@@ -221,7 +211,7 @@ class ONNXCalibrater:
             reduce_max_name = tensor + '_ReduceMax'
             reduce_max_node = onnx.helper.make_node('ReduceMax', [tensor], [tensor + '_ReduceMax'],
                                                     reduce_max_name,
-                                                    keepdims=0)
+                                                    keepdims=1)
 
             added_nodes.append(reduce_max_node)
             added_outputs.append(helper.make_tensor_value_info(reduce_max_node.output[0], TensorProto.FLOAT, ()))
@@ -232,7 +222,7 @@ class ONNXCalibrater:
         return model
 
     #Using augmented outputs to generate inputs for quantization
-    def get_intermediate_outputs(self, calib_mode='naive'):
+    def get_intermediate_outputs(self, calib_mode='naive', providers=None):
         ''' 
             Gather intermediate model outputs after running inference
             parameter calib_mode: type 'naive' gives (ReduceMin, ReduceMax) pairs
@@ -244,9 +234,13 @@ class ONNXCalibrater:
         '''
 
         #conduct inference session and get intermediate outputs
-        # session = onnxruntime.InferenceSession(self.augmented_model_path, None)
-        session = onnxruntime.InferenceSession(self.augmented_model_path, providers=["CUDAExecutionProvider"])
-        # print(session.get_inputs()[0].name)
+        if providers:
+            sess_options = onnxruntime.SessionOptions()
+            sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL #ORT_ENABLE_BASIC
+            session = onnxruntime.InferenceSession(self.augmented_model_path, sess_options=sess_options, providers=providers)
+            # print(session.get_inputs()[0].name)
+        else:
+            session = onnxruntime.InferenceSession(self.augmented_model_path, None)
 
         intermediate_outputs = []
         while True:
@@ -273,12 +267,31 @@ class ONNXCalibrater:
         # Characterizing distribution of a node's values across test data sets
         clean_merged_dict = dict((i, merged_dict[i]) for i in merged_dict if i != list(merged_dict.keys())[0])
         if calib_mode == 'naive':
+
+            ## Following code gets "only size-1 arrays can be converted to Python scalars" when encountering float([])
+            ## 
+            '''
             pairs = [
                 tuple([
                     float(min(clean_merged_dict[added_node_output_names[i]])),
                     float(max(clean_merged_dict[added_node_output_names[i + 1]]))
                 ]) for i in range(0, len(added_node_output_names), 2)
             ]
+            '''
+
+            pairs = []
+            for i in range(0, len(added_node_output_names), 2):
+                min_value = 0
+                max_value = 0
+                min_value_array = min(clean_merged_dict[added_node_output_names[i]]) 
+                max_value_array = max(clean_merged_dict[added_node_output_names[i + 1]])
+                if type(min_value_array) == int or type(min_value_array) or len(min_value_array) > 0:
+                    min_value = float(min_value_array)
+                if type(max_value_array) == int or type(max_value_array) or len(max_value_array) > 0:
+                    max_value = float(max_value_array)
+
+                pairs.append(tuple([min_value, max_value]))
+
         else:
             raise ValueError('Unknown value for calib_mode. Currently only naive mode is supported.')
 
@@ -419,7 +432,7 @@ def calculate_calibration_data(model_path,
         augmented_model = calibrator.augment_graph(implicitly_quantize_all_ops)
         onnx.save(augmented_model, augmented_model_path)
 
-    calibrator.get_intermediate_outputs()
+    calibrator.get_intermediate_outputs(providers=["CUDAExecutionProvider"])
 
 def generate_calibration_table(model_path, augmented_model_path, data_reader, calibration_dataset=None, batch_size=5000):
 
@@ -436,7 +449,7 @@ def generate_calibration_table(model_path, augmented_model_path, data_reader, ca
     total_data_size = len(os.listdir(calibration_dataset)) if calibration_dataset else stride
 
 
-    # Some machines don't have sufficient memeory to load all dataset. So handle it by batch.
+    # Some machines don't have sufficient memory to load all dataset. So handle it by batch.
     for i in range(0, total_data_size, stride):
         print(calibration_dataset)
         if calibration_dataset:

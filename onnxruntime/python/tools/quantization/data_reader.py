@@ -48,21 +48,23 @@ def parse_annotations(filename):
 
 class YoloV3DataReader(CalibrationDataReader):
     def __init__(self, calibration_image_folder,
+                       width=416,
+                       height=416,
                        start_index=0,
                        size_limit=0,
                        augmented_model_path='augmented_model.onnx',
                        is_validation=False,
-                       save_bbox_to_image=False,
                        annotations='./annotations/instances_val2017.json'):
         self.image_folder = calibration_image_folder
         self.augmented_model_path = augmented_model_path
         self.preprocess_flag = True
         self.enum_data_dicts = []
         self.datasize = 0
+        self.width = width
+        self.height = height
         self.start_index = start_index
         self.size_limit = size_limit
         self.is_validation = is_validation
-        self.save_bbox_to_image = save_bbox_to_image
         self.annotations = annotations
 
     def set_start_index(self, i):
@@ -79,8 +81,8 @@ class YoloV3DataReader(CalibrationDataReader):
             self.preprocess_flag = False
             session = onnxruntime.InferenceSession(self.augmented_model_path, None)
             print(session.get_inputs()[0].shape)
-            width = 416
-            height = 416
+            width = self.width 
+            height = self.width 
             nchw_data_list, filename_list, image_size_list = yolov3_preprocess_func(self.image_folder, height, width, self.start_index, self.size_limit)
             input_name = session.get_inputs()[0].name
             self.datasize = len(nchw_data_list)
@@ -91,10 +93,7 @@ class YoloV3DataReader(CalibrationDataReader):
                 for i in range(len(nchw_data_list)):
                     nhwc_data = nchw_data_list[i]
                     file_name = filename_list[i]
-                    if self.save_bbox_to_image:
-                        data.append({input_name: nhwc_data, "image_shape": image_size_list[i], "image_id": img_name_to_img_id[file_name], "file_name": file_name})
-                    else:
-                        data.append({input_name: nhwc_data, "image_shape": image_size_list[i], "image_id": img_name_to_img_id[file_name]})
+                    data.append({input_name: nhwc_data, "image_shape": image_size_list[i], "image_id": img_name_to_img_id[file_name]})
 
             else:
                 for i in range(len(nchw_data_list)):
@@ -107,33 +106,25 @@ class YoloV3DataReader(CalibrationDataReader):
 
         return next(self.enum_data_dicts, None)
 
-class YoloV3VisionDataReader(CalibrationDataReader):
+class YoloV3VisionDataReader(YoloV3DataReader):
     def __init__(self, calibration_image_folder,
+                       width=512,
+                       height=288,
                        start_index=0,
                        size_limit=0,
                        augmented_model_path='augmented_model.onnx',
                        is_validation=False,
-                       save_bbox_to_image=False,
                        annotations='./annotations/instances_val2017.json'):
-        self.image_folder = calibration_image_folder
-        self.augmented_model_path = augmented_model_path
-        self.preprocess_flag = True
-        self.enum_data_dicts = []
-        self.datasize = 0
-        self.start_index = start_index
-        self.size_limit = size_limit
-        self.is_validation = is_validation
-        self.save_bbox_to_image = save_bbox_to_image
-        self.annotations = annotations
+        YoloV3DataReader.__init__(self, calibration_image_folder, width, height, start_index, size_limit, augmented_model_path, is_validation, annotations)
 
     def get_next(self):
         if self.preprocess_flag:
             self.preprocess_flag = False
             session = onnxruntime.InferenceSession(self.augmented_model_path, None)
             print(session.get_inputs()[0].shape)
-            width = 512 
-            height = 288 
-            nchw_data_list, filename_list, _ = yolov3_preprocess_func(self.image_folder, height, width, self.start_index, self.size_limit)
+            width = self.width 
+            height = self.height 
+            nchw_data_list, filename_list, image_size_list = yolov3_preprocess_func(self.image_folder, height, width, self.start_index, self.size_limit)
             input_name = session.get_inputs()[0].name
             self.datasize = len(nchw_data_list)
 
@@ -143,10 +134,7 @@ class YoloV3VisionDataReader(CalibrationDataReader):
                 for i in range(len(nchw_data_list)):
                     nhwc_data = nchw_data_list[i]
                     file_name = filename_list[i]
-                    if self.save_bbox_to_image:
-                        data.append({input_name: nhwc_data, "image_id": img_name_to_img_id[file_name], "file_name": file_name})
-                    else:
-                        data.append({input_name: nhwc_data, "image_id": img_name_to_img_id[file_name]})
+                    data.append({input_name: nhwc_data, "image_id": img_name_to_img_id[file_name]})
 
             else:
                 for i in range(len(nchw_data_list)):
@@ -159,6 +147,11 @@ class YoloV3VisionDataReader(CalibrationDataReader):
 
         return next(self.enum_data_dicts, None)
 
+
+'''
+This class reuses tokenize and evaluation function from HuggingFace:
+https://github.com/huggingface/transformers/blob/45e26125de1b9fbae46837856b1f518a4b56eb65/examples/movement-pruning/masked_run_glue.py
+'''
 class BertDataReader(CalibrationDataReader):
     def __init__(self, model_path, providers=["CUDAExecutionProvider"]):
         self.model_path = model_path
