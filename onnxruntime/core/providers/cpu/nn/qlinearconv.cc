@@ -13,7 +13,7 @@
 
 namespace onnxruntime {
 
-#if defined(MLAS_TARGET_AMD64_IX86)
+#ifdef MLAS_SUPPORTS_GEMM_U8X8
 
 class QLinearConv : public OpKernel {
  public:

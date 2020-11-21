@@ -297,7 +297,7 @@ void NhwcTransformerTester(const std::function<void(NhwcTestHelper& helper)>& bu
 
 #ifndef DISABLE_CONTRIB_OPS
 
-#if defined(MLAS_TARGET_AMD64_IX86)
+#ifdef MLAS_SUPPORTS_GEMM_U8X8
 
 TEST(NhwcTransformerTests, Conv) {
   auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape) {

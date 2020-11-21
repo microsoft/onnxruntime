@@ -260,7 +260,7 @@ TEST(QLinearConvTest, WithGroup_2D) {
                     {});
 }
 
-#if defined(MLAS_TARGET_AMD64_IX86)
+#ifdef MLAS_SUPPORTS_GEMM_U8X8
 
 template <typename T1, typename T2>
 class QLinearConvOpTester {
