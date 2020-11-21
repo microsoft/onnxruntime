@@ -72,12 +72,5 @@ if (WIN32)
     )
     set_target_properties(onnx PROPERTIES
         STATIC_LIBRARY_FLAGS "${onnx_static_library_flags}")
-else()
-  if(HAS_UNUSED_PARAMETER)
-    target_compile_options(onnx PRIVATE "-Wno-unused-parameter")
-  endif()
-  if(HAS_UNUSED_BUT_SET_VARIABLE)
-    target_compile_options(onnx PRIVATE "-Wno-unused-but-set-variable")
-  endif()
 endif()
 
