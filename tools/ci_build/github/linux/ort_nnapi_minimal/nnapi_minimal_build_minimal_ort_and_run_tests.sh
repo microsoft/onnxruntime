@@ -10,13 +10,16 @@ ORT_ROOT=$1
 
 MIN_BUILD_DIR=$ORT_ROOT/min_build
 
+# Copy all the models containing the required ops to pass the UT
 mkdir -p $TMPDIR/.test_data/models_to_include
 cp $ORT_ROOT/onnxruntime/test/testdata/ort_github_issue_4031.onnx $TMPDIR/.test_data/models_to_include
 cp $ORT_ROOT/onnxruntime/test/testdata/mnist.onnx $TMPDIR/.test_data/models_to_include
+cp $ORT_ROOT/onnxruntime/test/testdata/mnist.level1_opt.onnx $TMPDIR/.test_data/models_to_include
 cp $ORT_ROOT/onnxruntime/test/testdata/ort_minimal_test_models/*.onnx $TMPDIR/.test_data/models_to_include
 
-# build minimal package for Android x86_64 Emulator
-# Since this is a minimal build with reduced ops, we will only run e2e test using onnx_test_runner
+# Build minimal package for Android x86_64 Emulator
+# No test will be triggered in the build process
+# UT and e2e tests are triggered separately below
 python3 $ORT_ROOT/tools/ci_build/build.py \
     --build_dir $MIN_BUILD_DIR \
     --config Debug \
@@ -41,10 +44,8 @@ python3 $ORT_ROOT/tools/ci_build/build.py \
 # Start the Android Emulator
 /bin/bash $ORT_ROOT/tools/ci_build/github/android/start_android_emulator.sh
 
-# Push onnx_test_runner to emulator
+# Push onnx_test_runner and test models/data to emulator
 adb push $MIN_BUILD_DIR/Debug/onnx_test_runner /data/local/tmp/
-
-# Push test data to device
 adb push $TMPDIR/.test_data/ort_minimal_e2e_test_data /data/local/tmp/
 
 # Perform the e2e tests
@@ -54,5 +55,5 @@ adb shell 'cd /data/local/tmp/ && ./onnx_test_runner -e nnapi ./ort_minimal_e2e_
 adb push $MIN_BUILD_DIR/Debug/onnxruntime_test_all /data/local/tmp/
 adb push $MIN_BUILD_DIR/Debug/testdata /data/local/tmp/
 
-# Perform the ut
+# Perform the UT
 adb shell 'cd /data/local/tmp/ && ./onnxruntime_test_all'
