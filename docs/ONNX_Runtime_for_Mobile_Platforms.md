@@ -21,11 +21,9 @@ Once you have cloned the repository, perform the following steps to create a min
 
 We will use a helper python script to convert ONNX format models into ORT format models, and to create the configuration file for use with the minimal build.
 This will require the standard ONNX Runtime python package to be installed.
-
-  - Install the ONNX Runtime nightly python package from https://test.pypi.org/project/ort-nightly/
-    - e.g. `pip install -i https://test.pypi.org/simple/ ort-nightly`
+  - Install the ONNX Runtime python package from https://pypi.org/project/onnxruntime/. Version 1.5.2 or later is required.
+    - `pip install onnxruntime`
     - ensure that any existing ONNX Runtime python package was uninstalled first, or use `-U` with the above command to upgrade an existing package
-    - using the nightly package is temporary until ONNX Runtime version 1.5 is released
   - Copy all the ONNX models you wish to convert and use with the minimal build into a directory
   - Convert the ONNX models to ORT format 
     - `python <ONNX Runtime repository root>/tools/python/convert_onnx_models_to_ort.py <path to directory containing one or more .onnx models>`
@@ -42,7 +40,8 @@ Running `'python <ORT repository root>/tools/python/convert_onnx_models_to_ort.p
 
 You will need to build ONNX Runtime from source to reduce the included operator kernels and other aspects of the binary. 
 
-See [here](https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#start-baseline-cpu) for the general ONNX Runtime build instructions. 
+See [here](https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#start-baseline-cpu) for the general ONNX Runtime build instructions.
+
 
 #### Binary size reduction options:
 
@@ -125,46 +124,73 @@ session = onnxruntime.InferenceSession(<path to model>, so)
 ### Enabling Execution Providers that compile kernels in a minimal build
 
 It is possible to enable execution providers that compile kernels in a minimal build. 
-Currently the NNAPI execution provider is the only execution provider that has support for running in a minimal build.
+Currently the NNAPI execution provider is the only compiling execution provider that has support for running in a minimal build.
 
-#### Create NNAPI aware ORT format model 
-  - Create a 'full' (i.e. no usage of the `--minimal_build` flag) build of ONNX Runtime with NNAPI enabled
+#### Background
+When ONNX Runtime loads an ONNX format model there are three main steps that affect the operators used in the model, and which execution provider runs each node. 
+
+Step 1: The 'basic' optimizations are run (if enabled). See the [graph optimization](https://github.com/microsoft/onnxruntime/blob/master/docs/ONNX_Runtime_Graph_Optimizations.md) documentation for further details. Only ONNX operators are used when modifying the model in this step. 
+
+Step 2: The enabled [execution providers](https://github.com/microsoft/onnxruntime/tree/master/docs/execution_providers) are asked which nodes they can handle. Nodes are assigned based on the priority order of the execution providers. A compiling execution provider will replace one or more nodes at a time with a single 'function' based node (this is a 'compiled' version of the original node/s) when it is assigned those nodes. The function will be called at runtime to execute that part of the model.
+
+Step 3: The 'extended' and 'layout' optimizations are run (if enabled). Custom internal ONNX Runtime operators are used in these optimizations, and the optimizations will only replace nodes that were using standard ONNX operators. Due to the latter, 'function' based nodes will not be changed during this step.
+
+Optimizations are not run on an ORT format model (at runtime only step 2 will occur), so any optimizations must be performed when creating it. Assuming we want a compiling execution provider to take as many nodes as possible, we want to preserve all the nodes it would see after 'basic' optimizations are done (i.e. nodes using ONNX operators only), so that at runtime it can compile those into 'function' based nodes. There may be nodes that the compiling execution provider does not take that the higher level optimizations can replace, however this is model dependent, as is any potential performance gain from such optimizations.
+
+#### Model creation choice
+
+Given this background, a choice can be made as to how the ORT format model is created. 
+
+The [simple](#Create_NNAPI_aware_ORT_format_model_Simple) approach is to use the released ONNX Runtime python package to create the model with the optimization level limited to 'basic'. This will ensure that the compiling execution provider will handle the maximum number of nodes possible, at the potential loss of some higher level optimizations.
+
+The [advanced](#Create_NNAPI_aware_ORT_format_model_Advanced) approach is to build a 'full' (i.e. no usage of the `--minimal_build` flag) version of ONNX Runtime from source in order to create a python package with the compiling execution provider enabled. This python package can be used to create an ORT format model that preserves the nodes the compiling execution provider can potentially handle, whilst allowing higher level optimizations to run on any remaining nodes.
+
+#### Create NNAPI aware ORT format model: Simple
+
+Specify `--optimization_level basic` when running `tools\python\convert_onnx_models_to_ort.py` as per [above](#Create_ORT_format_model_and_configuration_file_with_required_operators) instructions. 
+
+This will result in a model that only uses ONNX operators. All nodes that NNAPI could handle are preserved, at the cost of any higher level optimizations that may have been possible.
+
+#### Create NNAPI aware ORT format model: Advanced
+  - Create a 'full' build of ONNX Runtime with NNAPI enabled by [building ONNX Runtime from source](https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#start-baseline-cpu).
     - **NOTE** do this prior to creating the minimal build
       - the process for creating a minimal build will exclude operators that may be needed to load the ONNX model and create the ORT format model
       - if you have previously done a minimal build, run `git reset --hard` to make sure any operator kernel exclusions are reversed
     - we can not use the ONNX Runtime prebuilt package as NNAPI is not enabled in it
     - the 'full' build can be done on any platform
-      - you do NOT need to create an Android build of ONNX Runtime in order to create an ORT format model that is optimized for usage with NNAPI.
-      - when the NNAPI execution provider is enabled on non-Android platforms it can only specify which nodes can be assigned to NNAPI. it can NOT be used to execute the model.
-    - perform a standard build as per the [common build instructions](https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions), and add `--use_nnapi --build_shared_lib --build_wheel` to the build flags if any of those are missing
+      - you do not need to create an Android build of ONNX Runtime in order to create an ORT format model that is optimized for usage with NNAPI.
+        - when the NNAPI execution provider is enabled on non-Android platforms it can only specify which nodes can be assigned to NNAPI. it can NOT be used to execute the model.
+    - Add `--use_nnapi --build_shared_lib --build_wheel` to the build flags if any of those are missing. Do NOT add the `--minimal_build` flag.
+      - e.g. `.\build.bat --config RelWithDebInfo --use_nnapi --build_shared_lib --build_wheel --parallel` 
+      - replace `.\build.bat` with `./build.sh` for Linux
   - Install the python wheel from the build output directory
-    - this is located in `build/Windows/<config>/<config>/dist/<package name>.whl` on Windows, or  `build/Linux/<config>/dist/<package name>.whl` on Linux. 
-      - `<config>` is the value from the `--config` parameter from the build command (e.g. Release)
+    - this is located in `build/Windows/<config>/<config>/dist/<package name>.whl` on Windows, or `build/Linux/<config>/dist/<package name>.whl` on Linux. 
+      - `<config>` is the value from the `--config` parameter from the build command (e.g. RelWithDebInfo)
       - the package name will differ based on your platform, python version, and build parameters
       - e.g. `pip install -U build\Windows\Release\Release\dist\onnxruntime_noopenmp-1.5.2-cp37-cp37m-win_amd64.whl`
-  - Create an ORT format model by running `tools\python\convert_onnx_models_to_ort.py` as per the above instructions, with the addition of the `--use_nnapi` parameter
+  - Create an NNAPI aware ORT format model by running `tools\python\convert_onnx_models_to_ort.py` as per the above instructions, with the addition of the `--use_nnapi` parameter
     - the python package from your 'full' build with NNAPI enabled must be installed for `--use_nnapi` to be a valid option
     - this will preserve all the nodes that can be assigned to NNAPI, as well as setup the ability to fallback to CPU execution if NNAPI is not available at runtime, or if NNAPI can not run all the nodes due to device limitations.
 
-The generated ORT format model can be used on all platforms, however there is an important caveat:
-  - Basic optimization such as constant folding run prior to the NNAPI execution provider being asked to nominate the nodes it can handle. These optimizations will be included in the ORT format model
-  - Any potential extended optimizations on nodes that the NNAPI execution provider claims will not occur
-    - these are optimizations that involve custom non-ONNX operators 
-      - e.g. custom ONNX Runtime FusedConv operator that combines a Conv node and activation node (e.g. Relu)
-  - Depending on the model, and how many of these potential extended optimizations are prevented, there may be some performance loss if the NNAPI execution provider is not available (e.g. running on a non-Android platform), or does not claim the same set of nodes at runtime
-    - whether there is any performance loss, and/or whether there is significant performance loss, is model dependent
-      - please test to ascertain what works best for your scenarios
-        - you may want to generate one NNAPI aware ORT format model, and one generic ORT format model
-
-*Side note:* If losing the extended optimizations is not a concern, you can simply generate an ORT format model that can be used with NNAPI using the default ONNX Runtime package. Specify `--optimization_level basic` instead of `--use_nnapi` when running `tools\python\convert_onnx_models_to_ort.py`. This will mean all nodes that NNAPI could potentially will handle remain available, and at runtime the NNAPI execution provider can take them.
-
 #### Create the minimal build with NNAPI support
-NOTE: A minimal build with full NNAPI support can only be for the Android platform. 
+NOTE: A minimal build with full NNAPI support can only be created for the Android platform as NNAPI is only available on Android. 
 See [these](https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Android-NNAPI-Execution-Provider) instructions for details on creating an Android build with NNAPI included. 
 
-  - Follow the [above](#2-Create-the-minimal-build) instructions to create the minimal build, with the following changes:
-    - Add `--minimal_build extended` to enable the support for execution providers that compile kernels in the minimal build.
-    - Add `--use_nnapi` to include NNAPI in the build
+  - Follow the above instructions to [create the minimal build](#2-Create-the-minimal-build), with the following changes:
+    - Replace `--minimal_build` with `--minimal_build extended` to enable the support for execution providers that compile kernels in the minimal build.
+    - Add `--use_nnapi` to include the NNAPI execution provider in the build
+
+#### Performance caveats when using compiling Execution Providers
+
+What is optimal will differ by model, and performance testing is the only way to determine what works best for your model. At a minimum it is suggested to performance test with the NNAPI aware ORT format model, and a standard ORT format model created using the default instructions.
+
+  - If the sections of the model that NNAPI can handle are broken up, the overhead of switching between NNAPI and CPU execution between these sections may outweight the benefit of using NNAPI
+  - Any potential extended optimizations on nodes that the NNAPI execution provider claims will not occur in order to preserve the nodes as-is
+    - these are optimizations that involve custom non-ONNX operators 
+      - e.g. custom ONNX Runtime FusedConv operator that combines a Conv node and activation node (e.g. Relu). As NNAPI can handle Conv and Relu we would leave the original nodes as-is in the NNAPI aware ORT format model so that the NNAPI execution provider can take them at runtime.
+    - Depending on the model, and how many of these potential extended optimizations are not applied, there may be some performance loss if the NNAPI execution provider is not available at runtime (e.g. running on a non-Android platform), or does not claim the same set of nodes at runtime (e.g. older version of NNAPI does not support as many operators) 
+      - you may want to generate an NNAPI aware ORT format model for use on Android devices, and a standard ORT format model for use on other platforms
+    - in a future release we will add the ability to capture information about the potential extended optimizations so that they may be applied at runtime in a minimal build if the compiling execution provider is not available, or does not end up taking the full set of nodes it originally claimed.
 
 ## Limitations
 

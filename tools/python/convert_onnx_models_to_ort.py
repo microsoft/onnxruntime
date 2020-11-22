@@ -98,6 +98,8 @@ def _get_optimization_level(level):
         return ort.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
     if level == 'all':
         # all optimizations, including NCHWc (which has hardware specific logic)
+        print('WARNING: Enabling layout optimizations is not recommended unless the ORT format model will be executed '
+              'on the same hardware used to create the model.')
         return ort.GraphOptimizationLevel.ORT_ENABLE_ALL
 
     raise ValueError('Invalid optimization level of ' + level)
