@@ -264,10 +264,10 @@ Status TrainingSession::ConfigureForTraining(
   ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(trainable_initializers, config.graph_transformer_config,
                                                       config_result, partition_by_row_));
 
-  std::cout << "trainable_initializers after transformation:" << std::endl;
-  for (auto& kv : trainable_initializers) {
-    std::cout << kv << " " << std::endl;
-  }
+  // std::cout << "trainable_initializers after transformation:" << std::endl;
+  // for (auto& kv : trainable_initializers) {
+  //   std::cout << kv << " " << std::endl;
+  // }
 
   if (IsRootNode(config) && config.model_with_loss_function_path.has_value()) {
     ORT_IGNORE_RETURN_VALUE(Save(
@@ -1126,6 +1126,86 @@ Status TrainingSession::SetStateTensors(const NameMLValMap& state_tensors, bool 
       auto* initializer_tensor = initializer_it->second.GetMutable<Tensor>();
       auto& ckpt_tensor = state.second.Get<Tensor>();
       ORT_RETURN_IF_ERROR(GetSessionState().GetDataTransferMgr().CopyTensor(ckpt_tensor, *initializer_tensor));
+    }
+  }
+
+  return Status::OK();
+}
+
+Status TrainingSession::SetModelOptState(const NameMLValMap& model_tensors, const std::unordered_map<std::string, NameMLValMap>& optimizer_tensors, bool strict) {
+  ORT_RETURN_IF_NOT(IsInitialized(), "Can't update initializers before session has been initialized.");
+
+  std::unordered_set<std::string> ckpt_initializer_names;
+  std::transform(model_tensors.begin(), model_tensors.end(),
+                 std::inserter(ckpt_initializer_names, ckpt_initializer_names.end()),
+                 [](auto pair) { return pair.first; });
+
+  NameMLValMap initializers;
+  ORT_RETURN_IF_ERROR(GetSessionState().GetInitializedTensors(ckpt_initializer_names, !strict, initializers));
+
+  const std::unordered_set<std::string> valid_state_tensor_names = GetStateTensorNames();
+
+  for (auto& state : model_tensors) {
+    const bool is_valid_state_tensor =
+        valid_state_tensor_names.find(state.first) != valid_state_tensor_names.end();
+    const auto initializer_it = initializers.find(state.first);
+    const bool is_tensor_present = initializer_it != initializers.end();
+
+    if (strict) {
+      ORT_RETURN_IF_NOT(
+          is_valid_state_tensor,
+          "Checkpoint tensor: ", state.first, " is not a known state tensor.");
+      ORT_RETURN_IF_NOT(
+          is_tensor_present,
+          "Checkpoint tensor: ", state.first, " is not present in the model.");
+    }
+
+    if (is_valid_state_tensor && is_tensor_present) {
+      ORT_RETURN_IF_NOT(
+          initializer_it->second.IsTensor() && state.second.IsTensor(),
+          "Non-tensor type as initializer is not expected.")
+
+      auto* initializer_tensor = initializer_it->second.GetMutable<Tensor>();
+      auto& ckpt_tensor = state.second.Get<Tensor>();
+      ORT_RETURN_IF_ERROR(GetSessionState().GetDataTransferMgr().CopyTensor(ckpt_tensor, *initializer_tensor));
+    }
+  }
+
+  std::unordered_set<std::string> ckpt_opt_names;
+  for (auto& weight: optimizer_tensors) {
+    for (auto& state : weight.second) {
+      ckpt_opt_names.insert(weight.first + state.first);
+    }
+  }
+  NameMLValMap opt_initializers;
+  ORT_RETURN_IF_ERROR(GetSessionState().GetInitializedTensors(ckpt_opt_names, !strict, opt_initializers));
+
+  for (auto& weight: optimizer_tensors) {
+    for (auto& state : weight.second) {
+      std::string opt_name = weight.first + state.first;
+      const bool is_valid_state_tensor =
+          valid_state_tensor_names.find(opt_name) != valid_state_tensor_names.end();
+      const auto initializer_it = opt_initializers.find(opt_name);
+      const bool is_tensor_present = initializer_it != opt_initializers.end();
+
+      if (strict) {
+        ORT_RETURN_IF_NOT(
+            is_valid_state_tensor,
+            "Checkpoint tensor: ", opt_name, " is not a known state tensor.");
+        ORT_RETURN_IF_NOT(
+            is_tensor_present,
+            "Checkpoint tensor: ", opt_name, " is not present in the model.");
+      }
+
+      if (is_valid_state_tensor && is_tensor_present) {
+        ORT_RETURN_IF_NOT(
+            initializer_it->second.IsTensor() && state.second.IsTensor(),
+            "Non-tensor type as initializer is not expected.")
+
+        auto* initializer_tensor = initializer_it->second.GetMutable<Tensor>();
+        auto& ckpt_tensor = state.second.Get<Tensor>();
+        ORT_RETURN_IF_ERROR(GetSessionState().GetDataTransferMgr().CopyTensor(ckpt_tensor, *initializer_tensor));
+      }
     }
   }
 
