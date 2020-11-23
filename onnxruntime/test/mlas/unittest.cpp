@@ -2801,7 +2801,8 @@ private:
         float InputScale,
         uint8_t InputZeroPoint,
         float OutputScale,
-        uint8_t OutputZeroPoint
+        uint8_t OutputZeroPoint,
+        int32_t UnalignedOffset = 0
         )
     {
         size_t N = Batch * Stride * ImageSize;
@@ -2823,28 +2824,29 @@ private:
             Gold, InputZeroPoint, InputScale, OutputZeroPoint, OutputScale);
 
         if (!channel_last) {
-            std::vector<int32_t> acc(MlasQLinearSafePaddingElementCount(sizeof(int32_t), ResultLen));
-            MlasQLinearGlobalAveragePoolNchw(
-                Input, InputScale, InputZeroPoint, Output,
-                OutputScale, OutputZeroPoint, ResultLen, ImageSize, acc.data());
+          std::vector<int32_t> acc(MlasQLinearSafePaddingElementCount(sizeof(int32_t), ResultLen + UnalignedOffset));
+          MlasQLinearGlobalAveragePoolNchw(
+              Input, InputScale, InputZeroPoint, Output,
+              OutputScale, OutputZeroPoint, ResultLen, ImageSize, acc.data() + UnalignedOffset);
         } else {
-            std::vector<int32_t> acc(MlasQLinearSafePaddingElementCount(sizeof(int32_t), Channel));
-            std::vector<uint8_t> zero(MlasQLinearSafePaddingElementCount(sizeof(uint8_t), Channel));
-            if (Stride == Channel) {
-                MlasQLinearGlobalAveragePoolNhwc(
-                    Input, InputScale, InputZeroPoint, Output,
-                    OutputScale, OutputZeroPoint, Batch, ImageSize, Stride, Channel,
-                    acc.data(), zero.data());
+          std::vector<int32_t> acc(MlasQLinearSafePaddingElementCount(sizeof(int32_t), Channel + UnalignedOffset));
+          std::vector<uint8_t> zero(MlasQLinearSafePaddingElementCount(sizeof(uint8_t), Channel + UnalignedOffset));
+          if (Stride == Channel) {
+            MlasQLinearGlobalAveragePoolNhwc(
+                Input, InputScale, InputZeroPoint, Output,
+                OutputScale, OutputZeroPoint, Batch, ImageSize, Stride, Channel,
+                acc.data() + UnalignedOffset, zero.data() + UnalignedOffset);
             } else {
                 for (size_t tc = 0; tc < Stride; tc += Channel) {
                     size_t cg = ((tc + Channel <= Stride) ? Channel : (Stride - tc));
                     MlasQLinearGlobalAveragePoolNhwc(
                         Input + tc, InputScale, InputZeroPoint, Output + tc,
                         OutputScale, OutputZeroPoint, Batch, ImageSize, Stride, cg,
-                        acc.data(), zero.data());
+                        acc.data() + UnalignedOffset, zero.data() + UnalignedOffset);
                 }
             }
         }
+
         CompareResultWithGold(Batch, Channel, Output, Gold, test_info);
     }
 
@@ -2859,6 +2861,7 @@ private:
         static const size_t Batch[] = {1, 3};
         static const size_t Stride[] = {7, 8, 63, 256 };
         static const size_t ImageSize[] = {7, 8, 64};
+        static int unalign_offset = 0;
 
         for (int channel_last = 0; channel_last <= 1; ++channel_last) {
             for (size_t b = 0; b < _countof(Batch); b++) {
@@ -2869,11 +2872,12 @@ private:
                                 for (size_t i = 0; i < _countof(ImageSize); i++) {
                                     for (size_t s = 0; s < _countof(Stride); s++) {
                                         Test(channel_last, Batch[b], Stride[s], Stride[s], ImageSize[i],
-                                             scales[xs], zero_points[xzp], scales[ys], zero_points[yzp]);
+                                             scales[xs], zero_points[xzp], scales[ys], zero_points[yzp], unalign_offset);
                                         if (channel_last == 1 && Stride[s] > 32) {
                                             Test(channel_last, Batch[b], Stride[s], 32, ImageSize[i],
-                                                 scales[xs], zero_points[xzp], scales[ys], zero_points[yzp]);
+                                                 scales[xs], zero_points[xzp], scales[ys], zero_points[yzp], unalign_offset);
                                         }
+                                        unalign_offset = (unalign_offset + 1) & 3;
                                     }
                                 }
                             }

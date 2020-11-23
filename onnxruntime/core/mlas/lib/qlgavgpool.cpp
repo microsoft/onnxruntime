@@ -356,8 +356,8 @@ MlasQLinearGlobalAveragePoolNhwcSingleBatch(
     i3 += 8;
 
 #define CALCULATE_ACCUMULATE_VECTORS()                                                                 \
-    __m128i vacc_lo = finish_one_pass ? _mm_load_si128((__m128i*)acc) : vbias;                         \
-    __m128i vacc_hi = finish_one_pass ? _mm_load_si128(((__m128i*)acc) + 1) : vbias;                   \
+    __m128i vacc_lo = finish_one_pass ? _mm_loadu_si128((__m128i*)acc) : vbias;                        \
+    __m128i vacc_hi = finish_one_pass ? _mm_loadu_si128(((__m128i*)acc) + 1) : vbias;                  \
     const __m128i vxi0 = _mm_unpacklo_epi8(vi0, vzero);                                                \
     const __m128i vxi1 = _mm_unpacklo_epi8(vi1, vzero);                                                \
     const __m128i vxi2 = _mm_unpacklo_epi8(vi2, vzero);                                                \
@@ -389,8 +389,8 @@ MlasQLinearGlobalAveragePoolNhwcSingleBatch(
     i6 += 8
 
 #define CALCULATE_ACCUMULATE_VECTORS()                                                                 \
-    __m128i vacc_lo = finish_one_pass ? _mm_load_si128((__m128i*)acc) : vbias;                         \
-    __m128i vacc_hi = finish_one_pass ? _mm_load_si128(((__m128i*)acc) + 1) : vbias;                   \
+    __m128i vacc_lo = finish_one_pass ? _mm_loadu_si128((__m128i*)acc) : vbias;                        \
+    __m128i vacc_hi = finish_one_pass ? _mm_loadu_si128(((__m128i*)acc) + 1) : vbias;                  \
     const __m128i vxi0 = _mm_unpacklo_epi8(vi0, vzero);                                                \
     const __m128i vxi1 = _mm_unpacklo_epi8(vi1, vzero);                                                \
     const __m128i vxi2 = _mm_unpacklo_epi8(vi2, vzero);                                                \
@@ -433,8 +433,8 @@ MlasQLinearGlobalAveragePoolNhwcSingleBatch(
 
             CALCULATE_ACCUMULATE_VECTORS();
 
-            _mm_store_si128((__m128i*)acc, vacc_lo);
-            _mm_store_si128(((__m128i*)acc) + 1, vacc_hi);
+            _mm_storeu_si128((__m128i*)acc, vacc_lo);
+            _mm_storeu_si128(((__m128i*)acc) + 1, vacc_hi);
             acc += 8;
         }
         if (c > 0) {
@@ -450,8 +450,8 @@ MlasQLinearGlobalAveragePoolNhwcSingleBatch(
 
             CALCULATE_ACCUMULATE_VECTORS();
 
-            _mm_store_si128((__m128i*)acc, vacc_lo);
-            _mm_store_si128(((__m128i*)acc) + 1, vacc_hi);
+            _mm_storeu_si128((__m128i*)acc, vacc_lo);
+            _mm_storeu_si128(((__m128i*)acc) + 1, vacc_hi);
         }
         finish_one_pass = true;
 
@@ -493,8 +493,8 @@ MlasQLinearGlobalAveragePoolNhwcSingleBatch(
 
             CALCULATE_ACCUMULATE_VECTORS();
 
-            _mm_store_si128((__m128i*)acc, vacc_lo);
-            _mm_store_si128(((__m128i*)acc) + 1, vacc_hi);
+            _mm_storeu_si128((__m128i*)acc, vacc_lo);
+            _mm_storeu_si128(((__m128i*)acc) + 1, vacc_hi);
             acc += 8;
         }
 
@@ -511,8 +511,8 @@ MlasQLinearGlobalAveragePoolNhwcSingleBatch(
 
             CALCULATE_ACCUMULATE_VECTORS();
 
-            _mm_store_si128((__m128i*)acc, vacc_lo);
-            _mm_store_si128(((__m128i*)acc) + 1, vacc_hi);
+            _mm_storeu_si128((__m128i*)acc, vacc_lo);
+            _mm_storeu_si128(((__m128i*)acc) + 1, vacc_hi);
         }
     }
     MlasRequantizeOutput(AccumulateBuffer, Output, nullptr, 1, Channels, &Scale, false, Output_zero_point);
