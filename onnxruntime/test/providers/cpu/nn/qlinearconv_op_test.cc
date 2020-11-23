@@ -764,6 +764,44 @@ TEST(QLinearConvTest, Conv3D_U8S8_Depthwise) {
   test.Run();
 }
 
+TEST(QLinearConvTest, Conv2D_U8S8_Requantize_NoBias) {
+  for (int64_t channels = 1; channels <= 32; channels++) {
+    QLinearConvOpTester<uint8_t, int8_t> test;
+    test.GenerateRandomInput({1, 8, 5, 5}, .05f, 4);
+    test.GenerateRandomWeights({channels, 8, 3, 3}, .125f, 0);
+    test.SetPads({1, 1, 1, 1});
+    test.SetOutputScaleAndZeroPoint(.55f, 56);
+    test.Run();
+  }
+}
+
+TEST(QLinearConvTest, Conv2D_U8S8_Requantize_Bias) {
+  for (int64_t channels = 1; channels <= 32; channels++) {
+    QLinearConvOpTester<uint8_t, int8_t> test;
+    test.GenerateRandomInput({1, 8, 5, 5}, .05f, 4);
+    test.GenerateRandomWeights({channels, 8, 3, 3}, .125f, 0);
+    test.GenerateRandomBias();
+    test.SetPads({1, 1, 1, 1});
+    test.SetOutputScaleAndZeroPoint(.55f, 56);
+    test.Run();
+  }
+}
+
+TEST(QLinearConvTest, Conv2D_U8S8_Requantize_Bias_PerChannel) {
+  std::vector<float> weight_scales;
+  for (int64_t channels = 1; channels <= 32; channels++) {
+    QLinearConvOpTester<uint8_t, int8_t> test;
+    test.GenerateRandomInput({1, 8, 5, 5}, .05f, 4);
+    test.GenerateRandomWeights({channels, 8, 3, 3}, .125f, 0);
+    weight_scales.push_back(.120f + .002f * static_cast<float>(channels));
+    test.SetWeightScales(weight_scales);
+    test.GenerateRandomBias();
+    test.SetPads({1, 1, 1, 1});
+    test.SetOutputScaleAndZeroPoint(.55f, 56);
+    test.Run();
+  }
+}
+
 #endif
 
 }  // namespace
