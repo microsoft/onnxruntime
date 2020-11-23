@@ -241,7 +241,9 @@ equal to the spatial dimension of input tensor. Input is of type uint8_t or int8
         output_shape->CopyFrom(input_shape);
         int image_dim_index = (channel_last ? 1 : 2);
         for (auto n_hw_dims = input_shape.dim_size() - 2; n_hw_dims > 0; --n_hw_dims) {
-          output_shape->mutable_dim(image_dim_index++)->set_dim_value(1);
+          output_shape->mutable_dim(image_dim_index)->clear_dim_value();
+          output_shape->mutable_dim(image_dim_index)->set_dim_value(1);
+          ++image_dim_index;
         }
       });
 }
