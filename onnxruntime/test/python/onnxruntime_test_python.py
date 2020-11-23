@@ -808,5 +808,24 @@ class TestInferenceSession(unittest.TestCase):
             for iteration in range(100000):
                 result = session.run(output_names=['output'], input_feed={'shape': shape})
 
+    def testSharedAllocatorUsingCreateAndRegisterAllocator(self):
+        # Create and register an arena based allocator
+        
+        # ort_arena_cfg = onnxrt.OrtArenaCfg(0, -1, -1, -1) (create an OrtArenaCfg like this template if you want to use non-default parameters)
+        ort_memory_info = onnxrt.OrtMemoryInfo("Cpu", onnxrt.OrtAllocatorType.ORT_ARENA_ALLOCATOR, 0, onnxrt.OrtMemType.DEFAULT)
+        # Use this option if using non-default OrtArenaCfg : onnxrt.create_and_register_allocator(ort_memory_info, ort_arena_cfg)
+        onnxrt.create_and_register_allocator(ort_memory_info, None)
+
+        # Create a session that will use the registered arena based allocator
+        so1 = onnxrt.SessionOptions()
+        so1.log_severity_level = 1
+        so1.add_session_config_entry("session.use_env_allocators", "1");
+        onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=so1)
+
+        # Create a session that will NOT use the registered arena based allocator
+        so2 = onnxrt.SessionOptions()
+        so2.log_severity_level = 1
+        onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=so2)
+
 if __name__ == '__main__':
     unittest.main()

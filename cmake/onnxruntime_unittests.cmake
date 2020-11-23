@@ -13,10 +13,6 @@ if (onnxruntime_USE_TVM)
   list(APPEND TEST_INC_DIR ${TVM_INCLUDES})
 endif()
 
-if (onnxruntime_USE_OPENVINO)
-    list(APPEND TEST_INC_DIR ${OPENVINO_INCLUDE_DIR})
-endif()
-
 set(disabled_warnings)
 function(AddTest)
   cmake_parse_arguments(_UT "DYN" "TARGET" "LIBS;SOURCES;DEPENDS" ${ARGN})
@@ -387,11 +383,11 @@ if(onnxruntime_USE_CUDA)
 endif()
 
 if(onnxruntime_USE_DNNL)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_dnnl)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_dnnl onnxruntime_providers_shared)
 endif()
 
 if(onnxruntime_USE_OPENVINO)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_openvino)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_openvino onnxruntime_providers_shared)
 endif()
 
 if(onnxruntime_USE_NNAPI_BUILTIN)
@@ -449,9 +445,8 @@ set(ONNXRUNTIME_TEST_LIBS
     ${ONNXRUNTIME_INTEROP_TEST_LIBS}
     ${onnxruntime_libs}
     ${PROVIDERS_CUDA}
-    # TENSORRT and DNNL are explicitly linked at runtime
+    # TENSORRT, DNNL, and OpenVINO are explicitly linked at runtime
     ${PROVIDERS_MIGRAPHX}
-    ${PROVIDERS_OPENVINO}
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_RKNPU}

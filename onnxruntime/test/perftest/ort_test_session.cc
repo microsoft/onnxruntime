@@ -47,7 +47,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         std::numeric_limits<size_t>::max(),
         0,
         !performance_test_config.run_config.do_cuda_copy_in_separate_stream};
-    Ort::ThrowOnError(session_options.OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, &cuda_options));
+    session_options.AppendExecutionProvider_CUDA(cuda_options);
 #else
     ORT_THROW("CUDA is not supported in this build\n");
 #endif
