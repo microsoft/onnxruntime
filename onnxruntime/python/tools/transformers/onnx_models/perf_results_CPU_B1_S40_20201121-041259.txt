@@ -1,0 +1,11 @@
+Latency(ms)	Latency_P50	Latency_P75	Latency_P90	Latency_P95	Latency_P99	Throughput(QPS)	model	graph_optimization_level	intra_op_num_threads	OMP_NUM_THREADS	OMP_WAIT_POLICY	batch_size	sequence_length	test_cases	test_times	contiguous	use_gpu	warmup
+30.61	29.35	31.00	35.40	39.29	48.67	32.67	txl_result_fused_matmul.onnx	ENABLE_BASIC	1	12	ACTIVE	1	40	3000	1	None	False	True
+30.94	27.87	30.79	38.78	46.42	68.84	32.32	txl_result_fused_matmul.onnx	ENABLE_BASIC	0			1	40	3000	1	None	False	True
+31.63	28.39	31.76	39.71	47.43	71.31	31.61	txl_result_fused_matmul.onnx	ENABLE_BASIC	1			1	40	3000	1	None	False	True
+32.15	28.79	32.27	40.57	49.90	72.29	31.10	txl_result_fused_matmul.onnx	ENABLE_BASIC	1	24	ACTIVE	1	40	3000	1	None	False	True
+48.80	46.82	49.14	54.68	60.04	72.81	20.49	txl_result_fused_matmul.onnx	ENABLE_BASIC	1	12	PASSIVE	1	40	3000	1	None	False	True
+53.35	50.23	54.37	62.54	70.49	93.27	18.74	txl_result_fused_matmul.onnx	ENABLE_BASIC	1	24	PASSIVE	1	40	3000	1	None	False	True
+108.14	107.04	108.40	110.30	114.95	126.45	9.25	txl_result_fused_matmul.onnx	ENABLE_BASIC	24	1	ACTIVE	1	40	3000	1	None	False	True
+108.83	107.78	108.94	111.33	115.79	126.52	9.19	txl_result_fused_matmul.onnx	ENABLE_BASIC	12	1	PASSIVE	1	40	3000	1	None	False	True
+108.84	108.01	109.15	111.37	115.25	122.36	9.19	txl_result_fused_matmul.onnx	ENABLE_BASIC	24	1	PASSIVE	1	40	3000	1	None	False	True
+109.25	108.24	109.39	111.75	115.77	128.08	9.15	txl_result_fused_matmul.onnx	ENABLE_BASIC	12	1	ACTIVE	1	40	3000	1	None	False	True

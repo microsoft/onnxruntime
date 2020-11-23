@@ -1,0 +1,4 @@
+Latency(ms)	Latency_P50	Latency_P75	Latency_P90	Latency_P95	Latency_P99	Throughput(QPS)	model	graph_optimization_level	intra_op_num_threads	OMP_NUM_THREADS	OMP_WAIT_POLICY	batch_size	sequence_length	test_cases	test_times	contiguous	use_gpu	warmup
+6.43	6.33	6.36	6.44	6.67	10.26	155.48	txl_result.onnx	ENABLE_ALL	24	1	ACTIVE	1	40	1000	1	None	True	True
+6.46	6.38	6.40	6.44	6.80	8.51	154.81	txl_result.onnx	ENABLE_ALL	0			1	40	1000	1	None	True	True
+6.81	6.79	6.83	6.97	7.81	10.74	146.82	txl_result.onnx	ENABLE_ALL	1	12	PASSIVE	1	40	1000	1	None	True	True

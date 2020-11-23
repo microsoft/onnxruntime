@@ -184,7 +184,11 @@ Status Gemm<T>::Compute(OpKernelContext* context) const {
   int64_t N = helper.N();
   int64_t K = helper.K();
 
-  auto Y = context->Output(0, {M, N});
+  std::cout << "M=" << M << std::endl;
+  std::cout << "N=" << N << std::endl;
+  std::cout << "K=" << K << std::endl;
+
+  auto Y = context->Output(0, A->Shape());
 
   // if input is empty tensor, return as nothing need to be calculated and we've set the shape for the output
   if (M == 0 || N == 0)
@@ -193,6 +197,8 @@ Status Gemm<T>::Compute(OpKernelContext* context) const {
   T* y_data = Y->MutableData<T>();
   const T* c_data = C != nullptr ? C->Data<T>() : nullptr;
   const TensorShape* c_shape = C != nullptr ? &C->Shape() : nullptr;
+
+  std::cout << "Compute Gemm" << std::endl;
 
   ComputeGemm(trans_A_, trans_B_, M, N, K, alpha_, A->Data<T>(), B->Data<T>(), beta_,
               c_data, c_shape, y_data, thread_pool);
@@ -208,6 +214,7 @@ Status Gemm<float>::Compute(OpKernelContext* context) const {
 
   const auto* A = context->Input<Tensor>(0);
   const auto* B = packed_b_ ? nullptr : context->Input<Tensor>(1);
+  //const auto* B2 = context->Input<Tensor>(1);
   const auto* C = context->Input<Tensor>(2);
 
   // Bias could be missing. Treat as scalar 0 if that is the case.
@@ -221,7 +228,16 @@ Status Gemm<float>::Compute(OpKernelContext* context) const {
   int64_t N = helper.N();
   int64_t K = helper.K();
 
-  auto Y = context->Output(0, {M, N});
+  //std::cout << "Shape of A:" << A->Shape() << std::endl;
+  //std::cout << "Shape of B:" << b_shape_ << std::endl;
+  //std::cout << "Shape of C:" << C->Shape() << std::endl;
+  //std::cout << "M=" << M << std::endl;
+  //std::cout << "N=" << N << std::endl;
+  //std::cout << "K=" << K << std::endl;
+
+  auto Y = context->Output(0, {A->Shape()[0], A->Shape()[1], N});
+  //std::cout << "output shape: " << Y->Shape() << std::endl;
+  //std::cout << "------------------------------------" << std::endl;
 
   // if input is empty tensor, return as nothing need to be calculated and we've set the shape for the output
   if (M == 0 || N == 0)

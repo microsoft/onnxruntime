@@ -17,6 +17,7 @@ from fusion_fastgelu import FusionFastGelu
 from fusion_biasgelu import FusionBiasGelu
 from fusion_gelu_approximation import FusionGeluApproximation
 from fusion_utils import FusionUtils
+from fusion_gemm import FusionGemm
 
 logger = getLogger(__name__)
 
@@ -96,6 +97,10 @@ class BertOnnxModel(OnnxModel):
 
     def fuse_skip_layer_norm(self):
         fusion = FusionSkipLayerNormalization(self)
+        fusion.apply()
+
+    def fuse_gemm(self):
+        fusion = FusionGemm(self)
         fusion.apply()
 
     def get_graph_inputs_from_node_type(self, op_type: str, input_indices: List[int], casted: bool):
@@ -247,6 +252,8 @@ class BertOnnxModel(OnnxModel):
 
         if (options is None) or options.enable_embed_layer_norm:
             self.fuse_embed_layer()
+
+        self.fuse_gemm()
 
         # Post-processing like removing extra reshape nodes.
         self.postprocess()

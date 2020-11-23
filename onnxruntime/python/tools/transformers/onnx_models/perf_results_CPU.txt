@@ -1,0 +1,11 @@
+Latency(ms)	Latency_P50	Latency_P75	Latency_P90	Latency_P95	Latency_P99	Throughput(QPS)	model	graph_optimization_level	intra_op_num_threads	OMP_NUM_THREADS	OMP_WAIT_POLICY	batch_size	sequence_length	test_cases	test_times	contiguous	use_gpu	warmup
+39.58	37.67	39.70	45.97	50.08	62.31	25.27	rmem_transformer.v1.fp32.onnx	DISABLE_ALL	1	12	ACTIVE	1	40	1000	1	None	False	True
+51.70	46.63	53.64	70.49	78.66	110.40	19.34	rmem_transformer.v1.fp32.onnx	DISABLE_ALL	1	24	ACTIVE	1	40	1000	1	None	False	True
+54.61	48.87	57.05	77.43	84.62	110.21	18.31	rmem_transformer.v1.fp32.onnx	DISABLE_ALL	1			1	40	1000	1	None	False	True
+55.25	49.68	56.68	74.74	86.19	125.09	18.10	rmem_transformer.v1.fp32.onnx	DISABLE_ALL	0			1	40	1000	1	None	False	True
+56.58	54.11	56.75	62.85	69.32	83.43	17.67	rmem_transformer.v1.fp32.onnx	DISABLE_ALL	1	12	PASSIVE	1	40	1000	1	None	False	True
+66.14	62.58	67.59	76.54	84.13	115.68	15.12	rmem_transformer.v1.fp32.onnx	DISABLE_ALL	1	24	PASSIVE	1	40	1000	1	None	False	True
+114.23	113.30	114.27	116.34	120.30	127.38	8.75	rmem_transformer.v1.fp32.onnx	DISABLE_ALL	12	1	ACTIVE	1	40	1000	1	None	False	True
+114.26	113.44	114.45	116.04	119.80	127.20	8.75	rmem_transformer.v1.fp32.onnx	DISABLE_ALL	24	1	PASSIVE	1	40	1000	1	None	False	True
+114.60	113.59	114.77	117.54	121.74	127.54	8.73	rmem_transformer.v1.fp32.onnx	DISABLE_ALL	24	1	ACTIVE	1	40	1000	1	None	False	True
+115.18	114.07	115.32	117.94	122.39	128.56	8.68	rmem_transformer.v1.fp32.onnx	DISABLE_ALL	12	1	PASSIVE	1	40	1000	1	None	False	True
