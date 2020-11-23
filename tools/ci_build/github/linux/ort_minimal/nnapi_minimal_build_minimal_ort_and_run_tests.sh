@@ -8,11 +8,15 @@
 set -e
 set -x
 
-# Build with reduced ops requires onnx
-python3 -m pip install -U --user onnx
-
 ORT_ROOT=$1
 MIN_BUILD_DIR=$ORT_ROOT/build_nnapi_minimal
+
+# Remove builds from previous CPU and NNAPI full Android ORT build to free up disk space
+rm -rf $ORT_ROOT/build
+rm -rf $ORT_ROOT/build_nnapi
+
+# Build with reduced ops requires onnx
+python3 -m pip install -U --user onnx
 
 # Copy all the models containing the required ops to pass the UT
 mkdir -p $TMPDIR/.test_data/models_to_include
