@@ -665,6 +665,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
         for (auto option : it->second) {
           if (option.first == "device_type")
             openvino_device_type = option.second;
+            param.device_type = openvino_device_type.c_str();
           else if (option.first == "enable_vpu_fast_compile") {
             if (option.second == "True") {
               params.enable_vpu_fast_compile = true;
