@@ -3,19 +3,24 @@
 
 #include "nnapi_execution_provider.h"
 
-#include "model.h"
 #include "builders/helper.h"
-#include "builders/model_builder.h"
 #include "builders/op_support_checker.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/compute_capability.h"
+#include "core/graph/graph_viewer.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "nnapi_lib/nnapi_implementation.h"
+
+#ifdef __ANDROID__
+#include "model.h"
+#include "builders/model_builder.h"
+#endif
 
 namespace onnxruntime {
 
 constexpr const char* NNAPI = "Nnapi";
 
-NnapiExecutionProvider::NnapiExecutionProvider(unsigned long nnapi_flags)
+NnapiExecutionProvider::NnapiExecutionProvider(uint32_t nnapi_flags)
     : IExecutionProvider{onnxruntime::kNnapiExecutionProvider},
       nnapi_flags_(nnapi_flags) {
   AllocatorCreationInfo device_info(
@@ -53,9 +58,21 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
     }
   }
 
-  nnapi::ModelBuilder builder(graph_view);
+  // We need to get the Android system API level to ensure the GetCapability giving the correct result
+  // based on the system.
+  // If we are actually running on Android system, we can get the API level by querying the system
+  // However, since we also allow the NNAPI EP run GetCapability for model conversion on a non-Android system,
+  // since we cannot get the runtime system API level, we have to specify it using complie definition.
+  int32_t android_sdk_ver;
+#ifdef __ANDROID__
+  const auto* _nnapi = NnApiImplementation();
+  android_sdk_ver = _nnapi->android_sdk_version;
+#else
+  android_sdk_ver = ORT_NNAPI_MAX_SUPPORTED_API_LEVEL;
+#endif
+
   nnapi::OpSupportCheckParams params{
-      builder.GetAndroidSdkVer(),
+      android_sdk_ver,
       !!(nnapi_flags_ & NNAPI_FLAG_USE_NCHW),
   };
   const auto supported_nodes_vector = GetSupportedNodes(graph_view, params);
@@ -63,7 +80,6 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   // Find inputs, initializers and outputs for each supported subgraph
   const std::vector<NodeIndex>& node_index = graph_view.GetNodesInTopologicalOrder();
   const auto& graph_outputs = graph_view.GetOutputs();
-  int counter = 0;
   for (const auto& group : supported_nodes_vector) {
     if (group.empty())
       continue;
@@ -156,7 +172,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
     // Assign inputs and outputs to subgraph's meta_def
     auto meta_def = onnxruntime::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
-    meta_def->name = "NNAPI_" + std::to_string(counter++);
+    meta_def->name = "NNAPI_" + std::to_string(metadef_id_++);
     meta_def->domain = kMSDomain;
 
     for (const auto& input : inputs) {
@@ -177,6 +193,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   return result;
 }
 
+#ifdef __ANDROID__
 static Status GetOutputBuffer(Ort::CustomOpApi& ort,
                               OrtKernelContext* context,
                               const nnapi::Model& model,
@@ -184,6 +201,7 @@ static Status GetOutputBuffer(Ort::CustomOpApi& ort,
                               const std::vector<uint32_t>& output_shape,
                               const android::nn::wrapper::Type output_type,
                               void** output_buffer) ORT_MUST_USE_RESULT;
+
 static Status GetOutputBuffer(Ort::CustomOpApi& ort,
                               OrtKernelContext* context,
                               const nnapi::Model& model,
@@ -217,49 +235,42 @@ static Status GetOutputBuffer(Ort::CustomOpApi& ort,
   return Status::OK();
 }
 
-common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
+common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                                std::vector<NodeComputeInfo>& node_compute_funcs) {
   using namespace android::nn::wrapper;
-  for (const auto* fused_node : fused_nodes) {
-    // Reconstruct graph proto from fused node's function body
-    const auto* func_body = fused_node->GetFunctionBody();
-    if (!func_body) {
-      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Function body is empty");
-    }
+  for (const auto& fused_node_and_graph : fused_nodes_and_graphs) {
+    Node& fused_node = fused_node_and_graph.fused_node;
+    const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
 
-    const Graph& graph_body = func_body->Body();
+    nnapi::ModelBuilder builder(graph_viewer);
+    builder.SetUseNCHW(nnapi_flags_ & NNAPI_FLAG_USE_NCHW);
+    builder.SetUseFp16(nnapi_flags_ & NNAPI_FLAG_USE_FP16);
+    std::unique_ptr<nnapi::Model> nnapi_model;
+    ORT_RETURN_IF_ERROR(builder.Compile(nnapi_model));
+
+    // Build map from input name to its index in input definitions
     {
-      onnxruntime::GraphViewer graph_viewer(graph_body);
-      nnapi::ModelBuilder builder(graph_viewer);
-      builder.SetUseNCHW(nnapi_flags_ & NNAPI_FLAG_USE_NCHW);
-      builder.SetUseFp16(nnapi_flags_ & NNAPI_FLAG_USE_FP16);
-      std::unique_ptr<nnapi::Model> nnapi_model;
-      ORT_RETURN_IF_ERROR(builder.Compile(nnapi_model));
-
-      // Build map from input name to its index in input definitions
-      {
-        std::unordered_map<std::string, size_t> input_map;
-        const auto& input_defs = fused_node->InputDefs();
-        input_map.reserve(input_defs.size());
-        for (size_t i = 0, end = input_defs.size(); i < end; ++i) {
-          input_map[input_defs[i]->Name()] = i;
-        }
-        nnapi_model->SetInputMap(std::move(input_map));
+      std::unordered_map<std::string, size_t> input_map;
+      const auto& input_defs = fused_node.InputDefs();
+      input_map.reserve(input_defs.size());
+      for (size_t i = 0, end = input_defs.size(); i < end; ++i) {
+        input_map[input_defs[i]->Name()] = i;
       }
-
-      // Build map from output name to its index in output definitions
-      {
-        std::unordered_map<std::string, size_t> output_map;
-        const auto& output_defs = fused_node->OutputDefs();
-        output_map.reserve(output_defs.size());
-        for (size_t i = 0, end = output_defs.size(); i < end; ++i) {
-          output_map[output_defs[i]->Name()] = i;
-        }
-        nnapi_model->SetOutputMap(std::move(output_map));
-      }
-
-      nnapi_models_.emplace(fused_node->Name(), std::move(nnapi_model));
+      nnapi_model->SetInputMap(std::move(input_map));
     }
+
+    // Build map from output name to its index in output definitions
+    {
+      std::unordered_map<std::string, size_t> output_map;
+      const auto& output_defs = fused_node.OutputDefs();
+      output_map.reserve(output_defs.size());
+      for (size_t i = 0, end = output_defs.size(); i < end; ++i) {
+        output_map[output_defs[i]->Name()] = i;
+      }
+      nnapi_model->SetOutputMap(std::move(output_map));
+    }
+
+    nnapi_models_.emplace(fused_node.Name(), std::move(nnapi_model));
 
     NodeComputeInfo compute_info;
     compute_info.create_state_func = [&](ComputeContext* context, FunctionState* state) {
@@ -301,9 +312,10 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
         // Also NNAPI treats a tensor input with empty shape as dynamic shape input
         // Disable support of the scalar input (tensor input with an empty shape) for now
         // TODO, add support for ONNX scalar input (tensor input with an empty shape)
-        if (dimensions.empty())
-          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "NNAPI does not support scalar input");
-
+        if (dimensions.empty()) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "NNAPI does not support scalar input, input name, ", input_name);
+        }
         // it is possible that the input has the detailed size while
         // the model has an operand with unknown size, use the size
         // of the actual input
@@ -412,5 +424,23 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
     node_compute_funcs.push_back(compute_info);
   }
   return Status::OK();
-}  // namespace onnxruntime
+}
+#else
+common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+                                               std::vector<NodeComputeInfo>& node_compute_funcs) {
+  for (const auto& fused_node_and_graph : fused_nodes_and_graphs) {
+    ORT_UNUSED_PARAMETER(fused_node_and_graph);
+    NodeComputeInfo compute_info;
+    compute_info.create_state_func = [](ComputeContext* /*context*/, FunctionState* /*state*/) { return 0; };
+    compute_info.release_state_func = [](FunctionState /*state*/) {};
+    compute_info.compute_func = [](FunctionState /* state */, const OrtCustomOpApi* /* api */,
+                                   OrtKernelContext* /* context */) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Compute is not supported in this build.");
+    };
+    node_compute_funcs.push_back(compute_info);
+  }
+  return Status::OK();
+}
+#endif  // __ANDROID__
+
 }  // namespace onnxruntime

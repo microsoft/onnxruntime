@@ -149,6 +149,7 @@ static std::vector<ITestCase*> GetAllTestCases() {
   std::vector<std::basic_string<PATH_CHAR_TYPE>> dataDirs;
   auto testDataPath = GetTestDataPath();
   if (testDataPath == "") return tests;
+  
   for (auto& p : std::filesystem::directory_iterator(testDataPath.c_str())) {
     if (p.is_directory()) {
       dataDirs.push_back(std::move(p.path()));
@@ -163,12 +164,15 @@ static std::vector<ITestCase*> GetAllTestCases() {
       ORT_TSTR("bvlc_reference_rcnn_ilsvrc13"),
       ORT_TSTR("bvlc_reference_caffenet"),
       ORT_TSTR("bvlc_alexnet"),
+      ORT_TSTR("coreml_AgeNet_ImageNet"),
+      ORT_TSTR("coreml_Resnet50"),
       ORT_TSTR("coreml_VGG16_ImageNet"),
       ORT_TSTR("faster_rcnn"),
       ORT_TSTR("fp16_test_tiny_yolov2"),
       ORT_TSTR("GPT2"),
       ORT_TSTR("GPT2_LM_HEAD"),
       ORT_TSTR("keras_lotus_resnet3D"),
+      ORT_TSTR("keras2coreml_Dense_ImageNet"),
       ORT_TSTR("mask_rcnn_keras"),
       ORT_TSTR("mask_rcnn"),
       ORT_TSTR("mlperf_ssd_resnet34_1200"),
@@ -177,13 +181,26 @@ static std::vector<ITestCase*> GetAllTestCases() {
       ORT_TSTR("resnet152v2"),
       ORT_TSTR("resnet101v2"),
       ORT_TSTR("resnet34v2"),
+      ORT_TSTR("roberta_sequence_classification"),
       ORT_TSTR("ssd"),
+      ORT_TSTR("tf_inception_resnet_v2"),
+      ORT_TSTR("tf_inception_v4"),
+      ORT_TSTR("tf_nasnet_large"),
+      ORT_TSTR("tf_pnasnet_large"),
+      ORT_TSTR("tf_resnet_v1_50"),
+      ORT_TSTR("tf_resnet_v1_101"),
+      ORT_TSTR("tf_resnet_v1_152"),
+      ORT_TSTR("tf_resnet_v2_50"),
+      ORT_TSTR("tf_resnet_v2_101"),
+      ORT_TSTR("tf_resnet_v2_152"),
       ORT_TSTR("vgg19"),
+      ORT_TSTR("yolov3"),
       ORT_TSTR("zfnet512")
   };
   allDisabledTests.insert(std::begin(x86DisabledTests), std::end(x86DisabledTests));
 #endif
 
+  
   WINML_EXPECT_NO_THROW(LoadTests(dataDirs, whitelistedTestCases, perSampleTolerance, relativePerSampleTolerance,
                                   allDisabledTests,
                                   [&tests](std::unique_ptr<ITestCase> l) {

@@ -1,0 +1,25 @@
+# runs the specified steps while logged in to the build docker image cache
+# container registry
+
+parameters:
+- name: Steps
+  type: stepList
+  default: []
+
+steps:
+- task: Docker@2
+  inputs:
+    containerRegistry: 'onnxruntimebuildcache'
+    command: 'login'
+    addPipelineData: false
+  displayName: "Log in to build docker image cache container registry"
+
+- ${{ parameters.Steps }}
+
+- task: Docker@2
+  inputs:
+    containerRegistry: 'onnxruntimebuildcache'
+    command: 'logout'
+    addPipelineData: false
+  displayName: "Log out of build docker image cache container registry"
+  condition: always()

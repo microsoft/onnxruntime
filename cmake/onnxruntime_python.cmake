@@ -95,11 +95,7 @@ set(onnxruntime_pybind11_state_libs
     onnxruntime_session
     ${onnxruntime_libs}
     ${PROVIDERS_CUDA}
-    ${PROVIDERS_DNNL}
-    ${PROVIDERS_TENSORRT}
     ${PROVIDERS_MIGRAPHX}
-    ${PROVIDERS_NGRAPH}
-    ${PROVIDERS_OPENVINO}
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_VITISAI}
     ${PROVIDERS_NNAPI}
@@ -342,29 +338,14 @@ if (onnxruntime_USE_TENSORRT)
   )
 endif()
 
-if (onnxruntime_USE_NGRAPH)
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${ngraph_LIBRARIES}/${NGRAPH_SHARED_LIB}
-		${ngraph_LIBRARIES}/${NGRAPH_CODEGEN_SHARED_LIB}
-		${ngraph_LIBRARIES}/${NGRAPH_CPU_BACKEND_SHARED_LIB}
-		${ngraph_LIBRARIES}/${NGRAPH_IOMP5MD_SHARED_LIB}
-		${ngraph_LIBRARIES}/${NGRAPH_MKLDNN_SHARED_LIB}
-		${ngraph_LIBRARIES}/${NGRAPH_MKLML_SHARED_LIB}
-		${ngraph_LIBRARIES}/${NGRAPH_TBB_SHARED_LIB}
-		${ngraph_LIBRARIES}/${NGRAPH_TBB_SHARED_LIB_2}
-        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
-  )
-endif()
-
-
 if (onnxruntime_USE_OPENVINO)
   if(NOT WIN32)
     add_custom_command(
       TARGET onnxruntime_pybind11_state POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy
           ${ngraph_LIBRARIES}/${NGRAPH_SHARED_LIB}
+          ${OPENVINO_DLL_PATH} $<TARGET_FILE:onnxruntime_providers_openvino>
+          $<TARGET_FILE:onnxruntime_providers_shared>
           $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
     )
   endif()
@@ -375,6 +356,15 @@ if (onnxruntime_USE_TVM)
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
         $<TARGET_FILE:tvm> $<TARGET_FILE:nnvm_compiler>
+        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
+  )
+endif()
+
+if (onnxruntime_USE_MKLML)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${MKLML_LIB_DIR}/${MKLML_SHARED_LIB} ${MKLML_LIB_DIR}/${IOMP5MD_SHARED_LIB}
         $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
   )
 endif()
@@ -396,7 +386,16 @@ if (onnxruntime_USE_DML)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
-        ${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}/${DML_SHARED_LIB}
+        ${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}-win/${DML_SHARED_LIB}
+        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
+  )
+endif()
+
+if (onnxruntime_USE_NNAPI_BUILTIN)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        $<TARGET_FILE:onnxruntime_providers_nnapi>
         $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
   )
 endif()

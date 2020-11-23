@@ -38,6 +38,7 @@ enum class AutoPadType {
 };
 
 // onnx Protobuf types (all of these are actually just Provider_<type> -> ONNX_NAMESPACE::<type>)
+struct Provider_int64s;  // RepeatedPtrField
 struct Provider_AttributeProto;
 struct Provider_GraphProto;
 struct Provider_ModelProto;
@@ -45,12 +46,12 @@ struct Provider_NodeProto;
 struct Provider_TensorProto;
 struct Provider_TensorProtos;
 struct Provider_TensorShapeProto_Dimension;
-struct Provider_TensorShapeProto_Dimensions;
+struct Provider_TensorShapeProto_Dimensions;  // RepeatedPtrField
 struct Provider_TensorShapeProto;
 struct Provider_TypeProto_Tensor;
 struct Provider_TypeProto;
 struct Provider_ValueInfoProto;
-struct Provider_ValueInfoProtos;
+struct Provider_ValueInfoProtos;  // RepeatedPtrField
 
 // OnnxRuntime Types (all of these are actually just Provider_<type> -> <type>)
 struct CPUIDInfo;
@@ -78,8 +79,6 @@ struct Provider_OpKernelInfo;
 struct Provider_Tensor;
 }  // namespace onnxruntime
 
-#include "provider_interfaces.h"
-
 namespace ONNX_NAMESPACE {
 
 // These are exact duplicates of the real protobuf types, defined here since we can't include the protobuf headers
@@ -99,6 +98,31 @@ enum AttributeProto_AttributeType : int {
   AttributeProto_AttributeType_SPARSE_TENSORS = 12
 };
 
+enum TensorProto_DataType : int {
+  TensorProto_DataType_UNDEFINED = 0,
+  TensorProto_DataType_FLOAT = 1,
+  TensorProto_DataType_UINT8 = 2,
+  TensorProto_DataType_INT8 = 3,
+  TensorProto_DataType_UINT16 = 4,
+  TensorProto_DataType_INT16 = 5,
+  TensorProto_DataType_INT32 = 6,
+  TensorProto_DataType_INT64 = 7,
+  TensorProto_DataType_STRING = 8,
+  TensorProto_DataType_BOOL = 9,
+  TensorProto_DataType_FLOAT16 = 10,
+  TensorProto_DataType_DOUBLE = 11,
+  TensorProto_DataType_UINT32 = 12,
+  TensorProto_DataType_UINT64 = 13,
+  TensorProto_DataType_COMPLEX64 = 14,
+  TensorProto_DataType_COMPLEX128 = 15,
+  TensorProto_DataType_BFLOAT16 = 16
+};
+
+enum TensorProto_DataLocation : int {
+  TensorProto_DataLocation_DEFAULT = 0,
+  TensorProto_DataLocation_EXTERNAL = 1
+};
+
 enum Version : int {
   _START_VERSION = 0,
   IR_VERSION_2017_10_10 = 1,
@@ -116,6 +140,8 @@ enum OperatorStatus : int {
 };
 
 }  // namespace ONNX_NAMESPACE
+
+#include "provider_interfaces.h"
 
 namespace onnxruntime {
 
@@ -142,7 +168,9 @@ struct DeleteOnUnloadPtr {
 
 constexpr const char* kOnnxDomain = "";
 constexpr const char* kMSDomain = "com.microsoft";
+constexpr const char* kNGraphDomain = "com.intel.ai";
 constexpr const char* kDnnlExecutionProvider = "DnnlExecutionProvider";
+constexpr const char* kOpenVINOExecutionProvider = "OpenVINOExecutionProvider";
 constexpr const char* kTensorrtExecutionProvider = "TensorrtExecutionProvider";
 
 enum CUDAStreamType : int {

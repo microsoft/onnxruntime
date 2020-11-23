@@ -1199,6 +1199,12 @@ Status PRelu<float>::Compute(OpKernelContext* context) const {
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     PRelu,
     7,
+    8,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    PRelu<float>);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    PRelu,
     9,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     PRelu<float>);
@@ -1276,18 +1282,6 @@ Status Expand_8<T>::Compute(OpKernelContext* context) const {
 
 #define REG_EXPAND_KERNEL(TYPE) REG_EXPAND_KERNEL_WITH_TYPE_NAME(TYPE, TYPE)
 
-REG_EXPAND_KERNEL(float)
-REG_EXPAND_KERNEL(double)
-REG_EXPAND_KERNEL(int8_t)
-REG_EXPAND_KERNEL(int16_t)
-REG_EXPAND_KERNEL(int32_t)
-REG_EXPAND_KERNEL(int64_t)
-REG_EXPAND_KERNEL(uint8_t)
-REG_EXPAND_KERNEL(uint16_t)
-REG_EXPAND_KERNEL(uint32_t)
-REG_EXPAND_KERNEL(uint64_t)
-REG_EXPAND_KERNEL(bool)
-REG_EXPAND_KERNEL(MLFloat16)
 REG_EXPAND_KERNEL_WITH_TYPE_NAME(std::string, string)
 
 template <>

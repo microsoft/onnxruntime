@@ -1,4 +1,5 @@
 import onnx
+import numpy
 from onnx import onnx_pb as onnx_proto
 from enum import Enum
 
@@ -52,6 +53,10 @@ class QuantType(Enum):
     QInt8 = 1
     QUInt8 = 2
 
+QUANT_TYPE_TO_NP_TYPE = {
+    QuantType.QInt8: numpy.dtype('int8'),
+    QuantType.QUInt8: numpy.dtype('uint8'),
+}
 
 class QuantizedInitializer:
     '''
@@ -67,7 +72,7 @@ class QuantizedInitializer:
                  data=[],
                  quantized_data=[],
                  axis=None,
-                 qType=onnx_proto.TensorProto.UINT8):
+                 qType=QuantType.QUInt8):
         self.name = name
         self.initializer = initializer  # TensorProto initializer in ONNX graph
         self.rmins = rmins  # List of minimum range for each axis
@@ -94,7 +99,7 @@ class QuantizedValue:
                  zero_point_name,
                  quantized_value_type,
                  axis=None,
-                 qType=onnx_proto.TensorProto.UINT8):
+                 qType=QuantType.QUInt8):
         self.original_name = name
         self.q_name = new_quantized_name
         self.scale_name = scale_name

@@ -101,7 +101,6 @@ target_cppwinrt(winml_api_experimental
   ${winml_midl_defines}                        # the midl compiler defines
   ${winml_api_use_ns_prefix}                   # set ns_prefix
 )
-add_dependencies(winml_api_experimental winml_api)
 
 target_midl(winml_api_native
   ${idl_native}             # winml native idl to compile
@@ -318,6 +317,7 @@ add_library(winml_lib_image STATIC
   ${winml_lib_api_image_dir}/inc/ConverterResourceStore.h
   ${winml_lib_api_image_dir}/inc/D3DDeviceCache.h
   ${winml_lib_api_image_dir}/inc/DeviceHelpers.h
+  ${winml_lib_api_image_dir}/inc/DisjointBufferHelpers.h
   ${winml_lib_api_image_dir}/inc/ImageConversionHelpers.h
   ${winml_lib_api_image_dir}/inc/ImageConversionTypes.h
   ${winml_lib_api_image_dir}/inc/ImageConverter.h
@@ -330,6 +330,7 @@ add_library(winml_lib_image STATIC
   ${winml_lib_api_image_dir}/ConverterResourceStore.cpp
   ${winml_lib_api_image_dir}/D3DDeviceCache.cpp
   ${winml_lib_api_image_dir}/DeviceHelpers.cpp
+  ${winml_lib_api_image_dir}/DisjointBufferHelpers.cpp
   ${winml_lib_api_image_dir}/ImageConversionHelpers.cpp
   ${winml_lib_api_image_dir}/ImageConverter.cpp
   ${winml_lib_api_image_dir}/TensorToVideoFrameConverter.cpp
@@ -399,15 +400,18 @@ endif(onnxruntime_USE_DML)
 # Add static library that will be archived/linked for both static/dynamic library
 add_library(winml_lib_api STATIC
   ${winml_lib_api_dir}/impl/FeatureCompatibility.h
+  ${winml_lib_api_dir}/impl/IData.h
   ${winml_lib_api_dir}/impl/IMapFeatureValue.h
   ${winml_lib_api_dir}/impl/ISequenceFeatureValue.h
   ${winml_lib_api_dir}/impl/MapBase.h
+  ${winml_lib_api_dir}/impl/NumericData.h
   ${winml_lib_api_dir}/impl/SequenceBase.h
+  ${winml_lib_api_dir}/impl/StringData.h
   ${winml_lib_api_dir}/impl/Tensor.h
   ${winml_lib_api_dir}/impl/TensorBase.h
-  ${winml_lib_api_dir}/impl/TensorBuffer.h
   ${winml_lib_api_dir}/impl/TensorKindFrom.h
   ${winml_lib_api_dir}/impl/TensorMemoryBufferReference.h
+  ${winml_lib_api_dir}/NumericData.cpp
   ${winml_lib_api_dir}/ImageFeatureDescriptor.cpp
   ${winml_lib_api_dir}/ImageFeatureDescriptor.h
   ${winml_lib_api_dir}/ImageFeatureValue.cpp
@@ -428,8 +432,11 @@ add_library(winml_lib_api STATIC
   ${winml_lib_api_dir}/MapFeatureDescriptor.h
   ${winml_lib_api_dir}/SequenceFeatureDescriptor.cpp
   ${winml_lib_api_dir}/SequenceFeatureDescriptor.h
+  ${winml_lib_api_dir}/StringData.cpp
   ${winml_lib_api_dir}/TensorFeatureDescriptor.cpp
   ${winml_lib_api_dir}/TensorFeatureDescriptor.h
+  ${winml_lib_api_dir}/VectorBackedBuffer.h
+  ${winml_lib_api_dir}/VectorBackedBuffer.cpp
   ${winml_lib_api_dir}/pch/pch.h
 )
 
@@ -507,10 +514,6 @@ endif(onnxruntime_USE_DML)
 add_library(winml_lib_api_experimental STATIC
   ${winml_lib_api_experimental_dir}/Dummy.cpp
   ${winml_lib_api_experimental_dir}/Dummy.h
-  ${winml_lib_api_experimental_dir}/LearningModelSessionExperimental.cpp
-  ${winml_lib_api_experimental_dir}/LearningModelSessionExperimental.h
-  ${winml_lib_api_experimental_dir}/LearningModelSessionOptionsExperimental.cpp
-  ${winml_lib_api_experimental_dir}/LearningModelSessionOptionsExperimental.h
 )
 
 # Compiler options
@@ -532,7 +535,6 @@ target_precompiled_header(winml_lib_api_experimental pch.h)
 # Includes
 target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api)                   # windows machine learning generated component headers
 target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated)    # windows machine learning generated component headers
-target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api_experimental) # windows machine learning generated component headers
 target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api_experimental/comp_generated) # windows machine learning generated component headers
 target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include)  # sdk cppwinrt headers
 
@@ -736,9 +738,7 @@ add_dependencies(winml_dll winml_api_native_internal)
 target_link_libraries(winml_dll PRIVATE re2)
 target_link_libraries(winml_dll PRIVATE wil)
 target_link_libraries(winml_dll PRIVATE winml_lib_api)
-if (NOT winml_is_inbox)
-  target_link_libraries(winml_dll PRIVATE winml_lib_api_experimental)
-endif()
+target_link_libraries(winml_dll PRIVATE winml_lib_api_experimental)
 target_link_libraries(winml_dll PRIVATE winml_lib_image)
 target_link_libraries(winml_dll PRIVATE winml_lib_ort)
 target_link_libraries(winml_dll PRIVATE winml_lib_telemetry)
