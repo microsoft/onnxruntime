@@ -821,6 +821,8 @@ class ORTTrainer():
         self.output_model_path = output_model_path
         self.use_external_data_format = use_external_data_format
         self.run_symbolic_shape_infer = run_symbolic_shape_infer
+        self.transformer_layer_recompute = transformer_layer_recompute
+        self.number_recompute_layers = number_recompute_layers
 
         # use this special string to workaround a corner case that external loss_scale is passed into train_step as kwargs.
         # see prepare_input_and_fetches for more details.
