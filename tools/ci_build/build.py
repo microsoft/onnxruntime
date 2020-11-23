@@ -1280,19 +1280,6 @@ def run_training_python_frontend_tests(cwd):
     run_subprocess([sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_orttrainer_bert_toy_onnx.py'], cwd=cwd)
 
 
-def run_checkpointing_tests(cwd):
-    log.info("Running multi-GPU checkpointing tests.")
-
-    import torch
-    ngpus = torch.cuda.device_count()
-    if ngpus > 1:
-        # generate checkpoint files required in orttraining_test_checkpoint_aggregation.py
-        run_subprocess(['mpirun', '-n', str(ngpus), '-x', 'NCCL_DEBUG=INFO', sys.executable,
-                        'orttrainer_bert_toy_onnx_ckpt_gen.py'], cwd=cwd)
-
-        run_subprocess([sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_checkpoint_aggregation.py'], cwd=cwd)
-
-
 def run_training_python_frontend_e2e_tests(cwd):
     # frontend tests are to be added here:
     log.info("Running python frontend e2e tests.")
