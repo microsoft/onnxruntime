@@ -12,7 +12,8 @@ __author__ = "Microsoft"
 
 from onnxruntime.capi._pybind_state import get_all_providers, get_available_providers, get_device, set_seed, \
     RunOptions, SessionOptions, set_default_logger_severity, enable_telemetry_events, disable_telemetry_events, \
-    NodeArg, ModelMetadata, GraphOptimizationLevel, ExecutionMode, ExecutionOrder, OrtDevice, SessionIOBinding
+    NodeArg, ModelMetadata, GraphOptimizationLevel, ExecutionMode, ExecutionOrder, OrtDevice, SessionIOBinding, \
+    OrtAllocatorType, OrtMemType, OrtArenaCfg, OrtMemoryInfo, create_and_register_allocator
 
 try:
     from onnxruntime.capi._pybind_state import set_cuda_mem_limit, set_cuda_device_id

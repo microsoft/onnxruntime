@@ -434,8 +434,8 @@ static const std::vector<std::string>& GetAllProviders() {
   static std::vector<std::string> all_providers = {kTensorrtExecutionProvider, kCudaExecutionProvider,
                                                    kMIGraphXExecutionProvider, kRocmExecutionProvider,
                                                    kOpenVINOExecutionProvider, kDnnlExecutionProvider,
-                                                   kNupharExecutionProvider, kVitisAIExecutionProvider, 
-												   kNnapiExecutionProvider,
+                                                   kNupharExecutionProvider, kVitisAIExecutionProvider,
+                                                   kNnapiExecutionProvider,
                                                    kArmNNExecutionProvider, kAclExecutionProvider,
                                                    kDmlExecutionProvider, kCpuExecutionProvider};
   return all_providers;
@@ -805,7 +805,7 @@ static bool CheckIfTensor(const std::vector<const NodeArg*>& def_list,
   return type_proto.has_tensor_type();
 }
 
-void addGlobalMethods(py::module& m, const Environment& env) {
+void addGlobalMethods(py::module& m, Environment& env) {
   m.def("get_default_session_options", &GetDefaultCPUSessionOptions, "Return a default session_options instance.");
   m.def("get_session_initializer", &SessionObjectInitializer::Get, "Return a default session object initializer.");
   m.def(
@@ -836,6 +836,13 @@ void addGlobalMethods(py::module& m, const Environment& env) {
   m.def(
       "disable_telemetry_events", []() -> void { platform_env.GetTelemetryProvider().DisableTelemetryEvents(); },
       "Disables platform-specific telemetry collection.");
+  m.def(
+      "create_and_register_allocator", [&env](const OrtMemoryInfo& mem_info, const OrtArenaCfg* arena_cfg = nullptr) -> void {
+        auto st = env.CreateAndRegisterAllocator(mem_info, arena_cfg);
+        if (!st.IsOK()) {
+          throw std::runtime_error("Error when creating and registering allocator: " + st.ErrorMessage());
+        }
+      });
 
 #ifdef USE_NUPHAR
   m.def("set_nuphar_settings", [](const std::string& str) {
@@ -1092,6 +1099,17 @@ void addObjectMethods(py::module& m, Environment& env) {
       .value("DEFAULT", ExecutionOrder::DEFAULT)
       .value("PRIORITY_BASED", ExecutionOrder::PRIORITY_BASED);
 
+  py::enum_<OrtAllocatorType>(m, "OrtAllocatorType")
+      .value("INVALID", OrtAllocatorType::Invalid)
+      .value("ORT_DEVICE_ALLOCATOR", OrtAllocatorType::OrtDeviceAllocator)
+      .value("ORT_ARENA_ALLOCATOR", OrtAllocatorType::OrtArenaAllocator);
+
+  py::enum_<OrtMemType>(m, "OrtMemType")
+      .value("CPU_INPUT", OrtMemType::OrtMemTypeCPUInput)
+      .value("CPU_OUTPUT", OrtMemType::OrtMemTypeCPUOutput)
+      .value("CPU", OrtMemType::OrtMemTypeCPU)
+      .value("DEFAULT", OrtMemType::OrtMemTypeDefault);
+
   py::class_<OrtDevice> device(m, "OrtDevice", R"pbdoc(ONNXRuntime device informaion.)pbdoc");
   device.def(py::init<OrtDevice::DeviceType, OrtDevice::MemoryType, OrtDevice::DeviceId>())
       .def("device_id", &OrtDevice::Id, R"pbdoc(Device Id.)pbdoc")
@@ -1100,7 +1118,38 @@ void addObjectMethods(py::module& m, Environment& env) {
       .def_static("cuda", []() { return OrtDevice::GPU; })
       .def_static("default_memory", []() { return OrtDevice::MemType::DEFAULT; });
 
-  py::class_<OrtValue> ortvalue_binding(m, "OrtValue");
+  py::class_<OrtArenaCfg> ort_arena_cfg_binding(m, "OrtArenaCfg");
+  // There is a global var: arena_extend_strategy, which means we can't use that var name here
+  // See docs/C_API.md for details on what the following parameters mean and how to choose these values
+  ort_arena_cfg_binding.def(py::init([](size_t max_mem, int arena_extend_strategy_local,
+                                        int initial_chunk_size_bytes, int max_dead_bytes_per_chunk) {
+    auto ort_arena_cfg = onnxruntime::make_unique<OrtArenaCfg>();
+    ort_arena_cfg->max_mem = max_mem;
+    ort_arena_cfg->arena_extend_strategy = arena_extend_strategy_local;
+    ort_arena_cfg->initial_chunk_size_bytes = initial_chunk_size_bytes;
+    ort_arena_cfg->max_dead_bytes_per_chunk = max_dead_bytes_per_chunk;
+    return ort_arena_cfg;
+  }));
+
+  py::class_<OrtMemoryInfo> ort_memory_info_binding(m, "OrtMemoryInfo");
+  ort_memory_info_binding.def(py::init([](const char* name, OrtAllocatorType type, int id, OrtMemType mem_type) {
+    if (strcmp(name, onnxruntime::CPU) == 0) {
+      return onnxruntime::make_unique<OrtMemoryInfo>(onnxruntime::CPU, type, OrtDevice(), id, mem_type);
+    } else if (strcmp(name, onnxruntime::CUDA) == 0) {
+      return onnxruntime::make_unique<OrtMemoryInfo>(
+          onnxruntime::CUDA, type, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, static_cast<OrtDevice::DeviceId>(id)), id,
+          mem_type);
+    } else if (strcmp(name, onnxruntime::CUDA_PINNED) == 0) {
+      return onnxruntime::make_unique<OrtMemoryInfo>(
+          onnxruntime::CUDA_PINNED, type, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, static_cast<OrtDevice::DeviceId>(id)),
+          id, mem_type);
+    } else {
+      throw std::runtime_error("Specified device is not supported.");
+    }
+  }));
+
+  py::class_<OrtValue>
+      ortvalue_binding(m, "OrtValue");
   ortvalue_binding
       // Factory method to create an OrtValue (Tensor) from the given Numpy object
       // The Tensor allocates and manages its own memory (on the specified device) and copies data from the Numpy data buffer
@@ -1131,9 +1180,9 @@ void addObjectMethods(py::module& m, Environment& env) {
           CreateGenericMLValue(nullptr, GetCudaAllocator(device.Id()), "", array_on_cpu, ml_value.get(), true, false, CpuToCudaMemCpy);
 
 #else
-        throw std::runtime_error(
-            "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
-            "Please use the CUDA package of OnnxRuntime to use this feature.");
+      throw std::runtime_error(
+          "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
+          "Please use the CUDA package of OnnxRuntime to use this feature.");
 #endif
         } else {
           throw std::runtime_error("Unsupported device: Cannot place the OrtValue on this device");
@@ -1172,9 +1221,9 @@ void addObjectMethods(py::module& m, Environment& env) {
 
           tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, GetCudaAllocator(device.Id()));
 #else
-        throw std::runtime_error(
-            "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
-            "Please use the CUDA package of OnnxRuntime to use this feature.");
+      throw std::runtime_error(
+          "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
+          "Please use the CUDA package of OnnxRuntime to use this feature.");
 #endif
         } else {
           throw std::runtime_error("Unsupported device: Cannot place the OrtValue on this device");
@@ -1238,7 +1287,7 @@ void addObjectMethods(py::module& m, Environment& env) {
 #ifdef USE_CUDA
         GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, GetCudaToHostMemCpyFunction());
 #else
-        GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, nullptr);
+    GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, nullptr);
 #endif
         return obj;
       });
@@ -1414,7 +1463,7 @@ Serialized model format will default to ONNX unless:
                      R"pbdoc(Log severity level. Applies to session load, initialization, etc.
 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.)pbdoc")
       .def_readwrite("log_verbosity_level", &PySessionOptions::session_log_verbosity_level,
-                     R"pbdoc(VLOG level if DEBUG build and session_log_verbosity_level is 0.
+                     R"pbdoc(VLOG level if DEBUG build and session_log_severity_level is 0.
 Applies to session load, initialization, etc. Default is 0.)pbdoc")
       .def_property(
           "intra_op_num_threads",
