@@ -215,15 +215,16 @@ void NhwcTransformerImpl::TransformQLinearActivation(Node& node) {
 }
 
 void NhwcTransformerImpl::TransformQLinearGlobalAveragePool(Node& node) {
-  const auto* channels_last_attr = graph_utils::GetNodeAttribute(node, "channels_last");
-  if (channels_last_attr != nullptr && channels_last_attr->ints_size() > 0 && channels_last_attr->ints(0) != 0LL) {
-    // just return on nhwc already.
-    return;
-  }
   auto& input_defs = node.MutableInputDefs();
 
   auto* nhwc_input = LookupNhwcArgument(input_defs[0]);
   if (nhwc_input == nullptr) {
+    return;
+  }
+
+  // Verify that the node is using NCHW tensors.
+  const auto* channels_last_attr = graph_utils::GetNodeAttribute(node, "channels_last");
+  if (channels_last_attr != nullptr && utils::HasInt(*channels_last_attr) && channels_last_attr->i() != 0) {
     return;
   }
 
