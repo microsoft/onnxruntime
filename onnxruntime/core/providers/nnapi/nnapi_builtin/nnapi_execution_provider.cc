@@ -77,12 +77,18 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   };
   const auto supported_nodes_vector = GetSupportedNodes(graph_view, params);
 
+  size_t num_of_supported_nodes = 0;
+
   // Find inputs, initializers and outputs for each supported subgraph
   const std::vector<NodeIndex>& node_index = graph_view.GetNodesInTopologicalOrder();
   const auto& graph_outputs = graph_view.GetOutputs();
   for (const auto& group : supported_nodes_vector) {
     if (group.empty())
       continue;
+
+    num_of_supported_nodes += group.size();
+    LOGS_DEFAULT(VERBOSE) << "NnapiExecutionProvider::GetCapability, current supported node group size: "
+                          << group.size();
 
     std::unordered_set<size_t> node_set;
     node_set.reserve(group.size());
@@ -189,6 +195,11 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
     result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
   }
+
+  LOGS_DEFAULT(INFO) << "NnapiExecutionProvider::GetCapability,"
+                     << " number of partitions supported by NNAPI: " << result.size()
+                     << " number of nodes in the graph: " << graph_view.NumberOfNodes()
+                     << " number of nodes supported by NNAPI: " << num_of_supported_nodes;
 
   return result;
 }
