@@ -80,14 +80,15 @@ MlasQLinearGlobalAveragePoolNchw(
     )
 {
     float scale = CheckQLinearGlobalAveragePoolScaleAndSize(ScaleInput, ScaleOutput, ImageSize);
-    int32_t bias = -ZeroPointInput * static_cast<int32_t>(ImageSize);
-    const int32x4_t vbias = vmovq_n_s32(bias);
+    int32_t bias[] = {-ZeroPointInput * static_cast<int32_t>(ImageSize), 0, 0, 0};
+    const int32x4_t vbias = vld1q_s32(bias);
+    const int32x4_t vzero = vmovq_n_s32(0);
 
     int32_t* sum_buffer = AccumulateBuffer;
     uint8_t tail_buffer[8] = {0, 0, 0, 0, 0, 0, 0, 0};
     for (size_t c = Channels; c > 0; c--) {
         int32x4_t vacc_lo = vbias;
-        int32x4_t vacc_hi = vbias;
+        int32x4_t vacc_hi = vzero;
         auto Len = ImageSize;
         for (; Len >= 32; Len -= 32) {
             const uint8x8_t vi0 = vld1_u8(Input);
@@ -168,7 +169,7 @@ MlasQLinearGlobalAveragePoolNhwcSingleBatch(
     vacc_hi = vaddw_s16(vacc_hi, vget_high_s16(vsum))
 
     uint8_t tail[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
-    const int32x4_t vbias = vmovq_n_s32(Bias);
+    const int32x4_t vbias = vld1q_dup_s32(&Bias);
     bool finish_one_pass = false;
     const size_t step_next_group = 7 * Stride - (Channels & ~size_t{7});
 
@@ -275,15 +276,15 @@ MlasQLinearGlobalAveragePoolNchw(
     )
 {
     float scale = CheckQLinearGlobalAveragePoolScaleAndSize(ScaleInput, ScaleOutput, ImageSize);
-    const auto bias = -ZeroPointInput * static_cast<int32_t>(ImageSize);
-    const auto vbias = _mm_set1_epi32(bias);
+    const int32_t bias[] = {-ZeroPointInput * static_cast<int32_t>(ImageSize), 0, 0, 0};
+    const auto vbias = _mm_loadu_si128((const __m128i*)&bias);
     const auto vzero = _mm_setzero_si128();
     uint8_t buffer[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 
     int32_t* sum_buffer = AccumulateBuffer;
     for (size_t c = Channels; c > 0; c--) {
         __m128i vacc_lo = vbias;
-        __m128i vacc_hi = vbias;
+        __m128i vacc_hi = vzero;
         auto Len = ImageSize;
         for (; Len >= 32; Len -= 32) {
             const __m128i vi0 = _mm_loadl_epi64((const __m128i*)Input);

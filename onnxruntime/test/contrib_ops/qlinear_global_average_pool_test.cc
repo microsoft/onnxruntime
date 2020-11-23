@@ -88,76 +88,76 @@ void RunQLinearGlobalAveragePoolU8(
   test.Run();
 }
 
-TEST(QLinearGlobalAveragePool, Nchw_1x1x32x32) {
+TEST(QLinearGlobalAveragePool, Nhwc_1x1x32x32) {
   RunQLinearGlobalAveragePoolU8(true, 1, 1, 32, 32, 128, 1.0, 64, 2.0);
 }
 
-TEST(QLinearGlobalAveragePool, Nhwc_1x32x32x1) {
+TEST(QLinearGlobalAveragePool, Nchw_1x32x32x1) {
   RunQLinearGlobalAveragePoolU8(false, 1, 1, 32, 32, 128, 1.0, 64, 2.0);
 }
 
-TEST(QLinearGlobalAveragePool, Nchw_1x256x8x8) {
+TEST(QLinearGlobalAveragePool, Nhwc_1x256x8x8) {
   RunQLinearGlobalAveragePoolU8(true, 1, 256, 8, 8, 128, 1.0, 64, 3.0);
 }
 
-TEST(QLinearGlobalAveragePool, Nhwc_1x8x8x256) {
+TEST(QLinearGlobalAveragePool, Nchw_1x8x8x256) {
   RunQLinearGlobalAveragePoolU8(false, 1, 256, 8, 8, 128, 1.0, 64, 3.0);
 }
 
-TEST(QLinearGlobalAveragePool, Nchw_1x255x7x7) {
+TEST(QLinearGlobalAveragePool, Nhwc_1x255x7x7) {
   RunQLinearGlobalAveragePoolU8(true, 1, 255, 7, 7, 128, 7.0, 128, 21.0);
 }
 
-TEST(QLinearGlobalAveragePool, Nhwc_1x7x7x255) {
+TEST(QLinearGlobalAveragePool, Nchw_1x7x7x255) {
   RunQLinearGlobalAveragePoolU8(false, 1, 255, 7, 7, 128, 7.0, 128, 21.0);
 }
 
-TEST(QLinearGlobalAveragePool, Nchw_1x255x8x8) {
+TEST(QLinearGlobalAveragePool, Nhwc_1x255x8x8) {
   RunQLinearGlobalAveragePoolU8(true, 1, 255, 8, 8, 128, 1.0, 128, 2.0);
 }
 
-TEST(QLinearGlobalAveragePool, Nhwc_1x8x8x255) {
+TEST(QLinearGlobalAveragePool, Nchw_1x8x8x255) {
   RunQLinearGlobalAveragePoolU8(false, 1, 255, 8, 8, 128, 1.0, 128, 2.0);
 }
 
-TEST(QLinearGlobalAveragePool, Nchw_1x256x7x7) {
+TEST(QLinearGlobalAveragePool, Nhwc_1x256x7x7) {
   RunQLinearGlobalAveragePoolU8(true, 1, 256, 7, 7, 128, 7.0, 128, 21.0);
 }
 
-TEST(QLinearGlobalAveragePool, Nhwc_1x7x7x256) {
+TEST(QLinearGlobalAveragePool, Nchw_1x7x7x256) {
   RunQLinearGlobalAveragePoolU8(false, 1, 256, 7, 7, 128, 7.0, 128, 21.0);
 }
 
 // tests for BatchSize > 1
-TEST(QLinearGlobalAveragePool, Nchw_3x256x8x8) {
+TEST(QLinearGlobalAveragePool, Nhwc_3x256x8x8) {
   RunQLinearGlobalAveragePoolU8(true, 3, 256, 8, 8, 128, 1.0, 64, 3.0);
 }
 
-TEST(QLinearGlobalAveragePool, Nhwc_3x8x8x256) {
+TEST(QLinearGlobalAveragePool, Nchw_3x8x8x256) {
   RunQLinearGlobalAveragePoolU8(false, 3, 256, 8, 8, 128, 1.0, 64, 3.0);
 }
 
-TEST(QLinearGlobalAveragePool, Nchw_3x255x7x7) {
+TEST(QLinearGlobalAveragePool, Nhwc_3x255x7x7) {
   RunQLinearGlobalAveragePoolU8(true, 3, 255, 7, 7, 128, 7.0, 128, 21.0);
 }
 
-TEST(QLinearGlobalAveragePool, Nhwc_3x7x7x255) {
+TEST(QLinearGlobalAveragePool, Nchw_3x7x7x255) {
   RunQLinearGlobalAveragePoolU8(false, 3, 255, 7, 7, 128, 7.0, 128, 21.0);
 }
 
-TEST(QLinearGlobalAveragePool, Nchw_3x255x8x8) {
+TEST(QLinearGlobalAveragePool, Nhwc_3x255x8x8) {
   RunQLinearGlobalAveragePoolU8(true, 3, 255, 8, 8, 128, 1.0, 128, 2.0);
 }
 
-TEST(QLinearGlobalAveragePool, Nhwc_3x8x8x255) {
+TEST(QLinearGlobalAveragePool, Nchw_3x8x8x255) {
   RunQLinearGlobalAveragePoolU8(false, 3, 255, 8, 8, 128, 1.0, 128, 2.0);
 }
 
-TEST(QLinearGlobalAveragePool, Nchw_3x256x7x7) {
+TEST(QLinearGlobalAveragePool, Nhwc_3x256x7x7) {
   RunQLinearGlobalAveragePoolU8(true, 3, 256, 7, 7, 128, 7.0, 128, 21.0);
 }
 
-TEST(QLinearGlobalAveragePool, Nhwc_3x7x7x256) {
+TEST(QLinearGlobalAveragePool, Nchw_3x7x7x256) {
   RunQLinearGlobalAveragePoolU8(false, 3, 256, 7, 7, 128, 7.0, 128, 21.0);
 }
 
