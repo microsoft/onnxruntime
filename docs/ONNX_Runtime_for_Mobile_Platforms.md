@@ -141,13 +141,13 @@ Optimizations are not run on an ORT format model (at runtime only step 2 will oc
 
 Given this background, a choice can be made as to how the ORT format model is created. 
 
-The [simple](#Create_NNAPI_aware_ORT_format_model_Simple) approach is to use the released ONNX Runtime python package to create the model with the optimization level limited to 'basic'. This will ensure that the compiling execution provider will handle the maximum number of nodes possible, at the potential loss of some higher level optimizations.
+The [simple](#Create-NNAPI-aware-ORT-format-model-Simple) approach is to use the released ONNX Runtime python package to create the model with the optimization level limited to 'basic'. This will ensure that the compiling execution provider will handle the maximum number of nodes possible, at the potential loss of some higher level optimizations.
 
-The [advanced](#Create_NNAPI_aware_ORT_format_model_Advanced) approach is to build a 'full' (i.e. no usage of the `--minimal_build` flag) version of ONNX Runtime from source in order to create a python package with the compiling execution provider enabled. This python package can be used to create an ORT format model that preserves the nodes the compiling execution provider can potentially handle, whilst allowing higher level optimizations to run on any remaining nodes.
+The [advanced](#Create-NNAPI-aware-ORT-format-model-Advanced) approach is to build a 'full' (i.e. no usage of the `--minimal_build` flag) version of ONNX Runtime from source in order to create a python package with the compiling execution provider enabled. This python package can be used to create an ORT format model that preserves the nodes the compiling execution provider can potentially handle, whilst allowing higher level optimizations to run on any remaining nodes.
 
 #### Create NNAPI aware ORT format model: Simple
 
-Specify `--optimization_level basic` when running `tools\python\convert_onnx_models_to_ort.py` as per [above](#Create_ORT_format_model_and_configuration_file_with_required_operators) instructions. 
+Specify `--optimization_level basic` when running `tools\python\convert_onnx_models_to_ort.py` as per above [instructions](#1-Create-ORT-format-model-and-configuration-file-with-required-operators) . 
 
 This will result in a model that only uses ONNX operators. All nodes that NNAPI could handle are preserved, at the cost of any higher level optimizations that may have been possible.
 
