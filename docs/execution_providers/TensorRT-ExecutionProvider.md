@@ -53,28 +53,35 @@ When/if using [onnxruntime_perf_test](../../onnxruntime/test/perftest#onnxruntim
 ## Configuring environment variables
 There are several environment variables for TensorRT execution provider.
 
-* ORT_TENSORRT_MAX_WORKSPACE_SIZE: maximum workspace size for TensorRT engine.
+* ORT_TENSORRT_MAX_WORKSPACE_SIZE: maximum workspace size for TensorRT engine. Default value: 1073741824 (1GB).
 
-* ORT_TENSORRT_MAX_PARTITION_ITERATIONS: maximum number of iterations allowed in model partitioning for TensorRT. If target model can't be successfully partitioned when the maximum number of iterations is reached, the whole model will fall back to other execution providers such as CUDA or CPU.
+* ORT_TENSORRT_MAX_PARTITION_ITERATIONS: maximum number of iterations allowed in model partitioning for TensorRT. If target model can't be successfully partitioned when the maximum number of iterations is reached, the whole model will fall back to other execution providers such as CUDA or CPU. Default value: 1000.
 
-* ORT_TENSORRT_MIN_SUBGRAPH_SIZE: minimum node size in a subgraph after partitioning. Subgraphs with smaller size will fall back to other execution providers.
+* ORT_TENSORRT_MIN_SUBGRAPH_SIZE: minimum node size in a subgraph after partitioning. Subgraphs with smaller size will fall back to other execution providers. Default value: 1.
 
-* ORT_TENSORRT_FP16_ENABLE: Enable FP16 mode in TensorRT
+* ORT_TENSORRT_FP16_ENABLE: Enable FP16 mode in TensorRT. 1: enabled, 0: disabled. Default value: 0.
 
-* ORT_TENSORRT_ENGINE_CACHE_ENABLE: Enable TensorRT engine caching. The purpose of using engine caching is to save engine build time in the cases that TensorRT may take long time to optimize and build engine. Engine will be cached after it's built at the first time so that next time when inference session is created the engine can be loaded directly from cache. In order to validate that the loaded engine is usable for current inference, engine profile is also cached and loaded along with engine. If current input shapes are in the range of the engine profile, that means the loaded engine can be safely used. Otherwise if input shapes are out of range, profile cache will be updated to cover the new shape and engine will be recreated based on the new profile (and also refreshed in the engine cache). Note each engine is created for specific settings such as precision (FP32/FP16/INT8 etc), workspace, profiles etc, and specific GPUs and it's not portable, so it's essential to make sure those settings are not changing, otherwise the engines need to be rebuilt and cached again.
+* ORT_TENSORRT_INT8_ENABLE: Enable INT8 mode in TensorRT. 1: enabled, 0: disabled. Default value: 0.
+
+* ORT_TENSORRT_INT8_CALIBRATION_TABLE_NAME: Specify INT8 calibration table file name. By default the name is "INT8_calibration_table".
+
+* ORT_TENSORRT_INT8_USE_NATIVE_CALIBRATION_TABLE: Select what calibration table is used. If 1, native TensorRT generated calibration table is used; if 0, ONNXRUNTIME tool generated calibration table is used. Default value: 0.
+**Note: Please copy up-to-date calibration table file to ORT_TENSORRT_CACHE_PATH before inference. Calibration table is specific to models and calibration data sets. Whenever new calibration table is generated, old file in the path should be cleaned up or be replaced.
+
+* ORT_TENSORRT_ENGINE_CACHE_ENABLE: Enable TensorRT engine caching. The purpose of using engine caching is to save engine build time in the cases that TensorRT may take long time to optimize and build engine. Engine will be cached after it's built at the first time so that next time when inference session is created the engine can be loaded directly from cache. In order to validate that the loaded engine is usable for current inference, engine profile is also cached and loaded along with engine. If current input shapes are in the range of the engine profile, that means the loaded engine can be safely used. Otherwise if input shapes are out of range, profile cache will be updated to cover the new shape and engine will be recreated based on the new profile (and also refreshed in the engine cache). Note each engine is created for specific settings such as precision (FP32/FP16/INT8 etc), workspace, profiles etc, and specific GPUs and it's not portable, so it's essential to make sure those settings are not changing, otherwise the engines need to be rebuilt and cached again. 1: enabled, 0: disabled. Default value: 0.
 **Warning: Please clean up any old engine and profile cache files (.engine and .profile) if any of the following changes:**
   - Model changes (if there are any changes to the model topology, opset version etc.)
   - ORT version changes (i.e. moving from ORT version 1.4 to 1.5)
   - TensorRT version changes (i.e. moving from TensorRT 7.0 to 7.1)
   - Hardware changes. (Engine and profile files are not portable and optimized for specific Nvidia hardware)
 
-* ORT_TENSORRT_ENGINE_CACHE_PATH: Specify path for TensorRT engine files if ORT_TENSORRT_ENGINE_CACHE_ENABLE is 1
+* ORT_TENSORRT_ENGINE_CACHE_PATH: This variable is deprecated. Please use ORT_TENSORRT_CACHE_PATH instead.
 
-* ORT_TENSORRT_DUMP_SUBGRAPHS: Dumps the subgraphs that are transformed into TRT engines in onnx format to the filesystem. This can help debugging subgraphs, e.g. by using  `trtexec --onnx my_model.onnx` and check the outputs of the parser.
+* ORT_TENSORRT_CACHE_PATH: Specify path for TensorRT engine and profile files if ORT_TENSORRT_ENGINE_CACHE_ENABLE is 1, or path for INT8 calibration table file if ORT_TENSORRT_INT8_ENABLE is 1.
 
-By default TensorRT execution provider builds an ICudaEngine with max workspace size = 1 GB, max partition iterations = 1000, min subgraph size = 1, FP16 mode is disabled and TensorRT engine caching is disabled.
+* ORT_TENSORRT_DUMP_SUBGRAPHS: Dumps the subgraphs that are transformed into TRT engines in onnx format to the filesystem. This can help debugging subgraphs, e.g. by using  `trtexec --onnx my_model.onnx` and check the outputs of the parser. 1: enabled, 0: disabled. Default value: 0.
 
-One can override these defaults by setting environment variables ORT_TENSORRT_MAX_WORKSPACE_SIZE, ORT_TENSORRT_MAX_PARTITION_ITERATIONS, ORT_TENSORRT_MIN_SUBGRAPH_SIZE,  ORT_TENSORRT_FP16_ENABLE, ORT_TENSORRT_ENGINE_CACHE_ENABLE and ORT_TENSORRT_ENGINE_CACHE_PATH.
+One can override default values by setting environment variables ORT_TENSORRT_MAX_WORKSPACE_SIZE, ORT_TENSORRT_MAX_PARTITION_ITERATIONS, ORT_TENSORRT_MIN_SUBGRAPH_SIZE, ORT_TENSORRT_FP16_ENABLE, ORT_TENSORRT_INT8_ENABLE, ORT_TENSORRT_INT8_CALIBRATION_TABLE_NAME, ORT_TENSORRT_INT8_USE_NATIVE_CALIBRATION_TABLE, ORT_TENSORRT_ENGINE_CACHE_ENABLE, ORT_TENSORRT_CACHE_PATH and ORT_TENSORRT_DUMP_SUBGRAPHS.
 e.g. on Linux
 
 ### override default max workspace size to 2GB
@@ -89,10 +96,19 @@ export ORT_TENSORRT_MIN_SUBGRAPH_SIZE=5
 ### Enable FP16 mode in TensorRT
 export ORT_TENSORRT_FP16_ENABLE=1
 
+### Enable INT8 mode in TensorRT
+export ORT_TENSORRT_INT8_ENABLE=1
+
+### Use native TensorRT calibration table
+export ORT_TENSORRT_INT8_USE_NATIVE_CALIBRATION_TABLE=1
+
 ### Enable TensorRT engine caching
 export ORT_TENSORRT_ENGINE_CACHE_ENABLE=1
 * Please Note warning above. This feature is experimental. Engine cache files must be invalidated if there are any changes to the model, ORT version, TensorRT version or if the
 underlying hardware changes. Engine files are not portable across devices.
 
-### Specify TensorRT engine cache path
-export ORT_TENSORRT_ENGINE_CACHE_PATH="/path/to/cache"
+### Specify TensorRT cache path
+export ORT_TENSORRT_CACHE_PATH="/path/to/cache"
+
+### Dump out subgraphs to run on TensorRT
+export ORT_TENSORRT_DUMP_SUBGRAPHS = 1

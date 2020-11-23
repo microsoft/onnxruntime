@@ -2,8 +2,6 @@
 // Licensed under the MIT License.
 
 using Microsoft.ML.OnnxRuntime.Tensors;
-using Microsoft.VisualBasic.CompilerServices;
-using Onnx;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -110,9 +108,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 // Restore the default dll search order
                 SetDllDirectory(null);
 
-#endif
-#if USE_NGRAPH
-                opt.AppendExecutionProvider_NGraph("CPU");  //TODO: this API should be refined
 #endif
 #if USE_OPENVINO
                 opt.AppendExecutionProvider_OpenVINO();
@@ -679,8 +674,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "mxnet_arcface", "Model is an invalid ONNX model"},
                 { "tf_inception_v2", "TODO: Debug failing model, skipping for now" },
                 { "fp16_tiny_yolov2", "Tolerance level for float16 is not known. We now support fp16." },
-                { "test_bidaf", "Does not run in opset9, runs in other opsets. Tensors of type ElementType not currently supported in the LoadTensorFromFile." },
-                { "test_mnist", "Does not run in opset9, runs in other opsets. Tensors of type ElementType not currently supported in the LoadTensorFromFile" },
+                { "fp16_test_tiny_yolov2", "ImageScaler is not a registered function/op"},
+                { "fp16_coreml_FNS-Candy", "ImageScaler is not a registered function/op" },
+                { "fp16_coreml_LinearRegression_NYCTaxi", "Error in Node:featureVectorizer : No Op registered for FeatureVectorizer with domain_version of 1"},
+                { "test_bidaf", "Does not run in opset9, runs in other opsets. The model runs but I don't have a data set to debug output locally. Tensors of type ElementType not currently supported in the LoadTensorFromFile." },
+                { "test_mnist", "Does not run in opset9, runs in other opsets. The model runs but I don't have a data set to debug output locally. Tensors of type ElementType not currently supported in the LoadTensorFromFile" },
                 { "BERT_Squad", "Could not find an implementation for the node bert / embeddings / one_hot:OneHot(9)" },
                 { "mlperf_ssd_mobilenet_300", "Could not find file output_0.pb" },
                 { "tf_resnet_v1_50", "result mismatch when Conv BN Fusion is applied" },
@@ -2093,6 +2091,81 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
+        [Fact]
+        private void TestSharedAllocatorUsingCreateAndRegisterAllocator()
+        {
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "mul_1.onnx");
+
+            using (var memInfo = new OrtMemoryInfo(OrtMemoryInfo.allocatorCPU,
+                                                   OrtAllocatorType.ArenaAllocator, 0, OrtMemType.Default))
+            using (var arenaCfg = new OrtArenaCfg(0, -1, -1, -1))
+            {
+                var env = OrtEnv.Instance();
+                // Create and register the arena based allocator
+                env.CreateAndRegisterAllocator(memInfo, arenaCfg);
+
+                using (var sessionOptions = new SessionOptions())
+                {
+                    // Key must match kOrtSessionOptionsConfigUseEnvAllocators in onnxruntime_session_options_config_keys.h
+                    sessionOptions.AddSessionConfigEntry("session.use_env_allocators", "1");
+
+                    // Create two sessions to share the allocator
+                    // Create a thrid session that DOES NOT use the allocator in the environment
+                    using (var session1 = new InferenceSession(modelPath, sessionOptions))
+                    using (var session2 = new InferenceSession(modelPath, sessionOptions))
+                    using (var session3 = new InferenceSession(modelPath)) // Use the default SessionOptions instance
+                    {
+                        // Input data
+                        var inputDims = new long[] { 3, 2 };
+                        var input = new float[] { 1.0F, 2.0F, 3.0F, 4.0F, 5.0F, 6.0F };
+
+                        // Output data
+                        int[] outputDims = { 3, 2 };
+                        float[] output = { 1.0F, 4.0F, 9.0F, 16.0F, 25.0F, 36.0F };
+
+                        // Run inference on all three models
+                        var inputMeta = session1.InputMetadata;
+                        var container = new List<NamedOnnxValue>();
+
+                        foreach (var name in inputMeta.Keys)
+                        {
+                            Assert.Equal(typeof(float), inputMeta[name].ElementType);
+                            Assert.True(inputMeta[name].IsTensor);
+                            var tensor = new DenseTensor<float>(input, inputMeta[name].Dimensions);
+                            container.Add(NamedOnnxValue.CreateFromTensor<float>(name, tensor));
+                        }
+
+                        // Run inference with named inputs and outputs created with in Run()
+                        using (var results = session1.Run(container))  // results is an IReadOnlyList<NamedOnnxValue> container
+                        {
+                            foreach (var r in results)
+                            {
+                                validateRunResultData(r.AsTensor<float>(), output, outputDims);
+                            }
+                        }
+
+                        // Run inference with named inputs and outputs created with in Run()
+                        using (var results = session2.Run(container))  // results is an IReadOnlyList<NamedOnnxValue> container
+                        {
+                            foreach (var r in results)
+                            {
+                                validateRunResultData(r.AsTensor<float>(), output, outputDims);
+                            }
+                        }
+
+                        // Run inference with named inputs and outputs created with in Run()
+                        using (var results = session3.Run(container))  // results is an IReadOnlyList<NamedOnnxValue> container
+                        {
+                            foreach (var r in results)
+                            {
+                                validateRunResultData(r.AsTensor<float>(), output, outputDims);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         [DllImport("kernel32", SetLastError = true)]
         static extern IntPtr LoadLibrary(string lpFileName);
 
@@ -2119,9 +2192,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #endif
 #if USE_DML
             ,"OrtSessionOptionsAppendExecutionProvider_DML"
-#endif
-#if USE_NGRAPH
-            ,"OrtSessionOptionsAppendExecutionProvider_NGraph"
 #endif
 #if USE_OPENVINO
             ,"OrtSessionOptionsAppendExecutionProvider_OpenVINO"
