@@ -8,8 +8,8 @@
 set -e
 set -x
 
-# Build with reduced ops requires setuptools wheel onnx
-python3 -m pip install -U --user setuptools wheel onnx
+# Build with reduced ops requires onnx
+python3 -m pip install -U --user onnx
 
 ORT_ROOT=$1
 MIN_BUILD_DIR=$ORT_ROOT/build_nnapi_minimal
