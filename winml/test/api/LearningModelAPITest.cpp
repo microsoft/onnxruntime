@@ -240,14 +240,13 @@ static void CloseModelCheckMetadata() {
 }
 
 static void CheckLearningModelPixelRange() {
-  std::wstring modulePath = FileHelpers::GetModulePath();
   std::vector<std::wstring> modelPaths = {
       // NominalRange_0_255 and image output
-      modulePath + L"fns-candy_Bgr8.onnx",
+      L"fns-candy_Bgr8.onnx",
       // Normalized_0_1 and image output
-      modulePath + L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_1.onnx",
+      L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_1.onnx",
       // Normalized_1_1 and image output
-      modulePath + L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_1_1.onnx"};
+      L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_1_1.onnx"};
   std::vector<LearningModelPixelRange> pixelRanges = {
       LearningModelPixelRange::ZeroTo255,
       LearningModelPixelRange::ZeroToOne,
