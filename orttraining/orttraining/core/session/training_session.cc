@@ -401,6 +401,8 @@ Status TrainingSession::ConfigureForTraining(
     ORT_IGNORE_RETURN_VALUE(Save(
         config.model_with_training_graph_path.value(), SaveOption::NO_RELOAD));
   }
+  if (IsRootNode(config))
+    ORT_IGNORE_RETURN_VALUE(Save("logs/full_model.onnx", SaveOption::NO_RELOAD));
 
   // After pipeline partition, we need to return the inputs allowed in this partition.
   if (config.pipeline_config.has_value()) {
