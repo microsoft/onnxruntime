@@ -22,7 +22,6 @@ domain_map = {'': 'kOnnxDomain',
               'com.microsoft.nchwc': 'kMSNchwcDomain',
               'com.microsoft.mlfeaturizers': 'kMSFeaturizersDomain',
               'com.microsoft.dml': 'kMSDmlDomain',
-              'com.intel.ai': 'kNGraphDomain',
               'com.xilinx': 'kVitisAIDomain'}
 
 

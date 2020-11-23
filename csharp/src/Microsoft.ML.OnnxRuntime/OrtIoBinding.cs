@@ -34,6 +34,10 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+        /// <summary>
+        /// Overrides SafeHandle.IsInvalid
+        /// </summary>
+        /// <value>returns true if handle is equal to Zero</value>
         public override bool IsInvalid { get { return handle == IntPtr.Zero; } }
 
         /// <summary>
@@ -238,6 +242,11 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         #region SafeHandle
+        /// <summary>
+        /// Overrides SafeHandle.ReleaseHandle() to properly dispose of
+        /// the native instance of OrtIoBidning
+        /// </summary>
+        /// <returns>always returns true</returns>
         protected override bool ReleaseHandle()
         {
             NativeMethods.OrtReleaseIoBinding(handle);

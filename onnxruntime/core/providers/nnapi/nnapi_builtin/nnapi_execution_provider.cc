@@ -20,7 +20,7 @@ namespace onnxruntime {
 
 constexpr const char* NNAPI = "Nnapi";
 
-NnapiExecutionProvider::NnapiExecutionProvider(unsigned long nnapi_flags)
+NnapiExecutionProvider::NnapiExecutionProvider(uint32_t nnapi_flags)
     : IExecutionProvider{onnxruntime::kNnapiExecutionProvider},
       nnapi_flags_(nnapi_flags) {
   AllocatorCreationInfo device_info(
@@ -312,9 +312,10 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
         // Also NNAPI treats a tensor input with empty shape as dynamic shape input
         // Disable support of the scalar input (tensor input with an empty shape) for now
         // TODO, add support for ONNX scalar input (tensor input with an empty shape)
-        if (dimensions.empty())
-          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "NNAPI does not support scalar input");
-
+        if (dimensions.empty()) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "NNAPI does not support scalar input, input name, ", input_name);
+        }
         // it is possible that the input has the detailed size while
         // the model has an operand with unknown size, use the size
         // of the actual input

@@ -65,11 +65,6 @@ Abstract:
 #define MLAS_SUPPORTS_GEMM_U8X8
 #endif
 
-#if defined(MLAS_TARGET_AMD64_IX86)
-#define MLAS_SUPPORTS_GEMM_U8X8_AND_REQUANTIZE_OUTPUT
-#define MLAS_SUPPORTS_TRANSPOSE
-#endif
-
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_ARM64) || (defined(MLAS_TARGET_ARM) && !defined(_MSC_VER))
 #define MLAS_SUPPORTS_PACKED_GEMM_U8X8
 #endif
@@ -673,31 +668,8 @@ MlasRequantizeOutput(
     const int32_t* Bias,
     size_t M,
     size_t N,
-    float Scale,
-    uint8_t ZeroPoint
-    );
-
-void
-MLASCALL
-MlasRequantizeOutputColumn(
-    const int32_t* Input,
-    uint8_t* Output,
-    const int32_t* Bias,
-    size_t M,
-    size_t N,
-    const float Scale,
-    uint8_t ZeroPoint
-    );
-
-void
-MLASCALL
-MlasRequantizeOutputColumn(
-    const int32_t* Input,
-    uint8_t* Output,
-    const int32_t* Bias,
-    size_t M,
-    size_t N,
     const float* Scale,
+    bool PerColumnScale,
     uint8_t ZeroPoint
     );
 

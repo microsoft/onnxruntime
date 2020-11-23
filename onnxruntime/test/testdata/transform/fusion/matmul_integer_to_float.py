@@ -32,7 +32,6 @@ def GenerateModel(model_name):
 
     initializers = []
     initializers.extend(MakeInitializer("_1"))
-    initializers.extend(MakeInitializer("_2"))
     initializers.extend(MakeInitializer("_3"))
 
     initializers.extend([
@@ -43,8 +42,12 @@ def GenerateModel(model_name):
     graph = helper.make_graph(
         nodes,
         "MatMulIntegerToFloat_fusion",  #name
-        [  # inputs
+        [   # inputs
             helper.make_tensor_value_info('input', TensorProto.FLOAT, [3, 2]),
+            # matrix b corresponding inputs for subgraph 2 
+            helper.make_tensor_value_info('b_quantized_2', TensorProto.UINT8, [2, 3]),
+            helper.make_tensor_value_info('b_zp_2', TensorProto.UINT8, [1]),
+            helper.make_tensor_value_info('b_scale_2', TensorProto.FLOAT, [1]),
         ],
         [  # outputs
             helper.make_tensor_value_info('output_1', TensorProto.FLOAT, [3, 3]),

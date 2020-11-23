@@ -51,7 +51,7 @@ namespace Microsoft.ML.OnnxRuntime
 
     /// <summary>
     /// This class serves as a container for model run output values including
-    /// tensors, sequences of tensors, sequences and maps
+    /// tensors, sequences of tensors, sequences and maps.
     /// It extends NamedOnnxValue, exposes the OnnxValueType and Tensor type
     /// The class must be disposed of.
     /// It disposes of _ortValueHolder that owns the underlying Ort output value and
@@ -419,6 +419,10 @@ namespace Microsoft.ML.OnnxRuntime
 
         #region IDisposable Support
 
+        /// <summary>
+        /// IDisposable implementation
+        /// </summary>
+        /// <param name="disposing">true if invoked by Dispose()</param>
         protected virtual void Dispose(bool disposing)
         {
             if(_disposed)
@@ -439,6 +443,9 @@ namespace Microsoft.ML.OnnxRuntime
             _disposed = true;
         }
 
+        /// <summary>
+        /// IDisposable implementation
+        /// </summary>
         public void Dispose()
         {
             // Do not change this code. Put cleanup code in Dispose(bool disposing) above.
