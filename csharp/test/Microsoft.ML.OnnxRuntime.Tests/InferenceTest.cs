@@ -2091,6 +2091,81 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
+        [Fact]
+        private void TestSharedAllocatorUsingCreateAndRegisterAllocator()
+        {
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "mul_1.onnx");
+
+            using (var memInfo = new OrtMemoryInfo(OrtMemoryInfo.allocatorCPU,
+                                                   OrtAllocatorType.ArenaAllocator, 0, OrtMemType.Default))
+            using (var arenaCfg = new OrtArenaCfg(0, -1, -1, -1))
+            {
+                var env = OrtEnv.Instance();
+                // Create and register the arena based allocator
+                env.CreateAndRegisterAllocator(memInfo, arenaCfg);
+
+                using (var sessionOptions = new SessionOptions())
+                {
+                    // Key must match kOrtSessionOptionsConfigUseEnvAllocators in onnxruntime_session_options_config_keys.h
+                    sessionOptions.AddSessionConfigEntry("session.use_env_allocators", "1");
+
+                    // Create two sessions to share the allocator
+                    // Create a thrid session that DOES NOT use the allocator in the environment
+                    using (var session1 = new InferenceSession(modelPath, sessionOptions))
+                    using (var session2 = new InferenceSession(modelPath, sessionOptions))
+                    using (var session3 = new InferenceSession(modelPath)) // Use the default SessionOptions instance
+                    {
+                        // Input data
+                        var inputDims = new long[] { 3, 2 };
+                        var input = new float[] { 1.0F, 2.0F, 3.0F, 4.0F, 5.0F, 6.0F };
+
+                        // Output data
+                        int[] outputDims = { 3, 2 };
+                        float[] output = { 1.0F, 4.0F, 9.0F, 16.0F, 25.0F, 36.0F };
+
+                        // Run inference on all three models
+                        var inputMeta = session1.InputMetadata;
+                        var container = new List<NamedOnnxValue>();
+
+                        foreach (var name in inputMeta.Keys)
+                        {
+                            Assert.Equal(typeof(float), inputMeta[name].ElementType);
+                            Assert.True(inputMeta[name].IsTensor);
+                            var tensor = new DenseTensor<float>(input, inputMeta[name].Dimensions);
+                            container.Add(NamedOnnxValue.CreateFromTensor<float>(name, tensor));
+                        }
+
+                        // Run inference with named inputs and outputs created with in Run()
+                        using (var results = session1.Run(container))  // results is an IReadOnlyList<NamedOnnxValue> container
+                        {
+                            foreach (var r in results)
+                            {
+                                validateRunResultData(r.AsTensor<float>(), output, outputDims);
+                            }
+                        }
+
+                        // Run inference with named inputs and outputs created with in Run()
+                        using (var results = session2.Run(container))  // results is an IReadOnlyList<NamedOnnxValue> container
+                        {
+                            foreach (var r in results)
+                            {
+                                validateRunResultData(r.AsTensor<float>(), output, outputDims);
+                            }
+                        }
+
+                        // Run inference with named inputs and outputs created with in Run()
+                        using (var results = session3.Run(container))  // results is an IReadOnlyList<NamedOnnxValue> container
+                        {
+                            foreach (var r in results)
+                            {
+                                validateRunResultData(r.AsTensor<float>(), output, outputDims);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         [DllImport("kernel32", SetLastError = true)]
         static extern IntPtr LoadLibrary(string lpFileName);
 
