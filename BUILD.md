@@ -367,13 +367,13 @@ See more information on the OpenVINO Execution Provider [here](./docs/execution_
 #### Build Instructions
 ##### Windows
 ```
-.\build.bat --config RelWithDebInfo --use_openvino <hardware_option>
+.\build.bat --config RelWithDebInfo --use_openvino <hardware_option> --build_shared_lib
 ```
 *Note: The default Windows CMake Generator is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to `.\build.bat`*
 
 ##### Linux
 ```
-./build.sh --config RelWithDebInfo --use_openvino <hardware_option>
+./build.sh --config RelWithDebInfo --use_openvino <hardware_option> --build_shared_lib
 ```
 
    <code>--use_openvino</code>: Builds the OpenVINO Execution Provider in ONNX Runtime.
