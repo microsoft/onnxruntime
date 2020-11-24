@@ -34,7 +34,7 @@ python3 -m pip install --user mysql-connector-python
 
 # Post the binary size info to ort mysql DB
 # The report script's DB connection failure will not fail the pipeline
-if [ $BUILD_REASON="IndividualCI" ] OR [ $BUILD_REASON="BatchedCI" ]; then
+if [[ $BUILD_REASON == "IndividualCI" || $BUILD_REASON == "BatchedCI" ]]; then
     python3 /onnxruntime_src/tools/ci_build/github/windows/post_binary_sizes_to_dashboard.py \
         --ignore_db_error \
         --commit_hash=$BUILD_SOURCEVERSION \
