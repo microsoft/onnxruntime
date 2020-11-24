@@ -16,6 +16,8 @@
 // Modifications Copyright (c) Microsoft.
 
 #include <algorithm>
+
+
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "core/mlas/inc/mlas.h"
@@ -29,6 +31,8 @@
 #pragma warning(disable : 4805)
 #pragma warning(disable : 6255)
 #endif
+#include "Eigen/Core"
+#include "Eigen/Dense"
 #include "Eigen/src/Core/arch/Default/Half.h"
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
@@ -39,6 +43,20 @@ using onnxruntime::concurrency::ThreadPool;
 
 namespace onnxruntime {
 namespace math {
+template <typename T>
+using EigenMatrixMap = Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>;
+template <typename T>
+using ConstEigenMatrixMap = Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>;
+template <typename T>
+using EigenVectorMap = Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, 1>>;
+template <typename T>
+using ConstEigenArrayMap = Eigen::Map<const Eigen::Array<T, Eigen::Dynamic, Eigen::Dynamic>>;
+template <typename T>
+using ConstEigenVectorMap = Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>;
+template <typename T>
+using ConstEigenVectorArrayMap = Eigen::Map<const Eigen::Array<T, Eigen::Dynamic, 1>>;
+template <typename T>
+using EigenArrayMap = Eigen::Map<Eigen::Array<T, Eigen::Dynamic, Eigen::Dynamic>>;
 
 // MatMul implementation purely based on Eigen.
 #define EIGEN_MATMUL_FUNCTION(T)                                                                \

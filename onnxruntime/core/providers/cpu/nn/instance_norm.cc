@@ -2,11 +2,18 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/nn/instance_norm.h"
+#include "Eigen/Core"
+#include "Eigen/Dense"
+
 #include "core/providers/cpu/nn/instance_norm_helper.h"
 #include "core/util/math_cpuonly.h"
 using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
+template <typename T>
+using ConstEigenVectorArrayMap = Eigen::Map<const Eigen::Array<T, Eigen::Dynamic, 1>>;
+template <typename T>
+using EigenVectorArrayMap = Eigen::Map<Eigen::Array<T, Eigen::Dynamic, 1>>;
 
 ONNX_CPU_OPERATOR_KERNEL(
     InstanceNormalization,

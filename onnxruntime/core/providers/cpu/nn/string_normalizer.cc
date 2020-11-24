@@ -29,8 +29,8 @@ ONNX_CPU_OPERATOR_KERNEL(
     StringNormalizer);
 
 namespace string_normalizer {
-const std::string conv_error("Conversion Error");
-const std::wstring wconv_error(L"Conversion Error");
+constexpr const char* conv_error = "Conversion Error";
+constexpr const wchar_t* wconv_error= L"Conversion Error";
 
 // We need to specialize for MS as there is
 // a std::locale creation bug that affects different
@@ -74,7 +74,7 @@ class Locale {
 
 using Utf8Converter = std::wstring_convert<std::codecvt_utf8<wchar_t>>;
 
-const std::string default_locale("en-US");
+constexpr const char* default_locale = "en-US";
 
 #else  // MS_VER
 
@@ -271,7 +271,7 @@ StringNormalizer::StringNormalizer(const OpKernelInfo& info) : OpKernel(info),
     compare_caseaction_ = (case_change_action_ == UPPER) ? UPPER : LOWER;
   }
 
-  locale_name_ = info.GetAttrOrDefault("locale", default_locale);
+  locale_name_ = info.GetAttrOrDefault<std::string>("locale", default_locale);
   Locale locale(locale_name_);
   Utf8Converter converter(conv_error, wconv_error);
 

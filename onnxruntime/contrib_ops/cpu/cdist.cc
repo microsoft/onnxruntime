@@ -1,5 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include "Eigen/Core"
+#include "Eigen/Dense"
 
 #include "cdist.h"
 #include "core/common/common.h"
@@ -10,6 +12,13 @@
 
 namespace onnxruntime {
 namespace contrib {
+template <typename T>
+using EigenVectorArrayMap = Eigen::Map<Eigen::Array<T, Eigen::Dynamic, 1>>;
+template <typename T>
+using ConstEigenArrayMap = Eigen::Map<const Eigen::Array<T, Eigen::Dynamic, Eigen::Dynamic>>;
+template <typename T>
+using ConstEigenVectorMap = Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>;
+
 #define DEFINE_KERNEL(data_type)                                                                                  \
   ONNX_OPERATOR_TYPED_KERNEL_EX(CDist, kMSDomain, 1, data_type, kCpuExecutionProvider,                            \
                                 KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()), \
@@ -88,6 +97,7 @@ static void CalculateSqeuclidean(const Tensor& a, const Tensor& b, Tensor& c, co
     }
   }
 }
+
 
 template <typename T>
 common::Status CDist<T>::Compute(OpKernelContext* context) const {

@@ -26,6 +26,14 @@ ONNX_CPU_OPERATOR_KERNEL(
     1,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Scale<float>);
+template <typename T>
+auto EigenMap(Tensor& t) -> EigenVectorMap<T> {
+  return EigenVectorMap<T>(t.template MutableData<T>(), t.Shape().Size());
+}
+template <typename T>
+auto EigenMap(const Tensor& t) -> ConstEigenVectorMap<T> {
+  return ConstEigenVectorMap<T>(t.template Data<T>(), t.Shape().Size());
+}
 
 template <>
 Status Scale<float>::Compute(OpKernelContext* ctx) const {

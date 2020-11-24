@@ -3,6 +3,9 @@
 
 #include <iomanip>
 #include <sstream>
+#include "Eigen/Core"
+#include "Eigen/Dense"
+
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/tensor/utils.h"
@@ -22,6 +25,10 @@
 
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
+template <typename T>
+using ConstEigenVectorMap = Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>;
+template <typename T>
+using EigenVectorMap = Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, 1>>;
 
 namespace {
 template <typename SrcType, typename DstType>
@@ -213,34 +220,36 @@ class Cast final : public OpKernel {
   ONNX_NAMESPACE::TensorProto_DataType to_;
 };
 
-const std::vector<MLDataType> castOpTypeConstraints{
-    DataTypeImpl::GetTensorType<bool>(),
-    DataTypeImpl::GetTensorType<float>(),
-    DataTypeImpl::GetTensorType<double>(),
-    DataTypeImpl::GetTensorType<uint8_t>(),
-    DataTypeImpl::GetTensorType<uint16_t>(),
-    DataTypeImpl::GetTensorType<uint32_t>(),
-    DataTypeImpl::GetTensorType<uint64_t>(),
-    DataTypeImpl::GetTensorType<int8_t>(),
-    DataTypeImpl::GetTensorType<int16_t>(),
-    DataTypeImpl::GetTensorType<int32_t>(),
-    DataTypeImpl::GetTensorType<int64_t>(),
+const std::vector<MLDataType> GetCastOpTypeConstraints(){
+  return {
+      DataTypeImpl::GetTensorType<bool>(),
+      DataTypeImpl::GetTensorType<float>(),
+      DataTypeImpl::GetTensorType<double>(),
+      DataTypeImpl::GetTensorType<uint8_t>(),
+      DataTypeImpl::GetTensorType<uint16_t>(),
+      DataTypeImpl::GetTensorType<uint32_t>(),
+      DataTypeImpl::GetTensorType<uint64_t>(),
+      DataTypeImpl::GetTensorType<int8_t>(),
+      DataTypeImpl::GetTensorType<int16_t>(),
+      DataTypeImpl::GetTensorType<int32_t>(),
+      DataTypeImpl::GetTensorType<int64_t>(),
 #ifdef CAST_FLOAT16_ENABLED
-    DataTypeImpl::GetTensorType<MLFloat16>(),
-    DataTypeImpl::GetTensorType<BFloat16>(),
+      DataTypeImpl::GetTensorType<MLFloat16>(),
+      DataTypeImpl::GetTensorType<BFloat16>(),
 #endif
 #ifdef CAST_STRING_ENABLED
-    DataTypeImpl::GetTensorType<std::string>(),
+      DataTypeImpl::GetTensorType<std::string>(),
 #endif
-};
+  };
+}
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Cast,
     6,
     12,
     KernelDefBuilder()
-        .TypeConstraint("T1", castOpTypeConstraints)
-        .TypeConstraint("T2", castOpTypeConstraints)
+        .TypeConstraint("T1", GetCastOpTypeConstraints())
+        .TypeConstraint("T2", GetCastOpTypeConstraints())
         .MayInplace(0, 0),  // allocation planner will check input and output sizes match before inplacing
     Cast);
 
@@ -248,8 +257,8 @@ ONNX_CPU_OPERATOR_KERNEL(
     Cast,
     13,
     KernelDefBuilder()
-        .TypeConstraint("T1", castOpTypeConstraints)
-        .TypeConstraint("T2", castOpTypeConstraints)
+        .TypeConstraint("T1", GetCastOpTypeConstraints())
+        .TypeConstraint("T2", GetCastOpTypeConstraints())
         .MayInplace(0, 0),  // allocation planner will check input and output sizes match before inplacing
     Cast);
 

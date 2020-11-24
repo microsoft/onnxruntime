@@ -1,5 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include "Eigen/Core"
+#include "Eigen/Dense"
 
 #include "core/common/common.h"
 #include "core/framework/data_types.h"
@@ -13,6 +15,19 @@
 using namespace ::onnxruntime::common;
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
+template <typename T>
+using EigenVectorMap = Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, 1>>;
+template <typename T>
+using ConstEigenVectorMap = Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>;
+
+template <typename T>
+auto EigenMap(Tensor& t) -> EigenVectorMap<T> {
+  return EigenVectorMap<T>(t.template MutableData<T>(), t.Shape().Size());
+}
+template <typename T>
+auto EigenMap(const Tensor& t) -> ConstEigenVectorMap<T> {
+  return ConstEigenVectorMap<T>(t.template Data<T>(), t.Shape().Size());
+}
 
 class Sign final : public OpKernel {
  public:

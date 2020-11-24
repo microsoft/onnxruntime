@@ -893,9 +893,9 @@ ORT_API_STATUS_IMPL(OrtApis::GetStringTensorElement, _In_ const OrtValue* value,
 
 using DefListResult = std::pair<Status, const InputDefList*>;
 using GetDefListFn = DefListResult (*)(const ::onnxruntime::InferenceSession*);
-const auto get_inputs_fn = [](const ::onnxruntime::InferenceSession* session) -> DefListResult { return session->GetModelInputs(); };
-const auto get_outputs_fn = [](const ::onnxruntime::InferenceSession* session) -> DefListResult { return session->GetModelOutputs(); };
-const auto get_overridable_initializers_fn = [](const ::onnxruntime::InferenceSession* session) -> DefListResult { return session->GetOverridableInitializers(); };
+DefListResult get_inputs_fn(const ::onnxruntime::InferenceSession* session) { return session->GetModelInputs(); };
+DefListResult get_outputs_fn(const ::onnxruntime::InferenceSession* session) { return session->GetModelOutputs(); };
+DefListResult get_overridable_initializers_fn (const ::onnxruntime::InferenceSession* session) { return session->GetOverridableInitializers(); };
 
 static ORT_STATUS_PTR GetNodeDefListCountHelper(const OrtSession* sess, GetDefListFn get_fn, size_t* out) {
   API_IMPL_BEGIN

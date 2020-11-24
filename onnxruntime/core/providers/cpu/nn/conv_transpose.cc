@@ -16,13 +16,18 @@
 /* Modifications Copyright (c) Microsoft. */
 
 #include "core/providers/cpu/nn/conv_transpose.h"
+#include "Eigen/Core"
+#include "Eigen/Dense"
 
 #include "core/common/safeint.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
-
+template <typename T>
+using EigenMatrixMap = Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>;
+template <typename T>
+using ConstEigenVectorMap = Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>;
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     ConvTranspose,
     1, 10,

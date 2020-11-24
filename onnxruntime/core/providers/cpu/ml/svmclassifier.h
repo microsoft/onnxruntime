@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include "Eigen/Core"
+#include "Eigen/Dense"
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
@@ -11,7 +13,12 @@
 
 namespace onnxruntime {
 namespace ml {
-
+template <typename T>
+using ConstEigenVectorMap = Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>;
+template <typename T>
+using EigenVectorMap = Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, 1>>;
+template <typename T>
+using EigenVectorArrayMap = Eigen::Map<Eigen::Array<T, Eigen::Dynamic, 1>>;
 // code shared by SVMClassifier and SVMRegressor
 class SVMCommon {
  protected:

@@ -16,6 +16,8 @@
 /* Modifications Copyright (c) Microsoft. */
 
 #pragma once
+#include "Eigen/Core"
+#include "Eigen/Dense"
 
 #include "core/common/common.h"
 #include "core/common/exceptions.h"
@@ -26,6 +28,12 @@
 #include "core/providers/cpu/nn/batch_norm_helper.h"
 
 namespace onnxruntime {
+template <typename T>
+using ConstEigenVectorArrayMap = Eigen::Map<const Eigen::Array<T, Eigen::Dynamic, 1>>;
+template <typename T>
+using EigenArrayMap = Eigen::Map<Eigen::Array<T, Eigen::Dynamic, Eigen::Dynamic>>;
+template <typename T>
+using ConstEigenArrayMap = Eigen::Map<const Eigen::Array<T, Eigen::Dynamic, Eigen::Dynamic>>;
 
 template <typename T>
 class BatchNorm : public OpKernel {

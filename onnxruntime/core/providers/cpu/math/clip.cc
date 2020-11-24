@@ -1,11 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include "Eigen/Core"
+#include "Eigen/Dense"
 
 #include "core/providers/cpu/math/clip.h"
 #include "core/framework/data_types_internal.h"
 #include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
+template <typename T>
+using EigenVectorMap = Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, 1>>;
+template <typename T>
+using ConstEigenVectorMap = Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>;
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Clip,

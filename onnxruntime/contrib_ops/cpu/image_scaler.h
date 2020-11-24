@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include "Eigen/Core"
+#include "Eigen/Dense"
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
@@ -9,6 +11,10 @@
 
 namespace onnxruntime {
 namespace contrib{
+template <typename T>
+using ConstEigenArrayMap = Eigen::Map<const Eigen::Array<T, Eigen::Dynamic, Eigen::Dynamic>>;
+template <typename T>
+using EigenArrayMap = Eigen::Map<Eigen::Array<T, Eigen::Dynamic, Eigen::Dynamic>>;
 
 template <typename T>
 class ImageScaler final : public OpKernel {

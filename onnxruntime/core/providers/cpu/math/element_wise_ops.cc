@@ -465,6 +465,16 @@ Pow::Compute(OpKernelContext* context) const {
   return s;
 }
 
+
+template <typename T>
+static auto EigenMap(Tensor& t) -> EigenVectorMap<T> {
+  return EigenVectorMap<T>(t.template MutableData<T>(), t.Shape().Size());
+}
+template <typename T>
+static auto EigenMap(const Tensor& t) -> ConstEigenVectorMap<T> {
+  return ConstEigenVectorMap<T>(t.template Data<T>(), t.Shape().Size());
+}
+
 template <>
 Status Sum_6<float>::Compute(OpKernelContext* ctx) const {
   auto input_count = Node().InputArgCount().front();

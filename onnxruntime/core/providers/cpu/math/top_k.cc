@@ -13,6 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "Eigen/Core"
+#include "Eigen/Dense"
 
 #include "core/providers/cpu/math/top_k.h"
 #include "core/providers/common.h"
@@ -28,6 +30,8 @@
 
 using namespace std;
 namespace onnxruntime {
+template <typename T>
+using EigenMatrixMapRowMajor = Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>;
 
 template <typename T>
 struct GreaterValueCmp {

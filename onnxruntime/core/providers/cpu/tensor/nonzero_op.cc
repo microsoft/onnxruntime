@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/tensor/nonzero_op.h"
+#include "Eigen/Core"
+#include "Eigen/Dense"
 
 #include <cassert>
 #include <vector>
@@ -9,6 +11,11 @@
 #include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
+template <typename T>
+using ConstEigenMatrixMapRowMajor = Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>;
+template <typename T>
+using EigenMatrixMapRowMajor = Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>;
+
 // kernel builder functions
 #define NONZERO_9_TYPED_KERNEL(type)                                               \
   ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                        \

@@ -3,12 +3,24 @@
 
 #pragma once
 
+#include "Eigen/Core"
+#include "Eigen/Dense"
+
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/util/math_cpuonly.h"
 #include "core/providers/cpu/element_wise_ranged_transform.h"
 
 namespace onnxruntime {
+template <typename T>
+using EigenVectorArrayMap = Eigen::Map<Eigen::Array<T, Eigen::Dynamic, 1>>;
+template <typename T>
+using ConstEigenVectorArrayMap = Eigen::Map<const Eigen::Array<T, Eigen::Dynamic, 1>>;
+template <typename T>
+using ConstEigenVectorMap = Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>;
+template <typename T>
+using EigenVectorMap = Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, 1>>;
+
 namespace functors {
 
 template <typename T>

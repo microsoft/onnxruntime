@@ -49,8 +49,6 @@
 #pragma warning(disable : 6255)
 #pragma warning(disable : 6294)
 #endif
-#include "Eigen/Core"
-#include "Eigen/Dense"
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #else
@@ -59,54 +57,6 @@
 
 #include "core/framework/tensor.h"
 namespace onnxruntime {
-
-// common Eigen types that we will often use
-template <typename T>
-using EigenMatrixMap = Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>;
-
-template <typename T>
-using EigenArrayMap = Eigen::Map<Eigen::Array<T, Eigen::Dynamic, Eigen::Dynamic>>;
-
-template <typename T>
-using EigenVectorMap = Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, 1>>;
-
-template <typename T>
-using EigenVectorArrayMap = Eigen::Map<Eigen::Array<T, Eigen::Dynamic, 1>>;
-
-template <typename T>
-using ConstEigenMatrixMap = Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>;
-
-template <typename T>
-using ConstEigenArrayMap = Eigen::Map<const Eigen::Array<T, Eigen::Dynamic, Eigen::Dynamic>>;
-
-template <typename T>
-using ConstEigenVectorMap = Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>;
-
-template <typename T>
-using ConstEigenVectorArrayMap = Eigen::Map<const Eigen::Array<T, Eigen::Dynamic, 1>>;
-
-template <typename T>
-using EigenMatrixMapRowMajor = Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>;
-
-template <typename T>
-using ConstEigenMatrixMapRowMajor = Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>;
-
-template <typename T>
-using EigenMatrixMapRowMajorOuterStride =
-    Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>, 0, Eigen::OuterStride<>>;
-
-template <typename T>
-using ConstEigenMatrixMapRowMajorOuterStride =
-    Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>, 0, Eigen::OuterStride<>>;
-
-template <typename T>
-auto EigenMap(Tensor& t) -> EigenVectorMap<T> {
-  return EigenVectorMap<T>(t.template MutableData<T>(), t.Shape().Size());
-}
-template <typename T>
-auto EigenMap(const Tensor& t) -> ConstEigenVectorMap<T> {
-  return ConstEigenVectorMap<T>(t.template Data<T>(), t.Shape().Size());
-}
 
 class CPUMathUtil {
  public:
@@ -121,14 +71,5 @@ class CPUMathUtil {
   CPUMathUtil() = default;
 };
 
-// cast TA and TB to TC, and do matrix multiply in Eigen
-// note that inputs/outputs is row-major, while Eigen is col-major
-// so (M, K) x (K, N) -> (M, N) becomes (N, K) x (K, M) -> (N, M) in Eigen
-template <typename TA, typename TB, typename TY>
-void EigenCastGEMM(const TA* A_data, const TB* B_data, TY* Y_data, int M, int N, int K) {
-  auto A = ConstEigenMatrixMap<TA>(A_data, K, M);
-  auto B = ConstEigenMatrixMap<TB>(B_data, N, K);
-  EigenMatrixMap<TY>(Y_data, N, M) = B.template cast<TY>() * A.template cast<TY>();
-}
 
 }  // namespace onnxruntime

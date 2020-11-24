@@ -1,5 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include "Eigen/Core"
+#include "Eigen/Dense"
 
 #include "core/providers/cpu/math/gemm.h"
 #include "core/providers/cpu/math/gemm_matmul_common.h"
@@ -7,7 +9,15 @@
 #include "gemm_helper.h"
 #include "core/mlas/inc/mlas.h"
 
+
 namespace onnxruntime {
+template <typename T>
+using EigenMatrixMapRowMajor = Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>;
+template <typename T>
+using ConstEigenVectorMap = Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>;
+template <typename T>
+using ConstEigenMatrixMapRowMajor = Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>;
+
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Gemm,

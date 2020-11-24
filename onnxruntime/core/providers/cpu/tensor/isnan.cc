@@ -2,12 +2,28 @@
 // Licensed under the MIT License.
 
 #include "isnan.h"
+#include "Eigen/Core"
+#include "Eigen/Dense"
+
 #include "core/util/math_cpuonly.h"
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
 #include "Eigen/src/Core/arch/Default/Half.h"
 
 namespace onnxruntime {
+template <typename T>
+using EigenVectorMap = Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, 1>>;
+template <typename T>
+using ConstEigenVectorMap = Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>;
+template <typename T>
+auto EigenMap(Tensor& t) -> EigenVectorMap<T> {
+  return EigenVectorMap<T>(t.template MutableData<T>(), t.Shape().Size());
+}
+template <typename T>
+auto EigenMap(const Tensor& t) -> ConstEigenVectorMap<T> {
+  return ConstEigenVectorMap<T>(t.template Data<T>(), t.Shape().Size());
+}
+
 // https://github.com/onnx/onnx/blob/master/docs/Operators.md#IsNaN
 #define ADD_TYPED_ISNAN_OP_9(data_type)                                   \
   ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                               \

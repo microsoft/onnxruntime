@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include "Eigen/Core"
+#include "Eigen/Dense"
 
 #include "core/framework/op_kernel.h"
 #include "core/framework/random_generator.h"
@@ -10,6 +12,10 @@
 #include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
+template <typename T>
+using ConstEigenVectorArrayMap = Eigen::Map<const Eigen::Array<T, Eigen::Dynamic, 1>>;
+template <typename T>
+using EigenVectorArrayMap = Eigen::Map<Eigen::Array<T, Eigen::Dynamic, 1>>;
 
 template <typename T1, typename T2, bool trainable_dropout>
 class Dropout final: public OpKernel {

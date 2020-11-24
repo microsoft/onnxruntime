@@ -1,5 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include "Eigen/Core"
+#include "Eigen/Dense"
 
 #include "core/providers/common.h"
 #include "core/framework/op_kernel.h"
@@ -12,6 +14,11 @@ using namespace onnxruntime::common;
 
 namespace onnxruntime {
 namespace contrib {
+template <typename T>
+using ConstEigenMatrixMapRowMajor = Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>;
+template <typename T>
+using EigenMatrixMapRowMajor = Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>;
+
 
 ONNX_OPERATOR_KERNEL_EX(
     Trilu,

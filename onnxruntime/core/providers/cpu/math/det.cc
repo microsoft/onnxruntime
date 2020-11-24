@@ -1,5 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include "Eigen/Core"
+#include "Eigen/Dense"
 
 #include "core/providers/cpu/math/det.h"
 #include "core/util/math_cpuonly.h"
@@ -7,6 +9,8 @@
 using namespace onnxruntime::common;
 
 namespace onnxruntime {
+template <typename T>
+using ConstEigenMatrixMapRowMajor = Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>;
 
 ONNX_CPU_OPERATOR_KERNEL(
     Det,
