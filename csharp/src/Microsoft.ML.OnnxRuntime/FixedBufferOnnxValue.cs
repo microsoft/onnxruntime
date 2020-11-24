@@ -56,7 +56,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Such instance of FixedBufferOnnxValue can be used both as input and output in InferenceSession.Run()
         /// overload. As compared to CreateFromTensor(), this allows you to pass in buffers with custom data types
         /// that are blittable as defined in https://docs.microsoft.com/en-us/dotnet/framework/interop/blittable-and-non-blittable-types
-        /// I.e. those that have the same binary representation as the original type. This includes all exsiting types
+        /// I.e. those that have the same binary representation as the original type. This includes all existing types
         /// but may also allow using custom types for Float16 and BFloat16 providing they have the same layout and size.
         /// The resulting instance must be disposed of to release pinned memory and deallocate native OrtValue
         /// See example below.
@@ -86,9 +86,9 @@ namespace Microsoft.ML.OnnxRuntime
         /// 
         /// var memInfo = OrtMemoryInfo.DefaultInstance; // CPU
         ///
-        /// using(var fixedBufferInput = FixedBufferOnnxvalue.CreateTensorFromMemory<Half>(memInfo,
+        /// using(var fixedBufferInput = FixedBufferOnnxvalue.CreateFromMemory<Half>(memInfo,
         ///                         input, TensorElementType.Float16, input_shape, input.Length * sizeof(ushort))
-        /// using(var fixedBufferOutput = FixedBufferOnnxvalue.CreateTensorFromMemory<Half>(memInfo,
+        /// using(var fixedBufferOutput = FixedBufferOnnxvalue.CreateFromMemory<Half>(memInfo,
         ///                               output, TensorElementType.Float16, output_shape, output.Length * sizeof(ushort))
         /// {
         ///    FixedBufferOnnxvalue[] inputValues = new FixedBufferOnnxvalue[]{fixedBufferInput};
@@ -98,7 +98,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// }
         /// \endcode
         /// </example>
-        public static FixedBufferOnnxValue CreateTensorFromMemory<T>(OrtMemoryInfo memoryInfo, Memory<T> memory,
+        public static FixedBufferOnnxValue CreateFromMemory<T>(OrtMemoryInfo memoryInfo, Memory<T> memory,
             TensorElementType elementType, long[] shape, long bytesSize)
         {
             if(elementType == TensorElementType.String)
