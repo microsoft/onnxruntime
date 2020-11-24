@@ -16,11 +16,15 @@
 /* Modifications Copyright (c) Microsoft. */
 
 #include "core/providers/cpu/nn/conv.h"
+#include "Eigen/Core"
+#include "Eigen/Dense"
 
 #include "core/common/safeint.h"
 #include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
+template <typename T>
+using EigenMatrixMap = Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>;
 
 template <typename T>
 Status Conv<T>::Compute(OpKernelContext* context) const {
