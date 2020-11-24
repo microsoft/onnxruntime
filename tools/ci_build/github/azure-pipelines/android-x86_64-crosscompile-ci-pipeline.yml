@@ -4,9 +4,19 @@ jobs:
     vmImage: 'macOS-10.15'
   timeoutInMinutes: 120
   steps:
+    # Onnx has no 3.9 python package available yet, need to use python 3.8 to avoid build onnx package
+    # pythonVersion can be updated in Azure pipeline settings
+    # https://dev.azure.com/onnxruntime/onnxruntime/_build?definitionId=53
+    - task: UsePythonVersion@0
+      displayName: Use Python $(pythonVersion)
+      inputs:
+        versionSpec: $(pythonVersion)
     - script: brew install coreutils ninja
       displayName: Install coreutils and ninja
     - script: python3 tools/ci_build/build.py --android --build_dir build --android_sdk_path $ANDROID_HOME --android_ndk_path $ANDROID_HOME/ndk-bundle --android_abi=x86_64 --android_api=29 --skip_submodule_sync --parallel --cmake_generator=Ninja --build_java
       displayName: CPU EP, Build and Test on Android Emulator
     - script: python3 tools/ci_build/build.py --android --build_dir build_nnapi --android_sdk_path $ANDROID_HOME --android_ndk_path $ANDROID_HOME/ndk-bundle --android_abi=x86_64 --android_api=29 --skip_submodule_sync --parallel --use_nnapi --cmake_generator=Ninja --build_java
       displayName: NNAPI EP, Build and Test on Android Emulator
+    - script: /bin/bash tools/ci_build/github/linux/ort_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh $(pwd)
+      # Build Minimal ORT with NNAPI and reduced Ops, run unit tests on Android Emulator
+      displayName: Build Minimal ORT with NNAPI and run tests
