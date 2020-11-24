@@ -915,26 +915,16 @@ const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeTensorTypes() {
 
 const std::vector<MLDataType>& DataTypeImpl::AllTensorTypes() {
   static std::vector<MLDataType> all_tensor_types =
-      {DataTypeImpl::GetTensorType<float>(),
-       DataTypeImpl::GetTensorType<double>(),
-       DataTypeImpl::GetTensorType<int64_t>(),
-       DataTypeImpl::GetTensorType<uint64_t>(),
-       DataTypeImpl::GetTensorType<int32_t>(),
-       DataTypeImpl::GetTensorType<uint32_t>(),
-       DataTypeImpl::GetTensorType<int16_t>(),
-       DataTypeImpl::GetTensorType<uint16_t>(),
-       DataTypeImpl::GetTensorType<int8_t>(),
-       DataTypeImpl::GetTensorType<uint8_t>(),
-       DataTypeImpl::GetTensorType<MLFloat16>(),
-       DataTypeImpl::GetTensorType<BFloat16>(),
-       DataTypeImpl::GetTensorType<bool>(),
-       DataTypeImpl::GetTensorType<std::string>()};
-
+      []() {
+        auto temp = AllFixedSizeTensorTypes();
+        temp.push_back(DataTypeImpl::GetTensorType<std::string>());
+        return temp;
+      }();
   return all_tensor_types;
 }
 
-const std::vector<MLDataType>& DataTypeImpl::AllSequenceTensorTypes() {
-  static std::vector<MLDataType> all_sequence_tensor_types =
+const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeSequenceTensorTypes() {
+  static std::vector<MLDataType> all_fixed_size_sequence_tensor_types =
       {DataTypeImpl::GetSequenceTensorType<float>(),
        DataTypeImpl::GetSequenceTensorType<double>(),
        DataTypeImpl::GetSequenceTensorType<int64_t>(),
@@ -947,9 +937,18 @@ const std::vector<MLDataType>& DataTypeImpl::AllSequenceTensorTypes() {
        DataTypeImpl::GetSequenceTensorType<uint8_t>(),
        DataTypeImpl::GetSequenceTensorType<MLFloat16>(),
        DataTypeImpl::GetSequenceTensorType<BFloat16>(),
-       DataTypeImpl::GetSequenceTensorType<bool>(),
-       DataTypeImpl::GetSequenceTensorType<std::string>()};
+       DataTypeImpl::GetSequenceTensorType<bool>()};
 
+  return all_fixed_size_sequence_tensor_types;
+}
+
+const std::vector<MLDataType>& DataTypeImpl::AllSequenceTensorTypes() {
+  static std::vector<MLDataType> all_sequence_tensor_types =
+      []() {
+        auto temp = AllFixedSizeSequenceTensorTypes();
+        temp.push_back(DataTypeImpl::GetSequenceTensorType<std::string>());
+        return temp;
+      }();
   return all_sequence_tensor_types;
 }
 
@@ -969,6 +968,30 @@ const std::vector<MLDataType>& DataTypeImpl::AllNumericTensorTypes() {
        DataTypeImpl::GetTensorType<BFloat16>()};
 
   return all_numeric_size_tensor_types;
+}
+
+const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypes() {
+  static std::vector<MLDataType> all_fixed_size_tensor_and_sequence_tensor_types =
+      []() {
+        auto temp = AllFixedSizeTensorTypes();
+        const auto& seq = AllFixedSizeSequenceTensorTypes();
+        temp.insert(temp.end(), seq.begin(), seq.end());
+        return temp;
+      }();
+
+  return all_fixed_size_tensor_and_sequence_tensor_types;
+}
+
+const std::vector<MLDataType>& DataTypeImpl::AllTensorAndSequenceTensorTypes() {
+  static std::vector<MLDataType> all_tensor_and_sequence_types =
+      []() {
+        auto temp = AllTensorTypes();
+        const auto& seq = AllSequenceTensorTypes();
+        temp.insert(temp.end(), seq.begin(), seq.end());
+        return temp;
+      }();
+
+  return all_tensor_and_sequence_types;
 }
 
 // helper to stream. expected to only be used for error output, so any typeid lookup

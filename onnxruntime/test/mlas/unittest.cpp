@@ -573,7 +573,13 @@ protected:
         const float* Bias
         )
     {
-        MlasGemm(M, N, K, A, lda, offa, B, ldb, offb, BIsSigned, C, ldc, &CScale, Bias, threadpool);
+        MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR scale_bias_processor(C, ldc, &CScale, Bias);
+        MlasGemm(M, N, K,
+                 A, lda, offa,
+                 B, ldb, offb, BIsSigned,
+                 reinterpret_cast<int32_t*>(C), ldc,
+                 threadpool,
+                 &scale_bias_processor);
     }
 };
 
@@ -638,7 +644,13 @@ protected:
         )
     {
         const void* PackedB = PackB(N, K, B, ldb, BIsSigned);
-        MlasGemm(M, N, K, A, lda, offa, PackedB, offb, BIsSigned, C, ldc, &CScale, Bias, threadpool);
+        MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR scale_bias_processor(C, ldc, &CScale, Bias);
+        MlasGemm(M, N, K,
+                 A, lda, offa,
+                 PackedB, offb, BIsSigned,
+                 reinterpret_cast<int32_t*>(C), ldc,
+                 threadpool,
+                 &scale_bias_processor);
     }
 
 private:
@@ -2756,6 +2768,92 @@ public:
     }
 };
 
+class MlasScaleOutputTest : public MlasTestBase
+{
+private:
+    MatrixGuardBuffer<int32_t> BufferInput;
+    MatrixGuardBuffer<float> BufferOutput;
+    MatrixGuardBuffer<float> BufferOutputRef;
+    MatrixGuardBuffer<float> BufferScale;
+
+    void
+    Test(
+        size_t M,
+        size_t N,
+        bool PerColumn,
+        bool AccumulateMode
+        )
+    {
+        int32_t* Input = BufferInput.GetBuffer(M * N);
+        float* Output = BufferOutput.GetBuffer(M * N);
+        float* OutputRef = BufferOutputRef.GetBuffer(M * N);
+        float* Scale = BufferScale.GetBuffer(PerColumn ? N : 1);
+
+        std::default_random_engine generator(static_cast<unsigned>(M * N));
+        std::uniform_real_distribution<float> real_distribution(-1.0f, 1.0f);
+        std::uniform_int_distribution<int32_t> int_distribution(std::numeric_limits<int16_t>::min(),
+                                                                std::numeric_limits<int16_t>::max());
+
+        for (size_t s = 0; s < M * N; s++) {
+
+            Input[s] = int_distribution(generator);
+            Output[s] = OutputRef[s] = real_distribution(generator);
+        }
+
+        for (size_t s = 0; s < (PerColumn ? N : 1); s++) {
+            Scale[s] = real_distribution(generator);
+        }
+
+        // Compute Reference Value
+        for (size_t m = 0; m < M; m++) {
+            for (size_t n = 0; n < N; n++) {
+
+                float current_scale = PerColumn ? Scale[n] : Scale[0];
+                if (AccumulateMode) {
+                    OutputRef[m * N + n] += Input[m * N + n] * current_scale;
+                } else {
+                    OutputRef[m * N + n] = Input[m * N + n] * current_scale;
+                }
+            }
+        }
+
+        // Compute Output with MLAS
+        MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR OutputProcessor(Output, N, Scale, nullptr,
+                                                               AccumulateMode ? MLAS_QGEMM_OUTPUT_MODE::AccumulateMode : MLAS_QGEMM_OUTPUT_MODE::ZeroMode,
+                                                               PerColumn ? MLAS_QUANTIZATION_GRANULARITY::PerColumn : MLAS_QUANTIZATION_GRANULARITY::PerMatrix);
+        OutputProcessor.Process(Input, 0, 0, M, N, N);
+
+        constexpr float epsilon = 1e-6f;
+
+        for (size_t n = 0; n < M * N; n++) {
+
+            float diff = std::fabs(Output[n] - OutputRef[n]);
+            if (diff > epsilon) {
+                printf("MlasScaleOutputTest: Output[%zu][%zu]:%.8f, OutputRef[%zu][%zu]:%.8f, for case M=%zu, N=%zu\n",
+                       n / N, n % N, Output[n], n / N, n % N, OutputRef[n], M, N);
+            }
+        }
+    }
+
+public:
+    void
+    ExecuteShort(
+        void
+        ) override
+    {
+        for (size_t m = 1; m < 18; m++) {
+
+            for (size_t n = 1; n < 18; n++) {
+
+                Test(m, n, true, true);
+                Test(m, n, true, false);
+                Test(m, n, false, true);
+                Test(m, n, false, false);
+            }
+        }
+    }
+};
+
 void
 RunThreadedTests(
     void
@@ -2869,6 +2967,9 @@ main(
     printf("QLinearMul tests.\n");
     onnxruntime::make_unique<MlasQLinearBinaryOpTest>(
         [] (float a, float b) { return a * b; }, "*", MlasQLinearMul<int8_t>, MlasQLinearMul<uint8_t>)->ExecuteShort();
+
+    printf("MlasScaleOutput tests.\n");
+    onnxruntime::make_unique<MlasScaleOutputTest>()->ExecuteShort();
 
     printf("Done.\n");
 

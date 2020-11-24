@@ -749,19 +749,6 @@ public class OrtSession implements AutoCloseable {
     }
 
     /**
-     * Adds NGraph as an execution backend.
-     *
-     * <p>See the documentation for the supported backend types.
-     *
-     * @param ngBackendType The NGraph backend type.
-     * @throws OrtException If there was an error in native code.
-     */
-    public void addNGraph(String ngBackendType) throws OrtException {
-      checkClosed();
-      addNGraph(OnnxRuntime.ortApiHandle, nativeHandle, ngBackendType);
-    }
-
-    /**
      * Adds OpenVINO as an execution backend.
      *
      * @param deviceId The id of the OpenVINO execution device.
@@ -895,16 +882,13 @@ public class OrtSession implements AutoCloseable {
     private native void addDnnl(long apiHandle, long nativeHandle, int useArena)
         throws OrtException;
 
-    private native void addNGraph(long apiHandle, long nativeHandle, String ngBackendType)
-        throws OrtException;
-
     private native void addOpenVINO(long apiHandle, long nativeHandle, String deviceId)
         throws OrtException;
 
     private native void addTensorrt(long apiHandle, long nativeHandle, int deviceNum)
         throws OrtException;
 
-    private native void addNnapi(long apiHandle, long nativeHandle, long nnapiFlags)
+    private native void addNnapi(long apiHandle, long nativeHandle, int nnapiFlags)
         throws OrtException;
 
     private native void addNuphar(

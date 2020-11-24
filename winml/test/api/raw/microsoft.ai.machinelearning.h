@@ -124,6 +124,14 @@ struct learning_model_binding
         return m_binding.bind_as_reference<T>(feature_name, feature_name_size, p_shape, shape_size, p_data, data_size);
     }
 
+    template <typename T = float>
+    int32_t bind_as_references(
+        const wchar_t* feature_name, size_t feature_name_size,
+        T** p_data, size_t* data_sizes,
+        size_t num_buffers) {
+      return m_binding.bind_as_references<T>(feature_name, feature_name_size, p_data, data_sizes, num_buffers);
+    }
+
     template <typename T>
     int32_t bind(
         const wchar_t* feature_name, size_t feature_name_size,

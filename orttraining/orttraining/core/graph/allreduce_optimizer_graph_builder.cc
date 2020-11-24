@@ -94,7 +94,6 @@ static Status AddNcclAllReduceForGradients(
     std::vector<ArgDef>& gradient_argdefs,
     std::vector<ArgDef>& input_gradient_argdef,
     GraphAugmenter::GraphDefs& graph_defs) {
-
   std::vector<ArgDef> allreduce_outputs(gradient_argdefs.size());
   for (size_t i = 0; i < gradient_argdefs.size(); i++) {
     TypeProto* allreduced_gradient_type_proto = graph_defs.CopyTypeProto(gradient_argdefs[i]);
@@ -132,6 +131,8 @@ AllreduceOptimizerGraphBuilder::AllreduceOptimizerGraphBuilder(
 }
 
 Status AllreduceOptimizerGraphBuilder::BuildInternal(
+    bool should_add_gradient_norm,
+    bool should_add_gradient_finite_check,
     Graph& graph,
     GraphAugmenter::GraphDefs& graph_defs,
     std::vector<ArgDef>& weight_argdefs,
@@ -163,11 +164,14 @@ Status AllreduceOptimizerGraphBuilder::BuildInternal(
   // check if all gradients are finite
   ArgDef global_grad_norm_argdef;
   ArgDef global_grad_norm_finite_argdef;
-  if (opt_graph_config_.use_mixed_precision) {
+
+  if (should_add_gradient_norm) {
     ORT_RETURN_IF_ERROR(AddGradientNorm(
         nodearg_name_generator, gradient_argdefs, graph_defs, global_grad_norm_argdef));
     optimizer_graph_outputs[OptimizerOutputKey::GlobalGradientNorm] = global_grad_norm_argdef.name;
+  }
 
+  if (should_add_gradient_finite_check) {
     ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
         nodearg_name_generator, {global_grad_norm_argdef}, graph_defs, global_grad_norm_finite_argdef));
     optimizer_graph_outputs[OptimizerOutputKey::GradientAllIsFinite] = global_grad_norm_finite_argdef.name;

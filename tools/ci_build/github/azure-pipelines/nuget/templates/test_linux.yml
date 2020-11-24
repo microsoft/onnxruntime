@@ -37,7 +37,7 @@ jobs:
   - task: Docker@2
     displayName: login
     inputs:
-      containerRegistry: onnxruntimeregistry
+      containerRegistry: onnxruntimebuildcache
       command: login
       addPipelineData: false
 
@@ -61,7 +61,7 @@ jobs:
   - task: Docker@2
     displayName: logout
     inputs:
-      containerRegistry: onnxruntimeregistry
+      containerRegistry: onnxruntimebuildcache
       command: logout
       addPipelineData: false
 

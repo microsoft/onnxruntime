@@ -79,6 +79,29 @@ ArgDef BuildGroupNode(const std::string& group_output_name,
   return group_output;
 }
 
+Status OptimizerGraphBuilder::AddGradientPassThroughNode(
+    const NodeArgNameGeneratorFn& nodearg_name_generator,
+    std::vector<ArgDef>& gradient_argdefs,  // update argdefs in place
+    GraphAugmenter::GraphDefs& graph_defs) {
+  std::vector<ArgDef> outputs_gradient_argdefs;
+  for (size_t i = 0; i < gradient_argdefs.size(); ++i) {
+    ArgDef& gradient_argdef = gradient_argdefs[i];
+    TypeProto* output_gradient_type_proto = graph_defs.CopyTypeProto(gradient_argdef);
+    outputs_gradient_argdefs.emplace_back(nodearg_name_generator(gradient_argdef.name + "_passthrough"),
+                                          output_gradient_type_proto);
+  }
+
+  graph_defs.AddNodeDefs({NodeDef(OpDef{"PassThrough", kMSDomain, 1},
+                                  gradient_argdefs,
+                                  outputs_gradient_argdefs,
+                                  NodeAttributes(),
+                                  nodearg_name_generator("GradientPassThrought"))});
+
+  gradient_argdefs = outputs_gradient_argdefs;
+
+  return Status::OK();
+}
+
 Status OptimizerGraphBuilder::AddGradientScalingNodes(
     const NodeArgNameGeneratorFn& nodearg_name_generator,
     const float scale,
@@ -132,13 +155,13 @@ Status OptimizerGraphBuilder::AddGradientScalingNodes(
 Status OptimizerGraphBuilder::AddGradientScalingNodes(
     const NodeArgNameGeneratorFn& nodearg_name_generator,
     const float scale,
-    std::vector<ArgDef>& input_gradient_argdefs,       // update argdefs in place
+    std::vector<ArgDef>& input_gradient_argdefs,  // update argdefs in place
     std::vector<ArgDef>& output_gradient_argdef,  // update argdef in place
     GraphAugmenter::GraphDefs& graph_defs,
     ONNX_NAMESPACE::TensorProto_DataType target_type) {
   ArgDef pre_allreduce_scale(nodearg_name_generator("pre_allreduce_scale"),
                              graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
-                             
+
   graph_defs.AddInitializers({CreateTensorProto<float>(pre_allreduce_scale.name, scale, {})});
 
   TypeProto* fused_gradient_type_proto = graph_defs.CreateTypeProto();
@@ -149,7 +172,7 @@ Status OptimizerGraphBuilder::AddGradientScalingNodes(
   for (size_t i = 0; i < input_gradient_argdefs.size(); ++i) {
     inputs.emplace_back(input_gradient_argdefs[i]);
   }
-  
+
   for (size_t i = 0; i < input_gradient_argdefs.size(); ++i) {
     ArgDef& gradient_argdef = input_gradient_argdefs[i];
 
@@ -407,8 +430,18 @@ Status OptimizerGraphBuilder::Build(
     optimizer_graph_outputs[OptimizerOutputKey::GradientAccumulation] = group_accumulate_gradient_output.name;
   }
 
+  //gradient norm for bfloat16 is not ready yet. skip it to unblock the testing
+  //will add it back when it is ready
+  bool should_add_gradient_norm =
+      opt_graph_config_.enable_grad_norm_clip ||
+      (opt_graph_config_.use_mixed_precision && opt_graph_config_.mixed_precision_type == MixedPrecisionDataType::FP16);
+  bool should_add_gradient_finite_check =
+      opt_graph_config_.use_mixed_precision && opt_graph_config_.mixed_precision_type == MixedPrecisionDataType::FP16;
+
   // add configuration-specific graph changes
-  ORT_RETURN_IF_ERROR(BuildInternal(graph, graph_defs, weight_argdefs, gradient_argdefs, optimizer_state_initializer_names, optimizer_graph_outputs));
+  ORT_RETURN_IF_ERROR(BuildInternal(
+      should_add_gradient_norm, should_add_gradient_finite_check,
+      graph, graph_defs, weight_argdefs, gradient_argdefs, optimizer_state_initializer_names, optimizer_graph_outputs));
 
   // add zero gradient
   if (is_gradient_accumulation_enabled) {
@@ -420,6 +453,8 @@ Status OptimizerGraphBuilder::Build(
 }
 
 Status OptimizerGraphBuilder::BuildInternal(
+    bool should_add_gradient_norm,
+    bool should_add_gradient_finite_check,
     Graph& graph,
     GraphAugmenter::GraphDefs& graph_defs,
     std::vector<ArgDef>& weight_argdefs,
@@ -443,17 +478,21 @@ Status OptimizerGraphBuilder::BuildInternal(
   // check if all gradients are finite
   ArgDef global_grad_norm_argdef;
   ArgDef global_grad_norm_finite_argdef;
-  if (opt_graph_config_.use_mixed_precision) {
-    //gradient norm for bfloat is not ready yet. skip it to unblock the testing
-    //will add it back when it is ready
-    if (opt_graph_config_.mixed_precision_type == MixedPrecisionDataType::FP16) {
+
+  if (should_add_gradient_norm) {
       ORT_RETURN_IF_ERROR(AddGradientNorm(
           nodearg_name_generator, gradient_argdefs, graph_defs, global_grad_norm_argdef));
       optimizer_graph_outputs[OptimizerOutputKey::GlobalGradientNorm] = global_grad_norm_argdef.name;
-      ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
-          nodearg_name_generator, {global_grad_norm_argdef}, graph_defs, global_grad_norm_finite_argdef));
-      optimizer_graph_outputs[OptimizerOutputKey::GradientAllIsFinite] = global_grad_norm_finite_argdef.name;
     }
+
+  if (should_add_gradient_finite_check) {
+    ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
+        nodearg_name_generator, {global_grad_norm_argdef}, graph_defs, global_grad_norm_finite_argdef));
+    optimizer_graph_outputs[OptimizerOutputKey::GradientAllIsFinite] = global_grad_norm_finite_argdef.name;
+  }
+
+  if (!global_grad_norm_argdef.Exists() && !global_grad_norm_finite_argdef.Exists()) {
+    ORT_RETURN_IF_ERROR(AddGradientPassThroughNode(nodearg_name_generator, gradient_argdefs, graph_defs));
   }
 
   // add weight update

@@ -5,7 +5,6 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
-#include "onnxruntime_session_options_config_keys.h"
 
 // This value is used in structures passed to ORT so that a newer version of ORT will still work with them
 #define ORT_API_VERSION 5
@@ -90,7 +89,7 @@ extern "C" {
 #endif
 
 // Copied from TensorProto::DataType
-// Currently, Ort doesn't support complex64, complex128, bfloat16 types
+// Currently, Ort doesn't support complex64, complex128
 typedef enum ONNXTensorElementDataType {
   ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED,
   ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,   // maps to c type float
@@ -144,15 +143,6 @@ typedef enum OrtErrorCode {
   ORT_EP_FAIL,
 } OrtErrorCode;
 
-// This configures the arena based allocator used by ORT
-// See ONNX_Runtime_Perf_Tuning.md for details on what these mean and how to choose these values
-typedef struct OrtArenaCfg {
-  size_t max_mem;                // use 0 to allow ORT to choose the default
-  int arena_extend_strategy;     // use -1 to allow ORT to choose the default, 0 = kNextPowerOfTwo, 1 = kSameAsRequested
-  int initial_chunk_size_bytes;  // use -1 to allow ORT to choose the default
-  int max_dead_bytes_per_chunk;  // use -1 to allow ORT to choose the default
-} OrtArenaCfg;
-
 #define ORT_RUNTIME_CLASS(X) \
   struct Ort##X;             \
   typedef struct Ort##X Ort##X;
@@ -174,6 +164,7 @@ ORT_RUNTIME_CLASS(SequenceTypeInfo);
 ORT_RUNTIME_CLASS(ModelMetadata);
 ORT_RUNTIME_CLASS(ThreadPoolParams);
 ORT_RUNTIME_CLASS(ThreadingOptions);
+ORT_RUNTIME_CLASS(ArenaCfg);
 
 #ifdef _WIN32
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -266,6 +257,9 @@ typedef enum OrtCudnnConvAlgoSearch {
   DEFAULT,     // default algorithm using CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM
 } OrtCudnnConvAlgoSearch;
 
+/// <summary>
+/// Options for the CUDA provider that are passed to SessionOptionsAppendExecutionProvider_CUDA
+/// </summary>
 typedef struct OrtCUDAProviderOptions {
   int device_id;                                  // cuda device with id=0 as default device.
   OrtCudnnConvAlgoSearch cudnn_conv_algo_search;  // cudnn conv algo search option
@@ -273,6 +267,19 @@ typedef struct OrtCUDAProviderOptions {
   int arena_extend_strategy;                      // default area extend strategy to KNextPowerOfTwo.
   int do_copy_in_default_stream;
 } OrtCUDAProviderOptions;
+
+/// <summary>
+/// Options for the OpenVINO provider that are passed to SessionOptionsAppendExecutionProvider_OpenVINO
+/// </summary>
+typedef struct OrtOpenVINOProviderOptions {
+#ifdef __cplusplus
+  OrtOpenVINOProviderOptions() : device_type{}, enable_vpu_fast_compile{}, device_id{}, num_of_threads{} {}
+#endif
+  const char* device_type;                // CPU_FP32, GPU_FP32, GPU_FP16, MYRIAD_FP16, VAD-M_FP16 or VAD-F_FP32
+  unsigned char enable_vpu_fast_compile;  // 0 = false, nonzero = true
+  const char* device_id;
+  size_t num_of_threads;  // 0 uses default number of threads
+} OrtOpenVINOProviderOptions;
 
 struct OrtApi;
 typedef struct OrtApi OrtApi;
@@ -1084,17 +1091,25 @@ struct OrtApi {
    * Creates a custom environment with global threadpools and logger that will be shared across sessions.
    * Use this in conjunction with DisablePerSessionThreads API or else the session will use
    * its own thread pools.
-   * 
+   *
    * \param out should be freed by `OrtReleaseEnv` after use
    */
   ORT_API2_STATUS(CreateEnvWithCustomLoggerAndGlobalThreadPools, OrtLoggingFunction logging_function, _In_opt_ void* logger_param, OrtLoggingLevel logging_level,
                   _In_ const char* logid, _In_ const struct OrtThreadingOptions* tp_options, _Outptr_ OrtEnv** out);
 
   /**
-   * Append CUDA execution provider
+   * Append CUDA execution provider to the session options
+   * If CUDA is not available (due to a non cuda enabled build), this function will return failure.
    */
-  ORT_API2_STATUS(OrtSessionOptionsAppendExecutionProvider_CUDA,
-                  _In_ OrtSessionOptions* options, _In_ OrtCUDAProviderOptions* cuda_options);
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_CUDA,
+                  _In_ OrtSessionOptions* options, _In_ const OrtCUDAProviderOptions* cuda_options);
+
+  /**
+   * Append OpenVINO execution provider to the session options
+   * If OpenVINO is not available (due to the OpenVINO provider shared library or its dependencies not being installed), this function will fail.
+   */
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_OpenVINO,
+                  _In_ OrtSessionOptions* options, _In_ const OrtOpenVINOProviderOptions* provider_options);
 
   /**
    * Use this API to configure the global thread pool options to be used in the call to CreateEnvWithGlobalThreadPools.
@@ -1103,6 +1118,22 @@ struct OrtApi {
    * and that's recommended because turning this option on may hurt model accuracy.
    */
   ORT_API2_STATUS(SetGlobalDenormalAsZero, _Inout_ OrtThreadingOptions* tp_options);
+
+  /**
+  * Use this API to create the configuration of an arena that can eventually be used to define 
+  * an arena based allocator's behavior
+  * \param max_mem - use 0 to allow ORT to choose the default
+  * \param arena_extend_strategy -  use -1 to allow ORT to choose the default, 0 = kNextPowerOfTwo, 1 = kSameAsRequested
+  * \param initial_chunk_size_bytes - use -1 to allow ORT to choose the default
+  * \param max_dead_bytes_per_chunk - use -1 to allow ORT to choose the default
+  * \param out - a pointer to an OrtArenaCfg instance
+  * \return a nullptr in case of success or a pointer to an OrtStatus instance in case of failure
+  * See docs/C_API.md for details on what the following parameters mean and how to choose these values
+  */
+  ORT_API2_STATUS(CreateArenaCfg, _In_ size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes,
+                  int max_dead_bytes_per_chunk, _Outptr_ OrtArenaCfg** out);
+
+  ORT_CLASS_RELEASE(ArenaCfg);
 };
 
 /*

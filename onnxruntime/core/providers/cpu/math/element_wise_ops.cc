@@ -191,8 +191,10 @@ REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Min, 12, 12, Min_8, float, double, MLFloat
 // Supposed to add BFloat16 but we are not supporting now, however, separate registration
 REG_ELEMENTWISE_KERNEL_NONT(Min, 13, Min_8, float, double, MLFloat16, int32_t, uint32_t, int64_t, uint64_t);
 
-REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 7, 12, float, Less);
-REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 7, 12, double, Less);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 7, 8, float, Less);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 7, 8, double, Less);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 9, 12, float, Less);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 9, 12, double, Less);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 9, 12, int32_t, Less);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 9, 12, int64_t, Less);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Less, 13, float, Less);
@@ -200,8 +202,10 @@ REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Less, 13, double, Less);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Less, 13, int32_t, Less);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Less, 13, int64_t, Less);
 
-REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Greater, 7, 12, float, Greater);
-REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Greater, 7, 12, double, Greater);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Greater, 7, 8, float, Greater);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Greater, 7, 8, double, Greater);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Greater, 9, 12, float, Greater);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Greater, 9, 12, double, Greater);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Greater, 9, 12, int32_t, Greater);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Greater, 9, 12, int64_t, Greater);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Greater, 13, float, Greater);
@@ -209,11 +213,16 @@ REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Greater, 13, double, Greater);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Greater, 13, int32_t, Greater);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Greater, 13, int64_t, Greater);
 
-REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 7, 12, bool, Equal);
-REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 7, 12, int32_t, Equal);
-REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 7, 12, int64_t, Equal);
-REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 7, 12, float, Equal);
-REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 7, 12, double, Equal);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 7, 10, bool, Equal);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 7, 10, int32_t, Equal);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 7, 10, int64_t, Equal);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 7, 10, float, Equal);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 7, 10, double, Equal);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 11, 12, bool, Equal);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 11, 12, int32_t, Equal);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 11, 12, int64_t, Equal);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 11, 12, float, Equal);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 11, 12, double, Equal);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 13, bool, Equal);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 13, int32_t, Equal);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 13, int64_t, Equal);
@@ -1190,6 +1199,12 @@ Status PRelu<float>::Compute(OpKernelContext* context) const {
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     PRelu,
     7,
+    8,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    PRelu<float>);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    PRelu,
     9,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     PRelu<float>);
@@ -1250,33 +1265,24 @@ Status Expand_8<T>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-#define REG_EXPAND_KERNEL(TYPE)                                                    \
+#define REG_EXPAND_KERNEL_WITH_TYPE_NAME(TYPE, TYPE_NAME)                          \
   ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                        \
       Expand,                                                                      \
       8,                                                                           \
       12,                                                                          \
-      TYPE,                                                                        \
+      TYPE_NAME,                                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>()), \
       Expand_8<TYPE>);                                                             \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                  \
       Expand,                                                                      \
       13,                                                                          \
-      TYPE,                                                                        \
+      TYPE_NAME,                                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>()), \
       Expand_8<TYPE>);
 
-REG_EXPAND_KERNEL(float)
-REG_EXPAND_KERNEL(double)
-REG_EXPAND_KERNEL(int8_t)
-REG_EXPAND_KERNEL(int16_t)
-REG_EXPAND_KERNEL(int32_t)
-REG_EXPAND_KERNEL(int64_t)
-REG_EXPAND_KERNEL(uint8_t)
-REG_EXPAND_KERNEL(uint16_t)
-REG_EXPAND_KERNEL(uint32_t)
-REG_EXPAND_KERNEL(uint64_t)
-REG_EXPAND_KERNEL(bool)
-REG_EXPAND_KERNEL(MLFloat16)
+#define REG_EXPAND_KERNEL(TYPE) REG_EXPAND_KERNEL_WITH_TYPE_NAME(TYPE, TYPE)
+
+REG_EXPAND_KERNEL_WITH_TYPE_NAME(std::string, string)
 
 template <>
 Status Erf<float>::Compute(OpKernelContext* context) const {

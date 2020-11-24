@@ -61,7 +61,7 @@ TEST(DequantizeLinearOpTest, Without_Zero_Point) {
   test.AddInput<int8_t>("x", {}, {100});
   test.AddInput<float>("x_scale", {}, {2.0f});
   test.AddOutput<float>("y", {}, {200.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
+  test.Run();
 }
 
 // 1d zero & scale with default axis
@@ -252,7 +252,7 @@ TEST(QuantizeLinearOpTest, DISABLED_QuantizeLinear_Without_Zero_Point) {
   test.AddInput<float>("x", {}, {3});
   test.AddInput<float>("y_scale", {}, {2.0f});
   test.AddOutput<uint8_t>("y", {}, {2});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
+  test.Run();
 }
 
 TEST(QuantizeLinearOpTest, Per_Channel_Axis_Default) {

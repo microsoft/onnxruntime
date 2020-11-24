@@ -25,13 +25,15 @@ class AllreduceOptimizerGraphBuilder : public OptimizerGraphBuilder {
 
  protected:
   virtual Status BuildInternal(
+      bool should_add_gradient_norm,
+      bool should_add_gradient_finite_check,
       Graph& graph,
       GraphAugmenter::GraphDefs& graph_defs,
       std::vector<ArgDef>& weight_argdefs,
       std::vector<ArgDef>& gradient_argdefs,
       std::unordered_set<std::string>& optimizer_state_initializer_names,
       OptimizerOutputKeyMap<std::string>& optimizer_graph_outputs) override;
-  
+
   Status AddHorovodAllReduceForGradients(
       std::vector<ArgDef>& gradient_argdefs,
       GraphAugmenter::GraphDefs& graph_defs,
