@@ -249,4 +249,8 @@ ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_CUDA,
 ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_OpenVINO,
                     _In_ OrtSessionOptions* options, _In_ const OrtOpenVINOProviderOptions* provider_options);
 ORT_API_STATUS_IMPL(SetGlobalDenormalAsZero, _Inout_ OrtThreadingOptions* options);
+
+ORT_API_STATUS_IMPL(CreateArenaCfg, _In_ size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes,
+                    int max_dead_bytes_per_chunk, _Outptr_ OrtArenaCfg** out);
+ORT_API(void, ReleaseArenaCfg, _Frees_ptr_opt_ OrtArenaCfg*);
 }  // namespace OrtApis

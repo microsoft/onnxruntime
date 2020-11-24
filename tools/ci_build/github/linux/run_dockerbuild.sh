@@ -5,10 +5,11 @@ SCRIPT_DIR="$( dirname "${BASH_SOURCE[0]}" )"
 SOURCE_ROOT=$(realpath $SCRIPT_DIR/../../../../)
 CUDA_VER=cuda10.1-cudnn7.6
 YOCTO_VERSION="4.19"
+INSTALL_DEPS_DISTRIBUTED_SETUP=false
 ALLOW_RELEASED_ONNX_OPSET_ONLY_ENV="ALLOW_RELEASED_ONNX_OPSET_ONLY="$ALLOW_RELEASED_ONNX_OPSET_ONLY
 echo "ALLOW_RELEASED_ONNX_OPSET_ONLY environment variable is set as "$ALLOW_RELEASED_ONNX_OPSET_ONLY_ENV
 
-while getopts c:o:d:r:p:x:a:v:y:t: parameter_Option
+while getopts c:o:d:r:p:x:a:v:y:t:m parameter_Option
 do case "${parameter_Option}"
 in
 #android, ubuntu16.04, manylinux2010, ubuntu18.04, CentOS7
@@ -31,6 +32,8 @@ y) YOCTO_VERSION=${OPTARG};;
 # an additional name for the resulting docker image (created with "docker tag")
 # this is useful for referencing the image outside of this script
 t) EXTRA_IMAGE_TAG=${OPTARG};;
+# install distributed setup dependencies
+m) INSTALL_DEPS_DISTRIBUTED_SETUP=true;;
 esac
 done
 
@@ -86,8 +89,9 @@ else
         if [ $CUDA_VER = "cuda9.1-cudnn7.1" ]; then
             DOCKER_FILE=Dockerfile.ubuntu_gpu_cuda9
         fi
+        [[ $INSTALL_DEPS_DISTRIBUTED_SETUP = true ]] && INSTALL_DEPS_EXTRA_ARGS="-m" || INSTALL_DEPS_EXTRA_ARGS=""
         $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
-            --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg BUILD_EXTR_PAR=\"${BUILD_EXTR_PAR}\"" \
+            --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg BUILD_EXTR_PAR=\"${BUILD_EXTR_PAR}\" --build-arg INSTALL_DEPS_EXTRA_ARGS=${INSTALL_DEPS_EXTRA_ARGS}" \
             --dockerfile $DOCKER_FILE --context .
     elif [ $BUILD_DEVICE = "tensorrt" ]; then
         # TensorRT container release 20.07

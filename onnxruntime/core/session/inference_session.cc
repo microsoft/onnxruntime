@@ -1127,6 +1127,7 @@ common::Status InferenceSession::Initialize() {
     std::string use_env_allocators = session_options_.GetConfigOrDefault(kOrtSessionOptionsConfigUseEnvAllocators,
                                                                          "0");
     if (use_env_allocators == "1") {
+      LOGS(*session_logger_, INFO) << "This session will use the allocator registered with the environment.";
       UpdateProvidersWithSharedAllocators();
     }
 

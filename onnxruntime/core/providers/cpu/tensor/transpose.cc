@@ -301,8 +301,6 @@ static void SimpleTransposeSingleAxisOutwards(const T* input_data, T* output_dat
   }
 }
 
-#ifdef MLAS_SUPPORTS_TRANSPOSE
-
 static void SimpleTransposeSingleAxisOutwards(const uint8_t* input_data, uint8_t* output_data,
                                               int64_t num_loops, int64_t num_writers,
                                               int64_t writes_per_loop, int64_t writes_per_writer_per_loop) {
@@ -315,8 +313,6 @@ static void SimpleTransposeSingleAxisOutwards(const uint8_t* input_data, uint8_t
     output_data += writes_per_loop;
   }
 }
-
-#endif
 
 //  `input_shape_override` overrides the shape of `input` for compute purposes.
 static void TransposeSingleAxisOutwards(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
@@ -411,8 +407,6 @@ static void SimpleTransposeSingleAxisInwards(const T* input_data, T* output_data
   }
 }
 
-#ifdef MLAS_SUPPORTS_TRANSPOSE
-
 static void SimpleTransposeSingleAxisInwards(const uint8_t* input_data, uint8_t* output_data,
                                              int64_t num_loops, int64_t num_readers,
                                              int64_t reads_per_loop, int64_t reads_per_reader_per_loop) {
@@ -425,8 +419,6 @@ static void SimpleTransposeSingleAxisInwards(const uint8_t* input_data, uint8_t*
     output_data += reads_per_loop;
   }
 }
-
-#endif
 
 // moving a single axis inwards where the read/write size is a power of 2 and between 8 and 64 bits.
 //  `input_shape_override` overrides the shape of `input` for compute purposes.

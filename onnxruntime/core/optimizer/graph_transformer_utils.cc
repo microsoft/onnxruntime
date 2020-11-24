@@ -168,7 +168,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
         transformers.emplace_back(onnxruntime::make_unique<NchwcTransformer>());
       }
 
-#if defined(MLAS_TARGET_AMD64_IX86)
+#ifdef MLAS_SUPPORTS_GEMM_U8X8
       transformers.emplace_back(onnxruntime::make_unique<NhwcTransformer>());
 #endif
 #endif

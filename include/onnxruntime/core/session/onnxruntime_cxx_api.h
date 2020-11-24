@@ -98,6 +98,7 @@ ORT_DEFINE_RELEASE(Value);
 ORT_DEFINE_RELEASE(ModelMetadata);
 ORT_DEFINE_RELEASE(ThreadingOptions);
 ORT_DEFINE_RELEASE(IoBinding);
+ORT_DEFINE_RELEASE(ArenaCfg);
 
 /*! \class Ort::Float16_t
   * \brief it is a structure that represents float16 data.
@@ -549,6 +550,23 @@ struct IoBinding : public Base<OrtIoBinding> {
   std::vector<Value> GetOutputValues(Allocator&) const;
   void ClearBoundInputs();
   void ClearBoundOutputs();
+};
+
+/*! \struct Ort::ArenaCfg
+  * \brief it is a structure that represents the configuration of an arena based allocator
+  * \details Please see docs/C_API.md for details
+  */
+struct ArenaCfg : Base<OrtArenaCfg> {
+  explicit ArenaCfg(std::nullptr_t) {}
+  /**
+  * \param max_mem - use 0 to allow ORT to choose the default
+  * \param arena_extend_strategy -  use -1 to allow ORT to choose the default, 0 = kNextPowerOfTwo, 1 = kSameAsRequested
+  * \param initial_chunk_size_bytes - use -1 to allow ORT to choose the default
+  * \param max_dead_bytes_per_chunk - use -1 to allow ORT to choose the default
+  * \return an instance of ArenaCfg
+  * See docs/C_API.md for details on what the following parameters mean and how to choose these values
+  */
+  ArenaCfg(size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes, int max_dead_bytes_per_chunk);
 };
 
 //

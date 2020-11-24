@@ -77,12 +77,18 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   };
   const auto supported_nodes_vector = GetSupportedNodes(graph_view, params);
 
+  size_t num_of_supported_nodes = 0;
+
   // Find inputs, initializers and outputs for each supported subgraph
   const std::vector<NodeIndex>& node_index = graph_view.GetNodesInTopologicalOrder();
   const auto& graph_outputs = graph_view.GetOutputs();
   for (const auto& group : supported_nodes_vector) {
     if (group.empty())
       continue;
+
+    num_of_supported_nodes += group.size();
+    LOGS_DEFAULT(VERBOSE) << "NnapiExecutionProvider::GetCapability, current supported node group size: "
+                          << group.size();
 
     std::unordered_set<size_t> node_set;
     node_set.reserve(group.size());
@@ -189,6 +195,11 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
     result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
   }
+
+  LOGS_DEFAULT(INFO) << "NnapiExecutionProvider::GetCapability,"
+                     << " number of partitions supported by NNAPI: " << result.size()
+                     << " number of nodes in the graph: " << graph_view.NumberOfNodes()
+                     << " number of nodes supported by NNAPI: " << num_of_supported_nodes;
 
   return result;
 }
@@ -312,9 +323,10 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
         // Also NNAPI treats a tensor input with empty shape as dynamic shape input
         // Disable support of the scalar input (tensor input with an empty shape) for now
         // TODO, add support for ONNX scalar input (tensor input with an empty shape)
-        if (dimensions.empty())
-          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "NNAPI does not support scalar input");
-
+        if (dimensions.empty()) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "NNAPI does not support scalar input, input name, ", input_name);
+        }
         // it is possible that the input has the detailed size while
         // the model has an operand with unknown size, use the size
         // of the actual input
