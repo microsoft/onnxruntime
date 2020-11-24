@@ -12,6 +12,8 @@ contrib_ops_files = [
                     'bert/attention.h',
                     'bert/attention_impl.cu',
                     'bert/attention_impl.h',
+                    'bert/attention_transpose.cu',
+                    'bert/attention_past.cu',                    
                     'bert/embed_layer_norm.cc',
                     'bert/embed_layer_norm.h',
                     'bert/embed_layer_norm_impl.cu',
@@ -355,6 +357,7 @@ def amd_hipify(config_build_dir):
         if file not in contrib_ops_files:
             src_file_path = os.path.join(cuda_contrib_path, file)
             dst_file_path = os.path.join(rocm_contrib_path, file)
+            print('hipify => {}'.format(dst_file_path))
             hipify(src_file_path, dst_file_path)
 
     cuda_core_path = os.path.join(core_ops_path, 'cuda')
