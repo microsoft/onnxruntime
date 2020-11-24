@@ -65,11 +65,6 @@ Abstract:
 #define MLAS_SUPPORTS_GEMM_U8X8
 #endif
 
-#if defined(MLAS_TARGET_AMD64_IX86)
-#define MLAS_SUPPORTS_GEMM_U8X8_AND_REQUANTIZE_OUTPUT
-#define MLAS_SUPPORTS_TRANSPOSE
-#endif
-
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_ARM64) || (defined(MLAS_TARGET_ARM) && !defined(_MSC_VER))
 #define MLAS_SUPPORTS_PACKED_GEMM_U8X8
 #endif
@@ -673,31 +668,8 @@ MlasRequantizeOutput(
     const int32_t* Bias,
     size_t M,
     size_t N,
-    float Scale,
-    uint8_t ZeroPoint
-    );
-
-void
-MLASCALL
-MlasRequantizeOutputColumn(
-    const int32_t* Input,
-    uint8_t* Output,
-    const int32_t* Bias,
-    size_t M,
-    size_t N,
-    const float Scale,
-    uint8_t ZeroPoint
-    );
-
-void
-MLASCALL
-MlasRequantizeOutputColumn(
-    const int32_t* Input,
-    uint8_t* Output,
-    const int32_t* Bias,
-    size_t M,
-    size_t N,
     const float* Scale,
+    bool PerColumnScale,
     uint8_t ZeroPoint
     );
 
@@ -708,6 +680,44 @@ MlasFindMinMaxElement(
     float* Min,
     float* Max,
     size_t N
+    );
+
+size_t
+MLASCALL
+MlasQLinearSafePaddingElementCount(
+    size_t ElementSize,
+    size_t ElementCount
+    );
+
+void
+MLASCALL
+MlasQLinearGlobalAveragePoolNchw(
+    const uint8_t* Input,
+    float ScaleInput,
+    int32_t ZeroPointInput,
+    uint8_t* Output,
+    float ScaleOutput,
+    int32_t ZeroPointOutput,
+    size_t Channels,
+    size_t ImageSize,
+    int32_t* AccumulateBuffer
+    );
+
+void
+MLASCALL
+MlasQLinearGlobalAveragePoolNhwc(
+    const uint8_t* Input,
+    float ScaleInput,
+    int32_t ZeroPointInput,
+    uint8_t* Output,
+    float ScaleOutput,
+    int32_t ZeroPointOutput,
+    size_t Batch,
+    size_t ImageSize,
+    size_t Stride,
+    size_t Channels,
+    int32_t* AccumulateBuffer,
+    const uint8_t* ZeroBuffer
     );
 
 //
