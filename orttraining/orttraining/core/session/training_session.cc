@@ -290,7 +290,8 @@ Status TrainingSession::ConfigureForTraining(
 
   LOGS(*session_logger_, WARNING) << "ZZZ BEFORE";
 
-  ORT_IGNORE_RETURN_VALUE(Save("/bert_ort/sedymche/smart_compose_output/before_model.onnx", SaveOption::NO_RELOAD));
+  if (IsRootNode(config))
+    ORT_IGNORE_RETURN_VALUE(Save("/bert_ort/sedymche/smart_compose_output/before_model.onnx", SaveOption::NO_RELOAD));
 
   ORT_RETURN_IF_ERROR(BuildGradientGraph(
       weight_names_to_train, loss_name, config.gradient_graph_config, *session_logger_));
@@ -512,7 +513,6 @@ static Status BuildGradientGraphInternal(Graph& graph,
                                           loss_function_output_name,
                                           gradient_graph_config,
                                           logger);
-                                            if (IsRootNode(config))
   return grad_graph_builder.Build(p_mixed_precision_node_arg_names_to_train != nullptr ? &node_arg_names_to_train : nullptr);
 }
 
