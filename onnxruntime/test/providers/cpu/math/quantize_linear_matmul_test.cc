@@ -7,7 +7,7 @@
 namespace onnxruntime {
 namespace test {
 
-TEST(QuantizeLinearMatmulOpTest, QLinearMatMul3D) {
+TEST(QuantizeLinearMatmulOpTest, QLinearMatMul3D_U8U8) {
   OpTester test("QLinearMatMul", 10);
   test.AddInput<uint8_t>("T1", {2, 2, 4},
                          {208, 236, 0, 238,
@@ -41,6 +41,44 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMul3D) {
 
                            168, 115, 255,
                            1, 66, 151});
+
+  test.Run();
+}
+
+TEST(QuantizeLinearMatmulOpTest, QLinearMatMul3D_U8S8) {
+  OpTester test("QLinearMatMul", 10);
+  test.AddInput<uint8_t>("T1", {2, 2, 4},
+                         {208, 126, 0, 238,
+                          3, 214, 255, 29,
+
+                          208, 236, 0, 238,
+                          3, 214, 255, 29});
+
+  test.AddInput<float>("a_scale", {}, {0.0066f});
+  test.AddInput<uint8_t>("a_zero_point", {}, {113});
+
+  test.AddInput<int8_t>("T2", {2, 4, 3},
+                         {-43, 51, -34,
+                          60, 26, -17,
+                          0, 63, -55,
+                          47, -29, -31,
+
+                          -62, 51, -42,
+                          60, 26, -22,
+                          0, -8, -19,
+                          37, -2, -47});
+
+  test.AddInput<float>("b_scale", {}, {0.00802f});
+  test.AddInput<int8_t>("b_zero_point", {}, {-2});
+
+  test.AddInput<float>("y_scale", {}, {0.0123f});
+  test.AddInput<uint8_t>("y_zero_point", {}, {118});
+  test.AddOutput<uint8_t>("T3", {2, 2, 3},
+                          {130, 95, 114,
+                           148, 155, 105,
+
+                           146, 157, 75,
+                           160, 101, 134});
 
   test.Run();
 }
@@ -83,5 +121,6 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMul) {
 TEST(QuantizeLinearMatmulOpTest, QLinearMatMulAllInputExceptT1AreInitializers) {
   QLinearMatMul2DTest(true);
 }
+
 }  // namespace test
 }  // namespace onnxruntime

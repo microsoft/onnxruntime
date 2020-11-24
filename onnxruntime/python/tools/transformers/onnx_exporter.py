@@ -247,9 +247,7 @@ def load_pretrained_model(model_name, config, cache_dir, custom_model_class, is_
     transformers_module = __import__("transformers", fromlist=[model_class_name])
     model_class = getattr(transformers_module, model_class_name)
 
-    use_cdn = False if model_name == 't5-11b' else True
-
-    return model_class.from_pretrained(model_name, config=config, cache_dir=cache_dir, use_cdn=use_cdn)
+    return model_class.from_pretrained(model_name, config=config, cache_dir=cache_dir)
 
 
 def load_pt_model(model_name, model_class, cache_dir):

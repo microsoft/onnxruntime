@@ -210,14 +210,13 @@ void RunConv2DWithBiasTest(bool all_input_initializer_except_x) {
   OpTester test("QLinearConv", 10);
   test.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
 
-  // TODO: nGraph fails to handle the optional bias vector correctly.
   TestQLinearConvOp(test,
                     X, {1, 2, 5, 5},
                     W, {4, 2, 3, 3},
                     &B,
                     Y, {1, 4, 5, 5},
                     all_input_initializer_except_x,
-                    {kNGraphExecutionProvider});
+                    {});
 }
 
 TEST(QLinearConvTest, WithBias_2D) {
@@ -252,17 +251,16 @@ TEST(QLinearConvTest, WithGroup_2D) {
   test.AddAttribute("pads", std::vector<int64_t>{0, 0, 1, 1});
   test.AddAttribute("strides", std::vector<int64_t>{2, 2});
 
-  // TODO: nGraph rejects grouped convolutions with bias.
   TestQLinearConvOp(test,
                     X, {1, 6, 3, 5},
                     W, {6, 2, 2, 2},
                     &B,
                     Y, {1, 6, 2, 3},
                     false,
-                    {kNGraphExecutionProvider});
+                    {});
 }
 
-#if defined(MLAS_TARGET_AMD64_IX86)
+#ifdef MLAS_SUPPORTS_GEMM_U8X8
 
 template <typename T1, typename T2>
 class QLinearConvOpTester {
@@ -764,6 +762,44 @@ TEST(QLinearConvTest, Conv3D_U8S8_Depthwise) {
   test.SetGroups(16);
   test.SetOutputScaleAndZeroPoint(.85f, 112);
   test.Run();
+}
+
+TEST(QLinearConvTest, Conv2D_U8S8_Requantize_NoBias) {
+  for (int64_t channels = 1; channels <= 32; channels++) {
+    QLinearConvOpTester<uint8_t, int8_t> test;
+    test.GenerateRandomInput({1, 8, 5, 5}, .05f, 4);
+    test.GenerateRandomWeights({channels, 8, 3, 3}, .125f, 0);
+    test.SetPads({1, 1, 1, 1});
+    test.SetOutputScaleAndZeroPoint(.55f, 56);
+    test.Run();
+  }
+}
+
+TEST(QLinearConvTest, Conv2D_U8S8_Requantize_Bias) {
+  for (int64_t channels = 1; channels <= 32; channels++) {
+    QLinearConvOpTester<uint8_t, int8_t> test;
+    test.GenerateRandomInput({1, 8, 5, 5}, .05f, 4);
+    test.GenerateRandomWeights({channels, 8, 3, 3}, .125f, 0);
+    test.GenerateRandomBias();
+    test.SetPads({1, 1, 1, 1});
+    test.SetOutputScaleAndZeroPoint(.55f, 56);
+    test.Run();
+  }
+}
+
+TEST(QLinearConvTest, Conv2D_U8S8_Requantize_Bias_PerChannel) {
+  std::vector<float> weight_scales;
+  for (int64_t channels = 1; channels <= 32; channels++) {
+    QLinearConvOpTester<uint8_t, int8_t> test;
+    test.GenerateRandomInput({1, 8, 5, 5}, .05f, 4);
+    test.GenerateRandomWeights({channels, 8, 3, 3}, .125f, 0);
+    weight_scales.push_back(.120f + .002f * static_cast<float>(channels));
+    test.SetWeightScales(weight_scales);
+    test.GenerateRandomBias();
+    test.SetPads({1, 1, 1, 1});
+    test.SetOutputScaleAndZeroPoint(.55f, 56);
+    test.Run();
+  }
 }
 
 #endif

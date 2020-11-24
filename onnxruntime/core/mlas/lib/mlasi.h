@@ -783,6 +783,47 @@ MlasPartitionWork(
 }
 
 //
+// Define the minimum floating point value (and its bit value equivalent) that
+// has no fractional bits. This number can be used for fast rounding of floating
+// point numbers to integers.
+//
+
+#define MLAS_ROUNDING_BIAS_MAGIC                    12582912.f
+#define MLAS_ROUNDING_BIAS_MAGIC_BITS               0x4B400000
+
+//
+// Helpers to cast a floating point type to and from an integer bit format.
+//
+
+MLAS_FORCEINLINE
+uint32_t
+MlasBitsOfFp32(
+    float FloatValue
+    )
+{
+    union {
+        uint32_t IntegerValue;
+        float FloatValue;
+    } u;
+    u.FloatValue = FloatValue;
+    return u.IntegerValue;
+}
+
+MLAS_FORCEINLINE
+float
+MlasFp32FromBits(
+    uint32_t IntegerValue
+    )
+{
+    union {
+        uint32_t IntegerValue;
+        float FloatValue;
+    } u;
+    u.IntegerValue = IntegerValue;
+    return u.FloatValue;
+}
+
+//
 // Define the missing ARM64 NEON intrinsic macros from arm64_neon.h that enable
 // cross-compiler support.
 //

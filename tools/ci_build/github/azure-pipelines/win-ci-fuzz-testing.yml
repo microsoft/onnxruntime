@@ -4,8 +4,6 @@ jobs:
   strategy:
     maxParallel: 2
     matrix:
-      debug:
-        BuildConfig: 'Debug'
       release:
         BuildConfig: 'RelWithDebInfo'
   variables:
@@ -57,20 +55,11 @@ jobs:
     inputs:
       versionSpec: 5.7.0
 
-  - task: NuGetCommand@2
-    displayName: 'NuGet restore'
-    inputs:
-      command: 'restore'
-      feedsToUse: 'config'
-      restoreSolution: '$(Build.SourcesDirectory)\packages.config'
-      nugetConfigPath: '$(Build.SourcesDirectory)\NuGet.config'
-      restoreDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
-
   - task: PythonScript@0
     displayName: 'Generate cmake config'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--gen_doc --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_wheel --use_dnnl --use_winml --use_openmp --build_shared_lib --enable_onnx_tests --enable_wcos --build_java --build_nodejs --use_full_protobuf --fuzz_testing'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --use_full_protobuf --fuzz_testing'
       workingDirectory: '$(Build.BinariesDirectory)'
 
   - task: VSBuild@1
@@ -86,72 +75,17 @@ jobs:
       workingFolder: '$(Build.BinariesDirectory)\$(BuildConfig)'
       createLogFile: true
 
-  - task: PythonScript@0
-    displayName: 'Build wheel'
-    inputs:
-      scriptPath: '$(Build.SourcesDirectory)\setup.py'
-      arguments: 'bdist_wheel'
-      workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
-
-  - template: templates/set-test-data-variables-step.yml
-
-  - task: DotNetCoreCLI@2
-    displayName: 'Restore nuget packages'
-    inputs:
-      command: restore
-      projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-      configuration: '$(BuildConfig)'
-      arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OrtPackageId=$(OrtPackageId)'
-      workingDirectory: '$(Build.SourcesDirectory)\csharp'      
-
-  - task: DotNetCoreCLI@2
-    displayName: 'Build C#'    
-    inputs:
-      command: build
-      projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-      configuration: '$(BuildConfig)'          
-      arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
-      workingDirectory: '$(Build.SourcesDirectory)\csharp'
-
-  - task: DotNetCoreCLI@2
-    displayName: 'Test C#'
-    condition: and(succeeded(), eq(variables['BuildConfig'], 'RelWithDebInfo'))
-    inputs:
-      command: test
-      projects: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests\Microsoft.ML.OnnxRuntime.Tests.csproj'
-      configuration: '$(BuildConfig)'          
-      arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) --blame'
-      workingDirectory: '$(Build.SourcesDirectory)\csharp'
-
-  - script: |
-     mklink  /D /J $(Build.BinariesDirectory)\$(BuildConfig)\models $(Build.BinariesDirectory)\models  
-     DIR dist\ /S /B > wheel_filename_file
-     set /p WHEEL_FILENAME=<wheel_filename_file
-     del wheel_filename_file
-     python.exe -m pip install -q --upgrade %WHEEL_FILENAME%
-     set PATH=$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig);%PATH%
-     python $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --build_nodejs --test --cmake_generator "Visual Studio 16 2019"  --use_dnnl --build_wheel --enable_onnx_tests --use_full_protobuf --fuzz_testing
-   
-    workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
-    displayName: 'Run tests'
- 
-  - task: PublishTestResults@2
-    displayName: 'Publish unit test results'
-    inputs:
-      testResultsFiles: '**/*.results.xml'
-      searchFolder: '$(Build.BinariesDirectory)'
-      testRunTitle: 'Unit Test Run'
-    condition: succeededOrFailed()
-
   - template: templates/component-governance-component-detection-steps.yml
     parameters :
       condition : 'succeeded'
+
   - task: CmdLine@2
     displayName: 'Run fuzz testing '
     inputs:
       script: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)\onnxruntime_security_fuzz.exe /t  /f "$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)\testdata\mnist.onnx"  1 m'
       workingDirectory: $(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)
       failOnStderr: false # Optional
+
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
     displayName: 'Clean Agent Directories'
     condition: always()

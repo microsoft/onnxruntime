@@ -181,7 +181,10 @@ Status ModelBuilder::RegisterInitializers() {
       shape.push_back(SafeInt<uint32_t>(dim));
     }
 
-    ORT_RETURN_IF_NOT(!shape.empty(), "NNAPI does not support scalar initializer, tensor name, ", name);
+    // If we have an empty shape, this is a scalar initializer, since NNAPI does not allow empty shape,
+    // we will make the scalar initializer a {1} tensor
+    if (shape.empty())
+      shape.push_back(1);
 
     Type type = Type::TENSOR_FLOAT32;
     switch (tensor.data_type()) {
@@ -260,8 +263,12 @@ Status ModelBuilder::RegisterModelInputs() {
       shape.push_back(SafeInt<uint32_t>(dim.dim_value()));
     }
 
-    ORT_RETURN_IF_NOT(GetAndroidSdkVer() >= 29 || !shape.empty(),
-                      "0-rank input is only supported on Android API level 29+");
+    // NNAPI has strict input type requirements which separates tensor inputs and scalar inputs
+    // For ONNX the we do not have clear line between scalar inputs and tensor inputs
+    // Also NNAPI treats a tensor input with empty shape as dynamic shape input
+    // Disable support of the scalar input (tensor input with an empty shape) for now
+    // TODO, add support for ONNX scalar input (tensor input with an empty shape)
+    ORT_RETURN_IF_NOT(!shape.empty(), "0-rank input is not currently supported, input name, ", input_name);
 
     Type type = Type::TENSOR_FLOAT32;
     float scale = 0.0f;
