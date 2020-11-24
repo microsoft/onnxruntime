@@ -79,7 +79,7 @@ jobs:
   steps:
     - template: ../../templates/set-version-number-variables-step.yml
     - template: ../../templates/linux-set-variables-and-download.yml
-    - template: templates/get-docker-image-steps.yml
+    - template: ../../templates/get-docker-image-steps.yml
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.centos_gpu
         Context: tools/ci_build/github/linux/docker
