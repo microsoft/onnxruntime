@@ -117,6 +117,9 @@ else()
       set(JNI_ARCH aarch64)
     elseif(onnxruntime_target_platform STREQUAL "x64")
       set(JNI_ARCH x64)
+    else()
+      # if everything else failed then we're on a 32-bit arch and Java isn't supported
+      message(FATAL_ERROR "Java is currently not supported on 32-bit x86 architecture")
     endif()
   else()
     # if everything else failed then we're on a 32-bit arch and Java isn't supported
