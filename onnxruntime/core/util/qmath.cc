@@ -21,6 +21,8 @@ using ConstEigenMatrixMapRowMajorOuterStride =
 template <typename T>
 using EigenMatrixMapRowMajorOuterStride =
     Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>, 0, Eigen::OuterStride<>>;
+template <typename T>
+using ConstEigenMatrixMapRowMajor = Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>;
 
 template <typename TA, typename TB, typename TY>
 void QGemmWithEigen(
