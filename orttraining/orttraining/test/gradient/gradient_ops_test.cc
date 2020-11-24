@@ -651,7 +651,7 @@ TEST(GradientCheckerTest, ReluGradDnnl) {
   execution_providers.push_back(DefaultDnnlExecutionProvider());
   UnaryOpGradientTest("Relu", kOnnxDomain, 9, &execution_providers);
 }
-#endif
+#endif // USE_DNNL
 
 #ifndef USE_CUDA
 TEST(GradientCheckerTest, CastGrad) {
@@ -820,7 +820,7 @@ TEST(GradientCheckerTest, MaxPoolGradDnnl) {
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 }
-#endif
+#endif // USE_DNNL
 
 TEST(GradientCheckerTest, GlobalAveragePoolGrad) {
   float max_error;
@@ -1042,7 +1042,7 @@ TEST(GradientCheckerTest, ConvGradDnnl) {
   }
 }
 
-#endif
+#endif // USE_DNNL
 
 static void TestConcatOpGrad(const std::string& op_type,
                              const std::string& domain = kOnnxDomain,

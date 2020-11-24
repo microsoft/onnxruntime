@@ -43,7 +43,6 @@
      * [ROCM](#ROCM)
 	 * [Intel DNNL/MKL-ML](#dnnl-training)
 
-***
 # Inferencing
 ## Start: Baseline CPU
 

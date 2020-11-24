@@ -5,7 +5,6 @@
 #include "core/providers/dnnl/dnnl_fwd.h"
 #include "core/providers/dnnl/dnnl_execution_provider.h"
 #include "core/providers/dnnl/subgraph/dnnl_kernel.h"
-#include <iostream>
 
 namespace onnxruntime {
 namespace ort_dnnl {
@@ -14,7 +13,7 @@ class DnnlMaxPoolGrad : public DnnlKernel {
  public:
   DnnlMaxPoolGrad(const DnnlNode& node,
                   DNNLExecutionProvider* provider,
-                  const Provider_NodeAttributes& attributes,
+                  const NodeAttributes& attributes,
                   const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
     op_name_ = node.name;
     ReadAttributes(attributes, attributes_prefix);
@@ -96,18 +95,18 @@ class DnnlMaxPoolGrad : public DnnlKernel {
       }
     }
 
-	//Get pointer to forward primitive descriptor created in maxpool forward
-	fwd_primitive_desc_ = (pool_fwd_->GetPrimitiveDesc());
+    //Get pointer to forward primitive descriptor created in maxpool forward
+    fwd_primitive_desc_ = (pool_fwd_->GetPrimitiveDesc());
 
-	//The second input would be the workspace data populated during maxpool forward.
-	//So just get the pointer to that data created during maxpool forward using the fwd desc
-	src_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
+    //The second input would be the workspace data populated during maxpool forward.
+    //So just get the pointer to that data created during maxpool forward using the fwd desc
+    src_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
         dnnl::memory::desc(((fwd_primitive_desc_->workspace_desc()))));
 
-	src_mem_ = pool_fwd_->GetWorkspacePtr();
+    src_mem_ = pool_fwd_->GetWorkspacePtr();
 
-	//Obtain output size and shape from the forward desc in maxpool.
-	//This would be the input shape and size in the maxpool forward
+    //Obtain output size and shape from the forward desc in maxpool.
+    //This would be the input shape and size in the maxpool forward
     primitive_dst_shape_ = pool_fwd_->GetOutputShape();
     std::vector<int64_t> y_dims = primitive_dst_shape_.GetDims();
 
@@ -116,6 +115,7 @@ class DnnlMaxPoolGrad : public DnnlKernel {
                                                   "1D Pooling is not supported by DNNL.");
     }
 
+    // TODO Keep this code here for implementing GlobalPool
     /*if (global_pooling_) {
       kernel_shape_.assign(x_dims.begin() + 2, x_dims.end());
       pads_.assign(kernel_shape_.size() * 2, 0);
@@ -132,6 +132,7 @@ class DnnlMaxPoolGrad : public DnnlKernel {
         dnnl::memory::desc({dst_dims_mkl}, DnnnType<T>(), dnnl::memory::format_tag::any));
 
     dnnl::algorithm algo = dnnl::algorithm::pooling_max;
+    // TODO Keep this code here for implementing AveragePool
     /*if (op_name_ == "AveragePool" || op_name_ == "GlobalAveragePool") {
       algo = dnnl::algorithm::pooling_avg_exclude_padding;
       if (count_include_pad_) {
@@ -143,8 +144,7 @@ class DnnlMaxPoolGrad : public DnnlKernel {
         dnnl::pooling_backward::desc(algo, *primitive_dst_md_, *diff_dst_md_,
                                      strides_mkl, kernel_mkl,
                                      padding_left_mkl, padding_right_mkl));
-	
-	
+
     bwd_primitive_desc_ = onnxruntime::make_unique<dnnl::pooling_backward::primitive_desc>(
         dnnl::pooling_backward::primitive_desc(*bwd_desc_, engine_to_use, *(pool_fwd_->GetPrimitiveDesc())));
 
@@ -269,7 +269,7 @@ class DnnlMaxPoolGrad : public DnnlKernel {
   }
 
  private:
-  void ReadAttributes(const Provider_NodeAttributes& attributes,
+  void ReadAttributes(const NodeAttributes& attributes,
                       const std::string attributes_prefix = "") override {
     global_pooling_ = (op_name_ == "GlobalAveragePool" || op_name_ == "GlobalMaxPool" || op_name_ == "GlobalLpPool");
     global_pooling_ = (op_name_ == "GlobalAveragePool" || op_name_ == "GlobalMaxPool" || op_name_ == "GlobalLpPool");

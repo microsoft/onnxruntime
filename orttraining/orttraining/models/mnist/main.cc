@@ -170,12 +170,12 @@ Status ParseArguments(int argc, char* argv[], MnistParameters& params) {
       params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(CUDAExecutionProviderInfo{}));
     }
 #endif
-//#ifdef USE_DNNL
+
     bool use_dnnl = flags.count("use_dnnl") > 0;
     if (use_dnnl) {
       params.providers.emplace(kDnnlExecutionProvider, CreateExecutionProviderFactory_Dnnl(1));
     }
-//#endif
+
     std::string model_type = flags["model_type"].as<std::string>();
     if (model_type == "gemm" || model_type == "conv") {
       params.model_type = model_type;

@@ -126,15 +126,15 @@ void DNNLExecutionProvider::CreateOrUpdateDnnlNode(const Node* node,
   const auto& node_inputs = node->InputDefs();
   sub_var.outputs.push_back(node->OutputDefs()[0]->Name());
 
-
   if (!fused) {
     ort_dnnl::DnnlNode dnnl_node;
     dnnl_node.name = node->OpType();
-    // When running training mode the backward pass will need to access the forwardpass
-    // operations. Store the index of the node and the the list of input nodes.
-    // The input nodes can be used to find the forward pass node.
-    // The onnx node index is being used instead of the subgraph index because forwardpass
-    // and backward pass nodes are likly to span beyond the subgraph.
+// When running training mode the backward pass will need to access the forwardpass
+// operations. Store the index of the node and the the list of input nodes.
+// The input nodes can be used to find the forward pass node.
+// The onnx node index is being used instead of the subgraph index because forwardpass
+// and backward pass nodes are likly to span beyond the subgraph.
+#ifdef ENABLE_TRAINING
     dnnl_node.onnx_index = node->Index();
     for (auto iter = node->InputNodesBegin(); iter != node->InputNodesEnd(); ++iter) {
       ort_dnnl::InputNode input_node;
@@ -142,18 +142,21 @@ void DNNLExecutionProvider::CreateOrUpdateDnnlNode(const Node* node,
       input_node.op_type = (*iter).OpType();
       dnnl_node.input_nodes.push_back(input_node);
     }
+#endif //ENABLE_TRAINING
 
     dnnl_node.num_inputs = static_cast<int>(node->InputDefs().size());
     dnnl_node.input_start_index = static_cast<int>(sub_var.inputs.size()) - 1;
     dnnl_node.node_index = static_cast<int>(subgraph_ptr->dnnl_nodes.size()) + 1;
     const auto& node_outputs = node->OutputDefs();
     dnnl_node.output_name = node_outputs[0]->Name();
+#ifdef ENABLE_TRAINING
     dnnl_node.num_outputs = static_cast<int>(node->OutputDefs().size());
     if (dnnl_node.num_outputs > 1) {
       for (auto n : node_outputs) {
         dnnl_node.output_names.push_back(n->Name());
       }
     }
+#endif //ENABLE_TRAINING
 
     if (node->OpType() == "Conv") {
       dnnl_node.weight_name = node->InputDefs()[1]->Name();
@@ -265,9 +268,9 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
           fused = true;
         }
       }
-#endif
-	  //TODO: Support this in training phase so that a valid entry would be added to the forward kernel map for this fusion. Without this, it would error out 
-	  //in the respective backward pass
+#endif // !ENABLE_TRAINING
+      // TODO: Support this in training phase so that a valid entry would be added to the forward kernel map for this fusion. Without this, it would error out
+      // in the respective backward pass
 #ifndef ENABLE_TRAINING
       if (sub_var.subgraph_node_indexes.size() > 1 && node->OpType() == "Relu") {
         if (subgraph_ptr->dnnl_nodes.back().name == "Conv-BatchNormalization" || subgraph_ptr->dnnl_nodes.back().name == "BatchNormalization" || subgraph_ptr->dnnl_nodes.back().name == "Conv") {
@@ -275,7 +278,7 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
           fused = true;
         }
       }
-#endif
+#endif // !ENABLE_TRAINING
 
       // Create Dnnl node:
       //   Update inputs, outputs and parent nodes
@@ -418,6 +421,10 @@ void DNNLExecutionProvider::CreateMetaDef(const GraphViewer& graph_viewer,
     auto itr = std::find(sub_var.outputs_as_input_other_node.begin(),
                          sub_var.outputs_as_input_other_node.end(), mklnode.output_name);
     if (itr == sub_var.outputs_as_input_other_node.end()) {
+#ifndef ENABLE_TRAINING
+      meta_def->outputs().push_back(mklnode.output_name);
+      mklnode.output_index = static_cast<int>(meta_def->outputs().size()) - 1;
+#else
       if (mklnode.num_outputs == 1) {
         meta_def->outputs().push_back(mklnode.output_name);
       } else {
@@ -425,7 +432,8 @@ void DNNLExecutionProvider::CreateMetaDef(const GraphViewer& graph_viewer,
           meta_def->outputs().push_back(output);
         }
       }
-        mklnode.output_index = static_cast<int>(meta_def->outputs().size()) - 1;
+      mklnode.output_index = static_cast<int>(meta_def->outputs().size()) - 1;
+#endif // ENABLE_TRAINING
     }
   }
 

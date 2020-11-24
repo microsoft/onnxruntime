@@ -257,6 +257,7 @@ class DnnlConv : public DnnlKernel {
           dnnl::memory::desc({bias_dims_mkl}, DnnnType<T>(), dnnl::memory::format_tag::any));
 
     dnnl::memory::dims conv_zero_padding = {0, 0};
+
 #ifdef ENABLE_TRAINING
     if (!bias_dims_mkl.empty()) {
       fwd_desc_ = onnxruntime::make_unique<dnnl::convolution_forward::desc>(
@@ -287,7 +288,7 @@ class DnnlConv : public DnnlKernel {
               *filter_md_, *primitive_dst_md_, strides_mkl,
               dilations_mkl, padding_left_mkl, padding_right_mkl));
     }
-#endif //ENABLE_TRAINING
+#endif  //ENABLE_TRAINING
 
     if (fuse_relu_) {
       dnnl::primitive_attr attr;
@@ -463,6 +464,7 @@ class DnnlConv : public DnnlKernel {
     TensorShape W(xshape, xdim);
 
     const int group_mkl = static_cast<int>(group_);
+    const T* filter_data = const_cast<T*>(ort.GetTensorData<T>(input_tensor));
 
     dnnl::memory::dims filter_dims_mkl;
     if (group_mkl == 1) {
@@ -473,7 +475,6 @@ class DnnlConv : public DnnlKernel {
       filter_dims_mkl.insert(filter_dims_mkl.end(), W.GetDims().begin() + 1, W.GetDims().end());
     }
 
-    const T* filter_data = const_cast<T*>(ort.GetTensorData<T>(input_tensor));
     {
       // lock to make sure reordering is done only once
       std::lock_guard<OrtMutex> lock(provider_->GetMutex());
@@ -499,12 +500,12 @@ class DnnlConv : public DnnlKernel {
               .execute(dnnl_engine_gpu_, src, *filter_dst_mem);
         }
 
-    // Do not use cached weights if running training since weight is changed each iteration
+        // Do not use cached weights if running training since weight is changed each iteration
 #ifndef ENABLE_TRAINING
         provider_->SetWeightsMemoryBuffer(mklnode_ptr_->weight_name, filter_dst_mem);
 #else
         filter_dst_mem_ = filter_dst_mem;
-#endif // !ENABLE_TRAINING
+#endif  // !ENABLE_TRAINING
       }
     }
   }
@@ -597,10 +598,12 @@ class DnnlConv : public DnnlKernel {
     }
     return Status::OK();
   }
-
-  dnnl::convolution_forward::primitive_desc* GetPrimitiveDesc() {
-    return conv_fwd_pd_.get();
+#ifdef ENABLE_TRAINING
+  std::shared_ptr <dnnl::convolution_forward::primitive_desc> GetPrimitiveDesc() {
+    return conv_fwd_pd_;
   }
+#endif
+
  private:
   void ReadAttributes(const NodeAttributes& attributes,
                       const std::string attributes_prefix = "") override {
@@ -665,7 +668,8 @@ class DnnlConv : public DnnlKernel {
   dnnl::memory::format_tag filter_format_;
 #ifdef ENABLE_TRAINING
   std::shared_ptr<dnnl::memory> filter_dst_mem_;
-#endif
+#endif // ENABLE_TRAINING
+
   std::shared_ptr<dnnl::memory> src_mem_from_;
   std::unique_ptr<dnnl::memory> src_mem_to_;
 
@@ -687,7 +691,12 @@ class DnnlConv : public DnnlKernel {
   std::unique_ptr<dnnl::memory::desc> filter_md_;
   std::unique_ptr<dnnl::memory::desc> bias_md_;
 
+#ifndef ENABLE_TRAINING
   std::unique_ptr<dnnl::convolution_forward::primitive_desc> conv_fwd_pd_;
+#else
+  std::shared_ptr<dnnl::convolution_forward::primitive_desc> conv_fwd_pd_;
+#endif  // ENABLE_TRAINING
+
   std::unique_ptr<dnnl::primitive> conv_fwd_;
 
   dnnl::engine dnnl_engine_cpu_;

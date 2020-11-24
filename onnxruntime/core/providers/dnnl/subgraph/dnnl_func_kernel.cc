@@ -62,7 +62,6 @@ class SubgraphPrimitive : public PrimitiveBase {
     for (size_t i = 0; i < context_.net.size(); ++i) {
       context_.net.at(i).execute(*context_.stream, context_.net_args.at(i));
     }
-
     return Status::OK();
   }
 
@@ -78,7 +77,7 @@ class SubgraphPrimitive : public PrimitiveBase {
         kernel = std::make_shared<DnnlConv<T>>(dnnl_node, params.provider, *params.attributes, os.str());
 #ifdef ENABLE_TRAINING
         params.provider->fwd_conv_stack.emplace(kernel);
-#endif
+#endif // ENABLE_TRAINING
         for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
         }
@@ -103,7 +102,7 @@ class SubgraphPrimitive : public PrimitiveBase {
         // figure out way to read the training_mode parameter from
         // onnxruntime\core\framwork\run_options.h
         params.provider->SetForwardKernel(dnnl_node.onnx_index, kernel);
-#endif
+#endif // ENABLE_TRAINING
         for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
         }
@@ -153,7 +152,7 @@ class SubgraphPrimitive : public PrimitiveBase {
         kernel = std::make_shared<DnnlPool<T>>(dnnl_node, params.provider, *params.attributes, os.str());
 #ifdef ENABLE_TRAINING
         params.provider->SetForwardKernel(dnnl_node.onnx_index, kernel);
-#endif
+#endif // ENABLE_TRAINING
         for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
         }
@@ -296,7 +295,6 @@ class SubgraphPrimitivePool : public PrimitivePool<T> {
     std::string dims_str;
     for (auto i = 0; i < params.subgraph->dnnl_nodes[0].num_inputs; i++) {
       const OrtValue* input_tensor = ort.KernelContext_GetInput(context, i);
-
       auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
       auto tensor_shape = ort.GetTensorShape(tensor_info);
       ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
@@ -342,7 +340,7 @@ Status DnnlFuncKernel<T>::Compute(const OrtCustomOpApi* api, OrtKernelContext* c
     std::unique_ptr<SubgraphPrimitive<T>> primitive = onnxruntime::make_unique<SubgraphPrimitive<T>>(api, context, params_);
 #else
     SubgraphPrimitive<T>* primitive = SubgraphPrimitivePool<T>::Get(api, context, params_);
-#endif
+#endif // ENABLE_TRAINING
 
     primitive->UpdateProvider(params_);
     status = primitive->Compute(api, context);

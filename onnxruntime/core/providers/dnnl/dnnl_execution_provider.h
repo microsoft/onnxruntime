@@ -13,7 +13,6 @@
 #include "core/providers/dnnl/subgraph/subgraph.h"
 #include "core/platform/ort_mutex.h"
 
-
 namespace dnnl {
 struct memory;
 };
@@ -101,7 +100,7 @@ class DNNLExecutionProvider : public IExecutionProvider {
   }
 
   std::stack<std::shared_ptr<ort_dnnl::DnnlKernel>> fwd_conv_stack;
-#endif // ENABLE_TRAINING
+#endif  // ENABLE_TRAINING
  private:
   // dnnl weights(filer data) memory blocks from first iteration
   // saved by weights name
@@ -114,13 +113,14 @@ class DNNLExecutionProvider : public IExecutionProvider {
   // Conv+BathNorm fusion bias memory buffer.
   std::vector<IAllocatorUniquePtr<void>> biass_buffers_;
   OrtMutex mutex_;
+
 #ifdef ENABLE_TRAINING
   // map used to hold and lookup forward DnnlKernels. This should only be needed in when
   // running in training mode.The backward Kernels need access the forward kernals; typically
   // to obtain the forward primitive description but it may be need for other items like
   // accessing workspace memory.
   std::map<onnxruntime::NodeIndex, std::shared_ptr<ort_dnnl::DnnlKernel>> fwd_kernal_map_;
-#endif
+#endif // ENABLE_TRAINING
   // SUBGRAPH
  private:
   static int GetOnnxOpSet(const GraphViewer& graph_viewer) {
@@ -161,17 +161,21 @@ class DNNLExecutionProvider : public IExecutionProvider {
     }
     if (node->OpType().find("Pool") != std::string::npos) {
       auto node_inputs = node->InputDefs();
+#ifdef ENABLE_TRAINING
       if (node_inputs[0]->Shape() != nullptr && node_inputs[0]->Shape()->dim_size() < 3) {
+#else
+      if (node_inputs[0]->Shape() != nullptr && node_inputs[0]->Shape()->dim_size() <= 3) {
+#endif  // ENABLE_TRAINING
         supported = false;
       }
-      #ifdef ENABLE_TRAINING
+
+#ifdef ENABLE_TRAINING
       if (node->OutputDefs().size() > 2)
         supported = false;
-      #else
+#else
       if (node->OutputDefs().size() > 1)
         supported = false;
-      #endif
-
+#endif // ENABLE_TRAINING
     }
     return supported;
   }
@@ -197,9 +201,14 @@ class DNNLExecutionProvider : public IExecutionProvider {
   }
 
  private:
-  // supported Dnnl Operators
+// supported Dnnl Operators
+#ifdef ENABLE_TRAINING
   std::set<std::string> dnnl_ops_ = {"Conv", "ConvGrad", "BatchNormalization", "Relu", "ReluGrad", "Sum",
                                      "AveragePool", "GlobalMaxPool", "GlobalAveragePool", "MaxPool", "MaxPoolGrad", "LRN"};
+#else
+  std::set<std::string> dnnl_ops_ = {"Conv", "BatchNormalization", "Relu", "Sum",
+                                     "AveragePool", "GlobalMaxPool", "GlobalAveragePool", "MaxPool", "LRN"};
+#endif // ENABLE_TRAINING
 
   mutable std::unordered_map<std::string, std::shared_ptr<ort_dnnl::Subgraph>> mkl_subgraphs_;
 };
