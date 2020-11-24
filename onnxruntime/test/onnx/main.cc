@@ -447,7 +447,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     std::string res = stat.ToString();
     fwrite(res.c_str(), 1, res.size(), stdout);
   }
-  std::string provider_name = enable_ngraph ? "ngraph" : enable_nnapi ? "nnapi" : enable_dml ? "dml" : "";
+  std::string provider_name = enable_nnapi ? "nnapi" : enable_dml ? "dml" : "";
   std::set<BrokenTest> broken_tests = GetBrokenTestsForProvider(provider_name);
 
 #ifdef DISABLE_ML_OPS
