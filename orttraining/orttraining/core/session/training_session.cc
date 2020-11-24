@@ -288,15 +288,17 @@ Status TrainingSession::ConfigureForTraining(
                                              fp32_weight_name_to_mixed_precision_node_arg));
   }
 
+  LOGS(*session_logger_, WARNING) << "ZZZ BEFORE";
+
   ORT_RETURN_IF_ERROR(BuildGradientGraph(
       weight_names_to_train, loss_name, config.gradient_graph_config, *session_logger_));
 
-  LOGS(*session_logger_, INFO) << "ZZZ";
+  LOGS(*session_logger_, WARNING) << "ZZZ";
   char cwd[PATH_MAX];
    if (getcwd(cwd, sizeof(cwd)) != NULL) {
-       LOGS(*session_logger_, INFO) << "ZZZ " << cwd;
+       LOGS(*session_logger_, WARNING) << "ZZZ " << cwd;
    } else {
-     LOGS(*session_logger_, INFO) << "getcwd() error";
+     LOGS(*session_logger_, WARNING) << "getcwd() error";
   }
 
   if (IsRootNode(config))
