@@ -90,7 +90,7 @@ namespace Microsoft.ML.OnnxRuntime
         public static OrtValue CreateTensorValueWithData(OrtMemoryInfo memInfo, TensorElementType elementType,
                                                          long[] shape,
                                                          IntPtr dataBuffer,
-                                                         uint bufferLength)
+                                                         long bufferLength)
         {
             Type type;
             int width;

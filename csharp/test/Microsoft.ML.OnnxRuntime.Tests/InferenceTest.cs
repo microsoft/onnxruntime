@@ -4,6 +4,7 @@
 using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -229,15 +230,25 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
 
-            // Set the graph optimization level for this session.
-            SessionOptions options = new SessionOptions();
-            options.GraphOptimizationLevel = graphOptimizationLevel;
-            if (enableParallelExecution) options.ExecutionMode = ExecutionMode.ORT_PARALLEL;
-
-            using (var session = new InferenceSession(modelPath, options))
+            using (var cleanUp = new DisposableList<IDisposable>())
             {
+                // Set the graph optimization level for this session.
+                SessionOptions options = new SessionOptions();
+                options.GraphOptimizationLevel = graphOptimizationLevel;
+                if (enableParallelExecution) options.ExecutionMode = ExecutionMode.ORT_PARALLEL;
+                cleanUp.Add(options);
+
+                var session = new InferenceSession(modelPath, options);
+                cleanUp.Add(session);
+
                 var inputMeta = session.InputMetadata;
+                var outputMeta = session.OutputMetadata;
                 var container = new List<NamedOnnxValue>();
+
+                float[] expectedOutput = LoadTensorFromFile(@"bench.expected_out");
+                int[] expectedDimensions = { 1, 1000, 1, 1 };  // hardcoded for now for the test data
+                ReadOnlySpan<int> expectedOutputDimensions = expectedDimensions;
+                string[] expectedOutputNames = new string[] { "softmaxout_1" };
 
                 float[] inputData = LoadTensorFromFile(@"bench.in"); // this is the data for only one input tensor for this model
 
@@ -249,8 +260,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     container.Add(NamedOnnxValue.CreateFromTensor<float>(name, tensor));
                 }
 
-                ReadOnlySpan<int> expectedOutputDimensions = new int[] { 1, 1000, 1, 1 };
-                string[] expectedOutputNames = new string[] { "softmaxout_1" };
 
                 // Run inference with named inputs and outputs created with in Run()
                 using (var results = session.Run(container))  // results is an IReadOnlyList<NamedOnnxValue> container
@@ -291,9 +300,40 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     }
                 }
 
+                // Run inference with outputs pinned from buffers
+                using (var pinnedInputs = new DisposableListTest<FixedBufferOnnxValue>())
+                using(var pinnedOutputs = new DisposableListTest<FixedBufferOnnxValue>())
+                {
+                    var memInfo = OrtMemoryInfo.DefaultInstance; // CPU
 
-                float[] expectedOutput = LoadTensorFromFile(@"bench.expected_out");
-                int[] expectedDimensions = { 1, 1000, 1, 1 };  // hardcoded for now for the test data
+                    // Create inputs
+                    Assert.Single(inputMeta.Keys);
+                    var inputNames = inputMeta.Keys.ToArray();
+                    var inputName = inputNames[0];
+                    Assert.Equal(typeof(float), inputMeta[inputName].ElementType);
+                    Assert.True(inputMeta[inputName].IsTensor);
+                    var longShape = Array.ConvertAll<int, long>(inputMeta[inputName].Dimensions, d => d);
+                    var byteSize = ArrayUtilities.GetSizeForShape(longShape) * sizeof(float);
+                    pinnedInputs.Add(FixedBufferOnnxValue.CreateFromMemory<float>(memInfo, inputData,
+                        TensorElementType.Float, longShape, byteSize));
+
+
+                    // Prepare output buffer
+                    Assert.Single(outputMeta.Keys);
+                    var outputNames = outputMeta.Keys.ToArray();
+                    var outputName = outputNames[0];
+                    Assert.Equal(typeof(float), outputMeta[outputName].ElementType);
+                    Assert.True(outputMeta[outputName].IsTensor);
+                    longShape = Array.ConvertAll<int, long>(outputMeta[outputName].Dimensions, d => d);
+                    byteSize = ArrayUtilities.GetSizeForShape(longShape) * sizeof(float);
+                    float[] outputBuffer = new float[expectedOutput.Length];
+                    pinnedOutputs.Add(FixedBufferOnnxValue.CreateFromMemory<float>(memInfo, outputBuffer, 
+                        TensorElementType.Float, longShape, byteSize));
+
+                    session.Run(inputNames, pinnedInputs, outputNames, pinnedOutputs);
+                    Assert.Equal(expectedOutput, outputBuffer, new floatComparer());
+                }
+
                 // Run inference with named inputs and named outputs
                 {
                     // correct pre-allocated outputs
@@ -2015,23 +2055,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     }
                 }
 
-                // Test 3. Use pinned managed memory
-                float[] outputBoundBuffer = new float[outputData.Length];
-                using(var inputMem = new Memory<float>(inputData).Pin())
-                using(var outputMem = new Memory<float>(outputBoundBuffer).Pin())
-                {
-                    var memInfo = OrtMemoryInfo.DefaultInstance;
-                    var inputShape = Array.ConvertAll<int, long>(inputMeta[inputName].Dimensions, i => i);
-                    var outputShape = Array.ConvertAll<int, long>(outputMeta[outputName].Dimensions, i => i);
-                    ioBinding.BindInput(inputName, TensorElementType.Float, inputShape, memInfo,
-                        inputMem, (uint)inputData.Length * sizeof(float));
-                    ioBinding.BindOutput(outputName, TensorElementType.Float, outputShape, memInfo,
-                        outputMem, (uint)outputData.Length * sizeof(float));
-                    session.RunWithBinding(runOptions, ioBinding);
-                }
-
-                Assert.Equal(outputData, outputBoundBuffer);
-
                 // Rebinding would happen without these but we want run them.
                 ioBinding.ClearBoundInputs();
                 ioBinding.ClearBoundOutputs();
@@ -2061,7 +2084,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 }
                 var dataBufferNumBytes = (uint)dataBuffer.Length * sizeof(float);
                 var sharedInitializer = OrtValue.CreateTensorValueWithData(ortCpuMemInfo, Tensors.TensorElementType.Float,
-                dims, dataHandle.AddrOfPinnedObject(), dataBufferNumBytes);
+                                        dims, dataHandle.AddrOfPinnedObject(), dataBufferNumBytes);
 
                 SessionOptions options = new SessionOptions();
                 options.AddInitializer("W", sharedInitializer);

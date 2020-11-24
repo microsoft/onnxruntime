@@ -74,75 +74,6 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// This method creates a binding between an arbitrary piece of pinned
-        /// managed memory. And allows you to pass your managed buffers and create
-        /// native OrtValues on top of your managed buffers. This allows to avoid big
-        /// data copies and also supply user defined types providing they are blittable and binary
-        /// compatible with the types that are supported by DenseTensor.
-        /// Note, that it is the responsibility of the user to supply correct data here.
-        /// bytesSize must be a true binary size of the buffer being passed. shape[] must also
-        /// correspond to byteSize so the following holds true:
-        /// ArrayUtilities.GetSizeForShape(shape) * sizeof(T) == bytesSize
-        /// Note, that the resulting OrtValue does not own the memory being passed. It is
-        /// a responsibility of the user to dispose of MemoryHandle instance after the binding is no longer
-        /// needed.
-        /// </summary>
-        /// <param name="name">input name</param>
-        /// <param name="elementType">TensorElementType</param>
-        /// <param name="shape">shape of the tensor to be created</param>
-        /// <param name="memoryInfo">memoryInfo. For managed buffers simply use OrtMemoryInfo.DefaultInstance
-        /// For non-cpu memory you will need to obtain an appropriate instance. See OrtMemoryInfo.
-        /// This is used to decide if the buffer needs to be copied to a device at the time of the binding.</param>
-        /// <param name="memHandle">handle obtained from Memory<T>.Pin()></param>
-        /// <param name="bytesSize">size of the allocation in bytes</param>
-        /// 
-        /// <example>
-        /// Here is an example of using a 3rd party library class for processing float16/bfloat16.
-        /// Currently, to pass tensor data and create a tensor one must copy data to Float16/BFloat16 structures
-        /// so DenseTensor can recognize it.
-        /// If you are using a library that has a class Half and it is blittable, that is its managed in memory representation
-        /// matches native one and its size is 16-bits, you can use the following conceptual example
-        /// to feed/fetch data for inference using Half array.
-        /// 
-        /// \code{.cs}
-        /// unsafe { Debug.Assert(sizeof(ushort) == sizeof(Half)); }
-        /// var ioBinding = session.CreateIoBinding(); // Needs disposal
-        /// Half[] input = new Half[] { 5646, 12345 };
-        /// Half[] output = new Half[40]; // Whatever the expected len/shape is must match
-        /// var input_shape = new long[] {input.Length};
-        /// var output_shape = new long[] { output.Length};
-        /// 
-        /// var memInfo = OrtMemoryInfo.DefaultInstance; // CPU
-        /// using(var inputHandle = new Memory<Half>(input).Pin())
-        /// using(var outputHandle = new Memory<Half>(output).Pin())
-        /// {
-        ///     ioBinding.BindInput("input_name", Tensors.TensorElementType.Float16, 
-        ///                          memInfo, input_handle, input.Length * sizeof(ushort));
-        ///     ioBinding.BindOutput("output_name", Tensors.TensorElementType.Float16, 
-        ///                          memInfo, output_handle, output.Length * sizeof(ushort));
-        ///     session.RunWithBinding(runOptions, ioBinding);
-        /// }
-        /// // Access your output using your preferred type Half
-        /// // Hint, you can use this for other supported types as well.
-        /// \endcode
-        /// </example>
-
-        public void BindInput(string name, Tensors.TensorElementType elementType, long[] shape, 
-                              OrtMemoryInfo memoryInfo, MemoryHandle memHandle, uint bytesSize)
-        {
-            IntPtr memPtr;
-            unsafe
-            {
-                memPtr = (IntPtr)memHandle.Pointer;
-            }
-            using (var ortValue = OrtValue.CreateTensorValueWithData(memoryInfo,
-                                                        elementType,
-                                                        shape,
-                                                        memPtr, bytesSize))
-                BindInputOrOutput(name, ortValue.Handle, true);
-        }
-
-        /// <summary>
         /// Bind the input with the given name as an OrtValue Tensor allocated in pinned managed memory.
         /// Instance of FixedBufferOnnxValue owns the memory and should be alive until the end of execution.
         /// </summary>
@@ -172,43 +103,6 @@ namespace Microsoft.ML.OnnxRuntime
                                                                     elementType,
                                                                     shape,
                                                                     allocation.Pointer, allocation.Size))
-                BindInputOrOutput(name, ortValue.Handle, false);
-        }
-
-        /// <summary>
-        /// This method creates a binding between an arbitrary piece of pinned
-        /// managed memory. And allows you to pass your managed buffers and create
-        /// native OrtValues on top of your managed buffers. This allows to avoid big
-        /// data copies and also supply user defined types providing they are blittable and binary
-        /// compatible with the types that are supported by DenseTensor.
-        /// Note, that it is the responsibility of the user to supply correct data here.
-        /// bytesSize must be a true binary size of the buffer being passed. shape[] must also
-        /// correspond to byteSize so the following holds true:
-        /// ArrayUtilities.GetSizeForShape(shape) * sizeof(T) == bytesSize
-        /// Note, that the resulting OrtValue does not own the memory being passed. It is
-        /// a responsibility of the user to dispose of MemoryHandle instance after the binding is no longer
-        /// needed.
-        /// </summary>
-        /// <param name="name">output name</param>
-        /// <param name="elementType">TensorElementType</param>
-        /// <param name="shape">shape of the tensor to be created</param>
-        /// <param name="memoryInfo">memoryInfo. For managed buffers simply use OrtMemoryInfo.DefaultInstance
-        /// For non-cpu memory you will need to obtain an appropriate instance. See OrtMemoryInfo.
-        /// This is used to decide the output buffer needs to be copied to the bound buffer from a device.</param>
-        /// <param name="memHandle">handle obtained from Memory<T>.Pin()></param>
-        /// <param name="bytesSize">size of the allocation in bytes</param>
-        public void BindOutput(string name, Tensors.TensorElementType elementType, long[] shape,
-                              OrtMemoryInfo memoryInfo, MemoryHandle memHandle, uint bytesSize)
-        {
-            IntPtr memPtr;
-            unsafe
-            {
-                memPtr = (IntPtr)memHandle.Pointer;
-            }
-            using (var ortValue = OrtValue.CreateTensorValueWithData(memoryInfo,
-                                                        elementType,
-                                                        shape,
-                                                        memPtr, bytesSize))
                 BindInputOrOutput(name, ortValue.Handle, false);
         }
 
