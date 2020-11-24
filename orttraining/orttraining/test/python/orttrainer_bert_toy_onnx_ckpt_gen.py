@@ -27,9 +27,8 @@ def testToyBERTModelMixedPrecision(optimizer):
     world_size = max(1, int(os.environ["OMPI_COMM_WORLD_SIZE"]))
     total_steps = 3
 
-    # set 0 instead of local_rank in order to run on a single GPU on CI.
-    torch.cuda.set_device(0)
-    device = torch.device("cuda", 0)
+    torch.cuda.set_device(local_rank)
+    device = torch.device("cuda", local_rank)
 
     seed = 1
     torch.manual_seed(seed)
