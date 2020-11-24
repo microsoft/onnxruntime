@@ -12,9 +12,9 @@ steps:
 - template: with-container-registry-steps.yml
   parameters:
     Steps:
-    - script: |
-        tools/ci_build/github/linux/run_dockerbuild.sh \
-          ${{ parameters.RunDockerBuildArgs }} \
+    - script: >
+        tools/ci_build/github/linux/run_dockerbuild.sh
+          ${{ parameters.RunDockerBuildArgs }}
           -i onnxruntimebuildcache
       displayName: "${{ parameters.DisplayName }}"
     ContainerRegistry: onnxruntimebuildcache
