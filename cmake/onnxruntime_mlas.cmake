@@ -151,7 +151,9 @@ else()
       OUTPUT_VARIABLE dumpmachine_output
       ERROR_QUIET
     )
-    if(dumpmachine_output MATCHES "^arm.*")
+    if(dumpmachine_output MATCHES "^arm64.*")
+      set(ARM64 TRUE)
+    elseif(dumpmachine_output MATCHES "^arm.*")
       set(ARM TRUE)
     elseif(dumpmachine_output MATCHES "^aarch64.*")
       set(ARM64 TRUE)
