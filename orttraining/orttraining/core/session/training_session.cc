@@ -226,6 +226,31 @@ Status GetDeviceAssignmentMap(Graph& graph,
     op_to_rank.insert({node, stage});
   }
 
+  // Verification.
+  // All stages are used.
+  int n_stages = cuts.size() + 1;
+  for (int s = 0; s < n_stages; ++s) {
+    auto stage_is_used = std::find(std::begin(stages), std::end(stages), s);
+    ORT_RETURN_IF_NOT(stage_is_used != std::end(stages),
+                "Stage " + std::to_string(s) + " was not assigned to any node.");
+  }
+
+  // Edges always go forward.
+  for (size_t i = 0, t = graph.MaxNodeIndex(); i < t; ++i) {
+    Node* node = graph.GetNode(i);
+    int node_stage = stages[i];
+    auto& node_outputs = node->MutableOutputDefs();
+    for (NodeArg* arg : node_outputs) {
+      if (arg == nullptr || !arg->HasTensorOrScalarShape())
+        continue;
+      auto cs = graph.GetMutableConsumerNodes(arg->Name());
+      for (Node* c : cs) {
+        int outgoing_stage = op_to_rank.at(c);
+        ORT_RETURN_IF_NOT(node_stage <= outgoing_stage);
+      }
+    }
+  }
+
   return Status::OK();
 }
 
