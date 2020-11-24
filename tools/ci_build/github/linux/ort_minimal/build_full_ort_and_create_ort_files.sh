@@ -4,6 +4,7 @@
 # and the exclude ops config file, which will be used in the build_minimal_ort_and_run_tests.sh
 
 set -e
+set -x
 
 # Validate the operator kernel registrations. The ORT model uses hashes for kernel registrations, so if these
 # are incorrect we will produce a model that will break when the registrations are fixed.
