@@ -14,7 +14,7 @@ steps:
     Steps:
     - script: >
         tools/ci_build/github/linux/run_dockerbuild.sh
-          ${{ parameters.RunDockerBuildArgs }}
-          -i onnxruntimebuildcache
+        ${{ parameters.RunDockerBuildArgs }}
+        -i onnxruntimebuildcache
       displayName: "${{ parameters.DisplayName }}"
     ContainerRegistry: onnxruntimebuildcache
