@@ -16,9 +16,10 @@ Status TransformGraphForPipeline(
     const std::unordered_set<std::string>& initializer_names_to_preserve,
     pipeline::PipelineTensorNames& pipeline_tensor_names);
 
+// TODO(jufranc): when adapting this code to partition training graphs, add
+// a boolean is_training as parameter.
 Status ApplyPipelinePartitionToMainGraph(Graph& graph,
     std::map<Node*, int>& op_to_rank,
-    bool is_training,
     int pipeline_stage_id,
     int nstages);
 

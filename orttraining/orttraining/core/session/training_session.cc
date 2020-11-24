@@ -279,7 +279,7 @@ Status TrainingSession::ConfigureForTraining(
 
     int n_stages = config.distributed_config.pipeline_parallel_size;
     ORT_RETURN_IF_ERROR(
-      ApplyPipelinePartitionToMainGraph(model_->MainGraph(), op_to_rank, false,
+      ApplyPipelinePartitionToMainGraph(model_->MainGraph(), op_to_rank,
                                         pipeline_stage_id, n_stages));
 
     if (config.pipeline_config.value().partitioned_model_path.has_value()) {
