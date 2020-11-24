@@ -34,6 +34,7 @@ python3 -m pip install --user mysql-connector-python
 
 # Post the binary size info to ort mysql DB
 # The report script's DB connection failure will not fail the pipeline
+# To reduce noise, we only report binary size for Continuous integration (a merge to master or rel-*)
 if [[ $BUILD_REASON == "IndividualCI" || $BUILD_REASON == "BatchedCI" ]]; then
     python3 /onnxruntime_src/tools/ci_build/github/windows/post_binary_sizes_to_dashboard.py \
         --ignore_db_error \
