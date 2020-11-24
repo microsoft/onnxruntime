@@ -3,6 +3,8 @@
 
 #ifndef CORE_PROVIDERS_CPU_REDUCTION_OPS_H
 #define CORE_PROVIDERS_CPU_REDUCTION_OPS_H
+#include "Eigen/Core"
+#include "Eigen/Dense"
 
 #include "core/common/common.h"
 #include "core/common/optional.h"

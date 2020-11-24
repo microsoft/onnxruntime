@@ -2,12 +2,23 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/nn/shrink.h"
+#include "Eigen/Core"
+#include "Eigen/Dense"
 
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "core/framework/utils.h"
 
 namespace onnxruntime {
+template <typename T>
+auto EigenMap(Tensor& t) -> Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, 1>> {
+  return Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, 1>>(t.template MutableData<T>(), t.Shape().Size());
+}
+template <typename T>
+auto EigenMap(const Tensor& t) -> Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>> {
+  return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(t.template Data<T>(), t.Shape().Size());
+}
+
 ONNX_CPU_OPERATOR_KERNEL(
     Shrink,
     9,

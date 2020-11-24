@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #include <limits>
+#include "Eigen/Core"
+#include "Eigen/Dense"
 
 #include "core/util/qmath.h"
 #include "core/common/common.h"
@@ -13,6 +15,12 @@
 #endif
 
 namespace onnxruntime {
+template <typename T>
+using ConstEigenMatrixMapRowMajorOuterStride =
+    Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>, 0, Eigen::OuterStride<>>;
+template <typename T>
+using EigenMatrixMapRowMajorOuterStride =
+    Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>, 0, Eigen::OuterStride<>>;
 
 template <typename TA, typename TB, typename TY>
 void QGemmWithEigen(

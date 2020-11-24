@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
+#include "Eigen/Core"
+#include "Eigen/Dense"
 #include "core/framework/op_kernel.h"
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
@@ -35,6 +36,16 @@ IsInf::IsInf(const OpKernelInfo& info) : OpKernel(info) {
   ORT_ENFORCE(status.IsOK(), "Failed to obtain detect_positive");
   status = info.GetAttr("detect_negative", &detect_negative_);
   ORT_ENFORCE(status.IsOK(), "Failed to obtain detect_negative");
+}
+
+
+template <typename T>
+auto EigenMap(Tensor& t) -> Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, 1>> {
+  return Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, 1>>(t.template MutableData<T>(), t.Shape().Size());
+}
+template <typename T>
+auto EigenMap(const Tensor& t) -> Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>> {
+  return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(t.template Data<T>(), t.Shape().Size());
 }
 
 namespace isinf_internal {

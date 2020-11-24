@@ -3,9 +3,14 @@
 
 #pragma once
 #include <cmath>
+#include "Eigen/Core"
+#include "Eigen/Dense"
+
 #include "math_cpuonly.h"
 
 namespace onnxruntime {
+template <typename T>
+using ConstEigenVectorMap = Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>;
 
 // Computes the squared Euclidean distance between the vectors.
 template <typename T>

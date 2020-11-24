@@ -20,7 +20,7 @@
 #include "core/framework/TensorSeq.h"
 #include "core/framework/session_options.h"
 #include "test/util/include/asserts.h"
-
+#include "eigen_test_util.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include <gsl/gsl>

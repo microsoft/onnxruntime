@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/rnn/rnn.h"
+#include "Eigen/Core"
+#include "Eigen/Dense"
 
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel_context_internal.h"
@@ -11,6 +13,12 @@
 #include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
+template <typename T>
+using EigenMatrixMapRowMajor = Eigen::Map<
+    Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>;
+template <typename T>
+using ConstEigenVectorMap = Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>;
+
 ONNX_CPU_OPERATOR_KERNEL(
     RNN,
     7,
@@ -95,9 +103,6 @@ void ClearMissingFrames(T* Y_buffer_data, const Tensor* sequence_lens,
   }
 }
 
-template <typename T>
-using EigenMatrixMapRowMajor = Eigen::Map<
-    Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>;
 
 template <>
 Status RNN<float>::Compute(OpKernelContext* ctx) const {
