@@ -4,7 +4,17 @@
 #include <gtest/gtest.h>
 #include <core/framework/kernel_registry.h>
 #include "core/providers/cpu/cpu_execution_provider.h"
+
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-variable"
+#endif
+
 #include <test/onnx/test_filters.h>
+
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif
 
 namespace onnxruntime {
 namespace test {

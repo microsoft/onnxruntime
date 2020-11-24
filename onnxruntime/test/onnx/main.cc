@@ -14,13 +14,23 @@
 #include "TestCase.h"
 #include "testenv.h"
 #include "providers.h"
-#include "test_filters.h"
 #include <google/protobuf/stubs/common.h>
 #include "core/platform/path_lib.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/framework/session_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-variable"
+#endif
+
+#include "test_filters.h"
+
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif
 
 using namespace onnxruntime;
 using namespace onnxruntime::test;
