@@ -25,6 +25,8 @@
 namespace onnxruntime {
 template <typename T>
 using EigenMatrixMap = Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>;
+template <typename T>
+using ConstEigenVectorMap = Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>;
 
 template <typename T>
 Status Conv<T>::Compute(OpKernelContext* context) const {

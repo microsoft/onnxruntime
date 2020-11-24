@@ -6,6 +6,7 @@
 #include "core/providers/common.h"
 #include <unordered_map>
 #include <limits>
+#include <cmath>
 
 using namespace ::onnxruntime::common;
 using namespace std;
@@ -204,7 +205,7 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
     }
 
     // find output dim value for this axis
-    auto temp = static_cast<int64_t>(ceil(1.0 * (end - compute_metadata.starts_[axis]) / step));
+    auto temp = static_cast<int64_t>(std::ceil(1.0 * (end - compute_metadata.starts_[axis]) / step));
     if (temp < 0)
       compute_metadata.output_dims_[axis] = 0;
     else

@@ -7,6 +7,7 @@
 #include "core/platform/threadpool.h"
 
 #include <atomic>
+#include <cmath>
 
 namespace onnxruntime {
 namespace contrib {
@@ -112,7 +113,7 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
         y[i] = a;
         sum += a * a;
       }
-      T e = sqrt(sum / hidden_size + static_cast<T>(epsilon_));
+      T e = std::sqrt(sum / hidden_size + static_cast<T>(epsilon_));
       for (int i = 0; i < hidden_size; i++) {
         y[i] = y[i] / e * gamma_data[i] + beta_data[i];
       }

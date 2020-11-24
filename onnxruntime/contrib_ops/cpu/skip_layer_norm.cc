@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include <cmath>
 
 #include "core/framework/tensor.h"
 #include "core/util/math_cpuonly.h"
@@ -116,7 +117,7 @@ Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
                                                  }
 
                                                  mean = mean / hidden_size;
-                                                 mean_square = sqrt(mean_square / hidden_size - mean * mean + epsilon_);
+                                                 mean_square = std::sqrt(mean_square / hidden_size - mean * mean + epsilon_);
 
                                                  for (int64_t h = 0; h < hidden_size; h++) {
                                                    p_output[h] = (p_output[h] - mean) / mean_square * gamma_data[h] + beta_data[h];
