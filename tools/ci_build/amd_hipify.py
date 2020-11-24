@@ -357,7 +357,6 @@ def amd_hipify(config_build_dir):
         if file not in contrib_ops_files:
             src_file_path = os.path.join(cuda_contrib_path, file)
             dst_file_path = os.path.join(rocm_contrib_path, file)
-            print('hipify => {}'.format(dst_file_path))
             hipify(src_file_path, dst_file_path)
 
     cuda_core_path = os.path.join(core_ops_path, 'cuda')
