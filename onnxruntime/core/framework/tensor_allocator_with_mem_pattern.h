@@ -61,7 +61,7 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
   TensorAllocatorWithMemPattern(const ExecutionPlanBase& execution_plan, const SessionState& session_state,
                                 std::vector<BufferUniquePtr>& weights_buffers)
       : ITensorAllocator(session_state),
-        planner_(execution_plan),
+        planner_(execution_plan, /*using counters*/ false),
         weights_buffers_(weights_buffers),
         seq_plan_(execution_plan) {}
 

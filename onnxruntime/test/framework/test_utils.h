@@ -15,9 +15,6 @@
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_execution_provider.h"
 #endif
-#ifdef USE_OPENVINO
-#include "core/providers/openvino/openvino_execution_provider.h"
-#endif
 #ifdef USE_NNAPI
 #include "core/providers/nnapi/nnapi_builtin/nnapi_execution_provider.h"
 #endif

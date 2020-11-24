@@ -102,8 +102,6 @@ TEST_P(ModelTest, Run) {
         ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
       } else if (provider_name == "dnnl") {
         ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultDnnlExecutionProvider()));
-      } else if (provider_name == "ngraph") {
-        ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultNGraphExecutionProvider()));
       } else if (provider_name == "nuphar") {
         ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultNupharExecutionProvider()));
       } else if (provider_name == "tensorrt") {
@@ -222,9 +220,6 @@ TEST_P(ModelTest, Run) {
 #endif
 #ifdef USE_DNNL
   provider_names.push_back(ORT_TSTR("dnnl"));
-#endif
-#ifdef USE_NGRAPH
-  provider_names.push_back(ORT_TSTR("ngraph"));
 #endif
 #ifdef USE_NUPHAR
   provider_names.push_back(ORT_TSTR("nuphar"));

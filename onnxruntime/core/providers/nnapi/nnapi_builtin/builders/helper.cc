@@ -259,7 +259,7 @@ bool IsValidSupportedNodesVec(const std::vector<size_t>& supported_node_vec, con
 bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const OpSupportCheckParams& params) {
   const auto& op_support_checkers = GetOpSupportCheckers();
   if (Contains(op_support_checkers, node.OpType())) {
-    const auto op_support_checker = op_support_checkers.at(node.OpType());
+    const auto* op_support_checker = op_support_checkers.at(node.OpType());
     return op_support_checker->IsOpSupported(graph_viewer.GetAllInitializedTensors(), node, params);
   } else {
     return false;
@@ -297,10 +297,6 @@ std::vector<std::vector<size_t>> GetSupportedNodes(const GraphViewer& graph_view
 
   if (IsValidSupportedNodesVec(supported_node_vec, graph_viewer))
     supported_node_vecs.push_back(supported_node_vec);
-
-  LOGS_DEFAULT(VERBOSE) << "Support vectors size is " << supported_node_vecs.size();
-  for (const auto& group : supported_node_vecs)
-    LOGS_DEFAULT(VERBOSE) << "Support vector size is " << group.size();
 
   return supported_node_vecs;
 }

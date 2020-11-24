@@ -13,7 +13,7 @@
 
 namespace onnxruntime {
 
-#if defined(MLAS_TARGET_AMD64_IX86)
+#ifdef MLAS_SUPPORTS_GEMM_U8X8
 
 class QLinearConv : public OpKernel {
  public:
@@ -69,6 +69,8 @@ ONNX_CPU_OPERATOR_KERNEL(
 
 namespace contrib {
 
+// Register an alternate version of this kernel that supports the channels_last
+// attribute in order to consume and produce NHWC tensors.
 ONNX_OPERATOR_KERNEL_EX(
     QLinearConv,
     kMSDomain,
@@ -525,23 +527,14 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
         }
       }
 
-      if (output_scales.size() == 1) {
-        MlasRequantizeOutputColumn(worker_gemm_output,
-                                   worker_requantize_output,
-                                   Bdata,
-                                   static_cast<size_t>(output_count),
-                                   static_cast<size_t>(M),
-                                   output_scales[0],
-                                   Y_zero_point_value);
-      } else {
-        MlasRequantizeOutputColumn(worker_gemm_output,
-                                   worker_requantize_output,
-                                   Bdata,
-                                   static_cast<size_t>(output_count),
-                                   static_cast<size_t>(M),
-                                   output_scales.data(),
-                                   Y_zero_point_value);
-      }
+      MlasRequantizeOutput(worker_gemm_output,
+                           worker_requantize_output,
+                           Bdata,
+                           static_cast<size_t>(output_count),
+                           static_cast<size_t>(M),
+                           output_scales.data(),
+                           output_scales.size() > 1,
+                           Y_zero_point_value);
     };
 
     concurrency::ThreadPool::TrySimpleParallelFor(thread_pool, thread_count, conv_worker);
@@ -681,18 +674,10 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
 
   const float real_multiplier = (X_scale_value * W_scale_value) / Y_scale_value;
 
-#ifdef MLAS_SUPPORTS_GEMM_U8X8_AND_REQUANTIZE_OUTPUT
-  // Use an intermediate int32_t buffer for the GEMM computation before
-  // requantizing to the output type.
-  auto* gemm_output_data = alloc->Alloc(SafeInt<size_t>(sizeof(int32_t)) * Y_offset);
-  BufferUniquePtr gemm_output_buffer(gemm_output_data, BufferDeleter(alloc));
-  auto* gemm_output = static_cast<int32_t*>(gemm_output_buffer.get());
-#else
   // Compute the fixed point multiplier and shift for requantizing with GEMMLOWP.
   int32_t integer_multiplier;
   int right_shift;
   QuantizeMultiplier(real_multiplier, &integer_multiplier, &right_shift);
-#endif
 
   const auto* Xdata = X->template Data<uint8_t>();
   const auto* Wdata = W->template Data<uint8_t>();
@@ -737,29 +722,6 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
         }
       }
 
-#ifdef MLAS_SUPPORTS_GEMM_U8X8_AND_REQUANTIZE_OUTPUT
-      QGemm(static_cast<int>(group_output_channels),
-            static_cast<int>(output_image_size),
-            static_cast<int>(kernel_dim),
-            Wdata + group_id * W_offset,
-            static_cast<int>(kernel_dim),
-            W_zero_point_value,
-            col_buffer_data == nullptr ? Xdata : col_buffer_data,
-            static_cast<int>(output_image_size),
-            X_zero_point_value,
-            false,
-            gemm_output,
-            static_cast<int>(output_image_size),
-            context->GetOperatorThreadPool());
-
-      MlasRequantizeOutput(gemm_output,
-                           Ydata,
-                           Bdata != nullptr ? Bdata + group_id * group_output_channels : nullptr,
-                           static_cast<size_t>(group_output_channels),
-                           static_cast<size_t>(output_image_size),
-                           real_multiplier,
-                           Y_zero_point_value);
-#else
       GemmlowpMultiplyu8u8_u8(Wdata + group_id * W_offset,
                               col_buffer_data == nullptr ? Xdata : col_buffer_data,
                               Ydata,
@@ -772,7 +734,6 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
                               integer_multiplier,
                               right_shift,
                               Bdata != nullptr ? Bdata + group_id * group_output_channels : nullptr);
-#endif
 
       Xdata += X_offset;
       Ydata += Y_offset;

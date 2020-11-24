@@ -7,6 +7,7 @@
 # Extra E2E test cases (converted by build_full_ort_and_create_ort_files.sh) will be run by onnx_test_runner
 
 set -e
+set -x
 
 # Clear the previous build
 rm -rf /build/Debug

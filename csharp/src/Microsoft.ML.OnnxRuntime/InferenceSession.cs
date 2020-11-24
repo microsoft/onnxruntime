@@ -12,11 +12,22 @@ using System.Buffers;
 namespace Microsoft.ML.OnnxRuntime
 {
     /// <summary>
-    /// Represents an Inference Session on an ONNX Model
+    /// Represents an Inference Session on an ONNX Model.
+    /// This is a IDisposable class and it must be disposed of
+    /// using either a explicit call to Dispose() method or
+    /// a pattern of using() block. If this is a member of another
+    /// class that class must also become IDisposable and it must
+    /// dispose of InferfenceSession in its Dispose() method.
     /// </summary>
     public class InferenceSession : IDisposable
     {
+        /// <summary>
+        /// A pointer to a underlying native instance of OrtSession
+        /// </summary>
         protected IntPtr _nativeHandle;
+        /// <summary>
+        /// Dictionaries that represent input/output/overridableInitializers metadata
+        /// </summary>
         protected Dictionary<string, NodeMetadata> _inputMetadata, _outputMetadata, _overridableInitializerMetadata;
         private SessionOptions _builtInSessionOptions = null;
         private RunOptions _builtInRunOptions = null;
@@ -272,13 +283,12 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        ///
         /// Runs the loaded model for the given inputs and outputs.
         /// 
         /// Outputs need to be created with correct type and dimension to receive the fetched data.
         /// </summary>
         /// <param name="inputs">Specify a collection of <see cref="NamedOnnxValue"/> that indicates the input values.</param>
-        /// <param name="output">Specify a collection of <see cref="NamedOnnxValue"/> that indicates the output values.</param>
+        /// <param name="outputs">Specify a collection of <see cref="NamedOnnxValue"/> that indicates the output values.</param>
         public void Run(
             IReadOnlyCollection<NamedOnnxValue> inputs,
             IReadOnlyCollection<NamedOnnxValue> outputs)
@@ -293,7 +303,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Outputs need to be created with correct type and dimension to receive the fetched data.
         /// </summary>
         /// <param name="inputs">Specify a collection of <see cref="NamedOnnxValue"/> that indicates the input values.</param>
-        /// <param name="output">Specify a collection of <see cref="NamedOnnxValue"/> that indicates the output values.</param>
+        /// <param name="outputs">Specify a collection of <see cref="NamedOnnxValue"/> that indicates the output values.</param>
         /// <param name="options"></param>
         public void Run(
             IReadOnlyCollection<NamedOnnxValue> inputs,
@@ -388,7 +398,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="inputNames">Specify a collection of string that indicates the input names. Should match <paramref name="inputValues"/>.</param>
         /// <param name="inputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the input values.</param>
-        /// <param name="output">Specify a collection of <see cref="NamedOnnxValue"/> that indicates the output values.</param>
+        /// <param name="outputs">Specify a collection of <see cref="NamedOnnxValue"/> that indicates the output values.</param>
         public void Run(
             IReadOnlyCollection<string> inputNames,
             IReadOnlyCollection<FixedBufferOnnxValue> inputValues,
@@ -405,7 +415,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="inputNames">Specify a collection of string that indicates the input names. Should match <paramref name="inputValues"/>.</param>
         /// <param name="inputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the input values.</param>
-        /// <param name="output">Specify a collection of <see cref="NamedOnnxValue"/> that indicates the output values.</param>
+        /// <param name="outputs">Specify a collection of <see cref="NamedOnnxValue"/> that indicates the output values.</param>
         /// <param name="options"></param>
         public void Run(
             IReadOnlyCollection<string> inputNames,
@@ -478,6 +488,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// call to retrieve output names. They will be paired with the returned OrtValues and combined into DisposbleNamedOnnxValues.
         /// Otherwise, the method will retrieve output names from the OrtIoBinding instance.
         /// It is an error if you supply a different number of names than the returned outputs</param>
+        /// <returns>A disposable collection of DisposableNamedOnnxValue that encapsulate output OrtValues</returns>
         public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> RunWithBindingAndNames(RunOptions runOptions, OrtIoBinding ioBinding, string[] names = null)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtRunWithBinding(Handle, runOptions.Handle, ioBinding.Handle));
@@ -514,8 +525,9 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Ends profiling for the session. Returns the profile file name.
-        /// 
+        /// Ends profiling for the session.
+        /// </summary>
+        /// <returns> Returns the profile file name.</returns>
         public string EndProfiling()
         {
             IntPtr nameHandle = IntPtr.Zero;
@@ -642,6 +654,11 @@ namespace Microsoft.ML.OnnxRuntime
             return result;
         }
 
+        /// <summary>
+        /// This property queries model metadata, constructs
+        /// an instance of ModelMetadata and caches it
+        /// </summary>
+        /// <returns>Instance of ModelMetdata</returns>
         public ModelMetadata ModelMetadata
         {
             get
@@ -931,12 +948,19 @@ namespace Microsoft.ML.OnnxRuntime
             Dispose(false);
         }
 
+        /// <summary>
+        /// IDisposable implementation
+        /// </summary>
         public void Dispose()
         {
             Dispose(true);
             GC.SuppressFinalize(this);
         }
 
+        /// <summary>
+        /// IDisposable implementation
+        /// </summary>
+        /// <param name="disposing">true if invoked from Dispose() method</param>
         protected virtual void Dispose(bool disposing)
         {
             if(_disposed)
@@ -978,51 +1002,42 @@ namespace Microsoft.ML.OnnxRuntime
     /// </summary>
     public class NodeMetadata
     {
-        private OnnxValueType _onnxValueType;
-        private int[] _dimensions;
-        private string[] _symbolicDimensions;
-        private Type _type;
-
         internal NodeMetadata(OnnxValueType onnxValueType, int[] dimensions, string[] symbolicDimensions, Type type)
         {
-            _onnxValueType = onnxValueType;
-            _dimensions = dimensions;
-            _symbolicDimensions = symbolicDimensions;
-            _type = type;
+            OnnxValueType = onnxValueType;
+            Dimensions = dimensions;
+            SymbolicDimensions = symbolicDimensions;
+            ElementType = type;
         }
 
-        public OnnxValueType OnnxValueType
-        {
-            get
-            {
-                return _onnxValueType;
-            }
-        }
+        /// <summary>
+        /// Type value of the node
+        /// </summary>
+        /// <value>A value of OnnxValueType enum</value>
+        public OnnxValueType OnnxValueType { get; }
 
-        public int[] Dimensions
-        {
-            get
-            {
-                return _dimensions;
-            }
-        }
+        /// <summary>
+        /// Shape
+        /// </summary>
+        /// <value>Array of dimensions</value>
+        public int[] Dimensions { get; }
 
-        public string[] SymbolicDimensions
-        {
-            get
-            {
-                return _symbolicDimensions;
-            }
-        }
+        /// <summary>
+        /// Symbolic dimensions
+        /// </summary>
+        /// <value>Array of symbolic dimensions if present.</value>
+        public string[] SymbolicDimensions { get; }
 
-        public System.Type ElementType
-        {
-            get
-            {
-                return _type;
-            }
-        }
+        /// <summary>
+        /// .NET type that corresponds to this Node.
+        /// </summary>
+        /// <value>System.Type</value>
+        public System.Type ElementType { get; }
 
+        /// <summary>
+        /// Whether it is a Tensor
+        /// </summary>
+        /// <value>currently always returns true</value>
         public bool IsTensor
         {
             get
@@ -1033,6 +1048,10 @@ namespace Microsoft.ML.OnnxRuntime
     }
 
 
+    /// <summary>
+    /// A class that queries and caches model metadata and exposes
+    /// it as properties
+    /// </summary>
     public class ModelMetadata
     {
         private string _producerName;
@@ -1138,6 +1157,10 @@ namespace Microsoft.ML.OnnxRuntime
 
         }
 
+        /// <summary>
+        /// Producer name string
+        /// </summary>
+        /// <value>producer name string</value>
         public string ProducerName
         {
             get
@@ -1146,6 +1169,10 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+        /// <summary>
+        /// Graph name for this model
+        /// </summary>
+        /// <value>graph name string</value>
         public string GraphName
         {
             get
@@ -1154,6 +1181,10 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+        /// <summary>
+        /// Domain for this model
+        /// </summary>
+        /// <value>domain name string</value>
         public string Domain
         {
             get
@@ -1162,6 +1193,10 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+        /// <summary>
+        /// Unstructured model description
+        /// </summary>
+        /// <value>description string</value>
         public string Description
         {
             get
@@ -1170,6 +1205,10 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+        /// <summary>
+        /// Version number
+        /// </summary>
+        /// <value>long version integer</value>
         public long Version
         {
             get
@@ -1178,6 +1217,10 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+        /// <summary>
+        /// Custom metadata key/value pairs
+        /// </summary>
+        /// <value>An instance of a Dictionary<string,string></value>
         public Dictionary<string, string> CustomMetadataMap
         {
             get
