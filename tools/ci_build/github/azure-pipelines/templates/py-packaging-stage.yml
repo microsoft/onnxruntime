@@ -86,12 +86,13 @@ stages:
 
       - template: set-py-packaging-variables-step.yml
 
-      - task: Docker@2
-        displayName: login
-        inputs:
-          containerRegistry: onnxruntimebuildcache
-          command: login
-          addPipelineData: false
+      - template: templates/get-docker-image-steps.yml
+        parameters:
+          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
+          Context: tools/ci_build/github/linux/docker
+          DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+          Repository: onnxruntimecpubuild
+
       - task: CmdLine@2
         inputs:
           script: |
@@ -104,7 +105,7 @@ stages:
               --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
-              onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntimecpubuild:ch1 \
+              onnxruntimecpubuild \
                 $(python.manylinux.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build --cmake_generator Ninja \
                   --config Release \
@@ -117,12 +118,7 @@ stages:
                   ${{ parameters.build_py_parameters }} \
                   --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.manylinux.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so
           workingDirectory: $(Build.SourcesDirectory)
-      - task: Docker@2
-        displayName: logout
-        inputs:
-          containerRegistry: onnxruntimebuildcache
-          command: logout
-          addPipelineData: false
+
       - task: CopyFiles@2
         displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
         inputs:
@@ -163,12 +159,13 @@ stages:
 
       - template: set-py-packaging-variables-step.yml
 
-      - task: Docker@2
-        displayName: login
-        inputs:
-          containerRegistry: onnxruntimebuildcache
-          command: login
-          addPipelineData: false
+      - template: templates/get-docker-image-steps.yml
+        parameters:
+          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
+          Context: tools/ci_build/github/linux/docker
+          DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+          Repository: onnxruntimecpubuild
+
       - task: CmdLine@2
         inputs:
           script: |
@@ -181,7 +178,7 @@ stages:
               --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
-              onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntimecpubuild:ch1 \
+              onnxruntimecpubuild \
                 $(python.manylinux.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build --cmake_generator Ninja \
                   --config Release \
@@ -193,12 +190,7 @@ stages:
                   ${{ parameters.build_py_parameters }} \
                   --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.manylinux.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so
           workingDirectory: $(Build.SourcesDirectory)
-      - task: Docker@2
-        displayName: logout
-        inputs:
-          containerRegistry: onnxruntimebuildcache
-          command: logout
-          addPipelineData: false
+
       - task: CopyFiles@2
         displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
         inputs:
@@ -240,12 +232,13 @@ stages:
 
       - template: set-py-packaging-variables-step.yml
 
-      - task: Docker@2
-        displayName: login
-        inputs:
-          containerRegistry: onnxruntimebuildcache
-          command: login
-          addPipelineData: false
+      - template: templates/get-docker-image-steps.yml
+        parameters:
+          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda10_2
+          Context: tools/ci_build/github/linux/docker
+          DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+          Repository: onnxruntimegpubuild
+
       - task: CmdLine@2
         inputs:
           script: |
@@ -258,7 +251,7 @@ stages:
               --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
-              onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntimegpubuild:ch2 \
+              onnxruntimegpubuild \
                 $(python.manylinux.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build --cmake_generator Ninja \
                   --config Release \
@@ -269,13 +262,6 @@ stages:
                   ${{ parameters.build_py_parameters }} \
                   --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.manylinux.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so
           workingDirectory: $(Build.SourcesDirectory)
-
-      - task: Docker@2
-        displayName: logout
-        inputs:
-          containerRegistry: onnxruntimebuildcache
-          command: logout
-          addPipelineData: false
 
       - task: CopyFiles@2
         displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'

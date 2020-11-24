@@ -9,12 +9,13 @@ jobs:
     clean: true
     submodules: recursive
 
-  - task: Docker@2
-    displayName: login
-    inputs:
-      containerRegistry: onnxruntimebuildcache
-      command: login
-      addPipelineData: false
+  - template: templates/get-docker-image-steps.yml
+    parameters:
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.centos_gpu
+      Context: tools/ci_build/github/linux/docker
+      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+      Repository: onnxruntimecentosgpubuild
+
   - task: CmdLine@2
     inputs:
       script: |
@@ -27,7 +28,7 @@ jobs:
           --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
-          onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntimecentosgpubuild:ch4 \
+          onnxruntimecentosgpubuild \
             python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build --cmake_generator Ninja \
               --config Debug Release \
@@ -38,12 +39,7 @@ jobs:
               --enable_onnx_tests --use_cuda --cuda_version=10.2 --cuda_home=/usr/local/cuda-10.2 --cudnn_home=/usr/local/cuda-10.2 \
               --enable_pybind --build_java --build_nodejs --enable_multi_device_test
       workingDirectory: $(Build.SourcesDirectory)
-  - task: Docker@2
-    displayName: logout
-    inputs:
-      containerRegistry: onnxruntimebuildcache
-      command: logout
-      addPipelineData: false
+
   - task: PublishTestResults@2
     displayName: 'Publish unit test results'
     inputs:
