@@ -127,7 +127,6 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
       const std::string filename = flags["mapping_file"].as<std::string>();
       ReadOpToRankMap(filename, params.op_id_to_rank);
 
-      params.partition_after_ad = flags["partition_after_ad"].as<bool>();
       auto cut_info_groups = flags["cut_group_info"].as<std::vector<std::string>>();
       ORT_RETURN_IF_NOT(filename.size() > 0 || static_cast<int>(cut_info_groups.size() + 1) == params.pipeline_parallel_size,
                         "cut_info length plus one must match pipeline parallel size");
