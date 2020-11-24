@@ -1,5 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include "Eigen/Core"
+#include "Eigen/Dense"
 
 #include "core/providers/cpu/tensor/eye_like.h"
 #include "core/framework/tensorprotoutils.h"
@@ -8,6 +10,8 @@
 using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
+template <typename T>
+using EigenMatrixMapRowMajor = Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>;
 
 ONNX_CPU_OPERATOR_KERNEL(
     EyeLike,
