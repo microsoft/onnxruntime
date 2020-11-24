@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
 using System.Buffers;
@@ -5,7 +8,7 @@ using System.Buffers;
 namespace Microsoft.ML.OnnxRuntime
 {
     /// <summary>
-    /// Represents an Onnx Value with its underlying buffer pinned
+    /// Represents an OrtValue with its underlying buffer pinned
     /// </summary>
     public class FixedBufferOnnxValue : IDisposable
     {
@@ -33,6 +36,9 @@ namespace Microsoft.ML.OnnxRuntime
         {
             MemoryHandle? memHandle;
             var ortValue = OrtValue.CreateFromTensorObject(value, out memHandle, out TensorElementType elementType);
+            // memHandle will have a value when CreateFromTensorObject() pins managed memory and that will have to be
+            /// disposed (unpinned) when all is said is done. This is the case for blittable types but does not
+            /// happen for string type where each element has its own allocation.
             if (memHandle.HasValue)
             {
                 return new FixedBufferOnnxValue((MemoryHandle)memHandle, ortValue, OnnxValueType.ONNX_TYPE_TENSOR, elementType);
@@ -80,9 +86,9 @@ namespace Microsoft.ML.OnnxRuntime
         /// 
         /// var memInfo = OrtMemoryInfo.DefaultInstance; // CPU
         ///
-        /// using(var fixedBufferInput = FixedBufferOnnxvalue.CreateFromMemory<Half>(memInfo,
+        /// using(var fixedBufferInput = FixedBufferOnnxvalue.CreateTensorFromMemory<Half>(memInfo,
         ///                         input, TensorElementType.Float16, input_shape, input.Length * sizeof(ushort))
-        /// using(var fixedBufferOutput = FixedBufferOnnxvalue.CreateFromMemory<Half>(memInfo,
+        /// using(var fixedBufferOutput = FixedBufferOnnxvalue.CreateTensorFromMemory<Half>(memInfo,
         ///                               output, TensorElementType.Float16, output_shape, output.Length * sizeof(ushort))
         /// {
         ///    FixedBufferOnnxvalue[] inputValues = new FixedBufferOnnxvalue[]{fixedBufferInput};
@@ -92,9 +98,14 @@ namespace Microsoft.ML.OnnxRuntime
         /// }
         /// \endcode
         /// </example>
-        public static FixedBufferOnnxValue CreateFromMemory<T>(OrtMemoryInfo memoryInfo, Memory<T> memory,
+        public static FixedBufferOnnxValue CreateTensorFromMemory<T>(OrtMemoryInfo memoryInfo, Memory<T> memory,
             TensorElementType elementType, long[] shape, long bytesSize)
         {
+            if(elementType == TensorElementType.String)
+            {
+                throw new ArgumentException("String data type is not supported");
+            }
+
             var memHandle = memory.Pin();
             try
             {

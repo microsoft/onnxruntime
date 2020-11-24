@@ -95,9 +95,9 @@ namespace Microsoft.ML.OnnxRuntime
             Type type;
             int width;
             TensorElementTypeConverter.GetTypeAndWidth(elementType, out type, out width);
-            if(width == 0)
+            if(width < 1)
             {
-                throw new OnnxRuntimeException(ErrorCode.InvalidArgument, "Unknown tensor type");
+                throw new OnnxRuntimeException(ErrorCode.InvalidArgument, "Unsupported data type (such as string)");
             }
 
             var shapeSize = ArrayUtilities.GetSizeForShape(shape);

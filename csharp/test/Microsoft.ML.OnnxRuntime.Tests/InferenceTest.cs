@@ -4,7 +4,6 @@
 using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -314,7 +313,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     Assert.True(inputMeta[inputName].IsTensor);
                     var longShape = Array.ConvertAll<int, long>(inputMeta[inputName].Dimensions, d => d);
                     var byteSize = ArrayUtilities.GetSizeForShape(longShape) * sizeof(float);
-                    pinnedInputs.Add(FixedBufferOnnxValue.CreateFromMemory<float>(memInfo, inputData,
+                    pinnedInputs.Add(FixedBufferOnnxValue.CreateTensorFromMemory<float>(memInfo, inputData,
                         TensorElementType.Float, longShape, byteSize));
 
 
@@ -327,7 +326,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     longShape = Array.ConvertAll<int, long>(outputMeta[outputName].Dimensions, d => d);
                     byteSize = ArrayUtilities.GetSizeForShape(longShape) * sizeof(float);
                     float[] outputBuffer = new float[expectedOutput.Length];
-                    pinnedOutputs.Add(FixedBufferOnnxValue.CreateFromMemory<float>(memInfo, outputBuffer, 
+                    pinnedOutputs.Add(FixedBufferOnnxValue.CreateTensorFromMemory<float>(memInfo, outputBuffer, 
                         TensorElementType.Float, longShape, byteSize));
 
                     session.Run(inputNames, pinnedInputs, outputNames, pinnedOutputs);

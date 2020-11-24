@@ -4,7 +4,6 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Buffers;
 
 namespace Microsoft.ML.OnnxRuntime
 {
