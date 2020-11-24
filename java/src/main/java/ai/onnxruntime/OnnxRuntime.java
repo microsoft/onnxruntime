@@ -59,10 +59,15 @@ final class OnnxRuntime {
     }
     String detectedArch = null;
     String arch = System.getProperty("os.arch", "generic").toLowerCase(Locale.ENGLISH);
-    if (arch.indexOf("amd64") == 0 || arch.indexOf("x86_64") == 0) {
+    if (arch.startsWith("amd64") || arch.startsWith("x86_64")) {
       detectedArch = "x64";
-    } else if (arch.indexOf("x86") == 0) {
+    } else if (arch.startsWith("x86")) {
+      // 32-bit x86 is not supported by the Java API
       detectedArch = "x86";
+    } else if (arch.startsWith("aarch64")) {
+      detectedArch = "aarch64";
+    } else if (arch.startsWith("ppc64")) {
+      detectedArch = "ppc64";
     } else if (isAndroid()) {
       detectedArch = arch;
     } else {
