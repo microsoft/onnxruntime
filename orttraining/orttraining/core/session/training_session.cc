@@ -151,13 +151,6 @@ Status TrainingSession::ConfigureForTraining(
       "TrainingSession::ConfigureForTraining() must be called before TrainingSession::Initialize().");
 
   if (is_configured_) return Status::OK();
-  LOGS(*session_logger_, INFO) << "ZZZ";
-  char cwd[PATH_MAX];
-   if (getcwd(cwd, sizeof(cwd)) != NULL) {
-       LOGS(*session_logger_, INFO) << "ZZZ " << cwd;
-   } else {
-     LOGS(*session_logger_, INFO) << "getcwd() error";
-  }
 
   std::unordered_set<std::string> filtered_config_weight_names_to_train;
   FilterUnusedWeights(config.weight_names_to_train, filtered_config_weight_names_to_train);
@@ -298,6 +291,17 @@ Status TrainingSession::ConfigureForTraining(
   ORT_RETURN_IF_ERROR(BuildGradientGraph(
       weight_names_to_train, loss_name, config.gradient_graph_config, *session_logger_));
 
+  LOGS(*session_logger_, INFO) << "ZZZ";
+  char cwd[PATH_MAX];
+   if (getcwd(cwd, sizeof(cwd)) != NULL) {
+       LOGS(*session_logger_, INFO) << "ZZZ " << cwd;
+   } else {
+     LOGS(*session_logger_, INFO) << "getcwd() error";
+  }
+
+  if (IsRootNode(config))
+    ORT_IGNORE_RETURN_VALUE(Save("logs/full_model.onnx", SaveOption::NO_RELOAD));
+
   if (config.pipeline_config.has_value()) {
     TrainingConfigurationResult::PipelineConfigurationResult pipeline_result{};
     ORT_RETURN_IF_ERROR(InsertPipelineOps(weight_names_to_train,
@@ -411,8 +415,6 @@ Status TrainingSession::ConfigureForTraining(
     ORT_IGNORE_RETURN_VALUE(Save(
         config.model_with_training_graph_path.value(), SaveOption::NO_RELOAD));
   }
-  if (IsRootNode(config))
-    ORT_IGNORE_RETURN_VALUE(Save("logs/full_model.onnx", SaveOption::NO_RELOAD));
 
   // After pipeline partition, we need to return the inputs allowed in this partition.
   if (config.pipeline_config.has_value()) {
