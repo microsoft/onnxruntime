@@ -1,5 +1,8 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include <unistd.h>
+#include <stdio.h>
+#include <limits.h>
 
 #include "orttraining/core/session/training_session.h"
 
@@ -148,6 +151,13 @@ Status TrainingSession::ConfigureForTraining(
       "TrainingSession::ConfigureForTraining() must be called before TrainingSession::Initialize().");
 
   if (is_configured_) return Status::OK();
+  LOGS(*session_logger_, INFO) << "ZZZ";
+  char cwd[PATH_MAX];
+   if (getcwd(cwd, sizeof(cwd)) != NULL) {
+       LOGS(*session_logger_, INFO) << "ZZZ " << cwd;
+   } else {
+     LOGS(*session_logger_, INFO) << "getcwd() error";
+  }
 
   std::unordered_set<std::string> filtered_config_weight_names_to_train;
   FilterUnusedWeights(config.weight_names_to_train, filtered_config_weight_names_to_train);
