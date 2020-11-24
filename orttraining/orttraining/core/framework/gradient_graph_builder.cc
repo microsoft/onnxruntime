@@ -230,6 +230,8 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
     gradient_graph_defs.AddNodeDefs(node_defs);
   }
 
+  LOGS(logger_, WARNING) << "ZZZ 1";
+
   // Accumulate Gradients
   for (auto gradient_pair : gradients_to_accumulate_) {
     gradient_graph_defs.AddNodeDefs(
@@ -240,12 +242,14 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
                  "AccumulateGrad_" + gradient_pair.first.name)});
   }
 
+  LOGS(logger_, WARNING) << "ZZZ 2";
   if (gradient_graph_config_.set_gradients_as_graph_outputs) {
     for (auto x_node_arg : x_node_args_) {
       gradient_graph_defs.AddGraphOutputs({GradientBuilderBase::GradientName(x_node_arg->Name())});
     }
   }
 
+  LOGS(logger_, WARNING) << "ZZZ 3";
   return GraphAugmenter::AugmentGraph(*graph_, gradient_graph_defs, p_initializer_names_to_preserve);
 }
 
