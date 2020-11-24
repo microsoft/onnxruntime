@@ -3,7 +3,9 @@
 
 #include "core/providers/cpu/tensor/transpose.h"
 #include "core/framework/utils.h"
+#include "core/mlas/inc/mlas.h"
 #include "utils.h"
+
 namespace onnxruntime {
 
 /* A permutation [a,b,c,...] indicates that
@@ -135,7 +137,7 @@ static void TypedDoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>
 
   const uint8_t* local_source = source;
   for (size_t i = 0; i < num_blocks; ++i) {
-    CopyPrim<uint64_t>(target, local_source);
+    CopyPrim<T>(target, local_source);
     IncrementIndexAndComputeOffset(mindex.data(), naxes, local_source);
     target += sizeof(T);
   }
