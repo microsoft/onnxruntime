@@ -164,8 +164,8 @@ if platform.system() == 'Linux':
   libs.extend(['libonnxruntime_providers_tensorrt.so'])
   # OpenVINO Libs
   if package_name == 'onnxruntime-openvino':
-    if platform.system() == 'Linux':
-      libs.extend(['libovep_ngraph.so'])
+    libs.extend(['libonnxruntime_providers_openvino.so'])
+    libs.extend(['libovep_ngraph.so'])
   # Nuphar Libs
   libs.extend(['libtvm.so.0.5.1'])
   if nightly_build:
@@ -186,6 +186,8 @@ else:
   libs.extend(['onnxruntime_providers_tensorrt.dll'])
   # DirectML Libs
   libs.extend(['directml.dll'])
+  # OpenVINO Libs
+  libs.extend(['onnxruntime_providers_openvino.dll'])
   # Nuphar Libs
   libs.extend(['tvm.dll'])
   if nightly_build:
