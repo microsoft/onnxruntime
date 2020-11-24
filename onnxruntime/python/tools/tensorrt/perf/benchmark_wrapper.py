@@ -9,6 +9,7 @@ import re
 import sys
 import pprint
 from benchmark import *
+from perf_utils import get_latest_commit_hash
 
 def write_model_info_to_file(model, path):
     with open(path, 'w') as file:
@@ -27,10 +28,11 @@ def main():
 
     model_to_fail_ep = {}
 
-    benchmark_fail_csv = 'fail.csv' 
-    benchmark_metrics_csv = 'metrics.csv'
-    benchmark_success_csv = 'success.csv' 
-    benchmark_latency_csv = 'latency.csv'
+    commit = get_latest_commit_hash()
+    benchmark_fail_csv = 'fail_' + commit + '.csv'  
+    benchmark_metrics_csv = 'metrics_' + commit + '.csv'
+    benchmark_success_csv = 'success_' + commit + '.csv' 
+    benchmark_latency_csv = 'latency_' + commit + '.csv'
 
     for model, model_info in models.items():
         logger.info("\n" + "="*40 + "="*len(model))
@@ -43,7 +45,7 @@ def main():
         write_model_info_to_file([model_info], model_list_file)
 
 
-        ep_list = ["CUDAExecutionProvider", "TensorrtExecutionProvider", "CUDAExecutionProvider_fp16", "TensorrtExecutionProvider_fp16"]
+        ep_list = ["CPUExecutionProvider", "CUDAExecutionProvider", "TensorrtExecutionProvider", "CUDAExecutionProvider_fp16", "TensorrtExecutionProvider_fp16"]
 
         for ep in ep_list:
             if args.running_mode == "validate":

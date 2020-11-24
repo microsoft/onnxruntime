@@ -458,15 +458,5 @@ void Shaper::Clear() {
   shape_ops_.clear();
 }
 
-std::string Shape2String(const Shaper::Shape& shape) {
-  std::ostringstream os;
-  os << "[ ";
-  for (const auto& dim : shape)
-    os << dim << " ";
-
-  os << "]";
-  return os.str();
-}
-
 }  // namespace nnapi
 }  // namespace onnxruntime
