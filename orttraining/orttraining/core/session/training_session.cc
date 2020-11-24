@@ -302,7 +302,7 @@ Status TrainingSession::ConfigureForTraining(
   }
 
   if (IsRootNode(config))
-    ORT_IGNORE_RETURN_VALUE(Save("logs/full_model.onnx", SaveOption::NO_RELOAD));
+    ORT_IGNORE_RETURN_VALUE(Save("/bert_ort/sedymche/smart_compose_output/full_model.onnx", SaveOption::NO_RELOAD));
 
   if (config.pipeline_config.has_value()) {
     TrainingConfigurationResult::PipelineConfigurationResult pipeline_result{};
