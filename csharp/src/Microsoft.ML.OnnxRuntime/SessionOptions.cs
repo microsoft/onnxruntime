@@ -4,8 +4,6 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Runtime.InteropServices;
-using System.IO;
 
 namespace Microsoft.ML.OnnxRuntime
 {
