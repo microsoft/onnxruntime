@@ -2,7 +2,7 @@
 
 ## Overview
 
-<img align="left" width=40% src="images/Mobile.png" alt="Steps to build the reduced binary size."/>
+<img align="left" width=40% src="images/Mobile.png" alt="Steps to build reduce the binary size."/>
 
 ONNX Runtime now supports an internal model format to minimize the build size for usage in mobile and embedded scenarios. An ONNX model can be converted to an internal ONNX Runtime format ('ORT format model') using the below instructions.
 
@@ -54,8 +54,8 @@ The follow options can be used to reduce the build size. Enable all options that
   - Enable minimal build (`--minimal_build`)
     - A minimal build will ONLY support loading and executing ORT format models. 
     - RTTI is disabled by default in this build, unless the Python bindings (`--build_wheel`) are enabled. 
-    - If you wish to enable a compiling execution provider such as NNAPI specify `--minimal_build extended`. 
-      - See [here](#Enabling-Execution-Providers-that-compile-kernels-in-a-minimal-build) for more information
+    - If you wish to enable execution providers that compile kernels such as NNAPI specify `--minimal_build extended`. 
+      - See [here](#Using-NNAPI-with-ONNX-Runtime-Mobile) for more information about using NNAPI with ONNX Runtime Mobile on Android platforms
 
   - Disable exceptions (`--disable_exceptions`)
     - Disables support for exceptions in the build.
@@ -120,26 +120,32 @@ so.add_session_config_entry('session.load_model_format', 'ORT')
 session = onnxruntime.InferenceSession(<path to model>, so)
 ```
 
-## Enabling Execution Providers that compile kernels in a minimal build
+## Using NNAPI with ONNX Runtime Mobile
 
-It is possible to enable execution providers that compile kernels in a minimal build. 
-Currently the NNAPI execution provider is the only compiling execution provider that has support for running in a minimal build.
+Using the NNAPI Execution Provider on Android platforms is now supported by ONNX Runtime Mobile. It is recommended to limit the ORT format model to using ONNX operators if NNAPI will be used at runtime. A minimal build targeting Android that includes NNAPI support must also be created.
 
-### Create ORT format model limited to ONNX operators
+### Limit ORT format model to ONNX operators
 
-Specify `--optimization_level basic` when running `tools\python\convert_onnx_models_to_ort.py` as per above [instructions](#1-Create-ORT-format-model-and-configuration-file-with-required-operators) . 
+The NNAPI Execution Provider is only able to execute ONNX operators using NNAPI, so when creating the ORT format model it is recommended to limit the optimization level to 'basic' so that custom internal ONNX Runtime operators are not added by the 'extended' optimizations. This will ensure that the maximum number of nodes can be executed using NNAPI. See the [graph optimization](ONNX_Runtime_Graph_Optimizations.md) documentation for details on the optimization levels.
 
-This will result in a model that only uses ONNX operators. All nodes that NNAPI could handle are preserved, at the cost of any higher level optimizations that may have been possible.
+To limit the optimization level when creating the ORT format models using `tools\python\convert_onnx_models_to_ort.py` as per the above [instructions](#1-Create-ORT-format-model-and-configuration-file-with-required-operators), add `--optimization_level basic` to the arguments.
+  - e.g. `python <ORT repository root>/tools/python/convert_onnx_models_to_ort.py --optimization_level basic /models`
 
-It is possible to perform additional steps to allow the higher level optimizations to be applied. See [here](Advanced_Minimal_Build_usage.md) for more details.
+For further explanation on how the optimization level affects how many nodes can be assigned to NNAPI, and some advanced options if your model is especially performance sensitive, please see [here](Minimal_Build__Advanced_Usage_with_NNAPI.md).
 
-### Create a minimal build with NNAPI support
-NOTE: A minimal build with full NNAPI support can only be created for the Android platform as NNAPI is only available on Android. 
-See [these](https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Android-NNAPI-Execution-Provider) instructions for details on creating an Android build with NNAPI included. 
+### Create a minimal build for Android with NNAPI support
 
-  - Follow the above instructions to [create the minimal build](#2-Create-the-minimal-build), with the following changes:
-    - Replace `--minimal_build` with `--minimal_build extended` to enable the support for execution providers that compile kernels in the minimal build.
-    - Add `--use_nnapi` to include the NNAPI execution provider in the build
+For NNAPI to be used on Android with ONNX Runtime Mobile, the NNAPI Execution Provider must be included in the minimal build.
+
+First, read the general instructions for [creating an Android build with NNAPI included](https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Android-NNAPI-Execution-Provider). These provide details on setting up the components required to create an Android build of ONNX Runtime, such as the Android NDK.
+
+Once you have all the necessary components setup, follow the instructions to [create the minimal build](#2-Create-the-minimal-build), with the following changes:
+  - Replace `--minimal_build` with `--minimal_build extended` to enable support for execution providers that dynamically create kernels at runtime, which is needed by the NNAPI Execution Provider.
+  - Add `--use_nnapi` to include the NNAPI Execution Provider in the build
+  - Windows example:  
+    `<ONNX Runtime repository root>.\build.bat --config RelWithDebInfo --android --android_sdk_path D:\Android --android_ndk_path D:\Android\ndk\21.1.6352462\ --android_abi arm64-v8a --android_api 29 --cmake_generator Ninja --minimal_build extended --use_nnapi --disable_ml_ops --disable_exceptions --build_shared_lib --skip_tests --include_ops_by_config <config file produced by step 1>`
+  - Linux example:  
+    `<ONNX Runtime repository root>./build.sh --config RelWithDebInfo --android --android_sdk_path /Android --android_ndk_path /Android/ndk/21.1.6352462/ --android_abi arm64-v8a --android_api 29 --minimal_build extended --use_nnapi --disable_ml_ops --disable_exceptions --build_shared_lib --skip_tests --include_ops_by_config <config file produced by step 1>`
 
 ## Limitations
 
@@ -152,7 +158,7 @@ A minimal build has the following limitations currently:
   - Limited support for runtime partitioning (assigning nodes in a model to specific execution providers)
     - Execution providers that statically register kernels and will be used at runtime MUST be enabled when creating the ORT format model
     - Execution providers that compile nodes are optionally supported, and nodes they create will be correctly partitioned at runtime
-      - currently this is limited to the NNAPI execution provider
+      - currently this is limited to the NNAPI Execution Provider
   - No support for custom operators
 
 We do not currently offer backwards compatibility guarantees for ORT format models, as we will be expanding the capabilities in the short term and may need to update the internal format in an incompatible manner to accommodate these changes. You may need to regenerate the ORT format models to use with a future version of ONNX Runtime. Once the feature set stabilizes we will provide backwards compatibility guarantees.
