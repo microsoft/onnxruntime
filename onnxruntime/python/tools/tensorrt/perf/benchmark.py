@@ -884,9 +884,9 @@ def run_onnxruntime(args, models):
         ep_list.append(args.ep)
     else:
         if args.fp16:
-            ep_list = ["CUDAExecutionProvider", "TensorrtExecutionProvider", "CUDAExecutionProvider_fp16", "TensorrtExecutionProvider_fp16"]
+            ep_list = ["CPUExecutionProvider", "CUDAExecutionProvider", "TensorrtExecutionProvider", "CUDAExecutionProvider_fp16", "TensorrtExecutionProvider_fp16"]
         else:
-            ep_list = ["CUDAExecutionProvider", "TensorrtExecutionProvider"]
+            ep_list = ["CPUExecutionProvider", "CUDAExecutionProvider", "TensorrtExecutionProvider"]
 
     validation_exemption = ["TensorrtExecutionProvider_fp16"]
 
@@ -1004,7 +1004,6 @@ def run_onnxruntime(args, models):
                     logger.info("Model outputs nodes:")
                     for output_meta in sess.get_outputs():
                         logger.info(output_meta)
-
 
                 batch_size = 1
                 result_template = {
@@ -1186,12 +1185,14 @@ def output_latency(results, csv_filename):
 
     with open(csv_filename, mode="a", newline='') as csv_file:
         column_names = ["Model",
-                        "CUDA \nmean (ms)",
-                        "CUDA \n90th percentile (ms)",
-                        "TRT EP \nmean (ms)",
-                        "TRT EP \n90th percentile (ms)",
-                        "Standalone TRT \nmean (ms)",
-                        "Standalone TRT \n90th percentile (ms)",
+                        "CPU \nmean (ms)",
+                        "CPU \n 90th percentile (ms)",
+                        "CUDA fp32 \nmean (ms)",
+                        "CUDA fp32 \n90th percentile (ms)",
+                        "TRT EP fp32 \nmean (ms)",
+                        "TRT EP fp32 \n90th percentile (ms)",
+                        "Standalone TRT fp32 \nmean (ms)",
+                        "Standalone TRT fp32 \n90th percentile (ms)",
                         "CUDA fp16 \nmean (ms)",
                         "CUDA fp16 \n90th percentile (ms)",
                         "TRT EP fp16 \nmean (ms)",
@@ -1206,69 +1207,77 @@ def output_latency(results, csv_filename):
             csv_writer.writerow(column_names)
 
         for key, value in results.items():
+            cpu_average = "" 
+            if "CPUExecutionProvider" in value and "average_latency_ms" in value["CPUExecutionProvider"]:
+                cpu_average = value["CPUExecutionProvider"]["average_latency_ms"]
+
+            cpu_90_percentile = ""
+            if "CPUExecutionProvider" in value and "latency_90_percentile" in value["CPUExecutionProvider"]:
+                cpu_90_percentile = value["CPUExecutionProvider"]["latency_90_percentile"]
+
             cuda_average = ""
             if 'CUDAExecutionProvider' in value and 'average_latency_ms' in value['CUDAExecutionProvider']:
                 cuda_average = value['CUDAExecutionProvider']['average_latency_ms']
 
-            cuda_99_percentile = ""
+            cuda_90_percentile = ""
             if 'CUDAExecutionProvider' in value and 'latency_90_percentile' in value['CUDAExecutionProvider']:
-                cuda_99_percentile = value['CUDAExecutionProvider']['latency_90_percentile']
+                cuda_90_percentile = value['CUDAExecutionProvider']['latency_90_percentile']
 
             trt_average = ""
             if 'TensorrtExecutionProvider' in value and 'average_latency_ms' in value['TensorrtExecutionProvider']:
                 trt_average = value['TensorrtExecutionProvider']['average_latency_ms']
 
-            trt_99_percentile = ""
+            trt_90_percentile = ""
             if 'TensorrtExecutionProvider' in value and 'latency_90_percentile' in value['TensorrtExecutionProvider']:
-                trt_99_percentile = value['TensorrtExecutionProvider']['latency_90_percentile']
+                trt_90_percentile = value['TensorrtExecutionProvider']['latency_90_percentile']
 
             standalone_trt_average = ""
             if 'Standalone_TRT' in value and 'average_latency_ms' in value['Standalone_TRT']:
                 standalone_trt_average = value['Standalone_TRT']['average_latency_ms']
 
-            standalone_trt_99_percentile = ""
+            standalone_trt_90_percentile = ""
             if 'Standalone_TRT' in value and 'latency_90_percentile' in value['Standalone_TRT']:
-                standalone_trt_99_percentile = value['Standalone_TRT']['latency_90_percentile']
+                standalone_trt_90_percentile = value['Standalone_TRT']['latency_90_percentile']
 
 
             cuda_fp16_average = ""
             if 'CUDAExecutionProvider_fp16' in value and 'average_latency_ms' in value['CUDAExecutionProvider_fp16']:
                 cuda_fp16_average = value['CUDAExecutionProvider_fp16']['average_latency_ms']
 
-            cuda_fp16_99_percentile = ""
+            cuda_fp16_90_percentile = ""
             if 'CUDAExecutionProvider_fp16' in value and 'latency_90_percentile' in value['CUDAExecutionProvider_fp16']:
-                cuda_fp16_99_percentile = value['CUDAExecutionProvider_fp16']['latency_90_percentile']
+                cuda_fp16_90_percentile = value['CUDAExecutionProvider_fp16']['latency_90_percentile']
 
             trt_fp16_average = ""
             if 'TensorrtExecutionProvider_fp16' in value and 'average_latency_ms' in value['TensorrtExecutionProvider_fp16']:
                 trt_fp16_average = value['TensorrtExecutionProvider_fp16']['average_latency_ms']
 
-            trt_fp16_99_percentile = ""
+            trt_fp16_90_percentile = ""
             if 'TensorrtExecutionProvider_fp16' in value and 'latency_90_percentile' in value['TensorrtExecutionProvider_fp16']:
-                trt_fp16_99_percentile = value['TensorrtExecutionProvider_fp16']['latency_90_percentile']
+                trt_fp16_90_percentile = value['TensorrtExecutionProvider_fp16']['latency_90_percentile']
 
             standalone_trt_fp16_average = ""
             if 'Standalone_TRT_fp16' in value and 'average_latency_ms' in value['Standalone_TRT_fp16']:
                 standalone_trt_fp16_average = value['Standalone_TRT_fp16']['average_latency_ms']
 
-            standalone_trt_fp16_99_percentile = ""
+            standalone_trt_fp16_90_percentile = ""
             if 'Standalone_TRT_fp16' in value and 'latency_90_percentile' in value['Standalone_TRT_fp16']:
-                standalone_trt_fp16_99_percentile = value['Standalone_TRT_fp16']['latency_90_percentile']
+                standalone_trt_fp16_90_percentile = value['Standalone_TRT_fp16']['latency_90_percentile']
 
 
             row = [key,
                    cuda_average,
-                   cuda_99_percentile,
+                   cuda_90_percentile,
                    trt_average,
-                   trt_99_percentile,
+                   trt_90_percentile,
                    standalone_trt_average,
-                   standalone_trt_99_percentile,
+                   standalone_trt_90_percentile,
                    cuda_fp16_average,
-                   cuda_fp16_99_percentile,
+                   cuda_fp16_90_percentile,
                    trt_fp16_average,
-                   trt_fp16_99_percentile,
+                   trt_fp16_90_percentile,
                    standalone_trt_fp16_average,
-                   standalone_trt_fp16_99_percentile,
+                   standalone_trt_fp16_90_percentile,
                    value['Tensorrt_gain(%)'] if 'Tensorrt_gain(%)' in value else "  ",
                    value['Tensorrt_fp16_gain(%)'] if 'Tensorrt_fp16_gain(%)' in value else "  "
                    ]

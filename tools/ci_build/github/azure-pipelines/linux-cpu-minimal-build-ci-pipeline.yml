@@ -95,6 +95,7 @@ jobs:
           -e BUILD_BUILDNUMBER \
           -e BUILD_SOURCEVERSION=$(Build.SourceVersion) \
           -e BUILD_ID=$(Build.BuildId) \
+          -e BUILD_REASON=$(Build.Reason) \
           -e DASHBOARD_MYSQL_ORT_PASSWORD=$(dashboard-mysql-ort-password) \
           onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntimecentoscpubuild:ch3 \
             /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_android_baseline_and_report_bin_size.sh

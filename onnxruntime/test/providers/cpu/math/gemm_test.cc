@@ -314,8 +314,8 @@ TEST(GemmOpTest, GemmNoBiasOpset11) {
   test.AddOutput<float>("Y", {2, 3},
                         {10.0f, 10.0f, 10.0f,
                          -10.0f, -10.0f, -10.0f});
-  // NGraph and tensorRT don't seem to support missing bias
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider, kTensorrtExecutionProvider});
+  // tensorRT don't seem to support missing bias
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(GemmOpTest, GemmWithAlphaOpset11) {
@@ -328,8 +328,8 @@ TEST(GemmOpTest, GemmWithAlphaOpset11) {
   test.AddInput<float>("B", {2, 2}, std::vector<float>(4, 1.0f));
   test.AddOutput<float>("Y", {2, 2},
                         {6.0f, 6.0f, 14.0f, 14.0f});
-  // NGraph and tensorRT don't seem to support missing bias
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider, kTensorrtExecutionProvider});
+  // tensorRT don't seem to support missing bias
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 }  // namespace test

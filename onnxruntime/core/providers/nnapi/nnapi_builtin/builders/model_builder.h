@@ -177,8 +177,7 @@ class ModelBuilder {
                        bool is_nhwc,
                        uint32_t& index) ORT_MUST_USE_RESULT;
 
-  IOpBuilder* GetOpBuilder(const Node& node);
-  IOpSupportChecker* GetOPSupportChecker(const Node& node);
+  static const IOpBuilder* GetOpBuilder(const Node& node);
 };
 
 }  // namespace nnapi
