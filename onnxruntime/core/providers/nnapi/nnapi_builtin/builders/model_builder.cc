@@ -334,9 +334,16 @@ Status ModelBuilder::RegisterModelOutputs() {
     // Since for now all the shapes are deterministic for NNAPI, it's impossible we can have unknown output shape
     const auto* shape_proto = node_arg->Shape();
     ORT_RETURN_IF_NOT(shape_proto != nullptr, "shape_proto cannot be null for output: ", output_name);
-    // Record the scalar output
-    if (shape_proto->dim_size() == 0)
+    if (shape_proto->dim_size() == 0) {
+      // In NNAPI scalar output must have {1} shape
+      const auto& output_shape = shaper_[output_name];
+      ORT_RETURN_IF_NOT(output_shape.size() == 1 && output_shape[0] == 1,
+                        "scalar output [", output_name, "] must have {1} shape, ",
+                        " actual shape, ", Shape2String(output_shape));
+
+      // Record the scalar output
       nnapi_model_->AddScalarOutput(output_name);
+    }
 
     std::string nnapi_output_name = output_name;
     if (IsOperandNHWC(output_name)) {
