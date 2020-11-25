@@ -22,11 +22,12 @@
 #include "test/framework/test_utils.h"
 #include "test/util/include/asserts.h"
 #include "test/test_environment.h"
-#include "orttraining/test/graph/training_session_test_utils.h"
+#include "orttraining/test/session/training_session_test_utils.h"
 
 using onnxruntime::test::CountOpsInGraph;
 using onnxruntime::test::CreateMLValue;
 using onnxruntime::test::TestCPUExecutionProvider;
+using namespace onnxruntime::test::training_session_test_utils;
 
 namespace onnxruntime {
 namespace training {
@@ -158,17 +159,17 @@ static void TestOptimizerGraphBuilderWithInitialStates(OptimizerGraphConfig conf
     NameMLValMap per_weight_states;
     OrtValue ml_value;
 
-    for (const auto key : onnxruntime::test::MOMENT_PREFIX) {
+    for (const auto key : MOMENT_PREFIX) {
       CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims, values, &ml_value);
       per_weight_states.insert(std::make_pair(key, std::move(ml_value)));
     }
     if (optimizer_op_name == k_adam_optimizer_op_name) {
       CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims, uc_value, &ml_value);
-      per_weight_states.insert(std::make_pair(onnxruntime::test::UC_TENSOR_NAME, std::move(ml_value)));
+      per_weight_states.insert(std::make_pair(UC_PREFIX, std::move(ml_value)));
     } else if (optimizer_op_name == k_lamb_optimizer_op_name) {
       // add "Step" for lamb
       CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims, uc_value, &ml_value);
-      shared_states.insert(std::make_pair(onnxruntime::test::STEP_TENSOR_NAME, std::move(ml_value)));
+      shared_states.insert(std::make_pair(STEP_TENSOR_NAME, std::move(ml_value)));
       config.shared_optimizer_states = std::move(shared_states);
     }
     opt_config_it.second.initial_states = std::move(per_weight_states);
@@ -191,14 +192,14 @@ static void TestOptimizerGraphBuilderWithInitialStates(OptimizerGraphConfig conf
   }
 }
 
-TEST_F(OptimizerGraphBuilderTest, Default_FullPrecision_Adam) {
+TEST_F(OptimizerGraphBuilderTest, LoadOptimState_FullPrecision_Adam) {
   OptimizerGraphConfig config;
   config.gradient_accumulation_steps = 1;
   config.use_mixed_precision = false;
   TestOptimizerGraphBuilderWithInitialStates(config, graph_, k_adam_optimizer_op_name);
 }
 
-TEST_F(OptimizerGraphBuilderTest, Default_FullPrecision_Lamb) {
+TEST_F(OptimizerGraphBuilderTest, LoadOptimState_FullPrecision_Lamb) {
   OptimizerGraphConfig config;
   config.gradient_accumulation_steps = 1;
   config.use_mixed_precision = false;

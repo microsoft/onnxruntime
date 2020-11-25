@@ -41,7 +41,7 @@ ONNX_NAMESPACE::TensorProto CreateTensorProto(
 
 Status IsMatchingTypeAndShape(
     const onnxruntime::Tensor& tensor,
-    const int32_t& element_type,
+    const int32_t element_type,
     const std::vector<int64_t>& expected_shape);
 
 class OptimizerBuilder {
@@ -169,7 +169,7 @@ class OptimizerBuilder {
       std::vector<ArgDef>& output_weight_argdefs,
       std::vector<ArgDef>& output_gradient_argdefs,
       const bool enable_grad_clipping,      
-      const NameMLValMap shared_optim_state) const = 0;
+      const NameMLValMap& shared_optim_state) const = 0;
 
   const OpDef& OpDefinition() const { return op_def_; }
 

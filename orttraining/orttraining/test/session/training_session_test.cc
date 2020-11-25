@@ -11,12 +11,11 @@
 #include "core/session/environment.h"
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/models/runner/training_runner.h"
-#include "orttraining/test/graph/training_session_test_utils.h"
+#include "orttraining/test/session/training_session_test_utils.h"
 
 #include "orttraining/training_ops/cpu/controlflow/event_pool.h"  // TODO: move with PipelineBatchPlanner
 
 #ifdef USE_CUDA
-#include "bert_toy_fetches.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #endif
 
@@ -24,6 +23,7 @@ using namespace onnxruntime::logging;
 using namespace onnxruntime::training;
 using namespace google::protobuf::util;
 using namespace onnxruntime::path_utils;
+using namespace onnxruntime::test::training_session_test_utils;
 
 namespace onnxruntime {
 namespace test {
@@ -39,9 +39,9 @@ static void RunTrainingSessionLoadOptimTests(std::string optim_name, bool mixed_
 
   TrainingSession::OptimizerState init_optimizer_state{};
   if (mixed_precision_moments) {
-    GenerateOpimizerInitialState<MLFloat16>(optim_name, init_optimizer_state);
+    GenerateOpimizerInitialState<MLFloat16>(optim_name, MLFloat16(math::floatToHalf(2.5)), init_optimizer_state);
   } else {
-    GenerateOpimizerInitialState<float>(optim_name, init_optimizer_state);
+    GenerateOpimizerInitialState<float>(optim_name, 2.5f, init_optimizer_state);
   }
 
   config.init_optimizer_states = init_optimizer_state;

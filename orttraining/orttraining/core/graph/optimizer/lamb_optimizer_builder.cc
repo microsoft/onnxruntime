@@ -62,7 +62,7 @@ Status LambOptimizerBuilder::Build(
     std::vector<ArgDef>& output_weight_argdefs,
     std::vector<ArgDef>& output_gradient_argdefs,
     bool enable_grad_clipping,
-    const NameMLValMap shared_optim_state) const {
+    const NameMLValMap& shared_optim_state) const {
   ORT_ENFORCE(weight_argdefs.size() <= size_t(1024),
               "The current LambOptimizer can only update up to 1024 weight tensors, but",
               "the actual number of weight tensors is ", weight_argdefs.size());
@@ -104,10 +104,10 @@ Status LambOptimizerBuilder::Build(
   const std::string step_tensor_name = "Step";  // per weight optimizer requires a per weight update count
   // Add step as an initializer.
   TensorProto step_tensor_proto;
-  if (shared_optim_state.find(step_tensor_name) != shared_optim_state.end()) {
-    const auto& initial_state_it = shared_optim_state.find(step_tensor_name);
+  const auto initial_state_it = shared_optim_state.find(step_tensor_name);
+  if (initial_state_it != shared_optim_state.end()) {
     const auto& init_tensor = initial_state_it->second.Get<Tensor>();
-    ORT_ENFORCE(IsMatchingTypeAndShape(init_tensor, ONNX_NAMESPACE::TensorProto_DataType_INT64, {1}).IsOK());
+    ORT_THROW_IF_ERROR(IsMatchingTypeAndShape(init_tensor, ONNX_NAMESPACE::TensorProto_DataType_INT64, {1}));
     step_tensor_proto = utils::TensorToTensorProto(init_tensor, step_tensor_name);
   } else {
     step_tensor_proto = CreateTensorProto<int64_t>(step_tensor_name, 1);
@@ -237,10 +237,7 @@ Status LambOptimizerBuilder::Build(
         output_argdefs.push_back(output_gradient_argdef);  // g_new
       }
 
-      auto element_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT;
-      if (opt_configs[i].use_mixed_precision_moments) {
-        element_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16;
-      }
+      const auto element_type = opt_configs[i].use_mixed_precision_moments ? ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16 : ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT;
 
       // m1 & m2 & m1_new & m2_new
       const std::vector<std::string> moments_prefixes({"Moment_1", "Moment_2"});
@@ -252,14 +249,14 @@ Status LambOptimizerBuilder::Build(
         TypeProto* moment_type_proto = graph_defs.CopyTypeProto(weight_argdefs[i]);
 
         // Update moment initializer with init value
-        const auto initial_states = opt_configs[i].initial_states;
-        if (initial_states.find(moment_prefix) != initial_states.end()) {
+        const auto& initial_states = opt_configs[i].initial_states;
+        const auto initial_state_it = initial_states.find(moment_prefix);
+        if (initial_state_it != initial_states.end()) {
           //update moment_tensor_proto
-          const auto& initial_state_it = initial_states.find(moment_prefix);
           const auto& init_tensor = initial_state_it->second.Get<Tensor>();
 
           //TODO: need to support float -> float16 and float16-> float conversion
-          ORT_ENFORCE(IsMatchingTypeAndShape(init_tensor, element_type, weight_dims).IsOK());
+          ORT_THROW_IF_ERROR(IsMatchingTypeAndShape(init_tensor, element_type, weight_dims));
           moment_tensor_proto = utils::TensorToTensorProto(init_tensor, gradient_moment_name);
         } else if (opt_configs[i].use_mixed_precision_moments) {
           moment_tensor_proto = CreateTensorProto<MLFloat16>(gradient_moment_name, MLFloat16(math::floatToHalf(0.f)), weight_dims);
@@ -280,11 +277,11 @@ Status LambOptimizerBuilder::Build(
       // w_mixed_precision & w_mixed_precision_new
       if (opt_configs[i].update_weight && opt_configs[i].mixed_precision_weight_arg != nullptr) {
         input_argdefs.emplace_back(ArgDef(
-            opt_configs[i].mixed_precision_weight_arg->Name(),
-            opt_configs[i].mixed_precision_weight_arg->TypeAsProto()));
+          opt_configs[i].mixed_precision_weight_arg->Name(),
+          opt_configs[i].mixed_precision_weight_arg->TypeAsProto()));
         output_weight_argdef = ArgDef(
-            opt_configs[i].mixed_precision_weight_arg->Name() + "_Lamb_out",
-            opt_configs[i].mixed_precision_weight_arg->TypeAsProto());
+          opt_configs[i].mixed_precision_weight_arg->Name() + "_Lamb_out",
+          opt_configs[i].mixed_precision_weight_arg->TypeAsProto());
         output_argdefs.push_back(output_weight_argdef);
       } else {
         input_argdefs.emplace_back(ArgDef());

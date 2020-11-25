@@ -18,7 +18,7 @@ void OptimizerBuilderRegistry::RegisterBuilders() {
 
 Status IsMatchingTypeAndShape(
     const onnxruntime::Tensor& tensor,
-    const int32_t& element_type,
+    const int32_t element_type,
     const std::vector<int64_t>& expected_shape) {
   ORT_ENFORCE(tensor.GetElementType() == element_type);
   const std::vector<int64_t>& tensor_shape = tensor.Shape().GetDims();

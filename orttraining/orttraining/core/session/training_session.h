@@ -16,7 +16,7 @@
 namespace onnxruntime {
 namespace training {
 
-constexpr char SHARED_STATES_KEY[] = "shared_optimizer_state";
+constexpr char SHARED_OPTIMIZER_STATES_KEY[] = "shared_optimizer_state";
 
 class TrainingSession : public InferenceSession {
  public:

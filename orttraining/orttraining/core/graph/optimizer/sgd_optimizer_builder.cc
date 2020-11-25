@@ -58,7 +58,7 @@ Status SGDOptimizerBuilder::Build(
     std::vector<ArgDef>& output_weight_argdefs,
     std::vector<ArgDef>& output_gradient_argdefs,
     bool /* enable_grad_clipping */,
-    const NameMLValMap /* shared_optim_state */) const {
+    const NameMLValMap& /* shared_optim_state */) const {
 
   for (size_t i = 0; i < weight_argdefs.size(); ++i) {
     const std::string& weight_name = weight_argdefs[i].name;

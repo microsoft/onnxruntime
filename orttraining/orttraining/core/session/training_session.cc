@@ -93,8 +93,8 @@ Status SetupOptimizerParams(
     }
 
     // check if initial optimizer states have been provided for weight
-    if (init_optimizer_states.size() > 0){
-      auto optim_state_it = init_optimizer_states.find(weight_name);
+    if (!init_optimizer_states.empty()){
+      const auto optim_state_it = init_optimizer_states.find(weight_name);
       if (optim_state_it != init_optimizer_states.end()) {
         auto state = optim_state_it->second;
         opt_node_config.initial_states = std::move(state);
@@ -132,8 +132,8 @@ Status SetupOptimizerParams(
   opt_graph_config.deepspeed_zero = optimizer_config.deepspeed_zero;
 
   // check if shared initial optimizer states have been provided
-  if (init_optimizer_states.size() > 0){
-    auto optim_state_it = init_optimizer_states.find(onnxruntime::training::SHARED_STATES_KEY);
+  if (!init_optimizer_states.empty()){
+    const auto optim_state_it = init_optimizer_states.find(onnxruntime::training::SHARED_OPTIMIZER_STATES_KEY);
     if (optim_state_it != init_optimizer_states.end()) {
       auto state = optim_state_it->second;
       opt_graph_config.shared_optimizer_states = std::move(state);

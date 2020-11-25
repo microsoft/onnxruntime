@@ -36,7 +36,7 @@ Status AdamOptimizerBuilder::Build(
     const ArgDef* gradient_norm_finite_argdef,
     const std::vector<OptimizerNodeConfig>& opt_configs,
     GraphAugmenter::GraphDefs& graph_defs,
-    std::vector<ONNX_NAMESPACE::TensorProto>& new_external_initializers,
+    std::vector<TensorProto>& new_external_initializers,
     std::vector<ArgDef>& output_weight_argdefs,
     std::vector<ArgDef>& output_gradient_argdefs,
     bool enable_grad_clipping) const {
@@ -59,7 +59,7 @@ Status AdamOptimizerBuilder::Build(
     std::vector<ArgDef>& output_weight_argdefs,
     std::vector<ArgDef>& output_gradient_argdefs,
     bool enable_grad_clipping,
-    const NameMLValMap) const {
+    const NameMLValMap&) const {
   for (size_t i = 0; i < weight_argdefs.size(); ++i) {
     const std::string& weight_name = weight_argdefs[i].name;
     const std::string& gradient_name = gradient_argdefs[i].name;
@@ -75,16 +75,16 @@ Status AdamOptimizerBuilder::Build(
     // In distributed training, some weights may not be updated by all ranks.
     if (opt_configs[i].enabled) {
       // The type proto initializer for Update Count
-      std::string uc_prefix = "Update_Count";
+      const std::string uc_prefix = "Update_Count";
       const std::string update_count_string = uc_prefix + "_" + weight_name;  // per weight optimizer requires a per weight update count
       TensorProto uc_tensor_proto;
 
       // Update 'Update_Count' initializer with init value
-      const auto initial_states = opt_configs[i].initial_states;
-      if (initial_states.find(uc_prefix) != initial_states.end()) {
-        const auto& initial_state_it = initial_states.find(uc_prefix);
+      const auto& initial_states = opt_configs[i].initial_states;
+      const auto initial_state_it = initial_states.find(uc_prefix);
+      if (initial_state_it != initial_states.end()) {        
         const auto& init_tensor = initial_state_it->second.Get<Tensor>();
-        ORT_ENFORCE(IsMatchingTypeAndShape(init_tensor, ONNX_NAMESPACE::TensorProto_DataType_INT64, {1}).IsOK());
+        ORT_THROW_IF_ERROR(IsMatchingTypeAndShape(init_tensor, ONNX_NAMESPACE::TensorProto_DataType_INT64, {1}));
         uc_tensor_proto = utils::TensorToTensorProto(init_tensor, update_count_string);
       } else {
         uc_tensor_proto = CreateTensorProto<int64_t>(update_count_string, 1);
@@ -115,10 +115,7 @@ Status AdamOptimizerBuilder::Build(
         weight_dims.push_back(dim.dim_value());
       }
 
-      auto element_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT;
-      if (opt_configs[i].use_mixed_precision_moments) {
-        element_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16;
-      }
+      const auto element_type = opt_configs[i].use_mixed_precision_moments ? ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16 : ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT;
 
       // Add first- and second-order momentums to input list.
       const std::vector<std::string> moments_prefixes({"Moment_1", "Moment_2"});
@@ -129,13 +126,13 @@ Status AdamOptimizerBuilder::Build(
         TypeProto* moment_type_proto = graph_defs.CopyTypeProto(weight_argdefs[i]);
 
         // Update moment initializer with init value
-        if (initial_states.find(moments_prefix) != initial_states.end()) {
-          //update moment_tensor_proto
-          const auto& initial_state_it = initial_states.find(moments_prefix);
+        const auto initial_state_it = initial_states.find(moments_prefix);
+        if (initial_state_it != initial_states.end()) {
+          //update moment_tensor_proto          
           const auto& init_tensor = initial_state_it->second.Get<Tensor>();
 
           //TODO: need to support float -> float16 and float16-> float conversion
-          ORT_ENFORCE(IsMatchingTypeAndShape(init_tensor, element_type, weight_dims).IsOK());
+          ORT_THROW_IF_ERROR(IsMatchingTypeAndShape(init_tensor, element_type, weight_dims));
           moment_tensor_proto = utils::TensorToTensorProto(init_tensor, gradient_moment_name);
         } else if (opt_configs[i].use_mixed_precision_moments) {
           moment_tensor_proto = CreateTensorProto<MLFloat16>(gradient_moment_name, MLFloat16(math::floatToHalf(0.f)), weight_dims);
