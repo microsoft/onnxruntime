@@ -196,6 +196,8 @@ class ExecutionFrame final : public IExecutionFrame {
   // use this planner_ to trace the memory allocation in current executor.
   std::unique_ptr<OrtValuePatternPlanner> planner_;
 
+  OrtValuePatternPlanner* cached_planner_;
+
   // Big chunks on different locations that will be used by mem_pattern.
   std::map<OrtMemoryInfo, BufferUniquePtr> buffers_;
 

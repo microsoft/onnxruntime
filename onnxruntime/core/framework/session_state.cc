@@ -3,8 +3,9 @@
 
 #include "core/framework/session_state.h"
 
+#include <string>
 #include <sstream>
-
+#include <fstream>
 #include "core/common/logging/logging.h"
 #include "core/common/safeint.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
@@ -16,6 +17,8 @@
 #include "core/framework/utils.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include <boost/algorithm/string.hpp>
+#include "core/framework/murmurhash3.h"
 
 using namespace ::onnxruntime::common;
 using namespace ::onnxruntime::experimental;
@@ -293,11 +296,18 @@ Status SessionState::PrepackConstantInitializedTensors(std::unordered_map<std::s
 }
 
 static int64_t CalculateMemoryPatternsKey(const std::vector<std::reference_wrapper<const TensorShape>>& shapes) {
-  int64_t key = 0;
+  uint32_t hash[4] = {0, 0, 0, 0};
+  auto hash_int64 = [&hash](int64_t i) { MurmurHash3::x86_128(&i, sizeof(i), hash[0], &hash); };
+
   for (auto shape : shapes) {
-    for (auto dim : shape.get().GetDims()) key ^= dim;
+    for (auto dim : shape.get().GetDims()) {
+      hash_int64(dim);
+    }
   }
-  return key;
+  
+  uint64_t key = hash[0] & 0xfffffff8;  // save low 3 bits for hash version info in case we need it in the future
+  key |= uint64_t(hash[1]) << 32;
+  return (int64_t)key;
 }
 
 #ifdef ENABLE_TRAINING
@@ -331,6 +341,18 @@ Status ResolveDimParams(const GraphViewer& graph,
   return Status::OK();
 }
 
+bool is_integer(const std::string& s) {
+  bool has_only_digits = true;
+  for (size_t n = 0; n < s.length(); n++) {
+    if (!isdigit(s[n])) {
+      has_only_digits = false;
+      break;
+    }
+  }
+
+  return has_only_digits;
+}
+
 Status TryResolveShape(
     const NodeArg* arg,
     const std::unordered_map<std::string, int64_t>& symbolic_dimensions,
@@ -346,12 +368,23 @@ Status TryResolveShape(
   SafeInt<size_t> safe_size = 1;
   for (auto& dim : arg->Shape()->dim()) {
     if (dim.has_dim_param()) {
-      auto it = symbolic_dimensions.find(dim.dim_param());
-      if (it == symbolic_dimensions.end()) {
-        return Status(ONNXRUNTIME, FAIL, "Unknown symbolic dimension, " + dim.dim_param() + ", found in memory pattern compute.");
+      std::vector<std::string> fields;
+      boost::split(fields, dim.dim_param(), boost::is_any_of("*"));
+      for (auto field : fields) {
+        auto it = symbolic_dimensions.find(field);
+        if (it == symbolic_dimensions.end()) {
+          if (is_integer(field)) {
+            int64_t factor = std::strtoll(field.c_str(), NULL, 10);
+            safe_size *= factor;
+            shape.push_back(factor);
+          } else {
+            return Status(ONNXRUNTIME, FAIL, "Unknown symbolic dimension, " + field + ", found in memory pattern compute.");
+          }
+        } else {
+          safe_size *= it->second;
+          shape.push_back(it->second);
+        }
       }
-      safe_size *= it->second;
-      shape.push_back(it->second);
     } else if (dim.has_dim_value() && dim.dim_value() > 0) {
       safe_size *= dim.dim_value();
       shape.push_back(dim.dim_value());
@@ -382,10 +415,12 @@ void TryCalculateSizeFromResolvedShape(int ml_value_idx, std::unordered_map<int,
 
 }  // namespace
 
+// If this function fails NO TRAINING will take place, hence lets ONLY FAIL and stop training where warranted, example SIZE overflow.
 Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_wrapper<const TensorShape>>& input_shape,
                                                const std::vector<int>& feed_mlvalue_idxs,
                                                MemoryPatternGroup* output,
-                                               std::unordered_map<int, TensorShape>& resolved_shapes) const {
+                                               std::unordered_map<int, TensorShape>& resolved_shapes,
+                                               std::unique_ptr<OrtValuePatternPlanner>& mem_planner) const {
   std::map<std::string, TensorShape> feeds;
   for (size_t i = 0, end = feed_mlvalue_idxs.size(); i < end; ++i) {
     std::string name;
@@ -396,7 +431,6 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
   ORT_RETURN_IF_ERROR(ResolveDimParams(*graph_viewer_, feeds, map));
   auto* exe_plan = GetExecutionPlan();
   ORT_ENFORCE(exe_plan);
-  OrtValuePatternPlanner mem_planner(*exe_plan, /*using counters*/ true);
 
   // Try to resolve shapes for activations.
   auto& node_index_info = GetNodeIndexInfo();
@@ -418,7 +452,12 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
       auto* arg = node->OutputDefs()[i];
       size_t is_resolved = 0;
       std::vector<int64_t> resolved_shape;
-      ORT_RETURN_IF_ERROR(TryResolveShape(arg, map, is_resolved, resolved_shape));
+
+      // Tensors whose shape cannot be resolved statically will be allocated at runtime by
+      // first finding a slot in the static buffer and then falling back to BFCArena.
+      if (!TryResolveShape(arg, map, is_resolved, resolved_shape).IsOK()) {
+        continue;
+      }
 
       // Store all valid resolved shapes. They will be queried in, for example,
       // Recv operator to bypass the dependency of output shapes on inputs.
@@ -440,6 +479,10 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
         ml_data_type != DataTypeImpl::GetType<std::string>()) {
       size_t size = 0;
       TryCalculateSizeFromResolvedShape(ml_value_idx, resolved_shapes, size);
+      // REVIEW(codemzs): For now lets fail here but in a subsequent PR I will not fail instead modify the kernel to have a fallback plan
+      // in place (i.e use a buffer inside the kernel) in the event framework is unable to gurantee contiguous allocation.
+      // Just as a FYI, for all practical purposes (i.e NCCL primitives) the shapes of tensors will be known ahead of time for this scenario but
+      // still good to make the system robust.
       if (size == 0) {
         std::string node_name;
         ORT_RETURN_IF_ERROR(this->ort_value_name_idx_map_.GetName(ml_value_idx, node_name));
@@ -506,39 +549,52 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
     }
   }
 
-  if (!mem_planner.GeneratePatterns(output).IsOK()) {
+  if (!mem_planner->GeneratePatterns(output).IsOK()) {
     return Status(ONNXRUNTIME, FAIL, "Generate Memory Pattern failed");
   }
+
   return Status::OK();
 }
 #endif
 
-const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(const std::vector<std::reference_wrapper<const TensorShape>>& input_shapes,
-                                                              const std::vector<int>& feed_mlvalue_idxs,
-                                                              std::unordered_map<int, TensorShape>& inferred_shapes) const {
+optional<std::pair<OrtValuePatternPlanner*, const MemoryPatternGroup*>> SessionState::GetMemoryPatternGroup(const std::vector<std::reference_wrapper<const TensorShape>>& input_shapes,
+                                                                                                                  const std::vector<int>& feed_mlvalue_idxs,
+                                                                                                                  std::unordered_map<int, TensorShape>& inferred_shapes) const {
+  optional<std::pair<OrtValuePatternPlanner*, const MemoryPatternGroup*>> ret_val;
   int64_t key = CalculateMemoryPatternsKey(input_shapes);
 
   std::lock_guard<OrtMutex> lock(mem_patterns_lock_);
   auto it = mem_patterns_.find(key);
   if (it == mem_patterns_.end()) {
 #ifdef ENABLE_TRAINING
+    auto planner = onnxruntime::make_unique<OrtValuePatternPlanner>(*GetExecutionPlan(), true /*trace_using_counters*/);
     auto mem_patterns = onnxruntime::make_unique<MemoryPatternGroup>();
-    if (GeneratePatternGroupCache(input_shapes, feed_mlvalue_idxs, mem_patterns.get(), inferred_shapes).IsOK()) {
+    if (GeneratePatternGroupCache(input_shapes, feed_mlvalue_idxs, mem_patterns.get(), inferred_shapes, planner).IsOK()) {
       key = CalculateMemoryPatternsKey(input_shapes);
-      auto ptr = mem_patterns.get();
+      auto mem_planner_ptr = planner.get();
+      auto mem_pattern_ptr = mem_patterns.get();
+      mem_planners_[key] = std::move(planner);
       mem_patterns_[key] = std::move(mem_patterns);
       shape_patterns_[key] = inferred_shapes;
-      return ptr;
+      ret_val = std::make_pair(mem_planner_ptr, mem_pattern_ptr);
     }
-    return nullptr;
 #else
     ORT_UNUSED_PARAMETER(feed_mlvalue_idxs);
-    return nullptr;
+#endif
+  } else {
+    inferred_shapes = shape_patterns_[key];
+#ifdef ENABLE_TRAINING
+    auto mem_planner = mem_planners_.find(key);
+
+    ORT_ENFORCE(mem_planner != mem_planners_.end());
+    
+    ret_val = std::make_pair(mem_planner->second.get(), it->second.get());
+#else
+    ret_val = std::make_pair(nullptr, it->second.get());
 #endif
   }
 
-  inferred_shapes = shape_patterns_[key];
-  return it->second.get();
+  return ret_val;
 }
 
 void SessionState::ResolveMemoryPatternFlag() {

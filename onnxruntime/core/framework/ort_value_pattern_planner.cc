@@ -16,7 +16,9 @@ OrtValuePatternPlanner::OrtValuePatternPlanner(const ExecutionPlanBase& executio
 #ifdef ENABLE_TRAINING
 common::Status OrtValuePatternPlanner::TraceAllocation(int ort_value_idx,
                                                        const AllocPlanPerValue::ProgramCounter& counter,
-                                                       size_t size) {
+                                                       size_t size,
+                                                       bool no_expand,
+                                                       size_t* offset_out) {
   // TODO(codemzs): refactor code.
   const auto& location = execution_planner_.GetLocation(ort_value_idx);
   auto it = planner_map_.find(location);
@@ -24,7 +26,7 @@ common::Status OrtValuePatternPlanner::TraceAllocation(int ort_value_idx,
     return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
   }
 
-  it->second->TraceAllocation(ort_value_idx, counter, size);
+  it->second->TraceAllocation(ort_value_idx, counter, size, no_expand, offset_out);
   return common::Status::OK();
 }
 #endif
@@ -40,14 +42,14 @@ common::Status OrtValuePatternPlanner::TraceAllocation(int ort_value_idx, size_t
   return common::Status::OK();
 }
 
-common::Status OrtValuePatternPlanner::TraceFree(int ort_value_index) {
+common::Status OrtValuePatternPlanner::TraceFree(int ort_value_index, bool erase) {
   const auto& location = execution_planner_.GetLocation(ort_value_index);
   auto it = planner_map_.find(location);
   if (it == planner_map_.end()) {
     return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
   }
 
-  it->second->TraceFree(ort_value_index);
+  it->second->TraceFree(ort_value_index, erase);
   return common::Status::OK();
 }
 
