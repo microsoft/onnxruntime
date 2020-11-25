@@ -179,7 +179,7 @@ def main():
     with tempfile.TemporaryDirectory() as tmp_dir:
         log_paths = download_logs(
             args.log_storage_account,
-            args.log_storage_container,
+            args.log_storage_account_container,
             args.log_storage_path_pattern,
             tmp_dir,
             args.az_path)
