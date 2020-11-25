@@ -192,7 +192,7 @@ Note: It is not recommended to put these libraries in a system location or added
 
 ### Loading the shared providers
 Shared provider libraries are loaded by the onnxruntime code (do not load or depend on them in your client code). The API for registering shared or non shared providers is identical, the difference is that shared ones will be loaded at runtime when the provider is added to the session options (through a call like OrtSessionOptionsAppendExecutionProvider_OpenVINO or SessionOptionsAppendExecutionProvider_OpenVINO in the C API).
-If a shared provider library cannot be loaded (if the file doesn't exist, or it's dependencies don't exist) then an error will be returned.
+If a shared provider library cannot be loaded (if the file doesn't exist, or its dependencies don't exist or not in the path) then an error will be returned.
 
 The onnxruntime code will look for the provider shared libraries in the same location as the onnxruntime shared library is (or the executable statically linked to the static library version).
 
