@@ -205,11 +205,7 @@ TEST(MathOpTest, Add_Broadcast_0x1) {
     test.Run(OpTester::ExpectResult::kExpectSuccess, "");
   };
 
-  // NNAPI only supports scalar initializer, not scalar input
-#ifndef USE_NNAPI
   run(false);
-#endif
-
   run(true);
 }
 
@@ -222,11 +218,8 @@ TEST(MathOpTest, Add_Broadcast_1x0) {
     test.AddOutput<float>("C", {1}, {12.0f});
     test.Run(OpTester::ExpectResult::kExpectSuccess, "");
   };
-  // NNAPI only supports scalar initializer, not scalar input
-#ifndef USE_NNAPI
-  run(false);
-#endif
 
+  run(false);
   run(true);
 }
 
@@ -398,11 +391,7 @@ TEST(MathOpTest, Sub_Broadcast_Scalar) {
     test.Run(OpTester::ExpectResult::kExpectSuccess, "");
   };
 
-  // NNAPI only supports scalar initializer, not scalar input
-#ifndef USE_NNAPI
   run(false);
-#endif
-
   run(true);
 }
 

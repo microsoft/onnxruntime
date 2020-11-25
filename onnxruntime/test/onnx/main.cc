@@ -285,8 +285,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     double per_sample_tolerance = 1e-3;
     // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
     // when openvino is enabled, set it to a larger value for resolving MNIST accuracy mismatch
-    double relative_per_sample_tolerance = enable_cuda ? 0.017 : enable_openvino ? 0.009
-                                                                                 : 1e-3;
+    double relative_per_sample_tolerance = enable_cuda ? 0.017 : enable_openvino ? 0.009 : 1e-3;
 
     Ort::SessionOptions sf;
 
@@ -739,6 +738,29 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"nllloss_NCd1_weight_ii_expanded", "wait for investigation"});
     broken_tests.insert({"nllloss_NCd1d2_no_weight_reduction_mean_ii", "wait for investigation"});
     broken_tests.insert({"nllloss_NCd1d2_no_weight_reduction_mean_ii_expanded", "wait for investigation"});
+
+    // Disabled on error: shape mismatch, expect {} got {1}
+    // NNAPI does not support scalar output, all the outputs are tensors, scalar output will be a {1} tensor
+    {
+      broken_tests.insert({"sce_NCd1_mean_weight_negative_ii", "Shape mismatch"});
+      broken_tests.insert({"sce_NCd1_mean_weight_negative_ii_expanded", "Shape mismatch"});
+      broken_tests.insert({"sce_NCd1d2d3d4d5_mean_weight", "Shape mismatch"});
+      broken_tests.insert({"sce_NCd1d2d3d4d5_mean_weight_expanded", "Shape mismatch"});
+      broken_tests.insert({"sce_mean_no_weight_ii", "Shape mismatch"});
+      broken_tests.insert({"sce_mean_no_weight_ii_3d", "Shape mismatch"});
+      broken_tests.insert({"sce_mean_no_weight_ii_3d_expanded", "Shape mismatch"});
+      broken_tests.insert({"sce_mean_no_weight_ii_4d", "Shape mismatch"});
+      broken_tests.insert({"sce_mean_no_weight_ii_4d_expanded", "Shape mismatch"});
+      broken_tests.insert({"sce_mean_no_weight_ii_expanded", "Shape mismatch"});
+      broken_tests.insert({"sce_mean_weight", "Shape mismatch"});
+      broken_tests.insert({"sce_mean_weight_expanded", "Shape mismatch"});
+      broken_tests.insert({"sce_mean_weight_ii", "Shape mismatch"});
+      broken_tests.insert({"sce_mean_weight_ii_3d", "Shape mismatch"});
+      broken_tests.insert({"sce_mean_weight_ii_3d_expanded", "Shape mismatch"});
+      broken_tests.insert({"sce_mean_weight_ii_4d", "Shape mismatch"});
+      broken_tests.insert({"sce_mean_weight_ii_4d_expanded", "Shape mismatch"});
+      broken_tests.insert({"sce_mean_weight_ii_expanded", "Shape mismatch"});
+    }
   }
 
   if (enable_tensorrt) {
