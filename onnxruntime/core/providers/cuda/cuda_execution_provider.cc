@@ -65,21 +65,24 @@ constexpr const char* kCudnnConvAlgo = "cudnn_conv_algo";
 constexpr const char* kDoCopyInDefaultStream = "do_copy_in_default_stream";
 }  // namespace provider_option_names
 
+namespace {
+template <typename T>
+bool ParseOption(const ProviderOptions& options, const std::string& key, T& value) {
+  auto it = options.find(key);
+  if (it != options.end()) {
+    ORT_ENFORCE(
+        TryParse(it->second, value),
+        "Failed to parse provider option \"", key, "\" with value \"", it->second, "\".");
+    return true;
+  }
+  return false;
+}
+}  // namespace
+
 CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const ProviderOptions& options) {
   CUDAExecutionProviderInfo info{};
 
-  auto parse = [&options](const std::string& key, auto& value) -> bool {
-    auto it = options.find(key);
-    if (it != options.end()) {
-      ORT_ENFORCE(
-          TryParse(it->second, value),
-          "Failed to parse provider option \"", key, "\" with value \"", it->second, "\".");
-      return true;
-    }
-    return false;
-  };
-
-  if (parse(provider_option_names::kDeviceId, info.device_id)) {
+  if (ParseOption(options, provider_option_names::kDeviceId, info.device_id)) {
     int num_devices = 0;
     CUDA_CALL_THROW(cudaGetDeviceCount(&num_devices));
     ORT_ENFORCE(
@@ -87,11 +90,11 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
         "Invalid ", provider_option_names::kDeviceId, " value: ", info.device_id,
         ", must be between 0 (inclusive) and ", num_devices, " (exclusive).");
   }
-  parse(provider_option_names::kMemLimit, info.cuda_mem_limit);
-  parse(provider_option_names::kArenaExtendStrategy, info.arena_extend_strategy);
+  ParseOption(options, provider_option_names::kMemLimit, info.cuda_mem_limit);
+  ParseOption(options, provider_option_names::kArenaExtendStrategy, info.arena_extend_strategy);
   {
     int cudnn_conv_algo_val;
-    if (parse(provider_option_names::kCudnnConvAlgo, cudnn_conv_algo_val)) {
+    if (ParseOption(options, provider_option_names::kCudnnConvAlgo, cudnn_conv_algo_val)) {
       switch (cudnn_conv_algo_val) {
         case OrtCudnnConvAlgoSearch::EXHAUSTIVE:
         case OrtCudnnConvAlgoSearch::HEURISTIC:
@@ -103,7 +106,7 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
       info.cudnn_conv_algo = static_cast<OrtCudnnConvAlgoSearch>(cudnn_conv_algo_val);
     }
   }
-  parse(provider_option_names::kDoCopyInDefaultStream, info.do_copy_in_default_stream);
+  ParseOption(options, provider_option_names::kDoCopyInDefaultStream, info.do_copy_in_default_stream);
 
   return info;
 }

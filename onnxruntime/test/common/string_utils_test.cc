@@ -62,7 +62,8 @@ std::istream& operator>>(std::istream& is, S& s) {
 }  // namespace
 
 TEST(StringUtilsTest, MakeStringAndTryParseCustomType) {
-  S s = {42};
+  S s;
+  s.i = 42;
   const auto str = MakeString(s);
   S parsed_s;
   ASSERT_TRUE(TryParse(str, parsed_s));

@@ -63,24 +63,27 @@ constexpr const char* kMemLimit = "hip_mem_limit";
 constexpr const char* kArenaExtendStrategy = "arena_extend_strategy";
 }  // namespace provider_option_names
 
+namespace {
+template <typename T>
+bool ParseOption(const ProviderOptions& options, const std::string& key, T& value) {
+  auto it = options.find(key);
+  if (it != options.end()) {
+    ORT_ENFORCE(
+        TryParse(it->second, value),
+        "Failed to parse provider option \"", key, "\" with value \"", it->second, "\".");
+    return true;
+  }
+  return false;
+}
+}  // namespace
+
 ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const ProviderOptions& options) {
   ROCMExecutionProviderInfo info{};
 
-  auto parse = [&options](const std::string& key, auto& value) -> bool {
-    auto it = options.find(key);
-    if (it != options.end()) {
-      ORT_ENFORCE(
-          TryParse(it->second, value),
-          "Failed to parse provider option \"", key, "\" with value \"", it->second, "\".");
-      return true;
-    }
-    return false;
-  };
-
   // TODO validate info.device_id
-  parse(provider_option_names::kDeviceId, info.device_id);
-  parse(provider_option_names::kMemLimit, info.hip_mem_limit);
-  parse(provider_option_names::kArenaExtendStrategy, info.arena_extend_strategy);
+  ParseOption(options, provider_option_names::kDeviceId, info.device_id);
+  ParseOption(options, provider_option_names::kMemLimit, info.hip_mem_limit);
+  ParseOption(options, provider_option_names::kArenaExtendStrategy, info.arena_extend_strategy);
 
   return info;
 }
