@@ -331,6 +331,13 @@ Status ModelBuilder::RegisterModelOutputs() {
                              "The output of graph is not registered [", output_name, "]");
     }
 
+    // Since for now all the shapes are deterministic for NNAPI, it's impossible we can have unknown output shape
+    const auto* shape_proto = node_arg->Shape();
+    ORT_RETURN_IF_NOT(shape_proto != nullptr, "shape_proto cannot be null for output: ", output_name);
+    // Record the scalar output
+    if (shape_proto->dim_size() == 0)
+      nnapi_model_->AddScalarOutput(output_name);
+
     std::string nnapi_output_name = output_name;
     if (IsOperandNHWC(output_name)) {
       // We need to transpose the output still in nhwc back to nchw

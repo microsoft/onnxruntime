@@ -192,7 +192,7 @@ TEST(MathOpTest, Add_Broadcast_0x0) {
   test.AddInput<float>("A", {}, {10.0f});
   test.AddInput<float>("B", {}, {2.0f});
   test.AddOutput<float>("C", {}, {12.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNnapiExecutionProvider});  // NNAPI: Add does not support scalar input
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "");
 }
 
 TEST(MathOpTest, Add_Broadcast_0x1) {

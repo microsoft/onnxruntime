@@ -365,9 +365,11 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
         std::vector<OperandType> dynamic_shape_output_types;
         std::vector<std::unique_ptr<uint8_t[]>> dynamic_shape_output_buffers;
         for (size_t i = 0; i < num_outputs; i++) {
-          const auto output_name = model_outputs[i];
+          const auto& output_name = model_outputs[i];
+
+          // Below 2 need to be copied since we will modify or take ownership
           const auto model_output_type = model->GetOutputType(output_name, *execution);
-          const auto output_shape = model_output_type.dimensions;
+          auto output_shape = model_output_type.dimensions;
 
           bool is_dynamic_shape_output = false;
           if (model_output_type.GetOperandBlobByteSize() == 0) {
@@ -382,6 +384,12 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
           void* output_buffer = nullptr;
           size_t output_buffer_byte_size;
           if (!is_dynamic_shape_output) {
+            // Since NNAPI use {1} tensor as scalar, if the model output should have empty shape
+            // We are going to replace the {1} shape of the output back to {}
+            bool is_scalar_output = model->IsScalarOutput(output_name);
+            if (is_scalar_output && output_shape == std::vector<uint32_t>{1})
+              output_shape.clear();
+
             ORT_RETURN_IF_ERROR(GetOutputBuffer(ort, context,
                                                 *model,
                                                 output_name, output_shape, model_output_type.type,
