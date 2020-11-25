@@ -845,6 +845,12 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         if args.android_cpp_shared:
             cmake_args += ["-DANDROID_STL=c++_shared"]
 
+    if is_macOS():
+        cmake_args += ["-DCMAKE_OSX_ARCHITECTURES=" + args.osx_arch]
+        # since cmake 3.19, it uses the xcode latest buildsystem, which is not supported by this project.
+        if args.use_xcode:
+            cmake_args += ["-T", "buildsystem=1"]
+
     if args.ios:
         if is_macOS():
             needed_args = [
@@ -870,7 +876,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                 "-DCMAKE_SYSTEM_NAME=iOS",
                 "-Donnxruntime_BUILD_SHARED_LIB=ON",
                 "-DCMAKE_OSX_SYSROOT=" + args.ios_sysroot,
-                "-DCMAKE_OSX_ARCHITECTURES=" + args.osx_arch,
                 "-DCMAKE_OSX_DEPLOYMENT_TARGET=" + args.apple_deploy_target,
                 # we do not need protoc binary for ios cross build
                 "-Dprotobuf_BUILD_PROTOC_BINARIES=OFF",
@@ -1727,6 +1732,8 @@ def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
             import platform
             if platform.machine() == 'x86_64':
                 cmd_args += ['-DCMAKE_OSX_ARCHITECTURES=x86_64']
+            elif platform.machine() == 'arm64':
+                cmd_args += ['-DCMAKE_OSX_ARCHITECTURES=arm64']
 
     run_subprocess(cmd_args, cwd=protoc_build_dir)
     # Build step
