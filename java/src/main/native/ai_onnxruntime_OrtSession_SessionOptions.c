@@ -296,6 +296,39 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_closeC
 
 /*
  * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    addFreeDimensionOverrideByName
+ * Signature: (JJLjava/lang/String;J)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addFreeDimensionOverrideByName
+    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong optionsHandle, jstring dimensionName, jlong dimensionValue) {
+  (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*)apiHandle;
+  OrtSessionOptions* options = (OrtSessionOptions*) optionsHandle;
+
+  // Extract the string chars
+  const char* cName = (*jniEnv)->GetStringUTFChars(jniEnv, dimensionName, NULL);
+
+  checkOrtStatus(jniEnv,api,api->AddFreeDimensionOverrideByName(options,cName,dimensionValue));
+
+  // Release the string chars
+  (*jniEnv)->ReleaseStringUTFChars(jniEnv,dimensionName,cName);
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    disablePerSessionThreads
+ * Signature: (JJ)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_disablePerSessionThreads
+    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong optionsHandle) {
+  (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*)apiHandle;
+  OrtSessionOptions* options = (OrtSessionOptions*) optionsHandle;
+  checkOrtStatus(jniEnv,api,api->DisablePerSessionThreads(options));
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
  * Method:    addConfigEntry
  * Signature: (JJLjava/lang/String;Ljava/lang/String;)V
  */

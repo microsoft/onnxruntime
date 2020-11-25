@@ -12,6 +12,8 @@ contrib_ops_files = [
                     'bert/attention.h',
                     'bert/attention_impl.cu',
                     'bert/attention_impl.h',
+                    'bert/attention_transpose.cu',
+                    'bert/attention_past.cu',
                     'bert/embed_layer_norm.cc',
                     'bert/embed_layer_norm.h',
                     'bert/embed_layer_norm_impl.cu',
