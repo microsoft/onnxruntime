@@ -176,7 +176,7 @@ static void RunTinyLongformerBatch1(
         -1.0536f, -0.0425f, -1.1194f, -0.6423f, 2.1825f, 0.2547f, 0.6015f, -0.1809f,
         0.5219f, 0.1777f, 0.7090f, -2.1933f, 0.5258f, -0.0639f, -0.8511f, 1.1738f};
   }
-  
+
   std::vector<float> weight_data;
   std::vector<float> bias_data;
   std::vector<float> global_weight_data;
@@ -186,7 +186,6 @@ static void RunTinyLongformerBatch1(
   RunAttentionTest(input_data, weight_data, bias_data, mask_data, global_weight_data, global_bias_data, global_data, output_data,
                    batch_size, sequence_length, hidden_size, number_of_heads, one_sided_attention_window_size, use_float16);
 }
-
 
 TEST(LongformerAttentionTest, LongformerAttention_NoGlobal) {
   // last word is masked.
@@ -238,7 +237,6 @@ TEST(LongformerAttentionTest, LongformerAttention_GlobalStart) {
 
   RunTinyLongformerBatch1(mask_data, global_data, output_data, false);
 }
-
 
 TEST(LongformerAttentionTest, LongformerAttention_Float16) {
   std::vector<float> mask_data = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, -10000.0f};

@@ -17,8 +17,8 @@ limitations under the License.
 // Limitations or known issues of current Longformer Attention CUDA Kernels:
 // (1) Does not support global tokens in the middle. All global tokens shall be in the beginning of sequence.
 // (2) Sequence length shall be at least 4*W, where W is one sided windows size.
-//     S==2*W has parity issue. Please pad to 4*W to word around the issue.
-// (3) The batch size shall not exceed the following constant MAX_LONGFORMER_BATCH_SIZE.
+//     S==2*W has parity issue. Please pad to 4*W to workaround the issue.
+// (3) The batch size shall not exceed the constant MAX_LONGFORMER_BATCH_SIZE 128.
 
 #include <cub/cub.cuh>
 #include <cublas_v2.h>
@@ -55,8 +55,8 @@ namespace cuda {
 // SoftmaxSpace layout (tmp_storage could use the space of scratch1, scratch2, Q and K):
 //   [Global_Idx: int BxS][batch_global_num: int BxS][sequence_index: int BxS][tmp_storage: int 1024x1]
 //                                                                            [scratch1: BxNxSxS ] [scratch2: BxNxSxS ]
-// Allocated size could be slightly larger than needed: batch_global_num uses only Bx1 and allocated BxS. 
-// Scratch size is allocated as multiples of 256. 
+// Allocated size could be slightly larger than needed: batch_global_num uses only Bx1 and allocated BxS.
+// Scratch size is allocated as multiples of 256.
 
 size_t GetLongformerSoftmaxWorkspaceSize(
     size_t element_size,
@@ -91,7 +91,7 @@ __global__ void InitSequenceIndexKernel(int* sequence_index, int sequence_length
 // TODO: Move this to its own plugin that can be run once for all layers.
 int* BuildGlobalIndex(cudaStream_t stream, const int* global_attention, int batch_size, int sequence_length, void* workspace, size_t softmax_workspace_size) {
   int* global_idx = reinterpret_cast<int*>(workspace);
-  int* batch_global_num = global_idx + batch_size * sequence_length;    // Number of global tokens in each batch, shape is (batch_size)
+  int* batch_global_num = global_idx + batch_size * sequence_length;  // Number of global tokens in each batch, shape is (batch_size)
   int* sequence_index = batch_global_num + batch_size * sequence_length;
   int* tmp_storage = sequence_index + batch_size * sequence_length;
 
@@ -551,7 +551,7 @@ bool launchSoftmaxKernel(
         static_cast<float*>(softmax_out), scaler, dim0, dim1, attention_window);
   }
 
-  // run the matrix multiply: attn_out = softmax_out * v
+  // Run the matrix multiply: attn_out = softmax_out * v
   //   softmax_out: B x N x S x S
   //             v: B x N x S x H
   //      attn_out: B x N x S x H
@@ -677,7 +677,7 @@ bool launchSoftmaxKernel(
                                        resultType,
                                        algo));
 
-      // global tokens
+      // Global tokens
       v_head = (char*)global_v + (i * x_offset) * element_size;
       prob_head = (char*)softmax_out + (i * y_offset) * element_size;
       out_head = (char*)output + (i * x_offset) * element_size;
@@ -687,7 +687,7 @@ bool launchSoftmaxKernel(
                                        CUBLAS_OP_N,
                                        head_size,
                                        num_global[i],
-                                       sequence_length,  // we need to re-write entries completely
+                                       sequence_length,  // Re-write entries completely
                                        alpha,
                                        v_head,
                                        Atype,
@@ -697,7 +697,7 @@ bool launchSoftmaxKernel(
                                        Btype,
                                        sequence_length,
                                        sequence_length * sequence_length,
-                                       beta_0,  // use beta=0 to overwrite
+                                       beta_0,  // Use beta=0 to overwrite
                                        out_head,
                                        Ctype,
                                        head_size,
@@ -723,22 +723,22 @@ bool LongformerQkvToContext(
   size_t softmax_workspace_size = GetLongformerSoftmaxWorkspaceSize(element_size, batch_size, num_heads, sequence_length);
   T* qkv = reinterpret_cast<T*>((char*)workspace + softmax_workspace_size);
 
-  // input should be BxSx3xNxH => qkv: 3xBxNxSxH
+  // Input should be BxSx3xNxH => qkv: 3xBxNxSxH
   if (!LaunchTransQkv(stream, sequence_length, batch_size, head_size, num_heads, input, qkv)) {
     return false;
   }
 
-  // global_input should be BxSx3xNxH => global_qkv: 3xBxNxSxH
+  // Input 'global_input' should be BxSx3xNxH => global_qkv: 3xBxNxSxH
   T* global_qkv = qkv + 3 * batch_size * sequence_length * num_heads * head_size * element_size;
 
-  // when there is no global token, no need to process global Q, K and V
+  // When there is no global token, no need to process global Q, K and V
   if (max_num_global > 0 && nullptr != global_input) {
     if (!LaunchTransQkv(stream, sequence_length, batch_size, head_size, num_heads, global_input, global_qkv)) {
       return false;
     }
   }
 
-  // now qkv has Q, K, V: each has size BxNxSxH
+  // Now qkv has Q, K, V: each has size BxNxSxH
   const int elements = batch_size * num_heads * sequence_length * head_size;
   const T* q = qkv;
   const T* k = q + elements;
@@ -762,27 +762,27 @@ bool LongformerQkvToContext(
           cublas,
           workspace,
           softmax_workspace_size,
-          q,                 // transposed Q with shape B x N x S x H
-          k,                 // transposed K with shape B x N x S x H
-          v,                 // transposed V with shape B x N x S x H
-          attention_mask,    // attention mask flags with shape B x S
-          global_q,          // transposed global Q with shape B x N x G x H
-          global_k,          // transposed global K with shape B x N x S x H
-          global_v,          // transposed global V with shape B x N x S x H
-          global_attention,  // global attention flags with shape B x S
-          temp_output,       // output with shape B x N x S x H
-          rsqrt_head_size,   // scaler
-          batch_size,        // batch size
-          sequence_length,   // sequence length
-          num_heads,         // number of attention heads
-          head_size,         // hidden size per head
-          window,            // half windows size
-          max_num_global,    // maximum number of global tokens (G)
+          q,                 // Transposed Q with shape B x N x S x H
+          k,                 // Transposed K with shape B x N x S x H
+          v,                 // Transposed V with shape B x N x S x H
+          attention_mask,    // Attention mask flags with shape B x S
+          global_q,          // Transposed global Q with shape B x N x G x H
+          global_k,          // Transposed global K with shape B x N x S x H
+          global_v,          // Transposed global V with shape B x N x S x H
+          global_attention,  // Global attention flags with shape B x S
+          temp_output,       // Output with shape B x N x S x H
+          rsqrt_head_size,   // Scaler
+          batch_size,        // Batch size
+          sequence_length,   // Sequence length
+          num_heads,         // Number of attention heads
+          head_size,         // Hidden size per head
+          window,            // Half (one-sided) windows size
+          max_num_global,    // Maximum number of global tokens (G)
           element_size)) {
     return false;
   }
 
-  // temp_output is BxNxSxH, transpose to output BxSxNxH
+  // The temp_output is BxNxSxH, transpose it to final output BxSxNxH
   return LaunchTransCtx(stream, sequence_length, batch_size, head_size, num_heads, temp_output, output);
 }
 

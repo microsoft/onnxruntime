@@ -21,8 +21,8 @@ class LongformerAttentionBase {
                      const TensorShape& global_bias_shape,
                      const TensorShape& global_shape) const;
 
-  int num_heads_;  // number of attention heads
-  int window_;     // attention windows length (W). It is half of total window size.
+  int num_heads_;  // Number of attention heads
+  int window_;     // Attention windows length (W). It is half (one-sided) of total window size.
 };
 
 }  // namespace contrib

@@ -85,12 +85,12 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
       reinterpret_cast<const CudaT*>(input->template Data<T>()), k,
       &one, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
 
-  // TODO: calculate the exact value from global flags
+  // TODO: calculate the exact value from global flags.
   int max_num_global = sequence_length;
 
-  // Linear layer for global tokens
+  // Fully connection for global projection.
   // Note that Q only need handle global query tokens if we split GEMM to global Q/K/V separately.
-  // When there is no global token, there is no need to run glboal GEMM.
+  // When there is no global token, need not run glboal GEMM.
   auto global_gemm_buffer = GetScratchBuffer<T>(max_num_global > 0 ? qkv_size : 0);
 
   if (max_num_global > 0) {

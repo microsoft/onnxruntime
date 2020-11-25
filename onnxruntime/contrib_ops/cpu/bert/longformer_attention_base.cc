@@ -43,11 +43,11 @@ Status LongformerAttentionBase::CheckInputs(const TensorShape& input_shape,
   int hidden_size = static_cast<int>(dims[2]);
   if (sequence_length % (2 * window_) != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 0 dimension 1 should be divisiable by 2W, where W is value of the window attribute.");
+                           "Input 'input' dimension 1 should be divisiable by 2W, where W is value of the window attribute.");
   }
   if (hidden_size % num_heads_ != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 0 dimension 2 should be divisiable by value of the num_heads attribute.");
+                           "Input 'input' dimension 2 should be divisiable by value of the num_heads attribute.");
   }
 
   const auto& weights_dims = weights_shape.GetDims();
@@ -57,7 +57,7 @@ Status LongformerAttentionBase::CheckInputs(const TensorShape& input_shape,
   }
   if (weights_dims[0] != dims[2]) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 1 dimension 0 should have same length as dimension 2 of input 0");
+                           "Input 'weights' dimension 0 should have same length as dimension 2 of input 0");
   }
   if (weights_dims[1] != 3 * weights_dims[0]) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'weights' dimension 1 should be 3 times of dimension 0");
@@ -103,7 +103,7 @@ Status LongformerAttentionBase::CheckInputs(const TensorShape& input_shape,
   }
   if (global_bias_dims[0] != global_weights_dims[1]) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'bias' dimension 0 should have same length as dimension 1 of input 'global_weights'");
+                           "Input 'global_bias' dimension 0 should have same length as dimension 1 of input 'global_weights'");
   }
 
   const auto& global_dims = global_shape.GetDims();
