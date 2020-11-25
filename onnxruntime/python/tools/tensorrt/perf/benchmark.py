@@ -287,14 +287,8 @@ def tmp_get_trt_version():
 #######################################################################################################################################
 def load_onnx_model_zoo_test_data(path, all_inputs_shape, data_type="fp32"):
     logger.info("Parsing test data in {} ...".format(path))
-    # p1 = subprocess.Popen(["find", path, "-name", "test_data_set*", "-type", "d"], stdout=subprocess.PIPE)
-    p1 = subprocess.Popen(["find", path, "-name", "test_data*", "-type", "d"], stdout=subprocess.PIPE)
-    p2 = subprocess.Popen(["sort"], stdin=p1.stdout, stdout=subprocess.PIPE)
-    stdout, sterr = p2.communicate()
-    stdout = stdout.decode("ascii").strip()
-    test_data_set_dir = stdout.split("\n")
-    logger.info(test_data_set_dir)
-
+    test_data_set_dir = find("test_data*")
+    
     inputs = []
     outputs = []
 
@@ -309,12 +303,7 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, data_type="fp32"):
         os.chdir(test_data_dir)
 
         # load inputs
-        p1 = subprocess.Popen(["find", ".", "-name", "input*"], stdout=subprocess.PIPE)
-        p2 = subprocess.Popen(["sort"], stdin=p1.stdout, stdout=subprocess.PIPE)
-        stdout, sterr = p2.communicate()
-        stdout = stdout.decode("ascii").strip()
-        input_data = stdout.split("\n")
-        logger.info(input_data)
+        input_data = find("input*")
 
         input_data_pb = []
         for data in input_data:
@@ -336,11 +325,7 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, data_type="fp32"):
         logger.info('Loaded {} inputs successfully.'.format(len(inputs)))
 
         # load outputs
-        p1 = subprocess.Popen(["find", ".", "-name", "output*"], stdout=subprocess.PIPE)
-        p2 = subprocess.Popen(["sort"], stdin=p1.stdout, stdout=subprocess.PIPE)
-        stdout, sterr = p2.communicate()
-        stdout = stdout.decode("ascii").strip()
-        output_data = stdout.split("\n")
+        output_data = find("output*")
         logger.info(output_data)
 
         if len(output_data) > 0 and output_data[0] != '':
@@ -455,11 +440,7 @@ def cleanup_files():
         subprocess.Popen(["rm","-rf", f], stdout=subprocess.PIPE)
 
 def remove_profiling_files(path):
-    files = []
-    p = subprocess.Popen(["find", path, "-name", "onnxruntime_profile*"], stdout=subprocess.PIPE)
-    stdout, sterr = p.communicate()
-    stdout = stdout.decode("ascii").strip()
-    files = files + stdout.split("\n")
+    files = find("onnxruntime_profile*")
 
     for f in files:
         if "custom_test_data" in f:
@@ -700,15 +681,13 @@ def get_system_info():
     return info
 
 def find_model_path(path):
-    p1 = subprocess.Popen(["find", path, "-name", "*.onnx"], stdout=subprocess.PIPE)
-    stdout, sterr = p1.communicate()
-    stdout = stdout.decode("ascii").strip()
-    model_path = stdout.split("\n")
-    logger.info(model_path)
-
+    model_path = find(path + "/*.onnx")
     if model_path == ['']:
         return None
 
+    logger.info("in find model")
+    logger.info(path)
+    logger.info(model_path)
     target_model_path = []
     for m in model_path:
         if "by_trt_perf" in m or m.startswith('.'):
@@ -719,29 +698,36 @@ def find_model_path(path):
     if len(target_model_path) > 1:
         logger.error("We expect to find only one model in " + path)
         raise
-
+    
+    logger.info(target_model_path)
     return target_model_path[0]
 
 def find_model_directory(path):
-    p1 = subprocess.Popen(["find", path, "-maxdepth", "1", "-mindepth", "1", "-name", "*", "-type", "d"], stdout=subprocess.PIPE)
-    stdout, sterr = p1.communicate()
-    stdout = stdout.decode("ascii").strip()
-    model_dir = stdout.split("\n")
-    # print(model_dir)
-
+    # from https://izziswift.com/how-to-get-all-of-the-immediate-subdirectories-in-python/
+    # scandir is: 3x faster than walk, 32x faster than listdir (with filter), 35x faster than Pathlib and 36x faster than listdir and 37x (!) faster than glob.
+    model_dir = [f.path for f in os.scandir(path) if f.is_dir()]
+    logger.info("model dir")
+    logger.info(model_dir)
     if model_dir == ['']:
         return None
 
     return model_dir
 
 def find_test_data_directory(path):
+    test_data_dir = find(path + "/test_data*")
+    if "test_data" in path: 
+        test_data_dir.append(path)
+    logger.info("test data sets")
+    logger.info(test_data_dir)
+    
     p1 = subprocess.Popen(["find", path, "-maxdepth", "1", "-name", "test_data*", "-type", "d"], stdout=subprocess.PIPE)
     p2 = subprocess.Popen(["sort"], stdin=p1.stdout, stdout=subprocess.PIPE)
     stdout, sterr = p2.communicate()
     stdout = stdout.decode("ascii").strip()
-    test_data_dir = stdout.split("\n")
+    #test_data_dir = stdout.split("\n")
+    
+    logger.info("test data after popen")
     logger.info(test_data_dir)
-
     if test_data_dir == ['']:
         return None
 
@@ -770,7 +756,9 @@ def parse_models_info_from_directory(path, models):
 
         logger.info(model)
         return
-    
+        
+   
+    logger.info("about to find model directory") 
     model_dir = find_model_directory(path)
     
     if model_dir:
@@ -781,7 +769,7 @@ def parse_models_info_from_directory(path, models):
 def parse_models_info_from_file(path, models):
 
     # default working directory
-    root_working_directory = "/home/hcsuser/perf/"
+    root_working_directory = "/home/olivia/perf/"
 
     with open(path) as f:
         data = json.load(f)
