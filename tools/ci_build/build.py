@@ -2013,7 +2013,7 @@ def main():
             is_cpu_only = not(args.use_cuda or args.use_dnnl or args.use_tensorrt
                               or args.use_openvino or args.use_nuphar or args.use_vitisai
                               or args.use_acl or args.use_armnn or args.use_dml)
-            #TODO: Each of the EPs should have a unique name suffix
+            # TODO: Each of the EPs should have a unique name suffix
             wheel_name_suffix = args.wheel_name_suffix
             if not args.use_openmp and wheel_name_suffix is None and is_cpu_only:
                 wheel_name_suffix = 'noopenmp'
