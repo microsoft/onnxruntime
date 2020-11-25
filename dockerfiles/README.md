@@ -41,7 +41,7 @@ Use `docker pull` with any of the images and tags below to pull an image and try
 
 1. Build the docker image from the Dockerfile in this repository.
   ```
-  docker build -t onnxruntime-source -f Dockerfile.source .
+  docker build -t onnxruntime-source -f Dockerfile.source ..
   ```
 
 2. Run the Docker image
@@ -51,11 +51,11 @@ Use `docker pull` with any of the images and tags below to pull an image and try
   ```
 
 ## CUDA
-**Ubuntu 16.04, CUDA 10.0, CuDNN 7**
+**Ubuntu 18.04, CUDA 10.2, CuDNN 8**
 
 1. Build the docker image from the Dockerfile in this repository.
   ```
-  docker build -t onnxruntime-cuda -f Dockerfile.cuda .
+  docker build -t onnxruntime-cuda -f Dockerfile.cuda ..
   ```
 
 2. Run the Docker image
