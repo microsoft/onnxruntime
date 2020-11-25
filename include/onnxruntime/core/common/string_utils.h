@@ -73,7 +73,7 @@ bool TryParse(const std::string& str, T& value) {
   }
 
   // don't allow leading whitespace
-  if (!str.empty() && std::isspace(str[0])) {
+  if (!str.empty() && std::isspace(str[0], std::locale::classic())) {
     return false;
   }
 
