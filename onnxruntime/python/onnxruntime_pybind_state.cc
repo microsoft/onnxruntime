@@ -142,6 +142,7 @@ OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTI
 // TODO remove deprecated global config
 bool do_copy_in_default_stream = true;
 #elif USE_ROCM
+#include "core/providers/rocm/rocm_execution_provider.h"
 #include "core/providers/rocm/rocm_provider_factory.h"
 #endif
 // TODO remove deprecated global config
