@@ -424,10 +424,12 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
   std::map<std::string, TensorShape> feeds;
   for (size_t i = 0, end = feed_mlvalue_idxs.size(); i < end; ++i) {
     std::string name;
+    //REVIEW(codemzs): We should not fail here.
     ORT_RETURN_IF_ERROR(this->ort_value_name_idx_map_.GetName(feed_mlvalue_idxs[i], name));
     feeds.insert({name, input_shape[i]});
   }
   std::unordered_map<std::string, int64_t> map;
+  //REVIEW(codemzs): We should not fail here.
   ORT_RETURN_IF_ERROR(ResolveDimParams(*graph_viewer_, feeds, map));
   auto* exe_plan = GetExecutionPlan();
   ORT_ENFORCE(exe_plan);
