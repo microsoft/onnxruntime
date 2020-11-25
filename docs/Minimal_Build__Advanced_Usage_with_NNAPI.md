@@ -1,4 +1,4 @@
-# ONNX Runtime Minimal Build Advanced Usage with NNAPI
+# ONNX Runtime Minimal Build: Advanced Usage with NNAPI
 
 ## Effect of Optimization Levels on NNAPI Execution Provider
 
@@ -40,7 +40,7 @@ Below is an example using the MNIST model comparing what would happen at runtime
 
 <img align="center" src="images/mnist_optimization_with_nnapi.png" alt="Changes to nodes by NNAPI depending on optimization level of input.">
 
-If your model benefits signficantly from 'extended' optimizations, you may wish to create an ORT format model optimized to 'basic' level for use with NNAPI (see instructions [here](ONNX_Runtime_for_Mobile_platforms.md#Using-NNAPI-with-ONNX-Runtime-Mobile)), and an ORT format model optimized to 'extended' level for use everywhere else.
+If your model benefits signficantly from 'extended' optimizations, you may wish to create an ORT format model optimized to 'basic' level for use with NNAPI (see instructions [here](ONNX_Runtime_for_Mobile_Platforms.md#Using-NNAPI-with-ONNX-Runtime-Mobile)), and an ORT format model optimized to 'extended' level for use everywhere else.
 
 ## Create an NNAPI-aware ORT format model
 
@@ -55,7 +55,7 @@ If your model might benefit from extended optimizations being applied to nodes t
 2. Install the python wheel from the build output directory. This is located in `build/Windows/<config>/<config>/dist/<package name>.whl` on Windows, or `build/Linux/<config>/dist/<package name>.whl` on Linux. The package name will differ based on your platform, python version, and build parameters. `<config>` is the value from the `--config` parameter from the build command.
   - e.g. `pip install -U build\Windows\RelWithDebIfo\RelWithDebIfo\dist\onnxruntime_noopenmp-1.5.2-cp37-cp37m-win_amd64.whl`
 
-3. Create an NNAPI-aware ORT format model by running `convert_onnx_models_to_ort.py` as per the [standard instructions](ONNX_Runtime_for_Mobile_platforms.md#Create-ORT-format-model-and-configuration-file-with-required-operators), with NNAPI enabled (`--use_nnapi`), and the optimization level set to 'extended' (`--optimization_level extended`). This will allow extended level optimizations to run on any nodes that NNAPI can not handle.
+3. Create an NNAPI-aware ORT format model by running `convert_onnx_models_to_ort.py` as per the [standard instructions](ONNX_Runtime_for_Mobile_Platforms.md#Create-ORT-format-model-and-configuration-file-with-required-operators), with NNAPI enabled (`--use_nnapi`), and the optimization level set to 'extended' (`--optimization_level extended`). This will allow extended level optimizations to run on any nodes that NNAPI can not handle.
   - e.g. `python <ORT repository root>/tools/python/convert_onnx_models_to_ort.py --use_nnapi --optimization_level extended /models`
   - the python package from your 'full' build with NNAPI enabled must be installed for `--use_nnapi` to be a valid option
 
@@ -71,7 +71,7 @@ At a minimum it is suggested to performance test:
 
 If your model is particularly performance sensitive, you can additionally test an NNAPI-aware ORT format model.
 
-Note that it is possible and may be easier to do all this testing with a 'full' [Android build of ONNX Runtime with the NNAPI EP enabled](https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Android-NNAPI-Execution-Provider), as the execution logic and therefore performance for a full build is exactly the same as for a minimal build. The original ONNX model can be used with this testing instead of creating multiple ORT format models, the optimization level [can be specified](ONNX_Runtime_Graph_Optimizations.md#Usage) via SessionOptions, and the NNAPI EP can be [enabled/disabled dynamically](execution_providers/README.md#Using Execution Providers). 
+Note that it is possible and may be easier to do all this testing with a 'full' [Android build of ONNX Runtime with the NNAPI EP enabled](https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Android-NNAPI-Execution-Provider), as the execution logic and therefore performance for a full build is exactly the same as for a minimal build. The original ONNX model can be used with this testing instead of creating multiple ORT format models, the optimization level [can be specified](ONNX_Runtime_Graph_Optimizations.md#Usage) via SessionOptions, and the NNAPI EP can be [dynamically enabled or disabled](execution_providers/README.md#Using Execution Providers). 
 
 
 
