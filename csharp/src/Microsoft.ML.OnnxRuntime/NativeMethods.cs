@@ -182,6 +182,12 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr SetGlobalInterOpNumThreads;
         public IntPtr SetGlobalSpinControl;
         public IntPtr AddInitializer;
+        public IntPtr CreateEnvWithCustomLoggerAndGlobalThreadPools;
+        public IntPtr SessionOptionsAppendExecutionProvider_CUDA;
+        public IntPtr SessionOptionsAppendExecutionProvider_OpenVINO;
+        public IntPtr SetGlobalDenormalAsZero;
+        public IntPtr CreateArenaCfg;
+        public IntPtr ReleaseArenaCfg;
     }
 
     internal static class NativeMethods
@@ -260,6 +266,9 @@ namespace Microsoft.ML.OnnxRuntime
             OrtRunOptionsSetTerminate = (DOrtRunOptionsSetTerminate)Marshal.GetDelegateForFunctionPointer(api_.RunOptionsSetTerminate, typeof(DOrtRunOptionsSetTerminate));
             OrtRunOptionsUnsetTerminate = (DOrtRunOptionsUnsetTerminate)Marshal.GetDelegateForFunctionPointer(api_.RunOptionsUnsetTerminate, typeof(DOrtRunOptionsUnsetTerminate));
 
+            OrtCreateArenaCfg = (DOrtCreateArenaCfg)Marshal.GetDelegateForFunctionPointer(api_.CreateArenaCfg, typeof(DOrtCreateArenaCfg));
+            OrtReleaseArenaCfg = (DOrtReleaseArenaCfg)Marshal.GetDelegateForFunctionPointer(api_.ReleaseArenaCfg, typeof(DOrtReleaseArenaCfg));
+            OrtReleaseAllocator = (DOrtReleaseAllocator)Marshal.GetDelegateForFunctionPointer(api_.ReleaseAllocator, typeof(DOrtReleaseAllocator));
             OrtCreateMemoryInfo = (DOrtCreateMemoryInfo)Marshal.GetDelegateForFunctionPointer(api_.CreateMemoryInfo, typeof(DOrtCreateMemoryInfo));
             OrtCreateCpuMemoryInfo = (DOrtCreateCpuMemoryInfo)Marshal.GetDelegateForFunctionPointer(api_.CreateCpuMemoryInfo, typeof(DOrtCreateCpuMemoryInfo));
             OrtReleaseMemoryInfo = (DOrtReleaseMemoryInfo)Marshal.GetDelegateForFunctionPointer(api_.ReleaseMemoryInfo, typeof(DOrtReleaseMemoryInfo));
@@ -310,7 +319,6 @@ namespace Microsoft.ML.OnnxRuntime
             OrtGetSymbolicDimensions = (DOrtGetSymbolicDimensions)Marshal.GetDelegateForFunctionPointer(api_.GetSymbolicDimensions, typeof(DOrtGetSymbolicDimensions));
             OrtGetTensorShapeElementCount = (DOrtGetTensorShapeElementCount)Marshal.GetDelegateForFunctionPointer(api_.GetTensorShapeElementCount, typeof(DOrtGetTensorShapeElementCount));
             OrtReleaseValue = (DOrtReleaseValue)Marshal.GetDelegateForFunctionPointer(api_.ReleaseValue, typeof(DOrtReleaseValue));
-
 
             OrtSessionGetModelMetadata = (DOrtSessionGetModelMetadata)Marshal.GetDelegateForFunctionPointer(api_.SessionGetModelMetadata, typeof(DOrtSessionGetModelMetadata));
             OrtModelMetadataGetProducerName = (DOrtModelMetadataGetProducerName)Marshal.GetDelegateForFunctionPointer(api_.ModelMetadataGetProducerName, typeof(DOrtModelMetadataGetProducerName));
@@ -430,7 +438,7 @@ namespace Microsoft.ML.OnnxRuntime
                                                 IntPtr /*(const OrtSession*)*/ session,
                                                 IntPtr /*(OrtAllocator*)*/ allocator,
                                                 out IntPtr /*(char**)*/profile_file);
-        public static DOrtSessionEndProfiling OrtSessionEndProfiling;       
+        public static DOrtSessionEndProfiling OrtSessionEndProfiling;
 
         public delegate IntPtr /*(OrtStatus*)*/DOrtSessionGetOverridableInitializerName(
                                                 IntPtr /*(OrtSession*)*/ session,
@@ -531,8 +539,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="options">Native SessionOptions instance</param>
         /// <param name="configKey">Config key</param>
         /// <param name="configValue">Config value</param>
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtAddSessionConfigEntry(IntPtr /* OrtSessionOptions* */ options, 
-                                                                          IntPtr /* const char* */configKey, 
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtAddSessionConfigEntry(IntPtr /* OrtSessionOptions* */ options,
+                                                                          IntPtr /* const char* */configKey,
                                                                           IntPtr /* const char* */ configValue);
         public static DOrtAddSessionConfigEntry OrtAddSessionConfigEntry;
 
@@ -554,9 +562,6 @@ namespace Microsoft.ML.OnnxRuntime
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_DML(IntPtr /*(OrtSessionOptions*) */ options, int device_id);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_NGraph(IntPtr /*(OrtSessionOptions*) */ options, string /*(const char*)*/ ng_backend_type);
-
-        [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_OpenVINO(
                                                     IntPtr /*(OrtSessionOptions*)*/ options, string /*(const char*)*/ device_id);
 
@@ -567,7 +572,7 @@ namespace Microsoft.ML.OnnxRuntime
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_MIGraphX(IntPtr /*(OrtSessionOptions*)*/ options, int device_id);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_Nnapi(IntPtr /*(OrtSessionOptions*)*/ options);
+        public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_Nnapi(IntPtr /*(OrtSessionOptions*)*/ options, uint nnapi_flags);
 
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_Nuphar(IntPtr /*(OrtSessionOptions*) */ options, int allow_unaligned_buffers, string settings);
@@ -581,8 +586,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="options">Native SessionOptions instance</param>
         /// <param name="dimDenotation">Dimension denotation</param>
         /// <param name="dimValue">Dimension value</param>
-        public delegate IntPtr /*(OrtStatus*)*/DOrtAddFreeDimensionOverride(IntPtr /*(OrtSessionOptions*)*/ options, 
-                                                                            IntPtr /*(const char*)*/ dimDenotation, 
+        public delegate IntPtr /*(OrtStatus*)*/DOrtAddFreeDimensionOverride(IntPtr /*(OrtSessionOptions*)*/ options,
+                                                                            IntPtr /*(const char*)*/ dimDenotation,
                                                                             long dimValue);
         public static DOrtAddFreeDimensionOverride OrtAddFreeDimensionOverride;
 
@@ -592,8 +597,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="options">Native SessionOptions instance</param>
         /// <param name="dimName">Dimension name</param>
         /// <param name="dimValue">Dimension value</param>
-        public delegate IntPtr /*(OrtStatus*)*/DOrtAddFreeDimensionOverrideByName(IntPtr /*(OrtSessionOptions*)*/ options, 
-                                                                                  IntPtr /*(const char*)*/ dimName, 
+        public delegate IntPtr /*(OrtStatus*)*/DOrtAddFreeDimensionOverrideByName(IntPtr /*(OrtSessionOptions*)*/ options,
+                                                                                  IntPtr /*(const char*)*/ dimName,
                                                                                   long dimValue);
         public static DOrtAddFreeDimensionOverrideByName OrtAddFreeDimensionOverrideByName;
 
@@ -604,8 +609,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="options">Native SessionOptions instance</param>
         /// <param name="libraryPath">Library path</param>
         /// <param name="libraryHandle">(out) Native library handle</param>
-        public delegate IntPtr /*(OrtStatus*)*/DOrtRegisterCustomOpsLibrary(IntPtr /*(OrtSessionOptions*) */ options, 
-                                                                            IntPtr /*(const char*)*/ libraryPath, 
+        public delegate IntPtr /*(OrtStatus*)*/DOrtRegisterCustomOpsLibrary(IntPtr /*(OrtSessionOptions*) */ options,
+                                                                            IntPtr /*(const char*)*/ libraryPath,
                                                                             out IntPtr /*(void**)*/ libraryHandle);
         public static DOrtRegisterCustomOpsLibrary OrtRegisterCustomOpsLibrary;
 
@@ -615,8 +620,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="options">Native SessionOptions instance</param>
         /// <param name="name">Name of the initializer</param>
         /// <param name="ortValue">Native OrtValue instnce</param>
-        public delegate IntPtr /*(OrtStatus*)*/DOrtAddInitializer(IntPtr /*(OrtSessionOptions*)*/ options, 
-                                                                  IntPtr /*(const char*)*/ name, 
+        public delegate IntPtr /*(OrtStatus*)*/DOrtAddInitializer(IntPtr /*(OrtSessionOptions*)*/ options,
+                                                                  IntPtr /*(const char*)*/ name,
                                                                   IntPtr /*(OrtValue*)*/ ortValue);
         public static DOrtAddInitializer OrtAddInitializer;
 
@@ -710,6 +715,27 @@ namespace Microsoft.ML.OnnxRuntime
 
         public delegate IntPtr /*(OrtStatus*)*/DOrtAllocatorGetInfo(IntPtr /*(const OrtAllocator*)*/ ptr, out IntPtr /*(const struct OrtMemoryInfo**)*/info);
         public static DOrtAllocatorGetInfo OrtAllocatorGetInfo;
+
+        /// <summary>
+        /// Create an instance of arena configuration which will be used to create an arena based allocator
+        /// See docs/C_API.md for details on what the following parameters mean and how to choose these values
+        /// </summary>
+        /// <param name="maxMemory">Maximum amount of memory the arena allocates</param>
+        /// <param name="arenaExtendStrategy">Strategy for arena expansion</param>
+        /// <param name="initialChunkSizeBytes">Size of the region that the arena allocates first</param>
+        /// <param name="maxDeadBytesPerChunk">Maximum amount of fragmentation allowed per chunk</param>
+        /// <returns>Pointer to a native OrtStatus instance indicating success/failure of config creation</returns>
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtCreateArenaCfg(UIntPtr /*(size_t)*/ maxMemory, int /*(int)*/ arenaExtendStrategy,
+                                                                  int /*(int)*/ initialChunkSizeBytes, int /*(int)*/ maxDeadBytesPerChunk,
+                                                                  out IntPtr /*(OrtArenaCfg**)*/ arenaCfg);
+        public static DOrtCreateArenaCfg OrtCreateArenaCfg;
+
+        /// <summary>
+        /// Destroy an instance of an arena configuration instance
+        /// </summary>
+        /// <param name="arenaCfg">arena configuration instance to be destroyed</param>
+        public delegate void DOrtReleaseArenaCfg(IntPtr /*(OrtArenaCfg*)*/ arenaCfg);
+        public static DOrtReleaseArenaCfg OrtReleaseArenaCfg;
 
         /// <summary>
         /// Create an instance of allocator according to mem_info
@@ -864,13 +890,16 @@ namespace Microsoft.ML.OnnxRuntime
 
         /// <summary>
         /// Creates an allocator instance and registers it with the env to enable
-        ///sharing between multiple sessions that use the same env instance.
-        ///Lifetime of the created allocator will be valid for the duration of the environment.
-        ///Returns an error if an allocator with the same OrtMemoryInfo is already registered.
-        /// </summary>
-        /// <param name="mem_info">must be non-null</param>
-        /// <param name="arena_cfg">if nullptr defaults will be used</param>
-        public delegate void DOrtCreateAndRegisterAllocator(IntPtr /*(OrtIoBinding)*/ io_binding);
+        /// sharing between multiple sessions that use the same env instance.
+        /// Lifetime of the created allocator will be valid for the duration of the environment.
+        /// Returns an error if an allocator with the same OrtMemoryInfo is already registered.
+        /// <param name="env">Native OrtEnv instance</param>
+        /// <param name="memInfo">Native OrtMemoryInfo instance</param>
+        /// <param name="arenaCfg">Native OrtArenaCfg instance</param>
+        /// <retruns>A pointer to native ortStatus indicating success/failure</retruns>
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtCreateAndRegisterAllocator(IntPtr /*(OrtEnv*)*/ env,
+                                                                               IntPtr /*(const OrtMemoryInfo*)*/ memInfo,
+                                                                               IntPtr/*(const OrtArenaCfg*)*/ arenaCfg);
         public static DOrtCreateAndRegisterAllocator OrtCreateAndRegisterAllocator;
 
         /// <summary>
@@ -898,7 +927,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="modelMetadata">instance of OrtModelMetadata</param>
         /// <param name="allocator">instance of OrtAllocator</param>
         /// <param name="value">(output) producer name from the ModelMetadata instance</param>
-        public delegate IntPtr /* (OrtStatus*) */ DOrtModelMetadataGetProducerName(IntPtr /* (const OrtModelMetadata*) */ modelMetadata, 
+        public delegate IntPtr /* (OrtStatus*) */ DOrtModelMetadataGetProducerName(IntPtr /* (const OrtModelMetadata*) */ modelMetadata,
                                                                               IntPtr /* (OrtAllocator*) */ allocator, out IntPtr /* (char**) */ value);
         public static DOrtModelMetadataGetProducerName OrtModelMetadataGetProducerName;
 

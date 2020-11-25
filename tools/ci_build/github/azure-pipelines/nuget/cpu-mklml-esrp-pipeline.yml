@@ -1,0 +1,16 @@
+schedules:
+- cron: "0 10 * * *"
+  displayName: Daily Build
+  branches:
+    include:
+    - master
+  always: true
+
+variables:
+  PackageName: 'Microsoft.ML.OnnxRuntime.MKLML'
+
+jobs: 
+- template: templates/cpu-mklml.yml
+  parameters:
+    AgentPool : 'Win-CPU-2019'
+    DoEsrp: 'true'

@@ -1,0 +1,19 @@
+jobs:
+- job: Clean_Build_Docker_Image_Cache
+
+  pool:
+    vmImage: 'ubuntu-18.04'
+
+  timeoutInMinutes: 10
+
+  steps:
+  - task: AzureCLI@2
+    inputs:
+      azureSubscription: 'AIInfraBuild'
+      scriptType: 'bash'
+      scriptLocation: 'inlineScript'
+      inlineScript: |
+        tools/ci_build/clean_docker_image_cache.py \
+          --container-registry $(buildcache-container-registry) \
+          --log-storage-account $(buildcache-log-storage-account) \
+          --log-storage-container $(buildcache-log-storage-account-container)

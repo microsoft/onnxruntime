@@ -645,8 +645,7 @@ TEST(ConvTest, ConvDimWithZero) {
   vector<int64_t> W_shape = {2, 2, 1, 1};
   vector<int64_t> out_shape = {0, 2, 4, 4};
 
-  // not handled by NGraph and ACL
-  attrs.excluded_providers.insert(kNGraphExecutionProvider);
+  // not handled by ACL
   attrs.excluded_providers.insert(kAclExecutionProvider);
 
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, {}, out_shape, false, OpTester::ExpectResult::kExpectSuccess, "", 10);

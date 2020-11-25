@@ -57,9 +57,7 @@ class LoggingManager;
   */
 struct ModelMetadata {
   ModelMetadata() = default;
-  ModelMetadata(const ModelMetadata& other)
-      : producer_name(other.producer_name), graph_name(other.graph_name), domain(other.domain), description(other.description), version(other.version), custom_metadata_map(other.custom_metadata_map) {
-  }
+  ModelMetadata(const ModelMetadata&) = default;
   ~ModelMetadata() = default;
   ModelMetadata& operator=(const ModelMetadata&) = delete;
 
@@ -531,7 +529,8 @@ class InferenceSession {
                                 const onnxruntime::GraphTransformerManager& graph_transformer_mgr,
                                 const ExecutionProviders& providers, KernelRegistryManager& kernel_registry_manager,
                                 const InsertCastTransformer& insert_cast_transformer,
-                                SessionState& session_state) ORT_MUST_USE_RESULT;
+                                SessionState& session_state,
+                                bool saving_model_in_ort_format) ORT_MUST_USE_RESULT;
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr_;
 
@@ -541,6 +540,11 @@ class InferenceSession {
   // will be run regardless of the level set.
   // .i.e This list overrides both SessionOptions.graph_optimization_level and predefined transformers.
   std::vector<std::string> transformers_to_enable_;
+#endif
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  Status PartitionOrtFormatModel(onnxruntime::Graph& graph, const ExecutionProviders& providers,
+                                 KernelRegistryManager& kernel_registry_manager, SessionState& session_state) const;
 #endif
 
   SessionOptions session_options_;

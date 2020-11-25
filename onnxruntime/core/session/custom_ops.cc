@@ -57,7 +57,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_string, _In_ const OrtKernel
     if (*size >= value.size() + 1) {
       std::memcpy(out, value.data(), value.size());
       out[value.size()] = '\0';
-      *size = value.size();
+      *size = value.size() + 1;
       return nullptr;
     } else {
       *size = value.size() + 1;
@@ -76,7 +76,7 @@ struct CustomOpKernel : OpKernel {
   CustomOpKernel(const OpKernelInfo& info, const OrtCustomOp& op) : OpKernel(info), op_(op) {
     if (op_.version > ORT_API_VERSION)
       ORT_THROW("Unsupported version '" + std::to_string(op_.version) + "' in custom op '" + op.GetName(&op));
-    op_kernel_ = op_.CreateKernel(&op_, OrtGetApiBase()->GetApi(op_.version), reinterpret_cast<OrtKernelInfo*>(const_cast<OpKernelInfo*>(&info)));
+    op_kernel_ = op_.CreateKernel(&op_, OrtGetApiBase()->GetApi(op_.version), reinterpret_cast<const OrtKernelInfo*>(&info));
   }
 
   ~CustomOpKernel() override { op_.KernelDestroy(op_kernel_); }

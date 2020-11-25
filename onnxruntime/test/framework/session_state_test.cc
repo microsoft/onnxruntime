@@ -3,6 +3,7 @@
 
 #include <iostream>
 
+#include "asserts.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/graph_partitioner.h"
 #include "core/framework/kernel_registry.h"
@@ -12,9 +13,9 @@
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/op.h"
-#include "core/util/thread_utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
-#include "asserts.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/util/thread_utils.h"
 #include "gtest/gtest.h"
 #include "test/test_environment.h"
 

@@ -226,6 +226,13 @@ class OpKernelContext {
   */
   _Ret_maybenull_ onnxruntime::concurrency::ThreadPool* GetOperatorThreadPool() const { return threadpool_; }
 
+  /**
+  Returns whether deterministic computation is preferred.
+  */
+  virtual bool GetUseDeterministicCompute() const {
+    return true;
+  }
+
  protected:
   onnxruntime::NodeIndex GetNodeIndex() const;
 
@@ -442,18 +449,18 @@ using BuildKernelCreateInfoFn = KernelCreateInfo (*)();
 #define ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type1, type2, name) \
   provider##_##name##_##domain##_ver##startver##_##endver##_##type1##_##type2
 
-#define ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_EX(name, domain, startver, endver, type1, type2, provider, builder, ...)                   \
-  class ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type1, type2, name);                        \
-  template <>                                                                                                                               \
-  KernelCreateInfo                                                                                                                          \
-  BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type1, type2, name)>() {    \
-    return KernelCreateInfo(                                                                                                                \
-        builder.SetName(#name)                                                                                                              \
-            .SetDomain(domain)                                                                                                              \
-            .SinceVersion(startver, endver)                                                                                                 \
-            .Provider(provider)                                                                                                             \
-            .Build(),                                                                                                                       \
-        static_cast<KernelCreatePtrFn>([](const OpKernelInfo& info) -> OpKernel* { return new __VA_ARGS__(info); }));                       \
+#define ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_EX(name, domain, startver, endver, type1, type2, provider, builder, ...)                \
+  class ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type1, type2, name);                     \
+  template <>                                                                                                                            \
+  KernelCreateInfo                                                                                                                       \
+  BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type1, type2, name)>() { \
+    return KernelCreateInfo(                                                                                                             \
+        builder.SetName(#name)                                                                                                           \
+            .SetDomain(domain)                                                                                                           \
+            .SinceVersion(startver, endver)                                                                                              \
+            .Provider(provider)                                                                                                          \
+            .Build(),                                                                                                                    \
+        static_cast<KernelCreatePtrFn>([](const OpKernelInfo& info) -> OpKernel* { return new __VA_ARGS__(info); }));                    \
   }
 
 // Use within macro definitions to create a custom vector of constraints.
