@@ -11,23 +11,14 @@
 #include "core/framework/bfc_arena.h"
 #include "core/framework/execution_provider.h"
 #include "core/platform/ort_mutex.h"
-#include "core/providers/rocm/rocm_pch.h"
 #include "core/providers/rocm/gpu_data_transfer.h"
+#include "core/providers/rocm/rocm_execution_provider_info.h"
+#include "core/providers/rocm/rocm_pch.h"
 #include "core/providers/rocm/shared_inc/rocm_utils.h"
 
 namespace onnxruntime {
 
 const int CPU_ALLOCATOR_DEVICE_ID = 0;
-
-// Information needed to construct HIP execution providers.
-struct ROCMExecutionProviderInfo {
-  OrtDevice::DeviceId device_id{0};
-  size_t hip_mem_limit{std::numeric_limits<size_t>::max()};
-  ArenaExtendStrategy arena_extend_strategy{ArenaExtendStrategy::kNextPowerOfTwo};
-
-  static ROCMExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
-  static ProviderOptions ToProviderOptions(const ROCMExecutionProviderInfo& info);
-};
 
 // Logical device representation.
 class ROCMExecutionProvider : public IExecutionProvider {

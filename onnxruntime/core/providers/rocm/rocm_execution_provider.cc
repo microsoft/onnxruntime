@@ -57,47 +57,6 @@ ONNX_OPERATOR_KERNEL_EX(
 
 }  // namespace rocm
 
-namespace provider_option_names {
-constexpr const char* kDeviceId = "device_id";
-constexpr const char* kMemLimit = "hip_mem_limit";
-constexpr const char* kArenaExtendStrategy = "arena_extend_strategy";
-}  // namespace provider_option_names
-
-namespace {
-template <typename T>
-bool ParseOption(const ProviderOptions& options, const std::string& key, T& value) {
-  auto it = options.find(key);
-  if (it != options.end()) {
-    ORT_ENFORCE(
-        TryParse(it->second, value),
-        "Failed to parse provider option \"", key, "\" with value \"", it->second, "\".");
-    return true;
-  }
-  return false;
-}
-}  // namespace
-
-ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const ProviderOptions& options) {
-  ROCMExecutionProviderInfo info{};
-
-  // TODO validate info.device_id
-  ParseOption(options, provider_option_names::kDeviceId, info.device_id);
-  ParseOption(options, provider_option_names::kMemLimit, info.hip_mem_limit);
-  ParseOption(options, provider_option_names::kArenaExtendStrategy, info.arena_extend_strategy);
-
-  return info;
-}
-
-ProviderOptions ROCMExecutionProviderInfo::ToProviderOptions(const ROCMExecutionProviderInfo& info) {
-  const ProviderOptions options{
-      {provider_option_names::kDeviceId, MakeString(info.device_id)},
-      {provider_option_names::kMemLimit, MakeString(info.hip_mem_limit)},
-      {provider_option_names::kArenaExtendStrategy, MakeString(info.arena_extend_strategy)},
-  };
-
-  return options;
-}
-
 ROCMExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, size_t hip_mem_limit, ArenaExtendStrategy arena_extend_strategy) {
   HIP_CALL_THROW(hipSetDevice(device_id));
   ROCBLAS_CALL_THROW(rocblas_create_handle(&rocblas_handle_));

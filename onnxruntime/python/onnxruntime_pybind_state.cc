@@ -135,14 +135,14 @@ struct OrtStatus {
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
-#include "core/providers/cuda/cuda_execution_provider.h"
+#include "core/providers/cuda/cuda_execution_provider_info.h"
 #include "core/providers/cuda/cuda_allocator.h"
 // TODO remove deprecated global config
 OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE;
 // TODO remove deprecated global config
 bool do_copy_in_default_stream = true;
 #elif USE_ROCM
-#include "core/providers/rocm/rocm_execution_provider.h"
+#include "core/providers/rocm/rocm_execution_provider_info.h"
 #include "core/providers/rocm/rocm_provider_factory.h"
 #endif
 // TODO remove deprecated global config

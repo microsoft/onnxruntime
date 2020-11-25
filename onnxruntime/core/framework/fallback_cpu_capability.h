@@ -2,9 +2,16 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/graph/graph_viewer.h"
-#include "onnx/defs/data_type_utils.h"
+
 #include <queue>
+#include <unordered_map>
+#include <unordered_set>
+
+#include "onnx/defs/data_type_utils.h"
+
+#include "core/framework/kernel_registry.h"
+#include "core/framework/op_kernel.h"
+#include "core/graph/graph_viewer.h"
 
 using namespace ONNX_NAMESPACE::Utils;
 

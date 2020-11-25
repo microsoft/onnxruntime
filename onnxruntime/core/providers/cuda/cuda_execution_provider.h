@@ -11,6 +11,7 @@
 #include "core/framework/arena_extend_strategy.h"
 #include "core/framework/execution_provider.h"
 #include "core/platform/ort_mutex.h"
+#include "core/providers/cuda/cuda_execution_provider_info.h"
 #include "core/providers/cuda/cuda_pch.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
@@ -18,18 +19,6 @@
 namespace onnxruntime {
 
 const int CPU_ALLOCATOR_DEVICE_ID = 0;
-
-// Information needed to construct CUDA execution providers.
-struct CUDAExecutionProviderInfo {
-  OrtDevice::DeviceId device_id{0};
-  size_t cuda_mem_limit{std::numeric_limits<size_t>::max()};
-  ArenaExtendStrategy arena_extend_strategy{ArenaExtendStrategy::kNextPowerOfTwo};
-  OrtCudnnConvAlgoSearch cudnn_conv_algo{OrtCudnnConvAlgoSearch::EXHAUSTIVE};
-  bool do_copy_in_default_stream{true};
-
-  static CUDAExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
-  static ProviderOptions ToProviderOptions(const CUDAExecutionProviderInfo& info);
-};
 
 // Logical device representation.
 class CUDAExecutionProvider : public IExecutionProvider {

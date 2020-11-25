@@ -1,15 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "cuda_common.h"
-#include "cuda_execution_provider.h"
-#include "cuda_fence.h"
-#include "cuda_allocator.h"
-#include "core/framework/kernel_registry.h"
+#include "core/providers/cuda/cuda_execution_provider.h"
+
 #include "core/framework/compute_capability.h"
 #include "core/framework/fallback_cpu_capability.h"
+#include "core/framework/kernel_registry.h"
 #include "core/framework/memcpy.h"
+#include "core/framework/provider_options_utils.h"
 #include "core/graph/graph_utils.h"
+#include "core/providers/cuda/cuda_allocator.h"
+#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_fence.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 
 #ifndef DISABLE_CONTRIB_OPS
@@ -56,72 +58,6 @@ ONNX_OPERATOR_KERNEL_EX(
     Memcpy);
 
 }  // namespace cuda
-
-namespace provider_option_names {
-constexpr const char* kDeviceId = "device_id";
-constexpr const char* kMemLimit = "cuda_mem_limit";
-constexpr const char* kArenaExtendStrategy = "arena_extend_strategy";
-constexpr const char* kCudnnConvAlgo = "cudnn_conv_algo";
-constexpr const char* kDoCopyInDefaultStream = "do_copy_in_default_stream";
-}  // namespace provider_option_names
-
-namespace {
-template <typename T>
-bool ParseOption(const ProviderOptions& options, const std::string& key, T& value) {
-  auto it = options.find(key);
-  if (it != options.end()) {
-    ORT_ENFORCE(
-        TryParse(it->second, value),
-        "Failed to parse provider option \"", key, "\" with value \"", it->second, "\".");
-    return true;
-  }
-  return false;
-}
-}  // namespace
-
-CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const ProviderOptions& options) {
-  CUDAExecutionProviderInfo info{};
-
-  if (ParseOption(options, provider_option_names::kDeviceId, info.device_id)) {
-    int num_devices = 0;
-    CUDA_CALL_THROW(cudaGetDeviceCount(&num_devices));
-    ORT_ENFORCE(
-        0 <= info.device_id && info.device_id < num_devices,
-        "Invalid ", provider_option_names::kDeviceId, " value: ", info.device_id,
-        ", must be between 0 (inclusive) and ", num_devices, " (exclusive).");
-  }
-  ParseOption(options, provider_option_names::kMemLimit, info.cuda_mem_limit);
-  ParseOption(options, provider_option_names::kArenaExtendStrategy, info.arena_extend_strategy);
-  {
-    int cudnn_conv_algo_val;
-    if (ParseOption(options, provider_option_names::kCudnnConvAlgo, cudnn_conv_algo_val)) {
-      switch (cudnn_conv_algo_val) {
-        case OrtCudnnConvAlgoSearch::EXHAUSTIVE:
-        case OrtCudnnConvAlgoSearch::HEURISTIC:
-        case OrtCudnnConvAlgoSearch::DEFAULT:
-          break;
-        default:
-          ORT_THROW("Invalid ", provider_option_names::kCudnnConvAlgo, " value: ", cudnn_conv_algo_val);
-      }
-      info.cudnn_conv_algo = static_cast<OrtCudnnConvAlgoSearch>(cudnn_conv_algo_val);
-    }
-  }
-  ParseOption(options, provider_option_names::kDoCopyInDefaultStream, info.do_copy_in_default_stream);
-
-  return info;
-}
-
-ProviderOptions CUDAExecutionProviderInfo::ToProviderOptions(const CUDAExecutionProviderInfo& info) {
-  const ProviderOptions options{
-      {provider_option_names::kDeviceId, MakeString(info.device_id)},
-      {provider_option_names::kMemLimit, MakeString(info.cuda_mem_limit)},
-      {provider_option_names::kArenaExtendStrategy, MakeString(info.arena_extend_strategy)},
-      {provider_option_names::kCudnnConvAlgo, MakeString(static_cast<int>(info.cudnn_conv_algo))},
-      {provider_option_names::kDoCopyInDefaultStream, MakeString(info.do_copy_in_default_stream)},
-  };
-
-  return options;
-}
 
 CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy) {
   CUDA_CALL_THROW(cudaSetDevice(device_id));
