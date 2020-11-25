@@ -1030,13 +1030,14 @@ common::Status SplitGraphWithMap(Graph& graph,
       // consumers of a tensor. 
       if (is_forward(producer_stage, consumer_stage)) {
         last_consumer_stage_fwd = std::max(last_consumer_stage_fwd, consumer_stage);
-      } else if (is_backward(producer_stage, consumer_stage)) {
-        ORT_ENFORCE(!is_backward(producer_stage, consumer_stage),
+      } 
+      ORT_ENFORCE(!is_backward(producer_stage, consumer_stage),
                     "Not supported yet.");
-        // TODO(jufranc): we will need something like the following, where
-        // last_consumer_stage_bwd is init to INT_MAX, for training graphs.
-        // last_consumer_stage_bwd = std::min(last_consumer_stage_bwd, consumer_stage);
-      }
+      // TODO(jufranc): we will need something like the following, where
+      // else if (is_backward(producer_stage, consumer_stage)) {
+      //  last_consumer_stage_bwd is init to INT_MAX, for training graphs.
+      //  last_consumer_stage_bwd = std::min(last_consumer_stage_bwd, consumer_stage);
+      // }
 
       // Find which tensors need to be sent to the next stage (if it is a forward
       // message).
