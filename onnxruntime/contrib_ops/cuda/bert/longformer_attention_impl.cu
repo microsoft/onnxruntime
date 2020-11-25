@@ -14,11 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Limitations or known issues of current Longformer Attention CUDA Kernels:
+// Limitations of current Longformer Attention CUDA Kernels:
 // (1) Does not support global tokens in the middle. All global tokens shall be in the beginning of sequence.
-// (2) Sequence length shall be at least 4*W, where W is one sided windows size.
-//     S==2*W has parity issue. Please pad to 4*W to workaround the issue.
-// (3) The batch size shall not exceed the constant MAX_LONGFORMER_BATCH_SIZE 128.
+// (2) Batch size <= 128 (defined in MAX_LONGFORMER_BATCH_SIZE)
 
 #include <cub/cub.cuh>
 #include <cublas_v2.h>
@@ -343,6 +341,9 @@ bool launchSoftmaxKernel(
   //         [W][W]
   // The first and last rows have 2 blocks, and the remaining has 3 blocks per row.
   // The calculation are splited into 3 parts. Firstly, fill the middle rows,  then the first row and finally the last row.
+  // The results are stored in scratch1.
+  // TODO: Save space by not storing the whole matrix. Instead only allocate space for these blocks.
+  
   int w = attention_window;
   int x_offset = num_heads * sequence_length * head_size;
   int y_offset = num_heads * sequence_length * sequence_length;
@@ -551,13 +552,39 @@ bool launchSoftmaxKernel(
         static_cast<float*>(softmax_out), scaler, dim0, dim1, attention_window);
   }
 
-  // Run the matrix multiply: attn_out = softmax_out * v
+  // Run the matrix multiply: output = softmax_out * v
   //   softmax_out: B x N x S x S
   //             v: B x N x S x H
   //      attn_out: B x N x S x H
+  // Calculation uses full Gemm (S == 2W) or sliding blocks (S > 2W) in a way similar to local attention part.
 
-  // Calculation using sliding blocks in a way similar to local attention part.
-  if (sequence_length > 2 * w) {
+  if (sequence_length == 2 * w) {
+    // convert col-major to row-major by swapping softmax_out and v
+    CHECK(cublasGemmStridedBatchedEx(cublas,
+                                     CUBLAS_OP_N,
+                                     CUBLAS_OP_N,
+                                     head_size,
+                                     sequence_length,
+                                     sequence_length,
+                                     alpha,
+                                     v,
+                                     Atype,
+                                     head_size,
+                                     sequence_length * head_size,
+                                     softmax_out,
+                                     Btype,
+                                     sequence_length,
+                                     sequence_length * sequence_length,
+                                     beta_0,
+                                     output,
+                                     Ctype,
+                                     head_size,
+                                     sequence_length * head_size,
+                                     batch_size * num_heads,
+                                     resultType,
+                                     algo));
+  }
+  else { // sequence_length > 2 * w
     for (int i = 0; i < batch_size; ++i) {
       for (int j = 0; j < num_heads; ++j) {
         void* v_head = (char*)v + (i * x_offset + j * head_size * sequence_length) * element_size;
@@ -589,33 +616,31 @@ bool launchSoftmaxKernel(
                                          algo));
       }
     }
-  }
 
-  CHECK(cublasGemmStridedBatchedEx(cublas,
-                                   CUBLAS_OP_N,
-                                   CUBLAS_OP_N,
-                                   head_size,
-                                   w,
-                                   2 * w,
-                                   alpha,
-                                   v,
-                                   Atype,
-                                   head_size,
-                                   sequence_length * head_size,
-                                   softmax_out,
-                                   Btype,
-                                   sequence_length,
-                                   sequence_length * sequence_length,
-                                   beta_0,
-                                   output,
-                                   Ctype,
-                                   head_size,
-                                   sequence_length * head_size,
-                                   batch_size * num_heads,
-                                   resultType,
-                                   algo));
+    CHECK(cublasGemmStridedBatchedEx(cublas,
+                                     CUBLAS_OP_N,
+                                     CUBLAS_OP_N,
+                                     head_size,
+                                     w,
+                                     2 * w,
+                                     alpha,
+                                     v,
+                                     Atype,
+                                     head_size,
+                                     sequence_length * head_size,
+                                     softmax_out,
+                                     Btype,
+                                     sequence_length,
+                                     sequence_length * sequence_length,
+                                     beta_0,
+                                     output,
+                                     Ctype,
+                                     head_size,
+                                     sequence_length * head_size,
+                                     batch_size * num_heads,
+                                     resultType,
+                                     algo));
 
-  if (sequence_length > 2 * w) {
     void* v_head = (char*)v + (last_block - 1) * w * head_size * element_size;
     void* prob_head = (char*)softmax_out + (sequence_length * last_block * w + (last_block - 1) * w) * element_size;
     void* out_head = (char*)output + last_block * w * head_size * element_size;
@@ -644,6 +669,7 @@ bool launchSoftmaxKernel(
                                      resultType,
                                      algo));
   }
+
 
   for (int i = 0; i < batch_size; ++i) {
     if (num_global[i] > 0) {
@@ -697,8 +723,8 @@ bool launchSoftmaxKernel(
                                        Btype,
                                        sequence_length,
                                        sequence_length * sequence_length,
-                                       beta_0,  // Use beta=0 to overwrite
-                                       out_head,
+                                       beta_0,   // Use beta=0 to overwrite
+                                       out_head, // Here assumes global tokens are at the beginning of sequence.
                                        Ctype,
                                        head_size,
                                        sequence_length * head_size,

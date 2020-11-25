@@ -257,9 +257,6 @@ TEST(LongformerAttentionTest, LongformerAttention_Float16) {
   RunTinyLongformerBatch1(mask_data, global_data, output_data, true);
 }
 
-/*
-// TODO: enable the following tests after removing the limitations of CUDA kernels.
-
 TEST(LongformerAttentionTest, LongformerAttention_FullWindow) {
   // last word is masked.
   std::vector<float> mask_data = {0.0f, 0.0f, 0.0f, -10000.0f};
@@ -278,6 +275,8 @@ TEST(LongformerAttentionTest, LongformerAttention_FullWindow) {
   RunTinyLongformerBatch1(mask_data, global_data, output_data, false, window_cover_whole_sequence);
 }
 
+/*
+// TODO: enable the following tests after removing the limitations of CUDA kernels.
 TEST(LongformerAttentionTest, LongformerAttention_GlobalMiddle) {
   std::vector<float> mask_data = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, -10000.0f};
 
