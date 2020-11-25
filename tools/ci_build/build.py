@@ -2023,7 +2023,7 @@ def main():
                 args.use_acl,
                 args.use_armnn,
                 args.use_dml,
-                args.wheel_name_suffix
+                args.wheel_name_suffix,
                 args.enable_training,
                 nightly_build=nightly_build,
                 featurizers_build=args.use_featurizers,
