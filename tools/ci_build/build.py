@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 import hashlib
+import platform
 from logger import get_logger
 from amd_hipify import amd_hipify
 from distutils.version import StrictVersion
@@ -285,7 +286,9 @@ def parse_arguments():
         "--use_xcode", action='store_true',
         help="Use Xcode as cmake generator, this is only supported on MacOS.")
     parser.add_argument(
-        "--osx_arch", default="arm64", choices=["arm64", "x86_64"],
+        "--osx_arch",
+        default="arm64" if platform.machine() == "arm64" else "x86_64",
+        choices=["arm64", "x86_64"],
         help="Specify the Target specific architectures for macOS and iOS, This is only supported on MacOS")
     parser.add_argument(
         "--apple_deploy_target", type=str,
@@ -1730,11 +1733,8 @@ def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
             # CMake < 3.18 has a bug setting system arch to arm64 (if not specified) for Xcode 12,
             # protoc for host should be built using host architecture
             # Explicitly specify the CMAKE_OSX_ARCHITECTURES for x86_64 Mac.
-            import platform
-            if platform.machine() == 'x86_64':
-                cmd_args += ['-DCMAKE_OSX_ARCHITECTURES=x86_64']
-            elif platform.machine() == 'arm64':
-                cmd_args += ['-DCMAKE_OSX_ARCHITECTURES=arm64']
+            cmd_args += ["-DCMAKE_OSX_ARCHITECTURES=${}".format(
+                'arm64' if platform.machine() == 'arm64' else 'x86_64')]
 
     run_subprocess(cmd_args, cwd=protoc_build_dir)
     # Build step
