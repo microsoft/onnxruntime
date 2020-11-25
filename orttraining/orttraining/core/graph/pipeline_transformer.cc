@@ -1324,21 +1324,21 @@ Status ApplyPipelinePartitionToMainGraph(Graph& graph,
 
 
 Status GetDeviceAssignmentMap(Graph& graph, 
-                              const std::map<std::string, int>& id_to_rank, 
-                              std::map<Node*, int>& op_to_rank) {
+                              const std::map<std::string, int>& id_to_stage,
+                              std::map<Node*, int>& op_to_stage) {
   for (size_t i = 0, t = graph.MaxNodeIndex(); i < t; ++i) {
     Node* node = graph.GetNode(i);
     bool found = false;
     auto& node_outputs = node->MutableOutputDefs();
     for (NodeArg* arg : node_outputs) {
-      if (id_to_rank.find(arg->Name()) != id_to_rank.end()) {
-        int rank = id_to_rank.at(arg->Name());
-        op_to_rank.insert({node, rank});
+      if (id_to_stage.find(arg->Name()) != id_to_stage.end()) {
+        int stage = id_to_stage.at(arg->Name());
+        op_to_stage.insert({node, stage});
         found = true;
         break;
       }
     }
-    ORT_ENFORCE(found, "Can't find node's rank " + node->Name());
+    ORT_ENFORCE(found, "Can't find node's stage " + node->Name());
   }
   return Status::OK();
 }
@@ -1397,6 +1397,7 @@ Status GetDeviceAssignmentMap(Graph& graph,
           consumers.insert(c);
         }
       }
+      ORT_ENFORCE(consumers.size() > 0);
     }
     // Assign all nodes reachable from consumers to stage cut_id + 1.
     assign_all_from_consumers(consumers, cut_id + 1, stages);
@@ -1414,7 +1415,7 @@ Status GetDeviceAssignmentMap(Graph& graph,
   for (int s = 0; s < n_stages; ++s) {
     auto stage_is_used = std::find(std::begin(stages), std::end(stages), s);
     ORT_RETURN_IF_NOT(stage_is_used != std::end(stages),
-                "Stage " + std::to_string(s) + " was not assigned to any node.");
+      "Stage " + std::to_string(s) + " was not assigned to any node.");
   }
 
   // Edges always go forward.
