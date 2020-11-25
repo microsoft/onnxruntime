@@ -1,28 +1,35 @@
-# ONNX Runtime Minimal Build: Advanced Usage with NNAPI
+# ONNX Runtime Mobile Build: Advanced Usage with NNAPI
+
+The ONNX Runtime Mobile with the NNAPI execution provider can be used to execute ORT format models on Android platforms. This document explains the different options available to optimize the ORT model and building the ONNX Runtime Mobile package for exection with NNAPI.
 
 ## Effect of Optimization Levels on NNAPI Execution Provider
 
-### Background
+_The ORT formatted model, for execution through the NNAPI EP, should be limited to __basic__ optimization level. It is possible that some _extended_ optimizations may be applicable to your model. In order to create a ORT formated model file where those are applied, please follow these steps._
 
-There are three main steps that affect the operators used in an optimized model, and which execution provider (EP) runs each node. 
+### Background about optimization for ORT Models
 
-*Step 1:* 
+ONNX Runtime applies optimizations on the ONNX model to improve inference performance. There are three main steps that affect the operators used during the optimization, and the execution provider (EP) targeted to execute the respective nodes.
 
-The 'basic' optimizations are run. See the [graph optimization](ONNX_Runtime_Graph_Optimizations.md) documentation for further details. Only ONNX operators are used when modifying the model in this step. 
+*Step 1:*
 
-*Step 2:* 
+The _basic_ optimizations are applied when the model is initialized by ONNX Runtime. See the [graph optimization](ONNX_Runtime_Graph_Optimizations.md) documentation for further details. Only ONNX operators are used when modifying the model in this step.
 
-The enabled [execution providers](execution_providers/README.md) are asked which nodes they can execute. Each node is assigned to an EP, with the user defined priority determining which EP is selected. 
+*Step 2:*
 
-When the NNAPI EP looks at the model, it identifies nodes that are using ONNX operators that can be executing using NNAPI. It will group together as many nodes as possible that can be executed by NNAPI at once, as there is a cost to copy data between the CPU and NNAPI. The more nodes in each group, and the fewer groups, the better the performance will be.
+The enabled [execution providers](execution_providers/README.md) are queried about nodes in the ONNX model they can execute. Each node is assigned to a specific EP based on the user defined priority set during the session initialization step. Some EPs can compile the allocated sub-graph to replace with a single function. This function is a compiled version of the original node/s (sub-graph). The function will be called at runtime to execute that part of the model on the target compute node.
+
+The NNAPI EP identifies nodes that can be executed using NNAPI. ONNX Runtime may group nodes into a sub-graph to be executed by NNAPI to minimize the overhead to copy data between the CPU and NNAPI. The inference performace is better with more nodes in each sub-graph, and fewer sub-graphs.
 
 *Step 3:* 
 
-The 'extended' and 'layout' optimizations are run if enabled. These optimizations will replace one or more nodes that are using ONNX operators with nodes that use custom internal ONNX Runtime operators. The nodes that these optimizations may affect are filtered based on the EP the node is assigned to. Generally that is limited to the ONNX Runtime CPU EP and CUDA EP. The optimizations will not be applied to nodes assigned to the NNAPI EP.
+The 'extended' and 'layout' optimizations are run, if enabled. These optimizations will replace one or more standard ONNX operators with custom internal ONNX Runtime operators designed to boost performance on certain HW platforms. These optimizations are applied to the nodes assinged to the correcponding EP for the target HW platform. The custom internal operators are typically limited to the default CPU EP on x86_64 / aarch64 atchitecture and the CUDA EP on NVIDIA GPUs.
+
+These optimizations will not be applicable to the nodes assigned to the NNAPI EP.
 
 Below is an example of the changes that occur in 'basic' and 'extended' optimizations when applied to the MNIST model.
- - At the 'basic' level we combine the Conv and Add nodes (the addition is done via the 'B' input to Conv), we combine the MatMul and Add into a single Gemm node (the addition is done via the 'C' input to Gemm), and constant fold to remove one of the Reshape nodes. 
- - At the 'extended' level we additionally fuse the Conv and Relu nodes using the internal ONNX Runtime FusedConv operator.
+
+- At the 'basic' level we combine the Conv and Add nodes (the addition is done via the 'B' input to Conv), we combine the MatMul and Add into a single Gemm node (the addition is done via the 'C' input to Gemm), and constant fold to remove one of the Reshape nodes. 
+- At the 'extended' level we additionally fuse the Conv and Relu nodes using the internal ONNX Runtime FusedConv operator.
 
 <img align="center" src="images/mnist_optimization.png" alt="Changes to nodes from basic and extended optimizations."/>
 
@@ -30,7 +37,7 @@ At runtime, for each group of nodes that is assigned to it, the NNAPI EP will cr
 
 ### Considerations when creating an NNAPI-aware ORT format model
 
-There are no optimizations available at runtime for an ORT format model, so we generally want to optimize to the highest level possible when creating the model. That usually means optimizing to the 'extended' level, as 'layout' level optimizations are not recommended (they are device specific). 
+There are no optimizations available at runtime for an ORT format model, so we generally want to optimize to the highest level possible when creating the model. That usually means optimizing to the 'extended' level, as 'layout' level optimizations are not recommended for use with NNAPI (they are device specific).
 
 If the NNAPI EP is enabled when loading the ORT format model we will run Step 2 to allow it to replace the groups of nodes it can handle with a function that executes the NNAPI model for those nodes. As the NNAPI model is created at runtime using device specific information it cannot be saved as part of the ORT format model. *NOTE:* every node in the saved ORT format model can be run using a statically registered kernel, so any node that is not taken by the NNAPI EP will be run this way.
 
@@ -72,6 +79,3 @@ At a minimum it is suggested to performance test:
 If your model is particularly performance sensitive, you can additionally test an NNAPI-aware ORT format model.
 
 Note that it is possible and may be easier to do all this testing with a 'full' [Android build of ONNX Runtime with the NNAPI EP enabled](https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Android-NNAPI-Execution-Provider), as the execution logic and therefore performance for a full build is exactly the same as for a minimal build. The original ONNX model can be used with this testing instead of creating multiple ORT format models, the optimization level [can be specified](ONNX_Runtime_Graph_Optimizations.md#Usage) via SessionOptions, and the NNAPI EP can be [dynamically enabled or disabled](execution_providers/README.md#Using-Execution-Providers). 
-
-
-
