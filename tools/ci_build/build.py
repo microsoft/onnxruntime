@@ -12,7 +12,7 @@ import sys
 import hashlib
 from logger import get_logger
 from amd_hipify import amd_hipify
-
+from distutils.version import StrictVersion
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
@@ -845,10 +845,11 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         if args.android_cpp_shared:
             cmake_args += ["-DANDROID_STL=c++_shared"]
 
-    if is_macOS():
+    if is_macOS() and not args.android:
         cmake_args += ["-DCMAKE_OSX_ARCHITECTURES=" + args.osx_arch]
         # since cmake 3.19, it uses the xcode latest buildsystem, which is not supported by this project.
-        if args.use_xcode:
+        cmake_verstr = subprocess.check_output(['cmake', '--version']).decode('utf-8').split()[2]
+        if args.use_xcode and StrictVersion(cmake_verstr) >= StrictVersion('3.19.0'):
             cmake_args += ["-T", "buildsystem=1"]
 
     if args.ios:
