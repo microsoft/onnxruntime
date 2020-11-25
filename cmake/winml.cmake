@@ -26,6 +26,9 @@ set(winml_lib_api_ort_dir ${REPO_ROOT}/winml/lib/api.ort)
 set(winml_lib_common_dir ${REPO_ROOT}/winml/lib/common)
 set(winml_lib_telemetry_dir ${REPO_ROOT}/winml/lib/telemetry)
 
+# Override and use the the cppwinrt from NuGet package as opposed to the one in the SDK.
+set(winml_CPPWINRT_EXE_PATH_OVERRIDE ${PACKAGES_DIR}/Microsoft.Windows.CppWinRT.2.0.201113.7/bin/cppwinrt.exe)
+
 set(winml_is_inbox OFF)
 if (onnxruntime_WINML_NAMESPACE_OVERRIDE)
   set(output_name "${onnxruntime_WINML_NAMESPACE_OVERRIDE}.AI.MachineLearning")
