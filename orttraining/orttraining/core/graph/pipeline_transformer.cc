@@ -1256,8 +1256,8 @@ Status ApplyPipelinePartitionToMainGraph(Graph& graph,
   ORT_RETURN_IF_ERROR(
     SplitGraphWithMap(graph, op_to_rank, nstages, messages, send_nodes, recv_nodes));
 
-  // TODO: handle weights that are shared accross many ranks
-  // HandleSharedInitializer
+  // Take care of weights that are shared accross stages.
+  HandleSharedInitializer(graph, send_nodes, recv_nodes);
 
   // Generate subgraph / Projection.
   // First remove Send nodes that do not belong to the `pipeline_stage_id`
