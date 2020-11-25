@@ -57,6 +57,69 @@ ONNX_OPERATOR_KERNEL_EX(
 
 }  // namespace cuda
 
+namespace provider_option_names {
+constexpr const char* kDeviceId = "device_id";
+constexpr const char* kMemLimit = "cuda_mem_limit";
+constexpr const char* kArenaExtendStrategy = "arena_extend_strategy";
+constexpr const char* kCudnnConvAlgo = "cudnn_conv_algo";
+constexpr const char* kDoCopyInDefaultStream = "do_copy_in_default_stream";
+}  // namespace provider_option_names
+
+CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const ProviderOptions& options) {
+  CUDAExecutionProviderInfo info{};
+
+  auto parse = [&options](const std::string& key, auto& value) -> bool {
+    auto it = options.find(key);
+    if (it != options.end()) {
+      ORT_ENFORCE(
+          TryParse(it->second, value),
+          "Failed to parse provider option \"", key, "\" with value \"", it->second, "\".");
+      return true;
+    }
+    return false;
+  };
+
+  if (parse(provider_option_names::kDeviceId, info.device_id)) {
+    int num_devices = 0;
+    CUDA_CALL_THROW(cudaGetDeviceCount(&num_devices));
+    ORT_ENFORCE(
+        0 <= info.device_id && info.device_id < num_devices,
+        "Invalid ", provider_option_names::kDeviceId, " value: ", info.device_id,
+        ", must be between 0 (inclusive) and ", num_devices, " (exclusive).");
+  }
+  parse(provider_option_names::kMemLimit, info.cuda_mem_limit);
+  parse(provider_option_names::kArenaExtendStrategy, info.arena_extend_strategy);
+  {
+    int cudnn_conv_algo_val;
+    if (parse(provider_option_names::kCudnnConvAlgo, cudnn_conv_algo_val)) {
+      switch (cudnn_conv_algo_val) {
+        case OrtCudnnConvAlgoSearch::EXHAUSTIVE:
+        case OrtCudnnConvAlgoSearch::HEURISTIC:
+        case OrtCudnnConvAlgoSearch::DEFAULT:
+          break;
+        default:
+          ORT_THROW("Invalid ", provider_option_names::kCudnnConvAlgo, " value: ", cudnn_conv_algo_val);
+      }
+      info.cudnn_conv_algo = static_cast<OrtCudnnConvAlgoSearch>(cudnn_conv_algo_val);
+    }
+  }
+  parse(provider_option_names::kDoCopyInDefaultStream, info.do_copy_in_default_stream);
+
+  return info;
+}
+
+ProviderOptions CUDAExecutionProviderInfo::ToProviderOptions(const CUDAExecutionProviderInfo& info) {
+  const ProviderOptions options{
+      {provider_option_names::kDeviceId, MakeString(info.device_id)},
+      {provider_option_names::kMemLimit, MakeString(info.cuda_mem_limit)},
+      {provider_option_names::kArenaExtendStrategy, MakeString(info.arena_extend_strategy)},
+      {provider_option_names::kCudnnConvAlgo, MakeString(static_cast<int>(info.cudnn_conv_algo))},
+      {provider_option_names::kDoCopyInDefaultStream, MakeString(info.do_copy_in_default_stream)},
+  };
+
+  return options;
+}
+
 CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy) {
   CUDA_CALL_THROW(cudaSetDevice(device_id));
   CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
@@ -93,41 +156,14 @@ CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
   }
 }
 
-/*
- * This method should be called within the constructor,
- * so that the configuration of provider related setting can be updated 
- * and kept at IExecutionProvider level.
- */
-void CUDAExecutionProvider::UpdateProviderOptionsInfo() {
-  UnorderedMapStringToString options;
-
-  options["device_id"] = std::to_string(device_id_);
-  options["cuda_mem_limit"] = std::to_string(cuda_mem_limit_);
-  std::string strategy;
-  if (arena_extend_strategy_ == ArenaExtendStrategy::kNextPowerOfTwo) {
-    strategy = "kNextPowerOfTwo";
-  } else if (arena_extend_strategy_ == ArenaExtendStrategy::kSameAsRequested) {
-    strategy = "kSameAsRequested";
-  } else {
-    strategy = "unknown";
-  }
-  options["arena_extend_strategy"] = strategy;
-
-  IExecutionProvider::SetProviderOptions(options);
-}
-
 CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kCudaExecutionProvider},
-      device_id_(info.device_id),
-      cuda_mem_limit_(info.cuda_mem_limit),
-      arena_extend_strategy_(info.arena_extend_strategy),
-      cudnn_conv_algo_(info.cudnn_conv_algo),
-      do_copy_in_default_stream_(info.do_copy_in_default_stream) {
-  CUDA_CALL_THROW(cudaSetDevice(device_id_));
+      info_{info} {
+  CUDA_CALL_THROW(cudaSetDevice(info_.device_id));
 
   // must wait GPU idle, otherwise cudaGetDeviceProperties might fail
   CUDA_CALL_THROW(cudaDeviceSynchronize());
-  CUDA_CALL_THROW(cudaGetDeviceProperties(&device_prop_, device_id_));
+  CUDA_CALL_THROW(cudaGetDeviceProperties(&device_prop_, info_.device_id));
 
   size_t free = 0;
   size_t total = 0;
@@ -137,10 +173,10 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
       [](OrtDevice::DeviceId device_id) {
         return onnxruntime::make_unique<CUDAAllocator>(device_id, CUDA);
       },
-      device_id_,
+      info_.device_id,
       true,
-      {cuda_mem_limit_,
-       static_cast<int>(arena_extend_strategy_),
+      {info_.cuda_mem_limit,
+       static_cast<int>(info_.arena_extend_strategy),
        -1, -1});
 
   InsertAllocator(CreateAllocator(default_memory_info));
@@ -164,8 +200,6 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
       CPU_ALLOCATOR_DEVICE_ID);
 
   InsertAllocator(CreateAllocator(cpu_memory_info));
-
-  UpdateProviderOptionsInfo();
 }
 
 CUDAExecutionProvider::~CUDAExecutionProvider() {
@@ -215,7 +249,7 @@ CUDAExecutionProvider::PerThreadContext& CUDAExecutionProvider::GetPerThreadCont
 
     // get or create a context
     if (context_state_.retired_context_pool.empty()) {
-      context = std::make_shared<PerThreadContext>(device_id_, cuda_mem_limit_, arena_extend_strategy_);
+      context = std::make_shared<PerThreadContext>(info_.device_id, info_.cuda_mem_limit, info_.arena_extend_strategy);
     } else {
       context = context_state_.retired_context_pool.back();
       context_state_.retired_context_pool.pop_back();
@@ -1854,7 +1888,7 @@ static bool CastNeedFallbackToCPU(const onnxruntime::Node& node) {
 }
 
 std::unique_ptr<onnxruntime::IDataTransfer> CUDAExecutionProvider::GetDataTransfer() const {
-  return onnxruntime::make_unique<onnxruntime::GPUDataTransfer>(do_copy_in_default_stream_);
+  return onnxruntime::make_unique<onnxruntime::GPUDataTransfer>(info_.do_copy_in_default_stream);
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>

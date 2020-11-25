@@ -24,6 +24,9 @@ struct ROCMExecutionProviderInfo {
   OrtDevice::DeviceId device_id{0};
   size_t hip_mem_limit{std::numeric_limits<size_t>::max()};
   ArenaExtendStrategy arena_extend_strategy{ArenaExtendStrategy::kNextPowerOfTwo};
+
+  static ROCMExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
+  static ProviderOptions ToProviderOptions(const ROCMExecutionProviderInfo& info);
 };
 
 // Logical device representation.
@@ -65,7 +68,7 @@ class ROCMExecutionProvider : public IExecutionProvider {
     if (count_or_bytes == 0)
       return nullptr;
 
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(device_id_, OrtMemTypeDefault), count_or_bytes);
+    return IAllocator::MakeUniquePtr<T>(GetAllocator(info_.device_id, OrtMemTypeDefault), count_or_bytes);
   }
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
@@ -75,15 +78,16 @@ class ROCMExecutionProvider : public IExecutionProvider {
       const onnxruntime::GraphViewer& graph,
       const std::vector<const KernelRegistry*>& kernel_registries) const override;
 
-  int GetDeviceId() const override { return device_id_; }
+  int GetDeviceId() const override { return info_.device_id; }
   const hipDeviceProp_t& GetDeviceProp() const { return device_prop_; };
-  void UpdateProviderOptionsInfo();
+
+  ProviderOptions GetProviderOptions() const override {
+    return ROCMExecutionProviderInfo::ToProviderOptions(info_);
+  }
 
  private:
-  OrtDevice::DeviceId device_id_;
+  ROCMExecutionProviderInfo info_;
   hipDeviceProp_t device_prop_;
-  size_t hip_mem_limit_;
-  ArenaExtendStrategy arena_extend_strategy_;
 
   struct DeferredReleaseCPUPtrs {
     bool recorded = false;

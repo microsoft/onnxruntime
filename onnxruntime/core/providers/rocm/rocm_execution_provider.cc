@@ -57,6 +57,44 @@ ONNX_OPERATOR_KERNEL_EX(
 
 }  // namespace rocm
 
+namespace provider_option_names {
+constexpr const char* kDeviceId = "device_id";
+constexpr const char* kMemLimit = "hip_mem_limit";
+constexpr const char* kArenaExtendStrategy = "arena_extend_strategy";
+}  // namespace provider_option_names
+
+ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const ProviderOptions& options) {
+  ROCMExecutionProviderInfo info{};
+
+  auto parse = [&options](const std::string& key, auto& value) -> bool {
+    auto it = options.find(key);
+    if (it != options.end()) {
+      ORT_ENFORCE(
+          TryParse(it->second, value),
+          "Failed to parse provider option \"", key, "\" with value \"", it->second, "\".");
+      return true;
+    }
+    return false;
+  };
+
+  // TODO validate info.device_id
+  parse(provider_option_names::kDeviceId, info.device_id);
+  parse(provider_option_names::kMemLimit, info.hip_mem_limit);
+  parse(provider_option_names::kArenaExtendStrategy, info.arena_extend_strategy);
+
+  return info;
+}
+
+ProviderOptions ROCMExecutionProviderInfo::ToProviderOptions(const ROCMExecutionProviderInfo& info) {
+  const ProviderOptions options{
+      {provider_option_names::kDeviceId, MakeString(info.device_id)},
+      {provider_option_names::kMemLimit, MakeString(info.hip_mem_limit)},
+      {provider_option_names::kArenaExtendStrategy, MakeString(info.arena_extend_strategy)},
+  };
+
+  return options;
+}
+
 ROCMExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, size_t hip_mem_limit, ArenaExtendStrategy arena_extend_strategy) {
   HIP_CALL_THROW(hipSetDevice(device_id));
   ROCBLAS_CALL_THROW(rocblas_create_handle(&rocblas_handle_));
@@ -94,39 +132,14 @@ ROCMExecutionProvider::PerThreadContext::~PerThreadContext() {
   }
 }
 
-/*
- * This method should be called within the constructor,
- * so that the configuration of provider related setting can be updated 
- * and kept at IExecutionProvider level.
- */
-void ROCMExecutionProvider::UpdateProviderOptionsInfo() {
-  UnorderedMapStringToString options;
-
-  options["device_id"] = std::to_string(device_id_);
-  options["hip_mem_limit"] = std::to_string(hip_mem_limit_);
-  std::string strategy;
-  if (arena_extend_strategy_ == ArenaExtendStrategy::kNextPowerOfTwo) {
-    strategy = "kNextPowerOfTwo";
-  } else if (arena_extend_strategy_ == ArenaExtendStrategy::kSameAsRequested) {
-    strategy = "kSameAsRequested";
-  } else {
-    strategy = "unknown";
-  }
-  options["arena_extend_strategy"] = strategy;
-
-  IExecutionProvider::SetProviderOptions(options);
-}
-
 ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kRocmExecutionProvider},
-      device_id_(info.device_id),
-      hip_mem_limit_(info.hip_mem_limit),
-      arena_extend_strategy_(info.arena_extend_strategy) {
-  HIP_CALL_THROW(hipSetDevice(device_id_));
+      info_{info} {
+  HIP_CALL_THROW(hipSetDevice(info_.device_id));
 
   // must wait GPU idle, otherwise hipGetDeviceProperties might fail
   HIP_CALL_THROW(hipDeviceSynchronize());
-  HIP_CALL_THROW(hipGetDeviceProperties(&device_prop_, device_id_));
+  HIP_CALL_THROW(hipGetDeviceProperties(&device_prop_, info_.device_id));
 
   size_t free = 0;
   size_t total = 0;
@@ -136,10 +149,10 @@ ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& in
       [](OrtDevice::DeviceId device_id) {
         return onnxruntime::make_unique<ROCMAllocator>(device_id, CUDA);
       },
-      device_id_,
+      info_.device_id,
       true,
-      {hip_mem_limit_,
-       static_cast<int>(arena_extend_strategy_),
+      {info_.hip_mem_limit,
+       static_cast<int>(info_.arena_extend_strategy),
        -1, -1});
 
   InsertAllocator(CreateAllocator(default_memory_info));
@@ -163,8 +176,6 @@ ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& in
       CPU_ALLOCATOR_DEVICE_ID);
 
   InsertAllocator(CreateAllocator(cpu_memory_info));
-
-  UpdateProviderOptionsInfo();
 }
 
 ROCMExecutionProvider::~ROCMExecutionProvider() {
@@ -214,7 +225,7 @@ ROCMExecutionProvider::PerThreadContext& ROCMExecutionProvider::GetPerThreadCont
 
     // get or create a context
     if (context_state_.retired_context_pool.empty()) {
-      context = std::make_shared<PerThreadContext>(device_id_, hip_mem_limit_, arena_extend_strategy_);
+      context = std::make_shared<PerThreadContext>(info_.device_id, info_.hip_mem_limit, info_.arena_extend_strategy);
     } else {
       context = context_state_.retired_context_pool.back();
       context_state_.retired_context_pool.pop_back();

@@ -35,6 +35,7 @@
 #include "core/common/exceptions.h"
 #include "core/common/make_unique.h"
 #include "core/common/status.h"
+#include "core/common/string_utils.h"
 
 #ifdef USE_MIMALLOC_ARENA_ALLOCATOR
 #include <mimalloc.h>
@@ -260,36 +261,6 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
 #else
 #define GSL_SUPPRESS(tag)
 #endif
-
-inline void MakeStringInternal(std::ostringstream& /*ss*/) noexcept {
-}
-
-template <typename T>
-inline void MakeStringInternal(std::ostringstream& ss, const T& t) noexcept {
-  ss << t;
-}
-
-template <typename T, typename... Args>
-inline void MakeStringInternal(std::ostringstream& ss, const T& t, const Args&... args) noexcept {
-  ::onnxruntime::MakeStringInternal(ss, t);
-  ::onnxruntime::MakeStringInternal(ss, args...);
-}
-
-template <typename... Args>
-std::string MakeString(const Args&... args) {
-  std::ostringstream ss;
-  ::onnxruntime::MakeStringInternal(ss, args...);
-  return std::string(ss.str());
-}
-
-// Specializations for already-a-string types.
-template <>
-inline std::string MakeString(const std::string& str) {
-  return str;
-}
-inline std::string MakeString(const char* p_str) {
-  return p_str;
-}
 
 inline long long TimeDiffMicroSeconds(TimePoint start_time) {
   auto end_time = std::chrono::high_resolution_clock::now();

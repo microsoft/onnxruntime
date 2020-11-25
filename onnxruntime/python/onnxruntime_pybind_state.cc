@@ -11,6 +11,7 @@
 
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
+#include "core/common/optional.h"
 #include "core/framework/bfc_arena.h"
 #include "core/framework/data_transfer_utils.h"
 #include "core/framework/data_types_internal.h"
@@ -141,13 +142,18 @@ struct OrtStatus {
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_allocator.h"
+// TODO remove deprecated global config
 OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE;
+// TODO remove deprecated global config
 bool do_copy_in_default_stream = true;
 #elif USE_ROCM
 #include "core/providers/rocm/rocm_provider_factory.h"
 #endif
+// TODO remove deprecated global config
 OrtDevice::DeviceId cuda_device_id = 0;
+// TODO remove deprecated global config
 size_t cuda_mem_limit = std::numeric_limits<size_t>::max();
+// TODO remove deprecated global config
 onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
 #endif
 
@@ -162,10 +168,12 @@ onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExten
 #endif
 #ifdef USE_OPENVINO
 #include "core/providers/openvino/openvino_provider_factory.h"
+// TODO remove deprecated global config
 std::string openvino_device_type;
 #endif
 #ifdef USE_NUPHAR
 #include "core/providers/nuphar/nuphar_provider_factory.h"
+// TODO remove deprecated global config
 std::string nuphar_settings;
 #endif
 #ifdef USE_VITISAI
@@ -180,8 +188,6 @@ std::string nuphar_settings;
 #ifdef USE_DML
 #include "core/providers/dml/dml_provider_factory.h"
 #endif
-
-#define PYBIND_UNREFERENCED_PARAMETER(parameter) ((void)(parameter))
 
 // Explicitly provide a definition for the static const var 'GPU' in the OrtDevice struct,
 // GCC 4.x doesn't seem to define this and it breaks the pipelines based on CentOS as it uses
@@ -458,30 +464,6 @@ static const std::vector<std::string>& GetAvailableProviders() {
 
 #ifdef USE_CUDA
 
-/*
- * Validate a string that is positive integer or zero.
- *
- * (-1234, 43.21, +43.21 ... are not valid,
- *  1234, +4321, 12 ... are valid)
- */
-static bool IsPositiveInteger(const std::string& s) {
-  if (s.length() == 0) {
-    return false;
-  }
-
-  for (size_t i = 0; i < s.length(); i++) {
-    if (i == 0 && s[i] == '+' && s.length() > 1) {
-      continue;
-    }
-
-    if (!isdigit(s[i])) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
 static bool IsCudaDeviceIdValid(const onnxruntime::logging::Logger& logger, int id) {
   int num_devices = 0;
   CUDA_CALL_THROW(cudaGetDeviceCount(&num_devices));
@@ -497,70 +479,6 @@ static bool IsCudaDeviceIdValid(const onnxruntime::logging::Logger& logger, int 
   }
 
   return true;
-}
-
-static void UpdateCudaProviderOptions(InferenceSession* sess, onnxruntime::CUDAExecutionProviderInfo& options,
-                                      std::unordered_map<std::string, std::string> options_map) {
-  std::unordered_map<std::string, std::string>::iterator it;
-
-  it = options_map.find("device_id");
-  if (it != options_map.end()) {
-    OrtDevice::DeviceId device_id;
-    try {
-      int id = std::stoi(it->second);
-      device_id = static_cast<int8_t>(id);
-    } catch (...) {
-      throw std::runtime_error("Please provide device id with integer.");
-    }
-
-    if (!IsCudaDeviceIdValid(*sess->GetLogger(), device_id)) {
-      throw std::runtime_error("Please provide available device id.");
-    }
-    options.device_id = device_id;
-    LOGS(*(sess->GetLogger()), INFO) << "cuda device id is set to " << device_id;
-  }
-
-  it = options_map.find("cuda_mem_limit");
-  if (it != options_map.end()) {
-    // The reason to check whether the string is positive integer upfront is that
-    // when calling stoull(), if the minus sign was part of the input sequence,
-    // the numeric value calculated from the sequence of digits is negated.
-    // In other words, it will cause wraparound.
-    // So, we rule out negative integer string beforehand.
-    if (!IsPositiveInteger(it->second)) {
-      throw std::runtime_error("Please provide cuda memory limitation size with positive integer.");
-    }
-
-    size_t size;
-    try {
-#if (defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__))
-      size = std::stoull(it->second, nullptr, 0);
-#else
-      size = std::stoul(it->second, nullptr, 0);
-#endif
-    } catch (...) {
-      throw std::runtime_error("Please provide cuda memory limitation size with positive integer and within range.");
-    }
-
-    options.cuda_mem_limit = size;
-    LOGS(*(sess->GetLogger()), INFO) << "cuda memory limitation is set to " << size;
-  }
-
-  it = options_map.find("arena_extend_strategy");
-  if (it != options_map.end()) {
-    onnxruntime::ArenaExtendStrategy strategy;
-
-    if (it->second.compare("kNextPowerOfTwo") == 0) {
-      strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
-    } else if (it->second.compare("kSameAsRequested") == 0) {
-      strategy = onnxruntime::ArenaExtendStrategy::kSameAsRequested;
-    } else {
-      throw std::runtime_error("Please provide proper cuda arena extend strategy.");
-    }
-
-    options.arena_extend_strategy = strategy;
-    LOGS(*(sess->GetLogger()), INFO) << "cuda arean extend strategy is set to " << it->second;
-  }
 }
 
 static AllocatorPtr GetCudaAllocator(OrtDevice::DeviceId id) {
@@ -607,12 +525,10 @@ static const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetCudaToHos
 
 /*
  * Register execution provider with options.
- *
- * (note: currently only cuda EP supports this feature and rest of EPs use default options)
  */
 static void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::string>& provider_types,
-                                       ProviderOptionsMap& provider_options_map) {
-  PYBIND_UNREFERENCED_PARAMETER(provider_options_map);
+                                       const ProviderOptionsMap& provider_options_map) {
+  ORT_UNUSED_PARAMETER(provider_options_map);
 
   for (const std::string& type : provider_types) {
     if (type == kCpuExecutionProvider) {
@@ -628,18 +544,15 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
 #endif
     } else if (type == kCudaExecutionProvider) {
 #ifdef USE_CUDA
-
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
-        onnxruntime::CUDAExecutionProviderInfo cuda_provider_options;
-        UpdateCudaProviderOptions(sess, cuda_provider_options, it->second);
-
+        const auto info = CUDAExecutionProviderInfo::FromProviderOptions(it->second);
         RegisterExecutionProvider(
-            sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_provider_options.device_id,
-                                                                    cuda_provider_options.cudnn_conv_algo,
-                                                                    cuda_provider_options.cuda_mem_limit,
-                                                                    cuda_provider_options.arena_extend_strategy,
-                                                                    cuda_provider_options.do_copy_in_default_stream));
+            sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(info.device_id,
+                                                                    info.cudnn_conv_algo,
+                                                                    info.cuda_mem_limit,
+                                                                    info.arena_extend_strategy,
+                                                                    info.do_copy_in_default_stream));
       } else {
         RegisterExecutionProvider(
             sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_device_id,
@@ -651,10 +564,19 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
 #endif
     } else if (type == kRocmExecutionProvider) {
 #ifdef USE_ROCM
-      RegisterExecutionProvider(
-          sess, *onnxruntime::CreateExecutionProviderFactory_ROCM(cuda_device_id,
-                                                                  cuda_mem_limit,
-                                                                  arena_extend_strategy));
+      auto it = provider_options_map.find(type);
+      if (it != provider_options_map.end()) {
+        const auto info = ROCMExecutionProviderInfo::FromProviderOptions(it->second);
+        RegisterExecutionProvider(
+            sess, *onnxruntime::CreateExecutionProviderFactory_ROCM(info.device_id,
+                                                                    info.hip_mem_limit,
+                                                                    info.arena_extend_strategy));
+      } else {
+        RegisterExecutionProvider(
+            sess, *onnxruntime::CreateExecutionProviderFactory_ROCM(cuda_device_id,
+                                                                    cuda_mem_limit,
+                                                                    arena_extend_strategy));
+      }
 #endif
     } else if (type == kDnnlExecutionProvider) {
 #ifdef USE_DNNL
@@ -702,6 +624,14 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
 #endif
     } else if (type == kNupharExecutionProvider) {
 #if USE_NUPHAR
+      const auto nuphar_provider_options_it = provider_options_map.find(type);
+      if (nuphar_provider_options_it != provider_options_map.end()) {
+        const auto& nuphar_provider_options = nuphar_provider_options_it->second;
+        const auto nuphar_settings_it = nuphar_provider_options.find("nuphar_settings");
+        if (nuphar_settings_it != nuphar_provider_options.end()) {
+          nuphar_settings = nuphar_settings_it->second;
+        }
+      }
       RegisterExecutionProvider(
           sess, *onnxruntime::CreateExecutionProviderFactory_Nuphar(true, nuphar_settings.c_str()));
 
@@ -810,6 +740,12 @@ static bool CheckIfTensor(const std::vector<const NodeArg*>& def_list,
   return type_proto.has_tensor_type();
 }
 
+static void LogDeprecationWarning(
+    const std::string& deprecated, const optional<std::string>& alternative = nullopt) {
+  LOGS_DEFAULT(WARNING) << "This is DEPRECATED and will be removed in the future: " << deprecated;
+  LOGS_DEFAULT_IF(alternative.has_value(), WARNING) << "As an alternative, use: " << *alternative;
+}
+
 void addGlobalMethods(py::module& m, const Environment& env) {
   m.def("get_default_session_options", &GetDefaultCPUSessionOptions, "Return a default session_options instance.");
   m.def("get_session_initializer", &SessionObjectInitializer::Get, "Return a default session object initializer.");
@@ -843,10 +779,14 @@ void addGlobalMethods(py::module& m, const Environment& env) {
       "Disables platform-specific telemetry collection.");
 
 #ifdef USE_NUPHAR
+  // TODO remove deprecated global config
   m.def("set_nuphar_settings", [](const std::string& str) {
+    LogDeprecationWarning("set_nuphar_settings", "Nuphar execution provider option \"nuphar_settings\"");
     nuphar_settings = str;
   });
+  // TODO remove deprecated global config
   m.def("get_nuphar_settings", []() -> std::string {
+    LogDeprecationWarning("get_nuphar_settings");
     return nuphar_settings;
   });
 #endif
@@ -859,13 +799,19 @@ void addGlobalMethods(py::module& m, const Environment& env) {
       },
       "Lists all OpenVINO device ids available.");
   /*
-* The following APIs to set config options are deprecated. Use Session.set_providers() instead.
-*/
+   * The following APIs to set config options are deprecated. Use Session.set_providers() instead.
+   */
+  // TODO remove deprecated global config
   m.def(
-      "set_openvino_device", [](const std::string& device_type) { openvino_device_type = device_type; },
+      "set_openvino_device", [](const std::string& device_type) {
+        LogDeprecationWarning("set_openvino_device", "OpenVINO execution provider option \"device_type\"");
+        openvino_device_type = device_type;
+      },
       "Set the prefered OpenVINO device type to be used. If left unset, the device type selected during build time will be used.");
+  // TODO remove deprecated global config
   m.def(
       "get_openvino_device", []() -> std::string {
+        LogDeprecationWarning("get_openvino_device");
         return openvino_device_type;
       },
       "Gets the dynamically selected OpenVINO device type for inference.");
@@ -939,8 +885,14 @@ void addGlobalMethods(py::module& m, const Environment& env) {
    * InferenceSession.set_providers(list_of_providers, list_of_provider_option_dicts)
    *
    */
-  m.def("set_cuda_device_id", [](const int id) { cuda_device_id = static_cast<OrtDevice::DeviceId>(id); });
+  // TODO remove deprecated global config
+  m.def("set_cuda_device_id", [](const int id) {
+    LogDeprecationWarning("set_cuda_device_id", "CUDA/ROCM execution provider option \"device_id\"");
+    cuda_device_id = static_cast<OrtDevice::DeviceId>(id);
+  });
+  // TODO remove deprecated global config
   m.def("set_cudnn_conv_algo_search", [](const OrtCudnnConvAlgoSearch algo) {
+    LogDeprecationWarning("set_cudnn_conv_algo_search", "CUDA execution provider option \"cudnn_conv_algo\"");
 #ifdef USE_ROCM
     ORT_UNUSED_PARAMETER(algo);
     ORT_THROW("set_cudnn_conv_algo_search is not supported in ROCM");
@@ -948,7 +900,10 @@ void addGlobalMethods(py::module& m, const Environment& env) {
         cudnn_conv_algo_search = algo;
 #endif
   });
+  // TODO remove deprecated global config
   m.def("set_do_copy_in_default_stream", [](const bool use_single_stream) {
+    LogDeprecationWarning(
+        "set_do_copy_in_default_stream", "CUDA execution provider option \"do_copy_in_default_stream\"");
 #ifdef USE_ROCM
     ORT_UNUSED_PARAMETER(use_single_stream);
     ORT_THROW("set_do_copy_in_default_stream is not supported in ROCM");
@@ -956,8 +911,18 @@ void addGlobalMethods(py::module& m, const Environment& env) {
         do_copy_in_default_stream = use_single_stream;
 #endif
   });
-  m.def("set_cuda_mem_limit", [](const int64_t limit) { cuda_mem_limit = static_cast<size_t>(limit); });
-  m.def("set_arena_extend_strategy", [](const onnxruntime::ArenaExtendStrategy strategy) { arena_extend_strategy = strategy; });
+  // TODO remove deprecated global config
+  m.def("set_cuda_mem_limit", [](const int64_t limit) {
+    LogDeprecationWarning(
+        "set_cuda_mem_limit",
+        "CUDA execution provider option \"cuda_mem_limit\", ROCM execution provider option \"hip_mem_limit\"");
+    cuda_mem_limit = gsl::narrow<size_t>(limit);
+  });
+  // TODO remove deprecated global config
+  m.def("set_arena_extend_strategy", [](const onnxruntime::ArenaExtendStrategy strategy) {
+    LogDeprecationWarning("set_arena_extend_strategy", "CUDA/ROCM execution provider option \"arena_extend_strategy\"");
+    arena_extend_strategy = strategy;
+  });
 #endif
 }
 
