@@ -43,7 +43,7 @@ def parse_args():
         "--log-storage-account", required=True,
         help="The storage account name.")
     parser.add_argument(
-        "--log-storage-container", required=True,
+        "--log-storage-account-container", required=True,
         help="The storage account container name.")
     parser.add_argument(
         "--log-storage-path-pattern", default="*.json",

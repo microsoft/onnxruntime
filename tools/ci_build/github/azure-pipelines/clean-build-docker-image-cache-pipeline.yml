@@ -1,3 +1,17 @@
+parameters:
+- name: DryRun
+  type: boolean
+  default: false
+  displayName: "Whether to do a dry-run and not actually clean up the cache."
+- name: CacheLifetimeDays
+  type: number
+  default: 7
+  displayName: "The lifetime of an unused image in the cache, in days."
+
+variables:
+  ${{ if eq(parameters.DryRun, true) }}:
+    DryRunArgument: "--dry-run"
+
 jobs:
 - job: Clean_Build_Docker_Image_Cache
 
@@ -14,6 +28,8 @@ jobs:
       scriptLocation: 'inlineScript'
       inlineScript: |
         tools/ci_build/clean_docker_image_cache.py \
+          ${{ variables.DryRunArgument }} \
           --container-registry $(buildcache-container-registry) \
           --log-storage-account $(buildcache-log-storage-account) \
-          --log-storage-container $(buildcache-log-storage-account-container)
+          --log-storage-account-container $(buildcache-log-storage-account-container) \
+          --cache-lifetime-days ${{ parameters.CacheLifetimeDays }}
