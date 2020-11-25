@@ -16,7 +16,7 @@ The _basic_ optimizations are applied when the model is initialized by ONNX Runt
 
 *Step 2:*
 
-The enabled [execution providers](execution_providers/README.md) are queried about nodes in the ONNX model they can execute. Each node is assigned to a specific EP based on the user defined priority set during the session initialization step. Some EPs can compile the allocated sub-graph to replace with a single function. This function is a compiled version of the original node/s (sub-graph). The function will be called at runtime to execute that part of the model on the target compute node.
+The enabled [execution providers](execution_providers/README.md) are queried about nodes in the ONNX model they can execute. Each node is assigned to a specific EP based on the user defined priority set during the session initialization step.
 
 The NNAPI EP identifies nodes that can be executed using NNAPI. ONNX Runtime may group nodes into a sub-graph to be executed by NNAPI to minimize the overhead to copy data between the CPU and NNAPI. The inference performace is better with more nodes in each sub-graph, and fewer sub-graphs.
 
