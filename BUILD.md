@@ -182,9 +182,9 @@ Nuget packages are created under <native_build_dir>\nuget-artifacts
 The DNNL, TensorRT, and OpenVINO providers are built as shared libraries vs being statically linked into the main onnxruntime. This enables them to be loaded only when needed, and if the dependent libraries of the provider are not installed onnxruntime will still run fine, it just will not be able to use that provider. For non shared library providers, all dependencies of the provider must exist to load onnxruntime.
 
 ### Built files
-On Windows, shared provider libraries will be named 'onnxruntime_providers_*.dll' (for example onnxruntime_providers_openvino.dll).
-On Unix, they will be named 'libonnxruntime_providers_*.so'
-On Mac, they will be named 'libonnxruntime_providers_*.dylib'.
+On Windows, shared provider libraries will be named 'onnxruntime_providers_\*.dll' (for example onnxruntime_providers_openvino.dll).
+On Unix, they will be named 'libonnxruntime_providers_\*.so'
+On Mac, they will be named 'libonnxruntime_providers_\*.dylib'.
 
 There is also a shared library that shared providers depend on called onnxruntime_providers_shared (with the same naming convension applied as above).
 
