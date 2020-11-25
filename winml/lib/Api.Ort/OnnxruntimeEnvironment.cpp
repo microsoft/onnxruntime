@@ -197,8 +197,8 @@ static void OnSuspending(winrt::Windows::Foundation::IInspectable const& sender,
 
 void OnnxruntimeEnvironment::RegisterSuspendHandler() {
   try {
-    suspend_token_ = winrt::Windows::ApplicationModel::Core::CoreApplication::Suspending(
-        winrt::Windows::Foundation::EventHandler<winrt::Windows::ApplicationModel::SuspendingEventArgs>(&OnSuspending));
+    auto suspend_event_handler = winrt::Windows::Foundation::EventHandler<winrt::Windows::ApplicationModel::SuspendingEventArgs>(&OnSuspending);
+    suspend_token_ = winrt::Windows::ApplicationModel::Core::CoreApplication::Suspending(suspend_event_handler);
   } catch (...) {
   }  //Catch in case CoreApplication cannot be found for non-UWP executions
 }
