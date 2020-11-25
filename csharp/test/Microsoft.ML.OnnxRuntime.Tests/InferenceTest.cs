@@ -324,7 +324,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     Assert.Equal(typeof(float), outputMeta[outputName].ElementType);
                     Assert.True(outputMeta[outputName].IsTensor);
                     longShape = Array.ConvertAll<int, long>(outputMeta[outputName].Dimensions, d => d);
-                    byteSize = byteSize = longShape.Aggregate(1L, (a, b) => a * b) * sizeof(float);
+                    byteSize = longShape.Aggregate(1L, (a, b) => a * b) * sizeof(float);
                     float[] outputBuffer = new float[expectedOutput.Length];
                     pinnedOutputs.Add(FixedBufferOnnxValue.CreateFromMemory<float>(memInfo, outputBuffer, 
                         TensorElementType.Float, longShape, byteSize));
