@@ -20,7 +20,7 @@ typedef struct MultiIndex {
   size_t upper_bound;
   int64_t stride;
   MultiIndex() {}
-  MultiIndex(size_t i, size_t n, int64_t s) {
+  void init(size_t i, size_t n, int64_t s) {
     index = i;
     upper_bound = n;
     stride = s;
@@ -33,33 +33,16 @@ static size_t IncrementIndexAndComputeOffsetSetup(MultiIndex* mindex, int64_t nu
   for (int64_t i = 0; i < num_axes; ++i) {
     if (target_dims[i] == 1)
       continue;
-    mindex[naxes] = MultiIndex(0, static_cast<size_t>(target_dims[i]), stride[i] * element_size);
+    mindex[naxes].init(0, static_cast<size_t>(target_dims[i]), stride[i] * element_size);
     ++naxes;
   }
+  ORT_ENFORCE(naxes > 0, "Method IncrementIndexAndComputeOffset assumes this value is strictly positive.");
   return naxes;
 }
 
 // Combines multi-index increment and corresponding pointer in the tensor to transpose.
-static void IncrementIndexAndComputeOffset(MultiIndex* mindex, size_t naxes, const uint8_t*& local_source) {
-  MultiIndex* it = mindex + (naxes - 1);
-  local_source += it->stride;
-  if (++it->index < it->upper_bound)
-    return;
-  local_source -= it->stride * it->index;
-  it->index = 0;
-  --it;
-  MultiIndex* rend = mindex - 1;
-  for (; it != rend; --it) {
-    local_source += it->stride;
-    if (++it->index < it->upper_bound)
-      break;
-    local_source -= it->stride * it->index;
-    it->index = 0;
-  }
-}
-
-// Combines multi-index increment and corresponding pointer in the string tensor to transpose.
-static void IncrementIndexAndComputeOffset(MultiIndex* mindex, size_t naxes, const std::string*& local_source) {
+template <typename T>
+static void IncrementIndexAndComputeOffset(MultiIndex* mindex, size_t naxes, const T*& local_source) {
   MultiIndex* it = mindex + (naxes - 1);
   local_source += it->stride;
   if (++it->index < it->upper_bound)
@@ -136,19 +119,19 @@ static void TypedDoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>
   size_t naxes = IncrementIndexAndComputeOffsetSetup(mindex.data(), num_axes, target_dims, stride, sizeof(T));
 
   const uint8_t* local_source = source;
-  for (size_t i = 0; i < num_blocks; ++i) {
+  uint8_t* target_end = target + sizeof(T) * num_blocks;
+  for (; target != target_end; target += sizeof(T)) {
     CopyPrim<T>(target, local_source);
     IncrementIndexAndComputeOffset(mindex.data(), naxes, local_source);
-    target += sizeof(T);
   }
 }
 
 // DoTransposeEltWise: specialization of DoTranspose for the num_elts_in_block=1 case.
 // copies source tensor to target, transposing elements.
 // The stride vector indicates the transposition.
-static void DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_dims, size_t num_blocks,
-                               const std::vector<size_t>& stride, const uint8_t* source, uint8_t* target,
-                               size_t element_size) {
+void DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_dims, size_t num_blocks,
+                        const std::vector<size_t>& stride, const uint8_t* source, uint8_t* target,
+                        size_t element_size) {
   switch (element_size) {
     case sizeof(uint64_t):
       TypedDoTransposeEltWise<uint64_t>(num_axes, target_dims, num_blocks, stride, source, target);
@@ -569,7 +552,7 @@ static bool IsMovingSingleAxis(const std::vector<size_t>& permutations, size_t& 
   return single_axis_moved;
 }
 
-bool IsReshape(const std::vector<size_t>& perm, const std::vector<int64_t>& input_dims) {
+bool IsTransposeReshape(const std::vector<size_t>& perm, const std::vector<int64_t>& input_dims) {
   // As long as the dims with values > 1 stay in the same order, it's a reshape.
   // Example: Shape=(1,1,1024,4096) -> perm=(2,0,3,1).
   size_t last_permuted_axis = 0;
@@ -596,7 +579,7 @@ Status TransposeBase::DoTranspose(const std::vector<size_t>& permutations, const
                              input_type, " != ", output_type);
   } else {
     TensorShape shape = input_shape_override ? *input_shape_override : input.Shape();
-    if (IsReshape(permutations, shape.GetDims())) {
+    if (IsTransposeReshape(permutations, shape.GetDims())) {
       // As long as the dims with values > 1 stay in the same order, it's a reshape.
       // Example: Shape=(1,1,1024,4096) -> perm=(2,0,3,1).
       CopyCpuTensor(&input, &output);
@@ -638,7 +621,7 @@ Status Transpose::Compute(OpKernelContext* ctx) const {
   if (output_shape.Size() == 0)
     return Status::OK();
 
-  if (IsReshape(*p_perm, input_dims)) {
+  if (IsTransposeReshape(*p_perm, input_dims)) {
     // As long as the dims with values > 1 stay in the same order, it's a reshape.
     // Example: Shape=(1,1,1024,4096) -> perm=(2,0,3,1).
     CopyCpuTensor(&X, &Y);
