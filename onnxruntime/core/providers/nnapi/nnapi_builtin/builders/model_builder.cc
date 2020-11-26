@@ -333,7 +333,7 @@ Status ModelBuilder::RegisterModelOutputs() {
 
     // Since for now all the shapes are deterministic for NNAPI, it's impossible we can have unknown output shape
     const auto* shape_proto = node_arg->Shape();
-    ORT_RETURN_IF_NOT(shape_proto != nullptr, "shape_proto cannot be null for output: ", output_name);
+    ORT_RETURN_IF(shape_proto == nullptr, "shape_proto cannot be null for output: ", output_name);
     if (shape_proto->dim_size() == 0) {
       // In NNAPI scalar output must have {1} shape
       const auto& output_shape = shaper_[output_name];
@@ -342,6 +342,8 @@ Status ModelBuilder::RegisterModelOutputs() {
                         " actual shape, ", Shape2String(output_shape));
 
       // Record the scalar output
+      // Since within NNAPI the scalar outputs will have {1} shapes, and for ORT scalar outputs will have {} shapes,
+      // we need to change the shapes of these scalar outputs back to {} when NNAPI EP returns these values to ORT
       nnapi_model_->AddScalarOutput(output_name);
     }
 
