@@ -379,6 +379,8 @@ Status Shaper::SqueezeImpl(const std::string& input_name,
   int32_t input_size = input_dimen.size();
   std::unordered_set<int32_t> axes_to_be_squeezed;
 
+  // If the Op is squeezing all by not specifying axes, the axes is pre-populate
+  // with axes of all single dimensions by the caller
   for (const auto& axis : axes)
     axes_to_be_squeezed.insert(axis);
 
