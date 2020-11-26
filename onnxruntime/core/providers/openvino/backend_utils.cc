@@ -194,7 +194,7 @@ GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_s
   }
   int index = it->second;
 
-  output_tensor = ort.KernelContext_GetOutput(context, index, output_shape, num_dims);
+  output_tensor = ort.KernelContext_GetOutput(context, index, output_shape.get(), num_dims);
 
   return output_tensor;
 }
@@ -218,7 +218,7 @@ GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context,
   for (size_t j = 0; j < num_dims; j++) {
     output_shape[j] = static_cast<int64_t>(shape[j]);
   }
-  output_tensor = ort.KernelContext_GetOutput(context, index, output_shape, num_dims);
+  output_tensor = ort.KernelContext_GetOutput(context, index, output_shape.get(), num_dims);
 
   return output_tensor;
 }
