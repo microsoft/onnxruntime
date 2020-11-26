@@ -265,7 +265,7 @@ jobs:
           $date = $(Get-Date -Format "yyyy-MM-dd")
           Write-Host "##vso[task.setvariable variable=CurrentDate]$date"
 
-  - task: AzureFileCopy@3
+  - task: AzureFileCopy@4
     displayName: 'Copy Signed Native NuGet Package to Blob Store'
     condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
     inputs:
@@ -277,7 +277,7 @@ jobs:
       blobPrefix: '$(CurrentDate)/'
     continueOnError: true
 
-  - task: AzureFileCopy@3
+  - task: AzureFileCopy@4
     displayName: 'Copy Signed Managed NuGet Package to Blob Store'
     condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
     inputs:
