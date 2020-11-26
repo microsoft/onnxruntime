@@ -2,7 +2,7 @@
 
 The ONNX Runtime Mobile with the NNAPI execution provider can be used to execute ORT format models on Android platforms. This document explains the different options available to optimize the ORT model for exection with NNAPI. 
 
-Review the details for using NNAPI with ONNX Runtime Mobile [here](docs/ONNX_Runtime_for_Mobile_Platforms.md#using-nnapi-with-onnx-runtime-mobile).
+Review the details for using NNAPI with ONNX Runtime Mobile [here](ONNX_Runtime_for_Mobile_Platforms.md#using-nnapi-with-onnx-runtime-mobile).
 
 ## Effect of Optimization Levels on NNAPI Execution Provider
 
@@ -43,7 +43,7 @@ During runtime, for each group of nodes that is assigned to it, the NNAPI EP wil
 
 ### Considerations when creating an NNAPI-aware ORT format model
 
-The ONNX model intended for using with NNAPI should be optimized when creating the ORT formatted model. *Step 1* and *Step 2* optimizations should be used.
+The ONNX model intended for using with NNAPI should be optimized when creating the ORT formatted model. *Step 1* and *Step 2* optimizations should be used. *Step 3* optimizations may be considerd based on the performance impacts as the benefits are model dependent.
 
 *Step 2* optimizations would replace group of nodes with a function when possible. This will contribute towards improving the performance by reducing data flow between CPU and NNAPI.
 
