@@ -229,7 +229,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
 
-            using (var cleanUp = new DisposableList<IDisposable>())
+            using (var cleanUp = new DisposableListTest<IDisposable>())
             {
                 // Set the graph optimization level for this session.
                 SessionOptions options = new SessionOptions();
@@ -312,7 +312,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     Assert.Equal(typeof(float), inputMeta[inputName].ElementType);
                     Assert.True(inputMeta[inputName].IsTensor);
                     var longShape = Array.ConvertAll<int, long>(inputMeta[inputName].Dimensions, d => d);
-                    var byteSize = ArrayUtilities.GetSizeForShape(longShape) * sizeof(float);
+                    var byteSize = longShape.Aggregate(1L, (a, b) => a * b) * sizeof(float);
                     pinnedInputs.Add(FixedBufferOnnxValue.CreateFromMemory<float>(memInfo, inputData,
                         TensorElementType.Float, longShape, byteSize));
 
@@ -324,7 +324,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     Assert.Equal(typeof(float), outputMeta[outputName].ElementType);
                     Assert.True(outputMeta[outputName].IsTensor);
                     longShape = Array.ConvertAll<int, long>(outputMeta[outputName].Dimensions, d => d);
-                    byteSize = ArrayUtilities.GetSizeForShape(longShape) * sizeof(float);
+                    byteSize = longShape.Aggregate(1L, (a, b) => a * b) * sizeof(float);
                     float[] outputBuffer = new float[expectedOutput.Length];
                     pinnedOutputs.Add(FixedBufferOnnxValue.CreateFromMemory<float>(memInfo, outputBuffer, 
                         TensorElementType.Float, longShape, byteSize));
