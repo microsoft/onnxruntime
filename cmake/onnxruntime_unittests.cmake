@@ -139,6 +139,9 @@ function(AddTest)
   endif()
 endfunction(AddTest)
 
+# general program entrypoint for C++ unit tests
+set(onnxruntime_unittest_main_src "${TEST_SRC_DIR}/unittest_main/test_main.cc")
+
 #Do not add '${TEST_SRC_DIR}/util/include' to your include directories directly
 #Use onnxruntime_add_include_to_target or target_link_libraries, so that compile definitions
 #can propagate correctly.
@@ -580,13 +583,6 @@ set(all_dependencies ${onnxruntime_test_providers_dependencies} )
   if (onnxruntime_USE_OPENVINO)
     list(APPEND all_tests ${onnxruntime_test_openvino_src})
   endif()
-  # we can only have one 'main', so remove them all and add back the providers test_main as it sets
-  # up everything we need for all tests
-  file(GLOB_RECURSE test_mains CONFIGURE_DEPENDS
-    "${TEST_SRC_DIR}/*/test_main.cc"
-    )
-  list(REMOVE_ITEM all_tests ${test_mains})
-  list(APPEND all_tests "${TEST_SRC_DIR}/providers/test_main.cc")
 
   # this is only added to onnxruntime_test_framework_libs above, but we use onnxruntime_test_providers_libs for the onnxruntime_test_all target.
   # for now, add it here. better is probably to have onnxruntime_test_providers_libs use the full onnxruntime_test_framework_libs
@@ -597,7 +593,7 @@ set(all_dependencies ${onnxruntime_test_providers_dependencies} )
 
   AddTest(
     TARGET onnxruntime_test_all
-    SOURCES ${all_tests}
+    SOURCES ${all_tests} ${onnxruntime_unittest_main_src}
     LIBS onnx_test_runner_common ${onnxruntime_test_providers_libs}  ${onnxruntime_test_common_libs}  re2::re2 onnx_test_data_proto
     DEPENDS ${all_dependencies}
   )
@@ -871,7 +867,7 @@ if (onnxruntime_BUILD_SHARED_LIB)
   endif()
   AddTest(DYN
           TARGET onnxruntime_shared_lib_test
-          SOURCES ${onnxruntime_shared_lib_test_SRC} ${TEST_SRC_DIR}/providers/test_main.cc
+          SOURCES ${onnxruntime_shared_lib_test_SRC} ${onnxruntime_unittest_main_src}
           LIBS ${onnxruntime_shared_lib_test_LIBS}
           DEPENDS ${all_dependencies}
   )
@@ -903,6 +899,24 @@ if (onnxruntime_BUILD_SHARED_LIB)
     )
   endif()
 endif()
+
+# the debug node IO functionality uses static variables, so it is best tested
+# in its own process
+if(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS)
+  AddTest(
+    TARGET onnxruntime_test_debug_node_inputs_outputs
+    SOURCES
+      "${TEST_SRC_DIR}/debug_node_inputs_outputs/debug_node_inputs_outputs_utils_test.cc"
+      "${TEST_SRC_DIR}/framework/TestAllocatorManager.cc"
+      "${TEST_SRC_DIR}/providers/provider_test_utils.cc"
+      ${onnxruntime_unittest_main_src}
+    LIBS ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}
+    DEPENDS ${all_dependencies}
+  )
+
+  target_compile_definitions(onnxruntime_test_debug_node_inputs_outputs
+    PRIVATE DEBUG_NODE_INPUTS_OUTPUTS)
+endif(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS)
 
 #some ETW tools
 if(WIN32 AND onnxruntime_ENABLE_INSTRUMENT)
