@@ -834,6 +834,8 @@ stages:
       pool: 'Linux-CPU'
       strategy:
         matrix:
+          Py38:
+            python.version: '3.8'
           Py37:
             python.version: '3.7'
           Py36:
