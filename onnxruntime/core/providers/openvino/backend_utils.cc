@@ -27,7 +27,7 @@ bool IsDebugEnabled() {
   size_t env_name_len = 0;
   char* env_name = nullptr;
   bool res = (_dupenv_s(&env_name, &env_name_len, "ORT_OPENVINO_ENABLE_DEBUG") == 0 && env_name != nullptr);
-  free(res);
+  free(env_name);
   return res;
 #else
   return (std::getenv("ORT_OPENVINO_ENABLE_DEBUG") != nullptr);
