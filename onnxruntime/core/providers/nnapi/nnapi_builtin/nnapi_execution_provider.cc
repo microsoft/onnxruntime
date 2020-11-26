@@ -386,8 +386,7 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
           if (!is_dynamic_shape_output) {
             // Since NNAPI use {1} tensor as scalar, if the model output should have empty shape
             // We are going to replace the {1} shape of the output back to {}
-            bool is_scalar_output = model->IsScalarOutput(output_name);
-            if (is_scalar_output)
+            if (model->IsScalarOutput(output_name))
               output_shape.clear();
 
             ORT_RETURN_IF_ERROR(GetOutputBuffer(ort, context,
