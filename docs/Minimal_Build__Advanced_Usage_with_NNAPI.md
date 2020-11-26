@@ -49,7 +49,7 @@ The ONNX model intended for using with NNAPI should be optimized when creating t
 
 The 'extended' optimizations from *Step 3* may benefit the ORT model as some of the CPU nodes can be replaced by the custom ONNX operators designed for improved execution on the CPU. 
 
-The 'layout' optimizations are HW specific and not applicable for execution with NNAPI.
+The 'layout' optimizations are not applicable for execution with NNAPI.
 
 Below is an example for the MNIST model comparing the ORT format model with 'basic' or 'extended' optimizations.
 
