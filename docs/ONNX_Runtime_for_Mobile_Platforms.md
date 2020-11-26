@@ -141,7 +141,7 @@ Currently the NNAPI execution provider is the only execution provider that has s
     - this is located in `build/Windows/<config>/<config>/dist/<package name>.whl` on Windows, or  `build/Linux/<config>/dist/<package name>.whl` on Linux. 
       - `<config>` is the value from the `--config` parameter from the build command (e.g. Release)
       - the package name will differ based on your platform, python version, and build parameters
-      - e.g. `pip install -U build\Windows\Release\Release\dist\onnxruntime_noopenmp-1.5.2-cp37-cp37m-win_amd64.whl`
+      - e.g. `pip install -U build\Windows\Release\Release\dist\onnxruntime-1.5.2-cp37-cp37m-win_amd64.whl`
   - Create an ORT format model by running `tools\python\convert_onnx_models_to_ort.py` as per the above instructions, with the addition of the `--use_nnapi` parameter
     - the python package from your 'full' build with NNAPI enabled must be installed for `--use_nnapi` to be a valid option
     - this will preserve all the nodes that can be assigned to NNAPI, as well as setup the ability to fallback to CPU execution if NNAPI is not available at runtime, or if NNAPI can not run all the nodes due to device limitations.
