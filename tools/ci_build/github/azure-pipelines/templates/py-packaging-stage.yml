@@ -190,6 +190,7 @@ stages:
                   --enable_lto \
                   --build_wheel \
                   --enable_onnx_tests \
+                  --wheel_name_suffix=noopenmp \
                   ${{ parameters.build_py_parameters }} \
                   --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.manylinux.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so
           workingDirectory: $(Build.SourcesDirectory)
