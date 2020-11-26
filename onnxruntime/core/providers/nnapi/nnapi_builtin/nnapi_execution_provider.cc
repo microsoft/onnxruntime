@@ -318,15 +318,13 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
         for (const auto& dim : ort.GetTensorShape(tensor_info))
           dimensions.push_back(static_cast<uint32_t>(dim));
 
-        // NNAPI has strict input type requirements which separates tensor inputs and scalar inputs
-        // For ONNX the we do not have clear line between scalar inputs and tensor inputs
-        // Also NNAPI treats a tensor input with empty shape as dynamic shape input
-        // Disable support of the scalar input (tensor input with an empty shape) for now
-        // TODO, add support for ONNX scalar input (tensor input with an empty shape)
+        // If we have an empty shape, this is a scalar input,
+        // since NNAPI will treat empty shape input as dynamic ranking input, (onnx does not support dynamic ranking)
+        // we will make the scalar input as a {1} tensor
         if (dimensions.empty()) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                 "NNAPI does not support scalar input, input name, ", input_name);
+          dimensions.push_back(1);
         }
+
         // it is possible that the input has the detailed size while
         // the model has an operand with unknown size, use the size
         // of the actual input
@@ -367,9 +365,11 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
         std::vector<OperandType> dynamic_shape_output_types;
         std::vector<std::unique_ptr<uint8_t[]>> dynamic_shape_output_buffers;
         for (size_t i = 0; i < num_outputs; i++) {
-          const auto output_name = model_outputs[i];
+          const auto& output_name = model_outputs[i];
+
+          // Below 2 need to be copied since we will modify or take ownership
           const auto model_output_type = model->GetOutputType(output_name, *execution);
-          const auto output_shape = model_output_type.dimensions;
+          auto output_shape = model_output_type.dimensions;
 
           bool is_dynamic_shape_output = false;
           if (model_output_type.GetOperandBlobByteSize() == 0) {
@@ -384,6 +384,11 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
           void* output_buffer = nullptr;
           size_t output_buffer_byte_size;
           if (!is_dynamic_shape_output) {
+            // Since NNAPI use {1} tensor as scalar, if the model output should have empty shape
+            // We are going to replace the {1} shape of the output back to {}
+            if (model->IsScalarOutput(output_name))
+              output_shape.clear();
+
             ORT_RETURN_IF_ERROR(GetOutputBuffer(ort, context,
                                                 *model,
                                                 output_name, output_shape, model_output_type.type,

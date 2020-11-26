@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <unordered_set>
+
 #include "builders/shaper.h"
 #include "core/platform/ort_mutex.h"
 #include "nnapi_lib/NeuralNetworksWrapper.h"
@@ -96,6 +98,11 @@ class Model {
   // Mutex for exclusive lock to this model object
   OrtMutex& GetMutex() { return mutex_; }
 
+  // If the given output is a scalar output
+  // Since NNAPI does not support tensor with empty shape (scalar), we use {1} tensor for scalar in NNAPI
+  // this output may need special handling
+  bool IsScalarOutput(const std::string& output_name) const;
+
   Status PrepareForExecution(std::unique_ptr<Execution>& execution) ORT_MUST_USE_RESULT;
 
  private:
@@ -112,6 +119,7 @@ class Model {
   std::vector<std::string> input_names_;
   std::vector<std::string> output_names_;
   std::unordered_map<std::string, android::nn::wrapper::OperandType> operand_types_;
+  std::unordered_set<std::string> scalar_outputs_;
 
   Shaper shaper_;
 
@@ -132,6 +140,8 @@ class Model {
   void AddOutput(const std::string& onnx_output_name,
                  const std::string& nnapi_output_name,
                  const android::nn::wrapper::OperandType& operand_type);
+
+  void AddScalarOutput(const std::string& output_name);
 
   void SetShaper(const Shaper shaper) { shaper_ = shaper; }
 
