@@ -34,7 +34,6 @@ bool IsDebugEnabled() {
 void DumpOnnxModelProto(const Provider_ModelProto& model_proto, std::string file_name) {
   std::fstream outfile(file_name, std::ios::out | std::ios::trunc | std::ios::binary);
   model_proto.SerializeToOstream(outfile);
-  outfile.close();
 }
 
 #endif
@@ -185,7 +184,7 @@ GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_s
     graph_output_dims.insert(graph_output_dims.begin(), batch_size);
   }
   size_t num_dims = graph_output_dims.size();
-  auto output_shape = new int64_t[num_dims];
+  std::unique_ptr<int64_t[]> output_shape(new int64_t[num_dims]);
   for (size_t j = 0; j < num_dims; j++) {
     output_shape[j] = static_cast<int64_t>(graph_output_dims[j]);
   }
@@ -196,7 +195,6 @@ GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_s
   int index = it->second;
 
   output_tensor = ort.KernelContext_GetOutput(context, index, output_shape, num_dims);
-  delete[] output_shape;
 
   return output_tensor;
 }
@@ -216,12 +214,11 @@ GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context,
   auto shape = node->get_shape();
 
   size_t num_dims = shape.size();
-  auto output_shape = new int64_t[num_dims];
+  std::unique_ptr<int64_t[]> output_shape(new int64_t[num_dims]);
   for (size_t j = 0; j < num_dims; j++) {
     output_shape[j] = static_cast<int64_t>(shape[j]);
   }
   output_tensor = ort.KernelContext_GetOutput(context, index, output_shape, num_dims);
-  delete[] output_shape;
 
   return output_tensor;
 }
