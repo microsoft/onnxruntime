@@ -45,7 +45,7 @@ During runtime, for each group of nodes that is assigned to it, the NNAPI EP wil
 
 The ONNX model intended for using with NNAPI should be optimized when creating the ORT formatted model. *Step 1* and *Step 2* optimizations should be used. *Step 3* optimizations may be considerd based on the performance impacts as the benefits are model dependent.
 
-*Step 2* optimizations would replace group of nodes with a function when possible. This will contribute towards improving the performance by reducing data flow between CPU and NNAPI.
+*Step 2* optimizations would identify and assign nodes for NNAPI execution and replace groups of nodes with functions when possible. This will contribute towards improving the performance by reducing data flow between CPU and NNAPI.
 
 The 'extended' optimizations from *Step 3* may benefit the ORT model as some of the CPU nodes can be replaced by the custom ONNX operators designed for improved execution on the CPU. 
 
