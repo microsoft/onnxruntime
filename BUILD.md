@@ -11,6 +11,7 @@
   * [Reduced Operator Kernel Build](#Reduced-Operator-Kernel-Build)
   * [ONNX Runtime for Mobile Platforms](#ONNX-Runtime-for-Mobile-Platforms)
   * [ONNX Runtime Server (Linux)](#Build-ONNX-Runtime-Server-on-Linux)
+  * [Execution Provider Shared Libraries](#Execution-Provider-Shared-Libraries)
   * Execution Providers
     * [NVIDIA CUDA](#CUDA)
     * [NVIDIA TensorRT](#TensorRT)
@@ -177,6 +178,24 @@ Nuget packages are created under <native_build_dir>\nuget-artifacts
 
 ---
 
+## Execution Provider Shared Libraries
+The DNNL, TensorRT, and OpenVINO providers are built as shared libraries vs being statically linked into the main onnxruntime. This enables them to be loaded only when needed, and if the dependent libraries of the provider are not installed onnxruntime will still run fine, it just will not be able to use that provider. For non shared library providers, all dependencies of the provider must exist to load onnxruntime.
+
+### Built files
+On Windows, shared provider libraries will be named 'onnxruntime_providers_\*.dll' (for example onnxruntime_providers_openvino.dll).
+On Unix, they will be named 'libonnxruntime_providers_\*.so'
+On Mac, they will be named 'libonnxruntime_providers_\*.dylib'.
+
+There is also a shared library that shared providers depend on called onnxruntime_providers_shared (with the same naming convension applied as above).
+
+Note: It is not recommended to put these libraries in a system location or added to a library search path (like LD_LIBRARY_PATH on Unix). If multiple versions of onnxruntime are installed on the system this can make them find the wrong libraries and lead to undefined behavior.
+
+### Loading the shared providers
+Shared provider libraries are loaded by the onnxruntime code (do not load or depend on them in your client code). The API for registering shared or non shared providers is identical, the difference is that shared ones will be loaded at runtime when the provider is added to the session options (through a call like OrtSessionOptionsAppendExecutionProvider_OpenVINO or SessionOptionsAppendExecutionProvider_OpenVINO in the C API).
+If a shared provider library cannot be loaded (if the file doesn't exist, or its dependencies don't exist or not in the path) then an error will be returned.
+
+The onnxruntime code will look for the provider shared libraries in the same location as the onnxruntime shared library is (or the executable statically linked to the static library version).
+
 ## Execution Providers
 
 ### CUDA
@@ -235,6 +254,8 @@ See more information on the TensorRT Execution Provider [here](./docs/execution_
    * The path to TensorRT installation must be provided via the `--tensorrt_home` parameter.
 
 #### Build Instructions
+Note that TensorRT is built as a [shared provider library](#Execution-Provider-Shared-Libraries)
+
 ##### Windows
 ```
 .\build.bat --cudnn_home <path to cuDNN home> --cuda_home <path to CUDA home> --use_tensorrt --tensorrt_home <path to TensorRT home>
@@ -309,6 +330,8 @@ See more information on DNNL and MKL-ML [here](./docs/execution_providers/DNNL-E
 #### Build Instructions
 The DNNL execution provider can be built for Intel CPU or GPU. To build for Intel GPU, install [Intel SDK for OpenCL Applications](https://software.intel.com/content/www/us/en/develop/tools/opencl-sdk.html). Install the latest GPU driver - [Windows graphics driver](https://downloadcenter.intel.com/product/80939/Graphics), [Linux graphics compute runtime and OpenCL driver](https://github.com/intel/compute-runtime/releases).
 
+Note that DNNL is built as a [shared provider library](#Execution-Provider-Shared-Libraries)
+
 ##### Windows
 `.\build.bat --use_dnnl`
 
@@ -365,6 +388,8 @@ See more information on the OpenVINO Execution Provider [here](./docs/execution_
 
 
 #### Build Instructions
+Note that OpenVINO is built as a [shared provider library](#Execution-Provider-Shared-Libraries)
+
 ##### Windows
 ```
 .\build.bat --config RelWithDebInfo --use_openvino <hardware_option>
