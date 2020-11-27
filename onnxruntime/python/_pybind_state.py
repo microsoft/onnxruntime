@@ -19,7 +19,7 @@ if platform.system() == "Windows" and sys.version_info >= (3, 8):
         raise ImportError("CUDA Toolkit %s not installed on the machine." % CUDA_VERSION)
     cuda_bin_dir = os.path.join(os.environ[cuda_env_variable], "bin")
     if not os.path.isfile(os.path.join(cuda_bin_dir, "cudnn64_%s.dll" % CUDNN_VERSION)):
-        raise ImportError(f"cuDNN %s not installed on the machine." % CUDNN_VERSION)
+        raise ImportError("cuDNN %s not installed on the machine." % CUDNN_VERSION)
     os.add_dll_directory(cuda_bin_dir)
 
 try:
