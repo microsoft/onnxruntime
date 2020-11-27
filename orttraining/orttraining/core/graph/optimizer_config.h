@@ -15,10 +15,10 @@ namespace training {
 
 // This enum specifies different Adasum reduction algorithms.
 // More will be added in the future based on the device, topology and etc.
-enum AdasumReductionType {
-  None,
-  CpuReduction,
-  GpuHierarchical,
+enum class AdasumReductionType : int64_t {
+  None = 0,
+  CpuReduction = 1,
+  GpuHierarchicalReduction = 2,
 };
 
 // Data types to support for mixed precision training.

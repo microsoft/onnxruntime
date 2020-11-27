@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
-#include <iostream>
 
 #ifndef _WIN32
 #include <chrono>
@@ -19,7 +18,7 @@ MPIContext::~MPIContext() {
 #ifdef ORT_USE_MPI
 #ifndef _WIN32
   // Assume ungraceful shutdown.
-  bool perform_graceful_exit = false;
+  std::atomic<bool> perform_graceful_exit {false};
   auto release_func_executor_thread = std::thread([this, &perform_graceful_exit]() {
         ReleaseComms();
         perform_graceful_exit = true;
@@ -59,17 +58,17 @@ world_size_(1),
 local_size_(1) {
   // setup MPI
   int is_mpi_initialized = 0;
-  MPI_Initialized(&is_mpi_initialized);
+  MPI_CHECK(MPI_Initialized(&is_mpi_initialized));
   if (!is_mpi_initialized) {
     int mpi_threads_provided = 0;
-    MPI_Init_thread(nullptr, nullptr, MPI_THREAD_MULTIPLE, &mpi_threads_provided);
+    MPI_CHECK(MPI_Init_thread(nullptr, nullptr, MPI_THREAD_MULTIPLE, &mpi_threads_provided));
   }
 
   int world_size;
-  MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+  MPI_CHECK(MPI_Comm_size(MPI_COMM_WORLD, &world_size));
 
   int world_rank;
-  MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+  MPI_CHECK(MPI_Comm_rank(MPI_COMM_WORLD, &world_rank));
 
   int* ranks = (int*)malloc(sizeof(int) * world_size);
 
@@ -80,10 +79,10 @@ local_size_(1) {
   int local_size;
 
   MPI_Comm shmcomm;
-  MPI_Comm_split_type(MPI_COMM_WORLD, MPI_COMM_TYPE_SHARED, 0,
-                      MPI_INFO_NULL, &shmcomm);
-  MPI_Comm_rank(shmcomm, &local_rank);
-  MPI_Comm_size(shmcomm, &local_size);
+  MPI_CHECK(MPI_Comm_split_type(MPI_COMM_WORLD, MPI_COMM_TYPE_SHARED, 0,
+                      MPI_INFO_NULL, &shmcomm));
+  MPI_CHECK(MPI_Comm_rank(shmcomm, &local_rank));
+  MPI_CHECK(MPI_Comm_size(shmcomm, &local_size));
 
   // Get version
   int len;
@@ -99,9 +98,9 @@ local_size_(1) {
   // Create global parallel group
   // We duplicate MPI_WORLD_COMM here to avoid freeing MPI_WORLD_COMM at the end which is illegal.
   MPI_Comm global_comm;
-  MPI_Comm_dup(MPI_COMM_WORLD, &global_comm);
+  MPI_CHECK(MPI_Comm_dup(MPI_COMM_WORLD, &global_comm));
   MPI_Group mpi_group;
-  MPI_Comm_group(global_comm, &mpi_group);
+  MPI_CHECK(MPI_Comm_group(global_comm, &mpi_group));
 
   MPIGroup global_group = {mpi_group, global_comm, true};
 
@@ -109,7 +108,7 @@ local_size_(1) {
 
   // Create node local parallel group
   MPI_Group mpi_node_local_group;
-  MPI_Comm_group(shmcomm, &mpi_node_local_group);
+  MPI_CHECK(MPI_Comm_group(shmcomm, &mpi_node_local_group));
 
   MPIGroup node_local_group = {mpi_node_local_group, shmcomm, true};
 
@@ -163,12 +162,12 @@ void MPIContext::AddMPIGroup(WorkerGroupType group_type, WorkerGroup& group) {
 
 void MPIContext::shutdown_mpi(bool perform_graceful_exit/*default=true*/) {
   int is_mpi_initialized = 0;
-  MPI_Initialized(&is_mpi_initialized);
+  MPI_CHECK(MPI_Initialized(&is_mpi_initialized));
   if (!is_mpi_initialized)
     return;
 
   int is_mpi_finalized = 0;
-  MPI_Finalized(&is_mpi_finalized);
+  MPI_CHECK(MPI_Finalized(&is_mpi_finalized));
   if (!is_mpi_finalized) {
     if (perform_graceful_exit) {
       MPI_Finalize();

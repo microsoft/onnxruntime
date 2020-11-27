@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/core/graph/adasum_optimizer_graph_builder.h"
+#include "orttraining/core/framework/distributed_run_context.h"
 
 namespace onnxruntime {
 namespace training {
@@ -85,12 +86,13 @@ Status AdasumOptimizerGraphBuilder::BuildOptimizerNode(
   return Status::OK();
 }
 
+#ifdef USE_NCCL
 static Status AddNcclAllReduceForGradientsWithGroups(
     std::vector<ArgDef>& gradient_argdefs,
     ArgDef& fused_gradient_argdef,
     GraphAugmenter::GraphDefs& graph_defs,
     ArgDef& fused_allreduce_output,
-    const int64_t group_type = 0) {
+    const WorkerGroupType group_type = WorkerGroupType::GlobalParallel) {
   fused_allreduce_output = ArgDef(fused_gradient_argdef.name + "AllReduce_Out", fused_gradient_argdef.type_proto);
 
   // Add NCCL Allreduce node.
@@ -132,6 +134,7 @@ static Status AddNcclAllReduceForGradientsWithGroups(
   gradient_argdefs = allreduce_outputs;
   return Status::OK();
 }
+#endif
 
 static Status AddAdasumAllReduceForGradients(
     std::vector<ArgDef>& gradient_argdefs,
@@ -179,21 +182,21 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
 
   float scale_divisor = total_num_accumulations;
   //If Adasum GPU hierarchical reduce is used, then divide gradients by local size.
-  if (opt_graph_config_.adasum_reduction_type == AdasumReductionType::GpuHierarchical) {
+  if (opt_graph_config_.adasum_reduction_type == AdasumReductionType::GpuHierarchicalReduction) {
     scale_divisor *= opt_graph_config_.local_size;
   }
 
   const float scale = 1.0f / scale_divisor;
   // Only fuse if using hierarchical reduce.
-  const bool fuse_scaling_outputs = opt_graph_config_.adasum_reduction_type == AdasumReductionType::GpuHierarchical ? true: false;
+  const bool fuse_scaling_outputs = opt_graph_config_.adasum_reduction_type == AdasumReductionType::GpuHierarchicalReduction ? true: false;
   ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, fused_gradient_argdef, graph_defs,
                                               opt_graph_config_.AllReduceDataType(), fuse_scaling_outputs));
 
   // add Allreduce for gradients
   ArgDef reduced_fused_gradient_argdef;
-  if (opt_graph_config_.adasum_reduction_type == AdasumReductionType::GpuHierarchical) {
+  if (opt_graph_config_.adasum_reduction_type == AdasumReductionType::GpuHierarchicalReduction) {
    ORT_RETURN_IF_ERROR(AddNcclAllReduceForGradientsWithGroups(gradient_argdefs, fused_gradient_argdef, graph_defs,
-                                                              reduced_fused_gradient_argdef, (int64_t)2/*node local*/));
+                                                              reduced_fused_gradient_argdef, WorkerGroupType::NodeLocalDataParallel));
   }
 
   // check if all gradients are finite

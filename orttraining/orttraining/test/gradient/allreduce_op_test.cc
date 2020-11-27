@@ -266,7 +266,7 @@ void build_allreduce_graph(Graph& graph, AllreduceGraphConfigVector& config,
                                   "NcclAllReduce" : "AdasumAllReduce";
 
   // If using hierarchical reduction, nccl allreduce will be used before adasum to get sum on local ranks.
-  if (adasum_reduce_type == training::AdasumReductionType::GpuHierarchical) {
+  if (adasum_reduce_type == training::AdasumReductionType::GpuHierarchicalReduction) {
     std::string level_1_allreduce = "NcclAllReduce";
     std::vector<onnxruntime::NodeArg*> level_1_inputs;
     std::vector<onnxruntime::NodeArg*> level_1_outputs;
@@ -417,7 +417,7 @@ void build_allreduce_graph(Graph& graph, AllreduceGraphConfigVector& config,
   }
   ASSERT_TRUE(status.IsOK());
 }
-//#ifdef USE_CUDA
+#ifdef USE_CUDA
 std::unique_ptr<IExecutionProvider> create_cuda_execution_provider() {
   CUDAExecutionProviderInfo info;
   OrtDevice::DeviceId device_id = static_cast<OrtDevice::DeviceId>(training::MPIContext::GetInstance().GetLocalRank());
@@ -494,7 +494,7 @@ TEST(AllreduceTest, GPUHierarchicalAdasumAllreduceOptimizerTest) {
                                                                         dims_allreduce_input[0]);
   adasum_graph_configs.push_back(adasum_graph_config);             
 
-  build_allreduce_graph(graph, adasum_graph_configs, training::AdasumReductionType::GpuHierarchical, true/*build_optimizer*/,
+  build_allreduce_graph(graph, adasum_graph_configs, training::AdasumReductionType::GpuHierarchicalReduction, true/*build_optimizer*/,
                         false/*half_precision*/);
   
   std::string model_file_name = "GPUHierarchicalAdasumAllreduceOptimizerTest.onnx";
@@ -670,7 +670,7 @@ TEST(AllreduceTest, GPUHierarchicalAdasumAllreduceOptimizerFP16Test) {
                                                                         dims_allreduce_input[0]);
   adasum_graph_configs.push_back(adasum_graph_config);             
 
-  build_allreduce_graph(graph, adasum_graph_configs, training::AdasumReductionType::GpuHierarchical, true/*build_optimizer*/,
+  build_allreduce_graph(graph, adasum_graph_configs, training::AdasumReductionType::GpuHierarchicalReduction, true/*build_optimizer*/,
                         true/*half_precision*/);
   
   std::string model_file_name = "GPUHierarchicalAdasumAllreduceOptimizerFP16Test.onnx";
@@ -812,7 +812,7 @@ TEST(AllreduceTest, GPUHierarchicalAdasumAllreduceTest) {
                                                                             output_gradient_string,
                                                                             dims_allreduce_input[0]);
   adasum_graph_configs.push_back(adasum_graph_config);             
-  build_allreduce_graph(graph, adasum_graph_configs, training::AdasumReductionType::GpuHierarchical);
+  build_allreduce_graph(graph, adasum_graph_configs, training::AdasumReductionType::GpuHierarchicalReduction);
   
   std::string model_file_name = "GPUHierarchicalAdasumAllreduceTest.onnx";
   auto status = onnxruntime::Model::Save(model, model_file_name);
@@ -913,7 +913,7 @@ TEST(AllreduceTest, GPUHierarchicalAdasumFP16AllreduceTest) {
                                                                        output_gradient_string,
                                                                        dims_allreduce_input[0]);
   adasum_graph_configs.push_back(adasum_graph_config);             
-  build_allreduce_graph(graph, adasum_graph_configs, training::AdasumReductionType::GpuHierarchical,
+  build_allreduce_graph(graph, adasum_graph_configs, training::AdasumReductionType::GpuHierarchicalReduction,
                         false/*build_optimizer*/,
                         true/*half_precision*/);
   
@@ -1194,6 +1194,6 @@ TEST(AllreduceTest, GPUAdasumFP16AllreduceTest) {
    std::remove(model_file_name.c_str());
 }
 
-//#endif
+#endif
 }  // namespace test
 }  // namespace onnxruntime

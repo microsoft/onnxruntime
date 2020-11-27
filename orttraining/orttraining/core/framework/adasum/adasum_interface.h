@@ -7,6 +7,7 @@
 #include <emmintrin.h>
 #include <float.h>
 #include <immintrin.h>
+#include <cmath>
 
 #include "core/framework/tensor.h"
 #include "core/framework/op_kernel.h"
@@ -23,20 +24,6 @@ static inline bool IsPowerOfTwo(ulong x)
   return (x != 0) && ((x & (x - 1)) == 0);
 }
 
-static inline AdasumReductionType GetAdasumAlgo(int64_t reduce_algo)
-{
-  switch (reduce_algo) {
-    case 0:
-      return AdasumReductionType::None;
-    case 1:
-      return AdasumReductionType::CpuReduction;
-    case 2:
-      return AdasumReductionType::GpuHierarchical;
-    default:
-      ORT_THROW("Invalid Adasum reduction algorithm.");
-  }
-}
-
 // Interface for Adasum algorithm
 template <typename Communicator_type>
 class AdasumInterface {
@@ -45,7 +32,7 @@ public:
   Status DispatchFusedAllreduce(void* grad_buffer, void* recv_buffer,
                                 std::vector<int>& tensor_counts, int start_level,
                                 Communicator_type communicator, int tag,
-                                Communicator_type* reduction_comms,
+                                const Communicator_type* reduction_comms,
                                 MLDataType data_type) {
     if (data_type == DataTypeImpl::GetType<MLFloat16>()) {
       FusedAllreduce((uint16_t*)grad_buffer, (uint16_t*)recv_buffer,
@@ -65,26 +52,19 @@ public:
     }
     return Status::OK();
   }
-  
-  // Get recv buffer
-  uint8_t* GetRecvBuffer(int buffer_length) {
-    return CheckBufferAndReallocate(&recv_buffer_, buffer_length,
-                                    current_recv_buffer_length);
-  }
-
 
   virtual bool IsAdasumInitialized() = 0;
 
   virtual void InitializeVHDDReductionComms(WorkerGroupType worker_group) = 0;
 
-  virtual Communicator_type* GetReductionComms() = 0;
+  virtual const Communicator_type* GetReductionComms() = 0;
 
 protected:
   // Communication primitives required for Adasum algorithm
   virtual void PointToPointSendRecv(void* input_data_buffer,
-                                    int64_t input_buffer_length,
+                                    int64_t input_buffer_bytes,
                                     void* output_data_buffer,
-                                    int64_t output_buffer_length,
+                                    int64_t output_buffer_bytes,
                                     MLDataType data_type, int dst_src_rank,
                                     int tag, Communicator_type communicator) = 0;
 
@@ -131,18 +111,6 @@ protected:
     }
   }
 
-  // Check buffer length and re-allocate if necessary
-  virtual uint8_t* CheckBufferAndReallocate(uint8_t** buffer,
-                                            uint64_t buffer_length,
-                                            uint64_t& current_length) {
-    if (buffer_length <= current_length) {
-      return *buffer;
-    }
-    *buffer = (uint8_t*)realloc(*buffer, buffer_length);
-    current_length = buffer_length;
-    return *buffer;
-  }
-
 private:
   // Allocator for temporary buffer allocations
   AllocatorPtr allocator_ = nullptr;
@@ -184,7 +152,7 @@ private:
   void FusedAllreduce(T* grad_buffer, T* recv_buffer, MLDataType data_type,
                       std::vector<int>& tensor_counts, int start_level,
                       Communicator_type communicator, int tag,
-                      Communicator_type* reduction_comms) {
+                      const Communicator_type* reduction_comms) {
     int per_element_size = data_type->Size();
     int rank = GetRankWithComm(communicator);
     int size = GetSizeWithComm(communicator);
@@ -207,10 +175,10 @@ private:
     int orgSize = size;
     size = nearest_power_2;
 
-    int total_counts_sum = 0;
+    size_t total_counts_sum = 0;
     for (size_t i = 0; i < tensor_counts.size(); i++)
       total_counts_sum += tensor_counts[i];
-    int myCount = total_counts_sum;
+    size_t myCount = total_counts_sum;
     int comm_index;
     for (level = 1, comm_index = 0; level < size;
          level = (level << 1), comm_index++) {
@@ -228,10 +196,10 @@ private:
       nghrCountVec.emplace_back();
       nghrCountVec[nghrCountVec_index].resize(tensor_counts.size());
 
-      int myCountSoFar = 0;
+      size_t myCountSoFar = 0;
       int nghrCountSoFar = 0;
       if ((rank & level) != 0) {
-        myCount = secondHalfMyCount;
+        myCount = (size_t)secondHalfMyCount;
         nghrCount = firstHalfMyCount;
         sendOffset = 0;
         recvOffset = nghrCount;
@@ -256,7 +224,7 @@ private:
           myCountSoFar += tensor_counts[i];
         }
       } else {
-        myCount = firstHalfMyCount;
+        myCount = (size_t)firstHalfMyCount;
         nghrCount = secondHalfMyCount;
         sendOffset = myCount;
         recvOffset = 0;
@@ -267,6 +235,7 @@ private:
               tensor_counts[i] = tensor_counts[i];
               nghrCountVec[nghrCountVec_index][i] = 0;
             } else {
+              assert((myCount - myCountSoFar) >= 0);
               nghrCountVec[nghrCountVec_index][i] =
                   tensor_counts[i] -
                   (myCount - myCountSoFar); // should not be negative
@@ -330,7 +299,7 @@ private:
   void FusedPairwiseReduceWithComm(uint8_t* a, uint8_t* b,
                                    MLDataType data_type,
                                    std::vector<int>& tensor_counts,
-                                   Communicator_type& comm, bool isLeftNeighbor,
+                                   const Communicator_type& comm, bool isLeftNeighbor,
                                    std::vector<double>& normAndDots) {
     static double sqrt_double_min = std::sqrt(DBL_MIN);
     int per_element_size = data_type->Size();
@@ -494,7 +463,7 @@ private:
     _mm_storeu_si128((__m128i*)a, r);
   }
 
-  // load len (< 8) float16s from a, fill the rest with 0s, and return the
+  // load len (<= 8) float16s from a, fill the rest with 0s, and return the
   // __m256 register
   inline __m256 MmLoaduPhPartial(const uint16_t* a, int len) {
     short e[8];

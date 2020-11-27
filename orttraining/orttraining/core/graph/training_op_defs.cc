@@ -5,6 +5,7 @@
 #include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/providers/common.h"
 #include "orttraining/core/graph/training_op_defs.h"
+#include "orttraining/core/framework/distributed_run_context.h"
 #include "onnx/defs/function.h"
 #include <math.h>
 
@@ -74,8 +75,7 @@ void AddRepeatedOutputs(
 static void checkSendInputTensorElemTypes(
     InferenceContext& ctx,
     const std::string& attributeName,
-    const size_t inputSize,
-    const size_t starting_idx_offset = 2) {
+    const size_t inputSize) {
   auto attr_proto = ctx.getAttribute(attributeName);
   if (nullptr == attr_proto) {  // attribute not present
     fail_type_inference("Value of attribute ", attributeName, " not specified");
@@ -95,7 +95,7 @@ static void checkSendInputTensorElemTypes(
       fail_type_inference("Attribute ", attributeName, " does not specify a valid type.");
     }
 
-    auto input_type = ctx.getInputType(i + starting_idx_offset);
+    auto input_type = ctx.getInputType(i + 2);
     if (input_type->tensor_type().has_elem_type()) {
       auto input_elem_type = static_cast<::ONNX_NAMESPACE::TensorProto_DataType>(input_type->tensor_type().elem_type());
       if (input_elem_type != elem_type) {
@@ -938,13 +938,17 @@ Example 4:
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain to float, float16 and double tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        int64_t group_type = getAttribute(ctx, "group_type", 0);
+        assert(group_type < static_cast<int64_t>(WorkerGroupType::WorkerGroupTypeCount));
         propagateShapeAndTypeFromFirstInput(ctx);
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(NcclAllGather)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Attr("group_type", "0 - data parallel group, 1 - horizontal parallel group",
+      .Attr("group_type", "0 - global parallel group, 1 - data parallel group, "
+                          "2 - node local data parallel group, 3 - cross node data parallel group, "
+                          "4 - horozontal parallel, 5 - model parallel.",
             AttributeProto::INT,
             static_cast<int64_t>(0))
       .Input(0, "input", "tensors to be sent", "T", OpSchema::Variadic)
@@ -954,13 +958,17 @@ Example 4:
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain to float, float16 and double tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        int64_t group_type = getAttribute(ctx, "group_type", 0);
+        assert(group_type < static_cast<int64_t>(WorkerGroupType::WorkerGroupTypeCount));
         propagateShapeAndTypeFromFirstInput(ctx);
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(NcclReduceScatter)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Attr("group_type", "0 - data parallel group, 1 - horizontal parallel group",
+      .Attr("group_type", "0 - global parallel group, 1 - data parallel group, "
+                          "2 - node local data parallel group, 3 - cross node data parallel group, "
+                          "4 - horozontal parallel, 5 - model parallel.",
             AttributeProto::INT,
             static_cast<int64_t>(0))
       .Input(0, "input", "tensors to be reduced and scattered", "T", OpSchema::Variadic)
@@ -968,12 +976,16 @@ Example 4:
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain to float, float16 and double tensors.");
+          "Constrain to float, float16 and double tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        int64_t group_type = getAttribute(ctx, "group_type", 0);
+        assert(group_type < static_cast<int64_t>(WorkerGroupType::WorkerGroupTypeCount));
+      });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(AdasumAllReduce)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Attr("reduce_algo", "Algorithms for Adasum. Valid values are: CpuReduction(1) or GpuHierarchical(2)",
+      .Attr("reduce_algo", "Algorithms for Adasum. Valid values are: CpuReduction(1) or GpuHierarchicalReduction(2)",
             AttributeProto::INT,
             static_cast<int64_t>(0))
       .Input(0, "input", "tensors to be reduced", "T", OpSchema::Variadic)
