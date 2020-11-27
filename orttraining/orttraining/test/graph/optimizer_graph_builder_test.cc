@@ -323,7 +323,7 @@ TEST_F(OptimizerGraphBuilderTest, Adasum_NoGradientAccumulation_NoMixedPrecision
   OptimizerGraphConfig config;
   config.data_parallel_group_size = 4;
   config.use_nccl = false;
-  config.adasum_reduction_type = AdasumReductionType::GpuHierarchical;
+  config.adasum_reduction_type = AdasumReductionType::GpuHierarchicalReduction;
   config.gradient_accumulation_steps = 1;
   config.use_mixed_precision = false;
   TestAdasumOptimizerGraphBuilder(config, graph_);
@@ -332,7 +332,7 @@ TEST_F(OptimizerGraphBuilderTest, Adasum_WithGradientAccumulation_NoMixedPrecisi
   OptimizerGraphConfig config;
   config.data_parallel_group_size = 4;
   config.use_nccl = false;
-  config.adasum_reduction_type = AdasumReductionType::GpuHierarchical;
+  config.adasum_reduction_type = AdasumReductionType::GpuHierarchicalReduction;
   config.gradient_accumulation_steps = 10;
   config.use_mixed_precision = false;
   TestAdasumOptimizerGraphBuilder(config, graph_);
@@ -342,7 +342,7 @@ TEST_F(OptimizerGraphBuilderTest, Adasum_NoGradientAccumulation_WithMixedPrecisi
   OptimizerGraphConfig config;
   config.data_parallel_group_size = 4;
   config.use_nccl = false;
-  config.adasum_reduction_type = AdasumReductionType::GpuHierarchical;
+  config.adasum_reduction_type = AdasumReductionType::GpuHierarchicalReduction;
   config.gradient_accumulation_steps = 1;
   config.use_mixed_precision = true;
   config.loss_scale_input_name = k_loss_scaling_factor_name;
@@ -353,7 +353,7 @@ TEST_F(OptimizerGraphBuilderTest, Adasum_WithGradientAccumulation_WithMixedPreci
   OptimizerGraphConfig config;
   config.data_parallel_group_size = 4;
   config.use_nccl = false;
-  config.adasum_reduction_type = AdasumReductionType::GpuHierarchical;
+  config.adasum_reduction_type = AdasumReductionType::GpuHierarchicalReduction;
   config.gradient_accumulation_steps = 10;
   config.use_mixed_precision = true;
   config.loss_scale_input_name = k_loss_scaling_factor_name;

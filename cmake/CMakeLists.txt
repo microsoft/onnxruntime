@@ -130,7 +130,7 @@ option(onnxruntime_DISABLE_ORT_FORMAT_LOAD "Disable loading an ORT format model 
 option(onnxruntime_ENABLE_NVTX_PROFILE "Enable NVTX profile." OFF)
 option(onnxruntime_ENABLE_TRAINING "Enable training functionality." OFF)
 option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
-option(onnxruntime_ENABLE_ADVANCED_INSTRUCTIONS_FOR_TRAINING "Build with advanced instruction sets" OFF)
+option(onnxruntime_ENABLE_ADVANCED_INSTRUCTIONS_FOR_TRAINING "Build with advanced instruction sets" ON)
 option(onnxruntime_USE_NCCL "Build with NCCL support" OFF)
 #A special option just for debugging and sanitize check. Please do not enable in option in retail builds.
 #The option has no effect on Windows.
@@ -452,6 +452,29 @@ else()
   if(onnxruntime_GCC_STATIC_CPP_RUNTIME)
     string(APPEND CMAKE_CXX_FLAGS " -static-libstdc++")
   endif()
+
+  # Check support for AVX and f16c.
+  include(CheckCXXCompilerFlag)
+  check_cxx_compiler_flag("-mf16c" COMPILER_SUPPORT_MF16C)
+  if(NOT COMPILER_SUPPORT_MF16C)
+    message("F16C instruction set is not supported.")
+  endif()
+
+  check_cxx_compiler_flag("-mfma" COMPILER_SUPPORT_FMA)
+  if(NOT COMPILER_SUPPORT_FMA)
+    message("FMA instruction set is not supported.")
+  endif()
+
+  check_cxx_compiler_flag("-mavx" COMPILER_SUPPORT_AVX)
+  if(NOT COMPILER_SUPPORT_AVX)
+    message("AVX instruction set is not supported.")
+  endif()
+
+  if(NOT (COMPILER_SUPPORT_MF16C AND COMPILER_SUPPORT_FMA AND COMPILER_SUPPORT_AVX))
+    message("One or more AVX/F16C instruction flags are not supported. ")
+    set(onnxruntime_ENABLE_ADVANCED_INSTRUCTIONS_FOR_TRAINING FALSE)
+  endif()
+
   if(onnxruntime_ENABLE_ADVANCED_INSTRUCTIONS_FOR_TRAINING)
     string(APPEND CMAKE_CXX_FLAGS " -fassociative-math -ffast-math -ftree-vectorize -funsafe-math-optimizations -mf16c -mavx -mfma")
     string(APPEND CMAKE_C_FLAGS " -fassociative-math -ffast-math -ftree-vectorize -funsafe-math-optimizations -mf16c -mavx -mfma")

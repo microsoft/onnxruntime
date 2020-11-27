@@ -16,8 +16,8 @@ class AdasumAllReduce final : public NcclKernel {
   explicit AdasumAllReduce(const OpKernelInfo& info) : NcclKernel(info) {
    int64_t adasum_reduce_algo;
    info.GetAttrOrDefault("reduce_algo", &adasum_reduce_algo, static_cast<int64_t>(0));
-   adasum_reduce_algo_ = training::GetAdasumAlgo(adasum_reduce_algo);
-   if (adasum_reduce_algo_ == training::AdasumReductionType::GpuHierarchical ||
+   adasum_reduce_algo_ = static_cast<training::AdasumReductionType>(adasum_reduce_algo);
+   if (adasum_reduce_algo_ == training::AdasumReductionType::GpuHierarchicalReduction ||
        adasum_reduce_algo_ == training::AdasumReductionType::CpuReduction) {
      adasum_reducer_ = std::make_unique<training::AdasumMPI>();
    }
@@ -29,7 +29,7 @@ class AdasumAllReduce final : public NcclKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  training::AdasumReductionType adasum_reduce_algo_ = training::AdasumReductionType::GpuHierarchical;
+  training::AdasumReductionType adasum_reduce_algo_ = training::AdasumReductionType::GpuHierarchicalReduction;
   std::unique_ptr<training::AdasumMPI> adasum_reducer_;};
 
 }  // namespace cuda

@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cpu/collective/adasum_kernels.h"
-#include "orttraining/training_ops/cpu/controlflow/common.h"
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
+#include "orttraining/training_ops/communication_common.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -27,18 +27,11 @@ Status AdasumAllReduce::Compute(OpKernelContext* context) const {
   std::vector<size_t> tensor_sizes;
 
   int64_t total_recv_buffer_len = 0;
-
-  size_t size_in_bytes = 0;
-  for (int i = 0; i < num_tensors; ++i) {
-    const Tensor* x_tensor = context->Input<Tensor>(i);
-    tensor_offsets.push_back(size_in_bytes);
-
-    size_in_bytes = x_tensor->SizeInBytes();
-    total_recv_buffer_len += size_in_bytes;
-
-    tensor_sizes.push_back(size_in_bytes);
-    tensor_element_counts.push_back((int)x_tensor->Shape().Size());
-  }
+  ComputeTensorSizeAndBufferLength(context,
+                                   tensor_element_counts,
+                                   tensor_offsets,
+                                   tensor_sizes,
+                                   total_recv_buffer_len);
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 

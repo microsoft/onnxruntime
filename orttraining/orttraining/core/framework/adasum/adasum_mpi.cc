@@ -10,12 +10,6 @@ namespace training {
 AdasumMPI::AdasumMPI()
   : AdasumInterface() {}
 
-AdasumMPI::~AdasumMPI() {
-  if (reduction_comms_ != nullptr) {
-    delete reduction_comms_;
-  }
-}
-
 bool AdasumMPI::IsAdasumInitialized() {
   return reduction_comms_initialized_;
 }
@@ -47,21 +41,23 @@ void AdasumMPI::InitializeVHDDReductionComms(WorkerGroupType worker_group) {
     ;
   int shift_val;
   int level;
-  reduction_comms_ = new MPI_Comm[log_size];
-  int* node_rank = new int[size];
+  reduction_comms_ = onnxruntime::make_unique<std::vector<MPI_Comm>>();
+  reduction_comms_.get()->resize(log_size);
+
+  auto node_rank = onnxruntime::make_unique<std::vector<int>>();
+  node_rank.get()->resize(size);
   for (level = 1, shift_val = 1; level < nearest_power_2;
         level = (level << 1), shift_val++) {
     int base_rank = ((rank >> shift_val) << shift_val);
     for (int i = 0; i < (level << 1); i++) {
-      node_rank[i] = (base_rank + i);
+      node_rank.get()->at(i) = (base_rank + i);
     }
     MPI_Group red_group;
-    MPI_Group_incl(world_group, (level << 1), node_rank, &red_group);
+    MPI_Group_incl(world_group, (level << 1), node_rank.get()->data(), &red_group);
     MPI_Comm_create_group(MPI_COMM_WORLD, red_group, 0,
-                          &reduction_comms_[shift_val - 1]);
+                          &reduction_comms_.get()->at(shift_val - 1));
     MPI_Group_free(&red_group);
   }
-  delete[] node_rank;
   reduction_comms_initialized_ = true;
 }
 
@@ -83,13 +79,13 @@ void AdasumMPI::SumAllreduceWithComm(void* data, int num_elements,
 }
 
 void AdasumMPI::PointToPointSendRecv(
-    void* input_data_buffer, int64_t input_buffer_length,
-    void* output_data_buffer, int64_t output_buffer_length,
+    void* input_data_buffer, int64_t input_buffer_bytes,
+    void* output_data_buffer, int64_t output_buffer_bytes,
     MLDataType data_type, int dst_src_rank, int tag, MPI_Comm communicator) {
   int status;
   int element_size = data_type->Size();
-  int input_count = input_buffer_length / element_size;
-  int output_count = output_buffer_length / element_size;
+  int input_count = input_buffer_bytes / element_size;
+  int output_count = output_buffer_bytes / element_size;
   int chunk_count =
       std::max((int)(adasum_mpi_chunk_size_ / element_size), 1);
 

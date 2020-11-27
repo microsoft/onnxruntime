@@ -139,7 +139,7 @@ class TrainingRunner {
       } else if (!UseCuda()) {
         return AdasumReductionType::CpuReduction;
       } else {
-        return AdasumReductionType::GpuHierarchical;
+        return AdasumReductionType::GpuHierarchicalReduction;
       }
     }
 

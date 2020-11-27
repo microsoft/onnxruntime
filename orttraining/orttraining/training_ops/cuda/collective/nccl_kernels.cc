@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "nccl_kernels.h"
-#include "orttraining/training_ops/cpu/controlflow/common.h"
 
 namespace onnxruntime {
 namespace cuda {
