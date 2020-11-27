@@ -54,6 +54,9 @@ struct TrainingParameters {
   bool gelu_recompute = false;
   bool transformer_layer_recompute = false;
   int number_recompute_layers = 0;
+
+  // graph dumping
+  std::string model_with_training_graph_path;
 };
 
 struct TrainingConfigurationResult {
@@ -83,6 +86,9 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   }
 
   training::TrainingSession::TrainingConfiguration config{};
+  if (parameters.model_with_training_graph_path.size() > 0) {
+    config.model_with_training_graph_path = parameters.model_with_training_graph_path;
+  }
   config.weight_names_to_train = parameters.weights_to_train;
   config.weight_names_to_not_train = parameters.weights_not_to_train;
   config.immutable_weights = parameters.immutable_weights;
@@ -210,7 +216,8 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("number_recompute_layers", &TrainingParameters::number_recompute_layers)
       .def_readwrite("data_parallel_size", &TrainingParameters::data_parallel_size)
       .def_readwrite("horizontal_parallel_size", &TrainingParameters::horizontal_parallel_size)
-      .def_readwrite("pipeline_parallel_size", &TrainingParameters::pipeline_parallel_size);
+      .def_readwrite("pipeline_parallel_size", &TrainingParameters::pipeline_parallel_size)
+      .def_readwrite("model_with_training_graph_path", &TrainingParameters::model_with_training_graph_path);
 
 #if defined(USE_MPI)
   m.def("get_mpi_context_local_rank", []() -> int { return MPIContext::GetInstance().GetLocalRank(); });

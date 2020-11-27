@@ -637,6 +637,7 @@ class ORTTrainer(object):
         ort_parameters.gelu_recompute = self.options.graph_transformer.gelu_recompute
         ort_parameters.transformer_layer_recompute = self.options.graph_transformer.transformer_layer_recompute
         ort_parameters.number_recompute_layers = self.options.graph_transformer.number_recompute_layers
+        ort_parameters.model_with_training_graph_path = self.options.debug.model_with_training_graph_path
 
         # SessionOptions
         session_options = ort.SessionOptions()

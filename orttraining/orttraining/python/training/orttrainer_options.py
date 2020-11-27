@@ -176,6 +176,10 @@ class ORTTrainerOptions(object):
                             'type' : 'boolean',
                             'default' : False
                         },
+                        'model_with_training_graph_path': {
+                            'type': 'string',
+                            'default': ''
+                        }
                     }
                 },
                 '_internal_use' : {
@@ -530,6 +534,10 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                 'type': 'boolean',
                 'default': False
             },
+            'model_with_training_graph_path': {
+                'type': 'string',
+                'default': ''
+            }
         }
     },
     '_internal_use': {
