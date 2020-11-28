@@ -97,7 +97,30 @@ TEST(MLOpTest, TreeRegressorMultiTargetMaxDouble) {
   GenTreeAndRunTest<double>(X, base_values, results, "MAX", true);
 }
 
-void GenTreeAndRunTest1(const std::string& aggFunction, bool one_obs, int64_t n_obs = 3) {
+template <typename T>
+void _multiply_update_array(std::vector<T>& data, int n, T inc = 0) {
+  std::vector<T> copy = data;
+  data.resize(copy.size() * n);
+  T cst = 0;
+  for (int i = 0; i < n; ++i) {
+    for (size_t j = 0; j < copy.size(); ++j) {
+      data[j + i * copy.size()] = copy[j] + cst;
+    }
+    cst += inc;
+  }
+}
+
+void _multiply_update_array_string(std::vector<std::string>& data, int n) {
+  std::vector<std::string> copy = data;
+  data.resize(copy.size() * n);
+  for (int i = 0; i < n; ++i) {
+    for (size_t j = 0; j < copy.size(); ++j) {
+      data[j + i * copy.size()] = copy[j];
+    }
+  }
+}
+
+void GenTreeAndRunTest1(const std::string& aggFunction, bool one_obs, int64_t n_obs = 3, int n_trees = 1) {
   OpTester test("TreeEnsembleRegressor", 1, onnxruntime::kMLDomain);
 
   //tree
@@ -115,6 +138,21 @@ void GenTreeAndRunTest1(const std::string& aggFunction, bool one_obs, int64_t n_
   std::vector<float> target_weights = {33.33333f, 16.66666f, 33.33333f, -3.33333f, 16.66666f, -3.333333f};
   std::vector<int64_t> classes = {0, 1};
 
+  if (n_trees > 1) {
+    // Multiplies the number of trees to test the parallelization by trees.
+    _multiply_update_array(lefts, n_trees);
+    _multiply_update_array(rights, n_trees);
+    _multiply_update_array(treeids, n_trees, (int64_t)3);
+    _multiply_update_array(nodeids, n_trees);
+    _multiply_update_array(featureids, n_trees);
+    _multiply_update_array(thresholds, n_trees);
+    _multiply_update_array_string(modes, n_trees);
+    _multiply_update_array(target_treeids, n_trees, (int64_t)3);
+    _multiply_update_array(target_nodeids, n_trees);
+    _multiply_update_array(target_classids, n_trees);
+    _multiply_update_array(target_weights, n_trees);
+  }
+
   std::vector<float> results;
   if (aggFunction == "AVERAGE") {
     test.AddAttribute("aggregate_function", "AVERAGE");
@@ -126,7 +164,11 @@ void GenTreeAndRunTest1(const std::string& aggFunction, bool one_obs, int64_t n_
     test.AddAttribute("aggregate_function", "MAX");
     results = {33.33333f, 33.33333f, 16.66666f};
   } else {  // default function is SUM
-    results = {63.33333333f, 26.66666667f, 30.0f};
+    if (n_trees > 1) {
+      results = {63.33333333f * n_trees + 0.000244140625f, 26.66666667f * n_trees - 0.0001220703125f, 30.0f * n_trees + 0.00042724609375f};
+    } else {
+      results = {63.33333333f, 26.66666667f, 30.0f};
+    }
   }
 
   //test data
@@ -187,6 +229,12 @@ TEST(MLOpTest, TreeRegressorSingleTargetSum) {
 TEST(MLOpTest, TreeRegressorSingleTargetSumBatch) {
   GenTreeAndRunTest1("SUM", false, 201);
   GenTreeAndRunTest1("SUM", false, 40002);
+}
+
+TEST(MLOpTest, TreeRegressorSingleTargetSumBatchTree) {
+  GenTreeAndRunTest1("SUM", true, 3, 30);
+  GenTreeAndRunTest1("SUM", false, 201, 30);
+  GenTreeAndRunTest1("SUM", false, 111040002, 30);
 }
 
 TEST(MLOpTest, TreeRegressorSingleTargetAverage) {
