@@ -1,13 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#ifdef USE_MPI
 
 #pragma once
 #include "orttraining/training_ops/cuda/collective/nccl_common.h"
 
 #include "orttraining/core/framework/adasum/adasum_interface.h"
-#ifdef ORT_USE_MPI
 #include "orttraining/core/framework/adasum/adasum_mpi.h"
-#endif // ORT_USE_MPI
 namespace onnxruntime {
 namespace cuda {
 
@@ -30,7 +29,8 @@ class AdasumAllReduce final : public NcclKernel {
 
  private:
   training::AdasumReductionType adasum_reduce_algo_ = training::AdasumReductionType::GpuHierarchicalReduction;
-  std::unique_ptr<training::AdasumMPI> adasum_reducer_;};
-
+  std::unique_ptr<training::AdasumMPI> adasum_reducer_;
+};
 }  // namespace cuda
 }  // namespace onnxruntime
+#endif // USE_MPI

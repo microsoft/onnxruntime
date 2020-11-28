@@ -86,7 +86,7 @@ Status AdasumOptimizerGraphBuilder::BuildOptimizerNode(
   return Status::OK();
 }
 
-#ifdef USE_NCCL
+#ifdef ORT_USE_NCCL
 static Status AddNcclAllReduceForGradientsWithGroups(
     std::vector<ArgDef>& gradient_argdefs,
     ArgDef& fused_gradient_argdef,
@@ -195,8 +195,12 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
   // add Allreduce for gradients
   ArgDef reduced_fused_gradient_argdef;
   if (opt_graph_config_.adasum_reduction_type == AdasumReductionType::GpuHierarchicalReduction) {
-   ORT_RETURN_IF_ERROR(AddNcclAllReduceForGradientsWithGroups(gradient_argdefs, fused_gradient_argdef, graph_defs,
+#ifdef ORT_USE_NCCL
+    ORT_RETURN_IF_ERROR(AddNcclAllReduceForGradientsWithGroups(gradient_argdefs, fused_gradient_argdef, graph_defs,
                                                               reduced_fused_gradient_argdef, WorkerGroupType::NodeLocalDataParallel));
+#else
+    ORT_THROW("ORT is not built with NCCL.");
+#endif
   }
 
   // check if all gradients are finite

@@ -7,7 +7,7 @@
 namespace onnxruntime {
 namespace contrib {
 
-#ifdef ORT_USE_MPI
+#ifdef USE_MPI
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, AdasumAllReduce);
 #endif
 
@@ -121,7 +121,7 @@ class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, WaitE
 Status RegisterCpuTrainingKernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
 
-#ifdef ORT_USE_MPI
+#ifdef USE_MPI
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, AdasumAllReduce)>,
 #endif
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, SGDOptimizer)>,

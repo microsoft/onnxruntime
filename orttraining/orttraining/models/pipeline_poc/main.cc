@@ -3,7 +3,7 @@
 
 #include "core/session/environment.h"
 
-#ifdef ORT_USE_MPI
+#ifdef USE_MPI
 
 #include "cxxopts.hpp"
 #include "core/common/logging/logging.h"

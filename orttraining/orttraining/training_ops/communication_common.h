@@ -4,7 +4,7 @@
 #include "core/common/common.h"
 #pragma once
 
-#include "orttraining/core/framework/mpi_context.h"
+#include "orttraining/core/framework/communication/mpi/mpi_context.h"
 
 namespace onnxruntime {
 
@@ -102,6 +102,8 @@ inline void ComputeShapeRelatedInfo(
   }
 }
 
+#ifdef USE_MPI
+
 inline void SendShapeInfo(
     const int dst,
     const int64_t tag,      // mpi send tag
@@ -189,6 +191,7 @@ inline void ReceiveShapeInfo(
       info_shapes.buffer, info_shapes.size, MPI_CHAR,
       info_shapes.rank, info_shapes.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
 }
+#endif // USE_MPI
 
 inline void ComputeTensorSizeAndBufferLength(OpKernelContext* context,
                                              std::vector<int>& tensor_element_counts,

@@ -9,6 +9,7 @@
 namespace onnxruntime {
 namespace training {
 
+#ifdef USE_MPI
 class AdasumMPI : public AdasumInterface<MPI_Comm> {
 public:
   AdasumMPI();
@@ -47,6 +48,6 @@ private:
   static constexpr int64_t adasum_mpi_chunk_size_ = 1<<30;
 
 };
-
+#endif // USE_MPI
 } // namespace training
 } // namespace onnxruntime

@@ -130,12 +130,12 @@ option(onnxruntime_DISABLE_ORT_FORMAT_LOAD "Disable loading an ORT format model 
 option(onnxruntime_ENABLE_NVTX_PROFILE "Enable NVTX profile." OFF)
 option(onnxruntime_ENABLE_TRAINING "Enable training functionality." OFF)
 option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
-option(onnxruntime_ENABLE_ADVANCED_INSTRUCTIONS_FOR_TRAINING "Build with advanced instruction sets" ON)
+option(onnxruntime_ENABLE_CPU_FP16_OPS "Build with advanced instruction sets" ON)
 option(onnxruntime_USE_NCCL "Build with NCCL support" OFF)
 #A special option just for debugging and sanitize check. Please do not enable in option in retail builds.
 #The option has no effect on Windows.
 option(onnxruntime_USE_VALGRIND "Build with valgrind hacks" OFF)
-option(onnxruntime_USE_MPI "Build with MPI support" ON)
+option(onnxruntime_USE_MPI "Build with MPI support" OFF)
 
 # A special build option only used for gathering code coverage info
 option(onnxruntime_RUN_MODELTEST_IN_DEBUG_MODE "Run model tests even in debug mode" OFF)
@@ -472,10 +472,10 @@ else()
 
   if(NOT (COMPILER_SUPPORT_MF16C AND COMPILER_SUPPORT_FMA AND COMPILER_SUPPORT_AVX))
     message("One or more AVX/F16C instruction flags are not supported. ")
-    set(onnxruntime_ENABLE_ADVANCED_INSTRUCTIONS_FOR_TRAINING FALSE)
+    set(onnxruntime_ENABLE_CPU_FP16_OPS FALSE)
   endif()
 
-  if(onnxruntime_ENABLE_ADVANCED_INSTRUCTIONS_FOR_TRAINING)
+  if(onnxruntime_ENABLE_CPU_FP16_OPS)
     string(APPEND CMAKE_CXX_FLAGS " -fassociative-math -ffast-math -ftree-vectorize -funsafe-math-optimizations -mf16c -mavx -mfma")
     string(APPEND CMAKE_C_FLAGS " -fassociative-math -ffast-math -ftree-vectorize -funsafe-math-optimizations -mf16c -mavx -mfma")
   endif()
@@ -1287,7 +1287,6 @@ if (onnxruntime_ENABLE_TRAINING)
     include(FindPackageHandleStandardArgs)
     find_package_handle_standard_args(MPI DEFAULT_MSG MPI_INCLUDE_DIR MPI_LIBRARY)
 
-    set(onnxruntime_USE_MPI ON)
     if (MPI_FOUND)
       if(NOT DEFINED onnxruntime_MPI_HOME)
         execute_process(COMMAND mpirun --version OUTPUT_VARIABLE MPIRUN_OUTPUT)
@@ -1304,13 +1303,7 @@ if (onnxruntime_ENABLE_TRAINING)
 
       list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${MPI_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
 
-      # Enable NCCL only when using CUDA or ROCM.
-      if(${onnxruntime_USE_CUDA} OR ${onnxruntime_USE_ROCM})
-        set(onnxruntime_USE_NCCL ON)
-      endif()
-
     else ()
-      set(onnxruntime_USE_MPI OFF)
       set(onnxruntime_USE_NCCL OFF)
       set(onnxruntime_USE_MPI OFF)
       message( WARNING "MPI is not found. Please use --mpi_home to specify the path of MPI. Otherwise, NCCL will be disabled." )
@@ -1372,13 +1365,17 @@ if (onnxruntime_ENABLE_TRAINING)
 
         list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${NCCL_LIBRARIES})
 
-        add_definitions(-DUSE_NCCL=1)
+        add_definitions(-DORT_USE_NCCL=1)
         message( STATUS "NCCL is enabled in Linux GPU Build." )
       else ()
         set(onnxruntime_USE_NCCL OFF)
         message( WARNING "NCCL is not found. Please use --nccl_home to specify the path of NCCL. Otherwise, NCCL is disabled." )
       endif()
     endif()
+  endif()
+
+  if (onnxruntime_USE_MPI AND MPI_FOUND)
+    add_definitions(-DUSE_MPI=1)
   endif()
 
   add_subdirectory(tensorboard EXCLUDE_FROM_ALL)
