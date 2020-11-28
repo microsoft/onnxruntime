@@ -97,7 +97,7 @@ TEST(MLOpTest, TreeRegressorMultiTargetMaxDouble) {
   GenTreeAndRunTest<double>(X, base_values, results, "MAX", true);
 }
 
-void GenTreeAndRunTest1(const std::string& aggFunction, bool one_obs) {
+void GenTreeAndRunTest1(const std::string& aggFunction, bool one_obs, int64_t n_obs = 3) {
   OpTester test("TreeEnsembleRegressor", 1, onnxruntime::kMLDomain);
 
   //tree
@@ -149,16 +149,32 @@ void GenTreeAndRunTest1(const std::string& aggFunction, bool one_obs) {
   // SUM aggregation by default -- no need to add explicitly
 
   //fill input data
+  std::vector<float> xn, yn;
   if (one_obs) {
+    ASSERT_TRUE(n_obs == 3);
     auto X1 = X;
     auto results1 = results;
     X1.resize(2);
     results1.resize(1);
     test.AddInput<float>("X", {1, 2}, X1);
     test.AddOutput<float>("Y", {1, 1}, results1);
-  } else {
+  } else if (n_obs == 3) {
     test.AddInput<float>("X", {3, 2}, X);
     test.AddOutput<float>("Y", {3, 1}, results);
+  } else {
+    ASSERT_TRUE(n_obs % 3 == 0);
+    xn.resize(n_obs * 2);
+    yn.resize(n_obs);
+    for (int64_t i = 0; i < n_obs; i += 3) {
+      for (size_t k = 0; k < 6; ++k) {
+        xn[i * 2 + k] = X[k];
+      }
+      for (size_t k = 0; k < 3; ++k) {
+        yn[i + k] = results[k];
+      }
+    }
+    test.AddInput<float>("X", {n_obs, 2}, xn);
+    test.AddOutput<float>("Y", {n_obs, 1}, yn);
   }
   test.Run();
 }
@@ -166,6 +182,11 @@ void GenTreeAndRunTest1(const std::string& aggFunction, bool one_obs) {
 TEST(MLOpTest, TreeRegressorSingleTargetSum) {
   GenTreeAndRunTest1("SUM", false);
   GenTreeAndRunTest1("SUM", true);
+}
+
+TEST(MLOpTest, TreeRegressorSingleTargetSumBatch) {
+  GenTreeAndRunTest1("SUM", false, 201);
+  GenTreeAndRunTest1("SUM", false, 40002);
 }
 
 TEST(MLOpTest, TreeRegressorSingleTargetAverage) {

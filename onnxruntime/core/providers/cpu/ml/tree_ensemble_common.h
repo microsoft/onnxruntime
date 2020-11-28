@@ -7,6 +7,9 @@
 #include "core/platform/ort_mutex.h"
 #include "core/platform/threadpool.h"
 
+#define TREEENSEMBLE_BATCHSIZE 256
+#define TREEENSEMBLE_MAXSIZE 8589934592
+
 namespace onnxruntime {
 namespace ml {
 namespace detail {
@@ -266,11 +269,11 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::ComputeAgg(concurrency::ThreadPool* ttp, 
   if (n_targets_or_classes_ == 1) {
     if (N == 1) {
       ScoreValue<OTYPE> score = {0, 0};
-      if (n_trees_ <= parallel_tree_) {
+      if (n_trees_ <= parallel_tree_) { /* section A */
         for (int64_t j = 0; j < n_trees_; ++j) {
           agg.ProcessTreeNodePrediction1(score, *ProcessTreeNodeLeave(roots_[j], x_data));
         }
-      } else {
+      } else { /* section B */
         std::vector<ScoreValue<OTYPE>> scores_t(n_trees_, {0, 0});
         concurrency::ThreadPool::TryBatchParallelFor(
             ttp,
@@ -284,46 +287,105 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::ComputeAgg(concurrency::ThreadPool* ttp, 
           agg.MergePrediction1(score, *it);
         }
       }
-
       agg.FinalizeScores1(z_data, score, label_data);
-    } else {
-      if (N <= parallel_N_) {
-        ScoreValue<OTYPE> score;
-        size_t j;
+    } else if (N <= parallel_N_) { /* section C */
+      ScoreValue<OTYPE> score;
+      size_t j;
 
-        for (int64_t i = 0; i < N; ++i) {
-          score = {0, 0};
-          for (j = 0; j < static_cast<size_t>(n_trees_); ++j) {
-            agg.ProcessTreeNodePrediction1(score, *ProcessTreeNodeLeave(roots_[j], x_data + i * stride));
-          }
-
-          agg.FinalizeScores1(z_data + i * n_targets_or_classes_, score,
-                              label_data == nullptr ? nullptr : (label_data + i));
+      for (int64_t i = 0; i < N; ++i) {
+        score = {0, 0};
+        for (j = 0; j < static_cast<size_t>(n_trees_); ++j) {
+          agg.ProcessTreeNodePrediction1(score, *ProcessTreeNodeLeave(roots_[j], x_data + i * stride));
         }
-      } else {
-        concurrency::ThreadPool::TryBatchParallelFor(
-            ttp,
-            SafeInt<int32_t>(N),
-            [this, &agg, x_data, z_data, stride, label_data](ptrdiff_t i) {
-              ScoreValue<OTYPE> score = {0, 0};
-              for (size_t j = 0; j < static_cast<size_t>(n_trees_); ++j) {
-                agg.ProcessTreeNodePrediction1(score, *ProcessTreeNodeLeave(roots_[j], x_data + i * stride));
-              }
 
-              agg.FinalizeScores1(z_data + i * n_targets_or_classes_, score,
+        agg.FinalizeScores1(z_data + i, score,
+                            label_data == nullptr ? nullptr : (label_data + i));
+      }
+    } else if ((n_trees_ > parallel_tree_) && (n_trees_ * N < TREEENSEMBLE_MAXSIZE)) { /* section D */
+      // Parallelization by trees.
+      // This could use an array N * nth where nth is the number of threads.
+      // It would requires function omp_get_thread_num and omp_get_max_threads.
+      std::vector<ScoreValue<OTYPE>> scores_t(n_trees_ * N, {0, 0});
+      concurrency::ThreadPool::TryBatchParallelFor(
+          ttp,
+          SafeInt<int32_t>(n_trees_),
+          [this, &scores_t, &agg, x_data, N, stride](ptrdiff_t j) {
+            for (int64_t i = 0; i < N; ++i) {
+              agg.ProcessTreeNodePrediction1(scores_t[j * N + i], *ProcessTreeNodeLeave(roots_[j], x_data + i * stride));
+            }
+          },
+          0);
+
+      concurrency::ThreadPool::TryBatchParallelFor(
+          ttp,
+          SafeInt<int32_t>(N),
+          [this, &scores_t, &agg, x_data, z_data, label_data, N](ptrdiff_t i) {
+            for (int64_t j = 1; j < this->n_trees_; ++j) {
+              agg.MergePrediction1(scores_t[i], scores_t[j * N + i]);
+            }
+            agg.FinalizeScores1(z_data + i, scores_t[i], label_data == nullptr ? nullptr : (label_data + i));
+          },
+          0);
+    } else if (N < TREEENSEMBLE_BATCHSIZE * 16) { /* section E */
+      // Simple parallelization by observations.
+      concurrency::ThreadPool::TryBatchParallelFor(
+          ttp,
+          SafeInt<int32_t>(N),
+          [this, &agg, x_data, z_data, stride, label_data](ptrdiff_t i) {
+            ScoreValue<OTYPE> score = {0, 0};
+            for (size_t j = 0; j < static_cast<size_t>(n_trees_); ++j) {
+              agg.ProcessTreeNodePrediction1(score, *ProcessTreeNodeLeave(roots_[j], x_data + i * stride));
+            }
+
+            agg.FinalizeScores1(z_data + i, score,
+                                label_data == nullptr ? nullptr : (label_data + i));
+          },
+          0);
+    } else { /* section F */
+      // Parallelization by blocs, and inside every bloc,
+      // the first loop goes through trees, the inside loop goes
+      // through observations. This trick is twice faster than section E.
+      int64_t NB = N - N % TREEENSEMBLE_BATCHSIZE;
+      concurrency::ThreadPool::TryBatchParallelFor(
+          ttp,
+          SafeInt<int32_t>(NB / TREEENSEMBLE_BATCHSIZE),
+          [this, &agg, x_data, z_data, stride, label_data](ptrdiff_t loop_i) {
+            ScoreValue<OTYPE> score[TREEENSEMBLE_BATCHSIZE];
+            memset(&score[0], 0, sizeof(ScoreValue<OTYPE>) * TREEENSEMBLE_BATCHSIZE);
+            const ITYPE* x_data_loop = x_data + loop_i * TREEENSEMBLE_BATCHSIZE * stride;
+            OTYPE* z_data_loop = z_data + loop_i * TREEENSEMBLE_BATCHSIZE;
+            for (size_t j = 0; j < static_cast<size_t>(n_trees_); ++j) {
+              for (int64_t i = 0; i < TREEENSEMBLE_BATCHSIZE; ++i) {
+                agg.ProcessTreeNodePrediction1(score[i], *ProcessTreeNodeLeave(roots_[j], x_data_loop + i * stride));
+              }
+            }
+            for (int64_t i = 0; i < TREEENSEMBLE_BATCHSIZE; ++i) {
+              agg.FinalizeScores1(z_data_loop + i, score[i],
                                   label_data == nullptr ? nullptr : (label_data + i));
-            },
-            0);
+            }
+          },
+          0);
+      ScoreValue<OTYPE> score;
+      size_t j;
+
+      for (int64_t i = NB; i < N; ++i) {
+        score = {0, 0};
+        for (j = 0; j < static_cast<size_t>(n_trees_); ++j) {
+          agg.ProcessTreeNodePrediction1(score, *ProcessTreeNodeLeave(roots_[j], x_data + i * stride));
+        }
+
+        agg.FinalizeScores1(z_data + i, score,
+                            label_data == nullptr ? nullptr : (label_data + i));
       }
     }
   } else {
     if (N == 1) {
       std::vector<ScoreValue<OTYPE>> scores(n_targets_or_classes_, {0, 0});
-      if (n_trees_ <= parallel_tree_) {
+      if (n_trees_ <= parallel_tree_) { /* section A2 */
         for (int64_t j = 0; j < n_trees_; ++j) {
           agg.ProcessTreeNodePrediction(scores, *ProcessTreeNodeLeave(roots_[j], x_data));
         }
-      } else {
+      } else { /* section B2 */
         // split the work into one block per thread so we can re-use the 'private_scores' vector as much as possible
         // TODO: Refine the number of threads used
         auto num_threads = std::min<int32_t>(concurrency::ThreadPool::DegreeOfParallelism(ttp), SafeInt<int32_t>(n_trees_));
@@ -344,44 +406,42 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::ComputeAgg(concurrency::ThreadPool* ttp, 
       }
 
       agg.FinalizeScores(scores, z_data, -1, label_data);
-    } else {
-      if (N <= parallel_N_) {
-        std::vector<ScoreValue<OTYPE>> scores(n_targets_or_classes_);
-        size_t j;
+    } else if (N <= parallel_N_) { /* section D2 */
+      std::vector<ScoreValue<OTYPE>> scores(n_targets_or_classes_);
+      size_t j;
 
-        for (int64_t i = 0; i < N; ++i) {
-          std::fill(scores.begin(), scores.end(), ScoreValue<OTYPE>({0, 0}));
-          for (j = 0; j < roots_.size(); ++j) {
-            agg.ProcessTreeNodePrediction(scores, *ProcessTreeNodeLeave(roots_[j], x_data + i * stride));
-          }
-
-          agg.FinalizeScores(scores, z_data + i * n_targets_or_classes_, -1,
-                             label_data == nullptr ? nullptr : (label_data + i));
+      for (int64_t i = 0; i < N; ++i) {
+        std::fill(scores.begin(), scores.end(), ScoreValue<OTYPE>({0, 0}));
+        for (j = 0; j < roots_.size(); ++j) {
+          agg.ProcessTreeNodePrediction(scores, *ProcessTreeNodeLeave(roots_[j], x_data + i * stride));
         }
-      } else {
-        // split the work into one block per thread so we can re-use the 'scores' vector as much as possible
-        // TODO: Refine the number of threads used.
-        auto num_threads = std::min<int32_t>(concurrency::ThreadPool::DegreeOfParallelism(ttp), SafeInt<int32_t>(N));
-        concurrency::ThreadPool::TrySimpleParallelFor(
-            ttp,
-            num_threads,
-            [this, &agg, num_threads, x_data, z_data, label_data, N, stride](ptrdiff_t batch_num) {
-              size_t j;
-              std::vector<ScoreValue<OTYPE>> scores(n_targets_or_classes_);
-              auto work = concurrency::ThreadPool::PartitionWork(batch_num, num_threads, N);
 
-              for (auto i = work.start; i < work.end; ++i) {
-                std::fill(scores.begin(), scores.end(), ScoreValue<OTYPE>({0, 0}));
-                for (j = 0; j < roots_.size(); ++j) {
-                  agg.ProcessTreeNodePrediction(scores, *ProcessTreeNodeLeave(roots_[j], x_data + i * stride));
-                }
-
-                agg.FinalizeScores(scores,
-                                   z_data + i * n_targets_or_classes_, -1,
-                                   label_data == nullptr ? nullptr : (label_data + i));
-              }
-            });
+        agg.FinalizeScores(scores, z_data + i * n_targets_or_classes_, -1,
+                           label_data == nullptr ? nullptr : (label_data + i));
       }
+    } else { /* section F2 */
+      // split the work into one block per thread so we can re-use the 'scores' vector as much as possible
+      // TODO: Refine the number of threads used.
+      auto num_threads = std::min<int32_t>(concurrency::ThreadPool::DegreeOfParallelism(ttp), SafeInt<int32_t>(N));
+      concurrency::ThreadPool::TrySimpleParallelFor(
+          ttp,
+          num_threads,
+          [this, &agg, num_threads, x_data, z_data, label_data, N, stride](ptrdiff_t batch_num) {
+            size_t j;
+            std::vector<ScoreValue<OTYPE>> scores(n_targets_or_classes_);
+            auto work = concurrency::ThreadPool::PartitionWork(batch_num, num_threads, N);
+
+            for (auto i = work.start; i < work.end; ++i) {
+              std::fill(scores.begin(), scores.end(), ScoreValue<OTYPE>({0, 0}));
+              for (j = 0; j < roots_.size(); ++j) {
+                agg.ProcessTreeNodePrediction(scores, *ProcessTreeNodeLeave(roots_[j], x_data + i * stride));
+              }
+
+              agg.FinalizeScores(scores,
+                                 z_data + i * n_targets_or_classes_, -1,
+                                 label_data == nullptr ? nullptr : (label_data + i));
+            }
+          });
     }
   }
 }  // namespace detail
