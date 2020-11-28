@@ -31,7 +31,9 @@ Status NcclAllReduce::ComputeInternal(OpKernelContext* context) const {
   }
 
   ncclDataType_t dtype = GetNcclDataType(onnx_type);
-  NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, count, dtype, ncclSum, comm, stream));
+#ifdef ORT_USE_NCCL
+  NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, comm, stream));
+#endif
   return Status::OK();
 }
 
@@ -92,7 +94,9 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
 
   // AllGather.
   const void* fusion_data_rank_offset = (const int8_t*)fusion_data + rank_start;
+#ifdef ORT_USE_NCCL
   NCCL_RETURN_IF_ERROR(ncclAllGather(fusion_data_rank_offset, fusion_data, rank_count, dtype, comm, stream));
+#endif
 
   // Copy AllGather results to outputs.
   offset = 0;
@@ -177,8 +181,9 @@ Status NcclReduceScatter::ComputeInternal(OpKernelContext* context) const {
 
   // ReduceScatter.
   void* fusion_data_rank_offset = (int8_t*)fusion_data + rank_start;
+#ifdef ORT_USE_NCCL
   NCCL_RETURN_IF_ERROR(ncclReduceScatter(fusion_data, fusion_data_rank_offset, rank_count, dtype, ncclSum, comm, stream));
-
+#endif
   // Copy this rank's ReduceScatter results to outputs.
   offset = 0;
   for (int i = 0; i < context->InputCount(); i++) {

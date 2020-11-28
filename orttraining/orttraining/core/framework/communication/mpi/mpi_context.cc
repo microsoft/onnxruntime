@@ -15,7 +15,7 @@ namespace training {
 const int MPIContext::MPI_TIMEOUT_IN_SECONDS;
 
 MPIContext::~MPIContext() {
-#ifdef ORT_USE_MPI
+#ifdef USE_MPI
 #ifndef _WIN32
   // Assume ungraceful shutdown.
   std::atomic<bool> perform_graceful_exit {false};
@@ -40,7 +40,7 @@ MPIContext::~MPIContext() {
 #else
   ReleaseComms();
 #endif // _WIN32
-#endif // ORT_USE_MPI
+#endif // USE_MPI
 }
 
 MPIContext& MPIContext::GetInstance() {
@@ -48,7 +48,6 @@ MPIContext& MPIContext::GetInstance() {
   return context;
 }
 
-#ifdef ORT_USE_MPI
 // Default constructor of MPIContext only creates global parallel group i.e. MPI_WORLD 
 // and nodel local parallel group.
 MPIContext::MPIContext() :
@@ -56,6 +55,7 @@ world_rank_(0),
 local_rank_(0),
 world_size_(1),
 local_size_(1) {
+#ifdef USE_MPI
   // setup MPI
   int is_mpi_initialized = 0;
   MPI_CHECK(MPI_Initialized(&is_mpi_initialized));
@@ -117,8 +117,10 @@ local_size_(1) {
   this->local_rank_ = local_rank;
   this->world_size_ = world_size;
   this->local_size_ = local_size;
+#endif
 }
 
+#ifdef USE_MPI
 void MPIContext::ReleaseComms() {
   // If MPI is finalized, return right away.
   int is_mpi_finalized = 0;
@@ -136,7 +138,10 @@ void MPIContext::ReleaseComms() {
       }
   }
 }
+#endif
+
 void MPIContext::AddMPIGroup(WorkerGroupType group_type, WorkerGroup& group) {
+#ifdef USE_MPI
   auto group_name = DistributedRunContext::GetInstance().GetWorkerGroupName(group_type);
   if(this->mpi_groups_[group_type].is_group_initialized) {
     LOGS(logger_, INFO) << "Group "<<group_name<<" already exists. Re-initializing with different ranks.";
@@ -157,9 +162,13 @@ void MPIContext::AddMPIGroup(WorkerGroupType group_type, WorkerGroup& group) {
                                   &(this->mpi_groups_[group_type].communicator)));
   ORT_ENFORCE(this->mpi_groups_[group_type].communicator != MPI_COMM_NULL,
               "Failed to add new MPI group for worker group.");
-
+#else
+  ORT_THROW("ORT must be built with MPI to add ", DistributedRunContext::GetInstance().GetWorkerGroupName(group_type)
+            , " with group id: ", group.group_id);
+#endif
 }
 
+#ifdef USE_MPI
 void MPIContext::shutdown_mpi(bool perform_graceful_exit/*default=true*/) {
   int is_mpi_initialized = 0;
   MPI_CHECK(MPI_Initialized(&is_mpi_initialized));

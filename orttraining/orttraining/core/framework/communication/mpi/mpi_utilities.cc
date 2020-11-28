@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
+#ifdef USE_MPI
 #include "orttraining/core/framework/communication/mpi/mpi_utilities.h"
 
 
@@ -48,3 +48,4 @@ int GetMPISize(MPI_Comm comm) {
 
 }  // namespace training
 }  // namespace onnxruntime
+#endif // USE_MPI

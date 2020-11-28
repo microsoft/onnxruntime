@@ -14,7 +14,7 @@ namespace onnxruntime {
 namespace training {
 
 static bool IsNcclAvailable() {
-#ifdef USE_NCCL
+#ifdef ORT_USE_NCCL
   return true;
 #else
   return false;

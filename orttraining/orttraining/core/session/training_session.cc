@@ -174,7 +174,7 @@ Status TrainingSession::ConfigureForTraining(
                                          config.distributed_config.horizontal_parallel_size,
                                          config.distributed_config.pipeline_parallel_size});
 
-#ifdef ORT_USE_MPI
+#ifdef USE_MPI
   const std::vector<MPIGroup>& mpi_groups = MPIContext::GetInstance().GetAllMPIGroups();
   for (int i = 0; i < WorkerGroupType::WorkerGroupTypeCount; i++) {
     if (!mpi_groups[i].is_group_initialized) {

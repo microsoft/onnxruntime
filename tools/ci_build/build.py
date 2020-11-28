@@ -27,7 +27,6 @@ from util import run  # noqa: E402
 log = get_logger("build")
 
 
-
 class BaseError(Exception):
     """Base class for errors originating from build.py."""
     pass
@@ -771,7 +770,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_TRAINING=" + (
             "ON" if args.enable_training else "OFF"),
         # Enable advanced computations such as AVX for some traininig related ops.
-        "-Donnxruntime_ENABLE_ADVANCED_INSTRUCTIONS_FOR_TRAINING=" + (
+        "-Donnxruntime_ENABLE_CPU_FP16_OPS=" + (
             "ON" if args.enable_training else "OFF"),
         "-Donnxruntime_USE_NCCL=" + (
             "OFF" if args.disable_nccl else "ON"),

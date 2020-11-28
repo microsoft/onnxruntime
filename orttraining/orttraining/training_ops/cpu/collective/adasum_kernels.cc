@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
+#ifdef USE_MPI
 #include "orttraining/training_ops/cpu/collective/adasum_kernels.h"
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
 #include "orttraining/training_ops/communication_common.h"
@@ -63,3 +63,4 @@ Status AdasumAllReduce::Compute(OpKernelContext* context) const {
 
 }  // namespace contrib
 }  // namespace onnxruntime
+#endif // USE_MPI

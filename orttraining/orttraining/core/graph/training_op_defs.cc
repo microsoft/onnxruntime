@@ -938,8 +938,7 @@ Example 4:
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain to float, float16 and double tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        int64_t group_type = getAttribute(ctx, "group_type", 0);
-        assert(group_type < static_cast<int64_t>(WorkerGroupType::WorkerGroupTypeCount));
+        assert(getAttribute(ctx, "group_type", 0) < static_cast<int64_t>(WorkerGroupType::WorkerGroupTypeCount));
         propagateShapeAndTypeFromFirstInput(ctx);
       });
 
@@ -958,8 +957,7 @@ Example 4:
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain to float, float16 and double tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        int64_t group_type = getAttribute(ctx, "group_type", 0);
-        assert(group_type < static_cast<int64_t>(WorkerGroupType::WorkerGroupTypeCount));
+        assert(getAttribute(ctx, "group_type", 0) < static_cast<int64_t>(WorkerGroupType::WorkerGroupTypeCount));
         propagateShapeAndTypeFromFirstInput(ctx);
       });
 
@@ -977,10 +975,12 @@ Example 4:
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain to float, float16 and double tensors.")
+#ifdef _DEBUG
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        int64_t group_type = getAttribute(ctx, "group_type", 0);
-        assert(group_type < static_cast<int64_t>(WorkerGroupType::WorkerGroupTypeCount));
-      });
+        assert(getAttribute(ctx, "group_type", 0) < static_cast<int64_t>(WorkerGroupType::WorkerGroupTypeCount));
+      })
+#endif
+;
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(AdasumAllReduce)
       .SetDomain(kMSDomain)

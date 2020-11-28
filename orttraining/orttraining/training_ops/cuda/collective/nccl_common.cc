@@ -29,6 +29,7 @@ ncclDataType_t GetNcclDataType(onnxruntime::MLDataType type) {
   }
 }
 
+#ifdef USE_MPI
 static Status CreateNcclCommunicator(MPI_Group* mpi_world_group,
                                      const training::WorkerGroupType worker_group_type,
                                      ncclComm_t* group_comm) {
@@ -57,8 +58,10 @@ static Status CreateNcclCommunicator(MPI_Group* mpi_world_group,
   MPI_CHECK(MPI_Comm_free(&mpi_comm));
   return Status::OK();
 }
+#endif
 
 NcclContext::NcclContext() {
+#ifdef USE_MPI
   int is_mpi_initialized = 0;
   MPI_Initialized(&is_mpi_initialized);
   if (!is_mpi_initialized) {
@@ -91,6 +94,9 @@ NcclContext::NcclContext() {
   ORT_ENFORCE(ret.IsOK());
 
   MPI_Group_free(&mpi_world_group);
+#else
+  ORT_THROW("ORT must be built with MPI to use NCCL.");
+#endif
 }
 
 ncclComm_t NcclContext::Comm(training::WorkerGroupType group_type) {
@@ -126,11 +132,13 @@ NcclContext::~NcclContext() {
     ncclCommDestroy(cross_node_comm_);
   }
 
+#ifdef USE_MPI
   int is_mpi_finalized = 0;
   MPI_Finalized(&is_mpi_finalized);
   if (!is_mpi_finalized) {
     MPI_Finalize();
   }
+#endif
 }
 
 NcclKernel::NcclKernel(const OpKernelInfo& info) : CudaKernel(info) {

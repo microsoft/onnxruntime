@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if defined(USE_NCCL) || defined(ORT_USE_MPI)
+#if defined(ORT_USE_NCCL) || defined(USE_MPI)
 
 #include "orttraining/training_ops/cuda/communication/recv.h"
 #include "orttraining/training_ops/communication_common.h"
@@ -36,7 +36,7 @@ void Recv::ReceiveData(
   recvRange.Begin();
 #endif
 
-#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
   buffer = GetScratchBuffer<char>(aggregated_aligned_tensor_bytes);
 #else
   buffer = AllocateBufferOnCPUPinned<char>(static_cast<size_t>(aggregated_aligned_tensor_bytes));
@@ -49,13 +49,15 @@ void Recv::ReceiveData(
 
 // The following NCCL call is equivalent to the following MPI call. User can
 // uncomment the MPI call to debug.
-#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
   auto& nccl_service = cuda::NcclService::GetInstance();
   nccl_service.SubmitRecvAndWait(info_data.buffer, info_data.size, info_data.rank);
-#else
+#elif defined(USE_MPI)
   MPI_CHECK(MPI_Recv(
       info_data.buffer, info_data.size, MPI_CHAR,
       info_data.rank, info_data.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
+#else
+  ORT_THROW("Failed to recv from rank: ", info_data.rank);
 #endif
 
 #ifdef ENABLE_NVTX_PROFILE
@@ -82,7 +84,7 @@ void Recv::ReceiveData(
 
     assert(tensor_offset_in_bytes + tensor->SizeInBytes() <= aggregated_aligned_tensor_bytes);
     // Copy data out from buffer.
-#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
     CUDA_CALL(cudaMemcpy(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
                          tensor->SizeInBytes(), cudaMemcpyDeviceToDevice));
 #else
@@ -93,7 +95,7 @@ void Recv::ReceiveData(
   }
   assert(tensor_offset_in_bytes == aggregated_aligned_tensor_bytes);
 
-#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
 #else
   AddDeferredReleaseCPUPtr(buffer.release());
 #endif
@@ -143,7 +145,9 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
 
   // Start communication
   int world_rank;
+#ifdef USE_MPI
   MPI_CHECK(MPI_Comm_rank(MPI_COMM_WORLD, &world_rank));
+#endif
   ORT_ENFORCE(world_rank != src, "Receive data from rank ", src, " on the rank ", world_rank, ".");
 
   const int num_tensors = static_cast<int>(element_types_.size());
@@ -201,6 +205,7 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
         aggregated_tensor_shapes,
         tensor_offsets_in_bytes);
   } else {
+#ifdef USE_MPI
     ReceiveShapeInfo(
         src,
         tag_,
@@ -208,6 +213,9 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
         aggregated_aligned_tensor_bytes,
         prefix_tensor_shape_sizes,
         aggregated_tensor_shapes);
+#else
+    ORT_THROW("ORT must be built with MPI to send shape info.");
+#endif
 
     // Create output tensors. Unlike the case where we can infer output shapes before communication,
     // we need to create outputs after receiving shapes.

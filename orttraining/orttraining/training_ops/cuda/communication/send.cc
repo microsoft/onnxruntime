@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if defined(USE_NCCL) || defined(ORT_USE_MPI)
+#if defined(ORT_USE_NCCL) || defined(USE_MPI)
 
 #include "orttraining/training_ops/cuda/communication/send.h"
 #include "orttraining/training_ops/communication_common.h"
@@ -52,7 +52,7 @@ void Send::SendData(
   memcpyRange.Begin();
 #endif
 
-#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
   IAllocatorUniquePtr<char> buffer = GetScratchBuffer<char>(aggregated_aligned_tensor_bytes);
 #else
   IAllocatorUniquePtr<char> buffer = AllocateBufferOnCPUPinned<char>(
@@ -61,7 +61,7 @@ void Send::SendData(
 
   for (int i = 0; i < num_tensors; ++i) {
     const Tensor* tensor = ctx->Input<Tensor>(i + 2);
-#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
     CUDA_CALL(cudaMemcpy(buffer.get() + tensor_offsets_in_bytes[i], tensor->DataRaw(),
                          tensor_sizes_in_bytes[i], cudaMemcpyDeviceToDevice));
 #else
@@ -90,13 +90,15 @@ void Send::SendData(
                        dst,
                        static_cast<int>(tag_)};
 
-#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
   auto& nccl_service = cuda::NcclService::GetInstance();
   nccl_service.SubmitSendAndWait(info_data.buffer, info_data.size, info_data.rank);
-#else
+#elif defined(USE_MPI)
   MPI_CHECK(MPI_Send(
       info_data.buffer, info_data.size, MPI_CHAR,
       info_data.rank, info_data.tag, MPI_COMM_WORLD));
+#else
+  ORT_THROW("Failed to send to rank: ", info_data.rank);
 #endif
 
 #ifdef ENABLE_NVTX_PROFILE
@@ -118,7 +120,9 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
 
   // Same-rank communication is not allowed because we currently don't have async Send/Recv.
   int world_rank;
+#ifdef USE_MPI
   MPI_CHECK(MPI_Comm_rank(MPI_COMM_WORLD, &world_rank));
+#endif
   ORT_ENFORCE(world_rank != dst, "Sending data to rank ", dst, " on the rank ", world_rank, ".");
 
 #ifdef ENABLE_NVTX_PROFILE
@@ -175,7 +179,11 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
 
   // Communicate shape information when it cannot be inferred.
   if (!all_shapes_inferred) {
+#ifdef USE_MPI
     SendShapeInfo(dst, tag_, num_tensors, aggregated_aligned_tensor_bytes, prefix_tensor_shape_sizes, aggregated_tensor_shapes);
+#else
+    ORT_THROW("ORT must be built with MPI to send shape info.");
+#endif
   }
 #ifdef ENABLE_NVTX_PROFILE
   // End of data preparation and shape communication.

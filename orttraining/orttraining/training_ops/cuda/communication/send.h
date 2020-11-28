@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if defined(USE_NCCL) || defined(ORT_USE_MPI)
+#if defined(ORT_USE_NCCL) || defined(USE_MPI)
 
 #pragma once
 #include "core/common/common.h"

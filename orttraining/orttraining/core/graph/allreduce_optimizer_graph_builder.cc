@@ -7,7 +7,7 @@ namespace onnxruntime {
 namespace training {
 
 static bool IsNcclAvailable() {
-#ifdef USE_NCCL
+#ifdef ORT_USE_NCCL
   return true;
 #else
   return false;
@@ -75,14 +75,10 @@ Status AllreduceOptimizerGraphBuilder::BuildInternal(
       opt_graph_config_.gradient_accumulation_steps * opt_graph_config_.data_parallel_group_size;
   ORT_RETURN_IF_NOT(total_num_accumulations > 0);
   const float scale = 1.0f / total_num_accumulations;
-  const bool fuse_scaling_outputs = opt_graph_config_.use_nccl;
-  ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, fused_gradient_argdef, graph_defs,
-                                              opt_graph_config_.AllReduceDataType(), fuse_scaling_outputs));
+  ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, output_gradient_argdef, graph_defs,
+                                              opt_graph_config_.AllReduceDataType()));
 
-  // add Allreduce for gradients
-  ArgDef reduced_fused_gradient_argdef;
-
-  ORT_RETURN_IF_ERROR(AddNcclAllReduceForGradients(gradient_argdefs, fused_gradient_argdef, graph_defs, reduced_fused_gradient_argdef));
+  ORT_RETURN_IF_ERROR(AddNcclAllReduceForGradients(gradient_argdefs, output_gradient_argdef, graph_defs));
 
   // check if all gradients are finite
   ArgDef global_grad_norm_argdef;

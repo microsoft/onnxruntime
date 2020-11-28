@@ -5,13 +5,17 @@
 
 #include "core/providers/cuda/cuda_common.h"
 #include "orttraining/core/framework/distributed_run_context.h"
+
+#if defined(ORT_USE_NCCL)
 #include <nccl.h>
+#endif
 
 namespace onnxruntime {
 namespace cuda {
 
+#if defined(ORT_USE_NCCL)
 #define NCCL_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(NCCL_CALL(expr) ? common::Status::OK() : common::Status(common::ONNXRUNTIME, common::FAIL))
-
+#endif
 class NcclContext final {
  public:
   NcclContext();

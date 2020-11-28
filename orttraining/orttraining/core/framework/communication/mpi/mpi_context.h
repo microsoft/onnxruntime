@@ -13,6 +13,7 @@
 namespace onnxruntime {
 namespace training {
 
+#ifdef USE_MPI
 #define MPI_CHECK(condition)                                 \
   do {                                                       \
     int error = (condition);                                 \
@@ -25,10 +26,13 @@ namespace training {
         ": ",                                                \
         error);                                              \
   } while (0)
+#endif
 
 struct MPIGroup {
+#ifdef USE_MPI
   MPI_Group mpi_group {MPI_GROUP_EMPTY};  // MPI group
   MPI_Comm communicator {MPI_COMM_NULL};  // MPI communicator of this group
+#endif
   bool is_group_initialized {false};  // Whether it's initialized
 };
 
@@ -66,14 +70,13 @@ class MPIContext {
   private:
     MPIContext();
 
-#if defined(USE_MPI)
-    void ReleaseComms();
-
     // Groups containing mpi communicator for any worker group.
     std::vector<MPIGroup> mpi_groups_;
     // Global counter for MPI groups
     int mpi_group_id_ = 0;
+#if defined(USE_MPI)
     void setup_mpi();
+    void ReleaseComms();
 #endif
     int world_rank_;
     int local_rank_;

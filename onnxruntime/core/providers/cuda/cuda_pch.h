@@ -16,7 +16,7 @@
 #include <cudnn.h>
 #include <cufft.h>
 
-#ifdef USE_NCCL
+#ifdef ORT_USE_NCCL
 #include <nccl.h>
 #endif
 

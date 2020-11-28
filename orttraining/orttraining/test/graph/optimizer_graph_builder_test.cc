@@ -281,7 +281,7 @@ TEST_F(OptimizerGraphBuilderTest, Default_WithGradientAccumulation_WithMixedPrec
   TestDefaultOptimizerGraphBuilder(config, graph_);
 }
 
-#if defined(USE_NCCL)
+#if defined(ORT_USE_NCCL)
 static void TestAllreduceOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& graph) {
   std::unordered_map<std::string, std::string> updated_weight_names_map;
   AllreduceOptimizerGraphBuilder optimizer_graph_builder(
@@ -315,9 +315,43 @@ static void TestAllreduceOptimizerGraphBuilder(OptimizerGraphConfig config, Grap
   ASSERT_EQ(GetOpCount(op_counts, k_adam_optimizer_op_name), k_weight_names.size());
 }
 
+static void TestAdasumOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& graph) {
+  AdasumOptimizerGraphBuilder optimizer_graph_builder(
+      GetOptimizerBuilderRegistry(), config, GetOptInfoMap());
+
+  OptimizerOutputKeyMap<std::string> opt_graph_outputs;
+  std::unordered_set<std::string> opt_initializer_names;
+  ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph, opt_initializer_names, opt_graph_outputs));
+
+  auto op_counts = CountOpsInGraph(graph, false);
+
+  // verify gradient accumulation operations exist
+  if (config.gradient_accumulation_steps > 1) {
+    ASSERT_GT(GetOpCount(op_counts, k_unscale_op_name), 0);
+    ASSERT_EQ(GetOpCount(op_counts, k_inplace_accumulator_op_name), k_weight_names.size() * 2);
+    ASSERT_EQ(GetOpCount(op_counts, k_zero_gradient_op_name), k_weight_names.size());
+    ASSERT_GT(opt_graph_outputs.count(OptimizerOutputKey::GradientAccumulation), 0);
+  }
+
+  // verify mixed precision operations exist
+  if (config.use_mixed_precision) {
+    ASSERT_GT(GetOpCount(op_counts, k_gradient_norm_op_name), 0);
+    ASSERT_GT(GetOpCount(op_counts, k_is_all_finite_op_name), 0);
+  }
+
+  // verify allreduce operations exist
+  ASSERT_GT(GetOpCount(op_counts, k_adasum_op_name), 0);
+
+  // verify in place adder operations exist
+  ASSERT_GT(GetOpCount(op_counts, k_inplace_accumulator_op_name), 0);
+
+  // verify optimizers exist
+  ASSERT_EQ(GetOpCount(op_counts, k_optimizer_op_name), k_weight_names.size());
+}
+
 #endif
 
-#if defined(USE_NCCL) || defined(ORT_USE_MPI)
+#if defined(ORT_USE_NCCL) || defined(USE_MPI)
 
 TEST_F(OptimizerGraphBuilderTest, Adasum_NoGradientAccumulation_NoMixedPrecision) {
   OptimizerGraphConfig config;
@@ -359,9 +393,9 @@ TEST_F(OptimizerGraphBuilderTest, Adasum_WithGradientAccumulation_WithMixedPreci
   config.loss_scale_input_name = k_loss_scaling_factor_name;
   TestAdasumOptimizerGraphBuilder(config, graph_);
 }
-#endif //USE_NCCL || ORT_USE_MPI
+#endif //ORT_USE_NCCL || USE_MPI
 
-#ifdef USE_NCCL
+#ifdef ORT_USE_NCCL
 TEST_F(OptimizerGraphBuilderTest, Allreduce_NoGradientAccumulation_NoMixedPrecision) {
   OptimizerGraphConfig config;
   config.data_parallel_group_size = 4;
@@ -476,7 +510,7 @@ TEST_F(OptimizerGraphBuilderTest, ZeRO_WithGradientAccumulation_WithMixedPrecisi
   TestZeROOptimizerGraphBuilder(config, graph_);
 }
 
-#endif  // USE_NCCL
+#endif  // ORT_USE_NCCL
 
 }  // namespace test
 }  // namespace training
