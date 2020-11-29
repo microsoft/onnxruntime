@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
+#ifdef USE_MPI
 #include <random>
 
 #include "gtest/gtest.h"
@@ -1197,3 +1197,4 @@ TEST(AllreduceTest, GPUAdasumFP16AllreduceTest) {
 #endif
 }  // namespace test
 }  // namespace onnxruntime
+#endif // USE_MPI
