@@ -368,7 +368,6 @@ class BertOnnxModelTF(BertOnnxModel):
                 continue
 
             # add a squeeze node to convert a 3-d mask to 2-d
-            # bugbug: hardcoded
             squeeze_node = self.match_parent_path(mask_nodes[-1], ['Squeeze'], [0])
             squeeze_node_name = "Squeeze_3d_to_2d_mask"
             squeeze_output_name = squeeze_node_name + "_output"
@@ -437,5 +436,4 @@ class BertOnnxModelTF(BertOnnxModel):
     def postprocess(self):
         self.remove_reshape_before_first_attention()
         # Temporary work around for the following comment as it will cause topological issues for a bert model
-        # bugbug
-        self.prune_graph()
+        # self.prune_graph()

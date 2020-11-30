@@ -132,6 +132,7 @@ class FusionAttention(Fusion):
                                     data_type=TensorProto.FLOAT,
                                     dims=[self.hidden_size, 3 * self.hidden_size],
                                     vals=qkv_weight.flatten().tolist())
+        # Sometimes weights and bias are stored in fp16
         if q_weight.data_type == 10:
             weight.CopyFrom(numpy_helper.from_array(numpy_helper.to_array(weight).astype(np.float16), weight.name))
         self.model.add_initializer(weight)
