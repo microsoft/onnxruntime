@@ -40,6 +40,14 @@ void Model::AddOutput(const std::string& onnx_output_name,
   operand_types_.emplace(nnapi_output_name, operand_type);
 }
 
+bool Model::IsScalarOutput(const std::string& output_name) const {
+  return Contains(scalar_outputs_, output_name);
+}
+
+void Model::AddScalarOutput(const std::string& output_name) {
+  scalar_outputs_.insert(output_name);
+}
+
 const std::vector<std::string>& Model::GetInputs() const {
   return input_names_;
 }

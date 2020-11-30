@@ -43,7 +43,7 @@ def parse_args():
         "--log-storage-account", required=True,
         help="The storage account name.")
     parser.add_argument(
-        "--log-storage-container", required=True,
+        "--log-storage-account-container", required=True,
         help="The storage account container name.")
     parser.add_argument(
         "--log-storage-path-pattern", default="*.json",
@@ -179,7 +179,7 @@ def main():
     with tempfile.TemporaryDirectory() as tmp_dir:
         log_paths = download_logs(
             args.log_storage_account,
-            args.log_storage_container,
+            args.log_storage_account_container,
             args.log_storage_path_pattern,
             tmp_dir,
             args.az_path)

@@ -455,7 +455,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Create OrtIoBinding instance to bind pre-allocated buffers
         /// to input/output
         /// </summary>
-        /// <returns></returns>
+        /// <returns>A new instance of OrtIoBinding</returns>
         public OrtIoBinding CreateIoBinding()
         {
             return new OrtIoBinding(this);
@@ -469,8 +469,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// the expense of fetching them and pairing with names.
         /// You can still fetch the outputs by calling OrtIOBinding.GetOutputValues()
         /// </summary>
-        /// <param name="runOptions"></param>
-        /// <param name="ioBinding"></param>
+        /// <param name="runOptions">runOptions</param>
+        /// <param name="ioBinding">ioBinding instance to use</param>
         public void RunWithBinding(RunOptions runOptions, OrtIoBinding ioBinding)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtRunWithBinding(Handle, runOptions.Handle, ioBinding.Handle));

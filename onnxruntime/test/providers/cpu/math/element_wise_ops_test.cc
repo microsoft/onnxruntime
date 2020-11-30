@@ -192,7 +192,7 @@ TEST(MathOpTest, Add_Broadcast_0x0) {
   test.AddInput<float>("A", {}, {10.0f});
   test.AddInput<float>("B", {}, {2.0f});
   test.AddOutput<float>("C", {}, {12.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNnapiExecutionProvider});  // NNAPI: Add does not support scalar input
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "");
 }
 
 TEST(MathOpTest, Add_Broadcast_0x1) {
@@ -205,11 +205,7 @@ TEST(MathOpTest, Add_Broadcast_0x1) {
     test.Run(OpTester::ExpectResult::kExpectSuccess, "");
   };
 
-  // NNAPI only supports scalar initializer, not scalar input
-#ifndef USE_NNAPI
   run(false);
-#endif
-
   run(true);
 }
 
@@ -222,11 +218,8 @@ TEST(MathOpTest, Add_Broadcast_1x0) {
     test.AddOutput<float>("C", {1}, {12.0f});
     test.Run(OpTester::ExpectResult::kExpectSuccess, "");
   };
-  // NNAPI only supports scalar initializer, not scalar input
-#ifndef USE_NNAPI
-  run(false);
-#endif
 
+  run(false);
   run(true);
 }
 
@@ -398,11 +391,7 @@ TEST(MathOpTest, Sub_Broadcast_Scalar) {
     test.Run(OpTester::ExpectResult::kExpectSuccess, "");
   };
 
-  // NNAPI only supports scalar initializer, not scalar input
-#ifndef USE_NNAPI
   run(false);
-#endif
-
   run(true);
 }
 

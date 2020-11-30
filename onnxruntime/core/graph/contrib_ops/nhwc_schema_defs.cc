@@ -168,6 +168,84 @@ void RegisterNhwcSchemas() {
           convPoolShapeInferenceNhwc(ctx, true, false, 0, 3);
         }
       });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(QLinearGlobalAveragePool)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC(
+QLinearGlobalAveragePool consumes an input tensor X and applies Average pooling across
+the values in the same channel. This is equivalent to AveragePool with kernel size
+equal to the spatial dimension of input tensor. Input is of type uint8_t or int8_t.
+)DOC")
+      .Attr("channels_last", "", AttributeProto::INT, static_cast<int64_t>(0))
+      .Input(
+          0,
+          "X",
+          "Input data tensor from the previous operator; According to channels_last, "
+          "dimensions for image case are (N x C x H x W), or (N x H x W x C) "
+          "where N is the batch size, C is the number of "
+          "channels, and H and W are the height and the width "
+          "of the data. For non image case, the dimensions are "
+          "in the form of (N x C x D1 x D2 ... Dn), or (N x D1 X D2 ... Dn x C) "
+          "where N is the batch size.",
+          "T")
+      .Input(
+          1,
+          "x_scale",
+          "Scale of quantized input 'X'. It must be a scalar.",
+          "tensor(float)")
+      .Input(
+          2,
+          "x_zero_point",
+          "Zero point tensor for input 'X'. It must be a scalar.",
+          "T")
+      .Input(
+          3,
+          "y_scale",
+          "Scale of quantized output 'Y'. It must be a scalar.",
+          "tensor(float)")
+      .Input(
+          4,
+          "y_zero_point",
+          "Zero point tensor for output 'Y'. It must be a scalar.",
+          "T")
+      .Output(
+          0,
+          "Y",
+          "Output data tensor from pooling across the input "
+          "tensor. The output tensor has the same rank as the input. "
+          "with the N and C value keep it value, while the other"
+          "dimensions are all 1.",
+          "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(uint8)", "tensor(int8)"},
+          "Constrain input and output types to singed/unsigned int8 tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+        int64_t channel_last = getAttribute(ctx, "channels_last", 0);
+
+        // needs at least one input with shape.
+        if (!hasNInputShapes(ctx, 1)) {
+          return;
+        }
+
+        auto input_shape = ctx.getInputType(0)->tensor_type().shape();
+        if (input_shape.dim_size() < 2) {
+          return;
+        }
+
+        // (N, C, 1, 1, ..., 1) or (N, 1, 1, ..., 1, C)
+        auto output_shape = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+        output_shape->CopyFrom(input_shape);
+        int image_dim_index = (channel_last ? 1 : 2);
+        for (auto n_hw_dims = input_shape.dim_size() - 2; n_hw_dims > 0; --n_hw_dims) {
+          output_shape->mutable_dim(image_dim_index)->clear_dim_param();
+          output_shape->mutable_dim(image_dim_index)->set_dim_value(1);
+          ++image_dim_index;
+        }
+      });
 }
 
 }  // namespace contrib

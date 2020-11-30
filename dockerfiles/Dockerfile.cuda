@@ -6,27 +6,19 @@
 
 # nVidia cuda 10.2 Base Image
 FROM nvidia/cuda:10.2-cudnn8-devel
-MAINTAINER Vinitra Swamy "viswamy@microsoft.com"
+MAINTAINER Changming Sun "chasun@microsoft.com"
+ADD . /code
 
-ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
-ARG ONNXRUNTIME_BRANCH=master
-
-RUN apt-get update &&\
-    apt-get install -y sudo git bash unattended-upgrades
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends python3-dev ca-certificates g++ python3-numpy gcc make git python3-setuptools python3-wheel python3-pip unattended-upgrades
 RUN unattended-upgrade
 
-WORKDIR /code
-ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/code/cmake-3.14.3-Linux-x86_64/bin:/opt/miniconda/bin:${PATH}
-ENV LD_LIBRARY_PATH /opt/miniconda/lib:$LD_LIBRARY_PATH
+ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:${PATH}
+RUN apt-get update && apt-get install -y --no-install-recommends python3-dev ca-certificates g++ python3-numpy gcc make git python3-setuptools python3-wheel python3-pip aria2 && aria2c -q -d /tmp -o cmake-3.18.2-Linux-x86_64.tar.gz https://github.com/Kitware/CMake/releases/download/v3.18.2/cmake-3.18.2-Linux-x86_64.tar.gz && tar -zxf /tmp/cmake-3.18.2-Linux-x86_64.tar.gz --strip=1 -C /usr
 
-# Prepare onnxruntime repository & build onnxruntime with CUDA
-RUN git clone --single-branch --branch ${ONNXRUNTIME_BRANCH} --recursive ${ONNXRUNTIME_REPO} onnxruntime &&\
-    /bin/sh onnxruntime/dockerfiles/scripts/install_common_deps.sh &&\
-    cp onnxruntime/docs/Privacy.md /code/Privacy.md &&\
-    cp onnxruntime/ThirdPartyNotices.txt /code/ThirdPartyNotices.txt &&\
-    cp onnxruntime/dockerfiles/LICENSE-IMAGE.txt /code/LICENSE-IMAGE.txt &&\
-    cd onnxruntime &&\
-    /bin/sh ./build.sh --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ --use_cuda --config Release --build_wheel --update --build --cmake_extra_defines ONNXRUNTIME_VERSION=$(cat ./VERSION_NUMBER) &&\
-    pip install /code/onnxruntime/build/Linux/Release/dist/*.whl &&\
-    cd .. &&\
-    rm -rf onnxruntime cmake-3.14.3-Linux-x86_64
+RUN cd /code && /bin/bash ./build.sh --skip_submodule_sync --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ --use_cuda --config Release --build_wheel --update --build --parallel --cmake_extra_defines ONNXRUNTIME_VERSION=$(cat ./VERSION_NUMBER) 'CMAKE_CUDA_ARCHITECTURES=30;37;50;52;60;70'
+
+FROM nvidia/cuda:10.2-cudnn8-runtime
+COPY --from=0 /code/build/Linux/Release/dist /root
+COPY --from=0 /code/dockerfiles/LICENSE-IMAGE.txt /code/LICENSE-IMAGE.txt
+RUN apt-get update && apt-get install -y --no-install-recommends libstdc++6 ca-certificates python3-setuptools python3-wheel python3-pip && python3 -m pip install /root/*.whl && rm -rf /root/*.whl
