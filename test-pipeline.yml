@@ -1,6 +1,6 @@
 parameters:
 - name: "value"
-  type: "stepList"
+  type: "number"
 
 trigger: none
 
