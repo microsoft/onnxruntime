@@ -180,7 +180,7 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
   const auto total_num_accumulations = opt_graph_config_.gradient_accumulation_steps;
   ORT_RETURN_IF_NOT(total_num_accumulations > 0);
 
-  float scale_divisor = total_num_accumulations;
+  auto scale_divisor = total_num_accumulations;
   //If Adasum GPU hierarchical reduce is used, then divide gradients by local size.
   if (opt_graph_config_.adasum_reduction_type == AdasumReductionType::GpuHierarchicalReduction) {
     scale_divisor *= opt_graph_config_.local_size;
