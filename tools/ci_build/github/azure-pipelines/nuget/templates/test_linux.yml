@@ -60,10 +60,10 @@ jobs:
   - ${{ if eq(parameters['TestGPU'], 'true') }}:
     - template: ../../templates/get-docker-image-steps.yml
       parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.centos_gpu
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda10_2
         Context: tools/ci_build/github/linux/docker
         DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
-        Repository: onnxruntimecentosgpubuild
+        Repository: onnxruntimegpubuild
 
     - script: |
        set -e -x
@@ -72,7 +72,7 @@ jobs:
          $(Build.BinariesDirectory) \
          nuget-artifact \
          $(NuGetPackageVersionNumber) \
-         onnxruntimecentosgpubuild
+         onnxruntimegpubuild
       displayName: 'Run Package Test GPU (x64)'
       env:
         OnnxRuntimeBuildDirectory: $(Build.BinariesDirectory)
