@@ -150,7 +150,7 @@ DistributedRunContext::DistributedRunContext(int32_t world_rank,
                                                      node_data_parallel_group_ranks.end(),
                                                      params_.world_rank);
   const int32_t rank_in_owning_node_group = 
-    (index_in_node_data_parallel_group - node_data_parallel_group_ranks.begin()) % node_data_parallel_group_ranks.size();
+    (index_in_node_data_parallel_group - node_data_parallel_group_ranks.begin()) % static_cast<int32_t>(node_data_parallel_group_ranks.size());
 
   groups_[WorkerGroupType::NodeLocalDataParallel] = {node_data_parallel_group_ranks, node_group_id,
                                                   WorkerGroupType::NodeLocalDataParallel, rank_in_owning_node_group};
