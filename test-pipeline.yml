@@ -1,3 +1,7 @@
+parameters:
+- name: "value"
+  type: "string"
+
 trigger: none
 
 pool: 'Linux-CPU'
@@ -6,4 +10,4 @@ jobs:
 - job: Job
 
   steps:
-  - script: docker image ls
+  - script: echo ${{ parameters.value }}
