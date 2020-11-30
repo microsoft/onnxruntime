@@ -406,7 +406,7 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::ComputeAgg(concurrency::ThreadPool* ttp, 
       }
 
       agg.FinalizeScores(scores, z_data, -1, label_data);
-    } else if (N <= parallel_N_) { /* section D2 */
+    } else if (N <= parallel_N_) { /* section C2 */
       std::vector<ScoreValue<OTYPE>> scores(n_targets_or_classes_);
       size_t j;
 
@@ -419,7 +419,38 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::ComputeAgg(concurrency::ThreadPool* ttp, 
         agg.FinalizeScores(scores, z_data + i * n_targets_or_classes_, -1,
                            label_data == nullptr ? nullptr : (label_data + i));
       }
-    } else { /* section F2 */
+    } else if ((n_trees_ > parallel_tree_) && (N * n_targets_or_classes_ < TREEENSEMBLE_MAXSIZE)) { /* section D2 */
+      auto num_threads = std::min<int32_t>(concurrency::ThreadPool::DegreeOfParallelism(ttp), SafeInt<int32_t>(n_trees_));
+      std::vector<std::vector<ScoreValue<OTYPE>>> scores(num_threads * N);
+      concurrency::ThreadPool::TrySimpleParallelFor(
+          ttp,
+          num_threads,
+          [this, &agg, &scores, num_threads, x_data, N, stride](ptrdiff_t batch_num) {
+            auto work = concurrency::ThreadPool::PartitionWork(batch_num, num_threads, this->n_trees_);
+            for (int64_t i = 0; i < N; ++i) {
+              scores[batch_num * N + i].resize(n_targets_or_classes_, {0, 0});
+            }
+            for (auto j = work.start; j < work.end; ++j) {
+              for (int64_t i = 0; i < N; ++i) {
+                agg.ProcessTreeNodePrediction(scores[batch_num * N + i], *ProcessTreeNodeLeave(roots_[j], x_data + i * stride));
+              }
+            }
+          });
+
+      concurrency::ThreadPool::TrySimpleParallelFor(
+          ttp,
+          num_threads,
+          [this, &agg, &scores, num_threads, label_data, z_data, N](ptrdiff_t batch_num) {
+            auto work = concurrency::ThreadPool::PartitionWork(batch_num, num_threads, N);
+            for (auto i = work.start; i < work.end; ++i) {
+              for (int64_t j = 1; j < num_threads; ++j) {
+                agg.MergePrediction(scores[i], scores[j * N + i]);
+              }
+              agg.FinalizeScores(scores[i], z_data + i * this->n_targets_or_classes_, -1,
+                                 label_data == nullptr ? nullptr : (label_data + i));
+            }
+          });
+    } else { /* section E2 */
       // split the work into one block per thread so we can re-use the 'scores' vector as much as possible
       // TODO: Refine the number of threads used.
       auto num_threads = std::min<int32_t>(concurrency::ThreadPool::DegreeOfParallelism(ttp), SafeInt<int32_t>(N));

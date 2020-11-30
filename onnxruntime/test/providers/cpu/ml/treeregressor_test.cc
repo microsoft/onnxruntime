@@ -8,7 +8,31 @@ namespace onnxruntime {
 namespace test {
 
 template <typename T>
-void GenTreeAndRunTest(const std::vector<T>& X, const std::vector<float>& base_values, const std::vector<float>& results, const std::string& aggFunction, bool one_obs = false) {
+void _multiply_update_array(std::vector<T>& data, int n, T inc = 0) {
+  std::vector<T> copy = data;
+  data.resize(copy.size() * n);
+  T cst = 0;
+  for (int i = 0; i < n; ++i) {
+    for (size_t j = 0; j < copy.size(); ++j) {
+      data[j + i * copy.size()] = copy[j] + cst;
+    }
+    cst += inc;
+  }
+}
+
+void _multiply_update_array_string(std::vector<std::string>& data, int n) {
+  std::vector<std::string> copy = data;
+  data.resize(copy.size() * n);
+  for (int i = 0; i < n; ++i) {
+    for (size_t j = 0; j < copy.size(); ++j) {
+      data[j + i * copy.size()] = copy[j];
+    }
+  }
+}
+
+template <typename T>
+void GenTreeAndRunTest(const std::vector<T>& X, const std::vector<float>& base_values, const std::vector<float>& results, const std::string& aggFunction,
+                       bool one_obs = false, int64_t n_obs = 8, int n_trees = 1) {
   OpTester test("TreeEnsembleRegressor", 1, onnxruntime::kMLDomain);
 
   //tree
@@ -25,6 +49,21 @@ void GenTreeAndRunTest(const std::vector<T>& X, const std::vector<float>& base_v
   std::vector<int64_t> target_classids = {0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1};
   std::vector<float> target_weights = {1.5f, 27.5f, 2.25f, 20.75f, 2.f, 23.f, 3.f, 14.f, 0.f, 41.f, 1.83333333f, 24.5f, 0.f, 41.f, 2.75f, 16.25f, 2.f, 23.f, 3.f, 14.f, 2.66666667f, 17.f, 2.f, 23.f, 3.f, 14.f};
   std::vector<int64_t> classes = {0, 1};
+
+  if (n_trees > 1) {
+    // Multiplies the number of trees to test the parallelization by trees.
+    _multiply_update_array(lefts, n_trees);
+    _multiply_update_array(rights, n_trees);
+    _multiply_update_array(treeids, n_trees, (int64_t)3);
+    _multiply_update_array(nodeids, n_trees);
+    _multiply_update_array(featureids, n_trees);
+    _multiply_update_array(thresholds, n_trees);
+    _multiply_update_array_string(modes, n_trees);
+    _multiply_update_array(target_treeids, n_trees, (int64_t)3);
+    _multiply_update_array(target_nodeids, n_trees);
+    _multiply_update_array(target_classids, n_trees);
+    _multiply_update_array(target_weights, n_trees);
+  }
 
   //add attributes
   test.AddAttribute("nodes_truenodeids", lefts);
@@ -51,6 +90,8 @@ void GenTreeAndRunTest(const std::vector<T>& X, const std::vector<float>& base_v
   }  // default function is SUM
 
   //fill input data
+  std::vector<T> xn;
+  std::vector<float> yn;
   if (one_obs) {
     auto X1 = X;
     auto results1 = results;
@@ -58,12 +99,43 @@ void GenTreeAndRunTest(const std::vector<T>& X, const std::vector<float>& base_v
     results1.resize(2);
     test.AddInput<T>("X", {1, 3}, X1);
     test.AddOutput<float>("Y", {1, 2}, results1);
-  } else {
+  } else if (n_obs == 8) {
     test.AddInput<T>("X", {8, 3}, X);
     test.AddOutput<float>("Y", {8, 2}, results);
+  } else {
+    int64_t i;
+    size_t k;
+    ASSERT_TRUE(n_obs % 8 == 0);
+    xn.resize(n_obs * 3);
+    yn.resize(n_obs * 2);
+    for (i = 0; i < n_obs; i += 8) {
+      for (k = 0; k < 24; ++k) {
+        xn[i * 3 + k] = X[k];
+      }
+      for (k = 0; k < 16; ++k) {
+        yn[i * 2 + k] = results[k];
+      }
+    }
+    ASSERT_TRUE(i == n_obs);
+    test.AddInput<T>("X", {n_obs, 3}, xn);
+    test.AddOutput<float>("Y", {n_obs, 2}, yn);
   }
+
   test.Run();
 }  // namespace test
+
+TEST(MLOpTest, TreeRegressorMultiTargetSumBatchTree) {
+  // TreeEnsemble implements different paths depending on n_trees or N.
+  // It is not possible to test all of them in a short time without
+  // changing two thresholds which cannot be changed with the current API.
+  std::vector<float> X = {1.f, 0.0f, 0.4f, 3.0f, 44.0f, -3.f, 12.0f, 12.9f, -312.f, 23.0f, 11.3f, -222.f, 23.0f, 11.3f, -222.f, 23.0f, 3311.3f, -222.f, 23.0f, 11.3f, -222.f, 43.0f, 413.3f, -114.f};
+  std::vector<float> results = {1.33333333f, 29.f, 3.f, 14.f, 2.f, 23.f, 2.f, 23.f, 2.f, 23.f, 2.66666667f, 17.f, 2.f, 23.f, 3.f, 14.f};
+  std::vector<float> base_values{0.f, 0.f};
+  GenTreeAndRunTest(X, base_values, results, "AVERAGE", true, 8, 30);
+  GenTreeAndRunTest(X, base_values, results, "AVERAGE", false, 200, 30);
+  GenTreeAndRunTest(X, base_values, results, "AVERAGE", false, 200, 130);
+  // GenTreeAndRunTest(X, base_values, results, "AVERAGE", false, 111040008, 30);
+}
 
 TEST(MLOpTest, TreeRegressorMultiTargetAverage) {
   std::vector<float> X = {1.f, 0.0f, 0.4f, 3.0f, 44.0f, -3.f, 12.0f, 12.9f, -312.f, 23.0f, 11.3f, -222.f, 23.0f, 11.3f, -222.f, 23.0f, 3311.3f, -222.f, 23.0f, 11.3f, -222.f, 43.0f, 413.3f, -114.f};
@@ -95,29 +167,6 @@ TEST(MLOpTest, TreeRegressorMultiTargetMaxDouble) {
   std::vector<float> base_values{0.f, 0.f};
   GenTreeAndRunTest<double>(X, base_values, results, "MAX", false);
   GenTreeAndRunTest<double>(X, base_values, results, "MAX", true);
-}
-
-template <typename T>
-void _multiply_update_array(std::vector<T>& data, int n, T inc = 0) {
-  std::vector<T> copy = data;
-  data.resize(copy.size() * n);
-  T cst = 0;
-  for (int i = 0; i < n; ++i) {
-    for (size_t j = 0; j < copy.size(); ++j) {
-      data[j + i * copy.size()] = copy[j] + cst;
-    }
-    cst += inc;
-  }
-}
-
-void _multiply_update_array_string(std::vector<std::string>& data, int n) {
-  std::vector<std::string> copy = data;
-  data.resize(copy.size() * n);
-  for (int i = 0; i < n; ++i) {
-    for (size_t j = 0; j < copy.size(); ++j) {
-      data[j + i * copy.size()] = copy[j];
-    }
-  }
 }
 
 void GenTreeAndRunTest1(const std::string& aggFunction, bool one_obs, int64_t n_obs = 3, int n_trees = 1) {
@@ -232,9 +281,13 @@ TEST(MLOpTest, TreeRegressorSingleTargetSumBatch) {
 }
 
 TEST(MLOpTest, TreeRegressorSingleTargetSumBatchTree) {
+  // TreeEnsemble implements different paths depending on n_trees or N.
+  // It is not possible to test all of them in a short time without
+  // changing two thresholds which cannot be changed with the current API.
   GenTreeAndRunTest1("SUM", true, 3, 30);
   GenTreeAndRunTest1("SUM", false, 201, 30);
-  GenTreeAndRunTest1("SUM", false, 111040002, 30);
+  GenTreeAndRunTest1("AVERAGE", false, 201, 130);
+  //GenTreeAndRunTest1("SUM", false, 111040002, 30);
 }
 
 TEST(MLOpTest, TreeRegressorSingleTargetAverage) {
