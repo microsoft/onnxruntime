@@ -79,6 +79,8 @@ stages:
             python.version: '3.7'
           Python38:
             python.version: '3.8'
+          Python39:
+            python.version: '3.9'
       steps:
       - checkout: self
         clean: true
@@ -152,6 +154,8 @@ stages:
             python.version: '3.7'
           Python38:
             python.version: '3.8'
+          Python39:
+            python.version: '3.9'
       steps:
       - checkout: self
         clean: true
@@ -226,6 +230,8 @@ stages:
             python.version: '3.7'
           Python38:
             python.version: '3.8'
+          Python39:
+            python.version: '3.9'
       steps:
       - checkout: self
         clean: true
@@ -296,6 +302,8 @@ stages:
             python.version: '3.7'
           Python38:
             python.version: '3.8'
+          Python39:
+            python.version: '3.9'
       steps:
       - checkout: self
         clean: true
@@ -371,6 +379,8 @@ stages:
             python.version: '3.7'
           Python38:
             python.version: '3.8'
+          Python39:
+            python.version: '3.9'
       variables:
         OrtPackageId: 'Microsoft.ML.OnnxRuntime'
         MsbuildArguments: '-maxcpucount'
@@ -499,6 +509,8 @@ stages:
             python.version: '3.7'
           Python38:
             python.version: '3.8'
+          Python39:
+            python.version: '3.9'
       variables:
         OrtPackageId: 'Microsoft.ML.OnnxRuntime'
         MsbuildArguments: '-maxcpucount'
@@ -632,6 +644,10 @@ stages:
             python.version: '3.6'
           Python37:
             python.version: '3.7'
+          Python38:
+            python.version: '3.8'
+          Python39:
+            python.version: '3.9'
       steps:
       - checkout: self
         clean: true
@@ -751,6 +767,8 @@ stages:
             python.version: '3.7'
           Python38:
             python.version: '3.8'
+          Python39:
+            python.version: '3.9'
       steps:
       - checkout: self
         clean: true
@@ -802,6 +820,8 @@ stages:
       pool: 'Linux-CPU'
       strategy:
         matrix:
+          Py38:
+            python.version: '3.8'
           Py37:
             python.version: '3.7'
           Py36:
