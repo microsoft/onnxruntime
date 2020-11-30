@@ -11,10 +11,10 @@ jobs:
 
   - template: templates/get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.centos_gpu
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda10_2
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
-      Repository: onnxruntimecentosgpubuild
+      Repository: onnxruntimegpubuild
 
   - task: CmdLine@2
     inputs:
@@ -28,7 +28,7 @@ jobs:
           --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
-          onnxruntimecentosgpubuild \
+          onnxruntimegpubuild \
             python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build --cmake_generator Ninja \
               --config Debug Release \
