@@ -3,10 +3,8 @@
 parameters:
 - name: Steps
   type: stepList
-  default: []
 - name: ContainerRegistry
   type: string
-  default: ""
 
 steps:
 - task: Docker@2

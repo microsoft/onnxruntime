@@ -3,7 +3,6 @@
 parameters:
 - name: RunDockerBuildArgs
   type: string
-  default: ""
 - name: DisplayName
   type: string
   default: "Call run_dockerbuild.sh"
