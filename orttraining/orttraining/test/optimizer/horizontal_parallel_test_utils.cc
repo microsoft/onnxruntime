@@ -4,10 +4,12 @@
 #include "core/graph/model.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
+#include "test/providers/provider_test_utils.h"
 #include "horizontal_parallel_test_utils.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
+using namespace onnxruntime::test;
 
 namespace onnxruntime {
 namespace horizontal_parallel_test_utils {
@@ -128,18 +130,25 @@ void VerifyOutputs(const Tensor& expected_tensor, const Tensor& actual_tensor, b
   if (expected_tensor.GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     const std::vector<float> expected(expected_tensor.template Data<float>(), expected_tensor.template Data<float>() + size);
     const std::vector<float> actual(actual_tensor.template Data<float>(), actual_tensor.template Data<float>() + size);
-    VerifyOutputs<float>(expected, actual, use_threshold_compare, atol, rtol, threshold);
-  } else if (expected_tensor.GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-    const std::vector<MLFloat16> expected(expected_tensor.template Data<MLFloat16>(), expected_tensor.template Data<MLFloat16>() + size);
-    const std::vector<MLFloat16> actual(actual_tensor.template Data<MLFloat16>(), actual_tensor.template Data<MLFloat16>() + size);
-    VerifyOutputs<MLFloat16>(expected, actual, use_threshold_compare, MLFloat16(math::floatToHalf(atol)),
-                             MLFloat16(math::floatToHalf(rtol)), MLFloat16(math::floatToHalf(threshold)));
+    VerifyOutputs(expected, actual, use_threshold_compare, atol, rtol, threshold);
   }
+#ifdef USE_CUDA
+  else if (expected_tensor.GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+    auto* expected = expected_tensor.template Data<MLFloat16>();
+    auto* actual = actual_tensor.template Data<MLFloat16>();
+  
+    std::vector<float> f_expected(size);
+    std::vector<float> f_actual(size);
+    ConvertMLFloat16ToFloat(expected, f_expected.data(), static_cast<int>(size));
+    ConvertMLFloat16ToFloat(actual, f_actual.data(), static_cast<int>(size));
+    VerifyOutputs(f_expected, f_actual, use_threshold_compare, math::halfToFloat(math::floatToHalf(atol)),
+                             math::halfToFloat(math::floatToHalf(rtol)), math::halfToFloat(math::floatToHalf(threshold)));
+  }
+#endif
 }
 
-template <typename T>
-void VerifyOutputs(const std::vector<T>& expected, const std::vector<T>& actual,
-                   bool use_threshold_compare, T atol, T rtol, T threshold) {
+void VerifyOutputs(const std::vector<float>& expected, const std::vector<float>& actual,
+                   bool use_threshold_compare, float atol, float rtol, float threshold) {
   auto size = expected.size();
   ORT_ENFORCE(size == actual.size());
   for (auto i = 0u; i < size; ++i) {

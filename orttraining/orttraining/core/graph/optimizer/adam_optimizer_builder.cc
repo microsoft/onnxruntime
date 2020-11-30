@@ -81,9 +81,9 @@ Status AdamOptimizerBuilder::Build(
 
       // Update 'Update_Count' initializer with init value
       const auto& initial_states = opt_configs[i].initial_states;
-      const auto initial_state_it = initial_states.find(uc_prefix);
-      if (initial_state_it != initial_states.end()) {        
-        const auto& init_tensor = initial_state_it->second.Get<Tensor>();
+      const auto uc_state_it = initial_states.find(uc_prefix);
+      if (uc_state_it != initial_states.end()) {        
+        const auto& init_tensor = uc_state_it->second.Get<Tensor>();
         ORT_THROW_IF_ERROR(IsMatchingTypeAndShape(init_tensor, ONNX_NAMESPACE::TensorProto_DataType_INT64, {1}));
         uc_tensor_proto = utils::TensorToTensorProto(init_tensor, update_count_string);
       } else {
@@ -126,10 +126,10 @@ Status AdamOptimizerBuilder::Build(
         TypeProto* moment_type_proto = graph_defs.CopyTypeProto(weight_argdefs[i]);
 
         // Update moment initializer with init value
-        const auto initial_state_it = initial_states.find(moments_prefix);
-        if (initial_state_it != initial_states.end()) {
+        const auto moment_state_it = initial_states.find(moments_prefix);
+        if (moment_state_it != initial_states.end()) {
           //update moment_tensor_proto          
-          const auto& init_tensor = initial_state_it->second.Get<Tensor>();
+          const auto& init_tensor = moment_state_it->second.Get<Tensor>();
 
           //TODO: need to support float -> float16 and float16-> float conversion
           ORT_THROW_IF_ERROR(IsMatchingTypeAndShape(init_tensor, element_type, weight_dims));

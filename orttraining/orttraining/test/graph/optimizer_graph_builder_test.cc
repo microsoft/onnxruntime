@@ -121,17 +121,22 @@ OptimizerBuilderRegistry& GetOptimizerBuilderRegistry() {
   return OptimizerBuilderRegistry::GetInstance();
 }
 
-template <class T>
-void IsEqual(const ONNX_NAMESPACE::TensorProto* tensor, T expected_val) {
-  T tensor_value = static_cast<T>(0);
+void VerifyTensorValue(const ONNX_NAMESPACE::TensorProto* tensor, float expected_val) {
+  float tensor_value;
   if (tensor->has_raw_data()) {
-    memcpy(&tensor_value, tensor->raw_data().data(), sizeof(T));
+    memcpy(&tensor_value, tensor->raw_data().data(), sizeof(float));
   } else {
-    if (tensor->data_type() == ONNX_NAMESPACE::TensorProto::FLOAT) {
-      tensor_value = *(tensor->float_data().data());
-    } else if (tensor->data_type() == ONNX_NAMESPACE::TensorProto::INT64) {
-      tensor_value = *(tensor->int64_data().data());
-    }
+    tensor_value = *(tensor->float_data().data());
+  }
+  ASSERT_EQ(tensor_value, expected_val);
+}
+
+void VerifyTensorValue(const ONNX_NAMESPACE::TensorProto* tensor, int64_t expected_val) {
+  int64_t tensor_value;
+  if (tensor->has_raw_data()) {
+    memcpy(&tensor_value, tensor->raw_data().data(), sizeof(int64_t));
+  } else {
+    tensor_value = *(tensor->int64_data().data());
   }
   ASSERT_EQ(tensor_value, expected_val);
 }
@@ -185,9 +190,9 @@ static void TestOptimizerGraphBuilderWithInitialStates(OptimizerGraphConfig conf
     ASSERT_TRUE(graph.GetInitializedTensor(init_name, tensor));
     ASSERT_TRUE(tensor->data_type() == ONNX_NAMESPACE::TensorProto::FLOAT || tensor->data_type() == ONNX_NAMESPACE::TensorProto::INT64);
     if (tensor->data_type() == ONNX_NAMESPACE::TensorProto::FLOAT) {
-      IsEqual<float>(tensor, values[0]);
+      VerifyTensorValue(tensor, values[0]);
     } else if (tensor->data_type() == ONNX_NAMESPACE::TensorProto::INT64) {
-      IsEqual<int64_t>(tensor, uc_value[0]);
+      VerifyTensorValue(tensor, uc_value[0]);
     }
   }
 }

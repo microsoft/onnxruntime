@@ -36,7 +36,7 @@ void GenerateOpimizerInitialState(const std::string& optimizer_op_name, const T 
     NameMLValMap optim_state;
 
     std::vector<int64_t> param_dims = WEIGHT_TO_SHAPE_MAP.at(weight_name);
-    int64_t num_ele = std::accumulate(param_dims.begin(), param_dims.end(), 1, std::multiplies<int64_t>());
+    int64_t num_ele = std::accumulate(param_dims.begin(), param_dims.end(), static_cast<int64_t>(1), std::multiplies<int64_t>());
 
     for (auto& param_prefix : MOMENT_PREFIX) {
       std::vector<T> param_value(num_ele, init_moment_value);

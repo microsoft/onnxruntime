@@ -104,9 +104,9 @@ Status LambOptimizerBuilder::Build(
   const std::string step_tensor_name = "Step";  // per weight optimizer requires a per weight update count
   // Add step as an initializer.
   TensorProto step_tensor_proto;
-  const auto initial_state_it = shared_optim_state.find(step_tensor_name);
-  if (initial_state_it != shared_optim_state.end()) {
-    const auto& init_tensor = initial_state_it->second.Get<Tensor>();
+  const auto step_state_it = shared_optim_state.find(step_tensor_name);
+  if (step_state_it != shared_optim_state.end()) {
+    const auto& init_tensor = step_state_it->second.Get<Tensor>();
     ORT_THROW_IF_ERROR(IsMatchingTypeAndShape(init_tensor, ONNX_NAMESPACE::TensorProto_DataType_INT64, {1}));
     step_tensor_proto = utils::TensorToTensorProto(init_tensor, step_tensor_name);
   } else {
@@ -250,10 +250,10 @@ Status LambOptimizerBuilder::Build(
 
         // Update moment initializer with init value
         const auto& initial_states = opt_configs[i].initial_states;
-        const auto initial_state_it = initial_states.find(moment_prefix);
-        if (initial_state_it != initial_states.end()) {
+        const auto moment_state_it = initial_states.find(moment_prefix);
+        if (moment_state_it != initial_states.end()) {
           //update moment_tensor_proto
-          const auto& init_tensor = initial_state_it->second.Get<Tensor>();
+          const auto& init_tensor = moment_state_it->second.Get<Tensor>();
 
           //TODO: need to support float -> float16 and float16-> float conversion
           ORT_THROW_IF_ERROR(IsMatchingTypeAndShape(init_tensor, element_type, weight_dims));
