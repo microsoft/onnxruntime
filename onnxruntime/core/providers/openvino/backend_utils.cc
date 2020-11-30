@@ -53,6 +53,7 @@ CreateCNNNetwork(const Provider_ModelProto& model_proto, const GlobalContext& gl
 
   std::istringstream model_stream{model_proto.SerializeAsString()};
   std::shared_ptr<ngraph::Function> ng_function;
+  std::cout << "CreateNgraphFunc" << std::endl;
 
 #ifndef NDEBUG
   if (IsDebugEnabled()) {
