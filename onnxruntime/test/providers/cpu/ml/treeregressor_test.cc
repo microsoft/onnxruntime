@@ -213,11 +213,7 @@ void GenTreeAndRunTest1(const std::string& aggFunction, bool one_obs, int64_t n_
     test.AddAttribute("aggregate_function", "MAX");
     results = {33.33333f, 33.33333f, 16.66666f};
   } else {  // default function is SUM
-    if (n_trees > 1) {
-      results = {63.33333333f * n_trees + 0.000244140625f, 26.66666667f * n_trees - 0.0001220703125f, 30.0f * n_trees + 0.00042724609375f};
-    } else {
-      results = {63.33333333f, 26.66666667f, 30.0f};
-    }
+    results = {63.33333333f, 26.66666667f, 30.0f};
   }
 
   //test data
@@ -284,8 +280,9 @@ TEST(MLOpTest, TreeRegressorSingleTargetSumBatchTree) {
   // TreeEnsemble implements different paths depending on n_trees or N.
   // It is not possible to test all of them in a short time without
   // changing two thresholds which cannot be changed with the current API.
-  GenTreeAndRunTest1("SUM", true, 3, 30);
-  GenTreeAndRunTest1("SUM", false, 201, 30);
+  GenTreeAndRunTest1("SUM", true, 3, 1);
+  GenTreeAndRunTest1("AVERAGE", true, 3, 30);
+  GenTreeAndRunTest1("AVERAGE", false, 201, 30);
   GenTreeAndRunTest1("AVERAGE", false, 201, 130);
   //GenTreeAndRunTest1("SUM", false, 111040002, 30);
 }
