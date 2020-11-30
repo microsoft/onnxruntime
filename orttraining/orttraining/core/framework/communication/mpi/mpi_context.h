@@ -72,9 +72,9 @@ class MPIContext {
 
     // Groups containing mpi communicator for any worker group.
     std::vector<MPIGroup> mpi_groups_;
+#if defined(USE_MPI)
     // Global counter for MPI groups
     int mpi_group_id_ = 0;
-#if defined(USE_MPI)
     void setup_mpi();
     void ReleaseComms();
 #endif
