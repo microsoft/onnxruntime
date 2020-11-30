@@ -257,7 +257,9 @@ void build_allreduce_graph(Graph& graph, AllreduceGraphConfigVector& config,
 
     // Output tensor defined by tests
     ONNX_NAMESPACE::TypeProto output_float_tensor;
-    output_float_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    auto output_type = build_optimizer ? ONNX_NAMESPACE::TensorProto_DataType_FLOAT :
+                                      ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+    output_float_tensor.mutable_tensor_type()->set_elem_type(output_type);
     output_float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(std::get<2>(config[i]));
     auto& output_arg_1 = graph.GetOrCreateNodeArg(std::get<1>(config[i]), &output_float_tensor);
     outputs.push_back(&output_arg_1);

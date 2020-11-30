@@ -4,7 +4,7 @@
 #include "orttraining/training_ops/rocm/collective/nccl_common.h"
 #include <mpi.h>
 
-#include "orttraining/core/framework/mpi_context.h"
+#include "orttraining/core/framework/communication/mpi/mpi_context.h"
 
 namespace onnxruntime {
 namespace rocm {
