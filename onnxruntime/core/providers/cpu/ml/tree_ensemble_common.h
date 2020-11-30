@@ -319,7 +319,7 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::ComputeAgg(concurrency::ThreadPool* ttp, 
       concurrency::ThreadPool::TryBatchParallelFor(
           ttp,
           SafeInt<int32_t>(N),
-          [this, &scores_t, &agg, x_data, z_data, label_data, N](ptrdiff_t i) {
+          [this, &scores_t, &agg, z_data, label_data, N](ptrdiff_t i) {
             for (int64_t j = 1; j < this->n_trees_; ++j) {
               agg.MergePrediction1(scores_t[i], scores_t[j * N + i]);
             }
@@ -333,7 +333,7 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::ComputeAgg(concurrency::ThreadPool* ttp, 
           SafeInt<int32_t>(N),
           [this, &agg, x_data, z_data, stride, label_data](ptrdiff_t i) {
             ScoreValue<OTYPE> score = {0, 0};
-            for (size_t j = 0; j < static_cast<size_t>(n_trees_); ++j) {
+            for (size_t j = 0; j < static_cast<size_t>(this->n_trees_); ++j) {
               agg.ProcessTreeNodePrediction1(score, *ProcessTreeNodeLeave(roots_[j], x_data + i * stride));
             }
 
