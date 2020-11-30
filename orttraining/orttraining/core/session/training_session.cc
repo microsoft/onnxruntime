@@ -932,8 +932,15 @@ common::Status TrainingSession::GetOptimizerState(std::unordered_map<std::string
   for (auto& kv : weight_to_opt_mapping_) {
     NameMLValMap curr_opt_tensors;
     std::unordered_set<std::string> opt_names(kv.second.begin(), kv.second.end());
+    auto& weight_name = kv.first;
     GetSessionState().GetInitializedTensors(opt_names, allow_missing, curr_opt_tensors);
-    opt_state_tensors[kv.first] = curr_opt_tensors;
+    opt_state_tensors[weight_name] = {};
+    // Keep only prefix in returned value
+    for (auto& opt_pair: curr_opt_tensors) {
+      auto opt_name = opt_pair.first;
+      std::string pre_fix_only = opt_name.substr(0, opt_name.find(weight_name) - 1);
+      opt_state_tensors[weight_name][pre_fix_only] = opt_pair.second;
+    }
   }
   return Status::OK();
 }

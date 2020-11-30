@@ -276,7 +276,6 @@ Status OptimizerGraphBuilder::AddDirectWeightUpdate(
   ORT_RETURN_IF_NOT(weight_argdefs.size() == gradient_argdefs.size());
   ORT_RETURN_IF_NOT(weight_argdefs.size() == opt_configs.size());
 
-  std::vector<TensorProto> new_initializers;
   std::vector<ArgDef> output_weight_argdefs;
   std::vector<ArgDef> output_gradient_argdefs;
 
@@ -300,7 +299,16 @@ Status OptimizerGraphBuilder::AddDirectWeightUpdate(
       weight_to_opt_obj_mapping,
       output_weight_argdefs, output_gradient_argdefs));
 
-  graph_defs.AddInitializers(new_initializers);
+  std::vector<TensorProto> initializers_vec;
+  for (auto& kv : weight_to_opt_obj_mapping) {
+    weight_to_opt_mapping[kv.first] = {};
+    for (auto& kv2 : kv.second) {
+      TensorProto& initializer = (TensorProto&)kv2;
+      weight_to_opt_mapping[kv.first].emplace_back(initializer.name());
+      initializers_vec.emplace_back(initializer);
+    }
+  }
+  graph_defs.AddInitializers(initializers_vec);
 
   weight_argdefs = std::move(output_weight_argdefs);
   gradient_argdefs = std::move(output_gradient_argdefs);
