@@ -1,7 +1,6 @@
 parameters:
 - name: "value"
   type: "string"
-  default: "foo"
 
 trigger: none
 
