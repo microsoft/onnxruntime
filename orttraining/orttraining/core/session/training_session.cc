@@ -298,10 +298,10 @@ Status TrainingSession::ConfigureForTraining(
                                  << weight_names_stream.str();
   }
 
-  std::cout << "weight_names_to_train:" << std::endl;
-  for (auto& kv : weight_names_to_train) {
-    std::cout << kv << " " << std::endl;
-  }
+  // std::cout << "weight_names_to_train:" << std::endl;
+  // for (auto& kv : weight_names_to_train) {
+  //   std::cout << kv << " " << std::endl;
+  // }
 
   // Transform for mixed precision on forward graph.
   std::unordered_map<std::string, NodeArg*> fp32_weight_name_to_mixed_precision_node_arg{};
@@ -312,10 +312,10 @@ Status TrainingSession::ConfigureForTraining(
                                              fp32_weight_name_to_mixed_precision_node_arg));
   }
 
-  std::cout << "fp32_weight_name_to_mixed_precision_node_arg:" << std::endl;
-  for (auto& kv : fp32_weight_name_to_mixed_precision_node_arg) {
-    std::cout << kv.first << " " << kv.second << " " << std::endl;
-  }
+  // std::cout << "fp32_weight_name_to_mixed_precision_node_arg:" << std::endl;
+  // for (auto& kv : fp32_weight_name_to_mixed_precision_node_arg) {
+  //   std::cout << kv.first << " " << kv.second << " " << std::endl;
+  // }
 
   ORT_RETURN_IF_ERROR(BuildGradientGraph(
       weight_names_to_train, loss_name, config.gradient_graph_config, *session_logger_));
@@ -361,10 +361,10 @@ Status TrainingSession::ConfigureForTraining(
     }
   }
 
-  std::cout << "After removing wrong data types, weights_to_train_:" << std::endl;
-  for (auto& kv : weights_to_train_) {
-    std::cout << kv << " " << std::endl;
-  }
+  // std::cout << "After removing wrong data types, weights_to_train_:" << std::endl;
+  // for (auto& kv : weights_to_train_) {
+  //   std::cout << kv << " " << std::endl;
+  // }
 
   // add optimizer or gradient accumulation
   if (config.optimizer_config.has_value()) {

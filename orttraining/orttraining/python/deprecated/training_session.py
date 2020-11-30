@@ -38,8 +38,20 @@ class TrainingSession(InferenceSession):
     def get_state(self):
         return self._sess.get_state()
 
+    def get_model_state(self, incl_mp_weights=False):
+        return self._sess.get_model_state(incl_mp_weights)
+    
+    def get_optimizer_state(self):
+        return self._sess.get_optimizer_state()
+
+    def get_partition_info_map(self):
+        return self._sess.get_partition_info_map()
+
     def load_state(self, dict, strict=False):
         self._sess.load_state(dict, strict)
+    
+    def load_model_opt_state(self, model_state, opt_state, strict=False):
+        self._sess.load_model_opt_state(dict, model_state, opt_state, strict)
 
     def is_output_fp32_node(self, output_name):
         return self._sess.is_output_fp32_node(output_name)
