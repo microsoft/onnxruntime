@@ -76,7 +76,7 @@ CreateCNNNetwork(const Provider_ModelProto& model_proto, const GlobalContext& gl
     ng_function->validate_nodes_and_infer_types();
   }
 
-#if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1)
+#if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1) || (defined OPENVINO_2021_2)
   if (!global_context.is_wholly_supported_graph) {
     std::map<std::string, std::string> result_to_output;
     for (auto& result : ng_function->get_results()) {
@@ -156,8 +156,10 @@ void SetIODefs(const Provider_ModelProto& model_proto,
   // Prepare output blobs
   auto outputInfo = network->getOutputsInfo();
   for (auto iter = outputInfo.begin(); iter != outputInfo.end(); ++iter) {
-    auto output_name = iter->first;
-#if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1)
+    auto token = iter->first;
+    std::string delimiter = ".";
+    auto output_name = token.substr(0, token.find(delimiter));
+#if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1) || (defined OPENVINO_2021_2)
     auto it = const_outputs_map.find(output_name);
     //Output is constant and don't need to set precision
     if (it != const_outputs_map.end())
@@ -190,7 +192,9 @@ GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_s
   for (size_t j = 0; j < num_dims; j++) {
     output_shape[j] = static_cast<int64_t>(graph_output_dims[j]);
   }
-  auto it = output_names.find(output_name);
+  std::string delimiter = ".";
+  auto token = output_name.substr(0, output_name.find(delimiter));
+  auto it = output_names.find(token);
   if (it == output_names.end()) {
     ORT_THROW(log_tag + "Output names mismatch between OpenVINO and ONNX");
   }
@@ -201,7 +205,7 @@ GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_s
   return output_tensor;
 }
 
-#if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1)
+#if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1) || (defined OPENVINO_2021_2)
 OrtValue*
 GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context,
                 std::string output_name,
@@ -249,7 +253,7 @@ int GetFirstAvailableDevice(GlobalContext& global_context) {
   return i;
 }
 
-#if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1)
+#if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1) || (defined OPENVINO_2021_2)
 void FillOutputsWithConstantData(Ort::CustomOpApi& ort, std::shared_ptr<ngraph::Node> node, OrtValue* out_tensor) {
   switch (node->get_element_type()) {
     case ngraph::element::Type_t::f32: {
@@ -274,7 +278,7 @@ void FillOutputsWithConstantData(Ort::CustomOpApi& ort, std::shared_ptr<ngraph::
 }
 #endif
 
-#if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1)
+#if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1) || (defined OPENVINO_2021_2)
 template <typename T>
 void FillOutputHelper(Ort::CustomOpApi& ort, OrtValue* out_tensor, std::shared_ptr<ngraph::Node> node) {
   auto const_node = std::dynamic_pointer_cast<ngraph::op::Constant>(node);
