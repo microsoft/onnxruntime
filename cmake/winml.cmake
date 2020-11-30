@@ -26,8 +26,39 @@ set(winml_lib_api_ort_dir ${REPO_ROOT}/winml/lib/api.ort)
 set(winml_lib_common_dir ${REPO_ROOT}/winml/lib/common)
 set(winml_lib_telemetry_dir ${REPO_ROOT}/winml/lib/telemetry)
 
+# Pull down the nuget packages to get cppwinrt nuget
+if (NOT(MSVC) OR NOT(WIN32))
+  message(FATAL_ERROR "NuGet packages are only supported for MSVC on Windows.")
+endif()
+
+# Retrieve the latest version of nuget
+include(ExternalProject)
+ExternalProject_Add(nuget
+  PREFIX nuget
+  URL "https://dist.nuget.org/win-x86-commandline/v5.3.0/nuget.exe"
+  DOWNLOAD_NO_EXTRACT 1
+  CONFIGURE_COMMAND ""
+  BUILD_COMMAND ""
+  UPDATE_COMMAND ""
+  INSTALL_COMMAND "")
+
+set(NUGET_CONFIG ${PROJECT_SOURCE_DIR}/../NuGet.config)
+set(PACKAGES_CONFIG ${PROJECT_SOURCE_DIR}/../packages.config)
+get_filename_component(PACKAGES_DIR ${CMAKE_CURRENT_BINARY_DIR}/../packages ABSOLUTE)
+set(CPPWINRT_PACKAGE_DIR ${PACKAGES_DIR}/Microsoft.Windows.CppWinRT.2.0.201113.7)
+
+# Restore nuget packages, which will pull down the CppWinRT package
+add_custom_command(
+  OUTPUT ${CPPWINRT_PACKAGE_DIR}/bin/cppwinrt.exe
+  DEPENDS ${PACKAGES_CONFIG} ${NUGET_CONFIG}
+  COMMAND ${CMAKE_CURRENT_BINARY_DIR}/nuget/src/nuget restore ${PACKAGES_CONFIG} -PackagesDirectory ${PACKAGES_DIR} -ConfigFile ${NUGET_CONFIG}
+  VERBATIM)
+
+add_custom_target(RESTORE_NUGET_PACKAGES ALL DEPENDS ${CPPWINRT_PACKAGE_DIR}/bin/cppwinrt.exe)
+add_dependencies(RESTORE_NUGET_PACKAGES nuget)
+
 # Override and use the the cppwinrt from NuGet package as opposed to the one in the SDK.
-set(winml_CPPWINRT_EXE_PATH_OVERRIDE ${PACKAGES_DIR}/Microsoft.Windows.CppWinRT.2.0.201113.7/bin/cppwinrt.exe)
+set(winml_CPPWINRT_EXE_PATH_OVERRIDE ${CPPWINRT_PACKAGE_DIR}/bin/cppwinrt.exe)
 
 set(winml_is_inbox OFF)
 if (onnxruntime_WINML_NAMESPACE_OVERRIDE)
