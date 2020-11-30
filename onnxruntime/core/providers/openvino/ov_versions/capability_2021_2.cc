@@ -159,7 +159,6 @@ bool IsOpSupported(std::string name, std::string device) {
   };
   std::set<std::string> supported_ops_vpu = {
       "Expand",
-      "GatherND",
       "NonZero",
       "ReduceLogSum",
       "ReduceSumSquare",
@@ -167,6 +166,14 @@ bool IsOpSupported(std::string name, std::string device) {
       "RoiAlign",
       "Scatter",
       "SinFloat",
+      "ArgMax",
+      "Range",
+      "Where",
+      "ArgMin",
+      "Round",
+      "Not",
+      "Equal",
+      "ScatterElements",
   };
 
   std::set<std::string> supported_ops = {};
@@ -244,29 +251,29 @@ static bool IsUnsupportedOpMode(const Provider_Node* node, const Provider_GraphV
 
   if (optype == "MaxPool") {
     //MaxPool "indices" output is not currently supported.
-    if (node->OutputDefs().size() > 1) {
-      return true;
-    }
+    //if (node->OutputDefs().size() > 1) {
+    //  return true;
+    //}
 
-    const auto& attributes = node->GetAttributes();
+    //const auto& attributes = node->GetAttributes();
 
-    auto ceil_attr = attributes.find("ceil_mode");
+    //auto ceil_attr = attributes.find("ceil_mode");
     // default value of ceil_mode (0) is supported.
-    if (ceil_attr != attributes.end() && ceil_attr->second().i() != 0) {
-      return true;
-    }
+    //if (ceil_attr != attributes.end() && ceil_attr->second().i() != 0) {
+    //  return true;
+    //}
 
     //auto pad null value is not supported
-    auto auto_attr = attributes.find("auto_pad");
-    if (auto_attr->second().s() == "") {
-      return true;
-    }
+    //auto auto_attr = attributes.find("auto_pad");
+    //if (auto_attr->second().s() == "") {
+    //  return true;
+    //}
     // dilations attrs are not supported in nGraph
-    if (attributes.find("dilations") != attributes.end()) {
-      return true;
-    }
-    if (!IsDimensionSupported(node))
-      return true;
+    //if (attributes.find("dilations") != attributes.end()) {
+    //  return true;
+    //}
+    //if (!IsDimensionSupported(node))
+    //  return true;
   } else if (optype == "Abs") {
     for (size_t i = 0; i < node->InputDefs().size(); i++) {
       if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT)
@@ -338,8 +345,8 @@ static bool IsUnsupportedOpMode(const Provider_Node* node, const Provider_GraphV
       return true;
   } else if (optype == "Resize") {
     //Resize opset 11 is not supported
-    if (node->InputDefs().size() > 2)
-      return true;
+    //if (node->InputDefs().size() > 2)
+    //  return true;
   } else if (optype == "Unsqueeze") {
     if (!IsDimensionSupported(node))
       return true;
@@ -453,7 +460,7 @@ static bool IsUnsupportedOpMode(const Provider_Node* node, const Provider_GraphV
       return true;
     }
   } else if ((optype == "Equal") || (optype == "And")) {
-    using onnx_dtype = ONNX_NAMESPACE::TensorProto_DataType;
+    /*using onnx_dtype = ONNX_NAMESPACE::TensorProto_DataType;
     auto supportedOps = std::set<std::vector<onnx_dtype>>{
         {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT},
         {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_FLOAT},
@@ -483,7 +490,7 @@ static bool IsUnsupportedOpMode(const Provider_Node* node, const Provider_GraphV
     if (match == supportedOps.end()) {
       return true;
     } else
-      return false;
+      return false;*/
   } else if(optype == "Gather") {
 
     if(device_id.find("GPU") != std::string::npos){

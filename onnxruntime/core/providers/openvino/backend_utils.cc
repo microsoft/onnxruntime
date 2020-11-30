@@ -110,6 +110,8 @@ InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO(const Provider_TypePro
   ONNX_NAMESPACE::DataType type_string = ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(onnx_type);
   if (*type_string == "float" || *type_string == "tensor(float)") {
     return InferenceEngine::Precision::FP32;
+  } else if (*type_string == "double" || *type_string == "tensor(double)") {
+    return InferenceEngine::Precision::FP32;
   } else if (*type_string == "float16" || *type_string == "tensor(float16)") {
     return InferenceEngine::Precision::FP16;
   } else if (*type_string == "int32" || *type_string == "tensor(int32)") {
