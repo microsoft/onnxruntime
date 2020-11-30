@@ -272,16 +272,16 @@ static bool IsUnsupportedOpMode(const Provider_Node* node, const Provider_GraphV
         return true;
     }
   } else if (optype == "Max" || optype == "Min" || optype == "Mean" || optype == "Sum") {
-    if (GetInputCount(node, initializers) == 1)
-      return true;
-    if (optype == "Max" || optype == "Min") {
-      for (size_t i = 0; i < node->InputDefs().size(); i++) {
-        auto dtype = node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type();
-        if (dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8 ||
-            dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16)
-          return true;
-      }
-    }
+    // if (GetInputCount(node, initializers) == 1)
+    //   return true;
+    // if (optype == "Max" || optype == "Min") {
+    //   for (size_t i = 0; i < node->InputDefs().size(); i++) {
+    //     auto dtype = node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type();
+    //     if (dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8 ||
+    //         dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16)
+    //       return true;
+    //   }
+    // }
   } else if (optype == "Clip") {
     //Only float 16, float and double data types are supported
     const bool data_is_float = node->InputDefs()[0]->Type()->find("float") != std::string::npos;
@@ -297,10 +297,10 @@ static bool IsUnsupportedOpMode(const Provider_Node* node, const Provider_GraphV
     }
   } else if (optype == "ReduceMin") {
     //Only FP32, INT32 and U8 data types are supported
-    const bool data_is_float = node->InputDefs()[0]->Type()->find("float") != std::string::npos;
-    const bool data_is_int32 = node->InputDefs()[0]->Type()->find("int32") != std::string::npos;
-    const bool data_is_u8 = node->InputDefs()[0]->Type()->find("uint8") != std::string::npos;
-    return !(data_is_float || data_is_int32 || data_is_u8);
+    // const bool data_is_float = node->InputDefs()[0]->Type()->find("float") != std::string::npos;
+    // const bool data_is_int32 = node->InputDefs()[0]->Type()->find("int32") != std::string::npos;
+    // const bool data_is_u8 = node->InputDefs()[0]->Type()->find("uint8") != std::string::npos;
+    // return !(data_is_float || data_is_int32 || data_is_u8);
   } else if (optype == "MatMul") {
     //All matmuls except float have computation missmatch
     const bool A_is_float = node->InputDefs()[0]->Type()->find("float") != std::string::npos;
@@ -571,6 +571,8 @@ static bool IsTypeSupported(const Provider_NodeArg* node_arg, bool is_initialize
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8,
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8,
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64,
+        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE,
+
     };
 
     std::set<int> supported_types_gpu = {
@@ -682,7 +684,7 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
       if (shape->dim_size() == 0) {
         if (optype == "Unsqueeze" || optype == "Squeeze" || optype == "Cast" ||
             optype == "Gather" || optype == "Mul" || optype == "Sub" ||
-            optype == "Min" || optype == "Div" || optype == "Floor")
+            optype == "Min" || optype == "Div" || optype == "Floor" || optype == "Range" || optype == "ArgMin" || optype == "Reshape" || optype == "Where")
           return;
         has_unsupported_dimension = true;
         return;
@@ -953,8 +955,9 @@ GetCapability_2021_1(const Provider_GraphViewer& graph_viewer, std::string devic
           }
         }
       }
+      std::cout << "Omit subgraph " << omit_subgraph << std::endl;
       if (omit_subgraph)
-        continue;
+        // continue;
 
       /* In scenarios, when there are no inputs or all inputs being initializers,
          ConstantFolding optimization in onnxruntime pre-computes the value.*/
