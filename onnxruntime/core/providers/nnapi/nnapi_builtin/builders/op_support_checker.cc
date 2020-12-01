@@ -719,6 +719,35 @@ bool GemmOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
       });
 }
 
+// Get the bias size (C) of Gemm op
+// ANEURALNETWORKS_FULLY_CONNECTED only supports 1d bias
+// Will test if C of Gemm can be squeezed and return the 1d vector size after squeeze
+static bool GetBiasSize(const Shape& c_shape, uint32_t& size) {
+  // TODO add support of scalar C for Gemm
+  if (c_shape.empty()) {
+    LOGS_DEFAULT(VERBOSE) << "C of Gemm cannot be a scalar";
+    return false;
+  }
+
+  size = c_shape[0];
+  bool size_assigned = false;
+  for (const auto& dim : c_shape) {
+    if (dim != 1) {
+      // the C tensor can only have 1 non-1 dimension
+      if (size_assigned) {
+        LOGS_DEFAULT(VERBOSE) << "C of Gemm must be a vector or can be squeezed to a vector"
+                              << " c_shape: " << Shape2String(c_shape);
+        return false;
+      }
+
+      size = dim;
+      size_assigned = true;
+    }
+  }
+
+  return true;
+}
+
 int GemmOpSupportChecker::GetMinSupportedOpSet(const Node& node) const {
   const auto& op(node.OpType());
 
@@ -774,7 +803,11 @@ bool GemmOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
 
     if (!(transA == 0 && alpha == 1.f && beta == 1.f)) {
       LOGS_DEFAULT(VERBOSE) << "Only transA == 0, alpha == 1.0 "
-                            << "and beta == 1.0 is supported.";
+                            << "and beta == 1.0 is supported."
+                            << "transA " << transA
+                            << "transB " << transB
+                            << "alpha " << alpha
+                            << "beta " << beta;
       return false;
     }
 
@@ -788,9 +821,13 @@ bool GemmOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
       if (!GetShape(*input_defs[c_idx], c_shape))
         return false;
 
-      if (c_shape.size() != 1 ||
-          c_shape[0] != (transB == 0 ? b_shape[1] : b_shape[0])) {
-        LOGS_DEFAULT(VERBOSE) << "C of Gemm must be a vector of b_shape[0]"
+      uint32_t c_size;
+      if (!GetBiasSize(c_shape, c_size))
+        return false;
+
+      if (c_size != (transB == 0 ? b_shape[1] : b_shape[0])) {
+        LOGS_DEFAULT(VERBOSE) << "C of Gemm must be a vector of b_shape["
+                              << (transB == 0 ? "1" : "0") << "]"
                               << " b_shape: " << Shape2String(b_shape)
                               << " c_shape: " << Shape2String(c_shape);
 

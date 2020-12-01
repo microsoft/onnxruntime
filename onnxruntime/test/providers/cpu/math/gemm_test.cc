@@ -140,6 +140,7 @@ TEST(GemmOpTest, GemmTransBIsInitializer) {
 }
 
 // NNAPI EP's GEMM only works as A*B', add case only B is transposed
+// Also test NNAPI EP's handling of non-1D bias (C of Gemm)
 TEST(GemmOpTest, GemmTransB) {
   OpTester test("Gemm");
 
@@ -152,7 +153,7 @@ TEST(GemmOpTest, GemmTransB) {
                        {1.0f, 2.0f, 3.0f, 4.0f,
                         -1.0f, -2.0f, -3.0f, -4.0f});
   test.AddInput<float>("B", {3, 4}, std::vector<float>(12, 1.0f));
-  test.AddInput<float>("C", {3}, std::vector<float>(3, 1.0f));
+  test.AddInput<float>("C", {1, 3}, std::vector<float>(3, 1.0f));
   test.AddOutput<float>("Y", {2, 3},
                         {11.0f, 11.0f, 11.0f,
                          -9.0f, -9.0f, -9.0f});
