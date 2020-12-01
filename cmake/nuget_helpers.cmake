@@ -52,6 +52,6 @@ function(
     COMMAND ${CMAKE_CURRENT_BINARY_DIR}/nuget/src/nuget restore ${PACKAGES_CONFIG} -PackagesDirectory ${PACKAGES_DIR} -ConfigFile ${NUGET_CONFIG}
     VERBATIM)
 
-    add_custom_target(${nuget_target} ALL DEPENDS ${target_dependency})
+    add_custom_target(${nuget_target} DEPENDS ${target_dependency})
     add_dependencies(${nuget_target} nuget)
 endfunction()
