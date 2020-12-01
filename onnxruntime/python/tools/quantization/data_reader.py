@@ -1,5 +1,5 @@
 from onnxruntime.quantization import CalibrationDataReader 
-from .processing import yolov3_preprocess_func
+from .processing import yolov3_preprocess_func, yolov3_vision_preprocess_func
 import onnxruntime
 from argparse import Namespace
 
@@ -53,7 +53,7 @@ class YoloV3DataReader(CalibrationDataReader):
                        start_index=0,
                        size_limit=0,
                        augmented_model_path='augmented_model.onnx',
-                       is_validation=False,
+                       is_evaluation=False,
                        annotations='./annotations/instances_val2017.json'):
         self.image_folder = calibration_image_folder
         self.augmented_model_path = augmented_model_path
@@ -64,7 +64,7 @@ class YoloV3DataReader(CalibrationDataReader):
         self.height = height
         self.start_index = start_index
         self.size_limit = size_limit
-        self.is_validation = is_validation
+        self.is_evaluation = is_evaluation
         self.annotations = annotations
 
     def set_start_index(self, i):
@@ -88,7 +88,7 @@ class YoloV3DataReader(CalibrationDataReader):
             self.datasize = len(nchw_data_list)
 
             data = []
-            if self.is_validation:
+            if self.is_evaluation:
                 img_name_to_img_id = parse_annotations(self.annotations)
                 for i in range(len(nchw_data_list)):
                     nhwc_data = nchw_data_list[i]
@@ -108,14 +108,14 @@ class YoloV3DataReader(CalibrationDataReader):
 
 class YoloV3VisionDataReader(YoloV3DataReader):
     def __init__(self, calibration_image_folder,
-                       width=512,
-                       height=288,
+                       width=608,
+                       height=384,
                        start_index=0,
                        size_limit=0,
                        augmented_model_path='augmented_model.onnx',
-                       is_validation=False,
+                       is_evaluation=False,
                        annotations='./annotations/instances_val2017.json'):
-        YoloV3DataReader.__init__(self, calibration_image_folder, width, height, start_index, size_limit, augmented_model_path, is_validation, annotations)
+        YoloV3DataReader.__init__(self, calibration_image_folder, width, height, start_index, size_limit, augmented_model_path, is_evaluation, annotations)
 
     def get_next(self):
         if self.preprocess_flag:
@@ -124,17 +124,19 @@ class YoloV3VisionDataReader(YoloV3DataReader):
             print(session.get_inputs()[0].shape)
             width = self.width 
             height = self.height 
-            nchw_data_list, filename_list, image_size_list = yolov3_preprocess_func(self.image_folder, height, width, self.start_index, self.size_limit)
+            nchw_data_list, filename_list, image_size_list = yolov3_vision_preprocess_func(self.image_folder, height, width, self.start_index, self.size_limit)
             input_name = session.get_inputs()[0].name
             self.datasize = len(nchw_data_list)
 
             data = []
-            if self.is_validation:
+            if self.is_evaluation:
                 img_name_to_img_id = parse_annotations(self.annotations)
                 for i in range(len(nchw_data_list)):
                     nhwc_data = nchw_data_list[i]
                     file_name = filename_list[i]
-                    data.append({input_name: nhwc_data, "image_id": img_name_to_img_id[file_name]})
+                    image_width = image_size_list[i][1] # image shape is (height, width) 
+                    image_height = image_size_list[i][0]
+                    data.append({input_name: nhwc_data, "image_id": img_name_to_img_id[file_name], "image_width": image_width, "image_height": image_height})
 
             else:
                 for i in range(len(nchw_data_list)):
