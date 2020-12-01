@@ -43,7 +43,8 @@ def restore_torch_functions():
 def create_onnxruntime_input(vocab_size, batch_size, sequence_length, input_names, data_type=numpy.int64):
     input_ids = numpy.random.randint(low=0, high=vocab_size - 1, size=(batch_size, sequence_length), dtype=data_type)
 
-    inputs = {'input_ids': input_ids}
+    inputs = {'input_ids_tensor:0': input_ids}
+    inputs['external_feature_multihot_vectors_tensor:0'] = numpy.float32(numpy.random.randint(vocab_size, size=(batch_size, sequence_length*69), dtype=numpy.int32))
 
     if "attention_mask" in input_names:
         attention_mask = numpy.ones([batch_size, sequence_length], dtype=data_type)
