@@ -1,10 +1,10 @@
 # sets Python manylinux variables
 # the Python version is specified with one of (in order of precedence):
-# 1. the python.version parameter
-# 2. the python.version variable
+# 1. the PythonVersion parameter
+# 2. the PythonVersion variable
 
 parameters:
-- name: python.version
+- name: PythonVersion
   type: string
   default: ''
 
@@ -14,32 +14,32 @@ steps:
   inputs:
     scriptSource: inline
     script: |
-      version = "${{ coalesce(parameters["python.version"], variables["python.version"]) }}"
+      version = "${{ coalesce(parameters.PythonVersion, variables.PythonVersion) }}"
 
       if version == "3.5":
         variables = {
-          "python.manylinux.dir": "/opt/python/cp35-cp35m",
-          "python.manylinux.include.dir": "/opt/python/cp35-cp35m/include/python3.5m",
+          "PythonManylinuxDir": "/opt/python/cp35-cp35m",
+          "PythonManylinuxIncludeDir": "/opt/python/cp35-cp35m/include/python3.5m",
         }
       elif version == "3.6":
         variables = {
-          "python.manylinux.dir": "/opt/python/cp36-cp36m",
-          "python.manylinux.include.dir": "/opt/python/cp36-cp36m/include/python3.6m",
+          "PythonManylinuxDir": "/opt/python/cp36-cp36m",
+          "PythonManylinuxIncludeDir": "/opt/python/cp36-cp36m/include/python3.6m",
         }
       elif version == "3.7":
         variables = {
-          "python.manylinux.dir": "/opt/python/cp37-cp37m",
-          "python.manylinux.include.dir": "/opt/python/cp37-cp37m/include/python3.7m",
+          "PythonManylinuxDir": "/opt/python/cp37-cp37m",
+          "PythonManylinuxIncludeDir": "/opt/python/cp37-cp37m/include/python3.7m",
         }
       elif version == "3.8":
         variables = {
-          "python.manylinux.dir": "/opt/python/cp38-cp38",
-          "python.manylinux.include.dir": "/opt/python/cp38-cp38/include/python3.8",
+          "PythonManylinuxDir": "/opt/python/cp38-cp38",
+          "PythonManylinuxIncludeDir": "/opt/python/cp38-cp38/include/python3.8",
         }
       elif version == "3.9":
         variables = {
-          "python.manylinux.dir": "/opt/python/cp39-cp39",
-          "python.manylinux.include.dir": "/opt/python/cp39-cp39/include/python3.9",
+          "PythonManylinuxDir": "/opt/python/cp39-cp39",
+          "PythonManylinuxIncludeDir": "/opt/python/cp39-cp39/include/python3.9",
         }
       else:
         raise ValueError("Unsupported Python version: '{}'".format(version))

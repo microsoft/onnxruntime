@@ -72,15 +72,15 @@ stages:
       strategy:
         matrix:
           Python35:
-            python.version: '3.5'
+            PythonVersion: '3.5'
           Python36:
-            python.version: '3.6'
+            PythonVersion: '3.6'
           Python37:
-            python.version: '3.7'
+            PythonVersion: '3.7'
           Python38:
-            python.version: '3.8'
+            PythonVersion: '3.8'
           Python39:
-            python.version: '3.9'
+            PythonVersion: '3.9'
       steps:
       - checkout: self
         clean: true
@@ -108,7 +108,7 @@ stages:
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
               onnxruntimecpubuild \
-                $(python.manylinux.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+                $(PythonManylinuxDir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build --cmake_generator Ninja \
                   --config Release \
                   --skip_submodule_sync \
@@ -118,7 +118,7 @@ stages:
                   --use_openmp \
                   --enable_onnx_tests \
                   ${{ parameters.build_py_parameters }} \
-                  --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.manylinux.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so
+                  --cmake_extra_defines PYTHON_INCLUDE_DIR=$(PythonManylinuxIncludeDir) PYTHON_LIBRARY=/usr/lib64/librt.so
           workingDirectory: $(Build.SourcesDirectory)
 
       - task: CopyFiles@2
@@ -147,15 +147,15 @@ stages:
       strategy:
         matrix:
           Python35:
-            python.version: '3.5'
+            PythonVersion: '3.5'
           Python36:
-            python.version: '3.6'
+            PythonVersion: '3.6'
           Python37:
-            python.version: '3.7'
+            PythonVersion: '3.7'
           Python38:
-            python.version: '3.8'
+            PythonVersion: '3.8'
           Python39:
-            python.version: '3.9'
+            PythonVersion: '3.9'
       steps:
       - checkout: self
         clean: true
@@ -183,7 +183,7 @@ stages:
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
               onnxruntimecpubuild \
-                $(python.manylinux.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+                $(PythonManylinuxDir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build --cmake_generator Ninja \
                   --config Release \
                   --skip_submodule_sync \
@@ -193,7 +193,7 @@ stages:
                   --enable_onnx_tests \
                   --wheel_name_suffix=noopenmp \
                   ${{ parameters.build_py_parameters }} \
-                  --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.manylinux.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so
+                  --cmake_extra_defines PYTHON_INCLUDE_DIR=$(PythonManylinuxIncludeDir) PYTHON_LIBRARY=/usr/lib64/librt.so
           workingDirectory: $(Build.SourcesDirectory)
 
       - task: CopyFiles@2
@@ -223,15 +223,15 @@ stages:
       strategy:
         matrix:
           Python35:
-            python.version: '3.5'
+            PythonVersion: '3.5'
           Python36:
-            python.version: '3.6'
+            PythonVersion: '3.6'
           Python37:
-            python.version: '3.7'
+            PythonVersion: '3.7'
           Python38:
-            python.version: '3.8'
+            PythonVersion: '3.8'
           Python39:
-            python.version: '3.9'
+            PythonVersion: '3.9'
       steps:
       - checkout: self
         clean: true
@@ -259,7 +259,7 @@ stages:
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
               onnxruntimegpubuild \
-                $(python.manylinux.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+                $(PythonManylinuxDir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build --cmake_generator Ninja \
                   --config Release \
                   --skip_submodule_sync \
@@ -267,7 +267,7 @@ stages:
                   --build_wheel \
                   --enable_onnx_tests --use_cuda --cuda_version=10.2 --cuda_home=/usr/local/cuda-10.2 --cudnn_home=/usr/local/cuda-10.2 \
                   ${{ parameters.build_py_parameters }} \
-                  --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.manylinux.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so
+                  --cmake_extra_defines PYTHON_INCLUDE_DIR=$(PythonManylinuxIncludeDir) PYTHON_LIBRARY=/usr/lib64/librt.so
           workingDirectory: $(Build.SourcesDirectory)
 
       - task: CopyFiles@2
@@ -297,13 +297,13 @@ stages:
       strategy:
         matrix:
           Python36:
-            python.version: '3.6'
+            PythonVersion: '3.6'
           Python37:
-            python.version: '3.7'
+            PythonVersion: '3.7'
           Python38:
-            python.version: '3.8'
+            PythonVersion: '3.8'
           Python39:
-            python.version: '3.9'
+            PythonVersion: '3.9'
       steps:
       - checkout: self
         clean: true
@@ -315,10 +315,10 @@ stages:
         inputs:
           script: |
             docker build --pull \
-              -t ${{ parameters.docker_image_prefix }}-manylinux-gpu-$(python.version) \
+              -t ${{ parameters.docker_image_prefix }}-manylinux-gpu-$(PythonVersion) \
               --build-arg BUILD_USER=onnxruntimedev \
               --build-arg BUILD_UID=$(id -u) \
-              --build-arg PYTHON_VERSION=$(python.version) \
+              --build-arg PYTHON_VERSION=$(PythonVersion) \
               --build-arg BUILD_EXTR_PAR="${{ parameters.build_py_parameters }}" \
               -f ${{ parameters.linux_gpu_dockerfile }} .
           workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
@@ -335,8 +335,8 @@ stages:
               -e NVIDIA_VISIBLE_DEVICES=all \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
-              ${{ parameters.docker_image_prefix }}-manylinux-gpu-$(python.version) \
-                $(python.manylinux.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+              ${{ parameters.docker_image_prefix }}-manylinux-gpu-$(PythonVersion) \
+                $(PythonManylinuxDir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build \
                   --config Release \
                   --skip_submodule_sync \
@@ -344,7 +344,7 @@ stages:
                   --build_wheel \
                   --enable_onnx_tests \
                   ${{ parameters.build_py_parameters }} \
-                  --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.manylinux.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so \
+                  --cmake_extra_defines PYTHON_INCLUDE_DIR=$(PythonManylinuxIncludeDir) PYTHON_LIBRARY=/usr/lib64/librt.so \
                   --use_cuda --cuda_version=10.2 --cuda_home=/usr/local/cuda-10.2 --cudnn_home=/usr/local/cuda-10.2
           workingDirectory: $(Build.SourcesDirectory)
 
@@ -372,15 +372,15 @@ stages:
       strategy:
         matrix:
           Python35:
-            python.version: '3.5'
+            PythonVersion: '3.5'
           Python36:
-            python.version: '3.6'
+            PythonVersion: '3.6'
           Python37:
-            python.version: '3.7'
+            PythonVersion: '3.7'
           Python38:
-            python.version: '3.8'
+            PythonVersion: '3.8'
           Python39:
-            python.version: '3.9'
+            PythonVersion: '3.9'
       variables:
         OrtPackageId: 'Microsoft.ML.OnnxRuntime'
         MsbuildArguments: '-maxcpucount'
@@ -403,7 +403,7 @@ stages:
 
       - task: UsePythonVersion@0
         inputs:
-          versionSpec: $(python.version)
+          versionSpec: $(PythonVersion)
           addToPath: true
           architecture: 'x64'
 
@@ -502,15 +502,15 @@ stages:
       strategy:
         matrix:
           Python35:
-            python.version: '3.5'
+            PythonVersion: '3.5'
           Python36:
-            python.version: '3.6'
+            PythonVersion: '3.6'
           Python37:
-            python.version: '3.7'
+            PythonVersion: '3.7'
           Python38:
-            python.version: '3.8'
+            PythonVersion: '3.8'
           Python39:
-            python.version: '3.9'
+            PythonVersion: '3.9'
       variables:
         OrtPackageId: 'Microsoft.ML.OnnxRuntime'
         MsbuildArguments: '-maxcpucount'
@@ -533,7 +533,7 @@ stages:
 
       - task: UsePythonVersion@0
         inputs:
-          versionSpec: $(python.version)
+          versionSpec: $(PythonVersion)
           addToPath: true
           architecture: 'x64'
 
@@ -639,15 +639,15 @@ stages:
       strategy:
         matrix:
           Python35:
-            python.version: '3.5'
+            PythonVersion: '3.5'
           Python36:
-            python.version: '3.6'
+            PythonVersion: '3.6'
           Python37:
-            python.version: '3.7'
+            PythonVersion: '3.7'
           Python38:
-            python.version: '3.8'
+            PythonVersion: '3.8'
           Python39:
-            python.version: '3.9'
+            PythonVersion: '3.9'
       steps:
       - checkout: self
         clean: true
@@ -657,7 +657,7 @@ stages:
 
       - task: UsePythonVersion@0
         inputs:
-          versionSpec: $(python.version)
+          versionSpec: $(PythonVersion)
           addToPath: true
           architecture: 'x64'
 
@@ -760,15 +760,15 @@ stages:
       strategy:
         matrix:
           Python35:
-            python.version: '3.5'
+            PythonVersion: '3.5'
           Python36:
-            python.version: '3.6'
+            PythonVersion: '3.6'
           Python37:
-            python.version: '3.7'
+            PythonVersion: '3.7'
           Python38:
-            python.version: '3.8'
+            PythonVersion: '3.8'
           Python39:
-            python.version: '3.9'
+            PythonVersion: '3.9'
       steps:
       - checkout: self
         clean: true
@@ -777,7 +777,7 @@ stages:
       - task: UsePythonVersion@0
         displayName: 'Use Python'
         inputs:
-          versionSpec: $(python.version)
+          versionSpec: $(PythonVersion)
 
       - script: |
           set -e
@@ -821,13 +821,13 @@ stages:
       strategy:
         matrix:
           Py38:
-            python.version: '3.8'
+            PythonVersion: '3.8'
           Py37:
-            python.version: '3.7'
+            PythonVersion: '3.7'
           Py36:
-            python.version: '3.6'
+            PythonVersion: '3.6'
           Py35:
-            python.version: '3.5'
+            PythonVersion: '3.5'
       steps:
       - checkout: self
         clean: true
@@ -877,7 +877,7 @@ stages:
               -Donnxruntime_RUN_ONNX_TESTS=OFF \
               -Donnxruntime_DEV_MODE=ON \
               -DONNX_CUSTOM_PROTOC_EXECUTABLE=$(Build.BinariesDirectory)/bin/protoc \
-              "-DPYTHON_INCLUDE_DIR=/mnt/toolchains/manylinux2014_aarch64/usr/include;/mnt/toolchains/manylinux2014_aarch64/$(python.manylinux.include.dir)" \
+              "-DPYTHON_INCLUDE_DIR=/mnt/toolchains/manylinux2014_aarch64/usr/include;/mnt/toolchains/manylinux2014_aarch64/$(PythonManylinuxIncludeDir)" \
               -DNUMPY_INCLUDE_DIR=/mnt/toolchains \
               $(Build.SourcesDirectory)/cmake
             make -j$(getconf _NPROCESSORS_ONLN)
@@ -890,7 +890,7 @@ stages:
               -w /tmp/a \
               -u $(id -u ${USER}):$(id -g ${USER}) \
               quay.io/pypa/manylinux2014_aarch64 \
-                '$(python.manylinux.dir)'/bin/python3 /tmp/b/setup.py \
+                '$(PythonManylinuxDir)'/bin/python3 /tmp/b/setup.py \
                   bdist_wheel ${{ parameters.build_py_parameters }} $(NightlyBuildOption)
 
           workingDirectory: $(Build.BinariesDirectory)
