@@ -69,6 +69,9 @@ elseif(onnxruntime_target_platform STREQUAL "x64" OR onnxruntime_target_platform
     set(onnxruntime_target_platform "x64")
 elseif(onnxruntime_target_platform STREQUAL "Win32" OR onnxruntime_target_platform STREQUAL "x86" OR onnxruntime_target_platform STREQUAL "i386" OR onnxruntime_target_platform STREQUAL "i686")
     set(onnxruntime_target_platform "x86")
+    if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        set_source_files_properties(${ONNXRUNTIME_ROOT}/core/common/denormal.cc PROPERTIES COMPILE_FLAGS "-msse")
+    endif()
 endif()
 
 file(GLOB onnxruntime_common_src CONFIGURE_DEPENDS

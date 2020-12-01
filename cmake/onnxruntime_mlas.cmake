@@ -191,6 +191,10 @@ else()
   elseif(X86)
     enable_language(ASM)
 
+    if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        set_source_files_properties(${mlas_common_srcs} PROPERTIES COMPILE_FLAGS "-msse2")
+    endif()
+
     set(mlas_platform_srcs_sse2
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86/SgemmKernelSse2.S
     )
