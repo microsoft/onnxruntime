@@ -446,17 +446,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 return startTime;
             }
 
-            // Get 1st profiling's start time
-            ulong startTime1 = getSingleSessionProfilingStartTime();
-            // Get 2nd profiling's start time
-            ulong startTime2 = getSingleSessionProfilingStartTime();
-            // Get 3rd profiling's start time
-            ulong startTime3 = getSingleSessionProfilingStartTime();
+            // Get profiling's start time
+            ulong ProfilingStartTime = getSingleSessionProfilingStartTime();
 
             // Check the profiling's start time has been updated
-            Assert.True(startTime1 != 0);
-            // Chronological profiling's start time
-            Assert.True(startTime1 <= startTime2 && startTime2 <= startTime3);
+            Assert.True(ProfilingStartTime != 0);
         }
 
         [Fact]
