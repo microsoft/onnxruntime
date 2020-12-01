@@ -43,7 +43,7 @@ static size_t IncrementIndexAndComputeOffsetSetup(MultiIndex* mindex, int64_t nu
 // Combines multi-index increment and corresponding pointer in the tensor to transpose.
 template <typename T>
 static void IncrementIndexAndComputeOffset(MultiIndex* mindex, size_t naxes, const T*& local_source) {
-  MultiIndex* it = mindex + (naxes - 1);
+  MultiIndex* it = (mindex + naxes) - 1;
   local_source += it->stride;
   if (++it->index < it->upper_bound)
     return;
