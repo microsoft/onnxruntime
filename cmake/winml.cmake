@@ -27,22 +27,17 @@ set(winml_lib_api_ort_dir ${REPO_ROOT}/winml/lib/api.ort)
 set(winml_lib_common_dir ${REPO_ROOT}/winml/lib/common)
 set(winml_lib_telemetry_dir ${REPO_ROOT}/winml/lib/telemetry)
 
-# Pull down the nuget packages to get cppwinrt nuget
-if (NOT(MSVC) OR NOT(WIN32))
-  message(FATAL_ERROR "NuGet packages are only supported for MSVC on Windows.")
-endif()
-
-# Retrieve the latest version of nuget
-set(PACKAGES_CONFIG ${PROJECT_SOURCE_DIR}/../packages.config)
-get_filename_component(PACKAGES_DIR ${CMAKE_CURRENT_BINARY_DIR}/../packages ABSOLUTE)
+# Retrieve the version of cppwinrt nuget
 pkg_version(
   Microsoft.Windows.CppWinRT
   CppWinRT_version
-  ${PACKAGES_CONFIG}
+  ${PROJECT_SOURCE_DIR}/../packages.config
 )
 
 # Override and use the the cppwinrt from NuGet package as opposed to the one in the SDK.
-set(winml_CPPWINRT_EXE_PATH_OVERRIDE ${PACKAGES_DIR}/Microsoft.Windows.CppWinRT.${CppWinRT_version}/bin/cppwinrt.exe)
+set(winml_CPPWINRT_EXE_PATH_OVERRIDE ${CMAKE_CURRENT_BINARY_DIR}/../packages/Microsoft.Windows.CppWinRT.${CppWinRT_version}/bin/cppwinrt.exe)
+
+# add custom target to fetch the nugets
 add_fetch_nuget_target(
   RESTORE_NUGET_PACKAGES # target name
   winml_CPPWINRT_EXE_PATH_OVERRIDE # cppwinrt is the target package
