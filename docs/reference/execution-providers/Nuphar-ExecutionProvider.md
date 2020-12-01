@@ -2,7 +2,7 @@
 title: Nuphar
 parent: Execution Providers
 grand_parent: Reference
-nav_order: 10
+nav_order: 9
 ---
 
 # Nuphar Execution Provider (preview)

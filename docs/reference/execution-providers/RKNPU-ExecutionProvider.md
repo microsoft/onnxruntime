@@ -2,7 +2,7 @@
 title: RKNPU
 parent: Execution Providers
 grand_parent: Reference
-nav_order: 11
+nav_order: 10
 ---
 
 # RKNPU Execution Provider (preview)
