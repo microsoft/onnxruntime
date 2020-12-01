@@ -66,7 +66,7 @@ static size_t IncrementIndexAndComputeOffsetSetup(MultiIndex* mindex, int64_t nu
 * local_source = source + (sum_i mindex[i].index * mindex[i].stride
 */
 template <typename T>
-static void IncrementIndexAndComputeOffset(MultiIndex* mindex, size_t naxes, const T*& local_source) {
+static inline void IncrementIndexAndComputeOffset(MultiIndex* mindex, size_t naxes, const T*& local_source) {
   // Increment the last dimension.
   MultiIndex* it = (mindex + naxes) - 1;
   local_source += it->stride;
@@ -114,6 +114,7 @@ static void DoTransposeImpl(int64_t num_axes, const std::vector<int64_t>& target
 
   const uint8_t* local_source = source;
   for (size_t i = 0; i < num_blocks; ++i) {
+    ORT_ENFORCE((local_source >= source) && (local_source < source + element_size * num_blocks));
     memcpy(target, local_source, blocksize);
     IncrementIndexAndComputeOffset(mindex.data(), naxes, local_source);
     target += blocksize;
@@ -129,6 +130,7 @@ static void DoTransposeImpl(int64_t num_axes, const std::vector<int64_t>& target
 
   const std::string* local_source = source;
   for (size_t i = 0; i < num_blocks; ++i) {
+    ORT_ENFORCE((local_source >= source) && (local_source < source + num_blocks));
     DoTransposeSingleBlock(num_elts_in_block, local_source, target);
     IncrementIndexAndComputeOffset(mindex.data(), naxes, local_source);
     target += num_elts_in_block;
