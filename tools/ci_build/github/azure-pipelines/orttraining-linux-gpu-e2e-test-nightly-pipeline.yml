@@ -1,28 +1,15 @@
 trigger: none
 
 jobs:
-- job: Onnxruntime_Linux_GPU_Training_E2E_Test_Nightly
+- job: Orttraining_Linux_GPU_Training_E2E_Test_Nightly
 
   timeoutInMinutes: 120
+  pool: 'Linux-Multi-GPU-V100'
 
   steps:
   - checkout: self
     clean: true
     submodules: recursive
-
-  # update these if the E2E test data changes
-  - script: |
-      orttraining/tools/ci_test/download_azure_blob_archive.py \
-      --azure_blob_url https://onnxruntimetestdata.blob.core.windows.net/training/onnxruntime_training_data.zip?snapshot=2020-06-15T23:17:35.8314853Z \
-      --target_dir $(Build.BinariesDirectory)/training_e2e_test_data \
-      --archive_sha256_digest B01C169B6550D1A0A6F1B4E2F34AE2A8714B52DBB70AC04DA85D371F691BDFF9
-    displayName: 'Download onnxruntime_training_data.zip data'
-
-  - script: |
-      orttraining/tools/ci_test/download_azure_blob_archive.py \
-      --azure_blob_url https://onnxruntimetestdata.blob.core.windows.net/training/glue_MRPC_data.zip \
-      --target_dir /bert_data/hf_data/
-    displayName: 'Download glue_MRPC_data.zip data'
 
   - template: templates/run-docker-build-steps.yml
     parameters:
@@ -38,6 +25,20 @@ jobs:
           --enable_training_pipeline_e2e_tests \
           "
       DisplayName: 'Build'
+
+  # update these if the E2E test data changes
+  - script: |
+      orttraining/tools/ci_test/download_azure_blob_archive.py \
+      --azure_blob_url https://onnxruntimetestdata.blob.core.windows.net/training/onnxruntime_training_data.zip?snapshot=2020-06-15T23:17:35.8314853Z \
+      --target_dir $(Build.BinariesDirectory)/training_e2e_test_data \
+      --archive_sha256_digest B01C169B6550D1A0A6F1B4E2F34AE2A8714B52DBB70AC04DA85D371F691BDFF9
+    displayName: 'Download onnxruntime_training_data.zip data'
+
+  - script: |
+      orttraining/tools/ci_test/download_azure_blob_archive.py \
+      --azure_blob_url https://onnxruntimetestdata.blob.core.windows.net/training/glue_MRPC_data.zip \
+      --target_dir /bert_data/hf_data/
+    displayName: 'Download glue_MRPC_data.zip data'
 
   # Hit OOM with run_training_pipeline_e2e_tests.py - slightly above 16GB limit.
   # leave this code here for further investigation.
