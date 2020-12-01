@@ -19,7 +19,12 @@ function(pkg_version id out packages_config)
     set(${out} ${version} PARENT_SCOPE)
 endfunction()
 
-function(get_cppwinrt_nuget nuget_target)
+# Downloads the nuget packages based on packages.config 
+function(
+    add_fetch_nuget_target
+    nuget_target # Target to be written to
+    target_dependency # The file in the nuget package that is needed
+)
     # Pull down the nuget packages to get cppwinrt nuget
     if (NOT(MSVC) OR NOT(WIN32))
     message(FATAL_ERROR "NuGet packages are only supported for MSVC on Windows.")
@@ -39,20 +44,15 @@ function(get_cppwinrt_nuget nuget_target)
     set(NUGET_CONFIG ${PROJECT_SOURCE_DIR}/../NuGet.config)
     set(PACKAGES_CONFIG ${PROJECT_SOURCE_DIR}/../packages.config)
     get_filename_component(PACKAGES_DIR ${CMAKE_CURRENT_BINARY_DIR}/../packages ABSOLUTE)
-    pkg_version(
-        Microsoft.Windows.CppWinRT
-        CppWinRT_version
-        ${PACKAGES_CONFIG}
-    )
     set(CPPWINRT_PACKAGE_DIR ${PACKAGES_DIR}/Microsoft.Windows.CppWinRT.${CppWinRT_version})
 
     # Restore nuget packages, which will pull down the CppWinRT package
     add_custom_command(
-    OUTPUT ${CPPWINRT_PACKAGE_DIR}/bin/cppwinrt.exe
+    OUTPUT ${target_dependency}
     DEPENDS ${PACKAGES_CONFIG} ${NUGET_CONFIG}
     COMMAND ${CMAKE_CURRENT_BINARY_DIR}/nuget/src/nuget restore ${PACKAGES_CONFIG} -PackagesDirectory ${PACKAGES_DIR} -ConfigFile ${NUGET_CONFIG}
     VERBATIM)
 
-    add_custom_target(${nuget_target} ALL DEPENDS ${CPPWINRT_PACKAGE_DIR}/bin/cppwinrt.exe)
+    add_custom_target(${nuget_target} ALL DEPENDS ${target_dependency})
     add_dependencies(${nuget_target} nuget)
 endfunction()

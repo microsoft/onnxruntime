@@ -40,10 +40,13 @@ pkg_version(
   CppWinRT_version
   ${PACKAGES_CONFIG}
 )
-get_cppwinrt_nuget(RESTORE_NUGET_PACKAGES)
 
 # Override and use the the cppwinrt from NuGet package as opposed to the one in the SDK.
 set(winml_CPPWINRT_EXE_PATH_OVERRIDE ${PACKAGES_DIR}/Microsoft.Windows.CppWinRT.${CppWinRT_version}/bin/cppwinrt.exe)
+add_fetch_nuget_target(
+  RESTORE_NUGET_PACKAGES # target name
+  winml_CPPWINRT_EXE_PATH_OVERRIDE # cppwinrt is the target package
+  )
 
 set(winml_is_inbox OFF)
 if (onnxruntime_WINML_NAMESPACE_OVERRIDE)
