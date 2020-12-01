@@ -273,7 +273,8 @@ namespace ImageTestHelper {
         // Even given two same ImageFeatureValues, the comparison cannot exactly match.
         // So we use error rate.
         UINT errors = 0;
-        for (uint32_t i = 0; i < size; i++, pActualByte++, pExpectedByte++) {
+        // Only the check the first three channels, which are (B, G, R)
+        for (uint32_t i = 0; i < size && (i + 1) % 4; i++, pActualByte++, pExpectedByte++) {
             auto diff = (*pActualByte - *pExpectedByte);
             if (diff > epsilon) {
                 errors++;
