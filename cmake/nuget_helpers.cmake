@@ -25,7 +25,7 @@ function(
     nuget_target # Target to be written to
     target_dependency # The file in the nuget package that is needed
 )
-    # Pull down the nuget packages to get cppwinrt nuget
+    # Pull down the nuget packages
     if (NOT(MSVC) OR NOT(WIN32))
     message(FATAL_ERROR "NuGet packages are only supported for MSVC on Windows.")
     endif()
@@ -44,7 +44,6 @@ function(
     set(NUGET_CONFIG ${PROJECT_SOURCE_DIR}/../NuGet.config)
     set(PACKAGES_CONFIG ${PROJECT_SOURCE_DIR}/../packages.config)
     get_filename_component(PACKAGES_DIR ${CMAKE_CURRENT_BINARY_DIR}/../packages ABSOLUTE)
-    set(CPPWINRT_PACKAGE_DIR ${PACKAGES_DIR}/Microsoft.Windows.CppWinRT.${CppWinRT_version})
 
     # Restore nuget packages
     add_custom_command(
