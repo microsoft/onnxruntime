@@ -125,6 +125,8 @@
         "^test_negative_log_likelihood.*", // Does not support 5-D or above tensors for SUB op.
         "^test_softmax_cross_entropy.*", // Does not support 5-D or above tensors for SUB op.
         "^test_mvn.*",
+        "^test_max_float64.*",
+        "^test_min_float64.*",
         "^test_gather_negative_indices.*",
         "^test_sce.*",
         "^test_nllloss.*",
