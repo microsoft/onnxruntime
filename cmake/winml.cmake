@@ -9,6 +9,7 @@ include(precompiled_header.cmake)
 include(target_delayload.cmake)
 include(winml_sdk_helpers.cmake)
 include(winml_cppwinrt.cmake)
+include(nuget_helpers.cmake)
 
 # get the current nuget sdk kit directory
 get_sdk(sdk_folder sdk_version)
@@ -45,7 +46,12 @@ ExternalProject_Add(nuget
 set(NUGET_CONFIG ${PROJECT_SOURCE_DIR}/../NuGet.config)
 set(PACKAGES_CONFIG ${PROJECT_SOURCE_DIR}/../packages.config)
 get_filename_component(PACKAGES_DIR ${CMAKE_CURRENT_BINARY_DIR}/../packages ABSOLUTE)
-set(CPPWINRT_PACKAGE_DIR ${PACKAGES_DIR}/Microsoft.Windows.CppWinRT.2.0.201113.7)
+pkg_version(
+  Microsoft.Windows.CppWinRT
+  CppWinRT_version
+  ${PACKAGES_CONFIG}
+)
+set(CPPWINRT_PACKAGE_DIR ${PACKAGES_DIR}/Microsoft.Windows.CppWinRT.${CppWinRT_version})
 
 # Restore nuget packages, which will pull down the CppWinRT package
 add_custom_command(
@@ -111,6 +117,7 @@ add_generate_cppwinrt_sdk_headers_target(
   ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include  # output folder relative to CMAKE_BINARY_DIR where the generated sdk will be placed in the
   ${target_folder}                                        # folder where this target will be placed
 )
+add_dependencies(winml_sdk_cppwinrt RESTORE_NUGET_PACKAGES)
 
 # generate winml headers from idl
 target_cppwinrt(winml_api
