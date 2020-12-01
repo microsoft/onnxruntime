@@ -14,6 +14,7 @@
 #include <functional>
 #include <sstream>
 
+#include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/common/status.h"
 #include "core/common/safeint.h"
@@ -369,7 +370,7 @@ ORT_API(void, OrtApis::ReleaseCustomOpDomain, _Frees_ptr_opt_ OrtCustomOpDomain*
   delete ptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::CustomOpDomain_Add, _Inout_ OrtCustomOpDomain* custom_op_domain, _In_ OrtCustomOp* op) {
+ORT_API_STATUS_IMPL(OrtApis::CustomOpDomain_Add, _Inout_ OrtCustomOpDomain* custom_op_domain, _In_ const OrtCustomOp* op) {
   API_IMPL_BEGIN
   custom_op_domain->custom_ops_.emplace_back(op);
   return nullptr;
@@ -1805,6 +1806,40 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetProfilingStartTimeNs, _In_ const OrtSessi
 
 // End support for non-tensor types
 
+#ifndef USE_CUDA
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA,
+                    _In_ OrtSessionOptions* options, _In_ const OrtCUDAProviderOptions* cuda_options) {
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(cuda_options);
+  return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled.");
+}
+#endif
+
+#if defined(ORT_MINIMAL_BUILD)
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO,
+                    _In_ OrtSessionOptions* options, _In_ const OrtOpenVINOProviderOptions* provider_options) {
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(provider_options);
+  return CreateStatus(ORT_FAIL, "OpenVINO execution provider is not enabled.");
+}
+#endif
+
+ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfg, _In_ size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes,
+                    int max_dead_bytes_per_chunk, _Outptr_ OrtArenaCfg** out) {
+  API_IMPL_BEGIN
+  *out = new OrtArenaCfg();
+  (*out)->max_mem = max_mem;
+  (*out)->arena_extend_strategy = arena_extend_strategy;
+  (*out)->initial_chunk_size_bytes = initial_chunk_size_bytes;
+  (*out)->max_dead_bytes_per_chunk = max_dead_bytes_per_chunk;
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API(void, OrtApis::ReleaseArenaCfg, _Frees_ptr_opt_ OrtArenaCfg* ptr) {
+  delete ptr;
+}
+
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
     &OrtApis::GetVersionString,
@@ -2031,10 +2066,11 @@ static constexpr OrtApi ort_api_1_to_6 = {
     // Version 6 - In development, feel free to add/remove/rearrange here
     &OrtApis::AddInitializer,
     &OrtApis::CreateEnvWithCustomLoggerAndGlobalThreadPools,
-#ifdef USE_CUDA
-    &OrtApis::OrtSessionOptionsAppendExecutionProvider_CUDA,
-#endif
+    &OrtApis::SessionOptionsAppendExecutionProvider_CUDA,
+    &OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO,
     &OrtApis::SetGlobalDenormalAsZero,
+    &OrtApis::CreateArenaCfg,
+    &OrtApis::ReleaseArenaCfg,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)

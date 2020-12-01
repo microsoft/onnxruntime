@@ -46,6 +46,7 @@ def generate_gemm_inputs_initializers(graph, config, added_inputs_initializers={
     input_shape_b = ['seq'] + shape_b if extend else shape_b
     input_shape_c = ['seq'] + shape_c if extend else shape_c
 
+    np.random.seed(12345)
     a = np.random.ranf(shape_a).astype(np.float32)
     b = np.random.ranf(shape_b).astype(np.float32)
     c = np.random.ranf(shape_c).astype(np.float32) if config['withC'] else np.array(0)

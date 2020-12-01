@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "nccl_common.h"
+#include "orttraining/training_ops/cuda/collective/nccl_common.h"
 #include <mpi.h>
 
 #include "orttraining/core/framework/mpi_context.h"

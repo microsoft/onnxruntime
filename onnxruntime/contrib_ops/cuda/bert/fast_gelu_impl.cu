@@ -24,7 +24,7 @@ limitations under the License.
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
-#include "fast_gelu_impl.h"
+#include "contrib_ops/cuda/bert/fast_gelu_impl.h"
 
 using namespace onnxruntime::cuda;
 

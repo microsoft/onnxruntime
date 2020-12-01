@@ -10,9 +10,6 @@
 #ifdef USE_DNNL
 #include "onnxruntime/core/providers/dnnl/dnnl_provider_factory.h"
 #endif
-#ifdef USE_NGRAPH
-#include "onnxruntime/core/providers/ngraph/ngraph_provider_factory.h"
-#endif
 #ifdef USE_NUPHAR
 #include "onnxruntime/core/providers/nuphar/nuphar_provider_factory.h"
 #endif

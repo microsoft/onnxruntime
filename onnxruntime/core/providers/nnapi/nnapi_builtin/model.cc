@@ -40,6 +40,14 @@ void Model::AddOutput(const std::string& onnx_output_name,
   operand_types_.emplace(nnapi_output_name, operand_type);
 }
 
+bool Model::IsScalarOutput(const std::string& output_name) const {
+  return Contains(scalar_outputs_, output_name);
+}
+
+void Model::AddScalarOutput(const std::string& output_name) {
+  scalar_outputs_.insert(output_name);
+}
+
 const std::vector<std::string>& Model::GetInputs() const {
   return input_names_;
 }
@@ -78,7 +86,7 @@ size_t Model::GetMappedOutputIdx(const std::string& name) const {
 }
 
 bool Model::SupportsDynamicOutputShape() const {
-  // dynamic output shape is only supported on Android API levle 29+
+  // dynamic output shape is only supported on Android API level 29+
   return GetAndroidSdkVer() >= 29 && dynamic_output_buffer_size_ > 0;
 }
 

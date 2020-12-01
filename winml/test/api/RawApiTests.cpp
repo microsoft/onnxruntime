@@ -47,7 +47,7 @@ static void Evaluate() {
   std::unique_ptr<ml::learning_model_device> device = nullptr;
   WINML_EXPECT_NO_THROW(device = std::make_unique<ml::learning_model_device>());
 
-  RunOnDevice(*model.get(), *device.get(), true);
+  RunOnDevice(*model.get(), *device.get(), InputStrategy::CopyInputs);
 
   WINML_EXPECT_NO_THROW(model.reset());
 }
@@ -60,7 +60,20 @@ static void EvaluateNoInputCopy() {
   std::unique_ptr<ml::learning_model_device> device = nullptr;
   WINML_EXPECT_NO_THROW(device = std::make_unique<ml::learning_model_device>());
 
-  RunOnDevice(*model.get(), *device.get(), false);
+  RunOnDevice(*model.get(), *device.get(), InputStrategy::BindAsReference);
+
+  WINML_EXPECT_NO_THROW(model.reset());
+}
+
+static void EvaluateManyBuffers() {
+  std::wstring model_path = L"model.onnx";
+  std::unique_ptr<ml::learning_model> model = nullptr;
+  WINML_EXPECT_NO_THROW(model = std::make_unique<ml::learning_model>(model_path.c_str(), model_path.size()));
+
+  std::unique_ptr<ml::learning_model_device> device = nullptr;
+  WINML_EXPECT_NO_THROW(device = std::make_unique<ml::learning_model_device>());
+
+  RunOnDevice(*model.get(), *device.get(), InputStrategy::BindWithMultipleReferences);
 
   WINML_EXPECT_NO_THROW(model.reset());
 }
@@ -76,7 +89,7 @@ static void EvaluateFromModelFromBuffer() {
   std::unique_ptr<ml::learning_model_device> device = nullptr;
   WINML_EXPECT_NO_THROW(device = std::make_unique<ml::learning_model_device>());
 
-  RunOnDevice(*model.get(), *device.get(), true);
+  RunOnDevice(*model.get(), *device.get(), InputStrategy::CopyInputs);
 
   WINML_EXPECT_NO_THROW(model.reset());
 }
@@ -88,6 +101,7 @@ const RawApiTestsApi& getapi() {
       CreateCpuDevice,
       Evaluate,
       EvaluateNoInputCopy,
+      EvaluateManyBuffers,
       EvaluateFromModelFromBuffer,
   };
   return api;

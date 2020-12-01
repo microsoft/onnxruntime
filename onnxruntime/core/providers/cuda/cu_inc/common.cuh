@@ -258,7 +258,7 @@ __device__ __inline__ nv_bfloat16 _Normcdf(nv_bfloat16 a) { return nv_bfloat16(n
 #endif
 
 template <class INT, class INT2>
-static INT CeilDiv(INT a, INT2 b)  // ceil(a/b)
+inline __host__ __device__ INT CeilDiv(INT a, INT2 b)  // ceil(a/b)
 {
   return (INT)(((size_t)a + (size_t)b - 1) / (size_t)b);  // these size_t casts are necessary since b may be INT_MAX (for maxGridSize[])
 }

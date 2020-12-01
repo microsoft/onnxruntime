@@ -15,21 +15,13 @@
 #include "onnx/common/stl_backports.h"
 #include "core/common/common.h"
 #include "core/common/const_pointer_container.h"
-#include "core/session/onnxruntime_c_api.h"
-#include "core/framework/ortdevice.h"
-#include "core/framework/ortmemoryinfo.h"
+#include "core/common/logging/severity.h"
+#include "core/framework/allocator.h"
+#include "core/framework/allocatormgr.h"
 #include "core/framework/tensor_shape.h"
 
 namespace onnxruntime {
 namespace logging {
-
-enum class Severity {
-  kVERBOSE = 0,
-  kINFO = 1,
-  kWARNING = 2,
-  kERROR = 3,
-  kFATAL = 4
-};
 
 enum class DataType {
   SYSTEM = 0,  ///< System data.
@@ -46,6 +38,7 @@ enum class AutoPadType {
 };
 
 // onnx Protobuf types (all of these are actually just Provider_<type> -> ONNX_NAMESPACE::<type>)
+struct Provider_int64s;  // RepeatedPtrField
 struct Provider_AttributeProto;
 struct Provider_GraphProto;
 struct Provider_ModelProto;
@@ -53,12 +46,12 @@ struct Provider_NodeProto;
 struct Provider_TensorProto;
 struct Provider_TensorProtos;
 struct Provider_TensorShapeProto_Dimension;
-struct Provider_TensorShapeProto_Dimensions;
+struct Provider_TensorShapeProto_Dimensions;  // RepeatedPtrField
 struct Provider_TensorShapeProto;
 struct Provider_TypeProto_Tensor;
 struct Provider_TypeProto;
 struct Provider_ValueInfoProto;
-struct Provider_ValueInfoProtos;
+struct Provider_ValueInfoProtos;  // RepeatedPtrField
 
 // OnnxRuntime Types (all of these are actually just Provider_<type> -> <type>)
 struct CPUIDInfo;
@@ -84,9 +77,7 @@ struct Provider_NodeAttributes;
 struct Provider_OpKernelContext;
 struct Provider_OpKernelInfo;
 struct Provider_Tensor;
-}
-
-#include "provider_interfaces.h"
+}  // namespace onnxruntime
 
 namespace ONNX_NAMESPACE {
 
@@ -107,6 +98,31 @@ enum AttributeProto_AttributeType : int {
   AttributeProto_AttributeType_SPARSE_TENSORS = 12
 };
 
+enum TensorProto_DataType : int {
+  TensorProto_DataType_UNDEFINED = 0,
+  TensorProto_DataType_FLOAT = 1,
+  TensorProto_DataType_UINT8 = 2,
+  TensorProto_DataType_INT8 = 3,
+  TensorProto_DataType_UINT16 = 4,
+  TensorProto_DataType_INT16 = 5,
+  TensorProto_DataType_INT32 = 6,
+  TensorProto_DataType_INT64 = 7,
+  TensorProto_DataType_STRING = 8,
+  TensorProto_DataType_BOOL = 9,
+  TensorProto_DataType_FLOAT16 = 10,
+  TensorProto_DataType_DOUBLE = 11,
+  TensorProto_DataType_UINT32 = 12,
+  TensorProto_DataType_UINT64 = 13,
+  TensorProto_DataType_COMPLEX64 = 14,
+  TensorProto_DataType_COMPLEX128 = 15,
+  TensorProto_DataType_BFLOAT16 = 16
+};
+
+enum TensorProto_DataLocation : int {
+  TensorProto_DataLocation_DEFAULT = 0,
+  TensorProto_DataLocation_EXTERNAL = 1
+};
+
 enum Version : int {
   _START_VERSION = 0,
   IR_VERSION_2017_10_10 = 1,
@@ -125,9 +141,9 @@ enum OperatorStatus : int {
 
 }  // namespace ONNX_NAMESPACE
 
-namespace onnxruntime {
+#include "provider_interfaces.h"
 
-void SetProviderHost(ProviderHost& host);
+namespace onnxruntime {
 
 // The function passed in will be run on provider DLL unload. This is used to free thread_local variables that are in threads we don't own
 // Since these are not destroyed when the DLL unloads we have to do it manually. Search for usage for an example.
@@ -152,7 +168,9 @@ struct DeleteOnUnloadPtr {
 
 constexpr const char* kOnnxDomain = "";
 constexpr const char* kMSDomain = "com.microsoft";
+constexpr const char* kNGraphDomain = "com.intel.ai";
 constexpr const char* kDnnlExecutionProvider = "DnnlExecutionProvider";
+constexpr const char* kOpenVINOExecutionProvider = "OpenVINOExecutionProvider";
 constexpr const char* kTensorrtExecutionProvider = "TensorrtExecutionProvider";
 
 enum CUDAStreamType : int {
@@ -177,10 +195,9 @@ class DataTypeImpl {
 template <typename T>
 using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
 
-std::unique_ptr<Provider_IAllocator> Provider_CreateCPUAllocator(const OrtMemoryInfo& memory_info);
-std::unique_ptr<Provider_IAllocator> Provider_CreateCUDAAllocator(int16_t device_id, const char* name);
-std::unique_ptr<Provider_IAllocator> Provider_CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
-Provider_AllocatorPtr CreateAllocator(const Provider_AllocatorCreationInfo& info);
+std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info);
+std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name);
+std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
 
 std::unique_ptr<Provider_IDataTransfer> Provider_CreateGPUDataTransfer();
 
@@ -193,8 +210,6 @@ namespace logging {
 struct Category {
   static const char* onnxruntime;  ///< General output
 };
-
-constexpr const char* SEVERITY_PREFIX = "VIWEF";
 
 }  // namespace logging
 
