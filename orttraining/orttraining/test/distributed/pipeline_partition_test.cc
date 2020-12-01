@@ -144,21 +144,6 @@ TEST(PipelinePartition, AttentionPastState2Stages) {
   }
 }
 
-TEST(PipelinePartition, BertToyREMOVE) {
-  std::string filename = "testdata/bert_toy_optimized.onnx";
-  int nstages = 3;
-  TrainingSession::TrainingConfiguration::CutInfo cut0 = {
-    TrainingSession::TrainingConfiguration::CutEdge("326"),
-    TrainingSession::TrainingConfiguration::CutEdge("103", {"413", "529"})};
-  TrainingSession::TrainingConfiguration::CutInfo cut1 = {
-    TrainingSession::TrainingConfiguration::CutEdge("558"),
-    TrainingSession::TrainingConfiguration::CutEdge("103", {"645"})};
-  CutList cuts = {cut0, cut1};
-
-  std::shared_ptr<Model> cb_model;
-  LoadAndPartitionWithCuts(filename, nstages, 0, cuts, true, cb_model);
-}
-
 void compareGraphs(Graph& graph1, Graph& graph2) {
   GraphViewer gv1(graph1);
   const auto& g1_nodes = gv1.GetNodesInTopologicalOrder();
@@ -175,10 +160,6 @@ void compareGraphs(Graph& graph1, Graph& graph2) {
     EXPECT_EQ(n1->InputDefs().size(), n2->InputDefs().size());
     EXPECT_EQ(n1->OutputDefs().size(), n2->OutputDefs().size());
   }
-
-  // TODO: check that the send node sends the same tensors
-  // TODO: check that the receive node receives the same tensors
-
 }
 
 void comparePartitionTest(std::string& filename, int nstages,
