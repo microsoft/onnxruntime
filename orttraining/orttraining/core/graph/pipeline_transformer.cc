@@ -1032,7 +1032,7 @@ common::Status SplitGraphWithMap(Graph& graph,
         last_consumer_stage_fwd = std::max(last_consumer_stage_fwd, consumer_stage);
       } 
       ORT_ENFORCE(!is_backward(producer_stage, consumer_stage),
-                    "Not supported yet.");
+                    "Not supported yet: " + std::to_string(producer_stage) + "-->" + std::to_string(consumer_stage));
       // TODO(jufranc): we will need something like the following, where
       // else if (is_backward(producer_stage, consumer_stage)) {
       //  last_consumer_stage_bwd is init to INT_MAX, for training graphs.
@@ -1324,6 +1324,40 @@ Status ApplyPipelinePartitionToMainGraph(Graph& graph,
 }
 
 
+Status VerifyAssignment(std::vector<int> stages, int nstages, Graph& graph) {
+
+  // All stages are used.
+  for (int s = 0; s < nstages; ++s) {
+    auto stage_is_used = std::find(std::begin(stages), std::end(stages), s);
+    ORT_RETURN_IF_NOT(stage_is_used != std::end(stages),
+      "Stage " + std::to_string(s) + " was not assigned to any node.");
+  }
+
+  // All nodes have been assigned.
+  auto op_assigned = std::find(std::begin(stages), std::end(stages), -1);
+  ORT_RETURN_IF_NOT(op_assigned == std::end(stages), 
+                    "All ops must be assigned to a stage");
+
+  // Edges always go forward.
+  for (size_t i = 0, t = graph.MaxNodeIndex(); i < t; ++i) {
+    Node* node = graph.GetNode(i);
+    int node_stage = stages[i];
+    auto& node_outputs = node->MutableOutputDefs();
+    for (NodeArg* arg : node_outputs) {
+      if (arg == nullptr || !arg->HasTensorOrScalarShape())
+        continue;
+      auto cs = graph.GetMutableConsumerNodes(arg->Name());
+      for (Node* c : cs) {
+        int outgoing_stage = stages[c->Index()];
+        ORT_RETURN_IF_NOT(node_stage <= outgoing_stage);
+      }
+    }
+  }
+
+  return Status::OK();
+}
+
+// TODO: optimize and verify.
 Status GetDeviceAssignmentMap(Graph& graph, 
                               const std::map<std::string, int>& id_to_stage,
                               std::map<Node*, int>& op_to_stage) {
@@ -1341,98 +1375,128 @@ Status GetDeviceAssignmentMap(Graph& graph,
     }
     ORT_ENFORCE(found, "Can't find node's stage " + node->Name());
   }
+
+  // TODO: call verify assignment.
   return Status::OK();
 }
 
-// Takes the cut_list information and finds the device assignment map.
+
 Status GetDeviceAssignmentMap(Graph& graph,
                               const std::vector<TrainingSession::TrainingConfiguration::CutInfo>& cuts,
                               std::map<Node*, int>& op_to_stage) {
   auto total_nodes = graph.MaxNodeIndex();
-
-  // TODO: Is there a better way of doing this in ORT?
-  auto assign_all_from_consumers = [&](std::set<Node*>& consumers, int stage,
-                                       std::vector<int>& stages) {
+  
+  auto visit_and_assign = [&](std::vector<Node*>& roots, int stage,
+                              std::vector<bool>& stop_visit,
+                              std::vector<int>& stages) {
     std::vector<bool> visited(total_nodes, false); 
-    std::queue<Node*> q;
-
-    // Start the visit from all the consumers.
-    for (Node* n : consumers) { q.push(n); }
+    std::list<Node*> q;
+    // Start the visit from all the roots, which are the producers and consumers
+    // of the NodeArgs in contents. If some of those nodes are not to be visited
+    // because they belong to another partition, then we expect `stop_visit` 
+    // value to be true. 
+    q.insert(std::end(q), roots.begin(), roots.end());
+    
     while (!q.empty()) {
       Node* current = q.front();
-      q.pop();
-      if (visited[current->Index()]) {
+      q.pop_front();
+      if (visited[current->Index()] || stop_visit[current->Index()]) {
         continue; // This node has been processed.
       }
+
+      // If the op hasn't been visited, but has a stage already assigned, then
+      // something went wront.
+      ORT_ENFORCE(stages[current->Index()] == -1);
+
       visited[current->Index()] = true;
       stages[current->Index()] = stage;
 
-      // Add all outgoing edges to the queue.
+      // Add all ingoing edges to the queue.
+      auto& node_inputs = current->MutableInputDefs();
+      for (NodeArg* arg : node_inputs) {
+        if (arg == nullptr || !arg->HasTensorOrScalarShape()) 
+          continue;
+        auto producer = graph.GetMutableProducerNode(arg->Name());
+        if (producer != nullptr) {
+          q.insert(std::end(q), producer);
+        }
+      }
       auto& node_outputs = current->MutableOutputDefs();
       for (NodeArg* arg : node_outputs) {
         if (arg == nullptr || !arg->HasTensorOrScalarShape()) 
           continue;
-        auto cs = graph.GetMutableConsumerNodes(arg->Name());
-        for (Node* c : cs)
-          q.push(c);
+        auto consumers = graph.GetMutableConsumerNodes(arg->Name());
+        q.insert(std::end(q), consumers.begin(), consumers.end());
       }
     }
   };
-  
-  // Create a vector of stage ids, where graph.GetNode(i) is assigned to stage
-  // stages[i]. Initially, assign all nodes to stage 0.
-  std::vector<int> stages(total_nodes, 0);
-  for (int cut_id = 0, t = cuts.size(); cut_id < t; ++cut_id) {
+
+  int ncuts = cuts.size();
+  // all_consumers[i] is the vector of consumers of cut i.
+  std::vector<std::vector<Node*>> all_consumers(ncuts, std::vector<Node*>());
+  // all_producers[i] is the vector of producers of cut i.
+  std::vector<std::vector<Node*>> all_producers(ncuts, std::vector<Node*>());
+
+  for (int cut_id = 0; cut_id < ncuts; ++cut_id) {
     auto& cut = cuts[cut_id];
-    // Find all consumers of this cut. 
-    std::set<Node*> consumers;
+    // Find all consumers of this cut.
+    auto& consumers = all_consumers[cut_id];
+    auto& producers = all_producers[cut_id];
     for (auto& edge : cut) {
+      auto producer = graph.GetMutableProducerNode(edge.node_arg_name);
+      ORT_RETURN_IF(producer == nullptr, "Invalid cut point.");
+      producers.emplace_back(producer);
+      
       if (edge.consumer_nodes.has_value()) {
         auto& consumer_names = edge.consumer_nodes.value();
         for (auto& consumer_node_id : consumer_names) {
-          consumers.insert(graph.GetMutableProducerNode(consumer_node_id));
+          consumers.emplace_back(graph.GetMutableProducerNode(consumer_node_id));
         }
       } else {
         auto cs = graph.GetMutableConsumerNodes(edge.node_arg_name);
-        for (auto c : cs) {
-          consumers.insert(c);
-        }
+        consumers.insert(std::end(consumers), cs.begin(), cs.end());
       }
-      ORT_ENFORCE(consumers.size() > 0);
+
+      ORT_RETURN_IF(producers.size() == 0, "Invalid cut point.");
+      ORT_RETURN_IF(consumers.size() == 0, "Invalid cut point.");
     }
-    // Assign all nodes reachable from consumers to stage cut_id + 1.
-    assign_all_from_consumers(consumers, cut_id + 1, stages);
   }
 
-  for (size_t i = 0, t = graph.MaxNodeIndex(); i < t; ++i) {
-    Node* node = graph.GetNode(i);
-    int stage = stages[i];
-    op_to_stage.insert({node, stage});
-  }
-
-  // Verification.
-  // All stages are used.
-  int n_stages = cuts.size() + 1;
-  for (int s = 0; s < n_stages; ++s) {
-    auto stage_is_used = std::find(std::begin(stages), std::end(stages), s);
-    ORT_RETURN_IF_NOT(stage_is_used != std::end(stages),
-      "Stage " + std::to_string(s) + " was not assigned to any node.");
-  }
-
-  // Edges always go forward.
-  for (size_t i = 0, t = graph.MaxNodeIndex(); i < t; ++i) {
-    Node* node = graph.GetNode(i);
-    int node_stage = stages[i];
-    auto& node_outputs = node->MutableOutputDefs();
-    for (NodeArg* arg : node_outputs) {
-      if (arg == nullptr || !arg->HasTensorOrScalarShape())
-        continue;
-      auto cs = graph.GetMutableConsumerNodes(arg->Name());
-      for (Node* c : cs) {
-        int outgoing_stage = op_to_stage.at(c);
-        ORT_RETURN_IF_NOT(node_stage <= outgoing_stage);
+  std::vector<int> stages(total_nodes, -1);
+  { // Stage 0
+    std::vector<bool> stop_visit(total_nodes, false);
+    for (int cid = 0; cid < ncuts; ++cid) {
+      auto& consumers = all_consumers[cid];
+      for (auto consumer : consumers) {
+        stop_visit[consumer->Index()] = true;
       }
     }
+    visit_and_assign(all_producers[0], 0, stop_visit, stages);
+  }
+  
+  // Stages 1 .. N-1
+  for (int cid = 0; cid < ncuts; ++cid) {
+    std::vector<bool> stop_visit(total_nodes, false);
+    
+    auto& producers = all_producers[cid];
+    for (auto producer : producers) {
+      stop_visit[producer->Index()] = true;
+    }
+
+    for (int i = cid + 1; i < ncuts; ++i) {
+      auto& consumers = all_consumers[i];
+      for (auto consumer : consumers) {
+        stop_visit[consumer->Index()] = true;
+      }
+    }
+
+    visit_and_assign(all_consumers[cid], cid + 1, stop_visit, stages);
+  }
+
+  VerifyAssignment(stages, ncuts + 1, graph);
+
+  for (size_t i = 0, t = graph.MaxNodeIndex(); i < t; ++i) {
+    op_to_stage.emplace(graph.GetNode(i), stages[i]);
   }
 
   return Status::OK();

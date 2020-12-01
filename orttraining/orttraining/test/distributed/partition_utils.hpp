@@ -461,8 +461,10 @@ common::Status SplitGraph(Graph& graph,
       element_types.add_ints(static_cast<int64_t>(dtype));
 
       auto& new_receive_output = CreateNodeArg(graph, *updated_node_arg);
-      const auto old_shape = *(updated_node_arg->Shape());
-      new_receive_output.SetShape(old_shape);
+      const auto* old_shape = updated_node_arg->Shape();
+      if (old_shape != nullptr) {
+        new_receive_output.SetShape(*old_shape);
+      }
       recv_output_args.push_back(&new_receive_output);
 
       // add value info for this newly added receive_output, for shape propagation
