@@ -158,14 +158,13 @@ except ImportError as error:
 # Additional binaries
 if platform.system() == 'Linux':
   libs = ['onnxruntime_pybind11_state.so', 'libdnnl.so.1', 'libmklml_intel.so', 'libmklml_gnu.so', 'libiomp5.so', 'mimalloc.so']
-  # DNNL & TensorRT EPs are built as shared libs
+  # DNNL, TensorRT & OpenVINO EPs are built as shared libs
   libs.extend(['libonnxruntime_providers_shared.so'])
   libs.extend(['libonnxruntime_providers_dnnl.so'])
   libs.extend(['libonnxruntime_providers_tensorrt.so'])
-  # OpenVINO Libs
-  if package_name == 'onnxruntime-openvino':
-    if platform.system() == 'Linux':
-      libs.extend(['libovep_ngraph.so'])
+  libs.extend(['libonnxruntime_providers_openvino.so'])
+  # OpenVINO libs
+  libs.extend(['libovep_ngraph.so'])
   # Nuphar Libs
   libs.extend(['libtvm.so.0.5.1'])
   if nightly_build:
@@ -180,10 +179,11 @@ elif platform.system() == "Darwin":
     libs.extend(['libonnxruntime_pywrapper.dylib'])
 else:
   libs = ['onnxruntime_pybind11_state.pyd', 'dnnl.dll', 'mklml.dll', 'libiomp5md.dll']
-  # DNNL & TensorRT EPs are built as shared libs
+  # DNNL, TensorRT & OpenVINO EPs are built as shared libs
   libs.extend(['onnxruntime_providers_shared.dll'])
   libs.extend(['onnxruntime_providers_dnnl.dll'])
   libs.extend(['onnxruntime_providers_tensorrt.dll'])
+  libs.extend(['onnxruntime_providers_openvino.dll'])
   # DirectML Libs
   libs.extend(['directml.dll'])
   # Nuphar Libs

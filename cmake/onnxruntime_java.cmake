@@ -100,13 +100,31 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Android")
   file(MAKE_DIRECTORY ${ANDROID_PACKAGE_OUTPUT_DIR})
 endif()
 
-# Set platform and ach for packaging
+# Set platform and arch for packaging
+# Checks the names set by MLAS on non-Windows platforms first
 if (CMAKE_SYSTEM_NAME STREQUAL "Android")
   set(JNI_ARCH ${ANDROID_ABI})
-elseif (CMAKE_SIZEOF_VOID_P EQUAL "8")
+elseif (ARM64)
+  set(JNI_ARCH aarch64)
+elseif (X86_64)
   set(JNI_ARCH x64)
+elseif (POWER)
+  set(JNI_ARCH ppc64)
 else()
-  message(FATAL_ERROR "Java is currently not supported for x86 architecture")
+  # Now mirror the checks used with MSVC
+  if(MSVC)
+    if(onnxruntime_target_platform STREQUAL "ARM64")
+      set(JNI_ARCH aarch64)
+    elseif(onnxruntime_target_platform STREQUAL "x64")
+      set(JNI_ARCH x64)
+    else()
+      # if everything else failed then we're on a 32-bit arch and Java isn't supported
+      message(FATAL_ERROR "Java is currently not supported on 32-bit x86 architecture")
+    endif()
+  else()
+    # if everything else failed then we're on a 32-bit arch and Java isn't supported
+    message(FATAL_ERROR "Java is currently not supported on 32-bit x86 architecture")
+  endif()
 endif()
 
 if (WIN32)

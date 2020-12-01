@@ -80,11 +80,14 @@ class BaseOpSupportChecker : public IOpSupportChecker {
     return 27;
   }
 
-  virtual bool HasSupportedInputs(const Node& node) const;
+  virtual bool HasSupportedInputsImpl(const Node& node) const;
 
   virtual int GetMinSupportedOpSet(const Node& /* node */) const { return 1; }
   virtual int GetMaxSupportedOpSet(const Node& /* node */) const { return 13; }
+
+ private:
   bool HasSupportedOpSet(const Node& node) const;
+  bool HasSupportedInputs(const Node& node) const;
 };
 
 /* static */ void BaseOpSupportChecker::CreateSharedOpSupportChecker(
@@ -121,15 +124,22 @@ bool BaseOpSupportChecker::IsOpSupported(const InitializedTensorSet& initializer
 }
 
 bool BaseOpSupportChecker::HasSupportedInputs(const Node& node) const {
+  // We do not support unknown(null) input shape
+  for (const auto* input : node.InputDefs()) {
+    if (!input->Shape()) {
+      LOGS_DEFAULT(VERBOSE) << "Node [" << node.Name() << "] type [" << node.OpType()
+                            << "] Input [" << input->Name() << "] has no shape";
+      return false;
+    }
+  }
+
+  return HasSupportedInputsImpl(node);
+}
+
+bool BaseOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
   // We only check the type of input 0 by default
   // specific op builder can override this
   const auto& input = *node.InputDefs()[0];
-
-  if (nullptr == input.Shape()) {
-    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
-                          << "] Input shape is null";
-    return false;
-  }
 
   int32_t input_type;
   if (!GetType(input, input_type))
@@ -170,7 +180,7 @@ class BinaryOpSupportChecker : public BaseOpSupportChecker {
   int32_t GetMinSupportedSdkVer(const Node& node, const OpSupportCheckParams& params) const override;
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const OpSupportCheckParams& params) const override;
-  bool HasSupportedInputs(const Node& node) const override;
+  bool HasSupportedInputsImpl(const Node& node) const override;
   int GetMinSupportedOpSet(const Node& node) const override;
 };
 
@@ -206,9 +216,9 @@ int BinaryOpSupportChecker::GetMinSupportedOpSet(const Node& node) const {
   return 1;
 }
 
-bool BinaryOpSupportChecker::HasSupportedInputs(const Node& node) const {
+bool BinaryOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
   if (node.OpType() != "QLinearAdd")
-    return BaseOpSupportChecker::HasSupportedInputs(node);
+    return BaseOpSupportChecker::HasSupportedInputsImpl(node);
 
   // QLinearAdd
   if (!HasValidBinaryOpQuantizedInputs(node))
@@ -511,7 +521,7 @@ class ConvOpSupportChecker : public BaseOpSupportChecker {
     return params.use_nchw ? 29 : 28;
   }
 
-  bool HasSupportedInputs(const Node& node) const override;
+  bool HasSupportedInputsImpl(const Node& node) const override;
 };
 
 /* static */ void ConvOpSupportChecker::CreateSharedOpSupportChecker(
@@ -524,9 +534,9 @@ class ConvOpSupportChecker : public BaseOpSupportChecker {
       });
 }
 
-bool ConvOpSupportChecker::HasSupportedInputs(const Node& node) const {
+bool ConvOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
   if (node.OpType() != "QLinearConv")
-    return BaseOpSupportChecker::HasSupportedInputs(node);
+    return BaseOpSupportChecker::HasSupportedInputsImpl(node);
 
   // QLinearConv only supports input of uint8 for now
   if (!HasValidBinaryOpQuantizedInputs(node))
@@ -683,13 +693,13 @@ class GemmOpSupportChecker : public BaseOpSupportChecker {
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const OpSupportCheckParams& params) const override;
-  bool HasSupportedInputs(const Node& node) const override;
+  bool HasSupportedInputsImpl(const Node& node) const override;
   int GetMinSupportedOpSet(const Node& node) const override;
 };
 
-bool GemmOpSupportChecker::HasSupportedInputs(const Node& node) const {
+bool GemmOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
   if (node.OpType() != "QLinearMatMul")
-    return BaseOpSupportChecker::HasSupportedInputs(node);
+    return BaseOpSupportChecker::HasSupportedInputsImpl(node);
 
   // QLinearMatMul
   if (!HasValidBinaryOpQuantizedInputs(node))
@@ -990,7 +1000,7 @@ class DequantizeLinearOpSupportChecker : public BaseOpSupportChecker {
   int32_t GetMinSupportedSdkVer(const Node& /* node */, const OpSupportCheckParams& /* params */) const override {
     return 29;
   }
-  bool HasSupportedInputs(const Node& node) const override;
+  bool HasSupportedInputsImpl(const Node& node) const override;
 };
 
 bool DequantizeLinearOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
@@ -1007,7 +1017,7 @@ bool DequantizeLinearOpSupportChecker::IsOpSupportedImpl(const InitializedTensor
   return true;
 }
 
-bool DequantizeLinearOpSupportChecker::HasSupportedInputs(const Node& node) const {
+bool DequantizeLinearOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
   int32_t input_type;
   if (!GetType(*node.InputDefs()[0], input_type))
     return false;

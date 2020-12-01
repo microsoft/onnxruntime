@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "hip/hip_runtime.h"
+#include <hip/hip_runtime.h>
 #include "core/providers/rocm/cu_inc/common.cuh"
 
 #define TRANS_TILE_DIM 32
