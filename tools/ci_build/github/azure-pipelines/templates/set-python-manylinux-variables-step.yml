@@ -14,7 +14,7 @@ steps:
   inputs:
     scriptSource: inline
     script: |
-      version = "${{ coalesce(parameters.python.version, variables.python.version) }}"
+      version = "${{ coalesce(parameters["python.version"], variables["python.version"]) }}"
 
       if version == "3.5":
         variables = {
