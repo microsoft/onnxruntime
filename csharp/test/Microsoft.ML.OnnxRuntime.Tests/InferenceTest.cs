@@ -447,10 +447,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
 
             // Get profiling's start time
-            ulong startTime = getSingleSessionProfilingStartTime();
+            ulong ProfilingStartTime = getSingleSessionProfilingStartTime();
 
             // Check the profiling's start time has been updated
-            Assert.True(startTime != 0);
+            Assert.True(ProfilingStartTime != 0);
         }
 
         [Fact]
