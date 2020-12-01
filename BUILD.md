@@ -60,24 +60,23 @@ Open Developer Command Prompt for Visual Studio version you are going to use. Th
 The default Windows CMake Generator is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to `.\build.bat`
 
 
-#### Linux/macOS
+#### Linux
 ```
 ./build.sh --config RelWithDebInfo --build_shared_lib --parallel
 ```
+
+
 ##### macOS
 By default, ORT is configured to be built for a minimum target macOS version of 10.12.
 The shared library in the release Nuget(s) and the Python wheel may be installed on macOS versions of 10.12+.
 
-If you would like to use [Xcode](https://developer.apple.com/xcode/) to build the onnxruntime for x86_64 macOS, use
-* With Xcode 11
+If you would like to use [Xcode](https://developer.apple.com/xcode/) to build the onnxruntime for x86_64 macOS, please add the --user_xcode argument in the command line
    ```
    ./build.sh --config RelWithDebInfo --build_shared_lib --parallel --use_xcode
    ```
-* With Xcode 12
-   ```
-   ./build.sh --config RelWithDebInfo --build_shared_lib --parallel --use_xcode \
-              --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=x86_64
-   ```
+While without this flag, the cmake build generator will be Unix makefile by default.
+Also, if you want to try cross compiling for Apple Silicon in an Intel-based MacOS machine, please add the argument --osx_arch arm64 with a cmake > 3.19, however the unit tests will be skipped due to the incompatible CPU instruction set.
+
 
 #### Notes
 
