@@ -810,10 +810,10 @@ bool GemmOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
     if (!(transA == 0 && alpha == 1.f && beta == 1.f)) {
       LOGS_DEFAULT(VERBOSE) << "Only transA == 0, alpha == 1.0 "
                             << "and beta == 1.0 is supported."
-                            << "transA " << transA
-                            << "transB " << transB
-                            << "alpha " << alpha
-                            << "beta " << beta;
+                            << " transA " << transA
+                            << " transB " << transB
+                            << " alpha " << alpha
+                            << " beta " << beta;
       return false;
     }
 
