@@ -57,6 +57,7 @@ class BertOnnxModel(OnnxModel):
 
         self.attention_mask = AttentionMask(self)
         self.attention_fusion = FusionAttention(self, self.hidden_size, self.num_heads, self.attention_mask)
+        self.utils = FusionUtils(self)
 
     def fuse_attention(self):
         self.attention_fusion.apply()
@@ -131,11 +132,11 @@ class BertOnnxModel(OnnxModel):
 
         new_graph_inputs = []
         casted_bert_graph_inputs = self.get_graph_inputs_from_fused_nodes(casted=True)
-        utils = FusionUtils(self)
+        
 
         for input in graph.input:
             if input.name in casted_bert_graph_inputs:
-                utils.remove_cast_int32(input.name)
+                self.utils.remove_cast_int32(input.name)
                 int32_input = helper.make_tensor_value_info(input.name, TensorProto.INT32,
                                                             self.tensor_shape_to_list(input.type.tensor_type))
                 new_graph_inputs.append(int32_input)
