@@ -160,19 +160,6 @@ TEST(PipelinePartition, BertToyREMOVE) {
 }
 
 void compareGraphs(Graph& graph1, Graph& graph2) {
-  // Compares the shapes and types of the tensors.
-  // auto compare_tensors = [](NodeArg* /*t1*/, NodeArg* /*t2*/) {
-    
-  // };
-
-  // Compares the type, inputs and outputs of the ops.
-  auto compare_ops = [](const Node* n1, const Node* n2) {
-    EXPECT_EQ(n1->OpType(), n2->OpType());
-    EXPECT_EQ(n1->InputDefs().size(), n2->InputDefs().size());
-
-    EXPECT_EQ(n1->OutputDefs().size(), n2->OutputDefs().size());
-  };
-
   GraphViewer gv1(graph1);
   const auto& g1_nodes = gv1.GetNodesInTopologicalOrder();
 
@@ -184,7 +171,9 @@ void compareGraphs(Graph& graph1, Graph& graph2) {
   for (int i = 0, t = g1_nodes.size(); i < t; ++i) {
     const Node* n1 = gv1.GetNode(g1_nodes.at(i));
     const Node* n2 = gv2.GetNode(g2_nodes.at(i));
-    compare_ops(n1, n2);
+    EXPECT_EQ(n1->OpType(), n2->OpType());
+    EXPECT_EQ(n1->InputDefs().size(), n2->InputDefs().size());
+    EXPECT_EQ(n1->OutputDefs().size(), n2->OutputDefs().size());
   }
 
   // TODO: check that the send node sends the same tensors

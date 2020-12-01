@@ -1406,7 +1406,8 @@ Status GetDeviceAssignmentMap(Graph& graph,
 
       // If the op hasn't been visited, but has a stage already assigned, then
       // something went wront.
-      ORT_ENFORCE(stages[current->Index()] == -1);
+      ORT_RETURN_IF(stages[current->Index()] != -1,
+        "Trying to reassign an op. Possibly, due to an invalid cut point");
 
       visited[current->Index()] = true;
       stages[current->Index()] = stage;
@@ -1429,6 +1430,8 @@ Status GetDeviceAssignmentMap(Graph& graph,
         q.insert(std::end(q), consumers.begin(), consumers.end());
       }
     }
+
+    return Status::OK();
   };
 
   int ncuts = cuts.size();
@@ -1471,7 +1474,8 @@ Status GetDeviceAssignmentMap(Graph& graph,
         stop_visit[consumer->Index()] = true;
       }
     }
-    visit_and_assign(all_producers[0], 0, stop_visit, stages);
+    ORT_RETURN_IF_ERROR(
+      visit_and_assign(all_producers[0], 0, stop_visit, stages));
   }
   
   // Stages 1 .. N-1
@@ -1490,10 +1494,11 @@ Status GetDeviceAssignmentMap(Graph& graph,
       }
     }
 
-    visit_and_assign(all_consumers[cid], cid + 1, stop_visit, stages);
+    ORT_RETURN_IF_ERROR(
+      visit_and_assign(all_consumers[cid], cid + 1, stop_visit, stages));
   }
 
-  VerifyAssignment(stages, ncuts + 1, graph);
+  ORT_RETURN_IF_ERROR(VerifyAssignment(stages, ncuts + 1, graph));
 
   for (size_t i = 0, t = graph.MaxNodeIndex(); i < t; ++i) {
     op_to_stage.emplace(graph.GetNode(i), stages[i]);
