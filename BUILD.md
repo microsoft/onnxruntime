@@ -75,7 +75,7 @@ If you would like to use [Xcode](https://developer.apple.com/xcode/) to build th
    ./build.sh --config RelWithDebInfo --build_shared_lib --parallel --use_xcode
    ```
 While without this flag, the cmake build generator will be Unix makefile by default.
-Also, if you want to try cross compiling for Apple Silicon in a legacy MacOS machine(with Intel CPU), please add the argument --osx_arch arm64, however the unit tests will be skipped due to the incompatible CPU instruction set.
+Also, if you want to try cross compiling for Apple Silicon in an Intel-based MacOS machine, please add the argument --osx_arch arm64, however the unit tests will be skipped due to the incompatible CPU instruction set.
 
 
 #### Notes

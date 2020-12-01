@@ -1713,8 +1713,8 @@ def is_cross_compiling_on_apple(args):
 
 
 def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
-    if (args.arm or args.arm64 or args.enable_windows_store) and (
-            not is_windows() and not is_cross_compiling_on_apple(args)):
+    if (args.arm or args.arm64 or args.enable_windows_store) and \
+            not (is_windows() or is_cross_compiling_on_apple(args)):
         raise BuildError(
             'Currently only support building protoc for Windows host while '
             'cross-compiling for ARM/ARM64/Store and linux cross-compiling iOS')
@@ -1943,7 +1943,7 @@ def main():
                 # Cannot test on host build machine for cross-compiled
                 # builds (Override any user-defined behaviour for test if any)
                 if args.test:
-                    log.info(
+                    log.warning(
                         "Cannot test on host build machine for cross-compiled "
                         "ARM(64) builds. Will skip test running after build.")
                     args.test = False
@@ -1983,7 +1983,7 @@ def main():
             if not args.ios and not args.android and \
                     args.osx_arch == 'arm64' and platform.machine() == 'x86_64':
                 if args.test:
-                    log.info(
+                    log.warning(
                         "Cannot test ARM64 build on X86_64. Will skip test running after build.")
                     args.test = False
 
