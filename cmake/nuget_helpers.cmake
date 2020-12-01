@@ -46,7 +46,7 @@ function(
     get_filename_component(PACKAGES_DIR ${CMAKE_CURRENT_BINARY_DIR}/../packages ABSOLUTE)
     set(CPPWINRT_PACKAGE_DIR ${PACKAGES_DIR}/Microsoft.Windows.CppWinRT.${CppWinRT_version})
 
-    # Restore nuget packages, which will pull down the CppWinRT package
+    # Restore nuget packages
     add_custom_command(
     OUTPUT ${target_dependency}
     DEPENDS ${PACKAGES_CONFIG} ${NUGET_CONFIG}
