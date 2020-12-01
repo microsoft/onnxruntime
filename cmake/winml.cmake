@@ -33,17 +33,6 @@ if (NOT(MSVC) OR NOT(WIN32))
 endif()
 
 # Retrieve the latest version of nuget
-include(ExternalProject)
-ExternalProject_Add(nuget
-  PREFIX nuget
-  URL "https://dist.nuget.org/win-x86-commandline/v5.3.0/nuget.exe"
-  DOWNLOAD_NO_EXTRACT 1
-  CONFIGURE_COMMAND ""
-  BUILD_COMMAND ""
-  UPDATE_COMMAND ""
-  INSTALL_COMMAND "")
-
-set(NUGET_CONFIG ${PROJECT_SOURCE_DIR}/../NuGet.config)
 set(PACKAGES_CONFIG ${PROJECT_SOURCE_DIR}/../packages.config)
 get_filename_component(PACKAGES_DIR ${CMAKE_CURRENT_BINARY_DIR}/../packages ABSOLUTE)
 pkg_version(
@@ -51,20 +40,10 @@ pkg_version(
   CppWinRT_version
   ${PACKAGES_CONFIG}
 )
-set(CPPWINRT_PACKAGE_DIR ${PACKAGES_DIR}/Microsoft.Windows.CppWinRT.${CppWinRT_version})
-
-# Restore nuget packages, which will pull down the CppWinRT package
-add_custom_command(
-  OUTPUT ${CPPWINRT_PACKAGE_DIR}/bin/cppwinrt.exe
-  DEPENDS ${PACKAGES_CONFIG} ${NUGET_CONFIG}
-  COMMAND ${CMAKE_CURRENT_BINARY_DIR}/nuget/src/nuget restore ${PACKAGES_CONFIG} -PackagesDirectory ${PACKAGES_DIR} -ConfigFile ${NUGET_CONFIG}
-  VERBATIM)
-
-add_custom_target(RESTORE_NUGET_PACKAGES ALL DEPENDS ${CPPWINRT_PACKAGE_DIR}/bin/cppwinrt.exe)
-add_dependencies(RESTORE_NUGET_PACKAGES nuget)
+get_cppwinrt_nuget(RESTORE_NUGET_PACKAGES)
 
 # Override and use the the cppwinrt from NuGet package as opposed to the one in the SDK.
-set(winml_CPPWINRT_EXE_PATH_OVERRIDE ${CPPWINRT_PACKAGE_DIR}/bin/cppwinrt.exe)
+set(winml_CPPWINRT_EXE_PATH_OVERRIDE ${PACKAGES_DIR}/Microsoft.Windows.CppWinRT.${CppWinRT_version}/bin/cppwinrt.exe)
 
 set(winml_is_inbox OFF)
 if (onnxruntime_WINML_NAMESPACE_OVERRIDE)
