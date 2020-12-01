@@ -16,9 +16,10 @@ namespace onnxruntime {
    */
 
 struct MultiIndex {
-  size_t index;
-  size_t upper_bound;
-  int64_t stride;
+  size_t n_axes;
+  std::vector<size_t> index;
+  std::vector<size_t> upper_bound;
+  std::vector<int64_t> stride;
 
   /* There is one MultiIndex instance per axis in the tensor.
   * The array keeps track of the position of a pointer walking through the data.
@@ -30,12 +31,19 @@ struct MultiIndex {
   * Function IncrementIndexAndComputeOffset is called to increment
   * the array of MultiIndex to move to the next data in the tensor.
   */
-  MultiIndex() {}
+  MultiIndex() : index(), upper_bound(), stride() { n_axes = 0; }
 
-  void Init(size_t i, size_t n, int64_t s) {
-    index = i;
-    upper_bound = n;
-    stride = s;
+  void Init(size_t num_axes) {
+    index.resize(num_axes);
+    upper_bound.resize(num_axes);
+    stride.resize(num_axes);
+    n_axes = num_axes;
+  }
+
+  void InitAxis(size_t n_axis, size_t i, size_t n, int64_t s) {
+    index[n_axis] = i;
+    upper_bound[n_axis] = n;
+    stride[n_axis] = s;
   }
 };
 
@@ -44,17 +52,18 @@ struct MultiIndex {
 * be transposed, if source_dims is the shape, stride[i] = source_dims[i+1] * source_dims[i+2] * ... * 1.
 * element_size is the size of the tensor element (sizeof(float), sizeof(double)).
 */
-static size_t IncrementIndexAndComputeOffsetSetup(MultiIndex* mindex, int64_t num_axes, const std::vector<int64_t>& target_dims,
-                                                  const std::vector<size_t>& stride, size_t element_size) {
+static void IncrementIndexAndComputeOffsetSetup(MultiIndex& mindex, size_t num_axes, const std::vector<int64_t>& target_dims,
+                                                const std::vector<size_t>& stride, size_t element_size) {
+  mindex.Init(num_axes);
   size_t naxes = 0;
-  for (int64_t i = 0; i < num_axes; ++i) {
+  for (size_t i = 0; i < num_axes; ++i) {
     if (target_dims[i] == 1)
       continue;
-    mindex[naxes].Init(0, static_cast<size_t>(target_dims[i]), stride[i] * element_size);
+    mindex.InitAxis(naxes, 0, static_cast<size_t>(target_dims[i]), stride[i] * element_size);
     ++naxes;
   }
   ORT_ENFORCE(naxes > 0, "Method IncrementIndexAndComputeOffset assumes this value is strictly positive.");
-  return naxes;
+  mindex.n_axes = naxes;
 }
 
 /* This function increments an array of MultiIndex initialized by function IncrementIndexAndComputeOffsetSetup.
@@ -66,26 +75,25 @@ static size_t IncrementIndexAndComputeOffsetSetup(MultiIndex* mindex, int64_t nu
 * local_source = source + (sum_i mindex[i].index * mindex[i].stride
 */
 template <typename T>
-static inline void IncrementIndexAndComputeOffset(MultiIndex* mindex, size_t naxes, const T*& local_source) {
+static inline void IncrementIndexAndComputeOffset(MultiIndex& mindex, const T*& local_source) {
   // Increment the last dimension.
-  MultiIndex* it = (mindex + naxes) - 1;
-  local_source += it->stride;
+  int pos = static_cast<int>(mindex.n_axes) - 1;
+  local_source += mindex.stride[pos];
   // Checks it stays within boundaries.
-  if (++it->index < it->upper_bound)
+  if (++mindex.index[pos] < mindex.upper_bound[pos])
     return;
   // If not, loops on other indices.
   // The first test is outside the loop to be faster.
   // As it is the most common case.
-  local_source -= it->stride * it->index;
-  it->index = 0;
-  --it;
-  MultiIndex* rend = mindex - 1;
-  for (; it != rend; --it) {
-    local_source += it->stride;
-    if (++it->index < it->upper_bound)
+  local_source -= mindex.stride[pos] * mindex.index[pos];
+  mindex.index[pos] = 0;
+  --pos;
+  for (; pos >= 0; --pos) {
+    local_source += mindex.stride[pos];
+    if (++mindex.index[pos] < mindex.upper_bound[pos])
       break;
-    local_source -= it->stride * it->index;
-    it->index = 0;
+    local_source -= mindex.stride[pos] * mindex.index[pos];
+    mindex.index[pos] = 0;
   }
 }
 
@@ -109,14 +117,14 @@ static void DoTransposeImpl(int64_t num_axes, const std::vector<int64_t>& target
                             size_t num_blocks, size_t num_elts_in_block, const std::vector<size_t>& stride,
                             const uint8_t* source, uint8_t* target, size_t element_size) {
   size_t blocksize = num_elts_in_block * element_size;
-  std::vector<MultiIndex> mindex(num_axes);
-  size_t naxes = IncrementIndexAndComputeOffsetSetup(mindex.data(), num_axes, target_dims, stride, element_size);
+  MultiIndex mindex;
+  IncrementIndexAndComputeOffsetSetup(mindex, num_axes, target_dims, stride, element_size);
 
   const uint8_t* local_source = source;
   for (size_t i = 0; i < num_blocks; ++i) {
     ORT_ENFORCE((local_source >= source) && (local_source < source + element_size * num_blocks));
     memcpy(target, local_source, blocksize);
-    IncrementIndexAndComputeOffset(mindex.data(), naxes, local_source);
+    IncrementIndexAndComputeOffset(mindex, local_source);
     target += blocksize;
   }
 }
@@ -125,14 +133,14 @@ static void DoTransposeImpl(int64_t num_axes, const std::vector<int64_t>& target
                             size_t num_blocks, size_t num_elts_in_block, const std::vector<size_t>& stride,
                             const std::string* source, std::string* target) {
   ORT_ENFORCE(num_axes > 0, "Transpose not implemented for empty tensors.");
-  std::vector<MultiIndex> mindex(num_axes);
-  size_t naxes = IncrementIndexAndComputeOffsetSetup(mindex.data(), num_axes, target_dims, stride, 1);
+  MultiIndex mindex;
+  IncrementIndexAndComputeOffsetSetup(mindex, num_axes, target_dims, stride, 1);
 
   const std::string* local_source = source;
   for (size_t i = 0; i < num_blocks; ++i) {
     ORT_ENFORCE((local_source >= source) && (local_source < source + num_blocks));
     DoTransposeSingleBlock(num_elts_in_block, local_source, target);
-    IncrementIndexAndComputeOffset(mindex.data(), naxes, local_source);
+    IncrementIndexAndComputeOffset(mindex, local_source);
     target += num_elts_in_block;
   }
 }
@@ -146,15 +154,15 @@ inline void CopyPrim(uint8_t* target, const uint8_t* source) {
 template <class T>
 static void TypedDoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_dims, size_t num_blocks,
                                     const std::vector<size_t>& stride, const uint8_t* source, uint8_t* target) {
-  std::vector<MultiIndex> mindex(num_axes);
-  size_t naxes = IncrementIndexAndComputeOffsetSetup(mindex.data(), num_axes, target_dims, stride, sizeof(T));
+  MultiIndex mindex;
+  IncrementIndexAndComputeOffsetSetup(mindex, num_axes, target_dims, stride, sizeof(T));
 
   const uint8_t* local_source = source;
   uint8_t* target_end = target + sizeof(T) * num_blocks;
   for (; target != target_end; target += sizeof(T)) {
     ORT_ENFORCE((local_source >= source) && (local_source < source + sizeof(T) * num_blocks));
     CopyPrim<T>(target, local_source);
-    IncrementIndexAndComputeOffset(mindex.data(), naxes, local_source);
+    IncrementIndexAndComputeOffset(mindex, local_source);
   }
 }
 
@@ -185,15 +193,15 @@ void DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_dim
 static void DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_dims, size_t num_blocks,
                                const std::vector<size_t>& stride, const std::string* source, std::string* target) {
   ORT_ENFORCE(num_axes > 0, "Transpose not implemented for empty tensors.");
-  std::vector<MultiIndex> mindex(num_axes);
-  size_t naxes = IncrementIndexAndComputeOffsetSetup(mindex.data(), num_axes, target_dims, stride, 1);
+  MultiIndex mindex;
+  IncrementIndexAndComputeOffsetSetup(mindex, num_axes, target_dims, stride, 1);
 
   // index used to iterate over target iteration-space
   const std::string* local_source = source;
   for (size_t i = 0; i < num_blocks; ++i) {
     ORT_ENFORCE((local_source >= source) && (local_source < source + num_blocks));
     *target = *local_source;
-    IncrementIndexAndComputeOffset(mindex.data(), naxes, local_source);
+    IncrementIndexAndComputeOffset(mindex, local_source);
     target++;
   }
 }
