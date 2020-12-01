@@ -15,18 +15,35 @@ namespace onnxruntime {
    etc.
    */
 
-typedef struct MultiIndex {
+struct MultiIndex {
   size_t index;
   size_t upper_bound;
   int64_t stride;
+
+  /* There is one MultiIndex instance per axis in the tensor.
+  * The array keeps track of the position of a pointer walking through the data.
+  * Any function using it creates an array of MultiIndex
+  * then calls function IncrementIndexAndComputeOffsetSetup
+  * to initialize the array. This constructor does not initialize
+  * anything because it would be overwritten by function
+  * IncrementIndexAndComputeOffsetSetup. This one calls method Init.
+  * Function IncrementIndexAndComputeOffset is called to increment
+  * the array of MultiIndex to move to the next data in the tensor.
+  */
   MultiIndex() {}
+
   void Init(size_t i, size_t n, int64_t s) {
     index = i;
     upper_bound = n;
     stride = s;
   }
-} MultiIndex;
+};
 
+/* This function initializes an array of MultiIndex of size num_axes (one instance per axis).
+* target_dims is the shape of the transposed tensor, stride is linked to the tensor to
+* be transposed, if source_dims is the shape, stride[i] = source_dims[i+1] * source_dims[i+2] * ... * 1.
+* element_size is the size of the tensor element (sizeof(float), sizeof(double)).
+*/
 static size_t IncrementIndexAndComputeOffsetSetup(MultiIndex* mindex, int64_t num_axes, const std::vector<int64_t>& target_dims,
                                                   const std::vector<size_t>& stride, size_t element_size) {
   size_t naxes = 0;
@@ -40,13 +57,25 @@ static size_t IncrementIndexAndComputeOffsetSetup(MultiIndex* mindex, int64_t nu
   return naxes;
 }
 
-// Combines multi-index increment and corresponding pointer in the tensor to transpose.
+/* This function increments an array of MultiIndex initialized by function IncrementIndexAndComputeOffsetSetup.
+* It increments the last dimension, checks if it stays within boundary. If it stays in, it returns,
+* otherwise, it reset the dimension to zero and increments the previous one.
+* While doing that, every modification brought to the array of indices is applied on the
+* pointer local_source. It avoids computing again local_source from the source tensor.
+* At every time, the following condition is verified:
+* local_source = source + (sum_i mindex[i].index * mindex[i].stride
+*/
 template <typename T>
 static void IncrementIndexAndComputeOffset(MultiIndex* mindex, size_t naxes, const T*& local_source) {
+  // Increment the last dimension.
   MultiIndex* it = (mindex + naxes) - 1;
   local_source += it->stride;
+  // Checks it stays within boundaries.
   if (++it->index < it->upper_bound)
     return;
+  // If not, loops on other indices.
+  // The first test is outside the loop to be faster.
+  // As it is the most common case.
   local_source -= it->stride * it->index;
   it->index = 0;
   --it;
