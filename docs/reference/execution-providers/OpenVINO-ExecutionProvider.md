@@ -33,14 +33,15 @@ session.set_providers(['OpenVINOExecutionProvider'], [{Key1 : Value1, Key2 : Val
 *Note that this causes the InferenceSession to be re-initialized, which may cause model recompilation and hardware re-initialization*
 
 ### C/C++ API
-All the options (key-value pairs) need to be concantenated into a string as shown below and passed to OrtSessionOptionsAppendExecutionProviderEx_OpenVINO() API as shown below:-
+All the options shown below are passed to SessionOptionsAppendExecutionProvider_OpenVINO() API and populated in the struct OrtOpenVINOProviderOptions in an example shown below, for example for CPU device type:
 
 ```
-std::string settings_str;
-settings_str.append("Key1|Value1\n");
-settings_str.append("Key2|Value2\n");
-settings_str.append("Key3|Value3\n");
-Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProviderEx_OpenVINO(sf, settings_str.c_str()));
+OrtOpenVINOProviderOptions options;
+options.device_type = "CPU_FP32";
+options.enable_vpu_fast_compile = 0;
+options.device_id = "";
+options.num_of_threads = 8;
+SessionOptionsAppendExecutionProvider_OpenVINO(session_options, &options);
 ```
 
 ### Available configuration options
@@ -48,19 +49,19 @@ The following table lists all the available configuratoin optoins and the Key-Va
 
 | **Key** | **Key type** | **Allowable Values** | **Value type** | **Description** |
 | --- | --- | --- | --- | --- |
-| device_type | string | CPU_FP32, GPU_FP32, GPU_FP16, MYRIAD_FP16, VAD-M_FP16, VAD-F_FP32, Any valid Hetero combination | string | Overrides the accelerator hardware type and precision with these values at runtime. If this option is not explicitly set, default hardware and precision specified during build time is used. |
+| device_type | string | CPU_FP32, GPU_FP32, GPU_FP16, MYRIAD_FP16, VAD-M_FP16, VAD-F_FP32, Any valid Hetero combination, Any valid Multi-Device combination | string | Overrides the accelerator hardware type and precision with these values at runtime. If this option is not explicitly set, default hardware and precision specified during build time is used. |Overrides the accelerator hardware type and precision with these values at runtime. If this option is not explicitly set, default hardware and precision specified during build time is used. |
 | device_id   | string | Any valid OpenVINO device ID | string | Selects a particular hardware device for inference. The list of valid OpenVINO device ID's available on a platform can be obtained either by Python API (`onnxruntime.capi._pybind_state.get_available_openvino_device_ids()`) or by [OpenVINO C/C++ API](https://docs.openvinotoolkit.org/latest/classInferenceEngine_1_1Core.html#acb212aa879e1234f51b845d2befae41c). If this option is not explicitly set, an arbitrary free device will be automatically selected by OpenVINO runtime.|
 | enable_vpu_fast_compile | string | True/False | boolean | This option is only available for MYRIAD_FP16 VPU devices. During initialization of the VPU device with compiled model, Fast-compile may be optionally enabled to speeds up the model's compilation to VPU device specific format. This in-turn speeds up model initialization time. However, enabling this option may slowdown inference due to some of the optimizations not being fully applied, so caution is to be exercised while enabling this option. |
 | num_of_threads | string | Any unsigned positive number other than 0 | size_t | Overrides the accelerator default value of number of threads with this value at runtime. If this option is not explicitly set, default value of 8 is used during build time. |
 
-Valid Hetero combination's:
+Valid Hetero or Multi-Device combinations:
 HETERO:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>...
 The <DEVICE_TYPE> can be any of these devices from this list ['CPU','GPU','MYRIAD','FPGA','HDDL']
 
-A minimum of two DEVICE_TYPE'S should be specified for a valid HETERO Build.
+A minimum of two DEVICE_TYPE'S should be specified for a valid HETERO or Multi-Device Build.
 
 Example:
-HETERO:MYRIAD,CPU         HETERO:HDDL,GPU,CPU
+HETERO:MYRIAD,CPU  HETERO:HDDL,GPU,CPU  MULTI:MYRIAD,GPU,CPU
 
 ## Other configuration settings
 ### Onnxruntime Graph Optimization level
@@ -79,7 +80,7 @@ SessionOptions::SetGraphOptimizationLevel(ORT_DISABLE_ALL);
 ```
 
 ### Deprecated: Dynamic device type selection
-**Note: This API has been deprecated. Please use the Key-Value mechanism mentioned above to set the 'device-type' option.**
+**Note: This API has been deprecated. Please use the mechanism mentioned above to set the 'device-type' option.**
 When ONNX Runtime is built with OpenVINO Execution Provider, a target hardware option needs to be provided. This build time option becomes the default target harware the EP schedules inference on. However, this target may be overriden at runtime to schedule inference on a different hardware as shown below.
 
 Note. This dynamic hardware selection is optional. The EP falls back to the build-time default selection if no dynamic hardware option value is specified.
@@ -94,22 +95,13 @@ onnxruntime.capi._pybind_state.set_openvino_device("<harware_option>")
 
 ### C/C++ API
 
-Append the settings string "device_type|<hardware_option>\n" to the EP settings string. Example shown below for the CPU_FP32 option:
+Append the settings string "<hardware_option>" to the EP settings string. Example shown below for the CPU_FP32 option:
+
 ```
 std::string settings_str;
 ...
-settings_str.append("device_type|CPU_FP32\n");
-Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProviderEx_OpenVINO(sf, settings_str.c_str()));
-```
-
-
-### C/C++ API
-Append the settings string "device_id|<device_id>\n" to the EP settings string, where <device_id> is the unique identifier of the hardware device.
-```
-std::string settings_str;
-...
-settings_str.append("device_id|<device_id>\n");
-Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProviderEx_OpenVINO(sf, settings_str.c_str()));
+settings_str.append("CPU_FP32");
+Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(sf, settings_str.c_str()));
 ```
 
 ## ONNX Layers supported using OpenVINO
@@ -283,4 +275,14 @@ To utilize all available hardware more efficiently during one inference
 
 For more information on Heterogeneous plugin of OpenVINO, please refer to the following
 [documentation](https://docs.openvinotoolkit.org/latest/openvino_docs_IE_DG_supported_plugins_HETERO.html).
+
+## Multi-Device Execution for OpenVINO EP
+
+Multi-Device plugin automatically assigns inference requests to available computational devices to execute the requests in parallel. Potential gains are as follows
+
+Improved throughput that multiple devices can deliver (compared to single-device execution)
+More consistent performance, since the devices can now share the inference burden (so that if one device is becoming too busy, another device can take more of the load)
+
+For more information on Multi-Device plugin of OpenVINO, please refer to the following
+[documentation](https://docs.openvinotoolkit.org/latest/openvino_docs_IE_DG_supported_plugins_MULTI.html#introducing_multi_device_execution).
 

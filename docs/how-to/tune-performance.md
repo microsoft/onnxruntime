@@ -176,6 +176,9 @@ The most widely used environment variables are:
 
 The answers below are troubleshooting suggestions based on common previous user-filed issues and questions. This list is by no means exhaustive and there is a lot of case-by-case fluctuation depending on the model and specific usage scenario. Please use this information to guide your troubleshooting, search through previously filed issues for related topics, and/or file a new issue if your problem is still not resolved.
 
+## Using and configuring shared arena based allocator to reduce memory consumption between multiple sessions
+See `Share allocator(s) between sessions` section in [C API documentation](../reference/api/c-api).
+
 ### Performance Troubleshooting Checklist
 
 Here is a list of things to check through when assessing performance issues.

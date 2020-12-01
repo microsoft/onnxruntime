@@ -16,31 +16,40 @@ ONNX Runtime (ORT) has the capability to train existing PyTorch models through i
 
 _NOTE: The current API is experimental and expected to see significant changes in the near future. Our goal is to improve the interface to provide a seamless integration with PyTorch training that requires minimal changes in users’ training code._ 
 
-  ```python
-  import torch
-  ...
-  import onnxruntime
-  from onnxruntime.capi.ort_trainer import IODescription, ModelDescription, ORTTrainer
+```python
+import torch
+...
+import onnxruntime
+from onnxruntime.training import ORTTrainer, optim
 
-  # Model definition
-  class Net(torch.nn.Module):
-    def __init__(self, D_in, H, D_out):
-      ...
-    def forward(self, x):
-      ...
-
-  model = Net(D_in, H, H_out)
-  criterion = torch.nn.Functional.cross_entropy
-  description = ModelDescription(...)
-  optimizer = 'SGDOptimizer'
-  trainer = ORTTrainer(model, criterion, description, optimizer, ...)
-
-  # Training Loop
-  for t in range(1000):
-    # forward + backward + weight update
-    loss, y_pred = trainer.train_step(x, y, learning_rate)
+# Model definition
+class NeuralNet(torch.nn.Module):
+  def __init__(self, input_size, hidden_size, num_classes):
     ...
-  ```
+  def forward(self, data):
+    ...
+
+model = NeuralNet(input_size=784, hidden_size=500, num_classes=10)
+criterion = torch.nn.Functional.cross_entropy 
+model_description = {'inputs':  [('data', ['in', 'batch_size']),
+                                 ('target', ['label_x_batch_size'])],
+                     'outputs': [('loss', [], True),
+                                 ('output', ['out', 'batch_size'])]}
+
+optimizer_config = optim.AdamConfig(lr=learning_rate)
+
+trainer = ORTTrainer(model,              # model
+                     model_description,  # model description
+                     optimizer_config,   # optimizer configuration
+                     criterion)          # loss function
+
+# Training Loop
+for t in range(1000):
+  # forward + backward + weight update
+  loss, y_pred = trainer.train_step(input_data, target_labels, learning_rate)
+  total_loss += loss.item()
+  ...
+```
 
 ## Build ONNX Runtime Training from source
 

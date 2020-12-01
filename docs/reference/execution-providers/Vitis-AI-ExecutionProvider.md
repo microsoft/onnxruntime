@@ -2,7 +2,7 @@
 title: Vitis AI
 parent: Execution Providers
 grand_parent: Reference
-nav_order: 12
+nav_order: 11
 ---
 
 # Vitis-AI Execution Provider
