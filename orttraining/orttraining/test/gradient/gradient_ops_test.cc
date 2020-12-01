@@ -2176,7 +2176,7 @@ TEST(GradientCheckerTest, ClipGrad) {
     TensorInfo x_info({2, 2, 2}, true);
     TensorInfo min_info({}, false);
     TensorInfo max_info({}, false);
-    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6, 7, 8}, {2.8}, {7.2}};
+    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6, 7, 8}, {2.8f}, {7.2f}};
     TensorInfo y_info({2, 2, 2}, true);
     gradient_checker.ComputeGradientError(op_def, {x_info, min_info, max_info}, {y_info}, &max_error, x_datas);
     EXPECT_IS_TINY(max_error);
@@ -2185,7 +2185,7 @@ TEST(GradientCheckerTest, ClipGrad) {
   {
     TensorInfo x_info({2, 2, 2}, true);
     TensorInfo min_info({}, false);
-    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6, 7, 8}, {3.8}};
+    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6, 7, 8}, {3.8f}};
     TensorInfo y_info({2, 2, 2}, true);
     gradient_checker.ComputeGradientError(op_def, {x_info, min_info}, {y_info}, &max_error, x_datas);
     EXPECT_IS_TINY(max_error);
