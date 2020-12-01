@@ -10,14 +10,14 @@
 #include <vector>
 
 namespace onnxruntime {
-namespace cuda {
+namespace rocm {
 // initial reference from:
 // https://github.com/NVIDIA/apex/blob/5b71d3695bf39efcdcda9dff5be2f70314b8f091/csrc/multi_tensor_apply.cuh#L15
 // further experiment to get the number below. The larger the better, but if too large, it won't fit into GPU stack.
 constexpr int ACTUAL_TENSOR_GROUP_SIZE[8] = {1, 1, 2, 3, 4, 5, 6, 7};
 constexpr int MAX_BLOCK_COUNTS[8] = {256, 320, 320, 320, 320, 288, 288, 256};
 constexpr int MAX_TENSOR_GROUP_COUNTS[8] = {1, 96, 64, 32, 32, 32, 32, 32};
-constexpr int MAX_BLOCK_THREAD_COUNTS[8] = {256, 512, 512, 512, 512, 512, 512, 512};
+constexpr int MAX_BLOCK_THREAD_COUNTS[8] = {256, 256, 256, 256, 256, 256, 256, 256};
 
 // TensorGroupSize is the number of parallel tensors. For element-wise
 // operators such as Relu, it should be 1. For two-operand operators such as
@@ -98,7 +98,7 @@ void launch_multi_tensor_functor(
     ORT_ENFORCE(grouped_tensor_pointers[i].size() == static_cast<size_t>(group_size));
   }
 
-  // Handle multiple tensors per CUDA kernel call.
+  // Handle multiple tensors per ROCM kernel call.
   ChunkGroup<TensorGroupSize> chunk_group;
   for (int i = 0; i < group_count; ++i) {
     // Add pointers to one group of tensors into chunk_group.
@@ -144,5 +144,5 @@ void launch_multi_tensor_functor(
   }
 }
 
-}  // namespace cuda
+}  // namespace rocm
 }  // namespace onnxruntime

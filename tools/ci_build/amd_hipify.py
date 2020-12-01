@@ -111,6 +111,7 @@ core_ops_files = [
                 'math/variadic_elementwise_ops.h',
                 'math/variadic_elementwise_ops_impl.cu',
                 'math/variadic_elementwise_ops_impl.h',
+                'multi_tensor/common.cuh',
                 'nn/batch_norm.cc',
                 'nn/batch_norm.h',
                 'nn/conv.cc',
