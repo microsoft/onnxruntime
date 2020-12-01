@@ -1,12 +1,22 @@
-# sets some Python-related variables based on the value of the python.version variable
+# sets Python manylinux variables
+
+parameters:
+- name: PythonVersion
+  type: string
+  values:
+  - "3.5"
+  - "3.6"
+  - "3.7"
+  - "3.8"
+  - "3.9"
 
 steps:
 - task: PythonScript@0
-  displayName: 'Set Python packaging variables'
+  displayName: 'Set Python manylinux variables'
   inputs:
     scriptSource: inline
     script: |
-      version = "$(python.version)"
+      version = "${{ parameters.PythonVersion }}"
 
       if version == "3.5":
         variables = {
