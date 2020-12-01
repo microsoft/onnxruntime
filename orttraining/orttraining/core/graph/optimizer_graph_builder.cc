@@ -348,7 +348,7 @@ Status OptimizerGraphBuilder::AddFiniteGradientCheck(
     ArgDef& grad_norm_finite_argdef,
     const std::string& node_name) {
   const TypeProto* const grad_norm_finite_type =
-      graph_defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+      graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_BOOL);
   grad_norm_finite_argdef =
       ArgDef{nodearg_name_generator(node_name), grad_norm_finite_type};
 

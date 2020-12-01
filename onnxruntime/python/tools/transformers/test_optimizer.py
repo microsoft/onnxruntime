@@ -30,6 +30,7 @@ BERT_TEST_MODELS = {
     "gpt2_past": ('gpt2_pytorch1.5_opset11', 'gpt2_past.onnx'),
     "gpt2_past_mask": ('FUSION', 'gpt2_past_mask_one_layer.onnx'),
     "multiple_embed": ('FUSION', 'embed_layer_norm_multiple.onnx'),
+    "bert_tf2onnx_0": ('other_models', 'bert_tf2onnx_0.onnx')
 }
 
 skip_on_ort_version = pytest.mark.skipif(onnxruntime.__version__ == ('1.3.0'),
@@ -296,6 +297,20 @@ class TestBertOptimization(unittest.TestCase):
             'SkipLayerNormalization': 0
         }
         self.verify_node_count(model, expected_node_count, 'test_multiple_embed')
+
+    def test_bert_tf2onnx_0(self):
+        input = _get_test_model_path('bert_tf2onnx_0')
+        model = optimize_model(input, 'bert_tf', num_heads=2, hidden_size=8)
+        expected_node_count = {
+            'EmbedLayerNormalization': 0,
+            'Attention': 6,
+            'Gelu': 0,
+            'FastGelu': 6,
+            'BiasGelu': 0,
+            'LayerNormalization': 0,
+            'SkipLayerNormalization': 13
+        }
+        self.verify_node_count(model, expected_node_count, 'test_bert_tf2onnx_0')
 
     def test_huggingface_bert_fusion(self):
         self.test_optimizer_on_huggingface_model("bert-base-uncased", [1, 12, 0, 0, 12, 0, 24], inputs_count=1)
