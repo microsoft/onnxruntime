@@ -17,15 +17,24 @@ TEST(DequantizeLinearOpTest, Uint8) {
   test.Run();
 }
 
-// scalar zero & scale with int8
-TEST(DequantizeLinearOpTest, Int8) {
+template <typename QType>
+void TestDequantizeSignedType() {
   OpTester test("DequantizeLinear", 10);
   std::vector<int64_t> dims{4};
-  test.AddInput<int8_t>("x", dims, {-30, -3, 100, 127});
+  test.AddInput<QType>("x", dims, {-30, -3, 100, 127});
   test.AddInput<float>("x_scale", {}, {2.0f});
-  test.AddInput<int8_t>("x_zero_point", {}, {-10});
+  test.AddInput<QType>("x_zero_point", {}, {-10});
   test.AddOutput<float>("y", dims, {-40.0f, 14.0f, 220.0f, 274.0f});
   test.Run();
+}
+// scalar zero & scale with int8
+TEST(DequantizeLinearOpTest, Int8) {
+  TestDequantizeSignedType<int8_t>();
+}
+
+// scalar zero & scale with int32_t
+TEST(DequantizeLinearOpTest, Int32_t) {
+  TestDequantizeSignedType<int32_t>();
 }
 
 // 2d inputs
@@ -65,29 +74,30 @@ TEST(DequantizeLinearOpTest, Without_Zero_Point) {
 }
 
 // 1d zero & scale with default axis
-TEST(DequantizeLinearOpTest, Per_Channel_Axis_Default) {
+template <typename QType>
+void TestPerChannelAxisDefault() {
   OpTester test("DequantizeLinear", 13);
   std::vector<int64_t> dims{2, 3, 2, 4};
-  test.AddInput<int8_t>("X", dims,
-                        {7, 9, 10, 10,
-                         5, 8, 9, 1,
+  test.AddInput<QType>("X", dims,
+                       {7, 9, 10, 10,
+                        5, 8, 9, 1,
 
-                         8, 6, 7, 9,
-                         10, 0, 7, 10,
+                        8, 6, 7, 9,
+                        10, 0, 7, 10,
 
-                         8, 2, 6, 0,
-                         5, 9, 8, 1,
+                        8, 2, 6, 0,
+                        5, 9, 8, 1,
 
-                         2, 7, 5, 3,
-                         2, 4, 1, 3,
+                        2, 7, 5, 3,
+                        2, 4, 1, 3,
 
-                         8, 7, 4, 8,
-                         10, 1, 5, 5,
+                        8, 7, 4, 8,
+                        10, 1, 5, 5,
 
-                         7, 7, 0, 2,
-                         4, 4, 0, 5});
+                        7, 7, 0, 2,
+                        4, 4, 0, 5});
   test.AddInput<float>("scale", {3}, {1, 10, 7});
-  test.AddInput<int8_t>("zero_point", {3}, {10, 2, 1});
+  test.AddInput<QType>("zero_point", {3}, {10, 2, 1});
   test.AddOutput<float>("Y", dims,
                         {-3, -1, 0, 0,
                          -5, -2, -1, -9,
@@ -107,6 +117,11 @@ TEST(DequantizeLinearOpTest, Per_Channel_Axis_Default) {
                          42, 42, -7, 7,
                          21, 21, -7, 28});
   test.Run();
+}
+
+TEST(DequantizeLinearOpTest, Per_Channel_Axis_Default) {
+  TestPerChannelAxisDefault<int8_t>();
+  TestPerChannelAxisDefault<int32_t>();
 }
 
 // 1d zero & scale with uint8 broadcast axis 0
@@ -134,21 +149,27 @@ TEST(DequantizeLinearOpTest, Per_Channel_Axis_0) {
 }
 
 // 1d zero & scale with int8 broadcast axis 1
-TEST(DequantizeLinearOpTest, Per_Channel_Axis_1) {
+template <typename QType>
+void TestPerChannelAxis1() {
   OpTester test("DequantizeLinear", 13);
   std::vector<int64_t> dims{3, 4};
-  test.AddInput<int8_t>("X", dims,
-                        {0, 1, 2, 3,
-                         0, 2, 4, 6,
-                         0, 10, 20, 30});
+  test.AddInput<QType>("X", dims,
+                       {0, 1, 2, 3,
+                        0, 2, 4, 6,
+                        0, 10, 20, 30});
   test.AddAttribute<int64_t>("axis", 1);
   test.AddInput<float>("scale", {4}, {1, 2, 4, 8});
-  test.AddInput<int8_t>("zero_point", {4}, {0, -10, -20, -30});
+  test.AddInput<QType>("zero_point", {4}, {0, -10, -20, -30});
   test.AddOutput<float>("Y", dims,
                         {0, 22, 88, 264,
                          0, 24, 96, 288,
                          0, 40, 160, 480});
   test.Run();
+}
+
+TEST(DequantizeLinearOpTest, Per_Channel_Axis_1) {
+  TestPerChannelAxis1<int8_t>();
+  TestPerChannelAxis1<int32_t>();
 }
 
 // 1d zero & scale with uint8 broadcast axis -2 (-2 resolves to axis 0)
