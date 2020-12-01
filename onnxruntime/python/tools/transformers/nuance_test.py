@@ -86,7 +86,7 @@ def main():
     for num_threads in range(24):
         print("thread_num:" + str(num_threads + 1))
         results += run_onnxruntime(False, Precision.FLOAT32, num_threads + 1,
-                                   [1], [32, 64, 128], 1000, True, False, True, 'pt')
+                                   [1], [128], 10000, True, False, True, 'pt')
 
     csv_filename = f"benchmark_detail_1.csv"
     output_details(results, csv_filename)
