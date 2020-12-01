@@ -722,10 +722,16 @@ bool GemmOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
 // Get the bias size (C) of Gemm op
 // ANEURALNETWORKS_FULLY_CONNECTED only supports 1d bias
 // Will test if C of Gemm can be squeezed and return the 1d vector size after squeeze
-static bool GetBiasSize(const Shape& c_shape, uint32_t& size) {
+static bool GetBiasSize(const Shape& c_shape, int32_t android_sdk_ver, uint32_t& size) {
   // TODO add support of scalar C for Gemm
   if (c_shape.empty()) {
     LOGS_DEFAULT(VERBOSE) << "C of Gemm cannot be a scalar";
+    return false;
+  }
+
+  if (c_shape.size() != 1 && android_sdk_ver < 28) {
+    LOGS_DEFAULT(VERBOSE) << "C of Gemm can only be 1d tensor for API level " << android_sdk_ver
+                          << " shape of C, " << Shape2String(c_shape);
     return false;
   }
 
@@ -759,7 +765,7 @@ int GemmOpSupportChecker::GetMinSupportedOpSet(const Node& node) const {
 }
 
 bool GemmOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                                             const OpSupportCheckParams& /* params */) const {
+                                             const OpSupportCheckParams& params) const {
   const auto& op_type = node.OpType();
   const auto input_defs(node.InputDefs());
   size_t a_idx = 0, b_idx = 1, c_idx = 2;  // A*B+C
@@ -822,7 +828,7 @@ bool GemmOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
         return false;
 
       uint32_t c_size;
-      if (!GetBiasSize(c_shape, c_size))
+      if (!GetBiasSize(c_shape, params.android_sdk_ver, c_size))
         return false;
 
       if (c_size != (transB == 0 ? b_shape[1] : b_shape[0])) {

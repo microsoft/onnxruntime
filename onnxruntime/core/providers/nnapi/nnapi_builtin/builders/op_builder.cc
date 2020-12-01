@@ -187,6 +187,11 @@ static Status AddSqueezeOp(ModelBuilder& model_builder,
                            const std::string& node_name,
                            const std::string& input, const std::string& output,
                            vector<int32_t> axes) {
+  if (model_builder.GetAndroidSdkVer() < 28) {
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, FAIL, "Squeeze is not supported on API level ", model_builder.GetAndroidSdkVer());
+  }
+
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
