@@ -18,7 +18,7 @@ jobs:
 
   - template: templates/set-python-manylinux-variables-step.yml
     parameters:
-      PythonVersion: "3.7"
+      python.version: "3.7"
 
   - task: CmdLine@2
     inputs:

@@ -87,8 +87,6 @@ stages:
         submodules: recursive
 
       - template: set-python-manylinux-variables-step.yml
-        parameters:
-          PythonVersion: '$(python.version)'
 
       - template: get-docker-image-steps.yml
         parameters:
@@ -164,8 +162,6 @@ stages:
         submodules: recursive
 
       - template: set-python-manylinux-variables-step.yml
-        parameters:
-          PythonVersion: '$(python.version)'
 
       - template: get-docker-image-steps.yml
         parameters:
@@ -242,8 +238,6 @@ stages:
         submodules: recursive
 
       - template: set-python-manylinux-variables-step.yml
-        parameters:
-          PythonVersion: '$(python.version)'
 
       - template: get-docker-image-steps.yml
         parameters:
@@ -316,8 +310,6 @@ stages:
         submodules: recursive
 
       - template: set-python-manylinux-variables-step.yml
-        parameters:
-          PythonVersion: '$(python.version)'
 
       - task: CmdLine@2
         inputs:
@@ -842,8 +834,6 @@ stages:
         submodules: recursive
 
       - template: set-python-manylinux-variables-step.yml
-        parameters:
-          PythonVersion: '$(python.version)'
 
       - template: set-nightly-build-option-variable-step.yml
 

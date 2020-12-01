@@ -1,14 +1,12 @@
 # sets Python manylinux variables
+# the Python version is specified with one of (in order of precedence):
+# 1. the python.version parameter
+# 2. the python.version variable
 
 parameters:
-- name: PythonVersion
+- name: python.version
   type: string
-  values:
-  - "3.5"
-  - "3.6"
-  - "3.7"
-  - "3.8"
-  - "3.9"
+  default: ''
 
 steps:
 - task: PythonScript@0
@@ -16,7 +14,7 @@ steps:
   inputs:
     scriptSource: inline
     script: |
-      version = "${{ parameters.PythonVersion }}"
+      version = "${{ coalesce(parameters.python.version, variables.python.version) }}"
 
       if version == "3.5":
         variables = {
