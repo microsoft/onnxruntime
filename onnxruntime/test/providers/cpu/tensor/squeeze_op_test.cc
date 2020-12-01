@@ -35,6 +35,15 @@ TEST(SqueezeOpTest, Squeeze_Empty_Axes_2) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+TEST(SqueezeOpTest, Squeeze_Empty_Axes_3) {
+  OpTester test("Squeeze");
+  // Squeeze all for all 1's shape will end up as a scalar
+  test.AddInput<float>("data", {1, 1, 1, 1}, std::vector<float>{1.0f});
+  test.AddOutput<float>("squeezed", {}, std::vector<float>{1.0f});
+  // TensorRT doesn't seem to support missing 'axes'
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 TEST(SqueezeOpTest, Squeeze_1_int32) {
   OpTester test("Squeeze");
   test.AddAttribute("axes", std::vector<int64_t>{0});
