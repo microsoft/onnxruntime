@@ -20,7 +20,7 @@ typedef struct MultiIndex {
   size_t upper_bound;
   int64_t stride;
   MultiIndex() {}
-  void init(size_t i, size_t n, int64_t s) {
+  void Init(size_t i, size_t n, int64_t s) {
     index = i;
     upper_bound = n;
     stride = s;
@@ -33,7 +33,7 @@ static size_t IncrementIndexAndComputeOffsetSetup(MultiIndex* mindex, int64_t nu
   for (int64_t i = 0; i < num_axes; ++i) {
     if (target_dims[i] == 1)
       continue;
-    mindex[naxes].init(0, static_cast<size_t>(target_dims[i]), stride[i] * element_size);
+    mindex[naxes].Init(0, static_cast<size_t>(target_dims[i]), stride[i] * element_size);
     ++naxes;
   }
   ORT_ENFORCE(naxes > 0, "Method IncrementIndexAndComputeOffset assumes this value is strictly positive.");
@@ -121,6 +121,7 @@ static void TypedDoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>
   const uint8_t* local_source = source;
   uint8_t* target_end = target + sizeof(T) * num_blocks;
   for (; target != target_end; target += sizeof(T)) {
+    ORT_ENFORCE((local_source >= source) && (local_source < source + sizeof(T) * num_blocks));
     CopyPrim<T>(target, local_source);
     IncrementIndexAndComputeOffset(mindex.data(), naxes, local_source);
   }
@@ -159,6 +160,7 @@ static void DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& tar
   // index used to iterate over target iteration-space
   const std::string* local_source = source;
   for (size_t i = 0; i < num_blocks; ++i) {
+    ORT_ENFORCE((local_source >= source) && (local_source < source + num_blocks));
     *target = *local_source;
     IncrementIndexAndComputeOffset(mindex.data(), naxes, local_source);
     target++;
