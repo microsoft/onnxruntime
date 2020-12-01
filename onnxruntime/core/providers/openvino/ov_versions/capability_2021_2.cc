@@ -251,29 +251,29 @@ static bool IsUnsupportedOpMode(const Provider_Node* node, const Provider_GraphV
 
   if (optype == "MaxPool") {
     //MaxPool "indices" output is not currently supported.
-    //if (node->OutputDefs().size() > 1) {
-    //  return true;
-    //}
+    if (node->OutputDefs().size() > 1) {
+      return true;
+    }
 
-    //const auto& attributes = node->GetAttributes();
+    const auto& attributes = node->GetAttributes();
 
-    //auto ceil_attr = attributes.find("ceil_mode");
+    auto ceil_attr = attributes.find("ceil_mode");
     // default value of ceil_mode (0) is supported.
-    //if (ceil_attr != attributes.end() && ceil_attr->second().i() != 0) {
-    //  return true;
-    //}
+    if (ceil_attr != attributes.end() && ceil_attr->second().i() != 0) {
+      return true;
+    }
 
     //auto pad null value is not supported
-    //auto auto_attr = attributes.find("auto_pad");
-    //if (auto_attr->second().s() == "") {
-    //  return true;
-    //}
+    auto auto_attr = attributes.find("auto_pad");
+    if (auto_attr->second().s() == "") {
+      return true;
+    }
     // dilations attrs are not supported in nGraph
-    //if (attributes.find("dilations") != attributes.end()) {
-    //  return true;
-    //}
-    //if (!IsDimensionSupported(node))
-    //  return true;
+    if (attributes.find("dilations") != attributes.end()) {
+      return true;
+    }
+    if (!IsDimensionSupported(node))
+      return true;
   } else if (optype == "Abs") {
     for (size_t i = 0; i < node->InputDefs().size(); i++) {
       if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT)
@@ -579,7 +579,7 @@ static bool IsTypeSupported(const Provider_NodeArg* node_arg, bool is_initialize
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8,
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8,
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64,
-        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE,
+        //ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE,
     };
 
     std::set<int> supported_types_gpu = {
@@ -691,7 +691,7 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
       if (shape->dim_size() == 0) {
         if (optype == "Unsqueeze" || optype == "Squeeze" || optype == "Cast" ||
             optype == "Gather" || optype == "Mul" || optype == "Sub" ||
-            optype == "Min" || optype == "Div" || optype == "Floor" || optype == "Range" || optype == "ArgMin" || optype == "Reshape" || optype == "Where")
+            optype == "Min" || optype == "Div" || optype == "Floor" || optype == "Range" || optype == "Where")
           return;
         has_unsupported_dimension = true;
         return;
