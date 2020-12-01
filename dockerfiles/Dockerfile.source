@@ -17,4 +17,4 @@ RUN cd /code && /bin/bash ./build.sh --skip_submodule_sync --use_openmp --config
 FROM ubuntu:18.04
 COPY --from=0 /code/build/Linux/Release/dist /root
 COPY --from=0 /code/dockerfiles/LICENSE-IMAGE.txt /code/LICENSE-IMAGE.txt
-RUN apt-get update && apt-get install -y --no-install-recommends libstdc++6 libgomp1 ca-certificates python3-setuptools python3-wheel python3-pip && python3 -m pip install /root/*.whl && rm -rf /root/*.whl
+RUN apt-get update && apt-get install -y --no-install-recommends libstdc++6 libgomp1 ca-certificates python3-setuptools python3-wheel python3-pip unattended-upgrades && unattended-upgrade && python3 -m pip install /root/*.whl && rm -rf /root/*.whl
