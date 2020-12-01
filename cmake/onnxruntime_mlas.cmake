@@ -145,6 +145,8 @@ else()
     endif()
   elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "iOSCross")
     set(IOS TRUE)
+  elseif(onnxruntime_target_platform STREQUAL "x86")
+    set(X86 TRUE)
   else()
     execute_process(
       COMMAND ${CMAKE_C_COMPILER} -dumpmachine
