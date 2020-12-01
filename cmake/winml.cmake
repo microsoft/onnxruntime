@@ -107,6 +107,7 @@ target_cppwinrt(winml_api
   "${winml_midl_defines}"    # the midl compiler defines
   ${winml_api_use_ns_prefix} # set ns_prefix
 )
+add_dependencies(winml_api RESTORE_NUGET_PACKAGES)
 
 # generate winml.experimental headers from idl
 target_cppwinrt(winml_api_experimental
@@ -119,6 +120,7 @@ target_cppwinrt(winml_api_experimental
   ${winml_midl_defines}                        # the midl compiler defines
   ${winml_api_use_ns_prefix}                   # set ns_prefix
 )
+add_dependencies(winml_api_experimental RESTORE_NUGET_PACKAGES)
 
 target_midl(winml_api_native
   ${idl_native}             # winml native idl to compile
@@ -128,6 +130,7 @@ target_midl(winml_api_native
   ${target_folder}          # the folder this target will be placed under
   "${winml_midl_defines}"   # the midl compiler defines
 )
+add_dependencies(winml_api_native RESTORE_NUGET_PACKAGES)
 
 target_midl(winml_api_native_internal
   ${idl_native_internal}             # winml internal native idl to compile
@@ -137,6 +140,7 @@ target_midl(winml_api_native_internal
   ${target_folder}                   # the folder this target will be placed under
   "${winml_midl_defines}"            # the midl compiler defines
 )
+add_dependencies(winml_api_native_internal RESTORE_NUGET_PACKAGES)
 
 ###########################
 # Add winml_lib_telemetry
