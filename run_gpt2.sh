@@ -1,0 +1,1 @@
+mpirun -n 4 /bert_ort/duli/onnxruntime/build/Linux/Debug/onnxruntime_distributed_inference -f /bert_ort/duli/models/gpt2/megatron-gpt2_hidden-size-768_num-layers-3_vocab-size-50257_num-attention-heads-12_max-position-embeddings-1024_optimized.onnx
