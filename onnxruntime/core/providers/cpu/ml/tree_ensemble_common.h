@@ -348,7 +348,7 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::ComputeAgg(concurrency::ThreadPool* ttp, 
       concurrency::ThreadPool::TrySimpleParallelFor(
           ttp,
           num_threads,
-          [this, &agg, &scores, num_threads, label_data, z_data, N](ptrdiff_t batch_num) {
+          [&agg, &scores, num_threads, label_data, z_data, N](ptrdiff_t batch_num) {
             auto work = concurrency::ThreadPool::PartitionWork(batch_num, num_threads, N);
             for (auto i = work.start; i < work.end; ++i) {
               for (int64_t j = 1; j < num_threads; ++j) {
