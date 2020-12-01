@@ -1,6 +1,5 @@
-//
-// Created by daquexian on 8/3/18.
-//
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
 #include <iostream>
 #include <string>

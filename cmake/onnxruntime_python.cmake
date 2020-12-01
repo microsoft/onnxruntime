@@ -203,6 +203,9 @@ file(GLOB onnxruntime_python_test_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/test/python/*.py"
     "${ORTTRAINING_SOURCE_DIR}/test/python/*.py"
 )
+file(GLOB onnxruntime_python_checkpoint_test_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/test/python/checkpoint/*.py"
+)
 file(GLOB onnxruntime_python_tools_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/*.py"
 )
@@ -241,6 +244,7 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/transformers
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/quantization
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/quantization/operators
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/checkpoint
   COMMAND ${CMAKE_COMMAND} -E copy
       ${ONNXRUNTIME_ROOT}/__init__.py
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/
@@ -256,6 +260,9 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_test_srcs}
       $<TARGET_FILE_DIR:${test_data_target}>
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_python_checkpoint_test_srcs}
+      $<TARGET_FILE_DIR:${test_data_target}>/checkpoint/
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_backend_srcs}
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/backend/

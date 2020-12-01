@@ -169,13 +169,6 @@ void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   // Preliminary Thread safety mechanism
   // currently allows a maximum of 8 Infer request's to paralelly execute at the same time
 
-  //Requesting for an idle infer_request from a pool of infer_requests_
-  std::shared_ptr<InferenceEngine::InferRequest> infer_request = inferRequestsQueue_->getIdleRequest();
-  if (!infer_request) {
-    LOGS_DEFAULT(INFO) << "No idle Infer Requests found from the infer_requests_ pool!";
-    THROW_IE_EXCEPTION << "No idle Infer Requests!";
-  }
-
   LOGS_DEFAULT(INFO) << log_tag << "Running graph " << subgraph_context_.subgraph_name;
   LOGS_DEFAULT(INFO) << log_tag << "In Infer";
 
@@ -188,14 +181,22 @@ void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
       FillOutputsWithConstantData(ort, node, output_tensor);
     }
 #endif
+    // Get Output tensors
+    LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
   } else {
-    StartAsyncInference(ort, context, infer_request);
-    CompleteAsyncInference(ort, context, infer_request);
-  }
-  // Get Output tensors
-  LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
-  //Once the inference is completed, the infer_request becomes free and is placed back into pool of infer_requests_
-  inferRequestsQueue_->putIdleRequest(infer_request);
+      //Requesting for an idle infer_request from a pool of infer_requests_
+      std::shared_ptr<InferenceEngine::InferRequest> infer_request = inferRequestsQueue_->getIdleRequest();
+      if (!infer_request) {
+        LOGS_DEFAULT(INFO) << "No idle Infer Requests found from the infer_requests_ pool!";
+        THROW_IE_EXCEPTION << "No idle Infer Requests!";
+      }
+      StartAsyncInference(ort, context, infer_request);
+      CompleteAsyncInference(ort, context, infer_request);
+  
+      // Get Output tensors
+      LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
+      //Once the inference is completed, the infer_request becomes free and is placed back into pool of infer_requests_
+      inferRequestsQueue_->putIdleRequest(infer_request);
 #ifndef NDEBUG
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
     inferRequestsQueue_->printstatus();  //Printing the elements of infer_requests_ vector pool only in debug mode
@@ -203,6 +204,7 @@ void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
     printPerformanceCounts(infer_request, std::cout, hw_target);
   }
 #endif
+  }
 }
 
 }  // namespace openvino_ep
