@@ -26,11 +26,11 @@ class DnnlKernel {
 
   virtual void CreatePrimitives(const OrtCustomOpApi* api,
                                 OrtKernelContext* context,
-                                dnnl::engine& cpu_engine,
+                                const std::unordered_map<dnnl::engine::kind, dnnl::engine>& dnnl_engine,
                                 std::vector<dnnl::primitive>& net,
                                 std::vector<std::unordered_map<int, dnnl::memory>>& net_args) = 0;
 
-  virtual void ReorderWeights(const OrtCustomOpApi* api, OrtKernelContext* context, dnnl::engine& cpu_engine) {
+  virtual void ReorderWeights(const OrtCustomOpApi* api, OrtKernelContext* context, const dnnl::engine& cpu_engine) {
     ORT_UNUSED_PARAMETER(api);
     ORT_UNUSED_PARAMETER(context);
     ORT_UNUSED_PARAMETER(cpu_engine);
@@ -80,7 +80,8 @@ class DnnlKernel {
   void InitDstReorderOutput(dnnl::engine& cpu_engine,
                             dnnl::memory::data_type& data_type,
                             std::vector<dnnl::primitive>& net,
-                            std::vector<std::unordered_map<int, dnnl::memory>>& net_args);
+                            std::vector<std::unordered_map<int, dnnl::memory>>& net_args,
+                            bool gpu_available = false);
 
   dnnl::memory::format_tag GetSourceFormat(int dim_size);
 

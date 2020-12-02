@@ -13,10 +13,6 @@ if (onnxruntime_USE_TVM)
   list(APPEND TEST_INC_DIR ${TVM_INCLUDES})
 endif()
 
-if (onnxruntime_USE_OPENVINO)
-    list(APPEND TEST_INC_DIR ${OPENVINO_INCLUDE_DIR})
-endif()
-
 set(disabled_warnings)
 function(AddTest)
   cmake_parse_arguments(_UT "DYN" "TARGET" "LIBS;SOURCES;DEPENDS" ${ARGN})
@@ -291,13 +287,6 @@ if (onnxruntime_USE_DNNL)
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_dnnl_src})
 endif()
 
-if (onnxruntime_USE_NGRAPH)
-  file(GLOB_RECURSE onnxruntime_test_providers_ngraph_src CONFIGURE_DEPENDS
-    "${TEST_SRC_DIR}/providers/ngraph/*"
-    )
-  list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_ngraph_src})
-endif()
-
 if (onnxruntime_USE_NNAPI_BUILTIN)
   file(GLOB_RECURSE onnxruntime_test_providers_nnapi_src CONFIGURE_DEPENDS
     "${TEST_SRC_DIR}/providers/nnapi/*"
@@ -310,6 +299,13 @@ if (onnxruntime_USE_RKNPU)
     "${TEST_SRC_DIR}/providers/rknpu/*"
     )
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_rknpu_src})
+endif()
+
+if (NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_EXTENDED_MINIMAL_BUILD)
+  file(GLOB_RECURSE onnxruntime_test_providers_internal_testing_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/providers/internal_testing/*"
+    )
+  list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_internal_testing_src})
 endif()
 
 set (ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR "${ONNXRUNTIME_ROOT}/test/shared_lib")
@@ -387,15 +383,11 @@ if(onnxruntime_USE_CUDA)
 endif()
 
 if(onnxruntime_USE_DNNL)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_dnnl)
-endif()
-
-if(onnxruntime_USE_NGRAPH)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_ngraph)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_dnnl onnxruntime_providers_shared)
 endif()
 
 if(onnxruntime_USE_OPENVINO)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_openvino)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_openvino onnxruntime_providers_shared)
 endif()
 
 if(onnxruntime_USE_NNAPI_BUILTIN)
@@ -453,10 +445,8 @@ set(ONNXRUNTIME_TEST_LIBS
     ${ONNXRUNTIME_INTEROP_TEST_LIBS}
     ${onnxruntime_libs}
     ${PROVIDERS_CUDA}
-    # TENSORRT and DNNL are explicitly linked at runtime
+    # TENSORRT, DNNL, and OpenVINO are explicitly linked at runtime
     ${PROVIDERS_MIGRAPHX}
-    ${PROVIDERS_NGRAPH}
-    ${PROVIDERS_OPENVINO}
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_RKNPU}
@@ -525,7 +515,7 @@ else()
   target_include_directories(onnxruntime_test_utils PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT}
           "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
 endif()
-onnxruntime_add_include_to_target(onnxruntime_test_utils onnxruntime_common onnxruntime_framework GTest::gtest onnx onnx_proto flatbuffers)
+onnxruntime_add_include_to_target(onnxruntime_test_utils onnxruntime_common onnxruntime_framework onnxruntime_session GTest::gtest GTest::gmock onnx onnx_proto flatbuffers)
 
 if (onnxruntime_USE_DNNL)
   target_compile_definitions(onnxruntime_test_utils PUBLIC USE_DNNL=1)
@@ -572,6 +562,12 @@ set(all_tests ${onnxruntime_test_common_src} ${onnxruntime_test_ir_src} ${onnxru
 if(NOT TARGET onnxruntime)
   list(APPEND all_tests ${onnxruntime_shared_lib_test_SRC})
 endif()
+
+if (onnxruntime_USE_CUDA)
+  add_library(onnxruntime_test_cuda_add_lib ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cuda_add.cu)
+  list(APPEND onnxruntime_test_common_libs onnxruntime_test_cuda_add_lib)
+endif()
+
 set(all_dependencies ${onnxruntime_test_providers_dependencies} )
 
   if (onnxruntime_ENABLE_TRAINING)
@@ -665,15 +661,15 @@ if (onnxruntime_USE_DNNL)
     COMMAND ${CMAKE_COMMAND} -E copy ${DNNL_DLL_PATH} $<TARGET_FILE_DIR:${test_data_target}>
     )
 endif()
+if (onnxruntime_USE_MKLML)
+  add_custom_command(
+    TARGET ${test_data_target} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+    ${MKLML_LIB_DIR}/${MKLML_SHARED_LIB} ${MKLML_LIB_DIR}/${IOMP5MD_SHARED_LIB}
+    $<TARGET_FILE_DIR:${test_data_target}>
+  )
+endif()
 if(WIN32)
-  if (onnxruntime_USE_NGRAPH)
-    add_custom_command(
-      TARGET ${test_data_target} POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy_directory
-      ${ngraph_LIBRARIES}/
-      $<TARGET_FILE_DIR:${test_data_target}>
-    )
-  endif()
   if (onnxruntime_USE_TVM)
     add_custom_command(
       TARGET ${test_data_target} POST_BUILD
@@ -855,7 +851,6 @@ if (onnxruntime_USE_TVM)
   endif()
 endif()
 
-
 # shared lib
 if (onnxruntime_BUILD_SHARED_LIB)
   add_library(onnxruntime_mocked_allocator ${ONNXRUNTIME_ROOT}/test/util/test_allocator.cc)
@@ -865,12 +860,11 @@ if (onnxruntime_BUILD_SHARED_LIB)
   #################################################################
   # test inference using shared lib
   set(onnxruntime_shared_lib_test_LIBS onnxruntime_mocked_allocator onnxruntime_test_utils onnxruntime_common onnx_proto)
-
   if(NOT WIN32)
     list(APPEND onnxruntime_shared_lib_test_LIBS nsync_cpp)
   endif()
   if (onnxruntime_USE_CUDA)
-    list(APPEND onnxruntime_shared_lib_test_LIBS cudart)
+    list(APPEND onnxruntime_shared_lib_test_LIBS onnxruntime_test_cuda_add_lib cudart)
   endif()
   if (CMAKE_SYSTEM_NAME STREQUAL "Android")
     list(APPEND onnxruntime_shared_lib_test_LIBS ${android_shared_libs})

@@ -623,7 +623,8 @@ class SymbolicShapeInference:
                 self.sympy_data_[node.output[0]] = np.ones([int(x) for x in sympy_shape], dtype=np.int64) * numpy_helper.to_array(get_attribute(node, 'value', 0))
         else:
             # create new dynamic shape
-            sympy_shape = self._new_symbolic_shape(self._get_shape_rank(node,0), node)
+            # note input0 is a 1D vector of shape, the new symbolic shape has the rank of the shape vector length
+            sympy_shape = self._new_symbolic_shape(self._get_shape(node,0)[0], node)
 
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0],
                                                   vi.type.tensor_type.elem_type,
