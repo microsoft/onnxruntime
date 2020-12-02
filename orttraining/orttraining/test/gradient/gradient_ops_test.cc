@@ -605,13 +605,14 @@ TEST(GradientCheckerTest, ReluGrad) {
   float max_error;
   float error_tolerance = 1e-3f;
   GradientChecker<float, float, float> gradient_checker;
-  OpDef op_def{op_type, domain, opset_version};
+  OpDef op_def{"Relu"};
 
   // Exclude input data at 0, since Relu is not smooth at 0
   std::function<float(float)> transformer = [](float x) { return x > 0 ? x + 0.2f : x - 0.2f; };
-  TensorInfo x_info(shape, false, &transformer);
+  TensorInfo x_info(shape, true, &transformer);
+  TensorInfo y_info(shape);
 
-  gradient_checker.ComputeGradientError("Relu", {x_info}, {shape}, &max_error);
+  gradient_checker.ComputeGradientError(op_def, {x_info}, {y_info}, &max_error);
 
   EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
 }
