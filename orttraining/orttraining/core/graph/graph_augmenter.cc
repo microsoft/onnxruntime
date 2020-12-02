@@ -78,6 +78,7 @@ Status GraphAugmenter::AugmentGraph(Graph& graph,
       n.SetPriority(node_def.priority);
     }
 
+    LOGS(logger_, WARNING) << n.Name() << " " <<  input_args[0]->Shape()->DebugString();
   }
 
   // Add new inputs to the graph.
