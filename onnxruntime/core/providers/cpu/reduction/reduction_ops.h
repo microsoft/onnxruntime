@@ -25,7 +25,7 @@ class ResultsNoTransposePrepareForReduce {
   int64_t last_loop_size;
   int64_t last_loop_inc;
 
-  ResultsNoTransposePrepareForReduce() {
+  ResultsNoTransposePrepareForReduce() : input_shape(), reduced_axes(), projected_index(), unprojected_index() {
     last_loop_red_size = 0;
     last_loop_red_inc = 0;
     last_loop_size = 0;
