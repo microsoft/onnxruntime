@@ -80,6 +80,8 @@ Status GraphAugmenter::AugmentGraph(Graph& graph,
 
     if (input_args[0] && input_args[0]->Shape()) {
       LOGS_DEFAULT(WARNING) << n.Name() << " " << input_args[0]->Shape()->DebugString();
+    } else {
+      LOGS_DEFAULT(WARNING) << n.Name() << " no shape";
     }
   }
 
