@@ -136,7 +136,7 @@ static std::vector<ArgDef> AddPartitionsForParameter(
         graph.AddInitializedTensor(initializer_partition);
 
         //add the modified weight name to get state 
-        updated_weight_names_map.insert({initializer_name, partition_name});
+        updated_weight_names_map[initializer_name] = partition_name;
 
         auto partition_argdef = ArgDef(partition_name, graph_defs.CreateTypeProto({partition_size}, dtype));
 

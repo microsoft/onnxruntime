@@ -24,7 +24,7 @@ def get_checkpoint_name(prefix, is_partitioned, world_rank=None, world_size=None
 
 
 def _split_state_dict(state_dict):
-    optimizer_keys = ['Moment_1_', 'Moment_2_', 'Update_Count_', 'Step_']
+    optimizer_keys = ['Moment_1_', 'Moment_2_', 'Update_Count_', 'Step']
     split_sd = {'optimizer': {}, 'fp32_param': {}, 'fp16_param': {}}
     for k, v in state_dict.items():
         mode = 'fp32_param'
