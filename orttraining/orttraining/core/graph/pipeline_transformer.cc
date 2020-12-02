@@ -13,11 +13,52 @@ using namespace onnxruntime::graph_utils;
 namespace onnxruntime {
 namespace training {
 
+// Fill TensorProto with zeros.
+void FillZeros(
+    const ONNX_NAMESPACE::TensorProto_DataType& type, // Type of tensor's elements.
+    const size_t& size,                               // Number of scalar elements in the tensor.
+    ONNX_NAMESPACE::TensorProto& tensor_proto) {
+  std::vector<char> buffer;
+  switch (type) {
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
+      buffer.resize(size * sizeof(float));
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
+    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
+      buffer.resize(size * sizeof(double));
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT16:
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT16:
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+    case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
+      buffer.resize(size * sizeof(int16_t));
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+    case ONNX_NAMESPACE::TensorProto_DataType_INT8:
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
+      buffer.resize(size * sizeof(int8_t));
+      break;
+    default:
+      ORT_THROW("This tensor type doesn't have default value.");
+  }
+
+  tensor_proto.set_raw_data(buffer.data(), buffer.size());
+}
+
+// When we partition the model into different pipeline stages,
+// usually only the last pipeline stage has graph-level outputs
+// such as loss. Here we create fake outputs for the first and
+// all intermediate stages so that the output schema remains
+// the same across all pipeline stages.
+// The fake output's schema is determined by "sliced_schema[output_name]".
 void CreateFakeOutput(
-    Graph& graph,
-    const std::string output_name,
+    Graph& graph,                   // the graph of a pipeline stage.
+    const std::string output_name,  // The fake output's name to add to the graph.
     const std::unordered_map<std::string, std::vector<int>>& sliced_schema) {
-  const int32_t element_type = ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
+  const ONNX_NAMESPACE::TensorProto_DataType element_type = ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
   ONNX_NAMESPACE::TypeProto type_proto;
   type_proto.mutable_tensor_type()->set_elem_type(element_type);
   auto& seed_node_arg = graph.GetOrCreateNodeArg(output_name + "_seed", &type_proto);
@@ -37,6 +78,8 @@ void CreateFakeOutput(
     tensor_proto.add_dims(d);
     reference_size *= d;
   }
+
+  FillZeros(element_type, reference_size, tensor_proto);
 
   // Assign dummy values.
   for (int64_t i = 0; i < reference_size; ++i) {
