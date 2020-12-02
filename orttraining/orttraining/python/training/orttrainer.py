@@ -547,6 +547,7 @@ class ORTTrainer(object):
                            _retain_param_name=True,
                            example_outputs=tuple(sample_outputs),
                            do_constant_folding=False,
+                           onnx_shape_inference=True,
                            training=torch.onnx.TrainingMode.TRAINING)
         onnx_model = onnx.load_model_from_string(f.getvalue())
 
