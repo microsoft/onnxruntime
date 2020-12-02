@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "core/providers/common.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksWrapper.h"
 
@@ -374,17 +377,12 @@ Status Shaper::SqueezeImpl(const std::string& input_name,
                            const std::string& output_name) {
   const Shape& input_dimen = shape_map_.at(input_name);
   int32_t input_size = input_dimen.size();
-  size_t axes_size = axes.size();
   std::unordered_set<int32_t> axes_to_be_squeezed;
-  if (axes_size == 0) {
-    for (int32_t idx = 0; idx < input_size; ++idx) {
-      if (input_dimen[idx] == 1)
-        axes_to_be_squeezed.insert(idx);
-    }
-  } else {
-    for (const auto& axis : axes)
-      axes_to_be_squeezed.insert(axis);
-  }
+
+  // If the Op is squeezing all by not specifying axes, the axes is pre-populate
+  // with axes of all single dimensions by the caller
+  for (const auto& axis : axes)
+    axes_to_be_squeezed.insert(axis);
 
   // Make output dimensions
   std::vector<uint32_t> output_dimen;
@@ -393,6 +391,11 @@ Status Shaper::SqueezeImpl(const std::string& input_name,
     if (!Contains(axes_to_be_squeezed, i))
       output_dimen.push_back(input_dimen[i]);
   }
+
+  // In case of a tensor has all 1's in dimension such as {1,1,1,1} and gets squeezed all
+  // the output shape will be {1}
+  if (output_dimen.empty())
+    output_dimen.push_back(1);
 
   shape_map_[output_name] = output_dimen;
   return Status::OK();

@@ -1,6 +1,6 @@
-//
-// Created by daquexian on 5/21/18.
-//
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #pragma once
 
 #include <string>

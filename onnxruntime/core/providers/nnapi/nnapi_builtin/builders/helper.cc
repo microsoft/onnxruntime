@@ -1,6 +1,5 @@
-//
-// Created by daquexian on 8/3/18.
-//
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
 #include <iostream>
 #include <string>
@@ -297,10 +296,6 @@ std::vector<std::vector<size_t>> GetSupportedNodes(const GraphViewer& graph_view
 
   if (IsValidSupportedNodesVec(supported_node_vec, graph_viewer))
     supported_node_vecs.push_back(supported_node_vec);
-
-  LOGS_DEFAULT(VERBOSE) << "Support vectors size is " << supported_node_vecs.size();
-  for (const auto& group : supported_node_vecs)
-    LOGS_DEFAULT(VERBOSE) << "Support vector size is " << group.size();
 
   return supported_node_vecs;
 }
