@@ -27,7 +27,7 @@ jobs:
           --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
-          onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntimegpubuild:chq \
+          onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntimecentosgpubuild:cht \
             python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build --cmake_generator Ninja \
               --config Debug Release \

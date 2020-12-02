@@ -24,7 +24,7 @@ jobs:
       inputs:
         script: |
           mkdir -p $HOME/.onnx
-          docker run --gpus all -e NVIDIA_VISIBLE_DEVICES=all --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntimegpubuild:chq python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_java --build_shared_lib --use_cuda --cuda_version=10.2 --cuda_home=/usr/local/cuda-10.2  --cudnn_home=/usr/local/cuda-10.2
+          docker run --gpus all -e NVIDIA_VISIBLE_DEVICES=all --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntimecentosgpubuild:cht python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_java --build_shared_lib --use_cuda --cuda_version=10.2 --cuda_home=/usr/local/cuda-10.2  --cudnn_home=/usr/local/cuda-10.2
         workingDirectory: $(Build.SourcesDirectory)
     - task: Docker@2
       displayName: logout
@@ -258,7 +258,7 @@ jobs:
   - task: CmdLine@2
     inputs:
       script: |
-          docker run --gpus all -e NVIDIA_VISIBLE_DEVICES=all --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntimegpubuild:chq /onnxruntime_src/tools/ci_build/github/linux/java_linux_final_test.sh -v $(OnnxRuntimeVersion) -r /build
+          docker run --gpus all -e NVIDIA_VISIBLE_DEVICES=all --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntimecentosgpubuild:cht /onnxruntime_src/tools/ci_build/github/linux/java_linux_final_test.sh -v $(OnnxRuntimeVersion) -r /build
       workingDirectory: $(Build.BinariesDirectory)/final-jar
 
   - task: Docker@2
