@@ -124,17 +124,18 @@ void GenTreeAndRunTest(const std::vector<T>& X, const std::vector<float>& base_v
   test.Run();
 }  // namespace test
 
-TEST(MLOpTest, TreeRegressorMultiTargetSumBatchTree) {
+TEST(MLOpTest, TreeRegressorMultiTargetBatchTree) {
   // TreeEnsemble implements different paths depending on n_trees or N.
-  // It is not possible to test all of them in a short time without
-  // changing two thresholds which cannot be changed with the current API.
+  // This test goes through all sections for multi-targets.
   std::vector<float> X = {1.f, 0.0f, 0.4f, 3.0f, 44.0f, -3.f, 12.0f, 12.9f, -312.f, 23.0f, 11.3f, -222.f, 23.0f, 11.3f, -222.f, 23.0f, 3311.3f, -222.f, 23.0f, 11.3f, -222.f, 43.0f, 413.3f, -114.f};
   std::vector<float> results = {1.33333333f, 29.f, 3.f, 14.f, 2.f, 23.f, 2.f, 23.f, 2.f, 23.f, 2.66666667f, 17.f, 2.f, 23.f, 3.f, 14.f};
   std::vector<float> base_values{0.f, 0.f};
-  GenTreeAndRunTest(X, base_values, results, "AVERAGE", true, 8, 30);
-  GenTreeAndRunTest(X, base_values, results, "AVERAGE", false, 200, 30);
-  GenTreeAndRunTest(X, base_values, results, "AVERAGE", false, 200, 130);
-  // GenTreeAndRunTest(X, base_values, results, "AVERAGE", false, 111040008, 30);
+  GenTreeAndRunTest(X, base_values, results, "AVERAGE", true, 8, 1);       // section A2
+  GenTreeAndRunTest(X, base_values, results, "AVERAGE", true, 8, 130);     // section B2
+  GenTreeAndRunTest(X, base_values, results, "AVERAGE", false, 200, 130);  // section C2
+  GenTreeAndRunTest(X, base_values, results, "AVERAGE", true, 8, 30);      // section D2
+  GenTreeAndRunTest(X, base_values, results, "AVERAGE", false, 200, 30);   // section D2
+  GenTreeAndRunTest(X, base_values, results, "AVERAGE", false, 200, 1);    // section E2
 }
 
 TEST(MLOpTest, TreeRegressorMultiTargetAverage) {
@@ -276,15 +277,15 @@ TEST(MLOpTest, TreeRegressorSingleTargetSumBatch) {
   GenTreeAndRunTest1("SUM", false, 40002);
 }
 
-TEST(MLOpTest, TreeRegressorSingleTargetSumBatchTree) {
+TEST(MLOpTest, TreeRegressorSingleTargetBatchTree) {
   // TreeEnsemble implements different paths depending on n_trees or N.
-  // It is not possible to test all of them in a short time without
-  // changing two thresholds which cannot be changed with the current API.
-  GenTreeAndRunTest1("SUM", true, 3, 1);
-  GenTreeAndRunTest1("AVERAGE", true, 3, 30);
-  GenTreeAndRunTest1("AVERAGE", false, 201, 30);
-  GenTreeAndRunTest1("AVERAGE", false, 201, 130);
-  //GenTreeAndRunTest1("SUM", false, 111040002, 30);
+  // This test goes through all sections for one target.
+  GenTreeAndRunTest1("SUM", true, 3, 1);           // section A
+  GenTreeAndRunTest1("AVERAGE", true, 3, 30);      // section B
+  GenTreeAndRunTest1("AVERAGE", false, 3, 1);      // section C
+  GenTreeAndRunTest1("AVERAGE", false, 201, 30);   // section D
+  GenTreeAndRunTest1("AVERAGE", false, 201, 130);  // section D
+  GenTreeAndRunTest1("AVERAGE", false, 201, 1);    // section E
 }
 
 TEST(MLOpTest, TreeRegressorSingleTargetAverage) {

@@ -265,15 +265,16 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::ComputeAgg(concurrency::ThreadPool* ttp, 
   const ITYPE* x_data = X->template Data<ITYPE>();
   OTYPE* z_data = Z->template MutableData<OTYPE>();
   int64_t* label_data = label == nullptr ? nullptr : label->template MutableData<int64_t>();
+  auto max_num_threads = concurrency::ThreadPool::DegreeOfParallelism(ttp);
 
   if (n_targets_or_classes_ == 1) {
     if (N == 1) {
       ScoreValue<OTYPE> score = {0, 0};
-      if (n_trees_ <= parallel_tree_) { /* section A */
+      if (n_trees_ <= parallel_tree_) { /* section A: 1 output, 1 row and not enough trees to parallelize */
         for (int64_t j = 0; j < n_trees_; ++j) {
           agg.ProcessTreeNodePrediction1(score, *ProcessTreeNodeLeave(roots_[j], x_data));
         }
-      } else { /* section B */
+      } else { /* section B: 1 output, 1 row and enough trees to parallelize */
         std::vector<ScoreValue<OTYPE>> scores_t(n_trees_, {0, 0});
         concurrency::ThreadPool::TryBatchParallelFor(
             ttp,
@@ -288,7 +289,7 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::ComputeAgg(concurrency::ThreadPool* ttp, 
         }
       }
       agg.FinalizeScores1(z_data, score, label_data);
-    } else if (N <= parallel_N_) { /* section C */
+    } else if (N <= parallel_N_) { /* section C: 1 output, 2+ rows but not enough rows to parallelize */
       ScoreValue<OTYPE> score;
       size_t j;
 
@@ -301,34 +302,8 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::ComputeAgg(concurrency::ThreadPool* ttp, 
         agg.FinalizeScores1(z_data + i, score,
                             label_data == nullptr ? nullptr : (label_data + i));
       }
-    } else { /* section D */
-      /*
-      // Parallelization by trees.
-      // This could use an array N * nth where nth is the number of threads.
-      // It would requires function omp_get_thread_num and omp_get_max_threads.
-      std::vector<ScoreValue<OTYPE>> scores_t(n_trees_ * N, {0, 0});
-      concurrency::ThreadPool::TryBatchParallelFor(
-          ttp,
-          SafeInt<int32_t>(n_trees_),
-          [this, &scores_t, &agg, x_data, N, stride](ptrdiff_t j) {
-            for (int64_t i = 0; i < N; ++i) {
-              agg.ProcessTreeNodePrediction1(scores_t[j * N + i], *ProcessTreeNodeLeave(roots_[j], x_data + i * stride));
-            }
-          },
-          0);
-
-      concurrency::ThreadPool::TryBatchParallelFor(
-          ttp,
-          SafeInt<int32_t>(N),
-          [this, &scores_t, &agg, z_data, label_data, N](ptrdiff_t i) {
-            for (int64_t j = 1; j < this->n_trees_; ++j) {
-              agg.MergePrediction1(scores_t[i], scores_t[j * N + i]);
-            }
-            agg.FinalizeScores1(z_data + i, scores_t[i], label_data == nullptr ? nullptr : (label_data + i));
-          },
-          0);
-      */
-      auto num_threads = std::min<int32_t>(concurrency::ThreadPool::DegreeOfParallelism(ttp), SafeInt<int32_t>(n_trees_));
+    } else if (n_trees_ > max_num_threads) { /* section D: 1 output, 2+ rows and enough trees to parallelize */
+      auto num_threads = std::min<int32_t>(max_num_threads, SafeInt<int32_t>(n_trees_));
       std::vector<ScoreValue<OTYPE>> scores(num_threads * N);
       concurrency::ThreadPool::TrySimpleParallelFor(
           ttp,
@@ -358,18 +333,32 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::ComputeAgg(concurrency::ThreadPool* ttp, 
                                   label_data == nullptr ? nullptr : (label_data + i));
             }
           });
+    } else { /* section E: 1 output, 2+ rows, parallelization by rows */
+      concurrency::ThreadPool::TryBatchParallelFor(
+          ttp,
+          SafeInt<int32_t>(N),
+          [this, &agg, x_data, z_data, stride, label_data](ptrdiff_t i) {
+            ScoreValue<OTYPE> score = {0, 0};
+            for (size_t j = 0; j < static_cast<size_t>(n_trees_); ++j) {
+              agg.ProcessTreeNodePrediction1(score, *ProcessTreeNodeLeave(roots_[j], x_data + i * stride));
+            }
+
+            agg.FinalizeScores1(z_data + i, score,
+                                label_data == nullptr ? nullptr : (label_data + i));
+          },
+          0);
     }
   } else {
-    if (N == 1) {
+    if (N == 1) { /* section A2: 2+ outputs, 1 row, not enough trees to parallelize */
       std::vector<ScoreValue<OTYPE>> scores(n_targets_or_classes_, {0, 0});
       if (n_trees_ <= parallel_tree_) { /* section A2 */
         for (int64_t j = 0; j < n_trees_; ++j) {
           agg.ProcessTreeNodePrediction(scores, *ProcessTreeNodeLeave(roots_[j], x_data));
         }
-      } else { /* section B2 */
-        // split the work into one block per thread so we can re-use the 'private_scores' vector as much as possible
-        // TODO: Refine the number of threads used
-        auto num_threads = std::min<int32_t>(concurrency::ThreadPool::DegreeOfParallelism(ttp), SafeInt<int32_t>(n_trees_));
+      } else { /* section B2: 2+ outputs, 1 row, enough trees to parallelize */
+        // Splits the work into one block per thread so we can re-use the 'private_scores' vector as much as possible.
+        // TODO: Refine the number of threads used.
+        auto num_threads = std::min<int32_t>(max_num_threads, SafeInt<int32_t>(n_trees_));
         OrtMutex merge_mutex;
         concurrency::ThreadPool::TrySimpleParallelFor(
             ttp,
@@ -387,7 +376,7 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::ComputeAgg(concurrency::ThreadPool* ttp, 
       }
 
       agg.FinalizeScores(scores, z_data, -1, label_data);
-    } else if (N <= parallel_N_) { /* section C2 */
+    } else if (N <= parallel_N_) { /* section C2: 2+ outputs, 2+ rows, not enough rows to parallelize */
       std::vector<ScoreValue<OTYPE>> scores(n_targets_or_classes_);
       size_t j;
 
@@ -400,8 +389,8 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::ComputeAgg(concurrency::ThreadPool* ttp, 
         agg.FinalizeScores(scores, z_data + i * n_targets_or_classes_, -1,
                            label_data == nullptr ? nullptr : (label_data + i));
       }
-    } else {
-      auto num_threads = std::min<int32_t>(concurrency::ThreadPool::DegreeOfParallelism(ttp), SafeInt<int32_t>(n_trees_));
+    } else if (n_trees_ >= max_num_threads) { /* section: D2: 2+ outputs, 2+ rows, enough trees to parallelize*/
+      auto num_threads = std::min<int32_t>(max_num_threads, SafeInt<int32_t>(n_trees_));
       std::vector<std::vector<ScoreValue<OTYPE>>> scores(num_threads * N);
       concurrency::ThreadPool::TrySimpleParallelFor(
           ttp,
@@ -428,6 +417,29 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::ComputeAgg(concurrency::ThreadPool* ttp, 
                 agg.MergePrediction(scores[i], scores[j * N + i]);
               }
               agg.FinalizeScores(scores[i], z_data + i * this->n_targets_or_classes_, -1,
+                                 label_data == nullptr ? nullptr : (label_data + i));
+            }
+          });
+    } else { /* section E2: 2+ outputs, 2+ rows, parallelization by rows */
+      // Split the work into one block per thread so we can re-use the 'scores' vector as much as possible.
+      // TODO: Refine the number of threads used.
+      auto num_threads = std::min<int32_t>(max_num_threads, SafeInt<int32_t>(N));
+      concurrency::ThreadPool::TrySimpleParallelFor(
+          ttp,
+          num_threads,
+          [this, &agg, num_threads, x_data, z_data, label_data, N, stride](ptrdiff_t batch_num) {
+            size_t j;
+            std::vector<ScoreValue<OTYPE>> scores(n_targets_or_classes_);
+            auto work = concurrency::ThreadPool::PartitionWork(batch_num, num_threads, N);
+
+            for (auto i = work.start; i < work.end; ++i) {
+              std::fill(scores.begin(), scores.end(), ScoreValue<OTYPE>({0, 0}));
+              for (j = 0; j < roots_.size(); ++j) {
+                agg.ProcessTreeNodePrediction(scores, *ProcessTreeNodeLeave(roots_[j], x_data + i * stride));
+              }
+
+              agg.FinalizeScores(scores,
+                                 z_data + i * n_targets_or_classes_, -1,
                                  label_data == nullptr ? nullptr : (label_data + i));
             }
           });
