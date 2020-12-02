@@ -285,9 +285,9 @@ class ONNXCalibrater:
                 max_value = 0
                 min_value_array = min(clean_merged_dict[added_node_output_names[i]]) 
                 max_value_array = max(clean_merged_dict[added_node_output_names[i + 1]])
-                if type(min_value_array) == int or type(min_value_array) or len(min_value_array) > 0:
+                if type(min_value_array) == int or min_value_array.size > 0:
                     min_value = float(min_value_array)
-                if type(max_value_array) == int or type(max_value_array) or len(max_value_array) > 0:
+                if type(max_value_array) == int or max_value_array.size > 0:
                     max_value = float(max_value_array)
 
                 pairs.append(tuple([min_value, max_value]))
