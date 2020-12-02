@@ -649,7 +649,7 @@ class ORTTrainer(object):
         ort_parameters.data_parallel_size = self.options.distributed.data_parallel_size
         ort_parameters.horizontal_parallel_size = self.options.distributed.horizontal_parallel_size
         ort_parameters.pipeline_parallel_size = self.options.distributed.pipeline_parallel_size
-        ort_parameters.num_pipeline_steps = self.options.distributed.num_pipeline_steps
+        ort_parameters.num_pipeline_micro_batches = self.options.distributed.num_pipeline_micro_batches
         ort_parameters.pipeline_cut_info_string = self.options.distributed.pipeline_cut_info_string
         ort_parameters.sliced_schema = self.options.distributed.sliced_schema
         ort_parameters.sliced_axes = self.options.distributed.sliced_axes

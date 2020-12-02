@@ -2,9 +2,10 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cuda/collective/nccl_common.h"
+#include "core/common/logging/logging.h"
+#include "orttraining/core/framework/mpi_context.h"
 #include <mpi.h>
 
-#include "orttraining/core/framework/mpi_context.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -33,7 +34,8 @@ static Status CreateNcclCommunicator(MPI_Group* mpi_world_group,
                                      const training::WorkerGroupType worker_group_type,
                                      ncclComm_t* group_comm) {
   auto worker_group = training::DistributedRunContext::GetInstance().GetWorkerGroup(worker_group_type);
-  std::cout << "worker group " << worker_group_type << ", " << worker_group.ToString() << std::endl;
+
+  LOGS_DEFAULT(INFO) << "worker group " << worker_group_type << ", " << worker_group.ToString();
   if (worker_group.ranks.size() == 1) {
     LOGS_DEFAULT(WARNING) << "Target group size = 1, skip creating nccl communicator. Group info: "
                           << worker_group.ToString();
@@ -48,9 +50,6 @@ static Status CreateNcclCommunicator(MPI_Group* mpi_world_group,
   MPI_Comm mpi_comm;
   static int32_t mpi_group_id = 0;
   MPI_CHECK(MPI_Comm_create_group(MPI_COMM_WORLD, mpi_group, ++mpi_group_id, &(mpi_comm)));
-  if (mpi_comm == MPI_COMM_NULL) {
-    std::cout << "[nccl_common.cc] Failed" << std::endl;
-  }
   ORT_ENFORCE(mpi_comm != MPI_COMM_NULL, "MPI communicator creation failed.");
 
   // Create new NCCL communicator

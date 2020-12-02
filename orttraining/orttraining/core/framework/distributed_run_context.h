@@ -12,7 +12,7 @@ namespace training {
 enum WorkerGroupType {
   DataParallel = 0,
   HorizontalParallel = 1,
-  ModelParallel = 2,
+  PipelineParallel = 2,
   WorkerGroupTypeCount = 3,
 };
 

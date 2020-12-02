@@ -87,7 +87,7 @@ class ORTTrainerOptions(object):
                             'min' : 1,
                             'default' : 1
                         },
-                        'num_pipeline_steps' : {
+                        'num_pipeline_micro_batches' : {
                             'type' : 'integer',
                             'min' : 1,
                             'default' : 1
@@ -119,10 +119,9 @@ class ORTTrainerOptions(object):
                         },
                         'sliced_schema' : {
                             "type": "dict",
-                            # the keys in `employee_eligibility` are strings matching this regex
+                            # the keys in `sliced_schema` are strings.
                             "keysrules": {"type": "string"},
-                            # the values in `employee_eligibility` are also dictionaries with keys
-                            # that are strings that match this regex and integer values
+                            # the values in `sliced_schema` are lists of integers.
                             "valuesrules": {
                                 "type": "list",
                                 "schema": {'type': 'integer'}
@@ -276,8 +275,8 @@ class ORTTrainerOptions(object):
             number of ranks participating in horizontal parallelism
         distributed.pipeline_parallel_size (int, default is 1):
             number of ranks participating in pipeline parallelism
-        distributed.num_pipeline_steps (int, default is 1):
-            number of sub-batches. We divide input batch into sub-batches and run the graph.
+        distributed.num_pipeline_micro_batches (int, default is 1):
+            number of micro-batches. We divide input batch into micro-batches and run the graph.
         distributed.pipeline_cut_info_string (string, default is ''):
             string of cutting ids for pipeline partition.
         distributed.allreduce_post_accumulation (bool, default is False):
@@ -497,7 +496,7 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                 'min': 1,
                 'default': 1
             },
-            'num_pipeline_steps': {
+            'num_pipeline_micro_batches': {
                 'type': 'integer',
                 'min': 1,
                 'default': 1

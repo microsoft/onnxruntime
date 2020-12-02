@@ -9,6 +9,7 @@
 
 #include "core/session/environment.h"
 #include "orttraining/core/session/training_session.h"
+#include "orttraining/core/session/pipeline_training_session.h"
 #include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/framework/mpi_context.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
@@ -49,7 +50,7 @@ struct TrainingParameters {
   int data_parallel_size = 1;
   int horizontal_parallel_size = 1;
   int pipeline_parallel_size = 1;
-  int num_pipeline_steps = 1;
+  int num_pipeline_micro_batches = 1;
   int deepspeed_zero_stage = 0;
   bool enable_grad_norm_clip = true;
   bool set_gradients_as_graph_outputs = false;
@@ -70,7 +71,7 @@ struct TrainingConfigurationResult {
 
 // TODO: this method does not handle parallel optimization.
 TrainingConfigurationResult ConfigureSessionForTraining(
-    training::TrainingSession* sess, TrainingParameters& parameters) {
+    training::PipelineTrainingSession* sess, TrainingParameters& parameters) {
   //TODO tix, refactor the mpi related code to populate all fields correctly by default.
   ORT_ENFORCE(parameters.data_parallel_size <= parameters.world_size, "data_parallel_size: ", parameters.data_parallel_size, ", world_size: ", parameters.world_size);
   ORT_ENFORCE(parameters.horizontal_parallel_size <= parameters.world_size, "horizontal_parallel_size: ", parameters.horizontal_parallel_size, ", world_size: ", parameters.world_size);
@@ -82,7 +83,7 @@ TrainingConfigurationResult ConfigureSessionForTraining(
     throw std::runtime_error(msg);
   }
 
-  training::TrainingSession::TrainingConfiguration config{};
+  training::PipelineTrainingSession::TrainingConfiguration config{};
   config.weight_names_to_train = parameters.weights_to_train;
   config.weight_names_to_not_train = parameters.weights_not_to_train;
 
@@ -99,20 +100,20 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   config.distributed_config.data_parallel_size = parameters.data_parallel_size;
   config.distributed_config.horizontal_parallel_size = parameters.horizontal_parallel_size;
   config.distributed_config.pipeline_parallel_size = parameters.pipeline_parallel_size;
-  config.distributed_config.num_pipeline_steps = parameters.num_pipeline_steps;
+  config.distributed_config.num_pipeline_micro_batches = parameters.num_pipeline_micro_batches;
   config.distributed_config.sliced_schema = parameters.sliced_schema;
   config.distributed_config.sliced_axes = parameters.sliced_axes;
   config.distributed_config.sliced_tensor_names = parameters.sliced_tensor_names;
 
   if (parameters.use_mixed_precision) {
-    training::TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mp{};
+    training::PipelineTrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mp{};
     mp.use_mixed_precision_initializers = true;
 
     config.mixed_precision_config = mp;
   }
 
   if (config.distributed_config.pipeline_parallel_size > 1) {
-    training::TrainingSession::TrainingConfiguration::PipelineConfiguration pipeline_config;
+    training::PipelineTrainingSession::TrainingConfiguration::PipelineConfiguration pipeline_config;
 
     // Currently don't support auto-partition. User needs to pass in cut information for pipeline
     pipeline_config.do_partition = true;
@@ -121,9 +122,8 @@ TrainingConfigurationResult ConfigureSessionForTraining(
     auto process_with_delimiter = [](std::string& input_str, const std::string& delimiter) {
         std::vector<std::string> result;
         size_t pos = 0;
-        std::string token;
         while ((pos = input_str.find(delimiter)) != std::string::npos) {
-          token = input_str.substr(0, pos);
+          std::string token = input_str.substr(0, pos);
           result.emplace_back(token);
           input_str.erase(0, pos + delimiter.length());
         }
@@ -133,7 +133,7 @@ TrainingConfigurationResult ConfigureSessionForTraining(
       };
 
     auto process_cut_info = [&](std::string& cut_info_string) {
-      std::vector<TrainingSession::TrainingConfiguration::CutInfo> cut_list;
+      std::vector<PipelineTrainingSession::TrainingConfiguration::CutInfo> cut_list;
       const std::string group_delimiter = ",";
       const std::string edge_delimiter = ":";
       const std::string consumer_delimiter = "/";
@@ -141,18 +141,18 @@ TrainingConfigurationResult ConfigureSessionForTraining(
 
       auto cut_info_groups = process_with_delimiter(cut_info_string, group_delimiter);
       for(auto& cut_info_group : cut_info_groups){
-        TrainingSession::TrainingConfiguration::CutInfo cut_info;
+        PipelineTrainingSession::TrainingConfiguration::CutInfo cut_info;
         auto cut_edges = process_with_delimiter(cut_info_group, edge_delimiter);
         for (auto& cut_edge : cut_edges) {
           auto process_edge = process_with_delimiter(cut_edge, producer_consumer_delimiter);
           if (process_edge.size() == 1) {
-            TrainingSession::TrainingConfiguration::CutEdge edge{process_edge[0]};
+            PipelineTrainingSession::TrainingConfiguration::CutEdge edge{process_edge[0]};
             cut_info.emplace_back(edge);
           } else {
             ORT_ENFORCE(process_edge.size() == 2);
             auto consumer_list = process_with_delimiter(process_edge[1], consumer_delimiter);
 
-            TrainingSession::TrainingConfiguration::CutEdge edge{process_edge[0], consumer_list};
+            PipelineTrainingSession::TrainingConfiguration::CutEdge edge{process_edge[0], consumer_list};
             cut_info.emplace_back(edge);
           }
         }
@@ -168,7 +168,7 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   config.loss_name = parameters.loss_output_name;
 
   if (!parameters.training_optimizer_name.empty()) {
-    training::TrainingSession::TrainingConfiguration::OptimizerConfiguration opt{};
+    training::PipelineTrainingSession::TrainingConfiguration::OptimizerConfiguration opt{};
     opt.name = parameters.training_optimizer_name;
     opt.learning_rate_input_name = parameters.lr_params_feed_name;
     opt.weight_attributes_generator = [&parameters](const std::string& weight_name) {
@@ -213,7 +213,7 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   config.graph_transformer_config.transformer_layer_recompute = parameters.transformer_layer_recompute;
   config.graph_transformer_config.number_recompute_layers = parameters.number_recompute_layers;
 
-  training::TrainingSession::TrainingConfigurationResult config_result{};
+  training::PipelineTrainingSession::TrainingConfigurationResult config_result{};
 
   OrtPybindThrowIfError(sess->ConfigureForTraining(config, config_result));
 
@@ -272,7 +272,7 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("horizontal_parallel_size", &TrainingParameters::horizontal_parallel_size)
       .def_readwrite("pipeline_parallel_size", &TrainingParameters::pipeline_parallel_size)
       .def_readwrite("pipeline_cut_info_string", &TrainingParameters::pipeline_cut_info_string)
-      .def_readwrite("num_pipeline_steps", &TrainingParameters::num_pipeline_steps)
+      .def_readwrite("num_pipeline_micro_batches", &TrainingParameters::num_pipeline_micro_batches)
       .def_readwrite("gradient_accumulation_steps", &TrainingParameters::gradient_accumulation_steps)
       .def_readwrite("deepspeed_zero_stage", &TrainingParameters::deepspeed_zero_stage)
       .def_readwrite("enable_grad_norm_clip", &TrainingParameters::enable_grad_norm_clip)
@@ -324,7 +324,7 @@ void addObjectMethodsForTraining(py::module& m) {
   // Thin wrapper over internal C++ InferenceSession to accommodate custom op library management for the Python user
   struct PyTrainingSession : public PyInferenceSession {
     PyTrainingSession(Environment& env, const PySessionOptions& so)
-        : PyInferenceSession(onnxruntime::make_unique<TrainingSession>(so, env)) {
+        : PyInferenceSession(onnxruntime::make_unique<PipelineTrainingSession>(so, env)) {
     }
   };
 
@@ -356,7 +356,7 @@ void addObjectMethodsForTraining(py::module& m) {
         if (!use_nccl && parameters.world_size > 1)
           CopyMPIContextToTrainingParameters(parameters, sess->GetSessionHandle()->GetLogger());
 #endif
-        const auto config_result = ConfigureSessionForTraining(static_cast<TrainingSession*>(sess->GetSessionHandle()), parameters);
+        const auto config_result = ConfigureSessionForTraining(static_cast<PipelineTrainingSession*>(sess->GetSessionHandle()), parameters);
 
         std::vector<std::string> provider_types = {};
         InitializeSession(sess->GetSessionHandle(), provider_types);
@@ -372,16 +372,15 @@ void addObjectMethodsForTraining(py::module& m) {
         if (!use_nccl && parameters.world_size > 1)
           CopyMPIContextToTrainingParameters(parameters, sess->GetSessionHandle()->GetLogger());
 #endif
-        const auto config_result = ConfigureSessionForTraining(static_cast<TrainingSession*>(sess->GetSessionHandle()), parameters);
+        const auto config_result = ConfigureSessionForTraining(static_cast<PipelineTrainingSession*>(sess->GetSessionHandle()), parameters);
 
         std::vector<std::string> provider_types = {};
         InitializeSession(sess->GetSessionHandle(), provider_types);
-
         return config_result;
       })
       .def("get_state", [](PyTrainingSession* sess) {
         NameMLValMap state_tensors;
-        ORT_THROW_IF_ERROR(static_cast<TrainingSession*>(sess->GetSessionHandle())->GetStateTensors(state_tensors));
+        ORT_THROW_IF_ERROR(static_cast<PipelineTrainingSession*>(sess->GetSessionHandle())->GetStateTensors(state_tensors));
         auto& data_transfer_manager = sess->GetSessionHandle()->GetDataTransferManager();
         //convert to numpy array
         std::map<std::string, py::object> rmap;
@@ -409,10 +408,10 @@ void addObjectMethodsForTraining(py::module& m) {
           ThrowIfPyErrOccured();
           state_tensors.insert(std::make_pair(initializer.first, ml_value));
         }
-        ORT_THROW_IF_ERROR(static_cast<TrainingSession*>(sess->GetSessionHandle())->SetStateTensors(state_tensors, strict));
+        ORT_THROW_IF_ERROR(static_cast<PipelineTrainingSession*>(sess->GetSessionHandle())->SetStateTensors(state_tensors, strict));
       })
       .def("is_output_fp32_node", [](PyTrainingSession* sess, const std::string& output_name) {
-        return static_cast<TrainingSession*>(sess->GetSessionHandle())->IsGraphOutputFp32Node(output_name);
+        return static_cast<PipelineTrainingSession*>(sess->GetSessionHandle())->IsGraphOutputFp32Node(output_name);
       });
 }
 }  // namespace python

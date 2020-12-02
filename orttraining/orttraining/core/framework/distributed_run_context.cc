@@ -3,7 +3,6 @@
 
 #include "distributed_run_context.h"
 #include "core/common/common.h"
-#include <iostream>
 
 namespace onnxruntime {
 namespace training {
@@ -26,18 +25,28 @@ DistributedRunContext::DistributedRunContext(int32_t world_rank,
                   std::to_string(horizontal_parallel_size) + ") MUST range from 0 ~ world_size(" + std::to_string(world_size) + ")");
 
   ORT_ENFORCE(world_size % horizontal_parallel_size == 0,
-              "world_size(" + std::to_string(world_size) + ") is not divisible by "
-              "horizontal_parallel_size(" + std::to_string(horizontal_parallel_size) + ").");
+              "world_size(" + std::to_string(world_size) +
+                  ") is not divisible by "
+                  "horizontal_parallel_size(" +
+                  std::to_string(horizontal_parallel_size) + ").");
 
   ORT_ENFORCE(world_size % data_parallel_size == 0,
-              "world_size(" + std::to_string(world_size) + ") is not divisible by "
-              "data_parallel_size(" + std::to_string(data_parallel_size) + ").");
+              "world_size(" + std::to_string(world_size) +
+                  ") is not divisible by "
+                  "data_parallel_size(" +
+                  std::to_string(data_parallel_size) + ").");
 
   ORT_ENFORCE(data_parallel_size * horizontal_parallel_size * pipeline_stage_size == world_size,
-              "data_parallel_size(" + std::to_string(data_parallel_size) + ") "
-              "* horizontal_parallel_size(" + std::to_string(horizontal_parallel_size) + ") "
-              "* pipeline_stage_size(" + std::to_string(pipeline_stage_size) + ") "
-              "!= world_size(" + std::to_string(world_size) + ").");
+              "data_parallel_size(" + std::to_string(data_parallel_size) +
+                  ") "
+                  "* horizontal_parallel_size(" +
+                  std::to_string(horizontal_parallel_size) +
+                  ") "
+                  "* pipeline_stage_size(" +
+                  std::to_string(pipeline_stage_size) +
+                  ") "
+                  "!= world_size(" +
+                  std::to_string(world_size) + ").");
 
   params_.world_rank = world_rank;
   params_.world_size = world_size;
@@ -105,9 +114,6 @@ DistributedRunContext::DistributedRunContext(int32_t world_rank,
   }
   groups_[WorkerGroupType::DataParallel] = {data_group_ranks, data_group_id,
                                             WorkerGroupType::DataParallel, y};
-  for (size_t i = 0; i < data_group_ranks.size(); ++i) {
-    std::cout << "[distributed_run_context.cc] data_group[" << i << "]=" << data_group_ranks[i] << std::endl;
-  }
 
   // Horizontal Model Parallel Group
   const int32_t hori_group_start_index = calculate_linear_index(horizontal_parallel_size, data_parallel_size, 0, y, z);
@@ -117,9 +123,6 @@ DistributedRunContext::DistributedRunContext(int32_t world_rank,
   }
   groups_[WorkerGroupType::HorizontalParallel] = {hori_group_ranks, hori_group_id,
                                                   WorkerGroupType::HorizontalParallel, x};
-  for (size_t i = 0; i < hori_group_ranks.size(); ++i) {
-    std::cout << "[distributed_run_context.cc] hori_group[" << i << "]=" << hori_group_ranks[i] << std::endl;
-  }
 
   // Model Parallel Group
   // Note: Pipeline parallel group is different than Data and horizontal parallel in a way that ranks in the same
@@ -131,11 +134,8 @@ DistributedRunContext::DistributedRunContext(int32_t world_rank,
   for (auto r = 0; r < pipeline_stage_size; r++) {
     pipeline_group_ranks.push_back(pipe_group_start_index + r * (data_parallel_size * horizontal_parallel_size));
   }
-  groups_[WorkerGroupType::ModelParallel] = {pipeline_group_ranks, pipe_group_id,
-                                             WorkerGroupType::ModelParallel, z};
-  for (size_t i = 0; i < pipeline_group_ranks.size(); ++i) {
-    std::cout << "[distributed_run_context.cc] pipe_group[" << i << "]=" << pipeline_group_ranks[i] << std::endl;
-  }
+  groups_[WorkerGroupType::PipelineParallel] = {pipeline_group_ranks, pipe_group_id,
+                                                WorkerGroupType::PipelineParallel, z};
 }
 
 }  // namespace training

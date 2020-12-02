@@ -62,9 +62,9 @@ TEST(DistributedRunContextTest, SingleGPUTest) {
   ASSERT_EQ(hori_group.ranks.size(), 1);
   ASSERT_EQ(hori_group.ranks[0], 0);
 
-  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::ModelParallel);
+  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.group_id, 0);
-  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::ModelParallel);
+  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.rank_in_group, 0);
   ASSERT_EQ(pipeline_group.ranks.size(), 1);
   ASSERT_EQ(pipeline_group.ranks[0], 0);
@@ -91,9 +91,9 @@ TEST(DistributedRunContextTest, SingleNodeTest) {
   ASSERT_EQ(hori_group.ranks.size(), 1);
   ASSERT_EQ(hori_group.ranks[0], 1);
 
-  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::ModelParallel);
+  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.group_id, 1);
-  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::ModelParallel);
+  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.rank_in_group, 0);
   ASSERT_EQ(pipeline_group.ranks.size(), 1);
   ASSERT_EQ(pipeline_group.ranks[0], 1);
@@ -122,9 +122,9 @@ TEST(DistributedRunContextTest, SingleNodeTest2) {
     ASSERT_EQ(hori_group.ranks[i], i);
   }
 
-  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::ModelParallel);
+  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.group_id, 1);
-  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::ModelParallel);
+  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.rank_in_group, 0);
   ASSERT_EQ(pipeline_group.ranks.size(), 1);
   ASSERT_EQ(pipeline_group.ranks[0], 1);
@@ -151,9 +151,9 @@ TEST(DistributedRunContextTest, SingleNodeTest3) {
     ASSERT_EQ(hori_group.ranks[i], i);
   }
 
-  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::ModelParallel);
+  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.group_id, 1);
-  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::ModelParallel);
+  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.rank_in_group, 0);
   ASSERT_EQ(pipeline_group.ranks.size(), 1);
   ASSERT_EQ(pipeline_group.ranks[0], 1);
@@ -180,9 +180,9 @@ TEST(DistributedRunContextTest, SingleNodeTest4) {
   ASSERT_EQ(hori_group.ranks.size(), 1);
   ASSERT_EQ(hori_group.ranks[0], 1);
 
-  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::ModelParallel);
+  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.group_id, 1);
-  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::ModelParallel);
+  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.rank_in_group, 0);
   ASSERT_EQ(pipeline_group.ranks.size(), 2);
   ASSERT_EQ(pipeline_group.ranks[0], 1);
@@ -208,9 +208,9 @@ TEST(DistributedRunContextTest, SingleNodeTest5) {
   ASSERT_EQ(hori_group.ranks.size(), 1);
   ASSERT_EQ(hori_group.ranks[0], 1);
 
-  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::ModelParallel);
+  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.group_id, 0);
-  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::ModelParallel);
+  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.rank_in_group, 1);
   ASSERT_EQ(pipeline_group.ranks.size(), 4);
   for (auto i = 0; i < 1; i++) {
@@ -239,9 +239,9 @@ TEST(DistributedRunContextTest, FullDataParallelTest) {
   ASSERT_EQ(hori_group.ranks.size(), 1);
   ASSERT_EQ(hori_group.ranks[0], 0);
 
-  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::ModelParallel);
+  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.group_id, 0);
-  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::ModelParallel);
+  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.rank_in_group, 0);
   ASSERT_EQ(pipeline_group.ranks.size(), 1);
   ASSERT_EQ(pipeline_group.ranks[0], 0);
@@ -268,9 +268,9 @@ TEST(DistributedRunContextTest, FullDataParallelTest2) {
   ASSERT_EQ(hori_group.ranks.size(), 1);
   ASSERT_EQ(hori_group.ranks[0], 2);
 
-  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::ModelParallel);
+  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.group_id, 2);
-  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::ModelParallel);
+  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.rank_in_group, 0);
   ASSERT_EQ(pipeline_group.ranks.size(), 1);
   ASSERT_EQ(pipeline_group.ranks[0], 2);
@@ -297,9 +297,9 @@ TEST(DistributedRunContextTest, FullDataParallelTest3) {
   ASSERT_EQ(hori_group.ranks.size(), 1);
   ASSERT_EQ(hori_group.ranks[0], 58);
 
-  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::ModelParallel);
+  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.group_id, 58);
-  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::ModelParallel);
+  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.rank_in_group, 0);
   ASSERT_EQ(pipeline_group.ranks.size(), 1);
   ASSERT_EQ(pipeline_group.ranks[0], 58);
@@ -326,9 +326,9 @@ TEST(DistributedRunContextTest, FullHoriParallelTest) {
     ASSERT_EQ(hori_group.ranks[i], i);
   }
 
-  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::ModelParallel);
+  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.group_id, 0);
-  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::ModelParallel);
+  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.rank_in_group, 0);
   ASSERT_EQ(pipeline_group.ranks.size(), 1);
   ASSERT_EQ(pipeline_group.ranks[0], 0);
@@ -355,9 +355,9 @@ TEST(DistributedRunContextTest, FullHoriParallelTest2) {
     ASSERT_EQ(hori_group.ranks[i], i);
   }
 
-  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::ModelParallel);
+  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.group_id, 2);
-  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::ModelParallel);
+  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.rank_in_group, 0);
   ASSERT_EQ(pipeline_group.ranks.size(), 1);
   ASSERT_EQ(pipeline_group.ranks[0], 2);
@@ -384,9 +384,9 @@ TEST(DistributedRunContextTest, FullHoriParallelTest3) {
     ASSERT_EQ(hori_group.ranks[i], i);
   }
 
-  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::ModelParallel);
+  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.group_id, 10);
-  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::ModelParallel);
+  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.rank_in_group, 0);
   ASSERT_EQ(pipeline_group.ranks.size(), 1);
   ASSERT_EQ(pipeline_group.ranks[0], 10);
@@ -411,9 +411,9 @@ TEST(DistributedRunContextTest, FullPipelineParallelTest) {
   ASSERT_EQ(hori_group.ranks.size(), 1);
   ASSERT_EQ(hori_group.ranks[0], 0);
 
-  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::ModelParallel);
+  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.group_id, 0);
-  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::ModelParallel);
+  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.rank_in_group, 0);
   ASSERT_EQ(pipeline_group.ranks.size(), 16);
   for (auto i = 0; i < 16; i++) {
@@ -440,9 +440,9 @@ TEST(DistributedRunContextTest, FullPipelineParallelTest2) {
   ASSERT_EQ(hori_group.ranks.size(), 1);
   ASSERT_EQ(hori_group.ranks[0], 2);
 
-  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::ModelParallel);
+  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.group_id, 0);
-  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::ModelParallel);
+  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.rank_in_group, 2);
   ASSERT_EQ(pipeline_group.ranks.size(), 16);
   for (auto i = 0; i < 16; i++) {
@@ -469,9 +469,9 @@ TEST(DistributedRunContextTest, FullPipelineParallelTest3) {
   ASSERT_EQ(hori_group.ranks.size(), 1);
   ASSERT_EQ(hori_group.ranks[0], 10);
 
-  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::ModelParallel);
+  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.group_id, 0);
-  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::ModelParallel);
+  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.rank_in_group, 10);
   ASSERT_EQ(pipeline_group.ranks.size(), 16);
   for (auto i = 0; i < 16; i++) {
@@ -503,9 +503,9 @@ TEST(DistributedRunContextTest, MixedParallelTest_DxH) {
     ASSERT_EQ(hori_group.ranks[i], i);
   }
 
-  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::ModelParallel);
+  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.group_id, 0);
-  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::ModelParallel);
+  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.rank_in_group, 0);
   ASSERT_EQ(pipeline_group.ranks.size(), 1);
   ASSERT_EQ(pipeline_group.ranks[0], 0);
@@ -535,9 +535,9 @@ TEST(DistributedRunContextTest, MixedParallelTest2_DxH) {
     ASSERT_EQ(hori_group.ranks[i], i);
   }
 
-  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::ModelParallel);
+  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.group_id, 2);
-  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::ModelParallel);
+  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.rank_in_group, 0);
   ASSERT_EQ(pipeline_group.ranks.size(), 1);
   ASSERT_EQ(pipeline_group.ranks[0], 2);
@@ -567,9 +567,9 @@ TEST(DistributedRunContextTest, MixedParallelTest3_DxH) {
     ASSERT_EQ(hori_group.ranks[i], 14 * 4 + i);
   }
 
-  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::ModelParallel);
+  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.group_id, 58);
-  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::ModelParallel);
+  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.rank_in_group, 0);
   ASSERT_EQ(pipeline_group.ranks.size(), 1);
   ASSERT_EQ(pipeline_group.ranks[0], 58);
@@ -599,9 +599,9 @@ TEST(DistributedRunContextTest, MixedParallelTest4_DxH) {
     ASSERT_EQ(hori_group.ranks[i], 15 * 4 + i);
   }
 
-  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::ModelParallel);
+  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.group_id, 63);
-  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::ModelParallel);
+  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.rank_in_group, 0);
   ASSERT_EQ(pipeline_group.ranks.size(), 1);
   ASSERT_EQ(pipeline_group.ranks[0], 63);
@@ -628,9 +628,9 @@ TEST(DistributedRunContextTest, MixedParallelTest_DxP) {
   ASSERT_EQ(hori_group.ranks.size(), 1);
   ASSERT_EQ(hori_group.ranks[0], 0);
 
-  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::ModelParallel);
+  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.group_id, 0);
-  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::ModelParallel);
+  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.rank_in_group, 0);
   ASSERT_EQ(pipeline_group.ranks.size(), 4);
   for (auto i = 0; i < 4; i++) {
@@ -659,9 +659,9 @@ TEST(DistributedRunContextTest, MixedParallelTest2_DxP) {
   ASSERT_EQ(hori_group.ranks.size(), 1);
   ASSERT_EQ(hori_group.ranks[0], 2);
 
-  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::ModelParallel);
+  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.group_id, 2);
-  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::ModelParallel);
+  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.rank_in_group, 0);
   ASSERT_EQ(pipeline_group.ranks.size(), 4);
   for (auto i = 0; i < 4; i++) {
@@ -690,9 +690,9 @@ TEST(DistributedRunContextTest, MixedParallelTest3_DxP) {
   ASSERT_EQ(hori_group.ranks.size(), 1);
   ASSERT_EQ(hori_group.ranks[0], 58);
 
-  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::ModelParallel);
+  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.group_id, 10);
-  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::ModelParallel);
+  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.rank_in_group, 3);
   ASSERT_EQ(pipeline_group.ranks.size(), 4);
   for (auto i = 0; i < 4; i++) {
@@ -721,9 +721,9 @@ TEST(DistributedRunContextTest, MixedParallelTest4_DxP) {
   ASSERT_EQ(hori_group.ranks.size(), 1);
   ASSERT_EQ(hori_group.ranks[0], 63);
 
-  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::ModelParallel);
+  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.group_id, 15);
-  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::ModelParallel);
+  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.rank_in_group, 3);
   ASSERT_EQ(pipeline_group.ranks.size(), 4);
   for (auto i = 0; i < 4; i++) {
@@ -752,9 +752,9 @@ TEST(DistributedRunContextTest, MixedParallelTest_HxP) {
     ASSERT_EQ(hori_group.ranks[i], i);
   }
 
-  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::ModelParallel);
+  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.group_id, 0);
-  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::ModelParallel);
+  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.rank_in_group, 0);
   ASSERT_EQ(pipeline_group.ranks.size(), 4);
   for (auto i = 0; i < 4; i++) {
@@ -783,9 +783,9 @@ TEST(DistributedRunContextTest, MixedParallelTest2_HxP) {
     ASSERT_EQ(hori_group.ranks[i], i);
   }
 
-  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::ModelParallel);
+  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.group_id, 2);
-  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::ModelParallel);
+  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.rank_in_group, 0);
   ASSERT_EQ(pipeline_group.ranks.size(), 4);
   for (auto i = 0; i < 4; i++) {
@@ -814,9 +814,9 @@ TEST(DistributedRunContextTest, MixedParallelTest3_HxP) {
     ASSERT_EQ(hori_group.ranks[i], i + 48);
   }
 
-  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::ModelParallel);
+  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.group_id, 10);
-  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::ModelParallel);
+  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.rank_in_group, 3);
   ASSERT_EQ(pipeline_group.ranks.size(), 4);
   for (auto i = 0; i < 4; i++) {
@@ -845,9 +845,9 @@ TEST(DistributedRunContextTest, MixedParallelTest4_HxP) {
     ASSERT_EQ(hori_group.ranks[i], i + 48);
   }
 
-  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::ModelParallel);
+  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.group_id, 15);
-  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::ModelParallel);
+  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.rank_in_group, 3);
   ASSERT_EQ(pipeline_group.ranks.size(), 4);
   for (auto i = 0; i < 4; i++) {
@@ -877,9 +877,9 @@ TEST(DistributedRunContextTest, MixedParallelTest_DxHxP) {
     ASSERT_EQ(hori_group.ranks[i], i);
   }
 
-  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::ModelParallel);
+  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.group_id, 0);
-  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::ModelParallel);
+  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.rank_in_group, 0);
   ASSERT_EQ(pipeline_group.ranks.size(), 4);
   for (auto i = 0; i < 4; i++) {
@@ -909,9 +909,9 @@ TEST(DistributedRunContextTest, MixedParallelTest2_DxHxP) {
     ASSERT_EQ(hori_group.ranks[i], i);
   }
 
-  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::ModelParallel);
+  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.group_id, 2);
-  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::ModelParallel);
+  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.rank_in_group, 0);
   ASSERT_EQ(pipeline_group.ranks.size(), 4);
   for (auto i = 0; i < 4; i++) {
@@ -941,9 +941,9 @@ TEST(DistributedRunContextTest, MixedParallelTest3_DxHxP) {
     ASSERT_EQ(hori_group.ranks[i], i + 15);
   }
 
-  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::ModelParallel);
+  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.group_id, 5);
-  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::ModelParallel);
+  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.rank_in_group, 2);
   ASSERT_EQ(pipeline_group.ranks.size(), 4);
   for (auto i = 0; i < 4; i++) {
@@ -973,9 +973,9 @@ TEST(DistributedRunContextTest, MixedParallelTest4_DxHxP) {
     ASSERT_EQ(hori_group.ranks[i], i + 21);
   }
 
-  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::ModelParallel);
+  auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.group_id, 5);
-  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::ModelParallel);
+  ASSERT_EQ(pipeline_group.group_type, WorkerGroupType::PipelineParallel);
   ASSERT_EQ(pipeline_group.rank_in_group, 3);
   ASSERT_EQ(pipeline_group.ranks.size(), 4);
   for (auto i = 0; i < 4; i++) {

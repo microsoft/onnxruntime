@@ -16,9 +16,11 @@
 #include <condition_variable>
 #include <mutex>
 #include <tuple>
-#include "orttraining/core/session/tensorhelper.h"
+#include "orttraining/core/session/tensor_helper.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/framework/bfc_arena.h"
+
+#include "test/util/include/test/test_environment.h"
 
 namespace onnxruntime {
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id,
@@ -258,6 +260,9 @@ int main(int argc, char* args[]) {
   std::cout<< "Fetching session state" << std::endl;
   TrainingSession& session = runner->GetSession();
   std::cout<<"Calling tensor slice function" <<std::endl;
+
+  SessionOptions so;
+  InferenceSession cpu_session_object{so, *env};
   test_tensor_slicing(session);
 
 }

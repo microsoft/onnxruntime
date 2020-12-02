@@ -68,9 +68,7 @@ TrainingRunner::TrainingRunner(Parameters params, const Environment& env, Sessio
       params_(params),
       session_options_(session_options),
       session_(session_options, env),
-      input_allocator_(params.input_allocator ? params.input_allocator : TrainingUtil::GetCpuAllocator()),
-      pipeline_schedule_(params.gradient_accumulation_steps, params_.pipeline_parallel_size),
-      pipeline_worker_pool_(params_.pipeline_parallel_size) {
+      input_allocator_(params.input_allocator ? params.input_allocator : TrainingUtil::GetCpuAllocator()) {
   ORT_ENFORCE(!params_.model_path.empty());
   if (!params.weights_to_train.empty())
     ORT_ENFORCE(params.weights_not_to_train.empty());
@@ -215,6 +213,11 @@ Status TrainingRunner::Initialize() {
   // Retrieve pipeline information from configuration result.
   VectorString fetch_names;
   if (params_.pipeline_parallel_size > 1) {
+    // Instead of inside constructor, we initialize pipeline_schedule_ and pipeline_worker_pool_ here
+    // because they dependent on the result of TraningSession::ConfigureForTraining(...).
+    pipeline_schedule_ = pipeline::PipelineScheduler(params_.gradient_accumulation_steps, params_.pipeline_parallel_size);
+    pipeline_worker_pool_ = pipeline::PipelineWorkerPool(params_.pipeline_parallel_size);
+
     fetch_names = config_result.pipeline_config_result.value().fetch_names;
 
     // Set tensor names for event IDs and outputs of event ops.
@@ -237,7 +240,7 @@ Status TrainingRunner::Initialize() {
     pipeline_context_.fetch_names = fetch_names;
 
     pipeline_context_.pipeline_stage_id = config_result.pipeline_config_result.value().pipeline_stage_id;
-    pipeline_context_.num_pipeline_steps = params_.gradient_accumulation_steps;
+    pipeline_context_.num_pipeline_micro_batches = params_.gradient_accumulation_steps;
   } else {
     fetch_names = params_.fetch_names;
     pipeline_context_.pipeline_stage_id = 0;
@@ -371,7 +374,7 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
 
   // Add event IDs to feeds.
   if (params_.pipeline_parallel_size > 1) {
-    const auto batch_id = static_cast<int>(step_) % pipeline_context_.num_pipeline_steps;
+    const auto batch_id = static_cast<int>(step_) % pipeline_context_.num_pipeline_micro_batches;
     const auto stage_id = pipeline_context_.pipeline_stage_id;
 
     int64_t id = -1;

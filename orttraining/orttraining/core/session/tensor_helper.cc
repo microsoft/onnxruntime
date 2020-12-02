@@ -1,12 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "orttraining/core/session/tensorhelper.h"
+#include "orttraining/core/session/tensor_helper.h"
 #include "core/providers/cuda/cuda_common.h"
-#include <cuda.h>
-#include <cuda_runtime.h>
 
 namespace onnxruntime {
+namespace training {
 
 // Return the shape of a tensor slice.
 std::vector<int64_t> GetSliceShape(
@@ -228,4 +227,5 @@ OrtValue SliceTensor(
 
   return dst_value;
 }
-}
+}  // namespace training
+}  // namespace onnxruntime

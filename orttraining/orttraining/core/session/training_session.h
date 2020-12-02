@@ -72,15 +72,18 @@ class TrainingSession : public InferenceSession {
       int horizontal_parallel_size{1};
       // The number of pipeline stages.
       int pipeline_parallel_size{1};
-
-      int num_pipeline_steps{1};
-
+      // The number of micro-batches run by pipeline parallel after calling one session.Run(...).
+      int num_pipeline_micro_batches{1};
+      // We assume one process only run a portion of the graph when pipeline parallel is enabled.
+      // This field is the graph partition's ID this process run.
       int pipeline_stage_id{0};
-
       // This field contains ONNX model's names for input and output tensors to be sliced.
       std::vector<std::string> sliced_tensor_names;
-      // Shapes of sliced inputs and outputs.
+      // Shapes of inputs and outputs for micro-batch.
       std::unordered_map<std::string, std::vector<int>> sliced_schema;
+      // The axies to slice tensors along to create tensors in micro-batch.
+      // If we have a tensor named "x", slicing x along axis sliced_axes["x"] generates
+      // "x" in micro-batch.
       std::unordered_map<std::string, int> sliced_axes;
     };
     // The distributed training configuration.
@@ -285,7 +288,7 @@ class TrainingSession : public InferenceSession {
    * @param[out] config_result The configuration output.
    * @return The status of the configuration.
    */
-  common::Status ConfigureForTraining(
+  virtual common::Status ConfigureForTraining(
       const TrainingConfiguration& config, TrainingConfigurationResult& config_result);
 
   /**
@@ -350,22 +353,7 @@ class TrainingSession : public InferenceSession {
   using InferenceSession::Run;  // For overload resolution.
   common::Status Run(const RunOptions& run_options, IOBinding& io_binding) override;
 
-  common::Status RunWithoutPipeline(const RunOptions& run_options, IOBinding& io_binding);
-  common::Status RunWithPipeline(const RunOptions& run_options, IOBinding& io_binding);
-
- private:
-  void CreatePipelineEvents(
-      const bool traning_mode,
-      const int batch_id,
-      const int stage_id,
-      IOBinding& io_binding);
-
-  void CreateBatchVariables(
-      IOBinding& io_binding, IOBinding& sub_io_binding,
-      const size_t slice_id, const size_t num_slices);
-
-  void LaunchNcclService(const int pipeline_stage_id);
-
+ protected:
   /** Configures the loss function.
   The loss function can either be provided externally or built from the provided loss function information.
   Exactly one of external_loss_name or loss_function_info should be given.
@@ -435,7 +423,8 @@ class TrainingSession : public InferenceSession {
   //  3. Backward operators' descriptions are all "Backward pass". This assumption is used to
   //     identify backward nodes.
   //  4. No event operator is inserted by other graph transform.
-  common::Status InsertPipelineOps(const std::unordered_set<std::string>& initializer_names_to_preserve);
+  common::Status InsertPipelineOps(const std::unordered_set<std::string>& initializer_names_to_preserve,
+                                   pipeline::PipelineTensorNames& pipeline_tensor_names);
 
   common::Status ApplyTransformationsToMainGraph(std::unordered_set<std::string>& weights_to_train,
                                                  const TrainingConfiguration::GraphTransformerConfiguration& config,
@@ -529,6 +518,35 @@ class TrainingSession : public InferenceSession {
 
   GradientGraphConfiguration gradient_graph_config_;
   static const std::string training_mode_string_;
+};
+
+class PipelineTrainingSession : public TrainingSession {
+ public:
+  PipelineTrainingSession(const SessionOptions& session_options, const Environment& env)
+      : TrainingSession(session_options, env) {}
+  common::Status ConfigureForTraining(const TrainingConfiguration& config, TrainingConfigurationResult& config_result_out) override;
+  common::Status Run(const RunOptions& run_options, IOBinding& io_binding) override;
+  ~PipelineTrainingSession() override;
+
+ protected:
+  void CreatePipelineEvents(
+      const bool traning_mode,
+      const int batch_id,
+      const int stage_id,
+      IOBinding& io_binding);
+
+  void CreateMicroBatchVariables(
+      IOBinding& io_binding, IOBinding& sub_io_binding,
+      const size_t slice_id, const size_t num_slices);
+
+  common::Status InsertPipelineOpsAndCreateFakeOutputs(const std::unordered_set<std::string>& initializer_names_to_preserve);
+
+#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+  void LaunchNcclService(const int pipeline_stage_id);
+#endif
+
+  common::Status RunWithoutPipeline(const RunOptions& run_options, IOBinding& io_binding);
+  common::Status RunWithPipeline(const RunOptions& run_options, IOBinding& io_binding);
 
   // Pipeline fields are valid only if params_.pipeline_parallel_size > 1.
   // Information for running pipeline.

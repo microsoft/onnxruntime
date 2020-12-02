@@ -1186,8 +1186,8 @@ public:
       auto& hp_group = DistributedRunContext::GetWorkerGroup(WorkerGroupType::HorizontalParallel);
       hp_group = groups_[WorkerGroupType::HorizontalParallel];
 
-      auto& mp_group = DistributedRunContext::GetInstance().GetWorkerGroup(WorkerGroupType::ModelParallel);
-      mp_group = groups_[WorkerGroupType::ModelParallel];
+      auto& mp_group = DistributedRunContext::GetInstance().GetWorkerGroup(WorkerGroupType::PipelineParallel);
+      mp_group = groups_[WorkerGroupType::PipelineParallel];
     }
 };
 
@@ -1208,7 +1208,7 @@ void OverwritePipelineRank(const TrainingSession::TrainingConfiguration& config,
   ctx.ResetDistributedRunContext();
 
   // Overwrite the pipeline rank in case the static DistributedRunContext has been created and is stale and not up-to-date.
-  auto& mp_group = DistributedRunContext::GetInstance().GetWorkerGroup(WorkerGroupType::ModelParallel);
+  auto& mp_group = DistributedRunContext::GetInstance().GetWorkerGroup(WorkerGroupType::PipelineParallel);
   mp_group.rank_in_group = pipeline_rank;
 }
 

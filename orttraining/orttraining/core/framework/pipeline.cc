@@ -68,11 +68,11 @@ void PipelineSlot::AddCompute(const int batch_id, const PipelineTask::Pass pass,
 }
 
 PipelineTask& PipelineSlot::operator[](int index) {
-  return tasks_[index];
+  return tasks_.at(index);
 }
 
 const PipelineTask& PipelineSlot::operator[](int index) const {
-  return tasks_[index];
+  return tasks_.at(index);
 }
 
 PipelineTask& PipelineSlot::GetFrontAction() {
@@ -83,14 +83,9 @@ const PipelineTask& PipelineSlot::GetFrontAction() const {
   return tasks_.front();
 }
 
-PipelineScheduler::PipelineScheduler() {
-  num_stages_ = 0;
-  num_batches_ = 0;
-}
+PipelineScheduler::PipelineScheduler() : num_stages_(0), num_batches_(0) {}
 
-PipelineScheduler::PipelineScheduler(int num_batches, const int num_stages) {
-  num_stages_ = num_stages;
-  num_batches_ = num_batches;
+PipelineScheduler::PipelineScheduler(int num_batches, const int num_stages) : num_stages_(num_stages), num_batches_(num_batches) {
   CreateComputeSchedule();
 
   const size_t num_events_per_slot_compute_side = 2;
@@ -154,7 +149,7 @@ std::ostream& operator<<(std::ostream& stream, PipelineScheduler const& schedule
   stream << "-------------View of Compute Schedule-------------" << std::endl;
   for (int s = 0; s < schedule.num_stages_; ++s) {
     for (size_t t = 0; t < schedule.compute_table_.size(); ++t) {
-      stream << schedule.compute_table_[t][s];
+      stream << schedule.compute_table_.at(t).at(s);
     }
     stream << std::endl;
   }
@@ -162,7 +157,7 @@ std::ostream& operator<<(std::ostream& stream, PipelineScheduler const& schedule
   stream << "-------------View of Compute-commute Schedule-------------" << std::endl;
   for (int s = 0; s < schedule.num_stages_; ++s) {
     for (size_t t = 0; t < schedule.compute_commute_table_.size(); ++t) {
-      stream << schedule.compute_commute_table_[t][s];
+      stream << schedule.compute_commute_table_.at(t).at(s);
     }
     stream << std::endl;
   }
@@ -178,26 +173,26 @@ std::vector<int> PipelineScheduler::FindForwardComputeTime(const std::vector<int
   std::vector<int> forward_time(num_stages_, 0);
 
   for (int s = 0; s < num_stages_; ++s) {
-    for (int t = previous_forward_time[s]; t < static_cast<int>(compute_table_.size()); ++t) {
-      if (!compute_table_[t][s].IsEmpty()) {
+    for (int t = previous_forward_time.at(s); t < static_cast<int>(compute_table_.size()); ++t) {
+      if (!compute_table_.at(t).at(s).IsEmpty()) {
         // One slot cannot be occupied by two batches.
         continue;
       }
 
-      if (s > 0 && t <= forward_time[s - 1]) {
+      if (s > 0 && t <= forward_time.at(s - 1)) {
         // Foward of the s-th stage must happen after forward of (s-1)-th stage.
         // Note that forward_time[s] is the time slot of the s-th stage.
         continue;
       }
 
-      if (compute_batch_count_[t] >= num_stages_) {
+      if (compute_batch_count_.at(t) >= num_stages_) {
         // At time t, the number of running batches is at maximum,
         // so we need to put this stage to another time slot.
         continue;
       }
 
       // For batch_id, its forward happens at time t on the s-th stage.
-      forward_time[s] = t;
+      forward_time.at(s) = t;
 
       break;
     }
@@ -214,20 +209,20 @@ std::vector<int> PipelineScheduler::FindBackwardComputeTime(const std::vector<in
   // For a specific batch, the last stage has the earliest backward computation.
   // Thus, the first loop reversely scans stages.
   for (int s = num_stages_ - 1; s > -1; --s) {
-    for (int t = forward_time[s] + 1; t < static_cast<int>(compute_table_.size()); ++t) {
-      if (!compute_table_[t][s].IsEmpty()) {
+    for (int t = forward_time.at(s) + 1; t < static_cast<int>(compute_table_.size()); ++t) {
+      if (!compute_table_.at(t).at(s).IsEmpty()) {
         continue;
       }
 
-      if (s < num_stages_ - 1 && t <= backward_time[s + 1]) {
+      if (s < num_stages_ - 1 && t <= backward_time.at(s + 1)) {
         continue;
       }
 
-      if (compute_batch_count_[t] >= num_stages_) {
+      if (compute_batch_count_.at(t) >= num_stages_) {
         continue;
       }
 
-      backward_time[s] = t;
+      backward_time.at(s) = t;
       break;
     }
   }
@@ -242,7 +237,7 @@ int PipelineScheduler::FindSendRecvTime(const int upstream_compute_time, const i
   for (int full_t = static_cast<int>(compute_commute_table_.size()) - 1; full_t > upstream_compute_time; --full_t) {
     bool is_good_time = true;
     for (int full_s = 0; full_s < num_stages_; ++full_s) {
-      auto& candidate_slot = compute_commute_table_[full_t][full_s];
+      auto& candidate_slot = compute_commute_table_.at(full_t).at(full_s);
 
       if (candidate_slot.HasCompute()) {
         is_good_time = false;
@@ -280,7 +275,7 @@ void PipelineScheduler::CreateFullSchedule() {
     for (int s = 0; s < num_stages_; ++s) {
       // Read a slot from compute-only schedule.
       // We will build send-recv pair to connect this slot with its upstream slot.
-      auto slot = compute_table_[t][s];
+      auto slot = compute_table_.at(t).at(s);
 
       if (slot.IsEmpty()) {
         // No need to insert Send and Recv for empty compute slot.
@@ -311,7 +306,7 @@ void PipelineScheduler::CreateFullSchedule() {
       }
 
       // Upstream of "slot".
-      const auto upstream_slot = compute_table_[upstream_t][upstream_s];
+      const auto upstream_slot = compute_table_.at(upstream_t).at(upstream_s);
 
       // Get the only action in upstream slot.
       const auto upstream_action = upstream_slot.GetFrontAction();
@@ -330,15 +325,15 @@ void PipelineScheduler::CreateFullSchedule() {
       // Add Send and Recv to compute-commute schedule.
       // Send from upstream_s-th stage.
       // Recv at s-th stage.
-      compute_commute_table_[good_time][upstream_s].AddSend(batch, send_pass, upstream_compute_time, upstream_s, upstream_s, s);
-      compute_commute_table_[good_time][s].AddRecv(batch, recv_pass, good_time, s, s, upstream_s);
+      compute_commute_table_.at(good_time).at(upstream_s).AddSend(batch, send_pass, upstream_compute_time, upstream_s, upstream_s, s);
+      compute_commute_table_.at(good_time).at(s).AddRecv(batch, recv_pass, good_time, s, s, upstream_s);
     }
 
     // Actions in compute_table_[t] are going be copied to full schedule.
     // For each action, we store its actual time and responsding etage in compute-only schedule.
     // The stored information may be carried to full schedule.
     for (int s = 0; s < num_stages_; ++s) {
-      auto slot = compute_table_[t][s];
+      auto slot = compute_table_.at(t).at(s);
       for (int a = 0; a < static_cast<int>(slot.NumActions()); ++a) {
         auto& task = slot[a];
         task.full_table_time = static_cast<int>(compute_commute_table_.size());
@@ -347,7 +342,7 @@ void PipelineScheduler::CreateFullSchedule() {
     }
 
     // Copy compute actions from compute-only schedule to compute-commute schedule.
-    compute_commute_table_.push_back(compute_table_[t]);
+    compute_commute_table_.push_back(compute_table_.at(t));
   }
 }
 
@@ -355,7 +350,7 @@ void PipelineScheduler::MapStageIdToMpiRank() {
   for (int t = 0; static_cast<size_t>(t) < compute_commute_table_.size(); ++t) {
     for (int s = 0; s < num_stages_; ++s) {
       // Slot at time t and pipeline stage s. It's a collection of tasks.
-      auto& slot = compute_commute_table_[t][s];
+      auto& slot = compute_commute_table_.at(t).at(s);
       for (int k = 0; k < slot.Size(); ++k) {
         auto& task = slot[k];
         if (!task.IsCommute()) {
@@ -366,11 +361,11 @@ void PipelineScheduler::MapStageIdToMpiRank() {
         // task.this_rank=0 means this stage is the first pipeline stage.
         // If data parallel is enabled, we may have multiple pipeline parallel groups.
         // The code below maps stage ID to MPI's world rank.
-        task.this_rank = DistributedRunContext::GetRanks(WorkerGroupType::ModelParallel)[task.this_rank];
+        task.this_rank = DistributedRunContext::GetRanks(WorkerGroupType::PipelineParallel).at(task.this_rank);
 
         // Similarly, We do the mapping for peer's rank to know which process to communicate with
         // in runtime.
-        task.peer_rank = DistributedRunContext::GetRanks(WorkerGroupType::ModelParallel)[task.peer_rank];
+        task.peer_rank = DistributedRunContext::GetRanks(WorkerGroupType::PipelineParallel).at(task.peer_rank);
       }
     }
   }
@@ -381,20 +376,20 @@ void PipelineScheduler::InsertEvents(std::vector<std::vector<PipelineSlot>>& sch
 
   for (int t = 0; static_cast<size_t>(t) < schedule.size(); ++t) {
     for (int s = 0; s < num_stages_; ++s) {
-      if (schedule[t][s].IsEmpty()) {
+      if (schedule.at(t).at(s).IsEmpty()) {
         continue;
       }
-      schedule[t][s].SetWaitedEvent(last_recorded_events[s]);
+      schedule.at(t).at(s).SetWaitedEvent(last_recorded_events.at(s));
 
       // Create new recorded events. Their indexes should be greater than those of previous events.
-      const auto max_event = std::max_element(last_recorded_events[s].begin(), last_recorded_events[s].end());
+      const auto max_event = std::max_element(last_recorded_events.at(s).begin(), last_recorded_events.at(s).end());
       std::vector<int> new_recorded_events;
       for (int i = 0; static_cast<size_t>(i) < num_events_per_slot; ++i) {
         new_recorded_events.push_back(*max_event + i + 1);
       }
 
-      schedule[t][s].SetRecordedEvent(new_recorded_events);
-      last_recorded_events[s] = schedule[t][s].GetRecordedEvent();
+      schedule.at(t).at(s).SetRecordedEvent(new_recorded_events);
+      last_recorded_events.at(s) = schedule.at(t).at(s).GetRecordedEvent();
     }
   }
 }
@@ -402,13 +397,13 @@ void PipelineScheduler::InsertEvents(std::vector<std::vector<PipelineSlot>>& sch
 void PipelineScheduler::InsertForwardCompute(const int batch_id, const std::vector<int> forward_time) {
   // Occupy the time slots so that these slots won't be used in later iterations.
   for (int s = 0; s < num_stages_; ++s) {
-    const auto batch_forward_time = forward_time[s];
+    const auto batch_forward_time = forward_time.at(s);
     if (s == 0) {
       // The first forward compute has no upstream action.
-      compute_table_[batch_forward_time][s].AddCompute(batch_id, PipelineTask::Pass::Forward);
+      compute_table_.at(batch_forward_time).at(s).AddCompute(batch_id, PipelineTask::Pass::Forward);
     } else {
       // For other cases, forward at stage s happens after forward at stage s - 1.
-      compute_table_[batch_forward_time][s].AddCompute(batch_id, PipelineTask::Pass::Forward, forward_time[s - 1], s - 1);
+      compute_table_.at(batch_forward_time).at(s).AddCompute(batch_id, PipelineTask::Pass::Forward, forward_time.at(s - 1), s - 1);
     }
   }
 }
@@ -417,13 +412,13 @@ void PipelineScheduler::InsertBackwardCompute(const int batch_id, const std::vec
   // Occupy the time slots so that these slots won't be used in later iterations.
   const auto last_stage_index = num_stages_ - 1;
   for (int s = num_stages_ - 1; s >= 0; --s) {
-    const auto batch_backward_time = backward_time[s];
+    const auto batch_backward_time = backward_time.at(s);
     if (s == last_stage_index) {
       // The first backward (on the last pipeline stage) depends on the a forward on the last pipeline stage.
-      compute_table_[batch_backward_time][s].AddCompute(batch_id, PipelineTask::Pass::Backward, forward_time[s], s);
+      compute_table_.at(batch_backward_time).at(s).AddCompute(batch_id, PipelineTask::Pass::Backward, forward_time.at(s), s);
     } else {
       // For other cases, backward at stage s depedns on the backward at stage s + 1.
-      compute_table_[batch_backward_time][s].AddCompute(batch_id, PipelineTask::Pass::Backward, backward_time[s + 1], s + 1);
+      compute_table_.at(batch_backward_time).at(s).AddCompute(batch_id, PipelineTask::Pass::Backward, backward_time.at(s + 1), s + 1);
     }
   }
 }
@@ -455,8 +450,8 @@ void PipelineScheduler::CreateComputeSchedule() {
 
     // Increase the batch count for whenever that batch stays in the pipeline.
     // For a specific batch, its starting/end time is the time it enters/leaves the first pipeline stage.
-    for (int t_compute = forward_time[0]; t_compute <= backward_time[0]; ++t_compute) {
-      ++compute_batch_count_[t_compute];
+    for (int t_compute = forward_time.at(0); t_compute <= backward_time[0]; ++t_compute) {
+      ++compute_batch_count_.at(t_compute);
     }
   }
 }
@@ -472,7 +467,7 @@ std::vector<int> PipelineScheduler::TryGetEvent(
 
   // Go through slots of stage stage_id to find the requested action.
   for (int t = 0; static_cast<size_t>(t) < compute_commute_table_.size(); ++t) {
-    const auto slot = compute_commute_table_[t][stage_id];
+    const auto slot = compute_commute_table_.at(t).at(stage_id);
     for (int a = 0; static_cast<size_t>(a) < slot.NumActions(); ++a) {
       auto task = slot[a];
       if (task.batch != batch_id) {
@@ -570,7 +565,7 @@ int PipelineScheduler::GetBackwardRecvRecordedEvent(const int batch_id, const in
 }
 
 void PipelineWorkerPool::Join(size_t worker_id) {
-  auto& worker = workers[worker_id];
+  auto& worker = workers.at(worker_id);
   if (!worker.joinable())
     return;
   worker.join();
@@ -578,7 +573,7 @@ void PipelineWorkerPool::Join(size_t worker_id) {
 
 void PipelineWorkerPool::JoinAll() {
   for (size_t i = 0; i < workers.size(); ++i) {
-    auto& worker = workers[i];
+    auto& worker = workers.at(i);
     if (!worker.joinable())
       continue;
     worker.join();

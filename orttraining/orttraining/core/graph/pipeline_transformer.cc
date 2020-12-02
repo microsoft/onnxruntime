@@ -490,9 +490,23 @@ void FindPipelineLandmarks(
 //   Wait-10: Wait until we can start backward Send.
 //   Record-11: Tell others that backward Send is done.
 Status TransformGraphForPipeline(
-    Graph& graph,
+    const bool keep_original_output_schema,
     const std::unordered_set<std::string>& weights_to_train,
-    pipeline::PipelineContext& pipeline_context) {
+    const std::unordered_map<std::string, std::vector<int>>& sliced_schema,
+    const std::vector<std::string>& expected_output_names,
+    Graph& graph,
+    pipeline::PipelineTensorNames& pipeline_tensor_names) {
+  // If original outputs are not needed, sliced scheam and expected output
+  // name list should be empty. Otherwise, for non-existing outputs, fake
+  // output may be created according to shapes in sliced_schema. Note that
+  // sliced_schema["X"] is the shape of sliced tensor named "X".
+  if (!keep_original_output_schema) {
+    // Enforce unused variable is empty.
+    ORT_ENFORCE(sliced_schema.empty());
+    // Enforce unused variable is empty.
+    ORT_ENFORCE(expected_output_names.empty());
+  }
+
   // Begin node of forward pass.
   Node* forward_recv{nullptr};
   // End node of forward pass.
@@ -560,8 +574,8 @@ Status TransformGraphForPipeline(
         graph, forward_recv,
         "WaitEvent", "wait_forward_recv", "forward_recv_event_1",
         new_input_names, new_output_names,
-        pipeline_context.pipeline_tensor_names.forward_recv_waited_event_name,
-        pipeline_context.pipeline_tensor_names.forward_recv_wait_output_name);
+        pipeline_tensor_names.forward_recv_waited_event_name,
+        pipeline_tensor_names.forward_recv_wait_output_name);
     ORT_ENFORCE(forward_recv_wait);
     ResolveForTraining(graph, weights_to_train);
 
@@ -570,8 +584,8 @@ Status TransformGraphForPipeline(
         graph, forward_recv,
         "RecordEvent", "record_forward_recv", "forward_recv_event_2",
         new_input_names, new_output_names,
-        pipeline_context.pipeline_tensor_names.forward_recv_recorded_event_name,
-        pipeline_context.pipeline_tensor_names.forward_recv_record_output_name);
+        pipeline_tensor_names.forward_recv_recorded_event_name,
+        pipeline_tensor_names.forward_recv_record_output_name);
     ORT_ENFORCE(forward_recv_record);
     ResolveForTraining(graph, weights_to_train);
   }
@@ -583,8 +597,8 @@ Status TransformGraphForPipeline(
         graph, forward_send,
         "WaitEvent", "wait_forward_send", "forward_send_event_1",
         new_input_names, new_output_names,
-        pipeline_context.pipeline_tensor_names.forward_send_waited_event_name,
-        pipeline_context.pipeline_tensor_names.forward_send_wait_output_name);
+        pipeline_tensor_names.forward_send_waited_event_name,
+        pipeline_tensor_names.forward_send_wait_output_name);
     ORT_ENFORCE(forward_send_wait);
     ResolveForTraining(graph, weights_to_train);
 
@@ -593,8 +607,8 @@ Status TransformGraphForPipeline(
         graph, forward_send,
         "RecordEvent", "record_forward_send", "forward_send_event_2",
         new_input_names, new_output_names,
-        pipeline_context.pipeline_tensor_names.forward_send_recorded_event_name,
-        pipeline_context.pipeline_tensor_names.forward_send_record_output_name);
+        pipeline_tensor_names.forward_send_recorded_event_name,
+        pipeline_tensor_names.forward_send_record_output_name);
     ORT_ENFORCE(forward_send_record);
     ResolveForTraining(graph, weights_to_train);
   }
@@ -606,8 +620,8 @@ Status TransformGraphForPipeline(
         graph, backward_recv,
         "WaitEvent", "wait_backward_recv", "backward_recv_event_1",
         new_input_names, new_output_names,
-        pipeline_context.pipeline_tensor_names.backward_recv_waited_event_name,
-        pipeline_context.pipeline_tensor_names.backward_recv_wait_output_name);
+        pipeline_tensor_names.backward_recv_waited_event_name,
+        pipeline_tensor_names.backward_recv_wait_output_name);
     ORT_ENFORCE(backward_recv_wait);
     ResolveForTraining(graph, weights_to_train);
 
@@ -616,8 +630,8 @@ Status TransformGraphForPipeline(
         graph, backward_recv,
         "RecordEvent", "record_backward_recv", "backward_recv_event_2",
         new_input_names, new_output_names,
-        pipeline_context.pipeline_tensor_names.backward_recv_recorded_event_name,
-        pipeline_context.pipeline_tensor_names.backward_recv_record_output_name);
+        pipeline_tensor_names.backward_recv_recorded_event_name,
+        pipeline_tensor_names.backward_recv_record_output_name);
     ORT_ENFORCE(backward_recv_record);
     ResolveForTraining(graph, weights_to_train);
   }
@@ -629,8 +643,8 @@ Status TransformGraphForPipeline(
         graph, backward_send,
         "WaitEvent", "wait_backward_send", "backward_send_event_1",
         new_input_names, new_output_names,
-        pipeline_context.pipeline_tensor_names.backward_send_waited_event_name,
-        pipeline_context.pipeline_tensor_names.backward_send_wait_output_name);
+        pipeline_tensor_names.backward_send_waited_event_name,
+        pipeline_tensor_names.backward_send_wait_output_name);
     ORT_ENFORCE(backward_send_wait);
     ResolveForTraining(graph, weights_to_train);
 
@@ -639,8 +653,8 @@ Status TransformGraphForPipeline(
         graph, backward_send,
         "RecordEvent", "record_backward_send", "backward_send_event_2",
         new_input_names, new_output_names,
-        pipeline_context.pipeline_tensor_names.backward_send_recorded_event_name,
-        pipeline_context.pipeline_tensor_names.backward_send_record_output_name);
+        pipeline_tensor_names.backward_send_recorded_event_name,
+        pipeline_tensor_names.backward_send_record_output_name);
     ORT_ENFORCE(backward_send_record);
     ResolveForTraining(graph, weights_to_train);
   }
@@ -652,8 +666,8 @@ Status TransformGraphForPipeline(
         graph, first_node,
         "WaitEvent", "wait_forward_compute", "forward_compute_event_1",
         new_input_names, new_output_names,
-        pipeline_context.pipeline_tensor_names.forward_compute_waited_event_name,
-        pipeline_context.pipeline_tensor_names.forward_compute_wait_output_name);
+        pipeline_tensor_names.forward_compute_waited_event_name,
+        pipeline_tensor_names.forward_compute_wait_output_name);
     ORT_ENFORCE(forward_compute_wait);
     ResolveForTraining(graph, weights_to_train);
   } else {
@@ -662,8 +676,8 @@ Status TransformGraphForPipeline(
         graph, forward_recv_record,
         "WaitEvent", "wait_forward_compute", "forward_compute_event_1",
         new_input_names, new_output_names,
-        pipeline_context.pipeline_tensor_names.forward_compute_waited_event_name,
-        pipeline_context.pipeline_tensor_names.forward_compute_wait_output_name);
+        pipeline_tensor_names.forward_compute_waited_event_name,
+        pipeline_tensor_names.forward_compute_wait_output_name);
     ORT_ENFORCE(forward_compute_wait);
     ResolveForTraining(graph, weights_to_train);
   }
@@ -675,8 +689,8 @@ Status TransformGraphForPipeline(
         graph, forward_send_wait,
         "RecordEvent", "record_forward_compute", "forward_compute_event_2",
         new_input_names, new_output_names,
-        pipeline_context.pipeline_tensor_names.forward_compute_recorded_event_name,
-        pipeline_context.pipeline_tensor_names.forward_compute_record_output_name);
+        pipeline_tensor_names.forward_compute_recorded_event_name,
+        pipeline_tensor_names.forward_compute_record_output_name);
     ORT_ENFORCE(forward_compute_record);
     ResolveForTraining(graph, weights_to_train);
   }
@@ -688,8 +702,8 @@ Status TransformGraphForPipeline(
         graph, backward_recv_record,
         "WaitEvent", "wait_backward_compute", "backward_compute_event_1",
         new_input_names, new_output_names,
-        pipeline_context.pipeline_tensor_names.backward_compute_waited_event_name,
-        pipeline_context.pipeline_tensor_names.backward_compute_wait_output_name);
+        pipeline_tensor_names.backward_compute_waited_event_name,
+        pipeline_tensor_names.backward_compute_wait_output_name);
     ORT_ENFORCE(backward_compute_wait);
     ResolveForTraining(graph, weights_to_train);
   }
@@ -701,8 +715,8 @@ Status TransformGraphForPipeline(
         graph, last_node,
         "RecordEvent", "record_backward_compute", "backward_compute_event_2",
         new_input_names, new_output_names,
-        pipeline_context.pipeline_tensor_names.backward_compute_recorded_event_name,
-        pipeline_context.pipeline_tensor_names.backward_compute_record_output_name);
+        pipeline_tensor_names.backward_compute_recorded_event_name,
+        pipeline_tensor_names.backward_compute_record_output_name);
     ORT_ENFORCE(backward_compute_record);
     ResolveForTraining(graph, weights_to_train);
   } else {
@@ -711,23 +725,27 @@ Status TransformGraphForPipeline(
         graph, backward_send_wait,
         "RecordEvent", "record_backward_compute", "backward_compute_event_2",
         new_input_names, new_output_names,
-        pipeline_context.pipeline_tensor_names.backward_compute_recorded_event_name,
-        pipeline_context.pipeline_tensor_names.backward_compute_record_output_name);
+        pipeline_tensor_names.backward_compute_recorded_event_name,
+        pipeline_tensor_names.backward_compute_record_output_name);
     ORT_ENFORCE(backward_compute_record);
     ResolveForTraining(graph, weights_to_train);
   }
 
-  for (size_t i = 0; i < pipeline_context.expected_output_names.size(); ++i) {
-    const std::string name = pipeline_context.expected_output_names[i];
+  // If user wants to keep original outputs, we add fake outputs if the
+  // current graph partition doesn't produce them.
+  for (size_t i = 0; keep_original_output_schema && i < expected_output_names.size(); ++i) {
+    const std::string name = expected_output_names[i];
 
     auto producer = graph.GetProducerNode(name);
     if (producer) {
+      // This partition generates original output.
+      // There is no need to add a fake one.
       continue;
     }
 
-    // For each graph output which doesn't produce by this pipeline stage,
+    // For each graph output not produced by this pipeline stage,
     // we create a fake tensor with user-specified shape.
-    CreateFakeOutput(graph, name, pipeline_context.sliced_schema);
+    CreateFakeOutput(graph, name, sliced_schema);
     new_output_names.push_back(name);
   }
 

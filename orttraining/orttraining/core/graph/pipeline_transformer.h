@@ -13,9 +13,12 @@ void GetPipelineSendOutput(const Graph& graph, std::string& node_arg_name);
 void GetPipelineRecvInput(const Graph& graph, std::string& node_arg_name);
 
 Status TransformGraphForPipeline(
+    const bool keep_original_output_schema,
+    const std::unordered_set<std::string>& weights_to_train,
+    const std::unordered_map<std::string, std::vector<int>>& sliced_schema,
+    const std::vector<std::string>& expected_output_names,
     Graph& graph,
-    const std::unordered_set<std::string>& initializer_names_to_preserve,
-    pipeline::PipelineContext& pipeline_context);
+    pipeline::PipelineTensorNames& pipeline_tensor_names);
 
 // Partitions the graph into num_stages subgraphs, as defined in op_to_stage map,
 // which maps operators to stage ids. After the graph is partitioned, it drops

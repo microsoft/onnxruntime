@@ -147,6 +147,7 @@ class PipelineScheduler {
  public:
   PipelineScheduler();
   PipelineScheduler(const int num_batches, const int num_stages);
+
   // Number of time steps.
   size_t GetScheduleSize() const { return compute_commute_table_.size(); }
   // Number of stages.
@@ -154,7 +155,7 @@ class PipelineScheduler {
   std::vector<PipelineSlot> GetSchedule(const int stage_id) const {
     std::vector<PipelineSlot> commute_slots;
     for (int t = 0; static_cast<size_t>(t) < GetScheduleSize(); ++t) {
-      auto& slot = compute_commute_table_[t][stage_id];
+      auto& slot = compute_commute_table_.at(t).at(stage_id);
       if (!slot.HasCommute()) {
         continue;
       }
@@ -210,6 +211,10 @@ class PipelineScheduler {
   // Wrapper over TryGetEvent. It returns -1 when the specified action is not found.
   int GetEventOrDefault(const bool is_waited_event, const int batch_id, const int stage_id, const PipelineTask::Pass pass, const PipelineTask::Type type) const;
 
+  // Number of pipeline stages.
+  int num_stages_;
+  // Number of micro-batches.
+  int num_batches_;
   // Compute-only pipeline schedule as a 2-D table. table_[i][j] is the computation happening in
   // the i-th time slot at the j-th stage. For example, PipeDream schedule may have
   //   1. table_[0][0].batch_id is 0 and table_[0][0].type is Forward.
@@ -222,8 +227,6 @@ class PipelineScheduler {
   // compute batches at the i-th time slot.
   std::vector<int> compute_batch_count_;
   std::vector<int> commute_batch_count_;
-  int num_stages_;
-  int num_batches_;
 };
 
 struct PipelineWorkerState {
@@ -310,13 +313,13 @@ struct PipelineTensorNames {
 
 struct PipelineContext {
   // Number of pipeline stages.
-  int num_pipeline_stages{1};
+  int num_pipeline_stages;
   // Id of stage handled by this process. Currently, it matches the MPI's rank.
-  int pipeline_stage_id{0};
-  // The number of sub-batches per pipeline round.
+  int pipeline_stage_id;
+  // The number of micro-batches per pipeline round.
   // Only the last step among num_gradient_accumulation_steps steps may call
   // optimizer to update the model.
-  int num_pipeline_steps{1};
+  int num_pipeline_micro_batches;
   // Names of scheduling event in graph's input list and
   // names of event ops' outputs. If an event name is an
   // empty string, it means no event should be waited or recorded.
@@ -328,8 +331,8 @@ struct PipelineContext {
   // Values can be fetched at this pipeline stage.
   std::vector<std::string> fetch_names;
 
-  // When running training session with multiple sub-batches, only the last sub-batch run
-  // should execute the optimizer nodes and update the model. All non-last sub-batches should
+  // When running training session with multiple micro-batches, only the last micro-batch run
+  // should execute the optimizer nodes and update the model. All non-last micro-batches should
   // only execute until gradient accumulation step.
   std::vector<std::string> accumulation_step_fetches;
 
@@ -342,8 +345,8 @@ struct PipelineContext {
   // sliced_axes["name"] is the axis to slice along for the tensor called "name".
   std::unordered_map<std::string, int> sliced_axes;
 
-  // sliced_axes["name"] is the shape of sliced version of tensor "name".
-  // It's the shape when running sub-batches with pipeline parallel.
+  // sliced_schema["name"] is the shape of sliced version of tensor "name".
+  // It's the shape when running micro-batches with pipeline parallel.
   std::unordered_map<std::string, std::vector<int>> sliced_schema;
 };
 
