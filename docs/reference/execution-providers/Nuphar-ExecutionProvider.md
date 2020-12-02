@@ -2,15 +2,15 @@
 title: Nuphar
 parent: Execution Providers
 grand_parent: Reference
-nav_order: 8
+nav_order: 9
 ---
 
 # Nuphar Execution Provider (preview)
 {: .no_toc }
 
-NUPHAR stands for Neural-network Unified Preprocessing Heterogeneous ARchitecture. As an execution provider in the ONNX Runtime, it is built on top of [TVM](https://github.com/dmlc/tvm) and [LLVM](https://llvm.org) to accelerate ONNX models by compiling nodes in subgraphs into optimized functions via JIT. It also provides JIT caching to save compilation time at runtime. 
+NUPHAR stands for Neural-network Unified Preprocessing Heterogeneous Architecture. As an execution provider in the ONNX Runtime, it is built on top of [TVM](https://github.com/dmlc/tvm) and [LLVM](https://llvm.org) to accelerate ONNX models by compiling nodes in subgraphs into optimized functions via JIT. It also provides JIT caching to save compilation time at runtime. 
 
-Developers can tap into the power of Nuphar through ONNX Runtime to accelerate inferencing of ONNX models. The Nuphar execution provider comes with a common ONNX to TVM lowering [library](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/core/codegen) that can potentially be reused by other execution providers to leverage TVM. With the Nuphar execution provider, the ONNX Runtime delivers better inference performance on the same hardware compared to generic X64 CPU acceleration, especially for quantized recurrent neural networks. Various products at Microsoft have seen up to a 5x improvement in performance with no loss of accuracy, by running quantized LSTMs via the Nuphar execution provider in the ONNX Runtime.
+Developers can tap into the power of Nuphar through ONNX Runtime to accelerate inferencing of ONNX models. The Nuphar execution provider comes with a common ONNX to TVM lowering [library](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/core/codegen) that can potentially be reused by other execution providers to leverage TVM. With the Nuphar execution provider, the ONNX Runtime delivers better inferencing performance on the same hardware compared to generic X64 CPU acceleration, especially for quantized recurrent neural networks. Various products at Microsoft have seen up to a 5x improvement in performance with no loss of accuracy, by running quantized LSTMs via the Nuphar execution provider in the ONNX Runtime.
 
 ## Contents
 {: .no_toc }
@@ -23,7 +23,13 @@ For build instructions, please see the [BUILD page](../../how-to/build.md#nuphar
 
 ## Using the Nuphar execution provider
 ### C/C++
-The Nuphar execution provider needs to be registered with ONNX Runtime to enable in the inference session. The C API details are [here](../api/c-api.md).
+
+```c++
+Ort::Env env = Ort::Env{ORT_LOGGING_LEVEL_ERROR, "Default"};
+Ort::SessionOptions sf;
+Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nuphar(sf, /*allow_unaligned_buffers*/ 1, ""));
+Ort::Session session(env, model_path, sf);
+```
 
 ### Python
 
@@ -60,10 +66,7 @@ Speed-up in this model is ~20% on Intel Xeon E5-1620v4 (Note that AVX2 is requir
 
 ## JIT caching
 
-You may cache JIT binaries to reduce model loading time spent in JIT, using [create_shared.cmd](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/core/providers/nuphar/scripts/create_shared.cmd) on Windows with Visual Studio 2017, or [create_shared.sh](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/providers/nuphar/scripts/create_shared.sh) on Linux with gcc.
-
 Windows
-
 ```
 REM You need to have Visual Studio 2017 for compile and link. Optionally, you can save model checksum to the output dll with FCIV tool from https://support.microsoft.com/en-us/help/841290
 set NUPHAR_CACHE_PATH=\path\to\jit\cache
@@ -76,8 +79,7 @@ REM Run Nuphar inference again with cached JIT dll
 ```
 
 Linux
-
-```bash
+```
 # You need to have GCC of the same version Nuphar is built with, for compile and link. Optionally, you can save model checksum to jit.so with md5sum
 export NUPHAR_CACHE_PATH=/path/to/jit/cache
 # Then run Nuphar inference from either onnx_test_runner or onnxruntime_perf_test, or whatever inference using C++ or Python
@@ -168,7 +170,6 @@ sess = onnxruntime.InferenceSession(model_path)
 ```
 
 ## Known issues
-
 * ONNX shape inference dependency
 
 To save runtime JIT cost, Nuphar requires models to have shape inference information from ONNX after model is loaded. Some nodes in ONNX can generate dynamic output tensor shapes from input data value, i.e. ConstantOfShape, Tile, Slice in opset 10, Compress, etc. Those ops may block ONNX shape inference and make the part of graph after such nodes not runnable in Nuphar.

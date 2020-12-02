@@ -1,6 +1,6 @@
 ---
 title: Use the PyOp operator
-parent: Recipes
+parent: How to
 nav_order: 4
 ---
 

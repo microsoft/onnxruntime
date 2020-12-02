@@ -1,8 +1,8 @@
 ---
-title: Recipes
+title: How to
 has_children: true
 nav_order: 3
 ---
 
-# ONNX Runtime Recipes
+# ONNX Runtime how-to guides
 {: .no_toc }

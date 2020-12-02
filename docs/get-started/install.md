@@ -39,7 +39,7 @@ For an overview, see this [installation matrix](https://onnxruntime.ai).
     * Run `locale-gen en_US.UTF-8`
     * Run `update-locale LANG=en_US.UTF-8`
 
-2. CUDA 10.1 and cuDNN 7.6.5
+2. CUDA 10.2 and cuDNN 8.0.3
 
     * Version dependencies from older ONNX Runtime releases can be found in [prior release notes](https://github.com/microsoft/onnxruntime/releases).
 
@@ -59,8 +59,12 @@ For an overview, see this [installation matrix](https://onnxruntime.ai).
 
 2. [Visual C++ 2019 runtime](https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads)
 
-3. CUDA 10.1 and cuDNN 7.6.5
+3. CUDA 10.2** and cuDNN 8.0.3
     * Version dependencies from older ONNX Runtime releases can be found in [prior release notes](https://github.com/microsoft/onnxruntime/releases).
+
+### MacOS / CPU
+
+1. The system must have libomp.dylib which can be installed using ``brew install libomp`.
 
 ## Install
 

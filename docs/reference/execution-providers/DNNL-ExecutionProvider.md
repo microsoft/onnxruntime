@@ -12,7 +12,6 @@ Intel® Math Kernel Library for Deep Neural Networks (Intel® DNNL) is an open-s
 
 Intel and Microsoft have developed DNNL Execution Provider (EP) for ONNX Runtime to accelerate performance of ONNX Runtime using Intel® Math Kernel Library for Deep Neural Networks (Intel® DNNL) optimized primitives.
 
-
 ## Contents
 {: .no_toc }
 
@@ -20,13 +19,14 @@ Intel and Microsoft have developed DNNL Execution Provider (EP) for ONNX Runtime
 {:toc}
 
 ## Build
+For build instructions, please see the [BUILD page](../../how-to/build.md#dnnl-and-mklml).
 
 For build instructions, please see the [BUILD page](../../how-to/build.md#dnnl-and-mklml).
 
 ## Supported OS
 
 * Ubuntu 16.04
-* Windows 10
+* Windows 10 
 * Mac OS X
 
 ## Supported backend
@@ -39,18 +39,11 @@ For build instructions, please see the [BUILD page](../../how-to/build.md#dnnl-a
 
 The DNNLExecutionProvider execution provider needs to be registered with ONNX Runtime to enable in the inference session.
 
-```c++
-string log_id = "Foo";
-auto logging_manager = std::make_unique<LoggingManager>
-(std::unique_ptr<ISink>{new CLogSink{}},
-                                  static_cast<Severity>(lm_info.default_warning_level),
-                                  false,
-                                  LoggingManager::InstanceType::Default,
-                                  &log_id)
-Environment::Create(std::move(logging_manager), env)
-InferenceSession session_object{so,env};
-session_object.RegisterExecutionProvider(std::make_unique<::onnxruntime:: DNNLExecutionProvider >());
-status = session_object.Load(model_file_name);
+```c
+Ort::Env env = Ort::Env{ORT_LOGGING_LEVEL_ERROR, "Default"};
+Ort::SessionOptions sf;
+bool enable_cpu_mem_arena = true;
+Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Dnnl(sf, enable_cpu_mem_arena));
 ```
 
 The C API details are [here](../api/c-api.md).
@@ -141,7 +134,7 @@ Subgraph optimization achieves this in the following steps.
 
 #### Subgraph (IR) Internal Representation
 
-DnnlExecutionProvicer::GetCapability() parses ONNX model graph and creates IR (Internal Representation) of subgraphs of DNNL operators.
+DnnlExecutionProvider::GetCapability() parses ONNX model graph and creates IR (Internal Representation) of subgraphs of DNNL operators.
 Each subgraph contains a vector DnnlNodes, inputs, outputs and attributes for all its DnnlNodes. There can be attributes of same name. So, we prefix attribute names with Node name and its index. 
 Unique id for subgraph is set as an attribute. 
 

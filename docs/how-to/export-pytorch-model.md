@@ -1,6 +1,6 @@
 ---
 title: Export PyTorch model
-parent: Recipes
+parent: How to
 nav_order: 5
 ---
 
