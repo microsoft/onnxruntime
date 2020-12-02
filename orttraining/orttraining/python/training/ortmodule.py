@@ -18,6 +18,7 @@ from . import _utils
 
 
 ONNX_OPSET_VERSION = 12
+__TEMP_ENABLE_METHOD_TIMING__ = True
 
 # Needed to re-implement PyTorch's cpu,cuda,to methods
 T = TypeVar('T', bound='Module')
@@ -252,6 +253,7 @@ class ORTModule(torch.nn.Module):
         proc_inputs = [data for data in inputs if data is not None]
         return _ORTModuleFunction.apply(*self._convert_forward_input_to_list(*proc_inputs, **kwargs))
 
+    @_utils.timeit(enabled=__TEMP_ENABLE_METHOD_TIMING__)
     def _convert_forward_input_to_list(self, *inputs, **kwargs):
         '''Creates forward `*inputs` list from user input and PyTorch initializers
 
@@ -274,6 +276,7 @@ class ORTModule(torch.nn.Module):
 
         return result
 
+    @_utils.timeit(enabled=__TEMP_ENABLE_METHOD_TIMING__)
     def _convert_forward_input_list_to_dict(self, *inputs):
         '''Convert forward `*inputs` list to dict
 
@@ -284,6 +287,7 @@ class ORTModule(torch.nn.Module):
                                *self._onnx_graphs_info.initializer_names_to_train]
         return dict(zip(forward_input_names, inputs))
 
+    @_utils.timeit(enabled=__TEMP_ENABLE_METHOD_TIMING__)
     def _convert_backward_input_list_to_dict(self, *inputs):
         '''Convert backward `*inputs` list to dict
 

@@ -433,8 +433,12 @@ def main():
 
     print('\n======== Global stats ========')
     if not args.pytorch_only:
-        estimated_export = epoch_0_training - (total_training_time - epoch_0_training)/(args.epochs-1)
-        print("  Estimated ONNX export took:               {:.4f}s".format(estimated_export))
+        estimated_export = 0
+        if args.epochs > 1:
+            estimated_export = epoch_0_training - (total_training_time - epoch_0_training)/(args.epochs-1)
+            print("  Estimated ONNX export took:               {:.4f}s".format(estimated_export))
+        else:
+            print("  Estimated ONNX export took:               Estimate available when epochs > 1 only")
         print("  Accumulated training without export took: {:.4f}s".format(total_training_time - estimated_export))
     print("  Accumulated training took:                {:.4f}s".format(total_training_time))
     print("  Accumulated validation took:              {:.4f}s".format(total_test_time))
