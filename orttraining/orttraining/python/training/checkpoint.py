@@ -63,7 +63,7 @@ def experimental_load_state_dict(ort_trainer, state_dict, strict=False):
     ort_trainer._training_session.load_state(session_state, strict)
 
 # Temporary function to test optimizer state loading
-def experimental_load_optimizer_state(ort_trainer, optim_state_dict):
+def _experimental_load_optimizer_state(ort_trainer, optim_state_dict):
     ort_trainer._optim_state_dict = optim_state_dict
 
     # Note: It may happen ONNX model has not yet been initialized

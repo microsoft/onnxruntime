@@ -247,10 +247,9 @@ Status OptimizerGraphBuilder::BuildOptimizerNode(
   ORT_RETURN_IF_ERROR(opt_builder->Build(
       weight_argdefs, gradient_argdefs,
       global_gradient_norm_argdef, global_gradient_norm_finite_argdef,
-      opt_configs, graph_defs,
+      opt_configs, opt_graph_config_, graph_defs,
       new_initializers,
-      output_weight_argdefs, output_gradient_argdefs, opt_graph_config_.enable_grad_norm_clip,
-      opt_graph_config_.shared_optimizer_states));
+      output_weight_argdefs, output_gradient_argdefs));
 
   return Status::OK();
 }

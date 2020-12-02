@@ -18,51 +18,11 @@ Status LambOptimizerBuilder::Build(
     const ArgDef* gradient_norm_argdef,
     const ArgDef* gradient_norm_finite_argdef,
     const std::vector<OptimizerNodeConfig>& opt_configs,
+    const OptimizerGraphConfig& opt_graph_config,
     GraphAugmenter::GraphDefs& graph_defs,
     std::vector<ONNX_NAMESPACE::TensorProto>& new_external_initializers,
     std::vector<ArgDef>& output_weight_argdefs,
     std::vector<ArgDef>& output_gradient_argdefs) const {
-  return Build(weight_argdefs, gradient_argdefs,
-               gradient_norm_argdef, gradient_norm_finite_argdef,
-               opt_configs, graph_defs,
-               new_external_initializers, output_weight_argdefs,
-               output_gradient_argdefs,
-               // gradient clipping is enabled by default for Lamb.
-               true, /*enable_grad_clipping*/
-               {} /* shared_optim_state */);
-}
-
-Status LambOptimizerBuilder::Build(
-    const std::vector<ArgDef>& weight_argdefs,
-    const std::vector<ArgDef>& gradient_argdefs,
-    const ArgDef* gradient_norm_argdef,
-    const ArgDef* gradient_norm_finite_argdef,
-    const std::vector<OptimizerNodeConfig>& opt_configs,
-    GraphAugmenter::GraphDefs& graph_defs,
-    std::vector<ONNX_NAMESPACE::TensorProto>& new_external_initializers,
-    std::vector<ArgDef>& output_weight_argdefs,
-    std::vector<ArgDef>& output_gradient_argdefs,
-    bool enable_grad_clipping) const {
-  return Build(weight_argdefs, gradient_argdefs,
-               gradient_norm_argdef, gradient_norm_finite_argdef,
-               opt_configs, graph_defs,
-               new_external_initializers, output_weight_argdefs,
-               output_gradient_argdefs, enable_grad_clipping,
-               {} /* shared_optim_state */);
-}
-
-Status LambOptimizerBuilder::Build(
-    const std::vector<ArgDef>& weight_argdefs,
-    const std::vector<ArgDef>& gradient_argdefs,
-    const ArgDef* gradient_norm_argdef,
-    const ArgDef* gradient_norm_finite_argdef,
-    const std::vector<OptimizerNodeConfig>& opt_configs,
-    GraphAugmenter::GraphDefs& graph_defs,
-    std::vector<TensorProto>& new_external_initializers,
-    std::vector<ArgDef>& output_weight_argdefs,
-    std::vector<ArgDef>& output_gradient_argdefs,
-    bool enable_grad_clipping,
-    const NameMLValMap& shared_optim_state) const {
   ORT_ENFORCE(weight_argdefs.size() <= size_t(1024),
               "The current LambOptimizer can only update up to 1024 weight tensors, but",
               "the actual number of weight tensors is ", weight_argdefs.size());
@@ -87,9 +47,9 @@ Status LambOptimizerBuilder::Build(
   }
 
   // Gradient norm
-  if (gradient_norm_argdef && enable_grad_clipping) {
+  if (gradient_norm_argdef && opt_graph_config.enable_grad_norm_clip) {
     input_argdefs.push_back(*gradient_norm_argdef);
-  } else if (gradient_norm_argdef == nullptr && enable_grad_clipping) {
+  } else if (gradient_norm_argdef == nullptr && opt_graph_config.enable_grad_norm_clip) {
     ORT_THROW("Gradient clipping is enabled but gradient norm is not given.");
   } else {
     input_argdefs.push_back(ArgDef());
@@ -104,6 +64,7 @@ Status LambOptimizerBuilder::Build(
   const std::string step_tensor_name = "Step";  // per weight optimizer requires a per weight update count
   // Add step as an initializer.
   TensorProto step_tensor_proto;
+  const auto& shared_optim_state = opt_graph_config.shared_optimizer_states;
   const auto step_state_it = shared_optim_state.find(step_tensor_name);
   if (step_state_it != shared_optim_state.end()) {
     const auto& init_tensor = step_state_it->second.Get<Tensor>();

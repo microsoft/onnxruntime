@@ -89,14 +89,13 @@ Status AdasumOptimizerGraphBuilder::BuildOptimizerNode(
     std::vector<TensorProto>& new_initializers,
     std::vector<ArgDef>& output_weight_argdefs,
     std::vector<ArgDef>& output_gradient_argdefs) {
+  ORT_RETURN_IF_NOT(opt_graph_config_.enable_grad_norm_clip, "Gradient norm clipping must always be enabled for Adasum");
   ORT_RETURN_IF_ERROR(opt_builder->Build(
       weight_argdefs, gradient_argdefs,
       global_gradient_norm_argdef, global_gradient_norm_finite_argdef,
-      opt_configs, graph_defs,
+      opt_configs, opt_graph_config_, graph_defs,
       new_initializers,
-      output_weight_argdefs, output_gradient_argdefs,
-      // Always enable grad clipping for Adasum
-      true /*enable_grad_clipping*/));
+      output_weight_argdefs, output_gradient_argdefs));
 
   return Status::OK();
 }

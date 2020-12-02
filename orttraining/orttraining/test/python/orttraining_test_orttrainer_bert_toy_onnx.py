@@ -542,7 +542,7 @@ def testToyBertLoadOptimState(optimizer, mixedprecision_enabled):
     model_desc = bert_model_description()
     dummy_init_state = generate_dummy_optim_state(model, optimizer)
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
-    checkpoint.experimental_load_optimizer_state(trainer, dummy_init_state)
+    checkpoint._experimental_load_optimizer_state(trainer, dummy_init_state)
     
     # Expected values
     expected_eval_loss = [10.997552871]

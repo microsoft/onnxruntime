@@ -142,7 +142,7 @@ void VerifyOutputs(const Tensor& expected_tensor, const Tensor& actual_tensor, b
     ConvertMLFloat16ToFloat(expected, f_expected.data(), static_cast<int>(size));
     ConvertMLFloat16ToFloat(actual, f_actual.data(), static_cast<int>(size));
     VerifyOutputs(f_expected, f_actual, use_threshold_compare, math::halfToFloat(math::floatToHalf(atol)),
-                             math::halfToFloat(math::floatToHalf(rtol)), math::halfToFloat(math::floatToHalf(threshold)));
+                  math::halfToFloat(math::floatToHalf(rtol)), math::halfToFloat(math::floatToHalf(threshold)));
   }
 #endif
 }

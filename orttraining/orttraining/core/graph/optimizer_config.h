@@ -6,11 +6,9 @@
 #include <string>
 #include <unordered_map>
 #include "core/common/logging/logging.h"
-#include "core/framework/tensor.h"
 #include "core/framework/framework_common.h"
-#include "core/graph/node_arg.h"
 #include "core/framework/ml_value.h"
-#include "core/framework/tensorprotoutils.h"
+#include "core/graph/node_arg.h"
 
 namespace onnxruntime {
 namespace training {

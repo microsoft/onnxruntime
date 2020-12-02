@@ -49,7 +49,7 @@ Status SetupOptimizerParams(
   const auto& optimizer_config = config.optimizer_config.value();
 
   TrainingSession::OptimizerState init_optimizer_states;
-  if (config.init_optimizer_states.has_value()){
+  if (config.init_optimizer_states){
     init_optimizer_states = config.init_optimizer_states.value();
   }
 
@@ -96,8 +96,7 @@ Status SetupOptimizerParams(
     if (!init_optimizer_states.empty()){
       const auto optim_state_it = init_optimizer_states.find(weight_name);
       if (optim_state_it != init_optimizer_states.end()) {
-        auto state = optim_state_it->second;
-        opt_node_config.initial_states = std::move(state);
+        opt_node_config.initial_states = std::move(optim_state_it->second);
       }
     }    
 
@@ -135,8 +134,7 @@ Status SetupOptimizerParams(
   if (!init_optimizer_states.empty()){
     const auto optim_state_it = init_optimizer_states.find(onnxruntime::training::SHARED_OPTIMIZER_STATES_KEY);
     if (optim_state_it != init_optimizer_states.end()) {
-      auto state = optim_state_it->second;
-      opt_graph_config.shared_optimizer_states = std::move(state);
+      opt_graph_config.shared_optimizer_states = std::move(optim_state_it->second);
     }
   }
   opt_node_configs_result = std::move(opt_node_configs);

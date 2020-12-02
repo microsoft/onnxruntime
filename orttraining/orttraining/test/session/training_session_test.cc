@@ -39,9 +39,9 @@ static void RunTrainingSessionLoadOptimTests(std::string optim_name, bool mixed_
 
   TrainingSession::OptimizerState init_optimizer_state{};
   if (mixed_precision_moments) {
-    GenerateOpimizerInitialState<MLFloat16>(optim_name, MLFloat16(math::floatToHalf(2.5)), init_optimizer_state);
+    GenerateOptimizerInitialState<MLFloat16>(optim_name, MLFloat16(math::floatToHalf(2.5)), init_optimizer_state);
   } else {
-    GenerateOpimizerInitialState<float>(optim_name, 2.5f, init_optimizer_state);
+    GenerateOptimizerInitialState<float>(optim_name, 2.5f, init_optimizer_state);
   }
 
   config.init_optimizer_states = init_optimizer_state;

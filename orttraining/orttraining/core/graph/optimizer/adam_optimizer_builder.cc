@@ -15,51 +15,11 @@ Status AdamOptimizerBuilder::Build(
     const ArgDef* gradient_norm_argdef,
     const ArgDef* gradient_norm_finite_argdef,
     const std::vector<OptimizerNodeConfig>& opt_configs,
+    const OptimizerGraphConfig& opt_graph_config,
     GraphAugmenter::GraphDefs& graph_defs,
-    std::vector<ONNX_NAMESPACE::TensorProto>& new_external_initializers,
+    std::vector<TensorProto>& new_external_initializers,
     std::vector<ArgDef>& output_weight_argdefs,
     std::vector<ArgDef>& output_gradient_argdefs) const {
-  return Build(weight_argdefs, gradient_argdefs,
-               gradient_norm_argdef, gradient_norm_finite_argdef,
-               opt_configs, graph_defs,
-               new_external_initializers, output_weight_argdefs,
-               output_gradient_argdefs,
-               // gradient clipping is disabled by default for Adam.
-               false /*enable_grad_clipping*/,
-               {} /* default shared initital states*/);
-}
-
-Status AdamOptimizerBuilder::Build(
-    const std::vector<ArgDef>& weight_argdefs,
-    const std::vector<ArgDef>& gradient_argdefs,
-    const ArgDef* gradient_norm_argdef,
-    const ArgDef* gradient_norm_finite_argdef,
-    const std::vector<OptimizerNodeConfig>& opt_configs,
-    GraphAugmenter::GraphDefs& graph_defs,
-    std::vector<TensorProto>& new_external_initializers,
-    std::vector<ArgDef>& output_weight_argdefs,
-    std::vector<ArgDef>& output_gradient_argdefs,
-    bool enable_grad_clipping) const {
-  return Build(weight_argdefs, gradient_argdefs,
-               gradient_norm_argdef, gradient_norm_finite_argdef,
-               opt_configs, graph_defs,
-               new_external_initializers, output_weight_argdefs,
-               output_gradient_argdefs, enable_grad_clipping,
-               {} /* default shared initital states*/);
-}
-
-Status AdamOptimizerBuilder::Build(
-    const std::vector<ArgDef>& weight_argdefs,
-    const std::vector<ArgDef>& gradient_argdefs,
-    const ArgDef* gradient_norm_argdef,
-    const ArgDef* gradient_norm_finite_argdef,
-    const std::vector<OptimizerNodeConfig>& opt_configs,
-    GraphAugmenter::GraphDefs& graph_defs,
-    std::vector<TensorProto>& new_external_initializers,
-    std::vector<ArgDef>& output_weight_argdefs,
-    std::vector<ArgDef>& output_gradient_argdefs,
-    bool enable_grad_clipping,
-    const NameMLValMap&) const {
   for (size_t i = 0; i < weight_argdefs.size(); ++i) {
     const std::string& weight_name = weight_argdefs[i].name;
     const std::string& gradient_name = gradient_argdefs[i].name;
@@ -82,7 +42,7 @@ Status AdamOptimizerBuilder::Build(
       // Update 'Update_Count' initializer with init value
       const auto& initial_states = opt_configs[i].initial_states;
       const auto uc_state_it = initial_states.find(uc_prefix);
-      if (uc_state_it != initial_states.end()) {        
+      if (uc_state_it != initial_states.end()) {
         const auto& init_tensor = uc_state_it->second.Get<Tensor>();
         ORT_THROW_IF_ERROR(IsMatchingTypeAndShape(init_tensor, ONNX_NAMESPACE::TensorProto_DataType_INT64, {1}));
         uc_tensor_proto = utils::TensorToTensorProto(init_tensor, update_count_string);
@@ -115,7 +75,9 @@ Status AdamOptimizerBuilder::Build(
         weight_dims.push_back(dim.dim_value());
       }
 
-      const auto element_type = opt_configs[i].use_mixed_precision_moments ? ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16 : ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT;
+      const auto element_type = opt_configs[i].use_mixed_precision_moments ? 
+                                ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16 : 
+                                ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT;
 
       // Add first- and second-order momentums to input list.
       const std::vector<std::string> moments_prefixes({"Moment_1", "Moment_2"});
@@ -128,7 +90,7 @@ Status AdamOptimizerBuilder::Build(
         // Update moment initializer with init value
         const auto moment_state_it = initial_states.find(moments_prefix);
         if (moment_state_it != initial_states.end()) {
-          //update moment_tensor_proto          
+          //update moment_tensor_proto
           const auto& init_tensor = moment_state_it->second.Get<Tensor>();
 
           //TODO: need to support float -> float16 and float16-> float conversion
@@ -174,9 +136,9 @@ Status AdamOptimizerBuilder::Build(
         input_args.emplace_back(ArgDef());
       }
 
-      if (gradient_norm_argdef && enable_grad_clipping) {
+    if (gradient_norm_argdef && opt_graph_config.enable_grad_norm_clip) {
         input_args.push_back(*gradient_norm_argdef);
-      } else if (gradient_norm_argdef == nullptr && enable_grad_clipping) {
+    } else if (gradient_norm_argdef == nullptr && opt_graph_config.enable_grad_norm_clip) {
         ORT_THROW("Gradient clipping is enabled but gradient norm is not given.");
       } else {
         input_args.push_back(ArgDef());

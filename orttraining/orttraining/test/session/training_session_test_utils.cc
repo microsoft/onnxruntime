@@ -27,7 +27,7 @@ void GenerateOptimizerConfig(const std::string optimizer_name,
 }
 
 template <class T>
-void GenerateOpimizerInitialState(const std::string& optimizer_op_name, const T init_moment_value, TrainingSession::OptimizerState& optimizer_state) {
+void GenerateOptimizerInitialState(const std::string& optimizer_op_name, const T init_moment_value, TrainingSession::OptimizerState& optimizer_state) {
   TrainingSession::OptimizerState result;
   std::vector<int64_t> uc_value = {4};
   MLValue mlValue;
@@ -58,8 +58,8 @@ void GenerateOpimizerInitialState(const std::string& optimizer_op_name, const T 
   optimizer_state = std::move(result);
 }
 
-template void GenerateOpimizerInitialState<float>(const std::string& optimizer_op_name, const float init_moment_value, TrainingSession::OptimizerState& optimizer_state);
-template void GenerateOpimizerInitialState<MLFloat16>(const std::string& optimizer_op_name, const MLFloat16 init_moment_value, TrainingSession::OptimizerState& optimizer_state);
+template void GenerateOptimizerInitialState<float>(const std::string& optimizer_op_name, const float init_moment_value, TrainingSession::OptimizerState& optimizer_state);
+template void GenerateOptimizerInitialState<MLFloat16>(const std::string& optimizer_op_name, const MLFloat16 init_moment_value, TrainingSession::OptimizerState& optimizer_state);
 
 void SeparateStateTensors(const NameMLValMap& training_state, NameMLValMap& model_state, TrainingSession::OptimizerState& optimizer_state) {
   NameMLValMap result;

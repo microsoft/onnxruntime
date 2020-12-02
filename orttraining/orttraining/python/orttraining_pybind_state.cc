@@ -217,33 +217,21 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("horizontal_parallel_size", &TrainingParameters::horizontal_parallel_size)
       .def_readwrite("pipeline_parallel_size", &TrainingParameters::pipeline_parallel_size)
       .def("set_optimizer_initial_state",
-           [](TrainingParameters& parameters, std::unordered_map<std::string, std::unordered_map<std::string, py::object>>& py_state) -> void {
+           [](TrainingParameters& parameters, const std::unordered_map<std::string, std::unordered_map<std::string, py::object>>& py_state) -> void {
              onnxruntime::training::TrainingSession::OptimizerState optim_state;
-             for (auto weight_it : py_state) {
+             for (const auto& weight_it : py_state) {
                auto state = weight_it.second;
                NameMLValMap state_tensors;
-               for (auto initializer : state) {
+               for (auto& initializer : state) {
                  OrtValue ml_value;
 
                  // InputDeflist is null because parameters havent been tied to session yet
                  // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
                  CreateGenericMLValue(nullptr, GetAllocator(), "", initializer.second, &ml_value, true);
-                 if (PyErr_Occurred()) {
-                   PyObject *ptype, *pvalue, *ptraceback;
-                   PyErr_Fetch(&ptype, &pvalue, &ptraceback);
-
-                   PyObject* pStr = PyObject_Str(ptype);
-                   std::string sType = py::reinterpret_borrow<py::str>(pStr);
-                   Py_XDECREF(pStr);
-                   pStr = PyObject_Str(pvalue);
-                   sType += ": ";
-                   sType += py::reinterpret_borrow<py::str>(pStr);
-                   Py_XDECREF(pStr);
-                   throw std::runtime_error(sType);
-                 }
-                 state_tensors.insert(std::make_pair(initializer.first, ml_value));
+                 ThrowIfPyErrOccured();
+                 state_tensors.emplace(initializer.first, ml_value);
                }
-               optim_state.insert(std::make_pair(weight_it.first, state_tensors));
+               optim_state.emplace(weight_it.first, state_tensors);
              }
              parameters.optimizer_initial_state = optim_state;
            });
@@ -349,19 +337,7 @@ void addObjectMethodsForTraining(py::module& m) {
             throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
           }
           CreateGenericMLValue(px.second, GetAllocator(), initializer.first, initializer.second, &ml_value);
-          if (PyErr_Occurred()) {
-            PyObject *ptype, *pvalue, *ptraceback;
-            PyErr_Fetch(&ptype, &pvalue, &ptraceback);
-
-            PyObject* pStr = PyObject_Str(ptype);
-            std::string sType = py::reinterpret_borrow<py::str>(pStr);
-            Py_XDECREF(pStr);
-            pStr = PyObject_Str(pvalue);
-            sType += ": ";
-            sType += py::reinterpret_borrow<py::str>(pStr);
-            Py_XDECREF(pStr);
-            throw std::runtime_error(sType);
-          }
+          ThrowIfPyErrOccured();
           state_tensors.insert(std::make_pair(initializer.first, ml_value));
         }
         ORT_THROW_IF_ERROR(static_cast<TrainingSession*>(sess->GetSessionHandle())->SetStateTensors(state_tensors, strict));
