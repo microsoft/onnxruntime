@@ -7,9 +7,6 @@
 #include "core/platform/ort_mutex.h"
 #include "core/platform/threadpool.h"
 
-#define TREEENSEMBLE_BATCHSIZE 256
-#define TREEENSEMBLE_MAXSIZE 8589934592
-
 namespace onnxruntime {
 namespace ml {
 namespace detail {
@@ -275,16 +272,16 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::ComputeAgg(concurrency::ThreadPool* ttp, 
           agg.ProcessTreeNodePrediction1(score, *ProcessTreeNodeLeave(roots_[j], x_data));
         }
       } else { /* section B: 1 output, 1 row and enough trees to parallelize */
-        std::vector<ScoreValue<OTYPE>> scores_t(n_trees_, {0, 0});
+        std::vector<ScoreValue<OTYPE>> scores(n_trees_, {0, 0});
         concurrency::ThreadPool::TryBatchParallelFor(
             ttp,
             SafeInt<int32_t>(n_trees_),
-            [this, &scores_t, &agg, x_data](ptrdiff_t j) {
-              agg.ProcessTreeNodePrediction1(scores_t[j], *ProcessTreeNodeLeave(roots_[j], x_data));
+            [this, &scores, &agg, x_data](ptrdiff_t j) {
+              agg.ProcessTreeNodePrediction1(scores[j], *ProcessTreeNodeLeave(roots_[j], x_data));
             },
             0);
 
-        for (auto it = scores_t.cbegin(); it != scores_t.cend(); ++it) {
+        for (auto it = scores.cbegin(); it != scores.cend(); ++it) {
           agg.MergePrediction1(score, *it);
         }
       }
@@ -349,33 +346,31 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::ComputeAgg(concurrency::ThreadPool* ttp, 
           0);
     }
   } else {
-    if (N == 1) { /* section A2: 2+ outputs, 1 row, not enough trees to parallelize */
-      std::vector<ScoreValue<OTYPE>> scores(n_targets_or_classes_, {0, 0});
+    if (N == 1) {                       /* section A2: 2+ outputs, 1 row, not enough trees to parallelize */
       if (n_trees_ <= parallel_tree_) { /* section A2 */
+        std::vector<ScoreValue<OTYPE>> scores(n_targets_or_classes_, {0, 0});
         for (int64_t j = 0; j < n_trees_; ++j) {
           agg.ProcessTreeNodePrediction(scores, *ProcessTreeNodeLeave(roots_[j], x_data));
         }
+        agg.FinalizeScores(scores, z_data, -1, label_data);
       } else { /* section B2: 2+ outputs, 1 row, enough trees to parallelize */
-        // Splits the work into one block per thread so we can re-use the 'private_scores' vector as much as possible.
-        // TODO: Refine the number of threads used.
         auto num_threads = std::min<int32_t>(max_num_threads, SafeInt<int32_t>(n_trees_));
-        OrtMutex merge_mutex;
+        std::vector<std::vector<ScoreValue<OTYPE>>> scores(num_threads);
         concurrency::ThreadPool::TrySimpleParallelFor(
             ttp,
             num_threads,
-            [this, &agg, &scores, &merge_mutex, num_threads, x_data](ptrdiff_t batch_num) {
-              std::vector<ScoreValue<OTYPE>> private_scores(n_targets_or_classes_, {0, 0});
+            [this, &agg, &scores, num_threads, x_data](ptrdiff_t batch_num) {
+              scores[batch_num].resize(n_targets_or_classes_, {0, 0});
               auto work = concurrency::ThreadPool::PartitionWork(batch_num, num_threads, n_trees_);
               for (auto j = work.start; j < work.end; ++j) {
-                agg.ProcessTreeNodePrediction(private_scores, *ProcessTreeNodeLeave(roots_[j], x_data));
+                agg.ProcessTreeNodePrediction(scores[batch_num], *ProcessTreeNodeLeave(roots_[j], x_data));
               }
-
-              std::lock_guard<OrtMutex> lock(merge_mutex);
-              agg.MergePrediction(scores, private_scores);
             });
+        for (size_t i = 1; i < scores.size(); ++i) {
+          agg.MergePrediction(scores[0], scores[i]);
+        }
+        agg.FinalizeScores(scores[0], z_data, -1, label_data);
       }
-
-      agg.FinalizeScores(scores, z_data, -1, label_data);
     } else if (N <= parallel_N_) { /* section C2: 2+ outputs, 2+ rows, not enough rows to parallelize */
       std::vector<ScoreValue<OTYPE>> scores(n_targets_or_classes_);
       size_t j;
@@ -421,8 +416,6 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::ComputeAgg(concurrency::ThreadPool* ttp, 
             }
           });
     } else { /* section E2: 2+ outputs, 2+ rows, parallelization by rows */
-      // Split the work into one block per thread so we can re-use the 'scores' vector as much as possible.
-      // TODO: Refine the number of threads used.
       auto num_threads = std::min<int32_t>(max_num_threads, SafeInt<int32_t>(N));
       concurrency::ThreadPool::TrySimpleParallelFor(
           ttp,
