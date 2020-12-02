@@ -724,33 +724,31 @@ bool GemmOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
 // Will test if C of Gemm can be squeezed and return the 1d vector size after squeeze
 static bool GetBiasSize(const Shape& c_shape, int32_t android_sdk_ver, uint32_t& size) {
   // TODO add support of scalar C for Gemm
-  if (c_shape.empty()) {
+  size_t c_dim = c_shape.size();
+  if (c_dim == 0) {
     LOGS_DEFAULT(VERBOSE) << "C of Gemm cannot be a scalar";
     return false;
   }
 
-  if (c_shape.size() != 1 && android_sdk_ver < 28) {
+  if (c_dim != 1 && android_sdk_ver < 28) {
     LOGS_DEFAULT(VERBOSE) << "C of Gemm can only be 1d tensor for API level " << android_sdk_ver
                           << " shape of C, " << Shape2String(c_shape);
     return false;
   }
 
-  size = c_shape[0];
-  bool size_assigned = false;
-  for (const auto& dim : c_shape) {
-    if (dim != 1) {
-      // the C tensor can only have 1 non-1 dimension
-      if (size_assigned) {
-        LOGS_DEFAULT(VERBOSE) << "C of Gemm must be a vector or can be squeezed to a vector"
+  if (c_dim != 1) {
+    // If C is a (2+)d tensor, it must have the format {1, 1, ..., 1, n}
+    // where every except the last dimension should be 1
+    for (size_t i = 0; i < c_dim - 1; ++i) {
+      if (c_shape[i] != 1) {
+        LOGS_DEFAULT(VERBOSE) << "C of Gemm must be a vector or a tensor with only last dimension != 1"
                               << " c_shape: " << Shape2String(c_shape);
         return false;
       }
-
-      size = dim;
-      size_assigned = true;
     }
   }
 
+  size = c_shape[c_dim - 1];
   return true;
 }
 
