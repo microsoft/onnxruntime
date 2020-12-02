@@ -1988,7 +1988,7 @@ def main():
                     args.test = False
         elif is_linux():
             if args.x86:
-                cmake_extra_args += ['-A', 'x86']
+                cmake_extra_args += ['-Donnxruntime_target_platform=x86']
 
         if (args.android or args.ios or args.enable_windows_store
                 or is_cross_compiling_on_apple(args)) and args.path_to_protoc_exe is None:
