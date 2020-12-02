@@ -12,7 +12,6 @@ namespace training {
 #ifdef USE_MPI
 class AdasumMPI : public AdasumInterface<MPI_Comm> {
 public:
-  AdasumMPI();
 
   bool IsAdasumInitialized() override;
   
