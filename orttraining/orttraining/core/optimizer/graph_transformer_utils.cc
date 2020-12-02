@@ -58,7 +58,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
     std::unordered_map<std::string, std::string>& updated_weight_names,
     const std::vector<std::string>& transformers_and_rules_to_enable) {
   std::vector<std::unique_ptr<GraphTransformer>> transformers;
-  return transformers;
+  //return transformers;
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer = nullptr;
 
   // MUST be empty here, because this is called before partition, so the node's execution type is not decided yet.
