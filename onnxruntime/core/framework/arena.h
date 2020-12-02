@@ -27,6 +27,7 @@ class IArenaAllocator : public IAllocator {
   void Free(void* p) override = 0;
   virtual size_t Used() const = 0;
   virtual size_t Max() const = 0;
+  virtual void ClearArena() { return; }
   // allocate host pinned memory?
 };
 

@@ -18,6 +18,7 @@
 #include "core/framework/sequential_executor.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/framework/arena.h"
 
 namespace ONNX_NAMESPACE {
 std::ostream& operator<<(std::ostream& out, const TensorShapeProto& shape_proto) {
@@ -506,6 +507,7 @@ common::Status ExecuteGraph(const SessionState& session_state,
                             const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                             ExecutionMode execution_mode, const bool& terminate_flag,
                             const logging::Logger& logger, bool only_execute_path_to_fetches) {
+
   ORT_RETURN_IF_ERROR(utils::InitializeFeedFetchCopyInfo(session_state, feeds_fetches_manager));
 
   // finalize the copy info using the provided feeds and fetches. will update device_copy_checks in the background

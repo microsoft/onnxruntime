@@ -66,6 +66,45 @@ BFCArena::~BFCArena() {
   }
 }
 
+void BFCArena::ClearArena() {
+  std::lock_guard<OrtMutex> lock(lock_);
+  //REVIEW(codemzs): Refacor all this code.
+  for (const auto& region : region_manager_.regions()) {
+    device_allocator_->Free(region.ptr());
+  }
+
+  for (BinNum b = 0; b < kNumBins; b++) {
+    BinFromIndex(b)->~Bin();
+  }
+
+  region_manager_.erase_all_regions();
+
+  free_chunks_list_ = kInvalidChunkHandle;
+  next_allocation_id_ = 1;
+  stats_.Clear();
+  curr_region_allocation_bytes_ = RoundedBytes(std::min(memory_limit_, static_cast<size_t>(initial_chunk_size_bytes_)));
+  stats_.bytes_limit = static_cast<int64_t>(memory_limit_);
+
+  for (BinNum b = 0; b < kNumBins; b++) {
+    size_t bin_size = BinNumToSize(b);
+    new (BinFromIndex(b)) Bin(this, bin_size);
+    ORT_ENFORCE(BinForSize(bin_size) == BinFromIndex(b));
+    ORT_ENFORCE(BinForSize(bin_size + 255) == BinFromIndex(b));
+    ORT_ENFORCE(BinForSize(bin_size * 2 - 1) == BinFromIndex(b));
+    if (b + 1 < kNumBins) {
+      ORT_ENFORCE(BinForSize(bin_size * 2) != BinFromIndex(b));
+    }
+  }
+
+  for (auto reserved_chunk : reserved_chunks_) {
+    stats_.bytes_in_use += reserved_chunk.second;
+    stats_.num_allocs += 1;
+    stats_.max_alloc_size = std::max<size_t>(static_cast<size_t>(stats_.max_alloc_size), reserved_chunk.second);
+    stats_.max_bytes_in_use = std::max<int64_t>(static_cast<int64_t>(stats_.max_bytes_in_use), stats_.bytes_in_use);
+    stats_.total_allocated_bytes += reserved_chunk.second;
+  }
+}
+
 BFCArena::Chunk* BFCArena::ChunkFromHandle(ChunkHandle h) {
   ORT_ENFORCE(h < chunks_.size());
   return &(chunks_[h]);
@@ -79,6 +118,7 @@ Status BFCArena::Extend(size_t rounded_bytes) {
   // Do we have enough space to handle the client's request?
   // If not, fail immediately.
   if (rounded_bytes > available_bytes) {
+    //__debugbreak();
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Available memory of ", available_bytes,
                            " is smaller than requested bytes of ", rounded_bytes);
   }
@@ -388,6 +428,7 @@ void BFCArena::Free(void* p) {
   if (p == nullptr) {
     return;
   }
+
   std::lock_guard<OrtMutex> lock(lock_);
   auto it = reserved_chunks_.find(p);
   if (it != reserved_chunks_.end()) {

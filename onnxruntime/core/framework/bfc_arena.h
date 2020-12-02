@@ -71,11 +71,13 @@ class BFCArena : public IArenaAllocator {
   //or a unique pointer value that can later be successfully
   //passed to free(). Whatever, do not dereference that pointer
   void* Alloc(size_t size) override;
-
+  
   //If p is NULL, no operation is performed.
   void Free(void* p) override;
 
   void* Reserve(size_t size) override;
+
+  void ClearArena() override;
 
   size_t Used() const override {
     return static_cast<size_t>(stats_.bytes_in_use);
@@ -293,6 +295,10 @@ class BFCArena : public IArenaAllocator {
 
     const std::vector<AllocationRegion>& regions() const { return regions_; }
 
+    void erase_all_regions() {
+      regions_.clear();
+    }
+
    private:
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(RegionManager);
 
@@ -449,7 +455,7 @@ class BFCArena : public IArenaAllocator {
   AllocatorStats stats_;
 
   std::unordered_map<void*, size_t> reserved_chunks_;
-
+  
   const int initial_chunk_size_bytes_;
   const int max_dead_bytes_per_chunk_;
 

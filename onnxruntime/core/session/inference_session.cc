@@ -49,6 +49,7 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/util/protobuf_parsing_utils.h"
 #include "core/util/thread_utils.h"
+#include "core/framework/arena.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/framework/customregistry.h"
@@ -1560,6 +1561,16 @@ Status InferenceSession::Run(const RunOptions& run_options,
     auto status = xp->OnRunEnd();
     ORT_CHECK_AND_SET_RETVAL(status);
   }
+
+  /*for (auto allocator : session_state_->GetExecutionProviders().Get(onnxruntime::kCudaExecutionProvider)->GetPerThreadContext().GetAllocators()) {
+    if ((allocator->Info().alloc_type == OrtArenaAllocator) && (allocator->Info().device.MemType() == OrtDevice::MemType::DEFAULT)) {
+      static_cast<IArenaAllocator*>(allocator.get())->ClearArena();
+    }
+  }*/
+
+  /*session_state_->GetExecutionProviders().Get(onnxruntime::kCudaExecutionProvider)->Sync();
+  auto allocator = session_state_->GetExecutionProviders().Get(onnxruntime::kCudaExecutionProvider)->GetAllocator(0, OrtMemType::OrtMemTypeDefault);
+  static_cast<IArenaAllocator*>(allocator.get())->ClearArena();*/
 
   --current_num_runs_;
 

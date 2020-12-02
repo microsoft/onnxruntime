@@ -305,7 +305,7 @@ static int64_t CalculateMemoryPatternsKey(const std::vector<std::reference_wrapp
     }
   }
   
-  uint64_t key = hash[0] & 0xfffffff8;  // save low 3 bits for hash version info in case we need it in the future
+  uint64_t key = hash[0] & 0xfffffff8;
   key |= uint64_t(hash[1]) << 32;
   return (int64_t)key;
 }
@@ -553,11 +553,13 @@ optional<std::pair<OrtValuePatternPlanner*, const MemoryPatternGroup*>> SessionS
 
   std::lock_guard<OrtMutex> lock(mem_patterns_lock_);
   auto it = mem_patterns_.find(key);
-  if (it == mem_patterns_.end()) {
+  if ((it == mem_patterns_.end()) || (it != mem_patterns_.end())) {
 #ifdef ENABLE_TRAINING
     auto planner = onnxruntime::make_unique<OrtValuePatternPlanner>(*GetExecutionPlan(), true /*trace_using_counters*/);
     auto mem_patterns = onnxruntime::make_unique<MemoryPatternGroup>();
-    if (GeneratePatternGroupCache(input_shapes, feed_mlvalue_idxs, mem_patterns.get(), inferred_shapes, planner).IsOK()) {
+    auto status = GeneratePatternGroupCache(input_shapes, feed_mlvalue_idxs, mem_patterns.get(), inferred_shapes, planner);
+    ORT_ENFORCE(status.IsOK());
+    if (status.IsOK()) {
       key = CalculateMemoryPatternsKey(input_shapes);
       auto mem_planner_ptr = planner.get();
       auto mem_pattern_ptr = mem_patterns.get();

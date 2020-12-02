@@ -15,6 +15,7 @@
 #include "core/framework/session_state.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/utils.h"
+#include "core/framework/arena.h"
 
 using namespace onnxruntime::common;
 
@@ -283,13 +284,8 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
               // static_activation_memory_in_bytes_ is max virtual memory size the planner computes.
               // Memory dynamically allocated when executing kernels is not recorded using this field.
               static_activation_memory_sizes_in_byte_[location.name] = peak_size;
+
               buffer = alloc->Alloc(peak_size);
-              // handle allocator that doesn't throw
-              if (buffer == nullptr) {
-                // INFO level as this may fire on every run and there may not be much a user can do
-                LOGS(session_state_.Logger(), INFO) << "Allocation of memory pattern buffer for "
-                                                    << location.ToString() << " returned nullptr";
-              }
             }
             ORT_CATCH(const OnnxRuntimeException& ex) {
               ORT_HANDLE_EXCEPTION([&]() {
@@ -302,6 +298,12 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
               buffers_[location] = BufferUniquePtr(buffer, alloc);
             }
 
+            if (buffer == nullptr) {
+              // INFO level as this may fire on every run and there may not be much a user can do
+              LOGS(session_state_.Logger(), INFO) << "Allocation of memory pattern buffer for "
+                                                  << location.ToString() << " returned nullptr";
+            }
+
             // log size of activation. Keep it commented out for now to avoid log flooding.
             // VLOGS(session_state_.Logger(), 1) << "**** Allocated memory for activations, size: " <<mem_patterns_->patterns[i].PeakSize();
             // printf("\n **** Allocated memory for activations, size: %zu ***\n", mem_patterns_->patterns[i].PeakSize());
@@ -309,14 +311,13 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
         }
       }
 
-      // REVIEW(codemzs): Training mode has a best-effort approach to generate as much memory pattern as possible when 
-      // faced with challenges like unresolved symbolic shapes in which case it will generate a memory pattern for partial graph and 
+      // REVIEW(codemzs): Training mode has a best-effort approach to generate as much memory pattern as possible when
+      // faced with challenges like unresolved symbolic shapes in which case it will generate a memory pattern for partial graph and
       // for the reminder graph it will try to fetch memory block from static buffer if possible and fallback to BFCArena if it cannot.
-      // For inferenceing side I'm leaving the behavior untouched for now to minimize disruption but ideally we would want to reconcile 
+      // For inferenceing side I'm leaving the behavior untouched for now to minimize disruption but ideally we would want to reconcile
       // the memory allocation logic for both modes.
-   
-      ORT_ENFORCE((cached_planner_ && !planner_) || (planner_ && !cached_planner_));
 
+      ORT_ENFORCE((cached_planner_ && !planner_) || (planner_ && !cached_planner_));
     }
   }
 }
@@ -385,7 +386,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
         ORT_ENFORCE(!planner_ && cached_planner_);
 
         // This can happen in scenarios such as NonZero op.
-        if(block_ptr && (block_ptr->size_ != size)) {
+        if (block_ptr && (block_ptr->size_ != size)) {
           cached_planner_->TraceFree(ort_value_index, true);
           const_cast<MemoryPattern*>(pattern)->EraseBlock(ort_value_index);
         }
@@ -417,8 +418,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
                 ort_value, static_cast<void*>(static_cast<char*>(buffer) + block.offset_), element_type, location,
                 shape);
             return status;
-          } else {        
-
+          } else {
             // the block size may vary especially if the model has NonZero ops, or different sequence lengths are
             // fed in, so use VERBOSE as the log level as it's expected.
             // TODO: Should we re-use the block if the size is large enough? Would probably need to allow it
@@ -427,6 +427,12 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
                                                    << ", block in memory pattern size is: " << block.size_
                                                    << " but the actually size is: " << size
                                                    << ", fall back to default allocation behavior";
+
+            /*std::cout << "For ort_value with index: " << ort_value_index
+                      << ", block in memory pattern size is: " << block.size_
+                      << " but the actually size is: " << size
+                      << ", fall back to default allocation behavior\n"
+                      << std::flush;*/
           }
         }
         // else { we couldn't allocate the large block for the buffer so we didn't insert an entry }
@@ -434,6 +440,27 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
     }
   }
 
+  /*std::cout << "\n++++*****++++BFC_ARENA ALLOCATION For ort_value with index: " << ort_value_index
+            << ", block in memory pattern size is: " << size << ", kind = " << per_alloc_plan.alloc_kind << "\n"
+            << std::flush;
+
+  auto aao = session_state_.GetExecutionPlan()->activation_allocation_order;
+
+  if (std::find(aao.begin(), aao.end(), ort_value_index) != aao.end()) {
+    std::cout << "!!!!!!!!!!!!!!!!!!!!!!++++++++++++++++++++For ort_value with index: " << ort_value_index
+              << " size is: " << size
+              << "NOT FOUND!!!!\n"
+              << std::flush;
+
+    auto pattern = mem_patterns_->GetPatterns(location);
+    auto block_ptr = pattern->GetBlock(ort_value_index);
+    std::cout << block_ptr << "\n"
+              << std::flush;
+    ORT_ENFORCE(std::find(aao.begin(), aao.end(), ort_value_index) == aao.end());
+  }
+
+  ORT_ENFORCE(mem_patterns_);
+  ORT_ENFORCE(mem_patterns_->GetPatterns(location));*/
   //no memory pattern, or the pattern is not correct.
   if (!alloc) {
     alloc = GetAllocator(location);
