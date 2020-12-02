@@ -8,9 +8,6 @@
 namespace onnxruntime {
 namespace training {
 
-AdasumMPI::AdasumMPI()
-  : AdasumInterface() {}
-
 bool AdasumMPI::IsAdasumInitialized() {
   return reduction_comms_initialized_;
 }
