@@ -441,6 +441,7 @@ INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(half, float, half, half)
 INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(float, float, half, half)
 
 template <typename TIn1, typename TIn2, typename TOut1, typename TOut2, typename TBuf>
+__launch_bounds__(ChunkGroup<4>::thread_count_per_block)
 __global__ void LambMultiTensorReductionImpl(ChunkGroup<4> chunk_group) {
   const int group_index = chunk_group.block_index_to_tensor_group_index[blockIdx.x];
   const int tensor_size = chunk_group.tensor_sizes[group_index];
