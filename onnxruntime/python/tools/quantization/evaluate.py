@@ -157,7 +157,8 @@ class YoloV3VisionEvaluator(YoloV3Evaluator):
     def scale_coords(self, img1_shape, coords, img0_shape, ratio_pad=None):
         # Rescale coords (xyxy) from img1_shape to img0_shape
         if ratio_pad is None:  # calculate from img0_shape
-            gain = max(img1_shape) / max(img0_shape)  # gain  = old / new
+            # gain = max(img1_shape) / max(img0_shape)  # gain  = old / new
+            gain = min(img1_shape[0] / img0_shape[0], img1_shape[1]/img0_shape[1])
             pad = (img1_shape[1] - img0_shape[1] * gain) / 2, (img1_shape[0] - img0_shape[0] * gain) / 2  # wh padding
         else:
             gain = ratio_pad[0][0]
