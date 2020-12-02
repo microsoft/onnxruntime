@@ -122,7 +122,7 @@ static void DoTransposeImpl(int64_t num_axes, const std::vector<int64_t>& target
 
   const uint8_t* local_source = source;
   for (size_t i = 0; i < num_blocks; ++i) {
-    ORT_ENFORCE((local_source >= source) && (local_source < source + element_size * num_blocks * blocksize));
+    ORT_ENFORCE((local_source >= source) && (local_source < source + num_blocks * blocksize));
     memcpy(target, local_source, blocksize);
     IncrementIndexAndComputeOffset(mindex, local_source);
     target += blocksize;

@@ -487,6 +487,38 @@ TEST(TransposeOpTest, NDim) {
   TransposeTest(input_shape, input_vals, &perm, input_shape, expected_vals2);
 }
 
+TEST(TransposeOpTest, DoTransposeImpl) {
+  std::vector<int64_t> input_shape({5, 2, 1, 3});
+  std::vector<float> input_vals(30);
+  for (auto it = input_vals.begin(); it != input_vals.end(); ++it) {
+    *it = static_cast<float>(std::distance(input_vals.begin(), it));
+  }
+  std::vector<int64_t> perm = {2, 1, 0, 3};
+  std::vector<int64_t> expected_shape({1, 2, 5, 3});
+  auto expected_vals = {0.0f, 1.0f, 2.0f, 6.0f, 7.0f, 8.0f,
+                        12.0f, 13.0f, 14.0f, 18.0f, 19.0f, 20.0f,
+                        24.0f, 25.0f, 26.0f, 3.0f, 4.0f, 5.0f,
+                        9.0f, 10.0f, 11.0f, 15.0f, 16.0f, 17.0f,
+                        21.0f, 22.0f, 23.0f, 27.0f, 28.0f, 29.0f};
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals);
+}
+
+TEST(TransposeOpTest, DoTransposeImplString) {
+  std::vector<int64_t> input_shape({5, 2, 1, 3});
+  std::vector<std::string> input_vals(30);
+  for (auto it = input_vals.begin(); it != input_vals.end(); ++it) {
+    *it = std::string("n") + std::to_string(static_cast<int>(std::distance(input_vals.begin(), it)));
+  }
+  std::vector<int64_t> perm = {2, 1, 0, 3};
+  std::vector<int64_t> expected_shape({1, 2, 5, 3});
+  std::initializer_list<std::string> expected_vals = {"n0", "n1", "n2", "n6", "n7", "n8",
+                                                      "n12", "n13", "n14", "n18", "n19", "n20",
+                                                      "n24", "n25", "n26", "n3", "n4", "n5",
+                                                      "n9", "n10", "n11", "n15", "n16", "n17",
+                                                      "n21", "n22", "n23", "n27", "n28", "n29"};
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals);
+}
+
 TEST(TransposeOpTest, DoTransposeEltWise) {
   // Configuration where DoTransposeEltWise is called.
   std::vector<int64_t> input_shape({2, 2, 2, 2});
