@@ -126,7 +126,7 @@ struct LambMultiTensorComputeDirectionFunctor {
 //  d_norm: chunk_group.tensor_ptrs[3][i]
 template <typename TIn1, typename TIn2, typename TOut1, typename TOut2, typename TBuf>
 struct LambMultiTensorReductionFunctor {
-  void operator()(ChunkGroup<4> chunk_group);
+  void operator()(ChunkGroup<4> chunk_group, void *reduction_buffer, size_t reduction_buffer_size);
 };
 
 // Lamb's stage 2 maps [w_norm, w_norm, w, d] to [w_new, g_new, w_mixed_precision_new] where

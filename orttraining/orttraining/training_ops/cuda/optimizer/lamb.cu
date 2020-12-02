@@ -525,6 +525,8 @@ __global__ void LambMultiTensorReductionImpl(ChunkGroup<4> chunk_group, TOut1* w
   //   atomic_add(d_norm, TOut2(d_shared_memory_[0]));
   // }
 
+  // return;
+
   // Thread-level indexes:
   // Linear index of thread in block.
   const int tid_in_block = threadIdx.y * blockDim.x + threadIdx.x;
@@ -590,7 +592,7 @@ __global__ void LambMultiTensorReductionImpl(ChunkGroup<4> chunk_group, TOut1* w
 };
 
 template <typename TIn1, typename TIn2, typename TOut1, typename TOut2, typename TBuf>
-void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()(ChunkGroup<4> chunk_group) {
+void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()(ChunkGroup<4> chunk_group, void *reduction_buffer, size_t reduction_buffer_size) {
   // thread count per block.
   constexpr int thread_count = ChunkGroup<4>::thread_count_per_block;
   // shared memory's size per block.
@@ -601,25 +603,28 @@ void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()
   ORT_ENFORCE((thread_count & (thread_count - 1)) == 0);
 
   const int num_blocks = chunk_group.chunk_count;
-  int w_buffer_size = static_cast<int>(num_blocks * sizeof(TOut1) + sizeof(int));
-  int d_buffer_size = static_cast<int>(num_blocks * sizeof(TOut2) + sizeof(int));
+  size_t w_buffer_size = static_cast<int>(num_blocks * sizeof(TOut1) + sizeof(int));
+  size_t d_buffer_size = static_cast<int>(num_blocks * sizeof(TOut2) + sizeof(int));
 
-  TOut1 *w_buffer;
-  cudaMalloc(&w_buffer, w_buffer_size*sizeof(TOut1));
-  ORT_ENFORCE(cudaMemset(w_buffer, 0, w_buffer_size * sizeof(TOut1)) == cudaSuccess);
+  ORT_ENFORCE(w_buffer_size*sizeof(TOut1) + d_buffer_size*sizeof(TOut2) <= reduction_buffer_size);
 
-  TOut2 *d_buffer;
-  cudaMalloc(&d_buffer, d_buffer_size*sizeof(TOut2));
-  ORT_ENFORCE(cudaMemset(d_buffer, 0, d_buffer_size * sizeof(TOut2)) == cudaSuccess);
+  TOut1 *w_buffer = reinterpret_cast<TOut1*>(reduction_buffer);
+  TOut2 *d_buffer = reinterpret_cast<TOut2*>(w_buffer + w_buffer_size);
+  // cudaMalloc(&w_buffer, w_buffer_size*sizeof(TOut1));
+  // ORT_ENFORCE(cudaMemset(w_buffer, 0, w_buffer_size * sizeof(TOut1)) == cudaSuccess);
+
+  // TOut2 *d_buffer;
+  // cudaMalloc(&d_buffer, d_buffer_size*sizeof(TOut2));
+  // ORT_ENFORCE(cudaMemset(d_buffer, 0, d_buffer_size * sizeof(TOut2)) == cudaSuccess);
 
   LambMultiTensorReductionImpl<TIn1, TIn2, TOut1, TOut2, TBuf><<<chunk_group.chunk_count, thread_count, shared_memory_size>>>(chunk_group, w_buffer, d_buffer);
 
-  cudaFree(w_buffer);
-  cudaFree(d_buffer);
+  // cudaFree(w_buffer);
+  // cudaFree(d_buffer);
 }
 
 #define INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(TIn1, TIn2, TOut1, TOut2, TBuf) \
-  template void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()(ChunkGroup<4> chunk_group);
+  template void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()(ChunkGroup<4> chunk_group, void *reduction_buffer, size_t reduction_buffer_size);
 
 INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(float, float, float, float, float)
 INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(double, double, double, double, double)
