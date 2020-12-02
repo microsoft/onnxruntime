@@ -51,3 +51,20 @@ then
     python3 benchmark_wrapper.py -r benchmark -i random -t 10 -m $MODEL_LIST -o result/"$1"
 fi
 
+# 1P models 
+if [ "$1" == "yolo" ]
+then
+    MODEL_LIST="/home/olivia/perf/yolo.json"
+    update_files
+    python3 benchmark_wrapper.py -r validate -m $MODEL_LIST -o result/"$1"
+    python3 benchmark_wrapper.py -r benchmark -i random -t 10 -m $MODEL_LIST -o result/"$1"
+fi
+
+# 1P models 
+if [ "$1" == "path" ]
+then
+    update_files
+    python3 benchmark_wrapper.py -r validate -m  /home/olivia/perf/many -o result/"$1"
+    python3 benchmark_wrapper.py -r benchmark -i random -t 10 -m /home/olivia/perf/many -o result/"$1"
+fi
+

@@ -4,9 +4,15 @@ import pprint
 import logging
 import coloredlogs
 import re
+import glob
 
 debug = False
 debug_verbose = False 
+
+def find(regex_string): 
+    results = glob.glob(regex_string)
+    results.sort()
+    return results
 
 def get_latest_commit_hash():
     p1 = subprocess.Popen(["git", "rev-parse", "--short", "HEAD"], stdout = subprocess.PIPE)

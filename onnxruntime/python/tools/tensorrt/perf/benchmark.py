@@ -216,15 +216,22 @@ def inference_ort_and_get_prediction(name, session, ort_inputs):
 def get_cuda_version():
     from pathlib import Path
     home = str(Path.home())
-
+    logger.info("CUDA VERSION")
+    string = home+"/.local/lib/**/*/onnxruntime_pybind11_state.so"
+    out = find(string)
+    logger.info(string)
+    logger.info(out)
     p1 = subprocess.Popen(["find", home+"/.local/lib/", "-name", "onnxruntime_pybind11_state.so"], stdout=subprocess.PIPE)
     stdout, sterr = p1.communicate()
+    logger.info(p1.args)
     stdout = stdout.decode("ascii").strip()
+    logger.info(stdout)
     p1 = subprocess.Popen(["ldd", stdout], stdout=subprocess.PIPE)
     p2 = subprocess.Popen(["grep", "libcudart.so"], stdin=p1.stdout, stdout=subprocess.PIPE)
     stdout, sterr = p2.communicate()
     stdout = stdout.decode("ascii").strip()
-
+    logger.info(stdout)
+    logger.info("Above stdout, below API")
     return stdout
 
 def get_trt_version():
@@ -633,9 +640,8 @@ def get_system_info():
     info["cuda"] = get_cuda_version()
     info["trt"] = get_trt_version()
 
-    p = subprocess.Popen(["cat", "/etc/os-release"], stdout=subprocess.PIPE)
-    stdout, sterr = p.communicate()
-    stdout = stdout.decode("ascii").strip()
+    p = subprocess.run(["cat", "/etc/os-release"], check=True, stdout=subprocess.PIPE)
+    stdout = p.stdout.decode("ascii").strip()
     stdout = stdout.split("\n")[:2]
     infos = []
     for row in stdout:
@@ -644,14 +650,12 @@ def get_system_info():
         infos.append(row)
     info["linux_distro"] = infos
 
-    p = subprocess.Popen(["lscpu"], stdout=subprocess.PIPE)
-    stdout, sterr = p.communicate()
-    stdout = stdout.decode("ascii").strip()
+    p = subprocess.run(["lscpu"], check=True, stdout=subprocess.PIPE)
+    stdout = p.stdout.decode("ascii").strip()
     stdout = stdout.split("\n")
     infos = []
     for row in stdout:
         if "mode" in row or "Arch" in row or "name" in row:
-            # row = row.replace(":\s+", ":  ")
             row = re.sub(': +', ':  ', row)
             infos.append(row)
     info["cpu_info"] = infos
@@ -667,9 +671,8 @@ def get_system_info():
         infos.append(row)
     info["gpu_info"] = infos
 
-    p = subprocess.Popen(["cat", "/proc/meminfo"], stdout=subprocess.PIPE)
-    stdout, sterr = p.communicate()
-    stdout = stdout.decode("ascii").strip()
+    p = subprocess.run(["cat", "/proc/meminfo"], check=True, stdout=subprocess.PIPE)
+    stdout = p.stdout.decode("ascii").strip()
     stdout = stdout.split("\n")
     infos = []
     for row in stdout:
@@ -1424,6 +1427,9 @@ def main():
 
     logger.info("\n\nStart perf run ...\n")
 
+    
+    info = get_system_info()
+    pp.pprint(info)
     models = {}
 
     if ".json" in args.model_source:
@@ -1434,8 +1440,7 @@ def main():
         parse_models_info_from_directory(args.model_source, models)
 
     if not os.path.exists("symbolic_shape_infer.py"):
-        p1 = subprocess.Popen(["sudo", "wget", "https://raw.githubusercontent.com/microsoft/onnxruntime/master/onnxruntime/python/tools/symbolic_shape_infer.py"])
-        p1.wait()
+        p1 = subprocess.run(["sudo", "wget", "https://raw.githubusercontent.com/microsoft/onnxruntime/master/onnxruntime/python/tools/symbolic_shape_infer.py"], check=True)
     os.environ["SYMBOLIC_SHAPE_INFER"] = os.path.join(os.getcwd(), "symbolic_shape_infer.py")
 
     perf_start_time = datetime.now()
