@@ -25,11 +25,13 @@ Status ApplyPipelinePartitionToMainGraph(Graph& graph,
 
 Status GetDeviceAssignmentMap(Graph& graph,
                               const std::map<std::string, int>& id_to_rank,
-                              std::map<Node*, int>& op_to_rank);
+                              std::map<Node*, int>& op_to_rank,
+                              int nstages);
 
 Status GetDeviceAssignmentMap(Graph& graph,
                               const std::vector<TrainingSession::TrainingConfiguration::CutInfo>& cuts,
-                              std::map<Node*, int>& op_to_stage);
+                              std::map<Node*, int>& op_to_stage,
+                              int nstages);
 
 }  // namespace training
 }  // namespace onnxruntime

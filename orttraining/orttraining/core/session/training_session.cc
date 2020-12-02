@@ -21,8 +21,6 @@
 #include "orttraining/core/graph/pipeline_transformer.h"
 #include "orttraining/core/graph/gradient_builder_base.h"
 
-#include <queue>
-
 //Gist Encoding
 #include "orttraining/core/optimizer/gist_encode_decode.h"
 
@@ -177,19 +175,18 @@ Status TrainingSession::ConfigureForTraining(
     // Apply online pipeline partition to graph obj. This needs to be done first before any graph
     // transportation which may alter node_arg and invalidate cut_list info from the original graph.
     ORT_ENFORCE(pipeline_stage_id >= 0, "invalid pipelie stage id (", pipeline_stage_id, ") before doing online partition.");
-
+    int n_stages = config.distributed_config.pipeline_parallel_size;
     std::map<Node*, int> op_to_rank;
     const auto& cut_list = config.pipeline_config.value().cut_list;
     if (cut_list.size() > 0) {
       ORT_RETURN_IF_ERROR(
-        GetDeviceAssignmentMap(model_->MainGraph(), cut_list, op_to_rank));
+        GetDeviceAssignmentMap(model_->MainGraph(), cut_list, op_to_rank, n_stages));
     } else {
       const auto& id_to_rank = config.pipeline_config.value().op_id_to_rank;
       ORT_RETURN_IF_ERROR(
-        GetDeviceAssignmentMap(model_->MainGraph(), id_to_rank, op_to_rank));
+        GetDeviceAssignmentMap(model_->MainGraph(), id_to_rank, op_to_rank, n_stages));
     }
 
-    int n_stages = config.distributed_config.pipeline_parallel_size;
     ORT_RETURN_IF_ERROR(
       ApplyPipelinePartitionToMainGraph(model_->MainGraph(), op_to_rank,
                                         pipeline_stage_id, n_stages));

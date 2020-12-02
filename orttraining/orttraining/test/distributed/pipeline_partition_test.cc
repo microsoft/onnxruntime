@@ -40,7 +40,7 @@ TEST(PipelinePartition, DropoutGraph2stages) {
   auto& graph = pModel->MainGraph();
 
   std::map<Node*, int> op_to_stage = {};
-  status = GetDeviceAssignmentMap(graph, input_map, op_to_stage);
+  status = GetDeviceAssignmentMap(graph, input_map, op_to_stage, nstages);
 
   EXPECT_TRUE(status.IsOK()) << "Failed to get stage map. Error: "
                              << status.ErrorMessage();
@@ -69,7 +69,7 @@ void LoadAndPartitionWithCuts(std::string& filename,
 
   if (use_stage_map) {
     std::map<Node*, int> op_to_stage = {};
-    status = GetDeviceAssignmentMap(graph, cuts, op_to_stage);
+    status = GetDeviceAssignmentMap(graph, cuts, op_to_stage, nstages);
 
     EXPECT_TRUE(status.IsOK()) << "Failed to get stage map. Error: "
                                << status.ErrorMessage();

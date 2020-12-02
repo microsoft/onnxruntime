@@ -1003,7 +1003,7 @@ common::Status SplitGraphWithMap(Graph& graph,
     producer_stage = op_to_stage.find(producer_node)->second;
     
     auto consumers = graph.GetMutableConsumerNodes(node_arg->Name());
-    if (consumers.size() == 0) { // producer_node == nullptr || ?
+    if (consumers.size() == 0) {
       continue;
     }
     
@@ -1333,10 +1333,16 @@ Status VerifyAssignment(std::vector<int> stages, int nstages, Graph& graph) {
       "Stage " + std::to_string(s) + " was not assigned to any node.");
   }
 
-  // All nodes have been assigned.
+  // All nodes have been assigned to a stage.
   auto op_assigned = std::find(std::begin(stages), std::end(stages), -1);
   ORT_RETURN_IF_NOT(op_assigned == std::end(stages), 
                     "All ops must be assigned to a stage");
+
+  // All assigned stages are within limits.
+  for (auto s : stages) {
+    ORT_RETURN_IF_NOT(s >= 0 && s < nstages,
+                      "All stage ids must be in range.");
+  }
 
   // Edges always go forward.
   for (size_t i = 0, t = graph.MaxNodeIndex(); i < t; ++i) {
@@ -1357,33 +1363,42 @@ Status VerifyAssignment(std::vector<int> stages, int nstages, Graph& graph) {
   return Status::OK();
 }
 
-// TODO: optimize and verify.
 Status GetDeviceAssignmentMap(Graph& graph, 
                               const std::map<std::string, int>& id_to_stage,
-                              std::map<Node*, int>& op_to_stage) {
-  for (size_t i = 0, t = graph.MaxNodeIndex(); i < t; ++i) {
+                              std::map<Node*, int>& op_to_stage,
+                              int nstages) {
+  int n_nodes = graph.MaxNodeIndex();
+  std::vector<int> stages(n_nodes);
+  for (int i = 0; i < n_nodes; ++i) {
     Node* node = graph.GetNode(i);
     bool found = false;
     auto& node_outputs = node->MutableOutputDefs();
     for (NodeArg* arg : node_outputs) {
       if (id_to_stage.find(arg->Name()) != id_to_stage.end()) {
-        int stage = id_to_stage.at(arg->Name());
-        op_to_stage.insert({node, stage});
+        stages[i] = id_to_stage.at(arg->Name());
         found = true;
         break;
       }
     }
-    ORT_ENFORCE(found, "Can't find node's stage " + node->Name());
+    ORT_RETURN_IF_NOT(found, "Can't find node's stage " + node->Name());
   }
 
-  // TODO: call verify assignment.
+  ORT_RETURN_IF_ERROR(VerifyAssignment(stages, nstages, graph));
+
+  for (int i = 0; i < n_nodes; ++i) {
+    op_to_stage.emplace(graph.GetNode(i), stages[i]);
+  }
   return Status::OK();
 }
 
 
 Status GetDeviceAssignmentMap(Graph& graph,
                               const std::vector<TrainingSession::TrainingConfiguration::CutInfo>& cuts,
-                              std::map<Node*, int>& op_to_stage) {
+                              std::map<Node*, int>& op_to_stage,
+                              int nstages) {
+  ORT_RETURN_IF(nstages != static_cast<int>(cuts.size() + 1),
+                "Number of cuts does not match number of pipeline stages.");
+  
   auto total_nodes = graph.MaxNodeIndex();
   
   auto visit_and_assign = [&](std::vector<Node*>& roots, int stage,

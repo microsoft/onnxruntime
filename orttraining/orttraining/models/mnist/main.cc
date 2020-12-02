@@ -36,7 +36,7 @@ const static int NUM_CLASS = 10;
 const static vector<int64_t> IMAGE_DIMS = {784};  //{1, 28, 28} for mnist_conv
 const static vector<int64_t> LABEL_DIMS = {10};
 
-Status ReadOpToRankMap(const std::string& filename,
+Status ReadOpToStageMap(const std::string& filename,
                        std::map<std::string, int>& op_id_to_stage) {
   std::ifstream mfile;
   mfile.open(filename);
@@ -125,16 +125,14 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
     if (params.pipeline_parallel_size > 1) {
       
       const std::string filename = flags["mapping_file"].as<std::string>();
-      ReadOpToRankMap(filename, params.op_id_to_rank);
-
       auto cut_info_groups = flags["cut_group_info"].as<std::vector<std::string>>();
-      ORT_RETURN_IF_NOT(filename.size() > 0 || static_cast<int>(cut_info_groups.size() + 1) == params.pipeline_parallel_size,
+      ORT_RETURN_IF_NOT(!filename.empty() || static_cast<int>(cut_info_groups.size() + 1) == params.pipeline_parallel_size,
                         "cut_info length plus one must match pipeline parallel size");
 
-      if (filename.size() > 0) {
+      if (!filename.empty()) {
         ORT_ENFORCE(cut_info_groups.size() == 0,
                     "Device mapping and cut info cannot be both defined.");
-        ReadOpToRankMap(filename, params.op_id_to_rank);
+        ReadOpToStageMap(filename, params.op_id_to_rank);
       } else {
         auto process_with_delimiter = [](std::string& input_str, const std::string& delimiter) {
           std::vector<std::string> result;
@@ -290,12 +288,12 @@ int main(int argc, char* args[]) {
   setup_training_params(params);
 
   // setup data
-  // auto device_count = MPIContext::GetInstance().GetWorldSize();
+  auto device_count = MPIContext::GetInstance().GetWorldSize();
   std::vector<string> feeds{"X", "labels"};
   auto trainingData = std::make_shared<DataSet>(feeds);
   auto testData = std::make_shared<DataSet>(feeds);
   std::string mnist_data_path = ToMBString(params.train_data_dir);
-  PrepareMNISTData(mnist_data_path, IMAGE_DIMS, LABEL_DIMS, *trainingData, *testData);
+  PrepareMNISTData(mnist_data_path, IMAGE_DIMS, LABEL_DIMS, *trainingData, *testData, MPIContext::GetInstance().GetWorldRank() /* shard_to_load */, device_count /* total_shards */);
 
   if (testData->NumSamples() == 0) {
     printf("Warning: No data loaded - run cancelled.\n");
@@ -308,6 +306,5 @@ int main(int argc, char* args[]) {
   auto runner = onnxruntime::make_unique<TrainingRunner>(params, *env);
   RETURN_IF_FAIL(runner->Initialize());
   RETURN_IF_FAIL(runner->Run(training_data_loader.get(), test_data_loader.get()));
-
   RETURN_IF_FAIL(runner->EndTraining(test_data_loader.get()));
 }
