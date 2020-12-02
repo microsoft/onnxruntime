@@ -3,15 +3,15 @@
 parameters:
 - name: RunDockerBuildArgs
   type: string
-  default: ""
 - name: DisplayName
   type: string
   default: "Call run_dockerbuild.sh"
 
 steps:
-- template: with-build-docker-image-cache-steps.yml
+- template: with-container-registry-steps.yml
   parameters:
     Steps:
     - script: |
-        tools/ci_build/github/linux/run_dockerbuild.sh ${{ parameters.RunDockerBuildArgs }}
+        tools/ci_build/github/linux/run_dockerbuild.sh -i onnxruntimebuildcache ${{ parameters.RunDockerBuildArgs }}
       displayName: "${{ parameters.DisplayName }}"
+    ContainerRegistry: onnxruntimebuildcache
