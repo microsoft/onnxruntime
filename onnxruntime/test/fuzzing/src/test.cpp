@@ -245,6 +245,7 @@ struct RunStats {
   size_t num_unknown_exception;
   size_t num_successful_runs;
   size_t iteration;
+  int status;
 };
 
 static void fuzz_handle_exception(struct RunStats& run_stats) {
@@ -258,10 +259,12 @@ static void fuzz_handle_exception(struct RunStats& run_stats) {
     run_stats.num_std_exception++;
     Logger::testLog << L"standard exception: " << e.what() << Logger::endl;
     Logger::testLog << "Failed Test iteration: " << run_stats.iteration++ << Logger::endl;
+    run_stats.status = 1;
   } catch (...) {
     run_stats.num_unknown_exception++;
     Logger::testLog << L"unknown exception: " << Logger::endl;
     Logger::testLog << "Failed Test iteration: " << run_stats.iteration++ << Logger::endl;
+    run_stats.status = 1;
     throw;
   }
 }
@@ -271,7 +274,7 @@ int main(int argc, char* argv[]) {
   // Enable telemetry events
   //
   env.EnableTelemetryEvents();
-  struct RunStats run_stats = {0, 0, 0, 0, 0};
+  struct RunStats run_stats {};
   runtimeOpt opt{};
   user_options& user_opt{opt.user_opt};
   Logger::wcstream& werr_stream_buf{opt.werr_stream_buf};
@@ -401,9 +404,11 @@ int main(int argc, char* argv[]) {
     Logger::testLog << L"onnx runtime exception: " << ort_exception.what() << Logger::endl;
   } catch (const std::exception& e) {
     Logger::testLog << L"standard exception: " << e.what() << Logger::endl;
+    run_stats.status = 1;
   } catch (...) {
     Logger::testLog << L"Something Went very wrong: " << Logger::endl;
+    run_stats.status = 1;
   }
 
-  return 1;
+  return run_stats.status;
 }

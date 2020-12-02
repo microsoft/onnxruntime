@@ -303,12 +303,11 @@ void RunMatMulIntegerU8X8Test(const int M, const int N, const int K, bool non_ze
 
   test.AddOutput<int32_t>("T3", {M, N}, ToVector<int32_t>(matrix_c.data(), M * N));
 
-  // currently nGraph provider does not support gemm_u8s8
   // Nuphar provider does not support non-zero zero point
   if (non_zero_zp) {
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider, kNupharExecutionProvider});
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNupharExecutionProvider});
   } else {
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
+    test.Run();
   }
 }
 

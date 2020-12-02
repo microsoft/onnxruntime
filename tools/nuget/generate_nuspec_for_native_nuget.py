@@ -205,6 +205,7 @@ def generate_files(list, args):
                               'providers_shared_lib': 'onnxruntime_providers_shared.dll',
                               'dnnl_ep_shared_lib': 'onnxruntime_providers_dnnl.dll',
                               'tensorrt_ep_shared_lib': 'onnxruntime_providers_tensorrt.dll',
+                              'openvino_ep_shared_lib': 'onnxruntime_providers_openvino.dll',
                               'onnxruntime_perf_test': 'onnxruntime_perf_test.exe',
                               'onnx_test_runner': 'onnx_test_runner.exe'}
 
@@ -219,6 +220,7 @@ def generate_files(list, args):
                               'providers_shared_lib': 'libonnxruntime_providers_shared.so',
                               'dnnl_ep_shared_lib': 'libonnxruntime_providers_dnnl.so',
                               'tensorrt_ep_shared_lib': 'libonnxruntime_providers_tensorrt.so',
+                              'openvino_ep_shared_lib': 'libonnxruntime_providers_openvino.so',
                               'onnxruntime_perf_test': 'onnxruntime_perf_test',
                               'onnx_test_runner': 'onnx_test_runner'}
 
@@ -341,6 +343,14 @@ def generate_files(list, args):
                           runtimes_target + args.target_architecture + '\\native" />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                           nuget_dependencies['dnnl_ep_shared_lib']) +
+                          runtimes_target + args.target_architecture + '\\native" />')
+
+    if args.execution_provider == "openvino":
+        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
+                          nuget_dependencies['providers_shared_lib']) +
+                          runtimes_target + args.target_architecture + '\\native" />')
+        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
+                          nuget_dependencies['openvino_ep_shared_lib']) +
                           runtimes_target + args.target_architecture + '\\native" />')
 
     # process all other library dependencies

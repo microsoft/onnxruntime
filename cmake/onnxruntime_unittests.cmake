@@ -13,10 +13,6 @@ if (onnxruntime_USE_TVM)
   list(APPEND TEST_INC_DIR ${TVM_INCLUDES})
 endif()
 
-if (onnxruntime_USE_OPENVINO)
-    list(APPEND TEST_INC_DIR ${OPENVINO_INCLUDE_DIR})
-endif()
-
 set(disabled_warnings)
 function(AddTest)
   cmake_parse_arguments(_UT "DYN" "TARGET" "LIBS;SOURCES;DEPENDS" ${ARGN})
@@ -291,13 +287,6 @@ if (onnxruntime_USE_DNNL)
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_dnnl_src})
 endif()
 
-if (onnxruntime_USE_NGRAPH)
-  file(GLOB_RECURSE onnxruntime_test_providers_ngraph_src CONFIGURE_DEPENDS
-    "${TEST_SRC_DIR}/providers/ngraph/*"
-    )
-  list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_ngraph_src})
-endif()
-
 if (onnxruntime_USE_NNAPI_BUILTIN)
   file(GLOB_RECURSE onnxruntime_test_providers_nnapi_src CONFIGURE_DEPENDS
     "${TEST_SRC_DIR}/providers/nnapi/*"
@@ -394,15 +383,11 @@ if(onnxruntime_USE_CUDA)
 endif()
 
 if(onnxruntime_USE_DNNL)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_dnnl)
-endif()
-
-if(onnxruntime_USE_NGRAPH)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_ngraph)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_dnnl onnxruntime_providers_shared)
 endif()
 
 if(onnxruntime_USE_OPENVINO)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_openvino)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_openvino onnxruntime_providers_shared)
 endif()
 
 if(onnxruntime_USE_NNAPI_BUILTIN)
@@ -460,10 +445,8 @@ set(ONNXRUNTIME_TEST_LIBS
     ${ONNXRUNTIME_INTEROP_TEST_LIBS}
     ${onnxruntime_libs}
     ${PROVIDERS_CUDA}
-    # TENSORRT and DNNL are explicitly linked at runtime
+    # TENSORRT, DNNL, and OpenVINO are explicitly linked at runtime
     ${PROVIDERS_MIGRAPHX}
-    ${PROVIDERS_NGRAPH}
-    ${PROVIDERS_OPENVINO}
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_RKNPU}
@@ -532,7 +515,7 @@ else()
   target_include_directories(onnxruntime_test_utils PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT}
           "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
 endif()
-onnxruntime_add_include_to_target(onnxruntime_test_utils onnxruntime_common onnxruntime_framework GTest::gtest GTest::gmock onnx onnx_proto flatbuffers)
+onnxruntime_add_include_to_target(onnxruntime_test_utils onnxruntime_common onnxruntime_framework onnxruntime_session GTest::gtest GTest::gmock onnx onnx_proto flatbuffers)
 
 if (onnxruntime_USE_DNNL)
   target_compile_definitions(onnxruntime_test_utils PUBLIC USE_DNNL=1)
@@ -687,14 +670,6 @@ if (onnxruntime_USE_MKLML)
   )
 endif()
 if(WIN32)
-  if (onnxruntime_USE_NGRAPH)
-    add_custom_command(
-      TARGET ${test_data_target} POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy_directory
-      ${ngraph_LIBRARIES}/
-      $<TARGET_FILE_DIR:${test_data_target}>
-    )
-  endif()
   if (onnxruntime_USE_TVM)
     add_custom_command(
       TARGET ${test_data_target} POST_BUILD

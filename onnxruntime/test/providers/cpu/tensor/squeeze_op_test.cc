@@ -35,6 +35,15 @@ TEST(SqueezeOpTest, Squeeze_Empty_Axes_2) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+TEST(SqueezeOpTest, Squeeze_Empty_Axes_3) {
+  OpTester test("Squeeze");
+  // Squeeze all for all 1's shape will end up as a scalar
+  test.AddInput<float>("data", {1, 1, 1, 1}, std::vector<float>{1.0f});
+  test.AddOutput<float>("squeezed", {}, std::vector<float>{1.0f});
+  // TensorRT doesn't seem to support missing 'axes'
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 TEST(SqueezeOpTest, Squeeze_1_int32) {
   OpTester test("Squeeze");
   test.AddAttribute("axes", std::vector<int64_t>{0});
@@ -103,9 +112,8 @@ TEST(SqueezeOpTest, SqueezeNegAxis_2) {
   test.AddOutput<float>("squeezed", {4, 2},
                         std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
 
-  // nGraph does not support neg axis.
   // OpenVINO EP Incorrect precision. Will be re-enabled after its fixed
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider, kOpenVINOExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 }
 
 TEST(SqueezeOpTest, Squeeze_2_axes_input) {
@@ -137,10 +145,9 @@ TEST(SqueezeOpTest, SqueezeNegAxis_axes_input) {
   test.AddOutput<float>("squeezed", {4, 2},
                         std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
 
-  // nGraph does not support neg axis.
   // OpenVINO EP Incorrect precision. Will be re-enabled after its fixed
   // TensorRT and OpenVINO dont support "axes" input in opset 13, re-enable after
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider, kOpenVINOExecutionProvider, kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider, kTensorrtExecutionProvider});
 }
 
 // Add 4d input shape test, since NNAPI supports up to 4d input shape
@@ -172,10 +179,9 @@ TEST(SqueezeOpTest, Squeeze_4d_NegAxis_axes_input) {
     test.AddOutput<float>("squeezed", {4, 2},
                           std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
 
-    // nGraph does not support neg axis.
     // OpenVINO EP Incorrect precision. Will be re-enabled after its fixed
     // TensorRT and OpenVINO dont support "axes" input in opset 13, re-enable after
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider, kOpenVINOExecutionProvider, kTensorrtExecutionProvider});
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider, kTensorrtExecutionProvider});
   };
 
   run_test(false);

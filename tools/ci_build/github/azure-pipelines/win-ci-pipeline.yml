@@ -39,6 +39,16 @@ jobs:
       workingFolder: '$(Build.BinariesDirectory)'
 
   - script: |
+     set ORT_DOXY_SRC=$(Build.SourcesDirectory)
+     set ORT_DOXY_OUT=$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)
+     mkdir %ORT_DOXY_SRC% 
+     mkdir %ORT_DOXY_OUT%
+     "C:\Program Files\doxygen\bin\doxygen.exe" $(Build.SourcesDirectory)\tools\ci_build\github\Doxyfile_csharp.cfg
+     
+    workingDirectory: '$(Build.SourcesDirectory)'
+    displayName: 'API Documentation Check and generate'
+
+  - script: |
      python -m pip install -q pyopenssl setuptools wheel numpy flake8
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
@@ -102,7 +112,7 @@ jobs:
       projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
       configuration: '$(BuildConfig)'
       arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OrtPackageId=$(OrtPackageId)'
-      workingDirectory: '$(Build.SourcesDirectory)\csharp'      
+      workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
   - task: DotNetCoreCLI@2
     displayName: 'Build C#'    

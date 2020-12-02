@@ -47,6 +47,7 @@ class NhwcTransformerImpl {
   void TransformQLinearConv(Node& node);
   void TransformQLinearBinary(Node& node);
   void TransformQLinearActivation(Node& node);
+  void TransformQLinearGlobalAveragePool(Node& node);
 
   Graph& graph_;
 
@@ -213,6 +214,29 @@ void NhwcTransformerImpl::TransformQLinearActivation(Node& node) {
   CreateNhwcArgument(node, node, nhwc_input->rank_);
 }
 
+void NhwcTransformerImpl::TransformQLinearGlobalAveragePool(Node& node) {
+  auto& input_defs = node.MutableInputDefs();
+
+  auto* nhwc_input = LookupNhwcArgument(input_defs[0]);
+  if (nhwc_input == nullptr) {
+    return;
+  }
+
+  // Verify that the node is using NCHW tensors.
+  const auto* channels_last_attr = graph_utils::GetNodeAttribute(node, "channels_last");
+  if (channels_last_attr != nullptr && utils::HasInt(*channels_last_attr) && channels_last_attr->i() != 0) {
+    return;
+  }
+
+  // Update the node to directly use the NHWC inputs and decrement the original
+  // use counts of the NHWC inputs.
+  input_defs[0] = nhwc_input->nhwc_arg_;
+  nhwc_input->remaining_original_uses_--;
+  node.AddAttribute("channels_last", static_cast<int64_t>(1));
+
+  CreateNhwcArgument(node, node, nhwc_input->rank_);
+}
+
 void NhwcTransformerImpl::Transform(Node& node) {
   if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "QLinearConv", {10})) {
     TransformQLinearConv(node);
@@ -222,6 +246,8 @@ void NhwcTransformerImpl::Transform(Node& node) {
   } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "QLinearLeakyRelu", {1}, kMSDomain) ||
              graph_utils::IsSupportedOptypeVersionAndDomain(node, "QLinearSigmoid", {1}, kMSDomain)) {
     TransformQLinearActivation(node);
+  } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "QLinearGlobalAveragePool", {1}, kMSDomain)) {
+    TransformQLinearGlobalAveragePool(node);
   }
 }
 

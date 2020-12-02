@@ -19,7 +19,6 @@
 #include "core/session/ort_apis.h"
 
 #ifdef USE_TENSORRT
-#include "core/providers/tensorrt/tensorrt_provider_factory.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
@@ -29,6 +28,7 @@
 namespace onnxruntime {
 // These Provider types are really just internal types, so we #define PROVIDER_BRIDGE_ORT so that only these definitions are seen by provider_interfaces.h
 // Users of provider_interfaces.h (through provider_api.h) will see the wrappers that call through the provider shared interface which is implemented by this file
+using Provider_int64s = google::protobuf::RepeatedField<int64_t>;
 using Provider_AttributeProto = ONNX_NAMESPACE::AttributeProto;
 using Provider_GraphProto = ONNX_NAMESPACE::GraphProto;
 using Provider_ModelProto = ONNX_NAMESPACE::ModelProto;
@@ -71,6 +71,7 @@ using Provider_Tensor = Tensor;
 
 #include "core/providers/dnnl/dnnl_provider_factory.h"
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
+#include "core/providers/openvino/openvino_provider_factory.h"
 
 // The filename extension for a shared library is different per platform
 #ifdef _WIN32
@@ -158,7 +159,7 @@ struct Provider_IExecutionProvider_Router_Impl : Provider_IExecutionProvider_Rou
 
   virtual ~Provider_IExecutionProvider_Router_Impl() {}
 
-  std::shared_ptr<Provider_KernelRegistry> Provider_GetKernelRegistry() const override { return GetKernelRegistry(); }
+  std::shared_ptr<Provider_KernelRegistry> Provider_GetKernelRegistry() const override { return IExecutionProvider::GetKernelRegistry(); }
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override { return outer_->Provider_GetKernelRegistry(); }
 
   std::vector<std::unique_ptr<Provider_ComputeCapability>> Provider_GetCapability(const onnxruntime::Provider_GraphViewer& graph,
@@ -289,11 +290,21 @@ struct ProviderHostImpl : ProviderHost {
   void logging__Capture__operator_delete(logging::Capture* p) noexcept override { delete p; }
   std::ostream& logging__Capture__Stream(logging::Capture* p) noexcept override { return p->Stream(); }
 
+  // Utils::DataTypeUtils
+  const std::string* Utils__DataTypeUtils__ToType(const Provider_TypeProto& type_proto) override { return ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(type_proto); }
+
+  // Provider_int64s
+  int Provider_int64s__size(const Provider_int64s* p) override { return p->size(); }
+  const int64_t& Provider_int64s__Get(const Provider_int64s* p, int index) override { return p->Get(index); }
+
   // Provider_TypeProto_Tensor
+  const Provider_TensorShapeProto& Provider_TypeProto_Tensor__shape(const Provider_TypeProto_Tensor* p) override { return p->shape(); }
+  Provider_TensorShapeProto* Provider_TypeProto_Tensor__mutable_shape(Provider_TypeProto_Tensor* p) override { return p->mutable_shape(); }
   int32_t Provider_TypeProto_Tensor__elem_type(const Provider_TypeProto_Tensor* p) override { return p->elem_type(); }
 
   // Provider_TypeProto
   const Provider_TypeProto_Tensor& Provider_TypeProto__tensor_type(const Provider_TypeProto* p) override { return p->tensor_type(); }
+  Provider_TypeProto_Tensor* Provider_TypeProto__mutable_tensor_type(Provider_TypeProto* p) override { return p->mutable_tensor_type(); }
 
   // Provider_AttributeProto
   std::unique_ptr<Provider_AttributeProto> Provider_AttributeProto__construct() override { return onnxruntime::make_unique<ONNX_NAMESPACE::AttributeProto>(); }
@@ -302,7 +313,10 @@ struct ProviderHostImpl : ProviderHost {
 
   ONNX_NAMESPACE::AttributeProto_AttributeType Provider_AttributeProto__type(const Provider_AttributeProto* p) override { return p->type(); }
   int Provider_AttributeProto__ints_size(const Provider_AttributeProto* p) override { return p->ints_size(); }
+  int Provider_AttributeProto__floats_size(const Provider_AttributeProto* p) override { return p->floats_size(); }
   int64_t Provider_AttributeProto__ints(const Provider_AttributeProto* p, int i) override { return p->ints(i); }
+  float Provider_AttributeProto__floats(const Provider_AttributeProto* p, int i) override { return p->floats(i); }
+  const Provider_int64s& Provider_AttributeProto__ints(const Provider_AttributeProto* p) override { return p->ints(); }
   int64_t Provider_AttributeProto__i(const Provider_AttributeProto* p) override { return p->i(); }
   float Provider_AttributeProto__f(const Provider_AttributeProto* p) override { return p->f(); }
   void Provider_AttributeProto__set_s(Provider_AttributeProto* p, const ::std::string& value) override { return p->set_s(value); }
@@ -314,9 +328,13 @@ struct ProviderHostImpl : ProviderHost {
   // Provider_GraphProto
   void Provider_GraphProto__operator_delete(Provider_GraphProto* p) override { delete p; }
 
+  const Provider_ValueInfoProto& Provider_GraphProto__input(const Provider_GraphProto* p, int index) override { return p->input(index); }
+  Provider_ValueInfoProto* Provider_GraphProto__mutable_input(Provider_GraphProto* p, int index) override { return p->mutable_input(index); }
   Provider_ValueInfoProtos* Provider_GraphProto__mutable_input(Provider_GraphProto* p) override { return p->mutable_input(); }
+  int Provider_GraphProto__input_size(const Provider_GraphProto* p) override { return p->input_size(); }
 
   const Provider_ValueInfoProtos& Provider_GraphProto__output(const Provider_GraphProto* p) override { return p->output(); }
+  const Provider_ValueInfoProto& Provider_GraphProto__output(const Provider_GraphProto* p, int index) override { return p->output(index); }
   Provider_ValueInfoProtos* Provider_GraphProto__mutable_output(Provider_GraphProto* p) override { return p->mutable_output(); }
 
   Provider_ValueInfoProtos* Provider_GraphProto__mutable_value_info(Provider_GraphProto* p) override { return p->mutable_value_info(); }
@@ -326,10 +344,13 @@ struct ProviderHostImpl : ProviderHost {
   void Provider_GraphProto__operator_assign(Provider_GraphProto* p, const Provider_GraphProto& v) override { *p = v; }
 
   // Provider_ModelProto
+  std::unique_ptr<Provider_ModelProto> Provider_ModelProto__construct() override { return onnxruntime::make_unique<ONNX_NAMESPACE::ModelProto>(); }
   void Provider_ModelProto__operator_delete(Provider_ModelProto* p) override { delete p; }
 
   bool Provider_ModelProto__SerializeToString(const Provider_ModelProto* p, std::string& string) override { return p->SerializeToString(&string); }
   bool Provider_ModelProto__SerializeToOstream(const Provider_ModelProto* p, std::ostream& output) override { return p->SerializeToOstream(&output); }
+  bool Provider_ModelProto__ParseFromString(Provider_ModelProto* p, const std::string& data) override { return p->ParseFromString(data); }
+  std::string Provider_ModelProto__SerializeAsString(const Provider_ModelProto* p) override { return p->SerializeAsString(); }
 
   const Provider_GraphProto& Provider_ModelProto__graph(const Provider_ModelProto* p) override { return p->graph(); }
   Provider_GraphProto* Provider_ModelProto__mutable_graph(Provider_ModelProto* p) override { return p->mutable_graph(); }
@@ -339,14 +360,18 @@ struct ProviderHostImpl : ProviderHost {
   // Provider_TensorProto
   void Provider_TensorProto__operator_delete(Provider_TensorProto* p) override { delete p; }
   void Provider_TensorProto__operator_assign(Provider_TensorProto* p, const Provider_TensorProto& v) override { *p = v; }
+  bool Provider_TensorProto__has_data_location(const Provider_TensorProto* p) override { return p->has_data_location(); }
+  int Provider_TensorProto__data_location(const Provider_TensorProto* p) override { return p->data_location(); }
 
   // Provider_TensorProtos
   Provider_TensorProto* Provider_TensorProtos__Add(Provider_TensorProtos* p) override { return p->Add(); }
 
   // Provider_TensorShapeProto_Dimension
-  const std::string& Provider_TensorShapeProto_Dimension__dim_param(const Provider_TensorShapeProto_Dimension* p) override {
-    return p->dim_param();
-  }
+  int Provider_TensorShapeProto_Dimension__value_case(const Provider_TensorShapeProto_Dimension* p) override { return p->value_case(); }
+  const std::string& Provider_TensorShapeProto_Dimension__dim_param(const Provider_TensorShapeProto_Dimension* p) override { return p->dim_param(); }
+  int64_t Provider_TensorShapeProto_Dimension__dim_value(const Provider_TensorShapeProto_Dimension* p) override { return p->dim_value(); }
+  void Provider_TensorShapeProto_Dimension__clear_dim_value(Provider_TensorShapeProto_Dimension* p) override { return p->clear_dim_value(); }
+  void Provider_TensorShapeProto_Dimension__set_dim_value(Provider_TensorShapeProto_Dimension* p, int64_t value) override { return p->set_dim_value(value); }
 
   // Provider_TensorShapeProto_Dimensions
   std::unique_ptr<Provider_TensorShapeProto_Dimension_Iterator> Provider_TensorShapeProto_Dimensions__begin(const Provider_TensorShapeProto_Dimensions* p) override {
@@ -360,9 +385,14 @@ struct ProviderHostImpl : ProviderHost {
   // Provider_TensorShapeProto
   int Provider_TensorShapeProto__dim_size(const Provider_TensorShapeProto* p) override { return p->dim_size(); }
   const Provider_TensorShapeProto_Dimensions& Provider_TensorShapeProto__dim(const Provider_TensorShapeProto* p) override { return p->dim(); }
+  const Provider_TensorShapeProto_Dimension& Provider_TensorShapeProto__dim(const Provider_TensorShapeProto* p, int index) override { return p->dim(index); }
+  Provider_TensorShapeProto_Dimension* Provider_TensorShapeProto__mutable_dim(Provider_TensorShapeProto* p, int index) override { return p->mutable_dim(index); }
+  void Provider_TensorShapeProto__clear_dim(Provider_TensorShapeProto* p) override { return p->clear_dim(); }
+  Provider_TensorShapeProto_Dimension* Provider_TensorShapeProto__add_dim(Provider_TensorShapeProto* p) override { return p->add_dim(); }
 
   // Provider_ValueInfoProto
   const Provider_TypeProto& Provider_ValueInfoProto__type(const Provider_ValueInfoProto* p) override { return p->type(); }
+  Provider_TypeProto* Provider_ValueInfoProto__mutable_type(Provider_ValueInfoProto* p) override { return p->mutable_type(); }
   virtual void Provider_ValueInfoProto__operator_assign(Provider_ValueInfoProto* p, const Provider_ValueInfoProto& v) override { *p = v; }
 
   // Provider_ValueInfoProtos
@@ -459,8 +489,13 @@ struct ProviderHostImpl : ProviderHost {
   std::unique_ptr<Provider_Node__NodeIterator> Provider_Node__InputNodesBegin(const Provider_Node* p) noexcept override { return onnxruntime::make_unique<Provider_Node__NodeIterator_Impl>(p->InputNodesBegin()); }
   std::unique_ptr<Provider_Node__NodeIterator> Provider_Node__InputNodesEnd(const Provider_Node* p) noexcept override { return onnxruntime::make_unique<Provider_Node__NodeIterator_Impl>(p->InputNodesEnd()); }
 
+  std::unique_ptr<Provider_Node__NodeIterator> Provider_Node__OutputNodesBegin(const Provider_Node* p) noexcept override { return onnxruntime::make_unique<Provider_Node__NodeIterator_Impl>(p->OutputNodesBegin()); }
+  std::unique_ptr<Provider_Node__NodeIterator> Provider_Node__OutputNodesEnd(const Provider_Node* p) noexcept override { return onnxruntime::make_unique<Provider_Node__NodeIterator_Impl>(p->OutputNodesEnd()); }
+
   std::unique_ptr<Provider_Node__EdgeIterator> Provider_Node__OutputEdgesBegin(const Provider_Node* p) noexcept override { return onnxruntime::make_unique<Provider_Node__EdgeIterator_Impl>(p->OutputEdgesBegin()); }
   std::unique_ptr<Provider_Node__EdgeIterator> Provider_Node__OutputEdgesEnd(const Provider_Node* p) noexcept override { return onnxruntime::make_unique<Provider_Node__EdgeIterator_Impl>(p->OutputEdgesEnd()); }
+
+  void Provider_Node__ForEachDef(const Provider_Node* p, std::function<void(const Provider_NodeArg&, bool is_input)> func, bool include_missing_optional_defs) override { p->ForEachDef(func, std::move(include_missing_optional_defs)); }
 
   // Provider_NodeArg
   const std::string& Provider_NodeArg__Name(const Provider_NodeArg* p) noexcept override { return p->Name(); }
@@ -475,7 +510,9 @@ struct ProviderHostImpl : ProviderHost {
   void Provider_NodeAttributes__operator_delete(Provider_NodeAttributes* p) noexcept override { delete p; }
   size_t Provider_NodeAttributes__size(const Provider_NodeAttributes* p) override { return p->size(); }
   void Provider_NodeAttributes__clear(Provider_NodeAttributes* p) noexcept override { return p->clear(); }
+  size_t Provider_NodeAttributes__count(const Provider_NodeAttributes* p, const std::string& keyval) override { return p->count(keyval); }
   Provider_AttributeProto& Provider_NodeAttributes__operator_array(Provider_NodeAttributes* p, const std::string& string) override { return (*p)[string]; }
+  const Provider_AttributeProto& Provider_NodeAttributes__at(const Provider_NodeAttributes* p, const std::string& string) override { return p->at(string); }
   void Provider_NodeAttributes__operator_assign(Provider_NodeAttributes* p, const Provider_NodeAttributes& v) override { *p = v; }
 
   std::unique_ptr<Provider_NodeAttributes_Iterator> Provider_NodeAttributes__begin(const Provider_NodeAttributes* p) override {
@@ -526,6 +563,7 @@ struct ProviderHostImpl : ProviderHost {
   const Provider_NodeArg* Provider_GraphViewer__GetNodeArg(const Provider_GraphViewer* p, const std::string& name) override { return p->GetNodeArg(name); }
 
   bool Provider_GraphViewer__IsSubgraph(const Provider_GraphViewer* p) override { return p->IsSubgraph(); }
+  bool Provider_GraphViewer__IsConstantInitializer(const Provider_GraphViewer* p, const std::string& name, bool check_outer_scope) override { return p->IsConstantInitializer(name, check_outer_scope); }
   int Provider_GraphViewer__NumberOfNodes(const Provider_GraphViewer* p) noexcept override { return p->NumberOfNodes(); }
   int Provider_GraphViewer__MaxNodeIndex(const Provider_GraphViewer* p) noexcept override { return p->MaxNodeIndex(); }
 
@@ -539,6 +577,7 @@ struct ProviderHostImpl : ProviderHost {
   const std::unordered_map<std::string, int>& Provider_GraphViewer__DomainToVersionMap(const Provider_GraphViewer* p) override { return p->DomainToVersionMap(); }
 
   const std::vector<NodeIndex>& Provider_GraphViewer__GetNodesInTopologicalOrder(const Provider_GraphViewer* p) override { return p->GetNodesInTopologicalOrder(); }
+  const std::vector<const Provider_NodeArg*>& Provider_GraphViewer__GetInputsIncludingInitializers(const Provider_GraphViewer* p) noexcept override { return p->GetInputsIncludingInitializers(); }
 
   // Provider_OpKernel_Base
   const Provider_OpKernelInfo& Provider_OpKernel_Base__GetInfo(const Provider_OpKernel_Base* p) override { return reinterpret_cast<const OpKernel*>(p)->Info(); }
@@ -651,10 +690,12 @@ struct ProviderLibrary {
 };
 
 static ProviderLibrary s_library_dnnl(LIBRARY_PREFIX "onnxruntime_providers_dnnl" LIBRARY_EXTENSION);
+static ProviderLibrary s_library_openvino(LIBRARY_PREFIX "onnxruntime_providers_openvino" LIBRARY_EXTENSION);
 static ProviderLibrary s_library_tensorrt(LIBRARY_PREFIX "onnxruntime_providers_tensorrt" LIBRARY_EXTENSION);
 
 void UnloadSharedProviders() {
   s_library_dnnl.Unload();
+  s_library_openvino.Unload();
   s_library_tensorrt.Unload();
   s_library_shared.Unload();
 }
@@ -685,6 +726,19 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensor
   return nullptr;
 }
 
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const OrtOpenVINOProviderOptions* provider_options) {
+  if (auto provider = s_library_openvino.Get())
+    return std::make_shared<IExecutionProviderFactory_Translator>(provider->CreateExecutionProviderFactory(provider_options));
+
+  return nullptr;
+}
+
+const ProviderInfo_OpenVINO* GetProviderInfo_OpenVINO() {
+  if (auto provider = s_library_openvino.Get())
+    return reinterpret_cast<const ProviderInfo_OpenVINO*>(provider->GetInfo());
+  return nullptr;
+}
+
 }  // namespace onnxruntime
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOptions* options, int use_arena) {
@@ -701,6 +755,28 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Tensorrt, _In_ OrtS
   auto factory = onnxruntime::CreateExecutionProviderFactory_Tensorrt(device_id);
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_Tensorrt: Failed to load shared library");
+  }
+
+  options->provider_factories.push_back(factory);
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO, _In_ OrtSessionOptions* options, _In_ const OrtOpenVINOProviderOptions* provider_options) {
+  auto factory = onnxruntime::CreateExecutionProviderFactory_OpenVINO(provider_options);
+  if (!factory) {
+    return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_OpenVINO: Failed to load shared library");
+  }
+
+  options->provider_factories.push_back(factory);
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_OpenVINO, _In_ OrtSessionOptions* options, _In_ const char* device_type) {
+  OrtOpenVINOProviderOptions provider_options;
+  provider_options.device_type = device_type;
+  auto factory = onnxruntime::CreateExecutionProviderFactory_OpenVINO(&provider_options);
+  if (!factory) {
+    return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_OpenVINO: Failed to load shared library");
   }
 
   options->provider_factories.push_back(factory);
