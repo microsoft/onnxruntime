@@ -179,6 +179,58 @@ static Status AddBinaryOperator(int32_t op_type,
   return Status::OK();
 }
 
+static Status AddSqueezeOp(ModelBuilder& model_builder,
+                           const std::string& node_name,
+                           const std::string& input, const std::string& output,
+                           vector<int32_t> axes) ORT_MUST_USE_RESULT;
+static Status AddSqueezeOp(ModelBuilder& model_builder,
+                           const std::string& node_name,
+                           const std::string& input, const std::string& output,
+                           vector<int32_t> axes) {
+  if (model_builder.GetAndroidSdkVer() < 28) {
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, FAIL, "Squeeze is not supported on API level ", model_builder.GetAndroidSdkVer());
+  }
+
+  auto& shaper(model_builder.GetShaper());
+  const auto& operand_indices(model_builder.GetOperandIndices());
+  const auto& operand_types(model_builder.GetOperandTypes());
+
+  const auto& input_shape(shaper[input]);
+  auto input_dims = input_shape.size();
+  for (auto& axis : axes) {
+    axis = static_cast<int32_t>(HandleNegativeAxis(axis, input_dims));
+  }
+
+  // Despite the spec of ANEURALNETWORKS_SQUEEZE at
+  // https://developer.android.com/ndk/reference/group/neural-networks
+  // states, that the axes (input 1 of ANEURALNETWORKS_SQUEEZE) is optional.
+  //
+  // The actual code of NNAPI requires the axes to be provided
+  // https://android.googlesource.com/platform/frameworks/ml/+/master/nn/common/operations/Squeeze.cpp#31
+  if (axes.empty()) {  // Squeeze all
+    for (size_t i = 0; i < input_dims; i++) {
+      if (input_shape[i] == 1)
+        axes.push_back(i);
+    }
+  }
+
+  const auto axes_name = model_builder.GetUniqueName(node_name + input + "_axes");
+  Shape axes_dimen = {static_cast<uint32_t>(axes.size())};
+  const OperandType axes_operand_type(Type::TENSOR_INT32, axes_dimen);
+  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(axes_name, axes.data(), axes_operand_type));
+
+  std::vector<uint32_t> input_indices;
+  input_indices.push_back(operand_indices.at(input));      // input
+  input_indices.push_back(operand_indices.at(axes_name));  // axes
+
+  ORT_RETURN_IF_ERROR(shaper.Squeeze(input, axes, output));
+  const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_SQUEEZE, input_indices,
+                                                 {output}, {output_operand_type}, {false}));
+  return Status::OK();
+}
+
 enum DataLayout {
   L_0231 = 0,
   L_1230 = 1,
@@ -1581,12 +1633,27 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   uint32_t bias_idx;
   bool has_bias = (op == "Gemm") && (input_defs.size() > 2);
   if (has_bias) {
-    bias_idx = operand_indices.at(input_defs[c_idx]->Name());
+    const auto& bias = input_defs[c_idx]->Name();
+    // We need squeeze the input tensor to 1d if necessary
+    if (shaper[bias].size() > 1) {
+      std::string bias_squeezed = model_builder.GetUniqueName(node.Name() + op + "_bias_squeezed");
+      // We will use squeeze all here
+      ORT_RETURN_IF_ERROR(AddSqueezeOp(model_builder, node.Name(),
+                                       bias, bias_squeezed,
+                                       {} /* axes */));
+      bias_idx = operand_indices.at(bias_squeezed);
+      LOGS_DEFAULT(VERBOSE) << "GemmOpBuilder - Operand [" << bias << "] squeezed from "
+                            << Shape2String(shaper[bias])
+                            << " to "
+                            << Shape2String(shaper[bias_squeezed]);
+    } else {
+      bias_idx = operand_indices.at(bias);
+    }
   } else {
     // No C supplied, we need a vector of 0
-    std::string bias = node.Name() + op + "_bias";
+    std::string bias = model_builder.GetUniqueName(node.Name() + op + "_bias");
     const auto& bias_type = operand_types.at(input2).type;
-    Shape bias_dimen = {shaper[input2][0]};
+    const Shape& bias_dimen = {shaper[input2][0]};
     if (bias_type == Type::TENSOR_FLOAT32) {
       std::vector<float> buffer(bias_dimen[0], 0.f);
       OperandType bias_operand_type(Type::TENSOR_FLOAT32, bias_dimen);
@@ -1767,10 +1834,6 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 class SqueezeOpBuilder : public BaseOpBuilder {
  public:
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
-  static Status AddSqueezeOp(ModelBuilder& model_builder,
-                             const std::string& node_name,
-                             const std::string& input, const std::string& output,
-                             vector<int32_t> axes) ORT_MUST_USE_RESULT;
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
@@ -1781,49 +1844,6 @@ void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
   if (node.SinceVersion() > 12 && node.InputDefs().size() > 1) {
     model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());
   }
-}
-
-/* static */ Status SqueezeOpBuilder::AddSqueezeOp(ModelBuilder& model_builder,
-                                                   const std::string& node_name,
-                                                   const std::string& input, const std::string& output,
-                                                   vector<int32_t> axes) {
-  auto& shaper(model_builder.GetShaper());
-  const auto& operand_indices(model_builder.GetOperandIndices());
-  const auto& operand_types(model_builder.GetOperandTypes());
-
-  const auto& input_shape(shaper[input]);
-  auto input_dims = input_shape.size();
-  for (auto& axis : axes) {
-    axis = static_cast<int32_t>(HandleNegativeAxis(axis, input_dims));
-  }
-
-  // Despite the spec of ANEURALNETWORKS_SQUEEZE at
-  // https://developer.android.com/ndk/reference/group/neural-networks
-  // states, that the axes (input 1 of ANEURALNETWORKS_SQUEEZE) is optional.
-  //
-  // The actual code of NNAPI requires the axes to be provided
-  // https://android.googlesource.com/platform/frameworks/ml/+/master/nn/common/operations/Squeeze.cpp#31
-  if (axes.empty()) {  // Squeeze all
-    for (size_t i = 0; i < input_dims; i++) {
-      if (input_shape[i] == 1)
-        axes.push_back(i);
-    }
-  }
-
-  const auto axes_name = model_builder.GetUniqueName(node_name + input + "_axes");
-  Shape axes_dimen = {static_cast<uint32_t>(axes.size())};
-  const OperandType axes_operand_type(Type::TENSOR_INT32, axes_dimen);
-  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(axes_name, axes.data(), axes_operand_type));
-
-  std::vector<uint32_t> input_indices;
-  input_indices.push_back(operand_indices.at(input));      // input
-  input_indices.push_back(operand_indices.at(axes_name));  // axes
-
-  ORT_RETURN_IF_ERROR(shaper.Squeeze(input, axes, output));
-  const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
-  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_SQUEEZE, input_indices,
-                                                 {output}, {output_operand_type}, {false}));
-  return Status::OK();
 }
 
 /* static */ vector<int32_t> SqueezeOpBuilder::GetAxes(ModelBuilder& model_builder, const Node& node) {
