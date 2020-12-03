@@ -144,7 +144,7 @@ class BertOnnxModelTF(BertOnnxModel):
 
         return initializers
 
-    def find_segment_ids(self, segment_embedding):
+    def find_segment_ids(self, segment_embedding, input_ids):
         input_name_to_nodes = self.input_name_to_nodes()
         if segment_embedding not in input_name_to_nodes:
             return None
@@ -154,11 +154,32 @@ class BertOnnxModelTF(BertOnnxModel):
             return None
 
         graph_inputs = self.get_graph_inputs(nodes[0], recursive=True)
-        if len(graph_inputs) == 1:
+        if len(graph_inputs) > 1:
+            print("Found multiple candidates of segment_ids", graph_inputs)
+            return None
+        # Find segment ids in graph inputs. The segment id input must not be the same as input_ids.
+        if len(graph_inputs) == 1 and graph_inputs[0] != input_ids:
             return graph_inputs[0]
 
-        print("Found multiple candidates of segment_ids", graph_inputs)
-        return None
+        # If the segment id candidate is the same as the input_ids, try to assign alternative segment ids and simplify the graph if needed.
+        segment_ids = nodes[0].input[1]
+        _, segment_id_path, _ = self.match_parent_paths(
+            nodes[0], [(["ConstantOfShape", "Cast", "Concat", "Slice", "Cast", "Shape"], [1, 0, 0, 0, 0, 0]),
+                       (["ConstantOfShape", "Cast", "Concat", "Unsqueeze", "Squeeze", "Slice", "Cast", "Shape"
+                         ], [1, 0, 0, 0, 0, 0, 0, 0])], None)
+
+        if segment_id_path and input_ids and input_ids == segment_id_path[-1].input[0]:
+            logger.debug("Simplify semgent id path...")
+            self.add_node(helper.make_node('Shape', inputs=[input_ids], outputs=["input_shape"]))
+            constantofshape_node = segment_id_path[0]
+            constantofshape_value = helper.get_attribute_value(constantofshape_node.attribute[0])
+            self.add_node(
+                helper.make_node('ConstantOfShape',
+                                 inputs=["input_shape"],
+                                 outputs=["zeros_for_input_shape"],
+                                 value=constantofshape_value))
+            segment_ids = "zeros_for_input_shape"
+        return segment_ids
 
     def find_input_ids(self, word_embedding):
         input_name_to_nodes = self.input_name_to_nodes()
@@ -179,27 +200,49 @@ class BertOnnxModelTF(BertOnnxModel):
     def find_mask_input(self, excluded_graph_inputs):
         for node in self.nodes():
             if node.op_type == 'Softmax':
-                mask_path = self.match_parent_path(node, ['Add', 'Mul', 'Sub'], [0, 1, None])
+                mask_path = self.match_parent_path(node, ['Add', 'Mul', 'Sub', 'Cast', 'Slice', 'Unsqueeze'], [0, 1, None, 1, 0, 0])
                 if mask_path is None:
                     continue
-                add_node, mul_node, sub_node = mask_path
+                add_node, mul_node, sub_node, cast_node, slice_node, unsqueeze_node = mask_path
                 if self.has_constant_input(mul_node, -10000) and self.has_constant_input(sub_node, 1):
                     graph_inputs = self.get_graph_inputs(sub_node, recursive=True)
                     inputs = [input for input in graph_inputs if input not in excluded_graph_inputs]
+                    if len(inputs) > 1:
+                        print("Found multiple candidates of mask input", inputs)
+                        return None
                     if len(inputs) == 1:
                         return inputs[0]
-
+                    # Duplicated input found. Try to simplify the graph.
+                    path_to_be_simplified = self.match_parent_path(
+                        mask_path[-1],
+                        ["ConstantOfShape", "Cast", "Concat", "Unsqueeze", "Squeeze", "Slice", "Cast", "Shape"],
+                        [0, 0, 0, 0, 0, 0, 0, 0])
+                    duplicated_inputs = [input for input in graph_inputs if input in excluded_graph_inputs]
+                    # Simplify graph for dynamic axes.
+                    if path_to_be_simplified and duplicated_inputs and len(
+                            duplicated_inputs) == 1 and duplicated_inputs[0] == path_to_be_simplified[-1].input[0]:
+                        logger.debug("Simplify semgent id path...")
+                        constantofshape_node = path_to_be_simplified[0]
+                        constantofshape_value = helper.get_attribute_value(constantofshape_node.attribute[0])
+                        self.add_node(
+                            helper.make_node('Shape', inputs=[duplicated_inputs[0]], outputs=["input_shape_for_mask"]))
+                        self.add_node(
+                            helper.make_node('ConstantOfShape',
+                                             inputs=["input_shape_for_mask"],
+                                             outputs=[unsqueeze_node.input[0]],
+                                             value=constantofshape_value))
+                    return unsqueeze_node.input[0]
         return None
 
     def create_embedding_subgraph(self, normalize_node, word_embedding, segment_embedding, position_embedding):
-        segment_ids = self.find_segment_ids(segment_embedding)
-        if segment_ids is None:
-            logger.info("Failed to find segment_ids. Cannot fuse embedding layer.")
-            return False
-
         input_ids = self.find_input_ids(word_embedding)
         if input_ids is None:
             logger.info("Failed to find input_ids. Cannot fuse embedding layer.")
+            return False
+
+        segment_ids = self.find_segment_ids(segment_embedding, input_ids)
+        if segment_ids is None:
+            logger.info("Failed to find segment_ids. Cannot fuse embedding layer.")
             return False
 
         mask_input = self.find_mask_input([segment_ids, input_ids])
@@ -213,13 +256,17 @@ class BertOnnxModelTF(BertOnnxModel):
         self.attention_mask.set_mask_indice(mask_input, mask_index)
 
         if self.find_graph_input(input_ids).type.tensor_type.elem_type != TensorProto.INT32:
-            casted, input_ids = self.cast_graph_input_to_int32(input_ids)
+            casted, input_ids = self.utils.cast_graph_input_to_int32(input_ids)
 
-        if self.find_graph_input(segment_ids).type.tensor_type.elem_type != TensorProto.INT32:
-            casted, segment_ids = self.cast_graph_input_to_int32(segment_ids)
+        if self.find_graph_input(segment_ids):
+            casted, segment_ids = self.utils.cast_graph_input_to_int32(segment_ids)
+        else:
+            segment_ids, segment_id_cast_node = self.utils.cast_input_to_int32(segment_ids)
 
-        if self.find_graph_input(mask_input).type.tensor_type.elem_type != TensorProto.INT32:
-            casted, mask_input = self.cast_graph_input_to_int32(mask_input)
+        if self.find_graph_input(mask_input):
+            casted, mask_input = self.utils.cast_graph_input_to_int32(mask_input)
+        else:
+            mask_input, mask_input_cast_node = self.utils.cast_input_to_int32(mask_input)
 
         embed_output = self.create_node_name('embed_output')
         embed_node = onnx.helper.make_node(
