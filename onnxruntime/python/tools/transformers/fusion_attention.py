@@ -145,12 +145,12 @@ class FusionAttention(Fusion):
             bias.CopyFrom(numpy_helper.from_array(numpy_helper.to_array(bias).astype(np.float16), bias.name))
         self.model.add_initializer(bias)
 
-        attnetion_inputs = [input, attention_node_name + '_qkv_weight', attention_node_name + '_qkv_bias']
+        attention_inputs = [input, attention_node_name + '_qkv_weight', attention_node_name + '_qkv_bias']
         if mask_index is not None:
-            attnetion_inputs.append(mask_index)
+            attention_inputs.append(mask_index)
 
         attention_node = helper.make_node('Attention',
-                                          inputs=attnetion_inputs,
+                                          inputs=attention_inputs,
                                           outputs=[output],
                                           name=attention_node_name)
         attention_node.domain = "com.microsoft"

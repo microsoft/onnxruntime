@@ -156,7 +156,7 @@ def run_onnxruntime(use_gpu, model_names, model_class, precision, num_threads, b
                         # Get output sizes from a dummy ort run
                         ort_outputs = ort_session.run(ort_output_names, ort_inputs)
 
-                        data_type = numpy.longlong if 'pt' in model_source else numpy.int32
+                        data_type = numpy.longlong if 'pt' in model_source else numpy.intc
                         result = inference_ort_with_io_binding(ort_session, ort_inputs, result_template, repeat_times,
                                                                ort_output_names, ort_outputs, output_buffers,
                                                                max_last_state_size, max_pooler_size, batch_size, device,
