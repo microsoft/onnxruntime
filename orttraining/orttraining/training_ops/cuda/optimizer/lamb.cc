@@ -283,18 +283,7 @@ Status launch_lamb_reduction(
   ORT_ENFORCE(group_count == static_cast<int>(p_ws.size()));
   ORT_ENFORCE(group_count == static_cast<int>(p_ds.size()));
 
-  constexpr int tensor_count_per_group = 4;
-
-  int reduce_square_sum_count = 0;
-  int multitensor_count = 0;
-
-  // Bucketize tensor groups by the associated optimizer configuration.
-  // If two tensor groups use different "alpha", they should be put into two distinct buckets.
-  std::vector<std::vector<void*>> buckets;
-  std::vector<int> tensor_sizes_in_buckets;
-  // const int max_tensor_size = compute_max_tensor_size_per_launch<tensor_count_per_group>(4);
   for (int i = 0; i < group_count; ++i) {
-    // if (tensor_sizes[i] > max_tensor_size) {
       ORT_RETURN_IF_ERROR(reduce_square_sum(
           p_ws[i],
           p_w_norms[i],
@@ -307,48 +296,10 @@ Status launch_lamb_reduction(
           tensor_sizes[i],
           reduction_buffer,
           reduction_buffer_size));
-      reduce_square_sum_count++;
-    // } else {
-    //   std::vector<void*> ptrs(tensor_count_per_group);
-    //   ptrs[0] = const_cast<CudaTIn1*>(p_ws[i]);  // weight tensor
-    //   ptrs[1] = const_cast<CudaTIn2*>(p_ds[i]);  // update direction
-    //   ptrs[2] = p_w_norms[i];                    // weight tensor's norm
-    //   ptrs[3] = p_d_norms[i];                    // update direction's norm
-
-    //   buckets.push_back(ptrs);
-    //   tensor_sizes_in_buckets.push_back(tensor_sizes[i]);
-    //   multitensor_count++;
-    // }
   }
 
-  if (buckets.size() > 0) {
-    ORT_ENFORCE(tensor_sizes_in_buckets.size() > 0);
-  }
-
-  if (tensor_sizes_in_buckets.size() > 0) {
-    ORT_ENFORCE(buckets.size() > 0);
-  }
-
-  static bool first_time = true;
-  if (first_time) {
-    printf("reduce_square_sum_count = %d\n", reduce_square_sum_count);
-    printf("multitensor_count = %d\n", multitensor_count);
-    first_time = false;
-  }
-
-  // Only launch multi-tensor function if we have at least one tensor in the buckets.
-  if (tensor_sizes_in_buckets.size() > 0 && buckets.size() > 0) {
-    typedef LambMultiTensorReductionFunctor<CudaTIn1, CudaTIn2, CudaTNorm, CudaTNorm, CudaTNorm> TReducer;
-    TReducer reducer;
-    launch_multi_tensor_functor<tensor_count_per_group, TReducer>(
-        2048 * 32,
-        tensor_sizes_in_buckets,
-        buckets,
-        reducer,
-        reduction_buffer,
-        reduction_buffer_size);
-  }
-
+  // refer git history for multi-tensor launch
+  
   return Status::OK();
 }
 
