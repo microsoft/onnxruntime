@@ -24,6 +24,14 @@ class ResultsNoTransposePrepareForReduce {
   std::vector<int64_t> unprojected_index;
   int64_t last_loop_size;
   int64_t last_loop_inc;
+
+  ResultsNoTransposePrepareForReduce() : input_shape(), reduced_axes(), projected_index(), unprojected_index() {
+    last_loop_red_size = 0;
+    last_loop_red_inc = 0;
+    last_loop_size = 0;
+    last_loop_inc = 0;
+  }
+
   bool equal(const std::vector<int64_t>& local_input_shape, const std::vector<int64_t>& local_reduced_axes) {
     if (input_shape.size() != local_input_shape.size())
       return false;
