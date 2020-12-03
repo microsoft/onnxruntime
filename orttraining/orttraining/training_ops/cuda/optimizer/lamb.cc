@@ -292,9 +292,9 @@ Status launch_lamb_reduction(
   // If two tensor groups use different "alpha", they should be put into two distinct buckets.
   std::vector<std::vector<void*>> buckets;
   std::vector<int> tensor_sizes_in_buckets;
-  // const int max_tensor_size = compute_max_tensor_size_per_launch<tensor_count_per_group>(4);
+  const int max_tensor_size = compute_max_tensor_size_per_launch<tensor_count_per_group>(4);
   for (int i = 0; i < group_count; ++i) {
-    // if (tensor_sizes[i] > max_tensor_size) {
+    if (tensor_sizes[i] > max_tensor_size) {
       ORT_RETURN_IF_ERROR(reduce_square_sum(
           p_ws[i],
           p_w_norms[i],
@@ -308,17 +308,17 @@ Status launch_lamb_reduction(
           reduction_buffer,
           reduction_buffer_size));
       reduce_square_sum_count++;
-    // } else {
-    //   std::vector<void*> ptrs(tensor_count_per_group);
-    //   ptrs[0] = const_cast<CudaTIn1*>(p_ws[i]);  // weight tensor
-    //   ptrs[1] = const_cast<CudaTIn2*>(p_ds[i]);  // update direction
-    //   ptrs[2] = p_w_norms[i];                    // weight tensor's norm
-    //   ptrs[3] = p_d_norms[i];                    // update direction's norm
+    } else {
+      std::vector<void*> ptrs(tensor_count_per_group);
+      ptrs[0] = const_cast<CudaTIn1*>(p_ws[i]);  // weight tensor
+      ptrs[1] = const_cast<CudaTIn2*>(p_ds[i]);  // update direction
+      ptrs[2] = p_w_norms[i];                    // weight tensor's norm
+      ptrs[3] = p_d_norms[i];                    // update direction's norm
 
-    //   buckets.push_back(ptrs);
-    //   tensor_sizes_in_buckets.push_back(tensor_sizes[i]);
-    //   multitensor_count++;
-    // }
+      buckets.push_back(ptrs);
+      tensor_sizes_in_buckets.push_back(tensor_sizes[i]);
+      multitensor_count++;
+    }
   }
 
   if (buckets.size() > 0) {
@@ -327,13 +327,6 @@ Status launch_lamb_reduction(
 
   if (tensor_sizes_in_buckets.size() > 0) {
     ORT_ENFORCE(buckets.size() > 0);
-  }
-
-  static bool first_time = true;
-  if (first_time) {
-    printf("reduce_square_sum_count = %d\n", reduce_square_sum_count);
-    printf("multitensor_count = %d\n", multitensor_count);
-    first_time = false;
   }
 
   // Only launch multi-tensor function if we have at least one tensor in the buckets.
@@ -560,22 +553,11 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
   auto reduction_buffer_size =
       compute_reduction_buffer_size<CudaT2>(max_tensor_size);
 
-  static bool first_time = true;
-  if (first_time) {
-      printf("Original reduction buffer size = %lu\n", reduction_buffer_size);
-  }
-
   // Enlarge reduction buffer to accomodate multi-tensor reduction kernel as well
   const int tensor_group_size = 4; // w, d, w_norm, d_norm
   const int max_blocks = ChunkGroup<tensor_group_size>::max_block_count;
   const size_t multitensor_buffer_size = sizeof(CudaT2)*static_cast<int>(max_blocks*sizeof(CudaT2) + sizeof(int));
   reduction_buffer_size = std::max(reduction_buffer_size, 2*multitensor_buffer_size);
-
-  if (first_time) {
-    printf("Multitensor buffer size = %lu\n", multitensor_buffer_size);
-    printf("Revised reduction buffer size = %lu\n", reduction_buffer_size);
-    first_time = false;
-  }
 
   // Allocate reduction buffer whose size is reduction_buffer_size bytes.
   IAllocatorUniquePtr<void> reduction_buffer = GetScratchBuffer<void>(reduction_buffer_size);

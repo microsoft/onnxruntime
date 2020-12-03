@@ -518,25 +518,9 @@ __global__ void LambMultiTensorReductionImpl(ChunkGroup<4> chunk_group, TOut1* w
     __syncthreads();
   }
 
-  // -- testing: modify code to use deterministic block level reduction
-
-  // if (threadIdx.x == 0) {
-  //   atomic_add(w_norm, TOut1(w_shared_memory_[0]));
-  //   atomic_add(d_norm, TOut2(d_shared_memory_[0]));
-  // }
-
-  // return;
-
-  // Thread-level indexes:
-  // Linear index of thread in block.
   const int tid_in_block = threadIdx.y * blockDim.x + threadIdx.x;
-
-  // Grid-level indexes:
-  // Linear index of block in grid.
   const int bid_in_grid = blockIdx.x + blockIdx.y * gridDim.x;
-  // Linear index of thread in grid.
   const int tid_in_grid = bid_in_grid * (blockDim.x * blockDim.y) + tid_in_block;
-  // Total number of blocks in a 2-D grid.
   const int num_blocks_in_grid = gridDim.x * gridDim.y;
 
   // Return early if only one block is used for reduction.
@@ -556,7 +540,7 @@ __global__ void LambMultiTensorReductionImpl(ChunkGroup<4> chunk_group, TOut1* w
   __threadfence();
   __syncthreads();
 
-  // Grid-level reduciton. We use the last block to sum up values
+  // Grid-level reduction. We use the last block to sum up values
   // stored in the global buffer.
   __shared__ bool is_last_block_done;
 
@@ -588,7 +572,6 @@ __global__ void LambMultiTensorReductionImpl(ChunkGroup<4> chunk_group, TOut1* w
       *d_norm = TOut2(d_buffer[0]);
     }
   }
-
 };
 
 template <typename TIn1, typename TIn2, typename TOut1, typename TOut2, typename TBuf>
@@ -610,17 +593,8 @@ void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()
 
   TOut1 *w_buffer = reinterpret_cast<TOut1*>(reduction_buffer);
   TOut2 *d_buffer = reinterpret_cast<TOut2*>(w_buffer + w_buffer_size);
-  // cudaMalloc(&w_buffer, w_buffer_size*sizeof(TOut1));
-  // ORT_ENFORCE(cudaMemset(w_buffer, 0, w_buffer_size * sizeof(TOut1)) == cudaSuccess);
-
-  // TOut2 *d_buffer;
-  // cudaMalloc(&d_buffer, d_buffer_size*sizeof(TOut2));
-  // ORT_ENFORCE(cudaMemset(d_buffer, 0, d_buffer_size * sizeof(TOut2)) == cudaSuccess);
 
   LambMultiTensorReductionImpl<TIn1, TIn2, TOut1, TOut2, TBuf><<<chunk_group.chunk_count, thread_count, shared_memory_size>>>(chunk_group, w_buffer, d_buffer);
-
-  // cudaFree(w_buffer);
-  // cudaFree(d_buffer);
 }
 
 #define INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(TIn1, TIn2, TOut1, TOut2, TBuf) \
