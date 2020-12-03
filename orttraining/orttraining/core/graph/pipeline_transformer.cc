@@ -873,9 +873,9 @@ common::Status HandleSharedInitializer(Graph& graph,
 // partition transformation. 
 std::set<const NodeArg*> GetAllNodeArgs(Graph& graph) {
   std::set<const NodeArg*> initial_node_args;
-  for (size_t i = 0, t = graph.MaxNodeIndex(); i < t; ++i) {
-    Node* node = graph.GetNode(i);
-    auto& node_outputs = node->MutableOutputDefs();
+  auto& all_nodes = graph.Nodes();
+  for (auto& node : all_nodes) {
+    auto& node_outputs = node.MutableOutputDefs();
     for (NodeArg* arg : node_outputs) {
       if (arg == nullptr || !arg->HasTensorOrScalarShape()) 
         continue;
@@ -1345,7 +1345,7 @@ Status VerifyAssignment(std::vector<int> stages, int nstages, Graph& graph) {
   }
 
   // Edges always go forward.
-  for (size_t i = 0, t = graph.MaxNodeIndex(); i < t; ++i) {
+  for (size_t i = 0, t = graph.NumberOfNodes(); i < t; ++i) {
     Node* node = graph.GetNode(i);
     int node_stage = stages[i];
     auto& node_outputs = node->MutableOutputDefs();
@@ -1367,7 +1367,7 @@ Status GetDeviceAssignmentMap(Graph& graph,
                               const std::map<std::string, int>& id_to_stage,
                               std::map<Node*, int>& op_to_stage,
                               int nstages) {
-  int n_nodes = graph.MaxNodeIndex();
+  int n_nodes = graph.NumberOfNodes();
   std::vector<int> stages(n_nodes);
   for (int i = 0; i < n_nodes; ++i) {
     Node* node = graph.GetNode(i);
@@ -1399,7 +1399,7 @@ Status GetDeviceAssignmentMap(Graph& graph,
   ORT_RETURN_IF(nstages != static_cast<int>(cuts.size() + 1),
                 "Number of cuts does not match number of pipeline stages.");
   
-  auto total_nodes = graph.MaxNodeIndex();
+  auto total_nodes = graph.NumberOfNodes();
   
   auto visit_and_assign = [&](std::vector<Node*>& roots, int stage,
                               std::vector<bool>& stop_visit,
@@ -1515,7 +1515,7 @@ Status GetDeviceAssignmentMap(Graph& graph,
 
   ORT_RETURN_IF_ERROR(VerifyAssignment(stages, ncuts + 1, graph));
 
-  for (size_t i = 0, t = graph.MaxNodeIndex(); i < t; ++i) {
+  for (size_t i = 0, t = graph.NumberOfNodes(); i < t; ++i) {
     op_to_stage.emplace(graph.GetNode(i), stages[i]);
   }
 

@@ -36,21 +36,6 @@ const static int NUM_CLASS = 10;
 const static vector<int64_t> IMAGE_DIMS = {784};  //{1, 28, 28} for mnist_conv
 const static vector<int64_t> LABEL_DIMS = {10};
 
-Status ReadOpToStageMap(const std::string& filename,
-                       std::map<std::string, int>& op_id_to_stage) {
-  std::ifstream mfile;
-  mfile.open(filename);
-  const std::string delimiter = " ";
-  std::string line;
-  if (mfile.is_open()) {
-    while (std::getline(mfile, line)) {
-      op_id_to_stage.insert({line.substr(0, line.find(delimiter)),
-                             std::stoi(line.substr(line.find(delimiter), line.size()))});
-    }
-    mfile.close();
-  }
-  return Status::OK();
-}
 
 Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params) {
   cxxopts::Options options("POC Training", "Main Program to train on MNIST");
