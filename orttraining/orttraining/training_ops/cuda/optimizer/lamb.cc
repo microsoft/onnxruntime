@@ -285,9 +285,6 @@ Status launch_lamb_reduction(
 
   constexpr int tensor_count_per_group = 4;
 
-  int reduce_square_sum_count = 0;
-  int multitensor_count = 0;
-
   // Bucketize tensor groups by the associated optimizer configuration.
   // If two tensor groups use different "alpha", they should be put into two distinct buckets.
   std::vector<std::vector<void*>> buckets;
@@ -307,7 +304,6 @@ Status launch_lamb_reduction(
           tensor_sizes[i],
           reduction_buffer,
           reduction_buffer_size));
-      reduce_square_sum_count++;
     } else {
       std::vector<void*> ptrs(tensor_count_per_group);
       ptrs[0] = const_cast<CudaTIn1*>(p_ws[i]);  // weight tensor
@@ -317,7 +313,6 @@ Status launch_lamb_reduction(
 
       buckets.push_back(ptrs);
       tensor_sizes_in_buckets.push_back(tensor_sizes[i]);
-      multitensor_count++;
     }
   }
 
@@ -652,6 +647,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
       alpha_, beta_, lambda_, epsilon_,
       do_bias_correction_));
 
+  
   ORT_RETURN_IF_ERROR(launch_lamb_reduction(
       group_count,
       tensor_sizes,
