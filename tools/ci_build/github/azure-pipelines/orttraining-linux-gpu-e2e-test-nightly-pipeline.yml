@@ -11,6 +11,9 @@ jobs:
     clean: true
     submodules: recursive
 
+  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_custom_script_extension_map_test_data.sh
+    displayName: 'Map test data'
+
   - template: templates/run-docker-build-steps.yml
     parameters:
       RunDockerBuildArgs: |
