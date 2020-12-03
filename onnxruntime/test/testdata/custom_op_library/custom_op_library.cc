@@ -5,7 +5,7 @@
 #undef ORT_API_MANUAL_INIT
 
 #include <vector>
-#include <cmath>
+#include <cmath> 
 #include <mutex>
 
 static const char* c_OpDomain = "test.customop";

@@ -94,6 +94,20 @@ struct CustomOpKernel : OpKernel {
   void* op_kernel_;
 };
 
+void ConstrainType(KernelDefBuilder& builder, ONNX_NAMESPACE::OpSchema& schema, const std::string& type_name, uint32_t type) {
+  std::vector<MLDataType> builder_types;
+  std::vector<std::string> schema_types;
+  for (uint32_t i = 0; i < (sizeof(type)<<3); ++i) {
+    if (type & (0x1 << i)) {
+      auto type_string = DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(i+1));
+      builder_types.push_back(DataTypeImpl::GetDataType(type_string));
+      schema_types.push_back(type_string);
+    }
+  }
+  schema.TypeConstraint(type_name, schema_types, type_name);
+  builder.TypeConstraint(type_name, builder_types);
+}
+
 common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_domains, std::shared_ptr<CustomRegistry>& output) {
   output = std::make_shared<CustomRegistry>();
 
@@ -114,29 +128,6 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
     std::vector<ONNX_NAMESPACE::OpSchema> schemas_list;
 
     for (auto& op : domain->custom_ops_) {
-      ONNX_NAMESPACE::OpSchema schema(op->GetName(op), "unknown", 0);
-
-      auto input_count = op->GetInputTypeCount(op);
-      for (size_t i = 0; i < input_count; i++) {
-        auto type = op->GetInputType(op, i);
-
-        schema.Input(i, "A", "Description",
-                     DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)));
-      }
-
-      auto output_count = op->GetOutputTypeCount(op);
-      for (size_t i = 0; i < output_count; i++) {
-        auto type = op->GetOutputType(op, i);
-
-        schema.Output(i, "A", "Description",
-                      DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)));
-      }
-
-      schema.SetDomain(domain->domain_);
-      schema.SinceVersion(1);
-      schema.AllowUncheckedAttributes();
-      schemas_list.push_back(schema);
-
       KernelDefBuilder def_builder;
       def_builder.SetName(op->GetName(op))
           .SetDomain(domain->domain_)
@@ -146,6 +137,47 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
       else
         def_builder.Provider(onnxruntime::kCpuExecutionProvider);
 
+      ONNX_NAMESPACE::OpSchema schema(op->GetName(op), "unknown", 0);
+
+      auto input_count = op->GetInputTypeCount(op);
+      for (size_t i = 0; i < input_count; i++) {
+        auto input_name = "input_" + std::to_string(i);
+        schema.Input(i, input_name, input_name, input_name);
+        auto type = op->GetInputType(op, i);
+        ConstrainType(def_builder, schema, input_name, type);
+        /*
+        schema.Input(i, "A", "Description",
+                     DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)));
+                     */
+      }
+
+      auto output_count = op->GetOutputTypeCount(op);
+      for (size_t i = 0; i < output_count; i++) {
+        auto output_name = "output_" + std::to_string(i);
+        schema.Output(i, output_name, output_name, output_name);
+        auto type = op->GetOutputType(op, i);
+        ConstrainType(def_builder, schema, output_name, type);
+        /*
+        schema.Output(i, "A", "Description",
+                      DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)));
+                      */
+      }
+
+      schema.SetDomain(domain->domain_);
+      schema.SinceVersion(1);
+      schema.AllowUncheckedAttributes();
+      schemas_list.push_back(schema);
+
+      /*
+      KernelDefBuilder def_builder;
+      def_builder.SetName(op->GetName(op))
+          .SetDomain(domain->domain_)
+          .SinceVersion(1);
+      if (const char* provider_type = op->GetExecutionProviderType(op))
+        def_builder.Provider(provider_type);
+      else
+        def_builder.Provider(onnxruntime::kCpuExecutionProvider);
+        */
       KernelCreateFn kernel_create_fn = [&op](const OpKernelInfo& info) -> OpKernel* { return new CustomOpKernel(info, *op); };
       KernelCreateInfo create_info(def_builder.Build(), kernel_create_fn);
 

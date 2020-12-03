@@ -91,23 +91,23 @@ extern "C" {
 // Copied from TensorProto::DataType
 // Currently, Ort doesn't support complex64, complex128
 typedef enum ONNXTensorElementDataType {
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED,
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,   // maps to c type float
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8,   // maps to c type uint8_t
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8,    // maps to c type int8_t
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16,  // maps to c type uint16_t
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16,   // maps to c type int16_t
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32,   // maps to c type int32_t
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64,   // maps to c type int64_t
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING,  // maps to c++ type std::string
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL,
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16,
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE,      // maps to c type double
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32,      // maps to c type uint32_t
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64,      // maps to c type uint64_t
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64,   // complex with float32 real and imaginary components
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128,  // complex with float64 real and imaginary components
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16     // Non-IEEE floating-point format based on IEEE754 single-precision
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED = 0x0,
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT = 0x1,  // maps to c type float
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8 = 0x2,  // maps to c type uint8_t
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8 = 0x4,   // maps to c type int8_t
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16 = 0x8,  // maps to c type uint16_t
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16 = 0x10,    // maps to c type int16_t
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32 = 0x20,    // maps to c type int32_t
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64 = 0x40,    // maps to c type int64_t
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING = 0x80,  // maps to c++ type std::string
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL = 0x100,
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16 = 0x200,
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE = 0x400,  // maps to c type double
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32 = 0x800,  // maps to c type uint32_t
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64 = 0x1000,  // maps to c type uint64_t
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64 = 0x2000,  // complex with float32 real and imaginary components
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128 = 0x4000,  // complex with float64 real and imaginary components
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16 = 0x8000     // Non-IEEE floating-point format based on IEEE754 single-precision
 } ONNXTensorElementDataType;
 
 // Synced with onnx TypeProto oneof
