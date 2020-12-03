@@ -111,24 +111,6 @@ struct LambMultiTensorComputeDirectionFunctor {
       const T3 beta_correction);
 };
 
-// Lamb's reduction maps [w, d] to [w_norm, d_norm] where
-//  w: weight tensor
-//  d: update direction
-//  w_norm: norm of w
-//  d_norm: norm of d
-// There are 4 distinct tensors in total and therefore the
-// type of chunk_group is ChunkGroup<4>.
-//
-// Tensor pointers associated with the i-th tensor in this chunk:
-//  w: chunk_group.tensor_ptrs[0][i]
-//  d: chunk_group.tensor_ptrs[1][i]
-//  w_norm: chunk_group.tensor_ptrs[2][i]
-//  d_norm: chunk_group.tensor_ptrs[3][i]
-template <typename TIn1, typename TIn2, typename TOut1, typename TOut2, typename TBuf>
-struct LambMultiTensorReductionFunctor {
-  void operator()(ChunkGroup<4> chunk_group, void *reduction_buffer, size_t reduction_buffer_size);
-};
-
 // Lamb's stage 2 maps [w_norm, w_norm, w, d] to [w_new, g_new, w_mixed_precision_new] where
 //  w_norm: norm of w
 //  d_norm: norm of d

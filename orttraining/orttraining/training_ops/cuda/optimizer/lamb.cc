@@ -508,7 +508,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
   }
 
   // Allocate a buffer in byte for reduction API calls.
-  auto reduction_buffer_size =
+  const auto reduction_buffer_size =
       compute_reduction_buffer_size<CudaT2>(max_tensor_size);
 
   // Allocate reduction buffer whose size is reduction_buffer_size bytes.
