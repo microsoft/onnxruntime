@@ -315,9 +315,10 @@ stages:
           Python37:
             python.version: '3.7'
           Python38:
-            python.version: '3.8'
-          Python39:
-            python.version: '3.9'
+            PythonVersion: '3.8'
+          # dependency PyTorch does not support Python 3.9 yet
+          # Python39:
+          #   PythonVersion: '3.9'
       steps:
       - checkout: self
         clean: true
