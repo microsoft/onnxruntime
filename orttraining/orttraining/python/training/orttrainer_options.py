@@ -277,6 +277,8 @@ class ORTTrainerOptions(object):
         debug.check_model_export (bool, default is False)
             compares PyTorch model outputs with ONNX model outputs in inference before the first
             train step to ensure successful model export
+        debug.model_with_training_graph_path (str, default is "")
+            path to export the training onnx graph. No output when it is empty.
         _internal_use (dict):
             internal options, possibly undocumented, that might be removed without notice
         _internal_use.enable_internal_postprocess (bool, default is True):
