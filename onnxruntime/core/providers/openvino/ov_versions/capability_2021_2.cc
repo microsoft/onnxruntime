@@ -159,6 +159,7 @@ bool IsOpSupported(std::string name, std::string device) {
   };
   std::set<std::string> supported_ops_vpu = {
       "Expand",
+      "GatherND",
       "NonZero",
       "ReduceLogSum",
       "ReduceSumSquare",
@@ -280,15 +281,17 @@ static bool IsUnsupportedOpMode(const Provider_Node* node, const Provider_GraphV
         return true;
     }
   } else if (optype == "Max" || optype == "Min" || optype == "Mean" || optype == "Sum") {
+    if (device_id != "MYRIAD") {
     if (GetInputCount(node, initializers) == 1)
       return true;
     if (optype == "Max" || optype == "Min") {
       for (size_t i = 0; i < node->InputDefs().size(); i++) {
         auto dtype = node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type();
         if (dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8 ||
-            dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16)
+          dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16)
           return true;
       }
+    }
     }
   } else if (optype == "Clip") {
     //Only float 16, float and double data types are supported
@@ -692,13 +695,22 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
         if (optype == "Unsqueeze" || optype == "Squeeze" || optype == "Cast" ||
             optype == "Gather" || optype == "Mul" || optype == "Sub" ||
             optype == "Min" || optype == "Div" || optype == "Floor" || optype == "Range" || optype == "Where")
-          return;
+            return;
+
+        if (device_id == "MYRIAD") {
+            if (optype == "ArgMin" || optype == "Reshape" || optype == "Max" ||
+                optype == "Add" || optype == "Less" || optype == "Greater" ||
+                optype == "Clip" || optype == "Resize" || optype == "Equal" )
+              return;
+        }
         has_unsupported_dimension = true;
         return;
       } else {
         //Zero dimension check
         for (const auto& dim : shape->dim()) {
           if (utils::HasDimValue(dim) && dim.dim_value() == 0) {
+            if ((device_id == "MYRIAD") && (optype == "Resize"))
+              return;
             has_unsupported_dimension = true;
             return;
           }
