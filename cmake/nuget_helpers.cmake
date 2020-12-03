@@ -7,7 +7,7 @@ cmake_minimum_required(VERSION 3.0)
 #
 # id  : package id
 # out : name of variable to set result
-function(pkg_version id out packages_config)
+function(package_version id out packages_config)
     file(READ ${packages_config} packages_config_contents)
     string(REGEX MATCH "package[ ]*id[ ]*=[ ]*\"${id}\"" found_package_id ${packages_config_contents})
     if (NOT(found_package_id))
@@ -32,8 +32,8 @@ function(
 
     # Retrieve the latest version of nuget
     include(ExternalProject)
-    ExternalProject_Add(nuget
-    PREFIX nuget
+    ExternalProject_Add(nuget_exe
+    PREFIX nuget_exe
     URL "https://dist.nuget.org/win-x86-commandline/v5.3.0/nuget.exe"
     DOWNLOAD_NO_EXTRACT 1
     CONFIGURE_COMMAND ""
@@ -49,9 +49,9 @@ function(
     add_custom_command(
     OUTPUT ${target_dependency}
     DEPENDS ${PACKAGES_CONFIG} ${NUGET_CONFIG}
-    COMMAND ${CMAKE_CURRENT_BINARY_DIR}/nuget/src/nuget restore ${PACKAGES_CONFIG} -PackagesDirectory ${PACKAGES_DIR} -ConfigFile ${NUGET_CONFIG}
+    COMMAND ${CMAKE_CURRENT_BINARY_DIR}/nuget_exe/src/nuget restore ${PACKAGES_CONFIG} -PackagesDirectory ${PACKAGES_DIR} -ConfigFile ${NUGET_CONFIG}
     VERBATIM)
 
     add_custom_target(${nuget_target} DEPENDS ${target_dependency})
-    add_dependencies(${nuget_target} nuget)
+    add_dependencies(${nuget_target} nuget_exe)
 endfunction()
