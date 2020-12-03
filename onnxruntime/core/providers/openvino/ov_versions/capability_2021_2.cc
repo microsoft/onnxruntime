@@ -49,7 +49,7 @@ bool IsDimensionSupported(const Provider_Node* node) {
   return true;
 }
 
-//Ops which are not supported by OpenVINO EP
+//Ops which are supported by OpenVINO EP
 bool IsOpSupported(std::string name, std::string device) {
   std::set<std::string> common_supported_ops = {
       "Add",
@@ -92,6 +92,7 @@ bool IsOpSupported(std::string name, std::string device) {
       "Mul",
       "Neg",
       "NonMaxSuppression",
+      "Not",
       "OneHot",
       "Pad",
       "Pow",
@@ -132,7 +133,6 @@ bool IsOpSupported(std::string name, std::string device) {
       "Cosh",
       "GlobalLpPool",
       "HardSigmoid",
-      "Not",
       "ReduceLogSum",
       "ReduceProd",
       "ReduceSumSquare",
@@ -153,28 +153,25 @@ bool IsOpSupported(std::string name, std::string device) {
       "Ceil",
       "GlobalLpPool",
       "HardSigmoid",
-      "Not",
       "Selu",
       "Tan",
   };
   std::set<std::string> supported_ops_vpu = {
+      "ArgMin",
+      "Equal",
       "Expand",
       "GatherND",
       "NonZero",
+      "Range",
       "ReduceLogSum",
       "ReduceSumSquare",
       "Resize",
       "RoiAlign",
-      "Scatter",
-      "SinFloat",
-      "ArgMax",
-      "Range",
-      "Where",
-      "ArgMin",
       "Round",
-      "Not",
-      "Equal",
+      "Scatter",
       "ScatterElements",
+      "SinFloat",
+      "Where",
   };
 
   std::set<std::string> supported_ops = {};
@@ -582,7 +579,6 @@ static bool IsTypeSupported(const Provider_NodeArg* node_arg, bool is_initialize
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8,
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8,
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64,
-        //ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE,
     };
 
     std::set<int> supported_types_gpu = {
@@ -994,4 +990,4 @@ GetCapability_2021_2(const Provider_GraphViewer& graph_viewer, std::string devic
 }  // namespace openvino_ep
 }  // namespace onnxruntime
 
-#endif  //defined OPENVINO_2021_1
+#endif  //defined OPENVINO_2021_2

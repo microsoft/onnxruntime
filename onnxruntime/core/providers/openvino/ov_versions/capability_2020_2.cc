@@ -56,7 +56,7 @@ bool IsDimensionSupported(const Provider_Node* node) {
   return true;
 }
 
-//Ops which are not supported by OpenVINO EP
+//Ops which are supported by OpenVINO EP
 bool IsUnsupportedOp(std::string name, std::string device) {
   std::set<std::string> unsupported_ops_cpu = {
       "Acosh",
