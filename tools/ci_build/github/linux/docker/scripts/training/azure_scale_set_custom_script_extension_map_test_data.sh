@@ -5,7 +5,7 @@ sudo mkdir /etc/smbcredentials
 fi
 if [ ! -f "/etc/smbcredentials/onnxruntimetestdata.cred" ]; then
     sudo bash -c 'echo "username=onnxruntimetestdata" >> /etc/smbcredentials/onnxruntimetestdata.cred'
-    sudo bash -c 'echo "password=PHlXrgqZjn8iw8pMlBgD3DSN95+A5bX2ZiNOx1+yNJ8GasYJT+zZpDzPHD4nlrIFA00un7InSjiCstvItXpBuA==" >> /etc/smbcredentials/onnxruntimetestdata.cred'
+    sudo bash -c 'echo "password=$1" >> /etc/smbcredentials/onnxruntimetestdata.cred'
 fi
 sudo chmod 600 /etc/smbcredentials/onnxruntimetestdata.cred
 
