@@ -1457,7 +1457,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
             # Disable python tests in a reduced build as we don't know which ops have been included and which
             # models can run
-            if args.include_ops_by_model or args.include_ops_by_config or args.minimal_build:
+            if args.include_ops_by_model or args.include_ops_by_config or args.minimal_build != 'off':
                 return
 
             if is_windows():
