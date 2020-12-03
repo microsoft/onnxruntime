@@ -299,7 +299,7 @@ Status launch_lamb_reduction(
   }
 
   // refer git history for multi-tensor launch
-  
+
   return Status::OK();
 }
 
@@ -510,23 +510,6 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
   // Allocate a buffer in byte for reduction API calls.
   auto reduction_buffer_size =
       compute_reduction_buffer_size<CudaT2>(max_tensor_size);
-
-  static bool first_time = true;
-  if (first_time) {
-      printf("Original reduction buffer size = %lu\n", reduction_buffer_size);
-  }
-
-  // Enlarge reduction buffer to accomodate multi-tensor reduction kernel as well
-  const int tensor_group_size = 4; // w, d, w_norm, d_norm
-  const int max_blocks = ChunkGroup<tensor_group_size>::max_block_count;
-  const size_t multitensor_buffer_size = sizeof(CudaT2)*static_cast<int>(max_blocks*sizeof(CudaT2) + sizeof(int));
-  reduction_buffer_size = std::max(reduction_buffer_size, 2*multitensor_buffer_size);
-
-  if (first_time) {
-    printf("Multitensor buffer size = %lu\n", multitensor_buffer_size);
-    printf("Revised reduction buffer size = %lu\n", reduction_buffer_size);
-    first_time = false;
-  }
 
   // Allocate reduction buffer whose size is reduction_buffer_size bytes.
   IAllocatorUniquePtr<void> reduction_buffer = GetScratchBuffer<void>(reduction_buffer_size);
