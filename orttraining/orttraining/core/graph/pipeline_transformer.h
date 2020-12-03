@@ -19,13 +19,13 @@ Status TransformGraphForPipeline(
 // TODO(jufranc): when adapting this code to partition training graphs, add
 // a boolean is_training as parameter.
 Status ApplyPipelinePartitionToMainGraph(Graph& graph,
-    std::map<Node*, int>& op_to_rank,
+    std::map<Node*, int>& op_to_stage,
     int pipeline_stage_id,
     int nstages);
 
 Status GetDeviceAssignmentMap(Graph& graph,
-                              const std::map<std::string, int>& id_to_rank,
-                              std::map<Node*, int>& op_to_rank,
+                              const std::map<std::string, int>& id_to_stage,
+                              std::map<Node*, int>& op_to_stage,
                               int nstages);
 
 Status GetDeviceAssignmentMap(Graph& graph,

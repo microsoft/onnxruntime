@@ -1182,7 +1182,7 @@ common::Status SplitGraphWithMap(Graph& graph,
     attributes[tag.name()] = tag;
     attributes[element_types.name()] = element_types;
 
-    // Add pair of Send?receive nodes.
+    // Add pair of Send/Receive nodes.
     auto& send_node = graph.AddNode(graph.GenerateNodeName("Send"),
                                     "Send", "", send_input_args,
                                     send_output_args, /* output */

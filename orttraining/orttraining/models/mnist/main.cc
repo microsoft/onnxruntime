@@ -124,59 +124,52 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
     // graph into n partitions.
     if (params.pipeline_parallel_size > 1) {
       
-      const std::string filename = flags["mapping_file"].as<std::string>();
       auto cut_info_groups = flags["cut_group_info"].as<std::vector<std::string>>();
-      ORT_RETURN_IF_NOT(!filename.empty() || static_cast<int>(cut_info_groups.size() + 1) == params.pipeline_parallel_size,
+      ORT_RETURN_IF_NOT(static_cast<int>(cut_info_groups.size() + 1) == params.pipeline_parallel_size,
                         "cut_info length plus one must match pipeline parallel size");
 
-      if (!filename.empty()) {
-        ORT_ENFORCE(cut_info_groups.size() == 0,
-                    "Device mapping and cut info cannot be both defined.");
-        ReadOpToStageMap(filename, params.op_id_to_rank);
-      } else {
-        auto process_with_delimiter = [](std::string& input_str, const std::string& delimiter) {
-          std::vector<std::string> result;
-          size_t pos = 0;
-          std::string token;
-          while ((pos = input_str.find(delimiter)) != std::string::npos) {
-            token = input_str.substr(0, pos);
-            result.emplace_back(token);
-            input_str.erase(0, pos + delimiter.length());
-          }
-          // push the last split of substring into result.
-          result.emplace_back(input_str);
-          return result;
-        };
-
-        auto process_cut_info = [&](std::string& cut_info_string) {
-          TrainingSession::TrainingConfiguration::CutInfo cut_info;
-          const std::string edge_delimiter = ":";
-          const std::string consumer_delimiter = "/";
-          const std::string producer_consumer_delimiter = "-";
-
-          auto cut_edges = process_with_delimiter(cut_info_string, edge_delimiter);
-          for (auto& cut_edge : cut_edges) {
-            auto process_edge = process_with_delimiter(cut_edge, producer_consumer_delimiter);
-            if (process_edge.size() == 1) {
-              TrainingSession::TrainingConfiguration::CutEdge edge{process_edge[0]};
-              cut_info.emplace_back(edge);
-            } else {
-              ORT_ENFORCE(process_edge.size() == 2);
-              auto consumer_list = process_with_delimiter(process_edge[1], consumer_delimiter);
-
-              TrainingSession::TrainingConfiguration::CutEdge edge{process_edge[0], consumer_list};
-              cut_info.emplace_back(edge);
-            }
-          }
-          return cut_info;
-        };
-
-        for (auto& cut_info : cut_info_groups) {
-          TrainingSession::TrainingConfiguration::CutInfo cut = process_cut_info(cut_info);
-          params.pipeline_partition_cut_list.emplace_back(cut);
+      auto process_with_delimiter = [](std::string& input_str, const std::string& delimiter) {
+        std::vector<std::string> result;
+        size_t pos = 0;
+        std::string token;
+        while ((pos = input_str.find(delimiter)) != std::string::npos) {
+          token = input_str.substr(0, pos);
+          result.emplace_back(token);
+          input_str.erase(0, pos + delimiter.length());
         }
+        // push the last split of substring into result.
+        result.emplace_back(input_str);
+        return result;
+      };
 
+      auto process_cut_info = [&](std::string& cut_info_string) {
+        TrainingSession::TrainingConfiguration::CutInfo cut_info;
+        const std::string edge_delimiter = ":";
+        const std::string consumer_delimiter = "/";
+        const std::string producer_consumer_delimiter = "-";
+
+        auto cut_edges = process_with_delimiter(cut_info_string, edge_delimiter);
+        for (auto& cut_edge : cut_edges) {
+          auto process_edge = process_with_delimiter(cut_edge, producer_consumer_delimiter);
+          if (process_edge.size() == 1) {
+            TrainingSession::TrainingConfiguration::CutEdge edge{process_edge[0]};
+            cut_info.emplace_back(edge);
+          } else {
+            ORT_ENFORCE(process_edge.size() == 2);
+            auto consumer_list = process_with_delimiter(process_edge[1], consumer_delimiter);
+
+            TrainingSession::TrainingConfiguration::CutEdge edge{process_edge[0], consumer_list};
+            cut_info.emplace_back(edge);
+          }
+        }
+        return cut_info;
+      };
+
+      for (auto& cut_info : cut_info_groups) {
+        TrainingSession::TrainingConfiguration::CutInfo cut = process_cut_info(cut_info);
+        params.pipeline_partition_cut_list.emplace_back(cut);
       }
+
     }
     params.use_nccl = flags["use_nccl"].as<bool>();
 #ifdef USE_CUDA

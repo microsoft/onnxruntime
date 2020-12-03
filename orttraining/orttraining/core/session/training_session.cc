@@ -176,19 +176,19 @@ Status TrainingSession::ConfigureForTraining(
     // transportation which may alter node_arg and invalidate cut_list info from the original graph.
     ORT_ENFORCE(pipeline_stage_id >= 0, "invalid pipelie stage id (", pipeline_stage_id, ") before doing online partition.");
     int n_stages = config.distributed_config.pipeline_parallel_size;
-    std::map<Node*, int> op_to_rank;
+    std::map<Node*, int> op_to_stage;
     const auto& cut_list = config.pipeline_config.value().cut_list;
     if (cut_list.size() > 0) {
       ORT_RETURN_IF_ERROR(
-        GetDeviceAssignmentMap(model_->MainGraph(), cut_list, op_to_rank, n_stages));
+        GetDeviceAssignmentMap(model_->MainGraph(), cut_list, op_to_stage, n_stages));
     } else {
-      const auto& id_to_rank = config.pipeline_config.value().op_id_to_rank;
+      const auto& id_to_stage = config.pipeline_config.value().op_id_to_stage;
       ORT_RETURN_IF_ERROR(
-        GetDeviceAssignmentMap(model_->MainGraph(), id_to_rank, op_to_rank, n_stages));
+        GetDeviceAssignmentMap(model_->MainGraph(), id_to_stage, op_to_stage, n_stages));
     }
 
     ORT_RETURN_IF_ERROR(
-      ApplyPipelinePartitionToMainGraph(model_->MainGraph(), op_to_rank,
+      ApplyPipelinePartitionToMainGraph(model_->MainGraph(), op_to_stage,
                                         pipeline_stage_id, n_stages));
 
     if (config.pipeline_config.value().partitioned_model_path.has_value()) {
