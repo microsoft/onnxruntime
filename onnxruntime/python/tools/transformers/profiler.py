@@ -5,6 +5,11 @@ import onnx
 import psutil
 import numpy
 
+"""
+This profiler tool could run a transformer model and print out the kernel time spent on each Node of the model.
+Example of profiling of longformer model:
+    python profiler.py --model longformer-base-4096_fp32.onnx --batch_size 1 --sequence_length 4096 --global_length 8 --samples 1000 --thread_num 8 --dummy_inputs longformer --use_gpu
+"""
 
 def parse_arguments(argv=None):
     parser = argparse.ArgumentParser()
