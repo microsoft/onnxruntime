@@ -158,7 +158,7 @@ void SetIODefs(const Provider_ModelProto& model_proto,
   auto outputInfo = network->getOutputsInfo();
   for (auto iter = outputInfo.begin(); iter != outputInfo.end(); ++iter) {
     auto token = iter->first;
-    std::string delimiter = ".";
+    std::string delimiter = "/";
     auto output_name = token.substr(0, token.find(delimiter));
 #if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1) || (defined OPENVINO_2021_2)
     auto it = const_outputs_map.find(output_name);
@@ -193,7 +193,7 @@ GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_s
   for (size_t j = 0; j < num_dims; j++) {
     output_shape[j] = static_cast<int64_t>(graph_output_dims[j]);
   }
-  std::string delimiter = ".";
+  std::string delimiter = "/";
   auto token = output_name.substr(0, output_name.find(delimiter));
   auto it = output_names.find(token);
   if (it == output_names.end()) {

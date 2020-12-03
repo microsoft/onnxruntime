@@ -128,7 +128,8 @@ void BasicBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContex
   try {
     infer_request->Wait(InferenceEngine::IInferRequest::WaitMode::RESULT_READY);
   } catch (const InferenceEngine::details::InferenceEngineException& e) {
-    ORT_THROW(log_tag + " Exception with completing Inference: " + e.what());
+    //not throwing an exeption because of https://jira.devtools.intel.com/browse/CVS-44282
+    LOGS_DEFAULT(INFO) << " Exception with completing Inference: " <<  e.what();
   } catch (...) {
     ORT_THROW(log_tag + " Exception with completing Inference");
   }
