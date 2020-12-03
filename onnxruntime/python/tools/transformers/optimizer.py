@@ -324,6 +324,11 @@ def main():
 
     _setup_logger(args.verbose)
 
+    if os.path.realpath(args.input) == os.path.realpath(args.output):
+        logger.warning(
+            f"Specified the same input and output path. Note that this may overwrite the original model"
+        )
+
     optimization_options = _get_optimization_options(args)
 
     optimizer = optimize_model(args.input,
