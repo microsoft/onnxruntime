@@ -14,6 +14,10 @@ def parse_arguments(argv=None):
 
     parser.add_argument('--sequence_length', required=False, type=int, default=32, help="sequence length of input")
 
+    parser.add_argument('--past_sequence_length', required=False, type=int, default=1, help="past sequence length for gpt2")
+
+    parser.add_argument('--global_length', required=False, type=int, default=1, help="number of global tokens for longformer")
+
     parser.add_argument('--samples',
                         required=False,
                         type=int,
@@ -30,8 +34,7 @@ def parse_arguments(argv=None):
                         default=None,
                         help="input name for attention mask")
 
-    parser.add_argument('--use_dummy_inputs', required=False, action='store_true', help="use dummy inputs")
-    parser.set_defaults(use_dummy_inputs=False)
+    parser.add_argument('--dummy_inputs', required=False, default='default', choices=['bert', 'gpt2', 'longformer', 'default'], help="dummy inputs")
 
     parser.add_argument('--use_gpu', required=False, action='store_true', help="use GPU")
     parser.set_defaults(use_gpu=False)
@@ -43,7 +46,7 @@ def parse_arguments(argv=None):
     return args
 
 
-def create_inputs(model, batch_size, sequence_length, samples, input_ids_name, segment_ids_name, input_mask_name):
+def create_bert_inputs(model, batch_size, sequence_length, samples, input_ids_name, segment_ids_name, input_mask_name):
     from bert_test_data import get_bert_inputs, generate_test_data
     input_ids, segment_ids, input_mask = get_bert_inputs(model, input_ids_name, segment_ids_name, input_mask_name)
     all_inputs = generate_test_data(batch_size,
@@ -58,29 +61,18 @@ def create_inputs(model, batch_size, sequence_length, samples, input_ids_name, s
 
     return all_inputs
 
-
 def run_profile(onnx_model_path,
                 use_gpu,
                 thread_num,
                 batch_size,
                 sequence_length,
-                samples=1,
-                input_ids_name=None,
-                segment_ids_name=None,
-                input_mask_name=None,
-                dummy_inputs=None):
+                all_inputs):
     from benchmark_helper import create_onnxruntime_session
 
     session = create_onnxruntime_session(onnx_model_path, use_gpu, num_threads=thread_num, enable_profiling=True)
 
-    if dummy_inputs is None:
-        all_inputs = create_inputs(onnx_model_path, batch_size, sequence_length, samples, input_ids_name,
-                                   segment_ids_name, input_mask_name)
-        for inputs in all_inputs:
-            _ = session.run(None, inputs)
-    else:
-        for i in range(samples):
-            _ = session.run(None, dummy_inputs)
+    for inputs in all_inputs:
+        _ = session.run(None, inputs)
 
     profile_file = session.end_profiling()
     return profile_file
@@ -126,7 +118,7 @@ def get_shape_from_type_proto(type_proto):
     return [get_dim_from_type_proto(d) for d in type_proto.tensor_type.shape.dim]
 
 
-def create_dummy_inputs(onnx_model_path, batch_size, sequence_length):
+def create_dummy_inputs(onnx_model_path, batch_size, sequence_length, samples):
     from onnx import TensorProto
     from onnx_model import OnnxModel
 
@@ -154,7 +146,74 @@ def create_dummy_inputs(onnx_model_path, batch_size, sequence_length):
         data = numpy.ones(shape, dtype=data_type)
         dummy_inputs[input.name] = data
 
-    return dummy_inputs
+    all_inputs = [dummy_inputs for _ in range(samples)]
+    return all_inputs
+
+def create_gpt2_inputs(onnx_model_path, batch_size, sequence_length, past_sequence_length, samples):
+    from onnx import TensorProto
+    from onnx_model import OnnxModel
+
+    onnx_model = OnnxModel(onnx.load(onnx_model_path))
+    # The symbolic name shall be same as those used in Gpt2Helper.export_onnx(...) function.
+    symbols = {
+        'batch_size' : batch_size,
+        'seq_len':sequence_length, 
+        'past_seq_len': past_sequence_length,
+        'total_seq_len': sequence_length + past_sequence_length
+    }
+
+    dummy_inputs = {}
+    for input in onnx_model.get_graph_inputs_excluding_initializers():
+        shape = get_shape_from_type_proto(input.type)
+        for i, dim in enumerate(shape):
+            if type(dim) == str and dim not in symbols.keys():
+                raise RuntimeError(f"symbol is not supported: {dim}")
+            else:
+                shape[i] = symbols[dim]
+
+        elem_type = input.type.tensor_type.elem_type
+        assert elem_type in [TensorProto.FLOAT, TensorProto.INT32, TensorProto.INT64]
+        data_type = numpy.float32 if elem_type == TensorProto.FLOAT else (
+            numpy.int64 if elem_type == TensorProto.INT64 else numpy.int32)
+        data = numpy.ones(shape, dtype=data_type)
+        dummy_inputs[input.name] = data
+
+    all_inputs = [dummy_inputs for _ in range(samples)]
+    return all_inputs
+
+def create_longformer_inputs(onnx_model_path, batch_size, sequence_length, global_length, samples):
+    from onnx import TensorProto
+    from onnx_model import OnnxModel
+
+    onnx_model = OnnxModel(onnx.load(onnx_model_path))
+    symbols = {
+        'batch_size' : batch_size,
+        'sequence_length':sequence_length
+    }
+
+    dummy_inputs = {}
+    for input in onnx_model.get_graph_inputs_excluding_initializers():
+        shape = get_shape_from_type_proto(input.type)
+        for i, dim in enumerate(shape):
+            if type(dim) == str and dim not in symbols.keys():
+                raise RuntimeError(f"symbol is not supported: {dim}")
+            else:
+                shape[i] = symbols[dim]
+
+        elem_type = input.type.tensor_type.elem_type
+        assert elem_type in [TensorProto.FLOAT, TensorProto.INT32, TensorProto.INT64]
+        data_type = numpy.float32 if elem_type == TensorProto.FLOAT else (
+            numpy.int64 if elem_type == TensorProto.INT64 else numpy.int32)
+
+        if "global" in input.name:
+            data = numpy.zeros(shape, dtype=data_type)
+            data[:, :global_length] = 1
+        else:
+            data = numpy.ones(shape, dtype=data_type)
+        dummy_inputs[input.name] = data
+
+    all_inputs = [dummy_inputs for _ in range(samples)]
+    return all_inputs
 
 
 def run(args):
@@ -164,11 +223,18 @@ def run(args):
     if "OMP_NUM_THREADS" not in os.environ:
         os.environ["OMP_NUM_THREADS"] = str(num_threads)
 
-    dummy_inputs = create_dummy_inputs(args.model, args.batch_size,
-                                       args.sequence_length) if args.use_dummy_inputs else None
-    profile_file = run_profile(args.model, args.use_gpu, args.thread_num, args.batch_size, args.sequence_length,
-                               args.samples, args.input_ids_name, args.segment_ids_name, args.input_mask_name,
-                               dummy_inputs)
+    all_inputs = None
+    if args.dummy_inputs == 'bert':
+        all_inputs = create_bert_inputs(args.model, args.batch_size, args.sequence_length,
+                               args.samples, args.input_ids_name, args.segment_ids_name, args.input_mask_name)
+    elif args.dummy_inputs == 'gpt2':
+        all_inputs = create_gpt2_inputs(args.model, args.batch_size, args.sequence_length, args.past_sequence_length, args.samples)
+    elif args.dummy_inputs == 'longformer':
+        all_inputs = create_longformer_inputs(args.model, args.batch_size, args.sequence_length, args.global_length, args.samples)
+    else: # default
+        all_inputs = create_dummy_inputs(args.model, args.batch_size, args.sequence_length, args.samples)
+               
+    profile_file = run_profile(args.model, args.use_gpu, args.thread_num, args.batch_size, args.sequence_length, all_inputs)
 
     return parse_profile_results(profile_file)
 
