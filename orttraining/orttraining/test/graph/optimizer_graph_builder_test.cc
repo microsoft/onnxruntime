@@ -123,6 +123,8 @@ OptimizerBuilderRegistry& GetOptimizerBuilderRegistry() {
 
 void VerifyTensorValue(const ONNX_NAMESPACE::TensorProto* tensor, float expected_val) {
   float tensor_value;
+  ASSERT_TRUE(tensor->dims_size() == 1);
+  ASSERT_TRUE(tensor->dims(0) == 1);
   if (tensor->has_raw_data()) {
     memcpy(&tensor_value, tensor->raw_data().data(), sizeof(float));
   } else {
@@ -133,6 +135,8 @@ void VerifyTensorValue(const ONNX_NAMESPACE::TensorProto* tensor, float expected
 
 void VerifyTensorValue(const ONNX_NAMESPACE::TensorProto* tensor, int64_t expected_val) {
   int64_t tensor_value;
+  ASSERT_TRUE(tensor->dims_size() == 1);
+  ASSERT_TRUE(tensor->dims(0) == 1);
   if (tensor->has_raw_data()) {
     memcpy(&tensor_value, tensor->raw_data().data(), sizeof(int64_t));
   } else {

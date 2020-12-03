@@ -22,7 +22,6 @@ Status IsMatchingTypeAndShape(
     const std::vector<int64_t>& expected_shape) {
   ORT_RETURN_IF_NOT(tensor.GetElementType() == element_type);
   const std::vector<int64_t>& tensor_shape = tensor.Shape().GetDims();
-  ORT_RETURN_IF_NOT(tensor_shape.size() == expected_shape.size());
   ORT_RETURN_IF_NOT(tensor_shape == expected_shape);          
   return Status::OK();
 }

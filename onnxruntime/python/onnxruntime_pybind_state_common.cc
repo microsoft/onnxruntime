@@ -1,11 +1,11 @@
 #include "onnxruntime_pybind_exceptions.h"
 #include "onnxruntime_pybind_state_common.h"
 
-const std::string onnxruntime::python::SessionObjectInitializer::default_logger_id = "Default";
-
 namespace onnxruntime {
 namespace python {
 namespace py = pybind11;
+
+const std::string onnxruntime::python::SessionObjectInitializer::default_logger_id = "Default";
 
 void ThrowIfPyErrOccured() {
   if (PyErr_Occurred()) {
@@ -19,7 +19,7 @@ void ThrowIfPyErrOccured() {
     sType += ": ";
     sType += py::reinterpret_borrow<py::str>(pStr);
     Py_XDECREF(pStr);
-    throw std::runtime_error(sType);
+    throw Fail(sType);
   }
 }
 

@@ -136,9 +136,9 @@ Status AdamOptimizerBuilder::Build(
         input_args.emplace_back(ArgDef());
       }
 
-    if (gradient_norm_argdef && opt_graph_config.enable_grad_norm_clip) {
+      if (gradient_norm_argdef && opt_graph_config.enable_grad_norm_clip) {
         input_args.push_back(*gradient_norm_argdef);
-    } else if (gradient_norm_argdef == nullptr && opt_graph_config.enable_grad_norm_clip) {
+      } else if (gradient_norm_argdef == nullptr && opt_graph_config.enable_grad_norm_clip) {
         ORT_THROW("Gradient clipping is enabled but gradient norm is not given.");
       } else {
         input_args.push_back(ArgDef());

@@ -198,7 +198,9 @@ Status LambOptimizerBuilder::Build(
         output_argdefs.push_back(output_gradient_argdef);  // g_new
       }
 
-      const auto element_type = opt_configs[i].use_mixed_precision_moments ? ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16 : ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT;
+      const auto element_type = opt_configs[i].use_mixed_precision_moments ?
+                                ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16 : 
+                                ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT;
 
       // m1 & m2 & m1_new & m2_new
       const std::vector<std::string> moments_prefixes({"Moment_1", "Moment_2"});

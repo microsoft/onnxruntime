@@ -64,8 +64,7 @@ class OptimizerBuilder {
    * @param gradient_norm_finite_argdef (Optional) The ArgDef indicates whether
             the passed-in gradient norm is finite.
    * @param opt_config The optimizer configuration.
-   * @param opt_graph_config The config for building optimizer graph,
-   *                           of type OptimizerGraphConfig
+   * @param opt_graph_config The config for building optimizer graph.
    * @param[out] graph_defs The GraphDefs corresponding to the graph (possibly
    *             a subgraph) that the component is to be added to.
    * @param[out] new_external_initializers Any initializers that should be
