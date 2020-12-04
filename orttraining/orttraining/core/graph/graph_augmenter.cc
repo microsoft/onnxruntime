@@ -59,8 +59,9 @@ Status GraphAugmenter::AugmentGraph(Graph& graph,
 
     LOGS_DEFAULT(WARNING) << "QQQ " << node_def.name;
     for (const auto& arg : node_def.input_args) {
+      LOGS_DEFAULT(WARNING) << arg.name;
       if (arg.type_proto) {
-        LOGS_DEFAULT(WARNING) << arg.name << " " << arg.type_proto->DebugString();
+        LOGS_DEFAULT(WARNING) << arg.type_proto->DebugString();
       }
       NodeArg& node_arg = graph.GetOrCreateNodeArg(arg.name, arg.type_proto);
       input_args.push_back(&node_arg);
