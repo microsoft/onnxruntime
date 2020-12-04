@@ -753,7 +753,7 @@ class Graph {
   NodeArg& GetOrCreateNodeArg(const std::string& name, const ONNX_NAMESPACE::TypeProto* p_arg_type) {
     auto iter = node_args_.find(name);
     if (iter != node_args_.end()) {
-      auto existing_nod_arg = iter->second;
+      auto& existing_nod_arg = iter->second;
       existing_nod_arg->SetType(*p_arg_type);
       return *(existing_nod_arg);
     }
