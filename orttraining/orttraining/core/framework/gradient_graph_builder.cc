@@ -217,6 +217,10 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
 
     // updates arg name if gradient accumulation is needed
     for (auto& op_def : node_defs) {
+
+      // for (auto& arg : op_def.input_args) {
+      //   arg.name arg.type_proto
+      // }
       for (auto& arg : op_def.output_args) {
         auto found = pending_.find(arg.name);
         if (found != pending_.end() && found->second > 1) {

@@ -57,7 +57,9 @@ Status GraphAugmenter::AugmentGraph(Graph& graph,
   for (const auto& node_def : graph_element_defs.NodeDefs()) {
     std::vector<NodeArg*> input_args, output_args;
 
+    LOGS_DEFAULT(WARNING) << "QQQ " << node_def.name;
     for (const auto& arg : node_def.input_args) {
+      LOGS_DEFAULT(WARNING) << arg.name << " " << arg.type_proto->DebugString();
       NodeArg& node_arg = graph.GetOrCreateNodeArg(arg.name, arg.type_proto);
       input_args.push_back(&node_arg);
     }
