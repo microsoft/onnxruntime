@@ -173,6 +173,10 @@ class GradientBuilderBase {
     return unique_node_prefix_ + name;
   }
 
+  const std::string& SrcNodeName() const {
+    return node_->Name();
+  }
+
   const NodeAttributes& SrcNodeAttributes() const {
     return node_->GetAttributes();
   }

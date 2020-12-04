@@ -354,7 +354,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
 
-  std::cout << "TTT " << node_->Name() << std::endl;
+  std::cout << "TTT " << SrcNodeName() << std::endl;
 
   auto attributes = SrcNodeAttributes();
 
