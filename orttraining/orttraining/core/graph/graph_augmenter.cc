@@ -61,9 +61,10 @@ Status GraphAugmenter::AugmentGraph(Graph& graph,
     for (const auto& arg : node_def.input_args) {
       LOGS_DEFAULT(WARNING) << arg.name;
       if (arg.type_proto) {
-        LOGS_DEFAULT(WARNING) << arg.type_proto->DebugString();
+        LOGS_DEFAULT(WARNING) << "arg.type_proto " << arg.type_proto->DebugString();
       }
       NodeArg& node_arg = graph.GetOrCreateNodeArg(arg.name, arg.type_proto);
+      LOGS_DEFAULT(WARNING) << "node_arg.ToProto() " << node_arg.ToProto().DebugString();
       input_args.push_back(&node_arg);
     }
 
@@ -88,7 +89,6 @@ Status GraphAugmenter::AugmentGraph(Graph& graph,
     } else {
       LOGS_DEFAULT(WARNING) << n.Name() << " no shape";
     }
-    LOGS_DEFAULT(WARNING) << input_args[0]->ToProto().DebugString();
   }
 
   // Add new inputs to the graph.
