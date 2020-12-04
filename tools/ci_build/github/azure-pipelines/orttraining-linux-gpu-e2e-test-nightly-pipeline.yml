@@ -36,7 +36,8 @@ jobs:
           --build_wheel \
           --enable_training_python_frontend_e2e_tests \
           --enable_training_pipeline_e2e_tests \
-          "
+          " \
+        -m
       DisplayName: 'Build'
 
   # Hit OOM with run_training_pipeline_e2e_tests.py - slightly above 16GB limit.
