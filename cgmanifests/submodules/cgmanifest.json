@@ -2,6 +2,50 @@
   "Version": 1,
   "Registrations": [
     {
+      "Component": {
+        "Type": "other",
+        "other": {
+          "Name": "automake",
+          "Version": "1.16.2",
+          "DownloadUrl": "http://ftp.gnu.org/gnu/automake/automake-1.16.2.tar.gz"
+        },
+        "comments": "manylinux dependency"
+      }
+    },
+    {
+      "Component": {
+        "Type": "other",
+        "other": {
+          "Name": "libtool",
+          "Version": "2.4.6",
+          "DownloadUrl": "http://ftp.gnu.org/gnu/libtool/libtool-2.4.6.tar.gz"
+        },
+        "comments": "manylinux dependency"
+      }
+    },
+    {
+      "Component": {
+        "Type": "other",
+        "other": {
+          "Name": "sqlite",
+          "Version": "3320300",
+          "DownloadUrl": "https://www.sqlite.org/2020/sqlite-autoconf-3320300.tar.gz"
+        },
+        "comments": "manylinux dependency"
+      }
+    },
+    {
+      "Component": {
+        "Type": "other",
+        "other": {
+          "Name": "git",
+          "Version": "2.26.2",
+          "DownloadUrl": "https://github.com/git/git/archive/2.26.2.tar.gz"
+        },
+        "comments": "manylinux dependency"
+      }
+    },
+    {
       "component": {
         "type": "git",
         "git": {
@@ -365,20 +409,10 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "80d452484c5409444b0ec19383faa84bb7a4d351",
+          "commitHash": "59a2ac2745d8a57ac94c6accced73620d59fb844",
           "repositoryUrl": "https://github.com/pybind/pybind11.git"
         },
         "comments": "git submodule at cmake/external/onnx/third_party/pybind11"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "6a00cbc4a9b8e68b71caf7f774b3f9c753ae84d5",
-          "repositoryUrl": "https://github.com/wjakob/clang-cindex-python3"
-        },
-        "comments": "git submodule at cmake/external/onnx/third_party/pybind11/tools/clang"
       }
     },
     {
