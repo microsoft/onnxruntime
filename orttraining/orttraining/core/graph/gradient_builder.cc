@@ -354,7 +354,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
 
-  std::cout << "TTT " << SrcNodeName() << std::endl;
+  std::cout << "TTT ************************************************** " << SrcNodeName() << std::endl;
 
   auto attributes = SrcNodeAttributes();
 
@@ -370,6 +370,9 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
   std::cout << B.type_proto->DebugString() << std::endl;
   std::cout << C.type_proto->DebugString() << std::endl;
   std::cout << dY.type_proto->DebugString() << std::endl;
+  std::cout << IsGradientRequiredForSrcNodeInput(0) << std::endl;
+  std::cout << IsGradientRequiredForSrcNodeInput(1) << std::endl;
+  std::cout << IsGradientRequiredForSrcNodeInput(2) << std::endl;
 
   int elem_type = OElemType(0);
   AttributeProto transpose_first_input = MakeAttribute("transA", int64_t(1));
