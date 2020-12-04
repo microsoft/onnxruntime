@@ -211,6 +211,7 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
     }
 
     LOGS(logger_, WARNING) << "ZZZ processing node " << node->Name();
+    LOGS(logger_, WARNING) << node->InputDefs[0]->Shape()->DebugString();
     GradientDef node_defs = GetGradientForOp(gradient_graph_config_, graph_, node, output_args_need_grad, input_args_need_grad, logger_);
     LOGS(logger_, WARNING) << "ZZZ got GetGradientForOp " << node->Name();
 
