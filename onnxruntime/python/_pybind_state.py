@@ -13,7 +13,7 @@ try:
     from onnxruntime.capi.onnxruntime_pybind11_state import *  # noqa
     # Python 3.8 (and later) on Windows doesn't search system PATH when loading DLLs,
     # so CUDA location needs to be specified explicitly.
-    if 'CUDAExecutionProvider' in get_available_providers():
+    if 'CUDAExecutionProvider' in get_available_providers(): # noqa
         if platform.system() == "Windows" and sys.version_info >= (3, 8):
             cuda_bin_dir = os.path.join(os.environ["CUDA_PATH"], "bin")
             os.add_dll_directory(cuda_bin_dir)
