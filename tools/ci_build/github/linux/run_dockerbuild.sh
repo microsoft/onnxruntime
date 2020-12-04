@@ -5,13 +5,14 @@ SCRIPT_DIR="$( dirname "${BASH_SOURCE[0]}" )"
 SOURCE_ROOT=$(realpath $SCRIPT_DIR/../../../../)
 CUDA_VER=cuda10.1-cudnn7.6
 YOCTO_VERSION="4.19"
+INSTALL_DEPS_DISTRIBUTED_SETUP=false
 ALLOW_RELEASED_ONNX_OPSET_ONLY_ENV="ALLOW_RELEASED_ONNX_OPSET_ONLY="$ALLOW_RELEASED_ONNX_OPSET_ONLY
 echo "ALLOW_RELEASED_ONNX_OPSET_ONLY environment variable is set as "$ALLOW_RELEASED_ONNX_OPSET_ONLY_ENV
 
-while getopts c:o:d:r:p:x:a:v:y:t: parameter_Option
+while getopts c:o:d:r:p:x:a:v:y:t:i:m parameter_Option
 do case "${parameter_Option}"
 in
-#android, ubuntu16.04, manylinux2010, ubuntu18.04, CentOS7
+#android, ubuntu16.04, ubuntu18.04, CentOS7
 o) BUILD_OS=${OPTARG};;
 #cpu, gpu, tensorrt
 d) BUILD_DEVICE=${OPTARG};;
@@ -31,6 +32,10 @@ y) YOCTO_VERSION=${OPTARG};;
 # an additional name for the resulting docker image (created with "docker tag")
 # this is useful for referencing the image outside of this script
 t) EXTRA_IMAGE_TAG=${OPTARG};;
+# the docker image cache container registry
+i) IMAGE_CACHE_CONTAINER_REGISTRY_NAME=${OPTARG};;
+# install distributed setup dependencies
+m) INSTALL_DEPS_DISTRIBUTED_SETUP=true;;
 esac
 done
 
@@ -38,8 +43,12 @@ EXIT_CODE=1
 PYTHON_VER=${PYTHON_VER:=3.6}
 echo "bo=$BUILD_OS bd=$BUILD_DEVICE bdir=$BUILD_DIR pv=$PYTHON_VER bex=$BUILD_EXTR_PAR"
 
-DOCKER_IMAGE_CACHE_CONTAINER_REGISTRY_NAME="onnxruntimebuildcache"
-COMMON_GET_DOCKER_IMAGE_ARGS="--container-registry ${DOCKER_IMAGE_CACHE_CONTAINER_REGISTRY_NAME}"
+if [[ -z "${IMAGE_CACHE_CONTAINER_REGISTRY_NAME}" ]]; then
+    echo "Please specify an image cache container registry name (-i)."
+    exit 1
+fi
+
+COMMON_GET_DOCKER_IMAGE_ARGS="--container-registry ${IMAGE_CACHE_CONTAINER_REGISTRY_NAME}"
 
 GET_DOCKER_IMAGE_CMD="${SOURCE_ROOT}/tools/ci_build/get_docker_image.py ${COMMON_GET_DOCKER_IMAGE_ARGS}"
 DOCKER_CMD="docker"
@@ -48,17 +57,6 @@ cd $SCRIPT_DIR/docker
 if [ $BUILD_OS = "android" ]; then
     IMAGE="android"
     DOCKER_FILE=Dockerfile.ubuntu_for_android
-    $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
-        --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER}" \
-        --dockerfile $DOCKER_FILE --context .
-elif [ $BUILD_OS = "manylinux2010" ]; then
-    if [ $BUILD_DEVICE = "gpu" ]; then
-        IMAGE="manylinux2010-cuda10.1"
-        DOCKER_FILE=Dockerfile.manylinux2010_gpu
-    else
-        IMAGE="manylinux2010"
-        DOCKER_FILE=Dockerfile.manylinux2010
-    fi
     $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
         --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER}" \
         --dockerfile $DOCKER_FILE --context .
@@ -86,8 +84,9 @@ else
         if [ $CUDA_VER = "cuda9.1-cudnn7.1" ]; then
             DOCKER_FILE=Dockerfile.ubuntu_gpu_cuda9
         fi
+        [[ $INSTALL_DEPS_DISTRIBUTED_SETUP = true ]] && INSTALL_DEPS_EXTRA_ARGS="-m" || INSTALL_DEPS_EXTRA_ARGS=""
         $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
-            --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg BUILD_EXTR_PAR=\"${BUILD_EXTR_PAR}\"" \
+            --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg BUILD_EXTR_PAR=\"${BUILD_EXTR_PAR}\" --build-arg INSTALL_DEPS_EXTRA_ARGS=${INSTALL_DEPS_EXTRA_ARGS}" \
             --dockerfile $DOCKER_FILE --context .
     elif [ $BUILD_DEVICE = "tensorrt" ]; then
         # TensorRT container release 20.07
@@ -129,7 +128,7 @@ if [ -z "$NIGHTLY_BUILD" ]; then
     set NIGHTLY_BUILD=0
 fi
 
-if [ $BUILD_DEVICE = "cpu" ] || [ $BUILD_DEVICE = "ngraph" ] || [ $BUILD_DEVICE = "openvino" ] || [ $BUILD_DEVICE = "nnapi" ] || [ $BUILD_DEVICE = "arm" ]; then
+if [ $BUILD_DEVICE = "cpu" ] || [ $BUILD_DEVICE = "openvino" ] || [ $BUILD_DEVICE = "nnapi" ] || [ $BUILD_DEVICE = "arm" ]; then
     RUNTIME=
 elif [[ $BUILD_EXTR_PAR = *--enable_training_python_frontend_e2e_tests* ]]; then
     RUNTIME="--gpus all --shm-size=1024m"

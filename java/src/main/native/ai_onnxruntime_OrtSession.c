@@ -310,6 +310,24 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_run
     return outputArray;
 }
 
+
+/*
+ * Class:     ai_onnxruntime_OrtSession
+ * Method:    getProfilingStartTimeInNs
+ * Signature: (JJ)J
+ */
+JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtSession_getProfilingStartTimeInNs
+    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong sessionHandle) {
+  (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*) apiHandle;
+  OrtSession* session = (OrtSession*) sessionHandle;
+
+  uint64_t timestamp = 0;
+
+  checkOrtStatus(jniEnv,api,api->SessionGetProfilingStartTimeNs(session,&timestamp));
+  return (jlong) timestamp;
+}
+
 /*
  * Class:     ai_onnxruntime_OrtSession
  * Method:    endProfiling

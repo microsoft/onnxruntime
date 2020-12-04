@@ -15,65 +15,85 @@ namespace onnxruntime {
    etc.
    */
 
-typedef struct MultiIndex {
-  size_t index;
-  size_t upper_bound;
-  int64_t stride;
-  MultiIndex() {}
-  MultiIndex(size_t i, size_t n, int64_t s) {
-    index = i;
-    upper_bound = n;
-    stride = s;
-  }
-} MultiIndex;
+struct MultiIndex {
+  size_t n_axes;
+  std::vector<size_t> index;
+  std::vector<size_t> upper_bound;
+  std::vector<int64_t> stride;
 
-static size_t IncrementIndexAndComputeOffsetSetup(MultiIndex* mindex, int64_t num_axes, const std::vector<int64_t>& target_dims,
-                                                  const std::vector<size_t>& stride, size_t element_size) {
+  /* There is one MultiIndex instance per axis in the tensor.
+  * The array keeps track of the position of a pointer walking through the data.
+  * Any function using it creates an array of MultiIndex
+  * then calls function IncrementIndexAndComputeOffsetSetup
+  * to initialize the array. This constructor does not initialize
+  * anything because it would be overwritten by function
+  * IncrementIndexAndComputeOffsetSetup. This one calls method Init.
+  * Function IncrementIndexAndComputeOffset is called to increment
+  * the array of MultiIndex to move to the next data in the tensor.
+  */
+  MultiIndex() : index(), upper_bound(), stride() { n_axes = 0; }
+
+  void Init(size_t num_axes) {
+    index.resize(num_axes);
+    upper_bound.resize(num_axes);
+    stride.resize(num_axes);
+    n_axes = num_axes;
+  }
+
+  void InitAxis(size_t n_axis, size_t i, size_t n, int64_t s) {
+    index[n_axis] = i;
+    upper_bound[n_axis] = n;
+    stride[n_axis] = s;
+  }
+};
+
+/* This function initializes an array of MultiIndex of size num_axes (one instance per axis).
+* target_dims is the shape of the transposed tensor, stride is linked to the tensor to
+* be transposed, if source_dims is the shape, stride[i] = source_dims[i+1] * source_dims[i+2] * ... * 1.
+* element_size is the size of the tensor element (sizeof(float), sizeof(double)).
+*/
+static void IncrementIndexAndComputeOffsetSetup(MultiIndex& mindex, size_t num_axes, const std::vector<int64_t>& target_dims,
+                                                const std::vector<size_t>& stride, size_t element_size) {
+  mindex.Init(num_axes);
   size_t naxes = 0;
-  for (int64_t i = 0; i < num_axes; ++i) {
+  for (size_t i = 0; i < num_axes; ++i) {
     if (target_dims[i] == 1)
       continue;
-    mindex[naxes] = MultiIndex(0, static_cast<size_t>(target_dims[i]), stride[i] * element_size);
+    mindex.InitAxis(naxes, 0, static_cast<size_t>(target_dims[i]), stride[i] * element_size);
     ++naxes;
   }
-  return naxes;
+  ORT_ENFORCE(naxes > 0, "Method IncrementIndexAndComputeOffset assumes this value is strictly positive.");
+  mindex.n_axes = naxes;
 }
 
-// Combines multi-index increment and corresponding pointer in the tensor to transpose.
-static void IncrementIndexAndComputeOffset(MultiIndex* mindex, size_t naxes, const uint8_t*& local_source) {
-  MultiIndex* it = mindex + (naxes - 1);
-  local_source += it->stride;
-  if (++it->index < it->upper_bound)
+/* This function increments an array of MultiIndex initialized by function IncrementIndexAndComputeOffsetSetup.
+* It increments the last dimension, checks if it stays within boundary. If it stays in, it returns,
+* otherwise, it reset the dimension to zero and increments the previous one.
+* While doing that, every modification brought to the array of indices is applied on the
+* pointer local_source. It avoids computing again local_source from the source tensor.
+* At every time, the following condition is verified:
+* local_source = source + (sum_i mindex[i].index * mindex[i].stride
+*/
+template <typename T>
+static inline void IncrementIndexAndComputeOffset(MultiIndex& mindex, const T*& local_source) {
+  // Increment the last dimension.
+  int pos = static_cast<int>(mindex.n_axes) - 1;
+  local_source += mindex.stride[pos];
+  // Checks it stays within boundaries.
+  if (++mindex.index[pos] < mindex.upper_bound[pos])
     return;
-  local_source -= it->stride * it->index;
-  it->index = 0;
-  --it;
-  MultiIndex* rend = mindex - 1;
-  for (; it != rend; --it) {
-    local_source += it->stride;
-    if (++it->index < it->upper_bound)
+  // If not, loops on other indices.
+  // The first test is outside the loop to be faster.
+  // As it is the most common case.
+  local_source -= mindex.stride[pos] * mindex.index[pos];
+  mindex.index[pos] = 0;
+  --pos;
+  for (; pos >= 0; --pos) {
+    local_source += mindex.stride[pos];
+    if (++mindex.index[pos] < mindex.upper_bound[pos])
       break;
-    local_source -= it->stride * it->index;
-    it->index = 0;
-  }
-}
-
-// Combines multi-index increment and corresponding pointer in the string tensor to transpose.
-static void IncrementIndexAndComputeOffset(MultiIndex* mindex, size_t naxes, const std::string*& local_source) {
-  MultiIndex* it = mindex + (naxes - 1);
-  local_source += it->stride;
-  if (++it->index < it->upper_bound)
-    return;
-  local_source -= it->stride * it->index;
-  it->index = 0;
-  --it;
-  MultiIndex* rend = mindex - 1;
-  for (; it != rend; --it) {
-    local_source += it->stride;
-    if (++it->index < it->upper_bound)
-      break;
-    local_source -= it->stride * it->index;
-    it->index = 0;
+    local_source -= mindex.stride[pos] * mindex.index[pos];
+    mindex.index[pos] = 0;
   }
 }
 
@@ -97,13 +117,14 @@ static void DoTransposeImpl(int64_t num_axes, const std::vector<int64_t>& target
                             size_t num_blocks, size_t num_elts_in_block, const std::vector<size_t>& stride,
                             const uint8_t* source, uint8_t* target, size_t element_size) {
   size_t blocksize = num_elts_in_block * element_size;
-  std::vector<MultiIndex> mindex(num_axes);
-  size_t naxes = IncrementIndexAndComputeOffsetSetup(mindex.data(), num_axes, target_dims, stride, element_size);
+  MultiIndex mindex;
+  IncrementIndexAndComputeOffsetSetup(mindex, num_axes, target_dims, stride, element_size);
 
   const uint8_t* local_source = source;
   for (size_t i = 0; i < num_blocks; ++i) {
+    ORT_ENFORCE((local_source >= source) && (local_source < source + num_blocks * blocksize));
     memcpy(target, local_source, blocksize);
-    IncrementIndexAndComputeOffset(mindex.data(), naxes, local_source);
+    IncrementIndexAndComputeOffset(mindex, local_source);
     target += blocksize;
   }
 }
@@ -112,13 +133,14 @@ static void DoTransposeImpl(int64_t num_axes, const std::vector<int64_t>& target
                             size_t num_blocks, size_t num_elts_in_block, const std::vector<size_t>& stride,
                             const std::string* source, std::string* target) {
   ORT_ENFORCE(num_axes > 0, "Transpose not implemented for empty tensors.");
-  std::vector<MultiIndex> mindex(num_axes);
-  size_t naxes = IncrementIndexAndComputeOffsetSetup(mindex.data(), num_axes, target_dims, stride, 1);
+  MultiIndex mindex;
+  IncrementIndexAndComputeOffsetSetup(mindex, num_axes, target_dims, stride, 1);
 
   const std::string* local_source = source;
   for (size_t i = 0; i < num_blocks; ++i) {
+    ORT_ENFORCE((local_source >= source) && (local_source < source + num_blocks * num_elts_in_block));
     DoTransposeSingleBlock(num_elts_in_block, local_source, target);
-    IncrementIndexAndComputeOffset(mindex.data(), naxes, local_source);
+    IncrementIndexAndComputeOffset(mindex, local_source);
     target += num_elts_in_block;
   }
 }
@@ -132,23 +154,24 @@ inline void CopyPrim(uint8_t* target, const uint8_t* source) {
 template <class T>
 static void TypedDoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_dims, size_t num_blocks,
                                     const std::vector<size_t>& stride, const uint8_t* source, uint8_t* target) {
-  std::vector<MultiIndex> mindex(num_axes);
-  size_t naxes = IncrementIndexAndComputeOffsetSetup(mindex.data(), num_axes, target_dims, stride, sizeof(T));
+  MultiIndex mindex;
+  IncrementIndexAndComputeOffsetSetup(mindex, num_axes, target_dims, stride, sizeof(T));
 
   const uint8_t* local_source = source;
-  for (size_t i = 0; i < num_blocks; ++i) {
-    CopyPrim<uint64_t>(target, local_source);
-    IncrementIndexAndComputeOffset(mindex.data(), naxes, local_source);
-    target += sizeof(T);
+  uint8_t* target_end = target + sizeof(T) * num_blocks;
+  for (; target != target_end; target += sizeof(T)) {
+    ORT_ENFORCE((local_source >= source) && (local_source < source + sizeof(T) * num_blocks));
+    CopyPrim<T>(target, local_source);
+    IncrementIndexAndComputeOffset(mindex, local_source);
   }
 }
 
 // DoTransposeEltWise: specialization of DoTranspose for the num_elts_in_block=1 case.
 // copies source tensor to target, transposing elements.
 // The stride vector indicates the transposition.
-static void DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_dims, size_t num_blocks,
-                               const std::vector<size_t>& stride, const uint8_t* source, uint8_t* target,
-                               size_t element_size) {
+void DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_dims, size_t num_blocks,
+                        const std::vector<size_t>& stride, const uint8_t* source, uint8_t* target,
+                        size_t element_size) {
   switch (element_size) {
     case sizeof(uint64_t):
       TypedDoTransposeEltWise<uint64_t>(num_axes, target_dims, num_blocks, stride, source, target);
@@ -170,14 +193,15 @@ static void DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& tar
 static void DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_dims, size_t num_blocks,
                                const std::vector<size_t>& stride, const std::string* source, std::string* target) {
   ORT_ENFORCE(num_axes > 0, "Transpose not implemented for empty tensors.");
-  std::vector<MultiIndex> mindex(num_axes);
-  size_t naxes = IncrementIndexAndComputeOffsetSetup(mindex.data(), num_axes, target_dims, stride, 1);
+  MultiIndex mindex;
+  IncrementIndexAndComputeOffsetSetup(mindex, num_axes, target_dims, stride, 1);
 
   // index used to iterate over target iteration-space
   const std::string* local_source = source;
   for (size_t i = 0; i < num_blocks; ++i) {
+    ORT_ENFORCE((local_source >= source) && (local_source < source + num_blocks));
     *target = *local_source;
-    IncrementIndexAndComputeOffset(mindex.data(), naxes, local_source);
+    IncrementIndexAndComputeOffset(mindex, local_source);
     target++;
   }
 }
@@ -301,8 +325,6 @@ static void SimpleTransposeSingleAxisOutwards(const T* input_data, T* output_dat
   }
 }
 
-#ifdef MLAS_SUPPORTS_TRANSPOSE
-
 static void SimpleTransposeSingleAxisOutwards(const uint8_t* input_data, uint8_t* output_data,
                                               int64_t num_loops, int64_t num_writers,
                                               int64_t writes_per_loop, int64_t writes_per_writer_per_loop) {
@@ -315,8 +337,6 @@ static void SimpleTransposeSingleAxisOutwards(const uint8_t* input_data, uint8_t
     output_data += writes_per_loop;
   }
 }
-
-#endif
 
 //  `input_shape_override` overrides the shape of `input` for compute purposes.
 static void TransposeSingleAxisOutwards(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
@@ -411,8 +431,6 @@ static void SimpleTransposeSingleAxisInwards(const T* input_data, T* output_data
   }
 }
 
-#ifdef MLAS_SUPPORTS_TRANSPOSE
-
 static void SimpleTransposeSingleAxisInwards(const uint8_t* input_data, uint8_t* output_data,
                                              int64_t num_loops, int64_t num_readers,
                                              int64_t reads_per_loop, int64_t reads_per_reader_per_loop) {
@@ -425,8 +443,6 @@ static void SimpleTransposeSingleAxisInwards(const uint8_t* input_data, uint8_t*
     output_data += reads_per_loop;
   }
 }
-
-#endif
 
 // moving a single axis inwards where the read/write size is a power of 2 and between 8 and 64 bits.
 //  `input_shape_override` overrides the shape of `input` for compute purposes.
@@ -577,7 +593,7 @@ static bool IsMovingSingleAxis(const std::vector<size_t>& permutations, size_t& 
   return single_axis_moved;
 }
 
-bool IsReshape(const std::vector<size_t>& perm, const std::vector<int64_t>& input_dims) {
+bool IsTransposeReshape(const std::vector<size_t>& perm, const std::vector<int64_t>& input_dims) {
   // As long as the dims with values > 1 stay in the same order, it's a reshape.
   // Example: Shape=(1,1,1024,4096) -> perm=(2,0,3,1).
   size_t last_permuted_axis = 0;
@@ -604,7 +620,7 @@ Status TransposeBase::DoTranspose(const std::vector<size_t>& permutations, const
                              input_type, " != ", output_type);
   } else {
     TensorShape shape = input_shape_override ? *input_shape_override : input.Shape();
-    if (IsReshape(permutations, shape.GetDims())) {
+    if (IsTransposeReshape(permutations, shape.GetDims())) {
       // As long as the dims with values > 1 stay in the same order, it's a reshape.
       // Example: Shape=(1,1,1024,4096) -> perm=(2,0,3,1).
       CopyCpuTensor(&input, &output);
@@ -646,7 +662,7 @@ Status Transpose::Compute(OpKernelContext* ctx) const {
   if (output_shape.Size() == 0)
     return Status::OK();
 
-  if (IsReshape(*p_perm, input_dims)) {
+  if (IsTransposeReshape(*p_perm, input_dims)) {
     // As long as the dims with values > 1 stay in the same order, it's a reshape.
     // Example: Shape=(1,1,1024,4096) -> perm=(2,0,3,1).
     CopyCpuTensor(&X, &Y);

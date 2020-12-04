@@ -13,7 +13,7 @@ class Model;
 
 class NnapiExecutionProvider : public IExecutionProvider {
  public:
-  NnapiExecutionProvider(unsigned long nnapi_flags);
+  NnapiExecutionProvider(uint32_t nnapi_flags);
   virtual ~NnapiExecutionProvider();
 
   std::vector<std::unique_ptr<ComputeCapability>>
@@ -28,7 +28,7 @@ class NnapiExecutionProvider : public IExecutionProvider {
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
 #endif
 
-  unsigned long GetNNAPIFlags() const { return nnapi_flags_; }
+  uint32_t GetNNAPIFlags() const { return nnapi_flags_; }
 
  private:
   // unique counter to name each fused kernel across the entire model
@@ -36,7 +36,7 @@ class NnapiExecutionProvider : public IExecutionProvider {
 
   // The bit flags which define bool options for NNAPI EP, bits are defined as
   // NNAPIFlags in include/onnxruntime/core/providers/nnapi/nnapi_provider_factory.h
-  const unsigned long nnapi_flags_;
+  const uint32_t nnapi_flags_;
 
 #ifdef __ANDROID__
   std::unordered_map<std::string, std::unique_ptr<onnxruntime::nnapi::Model>> nnapi_models_;

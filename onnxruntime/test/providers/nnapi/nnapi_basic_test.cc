@@ -13,6 +13,11 @@
 #include "test/util/include/test/test_environment.h"
 #include "test/util/include/test_utils.h"
 
+#if defined(__ANDROID__)
+#include "core/providers/nnapi/nnapi_builtin/builders/op_builder.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/op_support_checker.h"
+#endif
+
 #if !defined(ORT_MINIMAL_BUILD)
 // if this is a full build we need the provider test utils
 #include "test/providers/provider_test_utils.h"
@@ -66,6 +71,20 @@ TEST(NnapiExecutionProviderTest, ReshapeFlattenTest) {
       << "Some nodes should have been taken by the NNAPI EP";
 #endif
 }
+
+#if defined(__ANDROID__)
+// This is to verify the op_builders and op_support_checkers are consistent
+TEST(NnapiExecutionProviderTest, CreateOpBuilderAndOpSupportCheckerTest) {
+  const auto& op_builders = nnapi::GetOpBuilders();
+  const auto& op_support_checkers = nnapi::GetOpSupportCheckers();
+  for (auto entry : op_builders) {
+    ASSERT_TRUE(op_support_checkers.find(entry.first) != op_support_checkers.cend());
+  }
+  for (auto entry : op_support_checkers) {
+    ASSERT_TRUE(op_builders.find(entry.first) != op_builders.cend());
+  }
+}
+#endif  // #if defined(__ANDROID__)
 
 TEST(NnapiExecutionProviderTest, FunctionTest) {
   const ORTCHAR_T* model_file_name = ORT_TSTR("nnapi_execution_provider_test_graph.onnx");
@@ -136,10 +155,57 @@ TEST(NnapiExecutionProviderTest, FunctionTest) {
       << "Some nodes should have been taken by the NNAPI EP";
 #endif
 }
+
+TEST(NnapiExecutionProviderTest, TestNoShapeInputModel) {
+  const ORTCHAR_T* model_file_name = ORT_TSTR("input_with_no_shape_test_graph.onnx");
+
+  {  // Create the model with 2 add nodes, the graph has 2 inputs with no shape
+    onnxruntime::Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
+    auto& graph = model.MainGraph();
+    std::vector<onnxruntime::NodeArg*> inputs;
+    std::vector<onnxruntime::NodeArg*> outputs;
+
+    // FLOAT tensor without shape
+    ONNX_NAMESPACE::TypeProto float_tensor;
+    float_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+    auto& input_arg_1 = graph.GetOrCreateNodeArg("X", &float_tensor);
+    auto& input_arg_2 = graph.GetOrCreateNodeArg("Y", &float_tensor);
+    inputs.push_back(&input_arg_1);
+    inputs.push_back(&input_arg_2);
+    auto& output_arg = graph.GetOrCreateNodeArg("node_1_out_1", &float_tensor);
+    outputs.push_back(&output_arg);
+    graph.AddNode("node_1", "Add", "node 1.", inputs, outputs);
+
+    auto& input_arg_3 = graph.GetOrCreateNodeArg("Z", &float_tensor);
+    inputs.clear();
+    inputs.push_back(&output_arg);
+    inputs.push_back(&input_arg_3);
+    auto& output_arg_2 = graph.GetOrCreateNodeArg("M", &float_tensor);
+    outputs.clear();
+    outputs.push_back(&output_arg_2);
+    graph.AddNode("node_2", "Add", "node 2.", inputs, outputs);
+
+    ASSERT_STATUS_OK(graph.Resolve());
+    ASSERT_STATUS_OK(onnxruntime::Model::Save(model, model_file_name));
+  }
+
+  // test load only
+  // since we know NNAPI supports Add op, but both Add ops in the graph has no input shape
+  // verify the entire graph will not be assigned to NNAPI EP
+  SessionOptions so;
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(onnxruntime::make_unique<NnapiExecutionProvider>(0)));
+  ASSERT_STATUS_OK(session_object.Load(model_file_name));
+  ASSERT_STATUS_OK(session_object.Initialize());
+  ASSERT_EQ(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 0)
+      << "No node should be taken by the NNAPI EP";
+}
+
 #endif  // !(ORT_MINIMAL_BUILD
 
 TEST(NnapiExecutionProviderTest, NNAPIFlagsTest) {
-  unsigned long nnapi_flags = NNAPI_FLAG_USE_NONE;
+  uint32_t nnapi_flags = NNAPI_FLAG_USE_NONE;
   nnapi_flags |= NNAPI_FLAG_USE_FP16;
   onnxruntime::NnapiExecutionProvider nnapi_ep(nnapi_flags);
   const auto flags = nnapi_ep.GetNNAPIFlags();

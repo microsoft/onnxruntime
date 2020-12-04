@@ -77,13 +77,12 @@ def update_hash_with_directory(dir_file_info: FileInfo, hash_obj):
     hash_obj.update(file_info_str(dir_file_info).encode())
 
     files, dirs = [], []
-    with os.scandir(dir_file_info.path) as dir_it:
-        for dir_entry in dir_it:
-            file_info = FileInfo(dir_entry.path, dir_entry.stat().st_mode)
-            if dir_entry.is_dir():
-                dirs.append(file_info)
-            elif dir_entry.is_file():
-                files.append(file_info)
+    for dir_entry in os.scandir(dir_file_info.path):
+        file_info = FileInfo(dir_entry.path, dir_entry.stat().st_mode)
+        if dir_entry.is_dir():
+            dirs.append(file_info)
+        elif dir_entry.is_file():
+            files.append(file_info)
 
     def file_info_key(file_info: FileInfo):
         return file_info.path

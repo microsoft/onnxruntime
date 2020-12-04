@@ -95,11 +95,7 @@ set(onnxruntime_pybind11_state_libs
     onnxruntime_session
     ${onnxruntime_libs}
     ${PROVIDERS_CUDA}
-    ${PROVIDERS_DNNL}
-    ${PROVIDERS_TENSORRT}
     ${PROVIDERS_MIGRAPHX}
-    ${PROVIDERS_NGRAPH}
-    ${PROVIDERS_OPENVINO}
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_VITISAI}
     ${PROVIDERS_NNAPI}
@@ -207,6 +203,9 @@ file(GLOB onnxruntime_python_test_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/test/python/*.py"
     "${ORTTRAINING_SOURCE_DIR}/test/python/*.py"
 )
+file(GLOB onnxruntime_python_checkpoint_test_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/test/python/checkpoint/*.py"
+)
 file(GLOB onnxruntime_python_tools_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/*.py"
 )
@@ -245,6 +244,7 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/transformers
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/quantization
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/quantization/operators
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/checkpoint
   COMMAND ${CMAKE_COMMAND} -E copy
       ${ONNXRUNTIME_ROOT}/__init__.py
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/
@@ -260,6 +260,9 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_test_srcs}
       $<TARGET_FILE_DIR:${test_data_target}>
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_python_checkpoint_test_srcs}
+      $<TARGET_FILE_DIR:${test_data_target}>/checkpoint/
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_backend_srcs}
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/backend/
@@ -342,29 +345,14 @@ if (onnxruntime_USE_TENSORRT)
   )
 endif()
 
-if (onnxruntime_USE_NGRAPH)
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${ngraph_LIBRARIES}/${NGRAPH_SHARED_LIB}
-		${ngraph_LIBRARIES}/${NGRAPH_CODEGEN_SHARED_LIB}
-		${ngraph_LIBRARIES}/${NGRAPH_CPU_BACKEND_SHARED_LIB}
-		${ngraph_LIBRARIES}/${NGRAPH_IOMP5MD_SHARED_LIB}
-		${ngraph_LIBRARIES}/${NGRAPH_MKLDNN_SHARED_LIB}
-		${ngraph_LIBRARIES}/${NGRAPH_MKLML_SHARED_LIB}
-		${ngraph_LIBRARIES}/${NGRAPH_TBB_SHARED_LIB}
-		${ngraph_LIBRARIES}/${NGRAPH_TBB_SHARED_LIB_2}
-        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
-  )
-endif()
-
-
 if (onnxruntime_USE_OPENVINO)
   if(NOT WIN32)
     add_custom_command(
       TARGET onnxruntime_pybind11_state POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy
           ${ngraph_LIBRARIES}/${NGRAPH_SHARED_LIB}
+          ${OPENVINO_DLL_PATH} $<TARGET_FILE:onnxruntime_providers_openvino>
+          $<TARGET_FILE:onnxruntime_providers_shared>
           $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
     )
   endif()
@@ -406,6 +394,15 @@ if (onnxruntime_USE_DML)
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
         ${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}-win/${DML_SHARED_LIB}
+        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
+  )
+endif()
+
+if (onnxruntime_USE_NNAPI_BUILTIN)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        $<TARGET_FILE:onnxruntime_providers_nnapi>
         $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
   )
 endif()
