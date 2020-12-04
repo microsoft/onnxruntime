@@ -18,7 +18,7 @@ The data backing these are on CPU.
 *ONNX Runtime* supports a custom data structure that supports all ONNX data formats that allows users
 to place the data backing these on a device, for example, on a CUDA supported device. This allows for
 interesting *IOBinding* scenarios (discussed below). In addition, *ONNX Runtime* supports directly
-working with *OrtValue*(s) while inferencing a model if provided as part of the input feed.
+working with *OrtValue* (s) while inferencing a model if provided as part of the input feed.
 
 Below is an example showing creation of an *OrtValue* from a Numpy array while placing its backing memory
 on a CUDA device:
