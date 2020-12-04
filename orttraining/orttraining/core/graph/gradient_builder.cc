@@ -427,6 +427,14 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
       // Y = alpha * A * B'
       // dA = alpha * dY * B, dB = alpha * dY' * A
       if (IsGradientRequiredForSrcNodeInput(0)) {
+        std::cout << "IsGradientRequiredForSrcNodeInput(0) NodeDef" << std::endl;
+        auto node_def = NodeDef("Gemm", {dY, B, ZERO}, {dA}, shared_attributes);
+        for (const auto& arg : node_def.input_args) {
+          std::cout << arg.name << std::endl;
+          if (arg.type_proto) {
+            std::cout << arg.type_proto->DebugString() << std::endl;
+          }
+        }
         result.push_back(NodeDef("Gemm", {dY, B, ZERO}, {dA}, shared_attributes));
       }
 
