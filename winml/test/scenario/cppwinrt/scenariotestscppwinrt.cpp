@@ -768,9 +768,10 @@ bool VerifyHelper(ImageFeatureValue actual, ImageFeatureValue expected) {
   // hard code, might need to be modified later.
   const float cMaxErrorRate = 0.06f;
   byte epsilon = 20;
-
   UINT errors = 0;
   for (uint32_t i = 0; i < size; i++, pActualByte++, pExpectedByte++) {
+    // Only the check the first three channels, which are (B, G, R)
+    if((i + 1) % 4 == 0) continue;
     auto diff = std::abs(*pActualByte - *pExpectedByte);
     if (diff > epsilon) {
       errors++;

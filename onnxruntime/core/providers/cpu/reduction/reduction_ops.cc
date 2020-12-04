@@ -74,10 +74,10 @@ namespace onnxruntime {
       x<int64_t>);
 
 #define REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_INT8_ONLY(x, startVer, endVer)   \
-  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                           \
-      x,                                                                              \
-      startVer,                                                                       \
-      endVer,                                                                         \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                          \
+      x,                                                                             \
+      startVer,                                                                      \
+      endVer,                                                                        \
       int8_t,                                                                        \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int8_t>()), \
       x<int8_t>);
@@ -137,7 +137,6 @@ REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceMax, 13);
 REGISTER_UNARY_ELEMENTWISE_KERNEL_INT64_ONLY(ReduceMax, 13);
 REGISTER_UNARY_ELEMENTWISE_KERNEL_INT8_ONLY(ReduceMax, 13);
 REGISTER_UNARY_ELEMENTWISE_KERNEL_UINT8_ONLY(ReduceMax, 13);
-
 
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMean, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMean, 11, 12);
@@ -361,6 +360,9 @@ void NoTransposeReduce(Tensor* output, const TensorShape& new_input_shape, const
     if (last_results.last_loop_red_size == 0 || last_results.last_loop_size == 0)
       return;
   }
+  ORT_ENFORCE(last_results.last_loop_red_size > 0);
+  ORT_ENFORCE(last_results.last_loop_size > 0);
+  ORT_ENFORCE(last_results.projected_index.size() > 0);
   int64_t denominator = last_results.last_loop_red_size * last_results.projected_index.size();
 
   if (AGG::two_loops()) {
