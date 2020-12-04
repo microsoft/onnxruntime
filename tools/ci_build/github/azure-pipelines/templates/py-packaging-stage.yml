@@ -104,7 +104,7 @@ stages:
               --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
-              onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntimecpubuild:ch1 \
+              onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntimecpubuild:ch13 \
                 $(python.manylinux.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build --cmake_generator Ninja \
                   --config Release \
@@ -181,7 +181,7 @@ stages:
               --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
-              onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntimecpubuild:ch1 \
+              onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntimecpubuild:ch13 \
                 $(python.manylinux.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build --cmake_generator Ninja \
                   --config Release \
@@ -259,7 +259,7 @@ stages:
               --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
-              onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntimegpubuild:ch2 \
+              onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntimegpubuild:ch14 \
                 $(python.manylinux.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build --cmake_generator Ninja \
                   --config Release \
