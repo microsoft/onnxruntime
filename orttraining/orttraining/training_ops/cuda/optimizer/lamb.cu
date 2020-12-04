@@ -10,24 +10,13 @@
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/atomic/common.cuh"
+#include "core/providers/cuda/reduction/reduction_utils.cuh"
 #include "orttraining/training_ops/cuda/math/isfinite.cuh"
 #include "orttraining/training_ops/cuda/optimizer/common.cuh"
 #include "orttraining/training_ops/cuda/optimizer/lamb.h"
 
 namespace onnxruntime {
 namespace cuda {
-
-__forceinline__ __host__ __device__ int least_pow2_bound(int value) {
-  unsigned int value_ = static_cast<unsigned int>(value);
-  --value_;
-  value_ |= value_ >> 1;
-  value_ |= value_ >> 2;
-  value_ |= value_ >> 4;
-  value_ |= value_ >> 8;
-  value_ |= value_ >> 16;
-  return static_cast<int>(++value_);
-}
-
 template <typename T1, typename T2, typename T3>
 __device__ __forceinline__ void _LambComputeDirectionRule(
     const T1& g_scale,
@@ -458,6 +447,7 @@ INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(double, double, double, half)
 INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(half, float, half, half)
 INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(float, float, half, half)
 
+// w_buffer[i], d_buffer[i] is used to store the squared sum of all elements processed by the i-th block.
 template <typename TIn1, typename TIn2, typename TOut1, typename TOut2, typename TBuf>
 __launch_bounds__(ChunkGroup<4>::thread_count_per_block)
 __global__ void LambMultiTensorReductionImpl(ChunkGroup<4> chunk_group, TOut1* w_buffer, TOut2* d_buffer) {
