@@ -66,7 +66,7 @@ struct ImageFeatureDescriptor : ImageFeatureDescriptorT<
   Shape();
 
   winml::LearningModelPixelRange
-  LearningModelPixelRange();
+  PixelRange();
 
   ImageColorSpaceGamma
   GetColorSpaceGamma();

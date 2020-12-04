@@ -413,7 +413,7 @@ namespace ROOT_NS.AI.MachineLearning
         [contract(MachineLearningContract, 5)]
         {
         	//！Specifies the nominal pixel range of pixel data.
-        	LearningModelPixelRange LearningModelPixelRange{ get; };
+        	LearningModelPixelRange PixelRange{ get; };
         }
 
         //! The width of the image.

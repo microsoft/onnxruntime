@@ -112,7 +112,7 @@ ImageFeatureDescriptor::GetDescription(
 }
 
 winml::LearningModelPixelRange
-ImageFeatureDescriptor::LearningModelPixelRange() {
+ImageFeatureDescriptor::PixelRange() {
   return nominal_pixel_range_;
 }
 

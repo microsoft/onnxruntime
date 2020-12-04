@@ -389,7 +389,7 @@ std::optional<ImageFeatureValue::ImageResourceMetadata> ImageFeatureValue::GetIn
   // Set up LearningModelPixelRange
   winml::LearningModelPixelRange pixelRange = winml::LearningModelPixelRange::ZeroTo255;  //default;
   if (spImageDescriptor) {
-    pixelRange = spImageDescriptor->LearningModelPixelRange();
+    pixelRange = spImageDescriptor->PixelRange();
   }
   
   //NCHW layout

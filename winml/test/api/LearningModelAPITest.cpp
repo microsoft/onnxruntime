@@ -258,13 +258,13 @@ static void CheckLearningModelPixelRange() {
     for (auto&& input : inputs) {
       ImageFeatureDescriptor imageDescriptor = nullptr;
       WINML_EXPECT_NO_THROW(input.as(imageDescriptor));
-      WINML_EXPECT_EQUAL(imageDescriptor.LearningModelPixelRange(), pixelRanges[model_i]);
+      WINML_EXPECT_EQUAL(imageDescriptor.PixelRange(), pixelRanges[model_i]);
     }
     auto outputs = learningModel.OutputFeatures();
     for (auto&& output : outputs) {
       ImageFeatureDescriptor imageDescriptor = nullptr;
       WINML_EXPECT_NO_THROW(output.as(imageDescriptor));
-      WINML_EXPECT_EQUAL(imageDescriptor.LearningModelPixelRange(), pixelRanges[model_i]);
+      WINML_EXPECT_EQUAL(imageDescriptor.PixelRange(), pixelRanges[model_i]);
     }
   }
 }
