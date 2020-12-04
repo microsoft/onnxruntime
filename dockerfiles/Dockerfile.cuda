@@ -9,10 +9,6 @@ FROM nvidia/cuda:10.2-cudnn8-devel
 MAINTAINER Changming Sun "chasun@microsoft.com"
 ADD . /code
 
-ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y --no-install-recommends python3-dev ca-certificates g++ python3-numpy gcc make git python3-setuptools python3-wheel python3-pip unattended-upgrades
-RUN unattended-upgrade
-
 ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:${PATH}
 RUN apt-get update && apt-get install -y --no-install-recommends python3-dev ca-certificates g++ python3-numpy gcc make git python3-setuptools python3-wheel python3-pip aria2 && aria2c -q -d /tmp -o cmake-3.18.2-Linux-x86_64.tar.gz https://github.com/Kitware/CMake/releases/download/v3.18.2/cmake-3.18.2-Linux-x86_64.tar.gz && tar -zxf /tmp/cmake-3.18.2-Linux-x86_64.tar.gz --strip=1 -C /usr
 
@@ -21,4 +17,5 @@ RUN cd /code && /bin/bash ./build.sh --skip_submodule_sync --cuda_home /usr/loca
 FROM nvidia/cuda:10.2-cudnn8-runtime
 COPY --from=0 /code/build/Linux/Release/dist /root
 COPY --from=0 /code/dockerfiles/LICENSE-IMAGE.txt /code/LICENSE-IMAGE.txt
-RUN apt-get update && apt-get install -y --no-install-recommends libstdc++6 ca-certificates python3-setuptools python3-wheel python3-pip && python3 -m pip install /root/*.whl && rm -rf /root/*.whl
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends libstdc++6 ca-certificates python3-setuptools python3-wheel python3-pip unattended-upgrades && unattended-upgrade && python3 -m pip install /root/*.whl && rm -rf /root/*.whl

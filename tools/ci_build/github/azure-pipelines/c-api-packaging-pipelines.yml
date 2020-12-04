@@ -7,27 +7,21 @@ jobs:
     vmImage: 'ubuntu-latest'
   steps:
     - template: templates/set-version-number-variables-step.yml
-    - task: Docker@2
-      displayName: login
-      inputs:
-        containerRegistry: onnxruntimebuildcache
-        command: login
-        addPipelineData: false
+    - template: templates/get-docker-image-steps.yml
+      parameters:
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.centos
+        Context: tools/ci_build/github/linux/docker
+        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+        Repository: onnxruntimecentoscpubuild
     - task: CmdLine@2
       inputs:
         script: |
           mkdir -p $HOME/.onnx
           docker run --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro \
-          --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntimecentoscpubuild:chr python3 \
+          --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecentoscpubuild python3 \
           /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release \
           --skip_submodule_sync  --parallel --build_shared_lib --use_openmp
         workingDirectory: $(Build.SourcesDirectory)
-    - task: Docker@2
-      displayName: logout
-      inputs:
-        containerRegistry: onnxruntimebuildcache
-        command: logout
-        addPipelineData: false
     - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
           buildConfig: 'Release'
@@ -47,27 +41,21 @@ jobs:
   pool: 'Linux-GPU-CUDA10'
   steps:
     - template: templates/set-version-number-variables-step.yml
-    - task: Docker@2
-      displayName: login
-      inputs:
-        containerRegistry: onnxruntimebuildcache
-        command: login
-        addPipelineData: false
+    - template: templates/get-docker-image-steps.yml
+      parameters:
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda10_2
+        Context: tools/ci_build/github/linux/docker
+        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+        Repository: onnxruntimegpubuild
     - task: CmdLine@2
       inputs:
         script: |
           mkdir -p $HOME/.onnx
           docker run --gpus all -e NVIDIA_VISIBLE_DEVICES=all --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build \
-          --volume /data/models:/build/models:ro --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntimegpubuild:chq \
-          python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release \
+          --volume /data/models:/build/models:ro --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimegpubuild \
+          /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release \
           --skip_submodule_sync  --parallel --build_shared_lib --use_cuda --cuda_version=10.2 --cuda_home=/usr/local/cuda-10.2 --cudnn_home=/usr/local/cuda-10.2
         workingDirectory: $(Build.SourcesDirectory)
-    - task: Docker@2
-      displayName: logout
-      inputs:
-        containerRegistry: onnxruntimebuildcache
-        command: logout
-        addPipelineData: false
     - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
           buildConfig: 'Release'
