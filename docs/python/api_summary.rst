@@ -11,7 +11,7 @@ in *ONNX Runtime*.
 
 OrtValue
 =========
-*ONNX Runtime* works with native Python data structures which are mapped into ONNX ONNX data formats :
+*ONNX Runtime* works with native Python data structures which are mapped into ONNX data formats :
 Numpy arrays (tensors), dictionaries (maps), and a list of Numpy arrays (sequences).
 The data backing these are on CPU.
 
