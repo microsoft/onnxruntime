@@ -936,22 +936,63 @@ common::Status AddMetaTensors(int current_stage, int next_stage,
   return Status::OK();
 }
 
-common::Status SplitGraphWithMap(Graph& graph,
+// Splits the graph into disconnected subgraphs, each subgraph representing the
+// a pipeline stage.
+//
+// Inputs:
+//   - graph: a forward graph including the loss function.
+//   - op_to_stage: a map between operators and stage identifiers. Each operator
+// is represented by a pointer to a Node that belongs to `graph`.
+//   - num_stages: the resulting number of pipeline stages.
+//   - messages: a vector of pairs of stage identifiers describing the allowed
+// communication. Currently, this will be {(0, 1),...,(num_stages - 2, num_stages - 1)},
+// meaning that pipeline stage 0 is only allowed to send messages to stage 1,
+// stage 1 to stage 2, and so on. Once we allow partition after AD, or more
+// general forms of partition, this vector will contain other pairs of stages.
+//   - send_nodes: a container for the Send nodes we add to the graph. E.g,
+// send_nodes[i] represents the sending of tensors from stage i to stage i+1 and
+// belongs to the partition i.
+//   - receive_nodes: a container for the Recv nodes we add to the graph. E.g.,
+// receive_nodes[i] represents the receiving of tensors from stage i in stage 
+// i+1 and belongs to the partition i+1.
+//
+// The algorithm used here can be divided into four major steps:
+//   1. We collect all tensors that need be sent from stage to stage.
+//   2. We collect all tensors that need to be forwarded, i.e., tensors that
+// need to be sent by a stage even though it wasn't produced in that stage.
+//   3. We create replicas of all the tensors that will be sent.
+//   4. Finally, for each pair of stages (origin, destination), we perform the
+// following steps:
+//     a) Create all the meta tensors required (e.g., signals, and source and
+// destination ranks).
+//     b) Add as input of the Send operator, all the tensors collected in step 1,
+// and as output of the respective Receive operator.
+//     c) If origin, needs to send any received tensor (a forwarded tensor),
+// mark the replica of that tensor as input and output of the same Send and
+// Receive operators, respectively.
+//     d) Update the consumers of the received tensors to read from the replicas
+// of such tensors.
+//     e) Finally, create the Send and Receive nodes.
+common::Status SplitGraphWithOperatorToStageMap(Graph& graph,
                                  std::map<Node*, int>& op_to_stage,
-                                 int nstages,
+                                 int num_stages,
                                  std::vector<std::pair<int, int>>& messages,
                                  std::vector<Node*>& send_nodes,
-                                 std::vector<Node*>& recv_nodes) {
-
-  // forward_messages[s]: all the tensors sent by stage s while executing
-  // forward computation.
-  std::vector<std::set<const NodeArg*>> forward_messages(nstages);
+                                 std::vector<Node*>& receive_nodes) {
+  
+  // forward_messages stores all the tensors that will be sent by any stage.
+  // For example, forward_messages[s] is a set of all the tensors sent by stage
+  // s while executing the forward computation.
+  std::vector<std::set<const NodeArg*>> forward_messages(num_stages);
   // TODO(jufranc): once we start using this function on the training graph,
   // we need to keep backward_messages[s] too.
 
-  // Tensors that need to be sent from one device to the other.
-  // TODO(jufranc): Should we consider weights here too? 
-  // forwarded_tensors[i] = {t, {stage of producer, stage of the last consumer}}
+  // Tensors that need to be sent from one device to the other. For example,
+  // forwarded_tensors[i] = {t, {stage of producer s0, stage of the last consumer s1}}
+  // means that a tensor t, is produced in stage s0 and consumed for the last
+  // time in stage s1, where s1 > s0 + 1. This tensor will be copied from stage
+  // to stage until s1.
+  // TODO(jufranc): Should we consider weights here too?
   std::vector<std::pair<const NodeArg*, std::pair<int, int>>> forwarded_tensors;
 
   // All the tensors that are produced and consumed in the graph.
@@ -960,7 +1001,7 @@ common::Status SplitGraphWithMap(Graph& graph,
   // We create all the tensor replicas in advance using this fuction.
   // A tensor produced in stage r and consumed in stage r', such that r' > r,
   // will have a replica in all stages r'', such that r'' > r and r'' < r'.
-  // tensor_replicas[t][r] contains a pointer to the the replica of t in stage r, 
+  // tensor_replicas[t][r] contains a pointer to the the replica of t in stage r,
   // it if exists, or to itself if r is the stage of the producer of r.
   std::map<const NodeArg*, std::vector<NodeArg*>> tensor_replicas;
   auto create_tensor_replica = [&tensor_replicas, &graph](const NodeArg* tensor,
@@ -992,7 +1033,7 @@ common::Status SplitGraphWithMap(Graph& graph,
   for (const NodeArg* node_arg : initial_node_args) {
     // Initialize tensor_replicas data structure.
     auto inserted = tensor_replicas.emplace(
-                      std::make_pair(node_arg, std::vector<NodeArg*>(nstages)));
+                      std::make_pair(node_arg, std::vector<NodeArg*>(num_stages)));
     auto& replicas = (*inserted.first).second;
 
     // TODO: for now we pretend that inputs are produced in stage 0,
@@ -1008,35 +1049,35 @@ common::Status SplitGraphWithMap(Graph& graph,
     }
     
     // This is only handling forwarding in the forward part of the graph.
-    int last_consumer_stage_fwd = -1;
+    int last_consumer_stage_forward = -1;
     for (Node* consumer : consumers) {
       auto found_stage = op_to_stage.find(consumer);
       assert(found_stage != op_to_stage.end());
       int consumer_stage = found_stage->second;
-      // TODO: test case in which a tensor is produced by a fwd op, stashed and
-      // sent to the previous stage by a bwd op.
-      // For now, I'm assuming that if a tensor is produced by a fwd op and
-      // consumed by a bwd op, then producer and consumer are both in the same
-      // device. This will not always be the case though. 
+      // TODO: test case in which a tensor is produced by a forward op, stashed
+      // and sent to the previous stage by a backward op.
+      // For now, I'm assuming that if a tensor is produced by a forward op and
+      // consumed by a backward op, then producer and consumer are both in the
+      // same device. This will not always be the case though. 
       if (!IsBackward(*producer_node) && IsBackward(*consumer)) {
         // They must be on the same device. 
         ORT_ENFORCE(producer_stage == consumer_stage,
-                    "Fwd producer and bwd consumer of a tensor must be in the same device.");
+          "Forward producer and backward consumer of a tensor must be in the same device.");
       }
 
-      // It is impossible to have a bwd operator producing a tensor consumed
-      // by a fwd operator. So, at this point, either both producer and consumer
-      // are fwd or both are bwd. Either way, we want to know where are the last
-      // consumers of a tensor. 
+      // It is impossible to have a backward operator producing a tensor
+      // consumed by a forward operator. So, at this point, either both producer
+      // and consumer are forward or both are backward. Either way, we want
+      // to know where are the last consumers of a tensor.
       if (is_forward(producer_stage, consumer_stage)) {
-        last_consumer_stage_fwd = std::max(last_consumer_stage_fwd, consumer_stage);
+        last_consumer_stage_forward = std::max(last_consumer_stage_forward, consumer_stage);
       } 
       ORT_ENFORCE(!is_backward(producer_stage, consumer_stage),
-                    "Not supported yet: " + std::to_string(producer_stage) + "-->" + std::to_string(consumer_stage));
+                  "Not supported yet: ", producer_stage, "->", consumer_stage);
       // TODO(jufranc): we will need something like the following, where
       // else if (is_backward(producer_stage, consumer_stage)) {
-      //  last_consumer_stage_bwd is init to INT_MAX, for training graphs.
-      //  last_consumer_stage_bwd = std::min(last_consumer_stage_bwd, consumer_stage);
+      //  last_consumer_stage_backward is init to INT_MAX, for training graphs.
+      //  last_consumer_stage_backward = std::min(last_consumer_stage_backward, consumer_stage);
       // }
 
       // Find which tensors need to be sent to the next stage (if it is a forward
@@ -1055,13 +1096,13 @@ common::Status SplitGraphWithMap(Graph& graph,
     // tensors need to be forwarded, and their producer-consumer stage range.
     // The replica of the tensor in the producer stage, is the tensor itself.
     replicas[producer_stage] = const_cast<NodeArg *>(node_arg);
-    if (is_forward(producer_stage, last_consumer_stage_fwd)) { 
-      for (int r = producer_stage + 1; r <= last_consumer_stage_fwd; ++r) {
+    if (is_forward(producer_stage, last_consumer_stage_forward)) {
+      for (int r = producer_stage + 1; r <= last_consumer_stage_forward; ++r) {
         create_tensor_replica(node_arg, r);
       }
-      if (last_consumer_stage_fwd - producer_stage > 1) {
+      if (last_consumer_stage_forward - producer_stage > 1) {
         forwarded_tensors.push_back({node_arg, 
-                                    {producer_stage, last_consumer_stage_fwd}});
+                                    {producer_stage, last_consumer_stage_forward}});
       }
     }
     // TODO(jufranc): take care of is_backward case.
@@ -1097,13 +1138,13 @@ common::Status SplitGraphWithMap(Graph& graph,
                      recv_input_args, recv_output_args));
 
     // Get all the node_args that need to be sent to the next stage.
-    auto& tensors_sent_in_fwd = forward_messages.at(current_stage);
-    // TODO(jufranc): consider tensors sent by bwd ops.
-    // auto& tensors_sent_in_bwd = backward_messages.at(current_stage);
-    // auto& tensors_sent = current_stage + 1 == next_stage ? tensors_sent_in_fwd : tensors_sent_in_bwd;
+    auto& tensors_sent_in_forward = forward_messages.at(current_stage);
+    // TODO(jufranc): consider tensors sent by backward ops.
+    // auto& tensors_sent_in_backward = backward_messages.at(current_stage);
+    // auto& tensors_sent = current_stage + 1 == next_stage ? tensors_sent_in_forward : tensors_sent_in_backward;
 
     // Take care of tensors that need to be sent from one device to the other.
-    for (const NodeArg* arg : tensors_sent_in_fwd) {
+    for (const NodeArg* arg : tensors_sent_in_forward) {
       send_input_args.push_back(const_cast<NodeArg *>(arg));
 
       // The tensor replica has been created in advance. We query it now
@@ -1117,9 +1158,9 @@ common::Status SplitGraphWithMap(Graph& graph,
     }
 
     // Take care of tensors that need to be forwarded.
-    for (auto& fwding_entry : forwarded_tensors) {
-      const NodeArg* tensor = fwding_entry.first;
-      auto& range = fwding_entry.second;
+    for (auto& forwarding_entry : forwarded_tensors) {
+      const NodeArg* tensor = forwarding_entry.first;
+      auto& range = forwarding_entry.second;
       int start = range.first;
       int end = range.second; 
 
@@ -1189,22 +1230,22 @@ common::Status SplitGraphWithMap(Graph& graph,
                                     &attributes,      /* attribute */
                                     kMSDomain);
 
-    auto& recv_node = graph.AddNode(graph.GenerateNodeName("Recv"),
-                                    "Recv", "", recv_input_args,
-                                    recv_output_args, /* output */
-                                    &attributes,      /* attribute */
-                                    kMSDomain);
+    auto& receive_node = graph.AddNode(graph.GenerateNodeName("Recv"),
+                                       "Recv", "", recv_input_args,
+                                       recv_output_args, /* output */
+                                       &attributes,      /* attribute */
+                                       kMSDomain);
 
     ORT_ENFORCE(current_stage != next_stage,
                 "Stage cannot send message to itself.");
     if (current_stage < next_stage) {
       send_nodes[current_stage] = &send_node;
-      recv_nodes[next_stage - 1] = &recv_node;
+      receive_nodes[next_stage - 1] = &receive_node;
     } 
-    // TODO(jufranc): consider bwd sends and receives.
+    // TODO(jufranc): consider backward sends and receives.
     // else if (current_stage > next_stage) {
     //   send_nodes[current_stage].second = &send_node;
-    //   recv_nodes[next_stage].second = &recv_node;
+    //   receive_nodes[next_stage].second = &receive_node;
     // } 
   }
 
@@ -1218,7 +1259,7 @@ common::Status SplitGraphWithMap(Graph& graph,
 Status ApplyPipelinePartitionToMainGraph(Graph& graph,
                                          std::map<Node*, int>& op_to_stage,
                                          int pipeline_stage_id,
-                                         int nstages) {
+                                         int num_stages) {
 
   // TODO(jufranc): in order to support more general pipeline shapes, we need to
   // do some analysis on the graph and assignment of operators to stages, to 
@@ -1227,7 +1268,7 @@ Status ApplyPipelinePartitionToMainGraph(Graph& graph,
   // partition of training graphs, we need to let tensors be copied from s+1 to
   // s, as well. 
   std::vector<std::pair<int, int>> messages;
-  for (int s = 0; s < nstages - 1; ++s) {
+  for (int s = 0; s < num_stages - 1; ++s) {
     messages.emplace_back(s, s+1);
   }
 
@@ -1238,24 +1279,25 @@ Status ApplyPipelinePartitionToMainGraph(Graph& graph,
 
   // send_nodes[s] is the Send node that copies tensors from stage s to stage s+1.
   // The last stage will not send anything.
-  std::vector<Node*> send_nodes(nstages - 1);
+  std::vector<Node*> send_nodes(num_stages - 1);
   // recv_nodes[s] is the Recv node that receives the replicas of tensors from 
   // stage s, i.e., it is allocated to stage s+1.
   // The first stage does not receive anything.
-  std::vector<Node*> recv_nodes(nstages - 1);
+  std::vector<Node*> recv_nodes(num_stages - 1);
 
   // TODO(jufranc): once we allow partition of training graphs, we need to keep
   // send and receive nodes for the backward computation. We can then use the
   // following type.
-  // std::vector<std::pair<Node*, Node*>> send_nodes(nstages);
-  // std::vector<std::pair<Node*, Node*>> recv_nodes(nstages);
+  // std::vector<std::pair<Node*, Node*>> send_nodes(num_stages);
+  // std::vector<std::pair<Node*, Node*>> recv_nodes(num_stages);
   // The first Node* of the pair in send_nodes[s] is the Send from s to s+1,
   // i.e., the send for the forward stage. The second is the Send from s to
   // s-1, i.e., the send for the backward stage.
 
   // Split the graph given the mapping of operations to stages.
-  ORT_RETURN_IF_ERROR(
-    SplitGraphWithMap(graph, op_to_stage, nstages, messages, send_nodes, recv_nodes));
+  ORT_RETURN_IF_ERROR(SplitGraphWithOperatorToStageMap(graph, op_to_stage,
+                                                       num_stages, messages,
+                                                       send_nodes, recv_nodes));
 
   // Take care of weights that are shared accross stages.
   ORT_RETURN_IF_ERROR(HandleSharedInitializer(graph, send_nodes, recv_nodes));
@@ -1267,13 +1309,13 @@ Status ApplyPipelinePartitionToMainGraph(Graph& graph,
   // topological order. Finally, remove Receive nodes that do not belong to the
   // `pipeline_stage_id` partition. At this point, they don't have outgoing
   // edges either.
-  for (int s = 0; s < nstages - 1; ++s) {
+  for (int s = 0; s < num_stages - 1; ++s) {
     if (s == pipeline_stage_id) {
       continue; // These sends must be kept.
     }
-    Node* fwd_send = send_nodes.at(s);
-    ORT_ENFORCE(fwd_send);
-    graph.RemoveNode(fwd_send->Index());
+    Node* forward_send = send_nodes.at(s);
+    ORT_ENFORCE(forward_send);
+    graph.RemoveNode(forward_send->Index());
     // TODO(jufranc): once we enable partition of training graphs, we need to
     // remove the backward sends too.
   }
@@ -1284,7 +1326,7 @@ Status ApplyPipelinePartitionToMainGraph(Graph& graph,
     NodeIndex ni = *it;
     auto found = op_to_stage.find(graph.GetNode(ni));
     ORT_ENFORCE(found != op_to_stage.end(),
-                "Found an op without stage.");
+                "Found an operator without stage.");
     
     if (found->second != pipeline_stage_id) {
       graph.RemoveNode(ni);
@@ -1299,14 +1341,14 @@ Status ApplyPipelinePartitionToMainGraph(Graph& graph,
     }
   }
 
-  for (int s = 0; s < nstages - 1; ++s) {
+  for (int s = 0; s < num_stages - 1; ++s) {
     if (s == pipeline_stage_id - 1) {
       // These receives must be kept.
       continue;
     }
-    Node* fwd_recv = recv_nodes.at(s);
-    ORT_ENFORCE(fwd_recv);
-    graph.RemoveNode(fwd_recv->Index());
+    Node* forward_recv = recv_nodes.at(s);
+    ORT_ENFORCE(forward_recv);
+    graph.RemoveNode(forward_recv->Index());
     // TODO(jufranc): once we enable partition of training graphs, we need to
     // remove the backward sends too.
   }
@@ -1324,10 +1366,10 @@ Status ApplyPipelinePartitionToMainGraph(Graph& graph,
 }
 
 
-Status VerifyAssignment(std::vector<int> stages, int nstages, Graph& graph) {
+Status VerifyAssignment(std::vector<int> stages, int num_stages, Graph& graph) {
 
   // All stages are used.
-  for (int s = 0; s < nstages; ++s) {
+  for (int s = 0; s < num_stages; ++s) {
     auto stage_is_used = std::find(std::begin(stages), std::end(stages), s);
     ORT_RETURN_IF_NOT(stage_is_used != std::end(stages),
       "Stage " + std::to_string(s) + " was not assigned to any node.");
@@ -1340,7 +1382,7 @@ Status VerifyAssignment(std::vector<int> stages, int nstages, Graph& graph) {
 
   // All assigned stages are within limits.
   for (auto s : stages) {
-    ORT_RETURN_IF_NOT(s >= 0 && s < nstages,
+    ORT_RETURN_IF_NOT(s >= 0 && s < num_stages,
                       "All stage ids must be in range.");
   }
 
@@ -1366,7 +1408,7 @@ Status VerifyAssignment(std::vector<int> stages, int nstages, Graph& graph) {
 Status GetDeviceAssignmentMap(Graph& graph, 
                               const std::map<std::string, int>& id_to_stage,
                               std::map<Node*, int>& op_to_stage,
-                              int nstages) {
+                              int num_stages) {
   int n_nodes = graph.NumberOfNodes();
   std::vector<int> stages(n_nodes);
   for (int i = 0; i < n_nodes; ++i) {
@@ -1383,7 +1425,7 @@ Status GetDeviceAssignmentMap(Graph& graph,
     ORT_RETURN_IF_NOT(found, "Can't find node's stage " + node->Name());
   }
 
-  ORT_RETURN_IF_ERROR(VerifyAssignment(stages, nstages, graph));
+  ORT_RETURN_IF_ERROR(VerifyAssignment(stages, num_stages, graph));
 
   for (int i = 0; i < n_nodes; ++i) {
     op_to_stage.emplace(graph.GetNode(i), stages[i]);
@@ -1395,8 +1437,8 @@ Status GetDeviceAssignmentMap(Graph& graph,
 Status GetDeviceAssignmentMap(Graph& graph,
                               const std::vector<TrainingSession::TrainingConfiguration::CutInfo>& cuts,
                               std::map<Node*, int>& op_to_stage,
-                              int nstages) {
-  ORT_RETURN_IF(nstages != static_cast<int>(cuts.size() + 1),
+                              int num_stages) {
+  ORT_RETURN_IF(num_stages != static_cast<int>(cuts.size() + 1),
                 "Number of cuts does not match number of pipeline stages.");
   
   auto total_nodes = graph.NumberOfNodes();
@@ -1419,10 +1461,10 @@ Status GetDeviceAssignmentMap(Graph& graph,
         continue; // This node has been processed.
       }
 
-      // If the op hasn't been visited, but has a stage already assigned, then
-      // something went wront.
+      // If the operator hasn't been visited, but has a stage already assigned,
+      // then something went wront.
       ORT_RETURN_IF(stages[current->Index()] != -1,
-        "Trying to reassign an op. Possibly, due to an invalid cut point");
+        "Trying to reassign an operator. Possibly, due to an invalid cut point");
 
       visited[current->Index()] = true;
       stages[current->Index()] = stage;

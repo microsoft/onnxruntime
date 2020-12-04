@@ -36,7 +36,6 @@ const static int NUM_CLASS = 10;
 const static vector<int64_t> IMAGE_DIMS = {784};  //{1, 28, 28} for mnist_conv
 const static vector<int64_t> LABEL_DIMS = {10};
 
-
 Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params) {
   cxxopts::Options options("POC Training", "Main Program to train on MNIST");
   // clang-format off
@@ -65,9 +64,7 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
       "seperated by ':'. If consumer nodes need to be specified, specify them after producer node with a '-' delimiter and "
       "separate each consumer node with a '/'. ", cxxopts::value<std::vector<std::string>>()->default_value(""))
       ("evaluation_period", "How many training steps to make before making an evaluation.",
-        cxxopts::value<size_t>()->default_value("1"))
-      ("mapping_file", "Text file with assignment of ops to devices", cxxopts::value<std::string>()->default_value(""))
-      ;
+        cxxopts::value<size_t>()->default_value("1"));
   // clang-format on
 
   try {
@@ -108,8 +105,8 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
     // online. If the pipeline contains n stages, the cut list should be of length (n-1), in order to cut the
     // graph into n partitions.
     if (params.pipeline_parallel_size > 1) {
-      
       auto cut_info_groups = flags["cut_group_info"].as<std::vector<std::string>>();
+
       ORT_RETURN_IF_NOT(static_cast<int>(cut_info_groups.size() + 1) == params.pipeline_parallel_size,
                         "cut_info length plus one must match pipeline parallel size");
 
@@ -154,7 +151,6 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
         TrainingSession::TrainingConfiguration::CutInfo cut = process_cut_info(cut_info);
         params.pipeline_partition_cut_list.emplace_back(cut);
       }
-
     }
     params.use_nccl = flags["use_nccl"].as<bool>();
 #ifdef USE_CUDA
