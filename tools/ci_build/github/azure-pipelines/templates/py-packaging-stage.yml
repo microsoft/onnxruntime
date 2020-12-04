@@ -79,8 +79,6 @@ stages:
             python.version: '3.7'
           Python38:
             python.version: '3.8'
-          Python39:
-            python.version: '3.9'
       steps:
       - checkout: self
         clean: true
@@ -106,7 +104,7 @@ stages:
               --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
-              onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntimecpubuild:chp \
+              onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntimecpubuild:ch1 \
                 $(python.manylinux.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build --cmake_generator Ninja \
                   --config Release \
@@ -158,8 +156,6 @@ stages:
             python.version: '3.7'
           Python38:
             python.version: '3.8'
-          Python39:
-            python.version: '3.9'
       steps:
       - checkout: self
         clean: true
@@ -185,7 +181,7 @@ stages:
               --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
-              onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntimecpubuild:chp \
+              onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntimecpubuild:ch1 \
                 $(python.manylinux.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build --cmake_generator Ninja \
                   --config Release \
@@ -238,8 +234,6 @@ stages:
             python.version: '3.7'
           Python38:
             python.version: '3.8'
-          Python39:
-            python.version: '3.9'
       steps:
       - checkout: self
         clean: true
@@ -265,7 +259,7 @@ stages:
               --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
-              onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntimegpubuild:chq \
+              onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntimegpubuild:ch2 \
                 $(python.manylinux.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build --cmake_generator Ninja \
                   --config Release \
@@ -316,8 +310,6 @@ stages:
             python.version: '3.7'
           Python38:
             python.version: '3.8'
-          Python39:
-            python.version: '3.9'
       steps:
       - checkout: self
         clean: true
@@ -393,8 +385,6 @@ stages:
             python.version: '3.7'
           Python38:
             python.version: '3.8'
-          Python39:
-            python.version: '3.9'
       variables:
         OrtPackageId: 'Microsoft.ML.OnnxRuntime'
         MsbuildArguments: '-maxcpucount'
@@ -523,8 +513,6 @@ stages:
             python.version: '3.7'
           Python38:
             python.version: '3.8'
-          Python39:
-            python.version: '3.9'
       variables:
         OrtPackageId: 'Microsoft.ML.OnnxRuntime'
         MsbuildArguments: '-maxcpucount'
@@ -658,10 +646,6 @@ stages:
             python.version: '3.6'
           Python37:
             python.version: '3.7'
-          Python38:
-            python.version: '3.8'
-          Python39:
-            python.version: '3.9'
       steps:
       - checkout: self
         clean: true
@@ -781,8 +765,6 @@ stages:
             python.version: '3.7'
           Python38:
             python.version: '3.8'
-          Python39:
-            python.version: '3.9'
       steps:
       - checkout: self
         clean: true
@@ -834,8 +816,6 @@ stages:
       pool: 'Linux-CPU'
       strategy:
         matrix:
-          Py38:
-            python.version: '3.8'
           Py37:
             python.version: '3.7'
           Py36:

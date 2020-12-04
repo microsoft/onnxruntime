@@ -27,7 +27,7 @@ jobs:
           --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
-          onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntimecpubuild:chp \
+          onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntimecpubuild:ch1 \
             /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build \
               --config Debug Release \

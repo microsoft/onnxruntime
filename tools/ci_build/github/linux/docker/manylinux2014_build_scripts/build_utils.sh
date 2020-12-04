@@ -118,11 +118,11 @@ function build_git {
     local git_sha256=$2
     check_var ${git_sha256}
     check_var ${GIT_DOWNLOAD_URL}
-    fetch_source ${git_fname}.tar.gz ${GIT_DOWNLOAD_URL}
-    check_sha256sum ${git_fname}.tar.gz ${git_sha256}
-    tar -xzf ${git_fname}.tar.gz
-    (cd ${git_fname} && make -j$(nproc) install prefix=/usr/local NO_GETTEXT=1 NO_TCLTK=1 > /dev/null)
-    rm -rf ${git_fname} ${git_fname}.tar.gz
+    fetch_source v${git_fname}.tar.gz ${GIT_DOWNLOAD_URL}
+    check_sha256sum v${git_fname}.tar.gz ${git_sha256}
+    tar -xzf v${git_fname}.tar.gz
+    (cd git-${git_fname} && make -j$(nproc) install prefix=/usr/local NO_GETTEXT=1 NO_TCLTK=1 > /dev/null)
+    rm -rf git-${git_fname} v${git_fname}.tar.gz
 }
 
 

@@ -2,9 +2,6 @@
 # See PEP 425 for exactly what these are, but an example would be:
 #   cp27-cp27mu
 
-from wheel.vendored.packaging.tags import sys_tags
+from wheel.pep425tags import get_abbr_impl, get_impl_ver, get_abi_tag
 
-
-# first tag is always the more specific tag
-tag = next(sys_tags())
-print("{0}-{1}".format(tag.interpreter, tag.abi))
+print("{0}{1}-{2}".format(get_abbr_impl(), get_impl_ver(), get_abi_tag()))

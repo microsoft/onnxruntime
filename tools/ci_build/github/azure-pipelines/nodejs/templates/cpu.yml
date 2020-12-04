@@ -48,7 +48,7 @@ jobs:
       inputs:
         script: |
           mkdir -p $HOME/.onnx && docker run --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro \
-          --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntimecentoscpubuild:chr /bin/bash -c "python3 \
+          --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntimecentoscpubuild:ch3 /bin/bash -c "python3 \
           /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --build_nodejs \
           --skip_submodule_sync  --parallel --build_shared_lib --use_openmp && cd /onnxruntime_src/nodejs && npm pack"
         workingDirectory: $(Build.SourcesDirectory)

@@ -30,8 +30,6 @@ PYTHON_COMPILE_DEPS="zlib-devel bzip2-devel expat-devel ncurses-devel readline-d
 # Install development packages (except for libgcc which is provided by gcc install)
 MANYLINUX_DEPS="glibc-devel libstdc++-devel glib2-devel libX11-devel libXext-devel libXrender-devel mesa-libGL-devel libICE-devel libSM-devel"
 
-CMAKE_DEPS="openssl-devel zlib-devel libcurl-devel"
-
 # Get build utilities
 source $MY_DIR/build_utils.sh
 
@@ -95,8 +93,7 @@ yum -y install \
     unzip \
     which \
     ${YASM} \
-    ${PYTHON_COMPILE_DEPS} \
-    ${CMAKE_DEPS}
+    ${PYTHON_COMPILE_DEPS}
 
 # Install git
 build_git $GIT_ROOT $GIT_HASH
@@ -120,17 +117,6 @@ cd ..
 rm -rf $SQLITE_AUTOCONF_VERSION*
 rm /usr/local/lib/libsqlite3.a
 
-# Install a recent version of cmake3
-curl -L -O $CMAKE_DOWNLOAD_URL/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}.tar.gz
-check_sha256sum cmake-${CMAKE_VERSION}.tar.gz $CMAKE_HASH
-tar -xzf cmake-${CMAKE_VERSION}.tar.gz
-cd cmake-${CMAKE_VERSION}
-./bootstrap --system-curl --parallel=$(nproc)
-make -j$(nproc)
-make install
-cd ..
-rm -rf cmake-${CMAKE_VERSION}
-
 # Install libcrypt.so.1 and libcrypt.so.2
 build_libxcrypt "$LIBXCRYPT_DOWNLOAD_URL" "$LIBXCRYPT_VERSION" "$LIBXCRYPT_HASH"
 
@@ -141,32 +127,26 @@ build_libxcrypt "$LIBXCRYPT_DOWNLOAD_URL" "$LIBXCRYPT_VERSION" "$LIBXCRYPT_HASH"
 mkdir -p /opt/python
 build_cpythons $CPYTHON_VERSIONS
 
-# Create venv for auditwheel & certifi
-TOOLS_PATH=/opt/_internal/tools
-/opt/python/cp37-cp37m/bin/python -m venv $TOOLS_PATH
-source $TOOLS_PATH/bin/activate
+PY37_BIN=/opt/python/cp37-cp37m/bin
 
-# Install default packages
-pip install -U --require-hashes -r $MY_DIR/requirements.txt
 # Install certifi and auditwheel
-pip install -U --require-hashes -r $MY_DIR/requirements-tools.txt
-
-# Make auditwheel available in PATH
-ln -s $TOOLS_PATH/bin/auditwheel /usr/local/bin/auditwheel
+$PY37_BIN/pip install --require-hashes -r $MY_DIR/py37-requirements.txt
 
 # Our openssl doesn't know how to find the system CA trust store
 #   (https://github.com/pypa/manylinux/issues/53)
 # And it's not clear how up-to-date that is anyway
 # So let's just use the same one pip and everyone uses
-ln -s $(python -c 'import certifi; print(certifi.where())') /opt/_internal/certs.pem
-# If you modify this line you also have to modify the versions in the Dockerfiles:
+ln -s $($PY37_BIN/python -c 'import certifi; print(certifi.where())') \
+      /opt/_internal/certs.pem
+# If you modify this line you also have to modify the versions in the
+# Dockerfiles:
 export SSL_CERT_FILE=/opt/_internal/certs.pem
 
-# Deactivate the tools virtual environment
-deactivate
 
 # Install patchelf (latest with unreleased bug fixes) and apply our patches
 build_patchelf $PATCHELF_VERSION $PATCHELF_HASH
+
+ln -s $PY37_BIN/auditwheel /usr/local/bin/auditwheel
 
 # Clean up development headers and other unnecessary stuff for
 # final image

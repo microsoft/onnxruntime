@@ -2,50 +2,6 @@
   "Version": 1,
   "Registrations": [
     {
-      "Component": {
-        "Type": "other",
-        "other": {
-          "Name": "automake",
-          "Version": "1.16.2",
-          "DownloadUrl": "http://ftp.gnu.org/gnu/automake/automake-1.16.2.tar.gz"
-        },
-        "comments": "manylinux dependency"
-      }
-    },
-    {
-      "Component": {
-        "Type": "other",
-        "other": {
-          "Name": "libtool",
-          "Version": "2.4.6",
-          "DownloadUrl": "http://ftp.gnu.org/gnu/libtool/libtool-2.4.6.tar.gz"
-        },
-        "comments": "manylinux dependency"
-      }
-    },
-    {
-      "Component": {
-        "Type": "other",
-        "other": {
-          "Name": "sqlite",
-          "Version": "3330000",
-          "DownloadUrl": "https://www.sqlite.org/2020/sqlite-autoconf-3330000.tar.gz"
-        },
-        "comments": "manylinux dependency"
-      }
-    },
-    {
-      "Component": {
-        "Type": "other",
-        "other": {
-          "Name": "git",
-          "Version": "2.29.1",
-          "DownloadUrl": "https://www.kernel.org/pub/software/scm/git/git-2.29.1.tar.gz"
-        },
-        "comments": "manylinux dependency"
-      }
-    },
-    {
       "component": {
         "type": "git",
         "git": {
