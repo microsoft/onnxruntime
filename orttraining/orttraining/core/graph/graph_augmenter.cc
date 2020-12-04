@@ -88,6 +88,7 @@ Status GraphAugmenter::AugmentGraph(Graph& graph,
     } else {
       LOGS_DEFAULT(WARNING) << n.Name() << " no shape";
     }
+    LOGS_DEFAULT(WARNING) << input_args[0]->ToProto().DebugString();
   }
 
   // Add new inputs to the graph.
