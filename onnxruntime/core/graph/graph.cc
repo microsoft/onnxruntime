@@ -127,11 +127,10 @@ static void RemoveInvalidValues(ONNX_NAMESPACE::TypeProto& type) {
 static TypeProto TypeProtoFromTensorProto(const TensorProto& tensor) {
   TypeProto t;
   t.mutable_tensor_type()->set_elem_type(tensor.data_type());
-  if (!tensor.dims().empty()) {
-    auto shape = t.mutable_tensor_type()->mutable_shape();
-    for (auto dim : tensor.dims())
-      shape->add_dim()->set_dim_value(dim);
-  }
+  auto shape = t.mutable_tensor_type()->mutable_shape();
+  for (auto dim : tensor.dims())
+    shape->add_dim()->set_dim_value(dim);
+
   return t;
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -291,7 +290,7 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
           DataType inferred_type = DataTypeUtils::ToType(input_type);
           // The "SetType" call will override the shape information to empty.
           // If the original tensor has shape information, need to set it back.
-          if (0 && Shape()) {
+          if (Shape()) {
             auto old_shape = *Shape();
             SetType(inferred_type);
             SetShape(old_shape);
@@ -2284,6 +2283,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
 
     NodeProto node_proto;
     node.ToProto(node_proto);
+    std::cout << node_proto.DebugString() << std::endl;
     auto& node_name = node.Name();
     auto& domain = node.Domain();
 
