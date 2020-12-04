@@ -4,8 +4,12 @@ if [ ! -d "/etc/smbcredentials" ]; then
 sudo mkdir /etc/smbcredentials
 fi
 if [ ! -f "/etc/smbcredentials/onnxruntimetestdata.cred" ]; then
+    # to create onnxruntimetestdata.cred, I have to do: 'sudo bash -c ...'
     sudo bash -c 'echo "username=onnxruntimetestdata" >> /etc/smbcredentials/onnxruntimetestdata.cred'
-    sudo bash -c 'echo "password=$1" >> /etc/smbcredentials/onnxruntimetestdata.cred'
+
+    # $1 get removed if I do 'sudo bash -c...' to enable 'sudo echo..' I need to 'sudo chmod 777...' first.
+    sudo chmod 777 /etc/smbcredentials/onnxruntimetestdata.cred
+    sudo echo "password=$1" >> /etc/smbcredentials/onnxruntimetestdata.cred
 fi
 sudo chmod 600 /etc/smbcredentials/onnxruntimetestdata.cred
 
