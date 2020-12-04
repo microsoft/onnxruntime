@@ -11,7 +11,7 @@ jobs:
     clean: true
     submodules: recursive
 
-  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_custom_script_extension_map_test_data.sh $(onnxruntime-storage-key)
+  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh $(onnxruntime-storage-key)
     displayName: 'Map test data'
     condition: succeededOrFailed() # ensure all tests are run
 
