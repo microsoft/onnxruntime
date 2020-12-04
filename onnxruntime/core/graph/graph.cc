@@ -291,7 +291,7 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
           DataType inferred_type = DataTypeUtils::ToType(input_type);
           // The "SetType" call will override the shape information to empty.
           // If the original tensor has shape information, need to set it back.
-          if (Shape()) {
+          if (0 && Shape()) {
             auto old_shape = *Shape();
             SetType(inferred_type);
             SetShape(old_shape);
