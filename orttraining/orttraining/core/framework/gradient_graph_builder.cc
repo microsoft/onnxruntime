@@ -225,7 +225,6 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
         if (arg.type_proto) {
           LOGS_DEFAULT(WARNING) << arg.type_proto->DebugString();
         }
-        arg.name arg.type_proto
       }
       for (auto& arg : op_def.output_args) {
         auto found = pending_.find(arg.name);
