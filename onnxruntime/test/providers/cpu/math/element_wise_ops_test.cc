@@ -1883,14 +1883,6 @@ TEST(MathOpTest, Erf) {
   test.Run();
 }
 
-TEST(MathOpTest, Erf_double) {
-  OpTester test("Erf", 9);
-  std::vector<int64_t> dims{2, 2};
-  test.AddInput<double>("A", dims, {0.5, 1.0, 0.7, 2.0});
-  test.AddOutput<double>("B", dims, {0.5204999, 0.8427008, 0.6778012, 0.9953223});
-  test.Run();
-}
-
 TEST(MathOpTest, ErfMoreData) {
   OpTester test("Erf", 9);
   std::vector<float> inputs{
