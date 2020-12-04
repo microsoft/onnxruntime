@@ -698,7 +698,7 @@ class TestOrtTrainer(unittest.TestCase):
         sd['bert.encoder.layer.0.attention.output.LayerNorm.weight'] +=1
         model.load_state_dict(sd)
 
-        ckpt_dir = get_name("ort_ckpt")
+        ckpt_dir = 'testdata'
         save_checkpoint(model, ckpt_dir, 'bert_toy_save_test')
         del model
 

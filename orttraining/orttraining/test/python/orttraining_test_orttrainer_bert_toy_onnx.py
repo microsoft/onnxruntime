@@ -406,7 +406,7 @@ def testToyBertCheckpointBasic():
     checkpoint.experimental_load_state_dict(trainer, sd)
 
     ## Save a checkpoint
-    ckpt_dir = _test_helpers._get_name("ort_ckpt")
+    ckpt_dir = 'testdata'
     checkpoint.experimental_save_checkpoint(trainer, ckpt_dir, 'bert_toy_save_test')
     del trainer
     del model
