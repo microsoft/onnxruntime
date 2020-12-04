@@ -753,7 +753,9 @@ class Graph {
   NodeArg& GetOrCreateNodeArg(const std::string& name, const ONNX_NAMESPACE::TypeProto* p_arg_type) {
     auto iter = node_args_.find(name);
     if (iter != node_args_.end()) {
-      return *(iter->second);
+      auto existing_nod_arg = iter->second;
+      existing_nod_arg->SetType(*p_arg_type);
+      return *(existing_nod_arg);
     }
     auto result = node_args_.insert(std::make_pair(name, onnxruntime::make_unique<NodeArg>(name, p_arg_type)));
     return *(result.first->second);
