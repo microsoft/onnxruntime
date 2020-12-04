@@ -339,6 +339,129 @@ Status TrainingSession::ConfigureForTraining(
   //if (IsRootNode(config)) {
   //  Save("before_mixed_precision.onnx", SaveOption::NO_RELOAD);
   //}
+  {
+    Graph& graph = model_->MainGraph();
+
+    // GraphViewer graph_viewer(graph);
+    // const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
+
+    std::vector<const Node*> leaf_nodes;
+    std::string substr = "89_token_2_grad";
+    if (config.distributed_config.world_rank == 0){
+      substr = "89_grad";
+    }
+    for (auto& node : graph.Nodes()) {
+      // // auto input_size = node.MutableInputDefs().size();
+      // auto rit = node.MutableInputDefs().rbegin();
+      // // for (size_t i = node.MutableInputDefs().size() - 1; i >= 0; i--){
+      // for (; rit!= node.MutableInputDefs().rend(); ++rit){
+      //   // std::cout<<((*rit)->Name())<<"\n";
+      //   if ((*rit)->Name().find("89_token") != std::string::npos) {
+      //           std::cout << "found!" <<node.Name()<<" "<<(*rit)->Name()<< '\n';
+      //           node.MutableInputDefs().erase(rit);
+      //       }
+      // }
+      // // auto inputs = node.MutableInputDefs();
+      // // inputs.erase(std::remove_if(inputs.begin(),
+      // //                         inputs.end(),
+      // //                         [&](NodeArg* input){return input->Name().find(substr) != std::string::npos;}),
+      // //          inputs.end());
+
+      auto it = node.MutableInputDefs().begin();
+      auto end = node.MutableInputDefs().end();
+      int i = 0;
+      while(it != end){
+        if ((*it)->Name().rfind(substr, 0) == 0) {
+          std::cout << "found!" <<node.Name()<<" "<<(*it)->Name()<< "\nCount["<<i<<"/"<<node.MutableInputArgsCount().size()<<"] ";
+          for(auto count : node.MutableInputArgsCount()){
+            std::cout<<count<<" ";
+          }
+          std::cout<<"\n";
+          node.MutableInputDefs().erase(it);
+          // TODO: add assert here
+          node.MutableInputArgsCount().back()--;
+
+          auto& attributes = node.GetMutableAttributes();
+          auto& element_types = attributes["element_types"];
+          std::cout<<"element_type ints_size: "<<element_types.ints_size()<<
+          " "<<i-2<<std::endl;
+          if (element_types.ints_size() > 0){
+            auto ints_copy = element_types.ints();
+            element_types.clear_ints();
+            for (auto index = 0; index<ints_copy.size(); ++index){
+              if (index != i-2){
+                std::cout<<"insert element type: "<< ints_copy[index]<<std::endl;
+                element_types.add_ints(ints_copy[index]);
+              }
+            }
+            std::cout<<"element_type ints_size after: "<<element_types.ints_size()<<std::endl;
+            std::cout<<"element_type ints_size after2: "<<node.GetMutableAttributes()["element_types"].ints_size()<<std::endl;
+          }
+          // element_types.mutable_ints()->DeleteSubrange(i - 2, 1);
+
+
+          // node.MutableInputArgsCount().erase(node.MutableInputArgsCount().begin() + i);
+        }
+        else{
+          it ++;
+          i++;
+        }
+      }
+
+      it = node.MutableOutputDefs().begin();
+      end = node.MutableOutputDefs().end();
+      while(it != end){
+        if ((*it)->Name().rfind(substr, 0) == 0) {
+          std::cout << "found!" <<node.Name()<<" "<<(*it)->Name()<< '\n';
+          node.MutableOutputDefs().erase(it);
+          // node.MutableInputArgsCount().erase(it);
+
+
+          // For recv node
+          auto& attributes = node.GetMutableAttributes();
+          auto& element_types = attributes["element_types"];
+          std::cout<<"element_type ints_size: "<<element_types.ints_size()<<
+          " "<<i-1<<std::endl;
+          if (element_types.ints_size() > 0){
+            auto ints_copy = element_types.ints();
+            element_types.clear_ints();
+            for (auto index = 0; index<ints_copy.size(); ++index){
+              if (index != i){
+                std::cout<<"insert element type: "<< ints_copy[index]<<std::endl;
+                element_types.add_ints(ints_copy[index]);
+              }
+            }
+            std::cout<<"element_type ints_size after: "<<element_types.ints_size()<<std::endl;
+            std::cout<<"element_type ints_size after2: "<<node.GetMutableAttributes()["element_types"].ints_size()<<std::endl;
+          }
+        }
+        else{
+          it ++;
+        }
+      }
+
+
+
+      // // auto outputs = node.MutableOutputDefs();
+      // // outputs.erase(std::remove_if(outputs.begin(),
+      // //                         outputs.end(),
+      // //                         [&](NodeArg* output){return output->Name().find(substr) != std::string::npos;}),
+      // //          outputs.end());
+
+      if (node.Name() == "record_backward_compute"){
+        std::cout<<"inputs: ";
+        for (auto& input : node.MutableInputDefs()){
+          std::cout<<input->Name()<<" ";
+        }
+        std::cout<<"\n";
+        std::cout<<"output: ";
+        for (auto& output : node.MutableOutputDefs()){
+          std::cout<<output->Name()<<" ";
+        }
+        std::cout<<"\n";
+      }
+    }
+  }
 
   // transform for mixed precision
   std::unordered_map<std::string, NodeArg*> fp32_weight_name_to_fp16_node_arg{};
@@ -453,6 +576,44 @@ Status TrainingSession::ConfigureForTraining(
     ORT_RETURN_IF_ERROR(AddGistEncoding());
   }
 
+
+  //   graph.ReverseDFSFrom(
+  //       leaf_nodes,
+  //       nullptr,
+  //       [this](const Node* n) {
+  //         nodes_in_topological_order_.push_back(n->Index());
+  //       },
+  //       NodeCompare());
+
+  //   for (auto& node : graph_->Nodes()) {
+  //     if (node.InputEdgesBegin() == node.InputEdgesEnd()) {
+  //       root_nodes_.push_back(node.Index());
+  //     }
+  //   }
+
+  //   assert(start_node);
+  //   std::set<Node*> visited_nodes;
+  //   std::set<NodeArg*> visited_inputs;
+  //   std::set<NodeArg*> visited_outputs;
+
+  //   std::queue<Node*> node_queue;
+  //   node_queue.push(start_node);
+
+  //   while (!node_queue.empty()) {
+  //     auto node = node_queue.front();
+  //     node_queue.pop();
+  //     if (visited_nodes.insert(node).second) {
+  //       std::vector<Node*> connected_nodes;
+  //       ORT_RETURN_IF_ERROR(FindAllConnectedNodes(graph, node, connected_nodes, visited_inputs, visited_outputs));
+
+  //       for (auto n : connected_nodes) {
+  //         ORT_ENFORCE(n != nullptr, "Found nullptr in searching for connected nodes");
+  //         node_queue.push(n);
+  //       }
+  //     }
+  //   }
+  // }
+
   // If the current node is in rank0 or if the current session is running pipeline (in which case different rank would
   // store different model partition), and if model_with_training_graph_path is specified, save the model.
   // Note: in the pipeline case, different ranks may resident in the same node. This could lead to a potential write
@@ -495,6 +656,17 @@ Status TrainingSession::ConfigureForTraining(
       config_result.pipeline_config_result.value().fetch_names.push_back(name);
     }
   }
+
+  // if (config.distributed_config.world_rank == 1) {
+  //   Graph& graph = model_->MainGraph();
+  //   ONNX_NAMESPACE::TensorProto proto_data;
+  //   proto_data.set_name("89_token_2_grad");
+  //   proto_data.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+  //   // proto_data.add_int64_data(static_cast<int32_t>(1));
+  //   shape_constant.add_dims(dim_values.size());
+  //   shape_constant.set_raw_data(dim_values.data(), dim_values.size() * sizeof(int64_t));
+  //   graph.AddInitializedTensor(proto_data);
+  // }
 
   config_result_out = std::move(config_result);
   is_configured_ = true;
@@ -1009,6 +1181,7 @@ common::Status TrainingSession::Run(const RunOptions& run_options, IOBinding& io
 
     // Create a local function to append non-empty name to fetch_names list.
     auto create_dummy_event_values = [&] (const std::string& name) {
+      std::cout<<"[test] event names: "<<name<<"\n";
       if (name.empty()) {
         return;
       }
@@ -1022,6 +1195,8 @@ common::Status TrainingSession::Run(const RunOptions& run_options, IOBinding& io
 
     std::cout << "[training_session.cc] Start adding event feeds." << std::endl;
     config_result_.pipeline_config_result.value().pipeline_tensor_names.ForEachEventName(create_dummy_event_values);
+
+    // create_dummy_event_values("89_token_2_grad");
 
     for (auto& new_feed : new_feeds) {
       // Bind new feed to graph input.
