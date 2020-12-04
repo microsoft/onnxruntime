@@ -13,16 +13,18 @@
 namespace onnxruntime {
 namespace training {
 Status LambOptimizerBuilder::Build(
-    const std::vector<ArgDef>& weight_argdefs,
-    const std::vector<ArgDef>& gradient_argdefs,
-    const ArgDef* gradient_norm_argdef,
-    const ArgDef* gradient_norm_finite_argdef,
-    const std::vector<OptimizerNodeConfig>& opt_configs,
-    const OptimizerGraphConfig& opt_graph_config,
+    const OptimizerBuilderConfig& config,
     GraphAugmenter::GraphDefs& graph_defs,
     std::vector<ONNX_NAMESPACE::TensorProto>& new_external_initializers,
     std::vector<ArgDef>& output_weight_argdefs,
     std::vector<ArgDef>& output_gradient_argdefs) const {
+  const auto& weight_argdefs = config.weight_argdefs;
+  const auto& gradient_argdefs = config.gradient_argdefs;
+  const auto& opt_configs = config.opt_configs;
+
+  // gradient clipping is enabled by default for Lamb
+  bool enable_grad_clipping = config.enable_grad_clipping.has_value() ? *config.enable_grad_clipping : true;
+
   ORT_ENFORCE(weight_argdefs.size() <= size_t(1024),
               "The current LambOptimizer can only update up to 1024 weight tensors, but",
               "the actual number of weight tensors is ", weight_argdefs.size());
@@ -33,8 +35,8 @@ Status LambOptimizerBuilder::Build(
   std::vector<ArgDef> output_argdefs;
 
   // Indicator of finite gradient norm ArgDef.
-  if (gradient_norm_finite_argdef) {
-    input_argdefs.push_back(*gradient_norm_finite_argdef);
+  if (config.gradient_norm_finite_argdef) {
+    input_argdefs.push_back(*config.gradient_norm_finite_argdef);
   } else {
     input_argdefs.emplace_back(ArgDef());
   }
@@ -47,9 +49,9 @@ Status LambOptimizerBuilder::Build(
   }
 
   // Gradient norm
-  if (gradient_norm_argdef && opt_graph_config.enable_grad_norm_clip) {
-    input_argdefs.push_back(*gradient_norm_argdef);
-  } else if (gradient_norm_argdef == nullptr && opt_graph_config.enable_grad_norm_clip) {
+  if (config.gradient_norm_argdef && enable_grad_clipping) {
+    input_argdefs.push_back(*config.gradient_norm_argdef);
+  } else if (!config.gradient_norm_argdef && enable_grad_clipping) {
     ORT_THROW("Gradient clipping is enabled but gradient norm is not given.");
   } else {
     input_argdefs.push_back(ArgDef());
@@ -64,7 +66,7 @@ Status LambOptimizerBuilder::Build(
   const std::string step_tensor_name = "Step";  // per weight optimizer requires a per weight update count
   // Add step as an initializer.
   TensorProto step_tensor_proto;
-  const auto& shared_optim_state = opt_graph_config.shared_optimizer_states;
+  const auto& shared_optim_state = config.shared_optimizer_states;
   const auto step_state_it = shared_optim_state.find(step_tensor_name);
   if (step_state_it != shared_optim_state.end()) {
     const auto& init_tensor = step_state_it->second.Get<Tensor>();

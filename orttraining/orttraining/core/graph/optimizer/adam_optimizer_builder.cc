@@ -10,16 +10,18 @@
 namespace onnxruntime {
 namespace training {
 Status AdamOptimizerBuilder::Build(
-    const std::vector<ArgDef>& weight_argdefs,
-    const std::vector<ArgDef>& gradient_argdefs,
-    const ArgDef* gradient_norm_argdef,
-    const ArgDef* gradient_norm_finite_argdef,
-    const std::vector<OptimizerNodeConfig>& opt_configs,
-    const OptimizerGraphConfig& opt_graph_config,
+    const OptimizerBuilderConfig& config,
     GraphAugmenter::GraphDefs& graph_defs,
     std::vector<TensorProto>& new_external_initializers,
     std::vector<ArgDef>& output_weight_argdefs,
     std::vector<ArgDef>& output_gradient_argdefs) const {
+  const auto& weight_argdefs = config.weight_argdefs;
+  const auto& gradient_argdefs = config.gradient_argdefs;
+  const auto& opt_configs = config.opt_configs;
+
+  // gradient clipping is disabled by default for Adam.
+  bool enable_grad_clipping = config.enable_grad_clipping.has_value() ? *config.enable_grad_clipping : false;
+
   for (size_t i = 0; i < weight_argdefs.size(); ++i) {
     const std::string& weight_name = weight_argdefs[i].name;
     const std::string& gradient_name = gradient_argdefs[i].name;
@@ -136,16 +138,16 @@ Status AdamOptimizerBuilder::Build(
         input_args.emplace_back(ArgDef());
       }
 
-      if (gradient_norm_argdef && opt_graph_config.enable_grad_norm_clip) {
-        input_args.push_back(*gradient_norm_argdef);
-      } else if (gradient_norm_argdef == nullptr && opt_graph_config.enable_grad_norm_clip) {
+      if (config.gradient_norm_argdef && enable_grad_clipping) {
+        input_args.push_back(*config.gradient_norm_argdef);
+      } else if (!config.gradient_norm_argdef && enable_grad_clipping) {
         ORT_THROW("Gradient clipping is enabled but gradient norm is not given.");
       } else {
         input_args.push_back(ArgDef());
       }
 
-      if (gradient_norm_finite_argdef) {
-        input_args.push_back(*gradient_norm_finite_argdef);
+      if (config.gradient_norm_finite_argdef) {
+        input_args.push_back(*config.gradient_norm_finite_argdef);
       } else {
         input_args.push_back(ArgDef());
       }

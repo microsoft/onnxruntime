@@ -7,16 +7,14 @@
 namespace onnxruntime {
 namespace training {
 Status SGDOptimizerBuilder::Build(
-    const std::vector<ArgDef>& weight_argdefs,
-    const std::vector<ArgDef>& gradient_argdefs,
-    const ArgDef* /* gradient_norm_argdef */,
-    const ArgDef* /* gradient_norm_finite_argdef */,
-    const std::vector<OptimizerNodeConfig>& opt_configs,
-    const OptimizerGraphConfig& /* opt_graph_config*/,
+    const OptimizerBuilderConfig& config,
     GraphAugmenter::GraphDefs& graph_defs,
     std::vector<TensorProto>& /* new_external_initializers */,
     std::vector<ArgDef>& output_weight_argdefs,
     std::vector<ArgDef>& output_gradient_argdefs) const {
+  const auto& weight_argdefs = config.weight_argdefs;
+  const auto& gradient_argdefs = config.gradient_argdefs;
+  const auto& opt_configs = config.opt_configs;
 
   for (size_t i = 0; i < weight_argdefs.size(); ++i) {
     const std::string& weight_name = weight_argdefs[i].name;
