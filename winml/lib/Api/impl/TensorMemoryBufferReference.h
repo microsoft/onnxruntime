@@ -58,6 +58,7 @@ template <typename T>
 class TensorMemoryBufferReference : public winrt::implements<
                                         TensorMemoryBufferReference<T>,
                                         wf::IMemoryBufferReference,
+                                        wf::IClosable,
                                         Windows::Foundation::IMemoryBufferByteAccess> {
   using ClosedDelegate = wf::TypedEventHandler<wf::IMemoryBufferReference, wf::IInspectable>;
 
