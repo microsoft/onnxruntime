@@ -28,11 +28,6 @@ steps:
           "python.manylinux.dir": "/opt/python/cp38-cp38",
           "python.manylinux.include.dir": "/opt/python/cp38-cp38/include/python3.8",
         }
-      elif version == "3.9":
-        variables = {
-          "python.manylinux.dir": "/opt/python/cp39-cp39",
-          "python.manylinux.include.dir": "/opt/python/cp39-cp39/include/python3.9",
-        }
       else:
         raise ValueError("Unsupported Python version: '{}'".format(version))
 

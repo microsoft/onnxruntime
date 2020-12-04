@@ -109,7 +109,7 @@ jobs:
       inputs:
         script: |
           mkdir -p $HOME/.onnx
-          docker run --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntimecentoscpubuild:chr /bin/bash -c "python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync --parallel --build_shared_lib --enable_onnx_tests && cd /build/Release && make install DESTDIR=/build/linux-x64"
+          docker run --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntimecentoscpubuild:ch3 /bin/bash -c "python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync --parallel --build_shared_lib --enable_onnx_tests && cd /build/Release && make install DESTDIR=/build/linux-x64"
         workingDirectory: $(Build.SourcesDirectory)
     - task: Docker@2
       displayName: logout
