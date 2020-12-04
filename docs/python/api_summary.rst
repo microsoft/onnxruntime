@@ -99,7 +99,7 @@ The input data and output data are both on a device, users directly use the inpu
 Scenario 4:
 
 Users can request *ONNX Runtime* to allocate an output on a device. This is particularly useful for dynamic shaped outputs.
-Users can use the `get_outputs()` API to get the *OrtValue*(s) corresponding to the allocated output(s).
+Users can use the `get_outputs()` API to get access to the *OrtValue* (s) corresponding to the allocated output(s).
 Users can thus consume the *ONNX Runtime* allocated memory for the output as an *OrtValue*.
 
 .. code-block:: python
@@ -118,7 +118,7 @@ Users can thus consume the *ONNX Runtime* allocated memory for the output as an 
 
 Scenario 5:
 
-Users can bind *OrtValue*(s) directly.
+Users can bind *OrtValue* (s) directly.
 
 .. code-block:: python
 
