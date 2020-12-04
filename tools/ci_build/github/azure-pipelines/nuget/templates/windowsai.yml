@@ -363,7 +363,6 @@ jobs:
         Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'onnxruntime.lib'))                    $x86_runtime_path_new
         Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'microsoft.ai.machinelearning.dll'))   $x86_runtime_path_new
         Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'microsoft.ai.machinelearning.lib'))   $x86_runtime_path_new
-        Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'directml.dll'))                       $x86_runtime_path_new
 
         Copy-Item ([System.IO.Path]::Combine($arm64_runtime_path_old, 'onnxruntime.dll'))                  $arm64_runtime_path_new
         Copy-Item ([System.IO.Path]::Combine($arm64_runtime_path_old, 'onnxruntime.lib'))                  $arm64_runtime_path_new

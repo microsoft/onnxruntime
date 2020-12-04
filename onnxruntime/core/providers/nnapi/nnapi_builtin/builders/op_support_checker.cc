@@ -16,6 +16,11 @@ using std::vector;
 
 #pragma region helpers
 
+struct OpSupportCheckerRegistrations {
+  std::vector<std::unique_ptr<IOpSupportChecker>> support_checkers;
+  std::unordered_map<std::string, const IOpSupportChecker*> op_support_checker_map;
+};
+
 bool HasExternalInitializer(const InitializedTensorSet& initializers, const Node& node) {
   for (const auto* node_arg : node.InputDefs()) {
     const auto& input_name(node_arg->Name());
@@ -34,6 +39,20 @@ bool HasExternalInitializer(const InitializedTensorSet& initializers, const Node
   return false;
 }
 
+template <class T>
+void CreateSharedOpSupportCheckerImpl(const std::string& op_type,
+                                      OpSupportCheckerRegistrations& op_registrations,
+                                      const std::vector<std::string>& op_types) {
+  // The shared OpSupportChecker is already in the OpSupportCheckerRegistrations
+  if (op_registrations.op_support_checker_map.find(op_type) != op_registrations.op_support_checker_map.cend())
+    return;
+
+  op_registrations.support_checkers.push_back(onnxruntime::make_unique<T>());
+  for (const auto& op : op_types) {
+    op_registrations.op_support_checker_map.emplace(op, op_registrations.support_checkers.back().get());
+  }
+}
+
 #pragma endregion helpers
 
 #pragma region op_base
@@ -43,6 +62,11 @@ class BaseOpSupportChecker : public IOpSupportChecker {
   virtual ~BaseOpSupportChecker() = default;
   bool IsOpSupported(const InitializedTensorSet& initializers, const Node& node,
                      const OpSupportCheckParams& params) const override;
+
+  // This is for ops which are by default supported and do not have their own impl of OpSupportChecker
+  // for those ops (Relu, Identity) we use BaseOpSupportChecker
+  static void CreateSharedOpSupportChecker(
+      const std::string& op_type, OpSupportCheckerRegistrations& op_registrations);
 
  protected:
   virtual bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& /* node */,
@@ -56,12 +80,25 @@ class BaseOpSupportChecker : public IOpSupportChecker {
     return 27;
   }
 
-  virtual bool HasSupportedInputs(const Node& node) const;
+  virtual bool HasSupportedInputsImpl(const Node& node) const;
 
   virtual int GetMinSupportedOpSet(const Node& /* node */) const { return 1; }
   virtual int GetMaxSupportedOpSet(const Node& /* node */) const { return 13; }
+
+ private:
   bool HasSupportedOpSet(const Node& node) const;
+  bool HasSupportedInputs(const Node& node) const;
 };
+
+/* static */ void BaseOpSupportChecker::CreateSharedOpSupportChecker(
+    const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
+  CreateSharedOpSupportCheckerImpl<BaseOpSupportChecker>(
+      op_type, op_registrations,
+      {
+          "Relu",
+          "Identity",
+      });
+}
 
 bool BaseOpSupportChecker::IsOpSupported(const InitializedTensorSet& initializers, const Node& node,
                                          const OpSupportCheckParams& params) const {
@@ -87,15 +124,22 @@ bool BaseOpSupportChecker::IsOpSupported(const InitializedTensorSet& initializer
 }
 
 bool BaseOpSupportChecker::HasSupportedInputs(const Node& node) const {
+  // We do not support unknown(null) input shape
+  for (const auto* input : node.InputDefs()) {
+    if (!input->Shape()) {
+      LOGS_DEFAULT(VERBOSE) << "Node [" << node.Name() << "] type [" << node.OpType()
+                            << "] Input [" << input->Name() << "] has no shape";
+      return false;
+    }
+  }
+
+  return HasSupportedInputsImpl(node);
+}
+
+bool BaseOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
   // We only check the type of input 0 by default
   // specific op builder can override this
   const auto& input = *node.InputDefs()[0];
-
-  if (nullptr == input.Shape()) {
-    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
-                          << "] Input shape is null";
-    return false;
-  }
 
   int32_t input_type;
   if (!GetType(input, input_type))
@@ -128,13 +172,30 @@ bool BaseOpSupportChecker::HasSupportedOpSet(const Node& node) const {
 #pragma region op_binary
 
 class BinaryOpSupportChecker : public BaseOpSupportChecker {
+ public:
+  static void CreateSharedOpSupportChecker(
+      const std::string& op_type, OpSupportCheckerRegistrations& op_registrations);
+
  private:
   int32_t GetMinSupportedSdkVer(const Node& node, const OpSupportCheckParams& params) const override;
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const OpSupportCheckParams& params) const override;
-  bool HasSupportedInputs(const Node& node) const override;
+  bool HasSupportedInputsImpl(const Node& node) const override;
   int GetMinSupportedOpSet(const Node& node) const override;
 };
+
+/* static */ void BinaryOpSupportChecker::CreateSharedOpSupportChecker(
+    const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
+  CreateSharedOpSupportCheckerImpl<BinaryOpSupportChecker>(
+      op_type, op_registrations,
+      {
+          "Add",
+          "Sub",
+          "Mul",
+          "Div",
+          "QLinearAdd",
+      });
+}
 
 int32_t BinaryOpSupportChecker::GetMinSupportedSdkVer(
     const Node& node, const OpSupportCheckParams& /* params */) const {
@@ -155,9 +216,9 @@ int BinaryOpSupportChecker::GetMinSupportedOpSet(const Node& node) const {
   return 1;
 }
 
-bool BinaryOpSupportChecker::HasSupportedInputs(const Node& node) const {
+bool BinaryOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
   if (node.OpType() != "QLinearAdd")
-    return BaseOpSupportChecker::HasSupportedInputs(node);
+    return BaseOpSupportChecker::HasSupportedInputsImpl(node);
 
   // QLinearAdd
   if (!HasValidBinaryOpQuantizedInputs(node))
@@ -360,6 +421,10 @@ bool BatchNormalizationOpSupportChecker::IsOpSupportedImpl(const InitializedTens
 #pragma region op_pool
 
 class PoolOpSupportChecker : public BaseOpSupportChecker {
+ public:
+  static void CreateSharedOpSupportChecker(
+      const std::string& op_type, OpSupportCheckerRegistrations& op_registrations);
+
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const OpSupportCheckParams& params) const override;
@@ -368,6 +433,18 @@ class PoolOpSupportChecker : public BaseOpSupportChecker {
     return params.use_nchw ? 29 : 28;
   }
 };
+
+/* static */ void PoolOpSupportChecker::CreateSharedOpSupportChecker(
+    const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
+  CreateSharedOpSupportCheckerImpl<PoolOpSupportChecker>(
+      op_type, op_registrations,
+      {
+          "GlobalAveragePool",
+          "GlobalMaxPool",
+          "AveragePool",
+          "MaxPool",
+      });
+}
 
 bool PoolOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
                                              const OpSupportCheckParams& /* params */) const {
@@ -432,6 +509,10 @@ bool PoolOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* init
 #pragma region op_conv
 
 class ConvOpSupportChecker : public BaseOpSupportChecker {
+ public:
+  static void CreateSharedOpSupportChecker(
+      const std::string& op_type, OpSupportCheckerRegistrations& op_registrations);
+
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const OpSupportCheckParams& params) const override;
@@ -440,12 +521,22 @@ class ConvOpSupportChecker : public BaseOpSupportChecker {
     return params.use_nchw ? 29 : 28;
   }
 
-  bool HasSupportedInputs(const Node& node) const override;
+  bool HasSupportedInputsImpl(const Node& node) const override;
 };
 
-bool ConvOpSupportChecker::HasSupportedInputs(const Node& node) const {
+/* static */ void ConvOpSupportChecker::CreateSharedOpSupportChecker(
+    const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
+  CreateSharedOpSupportCheckerImpl<ConvOpSupportChecker>(
+      op_type, op_registrations,
+      {
+          "Conv",
+          "QLinearConv",
+      });
+}
+
+bool ConvOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
   if (node.OpType() != "QLinearConv")
-    return BaseOpSupportChecker::HasSupportedInputs(node);
+    return BaseOpSupportChecker::HasSupportedInputsImpl(node);
 
   // QLinearConv only supports input of uint8 for now
   if (!HasValidBinaryOpQuantizedInputs(node))
@@ -595,22 +686,37 @@ bool SoftMaxOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* i
 #pragma region op_gemm
 
 class GemmOpSupportChecker : public BaseOpSupportChecker {
+ public:
+  static void CreateSharedOpSupportChecker(
+      const std::string& op_type, OpSupportCheckerRegistrations& op_registrations);
+
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const OpSupportCheckParams& params) const override;
-  bool HasSupportedInputs(const Node& node) const override;
+  bool HasSupportedInputsImpl(const Node& node) const override;
   int GetMinSupportedOpSet(const Node& node) const override;
 };
 
-bool GemmOpSupportChecker::HasSupportedInputs(const Node& node) const {
+bool GemmOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
   if (node.OpType() != "QLinearMatMul")
-    return BaseOpSupportChecker::HasSupportedInputs(node);
+    return BaseOpSupportChecker::HasSupportedInputsImpl(node);
 
   // QLinearMatMul
   if (!HasValidBinaryOpQuantizedInputs(node))
     return false;
 
   return true;
+}
+
+/* static */ void GemmOpSupportChecker::CreateSharedOpSupportChecker(
+    const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
+  CreateSharedOpSupportCheckerImpl<GemmOpSupportChecker>(
+      op_type, op_registrations,
+      {
+          "Gemm",
+          "MatMul",
+          "QLinearMatMul",
+      });
 }
 
 int GemmOpSupportChecker::GetMinSupportedOpSet(const Node& node) const {
@@ -732,6 +838,10 @@ bool GemmOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
 #pragma region op_unary
 
 class UnaryOpSupportChecker : public BaseOpSupportChecker {
+ public:
+  static void CreateSharedOpSupportChecker(
+      const std::string& op_type, OpSupportCheckerRegistrations& op_registrations);
+
  private:
   int32_t GetMinSupportedSdkVer(const Node& node, const OpSupportCheckParams& params) const override;
 
@@ -739,6 +849,23 @@ class UnaryOpSupportChecker : public BaseOpSupportChecker {
   // "Sin" op has support from opset 7, return 6 here for all ops
   int GetMinSupportedOpSet(const Node& /* node */) const override { return 6; }
 };
+
+/* static */ void UnaryOpSupportChecker::CreateSharedOpSupportChecker(
+    const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
+  CreateSharedOpSupportCheckerImpl<UnaryOpSupportChecker>(
+      op_type, op_registrations,
+      {
+          "Abs",
+          "Exp",
+          "Floor",
+          "Log",
+          "Sigmoid",
+          "Neg",
+          "Sin",
+          "Sqrt",
+          "Tanh",
+      });
+}
 
 int32_t UnaryOpSupportChecker::GetMinSupportedSdkVer(
     const Node& node, const OpSupportCheckParams& /* params */) const {
@@ -793,13 +920,9 @@ class SqueezeOpSupportChecker : public BaseOpSupportChecker {
   int32_t GetMinSupportedSdkVer(const Node& /* node */, const OpSupportCheckParams& /* params */) const override {
     return 28;
   }
-
-  // Squeeze opset 13+ uses input for axes, which is not supported yet
-  // TODO add support for squeeze opset 13+
-  int GetMaxSupportedOpSet(const Node& /* node */) const override { return 12; }
 };
 
-bool SqueezeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+bool SqueezeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                                                 const OpSupportCheckParams& /* params */) const {
   Shape input_shape;
   if (!GetShape(*node.InputDefs()[0], input_shape))
@@ -810,6 +933,15 @@ bool SqueezeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* i
     LOGS_DEFAULT(VERBOSE) << "Squeeze only supports 1-4d shape, input is "
                           << input_size << "d shape";
     return false;
+  }
+
+  // Squeeze opset 13 use input 1 as axes, if we have input 1 then it need to be an initializer
+  if (node.SinceVersion() > 12 && node.InputDefs().size() > 1) {
+    const auto& axes_name = node.InputDefs()[1]->Name();
+    if (!Contains(initializers, axes_name)) {
+      LOGS_DEFAULT(VERBOSE) << "Input axes of Squeeze must be known";
+      return false;
+    }
   }
 
   return true;
@@ -868,7 +1000,7 @@ class DequantizeLinearOpSupportChecker : public BaseOpSupportChecker {
   int32_t GetMinSupportedSdkVer(const Node& /* node */, const OpSupportCheckParams& /* params */) const override {
     return 29;
   }
-  bool HasSupportedInputs(const Node& node) const override;
+  bool HasSupportedInputsImpl(const Node& node) const override;
 };
 
 bool DequantizeLinearOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
@@ -885,7 +1017,7 @@ bool DequantizeLinearOpSupportChecker::IsOpSupportedImpl(const InitializedTensor
   return true;
 }
 
-bool DequantizeLinearOpSupportChecker::HasSupportedInputs(const Node& node) const {
+bool DequantizeLinearOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
   int32_t input_type;
   if (!GetType(*node.InputDefs()[0], input_type))
     return false;
@@ -1124,80 +1256,88 @@ bool FlattenOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* i
 
 #pragma region CreateGetOpSupportCheckers
 
-static std::unordered_map<std::string, std::shared_ptr<IOpSupportChecker>> CreateOpSupportCheckers() {
-  std::unordered_map<std::string, std::shared_ptr<IOpSupportChecker>> op_map;
+// The reason we use macros to create OpBuilders is for easy exclusion in build if certain op(s) are not used
+// such that we can reduce binary size.
+// This is for multiple ops share the same OpSupportChecker, we only need create one for all of them
+#define NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER(OP_TYPE, SUPPORT_CHECKER_NAME) \
+  SUPPORT_CHECKER_NAME::CreateSharedOpSupportChecker(OP_TYPE, op_registrations);
 
-  // If an OP is always supported, we use BaseOpSupportChecker as default
-  // Relu, Identity are using base_op_support_checker
-  auto base_op_support_checker = std::make_shared<BaseOpSupportChecker>();
-
-  {
-    auto binary_op_support_checker = std::make_shared<BinaryOpSupportChecker>();
-    op_map.emplace("Add", binary_op_support_checker);
-    op_map.emplace("Sub", binary_op_support_checker);
-    op_map.emplace("Mul", binary_op_support_checker);
-    op_map.emplace("Div", binary_op_support_checker);
-    op_map.emplace("QLinearAdd", binary_op_support_checker);
+// This is for ops with dedicated OpSupportChecker
+#define NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER(OP_TYPE, SUPPORT_CHECKER_NAME)                                 \
+  {                                                                                                           \
+    op_registrations.support_checkers.push_back(onnxruntime::make_unique<SUPPORT_CHECKER_NAME>());            \
+    op_registrations.op_support_checker_map.emplace(OP_TYPE, op_registrations.support_checkers.back().get()); \
   }
 
-  op_map.emplace("Relu", base_op_support_checker);
-  op_map.emplace("Transpose", std::make_shared<TransposeOpSupportChecker>());
-  op_map.emplace("Reshape", std::make_shared<ReshapeOpSupportChecker>());
-  op_map.emplace("BatchNormalization", std::make_shared<BatchNormalizationOpSupportChecker>());
+static OpSupportCheckerRegistrations CreateOpSupportCheckerRegistrations() {
+  OpSupportCheckerRegistrations op_registrations;
 
   {
-    auto pool_op_support_checker = std::make_shared<PoolOpSupportChecker>();
-    op_map.emplace("GlobalAveragePool", pool_op_support_checker);
-    op_map.emplace("GlobalMaxPool", pool_op_support_checker);
-    op_map.emplace("AveragePool", pool_op_support_checker);
-    op_map.emplace("MaxPool", pool_op_support_checker);
+    NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Add", BinaryOpSupportChecker);
+    NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Sub", BinaryOpSupportChecker);
+    NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Mul", BinaryOpSupportChecker);
+    NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Div", BinaryOpSupportChecker);
+    NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("QLinearAdd", BinaryOpSupportChecker);
   }
 
-  {
-    auto conv_op_support_checker = std::make_shared<ConvOpSupportChecker>();
-    op_map.emplace("Conv", conv_op_support_checker);
-    op_map.emplace("QLinearConv", conv_op_support_checker);
-  }
+  // Relu is always supported, we use BaseOpSupportChecker as default
+  NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Relu", BaseOpSupportChecker);
 
-  op_map.emplace("Cast", std::make_shared<CastOpSupportChecker>());
-  op_map.emplace("Softmax", std::make_shared<SoftMaxOpSupportChecker>());
-  op_map.emplace("Identity", base_op_support_checker);
+  NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("Transpose", TransposeOpSupportChecker);
+  NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("Reshape", ReshapeOpSupportChecker);
+  NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("BatchNormalization", BatchNormalizationOpSupportChecker);
 
   {
-    auto gemm_op_support_checker = std::make_shared<GemmOpSupportChecker>();
-    op_map.emplace("Gemm", gemm_op_support_checker);
-    op_map.emplace("MatMul", gemm_op_support_checker);
-    op_map.emplace("QLinearMatMul", gemm_op_support_checker);
+    NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("GlobalAveragePool", PoolOpSupportChecker);
+    NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("GlobalMaxPool", PoolOpSupportChecker);
+    NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("AveragePool", PoolOpSupportChecker);
+    NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("MaxPool", PoolOpSupportChecker);
   }
 
   {
-    auto unary_op_support_checker = std::make_shared<UnaryOpSupportChecker>();
-    op_map.emplace("Abs", unary_op_support_checker);
-    op_map.emplace("Exp", unary_op_support_checker);
-    op_map.emplace("Floor", unary_op_support_checker);
-    op_map.emplace("Log", unary_op_support_checker);
-    op_map.emplace("Sigmoid", unary_op_support_checker);
-    op_map.emplace("Neg", unary_op_support_checker);
-    op_map.emplace("Sin", unary_op_support_checker);
-    op_map.emplace("Sqrt", unary_op_support_checker);
-    op_map.emplace("Tanh", unary_op_support_checker);
+    NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Conv", ConvOpSupportChecker);
+    NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("QLinearConv", ConvOpSupportChecker);
   }
 
-  op_map.emplace("Concat", std::make_shared<ConcatOpSupportChecker>());
-  op_map.emplace("Squeeze", std::make_shared<SqueezeOpSupportChecker>());
-  op_map.emplace("QuantizeLinear", std::make_shared<QuantizeLinearOpSupportChecker>());
-  op_map.emplace("DequantizeLinear", std::make_shared<DequantizeLinearOpSupportChecker>());
-  op_map.emplace("LRN", std::make_shared<LRNOpSupportChecker>());
-  op_map.emplace("Clip", std::make_shared<ClipOpSupportChecker>());
-  op_map.emplace("Resize", std::make_shared<ResizeOpSupportChecker>());
-  op_map.emplace("Flatten", std::make_shared<FlattenOpSupportChecker>());
+  NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("Cast", CastOpSupportChecker);
+  NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("Softmax", SoftMaxOpSupportChecker);
 
-  return op_map;
+  // Identity is always supported, we use BaseOpSupportChecker as default
+  NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Identity", BaseOpSupportChecker);
+
+  {
+    NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Gemm", GemmOpSupportChecker);
+    NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("MatMul", GemmOpSupportChecker);
+    NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("QLinearMatMul", GemmOpSupportChecker);
+  }
+
+  {
+    NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Abs", UnaryOpSupportChecker);
+    NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Exp", UnaryOpSupportChecker);
+    NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Floor", UnaryOpSupportChecker);
+    NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Log", UnaryOpSupportChecker);
+    NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Sigmoid", UnaryOpSupportChecker);
+    NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Neg", UnaryOpSupportChecker);
+    NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Sin", UnaryOpSupportChecker);
+    NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Sqrt", UnaryOpSupportChecker);
+    NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Tanh", UnaryOpSupportChecker);
+  }
+
+  NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("Concat", ConcatOpSupportChecker);
+  NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("Squeeze", SqueezeOpSupportChecker);
+  NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("QuantizeLinear", QuantizeLinearOpSupportChecker);
+  NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("DequantizeLinear", DequantizeLinearOpSupportChecker);
+  NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("LRN", LRNOpSupportChecker);
+  NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("Clip", ClipOpSupportChecker);
+  NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("Resize", ResizeOpSupportChecker);
+  NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("Flatten", FlattenOpSupportChecker);
+
+  return op_registrations;
 }
 
-const std::unordered_map<std::string, std::shared_ptr<IOpSupportChecker>>& GetOpSupportCheckers() {
-  static std::unordered_map<std::string, std::shared_ptr<IOpSupportChecker>> op_map = CreateOpSupportCheckers();
-  return op_map;
+const std::unordered_map<std::string, const IOpSupportChecker*>& GetOpSupportCheckers() {
+  static const OpSupportCheckerRegistrations op_registrations = CreateOpSupportCheckerRegistrations();
+  return op_registrations.op_support_checker_map;
 }
 
 #pragma endregion

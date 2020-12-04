@@ -20,14 +20,15 @@ session.set_providers(['OpenVINOExecutionProvider'], [{Key1 : Value1, Key2 : Val
 *Note that this causes the InferenceSession to be re-initialized, which may cause model recompilation and hardware re-initialization*
 
 ### C/C++ API
-All the options (key-value pairs) need to be concantenated into a string as shown below and passed to OrtSessionOptionsAppendExecutionProviderEx_OpenVINO() API as shown below:-
+All the options shown below are passed to SessionOptionsAppendExecutionProvider_OpenVINO() API and populated in the struct OrtOpenVINOProviderOptions in an example shown below, for example for CPU device type:-
 
 ```
-std::string settings_str;
-settings_str.append("Key1|Value1\n");
-settings_str.append("Key2|Value2\n");
-settings_str.append("Key3|Value3\n");
-Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProviderEx_OpenVINO(sf, settings_str.c_str()));
+OrtOpenVINOProviderOptions options;
+options.device_type = "CPU_FP32";
+options.enable_vpu_fast_compile = 0;
+options.device_id = "";
+options.num_of_threads = 8;
+SessionOptionsAppendExecutionProvider_OpenVINO(session_options, &options);
 ```
 
 ### Available configuration options
@@ -67,7 +68,7 @@ SessionOptions::SetGraphOptimizationLevel(ORT_DISABLE_ALL);
 ```
 
 ### Deprecated: Dynamic device type selection
-**Note: This API has been deprecated. Please use the Key-Value mechanism mentioned above to set the 'device-type' option.**
+**Note: This API has been deprecated. Please use the mechanism mentioned above to set the 'device-type' option.**
 When ONNX Runtime is built with OpenVINO Execution Provider, a target hardware option needs to be provided. This build time option becomes the default target harware the EP schedules inference on. However, this target may be overriden at runtime to schedule inference on a different hardware as shown below.
 
 Note. This dynamic hardware selection is optional. The EP falls back to the build-time default selection if no dynamic hardware option value is specified.
@@ -82,22 +83,12 @@ onnxruntime.capi._pybind_state.set_openvino_device("<harware_option>")
 
 ### C/C++ API
 
-Append the settings string "device_type|<hardware_option>\n" to the EP settings string. Example shown below for the CPU_FP32 option:
+Append the settings string "<hardware_option>" to the EP settings string. Example shown below for the CPU_FP32 option:
 ```
 std::string settings_str;
 ...
-settings_str.append("device_type|CPU_FP32\n");
-Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProviderEx_OpenVINO(sf, settings_str.c_str()));
-```
-
-
-### C/C++ API
-Append the settings string "device_id|<device_id>\n" to the EP settings string, where <device_id> is the unique identifier of the hardware device.
-```
-std::string settings_str;
-...
-settings_str.append("device_id|<device_id>\n");
-Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProviderEx_OpenVINO(sf, settings_str.c_str()));
+settings_str.append("CPU_FP32");
+Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(sf, settings_str.c_str()));
 ```
 
 ## ONNX Layers supported using OpenVINO
