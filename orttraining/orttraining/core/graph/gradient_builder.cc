@@ -353,6 +353,9 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
 };
 
 IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
+
+  std::cout << "TTT " << node_->Name() << std::endl;
+
   auto attributes = SrcNodeAttributes();
 
   bool has_alpha = attributes.at("alpha").has_f();
@@ -362,6 +365,12 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
 
   ArgDef A = I(0), B = I(1), C = I(2), dY = GO(0),
          dA = GI(0), dB = GI(1), dC = GI(2);
+
+  std::cout << A.type_proto->DebugString() << std::endl;
+  std::cout << B.type_proto->DebugString() << std::endl;
+  std::cout << C.type_proto->DebugString() << std::endl;
+  std::cout << dY.type_proto->DebugString() << std::endl;
+
   int elem_type = OElemType(0);
   AttributeProto transpose_first_input = MakeAttribute("transA", int64_t(1));
   AttributeProto transpose_second_input = MakeAttribute("transB", int64_t(1));
