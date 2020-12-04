@@ -127,10 +127,11 @@ static void RemoveInvalidValues(ONNX_NAMESPACE::TypeProto& type) {
 static TypeProto TypeProtoFromTensorProto(const TensorProto& tensor) {
   TypeProto t;
   t.mutable_tensor_type()->set_elem_type(tensor.data_type());
-  auto shape = t.mutable_tensor_type()->mutable_shape();
-  for (auto dim : tensor.dims())
-    shape->add_dim()->set_dim_value(dim);
-
+  if (!tensor.dims().empty()) {
+    auto shape = t.mutable_tensor_type()->mutable_shape();
+    for (auto dim : tensor.dims())
+      shape->add_dim()->set_dim_value(dim);
+  }
   return t;
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
