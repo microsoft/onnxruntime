@@ -206,12 +206,13 @@ def main():
             tmp_dir,
             args.az_path)
 
-        cache_lifetime = datetime.timedelta(days=args.cache_history_days)
+        cache_history = datetime.timedelta(days=args.cache_history_days)
 
         min_timestamp = \
-            datetime.datetime.now(tz=datetime.timezone.utc) - cache_lifetime
+            datetime.datetime.now(tz=datetime.timezone.utc) - cache_history
 
-        valid_images = get_valid_images_from_logs(log_paths, min_timestamp)
+        valid_images = get_valid_images_from_logs(
+            log_paths, min_timestamp, args.min_access_count)
 
     all_images = get_registry_images(args.container_registry, args.az_path)
 
