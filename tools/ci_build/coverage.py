@@ -34,9 +34,9 @@ def parse_arguments():
     return parser.parse_args()
 
 
-def start_android_emulator(args):
+def start_android_emulator(args, source_dir):
     run_subprocess([os.path.join(
-        args.source_dir, 'tools', 'ci_build', 'github', 'android',
+        source_dir, 'tools', 'ci_build', 'github', 'android',
         'start_android_emulator.sh')])
 
 
@@ -45,7 +45,7 @@ def main():
     script_dir = os.path.realpath(os.path.dirname(__file__))
     source_dir = os.path.normpath(os.path.join(script_dir, "..", ".."))
     cwd = os.path.abspath(os.path.join(args.build_dir, args.config))
-    start_android_emulator(args)
+    start_android_emulator(args, source_dir)
     adb_shell('cd /data/local/tmp && tar zcvf gcda_files.tar.gz *.dir', cwd=cwd)
     adb_pull('data/local/tmp/gcda_files.tar.gz', '.', cwd=cwd)
     run_subprocess("tar -zxvf gcda_files.tar.gz -C CMakeFiles".split(' '))
