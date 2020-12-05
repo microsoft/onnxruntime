@@ -181,7 +181,7 @@ def clean_images(container_registry, image_names, az_path):
 # the log download and parsing could be replaced by a log analytics query
 """
 let cache_history = 7d;
-let cache_min_access_count = 5;
+let cache_min_access_count = 1;
 ContainerRegistryRepositoryEvents
 | where TimeGenerated >= ago(cache_history)
 | where OperationName in ("Push", "Pull")
