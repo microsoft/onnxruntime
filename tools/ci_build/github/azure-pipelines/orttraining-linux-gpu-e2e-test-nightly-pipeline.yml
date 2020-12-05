@@ -208,7 +208,7 @@ jobs:
             --env CUDA_VISIBLE_DEVICES 2
     displayName: 'Run orttraining_run_multiple_choice.py ORTMultipleChoiceTest.test_bert_fp16_with_swag'
     condition: succeededOrFailed() # ensure all tests are run
-    timeoutInMinutes: 10
+    timeoutInMinutes: 20
 
   - script: |
       docker run \
