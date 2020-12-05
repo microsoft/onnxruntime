@@ -6,6 +6,7 @@
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/framework/bfc_arena.h"
 #include "core/platform/env.h"
+#include "core/providers/provider_factory_creators.h"
 #include "core/session/environment.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
@@ -17,14 +18,6 @@
 #include <condition_variable>
 #include <mutex>
 #include <tuple>
-
-namespace onnxruntime {
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id,
-                                                                               OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE,
-                                                                               size_t cuda_mem_limit = std::numeric_limits<size_t>::max(),
-                                                                               onnxruntime::ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo,
-                                                                               bool do_copy_in_default_stream = true);
-}
 
 using namespace onnxruntime;
 using namespace onnxruntime::common;
@@ -156,7 +149,7 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
 #ifdef USE_CUDA
     bool use_cuda = flags.count("use_cuda") > 0;
     if (use_cuda) {
-      params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(0));
+      params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(CUDAExecutionProviderInfo{}));
     }
 #endif
   } catch (const exception& e) {

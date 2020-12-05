@@ -92,4 +92,9 @@ bool TryParse(const std::string& str, T& value) {
   return true;
 }
 
+inline bool TryParse(const std::string& str, std::string& value) {
+  value = str;
+  return true;
+}
+
 }  // namespace onnxruntime

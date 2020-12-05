@@ -30,11 +30,23 @@ TEST(StringUtilsTest, TryParse) {
   TestSuccessfulParse("1", true);
   TestSuccessfulParse("0", false);
 
+  // out of range
   TestFailedParse<int16_t>("32768");
   TestFailedParse<uint32_t>("-1");
   TestFailedParse<float>("1e100");
+  TestFailedParse<bool>("2");
+  // invalid representation
   TestFailedParse<int32_t>("1.2");
   TestFailedParse<int32_t>("one");
+  // leading or trailing characters
+  TestFailedParse<int32_t>(" 1");
+  TestFailedParse<int32_t>("1 ");
+}
+
+TEST(StringUtilsTest, TryParseString) {
+  // when parsing a string as a string, allow leading and trailing whitespace
+  const std::string s = "  this is a string! ";
+  TestSuccessfulParse(s, s);
 }
 
 namespace {

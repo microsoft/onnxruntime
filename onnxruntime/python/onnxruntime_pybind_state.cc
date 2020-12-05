@@ -12,17 +12,19 @@
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
 #include "core/common/optional.h"
-#include "core/framework/bfc_arena.h"
+#include "core/framework/arena_extend_strategy.h"
 #include "core/framework/data_transfer_utils.h"
 #include "core/framework/data_types_internal.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/provider_options_utils.h"
 #include "core/framework/random_seed.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/TensorSeq.h"
 #include "core/graph/graph_viewer.h"
+#include "core/platform/env.h"
+#include "core/providers/provider_factory_creators.h"
 #include "core/session/IOBinding.h"
 #include "core/session/abi_session_options_impl.h"
-#include "core/platform/env.h"
 
 struct OrtStatus {
   OrtErrorCode code;
@@ -129,21 +131,15 @@ struct OrtStatus {
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/providers.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
-#include "core/providers/cpu/cpu_provider_factory.h"
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
 #ifdef USE_CUDA
-#include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
-#include "core/providers/cuda/cuda_execution_provider_info.h"
 #include "core/providers/cuda/cuda_allocator.h"
 // TODO remove deprecated global config
 OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE;
 // TODO remove deprecated global config
 bool do_copy_in_default_stream = true;
-#elif USE_ROCM
-#include "core/providers/rocm/rocm_execution_provider_info.h"
-#include "core/providers/rocm/rocm_provider_factory.h"
 #endif
 // TODO remove deprecated global config
 OrtDevice::DeviceId cuda_device_id = 0;
@@ -189,15 +185,6 @@ std::string nuphar_settings;
 const OrtDevice::DeviceType OrtDevice::GPU;
 
 namespace onnxruntime {
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(int use_arena);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id,
-                                                                               OrtCudnnConvAlgoSearch cudnn_conv_algo_search,
-                                                                               size_t cuda_mem_limit,
-                                                                               onnxruntime::ArenaExtendStrategy arena_extend_strategy,
-                                                                               bool do_copy_in_default_stream);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ROCM(OrtDevice::DeviceId device_id,
-                                                                               size_t cuda_mem_limit,
-                                                                               onnxruntime::ArenaExtendStrategy arena_extend_strategy);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
@@ -539,39 +526,39 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
 #endif
     } else if (type == kCudaExecutionProvider) {
 #ifdef USE_CUDA
-      auto it = provider_options_map.find(type);
-      if (it != provider_options_map.end()) {
-        const auto info = CUDAExecutionProviderInfo::FromProviderOptions(it->second);
-        RegisterExecutionProvider(
-            sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(info.device_id,
-                                                                    info.cudnn_conv_algo,
-                                                                    info.cuda_mem_limit,
-                                                                    info.arena_extend_strategy,
-                                                                    info.do_copy_in_default_stream));
-      } else {
-        RegisterExecutionProvider(
-            sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_device_id,
-                                                                    cudnn_conv_algo_search,
-                                                                    cuda_mem_limit,
-                                                                    arena_extend_strategy,
-                                                                    do_copy_in_default_stream));
-      }
+      const auto it = provider_options_map.find(type);
+      const CUDAExecutionProviderInfo info =
+          it != provider_options_map.end()
+              ? CUDAExecutionProviderInfo::FromProviderOptions(it->second)
+              : [&]() {
+                  CUDAExecutionProviderInfo info{};
+                  info.device_id = cuda_device_id;
+                  info.cuda_mem_limit = cuda_mem_limit;
+                  info.arena_extend_strategy = arena_extend_strategy;
+                  info.cudnn_conv_algo = cudnn_conv_algo_search;
+                  info.do_copy_in_default_stream = do_copy_in_default_stream;
+                  return info;
+                }();
+
+      RegisterExecutionProvider(
+          sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(info));
 #endif
     } else if (type == kRocmExecutionProvider) {
 #ifdef USE_ROCM
-      auto it = provider_options_map.find(type);
-      if (it != provider_options_map.end()) {
-        const auto info = ROCMExecutionProviderInfo::FromProviderOptions(it->second);
-        RegisterExecutionProvider(
-            sess, *onnxruntime::CreateExecutionProviderFactory_ROCM(info.device_id,
-                                                                    info.hip_mem_limit,
-                                                                    info.arena_extend_strategy));
-      } else {
-        RegisterExecutionProvider(
-            sess, *onnxruntime::CreateExecutionProviderFactory_ROCM(cuda_device_id,
-                                                                    cuda_mem_limit,
-                                                                    arena_extend_strategy));
-      }
+      const auto it = provider_options_map.find(type);
+      const ROCMExecutionProviderInfo info =
+          it != provider_options_map.end()
+              ? ROCMExecutionProviderInfo::FromProviderOptions(it->second)
+              : [&]() {
+                  ROCMExecutionProviderInfo info{};
+                  info.device_id = cuda_device_id;
+                  info.hip_mem_limit = cuda_mem_limit;
+                  info.arena_extend_strategy = arena_extend_strategy;
+                  return info;
+                }();
+
+      RegisterExecutionProvider(
+          sess, *onnxruntime::CreateExecutionProviderFactory_ROCM(info));
 #endif
     } else if (type == kDnnlExecutionProvider) {
 #ifdef USE_DNNL
@@ -614,14 +601,11 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
 #endif
     } else if (type == kNupharExecutionProvider) {
 #if USE_NUPHAR
-      const auto nuphar_provider_options_it = provider_options_map.find(type);
-      if (nuphar_provider_options_it != provider_options_map.end()) {
-        const auto& nuphar_provider_options = nuphar_provider_options_it->second;
-        const auto nuphar_settings_it = nuphar_provider_options.find("nuphar_settings");
-        if (nuphar_settings_it != nuphar_provider_options.end()) {
-          nuphar_settings = nuphar_settings_it->second;
-        }
+      const auto it = provider_options_map.find(type);
+      if (it != provider_options_map.end()) {
+        ReadProviderOption(it->second, "nuphar_settings", nuphar_settings);
       }
+
       RegisterExecutionProvider(
           sess, *onnxruntime::CreateExecutionProviderFactory_Nuphar(true, nuphar_settings.c_str()));
 
@@ -841,10 +825,26 @@ void addGlobalMethods(py::module& m, Environment& env) {
         std::vector<std::shared_ptr<onnxruntime::IExecutionProviderFactory>> factories = {
             onnxruntime::CreateExecutionProviderFactory_CPU(0),
 #ifdef USE_CUDA
-            onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_device_id, cudnn_conv_algo_search, cuda_mem_limit, arena_extend_strategy, do_copy_in_default_stream),
+            onnxruntime::CreateExecutionProviderFactory_CUDA(
+                [&]() {
+                  CUDAExecutionProviderInfo info{};
+                  info.device_id = cuda_device_id;
+                  info.cuda_mem_limit = cuda_mem_limit;
+                  info.arena_extend_strategy = arena_extend_strategy;
+                  info.cudnn_conv_algo = cudnn_conv_algo_search;
+                  info.do_copy_in_default_stream = do_copy_in_default_stream;
+                  return info;
+                }()),
 #endif
 #ifdef USE_ROCM
-            onnxruntime::CreateExecutionProviderFactory_ROCM(cuda_device_id, cuda_mem_limit, arena_extend_strategy),
+            onnxruntime::CreateExecutionProviderFactory_ROCM(
+                [&]() {
+                  ROCMExecutionProviderInfo info{};
+                  info.device_id = cuda_device_id;
+                  info.hip_mem_limit = cuda_mem_limit;
+                  info.arena_extend_strategy = arena_extend_strategy;
+                  return info;
+                }()),
 #endif
 #ifdef USE_DNNL
             onnxruntime::CreateExecutionProviderFactory_Dnnl(1),

@@ -2,8 +2,12 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/cpu_provider_factory.h"
-#include <atomic>
-#include "cpu_execution_provider.h"
+#include "core/providers/provider_factory_creators.h"
+
+#include <memory>
+
+#include "core/common/make_unique.h"
+#include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ort_apis.h"
 
