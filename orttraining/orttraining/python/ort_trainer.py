@@ -393,7 +393,7 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
                                                frozen_weights=[], opset_version=DEFAULT_OPSET_VERSION,
                                                use_deterministic_compute=False,
                                                use_invertible_layernorm_grad=False,
-                                               use_adasum=False, perform_fp16_allreduce=True):
+                                               use_adasum=False):
     output_name = model.graph.output[0].name
     ort_parameters = ort.TrainingParameters()
     ort_parameters.loss_output_name = output_name
@@ -407,7 +407,6 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     ort_parameters.set_gradients_as_graph_outputs = False
     ort_parameters.use_invertible_layernorm_grad = use_invertible_layernorm_grad
     ort_parameters.use_adasum = use_adasum
-    ort_parameters.perform_fp16_allreduce = perform_fp16_allreduce
     output_types = {}
     for output in model.graph.output:
         output_types[output.name] = output.type.tensor_type
@@ -549,7 +548,7 @@ class ORTTrainer():
                  global_step=0, get_lr_this_step=None, loss_scaler=None, deepspeed_zero_stage=0,
                  enable_grad_norm_clip=True, frozen_weights=[], _opset_version=DEFAULT_OPSET_VERSION,
                  _enable_internal_postprocess=True, _extra_postprocess=None, _use_deterministic_compute=False,
-                 use_invertible_layernorm_grad=False, run_symbolic_shape_infer=False, use_adasum=False, perform_fp16_allreduce=True):
+                 use_invertible_layernorm_grad=False, run_symbolic_shape_infer=False, use_adasum=False):
         super(ORTTrainer, self).__init__()
         """
         Initialize ORTTrainer.
@@ -653,8 +652,6 @@ class ORTTrainer():
         self.world_size = world_size
         self.use_mixed_precision = use_mixed_precision
 
-        self.perform_fp16_allreduce = perform_fp16_allreduce
-
         self.session = None
         self.device_ = device
         self.gradient_accumulation_steps = gradient_accumulation_steps
@@ -714,8 +711,7 @@ class ORTTrainer():
                 enable_grad_norm_clip=self.enable_grad_norm_clip_,
                 frozen_weights=self.frozen_weights_, opset_version=self.opset_version_,
                 use_deterministic_compute=self._use_deterministic_compute,
-                use_invertible_layernorm_grad=self.use_invertible_layernorm_grad, use_adasum=self.use_adasum,
-                perform_fp16_allreduce=self.perform_fp16_allreduce)
+                use_invertible_layernorm_grad=self.use_invertible_layernorm_grad, use_adasum=self.use_adasum)
 
         self.loss_scale_input_name = self.session.loss_scale_input_name
 

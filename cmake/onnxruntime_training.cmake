@@ -9,6 +9,8 @@ file(GLOB_RECURSE onnxruntime_training_srcs
     "${ORTTRAINING_SOURCE_DIR}/core/framework/*.cc"
     "${ORTTRAINING_SOURCE_DIR}/core/framework/tensorboard/*.h"
     "${ORTTRAINING_SOURCE_DIR}/core/framework/tensorboard/*.cc"
+    "${ORTTRAINING_SOURCE_DIR}/core/framework/adasum/*"
+    "${ORTTRAINING_SOURCE_DIR}/core/framework/communication/*"
     "${ORTTRAINING_SOURCE_DIR}/core/session/*.h"
     "${ORTTRAINING_SOURCE_DIR}/core/session/*.cc"
 )

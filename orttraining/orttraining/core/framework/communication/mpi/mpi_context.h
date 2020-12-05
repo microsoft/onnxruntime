@@ -13,7 +13,7 @@
 namespace onnxruntime {
 namespace training {
 
-#ifdef USE_MPI
+#if defined(USE_MPI)
 #define MPI_CHECK(condition)                                 \
   do {                                                       \
     int error = (condition);                                 \
@@ -29,7 +29,7 @@ namespace training {
 #endif
 
 struct MPIGroup {
-#ifdef USE_MPI
+#if defined(USE_MPI)
   MPI_Group mpi_group {MPI_GROUP_EMPTY};  // MPI group
   MPI_Comm communicator {MPI_COMM_NULL};  // MPI communicator of this group
 #endif
