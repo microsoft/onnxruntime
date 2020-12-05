@@ -45,6 +45,7 @@
 #include "orttraining/core/optimizer/megatron_transformer.h"
 #include "orttraining/core/optimizer/nonzero_shape_setter.h"
 #include "orttraining/core/optimizer/transformer_layer_recompute.h"
+#include "orttraining/core/optimizer/mainz_multitask_coloring.h"
 
 namespace onnxruntime {
 namespace training {
@@ -116,6 +117,8 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
         transformers.emplace_back(onnxruntime::make_unique<TransformerLayerRecompute>(
             config.number_recompute_layers, compatible_eps));
       }
+
+      transformers.emplace_back(onnxruntime::make_unique<MainzMultitaskColoring>(compatible_eps));
     } break;
 
     case TransformerLevel::Level2: {

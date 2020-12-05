@@ -211,6 +211,9 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
     }
 
     GradientDef node_defs = GetGradientForOp(gradient_graph_config_, graph_, node, output_args_need_grad, input_args_need_grad, logger_);
+    for (auto& op_def : node_defs) {
+      op_def.priority = node->Priority();
+    }    
 
     // updates arg name if gradient accumulation is needed
     for (auto& op_def : node_defs) {

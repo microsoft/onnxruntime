@@ -1938,7 +1938,7 @@ TEST(ReductionOpTest, ArgMin_int32_select_last) {
                           {1, 0,
                            0, 0});
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNGraphExecutionProvider});
 }
 
 TEST(ReductionOpTest, ArgMin_int32_neg_axis) {
