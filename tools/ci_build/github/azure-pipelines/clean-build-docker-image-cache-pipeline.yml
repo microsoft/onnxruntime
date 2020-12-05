@@ -36,5 +36,5 @@ jobs:
           --container-registry $(buildcache-container-registry) \
           --log-storage-account $(buildcache-log-storage-account) \
           --log-storage-account-container $(buildcache-log-storage-account-container) \
-          --cache-history-days ${{ parameters.CacheLifetimeDays }} \
+          --cache-history-days ${{ parameters.CacheHistoryDays }} \
           --cache-min-access-count ${{ parameters.CacheMinAccessCount }}
