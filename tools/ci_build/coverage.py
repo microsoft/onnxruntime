@@ -4,7 +4,7 @@
 #
 # This script generates test code coverage for Android.
 # The prerequistes:
-#     1. The Onnxruntime build command specified GCOV_COVERAGE=1 in cmake_extra_defines to compile/link the source files using --coverage optoin
+#     1. The Onnxruntime build with coverage option to compile/link the source files using --coverage optoin
 #     2. The tests are run on the target emulator and *.gcda files are available on the emulator
 #
 import os
@@ -30,7 +30,7 @@ def start_android_emulator(args):
         'start_android_emulator.sh')])
 
 def main():
-    args = parse_arguments
+    args = parse_arguments()
     script_dir = os.path.realpath(os.path.dirname(__file__))
     source_dir = os.path.normpath(os.path.join(script_dir, "..", ".."))
     cwd = os.path.abspath(get_config_build_dir(args.build_dir, args.config))
