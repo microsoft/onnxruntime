@@ -1194,6 +1194,9 @@ def run_android_tests(args, source_dir, config, cwd):
         adb_push('onnxruntime_test_all', '/data/local/tmp/', cwd=cwd)
         adb_push('onnx_test_runner', '/data/local/tmp/', cwd=cwd)
         if args.android_coverage and args.android:
+            # GCOV_PREFIX_STRIP specifies the depth of the directory hierarchy to stip and
+            # GCOV_PREFIX specifies the root directory
+            # for creating the runtime code coverage files.
             adb_shell('cd /data/local/tmp && GCOV_PREFIX=/data/local/tmp GCOV_PREFIX_STRIP={} /data/local/tmp/onnxruntime_test_all'.format(cwd.count(os.sep)+1))
         else:
             adb_shell('cd /data/local/tmp && /data/local/tmp/onnxruntime_test_all')
