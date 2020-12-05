@@ -5,6 +5,7 @@ from numpy.testing import assert_allclose
 import onnx
 import os
 import pytest
+import tempfile
 import torch
 import torch.nn.functional as F
 
@@ -1406,3 +1407,35 @@ def testORTTrainerRunSymbolicShapeInfer():
     # Compare losses
     _test_helpers.assert_model_outputs(new_loss, expected_loss)
     _test_helpers.assert_model_outputs(legacy_loss, expected_loss)
+
+
+@pytest.mark.parametrize("device", ["cpu", "cuda"])
+def testTrainingGraphExport(device):
+    model, model_desc, my_loss, batcher_fn, train_data, _, _ = _load_pytorch_transformer_model(device)
+
+    with tempfile.TemporaryDirectory() as tempdir:
+        graph_path = os.path.join(tempdir, "training_graph.onnx")
+        opts =  orttrainer.ORTTrainerOptions(
+            {
+                "device": {"id": device},
+                "debug": {"model_with_training_graph_path": graph_path}
+            }
+        )
+        optim_config = optim.SGDConfig()
+        trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=opts)
+        data, targets = batcher_fn(train_data, 0)
+        trainer.train_step(data, targets)
+        assert os.path.isfile(graph_path)
+
+
+@pytest.mark.parametrize("device", ["cpu", "cuda"])
+def testTrainingGraphExportLegacy(device):
+    model, (model_desc, lr_desc), my_loss, batcher_fn, train_data, _, _ = _load_pytorch_transformer_model(device, legacy_api=True)
+
+    with tempfile.TemporaryDirectory() as tempdir:
+        graph_path = os.path.join(tempdir, "training_graph.onnx")
+        trainer = Legacy_ORTTrainer(model, my_loss, model_desc, "SGDOptimizer", None, lr_desc,
+                                    device, model_with_training_graph_path=graph_path)
+        data, targets = batcher_fn(train_data, 0)
+        trainer.train_step(data, targets, torch.tensor([0.01]))
+        assert os.path.isfile(graph_path)
