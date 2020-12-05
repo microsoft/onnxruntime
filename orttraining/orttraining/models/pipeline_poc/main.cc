@@ -3,7 +3,7 @@
 
 #include "core/session/environment.h"
 
-#ifdef USE_MPI
+#ifdef USE_CUDA
 
 #include "cxxopts.hpp"
 #include "core/common/logging/logging.h"

@@ -128,6 +128,10 @@ if (onnxruntime_ENABLE_TRAINING)
   file(GLOB_RECURSE onnxruntime_cpu_training_ops_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/*.h"
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/*.cc"
+    "${ORTTRAINING_SOURCE_DIR}/core/framework/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/core/framework/*.cc"
+    "${ORTTRAINING_SOURCE_DIR}/core/framework/adasum/*"
+    "${ORTTRAINING_SOURCE_DIR}/core/framework/communication/*"
   )
 
   source_group(TREE ${ORTTRAINING_ROOT}/ FILES ${onnxruntime_cpu_training_ops_srcs})
