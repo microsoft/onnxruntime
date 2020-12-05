@@ -1426,6 +1426,8 @@ def testTrainingGraphExport(device):
         data, targets = batcher_fn(train_data, 0)
         trainer.train_step(data, targets)
         assert os.path.isfile(graph_path)
+        training_graph = onnx.load(graph_path).graph
+        assert any("Grad" in n.name for n in training_graph.node)
 
 
 @pytest.mark.parametrize("device", ["cpu", "cuda"])
@@ -1439,3 +1441,5 @@ def testTrainingGraphExportLegacy(device):
         data, targets = batcher_fn(train_data, 0)
         trainer.train_step(data, targets, torch.tensor([0.01]))
         assert os.path.isfile(graph_path)
+        training_graph = onnx.load(graph_path).graph
+        assert any("Grad" in n.name for n in training_graph.node)
