@@ -109,7 +109,8 @@ def testORTTrainerOptionsDefaultValues(test_input):
         },
         'debug': {
             'deterministic_compute': False,
-            'check_model_export': False
+            'check_model_export': False,
+            'model_with_training_graph_path': ''
         },
         '_internal_use': {
             'enable_internal_postprocess': True,
