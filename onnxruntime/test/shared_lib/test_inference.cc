@@ -153,6 +153,7 @@ static constexpr PATH_TYPE CUSTOM_OP_LIBRARY_TEST_MODEL_URI = TSTR("testdata/cus
 static constexpr PATH_TYPE OVERRIDABLE_INITIALIZER_MODEL_URI = TSTR("testdata/overridable_initializer.onnx");
 static constexpr PATH_TYPE NAMED_AND_ANON_DIM_PARAM_URI = TSTR("testdata/capi_symbolic_dims.onnx");
 static constexpr PATH_TYPE MODEL_WITH_CUSTOM_MODEL_METADATA = TSTR("testdata/model_with_valid_ort_config_json.onnx");
+static constexpr PATH_TYPE VARIED_INPUT_CUSTOM_OP_MODEL_URI = TSTR("testdata/VariedInputCustomOp.onnx");
 
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
 static constexpr PATH_TYPE PYOP_FLOAT_MODEL_URI = TSTR("testdata/pyop_1.onnx");
@@ -224,6 +225,7 @@ template <typename T, size_t N>
 constexpr size_t countof(T (&)[N]) { return N; }
 
 void cuda_add(int64_t, float*, const float*, const float*);
+template<typename T> void cuda_mul(const T*, const T*, T*, int64_t);
 
 struct MyCustomKernel {
   MyCustomKernel(Ort::CustomOpApi ort, const OrtKernelInfo* /*info*/) : ort_(ort) {
@@ -247,7 +249,7 @@ struct MyCustomKernel {
 
     // Do computation
 #ifdef USE_CUDA
-    cuda_add(size, out, X, Y); 
+    cuda_add(size, out, X, Y);
 #else
     for (int64_t i = 0; i < size; i++) {
       out[i] = X[i] + Y[i];
@@ -302,6 +304,91 @@ TEST(CApiTest, custom_op_handler) {
   TestInference<PATH_TYPE, float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1, custom_op_domain, nullptr, nullptr);
 #else
   TestInference<PATH_TYPE, float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, custom_op_domain, nullptr);
+#endif
+}
+
+template <typename T>
+void custom_mul(const T* X, const T* Y, T* Z, int64_t size) {
+#ifdef USE_CUDA
+  cuda_mul(X, Y, Z, size);
+#else
+  for (int64_t i = 0; i < size; i++) {
+    Z[i] = X[i] * Y[i];
+  }
+#endif
+}
+
+struct VariedInputCustomOpKernel {
+  VariedInputCustomOpKernel(Ort::CustomOpApi ort, const OrtKernelInfo* /*info*/) : ort_(ort) {
+  }
+
+  void Compute(OrtKernelContext* context) {
+    // Setup inputs
+    const OrtValue* input_X = ort_.KernelContext_GetInput(context, 0);
+    const OrtValue* input_Y = ort_.KernelContext_GetInput(context, 1);
+    OrtTensorTypeAndShapeInfo* input_X_info = ort_.GetTensorTypeAndShape(input_X);
+    ONNXTensorElementDataType input_X_type = ort_.GetTensorElementType(input_X_info);
+    OrtTensorDimensions dimensions(ort_, input_X);
+    // Setup output
+    OrtValue* output = ort_.KernelContext_GetOutput(context, 0, dimensions.data(), dimensions.size());
+    OrtTensorTypeAndShapeInfo* output_info = ort_.GetTensorTypeAndShape(output);
+    int64_t size = ort_.GetTensorShapeElementCount(output_info);
+    ort_.ReleaseTensorTypeAndShapeInfo(output_info);
+
+    if (input_X_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
+      const float* X = ort_.GetTensorData<float>(input_X);
+      const float* Y = ort_.GetTensorData<float>(input_Y);
+      float* Z = ort_.GetTensorMutableData<float>(output);
+      custom_mul(X, Y, Z, size);
+    } else if (input_X_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE) {
+      const double* X = ort_.GetTensorData<double>(input_X);
+      const double* Y = ort_.GetTensorData<double>(input_Y);
+      double* Z = ort_.GetTensorMutableData<double>(output);
+      custom_mul(X, Y, Z, size);
+    }
+  }  // Compute
+
+ private:
+  Ort::CustomOpApi ort_;
+};
+
+struct VariedInputCustomOp : Ort::CustomOpBase<VariedInputCustomOp, VariedInputCustomOpKernel> {
+  explicit VariedInputCustomOp(const char* provider) : provider_(provider) {}
+  void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo* info) const { return new MyCustomKernel(api, info); };
+  const char* GetName() const { return "CustomMul"; };
+
+  const char* GetExecutionProviderType() const { return provider_; };
+
+  size_t GetInputTypeCount() const { return 2; };
+  ONNXTensorElementDataType GetInputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED; };
+
+  size_t GetOutputTypeCount() const { return 1; };
+  ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED; };
+
+ private:
+  const char* provider_;
+};
+
+//test custom op which accepts float or double as inputs
+TEST(CApiTest, varied_input_custom_op_handler) {
+  std::vector<Input> inputs = {{"X", {3}, {1.0f, 2.0f, 3.0f}},
+                               {"Y", {3}, {1.0f, 2.0f, 3.0f}}};
+  std::vector<int64_t> expected_dims_z = {3};
+  std::vector<float> expected_values_z = {2.0f, 8.0f, 18.0f};
+
+#ifdef USE_CUDA
+  VariedInputCustomOp custom_op{onnxruntime::kCudaExecutionProvider};
+#else
+  VariedInputCustomOp custom_op{onnxruntime::kCpuExecutionProvider};
+#endif
+
+  Ort::CustomOpDomain custom_op_domain("abc");
+  custom_op_domain.Add(&custom_op);
+
+#ifdef USE_CUDA
+  TestInference<PATH_TYPE, float>(*ort_env, VARIED_INPUT_CUSTOM_OP_MODEL_URI, inputs, "Z", expected_dims_z, expected_values_z, 1, custom_op_domain, nullptr, nullptr);
+#else
+  TestInference<PATH_TYPE, float>(*ort_env, VARIED_INPUT_CUSTOM_OP_MODEL_URI, inputs, "Z", expected_dims_z, expected_values_z, 0, custom_op_domain, nullptr);
 #endif
 }
 
