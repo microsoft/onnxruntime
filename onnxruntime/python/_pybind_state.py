@@ -5,7 +5,6 @@
 
 import os
 import platform
-import sys
 import warnings
 import onnxruntime.capi._ld_preload  # noqa: F401
 
