@@ -840,7 +840,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
 
     if args.android:
         cmake_args += [
-            "-DCMAKE_SYSTEM_NAME=Android",
             "-DCMAKE_TOOLCHAIN_FILE=" + args.android_ndk_path + "/build/cmake/android.toolchain.cmake",
             "-DANDROID_PLATFORM=android-" + str(args.android_api),
             "-DANDROID_ABI=" + str(args.android_abi)
@@ -1189,7 +1188,7 @@ def run_android_tests(args, source_dir, config, cwd):
             '/data/local/tmp/', cwd=cwd)
         adb_push('onnxruntime_test_all', '/data/local/tmp/', cwd=cwd)
         adb_push('onnx_test_runner', '/data/local/tmp/', cwd=cwd)
-        adb_shell('cd /data/local/tmp && /data/local/tmp/onnxruntime_test_all')
+        adb_shell('cd /data/local/tmp && GCOV_PREFIX=/data/local/tmp GCOV_PREFIX_STRIP={} /data/local/tmp/onnxruntime_test_all'.format(cwd.count(os.sep)+1))
         if args.use_nnapi:
             adb_shell('cd /data/local/tmp && /data/local/tmp/onnx_test_runner -e nnapi /data/local/tmp/test')
         else:
