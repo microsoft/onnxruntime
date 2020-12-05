@@ -212,7 +212,7 @@ def main():
             datetime.datetime.now(tz=datetime.timezone.utc) - cache_history
 
         valid_images = get_valid_images_from_logs(
-            log_paths, min_timestamp, args.min_access_count)
+            log_paths, min_timestamp, args.cache_min_access_count)
 
     all_images = get_registry_images(args.container_registry, args.az_path)
 
