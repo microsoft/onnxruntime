@@ -1409,6 +1409,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
     for config in configs:
         log.info("Running tests for %s configuration", config)
         cwd = get_config_build_dir(build_dir, config)
+        cwd = os.path.abspath(cwd)
+        log.info("cwd = %s", cwd)
 
         # TODO: temporarily disable this test to restore pipeline health. This test fails due to
         # an OOM regression. Invetigation undergoing.
