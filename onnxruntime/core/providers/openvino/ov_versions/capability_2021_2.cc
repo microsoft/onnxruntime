@@ -320,6 +320,10 @@ static bool IsUnsupportedOpMode(const Provider_Node* node, const Provider_GraphV
     auto x_data_type = node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
     auto y_data_type = node->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type();
     return x_data_type != y_data_type;
+  } else if (optype == "Where") {
+    //float data type is not supported
+    const bool data_is_float = node->InputDefs()[1]->Type()->find("float") != std::string::npos;
+    return data_is_float;
   } else if (optype == "PRelu") {
     auto slope = node->InputDefs()[1];
 
@@ -355,6 +359,11 @@ static bool IsUnsupportedOpMode(const Provider_Node* node, const Provider_GraphV
     //Resize opset 11 is not supported
     //if (node->InputDefs().size() > 2)
     //  return true;
+  } else if (optype == "Scatter" || optype == "ScatterElements") {
+    const auto& attributes = node->GetAttributes();
+    auto axis_attr = attributes.find("axis");
+    if (axis_attr->second().i() < 0)
+      return true;
   } else if (optype == "Unsqueeze") {
     if (!IsDimensionSupported(node))
       return true;
@@ -706,7 +715,7 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
             return;
 
         if (device_id == "MYRIAD") {
-            if (optype == "ArgMin" || optype == "Reshape" || optype == "Max" ||
+            if (optype == "ArgMin" || optype == "Max" ||
                 optype == "Add" || optype == "Less" || optype == "Greater" ||
                 optype == "Clip" || optype == "Resize" || optype == "Equal" )
               return;
@@ -830,10 +839,6 @@ GetCapability_2021_2(const Provider_GraphViewer& graph_viewer, std::string devic
       if (node->OpType() == "Reshape") {
         const auto& shape_arg = node->InputDefs()[1];
         if (ng_required_initializers.find(shape_arg->Name()) == ng_required_initializers.end())
-          return result;
-      } else if (node->OpType() == "Expand") {
-        const auto& output = node->OutputDefs()[0];
-        if (output->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16)
           return result;
       } else if (node->OpType() == "RoiAlign") {
         using onnx_dtype = ONNX_NAMESPACE::TensorProto_DataType;
