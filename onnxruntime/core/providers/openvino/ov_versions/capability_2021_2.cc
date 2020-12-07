@@ -343,7 +343,15 @@ static bool IsUnsupportedOpMode(const Provider_Node* node, const Provider_GraphV
     auto output_it = find(graph_outputs.begin(), graph_outputs.end(), output);
     if (input_it != graph_inputs.end() && output_it != graph_outputs.end())
       return true;
-  } else if (optype == "Resize") {
+  } else if (optype == "NonMaxSuppression") {
+    auto graph_outputs = graph_viewer.GetOutputs();
+    const auto& output = node->OutputDefs()[0];
+    std::cout << "output " << output->Name() << "\n";
+    auto output_it = find(graph_outputs.begin(), graph_outputs.end(), output);
+    if (output_it != graph_outputs.end())
+      return true;
+  }
+  else if (optype == "Resize") {
     //Resize opset 11 is not supported
     //if (node->InputDefs().size() > 2)
     //  return true;
@@ -371,6 +379,10 @@ static bool IsUnsupportedOpMode(const Provider_Node* node, const Provider_GraphV
     const auto& data_arg = node->InputDefs()[0];
     auto graph_inputs = graph_viewer.GetInputs();
     bool cond_for_slice = false;
+    
+    const auto& output = node->OutputDefs()[0];
+    if (output->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16)
+      return true;
 
     auto it = find(graph_inputs.begin(), graph_inputs.end(), data_arg);
     if (it != graph_inputs.end()) {
@@ -943,7 +955,7 @@ GetCapability_2021_2(const Provider_GraphViewer& graph_viewer, std::string devic
           }
         }
 
-        if (optype == "Conv" || optype == "Identity") {
+        if (optype == "Conv" || optype == "Identity" ) {
           auto output_name = node->OutputDefs()[0]->Name();
           auto it = find(cluster_outputs.begin(), cluster_outputs.end(), output_name);
           if (it != cluster_outputs.end() && node->GetOutputEdgesCount() != 0) {
