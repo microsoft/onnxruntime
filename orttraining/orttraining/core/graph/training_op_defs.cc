@@ -1868,7 +1868,7 @@ Return true if all elements are true and false otherwise.
             static_cast<int64_t>(0))
       .TypeConstraint(
           "SrcT",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input types to float tensors.")
       .TypeConstraint(
           "ScaleT",
@@ -1876,7 +1876,7 @@ Return true if all elements are true and false otherwise.
           "Constrain scale types to float tensors.")
       .TypeConstraint(
           "DstT",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain output types to float tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         bool fuse_outputs = static_cast<bool>(getAttribute(ctx, "fuse_outputs", int64_t(0)));
@@ -1953,11 +1953,11 @@ Return true if all elements are true and false otherwise.
       .Output(0, "Y", "output", "TOut")
       .TypeConstraint(
           "TIn",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input types to float tensors.")
       .TypeConstraint(
           "TOut",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain scale types to float tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         updateOutputShape(ctx, 0, {});

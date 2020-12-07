@@ -53,34 +53,33 @@ Status SoftMaxComputeHelper(
   template Status SoftMaxComputeHelper<T, false>(const T* input, const TensorShape& shape, T* Y, cudnnHandle_t handle, int64_t axis); \
   template Status SoftMaxComputeHelper<T, true>(const T* input, const TensorShape& shape, T* Y, cudnnHandle_t handle, int64_t axis);
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-template <bool is_log_softmax>
-Status SoftMaxComputeHelper(
-    const BFloat16* X,
-    const TensorShape& input_shape,
-    BFloat16* Y,
-    int64_t axis) {
-  typedef typename ToCudaType<BFloat16>::MappedType CudaT;
-
-  const int64_t normalized_axis = HandleNegativeAxis(axis, input_shape.NumDimensions());
-
-  int64_t N = input_shape.SizeToDimension(normalized_axis);
-  int64_t D = input_shape.SizeFromDimension(normalized_axis);
-  auto Y_data = reinterpret_cast<CudaT*>(Y);
-  auto X_data = reinterpret_cast<const CudaT*>(X);
-
-  // cudnnSoftmaxForward/Backward doesn't support BFloat16.
-  dispatch_softmax_forward<CudaT, CudaT, AccType<BFloat16>, is_log_softmax>(Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));
-  return Status::OK();
-}
-
-template Status SoftMaxComputeHelper<false>(const BFloat16* input, const TensorShape& shape, BFloat16* Y, int64_t axis);
-template Status SoftMaxComputeHelper<true>(const BFloat16* input, const TensorShape& shape, BFloat16* Y, int64_t axis);
-#endif
-
 SPECIALIZED_SOFTMAX_HELPER_IMPL(float)
 SPECIALIZED_SOFTMAX_HELPER_IMPL(double)
 SPECIALIZED_SOFTMAX_HELPER_IMPL(MLFloat16)
+
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+// cudnnSoftmaxForward/Backward doesn't support BFloat16.
+#define SPECIALIZED_SOFTMAX_HELPER_IMPL_BFloat16(is_log_softmax)                                        \
+  template <>                                                                                           \
+  Status SoftMaxComputeHelper<BFloat16, is_log_softmax>(                                                \
+      const BFloat16* X,                                                                                \
+      const TensorShape& input_shape,                                                                   \
+      BFloat16* Y,                                                                                      \
+      cudnnHandle_t,                                                                                    \
+      int64_t axis) {                                                                                   \
+    typedef typename ToCudaType<BFloat16>::MappedType CudaT;                                            \
+    int64_t N = input_shape.SizeToDimension(axis);                                                      \
+    int64_t D = input_shape.SizeFromDimension(axis);                                                    \
+    auto Y_data = reinterpret_cast<CudaT*>(Y);                                                          \
+    auto X_data = reinterpret_cast<const CudaT*>(X);                                                    \
+    dispatch_softmax_forward<CudaT, CudaT, AccumulationType_t<CudaT>, is_log_softmax>(                  \
+        Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));  \
+    return Status::OK();                                                                                \
+  }
+
+SPECIALIZED_SOFTMAX_HELPER_IMPL_BFloat16(true)
+SPECIALIZED_SOFTMAX_HELPER_IMPL_BFloat16(false)
+#endif
 
 #define REGISTER_KERNEL_TYPED(T)                                                \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
@@ -234,26 +233,6 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   return Status::OK();
 }
-
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-template <>
-Status Softmax<BFloat16>::ComputeInternal(OpKernelContext* ctx) const {
-  const Tensor* X = ctx->Input<Tensor>(0);
-  const TensorShape& input_shape{X->Shape()};
-  const BFloat16* X_data = X->template Data<BFloat16>();
-  BFloat16* Y_data = ctx->Output(0, input_shape)->template MutableData<BFloat16>();
-  // special case when there is a dim value of 0 in the shape.
-  if (input_shape.Size() == 0)
-    return Status::OK();
-
-  if (log_softmax_) {
-    return SoftMaxComputeHelper<true>(X_data, input_shape, Y_data, axis_);
-  }
-  else {
-    return SoftMaxComputeHelper<false>(X_data, input_shape, Y_data, axis_);
-  }
-}
-#endif
 
 #define SPECIALIZED_COMPUTE(T) \
   REGISTER_KERNEL_TYPED(T)     \

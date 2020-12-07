@@ -32,7 +32,7 @@ bool EliminateDropout::SatisfyCondition(const Graph& graph, const Node& node, co
 	//    2. ratio input is not a graph input, so it cannot be overridden
 
   // support opset 12 and above for ort training
-  if (graph_utils::MatchesOpSinceVersion(node, {12}) && node.InputDefs().size() > 1) {
+  if (graph_utils::MatchesOpSinceVersion(node, {12, 13}) && node.InputDefs().size() > 1) {
     if (graph_utils::IsGraphInput(graph, node.InputDefs()[1])) {
       return false;
     }
