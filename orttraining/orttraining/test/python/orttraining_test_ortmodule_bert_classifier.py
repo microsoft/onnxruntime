@@ -49,11 +49,6 @@ def train(model, optimizer, scheduler, train_dataloader, epoch, device, args):
         if step == args.train_steps:
             break
 
-        # TODO: Dynamic axis is not supported yet
-        if batch[0].shape[0] != args.batch_size:
-            logging.warning(f'Dynamic axis is not supported yet {len(batch)}/{args.batch_size}')
-            continue
-
         # Unpack this training batch from our dataloader.
         #
         # As we unpack the batch, we'll also copy each tensor to the GPU using the
@@ -159,12 +154,6 @@ def test(model, validation_dataloader, device, args):
 
     # Evaluate data for one epoch
     for batch in validation_dataloader:
-
-        # TODO: Dynamic axis is not supported yet
-        if batch[0].shape[0] != args.test_batch_size:
-            logging.warning(f'Dynamic axis is not supported yet {len(batch)}/{args.batch_size}')
-            continue
-
         # Add batch to GPU
         batch = tuple(t.to(device) for t in batch)
 
@@ -336,8 +325,8 @@ def main():
                         help='disables ONNX Runtime training')
     parser.add_argument('--batch-size', type=int, default=32, metavar='N',
                         help='input batch size for training (default: 32)')
-    parser.add_argument('--test-batch-size', type=int, default=32, metavar='N',
-                        help='input batch size for testing (default: 32)')
+    parser.add_argument('--test-batch-size', type=int, default=64, metavar='N',
+                        help='input batch size for testing (default: 64)')
     parser.add_argument('--view-graphs', action='store_true', default=False,
                         help='views forward and backward graphs')
     parser.add_argument('--no-cuda', action='store_true', default=False,
@@ -391,7 +380,11 @@ def main():
     )
 
     if not args.pytorch_only:
-        model = ORTModule(model)
+        dynamic_axes = {'input_ids': {0: 'batch_size', 1: 'seq_len'},
+                        'attention_mask': {0: 'batch_size', 1: 'seq_len'},
+                        'labels': {0: 'batch_size'},
+                        '210': {0: 'batch'}}
+        model = ORTModule(model, dynamic_axes)
 
     # TODO: change it to False to stop saving ONNX models
     model._save_onnx = True

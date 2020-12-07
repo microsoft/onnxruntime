@@ -44,9 +44,9 @@ struct SplitGraphsInfo {
 
 class ModuleGradientGraphBuilder {
  public:
-  Status BuildAndSplit(std::istream& model_istream, const ModuleGradientGraphBuilderConfiguration& config);
+  Status Initialize(std::istream& model_istream, const ModuleGradientGraphBuilderConfiguration& config);
+  Status BuildAndSplit(const std::vector<std::vector<int64_t>>& input_shapes);
 
-  std::string GetGradientModel() const;
   std::string GetForwardModel() const;
   std::string GetBackwardModel() const;
   SplitGraphsInfo GetSplitGraphsInfo() const { return split_graphs_info_; }
@@ -59,7 +59,8 @@ class ModuleGradientGraphBuilder {
   std::shared_ptr<onnxruntime::Model> backward_model_;
   SplitGraphsInfo split_graphs_info_;
 
-  const logging::Logger* logger_;
+  ModuleGradientGraphBuilderConfiguration config_;
+  const logging::Logger* logger_ = &logging::LoggingManager::DefaultLogger(); // use default logger for now.
 };
 
 }  // namespace training
