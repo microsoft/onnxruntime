@@ -6,7 +6,7 @@
 # The prerequistes:
 #     1. The Onnxruntime build with coverage option to compile/link the source files using --coverage optoin
 #     2. The tests are run on the target emulator and *.gcda files are available on the emulator
-#
+#     3. The emulator which ran tests must be running. Otherwise this script will fail
 
 import os
 import sys
@@ -34,18 +34,11 @@ def parse_arguments():
     return parser.parse_args()
 
 
-def start_android_emulator(args, source_dir):
-    run_subprocess([os.path.join(
-        source_dir, 'tools', 'ci_build', 'github', 'android',
-        'start_android_emulator.sh')])
-
-
 def main():
     args = parse_arguments()
     script_dir = os.path.realpath(os.path.dirname(__file__))
     source_dir = os.path.normpath(os.path.join(script_dir, "..", ".."))
     cwd = os.path.abspath(os.path.join(args.build_dir, args.config))
-    start_android_emulator(args, source_dir)
     adb_shell('cd /data/local/tmp && tar -zcvf gcda_files.tar.gz *.dir')
     adb_pull('/data/local/tmp/gcda_files.tar.gz', cwd)
     os.chdir(cwd)
