@@ -1891,6 +1891,9 @@ def main():
         if args.nnapi_min_api < 27:
             raise BuildError("--nnapi_min_api should be 27+")
 
+    if args.code_coverage and not args.android:
+        raise BuildError("Using --code_coverage requires --android")
+
     # Disabling unit tests for VAD-F as FPGA only supports
     # models with NCHW layout
     if args.use_openvino == "VAD-F_FP32":
