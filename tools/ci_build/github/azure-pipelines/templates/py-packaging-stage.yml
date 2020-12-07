@@ -274,15 +274,16 @@ stages:
       timeoutInMinutes: 180
       workspace:
         clean: all
-      pool: Linux-GPU-CUDA10
+      #pool: Linux-GPU-CUDA10
+      pool: ORT-Training-Linux-GPU # testing
       strategy:
         matrix:
           Python36:
             PythonVersion: '3.6'
-          Python37:
-            PythonVersion: '3.7'
-          Python38:
-            PythonVersion: '3.8'
+          # Python37:
+          #   PythonVersion: '3.7'
+          # Python38:
+          #   PythonVersion: '3.8'
           # dependency PyTorch does not support Python 3.9 yet
           # Python39:
           #   PythonVersion: '3.9'
