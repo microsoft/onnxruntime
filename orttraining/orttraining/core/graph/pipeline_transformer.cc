@@ -974,11 +974,11 @@ common::Status AddMetaTensors(int current_stage, int next_stage,
 // of such tensors.
 //     e) Finally, create the Send and Receive nodes.
 common::Status SplitGraphWithOperatorToStageMap(Graph& graph,
-                                 std::map<Node*, int>& op_to_stage,
-                                 int num_stages,
-                                 std::vector<std::pair<int, int>>& messages,
-                                 std::vector<Node*>& send_nodes,
-                                 std::vector<Node*>& receive_nodes) {
+                                                std::map<Node*, int>& op_to_stage,
+                                                int num_stages,
+                                                std::vector<std::pair<int, int>>& messages,
+                                                std::vector<Node*>& send_nodes,
+                                                std::vector<Node*>& receive_nodes) {
   
   // forward_messages stores all the tensors that will be sent by any stage.
   // For example, forward_messages[s] is a set of all the tensors sent by stage
@@ -988,11 +988,11 @@ common::Status SplitGraphWithOperatorToStageMap(Graph& graph,
   // we need to keep backward_messages[s] too.
 
   // Tensors that need to be sent from one device to the other. For example,
-  // forwarded_tensors[i] = {t, {stage of producer s0, stage of the last consumer s1}}
+  // forwarded_tensors[i] = {t, {stage of producer - s0, stage of the last consumer - s1}}
   // means that a tensor t, is produced in stage s0 and consumed for the last
   // time in stage s1, where s1 > s0 + 1. This tensor will be copied from stage
   // to stage until s1.
-  // TODO(jufranc): Should we consider weights here too?
+  // TODO: Should we consider weights here too?
   std::vector<std::pair<const NodeArg*, std::pair<int, int>>> forwarded_tensors;
 
   // All the tensors that are produced and consumed in the graph.
@@ -1365,7 +1365,11 @@ Status ApplyPipelinePartitionToMainGraph(Graph& graph,
   return Status::OK();
 }
 
-
+// Verifies the correctness of a given assignment of operators to stages.
+// Input: 
+//   - stages[i] is the stage id assigned to the operator with Index() == i.
+//   - num_stages is the total number of stages.
+//   - graph is the graph being partitioned into multiple pipeline stages.
 Status VerifyAssignment(std::vector<int> stages, int num_stages, Graph& graph) {
 
   // All stages are used.
@@ -1405,13 +1409,21 @@ Status VerifyAssignment(std::vector<int> stages, int num_stages, Graph& graph) {
   return Status::OK();
 }
 
-Status GetDeviceAssignmentMap(Graph& graph, 
+// First of two functions to obtain a mapping between operators and stage ids.
+// Input:
+//   - graph is the graph being partitioned into multiple pipeline stages.
+//   - id_to_stage maps string identifiers of operators and stage ids. Each
+// operator is identified with the name of any of its outputs.
+//   - op_to_stage maps pointers to operators and stage ids. This is the output
+// of this function.
+//   - num_stages is the total number of stages.
+Status GetDeviceAssignmentMap(Graph& graph,
                               const std::map<std::string, int>& id_to_stage,
                               std::map<Node*, int>& op_to_stage,
                               int num_stages) {
-  int n_nodes = graph.NumberOfNodes();
-  std::vector<int> stages(n_nodes);
-  for (int i = 0; i < n_nodes; ++i) {
+  int num_nodes = graph.NumberOfNodes();
+  std::vector<int> stages(num_nodes);
+  for (int i = 0; i < num_nodes; ++i) {
     Node* node = graph.GetNode(i);
     bool found = false;
     auto& node_outputs = node->MutableOutputDefs();
@@ -1422,18 +1434,40 @@ Status GetDeviceAssignmentMap(Graph& graph,
         break;
       }
     }
-    ORT_RETURN_IF_NOT(found, "Can't find node's stage " + node->Name());
+    std::string node_info = node->OpType() + "(" + node->Name() + ")";
+    ORT_RETURN_IF_NOT(found, "Can't find node's stage: ", node_info);
   }
 
   ORT_RETURN_IF_ERROR(VerifyAssignment(stages, num_stages, graph));
 
-  for (int i = 0; i < n_nodes; ++i) {
+  for (int i = 0; i < num_nodes; ++i) {
     op_to_stage.emplace(graph.GetNode(i), stages[i]);
   }
   return Status::OK();
 }
 
-
+// Second of two functions to obtain a mapping between operators and stage ids.
+// This version in particular converts a list of graph cuts (i.e., CutInfo)
+// into a mapping between operators and stages.
+// Input:
+//   - graph is the graph being partitioned into multiple pipeline stages.
+//   - cuts describes all the cut points as defined by the user (c.f., CutInfo
+// type definition.
+//   - op_to_stage maps pointers to operators and stage ids. This is the output
+// of this function.
+//   - num_stages is the total number of stages.
+//
+// The first step of this algorithm is to find all the producers and all the
+// the consumers of all the cut points, and keep them in the all_consumers and
+// all_producers containers, respectively. The producers of a cut point are the
+// operators that produce all the tensors defined in the cut point. The consumers
+// are those operators defined in the cut point.
+// Then, in order to find the ops assigned to stage 0, we visit the graph from
+// the producers of cut 0, not visiting the consumers of all cuts. All nodes
+// visited belong to stage 0. In order to find the mapping of stage s, for s>0,
+// we visit the graph from all the consumers of cut s-1, not visiting the
+// producers of that cut, and the consumers of the next cuts. All nodes visited
+// belong to stage s. Finally, we verify the assignment is valid.
 Status GetDeviceAssignmentMap(Graph& graph,
                               const std::vector<TrainingSession::TrainingConfiguration::CutInfo>& cuts,
                               std::map<Node*, int>& op_to_stage,
@@ -1443,15 +1477,20 @@ Status GetDeviceAssignmentMap(Graph& graph,
   
   auto total_nodes = graph.NumberOfNodes();
   
+  // Visits the graph ignoring direction of edges, i.e., it adds producers of
+  // inputs and consumers of outputs to the queue of operators to be visited.
+  // While it visits the graph, it assigns operators to stages. It takes a
+  // stop_visit vector of booleans indicating which operators should not be
+  // visited.
   auto visit_and_assign = [&](std::vector<Node*>& roots, int stage,
                               std::vector<bool>& stop_visit,
                               std::vector<int>& stages) {
-    std::vector<bool> visited(total_nodes, false); 
+    std::vector<bool> visited(total_nodes, false);
     std::list<Node*> q;
     // Start the visit from all the roots, which are the producers and consumers
     // of the NodeArgs in contents. If some of those nodes are not to be visited
-    // because they belong to another partition, then we expect `stop_visit` 
-    // value to be true. 
+    // because they belong to another partition, then we expect `stop_visit`
+    // value to be true.
     q.insert(std::end(q), roots.begin(), roots.end());
     
     while (!q.empty()) {
