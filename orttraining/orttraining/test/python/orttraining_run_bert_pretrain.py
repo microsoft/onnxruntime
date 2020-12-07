@@ -97,7 +97,6 @@ class pretraining_dataset(Dataset):
         self.input_file = input_file
         self.max_pred_length = max_pred_length
         f = h5py.File(input_file, "r")
-        logger.info(f.keys())
         keys = ['input_ids', 'input_mask', 'segment_ids', 'masked_lm_positions', 'masked_lm_ids',
                 'next_sentence_labels']
         self.inputs = [np.asarray(f[key][:]) for key in keys]
