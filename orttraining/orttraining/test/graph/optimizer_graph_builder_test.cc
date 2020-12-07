@@ -163,7 +163,7 @@ static void TestOptimizerGraphBuilderWithInitialStates(OptimizerGraphConfig conf
   std::vector<float> values = {4.f};
   std::vector<int64_t> uc_value = {3};
   NameMLValMap shared_states;
-  
+
   for (auto& opt_config_it : weight_names_to_opt_configs) {
     NameMLValMap per_weight_states;
     OrtValue ml_value;
@@ -183,7 +183,9 @@ static void TestOptimizerGraphBuilderWithInitialStates(OptimizerGraphConfig conf
     }
     opt_config_it.second.initial_states = std::move(per_weight_states);
   }
-  OptimizerGraphBuilder optimizer_graph_builder(GetOptimizerBuilderRegistry(), config, weight_names_to_opt_configs);
+
+  std::unordered_map<std::string, std::string> updated_weight_names_map;
+  OptimizerGraphBuilder optimizer_graph_builder(GetOptimizerBuilderRegistry(), config, weight_names_to_opt_configs, updated_weight_names_map);
 
   OptimizerOutputKeyMap<std::string> opt_graph_outputs;
   std::unordered_set<std::string> opt_initializer_names;
@@ -284,7 +286,7 @@ TEST_F(OptimizerGraphBuilderTest, Default_WithGradientAccumulation_WithMixedPrec
 static void TestAllreduceOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& graph) {
   std::unordered_map<std::string, std::string> updated_weight_names_map;
   AllreduceOptimizerGraphBuilder optimizer_graph_builder(
-      GetOptimizerBuilderRegistry(), config, GetOptInfoMap(),updated_weight_names_map);
+      GetOptimizerBuilderRegistry(), config, GetOptInfoMap(), updated_weight_names_map);
 
   OptimizerOutputKeyMap<std::string> opt_graph_outputs;
   std::unordered_set<std::string> opt_initializer_names;
