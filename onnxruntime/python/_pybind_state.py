@@ -5,22 +5,8 @@
 
 import os
 import platform
-import sys
 import warnings
 import onnxruntime.capi._ld_preload  # noqa: F401
-
-# Python 3.8 (and later) on Windows doesn't search system PATH when loading DLLs,
-# so CUDA location needs to be specified explicitly.
-if platform.system() == "Windows" and sys.version_info >= (3, 8):
-    CUDA_VERSION = "10.2"
-    CUDNN_VERSION = "8"
-    cuda_env_variable = "CUDA_PATH_V" + CUDA_VERSION.replace(".", "_")
-    if cuda_env_variable not in os.environ:
-        raise ImportError("CUDA Toolkit %s not installed on the machine." % CUDA_VERSION)
-    cuda_bin_dir = os.path.join(os.environ[cuda_env_variable], "bin")
-    if not os.path.isfile(os.path.join(cuda_bin_dir, "cudnn64_%s.dll" % CUDNN_VERSION)):
-        raise ImportError("cuDNN %s not installed on the machine." % CUDNN_VERSION)
-    os.add_dll_directory(cuda_bin_dir)
 
 try:
     from onnxruntime.capi.onnxruntime_pybind11_state import *  # noqa
