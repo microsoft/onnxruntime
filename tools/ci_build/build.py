@@ -1184,7 +1184,6 @@ def adb_shell(*args, **kwargs):
 
 def run_android_tests(args, source_dir, config, cwd):
 
-
     def run_adb_shell(cmd):
         # GCOV_PREFIX_STRIP specifies the depth of the directory hierarchy to stip and
         # GCOV_PREFIX specifies the root directory
@@ -1416,7 +1415,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
         log.info("Running tests for %s configuration", config)
         cwd = get_config_build_dir(build_dir, config)
         cwd = os.path.abspath(cwd)
-
 
         # TODO: temporarily disable this test to restore pipeline health. This test fails due to
         # an OOM regression. Invetigation undergoing.
