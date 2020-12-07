@@ -56,7 +56,7 @@ def _onnx_value_info_to_buffer_tensor(value_info, device):
 
 class ORTModule(torch.nn.Module):
 
-    def __init__(self, module):
+    def __init__(self, module, dynamic_axes=None):
         assert isinstance(module, torch.nn.Module), "'module' mst be a torch.nn.Module"
         super(ORTModule, self).__init__()
 
@@ -66,7 +66,11 @@ class ORTModule(torch.nn.Module):
 
         # User module is wrapped to use its initializers and save computed gradients
         self._original_module = module
+        self._dynamic_axes = dynamic_axes
         self._onnx_training = None
+
+        self._curr_inputs_size = None
+        self._module_gradient_graph_builder = None
 
         # Forward pass
         self._onnx_forward = None
@@ -154,19 +158,28 @@ class ORTModule(torch.nn.Module):
         if not self._onnx_forward or self._require_export:
             self._require_export = False
 
-            self._onnx_training = ORTModule._get_forward_graph(self._original_module, *inputs, **kwargs)
+            self._onnx_training = ORTModule._get_forward_graph(self._original_module, self._dynamic_axes, *inputs, **kwargs)
             grad_builder_config = C.ModuleGradientGraphBuilderConfiguration()
 
             # TODO: PyTorch exporter bug: changes the initializer order
             initializer_names = [p[0] for p in self._original_module.named_parameters()]
-            onnx_gradient, self._onnx_forward, self._onnx_backward, self._onnx_graphs_info = \
-                ORTModule._build_fw_bw_grad_graphs(self._onnx_training, grad_builder_config,
-                                                   initializer_names,
-                                                   self._save_onnx)
+            grad_builder_config.initializer_names_to_train = initializer_names
+            grad_builder_config.input_names_require_grad = []
+            self._module_gradient_graph_builder = C.ModuleGradientGraphBuilder()
+            self._module_gradient_graph_builder.initialize(self._onnx_training.SerializeToString(), grad_builder_config)
 
             if self._save_onnx:
                 onnx.save(self._onnx_training, self._save_onnx_prefix + '_full_training.onnx')
-                onnx.save(onnx_gradient, self._save_onnx_prefix + '_with_grad.onnx')
+
+        inputs_size = [list(input.size()) for input in inputs if input is not None]
+        if self._curr_inputs_size is None or self._curr_inputs_size != inputs_size:
+            self._curr_inputs_size = inputs_size
+            self._module_gradient_graph_builder.build_and_split(self._curr_inputs_size)
+            self._onnx_forward = onnx.load_model_from_string(self._module_gradient_graph_builder.get_forward_model())
+            self._onnx_backward = onnx.load_model_from_string(self._module_gradient_graph_builder.get_backward_model())
+            self._onnx_graphs_info = self._module_gradient_graph_builder.get_split_graphs_info()
+
+            if self._save_onnx:
                 onnx.save(self._onnx_forward, self._save_onnx_prefix + '_forward.onnx')
                 onnx.save(self._onnx_backward, self._save_onnx_prefix + '_backward.onnx')
 
@@ -174,6 +187,7 @@ class ORTModule(torch.nn.Module):
             self._backward_session = onnxruntime.InferenceSession(self._onnx_backward.SerializeToString())
 
             # IO binding
+            # TODO: we should try to reuse the output buffers as some of the output tensors are same sizes, expecially the backward graph outputs.
             self._forward_io_binding = self._forward_session.io_binding()
             self._forward_output_buffers = {}
             for output in self._onnx_forward.graph.output:
@@ -335,7 +349,7 @@ class ORTModule(torch.nn.Module):
 
 
     @staticmethod
-    def _get_forward_graph(module, *inputs, **kwargs):
+    def _get_forward_graph(module, dynamic_axes, *inputs, **kwargs):
         '''Exports PyTorch `module` to ONNX with training flag, using `*inputs` as input
 
         TODO: How to support dynamic axes? Dimensions are determined by samples
@@ -363,36 +377,7 @@ class ORTModule(torch.nn.Module):
                           input_names=input_names,
                           opset_version=ONNX_OPSET_VERSION,
                           do_constant_folding=False,
-                          training=torch.onnx.TrainingMode.TRAINING)
+                          training=torch.onnx.TrainingMode.TRAINING,
+                          dynamic_axes=dynamic_axes)
 
         return onnx.load_model_from_string(f.getvalue())
-
-
-    @staticmethod
-    def _build_fw_bw_grad_graphs(forward_graph, config, initializer_names=[], include_gradient_model=False):
-        '''Adds gradient nodes on top of an existing ONNX graph (with training flag)'''
-        if not config.initializer_names_to_train:
-            if not initializer_names:
-                initializer_names_to_train = []
-                for initializer in forward_graph.graph.initializer:
-                    initializer_names_to_train.append(initializer.name)
-                config.initializer_names_to_train = initializer_names_to_train
-            else:
-                config.initializer_names_to_train = initializer_names
-
-            # TODO: Add support to input with grad required
-            config.input_names_require_grad = []
-            # input_names_require_grad = []
-            # input_names_require_grad.append('input.1')
-            # config.input_names_require_grad = input_names_require_grad
-
-        module_gradient_graph_builder = C.ModuleGradientGraphBuilder()
-        module_gradient_graph_builder.build_and_split(forward_graph.SerializeToString(), config)
-        forward_model = onnx.load_model_from_string(module_gradient_graph_builder.get_forward_model())
-        backward_model = onnx.load_model_from_string(module_gradient_graph_builder.get_backward_model())
-        gradient_model = None
-        if include_gradient_model:
-            gradient_model = onnx.load_model_from_string(module_gradient_graph_builder.get_gradient_model())
-        split_graphs_info = module_gradient_graph_builder.get_split_graphs_info()
-
-        return gradient_model, forward_model, backward_model, split_graphs_info
