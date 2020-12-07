@@ -366,9 +366,11 @@ Status OptimizerGraphBuilder::AddFiniteGradientCheck(
 OptimizerGraphBuilder::OptimizerGraphBuilder(
     const OptimizerBuilderRegistry& opt_builder_registry,
     const OptimizerGraphConfig& opt_graph_config,
-    const std::unordered_map<std::string, OptimizerNodeConfig>& weight_names_to_opt_configs)
+    const std::unordered_map<std::string, OptimizerNodeConfig>& weight_names_to_opt_configs,
+    std::unordered_map<std::string, std::string>& updated_weight_names_map)
     : opt_builder_registry_(opt_builder_registry),
-      opt_graph_config_(opt_graph_config) {
+      opt_graph_config_(opt_graph_config),
+      updated_weight_names_map_(updated_weight_names_map) {
   // add weight names
   weight_names_.reserve(weight_names_to_opt_configs.size());
   std::transform(

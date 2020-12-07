@@ -121,8 +121,9 @@ static int GetOpCount(const std::map<std::string, int>& op_counts, const std::st
 }  // namespace
 
 static void TestDefaultOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& graph) {
+  std::unordered_map<std::string, std::string> updated_weight_names_map;
   OptimizerGraphBuilder optimizer_graph_builder(
-      GetOptimizerBuilderRegistry(), config, GetOptInfoMap());
+      GetOptimizerBuilderRegistry(), config, GetOptInfoMap(), updated_weight_names_map);
 
   OptimizerOutputKeyMap<std::string> opt_graph_outputs;
   std::unordered_set<std::string> opt_initializer_names;
@@ -186,8 +187,9 @@ TEST_F(OptimizerGraphBuilderTest, Default_WithGradientAccumulation_WithMixedPrec
 
 #if defined(USE_NCCL) || defined(USE_HOROVOD)
 static void TestAllreduceOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& graph) {
+  std::unordered_map<std::string, std::string> updated_weight_names_map;
   AllreduceOptimizerGraphBuilder optimizer_graph_builder(
-      GetOptimizerBuilderRegistry(), config, GetOptInfoMap());
+      GetOptimizerBuilderRegistry(), config, GetOptInfoMap(),updated_weight_names_map);
 
   OptimizerOutputKeyMap<std::string> opt_graph_outputs;
   std::unordered_set<std::string> opt_initializer_names;
@@ -225,8 +227,9 @@ static void TestAllreduceOptimizerGraphBuilder(OptimizerGraphConfig config, Grap
 
 #ifdef USE_HOROVOD
 static void TestAdasumOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& graph) {
+  std::unordered_map<std::string, std::string> updated_weight_names_map;
   AdasumOptimizerGraphBuilder optimizer_graph_builder(
-      GetOptimizerBuilderRegistry(), config, GetOptInfoMap());
+      GetOptimizerBuilderRegistry(), config, GetOptInfoMap(), updated_weight_names_map);
 
   OptimizerOutputKeyMap<std::string> opt_graph_outputs;
   std::unordered_set<std::string> opt_initializer_names;
@@ -379,8 +382,9 @@ TEST_F(OptimizerGraphBuilderTest, Allreduce_WithGradientAccumulation_WithMixedPr
 }
 
 static void TestZeROOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& graph) {
+  std::unordered_map<std::string, std::string> updated_weight_names_map;
   ZeROOptimizerGraphBuilder optimizer_graph_builder(
-      GetOptimizerBuilderRegistry(), config, GetOptInfoMap());
+      GetOptimizerBuilderRegistry(), config, GetOptInfoMap(), updated_weight_names_map);
 
   OptimizerOutputKeyMap<std::string> opt_graph_outputs;
   std::unordered_set<std::string> opt_initializer_names;
