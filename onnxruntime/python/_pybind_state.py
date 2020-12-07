@@ -21,6 +21,6 @@ except ImportError as e:
     # TODO: Add a guard against False Positive error message
     # As a proxy for checking if the 2019 VC Runtime is installed,
     # we look for a specific dll only shipped with the 2019 VC Runtime
-    if platform.system() == "Windows" and not os.path.isfile("C:\\Windows\\System32\\vcruntime140_1.dll"):
+    if platform.system().lower() == 'windows' and not os.path.isfile('c:\\Windows\\System32\\vcruntime140_1.dll'):
         warnings.warn("Unless you have built the wheel using VS 2017, "
-                      "please install the 2019 Visual C++ runtime and then try again.")
+                      "please install the 2019 Visual C++ runtime and then try again")
