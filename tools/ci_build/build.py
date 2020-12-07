@@ -460,7 +460,7 @@ def parse_arguments():
     parser.add_argument("--rocm_home", help="Path to ROCm installation dir")
 
     # Code coverage
-    parser.add_argument("--android_coverage", action='store_true', help="Generate Android code coverage.")
+    parser.add_argument("--code_coverage", action='store_true', help="Compile/link with options generate code coverage when targetting Android (only).")
 
     return parser.parse_args()
 
@@ -769,7 +769,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "ON" if args.build_micro_benchmarks else "OFF"),
         "-Donnxruntime_USE_ROCM=" + ("ON" if args.use_rocm else "OFF"),
         "-Donnxruntime_ROCM_HOME=" + (rocm_home if args.use_rocm else ""),
-        "-DOnnxruntime_GCOV_COVERAGE=" + ("ON" if args.android_coverage else "OFF"),
+        "-DOnnxruntime_GCOV_COVERAGE=" + ("ON" if args.code_coverage else "OFF"),
     ]
 
     if acl_home and os.path.exists(acl_home):
@@ -1189,7 +1189,7 @@ def run_android_tests(args, source_dir, config, cwd):
         # GCOV_PREFIX specifies the root directory
         # for creating the runtime code coverage files.'
         nonlocal cwd
-        if args.android_coverage:
+        if args.code_coverage:
             adb_shell(
                 'cd /data/local/tmp && GCOV_PREFIX=/data/local/tmp \
                 GCOV_PREFIX_STRIP={} {}'.format(cwd.count(os.sep) + 1, cmd))
@@ -1206,7 +1206,7 @@ def run_android_tests(args, source_dir, config, cwd):
             '/data/local/tmp/', cwd=cwd)
         adb_push('onnxruntime_test_all', '/data/local/tmp/', cwd=cwd)
         adb_push('onnx_test_runner', '/data/local/tmp/', cwd=cwd)
-        run_adb_shell('/data/local/tmp/onnxruntime_test_all')
+        adb_shell('cd /data/local/tmp && /data/local/tmp/onnxruntime_test_all')
         if args.use_nnapi:
             run_adb_shell('/data/local/tmp/onnx_test_runner -e nnapi /data/local/tmp/test')
         else:
