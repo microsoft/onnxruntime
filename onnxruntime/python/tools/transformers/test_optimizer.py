@@ -55,7 +55,7 @@ class TestBertOptimization(unittest.TestCase):
             self.assertEqual(len(bert_model.get_nodes_by_op_type(op_type)), count)
 
     # add test function for huggingface pytorch model
-    def test_optimizer_on_huggingface_model(self,
+    def _test_optimizer_on_huggingface_model(self,
                                             model_name,
                                             expected_fusion_result_list,
                                             inputs_count=1,
@@ -72,6 +72,33 @@ class TestBertOptimization(unittest.TestCase):
         import torch
         with torch.no_grad():
             _, is_valid_onnx_model, _, _ = export_onnx_model_from_pt(model_name, MODELS[model_name][1],
+                                                                     MODELS[model_name][2], MODELS[model_name][3], None,
+                                                                     './cache_models', './onnx_models',
+                                                                     input_names[:inputs_count], False,
+                                                                     Precision.FLOAT32, True, True, True, True,
+                                                                     model_fusion_statistics)
+
+        onnx_model = list(model_fusion_statistics.keys())[0]
+        fusion_result_list = list(model_fusion_statistics[onnx_model].values())
+
+        if validate_model:
+            self.assertEqual(is_valid_onnx_model, True)
+        self.assertEqual(fusion_result_list, expected_fusion_result_list)
+    
+    def _test_optimizer_on_tf_model(self, model_name, expected_fusion_result_list, inputs_count, validate_model=True):
+        # expect fusion result list have the following keys
+        # EmbedLayerNormalization, Attention, Gelu, FastGelu, BiasGelu, LayerNormalization, SkipLayerNormalization
+        model_fusion_statistics = {}
+        from onnx_exporter import export_onnx_model_from_tf
+        from huggingface_models import MODELS
+        from benchmark_helper import Precision
+        print("testing mode ", model_name)
+        print("testing input number = ", inputs_count)
+        input_names = MODELS[model_name][0]
+
+        import torch
+        with torch.no_grad():
+            _, is_valid_onnx_model, _, _ = export_onnx_model_from_tf(model_name, MODELS[model_name][1],
                                                                      MODELS[model_name][2], MODELS[model_name][3], None,
                                                                      './cache_models', './onnx_models',
                                                                      input_names[:inputs_count], False,
@@ -313,49 +340,53 @@ class TestBertOptimization(unittest.TestCase):
         self.verify_node_count(model, expected_node_count, 'test_bert_tf2onnx_0')
 
     def test_huggingface_bert_fusion(self):
-        self.test_optimizer_on_huggingface_model("bert-base-uncased", [1, 12, 0, 0, 12, 0, 24], inputs_count=1)
-        self.test_optimizer_on_huggingface_model("bert-base-uncased", [1, 12, 0, 0, 12, 0, 24], inputs_count=2)
-        self.test_optimizer_on_huggingface_model("bert-base-uncased", [1, 12, 0, 0, 12, 0, 24], inputs_count=3)
+        self._test_optimizer_on_huggingface_model("bert-base-uncased", [1, 12, 0, 0, 12, 0, 24], inputs_count=1)
+        self._test_optimizer_on_huggingface_model("bert-base-uncased", [1, 12, 0, 0, 12, 0, 24], inputs_count=2)
+        self._test_optimizer_on_huggingface_model("bert-base-uncased", [1, 12, 0, 0, 12, 0, 24], inputs_count=3)
 
     def test_huggingface_openaigpt_fusion(self):
-        self.test_optimizer_on_huggingface_model("openai-gpt", [0, 12, 0, 12, 0, 24, 0])
+        self._test_optimizer_on_huggingface_model("openai-gpt", [0, 12, 0, 12, 0, 24, 0])
 
     def test_huggingface_gpt2_fusion(self):
-        self.test_optimizer_on_huggingface_model("gpt2", [0, 12, 0, 12, 0, 25, 0])
+        self._test_optimizer_on_huggingface_model("gpt2", [0, 12, 0, 12, 0, 25, 0])
 
     def test_huggingface_xlm_fusion(self):
-        self.test_optimizer_on_huggingface_model("xlm-mlm-ende-1024", [0, 6, 0, 0, 6, 0, 13])
+        self._test_optimizer_on_huggingface_model("xlm-mlm-ende-1024", [0, 6, 0, 0, 6, 0, 13])
 
     def test_huggingface_roberta_fusion(self):
-        self.test_optimizer_on_huggingface_model("roberta-base", [0, 12, 0, 0, 12, 0, 25])
+        self._test_optimizer_on_huggingface_model("roberta-base", [0, 12, 0, 0, 12, 0, 25])
 
     def test_huggingface_distillbert_fusion(self):
-        self.test_optimizer_on_huggingface_model("distilbert-base-uncased", [1, 6, 0, 0, 6, 0, 12], inputs_count=1)
-        self.test_optimizer_on_huggingface_model("distilbert-base-uncased", [1, 6, 0, 0, 6, 0, 12], inputs_count=2)
+        self._test_optimizer_on_huggingface_model("distilbert-base-uncased", [1, 6, 0, 0, 6, 0, 12], inputs_count=1)
+        self._test_optimizer_on_huggingface_model("distilbert-base-uncased", [1, 6, 0, 0, 6, 0, 12], inputs_count=2)
 
     def test_huggingface_camembert_fusion(self):
         # output not close issue
-        self.test_optimizer_on_huggingface_model("camembert-base", [0, 12, 0, 0, 12, 0, 25], validate_model=False)
+        self._test_optimizer_on_huggingface_model("camembert-base", [0, 12, 0, 0, 12, 0, 25], validate_model=False)
 
     def test_huggingface_albert_fusion(self):
-        self.test_optimizer_on_huggingface_model("albert-base-v1", [0, 12, 0, 0, 12, 0, 25])
+        self._test_optimizer_on_huggingface_model("albert-base-v1", [0, 12, 0, 0, 12, 0, 25])
 
     def test_huggingface_t5_fusion(self):
-        self.test_optimizer_on_huggingface_model("t5-small", [0, 0, 0, 0, 0, 0, 0])
+        self._test_optimizer_on_huggingface_model("t5-small", [0, 0, 0, 0, 0, 0, 0])
 
     def test_huggingface_xlmroberta_fusion(self):
-        self.test_optimizer_on_huggingface_model("xlm-roberta-base", [0, 12, 0, 0, 12, 0, 25])
+        self._test_optimizer_on_huggingface_model("xlm-roberta-base", [0, 12, 0, 0, 12, 0, 25])
 
     def test_huggingface_flaubert_fusion(self):
         # output not close issue
-        self.test_optimizer_on_huggingface_model("flaubert/flaubert_base_cased", [0, 12, 0, 0, 12, 0, 25],
+        self._test_optimizer_on_huggingface_model("flaubert/flaubert_base_cased", [0, 12, 0, 0, 12, 0, 25],
                                                  validate_model=False)
-        self.test_optimizer_on_huggingface_model("flaubert/flaubert_small_cased", [0, 6, 0, 0, 6, 12, 1],
+        self._test_optimizer_on_huggingface_model("flaubert/flaubert_small_cased", [0, 6, 0, 0, 6, 12, 1],
                                                  validate_model=False)
 
     def test_huggingface_dialogpt_fusion(self):
-        self.test_optimizer_on_huggingface_model("microsoft/DialoGPT-small", [0, 12, 0, 12, 0, 25, 0])
+        self._test_optimizer_on_huggingface_model("microsoft/DialoGPT-small", [0, 12, 0, 12, 0, 25, 0])
 
+    def test_bert_base_cased_from_tf(self):
+        self._test_optimizer_on_tf_model("bert-base-cased", [1, 12, 0, 0, 12, 0, 24], 1)
+        self._test_optimizer_on_tf_model("bert-base-cased", [1, 12, 0, 0, 12, 0, 24], 2)
+        self._test_optimizer_on_tf_model("bert-base-cased", [1, 12, 0, 0, 12, 0, 24], 3)
 
 if __name__ == '__main__':
     unittest.main()

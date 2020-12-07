@@ -274,6 +274,8 @@ namespace ImageTestHelper {
         // So we use error rate.
         UINT errors = 0;
         for (uint32_t i = 0; i < size; i++, pActualByte++, pExpectedByte++) {
+            // Only the check the first three channels, which are (B, G, R)
+            if((i + 1) % 4 == 0) continue;
             auto diff = (*pActualByte - *pExpectedByte);
             if (diff > epsilon) {
                 errors++;

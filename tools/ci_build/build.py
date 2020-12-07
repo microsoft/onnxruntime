@@ -13,7 +13,7 @@ import hashlib
 import platform
 from logger import get_logger
 from amd_hipify import amd_hipify
-from distutils.version import StrictVersion
+from distutils.version import LooseVersion
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
@@ -852,7 +852,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         cmake_args += ["-DCMAKE_OSX_ARCHITECTURES=" + args.osx_arch]
         # since cmake 3.19, it uses the xcode latest buildsystem, which is not supported by this project.
         cmake_verstr = subprocess.check_output(['cmake', '--version']).decode('utf-8').split()[2]
-        if args.use_xcode and StrictVersion(cmake_verstr) >= StrictVersion('3.19.0'):
+        if args.use_xcode and LooseVersion(cmake_verstr) >= LooseVersion('3.19.0'):
             cmake_args += ["-T", "buildsystem=1"]
 
     if args.ios:
@@ -1457,7 +1457,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
             # Disable python tests in a reduced build as we don't know which ops have been included and which
             # models can run
-            if args.include_ops_by_model or args.include_ops_by_config or args.minimal_build:
+            if args.include_ops_by_model or args.include_ops_by_config or args.minimal_build != 'off':
                 return
 
             if is_windows():
