@@ -319,6 +319,7 @@ static void TestAllreduceOptimizerGraphBuilder(OptimizerGraphConfig config, Grap
 }
 #endif
 
+#ifdef USE_MPI
 static void TestAdasumOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& graph) {
   AdasumOptimizerGraphBuilder optimizer_graph_builder(
       GetOptimizerBuilderRegistry(), config, GetOptInfoMap());
@@ -352,6 +353,7 @@ static void TestAdasumOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& 
   // verify optimizers exist
   ASSERT_EQ(GetOpCount(op_counts, k_optimizer_op_name), k_weight_names.size());
 }
+#endif
 
 #if defined(ORT_USE_NCCL) || defined(USE_MPI)
 
