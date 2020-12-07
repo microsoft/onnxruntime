@@ -13,6 +13,11 @@ Changes
 
 Release Notes : https://github.com/Microsoft/onnxruntime/releases/tag/v1.6.0
 
+1.5.3
+^^^^^
+
+Release Notes : https://github.com/Microsoft/onnxruntime/releases/tag/v1.5.3
+
 1.5.2
 ^^^^^
 
