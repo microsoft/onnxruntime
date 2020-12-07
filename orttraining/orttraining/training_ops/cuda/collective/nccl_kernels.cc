@@ -47,7 +47,20 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
   for (int i = 0; i < context->InputCount(); i++) {
     const Tensor* input_tensor = context->Input<Tensor>(i);
     total_count += input_tensor->Shape().Size();
+
+    const void* address = input_tensor->DataRaw();
+    size_t bytes = input_tensor->SizeInBytes();
+    const void* next_address = (int8_t*)address + bytes;
+
+    std::cout << "NcclAllGather input #" << i << ", address: " << address << " size: " << bytes << " next address: " << next_address << "\n";
   }
+
+  const Tensor* first_tensor = context->Input<Tensor>(0);
+  const Tensor* last_tensor = context->Input<Tensor>(context->InputCount() - 1);
+  int8_t* first_address = (int8_t*)first_tensor->DataRaw();
+  int8_t* last_address = (int8_t*)last_tensor->DataRaw() + last_tensor->SizeInBytes();
+  size_t buffer_size = last_address - first_address;
+  std::cout << "NcclAllGather total bytes = " << total_count * 4 << ", buffer_size = " << buffer_size << "\n";
 
   // AllGather requires every rank to receive the same amount of data, and
   // slows down significantly if the data is not aligned.  Nvidia recommends 32-byte alignment,
@@ -56,8 +69,8 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
   const int64_t alignment = size * 32;
   const int64_t padded_count = total_count + alignment - (total_count % alignment);
   const int64_t padded_size = padded_count * element_size;
-  auto fusion_buffer = GetScratchBuffer<void>(padded_size);
-  void* fusion_data = fusion_buffer.get();
+  // auto fusion_buffer = GetScratchBuffer<void>(padded_size);
+  // void* fusion_data = fusion_buffer.get();
 
   // Calculate the range of inputs this rank will send.
   ORT_ENFORCE(padded_count % size == 0);
@@ -66,22 +79,24 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
   const int64_t rank_start = rank * rank_bytes;
   const int64_t rank_end = rank_start + rank_bytes;
 
+  ORT_ENFORCE(buffer_size % alignment == 0);
+
   // Copy this rank's inputs to fusion buffer.
-  int64_t offset = 0;
-  for (int i = 0; i < context->InputCount(); i++) {
-    const Tensor* input_tensor = context->Input<Tensor>(i);
-    const int64_t tensor_bytes = input_tensor->SizeInBytes();
+  // int64_t offset = 0;
+  // for (int i = 0; i < context->InputCount(); i++) {
+  //   const Tensor* input_tensor = context->Input<Tensor>(i);
+  //   const int64_t tensor_bytes = input_tensor->SizeInBytes();
 
-    // Only copy inputs this rank needs to send.
-    if (rank_start <= offset && offset < rank_end) {
-      ORT_ENFORCE(offset + tensor_bytes <= rank_end, "A single rank must be responsible for the entire tensor.");
-      void* fusion_data_at_offset = (int8_t*)fusion_data + offset;
-      const void* input_data = input_tensor->DataRaw();
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(fusion_data_at_offset, input_data, tensor_bytes, cudaMemcpyDeviceToDevice));
-    }
+  //   // Only copy inputs this rank needs to send.
+  //   if (rank_start <= offset && offset < rank_end) {
+  //     ORT_ENFORCE(offset + tensor_bytes <= rank_end, "A single rank must be responsible for the entire tensor.");
+  //     void* fusion_data_at_offset = (int8_t*)fusion_data + offset;
+  //     const void* input_data = input_tensor->DataRaw();
+  //     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(fusion_data_at_offset, input_data, tensor_bytes, cudaMemcpyDeviceToDevice));
+  //   }
 
-    offset += tensor_bytes;
-  }
+  //   offset += tensor_bytes;
+  // }
 
   // AllGather.
   const void* fusion_data_rank_offset = (const int8_t*)fusion_data + rank_start;
@@ -136,7 +151,20 @@ Status NcclReduceScatter::ComputeInternal(OpKernelContext* context) const {
   for (int i = 0; i < context->InputCount(); i++) {
     const Tensor* input_tensor = context->Input<Tensor>(i);
     total_count += input_tensor->Shape().Size();
+
+    const void* address = input_tensor->DataRaw();
+    size_t bytes = input_tensor->SizeInBytes();
+    const void* next_address = (int8_t*)address + bytes;
+
+    std::cout << "NcclReduceScatter input #" << i << ", address: " << address << " size: " << bytes << " next address: " << next_address << "\n";
   }
+
+  const Tensor* first_tensor = context->Input<Tensor>(0);
+  const Tensor* last_tensor = context->Input<Tensor>(context->InputCount() - 1);
+  int8_t* first_address = (int8_t*)first_tensor->DataRaw();
+  int8_t* last_address = (int8_t*)last_tensor->DataRaw() + last_tensor->SizeInBytes();
+  size_t buffer_size = last_address - first_address;
+  std::cout << "NcclReduceScatter total bytes = " << total_count * 4 << ", buffer_size = " << buffer_size << "\n";
 
   // ReduceScatter requires every rank to receive the same amount of data, and significantly
   // slows down significantly if the data is not aligned.  Nvidia recommends 32-byte alignment,
