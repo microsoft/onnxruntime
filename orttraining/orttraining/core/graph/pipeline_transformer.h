@@ -21,17 +21,17 @@ Status TransformGraphForPipeline(
 Status ApplyPipelinePartitionToMainGraph(Graph& graph,
     std::map<Node*, int>& op_to_stage,
     int pipeline_stage_id,
-    int nstages);
+    int num_stages);
 
 Status GetDeviceAssignmentMap(Graph& graph,
                               const std::map<std::string, int>& id_to_stage,
                               std::map<Node*, int>& op_to_stage,
-                              int nstages);
+                              int num_stages);
 
 Status GetDeviceAssignmentMap(Graph& graph,
                               const std::vector<TrainingSession::TrainingConfiguration::CutInfo>& cuts,
                               std::map<Node*, int>& op_to_stage,
-                              int nstages);
+                              int num_stages);
 
 }  // namespace training
 }  // namespace onnxruntime

@@ -877,7 +877,7 @@ std::set<const NodeArg*> GetAllNodeArgs(Graph& graph) {
   for (auto& node : all_nodes) {
     auto& node_outputs = node.MutableOutputDefs();
     for (NodeArg* arg : node_outputs) {
-      if (arg == nullptr || !arg->HasTensorOrScalarShape()) 
+      if (arg == nullptr || !arg->HasTensorOrScalarShape() || !arg->Exists())
         continue;
       initial_node_args.emplace(arg);
     }
@@ -1036,12 +1036,9 @@ common::Status SplitGraphWithOperatorToStageMap(Graph& graph,
                       std::make_pair(node_arg, std::vector<NodeArg*>(num_stages)));
     auto& replicas = (*inserted.first).second;
 
-    // TODO: for now we pretend that inputs are produced in stage 0,
-    // but I need to double check how they are handled.
-    int producer_stage = 0;
     Node* producer_node = graph.GetMutableProducerNode(node_arg->Name());
     assert(producer_node != nullptr);
-    producer_stage = op_to_stage.find(producer_node)->second;
+    int producer_stage = op_to_stage.find(producer_node)->second;
     
     auto consumers = graph.GetMutableConsumerNodes(node_arg->Name());
     if (consumers.size() == 0) {
@@ -1396,7 +1393,7 @@ Status VerifyAssignment(std::vector<int> stages, int num_stages, Graph& graph) {
     int node_stage = stages[i];
     auto& node_outputs = node->MutableOutputDefs();
     for (NodeArg* arg : node_outputs) {
-      if (arg == nullptr || !arg->HasTensorOrScalarShape())
+      if (arg == nullptr || !arg->HasTensorOrScalarShape() || !arg->Exists())
         continue;
       auto cs = graph.GetMutableConsumerNodes(arg->Name());
       for (Node* c : cs) {
@@ -1511,7 +1508,7 @@ Status GetDeviceAssignmentMap(Graph& graph,
       // Add all ingoing edges to the queue.
       auto& node_inputs = current->MutableInputDefs();
       for (NodeArg* arg : node_inputs) {
-        if (arg == nullptr || !arg->HasTensorOrScalarShape()) 
+        if (arg == nullptr || !arg->HasTensorOrScalarShape() || !arg->Exists())
           continue;
         auto producer = graph.GetMutableProducerNode(arg->Name());
         if (producer != nullptr) {
@@ -1520,7 +1517,7 @@ Status GetDeviceAssignmentMap(Graph& graph,
       }
       auto& node_outputs = current->MutableOutputDefs();
       for (NodeArg* arg : node_outputs) {
-        if (arg == nullptr || !arg->HasTensorOrScalarShape()) 
+        if (arg == nullptr || !arg->HasTensorOrScalarShape() || !arg->Exists())
           continue;
         auto consumers = graph.GetMutableConsumerNodes(arg->Name());
         q.insert(std::end(q), consumers.begin(), consumers.end());

@@ -22,7 +22,7 @@ using namespace onnxruntime::training;
 using CutList = std::vector<TrainingSession::TrainingConfiguration::CutInfo>;
 
 TEST(PipelinePartition, DropoutGraph2stages) {
-  int nstages = 2;
+  int num_stages = 2;
   int pipeline_stage_id = 1;
   std::map<std::string, int> input_map = {
     {"A", 0}, {"B", 0}, {"C", 0}, {"D", 0}, {"E", 0}, {"F", 0},
@@ -40,12 +40,12 @@ TEST(PipelinePartition, DropoutGraph2stages) {
   auto& graph = pModel->MainGraph();
 
   std::map<Node*, int> op_to_stage = {};
-  status = GetDeviceAssignmentMap(graph, input_map, op_to_stage, nstages);
+  status = GetDeviceAssignmentMap(graph, input_map, op_to_stage, num_stages);
 
   EXPECT_TRUE(status.IsOK()) << "Failed to get stage map. Error: "
                              << status.ErrorMessage();
   status = ApplyPipelinePartitionToMainGraph(graph, op_to_stage,
-                                             pipeline_stage_id, nstages);
+                                             pipeline_stage_id, num_stages);
   EXPECT_TRUE(status.IsOK()) << "Failed to apply partition. Error: "
                              << status.ErrorMessage();
 
@@ -54,7 +54,7 @@ TEST(PipelinePartition, DropoutGraph2stages) {
 }
 
 void LoadAndPartitionWithCuts(std::string& filename,
-                              int nstages,
+                              int num_stages,
                               int pipeline_stage_id,
                               CutList& cuts,
                               bool use_stage_map,
@@ -69,17 +69,17 @@ void LoadAndPartitionWithCuts(std::string& filename,
 
   if (use_stage_map) {
     std::map<Node*, int> op_to_stage = {};
-    status = GetDeviceAssignmentMap(graph, cuts, op_to_stage, nstages);
+    status = GetDeviceAssignmentMap(graph, cuts, op_to_stage, num_stages);
 
     EXPECT_TRUE(status.IsOK()) << "Failed to get stage map. Error: "
                                << status.ErrorMessage();
     status = ApplyPipelinePartitionToMainGraph(graph, op_to_stage,
-                                               pipeline_stage_id, nstages);
+                                               pipeline_stage_id, num_stages);
     EXPECT_TRUE(status.IsOK()) << "Failed to apply partition. Error: "
                                << status.ErrorMessage();
   } else {
     status = CutBasedApplyPipelinePartitionToMainGraph(graph, cuts,
-                                                       pipeline_stage_id, nstages);
+                                                       pipeline_stage_id, num_stages);
     EXPECT_TRUE(status.IsOK()) << "Failed to apply partition. Error: "
                                << status.ErrorMessage();
   }
@@ -88,7 +88,7 @@ void LoadAndPartitionWithCuts(std::string& filename,
 
 TEST(PipelinePartition, AttentionPastState3Stages) {
   std::string filename = "testdata/attention_past_state.onnx";
-  int nstages = 3;
+  int num_stages = 3;
   int stage_id = 1;
   TrainingSession::TrainingConfiguration::CutInfo cut0 = {
     TrainingSession::TrainingConfiguration::CutEdge("94")
@@ -102,7 +102,7 @@ TEST(PipelinePartition, AttentionPastState3Stages) {
   CutList cuts = {cut0, cut1};
 
   std::shared_ptr<Model> cb_model;
-  LoadAndPartitionWithCuts(filename, nstages, stage_id, cuts, true, cb_model);
+  LoadAndPartitionWithCuts(filename, num_stages, stage_id, cuts, true, cb_model);
   Graph& graph = cb_model->MainGraph();
 
   // The following producers should be in this partition.
@@ -120,7 +120,7 @@ TEST(PipelinePartition, AttentionPastState3Stages) {
 
 TEST(PipelinePartition, AttentionPastState2Stages) {
   std::string filename = "testdata/attention_past_state.onnx";
-  int nstages = 2;
+  int num_stages = 2;
   int stage_id = 1;
   TrainingSession::TrainingConfiguration::CutInfo cut0 = {
     TrainingSession::TrainingConfiguration::CutEdge("214")
@@ -129,7 +129,7 @@ TEST(PipelinePartition, AttentionPastState2Stages) {
   CutList cuts = {cut0};
 
   std::shared_ptr<Model> cb_model;
-  LoadAndPartitionWithCuts(filename, nstages, stage_id, cuts, true, cb_model);
+  LoadAndPartitionWithCuts(filename, num_stages, stage_id, cuts, true, cb_model);
   Graph& graph = cb_model->MainGraph();
 
   std::vector<std::string> in_partition = {
@@ -162,14 +162,14 @@ void compareGraphs(Graph& graph1, Graph& graph2) {
   }
 }
 
-void comparePartitionTest(std::string& filename, int nstages,
+void comparePartitionTest(std::string& filename, int num_stages,
                           int pipeline_stage_id, CutList& cuts) {
   std::shared_ptr<Model> sm_model;
-  LoadAndPartitionWithCuts(filename, nstages, pipeline_stage_id, cuts, true, sm_model);
+  LoadAndPartitionWithCuts(filename, num_stages, pipeline_stage_id, cuts, true, sm_model);
   Graph& sm_graph = sm_model->MainGraph();
 
   std::shared_ptr<Model> cb_model;
-  LoadAndPartitionWithCuts(filename, nstages, pipeline_stage_id, cuts, false, cb_model);
+  LoadAndPartitionWithCuts(filename, num_stages, pipeline_stage_id, cuts, false, cb_model);
   Graph& cb_graph = cb_model->MainGraph();
 
   compareGraphs(sm_graph, cb_graph);
@@ -177,7 +177,7 @@ void comparePartitionTest(std::string& filename, int nstages,
 
 TEST(ComparePartitions, AttentionPastState3Stages) {
   std::string filename = "testdata/attention_past_state.onnx";
-  int nstages = 3;
+  int num_stages = 3;
   TrainingSession::TrainingConfiguration::CutInfo cut0 = {
     TrainingSession::TrainingConfiguration::CutEdge("94")
   };
@@ -185,14 +185,14 @@ TEST(ComparePartitions, AttentionPastState3Stages) {
     TrainingSession::TrainingConfiguration::CutEdge("214")
   };
   CutList cuts = {cut0, cut1};
-  for (int stage = 0; stage < nstages; ++stage) {
-    comparePartitionTest(filename, nstages, stage, cuts);
+  for (int stage = 0; stage < num_stages; ++stage) {
+    comparePartitionTest(filename, num_stages, stage, cuts);
   }
 }
 
 TEST(ComparePartitions, AttentionPastState3StagesMultiEdgeCut) {
   std::string filename = "testdata/attention_past_state.onnx";
-  int nstages = 3;
+  int num_stages = 3;
   TrainingSession::TrainingConfiguration::CutInfo cut0 = {
     TrainingSession::TrainingConfiguration::CutEdge("94")
   };
@@ -202,15 +202,15 @@ TEST(ComparePartitions, AttentionPastState3StagesMultiEdgeCut) {
     TrainingSession::TrainingConfiguration::CutEdge("210")
   };
   CutList cuts = {cut0, cut1};
-  for (int stage = 0; stage < nstages; ++stage) {
-    comparePartitionTest(filename, nstages, stage, cuts);
+  for (int stage = 0; stage < num_stages; ++stage) {
+    comparePartitionTest(filename, num_stages, stage, cuts);
   }
 }
 
 
 TEST(ComparePartitions, BertToy) {
   std::string filename = "testdata/bert_toy_optimized.onnx";
-  int nstages = 3;
+  int num_stages = 3;
   TrainingSession::TrainingConfiguration::CutInfo cut0 = {
     TrainingSession::TrainingConfiguration::CutEdge("326"),
     TrainingSession::TrainingConfiguration::CutEdge("103", {"413", "529"})};
@@ -218,8 +218,8 @@ TEST(ComparePartitions, BertToy) {
     TrainingSession::TrainingConfiguration::CutEdge("558"),
     TrainingSession::TrainingConfiguration::CutEdge("103", {"645"})};
   CutList cuts = {cut0, cut1};
-  for (int stage = 0; stage < nstages; ++stage) {
-    comparePartitionTest(filename, nstages, stage, cuts);
+  for (int stage = 0; stage < num_stages; ++stage) {
+    comparePartitionTest(filename, num_stages, stage, cuts);
   }
 }
 
