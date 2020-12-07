@@ -1406,14 +1406,6 @@ Status VerifyAssignment(std::vector<int> stages, int num_stages, Graph& graph) {
   return Status::OK();
 }
 
-// First of two functions to obtain a mapping between operators and stage ids.
-// Input:
-//   - graph is the graph being partitioned into multiple pipeline stages.
-//   - id_to_stage maps string identifiers of operators and stage ids. Each
-// operator is identified with the name of any of its outputs.
-//   - op_to_stage maps pointers to operators and stage ids. This is the output
-// of this function.
-//   - num_stages is the total number of stages.
 Status GetDeviceAssignmentMap(Graph& graph,
                               const std::map<std::string, int>& id_to_stage,
                               std::map<Node*, int>& op_to_stage,
@@ -1443,32 +1435,23 @@ Status GetDeviceAssignmentMap(Graph& graph,
   return Status::OK();
 }
 
-// Second of two functions to obtain a mapping between operators and stage ids.
-// This version in particular converts a list of graph cuts (i.e., CutInfo)
-// into a mapping between operators and stages.
-// Input:
-//   - graph is the graph being partitioned into multiple pipeline stages.
-//   - cuts describes all the cut points as defined by the user (c.f., CutInfo
-// type definition.
-//   - op_to_stage maps pointers to operators and stage ids. This is the output
-// of this function.
-//   - num_stages is the total number of stages.
-//
-// The first step of this algorithm is to find all the producers and all the
-// the consumers of all the cut points, and keep them in the all_consumers and
-// all_producers containers, respectively. The producers of a cut point are the
-// operators that produce all the tensors defined in the cut point. The consumers
-// are those operators defined in the cut point.
-// Then, in order to find the ops assigned to stage 0, we visit the graph from
-// the producers of cut 0, not visiting the consumers of all cuts. All nodes
-// visited belong to stage 0. In order to find the mapping of stage s, for s>0,
-// we visit the graph from all the consumers of cut s-1, not visiting the
-// producers of that cut, and the consumers of the next cuts. All nodes visited
-// belong to stage s. Finally, we verify the assignment is valid.
 Status GetDeviceAssignmentMap(Graph& graph,
                               const std::vector<TrainingSession::TrainingConfiguration::CutInfo>& cuts,
                               std::map<Node*, int>& op_to_stage,
                               int num_stages) {
+  // The first step of this algorithm is to find all the producers and all the
+  // the consumers of all the cut points, and keep them in the all_consumers and
+  // all_producers containers, respectively. The producers of a cut point are the
+  // operators that produce all the tensors defined in the cut point. The consumers
+  // are those operators defined in the cut point.
+  // Then, in order to find the ops assigned to stage 0, we visit the graph from
+  // the producers of cut 0, not visiting the consumers of all cuts. All nodes
+  // visited belong to stage 0. In order to find the mapping of stage s, for s>0,
+  // we visit the graph from all the consumers of cut s-1, not visiting the
+  // producers of that cut, and the consumers of the next cuts. All nodes visited
+  // belong to stage s. Finally, we verify the assignment is valid.
+
+
   ORT_RETURN_IF(num_stages != static_cast<int>(cuts.size() + 1),
                 "Number of cuts does not match number of pipeline stages.");
   
