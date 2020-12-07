@@ -789,8 +789,12 @@ bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& start_node) {
   return true;
 }
 
-NodeArg& CreateNodeArg(Graph& graph, const NodeArg& base_arg) {
-  return graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(base_arg.Name()), base_arg.TypeAsProto());
+NodeArg& CreateNodeArg(Graph& graph, const NodeArg& base_arg, bool non_diff) {
+  auto base_name = base_arg.Name();
+  if (non_diff){
+    base_name = "ort_pipeline_preserve_" + base_name;
+  }
+  return graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(base_name), base_arg.TypeAsProto());
 }
 
 }  // namespace graph_utils

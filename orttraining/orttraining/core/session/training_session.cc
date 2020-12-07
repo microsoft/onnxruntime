@@ -330,6 +330,17 @@ Status TrainingSession::ConfigureForTraining(
   ORT_RETURN_IF_ERROR(BuildGradientGraph(
       weight_names_to_train_copy, loss_name, config.gradient_graph_config, *session_logger_));
 
+  if (config.pipeline_config.has_value() && config.pipeline_config.value().do_partition) {
+    // Apply online pipeline partition to graph obj. This needs to be done first before any graph
+    // transportation which may alter node_arg and invalidate cut_list info from the original graph.
+    ORT_ENFORCE(pipeline_stage_id >= 0, "invalid pipelie stage id (", pipeline_stage_id, ") before doing online partition.");
+
+    //if (config.distributed_config.world_rank == 0) {
+    //  Save("pipeline_before_partition.onnx", SaveOption::NO_RELOAD);
+    //}
+    ORT_RETURN_IF_ERROR(RemoveNonDifferentiableEdgeInPartition(model_->MainGraph()));
+  }
+
   //if (config.distributed_config.world_rank == 0) {
   //  Save("pipeline_after_grad_builder_0.onnx", SaveOption::NO_RELOAD);
   //} else if (config.distributed_config.world_rank == 1) {
@@ -340,127 +351,7 @@ Status TrainingSession::ConfigureForTraining(
   //  Save("before_mixed_precision.onnx", SaveOption::NO_RELOAD);
   //}
   {
-    Graph& graph = model_->MainGraph();
 
-    // GraphViewer graph_viewer(graph);
-    // const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
-
-    std::vector<const Node*> leaf_nodes;
-    std::string substr = "89_token_2_grad";
-    if (config.distributed_config.world_rank == 0){
-      substr = "89_grad";
-    }
-    for (auto& node : graph.Nodes()) {
-      // // auto input_size = node.MutableInputDefs().size();
-      // auto rit = node.MutableInputDefs().rbegin();
-      // // for (size_t i = node.MutableInputDefs().size() - 1; i >= 0; i--){
-      // for (; rit!= node.MutableInputDefs().rend(); ++rit){
-      //   // std::cout<<((*rit)->Name())<<"\n";
-      //   if ((*rit)->Name().find("89_token") != std::string::npos) {
-      //           std::cout << "found!" <<node.Name()<<" "<<(*rit)->Name()<< '\n';
-      //           node.MutableInputDefs().erase(rit);
-      //       }
-      // }
-      // // auto inputs = node.MutableInputDefs();
-      // // inputs.erase(std::remove_if(inputs.begin(),
-      // //                         inputs.end(),
-      // //                         [&](NodeArg* input){return input->Name().find(substr) != std::string::npos;}),
-      // //          inputs.end());
-
-      auto it = node.MutableInputDefs().begin();
-      auto end = node.MutableInputDefs().end();
-      int i = 0;
-      while(it != end){
-        if ((*it)->Name().rfind(substr, 0) == 0) {
-          std::cout << "found!" <<node.Name()<<" "<<(*it)->Name()<< "\nCount["<<i<<"/"<<node.MutableInputArgsCount().size()<<"] ";
-          for(auto count : node.MutableInputArgsCount()){
-            std::cout<<count<<" ";
-          }
-          std::cout<<"\n";
-          node.MutableInputDefs().erase(it);
-          // TODO: add assert here
-          node.MutableInputArgsCount().back()--;
-
-          auto& attributes = node.GetMutableAttributes();
-          auto& element_types = attributes["element_types"];
-          std::cout<<"element_type ints_size: "<<element_types.ints_size()<<
-          " "<<i-2<<std::endl;
-          if (element_types.ints_size() > 0){
-            auto ints_copy = element_types.ints();
-            element_types.clear_ints();
-            for (auto index = 0; index<ints_copy.size(); ++index){
-              if (index != i-2){
-                std::cout<<"insert element type: "<< ints_copy[index]<<std::endl;
-                element_types.add_ints(ints_copy[index]);
-              }
-            }
-            std::cout<<"element_type ints_size after: "<<element_types.ints_size()<<std::endl;
-            std::cout<<"element_type ints_size after2: "<<node.GetMutableAttributes()["element_types"].ints_size()<<std::endl;
-          }
-          // element_types.mutable_ints()->DeleteSubrange(i - 2, 1);
-
-
-          // node.MutableInputArgsCount().erase(node.MutableInputArgsCount().begin() + i);
-        }
-        else{
-          it ++;
-          i++;
-        }
-      }
-
-      it = node.MutableOutputDefs().begin();
-      end = node.MutableOutputDefs().end();
-      while(it != end){
-        if ((*it)->Name().rfind(substr, 0) == 0) {
-          std::cout << "found!" <<node.Name()<<" "<<(*it)->Name()<< '\n';
-          node.MutableOutputDefs().erase(it);
-          // node.MutableInputArgsCount().erase(it);
-
-
-          // For recv node
-          auto& attributes = node.GetMutableAttributes();
-          auto& element_types = attributes["element_types"];
-          std::cout<<"element_type ints_size: "<<element_types.ints_size()<<
-          " "<<i-1<<std::endl;
-          if (element_types.ints_size() > 0){
-            auto ints_copy = element_types.ints();
-            element_types.clear_ints();
-            for (auto index = 0; index<ints_copy.size(); ++index){
-              if (index != i){
-                std::cout<<"insert element type: "<< ints_copy[index]<<std::endl;
-                element_types.add_ints(ints_copy[index]);
-              }
-            }
-            std::cout<<"element_type ints_size after: "<<element_types.ints_size()<<std::endl;
-            std::cout<<"element_type ints_size after2: "<<node.GetMutableAttributes()["element_types"].ints_size()<<std::endl;
-          }
-        }
-        else{
-          it ++;
-        }
-      }
-
-
-
-      // // auto outputs = node.MutableOutputDefs();
-      // // outputs.erase(std::remove_if(outputs.begin(),
-      // //                         outputs.end(),
-      // //                         [&](NodeArg* output){return output->Name().find(substr) != std::string::npos;}),
-      // //          outputs.end());
-
-      if (node.Name() == "record_backward_compute"){
-        std::cout<<"inputs: ";
-        for (auto& input : node.MutableInputDefs()){
-          std::cout<<input->Name()<<" ";
-        }
-        std::cout<<"\n";
-        std::cout<<"output: ";
-        for (auto& output : node.MutableOutputDefs()){
-          std::cout<<output->Name()<<" ";
-        }
-        std::cout<<"\n";
-      }
-    }
   }
 
   // transform for mixed precision

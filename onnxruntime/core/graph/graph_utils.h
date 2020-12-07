@@ -261,6 +261,6 @@ bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& node);
  * @param base_arg The NodeArg the newly created NodeArg is mirrored based off.
  * @returns NodeArg reference that contains the same TypeProto info as base_arg with generated different names.
 */
-NodeArg& CreateNodeArg(Graph& graph, const NodeArg& base_arg);
+NodeArg& CreateNodeArg(Graph& graph, const NodeArg& base_arg, bool non_diff = false);
 }  // namespace graph_utils
 }  // namespace onnxruntime

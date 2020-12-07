@@ -21,5 +21,9 @@ Status ApplyPipelinePartitionToMainGraph(
     const std::vector<TrainingSession::TrainingConfiguration::CutInfo>& cut_info,
     size_t pipeline_stage_id,
     size_t num_pipeline_stage);
+
+Status RemoveNonDifferentiableEdgeInPartition(
+  Graph& graph);
+
 }  // namespace training
 }  // namespace onnxruntime

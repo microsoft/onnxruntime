@@ -13,6 +13,10 @@ using namespace onnxruntime::graph_utils;
 namespace onnxruntime {
 namespace training {
 
+std::vector<NodeArg*> non_differential_node_args;
+std::vector<std::string> non_differentiable_edge_names;
+// std::for_each(non_differential_node_args.begin(), non_differential_node_args.end(), [](NodeArg* n){std::cout<<n->Name()<<std::endl;});
+
 void GetPipelineSendOutput(const Graph& graph, std::string& loss_name) {
   for (auto& node : graph.Nodes()) {
     if (!node.OpType().compare("Send")) {
@@ -1051,26 +1055,41 @@ common::Status SplitGraph(Graph& graph,
       }
       assert(updated_node_arg);
 
+      if (id.non_differentiable_edge){
+        //TODO: update updated_node_arg, and it's consumer/producer node, then update updated_node_args
+        std::cout<<"[pipeline transformer] push edge: "<<updated_node_arg<<" "<<updated_node_arg->Name()<<std::endl;
+        // non_differential_node_args.push_back(updated_node_arg);
+        non_differentiable_edge_names.push_back(updated_node_arg->Name() + "_grad");
+      }
+
       send_input_args.push_back(updated_node_arg);
 
       auto dtype = original_node_arg->TypeAsProto()->tensor_type().elem_type();
 
       element_types.add_ints(static_cast<int64_t>(dtype));
 
-      std::cout << "original NodeArg name: " << original_node_arg->Name()
-                << ", new NodeArg name: " << updated_node_arg->Name()
-                << ", new NodeArg: " << updated_node_arg->TypeAsProto()->DebugString()
-                << ", new NodeArg shape: " << updated_node_arg->Shape()
-                << std::endl;
+      // std::cout << "original NodeArg name: " << original_node_arg->Name()
+      //           << ", new NodeArg name: " << updated_node_arg->Name()
+      //           << ", new NodeArg: " << updated_node_arg->TypeAsProto()->DebugString()
+      //           << ", new NodeArg shape: " << updated_node_arg->Shape()
+      //           << std::endl;
       //bool gdb_flag = true;
       //while (gdb_flag) {
       //  gdb_flag = gdb_flag;
       //}
 
+
       auto& new_receive_output = CreateNodeArg(graph, *updated_node_arg);
       auto old_shape = updated_node_arg->Shape();
       if (old_shape) {
         new_receive_output.SetShape(*old_shape);
+      }
+
+      if (id.non_differentiable_edge){
+        //TODO: update updated_node_arg, and it's consumer/producer node, then update updated_node_args
+        std::cout<<"[pipeline transformer] push edge: "<<&new_receive_output<<" "<<new_receive_output.Name()<<std::endl;
+        // non_differential_node_args.push_back(&new_receive_output);
+        non_differentiable_edge_names.push_back(new_receive_output.Name() + "_grad");
       }
       recv_output_args.push_back(&new_receive_output);
 
@@ -1177,6 +1196,114 @@ common::Status GenerateSubgraph(Graph& graph, Node* start_node) {
   graph.SetGraphProtoSyncNeeded();
 
   return graph.Resolve();
+}
+
+Status RemoveNonDifferentiableEdgeInPartition(
+    Graph& graph) {
+  std::vector<const Node*> leaf_nodes;
+  // std::string substr = "89_token_2_grad";
+  // if (config.distributed_config.world_rank == 0){
+  //   substr = "89_grad";
+  // }
+
+  // std::string substr = "ort_pipeline_preserve_";
+  std::for_each(non_differential_node_args.begin(), non_differential_node_args.end(), [](NodeArg* n){std::cout<<n->Name()<<std::endl;});
+  for (auto& node : graph.Nodes()) {
+    auto it = node.MutableInputDefs().begin();
+    auto end = node.MutableInputDefs().end();
+    int i = 0;
+    while (it != end) {
+      if (std::any_of(non_differentiable_edge_names.cbegin(), non_differentiable_edge_names.cend(), [&](std::string substr){
+        return (*it)->Name().rfind(substr, 0) == 0;
+      })) {
+
+      // }
+      // if ((*it)->Name().rfind(substr, 0) == 0 && (*it)->Name().find("grad") != std::string::npos) {
+        std::cout << "found!" << node.Name() << " " << (*it)->Name() << "\nCount[" << i << "/" << node.MutableInputArgsCount().size() << "] ";
+        for (auto count : node.MutableInputArgsCount()) {
+          std::cout << count << " ";
+        }
+        std::cout << "\n";
+        node.MutableInputDefs().erase(it);
+        // TODO: add assert here
+        node.MutableInputArgsCount().back()--;
+
+        auto& attributes = node.GetMutableAttributes();
+        auto& element_types = attributes["element_types"];
+        std::cout << "element_type ints_size: " << element_types.ints_size() << " " << i - 2 << std::endl;
+        if (element_types.ints_size() > 0) {
+          auto ints_copy = element_types.ints();
+          element_types.clear_ints();
+          for (auto index = 0; index < ints_copy.size(); ++index) {
+            if (index != i - 2) {
+              std::cout << "insert element type: " << ints_copy[index] << std::endl;
+              element_types.add_ints(ints_copy[index]);
+            }
+          }
+          std::cout << "element_type ints_size after: " << element_types.ints_size() << std::endl;
+          std::cout << "element_type ints_size after2: " << node.GetMutableAttributes()["element_types"].ints_size() << std::endl;
+        }
+        // element_types.mutable_ints()->DeleteSubrange(i - 2, 1);
+
+        // node.MutableInputArgsCount().erase(node.MutableInputArgsCount().begin() + i);
+      } else {
+        it++;
+        i++;
+      }
+    }
+
+    it = node.MutableOutputDefs().begin();
+    end = node.MutableOutputDefs().end();
+    while (it != end) {
+      // if ((*it)->Name().rfind(substr, 0) == 0 && (*it)->Name().find("grad") != std::string::npos) {
+      if (std::any_of(non_differentiable_edge_names.cbegin(), non_differentiable_edge_names.cend(), [&](std::string substr){
+        return (*it)->Name().rfind(substr, 0) == 0;
+      })) {
+        std::cout << "found!" << node.Name() << " " << (*it)->Name() << '\n';
+        node.MutableOutputDefs().erase(it);
+        // node.MutableInputArgsCount().erase(it);
+
+        // For recv node
+        auto& attributes = node.GetMutableAttributes();
+        auto& element_types = attributes["element_types"];
+        std::cout << "element_type ints_size: " << element_types.ints_size() << " " << i - 1 << std::endl;
+        if (element_types.ints_size() > 0) {
+          auto ints_copy = element_types.ints();
+          element_types.clear_ints();
+          for (auto index = 0; index < ints_copy.size(); ++index) {
+            if (index != i) {
+              std::cout << "insert element type: " << ints_copy[index] << std::endl;
+              element_types.add_ints(ints_copy[index]);
+            }
+          }
+          std::cout << "element_type ints_size after: " << element_types.ints_size() << std::endl;
+          std::cout << "element_type ints_size after2: " << node.GetMutableAttributes()["element_types"].ints_size() << std::endl;
+        }
+      } else {
+        it++;
+      }
+    }
+
+    // // auto outputs = node.MutableOutputDefs();
+    // // outputs.erase(std::remove_if(outputs.begin(),
+    // //                         outputs.end(),
+    // //                         [&](NodeArg* output){return output->Name().find(substr) != std::string::npos;}),
+    // //          outputs.end());
+
+    if (node.Name() == "record_backward_compute") {
+      std::cout << "inputs: ";
+      for (auto& input : node.MutableInputDefs()) {
+        std::cout << input->Name() << " ";
+      }
+      std::cout << "\n";
+      std::cout << "output: ";
+      for (auto& output : node.MutableOutputDefs()) {
+        std::cout << output->Name() << " ";
+      }
+      std::cout << "\n";
+    }
+  }
+  return Status::OK();
 }
 
 Status ApplyPipelinePartitionToMainGraph(

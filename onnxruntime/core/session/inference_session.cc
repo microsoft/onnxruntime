@@ -1461,24 +1461,24 @@ Status InferenceSession::Run(const RunOptions& run_options,
     //                                            session_options_.execution_mode, run_options.terminate, run_logger,
     //                                            run_options.only_execute_path_to_fetches));
 
-    for (size_t i = 0; i < p_fetches->size(); ++i) {
-      const Tensor& tensor = p_fetches->at(i).Get<Tensor>();
-      const TensorShape& shape = tensor.Shape();
-      std::cout << "[inference_session.cc] p_fetches[" << i << "], shape " << shape << std::endl;
-    }
+    // for (size_t i = 0; i < p_fetches->size(); ++i) {
+    //   const Tensor& tensor = p_fetches->at(i).Get<Tensor>();
+    //   const TensorShape& shape = tensor.Shape();
+    //   std::cout << "[inference_session.cc] p_fetches[" << i << "], shape " << shape << std::endl;
+    // }
     const size_t pipeline_steps = 8;
     for (size_t round = 0; round < pipeline_steps; ++round) {
       // Create new feeds by splitting original feeds along a specifix axis.
       std::vector<OrtValue> new_feeds;
 
-      std::cout << "[inference_session.cc] Round " << round << std::endl;
+      // std::cout << "[inference_session.cc] Round " << round << std::endl;
       for (size_t i = 0; i < feeds.size(); ++i) {
         if (i >= 3) {
           new_feeds.push_back(feeds[i]);
-          const Tensor& old_tensor = feeds[i].Get<Tensor>();
-          const TensorShape& old_shape = old_tensor.Shape();
-          std::cout << "[inference_session.cc] Old shape " << i << ": " << old_shape << std::endl;
-          std::cout << "[inference_session.cc] Small shape " << i <<": " << old_shape << std::endl;
+          // const Tensor& old_tensor = feeds[i].Get<Tensor>();
+          // const TensorShape& old_shape = old_tensor.Shape();
+          // std::cout << "[inference_session.cc] Old shape " << i << ": " << old_shape << std::endl;
+          // std::cout << "[inference_session.cc] Small shape " << i <<": " << old_shape << std::endl;
           continue;
         }
         const Tensor& old_tensor = feeds[i].Get<Tensor>();
@@ -1493,7 +1493,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
         OrtValue cpu_value{cpu_tensor.release(), tensor_type, tensor_type->GetDeleteFunc()};
         session_state_->GetDataTransferMgr().CopyTensor(old_tensor, *cpu_value.GetMutable<Tensor>());
         // new_feeds.push_back(cpu_value);
-        
+
         std::vector<int64_t> dims = old_shape.GetDims();
         std::vector<int64_t> small_dims;
         small_dims.push_back(dims[0] / pipeline_steps);
@@ -1503,8 +1503,8 @@ Status InferenceSession::Run(const RunOptions& run_options,
 
         TensorShape small_shape(small_dims);
 
-        std::cout << "[inference_session.cc] Old shape " << i << ": " << old_shape << std::endl;
-        std::cout << "[inference_session.cc] Small shape " << i <<": " << small_shape << std::endl;
+        // std::cout << "[inference_session.cc] Old shape " << i << ": " << old_shape << std::endl;
+        // std::cout << "[inference_session.cc] Small shape " << i <<": " << small_shape << std::endl;
 
         auto small_cpu_tensor = onnxruntime::make_unique<Tensor>(old_type, small_shape, cpu_allocator);
         OrtValue small_cpu_value{small_cpu_tensor.release(), tensor_type, tensor_type->GetDeleteFunc()};
@@ -1514,11 +1514,11 @@ Status InferenceSession::Run(const RunOptions& run_options,
         size_t copied_size = old_type->Size() * small_shape.Size();
         memcpy(small_cpu_ptr, static_cast<const char*>(cpu_ptr) + bias, copied_size);
 
-        std::cout << "[inference_session.cc] old_location. name: " << old_location.name << ", id: " << old_location.id << std::endl;
+        // std::cout << "[inference_session.cc] old_location. name: " << old_location.name << ", id: " << old_location.id << std::endl;
 
-        int device; 
-        cudaGetDevice(&device); 	
-        std::cout << "[inference_session.cc] current GPU device " << device << std::endl;;
+        int device;
+        cudaGetDevice(&device);
+        // std::cout << "[inference_session.cc] current GPU device " << device << std::endl;;
         if (std::string(old_location.name) == std::string("Cuda")) {
           // Get CPU tensor to be copied.
           const Tensor& copied_tensor = small_cpu_value.Get<Tensor>();
@@ -1526,7 +1526,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
           // Create GPU tensor to capture CPU data.
           AllocatorPtr allocator = GetAllocator(old_location);
           auto small_tensor = onnxruntime::make_unique<Tensor>(old_type, small_shape, allocator);
-          OrtValue small_value{small_tensor.release(), tensor_type, tensor_type->GetDeleteFunc()}; 
+          OrtValue small_value{small_tensor.release(), tensor_type, tensor_type->GetDeleteFunc()};
           Tensor* capturing_tensor = small_value.GetMutable<Tensor>();
 
           if (device != old_location.id) {
@@ -1545,7 +1545,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
 
           AllocatorPtr allocator = GetAllocator(old_location);
           auto small_tensor = onnxruntime::make_unique<Tensor>(old_type, small_shape, allocator);
-          OrtValue small_value{small_tensor.release(), tensor_type, tensor_type->GetDeleteFunc()}; 
+          OrtValue small_value{small_tensor.release(), tensor_type, tensor_type->GetDeleteFunc()};
           Tensor* capturing_tensor = small_value.GetMutable<Tensor>();
 
           memcpy(capturing_tensor->MutableDataRaw(), copied_tensor.DataRaw(), copied_size);

@@ -184,7 +184,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensor
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_NGraph(const char* ng_backend_type);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* device_type, 
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* device_type,
                                                                                     bool enable_vpu_fast_compile,
                                                                                     const char* device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
@@ -628,7 +628,7 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
  *
  * @param providers vector of excution providers. [ep1, ep2, ...]
  * @param provider_options_vector vector of excution provider options. [option1, option2 ...]
- * @param provider_options_map an unordered map for mapping excution provider to excution provider options. 
+ * @param provider_options_map an unordered map for mapping excution provider to excution provider options.
  *        {'ep1' -> option1, 'ep2' -> option2 ...}
  *
  */
@@ -990,7 +990,7 @@ void addObjectMethods(py::module& m, Environment& env) {
         std::cout << "[onnxruntime_pybind_state.cc] 1st bind_input done" << std::endl;
       })
       .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device, py::object element_type, std::vector<int64_t> shape, int64_t data_ptr) -> void {
-        std::cout << "[onnxruntime_pybind_state.cc] 2nd bind_input for " << name << std::endl;
+        // std::cout << "[onnxruntime_pybind_state.cc] 2nd bind_input for " << name << std::endl;
         // bool gdb_flag = true;
         // while (gdb_flag) {
         //   gdb_flag = gdb_flag;
@@ -1011,7 +1011,7 @@ void addObjectMethods(py::module& m, Environment& env) {
         auto status = io_binding->Get()->BindInput(name, mlvalue);
         if (!status.IsOK())
           throw std::runtime_error("Error when bind input: " + status.ErrorMessage());
-        std::cout << "[onnxruntime_pybind_state.cc] 2nd bind_input for " << name << " done" << std::endl;
+        // std::cout << "[onnxruntime_pybind_state.cc] 2nd bind_input for " << name << " done" << std::endl;
       })
       .def("bind_output", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device, py::object element_type, std::vector<int64_t> shape, int64_t data_ptr) -> void {
         PyArray_Descr* dtype;
@@ -1068,7 +1068,7 @@ Set this option to false if you don't want it. Default is True.)pbdoc")
                      R"pbdoc(Enable profiling for this session. Default is false.)pbdoc")
       .def_readwrite("optimized_model_filepath", &PySessionOptions::optimized_model_filepath,
                      R"pbdoc(
-File path to serialize optimized model to. 
+File path to serialize optimized model to.
 Optimized model is not serialized unless optimized_model_filepath is set.
 Serialized model format will default to ONNX unless:
  - add_session_config_entry is used to set 'session.save_model_format' to 'ORT', or
