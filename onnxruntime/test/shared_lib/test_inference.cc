@@ -375,8 +375,13 @@ struct VariedInputCustomOp : Ort::CustomOpBase<VariedInputCustomOp, VariedInputC
 
 //test custom op which accepts float or double as inputs
 TEST(CApiTest, varied_input_custom_op_handler) {
-  std::vector<Input> inputs = {{"X", {3}, {1.0f, 2.0f, 3.0f}},
-                               {"Y", {3}, {1.0f, 2.0f, 3.0f}}};
+  std::vector<Input> inputs(2);
+  inputs[0].name = "X";
+  inputs[0].dims = {3};
+  inputs[0].values = {1.0f, 2.0f, 3.0f};
+  inputs[1].name = "Y";
+  inputs[1].dims = {3};
+  inputs[1].values = {1.0f, 2.0f, 3.0f};
   std::vector<int64_t> expected_dims_z = {3};
   std::vector<float> expected_values_z = {2.0f, 8.0f, 18.0f};
 
