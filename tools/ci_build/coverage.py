@@ -48,6 +48,7 @@ def main():
     start_android_emulator(args, source_dir)
     adb_shell('cd /data/local/tmp && tar -zcvf gcda_files.tar.gz *.dir')
     adb_pull('/data/local/tmp/gcda_files.tar.gz', cwd)
+    os.chdir(cwd)
     run_subprocess("tar -zxvf gcda_files.tar.gz -C CMakeFiles".split(' '))
     run_subprocess("gcovr -s -r {} .".format(os.path.join(source_dir, "onnxruntime")).split(' '),
                    cwd=os.path.join(cwd, "CMakeFiles"))
