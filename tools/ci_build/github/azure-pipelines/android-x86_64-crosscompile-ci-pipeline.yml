@@ -17,7 +17,7 @@ jobs:
       displayName: CPU EP, Build and Test on Android Emulator
     - script: /bin/bash
         tools/ci_build/github/android/run_nnapi_code_coverage.sh
-      displayName: NNAPI EP, Build and Test on Android Emulator and Analyze 	code coverage
+      displayName: NNAPI EP, Build, Test and Get Code Coverage on Android Emulator
     - script: /bin/bash tools/ci_build/github/linux/ort_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh $(pwd)
       # Build Minimal ORT with NNAPI and reduced Ops, run unit tests on Android Emulator
       displayName: Build Minimal ORT with NNAPI and run tests
