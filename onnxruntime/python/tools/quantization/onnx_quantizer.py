@@ -806,7 +806,7 @@ class ONNXQuantizer:
             # Quantize the input
             initializer = find_by_name(node_input, self.model.initializer())
             if initializer is not None:
-                weight = self._get_quantized_weight(initializer, self.weight_qType)
+                weight = self._get_quantized_weight(initializer, self.weight_qType if initializer_use_weight_qType else self.input_qType)
 
                 # Update graph
                 self._update_weight(weight)

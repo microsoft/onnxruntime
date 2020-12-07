@@ -58,6 +58,7 @@ class ONNXCalibrater:
         model = onnx.shape_inference.infer_shapes(model)
         value_infos = {vi.name: vi for vi in model.graph.value_info}
         value_infos.update({ot.name: ot for ot in model.graph.output})
+        value_infos.update({it.name: it for it in model.graph.input})
 
         added_nodes = []
         added_outputs = []
