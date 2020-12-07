@@ -225,7 +225,8 @@ template <typename T, size_t N>
 constexpr size_t countof(T (&)[N]) { return N; }
 
 void cuda_add(int64_t, float*, const float*, const float*);
-template<typename T> void cuda_mul(const T*, const T*, T*, int64_t);
+template <typename T>
+void cuda_mul(const T*, const T*, T*, int64_t);
 
 struct MyCustomKernel {
   MyCustomKernel(Ort::CustomOpApi ort, const OrtKernelInfo* /*info*/) : ort_(ort) {
@@ -334,17 +335,20 @@ struct VariedInputCustomOpKernel {
     OrtTensorTypeAndShapeInfo* output_info = ort_.GetTensorTypeAndShape(output);
     int64_t size = ort_.GetTensorShapeElementCount(output_info);
     ort_.ReleaseTensorTypeAndShapeInfo(output_info);
-
-    if (input_X_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
-      const float* X = ort_.GetTensorData<float>(input_X);
-      const float* Y = ort_.GetTensorData<float>(input_Y);
-      float* Z = ort_.GetTensorMutableData<float>(output);
-      custom_mul(X, Y, Z, size);
-    } else if (input_X_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE) {
-      const double* X = ort_.GetTensorData<double>(input_X);
-      const double* Y = ort_.GetTensorData<double>(input_Y);
-      double* Z = ort_.GetTensorMutableData<double>(output);
-      custom_mul(X, Y, Z, size);
+    // Compute
+    switch (input_X_type) {
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
+        custom_mul(ort_.GetTensorData<float>(input_X),
+                   ort_.GetTensorData<float>(input_Y),
+                   ort_.GetTensorMutableData<float>(output), size);
+        break;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
+        custom_mul(ort_.GetTensorData<double>(input_X),
+                   ort_.GetTensorData<double>(input_Y), 
+                   ort_.GetTensorMutableData<double>(output), size);
+        break;
+      default:
+        ORT_THROW("Unsupported input type: ", input_X_type);
     }
   }  // Compute
 
