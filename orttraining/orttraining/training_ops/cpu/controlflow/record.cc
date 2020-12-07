@@ -25,7 +25,7 @@ ONNX_OPERATOR_KERNEL_EX(
     KernelDefBuilder()
         .TypeConstraint("TInt64", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
-        .Alias(AliasRange<1, 0>(0, 1024)),
+        .Alias(AliasRange<1, 0>(0, kAliasRangeLimit)),
     RecordEvent);
 
 Status RecordEvent::Compute(OpKernelContext* ctx) const {

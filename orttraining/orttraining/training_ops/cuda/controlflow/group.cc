@@ -19,6 +19,9 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
     onnxruntime::contrib::Group);
 
+using onnxruntime::contrib::AliasRange;
+using onnxruntime::contrib::kAliasRangeLimit;
+
 ONNX_OPERATOR_KERNEL_EX(
     PassThrough,
     kMSDomain,
@@ -26,7 +29,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kCudaExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-        .Alias(onnxruntime::contrib::AliasRange<0, 0>(0, onnxruntime::contrib::passthrough_input_count_limit)),  // outputs and inputs are mapped one to one
+        .Alias(AliasRange<0, 0>(0, kAliasRangeLimit)),  // outputs and inputs are mapped one to one
     onnxruntime::contrib::PassThrough);
 
 }  // namespace cuda

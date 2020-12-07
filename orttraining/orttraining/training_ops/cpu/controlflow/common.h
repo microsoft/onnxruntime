@@ -6,6 +6,8 @@
 namespace onnxruntime {
 namespace contrib {
 
+constexpr int kAliasRangeLimit = 10000;
+
 template <int input_start, int output_start>
 std::vector<std::pair<int, int>> AliasRange(int start, int end) {
   std::vector<std::pair<int, int>> aliases;

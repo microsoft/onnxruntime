@@ -14,16 +14,19 @@
 namespace onnxruntime {
 namespace cuda {
 
+using onnxruntime::contrib::AliasRange;
+using onnxruntime::contrib::kAliasRangeLimit;
+
 ONNX_OPERATOR_KERNEL_EX(
     RecordEvent,
     kMSDomain,
     1,
     kCudaExecutionProvider,
     KernelDefBuilder()
-        .InputMemoryType<OrtMemTypeCPUInput>(0)   /* Keep EventIdentifier in CPU */
+        .InputMemoryType<OrtMemTypeCPUInput>(0) /* Keep EventIdentifier in CPU */
         .TypeConstraint("TInt64", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
-        .Alias(onnxruntime::contrib::AliasRange<1, 0>(0, 1024)),
+        .Alias(AliasRange<1, 0>(0, kAliasRangeLimit)),
     RecordEvent);
 
 Status RecordEvent::ComputeInternal(OpKernelContext* ctx) const {
@@ -34,7 +37,7 @@ Status RecordEvent::ComputeInternal(OpKernelContext* ctx) const {
   auto& profile_context = profile::Context::GetInstance();
   const auto tag = profile_context.GetThreadTagOrDefault(std::this_thread::get_id());
   profile::NvtxRangeCreator range(
-    "Batch-" + tag + " Record-" + std::to_string(event_id), profile::Color::Magenta);
+      "Batch-" + tag + " Record-" + std::to_string(event_id), profile::Color::Magenta);
   range.Begin();
 #endif
 
