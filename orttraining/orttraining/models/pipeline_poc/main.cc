@@ -3,7 +3,7 @@
 
 #include "core/session/environment.h"
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) && defined(USE_MPI)
 
 #include "cxxopts.hpp"
 #include "core/common/logging/logging.h"
