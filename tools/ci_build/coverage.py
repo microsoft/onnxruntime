@@ -46,8 +46,6 @@ def main():
     source_dir = os.path.normpath(os.path.join(script_dir, "..", ".."))
     cwd = os.path.abspath(os.path.join(args.build_dir, args.config))
     start_android_emulator(args, source_dir)
-    adb_shell('ls -ltr /data/local/tmp')
-    adb_shell('find /data/local/tmp -name \"*.dir\"')
     adb_shell('cd /data/local/tmp && tar -zcvf gcda_files.tar.gz *.dir')
     adb_pull('/data/local/tmp/gcda_files.tar.gz', cwd)
     run_subprocess("tar -zxvf gcda_files.tar.gz -C CMakeFiles".split(' '))
