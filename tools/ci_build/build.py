@@ -1206,11 +1206,11 @@ def run_android_tests(args, source_dir, config, cwd):
             '/data/local/tmp/', cwd=cwd)
         adb_push('onnxruntime_test_all', '/data/local/tmp/', cwd=cwd)
         adb_push('onnx_test_runner', '/data/local/tmp/', cwd=cwd)
-        adb_shell('cd /data/local/tmp && /data/local/tmp/onnxruntime_test_all')
+        run_adb_shell('/data/local/tmp/onnxruntime_test_all')
         if args.use_nnapi:
-            run_adb_shell('/data/local/tmp/onnx_test_runner -e nnapi /data/local/tmp/test')
+            adb_shell('cd /data/local/tmp && /data/local/tmp/onnx_test_runner -e nnapi /data/local/tmp/test')
         else:
-            run_adb_shell('/data/local/tmp/onnx_test_runner /data/local/tmp/test')
+            adb_shell('cd /data/local/tmp && /data/local/tmp/onnx_test_runner /data/local/tmp/test')
         # run shared_lib_test if necessary
         if args.build_shared_lib:
             adb_push('libonnxruntime.so', '/data/local/tmp/', cwd=cwd)
