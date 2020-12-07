@@ -19,7 +19,7 @@ jobs:
       displayName: NNAPI EP, Build and Test on Android Emulator
     - script: python3 -m pip install gcovr
       displayName: Install gcovr
-    - script: python3 tools/ci_build/coverage.py  --build_dir build_nnapi/Android
+    - script: python3 tools/ci_build/coverage.py  --build_dir build_nnapi/
       displayName: Analyze test code coverage
     - script: /bin/bash tools/ci_build/github/linux/ort_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh $(pwd)
       # Build Minimal ORT with NNAPI and reduced Ops, run unit tests on Android Emulator
