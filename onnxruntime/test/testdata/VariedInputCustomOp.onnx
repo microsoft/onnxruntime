@@ -1,0 +1,28 @@
+model:”
+
+X
+Ymul_1"	CustomMul:abc
+
+Xcast_1"Cast*	
+to 
+
+Ycast_2"Cast*	
+to 
+'
+cast_1
+cast_2mul_2"	CustomMul:abc
+ 
+mul_2cast_3"Cast*	
+to 
+
+mul_1
+cast_3Z"AddgraphZ
+X
+
+ÿÿÿÿÿÿÿÿÿZ
+Y
+
+ÿÿÿÿÿÿÿÿÿb
+Z
+
+ÿÿÿÿÿÿÿÿÿB
