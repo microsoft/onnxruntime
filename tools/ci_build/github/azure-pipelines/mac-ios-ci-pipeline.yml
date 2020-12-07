@@ -5,6 +5,7 @@ jobs:
   timeoutInMinutes: 120
   steps:
     - script: |
+        brew uninstall openssl@1.0.2t
         sdkpath=`xcrun --sdk iphonesimulator --show-sdk-path`
         python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir iOS --ios --ios_sysroot $sdkpath --osx_arch x86_64 --apple_deploy_target 12.1 --use_xcode --config RelWithDebInfo --parallel
       displayName: Build onnxruntime for iOS x86_64 and run tests using simulator
