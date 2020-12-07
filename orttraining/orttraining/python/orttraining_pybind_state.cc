@@ -507,14 +507,15 @@ void addObjectMethodsForTraining(py::module& m) {
       .def(py::init([]() {
         return onnxruntime::make_unique<ModuleGradientGraphBuilder>();
       }))
-      .def("build_and_split", [](ModuleGradientGraphBuilder* module_gradient_graph_builder,
-                                 const py::bytes& serialized_model,
-                                 const ModuleGradientGraphBuilderConfiguration& config) {
+      .def("initialize", [](ModuleGradientGraphBuilder* module_gradient_graph_builder,
+                            const py::bytes& serialized_model,
+                            const ModuleGradientGraphBuilderConfiguration& config) {
         std::istringstream buffer(serialized_model);
-        ORT_THROW_IF_ERROR(module_gradient_graph_builder->BuildAndSplit(buffer, config));
+        ORT_THROW_IF_ERROR(module_gradient_graph_builder->Initialize(buffer, config));
       })
-      .def("get_gradient_model", [](ModuleGradientGraphBuilder* module_gradient_graph_builder) {
-        return py::bytes(module_gradient_graph_builder->GetGradientModel());
+      .def("build_and_split", [](ModuleGradientGraphBuilder* module_gradient_graph_builder,
+                                 const std::vector<std::vector<int64_t>>& input_shapes) {
+        ORT_THROW_IF_ERROR(module_gradient_graph_builder->BuildAndSplit(input_shapes));
       })
       .def("get_forward_model", [](ModuleGradientGraphBuilder* module_gradient_graph_builder) {
         return py::bytes(module_gradient_graph_builder->GetForwardModel());
