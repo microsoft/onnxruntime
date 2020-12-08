@@ -28,7 +28,7 @@ def train(model, optimizer, scheduler, train_dataloader, epoch, device, args):
     # https://github.com/huggingface/transformers/blob/5bfcd0485ece086ebcbed2d008813037968a9e58/examples/run_glue.py#L128
 
     # Perform one full pass over the training set.
-    print('\n======== Epoch {:} / {:} ========'.format(epoch + 1, args.epochs))
+    print('\n======== Epoch {:} / {:} with batch size {:} ========'.format(epoch + 1, args.epochs, args.batch_size))
 
     # Measure how long the training epoch takes.
     t0 = time.time()
@@ -140,7 +140,7 @@ def test(model, validation_dataloader, device, args):
     # ========================================
     # After the completion of each training epoch, measure our performance on
     # our validation set.
-    print("\nRunning Validation...")
+    print("\nRunning Validation with batch size {:} ...".format(args.test_batch_size))
 
     # Put the model in evaluation mode--the dropout layers behave differently
     # during evaluation.
@@ -380,11 +380,7 @@ def main():
     )
 
     if not args.pytorch_only:
-        dynamic_axes = {'input_ids': {0: 'batch_size', 1: 'seq_len'},
-                        'attention_mask': {0: 'batch_size', 1: 'seq_len'},
-                        'labels': {0: 'batch_size'},
-                        '210': {0: 'batch'}}
-        model = ORTModule(model, dynamic_axes)
+        model = ORTModule(model)
 
     # TODO: change it to False to stop saving ONNX models
     model._save_onnx = True
