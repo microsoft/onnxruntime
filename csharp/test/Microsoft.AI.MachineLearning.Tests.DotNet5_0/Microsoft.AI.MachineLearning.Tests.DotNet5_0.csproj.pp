@@ -2,12 +2,12 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>netcoreapp3.0</TargetFramework>
+    <TargetFramework>net5.0</TargetFramework>
     <Platforms>AnyCPU;x64</Platforms>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.AI.MachineLearning" Version="1.4.0-dev-20200728-0957-6cb93ccb5" />
+    <PackageReference Include="Microsoft.AI.MachineLearning" Version="[PackageVersion]" />
   </ItemGroup>
 
   <ItemGroup>
