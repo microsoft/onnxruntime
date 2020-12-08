@@ -1082,6 +1082,11 @@ void addObjectMethods(py::module& m, Environment& env) {
       .value("CPU", OrtMemType::OrtMemTypeCPU)
       .value("DEFAULT", OrtMemType::OrtMemTypeDefault);
 
+  py::enum_<OrtCudnnConvAlgoSearch>(m, "OrtCudnnConvAlgoSearch")
+      .value("EXHAUSTIVE", OrtCudnnConvAlgoSearch::EXHAUSTIVE)
+      .value("HEURISTIC", OrtCudnnConvAlgoSearch::HEURISTIC)
+      .value("DEFAULT", OrtCudnnConvAlgoSearch::DEFAULT);
+
   py::class_<OrtDevice> device(m, "OrtDevice", R"pbdoc(ONNXRuntime device informaion.)pbdoc");
   device.def(py::init<OrtDevice::DeviceType, OrtDevice::MemoryType, OrtDevice::DeviceId>())
       .def("device_id", &OrtDevice::Id, R"pbdoc(Device Id.)pbdoc")
