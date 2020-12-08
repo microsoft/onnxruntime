@@ -141,6 +141,8 @@ static std::vector<ArgDef> AddPartitionsForParameter(
         auto partition_argdef = ArgDef(partition_name, graph_defs.CreateTypeProto({partition_size}, dtype));
 
         view_outputs.push_back(partition_argdef);
+        std::cout << "ZERO: Weight name is: " << partition_name;
+        std::cout << " shape: " << utils::GetTensorShapeFromTensorShapeProto(partition_argdef.type_proto->tensor_type().shape()) << "\n";
       } else {
         auto dtype = ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
         auto partition_argdef = ArgDef(partition_name, graph_defs.CreateTypeProto({shapes[i].Size()}, dtype));
@@ -251,7 +253,7 @@ static Status AddParameterPartition(
   weight_argdefs.insert(weight_argdefs.end(), weight_views.begin(), weight_views.end());
   gradient_argdefs.insert(gradient_argdefs.end(), gradient_views.begin(), gradient_views.end());
 
-  auto initial_states = opt_config.initial_states;
+  const auto& initial_states = opt_config.initial_states;
   // Update Optimizer node configs.
   ORT_ENFORCE(weight_views.size() == gradient_views.size());
   for (size_t i = 0; i < weight_views.size(); i++) {
@@ -261,13 +263,12 @@ static Status AddParameterPartition(
     // Partition initial optimizer state
     if (enabled[i] && !initial_states.empty()) {
       std::cout << "ZERO:Partitioning init optim state \n";
-      int64_t partition_offset = 0;
-      if (i >= 1) {
-        partition_offset = view_shapes[i - 1].GetDims()[0];
-      }
-      int64_t partition_size = view_shapes[i].GetDims()[0];
-      PartitionOptimizerState(partition_offset, partition_size, initial_states);
+      ORT_ENFORCE(view_shapes.size() == 3, "Invalid view_shapes vector passed for partitioning.");
+      int64_t partition_offset = view_shapes[0].GetDims()[0];
+      int64_t partition_size = view_shapes[1].GetDims()[0];
       new_config.initial_states = opt_config.initial_states;
+      PartitionOptimizerState(partition_offset, partition_size, new_config.initial_states);
+      
     }
 
     if (opt_config.mixed_precision_weight_arg != nullptr) {

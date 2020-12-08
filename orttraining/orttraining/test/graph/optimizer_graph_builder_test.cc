@@ -221,12 +221,13 @@ TEST_F(OptimizerGraphBuilderTest, ZeroSplitInitialOptimizerState) {
   NameMLValMap initial_states;
   std::vector<int64_t> param_dims = {784, 128};
   int64_t num_ele = std::accumulate(param_dims.begin(), param_dims.end(), 1, std::multiplies<int64_t>());
-  for (auto& param_prefix : onnxruntime::test::MOMENT_PREFIX) {
-    MLValue mlValue;
-    std::vector<float> param_value(num_ele);
-    std::generate(param_value.begin(), param_value.end(), [n = 0]() mutable { return static_cast<float>(++n); });
 
-    TrainingUtil::CreateCpuMLValue<float>(param_dims, param_value, &mlValue);
+  MLValue mlValue;
+  std::vector<float> init_value(num_ele);
+  std::generate(init_value.begin(), init_value.end(), [n = 0]() mutable { return static_cast<float>(++n); });
+
+  for (auto& param_prefix : MOMENT_PREFIX) {
+    TrainingUtil::CreateCpuMLValue<float>(param_dims, init_value, &mlValue);
     initial_states.insert(std::make_pair(param_prefix, std::move(mlValue)));
   }
 
@@ -234,11 +235,13 @@ TEST_F(OptimizerGraphBuilderTest, ZeroSplitInitialOptimizerState) {
   int64_t partition_size = 500;
   PartitionOptimizerState(partition_offset, partition_size, initial_states);
 
-  std::vector<float> expected_vec(partition_size);
-  std::generate(expected_vec.begin(), expected_vec.end(), [n = partition_offset]() mutable { return static_cast<float>(++n); });
+  std::vector<float> expected_vec(init_value.begin() + partition_offset, init_value.begin() + partition_offset + partition_size);
+  std::vector<int64_t> expected_shape = {partition_size};
 
   for (const auto& state : initial_states) {
     auto& init_tensor = state.second.Get<Tensor>();
+    auto& shape = init_tensor.Shape().GetDims();
+    ASSERT_TRUE(shape == expected_shape);
     const std::vector<float> found(init_tensor.Data<float>(),
                                    init_tensor.Data<float>() + partition_size);
     ASSERT_EQ(expected_vec, found);

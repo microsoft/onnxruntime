@@ -83,7 +83,7 @@ def _assert_state_dict_weights(state_dict_a, state_dict_b, verbose, rtol, atol):
             print(f'Weight name: {a_name}: absolute difference: {np.abs(np_a_vals-np_b_vals).max()}')
         assert_allclose(a_val, b_val, rtol=rtol, atol=atol, err_msg=f"Weight mismatch for {a_name}")
 
-def assert_optim_state(expected_state, actual_state, rtol=1e-7, atol=0):
+def assert_optim_state(expected_state, actual_state, split_info=None, rtol=1e-7, atol=0):
     r"""Asserts whether optimizer state differences are within specified tolerance
 
     Compares the expected and actual optimizer states of dicts and raises AssertError
@@ -105,14 +105,21 @@ def assert_optim_state(expected_state, actual_state, rtol=1e-7, atol=0):
     Args:
         expected_state (dict(dict())): Expected optimizer state 
         actual_state (dict(dict())): Actual optimizer state
+        split_info (dict()): Dict of expected partition size
         rtol (float, default is 1e-7): Max relative difference
         atol (float, default is 0): Max absolute difference
     """
-    assert expected_state.keys() == actual_state.keys()
+    if split_info:
+        assert set(actual_state.keys()).issubset(set(expected_state.keys()))
+    else:
+        assert expected_state.keys() == actual_state.keys()
     for param_name, a_state in actual_state.items():
-        for k,v in a_state.items():
-            assert_allclose(v, expected_state[param_name][k], rtol=rtol, atol=atol,
-                            err_msg=f"Optimizer state mismatch for param {param_name}, key {k}")
+        for k, v in a_state.items():
+            if split_info and param_name in split_info and k in ['Moment_1', 'Moment_2']:
+                assert v.size() == split_info[param_name]
+            else:
+                assert_allclose(v, expected_state[param_name][k], rtol=rtol, atol=atol,
+                                err_msg=f"Optimizer state mismatch for param {param_name}, key {k}")
 
 # TODO: thiagofc: Checkpoint related for redesign
 def _get_name(name):

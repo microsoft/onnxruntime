@@ -111,7 +111,7 @@ def generate_dummy_optim_state(model, optimizer):
 def get_optim_state_from_state_dict(state_dict, optimizer):
     if not (isinstance(optimizer, optim.AdamConfig) or isinstance(optimizer, optim.LambConfig)):
         return dict()
-    
+
     moment_keys = ["Moment_1", "Moment_2"]
     uc_key = "Update_Count"
     step_key = "Step"
@@ -119,6 +119,10 @@ def get_optim_state_from_state_dict(state_dict, optimizer):
 
     optim_state = dict()
     for param_name, v in state_dict.items():
+        if '_view_' in param_name:
+            param_name = param_name.split('_view_')[0]
+            print("param name: ", param_name)
+
         for moment in moment_keys:
             if param_name.startswith(moment):
                 fp32_name = param_name.split(moment + '_')[-1]
