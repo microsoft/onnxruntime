@@ -21,8 +21,8 @@ steps:
     --enable_training \
     --mpi_home /home/ciagent/pkg/openmpi-4.0.5 \
     --use_rocm \
-      --rocm_home /opt/rocm \
-      --nccl_home /opt/rocm \
+    --rocm_home /opt/rocm \
+    --nccl_home /opt/rocm \
     --update \
     --build_dir ./build \
     --build \
