@@ -133,6 +133,7 @@ bool IsOpSupported(std::string name, std::string device) {
       "Cosh",
       "GlobalLpPool",
       "HardSigmoid",
+      "NonZero",
       "ReduceLogSum",
       "ReduceProd",
       "ReduceSumSquare",
@@ -142,7 +143,6 @@ bool IsOpSupported(std::string name, std::string device) {
       "Sinh",
       "Softsign",
       "Tan",
-      "NonZero",
       "Upsample"};
 
   std::set<std::string> supported_ops_gpu = {
@@ -307,12 +307,6 @@ static bool IsUnsupportedOpMode(const Provider_Node* node, const Provider_GraphV
     if (attributes.count("auto_pad") == 0 || attributes.at("auto_pad").s() == "") {
       return true;
     }
-  } else if (optype == "ReduceMin") {
-    //Only FP32, INT32 and U8 data types are supported
-    //const bool data_is_float = node->InputDefs()[0]->Type()->find("float") != std::string::npos;
-    //const bool data_is_int32 = node->InputDefs()[0]->Type()->find("int32") != std::string::npos;
-    //const bool data_is_u8 = node->InputDefs()[0]->Type()->find("uint8") != std::string::npos;
-    //return !(data_is_float || data_is_int32 || data_is_u8);
   } else if (optype == "MatMul") {
     //All matmuls except float have computation missmatch
     const bool A_is_float = node->InputDefs()[0]->Type()->find("float") != std::string::npos;
@@ -367,11 +361,6 @@ static bool IsUnsupportedOpMode(const Provider_Node* node, const Provider_GraphV
     auto output_it = find(graph_outputs.begin(), graph_outputs.end(), output);
     if (output_it != graph_outputs.end())
       return true;
-  }
-  else if (optype == "Resize") {
-    //Resize opset 11 is not supported
-    //if (node->InputDefs().size() > 2)
-    //  return true;
   } else if (optype == "Scatter" || optype == "ScatterElements") {
     const auto& attributes = node->GetAttributes();
     auto axis_attr = attributes.find("axis");
@@ -494,38 +483,6 @@ static bool IsUnsupportedOpMode(const Provider_Node* node, const Provider_GraphV
     if (dtype != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) {
       return true;
     }
-  } else if ((optype == "Equal") || (optype == "And")) {
-    /*using onnx_dtype = ONNX_NAMESPACE::TensorProto_DataType;
-    auto supportedOps = std::set<std::vector<onnx_dtype>>{
-        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT},
-        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_FLOAT},
-        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_INT8},
-        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_FLOAT},
-        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8},
-        {onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_INT8},
-        {onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_UINT8},
-        {onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_INT8},
-        {onnx_dtype::TensorProto_DataType_INT32, onnx_dtype::TensorProto_DataType_INT32, onnx_dtype::TensorProto_DataType_INT32},
-        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_FLOAT},
-        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8}};
-
-    if (optype == "Equal") {
-      supportedOps.insert(std::vector<onnx_dtype>{onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_INT32, onnx_dtype::TensorProto_DataType_INT32}),
-          supportedOps.insert(std::vector<onnx_dtype>{onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_INT64, onnx_dtype::TensorProto_DataType_INT64});
-      supportedOps.insert(std::vector<onnx_dtype>{onnx_dtype::TensorProto_DataType_BOOL, onnx_dtype::TensorProto_DataType_INT64, onnx_dtype::TensorProto_DataType_INT64}),
-          supportedOps.insert(std::vector<onnx_dtype>{onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT});
-    }
-
-    onnx_dtype input_0_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-    onnx_dtype input_1_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type();
-    onnx_dtype output_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-
-    const std::vector<onnx_dtype> typePair{output_data_type, input_0_data_type, input_1_data_type};
-    const auto match = supportedOps.find(typePair);
-    if (match == supportedOps.end()) {
-      return true;
-    } else
-      return false;*/
   } else if(optype == "Gather") {
 
     if(device_id.find("GPU") != std::string::npos){
