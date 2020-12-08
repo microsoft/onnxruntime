@@ -471,7 +471,6 @@ Status TrainingSession::ConfigureForTraining(
   config_result_out = std::move(config_result);
   is_configured_ = true;
 
-
   ORT_IGNORE_RETURN_VALUE(Save(std::string("pipe_bert_") + std::to_string(config.distributed_config.world_rank) + ".onnx", SaveOption::NO_RELOAD));
 
   return Status::OK();
@@ -695,8 +694,8 @@ Status TrainingSession::InsertPipelineOps(const std::unordered_set<std::string>&
   ORT_RETURN_IF_ERROR(TransformGraphForPipeline(
       false,
       initializer_names_to_preserve,
-      {}, // No schema for creating fake output. Used only in Python APIs for pipeline parallel.
-      {}, // No must-presenting outputs.
+      {},  // No schema for creating fake output. Used only in Python APIs for pipeline parallel.
+      {},  // No must-presenting outputs.
       model_->MainGraph(),
       pipeline_tensor_names));
   return DoPostLoadProcessing(*model_);
@@ -1186,10 +1185,10 @@ std::unordered_set<std::string> TrainingSession::GetTrainableModelInitializers(
 }
 
 TrainingSession::~TrainingSession() {
-//#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
-//  auto& nccl_service = cuda::NcclService::GetInstance();
-//  nccl_service.Terminate();
-//#endif
+  //#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+  //  auto& nccl_service = cuda::NcclService::GetInstance();
+  //  nccl_service.Terminate();
+  //#endif
 }
 
 #if defined(USE_NCCL) && defined(USE_NCCL_P2P)
@@ -1236,9 +1235,132 @@ Status PipelineTrainingSession::InsertPipelineOpsAndCreateFakeOutputs(
       pipeline_context_.sliced_schema,
       pipeline_context_.expected_output_names,
       model_->MainGraph(),
-      pipeline_context_.pipeline_tensor_names
-      ));
+      pipeline_context_.pipeline_tensor_names));
   return DoPostLoadProcessing(*model_);
+}
+
+Status PipelineTrainingSession::PartitionGraphForPipeline(
+    const int32_t pipeline_stage_id,
+    const optional<TrainingConfiguration::PipelineConfiguration>& pipeline_config,
+    const optional<TrainingConfiguration::DistributedConfiguration>& distributed_config,
+    const std::unordered_set<std::string>& weight_names_to_train,
+    std::unordered_set<std::string>& filtered_config_weight_names_to_train) {
+  ORT_ENFORCE(pipeline_context_.expected_output_names.empty(),
+              "Output name list should be empty before running this function. ",
+              "It will be filled with the names of model's outputs when pipeline parallel is used.");
+  if (pipeline_config.has_value() && pipeline_config.value().do_partition) {
+    // Apply online pipeline partition to graph obj. This needs to be done first before any graph
+    // transportation which may alter node_arg and invalidate cut_list info from the original graph.
+    ORT_ENFORCE(pipeline_stage_id >= 0, "invalid pipelie stage id (", pipeline_stage_id, ") before doing online partition.");
+
+    for (auto& output_node_arg : model_->MainGraph().GetOutputs()) {
+      std::string name = output_node_arg->Name();
+      pipeline_context_.expected_output_names.push_back(name);
+    }
+
+    ORT_RETURN_IF_ERROR(ApplyPipelinePartitionToMainGraph(model_->MainGraph(),
+                                                          pipeline_config.value().cut_list,
+                                                          pipeline_stage_id,
+                                                          distributed_config.value().pipeline_parallel_size));
+
+    if (pipeline_config.value().partitioned_model_path.has_value()) {
+      // Save the partitioned file out.
+      // To avoid writing conflict, only the ranks in first pipeline group write the partition file out.
+      if (DistributedRunContext::GroupId(WorkerGroupType::PipelineParallel) == 0) {
+        ORT_IGNORE_RETURN_VALUE(Save(
+            pipeline_config.value().partitioned_model_path.value(), SaveOption::NO_RELOAD));
+      }
+    }
+  }
+
+  FilterUnusedWeights(weight_names_to_train, filtered_config_weight_names_to_train);
+
+  // We rely on backprop to build Send-Recv pairs. Thus, all forward Recv's must be visited inside gradient builder.
+  // To this end, we add one input of forward Recv to trainable tensor list.
+  if (pipeline_config.has_value()) {
+    std::string first_send_input_name;
+    // Find the only Recv node in forward-only graph.
+    GetPipelineRecvInput(model_->MainGraph(), first_send_input_name);
+    if (!first_send_input_name.empty()) {
+      filtered_config_weight_names_to_train.insert(first_send_input_name);
+    }
+  }
+
+  return Status::OK();
+}
+
+Status PipelineTrainingSession::SetEventSynchronization(
+    const int32_t pipeline_stage_id,
+    const optional<TrainingConfiguration::PipelineConfiguration>& pipeline_config,
+    const optional<TrainingConfiguration::DistributedConfiguration>& distributed_config,
+    const std::unordered_set<std::string>& weight_names_to_train,
+    optional<TrainingConfigurationResult::PipelineConfigurationResult>& pipeline_config_result) {
+  if (pipeline_config.has_value()) {
+    // The number of batches executed by pipeline parallel.
+    const int num_pipeline_micro_batches = distributed_config.value().num_pipeline_micro_batches;
+    const int num_pipeline_stages = distributed_config.value().pipeline_parallel_size;
+    pipeline_schedule_ = pipeline::PipelineScheduler(num_pipeline_micro_batches, num_pipeline_stages);
+    pipeline_worker_pool_ = pipeline::PipelineWorkerPool(num_pipeline_stages);
+
+    // Insert PipelineOps may access "sliced_schema" from "pipeline_context_".
+    pipeline_context_.sliced_schema = distributed_config.value().sliced_schema;
+    // Declare a place holder for pipeline configuration.
+    TrainingConfigurationResult::PipelineConfigurationResult pipeline_result{};
+    // Inert special operators for pipeline parallel. It may store information
+    // into "pipeline_context_".
+    ORT_RETURN_IF_ERROR(InsertPipelineOpsAndCreateFakeOutputs(weight_names_to_train));
+    // Copy information in "pipeline_context_" to config result.
+    pipeline_result.pipeline_tensor_names = pipeline_context_.pipeline_tensor_names;
+
+    // Records which which tensors can be fed into the graph.
+    // It may be different than the original graph because of extra event tensors.
+    for (auto& node_arg : model_->MainGraph().GetInputsIncludingInitializers()) {
+      pipeline_result.feed_names.push_back(node_arg->Name());
+    }
+
+    // The following loop is for not to fetch tensors not in this pipeline stage.
+    for (size_t i = 0; i < pipeline_config.value().fetch_names.size(); ++i) {
+      auto name = pipeline_config.value().fetch_names[i];
+      const auto* node_arg = model_->MainGraph().GetNodeArg(name);
+      if (!node_arg) {
+        // This pipelie stage doesn't contain this name.
+        // Let's not to fetch it.
+        continue;
+      }
+      pipeline_result.fetch_names.push_back(name);
+    }
+
+    pipeline_result.pipeline_stage_id = pipeline_stage_id;
+
+    // TODO: keep all other pipeline context fields such as feed_names.
+    pipeline_context_.num_pipeline_micro_batches = num_pipeline_micro_batches;
+    pipeline_context_.num_pipeline_stages = distributed_config.value().pipeline_parallel_size;
+    pipeline_context_.pipeline_stage_id = pipeline_result.pipeline_stage_id;
+    pipeline_context_.sliced_axes = distributed_config.value().sliced_axes;
+    pipeline_context_.sliced_tensor_names = distributed_config.value().sliced_tensor_names;
+
+    // Create a local function to append non-empty name to fetch_names list.
+    auto append_non_empty_name = [&](const std::string& name) {
+      if (!name.empty()) {
+        pipeline_context_.accumulation_step_fetches.push_back(name);
+      }
+    };
+
+    // Append first output of each event operator to fetch_names list to make sure all event ops will
+    // be computed.
+    pipeline_context_.pipeline_tensor_names.ForEachOutputName(append_non_empty_name);
+
+    // Return pipeline configuration back.
+    pipeline_config_result = pipeline_result;
+  } else {
+    pipeline_schedule_ = pipeline::PipelineScheduler(1, distributed_config.value().pipeline_parallel_size);
+    pipeline_worker_pool_ = pipeline::PipelineWorkerPool(distributed_config.value().pipeline_parallel_size);
+    pipeline_context_.num_pipeline_micro_batches = 1;
+    pipeline_context_.num_pipeline_stages = distributed_config.value().pipeline_parallel_size;
+    pipeline_context_.pipeline_stage_id = 0;
+  }
+
+  return Status::OK();
 }
 
 Status PipelineTrainingSession::ConfigureForTraining(
@@ -1268,46 +1390,12 @@ Status PipelineTrainingSession::ConfigureForTraining(
 
   const int32_t pipeline_stage_id = config.pipeline_config.has_value() ? DistributedRunContext::RankInGroup(WorkerGroupType::PipelineParallel) : -1;
 
-  ORT_ENFORCE(pipeline_context_.expected_output_names.empty(),
-              "Uninitialized output name list should be empty. ",
-              "It will be filled with the names of model's outputs when pipeline parallel is used.");
-  if (config.pipeline_config.has_value() && config.pipeline_config.value().do_partition) {
-    // Apply online pipeline partition to graph obj. This needs to be done first before any graph
-    // transportation which may alter node_arg and invalidate cut_list info from the original graph.
-    ORT_ENFORCE(pipeline_stage_id >= 0, "invalid pipelie stage id (", pipeline_stage_id, ") before doing online partition.");
-
-    for (auto& output_node_arg : model_->MainGraph().GetOutputs()) {
-      std::string name = output_node_arg->Name();
-      pipeline_context_.expected_output_names.push_back(name);
-    }
-
-    ORT_RETURN_IF_ERROR(ApplyPipelinePartitionToMainGraph(model_->MainGraph(),
-                                                          config.pipeline_config.value().cut_list,
-                                                          pipeline_stage_id,
-                                                          config.distributed_config.pipeline_parallel_size));
-
-    if (config.pipeline_config.value().partitioned_model_path.has_value()) {
-      // Save the partitioned file out.
-      // To avoid writing conflict, only the ranks in first pipeline group write the partition file out.
-      if (DistributedRunContext::GroupId(WorkerGroupType::PipelineParallel) == 0) {
-        ORT_IGNORE_RETURN_VALUE(Save(
-            config.pipeline_config.value().partitioned_model_path.value(), SaveOption::NO_RELOAD));
-      }
-    }
-  }
-
-  FilterUnusedWeights(config.weight_names_to_train, filtered_config_weight_names_to_train);
-
-  // We rely on backprop to build Send-Recv pairs. Thus, all forward Recv's must be visited inside gradient builder.
-  // To this end, we add one input of forward Recv to trainable tensor list.
-  if (config.pipeline_config.has_value()) {
-    std::string first_send_input_name;
-    // Find the only Recv node in forward-only graph.
-    GetPipelineRecvInput(model_->MainGraph(), first_send_input_name);
-    if (!first_send_input_name.empty()) {
-      filtered_config_weight_names_to_train.insert(first_send_input_name);
-    }
-  }
+  ORT_RETURN_IF_ERROR(PartitionGraphForPipeline(
+      pipeline_stage_id,
+      config.pipeline_config,
+      config.distributed_config,
+      config.weight_names_to_train,
+      filtered_config_weight_names_to_train));
 
   is_mixed_precision_enabled_ = config.mixed_precision_config.has_value();
 
@@ -1407,72 +1495,13 @@ Status PipelineTrainingSession::ConfigureForTraining(
   ORT_RETURN_IF_ERROR(BuildGradientGraph(
       weight_names_to_train, loss_name, config.gradient_graph_config, *session_logger_));
 
-  if (config.pipeline_config.has_value()) {
-    // The number of batches executed by pipeline parallel.
-    const int num_pipeline_micro_batches = config.distributed_config.num_pipeline_micro_batches;
-    const int num_pipeline_stages = config.distributed_config.pipeline_parallel_size;
-    pipeline_schedule_ = pipeline::PipelineScheduler(num_pipeline_micro_batches, num_pipeline_stages);
-    pipeline_worker_pool_ = pipeline::PipelineWorkerPool(num_pipeline_stages);
 
-    // Insert PipelineOps may access "sliced_schema" from "pipeline_context_".
-    pipeline_context_.sliced_schema = config.distributed_config.sliced_schema;
-    // Declare a place holder for pipeline configuration.
-    TrainingConfigurationResult::PipelineConfigurationResult pipeline_result{};
-    // Inert special operators for pipeline parallel. It may store information
-    // into "pipeline_context_".
-    ORT_RETURN_IF_ERROR(InsertPipelineOpsAndCreateFakeOutputs(weight_names_to_train));
-    // Copy information in "pipeline_context_" to config result.
-    pipeline_result.pipeline_tensor_names = pipeline_context_.pipeline_tensor_names;
-
-    // Records which which tensors can be fed into the graph.
-    // It may be different than the original graph because of extra event tensors.
-    for (auto& node_arg : model_->MainGraph().GetInputsIncludingInitializers()) {
-      pipeline_result.feed_names.push_back(node_arg->Name());
-    }
-
-    // The following loop is for not to fetch tensors not in this pipeline stage.
-    for (size_t i = 0; i < config.pipeline_config.value().fetch_names.size(); ++i) {
-      auto name = config.pipeline_config.value().fetch_names[i];
-      const auto* node_arg = model_->MainGraph().GetNodeArg(name);
-      if (!node_arg) {
-        // This pipelie stage doesn't contain this name.
-        // Let's not to fetch it.
-        continue;
-      }
-      pipeline_result.fetch_names.push_back(name);
-    }
-
-    pipeline_result.pipeline_stage_id =
-        config.distributed_config.world_rank /
-        (config.distributed_config.data_parallel_size * config.distributed_config.horizontal_parallel_size);
-
-    // TODO: keep all other pipeline context fields such as feed_names.
-    pipeline_context_.num_pipeline_micro_batches = num_pipeline_micro_batches;
-    pipeline_context_.num_pipeline_stages = config.distributed_config.pipeline_parallel_size;
-    pipeline_context_.pipeline_stage_id = pipeline_result.pipeline_stage_id;
-    pipeline_context_.sliced_axes = config.distributed_config.sliced_axes;
-    pipeline_context_.sliced_tensor_names = config.distributed_config.sliced_tensor_names;
-
-    // Create a local function to append non-empty name to fetch_names list.
-    auto append_non_empty_name = [&](const std::string& name) {
-      if (!name.empty()) {
-        pipeline_context_.accumulation_step_fetches.push_back(name);
-      }
-    };
-
-    // Append first output of each event operator to fetch_names list to make sure all event ops will
-    // be computed.
-    pipeline_context_.pipeline_tensor_names.ForEachOutputName(append_non_empty_name);
-
-    // Return pipeline configuration back.
-    config_result.pipeline_config_result = pipeline_result;
-  } else {
-    pipeline_schedule_ = pipeline::PipelineScheduler(1, config.distributed_config.pipeline_parallel_size);
-    pipeline_worker_pool_ = pipeline::PipelineWorkerPool(config.distributed_config.pipeline_parallel_size);
-    pipeline_context_.num_pipeline_micro_batches = 1;
-    pipeline_context_.num_pipeline_stages = config.distributed_config.pipeline_parallel_size;
-    pipeline_context_.pipeline_stage_id = 0;
-  }
+  SetEventSynchronization(
+    pipeline_stage_id,
+    config.pipeline_config,
+    config.distributed_config,
+    weight_names_to_train,
+    config_result.pipeline_config_result);
 
   // All non-float tensors are not trainable. Remove those weights.
   // TODO: this is a temp workaround for removing rank tensor before adding optimizer.
@@ -1659,7 +1688,7 @@ void PipelineTrainingSession::CreateMicroBatchVariables(
 
   // Slice "values" and bind their slices to "sub_io_binding" them by calling "bind".
   // names[i] is the name of the slice in values[i].
-  auto bind_slices = [&](const std::vector<std::string>& names, const std::vector<OrtValue>& values, common::Status(IOBinding::*bind)(const std::string&, const OrtValue&)) {
+  auto bind_slices = [&](const std::vector<std::string>& names, const std::vector<OrtValue>& values, common::Status (IOBinding::*bind)(const std::string&, const OrtValue&)) {
     ORT_ENFORCE(names.size() == values.size(), "\"values\" and their \"names\" are parallel. One value should have one name.");
 
     // At the i-th iteration, we slice the values[i] into a sub-tensor and bind it.

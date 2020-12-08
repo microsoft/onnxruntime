@@ -529,6 +529,20 @@ class PipelineTrainingSession : public TrainingSession {
   ~PipelineTrainingSession() override;
 
  protected:
+  Status PartitionGraphForPipeline(
+      const int32_t pipeline_stage_id,
+      const optional<TrainingConfiguration::PipelineConfiguration>& pipeline_config,
+      const optional<TrainingConfiguration::DistributedConfiguration>& distributed_config,
+      const std::unordered_set<std::string>& weight_names_to_train,
+      std::unordered_set<std::string>& filtered_config_weight_names_to_train);
+
+  Status SetEventSynchronization(
+      const int32_t pipeline_stage_id,
+      const optional<TrainingConfiguration::PipelineConfiguration>& pipeline_config,
+      const optional<TrainingConfiguration::DistributedConfiguration>& distributed_config,
+      const std::unordered_set<std::string>& weight_names_to_train,
+      optional<TrainingConfigurationResult::PipelineConfigurationResult>& pipeline_config_result);
+
   void CreatePipelineEvents(
       const bool traning_mode,
       const int batch_id,
