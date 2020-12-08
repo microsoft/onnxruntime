@@ -11,7 +11,10 @@ jobs:
       displayName: Use Python $(pythonVersion)
       inputs:
         versionSpec: $(pythonVersion)
-    - script: brew install coreutils ninja
+    - script:
+        # The following line is a hack to prevent build pipeline from failing
+        brew uninstall openssl@1.0.2t
+        brew install coreutils ninja
       displayName: Install coreutils and ninja
     - script: python3 tools/ci_build/build.py --android --build_dir build --android_sdk_path $ANDROID_HOME --android_ndk_path $ANDROID_HOME/ndk-bundle --android_abi=x86_64 --android_api=29 --skip_submodule_sync --parallel --cmake_generator=Ninja --build_java
       displayName: CPU EP, Build and Test on Android Emulator
