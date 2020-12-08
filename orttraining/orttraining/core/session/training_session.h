@@ -315,7 +315,7 @@ class TrainingSession : public InferenceSession {
 
   common::Status GetOptimizerState(std::unordered_map<std::string, NameMLValMap>& opt_state_tensors);
 
-  common::Status GetModelState(std::unordered_map<std::string, NameMLValMap>& model_state_tensors, bool incl_mp_weights = false);
+  common::Status GetModelState(std::unordered_map<std::string, NameMLValMap>& model_state_tensors, bool include_mixed_precision_weights = false);
 
   common::Status GetPartitionInfoMap(std::unordered_map<std::string, std::unordered_map<std::string, std::vector<int>>>& part_info_map);
 

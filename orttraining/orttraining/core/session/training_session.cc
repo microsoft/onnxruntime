@@ -945,7 +945,7 @@ common::Status TrainingSession::GetOptimizerState(std::unordered_map<std::string
   return Status::OK();
 }
 
-common::Status TrainingSession::GetModelState(std::unordered_map<std::string, NameMLValMap>& model_state_tensors, bool incl_mp_weights) {
+common::Status TrainingSession::GetModelState(std::unordered_map<std::string, NameMLValMap>& model_state_tensors, bool include_mixed_precision_weights) {
   bool allow_missing = (opt_graph_config_.deepspeed_zero.stage != 0);
   std::unordered_set<std::string> fp_tensor_names{};
   fp_tensor_names.insert(
@@ -953,7 +953,7 @@ common::Status TrainingSession::GetModelState(std::unordered_map<std::string, Na
   NameMLValMap fp_weights;
   GetSessionState().GetInitializedTensors(fp_tensor_names, allow_missing, fp_weights);
   model_state_tensors.emplace("full_precision", fp_weights);
-  if (incl_mp_weights) {
+  if (include_mixed_precision_weights) {
     std::unordered_set<std::string> mp_tensor_names{};
     mp_tensor_names.insert(
         mixed_precision_weight_initializer_names_.begin(), mixed_precision_weight_initializer_names_.end());

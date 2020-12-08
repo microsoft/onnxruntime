@@ -328,9 +328,9 @@ void addObjectMethodsForTraining(py::module& m) {
         }
         return rmap;
       })
-      .def("get_model_state", [](PyTrainingSession* sess, bool incl_mp_weights) {
+      .def("get_model_state", [](PyTrainingSession* sess, bool include_mixed_precision_weights) {
         std::unordered_map<std::string, NameMLValMap> model_state_tensors;
-        ORT_THROW_IF_ERROR(static_cast<TrainingSession*>(sess->GetSessionHandle())->GetModelState(model_state_tensors, incl_mp_weights));
+        ORT_THROW_IF_ERROR(static_cast<TrainingSession*>(sess->GetSessionHandle())->GetModelState(model_state_tensors, include_mixed_precision_weights));
         auto& data_transfer_manager = sess->GetSessionHandle()->GetDataTransferManager();
         //convert to numpy array
         std::map<std::string, std::map<std::string, py::object>> rmap;
