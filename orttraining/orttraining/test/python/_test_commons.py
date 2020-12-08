@@ -4,6 +4,8 @@ import sys
 import subprocess
 import copy
 import numpy as np
+import torch
+import onnx
 
 from onnxruntime.training import optim
 
@@ -83,6 +85,7 @@ def legacy_poly_lr_scheduler(global_step, initial_lr, total_steps, warmup, power
 
 
 def generate_dummy_optim_state(model, optimizer):
+    np.random.seed(0)
     if not (isinstance(optimizer, optim.AdamConfig) or isinstance(optimizer, optim.LambConfig)):
         return dict()
 
@@ -92,19 +95,24 @@ def generate_dummy_optim_state(model, optimizer):
     shared_state_key = "shared_optimizer_state"
 
     optim_state = dict()
-    name_to_initializer_map = {n.name:n for n in model.graph.initializer}
-    initializers_names = name_to_initializer_map.keys()
-    for weight in initializers_names:
+    weight_shape_map = dict()
+    if isinstance(model, torch.nn.Module):
+        weight_shape_map = {name: param.size() for name, param in model.named_parameters()}
+    elif isinstance(model, onnx.ModelProto):
+        weight_shape_map = {n.name: n.dims for n in model.graph.initializer}
+    else:
+        raise ValueError("'model' must be either 'torch.nn.Module' or 'onnx.ModelProto'")
+
+    for weight_name, weight_shape in weight_shape_map.items():
         per_weight_state = dict()
-        weight_shape = name_to_initializer_map[weight].dims
         for moment in moment_keys:
-            per_weight_state[moment] = np.full(weight_shape, 2.5, dtype=np.float32)
+            per_weight_state[moment] = np.random.uniform(-2, 2, weight_shape).astype(np.float32)
         if isinstance(optimizer, optim.AdamConfig):
             per_weight_state[uc_key] = np.full([1], 5, dtype=np.int64)
-        optim_state[weight] = copy.deepcopy(per_weight_state)
+        optim_state[weight_name] = copy.deepcopy(per_weight_state)
     if isinstance(optimizer, optim.LambConfig):
         step_val = np.full([1], 5, dtype=np.int64)
-        optim_state[shared_state_key] = {step_key : step_val}
+        optim_state[shared_state_key] = {step_key: step_val}
     return optim_state
 
 
