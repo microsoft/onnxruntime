@@ -2063,7 +2063,6 @@ static constexpr OrtApi ort_api_1_to_6 = {
     &OrtApis::SetGlobalSpinControl,
     // End of Version 5 - DO NOT MODIFY ABOVE (see above text for more information)
 
-    // Version 6 - In development, feel free to add/remove/rearrange here
     &OrtApis::AddInitializer,
     &OrtApis::CreateEnvWithCustomLoggerAndGlobalThreadPools,
     &OrtApis::SessionOptionsAppendExecutionProvider_CUDA,
@@ -2071,6 +2070,9 @@ static constexpr OrtApi ort_api_1_to_6 = {
     &OrtApis::SetGlobalDenormalAsZero,
     &OrtApis::CreateArenaCfg,
     &OrtApis::ReleaseArenaCfg,
+    // End of Version 6 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    // Version 7 - In development, feel free to add/remove/rearrange here
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
