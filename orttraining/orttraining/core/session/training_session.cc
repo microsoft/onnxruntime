@@ -177,6 +177,7 @@ Status TrainingSession::PartitionGraphForPipeline(
     const optional<TrainingConfiguration::DistributedConfiguration>& distributed_config,
     const std::unordered_set<std::string>& /*weight_names_to_train*/,
     std::unordered_set<std::string>& /*filtered_config_weight_names_to_train*/) {
+  std::cout << "[training_session.cc] TrainingSession::PartitionGraphForPipeline" << std::endl;
   if (!pipeline_config.has_value() || !pipeline_config.value().do_partition) {
     return Status::OK();
   }
@@ -224,6 +225,7 @@ Status TrainingSession::SetEventSynchronization(
     const optional<TrainingConfiguration::DistributedConfiguration>& /*distributed_config*/,
     const std::unordered_set<std::string>& weight_names_to_train,
     optional<TrainingConfigurationResult::PipelineConfigurationResult>& pipeline_config_result) {
+  std::cout << "[training_session.cc] TrainingSession::SetEventSynchronization" << std::endl;
   if (!pipeline_config.has_value()) {
     return Status::OK();
   }
@@ -234,7 +236,14 @@ Status TrainingSession::SetEventSynchronization(
 
   // Inert special operators for pipeline parallel. Special tensors (e.g., event IDs) for running pipeline
   // parallel are stored in "pipeline_result.pipeline_tensor_names."
-  ORT_RETURN_IF_ERROR(InsertPipelineOps(weight_names_to_train, pipeline_result.pipeline_tensor_names));
+  ORT_RETURN_IF_ERROR(TransformGraphForPipeline(
+      false,
+      weight_names_to_train,
+      {},  // No schema for creating fake output. Used only in Python APIs for pipeline parallel.
+      {},  // No must-presenting outputs.
+      model_->MainGraph(),
+      pipeline_result.pipeline_tensor_names));
+  ORT_RETURN_IF_ERROR(DoPostLoadProcessing(*model_));
 
   // Records which which tensors can be fed into the graph.
   // It may be different than the original graph because of extra event tensors.
@@ -757,18 +766,6 @@ Status TrainingSession::AddTensorboard(const std::string& summary_name,
   ORT_RETURN_IF_ERROR(
       TransformGraphForTensorboard(
           model_->MainGraph(), summary_name, scalar_nodes, histogram_nodes, norm_nodes, dump_convergence_metrics));
-  return DoPostLoadProcessing(*model_);
-}
-
-Status TrainingSession::InsertPipelineOps(const std::unordered_set<std::string>& initializer_names_to_preserve,
-                                          pipeline::PipelineTensorNames& pipeline_tensor_names) {
-  ORT_RETURN_IF_ERROR(TransformGraphForPipeline(
-      false,
-      initializer_names_to_preserve,
-      {},  // No schema for creating fake output. Used only in Python APIs for pipeline parallel.
-      {},  // No must-presenting outputs.
-      model_->MainGraph(),
-      pipeline_tensor_names));
   return DoPostLoadProcessing(*model_);
 }
 
@@ -1301,24 +1298,13 @@ Status PipelineTrainingSession::ConfigureForTraining(
     return status;
 }
 
-Status PipelineTrainingSession::InsertPipelineOpsAndCreateFakeOutputs(
-    const std::unordered_set<std::string>& initializer_names_to_preserve) {
-  ORT_RETURN_IF_ERROR(TransformGraphForPipeline(
-      true,
-      initializer_names_to_preserve,
-      pipeline_context_.sliced_schema,
-      pipeline_context_.expected_output_names,
-      model_->MainGraph(),
-      pipeline_context_.pipeline_tensor_names));
-  return DoPostLoadProcessing(*model_);
-}
-
 Status PipelineTrainingSession::PartitionGraphForPipeline(
     const int32_t pipeline_stage_id,
     const optional<TrainingConfiguration::PipelineConfiguration>& pipeline_config,
     const optional<TrainingConfiguration::DistributedConfiguration>& distributed_config,
     const std::unordered_set<std::string>& weight_names_to_train,
     std::unordered_set<std::string>& filtered_config_weight_names_to_train) {
+  std::cout << "[training_session.cc] PipelineTrainingSession::PartitionGraphForPipeline" << std::endl;
   ORT_ENFORCE(pipeline_context_.expected_output_names.empty(),
               "Output name list should be empty before running this function. ",
               "It will be filled with the names of model's outputs when pipeline parallel is used.");
@@ -1369,6 +1355,7 @@ Status PipelineTrainingSession::SetEventSynchronization(
     const optional<TrainingConfiguration::DistributedConfiguration>& distributed_config,
     const std::unordered_set<std::string>& weight_names_to_train,
     optional<TrainingConfigurationResult::PipelineConfigurationResult>& pipeline_config_result) {
+  std::cout << "[training_session.cc] PipelineTrainingSession::SetEventSynchronization" << std::endl;
   if (!pipeline_config.has_value()) {
     pipeline_schedule_ = pipeline::PipelineScheduler(1, distributed_config.value().pipeline_parallel_size);
     pipeline_worker_pool_ = pipeline::PipelineWorkerPool(distributed_config.value().pipeline_parallel_size);
@@ -1393,7 +1380,14 @@ Status PipelineTrainingSession::SetEventSynchronization(
   TrainingConfigurationResult::PipelineConfigurationResult pipeline_result{};
   // Inert special operators for pipeline parallel. It may store information
   // into "pipeline_context_".
-  ORT_RETURN_IF_ERROR(InsertPipelineOpsAndCreateFakeOutputs(weight_names_to_train));
+  ORT_RETURN_IF_ERROR(TransformGraphForPipeline(
+      true,
+      weight_names_to_train,
+      pipeline_context_.sliced_schema,
+      pipeline_context_.expected_output_names,
+      model_->MainGraph(),
+      pipeline_context_.pipeline_tensor_names));
+  ORT_RETURN_IF_ERROR(DoPostLoadProcessing(*model_));
   // Copy information in "pipeline_context_" to config result.
   pipeline_result.pipeline_tensor_names = pipeline_context_.pipeline_tensor_names;
 
@@ -1444,47 +1438,8 @@ common::Status PipelineTrainingSession::Run(const RunOptions& run_options, IOBin
   if (pipeline_context_.num_pipeline_stages > 1) {
     return RunWithPipeline(run_options, io_binding);
   } else {
-    return RunWithoutPipeline(run_options, io_binding);
+    return TrainingSession::Run(run_options, io_binding);
   }
-}
-
-common::Status PipelineTrainingSession::RunWithoutPipeline(const RunOptions& run_options, IOBinding& io_binding) {
-  // Override initializers in eval mode.
-  if (!run_options.training_mode) {
-    std::vector<std::pair<std::string, OrtValue>> new_feeds;
-    if (!dropout_eval_feeds_.empty()) {
-      // override all dropout ratios to 0
-      for (auto& drop_ratio : dropout_eval_feeds_) {
-        OrtValue feed_value;
-        // We allocate on CPU first, copy will be taken care of downstream.
-        const auto* cpu_ep = GetSessionState().GetExecutionProviders().Get(onnxruntime::kCpuExecutionProvider);
-        const auto cpu_allocator = cpu_ep->GetAllocator(0, OrtMemTypeDefault);
-        feed_value = onnxruntime::MakeScalarMLValue<float>(cpu_allocator, 0.f, true /*is_1d*/);
-        // Bind new feed to graph input.
-        new_feeds.emplace_back(drop_ratio, feed_value);
-      }
-    } else {
-      auto& input_names = io_binding.GetInputNames();
-      if (GetSessionState().GetInputNodeInfoMap().find(training_mode_string_) !=
-              GetSessionState().GetInputNodeInfoMap().end() &&
-          std::find(input_names.begin(), input_names.end(), training_mode_string_) == input_names.end()) {
-        // Set training_mode input to false
-        OrtValue training_mode_feed_value;
-        // We allocate on CPU first, copy will be taken care of downstream.
-        const auto* cpu_ep = GetSessionState().GetExecutionProviders().Get(onnxruntime::kCpuExecutionProvider);
-        const auto cpu_allocator = cpu_ep->GetAllocator(0, OrtMemTypeDefault);
-        training_mode_feed_value = onnxruntime::MakeScalarMLValue<bool>(cpu_allocator, false, true /*is_1d*/);
-        new_feeds.emplace_back(training_mode_string_, training_mode_feed_value);
-      }
-    }
-    for (auto& new_feed : new_feeds) {
-      // Bind new feed to graph input.
-      ORT_RETURN_IF_ERROR(io_binding.BindInput(new_feed.first, new_feed.second));
-    }
-  }
-
-  // Call Run in inferenceSession
-  return InferenceSession::Run(run_options, io_binding);
 }
 
 // This function first create two local helper functions.

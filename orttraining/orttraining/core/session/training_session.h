@@ -409,13 +409,6 @@ class TrainingSession : public InferenceSession {
       const std::unordered_set<std::string>& weight_names_to_train,
       std::unordered_set<std::string>& filtered_config_weight_names_to_train);
 
-  virtual Status SetEventSynchronization(
-      const int32_t pipeline_stage_id,
-      const optional<TrainingConfiguration::PipelineConfiguration>& pipeline_config,
-      const optional<TrainingConfiguration::DistributedConfiguration>& distributed_config,
-      const std::unordered_set<std::string>& weight_names_to_train,
-      optional<TrainingConfigurationResult::PipelineConfigurationResult>& pipeline_config_result);
-
   // Insert operators for running pipeline and return event tensor names.
   // For an intermediate pipeline stage, its original computation is
   //
@@ -436,8 +429,12 @@ class TrainingSession : public InferenceSession {
   //  3. Backward operators' descriptions are all "Backward pass". This assumption is used to
   //     identify backward nodes.
   //  4. No event operator is inserted by other graph transform.
-  common::Status InsertPipelineOps(const std::unordered_set<std::string>& initializer_names_to_preserve,
-                                   pipeline::PipelineTensorNames& pipeline_tensor_names);
+  virtual Status SetEventSynchronization(
+      const int32_t pipeline_stage_id,
+      const optional<TrainingConfiguration::PipelineConfiguration>& pipeline_config,
+      const optional<TrainingConfiguration::DistributedConfiguration>& distributed_config,
+      const std::unordered_set<std::string>& weight_names_to_train,
+      optional<TrainingConfigurationResult::PipelineConfigurationResult>& pipeline_config_result);
 
   common::Status ApplyTransformationsToMainGraph(std::unordered_set<std::string>& weights_to_train,
                                                  const TrainingConfiguration::GraphTransformerConfiguration& config,
@@ -566,13 +563,10 @@ class PipelineTrainingSession final : public TrainingSession {
       IOBinding& io_binding, IOBinding& sub_io_binding,
       const size_t slice_id, const size_t num_slices);
 
-  common::Status InsertPipelineOpsAndCreateFakeOutputs(const std::unordered_set<std::string>& initializer_names_to_preserve);
-
 #if defined(USE_NCCL) && defined(USE_NCCL_P2P)
   void LaunchNcclService(const int pipeline_stage_id);
 #endif
 
-  common::Status RunWithoutPipeline(const RunOptions& run_options, IOBinding& io_binding);
   common::Status RunWithPipeline(const RunOptions& run_options, IOBinding& io_binding);
 
   // Pipeline fields are valid only if params_.pipeline_parallel_size > 1.
