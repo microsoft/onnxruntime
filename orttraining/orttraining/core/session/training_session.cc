@@ -330,6 +330,10 @@ Status TrainingSession::ConfigureForTraining(
   ORT_RETURN_IF_ERROR(BuildGradientGraph(
       weight_names_to_train_copy, loss_name, config.gradient_graph_config, *session_logger_));
 
+  if (config.pipeline_config.has_value() && config.pipeline_config.value().do_partition) {
+    ORT_RETURN_IF_ERROR(RemoveNonDifferentiableEdgeInPartition(model_->MainGraph()));
+  }
+
   //if (config.distributed_config.world_rank == 0) {
   //  Save("pipeline_after_grad_builder_0.onnx", SaveOption::NO_RELOAD);
   //} else if (config.distributed_config.world_rank == 1) {

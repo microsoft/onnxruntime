@@ -920,7 +920,8 @@ common::Status HandleSharedInitializer(Graph& graph,
 common::Status SplitGraph(Graph& graph,
                           std::vector<TrainingSession::TrainingConfiguration::CutInfo> split_edge_groups,
                           std::vector<Node*>& send_nodes,
-                          std::vector<Node*>& recv_nodes) {
+                          std::vector<Node*>& recv_nodes,
+                          std::vector<std::string>& non_differentiable_edge_names) {
   std::vector<std::string> new_input_names;
   std::vector<std::string> new_output_names;
 
@@ -1051,6 +1052,13 @@ common::Status SplitGraph(Graph& graph,
       }
       assert(updated_node_arg);
 
+      if (id.non_differentiable_edge){
+        //TODO: update updated_node_arg, and it's consumer/producer node, then update updated_node_args
+        std::cout<<"[pipeline transformer] push edge: "<<updated_node_arg<<" "<<updated_node_arg->Name()<<std::endl;
+        // non_differential_node_args.push_back(updated_node_arg);
+        non_differentiable_edge_names.push_back(updated_node_arg->Name() + "_grad");
+      }
+
       send_input_args.push_back(updated_node_arg);
 
       auto dtype = original_node_arg->TypeAsProto()->tensor_type().elem_type();
@@ -1071,6 +1079,13 @@ common::Status SplitGraph(Graph& graph,
       auto old_shape = updated_node_arg->Shape();
       if (old_shape) {
         new_receive_output.SetShape(*old_shape);
+      }
+
+      if (id.non_differentiable_edge){
+        //TODO: update updated_node_arg, and it's consumer/producer node, then update updated_node_args
+        std::cout<<"[pipeline transformer] push edge: "<<&new_receive_output<<" "<<new_receive_output.Name()<<std::endl;
+        // non_differential_node_args.push_back(&new_receive_output);
+        non_differentiable_edge_names.push_back(new_receive_output.Name() + "_grad");
       }
       recv_output_args.push_back(&new_receive_output);
 
@@ -1179,11 +1194,91 @@ common::Status GenerateSubgraph(Graph& graph, Node* start_node) {
   return graph.Resolve();
 }
 
+Status RemoveNonDifferentiableEdgeInPartition(
+    Graph& graph,
+    const std::vector<std::string>& non_differentiable_edge_names) {
+
+  // iterate through nodes in the graph and find out the gradient edge that is not differentiable
+  for (auto& node : graph.Nodes()) {
+
+    // process inputs first
+    auto it = node.MutableInputDefs().begin();
+    auto end = node.MutableInputDefs().end();
+    int i = 0;
+    while (it != end) {
+      if (std::any_of(non_differentiable_edge_names.cbegin(), non_differentiable_edge_names.cend(), [&](std::string substr){
+        return (*it)->Name().rfind(substr, 0) == 0;
+      })) {
+
+      for (auto count : node.MutableInputArgsCount()) {
+          std::cout << count << " ";
+        }
+        std::cout << "\n";
+        node.MutableInputDefs().erase(it);
+        // TODO: add assert here
+        node.MutableInputArgsCount().back()--;
+
+        auto& attributes = node.GetMutableAttributes();
+        auto& element_types = attributes["element_types"];
+        std::cout << "element_type ints_size: " << element_types.ints_size() << " " << i - 2 << std::endl;
+        if (element_types.ints_size() > 0) {
+          auto ints_copy = element_types.ints();
+          element_types.clear_ints();
+          for (auto index = 0; index < ints_copy.size(); ++index) {
+            if (index != i - 2) {
+              std::cout << "insert element type: " << ints_copy[index] << std::endl;
+              element_types.add_ints(ints_copy[index]);
+            }
+          }
+          std::cout << "element_type ints_size after: " << element_types.ints_size() << std::endl;
+          std::cout << "element_type ints_size after2: " << node.GetMutableAttributes()["element_types"].ints_size() << std::endl;
+        }
+      } else {
+        it++;
+        i++;
+      }
+    }
+
+    // process output
+    it = node.MutableOutputDefs().begin();
+    end = node.MutableOutputDefs().end();
+    while (it != end) {
+      if (std::any_of(non_differentiable_edge_names.cbegin(), non_differentiable_edge_names.cend(), [&](std::string substr){
+        return (*it)->Name().rfind(substr, 0) == 0;
+      })) {
+        std::cout << "found!" << node.Name() << " " << (*it)->Name() << '\n';
+        node.MutableOutputDefs().erase(it);
+
+        // For recv node
+        auto& attributes = node.GetMutableAttributes();
+        auto& element_types = attributes["element_types"];
+        std::cout << "element_type ints_size: " << element_types.ints_size() << " " << i - 1 << std::endl;
+        if (element_types.ints_size() > 0) {
+          auto ints_copy = element_types.ints();
+          element_types.clear_ints();
+          for (auto index = 0; index < ints_copy.size(); ++index) {
+            if (index != i) {
+              std::cout << "insert element type: " << ints_copy[index] << std::endl;
+              element_types.add_ints(ints_copy[index]);
+            }
+          }
+          std::cout << "element_type ints_size after: " << element_types.ints_size() << std::endl;
+          std::cout << "element_type ints_size after2: " << node.GetMutableAttributes()["element_types"].ints_size() << std::endl;
+        }
+      } else {
+        it++;
+      }
+    }
+  }
+  return Status::OK();
+}
+
 Status ApplyPipelinePartitionToMainGraph(
     Graph& graph,
     const std::vector<TrainingSession::TrainingConfiguration::CutInfo>& cut_info,
     size_t pipeline_stage_id,
-    size_t num_pipeline_stage) {
+    size_t num_pipeline_stage,
+    std::vector<std::string>& non_differentiable_edge_names) {
   size_t split_count = cut_info.size();
   if (num_pipeline_stage != split_count + 1) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Wrong pipeline partition cutting info. Total pipeline stage number is ",
@@ -1196,9 +1291,11 @@ Status ApplyPipelinePartitionToMainGraph(
   send_nodes.reserve(split_count);
   recv_nodes.reserve(split_count);
 
+  non_differentiable_edge_names.clear();
+
   // Split the graph by cutting edges specified in cut_info. After this function, the graph will be
   // composed of several disconnected partitions.
-  ORT_RETURN_IF_ERROR(SplitGraph(graph, cut_info, send_nodes, recv_nodes));
+  ORT_RETURN_IF_ERROR(SplitGraph(graph, cut_info, send_nodes, recv_nodes, non_differentiable_edge_names));
 
   if (send_nodes.size() != split_count || recv_nodes.size() != split_count) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Split error: not all cut has Send and Recv inserted. Send node count: ",
