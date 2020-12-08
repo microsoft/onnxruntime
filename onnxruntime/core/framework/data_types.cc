@@ -728,11 +728,11 @@ const char* DataTypeImpl::ToString(MLDataType type) {
 }
 
 std::vector<std::string> DataTypeImpl::ToString(const std::vector<MLDataType>& types) {
-  std::vector<std::string> type_strs;
+  std::vector<std::string> type_strs(types.size());
   for (const auto& type : types) {
     type_strs.push_back(DataTypeImpl::ToString(type));
   }
-  return std::move(type_strs);
+  return type_strs;
 }
 
 const TensorTypeBase* DataTypeImpl::TensorTypeFromONNXEnum(int type) {
