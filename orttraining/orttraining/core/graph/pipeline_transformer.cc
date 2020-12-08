@@ -1198,77 +1198,51 @@ Status RemoveNonDifferentiableEdgeInPartition(
     Graph& graph,
     const std::vector<std::string>& non_differentiable_edge_names) {
 
+  assert(!non_differentiable_edge_names.empty());
+
+  // Check a given node args vector and see if it contains non-differentiable edges. If it does, remove it.
+  auto check_node_args = [&](std::vector<NodeArg*> node_args, bool is_inputs, Node& node) {
+      auto it = node_args.begin();
+      auto begin = it;
+      auto end = node_args.end();
+      while (it != end) {
+        if (std::any_of(non_differentiable_edge_names.cbegin(), non_differentiable_edge_names.cend(), [&](std::string substr) {
+              return (*it)->Name().rfind(substr, 0) == 0;
+            })) {
+
+          node_args.erase(it);
+
+          if (is_inputs){
+            assert(!node.MutableInputArgsCount().empty() && node.MutableInputArgsCount().back() > 0);
+            node.MutableInputArgsCount().back()--;
+          }
+
+          // modify attribute to remove the erased node arg's data type
+          auto& attributes = node.GetMutableAttributes();
+          auto& element_types = attributes["element_types"];
+          if (element_types.ints_size() > 0) {
+            auto ints_copy = element_types.ints();
+            element_types.clear_ints();
+            for (auto index = 0; index < ints_copy.size(); ++index) {
+              if (index != it - begin) {
+                element_types.add_ints(ints_copy[index]);
+              }
+            }
+          }
+        } else {
+          it++;
+        }
+      }
+    };
+
+
   // iterate through nodes in the graph and find out the gradient edge that is not differentiable
   for (auto& node : graph.Nodes()) {
+    // process input node args
+    check_node_args(node.MutableInputDefs(), true, node);
 
-    // process inputs first
-    auto it = node.MutableInputDefs().begin();
-    auto end = node.MutableInputDefs().end();
-    int i = 0;
-    while (it != end) {
-      if (std::any_of(non_differentiable_edge_names.cbegin(), non_differentiable_edge_names.cend(), [&](std::string substr){
-        return (*it)->Name().rfind(substr, 0) == 0;
-      })) {
-
-      for (auto count : node.MutableInputArgsCount()) {
-          std::cout << count << " ";
-        }
-        std::cout << "\n";
-        node.MutableInputDefs().erase(it);
-        // TODO: add assert here
-        node.MutableInputArgsCount().back()--;
-
-        auto& attributes = node.GetMutableAttributes();
-        auto& element_types = attributes["element_types"];
-        std::cout << "element_type ints_size: " << element_types.ints_size() << " " << i - 2 << std::endl;
-        if (element_types.ints_size() > 0) {
-          auto ints_copy = element_types.ints();
-          element_types.clear_ints();
-          for (auto index = 0; index < ints_copy.size(); ++index) {
-            if (index != i - 2) {
-              std::cout << "insert element type: " << ints_copy[index] << std::endl;
-              element_types.add_ints(ints_copy[index]);
-            }
-          }
-          std::cout << "element_type ints_size after: " << element_types.ints_size() << std::endl;
-          std::cout << "element_type ints_size after2: " << node.GetMutableAttributes()["element_types"].ints_size() << std::endl;
-        }
-      } else {
-        it++;
-        i++;
-      }
-    }
-
-    // process output
-    it = node.MutableOutputDefs().begin();
-    end = node.MutableOutputDefs().end();
-    while (it != end) {
-      if (std::any_of(non_differentiable_edge_names.cbegin(), non_differentiable_edge_names.cend(), [&](std::string substr){
-        return (*it)->Name().rfind(substr, 0) == 0;
-      })) {
-        std::cout << "found!" << node.Name() << " " << (*it)->Name() << '\n';
-        node.MutableOutputDefs().erase(it);
-
-        // For recv node
-        auto& attributes = node.GetMutableAttributes();
-        auto& element_types = attributes["element_types"];
-        std::cout << "element_type ints_size: " << element_types.ints_size() << " " << i - 1 << std::endl;
-        if (element_types.ints_size() > 0) {
-          auto ints_copy = element_types.ints();
-          element_types.clear_ints();
-          for (auto index = 0; index < ints_copy.size(); ++index) {
-            if (index != i) {
-              std::cout << "insert element type: " << ints_copy[index] << std::endl;
-              element_types.add_ints(ints_copy[index]);
-            }
-          }
-          std::cout << "element_type ints_size after: " << element_types.ints_size() << std::endl;
-          std::cout << "element_type ints_size after2: " << node.GetMutableAttributes()["element_types"].ints_size() << std::endl;
-        }
-      } else {
-        it++;
-      }
-    }
+    // process output node args
+    check_node_args(node.MutableOutputDefs(), false, 0, node);
   }
   return Status::OK();
 }
