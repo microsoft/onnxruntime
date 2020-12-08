@@ -30,7 +30,6 @@ class TrainingSession : public InferenceSession {
 
   TrainingSession(const SessionOptions& session_options, const Environment& env)
       : InferenceSession(session_options, env) {}
-  ~TrainingSession();
 
   /**
    * The training configuration options.
@@ -403,6 +402,20 @@ class TrainingSession : public InferenceSession {
                                 const std::vector<std::string>& norm_nodes,
                                 const bool dump_convergence_metrics);
 
+  virtual Status PartitionGraphForPipeline(
+      const int32_t pipeline_stage_id,
+      const optional<TrainingConfiguration::PipelineConfiguration>& pipeline_config,
+      const optional<TrainingConfiguration::DistributedConfiguration>& distributed_config,
+      const std::unordered_set<std::string>& weight_names_to_train,
+      std::unordered_set<std::string>& filtered_config_weight_names_to_train);
+
+  virtual Status SetEventSynchronization(
+      const int32_t pipeline_stage_id,
+      const optional<TrainingConfiguration::PipelineConfiguration>& pipeline_config,
+      const optional<TrainingConfiguration::DistributedConfiguration>& distributed_config,
+      const std::unordered_set<std::string>& weight_names_to_train,
+      optional<TrainingConfigurationResult::PipelineConfigurationResult>& pipeline_config_result);
+
   // Insert operators for running pipeline and return event tensor names.
   // For an intermediate pipeline stage, its original computation is
   //
@@ -520,7 +533,7 @@ class TrainingSession : public InferenceSession {
   static const std::string training_mode_string_;
 };
 
-class PipelineTrainingSession : public TrainingSession {
+class PipelineTrainingSession final : public TrainingSession {
  public:
   PipelineTrainingSession(const SessionOptions& session_options, const Environment& env)
       : TrainingSession(session_options, env) {}
@@ -534,14 +547,14 @@ class PipelineTrainingSession : public TrainingSession {
       const optional<TrainingConfiguration::PipelineConfiguration>& pipeline_config,
       const optional<TrainingConfiguration::DistributedConfiguration>& distributed_config,
       const std::unordered_set<std::string>& weight_names_to_train,
-      std::unordered_set<std::string>& filtered_config_weight_names_to_train);
+      std::unordered_set<std::string>& filtered_config_weight_names_to_train) override;
 
   Status SetEventSynchronization(
       const int32_t pipeline_stage_id,
       const optional<TrainingConfiguration::PipelineConfiguration>& pipeline_config,
       const optional<TrainingConfiguration::DistributedConfiguration>& distributed_config,
       const std::unordered_set<std::string>& weight_names_to_train,
-      optional<TrainingConfigurationResult::PipelineConfigurationResult>& pipeline_config_result);
+      optional<TrainingConfigurationResult::PipelineConfigurationResult>& pipeline_config_result) override;
 
   void CreatePipelineEvents(
       const bool traning_mode,
