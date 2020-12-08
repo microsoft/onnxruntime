@@ -1510,7 +1510,7 @@ Status GetDeviceAssignmentMap(Graph& graph,
     return Status::OK();
   };
 
-  int ncuts = cuts.size();
+  int ncuts = static_cast<int>(cuts.size());
   // all_consumers[i] is the vector of consumers of cut i.
   std::vector<std::vector<Node*>> all_consumers(ncuts, std::vector<Node*>());
   // all_producers[i] is the vector of producers of cut i.
