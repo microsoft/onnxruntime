@@ -82,19 +82,9 @@ def generate_dependencies(list, package_name, version):
         list.append('<dependencies>')
 
         # Support .Net Core
-        list.append('<group targetFramework="NETCOREAPP">')
-        list.append('<dependency id="Microsoft.Windows.SDK.NET"' + ' version="10.0.18362.3-preview"/>')
-        list.append('<dependency id="Microsoft.Windows.CsWinRT"' + ' version="0.1.0-prerelease.200629.3"/>')
-        list.append('</group>')
-        # Support .Net Standard
-        list.append('<group targetFramework="NETSTANDARD">')
-        list.append('<dependency id="Microsoft.Windows.SDK.NET"' + ' version="10.0.18362.3-preview"/>')
-        list.append('<dependency id="Microsoft.Windows.CsWinRT"' + ' version="0.1.0-prerelease.200629.3"/>')
-        list.append('</group>')
-        # Support .Net Framework
-        list.append('<group targetFramework="NETFRAMEWORK">')
-        list.append('<dependency id="Microsoft.Windows.SDK.NET"' + ' version="10.0.18362.3-preview"/>')
-        list.append('<dependency id="Microsoft.Windows.CsWinRT"' + ' version="0.1.0-prerelease.200629.3"/>')
+        list.append('<group targetFramework="net5.0*">')
+        list.append('<dependency id="Microsoft.Windows.CsWinRT"' + ' version="1.1.0"/>')
+        list.append(dml_dependency)
         list.append('</group>')
         # UAP10.0.16299, This is the earliest release of the OS that supports .NET Standard apps
         list.append('<group targetFramework="UAP10.0.16299">')
