@@ -113,7 +113,7 @@ void GatherGradImpl(
       num_indices));
 
   dim3 block(GPU_WARP_SIZE, 4);
-  dim3 grid(CeilDiv(num_indices, 4), CeilDiv(stride, 128));
+  dim3 grid(CeilDiv(num_indices, 4), CeilDiv(stride, 256));
 
   hipLaunchKernelGGL(_GatherGradImpl, dim3(grid), dim3(block), 0, 0, 
       indices_data_sorted.get(),
