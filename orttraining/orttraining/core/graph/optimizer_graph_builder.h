@@ -29,6 +29,8 @@ ArgDef BuildGradientAccumulationNode(const NodeArgNameGeneratorFn& nodearg_name_
                                      GraphAugmenter::GraphDefs& graph_defs,
                                      bool add_accumulate_buffer_as_initializers = true);
 
+const std::string global_gradient_norm_output_name = "global_gradient_norm";
+
 /**
  * Builds the optimizer components on top of an existing training graph.
  * The optimizers used are determined by the weight_names_to_opt_configs parameter
@@ -82,7 +84,7 @@ class OptimizerGraphBuilder {
 
   Status AddGradientScalingNodes(
       const NodeArgNameGeneratorFn& nodearg_name_generator,
-      const float scale,
+      const ArgDef& pre_allreduce_scale,
       std::vector<ArgDef>& gradient_argdefs,
       ArgDef& fused_gradient_argdef,
       GraphAugmenter::GraphDefs& graph_defs,
@@ -91,21 +93,28 @@ class OptimizerGraphBuilder {
 
   Status AddL2NormBetweenMegatronRanksNcclAllReduce(
       ArgDef& norm_argdef,
-      GraphAugmenter::GraphDefs& graph_defs);
+      GraphAugmenter::GraphDefs& graph_defs,
+      std::string output_name);
 
   Status AddGradientScalingNodes(
       const NodeArgNameGeneratorFn& nodearg_name_generator,
-      const float scale,
+      const ArgDef& pre_allreduce_scale,
       std::vector<ArgDef>& gradient_argdefs,        // update argdefs in place
       std::vector<ArgDef>& output_gradient_argdef,  // update argdef in place
       GraphAugmenter::GraphDefs& graph_defs,
       ONNX_NAMESPACE::TensorProto_DataType target_type);
 
+  ArgDef AddAllReduceForSampleCount(
+    const NodeArgNameGeneratorFn& nodearg_name_generator,
+    std::vector<ArgDef>& gradient_argdefs,
+    GraphAugmenter::GraphDefs& graph_defs);
+
   Status AddGradientNorm(
       const NodeArgNameGeneratorFn& nodearg_name_generator,
       const std::vector<ArgDef>& grad_argdefs,
       GraphAugmenter::GraphDefs& graph_defs,
-      ArgDef& grad_norm_argdef);
+      ArgDef& grad_norm_argdef,
+      std::string output_name);
 
   Status AddFiniteGradientCheck(
       const NodeArgNameGeneratorFn& nodearg_name_generator,

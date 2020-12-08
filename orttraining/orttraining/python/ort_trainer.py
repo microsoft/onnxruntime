@@ -868,9 +868,7 @@ class ORTTrainer():
         if self.gradient_accumulation_steps > 1:
             self.output_desc_with_group_accumulated_gradients = [
                 *self.model_desc_.outputs_,
-                IODescription(get_group_accumulated_gradients_output_node_arg_name(self.session), [1], torch.bool),
-                IODescription(get_global_gradient_norm_arg_name(self.session), [], torch.float),
-                IODescription(get_all_gradients_finite_arg_name(self.session), [1], torch.bool),]
+                IODescription(get_group_accumulated_gradients_output_node_arg_name(self.session), [1], torch.bool)]
 
         if self.use_mixed_precision:
             # when ready to use accumulated gradient with mixed precision, we need to fetch all_infinite to determine
@@ -879,6 +877,11 @@ class ORTTrainer():
                 *self.model_desc_.outputs_,
                 IODescription(get_global_gradient_norm_arg_name(self.session), [], torch.float),
                 IODescription(get_all_gradients_finite_arg_name(self.session), [1], torch.bool),]
+        else:
+            self.output_desc_with_all_fp_16_or_fp32_gradients_finite = [
+                *self.model_desc_.outputs_,
+                IODescription(get_global_gradient_norm_arg_name(self.session), [], torch.float)
+                ]
 
         if self.state_dict_:
             self.load_state_dict(self.state_dict_, self.strict_)
@@ -1080,7 +1083,7 @@ class ORTTrainer():
             has_if_all_finite = True
             output_desc = self.output_desc_with_all_fp_16_or_fp32_gradients_finite
         else:
-            output_desc = self.model_desc_.outputs_
+            output_desc = self.output_desc_with_all_fp_16_or_fp32_gradients_finite
 
         if not isinstance(input, (list, tuple)):
             input = (input,)
@@ -1108,9 +1111,9 @@ class ORTTrainer():
 
         if fetches is not None:
             results = [session_run_results[fetch] for fetch in fetches]
-        elif has_if_all_finite and self.loss_scaler_ is None:
-            # return descripted outputs plus the all_finite flag so that the training script can handle loss scaling.
-            results = [session_run_results[output_desc.name_] for output_desc in self.output_desc_with_all_fp_16_or_fp32_gradients_finite]
+        # elif has_if_all_finite and self.loss_scaler_ is None:
+        #     # return descripted outputs plus the all_finite flag so that the training script can handle loss scaling.
+        #     results = [session_run_results[output_desc.name_] for output_desc in self.output_desc_with_all_fp_16_or_fp32_gradients_finite]
         else:
             results = [session_run_results[output_desc_.name_] for output_desc_ in output_desc]
 
@@ -1175,9 +1178,11 @@ class ORTTrainer():
                 model.graph.output[0].type.tensor_type.elem_type != onnx.TensorProto().COMPLEX128 and\
                 model.graph.output[0].type.tensor_type.elem_type != onnx.TensorProto().BFLOAT16:
             raise RuntimeError("the first output of a model to run with fully optimized ORT backend must be float types.")
-        if len(model.graph.output[0].type.tensor_type.shape.dim) != 0:
-            raise RuntimeError(
-                "the first output of a model to run with fully optimized ORT backend assumed to be loss and must be a scalar.")
+
+        # need comment out this 3 line if we plan to divide loss by sample size in the graph.
+        # if len(model.graph.output[0].type.tensor_type.shape.dim) != 0:
+        #     raise RuntimeError(
+        #         "the first output of a model to run with fully optimized ORT backend assumed to be loss and must be a scalar.")
 
 class LossScaler():
     def __init__(self, loss_scale_input_name, is_dynamic_scale,
