@@ -501,12 +501,13 @@ static Status BuildOptimizerInternal(Graph& graph,
                                      const OptimizerGraphConfig& opt_graph_config,
                                      const std::unordered_map<std::string, OptimizerNodeConfig>& opt_configs,
                                      std::unordered_set<std::string>& opt_state_initializer_names,
-                                     OptimizerOutputKeyMap<std::string>& opt_graph_outputs) {
+                                     OptimizerOutputKeyMap<std::string>& opt_graph_outputs,
+                                     std::unordered_map<std::string, std::string>& updated_weight_names_map) {
   OptimizerBuilderRegistry& optimizer_registry = OptimizerBuilderRegistry::GetInstance();
   OptimizerGraphBuilderRegistry& optimizer_graph_registry = OptimizerGraphBuilderRegistry::GetInstance();
   std::string graph_builder_name = optimizer_graph_registry.GetNameFromConfig(opt_graph_config);
   auto optimizer_graph_builder = optimizer_graph_registry.MakeUnique(
-      graph_builder_name, optimizer_registry, opt_graph_config, opt_configs);
+      graph_builder_name, optimizer_registry, opt_graph_config, opt_configs, updated_weight_names_map);
   ORT_RETURN_IF_ERROR(optimizer_graph_builder->Build(
       graph, opt_state_initializer_names, opt_graph_outputs));
 
@@ -752,7 +753,8 @@ Status TrainingSession::BuildOptimizer(
                                              opt_graph_config_,
                                              opt_configs_,
                                              opt_state_initializer_names_,
-                                             opt_graph_outputs));
+                                             opt_graph_outputs,
+                                             updated_weight_names_map_));
 
   return DoPostLoadProcessing(*model_);
 }
@@ -837,11 +839,13 @@ Status TrainingSession::Save(const PathString& model_uri, TrainingSession::SaveO
 
     OptimizerOutputKeyMap<std::string> opt_graph_outputs;
     std::unordered_set<std::string> opt_state_initializer_names;
+    std::unordered_map<std::string, std::string> updated_weight_names_map;
     ORT_RETURN_IF_ERROR(BuildOptimizerInternal(new_model->MainGraph(),
                                                opt_graph_config_,
                                                opt_configs_,
                                                opt_state_initializer_names,
-                                               opt_graph_outputs));
+                                               opt_graph_outputs,
+                                               updated_weight_names_map));
   }
 
   auto status = Model::Save(*new_model, model_uri);
@@ -1021,6 +1025,9 @@ std::unordered_set<std::string> TrainingSession::GetStateTensorNames() const {
   std::unordered_set<std::string> checkpointed_tensor_names{};
   checkpointed_tensor_names.insert(
       weights_to_train_.begin(), weights_to_train_.end());
+  for (const auto& p : updated_weight_names_map_) {
+    checkpointed_tensor_names.insert(p.second);
+  }
   checkpointed_tensor_names.insert(
       opt_state_initializer_names_.begin(), opt_state_initializer_names_.end());
   checkpointed_tensor_names.insert(

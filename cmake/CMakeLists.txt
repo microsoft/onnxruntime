@@ -87,6 +87,7 @@ option(onnxruntime_USE_VITISAI "Build with Vitis-AI" OFF)
 option(onnxruntime_USE_TENSORRT "Build with TensorRT support" OFF)
 option(onnxruntime_ENABLE_LTO "Enable link time optimization" OFF)
 option(onnxruntime_CROSS_COMPILING "Cross compiling onnx runtime" OFF)
+option(onnxruntime_GCOV_COVERAGE "Compile with options necessary to run code coverage" OFF)
 
 #It's preferred to turn it OFF when onnxruntime is dynamically linked to PROTOBUF
 option(onnxruntime_USE_FULL_PROTOBUF "Link to libprotobuf instead of libprotobuf-lite when this option is ON" OFF)
@@ -885,6 +886,11 @@ set(FLATBUFFERS_BUILD_FLATLIB ON CACHE BOOL "FLATBUFFERS_BUILD_FLATLIB" FORCE)
 add_subdirectory(external/flatbuffers EXCLUDE_FROM_ALL)
 list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES flatbuffers)
 list(APPEND onnxruntime_EXTERNAL_LIBRARIES flatbuffers)
+
+if (CMAKE_SYSTEM_NAME STREQUAL "Android" AND Onnxruntime_GCOV_COVERAGE)
+  string(APPEND CMAKE_CXX_FLAGS " -g -O0 --coverage ")
+  string(APPEND CMAKE_C_FLAGS   " -g -O0 --coverage ")
+endif()
 
 #Adjust warning flags
 if (WIN32)

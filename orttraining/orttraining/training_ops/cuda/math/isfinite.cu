@@ -54,7 +54,6 @@ __global__ void IsAllFiniteMultiTensorImpl(ChunkGroup<1> chunks, bool* output) {
 
 template <typename T>
 void IsAllFiniteFunctor<T>::operator()(ChunkGroup<1> chunks, bool* output) {
-  // One thread loads PARALLEL_LOADS elements.
   const int block_count = chunks.chunk_count;
   const int thread_count = ChunkGroup<1>::thread_count_per_block;
   IsAllFiniteMultiTensorImpl<T><<<block_count, thread_count, 0>>>(chunks, output);

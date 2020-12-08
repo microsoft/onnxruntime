@@ -4,7 +4,6 @@
 #include "pch.h"
 #include <windows.h>
 #include <Hstring.h>
-
 #include "LearningModelDevice.h"
 #include "OnnxruntimeProvider.h"
 #include "Dummy.h"
@@ -92,9 +91,7 @@ STDAPI DllCanUnloadNow() {
 STDAPI DllGetExperimentalActivationFactory(void* classId, void** factory) noexcept {
   try {
     *factory = nullptr;
-    uint32_t length{};
-    wchar_t const* const buffer = WINRT_WindowsGetStringRawBuffer(classId, &length);
-    std::wstring_view const name{buffer, length};
+    std::wstring_view const name{*reinterpret_cast<winrt::hstring*>(&classId)};
 
     auto requal = [](std::wstring_view const& left, std::wstring_view const& right) noexcept {
       return std::equal(left.rbegin(), left.rend(), right.rbegin(), right.rend());
