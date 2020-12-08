@@ -24,7 +24,7 @@ class NeuralNet(torch.nn.Module):
 
 
 def train(args, model, device, optimizer, loss_fn, train_loader, epoch):
-    print('\n======== Epoch {:} / {:} ========'.format(epoch+1, args.epochs))
+    print('\n======== Epoch {:} / {:} with batch size {:} ========'.format(epoch+1, args.epochs, args.batch_size))
     model.train()
     # Measure how long the training epoch takes.
     t0 = time.time()
@@ -96,8 +96,8 @@ def test(args, model, device, loss_fn, test_loader):
             pred = output.argmax(dim=1, keepdim=True)
             correct += pred.eq(target.view_as(pred)).sum().item()
     test_loss /= len(test_loader.dataset)
-    print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
-        test_loss, correct, len(test_loader.dataset),
+    print('\nTest set: Batch size: {:}, Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
+        args.test_batch_size, test_loss, correct, len(test_loader.dataset),
         100. * correct / len(test_loader.dataset)))
 
     # Report the final accuracy for this validation run.
@@ -119,10 +119,10 @@ def main():
                         help='number of steps to train. Set -1 to run through whole dataset (default: -1)')
     parser.add_argument('--lr', type=float, default=0.01, metavar='LR',
                         help='learning rate (default: 0.01)')
-    parser.add_argument('--batch-size', type=int, default=20, metavar='N',
-                        help='input batch size for training (default: 20)')
-    parser.add_argument('--test-batch-size', type=int, default=20, metavar='N',
-                        help='input batch size for testing (default: 20)')
+    parser.add_argument('--batch-size', type=int, default=32, metavar='N',
+                        help='input batch size for training (default: 32)')
+    parser.add_argument('--test-batch-size', type=int, default=64, metavar='N',
+                        help='input batch size for testing (default: 64)')
     parser.add_argument('--no-cuda', action='store_true', default=False,
                         help='disables CUDA training')
     parser.add_argument('--seed', type=int, default=42, metavar='S',
@@ -157,6 +157,7 @@ def main():
                                                                           transforms.Normalize((0.1307,), (0.3081,))])),
                                             batch_size=args.batch_size,
                                             shuffle=True)
+    test_loader = None
     if args.test_batch_size > 0:
         test_loader = torch.utils.data.DataLoader(
             datasets.MNIST('./data', train=False, transform=transforms.Compose([
