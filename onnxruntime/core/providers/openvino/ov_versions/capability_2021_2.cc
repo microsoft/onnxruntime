@@ -320,6 +320,12 @@ static bool IsUnsupportedOpMode(const Provider_Node* node, const Provider_GraphV
     return (A_is_float && B_is_float) ? false : true;
 
   } else if (optype == "Pow") {
+    if (device_id == "GPU") {
+      //Only supported if the data type of both inputs is same for GPU
+      auto x_data_type = node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+      auto y_data_type = node->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type();
+      return x_data_type != y_data_type;
+    }
     //currently both inputs with int32 or int64 datatype are not supported
     const bool A_is_int32 = node->InputDefs()[0]->Type()->find("int32") != std::string::npos;
     const bool B_is_int32 = node->InputDefs()[1]->Type()->find("int32") != std::string::npos;
