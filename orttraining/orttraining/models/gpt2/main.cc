@@ -9,8 +9,10 @@
 #include "core/session/environment.h"
 #include "core/framework/random_seed.h"
 #include "core/framework/bfc_arena.h"
+#ifdef USE_CUDA
 #include "core/providers/cuda/cuda_allocator.h"
-#include "core/providers/provider_factory_creators.h"
+#include "core/providers/cuda/cuda_provider_factory_creator.h"
+#endif
 #include "orttraining/core/framework/mpi_context.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
 #include "orttraining/core/session/training_session.h"

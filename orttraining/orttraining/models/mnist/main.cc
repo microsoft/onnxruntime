@@ -6,7 +6,9 @@
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/framework/bfc_arena.h"
 #include "core/platform/env.h"
-#include "core/providers/provider_factory_creators.h"
+#ifdef USE_CUDA
+#include "core/providers/cuda/cuda_provider_factory_creator.h"
+#endif
 #include "core/session/environment.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"

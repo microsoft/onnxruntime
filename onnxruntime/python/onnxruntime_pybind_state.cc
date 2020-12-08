@@ -22,9 +22,17 @@
 #include "core/framework/TensorSeq.h"
 #include "core/graph/graph_viewer.h"
 #include "core/platform/env.h"
-#include "core/providers/provider_factory_creators.h"
 #include "core/session/IOBinding.h"
 #include "core/session/abi_session_options_impl.h"
+
+// execution provider factory creator headers
+#include "core/providers/cpu/cpu_provider_factory_creator.h"
+#ifdef USE_CUDA
+#include "core/providers/cuda/cuda_provider_factory_creator.h"
+#endif
+#ifdef USE_ROCM
+#include "core/providers/rocm/rocm_provider_factory_creator.h"
+#endif
 
 struct OrtStatus {
   OrtErrorCode code;

@@ -10,12 +10,14 @@
 #include "core/session/environment.h"
 #include "core/framework/bfc_arena.h"
 #include "core/framework/random_seed.h"
-#include "core/providers/provider_factory_creators.h"
+#include "core/providers/cpu/cpu_provider_factory_creator.h"
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_allocator.h"
+#include "core/providers/cuda/cuda_provider_factory_creator.h"
 #endif
 #ifdef USE_ROCM
 #include "core/providers/rocm/rocm_allocator.h"
+#include "core/providers/rocm/rocm_provider_factory_creator.h"
 #endif
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
