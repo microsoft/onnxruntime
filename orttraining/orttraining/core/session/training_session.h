@@ -472,6 +472,7 @@ class TrainingSession : public InferenceSession {
 
   std::unordered_set<std::string> weights_to_train_;
   // names of additional initializers to be included in checkpoints
+  std::unordered_map<std::string, std::string> updated_weight_names_map_;
   std::unordered_set<std::string> opt_state_initializer_names_;
   std::unordered_set<std::string> mixed_precision_weight_initializer_names_;
 

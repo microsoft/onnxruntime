@@ -84,9 +84,14 @@ else
         if [ $CUDA_VER = "cuda9.1-cudnn7.1" ]; then
             DOCKER_FILE=Dockerfile.ubuntu_gpu_cuda9
         fi
-        [[ $INSTALL_DEPS_DISTRIBUTED_SETUP = true ]] && INSTALL_DEPS_EXTRA_ARGS="-m" || INSTALL_DEPS_EXTRA_ARGS=""
+        if [[ $BUILD_EXTR_PAR = *--enable_training* ]]; then
+            INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -t"
+        fi
+        if [[ $INSTALL_DEPS_DISTRIBUTED_SETUP = true ]]; then
+            INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -m"
+        fi
         $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
-            --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg BUILD_EXTR_PAR=\"${BUILD_EXTR_PAR}\" --build-arg INSTALL_DEPS_EXTRA_ARGS=${INSTALL_DEPS_EXTRA_ARGS}" \
+            --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg INSTALL_DEPS_EXTRA_ARGS=\"${INSTALL_DEPS_EXTRA_ARGS}\"" \
             --dockerfile $DOCKER_FILE --context .
     elif [ $BUILD_DEVICE = "tensorrt" ]; then
         # TensorRT container release 20.07
