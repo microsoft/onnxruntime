@@ -460,7 +460,8 @@ def parse_arguments():
     parser.add_argument("--rocm_home", help="Path to ROCm installation dir")
 
     # Code coverage
-    parser.add_argument("--code_coverage", action='store_true', help="Compile/link with options generate code coverage when targetting Android (only).")
+    parser.add_argument("--code_coverage", action='store_true',
+                        help="Generate code coverage when targetting Android (only).")
 
     return parser.parse_args()
 
