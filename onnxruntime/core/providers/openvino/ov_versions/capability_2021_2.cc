@@ -290,6 +290,10 @@ static bool IsUnsupportedOpMode(const Provider_Node* node, const Provider_GraphV
       }
     }
     }
+    else {
+    if (GetInputCount(node, initializers) == 1)
+      return true;
+    }
   } else if (optype == "Clip") {
     //Only float 16, float and double data types are supported
     const bool data_is_float = node->InputDefs()[0]->Type()->find("float") != std::string::npos;
@@ -316,10 +320,13 @@ static bool IsUnsupportedOpMode(const Provider_Node* node, const Provider_GraphV
     return (A_is_float && B_is_float) ? false : true;
 
   } else if (optype == "Pow") {
-    //Only supported if the data type of both inputs is same
-    auto x_data_type = node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-    auto y_data_type = node->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type();
-    return x_data_type != y_data_type;
+    //currently both inputs with int32 or int64 datatype are not supported
+    const bool A_is_int32 = node->InputDefs()[0]->Type()->find("int32") != std::string::npos;
+    const bool B_is_int32 = node->InputDefs()[1]->Type()->find("int32") != std::string::npos;
+    const bool A_is_int64 = node->InputDefs()[0]->Type()->find("int64") != std::string::npos;
+    const bool B_is_int64 = node->InputDefs()[1]->Type()->find("int64") != std::string::npos;
+    if((A_is_int32 && B_is_int32) || (A_is_int64 && B_is_int64))
+      return true;
   } else if (optype == "Where") {
     //float data type is not supported
     const bool data_is_float = node->InputDefs()[1]->Type()->find("float") != std::string::npos;
@@ -362,6 +369,7 @@ static bool IsUnsupportedOpMode(const Provider_Node* node, const Provider_GraphV
   } else if (optype == "Scatter" || optype == "ScatterElements") {
     const auto& attributes = node->GetAttributes();
     auto axis_attr = attributes.find("axis");
+    //Negative axis is not supported
     if (axis_attr->second().i() < 0)
       return true;
   } else if (optype == "Unsqueeze") {
@@ -870,6 +878,12 @@ GetCapability_2021_2(const Provider_GraphViewer& graph_viewer, std::string devic
               (input_1_data_type != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16)) {
             return result;
           }
+        }
+      } else if (node->OpType() == "MaxPool" && device_id.find("MYRIAD") != std::string::npos) {
+        auto output_data_type = node->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+        if (output_data_type != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT ||
+            output_data_type != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) {
+          return result;
         }
       }
     }

@@ -79,7 +79,8 @@
     "current_failing_tests_OPENVINO_MYRIAD": [
         "^test_range",
         "^test_dynamicquantizelinear",
-        "^test_operator_index"
+        "^test_operator_index",
+        "^test_scatter_elements_with_negative_indices" // Does not support negative indices
     ],
     "current_failing_tests_OPENVINO_GPU": [
         "^test_div",
