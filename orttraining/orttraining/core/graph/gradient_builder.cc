@@ -1105,31 +1105,28 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceL2Gradient) {
   std::vector<NodeDef> result;
   auto attributes = SrcNodeAttributes();
   bool keepdims = true;
-  if (attributes.find("keepdims") != attributes.end() &&
-      attributes.at("keepdims").has_i()) {
+  if (attributes.find("keepdims") != attributes.end() && attributes.at("keepdims").has_i()) {
     keepdims = static_cast<bool>(attributes.at("keepdims").i());
   }
 
-  ArgDef y_arg_def = O(0);
-  ArgDef dy_arg_def = GO(0);
-  if (!keepdims && attributes.find("axes") != attributes.end()) {
-    std::vector<int64_t> axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
-    y_arg_def = IA("Unsqueezed_Y");
-    dy_arg_def = IA("Unsqueezed_dY");
-    result.emplace_back(NodeDef("Unsqueeze", {O(0)}, {y_arg_def}, {MakeAttribute("axes", axes_values)}));
-    result.emplace_back(NodeDef("Unsqueeze", {GO(0)}, {dy_arg_def}, {MakeAttribute("axes", axes_values)}));
-  }
-
-  result.emplace_back(NodeDef("Div", {dy_arg_def, y_arg_def}, {IA("Scaled_dY")}));
+  result.emplace_back(NodeDef("Div", {GO(0), O(0)}, {IA("Scaled_dY")}));
 
   // Handle 0 elements in Y.
   NodeDef zero_constant_node = ZeroConstantNode(IElemType(0));
   ArgDef ZERO = zero_constant_node.output_args[0];
   result.push_back(zero_constant_node);
-  result.emplace_back(NodeDef("Equal", {y_arg_def, ZERO}, {IA("Masked_Y")}));
-  result.emplace_back(NodeDef("Where", {IA("Masked_Y"), ZERO, IA("Scaled_dY")}, {IA("Masked_Scaled_dY")}));
+  result.emplace_back(NodeDef("Equal", {O(0), ZERO}, {IA("Masked_Y")}));
+  ArgDef scaled_dy_arg_def = IA("Masked_Scaled_dY");
+  result.emplace_back(NodeDef("Where", {IA("Masked_Y"), ZERO, IA("Scaled_dY")}, {scaled_dy_arg_def}));
 
-  result.emplace_back(NodeDef("Mul", {I(0), IA("Masked_Scaled_dY")}, {GI(0)}));
+  if (!keepdims && attributes.find("axes") != attributes.end()) {
+    std::vector<int64_t> axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
+    scaled_dy_arg_def = IA("Unsqueezed_Masked_Scaled_dY");
+    result.emplace_back(
+        NodeDef("Unsqueeze", {IA("Masked_Scaled_dY")}, {scaled_dy_arg_def}, {MakeAttribute("axes", axes_values)}));
+  }
+
+  result.emplace_back(NodeDef("Mul", {I(0), scaled_dy_arg_def}, {GI(0)}));
   return result;
 }
 
@@ -1482,13 +1479,13 @@ IMPLEMENT_GRADIENT_BUILDER(GetClipGradient) {
   bool has_i1 = false, has_i2 = false;
   ArgDef intermediate_arg_def = ArgDef("");
   // Gradients not defined on min and max, so we return the subgradient 1 for these cases.
-  if (numInputs >= 2 && !(I(1) == ArgDef(""))) {
+  if (numInputs >= 2 && I(1).Exists()) {
     has_i1 = true;
     intermediate_arg_def = IA("Masked_Min");
     output.emplace_back(NodeDef("GreaterOrEqual", {I(0), I(1)}, {intermediate_arg_def}));
   }
 
-  if (numInputs >= 3 && !(I(2) == ArgDef(""))) {
+  if (numInputs >= 3 && I(2).Exists()) {
     has_i2 = true;
     intermediate_arg_def = IA("Masked_Max");
     output.emplace_back(NodeDef("LessOrEqual", {I(0), I(2)}, {intermediate_arg_def}));
@@ -1501,10 +1498,9 @@ IMPLEMENT_GRADIENT_BUILDER(GetClipGradient) {
   if (!has_i1 && !has_i2) {
     output.emplace_back(NodeDef("Identity", {GO(0)}, {GI(0)}));
   } else {
-    NodeDef zero_constant_node = ZeroConstantNode(IElemType(0));
-    ArgDef ZERO = zero_constant_node.output_args[0];
-    output.emplace_back(zero_constant_node);
-    output.emplace_back(NodeDef("Where", {intermediate_arg_def, GO(0), ZERO}, {GI(0)}));
+    output.emplace_back(
+        NodeDef("Cast", {intermediate_arg_def}, {IA("Casted_Mask")}, {MakeAttribute("to", int64_t(IElemType(0)))}));
+    output.emplace_back(NodeDef("Mul", {GO(0), IA("Casted_Mask")}, {GI(0)}));
   }
 
   return output;
