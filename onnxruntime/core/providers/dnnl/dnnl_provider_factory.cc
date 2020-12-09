@@ -17,13 +17,13 @@ struct DnnlProviderFactory : Provider_IExecutionProviderFactory {
   DnnlProviderFactory(bool create_arena) : create_arena_(create_arena) {}
   ~DnnlProviderFactory() override {}
 
-  std::unique_ptr<Provider_IExecutionProvider> CreateProvider() override;
+  std::unique_ptr<IExecutionProvider> CreateProvider() override;
 
  private:
   bool create_arena_;
 };
 
-std::unique_ptr<Provider_IExecutionProvider> DnnlProviderFactory::CreateProvider() {
+std::unique_ptr<IExecutionProvider> DnnlProviderFactory::CreateProvider() {
   DNNLExecutionProviderInfo info;
   info.create_arena = create_arena_;
   return onnxruntime::make_unique<DNNLExecutionProvider>(info);

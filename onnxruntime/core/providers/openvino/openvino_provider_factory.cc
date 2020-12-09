@@ -16,7 +16,7 @@ struct OpenVINOProviderFactory : Provider_IExecutionProviderFactory {
   ~OpenVINOProviderFactory() override {
   }
 
-  std::unique_ptr<Provider_IExecutionProvider> CreateProvider() override;
+  std::unique_ptr<IExecutionProvider> CreateProvider() override;
 
  private:
   std::string device_type_;
@@ -25,7 +25,7 @@ struct OpenVINOProviderFactory : Provider_IExecutionProviderFactory {
   size_t num_of_threads_;
 };
 
-std::unique_ptr<Provider_IExecutionProvider> OpenVINOProviderFactory::CreateProvider() {
+std::unique_ptr<IExecutionProvider> OpenVINOProviderFactory::CreateProvider() {
   OpenVINOExecutionProviderInfo info(device_type_, enable_vpu_fast_compile_, device_id_, num_of_threads_);
   return std::make_unique<OpenVINOExecutionProvider>(info);
 }

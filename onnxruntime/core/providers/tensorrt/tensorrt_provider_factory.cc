@@ -16,13 +16,13 @@ struct TensorrtProviderFactory : Provider_IExecutionProviderFactory {
   TensorrtProviderFactory(int device_id) : device_id_(device_id) {}
   ~TensorrtProviderFactory() override {}
 
-  std::unique_ptr<Provider_IExecutionProvider> CreateProvider() override;
+  std::unique_ptr<IExecutionProvider> CreateProvider() override;
 
  private:
   int device_id_;
 };
 
-std::unique_ptr<Provider_IExecutionProvider> TensorrtProviderFactory::CreateProvider() {
+std::unique_ptr<IExecutionProvider> TensorrtProviderFactory::CreateProvider() {
   TensorrtExecutionProviderInfo info;
   info.device_id = device_id_;
   return onnxruntime::make_unique<TensorrtExecutionProvider>(info);

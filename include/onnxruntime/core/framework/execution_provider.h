@@ -3,21 +3,29 @@
 
 #pragma once
 
+#ifndef PROVIDER_BRIDGE_PROVIDER
+#include <map>
 #include <unordered_map>
-#include "gsl/gsl"
+#include <unordered_set>
 
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/tensor.h"
-#include "core/framework/func_api.h"
 #include "core/framework/data_transfer.h"
 
 namespace onnxruntime {
+
 class GraphViewer;
 class Node;
 struct ComputeCapability;
 class KernelRegistry;
 class KernelRegistryManager;
+}  // namespace onnxruntime
+#endif
+
+#include "core/framework/func_api.h"
+
+namespace onnxruntime {
 
 /**
    Logical device representation.
@@ -99,7 +107,7 @@ class IExecutionProvider {
      3. onnxruntime (framework/session) does not depend on any specific
      execution provider lib.
   */
-  virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const;
+  virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const { return nullptr; }
 
   /**
      Get the device id of current execution provider
@@ -140,7 +148,7 @@ class IExecutionProvider {
      Currently this is primarily used by the IOBinding object to ensure that all
      inputs have been copied to the device before execution begins.
   */
-  virtual common::Status Sync() const;
+  virtual common::Status Sync() const { return Status::OK(); }
 
   /**
      Called when InferenceSession::Run started
@@ -148,7 +156,7 @@ class IExecutionProvider {
      Run may not be finished on device This function should be regarded as the
      point after which a new Run would start to submit commands from CPU
   */
-  virtual common::Status OnRunStart();
+  virtual common::Status OnRunStart() { return Status::OK(); }
 
   /**
      Called when InferenceSession::Run ended
@@ -156,14 +164,14 @@ class IExecutionProvider {
      may not be finished on device This function should be regarded as the point
      that all commands of current Run has been submmited by CPU
   */
-  virtual common::Status OnRunEnd();
+  virtual common::Status OnRunEnd() { return Status::OK(); }
 
   /**
      Called when session creation is complete
      This provides an opportunity for execution providers to optionally synchronize and
      clean up its temporary resources to reduce memory and ensure the first run is fast.
   */
-  virtual common::Status OnSessionInitializationEnd();
+  virtual common::Status OnSessionInitializationEnd() { return Status::OK(); }
 
   void InsertAllocator(AllocatorPtr allocator);
   void ReplaceAllocator(AllocatorPtr allocator);
@@ -174,8 +182,8 @@ class IExecutionProvider {
   /**
   Given a list of fused_node, return create_state/compute/release_state func for each node.
   */
-  virtual common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
-                                 std::vector<NodeComputeInfo>& node_compute_funcs);
+  virtual common::Status Compile(const std::vector<onnxruntime::Node*>& /*fused_nodes*/,
+                                 std::vector<NodeComputeInfo>& /*node_compute_funcs*/) { return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED); }
 
   /**
   Given a list of fused_node, return a dll that expose functions for each node.
@@ -184,8 +192,8 @@ class IExecutionProvider {
      Compute_${node_name}
      Release_State_${node_name}
   */
-  virtual common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
-                                 std::string& dll_path);
+  virtual common::Status Compile(const std::vector<onnxruntime::Node*>& /*fused_nodes*/,
+                                 std::string& /*dll_path*/) { return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED); }
 
 #endif
 
@@ -205,8 +213,8 @@ class IExecutionProvider {
            Do NOT cache the GraphViewer in FusedNodeAndGraph.filtered_graph in any of the NodeComputeInfo functions
            as it is only valid for the duration of the call to Compile.
   */
-  virtual common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
-                                 std::vector<NodeComputeInfo>& node_compute_funcs);
+  virtual common::Status Compile(const std::vector<FusedNodeAndGraph>& /*fused_nodes_and_graphs*/,
+                                 std::vector<NodeComputeInfo>& /*node_compute_funcs*/) { return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED); }
 #endif
 
   // Fusion approach that is suppported
