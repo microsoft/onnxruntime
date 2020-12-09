@@ -177,7 +177,7 @@ Status TrainingSession::ConfigureForTraining(
 #ifdef USE_MPI
   const std::vector<MPIGroup>& mpi_groups = MPIContext::GetInstance().GetAllMPIGroups();
   for (int i = 0; i < WorkerGroupType::WorkerGroupTypeCount; i++) {
-    if (!mpi_groups[i].is_group_initialized) {
+    if (!mpi_groups[i].is_group_initialized && MPIContext::GetInstance().GetWorldSize() > 1) {
       MPIContext::GetInstance().AddMPIGroup(static_cast<WorkerGroupType>(i),
         DistributedRunContext::GetInstance().GetWorkerGroup(static_cast<WorkerGroupType>(i)));
     }

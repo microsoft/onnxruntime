@@ -21,6 +21,10 @@ namespace onnxruntime {
 namespace test {
 
 TEST(AllreduceTest, CPUAdasumAllreduceTestReduceTwoTensors) {
+  if (training::MPIContext::GetInstance().GetWorldSize() != 2) {
+    return;
+  }
+
   OpTester allreduce_test("AdasumAllReduce", 1, onnxruntime::kMSDomain);
   // Alternating inputs to test symmetry
   std::vector<float> grad_1 = {4.0f, 5.0f, 6.0f};
@@ -50,6 +54,9 @@ TEST(AllreduceTest, CPUAdasumAllreduceTestReduceTwoTensors) {
 }
 
 TEST(AllreduceTest, CPUAdasumAllreduceTestReduceTwoTensorsFP16) {
+  if (training::MPIContext::GetInstance().GetWorldSize() != 2) {
+    return;
+  }
   OpTester allreduce_test("AdasumAllReduce", 1, onnxruntime::kMSDomain);
   // Alternating inputs to test symmetry
   std::vector<float> grad_1 = {5.6301f, 6.5235f, 7.4169f};
@@ -91,6 +98,10 @@ TEST(AllreduceTest, CPUAdasumAllreduceTestReduceTwoTensorsFP16) {
 }
 
 TEST(AllreduceTest, CPUAdasumAllreduceTestFailTensorCountMismatch) {
+  if (training::MPIContext::GetInstance().GetWorldSize() != 2) {
+    return;
+  }
+
   OpTester allreduce_test("AdasumAllReduce", 1, onnxruntime::kMSDomain);
   if (training::MPIContext::GetInstance().GetWorldRank() == 0){
    allreduce_test.AddInput<float>("G1", {3}, {4, 5, 6});
@@ -433,6 +444,9 @@ std::unique_ptr<IExecutionProvider> create_cuda_execution_provider() {
 }
 
 TEST(AllreduceTest, GPUHierarchicalAdasumAllreduceOptimizerTest) {
+  if (training::MPIContext::GetInstance().GetWorldSize() != 2) {
+    return;
+  }
 
   training::DistributedRunConfig config = {training::MPIContext::GetInstance().GetWorldRank(),// world rank
                                           training::MPIContext::GetInstance().GetWorldSize(),// world size
@@ -601,6 +615,9 @@ TEST(AllreduceTest, GPUHierarchicalAdasumAllreduceOptimizerTest) {
 }
 
 TEST(AllreduceTest, GPUHierarchicalAdasumAllreduceOptimizerFP16Test) {
+  if (training::MPIContext::GetInstance().GetWorldSize() != 2) {
+    return;
+  }
 
   training::DistributedRunConfig config = {training::MPIContext::GetInstance().GetWorldRank(),// world rank
                                           training::MPIContext::GetInstance().GetWorldSize(),// world size
@@ -781,6 +798,9 @@ TEST(AllreduceTest, GPUHierarchicalAdasumAllreduceOptimizerFP16Test) {
 }
 
 TEST(AllreduceTest, GPUHierarchicalAdasumAllreduceTest) {
+  if (training::MPIContext::GetInstance().GetWorldSize() != 2) {
+    return;
+  }
 
   training::DistributedRunConfig config = {training::MPIContext::GetInstance().GetWorldRank(),// world rank
                                           training::MPIContext::GetInstance().GetWorldSize(),// world size
@@ -877,6 +897,9 @@ TEST(AllreduceTest, GPUHierarchicalAdasumAllreduceTest) {
 }
 
 TEST(AllreduceTest, GPUHierarchicalAdasumFP16AllreduceTest) {
+  if (training::MPIContext::GetInstance().GetWorldSize() != 2) {
+    return;
+  }
 
   training::DistributedRunConfig config = {training::MPIContext::GetInstance().GetWorldRank(),// world rank
                                           training::MPIContext::GetInstance().GetWorldSize(),// world size
@@ -987,6 +1010,9 @@ TEST(AllreduceTest, GPUHierarchicalAdasumFP16AllreduceTest) {
 }
 
 TEST(AllreduceTest, GPUAdasumAllreduceTest) {
+  if (training::MPIContext::GetInstance().GetWorldSize() != 2) {
+    return;
+  }
 
   training::DistributedRunConfig config = {training::MPIContext::GetInstance().GetWorldRank(),// world rank
                                           training::MPIContext::GetInstance().GetWorldSize(),// world size
@@ -1088,6 +1114,9 @@ TEST(AllreduceTest, GPUAdasumAllreduceTest) {
 }
 
 TEST(AllreduceTest, GPUAdasumFP16AllreduceTest) {
+  if (training::MPIContext::GetInstance().GetWorldSize() != 2) {
+    return;
+  }
 
   training::DistributedRunConfig config = {training::MPIContext::GetInstance().GetWorldRank(),// world rank
                                           training::MPIContext::GetInstance().GetWorldSize(),// world size

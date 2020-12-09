@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
-
 #ifndef _WIN32
 #include <chrono>
 #include <thread>
