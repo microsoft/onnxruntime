@@ -28,7 +28,7 @@ set(winml_lib_common_dir ${REPO_ROOT}/winml/lib/common)
 set(winml_lib_telemetry_dir ${REPO_ROOT}/winml/lib/telemetry)
 
 # Retrieve the version of cppwinrt nuget
-pkg_version(
+package_version(
   Microsoft.Windows.CppWinRT
   CppWinRT_version
   ${PROJECT_SOURCE_DIR}/../packages.config

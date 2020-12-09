@@ -131,6 +131,9 @@ def container_registry_has_image(full_image_name, docker_path):
 def main():
     args = parse_args()
 
+    log.debug("Dockerfile: {}, context: {}, docker build args: '{}'".format(
+        args.dockerfile, args.context, args.docker_build_args))
+
     tag = generate_tag(args.dockerfile, args.context, args.docker_build_args)
 
     full_image_name = "{}.azurecr.io/{}:{}".format(
@@ -153,7 +156,12 @@ def main():
             "--file", args.dockerfile,
             args.context)
 
-        run(args.docker_path, "push", full_image_name)
+        # avoid pushing if an identically tagged image has been pushed since the last check
+        # there is still a race condition, but this reduces the chance of a redundant push
+        if not container_registry_has_image(full_image_name, args.docker_path):
+            run(args.docker_path, "push", full_image_name)
+        else:
+            log.info("Image now found, skipping push")
 
     # tag so we can refer to the image by repository name
     run(args.docker_path, "tag", full_image_name, args.repository)

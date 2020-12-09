@@ -13,27 +13,11 @@ class SGDOptimizerBuilder final : public OptimizerBuilder {
   SGDOptimizerBuilder() : OptimizerBuilder(OpDef{"SGDOptimizer", kMSDomain, 1}) {}
 
   virtual Status Build(
-      const std::vector<ArgDef>& weight_argdefs,
-      const std::vector<ArgDef>& gradient_argdefs,
-      const ArgDef* gradient_norm_argdef,
-      const ArgDef* gradient_norm_finite_argdef,
-      const std::vector<OptimizerNodeConfig>& opt_configs,
+      const OptimizerBuilderConfig& config,
       GraphAugmenter::GraphDefs& graph_defs,
       std::vector<ONNX_NAMESPACE::TensorProto>& new_external_initializers,
       std::vector<ArgDef>& output_weight_argdefs,
       std::vector<ArgDef>& output_gradient_argdefs) const override;
-
-  virtual Status Build(
-      const std::vector<ArgDef>& weight_argdefs,
-      const std::vector<ArgDef>& gradient_argdefs,
-      const ArgDef* gradient_norm_argdef,
-      const ArgDef* gradient_norm_finite_argdef,
-      const std::vector<OptimizerNodeConfig>& opt_configs,
-      GraphAugmenter::GraphDefs& graph_defs,
-      std::vector<ONNX_NAMESPACE::TensorProto>& new_external_initializers,
-      std::vector<ArgDef>& output_weight_argdefs,
-      std::vector<ArgDef>& output_gradient_argdefs,
-      const bool enable_grad_clipping) const override;
 };
 
 }  // namespace training
