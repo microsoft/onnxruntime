@@ -579,8 +579,26 @@ common::Status VerifyInputTensorsAllocatedContiguously(OpKernelContext* context)
     size_t input_element_size = prev_input->DataType()->Size();
     size_t input_aligned_bytes = 0;
 
-    ORT_RETURN_IF_NOT(IAllocator::CalcMemSizeForArrayWithAlignment<256>(input_element_count, input_element_size,
-                                                                        &input_aligned_bytes));
+    if (context->GetOpType() == "NcclAllReduce") {
+      ORT_RETURN_IF_NOT(IAllocator::CalcMemSizeForArrayWithAlignment<256>(input_element_count, input_element_size,
+                                                                         &input_aligned_bytes));
+
+    } else if (context->GetOpType() == "NcclAllGather") {
+      ORT_RETURN_IF_NOT(IAllocator::CalcMemSizeForArrayWithAlignment<256>(input_element_count, input_element_size,
+                                                                          &input_aligned_bytes));
+    } else if (context->GetOpType() == "NcclReduceScatter") {
+      ORT_RETURN_IF_NOT(IAllocator::CalcMemSizeForArrayWithAlignment<256>(input_element_count, input_element_size,
+                                                                         &input_aligned_bytes));
+    }
+
+    if (!(curr_input->DataRaw() == reinterpret_cast<const char*>(prev_input->DataRaw()) + input_aligned_bytes ||
+          curr_input->DataRaw() == static_cast<const int8_t*>(prev_input->DataRaw()) + prev_input->SizeInBytes())) {
+      std::cout << "VerifyInputTensorsAllocatedContiguously " << context->GetOpType()
+                << " curr_input_start " << curr_input->DataRaw()
+                << " prev_input_end " << prev_input->DataRaw()
+                << " input_element_count * input_element_size " << input_element_count * input_element_size
+                << " input_aligned_bytes " << input_aligned_bytes << "\n";
+    }
 
     ORT_RETURN_IF_NOT(
         curr_input->DataRaw() == static_cast<const int8_t*>(prev_input->DataRaw()) + input_aligned_bytes ||
@@ -588,6 +606,7 @@ common::Status VerifyInputTensorsAllocatedContiguously(OpKernelContext* context)
 
     prev_input = curr_input;
   }
+
   return Status::OK();
 }
 #endif

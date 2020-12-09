@@ -143,6 +143,10 @@ const std::string& OpKernelContext::GetOpDomain() const {
   return kernel_->KernelDef().Domain();
 }
 
+const std::string& OpKernelContext::GetOpType() const {
+  return kernel_->Node().OpType();
+}
+
 const OrtValue* OpKernelContext::GetInputMLValue(int index) const {
   if (index < 0 || index >= InputCount())
     return nullptr;

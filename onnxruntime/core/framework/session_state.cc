@@ -446,7 +446,7 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
         return Status(ONNXRUNTIME, FAIL, "Unknown shape found in memory pattern compute, node name is : " + node_name);
       }
 
-      if (!IAllocator::CalcMemSizeForArrayWithAlignment<64>(size, ml_data_type->Size(), &size)) {
+      if (!IAllocator::CalcMemSizeForArrayWithAlignment<256>(size, ml_data_type->Size(), &size)) {
         return Status(ONNXRUNTIME, FAIL, "Size overflow");
       }
 
@@ -482,7 +482,7 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
       if (exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate &&
           ml_data_type != DataTypeImpl::GetType<std::string>() && size != 0) {
         size_t aligned_size = 0;
-        if (!IAllocator::CalcMemSizeForArrayWithAlignment<64>(size, ml_data_type->Size(), &aligned_size)) {
+        if (!IAllocator::CalcMemSizeForArrayWithAlignment<256>(size, ml_data_type->Size(), &aligned_size)) {
           return Status(ONNXRUNTIME, FAIL, "Size overflow");
         }
 

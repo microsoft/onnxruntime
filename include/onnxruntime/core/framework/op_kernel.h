@@ -222,6 +222,11 @@ class OpKernelContext {
   const std::string& GetOpDomain() const;
 
   /**
+  Returns the optype of the underlying kernel
+  **/
+  const std::string& GetOpType() const;
+
+  /**
   Returns the intra-op threadpool, if available.
   */
   _Ret_maybenull_ onnxruntime::concurrency::ThreadPool* GetOperatorThreadPool() const { return threadpool_; }
