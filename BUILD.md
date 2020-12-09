@@ -1175,7 +1175,8 @@ Dockerfile instructions are available [here](./dockerfiles#migraphx)
 ***
 
 # Training
-## Prerequisites
+## CUDA
+### Prerequisites
 
 The default NVIDIA GPU build requires CUDA runtime libraries installed on the system:
 
@@ -1187,7 +1188,7 @@ The default NVIDIA GPU build requires CUDA runtime libraries installed on the sy
 
 These dependency versions should reflect what is in [Dockerfile.training](./dockerfiles/Dockerfile.training).
 
-## Build instructions
+### Build instructions
 
 1. Checkout this code repo with `git clone https://github.com/microsoft/onnxruntime`
 
@@ -1206,5 +1207,27 @@ These dependency versions should reflect what is in [Dockerfile.training](./dock
 
    * Change to the ONNX Runtime repo base folder: `cd onnxruntime`
    * Run `./build.sh --enable_training --use_cuda --config=RelWithDebInfo --build_wheel`
+
+    This produces the .whl file in `./build/Linux/RelWithDebInfo/dist` for ONNX Runtime Training.
+
+## ROCM
+### Prerequisites
+
+The default AMD GPU build requires ROCM software toolkit installed on the system:
+
+* [ROCM](https://rocmdocs.amd.com/en/latest/)
+* [OpenMPI](https://www.open-mpi.org/) 4.0.4
+  * See [install_openmpi.sh](./tools/ci_build/github/linux/docker/scripts/install_openmpi.sh)
+
+These dependency versions should reflect what is in [Dockerfile.training](./dockerfiles/Dockerfile.training).
+
+### Build instructions
+
+1. Checkout this code repo with `git clone https://github.com/microsoft/onnxruntime`
+
+2. Create the ONNX Runtime wheel
+
+   * Change to the ONNX Runtime repo base folder: `cd onnxruntime`
+   * Run `./build.sh --config RelWithDebInfo --enable_training --build_wheel --use_rocm --rocm_home /opt/rocm --nccl_home /opt/rocm --mpi_home <location for openmpi>`
 
     This produces the .whl file in `./build/Linux/RelWithDebInfo/dist` for ONNX Runtime Training.

@@ -1,10 +1,10 @@
-# docker build --network=host --file Dockerfile.rocm3.8.pytorch --tag ort:rocm3.8-pytorch .
+# docker build --network=host --file Dockerfile.rocm3.10.pytorch --tag ort:rocm3.10-pytorch .
 
-FROM rocm/pytorch:rocm3.8_ubuntu18.04_py3.6_pytorch
+FROM rocm/pytorch:rocm3.10_ubuntu18.04_py3.6_pytorch
 
-RUN curl https://bazel.build/bazel-release.pub.gpg | apt-key add -
-RUN cat /dev/null > /etc/apt/sources.list.d/rocm.list
-RUN echo 'deb [arch=amd64] http://repo.radeon.com/rocm/apt/3.8/ xenial main' | tee /etc/apt/sources.list.d/rocm.list
+RUN apt-get -y install gpg-agent
+RUN wget -q -O - http://repo.radeon.com/rocm/rocm.gpg.key | apt-key add -
+RUN echo 'deb [arch=amd64] http://repo.radeon.com/rocm/apt/3.9/ xenial main' | tee /etc/apt/sources.list.d/rocm.list
 
 RUN apt-get -y update
 RUN apt-get -y install apt-utils
@@ -13,7 +13,7 @@ RUN apt-get -y install build-essential autotools-dev \
     iputils-ping net-tools ethtool libcap2 \
     automake autoconf libtool flex doxygen \
     perl lsb-release iproute2 pciutils graphviz \
-    bc tar git bash pbzip2 pv bzip2 cabextract \
+    bc tar git bash pbzip2 pv bzip2 unzip cabextract \
     g++ gcc \
     && apt-get autoremove
 
@@ -33,9 +33,8 @@ ENV WORKSPACE_DIR=/workspace
 RUN mkdir -p $WORKSPACE_DIR
 WORKDIR $WORKSPACE_DIR
 
-RUN update-alternatives --remove-all python && \
-    update-alternatives --install /usr/bin/python python /usr/bin/python2.7 1
-
+ENV OLD_PATH=${PATH}
+ENV PATH=/usr/bin:${PATH}
 # Infiniband setup, openmpi installed under /usr/mpi/gcc/openmpi-4.0.4rc3 doesn't support multi-thread
 ENV MOFED_VERSION=5.1-0.6.6.0
 ENV MOFED_OS=ubuntu18.04
@@ -46,8 +45,8 @@ RUN cd MLNX_OFED_LINUX-${MOFED_VERSION}-${MOFED_OS}-x86_64 && \
     cd .. && \
     rm -r MLNX_OFED_LINUX-${MOFED_VERSION}-${MOFED_OS}-x86_64
 
-RUN update-alternatives --remove-all python && \
-    update-alternatives --install /usr/bin/python python /usr/bin/python3.6 1
+ENV PATH=${OLD_PATH}
+ENV unset OLD_PATH
 
 # python env
 ARG NUMPY_VERSION=1.18.5
