@@ -29,6 +29,9 @@ class CalibrationDataReader(metaclass=abc.ABCMeta):
         """generate the input data dict for ONNXinferenceSession run"""
         raise NotImplementedError
 
+    def support_batch_inference(self):
+        return False
+
 
 class ONNXCalibrater:
     def __init__(self, model_path, data_reader: CalibrationDataReader, calibrate_op_types, black_nodes, white_nodes,

@@ -132,26 +132,43 @@ class YoloV3DataReader(ObejctDetectionDataReader):
 
         return next(self.enum_data_dicts, None)
 
-    # def load_batches(self):
-        # width = self.width 
-        # height = self.height 
-        # nchw_data_list, filename_list, image_size_list = yolov3_preprocess_func(self.image_folder, height, width, self.start_index, batch_size)
-        # session = onnxruntime.InferenceSession(self.model_path, providers=['CPUExecutionProvider'])
-        # input_name = session.get_inputs()[0].name
+    def get_batch(self):
+        if self.preprocess_flag:
+            self.preprocess_flag = False
+            self.load_batches()
+        return next(self.batches, None)
 
-        # nchw_data_batch = []
-        # shape_data_batch = []
-        # for i in range(len(nchw_data_list)):
-            # nhwc_data = np.squeeze(nchw_data_list[i], 0)
-            # nchw_data_batch.append(nhwc_data)
-            # shape_data = np.squeeze(image_size_list[i], 0)
-            # shape_data_batch.append(shape_data)
-        # batch_data = np.concatenate(np.expand_dims(nchw_data_batch, axis=0), axis=0)
-        # shape_data = np.concatenate(np.expand_dims(shape_data_batch, axis=0), axis=0)
-        # print(batch_data.shape)
-        # data = {input_name: batch_data, "image_shape": shape_data}
+    def load_batches(self):
+        width = self.width 
+        height = self.height 
+        batch_size = self.batch_size
+        size_limit = self.size_limit
+        session = onnxruntime.InferenceSession(self.model_path, providers=['CPUExecutionProvider'])
+        input_name = session.get_inputs()[0].name
 
-        # return data 
+
+        for index in range(0, size_limit, batch_size):
+            start_index = self.start_index + index 
+            print("Load batch from index %s ..." % (str(start_index)))
+            nchw_data_list, filename_list, image_size_list = yolov3_preprocess_func(self.image_folder, height, width, start_index, batch_size)
+
+            if nchw_data_list.size == 0:
+                break
+
+            nchw_data_batch = []
+            # shape_data_batch = []
+            for i in range(len(nchw_data_list)):
+                nhwc_data = np.squeeze(nchw_data_list[i], 0)
+                nchw_data_batch.append(nhwc_data)
+                # shape_data = np.squeeze(image_size_list[i], 0)
+                # shape_data_batch.append(shape_data)
+            batch_data = np.concatenate(np.expand_dims(nchw_data_batch, axis=0), axis=0)
+            # shape_data = np.concatenate(np.expand_dims(shape_data_batch, axis=0), axis=0)
+            print(batch_data.shape)
+            data = {input_name: batch_data, "image_shape": np.asarray([[416, 416]], dtype=np.float32)}
+            self.batches.append(data)
+
+        self.batches = iter(self.batches)
 
 
 
@@ -198,12 +215,6 @@ class YoloV3VisionDataReader(YoloV3DataReader):
             self.enum_data_dicts = iter(data)
 
         return next(self.enum_data_dicts, None)
-
-    def get_batch(self):
-        if self.preprocess_flag:
-            self.preprocess_flag = False
-            self.load_batches()
-        return next(self.batches, None)
 
     def load_batches(self):
         width = self.width 
