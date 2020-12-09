@@ -7,7 +7,12 @@ import onnx
 from onnx import helper, numpy_helper
 import onnxruntime as onnxrt
 import os
-from onnxruntime.nuphar.rnn_benchmark import perf_test, generate_model
+import sys
+sys.path.append("C:/LiqunWA/onnxruntime/onnxruntime/core/providers/nuphar/scripts")
+from rnn_benchmark import perf_test, generate_model
+from model_tools import run_with_ort
+# from onnxruntime.nuphar.rnn_benchmark import perf_test, generate_model
+# from onnxruntime.nuphar.model_tools import run_with_ort
 import shutil
 import sys
 import subprocess
@@ -668,6 +673,21 @@ class TestNuphar(unittest.TestCase):
             assert np.allclose(expected_y, actual_y, atol=1e-7)
             print("finished " + matmul_model_name)
 
+    def test_loop_to_scan(self):
+        loop_model_filename = get_name("tiny_model_with_loop.onnx")
+        scan_model_filename = "tiny_model_with_loop_converted_to_scan.onnx" 
+        subprocess.run([
+            sys.executable, '-m', 'onnxruntime.nuphar.model_editor',
+            '--input', loop_model_filename,
+            '--output', scan_model_filename, '--mode', 'loop_to_scan'
+        ], check=True)
 
+        loop_output = run_with_ort(loop_model_filename)
+        scan_output = run_with_ort(scan_model_filename)
+
+        assert(len(loop_output) == len(scan_output))
+        for index in range(0, len(loop_output)):
+            assert_allclose(loop_output[index], scan_output[index])
+        
 if __name__ == '__main__':
     unittest.main()

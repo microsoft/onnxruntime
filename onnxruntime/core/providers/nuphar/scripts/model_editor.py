@@ -13,6 +13,9 @@ sys.path.append("C:/LiqunWA/onnxruntime/onnxruntime/python/tools")
 from node_factory import NodeFactory, ensure_opset
 from symbolic_shape_infer import SymbolicShapeInference, get_shape_from_type_proto
 
+from onnx import helper
+import copy
+
 # trim outputs of LSTM/GRU/RNN if not used or outputed
 def trim_unused_outputs(node, graph):
     trimmed = onnx.NodeProto()
@@ -147,12 +150,6 @@ def handle_final_scan_outputs(node, nf, scan_outputs, state_outputs, num_directi
         for i_o in range(1, len(node.output)):
             nf.make_node('Unsqueeze', state_outputs[i_o - 1], {'axes':[0]}, output_names=node.output[i_o])
 
-import os
-from onnx import helper
-def save_subgraph(node, out_mp, out_path):
-    out_mp.graph.CopyFrom(node.attribute[0].g)
-    onnx.save(out_mp, os.path.join(out_path, node.name + '_subgraph.onnx'))
-
 def convert_loop_to_scan(node, out_main_graph):
 
     initial_state_names = node.input[2:]   # exclude M and cond
@@ -215,7 +212,7 @@ def convert_loop_to_scan(node, out_main_graph):
                 value_info2.CopyFrom(value_info)
                 break
 
-    # if any output duplicate in subgraph, extent with an identity op to differenciate
+    # if any output duplicate in subgraph, extent with an identity op to differentiate
     for output_index in range(len(scan_subgraph.output)):
         count = 0
         for output_index2 in range(output_index + 1, len(scan_subgraph.output)):
@@ -693,12 +690,6 @@ def SaveTensorProto(file_path, tp_name, data, data_type = np.float32):
     with open(file_path, 'wb') as f:
         f.write(tp.SerializeToString())
 
-def extract_loop_outputs_as_model_outputs(model):
-    for node in model.graph.node:
-        if node.op_type == 'Loop':
-            # for debugging to make scan output as model graph output
-            set_op_output_as_model_output(node, model.graph)
-
 def validate_with_ort(input_model, output_model):
     def generate_random_data(tensor_shape, data_type = np.float32):
         np.random.seed(0)
@@ -726,7 +717,7 @@ def validate_with_ort(input_model, output_model):
 
         return outputs
 
-    batch_size, seq_len, feature_size = 1, 21, 160
+    batch_size, seq_len, feature_size = 1, 40, 160
 
     input = generate_random_data((seq_len, batch_size, feature_size))
     hi0 = generate_random_data((12, 1, 600))
@@ -739,27 +730,6 @@ def validate_with_ort(input_model, output_model):
         print("loop and scan run diff: ", np.max(output_with_loop - output_with_scan))
 
     print("")
-
-import copy
-def save_scan_sub_graph(input_model, output_folder):
-    in_mp = onnx.load(input_model)
-    out_mp = onnx.ModelProto()
-    out_mp.CopyFrom(in_mp)
-    out_mp.ir_version = 5 # update ir version to avoid requirement of initializer in graph input
-    ensure_opset(out_mp, 9) # bump up to ONNX opset 9, which is required for Scan
-    out_mp.graph.ClearField('node')
-    for in_n in in_mp.graph.node:
-        if in_n.op_type == 'Scan':
-            save_subgraph(in_n, copy.deepcopy(out_mp), output_folder)
-
-def set_op_output_as_model_output(node, graph):
-    for output in node.output:
-        for value_info in graph.value_info:
-            if value_info.name == output:
-                graph.value_info.remove(value_info)
-                output_value_info = graph.output.add()
-                output_value_info.CopyFrom(value_info)
-                break;                
 
 def convert_loop_to_scan_model(input_model, output_model):
     in_mp = onnx.load(input_model)
@@ -1105,5 +1075,6 @@ if __name__ == '__main__':
     print('Running symbolic shape inference on output model')
     mp = onnx.load(args.output)
     mp = SymbolicShapeInference.infer_shapes(mp, auto_merge=True)
-    onnx.save(mp, args.output)
+
+    onnx.save(mp, args.output + ".shape_inferenced.onnx")
     print('Done!')
