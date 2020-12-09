@@ -46,17 +46,39 @@ def parse_annotations(filename):
 
     return img_name_to_img_id
 
-class YoloV3DataReader(CalibrationDataReader):
+class ObejctDetectionDataReader(CalibrationDataReader):
+    def __init__(self, model_path='augmented_model.onnx'):
+        self.model_path = model_path
+        self.support_batch = False
+        self.batch_size = None
+        self.size_limit = None
+        self.batches = []
+
+    def support_batch_inference(self, input_shape):
+        print(input_shape)
+        print(input_shape[0])
+        batch_size = input_shape[0] 
+        if batch_size.isdigit():
+            self.batch_size = int(batch_size) # static batch size 
+        else:
+            self.support_batch = True
+
+        return self.support_batch
+        
+
+class YoloV3DataReader(ObejctDetectionDataReader):
     def __init__(self, calibration_image_folder,
                        width=416,
                        height=416,
                        start_index=0,
                        size_limit=0,
-                       augmented_model_path='augmented_model.onnx',
+                       batch_size=0,
+                       model_path='augmented_model.onnx',
                        is_evaluation=False,
                        annotations='./annotations/instances_val2017.json'):
+        ObejctDetectionDataReader.__init__(self, model_path)
         self.image_folder = calibration_image_folder
-        self.augmented_model_path = augmented_model_path
+        self.model_path = model_path
         self.preprocess_flag = True
         self.enum_data_dicts = []
         self.datasize = 0
@@ -73,13 +95,17 @@ class YoloV3DataReader(CalibrationDataReader):
     def set_size_limit(self, limit):
         self.size_limit = limit
 
+    def set_batch_size(self, batch_size):
+        self.batches = []
+        self.batch_size = batch_size
+
     def set_preprocess_flag(self, flag):
         self.preprocess_flag = flag
 
     def get_next(self):
         if self.preprocess_flag:
             self.preprocess_flag = False
-            session = onnxruntime.InferenceSession(self.augmented_model_path, None)
+            session = onnxruntime.InferenceSession(self.model_path, providers=['CPUExecutionProvider'])
             print(session.get_inputs()[0].shape)
             width = self.width 
             height = self.width 
@@ -106,21 +132,45 @@ class YoloV3DataReader(CalibrationDataReader):
 
         return next(self.enum_data_dicts, None)
 
+    # def load_batches(self):
+        # width = self.width 
+        # height = self.height 
+        # nchw_data_list, filename_list, image_size_list = yolov3_preprocess_func(self.image_folder, height, width, self.start_index, batch_size)
+        # session = onnxruntime.InferenceSession(self.model_path, providers=['CPUExecutionProvider'])
+        # input_name = session.get_inputs()[0].name
+
+        # nchw_data_batch = []
+        # shape_data_batch = []
+        # for i in range(len(nchw_data_list)):
+            # nhwc_data = np.squeeze(nchw_data_list[i], 0)
+            # nchw_data_batch.append(nhwc_data)
+            # shape_data = np.squeeze(image_size_list[i], 0)
+            # shape_data_batch.append(shape_data)
+        # batch_data = np.concatenate(np.expand_dims(nchw_data_batch, axis=0), axis=0)
+        # shape_data = np.concatenate(np.expand_dims(shape_data_batch, axis=0), axis=0)
+        # print(batch_data.shape)
+        # data = {input_name: batch_data, "image_shape": shape_data}
+
+        # return data 
+
+
+
 class YoloV3VisionDataReader(YoloV3DataReader):
     def __init__(self, calibration_image_folder,
                        width=608,
                        height=384,
                        start_index=0,
                        size_limit=0,
-                       augmented_model_path='augmented_model.onnx',
+                       batch_size=0,
+                       model_path='augmented_model.onnx',
                        is_evaluation=False,
                        annotations='./annotations/instances_val2017.json'):
-        YoloV3DataReader.__init__(self, calibration_image_folder, width, height, start_index, size_limit, augmented_model_path, is_evaluation, annotations)
+        YoloV3DataReader.__init__(self, calibration_image_folder, width, height, start_index, size_limit, model_path, is_evaluation, annotations)
 
     def get_next(self):
         if self.preprocess_flag:
             self.preprocess_flag = False
-            session = onnxruntime.InferenceSession(self.augmented_model_path, None)
+            session = onnxruntime.InferenceSession(self.model_path, providers=['CPUExecutionProvider'])
             print(session.get_inputs()[0].shape)
             width = self.width 
             height = self.height 
@@ -149,6 +199,37 @@ class YoloV3VisionDataReader(YoloV3DataReader):
 
         return next(self.enum_data_dicts, None)
 
+    def get_batch(self):
+        if self.preprocess_flag:
+            self.preprocess_flag = False
+            self.load_batches()
+        return next(self.batches, None)
+
+    def load_batches(self):
+        width = self.width 
+        height = self.height 
+        batch_size = self.batch_size
+        size_limit = self.size_limit
+        session = onnxruntime.InferenceSession(self.model_path, providers=['CPUExecutionProvider'])
+        input_name = session.get_inputs()[0].name
+
+        for index in range(0, size_limit, batch_size):
+            start_index = self.start_index + index 
+            print("Load batch from index %s ..." % (str(start_index)))
+            nchw_data_list, filename_list, image_size_list = yolov3_vision_preprocess_func(self.image_folder, height, width, start_index, batch_size)
+
+            if nchw_data_list.size == 0:
+                break
+
+            nchw_data_batch = []
+            for i in range(len(nchw_data_list)):
+                nhwc_data = np.squeeze(nchw_data_list[i], 0)
+                nchw_data_batch.append(nhwc_data)
+            batch_data = np.concatenate(np.expand_dims(nchw_data_batch, axis=0), axis=0)
+            print(batch_data.shape)
+            data = {input_name: batch_data}
+            self.batches.append(data)
+        self.batches = iter(self.batches)
 
 '''
 This class reuses tokenize and evaluation function from HuggingFace:

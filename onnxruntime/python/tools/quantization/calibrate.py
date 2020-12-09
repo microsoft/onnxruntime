@@ -242,20 +242,53 @@ class ONNXCalibrater:
         else:
             session = onnxruntime.InferenceSession(self.augmented_model_path, None)
 
-        intermediate_outputs = []
-        while True:
-            inputs = self.data_reader.get_next()
-            if not inputs:
-                break
-            intermediate_outputs.append(session.run(None, inputs))
-        node_output_names = [session.get_outputs()[i].name for i in range(len(intermediate_outputs[0]))]
-        output_dicts_list = [
-            dict(zip(node_output_names, intermediate_output)) for intermediate_output in intermediate_outputs
-        ]
-
         #number of outputs in original model
         model = onnx.load(self.model_path)
         num_model_outputs = len(model.graph.output)
+        model_original_outputs = set(output.name for output in model.graph.output)
+
+        intermediate_outputs = []
+
+        if self.data_reader.support_batch_inference(session.get_inputs()[0].shape):
+            print("Doing batch inference.")
+            while True:
+                inputs = self.data_reader.get_batch()
+                if not inputs:
+                    break
+                intermediate_outputs.append(session.run(None, inputs))
+
+
+            node_output_names = [session.get_outputs()[i].name for i in range(len(intermediate_outputs[0]))]
+
+            output_dicts_list = []
+            output_dicts = {}
+            for intermediate_output in intermediate_outputs:
+                for i in range(len(intermediate_output)):
+                    if node_output_names[i] in model_original_outputs:
+                        continue
+
+                    if node_output_names[i] in output_dicts:
+                        if 'ReduceMin' in node_output_names[i]:
+                            output_dicts[node_output_names[i]] = min(output_dicts[node_output_names[i]], intermediate_output[i])
+                        elif 'ReduceMax' in node_output_names[i]:
+                            output_dicts[node_output_names[i]] = max(output_dicts[node_output_names[i]], intermediate_output[i])
+                    else:
+                        output_dicts[node_output_names[i]] = intermediate_output[i]
+            output_dicts_list.append(output_dicts)
+
+        else:
+            while True:
+                inputs = self.data_reader.get_next()
+                if not inputs:
+                    break
+                intermediate_outputs.append(session.run(None, inputs))
+
+            node_output_names = [session.get_outputs()[i].name for i in range(len(intermediate_outputs[0]))]
+            output_dicts_list = [
+                dict(zip(node_output_names, intermediate_output)) for intermediate_output in intermediate_outputs
+            ]
+
+
         merged_dict = {}
         for d in output_dicts_list:
             for k, v in d.items():
@@ -265,7 +298,10 @@ class ONNXCalibrater:
                       for i in range(0, len(added_node_output_names), 2)]  #output names
 
         # Characterizing distribution of a node's values across test data sets
-        clean_merged_dict = dict((i, merged_dict[i]) for i in merged_dict if i != list(merged_dict.keys())[0])
+        clean_merged_dict = dict((i, merged_dict[i]) for i in merged_dict if i not in model_original_outputs)
+        # clean_merged_dict = dict((i, merged_dict[i]) for i in merged_dict if i != list(merged_dict.keys())[0])
+
+
         if calib_mode == 'naive':
 
             ## Following code gets "only size-1 arrays can be converted to Python scalars" when encountering float([])
@@ -434,7 +470,7 @@ def calculate_calibration_data(model_path,
 
     calibrator.get_intermediate_outputs(providers=["CUDAExecutionProvider"])
 
-def generate_calibration_table(model_path, augmented_model_path, data_reader, calibration_dataset=None, batch_size=5000):
+def generate_calibration_table(model_path, augmented_model_path, data_reader, calibration_dataset=None, stride=5000, batch_size=20):
 
     if os.path.exists(augmented_model_path):
         os.remove(augmented_model_path)
@@ -442,7 +478,6 @@ def generate_calibration_table(model_path, augmented_model_path, data_reader, ca
 
 
     calibrator = None 
-    stride = batch_size
 
     # If no dataset is provided upfront, the dataset will be fetched by data reader itself and 
     # therefore no need to handle batch processing at this moment. Just make the loop to run only once.
@@ -456,6 +491,7 @@ def generate_calibration_table(model_path, augmented_model_path, data_reader, ca
             print("Total data size %s\nStart to process data from index %s with stride %s ..." % (str(total_data_size), str(i), str(stride)))
             data_reader.set_start_index(i)
             data_reader.set_size_limit(stride)
+            data_reader.set_batch_size(batch_size)
             data_reader.set_preprocess_flag(True)
 
         if not calibrator:

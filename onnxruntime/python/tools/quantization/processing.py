@@ -30,7 +30,9 @@ def yolov3_preprocess_func(images_folder, height, width, start_index=0, size_lim
         return new_image
 
     image_names = os.listdir(images_folder)
-    if size_limit > 0 and len(image_names) >= size_limit:
+    if start_index >= len(image_names):
+        return np.asanyarray([]), np.asanyarray([]), np.asanyarray([])
+    elif size_limit > 0 and len(image_names) >= size_limit:
         end_index = start_index + size_limit
         if end_index > len(image_names):
             end_index = len(image_names)
@@ -44,7 +46,7 @@ def yolov3_preprocess_func(images_folder, height, width, start_index=0, size_lim
     image_size_list = []
 
     print(batch_filenames)
-    print("batch size: %s" % str(len(batch_filenames)))
+    print("size: %s" % str(len(batch_filenames)))
 
     for image_name in batch_filenames:
         image_filepath = images_folder + '/' + image_name
@@ -98,7 +100,9 @@ def yolov3_vision_preprocess_func(images_folder, height, width, start_index=0, s
 
 
     image_names = os.listdir(images_folder)
-    if size_limit > 0 and len(image_names) >= size_limit:
+    if start_index >= len(image_names):
+        return np.asanyarray([]), np.asanyarray([]), np.asanyarray([])
+    elif size_limit > 0 and len(image_names) >= size_limit:
         end_index = start_index + size_limit
         if end_index > len(image_names):
             end_index = len(image_names)
@@ -112,7 +116,7 @@ def yolov3_vision_preprocess_func(images_folder, height, width, start_index=0, s
     image_size_list = []
 
     print(batch_filenames)
-    print("batch size: %s" % str(len(batch_filenames)))
+    print("size: %s" % str(len(batch_filenames)))
 
     for image_name in batch_filenames:
         image_filepath = images_folder + '/' + image_name

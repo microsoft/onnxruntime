@@ -10,14 +10,14 @@ def get_prediction_evaluation(model_path, validation_dataset, providers):
     results = []
     for i in range(0, len(image_list), stride):
         print("Total %s images\nStart to process from %s with stride %s ..." % (str(len(image_list)), str(i), str(stride)))
-        dr = YoloV3DataReader(validation_dataset, augmented_model_path=model_path, start_index=i, size_limit=stride, is_evaluation=True)
-        evaluator = YoloV3Evaluator(model_path, dr, providers=providers)
+        # dr = YoloV3DataReader(validation_dataset, model_path=model_path, start_index=i, size_limit=stride, is_evaluation=True)
+        # evaluator = YoloV3Evaluator(model_path, dr, providers=providers)
 
-        # dr = YoloV3VisionDataReader(validation_dataset, width=512, height=288, augmented_model_path=model_path, start_index=i, size_limit=stride, is_evaluation=True)
+        # dr = YoloV3VisionDataReader(validation_dataset, width=512, height=288, model_path=model_path, start_index=i, size_limit=stride, is_evaluation=True)
         # evaluator = YoloV3VisionEvaluator(model_path, dr, width=512, height=288, providers=providers)
 
-        # dr = YoloV3VisionDataReader(validation_dataset, width=608, height=384, augmented_model_path=model_path, start_index=i, size_limit=stride, is_evaluation=True)
-        # evaluator = YoloV3VisionEvaluator(model_path, dr, width=608, height=384, providers=providers)
+        dr = YoloV3VisionDataReader(validation_dataset, width=608, height=384, model_path=model_path, start_index=i, size_limit=stride, is_evaluation=True)
+        evaluator = YoloV3VisionEvaluator(model_path, dr, width=608, height=384, providers=providers)
 
         evaluator.predict()
         results += evaluator.get_result()
@@ -32,9 +32,10 @@ def get_prediction_evaluation(model_path, validation_dataset, providers):
 
 
 def get_calibration_table(model_path, augmented_model_path, calibration_dataset):
-    data_reader = YoloV3DataReader(calibration_dataset, augmented_model_path=augmented_model_path)
-    # data_reader = YoloV3VisionDataReader(calibration_dataset, augmented_model_path=augmented_model_path)
-    generate_calibration_table(model_path, augmented_model_path, data_reader, calibration_dataset=calibration_dataset)
+    # data_reader = YoloV3DataReader(calibration_dataset, model_path=augmented_model_path)
+    # data_reader = YoloV3VisionDataReader(calibration_dataset, width=512, height=288, model_path=augmented_model_path)
+    data_reader = YoloV3VisionDataReader(calibration_dataset, width=608, height=384, model_path=augmented_model_path)
+    generate_calibration_table(model_path, augmented_model_path, data_reader, calibration_dataset=calibration_dataset, stride=1200, batch_size=20)
 
 
 if __name__ == '__main__':
@@ -45,9 +46,10 @@ if __name__ == '__main__':
     augmented_model_path = 'augmented_model.onnx'
     # calibration_dataset = './val2017'
     calibration_dataset = './test2017'
+    # calibration_dataset = './test2017short'
     # validation_dataset = './val2017'
     validation_dataset = './downloaded_images'
 
-    # get_calibration_table(model_path, augmented_model_path, calibration_dataset)
-    get_prediction_evaluation(model_path, validation_dataset, ["CUDAExecutionProvider"])
+    get_calibration_table(model_path, augmented_model_path, calibration_dataset)
+    # get_prediction_evaluation(model_path, validation_dataset, ["TensorrtExecutionProvider"])
 
