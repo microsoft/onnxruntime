@@ -321,8 +321,9 @@ static void TestAllreduceOptimizerGraphBuilder(OptimizerGraphConfig config, Grap
 
 #ifdef USE_MPI
 static void TestAdasumOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& graph) {
+  std::unordered_map<std::string, std::string> updated_weight_names_map;
   AdasumOptimizerGraphBuilder optimizer_graph_builder(
-      GetOptimizerBuilderRegistry(), config, GetOptInfoMap());
+      GetOptimizerBuilderRegistry(), config, GetOptInfoMap(), updated_weight_names_map);
 
   OptimizerOutputKeyMap<std::string> opt_graph_outputs;
   std::unordered_set<std::string> opt_initializer_names;
@@ -351,7 +352,7 @@ static void TestAdasumOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& 
   ASSERT_GT(GetOpCount(op_counts, k_inplace_accumulator_op_name), 0);
 
   // verify optimizers exist
-  ASSERT_EQ(GetOpCount(op_counts, k_optimizer_op_name), k_weight_names.size());
+  ASSERT_EQ(GetOpCount(op_counts, k_adam_optimizer_op_name), k_weight_names.size());
 }
 #endif
 
