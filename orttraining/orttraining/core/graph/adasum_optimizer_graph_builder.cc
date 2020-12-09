@@ -124,12 +124,11 @@ static Status AddNcclAllReduceForGradientsWithGroups(
 
     allreduce_outputs[i] = ArgDef(gradient_argdefs[i].name + "_AllReduce_Out", allreduced_gradient_type_proto);
   }
->>>>>>> prepare for merge
-
-                                  view_inputs,
-                                  allreduce_outputs,
-                                  NodeAttributes(),
-                                  "AllReduceOutputView")});
+  graph_defs.AddNodeDefs({NodeDef(OpDef{"View", kMSDomain, 1},
+                                    view_inputs,
+                                    allreduce_outputs,
+                                    NodeAttributes(),
+                                    "AllReduceOutputView")});
 
   gradient_argdefs = allreduce_outputs;
   return Status::OK();

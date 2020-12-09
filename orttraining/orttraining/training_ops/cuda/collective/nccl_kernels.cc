@@ -23,7 +23,7 @@ Status NcclAllReduce::ComputeInternal(OpKernelContext* context) const {
   const Tensor* last_tensor = context->Input<Tensor>(context->InputCount() - 1);
   int8_t* end_address = (int8_t*)last_tensor->DataRaw() + last_tensor->SizeInBytes();
   size_t num_bytes = end_address - (int8_t*)input_data;
-  size_t count = num_bytes / onnx_type->Size();
+  size_t input_count = num_bytes / onnx_type->Size();
   ORT_ENFORCE(num_bytes % onnx_type->Size() == 0);
 
   for (int i = 0; i < context->InputCount(); i++) {
