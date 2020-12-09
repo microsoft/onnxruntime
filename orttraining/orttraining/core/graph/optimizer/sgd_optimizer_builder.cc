@@ -7,35 +7,14 @@
 namespace onnxruntime {
 namespace training {
 Status SGDOptimizerBuilder::Build(
-    const std::vector<ArgDef>& weight_argdefs,
-    const std::vector<ArgDef>& gradient_argdefs,
-    const ArgDef* gradient_norm_argdef,
-    const ArgDef* gradient_norm_finite_argdef,
-    const std::vector<OptimizerNodeConfig>& opt_configs,
-    GraphAugmenter::GraphDefs& graph_defs,
-    std::vector<ONNX_NAMESPACE::TensorProto>& new_external_initializers,
-    std::vector<ArgDef>& output_weight_argdefs,
-    std::vector<ArgDef>& output_gradient_argdefs) const {
-  return Build(weight_argdefs, gradient_argdefs,
-        gradient_norm_argdef, gradient_norm_finite_argdef,
-        opt_configs, graph_defs,
-        new_external_initializers, output_weight_argdefs,
-        output_gradient_argdefs,
-        // gradient clipping is disabled by default for SGD.
-        false /*enable_grad_clipping*/);
-}
-
-Status SGDOptimizerBuilder::Build(
-    const std::vector<ArgDef>& weight_argdefs,
-    const std::vector<ArgDef>& gradient_argdefs,
-    const ArgDef* /* gradient_norm_argdef */,
-    const ArgDef* /* gradient_norm_finite_argdef */,
-    const std::vector<OptimizerNodeConfig>& opt_configs,
+    const OptimizerBuilderConfig& config,
     GraphAugmenter::GraphDefs& graph_defs,
     std::vector<TensorProto>& /* new_external_initializers */,
     std::vector<ArgDef>& output_weight_argdefs,
-    std::vector<ArgDef>& output_gradient_argdefs,
-    bool /* enable_grad_clipping */) const {
+    std::vector<ArgDef>& output_gradient_argdefs) const {
+  const auto& weight_argdefs = config.weight_argdefs;
+  const auto& gradient_argdefs = config.gradient_argdefs;
+  const auto& opt_configs = config.opt_configs;
 
   for (size_t i = 0; i < weight_argdefs.size(); ++i) {
     const std::string& weight_name = weight_argdefs[i].name;
