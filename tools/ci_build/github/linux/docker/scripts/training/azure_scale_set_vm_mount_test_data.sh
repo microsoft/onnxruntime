@@ -2,6 +2,10 @@
 if [ -d "/bert_data" ]; then
 sudo umount /bert_data
 fi
+if [ -d "/bert_data" ]; then
+sudo rm -rf /bert_data
+fi
+
 sudo mkdir /bert_data
 
 if [ ! -d "/etc/smbcredentials" ]; then
