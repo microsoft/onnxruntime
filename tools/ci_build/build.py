@@ -13,7 +13,7 @@ import hashlib
 import platform
 from logger import get_logger
 from amd_hipify import amd_hipify
-from distutils.version import StrictVersion
+from distutils.version import LooseVersion
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
@@ -458,6 +458,11 @@ def parse_arguments():
 
     parser.add_argument("--use_rocm", action='store_true', help="Build with ROCm")
     parser.add_argument("--rocm_home", help="Path to ROCm installation dir")
+
+    # Code coverage
+    parser.add_argument("--code_coverage", action='store_true',
+                        help="Generate code coverage when targetting Android (only).")
+
     return parser.parse_args()
 
 
@@ -765,6 +770,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "ON" if args.build_micro_benchmarks else "OFF"),
         "-Donnxruntime_USE_ROCM=" + ("ON" if args.use_rocm else "OFF"),
         "-Donnxruntime_ROCM_HOME=" + (rocm_home if args.use_rocm else ""),
+        "-DOnnxruntime_GCOV_COVERAGE=" + ("ON" if args.code_coverage else "OFF"),
     ]
 
     if acl_home and os.path.exists(acl_home):
@@ -852,7 +858,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         cmake_args += ["-DCMAKE_OSX_ARCHITECTURES=" + args.osx_arch]
         # since cmake 3.19, it uses the xcode latest buildsystem, which is not supported by this project.
         cmake_verstr = subprocess.check_output(['cmake', '--version']).decode('utf-8').split()[2]
-        if args.use_xcode and StrictVersion(cmake_verstr) >= StrictVersion('3.19.0'):
+        if args.use_xcode and LooseVersion(cmake_verstr) >= LooseVersion('3.19.0'):
             cmake_args += ["-T", "buildsystem=1"]
 
     if args.ios:
@@ -1178,6 +1184,19 @@ def adb_shell(*args, **kwargs):
 
 
 def run_android_tests(args, source_dir, config, cwd):
+
+    def run_adb_shell(cmd):
+        # GCOV_PREFIX_STRIP specifies the depth of the directory hierarchy to stip and
+        # GCOV_PREFIX specifies the root directory
+        # for creating the runtime code coverage files.'
+        nonlocal cwd
+        if args.code_coverage:
+            adb_shell(
+                'cd /data/local/tmp && GCOV_PREFIX=/data/local/tmp \
+                GCOV_PREFIX_STRIP={} {}'.format(cwd.count(os.sep) + 1, cmd))
+        else:
+            adb_shell('cd /data/local/tmp && ' + cmd)
+
     if args.android_abi == 'x86_64':
         run_subprocess([os.path.join(
             source_dir, 'tools', 'ci_build', 'github', 'android',
@@ -1188,7 +1207,7 @@ def run_android_tests(args, source_dir, config, cwd):
             '/data/local/tmp/', cwd=cwd)
         adb_push('onnxruntime_test_all', '/data/local/tmp/', cwd=cwd)
         adb_push('onnx_test_runner', '/data/local/tmp/', cwd=cwd)
-        adb_shell('cd /data/local/tmp && /data/local/tmp/onnxruntime_test_all')
+        run_adb_shell('/data/local/tmp/onnxruntime_test_all')
         if args.use_nnapi:
             adb_shell('cd /data/local/tmp && /data/local/tmp/onnx_test_runner -e nnapi /data/local/tmp/test')
         else:
@@ -1197,8 +1216,7 @@ def run_android_tests(args, source_dir, config, cwd):
         if args.build_shared_lib:
             adb_push('libonnxruntime.so', '/data/local/tmp/', cwd=cwd)
             adb_push('onnxruntime_shared_lib_test', '/data/local/tmp/', cwd=cwd)
-            adb_shell(
-                'cd /data/local/tmp && ' +
+            run_adb_shell(
                 'export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/data/local/tmp && ' +
                 '/data/local/tmp/onnxruntime_shared_lib_test')
     elif args.android_abi == 'arm64-v8a':
@@ -1278,6 +1296,8 @@ def run_training_python_frontend_tests(cwd):
     # run_subprocess([sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_orttrainer_frontend.py'], cwd=cwd)
 
     run_subprocess([sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_orttrainer_bert_toy_onnx.py'], cwd=cwd)
+
+    run_subprocess([sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_checkpoint_storage.py'], cwd=cwd)
 
 
 def run_training_python_frontend_e2e_tests(cwd):
@@ -1397,6 +1417,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
     for config in configs:
         log.info("Running tests for %s configuration", config)
         cwd = get_config_build_dir(build_dir, config)
+        cwd = os.path.abspath(cwd)
 
         # TODO: temporarily disable this test to restore pipeline health. This test fails due to
         # an OOM regression. Invetigation undergoing.
@@ -1457,7 +1478,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
             # Disable python tests in a reduced build as we don't know which ops have been included and which
             # models can run
-            if args.include_ops_by_model or args.include_ops_by_config or args.minimal_build:
+            if args.include_ops_by_model or args.include_ops_by_config or args.minimal_build != 'off':
                 return
 
             if is_windows():
@@ -1702,8 +1723,19 @@ def run_csharp_tests(source_dir, build_dir, use_cuda, use_openvino, use_tensorrt
     run_subprocess(cmd_args, cwd=csharp_source_dir)
 
 
+def is_cross_compiling_on_apple(args):
+    if not is_macOS():
+        return False
+    if args.ios:
+        return True
+    if args.osx_arch != platform.machine():
+        return True
+    return False
+
+
 def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
-    if (args.arm or args.arm64 or args.enable_windows_store) and (not is_windows() and not args.ios):
+    if (args.arm or args.arm64 or args.enable_windows_store) and \
+            not (is_windows() or is_cross_compiling_on_apple(args)):
         raise BuildError(
             'Currently only support building protoc for Windows host while '
             'cross-compiling for ARM/ARM64/Store and linux cross-compiling iOS')
@@ -1862,6 +1894,9 @@ def main():
         if args.nnapi_min_api < 27:
             raise BuildError("--nnapi_min_api should be 27+")
 
+    if args.code_coverage and not args.android:
+        raise BuildError("Using --code_coverage requires --android")
+
     # Disabling unit tests for VAD-F as FPGA only supports
     # models with NCHW layout
     if args.use_openvino == "VAD-F_FP32":
@@ -1932,7 +1967,7 @@ def main():
                 # Cannot test on host build machine for cross-compiled
                 # builds (Override any user-defined behaviour for test if any)
                 if args.test:
-                    log.info(
+                    log.warning(
                         "Cannot test on host build machine for cross-compiled "
                         "ARM(64) builds. Will skip test running after build.")
                     args.test = False
@@ -1966,10 +2001,18 @@ def main():
                 cmake_extra_args.append('-DCMAKE_USER_MAKE_RULES_OVERRIDE=wcos_rules_override.cmake')
         elif args.cmake_generator is not None and not (is_macOS() and args.use_xcode):
             cmake_extra_args += ['-G', args.cmake_generator]
-        elif is_macOS() and args.use_xcode:
-            cmake_extra_args += ['-G', 'Xcode']
+        elif is_macOS():
+            if args.use_xcode:
+                cmake_extra_args += ['-G', 'Xcode']
+            if not args.ios and not args.android and \
+                    args.osx_arch == 'arm64' and platform.machine() == 'x86_64':
+                if args.test:
+                    log.warning(
+                        "Cannot test ARM64 build on X86_64. Will skip test running after build.")
+                    args.test = False
 
-        if (args.android or args.ios or args.enable_windows_store) and args.path_to_protoc_exe is None:
+        if (args.android or args.ios or args.enable_windows_store
+                or is_cross_compiling_on_apple(args)) and args.path_to_protoc_exe is None:
             # Cross-compiling for Android and iOS
             path_to_protoc_exe = build_protoc_for_host(
                 cmake_path, source_dir, build_dir, args)

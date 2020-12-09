@@ -43,11 +43,14 @@ class OptimizerGraphBuilder {
    * @param opt_graph_config The overall optimizer configuration values.
    * @param weight_names_to_opt_configs Mapping from weight name to per optimizer
    *        configuration values.
+   * @param updated_weight_names_map Mapping from original weight name to 
+   *        updated weight name.
    */
   OptimizerGraphBuilder(
       const OptimizerBuilderRegistry& opt_builder_registry,
       const OptimizerGraphConfig& opt_graph_config,
-      const std::unordered_map<std::string, OptimizerNodeConfig>& weight_names_to_opt_configs);
+      const std::unordered_map<std::string, OptimizerNodeConfig>& weight_names_to_opt_configs,
+      std::unordered_map<std::string, std::string>& updated_weight_names_map);
 
   virtual ~OptimizerGraphBuilder() {}
 
@@ -141,6 +144,7 @@ class OptimizerGraphBuilder {
   std::vector<std::string> weight_names_;
   std::vector<std::string> gradient_names_;
   std::vector<OptimizerNodeConfig> opt_configs_;
+  std::unordered_map<std::string, std::string>& updated_weight_names_map_;
 };
 
 }  // namespace training

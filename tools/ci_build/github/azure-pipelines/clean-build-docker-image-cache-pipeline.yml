@@ -2,11 +2,15 @@ parameters:
 - name: DryRun
   type: boolean
   default: false
-  displayName: "Whether to do a dry-run and not actually clean up the cache."
-- name: CacheLifetimeDays
+  displayName: "Do a dry-run and do not remove any images"
+- name: CacheHistoryDays
   type: number
   default: 7
-  displayName: "The lifetime of an unused image in the cache, in days."
+  displayName: "The length of the cache history in days"
+- name: CacheMinAccessCount
+  type: number
+  default: 5
+  displayName: "The minimum access count over the cache history"
 
 variables:
   ${{ if eq(parameters.DryRun, true) }}:
@@ -32,4 +36,5 @@ jobs:
           --container-registry $(buildcache-container-registry) \
           --log-storage-account $(buildcache-log-storage-account) \
           --log-storage-account-container $(buildcache-log-storage-account-container) \
-          --cache-lifetime-days ${{ parameters.CacheLifetimeDays }}
+          --cache-history-days ${{ parameters.CacheHistoryDays }} \
+          --cache-min-access-count ${{ parameters.CacheMinAccessCount }}

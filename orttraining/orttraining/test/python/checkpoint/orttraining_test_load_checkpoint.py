@@ -21,9 +21,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import onnxruntime
 from onnxruntime.training import checkpoint
-from _test_helpers import distributed_setup, create_orttrainer_and_load_checkpoint, split_state_dict, aggregate_states
+from _test_helpers import distributed_setup, create_orttrainer_and_load_checkpoint, split_state_dict, aggregate_states, global_fp16_fp32_atol
 
-global_fp16_fp32_atol = 1e-3
 
 def test_load_from_single_node_full_precision_into_single_node_full_precision(device = 'cuda', checkpoint_dir = 'checkpoint_dir/single_node/full_precision/'):
     opts = {'device' : {'id' : device},
@@ -258,7 +257,7 @@ def test_load_from_distributed_zero_full_precision_into_single_node_full_precisi
     for key, value in state_dict_pytorch.items():
         assert_allclose(value, agg_state_dict[key])
 
-def test_load_from_distributed_zero_mixed_precision_into_single_node_full_precision(device = 'cuda', checkpoint_dir = 'checkpoint_dir/distributed_zero/mixed_precision/'):
+def test_load_from_distributed_zero_mixed_precision_into_single_node_full_precision(device = 'cuda', checkpoint_dir = 'checkpoint_dir/distributed_zero/mixed_precision/lamb'):
     opts = {'device' : {'id' : device},
         'debug' : {'deterministic_compute': True}}
     
@@ -295,7 +294,7 @@ def test_load_from_distributed_zero_mixed_precision_into_single_node_full_precis
     for key, value in state_dict_pytorch.items():
         assert_allclose(value, agg_state_dict[key])
 
-def test_load_from_distributed_zero_mixed_precision_into_single_node_mixed_precision(device = 'cuda', checkpoint_dir = 'checkpoint_dir/distributed_zero/mixed_precision/'):
+def test_load_from_distributed_zero_mixed_precision_into_single_node_mixed_precision(device = 'cuda', checkpoint_dir = 'checkpoint_dir/distributed_zero/mixed_precision/lamb'):
     opts = {
                 'device' : {'id' : device},
                 'mixed_precision':
@@ -329,7 +328,7 @@ def test_load_from_distributed_zero_mixed_precision_into_single_node_mixed_preci
     for key, value in optimizer_states.items():
         assert_allclose(value.reshape(state_dict_post_checkpoint['optimizer'][key].size()), state_dict_post_checkpoint['optimizer'][key])
 
-def test_load_from_distributed_zero_full_precision_into_single_node_mixed_precision(device = 'cuda', checkpoint_dir = 'checkpoint_dir/distributed_zero/full_precision/'):
+def test_load_from_distributed_zero_full_precision_into_single_node_mixed_precision(device = 'cuda', checkpoint_dir = 'checkpoint_dir/distributed_zero/full_precision/lamb/'):
     opts = {
                 'device' : {'id' : device},
                 'mixed_precision':
@@ -624,7 +623,7 @@ def test_load_from_data_parallelism_full_precision_into_data_parallelism_mixed_p
             assert_allclose(value, state_dict_pre_checkpoint[key])
 
 @distributed_setup
-def test_load_from_distributed_zero_full_precision_into_data_parallelism_full_precision(world_rank, world_size, device, checkpoint_dir = 'checkpoint_dir/distributed_zero/full_precision/'):
+def test_load_from_distributed_zero_full_precision_into_data_parallelism_full_precision(world_rank, world_size, device, checkpoint_dir = 'checkpoint_dir/distributed_zero/full_precision/lamb/'):
     opts = {
                 'device' : {'id' : device},
                 'distributed' :
@@ -670,7 +669,7 @@ def test_load_from_distributed_zero_full_precision_into_data_parallelism_full_pr
         assert_allclose(value, agg_state_dict[key])
 
 @distributed_setup
-def test_load_from_distributed_zero_mixed_precision_into_data_parallelism_full_precision(world_rank, world_size, device, checkpoint_dir = 'checkpoint_dir/distributed_zero/mixed_precision/'):
+def test_load_from_distributed_zero_mixed_precision_into_data_parallelism_full_precision(world_rank, world_size, device, checkpoint_dir = 'checkpoint_dir/distributed_zero/mixed_precision/lamb'):
     opts = {
                 'device' : {'id' : device},
                 'distributed' :
@@ -716,7 +715,7 @@ def test_load_from_distributed_zero_mixed_precision_into_data_parallelism_full_p
         assert_allclose(value, agg_state_dict[key])
 
 @distributed_setup
-def test_load_from_distributed_zero_mixed_precision_into_data_parallelism_mixed_precision(world_rank, world_size, device, checkpoint_dir = 'checkpoint_dir/distributed_zero/mixed_precision/'):
+def test_load_from_distributed_zero_mixed_precision_into_data_parallelism_mixed_precision(world_rank, world_size, device, checkpoint_dir = 'checkpoint_dir/distributed_zero/mixed_precision/lamb'):
     opts = {
                 'device' : {'id' : device},
                 'mixed_precision':
@@ -757,7 +756,7 @@ def test_load_from_distributed_zero_mixed_precision_into_data_parallelism_mixed_
         assert_allclose(value.reshape(state_dict_post_checkpoint['optimizer'][key].size()), state_dict_post_checkpoint['optimizer'][key])
 
 @distributed_setup
-def test_load_from_distributed_zero_full_precision_into_data_parallelism_mixed_precision(world_rank, world_size, device, checkpoint_dir = 'checkpoint_dir/distributed_zero/full_precision/'):
+def test_load_from_distributed_zero_full_precision_into_data_parallelism_mixed_precision(world_rank, world_size, device, checkpoint_dir = 'checkpoint_dir/distributed_zero/full_precision/lamb/'):
     opts = {
                 'device' : {'id' : device},
                 'mixed_precision':
@@ -1270,7 +1269,7 @@ def test_load_from_data_parallelism_full_precision_into_distributed_zero_mixed_p
     os.remove(os.path.join(checkpoint_dir, 'distributed_state_'+str(world_rank)+'.pkl'))
 
 @distributed_setup
-def test_load_from_distributed_zero_full_precision_into_distributed_zero_full_precision(world_rank, world_size, device, checkpoint_dir = 'checkpoint_dir/distributed_zero/full_precision/'):
+def test_load_from_distributed_zero_full_precision_into_distributed_zero_full_precision(world_rank, world_size, device, checkpoint_dir = 'checkpoint_dir/distributed_zero/full_precision/lamb/'):
     opts = {
                 'device' : {'id' : device},
                 'distributed' :
@@ -1305,7 +1304,7 @@ def test_load_from_distributed_zero_full_precision_into_distributed_zero_full_pr
         assert_allclose(value, state_dict_post_checkpoint['optimizer'][key])
 
 @distributed_setup
-def test_load_from_distributed_zero_mixed_precision_into_distributed_zero_full_precision(world_rank, world_size, device, checkpoint_dir = 'checkpoint_dir/distributed_zero/mixed_precision/'):
+def test_load_from_distributed_zero_mixed_precision_into_distributed_zero_full_precision(world_rank, world_size, device, checkpoint_dir = 'checkpoint_dir/distributed_zero/mixed_precision/lamb'):
     opts = {
                 'device' : {'id' : device},
                 'distributed' :
@@ -1345,7 +1344,7 @@ def test_load_from_distributed_zero_mixed_precision_into_distributed_zero_full_p
         assert_allclose(value, state_dict_post_checkpoint['optimizer'][key])
 
 @distributed_setup
-def test_load_from_distributed_zero_mixed_precision_into_distributed_zero_mixed_precision(world_rank, world_size, device, checkpoint_dir = 'checkpoint_dir/distributed_zero/mixed_precision/'):
+def test_load_from_distributed_zero_mixed_precision_into_distributed_zero_mixed_precision(world_rank, world_size, device, checkpoint_dir = 'checkpoint_dir/distributed_zero/mixed_precision/lamb'):
     opts = {
                 'device' : {'id' : device},
                 'mixed_precision':
@@ -1384,7 +1383,7 @@ def test_load_from_distributed_zero_mixed_precision_into_distributed_zero_mixed_
         assert_allclose(value, state_dict_post_checkpoint['optimizer'][key])
 
 @distributed_setup
-def test_load_from_distributed_zero_full_precision_into_distributed_zero_mixed_precision(world_rank, world_size, device, checkpoint_dir = 'checkpoint_dir/distributed_zero/full_precision/'):
+def test_load_from_distributed_zero_full_precision_into_distributed_zero_mixed_precision(world_rank, world_size, device, checkpoint_dir = 'checkpoint_dir/distributed_zero/full_precision/lamb/'):
     opts = {
                 'device' : {'id' : device},
                 'mixed_precision':

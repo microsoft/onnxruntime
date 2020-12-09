@@ -7,6 +7,7 @@
 #include "orttraining/training_ops/cuda/math/isfinite.cuh"
 #include "orttraining/training_ops/cuda/optimizer/common.cuh"
 #include "orttraining/training_ops/cuda/optimizer/lamb.h"
+
 namespace onnxruntime {
 namespace cuda {
 template <typename T1, typename T2, typename T3>
@@ -468,6 +469,7 @@ INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(float, float, nv_bfloat16, nv_bfloa
 #endif
 
 template <typename TIn1, typename TIn2, typename TOut1, typename TOut2, typename TBuf>
+__launch_bounds__(ChunkGroup<4>::thread_count_per_block)
 __global__ void LambMultiTensorReductionImpl(ChunkGroup<4> chunk_group) {
   const int group_index = chunk_group.block_index_to_tensor_group_index[blockIdx.x];
   const int tensor_size = chunk_group.tensor_sizes[group_index];
@@ -532,7 +534,7 @@ __global__ void LambMultiTensorReductionImpl(ChunkGroup<4> chunk_group) {
     atomic_add(w_norm, TOut1(w_shared_memory_[0]));
     atomic_add(d_norm, TOut2(d_shared_memory_[0]));
   }
-};
+}
 
 template <typename TIn1, typename TIn2, typename TOut1, typename TOut2, typename TBuf>
 void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()(ChunkGroup<4> chunk_group) {

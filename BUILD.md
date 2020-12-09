@@ -60,24 +60,23 @@ Open Developer Command Prompt for Visual Studio version you are going to use. Th
 The default Windows CMake Generator is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to `.\build.bat`
 
 
-#### Linux/macOS
+#### Linux
 ```
 ./build.sh --config RelWithDebInfo --build_shared_lib --parallel
 ```
+
+
 ##### macOS
 By default, ORT is configured to be built for a minimum target macOS version of 10.12.
 The shared library in the release Nuget(s) and the Python wheel may be installed on macOS versions of 10.12+.
 
-If you would like to use [Xcode](https://developer.apple.com/xcode/) to build the onnxruntime for x86_64 macOS, use
-* With Xcode 11
+If you would like to use [Xcode](https://developer.apple.com/xcode/) to build the onnxruntime for x86_64 macOS, please add the --user_xcode argument in the command line
    ```
    ./build.sh --config RelWithDebInfo --build_shared_lib --parallel --use_xcode
    ```
-* With Xcode 12
-   ```
-   ./build.sh --config RelWithDebInfo --build_shared_lib --parallel --use_xcode \
-              --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=x86_64
-   ```
+While without this flag, the cmake build generator will be Unix makefile by default.
+Also, if you want to try cross compiling for Apple Silicon in an Intel-based MacOS machine, please add the argument --osx_arch arm64 with a cmake > 3.19, however the unit tests will be skipped due to the incompatible CPU instruction set.
+
 
 #### Notes
 
@@ -1176,7 +1175,8 @@ Dockerfile instructions are available [here](./dockerfiles#migraphx)
 ***
 
 # Training
-## Prerequisites
+## CUDA
+### Prerequisites
 
 The default NVIDIA GPU build requires CUDA runtime libraries installed on the system:
 
@@ -1188,7 +1188,7 @@ The default NVIDIA GPU build requires CUDA runtime libraries installed on the sy
 
 These dependency versions should reflect what is in [Dockerfile.training](./dockerfiles/Dockerfile.training).
 
-## Build instructions
+### Build instructions
 
 1. Checkout this code repo with `git clone https://github.com/microsoft/onnxruntime`
 
@@ -1207,5 +1207,27 @@ These dependency versions should reflect what is in [Dockerfile.training](./dock
 
    * Change to the ONNX Runtime repo base folder: `cd onnxruntime`
    * Run `./build.sh --enable_training --use_cuda --config=RelWithDebInfo --build_wheel`
+
+    This produces the .whl file in `./build/Linux/RelWithDebInfo/dist` for ONNX Runtime Training.
+
+## ROCM
+### Prerequisites
+
+The default AMD GPU build requires ROCM software toolkit installed on the system:
+
+* [ROCM](https://rocmdocs.amd.com/en/latest/)
+* [OpenMPI](https://www.open-mpi.org/) 4.0.4
+  * See [install_openmpi.sh](./tools/ci_build/github/linux/docker/scripts/install_openmpi.sh)
+
+These dependency versions should reflect what is in [Dockerfile.training](./dockerfiles/Dockerfile.training).
+
+### Build instructions
+
+1. Checkout this code repo with `git clone https://github.com/microsoft/onnxruntime`
+
+2. Create the ONNX Runtime wheel
+
+   * Change to the ONNX Runtime repo base folder: `cd onnxruntime`
+   * Run `./build.sh --config RelWithDebInfo --enable_training --build_wheel --use_rocm --rocm_home /opt/rocm --nccl_home /opt/rocm --mpi_home <location for openmpi>`
 
     This produces the .whl file in `./build/Linux/RelWithDebInfo/dist` for ONNX Runtime Training.
