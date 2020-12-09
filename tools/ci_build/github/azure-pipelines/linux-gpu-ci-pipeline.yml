@@ -28,8 +28,8 @@ jobs:
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
-          onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntimegpubuild:chq \
-            /opt/python/cp37-cp37m/bin/python /onnxruntime_src/tools/ci_build/build.py \
+          onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntimegpubuild:ch14 \
+            /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build --cmake_generator Ninja \
               --config Release \
               --skip_submodule_sync \

@@ -343,7 +343,7 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "bc8ce45b35ade9b8f08d88d4d9fdfd12b4f6f310",
+               "commitHash": "f97fd8664fa824e5d081d776cf4a811dbf09bca4",
                "repositoryUrl": "https://github.com/pypa/manylinux"
             },
             "comments": "For building our CI build docker image"
@@ -363,20 +363,20 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "9cf6752276e6fcfd0c23fdb064ad27f448aaaf75",
+               "commitHash": "439c93d51f45c50541fc755b597725168ecd939a",
                "repositoryUrl": "https://github.com/python/cpython"
             },
-            "comments": "Python 3.9.0"
+            "comments": "Python 3.9.0rc1"
          }
       },
       {
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "db455296be5f792b8c12b7cd7f3962b52e4f44ee",
+               "commitHash": "580fbb018fd0844806119614d752b41fc69660f9",
                "repositoryUrl": "https://github.com/python/cpython"
             },
-            "comments": "Python 3.8.6"
+            "comments": "Python 3.8.5"
          }
       },
       {
@@ -403,10 +403,10 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "426b022776672fdf3d71ddd98d89af341c88080f",
+               "commitHash": "e5f6aba872e66bfd86eb592214696a519cded197",
                "repositoryUrl": "https://github.com/python/cpython"
             },
-            "comments": "Python 3.5.10"
+            "comments": "Python 3.5.9"
          }
       },
       {
