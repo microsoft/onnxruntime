@@ -357,7 +357,6 @@ static bool IsUnsupportedOpMode(const Provider_Node* node, const Provider_GraphV
   } else if (optype == "NonMaxSuppression") {
     auto graph_outputs = graph_viewer.GetOutputs();
     const auto& output = node->OutputDefs()[0];
-    std::cout << "output " << output->Name() << "\n";
     auto output_it = find(graph_outputs.begin(), graph_outputs.end(), output);
     if (output_it != graph_outputs.end())
       return true;
@@ -392,9 +391,11 @@ static bool IsUnsupportedOpMode(const Provider_Node* node, const Provider_GraphV
     auto graph_inputs = graph_viewer.GetInputs();
     bool cond_for_slice = false;
     
-    const auto& output = node->OutputDefs()[0];
-    if (output->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16)
-      return true;
+    if(device_id.find("MYRIAD") != std::string::npos) {
+      const auto& output = node->OutputDefs()[0];
+      if (output->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64)
+        return true;
+    }
 
     auto it = find(graph_inputs.begin(), graph_inputs.end(), data_arg);
     if (it != graph_inputs.end()) {
@@ -863,7 +864,6 @@ GetCapability_2021_2(const Provider_GraphViewer& graph_viewer, std::string devic
     AppendClusterToSubGraph(graph_viewer.GetNodesInTopologicalOrder(), inputs, outputs, result);
 
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model is fully supported by OpenVINO";
-    std::cout << "Model is fully supported on OpenVINO" << std::endl;
     openvino_ep::BackendManager::GetGlobalContext().is_wholly_supported_graph = true;
 
   } else {  // unsupported_nodes_idx.empty()
