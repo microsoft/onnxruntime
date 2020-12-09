@@ -244,12 +244,22 @@ Status OptimizerGraphBuilder::BuildOptimizerNode(
     std::vector<TensorProto>& new_initializers,
     std::vector<ArgDef>& output_weight_argdefs,
     std::vector<ArgDef>& output_gradient_argdefs) {
+  OptimizerBuilderConfig config;
+  config.weight_argdefs = weight_argdefs;
+  config.gradient_argdefs = gradient_argdefs;
+  if (global_gradient_norm_argdef != nullptr) {
+    config.gradient_norm_argdef = *global_gradient_norm_argdef;
+  }
+  if (global_gradient_norm_finite_argdef != nullptr) {
+    config.gradient_norm_finite_argdef = *global_gradient_norm_finite_argdef;
+  }
+  config.opt_configs = opt_configs;
+  config.enable_grad_clipping = opt_graph_config_.enable_grad_norm_clip;
+  config.shared_optimizer_states = opt_graph_config_.shared_optimizer_states;
   ORT_RETURN_IF_ERROR(opt_builder->Build(
-      weight_argdefs, gradient_argdefs,
-      global_gradient_norm_argdef, global_gradient_norm_finite_argdef,
-      opt_configs, graph_defs,
+      config, graph_defs,
       new_initializers,
-      output_weight_argdefs, output_gradient_argdefs, opt_graph_config_.enable_grad_norm_clip));
+      output_weight_argdefs, output_gradient_argdefs));
 
   return Status::OK();
 }
@@ -482,10 +492,10 @@ Status OptimizerGraphBuilder::BuildInternal(
   ArgDef global_grad_norm_finite_argdef;
 
   if (should_add_gradient_norm) {
-      ORT_RETURN_IF_ERROR(AddGradientNorm(
-          nodearg_name_generator, gradient_argdefs, graph_defs, global_grad_norm_argdef));
-      optimizer_graph_outputs[OptimizerOutputKey::GlobalGradientNorm] = global_grad_norm_argdef.name;
-    }
+    ORT_RETURN_IF_ERROR(AddGradientNorm(
+        nodearg_name_generator, gradient_argdefs, graph_defs, global_grad_norm_argdef));
+    optimizer_graph_outputs[OptimizerOutputKey::GlobalGradientNorm] = global_grad_norm_argdef.name;
+  }
 
   if (should_add_gradient_finite_check) {
     ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(

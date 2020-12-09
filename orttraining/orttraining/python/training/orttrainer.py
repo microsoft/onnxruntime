@@ -202,6 +202,7 @@ class ORTTrainer(object):
 
         # TODO: Subject to change after checkpoint redesign
         self._state_dict = {}
+        self._optim_state_dict = {}
 
         self._train_step_info = TrainStepInfo(self.optim_config)
         self._training_session = None
@@ -632,6 +633,8 @@ class ORTTrainer(object):
         ort_parameters.weights_to_train = trainable_params
         ort_parameters.optimizer_attributes_map = optimizer_attributes_map
         ort_parameters.optimizer_int_attributes_map = optimizer_int_attributes_map
+        if bool(self._optim_state_dict):
+            ort_parameters.set_optimizer_initial_state(self._optim_state_dict)
 
         ort_parameters.attn_dropout_recompute = self.options.graph_transformer.attn_dropout_recompute
         ort_parameters.gelu_recompute = self.options.graph_transformer.gelu_recompute
