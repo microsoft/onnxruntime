@@ -319,7 +319,7 @@ static void TestAllreduceOptimizerGraphBuilder(OptimizerGraphConfig config, Grap
 }
 #endif
 
-#ifdef USE_MPI
+#if defined(ORT_USE_NCCL) && defined(USE_MPI)
 static void TestAdasumOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& graph) {
   std::unordered_map<std::string, std::string> updated_weight_names_map;
   AdasumOptimizerGraphBuilder optimizer_graph_builder(
@@ -356,7 +356,7 @@ static void TestAdasumOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& 
 }
 #endif
 
-#if defined(ORT_USE_NCCL) || defined(USE_MPI)
+#if defined(ORT_USE_NCCL) && defined(USE_MPI)
 
 TEST_F(OptimizerGraphBuilderTest, Adasum_NoGradientAccumulation_NoMixedPrecision) {
   OptimizerGraphConfig config;
@@ -398,7 +398,7 @@ TEST_F(OptimizerGraphBuilderTest, Adasum_WithGradientAccumulation_WithMixedPreci
   config.loss_scale_input_name = k_loss_scaling_factor_name;
   TestAdasumOptimizerGraphBuilder(config, graph_);
 }
-#endif //ORT_USE_NCCL || USE_MPI
+#endif //ORT_USE_NCCL && USE_MPI
 
 #ifdef ORT_USE_NCCL
 TEST_F(OptimizerGraphBuilderTest, Allreduce_NoGradientAccumulation_NoMixedPrecision) {
