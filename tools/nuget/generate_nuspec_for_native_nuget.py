@@ -82,7 +82,7 @@ def generate_dependencies(list, package_name, version):
         list.append('<dependencies>')
 
         # Support .Net Core
-        list.append('<group targetFramework="net5.0*">')
+        list.append('<group targetFramework="net5.0">')
         list.append('<dependency id="Microsoft.Windows.CsWinRT"' + ' version="1.1.0"/>')
         list.append('<dependency id="Microsoft.Windows.SDK.Contracts"' + ' version="10.0.19041.1"/>')
         list.append(dml_dependency)
