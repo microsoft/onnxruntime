@@ -223,10 +223,7 @@ struct OrtTensorDimensions : std::vector<int64_t> {
 // Once we use C++17 this could be replaced with std::size
 template <typename T, size_t N>
 constexpr size_t countof(T (&)[N]) { return N; }
-
 void cuda_add(int64_t, float*, const float*, const float*);
-template <typename T>
-void cuda_mul(const T*, const T*, T*, int64_t);
 
 struct MyCustomKernel {
   MyCustomKernel(Ort::CustomOpApi ort, const OrtKernelInfo* /*info*/) : ort_(ort) {
@@ -309,43 +306,51 @@ TEST(CApiTest, custom_op_handler) {
 }
 
 template <typename T>
-void custom_mul(const T* X, const T* Y, T* Z, int64_t size) {
+void cuda_slice(const T*, int64_t, int64_t, T*);
+
+template <typename T>
+void custom_slice(const T* X, int64_t from, int64_t to, T* Y) {
 #ifdef USE_CUDA
-  cuda_mul(X, Y, Z, size);
+  cuda_slice(X, from, to, Y);
 #else
-  for (int64_t i = 0; i < size; i++) {
-    Z[i] = X[i] * Y[i];
+  for (auto i = from; i < to; i++) {
+    Y[i - from] = X[i];
   }
 #endif
 }
 
-struct VariedInputCustomOpKernel {
-  VariedInputCustomOpKernel(Ort::CustomOpApi ort, const OrtKernelInfo* /*info*/) : ort_(ort) {
+//Slice array of floats or doubles between [from, to) and save to output
+struct SliceCustomOpKernel {
+  SliceCustomOpKernel(Ort::CustomOpApi ort, const OrtKernelInfo* /*info*/) : ort_(ort) {
   }
 
   void Compute(OrtKernelContext* context) {
-    // Setup inputs
+    // Setup inputs and outputs
     const OrtValue* input_X = ort_.KernelContext_GetInput(context, 0);
-    const OrtValue* input_Y = ort_.KernelContext_GetInput(context, 1);
+    const OrtValue* input_from = ort_.KernelContext_GetInput(context, 1);
+    const OrtValue* input_to = ort_.KernelContext_GetInput(context, 2);
     OrtTensorTypeAndShapeInfo* input_X_info = ort_.GetTensorTypeAndShape(input_X);
     ONNXTensorElementDataType input_X_type = ort_.GetTensorElementType(input_X_info);
-    OrtTensorDimensions dimensions(ort_, input_X);
-    // Setup output
-    OrtValue* output = ort_.KernelContext_GetOutput(context, 0, dimensions.data(), dimensions.size());
-    OrtTensorTypeAndShapeInfo* output_info = ort_.GetTensorTypeAndShape(output);
-    int64_t size = ort_.GetTensorShapeElementCount(output_info);
-    ort_.ReleaseTensorTypeAndShapeInfo(output_info);
-    // Compute
+#if USE_CUDA
+    int64_t slice_from = 0;
+    int64_t slice_to = 0;
+    cudaMemcpy(&slice_from, ort_.GetTensorData<int64_t>(input_from), sizeof(int64_t), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&slice_to, ort_.GetTensorData<int64_t>(input_to), sizeof(int64_t), cudaMemcpyDeviceToHost);
+#else
+    int64_t slice_from = *ort_.GetTensorData<int64_t>(input_from);
+    int64_t slice_to = *ort_.GetTensorData<int64_t>(input_to);
+#endif
+    std::vector<int64_t> output_dims = {slice_to - slice_from};
+    OrtValue* output = ort_.KernelContext_GetOutput(context, 0, output_dims.data(), output_dims.size());
+    // do slice
     switch (input_X_type) {
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
-        custom_mul(ort_.GetTensorData<float>(input_X),
-                   ort_.GetTensorData<float>(input_Y),
-                   ort_.GetTensorMutableData<float>(output), size);
+        custom_slice(ort_.GetTensorData<float>(input_X), slice_from, slice_to,
+                     ort_.GetTensorMutableData<float>(output));
         break;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
-        custom_mul(ort_.GetTensorData<double>(input_X),
-                   ort_.GetTensorData<double>(input_Y), 
-                   ort_.GetTensorMutableData<double>(output), size);
+        custom_slice(ort_.GetTensorData<double>(input_X), slice_from, slice_to,
+                     ort_.GetTensorMutableData<double>(output));
         break;
       default:
         ORT_THROW("Unsupported input type: ", input_X_type);
@@ -356,43 +361,65 @@ struct VariedInputCustomOpKernel {
   Ort::CustomOpApi ort_;
 };
 
-struct VariedInputCustomOp : Ort::CustomOpBase<VariedInputCustomOp, VariedInputCustomOpKernel> {
-  explicit VariedInputCustomOp(const char* provider) : provider_(provider) {}
-  void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo* info) const { return new MyCustomKernel(api, info); };
-  const char* GetName() const { return "CustomMul"; };
+struct SliceCustomOp : Ort::CustomOpBase<SliceCustomOp, SliceCustomOpKernel> {
+  explicit SliceCustomOp(const char* provider) : provider_(provider) {}
+  void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo* info) const { return new SliceCustomOpKernel(api, info); };
+  const char* GetName() const { return "Slice"; };
 
   const char* GetExecutionProviderType() const { return provider_; };
 
-  size_t GetInputTypeCount() const { return 2; };
-  ONNXTensorElementDataType GetInputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED; };
+  size_t GetInputTypeCount() const { return 3; };
+  ONNXTensorElementDataType GetInputType(size_t index) const {
+    switch (index) {
+      case 0:
+        return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;  // input array of float or double
+        break;
+      case 1:
+        return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;  // slice from
+        break;
+      case 2:
+        return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;  // slice to
+        break;
+      default:
+        ORT_THROW("Invalid input index: ", index);
+    }
+  };
 
   size_t GetOutputTypeCount() const { return 1; };
-  ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED; };
+  ONNXTensorElementDataType GetOutputType(size_t index) const {
+    switch (index) {
+      case 0:
+        return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+        break;
+      default:
+        ORT_THROW("Invalid output index: ", index);
+    }
+  };
 
  private:
   const char* provider_;
 };
 
-//test custom op which accepts float or double as inputs
+//test custom op which accepts float and double as inputs
 TEST(CApiTest, varied_input_custom_op_handler) {
   std::vector<Input> inputs(2);
   inputs[0].name = "X";
   inputs[0].dims = {3};
-  inputs[0].values = {1.0f, 2.0f, 3.0f};
+  inputs[0].values = {2.0f, 3.0f, 4.0f};
   inputs[1].name = "Y";
   inputs[1].dims = {3};
-  inputs[1].values = {1.0f, 2.0f, 3.0f};
-  std::vector<int64_t> expected_dims_z = {3};
-  std::vector<float> expected_values_z = {2.0f, 8.0f, 18.0f};
+  inputs[1].values = {5.0f, 6.0f, 7.0f};
+  std::vector<int64_t> expected_dims_z = {1};
+  std::vector<float> expected_values_z = {10.0f};
 
 #ifdef USE_CUDA
-  VariedInputCustomOp custom_op{onnxruntime::kCudaExecutionProvider};
+  SliceCustomOp slice_custom_op{onnxruntime::kCudaExecutionProvider};
 #else
-  VariedInputCustomOp custom_op{onnxruntime::kCpuExecutionProvider};
+  SliceCustomOp slice_custom_op{onnxruntime::kCpuExecutionProvider};
 #endif
 
   Ort::CustomOpDomain custom_op_domain("abc");
-  custom_op_domain.Add(&custom_op);
+  custom_op_domain.Add(&slice_custom_op);
 
 #ifdef USE_CUDA
   TestInference<PATH_TYPE, float>(*ort_env, VARIED_INPUT_CUSTOM_OP_MODEL_URI, inputs, "Z", expected_dims_z, expected_values_z, 1, custom_op_domain, nullptr, nullptr);

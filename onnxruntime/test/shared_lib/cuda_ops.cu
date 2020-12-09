@@ -19,18 +19,17 @@ void cuda_add(int64_t N, float* O, const float* X, const float* Y) {
 }
 
 template<typename T>
-__global__ void cuda_mul_impl(const T* X , const T* Y, T* Z, int64_t size) {
+__global__ void cuda_slice_impl(const T* X , int64_t from, int64_t to, T* Y) {
   auto offset = threadIdx.x;
-  if (offset < size) {
-    Z[offset] = X[offset] * Y[offset];
+  if (offset >= from && offset < to) {
+    Y[offset - from] = X[offset];
   }
 }
 
 template<typename T>
-void cuda_mul(const T* X , const T* Y, T* Z, int64_t size)
-{
-    cuda_mul_impl<T><<<1, 256>>>(X, Y, Z, size);
+void cuda_slice(const T* X, int64_t from, int64_t to, T* Y) {
+    cuda_slice_impl<T><<<1, 256>>>(X, from, to, Y);
 }
 
-template void cuda_mul(const float*, const float*, float*, int64_t);
-template void cuda_mul(const double*, const double*, double*, int64_t);
+template void cuda_slice(const float*, int64_t, int64_t, float*);
+template void cuda_slice(const double*, int64_t, int64_t, double*);
