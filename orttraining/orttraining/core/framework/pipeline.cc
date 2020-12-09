@@ -450,7 +450,7 @@ void PipelineScheduler::CreateComputeSchedule() {
 
     // Increase the batch count for whenever that batch stays in the pipeline.
     // For a specific batch, its starting/end time is the time it enters/leaves the first pipeline stage.
-    for (int t_compute = forward_time.at(0); t_compute <= backward_time[0]; ++t_compute) {
+    for (int t_compute = forward_time.at(0); t_compute <= backward_time.at(0); ++t_compute) {
       ++compute_batch_count_.at(t_compute);
     }
   }

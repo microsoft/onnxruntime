@@ -9,7 +9,6 @@
 
 #include "core/session/environment.h"
 #include "orttraining/core/session/training_session.h"
-#include "orttraining/core/session/pipeline_training_session.h"
 #include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/framework/mpi_context.h"
 #include "python/onnxruntime_pybind_mlvalue.h"

@@ -58,6 +58,7 @@ void CreateFakeOutput(
     Graph& graph,                   // the graph of a pipeline stage.
     const std::string output_name,  // The fake output's name to add to the graph.
     const std::unordered_map<std::string, std::vector<int>>& sliced_schema) {
+  // TODO: fix it by passing in tensor types.
   const ONNX_NAMESPACE::TensorProto_DataType element_type = ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
   ONNX_NAMESPACE::TypeProto type_proto;
   type_proto.mutable_tensor_type()->set_elem_type(element_type);
@@ -733,20 +734,22 @@ Status TransformGraphForPipeline(
 
   // If user wants to keep original outputs, we add fake outputs if the
   // current graph partition doesn't produce them.
-  for (size_t i = 0; keep_original_output_schema && i < expected_output_names.size(); ++i) {
-    const std::string name = expected_output_names[i];
+  if (keep_original_output_schema) {
+    for (size_t i = 0; i < expected_output_names.size(); ++i) {
+      const std::string name = expected_output_names[i];
 
-    auto producer = graph.GetProducerNode(name);
-    if (producer) {
-      // This partition generates original output.
-      // There is no need to add a fake one.
-      continue;
+      auto producer = graph.GetProducerNode(name);
+      if (producer) {
+        // This partition generates original output.
+        // There is no need to add a fake one.
+        continue;
+      }
+
+      // For each graph output not produced by this pipeline stage,
+      // we create a fake tensor with user-specified shape.
+      CreateFakeOutput(graph, name, sliced_schema);
+      new_output_names.push_back(name);
     }
-
-    // For each graph output not produced by this pipeline stage,
-    // we create a fake tensor with user-specified shape.
-    CreateFakeOutput(graph, name, sliced_schema);
-    new_output_names.push_back(name);
   }
 
   ORT_RETURN_IF_ERROR(SetInputsOutputsAndResolve(graph, weights_to_train, new_input_names, new_output_names));

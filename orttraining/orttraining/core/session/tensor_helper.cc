@@ -10,28 +10,20 @@ namespace training {
 // Return the shape of a tensor slice.
 std::vector<int64_t> GetSliceShape(
     const std::vector<int64_t>& shape,  // before-slicing tensor shape
-    const size_t& slice_axis,           // axis to slice along
-    const size_t& num_slices) {         // number of slices along the slicing axis
+    const size_t slice_axis,           // axis to slice along
+    const size_t num_slices) {         // number of slices along the slicing axis
   ORT_ENFORCE(shape.size() > 0);
   ORT_ENFORCE(slice_axis < shape.size());
   ORT_ENFORCE(num_slices > 0);
+  ORT_ENFORCE(shape.at(slice_axis) > 0);
+  ORT_ENFORCE(shape.at(slice_axis) % num_slices == 0);
 
   // Shape of slice along slice_axis.
-  std::vector<int64_t> slice_shape;
-
-  // Go through the original dimensions to get the dimensions after slicing.
-  for (size_t i_shape = 0; i_shape < shape.size(); ++i_shape) {
-    const auto d = shape[i_shape];
-
-    // Compute slice's shape.
-    if (i_shape == slice_axis) {
-      // Dimension shrinks due to slicing.
-      slice_shape.push_back(d / num_slices);
-    } else {
-      // Dimension not sliced, so we just copy its original value.
-      slice_shape.push_back(d);
-    }
-  }
+  std::vector<int64_t> slice_shape(shape.size());
+  // Compute original slice's shape.
+  std::copy(shape.begin(), shape.end(), slice_shape.begin());
+  // Replace the sliced dimension.
+  slice_shape.at(slice_axis) = shape.at(slice_axis) / num_slices;
 
   return slice_shape;
 }
@@ -64,7 +56,7 @@ OrtValue CreateCpuTensorValue(
 void CopyGpuToCpu(
     void* dst_ptr,
     const void* src_ptr,
-    const size_t& size,
+    const size_t size,
     const OrtMemoryInfo& dst_location,
     const OrtMemoryInfo& src_location) {
   ORT_ENFORCE(dst_location.device.Type() == OrtDevice::CPU);
@@ -90,7 +82,7 @@ void CopyGpuToCpu(
 void CopyCpuToCpu(
     void* dst_ptr,
     const void* src_ptr,
-    const size_t& size,
+    const size_t size,
     const OrtMemoryInfo& dst_location,
     const OrtMemoryInfo& src_location) {
   ORT_ENFORCE(src_location.device.Type() == OrtDevice::CPU);
@@ -156,7 +148,7 @@ void CopySlice(Tensor& dst, const Tensor& src, const size_t slice_id, const size
   auto src_ptr = src.DataRaw();
   auto dst_ptr = dst.MutableDataRaw();
 
-  // If we slice tensor with shape [D1, D2, ..., Dj, sliced_dim, Dk, ..., Dn], then segment_size is slice_size * Dk * ... * Dn.
+  // If we slice tensor with shape [D1, D2, ..., Dj, sliced_dim, Dk, ..., Dn], then segment_size is Dk * ... * Dn.
   size_t segment_size = 1;
   // The total number of combinations of (D1, D2, ..., Dj). It's used as the total count of segments.
   size_t num_segments = 1;
@@ -164,8 +156,6 @@ void CopySlice(Tensor& dst, const Tensor& src, const size_t slice_id, const size
   for (size_t i = 0; i < static_cast<size_t>(src_shape.NumDimensions()); ++i) {
     if (i > slice_axis) {
       segment_size *= src_shape[i];
-    } else if (i == slice_axis) {
-      segment_size *= slice_size;
     }
     if (i < slice_axis) {
       num_segments *= src_shape[i];
@@ -191,7 +181,7 @@ void CopySlice(Tensor& dst, const Tensor& src, const size_t slice_id, const size
     // Do pointer arithmetic operations using "char*" because things are stored in terms of bytes.
     // Copy input[i, slice_id*slice_size : (slice_id + 1) * slice_size, :, ..., :] to buffer.
     const void* src_addr = reinterpret_cast<const char*>(src_ptr) + update_linear_index(i, slice_id * slice_size, slice_dim) * segment_size * src.DataType()->Size();
-    void* dst_addr = reinterpret_cast<char*>(dst_ptr) + update_linear_index(i, 0 * slice_size, slice_dim) * segment_size * dst.DataType()->Size();
+    void* dst_addr = reinterpret_cast<char*>(dst_ptr) + update_linear_index(i, 0 * slice_size, 1) * segment_size * dst.DataType()->Size();
     memcpy(dst_addr, src_addr, segment_size * slice_size * src.DataType()->Size());
   }
 }
