@@ -1328,7 +1328,7 @@ TEST(OptimizerTest, LambOptimizerMultiTensorRatio) {
   const float eta = dist(random_engine);
 
   for (int64_t i = 0; i < group_count; ++i) {
-    const auto size = dist_int(random_engine);
+    const auto size = 2048*dist_int(random_engine);
     sizes[i] = size;
     shapes[i] = std::vector<int64_t>(1, size);
 
