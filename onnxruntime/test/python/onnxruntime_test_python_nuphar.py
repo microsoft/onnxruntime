@@ -6,19 +6,17 @@ import numpy as np
 import onnx
 from onnx import helper, numpy_helper
 import onnxruntime as onnxrt
+from helper import get_name
 import os
-import sys
-sys.path.append("C:/LiqunWA/onnxruntime/onnxruntime/core/providers/nuphar/scripts")
-from rnn_benchmark import perf_test, generate_model
-from model_tools import run_with_ort
-# from onnxruntime.nuphar.rnn_benchmark import perf_test, generate_model
-# from onnxruntime.nuphar.model_tools import run_with_ort
+from onnxruntime.nuphar.rnn_benchmark import perf_test, generate_model
+from onnxruntime.nuphar.model_tools import run_with_ort
 import shutil
 import sys
 import subprocess
 import tarfile
 import unittest
 import urllib.request
+from numpy.testing import assert_array_equal
 
 def reference_gemm(a, b, c, alpha, beta, transA, transB):
     a = a if transA == 0 else a.T
@@ -674,8 +672,8 @@ class TestNuphar(unittest.TestCase):
             print("finished " + matmul_model_name)
 
     def test_loop_to_scan(self):
-        loop_model_filename = get_name("tiny_model_with_loop.onnx")
-        scan_model_filename = "tiny_model_with_loop_converted_to_scan.onnx" 
+        loop_model_filename = get_name("nuphar_tiny_model_with_loop_shape_infered.onnx")
+        scan_model_filename = "nuphar_tiny_model_with_loop_shape_infered_converted_to_scan.onnx" 
         subprocess.run([
             sys.executable, '-m', 'onnxruntime.nuphar.model_editor',
             '--input', loop_model_filename,
@@ -687,7 +685,7 @@ class TestNuphar(unittest.TestCase):
 
         assert(len(loop_output) == len(scan_output))
         for index in range(0, len(loop_output)):
-            assert_allclose(loop_output[index], scan_output[index])
+            assert_array_equal(loop_output[index], scan_output[index])
         
 if __name__ == '__main__':
     unittest.main()

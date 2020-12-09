@@ -6,14 +6,9 @@ import argparse
 from enum import Enum
 import numpy as np
 import onnx
-
-import sys
-sys.path.append("C:/LiqunWA/onnxruntime/onnxruntime/core/providers/nuphar/scripts")
-sys.path.append("C:/LiqunWA/onnxruntime/onnxruntime/python/tools")
-from node_factory import NodeFactory, ensure_opset
-from symbolic_shape_infer import SymbolicShapeInference, get_shape_from_type_proto
-
 from onnx import helper
+from onnxruntime.nuphar.node_factory import NodeFactory, ensure_opset
+from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference, get_shape_from_type_proto
 import copy
 
 # trim outputs of LSTM/GRU/RNN if not used or outputed

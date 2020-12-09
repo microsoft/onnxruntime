@@ -2,11 +2,8 @@ import numpy as np
 import onnxruntime as ort
 import onnx
 from onnx import helper
-from node_factory import ensure_opset
-
-import sys
-sys.path.append("C:/LiqunWA/onnxruntime/onnxruntime/python/tools")
-from symbolic_shape_infer import SymbolicShapeInference, get_shape_from_type_proto
+from onnxruntime.nuphar.node_factory import ensure_opset
+from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference, get_shape_from_type_proto
 import argparse
 import copy
 import os
