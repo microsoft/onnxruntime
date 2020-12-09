@@ -119,19 +119,23 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
       for (size_t i = 0; i < input_count; i++) {
         auto type = op->GetInputType(op, i);
         schema.Input(i, "A", "Description",
-                     ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type ? "T" :
-                     DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)));
+                     ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type ? "T" : DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)));
       }
 
       auto output_count = op->GetOutputTypeCount(op);
       for (size_t i = 0; i < output_count; i++) {
         auto type = op->GetOutputType(op, i);
         schema.Output(i, "A", "Description",
-                      ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type ? "T":
-                      DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)));
+                      ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type ? "T" : DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)));
       }
 
-      schema.TypeConstraint("T", DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
+      auto all_types = DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes());
+      for (const auto& a_type : all_types) {
+        std::cout << a_type << ", ";
+      }
+      std::cout << std::endl;
+
+      schema.TypeConstraint("T", all_types, "all types");
       schema.SetDomain(domain->domain_);
       schema.SinceVersion(1);
       schema.AllowUncheckedAttributes();
