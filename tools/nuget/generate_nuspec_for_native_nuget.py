@@ -84,6 +84,7 @@ def generate_dependencies(list, package_name, version):
         # Support .Net Core
         list.append('<group targetFramework="net5.0*">')
         list.append('<dependency id="Microsoft.Windows.CsWinRT"' + ' version="1.1.0"/>')
+        list.append('<dependency id="Microsoft.Windows.SDK.Contracts"' + ' version="10.0.19041.1"/>')
         list.append(dml_dependency)
         list.append('</group>')
         # UAP10.0.16299, This is the earliest release of the OS that supports .NET Standard apps
@@ -279,10 +280,10 @@ def generate_files(list, args):
         files_list.append('<file src=' + '"' + os.path.join(args.ort_build_path, args.build_config,
                                                             'microsoft.ai.machinelearning.winmd') +
                           '" target="lib\\uap\\Microsoft.AI.MachineLearning.winmd" />')
-        interop_dll = 'Microsoft.AI.MachineLearning.Interop\\net5.0\\Microsoft.AI.MachineLearning.Interop.dll'
+        interop_dll = 'Microsoft.AI.MachineLearning.Interop\\net5.0-windows10.0.19041.0\\Microsoft.AI.MachineLearning.Interop.dll'
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, interop_dll) +
                           '" target="lib\\net5.0\\Microsoft.AI.MachineLearning.Interop.dll" />')
-        interop_pdb = 'Microsoft.AI.MachineLearning.Interop\\net5.0\\Microsoft.AI.MachineLearning.Interop.pdb'
+        interop_pdb = 'Microsoft.AI.MachineLearning.Interop\\net5.0-windows10.0.19041.0\\Microsoft.AI.MachineLearning.Interop.pdb'
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, interop_pdb) +
                           '" target="lib\\net5.0\\Microsoft.AI.MachineLearning.Interop.pdb" />')
 
