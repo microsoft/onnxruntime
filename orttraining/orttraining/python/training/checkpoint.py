@@ -62,6 +62,18 @@ def experimental_load_state_dict(ort_trainer, state_dict, strict=False):
     session_state = {name:state_dict[name].numpy() for name in state_dict}
     ort_trainer._training_session.load_state(session_state, strict)
 
+# Temporary function to test optimizer state loading
+def _experimental_load_optimizer_state(ort_trainer, optim_state_dict):
+    ort_trainer._optim_state_dict = optim_state_dict
+
+    # Note: It may happen ONNX model has not yet been initialized
+    # In this case we cache a reference to desired state and delay the restore until after initialization
+    # Unexpected behavior will result if the user changes the reference before initialization    
+    if not ort_trainer._training_session:
+        return
+
+    ort_trainer._init_session()
+
 
 def experimental_save_checkpoint(ort_trainer, checkpoint_dir, checkpoint_prefix="ORT_checkpoint", checkpoint_state_dict=None, include_optimizer_state=True):
     if checkpoint_state_dict is None:
