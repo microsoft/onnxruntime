@@ -86,6 +86,15 @@ Status SetupOptimizerParams(
     if (mixed_precision_weight_name_it != fp32_weight_names_to_mixed_precision_node_args.end()) {
       opt_node_config.mixed_precision_weight_arg = mixed_precision_weight_name_it->second;
     }
+
+    // check if initial optimizer states have been provided for weight
+    if (config.init_optimizer_states){
+      const auto optim_state_it = config.init_optimizer_states->find(weight_name);
+      if (optim_state_it != config.init_optimizer_states->end()) {
+        opt_node_config.initial_states = optim_state_it->second;
+      }
+    }    
+
     opt_node_configs.emplace(weight_name, std::move(opt_node_config));
   }
 
@@ -115,6 +124,14 @@ Status SetupOptimizerParams(
           : static_cast<int64_t>(hvd::ReduceOp::ADASUM);
 #endif
   opt_graph_config.deepspeed_zero = optimizer_config.deepspeed_zero;
+
+  // check if shared initial optimizer states have been provided
+  if (config.init_optimizer_states){
+    const auto optim_state_it = config.init_optimizer_states->find(onnxruntime::training::SHARED_OPTIMIZER_STATES_KEY);
+    if (optim_state_it != config.init_optimizer_states->end()) {
+      opt_graph_config.shared_optimizer_states = std::move(optim_state_it->second);
+    }
+  }
   opt_node_configs_result = std::move(opt_node_configs);
   opt_graph_config_result = std::move(opt_graph_config);
 
