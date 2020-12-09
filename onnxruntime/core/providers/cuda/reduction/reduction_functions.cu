@@ -134,7 +134,7 @@ __device__ void reduce_all(
   // Total number of threads in a grid row with 2-D blocks.
   const int num_threads_in_grid_row = num_blocks_in_grid_row * num_threads_in_block;
 
-  const auto write_result = [&](TOut result) {
+  const auto write_result = [&output, &num_elements](const TOut result) {
     // Compilation time if-else branch controlled by template argument can be
     // optimized out, so there will be no branch in real computation phase.
     if (DivideResultBySize) {
