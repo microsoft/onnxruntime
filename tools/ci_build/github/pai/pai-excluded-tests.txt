@@ -143,10 +143,12 @@ GradientCheckerTest.MatMulGrad
 GradientCheckerTest.ReduceMeanGrad
 GradientCheckerTest.ReduceSumGrad
 GradientCheckerTest.ReduceLogSumExpGrad
+GradientCheckerTest.ReduceL2Grad
 GradientCheckerTest.SoftmaxCrossEntropyGrad
 GradientCheckerTest.ExpandGrad
 GradientCheckerTest.DivGrad
 GradientCheckerTest.GemmGrad
 GradientCheckerTest.SplitGrad
 GradientCheckerTest.SqueezeGrad
-GradientCheckerTest.UnsqueezeGrad 
+GradientCheckerTest.UnsqueezeGrad
+GradientCheckerTest.ClipGrad
