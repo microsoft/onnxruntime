@@ -6,6 +6,7 @@ from onnx import helper
 from onnxruntime.nuphar.node_factory import ensure_opset
 from onnxruntime.nuphar.model_editor import convert_loop_to_scan_model
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference, get_shape_from_type_proto
+import onnxruntime.tools.onnxruntime_test as ort_test
 import argparse
 import copy
 import os
@@ -50,31 +51,8 @@ def extract_loop_outputs_as_model_outputs(model):
             # for debugging to make scan output as model graph output
             set_op_output_as_model_output(node, model.graph)
 
-def run_with_ort(model_path, ort_test_case_dir=None):
-    def np_type_from_onnx_elem_type(elem_type):
-        if elem_type == 1:
-            return np.float32
-        else:
-            return None
-
-    def tensor_shape_from_onnx_shape(onnx_shape, dynamic_shape_cache, default_dynamic_dim):
-        tensor_shape = []
-        for dim in onnx_shape.dim:
-            if not dim.dim_param:
-                tensor_shape.append(dim.dim_value)
-            else:
-                if dynamic_shape_cache and dim.dim_param in dynamic_shape_cache:
-                    tensor_shape.append(dynamic_shape_cache[dim.dim_param])                    
-                else:
-                    tensor_shape.append(default_dynamic_dim)
-        return tensor_shape
-
-    def generate_tensor(input_type, dynamic_shape=None, default_dynamic_dim=30):
-        data_type = np_type_from_onnx_elem_type(input_type.tensor_type.elem_type)
-        tensor_shape = tensor_shape_from_onnx_shape(input_type.tensor_type.shape, dynamic_shape, default_dynamic_dim)
-        return np.random.rand(*tensor_shape).astype(data_type)
-
-    def save_tensor_proto(file_path, tp_name, data, data_type = np.float32):
+def run_with_ort(model_path, symbolic_dims={}, feeds=None, ort_test_case_dir=None):
+    def save_tensor_proto(file_path, tp_name, data, data_type=np.float32):
         tp = onnx.TensorProto()
         tp.name = tp_name
 
@@ -97,19 +75,12 @@ def run_with_ort(model_path, ort_test_case_dir=None):
         with open(file_path, 'wb') as f:
             f.write(tp.SerializeToString())
 
-    model = onnx.load(model_path)
-    input_names = [input.name for input in model.graph.input]
-
-    np.random.seed(0)
-    inputs = [generate_tensor(input.type) for input in model.graph.input]
-    input_dict = dict(zip(input_names, inputs))
-
-    session = ort.InferenceSession(model.SerializeToString())
-    outputs = session.run(None, input_dict) # {'input': input, 'hi0': hi0, 'ci0': ci0}
+    _, feeds, outputs = ort_test.run_model(model_path, symbolic_dims=symbolic_dims, feeds=feeds)
 
     if ort_test_case_dir:
+        model = onnx.load(model_path)
         def save_ort_test_case(ort_test_case_dir):
-            for i, (input_name, input) in enumerate(input_dict.items()):
+            for i, (input_name, input) in enumerate(feeds.items()):
                 save_tensor_proto(os.path.join(test_data_dir, 'input_{0}.pb'.format(i)),
                                 input_name, input)
 
@@ -120,19 +91,19 @@ def run_with_ort(model_path, ort_test_case_dir=None):
 
         save_ort_test_case(ort_test_case_dir)
 
-    return outputs
+    return feeds, outputs
 
-def validate_with_ort(input_filename, output_filename):
-    loop_output = run_with_ort(input_filename)
-    scan_output = run_with_ort(output_filename)
+def validate_with_ort(input_filename, output_filename, symbolic_dims={}):
+    feeds, loop_output = run_with_ort(input_filename, symbolic_dims=symbolic_dims)
+    _, scan_output = run_with_ort(output_filename, symbolic_dims=symbolic_dims, feeds=feeds)
 
     assert(len(loop_output) == len(scan_output))
     for index in range(0, len(loop_output)):
         assert_array_equal(loop_output[index], scan_output[index])
 
-def convert_loop_to_scan_and_validate(input_filename, output_filename):
+def convert_loop_to_scan_and_validate(input_filename, output_filename, symbolic_dims={}):
     convert_loop_to_scan_model(args.input, args.output)
-    validate_with_ort(args.input, args.output)
+    validate_with_ort(args.input, args.output, symbolic_dims)
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
@@ -145,6 +116,10 @@ def parse_arguments():
 
     parser.add_argument('--input', help='The input model file', default=None)
     parser.add_argument('--output', help='The output model file', default=None)
+    parser.add_argument('--symbolic_dims', default={}, type=lambda s: dict(x.split("=") for x in s.split(",")),
+                    help='Comma separated name=value pairs for any symbolic dimensions in the model input. '
+                            'e.g. --symbolic_dims batch=1,seqlen=5. '
+                            'If not provided, the value of 1 will be used for all symbolic dimensions.')
     return parser.parse_args()
 
 if __name__ == '__main__':
@@ -154,8 +129,8 @@ if __name__ == '__main__':
     elif args.tool == 'run_shape_inference':
         run_shape_inference(args.input, args.output)
     elif args.tool == 'run_with_ort':
-        run_with_ort(args.input)
+        run_with_ort(args.input, args.symbolic_dims)
     elif args.tool == 'validate_with_ort':
-        validate_with_ort(args.input, args.output)
+        validate_with_ort(args.input, args.output, args.symbolic_dims)
     elif args.tool == 'convert_loop_to_scan_and_validate':
-        convert_loop_to_scan_and_validate(args.input, args.output)
+        convert_loop_to_scan_and_validate(args.input, args.output, args.symbolic_dims)

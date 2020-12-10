@@ -695,8 +695,6 @@ def convert_loop_to_scan_model(input_model, output_model, keep_unconvertible_loo
                         cast_node = n
                         cond_const_node = cond_const_nodes[0]
                         break
-                    else:
-                        print("")
             
             if cast_node:
                 cast_node_to_remove = [*cast_node_to_remove, cast_node]
@@ -1017,5 +1015,4 @@ if __name__ == '__main__':
     mp = onnx.load(args.output)
     mp = SymbolicShapeInference.infer_shapes(mp, auto_merge=True)
 
-    onnx.save(mp, args.output + ".shape_inferenced.onnx")
     print('Done!')
