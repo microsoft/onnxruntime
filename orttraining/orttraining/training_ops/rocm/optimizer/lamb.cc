@@ -268,7 +268,7 @@ Status launch_lamb_compute_direction(
 
 template <typename HipTNorm, typename HipTIn1, typename HipTIn2>
 Status launch_lamb_reduction(
-    const RocmKernel* kernel,
+    const RocmKernel& kernel,
     const int group_count,
     std::vector<int>& tensor_sizes,
     std::vector<HipTNorm*>& p_w_norms,
@@ -655,7 +655,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
       do_bias_correction_);
 
   launch_lamb_reduction(
-      this,
+      *this,
       group_count,
       tensor_sizes,
       p_w_norms,
