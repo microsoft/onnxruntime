@@ -173,18 +173,20 @@ static Status ModifyParametersForOptimizerPartitioning(
     const OptimizerGraphConfig& opt_graph_config,
     std::vector<OptimizerNodeConfig>& opt_configs,
     std::vector<ArgDef>& weight_argdefs,
-    std::vector<ArgDef>& gradient_argdefs) {
+    std::vector<ArgDef>& gradient_argdefs,
+    ArgDef& padded_weight_argdef,
+    ArgDef& padded_gradient_argdef) {
   ORT_ENFORCE(weight_argdefs.size() == gradient_argdefs.size());
   ORT_ENFORCE(weight_argdefs.size() == opt_configs.size());
 
-  const auto elem_type = weight_argdefs[0].type_proto->tensor_type().elem_type();
+  const auto elem_type = gradient_argdefs[0].type_proto->tensor_type().elem_type();
   size_t element_size = 0;
   if (elem_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) {
     element_size = 4;
   } else if (elem_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) {
     element_size = 2;
   } else {
-    ORT_ENFORCE(false);
+    ORT_ENFORCE(false, "Unsupported datatype in gradient tensor");
   }
 
   // Compute total element count to reduce.
@@ -193,7 +195,6 @@ static Status ModifyParametersForOptimizerPartitioning(
   for (size_t i = 0; i < weight_argdefs.size(); i++) {
     ArgDef weight_argdef = weight_argdefs[i];
     ORT_ENFORCE(weight_argdef.type_proto != nullptr);
-    ORT_ENFORCE(weight_argdef.type_proto->tensor_type().elem_type() == elem_type);
     const auto& weight_shape_proto = weight_argdef.type_proto->tensor_type().shape();
     const TensorShape& weight_shape = utils::GetTensorShapeFromTensorShapeProto(weight_shape_proto);
 
@@ -217,9 +218,9 @@ static Status ModifyParametersForOptimizerPartitioning(
   const int data_parallel_group_rank = opt_graph_config.data_parallel_group_rank;
   const int data_parallel_group_size = opt_graph_config.data_parallel_group_size;
   const size_t alignment = data_parallel_group_size * 32;
-  const size_t padded_buffer_size = total_bytes + alignment - (total_bytes % alignment);
+  const size_t padded_buffer_bytes = ((total_bytes + alignment - 1) / alignment) * alignment;
 
-  const size_t rank_bytes = padded_buffer_size / data_parallel_group_size;
+  const size_t rank_bytes = padded_buffer_bytes / data_parallel_group_size;
   // const size_t rank_count = rank_bytes / element_size;
 
   const size_t rank_start = data_parallel_group_rank * rank_bytes;
@@ -259,6 +260,10 @@ static Status ModifyParametersForOptimizerPartitioning(
         int64_t size_for_previous_rank = std::min(bytes_for_previous_rank / element_size, tensor_count);
         int64_t size_for_current_rank = tensor_count - size_for_previous_rank;
 
+        if (size_for_current_rank == 0) {
+          std::cout << "size_for_current_rank is zero\n";
+        }
+
         // !!!! todo: some optimization here, can skip View
         std::vector<TensorShape> view_shapes = {{size_for_previous_rank}, {size_for_current_rank}};
         std::vector<bool> enabled = {false, true};
@@ -270,6 +275,10 @@ static Status ModifyParametersForOptimizerPartitioning(
 
         int64_t size_for_current_rank = std::min(bytes_for_current_rank / element_size, tensor_count);
         int64_t size_for_next_rank = tensor_count - size_for_current_rank;
+
+        if (size_for_current_rank == 0) {
+          std::cout << "size_for_next_rank is zero\n";
+        }
 
         std::vector<TensorShape> view_shapes = {{size_for_current_rank}, {size_for_next_rank}};
         std::vector<bool> enabled = {true, false};
@@ -283,6 +292,10 @@ static Status ModifyParametersForOptimizerPartitioning(
         int64_t size_for_previous_rank = std::min(bytes_for_previous_rank / element_size, tensor_count);
         int64_t size_for_current_rank = std::min(bytes_for_current_rank / element_size, tensor_count - size_for_previous_rank);
         int64_t size_for_next_rank = tensor_count - size_for_previous_rank - size_for_current_rank;
+
+        if (size_for_next_rank == 0) {
+          std::cout << "else size_for_next_rank is zero\n";
+        }
 
         std::vector<TensorShape> view_shapes = {{size_for_previous_rank}, {size_for_current_rank}, {size_for_next_rank}};
         std::vector<bool> enabled = {false, true, false};
@@ -300,6 +313,48 @@ static Status ModifyParametersForOptimizerPartitioning(
     }
 
     offset += tensor_bytes;
+  }
+
+  // weight padding
+  const size_t padding_bytes = padded_buffer_bytes - total_bytes;
+  const int64_t padding_size = padding_bytes / element_size;
+
+  std::cout << "padded_buffer_bytes " << padded_buffer_bytes << " total_bytes " << total_bytes << "\n";
+  std::cout << "padding_bytes " << padding_bytes << " padding_size " << padding_size << "\n";
+
+  if (padding_size > 0) {
+    ArgDef weight_padding_argdef("contiguous_weight_buffer_padding",
+                                 graph_defs.CreateTypeProto({padding_size}, ONNX_NAMESPACE::TensorProto_DataType(elem_type)));
+
+    if (elem_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) {
+      graph_defs.AddInitializers({CreateTensorProto<float>(weight_padding_argdef.name, 0.0f, {padding_size})});
+    } else if (elem_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) {
+      graph_defs.AddInitializers({CreateTensorProto<MLFloat16>(weight_padding_argdef.name, MLFloat16(0.0f), {padding_size})});
+    }
+
+    // gradient padding
+    ArgDef padding_size_argdef("gradient_padding_size",
+                               graph_defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_INT64));
+    graph_defs.AddInitializers({CreateTensorProto<int64_t>(padding_size_argdef.name, {padding_size}, {1})});
+    ArgDef gradient_padding_argdef("contiguous_gradient_buffer_padding",
+                                   graph_defs.CreateTypeProto({padding_size}, ONNX_NAMESPACE::TensorProto_DataType(elem_type)));
+
+    TensorProto zero_scaler;
+    if (elem_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) {
+      zero_scaler = ONNX_NAMESPACE::ToTensor<float>(0.f);
+    } else if (elem_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) {
+      zero_scaler = ONNX_NAMESPACE::ToTensor<MLFloat16>(MLFloat16(0.f));
+    }
+
+    // gradient padding have to be an activation tensor, so use ConstantOfShape instead of initializer
+    graph_defs.AddNodeDefs({NodeDef("ConstantOfShape",
+                                    {padding_size_argdef},
+                                    {gradient_padding_argdef},
+                                    {ONNX_NAMESPACE::MakeAttribute("value", zero_scaler)},
+                                    gradient_padding_argdef.name)});
+
+    padded_weight_argdef = weight_padding_argdef;
+    padded_gradient_argdef = gradient_padding_argdef;
   }
 
   // Update outputs.
@@ -348,8 +403,10 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
   };
 
   // handle optimizer partitioning
+  ArgDef padded_weight_argdef, padded_gradient_argdef;
   ORT_RETURN_IF_ERROR(ModifyParametersForOptimizerPartitioning(
-      graph, graph_defs, opt_graph_config_, opt_configs_, weight_argdefs, gradient_argdefs));
+      graph, graph_defs, opt_graph_config_, opt_configs_, weight_argdefs, gradient_argdefs,
+      padded_weight_argdef, padded_gradient_argdef));
 
   // add gradient scaling
   ArgDef fused_gradient_argdef;
@@ -360,7 +417,13 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
                                               opt_graph_config_.AllReduceDataType(), false));
 
   // add Reducescatter for gradients
-  ORT_RETURN_IF_ERROR(AddNcclReduceScatterForGradients(gradient_argdefs, graph_defs));
+  if (padded_gradient_argdef.Exists()) {
+    gradient_argdefs.push_back(padded_gradient_argdef);
+    ORT_RETURN_IF_ERROR(AddNcclReduceScatterForGradients(gradient_argdefs, graph_defs));
+    gradient_argdefs.pop_back();
+  } else {
+    ORT_RETURN_IF_ERROR(AddNcclReduceScatterForGradients(gradient_argdefs, graph_defs));
+  }
 
   // check if all gradients are finite
   ArgDef global_grad_norm_argdef;
@@ -389,7 +452,13 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
       optimizer_state_initializer_names));
 
   // add Allgather for weights
-  ORT_RETURN_IF_ERROR(AddNcclAllGatherForWeights(weight_argdefs, graph_defs));
+  if (padded_weight_argdef.Exists()) {
+    weight_argdefs.push_back(padded_weight_argdef);
+    ORT_RETURN_IF_ERROR(AddNcclAllGatherForWeights(weight_argdefs, graph_defs));
+    weight_argdefs.pop_back();
+  } else {
+    ORT_RETURN_IF_ERROR(AddNcclAllGatherForWeights(weight_argdefs, graph_defs));
+  }
 
   return Status::OK();
 }

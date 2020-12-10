@@ -56,31 +56,15 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
   const char* end_address = reinterpret_cast<const char*>(last_tensor->DataRaw()) + last_tensor->SizeInBytes();
   size_t buffer_size = end_address - start_address;
 
-  // int64_t total_count = buffer_size / element_size;
-  ORT_ENFORCE(buffer_size % element_size == 0);
-
   // AllGather requires every rank to receive the same amount of data, and
   // slows down significantly if the data is not aligned.  Nvidia recommends 32-byte alignment,
   // so pad to multiple of 32 and world size.
   // Note: the alignment here needs to be kept in-sync with the alignment in zero_optimizer_graph_builder.cc
   const int64_t alignment = size * 32;
-  const int64_t padded_buffer_size = buffer_size + alignment - (buffer_size % alignment);
-
-  std::cout << "AllGather "
-            << "buffer_size " << buffer_size << " padded_buffer_size " << padded_buffer_size << "\n";
-  if (padded_buffer_size != buffer_size) {
-    std::cout << "AllGather "
-              << "padded_buffer_size is larger than buffer size!!!!!\n";
-  }
-
-  // !!!!! Remove this !!!
-  //ORT_ENFORCE(padded_buffer_size == buffer_size);
+  ORT_ENFORCE(buffer_size % alignment == 0, "NcclAllGather's contiguous buffer is not padded to world_size * 32");
 
   // Calculate the range of inputs this rank will send.
-  ORT_ENFORCE(padded_buffer_size % size == 0);
-  const int64_t rank_bytes = padded_buffer_size / size;
-
-  ORT_ENFORCE(rank_bytes % element_size == 0 && rank_bytes % 32 == 0);
+  const int64_t rank_bytes = buffer_size / size;
   const int64_t rank_count = rank_bytes / element_size;
 
   // Calculate the range of inputs this rank will send.
@@ -132,31 +116,15 @@ Status NcclReduceScatter::ComputeInternal(OpKernelContext* context) const {
   const char* end_address = reinterpret_cast<const char*>(last_tensor->DataRaw()) + last_tensor->SizeInBytes();
   size_t buffer_size = end_address - start_address;
 
-  // int64_t total_count = buffer_size / element_size;
-  ORT_ENFORCE(buffer_size % element_size == 0);
-
   // ReduceScatter requires every rank to receive the same amount of data, and significantly
   // slows down significantly if the data is not aligned.  Nvidia recommends 32-byte alignment,
   // so pad to multiple of 32 and world size.
   // Note: the alignment here needs to be kept in-sync with the alignment in zero_optimizer_graph_builder.cc
   const int64_t alignment = size * 32;
-  const int64_t padded_buffer_size = buffer_size + alignment - (buffer_size % alignment);
-
-  std::cout << "ReduceScatter "
-            << "buffer_size " << buffer_size << " padded_buffer_size " << padded_buffer_size << "\n";
-  if (padded_buffer_size != buffer_size) {
-    std::cout << "ReduceScatter "
-              << "padded_buffer_size is larger than buffer size!!!!!\n";
-  }
-
-  // !!!!! Remove this !!!
-  //ORT_ENFORCE(padded_buffer_size == buffer_size);
+  ORT_ENFORCE(buffer_size % alignment == 0, "NcclReduceScatter's contiguous buffer is not padded to world_size * 32");
 
   // Calculate the range of outputs this rank will receive.
-  ORT_ENFORCE(padded_buffer_size % size == 0);
-  const int64_t rank_bytes = padded_buffer_size / size;
-
-  ORT_ENFORCE(rank_bytes % element_size == 0 && rank_bytes % 32 == 0);
+  const int64_t rank_bytes = buffer_size / size;
   const int64_t rank_count = rank_bytes / element_size;
 
   const int64_t rank_start = rank * rank_bytes;
