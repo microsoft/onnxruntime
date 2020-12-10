@@ -27,8 +27,8 @@ Status NcclAllReduce::ComputeInternal(OpKernelContext* context) const {
   // and initializers to 256 bytes aligned. There are tiny padding gaps in the contiguous buffer space. 
   // We have to AllReduce on the entire buffer, including the padding space. 
   const Tensor* last_tensor = context->Input<Tensor>(context->InputCount() - 1);
-  int8_t* end_address = (int8_t*)last_tensor->DataRaw() + last_tensor->SizeInBytes();
-  size_t num_bytes = end_address - (int8_t*)input_data;
+  const char* end_address = reinterpret_cast<const char*>(last_tensor->DataRaw()) + last_tensor->SizeInBytes();
+  size_t num_bytes = end_address - reinterpret_cast<const char*>(input_data);
   size_t count = num_bytes / onnx_type->Size();
   ORT_ENFORCE(num_bytes % onnx_type->Size() == 0);
 
