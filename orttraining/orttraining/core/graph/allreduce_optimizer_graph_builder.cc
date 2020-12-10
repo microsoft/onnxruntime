@@ -51,7 +51,7 @@ AllreduceOptimizerGraphBuilder::AllreduceOptimizerGraphBuilder(
               "Allreduce optimizer graph builder can only be used for distributed training.");
   if (opt_graph_config.use_nccl) {
     ORT_ENFORCE(IsNcclAvailable(), "Distributed training with NCCL is not supported, as NCCL is not enabled in this build.");
-  } else {
+  } else if(!opt_graph_config.use_nccl && opt_graph_config.adasum_reduction_type == AdasumReductionType::None){
     ORT_THROW("Performing Allreduce is only supported using NCCL.");
   }
 }
