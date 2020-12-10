@@ -592,6 +592,13 @@ size_t RemoveNodeOutputEdges(Graph& graph, Node& node) {
   return output_edges.size();
 }
 
+size_t RemoveNodeOutputEdges(Graph& graph, Node& node, int output_idx) {
+  std::vector<GraphEdge> output_edges = GetNodeOutputEdges(node, output_idx);
+  RemoveGraphEdges(graph, output_edges);
+
+  return output_edges.size();
+}
+
 void ReplaceDownstreamNodeInput(Graph& graph, Node& node, int output_idx, Node& replacement, int replacement_output_idx) {
   // get the output edges from node for output_idx
   std::vector<GraphEdge> output_edges = GetNodeOutputEdges(node, output_idx);

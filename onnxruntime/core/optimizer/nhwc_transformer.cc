@@ -40,7 +40,8 @@ class NhwcTransformerImpl {
     return (it != nhwc_args_.end()) ? it->second.get() : nullptr;
   }
 
-  size_t RemoveOutputEdges(Node& node);
+  size_t RemoveOutputEdge(Node& node, int output_index);
+  void CreateNhwcArgument(Node& node, Node& nhwc_node, int rank, int output_index);
   void CreateNhwcArgument(Node& node, Node& nhwc_node, int rank);
   void InsertReorderInput(Node& node, int rank);
 
@@ -48,6 +49,7 @@ class NhwcTransformerImpl {
   void TransformQLinearBinary(Node& node);
   void TransformQLinearActivation(Node& node);
   void TransformQLinearGlobalAveragePool(Node& node);
+  void TransformSplit(Node& node);
 
   Graph& graph_;
 
@@ -63,30 +65,39 @@ class NhwcTransformerImpl {
   std::deque<NodeIndex> removed_nodes_;
 };
 
-size_t NhwcTransformerImpl::RemoveOutputEdges(Node& node) {
-  size_t output_edges_count = node.GetOutputEdgesCount();
-  if (output_edges_count > 0) {
-    graph_utils::RemoveNodeOutputEdges(graph_, node);
-  }
-  // Bias the edge count to handle the case of a node that produces a graph
-  // output.
-  if (!graph_.GetNodeOutputsInGraphOutputs(node).empty()) {
-    output_edges_count++;
+// Caller make sure valid output_index
+size_t NhwcTransformerImpl::RemoveOutputEdge(Node& node, int output_index) {
+  size_t output_edges_count = graph_utils::RemoveNodeOutputEdges(graph_, node, output_index);
+
+  // Bias the edge count to handle the case of a node that produces a graph output.
+  auto node_outputs_for_graph = graph_.GetNodeOutputsInGraphOutputs(node);
+  for (auto idx : node_outputs_for_graph) {
+    if (output_index == idx) {
+      output_edges_count++;
+      break;
+    }
   }
   return output_edges_count;
 }
 
-void NhwcTransformerImpl::CreateNhwcArgument(Node& node, Node& nhwc_node, int rank) {
-  size_t original_uses = RemoveOutputEdges(node);
+void NhwcTransformerImpl::CreateNhwcArgument(Node& node, Node& nhwc_node, int rank, int output_index) {
+  size_t original_uses = RemoveOutputEdge(node, output_index);
 
   // Create a new NodeArg to track the output from the NHWC node.
   auto& output_defs = nhwc_node.MutableOutputDefs();
-  auto* output_original_arg = output_defs[0];
+  auto* output_original_arg = output_defs[output_index];
   std::string output_reorder_def_name = graph_.GenerateNodeArgName("reorder");
   auto* output_nhwc_arg = &graph_.GetOrCreateNodeArg(output_reorder_def_name, nullptr);
   nhwc_args_[output_original_arg] =
       onnxruntime::make_unique<NhwcArgument>(nhwc_node, output_nhwc_arg, original_uses, rank);
-  output_defs[0] = output_nhwc_arg;
+  output_defs[output_index] = output_nhwc_arg;
+}
+
+void NhwcTransformerImpl::CreateNhwcArgument(Node& node, Node& nhwc_node, int rank) {
+  int output_count = static_cast<int>(node.OutputDefs().size());
+  for (int output_index = 0; output_index < output_count; ++output_index) {
+    CreateNhwcArgument(node, nhwc_node, rank, output_index);
+  }
 }
 
 void NhwcTransformerImpl::InsertReorderInput(Node& node, int rank) {
@@ -237,6 +248,32 @@ void NhwcTransformerImpl::TransformQLinearGlobalAveragePool(Node& node) {
   CreateNhwcArgument(node, node, nhwc_input->rank_);
 }
 
+void NhwcTransformerImpl::TransformSplit(Node& node) {
+  auto& input_defs = node.MutableInputDefs();
+
+  auto* nhwc_input = LookupNhwcArgument(input_defs[0]);
+  if (nhwc_input == nullptr) {
+    return;
+  }
+
+  // Change the axis attribute accordingly for NCHW to NHWC model.
+  const auto* axis_attr = graph_utils::GetNodeAttribute(node, "axis");
+  if (axis_attr != nullptr && utils::HasInt(*axis_attr)) {
+    int axis = static_cast<int>(axis_attr->i());
+    if (axis >= 1 && axis < nhwc_input->rank_) {
+      int new_axis = ((axis == 1) ? static_cast<int>(nhwc_input->rank_) - 1 : axis - 1);
+      node.AddAttribute("axis", static_cast<int64_t>(new_axis));
+    } else if (axis < 0 && axis > -static_cast<int>(nhwc_input->rank_)) {
+      int new_axis = ((axis == -(static_cast<int>(nhwc_input->rank_) - 1)) ? - 1 : axis - 1);
+      node.AddAttribute("axis", static_cast<int64_t>(new_axis));
+    }
+  }
+
+  input_defs[0] = nhwc_input->nhwc_arg_;
+  nhwc_input->remaining_original_uses_--;
+  CreateNhwcArgument(node, node, nhwc_input->rank_);
+}
+
 void NhwcTransformerImpl::Transform(Node& node) {
   if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "QLinearConv", {10})) {
     TransformQLinearConv(node);
@@ -248,6 +285,8 @@ void NhwcTransformerImpl::Transform(Node& node) {
     TransformQLinearActivation(node);
   } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "QLinearGlobalAveragePool", {1}, kMSDomain)) {
     TransformQLinearGlobalAveragePool(node);
+  } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Split", {2, 11, 13})) {
+    TransformSplit(node);
   }
 }
 

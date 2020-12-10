@@ -1,6 +1,6 @@
 import onnx
 from .base_operator import QuantOperatorBase
-from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
+from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg
 from onnx import onnx_pb as onnx_proto
 
 
@@ -10,19 +10,13 @@ class QSplit(QuantOperatorBase):
 
     def quantize(self):
         node = self.node
-
-        # only try to quantize when given quantization parameters for it
-        data_found, _, _, _, _ = self.quantizer._get_quantization_params(node.input[0])
-        if not data_found and node.input[0] not in self.quantizer.quantized_value_map:
-            super().quantize()
-            return
-
         quantized_input_names, zero_point_names, scale_names, nodes = self.quantizer.quantize_inputs(node, [0])
         if node.name != "":
             quantized_node_name = node.name + "_quant"
         kwargs = {}
         for attribute in node.attribute:
             kwargs.update(attribute_to_kwarg(attribute))
+
         # Output just derive the scale/zero from input
         quantized_output_names = []
         for output_name in node.output:
