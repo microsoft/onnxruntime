@@ -17,7 +17,6 @@ class FusionReshape(Fusion):
         super().__init__(model, "Reshape", "Reshape")
 
     def fuse(self, reshape_node, input_name_to_nodes, output_name_to_node):
-
         if reshape_node.input[1] not in output_name_to_node:
             return
 
