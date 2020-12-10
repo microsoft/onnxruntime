@@ -118,13 +118,14 @@ class ORTTrainerOptions(object):
                             'default' : False
                         },
                         'sliced_schema' : {
-                            "type": "dict",
+                            'type': 'dict',
+                            'default' : {},
                             # the keys in `sliced_schema` are strings.
-                            "keysrules": {"type": "string"},
+                            'keysrules': {'type': 'string'},
                             # the values in `sliced_schema` are lists of integers.
-                            "valuesrules": {
-                                "type": "list",
-                                "schema": {'type': 'integer'}
+                            'valuesrules': {
+                                'type': 'list',
+                                'schema': {'type': 'integer'}
                             }
                         },
                         'sliced_axes' : {
