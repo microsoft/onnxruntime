@@ -562,7 +562,7 @@ __global__ void LambMultiTensorReductionImpl(
 }
 
 template <typename TIn1, typename TIn2, typename TOut1, typename TOut2, typename TBuf>
-void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()(ChunkGroup<4> chunk_group, const CudaKernel* kernel, void *reduction_buffer, size_t reduction_buffer_size) {
+void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()(ChunkGroup<4> chunk_group, const CudaKernel& kernel, void *reduction_buffer, size_t reduction_buffer_size) {
   // thread count per block.
   constexpr int thread_count = ChunkGroup<4>::thread_count_per_block;
   // shared memory's size per block.
@@ -585,7 +585,7 @@ void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()
   // Note: Adding such info to chunk group causes overflow (unless max tensors is reduced)
   const int max_tensors = ChunkGroup<4>::max_tensor_group_count;
   LambMultiTensorSyncRangeAndLock initial = {0, 0, 0};
-  CudaKernel::CudaAsyncBuffer<LambMultiTensorSyncRangeAndLock> sync_range_and_lock(kernel, initial, max_tensors);
+  CudaKernel::CudaAsyncBuffer<LambMultiTensorSyncRangeAndLock> sync_range_and_lock(&kernel, initial, max_tensors);
   for (int block_index = num_blocks-1; block_index >= 0; block_index--) {
     int tensor_index = chunk_group.block_index_to_tensor_group_index[block_index];
     auto& tensor_block_span = sync_range_and_lock.CpuPtr()[tensor_index];
@@ -599,7 +599,7 @@ void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()
 }
 
 #define INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(TIn1, TIn2, TOut1, TOut2, TBuf) \
-  template void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()(ChunkGroup<4> chunk_group, const CudaKernel* kernel, void *reduction_buffer, size_t reduction_buffer_size);
+  template void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()(ChunkGroup<4> chunk_group, const CudaKernel& kernel, void *reduction_buffer, size_t reduction_buffer_size);
 
 INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(float, float, float, float, float)
 INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(double, double, double, double, double)

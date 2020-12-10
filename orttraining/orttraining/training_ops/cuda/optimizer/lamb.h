@@ -128,7 +128,7 @@ template <typename TIn1, typename TIn2, typename TOut1, typename TOut2, typename
 struct LambMultiTensorReductionFunctor {
   void operator()(
     ChunkGroup<4> chunk_group, 
-    const CudaKernel* kernel, 
+    const CudaKernel& kernel, 
     void *reduction_buffer, 
     size_t reduction_buffer_size);
 };

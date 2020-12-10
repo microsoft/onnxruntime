@@ -254,7 +254,7 @@ Status launch_lamb_compute_direction(
     typedef LambMultiTensorComputeDirectionFunctor<CudaT2, CudaT3, CudaT4, CudaT_GRAD_NORM> LambStage1;
     LambStage1 lamb_stage1;
 
-    launch_multi_tensor_functor<tensor_count_per_group, LambStage1, const CudaT2*, const CudaT_GRAD_NORM*, float, float, float, float>(
+    launch_multi_tensor_functor<tensor_count_per_group, LambStage1>( 
         2048 * 32,
         tensor_sizes_in_buckets[key],
         buckets[key],
@@ -267,7 +267,7 @@ Status launch_lamb_compute_direction(
 
 template <typename CudaTNorm, typename CudaTIn1, typename CudaTIn2>
 Status launch_lamb_reduction(
-    const CudaKernel* kernel,
+    const CudaKernel& kernel,
     const int group_count,
     std::vector<int>& tensor_sizes,
     std::vector<CudaTNorm*>& p_w_norms,
@@ -416,9 +416,7 @@ Status launch_lamb_update(
         LambStage2;
     LambStage2 lamb_stage2;
 
-    launch_multi_tensor_functor<
-        tensor_count_per_group, LambStage2,
-        const CudaT1*, const float, const float>(
+    launch_multi_tensor_functor<tensor_count_per_group, LambStage2>(
         2048 * 32,
         tensor_sizes_in_bucket,
         buckets,
@@ -655,7 +653,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
 
   
   ORT_RETURN_IF_ERROR(launch_lamb_reduction(
-      this,
+      *this,
       group_count,
       tensor_sizes,
       p_w_norms,
