@@ -561,26 +561,10 @@ __global__ void LambMultiTensorReductionImpl(
   }
 }
 
-template <typename TIn1, typename TIn2, typename TOut1, typename TOut2, typename TBuf>
-void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()(ChunkGroup<4> chunk_group, const CudaKernel& kernel, void *reduction_buffer, size_t reduction_buffer_size) {
-  // thread count per block.
-  constexpr int thread_count = ChunkGroup<4>::thread_count_per_block;
-  // shared memory's size per block.
-  const int shared_memory_size = thread_count / GPU_WARP_SIZE * 2 * sizeof(TBuf);
-
-  // Enforce assumptions used inside this reduction CUDA kernel.
-  ORT_ENFORCE(thread_count % GPU_WARP_SIZE == 0);
-  ORT_ENFORCE((thread_count & (thread_count - 1)) == 0);
-
+CudaKernel::CudaAsyncBuffer<LambMultiTensorSyncRangeAndLock> compute_tensor_range_and_lock(ChunkGroup<4> chunk_group, const CudaKernel& kernel) {
+    
   const int num_blocks = chunk_group.chunk_count;
-  size_t w_buffer_size = num_blocks * sizeof(TOut1);
-  size_t d_buffer_size = num_blocks * sizeof(TOut2);
-
-  ORT_ENFORCE(w_buffer_size + d_buffer_size <= reduction_buffer_size);
-
-  TOut1 *w_buffer = reinterpret_cast<TOut1*>(reduction_buffer);
-  TOut2 *d_buffer = reinterpret_cast<TOut2*>(w_buffer + num_blocks);
-
+  
   // sync_range_and_lock is a struct consisting of (start_block, num_blocks, lock) for each tensor
   // Note: Adding such info to chunk group causes overflow (unless max tensors is reduced)
   const int max_tensors = ChunkGroup<4>::max_tensor_group_count;
@@ -594,6 +578,30 @@ void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()
   }
   sync_range_and_lock.CopyToGpu();
 
+  return sync_range_and_lock;
+}
+
+template <typename TIn1, typename TIn2, typename TOut1, typename TOut2, typename TBuf>
+void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()(ChunkGroup<4> chunk_group, const CudaKernel& kernel, void *reduction_buffer, size_t reduction_buffer_size) {
+  // thread count per block.
+  constexpr int thread_count = ChunkGroup<4>::thread_count_per_block;
+  // shared memory's size per block.
+  const int shared_memory_size = thread_count / GPU_WARP_SIZE * 2 * sizeof(TBuf);
+
+  // Enforce assumptions used inside this reduction CUDA kernel.
+  ORT_ENFORCE(thread_count % GPU_WARP_SIZE == 0);
+  ORT_ENFORCE((thread_count & (thread_count - 1)) == 0);
+
+  const int num_blocks = chunk_group.chunk_count;
+  const size_t w_buffer_size = num_blocks * sizeof(TOut1);
+  const size_t d_buffer_size = num_blocks * sizeof(TOut2);
+
+  ORT_ENFORCE(w_buffer_size + d_buffer_size <= reduction_buffer_size);
+
+  TOut1 *w_buffer = reinterpret_cast<TOut1*>(reduction_buffer);
+  TOut2 *d_buffer = reinterpret_cast<TOut2*>(w_buffer + num_blocks);
+
+  auto sync_range_and_lock =  compute_tensor_range_and_lock(chunk_group, kernel);
   LambMultiTensorReductionImpl<TIn1, TIn2, TOut1, TOut2, TBuf><<<chunk_group.chunk_count, thread_count, shared_memory_size>>>(
     chunk_group, w_buffer, d_buffer, sync_range_and_lock.GpuPtr());
 }

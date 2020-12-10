@@ -133,6 +133,21 @@ struct LambMultiTensorReductionFunctor {
     size_t reduction_buffer_size);
 };
 
+// Lamb's reduction mapping [w, d] to [w_norm, d_norm] spans multiples thread blocks
+//
+// This includes any block-index for which it holds
+//    i-th tensor-index == chunk_group.block_index_to_tensor_group_index[ block-index ]
+// and where i-th tensor-index corresponds to tensor group w(i), d(i), w_norm(i), d_norm(i)
+// (see above)
+//
+// The above span of blocks corresponding i-th tensor will be contiguous.
+// To perform an ORDERED reduction across the thread blocks for i-th tensor, 
+//   the following struct is passed for every tensor.
+// It consists of fields:
+//   'leading_block' := lowest block-index corresponding i-th tensor
+//   'number_blocks' := number block-index "
+//   'completed_blocks' := initialized to zero (for internal use)
+// Note 'completed_blocks' prevents inter-block reduction until intra-block reduction is complete.
 struct LambMultiTensorSyncRangeAndLock {
   int leading_block;
   int number_blocks;

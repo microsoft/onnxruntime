@@ -552,7 +552,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
     // Enlarge reduction buffer to accomodate multi-tensor reduction kernel as well
     const int tensor_group_size = 4; // w, d, w_norm, d_norm
     const int max_blocks = ChunkGroup<tensor_group_size>::max_block_count;
-    const size_t multitensor_block_reduce_buffer_size = 2*max_blocks*sizeof(CudaT2);
+    const size_t multitensor_block_reduce_buffer_size = 2 * max_blocks * sizeof(CudaT2);
     rbs = std::max(rbs, multitensor_block_reduce_buffer_size);
 
     return rbs;
