@@ -444,7 +444,7 @@ INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(half, float, half, half)
 INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(float, float, half, half)
 
 // w_buffer[i], d_buffer[i] is used to store the squared sum of all elements processed by the i-th block.
-// sync_range_and_lock[t] contains (start block, number of blocks, locking counter) for tensor t
+// sync_range_and_lock is used for a well ordered reduction over blocks spanning the same tensor
 template <typename TIn1, typename TIn2, typename TOut1, typename TOut2, typename TBuf>
 __launch_bounds__(ChunkGroup<4>::thread_count_per_block)
 __global__ void LambMultiTensorReductionImpl(
