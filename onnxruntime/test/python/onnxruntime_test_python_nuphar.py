@@ -9,14 +9,13 @@ import onnxruntime as onnxrt
 from helper import get_name
 import os
 from onnxruntime.nuphar.rnn_benchmark import perf_test, generate_model
-from onnxruntime.nuphar.model_tools import run_with_ort
+from onnxruntime.nuphar.model_tools import validate_with_ort
 import shutil
 import sys
 import subprocess
 import tarfile
 import unittest
 import urllib.request
-from numpy.testing import assert_array_equal
 
 def reference_gemm(a, b, c, alpha, beta, transA, transB):
     a = a if transA == 0 else a.T
@@ -680,12 +679,19 @@ class TestNuphar(unittest.TestCase):
             '--output', scan_model_filename, '--mode', 'loop_to_scan'
         ], check=True)
 
-        loop_output = run_with_ort(loop_model_filename)
-        scan_output = run_with_ort(scan_model_filename)
-
-        assert(len(loop_output) == len(scan_output))
-        for index in range(0, len(loop_output)):
-            assert_array_equal(loop_output[index], scan_output[index])
+        validate_with_ort(loop_model_filename, scan_model_filename)
         
+    def test_loop_to_scan_with_inconvertible_loop(self):
+        loop_model_filename = get_name("nuphar_onnx_test_loop11_inconvertible_loop.onnx")
+        scan_model_filename = "nuphar_onnx_test_loop11_inconvertible_loop_unchanged.onnx" 
+        subprocess.run([
+            sys.executable, '-m', 'onnxruntime.nuphar.model_editor',
+            '--input', loop_model_filename,
+            '--output', scan_model_filename, '--mode', 'loop_to_scan',
+            '--keep_unconvertible_loop_ops'
+        ], check=True)
+
+        validate_with_ort(loop_model_filename, scan_model_filename)
+
 if __name__ == '__main__':
     unittest.main()

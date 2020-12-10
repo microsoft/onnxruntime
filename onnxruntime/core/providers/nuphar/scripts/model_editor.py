@@ -4,7 +4,9 @@
 # -*- coding: UTF-8 -*-
 import argparse
 from enum import Enum
+import warnings
 import numpy as np
+from numpy.testing import assert_array_equal
 import onnx
 from onnx import helper
 from onnxruntime.nuphar.node_factory import NodeFactory, ensure_opset
@@ -145,9 +147,11 @@ def handle_final_scan_outputs(node, nf, scan_outputs, state_outputs, num_directi
         for i_o in range(1, len(node.output)):
             nf.make_node('Unsqueeze', state_outputs[i_o - 1], {'axes':[0]}, output_names=node.output[i_o])
 
-def convert_loop_to_scan(node, out_main_graph):
+def convert_loop_to_scan(node, out_main_graph, keep_unconvertible_loop_ops):
+    assert node.op_type == 'Loop'
 
-    initial_state_names = node.input[2:]   # exclude M and cond
+    # https://github.com/onnx/onnx/blob/master/docs/Operators.md#inputs-2---
+    initial_state_names = node.input[2:]   # exclude M and cond.
 
     loop_subgraph_input_i = node.attribute[0].g.input[0]
     subgraph_input_names = []
@@ -161,9 +165,13 @@ def convert_loop_to_scan(node, out_main_graph):
             scan_input_names = [*scan_input_names, n.input[0]]
             subgraph_input_names = [*subgraph_input_names, n.output[0]]
             gather_input_nodes = [*gather_input_nodes, n]
-    
+
     if len(gather_input_nodes) == 0:
-        raise RuntimeError("To convert a Loop op to a Scan. the loop's trip count (i) must be used to index input data. Node name: " + node.name)
+        reason = "The loop's trip count (i) must be used to index input data. Node name: " + node.name
+        if keep_unconvertible_loop_ops:
+            warnings.warn("Model contains a Loop op that cannot be converted to Scan. " + reason)
+            return None
+        raise RuntimeError("To convert a Loop op to a Scan. " +  reason)
 
     scan_subgraph = copy.deepcopy(node.attribute[0].g)
 
@@ -178,7 +186,7 @@ def convert_loop_to_scan(node, out_main_graph):
     for n in scan_subgraph.node:
         if n.op_type == "Cast" and n.output[0] == scan_subgraph.output[0].name:
             cast_node_to_remove = [*cast_node_to_remove, n]
-    
+
     for n in cast_node_to_remove:
         scan_subgraph.node.remove(n)
         for value_info in scan_subgraph.value_info:
@@ -659,74 +667,7 @@ def convert_rnn_to_scan(node, out_main_graph):
         nf.remove_initializer(node.input[5])
     return True
 
-
-import onnxruntime as ort
-
-def SaveTensorProto(file_path, tp_name, data, data_type = np.float32):
-    tp = onnx.TensorProto()
-    tp.name = tp_name
-    
-    shape = np.shape(data)
-    for i in range(0, len(shape)):
-        tp.dims.append(shape[i])
-
-    if data_type == np.float32:
-        tp.data_type = onnx.TensorProto.FLOAT
-        tp.raw_data = data.tobytes()
-    elif data_type == np.int64:
-        tp.data_type = onnx.TensorProto.INT64
-        data=data.astype(np.int64)
-        tp.raw_data = data.tobytes()
-    elif data_type == np.int:
-        tp.data_type = onnx.TensorProto.INT32
-        data=data.astype(np.int)
-        tp.raw_data = data.tobytes()
-
-    with open(file_path, 'wb') as f:
-        f.write(tp.SerializeToString())
-
-def validate_with_ort(input_model, output_model):
-    def generate_random_data(tensor_shape, data_type = np.float32):
-        np.random.seed(0)
-        return np.random.rand(*tensor_shape).astype(data_type)
-
-    def run_with_ort(model_path, inputs):
-        model = onnx.load(model_path)
-        
-        # extract_loop_outputs_as_model_outputs(model)
-        session = ort.InferenceSession(model.SerializeToString())
-
-        input_names = [input.name for input in model.graph.input]
-        input_dict = dict(zip(input_names, inputs))
-        outputs = session.run(None, input_dict) # {'input': input, 'hi0': hi0, 'ci0': ci0}
-
-        # test_data_dir = 'C:/LiqunWA/onnx/ort/training/speech-model-with-loops/test_models/test_data/tmp3_loop_to_scan'
-        # for i, (input_name, input) in enumerate(input_dict.items()):
-        #     SaveTensorProto(os.path.join(test_data_dir, 'input_{0}.pb'.format(i)),
-        #                     input_name, input)
-
-        # output_names = [output.name for output in model.graph.output]
-        # output_dict = dict(zip(output_names, outputs))
-        # for i, (output_name, output) in enumerate(output_dict.items()):
-        #     SaveTensorProto(os.path.join(test_data_dir, 'output_{0}.pb'.format(i)), output_name, output)
-
-        return outputs
-
-    batch_size, seq_len, feature_size = 1, 40, 160
-
-    input = generate_random_data((seq_len, batch_size, feature_size))
-    hi0 = generate_random_data((12, 1, 600))
-    ci0 = generate_random_data((12, 1, 600))
-    outputs_with_loop = run_with_ort(input_model, [input, hi0, ci0])
-
-    outputs_with_scan = run_with_ort(output_model, [input, hi0, ci0])
-
-    for output_with_loop, output_with_scan in zip(outputs_with_loop, outputs_with_scan):
-        print("loop and scan run diff: ", np.max(output_with_loop - output_with_scan))
-
-    print("")
-
-def convert_loop_to_scan_model(input_model, output_model):
+def convert_loop_to_scan_model(input_model, output_model, keep_unconvertible_loop_ops=None):
     in_mp = onnx.load(input_model)
     out_mp = onnx.ModelProto()
     out_mp.CopyFrom(in_mp)
@@ -738,11 +679,6 @@ def convert_loop_to_scan_model(input_model, output_model):
     loop_cond_const_node_to_remove = []
     for in_n in in_mp.graph.node:
         if in_n.op_type == 'Loop':
-            scan_op = convert_loop_to_scan(in_n, out_mp.graph)
-
-            # for debugging to make scan output as model graph output
-            # set_op_output_as_model_output(scan_op, out_mp.graph)
-
             cast_node = None
             cond_initializer = None
             cond_const_node = None
@@ -761,17 +697,28 @@ def convert_loop_to_scan_model(input_model, output_model):
                         break
                     else:
                         print("")
-                    
+            
             if cast_node:
                 cast_node_to_remove = [*cast_node_to_remove, cast_node]
                 if cond_initializer:
                     loop_cond_initializer_to_remove = [*loop_cond_initializer_to_remove, cond_initializer]
                 elif cond_const_node:
                     loop_cond_const_node_to_remove = [*loop_cond_const_node_to_remove, cond_const_node]
+                
+                # at this point, it looks like that this Loop op can be converted to Scan. 
+                # however, convert_loop_to_scan may still fail when looking at the Loop's subgraph.
+                scan_op = convert_loop_to_scan(in_n, out_mp.graph, keep_unconvertible_loop_ops)
+                if scan_op:
+                    # Successfully converted a Loop op to Scan. Skip node copying below.
+                    continue
             else:
-                raise RuntimeError("Cannot convert a Loop op to Scan: loop cond should be fixed True. Op name = " + cast_n.name)
+                reason = "loop cond should be fixed True. Op name = " + in_n.name
+                if keep_unconvertible_loop_ops:
+                    warnings.warn("Model contains a Loop op that cannot be converted to Scan. " + reason)
+                else:
+                    raise RuntimeError("Cannot convert a Loop op to Scan: " + reason)
 
-            continue
+            
         out_n = out_mp.graph.node.add()
         out_n.CopyFrom(in_n)
     
@@ -1036,10 +983,13 @@ def parse_arguments():
                                  'opt_inproj',
                                  'gemm_to_matmul',
                                  'remove_initializers_from_inputs',
-                                 'loop_to_scan',
-                                 'save_scan_sub_graph'])
+                                 'loop_to_scan'])
     parser.add_argument('--input', help='The input model file', default=None)
     parser.add_argument('--output', help='The output model file', default=None)
+    parser.add_argument('--keep_unconvertible_loop_ops', help='Whether to keep unconvertible (to Scan) Loops. \
+        If set, model editing will keep unconvertible (to Scan) Loops. \
+        If not set, it will fail the editing when there is any Loop that is unconvertible to Scan op.',
+        default=None, action='store_true')
     return parser.parse_args()
 
 if __name__ == '__main__':
@@ -1060,11 +1010,7 @@ if __name__ == '__main__':
         remove_initializers_from_inputs(args.input, args.output)
     elif args.mode == 'loop_to_scan':
         print('Convert Loop to Scan')
-        convert_loop_to_scan_model(args.input, args.output)
-        validate_with_ort(args.input, args.output)
-    elif args.mode == 'save_scan_sub_graph':
-        print('save_scan_sub_graph')
-        save_scan_sub_graph(args.input, args.output)
+        convert_loop_to_scan_model(args.input, args.output, args.keep_unconvertible_loop_ops)
     else:
         raise NotImplementedError('Unknown mode')
     print('Running symbolic shape inference on output model')

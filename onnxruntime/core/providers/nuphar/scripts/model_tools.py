@@ -1,8 +1,10 @@
 import numpy as np
+from numpy.testing import assert_array_equal
 import onnxruntime as ort
 import onnx
 from onnx import helper
 from onnxruntime.nuphar.node_factory import ensure_opset
+from onnxruntime.nuphar.model_editor import convert_loop_to_scan_model
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference, get_shape_from_type_proto
 import argparse
 import copy
@@ -72,9 +74,32 @@ def run_with_ort(model_path, ort_test_case_dir=None):
         tensor_shape = tensor_shape_from_onnx_shape(input_type.tensor_type.shape, dynamic_shape, default_dynamic_dim)
         return np.random.rand(*tensor_shape).astype(data_type)
 
+    def save_tensor_proto(file_path, tp_name, data, data_type = np.float32):
+        tp = onnx.TensorProto()
+        tp.name = tp_name
+
+        shape = np.shape(data)
+        for i in range(0, len(shape)):
+            tp.dims.append(shape[i])
+
+        if data_type == np.float32:
+            tp.data_type = onnx.TensorProto.FLOAT
+            tp.raw_data = data.tobytes()
+        elif data_type == np.int64:
+            tp.data_type = onnx.TensorProto.INT64
+            data=data.astype(np.int64)
+            tp.raw_data = data.tobytes()
+        elif data_type == np.int:
+            tp.data_type = onnx.TensorProto.INT32
+            data=data.astype(np.int)
+            tp.raw_data = data.tobytes()
+
+        with open(file_path, 'wb') as f:
+            f.write(tp.SerializeToString())
+
     model = onnx.load(model_path)
     input_names = [input.name for input in model.graph.input]
-            
+
     np.random.seed(0)
     inputs = [generate_tensor(input.type) for input in model.graph.input]
     input_dict = dict(zip(input_names, inputs))
@@ -85,24 +110,38 @@ def run_with_ort(model_path, ort_test_case_dir=None):
     if ort_test_case_dir:
         def save_ort_test_case(ort_test_case_dir):
             for i, (input_name, input) in enumerate(input_dict.items()):
-                SaveTensorProto(os.path.join(test_data_dir, 'input_{0}.pb'.format(i)),
+                save_tensor_proto(os.path.join(test_data_dir, 'input_{0}.pb'.format(i)),
                                 input_name, input)
 
             output_names = [output.name for output in model.graph.output]
             output_dict = dict(zip(output_names, outputs))
             for i, (output_name, output) in enumerate(output_dict.items()):
-                SaveTensorProto(os.path.join(test_data_dir, 'output_{0}.pb'.format(i)), output_name, output)
+                save_tensor_proto(os.path.join(test_data_dir, 'output_{0}.pb'.format(i)), output_name, output)
 
         save_ort_test_case(ort_test_case_dir)
 
     return outputs
+
+def validate_with_ort(input_filename, output_filename):
+    loop_output = run_with_ort(input_filename)
+    scan_output = run_with_ort(output_filename)
+
+    assert(len(loop_output) == len(scan_output))
+    for index in range(0, len(loop_output)):
+        assert_array_equal(loop_output[index], scan_output[index])
+
+def convert_loop_to_scan_and_validate(input_filename, output_filename):
+    convert_loop_to_scan_model(args.input, args.output)
+    validate_with_ort(args.input, args.output)
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument('--tool', help='what to do',
                         choices=['save_model_sub_graph',
                                  'run_shape_inference',
-                                 'run_with_ort'])
+                                 'run_with_ort',
+                                 'validate_with_ort',
+                                 'convert_loop_to_scan_and_validate'])
 
     parser.add_argument('--input', help='The input model file', default=None)
     parser.add_argument('--output', help='The output model file', default=None)
@@ -116,3 +155,7 @@ if __name__ == '__main__':
         run_shape_inference(args.input, args.output)
     elif args.tool == 'run_with_ort':
         run_with_ort(args.input)
+    elif args.tool == 'validate_with_ort':
+        validate_with_ort(args.input, args.output)
+    elif args.tool == 'convert_loop_to_scan_and_validate':
+        convert_loop_to_scan_and_validate(args.input, args.output)

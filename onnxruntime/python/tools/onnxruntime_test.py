@@ -25,18 +25,7 @@ integer_dict = {
 # simple test program for loading onnx model, feeding all inputs and running the model num_iters times.
 
 
-def main():
-    parser = argparse.ArgumentParser(description='Simple ONNX Runtime Test Tool.')
-    parser.add_argument('model_path', help='model path')
-    parser.add_argument('num_iters', nargs='?', type=int, default=1000, help='model run iterations. default=1000')
-    parser.add_argument('--debug', action='store_true', help='pause execution to allow attaching a debugger.')
-    parser.add_argument('--profile', action='store_true', help='enable chrome timeline trace profiling.')
-    parser.add_argument('--symbolic_dims', default=None, type=lambda s: dict(x.split("=") for x in s.split(",")),
-                        help='Comma separated name=value pairs for any symbolic dimensions in the model input. '
-                             'e.g. --symbolic_dims batch=1,seqlen=5. '
-                             'If not provided, the value of 1 will be used for all symbolic dimensions.')
-
-    args = parser.parse_args()
+def main(args):
     iters = args.num_iters
 
     if args.debug:
@@ -115,4 +104,15 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    parser = argparse.ArgumentParser(description='Simple ONNX Runtime Test Tool.')
+    parser.add_argument('model_path', help='model path')
+    parser.add_argument('num_iters', nargs='?', type=int, default=1000, help='model run iterations. default=1000')
+    parser.add_argument('--debug', action='store_true', help='pause execution to allow attaching a debugger.')
+    parser.add_argument('--profile', action='store_true', help='enable chrome timeline trace profiling.')
+    parser.add_argument('--symbolic_dims', default=None, type=lambda s: dict(x.split("=") for x in s.split(",")),
+                        help='Comma separated name=value pairs for any symbolic dimensions in the model input. '
+                             'e.g. --symbolic_dims batch=1,seqlen=5. '
+                             'If not provided, the value of 1 will be used for all symbolic dimensions.')
+
+    args = parser.parse_args()
+    sys.exit(main(args))
