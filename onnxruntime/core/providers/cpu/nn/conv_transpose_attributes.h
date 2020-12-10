@@ -174,6 +174,20 @@ struct ConvTransposeAttributes : public ConvAttributes {
     return total_pad;
   }
 
+  void DistributePadding(AutoPadType pad_type, const int64_t& total_pad,
+                         int64_t& pad_head, int64_t& pad_tail) const {
+    if (pad_type == AutoPadType::SAME_UPPER) {  // pad more on head when total_pad is odd.
+      pad_head = total_pad - total_pad / 2;
+      pad_tail = total_pad / 2;
+    } else {
+      // for pad_type is NOTSET, SAME_LOWER or VALID
+      // set pad_head as total_pad/2, pad_tail as total_pad-total_pad/2.
+      // That said, we pad more on tail when total_pad is odd.
+      pad_head = total_pad / 2;
+      pad_tail = total_pad - total_pad / 2;
+    }
+  }
+
   void ComputeTransposePadAndOutputShape(
       const int64_t in_size,
       const int64_t stride,
@@ -190,38 +204,20 @@ struct ConvTransposeAttributes : public ConvAttributes {
       // total pad
       int64_t total_pad = ComputeTotalPad(in_size, stride, adj,
                                           kernel, dilation, *out_size);
-      if (pad_type == AutoPadType::SAME_UPPER) {  // pad more on head when total_pad is odd.
-        *pad_head = total_pad - total_pad / 2;
-        *pad_tail = total_pad / 2;
-      } else {
-        // for pad_type is NOTSET, SAME_LOWER or VALID
-        // set pad_head as total_pad/2, pad_tail as total_pad-total_pad/2.
-        // That said, we pad more on tail when total_pad is odd.
-        *pad_head = total_pad / 2;
-        *pad_tail = total_pad - total_pad / 2;
-      }
+      DistributePadding(pad_type, total_pad, *pad_head, *pad_tail);
       return;
     }
 
     // Output shape is not provided - it needs to be computed along with pad values (if applicable)
 
-    // NOTSET means explicit pad values were provided - no action needed
-    // VALID means no padding (zero pads)- no action needed as the pads are initially assigned zero values
-    if (pad_type != AutoPadType::VALID && pad_type != AutoPadType::NOTSET) {
+    // Compute padding if the auto_pad attribute is SAME_UPPER/SAME_LOWER
+    if (pad_type == AutoPadType::SAME_UPPER || pad_type == AutoPadType::SAME_LOWER) {
       // total pad
       int64_t total_pad = ComputeTotalPad(in_size, stride, adj,
                                           kernel, dilation, in_size);
-      if (pad_type == AutoPadType::SAME_UPPER) {  // pad more on head when total_pad is odd.
-        *pad_head = total_pad - total_pad / 2;
-        *pad_tail = total_pad / 2;
-      } else {
-        // for pad_type is NOTSET, SAME_LOWER or VALID
-        // set pad_head as total_pad/2, pad_tail as total_pad-total_pad/2.
-        // That said, we pad more on tail when total_pad is odd.
-        *pad_head = total_pad / 2;
-        *pad_tail = total_pad - total_pad / 2;
-      }
+      DistributePadding(pad_type, total_pad, *pad_head, *pad_tail);
     }
+
     *out_size =
         (in_size - 1) * stride + adj + (kernel - 1) * dilation + 1 - *pad_head - *pad_tail;
   }

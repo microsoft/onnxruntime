@@ -84,9 +84,8 @@ TEST(ConvTransposeTest, ConvTranspose_1D_AsymmetricPads) {
   vector<int64_t> Y_shape = {1, 2, 4};
   auto expected_vals = {3.0f, 5.0f, 7.0f, 4.0f, 3.0f, 5.0f, 7.0f, 4.0f};
 
-  // Skip CUDA Execution Provider as it cannot handle asymmetric padding
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape,
-                      OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kCudaExecutionProvider});
+                      OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ConvTransposeTest, ConvTranspose_1D_AutoPad_SameUpper) {
@@ -108,10 +107,8 @@ TEST(ConvTransposeTest, ConvTranspose_1D_AutoPad_SameUpper) {
   vector<int64_t> Y_shape = {1, 2, 4};
   auto expected_vals = {3.0f, 5.0f, 7.0f, 4.0f, 3.0f, 5.0f, 7.0f, 4.0f};
 
-  // Skip CUDA Execution Provider as it cannot handle asymmetric padding
-  // Pads computed in this test case will be asymmetric
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape,
-                      OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kCudaExecutionProvider});
+                      OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ConvTransposeTest, ConvTranspose_1D_AutoPad_SameLower) {
@@ -133,10 +130,8 @@ TEST(ConvTransposeTest, ConvTranspose_1D_AutoPad_SameLower) {
   vector<int64_t> Y_shape = {1, 2, 4};
   auto expected_vals = {1.0f, 3.0f, 5.0f, 7.0f, 1.0f, 3.0f, 5.0f, 7.0f};
 
-  // Skip CUDA Execution Provider as it cannot handle asymmetric padding
-  // Pads computed in this test case will be asymmetric
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape,
-                      OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kCudaExecutionProvider});
+                      OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 TEST(ConvTransposeTest, ConvTranspose_1D) {
   ConvTransposeOpAttributes attrs = {
