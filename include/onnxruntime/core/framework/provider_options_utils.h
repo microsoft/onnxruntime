@@ -4,7 +4,7 @@
 #pragma once
 
 #include "core/common/string_utils.h"
-#include "core/framework/execution_provider.h"
+#include "core/framework/provider_options.h"
 
 namespace onnxruntime {
 /**

@@ -6,11 +6,12 @@
 #include <unordered_map>
 #include "gsl/gsl"
 
-#include "core/common/status.h"
 #include "core/common/logging/logging.h"
-#include "core/framework/tensor.h"
-#include "core/framework/func_api.h"
+#include "core/common/status.h"
 #include "core/framework/data_transfer.h"
+#include "core/framework/func_api.h"
+#include "core/framework/provider_options.h"
+#include "core/framework/tensor.h"
 
 namespace onnxruntime {
 class GraphViewer;
@@ -30,11 +31,6 @@ using MemoryInfoSet = std::set<OrtMemoryInfo>;
 using CreateFunctionStateFunc = std::function<int(ComputeContext*, FunctionState*)>;
 using ComputeFunc = std::function<Status(FunctionState, const OrtApi*, OrtKernelContext*)>;
 using DestroyFunctionStateFunc = std::function<void(FunctionState)>;
-
-// data types for execution provider options
-using ProviderOptions = std::unordered_map<std::string, std::string>;
-using ProviderOptionsVector = std::vector<ProviderOptions>;
-using ProviderOptionsMap = std::unordered_map<std::string, ProviderOptions>;
 
 struct NodeComputeInfo {
   CreateFunctionStateFunc create_state_func;
