@@ -65,10 +65,12 @@ struct Provider_TensorShapeProto_Dimension_Iterator {
   virtual const Provider_TensorShapeProto_Dimension& operator*() = 0;
 };
 
+#if 0
 struct Provider_IExecutionProviderFactory {
   virtual ~Provider_IExecutionProviderFactory() = default;
   virtual std::unique_ptr<IExecutionProvider> CreateProvider() = 0;
 };
+#endif
 
 class DataTypeImpl;
 using MLDataType = const DataTypeImpl*;
@@ -111,10 +113,10 @@ struct Node__EdgeIterator {
 
 struct Provider {
   // Takes a pointer to a provider specific structure to create the factory. For example, with OpenVINO it is a pointer to an OrtOpenVINOProviderOptions structure
-  virtual std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory(const void* /*provider_options*/) { return nullptr; }
+  virtual std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* /*provider_options*/) { return nullptr; }
 
   // Old simple device_id API to create provider factories, currently used by DNNL And TensorRT
-  virtual std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory(int /*device_id*/) { return nullptr; }
+  virtual std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(int /*device_id*/) { return nullptr; }
 
   virtual const void* GetInfo() { return nullptr; }  // Returns a provider specific information interface if it exists
   virtual void Shutdown() = 0;

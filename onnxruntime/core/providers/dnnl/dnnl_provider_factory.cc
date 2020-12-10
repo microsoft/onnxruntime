@@ -13,7 +13,7 @@ namespace onnxruntime {
 
 void Shutdown_DeleteRegistry();
 
-struct DnnlProviderFactory : Provider_IExecutionProviderFactory {
+struct DnnlProviderFactory : IExecutionProviderFactory {
   DnnlProviderFactory(bool create_arena) : create_arena_(create_arena) {}
   ~DnnlProviderFactory() override {}
 
@@ -30,7 +30,7 @@ std::unique_ptr<IExecutionProvider> DnnlProviderFactory::CreateProvider() {
 }
 
 struct Dnnl_Provider : Provider {
-  std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory(int use_arena) override {
+  std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(int use_arena) override {
 #if defined(_WIN32) && !defined(_OPENMP)
     {
       // We crash when unloading DNNL on Windows when OpenMP also unloads (As there are threads

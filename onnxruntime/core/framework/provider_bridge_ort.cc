@@ -641,6 +641,7 @@ void UnloadSharedProviders() {
   s_library_shared.Unload();
 }
 
+#if 0
 // This class translates the IExecutionProviderFactory interface to work with the interface providers implement
 struct IExecutionProviderFactory_Translator : IExecutionProviderFactory {
   IExecutionProviderFactory_Translator(std::shared_ptr<Provider_IExecutionProviderFactory> p) : p_{p} {}
@@ -652,24 +653,25 @@ struct IExecutionProviderFactory_Translator : IExecutionProviderFactory {
 
   std::shared_ptr<Provider_IExecutionProviderFactory> p_;
 };
+#endif
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena) {
   if (auto provider = s_library_dnnl.Get())
-    return std::make_shared<IExecutionProviderFactory_Translator>(provider->CreateExecutionProviderFactory(use_arena));
+    return provider->CreateExecutionProviderFactory(use_arena);
 
   return nullptr;
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id) {
   if (auto provider = s_library_tensorrt.Get())
-    return std::make_shared<IExecutionProviderFactory_Translator>(provider->CreateExecutionProviderFactory(device_id));
+    return provider->CreateExecutionProviderFactory(device_id);
 
   return nullptr;
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const OrtOpenVINOProviderOptions* provider_options) {
   if (auto provider = s_library_openvino.Get())
-    return std::make_shared<IExecutionProviderFactory_Translator>(provider->CreateExecutionProviderFactory(provider_options));
+    return provider->CreateExecutionProviderFactory(provider_options);
 
   return nullptr;
 }

@@ -20,6 +20,7 @@
 #include "core/framework/allocator.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/tensor_shape.h"
+#include "core/providers/providers.h"
 
 namespace onnxruntime {
 namespace logging {
@@ -54,7 +55,7 @@ struct Provider_TypeProto;
 struct Provider_ValueInfoProto;
 struct Provider_ValueInfoProtos;  // RepeatedPtrField
 
-// OnnxRuntime Types (all of these are actually just Provider_<type> -> <type>)
+// OnnxRuntime Types (these are the internal types)
 struct CPUIDInfo;
 namespace logging {
 struct Logger;
