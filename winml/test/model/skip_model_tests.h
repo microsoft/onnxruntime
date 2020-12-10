@@ -10,7 +10,6 @@ static const std::string disabledx86TestDefaultReason = "Model not working on x8
 std::unordered_map<std::string, std::string> disabledTests(
     {// Onnx zoo models
      {"test_bertsquad_opset8", disabledTestDefaultReason},
-     {"test_bidaf_opset9", "Strings haven't been implemented in model testing yet. Need to file a bug."},
 
      // Tier 2 models
      {"coreml_VGG16_ImageNet_opset8", disabledTestDefaultReason},
