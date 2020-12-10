@@ -101,12 +101,12 @@ Status SetupOptimizerParams(
     }
 
     // check if initial optimizer states have been provided for weight
-    if (config.init_optimizer_states){
+    if (config.init_optimizer_states) {
       const auto optim_state_it = config.init_optimizer_states->find(weight_name);
       if (optim_state_it != config.init_optimizer_states->end()) {
         opt_node_config.initial_states = optim_state_it->second;
       }
-    }    
+    }
 
     opt_node_configs.emplace(weight_name, std::move(opt_node_config));
   }
@@ -138,7 +138,7 @@ Status SetupOptimizerParams(
   opt_graph_config.deepspeed_zero = optimizer_config.deepspeed_zero;
 
   // check if shared initial optimizer states have been provided
-  if (config.init_optimizer_states){
+  if (config.init_optimizer_states) {
     const auto optim_state_it = config.init_optimizer_states->find(onnxruntime::training::SHARED_OPTIMIZER_STATES_KEY);
     if (optim_state_it != config.init_optimizer_states->end()) {
       opt_graph_config.shared_optimizer_states = std::move(optim_state_it->second);
@@ -1289,11 +1289,11 @@ void PipelineTrainingSession::LaunchNcclService(const int pipeline_stage_id) {
 Status PipelineTrainingSession::ConfigureForTraining(
     const TrainingConfiguration& config,
     TrainingConfigurationResult& config_result_out) {
-    auto status = TrainingSession::ConfigureForTraining(config, config_result_out);
+  auto status = TrainingSession::ConfigureForTraining(config, config_result_out);
 #if defined(USE_NCCL) && defined(USE_NCCL_P2P)
-    LaunchNcclService(pipeline_context_.pipeline_stage_id);
+  LaunchNcclService(pipeline_context_.pipeline_stage_id);
 #endif
-    return status;
+  return status;
 }
 
 Status PipelineTrainingSession::PartitionGraphForPipeline(
@@ -1353,7 +1353,10 @@ Status PipelineTrainingSession::SetEventSynchronization(
     const std::unordered_set<std::string>& weight_names_to_train,
     optional<TrainingConfigurationResult::PipelineConfigurationResult>& pipeline_config_result) {
   if (!pipeline_config.has_value()) {
-    pipeline_schedule_ = pipeline::PipelineScheduler(1, distributed_config.value().pipeline_parallel_size);
+    pipeline_schedule_ = pipeline::PipelineScheduler(
+        1,
+        distributed_config.value().pipeline_parallel_size,
+        DistributedRunContext::GetRanks(WorkerGroupType::PipelineParallel));
     pipeline_worker_pool_ = pipeline::PipelineWorkerPool(distributed_config.value().pipeline_parallel_size);
     pipeline_context_.num_pipeline_micro_batches = 1;
     pipeline_context_.num_pipeline_stages = distributed_config.value().pipeline_parallel_size;
@@ -1367,7 +1370,9 @@ Status PipelineTrainingSession::SetEventSynchronization(
   // The number of batches executed by pipeline parallel.
   const int num_pipeline_micro_batches = distributed_config.value().num_pipeline_micro_batches;
   const int num_pipeline_stages = distributed_config.value().pipeline_parallel_size;
-  pipeline_schedule_ = pipeline::PipelineScheduler(num_pipeline_micro_batches, num_pipeline_stages);
+  pipeline_schedule_ = pipeline::PipelineScheduler(num_pipeline_micro_batches,
+                                                   num_pipeline_stages,
+                                                   DistributedRunContext::GetRanks(WorkerGroupType::PipelineParallel));
   pipeline_worker_pool_ = pipeline::PipelineWorkerPool(num_pipeline_stages);
 
   // Insert PipelineOps may access "sliced_schema" from "pipeline_context_".

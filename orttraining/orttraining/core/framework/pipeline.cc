@@ -83,9 +83,19 @@ const PipelineTask& PipelineSlot::GetFrontAction() const {
   return tasks_.front();
 }
 
-PipelineScheduler::PipelineScheduler() : num_stages_(0), num_batches_(0) {}
+PipelineScheduler::PipelineScheduler() : num_stages_(0),
+                                         num_batches_(0) {}
 
-PipelineScheduler::PipelineScheduler(int num_batches, const int num_stages) : num_stages_(num_stages), num_batches_(num_batches) {
+PipelineScheduler::PipelineScheduler(
+    int num_batches,
+    const int num_stages,
+    const std::vector<int>& stage_id_to_rank_id_map) : num_stages_(num_stages),
+                                                       num_batches_(num_batches),
+                                                       stage_id_to_rank_id_map_(stage_id_to_rank_id_map) {
+  if (stage_id_to_rank_id_map.size() != static_cast<size_t>(num_stages)) {
+    throw std::invalid_argument("stage_id_to_rank_id_map should contain the MPI ranks from the first to the last pipeline stages");
+  }
+
   CreateComputeSchedule();
 
   const size_t num_events_per_slot_compute_side = 2;
@@ -361,11 +371,11 @@ void PipelineScheduler::MapStageIdToMpiRank() {
         // task.this_rank=0 means this stage is the first pipeline stage.
         // If data parallel is enabled, we may have multiple pipeline parallel groups.
         // The code below maps stage ID to MPI's world rank.
-        task.this_rank = DistributedRunContext::GetRanks(WorkerGroupType::PipelineParallel).at(task.this_rank);
+        task.this_rank = stage_id_to_rank_id_map_.at(task.this_rank);
 
         // Similarly, We do the mapping for peer's rank to know which process to communicate with
         // in runtime.
-        task.peer_rank = DistributedRunContext::GetRanks(WorkerGroupType::PipelineParallel).at(task.peer_rank);
+        task.peer_rank = stage_id_to_rank_id_map_.at(task.peer_rank);
       }
     }
   }

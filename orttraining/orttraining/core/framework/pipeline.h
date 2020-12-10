@@ -146,7 +146,7 @@ class PipelineSlot {
 class PipelineScheduler {
  public:
   PipelineScheduler();
-  PipelineScheduler(const int num_batches, const int num_stages);
+  PipelineScheduler(const int num_batches, const int num_stages, const std::vector<int>& stage_id_to_rank_id_map);
 
   // Number of time steps.
   size_t GetScheduleSize() const { return compute_commute_table_.size(); }
@@ -227,6 +227,15 @@ class PipelineScheduler {
   // compute batches at the i-th time slot.
   std::vector<int> compute_batch_count_;
   std::vector<int> commute_batch_count_;
+  // stage_id_to_rank_map[i] is the process' MPI rank to execute stage i inside
+  // the current process' pipeline parallel group.
+  //
+  // Different pipeline parallel groups may have different mapping. For example,
+  // if we have 2-stage pipeline parallel with 2-fold data parallel, the 1st pipeline parallel
+  // group contains MPI ranks [0, 1] and the 2nd one contains ranks [2, 3].
+  // In the 1st pipeline parallel group, stage 0/1 runs on rank 0/1 so stage_id_to_rank_map=[0, 1].
+  // For the 2nd group, stage 0/1 runs on rank 2/3 so stage_id_to_rank_map=[2, 3].
+  std::vector<int> stage_id_to_rank_id_map_;
 };
 
 struct PipelineWorkerState {

@@ -215,7 +215,10 @@ Status TrainingRunner::Initialize() {
   if (params_.pipeline_parallel_size > 1) {
     // Instead of inside constructor, we initialize pipeline_schedule_ and pipeline_worker_pool_ here
     // because they dependent on the result of TraningSession::ConfigureForTraining(...).
-    pipeline_schedule_ = pipeline::PipelineScheduler(params_.gradient_accumulation_steps, params_.pipeline_parallel_size);
+    pipeline_schedule_ = pipeline::PipelineScheduler(
+        params_.gradient_accumulation_steps,
+        params_.pipeline_parallel_size,
+        DistributedRunContext::GetRanks(WorkerGroupType::PipelineParallel));
     pipeline_worker_pool_ = pipeline::PipelineWorkerPool(params_.pipeline_parallel_size);
 
     fetch_names = config_result.pipeline_config_result.value().fetch_names;
@@ -554,15 +557,15 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
 
     pipeline_worker_pool_.workers[worker_id] = std::thread([&](const size_t worker_id, const size_t step) {
       try {
-  #ifdef ENABLE_NVTX_PROFILE
+#ifdef ENABLE_NVTX_PROFILE
         // Store the tag for the thread which runs session_.Run(...).
         // It will be used to name range in Nvidia's visual profiler.
         auto& profile_context = profile::Context::GetInstance();
         profile_context.SetThreadTag(
             std::this_thread::get_id(), std::to_string(step));
-  #else
+#else
         ORT_UNUSED_PARAMETER(step);
-  #endif
+#endif
         RunOptions run_options;
         auto status = session_.Run(
             run_options,
@@ -577,7 +580,7 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
         pipeline_worker_pool_.worker_states[worker_id].execution_exception = std::current_exception();
       }
     },
-                                                          worker_id, step_);
+                                                           worker_id, step_);
 
     // Wait all workers to finish this round of pipeline parallelism.
     // The last batch in a pipeline collects gradient and update the model.
@@ -590,8 +593,8 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
 
     fetches = pipeline_worker_pool_.worker_states[worker_id].fetches;
   } else {
-    // Entering this branch means we will run graph without multi-threading.
-    // This branch is only hit in pipeline parallel.
+// Entering this branch means we will run graph without multi-threading.
+// This branch is only hit in pipeline parallel.
 #ifdef ENABLE_NVTX_PROFILE
     // Store the tag for the thread which runs session_.Run(...).
     // It will be used to name range in Nvidia's visual profiler.
@@ -668,15 +671,15 @@ void TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
     // Async launch of a session.
     pipeline_worker_pool_.workers[worker_id] = std::thread([&](const size_t worker_id, const size_t step) {
       try {
-  #ifdef ENABLE_NVTX_PROFILE
+#ifdef ENABLE_NVTX_PROFILE
         // Store the tag for the thread which runs session_.Run(...).
         // It will be used to name range in Nvidia's visual profiler.
         auto& profile_context = profile::Context::GetInstance();
         profile_context.SetThreadTag(
             std::this_thread::get_id(), std::to_string(step));
-  #else
+#else
         ORT_UNUSED_PARAMETER(step);
-  #endif
+#endif
         RunOptions run_options;
         run_options.only_execute_path_to_fetches = true;
         run_options.training_mode = true;
@@ -691,9 +694,9 @@ void TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
         pipeline_worker_pool_.worker_states[worker_id].execution_exception = std::current_exception();
       }
     },
-                                                          worker_id, step_);
+                                                           worker_id, step_);
   } else {
-    // Pipeline is not enabled, so we run session using the main thread.
+// Pipeline is not enabled, so we run session using the main thread.
 #ifdef ENABLE_NVTX_PROFILE
     // Store the tag for the thread which runs session_.Run(...).
     // It will be used to name range in Nvidia's visual profiler.
@@ -1158,42 +1161,16 @@ Status TrainingRunner::Evaluate(TrainingSession& session, IDataLoader& data_load
                                 fetch_names,
                                 fetches);
 
-    if (params_.pipeline_parallel_size == 1) {
-      auto status = Status::OK();
-      // When there is no pipeline, we always use the first thread
-      // to launch session_.Run(...) to avoid multiple activation allocations.
-
-      // Always use the first thread to evaluate.
-      const size_t worker_id = 0;
-      // Wait for the previous work to finish its job.
-      // Its resource cannot be overrided when it's still working.
-      pipeline_worker_pool_.Join(worker_id);
-      // Declare Run(...)'s status in thread.
-      // Launch Run(...).
-      pipeline_worker_pool_.workers[worker_id] = std::thread([&]() {
-        RunOptions run_options;
-        run_options.only_execute_path_to_fetches = true;
-        run_options.training_mode = false;
-        status = session.Run(
-            run_options,
-            feed_names,
-            feeds,
-            fetch_names,
-            &fetches);
-      });
-      // Wait Run(...) to finish.
-      pipeline_worker_pool_.Join(worker_id);
-      ORT_RETURN_IF_ERROR(status);
-    } else {
-      // Training threads are fully used by pipeline stages.
-      // Pipeline cannot reuse training threads to do evaluation.
-      // Otherwise, deadlock may happens.
-      ORT_RETURN_IF_ERROR(session.Run(run_options,
-                                      feed_names,
-                                      feeds,
-                                      fetch_names,
-                                      &fetches));
-    }
+    run_options.only_execute_path_to_fetches = true;
+    run_options.training_mode = false;
+    // Training threads are fully used by pipeline stages.
+    // Pipeline cannot reuse training threads to do evaluation.
+    // Otherwise, deadlock may happens.
+    ORT_RETURN_IF_ERROR(session.Run(run_options,
+                                    feed_names,
+                                    feeds,
+                                    fetch_names,
+                                    &fetches));
 
     // Assume that user-specified fetches are avaliable only on the last pipeline stage.
     // When there is no pipeline, all pipeline_context_.pipeline_stage_id should be 0 and
