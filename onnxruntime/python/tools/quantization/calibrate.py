@@ -253,6 +253,7 @@ class ONNXCalibrater:
         intermediate_outputs = []
 
         if self.data_reader.support_batch_inference(session.get_inputs()[0].shape):
+            # batch inference
             print("Doing batch inference.")
             while True:
                 inputs = self.data_reader.get_batch()
@@ -280,6 +281,7 @@ class ONNXCalibrater:
             output_dicts_list.append(output_dicts)
 
         else:
+            # serial inference
             while True:
                 inputs = self.data_reader.get_next()
                 if not inputs:

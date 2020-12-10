@@ -57,58 +57,81 @@ class YoloV3Evaluator:
     def get_result(self):
         return self.prediction_result_list
 
+    def set_bbox_prediction(self, boxes, scores, indices, is_batch, image_id, image_id_batch):
+        out_boxes, out_scores, out_classes, out_batch_index = [], [], [], []
+
+        for idx_ in indices:
+            out_classes.append(idx_[1])
+            out_batch_index.append(idx_[0])
+            out_scores.append(scores[tuple(idx_)])
+            idx_1 = (idx_[0], idx_[2])
+            out_boxes.append(boxes[idx_1])
+
+        for i in range(len(out_classes)):
+            out_class = out_classes[i]
+            class_name = self.onnx_class_list[int(out_class)]
+            if class_name in self.identical_class_map:
+                class_name = self.identical_class_map[class_name]
+            id = self.class_to_id[class_name]
+
+            bbox = [out_boxes[i][1], out_boxes[i][0], out_boxes[i][3], out_boxes[i][2]]
+            bbox_yxhw = [out_boxes[i][1], out_boxes[i][0], out_boxes[i][3]-out_boxes[i][1], out_boxes[i][2]-out_boxes[i][0]]
+            bbox_yxhw_str = [str(out_boxes[i][1]), str(out_boxes[i][0]), str(out_boxes[i][3]-out_boxes[i][1]), str(out_boxes[i][2]-out_boxes[i][0])]
+            score = str(out_scores[i])
+            coor = np.array(bbox[:4], dtype=np.int32)
+            c1, c2 = (coor[0], coor[1]), (coor[2], coor[3])
+           
+            if is_batch:
+                image_id = image_id_batch[out_batch_index[i]] 
+            self.prediction_result_list.append({"image_id":int(image_id), "category_id":int(id), "bbox":bbox_yxhw, "score":out_scores[i]})
+
     def predict(self):
         session = onnxruntime.InferenceSession(self.model_path, providers=self.providers)
 
         outputs = []
-        while True:
-            inputs = self.data_reader.get_next()
-            if not inputs:
-                break
 
-            image_id = inputs["image_id"]
-            del inputs["image_id"]
+        # If you decide to run batch inference, please make sure all input images must be re-sized to the same shape.
+        # Which means the bounding boxes from groun truth annotation must to be adjusted accordingly, otherwise you will get very low mAP results. 
+        # Here we simply choose to run serial inference.
+        if False:
+            # batch inference
+            print("Doing batch inference...")
 
-            output = session.run(None, inputs)
-            outputs.append(output)
+            image_id_list = []
+            image_id_batch = []
+            while True:
+                inputs = self.data_reader.get_batch()
+                if not inputs:
+                    break
+                image_id_list = inputs["image_id"]
+                del inputs["image_id"]
+                image_id_batch.append(image_id_list)
+                outputs.append(session.run(None, inputs))
 
-            out_boxes, out_scores, out_classes = [], [], []
-            boxes = output[0]
-            scores = output[1]
-            indices = output[2]
+                for index in range(len(outputs)):
+                    output = outputs[index]
+                    boxes = output[0]
+                    scores = output[1]
+                    indices = output[2]
 
-            # print(boxes)
-            # print(scores)
-            # print(indices)
+                    self.set_bbox_prediction(boxes, scores, indices, True, None, image_id_batch[index])
+        else:
+            # serial inference
+            while True:
+                inputs = self.data_reader.get_next()
+                if not inputs:
+                    break
 
-            for idx_ in indices:
-                out_classes.append(idx_[1])
-                out_scores.append(scores[tuple(idx_)])
-                idx_1 = (idx_[0], idx_[2])
-                out_boxes.append(boxes[idx_1])
+                image_id = inputs["image_id"]
+                del inputs["image_id"]
 
-            # print(out_classes)
-            # print(out_scores)
-            # print(out_boxes)
+                output = session.run(None, inputs)
 
+                boxes = output[0]
+                scores = output[1]
+                indices = output[2]
 
-            for i in range(len(out_classes)):
-                out_class = out_classes[i]
-                class_name = self.onnx_class_list[int(out_class)]
-                if class_name in self.identical_class_map:
-                    class_name = self.identical_class_map[class_name]
-                id = self.class_to_id[class_name]
-
-                bbox = [out_boxes[i][1], out_boxes[i][0], out_boxes[i][3], out_boxes[i][2]]
-                bbox_yxhw = [out_boxes[i][1], out_boxes[i][0], out_boxes[i][3]-out_boxes[i][1], out_boxes[i][2]-out_boxes[i][0]]
-                bbox_yxhw_str = [str(out_boxes[i][1]), str(out_boxes[i][0]), str(out_boxes[i][3]-out_boxes[i][1]), str(out_boxes[i][2]-out_boxes[i][0])]
-                score = str(out_scores[i])
-                coor = np.array(bbox[:4], dtype=np.int32)
-                c1, c2 = (coor[0], coor[1]), (coor[2], coor[3])
-                
-                # print("bbox_yxhw")
-                # print(bbox_yxhw)
-                self.prediction_result_list.append({"image_id":int(image_id), "category_id":int(id), "bbox":bbox_yxhw, "score":out_scores[i]})
+                self.set_bbox_prediction(boxes, scores, indices, False, image_id, None)
 
     def evaluate(self, prediction_result, annotations):
         # calling coco api
@@ -241,7 +264,6 @@ class YoloV3VisionEvaluator(YoloV3Evaluator):
                     image_id = image_id_batch[i][batch_i]
                     self.set_bbox_prediction(bboxes, scores, image_height, image_width, image_id)
         else:
-
             # serial inference
             while True:
                 inputs = self.data_reader.get_next()

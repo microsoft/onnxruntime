@@ -55,8 +55,6 @@ class ObejctDetectionDataReader(CalibrationDataReader):
         self.batches = []
 
     def support_batch_inference(self, input_shape):
-        print(input_shape)
-        print(input_shape[0])
         batch_size = input_shape[0] 
         if batch_size.isdigit():
             self.batch_size = int(batch_size) # static batch size 
@@ -64,9 +62,6 @@ class ObejctDetectionDataReader(CalibrationDataReader):
             self.support_batch = True
 
         return self.support_batch
-
-    def get_batch_size(self):
-        return self.batch_size
         
 
 class YoloV3DataReader(ObejctDetectionDataReader):
@@ -102,6 +97,9 @@ class YoloV3DataReader(ObejctDetectionDataReader):
     def set_batch_size(self, batch_size):
         self.batches = []
         self.batch_size = batch_size
+
+    def get_batch_size(self):
+        return self.batch_size
 
     def set_preprocess_flag(self, flag):
         self.preprocess_flag = flag
@@ -150,7 +148,6 @@ class YoloV3DataReader(ObejctDetectionDataReader):
         session = onnxruntime.InferenceSession(self.model_path, providers=['CPUExecutionProvider'])
         input_name = session.get_inputs()[0].name
 
-
         for index in range(0, size_limit, batch_size):
             start_index = self.start_index + index 
             print("Load batch from index %s ..." % (str(start_index)))
@@ -160,20 +157,31 @@ class YoloV3DataReader(ObejctDetectionDataReader):
                 break
 
             nchw_data_batch = []
-            # shape_data_batch = []
-            for i in range(len(nchw_data_list)):
-                nhwc_data = np.squeeze(nchw_data_list[i], 0)
-                nchw_data_batch.append(nhwc_data)
-                # shape_data = np.squeeze(image_size_list[i], 0)
-                # shape_data_batch.append(shape_data)
-            batch_data = np.concatenate(np.expand_dims(nchw_data_batch, axis=0), axis=0)
-            # shape_data = np.concatenate(np.expand_dims(shape_data_batch, axis=0), axis=0)
-            print(batch_data.shape)
-            data = {input_name: batch_data, "image_shape": np.asarray([[416, 416]], dtype=np.float32)}
+            image_id_batch = []
+            if self.is_evaluation:
+                img_name_to_img_id = parse_annotations(self.annotations)
+                for i in range(len(nchw_data_list)):
+                    nhwc_data = np.squeeze(nchw_data_list[i], 0)
+                    nchw_data_batch.append(nhwc_data)
+                    img_name = filename_list[i]
+                    image_id = img_name_to_img_id[img_name]
+                    image_id_batch.append(image_id)
+                batch_data = np.concatenate(np.expand_dims(nchw_data_batch, axis=0), axis=0)
+                batch_id = np.concatenate(np.expand_dims(image_id_batch, axis=0), axis=0)
+                print(batch_data.shape)
+                data = {input_name: batch_data, "image_id": batch_id, "image_shape": np.asarray([[416, 416]], dtype=np.float32)}
+            else:
+                for i in range(len(nchw_data_list)):
+                    nhwc_data = np.squeeze(nchw_data_list[i], 0)
+                    nchw_data_batch.append(nhwc_data)
+                batch_data = np.concatenate(np.expand_dims(nchw_data_batch, axis=0), axis=0)
+                print(batch_data.shape)
+                data = {input_name: batch_data, "image_shape": np.asarray([[416, 416]], dtype=np.float32)}
+
             self.batches.append(data)
 
-        self.batches = iter(self.batches)
 
+        self.batches = iter(self.batches)
 
 
 class YoloV3VisionDataReader(YoloV3DataReader):
