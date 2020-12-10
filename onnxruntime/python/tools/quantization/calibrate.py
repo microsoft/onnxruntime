@@ -489,7 +489,8 @@ def generate_calibration_table(model_path, augmented_model_path, data_reader, ca
     total_data_size = len(os.listdir(calibration_dataset)) if calibration_dataset else stride
 
 
-    # Some machines don't have sufficient memory to load all dataset. So handle it by batch.
+    # Some machines don't have sufficient memory to hold all dataset at once. So handle it by batch/stride.
+    # For each stride, data_reader can handle them with batch or serial processing depends on data reader implementation 
     for i in range(0, total_data_size, stride):
         print(calibration_dataset)
         if calibration_dataset:

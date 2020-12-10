@@ -8,6 +8,9 @@ def get_prediction_evaluation(model_path, validation_dataset, providers):
     
     evaluator = None
     results = []
+
+    # Some machines don't have sufficient memory to hold all dataset at once. So handle it by batch/stride.
+    # For each stride, data_reader can handle them with batch or serial processing depends on data reader implementation 
     for i in range(0, len(image_list), stride):
         print("Total %s images\nStart to process from %s with stride %s ..." % (str(len(image_list)), str(i), str(stride)))
         dr = YoloV3DataReader(validation_dataset, model_path=model_path, start_index=i, size_limit=stride, batch_size=20, is_evaluation=True)
@@ -42,8 +45,8 @@ def get_calibration_table(model_path, augmented_model_path, calibration_dataset)
 if __name__ == '__main__':
 
     model_path = 'yolov3_new.onnx'
-    # model_path = 'yolov3_merge_coco_openimage_500200_288x512_batch_nms_obj_300_score_0p35_iou_0p35_shape.onnx'
-    # model_path = 'yolov3_merge_coco_openimage_500200_384x608_batch_nms_obj_300_score_0p35_iou_0p35_shape.onnx'
+    # model_path = 'yolov3_288x512_batch_nms.onnx'
+    # model_path = 'yolov3_384x608_batch_nms.onnx'
 
     augmented_model_path = 'augmented_model.onnx'
 

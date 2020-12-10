@@ -119,21 +119,20 @@ quantized_model = quantize_qat(model_fp32, model_quant)
 - Static quantization
 
 Please refer to ./E2E_example_model for an example of static quantization.
-## Calibration support for Static Quantization
-### MinMax static calibration
-This tool provides API for generating calibration table using MinMax algorithm, as previously mentioned, users need to provider implementation of CalibrationDataReader.
-```data_reader.py``` is an example of data reader implementaion with both serial and batch processing.
+### Calibration support for Static Quantization
+#### MinMax static calibration
+This Quantization tool also provides API for generating calibration table using MinMax algorithm, as previously mentioned, users need to provide implementation of CalibrationDataReader.```data_reader.py``` is an example of data reader implementaion with both serial and batch processing.
 After calling the API, three different format of calibration tables are generated with filename calibration.* (FlatBuffers, Python dictionary and plain text).
-### Example
+#### Example
 ```
 data_reader = YoloV3DataReader(calibration_dataset, model_path=augmented_model_path)
 generate_calibration_table(model_path, augmented_model_path, data_reader, calibration_dataset=calibration_dataset, stride=1000, batch_size=20)
 ```
 Please see ```E2E_example_model/e2e_user_yolov3_example.py``` for more details.
-## Evaluation for qunatization
-### COCO dataset evaluation
+### Evaluation for qunatization
+#### COCO dataset evaluation
 This tool integrates COCO dataset API to evaluate model prediction. Please make sure to install COCO API first (```pip install pycocotools```)
-### Example
+#### Example
 ```
 dr = YoloV3DataReader(validation_dataset, model_path=model_path, start_index=i, size_limit=stride, batch_size=20, is_evaluation=True)
 evaluator = YoloV3Evaluator(model_path, dr, providers=providers)
@@ -142,4 +141,5 @@ results += evaluator.get_result()
 ...
 evaluator.evaluate(results, annotations)
 ```
-Please see E2E_example_model/e2e_user_yolov3_example.py for more details.
+Please see ```E2E_example_model/e2e_user_yolov3_example.py``` for more details.
+
