@@ -119,7 +119,7 @@ class ORTTrainer(object):
             ort_trainer = ORTTrainer(model, model_desc, optim_config, loss_fn)
     """
 
-    def __init__(self, model, model_desc, optim_config, loss_fn=None, options=None):
+    def __init__(self, model, model_desc, optim_config, loss_fn=None, options=None, current_optimization_step=0):
         # Basic validation
         assert model is not None, "'model' is required and must be either a 'torch.nn.Module' or ONNX model"
         assert isinstance(model_desc, dict), "'model_desc' must be a 'dict'"
@@ -204,7 +204,7 @@ class ORTTrainer(object):
         self._state_dict = {}
         self._optim_state_dict = {}
 
-        self._train_step_info = TrainStepInfo(self.optim_config)
+        self._train_step_info = TrainStepInfo(self.optim_config, optimization_step=current_optimization_step)
         self._training_session = None
         self._init_session()
 
