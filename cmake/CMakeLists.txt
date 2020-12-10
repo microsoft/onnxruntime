@@ -57,13 +57,14 @@ option(onnxruntime_ENABLE_PYTHON "Enable python buildings" OFF)
 # Enable it may cause LNK1169 error
 option(onnxruntime_ENABLE_MEMLEAK_CHECKER "Experimental: Enable memory leak checker in Windows debug build" OFF)
 option(onnxruntime_USE_CUDA "Build with CUDA support" OFF)
+option(onnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO "When building with CUDA support, generate device code line number information." OFF)
 option(onnxruntime_USE_OPENVINO "Build with OpenVINO support" OFF)
 option(onnxruntime_USE_EIGEN_FOR_BLAS "Use eign for blas" ON)
 option(onnxruntime_USE_NNAPI_BUILTIN "Build with builtin NNAPI lib for Android NNAPI support" OFF)
 option(onnxruntime_USE_RKNPU "Build with RKNPU support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
+option(onnxruntime_USE_MKLML "Build the default cpu provider with MKL-ML binary dependency" OFF)
 option(onnxruntime_USE_FEATURIZERS "Build ML Featurizers support" OFF)
-option(onnxruntime_USE_NGRAPH "Build with nGraph support" OFF)
 option(onnxruntime_USE_OPENBLAS "Use openblas" OFF)
 option(onnxruntime_DEV_MODE "Enable developer warnings and treat most of them as error." OFF)
 option(onnxruntime_USE_JEMALLOC "Use jemalloc" OFF)
@@ -87,6 +88,7 @@ option(onnxruntime_USE_VITISAI "Build with Vitis-AI" OFF)
 option(onnxruntime_USE_TENSORRT "Build with TensorRT support" OFF)
 option(onnxruntime_ENABLE_LTO "Enable link time optimization" OFF)
 option(onnxruntime_CROSS_COMPILING "Cross compiling onnx runtime" OFF)
+option(onnxruntime_GCOV_COVERAGE "Compile with options necessary to run code coverage" OFF)
 
 #It's preferred to turn it OFF when onnxruntime is dynamically linked to PROTOBUF
 option(onnxruntime_USE_FULL_PROTOBUF "Link to libprotobuf instead of libprotobuf-lite when this option is ON" OFF)
@@ -120,6 +122,7 @@ option(onnxruntime_DISABLE_RTTI "Disable RTTI" OFF)
 # For now onnxruntime_DISABLE_EXCEPTIONS will only work with onnxruntime_MINIMAL_BUILD, more changes (ONNX, non-CPU EP, ...) are required to run this standalone
 option(onnxruntime_DISABLE_EXCEPTIONS "Disable exception handling. Requires onnxruntime_MINIMAL_BUILD currently." OFF)
 option(onnxruntime_MINIMAL_BUILD "Exclude as much as possible from the build. Support ORT format models. No support for ONNX format models." OFF)
+option(onnxruntime_EXTENDED_MINIMAL_BUILD "onnxruntime_MINIMAL_BUILD with support for execution providers that compile kernels." OFF)
 option(onnxruntime_REDUCED_OPS_BUILD "Reduced set of kernels are registered in build via modification of the kernel registration source files." OFF)
 option(onnxruntime_DISABLE_ORT_FORMAT_LOAD "Disable loading an ORT format model when onnxruntime_MINIMAL_BUILD=OFF (i.e. in a full build)." OFF)
 
@@ -198,9 +201,11 @@ if(onnxruntime_USE_OPENMP)
   if (OPENMP_FOUND)
     set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
-    include_directories(${OpenMP_CXX_INCLUDE_DIR})    
-    if(onnxruntime_USE_NGRAPH)
-      message(FATAL_ERROR "Please use only one of onnxruntime_USE_NGRAPH, onnxruntime_USE_OPENMP")
+    include_directories(${OpenMP_CXX_INCLUDE_DIR})
+    # MKLML and NGraph depend on their own OpenMP library that may be different with the compiler's.
+    # Disable the options to build mklml/NGraph and OpenMP together.
+    if((WIN32 OR APPLE) AND onnxruntime_USE_MKLML)
+      message(FATAL_ERROR "Please use only one of onnxruntime_USE_MKLML, onnxruntime_USE_OPENMP")
     endif()
   else()
     message(WARNING "Flag --use_openmp is specified, but OpenMP is not found in current build environment. Setting it to OFF.")
@@ -208,12 +213,21 @@ if(onnxruntime_USE_OPENMP)
   endif()
 endif()
 
+# 'extended' implies minimal. 
+if (onnxruntime_EXTENDED_MINIMAL_BUILD AND NOT onnxruntime_MINIMAL_BUILD)
+  set(onnxruntime_MINIMAL_BUILD ON)
+endif()
+
 # ORT build with as much excluded as possible. Supports ORT flatbuffers models only.
-# Will expose option in build.py when all pieces are available
-if(onnxruntime_MINIMAL_BUILD)
+if (onnxruntime_MINIMAL_BUILD)
   add_compile_definitions(ORT_MINIMAL_BUILD)
   add_compile_definitions(ENABLE_ORT_FORMAT_LOAD)
 
+  if (onnxruntime_EXTENDED_MINIMAL_BUILD)
+    # enable EPs that compile kernels at runtime
+    add_compile_definitions(ORT_EXTENDED_MINIMAL_BUILD)
+  endif()
+ 
   set(onnxruntime_REDUCED_OPS_BUILD ON)
 
   if (NOT onnxruntime_ENABLE_PYTHON)
@@ -746,7 +760,8 @@ if (onnxruntime_USE_ARMNN)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES armnn pthread arm_compute_core arm_compute arm_compute_graph)
 endif()
 
-if (onnxruntime_USE_DNNL)
+# MKLML
+if (onnxruntime_USE_DNNL OR onnxruntime_USE_MKLML)
   include(dnnl)
 endif()
 
@@ -762,12 +777,28 @@ if (onnxruntime_USE_TVM)
   if (onnxruntime_USE_OPENMP)
     set(USE_OPENMP "gnu")
   endif()
+  if (onnxruntime_USE_MKLML)
+    set(USE_OPENMP "intel")
+    # make sure MKLML in ORT is used by TVM
+    if (WIN32)
+      set(OMP_LIBRARY ${MKLML_LIB_DIR}/${IOMP5MD_IMPORT_LIB})
+    else()
+      set(OMP_LIBRARY ${MKLML_LIB_DIR}/${IOMP5MD_SHARED_LIB})
+    endif()
+  endif()
 
   add_subdirectory(${PROJECT_SOURCE_DIR}/external/tvm EXCLUDE_FROM_ALL)
   set_target_properties(tvm PROPERTIES FOLDER "External/tvm")
   set_target_properties(tvm_topi PROPERTIES FOLDER "External/tvm")
   set_target_properties(tvm_runtime PROPERTIES FOLDER "External/tvm")
   set_target_properties(nnvm_compiler PROPERTIES FOLDER "External/tvm")
+
+  if (onnxruntime_USE_MKLML)
+    add_dependencies(tvm project_mklml)
+    add_dependencies(tvm_topi project_mklml)
+    add_dependencies(tvm_runtime project_mklml)
+    add_dependencies(nnvm_compiler project_mklml)
+  endif()
 
   set(TVM_INCLUDES ${PROJECT_SOURCE_DIR}/external/tvm/include
     ${PROJECT_SOURCE_DIR}/external/tvm/3rdparty/dmlc-core/include
@@ -817,14 +848,20 @@ endif()
 set_target_properties(onnx PROPERTIES FOLDER "External/ONNX")
 set_target_properties(onnx_proto PROPERTIES FOLDER "External/ONNX")
 
-if (onnxruntime_USE_NGRAPH)
-  if (NOT onnxruntime_USE_FULL_PROTOBUF)
-    message(FATAL_ERROR "Please set onnxruntime_USE_FULL_PROTOBUF=ON for nGraph execution provider.")
+if (onnxruntime_USE_MKLML)
+  add_definitions(-DUSE_MKLML=1 -DUSE_MKLML_FOR_BLAS=1)
+  if (WIN32 OR APPLE)
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml)
+  else()
+    if(onnxruntime_USE_OPENMP)
+      list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml_gnu)
+    else()
+      list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml_intel)
+    endif()
   endif()
-  add_definitions(-DUSE_NGRAPH=1)
-  include(ngraph)
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ngraph)
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_ngraph)
+  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_mklml)
+  include_directories(${MKLML_INCLUDE_DIR})
+  link_directories(${MKLML_LIB_DIR})
 endif()
 
 # fix a warning in onnx code we can't do anything about
@@ -850,6 +887,11 @@ set(FLATBUFFERS_BUILD_FLATLIB ON CACHE BOOL "FLATBUFFERS_BUILD_FLATLIB" FORCE)
 add_subdirectory(external/flatbuffers EXCLUDE_FROM_ALL)
 list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES flatbuffers)
 list(APPEND onnxruntime_EXTERNAL_LIBRARIES flatbuffers)
+
+if (CMAKE_SYSTEM_NAME STREQUAL "Android" AND Onnxruntime_GCOV_COVERAGE)
+  string(APPEND CMAKE_CXX_FLAGS " -g -O0 --coverage ")
+  string(APPEND CMAKE_C_FLAGS   " -g -O0 --coverage ")
+endif()
 
 #Adjust warning flags
 if (WIN32)
@@ -1000,14 +1042,6 @@ if(onnxruntime_USE_OPENVINO)
     message(FATAL_ERROR "Unsupported OpenVINO version: ${INTEL_OPENVINO_DIR}")
   endif()
 
-  if (NOT WIN32)
-    if(OPENVINO_VERSION STREQUAL "2020.2")
-      include(openvino)
-      list(APPEND onnxruntime_EXTERNAL_LIBRARIES ovep_ngraph)
-      list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_ngraph)
-    endif()
-  endif()
-
   if(onnxruntime_USE_OPENVINO_MYRIAD)
     add_definitions(-DOPENVINO_CONFIG_MYRIAD=1)
   endif()
@@ -1144,6 +1178,10 @@ if (onnxruntime_USE_CUDA)
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcudafe \"--diag_suppress=bad_friend_decl\"")
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcudafe \"--diag_suppress=unsigned_compare_with_zero\"")
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcudafe \"--diag_suppress=expr_has_no_effect\"")
+
+  if (onnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO)
+    add_compile_options("$<$<COMPILE_LANGUAGE:CUDA>:--generate-line-info>")
+  endif()
 endif()
 
 if (onnxruntime_USE_MIGRAPHX)

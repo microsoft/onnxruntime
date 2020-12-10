@@ -5,7 +5,6 @@
 
 - CPU [Dockerfile](Dockerfile.source), [Instructions](#cpu)
 - CUDA + CUDNN: [Dockerfile](Dockerfile.cuda), [Instructions](#cuda)
-- nGraph: [Dockerfile](Dockerfile.ngraph), [Instructions](#ngraph)
 - TensorRT: [Dockerfile](Dockerfile.tensorrt), [Instructions](#tensorrt)
 - OpenVINO: [Dockerfile](Dockerfile.openvino), [Instructions](#openvino)
 - Nuphar: [Dockerfile](Dockerfile.nuphar), [Instructions](#nuphar)
@@ -29,11 +28,10 @@ Use `docker pull` with any of the images and tags below to pull an image and try
 | OpenVino (MYRIAD) | mcr.microsoft.com/azureml/onnxruntime | :v0.5.0-openvino-r1.1-myriad, :v1.0.0-openvino-r1.1-myriad, :v1.3.0-openvino-2020.2.120-myriad, :v1.4.0-openvino-2020.3.194-myriad, :v1.5.2-openvino-2020.4.287-myriad | :latest-openvino-myriad |
 | OpenVino (CPU)    | mcr.microsoft.com/azureml/onnxruntime | :v1.0.0-openvino-r1.1-cpu, :v1.3.0-openvino-2020.2.120-cpu, :v1.4.0-openvino-2020.3.194-cpu, :v1.5.2-openvino-2020.4.287-cpu | :latest-openvino-cpu    |
 | OpenVINO (GPU)    | mcr.microsoft.com/azureml/onnxruntime | :v1.3.0-openvino-2020.2.120-gpu, :v1.4.0-openvino-2020.3.194-gpu, :v1.5.2-openvino-2020.4.287-gpu | :latest-openvino-gpu|
-| nGraph            | mcr.microsoft.com/azureml/onnxruntime | :v1.0.0-ngraph-v0.26.0                | :latest-ngraph |
 | Nuphar            | mcr.microsoft.com/azureml/onnxruntime |                                       | :latest-nuphar |
 | Server            | mcr.microsoft.com/onnxruntime/server  | :v0.4.0, :v0.5.0, :v0.5.1, :v1.0.0      | :latest |
 | MIGraphX (GPU)    | mcr.microsoft.com/azureml/onnxruntime | :v0.6                                 | :latest |
-| Training ([usage](https://github.com/microsoft/onnxruntime-training-examples))| mcr.microsoft.com/azureml/onnxruntime-training | :0.1-rc1-openmpi4.0-cuda10.1-cudnn7.6-nccl2.4.8, :0.1-rc2-openmpi4.0-cuda10.2-cudnn7.6-nccl2.7.6, :0.1-rc3-openmpi4.0-cuda10.2-cudnn8.0-nccl2.7 | :latest |
+| Training ([usage](https://github.com/microsoft/onnxruntime-training-examples))| mcr.microsoft.com/azureml/onnxruntime-training | :0.1-rc1-openmpi4.0-cuda10.1-cudnn7.6-nccl2.4.8, :0.1-rc2-openmpi4.0-cuda10.2-cudnn7.6-nccl2.7.6, :0.1-rc3.1-openmpi4.0-cuda10.2-cudnn8.0-nccl2.7 | :latest |
 ---
 
 # Building and using Docker images
@@ -43,7 +41,7 @@ Use `docker pull` with any of the images and tags below to pull an image and try
 
 1. Build the docker image from the Dockerfile in this repository.
   ```
-  docker build -t onnxruntime-source -f Dockerfile.source .
+  docker build -t onnxruntime-source -f Dockerfile.source ..
   ```
 
 2. Run the Docker image
@@ -53,11 +51,11 @@ Use `docker pull` with any of the images and tags below to pull an image and try
   ```
 
 ## CUDA
-**Ubuntu 16.04, CUDA 10.0, CuDNN 7**
+**Ubuntu 18.04, CUDA 10.2, CuDNN 8**
 
 1. Build the docker image from the Dockerfile in this repository.
   ```
-  docker build -t onnxruntime-cuda -f Dockerfile.cuda .
+  docker build -t onnxruntime-cuda -f Dockerfile.cuda ..
   ```
 
 2. Run the Docker image
@@ -67,33 +65,6 @@ Use `docker pull` with any of the images and tags below to pull an image and try
   or
   nvidia-docker run -it onnxruntime-cuda
 
-  ```
-
-## nGraph
-*Public Preview*
-
-### **Deprecation Notice**
-
-| | |
-| --- | --- | 
-| Deprecation Begins	| June 1, 2020 |
-| Removal Date |	December 1, 2020 |
-
-Starting with the OpenVINO™ toolkit 2020.2 release, all of the features previously available through nGraph have been merged into the OpenVINO™ toolkit. As a result, all the features previously available through ONNX RT Execution Provider for nGraph have been merged with ONNX RT Execution Provider for OpenVINO™ toolkit.
-
-Therefore, ONNX RT Execution Provider for **nGraph** will be deprecated starting June 1, 2020 and will be completely removed on December 1, 2020. Users are recommended to migrate to the ONNX RT Execution Provider for OpenVINO™ toolkit as the unified solution for all AI inferencing on Intel® hardware. 
-
-**Ubuntu 16.04, Python Bindings**
-
-1. Build the docker image from the Dockerfile in this repository.
-  ```
-  docker build -t onnxruntime-ngraph -f Dockerfile.ngraph .
-  ```
-
-2. Run the Docker image
-
-  ```
-  docker run -it onnxruntime-ngraph
   ```
 
 ## TensorRT

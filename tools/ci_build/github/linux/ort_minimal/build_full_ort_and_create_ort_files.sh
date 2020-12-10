@@ -4,6 +4,12 @@
 # and the exclude ops config file, which will be used in the build_minimal_ort_and_run_tests.sh
 
 set -e
+set -x
+
+# Validate the operator kernel registrations. The ORT model uses hashes for kernel registrations, so if these
+# are incorrect we will produce a model that will break when the registrations are fixed.
+python3 /onnxruntime_src/tools/ci_build/op_registration_validator.py
+
 
 # Run a full build of ORT
 # Since we need the ORT python package to generate the ORT format files and the include ops config files
@@ -32,7 +38,7 @@ python3 /onnxruntime_src/tools/python/convert_onnx_models_to_ort.py \
 find /home/onnxruntimedev/.test_data/ort_minimal_e2e_test_data -type f -name "*.onnx" -delete
 
 # Uninstall the ORT python wheel
-python3 -m pip uninstall -y onnxruntime_noopenmp
+python3 -m pip uninstall -y onnxruntime
 
 # Clear the build
 rm -rf /build/Debug

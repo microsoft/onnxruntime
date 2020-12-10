@@ -37,49 +37,50 @@ constexpr const char* kMIGraphXExecutionProvider = "MIGraphXExecutionProvider";
 constexpr const char* kAclExecutionProvider = "ACLExecutionProvider";
 constexpr const char* kArmNNExecutionProvider = "ArmNNExecutionProvider";
 constexpr const char* kRocmExecutionProvider = "ROCMExecutionProvider";
-constexpr const char *providers_available[] = {
-  kCpuExecutionProvider,
+
+constexpr const char* providers_available[] = {
+    kCpuExecutionProvider,
 #ifdef USE_CUDA
-  kCudaExecutionProvider,
+    kCudaExecutionProvider,
 #endif
 #ifdef USE_DNNL
-  kDnnlExecutionProvider,
+    kDnnlExecutionProvider,
 #endif
 #ifdef USE_NGRAPH
-  kNGraphExecutionProvider,
+    kNGraphExecutionProvider,
 #endif
 #ifdef USE_OPENVINO
-  kOpenVINOExecutionProvider,
+    kOpenVINOExecutionProvider,
 #endif
 #ifdef USE_NUPHAR
-  kNupharExecutionProvider,
+    kNupharExecutionProvider,
 #endif
 #ifdef USE_VITISAI
-  kVitisAIExecutionProvider,
+    kVitisAIExecutionProvider,
 #endif
 #ifdef USE_TENSORRT
-  kTensorrtExecutionProvider,
+    kTensorrtExecutionProvider,
 #endif
 #ifdef USE_NNAPI
-  kNnapiExecutionProvider,
+    kNnapiExecutionProvider,
 #endif
 #ifdef USE_RKNPU
-  kRknpuExecutionProvider,
+    kRknpuExecutionProvider,
 #endif
 #ifdef USE_DML
-  kDmlExecutionProvider,
+    kDmlExecutionProvider,
 #endif
 #ifdef USE_MIGRAPHX
-  kMIGraphXExecutionProvider,
+    kMIGraphXExecutionProvider,
 #endif
 #ifdef USE_ACL
-  kAclExecutionProvider,
+    kAclExecutionProvider,
 #endif
 #ifdef USE_ARMNN
-  kArmNNExecutionProvider,
+    kArmNNExecutionProvider,
 #endif
 #ifdef USE_ROCM
-  kRocmExecutionProvider,
+    kRocmExecutionProvider,
 #endif
 };
 

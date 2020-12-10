@@ -20,6 +20,11 @@ using std::vector;
 
 #pragma region helpers
 
+struct OpBuilderRegistrations {
+  std::vector<std::unique_ptr<IOpBuilder>> builders;
+  std::unordered_map<std::string, const IOpBuilder*> op_builder_map;
+};
+
 #define ADD_SCALAR_OPERAND(model_builder, input_indices, scalar_value)             \
   {                                                                                \
     uint32_t _index = 0;                                                           \
@@ -171,6 +176,58 @@ static Status AddBinaryOperator(int32_t op_type,
                                         output_scale, output_zero_point);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_type, input_indices,
                                                  {output}, {output_operand_type}, {output_is_nhwc}));
+  return Status::OK();
+}
+
+static Status AddSqueezeOp(ModelBuilder& model_builder,
+                           const std::string& node_name,
+                           const std::string& input, const std::string& output,
+                           vector<int32_t> axes) ORT_MUST_USE_RESULT;
+static Status AddSqueezeOp(ModelBuilder& model_builder,
+                           const std::string& node_name,
+                           const std::string& input, const std::string& output,
+                           vector<int32_t> axes) {
+  if (model_builder.GetAndroidSdkVer() < 28) {
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, FAIL, "Squeeze is not supported on API level ", model_builder.GetAndroidSdkVer());
+  }
+
+  auto& shaper(model_builder.GetShaper());
+  const auto& operand_indices(model_builder.GetOperandIndices());
+  const auto& operand_types(model_builder.GetOperandTypes());
+
+  const auto& input_shape(shaper[input]);
+  auto input_dims = input_shape.size();
+  for (auto& axis : axes) {
+    axis = static_cast<int32_t>(HandleNegativeAxis(axis, input_dims));
+  }
+
+  // Despite the spec of ANEURALNETWORKS_SQUEEZE at
+  // https://developer.android.com/ndk/reference/group/neural-networks
+  // states, that the axes (input 1 of ANEURALNETWORKS_SQUEEZE) is optional.
+  //
+  // The actual code of NNAPI requires the axes to be provided
+  // https://android.googlesource.com/platform/frameworks/ml/+/master/nn/common/operations/Squeeze.cpp#31
+  if (axes.empty()) {  // Squeeze all
+    for (size_t i = 0; i < input_dims; i++) {
+      if (input_shape[i] == 1)
+        axes.push_back(i);
+    }
+  }
+
+  const auto axes_name = model_builder.GetUniqueName(node_name + input + "_axes");
+  Shape axes_dimen = {static_cast<uint32_t>(axes.size())};
+  const OperandType axes_operand_type(Type::TENSOR_INT32, axes_dimen);
+  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(axes_name, axes.data(), axes_operand_type));
+
+  std::vector<uint32_t> input_indices;
+  input_indices.push_back(operand_indices.at(input));      // input
+  input_indices.push_back(operand_indices.at(axes_name));  // axes
+
+  ORT_RETURN_IF_ERROR(shaper.Squeeze(input, axes, output));
+  const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_SQUEEZE, input_indices,
+                                                 {output}, {output_operand_type}, {false}));
   return Status::OK();
 }
 
@@ -521,6 +578,20 @@ Status GetQuantizedInputScaleAndZeroPoint(const ModelBuilder& model_builder,
   return Status::OK();
 }
 
+template <class T>
+void CreateSharedOpBuilderImpl(const std::string& op_type,
+                               OpBuilderRegistrations& op_registrations,
+                               const std::vector<std::string>& op_types) {
+  // The shared OpSupportChecker is already in the OpSupportCheckerRegistrations
+  if (op_registrations.op_builder_map.find(op_type) != op_registrations.op_builder_map.cend())
+    return;
+
+  op_registrations.builders.push_back(onnxruntime::make_unique<T>());
+  for (const auto& op : op_types) {
+    op_registrations.op_builder_map.emplace(op, op_registrations.builders.back().get());
+  }
+}
+
 #pragma endregion helpers
 
 #pragma region op_base
@@ -555,6 +626,7 @@ Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node&
 class BinaryOpBuilder : public BaseOpBuilder {
  public:
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+  static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
@@ -565,6 +637,19 @@ void BinaryOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const N
   if (op == "QLinearAdd") {
     AddBinaryOpQuantizationScaleAndZeroPointToSkip(model_builder, node);
   }
+}
+
+/* static */ void BinaryOpBuilder::CreateSharedOpBuilder(
+    const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  CreateSharedOpBuilderImpl<BinaryOpBuilder>(
+      op_type, op_registrations,
+      {
+          "Add",
+          "Sub",
+          "Mul",
+          "Div",
+          "QLinearAdd",
+      });
 }
 
 Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
@@ -723,28 +808,27 @@ class ReshapeOpBuilder : public BaseOpBuilder {
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
-  static bool CanSkipReshape(const Node& node, size_t input_rank, size_t output_rank);
+  static bool CanSkipReshape(const ModelBuilder& model_builder, const Node& node, size_t input_rank, size_t output_rank);
 };
 
 void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
   model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());
 }
 
-// We can skip the Reshape if all the output edges satisfies,
-// 1. The output of the reshape/flatten is the input 0 of the GEMM/Matmul,
+// We can skip the Reshape if all the output edges satisfies both the following conditions
+// 1. The output the reshape/flatten is not an output of the graph
+// 2. The output of the reshape/flatten is the input 0 of one or more GEMM/Matmul operators,
+//    and not any other types of operator,
 //    and the input rank >= 2 and output_rank == 2
 //    This is because Gemm/Matmul will map to ANEURALNETWORKS_FULLY_CONNECTED in NNAPI,
 //    ANEURALNETWORKS_FULLY_CONNECTED will flatten the 2+ dim input 0 to 2d
-// 2. Or the output the reshape/flatten is the output of the graph
-//    (no op in the graph is using the output except can be used by Gemm/Matmul satisfying condition 1 above)
 // The reason we want to skip Reshape is that Reshape is not running on Hardware (NPU,...) in NNAPI for
 // some CPU (e.g. Qualcomm SD for now), skipping unnecessary Reshape will prevent context switching
 // between NNAPI CPU impl and Hardware Accelerator impl and will speed up the execution
 // If we are going to skip the reshape, we will still add correct shape and operand type for the output in
 // onnxruntime::nnapi::Model.
-// If the Reshape output is also a graph output, since NNAPI output is a void* buffer, we can find the shape
-// information in onnxruntime::nnapi::Model and pass the correct shape information back to ORT to be used as output shape
-/* static */ bool ReshapeOpBuilder::CanSkipReshape(const Node& node, size_t input_rank, size_t output_rank) {
+/* static */ bool ReshapeOpBuilder::CanSkipReshape(const ModelBuilder& model_builder, const Node& node,
+                                                   size_t input_rank, size_t output_rank) {
   const auto& output = node.OutputDefs()[0]->Name();
   // We will go through all the output edges
   for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
@@ -776,11 +860,17 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
     }
   }
 
-  // If we reach here, we have either,
-  // all the Reshape outputs are used by gemm/matmul, the output can also be a model output [doesn't really matter here]
-  // or
-  // Reshape has no output edge ==> the output is a graph output or a dead end [which we don't care]
-  // we can skip this Reshape now
+  // If we reach here, we have all the Reshape outputs are used by gemm/matmul, or Reshape has no output edge
+  // Check if the Reshape output is a graph output, if so we cannot skip the Reshape
+  // We do not care the case where the Reshape output is a dead end
+  for (const auto* node_arg : model_builder.GetGraphViewer().GetOutputs()) {
+    if (node_arg->Name() == output) {
+      LOGS_DEFAULT(VERBOSE) << "Reshape/Flatten can not be skipped when the output is a graph output"
+                            << ", output name, " << output;
+      return false;
+    }
+  }
+
   LOGS_DEFAULT(VERBOSE) << "Skipping Reshape/Flatten node ["
                         << node.Name() << "] with output, " << output;
   return true;
@@ -801,7 +891,7 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
   // Since Reshape is not running using hardware in NNAPI for some CPU (e.g. Qualcomm SD for now)
   // We will try to see if we the skip the Reshape to prevent context switching between
   // NNAPI CPU impl and NNAPI hardware accelerator impl
-  if (CanSkipReshape(node, input_rank, output_rank)) {
+  if (CanSkipReshape(model_builder, node, input_rank, output_rank)) {
     // Since reshape can be skipped, only register the dimension and type, with same index and new name
     const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
     model_builder.RegisterOperand(output, operand_indices.at(input), output_operand_type, false);
@@ -954,9 +1044,24 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
 #pragma region op_pool
 
 class PoolOpBuilder : public BaseOpBuilder {
+ public:
+  static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
 };
+
+/* static */ void PoolOpBuilder::CreateSharedOpBuilder(
+    const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  CreateSharedOpBuilderImpl<PoolOpBuilder>(
+      op_type, op_registrations,
+      {
+          "GlobalAveragePool",
+          "GlobalMaxPool",
+          "AveragePool",
+          "MaxPool",
+      });
+}
 
 Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
   auto& shaper(model_builder.GetShaper());
@@ -1058,10 +1163,21 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 class ConvOpBuilder : public BaseOpBuilder {
  public:
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+  static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
 };
+
+/* static */ void ConvOpBuilder::CreateSharedOpBuilder(
+    const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  CreateSharedOpBuilderImpl<ConvOpBuilder>(
+      op_type, op_registrations,
+      {
+          "Conv",
+          "QLinearConv",
+      });
+}
 
 void ConvOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
   const auto& op = node.OpType();
@@ -1423,10 +1539,22 @@ Status IdentityOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, con
 class GemmOpBuilder : public BaseOpBuilder {
  public:
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+  static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
 };
+
+/* static */ void GemmOpBuilder::CreateSharedOpBuilder(
+    const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  CreateSharedOpBuilderImpl<GemmOpBuilder>(
+      op_type, op_registrations,
+      {
+          "Gemm",
+          "MatMul",
+          "QLinearMatMul",
+      });
+}
 
 void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
   const auto& op = node.OpType();
@@ -1505,12 +1633,27 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   uint32_t bias_idx;
   bool has_bias = (op == "Gemm") && (input_defs.size() > 2);
   if (has_bias) {
-    bias_idx = operand_indices.at(input_defs[c_idx]->Name());
+    const auto& bias = input_defs[c_idx]->Name();
+    // We need squeeze the input tensor to 1d if necessary
+    if (shaper[bias].size() > 1) {
+      std::string bias_squeezed = model_builder.GetUniqueName(node.Name() + op + "_bias_squeezed");
+      // We will use squeeze all here
+      ORT_RETURN_IF_ERROR(AddSqueezeOp(model_builder, node.Name(),
+                                       bias, bias_squeezed,
+                                       {} /* axes */));
+      bias_idx = operand_indices.at(bias_squeezed);
+      LOGS_DEFAULT(VERBOSE) << "GemmOpBuilder - Operand [" << bias << "] squeezed from "
+                            << Shape2String(shaper[bias])
+                            << " to "
+                            << Shape2String(shaper[bias_squeezed]);
+    } else {
+      bias_idx = operand_indices.at(bias);
+    }
   } else {
     // No C supplied, we need a vector of 0
-    std::string bias = node.Name() + op + "_bias";
+    std::string bias = model_builder.GetUniqueName(node.Name() + op + "_bias");
     const auto& bias_type = operand_types.at(input2).type;
-    Shape bias_dimen = {shaper[input2][0]};
+    const Shape& bias_dimen = {shaper[input2][0]};
     if (bias_type == Type::TENSOR_FLOAT32) {
       std::vector<float> buffer(bias_dimen[0], 0.f);
       OperandType bias_operand_type(Type::TENSOR_FLOAT32, bias_dimen);
@@ -1545,9 +1688,29 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 #pragma region op_unary
 
 class UnaryOpBuilder : public BaseOpBuilder {
+ public:
+  static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
 };
+
+/* static */ void UnaryOpBuilder::CreateSharedOpBuilder(
+    const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  CreateSharedOpBuilderImpl<UnaryOpBuilder>(
+      op_type, op_registrations,
+      {
+          "Abs",
+          "Exp",
+          "Floor",
+          "Log",
+          "Sigmoid",
+          "Neg",
+          "Sin",
+          "Sqrt",
+          "Tanh",
+      });
+}
 
 Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
   auto& shaper(model_builder.GetShaper());
@@ -1669,52 +1832,52 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 #pragma region op_squeeze
 
 class SqueezeOpBuilder : public BaseOpBuilder {
+ public:
+  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  static vector<int32_t> GetAxes(ModelBuilder& model_builder, const Node& node);
 };
 
-Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
-  auto& shaper(model_builder.GetShaper());
-  const auto& operand_indices(model_builder.GetOperandIndices());
-  const auto& operand_types(model_builder.GetOperandTypes());
+void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+  if (node.SinceVersion() > 12 && node.InputDefs().size() > 1) {
+    model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());
+  }
+}
 
+/* static */ vector<int32_t> SqueezeOpBuilder::GetAxes(ModelBuilder& model_builder, const Node& node) {
+  vector<int32_t> axes;
+  // Squeeze opset 13 use input as axes
+  if (node.SinceVersion() > 12) {
+    // If axes is not supplied, return an empty axes as default to squeeze all
+    if (node.InputDefs().size() > 1) {
+      const auto& initializers(model_builder.GetInitializerTensors());
+      const auto& axes_tensor = *initializers.at(node.InputDefs()[1]->Name());
+      const int64_t* raw_axes = GetTensorInt64Data(axes_tensor);
+      const auto size = SafeInt<uint32_t>(axes_tensor.dims()[0]);
+      axes.resize(size);
+      for (uint32_t i = 0; i < size; i++) {
+        // it is unlikely we have a axis value overflow for int32
+        axes[i] = static_cast<int32_t>(raw_axes[i]);
+      }
+    }
+  } else {
+    NodeAttrHelper helper(node);
+    axes = helper.Get("axes", vector<int32_t>());
+  }
+
+  return axes;
+}
+
+Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
   auto input = node.InputDefs()[0]->Name();
   if (model_builder.IsOperandNHWC(input)) {
     // We want to transpose nhwc operand back to nchw before squeeze
     ORT_RETURN_IF_ERROR(GetNCHWInput(model_builder, node, 0, input));
   }
 
-  NodeAttrHelper helper(node);
-  vector<int32_t> axes = helper.Get("axes", vector<int32_t>());
-  const auto& input_shape(shaper[input]);
-  auto input_dims = input_shape.size();
-  for (auto& axis : axes) {
-    axis = static_cast<int32_t>(HandleNegativeAxis(axis, input_dims));
-  }
-
-  if (axes.empty()) {  // Squeeze all
-    for (size_t i = 0; i < input_dims; i++) {
-      if (input_shape[i] == 1)
-        axes.push_back(i);
-    }
-  }
-
-  const auto axes_name = model_builder.GetUniqueName(node.Name() + input + "_axes");
-  Shape axes_dimen = {static_cast<uint32_t>(axes.size())};
-  shaper.AddShape(axes_name, axes_dimen);
-  const OperandType axes_operand_type(Type::TENSOR_INT32, axes_dimen);
-  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(axes_name, axes.data(), axes_operand_type));
-
-  std::vector<uint32_t> input_indices;
-  input_indices.push_back(operand_indices.at(input));      // input
-  input_indices.push_back(operand_indices.at(axes_name));  // axes
-
-  const auto& output = node.OutputDefs()[0]->Name();
-  ORT_RETURN_IF_ERROR(shaper.Squeeze(input, axes, output));
-  const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
-  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_SQUEEZE, input_indices,
-                                                 {output}, {output_operand_type}, {false}));
-  return Status::OK();
+  return AddSqueezeOp(model_builder, node.Name(), input, node.OutputDefs()[0]->Name(), GetAxes(model_builder, node));
 }
 
 #pragma endregion
@@ -1971,8 +2134,10 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     }
   }
 
-  // TODO, add support for nearest neighbor
-  int32_t operationCode = ANEURALNETWORKS_RESIZE_BILINEAR;
+  bool is_linear_resize = helper.Get("mode", "nearest") == "linear";
+
+  int32_t operationCode = is_linear_resize ? ANEURALNETWORKS_RESIZE_BILINEAR
+                                           : ANEURALNETWORKS_RESIZE_NEAREST_NEIGHBOR;
 
   const auto coord_trans_mode = helper.Get("coordinate_transformation_mode", "half_pixel");
   bool using_half_pixel = coord_trans_mode == "half_pixel";
@@ -2008,10 +2173,14 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     ADD_SCALAR_OPERAND(model_builder, input_indices, use_nchw);
   }
 
-  if (android_sdk_ver > 29 && (using_align_corners || using_half_pixel)) {
-    ADD_SCALAR_OPERAND(model_builder, input_indices, using_align_corners);
-    if (using_half_pixel)
-      ADD_SCALAR_OPERAND(model_builder, input_indices, using_half_pixel);
+  // Currently we only support align_corners and half_pixel on bilinear resize
+  // TODO, investigate nearest neighbor resize difference between NNAPI(based on TF) and ONNX
+  if (is_linear_resize) {
+    if (android_sdk_ver > 29 && (using_align_corners || using_half_pixel)) {
+      ADD_SCALAR_OPERAND(model_builder, input_indices, using_align_corners);
+      if (using_half_pixel)
+        ADD_SCALAR_OPERAND(model_builder, input_indices, using_half_pixel);
+    }
   }
 
   const OperandType output_operand_type(operand_types.at(input).type, output_shape);
@@ -2056,79 +2225,84 @@ Status FlattenOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
 
 #pragma region CreateGetOpBuilders
 
-static std::unordered_map<std::string, std::shared_ptr<IOpBuilder>> CreateOpBuilders() {
-  std::unordered_map<std::string, std::shared_ptr<IOpBuilder>> op_map;
+// The reason we use macros to create OpBuilders is for easy exclusion in build if certain op(s) are not used
+// such that we can reduce binary size.
+// This is for multiple ops share the same OpBuilder, we only need create one for all of them
+#define NNAPI_EP_ADD_SHARED_OP_BUILDER(OP_TYPE, BUILDER_NAME) \
+  BUILDER_NAME::CreateSharedOpBuilder(OP_TYPE, op_registrations);
 
-  {
-    auto binary_op_builder = std::make_shared<BinaryOpBuilder>();
-    op_map.emplace("Add", binary_op_builder);
-    op_map.emplace("Sub", binary_op_builder);
-    op_map.emplace("Mul", binary_op_builder);
-    op_map.emplace("Div", binary_op_builder);
-    op_map.emplace("QLinearAdd", binary_op_builder);
+// This is for ops with dedicated OpBuilder
+#define NNAPI_EP_ADD_SINGLE_OP_BUILDER(OP_TYPE, BUILDER_NAME)                                 \
+  {                                                                                           \
+    op_registrations.builders.push_back(onnxruntime::make_unique<BUILDER_NAME>());            \
+    op_registrations.op_builder_map.emplace(OP_TYPE, op_registrations.builders.back().get()); \
   }
 
-  op_map.emplace("Relu", std::make_shared<ReluOpBuilder>());
-  op_map.emplace("Transpose", std::make_shared<TransposeOpBuilder>());
-  op_map.emplace("Reshape", std::make_shared<ReshapeOpBuilder>());
-  op_map.emplace("BatchNormalization", std::make_shared<BatchNormalizationOpBuilder>());
+static OpBuilderRegistrations CreateOpBuilderRegistrations() {
+  OpBuilderRegistrations op_registrations;
 
   {
-    auto pool_op_builder = std::make_shared<PoolOpBuilder>();
-    op_map.emplace("GlobalAveragePool", pool_op_builder);
-    op_map.emplace("GlobalMaxPool", pool_op_builder);
-    op_map.emplace("AveragePool", pool_op_builder);
-    op_map.emplace("MaxPool", pool_op_builder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Add", BinaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Sub", BinaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Mul", BinaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Div", BinaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("QLinearAdd", BinaryOpBuilder);
   }
 
-  {
-    auto conv_op_builder = std::make_shared<ConvOpBuilder>();
-    op_map.emplace("Conv", conv_op_builder);
-    op_map.emplace("QLinearConv", conv_op_builder);
-  }
-
-  op_map.emplace("Cast", std::make_shared<CastOpBuilder>());
-  op_map.emplace("Softmax", std::make_shared<SoftMaxOpBuilder>());
-  op_map.emplace("Identity", std::make_shared<IdentityOpBuilder>());
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Relu", ReluOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Transpose", TransposeOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Reshape", ReshapeOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("BatchNormalization", BatchNormalizationOpBuilder);
 
   {
-    auto gemm_op_builder = std::make_shared<GemmOpBuilder>();
-    op_map.emplace("Gemm", gemm_op_builder);
-    op_map.emplace("MatMul", gemm_op_builder);
-    op_map.emplace("QLinearMatMul", gemm_op_builder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("GlobalAveragePool", PoolOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("GlobalMaxPool", PoolOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("AveragePool", PoolOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("MaxPool", PoolOpBuilder);
   }
 
   {
-    auto unary_op_builder = std::make_shared<UnaryOpBuilder>();
-    op_map.emplace("Abs", unary_op_builder);
-    op_map.emplace("Exp", unary_op_builder);
-    op_map.emplace("Floor", unary_op_builder);
-    op_map.emplace("Log", unary_op_builder);
-    op_map.emplace("Sigmoid", unary_op_builder);
-    op_map.emplace("Neg", unary_op_builder);
-    op_map.emplace("Sin", unary_op_builder);
-    op_map.emplace("Sqrt", unary_op_builder);
-    op_map.emplace("Tanh", unary_op_builder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Conv", ConvOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("QLinearConv", ConvOpBuilder);
   }
 
-  op_map.emplace("Concat", std::make_shared<ConcatOpBuilder>());
-  op_map.emplace("Squeeze", std::make_shared<SqueezeOpBuilder>());
-  op_map.emplace("QuantizeLinear", std::make_shared<QuantizeLinearOpBuilder>());
-  op_map.emplace("DequantizeLinear", std::make_shared<DequantizeLinearOpBuilder>());
-  op_map.emplace("LRN", std::make_shared<LRNOpBuilder>());
-  op_map.emplace("Clip", std::make_shared<ClipOpBuilder>());
-  op_map.emplace("Resize", std::make_shared<ResizeOpBuilder>());
-  op_map.emplace("Flatten", std::make_shared<FlattenOpBuilder>());
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Cast", CastOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Softmax", SoftMaxOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Identity", IdentityOpBuilder);
 
-  ORT_ENFORCE(op_map.size() == GetOpSupportCheckers().size(),
-              "We should have same number of OpBuilder and OpSupportChecker");
+  {
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Gemm", GemmOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("MatMul", GemmOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("QLinearMatMul", GemmOpBuilder);
+  }
 
-  return op_map;
+  {
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Abs", UnaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Exp", UnaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Floor", UnaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Log", UnaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Sigmoid", UnaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Neg", UnaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Sin", UnaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Sqrt", UnaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Tanh", UnaryOpBuilder);
+  }
+
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Concat", ConcatOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Squeeze", SqueezeOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("QuantizeLinear", QuantizeLinearOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("DequantizeLinear", DequantizeLinearOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("LRN", LRNOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Clip", ClipOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Resize", ResizeOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Flatten", FlattenOpBuilder);
+
+  return op_registrations;
 }
 
-const std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>& GetOpBuilders() {
-  static const std::unordered_map<std::string, std::shared_ptr<IOpBuilder>> op_map = CreateOpBuilders();
-  return op_map;
+const std::unordered_map<std::string, const IOpBuilder*>& GetOpBuilders() {
+  static const OpBuilderRegistrations op_registrations = CreateOpBuilderRegistrations();
+  return op_registrations.op_builder_map;
 }
 
 #pragma endregion

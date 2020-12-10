@@ -13,7 +13,8 @@ class ZeROOptimizerGraphBuilder : public OptimizerGraphBuilder {
   ZeROOptimizerGraphBuilder(
       const OptimizerBuilderRegistry& opt_builder_registry,
       const OptimizerGraphConfig& opt_graph_config,
-      const std::unordered_map<std::string, OptimizerNodeConfig>& weight_names_to_opt_configs);
+      const std::unordered_map<std::string, OptimizerNodeConfig>& weight_names_to_opt_configs,
+      std::unordered_map<std::string, std::string>& updated_weight_names_map);
 
  protected:
   virtual Status BuildInternal(

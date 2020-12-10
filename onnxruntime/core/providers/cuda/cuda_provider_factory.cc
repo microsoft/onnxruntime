@@ -19,9 +19,9 @@ struct CUDAProviderFactory : IExecutionProviderFactory {
                       size_t cuda_mem_limit = std::numeric_limits<size_t>::max(),
                       ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo,
                       OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE,
-                      bool do_copy_in_default_stream = true) 
-      : device_id_(device_id), 
-        cuda_mem_limit_(cuda_mem_limit), 
+                      bool do_copy_in_default_stream = true)
+      : device_id_(device_id),
+        cuda_mem_limit_(cuda_mem_limit),
         arena_extend_strategy_(arena_extend_strategy),
         cudnn_conv_algo_search_(cudnn_conv_algo_search),
         do_copy_in_default_stream_(do_copy_in_default_stream) {}
@@ -57,17 +57,17 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(O
 
 }  // namespace onnxruntime
 
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOptions* options, int device_id){
+ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOptions* options, int device_id) {
   options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_CUDA(static_cast<OrtDevice::DeviceId>(device_id)));
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::OrtSessionOptionsAppendExecutionProvider_CUDA,
-                    _In_ OrtSessionOptions* options, _In_ OrtCUDAProviderOptions* cuda_options) {
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA,
+                    _In_ OrtSessionOptions* options, _In_ const OrtCUDAProviderOptions* cuda_options) {
   options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_CUDA(static_cast<OrtDevice::DeviceId>(cuda_options->device_id),
-                                            cuda_options->cudnn_conv_algo_search, cuda_options->cuda_mem_limit, 
-                                            static_cast<onnxruntime::ArenaExtendStrategy>(cuda_options->arena_extend_strategy),
-                                            cuda_options->do_copy_in_default_stream));
-  
+                                                                                         cuda_options->cudnn_conv_algo_search, cuda_options->cuda_mem_limit,
+                                                                                         static_cast<onnxruntime::ArenaExtendStrategy>(cuda_options->arena_extend_strategy),
+                                                                                         cuda_options->do_copy_in_default_stream));
+
   return nullptr;
 }
