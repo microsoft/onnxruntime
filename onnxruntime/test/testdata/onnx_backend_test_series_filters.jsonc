@@ -79,7 +79,8 @@
     "current_failing_tests_OPENVINO_MYRIAD": [
         "^test_range",
         "^test_dynamicquantizelinear",
-        "^test_operator_index"
+        "^test_operator_index",
+        "^test_scatter_elements_with_negative_indices" // Does not support negative indices
     ],
     "current_failing_tests_OPENVINO_GPU": [
         "^test_div",
@@ -125,6 +126,8 @@
         "^test_negative_log_likelihood.*", // Does not support 5-D or above tensors for SUB op.
         "^test_softmax_cross_entropy.*", // Does not support 5-D or above tensors for SUB op.
         "^test_mvn.*",
+        "^test_max_float64.*",
+        "^test_min_float64.*",
         "^test_gather_negative_indices.*",
         "^test_sce.*",
         "^test_nllloss.*",

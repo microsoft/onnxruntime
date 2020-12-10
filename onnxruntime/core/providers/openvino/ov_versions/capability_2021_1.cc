@@ -49,7 +49,7 @@ bool IsDimensionSupported(const Provider_Node* node) {
   return true;
 }
 
-//Ops which are not supported by OpenVINO EP
+//Ops which are not by OpenVINO EP
 bool IsOpSupported(std::string name, std::string device) {
   std::set<std::string> common_supported_ops = {
       "Add",

@@ -202,7 +202,11 @@ TEST(MathOpTest, Add_Broadcast_0x1) {
     test.AddInput<float>("A", {}, {10.0f}, scalar_as_initializer);
     test.AddInput<float>("B", {1}, {2.0f});
     test.AddOutput<float>("C", {1}, {12.0f});
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "");
+#if defined(OPENVINO_CONFIG_MYRIAD)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: disabled temporarily on MYRIADX due to a bug
+#else
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "");
+#endif
   };
 
   run(false);
@@ -216,7 +220,11 @@ TEST(MathOpTest, Add_Broadcast_1x0) {
     test.AddInput<float>("A", {1}, {10.0f});
     test.AddInput<float>("B", {}, {2.0f}, scalar_as_initializer);
     test.AddOutput<float>("C", {1}, {12.0f});
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "");
+#if defined(OPENVINO_CONFIG_MYRIAD)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: disabled temporarily on MYRIADX due to a bug
+#else
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "");
+#endif
   };
 
   run(false);

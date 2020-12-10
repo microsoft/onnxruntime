@@ -109,8 +109,6 @@ InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO(const Provider_TypePro
   ONNX_NAMESPACE::DataType type_string = ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(onnx_type);
   if (*type_string == "float" || *type_string == "tensor(float)") {
     return InferenceEngine::Precision::FP32;
-  } else if (*type_string == "double" || *type_string == "tensor(double)") {
-    return InferenceEngine::Precision::FP32;
   } else if (*type_string == "float16" || *type_string == "tensor(float16)") {
     return InferenceEngine::Precision::FP16;
   } else if (*type_string == "int32" || *type_string == "tensor(int32)") {
@@ -158,9 +156,7 @@ void SetIODefs(const Provider_ModelProto& model_proto,
   // Prepare output blobs
   auto outputInfo = network->getOutputsInfo();
   for (auto iter = outputInfo.begin(); iter != outputInfo.end(); ++iter) {
-    auto token = iter->first;
-    std::string delimiter = ".";
-    auto output_name = token.substr(0, token.find(delimiter));
+    auto output_name = iter->first;
 #if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1) || (defined OPENVINO_2021_2)
     auto it = const_outputs_map.find(output_name);
     //Output is constant and don't need to set precision
@@ -194,9 +190,7 @@ GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_s
   for (size_t j = 0; j < num_dims; j++) {
     output_shape[j] = static_cast<int64_t>(graph_output_dims[j]);
   }
-  std::string delimiter = ".";
-  auto token = output_name.substr(0, output_name.find(delimiter));
-  auto it = output_names.find(token);
+  auto it = output_names.find(output_name);
   if (it == output_names.end()) {
     ORT_THROW(log_tag + "Output names mismatch between OpenVINO and ONNX");
   }
