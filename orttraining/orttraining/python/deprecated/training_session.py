@@ -50,8 +50,8 @@ class TrainingSession(InferenceSession):
     def load_state(self, dict, strict=False):
         self._sess.load_state(dict, strict)
     
-    def load_model_opt_state(self, model_state, opt_state, strict=False):
-        self._sess.load_model_opt_state(dict, model_state, opt_state, strict)
+    def load_model_optimizer_state(self, model_state, opt_state, strict=False):
+        self._sess.load_model_optimizer_state(dict, model_state, opt_state, strict)
 
     def is_output_fp32_node(self, output_name):
         return self._sess.is_output_fp32_node(output_name)

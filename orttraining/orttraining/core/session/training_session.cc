@@ -1139,7 +1139,7 @@ Status TrainingSession::SetStateTensors(const NameMLValMap& state_tensors, bool 
   return Status::OK();
 }
 
-Status TrainingSession::SetModelOptState(const NameMLValMap& model_tensors, const std::unordered_map<std::string, NameMLValMap>& optimizer_tensors, bool strict) {
+Status TrainingSession::SetModelOptState(const std::unordered_map<std::string, NameMLValMap>& model_tensors, const std::unordered_map<std::string, NameMLValMap>& optimizer_tensors, bool strict) {
   ORT_RETURN_IF_NOT(IsInitialized(), "Can't update initializers before session has been initialized.");
 
   std::unordered_set<std::string> ckpt_initializer_names;
@@ -1152,29 +1152,31 @@ Status TrainingSession::SetModelOptState(const NameMLValMap& model_tensors, cons
 
   const std::unordered_set<std::string> valid_state_tensor_names = GetStateTensorNames();
 
-  for (auto& state : model_tensors) {
-    const bool is_valid_state_tensor =
-        valid_state_tensor_names.find(state.first) != valid_state_tensor_names.end();
-    const auto initializer_it = initializers.find(state.first);
-    const bool is_tensor_present = initializer_it != initializers.end();
+  for (const auto& fp_or_mp_tensors : model_tensors) {
+    for (const auto& state : fp_or_mp_tensors.second) {
+      const bool is_valid_state_tensor =
+          valid_state_tensor_names.find(state.first) != valid_state_tensor_names.end();
+      const auto initializer_it = initializers.find(state.first);
+      const bool is_tensor_present = initializer_it != initializers.end();
 
-    if (strict) {
-      ORT_RETURN_IF_NOT(
-          is_valid_state_tensor,
-          "Checkpoint tensor: ", state.first, " is not a known state tensor.");
-      ORT_RETURN_IF_NOT(
-          is_tensor_present,
-          "Checkpoint tensor: ", state.first, " is not present in the model.");
-    }
+      if (strict) {
+        ORT_RETURN_IF_NOT(
+            is_valid_state_tensor,
+            "Checkpoint tensor: ", state.first, " is not a known state tensor.");
+        ORT_RETURN_IF_NOT(
+            is_tensor_present,
+            "Checkpoint tensor: ", state.first, " is not present in the model.");
+      }
 
-    if (is_valid_state_tensor && is_tensor_present) {
-      ORT_RETURN_IF_NOT(
-          initializer_it->second.IsTensor() && state.second.IsTensor(),
-          "Non-tensor type as initializer is not expected.")
+      if (is_valid_state_tensor && is_tensor_present) {
+        ORT_RETURN_IF_NOT(
+            initializer_it->second.IsTensor() && state.second.IsTensor(),
+            "Non-tensor type as initializer is not expected.")
 
-      auto* initializer_tensor = initializer_it->second.GetMutable<Tensor>();
-      auto& ckpt_tensor = state.second.Get<Tensor>();
-      ORT_RETURN_IF_ERROR(GetSessionState().GetDataTransferMgr().CopyTensor(ckpt_tensor, *initializer_tensor));
+        auto* initializer_tensor = initializer_it->second.GetMutable<Tensor>();
+        auto& ckpt_tensor = state.second.Get<Tensor>();
+        ORT_RETURN_IF_ERROR(GetSessionState().GetDataTransferMgr().CopyTensor(ckpt_tensor, *initializer_tensor));
+      }
     }
   }
 
