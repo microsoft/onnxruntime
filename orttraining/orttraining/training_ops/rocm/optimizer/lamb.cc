@@ -255,7 +255,7 @@ Status launch_lamb_compute_direction(
     typedef LambMultiTensorComputeDirectionFunctor<HipT2, HipT3, HipT4, HipT_GRAD_NORM> LambStage1;
     LambStage1 lamb_stage1;
 
-    launch_multi_tensor_functor<tensor_count_per_group, LambStage1, const HipT2*, const HipT_GRAD_NORM*, float, float, float, float>(
+    launch_multi_tensor_functor<tensor_count_per_group, LambStage1>(
         2048 * 32,
         tensor_sizes_in_buckets[key],
         buckets[key],
@@ -415,8 +415,7 @@ Status launch_lamb_update(
     LambStage2 lamb_stage2;
 
     launch_multi_tensor_functor<
-      tensor_count_per_group, LambStage2,
-      const HipT1*, const float, const float>(
+      tensor_count_per_group, LambStage2>(
         2048 * 32,
         tensor_sizes_in_bucket,
         buckets,
