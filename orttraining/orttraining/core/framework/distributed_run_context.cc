@@ -94,6 +94,15 @@ DistributedRunContext::DistributedRunContext(int32_t world_rank,
   const int32_t data_group_id = calculate_linear_index(horizontal_parallel_size, 1, x, 0, z);
   const int32_t pipe_group_id = calculate_linear_index(horizontal_parallel_size, data_parallel_size, x, y, 0);
 
+  // Initialize Global Parallel Group
+  std::vector<int32_t> global_group_ranks;
+  for (auto r = 0; r < world_size; r++) {
+    global_group_ranks.push_back(r);
+  }
+
+  groups_[WorkerGroupType::GlobalParallel] = {global_group_ranks, 0,// Only one group in global parallel.
+                                              WorkerGroupType::GlobalParallel, world_rank};
+
   // Initialize Data Parallel Group
   const int32_t data_group_start_index = calculate_linear_index(horizontal_parallel_size, data_parallel_size, x, 0, z);
   std::vector<int32_t> data_group_ranks;
