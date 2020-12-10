@@ -220,7 +220,7 @@ TEST_F(OptimizerGraphBuilderTest, LoadOptimState_FullPrecision_Lamb) {
 TEST_F(OptimizerGraphBuilderTest, ZeroSplitInitialOptimizerState) {
   NameMLValMap initial_states;
   std::vector<int64_t> param_dims = {784, 128};
-  int64_t num_ele = std::accumulate(param_dims.begin(), param_dims.end(), 1, std::multiplies<int64_t>());
+  int64_t num_ele = std::accumulate(param_dims.begin(), param_dims.end(), static_cast<int64_t>(1), std::multiplies<int64_t>());
 
   MLValue mlValue;
   std::vector<float> init_value(num_ele);
