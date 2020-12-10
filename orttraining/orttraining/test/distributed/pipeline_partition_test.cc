@@ -53,7 +53,7 @@ TEST(PipelinePartition, DropoutGraph2stages) {
   EXPECT_EQ(graph.NumberOfNodes(), 6);
 }
 
-void LoadAndPartitionWithCuts(std::string& filename,
+void LoadAndPartitionWithCuts(const PathString& filename,
                               int num_stages,
                               int pipeline_stage_id,
                               CutList& cuts,
@@ -87,7 +87,7 @@ void LoadAndPartitionWithCuts(std::string& filename,
 
 
 TEST(PipelinePartition, AttentionPastState3Stages) {
-  std::string filename = "testdata/attention_past_state.onnx";
+  const auto filename = ORT_TSTR("testdata/attention_past_state.onnx");
   int num_stages = 3;
   int stage_id = 1;
   TrainingSession::TrainingConfiguration::CutInfo cut0 = {
@@ -119,7 +119,7 @@ TEST(PipelinePartition, AttentionPastState3Stages) {
 }
 
 TEST(PipelinePartition, AttentionPastState2Stages) {
-  std::string filename = "testdata/attention_past_state.onnx";
+  const auto filename = ORT_TSTR("testdata/attention_past_state.onnx");
   int num_stages = 2;
   int stage_id = 1;
   TrainingSession::TrainingConfiguration::CutInfo cut0 = {
@@ -153,7 +153,7 @@ void compareGraphs(Graph& graph1, Graph& graph2) {
   
   EXPECT_EQ(g1_nodes.size(), g2_nodes.size());
 
-  for (int i = 0, t = g1_nodes.size(); i < t; ++i) {
+  for (size_t i = 0, t = g1_nodes.size(); i < t; ++i) {
     const Node* n1 = gv1.GetNode(g1_nodes.at(i));
     const Node* n2 = gv2.GetNode(g2_nodes.at(i));
     EXPECT_EQ(n1->OpType(), n2->OpType());
