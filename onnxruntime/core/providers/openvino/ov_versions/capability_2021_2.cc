@@ -278,7 +278,7 @@ static bool IsUnsupportedOpMode(const Provider_Node* node, const Provider_GraphV
         return true;
     }
   } else if (optype == "Max" || optype == "Min" || optype == "Mean" || optype == "Sum") {
-    if (device_id != "MYRIAD") {
+    if (device_id.find("MYRIAD") == std::string::npos) {
     if (GetInputCount(node, initializers) == 1)
       return true;
     if (optype == "Max" || optype == "Min") {
@@ -314,7 +314,7 @@ static bool IsUnsupportedOpMode(const Provider_Node* node, const Provider_GraphV
     return (A_is_float && B_is_float) ? false : true;
 
   } else if (optype == "Pow") {
-    if (device_id == "GPU") {
+    if (device_id.find("GPU") != std::string::npos) {
       //Only supported if the data type of both inputs is same for GPU
       auto x_data_type = node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
       auto y_data_type = node->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type();
@@ -686,7 +686,7 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
             optype == "Min" || optype == "Div" || optype == "Floor" || optype == "Range" || optype == "Where")
             return;
 
-        if (device_id == "MYRIAD") {
+        if (device_id.find("MYRIAD") != std::string::npos) {
             if (optype == "ArgMin" || optype == "Max" ||
                 optype == "Add" || optype == "Less" || optype == "Greater" ||
                 optype == "Clip" || optype == "Resize" || optype == "Equal" )
@@ -698,7 +698,7 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
         //Zero dimension check
         for (const auto& dim : shape->dim()) {
           if (utils::HasDimValue(dim) && dim.dim_value() == 0) {
-            if ((device_id == "MYRIAD") && (optype == "Resize"))
+            if ((device_id.find("MYRIAD") != std::string::npos) && (optype == "Resize"))
               return;
             has_unsupported_dimension = true;
             return;
