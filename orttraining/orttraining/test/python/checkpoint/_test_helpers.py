@@ -10,6 +10,8 @@ from onnxruntime.training import amp, checkpoint, optim, orttrainer
 from orttraining_test_orttrainer_frontend import _load_pytorch_transformer_model
 from onnxruntime.capi._pybind_state import set_cuda_device_id, get_mpi_context_world_rank, get_mpi_context_world_size
 
+global_fp16_fp32_atol = 1e-3
+
 def _train(trainer, train_data, batcher_fn, total_batch_steps = 5, seed = 1):
     """Runs train_step total_batch_steps number of times on the given trainer"""
     for i in range(total_batch_steps):
@@ -69,7 +71,7 @@ def distributed_setup(func):
 
     return setup
 
-def create_orttrainer_and_load_checkpoint(device, trainer_opts, checkpoint_dir):
+def create_orttrainer_and_load_checkpoint(device, trainer_opts, checkpoint_dir, use_lamb=True):
     """Instantiate and load checkpoint into trainer
 
     - Instantiates the ORTTrainer with given input trainer_opts configuration for a simple transformer model
@@ -83,7 +85,7 @@ def create_orttrainer_and_load_checkpoint(device, trainer_opts, checkpoint_dir):
 
     # PyTorch transformer model setup
     learning_rate = 0.1
-    optim_config = optim.LambConfig(lr=learning_rate)
+    optim_config = optim.LambConfig(lr=learning_rate) if use_lamb else optim.AdamConfig(lr=learning_rate)
     model, model_desc, loss_fn, batcher_fn, train_data, _, _ = _load_pytorch_transformer_model(device)
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=loss_fn, options=orttrainer.ORTTrainerOptions(trainer_opts))
 
@@ -153,14 +155,14 @@ def aggregate_states(aggregated_states, state_dict):
         else:
             aggregated_states[key] = value
 
-def create_orttrainer_and_save_checkpoint(device, trainer_opts, checkpoint_dir, state_dict_key_name='state_dict'):
+def create_orttrainer_and_save_checkpoint(device, trainer_opts, checkpoint_dir, state_dict_key_name='state_dict', use_lamb=True):
     learning_rate = 0.1
     seed = 1
 
     torch.manual_seed(seed)
     set_seed(seed)
 
-    optim_config = optim.LambConfig(lr=learning_rate)
+    optim_config = optim.LambConfig(lr=learning_rate) if use_lamb else optim.AdamConfig(lr=learning_rate)
     model, model_desc, loss_fn, batcher_fn, train_data, _, _ = _load_pytorch_transformer_model(device)
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=loss_fn, options=orttrainer.ORTTrainerOptions(trainer_opts))
 
