@@ -178,48 +178,88 @@ class YoloV3VisionEvaluator(YoloV3Evaluator):
         y[3] = x[1] + x[3] / 2  # bottom right y
         return y
 
+    def set_bbox_prediction(self, bboxes, scores, image_height, image_width, image_id):
+
+        for i in range(bboxes.shape[0]): 
+            bbox = bboxes[i]
+            bbox[0] *= self.width #x
+            bbox[1] *= self.height #y
+            bbox[2] *= self.width #w
+            bbox[3] *= self.height #h
+            
+            img0_shape = (image_height, image_width)
+            img1_shape = (self.height, self.width)
+            bbox = self.xywh2xyxy(bbox)
+            bbox = self.scale_coords(img1_shape, bbox, img0_shape)
+
+            class_name = 'person' 
+            if class_name in self.identical_class_map:
+                class_name = self.identical_class_map[class_name]
+            id = self.class_to_id[class_name]
+
+            bbox[2] = bbox[2] - bbox[0]
+            bbox[3] = bbox[3] - bbox[1]
+
+            self.prediction_result_list.append({"image_id":int(image_id), "category_id":int(id), "bbox":list(bbox), "score":scores[i][0]})
+
     def predict(self):
         session = onnxruntime.InferenceSession(self.model_path, providers=self.providers)
-
         outputs = []
-        while True:
-            inputs = self.data_reader.get_next()
-            if not inputs:
-                break
 
-            image_id = inputs["image_id"]
-            image_width = inputs["image_width"]
-            image_height = inputs["image_height"]
-            del inputs["image_id"]
-            del inputs["image_width"]
-            del inputs["image_height"]
+        if self.data_reader.support_batch_inference(session.get_inputs()[0].shape):
+            # batch inference
+            print("Doing batch inference...")
 
-            output = session.run(None, inputs)
-            outputs.append(output)
+            image_id_list = []
+            image_id_batch = []
+            image_size_list = []
+            image_size_batch = []
+            while True:
+                inputs = self.data_reader.get_batch()
+                if not inputs:
+                    break
+                image_size_list = inputs["image_size"]
+                image_id_list = inputs["image_id"]
+                del inputs["image_size"]
+                del inputs["image_id"]
+                image_size_batch.append(image_size_list)
+                image_id_batch.append(image_id_list)
+                outputs.append(session.run(None, inputs))
 
-            bboxes = output[1]
-            scores = output[2]
-            
+            for i in range(len(outputs)):
+                output = outputs[i]
+                for batch_i in range(self.data_reader.get_batch_size()):
+                    batch_idx = output[0][:,0] == batch_i
+                    bboxes = output[1][batch_idx,:]
+                    scores = output[2][batch_idx,:]
 
-            for i in range(bboxes.shape[0]): 
-                bbox = bboxes[i]
-                bbox[0] *= self.width #x
-                bbox[1] *= self.height #y
-                bbox[2] *= self.width #w
-                bbox[3] *= self.height #h
+                    if batch_i > len(image_size_batch[i])-1 or batch_i > len(image_id_batch[i])-1:
+                        continue
+
+                    image_height = image_size_batch[i][batch_i][0]
+                    image_width= image_size_batch[i][batch_i][1]
+                    image_id = image_id_batch[i][batch_i]
+                    self.set_bbox_prediction(bboxes, scores, image_height, image_width, image_id)
+        else:
+
+            # serial inference
+            while True:
+                inputs = self.data_reader.get_next()
+                if not inputs:
+                    break
+
+                image_id = inputs["image_id"]
+                image_width = inputs["image_width"]
+                image_height = inputs["image_height"]
+                del inputs["image_id"]
+                del inputs["image_width"]
+                del inputs["image_height"]
+
+                output = session.run(None, inputs)
+                outputs.append(output)
+
+                bboxes = output[1]
+                scores = output[2]
                 
-                img0_shape = (image_height, image_width)
-                img1_shape = (self.height, self.width)
-                bbox = self.xywh2xyxy(bbox)
-                bbox = self.scale_coords(img1_shape, bbox, img0_shape)
-
-                class_name = 'person' 
-                if class_name in self.identical_class_map:
-                    class_name = self.identical_class_map[class_name]
-                id = self.class_to_id[class_name]
-
-                bbox[2] = bbox[2] - bbox[0]
-                bbox[3] = bbox[3] - bbox[1]
-
-                self.prediction_result_list.append({"image_id":int(image_id), "category_id":int(id), "bbox":list(bbox), "score":scores[i][0]})
+                self.set_bbox_prediction(bboxes, scores, image_height, image_width, image_id)
 

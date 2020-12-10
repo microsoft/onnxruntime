@@ -64,6 +64,9 @@ class ObejctDetectionDataReader(CalibrationDataReader):
             self.support_batch = True
 
         return self.support_batch
+
+    def get_batch_size(self):
+        return self.batch_size
         
 
 class YoloV3DataReader(ObejctDetectionDataReader):
@@ -86,6 +89,7 @@ class YoloV3DataReader(ObejctDetectionDataReader):
         self.height = height
         self.start_index = start_index
         self.size_limit = size_limit
+        self.batch_size = batch_size
         self.is_evaluation = is_evaluation
         self.annotations = annotations
 
@@ -182,7 +186,7 @@ class YoloV3VisionDataReader(YoloV3DataReader):
                        model_path='augmented_model.onnx',
                        is_evaluation=False,
                        annotations='./annotations/instances_val2017.json'):
-        YoloV3DataReader.__init__(self, calibration_image_folder, width, height, start_index, size_limit, model_path, is_evaluation, annotations)
+        YoloV3DataReader.__init__(self, calibration_image_folder, width, height, start_index, size_limit, batch_size, model_path, is_evaluation, annotations)
 
     def get_next(self):
         if self.preprocess_flag:
@@ -233,14 +237,33 @@ class YoloV3VisionDataReader(YoloV3DataReader):
                 break
 
             nchw_data_batch = []
-            for i in range(len(nchw_data_list)):
-                nhwc_data = np.squeeze(nchw_data_list[i], 0)
-                nchw_data_batch.append(nhwc_data)
-            batch_data = np.concatenate(np.expand_dims(nchw_data_batch, axis=0), axis=0)
-            print(batch_data.shape)
-            data = {input_name: batch_data}
+            image_id_batch = []
+            if self.is_evaluation:
+                img_name_to_img_id = parse_annotations(self.annotations)
+                for i in range(len(nchw_data_list)):
+                    nhwc_data = np.squeeze(nchw_data_list[i], 0)
+                    nchw_data_batch.append(nhwc_data)
+                    img_name = filename_list[i]
+                    image_id = img_name_to_img_id[img_name]
+                    image_id_batch.append(image_id)
+                batch_data = np.concatenate(np.expand_dims(nchw_data_batch, axis=0), axis=0)
+                batch_id = np.concatenate(np.expand_dims(image_id_batch, axis=0), axis=0)
+                print(batch_data.shape)
+                data = {input_name: batch_data, "image_size": image_size_list, "image_id": batch_id}
+            else:
+                for i in range(len(nchw_data_list)):
+                    nhwc_data = np.squeeze(nchw_data_list[i], 0)
+                    nchw_data_batch.append(nhwc_data)
+                batch_data = np.concatenate(np.expand_dims(nchw_data_batch, axis=0), axis=0)
+                print(batch_data.shape)
+                data = {input_name: batch_data}
+
             self.batches.append(data)
+
+
         self.batches = iter(self.batches)
+
+
 
 '''
 This class reuses tokenize and evaluation function from HuggingFace:

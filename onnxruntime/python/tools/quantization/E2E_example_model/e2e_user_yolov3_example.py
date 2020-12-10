@@ -16,7 +16,7 @@ def get_prediction_evaluation(model_path, validation_dataset, providers):
         # dr = YoloV3VisionDataReader(validation_dataset, width=512, height=288, model_path=model_path, start_index=i, size_limit=stride, is_evaluation=True)
         # evaluator = YoloV3VisionEvaluator(model_path, dr, width=512, height=288, providers=providers)
 
-        dr = YoloV3VisionDataReader(validation_dataset, width=608, height=384, model_path=model_path, start_index=i, size_limit=stride, is_evaluation=True)
+        dr = YoloV3VisionDataReader(validation_dataset, width=608, height=384, model_path=model_path, start_index=i, size_limit=stride, batch_size=20, is_evaluation=True)
         evaluator = YoloV3VisionEvaluator(model_path, dr, width=608, height=384, providers=providers)
 
         evaluator.predict()
@@ -41,15 +41,17 @@ def get_calibration_table(model_path, augmented_model_path, calibration_dataset)
 if __name__ == '__main__':
 
     model_path = 'yolov3_new.onnx'
-    # model_path = 'yolov3_merge_coco_openimage_500200_288x512_batch_nms_obj_300_score_0p35_iou_0p35_shape.onnx'
-    # model_path = 'yolov3_merge_coco_openimage_500200_384x608_batch_nms_obj_300_score_0p35_iou_0p35_shape.onnx'
+    model_path = 'yolov3_merge_coco_openimage_500200_288x512_batch_nms_obj_300_score_0p35_iou_0p35_shape.onnx'
+    model_path = 'yolov3_merge_coco_openimage_500200_384x608_batch_nms_obj_300_score_0p35_iou_0p35_shape.onnx'
     augmented_model_path = 'augmented_model.onnx'
     # calibration_dataset = './val2017'
     calibration_dataset = './test2017'
     # calibration_dataset = './test2017short'
     # validation_dataset = './val2017'
     validation_dataset = './downloaded_images'
+    # validation_dataset = './test2017short'
 
-    get_calibration_table(model_path, augmented_model_path, calibration_dataset)
+    # get_calibration_table(model_path, augmented_model_path, calibration_dataset)
     # get_prediction_evaluation(model_path, validation_dataset, ["TensorrtExecutionProvider"])
+    get_prediction_evaluation(model_path, validation_dataset, ["CUDAExecutionProvider"])
 
