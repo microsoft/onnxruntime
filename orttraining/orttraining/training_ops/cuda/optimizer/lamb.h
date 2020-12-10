@@ -133,6 +133,12 @@ struct LambMultiTensorReductionFunctor {
     size_t reduction_buffer_size);
 };
 
+struct LambMultiTensorSyncRangeAndLock {
+  int leading_block;
+  int number_blocks;
+  int completed_blocks;
+};
+
 // Lamb's stage 2 maps [w_norm, w_norm, w, d] to [w_new, g_new, w_mixed_precision_new] where
 //  w_norm: norm of w
 //  d_norm: norm of d

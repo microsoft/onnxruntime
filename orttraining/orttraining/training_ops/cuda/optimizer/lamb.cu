@@ -451,7 +451,7 @@ __global__ void LambMultiTensorReductionImpl(
     ChunkGroup<4> chunk_group, 
     TOut1* w_buffer, 
     TOut2* d_buffer, 
-    std::tuple<int,int,int>* sync_range_and_lock) {
+    LambMultiTensorSyncRangeAndLock* sync_range_and_lock) {
   const int group_index = chunk_group.block_index_to_tensor_group_index[blockIdx.x];
   const int tensor_size = chunk_group.tensor_sizes[group_index];
   const int chunk_size = chunk_group.chunk_size;
@@ -513,8 +513,8 @@ __global__ void LambMultiTensorReductionImpl(
 
   // ascertain the range of blocks with the associated tensor
   // note: if non-ordered reduction is OK, then atomicAdd over blocks could suffice
-  const int leading_block_in_tensor = std::get<0>(sync_range_and_lock[group_index]);
-  const int num_blocks_in_tensor = std::get<1>(sync_range_and_lock[group_index]);
+  const int leading_block_in_tensor = sync_range_and_lock[group_index].leading_block;
+  const int num_blocks_in_tensor = sync_range_and_lock[group_index].number_blocks;
 
   if (num_blocks_in_tensor == 1) {
     if (threadIdx.x == 0) {
@@ -536,7 +536,7 @@ __global__ void LambMultiTensorReductionImpl(
   __shared__ bool is_last_block_done;
 
   if (threadIdx.x == 0) {
-    int* p_lock = &std::get<2>(sync_range_and_lock[group_index]);
+    int* p_lock = &sync_range_and_lock[group_index].completed_blocks;
     int counter = atomicAdd(p_lock, 1);
     is_last_block_done = (counter == num_blocks_in_tensor-1);
   }
@@ -584,12 +584,13 @@ void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()
   // sync_range_and_lock is a struct consisting of (start_block, num_blocks, lock) for each tensor
   // Note: Adding such info to chunk group causes overflow (unless max tensors is reduced)
   const int max_tensors = ChunkGroup<4>::max_tensor_group_count;
-  CudaKernel::CudaAsyncBuffer<std::tuple<int,int,int>> sync_range_and_lock(kernel, std::make_tuple(0, 0, 0), max_tensors);
+  LambMultiTensorSyncRangeAndLock initial = {0, 0, 0};
+  CudaKernel::CudaAsyncBuffer<LambMultiTensorSyncRangeAndLock> sync_range_and_lock(kernel, initial, max_tensors);
   for (int block_index = num_blocks-1; block_index >= 0; block_index--) {
     int tensor_index = chunk_group.block_index_to_tensor_group_index[block_index];
-    auto& tensor_blocks = sync_range_and_lock.CpuPtr()[tensor_index];
-    std::get<0>(tensor_blocks) = block_index;
-    std::get<1>(tensor_blocks)++;
+    auto& tensor_block_span = sync_range_and_lock.CpuPtr()[tensor_index];
+    tensor_block_span.leading_block = block_index;
+    tensor_block_span.number_blocks++;
   }
   sync_range_and_lock.CopyToGpu();
 
