@@ -141,8 +141,6 @@ static std::vector<ArgDef> AddPartitionsForParameter(
         auto partition_argdef = ArgDef(partition_name, graph_defs.CreateTypeProto({partition_size}, dtype));
 
         view_outputs.push_back(partition_argdef);
-        std::cout << "ZERO: Weight name is: " << partition_name;
-        std::cout << " shape: " << utils::GetTensorShapeFromTensorShapeProto(partition_argdef.type_proto->tensor_type().shape()) << "\n";
       } else {
         auto dtype = ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
         auto partition_argdef = ArgDef(partition_name, graph_defs.CreateTypeProto({shapes[i].Size()}, dtype));
@@ -197,7 +195,6 @@ void PartitionOptimizerState(
       const auto& initial_state_it = initial_states.find(moments_prefix);
       auto* init_tensor = initial_state_it->second.GetMutable<Tensor>();
       float* data_buffer = init_tensor->MutableData<float>();
-      std::cout << "Partitioning as : " << partition_offset << ":" << partition_size << ", Tensor shape:" << init_tensor->Shape() << "\n";
 
       OrtValue partitioned;
       TensorShape shape({partition_size});
@@ -262,7 +259,6 @@ static Status AddParameterPartition(
 
     // Partition initial optimizer state
     if (enabled[i] && !initial_states.empty()) {
-      std::cout << "ZERO:Partitioning init optim state \n";
       ORT_ENFORCE(view_shapes.size() == 3, "Invalid view_shapes vector passed for partitioning.");
       int64_t partition_offset = view_shapes[0].GetDims()[0];
       int64_t partition_size = view_shapes[1].GetDims()[0];
