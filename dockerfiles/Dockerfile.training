@@ -158,10 +158,6 @@ RUN pip install azureml-defaults sentencepiece==0.1.92 transformers==2.11.0 msgp
 FROM nvidia/cuda:10.2-cudnn8-runtime-ubuntu18.04
 WORKDIR /stage
 
-# install curl, git, ssh (required by MPI when running ORT tests)
-RUN apt-get -y update &&\
-    apt-get -y upgrade
-
 # install ucx
 # note: launch with --cap-add=sys_nice to avoid 'mbind' warnings
 COPY --from=builder /opt/ucx /opt/ucx
