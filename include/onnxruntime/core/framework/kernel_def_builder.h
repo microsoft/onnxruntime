@@ -52,7 +52,7 @@ class KernelDef {
     return provider_type_;
   }
 
-  const std::unordered_map<std::string, std::vector<MLDataType>>& TypeConstraints() const {
+  const std::map<std::string, std::vector<MLDataType>>& TypeConstraints() const {
     return type_constraints_;
   }
 
@@ -75,6 +75,8 @@ class KernelDef {
 
   bool IsOutputOnCpu(size_t output_index) const { return MemTypeOnCpuExplicitly(OutputMemoryType(output_index)); }
 
+  bool AllocateInputsContiguously() const { return allocate_inputs_contiguously_; }
+
   OrtMemType OutputMemoryType(size_t output_index) const {
     auto it = output_memory_type_args_.find(output_index);
     if (it == output_memory_type_args_.end())
@@ -88,8 +90,18 @@ class KernelDef {
 
   bool IsConflict(const KernelDef& other) const;
 
+  uint64_t GetHash() const noexcept {
+    // if we need to support different hash versions we can update CalculateHash to take a version number
+    // and calculate any non-default versions dynamically. we only use this during kernel lookup so
+    // it's not performance critical
+    return hash_;
+  }
+
  private:
   friend class KernelDefBuilder;
+
+  // called once by KernelDefBuilder::Build
+  void CalculateHash();
 
   // The operator name supported by <*this> kernel..
   std::string op_name_;
@@ -110,13 +122,17 @@ class KernelDef {
 
   // The supported data types for inputs/outputs.
   // Key is input/output name defined in op schema, Value are supported types.
-  std::unordered_map<std::string, std::vector<MLDataType>> type_constraints_;
+  // note: std::map as we need the order to be deterministic for the hash
+  std::map<std::string, std::vector<MLDataType>> type_constraints_;
 
   // An element <i, j> means that output j reuses the memory of input i.
   std::vector<std::pair<int, int>> inplace_map_;
 
   // An element <i, j> means that output j is an alias of input i.
   std::vector<std::pair<int, int>> alias_map_;
+  
+  // Require input tensors to be allocated contiguously.
+  bool allocate_inputs_contiguously_ = false;
 
   // The memory types of inputs/outputs of this kernel
   MemTypeMap input_memory_type_args_;
@@ -128,6 +144,9 @@ class KernelDef {
   OrtMemType default_inputs_mem_type_{OrtMemTypeDefault};
   // Default memory type for all outputs
   OrtMemType default_outputs_mem_type_{OrtMemTypeDefault};
+
+  // hash of kernel definition for lookup in minimal build
+  uint64_t hash_ = 0;
 };
 
 class KernelDefBuilder {
@@ -202,12 +221,27 @@ class KernelDefBuilder {
   KernelDefBuilder& Alias(int input_index, int output_index);
 
   /**
+     Specify that this kernel requires input tensors to be allocated
+     contiguously. This allows kernels to execute as a single large
+     computation, rather than numerous smaller computations.
+  */
+  KernelDefBuilder& AllocateInputsContiguously() {
+    kernel_def_->allocate_inputs_contiguously_ = true;
+    return *this;
+  }
+  
+  /**
      Specify that this kernel requires an input arg
      in certain memory type (instead of the default, device memory).
   */
   template <OrtMemType T>
   KernelDefBuilder& InputMemoryType(int input_index) {
     kernel_def_->input_memory_type_args_.insert(std::make_pair(input_index, T));
+    return *this;
+  }
+
+  KernelDefBuilder& InputMemoryType(OrtMemType type, int input_index) {
+    kernel_def_->input_memory_type_args_.insert(std::make_pair(input_index, type));
     return *this;
   }
 
@@ -230,6 +264,11 @@ class KernelDefBuilder {
   template <OrtMemType T>
   KernelDefBuilder& OutputMemoryType(int output_index) {
     kernel_def_->output_memory_type_args_.insert(std::make_pair(output_index, T));
+    return *this;
+  }
+
+  KernelDefBuilder& OutputMemoryType(OrtMemType type, int output_index) {
+    kernel_def_->output_memory_type_args_.insert(std::make_pair(output_index, type));
     return *this;
   }
 
@@ -273,6 +312,7 @@ class KernelDefBuilder {
      Return the kernel definition, passing ownership of the KernelDef to the caller
   */
   std::unique_ptr<KernelDef> Build() {
+    kernel_def_->CalculateHash();
     return std::move(kernel_def_);
   }
 

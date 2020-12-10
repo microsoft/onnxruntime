@@ -19,7 +19,7 @@ Status EliminateSlice::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_e
 
 bool EliminateSlice::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const {
   // We currently support elimination for Slice operator v1.
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Slice", {1, 10, 11})) {
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Slice", {1, 10, 11, 13})) {
     return false;
   }
 
@@ -42,8 +42,8 @@ bool EliminateSlice::SatisfyCondition(const Graph& graph, const Node& node, cons
     if (graph_utils::GetRepeatedNodeAttributeValues(node, "axes", axes) && (axes.size() != starts.size())) {
       return false;
     }
-  } else if (graph_utils::MatchesOpSinceVersion(node, {10, 11})) {
-    // If it is a Slice operator of opset version 10 or 11, starts/ends/axes/steps are provided as node inputs.
+  } else if (graph_utils::MatchesOpSinceVersion(node, {10, 11, 13})) {
+    // If it is a Slice operator of opset version >= 10, starts/ends/axes/steps are provided as node inputs.
 
     // Returns a pointer to the corresponding NodeArg if input of the node at this index exists; otherwise, a nullptr.
     auto get_input_if_exists = [&node](size_t input_idx) -> const NodeArg* {

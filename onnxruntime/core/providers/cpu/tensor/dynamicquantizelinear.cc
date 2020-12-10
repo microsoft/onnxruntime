@@ -41,8 +41,8 @@ Status DynamicQuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   }
 
   // find input range min and max
-  auto min = ConstEigenVectorMap<float>(x_data, num_of_elements).minCoeff();
-  auto max = ConstEigenVectorMap<float>(x_data, num_of_elements).maxCoeff();
+  float min, max;
+  MlasFindMinMaxElement(x_data, &min, &max, num_of_elements);
 
   // ensure the input range includes zero
   min = std::min(min, 0.0f);

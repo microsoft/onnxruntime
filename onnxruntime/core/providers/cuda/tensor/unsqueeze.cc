@@ -17,15 +17,27 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Unsqueeze);
 
 // explicitly support negative axis
-ONNX_OPERATOR_KERNEL_EX(
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Unsqueeze,
     kOnnxDomain,
-    11,
+    11, 12,
     kCudaExecutionProvider,
     KernelDefBuilder()
         .Alias(0, 0)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Unsqueeze);
+
+// axes is input instead of attribute, support bfloat16
+ONNX_OPERATOR_KERNEL_EX(
+    Unsqueeze,
+    kOnnxDomain,
+    13,
+    kCudaExecutionProvider,
+    KernelDefBuilder()
+        .Alias(0, 0)
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .InputMemoryType<OrtMemTypeCPUInput>(1),
+        Unsqueeze);
 
 Status Unsqueeze::ComputeInternal(OpKernelContext* ctx) const {
   Prepare p;

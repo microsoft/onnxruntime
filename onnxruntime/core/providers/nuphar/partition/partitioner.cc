@@ -256,6 +256,7 @@ Status Partitioner::Evaluate(const onnxruntime::GraphViewer& graph, bool disting
     if (IsNodeSupported(*node)) {
       AcceptNode(graph, node_idx);
     } else {
+      LOGS_DEFAULT(INFO) << "unsupported node (" << node->Name() << ") in nuphar provider";
       RejectNode(graph, node_idx);
     }
   }

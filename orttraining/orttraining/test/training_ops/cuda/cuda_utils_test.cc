@@ -3,8 +3,6 @@
 
 #ifdef USE_CUDA
 
-#include "core/providers/cuda/shared_inc/cuda_utils.h"
-
 #include <memory>
 #include <vector>
 
@@ -12,6 +10,7 @@
 
 #include "core/common/common.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
+#include "core/providers/cuda/shared_inc/cuda_utils.h"
 
 namespace onnxruntime {
 namespace cuda {

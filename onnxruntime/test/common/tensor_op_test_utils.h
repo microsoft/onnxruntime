@@ -9,9 +9,8 @@
 #include "gtest/gtest.h"
 
 #include "core/common/common.h"
+#include "core/common/optional.h"
 #include "core/util/math.h"
-#include "test/providers/provider_test_utils.h"
-#include "test/util/include/test_random_seed.h"
 
 namespace onnxruntime {
 namespace test {
@@ -27,7 +26,14 @@ inline int64_t SizeFromDims(const std::vector<int64_t>& dims) {
 
 class RandomValueGenerator {
  public:
-  RandomValueGenerator();
+  using RandomEngine = std::default_random_engine;
+  using RandomSeedType = RandomEngine::result_type;
+
+  explicit RandomValueGenerator(optional<RandomSeedType> seed = {});
+
+  RandomSeedType GetRandomSeed() const {
+    return random_seed_;
+  }
 
   // Random values generated are in the range [min, max).
   template <typename TFloat>
@@ -57,6 +63,49 @@ class RandomValueGenerator {
     return val;
   }
 
+  // Gaussian distribution for float
+  template <typename TFloat>
+  typename std::enable_if<
+      std::is_floating_point<TFloat>::value,
+      std::vector<TFloat>>::type
+  Gaussian(const std::vector<int64_t>& dims, TFloat mean, TFloat stddev) {
+    std::vector<TFloat> val(detail::SizeFromDims(dims));
+    std::normal_distribution<TFloat> distribution(mean, stddev);
+    for (size_t i = 0; i < val.size(); ++i) {
+      val[i] = distribution(generator_);
+    }
+    return val;
+  }
+
+  // Gaussian distribution for Integer
+  template <typename TInt>
+  typename std::enable_if<
+      std::is_integral<TInt>::value,
+      std::vector<TInt>>::type
+  Gaussian(const std::vector<int64_t>& dims, TInt mean, TInt stddev) {
+    std::vector<TInt> val(detail::SizeFromDims(dims));
+    std::normal_distribution<float> distribution(static_cast<float>(mean), static_cast<float>(stddev));
+    for (size_t i = 0; i < val.size(); ++i) {
+      val[i] = static_cast<TInt>(std::round(distribution(generator_)));
+    }
+    return val;
+  }
+
+  // Gaussian distribution for Integer and Clamp to [min, max]
+  template <typename TInt>
+  typename std::enable_if<
+      std::is_integral<TInt>::value,
+      std::vector<TInt>>::type
+  Gaussian(const std::vector<int64_t>& dims, TInt mean, TInt stddev, TInt min, TInt max) {
+    std::vector<TInt> val(detail::SizeFromDims(dims));
+    std::normal_distribution<float> distribution(static_cast<float>(mean), static_cast<float>(stddev));
+    for (size_t i = 0; i < val.size(); ++i) {
+      int64_t round_val = static_cast<int64_t>(std::round(distribution(generator_)));
+      val[i] = static_cast<TInt>(std::min<int64_t>(std::max<int64_t>(round_val, min), max));
+    }
+    return val;
+  }
+
   template <class T>
   inline std::vector<T> OneHot(const std::vector<int64_t>& dims, int64_t stride) {
     std::vector<T> val(detail::SizeFromDims(dims), T(0));
@@ -70,7 +119,7 @@ class RandomValueGenerator {
 
  private:
   const RandomSeedType random_seed_;
-  std::default_random_engine generator_;
+  RandomEngine generator_;
   // while this instance is in scope, output some context information on test failure like the random seed value
   const ::testing::ScopedTrace output_trace_;
 };

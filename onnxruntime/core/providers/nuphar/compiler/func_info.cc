@@ -484,19 +484,31 @@ static void FillScanExecInfo(NupharFuncInfo* func_info,
 
     int ort_arg_index = gsl::narrow_cast<int>(ort_output_idx);
     if (ort_output_idx < gsl::narrow<size_t>(num_state_variables)) {
+      auto key_iter = visited_output_def_indices.find(key);
       // if ort_output_idx is a state output
-      if (visited_output_def_indices.count(key) != 0) {
+      if (key_iter != visited_output_def_indices.end()) {
         // If state output is an alias
-        // record i_output for the lookup of the aliased output later
-        visited_output_state_func_indices.insert(std::make_pair(key, gsl::narrow<int>(func_info->func_input_count + tvm_output_idx)));
+
+        auto output_tvm_idx = key_iter->second - gsl::narrow_cast<int>(num_state_variables);
 
         // also record ort_aliased_output_to_func_indices
-        func_info->ort_aliased_output_to_func_indices.push_back(std::make_pair(gsl::narrow<int>(ort_output_idx),
-                                                                               func_info->func_input_count + tvm_output_idx));
+        func_info->ort_aliased_output_to_func_indices.push_back(
+            std::make_pair(gsl::narrow<int>(ort_output_idx), func_info->func_input_count + output_tvm_idx));
 
-        scan_info->state_to_output_indices.push_back(visited_output_def_indices[key] - gsl::narrow_cast<int>(num_state_variables));
-        // override ort_arg_index using the output index
-        ort_arg_index = visited_output_def_indices[key];
+        scan_info->state_to_output_indices.push_back(output_tvm_idx);
+
+        if (visited_output_state_func_indices.count(key) != 0) {
+          // We could have multiple states that alias to the same output.
+          // We only record the first one and skip the rest.
+          continue;
+        } else {
+          // record i_output for the lookup of the aliased output later
+          visited_output_state_func_indices.insert(
+              std::make_pair(key, gsl::narrow<int>(func_info->func_input_count + output_tvm_idx)));
+
+          // override ort_arg_index using the output index
+          ort_arg_index = visited_output_def_indices[key];
+        }
       } else {
         // the state output not aliased(no scan output shares with it)
         scan_info->state_to_output_indices.push_back(NupharFuncInfo::Index_NonAliasedOutput);
@@ -504,10 +516,8 @@ static void FillScanExecInfo(NupharFuncInfo* func_info,
     } else {
       // if ort_output_idx is an output
       if (visited_output_state_func_indices.count(key) != 0) {
-        if (source_def != nullptr) {
-          // skip a duplicated output, since it was counted in the duplicated state output previously
-          continue;
-        }
+        // skip a duplicated output, since it was counted in the duplicated state output previously
+        continue;
       }
     }
 

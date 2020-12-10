@@ -22,17 +22,12 @@ public:
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetOutputCount() == 1);
         DmlOperator::Initialize(kernelInfo);
 
-        // Zero the output tensor's memory for ArgMin & ArgMax, which produce INT64 output.
-        if ((function == DML_REDUCE_FUNCTION_ARGMAX) || (function == DML_REDUCE_FUNCTION_ARGMIN))
-        {
-            m_zeroOperator = InitializeZeroInt64Tensor(m_outputTensorDescs[0].GetBufferSizeInBytes());
-        }
-
         std::vector<uint32_t> dmlAxes;
         std::vector<DimensionType> reducedDims = kernelInfo.GetTensorShapeDescription().GetInputTensorShape(0);
-        int dimOffset = gsl::narrow_cast<int>(OperatorHelper::NchwDimensionCount - reducedDims.size());
+        int dimOffset = gsl::narrow_cast<int>(m_inputTensorDescs[0].GetDimensionCount() - reducedDims.size());
         for (auto& dim : m_axes)
         {
+            assert(dim < reducedDims.size()); // ReduceHelperBase already validated this.
             reducedDims[dim] = 1;
             dmlAxes.push_back(static_cast<uint32_t>(dim + dimOffset));
         }
@@ -62,15 +57,59 @@ public:
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
-        DML_REDUCE_OPERATOR_DESC reduceDesc = {};
-        reduceDesc.InputTensor = inputDescs.data();
-        reduceDesc.OutputTensor = outputDescs.data();
-        reduceDesc.Function = function;
-        reduceDesc.Axes = dmlAxes.data();
-        reduceDesc.AxisCount = gsl::narrow_cast<uint32_t>(dmlAxes.size());
+        // Zero the output tensor's memory for ArgMin & ArgMax, which produce INT64 output.
+        if (function == DML_REDUCE_FUNCTION_ARGMAX)
+        {
+            DML_ARGMAX_OPERATOR_DESC argmaxDesc;
+            argmaxDesc.AxisDirection = static_cast<DML_AXIS_DIRECTION>(m_selectLastIndex);
+            argmaxDesc.InputTensor = inputDescs.data();
+            argmaxDesc.OutputTensor = outputDescs.data();
+            argmaxDesc.Axes = dmlAxes.data();
+            argmaxDesc.AxisCount = gsl::narrow_cast<uint32_t>(dmlAxes.size());
 
-        DML_OPERATOR_DESC opDesc = { DML_OPERATOR_REDUCE, &reduceDesc };
-        SetDmlOperatorDesc(opDesc, kernelInfo);
+            // If the 64-bit tensors were remapped to 32-bit, then we need to clear the upper 32-bits
+            // of each element. If the device directly supports 64-bit elements, then no need.
+            DmlOperator::Remap64bitDmlDataTypesTo32bitIfNeeded();
+            if (m_outputTensorDescs[0].WasRemapped64bitTo32bit())
+            {
+                m_zeroOperator = InitializeZeroInt64Tensor(m_outputTensorDescs[0].GetBufferSizeInBytes());
+            }
+            
+            DML_OPERATOR_DESC opDesc = { DML_OPERATOR_ARGMAX, &argmaxDesc };
+            SetDmlOperatorDesc(opDesc, kernelInfo);
+        }
+        else if (function == DML_REDUCE_FUNCTION_ARGMIN)
+        {
+            DML_ARGMIN_OPERATOR_DESC argminDesc;
+            argminDesc.AxisDirection = static_cast<DML_AXIS_DIRECTION>(m_selectLastIndex);
+            argminDesc.InputTensor = inputDescs.data();
+            argminDesc.OutputTensor = outputDescs.data();
+            argminDesc.Axes = dmlAxes.data();
+            argminDesc.AxisCount = gsl::narrow_cast<uint32_t>(dmlAxes.size());
+
+            // If the 64-bit tensors were remapped to 32-bit, then we need to clear the upper 32-bits
+            // of each element. If the device directly supports 64-bit elements, then no need.
+            DmlOperator::Remap64bitDmlDataTypesTo32bitIfNeeded();
+            if (m_outputTensorDescs[0].WasRemapped64bitTo32bit())
+            {
+                m_zeroOperator = InitializeZeroInt64Tensor(m_outputTensorDescs[0].GetBufferSizeInBytes());
+            }
+
+            DML_OPERATOR_DESC opDesc = { DML_OPERATOR_ARGMIN, &argminDesc };
+            SetDmlOperatorDesc(opDesc, kernelInfo);
+        }
+        else
+        {
+            DML_REDUCE_OPERATOR_DESC reduceDesc = {};
+            reduceDesc.InputTensor = inputDescs.data();
+            reduceDesc.OutputTensor = outputDescs.data();
+            reduceDesc.Function = function;
+            reduceDesc.Axes = dmlAxes.data();
+            reduceDesc.AxisCount = gsl::narrow_cast<uint32_t>(dmlAxes.size());
+
+            DML_OPERATOR_DESC opDesc = { DML_OPERATOR_REDUCE, &reduceDesc };
+            SetDmlOperatorDesc(opDesc, kernelInfo);
+        }
     }
 
     void Compute(const MLOperatorKernelContext& kernelContext) override

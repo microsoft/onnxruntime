@@ -29,9 +29,11 @@ Status SinGrad<T>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_OPERATOR_KERNEL_EX(
     ReluGrad,
-    9,
+    kMSDomain,
+    1,
+    kCpuExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     ReluGrad<float>);
 
@@ -96,6 +98,52 @@ Status SoftmaxGrad<T>::Compute(OpKernelContext* context) const {
                     dXdata, tp);
 
   math::Mul<float, CPUMathUtil>(gsl::narrow_cast<int>(Y.Shape().Size()), dXdata, Ydata, dXdata, nullptr);
+
+  return Status::OK();
+}
+
+ONNX_OPERATOR_KERNEL_EX(
+    LogSoftmaxGrad,
+    kMSDomain,
+    1,
+    kCpuExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    LogSoftmaxGrad<float>);
+
+template <typename T>
+Status LogSoftmaxGrad<T>::Compute(OpKernelContext* context) const {
+  auto& dY = *context->Input<Tensor>(0);
+  auto& Y = *context->Input<Tensor>(1);
+  const TensorShape input_shape{Y.Shape()};
+  auto& dX = *context->Output(0, Y.Shape());
+
+  auto axis = HandleNegativeAxis(axis_, Y.Shape().NumDimensions());
+
+  size_t N = input_shape.SizeToDimension(axis);
+  size_t D = input_shape.SizeFromDimension(axis);
+
+  if (N == 0) {
+    return Status::OK();
+  }
+
+  const int d = gsl::narrow_cast<int>(D);
+  const int nd = gsl::narrow_cast<int>(N * D);
+
+  const float* Ydata = Y.template Data<float>();
+  const float* dYdata = dY.template Data<float>();
+  float* dXdata = dX.template MutableData<float>();
+
+  std::vector<float> eY(nd);
+  float* eYdata = eY.data();
+
+  // dX_ai = d(log Y_ai) - [sum_j d(log Y_aj)] exp(log Y_ai)
+  gsl::copy(gsl::make_span(dYdata, nd), gsl::make_span(dXdata, nd));
+  math::Exp<float, CPUMathUtil>(nd, Ydata, eYdata, nullptr);
+  for (size_t i = 0; i < N; ++i) {
+    float sdY;
+    math::Sum<float, CPUMathUtil>(d, dYdata + i * d, &sdY, nullptr, nullptr);
+    math::Axpy<float, CPUMathUtil>(d, -sdY, eYdata + i * d, dXdata + i * d, nullptr);
+  }
 
   return Status::OK();
 }

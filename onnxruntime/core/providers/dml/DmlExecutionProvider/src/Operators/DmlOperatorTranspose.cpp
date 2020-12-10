@@ -19,41 +19,25 @@ public:
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetOutputCount() >= 1);
         DmlOperator::Initialize(kernelInfo);
 
-        const MLOperatorEdgeDescription inputEdgeDescription = kernelInfo.GetInputEdgeDescription(0);
-
         const std::vector<uint32_t> originalSizes = kernelInfo.GetTensorShapeDescription().GetInputTensorShape(0);
         ML_CHECK_VALID_ARGUMENT(m_permutations.size() == originalSizes.size());
 
         // Calculate strides from original shape.
         ML_CHECK_VALID_ARGUMENT(!originalSizes.empty());
         std::vector<uint32_t> inputStrides(originalSizes.size());
-        inputStrides.back() = 1;
-        for (int i = gsl::narrow_cast<int>(inputStrides.size()) - 2; i >= 0; i--)
-        {
-            inputStrides[i] = inputStrides[i + 1] * gsl::narrow_cast<uint32_t>(originalSizes[i + 1]);
-        }
+        Dml::GetDescendingPackedStrides(originalSizes, /*out*/ inputStrides);
 
-        const int leadingDims = gsl::narrow_cast<int32_t>(m_inputTensorDescs.front().GetDimensionCount() - originalSizes.size());
-
-        std::vector<uint32_t> sizes(m_inputTensorDescs.front().GetDimensionCount());
-        std::vector<uint32_t> strides(m_inputTensorDescs.front().GetDimensionCount());
-
-        // Fill leading tensor desc sizes/strides with defaults.
-        for (int dimDML = 0; dimDML < leadingDims; ++dimDML)
-        {
-            sizes[dimDML] = 1;
-            strides[dimDML] = 0;
-        }
+        std::vector<uint32_t> sizes(inputStrides.size());
+        std::vector<uint32_t> strides(inputStrides.size());
 
         // Permute the shape and strides.
         for (int dimInput = 0, dimCount = gsl::narrow_cast<int>(originalSizes.size()); dimInput < dimCount; ++dimInput)
         {
-            int dimDML = dimInput + leadingDims;
             int dimPermuted = m_permutations[dimInput];
 
             ML_CHECK_VALID_ARGUMENT(gsl::narrow_cast<size_t>(dimPermuted) < originalSizes.size());
-            sizes[dimDML] = gsl::narrow_cast<int32_t>(originalSizes[dimPermuted]);
-            strides[dimDML] = inputStrides[dimPermuted];
+            sizes[dimInput] = originalSizes[dimPermuted];
+            strides[dimInput] = inputStrides[dimPermuted];
         }
 
         // Override the initial tensor descs. The output tensor is not strided.

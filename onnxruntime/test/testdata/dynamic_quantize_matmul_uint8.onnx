@@ -1,4 +1,4 @@
-:è
+:è
 M
 Aa_quantizeda_scalea_zpDynamicQuantizeLinear"DynamicQuantizeLinear
 W
@@ -17,7 +17,7 @@ A
 matmul_output_float
 
 multiplierY
-mul_bottom"MulDynamicQuantizeLinear_fusionZ
+mul_bottom"MulDynamicQuantizeMatMul_fusionZ
 A
 
 
@@ -40,4 +40,4 @@ mul_bottom"MulDynamicQuantizeLinear_fusionZ
 
 
 M
-NB
+NB

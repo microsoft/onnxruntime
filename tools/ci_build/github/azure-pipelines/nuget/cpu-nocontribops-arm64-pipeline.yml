@@ -1,5 +1,6 @@
 variables:
   DisableContribOps: 'ON'
+  DisableMlOps: 'ON'
 
 jobs:
 - template: templates/cpu-nocontribops-arm64.yml

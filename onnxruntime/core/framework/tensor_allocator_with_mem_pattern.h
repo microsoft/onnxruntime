@@ -31,7 +31,7 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
         return Status(common::ONNXRUNTIME, common::FAIL,
                       "Failed to get allocator for location: " + location.ToString());
 
-      // Don't allocate memory when there is no memory usage..
+      // Don't allocate memory when there is no memory usage.
       if (mem_patterns_.patterns[i].PeakSize() <= 0) {
         continue;
       }
@@ -41,10 +41,8 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
       if (alloc->Info().alloc_type == OrtArenaAllocator) {
         // Arena has a specific way to store static memory.
         // Arena does not reuse static memory allocated by Reserve.
-        buffer = static_cast<IArenaAllocator*>(
-          alloc.get())->Reserve(peak_size);
-      }
-      else {
+        buffer = static_cast<IArenaAllocator*>(alloc.get())->Reserve(peak_size);
+      } else {
         buffer = alloc->Alloc(peak_size);
       }
       weights_buffers_.push_back(BufferUniquePtr(buffer, alloc));
@@ -60,10 +58,10 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
   }
 
  public:
-  TensorAllocatorWithMemPattern(const ExecutionPlanBase& execution_plan, const ExecutionProviders& exec_providers,
+  TensorAllocatorWithMemPattern(const ExecutionPlanBase& execution_plan, const SessionState& session_state,
                                 std::vector<BufferUniquePtr>& weights_buffers)
-      : ITensorAllocator(exec_providers),
-        planner_(execution_plan),
+      : ITensorAllocator(session_state),
+        planner_(execution_plan, /*using counters*/ false),
         weights_buffers_(weights_buffers),
         seq_plan_(execution_plan) {}
 

@@ -20,11 +20,10 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
                                     DataTypeImpl::GetTensorType<int64_t>()}),
     Gather);
 
-// explicit negative axis support
-ONNX_OPERATOR_KERNEL_EX(
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Gather,
     kOnnxDomain,
-    11,
+    11, 12,
     kCudaExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
@@ -33,39 +32,18 @@ ONNX_OPERATOR_KERNEL_EX(
                                     DataTypeImpl::GetTensorType<int64_t>()}),
     Gather);
 
-#define TYPED_FUNCTION_CALL(T)                                                  \
-  if (utils::IsPrimitiveDataType<T>(T_type)) {                                  \
-    T* output_data = p.output_tensor->template MutableData<T>();                \
-    const T* input_data = p.input_tensor->template Data<T>();                   \
-    if (utils::IsPrimitiveDataType<int32_t>(Tin_type)) {                        \
-      if (p.output_tensor->Shape().Size() > 0) {                                \
-        GatherImpl(                                                             \
-            input_block_size,                                                   \
-            indices_max,                                                        \
-            divmod_output_block_size,                                           \
-            divmod_block_size,                                                  \
-            p.indices_tensor->template Data<int32_t>(),                         \
-            reinterpret_cast<const ToCudaType<T>::MappedType*>(input_data),     \
-            reinterpret_cast<typename ToCudaType<T>::MappedType*>(output_data), \
-            p.output_tensor->Shape().Size());                                   \
-      }                                                                         \
-      return Status::OK();                                                      \
-    }                                                                           \
-    if (utils::IsPrimitiveDataType<int64_t>(Tin_type)) {                        \
-      if (p.output_tensor->Shape().Size() > 0) {                                \
-        GatherImpl(                                                             \
-            input_block_size,                                                   \
-            indices_max,                                                        \
-            divmod_output_block_size,                                           \
-            divmod_block_size,                                                  \
-            p.indices_tensor->template Data<int64_t>(),                         \
-            reinterpret_cast<const ToCudaType<T>::MappedType*>(input_data),     \
-            reinterpret_cast<typename ToCudaType<T>::MappedType*>(output_data), \
-            p.output_tensor->Shape().Size());                                   \
-      }                                                                         \
-      return Status::OK();                                                      \
-    }                                                                           \
-  }
+// explicit negative axis support
+ONNX_OPERATOR_KERNEL_EX(
+    Gather,
+    kOnnxDomain,
+    13,
+    kCudaExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .TypeConstraint("Tind", std::vector<MLDataType>{
+                                    DataTypeImpl::GetTensorType<int32_t>(),
+                                    DataTypeImpl::GetTensorType<int64_t>()}),
+    Gather);
 
 Status Gather::ComputeInternal(OpKernelContext* context) const {
   Prepare p;
@@ -79,24 +57,38 @@ Status Gather::ComputeInternal(OpKernelContext* context) const {
   const int64_t output_block_size = N * block_size;
   const int64_t indices_max = input_shape[p.axis];
 
+  const void* input_data = p.input_tensor->DataRaw();
+  const void* indices_data = p.indices_tensor->DataRaw();
+  void* output_data = p.output_tensor->MutableDataRaw();
+
+  if (p.output_tensor->Shape().Size() == 0) {
+    return Status::OK();
+  }
+
   const fast_divmod divmod_output_block_size(gsl::narrow_cast<int>(output_block_size));
   const fast_divmod divmod_block_size(gsl::narrow_cast<int>(block_size));
 
-  MLDataType T_type = p.input_tensor->DataType();
-  MLDataType Tin_type = p.indices_tensor->DataType();
+  const size_t element_size = p.input_tensor->DataType()->Size();
+  const size_t index_element_size = p.indices_tensor->DataType()->Size();
 
-  TYPED_FUNCTION_CALL(int8_t)
-  TYPED_FUNCTION_CALL(int16_t)
-  TYPED_FUNCTION_CALL(int32_t)
-  TYPED_FUNCTION_CALL(int64_t)
-  TYPED_FUNCTION_CALL(uint8_t)
-  TYPED_FUNCTION_CALL(uint16_t)
-  TYPED_FUNCTION_CALL(uint32_t)
-  TYPED_FUNCTION_CALL(uint64_t)
-  TYPED_FUNCTION_CALL(MLFloat16)
-  TYPED_FUNCTION_CALL(float)
-  TYPED_FUNCTION_CALL(double)
-  TYPED_FUNCTION_CALL(bool)
+  // CUDA Kernel implementation supports element sizes of:
+  // int8_t, int16_t, int32_t and int64_t which covers all supported
+  // types since there is no computations necessary just data movement
+  if (p.indices_tensor->IsDataType<int32_t>() ||
+      p.indices_tensor->IsDataType<int64_t>()) {
+    GatherImpl(
+        input_block_size,
+        indices_max,
+        divmod_output_block_size,
+        divmod_block_size,
+        indices_data,
+        index_element_size,
+        input_data,
+        element_size,
+        output_data,
+        p.output_tensor->Shape().Size());
+    return Status::OK();
+  }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Type for Tind not supported yet in Gather.");
 }

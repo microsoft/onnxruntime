@@ -38,7 +38,7 @@ class BatchNorm final : public OpKernel {
     ORT_ENFORCE(st.IsOK(), st.ErrorMessage());
 
     provider_ = (const_cast<ACLExecutionProvider*>(
-        dynamic_cast<const ACLExecutionProvider*>(info.GetExecutionProvider())));
+        static_cast<const ACLExecutionProvider*>(info.GetExecutionProvider())));
   }
 
   ~BatchNorm() {

@@ -15,11 +15,73 @@
 #include "onnx/common/stl_backports.h"
 #include "core/common/common.h"
 #include "core/common/const_pointer_container.h"
-#include "core/session/onnxruntime_c_api.h"
-#include "provider_interfaces.h"
+#include "core/common/logging/severity.h"
+#include "core/framework/allocator.h"
+#include "core/framework/allocatormgr.h"
+#include "core/framework/tensor_shape.h"
+
+namespace onnxruntime {
+namespace logging {
+
+enum class DataType {
+  SYSTEM = 0,  ///< System data.
+  USER = 1     ///< Contains potentially sensitive user data.
+};
+
+}  // namespace logging
+
+enum class AutoPadType {
+  NOTSET = 0,
+  VALID = 1,
+  SAME_UPPER = 2,
+  SAME_LOWER = 3,
+};
+
+// onnx Protobuf types (all of these are actually just Provider_<type> -> ONNX_NAMESPACE::<type>)
+struct Provider_int64s;  // RepeatedPtrField
+struct Provider_AttributeProto;
+struct Provider_GraphProto;
+struct Provider_ModelProto;
+struct Provider_NodeProto;
+struct Provider_TensorProto;
+struct Provider_TensorProtos;
+struct Provider_TensorShapeProto_Dimension;
+struct Provider_TensorShapeProto_Dimensions;  // RepeatedPtrField
+struct Provider_TensorShapeProto;
+struct Provider_TypeProto_Tensor;
+struct Provider_TypeProto;
+struct Provider_ValueInfoProto;
+struct Provider_ValueInfoProtos;  // RepeatedPtrField
+
+// OnnxRuntime Types (all of these are actually just Provider_<type> -> <type>)
+struct CPUIDInfo;
+namespace logging {
+struct Logger;
+struct Capture;
+}  // namespace logging
+struct Provider_ComputeCapability;
+struct Provider_DataTransferManager;
+struct Provider_IDataTransfer;
+struct Provider_IndexedSubGraph;
+struct Provider_IndexedSubGraph_MetaDef;
+struct Provider_KernelDef;
+struct Provider_KernelDefBuilder;
+struct Provider_KernelRegistry;
+struct Provider_Function;
+struct Provider_Graph;
+struct Provider_GraphViewer;
+struct Provider_Model;
+struct Provider_Node;
+struct Provider_NodeArg;
+struct Provider_NodeAttributes;
+struct Provider_OpKernelContext;
+struct Provider_OpKernelInfo;
+struct Provider_Tensor;
+}  // namespace onnxruntime
 
 namespace ONNX_NAMESPACE {
 
+// These are exact duplicates of the real protobuf types, defined here since we can't include the protobuf headers
 enum AttributeProto_AttributeType : int {
   AttributeProto_AttributeType_UNDEFINED = 0,
   AttributeProto_AttributeType_FLOAT = 1,
@@ -36,12 +98,50 @@ enum AttributeProto_AttributeType : int {
   AttributeProto_AttributeType_SPARSE_TENSORS = 12
 };
 
+enum TensorProto_DataType : int {
+  TensorProto_DataType_UNDEFINED = 0,
+  TensorProto_DataType_FLOAT = 1,
+  TensorProto_DataType_UINT8 = 2,
+  TensorProto_DataType_INT8 = 3,
+  TensorProto_DataType_UINT16 = 4,
+  TensorProto_DataType_INT16 = 5,
+  TensorProto_DataType_INT32 = 6,
+  TensorProto_DataType_INT64 = 7,
+  TensorProto_DataType_STRING = 8,
+  TensorProto_DataType_BOOL = 9,
+  TensorProto_DataType_FLOAT16 = 10,
+  TensorProto_DataType_DOUBLE = 11,
+  TensorProto_DataType_UINT32 = 12,
+  TensorProto_DataType_UINT64 = 13,
+  TensorProto_DataType_COMPLEX64 = 14,
+  TensorProto_DataType_COMPLEX128 = 15,
+  TensorProto_DataType_BFLOAT16 = 16
+};
+
+enum TensorProto_DataLocation : int {
+  TensorProto_DataLocation_DEFAULT = 0,
+  TensorProto_DataLocation_EXTERNAL = 1
+};
+
+enum Version : int {
+  _START_VERSION = 0,
+  IR_VERSION_2017_10_10 = 1,
+  IR_VERSION_2017_10_30 = 2,
+  IR_VERSION_2017_11_3 = 3,
+  IR_VERSION_2019_1_22 = 4,
+  IR_VERSION_2019_3_18 = 5,
+  IR_VERSION_2019_9_19 = 6,
+  IR_VERSION = 7
+};
+
 enum OperatorStatus : int {
   EXPERIMENTAL = 0,
   STABLE = 1
 };
 
 }  // namespace ONNX_NAMESPACE
+
+#include "provider_interfaces.h"
 
 namespace onnxruntime {
 
@@ -67,7 +167,18 @@ struct DeleteOnUnloadPtr {
 };
 
 constexpr const char* kOnnxDomain = "";
+constexpr const char* kMSDomain = "com.microsoft";
+constexpr const char* kNGraphDomain = "com.intel.ai";
 constexpr const char* kDnnlExecutionProvider = "DnnlExecutionProvider";
+constexpr const char* kOpenVINOExecutionProvider = "OpenVINOExecutionProvider";
+constexpr const char* kTensorrtExecutionProvider = "TensorrtExecutionProvider";
+
+enum CUDAStreamType : int {
+  kCudaStreamDefault = 0,
+  kCudaStreamCopyIn,
+  kCudaStreamCopyOut,
+  kTotalCudaStreams,
+};
 
 class DataTypeImpl {
  public:
@@ -77,144 +188,30 @@ class DataTypeImpl {
   static MLDataType GetType();
   template <typename elemT>
   static MLDataType GetTensorType();
+
+  static const std::vector<MLDataType>& AllFixedSizeTensorTypes();
 };
-
-class TensorShape : private std::vector<int64_t> {
- public:
-  TensorShape() = default;
-
-  TensorShape(const TensorShape& /*other*/) = default;
-  TensorShape& operator=(const TensorShape& /*other*/) = default;
-
-  TensorShape(TensorShape&& /*other*/) = default;
-  TensorShape& operator=(TensorShape&& /*other*/) = default;
-
-  TensorShape(const std::vector<int64_t>& dims) : std::vector<int64_t>{dims} {}
-  TensorShape(std::vector<int64_t>&& dims) : std::vector<int64_t>{dims} {}
-  TensorShape(const std::initializer_list<int64_t>& dims) : std::vector<int64_t>{dims} {}
-
-  TensorShape(const int64_t* dimension_sizes, size_t dimension_count);
-  TensorShape(const std::vector<int64_t>& dims, size_t start, size_t end);
-
-  using std::vector<int64_t>::operator[];
-
-  size_t NumDimensions() const noexcept {
-    return size();
-  }
-
-  const std::vector<int64_t>& GetDims() const { return *this; }
-
-  int64_t Size() const;
-
-  /**
-     Return a new TensorShape of the dimensions from dimstart to dimend.
-  */
-  TensorShape Slice(size_t dimstart, size_t dimend) const;
-
-  /**
-     Return a new TensorShape of the dimensions from dimstart to end.
-  */
-  TensorShape Slice(size_t dimstart) const;
-
-  /**
-     output dimensions nicely formatted
-  */
-  std::string ToString() const;
-
-  /**
-     Calculate size between start and end.
-     Assumes start and end are between 0 and this->NumDimensions(), inclusive, and that
-     start < end.
-  */
-  int64_t SizeHelper(size_t start, size_t end) const;
-};
-
-constexpr const char* kMSDomain = "com.microsoft";
-constexpr const char* kMklDnnExecutionProvider = "MKLDNNExecutionProvider";
 
 template <typename T>
 using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
 
-std::unique_ptr<Provider_IDeviceAllocator> CreateCPUAllocator(std::unique_ptr<Provider_OrtMemoryInfo> memory_info);
-Provider_AllocatorPtr CreateDummyArenaAllocator(std::unique_ptr<Provider_IDeviceAllocator> resource_allocator);
-Provider_AllocatorPtr CreateAllocator(Provider_DeviceAllocatorRegistrationInfo& info, int16_t device_id = 0);
+std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info);
+std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name);
+std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
 
-class CPUIDInfo {
- public:
-  static const CPUIDInfo& GetCPUIDInfo();
+std::unique_ptr<Provider_IDataTransfer> Provider_CreateGPUDataTransfer();
 
-  bool HasAVX2() const;
-  bool HasAVX512f() const;
-};
+std::string GetEnvironmentVar(const std::string& var_name);
+
+inline AutoPadType StringToAutoPadType(const std::string& str) { return g_host->StringToAutoPadType(str); }
 
 namespace logging {
 
-enum class Severity {
-  kVERBOSE = 0,
-  kINFO = 1,
-  kWARNING = 2,
-  kERROR = 3,
-  kFATAL = 4
-};
-
-enum class DataType {
-  SYSTEM = 0,  ///< System data.
-  USER = 1     ///< Contains potentially sensitive user data.
-};
-
 struct Category {
   static const char* onnxruntime;  ///< General output
-  static const char* System;       ///< Log output regarding interactions with the host system
-  // TODO: What other high level categories are meaningful? Model? Optimizer? Execution?
 };
 
-constexpr const char* SEVERITY_PREFIX = "VIWEF";
-
-class Logger {
- public:
-  bool OutputIsEnabled(Severity severity, DataType data_type) const noexcept;
-};
-
-class LoggingManager {
- public:
-  static const Logger& DefaultLogger();
-};
-
-class Capture {
- public:
-  Capture(const Logger& logger, logging::Severity severity, const char* category,
-          logging::DataType dataType, const CodeLocation& location);
-
-  std::ostream& Stream() noexcept;
-};
 }  // namespace logging
-
-enum class AutoPadType {
-  NOTSET = 0,
-  VALID = 1,
-  SAME_UPPER = 2,
-  SAME_LOWER = 3,
-};
-
-// TODO(RyanHill): Move this to a host function
-inline AutoPadType StringToAutoPadType(const std::string& str) {
-  if (str.empty()) {
-    return AutoPadType::NOTSET;
-  }
-  if (str == "NOTSET") {  // in onnx spec, default value is "NOTSET"
-    return AutoPadType::NOTSET;
-  }
-  if (str == "VALID") {
-    return AutoPadType::VALID;
-  }
-  if (str == "SAME_UPPER") {
-    return AutoPadType::SAME_UPPER;
-  }
-  if (str == "SAME_LOWER") {
-    return AutoPadType::SAME_LOWER;
-  }
-  ORT_ENFORCE(false, "Unknown AutoPadType String");
-}
 
 namespace math {
 
@@ -226,6 +223,7 @@ constexpr T roundUpPow2(T a) {
   return (a + (b - 1)) & (~(b - 1));
 }
 }  // namespace math
+
 }  // namespace onnxruntime
 
 #define ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name) \
@@ -246,12 +244,12 @@ constexpr T roundUpPow2(T a) {
   }
 
 #define CREATE_MESSAGE(logger, severity, category, datatype) \
-  ::onnxruntime::logging::Capture(logger, ::onnxruntime::logging::Severity::k##severity, category, datatype, ORT_WHERE)
+  ::onnxruntime::logging::Capture::Create(logger, ::onnxruntime::logging::Severity::k##severity, category, datatype, ORT_WHERE)
 
 // iostream style logging. Capture log info in Message, and push to the logger in ~Message.
 #define LOGS_CATEGORY(logger, severity, category)                                                                        \
   if ((logger).OutputIsEnabled(::onnxruntime::logging::Severity::k##severity, ::onnxruntime::logging::DataType::SYSTEM)) \
-  CREATE_MESSAGE(logger, severity, category, ::onnxruntime::logging::DataType::SYSTEM).Stream()
+  CREATE_MESSAGE(logger, severity, category, ::onnxruntime::logging::DataType::SYSTEM)->Stream()
 
 #define LOGS_DEFAULT_CATEGORY(severity, category) \
   LOGS_CATEGORY(::onnxruntime::logging::LoggingManager::DefaultLogger(), severity, category)

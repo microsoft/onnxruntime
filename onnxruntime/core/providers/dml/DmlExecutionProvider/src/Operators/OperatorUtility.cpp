@@ -14,6 +14,7 @@ namespace Dml
             switch (function)
             {
             case DML_OPERATOR_ACTIVATION_ELU:
+            case DML_OPERATOR_ACTIVATION_CELU:
                 return 1.0f;
 
             case DML_OPERATOR_ACTIVATION_LEAKY_RELU:
@@ -214,7 +215,7 @@ namespace Dml
                 return std::nullopt;
             }
 
-            // All fused ops just have "Fused" prepended to their name
+            // All fused ops just have "Fused" prepended to their name (e.g. "Conv" -> "FusedConv").
             std::string fusedOpType = std::string("Fused").append(candidateOpType);
 
             return FusedOpProperties{ std::move(fusedOpType), onnxruntime::kMSDmlDomain };
@@ -358,37 +359,45 @@ namespace Dml
         }
     }
 
+    uint32_t MapStringToIndex(std::string_view mode, gsl::span<const NameAndIndex> nameAndIndexList)
+    {
+        for (auto& nameAndIndex : nameAndIndexList)
+        {
+            if (strncmp(nameAndIndex.name, mode.data(), mode.size()) == 0)
+            {
+                return nameAndIndex.index;
+            }
+        }
+
+        ML_INVALID_ARGUMENT("Unknown mode value.");
+    }
+
     DML_INTERPOLATION_MODE MapStringToInteropolationMode(std::string_view mode)
     {
         // The ONNX modes are "nearest" and "linear."  Other modes exist for compatibility,
         // since Winml supported them in the past.
-        if (mode == "NEAREST" || mode == "nearest" || mode == "nn" || mode == "NN") {
-            return DML_INTERPOLATION_MODE_NEAREST_NEIGHBOR;
-        }
-        else if (mode == "BILINEAR" || mode == "bilinear" || mode == "linear")
+
+        constexpr NameAndIndex mapping[] =
         {
-            return DML_INTERPOLATION_MODE_LINEAR;
-        }
-        else
-        {
-            ML_INVALID_ARGUMENT("Unknown sampling interpolation mode.");
-        }
+            {"nearest", DML_INTERPOLATION_MODE_NEAREST_NEIGHBOR},
+            {"NEAREST", DML_INTERPOLATION_MODE_NEAREST_NEIGHBOR},
+            {"NN", DML_INTERPOLATION_MODE_NEAREST_NEIGHBOR},
+            {"nn", DML_INTERPOLATION_MODE_NEAREST_NEIGHBOR},
+            {"linear", DML_INTERPOLATION_MODE_LINEAR},
+            {"BILINEAR", DML_INTERPOLATION_MODE_LINEAR},
+            {"bilinear", DML_INTERPOLATION_MODE_LINEAR},
+        };
+        return MapStringToIndex<DML_INTERPOLATION_MODE>(mode, mapping);
     }
 
     DML_DEPTH_SPACE_ORDER MapStringToDepthSpaceMode(std::string_view mode)
     {
-        if (mode == "DCR")
+        constexpr NameAndIndex mapping[] =
         {
-            return DML_DEPTH_SPACE_ORDER_DEPTH_COLUMN_ROW;
-        }
-        else if (mode == "CRD")
-        {
-            return DML_DEPTH_SPACE_ORDER_COLUMN_ROW_DEPTH;
-        }
-        else
-        {
-            ML_INVALID_ARGUMENT("Unknown depth space mode.");
-        }
+            {"DCR", DML_DEPTH_SPACE_ORDER_DEPTH_COLUMN_ROW},
+            {"CRD", DML_DEPTH_SPACE_ORDER_COLUMN_ROW_DEPTH},
+        };
+        return MapStringToIndex<DML_DEPTH_SPACE_ORDER>(mode, mapping);
     }
 
 } // namespace Dml

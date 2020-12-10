@@ -13,16 +13,6 @@
 
 using namespace _winml;
 
-static const OrtApi* GetVersionedOrtApi() {
-  static const uint32_t ort_version = 2;
-  const auto ort_api_base = OrtGetApiBase();
-  return ort_api_base->GetApi(ort_version);
-}
-
-static const WinmlAdapterApi* GetVersionedWinmlAdapterApi() {
-  return OrtGetWinMLAdapter(GetVersionedOrtApi());
-}
-
 static ONNXTensorElementDataType
 ONNXTensorElementDataTypeFromTensorKind(winml::TensorKind kind) {
   switch (kind) {
@@ -189,11 +179,11 @@ HRESULT OnnxruntimeValue::GetResource(_winml::Resource& out) {
 
   bool is_cpu = false;
   if (SUCCEEDED(IsCpu(&is_cpu)) && !is_cpu) {
-    void* resource;
+    winrt::com_ptr<ID3D12Resource> resource;
     RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->DmlGetD3D12ResourceFromAllocation(ort_provider, mutable_data,
-                                                                                 reinterpret_cast<ID3D12Resource**>(&resource)),
+                                                                                 resource.put()),
                             ort_api);
-    out = _winml::Resource(resource, [](void*) { /*do nothing, as this pointer is actually a com pointer! */ });
+    out = _winml::Resource(resource.get(), [](void*) { /*do nothing, as this pointer is actually a com pointer! */ });
   } else {
     int is_tensor;
     RETURN_HR_IF_NOT_OK_MSG(ort_api->IsTensor(value_.get(), &is_tensor),
@@ -1120,6 +1110,14 @@ HRESULT OnnxruntimeEngine::GetSequenceOfTensorValues(_In_ _winml::IValue* sequen
     out_values.push_back(element_value);
   }
 
+  return S_OK;
+}
+
+HRESULT OnnxruntimeEngine::GetNumberOfIntraOpThreads(uint32_t* num_threads)
+{
+  auto ort_api = engine_factory_->UseOrtApi();
+  auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
+  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->SessionGetNumberOfIntraOpThreads(session_.get(), num_threads), ort_api);
   return S_OK;
 }
 

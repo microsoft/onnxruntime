@@ -12,9 +12,12 @@ namespace onnxruntime {
 namespace training {
 
 typedef GenericRegistry<GradientBuilderBase,
-                        const Node*&,                            //node
+                        const GradientGraphConfiguration&,
+                        Graph*&,                                 // graph
+                        const Node*&,                            // node
                         const std::unordered_set<std::string>&,  // gradient_inputs
-                        const std::unordered_set<std::string>&>  // gradient_outputs
+                        const std::unordered_set<std::string>&,  // gradient_outputs
+                        const logging::Logger&>
     GradientRegistryType;
 
 class GradientBuilderRegistry : public GradientRegistryType {
@@ -31,9 +34,12 @@ class GradientBuilderRegistry : public GradientRegistryType {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GradientBuilderRegistry);
 };
 
-GradientDef GetGradientForOp(const Node* node,
+GradientDef GetGradientForOp(const GradientGraphConfiguration& gradient_graph_config,
+                             Graph* graph,
+                             const Node* node,
                              const std::unordered_set<std::string>& output_args_need_grad,
-                             const std::unordered_set<std::string>& input_args_need_grad);
+                             const std::unordered_set<std::string>& input_args_need_grad,
+                             const logging::Logger& logger);
 
 }  // namespace training
 }  // namespace onnxruntime

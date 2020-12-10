@@ -6,10 +6,80 @@
 #include "OnnxruntimeErrors.h"
 #include "core/platform/windows/TraceLoggingConfig.h"
 #include <evntrace.h>
+#include <windows.h>
+#include <winrt/Windows.ApplicationModel.h>
+#include <winrt/Windows.ApplicationModel.Core.h>
 
 using namespace _winml;
 
 static bool debug_output_ = false;
+
+EXTERN_C IMAGE_DOS_HEADER __ImageBase;
+
+static bool IsCurrentModuleInSystem32() {
+  std::string current_module_path;
+  current_module_path.reserve(MAX_PATH);
+  auto size_module_path = GetModuleFileNameA((HINSTANCE)&__ImageBase, current_module_path.data(), MAX_PATH);
+  FAIL_FAST_IF(size_module_path == 0);
+
+  std::string system32_path;
+  system32_path.reserve(MAX_PATH);
+  auto size_system32_path = GetSystemDirectoryA(system32_path.data(), MAX_PATH);
+  FAIL_FAST_IF(size_system32_path == 0);
+
+  return _strnicmp(system32_path.c_str(), current_module_path.c_str(), size_system32_path) == 0;
+}
+
+static HRESULT GetOnnxruntimeLibrary(HMODULE& module) {
+#if WINAPI_FAMILY == WINAPI_FAMILY_PC_APP
+  auto out_module = LoadPackagedLibrary(L"onnxruntime.dll", 0);
+#else
+  DWORD flags = 0;
+#ifdef BUILD_INBOX
+  flags |= IsCurrentModuleInSystem32() ? LOAD_LIBRARY_SEARCH_SYSTEM32 : 0;
+#endif
+
+  auto out_module = LoadLibraryExA("onnxruntime.dll", nullptr, flags);
+#endif
+  if (out_module == nullptr) {
+    return HRESULT_FROM_WIN32(GetLastError());
+  }
+  module = out_module;
+  return S_OK;
+}
+
+const OrtApi* _winml::GetVersionedOrtApi() {
+  HMODULE onnxruntime_dll;
+  FAIL_FAST_IF_FAILED(GetOnnxruntimeLibrary(onnxruntime_dll));
+
+  using OrtGetApiBaseSignature = decltype(OrtGetApiBase);
+  auto ort_get_api_base_fn = reinterpret_cast<OrtGetApiBaseSignature*>(GetProcAddress(onnxruntime_dll, "OrtGetApiBase"));
+  if (ort_get_api_base_fn == nullptr) {
+    FAIL_FAST_HR(HRESULT_FROM_WIN32(GetLastError()));
+  }
+
+  const auto ort_api_base = ort_get_api_base_fn();
+
+  static const uint32_t ort_version = 2;
+  return ort_api_base->GetApi(ort_version);
+}
+
+static const WinmlAdapterApi* GetVersionedWinmlAdapterApi(const OrtApi* ort_api) {
+  HMODULE onnxruntime_dll;
+  FAIL_FAST_IF_FAILED(GetOnnxruntimeLibrary(onnxruntime_dll));
+
+  using OrtGetWinMLAdapterSignature = decltype(OrtGetWinMLAdapter);
+  auto ort_get_winml_adapter_fn = reinterpret_cast<OrtGetWinMLAdapterSignature*>(GetProcAddress(onnxruntime_dll, "OrtGetWinMLAdapter"));
+  if (ort_get_winml_adapter_fn == nullptr) {
+    FAIL_FAST_HR(HRESULT_FROM_WIN32(GetLastError()));
+  }
+
+  return ort_get_winml_adapter_fn(ort_api);
+}
+
+const WinmlAdapterApi* _winml::GetVersionedWinmlAdapterApi() {
+  return GetVersionedWinmlAdapterApi(GetVersionedOrtApi());
+}
 
 static void __stdcall WinmlOrtLoggingCallback(void* param, OrtLoggingLevel severity, const char* category,
                                     const char* logger_id, const char* code_location, const char* message) noexcept {
@@ -121,20 +191,41 @@ static void __stdcall WinmlOrtProfileEventCallback(const OrtProfilerEventRecord*
   }
 }
 
+static void OnSuspending(winrt::Windows::Foundation::IInspectable const& sender, winrt::Windows::ApplicationModel::SuspendingEventArgs const& args) {
+  telemetry_helper.LogWinMLSuspended();
+}
+
+void OnnxruntimeEnvironment::RegisterSuspendHandler() {
+  try {
+    auto suspend_event_handler = winrt::Windows::Foundation::EventHandler<winrt::Windows::ApplicationModel::SuspendingEventArgs>(&OnSuspending);
+    suspend_token_ = winrt::Windows::ApplicationModel::Core::CoreApplication::Suspending(suspend_event_handler);
+  } catch (...) {
+  }  //Catch in case CoreApplication cannot be found for non-UWP executions
+}
+
 OnnxruntimeEnvironment::OnnxruntimeEnvironment(const OrtApi* ort_api) : ort_env_(nullptr, nullptr) {
   OrtEnv* ort_env = nullptr;
   THROW_IF_NOT_OK_MSG(ort_api->CreateEnv(OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Default", &ort_env),
                       ort_api);
+  THROW_IF_NOT_OK_MSG(ort_api->SetLanguageProjection(ort_env, OrtLanguageProjection::ORT_PROJECTION_WINML), ort_api);
   ort_env_ = UniqueOrtEnv(ort_env, ort_api->ReleaseEnv);
-
   // Configure the environment with the winml logger
-  auto winml_adapter_api = OrtGetWinMLAdapter(ort_api);
+  auto winml_adapter_api = GetVersionedWinmlAdapterApi(ort_api);
   THROW_IF_NOT_OK_MSG(winml_adapter_api->EnvConfigureCustomLoggerAndProfiler(ort_env_.get(),
                                                                              &WinmlOrtLoggingCallback, &WinmlOrtProfileEventCallback, nullptr,
                                                                              OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Default", &ort_env),
                       ort_api);
 
   THROW_IF_NOT_OK_MSG(winml_adapter_api->OverrideSchema(), ort_api);
+
+  // Register suspend handler for UWP applications
+  RegisterSuspendHandler();
+}
+
+OnnxruntimeEnvironment::~OnnxruntimeEnvironment() {
+  if (suspend_token_) {
+    winrt::Windows::ApplicationModel::Core::CoreApplication::Suspending(suspend_token_);
+  }
 }
 
 HRESULT OnnxruntimeEnvironment::GetOrtEnvironment(_Out_ OrtEnv** ort_env) {

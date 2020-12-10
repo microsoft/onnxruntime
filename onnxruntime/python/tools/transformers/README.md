@@ -11,21 +11,34 @@ This tool can help in the following senarios:
 ## Installation
 First you need install onnxruntime or onnxruntime-gpu package for CPU or GPU inference. To use onnxruntime-gpu, it is required to install CUDA and cuDNN and add their bin directories to PATH environment variable.
 
-This tool can be installed using pip as follows:
+This tool can be installed using pip:
 ```console
-pip install onnxruntime-tools
+pip install --upgrade onnxruntime-tools
 ```
 
 ## Export a transformer model to ONNX
+
 PyTorch could export model to ONNX. The tf2onnx and keras2onnx tools can be used to convert model that trained by Tensorflow.
 Huggingface transformers has a [notebook](https://github.com/huggingface/transformers/blob/master/notebooks/04-onnx-export.ipynb) shows an example of exporting a pretrained model to ONNX. 
 For Keras2onnx, please refer to its [example script](https://github.com/onnx/keras-onnx/blob/master/applications/nightly_build/test_transformers.py).
 For tf2onnx, please refer to its [BERT tutorial](https://github.com/onnx/tensorflow-onnx/blob/master/tutorials/BertTutorial.ipynb).
 
+### GPT-2 Model conversion
+
+Converting GPT-2 model from PyTorch to ONNX is not straightforward when past state is used. We add a tool [convert_to_onnx](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/convert_to_onnx.py) to help you.
+
+You can use commands like the following to convert a pre-trained PyTorch GPT-2 model to ONNX for given precision (float32, float16 or int8):
+```
+python -m onnxruntime_tools.transformers.convert_to_onnx -m gpt2 --model_class GPT2LMHeadModel --output gpt2.onnx -p fp32
+python -m onnxruntime_tools.transformers.convert_to_onnx -m distilgpt2 --model_class GPT2LMHeadModel --output distilgpt2.onnx -p fp16 --use_gpu --optimize_onnx
+python -m onnxruntime_tools.transformers.convert_to_onnx -m [path_to_gpt2_pytorch_model_directory] --output quantized.onnx -p int32 --optimize_onnx
+```
+
+The tool will also verify whether the ONNX model and corresponding PyTorch model generate same outputs given same random inputs.
 
 ## Model Optimizer
 
-In your python code, you can use it like the following:
+In your python code, you can use the optimizer like the following:
 
 ```python
 from onnxruntime_tools import optimizer
@@ -44,7 +57,7 @@ You can also download the latest script files from [here](https://github.com/mic
 python optimizer.py --input gpt2.onnx --output gpt2_opt.onnx --model_type gpt2
 ```
 
-### Options
+### Optimizer Options
 
 See below for description of some options of optimizer.py:
 
@@ -69,28 +82,76 @@ See below for description of some options of optimizer.py:
 
 ### Supported Models
 
-Right now, this tool assumes input model has 3 inputs for input IDs, segment IDs, and attention mask. A model with less or addtional inputs might not be fully optimized.
+Here is a list of PyTorch models from [Huggingface Transformers](https://github.com/huggingface/transformers/) that have been tested using the optimizer:
+- BERT
+- DistilBERT
+- DistilGPT2
+- RoBERTa
+- ALBERT
+- GPT-2 (**GPT2Model**, **GPT2LMHeadModel**)
 
-Most optimizations require exact match of a subgraph. Any layout change in subgraph might cause some optimization not working. Note that different versions of training or export tool might lead to different graph layouts.
+For Tensorflow model, we only tested BERT model so far.
 
-Here is list of models from [Huggingface Transformers](https://github.com/huggingface/transformers/) that have been tested using this tool:
-- **BertForSequenceClassification** as in [transformers example](https://github.com/huggingface/transformers/blob/master/examples/run_glue.py) exported by PyTorch 1.2-1.4 using opset version 10 or 11.
-- **BertForQuestionAnswering** as in [transformers example](https://github.com/huggingface/transformers/blob/master/examples/run_squad.py) exported by PyTorch 1.2-1.4 using opset version 10 or 11.
-- **TFBertForSequenceClassification** as in [transformers example](https://github.com/huggingface/transformers/blob/master/examples/run_tf_glue.py) exported by keras2onnx installed from its master source.
-- **TFBertForQuestionAnswering** exported by keras2onnx installed from its master source.
-- **GPT2Model** exported by PyTorch 1.4 using opset version 10 or 11.
-- **GPT2LMHeadModel** exported by PyTorch 1.4 using opset version 10 or 11.
-If your model is not in the list, the optimized model might not work. You are welcome to update the scripts to support new models.
+Most optimizations require exact match of a subgraph. Any layout change in subgraph might cause some optimization not working. Note that different versions of training or export tool might lead to different graph layouts. It is recommended to use latest released version of PyTorch and Transformers.
 
-For GPT2 models, current optimization does not support past state (both inputs and outputs). You need disable it in transformers by setting enable_cache=False during exporting.
+If your model is not in the list, it might only be partial optimized or not optimized at all.
+
 
 ## Benchmark
+There is a bash script [run_benchmark.sh](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/run_benchmark.sh) for running benchmark. You can modify the bash script to choose your options (like models to test, batch sizes, sequence lengths, target device etc) before running.
 
-There is a benchmark script that measure inference performance of OnnxRuntime, PyTorch or PyTorch+TorchScript on pretrained models of Huggingface Transformers.
+The bash script will call benchmark.py script to measure inference performance of OnnxRuntime, PyTorch or PyTorch+TorchScript on pretrained models of Huggingface Transformers.
 
-The benchmark script requires PyTorch be installed.
+### Benchmark Results on V100
 
-Here is an example to run benchmark on pretrained model bert-base-cased on GPU.
+In the following benchmark results, ONNX Runtime uses optimizer for model optimization, and IO binding is enabled.
+
+We tested on Tesla V100-PCIE-16GB GPU (CPU is Intel Xeon(R) E5-2690 v4) for different batch size (**b**) and sequence length (**s**). Below result is average latency of per inference in miliseconds.
+
+#### bert-base-uncased (BertModel)
+
+The model has 12 layers and 768 hidden, with input_ids as input.
+
+| engine      | version | precision | b | s=8  | s=16 | s=32 | s=64 | s=128 | s=256 | s=512 | 
+|-------------|---------|-----------|---|------|------|------|------|-------|-------|-------| 
+| torchscript | 1.5.1   | fp32      | 1 | 7.92 | 8.78 | 8.91 | 9.18 | 9.56  | 9.39  | 12.83 | 
+| onnxruntime | 1.4.0   | fp32      | 1 | 1.38 | 1.42 | 1.67 | 2.15 | 3.11  | 5.37  | 10.74 | 
+| onnxruntime | 1.4.0   | fp16      | 1 | 1.30 | 1.29 | 1.31 | 1.33 | 1.45  | 1.95  | 3.36  | 
+| onnxruntime | 1.4.0   | fp32      | 4 | 1.51 | 1.93 | 2.98 | 5.01 | 9.13  | 17.95 | 38.15 | 
+| onnxruntime | 1.4.0   | fp16      | 4 | 1.27 | 1.35 | 1.43 | 1.83 | 2.66  | 4.40  | 9.76  | 
+
+[run_benchmark.sh](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/run_benchmark.sh) is used to get the results.
+
+#### gpt2 (GPT2LMHeadModel)
+
+The model has 12 layers and 768 hidden, with input_ids, position_ids, attention_mask and past state as inputs.
+
+| engine      | version | precision | b | s=4  | s=8 | s=32 | s=128 |
+|-------------|---------|-----------|---|------|------|------|------|
+| torchscript | 1.5.1   | fp32      | 1 | 5.80 | 5.77 | 5.82 | 5.78 |
+| onnxruntime | 1.4.0   | fp32      | 1 | 1.42 | 1.42 | 1.43 | 1.47 |
+| onnxruntime | 1.4.0   | fp16      | 1 | 1.54 | 1.54 | 1.58 | 1.64 |
+| onnxruntime | 1.4.0   | fp32      | 8 | 1.83 | 1.84 | 1.90 | 2.13 |
+| onnxruntime | 1.4.0   | fp16      | 8 | 1.74 | 1.75 | 1.81 | 2.09 |
+| onnxruntime | 1.4.0   | fp32      | 32 | 2.19 | 2.21 | 2.45 | 3.34 |
+| onnxruntime | 1.4.0   | fp16      | 32 | 1.66 | 1.71 | 1.85 | 2.73 |
+| onnxruntime | 1.4.0   | fp32      | 128 | 4.15 | 4.37 | 5.15 | 8.61 |
+| onnxruntime | 1.4.0   | fp16      | 128 | 2.47 | 2.58 | 3.26 | 6.16 |
+
+Since past state is used, sequence length in input_ids is 1. For example, s=4 means the past sequence length is 4 and the total sequence length is 5.
+
+[benchmark_gpt2.py](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/benchmark_gpt2.py) is used to get the results like the following commands:
+
+```console
+python -m onnxruntime_tools.transformers.benchmark_gpt2 --use_gpu -m gpt2 -o -v -b 1 8 32 128 -s 4 8 32 128 -p fp32
+python -m onnxruntime_tools.transformers.benchmark_gpt2 --use_gpu -m gpt2 -o -v -b 1 8 32 128 -s 4 8 32 128 -p fp16
+```
+
+### Benchmark.py
+
+If you use run_benchmark.sh, you need not use benchmark.py directly. You can skip this section if you do not want to know the details. 
+
+Below is example to runing benchmark.py on pretrained model bert-base-cased on GPU.
 
 ```console
 python -m onnxruntime_tools.transformers.benchmark -g -m bert-base-cased -o -v -b 0
@@ -102,7 +163,7 @@ The first command will generate ONNX models (both before and after optimizations
 
 If you remove -o parameter, optimizer script is not used in benchmark.
 
-If your GPU (like V100 or T4) has TensorCore, you can append --fp16 to the above commands to enable mixed precision using float16.
+If your GPU (like V100 or T4) has TensorCore, you can append `-p fp16` to the above commands to enable mixed precision.
 
 If you want to benchmark on CPU, you can remove -g option in the commands.
 
@@ -110,9 +171,9 @@ Note that our current benchmark on GPT2 and DistilGPT2 models has disabled past 
 
 By default, ONNX model has only one input (input_ids). You can use -i parameter to test models with multiple inputs. For example, we can add "-i 3" to command line to test a bert model with 3 inputs (input_ids, token_type_ids and attention_mask). This option only supports OnnxRuntime right now.
 
-## Model Verification
+## BERT Model Verification
 
-If your model has three inputs (like input_ids, token_type_ids and attention_mask), a script compare_bert_results.py can be used to do a quick verification. The tool will generate some fake input data, and compare results from both the original and optimized models. If outputs are all close, it is safe to use the optimized model.
+If your BERT model has three inputs (like input_ids, token_type_ids and attention_mask), a script compare_bert_results.py can be used to do a quick verification. The tool will generate some fake input data, and compare results from both the original and optimized models. If outputs are all close, it is safe to use the optimized model.
 
 Example of verifying models optimized for CPU:
 
@@ -124,7 +185,7 @@ For GPU, please append --use_gpu to the command.
 
 ## Performance Test
 
-bert_perf_test.py can be used to check the model inference performance. Below are examples:
+bert_perf_test.py can be used to check the BERT model inference performance. Below are examples:
 
 ```console
 python -m onnxruntime_tools.transformers.bert_perf_test --model optimized_model_cpu.onnx --batch_size 1 --sequence_length 128 --samples 100 --test_times 10 --inclusive

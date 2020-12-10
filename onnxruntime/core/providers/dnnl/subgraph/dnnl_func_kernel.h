@@ -12,7 +12,7 @@ namespace ort_dnnl {
 
 namespace {
 struct SubgraphParams {
-  Provider_NodeAttributes attributes;
+  std::unique_ptr<Provider_NodeAttributes> attributes{Provider_NodeAttributes::Create()};
   DNNLExecutionProvider* provider;
   std::shared_ptr<Subgraph> subgraph;
   std::string subgraph_id;
@@ -31,11 +31,11 @@ class DnnlFuncKernel {
     ORT_UNUSED_PARAMETER(context);
 
     params_.provider = provider;
-    params_.attributes = attributes;
+    *params_.attributes = attributes;
 
     auto sub_it = attributes.find("subgraph_id");
-    if (sub_it->second->type() == ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING) {
-      params_.subgraph_id = sub_it->second->s();
+    if (sub_it->second().type() == ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING) {
+      params_.subgraph_id = sub_it->second().s();
       params_.subgraph = provider->GetDnnlSubgraph(params_.subgraph_id);
 
       std::ostringstream key_os;
@@ -72,7 +72,7 @@ class DnnlFuncKernel {
     auto attr = attributes.find(attributes_prefix + "kernel_shape");
     if (attr != attributes.end()) {
       key.append(1, '#');
-      auto& proto = *attr->second;
+      auto& proto = attr->second();
       for (int i = 0; i < proto.ints_size(); i++) {
         key.append(std::to_string(proto.ints(i)));
         key.append(1, '_');
@@ -82,13 +82,13 @@ class DnnlFuncKernel {
 
     attr = attributes.find(attributes_prefix + "auto_pad");
     if (attr != attributes.end()) {
-      key.append(attr->second->s());
+      key.append(attr->second().s());
     }
 
     attr = attributes.find(attributes_prefix + "pads");
     if (attr != attributes.end()) {
       key.append(1, '#');
-      auto& proto = *attr->second;
+      auto& proto = attr->second();
       for (int i = 0; i < proto.ints_size(); i++) {
         key.append(std::to_string(proto.ints(i)));
         key.append(1, '_');
@@ -99,7 +99,7 @@ class DnnlFuncKernel {
     attr = attributes.find(attributes_prefix + "strides");
     if (attr != attributes.end()) {
       key.append(1, '#');
-      auto& proto = *attr->second;
+      auto& proto = attr->second();
       for (int i = 0; i < proto.ints_size(); i++) {
         key.append(std::to_string(proto.ints(i)));
         key.append(1, '_');
@@ -110,7 +110,7 @@ class DnnlFuncKernel {
     attr = attributes.find(attributes_prefix + "count_include_pad");
     if (attr != attributes.end()) {
       key.append(1, '#');
-      auto& proto = *attr->second;
+      auto& proto = attr->second();
       key.append(std::to_string(proto.i()));
       key.append(1, '_');
       key.append(1, '#');
@@ -119,7 +119,7 @@ class DnnlFuncKernel {
     attr = attributes.find(attributes_prefix + "ceil_mode");
     if (attr != attributes.end()) {
       key.append(1, '#');
-      auto& proto = *attr->second;
+      auto& proto = attr->second();
       key.append(std::to_string(proto.i()));
       key.append(1, '_');
       key.append(1, '#');
@@ -134,7 +134,7 @@ class DnnlFuncKernel {
     auto attr = attributes.find(attributes_prefix + "dilations");
     if (attr != attributes.end()) {
       key.append(1, '#');
-      auto& proto = *attr->second;
+      auto& proto = attr->second();
       for (int i = 0; i < proto.ints_size(); i++) {
         key.append(std::to_string(proto.ints(i)));
         key.append(1, '_');
@@ -145,7 +145,7 @@ class DnnlFuncKernel {
     attr = attributes.find(attributes_prefix + "auto_pad");
     if (attr != attributes.end()) {
       key.append(1, '#');
-      auto& proto = *attr->second;
+      auto& proto = attr->second();
       key.append(proto.s());
       key.append(1, '#');
     }
@@ -153,7 +153,7 @@ class DnnlFuncKernel {
     attr = attributes.find(attributes_prefix + "pads");
     if (attr != attributes.end()) {
       key.append(1, '#');
-      auto& proto = *attr->second;
+      auto& proto = attr->second();
       for (int i = 0; i < proto.ints_size(); i++) {
         key.append(std::to_string(proto.ints(i)));
         key.append(1, '_');
@@ -164,7 +164,7 @@ class DnnlFuncKernel {
     attr = attributes.find(attributes_prefix + "strides");
     if (attr != attributes.end()) {
       key.append(1, '#');
-      auto& proto = *attr->second;
+      auto& proto = attr->second();
       for (int i = 0; i < proto.ints_size(); i++) {
         key.append(std::to_string(proto.ints(i)));
         key.append(1, '_');
@@ -175,7 +175,7 @@ class DnnlFuncKernel {
     attr = attributes.find(attributes_prefix + "kernel_shape");
     if (attr != attributes.end()) {
       key.append(1, '#');
-      auto& proto = *attr->second;
+      auto& proto = attr->second();
       for (int i = 0; i < proto.ints_size(); i++) {
         key.append(std::to_string(proto.ints(i)));
         key.append(1, '_');
@@ -186,7 +186,7 @@ class DnnlFuncKernel {
     attr = attributes.find(attributes_prefix + "group");
     if (attr != attributes.end()) {
       key.append(1, '#');
-      auto& proto = *attr->second;
+      auto& proto = attr->second();
       key.append(std::to_string(proto.i()));
       key.append(1, '#');
     }
@@ -201,7 +201,7 @@ class DnnlFuncKernel {
     auto attr = attributes.find(attributes_prefix + "alpha");
     if (attr != attributes.end()) {
       key.append(1, '#');
-      auto& proto = *attr->second;
+      auto& proto = attr->second();
       key.append(std::to_string(proto.f()));
       key.append(1, '#');
     }
@@ -209,7 +209,7 @@ class DnnlFuncKernel {
     attr = attributes.find(attributes_prefix + "beta");
     if (attr != attributes.end()) {
       key.append(1, '#');
-      auto& proto = *attr->second;
+      auto& proto = attr->second();
       key.append(std::to_string(proto.f()));
       key.append(1, '#');
     }
@@ -217,7 +217,7 @@ class DnnlFuncKernel {
     attr = attributes.find(attributes_prefix + "bias");
     if (attr != attributes.end()) {
       key.append(1, '#');
-      auto& proto = *attr->second;
+      auto& proto = attr->second();
       key.append(std::to_string(proto.f()));
       key.append(1, '#');
     }

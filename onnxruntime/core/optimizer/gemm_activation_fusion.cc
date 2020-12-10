@@ -24,12 +24,12 @@ bool IsFusableActivation(const Node& node) {
   return IsSupportedOptypeVersionAndDomain(node, "Elu", {6}, kOnnxDomain) ||
          IsSupportedOptypeVersionAndDomain(node, "HardSigmoid", {6}, kOnnxDomain) ||
          IsSupportedOptypeVersionAndDomain(node, "LeakyRelu", {6}, kOnnxDomain) ||
-         IsSupportedOptypeVersionAndDomain(node, "Relu", {6}, kOnnxDomain) ||
+         IsSupportedOptypeVersionAndDomain(node, "Relu", {6, 13}, kOnnxDomain) ||
          IsSupportedOptypeVersionAndDomain(node, "Selu", {6}, kOnnxDomain) ||
-         IsSupportedOptypeVersionAndDomain(node, "Sigmoid", {6}, kOnnxDomain) ||
+         IsSupportedOptypeVersionAndDomain(node, "Sigmoid", {6, 13}, kOnnxDomain) ||
          IsSupportedOptypeVersionAndDomain(node, "Softplus", {1}, kOnnxDomain) ||
          IsSupportedOptypeVersionAndDomain(node, "Softsign", {1}, kOnnxDomain) ||
-         IsSupportedOptypeVersionAndDomain(node, "Tanh", {6}, kOnnxDomain) ||
+         IsSupportedOptypeVersionAndDomain(node, "Tanh", {6, 13}, kOnnxDomain) ||
 #ifndef DISABLE_CONTRIB_OPS
          IsSupportedOptypeVersionAndDomain(node, "ScaledTanh", {1}, kOnnxDomain) ||
          IsSupportedOptypeVersionAndDomain(node, "ParametricSoftplus", {1}, kOnnxDomain) ||
@@ -51,7 +51,7 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     auto& node = *node_ptr;
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Gemm", {7, 9, 11}) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Gemm", {7, 9, 11, 13}) ||
         !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) || node.GetOutputEdgesCount() != 1) {
       continue;
     }

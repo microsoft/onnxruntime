@@ -3,9 +3,9 @@ steps:
   displayName: 'Clean untagged docker images'
   inputs:
     script: |
-      sudo docker rm $(sudo docker ps -a | grep Exited | awk '{print $1;}') || true
-      sudo docker container prune -f
-      sudo docker image prune -f
+      docker rm $(docker ps -a | grep Exited | awk '{print $1;}') || true
+      docker container prune -f
+      docker image prune -f
     workingDirectory: $(Build.BinariesDirectory)
   continueOnError: true
   condition: always()

@@ -35,4 +35,10 @@ interface ILearningModelDeviceFactoryNative : IUnknown
     HRESULT CreateFromD3D12CommandQueue(ID3D12CommandQueue * value, [out] IUnknown ** result);
 };
 
+[uuid(c71e953f-37b4-4564-8658-d8396866db0d), object, local]
+interface ILearningModelSessionOptionsNative : IUnknown
+{
+    HRESULT SetIntraOpNumThreadsOverride(UINT32 intraOpNumThreads);
+};
+
 cpp_quote("#endif /* WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP) */")

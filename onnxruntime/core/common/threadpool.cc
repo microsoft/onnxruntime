@@ -1,4 +1,3 @@
-
 /* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,169 +22,262 @@ limitations under the License.
 #include "core/platform/ort_mutex.h"
 
 namespace onnxruntime {
-namespace {
-class BlockingCounter {
- public:
-  BlockingCounter(int initial_count) : state_(initial_count << 1), notified_(false) {
-    ORT_ENFORCE(initial_count >= 0);
-#ifndef NDEBUG
-    ORT_ENFORCE(((initial_count << 1) >> 1) == initial_count);
-#endif
-  }
 
-  ~BlockingCounter() = default;
-
-  inline void DecrementCount() {
-    unsigned int v = state_.fetch_sub(2, std::memory_order_acq_rel) - 2;
-    if (v != 1) {
-#ifndef NDEBUG
-      ORT_ENFORCE(((v + 2) & ~1) != 0);
-#endif
-      return;  // either count has not dropped to 0, or waiter is not waiting
-    }
-    std::lock_guard<OrtMutex> l(mu_);
-    notified_ = true;
-    cond_var_.notify_all();
-  }
-
-  inline void Wait() {
-    unsigned int v = state_.fetch_or(1, std::memory_order_acq_rel);
-    if ((v >> 1) == 0)
-      return;
-    std::unique_lock<OrtMutex> l(mu_);
-    while (!notified_) {
-      cond_var_.wait(l);
-    }
-  }
-  // Wait for the specified time, return false iff the count has not dropped to
-  // zero before the timeout expired.
-  inline bool WaitFor(std::chrono::milliseconds ms) {
-    unsigned int v = state_.fetch_or(1, std::memory_order_acq_rel);
-    if ((v >> 1) == 0)
-      return true;
-    std::unique_lock<OrtMutex> l(mu_);
-    while (!notified_) {
-      const std::cv_status status = cond_var_.wait_for(l, ms);
-      if (status == std::cv_status::timeout) {
-        return false;
-      }
-    }
-    return true;
-  }
-
- private:
-  OrtMutex mu_;
-  OrtCondVar cond_var_;
-  std::atomic<int> state_;  // low bit is waiter flag
-  bool notified_;
-};
-}  // namespace
 namespace concurrency {
 
-ThreadPool::ThreadPool(Env* env, const ThreadOptions& thread_options, const NAME_CHAR_TYPE* name, int num_threads,
+// A sharded loop counter distributes loop iterations between a set of worker threads.  The iteration space of
+// the loop is divided (perhaps unevenly) between the shards.  Each thread has a home shard (perhaps not uniquely
+// to it), and it claims iterations via atomic operations on its home shard.  It then proceeds through the other
+// shards until all of the shards' iterations are complete.  This approach serves to purposes.  First, compared
+// with atomic operations on a single counter, it reduces contention on a single counter in the case of loops with
+// large numbers of short-running iteration.  Second, by having a thread work on its home shard initially, it
+// promotes affinity between the work that a thread performs in one loop and the work that it performs in the next.
+
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4324) /* Padding added to LoopCounterShard, LoopCounter for alignment */
+#endif
+
+static constexpr int CACHE_LINE_BYTES = 64;
+static constexpr unsigned MAX_SHARDS = 8;
+
+struct alignas(CACHE_LINE_BYTES) LoopCounterShard {
+  ::std::atomic<uint64_t> _next{0};
+  uint64_t _end{0};
+};
+
+static_assert(sizeof(LoopCounterShard) == CACHE_LINE_BYTES, "Expected loop counter shards to match cache-line size");
+
+class alignas(CACHE_LINE_BYTES) LoopCounter {
+public:
+ LoopCounter(uint64_t num_iterations,
+             uint64_t block_size = 1) : _block_size(block_size),
+                                        _num_shards(GetNumShards(num_iterations, block_size)) {
+   // Divide the iteration space between the shards.  If the iteration
+   // space does not divide evenly into shards of multiples of
+   // block_size then the final shard is left uneven.
+
+   auto num_blocks = num_iterations / block_size;
+   auto blocks_per_shard = num_blocks / _num_shards;
+   auto iterations_per_shard = blocks_per_shard * block_size;
+
+   for (uint64_t shard = 0; shard < _num_shards; shard++) {
+     // Initialize with a relaxed store; synchronization with worker
+     // threads is provided via the thread pool
+     _shards[shard]._next.store(shard * iterations_per_shard,
+                                ::std::memory_order_relaxed);
+     _shards[shard]._end = (shard+1) * iterations_per_shard;
+   }
+
+   _shards[_num_shards - 1]._end = num_iterations;
+ }
+
+ // Allocate each thread to a home shard, from which it starts
+ // claiming iterations.
+ //
+ // We use the worker ID provided by the thread pool as the basis of
+ // this allocation.  Doing so promotes locality between successive
+ // loops: the worker that runs a given iteration in one loop will
+ // tend to run the same iterations in the next loop.  This helps
+ // operators with a series of short loops, such as GRU.
+
+ unsigned GetHomeShard(unsigned idx) const {
+   return idx % _num_shards;
+ }
+
+  // Attempt to claim iterations from the sharded counter.  The function either
+  // returns true, along with a block of exactly block_size iterations, or it returns false
+  // if all of the iterations have been claimed.
+  bool ClaimIterations(unsigned my_home_shard,
+                       unsigned& my_shard,
+                       uint64_t& my_start,
+                       uint64_t& my_end) {
+    do {
+      if (_shards[my_shard]._next < _shards[my_shard]._end) {
+        // Appears to be work in the current shard, try to claim with atomic fetch-and-add
+        uint64_t temp_start = _shards[my_shard]._next.fetch_add(_block_size);
+        if (temp_start < _shards[my_shard]._end) {
+          my_start = temp_start;
+          my_end = std::min(_shards[my_shard]._end, temp_start + _block_size);
+          return true;
+        }
+      }
+      // Work in the current shard is exhausted, move to the next shard, until
+      // we are back at the home shard.
+      my_shard = (my_shard + 1) % _num_shards;
+    } while (my_shard != my_home_shard);
+    return false;
+  }
+
+private:
+  // Derive the number of shards to use for a given loop.  We require
+  // at least one block of work per shard, and subject to that
+  // constraint we use [1,MAX_SHARDS) shards.
+  static unsigned GetNumShards(uint64_t num_iterations,
+                               uint64_t block_size) {
+    unsigned num_shards;
+    auto num_blocks = num_iterations / block_size;
+    if (num_blocks == 0) {
+      num_shards = 1;
+    } else if (num_blocks < MAX_SHARDS) {
+      num_shards = static_cast<unsigned>(num_blocks);
+    } else {
+      num_shards = MAX_SHARDS;
+    }
+    return num_shards;
+  }
+
+  alignas(CACHE_LINE_BYTES) LoopCounterShard _shards[MAX_SHARDS];
+  const uint64_t _block_size;
+  const unsigned _num_shards;
+};
+
+#ifdef _MSC_VER
+#pragma warning(pop) /* Padding added in LoopCounterShard, LoopCounter */
+#endif
+
+ThreadPool::ThreadPool(Env* env,
+                       const ThreadOptions& thread_options,
+                       const NAME_CHAR_TYPE* name,
+                       int degree_of_parallelism,
                        bool low_latency_hint)
     : thread_options_(thread_options) {
-  ORT_ENFORCE(num_threads >= 1);
-  eigen_threadpool_ =
-      onnxruntime::make_unique<ThreadPoolTempl<Env>>(name, num_threads, low_latency_hint, *env, thread_options_);
-  underlying_threadpool_ = eigen_threadpool_.get();
-}
-
-ThreadPool::ThreadPool(Eigen::ThreadPoolInterface* user_threadpool)
-    : thread_options_(ThreadOptions()) {
-  underlying_threadpool_ = user_threadpool;
+  // In the current implementation, a thread pool with degree_of_parallelism==1 uses
+  // the caller as one of the threads for executing work.  Hence we only create
+  // additional thread(s) for degree_of_parallelism>=2.
+  assert(degree_of_parallelism >= 1);
+  if (degree_of_parallelism >= 2) {
+    int threads_to_create = degree_of_parallelism - 1;
+    extended_eigen_threadpool_ =
+        onnxruntime::make_unique<ThreadPoolTempl<Env>>(name,
+                                                       threads_to_create,
+                                                       low_latency_hint,
+                                                       *env,
+                                                       thread_options_);
+    underlying_threadpool_ = extended_eigen_threadpool_.get();
+  }
 }
 
 ThreadPool::~ThreadPool() = default;
 
-void ThreadPool::SimpleParallelFor(std::ptrdiff_t total, const std::function<void(std::ptrdiff_t)>& fn) {
+// Base case for parallel loops, running iterations 0..total, divided into blocks
+// of block_size iterations, and calling into a function that takes a start..end
+// range of indices to run.
+void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
+                                                     const std::ptrdiff_t block_size,
+                                                     const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn) {
   if (total <= 0)
     return;
 
-  if (total == 1) {
-    fn(0);
-    return;
-  }
-
-  Barrier barrier(static_cast<unsigned int>(total));
-  std::function<void(std::ptrdiff_t)> handle_iteration = [&barrier, &fn](std::ptrdiff_t iteration) {
-    fn(iteration);
-    barrier.Notify();
-  };
-
-  for (std::ptrdiff_t id = 0; id < total; ++id) {
-    Schedule([=, &handle_iteration]() { handle_iteration(id); });
-  }
-
-  barrier.Wait();
-}
-
-void ThreadPool::Schedule(std::function<void()> fn) {
-  ORT_ENFORCE(fn != nullptr);
-  underlying_threadpool_->Schedule(std::move(fn));
-}
-
-int ThreadPool::NumShardsUsedByFixedBlockSizeScheduling(const std::ptrdiff_t total, const std::ptrdiff_t block_size) {
-  if (block_size <= 0 || total <= 1 || total <= block_size || NumThreads() == 1) {
-    return 1;
-  }
-  // TODO:check overflow?
-  return static_cast<int>((total + block_size - 1) / block_size);
-}
-
-void ThreadPool::ParallelFor(std::ptrdiff_t total, const SchedulingParams& scheduling_params,
-                             const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn) {
-  switch (scheduling_params.strategy()) {
-    case SchedulingStrategy::kAdaptive: {
-      if (scheduling_params.cost_per_unit().has_value()) {
-        ParallelFor(total, static_cast<double>(scheduling_params.cost_per_unit().value()), fn);
-      }
-      break;
-    }
-    case SchedulingStrategy::kFixedBlockSize: {
-      if (scheduling_params.block_size().has_value()) {
-        ParallelForFixedBlockSizeScheduling(total, scheduling_params.block_size().value(), fn);
-      }
-      break;
-    }
-  }
-}
-
-// This functionality is similar to parallelFor, except that reasoning about
-// the number of shards used is significantly easier.
-void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total, const std::ptrdiff_t block_size,
-                                                     const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn) {
-  const int num_shards_used = NumShardsUsedByFixedBlockSizeScheduling(total, block_size);
-  if (num_shards_used == 1) {
+  if (total <= block_size) {
     fn(0, total);
     return;
   }
 
-  // Adapted from Eigen's parallelFor implementation.
-  BlockingCounter counter(num_shards_used);
-  std::function<void(ptrdiff_t, ptrdiff_t)> handle_range = [=, &handle_range, &counter, &fn](std::ptrdiff_t first,
-                                                                                             std::ptrdiff_t last) {
-    while (last - first > block_size) {
-      // Find something near the midpoint which is a multiple of block size.
-      const std::ptrdiff_t mid = first + ((last - first) / 2 + block_size - 1) / block_size * block_size;
-      Schedule([=, &handle_range]() { handle_range(mid, last); });
-      last = mid;
+  // Split the work across threads in the pool.  Each work item will run a loop claiming iterations,
+  // hence we need at most one for each thread, even if the numberof blocks of iterations is larger.
+  auto d_of_p = DegreeOfParallelism(this);
+  auto num_blocks = total / block_size;
+  int num_work_items = static_cast<int>(std::min(static_cast<std::ptrdiff_t>(d_of_p), num_blocks));
+  assert(num_work_items > 0);
+
+  LoopCounter lc(total, block_size);
+  std::function<void(unsigned)> run_work = [&](unsigned idx) {
+    unsigned my_home_shard = lc.GetHomeShard(idx);
+    unsigned my_shard = my_home_shard;
+    uint64_t my_iter_start, my_iter_end;
+    while (lc.ClaimIterations(my_home_shard, my_shard, my_iter_start, my_iter_end)) {
+      fn(static_cast<std::ptrdiff_t>(my_iter_start),
+         static_cast<std::ptrdiff_t>(my_iter_end));
     }
-    // Single block or less, execute directly.
-    fn(first, last);
-    counter.DecrementCount();  // The shard is done.
   };
 
-  // Execute the root in the thread pool to avoid running work on more than
-  // numThreads() threads.
-  Schedule([=, &handle_range]() { handle_range(0, total); });
-  counter.Wait();
+  // Run the work in the thread pool (and in the current thread).  Synchronization with helping
+  // threads is handled within RunInParallel, hence we can deallocate lc and other state captured by
+  // run_work.
+  RunInParallel(run_work, num_work_items);
 }
 
-struct ParallelForBlock {
-  ptrdiff_t size;   // block size
-  ptrdiff_t count;  // number of blocks
-};
+void ThreadPool::SimpleParallelFor(std::ptrdiff_t total, const std::function<void(std::ptrdiff_t)>& fn) {
+  ParallelForFixedBlockSizeScheduling(total, 1, [&](std::ptrdiff_t first, std::ptrdiff_t last) {
+    for (std::ptrdiff_t idx = first; idx < last; idx++) {
+      fn(idx);
+    }
+  });
+}
+
+void ThreadPool::Schedule(std::function<void()> fn) {
+  if (underlying_threadpool_) {
+    underlying_threadpool_->Schedule(std::move(fn));
+  } else {
+    fn();
+  }
+}
+
+thread_local ThreadPool::ParallelSection *ThreadPool::ParallelSection::current_parallel_section{nullptr};
+
+ThreadPool::ParallelSection::ParallelSection(ThreadPool *tp) {
+#ifdef _OPENMP
+  // Nothing
+  ORT_UNUSED_PARAMETER(tp);
+#else
+  ORT_ENFORCE(!current_parallel_section, "Nested parallelism not supported");
+  ORT_ENFORCE(!ps_.get());
+  tp_ = tp;
+  if (tp && tp->underlying_threadpool_) {
+    ps_ = tp->underlying_threadpool_->AllocateParallelSection();
+    tp_->underlying_threadpool_->StartParallelSection(*ps_.get());
+    current_parallel_section = this;
+  }
+#endif
+}
+
+ThreadPool::ParallelSection::~ParallelSection() {
+#ifdef _OPENMP
+  // Nothing
+#else
+  if (current_parallel_section) {
+    tp_->underlying_threadpool_->EndParallelSection(*ps_.get());
+    ps_.reset();
+    current_parallel_section = nullptr;
+  }
+#endif
+}
+
+void ThreadPool::RunInParallel(std::function<void(unsigned idx)> fn, unsigned n) {
+  if (underlying_threadpool_) {
+    if (ThreadPool::ParallelSection::current_parallel_section) {
+      underlying_threadpool_->RunInParallelSection(*(ThreadPool::ParallelSection::current_parallel_section->ps_.get()),
+                                                   std::move(fn),
+                                                   n);
+    } else {
+      underlying_threadpool_->RunInParallel(std::move(fn),
+                                            n);
+    }
+  } else {
+    fn(0);
+  }
+}
+
+bool ThreadPool::ShouldParallelizeLoop(const std::ptrdiff_t num_iterations,
+                                       const std::ptrdiff_t block_size) const {
+  // Do not parallelize trivial loops, with only a single block of work
+  if (block_size <= 0 || num_iterations <= block_size) {
+    return false;
+  }
+
+  // Do not parallelize loops with only a single thread available.  If the
+  // caller is outside the current pool (ID == -1) then we parallelize
+  // if the pool has any threads.  If the caller is inside the current pool
+  // (ID != -1) then we require at least one additional thread in the pool.
+  if ((CurrentThreadId() == -1 && NumThreads() == 0) ||
+      (CurrentThreadId() != -1 && NumThreads() == 1)) {
+    return false;
+  }
+
+  return true;
+}
+
 using CostModel = Eigen::TensorCostModel<Eigen::ThreadPoolDevice>;
 
 // Calculates block size based on (1) the iteration cost and (2) parallel
@@ -193,8 +285,8 @@ using CostModel = Eigen::TensorCostModel<Eigen::ThreadPoolDevice>;
 // overheads; not too large to mitigate tail effect and potential load
 // imbalance and we also want number of blocks to be evenly dividable across
 // threads.
-static ParallelForBlock CalculateParallelForBlock(const ptrdiff_t n, const Eigen::TensorOpCost& cost,
-                                                  std::function<ptrdiff_t(ptrdiff_t)> block_align, int num_threads) {
+static ptrdiff_t CalculateParallelForBlock(const ptrdiff_t n, const Eigen::TensorOpCost& cost,
+                                           std::function<ptrdiff_t(ptrdiff_t)> block_align, int num_threads) {
   const double block_size_f = 1.0 / CostModel::taskSize(1, cost);
   const ptrdiff_t max_oversharding_factor = 4;
   ptrdiff_t block_size = Eigen::numext::mini(
@@ -238,75 +330,122 @@ static ParallelForBlock CalculateParallelForBlock(const ptrdiff_t n, const Eigen
     if (coarser_efficiency + 0.01 >= max_efficiency) {
       // Taking it.
       block_size = coarser_block_size;
-      block_count = coarser_block_count;
       if (max_efficiency < coarser_efficiency) {
         max_efficiency = coarser_efficiency;
       }
     }
   }
 
-  return {block_size, block_count};
+  return block_size;
 }
 
 void ThreadPool::ParallelFor(std::ptrdiff_t n, const TensorOpCost& c,
                              const std::function<void(std::ptrdiff_t first, std::ptrdiff_t)>& f) {
   ORT_ENFORCE(n >= 0);
   Eigen::TensorOpCost cost{c.bytes_loaded, c.bytes_stored, c.compute_cycles};
+  auto d_of_p = DegreeOfParallelism(this);
   // Compute small problems directly in the caller thread.
-  if (n <= 1 || NumThreads() == 1 ||
-      Eigen::TensorCostModel<Eigen::ThreadPoolDevice>::numThreads(static_cast<double>(n), cost, static_cast<int>(NumThreads())) == 1) {
+  if ((!ShouldParallelizeLoop(n)) ||
+      CostModel::numThreads(static_cast<double>(n), cost, d_of_p) == 1) {
     f(0, n);
     return;
   }
 
-  // Compute block size and total count of blocks.
-  ParallelForBlock block = CalculateParallelForBlock(n, cost, nullptr, NumThreads());
-
-  // Recursively divide size into halves until we reach block_size.
-  // Division code rounds mid to block_size, so we are guaranteed to get
-  // block_count leaves that do actual computations.
-  Barrier barrier(static_cast<unsigned int>(block.count));
-  std::function<void(ptrdiff_t, ptrdiff_t)> handleRange;
-  handleRange = [=, &handleRange, &barrier, &f](ptrdiff_t firstIdx, ptrdiff_t lastIdx) {
-    while (lastIdx - firstIdx > block.size) {
-      // Split into halves and schedule the second half on a different thread.
-      const ptrdiff_t midIdx = firstIdx + Eigen::divup((lastIdx - firstIdx) / 2, block.size) * block.size;
-      underlying_threadpool_->Schedule([=, &handleRange]() { handleRange(midIdx, lastIdx); });
-      lastIdx = midIdx;
-    }
-    // Single block or less, execute directly.
-    f(firstIdx, lastIdx);
-    barrier.Notify();
-  };
-
-  underlying_threadpool_->Schedule([=, &handleRange]() { handleRange(0, n); });
-  barrier.Wait();
+  ptrdiff_t block = CalculateParallelForBlock(n, cost, nullptr, d_of_p);
+  ParallelForFixedBlockSizeScheduling(n, block, f);
 }
+
 void ThreadPool::ParallelFor(std::ptrdiff_t total, double cost_per_unit,
                              const std::function<void(std::ptrdiff_t first, std::ptrdiff_t)>& fn) {
   ParallelFor(total, TensorOpCost{0, 0, static_cast<double>(cost_per_unit)}, fn);
 }
 
-int ThreadPool::NumThreads(const concurrency::ThreadPool* tp) {
+bool ThreadPool::ShouldParallelize(const concurrency::ThreadPool* tp) {
+  return (DegreeOfParallelism(tp) != 1);
+}
+
+int ThreadPool::DegreeOfParallelism(const concurrency::ThreadPool* tp) {
 #ifdef _OPENMP
+  // When using OpenMP, omp_get_num_threads() returns the number of threads in the
+  // current parallel region.  Hence if this is 1 then we aim to parallelise
+  // across the number of threads configured.  Otherwise, given that we do not
+  // use nested parallelism, we do not parallelise further.
   ORT_UNUSED_PARAMETER(tp);
   return (omp_get_num_threads() == 1) ? omp_get_max_threads() : 1;
 #else
-  return tp ? tp->NumThreads() : 1;
+  // When not using OpenMP, we parallelise over the N threads created by the pool
+  // tp, plus 1 for the thread entering a loop.
+  return tp ? (tp->NumThreads()+1) : 1;
 #endif
 }
 
+// Return the number of threads created by the pool.
 int ThreadPool::NumThreads() const {
-  return underlying_threadpool_->NumThreads();
+  if (underlying_threadpool_) {
+    return underlying_threadpool_->NumThreads();
+  } else {
+    return 0;
+  }
 }
 
+// Return ID of the current thread within this pool.  Returns -1 for a thread outside the
+// current pool.
 int ThreadPool::CurrentThreadId() const {
-  return underlying_threadpool_->CurrentThreadId();
+  if (underlying_threadpool_) {
+    return underlying_threadpool_->CurrentThreadId();
+  } else {
+    return -1;
+  }
 }
 
-Eigen::ThreadPoolInterface* ThreadPool::AsEigenThreadPool() const {
-  ORT_ENFORCE(underlying_threadpool_ != nullptr);
-  return underlying_threadpool_;
-}
+void ThreadPool::TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t total, const TensorOpCost& cost_per_unit,
+                           const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn) {
+#ifdef _OPENMP
+    ORT_ENFORCE(total >= 0);
+    if (total == 0) {
+      return;
+    }
+
+    if (total == 1) {
+      fn(0, 1);
+      return;
+    }
+
+    Eigen::TensorOpCost cost{cost_per_unit.bytes_loaded, cost_per_unit.bytes_stored, cost_per_unit.compute_cycles};
+    auto d_of_p = DegreeOfParallelism(tp);
+    std::ptrdiff_t num_threads = CostModel::numThreads(static_cast<double>(total), cost, d_of_p);
+
+    if (total < num_threads) {
+      num_threads = total;
+    }
+
+    if (num_threads == 1) {
+      fn(0, total);
+      return;
+    }
+
+    ptrdiff_t block_size = CalculateParallelForBlock(total, cost, nullptr, d_of_p);
+    ptrdiff_t block_count = Eigen::divup(total, block_size);
+
+    if (block_count == 1) {
+      fn(0, total);
+      return;
+    }
+
+#pragma omp parallel for schedule(dynamic,1)
+    for (std::ptrdiff_t i = 0; i < block_count; i++) {
+      const auto start = i * block_size;
+      fn(start, std::min(start+block_size, total));
+    }
+#else   //!_OPENMP
+    if (tp == nullptr) {
+      fn(0, total);
+      return;
+    }
+    tp->ParallelFor(total, cost_per_unit, fn);
+#endif
+  }
+
+
 }  // namespace concurrency
 }  // namespace onnxruntime

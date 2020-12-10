@@ -23,7 +23,7 @@ if [ $BUILD_OS = "android" ]; then
     pushd /onnxruntime_src
     mkdir build-android && cd build-android
     if [ $BUILD_DEVICE = "nnapi" ]; then
-        cmake -DCMAKE_TOOLCHAIN_FILE=/android-ndk/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DONNX_CUSTOM_PROTOC_EXECUTABLE=/usr/bin/protoc -Donnxruntime_USE_NNAPI=ON ../cmake
+        cmake -DCMAKE_TOOLCHAIN_FILE=/android-ndk/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DONNX_CUSTOM_PROTOC_EXECUTABLE=/usr/bin/protoc -Donnxruntime_USE_NNAPI_BUILTIN=ON ../cmake
     else
         cmake -DCMAKE_TOOLCHAIN_FILE=/android-ndk/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DONNX_CUSTOM_PROTOC_EXECUTABLE=/usr/bin/protoc ../cmake
     fi
@@ -62,14 +62,14 @@ else
     if [ $BUILD_DEVICE = "gpu" ]; then
         if [ $BUILD_OS = "manylinux2010" ]; then
             python3 $SCRIPT_DIR/../../build.py --build_dir /build \
-                --config Debug Release $COMMON_BUILD_ARGS \
+                --config Release $COMMON_BUILD_ARGS \
                 --use_cuda \
                 --cuda_home /usr/local/cuda \
                 --cudnn_home /usr/local/cuda $BUILD_EXTR_PAR
         else
             _CUDNN_VERSION=$(echo $CUDNN_VERSION | cut -d. -f1-2)
             python3 $SCRIPT_DIR/../../build.py --build_dir /build \
-                --config Debug Release $COMMON_BUILD_ARGS \
+                --config Release $COMMON_BUILD_ARGS \
                 --use_cuda \
                 --cuda_home /usr/local/cuda \
                 --cudnn_home /usr/local/cudnn-$_CUDNN_VERSION/cuda $BUILD_EXTR_PAR
@@ -81,7 +81,7 @@ else
             --use_tensorrt --tensorrt_home /workspace/tensorrt \
             --cuda_home /usr/local/cuda \
             --cudnn_home /usr/local/cuda $BUILD_EXTR_PAR
-    else #cpu, ngraph and openvino
+    else #cpu and openvino
         export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
         python3 $SCRIPT_DIR/../../build.py --build_dir /build \
             --config Debug Release $COMMON_BUILD_ARGS $BUILD_EXTR_PAR

@@ -139,7 +139,7 @@ template <typename T>
 TreeEnsembleClassifier<T>::TreeEnsembleClassifier(const OpKernelInfo& info)
     : OpKernel(info),
       tree_ensemble_(
-          100,
+          80,
           50,
           info.GetAttrOrDefault<std::string>("aggregate_function", "SUM"),
           info.GetAttrsOrDefault<float>("base_values"),
@@ -164,17 +164,16 @@ TreeEnsembleClassifier<T>::TreeEnsembleClassifier(const OpKernelInfo& info)
 template <typename T>
 common::Status TreeEnsembleClassifier<T>::Compute(OpKernelContext* context) const {
   const Tensor& X = *context->Input<Tensor>(0);
-  const TensorShape& x_shape = X.Shape();
-  vector<int64_t> x_dims = x_shape.GetDims();
+  const std::vector<int64_t>& x_dims = X.Shape().GetDims();
   if (x_dims.empty()) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "X dims is empty.");
   }
 
   int64_t N = x_dims.size() == 1 ? 1 : x_dims[0];
-  Tensor* Y = context->Output(0, TensorShape({N}));
-  Tensor* Z = context->Output(1, TensorShape({N, tree_ensemble_.get_class_count()}));
+  Tensor* Y = context->Output(0, {N});
+  Tensor* Z = context->Output(1, {N, tree_ensemble_.get_class_count()});
 
-  tree_ensemble_.compute(context->GetOperatorThreadPool(), &X, Z, Y);
+  tree_ensemble_.compute(context, &X, Z, Y);
   return Status::OK();
 }
 

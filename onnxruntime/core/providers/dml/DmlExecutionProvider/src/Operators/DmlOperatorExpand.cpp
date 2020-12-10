@@ -25,8 +25,8 @@ public:
         TensorDesc inputTensorDesc = 
             TensorDesc(
                 kernelCreationContext.GetInputEdgeDescription(0).tensorDataType,
-                m_outputTensorDescs[0].GetDmlSizes(),
-                m_inputTensorDescs[0].GetDmlSizes(),
+                m_outputTensorDescs[0].GetSizes(),
+                m_inputTensorDescs[0].GetSizes(),
                 TensorAxis::DoNotCoerce,
                 TensorAxis::W,
                 TensorAxis::RightAligned,
@@ -36,8 +36,8 @@ public:
         TensorDesc outputTensorDesc = 
             TensorDesc(
                 kernelCreationContext.GetOutputEdgeDescription(0).tensorDataType,
-                m_outputTensorDescs[0].GetDmlSizes(),
-                m_outputTensorDescs[0].GetDmlSizes(),
+                m_outputTensorDescs[0].GetSizes(),
+                m_outputTensorDescs[0].GetSizes(),
                 TensorAxis::DoNotCoerce,
                 TensorAxis::W,
                 TensorAxis::RightAligned,

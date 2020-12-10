@@ -15,13 +15,21 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Concat);
 
 // Opset 11 starts to support Neg Axis.
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Concat,
     11,
+    12,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
     Concat);
 
-// this method will be shared between 'Concat' (CPU and GPU) and 
+// Opset 13 .
+ONNX_CPU_OPERATOR_KERNEL(
+    Concat,
+    13,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
+    Concat);
+
+// this method will be shared between 'Concat' (CPU and GPU) and
 // 'ConcatFromSequence' ('concat' and 'stack' modes) to validate inputs
 Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
                                      const std::vector<const Tensor*>& input_tensors,
@@ -169,7 +177,7 @@ Status ConcatBase::ComputeImpl(Prepare& p) const {
     auto input_size = prep.num_elements;
 
     // Copy the data across. For every 'input_axis_pitch' values copied, we move over by the 'output_axis_pitch'
-    // TODO: Optimization possibility: There are cases where we simply need to "merge" raw buffers and this 
+    // TODO: Optimization possibility: There are cases where we simply need to "merge" raw buffers and this
     // could be done without the pointer house-keeping as below. Some scenarios whether this is possible are:
     // 1) Concatenating on input axis = 0
     // 2) Stacking on output axis = 0

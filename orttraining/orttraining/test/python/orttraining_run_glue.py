@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from typing import Dict, Optional
 import unittest
 import numpy as np
+from numpy.testing import assert_allclose
 
 from transformers import (
     AutoConfig,
@@ -25,11 +26,26 @@ from transformers import (
 import onnxruntime
 from onnxruntime.capi.ort_trainer import ORTTrainer, LossScaler, ModelDescription, IODescription
 
+try:
+    from onnxruntime.capi._pybind_state import get_mpi_context_local_rank, get_mpi_context_local_size,\
+        get_mpi_context_world_rank, get_mpi_context_world_size
+    has_get_mpi_context_internal_api = True
+except ImportError:
+    has_get_mpi_context_internal_api = False
+    pass
+
+
 from orttraining_transformer_trainer import ORTTransformerTrainer
 
 import torch
 
 logger = logging.getLogger(__name__)
+
+def verify_old_and_new_api_are_equal(results_per_api):
+    new_api_results = results_per_api[True]
+    old_api_results = results_per_api[False]
+    for key in new_api_results.keys():
+        assert_allclose(new_api_results[key], old_api_results[key])
 
 @dataclass
 class ModelArguments:
@@ -59,6 +75,7 @@ class ORTGlueTest(unittest.TestCase):
         self.learning_rate = 2e-5
         self.num_train_epochs = 3.0
         self.local_rank = -1
+        self.world_size = 1
         self.overwrite_output_dir = True
         self.gradient_accumulation_steps = 1
         self.data_dir = "/bert_data/hf_data/glue_data/"
@@ -66,30 +83,89 @@ class ORTGlueTest(unittest.TestCase):
         self.cache_dir = '/tmp/glue/'
         self.logging_steps = 10
 
+    def test_roberta_with_mrpc(self):
+        expected_acc = 0.85
+        expected_f1 = 0.88
+        expected_loss = 0.35
+        results = self.run_glue(model_name="roberta-base", task_name="MRPC", fp16=False)
+
+        assert(results['acc'] >= expected_acc)
+        assert(results['f1'] >= expected_f1)
+        assert(results['loss'] <= expected_loss)
+
+    def test_roberta_fp16_with_mrpc(self):
+        expected_acc = 0.87
+        expected_f1 = 0.90
+        expected_loss = 0.33
+
+        results = self.run_glue(model_name="roberta-base", task_name="MRPC", fp16=True)
+
+        assert(results['acc'] >= expected_acc)
+        assert(results['f1'] >= expected_f1)
+        assert(results['loss'] <= expected_loss)
+
     def test_bert_with_mrpc(self):
+        if self.local_rank == -1:
+            expected_acc = 0.83
+            expected_f1 = 0.88
+            expected_loss = 0.44
+        elif self.local_rank == 0:
+            expected_acc = 0.81
+            expected_f1 = 0.86
+            expected_loss = 0.44
+
         results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=False)
-        # TODO: fix the numerical unstable issue so that better criteria are used
-        self.assertTrue(results['acc'] > 0.80)  # was 0.84
-        self.assertTrue(results['f1'] > 0.80)   # was 0.88
-        self.assertTrue(results['acc_and_f1'] > 0.80)   # was 0.86
-        self.assertTrue(results['loss'] < 0.50)     # was 0.47
+
+        if self.local_rank in [-1, 0]:
+            assert(results['acc'] >= expected_acc)
+            assert(results['f1'] >= expected_f1)
+            assert(results['loss'] <= expected_loss)
 
     def test_bert_fp16_with_mrpc(self):
+        expected_acc = 0.84
+        expected_f1 = 0.88
+        expected_loss = 0.44
+
         results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=True)
-        # TODO: fix the numerical unstable issue so that better criteria are used
-        self.assertTrue(results['acc'] > 0.80)  # was 0.85
-        self.assertTrue(results['f1'] > 0.80)   # was 0.89
-        self.assertTrue(results['acc_and_f1'] > 0.80)   # was 0.87
-        self.assertTrue(results['loss'] < 0.50)     # was 0.46
+
+        assert(results['acc'] >= expected_acc)
+        assert(results['f1'] >= expected_f1)
+        assert(results['loss'] <= expected_loss)
+
+    def model_to_desc(self, model_name, model):
+        if model_name.startswith('bert') or model_name.startswith('xlnet'):
+            model_desc = {
+                'inputs': [
+                    ('input_ids', ['batch', 'max_seq_len_in_batch'],),
+                    ('attention_mask', ['batch', 'max_seq_len_in_batch'],),
+                    ('token_type_ids', ['batch', 'max_seq_len_in_batch'],),
+                    ('labels', ['batch', ],)],
+                'outputs': [('loss', [], True),
+                            ('logits', ['batch', 2])]}
+        elif model_name.startswith('roberta'):
+            model_desc = {
+                'inputs': [
+                    ('input_ids', ['batch', 'max_seq_len_in_batch'],),
+                    ('attention_mask', ['batch', 'max_seq_len_in_batch'],),
+                    ('labels', ['batch', ],)],
+                'outputs': [('loss', [], True),
+                            ('logits', ['batch', 2])]}
+        else:
+            raise RuntimeError("unsupported base model name {}.".format(model_name))
+
+        return model_desc
 
     def run_glue(self, model_name, task_name, fp16):
         model_args = ModelArguments(model_name_or_path=model_name, cache_dir=self.cache_dir)
-        data_args = GlueDataTrainingArguments(task_name=task_name, data_dir=self.data_dir + "/" + task_name,
+        data_args = GlueDataTrainingArguments(
+            task_name=task_name, data_dir=os.path.join(self.data_dir, task_name),
             max_seq_length=self.max_seq_length)
-            
-        training_args = TrainingArguments(output_dir=self.output_dir + "/" + task_name, do_train=True, do_eval=True,
+
+        training_args = TrainingArguments(
+            output_dir=os.path.join(self.output_dir, task_name), do_train=True, do_eval=True,
             per_gpu_train_batch_size=self.train_batch_size,
-            learning_rate=self.learning_rate, num_train_epochs=self.num_train_epochs,local_rank=self.local_rank,
+            learning_rate=self.learning_rate, num_train_epochs=self.num_train_epochs,
+            local_rank=self.local_rank,
             overwrite_output_dir=self.overwrite_output_dir, gradient_accumulation_steps=self.gradient_accumulation_steps,
             fp16=fp16, logging_steps=self.logging_steps)
 
@@ -128,6 +204,7 @@ class ORTGlueTest(unittest.TestCase):
             model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
             cache_dir=model_args.cache_dir,
         )
+
         model = AutoModelForSequenceClassification.from_pretrained(
             model_args.model_name_or_path,
             from_tf=bool(".ckpt" in model_args.model_name_or_path),
@@ -154,14 +231,7 @@ class ORTGlueTest(unittest.TestCase):
                 preds = np.squeeze(p.predictions)
             return glue_compute_metrics(data_args.task_name, preds, p.label_ids)
 
-        model_desc = ModelDescription([
-            IODescription('input_ids', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=model.config.vocab_size),
-            IODescription('attention_mask', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=2),
-            IODescription('token_type_ids', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=2),
-            IODescription('labels', ['batch',], torch.int64, num_classes=2)], [
-            IODescription('loss', [], torch.float32),
-            IODescription('logits', ['batch', 2], torch.float32)])
-
+        model_desc = self.model_to_desc(model_name, model)
         # Initialize the ORTTrainer within ORTTransformerTrainer
         trainer = ORTTransformerTrainer(
             model=model,
@@ -170,6 +240,7 @@ class ORTGlueTest(unittest.TestCase):
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
             compute_metrics=compute_metrics,
+            world_size=self.world_size,
         )
 
         # Training
@@ -193,4 +264,32 @@ class ORTGlueTest(unittest.TestCase):
         return results
 
 if __name__ == "__main__":
-    unittest.main()
+    if has_get_mpi_context_internal_api:
+        local_rank = get_mpi_context_local_rank()
+        world_size = get_mpi_context_world_size()
+    else:
+        local_rank = -1
+        world_size = 1
+
+    if world_size > 1:
+        # mpi launch
+        logger.warning("mpirun launch, local_rank / world_size: %s : % s", local_rank, world_size)
+
+        # TrainingArguments._setup_devices will call torch.distributed.init_process_group(backend="nccl")
+        # pytorch expects following environment settings (which would be set if launched with torch.distributed.launch).
+
+        os.environ['RANK'] = str(local_rank)
+        os.environ['WORLD_SIZE'] = str(world_size)
+        os.environ['MASTER_ADDR'] = '127.0.0.1'
+        os.environ['MASTER_PORT'] = '29500'
+
+        from onnxruntime.capi._pybind_state import set_cuda_device_id
+        set_cuda_device_id(local_rank)
+
+        test = ORTGlueTest()
+        test.setUp()
+        test.local_rank = local_rank
+        test.world_size = world_size
+        test.test_bert_with_mrpc()
+    else:
+        unittest.main()

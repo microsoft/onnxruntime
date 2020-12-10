@@ -5,6 +5,7 @@
 #include "core/session/inference_session.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/framework/gradient_graph_builder.h"
+#include "orttraining/core/graph/gradient_config.h"
 #include "default_providers.h"
 
 namespace onnxruntime {
@@ -69,11 +70,14 @@ void GradientOpTester::Run(
         }
       }
 
+      training::GradientGraphConfiguration gradient_graph_config;
+      gradient_graph_config.set_gradients_as_graph_outputs = true;
       training::GradientGraphBuilder grad_graph_builder(&graph,
                                                         dy_values,
                                                         weights_to_train,
                                                         "",
-                                                        true);
+                                                        gradient_graph_config,
+                                                        logging::LoggingManager::DefaultLogger());
       status = grad_graph_builder.Build();
       EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
     }
@@ -110,6 +114,7 @@ void GradientOpTester::Run(
     static const std::string all_provider_types[] = {
         kCpuExecutionProvider,
         kCudaExecutionProvider,
+        kRocmExecutionProvider,
         kDnnlExecutionProvider,
         kNupharExecutionProvider,
         kTensorrtExecutionProvider,
@@ -128,6 +133,8 @@ void GradientOpTester::Run(
         execution_provider = DefaultNupharExecutionProvider();
       else if (provider_type == onnxruntime::kTensorrtExecutionProvider)
         execution_provider = DefaultTensorrtExecutionProvider();
+      else if (provider_type == onnxruntime::kRocmExecutionProvider)
+        execution_provider = DefaultRocmExecutionProvider();
       // skip if execution provider is disabled
       if (execution_provider == nullptr)
         continue;
@@ -175,7 +182,7 @@ void GradientOpTester::Run(
       EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
 
       fetches_ = ExecuteModel<onnxruntime::training::TrainingSession>(*p_model, session_object, expect_result, expected_failure_string, run_options,
-                                                                      feeds, output_names, provider_type, CustomOutputVerifierFn{});
+                                                                      feeds, output_names, provider_type);
     }
     EXPECT_TRUE(has_run) << "No registered execution providers were able to run the model.";
 

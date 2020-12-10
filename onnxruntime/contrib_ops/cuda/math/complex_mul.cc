@@ -40,7 +40,7 @@ Status ComplexMul<T, is_conj>::ComputeInternal(OpKernelContext* context) const {
   }
 
   BinaryElementwisePreparation prepare;
-  Prepare(context, &prepare);
+  ORT_RETURN_IF_ERROR(Prepare(context, &prepare));
   ComplexMul_Impl<typename ToCudaType<T>::MappedType>(
       prepare.output_rank_or_simple_broadcast,
       &prepare.lhs_padded_strides,

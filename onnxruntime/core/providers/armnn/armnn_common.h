@@ -12,7 +12,7 @@
 namespace onnxruntime {
 namespace armnn_ep {
 
-armnn::TensorShape ArmNNTensorShape(const TensorShape& tensorShape);
+armnn::TensorShape ArmNNTensorShape(const TensorShape& tensorShape, unsigned int extDim = 0);
 
 }  // namespace armnn_ep
 }  // namespace onnxruntime

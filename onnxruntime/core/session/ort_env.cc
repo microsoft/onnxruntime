@@ -8,8 +8,14 @@
 #include "ort_env.h"
 #include "core/session/ort_apis.h"
 #include "core/session/environment.h"
-#include "core/common/logging/sinks/clog_sink.h"
+#include "core/session/allocator_impl.h"
 #include "core/common/logging/logging.h"
+#include "core/framework/provider_shutdown.h"
+#ifdef __ANDROID__
+#include "core/platform/android/logging/android_log_sink.h"
+#else
+#include "core/common/logging/sinks/clog_sink.h"
+#endif
 
 using namespace onnxruntime;
 using namespace onnxruntime::logging;
@@ -33,29 +39,41 @@ OrtEnv::OrtEnv(std::unique_ptr<onnxruntime::Environment> value1)
     : value_(std::move(value1)) {
 }
 
+OrtEnv::~OrtEnv() {
+// We don't support any shared providers in the minimal build yet
+#if !defined(ORT_MINIMAL_BUILD)
+  UnloadSharedProviders();
+#endif
+}
+
 OrtEnv* OrtEnv::GetInstance(const OrtEnv::LoggingManagerConstructionInfo& lm_info,
                             onnxruntime::common::Status& status,
                             const OrtThreadingOptions* tp_options) {
   std::lock_guard<onnxruntime::OrtMutex> lock(m_);
-  std::unique_ptr<LoggingManager> lmgr;
-  std::string name = lm_info.logid;
-  if (lm_info.logging_function) {
-    std::unique_ptr<ISink> logger = onnxruntime::make_unique<LoggingWrapper>(lm_info.logging_function,
-                                                                             lm_info.logger_param);
-    lmgr.reset(new LoggingManager(std::move(logger),
-                                  static_cast<Severity>(lm_info.default_warning_level),
-                                  false,
-                                  LoggingManager::InstanceType::Default,
-                                  &name));
-  } else {
-    lmgr.reset(new LoggingManager(std::unique_ptr<ISink>{new CLogSink{}},
-                                  static_cast<Severity>(lm_info.default_warning_level),
-                                  false,
-                                  LoggingManager::InstanceType::Default,
-                                  &name));
-  }
-
   if (!p_instance_) {
+    std::unique_ptr<LoggingManager> lmgr;
+    std::string name = lm_info.logid;
+    if (lm_info.logging_function) {
+      std::unique_ptr<ISink> logger = onnxruntime::make_unique<LoggingWrapper>(lm_info.logging_function,
+                                                                               lm_info.logger_param);
+      lmgr.reset(new LoggingManager(std::move(logger),
+                                    static_cast<Severity>(lm_info.default_warning_level),
+                                    false,
+                                    LoggingManager::InstanceType::Default,
+                                    &name));
+    } else {
+#ifdef __ANDROID__
+      ISink* sink = new AndroidLogSink();
+#else
+      ISink* sink = new CLogSink();
+#endif
+
+      lmgr.reset(new LoggingManager(std::unique_ptr<ISink>{sink},
+                                    static_cast<Severity>(lm_info.default_warning_level),
+                                    false,
+                                    LoggingManager::InstanceType::Default,
+                                    &name));
+    }
     std::unique_ptr<onnxruntime::Environment> env;
     if (!tp_options) {
       status = onnxruntime::Environment::Create(std::move(lmgr), env);
@@ -67,6 +85,7 @@ OrtEnv* OrtEnv::GetInstance(const OrtEnv::LoggingManagerConstructionInfo& lm_inf
     }
     p_instance_ = new OrtEnv(std::move(env));
   }
+
   ++ref_count_;
   return p_instance_;
 }
@@ -90,4 +109,15 @@ onnxruntime::logging::LoggingManager* OrtEnv::GetLoggingManager() const {
 
 void OrtEnv::SetLoggingManager(std::unique_ptr<onnxruntime::logging::LoggingManager> logging_manager) {
   value_->SetLoggingManager(std::move(logging_manager));
+}
+
+onnxruntime::common::Status OrtEnv::RegisterAllocator(AllocatorPtr allocator) {
+  auto status = value_->RegisterAllocator(allocator);
+  return status;
+}
+
+onnxruntime::common::Status OrtEnv::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info,
+                                                               const OrtArenaCfg* arena_cfg) {
+  auto status = value_->CreateAndRegisterAllocator(mem_info, arena_cfg);
+  return status;
 }

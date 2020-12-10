@@ -1,8 +1,8 @@
 include (ExternalProject)
 
-set(DNNL_URL https://github.com/intel/mkl-dnn.git)
+set(DNNL_URL https://github.com/oneapi-src/onednn)
 # If DNNL_TAG is updated, check if MKLML_VERSION and platform.cmake.patch need to be updated.
-set(DNNL_TAG v1.1.1)
+set(DNNL_TAG v1.7)
 set(MKLML_VERSION 2019.0.5.20190502)
 
 if(WIN32)
@@ -23,14 +23,22 @@ else()
   if (APPLE)
     set(DNNL_SHARED_LIB libdnnl.1.dylib)
     set(MKLML_OS_VERSION_STR "mac")
+    if(onnxruntime_USE_MKLML)
+      set(MKLML_SHARED_LIB libmklml.dylib)
+      set(IOMP5MD_SHARED_LIB libiomp5.dylib)
+    endif()
   else()
     set(DNNL_SHARED_LIB libdnnl.so.1)
     set(MKLML_OS_VERSION_STR "lnx")
-  endif()
-  if(onnxruntime_USE_MKLML)
-    set(MKLML_SHARED_LIB libmklml_intel.so)
-    set(IOMP5MD_SHARED_LIB libiomp5.so)
-  endif()
+    if(onnxruntime_USE_MKLML)
+      if(onnxruntime_USE_OPENMP)
+        set(MKLML_SHARED_LIB libmklml_gnu.so)
+      else()
+        set(MKLML_SHARED_LIB libmklml_intel.so)
+        set(IOMP5MD_SHARED_LIB libiomp5.so)
+      endif()
+    endif()
+  endif()  
 endif()
 
 if (onnxruntime_USE_MKLML)
@@ -49,6 +57,14 @@ if (onnxruntime_USE_MKLML)
   set(MKLML_INCLUDE_DIR "${MKML_DIR}/include")
   set(MKLML_LIB_DIR "${MKML_DIR}/lib")
   link_directories(${MKLML_LIB_DIR})
+endif()
+
+if (onnxruntime_USE_DNNL AND onnxruntime_DNNL_GPU_RUNTIME STREQUAL "ocl" AND onnxruntime_DNNL_OPENCL_ROOT STREQUAL "")
+  message(FATAL_ERROR "onnxruntime_DNNL_OPENCL_ROOT required for onnxruntime_DNNL_GPU_RUNTIME")
+elseif(onnxruntime_USE_DNNL AND onnxruntime_DNNL_GPU_RUNTIME STREQUAL "ocl")
+  file(TO_CMAKE_PATH ${onnxruntime_DNNL_OPENCL_ROOT} onnxruntime_DNNL_OPENCL_ROOT)
+  set(DNNL_OCL_INCLUDE_DIR ${onnxruntime_DNNL_OPENCL_ROOT}/include)
+  set(DNNL_GPU_CMAKE_ARGS "-DDNNL_GPU_RUNTIME=OCL " "-DOPENCLROOT=${onnxruntime_DNNL_OPENCL_ROOT}")
 endif()
 
 if (onnxruntime_USE_DNNL)
@@ -77,7 +93,7 @@ if (onnxruntime_USE_DNNL)
     GIT_TAG ${DNNL_TAG}
     # PATCH_COMMAND ${MKLDNN_PATCH_DISCARD_COMMAND} COMMAND ${DNNL_PATCH_COMMAND}
     SOURCE_DIR ${DNNL_SOURCE}
-    CMAKE_ARGS -DDNNL_BUILD_TESTS=OFF -DDNNL_BUILD_EXAMPLES=OFF -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} -DCMAKE_INSTALL_PREFIX=${DNNL_INSTALL}
+    CMAKE_ARGS -DDNNL_BUILD_TESTS=OFF -DDNNL_BUILD_EXAMPLES=OFF -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} -DCMAKE_INSTALL_PREFIX=${DNNL_INSTALL} ${DNNL_GPU_CMAKE_ARGS}
   )
   link_directories(${DNNL_LIB_DIR})
   #if (onnxruntime_USE_MKLML)

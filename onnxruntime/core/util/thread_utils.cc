@@ -6,6 +6,7 @@
 #include <Windows.h>
 #endif
 #include <thread>
+#include "core/session/ort_apis.h"
 
 namespace onnxruntime {
 namespace concurrency {
@@ -26,6 +27,7 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
     if (options.auto_set_affinity)
       to.affinity = cpu_list;
   }
+  to.set_denormal_as_zero = options.set_denormal_as_zero;
 
   return onnxruntime::make_unique<ThreadPool>(env, to, options.name, options.thread_pool_size,
                                               options.allow_spinning);
@@ -61,4 +63,41 @@ ORT_API_STATUS_IMPL(CreateThreadingOptions, _Outptr_ OrtThreadingOptions** out) 
 ORT_API(void, ReleaseThreadingOptions, _Frees_ptr_opt_ OrtThreadingOptions* p) {
   delete p;
 }
+
+ORT_API_STATUS_IMPL(SetGlobalIntraOpNumThreads, _Inout_ OrtThreadingOptions* tp_options, int intra_op_num_threads) {
+  if (!tp_options) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Received null OrtThreadingOptions");
+  }
+  tp_options->intra_op_thread_pool_params.thread_pool_size = intra_op_num_threads;
+  return nullptr;
+}
+ORT_API_STATUS_IMPL(SetGlobalInterOpNumThreads, _Inout_ OrtThreadingOptions* tp_options, int inter_op_num_threads) {
+  if (!tp_options) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Received null OrtThreadingOptions");
+  }
+  tp_options->inter_op_thread_pool_params.thread_pool_size = inter_op_num_threads;
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(SetGlobalSpinControl, _Inout_ OrtThreadingOptions* tp_options, int allow_spinning) {
+  if (!tp_options) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Received null OrtThreadingOptions");
+  }
+  if (!(allow_spinning == 1 || allow_spinning == 0)) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Received invalid value for allow_spinning. Valid values are 0 or 1");
+  }
+  tp_options->intra_op_thread_pool_params.allow_spinning = allow_spinning;
+  tp_options->inter_op_thread_pool_params.allow_spinning = allow_spinning;
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(SetGlobalDenormalAsZero, _Inout_ OrtThreadingOptions* tp_options) {
+  if (!tp_options) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Received null OrtThreadingOptions");
+  }
+  tp_options->intra_op_thread_pool_params.set_denormal_as_zero = true;
+  tp_options->inter_op_thread_pool_params.set_denormal_as_zero = true;
+  return nullptr;
+}
+
 }  // namespace OrtApis

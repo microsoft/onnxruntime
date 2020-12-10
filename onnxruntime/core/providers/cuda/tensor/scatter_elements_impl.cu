@@ -111,12 +111,13 @@ static int CompactInputIndicesDims(
   eff_indices_dims.push_back(indices_dims[axis]);
   int new_axis = (int)(eff_input_dims.size());
   if (axis > 0) {
-    if (could_continue_merge) {
+    if (!could_continue_merge) {
       eff_input_dims.push_back(1);
       eff_indices_dims.push_back(1);
+      could_continue_merge = true;
     }
     int i = axis - 1;
-    for (; i >= 0 && could_continue_merge; --i) {
+    for (; i >= 0; --i) {
       if (input_dims[i] == indices_dims[i]) {
         eff_input_dims.back() *= input_dims[i];
         eff_indices_dims.back() *= indices_dims[i];
@@ -130,7 +131,7 @@ static int CompactInputIndicesDims(
       eff_indices_dims.pop_back();
     }
     if (!could_continue_merge) {
-      for (; i >= 0 && could_continue_merge; --i) {
+      for (; i >= 0; --i) {
         eff_input_dims.push_back(input_dims[i]);
         eff_indices_dims.push_back(indices_dims[i]);
       }
@@ -192,7 +193,7 @@ Status ScatterElementsImplInternal(
     std::vector<int64_t> eff_input_dims;
     std::vector<int64_t> eff_indices_dims;
     int new_axis = CompactInputIndicesDims(
-        rank, axis, buffer_input_dims.data_, buffer_indices_dims.data_, eff_input_dims, eff_indices_dims);
+        rank, axis, buffer_input_dims.Data(), buffer_indices_dims.Data(), eff_input_dims, eff_indices_dims);
     if (eff_input_dims.size() == 2) {
       return ScatterElementsImpl2D(
           input_data, eff_input_dims, indices_data, indices_size, eff_indices_dims, updates, new_axis, output_data,

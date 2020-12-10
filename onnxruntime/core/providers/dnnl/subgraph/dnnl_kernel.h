@@ -26,11 +26,11 @@ class DnnlKernel {
 
   virtual void CreatePrimitives(const OrtCustomOpApi* api,
                                 OrtKernelContext* context,
-                                dnnl::engine& cpu_engine,
+                                const std::unordered_map<dnnl::engine::kind, dnnl::engine>& dnnl_engine,
                                 std::vector<dnnl::primitive>& net,
                                 std::vector<std::unordered_map<int, dnnl::memory>>& net_args) = 0;
 
-  virtual void ReorderWeights(const OrtCustomOpApi* api, OrtKernelContext* context, dnnl::engine& cpu_engine) {
+  virtual void ReorderWeights(const OrtCustomOpApi* api, OrtKernelContext* context, const dnnl::engine& cpu_engine) {
     ORT_UNUSED_PARAMETER(api);
     ORT_UNUSED_PARAMETER(context);
     ORT_UNUSED_PARAMETER(cpu_engine);
@@ -51,7 +51,7 @@ class DnnlKernel {
     ORT_UNUSED_PARAMETER(attributes_prefix);
   }
 
-  Status GetIntsAttr(ONNX_NAMESPACE::Provider_AttributeProto& proto, std::vector<int64_t>& values) {
+  Status GetIntsAttr(const Provider_AttributeProto& proto, std::vector<int64_t>& values) {
     ORT_RETURN_IF_NOT(proto.type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
     values.reserve(proto.ints_size());
     for (int i = 0; i < proto.ints_size(); i++) {
@@ -60,18 +60,18 @@ class DnnlKernel {
     return Status::OK();
   }
 
-  Status GetIntAttr(ONNX_NAMESPACE::Provider_AttributeProto& proto, int64_t& value) {
+  Status GetIntAttr(const Provider_AttributeProto& proto, int64_t& value) {
     ORT_RETURN_IF_NOT(proto.type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
     value = proto.i();
     return Status::OK();
   }
 
-  Status GetFloatAttr(ONNX_NAMESPACE::Provider_AttributeProto& proto, float& value) {
+  Status GetFloatAttr(const Provider_AttributeProto& proto, float& value) {
     ORT_RETURN_IF_NOT(proto.type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOAT);
     value = proto.f();
     return Status::OK();
   }
-  Status GetStringAttr(ONNX_NAMESPACE::Provider_AttributeProto& proto, std::string& value) {
+  Status GetStringAttr(const Provider_AttributeProto& proto, std::string& value) {
     ORT_RETURN_IF_NOT(proto.type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING);
     value = proto.s();
     return Status::OK();
@@ -80,7 +80,8 @@ class DnnlKernel {
   void InitDstReorderOutput(dnnl::engine& cpu_engine,
                             dnnl::memory::data_type& data_type,
                             std::vector<dnnl::primitive>& net,
-                            std::vector<std::unordered_map<int, dnnl::memory>>& net_args);
+                            std::vector<std::unordered_map<int, dnnl::memory>>& net_args,
+                            bool gpu_available = false);
 
   dnnl::memory::format_tag GetSourceFormat(int dim_size);
 
@@ -111,7 +112,7 @@ class DnnlKernel {
 
   // memory used for reorders
   std::unique_ptr<dnnl::memory> reorder_dst_mem_to_;
-  Provider_AllocatorPtr alloc_;
+  AllocatorPtr alloc_;
   DNNLExecutionProvider* provider_;
 };
 

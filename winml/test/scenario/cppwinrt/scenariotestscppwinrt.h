@@ -14,6 +14,7 @@ struct ScenarioTestsApi
     VoidTest Scenario8SetDeviceSampleCPU;
     VoidTest Scenario17DevDiagnostics;
     VoidTest Scenario22ImageBindingAsCPUTensor;
+    VoidTest Scenario23NominalPixelRange;
     VoidTest QuantizedModels;
     VoidTest EncryptedStream;
     VoidTest Scenario3SoftwareBitmapInputBinding;
@@ -39,6 +40,10 @@ struct ScenarioTestsApi
     VoidTest DeviceLostRecovery;
     VoidTest Scenario8SetDeviceSampleD3D11Device;
     VoidTest D2DInterop;
+    VoidTest BindMultipleCPUBuffersInputsOnCpu;
+    VoidTest BindMultipleCPUBuffersInputsOnGpu;
+    VoidTest BindMultipleCPUBuffersOutputsOnCpu;
+    VoidTest BindMultipleCPUBuffersOutputsOnGpu;
 };
 const ScenarioTestsApi& getapi();
 
@@ -54,6 +59,7 @@ WINML_TEST(ScenarioCppWinrtTests, Scenario8SetDeviceSampleDefault)
 WINML_TEST(ScenarioCppWinrtTests, Scenario8SetDeviceSampleCPU)
 WINML_TEST(ScenarioCppWinrtTests, Scenario17DevDiagnostics)
 WINML_TEST(ScenarioCppWinrtTests, Scenario22ImageBindingAsCPUTensor)
+WINML_TEST(ScenarioCppWinrtTests, Scenario23NominalPixelRange)
 WINML_TEST(ScenarioCppWinrtTests, QuantizedModels)
 WINML_TEST(ScenarioCppWinrtTests, EncryptedStream)
 WINML_TEST(ScenarioCppWinrtTests, Scenario3SoftwareBitmapInputBinding)
@@ -79,4 +85,8 @@ WINML_TEST(ScenarioCppWinrtTests, DeviceLostRecovery)
 WINML_TEST(ScenarioCppWinrtTests, Scenario8SetDeviceSampleD3D11Device)
 WINML_TEST(ScenarioCppWinrtTests, D2DInterop)
 WINML_TEST(ScenarioCppWinrtTests, Scenario8SetDeviceSampleMyCameraDevice)
+WINML_TEST(ScenarioCppWinrtTests, BindMultipleCPUBuffersInputsOnCpu)
+WINML_TEST(ScenarioCppWinrtTests, BindMultipleCPUBuffersInputsOnGpu)
+WINML_TEST(ScenarioCppWinrtTests, BindMultipleCPUBuffersOutputsOnCpu)
+WINML_TEST(ScenarioCppWinrtTests, BindMultipleCPUBuffersOutputsOnGpu)
 WINML_TEST_CLASS_END()

@@ -68,10 +68,10 @@ struct TernaryElementwisePreparation {
   const Tensor* a_tensor = nullptr;
   const Tensor* b_tensor = nullptr;
   const Tensor* c_tensor = nullptr;
-  size_t output_rank_or_simple_broadcast = 0;             // for no_broadcast cases, output_rank uses SimpleBroadcast enums
-  TArray<int64_t> a_padded_strides;  // for a shape == output shape, this is nullptr
-  TArray<int64_t> b_padded_strides;  // for b shape == output shape, this is nullptr
-  TArray<int64_t> c_padded_strides;  // for c shape == output shape, this is nullptr
+  size_t output_rank_or_simple_broadcast = 0;  // for no_broadcast cases, output_rank uses SimpleBroadcast enums
+  TArray<int64_t> a_padded_strides;            // for a shape == output shape, this is nullptr
+  TArray<int64_t> b_padded_strides;            // for b shape == output shape, this is nullptr
+  TArray<int64_t> c_padded_strides;            // for c shape == output shape, this is nullptr
   TArray<fast_divmod> fdm_output_strides;
   BroadcastIndexType a_index_type = BroadcastIndexType::NoBroadcast;
   BroadcastIndexType b_index_type = BroadcastIndexType::NoBroadcast;
@@ -98,7 +98,7 @@ struct TernaryElementwisePreparation {
     output_rank_or_simple_broadcast = out_rank;
 
     auto padder = [out_rank](int32_t rank, const TensorShape& shape, TArray<int64_t>& padded_strides) {
-      padded_strides.size_ = out_rank;
+      padded_strides.SetSize(out_rank);
       if (rank > 0) {
         TensorPitches pitches(shape.GetDims());
         auto offset = out_rank - rank;
@@ -142,7 +142,7 @@ struct TernaryElementwisePreparation {
     }
 
     TensorPitches output_pitches(output_shape.GetDims());
-    fdm_output_strides.size_ = out_rank;
+    fdm_output_strides.SetSize(out_rank);
     for (auto i = 0; i < out_rank; ++i) {
       fdm_output_strides[i] = fast_divmod(static_cast<int32_t>(output_pitches[i]));
     }

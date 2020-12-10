@@ -2,13 +2,16 @@
 set -e -x
 
 SCRIPT_DIR="$( dirname "${BASH_SOURCE[0]}" )"
+INSTALL_DEPS_TRAINING=false
+INSTALL_DEPS_DISTRIBUTED_SETUP=false
 
-while getopts p:d:x: parameter_Option
+while getopts p:d:tm parameter_Option
 do case "${parameter_Option}"
 in
 p) PYTHON_VER=${OPTARG};;
 d) DEVICE_TYPE=${OPTARG};;
-x) BUILD_EXTR_PAR=${OPTARG};;
+t) INSTALL_DEPS_TRAINING=true;;
+m) INSTALL_DEPS_DISTRIBUTED_SETUP=true;;
 esac
 done
 
@@ -58,6 +61,8 @@ elif [[ "$PYTHON_VER" = "3.7" && -d "/opt/python/cp37-cp37m"  ]]; then
    PYTHON_EXE="/opt/python/cp37-cp37m/bin/python3.7"
 elif [[ "$PYTHON_VER" = "3.8" && -d "/opt/python/cp38-cp38"  ]]; then
    PYTHON_EXE="/opt/python/cp38-cp38/bin/python3.8"
+elif [[ "$PYTHON_VER" = "3.9" && -d "/opt/python/cp39-cp39"  ]]; then
+   PYTHON_EXE="/opt/python/cp39-cp39/bin/python3.9"
 else
    PYTHON_EXE="/usr/bin/python${PYTHON_VER}"
 fi
@@ -80,17 +85,17 @@ if [[ $SYS_LONG_BIT = "64" && "$GLIBC_VERSION" -gt "9" ]]; then
   tar --strip 1 -xf /tmp/azcopy/azcopy.tar.gz -C /tmp/azcopy
   cp /tmp/azcopy/azcopy /usr/bin
   echo "Installing cmake"
-  GetFile https://github.com/Kitware/CMake/releases/download/v3.13.5/cmake-3.13.5-Linux-x86_64.tar.gz /tmp/src/cmake-3.13.5-Linux-x86_64.tar.gz
-  tar -zxf /tmp/src/cmake-3.13.5-Linux-x86_64.tar.gz --strip=1 -C /usr
+  GetFile https://github.com/Kitware/CMake/releases/download/v3.18.2/cmake-3.18.2-Linux-x86_64.tar.gz /tmp/src/cmake-3.18.2-Linux-x86_64.tar.gz
+  tar -zxf /tmp/src/cmake-3.18.2-Linux-x86_64.tar.gz --strip=1 -C /usr
   echo "Installing Node.js"
   GetFile https://nodejs.org/dist/v12.16.3/node-v12.16.3-linux-x64.tar.xz /tmp/src/node-v12.16.3-linux-x64.tar.xz
   tar -xf /tmp/src/node-v12.16.3-linux-x64.tar.xz --strip=1 -C /usr
 else
   echo "Installing cmake"
-  GetFile https://github.com/Kitware/CMake/releases/download/v3.13.5/cmake-3.13.5.tar.gz /tmp/src/cmake-3.13.5.tar.gz
-  tar -xf /tmp/src/cmake-3.13.5.tar.gz -C /tmp/src
+  GetFile https://github.com/Kitware/CMake/releases/download/v3.18.2/cmake-3.18.2.tar.gz /tmp/src/cmake-3.18.2.tar.gz
+  tar -xf /tmp/src/cmake-3.18.2.tar.gz -C /tmp/src
   pushd .
-  cd /tmp/src/cmake-3.13.5
+  cd /tmp/src/cmake-3.18.2
   ./bootstrap --prefix=/usr --parallel=$(getconf _NPROCESSORS_ONLN) --system-bzip2 --system-curl --system-zlib --system-expat
   make -j$(getconf _NPROCESSORS_ONLN)
   make install
@@ -106,39 +111,19 @@ if ! [ -x "$(command -v protoc)" ]; then
   source ${0/%install_deps\.sh/install_protobuf\.sh}
 fi
 
-
-#Don't update 'wheel' to the latest version. see: https://github.com/pypa/auditwheel/issues/102
-${PYTHON_EXE} -m pip install -r ${0/%install_deps\.sh/requirements\.txt}
-if [ $DEVICE_TYPE = "Normal" ]; then
-    ${PYTHON_EXE} -m pip install sympy==1.1.1
-elif [ $DEVICE_TYPE = "gpu" ]; then
-    ${PYTHON_EXE} -m pip install sympy==1.1.1
-    if [[ $BUILD_EXTR_PAR = *--enable_training* ]]; then
-      ${PYTHON_EXE} -m pip install --upgrade --pre torch torchvision -f https://download.pytorch.org/whl/nightly/cu101/torch_nightly.html
-      ${PYTHON_EXE} -m pip install  transformers==v2.10.0
-      # transformers requires sklearn
-      ${PYTHON_EXE} -m pip install sklearn
-    fi
-fi
-
-
-#install onnx
 export ONNX_ML=1
-if [ "$PYTHON_VER" = "3.4" ];then
-  echo "Python 3.5 and above is needed for running onnx tests!" 1>&2
-else
-  source ${0/%install_deps\.sh/install_onnx\.sh} $PYTHON_VER
+export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
+${PYTHON_EXE} -m pip install -r ${0/%install_deps\.sh/requirements\.txt}
+if [ $DEVICE_TYPE = "gpu" ]; then
+  if [[ $INSTALL_DEPS_TRAINING = true ]]; then
+    ${PYTHON_EXE} -m pip install -r ${0/%install_deps.sh/training\/requirements.txt}
+  fi
+  if [[ $INSTALL_DEPS_DISTRIBUTED_SETUP = true ]]; then
+    source ${0/%install_deps.sh/install_openmpi.sh}
+  fi
 fi
 
-#The last onnx version will be kept
 cd /
 rm -rf /tmp/src
-
-if [ "$DISTRIBUTOR" = "Ubuntu" ]; then
-  apt-get -y remove libprotobuf-dev protobuf-compiler
-elif [ "$DISTRIBUTOR" = "CentOS" ]; then
-  rm -rf /usr/include/google
-  rm -rf /usr/$LIBDIR/libproto*
-else
-  dnf remove -y protobuf-devel protobuf-compiler
-fi
+rm -rf /usr/include/google
+rm -rf /usr/$LIBDIR/libproto*

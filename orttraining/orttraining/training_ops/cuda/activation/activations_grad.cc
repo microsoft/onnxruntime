@@ -23,7 +23,7 @@ namespace cuda {
   template <>                                                                                                    \
   Status x<T>::ComputeInternal(OpKernelContext* context) const {                                                 \
     BinaryElementwisePreparation prepare;                                                                        \
-    Prepare(context, &prepare);                                                                                  \
+    ORT_RETURN_IF_ERROR(Prepare(context, &prepare));                                                             \
     CudaAsyncBuffer<Ctx##x> func_ctx(this, MakeFuncCtx(), 1);                                                    \
     if (!std::is_same<CtxNull, Ctx##x>::value) ORT_RETURN_IF_ERROR(func_ctx.CopyToGpu());                        \
     Impl_##x<typename ToCudaType<T>::MappedType>(                                                                \
@@ -45,6 +45,7 @@ namespace cuda {
 
 ACTIVATION_GRAD_OP_HFD(GeluGrad, 1, kMSDomain);
 ACTIVATION_GRAD_OP_HFD(FastGeluGrad, 1, kMSDomain);
+ACTIVATION_GRAD_OP_HFD(ReluGrad, 1, kMSDomain);
 
 }  //namespace cuda
 }  // namespace onnxruntime

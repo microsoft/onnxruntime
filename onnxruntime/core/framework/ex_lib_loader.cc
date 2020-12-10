@@ -4,7 +4,7 @@
 #include "core/common/logging/severity.h"
 namespace onnxruntime {
 ExLibLoader::~ExLibLoader() {
-  try {
+  ORT_TRY {
     for (auto& elem : dso_name_data_map_) {
       LOGS_DEFAULT(INFO) << "Unloading DSO " << elem.first;
 
@@ -15,8 +15,12 @@ ExLibLoader::~ExLibLoader() {
         LOGS_DEFAULT(WARNING) << "Failed to unload DSO: " << elem.first;
       }
     }
-  } catch (std::exception& ex) {  // make sure exceptions don't leave the destructor
-    LOGS_DEFAULT(WARNING) << "Caught exception while destructing CustomOpsLoader with message: " << ex.what();
+  }
+  ORT_CATCH(const std::exception& ex) {
+    // make sure exceptions don't leave the destructor
+    ORT_HANDLE_EXCEPTION([&ex]() {
+      LOGS_DEFAULT(WARNING) << "Caught exception while destructing CustomOpsLoader with message: " << ex.what();
+    });
   }
 }
 
@@ -27,7 +31,8 @@ void* ExLibLoader::GetExLibHandle(const std::string& dso_file_path) const {
 
 common::Status ExLibLoader::LoadExternalLib(const std::string& dso_file_path,
                                             void** handle) {
-  try {
+  auto status = Status::OK();
+  ORT_TRY {
     if (dso_name_data_map_.count(dso_file_path)) {
       return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "A dso with name " + dso_file_path + " has already been loaded.");
     }
@@ -37,9 +42,14 @@ common::Status ExLibLoader::LoadExternalLib(const std::string& dso_file_path,
     dso_name_data_map_[dso_file_path] = lib_handle;
     *handle = lib_handle;
     return Status::OK();
-  } catch (const std::exception& ex) {
-    return Status(common::ONNXRUNTIME, common::FAIL, "Caught exception while loading custom ops with message: " + std::string(ex.what()));
   }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = Status(common::ONNXRUNTIME, common::FAIL, "Caught exception while loading custom ops with message: " + std::string(ex.what()));
+    });
+  }
+
+  return status;
 }
 
 }  // namespace onnxruntime

@@ -1,6 +1,8 @@
 #pragma once
 
-#if defined(USE_NCCL) || defined(USE_HOROVOD)
+#if defined(USE_MPI)
+// Disable deprecated C++ bindings, which fail to type-check with GCC 9.3
+#define OMPI_SKIP_MPICXX
 #include <mpi.h>
 #endif
 
@@ -19,7 +21,7 @@ struct MPIContext {
   int local_size;
 };
 
-#if defined(USE_NCCL) || defined(USE_HOROVOD)
+#if defined(USE_MPI)
 MPIContext setup_mpi();
 void shutdown_mpi();
 #endif

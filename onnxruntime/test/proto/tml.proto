@@ -1,6 +1,6 @@
-syntax = "proto3";
+syntax = "proto2";
 
-import "onnx-ml.proto";
+import "onnx/onnx-ml.proto";
 
 package onnxruntime.proto;
 
@@ -95,12 +95,14 @@ message TraditionalMLData {
     onnx.TensorProto tensor = 16;
   }
   // Optionally, a name for the tensor.
-  string name = 15;
-  string debug_info = 17;  //A human-readable string for helping debugging
+  optional string name = 15;
+  optional string debug_info = 17;  //A human-readable string for helping debugging
 }
 
 message TestCaseConfig {
-  double per_sample_tolerance = 1;
-  double relative_per_sample_tolerance = 2;
-  bool post_processing = 3;
+  optional double per_sample_tolerance = 1;
+  optional double relative_per_sample_tolerance = 2;
+  optional bool post_processing = 3;
 }
+// For using protobuf-lite
+option optimize_for = LITE_RUNTIME;

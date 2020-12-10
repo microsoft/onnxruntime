@@ -15,7 +15,6 @@ enum struct RoiAlignMode {
   max
 };
 
-template <typename T>
 class RoiAlignBase {
  public:
   explicit RoiAlignBase(const OpKernelInfo& info) {
@@ -23,7 +22,11 @@ class RoiAlignBase {
     std::string mode;
     if (info.GetAttr<std::string>("mode", &mode).IsOK()) {
       std::transform(mode.begin(), mode.end(), mode.begin(), [](char i) { return static_cast<char>(::tolower(i)); });
-      if (mode != "avg" && mode != "max") {
+      if (mode == "avg") {
+        mode_ = RoiAlignMode::avg;
+      } else if (mode == "max") {
+        mode_ = RoiAlignMode::max;
+      } else {
         ORT_THROW("Invalid mode of value ", mode, " specified. It should be either avg or max");
       }
       mode_ = mode == "avg" ? RoiAlignMode::avg : RoiAlignMode::max;
@@ -67,9 +70,9 @@ class RoiAlignBase {
 };
 
 template <typename T>
-class RoiAlign final : public OpKernel, public RoiAlignBase<T> {
+class RoiAlign final : public OpKernel, public RoiAlignBase {
  public:
-  explicit RoiAlign(const OpKernelInfo& info) : OpKernel(info), RoiAlignBase<T>(info) {}
+  explicit RoiAlign(const OpKernelInfo& info) : OpKernel(info), RoiAlignBase(info) {}
 
   Status Compute(OpKernelContext* context) const override;
 

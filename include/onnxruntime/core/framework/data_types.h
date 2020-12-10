@@ -24,7 +24,8 @@ class TypeProto;
 namespace onnxruntime {
 /// Predefined registered types
 
-//maps
+#if !defined(DISABLE_ML_OPS)
+//maps (only used by ML ops)
 using MapStringToString = std::map<std::string, std::string>;
 using MapStringToInt64 = std::map<std::string, int64_t>;
 using MapStringToFloat = std::map<std::string, float>;
@@ -33,10 +34,13 @@ using MapInt64ToString = std::map<int64_t, std::string>;
 using MapInt64ToInt64 = std::map<int64_t, int64_t>;
 using MapInt64ToFloat = std::map<int64_t, float>;
 using MapInt64ToDouble = std::map<int64_t, double>;
+#endif
 
 //vectors/sequences
+#if !defined(DISABLE_ML_OPS)
 using VectorMapStringToFloat = std::vector<MapStringToFloat>;
 using VectorMapInt64ToFloat = std::vector<MapInt64ToFloat>;
+#endif
 using VectorString = std::vector<std::string>;
 using VectorInt64 = std::vector<int64_t>;
 
@@ -138,6 +142,10 @@ struct BFloat16 {
       std::memset(second, 0, sizeof(uint16_t));
     }
     return result;
+  }
+
+  operator float() const {
+    return ToFloat();
   }
 };
 
@@ -269,6 +277,7 @@ class DataTypeImpl {
   static const NonTensorTypeBase* SequenceTensorTypeFromONNXEnum(int type);
 
   static const char* ToString(MLDataType type);
+  static std::vector<std::string> ToString(const std::vector<MLDataType>& types);
   // Registers ONNX_NAMESPACE::DataType (internalized string) with
   // MLDataType. DataType is produced by internalizing an instance of
   // TypeProto contained within MLDataType
@@ -276,12 +285,15 @@ class DataTypeImpl {
   static MLDataType GetDataType(const std::string&);
 
   static const std::vector<MLDataType>& AllTensorTypes();
-  static const std::vector<MLDataType>& AllSequenceTensorTypes();
   static const std::vector<MLDataType>& AllFixedSizeTensorTypes();
+  static const std::vector<MLDataType>& AllSequenceTensorTypes();
+  static const std::vector<MLDataType>& AllFixedSizeSequenceTensorTypes();
   static const std::vector<MLDataType>& AllNumericTensorTypes();
   static const std::vector<MLDataType>& AllIEEEFloatTensorTypes();
   static const std::vector<MLDataType>& AllFixedSizeTensorExceptHalfTypes();
   static const std::vector<MLDataType>& AllIEEEFloatTensorExceptHalfTypes();
+  static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypes();
+  static const std::vector<MLDataType>& AllFixedSizeTensorAndSequenceTensorTypes();
 };
 
 std::ostream& operator<<(std::ostream& out, MLDataType data_type);
@@ -418,6 +430,7 @@ struct GetMLDataType<T, false> {
   }
 };
 
+#if !defined(DISABLE_ML_OPS)
 /// MapTypes helper API
 /// K should always be one of the primitive data types
 /// V can be either a primitive type (in which case it is a tensor)
@@ -432,11 +445,16 @@ struct SetMapTypes {
     TensorElementTypeSetter<K>::SetMapKeyType(proto);
     MLDataType dt = GetMLDataType<V, IsTensorContainedType<V>::value>::Get();
     const auto* value_proto = dt->GetTypeProto();
+#ifdef ORT_NO_RTTI
+    ORT_ENFORCE(value_proto != nullptr, "expected a registered ONNX type");
+#else
     ORT_ENFORCE(value_proto != nullptr, typeid(V).name(),
                 " expected to be a registered ONNX type");
+#endif
     CopyMutableMapValue(*value_proto, proto);
   }
 };
+#endif
 
 /// Sequence helpers
 ///
@@ -449,8 +467,12 @@ struct SetSequenceType {
   static void Set(ONNX_NAMESPACE::TypeProto& proto) {
     MLDataType dt = GetMLDataType<T, IsTensorContainedType<T>::value>::Get();
     const auto* elem_proto = dt->GetTypeProto();
+#ifdef ORT_NO_RTTI
+    ORT_ENFORCE(elem_proto != nullptr, "expected a registered ONNX type");
+#else
     ORT_ENFORCE(elem_proto != nullptr, typeid(T).name(),
                 " expected to be a registered ONNX type");
+#endif
     CopyMutableSeqElement(*elem_proto, proto);
   }
 };
@@ -701,6 +723,7 @@ class NonTensorType : public NonTensorTypeBase {
   NonTensorType() = default;
 };
 
+#if !defined(DISABLE_ML_OPS)
 /**
  * \brief MapType. Use this type to register
  * mapping types.
@@ -729,6 +752,7 @@ class MapType : public NonTensorType<CPPType> {
     SetMapTypes<typename CPPType::key_type, typename CPPType::mapped_type>::Set(this->mutable_type_proto());
   }
 };
+#endif
 
 /**
  * \brief SequenceType. Use to register sequence for non-tensor types.
@@ -956,6 +980,7 @@ class PrimitiveDataType : public PrimitiveDataTypeBase {
     return SparseTensorType<ELEM_TYPE>::Type();               \
   }
 
+#if !defined(DISABLE_ML_OPS)
 #define ORT_REGISTER_MAP(TYPE)               \
   template <>                                \
   MLDataType MapType<TYPE>::Type() {         \
@@ -966,6 +991,7 @@ class PrimitiveDataType : public PrimitiveDataTypeBase {
   MLDataType DataTypeImpl::GetType<TYPE>() { \
     return MapType<TYPE>::Type();            \
   }
+#endif
 
 #define ORT_REGISTER_SEQ(TYPE)               \
   template <>                                \

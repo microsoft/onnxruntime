@@ -141,9 +141,9 @@ const std::string& ShapeSymbol(const NodeArg* def, int i);
 
 ONNX_NAMESPACE::TensorProto_DataType TensorProtoDataType(const NodeArg* def);
 
-// Convert GraphNodes to internal NodePtrs without check lifetime.
+// Convert ConstGraphNodes to internal NodePtrs without check lifetime.
 // Please use it only locally when GraphNodes still exist
-std::vector<const Node*> ConvertGraphNodesToNodePtrs(const GraphNodes& graph_nodes);
+std::vector<const Node*> ConvertGraphNodesToNodePtrs(const ConstGraphNodes& graph_nodes);
 
 enum : int {
   Dimension_Unknown = -1,

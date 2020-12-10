@@ -25,11 +25,8 @@ namespace cuda {
   BINARY_OP_NAME_EXPR(Or, (a | b))                   \
   BINARY_OP_NAME_EXPR(Xor, (a ^ b))                  \
   BINARY_OP_NAME_EXPR(PRelu, (a > (T)0 ? a : a * b)) \
-  BINARY_OP_NAME_EXPR(Greater, (a > b) ? 1 : 0)      \
-  BINARY_OP_NAME_EXPR(Equal, ((a == b) ? 1 : 0))     \
   BINARY_OP_NAME_EXPR(Max, _Max(a, b))               \
-  BINARY_OP_NAME_EXPR(Min, _Min(a, b))               \
-  BINARY_OP_NAME_EXPR(Less, (a < b) ? 1 : 0)
+  BINARY_OP_NAME_EXPR(Min, _Min(a, b))
 
 // NOTE that cu files are compiled with nvcc and should not refer to any onnxruntime headers
 // so struct BinaryElementwisePreparation cannot be used here
@@ -67,6 +64,29 @@ BINARY_OPS()
       size_t count)
 
 BINARY_ELEMENTWISE_IMPL_DECLARATION_T1(Pow);
+
+#define BINARY_ELEMENTWISE_IMPL_DECLARATION_T2(name) \
+  template <typename T, typename T1, typename T2>    \
+  void ImplT2_##name(                                \
+      int32_t output_rank_or_simple_broadcast,       \
+      const TArray<int64_t>* lhs_padded_strides,     \
+      const T1* lhs_data,                            \
+      const TArray<int64_t>* rhs_padded_strides,     \
+      const T2* rhs_data,                            \
+      const TArray<fast_divmod>* fdm_output_strides, \
+      const fast_divmod& fdm_H,                      \
+      const fast_divmod& fdm_C,                      \
+      T* output_data,                                \
+      size_t count)
+
+#define BINARY_OPS2()                    \
+  BINARY_OP_NAME_EXPR2(Greater, (a > b)) \
+  BINARY_OP_NAME_EXPR2(Equal, (a == b))  \
+  BINARY_OP_NAME_EXPR2(Less, (a < b))
+
+#define BINARY_OP_NAME_EXPR2(name, expr) BINARY_ELEMENTWISE_IMPL_DECLARATION_T2(name);
+BINARY_OPS2()
+#undef BINARY_OP_NAME_EXPR2
 
 }  // namespace cuda
 }  // namespace onnxruntime

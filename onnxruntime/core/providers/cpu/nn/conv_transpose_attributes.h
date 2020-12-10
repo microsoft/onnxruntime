@@ -222,7 +222,6 @@ struct ConvTransposeAttributes : public ConvAttributes {
         *pad_tail = total_pad - total_pad / 2;
       }
     }
-
     *out_size =
         (in_size - 1) * stride + adj + (kernel - 1) * dilation + 1 - *pad_head - *pad_tail;
   }

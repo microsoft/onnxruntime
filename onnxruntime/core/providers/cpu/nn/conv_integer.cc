@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cpu/nn/conv_integer.h"
-
+#include "core/framework/op_kernel.h"
+#include "core/providers/cpu/nn/conv_attributes.h"
 #include "core/common/safeint.h"
 #include "core/providers/common.h"
 #include "core/util/math.h"
@@ -10,6 +10,15 @@
 #include "core/util/qmath.h"
 
 namespace onnxruntime {
+
+class ConvInteger : public OpKernel {
+ public:
+  explicit ConvInteger(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {}
+
+  Status Compute(OpKernelContext* context) const override;
+
+  ConvAttributes conv_attrs_;
+};
 
 ONNX_OPERATOR_KERNEL_EX(
     ConvInteger,
@@ -62,7 +71,7 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
 
   std::vector<int64_t> Y_dims({N, M});
   TensorShape input_shape = X->Shape().Slice(2);
-  ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape(input_shape, kernel_shape, strides, dilations, &pads, &Y_dims));
+  ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape(input_shape, kernel_shape, strides, dilations, pads, Y_dims));
   Tensor* Y = context->Output(0, TensorShape(Y_dims));
   TensorShape output_shape = Y->Shape().Slice(2);
 
@@ -83,7 +92,6 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
   const size_t kernel_rank = kernel_shape.size();
 
   BufferUniquePtr col_buffer;
-  std::vector<int64_t> col_buffer_shape;
 
   // Pointwise convolutions can use the original input tensor in place,
   // otherwise a temporary buffer is required for the im2col transform.
@@ -93,13 +101,6 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
 
     auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(uint8_t)) * col_buffer_size);
     col_buffer = BufferUniquePtr(col_data, BufferDeleter(alloc));
-
-    if (kernel_rank != 2) {
-      const auto& output_dims = output_shape.GetDims();
-      col_buffer_shape.reserve(1 + output_dims.size());
-      col_buffer_shape.push_back(kernel_dim);
-      col_buffer_shape.insert(col_buffer_shape.end(), output_dims.begin(), output_dims.end());
-    }
   }
 
   auto* col_buffer_data = static_cast<uint8_t*>(col_buffer.get());
@@ -132,12 +133,11 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
               col_buffer_data,
               input_offset);
         } else {
-          math::Im2colNd<uint8_t, StorageOrder::NCHW>()(
+          math::Im2col<uint8_t, StorageOrder::NCHW>()(
               Xdata,
-              X->Shape().GetDims().data() + 1,
-              col_buffer_shape.data(),
-              C * input_image_size,
-              col_buffer_size,
+              input_shape.GetDims().data(),
+              output_shape.GetDims().data(),
+              kernel_dim,
               kernel_shape.data(),
               strides.data(),
               dilations.data(),
@@ -158,6 +158,7 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
             col_buffer_data == nullptr ? Xdata : col_buffer_data,
             static_cast<int>(output_image_size),
             input_offset,
+            false,
             Ydata,
             static_cast<int>(output_image_size),
             thread_pool);
@@ -169,4 +170,5 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
 
   return Status::OK();
 }
+
 }  // namespace onnxruntime

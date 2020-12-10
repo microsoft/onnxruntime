@@ -28,10 +28,20 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Flatten);
 
 // explicitly support negative axis
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Flatten,
+    kOnnxDomain,
+    11, 12,
+    kCudaExecutionProvider,
+    KernelDefBuilder()
+        .Alias(0, 0)
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+    Flatten);
+
 ONNX_OPERATOR_KERNEL_EX(
     Flatten,
     kOnnxDomain,
-    11,
+    13,
     kCudaExecutionProvider,
     KernelDefBuilder()
         .Alias(0, 0)
@@ -50,7 +60,7 @@ Status Flatten::ComputeInternal(OpKernelContext* ctx) const {
 
   ORT_ENFORCE(gsl::narrow_cast<int64_t>(X_shape.NumDimensions()) >= axis, "The rank of input tensor must be >= axis");
 
-  Tensor* Y = ctx->Output(0, TensorShape({X_shape.SizeToDimension(axis), X_shape.SizeFromDimension(axis)}));
+  Tensor* Y = ctx->Output(0, {X_shape.SizeToDimension(axis), X_shape.SizeFromDimension(axis)});
   //If source and target pointers are not equal (non-inplace operation), we need to copy the data.
   const void* source = X->DataRaw();
   void* target = Y->MutableDataRaw();

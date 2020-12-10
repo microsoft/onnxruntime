@@ -12,7 +12,9 @@
 #include "core/framework/allocator.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
-
+#include "core/util/qmath.h"
+#include "core/mlas/inc/mlas.h"
+#include "core/common/safeint.h"
 #include "core/platform/threadpool.h"
 
 #include "gsl/gsl"
@@ -70,8 +72,8 @@ gsl::span<TAlloc> Allocate(std::shared_ptr<IAllocator> allocator,
 
 // validate the common inputs to RNN, LSTM and GRU operators
 Status ValidateCommonRnnInputs(const Tensor& X,
-                               const Tensor& W,
-                               const Tensor& R,
+                               const TensorShape& W_shape,
+                               const TensorShape& R_shape,
                                const Tensor* B,
                                int WRB_dim_1_multipler,  // multiplier used with hidden_size for W, R and B inputs
                                const Tensor* sequence_lens,
@@ -145,7 +147,8 @@ void ComputeGemm(const int M,
                  const float beta,
                  TSpanCIter C,
                  TSpanCIter C_end,
-                 const int ldc, concurrency::ThreadPool* tp) {
+                 const int ldc,
+                 concurrency::ThreadPool* thread_pool) {
   // validate all the inputs
   // need to use the lda/ldb/ldc strides which should be >= the columns for the span
   ORT_ENFORCE(lda >= K && ldb >= K && ldc >= N);
@@ -158,8 +161,90 @@ void ComputeGemm(const int M,
       M, N, K, alpha,
       &*A, lda,
       &*B, ldb, beta,
-      &*C, ldc, tp);
+      &*C, ldc, thread_pool);
 }
+
+struct PackedWeights {
+  BufferUniquePtr buffer_;
+  size_t weights_size_;
+  TensorShape shape_;
+};
+
+struct QuantizationParameter {
+  QuantizationParameter(const float* scale,
+                        const uint8_t* zero_point,
+                        bool is_signed,
+                        size_t scale_size) : scale(scale),
+                                             zero_point(zero_point),
+                                             is_signed(is_signed),
+                                             scale_size(scale_size) {}
+
+  const float* scale;
+  const uint8_t* zero_point;
+  bool is_signed;
+  size_t scale_size;
+};
+
+template <typename T>
+struct GemmWeights {
+  GemmWeights() = default;
+
+  GemmWeights(int idx,
+              const T* weights_data,
+              size_t weights_size,
+              const PackedWeights& packed_weights,
+              QuantizationParameter* quant_para = nullptr) {
+    Init(idx, weights_data, weights_size, packed_weights, quant_para);
+  }
+
+  void Init(int idx,
+            const T* weights_data,
+            size_t weights_size,
+            const PackedWeights& packed_weights,
+            QuantizationParameter* quant_para) {
+    quant_para_ = quant_para;
+
+    if (packed_weights.buffer_) {
+      is_prepacked_ = true;
+      buffer_ = static_cast<uint8_t*>(packed_weights.buffer_.get()) + packed_weights.weights_size_ * idx;
+    } else {
+      is_prepacked_ = false;
+      buffer_ = weights_data + weights_size * idx;
+    }
+  }
+
+  bool is_prepacked_{false};
+  const void* buffer_{nullptr};
+  QuantizationParameter* quant_para_{nullptr};
+};
+
+void ComputeGemm(const int M,
+                 const int N,
+                 const int K,
+                 const float alpha,
+                 const float* A,
+                 const float* A_end,
+                 const GemmWeights<float>& weights,
+                 const float beta,
+                 float* C,
+                 float* C_end,
+                 const int ldc,
+                 AllocatorPtr /*allocator*/,
+                 concurrency::ThreadPool* thread_pool);
+
+void ComputeGemm(const int M,
+                 const int N,
+                 const int K,
+                 const float alpha,
+                 const float* A,
+                 const float* A_end,
+                 const GemmWeights<uint8_t>& weights,
+                 const float beta,
+                 float* C,
+                 float* C_end,
+                 const int ldc,
+                 AllocatorPtr allocator,
+                 concurrency::ThreadPool* thread_pool);
 
 // helper to convert a span to a raw pointer
 // after validating the memory covered by the span supports the size required

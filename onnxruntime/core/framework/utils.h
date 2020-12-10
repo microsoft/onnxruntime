@@ -38,12 +38,14 @@ namespace utils {
 void* DefaultAlloc(size_t size);
 void DefaultFree(void* p);
 
-AllocatorPtr GetAllocator(const SessionState& session_state, const OrtMemoryInfo& memory_info);
-
-common::Status AllocateHelper(const IExecutionProvider& execution_provider, int device_id, const Tensor& fetched_tensor,
-                              OrtValue& output_mlvalue);
-
 const std::string& GetNodeInputProviderType(const SessionState::NodeInfo& info);
+
+// EP used for internal testing. We define it here as it's used in ProviderIsCpuBased, but we don't want
+// it to be in the public header include/onnxruntime/core/graph/constants.h as it's purely internal.
+constexpr const char* kInternalTestingExecutionProvider = "InternalTestingExecutionProvider";
+
+// return true if the execution provider is CPU based (meaning no copies to device are required)
+bool ProviderIsCpuBased(const std::string& provider_type);
 
 common::Status CopyOneInputAcrossDevices(const SessionState& session_state, const std::string& input_name,
                                          const OrtValue& orig_mlvalue, OrtValue& new_mlvalue);
@@ -60,8 +62,7 @@ common::Status InitializeFeedFetchCopyInfo(const SessionState& session_state,
 
 // Finalize the feed and fetch copy info using session_state and the device and location information from the feeds
 // and fetches that will be used in graph execution.
-void FinalizeFeedFetchCopyInfo(const SessionState& session_state,
-                               FeedsFetchesManager& feeds_fetches_manager,
+void FinalizeFeedFetchCopyInfo(FeedsFetchesManager& feeds_fetches_manager,
                                const std::vector<OrtDevice>& feed_locations,
                                const std::vector<const OrtMemoryInfo*>& fetch_alloc_info);
 
@@ -77,16 +78,6 @@ common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFet
                                const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger);
-
-#if defined(DEBUG_NODE_INPUTS_OUTPUTS)
-// to create a build with these enabled run the build script with 1 to dump just shapes, or 2 to dump shapes and data
-// e.g.
-//   --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1
-// To unset you'll need to either delete CMakeCache.txt or run with
-//   --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=0
-void DumpNodeInputs(const OpKernelContext& context, const Node& node);
-void DumpNodeOutputs(OpKernelContext& context, const Node& node, const SessionState& session_state);
-#endif
 
 template <typename T>
 constexpr ONNXTensorElementDataType GetONNXTensorElementDataType() {
@@ -164,6 +155,10 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint64_t>() {
 }
 
 int32_t ONNXTensorElementDataTypeToProtoTensorType(ONNXTensorElementDataType);
+
+#ifdef ENABLE_TRAINING
+common::Status VerifyInputTensorsAllocatedContiguously(OpKernelContext* context);
+#endif
 
 }  // namespace utils
 }  // namespace onnxruntime

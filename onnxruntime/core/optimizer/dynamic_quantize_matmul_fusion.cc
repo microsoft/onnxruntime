@@ -14,20 +14,20 @@ namespace onnxruntime {
 
 /**
 DynamicQuantizeMatMulFusion will fuse subgraph like below into DynamicQuantizeMatMul:
-    (input)
-       |
-       v
-DynamicQuantizeLinear --------+
-       |                      |
-       v                      v
-MatMulInteger (B const)      Mul (B const)
-       |                      |
-       v                      v
-     Cast ------------------>Mul
-                              |
-                              v
-                           (output)
-*/
+      (input)
+         |
+         v
+  DynamicQuantizeLinear       B,B_Scale,B_Zero      Bias                          (input)                B,B_Scale,B_Zero      Bias
+   |        |        |               |               |                              |                           |               |
+   |        |        |               |               |                              |                           |               |
+  A| A_Scale| A_Zero |               |               |                              |                           |               |
+   |        |        |               |               |                              |                           |               |
+   v        v        v               |               |                              |                           |               |
+  MatMulIntegerToFloat <-------------+---------------+           ---->       DynamicQuantizeMatMul<-------------+---------------+
+         |                                                                          |
+         v                                                                          v
+      (output)                                                                   (output)
+ */
 Status DynamicQuantizeMatMulFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
@@ -38,98 +38,63 @@ Status DynamicQuantizeMatMulFusion::ApplyImpl(Graph& graph, bool& modified, int 
     if (nullptr == node_ptr)
       continue;  // node was removed
 
-    auto& mul_node = *node_ptr;
+    auto& matmul_integer_to_float_node = *node_ptr;
 
-    ORT_RETURN_IF_ERROR(Recurse(mul_node, modified, graph_level, logger));
+    ORT_RETURN_IF_ERROR(Recurse(matmul_integer_to_float_node, modified, graph_level, logger));
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(mul_node, "Mul", {7}) ||
-        !graph_utils::IsSupportedProvider(mul_node, GetCompatibleExecutionProviders())) {
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(matmul_integer_to_float_node, "MatMulIntegerToFloat", {1}, kMSDomain) ||
+        !graph_utils::IsSupportedProvider(matmul_integer_to_float_node, GetCompatibleExecutionProviders())) {
       continue;
     }
 
-    // Left Parents path
-    std::vector<graph_utils::EdgeEndToMatch> left_parent_path{
-        {0, 0, "Cast", {6, 9}, kOnnxDomain},
-        {0, 0, "MatMulInteger", {10}, kOnnxDomain},
-        {0, 0, "DynamicQuantizeLinear", {11}, kOnnxDomain}};
-
-    std::vector<graph_utils::EdgeEndToMatch> right_parent_path{
-        {0, 1, "Mul", {7}, kOnnxDomain},
-        {1, 0, "DynamicQuantizeLinear", {11}, kOnnxDomain}};
-
-    std::vector<std::reference_wrapper<Node>> left_nodes;
-    std::vector<std::reference_wrapper<Node>> right_nodes;
-    if (!graph_utils::FindPath(graph, mul_node, true, left_parent_path, left_nodes, logger) ||
-        !graph_utils::FindPath(graph, mul_node, true, right_parent_path, right_nodes, logger)) {
+    const Node* p_dynamic_quant_linear = graph_utils::GetInputNode(matmul_integer_to_float_node, 0 /*arg_index*/);
+    if (p_dynamic_quant_linear == nullptr) {
       continue;
     }
 
-    Node& cast_node = left_nodes[0];
-    Node& matmulinteger_node = left_nodes[1];
-    Node& dql_node_left = left_nodes[2];
-
-    Node& mul_node_right = right_nodes[0];
-    Node& dql_node_right = right_nodes[1];
-
-    // Check if left DynamicQuantizeLinear is same as right DynamicQuantizeLinear
-    if (dql_node_left.Index() != dql_node_right.Index()) {
+    Node& dynamic_quant_linear = *graph.GetNode(p_dynamic_quant_linear->Index());
+    if (!optimizer_utils::CheckOutputEdges(graph, dynamic_quant_linear, 3)) {
       continue;
     }
 
-    // Check Nodes' Edges count and Nodes' outputs are not in Graph output
-    if (!optimizer_utils::CheckOutputEdges(graph, cast_node, 1) ||
-        !optimizer_utils::CheckOutputEdges(graph, matmulinteger_node, 1) ||
-        !optimizer_utils::CheckOutputEdges(graph, mul_node_right, 1) ||
-        !optimizer_utils::CheckOutputEdges(graph, dql_node_left, 3)) {
-      continue;
-    }
+    NodeArg optional_node_arg("", nullptr);
+    std::string op_type_to_fuse = "DynamicQuantizeMatMul";
+    std::vector<NodeArg*> input_defs{
+        dynamic_quant_linear.MutableInputDefs()[0],
+        matmul_integer_to_float_node.MutableInputDefs()[1],
+        matmul_integer_to_float_node.MutableInputDefs()[3],
+        &optional_node_arg,
+        &optional_node_arg};
 
-    const NodeArg& matmulinteger_B = *(matmulinteger_node.InputDefs()[1]);
-    if (!graph_utils::IsConstantInitializer(graph, matmulinteger_B.Name(), true)) {
-      continue;
-    }
+    if (matmul_integer_to_float_node.InputDefs().size() >= 6) {
+      input_defs[3] = matmul_integer_to_float_node.MutableInputDefs()[5];
 
-    const NodeArg& mul_right_B = *(mul_node_right.InputDefs()[1]);
-    if (!graph_utils::IsConstantInitializer(graph, mul_right_B.Name(), true)) {
-      continue;
-    }
-
-    std::vector<NodeArg*> input_defs{dql_node_left.MutableInputDefs()[0],
-                                     matmulinteger_node.MutableInputDefs()[1],
-                                     mul_node_right.MutableInputDefs()[1]};
-
-    if (matmulinteger_node.InputDefs().size() == 4) {
-      const NodeArg& matmulinteger_B_zp = *(matmulinteger_node.InputDefs()[3]);
-      if (!graph_utils::IsConstantInitializer(graph, matmulinteger_B_zp.Name(), true)) {
-        continue;
+      if (matmul_integer_to_float_node.InputDefs().size() >= 7) {
+        input_defs[4] = matmul_integer_to_float_node.MutableInputDefs()[6];
       }
-      input_defs.push_back(matmulinteger_node.MutableInputDefs()[3]);
     }
 
-    Node& fused_node = graph.AddNode(graph.GenerateNodeName("DynamicQuantizeMatMul"),
-                                     "DynamicQuantizeMatMul",
-                                     "fused DynamicQuantizeMatMul",
-                                     input_defs,
-                                     mul_node.MutableOutputDefs(),
-                                     nullptr,
-                                     kMSDomain);
+    Node* fused_node = &graph.AddNode(matmul_integer_to_float_node.Name(),
+                                      op_type_to_fuse,
+                                      "",
+                                      input_defs,
+                                      matmul_integer_to_float_node.MutableOutputDefs(),
+                                      nullptr,
+                                      kMSDomain);
 
     // Assign provider to this new node. Provider should be same as the provider for old node.
-    fused_node.SetExecutionProviderType(mul_node.GetExecutionProviderType());
+    fused_node->SetExecutionProviderType(matmul_integer_to_float_node.GetExecutionProviderType());
 
-    nodes_to_remove.push_back(dql_node_left);
-    nodes_to_remove.push_back(matmulinteger_node);
-    nodes_to_remove.push_back(cast_node);
-    nodes_to_remove.push_back(mul_node_right);
-    nodes_to_remove.push_back(mul_node);
+    nodes_to_remove.push_back(dynamic_quant_linear);
+    nodes_to_remove.push_back(matmul_integer_to_float_node);
   }
+
+  modified = !nodes_to_remove.empty();
 
   for (const auto& node : nodes_to_remove) {
     graph_utils::RemoveNodeOutputEdges(graph, node);
     graph.RemoveNode(node.get().Index());
   }
-
-  modified = true;
 
   return Status::OK();
 }

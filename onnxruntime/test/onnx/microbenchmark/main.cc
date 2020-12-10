@@ -18,6 +18,7 @@
 #include <core/session/ort_env.h>
 #include <core/util/thread_utils.h>
 
+#include <iostream>
 #include <unordered_map>
 
 const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
@@ -33,7 +34,9 @@ static void BM_CPUAllocator(benchmark::State& state) {
     cpu_allocator->Free(p);
   }
 }
-BENCHMARK(BM_CPUAllocator)->Arg(4)->Arg(sizeof(Tensor));
+BENCHMARK(BM_CPUAllocator)
+    ->Arg(4)
+    ->Arg(sizeof(Tensor));
 
 static void BM_ResolveGraph(benchmark::State& state) {
   std::shared_ptr<onnxruntime::Model> model_copy;
@@ -41,7 +44,7 @@ static void BM_ResolveGraph(benchmark::State& state) {
   auto st =
       onnxruntime::Model::Load(ORT_TSTR("../models/opset8/test_tiny_yolov2/model.onnx"), model_copy, nullptr, *logger);
   if (!st.IsOK()) {
-    printf("Parse model failed: %s", st.ErrorMessage().c_str());
+    ::std::cerr << "Parse model failed: " << st.ErrorMessage().c_str() << ::std::endl;
     abort();
   }
   auto proto = model_copy->ToProto();
@@ -53,7 +56,7 @@ static void BM_ResolveGraph(benchmark::State& state) {
     state.ResumeTiming();
     st = graph.Resolve();
     if (!st.IsOK()) {
-      printf("Resolve graph failed: %s", st.ErrorMessage().c_str());
+      ::std::cerr << "Resolve graph failed: " << st.ErrorMessage().c_str() << ::std::endl;
       abort();
     }
   }
@@ -65,12 +68,11 @@ BENCHMARK(BM_ResolveGraph);
     OrtStatus* onnx_status = (expr);                         \
     if (onnx_status != NULL) {                               \
       const char* msg = g_ort->GetErrorMessage(onnx_status); \
-      fprintf(stderr, "%s\n", msg);                          \
+      ::std::cerr << msg << ::std::endl;                     \
       g_ort->ReleaseStatus(onnx_status);                     \
       abort();                                               \
     }                                                        \
   } while (0);
-
 
 int main(int argc, char** argv) {
   ::benchmark::Initialize(&argc, argv);

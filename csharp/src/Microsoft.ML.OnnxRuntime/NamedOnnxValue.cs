@@ -1,34 +1,64 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-using System;
-using System.Collections.Generic;
-using System.Text;
 using Microsoft.ML.OnnxRuntime.Tensors;
+using System;
 using System.Buffers;
-using System.Collections;
-using System.Diagnostics;
-using System.Runtime.InteropServices;
+using System.Collections.Generic;
 
 namespace Microsoft.ML.OnnxRuntime
 {
+    /// <summary>
+    /// The class associates a name with an Object. Currently it supports Tensor<T>
+    /// as possible objects. The name of the class is a misnomer, it does not hold any
+    /// Onnx values.
+    /// </summary>
     public class NamedOnnxValue
     {
+        /// <summary>
+        /// Managed Tensor, Dictionary or IList
+        /// </summary>
         protected Object _value;
+        /// <summary>
+        /// Name of the instance, model input/output
+        /// </summary>
         protected string _name;
 
+        /// <summary>
+        /// Constructs an instance of NamedOnnxValue and represents
+        /// a model input to an inference session. It also represents a modle output
+        /// when serves as a base for DisposablenamedOnnxvalue
+        /// </summary>
+        /// <param name="name">input/output name</param>
+        /// <param name="value">Object that may be a tensor, Dictionary, IList</param>
         protected NamedOnnxValue(string name, Object value)
         {
             _name = name;
             _value = value;
         }
 
+        /// <summary>
+        /// This is a factory method that instantiates NamedOnnxValue
+        /// and associated name with an instance of a Tensor<typeparamref name="T"/>
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="name">name</param>
+        /// <param name="value">Tensor<typeparamref name="T"/></param>
+        /// <returns></returns>
         public static NamedOnnxValue CreateFromTensor<T>(string name, Tensor<T> value)
         {
             return new NamedOnnxValue(name, value);
         }
 
+        /// <summary>
+        /// Exposes the name of the of the model input/output
+        /// </summary>
+        /// <value>name string</value>
         public string Name { get { return _name; } set { _name = value; } }
+        /// <summary>
+        /// Exposes the underlying managed object
+        /// </summary>
+        /// <value>object</value>
         public Object Value { get { return _value; } set { _value = value; } }
 
         /// <summary>
@@ -64,18 +94,15 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Pin the underlying memory and create native onnx value
+        /// Pin the underlying memory and create an instance of OrtValue
+        /// based on the pinned managed memory. The caller is responsible for Disposing
+        /// both OrtValue and pinnedMemoryHandle
         /// </summary>
-        /// <param name="onnxValue"></param>
-        /// <param name="pinnedMemoryHandle"></param>
-        /// <param name="disposeOnnxValueAfterUse"></param>
-        internal virtual void ToNativeOnnxValue(
-            out IntPtr onnxValue,
-            out MemoryHandle pinnedMemoryHandle,
-            out bool disposeOnnxValueAfterUse)
+        /// <param name="pinnedMemoryHandle">dispose after returned OrtValus is disposed</param>
+        /// <returns>an instance of OrtValue. The lifespan of OrtValue must overlap pinnedMemoryHandle</returns>
+        internal virtual OrtValue ToOrtValue(out MemoryHandle? pinnedMemoryHandle)
         {
-            NativeOnnxValueHelper.CreateNativeOnnxValue(_value, out onnxValue, out pinnedMemoryHandle, out OnnxValueType onnxValueType, out TensorElementType elementType);
-            disposeOnnxValueAfterUse = true;
+            return OrtValue.CreateFromTensorObject(_value, out pinnedMemoryHandle, out TensorElementType elementType);
         }
 
         // may expose different types of getters in future

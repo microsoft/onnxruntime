@@ -113,7 +113,7 @@ Status GatherElementsGrad::ComputeInternal(OpKernelContext* context) const {
 
   int rank = static_cast<int>(output_dims.size());
   Tensor* dX = context->Output(0, data_shape);
-  CUDA_RETURN_IF_ERROR(cudaMemset(dX->MutableDataRaw(), 0, dX->SizeInBytes()));
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(dX->MutableDataRaw(), 0, dX->SizeInBytes()));
 
   TArray<int64_t> buffer_output_dims(output_dims);
   TensorPitches input_strides(output_dims);

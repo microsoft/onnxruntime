@@ -2,13 +2,13 @@
 parameters:
 - name: condition
   type: string
-  default: '' # could be 'ci_only', 'always', 'succeeded'
+  default: 'succeeded' # could be 'ci_only', 'always', 'succeeded'
 
 steps:
 - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
   displayName: 'Component Detection'
   condition:
-    or(or(and(eq('${{parameters.condition}}', 'ci_only'), and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))),
+    or(or(and(eq('${{parameters.condition}}', 'ci_only'), and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI', 'Scheduled'))),
           and(eq('${{parameters.condition}}', 'always'), always())),
           and(eq('${{parameters.condition}}', 'succeeded'), succeeded()))
   inputs:

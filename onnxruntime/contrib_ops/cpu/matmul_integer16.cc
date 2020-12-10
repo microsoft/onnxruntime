@@ -28,6 +28,10 @@ Status MatMulInteger16<int16_t, int16_t, int32_t>::Compute(OpKernelContext* ctx)
   ORT_RETURN_IF_ERROR(helper.Compute(A->Shape(), B->Shape()));
   Tensor* Y = ctx->Output(0, helper.OutputShape());
 
+  // Bail out early if the output is going to be empty
+  if (Y->Shape().Size() == 0)
+    return Status::OK();
+
   for (int i = 0; i < static_cast<int>(helper.OutputOffsets().size()); i++) {
     EigenCastGEMM<int16_t, int16_t, int32_t>(
         A->template Data<int16_t>() + helper.LeftOffsets()[i],

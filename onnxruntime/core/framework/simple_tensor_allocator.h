@@ -22,11 +22,12 @@ class SimpleTensorAllocator : public ITensorAllocator {
   std::unordered_map<int, const ONNX_NAMESPACE::TensorProto*> values_;
 
  public:
-  SimpleTensorAllocator(const ExecutionPlanBase& execution_plan, const ExecutionProviders& exec_providers,
+  SimpleTensorAllocator(const ExecutionPlanBase& execution_plan, const SessionState& session_state,
                         std::vector<BufferUniquePtr>& weights_buffers)
-      : ITensorAllocator(exec_providers),
+      : ITensorAllocator(session_state),
         weights_buffers_(weights_buffers),
         seq_plan_(execution_plan) {}
+
   common::Status FinalizePlan(std::unordered_map<std::string, size_t>& planned_memory_sizes_in_byte) override {
     // There is no memory plan to allocate a big block of memory, so
     // planned memory sizes in different locations are all empty.

@@ -89,18 +89,7 @@ public:
     }
 };
 
-// A specific type of operation for registration.
-template <uint32_t opsetVersion>
-class DmlOperatorPaddingTemplate : public DmlOperatorPadding
-{
-public:
-    DmlOperatorPaddingTemplate(const MLOperatorKernelCreationContext& kernelInfo)
-    :   DmlOperatorPadding(kernelInfo, opsetVersion)
-    {
-    }
-};
-
-DML_OP_DEFINE_CREATION_FUNCTION(Pad7, DmlOperatorPaddingTemplate<7>);
-DML_OP_DEFINE_CREATION_FUNCTION(Pad11, DmlOperatorPaddingTemplate<11>);
+DML_OP_DEFINE_CREATION_FUNCTION(Pad7, VersionedKernel<DmlOperatorPadding, 7>);
+DML_OP_DEFINE_CREATION_FUNCTION(Pad11, VersionedKernel<DmlOperatorPadding, 11>);
 
 } // namespace Dml
