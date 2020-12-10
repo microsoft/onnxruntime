@@ -50,7 +50,12 @@ class _training_session_mock(object):
         return self.partition_info
 
 def _get_load_state_dict_strict_error_arguments():
-    """Build parameterized list of arguments to test strict loading of the state dictionary"""
+    """Return a list of tuples that can be used as parameters for test_load_state_dict_errors_when_model_key_missing
+
+    Construct a list of tuples (training_session_state_dict, input_state_dict, error_arguments)
+    The load_state_dict function will compare the two state dicts (training_session_state_dict, input_state_dict) and
+    throw a runtime error with the missing/unexpected keys. The error arguments capture these missing/unexpected keys.
+    """
 
     training_session_state_dict = {
         'model': {
