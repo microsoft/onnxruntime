@@ -32,6 +32,7 @@ class NcclContext final {
   }
 
  private:
+  ncclComm_t global_group_comm_;
   ncclComm_t data_group_comm_;
   ncclComm_t node_local_comm_;
   ncclComm_t cross_node_comm_;

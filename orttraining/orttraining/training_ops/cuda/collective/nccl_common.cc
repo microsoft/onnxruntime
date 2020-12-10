@@ -38,7 +38,6 @@ static Status CreateNcclCommunicator(MPI_Group* mpi_world_group,
   // Create new group
   MPI_Group mpi_group;
   MPI_CHECK(MPI_Group_incl(*mpi_world_group, worker_group.ranks.size(), worker_group.ranks.data(), &mpi_group));
-
   // Create new MPI communicator
   MPI_Comm mpi_comm;
   static int32_t mpi_group_id = 0;
@@ -73,8 +72,13 @@ NcclContext::NcclContext() {
   MPI_Group mpi_world_group;
   MPI_Comm_group(MPI_COMM_WORLD, &mpi_world_group);
 
+  // Initialize global Parallel Group NCCL Communicator
+  auto ret = CreateNcclCommunicator(&mpi_world_group, training::WorkerGroupType::GlobalParallel,
+                                    &global_group_comm_);
+  ORT_ENFORCE(ret.IsOK());
+
   // Initialize Data Parallel Group NCCL Communicator
-  auto ret = CreateNcclCommunicator(&mpi_world_group, training::WorkerGroupType::DataParallel,
+  ret = CreateNcclCommunicator(&mpi_world_group, training::WorkerGroupType::DataParallel,
                                     &data_group_comm_);
   ORT_ENFORCE(ret.IsOK());
 
@@ -100,7 +104,9 @@ NcclContext::NcclContext() {
 }
 
 ncclComm_t NcclContext::Comm(training::WorkerGroupType group_type) {
-  if (training::WorkerGroupType::DataParallel == group_type) {
+  if (training::WorkerGroupType::GlobalParallel == group_type) {
+    return global_group_comm_;
+  } else if (training::WorkerGroupType::DataParallel == group_type) {
     return data_group_comm_;
   } else if (training::WorkerGroupType::HorizontalParallel == group_type) {
     return horizontal_group_comm_;
