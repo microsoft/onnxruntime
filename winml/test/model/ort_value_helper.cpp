@@ -27,10 +27,10 @@ static int64_t ShapeSize(const int64_t* shape, size_t count) {
 }
 
 winml::ITensor CreateStringTensor(Ort::Value& val) {
-  size_t size = 0;
-  WINML_EXPECT_NO_THROW(size = val.GetTensorTypeAndShapeInfo().GetDimensionsCount());
+  size_t dimensionCount = 0;
+  WINML_EXPECT_NO_THROW(dimensionCount = val.GetTensorTypeAndShapeInfo().GetDimensionsCount());
   std::vector<int64_t> shape;
-  if (size > 0) {
+  if (dimensionCount > 0) {
     WINML_EXPECT_NO_THROW(shape = val.GetTensorTypeAndShapeInfo().GetShape());
   }
   auto length = ShapeSize(shape.data(), shape.size());
