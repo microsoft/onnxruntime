@@ -440,7 +440,7 @@ TEST(TopKOperator, NthElement) {
 }
 
 TEST(TopKOperator, NthElementHalf) {
-  if (NeedSkipIfCudaArchLowerThan(600)) {
+  if (!HasCudaEnvironment(600)) {
     return;
   }
 
