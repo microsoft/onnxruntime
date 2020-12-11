@@ -13,7 +13,7 @@ def _single_run(execution_file, scenario, checkopint_dir):
     assert subprocess.call([sys.executable, execution_file, '--scenario', scenario, '--checkpoint_dir', checkopint_dir]) == 0
 
 def _distributed_run(execution_file, scenario, checkopint_dir):
-    assert subprocess.call(['mpirun', '-n', str(ngpus), '-x', 'NCCL_DEBUG=INFO', sys.executable, execution_file, '--scenario', scenario,  '--checkpoint_dir', checkopint_dir]) == 0
+    assert subprocess.call(['mpirun', '-n', str(ngpus), '--allow-run-as-root', '-x', 'NCCL_DEBUG=INFO', sys.executable, execution_file, '--scenario', scenario,  '--checkpoint_dir', checkopint_dir]) == 0
 
 checkpoint_dir = os.path.abspath('checkpoint/checkpoint_dir/')
 makedir(checkpoint_dir)
