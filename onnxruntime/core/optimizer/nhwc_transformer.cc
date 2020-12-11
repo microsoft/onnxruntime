@@ -40,8 +40,8 @@ class NhwcTransformerImpl {
     return (it != nhwc_args_.end()) ? it->second.get() : nullptr;
   }
 
-  size_t RemoveOutputEdge(Node& node, int output_index);
-  void CreateNhwcArgument(Node& node, Node& nhwc_node, int rank, int output_index);
+  size_t RemoveOutputEdge(Node& node, size_t output_index);
+  void CreateNhwcArgument(Node& node, Node& nhwc_node, int rank, size_t output_index);
   void CreateNhwcArgument(Node& node, Node& nhwc_node, int rank);
   void InsertReorderInput(Node& node, int rank);
 
@@ -65,14 +65,15 @@ class NhwcTransformerImpl {
   std::deque<NodeIndex> removed_nodes_;
 };
 
-// Caller make sure valid output_index
-size_t NhwcTransformerImpl::RemoveOutputEdge(Node& node, int output_index) {
+// Remove node's output edge starting from specified index, return number of edges removed.
+// If output at specified index for the node is graph output, inc the count returned.
+size_t NhwcTransformerImpl::RemoveOutputEdge(Node& node, size_t output_index) {
   size_t output_edges_count = graph_utils::RemoveNodeOutputEdges(graph_, node, output_index);
 
-  // Bias the edge count to handle the case of a node that produces a graph output.
+  // Bias the edge count to if the node produces a graph output at output_index.
   auto node_outputs_for_graph = graph_.GetNodeOutputsInGraphOutputs(node);
   for (auto idx : node_outputs_for_graph) {
-    if (output_index == idx) {
+    if (idx == static_cast<int>(output_index)) {
       output_edges_count++;
       break;
     }
@@ -80,7 +81,7 @@ size_t NhwcTransformerImpl::RemoveOutputEdge(Node& node, int output_index) {
   return output_edges_count;
 }
 
-void NhwcTransformerImpl::CreateNhwcArgument(Node& node, Node& nhwc_node, int rank, int output_index) {
+void NhwcTransformerImpl::CreateNhwcArgument(Node& node, Node& nhwc_node, int rank, size_t output_index) {
   size_t original_uses = RemoveOutputEdge(node, output_index);
 
   // Create a new NodeArg to track the output from the NHWC node.
@@ -94,8 +95,8 @@ void NhwcTransformerImpl::CreateNhwcArgument(Node& node, Node& nhwc_node, int ra
 }
 
 void NhwcTransformerImpl::CreateNhwcArgument(Node& node, Node& nhwc_node, int rank) {
-  int output_count = static_cast<int>(node.OutputDefs().size());
-  for (int output_index = 0; output_index < output_count; ++output_index) {
+  size_t output_count = node.OutputDefs().size();
+  for (size_t output_index = 0; output_index < output_count; ++output_index) {
     CreateNhwcArgument(node, nhwc_node, rank, output_index);
   }
 }
@@ -259,14 +260,17 @@ void NhwcTransformerImpl::TransformSplit(Node& node) {
   // Change the axis attribute accordingly for NCHW to NHWC model.
   const auto* axis_attr = graph_utils::GetNodeAttribute(node, "axis");
   if (axis_attr != nullptr && utils::HasInt(*axis_attr)) {
-    int axis = static_cast<int>(axis_attr->i());
-    if (axis >= 1 && axis < nhwc_input->rank_) {
-      int new_axis = ((axis == 1) ? static_cast<int>(nhwc_input->rank_) - 1 : axis - 1);
-      node.AddAttribute("axis", static_cast<int64_t>(new_axis));
-    } else if (axis < 0 && axis > -static_cast<int>(nhwc_input->rank_)) {
-      int new_axis = ((axis == -(static_cast<int>(nhwc_input->rank_) - 1)) ? - 1 : axis - 1);
-      node.AddAttribute("axis", static_cast<int64_t>(new_axis));
+    int64_t axis = axis_attr->i();
+    if (axis < -nhwc_input->rank_ || axis >= nhwc_input->rank_) {
+      // direct return on invalid axis
+      return;
     }
+    if (axis > 1) {
+      axis = (axis == 1LL) ? (nhwc_input->rank_ - 1) : (axis - 1);
+    } else if (axis > - nhwc_input->rank_ && axis < 0) {
+      axis = (axis == -(nhwc_input->rank_ - 1)) ? (- 1) : (axis - 1);
+    }
+    node.AddAttribute("axis", axis);
   }
 
   input_defs[0] = nhwc_input->nhwc_arg_;
