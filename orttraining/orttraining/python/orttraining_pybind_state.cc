@@ -55,7 +55,7 @@ struct TrainingParameters {
   bool gelu_recompute = false;
   bool transformer_layer_recompute = false;
   int number_recompute_layers = 0;
-  bool use_adasum = false;
+  bool enable_adasum = false;
 };
 
 struct TrainingConfigurationResult {
@@ -139,7 +139,7 @@ TrainingConfigurationResult ConfigureSessionForTraining(
     opt.enable_grad_norm_clip = parameters.enable_grad_norm_clip;
 
     // TODO reduction types
-    if (parameters.use_adasum) {
+    if (parameters.enable_adasum) {
 #ifdef USE_CUDA
       opt.adasum_reduction_type = training::AdasumReductionType::GpuHierarchicalReduction;
 #else
@@ -245,7 +245,7 @@ void addObjectMethodsForTraining(py::module& m) {
              }
              parameters.optimizer_initial_state = optim_state;
            })
-      .def_readwrite("use_adasum", &TrainingParameters::use_adasum);
+      .def_readwrite("enable_adasum", &TrainingParameters::enable_adasum);
 
 #if defined(USE_MPI)
   m.def("get_mpi_context_local_rank", []() -> int { return MPIContext::GetInstance().GetLocalRank(); });

@@ -94,7 +94,7 @@ class TrainingRunner {
     // Whether to partition the optimizer state across nodes for distributed training.
     ZeROConfig deepspeed_zero{};
     // Use Adasum for allreduce.
-    bool use_adasum = false;
+    bool enable_adasum = false;
     // Use Gist on CPU.
     bool use_gist = false;
     // Whether we collect execution profile trace during this run.
@@ -134,7 +134,7 @@ class TrainingRunner {
 
     AdasumReductionType GetAdasumReductionType() const {
       // TODO support more algos when they become available.
-      if (!use_adasum) {
+      if (!enable_adasum) {
         return AdasumReductionType::None;
       } else if (!UseCuda()) {
         return AdasumReductionType::CpuReduction;

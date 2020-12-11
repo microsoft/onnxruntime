@@ -69,7 +69,7 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
         cxxopts::value<int>()->default_value("1"))
       ("seed", "Random seed.", cxxopts::value<int64_t>()->default_value("-1"))
       ("use_mixed_precision", "Whether to use a mix of fp32 and fp16 arithmetic on GPU.", cxxopts::value<bool>()->default_value("false"))
-      ("use_adasum", "Whether to use Adasum for allreduction.", cxxopts::value<bool>()->default_value("false"))
+      ("enable_adasum", "Whether to use Adasum for allreduction.", cxxopts::value<bool>()->default_value("false"))
       ("allreduce_in_fp16", "Whether to do AllReduce in fp16. If false, AllReduce will be done in fp32", cxxopts::value<bool>()->default_value("true"))
       ("loss_scale", "Loss scaling, positive power of 2 values can improve fp16 convergence. "
         "Set it 0 to uses dynamic scaling; Other none-zero value will used as static scale",
@@ -124,7 +124,7 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
     }
     params.lr_params.warmup_ratio = ratio;
 
-    params.use_adasum = flags["use_adasum"].as<bool>();
+    params.enable_adasum = flags["enable_adasum"].as<bool>();
 
     params.num_train_steps = flags["num_train_steps"].as<int>();
     params.batch_size = flags["train_batch_size"].as<int>();
@@ -312,8 +312,8 @@ void setup_training_params(GPT2Parameters& params) {
     params.data_parallel_size = data_group_size;
   }
 
-  params.use_adasum = params.use_adasum && (params.data_parallel_size > 1);
-  if (params.use_adasum)
+  params.enable_adasum = params.enable_adasum && (params.data_parallel_size > 1);
+  if (params.enable_adasum)
     std::cout << "Use Adsum for allreduce." << std::endl;
 #endif
 

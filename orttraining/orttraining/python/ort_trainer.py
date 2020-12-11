@@ -393,7 +393,7 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
                                                frozen_weights=[], opset_version=DEFAULT_OPSET_VERSION,
                                                use_deterministic_compute=False,
                                                use_invertible_layernorm_grad=False,
-                                               use_adasum=False):
+                                               enable_adasum=False):
     output_name = model.graph.output[0].name
     ort_parameters = ort.TrainingParameters()
     ort_parameters.loss_output_name = output_name
@@ -406,7 +406,7 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     ort_parameters.enable_grad_norm_clip = enable_grad_norm_clip
     ort_parameters.set_gradients_as_graph_outputs = False
     ort_parameters.use_invertible_layernorm_grad = use_invertible_layernorm_grad
-    ort_parameters.use_adasum = use_adasum
+    ort_parameters.enable_adasum = enable_adasum
     output_types = {}
     for output in model.graph.output:
         output_types[output.name] = output.type.tensor_type
@@ -548,7 +548,7 @@ class ORTTrainer():
                  global_step=0, get_lr_this_step=None, loss_scaler=None, deepspeed_zero_stage=0,
                  enable_grad_norm_clip=True, frozen_weights=[], _opset_version=DEFAULT_OPSET_VERSION,
                  _enable_internal_postprocess=True, _extra_postprocess=None, _use_deterministic_compute=False,
-                 use_invertible_layernorm_grad=False, run_symbolic_shape_infer=False, use_adasum=False):
+                 use_invertible_layernorm_grad=False, run_symbolic_shape_infer=False, enable_adasum=False):
         super(ORTTrainer, self).__init__()
         """
         Initialize ORTTrainer.
@@ -680,7 +680,7 @@ class ORTTrainer():
         self._use_deterministic_compute = _use_deterministic_compute
         self.use_invertible_layernorm_grad = use_invertible_layernorm_grad
         self.run_symbolic_shape_infer = run_symbolic_shape_infer
-        self.use_adasum = use_adasum
+        self.enable_adasum = enable_adasum
 
         # use this special string to workaround a corner case that external loss_scale is passed into train_step as kwargs.
         # see prepare_input_and_fetches for more details.
@@ -711,7 +711,7 @@ class ORTTrainer():
                 enable_grad_norm_clip=self.enable_grad_norm_clip_,
                 frozen_weights=self.frozen_weights_, opset_version=self.opset_version_,
                 use_deterministic_compute=self._use_deterministic_compute,
-                use_invertible_layernorm_grad=self.use_invertible_layernorm_grad, use_adasum=self.use_adasum)
+                use_invertible_layernorm_grad=self.use_invertible_layernorm_grad, enable_adasum=self.enable_adasum)
 
         self.loss_scale_input_name = self.session.loss_scale_input_name
 
