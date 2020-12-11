@@ -205,6 +205,17 @@ struct ProviderHostImpl : ProviderHost {
   void IExecutionProvider__InsertAllocator(IExecutionProvider* p, AllocatorPtr allocator) { return p->IExecutionProvider::InsertAllocator(allocator); }
   std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
                                                                                     const std::vector<const KernelRegistry*>& kernel_registries) { return p->IExecutionProvider::GetCapability(graph_viewer, kernel_registries); }
+  common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<onnxruntime::Node*>& fused_nodes, std::vector<NodeComputeInfo>& node_compute_funcs) override {
+    return p->IExecutionProvider::Compile(fused_nodes, node_compute_funcs);
+  }
+
+  common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<onnxruntime::Node*>& fused_nodes, std::string& dll_path) override {
+    return p->IExecutionProvider::Compile(fused_nodes, dll_path);
+  }
+
+  common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs, std::vector<NodeComputeInfo>& node_compute_funcs) override {
+    return p->IExecutionProvider::Compile(fused_nodes_and_graphs, node_compute_funcs);
+  }
 
   // Status
   std::string Status__ToString(const Status* p) override { return p->ToString(); }
@@ -640,20 +651,6 @@ void UnloadSharedProviders() {
   s_library_tensorrt.Unload();
   s_library_shared.Unload();
 }
-
-#if 0
-// This class translates the IExecutionProviderFactory interface to work with the interface providers implement
-struct IExecutionProviderFactory_Translator : IExecutionProviderFactory {
-  IExecutionProviderFactory_Translator(std::shared_ptr<Provider_IExecutionProviderFactory> p) : p_{p} {}
-
-  std::unique_ptr<IExecutionProvider> CreateProvider() override {
-    return p_->CreateProvider();
-    //    return std::unique_ptr<IExecutionProvider>(static_cast<Provider_IExecutionProvider_Router_Impl*>(provider.release()->p_));
-  }
-
-  std::shared_ptr<Provider_IExecutionProviderFactory> p_;
-};
-#endif
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena) {
   if (auto provider = s_library_dnnl.Get())

@@ -73,7 +73,6 @@ void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
   allocator_list_.push_back(allocator);
 }
 
-#if 0
 #if !defined(ORT_MINIMAL_BUILD)
 common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& /*fused_node*/,
                                            std::vector<NodeComputeInfo>& /*node_compute_funcs*/) {
@@ -91,7 +90,6 @@ common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>&
                                            std::vector<NodeComputeInfo>& /*node_compute_funcs*/) {
   return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
 }
-#endif
 #endif
 
 }  // namespace onnxruntime

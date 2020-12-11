@@ -182,8 +182,8 @@ class IExecutionProvider {
   /**
   Given a list of fused_node, return create_state/compute/release_state func for each node.
   */
-  virtual common::Status Compile(const std::vector<onnxruntime::Node*>& /*fused_nodes*/,
-                                 std::vector<NodeComputeInfo>& /*node_compute_funcs*/) { return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED); }
+  virtual common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
+                                 std::vector<NodeComputeInfo>& node_compute_funcs);
 
   /**
   Given a list of fused_node, return a dll that expose functions for each node.
@@ -192,8 +192,8 @@ class IExecutionProvider {
      Compute_${node_name}
      Release_State_${node_name}
   */
-  virtual common::Status Compile(const std::vector<onnxruntime::Node*>& /*fused_nodes*/,
-                                 std::string& /*dll_path*/) { return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED); }
+  virtual common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
+                                 std::string& dll_path);
 
 #endif
 
@@ -213,8 +213,8 @@ class IExecutionProvider {
            Do NOT cache the GraphViewer in FusedNodeAndGraph.filtered_graph in any of the NodeComputeInfo functions
            as it is only valid for the duration of the call to Compile.
   */
-  virtual common::Status Compile(const std::vector<FusedNodeAndGraph>& /*fused_nodes_and_graphs*/,
-                                 std::vector<NodeComputeInfo>& /*node_compute_funcs*/) { return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED); }
+  virtual common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+                                 std::vector<NodeComputeInfo>& node_compute_funcs);
 #endif
 
   // Fusion approach that is suppported

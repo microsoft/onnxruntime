@@ -10,8 +10,6 @@
   void operator=(const TypeName&) = delete; \
   static void operator delete(void*) = delete;
 
-struct Ort_OpenVINO_FactoryParams;
-
 namespace ONNX_NAMESPACE {
 using namespace onnxruntime;
 
@@ -64,13 +62,6 @@ struct Provider_TensorShapeProto_Dimension_Iterator {
   virtual void operator++() = 0;
   virtual const Provider_TensorShapeProto_Dimension& operator*() = 0;
 };
-
-#if 0
-struct Provider_IExecutionProviderFactory {
-  virtual ~Provider_IExecutionProviderFactory() = default;
-  virtual std::unique_ptr<IExecutionProvider> CreateProvider() = 0;
-};
-#endif
 
 class DataTypeImpl;
 using MLDataType = const DataTypeImpl*;
@@ -171,6 +162,9 @@ struct ProviderHost {
   virtual void IExecutionProvider__InsertAllocator(IExecutionProvider* p, AllocatorPtr allocator) = 0;
   virtual std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
                                                                                             const std::vector<const KernelRegistry*>& kernel_registries) = 0;
+  virtual common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<onnxruntime::Node*>& fused_nodes, std::vector<NodeComputeInfo>& node_compute_funcs) = 0;
+  virtual common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<onnxruntime::Node*>& fused_nodes, std::string& dll_path) = 0;
+  virtual common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs, std::vector<NodeComputeInfo>& node_compute_funcs) = 0;
 
   // Status
   virtual std::string Status__ToString(const Status* p) = 0;
