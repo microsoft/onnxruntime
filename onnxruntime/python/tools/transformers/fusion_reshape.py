@@ -8,6 +8,7 @@ from onnx import helper, numpy_helper, TensorProto
 from onnx_model import OnnxModel
 from fusion_base import Fusion
 import numpy as np
+from transformer_utils import TransformerUtils
 
 logger = getLogger(__name__)
 
@@ -123,11 +124,10 @@ class FusionReshape(Fusion):
         new_node = helper.make_node('Constant',
                                     inputs=[],
                                     outputs=[constant_shape_name],
-                                    value=helper.make_tensor(name='const_tensor',
-                                                             data_type=TensorProto.INT64,
-                                                             dims=shape_value.shape,
-                                                             vals=bytes(shape_value),
-                                                             raw=True))
+                                    value=TransformerUtils.make_initializer(name='const_tensor',
+                                                                            data_type=TensorProto.INT64,
+                                                                            dims=shape_value.shape,
+                                                                            vals=shape_value))
         reshape_node.input[1] = constant_shape_name
         reshape_node.name = self.model.create_node_name('Reshape', 'Reshape_Fuse')
         self.nodes_to_remove.extend([concat_node])

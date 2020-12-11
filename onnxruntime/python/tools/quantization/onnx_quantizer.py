@@ -73,6 +73,12 @@ def _get_qrange_for_qType(qType, reduce_range=False):
         raise ValueError('unsupported quantization data type')
 
 
+def make_initializer(name, data_type, dims, vals):
+    data_arry = np.asarray(vals,
+                           dtype=onnx.mapping.TENSOR_TYPE_TO_NP_TYPE[data_type])
+    return onnx.numpy_helper.from_array(data_arry.reshape(dims), name)
+
+
 class ONNXQuantizer:
     def __init__(self, model, per_channel, reduce_range, mode, static, weight_qType, input_qType, quantization_params,
                  nodes_to_quantize, nodes_to_exclude, op_types_to_quantize):
@@ -366,10 +372,10 @@ class ONNXQuantizer:
         else:  # scale and zero point must be scalar
             zero_scale_shape = []
         zero_point_type = weight.qType
-        scale_initializer = onnx.helper.make_tensor(scale_name, onnx_proto.TensorProto.FLOAT, zero_scale_shape,
-                                                    weight.scales)
-        zero_initializer = onnx.helper.make_tensor(zero_point_name, zero_point_type, zero_scale_shape,
-                                                   weight.zero_points)
+        scale_initializer = make_initializer(scale_name, onnx_proto.TensorProto.FLOAT, zero_scale_shape,
+                                             weight.scales)
+        zero_initializer = make_initializer(zero_point_name, zero_point_type, zero_scale_shape,
+                                            weight.zero_points)
 
         self.model.initializer().extend([packed_weight_initializer, scale_initializer, zero_initializer])
 
@@ -453,8 +459,8 @@ class ONNXQuantizer:
                                              [abs_max_name + ":0"], abs_max_name)
         nodes_list.append(abs_max_node)
         #   and divide by (quantize_range/2.0) which will be equal to max(...)*2.0/quantize_range
-        initializer_div = onnx.helper.make_tensor(self.fixed_qrange_int8_name, onnx_proto.TensorProto.FLOAT, [],
-                                                  [_get_qrange_for_qType(qType) / 2.0])
+        initializer_div = make_initializer(self.fixed_qrange_int8_name, onnx_proto.TensorProto.FLOAT, [],
+                                           [_get_qrange_for_qType(qType) / 2.0])
         self.model.add_initializer(initializer_div)
         scale_div_name = input_name + "scale_Div"
         scale_div_node = onnx.helper.make_node("Div", [abs_max_node.output[0], self.fixed_qrange_int8_name],
@@ -462,7 +468,7 @@ class ONNXQuantizer:
         nodes_list.append(scale_div_node)
 
         # Zero point
-        initializer_zp = onnx.helper.make_tensor(self.fixed_zero_zp_name, qType, [], [0])
+        initializer_zp = make_initializer(self.fixed_zero_zp_name, qType, [], [0])
         self.model.add_initializer(initializer_zp)
 
         return input_scale_name, self.fixed_zero_zp_name, [], []
@@ -492,10 +498,10 @@ class ONNXQuantizer:
         nodes_list.append(reduce_max_node)
 
         # Add tensors for quantize range and zero value.
-        initializer_qrange = onnx.helper.make_tensor(self.fixed_qrange_uint8_name, onnx_proto.TensorProto.FLOAT, [],
-                                                     [_get_qrange_for_qType(qType)])
+        initializer_qrange = make_initializer(self.fixed_qrange_uint8_name, onnx_proto.TensorProto.FLOAT, [],
+                                              [_get_qrange_for_qType(qType)])
         self.model.add_initializer(initializer_qrange)
-        initializer_qvalue = onnx.helper.make_tensor(self.fixed_zero_name, onnx_proto.TensorProto.FLOAT, [], [0.0])
+        initializer_qvalue = make_initializer(self.fixed_zero_name, onnx_proto.TensorProto.FLOAT, [], [0.0])
         self.model.add_initializer(initializer_qvalue)
 
         # Compute Scale
@@ -557,9 +563,9 @@ class ONNXQuantizer:
         scale_name = param_name + "_scale"
 
         # Add initializers
-        init_zp = onnx.helper.make_tensor(zero_point_name, zero_point_type, zero_point_shape, zero_point_values)
+        init_zp = make_initializer(zero_point_name, zero_point_type, zero_point_shape, zero_point_values)
         self.model.add_initializer(init_zp)
-        init_scale = onnx.helper.make_tensor(scale_name, onnx_proto.TensorProto.FLOAT, scale_shape, scale_values)
+        init_scale = make_initializer(scale_name, onnx_proto.TensorProto.FLOAT, scale_shape, scale_values)
         self.model.add_initializer(init_scale)
 
         return True, scale_name, zero_point_name, scale_shape, zero_point_shape
@@ -636,7 +642,7 @@ class ONNXQuantizer:
 
         reshape_shape = np.ones((len(weight.dims)), dtype=np.int64)
         reshape_shape[1] = -1
-        init_shape = onnx.helper.make_tensor(reshape_input_shape, onnx_proto.TensorProto.INT64, [len(weight.dims)], reshape_shape)
+        init_shape = make_initializer(reshape_input_shape, onnx_proto.TensorProto.INT64, [len(weight.dims)], reshape_shape)
         self.model.add_initializer(init_shape)
 
         reshape_op_output = node.output[0] + "_reshape"

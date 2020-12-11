@@ -11,6 +11,7 @@ import numpy as np
 from collections import deque
 from onnx import ModelProto, TensorProto, numpy_helper, helper
 from onnx_model_bert import BertOnnxModel
+from transformer_utils import TransformerUtils
 
 logger = logging.getLogger(__name__)
 
@@ -434,7 +435,7 @@ class BertOnnxModelTF(BertOnnxModel):
                 if parent.op_type == 'Reshape':
                     # Temporary work around: we require the skiplayernorm and attention op be fed with 3-d input
                     hidden_size = numpy_helper.to_array(self.get_initializer(parent.input[1]))[1]
-                    tensor = helper.make_tensor(
+                    tensor = TransformerUtils.make_initializer(
                         name=parent.name + "_modified",
                         data_type=TensorProto.INT64,
                         dims=[3],

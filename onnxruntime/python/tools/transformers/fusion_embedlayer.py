@@ -9,6 +9,7 @@ from onnx import helper
 from onnx_model import OnnxModel
 from fusion_base import Fusion
 from fusion_utils import FusionUtils
+from transformer_utils import TransformerUtils
 
 logger = getLogger(__name__)
 
@@ -79,7 +80,7 @@ class FusionEmbedLayerNoMask(Fusion):
                     helper.make_node('ConstantOfShape',
                                      inputs=["input_shape"],
                                      outputs=["zeros_for_input_shape"],
-                                     value=helper.make_tensor("value", onnx.TensorProto.INT32, [1], [1])))
+                                     value=TransformerUtils.make_initializer("value", onnx.TensorProto.INT32, [1], [1])))
                 segment_ids = "zeros_for_input_shape"
 
         return segment_ids, segment_embedding_gather

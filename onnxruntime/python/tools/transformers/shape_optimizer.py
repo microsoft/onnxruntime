@@ -22,6 +22,7 @@ from pathlib import Path
 from onnx import ModelProto, TensorProto, numpy_helper
 import onnxruntime
 from onnx_model import OnnxModel
+from transformer_utils import TransformerUtils
 
 logger = logging.getLogger(__name__)
 
@@ -43,10 +44,10 @@ class BertOnnxModelShapeOptimizer(OnnxModel):
         """
         shape_value = np.asarray(shape, dtype=np.int64)
         constant_shape_name = self.create_node_name('Constant', CONSTANT_SHAPE_NAME_PREFIX)
-        tensor = onnx.helper.make_tensor(name=constant_shape_name,
-                                         data_type=TensorProto.INT64,
-                                         dims=shape_value.shape,
-                                         vals=shape_value)
+        tensor = TransformerUtils.make_initializer(name=constant_shape_name,
+                                                   data_type=TensorProto.INT64,
+                                                   dims=shape_value.shape,
+                                                   vals=shape_value)
         self.add_initializer(tensor)
         return tensor
 
