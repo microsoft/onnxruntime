@@ -39,7 +39,7 @@ class LambOptimizer final : public CudaKernel {
 };
 
 // Implementation can be found in cuda file, optimizers_impl.cu
-// T1's precision should be higher than T2. It's used for 
+// T1's precision should be higher than T2. It's used for
 // large tensors. Small tensors should use multi-tensor version
 // of this.
 template <typename T1, typename T2, typename T3, typename T_GRAD_NORM>
@@ -63,7 +63,7 @@ void LambComputeDirection(
 
 // Implementation can be found in cuda file, optimizers_impl.cu
 // T2's precision should be higher than T1. It's used for
-// large tensors. Small tensors should use multi-tensor version 
+// large tensors. Small tensors should use multi-tensor version
 // of this.
 template <typename T1, typename T2, typename T3, typename T_MIXED_PRECISION_FP>
 void LambUpdate(
@@ -127,10 +127,10 @@ struct LambMultiTensorComputeDirectionFunctor {
 template <typename TIn1, typename TIn2, typename TOut1, typename TOut2, typename TBuf>
 struct LambMultiTensorReductionFunctor {
   void operator()(
-    ChunkGroup<4> chunk_group, 
-    const CudaKernel& kernel, 
-    void *reduction_buffer, 
-    size_t reduction_buffer_size);
+      ChunkGroup<4> chunk_group,
+      const CudaKernel& kernel,
+      void* reduction_buffer,
+      size_t reduction_buffer_size);
 };
 
 // Lamb's reduction mapping [w, d] to [w_norm, d_norm] spans multiples thread blocks
@@ -141,7 +141,7 @@ struct LambMultiTensorReductionFunctor {
 // (see above)
 //
 // The above span of blocks corresponding i-th tensor will be contiguous.
-// To perform an ORDERED reduction across the thread blocks for i-th tensor, 
+// To perform an ORDERED reduction across the thread blocks for i-th tensor,
 //   the following struct is passed for every tensor.
 // It consists of fields:
 //   'leading_block' := lowest block-index corresponding i-th tensor

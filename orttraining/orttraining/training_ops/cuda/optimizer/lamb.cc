@@ -254,7 +254,7 @@ Status launch_lamb_compute_direction(
     typedef LambMultiTensorComputeDirectionFunctor<CudaT2, CudaT3, CudaT4, CudaT_GRAD_NORM> LambStage1;
     LambStage1 lamb_stage1;
 
-    launch_multi_tensor_functor<tensor_count_per_group, LambStage1>( 
+    launch_multi_tensor_functor<tensor_count_per_group, LambStage1>(
         2048 * 32,
         tensor_sizes_in_buckets[key],
         buckets[key],
@@ -544,13 +544,12 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
     max_tensor_size = std::max(max_tensor_size, static_cast<int>(w.Shape().Size()));
   }
 
-  const size_t reduction_buffer_size = [&](){
-
+  const size_t reduction_buffer_size = [&]() {
     // Allocate a buffer in byte for reduction API calls.
     size_t rbs = compute_reduction_buffer_size<CudaT2>(max_tensor_size);
 
     // Enlarge reduction buffer to accomodate multi-tensor reduction kernel as well
-    const int tensor_group_size = 4; // w, d, w_norm, d_norm
+    const int tensor_group_size = 4;  // w, d, w_norm, d_norm
     const int max_blocks = ChunkGroup<tensor_group_size>::max_block_count;
     const size_t multitensor_block_reduce_buffer_size = 2 * max_blocks * sizeof(CudaT2);
     rbs = std::max(rbs, multitensor_block_reduce_buffer_size);
@@ -651,7 +650,6 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
       alpha_, beta_, lambda_, epsilon_,
       do_bias_correction_));
 
-  
   ORT_RETURN_IF_ERROR(launch_lamb_reduction(
       *this,
       group_count,
