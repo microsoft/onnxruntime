@@ -311,8 +311,6 @@ class TrainingSession : public InferenceSession {
    */
   common::Status GetStateTensors(NameMLValMap& state_tensors);
 
-  common::Status PrintWeights();
-
   common::Status GetOptimizerState(std::unordered_map<std::string, NameMLValMap>& opt_state_tensors);
 
   common::Status GetModelState(std::unordered_map<std::string, NameMLValMap>& model_state_tensors, bool include_mixed_precision_weights = false);

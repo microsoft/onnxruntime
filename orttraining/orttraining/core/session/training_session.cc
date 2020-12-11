@@ -264,11 +264,6 @@ Status TrainingSession::ConfigureForTraining(
   ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(trainable_initializers, config.graph_transformer_config,
                                                       config_result, partition_by_row_));
 
-  // std::cout << "trainable_initializers after transformation:" << std::endl;
-  // for (auto& kv : trainable_initializers) {
-  //   std::cout << kv << " " << std::endl;
-  // }
-
   if (IsRootNode(config) && config.model_with_loss_function_path.has_value()) {
     ORT_IGNORE_RETURN_VALUE(Save(
         config.model_with_loss_function_path.value(), SaveOption::NO_RELOAD));
@@ -298,11 +293,6 @@ Status TrainingSession::ConfigureForTraining(
                                  << weight_names_stream.str();
   }
 
-  // std::cout << "weight_names_to_train:" << std::endl;
-  // for (auto& kv : weight_names_to_train) {
-  //   std::cout << kv << " " << std::endl;
-  // }
-
   // Transform for mixed precision on forward graph.
   std::unordered_map<std::string, NodeArg*> fp32_weight_name_to_mixed_precision_node_arg{};
   if (is_mixed_precision_enabled_) {
@@ -311,11 +301,6 @@ Status TrainingSession::ConfigureForTraining(
                                              mixed_precision_config,
                                              fp32_weight_name_to_mixed_precision_node_arg));
   }
-
-  // std::cout << "fp32_weight_name_to_mixed_precision_node_arg:" << std::endl;
-  // for (auto& kv : fp32_weight_name_to_mixed_precision_node_arg) {
-  //   std::cout << kv.first << " " << kv.second << " " << std::endl;
-  // }
 
   ORT_RETURN_IF_ERROR(BuildGradientGraph(
       weight_names_to_train, loss_name, config.gradient_graph_config, *session_logger_));
@@ -360,11 +345,6 @@ Status TrainingSession::ConfigureForTraining(
       ++it;
     }
   }
-
-  // std::cout << "After removing wrong data types, weights_to_train_:" << std::endl;
-  // for (auto& kv : weights_to_train_) {
-  //   std::cout << kv << " " << std::endl;
-  // }
 
   // add optimizer or gradient accumulation
   if (config.optimizer_config.has_value()) {
@@ -549,8 +529,8 @@ static Status BuildOptimizerInternal(Graph& graph,
   ORT_RETURN_IF_ERROR(optimizer_graph_builder->Build(
       graph, weight_to_opt_mapping, opt_graph_outputs));
   // set opt_state_initializer_names from weight_to_opt_mapping
-  for (auto& kv: weight_to_opt_mapping) {
-    for (auto& optimizer_name: kv.second) {
+  for (auto& weight_set: weight_to_opt_mapping) {
+    for (auto& optimizer_name: weight_set.second) {
       opt_state_initializer_names.emplace(optimizer_name);
     }
   }
@@ -909,22 +889,6 @@ Status TrainingSession::Save(const PathString& model_uri, TrainingSession::SaveO
 common::Status TrainingSession::GetStateTensors(NameMLValMap& state_tensors) {
   bool allow_missing = (opt_graph_config_.deepspeed_zero.stage != 0);
   return GetSessionState().GetInitializedTensors(GetStateTensorNames(), allow_missing, state_tensors);
-}
-
-common::Status TrainingSession::PrintWeights() {
-  std::cout << "weights_to_train_=" << std::endl;
-  for (auto& kv : weights_to_train_) {
-    std::cout << kv << " " << std::endl;
-  }
-  std::cout << "opt_state_initializer_names_=" << std::endl;
-  for (auto& kv : opt_state_initializer_names_) {
-    std::cout << kv << " " << std::endl;
-  }
-  std::cout << "mixed_precision_weight_initializer_names_=" << std::endl;
-  for (auto& kv : mixed_precision_weight_initializer_names_) {
-    std::cout << kv << " " << std::endl;
-  }
-  return Status::OK();
 }
 
 common::Status TrainingSession::GetOptimizerState(std::unordered_map<std::string, NameMLValMap>& opt_state_tensors) {
