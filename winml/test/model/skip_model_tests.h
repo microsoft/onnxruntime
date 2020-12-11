@@ -4,22 +4,20 @@
 //Need to file bugs for failing tests and add to reason. Before that happens, default reasons will be used.
 static const std::string disabledTestDefaultReason = "Model not working on CPU and GPU. Please file bug and replace this reason message.";
 static const std::string disabledGpuTestDefaultReason = "Model not working on GPU. Please file bug and replace this reason message.";
-static const std::string disabledx86TestDefaultReason = "Model not working on x86. Please file bug and replace this reason message.";
 
 // {"model test name", "reason for why it is happening and bug filed for it."}
 std::unordered_map<std::string, std::string> disabledTests(
     {// Onnx zoo models
-     {"test_bertsquad_opset8", disabledTestDefaultReason},
-     {"test_bidaf_opset9", "Strings haven't been implemented in model testing yet. Need to file a bug."},
+     {"test_bidaf_opset9", "Bug 31011100: Processing string tensors need to be implemented in WinML model tests https://microsoft.visualstudio.com/OS/_workitems/edit/31011100"},
 
      // Tier 2 models
-     {"coreml_VGG16_ImageNet_opset8", disabledTestDefaultReason},
-     {"coreml_VGG16_ImageNet_opset9", disabledTestDefaultReason},
-     {"coreml_Resnet50_opset9", disabledTestDefaultReason},
-     {"coreml_inceptionv3_opset9", disabledTestDefaultReason},
-     {"coreml_VGG16_ImageNet_opset10", disabledTestDefaultReason},
-     {"coreml_Resnet50_opset10", disabledTestDefaultReason},
-     {"coreml_inceptionv3_opset10", disabledTestDefaultReason},
+     {"coreml_VGG16_ImageNet_opset8", "Bug 31011100: Processing string tensors need to be implemented in WinML model tests https://microsoft.visualstudio.com/OS/_workitems/edit/31011100"},
+     {"coreml_VGG16_ImageNet_opset9", "Bug 31011100: Processing string tensors need to be implemented in WinML model tests https://microsoft.visualstudio.com/OS/_workitems/edit/31011100"},
+     {"coreml_Resnet50_opset9", "Bug 31011100: Processing string tensors need to be implemented in WinML model tests https://microsoft.visualstudio.com/OS/_workitems/edit/31011100"},
+     {"coreml_inceptionv3_opset9", "Bug 31011100: Processing string tensors need to be implemented in WinML model tests https://microsoft.visualstudio.com/OS/_workitems/edit/31011100"},
+     {"coreml_VGG16_ImageNet_opset10", "Bug 31011100: Processing string tensors need to be implemented in WinML model tests https://microsoft.visualstudio.com/OS/_workitems/edit/31011100"},
+     {"coreml_Resnet50_opset10", "Bug 31011100: Processing string tensors need to be implemented in WinML model tests https://microsoft.visualstudio.com/OS/_workitems/edit/31011100"},
+     {"coreml_inceptionv3_opset10", "Bug 31011100: Processing string tensors need to be implemented in WinML model tests https://microsoft.visualstudio.com/OS/_workitems/edit/31011100"},
 
      // Tier 3 models
      {"mxnet_arcface_opset8", disabledTestDefaultReason},
@@ -128,15 +126,11 @@ std::unordered_map<std::string, std::string> disabledTests(
 std::unordered_map<std::string, std::string> disabledGpuTests(
     {
      // Onnx zoo models
-     {"mask_rcnn_opset10", disabledGpuTestDefaultReason},
-     {"faster_rcnn_opset10", disabledGpuTestDefaultReason},
-     {"BERT_Squad_opset10", disabledGpuTestDefaultReason},
+     {"mask_rcnn_opset10", "Bug 31005388: mask_rcnn opset 10 onnx zoo model fails to evaluate on DirectML https://microsoft.visualstudio.com/OS/_workitems/edit/31005388"},
+     {"faster_rcnn_opset10", "Bug 31005511: Failed to extract tensor data from evaluate result of faster_rcnn opset 10 model in DirectML https://microsoft.visualstudio.com/OS/_workitems/edit/31005511"},
 
      // Tier 2 models
-     {"fp16_inception_v1_opset7", disabledGpuTestDefaultReason},
-     {"fp16_test_tiny_yolov2_opset7", "Result of evaluation isn't accurate enough. Please file bug"},
-     {"fp16_coreml_FNS_Candy_opset7", "Result of evaluation isn't accurate enough. Please file bug"},
-     {"fp16_inception_v1_opset8", disabledGpuTestDefaultReason},
-     {"LSTM_Seq_lens_unpacked_opset9", disabledGpuTestDefaultReason},
-     {"mlperf_ssd_mobilenet_300_opset10", disabledGpuTestDefaultReason}
+     {"fp16_test_tiny_yolov2_opset7", "Bug 31005780: Result of fp16_test_tiny_yolov2_opset7 and fp16_coreml_FNS_Candy_opset7 models on DirectML aren't as accurate as on CPU https://microsoft.visualstudio.com/OS/_workitems/edit/31005780"},
+     {"fp16_coreml_FNS_Candy_opset7", "Bug 31005780: Result of fp16_test_tiny_yolov2_opset7 and fp16_coreml_FNS_Candy_opset7 models on DirectML aren't as accurate as on CPU https://microsoft.visualstudio.com/OS/_workitems/edit/31005780"},
+     {"mlperf_ssd_mobilenet_300_opset10", "Bug 31005624: mlperf_ssd_mobilenet_300 opset 10 model fails to evaluate in DirectML https://microsoft.visualstudio.com/OS/_workitems/edit/31005624"}
     });

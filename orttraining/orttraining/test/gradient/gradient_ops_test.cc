@@ -593,6 +593,28 @@ TEST(GradientCheckerTest, ReduceSumGrad) {
   RunReductionTests(op_def_13, true, true);
 }
 
+TEST(GradientCheckerTest, ReduceL2Grad) {
+  // Attribute axes supports negative values from opset 11.
+  OpDef op_def{"ReduceL2", kOnnxDomain, 11};
+
+  RunReductionTests(op_def);
+
+  // Y with 0 elements case.
+  {
+    float max_error;
+    GradientChecker<float, float, float> gradient_checker;
+
+    TensorInfo x_info({4, 2}, true);
+    std::vector<std::vector<float>> x_datas = {{1, 1, 0, 0, 3, 0, 0, 0}};
+
+    TensorInfo y_info({4, 1}, true);
+    std::vector<int64_t> axes{-1};
+    gradient_checker.ComputeGradientError(op_def, {x_info}, {y_info}, &max_error, x_datas,
+                                          {MakeAttribute("axes", axes)});
+    EXPECT_IS_TINY(max_error);
+  }
+}
+
 TEST(GradientCheckerTest, ReduceLogSumExpGrad) {
   // Attribute axes supports negative values from opset 11.
   OpDef op_def{"ReduceLogSumExp", kOnnxDomain, 11};
@@ -2154,6 +2176,41 @@ TEST(GradientCheckerTest, TopKGrad) {
     TensorInfo y1_info({3, 2}, true);
     TensorInfo y2_info({3, 2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
     gradient_checker.ComputeGradientError(op_def, {x_info, k_info}, {y1_info, y2_info}, &max_error, x_datas, {}, true, true);
+    EXPECT_IS_TINY(max_error);
+  }
+}
+
+TEST(GradientCheckerTest, ClipGrad) {
+  float max_error;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"Clip", kOnnxDomain, 12};
+
+  {
+    TensorInfo x_info({2, 2, 2}, true);
+    TensorInfo min_info({}, false);
+    TensorInfo max_info({}, false);
+    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6, 7, 8}, {2.8f}, {7.2f}};
+    TensorInfo y_info({2, 2, 2}, true);
+    gradient_checker.ComputeGradientError(op_def, {x_info, min_info, max_info}, {y_info}, &max_error, x_datas);
+    EXPECT_IS_TINY(max_error);
+  }
+
+  {
+    TensorInfo x_info({2, 2, 2}, true);
+    TensorInfo min_info({}, false);
+    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6, 7, 8}, {3.8f}};
+    TensorInfo y_info({2, 2, 2}, true);
+    gradient_checker.ComputeGradientError(op_def, {x_info, min_info}, {y_info}, &max_error, x_datas);
+    EXPECT_IS_TINY(max_error);
+  }
+
+  // Should have a case with Op(x, null, max), but current ComputeGradientError doesn't support doing this.
+
+  {
+    TensorInfo x_info({2, 2, 2}, true);
+    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6, 7, 8}};
+    TensorInfo y_info({2, 2, 2}, true);
+    gradient_checker.ComputeGradientError(op_def, {x_info}, {y_info}, &max_error, x_datas);
     EXPECT_IS_TINY(max_error);
   }
 }
