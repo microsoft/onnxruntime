@@ -68,7 +68,7 @@ class NhwcTransformerImpl {
 // Remove node's output edge starting from specified index, return number of edges removed.
 // If output at specified index for the node is graph output, inc the count returned.
 size_t NhwcTransformerImpl::RemoveOutputEdge(Node& node, size_t output_index) {
-  size_t output_edges_count = graph_utils::RemoveNodeOutputEdges(graph_, node, output_index);
+  size_t output_edges_count = graph_utils::RemoveNodeOutputEdges(graph_, node, static_cast<int>(output_index));
 
   // Bias the edge count to if the node produces a graph output at output_index.
   auto node_outputs_for_graph = graph_.GetNodeOutputsInGraphOutputs(node);
