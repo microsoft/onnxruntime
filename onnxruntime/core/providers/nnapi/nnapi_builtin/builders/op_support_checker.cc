@@ -1295,6 +1295,49 @@ bool FlattenOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* i
 
 #pragma endregion
 
+#pragma region op_minmax
+
+class MinMaxOpSupportChecker : public BaseOpSupportChecker {
+ public:
+  static void CreateSharedOpSupportChecker(
+      const std::string& op_type, OpSupportCheckerRegistrations& op_registrations);
+
+ private:
+  int32_t GetMinSupportedSdkVer(const Node& /* node */, const OpSupportCheckParams& /* params */) const override {
+    return 29;
+  }
+
+  // Min/Max opset 5- uses consumed_inputs attribute which is not supported for now
+  int GetMinSupportedOpSet(const Node& /* node */) const override { return 6; }
+
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+                         const OpSupportCheckParams& params) const override;
+};
+
+/* static */ void MinMaxOpSupportChecker::CreateSharedOpSupportChecker(
+    const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
+  CreateSharedOpSupportCheckerImpl<MinMaxOpSupportChecker>(
+      op_type, op_registrations,
+      {
+          "Min",
+          "Max",
+      });
+}
+
+bool MinMaxOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+                                               const OpSupportCheckParams& /* params */) const {
+  // TODO support 2+ inputs for Min/Max op
+  if (node.InputDefs().size() != 2) {
+    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType() << "] only supports 2 inputs, "
+                          << "actual input number, " << node.InputDefs().size();
+    return false;
+  }
+
+  return true;
+}
+
+#pragma endregion
+
 #pragma region CreateGetOpSupportCheckers
 
 // The reason we use macros to create OpBuilders is for easy exclusion in build if certain op(s) are not used
@@ -1373,6 +1416,10 @@ static OpSupportCheckerRegistrations CreateOpSupportCheckerRegistrations() {
   NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("Resize", ResizeOpSupportChecker);
   NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("Flatten", FlattenOpSupportChecker);
 
+  {
+    NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Min", MinMaxOpSupportChecker);
+    NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Max", MinMaxOpSupportChecker);
+  }
   return op_registrations;
 }
 

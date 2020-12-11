@@ -145,6 +145,35 @@ Status GetNCHWInput(ModelBuilder& model_builder, const Node& node, size_t input_
   return Status::OK();
 }
 
+// Transpose layouts if necessary for element wise operators with 2 inputs
+// and return the layout type of output tensor
+// If both inputs have same layout, the output will have the same layout
+// Otherwise we will need transpose the nhwc input back to nchw, and output will be nchw
+Status TransposeBinaryOpInputLayout(ModelBuilder& model_builder, const Node& node,
+                                    size_t input1_idx, size_t input2_idx,
+                                    std::string& input1, std::string& input2,
+                                    bool& output_is_nhwc) ORT_MUST_USE_RESULT;
+Status TransposeBinaryOpInputLayout(ModelBuilder& model_builder, const Node& node,
+                                    size_t input1_idx, size_t input2_idx,
+                                    std::string& input1, std::string& input2,
+                                    bool& output_is_nhwc) {
+  bool input1_is_nhwc = model_builder.IsOperandNHWC(input1);
+  bool input2_is_nhwc = model_builder.IsOperandNHWC(input2);
+  output_is_nhwc = false;
+
+  if (input1_is_nhwc == input2_is_nhwc) {
+    output_is_nhwc = input1_is_nhwc;
+  } else if (input1_is_nhwc) {
+    // need transpose input1 back to nchw
+    ORT_RETURN_IF_ERROR(GetNCHWInput(model_builder, node, input1_idx, input1));
+  } else {  // input2_is_nhwc
+    // need transpose input2 back to nchw
+    ORT_RETURN_IF_ERROR(GetNCHWInput(model_builder, node, input2_idx, input2));
+  }
+
+  return Status::OK();
+}
+
 static Status AddBinaryOperator(int32_t op_type,
                                 ModelBuilder& model_builder,
                                 const std::string& input1,
@@ -679,19 +708,9 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   std::string input2 = input_defs[b_idx]->Name();
   const auto& output = node.OutputDefs()[0]->Name();
 
-  bool input1_is_nhwc = model_builder.IsOperandNHWC(input1);
-  bool input2_is_nhwc = model_builder.IsOperandNHWC(input2);
   bool output_is_nhwc = false;
-
-  if (input1_is_nhwc == input2_is_nhwc) {
-    output_is_nhwc = input1_is_nhwc;
-  } else if (input1_is_nhwc) {
-    // need transpose input1 back to nchw
-    ORT_RETURN_IF_ERROR(GetNCHWInput(model_builder, node, a_idx, input1));
-  } else {  // input2_is_nhwc
-    // need transpose input2 back to nchw
-    ORT_RETURN_IF_ERROR(GetNCHWInput(model_builder, node, b_idx, input2));
-  }
+  ORT_RETURN_IF_ERROR(
+      TransposeBinaryOpInputLayout(model_builder, node, a_idx, b_idx, input1, input2, output_is_nhwc));
 
   float a_scale = 0.0f,
         b_scale = 0.0f,
@@ -2221,7 +2240,75 @@ Status FlattenOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   return ReshapeOpBuilder::AddReshapeOperator(model_builder, node, input, shape);
 }
 
-#pragma endregion op_reshape
+#pragma endregion
+
+#pragma region op_minmax
+
+class MinMaxOpBuilder : public BaseOpBuilder {
+ public:
+  static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+  static Status AddMinMaxOperator(ModelBuilder& model_builder, const Node& node,
+                                  const std::string& input1, const std::string& input2,
+                                  bool output_is_nhwc) ORT_MUST_USE_RESULT;
+
+ private:
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+};
+
+/* static */ void MinMaxOpBuilder::CreateSharedOpBuilder(
+    const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  CreateSharedOpBuilderImpl<MinMaxOpBuilder>(
+      op_type, op_registrations,
+      {
+          "Min",
+          "Max",
+      });
+}
+
+/* static */ Status MinMaxOpBuilder::AddMinMaxOperator(ModelBuilder& model_builder, const Node& node,
+                                                       const std::string& input1, const std::string& input2,
+                                                       bool output_is_nhwc) {
+  auto& shaper(model_builder.GetShaper());
+  const auto& operand_indices(model_builder.GetOperandIndices());
+  const auto& operand_types(model_builder.GetOperandTypes());
+
+  const auto& output = node.OutputDefs()[0]->Name();
+
+  const auto& op_type(node.OpType());
+  int32_t op_code;
+  if (op_type == "Min")
+    op_code = ANEURALNETWORKS_MINIMUM;
+  else if (op_type == "Max")
+    op_code = ANEURALNETWORKS_MAXIMUM;
+  else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "MinMaxOpBuilder, unknown op: ", op_type);
+  }
+
+  std::vector<uint32_t> input_indices;
+  input_indices.push_back(operand_indices.at(input1));  // input 1
+  input_indices.push_back(operand_indices.at(input2));  // input 2
+  ORT_RETURN_IF_ERROR(shaper.Eltwise(input1, input2, output));
+  const OperandType output_operand_type(operand_types.at(input1).type, shaper[output]);
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices,
+                                                 {output}, {output_operand_type}, {output_is_nhwc}));
+
+  return Status::OK();
+}
+
+Status MinMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+  const auto input_defs(node.InputDefs());
+  std::string input1 = input_defs[0]->Name();
+  std::string input2 = input_defs[1]->Name();
+  bool output_is_nhwc = false;
+  ORT_RETURN_IF_ERROR(TransposeBinaryOpInputLayout(model_builder, node,
+                                                   0 /* input1_idx */,
+                                                   1 /* input2_idx */,
+                                                   input1, input2, output_is_nhwc));
+
+  return AddMinMaxOperator(model_builder, node, input1, input2, output_is_nhwc);
+}
+
+#pragma endregion
 
 #pragma region CreateGetOpBuilders
 
@@ -2296,6 +2383,11 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Clip", ClipOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Resize", ResizeOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Flatten", FlattenOpBuilder);
+
+  {
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Min", MinMaxOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Max", MinMaxOpBuilder);
+  }
 
   return op_registrations;
 }
