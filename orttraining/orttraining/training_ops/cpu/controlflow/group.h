@@ -15,8 +15,6 @@ class Group final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 };
 
-constexpr int passthrough_input_count_limit = 10000;  // limit of of pair count
-
 class PassThrough : public OpKernel {
  public:
   PassThrough(const OpKernelInfo& info) : OpKernel(info) {}
