@@ -65,7 +65,7 @@ class KernelDef {
     return alias_map_;
   }
 
-  const nonstd::optional<std::pair<int, int>>& VariadicAlias() const {
+  const optional<std::pair<int, int>>& VariadicAlias() const {
     return variadic_alias_offsets_;
   }
 
@@ -138,7 +138,7 @@ class KernelDef {
 
   // This variable stores <input_offset, output_offset> for the variadic alias mapping
   // output 'i + output_offset' is an alias of input 'i + input_offset' for all i >= 0
-  nonstd::optional<std::pair<int, int>> variadic_alias_offsets_;
+  optional<std::pair<int, int>> variadic_alias_offsets_;
 
   // Require input tensors to be allocated contiguously.
   bool allocate_inputs_contiguously_ = false;
