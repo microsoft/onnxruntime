@@ -587,6 +587,9 @@ static bool IsTypeSupported(const Provider_NodeArg* node_arg, bool is_initialize
         return false;
       }
     } else if (device_id == "GPU") {
+      auto prec_str = openvino_ep::BackendManager::GetGlobalContext().precision_str;
+      if (prec_str == "FP32" && dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16)
+        return false;
       if (supported_types_gpu.find(dtype) != supported_types_gpu.end())
         return true;
       else {
