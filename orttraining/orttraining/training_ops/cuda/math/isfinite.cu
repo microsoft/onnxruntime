@@ -3,7 +3,7 @@
 
 #include <cuda_fp16.h>
 #include "core/providers/cuda/cu_inc/common.cuh"
-#include "isfinite.cuh"
+#include "orttraining/training_ops/cuda/math/isfinite.cuh"
 
 namespace onnxruntime {
 namespace cuda {
@@ -54,7 +54,6 @@ __global__ void IsAllFiniteMultiTensorImpl(ChunkGroup<1> chunks, bool* output) {
 
 template <typename T>
 void IsAllFiniteFunctor<T>::operator()(ChunkGroup<1> chunks, bool* output) {
-  // One thread loads PARALLEL_LOADS elements.
   const int block_count = chunks.chunk_count;
   const int thread_count = ChunkGroup<1>::thread_count_per_block;
   IsAllFiniteMultiTensorImpl<T><<<block_count, thread_count, 0>>>(chunks, output);

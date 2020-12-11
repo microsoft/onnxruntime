@@ -8,6 +8,12 @@
 namespace onnxruntime {
 namespace test {
 
+#if USE_CUDA
+constexpr const char* kGpuExecutionProvider = kCudaExecutionProvider;
+#elif USE_ROCM
+constexpr const char* kGpuExecutionProvider = kRocmExecutionProvider;
+#endif
+
 constexpr auto k_epsilon_default = 1e-5f;
 constexpr auto k_random_data_min = -10.0f;
 constexpr auto k_random_data_max = 10.0f;
@@ -84,7 +90,7 @@ static void TestLayerNormGrad(
     test.AddOutput("bias_grad_data", m_dims, bias_grad_data);
   }
 
-  test.CompareWithCPU(kCudaExecutionProvider, error_tolerance);
+  test.CompareWithCPU(kGpuExecutionProvider, error_tolerance);
 }
 
 TEST(CudaKernelTest, LayerNormGrad_SmallSizeTensor) {
@@ -100,7 +106,7 @@ TEST(CudaKernelTest, LayerNormGrad_SmallSizeTensor_IntermediateAxis) {
 
 TEST(CudaKernelTest, LayerNormGrad_MidSizeTensor) {
   const std::vector<int64_t> X_dims{8, 80, 768};
-  TestLayerNormGrad(X_dims, LAYER_NORM_GRAD_OP);
+  TestLayerNormGrad(X_dims, LAYER_NORM_GRAD_OP, 1, 5e-3);
 }
 
 TEST(CudaKernelTest, LayerNormGrad_LargeSizeTensor) {
@@ -133,7 +139,7 @@ static void TestInvertibleLayerNormGrad(
     const std::vector<int64_t>& x_dims,
     int64_t axis = -1,
     double error_tolerance = 1e-4,
-    bool test_fp16=false) {
+    bool test_fp16 = false) {
   const std::vector<int64_t>& n_x_m_dims = x_dims;
   std::vector<int64_t> n_dims, m_dims;
   ASSERT_TRUE(SplitDims(n_x_m_dims, axis, n_dims, m_dims).IsOK());
@@ -219,9 +225,9 @@ static void TestInvertibleLayerNormGrad(
   test.AddInput<float>("inv_std_var", n_dims, inv_std_var_data);
 
   if (test_fp16) {
-    test.CompareWithCPU(kCudaExecutionProvider, error_tolerance, error_tolerance);
+    test.CompareWithCPU(kGpuExecutionProvider, error_tolerance, error_tolerance);
   } else {
-    test.CompareWithCPU(kCudaExecutionProvider, error_tolerance);
+    test.CompareWithCPU(kGpuExecutionProvider, error_tolerance);
   }
 }
 
@@ -238,7 +244,7 @@ TEST(CudaKernelTest, InvertibleLayerNormGrad_SmallSizeTensor_IntermediateAxis) {
 
 TEST(CudaKernelTest, InvertibleLayerNormGrad_MidSizeTensor) {
   const std::vector<int64_t> X_dims{8, 80, 768};
-  TestInvertibleLayerNormGrad(X_dims);
+  TestInvertibleLayerNormGrad(X_dims, 1, 5e-3);
 }
 
 TEST(CudaKernelTest, InvertibleLayerNormGrad_LargeSizeTensor) {

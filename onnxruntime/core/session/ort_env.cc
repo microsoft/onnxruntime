@@ -111,7 +111,13 @@ void OrtEnv::SetLoggingManager(std::unique_ptr<onnxruntime::logging::LoggingMana
   value_->SetLoggingManager(std::move(logging_manager));
 }
 
-onnxruntime::Status OrtEnv::RegisterAllocator(AllocatorPtr allocator) {
+onnxruntime::common::Status OrtEnv::RegisterAllocator(AllocatorPtr allocator) {
   auto status = value_->RegisterAllocator(allocator);
+  return status;
+}
+
+onnxruntime::common::Status OrtEnv::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info,
+                                                               const OrtArenaCfg* arena_cfg) {
+  auto status = value_->CreateAndRegisterAllocator(mem_info, arena_cfg);
   return status;
 }
