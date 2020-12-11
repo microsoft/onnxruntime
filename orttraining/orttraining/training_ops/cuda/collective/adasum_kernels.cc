@@ -22,7 +22,7 @@ Status AdasumAllReduce::ComputeInternal(OpKernelContext* context) const {
 
   int64_t total_recv_buffer_len = 0;
 
-  contrib::ComputeTensorSizeAndBufferLength(context,
+  ComputeTensorSizeAndBufferLength(context,
                                    tensor_element_counts,
                                    tensor_offsets,
                                    tensor_sizes,
