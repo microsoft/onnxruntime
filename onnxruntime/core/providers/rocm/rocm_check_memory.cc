@@ -6,7 +6,7 @@
 
 namespace onnxruntime {
 void CheckIfMemoryOnCurrentGpuDevice(const void* ptr) {
-  hipPointerAttributes_t attrs;
+  hipPointerAttribute_t attrs;
   HIP_CALL(hipPointerGetAttributes(&attrs, ptr));
   int current_device;
   HIP_CALL(hipGetDevice(&current_device));
