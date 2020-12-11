@@ -169,9 +169,7 @@ struct ConvTransposeAttributes : public ConvAttributes {
  private:
   int64_t ComputeTotalPad(int64_t in_size, int64_t stride, int64_t adj,
                           int64_t kernel, int64_t dilation, int64_t out_size) const {
-    int64_t total_pad =
-        std::max<int64_t>(0, (in_size - 1) * stride + adj + (kernel - 1) * dilation + 1 - out_size);
-    return total_pad;
+    return std::max<int64_t>(0, (in_size - 1) * stride + adj + (kernel - 1) * dilation + 1 - out_size);
   }
 
   void DistributePadding(AutoPadType pad_type, const int64_t& total_pad,
@@ -202,8 +200,8 @@ struct ConvTransposeAttributes : public ConvAttributes {
     if (*out_size != -1) {
       ORT_ENFORCE(*out_size >= 0);
       // total pad
-      int64_t total_pad = ComputeTotalPad(in_size, stride, adj,
-                                          kernel, dilation, *out_size);
+      auto total_pad = ComputeTotalPad(in_size, stride, adj,
+                                       kernel, dilation, *out_size);
       DistributePadding(pad_type, total_pad, *pad_head, *pad_tail);
       return;
     }
@@ -213,8 +211,8 @@ struct ConvTransposeAttributes : public ConvAttributes {
     // Compute padding if the auto_pad attribute is SAME_UPPER/SAME_LOWER
     if (pad_type == AutoPadType::SAME_UPPER || pad_type == AutoPadType::SAME_LOWER) {
       // total pad
-      int64_t total_pad = ComputeTotalPad(in_size, stride, adj,
-                                          kernel, dilation, in_size);
+      auto total_pad = ComputeTotalPad(in_size, stride, adj,
+                                       kernel, dilation, in_size);
       DistributePadding(pad_type, total_pad, *pad_head, *pad_tail);
     }
 

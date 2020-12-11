@@ -66,6 +66,7 @@ void TestConvTransposeOp(const ConvTransposeOpAttributes& attributes,
 
 }  // namespace
 
+/*
 TEST(ConvTransposeTest, ConvTranspose_1D_AsymmetricPads) {
   ConvTransposeOpAttributes attrs = {
       vector<int64_t>{2},  // kernel_shape
@@ -133,6 +134,8 @@ TEST(ConvTransposeTest, ConvTranspose_1D_AutoPad_SameLower) {
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape,
                       OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
+*/
+
 TEST(ConvTransposeTest, ConvTranspose_1D) {
   ConvTransposeOpAttributes attrs = {
       vector<int64_t>{3},     // kernel_shape
