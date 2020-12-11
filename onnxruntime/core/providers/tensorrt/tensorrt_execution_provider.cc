@@ -259,6 +259,11 @@ bool SetDynamicRange(nvinfer1::INetworkDefinition& network, std::unordered_map<s
   }
   return true;
 }
+
+int GetSubgraphKernelIndex() {
+  static int subgraph_kernels_index = 0;
+  return subgraph_kernels_index++;
+}
 }  // namespace
 
 namespace google {
@@ -605,7 +610,12 @@ std::unique_ptr<Provider_IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph
   // Assign inputs and outputs to subgraph's meta_def
   auto meta_def = Provider_IndexedSubGraph_MetaDef::Create();
   const std::string graph_type = graph.IsSubgraph() ? "subgraph" : "graph";
-  meta_def->name() = "TRTKernel_" + graph_type + "_" + graph.Name() + "_" + std::to_string(kernels_index++);
+  if ("subgraph" == graph_type) {
+    meta_def->name() = "TRTKernel_" + graph_type + "_" + graph.Name() + "_" + std::to_string(GetSubgraphKernelIndex());
+  } else {
+    meta_def->name() = "TRTKernel_" + graph_type + "_" + graph.Name() + "_" + std::to_string(kernels_index++);
+  }
+
   meta_def->domain() = kMSDomain;
 
   for (const auto& input : inputs) {
