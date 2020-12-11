@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "cuda_check_memory.h"
-#include "cuda_common.h"
+#include "core/providers/cuda/cuda_check_memory.h"
+#include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
 void CheckIfMemoryOnCurrentGpuDevice(const void* ptr) {
