@@ -1,8 +1,10 @@
 jobs:
 - job: Android_CI
+  
   pool:
     vmImage: 'macOS-10.15'
   timeoutInMinutes: 120
+
   steps:
     # Onnx has no 3.9 python package available yet, need to use python 3.8 to avoid build onnx package
     # pythonVersion can be updated in Azure pipeline settings
@@ -16,13 +18,15 @@ jobs:
     - script: python3 tools/ci_build/build.py --android --build_dir build --android_sdk_path $ANDROID_HOME --android_ndk_path $ANDROID_HOME/ndk-bundle --android_abi=x86_64 --android_api=29 --skip_submodule_sync --parallel --cmake_generator=Ninja --build_java
       displayName: CPU EP, Build and Test on Android Emulator
     - script: /bin/bash tools/ci_build/github/android/run_nnapi_code_coverage.sh $(pwd)
-      displayName: NNAPI EP, Build, Test and Get Code Coverage on Android Emulator
+      displayName: NNAPI EP, Build, Test and Get Code Coverage on Android Emulator	
     - task: CmdLine@1
       displayName: 'Install mysql-connector-python conda module'
       inputs:
         filename: '$(Build.BinariesDirectory)\packages\python\scripts\conda.exe'
         arguments: 'install -q --insecure -y mysql-connector-python'
       timeoutInMinutes: 10
+
+    - template: templates/set-version-number-variables-step.yml
 
     - task: PythonScript@0
       displayName: Post Code Coverage To Dash Board
@@ -34,8 +38,6 @@ jobs:
           --report_summary `awk '/TOTAL/ {printf("{\"count\":%d,\"covered\":%d,\"percent\":\"%s\"}", $2, $3, $4);}' "$(Build.BinariesDirectory)/Debug/coverage_report.txt"`
           --build_config '{\"os\": \"android\", \"arch\":\"x86_64\", \"config\":\"nnapi\"}'
         workingFolder: "$(Build.BinariesDirectory)"
-      continueOnError: ${{parameters.ContinueOnError}}
-      condition: ${{parameters.PostToDashBoard}}
       env:
         DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)
 

@@ -22,7 +22,15 @@ def parse_arguments():
     parser.add_argument(
         "--report_file", help="Path to the local cobertura XML report")
     parser.add_argument("--commit_hash", help="Full Git commit hash")
+    parser.add_argument("--report_summary", help="String specifying coverage information in JSON format")
+    parser.add_argument("--build_config", help="Build configuration, OS, Arch and config, in JSON format")
     return parser.parse_args()
+
+
+def parse_report_summary(json_string):
+    data = json.loads(json_string)
+    data['coverage'] = float(data['coverage'].strip('%'))/100
+    return data
 
 
 def parse_xml_report(report_file):
@@ -37,7 +45,7 @@ def parse_xml_report(report_file):
     return result
 
 
-def write_to_db(coverage_data, args):
+def write_to_db(coverage_data, build_config, args):
     # connect to database
 
     cnx = mysql.connector.connect(
@@ -58,21 +66,23 @@ def write_to_db(coverage_data, args):
 
         # insert current record
         insert_query = ('INSERT INTO onnxruntime.test_coverage '
-                        '(UploadTime, CommitId, Coverage, LinesCovered, TotalLines, ReportURL) '
-                        'VALUES (Now(), "%s", %f, %d, %d, "%s") '
+                        '(UploadTime, CommitId, Coverage, LinesCovered, TotalLines, OS, Arch, Build Config, ReportURL) '
+                        'VALUES (Now(), "%s", %f, %d, %d, "%s", "%s", "%s", "%s") '
                         'ON DUPLICATE KEY UPDATE '
                         'UploadTime=Now(), Coverage=%f, LinesCovered=%d, TotalLines=%d, ReportURL="%s";'
                         ) % (args.commit_hash,
                              coverage_data['coverage'],
                              coverage_data['lines_covered'],
                              coverage_data['lines_valid'],
+                             build_config.get('os', 'win'),
+                             build_config.get('arch', 'x64'),
+                             build_config.get('buld_config', 'default'),
                              args.report_url,
                              coverage_data['coverage'],
                              coverage_data['lines_covered'],
                              coverage_data['lines_valid'],
                              args.report_url
                              )
-
         cursor.execute(insert_query)
         cnx.commit()
 
@@ -91,8 +101,15 @@ def write_to_db(coverage_data, args):
 if __name__ == "__main__":
     try:
         args = parse_arguments()
-        coverage_data = parse_xml_report(args.report_file)
-        write_to_db(coverage_data, args)
+        if args.report_file:
+            coverage_data = parse_xml_report(args.report_file)
+        elif args.report_summary:
+            coverage_data = parse_report_summary(args.report_summary)
+        else:
+            raise "No coverage data to post to the database"
+
+        build_config = json.loads(args.build_config) if args.build_config else {}
+        write_to_db(coverage_data, build_config, args)
     except BaseException as e:
         print(str(e))
         sys.exit(1)
