@@ -73,7 +73,8 @@ TEST(ConvTransposeTest, ConvTranspose_1D) {
       vector<int64_t>{0, 0},  // pads
       vector<int64_t>{1},     // strides
       vector<int64_t>{1},     // dilations
-      1                       // group
+      1,                      // group
+      "NOTSET"                // auto_pad
   };
   vector<float> X = {0.0f, 1.0f, 2.0f};
   vector<int64_t> X_shape = {1, 1, 3};
@@ -93,7 +94,8 @@ TEST(ConvTransposeTest, ConvTranspose_2D) {
       vector<int64_t>{1, 1, 1, 1},  // pads
       vector<int64_t>{2, 2},        // strides
       vector<int64_t>{1, 1},        // dilations
-      1                             // group
+      1,                            // group
+      "NOTSET"                      // auto_pad
   };
   vector<float> X = {0.16857791f, -0.15161794f, 0.08540368f,
                      0.1820628f, -0.21746576f, 0.08245695f,
@@ -121,7 +123,8 @@ TEST(ConvTransposeTest, ConvTranspose_2D_Bias_1) {
       vector<int64_t>{1, 1, 1, 1},  // pads
       vector<int64_t>{1, 1},        // strides
       vector<int64_t>{1, 1},        // dilations
-      1                             // group
+      1,                            // group
+      "NOTSET"                      // auto_pad
   };
   vector<float> X = {0.22572887f, -0.07105902f, -0.40399021f, -0.14461157f, 0.05367219f,
                      -0.08353302f, 0.41023391f, 0.42745841f, -0.3769345f, -0.42057109f,
@@ -152,7 +155,8 @@ TEST(ConvTransposeTest, ConvTranspose_2D_Bias_2) {
       vector<int64_t>{0, 0, 0, 0},  // pads
       vector<int64_t>{1, 1},        // strides
       vector<int64_t>{1, 1},        // dilations
-      1                             // group
+      1,                            // group
+      "NOTSET"                      // auto_pad
   };
   vector<float> X = {0.01270282f, 0.09657472f, -0.36909008f, -0.08085269f,
                      0.0242992f, 0.40873009f, -0.46927932f, 0.34412372f,
@@ -200,7 +204,8 @@ TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_1) {
       vector<int64_t>{0, 0, 0, 0},  // pads
       vector<int64_t>{1, 1},        // strides
       vector<int64_t>{1, 1},        // dilations
-      1                             // group
+      1,                            // group
+      "NOTSET"                      // auto_pad
   };
   int image_size = 4 * 4;
   int input_channels = 3;
@@ -240,7 +245,8 @@ TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_2) {
       vector<int64_t>{0, 0, 0, 0},   // pads
       vector<int64_t>{1, 1},         // strides
       vector<int64_t>{1, 1},         // dilations
-      1                              // group
+      1,                             // group
+      "NOTSET"                       // auto_pad
   };
   vector<float> X = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
   vector<int64_t> X_shape = {1, 1, 1, 10};
@@ -261,7 +267,8 @@ TEST(ConvTransposeTest, ConvTranspose_2D_OutputShapeWithBatchSize) {
       vector<int64_t>{0, 0, 0, 0},   // pads
       vector<int64_t>{1, 1},         // strides
       vector<int64_t>{1, 1},         // dilations
-      1                              // group
+      1,                             // group
+      "NOTSET"                       // auto_pad
   };
   vector<float> X = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f,
                      10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f, 17.0f, 18.0f, 19.0f};
@@ -284,7 +291,8 @@ TEST(ConvTransposeTest, ConvTranspose_InvalidKernelShape) {
       vector<int64_t>{0, 0, 0, 0},   // pads
       vector<int64_t>{1, 1},         // strides
       vector<int64_t>{1, 1},         // dilations
-      1                              // group
+      1,                             // group
+      "NOTSET"                       // auto_pad
   };
   vector<float> X = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f,
                      10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f, 17.0f, 18.0f, 19.0f};
@@ -309,7 +317,8 @@ TEST(ConvTransposeTest, ConvTranspose_onnx) {
       vector<int64_t>{0, 0, 0, 0},  // pads
       vector<int64_t>{1, 1},        // strides
       vector<int64_t>{1, 1},        // dilations
-      1                             // group
+      1,                            // group
+      "NOTSET"                      // auto_pad
   };
   vector<float> X = {0., 1., 2., 3., 4., 5., 6., 7., 8.};
   vector<int64_t> X_shape = {1, 1, 3, 3};
@@ -339,7 +348,8 @@ TEST(ConvTransposeTest, ConvTranspose_onnx2) {
       vector<int64_t>{0, 0, 0, 0},  // pads
       vector<int64_t>{1, 1},        // strides
       vector<int64_t>{1, 1},        // dilations
-      1                             // group
+      1,                            // group
+      "NOTSET"                      // auto_pad
   };
   vector<float> X = {0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15., 16., 17.};
   vector<int64_t> X_shape = {1, 2, 3, 3};
@@ -371,7 +381,8 @@ TEST(ConvTransposeTest, ConvTranspose_onnx_group) {
       vector<int64_t>{0, 0, 0, 0},  // pads
       vector<int64_t>{1, 1},        // strides
       vector<int64_t>{1, 1},        // dilations
-      4                             // group
+      4,                            // group
+      "NOTSET"                      // auto_pad
   };
   vector<float> X = {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f, 10.f, 11.f, 12.f, 13.f, 14.f, 15.f};
   vector<int64_t> X_shape = {1, 16, 1, 1};
@@ -390,7 +401,8 @@ TEST(ConvTransposeTest, ConvTranspose_2D_Dilation_1) {
       vector<int64_t>{0, 0, 0, 0},
       vector<int64_t>{1, 1},
       {2, 2},
-      1};
+      1,
+      "NOTSET"};
 
   vector<float> X = {11.0f, 12.0f, 21.0f, 22.0f};
   vector<int64_t> X_shape = {1, 1, 2, 2};
@@ -412,7 +424,8 @@ TEST(ConvTransposeTest, ConvTranspose_2D_Dilation_2) {
       vector<int64_t>{0, 0, 0, 0},
       vector<int64_t>{1, 1},
       {3, 3},
-      1};
+      1,
+      "NOTSET"};
 
   vector<float> X = {11.0f, 12.0f, 21.0f, 22.0f};
   vector<int64_t> X_shape = {1, 1, 2, 2};
@@ -435,7 +448,8 @@ TEST(ConvTransposeTest, ConvTranspose_2D_Dilation_3) {
       vector<int64_t>{0, 0, 0, 0},
       vector<int64_t>{1, 1},
       {2, 2},
-      1};
+      1,
+      "NOTSET"};
 
   vector<float> X = {3.0f, 8.0f, 1.0f, 9.0f, 5.0f, 7.0f, 3.0f, 2.0f, 6.0f};
   vector<int64_t> X_shape = {1, 1, 3, 3};
@@ -459,7 +473,8 @@ TEST(ConvTransposeTest, ConvTranspose_2D_Dilation_4) {
       vector<int64_t>{0, 0, 0, 0},
       vector<int64_t>{1, 1},
       {3, 3},
-      1};
+      1,
+      "NOTSET"};
 
   vector<float> X = {3.0f, 8.0f, 1.0f, 9.0f, 5.0f, 7.0f, 3.0f, 2.0f, 6.0f};
   vector<int64_t> X_shape = {1, 1, 3, 3};
@@ -484,7 +499,8 @@ TEST(ConvTransposeTest, ConvTranspose_2D_Dilation_Group_1) {
       vector<int64_t>{0, 0, 0, 0},
       vector<int64_t>{1, 1},
       {2, 2},
-      2};
+      2,
+      "NOTSET"};
 
   vector<float> X = {3.0f, 8.0f, 1.0f, 9.0f, 5.0f, 7.0f, 3.0f, 2.0f, 3.0f, 7.0f, 9.0f, 1.0f, 5.0f, 2.0f, 3.0f, 9.0f, 0.0f, 2.0f};
   vector<int64_t> X_shape = {1, 2, 3, 3};
@@ -513,7 +529,8 @@ TEST(ConvTransposeTest, ConvTranspose_DefaultStridesAndDilations) {
       vector<int64_t>{0, 0, 0, 0},  // pads
       vector<int64_t>{},            // strides
       vector<int64_t>{},            // dilations
-      1                             // group
+      1,                            // group
+      "NOTSET"                      // auto_pad
   };
   vector<float> X = {0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15., 16., 17.};
   vector<int64_t> X_shape = {1, 2, 3, 3};
@@ -545,7 +562,8 @@ TEST(ConvTransposeTest, ConvTranspose_2D_NonDefaultStridesAndDilations) {
       vector<int64_t>{0, 0, 0, 0},  // pads
       vector<int64_t>{1, 2},        // strides
       vector<int64_t>{1, 3},        // dilations
-      1                             // group
+      1,                            // group
+      "NOTSET"                      // auto_pad
   };
   vector<float> X = {1., 2.};
   vector<int64_t> X_shape = {1, 1, 1, 2};
@@ -565,7 +583,8 @@ TEST(ConvTransposeTest, DimWithZero) {
       vector<int64_t>{1, 1, 1, 1},  // pads
       vector<int64_t>{2, 2},        // strides
       vector<int64_t>{1, 1},        // dilations
-      1                             // group
+      1,                            // group
+      "NOTSET"                      // auto_pad
   };
   vector<float> X = {};
   vector<int64_t> X_shape = {0, 1, 3, 3};
@@ -589,7 +608,8 @@ TEST(ConvTransposeTest, ConvTranspose_3D) {
       vector<int64_t>{0, 0, 0, 0, 0, 0},  // pads
       vector<int64_t>{1, 1, 1},           // strides
       vector<int64_t>{1, 1, 1},           // dilations
-      1                                   // group
+      1,                                  // group
+      "NOTSET"                            // auto_pad
   };
 
   vector<float> X = {0.82670355f, -0.041401573f, 0.026631273f, -0.9765811f, -0.1628872f,
@@ -722,7 +742,8 @@ TEST(ConvTransposeTest, ConvTranspose_1D_AsymmetricPads) {
       {1, 0},              // pads (asymmetric)
       vector<int64_t>{1},  // strides
       vector<int64_t>{1},  // dilations
-      1                    // group
+      1,                   // group
+      "NOTSET"             // auto_pad
   };
 
   vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f};
