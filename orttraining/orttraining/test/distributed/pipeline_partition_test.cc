@@ -161,7 +161,7 @@ void compareGraphs(Graph& graph1, Graph& graph2) {
   }
 }
 
-void comparePartitionTest(std::string& filename, int num_stages,
+void comparePartitionTest(const PathString& filename, int num_stages,
                           int pipeline_stage_id, CutList& cuts) {
   std::shared_ptr<Model> sm_model;
   LoadAndPartitionWithCuts(filename, num_stages, pipeline_stage_id, cuts, true, sm_model);
@@ -175,7 +175,7 @@ void comparePartitionTest(std::string& filename, int num_stages,
 }
 
 TEST(ComparePartitions, AttentionPastState3Stages) {
-  std::string filename = "testdata/attention_past_state.onnx";
+  const auto filename = ORT_TSTR("testdata/attention_past_state.onnx");
   int num_stages = 3;
   TrainingSession::TrainingConfiguration::CutInfo cut0 = {
     TrainingSession::TrainingConfiguration::CutEdge("94")
@@ -190,7 +190,7 @@ TEST(ComparePartitions, AttentionPastState3Stages) {
 }
 
 TEST(ComparePartitions, AttentionPastState3StagesMultiEdgeCut) {
-  std::string filename = "testdata/attention_past_state.onnx";
+  const auto filename = ORT_TSTR("testdata/attention_past_state.onnx");
   int num_stages = 3;
   TrainingSession::TrainingConfiguration::CutInfo cut0 = {
     TrainingSession::TrainingConfiguration::CutEdge("94")
@@ -208,7 +208,7 @@ TEST(ComparePartitions, AttentionPastState3StagesMultiEdgeCut) {
 
 
 TEST(ComparePartitions, BertToy) {
-  std::string filename = "testdata/bert_toy_optimized.onnx";
+  const auto filename = ORT_TSTR("testdata/bert_toy_optimized.onnx");
   int num_stages = 3;
   TrainingSession::TrainingConfiguration::CutInfo cut0 = {
     TrainingSession::TrainingConfiguration::CutEdge("326"),
