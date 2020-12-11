@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/framework/kernel_registry.h"
 #include "core/graph/graph_viewer.h"
 
 namespace onnxruntime {
