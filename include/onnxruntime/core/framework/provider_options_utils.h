@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "core/common/string_utils.h"
+#include "core/common/common.h"
 #include "core/framework/provider_options.h"
 
 namespace onnxruntime {
