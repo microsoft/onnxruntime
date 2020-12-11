@@ -9,8 +9,8 @@
 #include "core/framework/memcpy.h"
 #include "core/graph/graph_utils.h"
 #include "core/providers/cuda/cuda_allocator.h"
-#include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/cuda_fence.h"
+#include "core/providers/cuda/cuda_fwd.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 
 #ifndef DISABLE_CONTRIB_OPS
