@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef DEBUG_NODE_INPUTS_OUTPUTS
-
 #include "core/framework/debug_node_inputs_outputs_utils.h"
 
 #include <fstream>
@@ -41,11 +39,14 @@ TEST(DebugNodeInputsOutputs, BasicFileOutput) {
   TemporaryDirectory temp_dir{ORT_TSTR("debug_node_inputs_outputs_utils_test")};
   ScopedEnvironmentVariables scoped_env_vars{
       EnvVarMap{
-          {env_vars::kDumpInputData, {"1"}},
-          {env_vars::kDumpOutputData, {"1"}},
-          {env_vars::kDumpDataToFiles, {"1"}},
-          {env_vars::kOutputDir, {ToMBString(temp_dir.Path())}},
-          {env_vars::kDumpingDataToFilesForAllNodesIsOk, {"1"}},
+          {env_vars::kDumpInputData, "1"},
+          {env_vars::kDumpOutputData, "1"},
+          {env_vars::kNameFilter, nullopt},
+          {env_vars::kOpTypeFilter, nullopt},
+          {env_vars::kDumpDataToFiles, "1"},
+          {env_vars::kAppendRankToFileName, nullopt},
+          {env_vars::kOutputDir, ToMBString(temp_dir.Path())},
+          {env_vars::kDumpingDataToFilesForAllNodesIsOk, "1"},
       }};
 
   OpTester tester{"Round", 11, kOnnxDomain};
@@ -56,8 +57,10 @@ TEST(DebugNodeInputsOutputs, BasicFileOutput) {
 
   auto verify_file_data =
       [&temp_dir, &input, &output](
-          const std::vector<OrtValue>& /*fetches*/,
+          const std::vector<OrtValue>& fetches,
           const std::string& /*provider_type*/) {
+        ASSERT_EQ(fetches.size(), 1u);
+        FetchTensor(fetches[0]);
         VerifyTensorProtoFileData(
             temp_dir.Path() + ORT_TSTR("/x.tensorproto"),
             gsl::make_span(input));
@@ -73,5 +76,3 @@ TEST(DebugNodeInputsOutputs, BasicFileOutput) {
 
 }  // namespace test
 }  // namespace onnxruntime
-
-#endif
