@@ -3,6 +3,8 @@
 
 #include "orttraining/core/graph/allreduce_optimizer_graph_builder.h"
 
+#include "orttraining/core/framework/distributed_run_context.h"
+
 namespace onnxruntime {
 namespace training {
 
@@ -31,7 +33,8 @@ static Status AddNcclAllReduceForGradients(
   graph_defs.AddNodeDefs({NodeDef(OpDef{"NcclAllReduce", kMSDomain, 1},
                                   input_gradient_argdef,
                                   allreduce_outputs,
-                                  NodeAttributes(),
+                                  {ONNX_NAMESPACE::MakeAttribute("group_type",
+                                                                static_cast<int64_t>(WorkerGroupType::DataParallel))},
                                   "NcclAllReduce")});
 
   gradient_argdefs = allreduce_outputs;
