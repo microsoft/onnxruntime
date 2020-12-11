@@ -245,6 +245,10 @@ Below topologies from ONNX open model zoo are fully supported on OpenVINO Execut
 
 *FPGA only runs in HETERO mode wherein the layers that are not supported on FPGA fall back to OpenVINO CPU.
 
+## Inferencing on FP16 Models
+FP16 models can be inferenced on a VPU with device_type = "MYRIAD_FP16" and on GPU with
+device_type = "GPU_FP16"
+
 ## CSharp API
 
 To use csharp api for openvino execution provider create a custom nuget package. Follow the instructions [here](../../BUILD.md##build-nuget-packages) to install prerequisites for nuget creation. Once prerequisites are installed follow the instructions to [build openvino](../../BUILD.md#openvino) and add an extra flag `--build_nuget` to create nuget packages. Two nuget packages will be created Microsoft.ML.OnnxRuntime.Managed and Microsoft.ML.OnnxRuntime.Openvino.
