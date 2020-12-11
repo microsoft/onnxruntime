@@ -180,7 +180,7 @@ def test_onnx_graph_provides_frozen_model_states(onnx_model_mock):
     assert (state_dict['model']['fp32']['b'] == np.arange(7)).all()
     assert (state_dict['model']['fp32']['a_frozen_weight'] == np.array([1, 2, 3], dtype=np.float32)).all()
     assert 'a_non_fronzen_weight' not in state_dict['model']['fp32']
-    assert 'a_float16_weight' not in state_dict['model']['fp32']
+    assert (state_dict['model']['fp32']['a_float16_weight'] == np.array([7, 8, 9], dtype=np.float32)).all()
 
 @patch('onnx.ModelProto')
 def test_training_session_provides_empty_optimizer_states(onnx_model_mock):

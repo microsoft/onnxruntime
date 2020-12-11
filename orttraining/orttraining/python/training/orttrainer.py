@@ -872,28 +872,15 @@ class ORTTrainer(object):
                         model_states[precision][model_state_key]
 
         # extract untrained (frozen) model weights
-        precision_map = _utils.state_dict_precision_map()
         for node in self._onnx_model.graph.initializer:
-            if node.name not in state_dict[_utils.state_dict_model_key()][precision] and \
+            if node.name not in state_dict[_utils.state_dict_model_key()][_utils.state_dict_full_precision_key()] and \
                 node.name in self.options.utils.frozen_weights:
-                if node.data_type in precision_map:
-                    if pytorch_format:
-                        state_dict[_utils.state_dict_model_key()][precision_map[node.data_type]][node.name] = \
-                            torch.from_numpy(onnx.numpy_helper.to_array(node))
-                    else:
-                        state_dict[_utils.state_dict_model_key()][precision_map[node.data_type]][node.name] = \
-                            onnx.numpy_helper.to_array(node)
-
-    def _extract_optimizer_states(self, state_dict):
-        """Extract optimizer states from the training session and load into the state_dict"""
-
-        optimizer_states = self._training_session.get_optimizer_state()
-        state_dict[_utils.state_dict_optimizer_key()] = {}
-        for model_state_key in optimizer_states:
-            state_dict[_utils.state_dict_optimizer_key()][model_state_key] = {}
-            for optimizer_state_key in optimizer_states[model_state_key]:
-                state_dict[_utils.state_dict_optimizer_key()][model_state_key][optimizer_state_key] = \
-                    optimizer_states[model_state_key][optimizer_state_key]
+                if pytorch_format:
+                    state_dict[_utils.state_dict_model_key()][_utils.state_dict_full_precision_key()][node.name] = \
+                        torch.from_numpy(onnx.numpy_helper.to_array(node))
+                else:
+                    state_dict[_utils.state_dict_model_key()][_utils.state_dict_full_precision_key()][node.name] = \
+                        onnx.numpy_helper.to_array(node)
 
     def _extract_trainer_options(self, state_dict):
         """Extract relevant trainer configuration and load it into the state_dict"""
@@ -1048,12 +1035,14 @@ class ORTTrainer(object):
         # load training session model states into the state_dict
         self._extract_model_states(state_dict, pytorch_format)
         if pytorch_format:
+            if self.options.distributed.deepspeed_zero_optimization.stage > 0:
+                warnings.warn("Incomplete state_dict: ZeRO enabled", UserWarning)
             # if pytorch_format is true, return a flat dictionary with only model states
             # which is compatible with a PyTorch model
-            return state_dict[_utils.state_dict_model_key()]['fp32']
+            return state_dict[_utils.state_dict_model_key()][_utils.state_dict_full_precision_key()]
 
         # load training session optimizer states into the state_dict
-        self._extract_optimizer_states(state_dict)
+        state_dict[_utils.state_dict_optimizer_key()] = self._training_session.get_optimizer_state()
 
         # extract the relevant training configuration from the trainer and load them into the state_dict
         self._extract_trainer_options(state_dict)

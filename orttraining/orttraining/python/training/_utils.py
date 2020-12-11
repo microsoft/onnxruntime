@@ -199,9 +199,7 @@ def state_dict_trainer_options_key():
 
     return 'trainer_options'
 
-def state_dict_precision_map():
-    """Returns the mapping from TensorProto types to the precision type strings in the state_dict"""
+def state_dict_full_precision_key():
+    """Returns the full precision key name in the state dictionary"""
 
-    return {
-        TensorProto.FLOAT: 'fp32'
-    }
+    return 'fp32'
