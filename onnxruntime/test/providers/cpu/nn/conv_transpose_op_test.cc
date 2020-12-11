@@ -17,7 +17,6 @@ struct ConvTransposeOpAttributes {
   vector<int64_t> strides;
   vector<int64_t> dilations;
   int64_t group;
-  std::string auto_pad = "NOTSET";
 };
 
 void TestConvTransposeOp(const ConvTransposeOpAttributes& attributes,
@@ -30,14 +29,8 @@ void TestConvTransposeOp(const ConvTransposeOpAttributes& attributes,
                          const std::unordered_set<std::string>& excluded_provider_types = {kTensorrtExecutionProvider}) {
   OpTester test("ConvTranspose");
   test.AddAttribute("kernel_shape", attributes.kernel_shape);
+  test.AddAttribute("pads", attributes.pads);
   test.AddAttribute("group", attributes.group);
-
-  // Only one of pads / auto_pad can be present
-  if (!attributes.pads.empty()) {
-    test.AddAttribute("pads", attributes.pads);
-  } else {
-    test.AddAttribute("auto_pad", attributes.auto_pad);
-  }
 
   if (!attributes.output_padding.empty()) {
     test.AddAttribute("output_padding", attributes.output_padding);
@@ -63,78 +56,7 @@ void TestConvTransposeOp(const ConvTransposeOpAttributes& attributes,
 
   test.Run(expect_result, err_str, excluded_provider_types);  // Disable TensorRT because weight as input is not supported
 }
-
 }  // namespace
-
-/*
-TEST(ConvTransposeTest, ConvTranspose_1D_AsymmetricPads) {
-  ConvTransposeOpAttributes attrs = {
-      vector<int64_t>{2},  // kernel_shape
-      {},                  // output_padding
-      {},                  // output_shape
-      {1, 0},              // pads (asymmetric)
-      vector<int64_t>{1},  // strides
-      vector<int64_t>{1},  // dilations
-      1                    // group
-  };
-
-  vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f};
-  vector<int64_t> X_shape = {1, 1, 4};
-  vector<float> W = {1.0f, 1.0f, 1.0f, 1.0f};
-  vector<int64_t> W_shape = {1, 2, 2};
-  vector<int64_t> Y_shape = {1, 2, 4};
-  auto expected_vals = {3.0f, 5.0f, 7.0f, 4.0f, 3.0f, 5.0f, 7.0f, 4.0f};
-
-  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape,
-                      OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
-}
-
-TEST(ConvTransposeTest, ConvTranspose_1D_AutoPad_SameUpper) {
-  ConvTransposeOpAttributes attrs = {
-      vector<int64_t>{2},  // kernel_shape
-      {},                  // output_padding
-      {},                  // output_shape
-      {},                  // pads
-      vector<int64_t>{1},  // strides
-      vector<int64_t>{1},  // dilations
-      1,                   // group
-      "SAME_UPPER"         // auto_pad
-  };
-
-  vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f};
-  vector<int64_t> X_shape = {1, 1, 4};
-  vector<float> W = {1.0f, 1.0f, 1.0f, 1.0f};
-  vector<int64_t> W_shape = {1, 2, 2};
-  vector<int64_t> Y_shape = {1, 2, 4};
-  auto expected_vals = {3.0f, 5.0f, 7.0f, 4.0f, 3.0f, 5.0f, 7.0f, 4.0f};
-
-  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape,
-                      OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
-}
-
-TEST(ConvTransposeTest, ConvTranspose_1D_AutoPad_SameLower) {
-  ConvTransposeOpAttributes attrs = {
-      vector<int64_t>{2},  // kernel_shape
-      {},                  // output_padding
-      {},                  // output_shape
-      {},                  // pads
-      vector<int64_t>{1},  // strides
-      vector<int64_t>{1},  // dilations
-      1,                   // group
-      "SAME_LOWER"         // auto_pad
-  };
-
-  vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f};
-  vector<int64_t> X_shape = {1, 1, 4};
-  vector<float> W = {1.0f, 1.0f, 1.0f, 1.0f};
-  vector<int64_t> W_shape = {1, 2, 2};
-  vector<int64_t> Y_shape = {1, 2, 4};
-  auto expected_vals = {1.0f, 3.0f, 5.0f, 7.0f, 1.0f, 3.0f, 5.0f, 7.0f};
-
-  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape,
-                      OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
-}
-*/
 
 TEST(ConvTransposeTest, ConvTranspose_1D) {
   ConvTransposeOpAttributes attrs = {
@@ -686,10 +608,9 @@ TEST(ConvTransposeTest, ConvTranspose_3D) {
 
                      -0.08745442f, -0.053135775f, -0.07282642f,
                      -0.11123853f, -0.114605635f, 0.050257847f,
-
                      0.03769763f, 0.008607149f, -2.6613474e-05f,
-                     -0.06418988f, 0.11692271f, 0.12203565f,
 
+                     -0.06418988f, 0.11692271f, 0.12203565f,
                      0.042627826f, 0.098034576f, -0.010402724f,
                      -0.12522504f, -0.10751359f, 0.12747335f,
 
