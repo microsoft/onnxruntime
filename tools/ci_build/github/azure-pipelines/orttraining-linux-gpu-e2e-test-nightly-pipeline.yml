@@ -102,7 +102,7 @@ jobs:
             --env CUDA_VISIBLE_DEVICES 2
     displayName: 'Run orttraining_run_frontend_batch_size_test.py'
     condition: succeededOrFailed() # ensure all tests are run
-    timeoutInMinutes: 300
+    timeoutInMinutes: 30
 
   - script: |
       docker run \
@@ -118,7 +118,7 @@ jobs:
             --cwd /build/RelWithDebInfo
     displayName: 'mpirun -n 4 -x NCCL_DEBUG=INFO python orttraining_run_glue.py'
     condition: succeededOrFailed() # ensure all tests are run
-    timeoutInMinutes: 300
+    timeoutInMinutes: 10
 
   - script: |
       docker run \
@@ -135,7 +135,7 @@ jobs:
             --env CUDA_VISIBLE_DEVICES 2
     displayName: 'Run orttraining_run_glue.py ORTGlueTest.test_bert_with_mrpc'
     condition: succeededOrFailed() # ensure all tests are run
-    timeoutInMinutes: 300
+    timeoutInMinutes: 10
 
   - script: |
       docker run \
@@ -152,7 +152,7 @@ jobs:
             --env CUDA_VISIBLE_DEVICES 2
     displayName: 'Run orttraining_run_glue.py ORTGlueTest.test_bert_fp16_with_mrpc'
     condition: succeededOrFailed() # ensure all tests are run
-    timeoutInMinutes: 300
+    timeoutInMinutes: 10
 
   - script: |
       docker run \
@@ -169,7 +169,7 @@ jobs:
             --env CUDA_VISIBLE_DEVICES 2
     displayName: 'Run orttraining_run_glue.py ORTGlueTest.test_roberta_with_mrpc'
     condition: succeededOrFailed() # ensure all tests are run
-    timeoutInMinutes: 300
+    timeoutInMinutes: 10
 
   - script: |
       docker run \
@@ -186,7 +186,7 @@ jobs:
             --env CUDA_VISIBLE_DEVICES 2
     displayName: 'Run orttraining_run_glue.py ORTGlueTest.test_roberta_fp16_with_mrpc'
     condition: succeededOrFailed() # ensure all tests are run
-    timeoutInMinutes: 300
+    timeoutInMinutes: 10
 
   - script: |
       docker run \
@@ -203,7 +203,7 @@ jobs:
             --env CUDA_VISIBLE_DEVICES 2
     displayName: 'Run orttraining_run_multiple_choice.py ORTMultipleChoiceTest.test_bert_fp16_with_swag'
     condition: succeededOrFailed() # ensure all tests are run
-    timeoutInMinutes: 300
+    timeoutInMinutes: 30
 
   - script: |
       docker run \
@@ -250,6 +250,6 @@ jobs:
             --cwd /build/RelWithDebInfo
     displayName: 'Run orttraining_run_bert_pretrain.py ORTBertPretrainTest.test_pretrain_convergence'
     condition: succeededOrFailed() # ensure all tests are run
-    timeoutInMinutes: 300
-        
+    timeoutInMinutes: 20
+
   - template: templates/clean-agent-build-directory-step.yml
