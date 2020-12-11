@@ -450,7 +450,7 @@ Status TrainingRunner::PrepareFetchNamesAndFetches(const SessionMode mode,
           ORT_RETURN_IF(it == opt_graph_outputs_.end(), "Gradient norm's IsFinite output is missing in the optimizer output");
           fetch_names.push_back(it->second);
         }
-        if (params_.use_adasum) {
+        if (params_.enable_adasum) {
           auto it = opt_graph_outputs_.find(OptimizerOutputKey::DeltaAllIsFinite);
           ORT_RETURN_IF(it == opt_graph_outputs_.end(), "Adasum delta's IsFinite output is missing in the optimizer output");
           fetch_names.push_back(it->second);
