@@ -17,6 +17,28 @@ jobs:
       displayName: CPU EP, Build and Test on Android Emulator
     - script: /bin/bash tools/ci_build/github/android/run_nnapi_code_coverage.sh $(pwd)
       displayName: NNAPI EP, Build, Test and Get Code Coverage on Android Emulator
+    - task: CmdLine@1
+      displayName: 'Install mysql-connector-python conda module'
+      inputs:
+        filename: '$(Build.BinariesDirectory)\packages\python\scripts\conda.exe'
+        arguments: 'install -q --insecure -y mysql-connector-python'
+      timeoutInMinutes: 10
+
+    - task: PythonScript@0
+      displayName: Post Code Coverage To Dash Board
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/post_code_coverage_to_dashboard.py'
+        arguments: >
+          --commit_hash=$(OnnxRuntimeGitCommitHash)
+          --report_url="https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)"
+          --report_summary `awk '/TOTAL/ {printf("{\"count\":%d,\"covered\":%d,\"percent\":\"%s\"}", $2, $3, $4);}' "$(Build.BinariesDirectory)/Debug/coverage_report.txt"`
+          --build_config '{\"os\": \"android\", \"arch\":\"x86_64\", \"config\":\"nnapi\"}'
+        workingFolder: "$(Build.BinariesDirectory)"
+      continueOnError: ${{parameters.ContinueOnError}}
+      condition: ${{parameters.PostToDashBoard}}
+      env:
+        DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)
+
     - script: /bin/bash tools/ci_build/github/linux/ort_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh $(pwd)
       # Build Minimal ORT with NNAPI and reduced Ops, run unit tests on Android Emulator
       displayName: Build Minimal ORT with NNAPI and run tests
