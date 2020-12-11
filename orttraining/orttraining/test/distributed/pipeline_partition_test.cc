@@ -53,7 +53,7 @@ TEST(PipelinePartition, DropoutGraph2stages) {
   EXPECT_EQ(graph.NumberOfNodes(), 6);
 }
 
-void LoadAndPartitionWithCuts(const PathString& filename,
+void LoadAndPartitionWithCuts(const PathString& model_path,
                               int num_stages,
                               int pipeline_stage_id,
                               CutList& cuts,
@@ -61,7 +61,6 @@ void LoadAndPartitionWithCuts(const PathString& filename,
                               std::shared_ptr<Model>& pModel) {
   const auto& log_manager = DefaultLoggingManager();
   const auto& default_logger = log_manager.DefaultLogger();
-  const auto model_path = ORT_TSTR(filename);
   auto status = Model::Load(model_path, pModel, nullptr, default_logger);
   EXPECT_TRUE(status.IsOK()) << "Failed to load model. Error: "
                              << status.ErrorMessage();
