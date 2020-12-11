@@ -1827,6 +1827,9 @@ static bool ConvTransposeNeedFallbackToCPU(const onnxruntime::Node& node) {
       int rank = pads_size / 2;
       for (int i = 0; i < rank; i++) {
         if (pads.Get(i) != pads.Get(i + rank)) {
+          LOGS_DEFAULT(WARNING) << "Dropping the ConvTranspose node: " << node.Name()
+                                << " to CPU because it requires asymmetric padding which the CUDA EP"
+                                << " currently does not support";
           return true;
         }
       }
@@ -1846,6 +1849,9 @@ static bool ConvTransposeNeedFallbackToCPU(const onnxruntime::Node& node) {
       // symmetric padding.
       // TODO: Remove this after we have supported asymmetric padding in the CUDA ConvTranspose kernel
       if (auto_pad_attr == "SAME_UPPER" || auto_pad_attr == "SAME_LOWER") {
+        LOGS_DEFAULT(WARNING) << "Dropping the ConvTranspose node: " << node.Name()
+                              << " to CPU because it uses the auto_pad attribute which may lead to asymmetric padding which"
+                              << " the CUDA EP currently does not support";
         return true;
       }
     }
