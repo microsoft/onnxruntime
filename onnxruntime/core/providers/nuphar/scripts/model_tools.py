@@ -11,24 +11,6 @@ import argparse
 import copy
 import os
 
-def save_model_sub_graph(input_model, output_folder):
-    def save_subgraph(node, out_mp, out_path):
-        if not os.path.exists(out_path):
-            os.makedirs(out_path)
-
-        out_mp.graph.CopyFrom(node.attribute[0].g)
-        onnx.save(out_mp, os.path.join(out_path, node.name + '_subgraph.onnx'))
-
-    in_mp = onnx.load(input_model)
-    out_mp = onnx.ModelProto()
-    out_mp.CopyFrom(in_mp)
-    out_mp.ir_version = 5 # update ir version to avoid requirement of initializer in graph input
-    ensure_opset(out_mp, 9) # bump up to ONNX opset 9, which is required for Scan
-    out_mp.graph.ClearField('node')
-    for in_n in in_mp.graph.node:
-        if in_n.op_type in ["Scan", "Loop"]:
-            save_subgraph(in_n, copy.deepcopy(out_mp), output_folder)
-
 def run_shape_inference(input_model, output_model):
     in_mp = onnx.load(input_model)
     in_mp = SymbolicShapeInference.infer_shapes(in_mp, auto_merge=True)
@@ -52,42 +34,30 @@ def extract_loop_outputs_as_model_outputs(model):
             set_op_output_as_model_output(node, model.graph)
 
 def run_with_ort(model_path, symbolic_dims={}, feeds=None, ort_test_case_dir=None):
-    def save_tensor_proto(file_path, tp_name, data, data_type=np.float32):
-        tp = onnx.TensorProto()
-        tp.name = tp_name
-
-        shape = np.shape(data)
-        for i in range(0, len(shape)):
-            tp.dims.append(shape[i])
-
-        if data_type == np.float32:
-            tp.data_type = onnx.TensorProto.FLOAT
-            tp.raw_data = data.tobytes()
-        elif data_type == np.int64:
-            tp.data_type = onnx.TensorProto.INT64
-            data=data.astype(np.int64)
-            tp.raw_data = data.tobytes()
-        elif data_type == np.int:
-            tp.data_type = onnx.TensorProto.INT32
-            data=data.astype(np.int)
-            tp.raw_data = data.tobytes()
-
-        with open(file_path, 'wb') as f:
-            f.write(tp.SerializeToString())
-
-    _, feeds, outputs = ort_test.run_model(model_path, symbolic_dims=symbolic_dims, feeds=feeds)
+    _, feeds, outputs = ort_test.run_model(model_path, symbolic_dims=symbolic_dims,
+        feeds=feeds, override_initializers=False)
 
     if ort_test_case_dir:
         model = onnx.load(model_path)
+
         def save_ort_test_case(ort_test_case_dir):
+            if not os.path.exists(ort_test_case_dir):
+                os.makedirs(ort_test_case_dir)
+
+            test_data_set_dir = os.path.join(ort_test_case_dir, 'test_data_set_0')
+            if not os.path.exists(test_data_set_dir):
+                os.makedirs(test_data_set_dir)
+
+            onnx.save(model, os.path.join(ort_test_case_dir, 'model.onnx'))
             for i, (input_name, input) in enumerate(feeds.items()):
-                save_tensor_proto(os.path.join(test_data_dir, 'input_{0}.pb'.format(i)),
-                                input_name, input)
+                onnx.save_tensor(onnx.numpy_helper.from_array(input, input_name),
+                    os.path.join(test_data_set_dir, 'input_{0}.pb'.format(i)))
 
             output_names = [output.name for output in model.graph.output]
             output_dict = dict(zip(output_names, outputs))
             for i, (output_name, output) in enumerate(output_dict.items()):
-                save_tensor_proto(os.path.join(test_data_dir, 'output_{0}.pb'.format(i)), output_name, output)
+                onnx.save_tensor(onnx.numpy_helper.from_array(output, output_name),
+                    os.path.join(test_data_set_dir, 'output_{0}.pb'.format(i)))
 
         save_ort_test_case(ort_test_case_dir)
 
@@ -103,13 +73,12 @@ def validate_with_ort(input_filename, output_filename, symbolic_dims={}):
 
 def convert_loop_to_scan_and_validate(input_filename, output_filename, symbolic_dims={}):
     convert_loop_to_scan_model(args.input, args.output)
-    validate_with_ort(args.input, args.output, symbolic_dims)
+    validate_with_ort(args.input, args.output, symbolic_dims=symbolic_dims)
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument('--tool', help='what to do',
-                        choices=['save_model_sub_graph',
-                                 'run_shape_inference',
+                        choices=['run_shape_inference',
                                  'run_with_ort',
                                  'validate_with_ort',
                                  'convert_loop_to_scan_and_validate'])
@@ -120,17 +89,16 @@ def parse_arguments():
                     help='Comma separated name=value pairs for any symbolic dimensions in the model input. '
                             'e.g. --symbolic_dims batch=1,seqlen=5. '
                             'If not provided, the value of 1 will be used for all symbolic dimensions.')
+    parser.add_argument('--ort_test_case_dir', help='ort test case dir', default=None)                            
     return parser.parse_args()
 
 if __name__ == '__main__':
     args = parse_arguments()
-    if args.tool == 'save_model_sub_graph':
-        save_model_sub_graph(args.input, args.output)
-    elif args.tool == 'run_shape_inference':
+    if args.tool == 'run_shape_inference':
         run_shape_inference(args.input, args.output)
     elif args.tool == 'run_with_ort':
-        run_with_ort(args.input, args.symbolic_dims)
+        run_with_ort(args.input, symbolic_dims=args.symbolic_dims, ort_test_case_dir=args.ort_test_case_dir)
     elif args.tool == 'validate_with_ort':
-        validate_with_ort(args.input, args.output, args.symbolic_dims)
+        validate_with_ort(args.input, args.output, symbolic_dims=args.symbolic_dims)
     elif args.tool == 'convert_loop_to_scan_and_validate':
-        convert_loop_to_scan_and_validate(args.input, args.output, args.symbolic_dims)
+        convert_loop_to_scan_and_validate(args.input, args.output, symbolic_dims=args.symbolic_dims)
