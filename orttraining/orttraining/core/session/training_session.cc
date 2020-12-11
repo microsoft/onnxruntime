@@ -210,7 +210,7 @@ Status TrainingSession::PartitionGraphForPipeline(
     // Save the partitioned file out.
     // To avoid writing conflict, only the ranks in first pipeline group write the partition file out.
     if (DistributedRunContext::GroupId(WorkerGroupType::PipelineParallel) == 0) {
-      const auto path = pipeline_config.value().partitioned_model_path.value() + std::to_string(pipeline_stage_id) + ".onnx";
+      const auto path = pipeline_config.value().partitioned_model_path.value() + ToPathString(std::to_string(pipeline_stage_id)) + ToPathString(std::string(".onnx"));
       ORT_IGNORE_RETURN_VALUE(Save(path, SaveOption::NO_RELOAD));
     }
   }

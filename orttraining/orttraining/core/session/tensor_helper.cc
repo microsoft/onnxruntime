@@ -2,7 +2,10 @@
 // Licensed under the MIT License.
 
 #include "orttraining/core/session/tensor_helper.h"
+
+#ifdef USE_CUDA
 #include "core/providers/cuda/cuda_common.h"
+#endif
 
 namespace onnxruntime {
 namespace training {
@@ -61,6 +64,7 @@ void CopyGpuToCpu(
     const OrtMemoryInfo& src_location) {
   ORT_ENFORCE(dst_location.device.Type() == OrtDevice::CPU);
 
+#ifdef USE_CUDA
   // Current CUDA device.
   int device;
   CUDA_CALL(cudaGetDevice(&device));
@@ -76,6 +80,14 @@ void CopyGpuToCpu(
     // Copy from GPU to CPU.
     CUDA_CALL(cudaMemcpy(dst_ptr, src_ptr, size, cudaMemcpyDeviceToHost));
   }
+#else
+  ORT_UNUSED_PARAMETER(dst_ptr);
+  ORT_UNUSED_PARAMETER(src_ptr);
+  ORT_UNUSED_PARAMETER(size);
+  ORT_UNUSED_PARAMETER(dst_location);
+  ORT_UNUSED_PARAMETER(src_location);
+  ORT_THROW("CPU-to-CPU copy is not implemented.");
+#endif
 }
 
 // Copy a chunk of memory to CPU from CPU.
