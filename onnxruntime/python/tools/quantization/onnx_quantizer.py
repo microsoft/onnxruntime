@@ -254,6 +254,14 @@ class ONNXQuantizer:
         if self.nodes_to_exclude is not None and node.name in self.nodes_to_exclude:
             return False
 
+        # do not quantize non-constant B matrices for matmul
+        if node.op_type == "MatMul":
+            for input_index in range(2):
+                node_input = node.input[input_index]
+                initializer = find_by_name(node_input, self.model.initializer())
+                if input_index == 1 and initializer is None:
+                    return False
+
         return True
 
     def quantize_model(self):

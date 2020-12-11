@@ -100,7 +100,8 @@ Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, bool& is_pac
 
   const size_t hidden_size = static_cast<size_t>(weights_dims[0]);
   const size_t hidden_size_x3 = static_cast<size_t>(weights_dims[1]);
-  const size_t head_size = hidden_size / num_heads_;
+  if (head_size_ < 0)
+    head_size_ = hidden_size / num_heads_;
 
   // Bail out if the weights shape has an expected shape.
   if ((hidden_size == 0) || ((hidden_size % num_heads_) != 0) || (hidden_size_x3 != 3 * hidden_size)) {
@@ -194,6 +195,8 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
   const int batch_size = static_cast<int>(shape[0]);
   const int sequence_length = static_cast<int>(shape[1]);
   const int hidden_size = static_cast<int>(shape[2]);
+  if (head_size_ < 0)
+    head_size_ = hidden_size / num_heads_;
 
   // For the head-pruned transformers, hidden_size != head_size_ * num_heads_
   int64_t output_shape_arr[] = {batch_size, sequence_length, head_size_ * num_heads_};
@@ -249,7 +252,7 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
     const bool weights_is_signed = packed_weights_ ? weights_is_signed_ : weights->IsDataType<int8_t>();
 
     const double cost =
-        static_cast<double>(sequence_length) * static_cast<double>(head_size) * static_cast<double>(hidden_size);
+        static_cast<double>(sequence_length) * static_cast<double>(head_size_) * static_cast<double>(hidden_size);
     ThreadPool::TryParallelFor(tp, loop_len, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
       for (std::ptrdiff_t i = begin; i != end; ++i) {
         const int batch_index = static_cast<int>((i / 3) / num_heads_);
@@ -257,9 +260,9 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
         const int qkv_index = static_cast<int>(i % 3);
 
         int input_offset = batch_index * sequence_length * hidden_size;
-        int weights_offset = qkv_index * hidden_size + head_index * head_size;
+        int weights_offset = qkv_index * hidden_size + head_index * head_size_;
         float* qkv_dest = QKV[qkv_index];
-        int qkv_offset = (batch_index * num_heads_ + head_index) * (sequence_length * head_size);
+        int qkv_offset = (batch_index * num_heads_ + head_index) * (sequence_length * head_size_);
 
         //                   original           transposed            iteration
         // A: input          (BxSxNxH)          (B.)S x NH            S x NH
@@ -268,15 +271,15 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
 #ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
         if (packed_weights_) {
           const auto* packed_weight =
-              static_cast<const uint8_t*>(packed_weights_.get()) + packed_weights_size_ * (weights_offset / head_size);
+              static_cast<const uint8_t*>(packed_weights_.get()) + packed_weights_size_ * (weights_offset / head_size_);
 
           MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR scale_bias_processor(qkv_dest + qkv_offset,
-                                                                      head_size,
+                                                                      head_size_,
                                                                       &dequant_scale,
                                                                       bias_data + weights_offset);
           MlasGemm(
               sequence_length,                                    // M      = S
-              head_size,                                          // N      = H
+              head_size_,                                         // N      = H
               hidden_size,                                        // K      = NH
               input_data + input_offset,                          // A
               hidden_size,                                        // lda    = NH
@@ -285,7 +288,7 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
               weight_zero_point,                                  // weight zero point
               weights_is_signed,                                  // weight data type
               reinterpret_cast<int32_t*>(qkv_dest + qkv_offset),  // C
-              head_size,                                          // ldc
+              head_size_,                                         // ldc
               nullptr,                                            // use single-thread
               &scale_bias_processor);                             // output processor
 
@@ -293,7 +296,7 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
         }
 #endif
         QGemm(sequence_length,                // M      = S
-              head_size,                      // N      = H
+              head_size_,                     // N      = H
               hidden_size,                    // K      = NH
               input_data + input_offset,      // A
               hidden_size,                    // lda    = NH
@@ -303,7 +306,7 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
               weight_zero_point,              // weight zero point
               weights_is_signed,              // weight data type
               qkv_dest + qkv_offset,          // C
-              head_size,                      // ldc
+              head_size_,                     // ldc
               &dequant_scale,                 // output scale
               bias_data + weights_offset,     // bias
               nullptr                         // use single-thread

@@ -44,7 +44,7 @@ AttentionBase::AttentionBase(const OpKernelInfo& info) {
   int64_t num_heads = 0;
   ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
   num_heads_ = static_cast<int>(num_heads);
-  head_size_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("head_size", 96));
+  head_size_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("head_size", -1));
 
   is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 0) == 1;
   is_input_dim_swapped_ = info.GetAttrOrDefault<int64_t>("input_dimension_swapped", 0) == 1;
@@ -197,6 +197,8 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, bool& is_pack
 
   const size_t hidden_size = static_cast<size_t>(weights_dims[0]);
   const size_t hidden_size_x3 = static_cast<size_t>(weights_dims[1]);
+  if (head_size_ < 0)
+    head_size_ = hidden_size / num_heads_;
 
   // Bail out if the weights shape has an expected shape.
   if ((hidden_size == 0) || ((hidden_size % num_heads_) != 0) || (hidden_size_x3 != 3 * hidden_size)) {
@@ -243,6 +245,8 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   const int batch_size = is_input_dim_swapped_ ? static_cast<int>(shape[1]) : static_cast<int>(shape[0]);
   const int sequence_length = is_input_dim_swapped_ ? static_cast<int>(shape[0]) : static_cast<int>(shape[1]);
   const int hidden_size = static_cast<int>(shape[2]);
+  if (head_size_ < 0)
+    head_size_ = hidden_size / num_heads_;
 
   // For the head-pruned transformers, hidden_size != head_size_ * num_heads_
   int64_t output_shape_arr[] = {batch_size, sequence_length, head_size_ * num_heads_};

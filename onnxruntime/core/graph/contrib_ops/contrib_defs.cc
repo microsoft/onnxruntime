@@ -415,7 +415,7 @@ input_dimension_swapped is 1, the input shape is (sequence_length, batch_size, h
       .SinceVersion(1)
       .SetDoc(Attention_ver1_doc)
       .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
-      .Attr("head_size", "Size of an attention head", AttributeProto::INT, static_cast<int64_t>(64))
+      .Attr("head_size", "Size of an attention head", AttributeProto::INT, static_cast<int64_t>(-1))
       .Attr("unidirectional",
             "Whether every token can only attend to previous tokens. Default value is 0.",
             AttributeProto::INT,
@@ -480,7 +480,7 @@ input_dimension_swapped is 1, the input shape is (sequence_length, batch_size, h
       .SinceVersion(1)
       .SetDoc("Quantization of Multi-Head Self Attention.")
       .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
-      .Attr("head_size", "Size of an attention head", AttributeProto::INT, static_cast<int64_t>(64))
+      .Attr("head_size", "Size of an attention head", AttributeProto::INT, static_cast<int64_t>(-1))
       .Attr("unidirectional",
             "Whether every token can only attend to previous tokens. Default value is 0.",
             AttributeProto::INT,
