@@ -22,14 +22,17 @@ def parse_arguments():
     parser.add_argument(
         "--report_file", help="Path to the local cobertura XML report")
     parser.add_argument("--commit_hash", help="Full Git commit hash")
-    parser.add_argument("--report_summary", help="String specifying coverage information in JSON format")
+    parser.add_argument("--report_summary", help="String specifying coverage information")
     parser.add_argument("--build_config", help="Build configuration, OS, Arch and config, in JSON format")
     return parser.parse_args()
 
 
-def parse_report_summary(json_string):
-    data = json.loads(json_string)
-    data['coverage'] = float(data['coverage'].strip('%'))/100
+def parse_report_summary(summary):
+    data = {}
+    fields = summary.strip().split()
+    data['lives_valid'] = fields[1]
+    data['lines_covered'] = fields[2]
+    data['coverage'] = float(fields[3].strip('%'))/100
     return data
 
 
