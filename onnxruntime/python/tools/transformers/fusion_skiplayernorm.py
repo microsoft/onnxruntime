@@ -24,6 +24,9 @@ class FusionSkipLayerNormalization(Fusion):
 
         # In some models there is input_ids->gather->add->LayerNorm and one of input of the
         # add node is initializer with fixed shape which should not be fused into SkipLayerNorm
+        if add is None:
+            return
+
         for add_input in add.input:
             if self.model.get_initializer(add_input) != None:
                 return
@@ -32,9 +35,10 @@ class FusionSkipLayerNormalization(Fusion):
         if len(self.model.get_parents(add)) != 2:
             return
 
-        gather_node = self.model.match_parent_path(add, ['Gather'], [None])
-        if gather_node is not None:
-            return
+        gather_path = self.model.match_parent_path(add, ['Gather'], [None])
+        if gather_path is not None and self.model.find_graph_input(gather_path[0].input[1]) is None:
+            if self.model.match_parent_path(gather_path[0], ['ConstantOfShape'], [1]) is None:
+                return
 
         if add is not None and add.op_type == 'Add' and self.model.is_safe_to_fuse_nodes(
             [add, node], node.output, input_name_to_nodes, output_name_to_node):
