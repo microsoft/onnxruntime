@@ -279,20 +279,8 @@ static bool IsUnsupportedOpMode(const Provider_Node* node, const Provider_GraphV
     }
   } else if (optype == "Max" || optype == "Min" || optype == "Mean" || optype == "Sum") {
     if (device_id.find("MYRIAD") == std::string::npos) {
-    if (GetInputCount(node, initializers) == 1)
-      return true;
-    if (optype == "Max" || optype == "Min") {
-      for (size_t i = 0; i < node->InputDefs().size(); i++) {
-        auto dtype = node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type();
-        if (dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8 ||
-          dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16)
-          return true;
-      }
-    }
-    }
-    else {
-    if (GetInputCount(node, initializers) == 1)
-      return true;
+      if (GetInputCount(node, initializers) == 1)
+        return true;
     }
   } else if (optype == "Clip") {
     //Only float 16, float and double data types are supported
@@ -391,12 +379,6 @@ static bool IsUnsupportedOpMode(const Provider_Node* node, const Provider_GraphV
     auto graph_inputs = graph_viewer.GetInputs();
     bool cond_for_slice = false;
     
-    if(device_id.find("MYRIAD") != std::string::npos) {
-      const auto& output = node->OutputDefs()[0];
-      if (output->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64)
-        return true;
-    }
-
     auto it = find(graph_inputs.begin(), graph_inputs.end(), data_arg);
     if (it != graph_inputs.end()) {
       if (node->InputDefs().size() > 1) {
@@ -950,9 +932,10 @@ GetCapability_2021_2(const Provider_GraphViewer& graph_viewer, std::string devic
           auto input = node->InputDefs()[0];
           auto input_name = input->Name();
           const bool is_data_int32 = input->Type()->find("int32") != std::string::npos;
+          const bool is_data_int64 = input->Type()->find("int64") != std::string::npos;
           auto it = find(cluster_graph_inputs.begin(), cluster_graph_inputs.end(), input_name);
           if (it != cluster_graph_inputs.end()) {
-            if (device_id.find("MYRIAD") != std::string::npos && is_data_int32) {
+            if (device_id.find("MYRIAD") != std::string::npos && (is_data_int32 || is_data_int64)) {
               omit_subgraph = true;
               break;
             }
@@ -964,7 +947,7 @@ GetCapability_2021_2(const Provider_GraphViewer& graph_viewer, std::string devic
             }
           }
         }
-      }
+       }
       if (omit_subgraph)
         continue;
 
