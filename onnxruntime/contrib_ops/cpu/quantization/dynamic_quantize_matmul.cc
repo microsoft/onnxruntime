@@ -9,13 +9,7 @@
 
 #include <algorithm>
 
-#ifdef USE_FBGEMM
-#define FBGEMM_STATIC
-#include <vector>
-#include "fbgemm/Fbgemm.h"
-#include "fbgemm/QuantUtils.h"
-using namespace fbgemm;
-#endif // USE_FBGEMM
+// #define SUPPORT_COLUMNWISE_QUANTIZATION
 
 namespace onnxruntime {
 namespace contrib {
@@ -34,16 +28,6 @@ class MatMulIntegerToFloatBase : public MatMulIntegerBase {
                        uint8_t b_zero_point,
                        float multiplier,
                        const Tensor* bias_tensor) const;
-#ifdef USE_FBGEMM
-  Status ComputeCommonFbgemm(OpKernelContext* ctx,
-                             bool is_a_quantized,
-                             float a_scale,
-                             int32_t a_zero_point,
-                             const Tensor* b,
-                             const float* b_scale,
-                             const int32_t* b_zero_point,
-                             const Tensor* bias_tensor) const;
-#endif // USE_FBGEMM
 };
 
 Status MatMulIntegerToFloatBase::ComputeCommon(OpKernelContext* ctx,
@@ -112,151 +96,6 @@ Status MatMulIntegerToFloatBase::ComputeCommon(OpKernelContext* ctx,
   return Status::OK();
 }
 
-#ifdef USE_FBGEMM
-Status MatMulIntegerToFloatBase::ComputeCommonFbgemm(OpKernelContext* ctx,
-                                                     bool is_a_quantized,
-                                                     float a_scale,
-                                                     int32_t a_zero_point,
-                                                     const Tensor* b,
-                                                     const float* b_scale,
-                                                     const int32_t* b_zero_point,
-                                                     const Tensor* bias_tensor) const {
-  const Tensor* a = ctx->Input<Tensor>(0);
-
-  MatMulComputeHelper helper;
-  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape_));
-  Tensor* y = ctx->Output(0, helper.OutputShape());
-
-  // Bail out early if the output is going to be empty
-  if (y->Shape().Size() == 0)
-    return Status::OK();
-
-  auto* y_data = y->template MutableData<float>();
-  const auto* bias_data = bias_tensor != nullptr ? bias_tensor->Data<float>() : nullptr;
-
-  // fbgemm computation
-  int32_t* col_offsets = nullptr;
-  col_offsets = static_cast<int32_t*>(weight_col_offsets_.get());
-  if (!zero_offset_applied_) {
-    for (int i = 0; i < static_cast<size_t>(helper.N()); i++) {
-      col_offsets[i] -= b_zero_point[i] * helper.K();
-    }
-    zero_offset_applied_ = true;
-  }
-
-  // if A is not quantized yet, quantize it on-the-fly. Here, we need to find quantization parameters.
-  if (!is_a_quantized) {
-    int elem = a->Shape().Size();
-    float min_est = std::numeric_limits<float>::max(), max_est = std::numeric_limits<float>::lowest();
-    fbgemm::FindMinMax(a->template Data<float>(), &min_est, &max_est, elem);
-
-    if (min_est > 0.f)
-      std::cout << "min > 0: " << min_est << std::endl;
-    min_est = std::min(min_est, 0.0f);
-    if (max_est < 0.f)
-      std::cout << "max < 0: " << max_est << std::endl;
-    max_est = std::max(max_est, 0.0f);
-
-    a_scale = min_est == max_est ? 1.0f : (max_est - min_est) / 255;
-    a_zero_point = (int32_t)(255 - max_est / a_scale);
-  }
-
-#ifdef _OPENMP
-#pragma omp parallel
-#endif
-  {
-    std::vector<int32_t> rowOffsetBuf(
-        PackAWithRowOffset<uint8_t>::rowOffsetBufferSize());
-
-    auto* packedB = packed_weight_class_.get();
-
-    if (is_a_quantized) {
-      PackAWithRowOffset<uint8_t> packAN(
-          matrix_op_t::NoTranspose,
-          static_cast<size_t>(helper.M()),
-          static_cast<size_t>(helper.K()),
-          a->Data<uint8_t>(),
-          static_cast<size_t>(helper.K()),
-          nullptr,
-          1,
-          rowOffsetBuf.data());
-
-      DoNothing<float, float> doNothingObj{};
-      ReQuantizeForFloat<false, QuantizationGranularity::OUT_CHANNEL> outputProcObj(
-          doNothingObj,
-          a_scale,
-          b_scale,
-          a_zero_point,
-          b_zero_point,
-          packAN.getRowOffsetBuffer(),
-          col_offsets,
-          bias_data,
-          static_cast<size_t>(helper.N()));
-
-#ifdef _OPENMP
-      int num_threads = omp_get_num_threads();
-      int tid = omp_get_thread_num();
-#else
-      int num_threads = 1;
-      int tid = 0;
-#endif
-      fbgemmPacked(
-          packAN,
-          *packedB,
-          y_data,
-          (int32_t*) y_data,
-          static_cast<size_t>(helper.N()),
-          outputProcObj,
-          tid,
-          num_threads);
-    } else {
-      PackAWithQuantRowOffset<uint8_t> packAN(
-          matrix_op_t::NoTranspose,
-          static_cast<size_t>(helper.M()),
-          static_cast<size_t>(helper.K()),
-          a->Data<float>(),
-          static_cast<size_t>(helper.K()),
-          nullptr,
-          a_scale,
-          a_zero_point,
-          1,
-          rowOffsetBuf.data());
-
-      DoNothing<float, float> doNothingObj{};
-      ReQuantizeForFloat<false, QuantizationGranularity::OUT_CHANNEL> outputProcObj(
-          doNothingObj,
-          a_scale,
-          b_scale,
-          a_zero_point,
-          b_zero_point,
-          packAN.getRowOffsetBuffer(),
-          col_offsets,
-          bias_data,
-          static_cast<size_t>(helper.N()));
-
-#ifdef _OPENMP
-      int num_threads = omp_get_num_threads();
-      int tid = omp_get_thread_num();
-#else
-      int num_threads = 1;
-      int tid = 0;
-#endif
-      fbgemmPacked(
-          packAN,
-          *packedB,
-          y_data,
-          (int32_t*) y_data,
-          static_cast<size_t>(helper.N()),
-          outputProcObj,
-          tid,
-          num_threads);
-    }
-  }
-
-  return Status::OK();
-}
-#endif // USE_FBGEMM
-
 
 class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
  public:
@@ -291,37 +130,26 @@ static void GetQuantizationParameter(const float* data, int64_t num_of_elements,
 }
 
 Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
-#ifndef USE_FBGEMM
   const Tensor* a = ctx->Input<Tensor>(0);
-#endif
   const Tensor* b = packed_b_ ? nullptr : ctx->Input<Tensor>(1);
 
   const Tensor* b_scale_tensor = ctx->Input<Tensor>(2);
-#ifndef USE_FBGEMM
+#ifndef SUPPORT_COLUMNWISE_QUANTIZATION
   ORT_ENFORCE(IsScalarOr1ElementVector(b_scale_tensor),
               "DynamicQuantizeMatMul : input B scale must be a scalar or 1D tensor of size 1. Per-Channel is not supported yet.");
-#endif // USE_FBGEMM
+#endif // SUPPORT_COLUMNWISE_QUANTIZATION
   const float* b_scale = b_scale_tensor->template Data<float>();
 
   const Tensor* b_zero_point_tensor = ctx->Input<Tensor>(3);
-#ifndef USE_FBGEMM
   uint8_t* b_zero_point = nullptr;
-   if (b_zero_point_tensor != nullptr) {
-     ORT_ENFORCE(IsScalarOr1ElementVector(b_zero_point_tensor),
-                 "DynamicQuantizeMatMul : input B zero point must be a scalar or 1D tensor of size 1. Per-Channel is not supported yet.");
-    b_zero_point = (uint8_t*)(b_zero_point_tensor->DataRaw());
-   }
-#else // USE_FBGEMM
-  int8_t* b_zero_point = nullptr;
-  int32_t* b_zero_point_int32 = new int32_t[b_shape_[1]];
   if (b_zero_point_tensor != nullptr) {
-    b_zero_point = (int8_t*)(b_zero_point_tensor->DataRaw());
-    for (int i = 0; i < b_shape_[1]; i++)
-      b_zero_point_int32[i] = (int32_t)b_zero_point[i];
+#ifndef SUPPORT_COLUMNWISE_QUANTIZATION
+    ORT_ENFORCE(IsScalarOr1ElementVector(b_zero_point_tensor),
+                "DynamicQuantizeMatMul : input B zero point must be a scalar or 1D tensor of size 1. Per-Channel is not supported yet.");
+#endif // SUPPORT_COLUMNWISE_QUANTIZATION
+    b_zero_point = (uint8_t*)(b_zero_point_tensor->DataRaw());
   }
-#endif // USE_FBGEMM
 
-#ifndef USE_FBGEMM
   // calculate quantization parameter of a
   const float* a_data = a->template Data<float>();
   int64_t num_of_elements = a->Shape().Size();
@@ -345,24 +173,10 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
                        *b_zero_point,
                        a_scale * (*b_scale),
                        ctx->Input<Tensor>(4));
-#else
-  auto status = ComputeCommonFbgemm(ctx,
-                                    false,
-                                    1.0f,
-                                    0,
-                                    b,
-                                    b_scale,
-                                    b_zero_point_int32,
-                                    ctx->Input<Tensor>(4));
-  delete[] b_zero_point_int32;
-  return status;
-#endif
 }
 
 Status MatMulIntegerToFloat::Compute(OpKernelContext* ctx) const {
-#ifndef USE_FBGEMM
   const Tensor* a = ctx->Input<Tensor>(0);
-#endif
   const Tensor* b = packed_b_ ? nullptr : ctx->Input<Tensor>(1);
 
   const Tensor* a_scale_tensor = ctx->Input<Tensor>(2);
@@ -371,10 +185,10 @@ Status MatMulIntegerToFloat::Compute(OpKernelContext* ctx) const {
   float a_scale = *a_scale_tensor->template Data<float>();
 
   const Tensor* b_scale_tensor = ctx->Input<Tensor>(3);
-#ifndef USE_FBGEMM
+#ifndef SUPPORT_COLUMNWISE_QUANTIZATION
   ORT_ENFORCE(IsScalarOr1ElementVector(b_scale_tensor),
               "MatMulIntegerToFloat : input B scale must be a scalar or 1D tensor of size 1. Per-Channel is not supported yet.");
-#endif // USE_FBGEMM
+#endif // SUPPORT_COLUMNWISE_QUANTIZATION
   float* b_scale = (float*)b_scale_tensor->template Data<float>();
 
   // validate zero points
@@ -387,24 +201,15 @@ Status MatMulIntegerToFloat::Compute(OpKernelContext* ctx) const {
   }
 
   const Tensor* b_zero_point_tensor = ctx->Input<Tensor>(5);
-#ifndef USE_FBGEMM
   uint8_t* b_zero_point = nullptr;
   if (b_zero_point_tensor != nullptr) {
+#ifndef SUPPORT_COLUMNWISE_QUANTIZATION
     ORT_ENFORCE(IsScalarOr1ElementVector(b_zero_point_tensor),
-                "DynamicQuantizeMatMul : input B zero point must be a scalar or 1D tensor of size 1. Per-Channel is not supported yet.");
+                "MatMulIntegerToFloat : input B zero point must be a scalar or 1D tensor of size 1. Per-Channel is not supported yet.");
+#endif // SUPPORT_COLUMNWISE_QUANTIZATION
     b_zero_point = (uint8_t*)(b_zero_point_tensor->DataRaw());
   }
-#else // USE_FBGEMM
-  int8_t* b_zero_point = nullptr;
-  int32_t* b_zero_point_int32 = new int32_t[b_shape_[1]];
-  if (b_zero_point_tensor != nullptr) {
-    b_zero_point = (int8_t*)(b_zero_point_tensor->DataRaw());
-    for (int i = 0; i < b_shape_[1]; i++)
-      b_zero_point_int32[i] = (int32_t)b_zero_point[i];
-  }
-#endif // USE_FBGEMM
 
-#ifndef USE_FBGEMM
   return ComputeCommon(ctx,
                        a->Data<uint8_t>(),
                        a->Shape(),
@@ -413,18 +218,6 @@ Status MatMulIntegerToFloat::Compute(OpKernelContext* ctx) const {
                        *b_zero_point,
                        a_scale * (*b_scale),
                        ctx->Input<Tensor>(6));
-#else
-  auto status = ComputeCommonFbgemm(ctx,
-                                    false,
-                                    1.0f,
-                                    0,
-                                    b,
-                                    b_scale,
-                                    b_zero_point_int32,
-                                    ctx->Input<Tensor>(4));
-  delete[] b_zero_point_int32;
-  return status;
-#endif // USE_FBGEMM
 }
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(

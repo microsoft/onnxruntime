@@ -436,7 +436,6 @@ def parse_arguments():
                         help="Disable exceptions to reduce binary size. Requires --minimal_build.")
     parser.add_argument("--disable_ort_format_load", action='store_true',
                         help='Disable support for loading ORT format models in a non-minimal build.')
-    parser.add_argument("--use_fbgemm", action='store_true', help="Build with FBGEMM.")
 
     parser.add_argument("--use_rocm", action='store_true', help="Build with ROCm")
     parser.add_argument("--rocm_home", help="Path to ROCm installation dir")
@@ -634,8 +633,6 @@ def use_dev_mode(args):
         return 'OFF'
     if args.ios and is_macOS():
         return 'OFF'
-    if args.use_fbgemm:
-        return 'OFF'
     return 'ON'
 
 
@@ -679,7 +676,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "OFF" if args.use_openblas else "ON"),
         "-Donnxruntime_USE_OPENBLAS=" + ("ON" if args.use_openblas else "OFF"),
         "-Donnxruntime_USE_DNNL=" + ("ON" if args.use_dnnl else "OFF"),
-        "-Donnxruntime_USE_FBGEMM=" + ("ON" if args.use_fbgemm else "OFF"),
         "-Donnxruntime_DNNL_GPU_RUNTIME=" + (args.dnnl_gpu_runtime if args.use_dnnl else ""),
         "-Donnxruntime_DNNL_OPENCL_ROOT=" + (args.dnnl_opencl_root if args.use_dnnl else ""),
         "-Donnxruntime_USE_NGRAPH=" + ("ON" if args.use_ngraph else "OFF"),

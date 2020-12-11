@@ -70,13 +70,13 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
   int batch_size = is_input_dim_swapped_ ? static_cast<int>(dims[1]) : static_cast<int>(dims[0]);
   int sequence_length = is_input_dim_swapped_ ? static_cast<int>(dims[0]) : static_cast<int>(dims[1]);
   int hidden_size = static_cast<int>(dims[2]);
-#ifndef USE_FBGEMM
-  // This is not true for head-pruned transformers - e.g. FastFormers
-  if (hidden_size % num_heads_ != 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 0 dimension 2 should be divisiable by value of the num_heads attribute.");
-  }
-#endif // USE_FBGEMM
+  if (head_size_ < 0)
+    head_size_ = hidden_size / num_heads_;
+  // This is not true for head-pruned transformers - e.g. FastFormers, 12 heads -> 7 heads
+  // if (hidden_size % num_heads_ != 0) {
+  //   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+  //                          "Input 0 dimension 2 should be divisiable by value of the num_heads attribute.");
+  // }
 
   const auto& weights_dims = weights_shape.GetDims();
   if (weights_dims.size() != 2) {
@@ -87,12 +87,14 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 1 dimension 0 should have same length as dimension 2 of input 0");
   }
-#ifndef USE_FBGEMM
-  // This is not true for head-pruned transformers - e.g. FastFormers
-  if (weights_dims[1] != 3 * weights_dims[0]) {
+  if (weights_dims[1] % num_heads_ != 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 1 dimension 1 should be divisiable by value of the num_heads attribute.");
+  }
+  // This is modified for head-pruned transformers - e.g. FastFormers
+  if (weights_dims[1] != 3 * head_size_ * num_heads_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'weights' dimension 1 should be 3 times of dimension 0");
   }
-#endif // USE_FBGEMM
 
   const auto& bias_dims = bias_shape.GetDims();
   if (bias_dims.size() != 1) {
