@@ -67,12 +67,10 @@ static Status AddReducedGradientScalingNodes(const NodeArgNameGeneratorFn& nodea
 AdasumOptimizerGraphBuilder::AdasumOptimizerGraphBuilder(
     const OptimizerBuilderRegistry& opt_builder_registry,
     const OptimizerGraphConfig& opt_graph_config,
-    const std::unordered_map<std::string, OptimizerNodeConfig>& weight_names_to_opt_configs,
-    std::unordered_map<std::string, std::string>& updated_weight_names_map)
+    const std::unordered_map<std::string, OptimizerNodeConfig>& weight_names_to_opt_configs)
     : AllreduceOptimizerGraphBuilder(opt_builder_registry,
                                      opt_graph_config,
-                                     weight_names_to_opt_configs,
-                                     updated_weight_names_map) {
+                                     weight_names_to_opt_configs) {
   ORT_ENFORCE(opt_graph_config.data_parallel_group_size > 1,
               "Adasum optimizer graph builder can only be used for distributed training.");
   ORT_ENFORCE(IsHorovodAvailable(), "Distributed training with Adasum needs building with Horovod.");
@@ -89,23 +87,14 @@ Status AdasumOptimizerGraphBuilder::BuildOptimizerNode(
     std::vector<TensorProto>& new_initializers,
     std::vector<ArgDef>& output_weight_argdefs,
     std::vector<ArgDef>& output_gradient_argdefs) {
-  OptimizerBuilderConfig config;
-  config.weight_argdefs = weight_argdefs;
-  config.gradient_argdefs = gradient_argdefs;
-  if (global_gradient_norm_argdef != nullptr) {
-    config.gradient_norm_argdef = *global_gradient_norm_argdef;
-  }
-  if (global_gradient_norm_finite_argdef != nullptr) {
-    config.gradient_norm_finite_argdef = *global_gradient_norm_finite_argdef;
-  }
-  config.opt_configs = opt_configs;
-  // Always enable grad clipping for Adasum
-  config.enable_grad_clipping = true;
-  config.shared_optimizer_states = opt_graph_config_.shared_optimizer_states;
   ORT_RETURN_IF_ERROR(opt_builder->Build(
-      config, graph_defs,
+      weight_argdefs, gradient_argdefs,
+      global_gradient_norm_argdef, global_gradient_norm_finite_argdef,
+      opt_configs, graph_defs,
       new_initializers,
-      output_weight_argdefs, output_gradient_argdefs));
+      output_weight_argdefs, output_gradient_argdefs,
+      // Always enable grad clipping for Adasum
+      true /*enable_grad_clipping*/));
 
   return Status::OK();
 }

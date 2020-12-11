@@ -21,9 +21,6 @@ using wf::IPropertyValue;
 
 static void LearningModelSessionAPITestsClassSetup() {
   init_apartment();
-#ifdef BUILD_INBOX
-  winrt_activation_handler = WINRT_RoGetActivationFactory;
-#endif
 }
 
 static void CreateSessionDeviceDefault()

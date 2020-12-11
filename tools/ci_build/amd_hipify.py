@@ -199,6 +199,8 @@ core_ops_files = [
                 'tensor/tile.h',
                 'tensor/tile_impl.cu',
                 'tensor/tile_impl.h',
+                'tensor/transpose_impl.cu',
+                'tensor/transpose_impl.h',
                 'tensor/transpose.cc',
                 'tensor/transpose.h',
                 'tensor/upsample.cc',
