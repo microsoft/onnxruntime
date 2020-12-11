@@ -233,14 +233,7 @@ Status SessionState::GetInitializedTensors(
           "Failed to get OrtValue index from name: ", status.ErrorMessage());
       continue;
     }
-    if (initialized_tensors_.find(idx) != initialized_tensors_.end()){
-      result.emplace(weight_name, initialized_tensors_.at(idx));
-    } else {
-      ORT_RETURN_IF_NOT(
-          allow_missing_weights,
-          "Failed to get initializer with name: ", weight_name, " and index:", idx);
-      continue;
-    }    
+    result.emplace(weight_name, initialized_tensors_.at(idx));
   }
   retrieved_weights = std::move(result);
   return Status::OK();

@@ -35,8 +35,6 @@ jobs:
       packageFolder: '$(Build.BinariesDirectory)/nuget-artifact'
 
   - script: |
-     # The following line is a hack to prevent build pipeline from failing
-     brew uninstall openssl@1.0.2t
      brew install libomp
      $(Build.SourcesDirectory)/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh \
                $(Build.BinariesDirectory)/nuget-artifact \

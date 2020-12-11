@@ -458,11 +458,6 @@ def parse_arguments():
 
     parser.add_argument("--use_rocm", action='store_true', help="Build with ROCm")
     parser.add_argument("--rocm_home", help="Path to ROCm installation dir")
-
-    # Code coverage
-    parser.add_argument("--code_coverage", action='store_true',
-                        help="Generate code coverage when targetting Android (only).")
-
     return parser.parse_args()
 
 
@@ -770,7 +765,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "ON" if args.build_micro_benchmarks else "OFF"),
         "-Donnxruntime_USE_ROCM=" + ("ON" if args.use_rocm else "OFF"),
         "-Donnxruntime_ROCM_HOME=" + (rocm_home if args.use_rocm else ""),
-        "-DOnnxruntime_GCOV_COVERAGE=" + ("ON" if args.code_coverage else "OFF"),
     ]
 
     if acl_home and os.path.exists(acl_home):
@@ -1184,19 +1178,6 @@ def adb_shell(*args, **kwargs):
 
 
 def run_android_tests(args, source_dir, config, cwd):
-
-    def run_adb_shell(cmd):
-        # GCOV_PREFIX_STRIP specifies the depth of the directory hierarchy to stip and
-        # GCOV_PREFIX specifies the root directory
-        # for creating the runtime code coverage files.'
-        nonlocal cwd
-        if args.code_coverage:
-            adb_shell(
-                'cd /data/local/tmp && GCOV_PREFIX=/data/local/tmp \
-                GCOV_PREFIX_STRIP={} {}'.format(cwd.count(os.sep) + 1, cmd))
-        else:
-            adb_shell('cd /data/local/tmp && ' + cmd)
-
     if args.android_abi == 'x86_64':
         run_subprocess([os.path.join(
             source_dir, 'tools', 'ci_build', 'github', 'android',
@@ -1207,7 +1188,7 @@ def run_android_tests(args, source_dir, config, cwd):
             '/data/local/tmp/', cwd=cwd)
         adb_push('onnxruntime_test_all', '/data/local/tmp/', cwd=cwd)
         adb_push('onnx_test_runner', '/data/local/tmp/', cwd=cwd)
-        run_adb_shell('/data/local/tmp/onnxruntime_test_all')
+        adb_shell('cd /data/local/tmp && /data/local/tmp/onnxruntime_test_all')
         if args.use_nnapi:
             adb_shell('cd /data/local/tmp && /data/local/tmp/onnx_test_runner -e nnapi /data/local/tmp/test')
         else:
@@ -1216,7 +1197,8 @@ def run_android_tests(args, source_dir, config, cwd):
         if args.build_shared_lib:
             adb_push('libonnxruntime.so', '/data/local/tmp/', cwd=cwd)
             adb_push('onnxruntime_shared_lib_test', '/data/local/tmp/', cwd=cwd)
-            run_adb_shell(
+            adb_shell(
+                'cd /data/local/tmp && ' +
                 'export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/data/local/tmp && ' +
                 '/data/local/tmp/onnxruntime_shared_lib_test')
     elif args.android_abi == 'arm64-v8a':
@@ -1296,8 +1278,6 @@ def run_training_python_frontend_tests(cwd):
     # run_subprocess([sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_orttrainer_frontend.py'], cwd=cwd)
 
     run_subprocess([sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_orttrainer_bert_toy_onnx.py'], cwd=cwd)
-
-    run_subprocess([sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_checkpoint_storage.py'], cwd=cwd)
 
 
 def run_training_python_frontend_e2e_tests(cwd):
@@ -1417,7 +1397,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
     for config in configs:
         log.info("Running tests for %s configuration", config)
         cwd = get_config_build_dir(build_dir, config)
-        cwd = os.path.abspath(cwd)
 
         # TODO: temporarily disable this test to restore pipeline health. This test fails due to
         # an OOM regression. Invetigation undergoing.
@@ -1893,9 +1872,6 @@ def main():
             raise BuildError("Using --nnapi_min_api requires --use_nnapi")
         if args.nnapi_min_api < 27:
             raise BuildError("--nnapi_min_api should be 27+")
-
-    if args.code_coverage and not args.android:
-        raise BuildError("Using --code_coverage requires --android")
 
     # Disabling unit tests for VAD-F as FPGA only supports
     # models with NCHW layout

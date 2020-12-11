@@ -31,9 +31,6 @@ using namespace wss;
 static void CustomOpsScenarioTestsClassSetup()
 {
   winrt::init_apartment();
-  #ifdef BUILD_INBOX
-    winrt_activation_handler = WINRT_RoGetActivationFactory;
-  #endif
 }
 
 // Tests that the execution provider correctly fuses operators together when custom ops are involved.

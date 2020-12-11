@@ -8,9 +8,6 @@ using namespace ws;
 using namespace wss;
 
 static void AdapterTestSetup() {
-#ifdef BUILD_INBOX
-  winrt_activation_handler = WINRT_RoGetActivationFactory;
-#endif
   ort_api = OrtGetApiBase()->GetApi(2);
   winml_adapter_api = OrtGetWinMLAdapter(ort_api);
   

@@ -14,12 +14,10 @@ logging.basicConfig(
     level=logging.DEBUG)
 log = logging.getLogger("DistributedTests")
 
-
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument("--cwd", help="Path to the current working directory")
     return parser.parse_args()
-
 
 def run_checkpoint_tests(cwd, log):
     log.debug('Running: Checkpoint tests')
@@ -27,7 +25,6 @@ def run_checkpoint_tests(cwd, log):
     command = [sys.executable, 'orttraining_test_checkpoint.py']
 
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
-
 
 def main():
     import torch

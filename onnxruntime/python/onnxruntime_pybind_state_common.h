@@ -132,8 +132,5 @@ void InitializeSession(InferenceSession* sess,
                        const std::vector<std::string>& provider_types = {},
                        const ProviderOptionsVector& provider_options = {});
 
-// Checks if PyErrOccured, fetches status and throws.
-void ThrowIfPyErrOccured();
-
 }  // namespace python
 }  // namespace onnxruntime

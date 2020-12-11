@@ -39,9 +39,6 @@ void LoadBindEvalSqueezenetRealDataWithValidationConcurrently() {
 void ConcurrencyTestsClassSetup() {
     init_apartment();
     std::srand(static_cast<unsigned>(std::time(nullptr)));
-#ifdef BUILD_INBOX
-    winrt_activation_handler = WINRT_RoGetActivationFactory;
-#endif
 }
 
 struct EvaluationUnit {
