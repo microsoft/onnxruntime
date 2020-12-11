@@ -53,8 +53,8 @@ __device__ __forceinline__ void _LambComputeDirectionRule(
   const T3 m2_new_tmp_corrected = m2_new_tmp / beta_correction;
 
   // Save regularized update direction to output.
-  const T2 d_tmp = lambda * w + 
-    T1(m1_new_tmp_corrected / (_Sqrt(m2_new_tmp_corrected) + epsilon));
+  const T2 d_tmp = lambda * w +
+                   T1(m1_new_tmp_corrected / (_Sqrt(m2_new_tmp_corrected) + epsilon));
 
   // Things are updated only if the direction is finite.
   if (_IsFiniteScalar(d_tmp)) {
@@ -148,22 +148,22 @@ void LambComputeDirection(
 }
 
 #define SPECIALIZED_LAMB_COMPUTE_DIRECTION(T1, T2, T3, T_GRAD_NORM) \
-  template void LambComputeDirection(                     \
-      const T1* weights,                                  \
-      const T2* grads,                                    \
-      const T3* moment_1,                                 \
-      const T3* moment_2,                                 \
-      const T1* loss_scale,                               \
-      const T_GRAD_NORM* grad_norm,                       \
-      T3 alpha,                                           \
-      T3 beta,                                            \
-      T1 lambda,                                          \
-      T3 epsilon,                                         \
-      T3 alpha_correction,                                \
-      T3 beta_correction,                                 \
-      T2* weights_out,                                    \
-      T3* moment_1_out,                                   \
-      T3* moment_2_out,                                   \
+  template void LambComputeDirection(                               \
+      const T1* weights,                                            \
+      const T2* grads,                                              \
+      const T3* moment_1,                                           \
+      const T3* moment_2,                                           \
+      const T1* loss_scale,                                         \
+      const T_GRAD_NORM* grad_norm,                                 \
+      T3 alpha,                                                     \
+      T3 beta,                                                      \
+      T1 lambda,                                                    \
+      T3 epsilon,                                                   \
+      T3 alpha_correction,                                          \
+      T3 beta_correction,                                           \
+      T2* weights_out,                                              \
+      T3* moment_1_out,                                             \
+      T3* moment_2_out,                                             \
       size_t count);
 
 SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, float, float, float)
@@ -185,9 +185,8 @@ __device__ __forceinline__ void _LambUpdateRule(
     T2* w_new,
     T3* g_new,
     T_MIXED_PRECISION_FP* w_mixed_precision_new) {
-  // Confidence coefficeint of this update. 
-  const T2 ratio = (w_norm != T2(0.0f) && r_norm != T2(0.0f)) ?
-    T2(eta) * _Max(T2(ratio_min), _Min(T2(ratio_max), _Sqrt(w_norm / r_norm))) : T2(eta);
+  // Confidence coefficeint of this update.
+  const T2 ratio = (w_norm != T2(0.0f) && r_norm != T2(0.0f)) ? T2(eta) * _Max(T2(ratio_min), _Min(T2(ratio_max), _Sqrt(w_norm / r_norm))) : T2(eta);
 
   // Compute delta using the saved update direction.
   const T2 delta = -ratio * T2(d);
@@ -316,7 +315,7 @@ __global__ void LambMultiTensorComputeDirectionImpl(
   T3* m2_new = reinterpret_cast<T3*>(chunk_group.tensor_ptrs[5][group_index]) + chunk_start;
   const T1 scale = _ComputeGradScale<T1, T_GRAD_NORM, T1>(loss_scale, g_norm);
 
-  #pragma unroll
+#pragma unroll
   for (int i = threadIdx.x; i < chunk_size && i + chunk_start < tensor_size; i += blockDim.x) {
     _LambComputeDirectionRule(
         scale,
@@ -362,16 +361,16 @@ void LambMultiTensorComputeDirectionFunctor<T1, T2, T3, T_GRAD_NORM>::operator()
       beta_correction);
 }
 
-#define INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(T1, T2, T3, T_GRAD_NORM)   \
+#define INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(T1, T2, T3, T_GRAD_NORM)                \
   template void LambMultiTensorComputeDirectionFunctor<T1, T2, T3, T_GRAD_NORM>::operator()( \
-      ChunkGroup<6> chunk_group,                                                \
-      const T1* loss_scale,                                                     \
-      const T_GRAD_NORM* g_norm,                                                \
-      const T1 lambda,                                                          \
-      const T3 alpha,                                                           \
-      const T3 beta,                                                            \
-      const T3 epsilon,                                                         \
-      const T3 alpha_correction,                                                \
+      ChunkGroup<6> chunk_group,                                                             \
+      const T1* loss_scale,                                                                  \
+      const T_GRAD_NORM* g_norm,                                                             \
+      const T1 lambda,                                                                       \
+      const T3 alpha,                                                                        \
+      const T3 beta,                                                                         \
+      const T3 epsilon,                                                                      \
+      const T3 alpha_correction,                                                             \
       const T3 beta_correction);
 
 INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, float, float, float)
@@ -447,11 +446,11 @@ INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(float, float, half, half)
 // sync_range_and_lock is used for a well ordered reduction over blocks spanning the same tensor
 template <typename TIn1, typename TIn2, typename TOut1, typename TOut2, typename TBuf>
 __launch_bounds__(ChunkGroup<4>::thread_count_per_block)
-__global__ void LambMultiTensorReductionImpl(
-    ChunkGroup<4> chunk_group, 
-    TOut1* w_buffer, 
-    TOut2* d_buffer, 
-    LambMultiTensorSyncRangeAndLock* sync_range_and_lock) {
+    __global__ void LambMultiTensorReductionImpl(
+        ChunkGroup<4> chunk_group,
+        TOut1* w_buffer,
+        TOut2* d_buffer,
+        LambMultiTensorSyncRangeAndLock* sync_range_and_lock) {
   const int group_index = chunk_group.block_index_to_tensor_group_index[blockIdx.x];
   const int tensor_size = chunk_group.tensor_sizes[group_index];
   const int chunk_size = chunk_group.chunk_size;
@@ -478,7 +477,7 @@ __global__ void LambMultiTensorReductionImpl(
     }
   }
 
-  // Thread count in a block must be a multiple of GPU_WARP_SIZE.
+// Thread count in a block must be a multiple of GPU_WARP_SIZE.
 #pragma unroll
   for (int stride = GPU_WARP_SIZE / 2; stride > 0; stride /= 2) {
     w_sum += WARP_SHFL_DOWN(w_sum, stride);
@@ -538,7 +537,7 @@ __global__ void LambMultiTensorReductionImpl(
   if (threadIdx.x == 0) {
     int* p_lock = &sync_range_and_lock[group_index].completed_blocks;
     int counter = atomicAdd(p_lock, 1);
-    is_last_block_done = (counter == num_blocks_in_tensor-1);
+    is_last_block_done = (counter == num_blocks_in_tensor - 1);
   }
   __syncthreads();
 
@@ -562,15 +561,14 @@ __global__ void LambMultiTensorReductionImpl(
 }
 
 CudaKernel::CudaAsyncBuffer<LambMultiTensorSyncRangeAndLock> compute_tensor_range_and_lock(ChunkGroup<4> chunk_group, const CudaKernel& kernel) {
-    
   const int num_blocks = chunk_group.chunk_count;
-  
+
   // sync_range_and_lock is a struct consisting of (start_block, num_blocks, lock) for each tensor
   // Note: Adding such info to chunk group causes overflow (unless max tensors is reduced)
   const int max_tensors = ChunkGroup<4>::max_tensor_group_count;
   LambMultiTensorSyncRangeAndLock initial = {0, 0, 0};
   CudaKernel::CudaAsyncBuffer<LambMultiTensorSyncRangeAndLock> sync_range_and_lock(&kernel, initial, max_tensors);
-  for (int block_index = num_blocks-1; block_index >= 0; block_index--) {
+  for (int block_index = num_blocks - 1; block_index >= 0; block_index--) {
     int tensor_index = chunk_group.block_index_to_tensor_group_index[block_index];
     auto& tensor_block_span = sync_range_and_lock.CpuPtr()[tensor_index];
     tensor_block_span.leading_block = block_index;
@@ -582,7 +580,7 @@ CudaKernel::CudaAsyncBuffer<LambMultiTensorSyncRangeAndLock> compute_tensor_rang
 }
 
 template <typename TIn1, typename TIn2, typename TOut1, typename TOut2, typename TBuf>
-void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()(ChunkGroup<4> chunk_group, const CudaKernel& kernel, void *reduction_buffer, size_t reduction_buffer_size) {
+void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()(ChunkGroup<4> chunk_group, const CudaKernel& kernel, void* reduction_buffer, size_t reduction_buffer_size) {
   // thread count per block.
   constexpr int thread_count = ChunkGroup<4>::thread_count_per_block;
   // shared memory's size per block.
@@ -598,16 +596,16 @@ void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()
 
   ORT_ENFORCE(w_buffer_size + d_buffer_size <= reduction_buffer_size);
 
-  TOut1 *w_buffer = reinterpret_cast<TOut1*>(reduction_buffer);
-  TOut2 *d_buffer = reinterpret_cast<TOut2*>(w_buffer + num_blocks);
+  TOut1* w_buffer = reinterpret_cast<TOut1*>(reduction_buffer);
+  TOut2* d_buffer = reinterpret_cast<TOut2*>(w_buffer + num_blocks);
 
-  auto sync_range_and_lock =  compute_tensor_range_and_lock(chunk_group, kernel);
+  auto sync_range_and_lock = compute_tensor_range_and_lock(chunk_group, kernel);
   LambMultiTensorReductionImpl<TIn1, TIn2, TOut1, TOut2, TBuf><<<chunk_group.chunk_count, thread_count, shared_memory_size>>>(
-    chunk_group, w_buffer, d_buffer, sync_range_and_lock.GpuPtr());
+      chunk_group, w_buffer, d_buffer, sync_range_and_lock.GpuPtr());
 }
 
 #define INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(TIn1, TIn2, TOut1, TOut2, TBuf) \
-  template void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()(ChunkGroup<4> chunk_group, const CudaKernel& kernel, void *reduction_buffer, size_t reduction_buffer_size);
+  template void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()(ChunkGroup<4> chunk_group, const CudaKernel& kernel, void* reduction_buffer, size_t reduction_buffer_size);
 
 INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(float, float, float, float, float)
 INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(double, double, double, double, double)
