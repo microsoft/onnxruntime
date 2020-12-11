@@ -579,8 +579,8 @@ common::Status VerifyInputTensorsAllocatedContiguously(OpKernelContext* context)
     size_t input_element_size = prev_input->DataType()->Size();
     size_t input_aligned_bytes = 0;
 
-    ORT_RETURN_IF_NOT(IAllocator::CalcMemSizeForArrayWithAlignment<256>(input_element_count, input_element_size,
-                                                                        &input_aligned_bytes));
+    ORT_RETURN_IF_NOT(IAllocator::CalcMemSizeForArrayWithAlignment<kAllocAlignment>(
+        input_element_count, input_element_size, &input_aligned_bytes));
 
     ORT_RETURN_IF_NOT(
         curr_input->DataRaw() == static_cast<const int8_t*>(prev_input->DataRaw()) + input_aligned_bytes ||
