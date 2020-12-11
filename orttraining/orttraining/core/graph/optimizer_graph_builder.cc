@@ -300,11 +300,9 @@ Status OptimizerGraphBuilder::AddDirectWeightUpdate(
       output_weight_argdefs, output_gradient_argdefs));
 
   std::vector<TensorProto> initializers_vec;
-  for (auto& kv : weight_to_opt_obj_mapping) {
-    weight_to_opt_mapping[kv.first] = {};
-    for (auto& kv2 : kv.second) {
-      TensorProto& initializer = (TensorProto&)kv2;
-      weight_to_opt_mapping[kv.first].emplace_back(initializer.name());
+  for (auto& weight_map : weight_to_opt_obj_mapping) {
+    for (auto& opt_tensor : weight_map.second) {
+      TensorProto& initializer = (TensorProto&)opt_tensor;
       initializers_vec.emplace_back(initializer);
     }
   }
@@ -313,11 +311,11 @@ Status OptimizerGraphBuilder::AddDirectWeightUpdate(
   weight_argdefs = std::move(output_weight_argdefs);
   gradient_argdefs = std::move(output_gradient_argdefs);
 
-  for (auto& kv : weight_to_opt_obj_mapping) {
-    weight_to_opt_mapping[kv.first] = {};
-    for (auto& kv2 : kv.second) {
-      TensorProto& initializer = (TensorProto&)kv2;
-      weight_to_opt_mapping[kv.first].emplace_back(initializer.name());
+  for (auto& weight_map : weight_to_opt_obj_mapping) {
+    weight_to_opt_mapping[weight_map.first] = {};
+    for (auto& opt_tensor : weight_map.second) {
+      TensorProto& initializer = (TensorProto&)opt_tensor;
+      weight_to_opt_mapping[weight_map.first].emplace_back(initializer.name());
     }
   }
 

@@ -709,7 +709,7 @@ Status TrainingSession::EnableMixedPrecision(
       weights_to_train,
       mixed_precision_config.use_mixed_precision_initializers,
       mixed_precision_config.TensorProtoDataType(),
-      fp32_weight_name_to_mixed_precision_node_arg, // use this
+      fp32_weight_name_to_mixed_precision_node_arg,
       mixed_precision_config.layernorm_stash_as_fp32));
 
   std::unordered_set<std::string> mixed_precision_weight_initializer_names{};
@@ -893,15 +893,15 @@ common::Status TrainingSession::GetStateTensors(NameMLValMap& state_tensors) {
 
 common::Status TrainingSession::GetOptimizerState(std::unordered_map<std::string, NameMLValMap>& opt_state_tensors) {
   bool allow_missing = (opt_graph_config_.deepspeed_zero.stage != 0);
-  for (auto& kv : weight_to_opt_mapping_) {
+  for (const auto& weight_map : weight_to_opt_mapping_) {
     NameMLValMap curr_opt_tensors;
-    std::unordered_set<std::string> opt_names(kv.second.begin(), kv.second.end());
-    auto& weight_name = kv.first;
+    std::unordered_set<std::string> opt_names(weight_map.second.begin(), weight_map.second.end());
+    const auto& weight_name = weight_map.first;
     GetSessionState().GetInitializedTensors(opt_names, allow_missing, curr_opt_tensors);
     opt_state_tensors[weight_name] = {};
     // Keep only prefix in returned value
-    for (auto& opt_pair: curr_opt_tensors) {
-      auto opt_name = opt_pair.first;
+    for (const auto& opt_pair: curr_opt_tensors) {
+      const auto& opt_name = opt_pair.first;
       std::string pre_fix_only = opt_name.substr(0, opt_name.find(weight_name) - 1);
       opt_state_tensors[weight_name][pre_fix_only] = opt_pair.second;
     }
@@ -936,11 +936,10 @@ common::Status TrainingSession::GetPartitionInfoMap(std::unordered_map<std::stri
       weights_to_train_.begin(), weights_to_train_.end());
   NameMLValMap fp_weights;
   GetSessionState().GetInitializedTensors(fp_tensor_names, allow_missing, fp_weights);
-  for (auto& kv : fp_weights) {
+  for (const auto& weight : fp_weights) {
     std::unordered_map<std::string, std::vector<int>> feeds;
-    //feeds.insert(std::make_pair("original_dim", kv.second.size()));
-    feeds.insert(std::make_pair("megatron_row_partition", std::vector<int>{partition_by_row_[kv.first]}));
-    part_info_map[kv.first] = feeds;
+    feeds.insert(std::make_pair("megatron_row_partition", std::vector<int>{partition_by_row_[weight.first]}));
+    part_info_map[weight.first] = feeds;
   }
   return Status::OK();
 }
@@ -1145,16 +1144,16 @@ Status TrainingSession::SetModelOptState(const std::unordered_map<std::string, N
   }
 
   std::unordered_set<std::string> ckpt_opt_names;
-  for (auto& weight: optimizer_tensors) {
-    for (auto& state : weight.second) {
+  for (const auto& weight: optimizer_tensors) {
+    for (const auto& state : weight.second) {
       ckpt_opt_names.insert(weight.first + state.first);
     }
   }
   NameMLValMap opt_initializers;
   ORT_RETURN_IF_ERROR(GetSessionState().GetInitializedTensors(ckpt_opt_names, !strict, opt_initializers));
 
-  for (auto& weight: optimizer_tensors) {
-    for (auto& state : weight.second) {
+  for (const auto& weight: optimizer_tensors) {
+    for (const auto& state : weight.second) {
       std::string opt_name = weight.first + state.first;
       const bool is_valid_state_tensor =
           valid_state_tensor_names.find(opt_name) != valid_state_tensor_names.end();
