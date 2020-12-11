@@ -16,6 +16,7 @@ def yolov3_preprocess_func(images_folder, height, width, start_index=0, size_lim
     return: list of matrices characterizing multiple images
     '''
     # this function is from yolo3.utils.letterbox_image
+    # https://github.com/qqwweee/keras-yolo3/blob/master/yolo3/utils.py
     def letterbox_image(image, size):
         '''resize image with unchanged aspect ratio using padding'''
         iw, ih = image.size

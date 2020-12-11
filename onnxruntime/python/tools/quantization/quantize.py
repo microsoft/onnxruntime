@@ -120,6 +120,7 @@ def quantize(model,
     else:
         raise ValueError('Only 8 and 7 bit quantization is currently supported')
 
+
 def quantize_static(model_input,
                     model_output,
                     calibration_data_reader: CalibrationDataReader,

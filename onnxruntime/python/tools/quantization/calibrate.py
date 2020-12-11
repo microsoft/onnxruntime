@@ -17,6 +17,7 @@ from .quant_utils import QuantType
 from .registry import QLinearOpsRegistry
 
 import abc
+import itertools
 
 
 class CalibrationDataReader(metaclass=abc.ABCMeta):
@@ -62,8 +63,8 @@ class ONNXCalibrater:
     def write_calibration_table(self):
         import json
         import flatbuffers
-        import CalTableFlatBuffers.TrtTable as TrtTable
-        import CalTableFlatBuffers.KeyValue as KeyValue
+        import onnxruntime.quantization.CalTableFlatBuffers.TrtTable as TrtTable
+        import onnxruntime.quantization.CalTableFlatBuffers.KeyValue as KeyValue
 
         print(self.calibration_cache)
 
@@ -135,77 +136,51 @@ class ONNXCalibrater:
 
         return value_info_set 
 
-    def augment_graph(self, implicitly_quantize_all_ops=False):
+    def augment_graph(self, augment_all_ops=False):
         '''
         Adds ReduceMin and ReduceMax nodes to all quantization_candidates op type nodes in
         model and ensures their outputs are stored as part of the graph output
-        :param implicitly_quantize_all_ops: Augment all ops with specific type. Useful when generating calibration data. 
         :return: augmented ONNX model
         '''
 
         model = onnx.load(self.model_path)
+        model = onnx.shape_inference.infer_shapes(model)
+        value_infos = {vi.name: vi for vi in model.graph.value_info}
+        value_infos.update({ot.name: ot for ot in model.graph.output})
+        value_infos.update({it.name: it for it in model.graph.input})
 
         added_nodes = []
         added_outputs = []
         tensors_to_calibrate = set()
-        value_info_set = {} # value info set with specific type 
-        tensor_initializer = set()
-
-        for init in model.graph.initializer:
-            tensor_initializer.add(init.name)
-
-        # Target all ops with specific type
-        if implicitly_quantize_all_ops:
-            type_list = [onnx_proto.TensorProto.FLOAT, onnx_proto.TensorProto.FLOAT16]
-            value_info_set = self.get_value_info_by_type(model.graph.value_info, type_list)
 
         for node in model.graph.node:
-
-            ########################
-            ## TODO: handle subgraph
-            ########################
-            '''
-            if len(node.attribute) > 0 and node.attribute[0].g.node: 
-                print(node.name)
-                print(node.attribute[0].g)
-                print("\n")
-                # for value_info in node.attribute[0].g.value_info:
-                    # print(value_info)
-            '''
-
-            if implicitly_quantize_all_ops:
-                for i in node.input:
-                    if i in tensor_initializer:
-                        continue
-                    if i in value_info_set:
-                        tensors_to_calibrate.add(i)
-                for o in node.input:
-                    if o in tensor_initializer:
-                        continue
-                    if o in value_info_set:
-                        tensors_to_calibrate.add(o)
+            if augment_all_ops:
+                should_be_calibrate = True
             else:
                 should_be_calibrate = ((node.op_type in self.calibrate_op_types) and
                                        (node.name not in self.black_nodes)) or (node.name in self.white_nodes)
-                if should_be_calibrate:
-                    tensors_to_calibrate.update(node.input)
-                    tensors_to_calibrate.update(node.output)
+            if should_be_calibrate:
+                for tensor_name in itertools.chain(node.input, node.output):
+                    if tensor_name in value_infos.keys():
+                        vi = value_infos[tensor_name]
+                        if vi.type.HasField('tensor_type') and vi.type.tensor_type.elem_type == TensorProto.FLOAT and (
+                                tensor_name not in model.graph.initializer):
+                            tensors_to_calibrate.add(tensor_name)
 
-
-            # following has the chance to cause "RuntimeError: Set changed size during iteration"
-            for tensor in tensors_to_calibrate:
-                if tensor in model.graph.initializer:
-                    tensors_to_calibrate.remove(tensor)
-
-        print("tensors_to_calibrate:")
-        print(tensors_to_calibrate)
+        
+        # If augmenting all ops, it's possible that some nodes' input value are 0.
+        # Can't reduce on dim with value of 0 if 'keepdims' is false, therefore set keepdims to 1.
+        if augment_all_ops:
+            keepdims_value = 1
+        else:
+            keepdims_value = 0
 
         for tensor in tensors_to_calibrate:
             # Adding ReduceMin nodes
             reduce_min_name = tensor + '_ReduceMin'
             reduce_min_node = onnx.helper.make_node('ReduceMin', [tensor], [tensor + '_ReduceMin'],
                                                     reduce_min_name,
-                                                    keepdims=1)
+                                                    keepdims=keepdims_value)
 
             added_nodes.append(reduce_min_node)
             added_outputs.append(helper.make_tensor_value_info(reduce_min_node.output[0], TensorProto.FLOAT, ()))
@@ -214,7 +189,7 @@ class ONNXCalibrater:
             reduce_max_name = tensor + '_ReduceMax'
             reduce_max_node = onnx.helper.make_node('ReduceMax', [tensor], [tensor + '_ReduceMax'],
                                                     reduce_max_name,
-                                                    keepdims=1)
+                                                    keepdims=keepdims_value)
 
             added_nodes.append(reduce_max_node)
             added_outputs.append(helper.make_tensor_value_info(reduce_max_node.output[0], TensorProto.FLOAT, ()))
@@ -241,7 +216,6 @@ class ONNXCalibrater:
             sess_options = onnxruntime.SessionOptions()
             sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL #ORT_ENABLE_BASIC
             session = onnxruntime.InferenceSession(self.augmented_model_path, sess_options=sess_options, providers=providers)
-            # print(session.get_inputs()[0].name)
         else:
             session = onnxruntime.InferenceSession(self.augmented_model_path, None)
 
@@ -304,13 +278,11 @@ class ONNXCalibrater:
 
         # Characterizing distribution of a node's values across test data sets
         clean_merged_dict = dict((i, merged_dict[i]) for i in merged_dict if i not in model_original_outputs)
-        # clean_merged_dict = dict((i, merged_dict[i]) for i in merged_dict if i != list(merged_dict.keys())[0])
 
 
         if calib_mode == 'naive':
 
-            ## Following code gets "only size-1 arrays can be converted to Python scalars" when encountering float([])
-            ## 
+            # Following code gets "only size-1 arrays can be converted to Python scalars" when encountering float([])
             '''
             pairs = [
                 tuple([
@@ -451,11 +423,9 @@ def calculate_calibration_data(model_path,
                                calibration_data_reader: CalibrationDataReader=None,
                                op_types_to_quantize=[],
                                activation_type=QuantType.QUInt8,
-                               weight_type=QuantType.QUInt8,
                                nodes_to_quantize=[],
                                nodes_to_exclude=[],
-                               augmented_model_path='augmented_model.onnx',
-                               implicitly_quantize_all_ops=True):
+                               augmented_model_path='augmented_model.onnx'):
 
     if activation_type != QuantType.QUInt8:
         raise ValueError("Static quantization only support uint8 for activation now.")
@@ -470,7 +440,7 @@ def calculate_calibration_data(model_path,
         calibrator = get_calibrator(model_path, calibration_data_reader, op_types_to_quantize, nodes_to_quantize, nodes_to_exclude, augmented_model_path=augmented_model_path)
 
     if not os.path.exists(augmented_model_path):
-        augmented_model = calibrator.augment_graph(implicitly_quantize_all_ops)
+        augmented_model = calibrator.augment_graph(augment_all_ops=True)
         onnx.save(augmented_model, augmented_model_path)
 
     calibrator.get_intermediate_outputs(providers=["CUDAExecutionProvider"])
@@ -505,7 +475,7 @@ def generate_calibration_table(model_path, augmented_model_path, data_reader, ca
         else:
             calibrator.set_data_reader(data_reader)
 
-        calculate_calibration_data(model_path, calibrator, augmented_model_path=augmented_model_path, implicitly_quantize_all_ops=True)
+        calculate_calibration_data(model_path, calibrator, augmented_model_path=augmented_model_path)
 
     if calibrator:
         calibrator.write_calibration_table()
@@ -517,11 +487,9 @@ def calibrate(model_path,
               op_types=['Conv', 'MatMul'],
               black_nodes=[],
               white_nodes=[],
-              augmented_model_path='augmented_model.onnx',
-              implicitly_quantize_all_ops=False):
+              augmented_model_path='augmented_model.onnx'):
     '''
         Given an onnx model, augment and run the augmented model on calibration data set, aggregate and calculate the quantization parameters.
-
     :param model_path: ONNX model to calibrate
     :param data_reader: user implemented object to read in and preprocess calibration dataset based on CalibrationDataReader interface
     :param op_types: operator types to be calibrated and quantized, default = 'Conv,MatMul'
@@ -531,8 +499,8 @@ def calibrate(model_path,
     '''
     #1. initialize a calibrater
     calibrater = ONNXCalibrater(model_path, data_reader, op_types, black_nodes, white_nodes, augmented_model_path)
-    # #2. augment
-    augmented_model = calibrater.augment_graph(implicitly_quantize_all_ops)
+    #2. augment
+    augmented_model = calibrater.augment_graph()
     onnx.save(augmented_model, augmented_model_path)
     #3. generate quantization thresholds
     dict_for_quantization = calibrater.get_intermediate_outputs()
