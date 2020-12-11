@@ -415,6 +415,8 @@ static void RunTest_v9(const std::string test_name, int64_t sequence_len, int64_
 
     test.Run(expect_result, failure_message, options.excluded_provider_types, nullptr, &execution_providers);
   } else {
+    std::unique_ptr<onnxruntime::Model> scan_model = test.BuildGraph();
+    onnxruntime::Model::Save(*scan_model, "/bert_ort/liqun/test_out/scan_model.onnx");
     test.Run(expect_result, failure_message, options.excluded_provider_types);
   }
 }
@@ -547,7 +549,7 @@ static void OuterScopeAccess_ShapeInMainGraph_NoTypeAndShapeInSubgraph(bool is_v
   ShortSequenceOneInBatchOneLoopStateVar(options);
 }
 
-TEST_8_AND_9(OuterScopeAccess_ShapeInMainGraph_NoTypeAndShapeInSubgraph);
+// TEST_8_AND_9(OuterScopeAccess_ShapeInMainGraph_NoTypeAndShapeInSubgraph);
 
 static void OuterScopeAccess_NoShapeInMainGraph_NoTypeAndShapeInSubgraph(bool is_v8) {
   RunOptions options{};
