@@ -1101,6 +1101,35 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceLogSumExpGradient) {
   return result;
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetReduceL2Gradient) {
+  std::vector<NodeDef> result;
+  auto attributes = SrcNodeAttributes();
+  bool keepdims = true;
+  if (attributes.find("keepdims") != attributes.end() && attributes.at("keepdims").has_i()) {
+    keepdims = static_cast<bool>(attributes.at("keepdims").i());
+  }
+
+  result.emplace_back(NodeDef("Div", {GO(0), O(0)}, {IA("Scaled_dY")}));
+
+  // Handle 0 elements in Y.
+  NodeDef zero_constant_node = ZeroConstantNode(IElemType(0));
+  ArgDef ZERO = zero_constant_node.output_args[0];
+  result.push_back(zero_constant_node);
+  result.emplace_back(NodeDef("Equal", {O(0), ZERO}, {IA("Masked_Y")}));
+  ArgDef scaled_dy_arg_def = IA("Masked_Scaled_dY");
+  result.emplace_back(NodeDef("Where", {IA("Masked_Y"), ZERO, IA("Scaled_dY")}, {scaled_dy_arg_def}));
+
+  if (!keepdims && attributes.find("axes") != attributes.end()) {
+    std::vector<int64_t> axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
+    scaled_dy_arg_def = IA("Unsqueezed_Masked_Scaled_dY");
+    result.emplace_back(
+        NodeDef("Unsqueeze", {IA("Masked_Scaled_dY")}, {scaled_dy_arg_def}, {MakeAttribute("axes", axes_values)}));
+  }
+
+  result.emplace_back(NodeDef("Mul", {I(0), scaled_dy_arg_def}, {GI(0)}));
+  return result;
+}
+
 IMPLEMENT_GRADIENT_BUILDER(GetReduceSumGradient) {
   std::vector<NodeDef> result;
   auto attributes = SrcNodeAttributes();
@@ -1442,6 +1471,39 @@ IMPLEMENT_GRADIENT_BUILDER(GetTopKGradient) {
               {GO(0), IA("x_shape"), O(1)},
               {GI(0)},
               {MakeAttribute("axis", axis)})};
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetClipGradient) {
+  std::vector<NodeDef> output;
+  size_t numInputs = GetSrcNodeInputSize();
+  bool has_i1 = false, has_i2 = false;
+  ArgDef intermediate_arg_def = ArgDef("");
+  // Gradients not defined on min and max, so we return the subgradient 1 for these cases.
+  if (numInputs >= 2 && I(1).Exists()) {
+    has_i1 = true;
+    intermediate_arg_def = IA("Masked_Min");
+    output.emplace_back(NodeDef("GreaterOrEqual", {I(0), I(1)}, {intermediate_arg_def}));
+  }
+
+  if (numInputs >= 3 && I(2).Exists()) {
+    has_i2 = true;
+    intermediate_arg_def = IA("Masked_Max");
+    output.emplace_back(NodeDef("LessOrEqual", {I(0), I(2)}, {intermediate_arg_def}));
+    if (has_i1) {
+      intermediate_arg_def = IA("Masked_Min_Max");
+      output.emplace_back(NodeDef("And", {IA("Masked_Min"), IA("Masked_Max")}, {intermediate_arg_def}));
+    }
+  }
+
+  if (!has_i1 && !has_i2) {
+    output.emplace_back(NodeDef("Identity", {GO(0)}, {GI(0)}));
+  } else {
+    output.emplace_back(
+        NodeDef("Cast", {intermediate_arg_def}, {IA("Casted_Mask")}, {MakeAttribute("to", int64_t(IElemType(0)))}));
+    output.emplace_back(NodeDef("Mul", {GO(0), IA("Casted_Mask")}, {GI(0)}));
+  }
+
+  return output;
 }
 
 }  // namespace training

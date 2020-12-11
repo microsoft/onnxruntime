@@ -22,6 +22,9 @@ std::vector<std::unique_ptr<ITestCase>> ownedTests;
 class ModelTest : public testing::TestWithParam<std::tuple<ITestCase*, winml::LearningModelDeviceKind>> {
  protected:
   void SetUp() override {
+#ifdef BUILD_INBOX
+    winrt_activation_handler = WINRT_RoGetActivationFactory;
+#endif
     std::tie(m_testCase, m_deviceKind) = GetParam();
     WINML_EXPECT_NO_THROW(m_testCase->GetPerSampleTolerance(&m_perSampleTolerance));
     WINML_EXPECT_NO_THROW(m_testCase->GetRelativePerSampleTolerance(&m_relativePerSampleTolerance));
