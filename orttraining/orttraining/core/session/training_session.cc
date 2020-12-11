@@ -36,7 +36,7 @@
 #endif
 
 #include "orttraining/training_ops/cpu/controlflow/event_pool.h"
-#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_CUDA) && defined(USE_NCCL) && defined(USE_NCCL_P2P)
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
 #endif
 
@@ -1250,7 +1250,7 @@ std::unordered_set<std::string> TrainingSession::GetTrainableModelInitializers(
   return trainable_initializers;
 }
 
-#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_CUDA) && defined(USE_NCCL) && defined(USE_NCCL_P2P)
 // Create NCCL's communication plan. In runtime, we will provide details such
 // as pointer to sent/recieved data and the size of the data in byte. See how
 // Send and Recv call SubmitSendAndWait and SubmitRecvAndWait, respectively.
@@ -1290,7 +1290,7 @@ Status PipelineTrainingSession::ConfigureForTraining(
     const TrainingConfiguration& config,
     TrainingConfigurationResult& config_result_out) {
   auto status = TrainingSession::ConfigureForTraining(config, config_result_out);
-#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_CUDA) && defined(USE_NCCL) && defined(USE_NCCL_P2P)
   LaunchNcclService(pipeline_context_.pipeline_stage_id);
 #endif
   return status;
@@ -1628,7 +1628,7 @@ common::Status PipelineTrainingSession::RunWithPipeline(const RunOptions& run_op
 
   pipeline_worker_pool_.JoinAll();
   onnxruntime::contrib::OrtEventPool::GetInstance().ResetAllEvents();
-#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_CUDA) && defined(USE_NCCL) && defined(USE_NCCL_P2P)
   auto& nccl_service = cuda::NcclService::GetInstance();
   nccl_service.Reset();
 #endif
@@ -1637,7 +1637,7 @@ common::Status PipelineTrainingSession::RunWithPipeline(const RunOptions& run_op
 }
 
 PipelineTrainingSession::~PipelineTrainingSession() {
-#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_CUDA) && defined(USE_NCCL) && defined(USE_NCCL_P2P)
   auto& nccl_service = cuda::NcclService::GetInstance();
   nccl_service.Terminate();
 #endif

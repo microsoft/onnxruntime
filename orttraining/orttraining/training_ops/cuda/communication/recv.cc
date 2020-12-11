@@ -52,7 +52,7 @@ void Recv::ReceiveData(
 // uncomment the MPI call to debug.
 #if defined(USE_NCCL) && defined(USE_NCCL_P2P)
 #ifndef NDEBUG
-  CheckIfMemoryOnCurrentCudaDevice(info_data.buffer);
+  CheckIfMemoryOnCurrentGpuDevice(info_data.buffer);
 #endif
   auto& nccl_service = cuda::NcclService::GetInstance();
   nccl_service.SubmitRecvAndWait(info_data.buffer, info_data.size, info_data.rank);
@@ -97,13 +97,13 @@ void Recv::ReceiveData(
 #ifndef NDEBUG
   // In addition to the first output, other tensors are allocated on GPU.
   // We check if the allocated memory is on the current CUDA device.
-  CheckIfMemoryOnCurrentCudaDevice(tensor->DataRaw());
+  CheckIfMemoryOnCurrentGpuDevice(tensor->DataRaw());
 #endif
     tensor_offset_in_bytes += tensor->SizeInBytes();
   }
   assert(tensor_offset_in_bytes == aggregated_aligned_tensor_bytes);
 
-#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_CCCL) && defined(USE_NCCL_P2P)
 #else
   AddDeferredReleaseCPUPtr(buffer.release());
 #endif

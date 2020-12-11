@@ -66,7 +66,7 @@ contrib_ops_excluded_files = [
                     'conv_transpose_with_dynamic_pads.h',
                     'cuda_contrib_kernels.cc',
                     'cuda_contrib_kernels.h',
-                    'inverse.cc'
+                    'inverse.cc',
 ]
 
 provider_excluded_files = [
@@ -216,6 +216,8 @@ provider_excluded_files = [
                 'cuda_execution_provider_info.h',
                 'cuda_execution_provider.cc',
                 'cuda_execution_provider.h',
+                'cuda_memory_check.cc',
+                'cuda_memory_check.h',
                 'cuda_fence.cc',
                 'cuda_fence.h',
                 'cuda_fwd.h',

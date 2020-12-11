@@ -1,16 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_CUDA) && defined(USE_NCCL) && defined(USE_NCCL_P2P)
 
+#include "orttraining/training_ops/cuda/communication/nccl_service.h"
 #include "core/common/common.h"
 #include "core/profile/context.h"
 #include "core/providers/cuda/cuda_check_memory.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "orttraining/core/framework/mpi_context.h"
-#include "orttraining/training_ops/cuda/communication/nccl_service.h"
 #include <iostream>
-#include <nccl.h>
 
 namespace onnxruntime {
 namespace cuda {
@@ -284,7 +283,7 @@ void NcclService::Launch() {
                       "Unscheduled task cannot be run.",
                       " Use PlanTask to schedule tasks before executing the graph.");
 #ifndef NDEBUG
-          CheckIfMemoryOnCurrentCudaDevice(task.ptr);
+          CheckIfMemoryOnCurrentGpuDevice(task.ptr);
 #endif
           switch (task.type) {
             case NcclTask::Type::SEND:

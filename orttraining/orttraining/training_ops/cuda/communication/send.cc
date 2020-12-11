@@ -62,7 +62,7 @@ void Send::SendData(
   for (int i = 0; i < num_tensors; ++i) {
     const Tensor* tensor = ctx->Input<Tensor>(i + 2);
 #ifndef NDEBUG
-    CheckIfMemoryOnCurrentCudaDevice(tensor->DataRaw());
+    CheckIfMemoryOnCurrentGpuDevice(tensor->DataRaw());
 #endif
 
 #if defined(USE_NCCL) && defined(USE_NCCL_P2P)
@@ -96,7 +96,7 @@ void Send::SendData(
 
 #if defined(USE_NCCL) && defined(USE_NCCL_P2P)
 #ifndef NDEBUG
-  CheckIfMemoryOnCurrentCudaDevice(info_data.buffer);
+  CheckIfMemoryOnCurrentGpuDevice(info_data.buffer);
 #endif
 
   auto& nccl_service = cuda::NcclService::GetInstance();

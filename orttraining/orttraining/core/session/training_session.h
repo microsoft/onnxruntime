@@ -564,7 +564,7 @@ class PipelineTrainingSession final : public TrainingSession {
       IOBinding& io_binding, IOBinding& sub_io_binding,
       const size_t slice_id, const size_t num_slices);
 
-#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_CUDA) && defined(USE_NCCL) && defined(USE_NCCL_P2P)
   void LaunchNcclService(const int pipeline_stage_id);
 #endif
 

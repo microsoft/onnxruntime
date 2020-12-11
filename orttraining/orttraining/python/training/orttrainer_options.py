@@ -120,6 +120,7 @@ class ORTTrainerOptions(object):
                         'sliced_schema' : {
                             'type': 'dict',
                             'default' : {},
+                            'required': False,
                             # the keys in `sliced_schema` are strings.
                             'keysrules': {'type': 'string'},
                             # the values in `sliced_schema` are lists of integers.
@@ -529,7 +530,10 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
             },
             'sliced_schema' : {
                 'type': 'dict',
+                'required': False,
+                # the keys in `sliced_schema` are strings.
                 'keysrules': {'type': 'string'},
+                # the values in `sliced_schema` are lists of integers.
                 'valuesrules': {
                     'type': 'list',
                     'schema': {'type': 'integer'}
