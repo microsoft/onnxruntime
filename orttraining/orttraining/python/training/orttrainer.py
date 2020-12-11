@@ -854,7 +854,7 @@ class ORTTrainer(object):
             del self._onnx_model.graph.initializer[w_i]
         self._onnx_model.graph.initializer.extend(new_weights)
 
-    def _extract_model_states(self, state_dict):
+    def _extract_model_states(self, state_dict, pytorch_format):
         """Extract model states from the training session and load into the state_dict"""
 
         model_states = self._training_session.get_model_state(include_mixed_precision_weights=False)
@@ -864,8 +864,12 @@ class ORTTrainer(object):
         for precision in model_states:
             state_dict[_utils.state_dict_model_key()][precision] = {}
             for model_state_key in model_states[precision]:
-                state_dict[_utils.state_dict_model_key()][precision][model_state_key] = \
-                    torch.from_numpy(model_states[precision][model_state_key])
+                if pytorch_format:
+                    state_dict[_utils.state_dict_model_key()][precision][model_state_key] = \
+                        torch.from_numpy(model_states[precision][model_state_key])
+                else:
+                    state_dict[_utils.state_dict_model_key()][precision][model_state_key] = \
+                        model_states[precision][model_state_key]
 
         # extract untrained (frozen) model weights
         precision_map = _utils.state_dict_precision_map()
@@ -873,8 +877,12 @@ class ORTTrainer(object):
             if node.name not in state_dict[_utils.state_dict_model_key()][precision] and \
                 node.name in self.options.utils.frozen_weights:
                 if node.data_type in precision_map:
-                    state_dict[_utils.state_dict_model_key()][precision_map[node.data_type]][node.name] = \
-                        torch.from_numpy(np.array(onnx.numpy_helper.to_array(node)))
+                    if pytorch_format:
+                        state_dict[_utils.state_dict_model_key()][precision_map[node.data_type]][node.name] = \
+                            torch.from_numpy(onnx.numpy_helper.to_array(node))
+                    else:
+                        state_dict[_utils.state_dict_model_key()][precision_map[node.data_type]][node.name] = \
+                            onnx.numpy_helper.to_array(node)
 
     def _extract_optimizer_states(self, state_dict):
         """Extract optimizer states from the training session and load into the state_dict"""
@@ -885,7 +893,7 @@ class ORTTrainer(object):
             state_dict[_utils.state_dict_optimizer_key()][model_state_key] = {}
             for optimizer_state_key in optimizer_states[model_state_key]:
                 state_dict[_utils.state_dict_optimizer_key()][model_state_key][optimizer_state_key] = \
-                    torch.from_numpy(optimizer_states[model_state_key][optimizer_state_key])
+                    optimizer_states[model_state_key][optimizer_state_key]
 
     def _extract_trainer_options(self, state_dict):
         """Extract relevant trainer configuration and load it into the state_dict"""
@@ -922,7 +930,7 @@ class ORTTrainer(object):
                         {
                             model_weight_name:
                             {
-                                type: tensor
+                                type: array
                             }
                         }
                     }
@@ -940,15 +948,15 @@ class ORTTrainer(object):
                         {
                             "Moment_1":
                             {
-                                type: tensor
+                                type: array
                             },
                             "Moment_2":
                             {
-                                type: tensor
+                                type: array
                             },
                             "Update_Count":
                             {
-                                type: tensor,
+                                type: array,
                                 optional: True # present if optimizer is adam, absent otherwise
                             }
                         }
@@ -961,7 +969,7 @@ class ORTTrainer(object):
                         {
                             "step":
                             {
-                                type: tensor,
+                                type: array,
                             }
                         }
                     }
@@ -1038,7 +1046,7 @@ class ORTTrainer(object):
         state_dict = {}
 
         # load training session model states into the state_dict
-        self._extract_model_states(state_dict)
+        self._extract_model_states(state_dict, pytorch_format)
         if pytorch_format:
             # if pytorch_format is true, return a flat dictionary with only model states
             # which is compatible with a PyTorch model
@@ -1056,8 +1064,11 @@ class ORTTrainer(object):
 
         return state_dict
 
-    def _load_model_states(self, current_state_dict, state_dict, strict):
-        """Load the model states onto the training session state dictionary"""
+    def _load_model_states(self, state_dict, strict):
+        """Load the model states onto the onnx model graph"""
+
+        if _utils.state_dict_model_key() not in state_dict:
+            return
 
         # collect all initializer names from the current onnx graph
         assert self._onnx_model, "ONNX model graph is not exported"
@@ -1067,21 +1078,11 @@ class ORTTrainer(object):
         # that are found in the initializer_names dictionary
         loaded_initializers = {}
 
-        # create an entry for the model in the training session state dictionary
-        if _utils.state_dict_model_key() not in current_state_dict:
-            current_state_dict[_utils.state_dict_model_key()] = {}
-
-        # copy over model states from the input state dict onto the training session state dict
-        # and copy over model states from the input state dict onto the onnx model
+        # copy over model states from the input state dict onto the onnx model
         for precision, precision_states in state_dict[_utils.state_dict_model_key()].items():
-            if precision not in current_state_dict[_utils.state_dict_model_key()]:
-                current_state_dict[_utils.state_dict_model_key()][precision] = {}
-
             for state_key, state_value in precision_states.items():
-                state_value_np = np.array(state_value)
-                current_state_dict[_utils.state_dict_model_key()][precision][state_key] = state_value_np
                 if state_key in initializer_names:
-                    loaded_initializers[state_key] = state_value_np
+                    loaded_initializers[state_key] = state_value
                 elif strict:
                     raise RuntimeError("Unexpected key: {} in state_dict[model][{}]".format(state_key, precision))
 
@@ -1090,6 +1091,9 @@ class ORTTrainer(object):
 
     def _load_optimizer_states(self, current_state_dict, state_dict):
         """Load the optimizer states onto the training session state dictionary"""
+
+        if _utils.state_dict_optimizer_key() not in state_dict:
+            return
 
         # create an entry for the optimizer in the training session state dictionary
         if _utils.state_dict_optimizer_key() not in current_state_dict:
@@ -1100,8 +1104,8 @@ class ORTTrainer(object):
             if model_state_key not in current_state_dict[_utils.state_dict_optimizer_key()]:
                 current_state_dict[_utils.state_dict_optimizer_key()][model_state_key] = {}
             for optimizer_state_key, optimizer_state_value in optimizer_dict.items():
-                optimizer_state_value_np = np.array(optimizer_state_value)
-                current_state_dict[_utils.state_dict_optimizer_key()][model_state_key][optimizer_state_key] = optimizer_state_value_np
+                current_state_dict[_utils.state_dict_optimizer_key()][model_state_key][optimizer_state_key] = \
+                    optimizer_state_value
 
 
     def _load_state_dict_impl(self, state_dict, strict=True):
@@ -1122,9 +1126,9 @@ class ORTTrainer(object):
             missing_keys = list(keys1 - keys2)
             unexpected_keys = list(keys2 - keys1)
             if len(missing_keys) > 0:
-                raise RuntimeError("Missing keys: {} in state_dict{}".format(missing_keys, in_error_str))
+                raise RuntimeError("Missing keys: {} in {}".format(missing_keys, in_error_str))
             if len(unexpected_keys) > 0:
-                raise RuntimeError("Unexpected keys: {} in state_dict{}".format(unexpected_keys, in_error_str))
+                raise RuntimeError("Unexpected keys: {} in {}".format(unexpected_keys, in_error_str))
 
         def _check_model_key_mismatch(current_state_dict, state_dict):
             """Check if there is any mismatch in the model sub state dictionary between the two state_dicts"""
@@ -1158,16 +1162,15 @@ class ORTTrainer(object):
             """Check if there is a mismatch in the keys (model and optimizer) in the two state_dicts"""
 
             # check presence of 'model' in the input state_dict
-            if _utils.state_dict_model_key() not in state_dict:
-                raise RuntimeError("Missing key: model in state_dict")
+            if _utils.state_dict_model_key() in state_dict:
+                _check_model_key_mismatch(current_state_dict, state_dict)
+            else:
+                warnings.warn("Missing key: model in state_dict", UserWarning)
             # check presence of 'optimizer' in the input state_dict
-            if _utils.state_dict_optimizer_key() not in state_dict:
-                raise RuntimeError("Missing key: optimizer in state_dict")
-
-            _check_model_key_mismatch(current_state_dict, state_dict)
-
-            _check_optimizer_key_mismatch(current_state_dict, state_dict)
-
+            if _utils.state_dict_optimizer_key() in state_dict:
+                _check_optimizer_key_mismatch(current_state_dict, state_dict)
+            else:
+                warnings.warn("Missing key: optimizer in state_dict", UserWarning)
 
         # extract state dict from the current training session. this is to persist the states between
         # two training sessions.
@@ -1179,9 +1182,8 @@ class ORTTrainer(object):
             if strict:
                 _check_key_mismatch(current_state_dict, state_dict)
 
-        # load the model states from the input state dictionary into the onnx graph and update the
-        # training session states dictionary
-        self._load_model_states(current_state_dict, state_dict, strict)
+        # load the model states from the input state dictionary into the onnx graph
+        self._load_model_states(state_dict, strict)
 
         # load the optimizer states from the input state dictionary into the training session states
         # dictionary

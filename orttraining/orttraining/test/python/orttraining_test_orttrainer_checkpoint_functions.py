@@ -76,8 +76,6 @@ def _get_load_state_dict_strict_error_arguments():
     }
 
     # input state dictionaries
-    model_key_missing = {'optimizer': {}}
-    optimizer_key_missing = {'model': {}}
     precision_key_missing = {'model': {}, 'optimizer': {}}
     precision_key_unexpected = {'model': {'fp32': {}, 'fp16': {}}, 'optimizer': {}}
     model_state_key_missing = {'model': {'fp32': {}}, 'optimizer': {}}
@@ -91,8 +89,6 @@ def _get_load_state_dict_strict_error_arguments():
         {'a': {'Moment_1': np.arange(5), 'Moment_2': np.arange(7)}, 'shared_optimizer_state': {'step': np.arange(5), 'another_step': np.arange(1)}}}
 
     input_arguments = [
-        (training_session_state_dict, model_key_missing, ['model']),
-        (training_session_state_dict, optimizer_key_missing, ['optimizer']),
         (training_session_state_dict, precision_key_missing, ['fp32']),
         (training_session_state_dict, precision_key_unexpected, ['fp16']),
         (training_session_state_dict, model_state_key_missing, ['a', 'b']),
@@ -140,8 +136,25 @@ def test_training_session_provides_model_states(onnx_model_mock):
     trainer._onnx_model = onnx_model_mock()
 
     state_dict = trainer.state_dict()
-    assert torch.all(torch.eq(state_dict['model']['fp32']['a'], torch.tensor(np.arange(5))))
-    assert torch.all(torch.eq(state_dict['model']['fp32']['b'], torch.tensor(np.arange(7))))
+    assert (state_dict['model']['fp32']['a'] == np.arange(5)).all()
+    assert (state_dict['model']['fp32']['b'] == np.arange(7)).all()
+
+@patch('onnx.ModelProto')
+def test_training_session_provides_model_states_pytorch_format(onnx_model_mock):
+    trainer = _create_trainer()
+    model_states = {
+        'fp32': {
+            'a': np.arange(5),
+            'b': np.arange(7)
+        }
+    }
+    training_session_mock = _training_session_mock(model_states, {}, {})
+    trainer._training_session = training_session_mock
+    trainer._onnx_model = onnx_model_mock()
+
+    state_dict = trainer.state_dict(pytorch_format=True)
+    assert torch.all(torch.eq(state_dict['a'], torch.tensor(np.arange(5))))
+    assert torch.all(torch.eq(state_dict['b'], torch.tensor(np.arange(7))))
 
 @patch('onnx.ModelProto')
 def test_onnx_graph_provides_frozen_model_states(onnx_model_mock):
@@ -163,9 +176,9 @@ def test_onnx_graph_provides_frozen_model_states(onnx_model_mock):
     ]
 
     state_dict = trainer.state_dict()
-    assert torch.all(torch.eq(state_dict['model']['fp32']['a'], torch.tensor(np.arange(5))))
-    assert torch.all(torch.eq(state_dict['model']['fp32']['b'], torch.tensor(np.arange(7))))
-    assert torch.all(torch.eq(state_dict['model']['fp32']['a_frozen_weight'], torch.tensor(np.array([1, 2, 3], dtype=np.float32))))
+    assert (state_dict['model']['fp32']['a'] == np.arange(5)).all()
+    assert (state_dict['model']['fp32']['b'] == np.arange(7)).all()
+    assert (state_dict['model']['fp32']['a_frozen_weight'] == np.array([1, 2, 3], dtype=np.float32)).all()
     assert 'a_non_fronzen_weight' not in state_dict['model']['fp32']
     assert 'a_float16_weight' not in state_dict['model']['fp32']
 
@@ -196,9 +209,34 @@ def test_training_session_provides_optimizer_states(onnx_model_mock):
     trainer._onnx_model = onnx_model_mock()
 
     state_dict = trainer.state_dict()
-    assert torch.all(torch.eq(state_dict['optimizer']['model_weight']['Moment_1'], torch.tensor(np.arange(5))))
-    assert torch.all(torch.eq(state_dict['optimizer']['model_weight']['Moment_2'], torch.tensor(np.arange(7))))
-    assert torch.all(torch.eq(state_dict['optimizer']['shared_optimizer_state']['step'], torch.tensor(np.arange(1))))
+    assert (state_dict['optimizer']['model_weight']['Moment_1'] == np.arange(5)).all()
+    assert (state_dict['optimizer']['model_weight']['Moment_2'] == np.arange(7)).all()
+    assert (state_dict['optimizer']['shared_optimizer_state']['step'] == np.arange(1)).all()
+
+@patch('onnx.ModelProto')
+def test_training_session_provides_optimizer_states_pytorch_format(onnx_model_mock):
+    trainer = _create_trainer()
+    model_states = {
+        'fp32': {
+            'a': np.arange(5),
+            'b': np.arange(7)
+        }
+    }
+    optimizer_states = {
+        'model_weight': {
+            'Moment_1': np.arange(5),
+            'Moment_2': np.arange(7)
+        },
+        'shared_optimizer_state': {
+            'step': np.arange(1)
+        }
+    }
+    training_session_mock = _training_session_mock(model_states, optimizer_states, {})
+    trainer._training_session = training_session_mock
+    trainer._onnx_model = onnx_model_mock()
+
+    state_dict = trainer.state_dict(pytorch_format=True)
+    assert 'optimizer' not in state_dict
 
 @patch('onnx.ModelProto')
 def test_training_session_provides_empty_partition_info_map(onnx_model_mock):
@@ -253,11 +291,11 @@ def test_training_session_provides_all_states(onnx_model_mock):
     trainer._onnx_model = onnx_model_mock()
 
     state_dict = trainer.state_dict()
-    assert torch.all(torch.eq(state_dict['model']['fp32']['a'], torch.tensor(np.arange(5))))
-    assert torch.all(torch.eq(state_dict['model']['fp32']['b'], torch.tensor(np.arange(7))))
-    assert torch.all(torch.eq(state_dict['optimizer']['model_weight']['Moment_1'], torch.tensor(np.arange(5))))
-    assert torch.all(torch.eq(state_dict['optimizer']['model_weight']['Moment_2'], torch.tensor(np.arange(7))))
-    assert torch.all(torch.eq(state_dict['optimizer']['shared_optimizer_state']['step'], torch.tensor(np.arange(1))))
+    assert (state_dict['model']['fp32']['a'] == np.arange(5)).all()
+    assert (state_dict['model']['fp32']['b'] == np.arange(7)).all()
+    assert (state_dict['optimizer']['model_weight']['Moment_1'] == np.arange(5)).all()
+    assert (state_dict['optimizer']['model_weight']['Moment_2'] == np.arange(7)).all()
+    assert (state_dict['optimizer']['shared_optimizer_state']['step'] == np.arange(1)).all()
     assert state_dict['partition_info']['a']['original_dim'] == [1, 2, 3]
 
 def test_load_state_dict_holds_when_training_session_not_initialized():
@@ -283,8 +321,23 @@ def test_load_state_dict_holds_when_training_session_not_initialized():
     state_dict = trainer.load_state_dict(state_dict)
     assert trainer._load_state_dict
 
+@pytest.mark.parametrize("state_dict, input_state_dict, error_key", [({'optimizer':{}}, {'optimizer':{}}, 'model'), ({'model':{}}, {'model':{}}, 'optimizer')])
+def test_load_state_dict_warns_when_model_optimizer_key_missing(state_dict, input_state_dict, error_key):
+    trainer = _create_trainer()
+    trainer._training_session = _training_session_mock({}, {}, {})
+    trainer.state_dict = Mock(return_value=state_dict)
+    trainer._update_onnx_model_initializers = Mock()
+    trainer._init_session = Mock()
+    with patch('onnx.ModelProto') as onnx_model_mock:
+        trainer._onnx_model = onnx_model_mock()
+        trainer._onnx_model.graph.initializer = []
+        with pytest.warns(UserWarning) as user_warning:
+            trainer.load_state_dict(input_state_dict)
+
+    assert user_warning[0].message.args[0] == "Missing key: {} in state_dict".format(error_key)
+
 @pytest.mark.parametrize("state_dict, input_state_dict, error_keys", _get_load_state_dict_strict_error_arguments())
-def test_load_state_dict_errors_when_model_key_missing(state_dict, input_state_dict, error_keys):
+def test_load_state_dict_errors_when_state_dict_mismatch(state_dict, input_state_dict, error_keys):
     trainer = _create_trainer()
     trainer._training_session = _training_session_mock({}, {}, {})
     trainer.state_dict = Mock(return_value=state_dict)
@@ -317,17 +370,17 @@ def test_load_state_dict_loads_the_states_and_inits_training_session(onnx_model_
     input_state_dict = {
         'model': {
             'fp32': {
-                'a': torch.tensor(np.array([1, 2])),
-                'b': torch.tensor(np.array([3, 4]))
+                'a': np.array([1, 2]),
+                'b': np.array([3, 4])
             }
         },
         'optimizer': {
             'a': {
-                'Moment_1': torch.tensor(np.array([5, 6])),
-                'Moment_2': torch.tensor(np.array([7, 8]))
+                'Moment_1': np.array([5, 6]),
+                'Moment_2': np.array([7, 8])
             },
             'shared_optimizer_state': {
-                'step': torch.tensor(np.array([9]))
+                'step': np.array([9])
             }
         }
     }
