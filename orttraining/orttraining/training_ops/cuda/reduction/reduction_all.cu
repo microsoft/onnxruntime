@@ -49,7 +49,7 @@ __global__ void MultiTensorReduceKernel(ChunkGroup<1> chunk_group, TOut* output)
     }
   }
 
-  // Thread count in a block must be a multiple of GPU_WARP_SIZE.
+// Thread count in a block must be a multiple of GPU_WARP_SIZE.
 #pragma unroll
   for (int stride = GPU_WARP_SIZE / 2; stride > 0; stride /= 2) {
     w_sum += WARP_SHFL_DOWN(w_sum, stride);
