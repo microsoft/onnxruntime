@@ -5,7 +5,7 @@
 
 #include "gsl/gsl"
 #include "core/providers/cuda/cudnn_common.h"
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_kernel.h"
 #include <cudnn.h>
 
 namespace onnxruntime {
