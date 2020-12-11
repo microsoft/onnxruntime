@@ -10,7 +10,7 @@ namespace test {
 namespace {
 
 struct ConvOpAndTestAttributes {
-  string auto_pad = "NOTSET";
+  string auto_pad;
   vector<int64_t> dilations;
   int64_t group;
   vector<int64_t> kernel_shape;
