@@ -77,16 +77,12 @@ def generate_repo_url(list, repo_url, commit_id):
 
 def generate_dependencies(list, package_name, version):
     dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.4.0"/>'
-    cswinrt_dependency = '<dependency id="Microsoft.Windows.CsWinRT" version="1.1.0"/>'
-    sdk_dependency = '<dependency id="Microsoft.Windows.SDK.Contracts" version="10.0.19041.1"/>'
 
     if (package_name == 'Microsoft.AI.MachineLearning'):
         list.append('<dependencies>')
 
         # Support .Net Core
         list.append('<group targetFramework="net5.0">')
-        list.append(cswinrt_dependency)
-        list.append(sdk_dependency)
         list.append(dml_dependency)
         list.append('</group>')
         # UAP10.0.16299, This is the earliest release of the OS that supports .NET Standard apps
