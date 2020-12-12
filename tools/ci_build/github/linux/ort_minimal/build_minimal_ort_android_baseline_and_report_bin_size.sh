@@ -4,6 +4,7 @@
 # and report the binary size to the ort mysql DB
 
 set -e
+set -x
 
 # Create an empty file to be used with build --include_ops_by_config, which will include no operators at all
 echo -n > /home/onnxruntimedev/.test_data/include_no_operators.config
@@ -33,12 +34,19 @@ python3 -m pip install --user mysql-connector-python
 
 # Post the binary size info to ort mysql DB
 # The report script's DB connection failure will not fail the pipeline
-python3 /onnxruntime_src/tools/ci_build/github/windows/post_binary_sizes_to_dashboard.py \
-    --ignore_db_error \
-    --commit_hash=$BUILD_SOURCEVERSION \
-    --size_data_file=/build/MinSizeRel/binary_size_data.txt \
-    --build_project=onnxruntime \
-    --build_id=$BUILD_ID
+# To reduce noise, we only report binary size for Continuous integration (a merge to master or rel-*)
+if [[ $BUILD_REASON == "IndividualCI" || $BUILD_REASON == "BatchedCI" ]]; then
+    python3 /onnxruntime_src/tools/ci_build/github/windows/post_binary_sizes_to_dashboard.py \
+        --ignore_db_error \
+        --commit_hash=$BUILD_SOURCEVERSION \
+        --size_data_file=/build/MinSizeRel/binary_size_data.txt \
+        --build_project=onnxruntime \
+        --build_id=$BUILD_ID
+else
+    echo "No binary size report for build reason: $BUILD_REASON"
+    echo "The content of binary_size_data.txt"
+    cat /build/MinSizeRel/binary_size_data.txt
+fi
 
 # Clear the build
 rm -rf /build/MinSizeRel

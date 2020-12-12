@@ -89,7 +89,7 @@ class AttentionCPUBase : public AttentionBase {
                              const T* K,                                   // k data. Its size is BxNxSxH
                              const int32_t* mask_index,                    // mask index. nullptr if no mask or its size is B
                              const std::vector<int64_t>* mask_index_dims,  // mask index shape
-                             T* mask_data,                                 // buffer for mask data. Its size is: SxS* if is_unidirectional_; BxSxS* if mask_index; null otherwise
+                             T* mask_data,                                 // buffer for mask data. It is nullptr if mask_index is nullptr, otherwise its shape is BxSxS*
                              int batch_size,                               // batch size of self-attention
                              int sequence_length,                          // sequence length of self-attention
                              int past_sequence_length,                     // sequence length of past state

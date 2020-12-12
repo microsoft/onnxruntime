@@ -4,12 +4,9 @@
 #include "pch.h"
 #include <windows.h>
 #include <Hstring.h>
-
 #include "LearningModelDevice.h"
 #include "OnnxruntimeProvider.h"
 #include "Dummy.h"
-#include "LearningModelSessionOptionsExperimental.h"
-#include "LearningModelSessionExperimental.h"
 
 #define STRINGIFY(x) #x
 #define XSTRINGIFY(x) STRINGIFY(x)
@@ -94,23 +91,16 @@ STDAPI DllCanUnloadNow() {
 STDAPI DllGetExperimentalActivationFactory(void* classId, void** factory) noexcept {
   try {
     *factory = nullptr;
-    uint32_t length{};
-    wchar_t const* const buffer = WINRT_WindowsGetStringRawBuffer(classId, &length);
-    std::wstring_view const name{buffer, length};
+    std::wstring_view const name{*reinterpret_cast<winrt::hstring*>(&classId)};
 
     auto requal = [](std::wstring_view const& left, std::wstring_view const& right) noexcept {
       return std::equal(left.rbegin(), left.rend(), right.rbegin(), right.rend());
     };
 
-    winrt::hstring winml_namespace = winrt::to_hstring(XSTRINGIFY(WINML_ROOT_NS));
-
-    if (requal(name, winml_namespace + L".AI.MachineLearning.Experimental.Dummy")) {
+    std::wostringstream dummy_class;
+    dummy_class << XSTRINGIFY(WINML_ROOT_NS) << ".AI.MachineLearning.Experimental.Dummy";
+    if (requal(name, dummy_class.str())) {
       *factory = winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::Dummy>());
-      return 0;
-    }
-
-    if (requal(name, winml_namespace + L".AI.MachineLearning.Experimental.LearningModelSessionExperimental")) {
-      *factory = winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::LearningModelSessionExperimental>());
       return 0;
     }
 

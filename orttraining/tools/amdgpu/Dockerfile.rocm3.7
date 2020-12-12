@@ -117,6 +117,8 @@ RUN mv $OPENMPI_DIR/bin/mpirun $OPENMPI_DIR/bin/mpirun.real && \
 # install mpi4py (be sure to link existing /opt/openmpi-xxx)
 RUN CC=mpicc MPICC=mpicc pip install mpi4py --no-binary mpi4py
 
+ARG CACHE_DATA=2020-12-06
+
 # ONNX Runtime
 WORKDIR $GITHUB_DIR
 ENV ORT_DIR=$GITHUB_DIR/onnxruntime
@@ -183,13 +185,21 @@ RUN sed -i 's/#PermitEmptyPasswords no/PermitEmptyPasswords yes/g' /etc/ssh/sshd
 ENTRYPOINT service ssh restart && /bin/bash
 
 # Add model and scripts
-ADD model $WORKSPACE_DIR/model
-ADD script $WORKSPACE_DIR/script
-RUN chmod a+x $WORKSPACE_DIR/script/run_bert.sh
+ADD model ${WORKSPACE_DIR}/model
+ADD script ${WORKSPACE_DIR}/script
+RUN chmod a+x ${WORKSPACE_DIR}/script/run_bert.sh
 
-ADD lib $WORKSPACE_DIR/lib
-ENV LD_PERLOAD=$WORKSPACE_DIR/lib/libpsl.so
+# add locale en_US.UTF-8
+RUN apt-get install -y locales
+RUN locale-gen en_US.UTF-8
 
-ENV LOG_DIR=/data/wezhan/logs
+# Workaround an issue in AMD compiler which generates poor GPU ISA
+# when the type of kernel parameter is a structure and “pass-by-value” is used
+ENV HSA_NO_SCRATCH_RECLAIM=1
 
-WORKDIR $WORKSPACE_DIR/script
+# Distributed training related environment variables
+ENV HSA_FORCE_FINE_GRAIN_PCIE=1
+ENV NCCL_DEBUG=INFO
+# ENV NCCL_DEBUG_SUBSYS=INIT,COLL
+
+WORKDIR ${WORKSPACE_DIR}/script

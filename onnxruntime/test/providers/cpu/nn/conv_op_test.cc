@@ -29,7 +29,6 @@ void TestConvOp(const ConvOpAndTestAttributes& attributes,
                 const std::string& err_str = "",
                 int opset = 7) {
   OpTester test("Conv", opset);
-  test.AddAttribute("auto_pad", attributes.auto_pad);
   test.AddAttribute("group", attributes.group);
   test.AddAttribute("kernel_shape", attributes.kernel_shape);
 
@@ -37,8 +36,11 @@ void TestConvOp(const ConvOpAndTestAttributes& attributes,
     test.AddAttribute("dilations", attributes.dilations);
   }
 
+  // Only one of pads / auto_pad can be present
   if (!attributes.pads.empty()) {
     test.AddAttribute("pads", attributes.pads);
+  } else {
+    test.AddAttribute("auto_pad", attributes.auto_pad);
   }
 
   if (!attributes.strides.empty()) {
@@ -645,8 +647,7 @@ TEST(ConvTest, ConvDimWithZero) {
   vector<int64_t> W_shape = {2, 2, 1, 1};
   vector<int64_t> out_shape = {0, 2, 4, 4};
 
-  // not handled by NGraph and ACL
-  attrs.excluded_providers.insert(kNGraphExecutionProvider);
+  // not handled by ACL
   attrs.excluded_providers.insert(kAclExecutionProvider);
 
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, {}, out_shape, false, OpTester::ExpectResult::kExpectSuccess, "", 10);

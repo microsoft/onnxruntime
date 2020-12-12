@@ -14,7 +14,7 @@ class GatherQuant(QuantOperatorBase):
     def quantize(self):
         node = self.node
         assert (node.op_type == "Gather")
-        if (not self.quantizer._is_valid_quantize_weight(node.input[0])):
+        if (not self.quantizer.is_valid_quantize_weight(node.input[0])):
             super().quantize()
             return
 

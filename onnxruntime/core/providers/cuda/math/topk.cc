@@ -95,9 +95,9 @@ Status TopK<inputk>::ComputeInternal(OpKernelContext* ctx) const {
   if (IS_PRIM_TYPE(int16_t)) return TOPKIMPL(int16_t);
   if (IS_PRIM_TYPE(int32_t)) return TOPKIMPL(int32_t);
   if (IS_PRIM_TYPE(int64_t)) return TOPKIMPL(int64_t);
+  if (IS_PRIM_TYPE(MLFloat16)) return TOPKIMPL(MLFloat16);
   if (IS_PRIM_TYPE(float)) return TOPKIMPL(float);
   if (IS_PRIM_TYPE(double)) return TOPKIMPL(double);
-  if (IS_PRIM_TYPE(uint8_t)) return TOPKIMPL(uint8_t);
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type not supported for TopK operator");
 }
 

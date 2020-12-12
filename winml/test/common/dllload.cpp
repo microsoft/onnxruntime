@@ -4,6 +4,7 @@
 #include "Std.h"
 #include "fileHelpers.h"
 #include <winstring.h>
+#include "dllload.h"
 
 extern "C"
 {

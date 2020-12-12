@@ -24,7 +24,7 @@ template <typename T>
 TreeEnsembleRegressor<T>::TreeEnsembleRegressor(const OpKernelInfo& info)
     : OpKernel(info),
       tree_ensemble_(
-          100,
+          80,
           50,
           info.GetAttrOrDefault<std::string>("aggregate_function", "SUM"),
           info.GetAttrsOrDefault<float>("base_values"),

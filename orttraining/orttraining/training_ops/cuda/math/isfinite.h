@@ -7,12 +7,6 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/multi_tensor/common.cuh"
 
-constexpr int PARALLEL_LOADS = 4;
-constexpr int WARP_THREAD_COUNT = 32;
-constexpr int MAX_BLOCK_COUNT = 288;
-constexpr int MAX_TENSOR_COUNT = 128;
-constexpr int MAX_BLOCK_THREAD_COUNT = 512;
-
 namespace onnxruntime {
 namespace cuda {
 
