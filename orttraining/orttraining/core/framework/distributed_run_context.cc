@@ -3,6 +3,7 @@
 
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "core/common/common.h"
+#include <iostream>
 namespace onnxruntime {
 namespace training {
 
@@ -142,19 +143,35 @@ DistributedRunContext::DistributedRunContext(int32_t world_rank,
   const int32_t node_group_id = params_.world_rank / params_.local_size;
   std::vector<int32_t> node_group_ranks;
 
+  //bugbug
+  std::cout<<"#####local size: "<<local_size<<std::endl;
   for (auto r = 0; r < local_size; r++) {
     node_group_ranks.push_back((node_group_id) * local_size + r);
+  //bugbug
+  std::cout<<"#####node_group_ranks has "<<node_group_ranks[r]<<std::endl;
+
   }
 
   // The node local data parallel group will be the intersection between data parallel and node local groups.
   std::vector<int32_t> node_data_parallel_group_ranks;
   std::sort(node_group_ranks.begin(), node_group_ranks.end());
+  for (auto r = 0; r < local_size; r++) {
+    //bugbug
+    std::cout<<"#####node_group_ranks has "<<node_group_ranks[r]<<" after sorting "<<std::endl;
+
+  }
+
   std::set_intersection(data_group_ranks.begin(),
                         data_group_ranks.end(),
                         node_group_ranks.begin(),
                         node_group_ranks.end(),
                         std::back_inserter(node_data_parallel_group_ranks));
- 
+
+  for (size_t r = 0; r < node_data_parallel_group_ranks.size(); r++) {
+    //bugbug
+    std::cout<<"#####node_data_parallel_group_ranks has "<<node_data_parallel_group_ranks[r]<<std::endl;
+  }
+
   auto index_in_node_data_parallel_group = std::find(node_data_parallel_group_ranks.begin(),
                                                      node_data_parallel_group_ranks.end(),
                                                      params_.world_rank);

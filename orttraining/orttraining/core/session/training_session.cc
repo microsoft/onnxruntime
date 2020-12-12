@@ -166,6 +166,8 @@ Status TrainingSession::ConfigureForTraining(
               "This parameter should be 1 if there is no pipeline parallelism. "
               "Otherwise, it's the number of pipeline stages.");
 
+  //bugbug
+  std::cout<<"#####config.distributed_config.local_size is: "<<config.distributed_config.local_size<<std::endl;
   DistributedRunContext::CreateInstance({config.distributed_config.world_rank,
                                          config.distributed_config.world_size,
                                          config.distributed_config.local_rank,
