@@ -31,12 +31,11 @@ jobs:
         arguments: >
           --commit_hash=$(OnnxRuntimeGitCommitHash)
           --report_url="https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)"
-          --report_file "$(Build.BinariesDirectory)/Debug/coverage_report.txt"
+          --report_file "build_nnapi/Debug/coverage_report.txt"
           --build_config '{\"os\": \"android\", \"arch\":\"x86_64\", \"config\":\"nnapi\"}'
-        workingFolder: "$(Build.BinariesDirectory)"
+        workingDirectory: $(pwd)
       env:
         DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)
-
     - script: /bin/bash tools/ci_build/github/linux/ort_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh $(pwd)
       # Build Minimal ORT with NNAPI and reduced Ops, run unit tests on Android Emulator
       displayName: Build Minimal ORT with NNAPI and run tests
