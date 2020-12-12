@@ -29,7 +29,7 @@ jobs:
         arguments: >
           --commit_hash=$(OnnxRuntimeGitCommitHash)
           --report_url="https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)"
-          --report_summary "`grep TOTAL $(Build.BinariesDirectory)/Debug/coverage_report.txt`"
+          --report_file "$(Build.BinariesDirectory)/Debug/coverage_report.txt"
           --build_config '{\"os\": \"android\", \"arch\":\"x86_64\", \"config\":\"nnapi\"}'
         workingFolder: "$(Build.BinariesDirectory)"
       env:

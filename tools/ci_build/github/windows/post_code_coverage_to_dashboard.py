@@ -20,23 +20,26 @@ def parse_arguments():
         description="ONNXRuntime test coverge report uploader for dashboard")
     parser.add_argument("--report_url", help="URL to the LLVM json report")
     parser.add_argument(
-        "--report_file", help="Path to the local cobertura XML report")
-    parser.add_argument("--commit_hash", help="Full Git commit hash")
-    parser.add_argument("--report_summary", help="String specifying coverage information")
+        "--report_file", help="Path to the local cobertura XML report", required=True)
+    parser.add_argument("--commit_hash", help="Full Git commit hash", required=True)
     parser.add_argument("--build_config", help="Build configuration, OS, Arch and config, in JSON format")
     return parser.parse_args()
 
 
-def parse_report_summary(summary):
+def parse_txt_report(report_file):
     data = {}
-    fields = summary.strip().split()
-    data['lives_valid'] = fields[1]
-    data['lines_covered'] = fields[2]
-    data['coverage'] = float(fields[3].strip('%'))/100
+    with open(report_file, 'r') as report:
+        for line in report.readlines():
+          if 'TOTAL' in line:
+            fields = line.strip().split()
+            data['lines_valid'] = fields[1]
+            data['lines_covered'] = fields[2]
+            data['coverage'] = float(fields[3].strip('%'))/100
+            break
     return data
 
 
-def parse_xml_report(report_file):
+def parse_json_report(report_file):
     result = {}
     with open(report_file) as json_file:
         data = json.load(json_file)
@@ -104,12 +107,12 @@ def write_to_db(coverage_data, build_config, args):
 if __name__ == "__main__":
     try:
         args = parse_arguments()
-        if args.report_file:
-            coverage_data = parse_xml_report(args.report_file)
-        elif args.report_summary:
-            coverage_data = parse_report_summary(args.report_summary)
+        if args.report_file.endswith(".json"):
+            coverage_data = parse_json_report(args.report_file)
+        elif args.report_file.endswith(".txt"):
+            coverage_data = parse_txt_report(args.report_file)
         else:
-            raise "No coverage data to post to the database"
+            raise "Only report extensions txt or json are accepted"
 
         build_config = json.loads(args.build_config) if args.build_config else {}
         write_to_db(coverage_data, build_config, args)
