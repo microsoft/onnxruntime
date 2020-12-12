@@ -4,7 +4,7 @@ jobs:
 - job: Orttraining_Linux_GPU_Training_E2E_Test_Nightly
 
   timeoutInMinutes: 120
-  pool: 'Linux-Multi-GPU-V100-E2E2'
+  pool: 'Linux-Multi-GPU-V100-E2E3'
 
   steps:
   - checkout: self
