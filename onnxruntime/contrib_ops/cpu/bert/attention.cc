@@ -71,7 +71,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
   int sequence_length = is_input_dim_swapped_ ? static_cast<int>(dims[0]) : static_cast<int>(dims[1]);
   int hidden_size = static_cast<int>(dims[2]);
   if (head_size_ < 0)
-    head_size_ = hidden_size / num_heads_;
+    head_size_ = (int) hidden_size / num_heads_;
   // This is not true for head-pruned transformers - e.g. FastFormers, 12 heads -> 7 heads
   // if (hidden_size % num_heads_ != 0) {
   //   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -200,7 +200,7 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, bool& is_pack
   const size_t hidden_size = static_cast<size_t>(weights_dims[0]);
   const size_t hidden_size_x3 = static_cast<size_t>(weights_dims[1]);
   if (head_size_ < 0)
-    head_size_ = hidden_size / num_heads_;
+    head_size_ = (int) hidden_size / num_heads_;
 
   // Bail out if the weights shape has an expected shape.
   if ((hidden_size == 0) || ((hidden_size % num_heads_) != 0) || (hidden_size_x3 != 3 * hidden_size)) {
@@ -248,7 +248,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   const int sequence_length = is_input_dim_swapped_ ? static_cast<int>(shape[0]) : static_cast<int>(shape[1]);
   const int hidden_size = static_cast<int>(shape[2]);
   if (head_size_ < 0)
-    head_size_ = hidden_size / num_heads_;
+    head_size_ = (int) hidden_size / num_heads_;
 
   // For the head-pruned transformers, hidden_size != head_size_ * num_heads_
   int64_t output_shape_arr[] = {batch_size, sequence_length, head_size_ * num_heads_};
