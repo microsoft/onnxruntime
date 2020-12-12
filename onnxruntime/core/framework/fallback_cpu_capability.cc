@@ -75,7 +75,7 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
             auto consumer_nodes = graph.GetConsumerNodes(node_arg.Name());
             for (auto& consumer_node : consumer_nodes) {
               candidates.push(consumer_node->Index());
-              LOGS_DEFAULT(INFO) << "Canditiate for fallback CPU execution: " << consumer_node->Name();
+              LOGS_DEFAULT(INFO) << "Candidate for fallback CPU execution: " << consumer_node->Name();
             }
           }
           return Status::OK();
