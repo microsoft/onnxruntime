@@ -1,5 +1,6 @@
 #pragma once
 #include "core/common/status.h"
+using onnxruntime::common::Status;  // TODO: Needed by WinML, but shouldn't be put into the global namespace like this
 
 namespace onnxruntime {
 
