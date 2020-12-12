@@ -1816,18 +1816,43 @@ static bool ConvTransposeNeedFallbackToCPU(const onnxruntime::Node& node) {
     auto attr_name = attr.first;
     auto attr_value = attr.second;
 
-    //cudnn only supports symmetric padding
+    // cudnn only supports symmetric padding, so drop the node down to CPU if the padding provided is asymmetric
     // TODO: Check if we can adopt a similar approach to deal with asymmetric pads in 'ConvTranspose'
     // as we did for 'Conv' to circumvent the cudnn limitation
-    if ("pads" == attr_name && ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS == attr_value.type()) {
+    if ("pads" == attr_name &&
+        ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS == attr_value.type()) {
       auto& pads = attr_value.ints();
       int pads_size = pads.size();
       ORT_ENFORCE(pads_size % 2 == 0);
       int rank = pads_size / 2;
       for (int i = 0; i < rank; i++) {
         if (pads.Get(i) != pads.Get(i + rank)) {
+          LOGS_DEFAULT(WARNING) << "Dropping the ConvTranspose node: " << node.Name()
+                                << " to CPU because it requires asymmetric padding which the CUDA EP"
+                                << " currently does not support";
           return true;
         }
+      }
+    }
+
+    if ("auto_pad" == attr_name &&
+        ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING == attr_value.type()) {
+      auto& auto_pad_attr = attr_value.s();
+      ORT_ENFORCE(auto_pad_attr == "SAME_UPPER" || auto_pad_attr == "SAME_LOWER" ||
+                      auto_pad_attr == "VALID" || auto_pad_attr == "NOTSET",
+                  "auto_pad must be either NOTSET, VALID, SAME_UPPER, SAME_LOWER");
+
+      // If auto_pad is SAME_UPPER or SAME_LOWER, pads will be computed dynamically at runtime
+      // based on the provided input shape. This may or may not lead to symmetric padding.
+      // If it turns out to be asymmetric padding, CuDNN will return a cryptic unfriendly error message.
+      // So drop down the node to CPU if auto_pad is SAME_UPPER or SAME_LOWER even if it may lead to
+      // symmetric padding.
+      // TODO: Remove this after we have supported asymmetric padding in the CUDA ConvTranspose kernel
+      if (auto_pad_attr == "SAME_UPPER" || auto_pad_attr == "SAME_LOWER") {
+        LOGS_DEFAULT(WARNING) << "Dropping the ConvTranspose node: " << node.Name()
+                              << " to CPU because it uses the auto_pad attribute which may lead to asymmetric padding which"
+                              << " the CUDA EP currently does not support";
+        return true;
       }
     }
   }
