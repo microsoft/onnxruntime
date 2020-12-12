@@ -1516,7 +1516,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
                                 dim_name,
                                 onnxruntime::FreeDimensionOverrideType::Denotation,
                                 dim_value}); },
-          "Rpbdoc(Specify the dimension size for each denotation associated with an input's free dimension.)pbdoc")
+          R"pbdoc(Specify the dimension size for each denotation associated with an input's free dimension.)pbdoc")
       .def(
           "add_free_dimension_override_by_name",
           [](PySessionOptions* options, const char* dim_name, int64_t dim_value)
@@ -1525,7 +1525,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
                                 dim_name,
                                 onnxruntime::FreeDimensionOverrideType::Name,
                                 dim_value}); },
-          "Rpbdoc(Specify values of named dimensions within model inputs.)pbdoc")
+          R"pbdoc(Specify values of named dimensions within model inputs.)pbdoc")
       .def(
           "add_session_config_entry",
           [](PySessionOptions* options, const char* config_key, const char* config_value) -> void {
@@ -1533,7 +1533,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
             if (!status.IsOK())
               throw std::runtime_error(status.ErrorMessage());
           },
-          "Rpbdoc(Set a single session configuration entry as a pair of strings.)pbdoc")
+          R"pbdoc(Set a single session configuration entry as a pair of strings.)pbdoc")
       .def(
           "get_session_config_entry",
           [](PySessionOptions* options, const char* config_key) -> std::string {
@@ -1544,7 +1544,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
 
             return value;
           },
-          "Rpbdoc(Get a single session configuration value using the given configuration key.)pbdoc")
+          R"pbdoc(Get a single session configuration value using the given configuration key.)pbdoc")
       .def(
           "register_custom_ops_library",
           [](PySessionOptions* options, const char* library_path)
@@ -1568,7 +1568,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
             ORT_THROW("Custom Ops are not supported in this build.");
 #endif
           },
-          "Rpbdoc(Specify the path to the shared library containing the custom op kernels required to run a model.)pbdoc")
+          R"pbdoc(Specify the path to the shared library containing the custom op kernels required to run a model.)pbdoc")
       .def(
           "add_initializer", [](PySessionOptions* options, const char* name, py::object& ml_value_pyobject) -> void {
             ORT_ENFORCE(strcmp(Py_TYPE(ml_value_pyobject.ptr())->tp_name, PYTHON_ORTVALUE_OBJECT_NAME) == 0, "The provided Python object must be an OrtValue");
