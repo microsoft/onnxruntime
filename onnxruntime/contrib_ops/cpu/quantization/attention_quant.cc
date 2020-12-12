@@ -109,10 +109,10 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
   //   Input  1 - weights           : (hidden_size, 3 * hidden_size)
   //   Input  2 - bias              : (3 * hidden_size)
   //   Input  3 - input_scale       : scalar
-  //   Input  4 - weight_scale      : scalar for now, will support per column
+  //   Input  4 - weight_scale      : scalar for now, will support per column later
   //   Input  5 - mask_index        : nullptr, (batch_size), (2 * batch_size), (batch_size, 1), (1, 1) or (batch_size, past_sequence_length + sequence_length)
   //   Input  6 - input_zero_point  : scalar
-  //   Input  7 - weight_zero_point : scalar for now, will support per column
+  //   Input  7 - weight_zero_point : scalar for now, will support per column later
   //   Input  8 - past              : (2, batch_size, num_heads, past_sequence_length, head_size_)
   //   Output 0                     : (batch_size, sequence_length, hidden_size)
   //   Output 1 - present           : (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size_)
@@ -132,33 +132,6 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
                                                  bias->Shape(),
                                                  mask_index,
                                                  past_tensor));
-
-  const auto& shape = input->Shape();
-  const int batch_size = static_cast<int>(shape[0]);
-  const int sequence_length = static_cast<int>(shape[1]);
-  const int hidden_size = static_cast<int>(shape[2]);
-  if (head_size_ < 0)
-    head_size_ = hidden_size / num_heads_;
-
-  // For the head-pruned transformers, hidden_size != head_size_ * num_heads_
-  int64_t output_shape_arr[] = {batch_size, sequence_length, head_size_ * num_heads_};
-  TensorShape output_shape(output_shape_arr, 3);
-  Tensor* output = context->Output(0, output_shape);
-
-  AllocatorPtr allocator;
-  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
-
-  constexpr size_t element_size = sizeof(T);
-
-  auto* tp = context->GetOperatorThreadPool();
-  // STEP.1: gemm_data(BS, 3NH) = Scale(input(BS, NH) x weights(NH, 3NH)) + bias(3NH)
-  auto gemm_data = reinterpret_cast<T*>(allocator->Alloc(SafeInt<size_t>(batch_size) * sequence_length * 3 * head_size_ * num_heads_ * element_size));
-  BufferUniquePtr gemm_buffer(gemm_data, BufferDeleter(allocator));
-
-  auto Q = reinterpret_cast<T*>(gemm_data);
-  auto K = Q + batch_size * sequence_length * hidden_size;
-  auto V = K + batch_size * sequence_length * hidden_size;
-  T* QKV[3] = {Q, K, V};
 
   ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(input_scale_tensor),
                     "input scale must be a scalar or 1D tensor of size 1");
@@ -187,6 +160,36 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
 #endif // SUPPORT_COLUMNWISE_QUANTIZATION
     weight_zero_point = *static_cast<const uint8_t*>(w_zp_tensor->DataRaw());
   }
+  const auto& shape = input->Shape();
+  const int batch_size = static_cast<int>(shape[0]);
+  const int sequence_length = static_cast<int>(shape[1]);
+  const int hidden_size = static_cast<int>(shape[2]);
+  if (head_size_ < 0)
+    head_size_ = hidden_size / num_heads_;
+
+  // For the head-pruned transformers, hidden_size != head_size_ * num_heads_
+  int64_t output_shape_arr[] = {batch_size, sequence_length, head_size_ * num_heads_};
+  TensorShape output_shape(output_shape_arr, 3);
+  if (is_input_dim_swapped_) {
+    output_shape[0] = sequence_length;
+    output_shape[1] = batch_size;
+  }
+  Tensor* output = context->Output(0, output_shape);
+
+  AllocatorPtr allocator;
+  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
+
+  constexpr size_t element_size = sizeof(T);
+
+  auto* tp = context->GetOperatorThreadPool();
+  // STEP.1: gemm_data(BS, 3NH) = Scale(input(BS, NH) x weights(NH, 3NH)) + bias(3NH)
+  auto gemm_data = reinterpret_cast<T*>(allocator->Alloc(SafeInt<size_t>(batch_size) * sequence_length * 3 * head_size_ * num_heads_ * element_size));
+  BufferUniquePtr gemm_buffer(gemm_data, BufferDeleter(allocator));
+
+  auto Q = reinterpret_cast<T*>(gemm_data);
+  auto K = Q + batch_size * sequence_length * hidden_size;
+  auto V = K + batch_size * sequence_length * hidden_size;
+  T* QKV[3] = {Q, K, V};
 
   {
     const int loop_len = 3 * batch_size * num_heads_;
