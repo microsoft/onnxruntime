@@ -6,8 +6,8 @@
 #include <limits>
 
 #include "core/framework/arena_extend_strategy.h"
-#include "core/framework/provider_options.h"
 #include "core/framework/ortdevice.h"
+#include "core/framework/provider_options.h"
 
 namespace onnxruntime {
 // Information needed to construct HIP execution providers.
