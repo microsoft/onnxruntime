@@ -264,10 +264,6 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   // For the head-pruned transformers, hidden_size != head_size_ * num_heads_
   int64_t output_shape_arr[] = {batch_size, sequence_length, head_size_ * num_heads_};
   TensorShape output_shape(output_shape_arr, 3);
-  if (is_input_dim_swapped_) {
-    output_shape[0] = sequence_length;
-    output_shape[1] = batch_size;
-  }
   Tensor* output = context->Output(0, output_shape);
 
   constexpr size_t element_size = sizeof(T);
