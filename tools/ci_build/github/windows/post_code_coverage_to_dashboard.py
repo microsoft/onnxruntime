@@ -20,7 +20,7 @@ def parse_arguments():
         description="ONNXRuntime test coverge report uploader for dashboard")
     parser.add_argument("--report_url", help="URL to the LLVM json report")
     parser.add_argument(
-        "--report_file", help="Path to the local cobertura XML report", required=True)
+        "--report_file", help="Path to the local JSON or TXT report", required=True)
     parser.add_argument("--commit_hash", help="Full Git commit hash", required=True)
     parser.add_argument("--build_config", help="Build configuration, OS, Arch and config, in JSON format")
     return parser.parse_args()

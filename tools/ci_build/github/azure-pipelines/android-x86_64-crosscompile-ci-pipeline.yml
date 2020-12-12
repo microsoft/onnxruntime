@@ -24,6 +24,12 @@ jobs:
 
     - template: templates/set-version-number-variables-step.yml
 
+    - task: PublishPipelineArtifact@0
+      displayName: 'Publish code coverage report'
+      inputs:
+        artifactName: "coverage_rpt.txt"
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+
     - task: PythonScript@0
       displayName: Post Code Coverage To Dash Board
       inputs:
