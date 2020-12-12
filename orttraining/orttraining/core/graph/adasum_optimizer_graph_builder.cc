@@ -92,10 +92,12 @@ static Status AddNcclAllReduceForGradientsWithGroups(
     ArgDef& fused_gradient_argdef,
     GraphAugmenter::GraphDefs& graph_defs,
     ArgDef& fused_allreduce_output,
-    const WorkerGroupType group_type = WorkerGroupType::GlobalParallel) {
+    const WorkerGroupType group_type) {
   fused_allreduce_output = ArgDef(fused_gradient_argdef.name + "AllReduce_Out", fused_gradient_argdef.type_proto);
 
   // Add NCCL Allreduce node.
+  //bugbug
+  std::cout<<"###########################Building adasum optimizer, nccl group is "<<static_cast<int64_t>(group_type)<<std::endl;
   graph_defs.AddNodeDefs({NodeDef(OpDef{"NcclAllReduce", kMSDomain, 1},
                                   {fused_gradient_argdef},
                                   {fused_allreduce_output},

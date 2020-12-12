@@ -43,6 +43,8 @@ Status AdasumAllReduce::ComputeInternal(OpKernelContext* context) const {
   auto recv_buffer = allocator->Alloc(total_recv_buffer_len);
   BufferUniquePtr recv_buffer_ptr(recv_buffer, BufferDeleter(allocator));
 
+  //bugbug
+  std::cout<<"##########VHDD start level is: "<<vhdd_start_level<<std::endl;
   ORT_RETURN_IF_ERROR(adasum_reducer_->DispatchFusedAllreduce((void*)data_buffer, recv_buffer, tensor_element_counts,
                           vhdd_start_level, // start level
                           training::MPIContext::GetInstance().GetMPIGroup(training::WorkerGroupType::GlobalParallel).communicator, // communicator
