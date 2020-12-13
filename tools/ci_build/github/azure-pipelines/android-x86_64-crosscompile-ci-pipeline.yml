@@ -37,9 +37,8 @@ jobs:
         arguments: >
           --commit_hash=$(OnnxRuntimeGitCommitHash)
           --report_url="https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)"
-          --report_file="build_nnapi/Debug/coverage_report.txt"
+          --report_file="$(Build.SourcesDirectory)/build_nnapi/Debug/coverage_rpt.txt"
           --build_config="{\"os\":\"android\", \"arch\":\"x86_64\", \"config\":\"nnapi\"}"
-        workingDirectory: $(pwd)
       env:
         DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)
     - script: /bin/bash tools/ci_build/github/linux/ort_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh $(pwd)
