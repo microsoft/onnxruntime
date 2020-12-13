@@ -148,7 +148,7 @@ static Status AddAdasumAllReduceForGradients(
     AdasumReductionType adasum_reduction_type,
     ArgDef& global_grad_norm_finite_argdef) {
   std::vector<ArgDef> adasum_output_argdefs;
-  std::vector<ArgDef>& adasum_input_argdefs = gradient_argdefs;
+  std::vector<ArgDef> adasum_input_argdefs = gradient_argdefs;
   adasum_input_argdefs.insert(adasum_input_argdefs.begin(),global_grad_norm_finite_argdef);
   for (size_t i = 0; i < gradient_argdefs.size(); i++) {
     adasum_output_argdefs.emplace_back(ArgDef(gradient_argdefs[i].name + "Adasum_Out", gradient_argdefs[i].type_proto));
