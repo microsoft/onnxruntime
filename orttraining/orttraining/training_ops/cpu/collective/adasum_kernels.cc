@@ -8,20 +8,25 @@
 namespace onnxruntime {
 namespace contrib {
 
+//bugbug
 ONNX_OPERATOR_KERNEL_EX(
     AdasumAllReduce,
     kMSDomain,
     1,
     kCpuExecutionProvider,
     KernelDefBuilder()
-        .VariadicAlias(0, 0)  // outputs and inputs are mapped one to one
-        .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
+        .InputMemoryType<OrtMemTypeCPUInput>(0)   /* CPU variable */
+        .VariadicAlias(1, 0)  // outputs and inputs are mapped one to one
+        .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes())
+        .TypeConstraint("TBool", DataTypeImpl::GetTensorType<bool>()),
     AdasumAllReduce);
 
+//bugbug
 Status AdasumAllReduce::Compute(OpKernelContext* context) const {
 
+  
   // Get tensor count
-  const int num_tensors = context->InputCount();
+  const int num_tensors = context->InputCount() - 1;
   std::vector<int> tensor_element_counts;
   std::vector<size_t> tensor_offsets;
   std::vector<size_t> tensor_sizes;
@@ -40,7 +45,7 @@ Status AdasumAllReduce::Compute(OpKernelContext* context) const {
   BufferUniquePtr data_buffer_ptr(data_buffer, BufferDeleter(allocator));
 
   for (int i = 0; i < num_tensors; ++i) {
-    const Tensor* x_tensor = context->Input<Tensor>(i);
+    const Tensor* x_tensor = context->Input<Tensor>(i + 1);
     memcpy((uint8_t*)data_buffer + tensor_offsets[i], x_tensor->DataRaw(),
                       tensor_sizes[i]);
   }
@@ -53,9 +58,9 @@ Status AdasumAllReduce::Compute(OpKernelContext* context) const {
                           training::MPIContext::GetInstance().GetMPIGroup(training::WorkerGroupType::GlobalParallel).communicator, // communicator
                           0, // tag
                           adasum_reducer_->GetReductionComms(), // reduction_comms
-                          context->Input<Tensor>(0)->DataType()));
+                          context->Input<Tensor>(1)->DataType()));
   for (int i = 0; i < num_tensors; i++) {
-    Tensor* y_tensor = context->Output(i, context->Input<Tensor>(i)->Shape());
+    Tensor* y_tensor = context->Output(i, context->Input<Tensor>(i + 1)->Shape());
     memcpy(y_tensor->MutableDataRaw(), (uint8_t*)data_buffer + tensor_offsets[i], tensor_sizes[i]);
   }
   return Status::OK();

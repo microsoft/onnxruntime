@@ -982,29 +982,35 @@ Example 4:
 #endif
 ;
 
+// bugbug
   ONNX_CONTRIB_OPERATOR_SCHEMA(AdasumAllReduce)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .Attr("reduce_algo", "Algorithms for Adasum. Valid values are: CpuReduction(1) or GpuHierarchicalReduction(2)",
             AttributeProto::INT,
             static_cast<int64_t>(0))
-      .Input(0, "input", "tensors to be reduced", "T", OpSchema::Variadic)
-      .Output(0, "output", "reduced tensors", "T", OpSchema::Variadic)
+      .Input(0, "is_gradient_finite", "Whether input gradients are finite", "TBool")
+      .Input(1, "input", "tensors to be reduced", "T", OpSchema::Variadic, false)
+      .Output(0, "output", "reduced tensors", "T", OpSchema::Variadic, false)
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain to float, float16 and double tensors.")
+      .TypeConstraint(
+          "TBool",
+          {"tensor(bool)"},
+          "Constrain types to boolean tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        if (ctx.getNumInputs() != ctx.getNumOutputs())
+        if (ctx.getNumInputs() != (ctx.getNumOutputs() + 1))
           fail_shape_inference("AdasumAllReduce's input count must be equal to output count.");
 
         for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
-          propagateElemTypeFromInputToOutput(ctx, i, i);
-          auto typeProto = ctx.getInputType(i);
+          propagateElemTypeFromInputToOutput(ctx, i + 1, i);
+          auto typeProto = ctx.getInputType(i + 1);
           if (!hasShape(*typeProto)) {
               continue;
           }
-          propagateShapeFromInputToOutput(ctx, i, i);
+          propagateShapeFromInputToOutput(ctx, i + 1, i);
         }
       });
 

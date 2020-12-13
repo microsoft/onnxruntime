@@ -67,9 +67,11 @@ Status InPlaceAccumulator<T, T_GRAD>::ComputeInternal(OpKernelContext* ctx) cons
   const Tensor* do_update_tensor = ctx->Input<Tensor>(2);
   Tensor& accumulation_output = *ctx->Output(0, left_addee_buffer.Shape());
 
+//bugbug
   if (do_update_tensor) {
     const bool do_update = *(do_update_tensor->template Data<bool>());
     if (!do_update) {
+      std::cout<<"######Not updating weights"<<std::endl;
       ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T>(left_addee_buffer, accumulation_output));
       return Status::OK();
     }

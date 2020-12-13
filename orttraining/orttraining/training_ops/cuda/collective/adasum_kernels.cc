@@ -4,18 +4,38 @@
 #include "orttraining/training_ops/cuda/collective/adasum_kernels.h"
 #include "orttraining/training_ops/communication_common.h"
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
+#include "orttraining/training_ops/cuda/optimizer/common.h"
 
 namespace onnxruntime {
 namespace cuda {
 
+//bugbug
 Status AdasumAllReduce::ComputeInternal(OpKernelContext* context) const {
+
+  const Tensor* is_gradient_finite = context->Input<Tensor>(0);
+  // Get tensor count
+  const int num_tensors = context->InputCount() - 1;
+
+  if (is_gradient_finite) {
+    const bool is_finite = *(is_gradient_finite->template Data<bool>());
+    if (!is_finite) {
+      for (int i = 0; i < num_tensors; i++) {
+        const Tensor* x_tensor = context->Input<Tensor>(i + 1);
+        Tensor* y_tensor = context->Output(i, x_tensor->Shape());
+        if (x_tensor->DataRaw() != y_tensor->MutableDataRaw()) {
+          CUDA_CALL(cudaMemcpy(y_tensor->MutableDataRaw(), x_tensor->DataRaw(),
+                            x_tensor->SizeInBytes(), cudaMemcpyDeviceToDevice));
+        }
+      }
+      std::cout<<"#######not finite, skip doing adasum allreduce"<<std::endl;
+      return Status::OK();
+    }
+  }
 
   int vhdd_start_level = 1;
   if (adasum_reduce_algo_ == training::AdasumReductionType::GpuHierarchicalReduction) {
     vhdd_start_level = training::DistributedRunContext::GetInstance().GroupSize(training::WorkerGroupType::NodeLocalDataParallel);
   }
-  // Get tensor count
-  const int num_tensors = context->InputCount();
   std::vector<int> tensor_element_counts;
   std::vector<size_t> tensor_offsets;
   std::vector<size_t> tensor_sizes;
@@ -35,7 +55,7 @@ Status AdasumAllReduce::ComputeInternal(OpKernelContext* context) const {
   BufferUniquePtr data_buffer_ptr(data_buffer, BufferDeleter(allocator));
 
   for (int i = 0; i < num_tensors; ++i) {
-    const Tensor* x_tensor = context->Input<Tensor>(i);
+    const Tensor* x_tensor = context->Input<Tensor>(i + 1);
     CUDA_CALL(cudaMemcpy((uint8_t*)data_buffer_ptr.get() + tensor_offsets[i], x_tensor->DataRaw(),
                       tensor_sizes[i], cudaMemcpyDeviceToHost));
   }
@@ -50,24 +70,26 @@ Status AdasumAllReduce::ComputeInternal(OpKernelContext* context) const {
                           training::MPIContext::GetInstance().GetMPIGroup(training::WorkerGroupType::GlobalParallel).communicator, // communicator
                           0, // tag
                           adasum_reducer_->GetReductionComms(), // reduction_comms
-                          context->Input<Tensor>(0)->DataType()));
+                          context->Input<Tensor>(1)->DataType()));
 
   for (int i = 0; i < num_tensors; i++) {
-    Tensor* y_tensor = context->Output(i, context->Input<Tensor>(i)->Shape());
+    Tensor* y_tensor = context->Output(i, context->Input<Tensor>(i + 1)->Shape());
     CUDA_CALL(cudaMemcpy(y_tensor->MutableDataRaw(), (uint8_t*)data_buffer + tensor_offsets[i],
                       tensor_sizes[i], cudaMemcpyHostToDevice));
   }
   return Status::OK();
 }
-
+//bugbug
 ONNX_OPERATOR_KERNEL_EX(
     AdasumAllReduce,
     kMSDomain,
     1,
     kCudaExecutionProvider,
     KernelDefBuilder()
-        .VariadicAlias(0, 0)  // outputs and inputs are mapped one to one
-        .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
+        .InputMemoryType<OrtMemTypeCPUInput>(0)   /* CPU variable */
+        .VariadicAlias(1, 0)  // outputs and inputs are mapped one to one with offset by 1
+        .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes())
+        .TypeConstraint("TBool", DataTypeImpl::GetTensorType<bool>()),
     AdasumAllReduce);
 
 }  // namespace cuda
