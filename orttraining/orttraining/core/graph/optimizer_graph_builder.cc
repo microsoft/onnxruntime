@@ -39,6 +39,8 @@ ArgDef BuildGradientAccumulationNode(const NodeArgNameGeneratorFn& nodearg_name_
                                      ArgDef& gradient_accumulation_buffer,
                                      GraphAugmenter::GraphDefs& graph_defs,
                                      bool add_accumulate_buffer_as_initializers) {
+  //bugbug
+  std::cout<<"######trying to copy proto in BuildGradientAccumulationNode"<<std::endl;
   TypeProto* gradient_fp32_type_proto = graph_defs.CopyTypeProto(gradient);
   gradient_fp32_type_proto->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
@@ -133,7 +135,8 @@ Status OptimizerGraphBuilder::AddGradientScalingNodes(
   } else {
     for (size_t i = 0; i < gradient_argdefs.size(); ++i) {
       ArgDef& gradient_argdef = gradient_argdefs[i];
-
+      //bugbug
+      std::cout<<"########trying to copy proto in AddGradientScalingNodes"<<std::endl;
       TypeProto* scaled_gradient_type_proto = graph_defs.CopyTypeProto(gradient_argdef);
       scaled_gradient_type_proto->mutable_tensor_type()->set_elem_type(allreduce_element_type);
 

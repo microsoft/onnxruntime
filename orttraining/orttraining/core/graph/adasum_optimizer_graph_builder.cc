@@ -13,6 +13,8 @@ ArgDef AdasumOptimizerGraphBuilder::BuildWeightUpdateNode(
     ArgDef& weight,
     const ArgDef& gradient_finite_argdef,
     GraphAugmenter::GraphDefs& graph_defs) {
+      //bugbug
+  std::cout<<"######trying to copy weight in BuildWeightUpdateNode"<<std::endl;
   TypeProto* gradient_fp32_type_proto = graph_defs.CopyTypeProto(weight);
   ArgDef weight_update_output = ArgDef(nodearg_name_generator(weight.name + "_update_out"), gradient_fp32_type_proto);
   graph_defs.AddNodeDefs({NodeDef(OpDef{"InPlaceAccumulator", kMSDomain, 1},
@@ -120,6 +122,8 @@ static Status AddNcclAllReduceForGradientsWithGroups(
 
   std::vector<ArgDef> allreduce_outputs(gradient_argdefs.size());
   for (size_t i = 0; i < gradient_argdefs.size(); i++) {
+    //bugbug
+    std::cout<<"######trying to copy "<<i<<"th element in nccl allreduce node"<<std::endl;
     TypeProto* allreduced_gradient_type_proto = graph_defs.CopyTypeProto(gradient_argdefs[i]);
     allreduced_gradient_type_proto->mutable_tensor_type()->set_elem_type(
         fused_gradient_argdef.type_proto->tensor_type().elem_type());
