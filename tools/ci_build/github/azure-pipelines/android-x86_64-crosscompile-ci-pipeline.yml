@@ -28,8 +28,8 @@ jobs:
       displayName: 'Publish code coverage report'
       inputs:
         artifactName: "coverage_rpt.txt"
-        targetPath: '$(Build.ArtifactStagingDirectory)'
-
+        targetPath: '$(Build.SourcesDirectory)/build_nnapi/Debug/coverage_rpt.txt'
+        publishLocation: 'pipeline'
     - task: PythonScript@0
       displayName: Post Code Coverage To Dash Board
       inputs:
