@@ -30,12 +30,12 @@ def parse_txt_report(report_file):
     data = {}
     with open(report_file, 'r') as report:
         for line in report.readlines():
-          if 'TOTAL' in line:
-            fields = line.strip().split()
-            data['lines_valid'] = fields[1]
-            data['lines_covered'] = fields[2]
-            data['coverage'] = float(fields[3].strip('%'))/100
-            break
+            if 'TOTAL' in line:
+                fields = line.strip().split()
+                data['lines_valid'] = fields[1]
+                data['lines_covered'] = fields[2]
+                data['coverage'] = float(fields[3].strip('%'))/100
+                break
     return data
 
 
