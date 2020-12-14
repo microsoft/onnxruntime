@@ -212,7 +212,7 @@ struct ConvTransposeAttributes : public ConvAttributes {
     if (pad_type == AutoPadType::SAME_UPPER || pad_type == AutoPadType::SAME_LOWER) {
       // total pad
       auto total_pad = ComputeTotalPad(in_size, stride, adj,
-                                       kernel, dilation, in_size);
+                                       kernel, dilation, in_size * stride);
       DistributePadding(pad_type, total_pad, *pad_head, *pad_tail);
     }
 
