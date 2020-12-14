@@ -54,7 +54,7 @@ Status ReduceAllL2<TIn, TOut>::ComputeInternal(OpKernelContext* ctx) const {
 
     // Check if all values are finite and write true to deviceOutput.
     // Otherwise, false will be written.
-    launch_multi_tensor_functor<1, TFunctor, CudaTOut*>(
+    launch_multi_tensor_functor<1, TFunctor>(
         2048 * 32, tensor_sizes, grouped_tensor_pointers, functor, p_output);
 
     // *p_output is the squared sum of all elements.

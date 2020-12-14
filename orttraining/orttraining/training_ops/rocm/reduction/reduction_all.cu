@@ -1,32 +1,34 @@
-#include "hip/hip_runtime.h"
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <hip/hip_runtime.h>
 #include "orttraining/training_ops/rocm/reduction/reduction_all.h"
 #include "core/providers/rocm/cu_inc/common.cuh"
 #include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/atomic/common.cuh"
 #include "core/providers/rocm/reduction/reduction_utils.cuh"
+#include "core/providers/rocm/shared_inc/accumulation_type.h"
 
 namespace onnxruntime {
 namespace rocm {
 
 template<typename Tin, typename Tout>
-__global__ void _ScalarSqrtImpl(Tin* input, Tout* output) {
+__global__ void ScalarSqrtKernel(Tin* input, Tout* output) {
   *output = (Tout)_Sqrt(*input);
-};
+}
 
 template<typename Tin, typename Tout>
 void ScalarSqrt(Tin* input, Tout* output) {
-  hipLaunchKernelGGL(_ScalarSqrtImpl, dim3(1), dim3(1), 0, 0, input, output);
-};
+  hipLaunchKernelGGL(ScalarSqrtKernel, dim3(1), dim3(1), 0, 0, input, output);
+}
 
 template void ScalarSqrt(float* input, float* output);
 template void ScalarSqrt(half* input, half* output);
 template void ScalarSqrt(float* input, half* output);
 
 template <typename TIn, typename TOut, typename TBuf, typename TInOp, typename TOutOp>
-__global__ void _MultiTensorReduceImpl(ChunkGroup<1> chunk_group, TOut* output) {
+__launch_bounds__(ChunkGroup<1>::thread_count_per_block)
+__global__ void MultiTensorReduceKernel(ChunkGroup<1> chunk_group, TOut* output) {
   const int group_index = chunk_group.block_index_to_tensor_group_index[blockIdx.x];
   const int tensor_size = chunk_group.tensor_sizes[group_index];
   const int chunk_size = chunk_group.chunk_size;
@@ -79,7 +81,7 @@ __global__ void _MultiTensorReduceImpl(ChunkGroup<1> chunk_group, TOut* output) 
   if (threadIdx.x == 0) {
     atomic_add(w_norm, TOutOp()(shared_memory[0]));
   }
-};
+}
 
 template <typename TIn, typename TOut, typename TBuf, typename TInOp, typename TOutOp>
 void MultiTensorReduce(ChunkGroup<1> chunk_group, TOut* output) {
@@ -92,12 +94,12 @@ void MultiTensorReduce(ChunkGroup<1> chunk_group, TOut* output) {
   ORT_ENFORCE(thread_count % GPU_WARP_SIZE == 0);
   ORT_ENFORCE((thread_count & (thread_count - 1)) == 0);
 
-  hipLaunchKernelGGL(HIP_KERNEL_NAME(_MultiTensorReduceImpl<TIn, TOut, TBuf, TInOp, TOutOp>), dim3(chunk_group.chunk_count), dim3(thread_count), shared_memory_size, 0, chunk_group, output);
+  hipLaunchKernelGGL(HIP_KERNEL_NAME(MultiTensorReduceKernel<TIn, TOut, TBuf, TInOp, TOutOp>), dim3(chunk_group.chunk_count), dim3(thread_count), shared_memory_size, 0, chunk_group, output);
 }
 
 template <typename TIn, typename TOut>
 void MultiTensorReduceL2<TIn, TOut>::operator()(ChunkGroup<1> chunk_group, TOut* output) {
-  typedef typename ToBuffer<TIn>::Type TBuf;
+  using TBuf = AccumulationType_t<TIn>;
   MultiTensorReduce<TIn, TOut, TBuf, Square<TBuf, TIn>, Cast<TOut, TBuf>>(chunk_group, output);
 }
 

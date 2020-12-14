@@ -131,6 +131,9 @@ def container_registry_has_image(full_image_name, docker_path):
 def main():
     args = parse_args()
 
+    log.debug("Dockerfile: {}, context: {}, docker build args: '{}'".format(
+        args.dockerfile, args.context, args.docker_build_args))
+
     tag = generate_tag(args.dockerfile, args.context, args.docker_build_args)
 
     full_image_name = "{}.azurecr.io/{}:{}".format(

@@ -1723,19 +1723,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                  throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
                }
                CreateGenericMLValue(px.second, GetAllocator(), _.first, _.second, &ml_value);
-               if (PyErr_Occurred()) {
-                 PyObject *ptype, *pvalue, *ptraceback;
-                 PyErr_Fetch(&ptype, &pvalue, &ptraceback);
-
-                 PyObject* pStr = PyObject_Str(ptype);
-                 std::string sType = py::reinterpret_borrow<py::str>(pStr);
-                 Py_XDECREF(pStr);
-                 pStr = PyObject_Str(pvalue);
-                 sType += ": ";
-                 sType += py::reinterpret_borrow<py::str>(pStr);
-                 Py_XDECREF(pStr);
-                 throw std::runtime_error(sType);
-               }
+               ThrowIfPyErrOccured();
                feeds.insert(std::make_pair(_.first, ml_value));
              }
 
