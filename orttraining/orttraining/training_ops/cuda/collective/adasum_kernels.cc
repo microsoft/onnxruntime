@@ -33,9 +33,10 @@ Status AdasumAllReduce::ComputeInternal(OpKernelContext* context) const {
   }
 
   int vhdd_start_level = 1;
-  if (adasum_reduce_algo_ == training::AdasumReductionType::GpuHierarchicalReduction) {
-    vhdd_start_level = training::DistributedRunContext::GetInstance().GroupSize(training::WorkerGroupType::NodeLocalDataParallel);
-  }
+  // if (adasum_reduce_algo_ == training::AdasumReductionType::GpuHierarchicalReduction) {
+  //   vhdd_start_level = training::DistributedRunContext::GetInstance()
+  //                                                      .GroupSize(training::WorkerGroupType::NodeLocalDataParallel);
+  // }
   std::vector<int> tensor_element_counts;
   std::vector<size_t> tensor_offsets;
   std::vector<size_t> tensor_sizes;
@@ -65,14 +66,26 @@ Status AdasumAllReduce::ComputeInternal(OpKernelContext* context) const {
 
   //bugbug
   std::cout<<"##########VHDD start level is: "<<vhdd_start_level<<std::endl;
-  ORT_RETURN_IF_ERROR(adasum_reducer_->DispatchFusedAllreduce((void*)data_buffer, recv_buffer, tensor_element_counts,
-                          vhdd_start_level, // start level
-                          training::MPIContext::GetInstance().GetMPIGroup(training::WorkerGroupType::GlobalParallel).communicator, // communicator
-                          0, // tag
-                          adasum_reducer_->GetReductionComms(), // reduction_comms
-                          context->Input<Tensor>(1)->DataType()));
+  if(training::MPIContext::GetInstance().GetLocalRank() == 0 ||
+     adasum_reduce_algo_ == training::AdasumReductionType::CpuReduction) {
+    std::cout<<"##########adasum gpu kernel DispatchFusedAllreduce"<<std::endl;
+    ORT_RETURN_IF_ERROR(adasum_reducer_->DispatchFusedAllreduce((void*)data_buffer, recv_buffer, tensor_element_counts,
+                            vhdd_start_level, // start level
+                            adasum_reduce_algo_ == training::AdasumReductionType::GpuHierarchicalReduction
+                            ? training::MPIContext::GetInstance()
+                                                  .GetMPIGroup(training::WorkerGroupType::CrossNodeDataParallel)
+                                                  .communicator
+                            : training::MPIContext::GetInstance()
+                                                  .GetMPIGroup(training::WorkerGroupType::GlobalParallel)
+                                                  .communicator, // communicator
+                            0, // tag
+                            adasum_reducer_->GetReductionComms(), // reduction_comms
+                            context->Input<Tensor>(1)->DataType()));
+     }
   if(adasum_reduce_algo_ == training::AdasumReductionType::GpuHierarchicalReduction) {
-    MPI_CHECK(MPI_Bcast(data_buffer, total_recv_buffer_len, MPI_BYTE,
+    std::cout<<"##########Broadcast result to ranks"<<std::endl;
+    int input_count = total_recv_buffer_len / context->Input<Tensor>(1)->DataType()->Size();
+    MPI_CHECK(MPI_Bcast(data_buffer, input_count, training::GetMPIDataType(context->Input<Tensor>(1)->DataType()),
                 0, /*local root rank*/
                 training::MPIContext::GetInstance().GetMPIGroup(training::WorkerGroupType::NodeLocalDataParallel)
                                                    .communicator));

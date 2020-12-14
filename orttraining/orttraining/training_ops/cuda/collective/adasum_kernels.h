@@ -14,6 +14,7 @@ class AdasumAllReduce final : public NcclKernel {
  public:
   explicit AdasumAllReduce(const OpKernelInfo& info) : NcclKernel(info) {
    int64_t adasum_reduce_algo;
+   training::WorkerGroupType group_type = training::WorkerGroupType::GlobalParallel;
    info.GetAttrOrDefault("reduce_algo", &adasum_reduce_algo, static_cast<int64_t>(0));
    adasum_reduce_algo_ = static_cast<training::AdasumReductionType>(adasum_reduce_algo);
    if (adasum_reduce_algo_ == training::AdasumReductionType::GpuHierarchicalReduction ||
@@ -21,7 +22,10 @@ class AdasumAllReduce final : public NcclKernel {
      adasum_reducer_ = std::make_unique<training::AdasumMPI>();
    }
    if(!adasum_reducer_->IsAdasumInitialized()) {
-     adasum_reducer_->InitializeVHDDReductionComms();
+     if (adasum_reduce_algo_ == training::AdasumReductionType::GpuHierarchicalReduction) {
+       group_type = training::WorkerGroupType::CrossNodeDataParallel;
+     }
+     adasum_reducer_->InitializeVHDDReductionComms(group_type);
    }
   }
 
