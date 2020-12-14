@@ -5,9 +5,29 @@ import subprocess
 import copy
 import numpy as np
 import torch
+<<<<<<< 546f9b5a2b9297112a576b647fc51b1c65918013
 import onnx
+=======
+>>>>>>> added e2e test for adasum python frontend
 
 from onnxruntime.training import optim
+
+def _single_run(execution_file, scenario, checkopint_dir = None):
+    cmd = [sys.executable, execution_file]
+    if scenario:
+        cmd += ['--scenario', scenario]
+    if checkopint_dir:
+        cmd += ['--checkpoint_dir', checkopint_dir]
+    assert subprocess.call(cmd) == 0
+
+def _distributed_run(execution_file, scenario, checkopint_dir = None):
+    ngpus = torch.cuda.device_count()
+    cmd = ['mpirun', '-n', str(ngpus), '-x', 'NCCL_DEBUG=INFO', sys.executable, execution_file]
+    if scenario:
+        cmd += ['--scenario', scenario]
+    if checkopint_dir:
+        cmd += ['--checkpoint_dir', checkopint_dir]
+    assert subprocess.call(cmd) == 0
 
 def is_windows():
     return sys.platform.startswith("win")
