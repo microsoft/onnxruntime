@@ -71,7 +71,12 @@ Status AdasumAllReduce::ComputeInternal(OpKernelContext* context) const {
                           0, // tag
                           adasum_reducer_->GetReductionComms(), // reduction_comms
                           context->Input<Tensor>(1)->DataType()));
-
+  if(adasum_reduce_algo_ == training::AdasumReductionType::GpuHierarchicalReduction) {
+    MPI_CHECK(MPI_Bcast(data_buffer, total_recv_buffer_len, MPI_BYTE,
+                0, /*local root rank*/
+                training::MPIContext::GetInstance().GetMPIGroup(training::WorkerGroupType::NodeLocalDataParallel)
+                                                   .communicator));
+  }
   for (int i = 0; i < num_tensors; i++) {
     Tensor* y_tensor = context->Output(i, context->Input<Tensor>(i + 1)->Shape());
     CUDA_CALL(cudaMemcpy(y_tensor->MutableDataRaw(), (uint8_t*)data_buffer + tensor_offsets[i],
