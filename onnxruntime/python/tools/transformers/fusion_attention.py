@@ -129,7 +129,7 @@ class FusionAttention(Fusion):
 
         attention_node_name = self.model.create_node_name('Attention')
 
-        weight = transformerutils.make_initializer(name=attention_node_name + '_qkv_weight',
+        weight = TransformerUtils.make_initializer(name=attention_node_name + '_qkv_weight',
                                                    data_type=TensorProto.FLOAT,
                                                    dims=[self.hidden_size, 3 * self.hidden_size],
                                                    vals=qkv_weight.flatten().tolist())
