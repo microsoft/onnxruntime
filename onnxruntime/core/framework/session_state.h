@@ -31,6 +31,9 @@
 #include "core/platform/ort_mutex.h"
 #include "core/platform/path_lib.h"
 #include "core/platform/threadpool.h"
+#include "core/framework/ort_value_pattern_planner.h"
+#include <boost/optional/optional.hpp>
+using boost::optional;
 
 namespace flatbuffers {
 class FlatBufferBuilder;
@@ -185,9 +188,9 @@ class SessionState {
   profiling::Profiler& Profiler() const noexcept { return profiler_; }
 
   /**
-  Get cached memory pattern based on input shapes
+  Get cached memory planner and pattern based on input shapes
   */
-  const MemoryPatternGroup* GetMemoryPatternGroup(
+  optional<std::pair<OrtValuePatternPlanner*, const MemoryPatternGroup*>> GetMemoryPatternGroup(
       const std::vector<std::reference_wrapper<const TensorShape>>& input_shapes,
       const std::vector<int>& feed_mlvalue_idxs,
       std::unordered_map<int, TensorShape>& inferred_shapes) const;
@@ -332,7 +335,8 @@ class SessionState {
       const std::vector<std::reference_wrapper<const TensorShape>>& input_shape,
       const std::vector<int>& feed_mlvalue_idxs,
       MemoryPatternGroup* output,
-      std::unordered_map<int, TensorShape>& inferred_shapes) const;
+      std::unordered_map<int, TensorShape>& inferred_shapes,
+      std::unique_ptr<OrtValuePatternPlanner>& mem_planner) const;
 #endif
 
   // the SessionState for the main Graph contains the compiled kernel hashes for the entire model
@@ -409,6 +413,12 @@ class SessionState {
 
   // lock for the mem_patterns_
   mutable OrtMutex mem_patterns_lock_;
+
+  // Cache for the generated memory planner. Key is calculated based on input shapes.
+  // REVIEW(codemzs): Reconcile OrtValuePatternPlanner and MemoryPatternGroup and for 
+  // both these maps lets use ageing because they will get really big when used with models 
+  // where almost every execution frame has a different shaped input.
+  mutable std::map<int64_t, std::unique_ptr<OrtValuePatternPlanner>> mem_planners_;
 
   // cache for the generated mem_patterns. key is calculated based on input shapes.
   mutable std::map<int64_t, std::unique_ptr<MemoryPatternGroup>> mem_patterns_;

@@ -17,6 +17,8 @@ limitations under the License.
 
 #pragma once
 #include <list>
+#include <fstream>
+#include <string>
 #include "core/common/safeint.h"
 #include "core/framework/mem_pattern.h"
 #include "core/framework/allocation_planner.h"
@@ -65,7 +67,8 @@ class MemPatternPlanner {
     return false;
   }
 
-  void TraceAllocation(int ml_value_idx, const AllocPlanPerValue::ProgramCounter& counter, size_t size) {
+  void TraceAllocation(int ml_value_idx, const AllocPlanPerValue::ProgramCounter& counter, size_t size,
+                       bool no_expand = false, size_t* offset_out = nullptr) {
     ORT_ENFORCE(using_counters_);
 
     std::lock_guard<OrtMutex> lock(lock_);
@@ -111,6 +114,12 @@ class MemPatternPlanner {
       best_offset = current;
     }
 
+    // Try to statically allocate tensors whose shape was inferred at runtime only if
+    // they can fit in this statically allocated buffer.
+    if (no_expand && ((best_offset + size) >= buffer_size_)) {
+      return;
+    }
+
     // we only need to bounds check the addition of size to best_offset as that is the only time we extend
     // the maximum size of the buffer.
     buffer_size_ = std::max(buffer_size_, SafeInt<size_t>(best_offset) + size);
@@ -127,6 +136,10 @@ class MemPatternPlanner {
     }
 
     blocks_.insert(best_fit_it, (static_cast<int>(allocs_.size()) - 1));
+
+    if (offset_out) {
+      *offset_out = best_offset;
+    }
   }
 #endif
 
@@ -189,11 +202,12 @@ class MemPatternPlanner {
     blocks_.insert(best_fit_it, (static_cast<int>(allocs_.size()) - 1));
   }
 
-  void TraceFree(int ml_value_index) {
+  void TraceFree(int ml_value_index, bool erase = false) {
     std::lock_guard<OrtMutex> lock(lock_);
 
     for (auto it = blocks_.begin(); it != blocks_.end(); it++) {
       if (allocs_[*it].index_ == ml_value_index) {
+        allocs_[*it].deleted_ = erase;
         blocks_.erase(it);
         break;
       }
@@ -207,11 +221,11 @@ class MemPatternPlanner {
     if (using_counters_) {
       // Time schedules of overlapping memory blocks SHOULD NOT intersect.
       for (size_t index_1 = 0; index_1 < allocs_.size(); index_1 += 1) {
-        if (!allocs_[index_1].reuse_)
+        if (!allocs_[index_1].reuse_ || allocs_[index_1].deleted_)
           continue;
 
         for (size_t index_2 = index_1 + 1; index_2 < allocs_.size(); index_2 += 1) {
-          if (!allocs_[index_2].reuse_)
+          if (!allocs_[index_2].reuse_ || allocs_[index_2].deleted_)
             continue;
 
           size_t alloc_1_start = allocs_[index_1].block_.offset_;
@@ -236,6 +250,10 @@ class MemPatternPlanner {
     MemoryPattern pattern;
     pattern.peak_size_ = buffer_size_;
     for (auto& alloc : allocs_) {
+      if (alloc.deleted_) {
+        continue;
+      }
+
       pattern.patterns_[alloc.index_] = alloc.block_;
     }
 
@@ -248,10 +266,11 @@ class MemPatternPlanner {
     MemoryBlock block_;
     const AllocPlanPerValue::ProgramCounter* counter_{nullptr};
     bool reuse_{false};
+    bool deleted_{false};
     OrtValueAllocationBlock() = default;
-    OrtValueAllocationBlock(int index, const MemoryBlock& block) : index_(index), block_(block), reuse_{false} {}
+    OrtValueAllocationBlock(int index, const MemoryBlock& block) : index_(index), block_(block), reuse_{false}, deleted_{false} {}
     OrtValueAllocationBlock(int index, const AllocPlanPerValue::ProgramCounter& counter, const MemoryBlock& block)
-        : index_(index), block_(block), counter_(&counter), reuse_{true} {
+        : index_(index), block_(block), counter_(&counter), reuse_{true}, deleted_{false} {
     }
   };
 

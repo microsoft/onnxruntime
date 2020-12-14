@@ -42,6 +42,22 @@ class MemoryPattern {
     return &it->second;
   }
 
+  // REVIEW (codemzs): Put some mechanism in place to ensure the sanity of the pattern when it is 
+  // amended, i.e integrity of peak size.
+  void InsertBlock(int ml_value_idx, MemoryBlock block) {
+
+    ORT_ENFORCE(patterns_.find(ml_value_idx) == patterns_.end());
+
+    patterns_[ml_value_idx] = block;
+  }
+
+  void EraseBlock(int ml_value_idx) {
+
+    ORT_ENFORCE(patterns_.find(ml_value_idx) != patterns_.end());
+
+    patterns_.erase(ml_value_idx);
+  }
+
  private:
   // allow move
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(MemoryPattern);

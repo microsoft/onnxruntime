@@ -208,7 +208,8 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
     : IExecutionFrame(session_state.GetOrtValueNameIdxMap(), session_state.GetNodeIndexInfo(), fetch_mlvalue_idxs),
       session_state_(session_state),
       mem_patterns_(nullptr),
-      planner_(nullptr) {
+      planner_(nullptr),
+      cached_planner_(nullptr) {
   Init(feed_mlvalue_idxs, feeds, session_state.GetInitializedTensors(), fetches);
 
   // map the custom allocators to ort_value_idx entries
@@ -242,9 +243,19 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
 
     //if there are some traditional ml value type in inputs disable the memory pattern optimization.
     if (all_tensors) {
-      mem_patterns_ = session_state.GetMemoryPatternGroup(input_shapes, feed_mlvalue_idxs, inferred_shapes_);
+      auto* exe_plan = session_state.GetExecutionPlan();
+      ORT_ENFORCE(exe_plan);
+      auto cached_mem_planner_pattern =
+          session_state.GetMemoryPatternGroup(input_shapes, feed_mlvalue_idxs, inferred_shapes_);
+
+      if (cached_mem_planner_pattern) {
+        cached_planner_ = cached_mem_planner_pattern.get().first;
+        mem_patterns_ = cached_mem_planner_pattern.get().second;
+      }
+
       // if no existing patterns, generate one in this executionframe
       if (!mem_patterns_) {
+        // Used to trace memory pattern in inference mode when it is not cached presumably because of unknown symbolic shapes.
         planner_ = onnxruntime::make_unique<OrtValuePatternPlanner>(*session_state.GetExecutionPlan());
       } else {
         // pre-allocate the big chunk requested in memory pattern.
@@ -293,9 +304,19 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
 
             // log size of activation. Keep it commented out for now to avoid log flooding.
             // VLOGS(session_state_.Logger(), 1) << "**** Allocated memory for activations, size: " <<mem_patterns_->patterns[i].PeakSize();
+            // printf("\n **** Allocated memory for activations, size: %zu ***\n", mem_patterns_->patterns[i].PeakSize());
           }
         }
       }
+
+      // REVIEW(codemzs): Training mode has a best-effort approach to generate as much memory pattern as possible when 
+      // faced with challenges like unresolved symbolic shapes in which case it will generate a memory pattern for partial graph and 
+      // for the reminder graph it will try to fetch memory block from static buffer if possible and fallback to BFCArena if it cannot.
+      // For inferenceing side I'm leaving the behavior untouched for now to minimize disruption but ideally we would want to reconcile 
+      // the memory allocation logic for both modes.
+   
+      ORT_ENFORCE((cached_planner_ && !planner_) || (planner_ && !cached_planner_));
+
     }
   }
 }
@@ -353,25 +374,57 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
   if (mem_patterns_ && per_alloc_plan.alloc_kind != AllocKind::kAllocateOutput) {
     auto pattern = mem_patterns_->GetPatterns(location);
     if (pattern) {
-      auto block = pattern->GetBlock(ort_value_index);
+      auto block_ptr = pattern->GetBlock(ort_value_index);
+      MemoryBlock block{};
+      if (block_ptr && (block_ptr->size_ == size)) {
+        block = *block_ptr;
+      }
+#ifdef ENABLE_TRAINING
+      else {
+
+        ORT_ENFORCE(!planner_ && cached_planner_);
+
+        // This can happen in scenarios such as NonZero op.
+        if(block_ptr && (block_ptr->size_ != size)) {
+          cached_planner_->TraceFree(ort_value_index, true);
+          const_cast<MemoryPattern*>(pattern)->EraseBlock(ort_value_index);
+        }
+
+        // Try to allocate this block from static buffer before asking BFCArena.
+        size_t offset = SIZE_MAX;
+        cached_planner_->TraceAllocation(ort_value_index, per_alloc_plan.program_counter, size, true, &offset);
+
+        if (offset != SIZE_MAX) {
+          block.offset_ = offset;
+          block.size_ = size;
+          const_cast<MemoryPattern*>(pattern)->InsertBlock(ort_value_index, block);
+          block_ptr = &block;
+        }
+      }
+#endif
+
       // if block not found, fall back to default behavior
-      if (block) {
+      if (block_ptr) {
         auto it = buffers_.find(location);
         if (it != buffers_.end()) {
           // if the block is not correct, log message then fall back to default behavior
-          if (block->size_ == size) {
+          if (block.size_ == size) {
             void* buffer = it->second.get();
+            ORT_ENFORCE((static_cast<char*>(buffer) + block.offset_ + size) <=
+                        (static_cast<char*>(buffer) + static_activation_memory_sizes_in_byte_[location.name]));
+
             auto status = AllocateTensorWithPreAllocateBufferHelper(
-                ort_value, static_cast<void*>(static_cast<char*>(buffer) + block->offset_), element_type, location,
+                ort_value, static_cast<void*>(static_cast<char*>(buffer) + block.offset_), element_type, location,
                 shape);
             return status;
-          } else {
+          } else {        
+
             // the block size may vary especially if the model has NonZero ops, or different sequence lengths are
             // fed in, so use VERBOSE as the log level as it's expected.
             // TODO: Should we re-use the block if the size is large enough? Would probably need to allow it
             // to be freed if the size difference was too large so our memory usage doesn't stick at a high water mark
             LOGS(session_state_.Logger(), VERBOSE) << "For ort_value with index: " << ort_value_index
-                                                   << ", block in memory pattern size is: " << block->size_
+                                                   << ", block in memory pattern size is: " << block.size_
                                                    << " but the actually size is: " << size
                                                    << ", fall back to default allocation behavior";
           }
@@ -382,7 +435,12 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
   }
 
   //no memory pattern, or the pattern is not correct.
-  if (!alloc) alloc = GetAllocator(location);
+  if (!alloc) {
+    alloc = GetAllocator(location);
+  }
+
+  ORT_ENFORCE(alloc != nullptr);
+
   std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, alloc);
 
   {
