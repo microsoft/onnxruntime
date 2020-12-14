@@ -139,6 +139,10 @@ onnxruntime::NodeIndex OpKernelContext::GetNodeIndex() const {
   return kernel_->Node().Index();
 }
 
+const std::string& OpKernelContext::GetNodeName() const {
+  return kernel_->Node().Name();
+}
+
 const std::string& OpKernelContext::GetOpDomain() const {
   return kernel_->KernelDef().Domain();
 }

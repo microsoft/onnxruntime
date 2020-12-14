@@ -918,8 +918,8 @@ common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto&
 
 #endif  // !ORT_MINIMAL_BUILD
 
-template common::Status GetSizeInBytesFromTensorProto<256>(const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                                           size_t* out);
+template common::Status GetSizeInBytesFromTensorProto<kAllocAlignment>(const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                                                       size_t* out);
 template common::Status GetSizeInBytesFromTensorProto<0>(const ONNX_NAMESPACE::TensorProto& tensor_proto, size_t* out);
 
 #define CASE_UNPACK(TYPE, ELEMENT_TYPE, DATA_SIZE)                              \

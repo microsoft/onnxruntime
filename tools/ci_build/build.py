@@ -1299,6 +1299,9 @@ def run_training_python_frontend_tests(cwd):
 
     run_subprocess([sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_checkpoint_storage.py'], cwd=cwd)
 
+    run_subprocess([
+        sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_orttrainer_checkpoint_functions.py'], cwd=cwd)
+
 
 def run_training_python_frontend_e2e_tests(cwd):
     # frontend tests are to be added here:
