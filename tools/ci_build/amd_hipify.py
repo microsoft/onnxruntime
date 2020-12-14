@@ -214,6 +214,7 @@ core_ops_files = [
                 'cuda_fence.cc',
                 'cuda_fence.h',
                 'cuda_fwd.h',
+                'cuda_kernel.h',
                 'cuda_pch.cc',
                 'cuda_pch.h',
                 'cuda_provider_factory.cc',
