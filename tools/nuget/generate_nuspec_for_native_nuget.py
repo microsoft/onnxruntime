@@ -76,6 +76,8 @@ def generate_repo_url(list, repo_url, commit_id):
 
 
 def generate_dependencies(list, package_name, version):
+    dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.4.0"/>'
+
     if (package_name == 'Microsoft.AI.MachineLearning'):
         list.append('<dependencies>')
 
@@ -96,23 +98,41 @@ def generate_dependencies(list, package_name, version):
         list.append('</group>')
         # UAP10.0.16299, This is the earliest release of the OS that supports .NET Standard apps
         list.append('<group targetFramework="UAP10.0.16299">')
+        list.append(dml_dependency)
+        list.append('</group>')
+        # Support Native C++
+        list.append('<group targetFramework="native">')
+        list.append(dml_dependency)
         list.append('</group>')
 
         list.append('</dependencies>')
     else:
+        include_dml = package_name == 'Microsoft.ML.OnnxRuntime.DirectML'
+
         list.append('<dependencies>')
         # Support .Net Core
         list.append('<group targetFramework="NETCOREAPP">')
         list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+        if include_dml:
+            list.append(dml_dependency)
         list.append('</group>')
         # Support .Net Standard
         list.append('<group targetFramework="NETSTANDARD">')
         list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+        if include_dml:
+            list.append(dml_dependency)
         list.append('</group>')
         # Support .Net Framework
         list.append('<group targetFramework="NETFRAMEWORK">')
         list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+        if include_dml:
+            list.append(dml_dependency)
         list.append('</group>')
+        # Support Native C++
+        if include_dml:
+            list.append('<group targetFramework="native">')
+            list.append(dml_dependency)
+            list.append('</group>')
 
         list.append('</dependencies>')
 
@@ -185,6 +205,7 @@ def generate_files(list, args):
                               'providers_shared_lib': 'onnxruntime_providers_shared.dll',
                               'dnnl_ep_shared_lib': 'onnxruntime_providers_dnnl.dll',
                               'tensorrt_ep_shared_lib': 'onnxruntime_providers_tensorrt.dll',
+                              'openvino_ep_shared_lib': 'onnxruntime_providers_openvino.dll',
                               'onnxruntime_perf_test': 'onnxruntime_perf_test.exe',
                               'onnx_test_runner': 'onnx_test_runner.exe'}
 
@@ -199,6 +220,7 @@ def generate_files(list, args):
                               'providers_shared_lib': 'libonnxruntime_providers_shared.so',
                               'dnnl_ep_shared_lib': 'libonnxruntime_providers_dnnl.so',
                               'tensorrt_ep_shared_lib': 'libonnxruntime_providers_tensorrt.so',
+                              'openvino_ep_shared_lib': 'libonnxruntime_providers_openvino.so',
                               'onnxruntime_perf_test': 'onnxruntime_perf_test',
                               'onnx_test_runner': 'onnx_test_runner'}
 
@@ -289,14 +311,6 @@ def generate_files(list, args):
                           'libonnxruntime.so') + '" target="runtimes\\linux-' + args.target_architecture +
                           '\\native" />')
 
-    if includes_directml:
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'DirectML.dll') +
-                          runtimes + ' />')
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'DirectML.pdb') +
-                          runtimes + ' />')
-        files_list.append('<file src=' + '"' + os.path.join(args.packages_path, 'DirectML.1.3.0\\LICENSE.txt') +
-                          '" target="DirectML_LICENSE.txt" />')
-
     if includes_winml:
         # Process microsoft.ai.machinelearning import lib, dll, and pdb
         files_list.append('<file src=' + '"' +
@@ -329,6 +343,14 @@ def generate_files(list, args):
                           runtimes_target + args.target_architecture + '\\native" />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                           nuget_dependencies['dnnl_ep_shared_lib']) +
+                          runtimes_target + args.target_architecture + '\\native" />')
+
+    if args.execution_provider == "openvino":
+        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
+                          nuget_dependencies['providers_shared_lib']) +
+                          runtimes_target + args.target_architecture + '\\native" />')
+        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
+                          nuget_dependencies['openvino_ep_shared_lib']) +
                           runtimes_target + args.target_architecture + '\\native" />')
 
     # process all other library dependencies

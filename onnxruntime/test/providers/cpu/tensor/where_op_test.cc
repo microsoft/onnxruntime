@@ -119,8 +119,7 @@ TEST(WhereOpTest, BroadcastDimWithZero) {
 
   test.AddOutput<int64_t>("output", {0, 3}, {});
 
-  // exclude NGraph as this isn't handled by that EP
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
+  test.Run();
 }
 
 TEST(WhereOpTest, BroadcastWithScalar) {
@@ -132,8 +131,6 @@ TEST(WhereOpTest, BroadcastWithScalar) {
 
   test.AddOutput<int64_t>("output", {1, 3}, {1, 1, 3});
 
-  // exclude NGraph as this isn't handled by that EP
-  //test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
   test.Run();
 }
 

@@ -31,7 +31,7 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
         return Status(common::ONNXRUNTIME, common::FAIL,
                       "Failed to get allocator for location: " + location.ToString());
 
-      // Don't allocate memory when there is no memory usage..
+      // Don't allocate memory when there is no memory usage.
       if (mem_patterns_.patterns[i].PeakSize() <= 0) {
         continue;
       }
@@ -61,7 +61,7 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
   TensorAllocatorWithMemPattern(const ExecutionPlanBase& execution_plan, const SessionState& session_state,
                                 std::vector<BufferUniquePtr>& weights_buffers)
       : ITensorAllocator(session_state),
-        planner_(execution_plan),
+        planner_(execution_plan, /*using counters*/ false),
         weights_buffers_(weights_buffers),
         seq_plan_(execution_plan) {}
 

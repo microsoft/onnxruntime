@@ -11,6 +11,7 @@
 #include "core/session/environment.h"
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/models/runner/training_runner.h"
+#include "orttraining/test/session/training_session_test_utils.h"
 
 #include "orttraining/training_ops/cpu/controlflow/event_pool.h"  // TODO: move with PipelineBatchPlanner
 
@@ -23,35 +24,14 @@ using namespace onnxruntime::logging;
 using namespace onnxruntime::training;
 using namespace google::protobuf::util;
 using namespace onnxruntime::path_utils;
+using namespace onnxruntime::test::training_session_test_utils;
 
 namespace onnxruntime {
 namespace test {
 
 namespace {
-constexpr auto ORIGINAL_MODEL_PATH = ORT_TSTR("testdata/test_training_model.onnx");
-constexpr auto BACKWARD_MODEL_PATH = ORT_TSTR("testdata/temp_backward_model.onnx");
 constexpr auto CONCAT_MODEL_PATH = ORT_TSTR("testdata/transform/concat_trainable.onnx");
-
-std::unordered_set<std::string> GetModelOutputNames(const InferenceSession& session) {
-  const auto outputs_result = session.GetModelOutputs();
-  ORT_ENFORCE(outputs_result.first.IsOK(), "Failed to get model outputs: ", outputs_result.first.ErrorMessage());
-  std::unordered_set<std::string> output_names{};
-  for (const auto* output : *outputs_result.second) {
-    output_names.insert(output->Name());
-  }
-  return output_names;
-}
 }  // namespace
-
-static TrainingSession::TrainingConfiguration MakeBasicTrainingConfig() {
-  TrainingSession::TrainingConfiguration config{};
-  config.model_with_training_graph_path = BACKWARD_MODEL_PATH;
-  config.loss_function_config = TrainingSession::TrainingConfiguration::LossFunctionConfiguration{};
-  config.loss_function_config.value().loss_function_info =
-      LossFunctionInfo(OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
-
-  return config;
-}
 
 static Status BuildBackPropGraph(
     const PathString& forward_model_file,

@@ -6,6 +6,7 @@ package ai.onnxruntime;
 
 import ai.onnxruntime.OrtSession.SessionOptions;
 import java.io.IOException;
+import java.util.EnumSet;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Logger;
 
@@ -39,18 +40,28 @@ public class OrtEnvironment implements AutoCloseable {
    * Gets the OrtEnvironment. If there is not an environment currently created, it creates one using
    * {@link OrtEnvironment#DEFAULT_NAME} and {@link OrtLoggingLevel#ORT_LOGGING_LEVEL_WARNING}.
    *
-   * @return An onnxruntime environment.
+   * @return The OrtEnvironment singleton.
    */
-  public static OrtEnvironment getEnvironment() {
-    return getEnvironment(OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING, DEFAULT_NAME);
+  public static synchronized OrtEnvironment getEnvironment() {
+    if (INSTANCE == null) {
+      // If there's no instance, create one.
+      return getEnvironment(OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING, DEFAULT_NAME);
+    } else {
+      // else return the current one.
+      refCount.incrementAndGet();
+      return INSTANCE;
+    }
   }
 
   /**
    * Gets the OrtEnvironment. If there is not an environment currently created, it creates one using
    * the supplied name and {@link OrtLoggingLevel#ORT_LOGGING_LEVEL_WARNING}.
    *
+   * <p>If the environment already exists then it returns the existing one and logs a warning if the
+   * name or log level is different from the requested one.
+   *
    * @param name The logging id of the environment.
-   * @return An onnxruntime environment.
+   * @return The OrtEnvironment singleton.
    */
   public static OrtEnvironment getEnvironment(String name) {
     return getEnvironment(OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING, name);
@@ -60,8 +71,11 @@ public class OrtEnvironment implements AutoCloseable {
    * Gets the OrtEnvironment. If there is not an environment currently created, it creates one using
    * the {@link OrtEnvironment#DEFAULT_NAME} and the supplied logging level.
    *
+   * <p>If the environment already exists then it returns the existing one and logs a warning if the
+   * name or log level is different from the requested one.
+   *
    * @param logLevel The logging level to use.
-   * @return An onnxruntime environment.
+   * @return The OrtEnvironment singleton.
    */
   public static OrtEnvironment getEnvironment(OrtLoggingLevel logLevel) {
     return getEnvironment(logLevel, DEFAULT_NAME);
@@ -252,6 +266,15 @@ public class OrtEnvironment implements AutoCloseable {
         INSTANCE = null;
       }
     }
+  }
+
+  /**
+   * Gets the providers available in this environment.
+   *
+   * @return An enum set of the available execution providers.
+   */
+  public static EnumSet<OrtProvider> getAvailableProviders() {
+    return OnnxRuntime.providers.clone();
   }
 
   /**

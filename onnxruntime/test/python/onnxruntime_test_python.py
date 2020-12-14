@@ -9,6 +9,7 @@ import onnxruntime as onnxrt
 import threading
 import sys
 from helper import get_name
+from onnxruntime.capi.onnxruntime_pybind11_state import Fail
 
 class TestInferenceSession(unittest.TestCase):
 
@@ -20,12 +21,19 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
     def testModelSerialization(self):
-        so = onnxrt.SessionOptions()
-        so.log_verbosity_level = 1
-        so.logid = "TestModelSerialization"
-        so.optimized_model_filepath = "./PythonApiTestOptimizedModel.onnx"
-        onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=so)
-        self.assertTrue(os.path.isfile(so.optimized_model_filepath))
+        try:
+            so = onnxrt.SessionOptions()
+            so.log_verbosity_level = 1
+            so.logid = "TestModelSerialization"
+            so.optimized_model_filepath = "./PythonApiTestOptimizedModel.onnx"
+            onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=so)
+            self.assertTrue(os.path.isfile(so.optimized_model_filepath))
+        except Fail as onnxruntime_error:
+            if str(onnxruntime_error) == "[ONNXRuntimeError] : 1 : FAIL : Unable to serialize model as it contains" \
+                " compiled nodes. Please disable any execution providers which generate compiled nodes.":
+                pass
+            else:
+                raise onnxruntime_error
 
     def testGetProviders(self):
         self.assertTrue('CPUExecutionProvider' in onnxrt.get_available_providers())
@@ -807,6 +815,25 @@ class TestInferenceSession(unittest.TestCase):
             shape = np.array([2,2], dtype=np.int64)
             for iteration in range(100000):
                 result = session.run(output_names=['output'], input_feed={'shape': shape})
+
+    def testSharedAllocatorUsingCreateAndRegisterAllocator(self):
+        # Create and register an arena based allocator
+        
+        # ort_arena_cfg = onnxrt.OrtArenaCfg(0, -1, -1, -1) (create an OrtArenaCfg like this template if you want to use non-default parameters)
+        ort_memory_info = onnxrt.OrtMemoryInfo("Cpu", onnxrt.OrtAllocatorType.ORT_ARENA_ALLOCATOR, 0, onnxrt.OrtMemType.DEFAULT)
+        # Use this option if using non-default OrtArenaCfg : onnxrt.create_and_register_allocator(ort_memory_info, ort_arena_cfg)
+        onnxrt.create_and_register_allocator(ort_memory_info, None)
+
+        # Create a session that will use the registered arena based allocator
+        so1 = onnxrt.SessionOptions()
+        so1.log_severity_level = 1
+        so1.add_session_config_entry("session.use_env_allocators", "1");
+        onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=so1)
+
+        # Create a session that will NOT use the registered arena based allocator
+        so2 = onnxrt.SessionOptions()
+        so2.log_severity_level = 1
+        onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=so2)
 
 if __name__ == '__main__':
     unittest.main()

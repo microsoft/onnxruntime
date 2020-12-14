@@ -33,7 +33,7 @@ optional<T> ParseEnvironmentVariable(const std::string& name) {
  * Parses an environment variable value or returns the given default if unavailable.
  */
 template <typename T>
-T ParseEnvironmentVariable(const std::string& name, const T& default_value) {
+T ParseEnvironmentVariableWithDefault(const std::string& name, const T& default_value) {
   const auto parsed = ParseEnvironmentVariable<T>(name);
   if (parsed.has_value()) {
     return parsed.value();

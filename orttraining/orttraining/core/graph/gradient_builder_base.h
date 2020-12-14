@@ -185,6 +185,15 @@ class GradientBuilderBase {
     return node_->Op()->since_version();
   }
 
+  const std::string& SrcNodeDomain() const {
+    return node_->Op()->domain();
+  }
+
+  int OnnxOpSetVersion() const {
+    return graph_ != nullptr && graph_->DomainToVersionMap().find(kOnnxDomain) != graph_->DomainToVersionMap().end() ?
+               graph_->DomainToVersionMap().at(kOnnxDomain) : -1;
+  }
+
   template <typename T>
   static NodeDef ConstantVectorNode(const std::vector<T>& values, const std::string& arg_name) {
     auto t_proto = ONNX_NAMESPACE::ToTensor<T>(values);
@@ -236,6 +245,12 @@ class GradientBuilderBase {
     return ConstantScalarNode(1.0f, "OneConstant_Type" + std::to_string(elem_type), elem_type);
   }
 
+  void AddReduceSumNode(const ArgDef& input_arg_def,
+                        const ArgDef& output_arg_def,
+                        const std::vector<int64_t>& reduce_axes,
+                        bool keep_dims,
+                        std::vector<NodeDef>& output) const;
+
   void HandleBroadcasting(const ArgDef& input_grad,
                           const ArgDef& target,
                           const ArgDef& output_grad,
@@ -248,6 +263,13 @@ class GradientBuilderBase {
                                  const ArgDef& output_grad,
                                  const ArgDef& reduce_axes,
                                  std::vector<NodeDef>& output) const;
+
+  std::vector<NodeDef> GetBiasGeluGradNodes(
+    bool use_approximation,
+    const ArgDef& dY, const ArgDef& X, const ArgDef& B,  // inputs
+    const ArgDef& dX, const ArgDef& dB,                  // outputs
+    const ArgDef& b_axes, const ArgDef& b_shape, const ArgDef& x_shape,  //intermediate args
+    const std::string& node_name) const;
 
   const std::string& NodeName() const { return node_->Name(); }
 

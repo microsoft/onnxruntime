@@ -13,10 +13,13 @@ class ZeROOptimizerGraphBuilder : public OptimizerGraphBuilder {
   ZeROOptimizerGraphBuilder(
       const OptimizerBuilderRegistry& opt_builder_registry,
       const OptimizerGraphConfig& opt_graph_config,
-      const std::unordered_map<std::string, OptimizerNodeConfig>& weight_names_to_opt_configs);
+      const std::unordered_map<std::string, OptimizerNodeConfig>& weight_names_to_opt_configs,
+      std::unordered_map<std::string, std::string>& updated_weight_names_map);
 
  protected:
   virtual Status BuildInternal(
+      bool should_add_gradient_norm,
+      bool should_add_gradient_finite_check,
       Graph& graph,
       GraphAugmenter::GraphDefs& graph_defs,
       std::vector<ArgDef>& weight_argdefs,

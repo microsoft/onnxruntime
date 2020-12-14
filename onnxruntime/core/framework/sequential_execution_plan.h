@@ -24,7 +24,7 @@ class SessionState;
 
 // Captures information required to allocate/reuse buffer for a ml-value
 struct AllocPlanPerValue {
-  AllocKind alloc_kind{AllocKind::kAllocate};
+  AllocKind alloc_kind{AllocKind::kNotSet};
   MLDataType value_type{nullptr};
   OrtMemoryInfo location;
   // reused_buffer is valid only if alloc_kind == kReuse. It indicates
@@ -38,6 +38,37 @@ struct AllocPlanPerValue {
   OrtValueIndex inplace_reuse{-1}; //No in-place reuse
   std::vector<size_t> program_counter_start;
   std::vector<size_t> program_counter_end;
+
+  class ProgramCounter {
+   public:
+    ProgramCounter() = default;
+    void AddStart(size_t start) {
+      ORT_ENFORCE(starts_.size() == ends_.size(), "Previous entry was not terminated.");
+      ORT_ENFORCE(starts_.empty() || start > ends_.back(), "Invalid 'start'. Value is smaller than previous 'end'.");
+      starts_.push_back(start);
+    }
+
+    void AddEnd(size_t end) {
+      ORT_ENFORCE(starts_.size() == ends_.size() + 1, "No matching 'start' entry.");
+      ORT_ENFORCE(end >= starts_.back(), "Invalid 'end'. Value is larger than 'start'.");
+      ends_.push_back(end);
+    }
+
+    // return true if there are entries, and the number of start/end pairs match.
+    // validity of the individual start/end values is checked when they are added.
+    bool HasValidEntries() const {
+      return !starts_.empty() && starts_.size() == ends_.size();
+    }
+
+    const std::vector<size_t>& Starts() const { return starts_; }
+    const std::vector<size_t>& Ends() const { return ends_; }
+
+   private:
+    std::vector<size_t> starts_;
+    std::vector<size_t> ends_;
+  };
+
+  ProgramCounter program_counter;
 
  public:
   AllocPlanPerValue() : location(CPU, Invalid) {}

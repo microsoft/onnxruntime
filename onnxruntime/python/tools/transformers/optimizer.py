@@ -214,6 +214,9 @@ def _parse_arguments():
                         default=0,
                         help="onnxruntime optimization level. 0 will disable onnxruntime.")
 
+    parser.add_argument('--use_external_data_format', required=False, action='store_true', help="use external data format")
+    parser.set_defaults(use_external_data_format=False)
+
     args = parser.parse_args()
 
     return args
@@ -321,6 +324,11 @@ def main():
 
     _setup_logger(args.verbose)
 
+    if os.path.realpath(args.input) == os.path.realpath(args.output):
+        logger.warning(
+            f"Specified the same input and output path. Note that this may overwrite the original model"
+        )
+
     optimization_options = _get_optimization_options(args)
 
     optimizer = optimize_model(args.input,
@@ -338,7 +346,7 @@ def main():
     if args.input_int32:
         optimizer.change_input_to_int32()
 
-    optimizer.save_model_to_file(args.output)
+    optimizer.save_model_to_file(args.output, args.use_external_data_format)
 
     if optimizer.is_fully_optimized():
         logger.info("The model has been fully optimized.")
