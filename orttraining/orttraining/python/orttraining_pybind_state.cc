@@ -85,11 +85,7 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   training::PipelineTrainingSession::TrainingConfiguration config{};
   config.weight_names_to_train = parameters.weights_to_train;
   config.weight_names_to_not_train = parameters.weights_not_to_train;
-
-  // This field contains ONNX model's names for output tensors to be sliced. 
-  std::unordered_set<std::string> outputs_to_slice;
   config.immutable_weights = parameters.immutable_weights;
-
   config.gradient_accumulation_steps = parameters.gradient_accumulation_steps;
 
   config.distributed_config.world_rank = parameters.world_rank;

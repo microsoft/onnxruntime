@@ -1586,7 +1586,7 @@ common::Status PipelineTrainingSession::RunWithPipeline(const RunOptions& run_op
     CreateMicroBatchVariables(io_binding, *sub_io_binding.get(), i, num_steps);
 
     // Add proper events to the binding.
-    CreatePipelineEvents(training_mode, i, stage_id, *sub_io_binding.get());
+    CreatePipelineEvents(training_mode, static_cast<int>(i), static_cast<int>(stage_id), *sub_io_binding.get());
 
     // Cyclically pick up a worker ID.
     const size_t worker_id = i % pipeline_context_.num_pipeline_stages;
