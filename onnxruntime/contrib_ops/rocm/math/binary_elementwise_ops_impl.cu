@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include <hip/hip_runtime.h>
-#include "binary_elementwise_ops_impl.h"
+#include "contrib_ops/rocm/math/binary_elementwise_ops_impl.h"
 #include "core/providers/rocm/cu_inc/common.cuh"
 #include "core/providers/rocm/cu_inc/binary_elementwise_impl.cuh"
 

@@ -89,7 +89,6 @@ core_ops_files = [
                 'math/binary_elementwise_ops.h',
                 'math/binary_elementwise_ops_impl.cu',
                 'math/binary_elementwise_ops_impl.h',
-                'math/binary_elementwise_ops_impl_functors.cuh',
                 'math/cumsum.cc',
                 'math/cumsum.h',
                 'math/cumsum_impl.cu',
