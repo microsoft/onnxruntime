@@ -5,7 +5,6 @@
 
 #include "core/common/common.h"
 #include "core/framework/data_types.h"
-#include "core/framework/op_kernel.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cpu/generator/constant_of_shape.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
