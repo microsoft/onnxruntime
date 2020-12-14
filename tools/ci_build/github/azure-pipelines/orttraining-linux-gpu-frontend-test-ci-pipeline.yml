@@ -26,19 +26,19 @@ jobs:
     continueOnError: true
     condition: always()
 
-  # insert a python frontend test data preparation step here
-
-  - script: >
-      tools/ci_build/github/linux/run_dockerbuild.sh
-      -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory)
-      -x "
-      --enable_training
-      --config RelWithDebInfo
-      --skip_onnx_tests
-      --build_wheel
-      --enable_training_python_frontend_e2e_tests
-      --enable_training_pipeline_e2e_tests
-      "
-    displayName: 'Build and run frontend tests'
+  - template: templates/run-docker-build-steps.yml
+    parameters:
+      RunDockerBuildArgs: >
+        -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory)
+        -x "
+        --enable_training
+        --config RelWithDebInfo
+        --skip_onnx_tests
+        --build_wheel
+        --enable_training_python_frontend_e2e_tests
+        --enable_training_pipeline_e2e_tests
+        "
+        -m
+      DisplayName: 'Build and run frontend tests'
 
   - template: templates/clean-agent-build-directory-step.yml

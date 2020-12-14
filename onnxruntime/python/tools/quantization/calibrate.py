@@ -162,7 +162,6 @@ class ONNXCalibrater:
                         if vi.type.HasField('tensor_type') and vi.type.tensor_type.elem_type == TensorProto.FLOAT and (
                                 tensor_name not in model.graph.initializer):
                             tensors_to_calibrate.add(tensor_name)
-
         
         # If augmenting all ops, it's possible that some nodes' input value are 0.
         # Can't reduce on dim with value of 0 if 'keepdims' is false, therefore set keepdims to 1.

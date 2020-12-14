@@ -16,11 +16,17 @@
 namespace onnxruntime {
 namespace training {
 
+constexpr char SHARED_OPTIMIZER_STATES_KEY[] = "shared_optimizer_state";
+
 class TrainingSession : public InferenceSession {
  public:
   typedef std::unordered_map<std::string /*OpType*/,
                              std::vector<std::pair<size_t /*InputIndex*/, float /*value*/>>>
       ImmutableWeights;
+    
+  typedef std::unordered_map<std::string /* Model weight name*/,
+                             NameMLValMap /* 'Moment_1': OrtValue, 'Moment_2': OrtValue etc...*/>
+                            OptimizerState;
 
   TrainingSession(const SessionOptions& session_options, const Environment& env)
       : InferenceSession(session_options, env) {}
@@ -150,6 +156,11 @@ class TrainingSession : public InferenceSession {
     // If not provided, no optimizer is added.
     optional<OptimizerConfiguration> optimizer_config{};
 
+    // optional initial states for optimizer
+    // These states are partitioned wherever the weights are partitioned for eg in Zero, Megatron
+    // This is loaded into the optimizer initializers when the optimizer graph is created
+    optional<OptimizerState> init_optimizer_states{};
+
     // struct to describe a specific edge. An edge is not the same as a node_arg. Edge represents a connection between two operators.
     // For example, an operator A's output tensor T is connecting to another operator B's input, then this constructs
     // an edge from A to B. If A's output tensor T has multiple consumers, i.e. it's fed into multiple operators' inputs,
@@ -245,6 +256,9 @@ class TrainingSession : public InferenceSession {
     // The pipeline configuration output.
     // This is only set if an pipeline is enabled.
     optional<PipelineConfigurationResult> pipeline_config_result;
+
+    // Mapped initialized names after weight partitioning for example MegatronTransformer
+    std::unordered_map<std::string, std::string> weight_name_map_after_graph_transform{};
   };
 
   /**
@@ -392,14 +406,16 @@ class TrainingSession : public InferenceSession {
   common::Status InsertPipelineOps(const std::unordered_set<std::string>& initializer_names_to_preserve,
                                    pipeline::PipelineTensorNames& pipeline_tensor_names);
 
-  common::Status ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train,
-                                                 const TrainingConfiguration::GraphTransformerConfiguration& config);
+  common::Status ApplyTransformationsToMainGraph(std::unordered_set<std::string>& weights_to_train,
+                                                 const TrainingConfiguration::GraphTransformerConfiguration& config,
+                                                 TrainingConfigurationResult& config_result_out);
 
   /** configure initial transformers for training */
   void AddPreTrainingTransformers(const IExecutionProvider& execution_provider,  // for constant folding
                                   GraphTransformerManager& transformer_manager,
-                                  const std::unordered_set<std::string>& weights_to_train,
+                                  std::unordered_set<std::string>& weights_to_train,
                                   const TrainingConfiguration::GraphTransformerConfiguration& config,
+                                  TrainingConfigurationResult& config_result_out,
                                   TransformerLevel graph_optimization_level = TransformerLevel::MaxLevel,
                                   const std::vector<std::string>& custom_list = {});
 
@@ -467,6 +483,7 @@ class TrainingSession : public InferenceSession {
 
   std::unordered_set<std::string> weights_to_train_;
   // names of additional initializers to be included in checkpoints
+  std::unordered_map<std::string, std::string> updated_weight_names_map_;
   std::unordered_set<std::string> opt_state_initializer_names_;
   std::unordered_set<std::string> mixed_precision_weight_initializer_names_;
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2020, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.EnumSet;
 import java.util.Locale;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -37,10 +38,11 @@ final class OnnxRuntime {
 
   private static boolean loaded = false;
 
-  private static final boolean IS_ANDROID = isAndroid();
-
   /** The API handle. */
   static long ortApiHandle;
+
+  /** The available runtime providers */
+  static EnumSet<OrtProvider> providers;
 
   private OnnxRuntime() {}
 
@@ -54,18 +56,23 @@ final class OnnxRuntime {
       detectedOS = "win";
     } else if (os.contains("nux")) {
       detectedOS = "linux";
-    } else if (IS_ANDROID) {
+    } else if (isAndroid()) {
       detectedOS = "android";
     } else {
       throw new IllegalStateException("Unsupported os:" + os);
     }
     String detectedArch = null;
     String arch = System.getProperty("os.arch", "generic").toLowerCase(Locale.ENGLISH);
-    if (arch.indexOf("amd64") == 0 || arch.indexOf("x86_64") == 0) {
+    if (arch.startsWith("amd64") || arch.startsWith("x86_64")) {
       detectedArch = "x64";
-    } else if (arch.indexOf("x86") == 0) {
+    } else if (arch.startsWith("x86")) {
+      // 32-bit x86 is not supported by the Java API
       detectedArch = "x86";
-    } else if (IS_ANDROID) {
+    } else if (arch.startsWith("aarch64")) {
+      detectedArch = "aarch64";
+    } else if (arch.startsWith("ppc64")) {
+      detectedArch = "ppc64";
+    } else if (isAndroid()) {
       detectedArch = arch;
     } else {
       throw new IllegalStateException("Unsupported arch:" + arch);
@@ -82,14 +89,15 @@ final class OnnxRuntime {
     if (loaded) {
       return;
     }
-    Path tempDirectory = IS_ANDROID ? null : Files.createTempDirectory("onnxruntime-java");
+    Path tempDirectory = isAndroid() ? null : Files.createTempDirectory("onnxruntime-java");
     try {
       load(tempDirectory, ONNXRUNTIME_LIBRARY_NAME);
       load(tempDirectory, ONNXRUNTIME_JNI_LIBRARY_NAME);
       ortApiHandle = initialiseAPIBase(ORT_API_VERSION_3);
+      providers = initialiseProviders(ortApiHandle);
       loaded = true;
     } finally {
-      if (!IS_ANDROID) {
+      if (!isAndroid()) {
         cleanUp(tempDirectory.toFile());
       }
     }
@@ -115,15 +123,10 @@ final class OnnxRuntime {
   /**
    * Check if we're running on Android.
    *
-   * @return True if the {@code android.app.Activity} class can be loaded, false otherwise.
+   * @return True if the property java.vendor equals The Android Project, false otherwise.
    */
   static boolean isAndroid() {
-    try {
-      Class.forName("android.app.Activity");
-      return true;
-    } catch (ClassNotFoundException e) {
-      return false;
-    }
+    return System.getProperty("java.vendor", "generic").equals("The Android Project");
   }
 
   /**
@@ -135,7 +138,7 @@ final class OnnxRuntime {
    */
   private static void load(Path tempDirectory, String library) throws IOException {
     // On Android, we simply use System.loadLibrary
-    if (IS_ANDROID) {
+    if (isAndroid()) {
       System.loadLibrary("onnxruntime4j_jni");
       return;
     }
@@ -205,10 +208,40 @@ final class OnnxRuntime {
   }
 
   /**
+   * Extracts the providers array from the C API, converts it into an EnumSet.
+   *
+   * <p>Throws IllegalArgumentException if a provider isn't recognised (note this exception should
+   * only happen during development of ONNX Runtime, if it happens at any other point, file an issue
+   * on Github).
+   *
+   * @param ortApiHandle The API Handle.
+   * @return The enum set.
+   */
+  private static EnumSet<OrtProvider> initialiseProviders(long ortApiHandle) {
+    String[] providersArray = getAvailableProviders(ortApiHandle);
+
+    EnumSet<OrtProvider> providers = EnumSet.noneOf(OrtProvider.class);
+
+    for (String provider : providersArray) {
+      providers.add(OrtProvider.mapFromName(provider));
+    }
+
+    return providers;
+  }
+
+  /**
    * Get a reference to the API struct.
    *
    * @param apiVersionNumber The API version to use.
    * @return A pointer to the API struct.
    */
   private static native long initialiseAPIBase(int apiVersionNumber);
+
+  /**
+   * Gets the array of available providers.
+   *
+   * @param ortApiHandle The API handle
+   * @return The array of providers
+   */
+  private static native String[] getAvailableProviders(long ortApiHandle);
 }

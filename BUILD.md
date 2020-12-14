@@ -11,12 +11,12 @@
   * [Reduced Operator Kernel Build](#Reduced-Operator-Kernel-Build)
   * [ONNX Runtime for Mobile Platforms](#ONNX-Runtime-for-Mobile-Platforms)
   * [ONNX Runtime Server (Linux)](#Build-ONNX-Runtime-Server-on-Linux)
+  * [Execution Provider Shared Libraries](#Execution-Provider-Shared-Libraries)
   * Execution Providers
     * [NVIDIA CUDA](#CUDA)
     * [NVIDIA TensorRT](#TensorRT)
     * [NVIDIA Jetson TX1/TX2/Nano/Xavier](#nvidia-jetson-tx1tx2nanoxavier)
     * [Intel DNNL/MKL-ML](#DNNL-and-MKLML)
-    * [Intel nGraph](#nGraph)
     * [Intel OpenVINO](#openvino)
     * [Android NNAPI](#Android-NNAPI-Execution-Provider)
     * [Nuphar Model Compiler](#Nuphar)
@@ -60,24 +60,23 @@ Open Developer Command Prompt for Visual Studio version you are going to use. Th
 The default Windows CMake Generator is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to `.\build.bat`
 
 
-#### Linux/macOS
+#### Linux
 ```
 ./build.sh --config RelWithDebInfo --build_shared_lib --parallel
 ```
+
+
 ##### macOS
 By default, ORT is configured to be built for a minimum target macOS version of 10.12.
 The shared library in the release Nuget(s) and the Python wheel may be installed on macOS versions of 10.12+.
 
-If you would like to use [Xcode](https://developer.apple.com/xcode/) to build the onnxruntime for x86_64 macOS, use
-* With Xcode 11
+If you would like to use [Xcode](https://developer.apple.com/xcode/) to build the onnxruntime for x86_64 macOS, please add the --user_xcode argument in the command line
    ```
    ./build.sh --config RelWithDebInfo --build_shared_lib --parallel --use_xcode
    ```
-* With Xcode 12
-   ```
-   ./build.sh --config RelWithDebInfo --build_shared_lib --parallel --use_xcode \
-              --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=x86_64
-   ```
+While without this flag, the cmake build generator will be Unix makefile by default.
+Also, if you want to try cross compiling for Apple Silicon in an Intel-based MacOS machine, please add the argument --osx_arch arm64 with a cmake > 3.19, however the unit tests will be skipped due to the incompatible CPU instruction set.
+
 
 #### Notes
 
@@ -178,6 +177,24 @@ Nuget packages are created under <native_build_dir>\nuget-artifacts
 
 ---
 
+## Execution Provider Shared Libraries
+The DNNL, TensorRT, and OpenVINO providers are built as shared libraries vs being statically linked into the main onnxruntime. This enables them to be loaded only when needed, and if the dependent libraries of the provider are not installed onnxruntime will still run fine, it just will not be able to use that provider. For non shared library providers, all dependencies of the provider must exist to load onnxruntime.
+
+### Built files
+On Windows, shared provider libraries will be named 'onnxruntime_providers_\*.dll' (for example onnxruntime_providers_openvino.dll).
+On Unix, they will be named 'libonnxruntime_providers_\*.so'
+On Mac, they will be named 'libonnxruntime_providers_\*.dylib'.
+
+There is also a shared library that shared providers depend on called onnxruntime_providers_shared (with the same naming convension applied as above).
+
+Note: It is not recommended to put these libraries in a system location or added to a library search path (like LD_LIBRARY_PATH on Unix). If multiple versions of onnxruntime are installed on the system this can make them find the wrong libraries and lead to undefined behavior.
+
+### Loading the shared providers
+Shared provider libraries are loaded by the onnxruntime code (do not load or depend on them in your client code). The API for registering shared or non shared providers is identical, the difference is that shared ones will be loaded at runtime when the provider is added to the session options (through a call like OrtSessionOptionsAppendExecutionProvider_OpenVINO or SessionOptionsAppendExecutionProvider_OpenVINO in the C API).
+If a shared provider library cannot be loaded (if the file doesn't exist, or its dependencies don't exist or not in the path) then an error will be returned.
+
+The onnxruntime code will look for the provider shared libraries in the same location as the onnxruntime shared library is (or the executable statically linked to the static library version).
+
 ## Execution Providers
 
 ### CUDA
@@ -236,6 +253,8 @@ See more information on the TensorRT Execution Provider [here](./docs/execution_
    * The path to TensorRT installation must be provided via the `--tensorrt_home` parameter.
 
 #### Build Instructions
+Note that TensorRT is built as a [shared provider library](#Execution-Provider-Shared-Libraries)
+
 ##### Windows
 ```
 .\build.bat --cudnn_home <path to cuDNN home> --cuda_home <path to CUDA home> --use_tensorrt --tensorrt_home <path to TensorRT home>
@@ -280,18 +299,27 @@ These instructions are for JetPack SDK 4.4.
 
     ```bash
     sudo apt install -y --no-install-recommends \
-      build-essential software-properties-common cmake libopenblas-dev \
-      libpython3.6-dev python3-pip python3-dev
+      build-essential software-properties-common libopenblas-dev \
+      libpython3.6-dev python3-pip python3-dev python3-setuptools python3-wheel
     ```
 
-4. Build the ONNX Runtime Python wheel:
+4. Cmake is needed to build ONNX Runtime. Because the minimum required version is 3.13,
+   it is necessary to build CMake from source. Download Unix/Linux sources from https://cmake.org/download/
+   and follow https://cmake.org/install/ to build from source. Version 3.17.5 and 3.18.4 have been tested on Jetson.
+
+5. Build the ONNX Runtime Python wheel:
 
     ```bash
-    ./build.sh --update --config Release --build --build_wheel \
+    ./build.sh --config Release --update --build --parallel --build_wheel \
     --use_cuda --cuda_home /usr/local/cuda --cudnn_home /usr/lib/aarch64-linux-gnu
     ```
 
-    Note: You may add --use_tensorrt and --tensorrt_home options if you wish to use NVIDIA TensorRT (support is experimental), as well as any other options supported by build.sh script.
+    Note: You may optionally build with experimental TensorRT support.
+    ```bash
+    ./build.sh --config Release --update --build --parallel --build_wheel \
+    --use_tensorrt --cuda_home /usr/local/cuda --cudnn_home /usr/lib/aarch64-linux-gnu \
+    --tensorrt_home /usr/lib/aarch64-linux-gnu
+    ```
 
 ---
 
@@ -299,38 +327,25 @@ These instructions are for JetPack SDK 4.4.
 See more information on DNNL and MKL-ML [here](./docs/execution_providers/DNNL-ExecutionProvider.md).
 
 #### Build Instructions
-##### Linux
+The DNNL execution provider can be built for Intel CPU or GPU. To build for Intel GPU, install [Intel SDK for OpenCL Applications](https://software.intel.com/content/www/us/en/develop/tools/opencl-sdk.html). Install the latest GPU driver - [Windows graphics driver](https://downloadcenter.intel.com/product/80939/Graphics), [Linux graphics compute runtime and OpenCL driver](https://github.com/intel/compute-runtime/releases).
 
-DNNL: `./build.sh --use_dnnl`
+Note that DNNL is built as a [shared provider library](#Execution-Provider-Shared-Libraries)
 
----
-
-
-### nGraph
-
-#### Deprecation Notice
-
-| | |
-| --- | --- |
-| Deprecation Begins	| June 1, 2020 |
-| Removal Date |	December 1, 2020 |
-
-Starting with the OpenVINO™ toolkit 2020.2 release, all of the features previously available through nGraph have been merged into the OpenVINO™ toolkit. As a result, all the features previously available through ONNX RT Execution Provider for nGraph have been merged with ONNX RT Execution Provider for OpenVINO™ toolkit.
-
-Therefore, ONNX RT Execution Provider for **nGraph** will be deprecated starting June 1, 2020 and will be completely removed on December 1, 2020. Users are recommended to migrate to the ONNX RT Execution Provider for OpenVINO™ toolkit as the unified solution for all AI inferencing on Intel® hardware.
-
-See more information on the nGraph Execution Provider [here](./docs/execution_providers/nGraph-ExecutionProvider.md).
-
-#### Build Instructions
-#### Windows
-```
-.\build.bat --use_ngraph
-```
+##### Windows
+`.\build.bat --use_dnnl`
 
 ##### Linux
-```
-./build.sh --use_ngraph
-```
+`./build.sh --use_dnnl`
+
+To build for Intel GPU, replace dnnl_opencl_root with the path of the Intel SDK for OpenCL Applications.
+
+##### Windows 
+
+`.\build.bat --use_dnnl --dnnl_gpu_runtime ocl --dnnl_opencl_root "c:\program files (x86)\intelswtools\sw_dev_tools\opencl\sdk"`
+
+##### Linux
+
+`./build.sh --use_dnnl --dnnl_gpu_runtime ocl --dnnl_opencl_root "/opt/intel/sw_dev_tools/opencl-sdk"`
 
 ---
 
@@ -372,6 +387,8 @@ See more information on the OpenVINO Execution Provider [here](./docs/execution_
 
 
 #### Build Instructions
+Note that OpenVINO is built as a [shared provider library](#Execution-Provider-Shared-Libraries)
+
 ##### Windows
 ```
 .\build.bat --config RelWithDebInfo --use_openvino <hardware_option>
@@ -395,6 +412,19 @@ See more information on the OpenVINO Execution Provider [here](./docs/execution_
 | <code>MYRIAD_FP16</code> | Intel<sup>®</sup> Movidius<sup>TM</sup> USB sticks | 
 | <code>VAD-M_FP16</code> | Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs |
 | <code>VAD-F_FP32</code> | Intel<sup>®</sup> Vision Accelerator Design with an Intel<sup>®</sup> Arria<sup>®</sup> 10 FPGA |
+| <code>HETERO:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>...</code> | All Intel<sup>®</sup> silicons mentioned above |
+| <code>MULTI:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>...</code> | All Intel<sup>®</sup> silicons mentioned above |
+
+Specifying Hardware Target for HETERO or Multi-Device Build:
+
+HETERO:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>...
+MULTI:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>...
+The <DEVICE_TYPE> can be any of these devices from this list ['CPU','GPU','MYRIAD','FPGA','HDDL']
+
+A minimum of two DEVICE_TYPE'S should be specified for a valid HETERO or Multi-Device Build.
+
+Example:
+HETERO:MYRIAD,CPU  HETERO:HDDL,GPU,CPU  MULTI:MYRIAD,GPU,CPU
 
 For more information on OpenVINO Execution Provider&#39;s ONNX Layer support, Topology support, and Intel hardware enabled, please refer to the document [OpenVINO-ExecutionProvider.md](./docs/execution_providers/OpenVINO-ExecutionProvider.md) in <code>$onnxruntime_root/docs/execution_providers</code>
 
@@ -527,29 +557,24 @@ onnxruntime_perf_test
 onnxruntime_test_all
 ```
 
-#### Build Instructions (Jetson Nano)
+#### Native Build Instructions (validated on Jetson Nano and Jetson Xavier)
 
 1. Build ACL Library (skip if already built)
 ```
 cd ~
-git clone https://github.com/Arm-software/ComputeLibrary.git
+git clone -b v20.02 https://github.com/Arm-software/ComputeLibrary.git
 cd ComputeLibrary
-sudo apt install scons
-sudo apt install g++-arm-linux-gnueabihf
+sudo apt-get install -y scons g++-arm-linux-gnueabihf
 scons -j8 arch=arm64-v8a  Werror=1 debug=0 asserts=0 neon=1 opencl=1 examples=1 build=native
 ```
-2. Set environment variables to set include directory and shared object library path.
+
+2. Cmake is needed to build ONNX Runtime. Because the minimum required version is 3.13,
+   it is necessary to build CMake from source. Download Unix/Linux sources from https://cmake.org/download/
+   and follow https://cmake.org/install/ to build from source. Version 3.17.5 and 3.18.4 have been tested on Jetson.
+
+3. Build onnxruntime with --use_acl flag with one of the supported ACL version flags. (ACL_1902 | ACL_1905 | ACL_1908 | ACL_2002)
 ```
-export CPATH=~/ComputeLibrary/include/:~/ComputeLibrary/
-export LD_LIBRARY_PATH=~/ComputeLibrary/build/
-```
-3. Build onnxruntime with --use_acl flag
-```
-./build.sh --use_acl
-```
-To use a library outside the normal environment you can set a custom path by using --acl_home and --acl_libs tags that defines the path to the ComputeLibrary directory and the build directory respectively.
-```
-./build.sh --use_acl --acl_home /path/to/ComputeLibrary --acl_libs /path/to/build
+./build.sh --config RelWithDebInfo --use_acl ACL_2002 --update --build --build_wheel --parallel --acl_home ~/ComputeLibrary --acl_libs ~/ComputeLibrary/build
 ```
 
 ---
@@ -1150,7 +1175,8 @@ Dockerfile instructions are available [here](./dockerfiles#migraphx)
 ***
 
 # Training
-## Prerequisites
+## CUDA
+### Prerequisites
 
 The default NVIDIA GPU build requires CUDA runtime libraries installed on the system:
 
@@ -1162,7 +1188,7 @@ The default NVIDIA GPU build requires CUDA runtime libraries installed on the sy
 
 These dependency versions should reflect what is in [Dockerfile.training](./dockerfiles/Dockerfile.training).
 
-## Build instructions
+### Build instructions
 
 1. Checkout this code repo with `git clone https://github.com/microsoft/onnxruntime`
 
@@ -1181,5 +1207,27 @@ These dependency versions should reflect what is in [Dockerfile.training](./dock
 
    * Change to the ONNX Runtime repo base folder: `cd onnxruntime`
    * Run `./build.sh --enable_training --use_cuda --config=RelWithDebInfo --build_wheel`
+
+    This produces the .whl file in `./build/Linux/RelWithDebInfo/dist` for ONNX Runtime Training.
+
+## ROCM
+### Prerequisites
+
+The default AMD GPU build requires ROCM software toolkit installed on the system:
+
+* [ROCM](https://rocmdocs.amd.com/en/latest/)
+* [OpenMPI](https://www.open-mpi.org/) 4.0.4
+  * See [install_openmpi.sh](./tools/ci_build/github/linux/docker/scripts/install_openmpi.sh)
+
+These dependency versions should reflect what is in [Dockerfile.training](./dockerfiles/Dockerfile.training).
+
+### Build instructions
+
+1. Checkout this code repo with `git clone https://github.com/microsoft/onnxruntime`
+
+2. Create the ONNX Runtime wheel
+
+   * Change to the ONNX Runtime repo base folder: `cd onnxruntime`
+   * Run `./build.sh --config RelWithDebInfo --enable_training --build_wheel --use_rocm --rocm_home /opt/rocm --nccl_home /opt/rocm --mpi_home <location for openmpi>`
 
     This produces the .whl file in `./build/Linux/RelWithDebInfo/dist` for ONNX Runtime Training.

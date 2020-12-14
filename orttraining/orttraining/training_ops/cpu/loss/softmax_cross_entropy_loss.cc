@@ -16,6 +16,20 @@
 namespace onnxruntime {
 namespace contrib {
 
+#define REGISTER_KERNEL_VERSIONED_TYPED(OpName, Domain, StartVer, EndVer, T1, T2)   \
+  ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_EX(                                      \
+      OpName,                                                                       \
+      Domain,                                                                       \
+      StartVer,                                                                     \
+      EndVer,                                                                       \
+      T1,                                                                           \
+      T2,                                                                           \
+      kCpuExecutionProvider,                                                        \
+      KernelDefBuilder()                                                            \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T1>())                   \
+          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<T2>()),               \
+      OpName<T1, T2>);
+
 #define REGISTER_KERNEL_TYPED(OpName, Domain, VER, T1, T2)            \
   ONNX_OPERATOR_TWO_TYPED_KERNEL_EX(                                  \
       OpName,                                                         \
@@ -29,8 +43,10 @@ namespace contrib {
           .TypeConstraint("Tind", DataTypeImpl::GetTensorType<T2>()), \
       OpName<T1, T2>);
 
-REGISTER_KERNEL_TYPED(SoftmaxCrossEntropyLoss, kOnnxDomain, 12, float, int32_t)
-REGISTER_KERNEL_TYPED(SoftmaxCrossEntropyLoss, kOnnxDomain, 12, float, int64_t)
+REGISTER_KERNEL_VERSIONED_TYPED(SoftmaxCrossEntropyLoss, kOnnxDomain, 12, 12, float, int32_t)
+REGISTER_KERNEL_VERSIONED_TYPED(SoftmaxCrossEntropyLoss, kOnnxDomain, 12, 12, float, int64_t)
+REGISTER_KERNEL_TYPED(SoftmaxCrossEntropyLoss, kOnnxDomain, 13, float, int32_t)
+REGISTER_KERNEL_TYPED(SoftmaxCrossEntropyLoss, kOnnxDomain, 13, float, int64_t)
 
 void GetNDCFromLogitAndLabelShape(const TensorShape& logit_shape, const TensorShape& label_shape, int64_t& N_D, int64_t& C) {
   // N_D = N * D1 * D2...D*K

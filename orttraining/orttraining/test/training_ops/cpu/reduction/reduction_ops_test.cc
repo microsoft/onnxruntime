@@ -84,6 +84,7 @@ TEST(AllOpTest, All_1d_large) {
     }
   }
 }
+#endif
 
 class ReductionOpTest : public ::testing::TestWithParam<bool> {
   protected:
@@ -102,6 +103,7 @@ TEST_P(ReductionOpTest, ReduceAllL2) {
   test.Run();
 }
 
+#ifdef USE_CUDA
 TEST_P(ReductionOpTest, ReduceAllL2HalfHalf) {
   OpTester test("ReduceAllL2", 1, onnxruntime::kMSDomain, true);
   test.SetDeterminism(GetParam());
@@ -163,6 +165,7 @@ TEST_P(ReductionOpTest, ReduceAllL2HalfFloat) {
   test.AddOutput<float>("reduced", {}, result);
   test.Run();
 }
+#endif
 
 void TestMultiTensorReduce(
     const int tensor_count,
@@ -225,8 +228,6 @@ TEST_P(ReductionOpTest, ReduceAllL2Many) {
 
 // invoke with and without use_determinism flag for session
 INSTANTIATE_TEST_SUITE_P(ReductionOpTestWrapper, ReductionOpTest, ::testing::Bool());
-
-#endif
 
 TEST(ReductionOpTest, ReduceSumTraining_int32) {
   OpTester test("ReduceSumTraining", 1, onnxruntime::kMSDomain);

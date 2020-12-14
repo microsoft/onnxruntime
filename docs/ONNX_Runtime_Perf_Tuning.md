@@ -60,7 +60,7 @@ For example:
 
 `CUDA:	     ./build.sh --config RelWithDebInfo --use_cuda  --build_csharp --parallel`
 
-In order to use DNNL, nGraph, CUDA, or TensorRT execution provider, you need to call the C API OrtSessionOptionsAppendExecutionProvider. Here is an example for the CUDA execution provider:
+In order to use DNNL, CUDA, or TensorRT execution provider, you need to call the C API OrtSessionOptionsAppendExecutionProvider. Here is an example for the CUDA execution provider:
 
 C API Example:
 ```c
@@ -137,8 +137,8 @@ number of threads used to parallelize the execution of the graph (across nodes).
 
 * sess_options.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL. Default is already ORT_ENABLE_ALL(99). Please see [onnxruntime_c_api.h](../include/onnxruntime/core/session/onnxruntime_c_api.h#L241)  (enum GraphOptimizationLevel) for the full list of all optimization levels. For details regarding available optimizations and usage please refer to the [Graph Optimizations Doc](../docs/ONNX_Runtime_Graph_Optimizations.md).
 
-### MKL_DNN/nGraph/MKL_ML Execution Provider
-MKL_DNN, MKL_ML and nGraph all depends on openmp for parallelization. For those execution providers, we need to use the openmp environment variable to tune the performance.
+### MKL_DNN/MKL_ML Execution Provider
+MKL_DNN and MKL_ML depend on openmp for parallelization. For those execution providers, we need to use the openmp environment variable to tune the performance.
 
 The most widely used environment variables are:
 
@@ -151,6 +151,8 @@ The most widely used environment variables are:
   * ACTIVE will not yield CPU, instead it will have a while loop to check whether the next task is ready
   * Use PASSIVE if your CPU usage already high, and use ACTIVE when you want to trade CPU with latency
 
+## Using and configuring shared arena based allocator to reduce memory consumption between multiple sessions
+See `Share allocator(s) between sessions` section in [C API documentation](C_API.md).
 
 ## Troubleshooting model performance issues
 The answers below are troubleshooting suggestions based on common previous user-filed issues and questions. This list is by no means exhaustive and there is a lot of case-by-case fluctuation depending on the model and specific usage scenario. Please use this information to guide your troubleshooting, search through previously filed issues for related topics, and/or file a new issue if your problem is still not resolved.

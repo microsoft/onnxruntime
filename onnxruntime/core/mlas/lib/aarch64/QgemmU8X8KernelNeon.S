@@ -23,7 +23,11 @@ Abstract:
 
         .equ    .LGemmU8X8KernelFrame_ColumnSumBuffer, 0
         .equ    .LGemmU8X8KernelFrame_DepthValue, 8
+#if defined(__APPLE__)
+        .equ    .LGemmU8X8KernelFrame_ZeroMode, 12
+#else
         .equ    .LGemmU8X8KernelFrame_ZeroMode, 16
+#endif
 
         .text
 
@@ -37,10 +41,10 @@ Routine Description:
 Arguments:
 
     A (x0) - Supplies the address of matrix A. The matrix data has been packed
-        using MlasGemmU8S8CopyPackANeon.
+        using MlasGemmU8X8CopyPackANeon.
 
     B (x1) - Supplies the address of matrix B. The matrix data has been packed
-        using MlasGemmU8S8CopyPackBNeon.
+        using MlasGemmU8X8CopyPackBNeon.
 
     C (x2) - Supplies the address of matrix C.
 

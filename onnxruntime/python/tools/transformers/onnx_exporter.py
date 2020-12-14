@@ -13,7 +13,7 @@ from transformers import AutoConfig, AutoTokenizer, AutoModel
 from benchmark_helper import create_onnxruntime_session, Precision
 from gpt2_helper import GPT2ModelNoPastState, PRETRAINED_GPT2_MODELS
 from quantize_helper import QuantizeHelper
-from huggingface_models import MODEL_CLASSES
+from huggingface_models import MODEL_CLASSES, EXEMPT_MODELS
 
 logger = logging.getLogger(__name__)
 
@@ -169,8 +169,8 @@ def optimize_onnx_model_by_ort(onnx_model_path, ort_model_path, use_gpu, overwri
         logger.info(f"Skip optimization since model existed: {ort_model_path}")
 
 
-def optimize_onnx_model(onnx_model_path, optimized_model_path, model_type, num_attention_heads, hidden_size, use_gpu,
-                        precision, use_raw_attention_mask, overwrite, model_fusion_statistics,
+def optimize_onnx_model(model_name, onnx_model_path, optimized_model_path, model_type, num_attention_heads, hidden_size,
+                        use_gpu, precision, use_raw_attention_mask, overwrite, model_fusion_statistics,
                         use_external_data_format):
     if overwrite or not os.path.exists(optimized_model_path):
         Path(optimized_model_path).parent.mkdir(parents=True, exist_ok=True)
@@ -202,6 +202,10 @@ def optimize_onnx_model(onnx_model_path, optimized_model_path, model_type, num_a
 
         if Precision.FLOAT16 == precision:
             opt_model.convert_model_float32_to_float16()
+
+        if model_name in EXEMPT_MODELS:
+            use_external_data_format = False
+
         opt_model.save_model_to_file(optimized_model_path, use_external_data_format)
     else:
         logger.info(f"Skip optimization since model existed: {optimized_model_path}")
@@ -243,9 +247,7 @@ def load_pretrained_model(model_name, config, cache_dir, custom_model_class, is_
     transformers_module = __import__("transformers", fromlist=[model_class_name])
     model_class = getattr(transformers_module, model_class_name)
 
-    use_cdn = False if model_name == 't5-11b' else True
-
-    return model_class.from_pretrained(model_name, config=config, cache_dir=cache_dir, use_cdn=use_cdn)
+    return model_class.from_pretrained(model_name, config=config, cache_dir=cache_dir)
 
 
 def load_pt_model(model_name, model_class, cache_dir):
@@ -278,6 +280,8 @@ def load_pt_model_from_tf(model_name):
     config, model = tf2pt_pipeline(model_name)
 
     return config, model
+
+
 def validate_and_optimize_onnx(model_name, use_external_data_format, model_type, onnx_dir, input_names, use_gpu,
                                precision, optimize_onnx, validate_onnx, use_raw_attention_mask, overwrite, config,
                                model_fusion_statistics, onnx_model_path, example_inputs, example_outputs_flatten):
@@ -289,7 +293,7 @@ def validate_and_optimize_onnx(model_name, use_external_data_format, model_type,
     if optimize_onnx or precision == Precision.FLOAT16 or precision == Precision.INT8:  # Use script (optimizer.py) to optimize
         optimized_model_path = get_onnx_file_path(onnx_dir, model_name, len(input_names), True, use_gpu, precision,
                                                   False, use_external_data_format)
-        optimize_onnx_model(onnx_model_path, optimized_model_path, model_type, config.num_attention_heads,
+        optimize_onnx_model(model_name, onnx_model_path, optimized_model_path, model_type, config.num_attention_heads,
                             config.hidden_size, use_gpu, precision, use_raw_attention_mask, overwrite,
                             model_fusion_statistics, use_external_data_format)
 
@@ -390,7 +394,7 @@ def export_onnx_model_from_tf(model_name, opset_version, use_external_data_forma
 
     example_inputs = filter_inputs(example_inputs, input_names)
 
-    example_outputs = model(example_inputs, training=False)
+    example_outputs = model(example_inputs, training=False).to_tuple()
 
     # Flatten is needed for gpt2 and distilgpt2.
     example_outputs_flatten = flatten(example_outputs)
@@ -417,4 +421,3 @@ def export_onnx_model_from_tf(model_name, opset_version, use_external_data_forma
         example_inputs, example_outputs_flatten)
 
     return onnx_model_file, is_valid_onnx_model, vocab_size, max_input_size
-
