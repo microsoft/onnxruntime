@@ -971,7 +971,6 @@ class ORTTrainer():
             results = [session_run_results[output_desc.name_] for output_desc in self.output_desc_with_all_fp_16_or_fp32_gradients_finite]
         else:
             results = [session_run_results[output_desc.name_] for output_desc in self.model_desc_.outputs_]
-        
         return results[0] if len(results) == 1 else results
 
     def __call__(self, *args, **kwargs):

@@ -796,7 +796,11 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         cmake_args += ["-Donnxruntime_ARMNN_LIBS=" + armnn_libs]
 
     if mpi_home and os.path.exists(mpi_home):
-        cmake_args += ["-Donnxruntime_MPI_HOME=" + mpi_home]
+        if args.use_mpi:
+            cmake_args += ["-Donnxruntime_MPI_HOME=" + mpi_home]
+        else:
+            log.warning("mpi_home is supplied but use_mpi is set to false."
+                        " Build will continue without linking MPI libraries.")
 
     if nccl_home and os.path.exists(nccl_home):
         cmake_args += ["-Donnxruntime_NCCL_HOME=" + nccl_home]
