@@ -1014,5 +1014,5 @@ if __name__ == '__main__':
     print('Running symbolic shape inference on output model')
     mp = onnx.load(args.output)
     mp = SymbolicShapeInference.infer_shapes(mp, auto_merge=True)
-
+    onnx.save(mp, args.output)
     print('Done!')
