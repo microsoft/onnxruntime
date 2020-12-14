@@ -389,11 +389,6 @@ class InferenceSession {
     */
   const logging::Logger* GetLogger() const { return session_logger_; };
 
-  const SessionState& GetSessionState() const {
-    ORT_ENFORCE(session_state_ != nullptr, "Session must be initialized to create session state.");
-    return *session_state_;
-  }
-
  protected:
 #if !defined(ORT_MINIMAL_BUILD)
   /**
@@ -415,6 +410,11 @@ class InferenceSession {
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   bool IsInitialized() const;
+
+  const SessionState& GetSessionState() const {
+    ORT_ENFORCE(session_state_ != nullptr, "Session must be initialized to create session state.");
+    return *session_state_;
+  }
 
   // Use these 2 threadpool methods to get access to the threadpools since they rely on
   // specific flags in session options

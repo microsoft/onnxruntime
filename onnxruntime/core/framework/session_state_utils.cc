@@ -165,8 +165,11 @@ common::Status SaveInitializedTensors(
   std::unordered_map<std::string, size_t> planned_initializers_memory_sizes_in_byte;
   ORT_RETURN_IF_ERROR(
       planner.FinalizePlan(planned_initializers_memory_sizes_in_byte));
-  if (session_options.enable_memory_profile)
+  if (session_options.enable_memory_profile) {
     MemoryInfo::RecordInitializerPatternInfo(planner.GetMemPatterns());
+    MemoryInfo::MemoryInfoProfile::CreateEvents("GPU (initializer)_" + std::to_string(MemoryInfo::GetIteration()),
+                                                MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(), MemoryInfo::MapType::Initializer, "", 1);
+  }
 
   for (auto i : planned_initializers_memory_sizes_in_byte) {
     LOGS(logger, INFO) << "[Memory] SessionStateInitializer statically allocates "

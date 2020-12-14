@@ -211,6 +211,7 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
       mem_patterns_(nullptr),
       planner_(nullptr) {
   Init(feed_mlvalue_idxs, feeds, session_state.GetInitializedTensors(), fetches);
+  MemoryInfo::IncreaseIteration();
 
   // map the custom allocators to ort_value_idx entries
   if (!fetch_allocators.empty()) {
@@ -291,18 +292,19 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
             if (buffer != nullptr) {
               buffers_[location] = BufferUniquePtr(buffer, alloc);
             }
-
+            if (session_state_.IsEnableMemoryProfile()) {
+              //Record activation memory pattern
+              MemoryInfo::ClearMemoryInfoPerExecution();
+              if (mem_patterns_ && buffer != nullptr) {
+                MemoryInfo::RecordActivationPatternInfo(*mem_patterns_);
+                MemoryInfo::MemoryInfoProfile::CreateEvents("GPU (static activations)_" + std::to_string(MemoryInfo::GetIteration()),
+                                                            MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(), MemoryInfo::MapType::StaticActivation, "", 1);
+              }
+            }
             // log size of activation. Keep it commented out for now to avoid log flooding.
             // VLOGS(session_state_.Logger(), 1) << "**** Allocated memory for activations, size: " <<mem_patterns_->patterns[i].PeakSize();
           }
         }
-      }
-    }
-    if (session_state_.IsEnableMemoryProfile()) {
-      //Record activation memory pattern
-      MemoryInfo::ClearMemoryInfoPerExecution();
-      if (mem_patterns_) {
-        MemoryInfo::RecordActivationPatternInfo(*mem_patterns_);
       }
     }
   }
@@ -378,10 +380,10 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
             // fed in, so use VERBOSE as the log level as it's expected.
             // TODO: Should we re-use the block if the size is large enough? Would probably need to allow it
             // to be freed if the size difference was too large so our memory usage doesn't stick at a high water mark
-            LOGS(session_state_.Logger(), VERBOSE) << "For ort_value with index: " << ort_value_index
-                                                   << ", block in memory pattern size is: " << block->size_
-                                                   << " but the actually size is: " << size
-                                                   << ", fall back to default allocation behavior";
+            std::cout << "For ort_value with index: " << ort_value_index
+                      << ", block in memory pattern size is: " << block->size_
+                      << " but the actually size is: " << size
+                      << ", fall back to default allocation behavior";
           }
         }
         // else { we couldn't allocate the large block for the buffer so we didn't insert an entry }

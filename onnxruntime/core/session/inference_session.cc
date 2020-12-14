@@ -375,6 +375,9 @@ InferenceSession::~InferenceSession() {
   if (session_activity_started_)
     TraceLoggingWriteStop(session_activity, "OrtInferenceSessionActivity");
 #endif
+  if (session_state_->IsEnableMemoryProfile()) {
+    MemoryInfo::GenerateMemoryProfile();
+  }
 }
 
 common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExecutionProvider> p_exec_provider) {

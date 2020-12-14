@@ -366,10 +366,6 @@ void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name, cons
 }
 
 void MemoryInfo::GenerateMemoryProfile() {
-  MemoryInfoProfile::CreateEvents("GPU (initializer)", MemoryInfoProfile::GetAndIncreasePid(), MapType::Initializer, "", 1);
-  MemoryInfoProfile::CreateEvents("GPU (static activations)", MemoryInfoProfile::GetAndIncreasePid(), MapType::StaticActivation, "", 1);
-  MemoryInfoProfile::CreateEvents("GPU (dynamic activations)", MemoryInfoProfile::GetAndIncreasePid(), MapType::DynamicActivation, "", 1);
-
   // Write memory profile .json
   std::ofstream memory_profile("memory_profile_" + std::to_string(local_rank_) + ".json", std::ios::trunc);
   memory_profile << "[" << std::endl;

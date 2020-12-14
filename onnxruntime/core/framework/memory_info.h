@@ -164,6 +164,8 @@ class MemoryInfo {
   static void SetLocalRank(const int rank) { local_rank_ = rank; }
 
   static void SetIteration(size_t iteration) { iteration_ = iteration; }
+  static void IncreaseIteration() { ++iteration_; }
+  static int GetIteration() { return iteration_; }
 
   static void PrintMemoryInfoForLocation(const OrtDevice::DeviceType location);
   static void GenerateMemoryProfile();
