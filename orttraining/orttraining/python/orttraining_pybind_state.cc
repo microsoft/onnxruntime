@@ -391,7 +391,7 @@ void addObjectMethodsForTraining(py::module& m) {
         }
         ORT_THROW_IF_ERROR(static_cast<TrainingSession*>(sess->GetSessionHandle())->SetStateTensors(state_tensors, strict));
       })
-      .def("load_model_optimizer_state", [](PyTrainingSession* sess, std::unordered_map<std::string, std::unordered_map<std::string, py::object>>& model_state, std::unordered_map<std::string, std::unordered_map<std::string, py::object>>& opt_state, bool strict) {
+      .def("load_model_optimizer_state", [](PyTrainingSession* sess, std::unordered_map<std::string, std::unordered_map<std::string, py::object>>& model_state, std::unordered_map<std::string, std::unordered_map<std::string, py::object>>& opt_state, bool strict) -> void {
         std::unordered_map<std::string, NameMLValMap> model_state_tensors;
         for (const auto& fp_or_mp_tensors: model_state) {
           NameMLValMap model_tensors;
