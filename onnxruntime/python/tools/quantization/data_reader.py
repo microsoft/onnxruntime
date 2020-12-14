@@ -49,20 +49,28 @@ def parse_annotations(filename):
 class ObejctDetectionDataReader(CalibrationDataReader):
     def __init__(self, model_path='augmented_model.onnx'):
         self.model_path = model_path
-        self.support_batch = False
+        self.preprocess_flag = None
+        self.start_index = None
         self.batch_size = None
         self.size_limit = None
+        self.support_batch = False
         self.batches = []
 
-    def support_batch_inference(self, input_shape):
-        batch_size = input_shape[0] 
-        if batch_size.isdigit():
-            self.batch_size = int(batch_size) # static batch size 
-        else:
-            self.support_batch = True
+    def set_start_index(self, i):
+        self.start_index = i
 
-        return self.support_batch
-        
+    def set_size_limit(self, limit):
+        self.size_limit = limit
+
+    def set_batch_size(self, batch_size):
+        self.batches = []
+        self.batch_size = batch_size
+
+    def get_batch_size(self):
+        return self.batch_size
+
+    def set_preprocess_flag(self, flag):
+        self.preprocess_flag = flag
 
 class YoloV3DataReader(ObejctDetectionDataReader):
     def __init__(self, calibration_image_folder,
@@ -87,22 +95,6 @@ class YoloV3DataReader(ObejctDetectionDataReader):
         self.batch_size = batch_size
         self.is_evaluation = is_evaluation
         self.annotations = annotations
-
-    def set_start_index(self, i):
-        self.start_index = i
-
-    def set_size_limit(self, limit):
-        self.size_limit = limit
-
-    def set_batch_size(self, batch_size):
-        self.batches = []
-        self.batch_size = batch_size
-
-    def get_batch_size(self):
-        return self.batch_size
-
-    def set_preprocess_flag(self, flag):
-        self.preprocess_flag = flag
 
     def get_next(self):
         if self.preprocess_flag:

@@ -30,10 +30,6 @@ class CalibrationDataReader(metaclass=abc.ABCMeta):
         """generate the input data dict for ONNXinferenceSession run"""
         raise NotImplementedError
 
-    def support_batch_inference(self):
-        return False
-
-
 class ONNXCalibrater:
     def __init__(self, model_path, data_reader: CalibrationDataReader, calibrate_op_types, black_nodes, white_nodes,
                  augmented_model_path):
@@ -226,46 +222,21 @@ class ONNXCalibrater:
 
         intermediate_outputs = []
 
-        if self.data_reader.support_batch_inference(session.get_inputs()[0].shape):
-            # batch inference
-            print("Doing batch inference.")
-            while True:
+        while True:
+            if getattr(self.data_reader, "get_batch", None) and callable(self.data_reader.get_batch):
                 inputs = self.data_reader.get_batch()
-                if not inputs:
-                    break
-                intermediate_outputs.append(session.run(None, inputs))
-
-
-            node_output_names = [session.get_outputs()[i].name for i in range(len(intermediate_outputs[0]))]
-
-            output_dicts_list = []
-            output_dicts = {}
-            for intermediate_output in intermediate_outputs:
-                for i in range(len(intermediate_output)):
-                    if node_output_names[i] in model_original_outputs:
-                        continue
-
-                    if node_output_names[i] in output_dicts:
-                        if 'ReduceMin' in node_output_names[i]:
-                            output_dicts[node_output_names[i]] = min(output_dicts[node_output_names[i]], intermediate_output[i])
-                        elif 'ReduceMax' in node_output_names[i]:
-                            output_dicts[node_output_names[i]] = max(output_dicts[node_output_names[i]], intermediate_output[i])
-                    else:
-                        output_dicts[node_output_names[i]] = intermediate_output[i]
-            output_dicts_list.append(output_dicts)
-
-        else:
-            # serial inference
-            while True:
+            else:
                 inputs = self.data_reader.get_next()
-                if not inputs:
-                    break
-                intermediate_outputs.append(session.run(None, inputs))
 
-            node_output_names = [session.get_outputs()[i].name for i in range(len(intermediate_outputs[0]))]
-            output_dicts_list = [
-                dict(zip(node_output_names, intermediate_output)) for intermediate_output in intermediate_outputs
-            ]
+            if not inputs:
+                break
+            intermediate_outputs.append(session.run(None, inputs))
+
+
+        node_output_names = [session.get_outputs()[i].name for i in range(len(intermediate_outputs[0]))]
+        output_dicts_list = [
+            dict(zip(node_output_names, intermediate_output)) for intermediate_output in intermediate_outputs
+        ]
 
 
         merged_dict = {}
@@ -281,16 +252,6 @@ class ONNXCalibrater:
 
 
         if calib_mode == 'naive':
-
-            # Following code gets "only size-1 arrays can be converted to Python scalars" when encountering float([])
-            '''
-            pairs = [
-                tuple([
-                    float(min(clean_merged_dict[added_node_output_names[i]])),
-                    float(max(clean_merged_dict[added_node_output_names[i + 1]]))
-                ]) for i in range(0, len(added_node_output_names), 2)
-            ]
-            '''
 
             pairs = []
             for i in range(0, len(added_node_output_names), 2):
