@@ -43,7 +43,8 @@ def main():
     adb_pull('/data/local/tmp/gcda_files.tar.gz', cwd)
     os.chdir(cwd)
     run_subprocess("tar -zxf gcda_files.tar.gz -C CMakeFiles".split(' '))
-    run_subprocess("gcovr -s -r {} . -o {}".format(os.path.join(source_dir, "onnxruntime"), os.path.join(cwd, "coverage_rpt.txt")).split(' '),
+    run_subprocess("gcovr -s -r {} . -o {}".format(os.path.join(source_dir, "onnxruntime"),
+                   os.path.join(cwd, "coverage_rpt.txt")).split(' '),
                    cwd=os.path.join(cwd, "CMakeFiles"))
 
 
