@@ -25,6 +25,8 @@ constexpr const char* CUDA_PINNED = "CudaPinned";
 constexpr const char* MIGRAPHX = "MIGraphX";
 constexpr const char* MIGRAPHX_PINNED = "MIGraphXPinned";
 
+constexpr size_t kAllocAlignment = 256;
+
 // forward declaration
 class SessionState;
 
