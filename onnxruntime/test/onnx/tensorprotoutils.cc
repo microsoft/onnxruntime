@@ -13,6 +13,7 @@
 #include "core/common/status.h"
 #include "core/framework/data_types.h"
 #include "core/framework/endian.h"
+#include "core/framework/allocator.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/graph/onnx_protobuf.h"
 #include "callback.h"
@@ -457,7 +458,7 @@ Status TensorProtoToMLValue(const onnx::TensorProto& tensor_proto, const MemBuff
   return Status::OK();
 }
 
-template Status GetSizeInBytesFromTensorProto<256>(const onnx::TensorProto& tensor_proto, size_t* out);
+template Status GetSizeInBytesFromTensorProto<kAllocAlignment>(const onnx::TensorProto& tensor_proto, size_t* out);
 template Status GetSizeInBytesFromTensorProto<0>(const onnx::TensorProto& tensor_proto, size_t* out);
 }  // namespace test
 }  // namespace onnxruntime

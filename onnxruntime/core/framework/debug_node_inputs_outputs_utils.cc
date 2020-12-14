@@ -176,41 +176,30 @@ const NodeDumpOptions& NodeDumpOptionsFromEnvironmentVariables() {
   static const NodeDumpOptions node_dump_options = []() {
     namespace env_vars = debug_node_inputs_outputs_env_vars;
 
-    auto get_bool_env_var = [](const char* env_var) {
-      const auto val = Env::Default().GetEnvironmentVar(env_var);
-      if (val.empty()) return false;
-      std::istringstream s{val};
-      int i;
-      ORT_ENFORCE(
-          s >> i && s.eof(),
-          "Failed to parse environment variable ", env_var, ": ", val);
-      return i != 0;
-    };
-
     NodeDumpOptions opts{};
 
     // Preserve existing behavior of printing the shapes by default. Turn it off only if the user has requested so
     // explicitly by setting the value of the env variable to 0.
     opts.dump_flags = NodeDumpOptions::DumpFlags::None;
-    if (ParseEnvironmentVariable<bool>(env_vars::kDumpShapeData, true)) {
+    if (ParseEnvironmentVariableWithDefault<bool>(env_vars::kDumpShapeData, true)) {
       opts.dump_flags |= NodeDumpOptions::DumpFlags::Shape;
     }
 
-    if (get_bool_env_var(env_vars::kDumpInputData)) {
+    if (ParseEnvironmentVariableWithDefault<bool>(env_vars::kDumpInputData, false)) {
       opts.dump_flags |= NodeDumpOptions::DumpFlags::InputData;
     }
-    if (get_bool_env_var(env_vars::kDumpOutputData)) {
+    if (ParseEnvironmentVariableWithDefault<bool>(env_vars::kDumpOutputData, false)) {
       opts.dump_flags |= NodeDumpOptions::DumpFlags::OutputData;
     }
 
     opts.filter.name_pattern = Env::Default().GetEnvironmentVar(env_vars::kNameFilter);
     opts.filter.op_type_pattern = Env::Default().GetEnvironmentVar(env_vars::kOpTypeFilter);
 
-    if (get_bool_env_var(env_vars::kDumpDataToFiles)) {
+    if (ParseEnvironmentVariableWithDefault<bool>(env_vars::kDumpDataToFiles, false)) {
       opts.data_destination = NodeDumpOptions::DataDestination::TensorProtoFiles;
     }
 
-    if (get_bool_env_var(env_vars::kAppendRankToFileName)) {
+    if (ParseEnvironmentVariableWithDefault<bool>(env_vars::kAppendRankToFileName, false)) {
       std::string rank = Env::Default().GetEnvironmentVar("OMPI_COMM_WORLD_RANK");
       if (rank.empty()) {
         opts.file_suffix = "_default_rank_0";
@@ -229,7 +218,7 @@ const NodeDumpOptions& NodeDumpOptionsFromEnvironmentVariables() {
         opts.data_destination == NodeDumpOptions::DataDestination::TensorProtoFiles &&
         opts.filter.name_pattern.empty() && opts.filter.op_type_pattern.empty()) {
       ORT_ENFORCE(
-          get_bool_env_var(env_vars::kDumpingDataToFilesForAllNodesIsOk),
+          ParseEnvironmentVariableWithDefault<bool>(env_vars::kDumpingDataToFilesForAllNodesIsOk, false),
           "The current environment variable configuration will dump node input or output data to files for every node. "
           "This may cause a lot of files to be generated. Set the environment variable ",
           env_vars::kDumpingDataToFilesForAllNodesIsOk, " to confirm this is what you want.");

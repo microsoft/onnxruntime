@@ -17,9 +17,9 @@ Status NcclAllReduce::ComputeInternal(OpKernelContext* context) const {
   void* output_data = context->Output(0, context->Input<Tensor>(0)->Shape())->MutableDataRaw();
   MLDataType onnx_type = context->Input<Tensor>(0)->DataType();
 
-  // Although we assumed the memory address is contiguous for the input, ORT pads activation tensors to 64 bytes aligned  
-  // and initializers to 256 bytes aligned. There are tiny padding gaps in the contiguous buffer space. 
-  // We have to AllReduce on the entire buffer, including the padding space. 
+  // Although we assumed the memory address is contiguous for the input, ORT pads activation tensors to 64 bytes aligned
+  // and initializers to 256 bytes aligned. There are tiny padding gaps in the contiguous buffer space.
+  // We have to AllReduce on the entire buffer, including the padding space.
   const Tensor* last_tensor = context->Input<Tensor>(context->InputCount() - 1);
   int8_t* end_address = (int8_t*)last_tensor->DataRaw() + last_tensor->SizeInBytes();
   size_t num_bytes = end_address - (int8_t*)input_data;
@@ -210,21 +210,13 @@ Status NcclReduceScatter::ComputeInternal(OpKernelContext* context) const {
   return Status::OK();
 }
 
-static std::vector<std::pair<int, int>> AliasRange(int start, int end) {
-  std::vector<std::pair<int, int>> aliases;
-  for (int i = start; i < end; i++) {
-    aliases.push_back(std::pair<int, int>(i, i));
-  }
-  return aliases;
-}
-
 ONNX_OPERATOR_KERNEL_EX(
     NcclAllReduce,
     kMSDomain,
     1,
     kCudaExecutionProvider,
     KernelDefBuilder()
-        .Alias(AliasRange(0, 1024))
+        .VariadicAlias(0, 0)  // outputs and inputs are mapped one to one
         .AllocateInputsContiguously()
         .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
     NcclAllReduce);
@@ -235,7 +227,7 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCudaExecutionProvider,
     KernelDefBuilder()
-        .Alias(AliasRange(0, 1024))
+        .VariadicAlias(0, 0)  // outputs and inputs are mapped one to one
         .AllocateInputsContiguously()
         .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
     NcclAllGather);
@@ -246,7 +238,7 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCudaExecutionProvider,
     KernelDefBuilder()
-        .Alias(AliasRange(0, 1024))
+        .VariadicAlias(0, 0)  // outputs and inputs are mapped one to one
         .AllocateInputsContiguously()
         .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
     NcclReduceScatter);
