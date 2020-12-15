@@ -1178,7 +1178,8 @@ class ORTTrainer(object):
         # dictionary
         self._load_optimizer_states(current_state_dict, state_dict)
 
-        return current_state_dict[_utils.state_dict_optimizer_key()]
+        return current_state_dict[_utils.state_dict_optimizer_key()] if \
+            _utils.state_dict_optimizer_key() in current_state_dict else {}
 
     def load_state_dict(self, state_dict, strict=True):
         """Loads state_dict containing model/optimizer states into ORTTrainer
@@ -1202,8 +1203,9 @@ class ORTTrainer(object):
             return
 
         # load states onto the frontend onnx graph
-        state_dict = self._load_state_dict_impl(state_dict, strict=strict)
+        optimizer_state_dict = self._load_state_dict_impl(state_dict, strict=strict)
 
         # create a new training session after loading initializer states onto the onnx graph
         # pass the populated states to the training session to populate the backend graph
-        self._init_session(state_dict)
+        self._init_session(optimizer_state_dict)
+
