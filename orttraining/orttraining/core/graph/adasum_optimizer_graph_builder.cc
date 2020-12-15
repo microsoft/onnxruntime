@@ -231,8 +231,9 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
   ArgDef reduced_fused_gradient_argdef;
   if (opt_graph_config_.adasum_reduction_type == AdasumReductionType::GpuHierarchicalReduction) {
 #ifdef ORT_USE_NCCL
+//bugbug
     ORT_RETURN_IF_ERROR(AddNcclAllReduceForGradientsWithGroups(gradient_argdefs, fused_gradient_argdef, graph_defs,
-                                                              reduced_fused_gradient_argdef, WorkerGroupType::NodeLocalDataParallel));
+                                                              reduced_fused_gradient_argdef, WorkerGroupType::DataParallel));
 #else
     ORT_THROW("ORT is not built with NCCL.");
 #endif
@@ -280,7 +281,8 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
   //bugbug
   // If Adasum GPU hierarchical reduce is used, then scale resulting gradients by local size.
   if (opt_graph_config_.adasum_reduction_type == AdasumReductionType::GpuHierarchicalReduction) {
-    const float adasum_scale = (float)opt_graph_config_.local_size / (float)opt_graph_config_.data_parallel_group_size;
+    //const float adasum_scale = (float)opt_graph_config_.local_size / (float)opt_graph_config_.data_parallel_group_size;
+    const float adasum_scale = 1.0f;
     std::cout<<"########post allreduce scale is "<<adasum_scale<<std::endl;
     ORT_RETURN_IF_ERROR(AddReducedGradientScalingNodes(nodearg_name_generator, gradient_argdefs, graph_defs, adasum_scale));
   }

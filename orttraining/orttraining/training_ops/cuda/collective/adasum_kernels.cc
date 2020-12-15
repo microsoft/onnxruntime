@@ -32,7 +32,7 @@ Status AdasumAllReduce::ComputeInternal(OpKernelContext* context) const {
     }
   }
 
-  int vhdd_start_level = 1;
+  //int vhdd_start_level = 1;
   // if (adasum_reduce_algo_ == training::AdasumReductionType::GpuHierarchicalReduction) {
   //   vhdd_start_level = training::DistributedRunContext::GetInstance()
   //                                                      .GroupSize(training::WorkerGroupType::NodeLocalDataParallel);
@@ -49,65 +49,72 @@ Status AdasumAllReduce::ComputeInternal(OpKernelContext* context) const {
                                    tensor_sizes,
                                    total_recv_buffer_len);
 
-  // Allocate temp scratch buffer in cpu space.
-  AllocatorPtr allocator;
-  allocator = Info().GetAllocator(0, OrtMemTypeCPU);
-  //bugbug
-  std::cout<<"#######total_recv_buffer_len is: "<<total_recv_buffer_len<<std::endl;
-  auto data_buffer = allocator->Alloc(total_recv_buffer_len);
-  BufferUniquePtr data_buffer_ptr(data_buffer, BufferDeleter(allocator));
+  // // Allocate temp scratch buffer in cpu space.
+  // AllocatorPtr allocator;
+  // allocator = Info().GetAllocator(0, OrtMemTypeCPU);
+  // //bugbug
+  // std::cout<<"#######total_recv_buffer_len is: "<<total_recv_buffer_len<<std::endl;
+  // auto data_buffer = allocator->Alloc(total_recv_buffer_len);
+  // BufferUniquePtr data_buffer_ptr(data_buffer, BufferDeleter(allocator));
 
-  for (int i = 0; i < num_tensors; ++i) {
-    const Tensor* x_tensor = context->Input<Tensor>(i + 1);
-    CUDA_CALL(cudaMemcpy((uint8_t*)data_buffer_ptr.get() + tensor_offsets[i], x_tensor->DataRaw(),
-                      tensor_sizes[i], cudaMemcpyDeviceToHost));
-  }
+  // for (int i = 0; i < num_tensors; ++i) {
+  //   const Tensor* x_tensor = context->Input<Tensor>(i + 1);
+  //   CUDA_CALL(cudaMemcpy((uint8_t*)data_buffer_ptr.get() + tensor_offsets[i], x_tensor->DataRaw(),
+  //                     tensor_sizes[i], cudaMemcpyDeviceToHost));
+  // }
 
-  auto recv_buffer = allocator->Alloc(total_recv_buffer_len);
-  BufferUniquePtr recv_buffer_ptr(recv_buffer, BufferDeleter(allocator));
+  // auto recv_buffer = allocator->Alloc(total_recv_buffer_len);
+  // BufferUniquePtr recv_buffer_ptr(recv_buffer, BufferDeleter(allocator));
 
-  //bugbug
-  int input_count = total_recv_buffer_len / context->Input<Tensor>(1)->DataType()->Size();
-  std::cout<<"##########VHDD start level is: "<<vhdd_start_level<<std::endl;
-  if(training::MPIContext::GetInstance().GetLocalRank() == 0 ||
-     adasum_reduce_algo_ == training::AdasumReductionType::CpuReduction) {
-    std::cout<<"##########adasum gpu kernel DispatchFusedAllreduce"<<std::endl;
-    int rank;
-    MPI_Comm_rank(training::MPIContext::GetInstance()
-                                                  .GetMPIGroup(training::WorkerGroupType::CrossNodeDataParallel)
-                                                  .communicator, &rank);
-    std::cout<<"##########cross node parallel rank: "<<rank<<std::endl;
-    int input_count = total_recv_buffer_len / context->Input<Tensor>(1)->DataType()->Size();
-    MPI_Allreduce(MPI_IN_PLACE, data_buffer, input_count, training::GetMPIDataType(context->Input<Tensor>(1)->DataType()),
-                  MPI_SUM, training::MPIContext::GetInstance()
-                                               .GetMPIGroup(training::WorkerGroupType::CrossNodeDataParallel)
-                                               .communicator);
+  // //bugbug
+  // int input_count = total_recv_buffer_len / context->Input<Tensor>(1)->DataType()->Size();
+  // std::cout<<"##########VHDD start level is: "<<vhdd_start_level<<std::endl;
+  // if(training::MPIContext::GetInstance().GetLocalRank() == 0 ||
+  //    adasum_reduce_algo_ == training::AdasumReductionType::CpuReduction) {
+  //   std::cout<<"##########adasum gpu kernel DispatchFusedAllreduce"<<std::endl;
+  //   int rank;
+  //   MPI_Comm_rank(training::MPIContext::GetInstance()
+  //                                                 .GetMPIGroup(training::WorkerGroupType::CrossNodeDataParallel)
+  //                                                 .communicator, &rank);
+  //   std::cout<<"##########cross node parallel rank: "<<rank<<std::endl;
+  //   int input_count = total_recv_buffer_len / context->Input<Tensor>(1)->DataType()->Size();
+  //   MPI_Allreduce(MPI_IN_PLACE, data_buffer, input_count, training::GetMPIDataType(context->Input<Tensor>(1)->DataType()),
+  //                 MPI_SUM, training::MPIContext::GetInstance()
+  //                                              .GetMPIGroup(training::WorkerGroupType::CrossNodeDataParallel)
+  //                                              .communicator);
 
-    // ORT_RETURN_IF_ERROR(adasum_reducer_->DispatchFusedAllreduce((void*)data_buffer, recv_buffer, tensor_element_counts,
-    //                         vhdd_start_level, // start level
-    //                         adasum_reduce_algo_ == training::AdasumReductionType::GpuHierarchicalReduction
-    //                         ? training::MPIContext::GetInstance()
-    //                                               .GetMPIGroup(training::WorkerGroupType::CrossNodeDataParallel)
-    //                                               .communicator
-    //                         : training::MPIContext::GetInstance()
-    //                                               .GetMPIGroup(training::WorkerGroupType::GlobalParallel)
-    //                                               .communicator, // communicator
-    //                         0, // tag
-    //                         adasum_reducer_->GetReductionComms(), // reduction_comms
-    //                         context->Input<Tensor>(1)->DataType()));
-     }
-  if(adasum_reduce_algo_ == training::AdasumReductionType::GpuHierarchicalReduction) {
-    std::cout<<"##########Broadcast result to ranks"<<std::endl;
-    MPI_CHECK(MPI_Bcast(data_buffer, input_count, training::GetMPIDataType(context->Input<Tensor>(1)->DataType()),
-                0, /*local root rank*/
-                training::MPIContext::GetInstance().GetMPIGroup(training::WorkerGroupType::NodeLocalDataParallel)
-                                                   .communicator));
-  }
+  //   // ORT_RETURN_IF_ERROR(adasum_reducer_->DispatchFusedAllreduce((void*)data_buffer, recv_buffer, tensor_element_counts,
+  //   //                         vhdd_start_level, // start level
+  //   //                         adasum_reduce_algo_ == training::AdasumReductionType::GpuHierarchicalReduction
+  //   //                         ? training::MPIContext::GetInstance()
+  //   //                                               .GetMPIGroup(training::WorkerGroupType::CrossNodeDataParallel)
+  //   //                                               .communicator
+  //   //                         : training::MPIContext::GetInstance()
+  //   //                                               .GetMPIGroup(training::WorkerGroupType::GlobalParallel)
+  //   //                                               .communicator, // communicator
+  //   //                         0, // tag
+  //   //                         adasum_reducer_->GetReductionComms(), // reduction_comms
+  //   //                         context->Input<Tensor>(1)->DataType()));
+  //    }
+  // if(adasum_reduce_algo_ == training::AdasumReductionType::GpuHierarchicalReduction) {
+  //   std::cout<<"##########Broadcast result to ranks"<<std::endl;
+  //   MPI_CHECK(MPI_Bcast(data_buffer, input_count, training::GetMPIDataType(context->Input<Tensor>(1)->DataType()),
+  //               0, /*local root rank*/
+  //               training::MPIContext::GetInstance().GetMPIGroup(training::WorkerGroupType::NodeLocalDataParallel)
+  //                                                  .communicator));
+  // }
+  // for (int i = 0; i < num_tensors; i++) {
+  //   Tensor* y_tensor = context->Output(i, context->Input<Tensor>(i + 1)->Shape());
+  //   CUDA_CALL(cudaMemcpy(y_tensor->MutableDataRaw(), (uint8_t*)data_buffer + tensor_offsets[i],
+  //                     tensor_sizes[i], cudaMemcpyHostToDevice));
+  // }
+//bugbug
   for (int i = 0; i < num_tensors; i++) {
     Tensor* y_tensor = context->Output(i, context->Input<Tensor>(i + 1)->Shape());
-    CUDA_CALL(cudaMemcpy(y_tensor->MutableDataRaw(), (uint8_t*)data_buffer + tensor_offsets[i],
-                      tensor_sizes[i], cudaMemcpyHostToDevice));
+    CUDA_CALL(cudaMemcpy(y_tensor->MutableDataRaw(), context->Input<Tensor>(i + 1)->DataRaw(),
+                      tensor_sizes[i], cudaMemcpyDeviceToDevice));
   }
+
   return Status::OK();
 }
 //bugbug
