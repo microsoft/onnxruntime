@@ -280,7 +280,7 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
   //bugbug
   // If Adasum GPU hierarchical reduce is used, then scale resulting gradients by local size.
   if (opt_graph_config_.adasum_reduction_type == AdasumReductionType::GpuHierarchicalReduction) {
-    const float adasum_scale = opt_graph_config_.local_size / opt_graph_config_.data_parallel_group_size;
+    const float adasum_scale = (float)opt_graph_config_.local_size / (float)opt_graph_config_.data_parallel_group_size;
     std::cout<<"########post allreduce scale is "<<adasum_scale<<std::endl;
     ORT_RETURN_IF_ERROR(AddReducedGradientScalingNodes(nodearg_name_generator, gradient_argdefs, graph_defs, adasum_scale));
   }
