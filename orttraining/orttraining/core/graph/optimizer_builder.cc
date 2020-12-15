@@ -19,11 +19,11 @@ void OptimizerBuilderRegistry::RegisterBuilders() {
 Status IsMatchingTypeAndShape(
     const onnxruntime::Tensor& tensor,
     const int32_t element_type,
-    const std::vector<int64_t>& expected_shape_vec) {
+    const std::vector<int64_t>& expected_shape_dims) {
   ORT_RETURN_IF_NOT(tensor.GetElementType() == element_type);
   const TensorShape& tensor_shape = tensor.Shape();
-  const TensorShape& expected_shape(expected_shape_vec);
-  ORT_RETURN_IF_NOT(tensor_shape == expected_shape, "Mismatch: expected:[", tensor_shape.ToString(), "], actual:[", expected_shape.ToString(), "]");          
+  TensorShape expected_shape(expected_shape_dims);
+  ORT_RETURN_IF_NOT(tensor_shape == expected_shape, "Mismatch: expected:[", tensor_shape, "], actual:[", expected_shape, "]");          
   return Status::OK();
 }
 
