@@ -11,6 +11,7 @@ from inspect import signature
 
 # Needed to re-implement PyTorch's cpu,cuda,to methods
 from torch import Tensor, device, dtype
+from torch.utils.dlpack import from_dlpack
 from typing import Union, Tuple, Any, Callable, Iterator, Set, Optional, overload, TypeVar, Mapping, Dict
 
 from onnxruntime.capi import _pybind_state as C
@@ -23,7 +24,7 @@ __TEMP_ENABLE_METHOD_TIMING__ = False
 # Needed to re-implement PyTorch's cpu,cuda,to methods
 T = TypeVar('T', bound='Module')
 
-def _create_iobinding(io_binding, inputs, model, output_buffers, device):
+def _create_iobinding(io_binding, inputs, model, device):
     '''Creates IO binding for a `model` inputs and output'''
     def _get_device_index(device):
         if type(device) == str:
@@ -39,13 +40,7 @@ def _create_iobinding(io_binding, inputs, model, output_buffers, device):
                               inputs[idx].data_ptr())
 
     for value_info in model.graph.output:
-        name = value_info.name
-        output_tensor = output_buffers[name]
-        io_binding.bind_output(name, output_tensor.device.type,
-                               _get_device_index(device),
-                               _utils.dtype_torch_to_numpy(output_tensor.dtype),
-                               list(output_tensor.size()),
-                               output_tensor.data_ptr())
+        io_binding.bind_output(value_info.name, device if device.find(':') == -1 else device[:device.find(':')])
 
 def _onnx_value_info_to_buffer_tensor(value_info, device):
     '''Create a torch zeroed tensor with the same shape and type of `value_info`'''
@@ -53,6 +48,18 @@ def _onnx_value_info_to_buffer_tensor(value_info, device):
     shape = [dim.dim_value for dim in value_info.type.tensor_type.shape.dim]
     dtype = _utils.dtype_onnx_to_torch(value_info.type.tensor_type.elem_type)
     return torch.zeros(shape, device=device, dtype=dtype)
+
+# TODO: PyTorch's to_dlpack() uses same config for both torch.bool and torch.uint8,
+# and convert the config to torch.uint8 tensor duing from_dlpack(). So a boolean tensor
+# from forward graph outputs will be converted to torch.uint8 tensor. When this tensor
+# is feeded to backward graph as input, it will cause data type mismatch issue during
+# inference session running. We cannot change the from_dlpack() in PyTorch side, so we
+# have to handle this specially, which will introduce a cast here and there is data copied.
+# Always cast from torch.uint8 to torch.bool is not logically right, we need to check the
+# real data type of the inputs in the backeard graph, and perform the cast only necessary.
+def _ort_output_to_torch_tensor(ort_output):
+    tensor = from_dlpack(ort_output.to_dlpack())
+    return tensor.to(torch.bool) if tensor.dtype == torch.uint8 else tensor
 
 class ORTModule(torch.nn.Module):
 
@@ -76,13 +83,11 @@ class ORTModule(torch.nn.Module):
         self._onnx_forward = None
         self._forward_session = None
         self._forward_io_binding = None
-        self._forward_output_buffers = {}
 
         # Backward pass
         self._onnx_backward = None
         self._backward_session = None
         self._backward_io_binding = None
-        self._backward_output_buffers = {}
 
         # Log level
         self._loglevel = getattr(logging, 'WARNING')
@@ -157,8 +162,8 @@ class ORTModule(torch.nn.Module):
         '''
         if not self._onnx_forward or self._require_export:
             self._require_export = False
-
             self._onnx_training = ORTModule._get_forward_graph(self._original_module, *inputs, **kwargs)
+
             # TODO: PyTorch exporter bug: changes the initializer order
             initializer_names = [p[0] for p in self._original_module.named_parameters()]
 
@@ -186,13 +191,7 @@ class ORTModule(torch.nn.Module):
             # IO binding
             # TODO: we should try to reuse the output buffers as some of the output tensors are same sizes, expecially the backward graph outputs.
             self._forward_io_binding = self._forward_session.io_binding()
-            self._forward_output_buffers = {}
-            for output in self._onnx_forward.graph.output:
-                self._forward_output_buffers[output.name] = _onnx_value_info_to_buffer_tensor(output, str(self._device))
             self._backward_io_binding = self._backward_session.io_binding()
-            self._backward_output_buffers = {}
-            for output in self._onnx_backward.graph.output:
-                self._backward_output_buffers[output.name] = _onnx_value_info_to_buffer_tensor(output, str(self._device))
 
             if self._save_onnx:
                 onnx.save(self._onnx_forward, self._save_onnx_prefix + '_forward.onnx')
@@ -217,11 +216,11 @@ class ORTModule(torch.nn.Module):
                 # Use IO binding
                 _create_iobinding(self._forward_io_binding, inputs,
                                   self._onnx_forward,
-                                  self._forward_output_buffers,
                                   str(self._device))
 
                 # Run
                 self._forward_session.run_with_iobinding(self._forward_io_binding)
+                forward_outputs = self._forward_io_binding.get_outputs()
 
                 # Stash tensors needed by backward
                 forward_input_dict = self._convert_forward_input_list_to_dict(*inputs)
@@ -229,13 +228,14 @@ class ORTModule(torch.nn.Module):
                     for name in self._onnx_graphs_info.backward_user_input_names)
                 ctx_initializers = tuple(forward_input_dict[name] \
                     for name in self._onnx_graphs_info.backward_intializer_names_as_input)
-                ctx_intermediates = tuple(self._forward_output_buffers[name] \
-                    for name in self._onnx_graphs_info.intermediate_tensor_names)
+                ctx_intermediates = tuple(_ort_output_to_torch_tensor(forward_output) \
+                    for forward_output in forward_outputs[len(self._onnx_graphs_info.user_output_names):])
                 ctx.save_for_backward(*[*ctx_inputs, *ctx_initializers, *ctx_intermediates])
 
                 # Return model output
-                outputs = tuple(self._forward_output_buffers[name] for name in self._onnx_graphs_info.user_output_names)
-                return outputs[0] if len(outputs) == 1 else outputs
+                user_outputs = tuple(_ort_output_to_torch_tensor(forward_output) \
+                    for forward_output in forward_outputs[:len(self._onnx_graphs_info.user_output_names)])
+                return user_outputs[0] if len(user_outputs) == 1 else user_outputs
 
             @staticmethod
             def backward(ctx, *grad_output):
@@ -253,16 +253,16 @@ class ORTModule(torch.nn.Module):
                 backward_grad_output = tuple(grad_output_dict[name] for name in self._onnx_graphs_info.backward_output_grad_names)
                 _create_iobinding(self._backward_io_binding, [*ctx.saved_tensors, *backward_grad_output],
                                    self._onnx_backward,
-                                   self._backward_output_buffers,
                                    str(self._device))
 
                 # Run
                 self._backward_session.run_with_iobinding(self._backward_io_binding)
+                backward_outputs = self._backward_io_binding.get_outputs()
 
                 # Return input and initializer gradients
                 results = [torch.tensor([1])] * len(self._onnx_graphs_info.user_input_names)
-                results += [self._backward_output_buffers[name] \
-                    for name in self._onnx_graphs_info.initializer_grad_names_to_train]
+                results += [_ort_output_to_torch_tensor(backward_output) \
+                    for backward_output in backward_outputs[:len(self._onnx_graphs_info.initializer_grad_names_to_train)]]
                 return tuple(results)
 
         proc_inputs = [data for data in inputs if data is not None]
@@ -365,11 +365,10 @@ class ORTModule(torch.nn.Module):
         # Ignore optional *inputs explicitly specified as None
         sig = signature(module.forward)
         all_input_names = sig.parameters.keys()
-        # input_names = [name for idx, name in enumerate(all_input_names) if inputs[idx] is not None]
         input_names = []
         dynamic_axes = {}
         for input_idx, name in enumerate(all_input_names):
-            if inputs[input_idx] is not None:
+            if input_idx < len(inputs) and inputs[input_idx] is not None:
                 input_names.append(name)
                 dynamic_axes[name] = {}
                 for dim_idx in range(len(inputs[input_idx].shape)):
