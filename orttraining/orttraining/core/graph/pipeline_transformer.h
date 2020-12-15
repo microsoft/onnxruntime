@@ -24,7 +24,8 @@ Status TransformGraphForPipeline(
 Status ApplyPipelinePartitionToMainGraph(Graph& graph,
     std::map<Node*, int>& op_to_stage,
     int pipeline_stage_id,
-    int num_stages);
+    int num_stages,
+    std::vector<int32_t>& rank_ids);
 
 // First of two functions to obtain a mapping between operators and stage ids.
 // Input:

@@ -892,7 +892,8 @@ common::Status AddMetaTensors(int current_stage, int next_stage,
                               std::vector<NodeArg*>& send_input_args,
                               std::vector<NodeArg*>& send_output_args,
                               std::vector<NodeArg*>& recv_input_args,
-                              std::vector<NodeArg*>& recv_output_args) {
+                              std::vector<NodeArg*>& recv_output_args,
+                              std::vector<int>& stage_to_rank) {
   std::string cut_index_str = std::to_string(current_stage);
 
   ORT_RETURN_IF_ERROR(
@@ -906,7 +907,7 @@ common::Status AddMetaTensors(int current_stage, int next_stage,
     AddNewScalarNodeArgAndInitializer<size_t>(graph,
                                               "send_dst_rank" + cut_index_str,
                                               ONNX_NAMESPACE::TensorProto_DataType_INT64,
-                                              next_stage, /* initializer data */
+                                              stage_to_rank.at(next_stage), /* initializer data */
                                               send_input_args,
                                               new_input_names));
   ORT_RETURN_IF_ERROR(
@@ -920,7 +921,7 @@ common::Status AddMetaTensors(int current_stage, int next_stage,
     AddNewScalarNodeArgAndInitializer<size_t>(graph,
                                               "recv_src_rank" + cut_index_str,
                                               ONNX_NAMESPACE::TensorProto_DataType_INT64,
-                                              current_stage, /* initializer data */
+                                              stage_to_rank.at(current_stage), /* initializer data */
                                               recv_input_args,
                                               new_input_names));
 
@@ -978,7 +979,8 @@ common::Status SplitGraphWithOperatorToStageMap(Graph& graph,
                                                 int num_stages,
                                                 std::vector<std::pair<int, int>>& messages,
                                                 std::vector<Node*>& send_nodes,
-                                                std::vector<Node*>& receive_nodes) {
+                                                std::vector<Node*>& receive_nodes,
+                                                std::vector<int>& stage_to_rank) {
   
   // forward_messages stores all the tensors that will be sent by any stage.
   // For example, forward_messages[s] is a set of all the tensors sent by stage
@@ -1132,7 +1134,7 @@ common::Status SplitGraphWithOperatorToStageMap(Graph& graph,
     ORT_RETURN_IF_ERROR(
       AddMetaTensors(current_stage, next_stage, graph, new_input_names,
                      new_output_names, send_input_args, send_output_args,
-                     recv_input_args, recv_output_args));
+                     recv_input_args, recv_output_args, stage_to_rank));
 
     // Get all the node_args that need to be sent to the next stage.
     auto& tensors_sent_in_forward = forward_messages.at(current_stage);
@@ -1256,7 +1258,8 @@ common::Status SplitGraphWithOperatorToStageMap(Graph& graph,
 Status ApplyPipelinePartitionToMainGraph(Graph& graph,
                                          std::map<Node*, int>& op_to_stage,
                                          int pipeline_stage_id,
-                                         int num_stages) {
+                                         int num_stages,
+                                         std::vector<int32_t>& rank_ids) {
 
   // TODO(jufranc): in order to support more general pipeline shapes, we need to
   // do some analysis on the graph and assignment of operators to stages, to 
@@ -1264,10 +1267,14 @@ Status ApplyPipelinePartitionToMainGraph(Graph& graph,
   // always tensors being copied from stage s to s+1. Moreover, once we support
   // partition of training graphs, we need to let tensors be copied from s+1 to
   // s, as well. 
+  std::vector<int> stage_to_rank(num_stages);
+  ORT_ENFORCE(static_cast<int>(rank_ids.size()) == num_stages);
   std::vector<std::pair<int, int>> messages;
   for (int s = 0; s < num_stages - 1; ++s) {
-    messages.emplace_back(s, s+1);
+    messages.emplace_back(s, s + 1);
+    stage_to_rank[s] = rank_ids.at(s);
   }
+  stage_to_rank[num_stages - 1] = rank_ids.at(num_stages - 1);
 
   // Get the nodes in topological order before spliting the graph.
   // This ordering will be useful later to remove nodes from the partition.
@@ -1294,7 +1301,8 @@ Status ApplyPipelinePartitionToMainGraph(Graph& graph,
   // Split the graph given the mapping of operations to stages.
   ORT_RETURN_IF_ERROR(SplitGraphWithOperatorToStageMap(graph, op_to_stage,
                                                        num_stages, messages,
-                                                       send_nodes, recv_nodes));
+                                                       send_nodes, recv_nodes,
+                                                       stage_to_rank));
 
   // Take care of weights that are shared accross stages.
   ORT_RETURN_IF_ERROR(HandleSharedInitializer(graph, send_nodes, recv_nodes));

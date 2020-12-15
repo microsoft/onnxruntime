@@ -352,13 +352,6 @@ common::Status SplitGraph(Graph& graph,
   //    and update updated_node_args with updated_node_args[original_node_arg] = updated_node_arg_v2
   std::map<NodeArg*, NodeArg*> updated_node_args;
 
-  // Retrieve all ranks in this particular pipeline group that the current rank belongs to.
-  // We will use this data to figure out, for each inserted send/recv pair, what's the corresponding
-  // source and destination rank.
-  // Noted: currently assume each stage has the same number of data parallel size. Variable data parallel
-  // size between different pipeline stages is not supported.
-  auto ranks = DistributedRunContext::GetRanks(WorkerGroupType::ModelParallel);
-
   for (size_t index = 0; index < split_edge_groups.size(); ++index) {
     // each entry in split_edge_groups represents a partition cut. Each cut can contain the split of
     // several edges.
@@ -388,13 +381,13 @@ common::Status SplitGraph(Graph& graph,
     ORT_RETURN_IF_ERROR(AddNewScalarNodeArgAndInitializer<size_t>(graph,
                                                                   "send_dst_rank" + cut_index_str,
                                                                   ONNX_NAMESPACE::TensorProto_DataType_INT64,
-                                                                  ranks[index + 1], /* initializer data */
+                                                                  static_cast<int32_t>(index + 1), /* initializer data */
                                                                   send_input_args,
                                                                   new_input_names));
     ORT_RETURN_IF_ERROR(AddNewScalarNodeArgAndInitializer<size_t>(graph,
                                                                   "recv_src_rank" + cut_index_str,
                                                                   ONNX_NAMESPACE::TensorProto_DataType_INT64,
-                                                                  ranks[index], /* initializer data */
+                                                                  static_cast<int32_t>(index), /* initializer data */
                                                                   recv_input_args,
                                                                   new_input_names));
 

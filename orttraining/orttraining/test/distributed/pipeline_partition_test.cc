@@ -41,11 +41,17 @@ TEST(PipelinePartition, DropoutGraph2stages) {
 
   std::map<Node*, int> op_to_stage = {};
   status = GetDeviceAssignmentMap(graph, input_map, op_to_stage, num_stages);
-
   EXPECT_TRUE(status.IsOK()) << "Failed to get stage map. Error: "
                              << status.ErrorMessage();
+  // We are not running the tests with mpi ranks, so we create dummy rank_ids,
+  // instead of querying the distributed run context.
+  std::vector<int32_t> rank_ids(num_stages);
+  for (int i = 0; i < num_stages; ++i) {
+    rank_ids[i] = i;
+  }
   status = ApplyPipelinePartitionToMainGraph(graph, op_to_stage,
-                                             pipeline_stage_id, num_stages);
+                                             pipeline_stage_id, num_stages,
+                                             rank_ids);
   EXPECT_TRUE(status.IsOK()) << "Failed to apply partition. Error: "
                              << status.ErrorMessage();
 
@@ -67,13 +73,20 @@ void LoadAndPartitionWithCuts(const PathString& model_path,
   auto& graph = pModel->MainGraph();
 
   if (use_stage_map) {
+    // We are not running the tests with mpi ranks, so we create dummy rank_ids,
+    // instead of querying the distributed run context.
+    std::vector<int32_t> rank_ids(num_stages);
+    for (int i = 0; i < num_stages; ++i) {
+      rank_ids[i] = i;
+    }
     std::map<Node*, int> op_to_stage = {};
     status = GetDeviceAssignmentMap(graph, cuts, op_to_stage, num_stages);
 
     EXPECT_TRUE(status.IsOK()) << "Failed to get stage map. Error: "
                                << status.ErrorMessage();
     status = ApplyPipelinePartitionToMainGraph(graph, op_to_stage,
-                                               pipeline_stage_id, num_stages);
+                                               pipeline_stage_id, num_stages,
+                                               rank_ids);
     EXPECT_TRUE(status.IsOK()) << "Failed to apply partition. Error: "
                                << status.ErrorMessage();
   } else {

@@ -187,9 +187,10 @@ Status TrainingSession::ConfigureForTraining(
         GetDeviceAssignmentMap(model_->MainGraph(), id_to_stage, op_to_stage, n_stages));
     }
 
+    auto ranks = DistributedRunContext::GetRanks(WorkerGroupType::ModelParallel);
     ORT_RETURN_IF_ERROR(
       ApplyPipelinePartitionToMainGraph(model_->MainGraph(), op_to_stage,
-                                        pipeline_stage_id, n_stages));
+                                        pipeline_stage_id, n_stages, ranks));
 
     if (config.pipeline_config.value().partitioned_model_path.has_value()) {
       // Save the partitioned file out.
