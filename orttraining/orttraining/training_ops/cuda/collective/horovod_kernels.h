@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_kernel.h"
 #include "orttraining/core/graph/horovod_adapters.h"
 
 namespace onnxruntime {

@@ -19,7 +19,7 @@ steps:
         tools/ci_build/get_docker_image.py \
           --dockerfile "${{ parameters.Dockerfile }}" \
           --context "${{ parameters.Context }}" \
-          --docker-build-args "${{ variables.DockerBuildArgs }}" \
+          --docker-build-args "${{ parameters.DockerBuildArgs }}" \
           --container-registry onnxruntimebuildcache \
           --repository "${{ parameters.Repository }}"
       displayName: "Get ${{ parameters.Repository }} image"

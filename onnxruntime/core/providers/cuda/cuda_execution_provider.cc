@@ -1,15 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "cuda_common.h"
-#include "cuda_execution_provider.h"
-#include "cuda_fence.h"
-#include "cuda_allocator.h"
-#include "core/framework/kernel_registry.h"
+#include "core/providers/cuda/cuda_execution_provider.h"
+
 #include "core/framework/compute_capability.h"
 #include "core/framework/fallback_cpu_capability.h"
+#include "core/framework/kernel_registry.h"
 #include "core/framework/memcpy.h"
 #include "core/graph/graph_utils.h"
+#include "core/providers/cuda/cuda_allocator.h"
+#include "core/providers/cuda/cuda_fence.h"
+#include "core/providers/cuda/cuda_fwd.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 
 #ifndef DISABLE_CONTRIB_OPS
@@ -1816,18 +1817,43 @@ static bool ConvTransposeNeedFallbackToCPU(const onnxruntime::Node& node) {
     auto attr_name = attr.first;
     auto attr_value = attr.second;
 
-    //cudnn only supports symmetric padding
+    // cudnn only supports symmetric padding, so drop the node down to CPU if the padding provided is asymmetric
     // TODO: Check if we can adopt a similar approach to deal with asymmetric pads in 'ConvTranspose'
     // as we did for 'Conv' to circumvent the cudnn limitation
-    if ("pads" == attr_name && ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS == attr_value.type()) {
+    if ("pads" == attr_name &&
+        ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS == attr_value.type()) {
       auto& pads = attr_value.ints();
       int pads_size = pads.size();
       ORT_ENFORCE(pads_size % 2 == 0);
       int rank = pads_size / 2;
       for (int i = 0; i < rank; i++) {
         if (pads.Get(i) != pads.Get(i + rank)) {
+          LOGS_DEFAULT(WARNING) << "Dropping the ConvTranspose node: " << node.Name()
+                                << " to CPU because it requires asymmetric padding which the CUDA EP"
+                                << " currently does not support";
           return true;
         }
+      }
+    }
+
+    if ("auto_pad" == attr_name &&
+        ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING == attr_value.type()) {
+      auto& auto_pad_attr = attr_value.s();
+      ORT_ENFORCE(auto_pad_attr == "SAME_UPPER" || auto_pad_attr == "SAME_LOWER" ||
+                      auto_pad_attr == "VALID" || auto_pad_attr == "NOTSET",
+                  "auto_pad must be either NOTSET, VALID, SAME_UPPER, SAME_LOWER");
+
+      // If auto_pad is SAME_UPPER or SAME_LOWER, pads will be computed dynamically at runtime
+      // based on the provided input shape. This may or may not lead to symmetric padding.
+      // If it turns out to be asymmetric padding, CuDNN will return a cryptic unfriendly error message.
+      // So drop down the node to CPU if auto_pad is SAME_UPPER or SAME_LOWER even if it may lead to
+      // symmetric padding.
+      // TODO: Remove this after we have supported asymmetric padding in the CUDA ConvTranspose kernel
+      if (auto_pad_attr == "SAME_UPPER" || auto_pad_attr == "SAME_LOWER") {
+        LOGS_DEFAULT(WARNING) << "Dropping the ConvTranspose node: " << node.Name()
+                              << " to CPU because it uses the auto_pad attribute which may lead to asymmetric padding which"
+                              << " the CUDA EP currently does not support";
+        return true;
       }
     }
   }
@@ -1921,7 +1947,7 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   // For CUDA EP, exclude the subgraph that is preferred to be placed in CPU
   // These are usually shape related computation subgraphs
   // Following logic can be extended for other EPs
-  std::unordered_set<NodeIndex> cpu_nodes = GetCpuPreferedNodes(graph, Type(), kernel_registries, candidates);
+  std::unordered_set<NodeIndex> cpu_nodes = GetCpuPreferredNodes(graph, Type(), kernel_registries, candidates);
 
   std::vector<std::unique_ptr<ComputeCapability>> result;
   for (auto& node_index : candidates) {
