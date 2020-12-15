@@ -245,7 +245,11 @@ class ORTTrainerOptions(object):
                                     'default': ''
                                 }
                             }
-                        }                        
+                        },
+                        'optimized_model_filepath' : {
+                            'type' : 'str',
+                            'default' : ''
+                        },
                     }
                 },
                 '_internal_use' : {
@@ -365,6 +369,8 @@ class ORTTrainerOptions(object):
         debug.graph_save_paths.model_with_training_graph_path (str, default is "")
             path to export the training ONNX graph with forward, gradient and optimizer nodes.
             No output when it is empty.
+        debug.optimized_model_filepath (str, default is empty)
+            outputs the optimized training graph to the path if nonempty.
         _internal_use (dict):
             internal options, possibly undocumented, that might be removed without notice
         _internal_use.enable_internal_postprocess (bool, default is True):
@@ -693,6 +699,10 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                         'default': ''
                     }
                 }
+            },
+            'optimized_model_filepath' : {
+                'type' : 'str',
+                'default' : ''
             },
         }
     },

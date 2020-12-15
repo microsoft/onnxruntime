@@ -660,6 +660,8 @@ class ORTTrainer(object):
             self.options.graph_transformer.gelu_recompute or
             self.options.graph_transformer.transformer_layer_recompute):
             session_options.execution_order = ort.ExecutionOrder.PRIORITY_BASED
+        if len(self.options.debug.optimized_model_filepath) > 0:
+            session_options.optimized_model_filepath = self.options.debug.optimized_model_filepath
 
         # old ort session may already exists and occupies GPU memory when creating new session, this may cause OOM error.
         # for example, load_state_dict will be called before returing the function, and it calls _init_session again
