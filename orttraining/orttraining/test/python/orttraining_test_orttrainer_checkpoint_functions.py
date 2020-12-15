@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import patch, Mock
 from orttraining_test_orttrainer_frontend import _load_pytorch_transformer_model
-from onnxruntime.training import amp, checkpoint, optim, orttrainer
+from onnxruntime.training import amp, checkpoint, optim, orttrainer, _checkpoint_storage
 import numpy as np
 import onnx
 import torch
@@ -404,6 +404,255 @@ def test_load_state_dict_loads_the_states_and_inits_training_session(onnx_model_
     assert 'b' in loaded_initializers[0]
     assert (loaded_initializers[0]['b'] == np.array([3, 4])).all()
 
-    assert (state_dict_to_load[0]['optimizer']['a']['Moment_1'] ==  np.array([5, 6])).all()
-    assert (state_dict_to_load[0]['optimizer']['a']['Moment_2'] ==  np.array([7, 8])).all()
-    assert (state_dict_to_load[0]['optimizer']['shared_optimizer_state']['step'] ==  np.array([9])).all()
+    assert (state_dict_to_load[0]['a']['Moment_1'] ==  np.array([5, 6])).all()
+    assert (state_dict_to_load[0]['a']['Moment_2'] ==  np.array([7, 8])).all()
+    assert (state_dict_to_load[0]['shared_optimizer_state']['step'] ==  np.array([9])).all()
+
+@patch('onnxruntime.training._checkpoint_storage.save')
+def test_save_checkpoint_calls_checkpoint_storage_save(save_mock):
+    trainer = _create_trainer()
+    state_dict = {
+        'model': {},
+        'optimizer': {}
+    }
+    trainer.state_dict = Mock(return_value=state_dict)
+
+    trainer.save_checkpoint('abc')
+
+    save_args, _ = save_mock.call_args
+    assert 'model' in save_args[0]
+    assert not bool(save_args[0]['model'])
+    assert 'optimizer' in save_args[0]
+    assert not bool(save_args[0]['optimizer'])
+    assert save_args[1] == 'abc'
+
+@patch('onnxruntime.training._checkpoint_storage.save')
+def test_save_checkpoint_pytorch_format(save_mock):
+    trainer = _create_trainer()
+    state_dict = {
+        'model': {},
+        'optimizer': {}
+    }
+    trainer.state_dict = Mock(return_value=state_dict)
+
+    trainer.save_checkpoint('abc', pytorch_format=True)
+
+    save_args, _ = save_mock.call_args
+    assert 'model' in save_args[0]
+    assert not bool(save_args[0]['model'])
+    assert 'optimizer' not in save_args[0]
+    assert save_args[1] == 'abc'
+
+@patch('onnxruntime.training._checkpoint_storage.save')
+def test_save_checkpoint_user_dict(save_mock):
+    trainer = _create_trainer()
+    state_dict = {
+        'model': {},
+        'optimizer': {}
+    }
+    trainer.state_dict = Mock(return_value=state_dict)
+
+    trainer.save_checkpoint('abc', user_dict={'abc': np.arange(4)})
+
+    save_args, _ = save_mock.call_args
+    assert 'user_dict' in save_args[0]
+    assert save_args[0]['user_dict'] == _checkpoint_storage.to_serialized_hex({'abc': np.arange(4)})
+
+@patch('onnxruntime.training._checkpoint_storage.load')
+@patch('onnxruntime.training.checkpoint.aggregate_checkpoints')
+def test_load_checkpoint(aggregate_checkpoints_mock, load_mock):
+    trainer = _create_trainer()
+    trainer_options = {
+        'mixed_precision': np.bool_(False),
+        'world_rank': np.int64(0),
+        'world_size': np.int64(1),
+        'zero_stage': np.int64(0)
+    }
+    state_dict = {
+        'model': {},
+        'optimizer': {},
+        'trainer_options': {
+            'mixed_precision': np.bool_(False),
+            'world_rank': np.int64(0),
+            'world_size': np.int64(1),
+            'zero_stage': np.int64(0)
+        }
+    }
+    trainer.load_state_dict = Mock()
+
+    load_mock.side_effect = [trainer_options, trainer_options, state_dict]
+    trainer.load_checkpoint('abc')
+
+    args_list = load_mock.call_args_list
+    load_args, load_kwargs = args_list[0]
+    assert load_args[0] == 'abc'
+    assert load_kwargs['key'] == 'trainer_options'
+    load_args, load_kwargs = args_list[1]
+    assert load_args[0] == 'abc'
+    assert load_kwargs['key'] == 'trainer_options'
+    load_args, load_kwargs = args_list[2]
+    assert load_args[0] == 'abc'
+    assert 'key' not in load_kwargs
+    assert not aggregate_checkpoints_mock.called
+
+@patch('onnxruntime.training._checkpoint_storage.load')
+@patch('onnxruntime.training.checkpoint.aggregate_checkpoints')
+@pytest.mark.parametrize("trainer_options", [
+    {
+        'mixed_precision': np.bool_(False),
+        'world_rank': np.int64(0),
+        'world_size': np.int64(4),
+        'zero_stage': np.int64(1)
+    },
+    {
+        'mixed_precision': np.bool_(True),
+        'world_rank': np.int64(0),
+        'world_size': np.int64(1),
+        'zero_stage': np.int64(1)
+    },
+    {
+        'mixed_precision': np.bool_(True),
+        'world_rank': np.int64(0),
+        'world_size': np.int64(1),
+        'zero_stage': np.int64(1)
+    }
+])
+def test_load_checkpoint_aggregation_required_zero_enabled(aggregate_checkpoints_mock, load_mock, trainer_options):
+    trainer = _create_trainer()
+    trainer.load_state_dict = Mock()
+
+    load_mock.side_effect = [trainer_options]
+    trainer.load_checkpoint('abc')
+
+    args_list = load_mock.call_args_list
+    load_args, load_kwargs = args_list[0]
+    assert load_args[0] == 'abc'
+    assert load_kwargs['key'] == 'trainer_options'
+    assert aggregate_checkpoints_mock.called
+    call_args, _ = aggregate_checkpoints_mock.call_args
+    assert call_args[0] == tuple(['abc'])
+
+@patch('onnxruntime.training._checkpoint_storage.load')
+@patch('onnxruntime.training.checkpoint.aggregate_checkpoints')
+def test_load_checkpoint_user_dict(aggregate_checkpoints_mock, load_mock):
+    trainer = _create_trainer()
+    trainer_options = {
+        'mixed_precision': np.bool_(False),
+        'world_rank': np.int64(0),
+        'world_size': np.int64(1),
+        'zero_stage': np.int64(0)
+    }
+    state_dict = {
+        'model': {},
+        'optimizer': {},
+        'trainer_options': {
+            'mixed_precision': np.bool_(False),
+            'world_rank': np.int64(0),
+            'world_size': np.int64(1),
+            'zero_stage': np.int64(0)
+        },
+        'user_dict': _checkpoint_storage.to_serialized_hex({'array': torch.tensor(np.arange(5))})
+    }
+    trainer.load_state_dict = Mock()
+
+    load_mock.side_effect = [trainer_options, trainer_options, state_dict]
+    user_dict = trainer.load_checkpoint('abc')
+
+    assert torch.all(torch.eq(user_dict['array'], torch.tensor(np.arange(5))))
+
+@patch('onnxruntime.training._checkpoint_storage.load')
+def test_checkpoint_aggregation(load_mock):
+    trainer_options1 = {
+        'mixed_precision': np.bool_(False),
+        'world_rank': np.int64(0),
+        'world_size': np.int64(2),
+        'zero_stage': np.int64(1),
+        'optimizer_name': b'Adam'
+    }
+    trainer_options2 = {
+        'mixed_precision': np.bool_(False),
+        'world_rank': np.int64(1),
+        'world_size': np.int64(2),
+        'zero_stage': np.int64(1),
+        'optimizer_name': b'Adam'
+    }
+
+    state_dict1 = {
+        'model': {
+            'fp32': {
+                'sharded': np.array([1, 2, 3]),
+                'non_sharded': np.array([11, 22, 33])
+            }
+        },
+        'optimizer': {
+            'sharded': {
+                'Moment_1': np.array([9, 8, 7]),
+                'Moment_2': np.array([99, 88, 77]),
+                'Step': np.array([5])
+            },
+            'non_sharded': {
+                'Moment_1': np.array([666, 555, 444]),
+                'Moment_2': np.array([6666, 5555, 4444]),
+                'Step': np.array([55])
+            }
+        },
+        'trainer_options': {
+            'mixed_precision': np.bool_(False),
+            'world_rank': np.int64(0),
+            'world_size': np.int64(1),
+            'zero_stage': np.int64(0),
+            'optimizer_name': b'Adam'
+        },
+        'partition_info': {
+            'sharded': {'original_dim': np.array([2, 3])}
+        }
+    }
+
+    state_dict2 = {
+        'model': {
+            'fp32': {
+                'sharded': np.array([4, 5, 6]),
+                'non_sharded': np.array([11, 22, 33])
+            }
+        },
+        'optimizer': {
+            'sharded': {
+                'Moment_1': np.array([6, 5, 4]),
+                'Moment_2': np.array([66, 55, 44]),
+                'Step': np.array([5])
+            },
+            'non_sharded': {
+                'Moment_1': np.array([666, 555, 444]),
+                'Moment_2': np.array([6666, 5555, 4444]),
+                'Step': np.array([55])
+            }
+        },
+        'trainer_options': {
+            'mixed_precision': np.bool_(False),
+            'world_rank': np.int64(1),
+            'world_size': np.int64(1),
+            'zero_stage': np.int64(0),
+            'optimizer_name': b'Adam'
+        },
+        'partition_info': {
+            'sharded': {'original_dim': np.array([2, 3])}
+        }
+    }
+
+    load_mock.side_effect = [trainer_options1, trainer_options2, state_dict1, state_dict2]
+    state_dict = checkpoint.aggregate_checkpoints(['abc', 'def'], pytorch_format=False)
+
+    assert (state_dict['model']['fp32']['sharded'] == np.array([[1, 2, 3], [4, 5, 6]])).all()
+    assert (state_dict['model']['fp32']['non_sharded'] == np.array([11, 22, 33])).all()
+    assert (state_dict['optimizer']['sharded']['Moment_1'] == np.array([[9, 8, 7], [6, 5, 4]])).all()
+    assert (state_dict['optimizer']['sharded']['Moment_2'] == np.array([[99, 88, 77], [66, 55, 44]])).all()
+    assert (state_dict['optimizer']['sharded']['Step'] == np.array([5])).all()
+    assert (state_dict['optimizer']['non_sharded']['Moment_1'] == np.array([666, 555, 444])).all()
+    assert (state_dict['optimizer']['non_sharded']['Moment_2'] == np.array([6666, 5555, 4444])).all()
+    assert (state_dict['optimizer']['non_sharded']['Step'] == np.array([55])).all()
+
+    assert state_dict['trainer_options']['mixed_precision'] == False
+    assert state_dict['trainer_options']['world_rank'] == 0
+    assert state_dict['trainer_options']['world_size'] == 1
+    assert state_dict['trainer_options']['zero_stage'] == 0
+    assert state_dict['trainer_options']['optimizer_name'] == b'Adam'
