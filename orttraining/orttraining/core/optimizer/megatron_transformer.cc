@@ -7,6 +7,7 @@
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/utils.h"
 #include "core/framework/random_seed.h"
+//#include "orttraining/core/session/training_session.h"
 #include <deque>
 
 using namespace ONNX_NAMESPACE;
@@ -177,7 +178,7 @@ bool MegatronTransformer::PartitionWeightByColumn(const Graph& graph, const Node
   }
 
   initializer_partition.set_raw_data(result.data(), element_count * sizeof(float));
-  partition_by_row_[new_initializer_name] = false;
+  weight_partition_info_[new_initializer_name].megatron_row_partition = false;
   return true;
 }
 
@@ -234,7 +235,7 @@ bool MegatronTransformer::PartitionWeightByRow(const Graph& graph, const NodeArg
   const int64_t row_index_offset = horizontal_parallel_rank_ * row_partition;
   memcpy(result.data(), a_weight + row_index_offset * column_count, sizeof(float) * element_count);
   initializer_partition.set_raw_data(result.data(), element_count * sizeof(float));
-  partition_by_row_[new_initializer_name] = true;
+  weight_partition_info_[new_initializer_name].megatron_row_partition = true;
   return true;
 }
 

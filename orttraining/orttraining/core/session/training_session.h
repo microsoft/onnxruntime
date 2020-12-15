@@ -27,6 +27,14 @@ class TrainingSession : public InferenceSession {
   typedef std::unordered_map<std::string /* Model weight name*/,
                              NameMLValMap /* 'Moment_1': OrtValue, 'Moment_2': OrtValue etc...*/>
                             OptimizerState;
+  
+  /**
+   * Partition information of each paritioned weight
+   */
+  struct PartitionInfo {
+    std::vector<int64_t> original_dimension;
+    bool megatron_row_partition;
+  };
 
   TrainingSession(const SessionOptions& session_options, const Environment& env)
       : InferenceSession(session_options, env) {}
@@ -260,7 +268,7 @@ class TrainingSession : public InferenceSession {
     // Mapped initialized names after weight partitioning for example MegatronTransformer
     std::unordered_map<std::string, std::string> weight_name_map_after_graph_transform{};
 
-    std::unordered_map<std::string, bool> partition_by_row;
+    std::unordered_map<std::string, PartitionInfo> weight_partition_info;
   };
 
   /**
@@ -314,8 +322,6 @@ class TrainingSession : public InferenceSession {
   common::Status GetStateTensors(NameMLValMap& state_tensors);
 
   common::Status GetOptimizerState(std::unordered_map<std::string, NameMLValMap>& opt_state_tensors);
-
-  common::Status ReplaceZeroWeights(std::unordered_set<std::string> tensor_set);
 
   common::Status GetModelState(std::unordered_map<std::string, NameMLValMap>& model_state_tensors, bool include_mixed_precision_weights = false);
 
@@ -499,7 +505,7 @@ class TrainingSession : public InferenceSession {
   std::unordered_set<std::string> opt_state_initializer_names_;
   std::unordered_map<std::string, std::string> weight_to_mixed_precision_map_;
   std::unordered_map<std::string, std::unordered_map<std::string, std::string>> weight_to_opt_mapping_;
-  std::unordered_map<std::string, bool> partition_by_row_;
+  std::unordered_map<std::string, TrainingSession::PartitionInfo> weight_partition_info_;
 
   bool is_mixed_precision_enabled_;
   optional<std::string> external_loss_name_;

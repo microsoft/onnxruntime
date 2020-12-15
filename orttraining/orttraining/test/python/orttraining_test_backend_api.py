@@ -19,19 +19,6 @@ def train(trainer, train_data, batcher_fn, total_batch_steps = 5, seed = 1):
         set_seed(seed)
         data, targets = batcher_fn(train_data, i*35)
         trainer.train_step(data, targets)
-# def distributed_setup(save_function):
-#     def setup():
-#         world_rank = get_mpi_context_world_rank()
-#         world_size = get_mpi_context_world_size()
-#         device = 'cuda:' + str(world_rank)
-#         os.environ['RANK'] = str(world_rank)
-#         os.environ['WORLD_SIZE'] = str(world_size)
-#         os.environ['MASTER_ADDR'] = '127.0.0.1'
-#         os.environ['MASTER_PORT'] = '29500'
-#         set_cuda_device_id(world_rank)
-#         dist.init_process_group(backend='nccl', world_size=world_size, rank=world_rank)
-#         #save_function(world_rank, world_size, device)
-#     return setup
 
 # change to train 1 step to avoid saving and loading checkpoint
 # adapted from create_orttrainer_and_load_checkpoint method in checkpoint/_test_helpers.py 
@@ -78,13 +65,17 @@ def verify_opt_state(trainer, init_opt_state):
             else: 
                 assert_allclose(tensor, expected_tensor, 1e-1, 1e-2)
 
-def verify_part_info(trainer):
+def verify_part_info(trainer, is_zero_run):
     part_info = trainer._training_session.get_partition_info_map()
     for weight_name, weight_info in part_info.items():
         for info, value in weight_info.items():
             assert isinstance(value, list), "get_partition_info_map should return list"
             assert isinstance(value[0], int), "get_partition_info_map should return list of int"
-            assert value[0] == 0, "megatron_row_partition is 0 (false) if megatron optimization is not on"
+            if is_zero_run:
+                if info == "megatron_row_partition":
+                    assert value[0] == 0, "megatron_row_partition is 0 (false) if megatron optimization is not on"
+                if info == "original_dimension":
+                    assert len(value) > 0, "original_dimension should not be empty if zero run"
 
 def test_backend_api(device = 'cuda'):
     learning_rate = 1e-10
@@ -113,7 +104,7 @@ def test_backend_api(device = 'cuda'):
     
     verify_opt_state(trainer, init_opt_state)
 
-    verify_part_info(trainer)
+    verify_part_info(trainer, False)
 
 @distributed_setup
 def test_zero(world_rank, world_size, device, checkpoint_dir = 'checkpoint_dir/distributed_zero/mixed_precision/lamb/'):
@@ -157,18 +148,14 @@ def test_zero(world_rank, world_size, device, checkpoint_dir = 'checkpoint_dir/d
     train(trainer, train_data, batcher_fn, 1)
 
     actual_model_state = trainer._training_session.get_model_state(include_mixed_precision_weights=True)
-    #if world_rank == 0:
-    print(f"On rank {world_rank} ---------------------------------")
-    for k, v in actual_model_state.items():
-        print(f"{k}====")
-        for k2, v2 in v.items():
-            print(k2)
     
     verify_model_state(trainer, init_model_state)
     
     verify_opt_state(trainer, init_opt_state)
 
-    verify_part_info(trainer)
+    part_info = trainer._training_session.get_partition_info_map()
+
+    verify_part_info(trainer, True)
 
 #test_backend_api()
 test_zero(checkpoint_dir = 'checkpoint_dir/distributed_zero/mixed_precision/lamb/')

@@ -294,7 +294,8 @@ static Status ModifyParametersForOptimizerPartitioning(
     std::vector<OptimizerNodeConfig>& opt_configs,
     std::vector<ArgDef>& weight_argdefs,
     std::vector<ArgDef>& gradient_argdefs,
-    std::unordered_map<std::string, std::string>& updated_weight_names_map) {
+    std::unordered_map<std::string, std::string>& updated_weight_names_map,
+    std::unordered_map<std::string, TrainingSession::PartitionInfo>& weight_partition_info) {
   ORT_ENFORCE(weight_argdefs.size() == gradient_argdefs.size());
   ORT_ENFORCE(weight_argdefs.size() == opt_configs.size());
 
@@ -354,6 +355,7 @@ static Status ModifyParametersForOptimizerPartitioning(
         int64_t size_for_current_rank = offset + tensor_count - rank_start;
         std::vector<TensorShape> view_shapes = {{size_for_previous_rank}, {size_for_current_rank}, {0}};
         std::vector<bool> enabled = {false, true};
+        weight_partition_info[weight_argdef.name].original_dimension = tensor_shape.GetDims();
         AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config, view_shapes, enabled,
                               new_opt_configs, new_weight_argdefs, new_gradient_argdefs, updated_weight_names_map);
       } else if (offset >= rank_start && offset + tensor_count > rank_end) {
@@ -361,6 +363,7 @@ static Status ModifyParametersForOptimizerPartitioning(
         int64_t size_for_next_rank = offset + tensor_count - rank_end;
         std::vector<TensorShape> view_shapes = {{0}, {size_for_current_rank}, {size_for_next_rank}};
         std::vector<bool> enabled = {true, false};
+        weight_partition_info[weight_argdef.name].original_dimension = tensor_shape.GetDims();
         AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config, view_shapes, enabled,
                               new_opt_configs, new_weight_argdefs, new_gradient_argdefs, updated_weight_names_map);
       } else {  // offset < rank_start && offset + tensor_count > rank_end
@@ -369,6 +372,7 @@ static Status ModifyParametersForOptimizerPartitioning(
         int64_t size_for_next_rank = offset + tensor_count - rank_end;
         std::vector<TensorShape> view_shapes = {{size_for_previous_rank}, {size_for_current_rank}, {size_for_next_rank}};
         std::vector<bool> enabled = {false, true, false};
+        weight_partition_info[weight_argdef.name].original_dimension = tensor_shape.GetDims();
         AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config, view_shapes, enabled,
                               new_opt_configs, new_weight_argdefs, new_gradient_argdefs, updated_weight_names_map);
       }
@@ -409,11 +413,13 @@ ZeROOptimizerGraphBuilder::ZeROOptimizerGraphBuilder(
     const OptimizerBuilderRegistry& opt_builder_registry,
     const OptimizerGraphConfig& opt_graph_config,
     const std::unordered_map<std::string, OptimizerNodeConfig>& weight_names_to_opt_configs,
-    std::unordered_map<std::string, std::string>& updated_weight_names_map)
+    std::unordered_map<std::string, std::string>& updated_weight_names_map,
+    std::unordered_map<std::string, TrainingSession::PartitionInfo>& weight_partition_info)
     : OptimizerGraphBuilder(opt_builder_registry,
                             opt_graph_config,
                             weight_names_to_opt_configs,
-                            updated_weight_names_map) {
+                            updated_weight_names_map,
+                            weight_partition_info) {
   ORT_ENFORCE(opt_graph_config.data_parallel_group_size > 1, "ZeRO optimizer graph builder can only be used for distributed training.");
   ORT_ENFORCE(opt_graph_config.use_nccl, "Distributed training with ZeRO is only supported with NCCL.");
   ORT_ENFORCE(IsNcclAvailable(), "Distributed training with NCCL is not supported, as NCCL is not enabled in this build.");
@@ -434,7 +440,7 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
 
   // handle optimizer partitioning
   ORT_RETURN_IF_ERROR(ModifyParametersForOptimizerPartitioning(
-      graph, graph_defs, opt_graph_config_, opt_configs_, weight_argdefs, gradient_argdefs, updated_weight_names_map_));
+      graph, graph_defs, opt_graph_config_, opt_configs_, weight_argdefs, gradient_argdefs, updated_weight_names_map_, weight_partition_info_));
 
   // add gradient scaling
   ArgDef fused_gradient_argdef;

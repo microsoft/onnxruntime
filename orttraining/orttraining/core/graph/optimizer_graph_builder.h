@@ -12,6 +12,7 @@
 #include "orttraining/core/graph/optimizer_builder.h"
 #include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/graph/optimizer_graph_output_key.h"
+#include "orttraining/core/session/training_session.h"
 
 namespace onnxruntime {
 namespace training {
@@ -45,12 +46,14 @@ class OptimizerGraphBuilder {
    *        configuration values.
    * @param updated_weight_names_map Mapping from original weight name to 
    *        updated weight name.
+   * @param weight_partition_info Mapping of (parititioned) weight name to partition info.
    */
   OptimizerGraphBuilder(
       const OptimizerBuilderRegistry& opt_builder_registry,
       const OptimizerGraphConfig& opt_graph_config,
       const std::unordered_map<std::string, OptimizerNodeConfig>& weight_names_to_opt_configs,
-      std::unordered_map<std::string, std::string>& updated_weight_names_map);
+      std::unordered_map<std::string, std::string>& updated_weight_names_map,
+      std::unordered_map<std::string, TrainingSession::PartitionInfo>& weight_partition_info);
 
   virtual ~OptimizerGraphBuilder() {}
 
@@ -144,6 +147,7 @@ class OptimizerGraphBuilder {
   std::vector<std::string> gradient_names_;
   std::vector<OptimizerNodeConfig> opt_configs_;
   std::unordered_map<std::string, std::string>& updated_weight_names_map_;
+  std::unordered_map<std::string, TrainingSession::PartitionInfo>& weight_partition_info_;
 };
 
 }  // namespace training

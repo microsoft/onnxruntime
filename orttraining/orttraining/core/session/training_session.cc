@@ -264,7 +264,7 @@ Status TrainingSession::ConfigureForTraining(
   ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(trainable_initializers, config.graph_transformer_config,
                                                       config_result));
 
-  partition_by_row_ = config_result.partition_by_row;
+  weight_partition_info_ = config_result.weight_partition_info;
 
   if (IsRootNode(config) && config.model_with_loss_function_path.has_value()) {
     ORT_IGNORE_RETURN_VALUE(Save(
@@ -522,12 +522,13 @@ static Status BuildOptimizerInternal(Graph& graph,
                                      std::unordered_set<std::string>& opt_state_initializer_names,
                                      OptimizerOutputKeyMap<std::string>& opt_graph_outputs,
                                      std::unordered_map<std::string, std::string>& updated_weight_names_map,
+                                     std::unordered_map<std::string, TrainingSession::PartitionInfo>& weight_partition_info,
                                      std::unordered_map<std::string, std::unordered_map<std::string, std::string>>& weight_to_opt_mapping) {
   OptimizerBuilderRegistry& optimizer_registry = OptimizerBuilderRegistry::GetInstance();
   OptimizerGraphBuilderRegistry& optimizer_graph_registry = OptimizerGraphBuilderRegistry::GetInstance();
   std::string graph_builder_name = optimizer_graph_registry.GetNameFromConfig(opt_graph_config);
   auto optimizer_graph_builder = optimizer_graph_registry.MakeUnique(
-      graph_builder_name, optimizer_registry, opt_graph_config, opt_configs, updated_weight_names_map);
+      graph_builder_name, optimizer_registry, opt_graph_config, opt_configs, updated_weight_names_map, weight_partition_info);
   ORT_RETURN_IF_ERROR(optimizer_graph_builder->Build(
       graph, weight_to_opt_mapping, opt_graph_outputs));
   // set opt_state_initializer_names from weight_to_opt_mapping
@@ -591,7 +592,7 @@ void TrainingSession::AddPreTrainingTransformers(const IExecutionProvider& execu
     // Generate and register transformers for level
 
     auto transformers_to_register = transformer_utils::GeneratePreTrainingTransformers(
-        level, weights_to_train, config, execution_provider, config_result_out.weight_name_map_after_graph_transform, config_result_out.partition_by_row, custom_list);
+        level, weights_to_train, config, execution_provider, config_result_out.weight_name_map_after_graph_transform, config_result_out.weight_partition_info, custom_list);
     for (auto& entry : transformers_to_register) {
       transformer_manager.Register(std::move(entry), level);
     }
@@ -785,6 +786,7 @@ Status TrainingSession::BuildOptimizer(
                                              opt_state_initializer_names_,
                                              opt_graph_outputs,
                                              updated_weight_names_map_,
+                                             weight_partition_info_,
                                              weight_to_opt_mapping_));
 
   return DoPostLoadProcessing(*model_);
@@ -875,6 +877,7 @@ Status TrainingSession::Save(const PathString& model_uri, TrainingSession::SaveO
     OptimizerOutputKeyMap<std::string> opt_graph_outputs;
     std::unordered_set<std::string> opt_state_initializer_names;
     std::unordered_map<std::string, std::string> updated_weight_names_map;
+    std::unordered_map<std::string, TrainingSession::PartitionInfo> weight_partition_info;
     std::unordered_map<std::string, std::unordered_map<std::string, std::string>> weight_to_opt_mapping;
     ORT_RETURN_IF_ERROR(BuildOptimizerInternal(new_model->MainGraph(),
                                                opt_graph_config_,
@@ -882,6 +885,7 @@ Status TrainingSession::Save(const PathString& model_uri, TrainingSession::SaveO
                                                opt_state_initializer_names,
                                                opt_graph_outputs,
                                                updated_weight_names_map,
+                                               weight_partition_info,
                                                weight_to_opt_mapping));
   }
 
@@ -919,19 +923,6 @@ common::Status TrainingSession::GetOptimizerState(std::unordered_map<std::string
       const auto& opt_name = opt_pair.second;
       //const std::string pre_fix_only = opt_name.substr(0, opt_name.find(weight_name) - 1);
       opt_state_tensors[weight_name][opt_prefix] = curr_opt_tensors[opt_name];
-    }
-  }
-  return Status::OK();
-}
-
-common::Status TrainingSession::ReplaceZeroWeights(std::unordered_set<std::string> tensor_set) {
-  for (const auto& zero_weight_name_pair : updated_weight_names_map_) {
-    std::cout << "Looking for " << zero_weight_name_pair.first << std::endl;
-    const auto& got = tensor_set.find(zero_weight_name_pair.first);
-    if (got != tensor_set.end()) {
-      std::cout << "Found " << zero_weight_name_pair.first << ", will replace with " << zero_weight_name_pair.second << std::endl;
-      tensor_set.erase(zero_weight_name_pair.first);
-      tensor_set.insert(zero_weight_name_pair.second);
     }
   }
   return Status::OK();
@@ -989,8 +980,13 @@ common::Status TrainingSession::GetPartitionInfoMap(std::unordered_map<std::stri
       weights_to_train_.begin(), weights_to_train_.end());
   NameMLValMap fp_weights;
   GetSessionState().GetInitializedTensors(fp_tensor_names, allow_missing, fp_weights);
-  for (const auto& weight : fp_weights) {
-    part_info_map[weight.first]["megatron_row_partition"] = std::vector<int>{partition_by_row_[weight.first]};
+  for (const auto& weight : weight_partition_info_) {
+    const auto& weight_name = weight.first;
+    //part_info_map[weight_name]["original_dimension"] = weight_partition_info_[weight_name].original_dimension;
+    std::transform(weight_partition_info_[weight_name].original_dimension.begin(), weight_partition_info_[weight_name].original_dimension.end(),
+                  std::inserter(part_info_map[weight_name]["original_dimension"], part_info_map[weight_name]["original_dimension"].end()),
+                  [](const int64_t& dim) { return (int)dim; });
+    part_info_map[weight_name]["megatron_row_partition"] = std::vector<int>{weight_partition_info_[weight_name].megatron_row_partition};
   }
   return Status::OK();
 }
