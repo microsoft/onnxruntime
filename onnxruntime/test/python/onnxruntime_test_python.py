@@ -835,5 +835,57 @@ class TestInferenceSession(unittest.TestCase):
         so2.log_severity_level = 1
         onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=so2)
 
+    def testCheckAndNormalizeProviderArgs(self):
+        from onnxruntime.capi.onnxruntime_inference_collection import check_and_normalize_provider_args
+
+        valid_providers = ["a", "b", "c"]
+
+        def check_success(
+                providers, provider_options,
+                expected_providers, expected_provider_options):
+            actual_providers, actual_provider_options = check_and_normalize_provider_args(
+                providers, provider_options, valid_providers)
+            self.assertEqual(actual_providers, expected_providers)
+            self.assertEqual(actual_provider_options, expected_provider_options)
+
+        check_success(None, None, [], [])
+
+        check_success(["a"], None, ["a"], [{}])
+
+        check_success(["a", "b"], None, ["a", "b"], [{}, {}])
+
+        check_success([("a", {1: 2}), "b"], None, ["a", "b"], [{"1": "2"}, {}])
+
+        check_success(["a", "b"], [{1: 2}, {}], ["a", "b"], [{"1": "2"}, {}])
+
+        with self.assertWarns(UserWarning):
+            check_success(["a", "b", "a"], [{"x": 1}, {}, {"y": 2}], ["a", "b"], [{"x": "1"}, {}])
+
+        def check_failure(providers, provider_options):
+            with self.assertRaises(ValueError):
+                check_and_normalize_provider_args(providers, provider_options, valid_providers)
+
+        # provider not valid
+        check_failure(["d"], None)
+
+        # providers not sequence
+        check_failure(3, None)
+
+        # providers value invalid
+        check_failure([3], None)
+
+        # provider_options not sequence
+        check_failure(["a"], 3)
+
+        # provider_options value invalid
+        check_failure(["a"], ["not dict"])
+
+        # providers and provider_options length mismatch
+        check_failure(["a", "b"], [{1: 2}])
+
+        # provider options unsupported mixed specification
+        check_failure([("a", {1: 2})], [{3: 4}])
+
+
 if __name__ == '__main__':
     unittest.main()

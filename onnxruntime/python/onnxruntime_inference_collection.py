@@ -2,7 +2,10 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
+import collections
+import collections.abc
 import os
+import warnings
 
 from onnxruntime.capi import _pybind_state as C
 
@@ -15,6 +18,82 @@ def get_ort_device_type(device):
         return C.OrtDevice.cpu()
     else:
         raise Exception('Unsupported device type: ' + device)
+
+
+def check_and_normalize_provider_args(
+        providers, provider_options, available_provider_names):
+    """
+    Validates the 'providers' and 'provider_options' arguments and returns a
+        normalized version.
+
+    :param providers: Optional sequence of providers in order of decreasing
+        precedence. Values can either be provider names or a tuples of
+        (provider name, options dict).
+    :param provider_options: Optional sequence of options dicts corresponding
+        to the providers listed in 'providers'.
+    :param available_provider_names: The available provider names.
+
+    :return: Tuple of (normalized 'providers' sequence, normalized
+        'provider_options' sequence).
+
+    The normalized result is a tuple of:
+    1. Sequence of provider names in the same order as 'providers'.
+    2. Sequence of corresponding provider options dicts with string keys and
+        values. Unspecified provider options yield empty dicts.
+
+    'providers' can contain either names or names and options. When any options
+        are given in 'providers', 'provider_options' should not be used.
+    """
+    if providers is None:
+        return [], []
+
+    provider_name_to_options = collections.OrderedDict()
+
+    def set_provider_options(name, options):
+        if name not in available_provider_names:
+            raise ValueError(
+                "Specified provider '{}' is unavailable. Available providers: '{}'".format(
+                    name, ", ".join(available_provider_names)))
+
+        if name in provider_name_to_options:
+            warnings.warn("Duplicate provider '{}' encountered, ignoring.".format(name))
+            return
+
+        normalized_options = {str(key): str(value) for key, value in options.items()}
+        provider_name_to_options[name] = normalized_options
+
+    if not isinstance(providers, collections.abc.Sequence):
+        raise ValueError("'providers' should be a sequence.")
+
+    if provider_options is not None:
+        if not isinstance(provider_options, collections.abc.Sequence):
+            raise ValueError("'provider_options' should be a sequence.")
+
+        if len(providers) != len(provider_options):
+            raise ValueError(
+                "'providers' and 'provider_options' should be the same length if both are given.")
+
+        if not all([isinstance(provider, str) for provider in providers]):
+            raise ValueError(
+                "Only string values for 'providers' are supported if 'provider_options' is given.")
+
+        if not all([isinstance(options_for_provider, dict) for options_for_provider in provider_options]):
+            raise ValueError("'provider_options' values must be dicts.")
+
+        for name, options in zip(providers, provider_options):
+            set_provider_options(name, options)
+
+    else:
+        for provider in providers:
+            if isinstance(provider, str):
+                set_provider_options(provider, dict())
+            elif (isinstance(provider, tuple) and len(provider) == 2 and
+                  isinstance(provider[0], str) and isinstance(provider[1], dict)):
+                set_provider_options(provider[0], provider[1])
+            else:
+                raise ValueError("'providers' values must be either strings or (string, dict) tuples.")
+
+    return list(provider_name_to_options.keys()), list(provider_name_to_options.values())
 
 
 class Session:
@@ -65,24 +144,6 @@ class Session:
         The list of providers is ordered by Priority. For example ['CUDAExecutionProvider', 'CPUExecutionProvider']
         means execute a node using CUDAExecutionProvider if capable, otherwise execute using CPUExecutionProvider.
         """
-        if not set(providers).issubset(C.get_available_providers()):
-            raise ValueError("{} does not contain a subset of available providers {}".format(
-                providers, C.get_available_providers()))
-
-        if provider_options:
-            if not isinstance(providers, list) or not isinstance(provider_options, list):
-                raise ValueError("Inputs must be two python lists.")
-
-            if len(providers) != len(provider_options):
-                raise ValueError("Two input lists must have same length.")
-
-            for option in provider_options:
-                if not isinstance(option, dict):
-                    raise ValueError("Provider options must be list of python dict.")
-
-                for key, val in option.items():
-                    option[key] = str(val)
-
         # recreate the underlying C.InferenceSession
         self._reset_session(providers, provider_options)
 
@@ -208,15 +269,22 @@ class InferenceSession(Session):
             if self._enable_fallback:
                 print("EP Error using {}".format(self._providers))
                 print("Falling back to {} and retrying.".format(self._fallback_providers))
-                self._create_inference_session(self._fallback_providers)
+                self._create_inference_session(self._fallback_providers, None)
                 # Fallback only once.
                 self.disable_fallback()
             else:
                 raise
 
     def _create_inference_session(self, providers, provider_options):
+        available_providers = C.get_available_providers()
+
+        # validate providers and provider_options before other initialization
+        providers, provider_options = check_and_normalize_provider_args(providers,
+                                                                        provider_options,
+                                                                        available_providers)
+
         # Tensorrt can fall back to CUDA. All others fall back to CPU.
-        if 'TensorrtExecutionProvider' in C.get_available_providers():
+        if 'TensorrtExecutionProvider' in available_providers:
             self._fallback_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
         else:
             self._fallback_providers = ['CPUExecutionProvider']
@@ -228,7 +296,7 @@ class InferenceSession(Session):
             sess = C.InferenceSession(session_options, self._model_bytes, False, self._read_config_from_model)
 
         # initialize the C++ InferenceSession
-        sess.initialize_session(providers or [], provider_options or [])
+        sess.initialize_session(providers, provider_options)
 
         self._sess = sess
         self._sess_options = self._sess.session_options
