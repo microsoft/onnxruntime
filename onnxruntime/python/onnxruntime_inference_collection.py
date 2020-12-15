@@ -522,3 +522,6 @@ class OrtValue:
         Valid only for OrtValues holding Tensors. Throws for OrtValues holding non-Tensors.
         '''
         return self._ortvalue.numpy()
+
+    def to_dlpack(self):
+        return self._ortvalue.to_dlpack()
