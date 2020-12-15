@@ -25,10 +25,12 @@ bool GeluRecompute::SatisfyCondition(const Node& node) const {
 
 Status GeluRecompute::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/, const logging::Logger& /*logger*/) const {
   GraphViewer graph_viewer(graph);
-  const auto& order = graph_viewer.GetNodesInTopologicalOrder();
+  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder();
 
-  for (NodeIndex i : order) {
-    Node& node = *graph.GetNode(i);
+  // Traverse backward from the bottom of the graph, so that the recompute nodes
+  // for lower layers are executed earlier
+  for (int i = static_cast<int>(node_ids.size() - 1); i >= 0; --i) {
+    Node& node = *graph.GetNode(node_ids[i]);
 
     if (!SatisfyCondition(node)) {
       continue;
@@ -42,7 +44,7 @@ Status GeluRecompute::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*
     Node& recompute_node = graph.AddNode(node.Name() + "_recompute",
                                          node.OpType(),
                                          "Recompute of " + node.Name(),
-                                         {node.MutableInputDefs()[0]},
+                                         node.MutableInputDefs(),
                                          {&recomputed_output},
                                          &node.GetAttributes(),
                                          node.Domain());
@@ -70,10 +72,12 @@ bool AttentionDropoutRecompute::SatisfyCondition(const Node& node) const {
 
 Status AttentionDropoutRecompute::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/, const logging::Logger& /*logger*/) const {
   GraphViewer graph_viewer(graph);
-  const auto& order = graph_viewer.GetNodesInTopologicalOrder();
+  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder();
 
-  for (NodeIndex i : order) {
-    Node& node = *graph.GetNode(i);
+  // Traverse backward from the bottom of the graph, so that the recompute nodes
+  // for lower layers are executed earlier
+  for (int i = static_cast<int>(node_ids.size() - 1); i >= 0; --i) {
+    Node& node = *graph.GetNode(node_ids[i]);
 
     if (!SatisfyCondition(node)) {
       continue;

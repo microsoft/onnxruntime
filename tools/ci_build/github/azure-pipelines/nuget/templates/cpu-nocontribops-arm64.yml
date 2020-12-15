@@ -8,7 +8,7 @@ jobs:
     ArtifactName: 'drop-nuget'
     JobName: 'Windows_CI_Dev'
     BuildCommand:  '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --cmake_generator "Visual Studio 16 2019" --disable_contrib_ops --disable_ml_ops --enable_msvc_static_runtime'
-    BuildArch: 'x64'    
+    BuildArch: 'x64'
     EnvSetupScript: 'setup_env.bat'
     sln_platform: 'x64'
     DoDebugBuild: 'false'
@@ -72,24 +72,18 @@ jobs:
   steps:    
     - template: ../../templates/set-version-number-variables-step.yml
     - template: ../../templates/linux-set-variables-and-download.yml
-    - task: Docker@2
-      displayName: login
-      inputs:
-        containerRegistry: onnxruntimeregistry
-        command: login
-        addPipelineData: false
+    - template: ../../templates/get-docker-image-steps.yml
+      parameters:
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.centos
+        Context: tools/ci_build/github/linux/docker
+        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+        Repository: onnxruntimecentoscpubuild
     - task: CmdLine@2
       inputs:
         script: |
           mkdir -p $HOME/.onnx
-          docker run --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecentoscpubuild:ch5g /bin/bash -c "python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync --parallel --build_shared_lib --enable_onnx_tests  --disable_contrib_ops --disable_ml_ops && cd /build/Release && make install DESTDIR=/build/linux-x64"
+          docker run --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecentoscpubuild /bin/bash -c "python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync --parallel --build_shared_lib --enable_onnx_tests  --disable_contrib_ops --disable_ml_ops && cd /build/Release && make install DESTDIR=/build/linux-x64"
         workingDirectory: $(Build.SourcesDirectory)
-    - task: Docker@2
-      displayName: logout
-      inputs:
-        containerRegistry: onnxruntimeregistry
-        command: logout
-        addPipelineData: false
     - script: |
        set -e -x
        mv $(Build.BinariesDirectory)/linux-x64/usr/local/lib64 $(Build.BinariesDirectory)/linux-x64/linux-x64

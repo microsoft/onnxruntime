@@ -3,23 +3,39 @@
 
 #pragma once
 #include <stdint.h>
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T, typename Tin>
+class CudaScratchBufferAllocator {
+ public:
+  explicit CudaScratchBufferAllocator(const CudaKernel& kernel) : kernel_{kernel} {
+  }
+
+  template <typename T>
+  IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes) const {
+    return kernel_.GetScratchBuffer<T>(count_or_bytes);
+  }
+
+ private:
+  const CudaKernel& kernel_;
+};
+
+// unit for handling indexing and counting of gathered indices
+using GatheredIndexIndex_t = int32_t;
+
+template <typename T, typename TIndex>
 void GatherGradImpl(
-    const CudaKernel& cuda_kernel,
-    const T* grad_data,
-    const Tin* indices_data,
-    const int64_t num_indices,
-    const int64_t num_weights,
-    const int64_t stride,
-    T* output_data,
-    const int64_t num_inputs,
-    const int64_t param_itrs);
+    const CudaScratchBufferAllocator& allocator,
+    const T* dY_data,
+    const TIndex* dX_indices,
+    const GatheredIndexIndex_t num_gathered_indices,
+    const int64_t gather_dimension_size,
+    const int64_t num_gathered_per_index,
+    const int64_t num_batches,
+    T* dX_data);
 
 }  // namespace cuda
 }  // namespace onnxruntime

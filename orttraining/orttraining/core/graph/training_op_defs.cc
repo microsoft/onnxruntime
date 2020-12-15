@@ -418,9 +418,9 @@ void RegisterTrainingOpSchemas() {
       .Input(0, "dY", "Gradient of output Y", "T")
       .Input(1, "X", "Input tensor", "T")
       .Input(2, "W", "Weight tensor", "T")
-      .Output(0, "dX", "Gradient of input X", "T")
+      .Output(0, "dX", "Gradient of input X", "T", OpSchema::Optional)
       .Output(1, "dW", "Gradient of W", "T")
-      .Output(2, "dB", "Gradient of B", "T")
+      .Output(2, "dB", "Gradient of B", "T", OpSchema::Optional)
       .AllowUncheckedAttributes()
       .TypeConstraint(
           "T",
@@ -446,7 +446,7 @@ void RegisterTrainingOpSchemas() {
           "Constrain input shape to integer tensors.")
       .TypeConstraint(
           "T",
-          OpSchema::all_tensor_types_with_bfloat(),
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input and output types to float tensors.")
       .TypeConstraint(
           "Tind",
@@ -501,7 +501,40 @@ void RegisterTrainingOpSchemas() {
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain input and output types to numeric tensors.");
+          "Constrain input and output types to numeric tensors.")
+      .FunctionBody([]() {
+        auto nodes = ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes(
+            {// nodes: {outputs, op, inputs, attributes}
+
+             // Get input shapes and dynamic reduction axes.
+             {{"shape_A"}, "Shape", {"A"}},
+             {{"shape_B"}, "Shape", {"B"}},
+             {{"axes_A", "axes_B"}, "BroadcastGradientArgs", {"shape_A", "shape_B"}},
+
+             // dA = reshape(reduce_sum(dY / B, axes_A), shape_A)
+             {{"dY_over_B"}, "Div", {"dY", "B"}},
+             {{"reduce_dA"}, "ReduceSumTraining", {"dY_over_B", "axes_A"}, {ONNX_NAMESPACE::MakeAttribute("noop_with_empty_axes", int64_t(1))}},
+             {{"dA"}, "Reshape", {"reduce_dA", "shape_A"}},
+
+             // dB = reshape(reduce_sum(dY * -A / (B * B)), axes_B), shape_B)
+             {{"B_squared"}, "Mul", {"B", "B"}},
+             {{"minus_A"}, "Neg", {"A"}},
+             {{"minus_A_over_B_squared"}, "Div", {"minus_A", "B_squared"}},
+             {{"pre_reduce_dB"}, "Mul", {"dY", "minus_A_over_B_squared"}},
+             {{"reduce_dB"}, "ReduceSumTraining", {"pre_reduce_dB", "axes_B"}, {ONNX_NAMESPACE::MakeAttribute("noop_with_empty_axes", int64_t(1))}},
+             {{"dB"}, "Reshape", {"reduce_dB", "shape_B"}}});
+
+        for (size_t contrib_node_index : {2, 4, 10}) {
+          nodes[contrib_node_index].set_domain(kMSDomain);
+        }
+        return nodes;
+      }())
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
+          propagateElemTypeFromTensorInputToOutput(ctx, 0, i);
+          propagateShapeFromInputToOutput(ctx, i + 1, i);
+        }
+      });
 
   //TODO: Move this to the right location. Its only here for quick experimentation.
   //TODO: Use the mutli weight / grad version.
@@ -838,6 +871,34 @@ Example 4:
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain to float, float16 and double tensors.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        std::string reduction = getAttribute(ctx, "reduction", "mean");
+        if (reduction.compare("none") == 0) {
+          if (hasInputShape(ctx, 1)) {
+            // If no reduction is performed the shape of the loss looks
+            // like the shape of the labels, without the onehot dimension.
+
+            TensorShapeProto loss_shape;
+            const TensorShapeProto& label_shape = ctx.getInputType(1)->tensor_type().shape();
+
+            for (int i = 0; i != label_shape.dim_size() - 1; ++i) {
+              *loss_shape.add_dim() = label_shape.dim(i);
+            }
+
+            *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape() =
+                loss_shape;
+          }
+
+        } else {
+          updateOutputShape(ctx, 0, {});
+        }
+
+        if (ctx.getNumOutputs() == 2) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 1);
+          propagateShapeFromInputToOutput(ctx, 0, 1);
+        }
+      })
       .SetDoc(R"DOC(SoftmaxCrossEntropy)DOC");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SoftmaxCrossEntropyGrad)
@@ -855,6 +916,10 @@ Example 4:
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain to float, float16 and double tensors.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 1, 0);
+        propagateShapeFromInputToOutput(ctx, 1, 0);
+      })
       .SetDoc(R"DOC(SoftmaxCrossEntropyGrad)DOC");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(HorovodAllReduce)
@@ -1029,6 +1094,10 @@ Example 4:
       .TypeConstraint("Tind",
                       {"tensor(int32)", "tensor(int64)"},
                       "Constrain indices to integer types")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 1, 0);
+        propagateShapeFromInputToOutput(ctx, 1, 0);
+      })
       .SetDoc(R"DOC(SoftmaxCrossEntropyLossGrad)DOC");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(BiasDropout)
@@ -1226,7 +1295,6 @@ Example 4:
               ->mutable_dim(axis)
               ->set_dim_value(split[i]);
         }
-
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ConcatTraining)
@@ -1306,7 +1374,6 @@ Example 4:
         if (all_lengths_known) {
           output_shape->mutable_dim(static_cast<int>(axis))->set_dim_value(total_length);
         }
-
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(TrainableDropout)
@@ -1433,7 +1500,13 @@ Example 4:
       .TypeConstraint(
           "T",
           {"tensor(int64)"},
-          "Constrain input and output types to 64-bit integer.");
+          "Constrain input and output types to 64-bit integer.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // NOTE: Both outputs are optional.
+        for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
+          updateOutputElemType(ctx, i, ONNX_NAMESPACE::TensorProto::INT64);
+        }
+      });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GistBinarizeEncoder)
       .SetDomain(kMSDomain)
@@ -1615,6 +1688,39 @@ Example 4:
       .TypeConstraint(
           "U",
           {"tensor(float)", "tensor(bfloat16)"},
+          "Constrain mean and inv_std_var to float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 1, 0);
+        propagateShapeFromInputToOutput(ctx, 1, 0);
+        propagateElemTypeFromInputToOutput(ctx, 2, 1);
+        propagateShapeFromInputToOutput(ctx, 2, 1);
+        // The bias tensor has the same shape of the scale tensor.
+        propagateElemTypeFromInputToOutput(ctx, 2, 2);
+        propagateShapeFromInputToOutput(ctx, 2, 2);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SimplifiedLayerNormalizationGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("SimplifiedLayerNormalizationGrad")
+      .Attr("axis",
+            "The first normalization dimension: normalization will be performed along dimensions axis : rank(inputs).",
+            AttributeProto::INT, static_cast<int64_t>(-1))
+      .AllowUncheckedAttributes()
+      .Input(0, "Y_grad", "The gradient tensor from output.", "T")
+      .Input(1, "X", "Input data tensor from the forward path", "T")
+      .Input(2, "scale", "Scale tensor.", "T")
+      .Input(3, "inv_std_var", "inverse std variance of X.", "U")
+      .Output(0, "X_grad", "Gradient of the input.", "T")
+      .Output(1, "scale_grad", "Gradient of the scale.", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain input and output types (except mean and inv_std_var) to float tensors.")
+      .TypeConstraint(
+          "U",
+          {"tensor(float)"},
           "Constrain mean and inv_std_var to float tensors.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(InvertibleLayerNormalizationGrad)
@@ -1676,6 +1782,22 @@ Example 4:
         updateOutputShape(ctx, 0, {});
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(PassThrough)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("Barrier op with value pass through, outputs = inputs")
+      .Input(0, "inputs", "input tensors", "T", OpSchema::Variadic, false)
+      .Output(0, "outputs", "output tensors", "T", OpSchema::Variadic, false)
+      .TypeConstraint("T", OpSchema::all_tensor_types_with_bfloat(), "All Tensor types")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        for (size_t i = 0; i < ctx.getNumInputs(); ++i) {
+          propagateElemTypeFromInputToOutput(ctx, i, i);
+          if (hasInputShape(ctx, i)) {
+            propagateShapeFromInputToOutput(ctx, i, i);
+          }
+        }
+      });
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(IsFinite)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("IsFinite")
@@ -1721,7 +1843,11 @@ Example 4:
           "The output scalar. Its value is true if all input "
           "tensors are finite. Otherwise, the output value would "
           "be false.",
-          "T");
+          "T")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        updateOutputShape(ctx, 0, {});
+        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
+      });
 
   static const char* All_doc = R"DOC(
 Return true if all elements are true and false otherwise.
@@ -1850,7 +1976,10 @@ Return true if all elements are true and false otherwise.
       .TypeConstraint(
           "TOut",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain scale types to float tensors.");
+          "Constrain scale types to float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        updateOutputShape(ctx, 0, {});
+      });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(Send)
       .SetDomain(kMSDomain)

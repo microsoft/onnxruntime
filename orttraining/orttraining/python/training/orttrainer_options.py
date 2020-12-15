@@ -194,7 +194,7 @@ class ORTTrainerOptions(object):
                         },
                         'onnx_opset_version': {
                             'type': 'integer',
-                            'min' : 10,
+                            'min' : 12,
                             'max' : 12,
                             'default': 12
                         },
@@ -486,7 +486,7 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
             'transformer_layer_recompute': {
                 'type': 'boolean',
                 'default': False
-            }, 
+            },
             'number_recompute_layers': {
                 'type': 'integer',
                 'min': 0,
@@ -548,7 +548,7 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
             },
             'onnx_opset_version': {
                 'type': 'integer',
-                'min' : 10,
+                'min' : 12,
                 'max' : 12,
                 'default': 12
             },

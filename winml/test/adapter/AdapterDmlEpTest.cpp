@@ -27,6 +27,9 @@ void AdapterDmlEpTestSetup() {
   ort_api = OrtGetApiBase()->GetApi(2);
   winml_adapter_api = OrtGetWinMLAdapter(ort_api);
   ort_api->CreateEnv(OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Default", &ort_env);
+#ifdef BUILD_INBOX
+  winrt_activation_handler = WINRT_RoGetActivationFactory;
+#endif
 }
 
 void AdapterDmlEpTestTeardown() {
@@ -134,6 +137,7 @@ winrt::com_ptr<ID3D12Resource> CreateD3D12Resource(ID3D12Device& device) {
       IID_PPV_ARGS(d3d12_resource.put())));
   return d3d12_resource;
 }
+
 
 void DmlCreateAndFreeGPUAllocationFromD3DResource() {
   GPUTEST;

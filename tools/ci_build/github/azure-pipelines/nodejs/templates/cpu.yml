@@ -38,26 +38,20 @@ jobs:
   steps:    
     - template: ../../templates/set-version-number-variables-step.yml
     - template: ../../templates/linux-set-variables-and-download.yml
-    - task: Docker@2
-      displayName: login
-      inputs:
-        containerRegistry: onnxruntimeregistry
-        command: login
-        addPipelineData: false
+    - template: ../../templates/get-docker-image-steps.yml
+      parameters:
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.centos
+        Context: tools/ci_build/github/linux/docker
+        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+        Repository: onnxruntimecentoscpubuild
     - task: CmdLine@2
       inputs:
         script: |
           mkdir -p $HOME/.onnx && docker run --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro \
-          --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecentoscpubuild:ch5g /bin/bash -c "python3 \
+          --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecentoscpubuild /bin/bash -c "python3 \
           /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --build_nodejs \
           --skip_submodule_sync  --parallel --build_shared_lib --use_openmp && cd /onnxruntime_src/nodejs && npm pack"
         workingDirectory: $(Build.SourcesDirectory)
-    - task: Docker@2
-      displayName: logout
-      inputs:
-        containerRegistry: onnxruntimeregistry
-        command: logout
-        addPipelineData: false
     - script: |
        set -e -x
        cp $(Build.SourcesDirectory)/nodejs/onnxruntime-*.tgz $(Build.ArtifactStagingDirectory)

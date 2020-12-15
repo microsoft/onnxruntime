@@ -4,11 +4,11 @@
 set(mlas_common_srcs
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/platform.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/threading.cpp
-  ${ONNXRUNTIME_ROOT}/core/mlas/lib/dgemm.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/sgemm.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/qgemm.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/convolve.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/pooling.cpp
+  ${ONNXRUNTIME_ROOT}/core/mlas/lib/transpose.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/reorder.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/snchwc.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/activate.cpp
@@ -19,13 +19,16 @@ set(mlas_common_srcs
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/quantize.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/qladd.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/qlmul.cpp
+  ${ONNXRUNTIME_ROOT}/core/mlas/lib/qpostprocessor.cpp
+  ${ONNXRUNTIME_ROOT}/core/mlas/lib/qlgavgpool.cpp
 )
 
 if(MSVC)
   if(onnxruntime_target_platform STREQUAL "ARM64")
-    set(asm_filename ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm64/SgemmKernelNeon.asm)
-    set(pre_filename ${CMAKE_CURRENT_BINARY_DIR}/SgemmKernelNeon.i)
-    set(obj_filename ${CMAKE_CURRENT_BINARY_DIR}/SgemmKernelNeon.obj)
+    set(mlas_platform_preprocess_srcs
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm64/QgemmU8X8KernelNeon.asm
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm64/SgemmKernelNeon.asm
+    )
 
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")
       set(ARMASM_FLAGS "-g")
@@ -33,14 +36,22 @@ if(MSVC)
       set(ARMASM_FLAGS "")
     endif()
 
-    add_custom_command(
-      OUTPUT ${obj_filename}
-        COMMAND
-            cl.exe /P ${asm_filename}
-        COMMAND
-            armasm64.exe ${ARMASM_FLAGS} ${pre_filename} ${obj_filename}
-    )
-    set(mlas_platform_srcs ${obj_filename})
+    # Run the C precompiler on each input before the assembler.
+    foreach(asm_filename ${mlas_platform_preprocess_srcs})
+      get_filename_component(asm_filename_base ${asm_filename} NAME_WLE)
+      set(preprocess_filename ${CMAKE_CURRENT_BINARY_DIR}/${asm_filename_base}.i)
+      set(obj_filename ${CMAKE_CURRENT_BINARY_DIR}/${asm_filename_base}.obj)
+      add_custom_command(
+        OUTPUT ${obj_filename}
+          COMMAND
+              cl.exe /P ${asm_filename} /Fi${preprocess_filename}
+          COMMAND
+              armasm64.exe ${ARMASM_FLAGS} ${preprocess_filename} ${obj_filename}
+        DEPENDS ${asm_filename}
+        BYPRODUCTS ${preprocess_filename}
+      )
+      list(APPEND mlas_platform_srcs ${obj_filename})
+    endforeach()
   elseif(onnxruntime_target_platform STREQUAL "ARM")
     set(mlas_platform_srcs
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm/sgemmc.cpp
@@ -64,6 +75,7 @@ if(MSVC)
     endif()
 
     set(mlas_platform_srcs
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/dgemm.cpp
       ${mlas_platform_srcs_avx}
       ${mlas_platform_srcs_avx2}
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/QgemmU8S8KernelAvx2.asm
@@ -72,6 +84,8 @@ if(MSVC)
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/QgemvU8S8KernelAvx512Core.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/QgemmU8S8KernelAvx512Vnni.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/QgemvU8S8KernelAvx512Vnni.asm
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/QgemmU8S8KernelAvxVnni.asm
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/QgemvU8S8KernelAvxVnni.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/QgemmU8U8KernelAvx2.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/QgemmU8U8KernelAvx512Core.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/DgemmKernelSse2.asm
@@ -110,6 +124,15 @@ if(MSVC)
     )
   endif()
 else()
+  if (CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")
+    set(ARM64 TRUE)
+  elseif (CMAKE_OSX_ARCHITECTURES STREQUAL "arm")
+    set(ARM TRUE)
+  elseif (CMAKE_OSX_ARCHITECTURES STREQUAL "x86_64")
+    set(X86_64 TRUE)
+  elseif (CMAKE_OSX_ARCHITECTURES STREQUAL "i386")
+    set(X86 TRUE)
+  endif()
   if (CMAKE_SYSTEM_NAME STREQUAL "Android")
     if (CMAKE_ANDROID_ARCH_ABI STREQUAL "armeabi-v7a")
       set(ARM TRUE)
@@ -122,22 +145,15 @@ else()
     endif()
   elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "iOSCross")
     set(IOS TRUE)
-    if (CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")
-      set(ARM64 TRUE)
-    elseif (CMAKE_OSX_ARCHITECTURES STREQUAL "arm")
-      set(ARM TRUE)
-    elseif (CMAKE_OSX_ARCHITECTURES STREQUAL "x86_64")
-      set(X86_64 TRUE)
-    elseif (CMAKE_OSX_ARCHITECTURES STREQUAL "i386")
-      set(X86 TRUE)
-    endif()
   else()
     execute_process(
       COMMAND ${CMAKE_C_COMPILER} -dumpmachine
       OUTPUT_VARIABLE dumpmachine_output
       ERROR_QUIET
     )
-    if(dumpmachine_output MATCHES "^arm.*")
+    if(dumpmachine_output MATCHES "^arm64.*")
+      set(ARM64 TRUE)
+    elseif(dumpmachine_output MATCHES "^arm.*")
       set(ARM TRUE)
     elseif(dumpmachine_output MATCHES "^aarch64.*")
       set(ARM64 TRUE)
@@ -151,14 +167,20 @@ else()
   endif()
 
   if(ARM)
+    enable_language(ASM)
+
+    set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -mfpu=neon")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mfpu=neon")
 
     set(mlas_platform_srcs
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/aarch32/QgemmU8X8KernelNeon.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm/sgemmc.cpp
     )
   elseif(ARM64)
     enable_language(ASM)
+
     set(mlas_platform_srcs
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/aarch64/QgemmU8X8KernelNeon.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/aarch64/SgemmKernelNeon.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/aarch64/SgemvKernelNeon.S
     )
@@ -168,6 +190,7 @@ else()
     )
   elseif(X86)
     enable_language(ASM)
+
     set(mlas_platform_srcs_sse2
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86/SgemmKernelSse2.S
     )
@@ -225,6 +248,8 @@ else()
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemmU8S8KernelAvx2.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemvU8S8KernelAvx2.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemmU8U8KernelAvx2.S
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemmU8S8KernelAvxVnni.S
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemvU8S8KernelAvxVnni.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/DgemmKernelFma3.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SgemmKernelFma3.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SconvKernelFma3.S
@@ -297,6 +322,7 @@ else()
     endif()
 
     set(mlas_platform_srcs
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/dgemm.cpp
       ${mlas_platform_srcs_sse2}
       ${mlas_platform_srcs_avx}
       ${mlas_platform_srcs_avx2}

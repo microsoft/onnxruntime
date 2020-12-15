@@ -12,6 +12,8 @@
   void operator=(const TypeName&) = delete; \
   static void operator delete(void*) = delete;
 
+struct Ort_OpenVINO_FactoryParams;
+
 namespace ONNX_NAMESPACE {
 using namespace onnxruntime;
 
@@ -25,49 +27,12 @@ using DataType = const std::string*;
 
 namespace onnxruntime {
 
-// onnx Protobuf types (all of these are actually just Provider_<type> -> ONNX_NAMESPACE::<type>)
-#ifndef PROVIDER_BRIDGE_ORT
-struct Provider_AttributeProto;
-struct Provider_GraphProto;
-struct Provider_ModelProto;
-struct Provider_NodeProto;
-struct Provider_TensorProto;
-struct Provider_TensorProtos;
-struct Provider_TensorShapeProto_Dimension;
-struct Provider_TensorShapeProto_Dimensions;
-struct Provider_TensorShapeProto;
-struct Provider_TypeProto_Tensor;
-struct Provider_TypeProto;
-struct Provider_ValueInfoProto;
-struct Provider_ValueInfoProtos;
-#endif
-
-// OnnxRuntime Types (all of these are actually just Provider_<type> -> <type>)
-#ifndef PROVIDER_BRIDGE_ORT
-struct Provider_ComputeCapability;
-struct Provider_DataTransferManager;
-struct Provider_IDataTransfer;
-struct Provider_IndexedSubGraph;
-struct Provider_IndexedSubGraph_MetaDef;
-struct Provider_KernelDef;
-struct Provider_KernelDefBuilder;
-struct Provider_KernelRegistry;
-struct Provider_Function;
-struct Provider_Graph;
-struct Provider_GraphViewer;
-struct Provider_Model;
-struct Provider_Node;
-struct Provider_NodeArg;
-struct Provider_NodeAttributes;
-struct Provider_OpKernelContext;
-struct Provider_OpKernelInfo;
-struct Provider_Tensor;
-#endif
-
+// These types don't directly map to internal types
 struct Provider_IExecutionProvider;
 struct Provider_KernelCreateInfo;
 struct Provider_OpKernel_Base;
 struct ProviderHost;
+
 class TensorShape;
 
 template <typename T, typename TResult>
@@ -111,62 +76,6 @@ struct Provider_IExecutionProviderFactory {
 class DataTypeImpl;
 using MLDataType = const DataTypeImpl*;
 
-template <typename T>
-using Provider_IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
-
-struct Provider_IAllocator {
-  Provider_IAllocator(const OrtMemoryInfo& info) : memory_info_{info} {}
-  virtual ~Provider_IAllocator() {}
-
-  virtual void* Alloc(size_t size) = 0;
-  virtual void Free(void* p) = 0;
-  const OrtMemoryInfo& Info() const { return memory_info_; };
-
-  virtual bool IsProviderInterface() const { return true; }
-
-  template <typename T>
-  static Provider_IAllocatorUniquePtr<T> MakeUniquePtr(std::shared_ptr<Provider_IAllocator> allocator, size_t count_or_bytes) {
-    if (allocator == nullptr) return nullptr;
-
-    size_t alloc_size = count_or_bytes;
-
-    // if T is not void, 'count_or_bytes' == number of items so allow for that
-    if (!std::is_void<T>::value) {
-      // TODO: Use internal implementation to get correct sizes
-      return nullptr;
-    }
-    return Provider_IAllocatorUniquePtr<T>{
-        static_cast<T*>(allocator->Alloc(alloc_size)),  // allocate
-        [=](T* ptr) { allocator->Free(ptr); }};         // capture IAllocator so it's always valid, and use as deleter
-  }
-
-  const OrtMemoryInfo memory_info_;
-
-  Provider_IAllocator(const Provider_IAllocator&) = delete;
-  void operator=(const Provider_IAllocator&) = delete;
-};
-
-using Provider_AllocatorPtr = std::shared_ptr<Provider_IAllocator>;
-using Provider_AllocatorFactory = std::function<std::unique_ptr<Provider_IAllocator>(int)>;
-
-using DeviceId = int16_t;
-struct Provider_AllocatorCreationInfo {
-  Provider_AllocatorCreationInfo(Provider_AllocatorFactory device_alloc_factory0,
-                                 DeviceId device_id0 = 0,
-                                 bool use_arena0 = true,
-                                 OrtArenaCfg arena_cfg0 = {0, -1, -1, -1})
-      : factory(device_alloc_factory0),
-        device_id(device_id0),
-        use_arena(use_arena0),
-        arena_cfg(arena_cfg0) {
-  }
-
-  Provider_AllocatorFactory factory;
-  DeviceId device_id;
-  bool use_arena;
-  OrtArenaCfg arena_cfg;
-};
-
 struct Provider_OpKernel {
   Provider_OpKernel() {}
   virtual ~Provider_OpKernel() = default;
@@ -180,7 +89,7 @@ struct Provider_OpKernel {
 using NodeIndex = size_t;
 using Provider_NodeArgInfo = Provider_ValueInfoProto;
 // We can't just reinterpret_cast this one, since it's an unordered_map of object BY VALUE (can't do anything by value on the real types)
-//using Provider_NodeAttributes = std::unordered_map<std::string, ONNX_NAMESPACE::Provider_AttributeProto_Copyable>;
+// using Provider_NodeAttributes = std::unordered_map<std::string, ONNX_NAMESPACE::Provider_AttributeProto_Copyable>;
 
 using Provider_InitializedTensorSet = std::unordered_map<std::string, const Provider_TensorProto*>;
 
@@ -216,10 +125,6 @@ struct NodeComputeInfo {
 };
 #endif
 
-namespace logging {
-class Logger;
-}
-
 // Provides the base class implementations, since Provider_IExecutionProvider is just an interface. This is to fake the C++ inheritance used by internal IExecutionProvider implementations
 struct Provider_IExecutionProvider_Router {
   virtual ~Provider_IExecutionProvider_Router() {}
@@ -229,9 +134,9 @@ struct Provider_IExecutionProvider_Router {
   virtual std::vector<std::unique_ptr<Provider_ComputeCapability>> Provider_GetCapability(const onnxruntime::Provider_GraphViewer& graph,
                                                                                           const std::vector<const Provider_KernelRegistry*>& kernel_registries) const = 0;
 
-  virtual Provider_AllocatorPtr Provider_GetAllocator(int id, OrtMemType mem_type) const = 0;
+  virtual AllocatorPtr Provider_GetAllocator(int id, OrtMemType mem_type) const = 0;
   virtual std::unique_ptr<Provider_IDataTransfer> Provider_GetDataTransfer() const = 0;
-  virtual void Provider_InsertAllocator(Provider_AllocatorPtr allocator) = 0;
+  virtual void Provider_InsertAllocator(AllocatorPtr allocator) = 0;
   virtual const logging::Logger* GetLogger() const = 0;
 
   void operator=(const Provider_IExecutionProvider_Router&) = delete;
@@ -250,10 +155,12 @@ struct Provider_IExecutionProvider {
 
   virtual common::Status Provider_Compile(const std::vector<Provider_Node*>& fused_nodes, std::vector<NodeComputeInfo>& node_compute_funcs) = 0;
 
-  virtual Provider_AllocatorPtr Provider_GetAllocator(int id, OrtMemType mem_type) const { return p_->Provider_GetAllocator(id, mem_type); }
-  virtual void Provider_InsertAllocator(Provider_AllocatorPtr allocator) { return p_->Provider_InsertAllocator(allocator); }
+  virtual AllocatorPtr Provider_GetAllocator(int id, OrtMemType mem_type) const { return p_->Provider_GetAllocator(id, mem_type); }
+  virtual void Provider_InsertAllocator(AllocatorPtr allocator) { return p_->Provider_InsertAllocator(allocator); }
 
   virtual const logging::Logger* GetLogger() const { return p_->GetLogger(); }
+
+  virtual const void* GetExecutionHandle() const noexcept { return nullptr; }
 
   Provider_IExecutionProvider_Router* p_;
 
@@ -261,7 +168,14 @@ struct Provider_IExecutionProvider {
 };
 
 struct Provider {
-  virtual std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory(int device_id) = 0;
+  // Takes a pointer to a provider specific structure to create the factory. For example, with OpenVINO it is a pointer to an OrtOpenVINOProviderOptions structure
+  virtual std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory(const void* /*provider_options*/) { return nullptr; }
+
+  // Old simple device_id API to create provider factories, currently used by DNNL And TensorRT
+  virtual std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory(int /*device_id*/) { return nullptr; }
+
+  virtual const void* GetInfo() { return nullptr; }  // Returns a provider specific information interface if it exists
+  virtual void Shutdown() = 0;
 };
 
 // There are two ways to route a function, one is a virtual method and the other is a function pointer (or pointer to member function)
@@ -270,15 +184,15 @@ struct Provider {
 // calls the virtual function (which will lead to infinite recursion in the bridge). There is no known way to get the non virtual member
 // function pointer implementation in this case.
 struct ProviderHost {
-  virtual Provider_AllocatorPtr CreateAllocator(const Provider_AllocatorCreationInfo& info) = 0;
+  virtual AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) = 0;
 
   virtual logging::Logger* LoggingManager_GetDefaultLogger() = 0;
 
-  virtual std::unique_ptr<Provider_IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info) = 0;
+  virtual std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info) = 0;
 
 #ifdef USE_TENSORRT
-  virtual std::unique_ptr<Provider_IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) = 0;
-  virtual std::unique_ptr<Provider_IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) = 0;
+  virtual std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) = 0;
+  virtual std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) = 0;
   virtual std::unique_ptr<Provider_IDataTransfer> CreateGPUDataTransfer() = 0;
 
   virtual void cuda__Impl_Cast(const int64_t* input_data, int32_t* output_data, size_t count) = 0;
@@ -300,17 +214,54 @@ struct ProviderHost {
   virtual void* HeapAllocate(size_t size) = 0;
   virtual void HeapFree(void*) = 0;
 
+  virtual AutoPadType StringToAutoPadType(const std::string& str) = 0;
+
   virtual void LogRuntimeError(uint32_t session_id, const common::Status& status,
                                const char* file, const char* function, uint32_t line) = 0;
 
-  virtual bool CPU_HasAVX2() = 0;
-  virtual bool CPU_HasAVX512f() = 0;
+  virtual std::vector<std::string> GetStackTrace() = 0;
+
+  // IAllocator
+  virtual bool IAllocator__CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) = 0;
+
+  // Status
+  virtual std::string Status__ToString(const Status* p) = 0;
+
+  // TensorShape
+  virtual int64_t TensorShape__SizeHelper(const TensorShape* p, size_t start, size_t end) = 0;
+  virtual std::string TensorShape__ToString(const TensorShape* p) = 0;
+
+  // CPUIDInfo
+  virtual const CPUIDInfo& CPUIDInfo__GetCPUIDInfo() = 0;
+  virtual bool CPUIDInfo__HasAVX2(const CPUIDInfo* p) = 0;
+  virtual bool CPUIDInfo__HasAVX512f(const CPUIDInfo* p) = 0;
+
+  // logging::Logger
+  virtual bool logging__Logger__OutputIsEnabled(const logging::Logger* p, logging::Severity severity, logging::DataType data_type) = 0;
+
+  // logging::LoggingManager
+  virtual const logging::Logger& logging__LoggingManager__DefaultLogger() = 0;
+
+  // logging::Capture
+  virtual std::unique_ptr<logging::Capture> logging__Capture__construct(const logging::Logger& logger, logging::Severity severity, const char* category, logging::DataType dataType, const CodeLocation& location) = 0;
+  virtual void logging__Capture__operator_delete(logging::Capture* p) noexcept = 0;
+  virtual std::ostream& logging__Capture__Stream(logging::Capture* p) noexcept = 0;
+
+  // Utils::DataTypeUtils
+  virtual const std::string* Utils__DataTypeUtils__ToType(const Provider_TypeProto& type_proto) = 0;
+
+  // Provider_int64s
+  virtual int Provider_int64s__size(const Provider_int64s* p) = 0;
+  virtual const int64_t& Provider_int64s__Get(const Provider_int64s* p, int index) = 0;
 
   // Provider_TypeProto_Tensor
+  virtual const Provider_TensorShapeProto& Provider_TypeProto_Tensor__shape(const Provider_TypeProto_Tensor* p) = 0;
+  virtual Provider_TensorShapeProto* Provider_TypeProto_Tensor__mutable_shape(Provider_TypeProto_Tensor* p) = 0;
   virtual int32_t Provider_TypeProto_Tensor__elem_type(const Provider_TypeProto_Tensor* p) = 0;
 
   // Provider_TypeProto
   virtual const Provider_TypeProto_Tensor& Provider_TypeProto__tensor_type(const Provider_TypeProto* p) = 0;
+  virtual Provider_TypeProto_Tensor* Provider_TypeProto__mutable_tensor_type(Provider_TypeProto* p) = 0;
 
   // Provider_AttributeProto
   virtual std::unique_ptr<Provider_AttributeProto> Provider_AttributeProto__construct() = 0;
@@ -319,7 +270,10 @@ struct ProviderHost {
 
   virtual ONNX_NAMESPACE::AttributeProto_AttributeType Provider_AttributeProto__type(const Provider_AttributeProto* p) = 0;
   virtual int Provider_AttributeProto__ints_size(const Provider_AttributeProto* p) = 0;
+  virtual int Provider_AttributeProto__floats_size(const Provider_AttributeProto* p) = 0;
   virtual int64_t Provider_AttributeProto__ints(const Provider_AttributeProto* p, int i) = 0;
+  virtual float Provider_AttributeProto__floats(const Provider_AttributeProto* p, int i) = 0;
+  virtual const Provider_int64s& Provider_AttributeProto__ints(const Provider_AttributeProto* p) = 0;
   virtual int64_t Provider_AttributeProto__i(const Provider_AttributeProto* p) = 0;
   virtual float Provider_AttributeProto__f(const Provider_AttributeProto* p) = 0;
   virtual void Provider_AttributeProto__set_s(Provider_AttributeProto* p, const ::std::string& value) = 0;
@@ -332,9 +286,13 @@ struct ProviderHost {
   virtual void Provider_GraphProto__operator_delete(Provider_GraphProto* p) = 0;
   virtual void Provider_GraphProto__operator_assign(Provider_GraphProto* p, const Provider_GraphProto& v) = 0;
 
+  virtual const Provider_ValueInfoProto& Provider_GraphProto__input(const Provider_GraphProto* p, int index) = 0;
   virtual Provider_ValueInfoProtos* Provider_GraphProto__mutable_input(Provider_GraphProto* p) = 0;
+  virtual Provider_ValueInfoProto* Provider_GraphProto__mutable_input(Provider_GraphProto* p, int index) = 0;
+  virtual int Provider_GraphProto__input_size(const Provider_GraphProto* p) = 0;
 
   virtual const Provider_ValueInfoProtos& Provider_GraphProto__output(const Provider_GraphProto* p) = 0;
+  virtual const Provider_ValueInfoProto& Provider_GraphProto__output(const Provider_GraphProto* p, int index) = 0;
   virtual Provider_ValueInfoProtos* Provider_GraphProto__mutable_output(Provider_GraphProto* p) = 0;
 
   virtual Provider_ValueInfoProtos* Provider_GraphProto__mutable_value_info(Provider_GraphProto* p) = 0;
@@ -342,10 +300,13 @@ struct ProviderHost {
   virtual Provider_NodeProto* Provider_GraphProto__add_node(Provider_GraphProto* p) = 0;
 
   // Provider_ModelProto
+  virtual std::unique_ptr<Provider_ModelProto> Provider_ModelProto__construct() = 0;
   virtual void Provider_ModelProto__operator_delete(Provider_ModelProto* p) = 0;
 
   virtual bool Provider_ModelProto__SerializeToString(const Provider_ModelProto* p, std::string& string) = 0;
   virtual bool Provider_ModelProto__SerializeToOstream(const Provider_ModelProto* p, std::ostream& output) = 0;
+  virtual bool Provider_ModelProto__ParseFromString(Provider_ModelProto* p, const std::string& data) = 0;
+  virtual std::string Provider_ModelProto__SerializeAsString(const Provider_ModelProto* p) = 0;
 
   virtual const Provider_GraphProto& Provider_ModelProto__graph(const Provider_ModelProto* p) = 0;
   virtual Provider_GraphProto* Provider_ModelProto__mutable_graph(Provider_ModelProto* p) = 0;
@@ -355,12 +316,18 @@ struct ProviderHost {
   // Provider_TensorProto
   virtual void Provider_TensorProto__operator_delete(Provider_TensorProto* p) = 0;
   virtual void Provider_TensorProto__operator_assign(Provider_TensorProto* p, const Provider_TensorProto& v) = 0;
+  virtual bool Provider_TensorProto__has_data_location(const Provider_TensorProto* p) = 0;
+  virtual int Provider_TensorProto__data_location(const Provider_TensorProto* p) = 0;
 
   // Provider_TensorProtos
   virtual Provider_TensorProto* Provider_TensorProtos__Add(Provider_TensorProtos* p) = 0;
 
   // Provider_TensorShapeProto_Dimension
+  virtual int Provider_TensorShapeProto_Dimension__value_case(const Provider_TensorShapeProto_Dimension* p) = 0;
   virtual const std::string& Provider_TensorShapeProto_Dimension__dim_param(const Provider_TensorShapeProto_Dimension* p) = 0;
+  virtual int64_t Provider_TensorShapeProto_Dimension__dim_value(const Provider_TensorShapeProto_Dimension* p) = 0;
+  virtual void Provider_TensorShapeProto_Dimension__set_dim_value(Provider_TensorShapeProto_Dimension* p, int64_t value) = 0;
+  virtual void Provider_TensorShapeProto_Dimension__clear_dim_value(Provider_TensorShapeProto_Dimension* p) = 0;
 
   // Provider_TensorShapeProto_Dimensions
   virtual std::unique_ptr<Provider_TensorShapeProto_Dimension_Iterator> Provider_TensorShapeProto_Dimensions__begin(const Provider_TensorShapeProto_Dimensions* p) = 0;
@@ -369,10 +336,15 @@ struct ProviderHost {
   // Provider_TensorShapeProto
   virtual int Provider_TensorShapeProto__dim_size(const Provider_TensorShapeProto* p) = 0;
   virtual const Provider_TensorShapeProto_Dimensions& Provider_TensorShapeProto__dim(const Provider_TensorShapeProto* p) = 0;
+  virtual const Provider_TensorShapeProto_Dimension& Provider_TensorShapeProto__dim(const Provider_TensorShapeProto* p, int index) = 0;
+  virtual Provider_TensorShapeProto_Dimension* Provider_TensorShapeProto__mutable_dim(Provider_TensorShapeProto* p, int index) = 0;
+  virtual void Provider_TensorShapeProto__clear_dim(Provider_TensorShapeProto* p) = 0;
+  virtual Provider_TensorShapeProto_Dimension* Provider_TensorShapeProto__add_dim(Provider_TensorShapeProto* p) = 0;
 
   // Provider_ValueInfoProto
   virtual void Provider_ValueInfoProto__operator_assign(Provider_ValueInfoProto* p, const Provider_ValueInfoProto& v) = 0;
   virtual const Provider_TypeProto& Provider_ValueInfoProto__type(const Provider_ValueInfoProto* p) = 0;
+  virtual Provider_TypeProto* Provider_ValueInfoProto__mutable_type(Provider_ValueInfoProto* p) = 0;
 
   // Provider_ValueInfoProtos
   virtual Provider_ValueInfoProto* Provider_ValueInfoProtos__Add(Provider_ValueInfoProtos* p) = 0;
@@ -462,8 +434,13 @@ struct ProviderHost {
   virtual std::unique_ptr<Provider_Node__NodeIterator> Provider_Node__InputNodesBegin(const Provider_Node* p) noexcept = 0;
   virtual std::unique_ptr<Provider_Node__NodeIterator> Provider_Node__InputNodesEnd(const Provider_Node* p) noexcept = 0;
 
+  virtual std::unique_ptr<Provider_Node__NodeIterator> Provider_Node__OutputNodesBegin(const Provider_Node* p) noexcept = 0;
+  virtual std::unique_ptr<Provider_Node__NodeIterator> Provider_Node__OutputNodesEnd(const Provider_Node* p) noexcept = 0;
+
   virtual std::unique_ptr<Provider_Node__EdgeIterator> Provider_Node__OutputEdgesBegin(const Provider_Node* p) noexcept = 0;
   virtual std::unique_ptr<Provider_Node__EdgeIterator> Provider_Node__OutputEdgesEnd(const Provider_Node* p) noexcept = 0;
+
+  virtual void Provider_Node__ForEachDef(const Provider_Node* p, std::function<void(const Provider_NodeArg&, bool is_input)> func, bool include_missing_optional_defs) = 0;
 
   // Provider_NodeArg
   virtual const std::string& Provider_NodeArg__Name(const Provider_NodeArg* p) noexcept = 0;
@@ -480,7 +457,9 @@ struct ProviderHost {
 
   virtual size_t Provider_NodeAttributes__size(const Provider_NodeAttributes* p) = 0;
   virtual void Provider_NodeAttributes__clear(Provider_NodeAttributes* p) noexcept = 0;
+  virtual size_t Provider_NodeAttributes__count(const Provider_NodeAttributes* p, const std::string& keyval) = 0;
   virtual Provider_AttributeProto& Provider_NodeAttributes__operator_array(Provider_NodeAttributes* p, const std::string& string) = 0;
+  virtual const Provider_AttributeProto& Provider_NodeAttributes__at(const Provider_NodeAttributes* p, const std::string& string) = 0;
 
   virtual std::unique_ptr<Provider_NodeAttributes_Iterator> Provider_NodeAttributes__begin(const Provider_NodeAttributes* p) = 0;
   virtual std::unique_ptr<Provider_NodeAttributes_Iterator> Provider_NodeAttributes__end(const Provider_NodeAttributes* p) = 0;
@@ -518,6 +497,7 @@ struct ProviderHost {
   virtual const Provider_NodeArg* Provider_GraphViewer__GetNodeArg(const Provider_GraphViewer* p, const std::string& name) = 0;
 
   virtual bool Provider_GraphViewer__IsSubgraph(const Provider_GraphViewer* p) = 0;
+  virtual bool Provider_GraphViewer__IsConstantInitializer(const Provider_GraphViewer* p, const std::string& name, bool check_outer_scope) = 0;
   virtual int Provider_GraphViewer__NumberOfNodes(const Provider_GraphViewer* p) noexcept = 0;
   virtual int Provider_GraphViewer__MaxNodeIndex(const Provider_GraphViewer* p) noexcept = 0;
 
@@ -530,6 +510,7 @@ struct ProviderHost {
   virtual const std::unordered_map<std::string, int>& Provider_GraphViewer__DomainToVersionMap(const Provider_GraphViewer* p) = 0;
 
   virtual const std::vector<NodeIndex>& Provider_GraphViewer__GetNodesInTopologicalOrder(const Provider_GraphViewer* p) = 0;
+  virtual const std::vector<const Provider_NodeArg*>& Provider_GraphViewer__GetInputsIncludingInitializers(const Provider_GraphViewer* p) noexcept = 0;
 
   // Provider_OpKernel_Base
   virtual const Provider_OpKernelInfo& Provider_OpKernel_Base__GetInfo(const Provider_OpKernel_Base* p) = 0;
@@ -561,7 +542,62 @@ extern ProviderHost* g_host;
 
 #ifndef PROVIDER_BRIDGE_ORT
 
+struct CPUIDInfo {
+  static const CPUIDInfo& GetCPUIDInfo() { return g_host->CPUIDInfo__GetCPUIDInfo(); }
+
+  bool HasAVX2() const { return g_host->CPUIDInfo__HasAVX2(this); }
+  bool HasAVX512f() const { return g_host->CPUIDInfo__HasAVX512f(this); }
+
+  PROVIDER_DISALLOW_ALL(CPUIDInfo)
+};
+
+namespace logging {
+
+struct Logger {
+  bool OutputIsEnabled(Severity severity, DataType data_type) const noexcept { return g_host->logging__Logger__OutputIsEnabled(this, severity, data_type); }
+
+  PROVIDER_DISALLOW_ALL(Logger)
+};
+
+struct LoggingManager {
+  static const Logger& DefaultLogger() { return g_host->logging__LoggingManager__DefaultLogger(); }
+
+  PROVIDER_DISALLOW_ALL(LoggingManager)
+};
+
+struct Capture {
+  static std::unique_ptr<Capture> Create(const Logger& logger, logging::Severity severity, const char* category,
+                                         logging::DataType dataType, const CodeLocation& location) { return g_host->logging__Capture__construct(logger, severity, category, dataType, location); }
+  static void operator delete(void* p) { g_host->logging__Capture__operator_delete(reinterpret_cast<Capture*>(p)); }
+
+  std::ostream& Stream() noexcept { return g_host->logging__Capture__Stream(this); }
+
+  Capture() = delete;
+  Capture(const Capture&) = delete;
+  void operator=(const Capture&) = delete;
+};
+}  // namespace logging
+
+namespace Utils {
+
+struct DataTypeUtils {
+  static const std::string* ToType(const Provider_TypeProto& type_proto) { return g_host->Utils__DataTypeUtils__ToType(type_proto); }
+
+  PROVIDER_DISALLOW_ALL(DataTypeUtils)
+};
+
+}  // namespace Utils
+
+struct Provider_int64s {
+  int size() const { return g_host->Provider_int64s__size(this); }
+  const int64_t& Get(int index) const { return g_host->Provider_int64s__Get(this, index); }
+
+  PROVIDER_DISALLOW_ALL(Provider_int64s)
+};
+
 struct Provider_TypeProto_Tensor {
+  const Provider_TensorShapeProto& shape() const { return g_host->Provider_TypeProto_Tensor__shape(this); }
+  Provider_TensorShapeProto* mutable_shape() { return g_host->Provider_TypeProto_Tensor__mutable_shape(this); }
   int32_t elem_type() const { return g_host->Provider_TypeProto_Tensor__elem_type(this); }
 
   PROVIDER_DISALLOW_ALL(Provider_TypeProto_Tensor)
@@ -569,6 +605,7 @@ struct Provider_TypeProto_Tensor {
 
 struct Provider_TypeProto {
   const Provider_TypeProto_Tensor& tensor_type() const { return g_host->Provider_TypeProto__tensor_type(this); }
+  Provider_TypeProto_Tensor* mutable_tensor_type() { return g_host->Provider_TypeProto__mutable_tensor_type(this); }
 
   PROVIDER_DISALLOW_ALL(Provider_TypeProto)
 };
@@ -580,7 +617,10 @@ struct Provider_AttributeProto {
 
   ONNX_NAMESPACE::AttributeProto_AttributeType type() const { return g_host->Provider_AttributeProto__type(this); }
   int ints_size() const { return g_host->Provider_AttributeProto__ints_size(this); }
+  int floats_size() const { return g_host->Provider_AttributeProto__floats_size(this); }
   int64_t ints(int i) const { return g_host->Provider_AttributeProto__ints(this, i); }
+  float floats(int i) const { return g_host->Provider_AttributeProto__floats(this, i); }
+  const Provider_int64s& ints() const { return g_host->Provider_AttributeProto__ints(this); }
   int64_t i() const { return g_host->Provider_AttributeProto__i(this); }
   float f() const { return g_host->Provider_AttributeProto__f(this); }
   void set_s(const ::std::string& value) { return g_host->Provider_AttributeProto__set_s(this, value); }
@@ -597,9 +637,13 @@ struct Provider_GraphProto {
   static void operator delete(void* p) { g_host->Provider_GraphProto__operator_delete(reinterpret_cast<Provider_GraphProto*>(p)); }
   void operator=(const Provider_GraphProto& v) { return g_host->Provider_GraphProto__operator_assign(this, v); }
 
+  const Provider_ValueInfoProto& input(int index) const { return g_host->Provider_GraphProto__input(this, index); }
   Provider_ValueInfoProtos* mutable_input() { return g_host->Provider_GraphProto__mutable_input(this); }
+  Provider_ValueInfoProto* mutable_input(int index) { return g_host->Provider_GraphProto__mutable_input(this, index); }
+  int input_size() const { return g_host->Provider_GraphProto__input_size(this); }
 
   const Provider_ValueInfoProtos& output() const { return g_host->Provider_GraphProto__output(this); }
+  const Provider_ValueInfoProto& output(int index) const { return g_host->Provider_GraphProto__output(this, index); }
   Provider_ValueInfoProtos* mutable_output() { return g_host->Provider_GraphProto__mutable_output(this); }
 
   Provider_ValueInfoProtos* mutable_value_info() { return g_host->Provider_GraphProto__mutable_value_info(this); }
@@ -611,10 +655,13 @@ struct Provider_GraphProto {
 };
 
 struct Provider_ModelProto {
+  static std::unique_ptr<Provider_ModelProto> Create() { return g_host->Provider_ModelProto__construct(); }
   static void operator delete(void* p) { g_host->Provider_ModelProto__operator_delete(reinterpret_cast<Provider_ModelProto*>(p)); }
 
   bool SerializeToString(std::string& string) const { return g_host->Provider_ModelProto__SerializeToString(this, string); }
   bool SerializeToOstream(std::ostream& output) const { return g_host->Provider_ModelProto__SerializeToOstream(this, output); }
+  bool ParseFromString(const std::string& data) { return g_host->Provider_ModelProto__ParseFromString(this, data); }
+  std::string SerializeAsString() const { return g_host->Provider_ModelProto__SerializeAsString(this); }
 
   const Provider_GraphProto& graph() const { return g_host->Provider_ModelProto__graph(this); }
   Provider_GraphProto* mutable_graph() { return g_host->Provider_ModelProto__mutable_graph(this); }
@@ -630,6 +677,9 @@ struct Provider_TensorProto {
   static void operator delete(void* p) { g_host->Provider_TensorProto__operator_delete(reinterpret_cast<Provider_TensorProto*>(p)); }
   void operator=(const Provider_TensorProto& v) { g_host->Provider_TensorProto__operator_assign(this, v); }
 
+  bool has_data_location() const { return g_host->Provider_TensorProto__has_data_location(this); }
+  ONNX_NAMESPACE::TensorProto_DataLocation data_location() const { return ONNX_NAMESPACE::TensorProto_DataLocation(g_host->Provider_TensorProto__data_location(this)); }
+
   Provider_TensorProto() = delete;
   Provider_TensorProto(const Provider_TensorProto&) = delete;
 };
@@ -641,7 +691,17 @@ struct Provider_TensorProtos {
 };
 
 struct Provider_TensorShapeProto_Dimension {
+  enum ValueCase {
+    kDimValue = 1,
+    kDimParam = 2,
+    VALUE_NOT_SET = 0,
+  };
+
+  ValueCase value_case() const { return ValueCase(g_host->Provider_TensorShapeProto_Dimension__value_case(this)); }
   const std::string& dim_param() const { return g_host->Provider_TensorShapeProto_Dimension__dim_param(this); }
+  int64_t dim_value() const { return g_host->Provider_TensorShapeProto_Dimension__dim_value(this); }
+  void set_dim_value(int64_t value) { return g_host->Provider_TensorShapeProto_Dimension__set_dim_value(this, value); }
+  void clear_dim_value() { return g_host->Provider_TensorShapeProto_Dimension__clear_dim_value(this); }
 
   PROVIDER_DISALLOW_ALL(Provider_TensorShapeProto_Dimension)
 };
@@ -656,12 +716,18 @@ struct Provider_TensorShapeProto_Dimensions {
 struct Provider_TensorShapeProto {
   int dim_size() const { return g_host->Provider_TensorShapeProto__dim_size(this); }
   const Provider_TensorShapeProto_Dimensions& dim() const { return g_host->Provider_TensorShapeProto__dim(this); }
+  const Provider_TensorShapeProto_Dimension& dim(int index) const { return g_host->Provider_TensorShapeProto__dim(this, index); }
+  Provider_TensorShapeProto_Dimension* mutable_dim(int index) { return g_host->Provider_TensorShapeProto__mutable_dim(this, index); }
+  void clear_dim() { return g_host->Provider_TensorShapeProto__clear_dim(this); }
+  Provider_TensorShapeProto_Dimension* add_dim() { return g_host->Provider_TensorShapeProto__add_dim(this); }
 
   PROVIDER_DISALLOW_ALL(Provider_TensorShapeProto)
 };
 
 struct Provider_ValueInfoProto {
   const Provider_TypeProto& type() const { return g_host->Provider_ValueInfoProto__type(this); }
+  Provider_TypeProto* mutable_type() { return g_host->Provider_ValueInfoProto__mutable_type(this); }
+
   void operator=(const Provider_ValueInfoProto& v) { g_host->Provider_ValueInfoProto__operator_assign(this, v); }
 
   Provider_ValueInfoProto() = delete;
@@ -871,6 +937,9 @@ struct Provider_Node {
   NodeConstIterator InputNodesBegin() const noexcept { return g_host->Provider_Node__InputNodesBegin(this); }
   NodeConstIterator InputNodesEnd() const noexcept { return g_host->Provider_Node__InputNodesEnd(this); }
 
+  NodeConstIterator OutputNodesBegin() const noexcept { return g_host->Provider_Node__OutputNodesBegin(this); }
+  NodeConstIterator OutputNodesEnd() const noexcept { return g_host->Provider_Node__OutputNodesEnd(this); }
+
   struct EdgeConstIterator {
     EdgeConstIterator(std::unique_ptr<Provider_Node__EdgeIterator> p) : impl_{std::move(p)} {}
 
@@ -886,6 +955,8 @@ struct Provider_Node {
 
   EdgeConstIterator OutputEdgesBegin() const noexcept { return g_host->Provider_Node__OutputEdgesBegin(this); }
   EdgeConstIterator OutputEdgesEnd() const noexcept { return g_host->Provider_Node__OutputEdgesEnd(this); }
+
+  void ForEachDef(std::function<void(const Provider_NodeArg&, bool is_input)> func, bool include_missing_optional_defs = false) const { g_host->Provider_Node__ForEachDef(this, func, std::move(include_missing_optional_defs)); }
 
   PROVIDER_DISALLOW_ALL(Provider_Node)
 };
@@ -908,7 +979,9 @@ struct Provider_NodeAttributes {
 
   size_t size() const { return g_host->Provider_NodeAttributes__size(this); }
   void clear() noexcept { g_host->Provider_NodeAttributes__clear(this); }
+  size_t count(const std::string& keyval) const { return g_host->Provider_NodeAttributes__count(this, keyval); }
   Provider_AttributeProto& operator[](const std::string& string) { return g_host->Provider_NodeAttributes__operator_array(this, string); }
+  const Provider_AttributeProto& at(const std::string& string) const { return g_host->Provider_NodeAttributes__at(this, string); }
 
   IteratorHolder<Provider_NodeAttributes_Iterator, std::pair<std::string&, Provider_AttributeProto&>> begin() const { return g_host->Provider_NodeAttributes__begin(this); }
   IteratorHolder<Provider_NodeAttributes_Iterator, std::pair<std::string&, Provider_AttributeProto&>> end() const { return g_host->Provider_NodeAttributes__end(this); }
@@ -962,6 +1035,7 @@ struct Provider_GraphViewer {
   const Provider_NodeArg* GetNodeArg(const std::string& name) const { return g_host->Provider_GraphViewer__GetNodeArg(this, name); }
 
   bool IsSubgraph() const { return g_host->Provider_GraphViewer__IsSubgraph(this); }
+  bool IsConstantInitializer(const std::string& name, bool check_outer_scope) const { return g_host->Provider_GraphViewer__IsConstantInitializer(this, name, check_outer_scope); }
 
   int NumberOfNodes() const noexcept { return g_host->Provider_GraphViewer__NumberOfNodes(this); }
   int MaxNodeIndex() const noexcept { return g_host->Provider_GraphViewer__MaxNodeIndex(this); }
@@ -976,6 +1050,7 @@ struct Provider_GraphViewer {
   const std::unordered_map<std::string, int>& DomainToVersionMap() const noexcept { return g_host->Provider_GraphViewer__DomainToVersionMap(this); }
 
   const std::vector<NodeIndex>& GetNodesInTopologicalOrder() const { return g_host->Provider_GraphViewer__GetNodesInTopologicalOrder(this); }
+  const std::vector<const Provider_NodeArg*>& GetInputsIncludingInitializers() const noexcept { return g_host->Provider_GraphViewer__GetInputsIncludingInitializers(this); }
 
   Provider_GraphViewer() = delete;
   Provider_GraphViewer(const Provider_GraphViewer&) = delete;
@@ -1054,6 +1129,15 @@ inline float* Provider_Tensor::MutableData<float>() { return MutableData_float()
 
 template <>
 inline const float* Provider_Tensor::Data<float>() const { return Data_float(); }
+
+namespace utils {
+
+inline bool HasDimValue(const Provider_TensorShapeProto_Dimension& dim) {
+  return dim.value_case() == Provider_TensorShapeProto_Dimension::kDimValue;
+}
+
+}  // namespace utils
+
 #endif
 
 }  // namespace onnxruntime

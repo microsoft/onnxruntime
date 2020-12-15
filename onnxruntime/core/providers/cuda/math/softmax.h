@@ -4,21 +4,10 @@
 #pragma once
 
 #include "gsl/gsl"
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_kernel.h"
 
 namespace onnxruntime {
 namespace cuda {
-
-template <typename T>
-struct AccumulateType {};
-template <>
-struct AccumulateType<float> { using type = float; };
-template <>
-struct AccumulateType<MLFloat16> { using type = float; };
-template <>
-struct AccumulateType<double> { using type = double; };
-template <typename T>
-using AccType = typename AccumulateType<T>::type;
 
 template <typename T, bool is_log_softmax>
 Status SoftMaxComputeHelper(
@@ -35,8 +24,28 @@ template <typename T>
 class Softmax final : public CudaKernel {
  public:
   Softmax(const OpKernelInfo& info) : CudaKernel{info} {
-    info.GetAttrOrDefault("axis", &axis_, static_cast<int64_t>(1));
+    const auto& node = info.node();
+    opset_ = node.SinceVersion();
+
+    int64_t axis;
+    Status status = info.GetAttr<int64_t>("axis", &axis);
+
+    if (status.IsOK()) {
+      axis_ = gsl::narrow_cast<int>(axis);
+    } else {
+      if (opset_ < 13) {
+        axis_ = 1;  // opset-12 and below, the default axis value is 1
+      } else {
+        axis_ = -1;  // opset-13, the default axis value is -1
+      }
+    }
+
     log_softmax_ = info.GetKernelDef().OpName() == "LogSoftmax";
+
+    // We need to cast away the const as PerThreadCublasHandle() is currently a non-const method
+    // TODO: Clean up the CUDAExecutionProvider interface to avoid this
+    cuda_ep_ = const_cast<CUDAExecutionProvider*>(
+        static_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider()));
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -44,6 +53,11 @@ class Softmax final : public CudaKernel {
  private:
   int64_t axis_;
   bool log_softmax_;
+  int opset_;
+
+  // We need to access to the CUDA EP instance to get the cublas handle to use
+  // for transposing(if applicable)
+  CUDAExecutionProvider* cuda_ep_;
 };
 
 }  // namespace cuda

@@ -63,6 +63,8 @@ namespace GraphKernelHelper
         _Out_ std::vector<DML_GRAPH_EDGE_DESC>& dmlInputEdges,
         _Out_ std::vector<DML_GRAPH_EDGE_DESC>& dmlOutputEdges,
         _Out_ std::vector<DML_GRAPH_EDGE_DESC>& dmlIntermediateEdges);
+
+    std::string GetFusedNodeArgNameMatchingGraph(const std::string& fusedNodeArgeName);
     
 }  // namespace GraphKernelHelper
 }  // namespace Dml

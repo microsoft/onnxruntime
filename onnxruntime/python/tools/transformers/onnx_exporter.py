@@ -13,7 +13,7 @@ from transformers import AutoConfig, AutoTokenizer, AutoModel
 from benchmark_helper import create_onnxruntime_session, Precision
 from gpt2_helper import GPT2ModelNoPastState, PRETRAINED_GPT2_MODELS
 from quantize_helper import QuantizeHelper
-from huggingface_models import MODEL_CLASSES
+from huggingface_models import MODEL_CLASSES, EXEMPT_MODELS
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +134,6 @@ def get_onnx_file_path(onnx_dir: str, model_name: str, input_count: int, optimiz
         filename += f"_ort"
 
     directory = onnx_dir
-
     # ONNXRuntime will not write external data so the raw and optimized models shall be in same directory.
     if use_external_data and not optimized_by_onnxruntime:
         directory = os.path.join(onnx_dir, filename)
@@ -158,6 +157,7 @@ def add_filename_suffix(file_path: str, suffix: str) -> str:
 
 def optimize_onnx_model_by_ort(onnx_model_path, ort_model_path, use_gpu, overwrite, model_fusion_statistics):
     if overwrite or not os.path.exists(ort_model_path):
+        Path(ort_model_path).parent.mkdir(parents=True, exist_ok=True)
         from optimizer import optimize_by_onnxruntime, get_fusion_statistics
         # Use onnxruntime to optimize model, which will be saved to *_ort.onnx
         opt_model = optimize_by_onnxruntime(onnx_model_path,
@@ -169,9 +169,12 @@ def optimize_onnx_model_by_ort(onnx_model_path, ort_model_path, use_gpu, overwri
         logger.info(f"Skip optimization since model existed: {ort_model_path}")
 
 
-def optimize_onnx_model(onnx_model_path, optimized_model_path, model_type, num_attention_heads, hidden_size, use_gpu,
-                        precision, use_raw_attention_mask, overwrite, model_fusion_statistics):
+def optimize_onnx_model(model_name, onnx_model_path, optimized_model_path, model_type, num_attention_heads, hidden_size,
+                        use_gpu, precision, use_raw_attention_mask, overwrite, model_fusion_statistics,
+                        use_external_data_format):
     if overwrite or not os.path.exists(optimized_model_path):
+        Path(optimized_model_path).parent.mkdir(parents=True, exist_ok=True)
+
         from optimizer import optimize_model
         from onnx_model_bert import BertOptimizationOptions
         optimization_options = BertOptimizationOptions(model_type)
@@ -199,7 +202,11 @@ def optimize_onnx_model(onnx_model_path, optimized_model_path, model_type, num_a
 
         if Precision.FLOAT16 == precision:
             opt_model.convert_model_float32_to_float16()
-        opt_model.save_model_to_file(optimized_model_path)
+
+        if model_name in EXEMPT_MODELS:
+            use_external_data_format = False
+
+        opt_model.save_model_to_file(optimized_model_path, use_external_data_format)
     else:
         logger.info(f"Skip optimization since model existed: {optimized_model_path}")
 
@@ -240,9 +247,7 @@ def load_pretrained_model(model_name, config, cache_dir, custom_model_class, is_
     transformers_module = __import__("transformers", fromlist=[model_class_name])
     model_class = getattr(transformers_module, model_class_name)
 
-    use_cdn = False if model_name == 't5-11b' else True
-
-    return model_class.from_pretrained(model_name, config=config, cache_dir=cache_dir, use_cdn=use_cdn)
+    return model_class.from_pretrained(model_name, config=config, cache_dir=cache_dir)
 
 
 def load_pt_model(model_name, model_class, cache_dir):
@@ -258,7 +263,11 @@ def load_pt_model(model_name, model_class, cache_dir):
 def load_tf_model(model_name, model_class, cache_dir):
     config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
 
-    model = load_pretrained_model(model_name, config=config, cache_dir=cache_dir, custom_model_class=model_class, is_tf_model=True)
+    model = load_pretrained_model(model_name,
+                                  config=config,
+                                  cache_dir=cache_dir,
+                                  custom_model_class=model_class,
+                                  is_tf_model=True)
 
     return config, model
 
@@ -284,9 +293,9 @@ def validate_and_optimize_onnx(model_name, use_external_data_format, model_type,
     if optimize_onnx or precision == Precision.FLOAT16 or precision == Precision.INT8:  # Use script (optimizer.py) to optimize
         optimized_model_path = get_onnx_file_path(onnx_dir, model_name, len(input_names), True, use_gpu, precision,
                                                   False, use_external_data_format)
-        optimize_onnx_model(onnx_model_path, optimized_model_path, model_type, config.num_attention_heads,
+        optimize_onnx_model(model_name, onnx_model_path, optimized_model_path, model_type, config.num_attention_heads,
                             config.hidden_size, use_gpu, precision, use_raw_attention_mask, overwrite,
-                            model_fusion_statistics)
+                            model_fusion_statistics, use_external_data_format)
 
         onnx_model_path = optimized_model_path
         if validate_onnx:
@@ -295,7 +304,7 @@ def validate_and_optimize_onnx(model_name, use_external_data_format, model_type,
 
         if precision == Precision.INT8:
             logger.info(f"Quantizing model: {onnx_model_path}")
-            QuantizeHelper.quantize_onnx_model(onnx_model_path, onnx_model_path)
+            QuantizeHelper.quantize_onnx_model(onnx_model_path, onnx_model_path, use_external_data_format)
             logger.info(f"Finished quantizing model: {onnx_model_path}")
 
     else:  # Use OnnxRuntime to optimize
@@ -335,6 +344,7 @@ def export_onnx_model_from_pt(model_name, opset_version, use_external_data_forma
 
     if overwrite or not os.path.exists(onnx_model_path):
         logger.info("Exporting ONNX model to {}".format(onnx_model_path))
+        Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
 
         dynamic_axes, output_names = build_dynamic_axes(example_inputs, example_outputs_flatten)
 
@@ -364,6 +374,9 @@ def export_onnx_model_from_pt(model_name, opset_version, use_external_data_forma
 def export_onnx_model_from_tf(model_name, opset_version, use_external_data_format, model_type, model_class, cache_dir,
                               onnx_dir, input_names, use_gpu, precision, optimize_onnx, validate_onnx,
                               use_raw_attention_mask, overwrite, model_fusion_statistics):
+    # Use CPU to export
+    import tensorflow as tf
+    tf.config.set_visible_devices([], 'GPU')
 
     config, model = load_tf_model(model_name, model_class, cache_dir)
 
@@ -381,7 +394,7 @@ def export_onnx_model_from_tf(model_name, opset_version, use_external_data_forma
 
     example_inputs = filter_inputs(example_inputs, input_names)
 
-    example_outputs = model(example_inputs, training=False)
+    example_outputs = model(example_inputs, training=False).to_tuple()
 
     # Flatten is needed for gpt2 and distilgpt2.
     example_outputs_flatten = flatten(example_outputs)
@@ -392,6 +405,8 @@ def export_onnx_model_from_tf(model_name, opset_version, use_external_data_forma
 
     if overwrite or not os.path.exists(onnx_model_path):
         logger.info("Exporting ONNX model to {}".format(onnx_model_path))
+        Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
+
         import keras2onnx
         onnx_model = keras2onnx.convert_keras(model, model.name, target_opset=opset_version)
         keras2onnx.save_model(onnx_model, onnx_model_path)

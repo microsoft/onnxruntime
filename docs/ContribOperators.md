@@ -2088,16 +2088,48 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
-### <a name="com.microsoft.TransposeMatMul"></a><a name="com.microsoft.transposematmul">**com.microsoft.TransposeMatMul** (deprecated)</a>
+### <a name="com.microsoft.TransposeMatMul"></a><a name="com.microsoft.transposematmul">**com.microsoft.TransposeMatMul**</a>
 
-  Deprecated. Going forward FusedMatMul should be used. This OP will be supported for backward compatibility. 
+  Duplicate of FusedMatMul. Going forward FusedMatMul should be used. This OP will be supported for backward compatibility. 
   Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html
 
 #### Version
 
-This version of the operator has been deprecated since version 2 of the 'com.microsoft' operator set.
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
 
-Other versions of this operator: com.microsoft.TransposeMatMul-1
+#### Attributes
+
+<dl>
+<dt><tt>alpha</tt> : float</dt>
+<dd>Scalar multiplier for the product of the input tensors.</dd>
+<dt><tt>transA</tt> : int</dt>
+<dd>Whether A should be transposed on the last two dimensions before doing multiplication</dd>
+<dt><tt>transB</tt> : int</dt>
+<dd>Whether B should be transposed on the last two dimensions before doing multiplication</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>A</tt> : T</dt>
+<dd>N-dimensional matrix A</dd>
+<dt><tt>B</tt> : T</dt>
+<dd>N-dimensional matrix B</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Matrix multiply results</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(float), tensor(double), tensor(bfloat16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+</dl>
 
 
 ### <a name="com.microsoft.Trilu"></a><a name="com.microsoft.trilu">**com.microsoft.Trilu**</a>

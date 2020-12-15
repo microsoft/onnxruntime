@@ -10,8 +10,9 @@ SOURCE_ROOT=$1
 BUILD_DIR=$2
 NUGET_REPO_DIRNAME=$3   # path relative to BUILD_DIR
 CurrentOnnxRuntimeVersion=$4
-UseCentos7=${5:-false}
-Arch=${6:-x64}          # x32, x64
+DockerImage=$5
+UseCentos7=${6:-false}
+Arch=${7:-x64}          # x32, x64
 PackageName=${PACKAGENAME:-Microsoft.ML.OnnxRuntime}
 RunTestCsharp=${RunTestCsharp:-true}
 RunTestNative=${RunTestNative:-true}
@@ -35,6 +36,6 @@ docker run --rm \
         -e "DisableMlOps=$DISABLEMLOPS" \
         -e "RunTestCsharp=$RunTestCsharp" \
         -e "RunTestNative=$RunTestNative" \
-        onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecentoscpubuild:ch5g \
+        "$DockerImage" \
         /bin/bash /onnxruntime_src/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh \
         /home/onnxruntimedev/$NUGET_REPO_DIRNAME /onnxruntime_src /home/onnxruntimedev $CurrentOnnxRuntimeVersion

@@ -6,9 +6,18 @@
 
 namespace onnxruntime {
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     ScatterND,
     11,
+    12,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        .TypeConstraint("Tind", DataTypeImpl::GetTensorType<int64_t>()),
+    ScatterND);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    ScatterND,
+    13,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
         .TypeConstraint("Tind", DataTypeImpl::GetTensorType<int64_t>()),

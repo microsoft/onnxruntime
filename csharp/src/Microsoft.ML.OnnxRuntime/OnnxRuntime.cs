@@ -15,13 +15,19 @@ namespace Microsoft.ML.OnnxRuntime
         public LogLevel LogLevel { get; set; }
     }
 
+    /// <summary>
+    /// Logging level used to specify amount of logging when
+    /// creating environment. The lower the value is the more logging
+    /// will be output. A specific value output includes everything
+    /// that higher values output.
+    /// </summary>
     public enum LogLevel
     {
-        Verbose = 0,
-        Info = 1,
-        Warning = 2,
-        Error = 3,
-        Fatal = 4
+        Verbose = 0, // Everything
+        Info = 1,    // Informational
+        Warning = 2, // Warnings
+        Error = 3,   // Errors
+        Fatal = 4    // Results in the termination of the application.
     }
 
     /// <summary>
@@ -38,31 +44,15 @@ namespace Microsoft.ML.OnnxRuntime
     }
 
     /// <summary>
-    /// This class intializes the process-global ONNX runtime
-    /// C# API users do not need to access this, thus kept as internal
+    /// This class initializes the process-global ONNX Runtime environment instance (OrtEnv)
     /// </summary>
-    internal sealed class OnnxRuntime : SafeHandle
+    public sealed class OrtEnv : SafeHandle
     {
-        private static readonly Lazy<OnnxRuntime> _instance = new Lazy<OnnxRuntime>(()=> new OnnxRuntime());
-        
-        internal static IntPtr Handle  // May throw exception in every access, if the constructor have thrown an exception
-        {
-            get
-            {
-                return _instance.Value.handle;
-            }
-        }
+        private static readonly Lazy<OrtEnv> _instance = new Lazy<OrtEnv>(()=> new OrtEnv());
 
-        public override bool IsInvalid
-        {
-            get
-            {
-                return (handle == IntPtr.Zero);
-            }
-        }
-
-        private OnnxRuntime()  //Problem: it is not possible to pass any option for a Singleton
-            :base(IntPtr.Zero, true)
+        #region private methods
+        private OrtEnv()  //Problem: it is not possible to pass any option for a Singleton
+    : base(IntPtr.Zero, true)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateEnv(LogLevel.Warning, @"CSharpOnnxRuntime", out handle));
             try
@@ -75,12 +65,117 @@ namespace Microsoft.ML.OnnxRuntime
                 throw e;
             }
         }
+        #endregion
 
+        #region internal methods
+        /// <summary>
+        /// Returns a handle to the native `OrtEnv` instance held by the singleton C# `OrtEnv` instance
+        /// Exception caching: May throw an exception on every call, if the `OrtEnv` constructor threw an exception
+        /// during lazy initialization
+        /// </summary>
+        internal static IntPtr Handle  
+        {
+            get
+            {
+                return _instance.Value.handle;
+            }
+        }
+        #endregion
+
+        #region public methods
+
+        /// <summary>
+        /// Returns an instance of OrtEnv
+        /// It returns the same instance on every call - `OrtEnv` is singleton
+        /// </summary>
+        /// <returns>Returns a singleton instance of OrtEnv that represents native OrtEnv object</returns>
+        public static OrtEnv Instance() { return _instance.Value; }
+
+        /// <summary>
+        /// Enable platform telemetry collection where applicable
+        /// (currently only official Windows ORT builds have telemetry collection capabilities)
+        /// </summary>
+        public void EnableTelemetryEvents()
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtEnableTelemetryEvents(Handle));
+        }
+
+        /// <summary>
+        /// Disable platform telemetry collection
+        /// </summary>
+        public void DisableTelemetryEvents()
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtDisableTelemetryEvents(Handle));
+        }
+
+        /// <summary>
+        /// Create and register an allocator to the OrtEnv instance
+        /// so as to enable sharing across all sessions using the OrtEnv instance
+        /// <param name="memInfo">OrtMemoryInfo instance to be used for allocator creation</param>
+        /// <param name="arenaCfg">OrtArenaCfg instance that will be used to define the behavior of the arena based allocator</param>
+        /// </summary>
+        public void CreateAndRegisterAllocator(OrtMemoryInfo memInfo, OrtArenaCfg arenaCfg)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateAndRegisterAllocator(Handle, memInfo.Pointer, arenaCfg.Pointer));
+        }
+
+        /// <summary>
+        /// Queries all the execution providers supported in the native onnxruntime shared library
+        /// </summary>
+        /// <returns>an array of strings that represent execution provider names</returns>
+        public string[] GetAvailableProviders()
+        {
+            IntPtr availableProvidersHandle = IntPtr.Zero;
+            int numProviders;
+
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetAvailableProviders(out availableProvidersHandle, out numProviders));
+
+            var availableProviders = new string[numProviders];
+
+            try
+            {
+                for(int i=0; i<numProviders; ++i)
+                {
+                    availableProviders[i] = NativeOnnxValueHelper.StringFromNativeUtf8(Marshal.ReadIntPtr(availableProvidersHandle, IntPtr.Size * i));
+                }
+            }
+
+            finally
+            {
+                // Looks a bit weird that we might throw in finally(...)
+                // But the native method OrtReleaseAvailableProviders actually doesn't return a failure status
+                // If it does, it is BUG and we would like to propagate that to the user in the form of an exception
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtReleaseAvailableProviders(availableProvidersHandle, numProviders));
+            }
+
+            return availableProviders;
+        }
+        #endregion
+
+        #region SafeHandle
+        /// <summary>
+        /// Overrides SafeHandle.IsInvalid
+        /// </summary>
+        /// <value>returns true if handle is equal to Zero</value>
+        public override bool IsInvalid
+        {
+            get
+            {
+                return (handle == IntPtr.Zero);
+            }
+        }
+
+        /// <summary>
+        /// Overrides SafeHandle.ReleaseHandle() to properly dispose of
+        /// the native instance of OrtEnv
+        /// </summary>
+        /// <returns>always returns true</returns>
         protected override bool ReleaseHandle()
         {
             NativeMethods.OrtReleaseEnv(handle);
             handle = IntPtr.Zero;
             return true;
         }
+        #endregion
     }
 }

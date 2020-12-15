@@ -222,7 +222,12 @@ Node& AppendEventNode(
     std::string& new_output_name) {              // First output of the created event operator.
   // Outputs of "node" should be detached from its consumers.
   // Consumers of "node" should consume outputs of the added event operator.
-  std::vector<NodeArg*> node_args = node->MutableOutputDefs();
+  // Avoid adding non-existent argumements as new inputs, 
+  // this would trigger a failure in the shape inference phase of graph resolve. 
+  std::vector<NodeArg*> node_args;
+  std::copy_if(node->MutableOutputDefs().begin(), node->MutableOutputDefs().end(),
+               std::back_inserter(node_args),
+               [](NodeArg* arg) { return arg->Exists(); });
 
   // Declare outputs of the added event operator.
   std::vector<NodeArg*> new_node_args = CreateMirrorNodeArgs(graph, node_args);

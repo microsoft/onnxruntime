@@ -10,6 +10,7 @@ SOURCE_ROOT=$1
 BUILD_DIR=$2
 NUGET_REPO_DIRNAME=$3   # path relative to BUILD_DIR
 CurrentOnnxRuntimeVersion=$4
+DockerImage=$5
 PackageName=${PACKAGENAME:-Microsoft.ML.OnnxRuntime.Gpu}
 RunTestCsharp=${RunTestCsharp:-true}
 RunTestNative=${RunTestNative:-true}
@@ -27,6 +28,6 @@ docker run --gpus all --rm \
         -e "PackageName=$PackageName" \
         -e "RunTestCsharp=$RunTestCsharp" \
         -e "RunTestNative=$RunTestNative" \
-        onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecentosgpubuild:ch5h \
+        "$DockerImage" \
         /bin/bash /onnxruntime_src/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh \
         /home/onnxruntimedev/$NUGET_REPO_DIRNAME /onnxruntime_src /home/onnxruntimedev $CurrentOnnxRuntimeVersion

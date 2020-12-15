@@ -12,7 +12,8 @@ namespace training {
 class OptimizerGraphBuilderRegistry : public GenericRegistry<OptimizerGraphBuilder,
                                                              const OptimizerBuilderRegistry&,
                                                              const OptimizerGraphConfig&,
-                                                             const std::unordered_map<std::string, OptimizerNodeConfig>&> {
+                                                             const std::unordered_map<std::string, OptimizerNodeConfig>&,
+                                                             std::unordered_map<std::string, std::string>&> {
  public:
   // Register optimizer graph builders.
   void RegisterGraphBuilders();

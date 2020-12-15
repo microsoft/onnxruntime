@@ -10,6 +10,7 @@
 #include <limits.h>
 
 #include "core/common/common.h"
+#include "core/common/optional.h"
 #include "core/graph/basic_types.h"
 #include "core/framework/data_types.h"
 #include "core/framework/allocator.h"
@@ -64,6 +65,10 @@ class KernelDef {
     return alias_map_;
   }
 
+  const optional<std::pair<int, int>>& VariadicAlias() const {
+    return variadic_alias_offsets_;
+  }
+
   OrtMemType InputMemoryType(size_t input_index) const {
     auto it = input_memory_type_args_.find(input_index);
     if (it == input_memory_type_args_.end())
@@ -74,6 +79,8 @@ class KernelDef {
   bool IsInputOnCpu(size_t input_index) const { return MemTypeOnCpuExplicitly(InputMemoryType(input_index)); }
 
   bool IsOutputOnCpu(size_t output_index) const { return MemTypeOnCpuExplicitly(OutputMemoryType(output_index)); }
+
+  bool AllocateInputsContiguously() const { return allocate_inputs_contiguously_; }
 
   OrtMemType OutputMemoryType(size_t output_index) const {
     auto it = output_memory_type_args_.find(output_index);
@@ -128,6 +135,13 @@ class KernelDef {
 
   // An element <i, j> means that output j is an alias of input i.
   std::vector<std::pair<int, int>> alias_map_;
+
+  // This variable stores <input_offset, output_offset> for the variadic alias mapping
+  // output 'i + output_offset' is an alias of input 'i + input_offset' for all i >= 0
+  optional<std::pair<int, int>> variadic_alias_offsets_;
+
+  // Require input tensors to be allocated contiguously.
+  bool allocate_inputs_contiguously_ = false;
 
   // The memory types of inputs/outputs of this kernel
   MemTypeMap input_memory_type_args_;
@@ -214,6 +228,22 @@ class KernelDefBuilder {
   */
   KernelDefBuilder& Alias(const std::vector<std::pair<int, int>>& aliases);
   KernelDefBuilder& Alias(int input_index, int output_index);
+
+  /**
+     Apply variadic number of alias mapping from inputs to outputs. 
+     This is effectively applying Alias(i + input_offset, i + output_offset) for i >= 0
+  */
+  KernelDefBuilder& VariadicAlias(int input_offset, int output_offset);
+
+  /**
+     Specify that this kernel requires input tensors to be allocated
+     contiguously. This allows kernels to execute as a single large
+     computation, rather than numerous smaller computations.
+  */
+  KernelDefBuilder& AllocateInputsContiguously() {
+    kernel_def_->allocate_inputs_contiguously_ = true;
+    return *this;
+  }
 
   /**
      Specify that this kernel requires an input arg

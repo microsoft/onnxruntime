@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 
 namespace onnxruntime {
@@ -148,7 +148,7 @@ Status Inverse::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   IAllocatorUniquePtr<int> info = GetScratchBuffer<int>(num_batches);
-  CUDA_RETURN_IF_ERROR(cudaMemset(info.get(), 0, num_batches));
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(info.get(), 0, num_batches));
   IAllocatorUniquePtr<int> pivots = GetScratchBuffer<int>(rows * num_batches);
 
   utils::MLTypeCallDispatcherRet<Status, ComputeImpl, float, double, MLFloat16> t_disp(input->GetElementType());

@@ -1257,3 +1257,127 @@ Return Value:
         *WorkingBufferSize = TargetThreadCount * MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD;
     }
 }
+
+template<typename FilterType>
+void
+MLASCALL
+MlasConvDepthwise(
+    const uint8_t* Input,
+    uint8_t InputZeroPoint,
+    const FilterType* Filter,
+    FilterType FilterZeroPoint,
+    int32_t* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
+    )
+{
+#if defined(MLAS_SSE2_INTRINSICS)
+    const __m128i ZeroVector = _mm_setzero_si128();
+    const __m128i InputZeroPointVector = _mm_set1_epi16(InputZeroPoint);
+    const __m128i FilterZeroPointVector = _mm_set1_epi16(FilterZeroPoint);
+#endif
+
+    while (OutputCount > 0) {
+
+        size_t ChannelOffset = 0;
+        size_t c = Channels;
+
+#if defined(MLAS_SSE2_INTRINSICS)
+
+        while (c >= 8) {
+
+            __m128i Accumulator0 = _mm_setzero_si128();
+            __m128i Accumulator1 = _mm_setzero_si128();
+            size_t ChannelKernelOffset = ChannelOffset;
+
+            for (size_t k = 0; k < KernelSize; k++) {
+
+                __m128i InputVector = _mm_loadl_epi64((const __m128i*)&Input[ChannelKernelOffset]);
+                __m128i FilterVector = _mm_loadl_epi64((const __m128i*)&Filter[ChannelKernelOffset]);
+
+                InputVector = _mm_unpacklo_epi8(InputVector, ZeroVector);
+
+                if (std::is_signed<FilterType>::value) {
+                    FilterVector = _mm_srai_epi16(_mm_unpacklo_epi8(ZeroVector, FilterVector), 8);
+                } else {
+                    FilterVector = _mm_unpacklo_epi8(FilterVector, ZeroVector);
+                }
+
+                InputVector = _mm_sub_epi16(InputVector, InputZeroPointVector);
+                FilterVector = _mm_sub_epi16(FilterVector, FilterZeroPointVector);
+
+                // N.B. Emulate PMULLD functionality on SSE2 by computing the low
+                // and high parts of the result and interleaving the results.
+                __m128i MultiplyLowWords = _mm_mullo_epi16(InputVector, FilterVector);
+                __m128i MultiplyHighWords = _mm_mulhi_epi16(InputVector, FilterVector);
+                __m128i Multiply0 = _mm_unpacklo_epi16(MultiplyLowWords, MultiplyHighWords);
+                __m128i Multiply1 = _mm_unpackhi_epi16(MultiplyLowWords, MultiplyHighWords);
+
+                Accumulator0 = _mm_add_epi32(Accumulator0, Multiply0);
+                Accumulator1 = _mm_add_epi32(Accumulator1, Multiply1);
+                ChannelKernelOffset += Channels;
+            }
+
+            _mm_storeu_si128((__m128i*)&Output[0], Accumulator0);
+            _mm_storeu_si128((__m128i*)&Output[4], Accumulator1);
+            Output += 8;
+
+            ChannelOffset += 8;
+            c -= 8;
+        }
+
+#endif
+
+        while (c > 0) {
+
+            int32_t Accumulator = 0;
+            size_t ChannelKernelOffset = ChannelOffset;
+
+            for (size_t k = 0; k < KernelSize; k++) {
+
+                int32_t InputValue = int32_t(Input[ChannelKernelOffset]) - InputZeroPoint;
+                int32_t FilterValue = int32_t(Filter[ChannelKernelOffset]) - FilterZeroPoint;
+
+                Accumulator += InputValue * FilterValue;
+                ChannelKernelOffset += Channels;
+            }
+
+            *Output++ = Accumulator;
+
+            ChannelOffset += 1;
+            c -= 1;
+        }
+
+        Input += Channels * KernelSize;
+        OutputCount -= 1;
+    }
+}
+
+template
+void
+MLASCALL
+MlasConvDepthwise<int8_t>(
+    const uint8_t* Input,
+    uint8_t InputZeroPoint,
+    const int8_t* Filter,
+    int8_t FilterZeroPoint,
+    int32_t* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
+    );
+
+template
+void
+MLASCALL
+MlasConvDepthwise<uint8_t>(
+    const uint8_t* Input,
+    uint8_t InputZeroPoint,
+    const uint8_t* Filter,
+    uint8_t FilterZeroPoint,
+    int32_t* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
+    );

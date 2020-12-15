@@ -3,7 +3,7 @@
 
 #include "core/providers/cuda/controlflow/if.h"
 
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_fwd.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
@@ -23,9 +23,22 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(If,
 
 // output shape rules requiring the output shapes of the 'THEN' and 'ELSE'
 // branches to be the same were relaxed in opset-11
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(If,
+                                  kOnnxDomain,
+                                  11, 12,
+                                  kCudaExecutionProvider,
+                                  KernelDefBuilder()
+                                      .InputMemoryType<OrtMemTypeCPUInput>(0)  // 'cond' needs to be on CPU
+                                      .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+                                      .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
+                                  If);
+
+// sequence tensors were also supported in addition to existing support for tensors in opset-13,
+// but we do not support sequence tensors in the cuda If kernel because there are no ops that handle
+// sequence tensors on CUDA and supporting it for If doesn't add value while that is the case
 ONNX_OPERATOR_KERNEL_EX(If,
                         kOnnxDomain,
-                        11,
+                        13,
                         kCudaExecutionProvider,
                         KernelDefBuilder()
                             .InputMemoryType<OrtMemTypeCPUInput>(0)  // 'cond' needs to be on CPU

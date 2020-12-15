@@ -143,14 +143,12 @@ class OpKernelContext {
     return *output_ptr;
   }
 
-#if !defined(ORT_MINIMAL_BUILD)
   // Fetch a sparse-tensor output corresponding to the specified index.
   // num_values must specify the number of non-zero values (commonly known as NNZ/nnz),
   // and shape must specify the shape of the underlying dense-tensor.
   // Memory allocation for the output may happen when this method is invoked,
   // unless static optimization pre-allocates it.
   SparseTensor* Output(int index, size_t num_values, const TensorShape& shape);
-#endif
 
   // Retrieve indexed shape obtained from memory planning before actual
   // computation. If the indexed shape cannot be inferred, this function returns
@@ -224,9 +222,26 @@ class OpKernelContext {
   const std::string& GetOpDomain() const;
 
   /**
+  Returns the optype of the underlying kernel
+  **/
+  const std::string& GetOpType() const;
+
+  /**
+  Returns the node name of the underlying kernel
+  **/
+  const std::string& GetNodeName() const;
+
+  /**
   Returns the intra-op threadpool, if available.
   */
   _Ret_maybenull_ onnxruntime::concurrency::ThreadPool* GetOperatorThreadPool() const { return threadpool_; }
+
+  /**
+  Returns whether deterministic computation is preferred.
+  */
+  virtual bool GetUseDeterministicCompute() const {
+    return true;
+  }
 
  protected:
   onnxruntime::NodeIndex GetNodeIndex() const;
@@ -314,6 +329,13 @@ namespace cuda {
 template <typename T>
 KernelCreateInfo BuildKernelCreateInfo();
 }  // namespace cuda
+}  // namespace contrib
+
+namespace contrib {
+namespace rocm {
+template <typename T>
+KernelCreateInfo BuildKernelCreateInfo();
+}  // namespace rocm
 }  // namespace contrib
 
 using BuildKernelCreateInfoFn = KernelCreateInfo (*)();

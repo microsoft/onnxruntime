@@ -20,12 +20,13 @@ jobs:
     clean: true
     submodules: recursive
 
-  - task: Docker@2
-    displayName: login
-    inputs:
-      containerRegistry: onnxruntimeregistry
-      command: login
-      addPipelineData: false
+  - template: templates/get-docker-image-steps.yml
+    parameters:
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.centos
+      Context: tools/ci_build/github/linux/docker
+      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+      Repository: onnxruntimecentoscpubuild
+
   - task: CmdLine@2
     displayName: Build full onnxruntime and generate ORT format test files
     inputs:
@@ -39,7 +40,7 @@ jobs:
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
-          onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecentoscpubuild:ch5g \
+          onnxruntimecentoscpubuild \
             /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_full_ort_and_create_ort_files.sh
       workingDirectory: $(Build.SourcesDirectory)
   - task: CmdLine@2
@@ -54,7 +55,7 @@ jobs:
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
-          onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecentoscpubuild:ch5g \
+          onnxruntimecentoscpubuild \
             python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build --cmake_generator Ninja \
               --config Debug\
@@ -76,7 +77,7 @@ jobs:
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
-          onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecentoscpubuild:ch5g \
+          onnxruntimecentoscpubuild \
             /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_and_run_tests.sh
       workingDirectory: $(Build.SourcesDirectory)
   - task: CmdLine@2
@@ -95,16 +96,12 @@ jobs:
           -e BUILD_BUILDNUMBER \
           -e BUILD_SOURCEVERSION=$(Build.SourceVersion) \
           -e BUILD_ID=$(Build.BuildId) \
+          -e BUILD_REASON=$(Build.Reason) \
           -e DASHBOARD_MYSQL_ORT_PASSWORD=$(dashboard-mysql-ort-password) \
-          onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecentoscpubuild:ch5g \
+          onnxruntimecentoscpubuild \
             /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_android_baseline_and_report_bin_size.sh
       workingDirectory: $(Build.SourcesDirectory)
-  - task: Docker@2
-    displayName: logout
-    inputs:
-      containerRegistry: onnxruntimeregistry
-      command: logout
-      addPipelineData: false
+
   - task: PublishTestResults@2
     displayName: 'Publish unit test results'
     inputs:

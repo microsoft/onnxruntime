@@ -9,12 +9,13 @@ jobs:
     clean: true
     submodules: recursive
 
-  - task: Docker@2
-    displayName: login
-    inputs:
-      containerRegistry: onnxruntimeregistry
-      command: login
-      addPipelineData: false
+  - template: templates/get-docker-image-steps.yml
+    parameters:
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.centos
+      Context: tools/ci_build/github/linux/docker
+      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+      Repository: onnxruntimecentoscpubuild
+
   - task: CmdLine@2
     inputs:
       script: |
@@ -28,7 +29,7 @@ jobs:
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
-          onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecentoscpubuild:ch5g \
+          onnxruntimecentoscpubuild \
             python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build --cmake_generator Ninja \
               --config Debug Release \
@@ -39,12 +40,7 @@ jobs:
               --enable_onnx_tests \
               --disable_contrib_ops  --disable_ml_ops
       workingDirectory: $(Build.SourcesDirectory)
-  - task: Docker@2
-    displayName: logout
-    inputs:
-      containerRegistry: onnxruntimeregistry
-      command: logout
-      addPipelineData: false
+
   - task: PublishTestResults@2
     displayName: 'Publish unit test results'
     inputs:

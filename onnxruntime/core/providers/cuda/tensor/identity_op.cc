@@ -11,8 +11,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     7, 9,
     kCudaExecutionProvider,
     KernelDefBuilder()
-        .TypeConstraint("T", {DataTypeImpl::GetTensorType<MLFloat16>(), 
-                              DataTypeImpl::GetTensorType<float>(), 
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<MLFloat16>(),
+                              DataTypeImpl::GetTensorType<float>(),
                               DataTypeImpl::GetTensorType<double>()})
         .Alias(0, 0),
     IdentityOp<true>);
@@ -31,10 +31,20 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
         .Alias(0, 0),
     IdentityOp<true>);
 
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Identity,
+    kOnnxDomain,
+    1, 12,
+     kCudaExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .Alias(0, 0),
+    IdentityOp<false>);
+
 ONNX_OPERATOR_KERNEL_EX(
     Identity,
     kOnnxDomain,
-    1,
+    13,
     kCudaExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
